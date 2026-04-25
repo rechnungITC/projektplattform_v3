@@ -1,6 +1,6 @@
 # PROJ-1: Authentication, Tenants, and Role-Based Membership
 
-## Status: Planned
+## Status: Architected
 **Created:** 2026-04-25
 **Last Updated:** 2026-04-25
 
@@ -119,7 +119,202 @@ The foundational identity, tenancy, and authorization layer for the platform. Ev
 <!-- Sections below are added by subsequent skills -->
 
 ## Tech Design (Solution Architect)
-_To be added by /architecture_
+
+### A) Component Structure (UI)
+
+```
+Marketing/Public
+├── /login                   ← email + password form
+├── /signup                  ← email + password + display_name
+├── /forgot-password         ← request reset email
+└── /reset-password          ← set new password (from email link)
+
+App (authenticated)
+├── /onboarding              ← shown ONCE after signup if user is sole admin of fresh tenant
+│   └── Tenant naming form (default: derived from email domain)
+│
+├── Top Nav
+│   ├── Tenant Switcher      ← dropdown if user belongs to multiple tenants
+│   └── User Menu            ← profile + logout
+│
+└── /settings
+    ├── /settings/profile          ← display_name, password change (any role)
+    ├── /settings/tenant           ← rename tenant, manage domain claim (admin only)
+    └── /settings/members          ← list members, invite, change role, revoke (admin only)
+```
+
+All forms reuse existing shadcn components (`Form`, `Input`, `Label`, `Button`, `Dialog`, `DropdownMenu`, `Table`).
+
+### B) Data Model
+
+Three new tables in Supabase Postgres. All have RLS enabled.
+
+**`tenants`** — one row per organization
+- `id` — unique identifier
+- `name` — display name (required)
+- `domain` — optional claimed email domain (e.g. `firma.de`); unique across all tenants when set
+- `created_at`, `created_by` — audit
+
+**`profiles`** — one row per authenticated user (mirrors Supabase's built-in `auth.users` but holds app-specific fields)
+- `id` — same UUID as the corresponding `auth.users` row
+- `email` — synced from auth.users
+- `display_name` — user-editable
+- `created_at`, `updated_at`
+
+Why a separate `profiles` table: Supabase's built-in `auth.users` is restricted (limited columns, can't be referenced by foreign keys directly in user code). The standard pattern is a public `profiles` mirror for app data and FK references.
+
+**`tenant_memberships`** — links users to tenants with a role
+- `id` — unique identifier
+- `tenant_id` — which tenant
+- `user_id` — which user (FK to profiles)
+- `role` — `admin`, `member`, or `viewer` (DB CHECK constraint)
+- `created_at`
+- Unique constraint on `(tenant_id, user_id)` — a user has at most one membership per tenant
+- A user CAN have memberships in multiple tenants (cross-tenant membership is valid)
+
+### C) Key Flows
+
+**Signup → Tenant Assignment** (the single most important flow)
+
+```
+User submits signup form
+        │
+        ▼
+Supabase Auth creates row in auth.users
+        │
+        ▼ (Auth Hook fires)
+Edge Function setup-tenant-on-signup (Deno + TypeScript):
+    1. Receive auth event payload (user_id, email, user_metadata)
+    2. Insert/upsert profile row (id = auth.users.id, email, display_name)
+    3. If user_metadata.invited_to_tenant present:
+         → INSERT membership with that tenant_id and metadata.invited_role
+       Else (self-service signup):
+         → Extract domain from email
+         → SELECT tenant WHERE domain = <signup domain>
+              ├── Match found → INSERT membership (role='member')
+              └── No match    → INSERT new tenant (name='<domain>')
+                                INSERT membership (role='admin')
+    4. Return success; log structured event for observability
+```
+
+Why Edge Function (not DB trigger): keeps tenant-routing logic in TypeScript so it's easier to evolve, debug, and integrate with MCP tools later. Edge Functions fit the V3 stack principle ("Supabase-native, no Python services") and are observable in Supabase logs.
+
+**Atomicity safeguard:** Edge Functions are not strictly transactional with the `auth.users` insert. The Edge Function uses a Postgres transaction internally (`profiles` insert + `tenants` upsert + `tenant_memberships` insert in one BEGIN/COMMIT), so within the function it's all-or-nothing. If the hook itself fails (timeout, network issue), a fallback **on-login check** runs: if a logged-in user has no `tenant_memberships` row, the same setup logic runs lazily before granting access. Users are never able to use the app without a tenant assignment — they just see a one-time "Setting up your workspace…" loader on first login if the hook missed.
+
+**Login**
+- Supabase Auth handles credential check + session cookie issuance
+- `@supabase/ssr` package wires the session into Next.js Server Components and Route Handlers
+- After login, the app reads the user's tenant memberships and shows a switcher if more than one
+
+**Invite Flow** (admin invites a user)
+1. Admin enters email + chooses role on `/settings/members`
+2. App calls `supabase.auth.admin.inviteUserByEmail(email, { data: { invited_to_tenant: <id>, invited_role: <role> } })`
+3. Supabase sends magic-link email
+4. Recipient clicks link → lands on `/reset-password` (sets initial password) → auth.users row created
+5. Same `handle_new_user` trigger fires; sees `invited_to_tenant` in `user_metadata` → uses that instead of domain logic
+
+**Role Change**
+- Admin clicks "Change role" on member list → API call to `PATCH /api/tenants/{id}/members/{userId}` with `{ role: 'member' }`
+- API checks: caller is admin of this tenant; target user belongs to tenant; if demoting last admin, reject (with helpful message)
+- DB trigger `enforce_admin_invariant` ALSO blocks the same scenario — defense in depth (in case API check is bypassed)
+
+**Revoke Membership**
+- Admin clicks "Remove" → `DELETE /api/tenants/{id}/members/{userId}`
+- API + trigger both enforce: cannot remove the last admin
+
+### D) Authorization Strategy (RLS)
+
+RLS is the **single source of truth** for who can read or write what. The frontend cannot bypass it; if the policy says no, the row doesn't appear.
+
+**Three reusable Postgres helper functions** the policies build on:
+1. `is_tenant_member(tenant_id)` — returns true if the current user belongs to the given tenant in any role
+2. `has_tenant_role(tenant_id, role)` — returns true if the current user has the specific role
+3. `is_tenant_admin(tenant_id)` — convenience wrapper for `has_tenant_role(t, 'admin')`
+
+**Policy strategy per table:**
+
+| Table | SELECT | INSERT | UPDATE | DELETE |
+|---|---|---|---|---|
+| `tenants` | member of tenant | only via signup trigger (no direct insert) | admin only | never (delete via cascade only) |
+| `profiles` | self + members of shared tenants | via signup trigger | self only | via auth.users cascade |
+| `tenant_memberships` | members of same tenant | admin only | admin only | admin only |
+
+**Why membership-based RLS, not JWT custom claim:** A JWT tenant claim would be faster but requires a "switch tenant" flow that re-issues the JWT and adds infrastructure. Membership-based RLS is simpler for MVP, lets users see all their tenants without switching, and is plenty fast at MVP scale. We can introduce a JWT claim later if performance demands it.
+
+**Active-tenant UX:** The frontend tracks the user's currently-selected tenant in app state (e.g., a context provider, persisted to a cookie). This is a UI scoping concern — RLS does not enforce a single active tenant, only membership.
+
+### E) Constraint Enforcement
+
+**"Tenant must always have ≥1 admin"** — enforced at TWO layers:
+
+1. **API layer** (nice errors): role-change and membership-delete endpoints check the count first; reject with 422 + clear message
+2. **DB trigger layer** (hard guarantee): `BEFORE UPDATE OF role` and `BEFORE DELETE` on `tenant_memberships` count remaining admins; raise exception if 0
+
+The DB trigger is the security guarantee. The API check is for nice UX (better error message before hitting the trigger).
+
+### F) API Surface (Next.js App Router)
+
+These are the **only** custom API routes needed; everything else uses Supabase Auth client SDKs directly from the browser.
+
+```
+POST   /api/tenants/{id}/invite           ← admin invites a user
+PATCH  /api/tenants/{id}                  ← rename tenant or set/clear domain
+PATCH  /api/tenants/{id}/members/{userId} ← change role
+DELETE /api/tenants/{id}/members/{userId} ← revoke membership
+```
+
+Why Route Handlers instead of pure client-side calls? Because invites involve admin-only Supabase API calls that need the service-role key (must stay server-side). Role changes also benefit from a single trusted spot for the admin-count pre-check.
+
+### G) Session Handling
+
+- **Library:** `@supabase/ssr` (Supabase's official Next.js helper). Manages cookies for both Server Components and Client Components transparently.
+- **Middleware:** A Next.js middleware runs on every request, refreshes the session cookie if needed, and redirects unauthenticated users away from protected routes.
+- **Server Components** read `auth.uid()` from the request cookie via the helper; **Client Components** use the Supabase JS client.
+
+### H) Tech Decisions Justified
+
+| Decision | Why |
+|---|---|
+| Email/password (not magic link) for MVP | Familiar UX; doesn't require email infrastructure tuning. Magic link is a P1 add-on. |
+| Separate `profiles` table mirroring `auth.users` | Standard Supabase pattern; `auth.users` cannot be FK-referenced by app tables directly and is restricted from app SQL. |
+| Edge Function for tenant routing (not DB trigger) | TypeScript over plpgsql — easier to evolve, debug, and observe. Aligns with V3's "Supabase-native, no extra services" principle and leaves room for MCP integration. Atomicity gap mitigated by an on-login fallback. |
+| `role` as TEXT + CHECK (not Postgres ENUM) | Easier to add new roles later (just update CHECK; ENUM requires `ALTER TYPE`). Same DB-level safety. |
+| `domain` UNIQUE WHERE NOT NULL (partial index) | Allows multiple tenants with NULL domain (most users); enforces uniqueness only when set. |
+| Membership-based RLS (not JWT claim) | Simpler MVP; users transparently see all their tenants. Performance-tune to JWT-claim later only if needed. |
+| Role mgmt via Next.js Route Handlers | Some operations need the service-role key; can't be client-side. |
+| Last-admin guard at DB + API | Defense in depth; DB trigger is hard truth, API check provides UX. |
+
+### I) Dependencies (npm packages)
+
+| Package | Purpose |
+|---|---|
+| `@supabase/supabase-js` | Already installed — Supabase client SDK |
+| `@supabase/ssr` | Cookie-based session handling for Next.js App Router |
+| `react-hook-form` | Already installed — auth forms |
+| `zod` | Already installed — input validation |
+| `@hookform/resolvers` | Already installed — bridges zod to react-hook-form |
+
+No new dependencies beyond `@supabase/ssr`. Everything else is already in the starter kit.
+
+### J) What's NOT Designed Here (deferred)
+
+These are explicitly **out of scope** for PROJ-1 implementation but architecturally accommodated:
+
+- **DNS-based domain verification** — admin currently claims domain on trust. Future: DNS TXT record verification flow.
+- **SSO/SAML** — would require an additional Supabase Auth provider configuration. Schema doesn't change.
+- **2FA** — Supabase Auth supports it natively; can be enabled later without schema change.
+- **Cross-tenant migration** — manual SQL operation for now; productize later if demand justifies.
+- **Audit log of role changes** — bigger generic audit feature later (not specific to memberships).
+
+### K) Trade-offs to Acknowledge
+
+| Trade-off | Chosen direction | Why okay for MVP |
+|---|---|---|
+| Trust-based domain claim | Anyone with admin role can claim any unclaimed domain | Internal/early users; adversarial model not yet relevant |
+| Last-write-wins for tenant rename | No optimistic concurrency | Tenant settings change rarely; conflicts unlikely |
+| All-tenants visibility (no JWT claim) | User's queries can fan out across multiple tenant memberships | At MVP scale (single-digit tenants per user), performance fine |
+| Single auth provider | Email/password only | Lowest setup cost; OAuth/SSO can be added later without schema change |
+| Edge Function tenant-routing (not DB-trigger atomicity) | Hook may rarely miss; on-login fallback covers the edge case | Cost of TypeScript + observability outweighs the tiny non-atomicity window |
 
 ## QA Test Results
 _To be added by /qa_
