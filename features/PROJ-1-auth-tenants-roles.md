@@ -1,6 +1,6 @@
 # PROJ-1: Authentication, Tenants, and Role-Based Membership
 
-## Status: In Progress
+## Status: Approved
 **Created:** 2026-04-25
 **Last Updated:** 2026-04-25
 
@@ -380,7 +380,79 @@ Backend implementation complete and applied to Supabase project `iqerihohwabyjzk
 - Domain normalization (lowercase + trim) on PATCH `/api/tenants/[id]`.
 
 ## QA Test Results
-_To be added by /qa_
+
+**Date:** 2026-04-25
+**Tester:** /qa skill
+**Verdict:** ✅ **Approved** — no Critical or High bugs
+
+### Automated tests
+- `npm test` — **27/27 pass** (vitest, mocked Supabase client across the 3 API routes)
+- TypeScript strict-check — **0 errors**
+- Supabase advisors — **0 security warnings, 0 performance warnings** (only INFO-level unused-index notes, expected on empty tables)
+
+### Live security tests (executed via MCP `execute_sql`)
+
+| # | Test | Result |
+|---|---|---|
+| A | **Tenant isolation (SELECT)** — synthetic 2nd tenant created; authenticated user JWT scoped to their UUID; `SELECT * FROM tenants` returns only the user's own tenant | ✅ PASS |
+| B | **Last-admin demote** — `UPDATE tenant_memberships SET role='member'` on the sole admin → `enforce_admin_invariant` trigger raises `check_violation`; role unchanged | ✅ PASS |
+| C | **Last-admin delete** — `DELETE FROM tenant_memberships` on sole admin → trigger blocks; row count remains 1 | ✅ PASS |
+| D | **Domain uniqueness** — claiming an already-claimed domain raises `unique_violation` (partial unique index `tenants_domain_unique`) | ✅ PASS |
+| E | **`handle_new_user` ACL** — `pg_proc.proacl = "postgres=X/postgres, service_role=X/postgres"`. No grant for `authenticated` or `anon`; function is service_role-only as designed | ✅ PASS |
+| F | **anon role hardening** — `information_schema.role_table_grants` confirms `anon` has NO `SELECT` privilege on `profiles`, `tenants`, `tenant_memberships` (post-hardening migration `20260425130000`) | ✅ PASS |
+
+### Live end-to-end (manual smoke, prior to QA)
+- **Signup → onboarding → tenant assignment** — `info@it-couch.de` signed up, Edge Function `setup-tenant-on-signup` invoked from onboarding, `handle_new_user` atomically created profile + tenant ("it-couch.de") + admin membership. Verified via live SELECT.
+
+### Acceptance Criteria walk-through
+
+| Group | Status | Notes |
+|---|---|---|
+| **Authentication** (signup, login, logout, password reset) | ✅ PASS | Forms wired to `supabase.auth.*`; live signup verified |
+| **Tenancy data model** (`profiles`, `tenants`, `tenant_memberships` with required columns + RLS) | ✅ PASS | Schema verified via `pg_class` + `pg_policies` + `pg_proc` queries |
+| **Tenant assignment on signup** (domain match → member; no match → admin + new tenant) | ✅ PASS | Live verified end-to-end |
+| **Domain claim (admin only, DB-level uniqueness)** | ⚠ PARTIAL | Backend verified (Test D + RLS policy `tenants_update_admin`). UI-level dashboard claim flow not yet exercised in browser. |
+| **Invite flow (`POST /api/tenants/[id]/invite`)** | ⚠ PARTIAL | 7 vitest tests pass with mocked Supabase admin client. Live not testable yet — `SUPABASE_SERVICE_ROLE_KEY` in local `.env.local` is currently the anon JWT, not service_role; invite route will return 500 until corrected (UI handles gracefully via `toast.warning`). |
+| **Role enforcement via RLS (3 helper functions, 9 policies)** | ✅ PASS | Test A verified tenant isolation; helpers `is_tenant_member`, `has_tenant_role`, `is_tenant_admin` confirmed `SECURITY DEFINER` with hardened `search_path` |
+| **Role management (change role / revoke)** | ⚠ PARTIAL | Vitest mocks pass; DB trigger verified (Tests B, C). Multi-user live test deferred until ≥2 real members exist in a tenant. |
+| **Last-admin invariant** | ✅ PASS | DB trigger verified (Tests B, C); API pre-check covered by route tests |
+
+### Edge Cases verified
+
+| Edge case from spec | Result |
+|---|---|
+| First-admin lock-in (last admin demoting/deleting themselves) | ✅ PASS — both UPDATE and DELETE blocked at DB layer |
+| Domain conflict (duplicate `domain` claim) | ✅ PASS — `unique_violation` raised by partial unique index |
+| Viewer attempts a write | ✅ PASS by design — RLS policies on `tenant_memberships` only grant INSERT/UPDATE/DELETE to admins; viewers fail closed |
+| `handle_new_user` callable by attacker | ✅ PASS — function is service_role-only |
+| anon-readable schema introspection | ✅ PASS — anon has zero privileges on app tables; pg_graphql cannot expose schema |
+| Pre-existing user post-claim | 🟡 DEFERRED per spec — explicit non-goal for MVP |
+| Email change post-signup | 🟡 DEFERRED per spec — P1 |
+| Disposable / freemail signup handling | 🟡 DEFERRED per spec — P1 |
+| Auth user deleted, membership orphaned | ✅ PASS by schema — `ON DELETE CASCADE` on profiles → tenant_memberships |
+
+### Bugs found in this QA pass
+
+**0 new bugs.**
+
+For reference, one bug was found and fixed mid-implementation (before this QA):
+- ~~`column reference "tenant_id" is ambiguous` in `handle_new_user`~~ — fixed by switching `RETURNS TABLE` → `RETURNS jsonb` (commit `81704c4`, migration `20260425140000`).
+
+### Not tested in this round
+
+- **Playwright E2E** — deferred. Browser binaries (~300MB) need install; can be added in a follow-up `/qa` pass once core feature roadmap stabilizes.
+- **Cross-browser** (Chrome/Firefox/Safari) — manual verification only on the developer's primary browser; no Playwright matrix yet.
+- **Responsive viewport sweep** (375px / 768px / 1440px) — UI is shadcn/Tailwind-based which is responsive by default; no visual regression suite yet.
+- **Live service-role-key flows** — invite, role change via API route. Will be tested as soon as the user provides the real `service_role` JWT in `.env.local` (currently has the anon JWT in that variable).
+
+### Recommendation
+
+**Status → Approved.** No Critical or High issues. Two PARTIAL items (Invite/Role-mgmt live testing) are gated on the user adding the correct `SUPABASE_SERVICE_ROLE_KEY` and not on code defects. Feature is ready to advance.
+
+Suggested follow-ups (not blockers):
+1. Replace anon JWT in local `.env.local`'s `SUPABASE_SERVICE_ROLE_KEY` with the real service_role JWT, then re-run invite + role-change manually.
+2. Add Playwright E2E coverage in a later sprint (after PROJ-2/PROJ-4 ship; smaller marginal cost when there's more UI to cover).
+3. Seed a realistic 2-tenant + 3-user fixture for cross-tenant RLS regression tests.
 
 ## Deployment
 _To be added by /deploy_

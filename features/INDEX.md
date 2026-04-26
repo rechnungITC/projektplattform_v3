@@ -14,7 +14,7 @@
 
 | ID | Feature | Status | Spec | Created |
 |----|---------|--------|------|---------|
-| PROJ-1 | Authentication, Tenants, Role-Based Membership | In Progress | [Spec](PROJ-1-auth-tenants-roles.md) | 2026-04-25 |
+| PROJ-1 | Authentication, Tenants, Role-Based Membership | Approved | [Spec](PROJ-1-auth-tenants-roles.md) | 2026-04-25 |
 | PROJ-2 | Project CRUD + Lifecycle State Machine | Planned | [Spec](PROJ-2-project-crud-lifecycle.md) | 2026-04-25 |
 | PROJ-3 | Tenant Operations and Deployment Modes (Stand-alone vs SaaS) | Planned | [Spec](PROJ-3-tenant-ops-deployment-modes.md) | 2026-04-25 |
 | PROJ-4 | Platform Foundation — Navigation, Project Roles, RBAC Enforcement | Planned | [Spec](PROJ-4-platform-foundation-navigation-rbac.md) | 2026-04-25 |
