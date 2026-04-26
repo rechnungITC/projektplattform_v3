@@ -26,13 +26,26 @@ The product thesis: enterprise projects fail at the seams between execution, gov
 
 | ID | Priority | Feature | Status |
 |----|----------|---------|--------|
-| PROJ-1 | P0 (MVP) | Authentication, Tenants, Role-Based Membership (Supabase Auth + RLS) | Planned |
+| PROJ-1 | P0 (MVP) | Authentication, Tenants, Role-Based Membership (Supabase Auth + RLS) | In Progress |
 | PROJ-2 | P0 (MVP) | Project CRUD + Lifecycle State Machine (Draft → Active → Paused → Completed/Canceled) | Planned |
-| _TBD_ | P0 (MVP) | Shared core: Phases, Milestones, Tasks, Dependencies | Planned |
-| _TBD_ | P0 (MVP) | Stakeholders, Risks, Decisions (shared core) | Planned |
-| _TBD_ | P1 | ERP extension: vendor evaluation, module planning, governance gates | Planned |
-| _TBD_ | P1 | Context ingestion: ingest emails, meeting notes, documents | Planned |
-| _TBD_ | P1 | AI-supported proposals: derive tasks, risks, decisions from context (Claude, traceable + reviewable) | Planned |
+| PROJ-3 | P0 (MVP) | Tenant Operations and Deployment Modes (Stand-alone vs SaaS) | Planned |
+| PROJ-4 | P0 (MVP) | Platform Foundation: Navigation, Project Roles, RBAC Enforcement | Planned |
+| PROJ-5 | P0 (MVP) | Guided Project Creation Wizard with Type/Method-Aware Questions | Planned |
+| PROJ-6 | P0 (MVP) | Project Types, Methods Catalog, and Rule Engine | Planned |
+| PROJ-19 | P0 (MVP) | Shared core: Phases, Milestones (cross-cutting schedule backbone) | Planned |
+| PROJ-9 | P0 (MVP) | Shared core: Work Items (Epic/Story/Task/Subtask/Bug/Work Package) | Planned |
+| PROJ-7 | P0 (MVP) | Project Room with Internal Kanban / Scrum / Gantt Modules + Risks/Budget | Planned |
+| PROJ-8 | P0 (MVP) | Shared core: Stakeholders | Planned |
+| PROJ-20 | P0 (MVP) | Shared core: Risks (cross-link), Decisions, Open Items | Planned |
+| PROJ-10 | P0 (MVP) | Change Management: field-level versioning, compare, undo, copy, audit | Planned |
+| PROJ-15 | P1 | ERP extension: vendor evaluation, vendor master data, document slots | Planned |
+| PROJ-12 | P1 | Context ingestion + AI-supported proposals (Claude, traceable, reviewable) | Planned |
+| PROJ-13 | P1 | Communication center, email/Slack/Teams send, internal project chat | Planned |
+| PROJ-11 | P1 | Resources, capacities, utilization across projects | Planned |
+| PROJ-14 | P1 | Connector framework + Jira integration + MCP bridge | Planned |
+| PROJ-16 | P1 | Master Data UI: users, stakeholder rollup, catalog overrides | Planned |
+| PROJ-17 | P1 | Tenant Administration: branding, modules, privacy defaults, export, offboarding | Planned |
+| PROJ-18 | P1 | Compliance Automatik & Process Templates (ISO/DSGVO/MS-365/vendor-eval/...) | Planned |
 | _TBD_ | P2 | Construction extension: trades, sections, schedule logic, Gantt views | Planned |
 | _TBD_ | P2 | Software project extension: sprints, releases, technical dependencies | Planned |
 | _TBD_ | P2 | Output rendering: Gantt, Kanban, executive summaries, presentation export | Planned |
