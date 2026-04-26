@@ -1,26 +1,47 @@
 "use client"
 
-import { Building2, User, Users } from "lucide-react"
+import { Building2, Trash2, User, Users } from "lucide-react"
 import Link from "next/link"
 import { usePathname } from "next/navigation"
 
+import { useAuth } from "@/hooks/use-auth"
 import { cn } from "@/lib/utils"
+import type { Role } from "@/types/auth"
 
-const ITEMS = [
+interface SettingsTab {
+  href: string
+  label: string
+  icon: typeof User
+  /** When set, only roles in this list see the tab. Undefined means visible to all. */
+  visibleTo?: readonly Role[]
+}
+
+const ITEMS: readonly SettingsTab[] = [
   { href: "/settings/profile", label: "Profile", icon: User },
   { href: "/settings/tenant", label: "Tenant", icon: Building2 },
   { href: "/settings/members", label: "Members", icon: Users },
+  {
+    href: "/settings/projects-trash",
+    label: "Projects Trash",
+    icon: Trash2,
+    visibleTo: ["admin"],
+  },
 ] as const
 
 export function SettingsTabs() {
   const pathname = usePathname()
+  const { currentRole } = useAuth()
+
+  const visibleItems = ITEMS.filter(
+    (item) => !item.visibleTo || (currentRole && item.visibleTo.includes(currentRole))
+  )
 
   return (
     <nav
       aria-label="Settings sections"
       className="flex flex-row gap-1 overflow-x-auto md:flex-col md:gap-0.5"
     >
-      {ITEMS.map((item) => {
+      {visibleItems.map((item) => {
         const active =
           pathname === item.href || pathname?.startsWith(`${item.href}/`)
         const Icon = item.icon

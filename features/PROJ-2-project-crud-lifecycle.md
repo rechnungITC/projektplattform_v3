@@ -1,6 +1,6 @@
 # PROJ-2: Project CRUD and Lifecycle State Machine
 
-## Status: Architected
+## Status: In Progress
 **Created:** 2026-04-25
 **Last Updated:** 2026-04-25
 
