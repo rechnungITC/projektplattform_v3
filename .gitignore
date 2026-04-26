@@ -33,7 +33,6 @@ yarn-error.log*
 
 # claude code personal settings
 .claude/settings.local.json
-.mcp.json
 
 # mcp server config (contains personal access tokens)
 .mcp.json
