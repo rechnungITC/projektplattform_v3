@@ -1,6 +1,6 @@
 # PROJ-2: Project CRUD and Lifecycle State Machine
 
-## Status: Planned
+## Status: Architected
 **Created:** 2026-04-25
 **Last Updated:** 2026-04-25
 
@@ -148,7 +148,205 @@ The foundational `Project` entity for the platform. Supports create, read, updat
 <!-- Sections below are added by subsequent skills -->
 
 ## Tech Design (Solution Architect)
-_To be added by /architecture_
+
+PROJ-2 reuses the patterns established in PROJ-1: Postgres + RLS in Supabase, Next.js App Router for UI and API, shadcn/ui form primitives, Zod validation at the API boundary.
+
+### A) Component Structure (UI)
+
+```
+App Shell  (from PROJ-1)
+└── /projects                       ← list page
+    │   ├── ProjectFilters           (lifecycle status, type, responsible user)
+    │   ├── ProjectsTable            (paginated list, max 50 rows)
+    │   ├── NewProjectButton         (admin/member only)
+    │   └── EmptyState               (when no projects yet)
+    │
+    └── /projects/[id]               ← detail page
+        ├── ProjectHeader            (name, project_number, type badge, status badge)
+        ├── LifecycleActionMenu      (Activate, Pause, Complete, Cancel — gated)
+        ├── ProjectMasterDataCard    (editable inline; admin/member only)
+        ├── ProjectMetadataCard      (created_by, created_at, last update)
+        ├── LifecycleHistoryList     (last 20 events; full history on demand)
+        └── DangerZone               (admin only: soft-delete; hard-delete with confirm)
+
+Settings  (admin only)
+└── /settings/projects-trash        ← soft-deleted projects, restore or hard-delete
+
+Modals / Dialogs
+├── NewProjectDialog                 (zod form: name + project_type required)
+├── LifecycleTransitionDialog        (target status select + optional comment)
+├── EditProjectMasterDataDialog
+├── HardDeleteConfirmDialog
+└── RestoreProjectDialog
+```
+
+All forms use shadcn `Form` + react-hook-form + zod. Status badges use shadcn `Badge` with variant per state. The transition action menu uses shadcn `DropdownMenu`; allowed transitions are computed client-side based on the current status (purely UX — DB is the source of truth).
+
+### B) Data Model
+
+Two new tables in Supabase. Both have RLS enabled.
+
+**`projects`** — one row per project, scoped to a tenant
+- `id` — unique identifier
+- `tenant_id` — which tenant (FK; cascades on tenant delete; required)
+- `name` — display name (≤ 255 chars, required)
+- `description` — long text (≤ 5000 chars, optional)
+- `project_number` — human-readable identifier (≤ 100 chars, optional)
+- `planned_start_date`, `planned_end_date` — optional dates
+- `responsible_user_id` — link to a `profiles` row that **must be a member of the same tenant**
+- `lifecycle_status` — `draft` / `active` / `paused` / `completed` / `canceled` (default `draft`; DB CHECK)
+- `project_type` — `erp` / `construction` / `software` / `general` (default `general`; DB CHECK)
+- `created_by`, `created_at`, `updated_at` — audit
+- `is_deleted` — boolean for soft-delete (default `false`)
+
+**`project_lifecycle_events`** — append-only audit of every state change
+- `id` — unique identifier
+- `project_id` — which project (FK; cascades on project delete)
+- `from_status`, `to_status` — both required
+- `comment` — free-text optional reason
+- `changed_by`, `changed_at` — audit
+
+**Indexes:** `projects(tenant_id)`, `projects(tenant_id, lifecycle_status)`, `projects(tenant_id, project_type)`, `projects(responsible_user_id)`, `project_lifecycle_events(project_id, changed_at DESC)`. The compound `(tenant_id, ...)` indexes keep filtered list pages fast — RLS policies always filter by tenant_id first, so leading the index with it is essential.
+
+### C) Authorization (RLS Strategy)
+
+Single source of truth. Reuses PROJ-1's helper functions: `is_tenant_member(tenant_id)`, `has_tenant_role(tenant_id, role)`, `is_tenant_admin(tenant_id)`.
+
+| Table | SELECT | INSERT | UPDATE | DELETE |
+|---|---|---|---|---|
+| `projects` | tenant member (any role) | admin or member | admin or member | **admin only** (hard delete) |
+| `project_lifecycle_events` | tenant member (any role) | written exclusively by the `transition_project_status` function (service-context inside the SECURITY DEFINER function) | never | via FK cascade only |
+
+**Soft-delete UPDATE** falls under the `projects.UPDATE` policy → admin and member can soft-delete. **Hard delete** is the only operation gated to admin.
+
+**Viewer = read-only** falls out of the policy table: viewers match SELECT but not INSERT/UPDATE/DELETE.
+
+**Cross-tenant attack surface:** a malicious user trying to set `tenant_id = <other-tenant>` on INSERT is blocked because the WITH CHECK clause requires `is_tenant_member(NEW.tenant_id)`. A malicious UPDATE trying to move a project to another tenant is similarly blocked.
+
+### D) Lifecycle State Machine
+
+**Allowed transitions** (verified at two layers, as in PROJ-1's last-admin guard):
+
+```
+        ┌──────┐    ┌────────┐    ┌────────┐
+        │ draft│←──→│ active │←──→│ paused │
+        └─┬────┘    └─┬──────┘    └────┬───┘
+          │           │                 │
+          │           ↓                 ↓
+          │      ┌──────────┐    ┌──────────┐
+          └─────→│ canceled │    │completed │
+                 └─────┬────┘    └──────────┘
+                       │            (terminal — no edges out)
+                       ↓
+                       reactivate to draft or active
+```
+
+**Concrete edges:**
+- `draft` → `active`, `canceled`
+- `active` → `paused`, `completed`, `canceled`
+- `paused` → `active`, `canceled`
+- `canceled` → `draft`, `active` (reactivation)
+- `completed` → ❌ no outgoing edges
+
+**Mechanism — DB function `transition_project_status(p_project_id, p_to_status, p_comment)`** (SECURITY DEFINER, hardened search_path, EXECUTE granted to `authenticated`):
+
+1. Read the project's current `lifecycle_status` and `tenant_id`
+2. Verify the caller is a tenant member with role admin or member (uses `has_tenant_role`)
+3. Validate the transition is in the allowed-edge set; if not, raise `check_violation`
+4. UPDATE `projects.lifecycle_status` to `p_to_status`
+5. INSERT a row into `project_lifecycle_events` with `from_status`, `to_status`, `p_comment`, `changed_by = auth.uid()`
+6. Return the new status as JSONB (consistent with `handle_new_user`'s shape; avoids RETURNS-TABLE shadow bug)
+
+**Why a DB function instead of an API-side transaction:**
+1. **State machine lives next to the data.** Future Edge Functions (e.g., a scheduled re-evaluator) and direct DB ops also benefit from the validation; the API isn't the only writer over time.
+2. **Atomic by construction.** No risk of the API process dying between UPDATE and INSERT.
+3. **Defense in depth** alongside Zod-based validation in the API route (early, helpful errors).
+
+**Why grant EXECUTE to `authenticated` (not service_role-only like `handle_new_user`):** transitions are user-initiated normal operations, not admin setup. RLS on `projects` still gates which projects the user can see in the first place.
+
+### E) API Surface (Next.js App Router)
+
+```
+POST   /api/projects                       ← create
+GET    /api/projects                       ← list (filters + cursor pagination)
+GET    /api/projects/[id]                  ← detail (project + last 20 events)
+PATCH  /api/projects/[id]                  ← update master data (NOT lifecycle_status)
+POST   /api/projects/[id]/transition       ← lifecycle change (calls DB function)
+DELETE /api/projects/[id]                  ← soft delete
+DELETE /api/projects/[id]?hard=true        ← hard delete (admin only)
+```
+
+All routes:
+- Authenticated session required (Supabase SSR client; 401 otherwise)
+- Zod schemas at the boundary; errors as `{ error: { code, message, field? } }`
+- Use the **user-context client** (RLS enforces authz) — no service-role key needed for this feature
+- DB function errors (CHECK violations, last-admin-style invariants) surfaced as HTTP 422 with the trigger's message
+
+**List endpoint specifics:**
+- Default sort: `updated_at DESC`
+- Filters via query params: `lifecycle_status`, `project_type`, `responsible_user_id`, `include_deleted`
+- Pagination: cursor-based (limit 50; cursor = last `updated_at` + `id` for stable sort)
+- Excludes soft-deleted unless `include_deleted=true` AND caller is admin (RLS still applies — admin sees the row, but the public endpoint hides them by default)
+
+### F) Validation Rules
+
+| Field | Rule |
+|---|---|
+| `name` | trim non-empty, ≤ 255 |
+| `description` | ≤ 5000 |
+| `project_number` | optional; alphanumeric + dash pattern |
+| `planned_end_date` | must be ≥ `planned_start_date` if both set |
+| `responsible_user_id` | must be a member of the same tenant — server-side check (a query against `tenant_memberships`) |
+| `project_type` | DB CHECK enum |
+| `lifecycle_status` | DB CHECK enum + state-machine function |
+
+### G) Frontend Wiring (no backend coupling beyond Supabase client)
+
+- **List page** uses `supabase.from("projects").select(...)` directly with RLS — no API route needed for read paths.
+- **Mutations** (create, update, transition, soft-delete) go through Next.js API routes so we have one place for logging, audit hooks, and edge cases.
+- **Detail page** also uses direct Supabase client read for the project, but uses an API route for transitions (so the DB function is called server-side, in case we want to add server-side observability later).
+
+### H) Tech Decisions Justified
+
+| Decision | Why |
+|---|---|
+| DB function for state transitions | Atomicity + state machine lives near the data + reusable across surfaces |
+| `lifecycle_status` and `project_type` as `TEXT + CHECK` (not Postgres ENUM) | Easier to extend (add `general-construction` or new project types via a small migration); consistent with PROJ-1's `role` choice |
+| Soft-delete = `is_deleted` flag (not separate table) | Simplest; admin trash view is a `WHERE is_deleted = true` query |
+| Hard-delete behind `?hard=true` query param | Explicit opt-in; harder to fat-finger in a UI confirm dialog |
+| `responsible_user_id` validated against `tenant_memberships` | Prevents pointing a project at a user from another tenant |
+| Direct Supabase client for reads, API routes for writes | Reads are RLS-safe and cheap to do client-side; writes deserve a stable boundary for future cross-cutting concerns (audit, rate limit) |
+| Cursor pagination (not offset) | Stable under concurrent updates; avoids skip/duplicate for users editing while paging |
+
+### I) Dependencies (npm packages)
+
+**No new dependencies.** Everything reuses what PROJ-1 already brought in: `@supabase/supabase-js`, `@supabase/ssr`, `react-hook-form`, `zod`, `@hookform/resolvers`, `sonner`, shadcn primitives, `lucide-react`.
+
+### J) Migration
+
+- **File:** `supabase/migrations/20260425150000_proj2_projects_lifecycle.sql`
+- Single migration: tables → indexes → RLS enable + 7 policies → `transition_project_status` function + EXECUTE grant
+- Sequenced after `20260425140000_proj1_fix_handle_new_user_ambiguous.sql` (PROJ-1's last)
+- No backfill needed — fresh tables on top of empty DB
+
+### K) Out of Scope (deferred to later features)
+
+- Phases, Milestones, Tasks (separate features PROJ-19, PROJ-9 in roadmap)
+- AI-derived proposals from project context (PROJ-12)
+- Output rendering — Gantt, Kanban, exec summaries (PROJ-7)
+- ERP-specific fields like vendor links (PROJ-15)
+- Optimistic concurrency / version conflicts on simultaneous edits — last-write-wins for MVP
+- Bulk operations (bulk transition, bulk delete) — single-row only for MVP
+- Templates / cloning a project as a "reactivate" alternative to state transition
+
+### L) Trade-offs to Acknowledge
+
+| Trade-off | Chosen direction | Why okay for MVP |
+|---|---|---|
+| Last-write-wins on master data updates | No optimistic concurrency check | Project metadata changes rarely have simultaneous writers; can add `If-Match` header later |
+| Soft-deleted projects are queryable by admins | `?include_deleted=true` exposes them | Predictable, auditable; RLS still enforces tenant isolation |
+| Lifecycle history limit on detail page | Last 20 events shown by default | Most projects have < 10 transitions; full history available via dedicated endpoint later |
+| Reactivation creates a new event row, not a status revert | Each transition is its own audit row | Audit trail captures the truth; reporting can compute "current vs original status" if needed |
 
 ## QA Test Results
 _To be added by /qa_
