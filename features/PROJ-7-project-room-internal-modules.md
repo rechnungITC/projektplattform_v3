@@ -1,6 +1,6 @@
 # PROJ-7: Project Room with Internal Kanban / Scrum / Gantt Modules
 
-## Status: Planned
+## Status: Architected
 **Created:** 2026-04-25
 **Last Updated:** 2026-04-25
 
@@ -116,7 +116,168 @@ Once a project is created, the user enters its project room — a tab-based deta
 <!-- Sections below are added by subsequent skills -->
 
 ## Tech Design (Solution Architect)
-_To be added by /architecture_
+
+### 1. Kurzantwort
+
+**Ein gemeinsames Core-Datenmodell** (Phasen, Work Items, Stakeholder-Verknüpfungen) **plus eine Method-Config-Registry**, die pro Methode die sichtbaren Tabs, Modul-Reihenfolge und KI-Vorschlagstypen festlegt. **Keine drei parallelen Daten-Stacks** — das wäre Wartungstod. Eine `work_items`-Tabelle mit `kind`-Diskriminator (epic / feature / story / task / work_package / phase) trägt alle drei Methoden. Die Method-Config liest zur Render-Zeit, **welche Kinds in welchem Tab und in welcher Reihenfolge** angezeigt werden.
+
+Sidebar-Navigation: globale Top-Nav bleibt; **Project-Room-Sidebar wandert auf die linke Seite, kollapsibel**. Inhalt der Sidebar wird method-driven aus der Config geladen.
+
+### 2. Rendering-Matrix Scrum vs. PMI vs. Waterfall
+
+| Bereich / Tab | Scrum | PMI / Prince2 | Waterfall |
+|---|---|---|---|
+| **Top-Bar (Header)** | Sprint-Selector + Burndown-Mini | Phasen-Leiste (horizontale Stages) | Phasen-Leiste (sequenziell, mit Fortschritts-Pfeil) |
+| **Linke Sidebar — kollapsibel** | Backlog · Sprint-Board · Releases · Velocity · KI-Vorschläge · Stakeholder · Risiken · Budget | Phasen · Arbeitspakete · Meilensteine · Gantt · KI-Vorschläge · Stakeholder · Risiken · Budget | Phasen · Arbeitspakete · Abhängigkeiten · Gantt · Meilensteine · KI-Vorschläge · Stakeholder · Risiken · Budget |
+| **Default Center View** | Sprint-Board (Kanban des aktiven Sprints) | Aktuelle Phase mit Work-Package-Liste | Gantt mit aktivem Phasen-Highlight |
+| **Sekundär-View (Toggle)** | Backlog-Liste / Roadmap-Gantt | Gantt / WBS-Tree | WBS-Tree / Phase-Detail |
+| **Card-Inhalt der Items** | Story-Card mit Acceptance Criteria, Story Points, Sprint-Tag | Work-Package-Card mit %-Fortschritt, Verantwortlichem, Aufwand | Work-Package-Card mit Vorgänger/Nachfolger, Deadline, Slack |
+| **Method-spezifische Rituale-Card** (im Übersichts-Tab) | Sprint-Planning, Daily, Review, Retro | Phase-Gate, Lessons Learned, Meilenstein-Review | Sign-off pro Phase, Change-Request |
+| **KI-Vorschläge — erlaubte Kinds** | Epic, Feature, Story, Task | Phase, Arbeitspaket, Meilenstein, To-do | Phase, Arbeitspaket, Abhängigkeit, Meilenstein |
+
+**Gemeinsam genutzte Komponenten:**
+- ProjectRoomShell + Sidebar (PROJ-4)
+- KPI-Karten (Budget, Risk Count, Health), Stakeholder-Liste, Mitglieder-Tab, Historie-Tab — alle method-agnostisch
+- WorkItemCard mit method-aware-Slots (Story-Points-Slot vs. WP-Aufwand-Slot)
+- AI-Proposal-Inbox (PROJ-12)
+
+**Method-spezifisch (eigene Components):**
+- ScrumBoard (Sprint-aktiv-Filter), SprintSelector, BurndownChart
+- PhaseTimelineBar (sequenziell, Top-Header), PhaseGateDialog
+- GanttChart (geteilt zwischen PMI + Waterfall, mit Mode-Flag für Abhängigkeits-Linien)
+- DependencyGraph (Waterfall + PMI optional)
+
+### 3. Datenmodell je Methode (alles auf gemeinsamem Core)
+
+| Methode | Genutzte Kinds aus `work_items` | Ergänzende Tabellen |
+|---|---|---|
+| **Scrum** | epic, feature, story, task, bug | sprints, sprint_assignments |
+| **PMI** | phase, work_package, milestone, task | (keine, Gantt rein berechnet) |
+| **Waterfall** | phase, work_package, milestone, task | dependencies (zwischen work_packages) |
+
+`work_items` ist STI (per V2 ADR `work-item-metamodel.md`). Method-Spezifika wie Story Points oder Slack leben als optionale Spalten oder im JSON-Feld `attributes JSONB`.
+
+### 4. Tabellenübersicht
+
+| Tabelle | Zweck | Methode | Beziehung | Neu/Erweiterung |
+|---|---|---|---|---|
+| `phases` | Projekt-Phasen (Stages) | PMI, Waterfall | FK → projects | **NEU** (PROJ-19 baut, hier referenziert) |
+| `milestones` | Meilensteine in Phasen | alle 3 | FK → projects, FK phase nullable | **NEU** (PROJ-19) |
+| `work_items` | STI: Epic/Feature/Story/Task/WorkPackage/Phase | alle 3 | FK → projects, parent_id self-FK, attributes JSONB | **NEU** (PROJ-9) |
+| `sprints` | Scrum-Sprints | Scrum | FK → projects | **NEU** |
+| `sprint_assignments` | Items im Sprint | Scrum | FK → sprints, FK → work_items | **NEU** |
+| `dependencies` | Vorgänger-Nachfolger | Waterfall + PMI | FK predecessor + successor → work_items, type FS/SS/FF/SF | **NEU** (Teil PROJ-7 oder PROJ-19) |
+| `project_method_configs` | Pro-Projekt geladene Method-Config (cached, P1) | alle 3 | FK → projects, JSONB | **NEU — V1 nicht nötig**, später Override-Mechanik |
+| `method_templates` | **Code-Registry**: Default-Configs pro Methode | alle 3 | – | **NEU als Code** (`src/lib/method-templates/`, nicht DB) |
+| `risks` | Risikoregister | alle 3 | FK → projects, optional FK work_item_id | **NEU** (PROJ-19/20) |
+| `budgets` | Budget-Positionen | alle 3 | FK → projects | **NEU** |
+| `project_stakeholders` | Junction Stakeholder ↔ Projekt | alle 3 | FK → projects, FK → stakeholders | **NEU** (PROJ-8) |
+| `work_item_stakeholders` | Junction Stakeholder ↔ Work Item | alle 3 | FK → work_items, FK → project_stakeholders | **NEU — wichtig für KI-Auto-Zuordnung** |
+| `ai_proposals` | KI-Vorschlags-Layer | alle 3 | target_table + target_row_id | bereits in ADR `v3-ai-proposal-architecture.md` definiert |
+| `projects` | Projekt-Methode | alle 3 | bestehende Tabelle | **ERWEITERUNG**: `project_method TEXT NOT NULL DEFAULT 'general'` mit CHECK in scrum/pmi/waterfall/safe/general |
+
+### 5. Dashboard-Konfigurationslogik
+
+**Wie das System die Methode erkennt:**
+- `projects.project_method` ist die einzige Quelle der Wahrheit (CHECK-Constraint enforced).
+- Default: `'general'` (zeigt eine pragmatische Mischung aus Phasen + Backlog).
+- Bei Projekterstellung wählt der User die Methode aus einem Dropdown — Pflichtfeld (oder `general` als Fallback).
+
+**Wie das System daraus die Dashboard-Config lädt:**
+- Eine **Code-Registry** `src/lib/method-templates/` enthält je Methode eine TypeScript-Konstante:
+  ```
+  scrum.ts → { tabs, sidebarSections, defaultCenterView, allowedAiKinds, workItemKindsVisible, hasSprints, ... }
+  pmi.ts → { ... }
+  waterfall.ts → { ... }
+  general.ts → { ... }
+  ```
+- Alle Configs erfüllen den TS-Typ `MethodConfig`.
+- Beim Öffnen des Project Rooms liest der Server-Component `projects.project_method` und resolved daraus die Config:
+  ```
+  const config = METHOD_TEMPLATES[project.project_method] ?? METHOD_TEMPLATES.general
+  ```
+- Die Config wird via Context an die Tab-Komponenten + Sidebar gereicht.
+- **`project_method_configs`-Tabelle** ist nur dann nötig, wenn ein Tenant-Override gewünscht ist (z.B. „in unserem Tenant heißt 'Sprint' immer 'Iteration'"). Das ist **P1**, nicht V1. Für V1: Code-Registry only.
+
+**Wie wird verhindert, dass jede Methode komplett eigene Logik bekommt:**
+- **Eine Render-Engine, viele Configs.** `<ProjectRoomDashboard config={config}>` rendert generisch — Sidebar-Items werden iteriert; Tab-Inhalte bekommen die `allowedKinds` als Prop und filtern die `work_items`-Query entsprechend.
+- **Method-spezifische UIs nur dort, wo's wirklich nötig ist** (Sprint-Burndown, Phase-Gate-Dialog). Diese werden conditional gerendert: `{config.hasSprints && <ScrumBoard />}`.
+- **Keine if/else-Hells in 50 Komponenten.** Jeder Schalter geht durch die Config.
+
+### 6. KI-Zuordnungslogik
+
+**Welche Objekte die KI je Methode erzeugen darf** — über `config.allowedAiKinds`:
+
+| Methode | `allowedAiKinds` |
+|---|---|
+| Scrum | `['epic', 'feature', 'story', 'task', 'bug']` |
+| PMI | `['phase', 'work_package', 'milestone', 'task']` |
+| Waterfall | `['phase', 'work_package', 'milestone', 'dependency']` |
+| general | `['epic', 'work_package', 'task', 'milestone']` (pragmatischer Mix) |
+
+**Wie KI-Vorschläge zugeordnet werden — kombinierte Heuristik:**
+
+1. **Topic Embeddings**: Beim Speichern eines AI-Proposals (in `ai_proposals.proposed_payload.title + description`) wird ein Embedding-Vektor berechnet (Claude oder local model je nach `data_class` per ADR `data-privacy-classification`).
+2. **Parent-Suggestion**: Die Edge Function vergleicht das Embedding mit allen offenen `work_items` desselben Projekts. Bei Cosine-Similarity ≥ 0.78 wird `proposed_payload.parent_id_suggestion` gesetzt — eine **Empfehlung**, kein automatisches Setzen.
+3. **Reviewer entscheidet**: Im Review-UI sieht der Mensch „Möchtest du dieser Story als Sub-Task von Epic X zuweisen?" mit Confidence-Score. Accept setzt `parent_id`.
+4. **Fallback**: Ohne Parent-Suggestion landet der Vorschlag auf der Top-Ebene des relevanten Tabs (Scrum: Backlog ohne Sprint; PMI/Waterfall: ohne Phase).
+
+**Stakeholder-Auto-Verknüpfung:**
+
+1. Bei jedem AI-Proposal mit `target_table='work_items'` ruft die Edge Function eine Heuristik auf:
+   - Match `proposed_payload.description` gegen `project_stakeholders` (Skills, Rollen, Verantwortungsbereiche).
+   - Beste 1–3 Matches werden als **Vorschläge** in `proposed_payload.suggested_stakeholders[]` (UUIDs aus `project_stakeholders`) abgelegt.
+2. Beim Accept eines Proposals werden die ausgewählten Stakeholder per `work_item_stakeholders` (Junction) verknüpft. Default: alle vorgeschlagenen, mit Häkchen zum Abwählen.
+3. **Wichtig**: Stakeholder werden **nicht silent** zugewiesen. Reviewer sieht sie, kann abwählen — entspricht ADR `architecture-principles` „AI as proposal layer".
+
+**Methodenabhängige Stakeholder-Verknüpfung (`config.stakeholderAttachableKinds`):**
+- **Scrum**: Stakeholder werden Stories/Tasks zugewiesen, **nicht** Epics (Epics sind grobgranular).
+- **PMI / Waterfall**: Stakeholder werden Work Packages oder Milestones zugewiesen.
+
+### 7. Architekturentscheidung für V1
+
+**Empfehlung: Einheitliches Core-Datenmodell + Method-Config-Registry. Keine getrennten Tabellen je Methode.**
+
+| Argument | Einheitliches Core | Getrennte Tabellen |
+|---|---|---|
+| Tenant wechselt Methode mid-project | ✅ trivial (`project_method` flippen) | ❌ Datenmigration |
+| Reporting über alle Projekte (Portfolio-View) | ✅ ein `union all` über `work_items` | ❌ N union-Joins |
+| KI-Modell trainiert auf welcher Tabelle | ✅ einer | ❌ N |
+| Neue Methode hinzufügen (z.B. SAFe) | ✅ neue Config-Datei + ggf. CHECK-Update | ❌ neue Tabellen, neue RLS, neue API |
+| Pro-Methode-spezifische Konsistenz | 🟡 via Triggers + JSON-Schema | ✅ via NOT NULL |
+| Migration-Komplexität bei V1 | ✅ niedrig | ❌ hoch |
+
+**V1-Scope für PROJ-7:**
+- ✅ `projects.project_method` Spalte + CHECK + UI im Create-Wizard
+- ✅ `src/lib/method-templates/` Code-Registry mit `scrum`, `pmi`, `waterfall`, `general`
+- ✅ `<ProjectRoomDashboard config={config}>` mit kollapsibler **linker Sidebar**, method-driven Sidebar-Sections + Top-Header (Phasen-Bar / Sprint-Selector je nach Methode)
+- ✅ Übersichts-Tab mit Health-KPIs + method-spezifischer Rituale-Card
+- ✅ Verbindung zu PROJ-9 (Backlog) + PROJ-19 (Phasen) + PROJ-8 (Stakeholders) — als Stubs falls jene Features noch nicht stehen
+
+**V1 NICHT:**
+- ❌ Sprint-Engine (eigenes PROJ oder Teil von PROJ-9)
+- ❌ Echte Gantt-Kalkulation mit Critical Path (V1 nutzt simple Render-Variante aus dem Mockup)
+- ❌ Tenant-Override für Method-Configs (`project_method_configs`-Tabelle)
+- ❌ KI-Embedding-Stakeholder-Matcher (kommt in PROJ-12)
+
+**Skalierung:** Sobald ein 4ter/5ter Methoden-Typ landet (SAFe, V-Modell XT 2.0), wird die Code-Registry zur Convention — eine Methode = ein File. Wenn ein Tenant pro-Methode-Felder anders haben will, kommt `project_method_configs` als Override-Tabelle dazu (Schicht 2 aus ADR `v3-master-data-and-global-catalogs`). Das Datenmodell bleibt stabil; nur die Configs wachsen.
+
+### 8. Out of Scope (deferred)
+
+- Real-Time Multi-User-Editing in Boards (P1 mit Supabase Realtime)
+- Mobile-Responsive Gantt (separates Sub-Feature)
+- Drag-and-Drop für Card-Movement (per ADR `backlog-board-view` ist Arrow-Button-Movement das V1-Ziel)
+- Method-Auto-Detection (KI rät die Methode aus dem Projekt-Kontext) — explizit Nicht-AK, zu fehleranfällig
+
+### 9. Trade-offs
+
+| Trade-off | Gewählt | Warum okay |
+|---|---|---|
+| Code-Registry vs. DB-Config | Code für V1 | Method-Configs ändern sich rein per App-Release; Tenant-Overrides kommen später |
+| `work_items` STI vs. getrennte Tabellen | STI mit `kind`-CHECK + `attributes JSONB` | Reporting + KI vereinfachen es; Method-Wechsel ist trivial |
+| Sidebar-Default-Zustand | **expanded** auf Desktop, **collapsed** auf Mobile | Discoverability auf großem Screen, Platz auf kleinem |
+| KI-Stakeholder-Auto-Assign | **Vorschlag** mit User-Zustimmung, nie silent | ADR `architecture-principles` — niemals automatische Mutation ohne Review |
+| `project_method` als TEXT+CHECK vs ENUM | TEXT + CHECK | Einfacher zu erweitern (Migration der CHECK statt ALTER TYPE) |
 
 ## Implementation Notes
 _To be added by /frontend and /backend_
