@@ -348,6 +348,40 @@ All routes:
 | Lifecycle history limit on detail page | Last 20 events shown by default | Most projects have < 10 transitions; full history available via dedicated endpoint later |
 | Reactivation creates a new event row, not a status revert | Each transition is its own audit row | Audit trail captures the truth; reporting can compute "current vs original status" if needed |
 
+## Implementation Notes
+
+### Frontend (done — commit 5fb1490)
+
+**New files:**
+- Types: `src/types/project.ts` (Project, ProjectLifecycleEvent, LifecycleStatus, ProjectType, `ALLOWED_TRANSITIONS` map)
+- Hooks: `src/hooks/use-projects.ts` (cursor pagination, filters), `src/hooks/use-project.ts` (detail + last 20 events)
+- Pages: `src/app/(app)/projects/page.tsx` + client, `src/app/(app)/projects/[id]/page.tsx` + client, `src/app/(app)/settings/projects-trash/page.tsx` + client
+- Components in `src/components/projects/`: `lifecycle-badge`, `project-type-badge`, `responsible-user-picker`, `date-picker-field` (Popover+Calendar), `projects-table` (shared via `trashMode`), 6 dialogs
+- shadcn `calendar` added; pulled `react-day-picker` + `date-fns` as transitive deps
+
+**PROJ-1 files modified (additive only):**
+- `src/app/(app)/settings/settings-tabs.tsx` — admin-only "Projects Trash" tab via `visibleTo: Role[]` predicate
+- `src/components/app/top-nav.tsx` — primary nav row with Dashboard/Projects links
+
+**Role gating verified:**
+- `viewer`: read-only
+- `member`: full CRUD + transitions + soft-delete
+- `admin`: + hard-delete (behind "Show advanced") + Trash tab
+
+**Backend stubs (UI shows `toast.warning` on 404):**
+- POST `/api/projects` — create
+- PATCH `/api/projects/[id]` — update + restore (`{ is_deleted: false }`)
+- POST `/api/projects/[id]/transition` — lifecycle change
+- DELETE `/api/projects/[id]` — soft delete
+- DELETE `/api/projects/[id]?hard=true` — hard delete
+
+Read paths use Supabase client directly with RLS — list and detail bypass any custom API route. Joins assume FK constraint names `projects_responsible_user_id_fkey` and `projects_created_by_fkey`; backend migration must declare them so the named-FK shorthand resolves.
+
+**Verification:** `npx tsc --noEmit` clean, `npm test` 27/27 pass, `npm run build` succeeds (14 routes).
+
+### Backend (pending)
+_To be added by /backend_
+
 ## QA Test Results
 _To be added by /qa_
 
