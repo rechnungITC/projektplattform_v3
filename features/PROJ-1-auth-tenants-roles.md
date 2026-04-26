@@ -1,6 +1,6 @@
 # PROJ-1: Authentication, Tenants, and Role-Based Membership
 
-## Status: Architected
+## Status: In Progress
 **Created:** 2026-04-25
 **Last Updated:** 2026-04-25
 
@@ -315,6 +315,32 @@ These are explicitly **out of scope** for PROJ-1 implementation but architectura
 | All-tenants visibility (no JWT claim) | User's queries can fan out across multiple tenant memberships | At MVP scale (single-digit tenants per user), performance fine |
 | Single auth provider | Email/password only | Lowest setup cost; OAuth/SSO can be added later without schema change |
 | Edge Function tenant-routing (not DB-trigger atomicity) | Hook may rarely miss; on-login fallback covers the edge case | Cost of TypeScript + observability outweighs the tiny non-atomicity window |
+
+## Implementation Notes (Frontend)
+
+Frontend done; build green, TypeScript clean.
+
+**Files created:**
+- Foundation: `src/lib/supabase/{client,server,middleware}.ts`, `src/proxy.ts` (Next 16.2 deprecates `middleware.ts` filename), `src/lib/auth-helpers.ts`, `src/types/auth.ts`
+- Providers: `src/components/theme-provider.tsx` (next-themes), root layout wires `ThemeProvider` + sonner `<Toaster />`
+- Auth pages in `src/app/(auth)/`: `login`, `signup`, `forgot-password`, `reset-password` + shared `(auth)/layout.tsx`
+- Onboarding: `src/app/onboarding/` polls `tenant_memberships` for the new user, then offers tenant rename
+- App shell in `src/app/(app)/`: protected layout, top-nav with `TenantSwitcher` + `UserMenu`, dashboard placeholder at `/`
+- Settings: `/settings/profile`, `/settings/tenant` (admin), `/settings/members` (admin; invite, change role, revoke; last-admin client-side guard)
+- Hooks: `src/hooks/use-auth.tsx`, `use-tenant-memberships.ts`, `use-tenant-members.ts`
+
+**Deviations from design:**
+- `middleware.ts` → `proxy.ts` (Next 16.2 rename; same behavior)
+- Active tenant persisted in `active_tenant_id` cookie (1y, samesite=lax, non-HttpOnly — UI hint, not a security boundary). Readable client- and server-side, survives reloads.
+- Auth pages redirect signed-in users to `/`.
+
+**Backend stubs (will 404 until /backend lands):**
+- `POST /api/tenants/{id}/invite`, `PATCH /api/tenants/{id}/members/{userId}`, `DELETE /api/tenants/{id}/members/{userId}` — UI handles 404 with `toast.warning("…endpoint pending implementation")`.
+
+**Known gaps to address during /backend:**
+- `npm run lint` cannot run: starter kit ships ESLint 9 + legacy `.eslintrc.json`; needs flat-config migration. Pre-existing infra issue, not caused by this work.
+- `NEXT_PUBLIC_SUPABASE_URL` and `NEXT_PUBLIC_SUPABASE_ANON_KEY` must be in `.env.local` to connect.
+- Backend Supabase migrations + RLS policies + Edge Function for tenant routing are next.
 
 ## QA Test Results
 _To be added by /qa_

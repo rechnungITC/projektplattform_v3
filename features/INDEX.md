@@ -14,7 +14,7 @@
 
 | ID | Feature | Status | Spec | Created |
 |----|---------|--------|------|---------|
-| PROJ-1 | Authentication, Tenants, Role-Based Membership | Architected | [Spec](PROJ-1-auth-tenants-roles.md) | 2026-04-25 |
+| PROJ-1 | Authentication, Tenants, Role-Based Membership | In Progress | [Spec](PROJ-1-auth-tenants-roles.md) | 2026-04-25 |
 | PROJ-2 | Project CRUD + Lifecycle State Machine | Planned | [Spec](PROJ-2-project-crud-lifecycle.md) | 2026-04-25 |
 
 <!-- Add features above this line -->
