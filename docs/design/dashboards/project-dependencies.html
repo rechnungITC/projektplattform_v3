@@ -1,0 +1,135 @@
+<!DOCTYPE html>
+<html class="dark" lang="en"><head>
+<meta charset="utf-8"/>
+<meta content="width=device-width, initial-scale=1.0" name="viewport"/>
+<title>Project Dependencies &amp; Critical Path</title>
+<script src="https://cdn.tailwindcss.com?plugins=forms,container-queries"></script>
+<link href="https://fonts.googleapis.com/css2?family=Material+Symbols+Outlined:wght,FILL@100..700,0..1&amp;display=swap" rel="stylesheet"/>
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&amp;display=swap" rel="stylesheet"/>
+<script id="tailwind-config">
+tailwind.config = { darkMode: "class", theme: { extend: { colors: {"inverse-on-surface":"#283044","on-error-container":"#ffdad6","inverse-surface":"#dae2fd","outline-variant":"#404848","on-secondary":"#283233","on-primary-fixed":"#002021","error":"#ffb4ab","on-surface":"#dae2fd","primary-container":"#3b6769","tertiary-fixed-dim":"#ffb59f","tertiary-container":"#ac3811","primary-fixed":"#bdebed","surface-tint":"#a1cfd1","on-surface-variant":"#c0c8c8","secondary-fixed":"#dae5e5","tertiary":"#ffb59f","secondary-fixed-dim":"#bec8c9","surface-dim":"#0b1326","surface-container":"#171f33","on-error":"#690005","on-primary-fixed-variant":"#204d4f","on-primary-container":"#b5e3e5","on-background":"#dae2fd","primary-fixed-dim":"#a1cfd1","secondary-container":"#3e494a","surface-container-low":"#131b2e","on-primary":"#013739","surface-container-highest":"#2d3449","on-secondary-fixed":"#131d1e","error-container":"#93000a","outline":"#8a9292","background":"#0b1326","secondary":"#bec8c9","on-secondary-container":"#acb7b8","surface-container-lowest":"#060e20","surface-variant":"#2d3449","surface-container-high":"#222a3d","on-tertiary":"#5f1600","primary":"#a1cfd1","on-tertiary-fixed-variant":"#862300","tertiary-fixed":"#ffdbd1","surface":"#0b1326","on-tertiary-container":"#ffd1c4","on-secondary-fixed-variant":"#3e494a","inverse-primary":"#396567","surface-bright":"#31394d","on-tertiary-fixed":"#3a0a00"}, borderRadius:{"DEFAULT":"0.25rem","lg":"0.5rem","xl":"0.75rem","full":"9999px"}, spacing:{"lg":"24px","xxl":"48px","md":"16px","gutter":"24px","margin":"32px","xs":"8px","xl":"32px","base":"4px","sm":"12px"}, fontFamily:{"h2":["Inter"],"label-sm":["Inter"],"body-sm":["Inter"],"h1":["Inter"],"display":["Inter"],"h3":["Inter"],"body-md":["Inter"],"body-lg":["Inter"],"label-md":["Inter"]}, fontSize:{"h2":["24px",{"lineHeight":"1.3","letterSpacing":"-0.01em","fontWeight":"600"}],"label-sm":["12px",{"lineHeight":"1","letterSpacing":"0.05em","fontWeight":"600"}],"body-sm":["14px",{"lineHeight":"1.5","fontWeight":"400"}],"h1":["32px",{"lineHeight":"1.2","letterSpacing":"-0.02em","fontWeight":"600"}],"display":["48px",{"lineHeight":"1.1","letterSpacing":"-0.02em","fontWeight":"700"}],"h3":["20px",{"lineHeight":"1.4","fontWeight":"600"}],"body-md":["16px",{"lineHeight":"1.6","fontWeight":"400"}],"body-lg":["18px",{"lineHeight":"1.6","fontWeight":"400"}],"label-md":["14px",{"lineHeight":"1","letterSpacing":"0.01em","fontWeight":"500"}]} } } };
+</script>
+<style>.material-symbols-outlined { font-variation-settings: 'FILL' 0, 'wght' 400, 'GRAD' 0, 'opsz' 24; }</style>
+</head>
+<body class="bg-background text-on-background font-body-md min-h-screen flex">
+
+<nav class="hidden md:flex flex-col h-screen w-64 border-r border-slate-800 bg-slate-950 fixed left-0 top-0 z-50">
+  <div class="px-6 py-8 border-b border-slate-800"><h1 class="text-teal-600 font-black text-xl tracking-tight">Project OS</h1><p class="text-slate-400 text-xs mt-1">Enterprise Tier</p></div>
+  <ul class="flex-1 py-6 space-y-1">
+    <li><a class="flex items-center gap-3 px-4 py-2 text-slate-400 hover:bg-slate-900 hover:text-slate-200" href="#"><span class="material-symbols-outlined">dashboard</span>Dashboard</a></li>
+    <li><a class="flex items-center gap-3 px-4 py-2 text-teal-400 border-r-2 border-teal-600 bg-teal-600/5" href="#"><span class="material-symbols-outlined">assignment</span>Projects</a></li>
+    <li><a class="flex items-center gap-3 px-4 py-2 text-slate-400 hover:bg-slate-900 hover:text-slate-200" href="#"><span class="material-symbols-outlined">check_circle</span>Tasks</a></li>
+    <li><a class="flex items-center gap-3 px-4 py-2 text-slate-400 hover:bg-slate-900 hover:text-slate-200" href="#"><span class="material-symbols-outlined">group</span>Team</a></li>
+  </ul>
+</nav>
+
+<main class="flex-1 md:ml-64 flex flex-col h-screen overflow-hidden bg-background">
+  <header class="flex justify-between items-center px-8 h-16 w-full z-40 bg-slate-900/80 backdrop-blur-md border-b border-slate-800 sticky top-0">
+    <div class="hidden md:flex items-center text-on-surface-variant font-label-sm gap-2">
+      <span class="cursor-pointer hover:text-primary">Projects</span><span class="material-symbols-outlined text-sm">chevron_right</span>
+      <span class="cursor-pointer hover:text-primary">Alpha Core Upgrade</span><span class="material-symbols-outlined text-sm">chevron_right</span>
+      <span class="text-primary">Dependencies</span>
+    </div>
+    <button class="bg-primary-container text-on-primary-container px-4 py-1.5 rounded font-label-md hover:bg-primary hover:text-on-primary">New Project</button>
+  </header>
+
+  <div class="flex-1 overflow-auto p-margin">
+    <div class="mb-lg flex justify-between items-end">
+      <div>
+        <h1 class="font-h1 text-h1 text-on-surface mb-xs">Project Connectivity &amp; Critical Path Analysis</h1>
+        <p class="font-body-md text-on-surface-variant max-w-2xl">Visualizing dependencies across 47 active tasks. The critical path is highlighted in teal, indicating sequences that directly impact the project delivery date.</p>
+      </div>
+      <div class="flex gap-md">
+        <div class="flex items-center gap-2 px-3 py-1.5 bg-surface-container rounded border border-outline-variant"><span class="w-3 h-3 rounded-full bg-primary shadow-[0_0_8px_rgba(161,207,209,0.5)]"></span><span class="font-label-sm text-on-surface-variant">Critical Path</span></div>
+        <div class="flex items-center gap-2 px-3 py-1.5 bg-surface-container rounded border border-outline-variant"><span class="w-3 h-3 rounded-full border border-outline-variant bg-transparent"></span><span class="font-label-sm text-on-surface-variant">Standard Flow</span></div>
+        <div class="flex items-center gap-2 px-3 py-1.5 bg-surface-container rounded border border-outline-variant"><span class="w-3 h-3 rounded-full bg-error/20 border border-error"></span><span class="font-label-sm text-on-surface-variant">Blocked</span></div>
+      </div>
+    </div>
+
+    <div class="grid grid-cols-1 lg:grid-cols-12 gap-gutter h-[calc(100vh-220px)]">
+      <!-- Graph canvas -->
+      <div class="lg:col-span-8 xl:col-span-9 bg-surface-container-low rounded-lg border border-outline-variant overflow-hidden relative flex flex-col">
+        <div class="h-12 border-b border-outline-variant bg-surface-container-highest flex items-center justify-between px-md shrink-0">
+          <div class="flex items-center gap-4">
+            <button class="font-label-sm text-on-surface px-3 py-1 bg-surface-variant rounded border border-outline-variant">Graph View</button>
+            <button class="font-label-sm text-on-surface-variant px-3 py-1 hover:text-on-surface">Timeline (Gantt)</button>
+            <button class="font-label-sm text-on-surface-variant px-3 py-1 hover:text-on-surface">List</button>
+          </div>
+          <div class="flex items-center gap-2">
+            <button class="p-1 text-on-surface-variant hover:text-on-surface"><span class="material-symbols-outlined text-sm">zoom_in</span></button>
+            <span class="font-label-sm text-on-surface-variant">100%</span>
+            <button class="p-1 text-on-surface-variant hover:text-on-surface"><span class="material-symbols-outlined text-sm">zoom_out</span></button>
+            <div class="w-px h-4 bg-outline-variant mx-2"></div>
+            <button class="p-1 text-on-surface-variant hover:text-on-surface"><span class="material-symbols-outlined text-sm">filter_list</span></button>
+          </div>
+        </div>
+
+        <div class="flex-1 relative overflow-auto" style="background:repeating-linear-gradient(45deg, #0b1326 0 39px, #131b2e 39px 40px), repeating-linear-gradient(-45deg, #0b1326 0 39px, #131b2e 39px 40px);">
+          <svg class="absolute inset-0 w-full h-full pointer-events-none" style="min-width: 1000px; min-height: 600px;">
+            <path d="M 150 100 C 200 100, 200 150, 250 150" fill="none" stroke="#404848" stroke-dasharray="4 4" stroke-width="2"/>
+            <path d="M 150 200 C 200 200, 200 150, 250 150" fill="none" stroke="#404848" stroke-width="2"/>
+            <path d="M 350 150 C 400 150, 400 250, 450 250" fill="none" stroke="#a1cfd1" stroke-width="3"/>
+            <path d="M 550 250 C 600 250, 600 200, 650 200" fill="none" stroke="#a1cfd1" stroke-width="3"/>
+            <path d="M 750 200 C 800 200, 800 300, 850 300" fill="none" stroke="#a1cfd1" stroke-width="3"/>
+            <path d="M 450 350 C 500 350, 500 300, 550 300" fill="none" stroke="#ffb4ab" stroke-width="2"/>
+          </svg>
+
+          <!-- Standard nodes -->
+          <div class="absolute left-[50px] top-[75px] w-[100px] bg-surface-container rounded border border-outline-variant p-2 shadow-sm"><div class="font-label-sm text-on-surface mb-1 truncate">DB Schema</div><div class="flex justify-between items-center"><span class="font-label-sm text-[10px] text-on-surface-variant">T-12</span><span class="w-2 h-2 rounded-full bg-secondary-fixed"></span></div></div>
+          <div class="absolute left-[50px] top-[175px] w-[100px] bg-surface-container rounded border border-outline-variant p-2 shadow-sm"><div class="font-label-sm text-on-surface mb-1 truncate">API Specs</div><div class="flex justify-between items-center"><span class="font-label-sm text-[10px] text-on-surface-variant">T-14</span><span class="w-2 h-2 rounded-full bg-secondary-fixed"></span></div></div>
+
+          <!-- Critical path nodes -->
+          <div class="absolute left-[250px] top-[125px] w-[100px] bg-surface-container rounded border border-primary p-2 shadow-[0_0_12px_rgba(161,207,209,0.15)] ring-1 ring-primary/30"><div class="font-label-sm text-primary mb-1 truncate">Core Auth</div><div class="flex justify-between items-center"><span class="font-label-sm text-[10px] text-primary-fixed-dim">T-18</span><span class="w-2 h-2 rounded-full bg-primary"></span></div></div>
+          <div class="absolute left-[450px] top-[225px] w-[100px] bg-surface-container rounded border border-primary p-2 shadow-[0_0_12px_rgba(161,207,209,0.15)] ring-1 ring-primary/30 z-10"><div class="font-label-sm text-primary mb-1 truncate">Data Mig.</div><div class="flex justify-between items-center"><span class="font-label-sm text-[10px] text-primary-fixed-dim">T-22</span><span class="w-2 h-2 rounded-full bg-primary"></span></div></div>
+
+          <!-- Blocked node -->
+          <div class="absolute left-[350px] top-[325px] w-[100px] bg-error-container/10 rounded border border-error p-2 shadow-sm"><div class="font-label-sm text-error mb-1 truncate">Legacy Export</div><div class="flex justify-between items-center"><span class="font-label-sm text-[10px] text-error">T-21</span><span class="w-2 h-2 rounded-full bg-error"></span></div></div>
+
+          <!-- More standard + critical path nodes -->
+          <div class="absolute left-[550px] top-[275px] w-[100px] bg-surface-container rounded border border-outline-variant p-2 shadow-sm"><div class="font-label-sm text-on-surface mb-1 truncate">QA Env Prep</div><div class="flex justify-between items-center"><span class="font-label-sm text-[10px] text-on-surface-variant">T-28</span><span class="w-2 h-2 rounded-full bg-secondary-fixed"></span></div></div>
+          <div class="absolute left-[650px] top-[175px] w-[100px] bg-surface-container rounded border border-primary p-2 shadow-[0_0_12px_rgba(161,207,209,0.15)] ring-1 ring-primary/30"><div class="font-label-sm text-primary mb-1 truncate">System Test</div><div class="flex justify-between items-center"><span class="font-label-sm text-[10px] text-primary-fixed-dim">T-30</span><span class="w-2 h-2 rounded-full bg-primary"></span></div></div>
+
+          <!-- End goal -->
+          <div class="absolute left-[850px] top-[275px] w-[100px] bg-surface-bright rounded border-2 border-primary-container p-2 shadow-sm"><div class="font-label-sm text-on-surface mb-1 truncate text-center">v2.0 Launch</div><div class="text-center"><span class="material-symbols-outlined text-primary text-sm">flag</span></div></div>
+        </div>
+      </div>
+
+      <!-- Right sidebar: Selected node details -->
+      <div class="lg:col-span-4 xl:col-span-3 bg-surface-container border border-outline-variant rounded-lg flex flex-col overflow-hidden">
+        <div class="px-lg py-md border-b border-outline-variant bg-surface-container-high">
+          <div class="flex items-center gap-2 mb-1"><span class="w-2 h-2 rounded-full bg-primary"></span><span class="font-label-sm text-primary uppercase tracking-wider">Selected Node</span></div>
+          <h2 class="font-h3 text-on-surface">Data Migration (T-22)</h2>
+          <div class="mt-2 flex gap-2"><span class="px-2 py-0.5 bg-primary-container/20 text-primary border border-primary-container rounded-full font-label-sm text-[10px]">Critical Path</span><span class="px-2 py-0.5 bg-surface-variant text-on-surface-variant border border-outline-variant rounded-full font-label-sm text-[10px]">In Progress</span></div>
+        </div>
+        <div class="flex-1 overflow-y-auto p-lg space-y-6">
+          <div class="grid grid-cols-2 gap-4">
+            <div><div class="font-label-sm text-on-surface-variant mb-1">Owner</div><div class="font-body-sm text-on-surface">Sarah J.</div></div>
+            <div><div class="font-label-sm text-on-surface-variant mb-1">Due Date</div><div class="font-body-sm text-on-surface">Oct 24, 2023</div></div>
+          </div>
+          <div class="border-t border-outline-variant pt-4">
+            <div class="font-label-sm text-on-surface-variant mb-2">Description</div>
+            <p class="font-body-sm text-on-surface-variant leading-relaxed">Execution of the ETL pipeline moving legacy user data to the new schema. Requires successful completion of Core Auth to ensure secure transit.</p>
+          </div>
+          <div class="border-t border-outline-variant pt-4">
+            <h3 class="font-label-md text-on-surface mb-3 flex items-center gap-2"><span class="material-symbols-outlined text-sm">arrow_downward</span>Predecessors</h3>
+            <ul class="space-y-2">
+              <li class="bg-surface-container-low p-2 rounded border border-outline-variant flex justify-between items-center"><div class="flex items-center gap-2"><span class="material-symbols-outlined text-primary text-sm">check_circle</span><span class="font-body-sm text-on-surface">Core Auth (T-18)</span></div><span class="font-label-sm text-[10px] text-primary">Done</span></li>
+              <li class="bg-error-container/5 p-2 rounded border border-error/50 flex justify-between items-center"><div class="flex items-center gap-2"><span class="material-symbols-outlined text-error text-sm">warning</span><span class="font-body-sm text-on-surface">Legacy Export (T-21)</span></div><span class="font-label-sm text-[10px] text-error">Blocked</span></li>
+            </ul>
+          </div>
+          <div class="border-t border-outline-variant pt-4">
+            <h3 class="font-label-md text-on-surface mb-3 flex items-center gap-2"><span class="material-symbols-outlined text-sm">arrow_upward</span>Successors</h3>
+            <ul class="space-y-2">
+              <li class="bg-surface-container-low p-2 rounded border border-outline-variant flex justify-between items-center"><div class="flex items-center gap-2"><span class="material-symbols-outlined text-on-surface-variant text-sm">pending</span><span class="font-body-sm text-on-surface">System Test (T-30)</span></div><span class="font-label-sm text-[10px] text-on-surface-variant">Waiting</span></li>
+            </ul>
+          </div>
+        </div>
+        <div class="p-4 border-t border-outline-variant bg-surface-container-high flex gap-3">
+          <button class="flex-1 bg-surface-variant text-on-surface border border-outline-variant py-2 rounded font-label-md hover:bg-surface-bright">View Task</button>
+          <button class="flex-1 bg-primary-container text-on-primary-container py-2 rounded font-label-md hover:bg-primary hover:text-on-primary">Update Status</button>
+        </div>
+      </div>
+    </div>
+  </div>
+</main>
+</body></html>

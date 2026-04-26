@@ -1,0 +1,142 @@
+<!DOCTYPE html>
+<html class="dark" lang="en"><head>
+<meta charset="utf-8"/>
+<meta content="width=device-width, initial-scale=1.0" name="viewport"/>
+<title>Stakeholder Profile — Persona</title>
+<script src="https://cdn.tailwindcss.com?plugins=forms,container-queries"></script>
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&amp;display=swap" rel="stylesheet"/>
+<link href="https://fonts.googleapis.com/css2?family=Material+Symbols+Outlined:wght,FILL@100..700,0..1&amp;display=swap" rel="stylesheet"/>
+<script id="tailwind-config">
+tailwind.config = { darkMode: "class", theme: { extend: { colors: {"primary-container":"#3b6769","tertiary-fixed-dim":"#ffb59f","tertiary-container":"#ac3811","surface-tint":"#a1cfd1","on-surface-variant":"#c0c8c8","primary-fixed":"#bdebed","on-error-container":"#ffdad6","inverse-surface":"#dae2fd","inverse-on-surface":"#283044","on-secondary":"#283233","outline-variant":"#404848","on-primary-fixed":"#002021","on-surface":"#dae2fd","error":"#ffb4ab","on-error":"#690005","on-primary-fixed-variant":"#204d4f","on-primary-container":"#b5e3e5","on-background":"#dae2fd","primary-fixed-dim":"#a1cfd1","secondary-fixed":"#dae5e5","tertiary":"#ffb59f","secondary-fixed-dim":"#bec8c9","surface-dim":"#0b1326","surface-container":"#171f33","on-secondary-container":"#acb7b8","secondary":"#bec8c9","surface-variant":"#2d3449","surface-container-high":"#222a3d","on-tertiary":"#5f1600","surface-container-lowest":"#060e20","primary":"#a1cfd1","secondary-container":"#3e494a","surface-container-highest":"#2d3449","on-secondary-fixed":"#131d1e","surface-container-low":"#131b2e","on-primary":"#013739","outline":"#8a9292","background":"#0b1326","error-container":"#93000a","surface":"#0b1326","on-secondary-fixed-variant":"#3e494a","inverse-primary":"#396567","on-tertiary-container":"#ffd1c4","on-tertiary-fixed":"#3a0a00","surface-bright":"#31394d","on-tertiary-fixed-variant":"#862300","tertiary-fixed":"#ffdbd1"}, borderRadius:{"DEFAULT":"0.25rem","lg":"0.5rem","xl":"0.75rem","full":"9999px"}, spacing:{"xxl":"48px","md":"16px","gutter":"24px","margin":"32px","xs":"8px","lg":"24px","sm":"12px","xl":"32px","base":"4px"}, fontFamily:{"label-sm":["Inter"],"h2":["Inter"],"h1":["Inter"],"display":["Inter"],"body-sm":["Inter"],"body-md":["Inter"],"body-lg":["Inter"],"h3":["Inter"],"label-md":["Inter"]}, fontSize:{"label-sm":["12px",{"lineHeight":"1","letterSpacing":"0.05em","fontWeight":"600"}],"h2":["24px",{"lineHeight":"1.3","letterSpacing":"-0.01em","fontWeight":"600"}],"h1":["32px",{"lineHeight":"1.2","letterSpacing":"-0.02em","fontWeight":"600"}],"display":["48px",{"lineHeight":"1.1","letterSpacing":"-0.02em","fontWeight":"700"}],"body-sm":["14px",{"lineHeight":"1.5","fontWeight":"400"}],"body-md":["16px",{"lineHeight":"1.6","fontWeight":"400"}],"body-lg":["18px",{"lineHeight":"1.6","fontWeight":"400"}],"h3":["20px",{"lineHeight":"1.4","fontWeight":"600"}],"label-md":["14px",{"lineHeight":"1","letterSpacing":"0.01em","fontWeight":"500"}]} } } };
+</script>
+</head>
+<body class="bg-background text-on-background font-body-md antialiased min-h-screen flex flex-col">
+
+<header class="bg-slate-900/80 backdrop-blur-md sticky top-0 border-b border-slate-800 flex justify-between items-center px-8 h-16 w-full z-40">
+  <div class="flex items-center gap-xl">
+    <span class="text-lg font-bold text-slate-50 tracking-tight">Enterprise Pro</span>
+    <nav class="hidden md:flex gap-md">
+      <a class="text-slate-400 hover:bg-slate-800 hover:text-slate-100 px-xs py-base rounded" href="#">Dashboard</a>
+      <a class="text-teal-500 border-b-2 border-teal-600 px-xs py-base" href="#">Team</a>
+    </nav>
+  </div>
+  <button class="bg-primary-container text-on-primary-container px-sm py-xs rounded text-label-sm hover:opacity-90">New Project</button>
+</header>
+
+<div class="flex flex-1 overflow-hidden">
+  <aside class="bg-slate-950 h-screen w-64 border-r border-slate-800 hidden md:flex flex-col z-50">
+    <div class="p-margin border-b border-slate-800"><h1 class="text-on-surface font-h3">Project OS</h1><span class="text-on-surface-variant font-label-sm">Enterprise Tier</span></div>
+    <nav class="flex-1 py-lg flex flex-col gap-base">
+      <a class="flex items-center gap-3 px-4 py-2 text-slate-400 hover:bg-slate-900 hover:text-slate-200" href="#"><span class="material-symbols-outlined">dashboard</span>Dashboard</a>
+      <a class="flex items-center gap-3 px-4 py-2 text-slate-400 hover:bg-slate-900 hover:text-slate-200" href="#"><span class="material-symbols-outlined">assignment</span>Projects</a>
+      <a class="flex items-center gap-3 px-4 py-2 text-teal-400 border-r-2 border-teal-600 bg-teal-600/5" href="#"><span class="material-symbols-outlined">group</span>Team</a>
+    </nav>
+  </aside>
+
+  <main class="flex-1 overflow-y-auto p-margin flex flex-col gap-xl">
+    <nav class="flex items-center gap-xs text-on-surface-variant font-body-sm">
+      <a class="hover:text-primary" href="#">Team</a><span class="material-symbols-outlined text-[16px]">chevron_right</span>
+      <a class="hover:text-primary" href="#">Stakeholders</a><span class="material-symbols-outlined text-[16px]">chevron_right</span>
+      <span class="text-on-surface">Sarah Jenkins</span>
+    </nav>
+
+    <!-- Header -->
+    <section class="bg-surface-container-low border border-outline-variant rounded-lg p-lg flex flex-col md:flex-row items-start md:items-center justify-between gap-lg">
+      <div class="flex items-center gap-lg">
+        <div class="w-20 h-20 rounded-full border-2 border-primary-container bg-primary-container/30 flex items-center justify-center text-on-primary-container font-bold text-2xl">SJ</div>
+        <div>
+          <h1 class="text-on-surface font-h1 text-h1">Sarah Jenkins</h1>
+          <p class="text-on-surface-variant font-body-lg">Executive Sponsor, Global Operations</p>
+        </div>
+      </div>
+      <div class="flex items-center gap-sm bg-primary-container/20 text-primary-fixed border border-primary-container px-md py-sm rounded-full">
+        <span class="material-symbols-outlined" style="font-variation-settings:'FILL' 1;">favorite</span>
+        <span class="font-label-md">Positive Sentiment</span>
+      </div>
+    </section>
+
+    <div class="grid grid-cols-1 lg:grid-cols-12 gap-gutter">
+      <!-- Left content -->
+      <div class="lg:col-span-8 flex flex-col gap-gutter">
+        <!-- Radar / Profile -->
+        <div class="bg-surface-container border border-outline-variant rounded-lg p-lg">
+          <div class="flex justify-between items-center mb-md border-b border-outline-variant pb-sm">
+            <h2 class="text-on-surface font-h3">Skill &amp; Personality Profile</h2>
+            <button class="text-primary"><span class="material-symbols-outlined">more_horiz</span></button>
+          </div>
+          <div class="flex flex-col md:flex-row gap-lg items-center px-12">
+            <div class="w-full md:w-1/2 aspect-square relative flex items-center justify-center border border-outline-variant/50 rounded-full">
+              <div class="absolute inset-0 m-auto w-3/4 h-3/4 rounded-full border border-outline-variant/30"></div>
+              <div class="absolute inset-0 m-auto w-1/2 h-1/2 rounded-full border border-outline-variant/30"></div>
+              <div class="absolute inset-0 m-auto w-1/4 h-1/4 rounded-full border border-outline-variant/30"></div>
+              <div class="absolute w-full h-[1px] bg-outline-variant/30"></div>
+              <div class="absolute h-full w-[1px] bg-outline-variant/30"></div>
+              <div class="absolute inset-0 m-auto w-[60%] h-[60%] bg-primary-container/30 border border-primary z-10" style="clip-path: polygon(50% 0%, 100% 38%, 82% 100%, 18% 100%, 0% 38%);"></div>
+              <span class="absolute top-0 left-1/2 -translate-x-1/2 -translate-y-full text-on-surface-variant font-label-sm mt-sm">Strategic Thinking</span>
+              <span class="absolute right-[-8px] top-1/2 translate-x-full -translate-y-1/2 text-on-surface-variant font-label-sm ml-sm">Decision Speed</span>
+              <span class="absolute bottom-0 left-1/2 -translate-x-1/2 translate-y-full text-on-surface-variant font-label-sm mb-sm">Influence</span>
+              <span class="absolute left-[-8px] bottom-1/4 -translate-x-full text-on-surface-variant font-label-sm mr-sm">Cooperation</span>
+              <span class="absolute left-[-8px] top-1/4 -translate-x-full text-on-surface-variant font-label-sm mr-sm">Tech Savvy</span>
+            </div>
+            <div class="w-full md:w-1/2 flex flex-col gap-md">
+              <p class="text-on-surface-variant font-body-sm">Sarah is highly strategic and wields significant influence across divisions. She prefers high-level summaries over granular technical details and values rapid decision-making when supported by clear ROI.</p>
+              <div class="flex flex-wrap gap-sm mt-auto">
+                <span class="bg-surface-variant text-on-surface-variant font-label-sm px-xs py-base rounded-full">Strategic Vision</span>
+                <span class="bg-surface-variant text-on-surface-variant font-label-sm px-xs py-base rounded-full">Decisive</span>
+                <span class="bg-surface-variant text-on-surface-variant font-label-sm px-xs py-base rounded-full">ROI Focused</span>
+              </div>
+            </div>
+          </div>
+        </div>
+
+        <!-- Last Meeting Recap -->
+        <div class="bg-surface-container border border-outline-variant rounded-lg p-lg">
+          <div class="flex justify-between items-center mb-md border-b border-outline-variant pb-sm">
+            <h2 class="text-on-surface font-h3">Last Meeting Recap <span class="text-on-surface-variant font-body-sm font-normal ml-sm">(Oct 12)</span></h2>
+            <div class="flex items-center gap-xs text-primary"><span class="material-symbols-outlined text-[16px]">trending_up</span><span class="font-label-sm">Productive/Supportive</span></div>
+          </div>
+          <div class="flex flex-col gap-md">
+            <p class="text-on-surface-variant font-body-sm italic border-l-2 border-primary pl-sm">"Mood Analysis: Energetic and focused. Expressed satisfaction with Q3 preliminary numbers but pushed for faster Q4 rollout."</p>
+            <ul class="flex flex-col gap-sm list-none p-0 m-0">
+              <li class="flex items-start gap-sm"><span class="material-symbols-outlined text-primary text-[18px] mt-[2px]">check_circle</span><span class="text-on-surface font-body-sm">Approved initial budget proposal for Phase 2 expansion.</span></li>
+              <li class="flex items-start gap-sm"><span class="material-symbols-outlined text-primary text-[18px] mt-[2px]">check_circle</span><span class="text-on-surface font-body-sm">Requested deeper analysis on potential supply chain bottlenecks.</span></li>
+              <li class="flex items-start gap-sm"><span class="material-symbols-outlined text-primary text-[18px] mt-[2px]">check_circle</span><span class="text-on-surface font-body-sm">Agreed to act as primary sponsor for the upcoming town hall.</span></li>
+            </ul>
+          </div>
+        </div>
+      </div>
+
+      <!-- AI Advisor sidebar -->
+      <div class="lg:col-span-4 flex flex-col">
+        <div class="bg-surface-container-high border border-outline-variant rounded-lg flex flex-col h-full overflow-hidden">
+          <div class="p-md bg-surface-container-highest border-b border-outline-variant flex items-center gap-sm">
+            <span class="material-symbols-outlined text-primary-fixed-dim" style="font-variation-settings:'FILL' 1;">smart_toy</span>
+            <h2 class="text-on-surface font-label-md">AI Stakeholder Advisor</h2>
+          </div>
+          <div class="flex-1 p-md flex flex-col gap-md overflow-y-auto">
+            <div class="flex flex-col gap-base">
+              <div class="self-start max-w-[90%] bg-surface-variant text-on-surface font-body-sm p-sm rounded-r-lg rounded-bl-lg border border-outline-variant/50">How can I help you prepare for your next interaction with Sarah?</div>
+              <div class="self-end max-w-[90%] bg-primary-container text-on-primary-container font-body-sm p-sm rounded-l-lg rounded-br-lg">How to pitch the budget increase?</div>
+              <div class="self-start max-w-[90%] bg-surface-variant text-on-surface font-body-sm p-sm rounded-r-lg rounded-bl-lg border border-outline-variant/50 flex flex-col gap-xs">
+                <span>Sarah values data-backed ROI. For the next meeting:</span>
+                <ul class="list-disc pl-md text-on-surface-variant"><li>Focus on efficiency gains.</li><li>Present a clear timeline to breakeven.</li><li>Keep technical details minimal; emphasize strategic impact.</li></ul>
+              </div>
+            </div>
+          </div>
+          <div class="p-md bg-surface-container-highest border-t border-outline-variant flex flex-col gap-sm">
+            <span class="text-on-surface-variant font-label-sm">Suggested Prompts:</span>
+            <div class="flex flex-wrap gap-xs">
+              <button class="bg-surface text-on-surface font-label-sm px-sm py-xs border border-outline-variant rounded hover:border-primary hover:text-primary">Identify potential blockers</button>
+              <button class="bg-surface text-on-surface font-label-sm px-sm py-xs border border-outline-variant rounded hover:border-primary hover:text-primary">Next best action</button>
+            </div>
+            <div class="relative mt-xs">
+              <input class="w-full bg-surface-dim border border-outline-variant rounded pl-sm pr-lg py-xs text-body-sm text-on-surface focus:outline-none focus:border-primary focus:ring-1 focus:ring-primary" placeholder="Ask AI Advisor..." type="text"/>
+              <button class="absolute right-sm top-1/2 -translate-y-1/2 text-primary"><span class="material-symbols-outlined text-[18px]">send</span></button>
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+  </main>
+</div>
+</body></html>

@@ -1,0 +1,143 @@
+<!DOCTYPE html>
+<html class="dark" lang="en"><head>
+<meta charset="utf-8"/>
+<meta content="width=device-width, initial-scale=1.0" name="viewport"/>
+<title>Operative Enterprise Dashboard — PMI / Waterfall</title>
+<!-- NOTE: Originally used indigo accent in source; substituted with teal to match shared dark-teal design system. -->
+<script src="https://cdn.tailwindcss.com?plugins=forms,container-queries"></script>
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;900&amp;display=swap" rel="stylesheet"/>
+<link href="https://fonts.googleapis.com/css2?family=Material+Symbols+Outlined:wght,FILL@100..700,0..1&amp;display=swap" rel="stylesheet"/>
+<script id="tailwind-config">
+tailwind.config = { darkMode: "class", theme: { extend: { colors: {"surface-container-low":"#131b2e","surface":"#0b1326","surface-dim":"#0b1326","primary-container":"#3b6769","primary":"#a1cfd1","secondary":"#bec8c9","background":"#0b1326","on-primary-fixed-variant":"#204d4f","on-primary-fixed":"#002021","secondary-fixed-dim":"#bec8c9","on-background":"#dae2fd","on-primary-container":"#b5e3e5","tertiary-fixed":"#ffdbd1","surface-bright":"#31394d","on-tertiary-fixed-variant":"#862300","on-error-container":"#ffdad6","surface-container":"#171f33","on-secondary-fixed-variant":"#3e494a","tertiary-container":"#ac3811","primary-fixed-dim":"#a1cfd1","on-surface-variant":"#c0c8c8","tertiary":"#ffb59f","tertiary-fixed-dim":"#ffb59f","on-tertiary":"#5f1600","error":"#ffb4ab","on-secondary-fixed":"#131d1e","outline":"#8a9292","surface-tint":"#a1cfd1","on-tertiary-fixed":"#3a0a00","on-tertiary-container":"#ffd1c4","error-container":"#93000a","on-secondary-container":"#acb7b8","surface-container-highest":"#2d3449","secondary-fixed":"#dae5e5","on-secondary":"#283233","on-primary":"#013739","surface-variant":"#2d3449","inverse-primary":"#396567","surface-container-high":"#222a3d","inverse-surface":"#dae2fd","outline-variant":"#404848","on-surface":"#dae2fd","on-error":"#690005","surface-container-lowest":"#060e20","primary-fixed":"#bdebed","inverse-on-surface":"#283044","secondary-container":"#3e494a"}, borderRadius:{"DEFAULT":"0.25rem","lg":"0.5rem","xl":"0.75rem","full":"9999px"}, spacing:{"margin":"32px","xxl":"48px","md":"16px","lg":"24px","base":"4px","sm":"12px","gutter":"24px","xs":"8px","xl":"32px"}, fontFamily:{"display":["Inter"],"body-md":["Inter"],"label-sm":["Inter"],"h1":["Inter"],"h2":["Inter"],"body-sm":["Inter"],"label-md":["Inter"],"body-lg":["Inter"],"h3":["Inter"]}, fontSize:{"display":["48px",{"lineHeight":"1.1","letterSpacing":"-0.02em","fontWeight":"700"}],"body-md":["16px",{"lineHeight":"1.6","fontWeight":"400"}],"label-sm":["12px",{"lineHeight":"1","letterSpacing":"0.05em","fontWeight":"600"}],"h1":["32px",{"lineHeight":"1.2","letterSpacing":"-0.02em","fontWeight":"600"}],"h2":["24px",{"lineHeight":"1.3","letterSpacing":"-0.01em","fontWeight":"600"}],"body-sm":["14px",{"lineHeight":"1.5","fontWeight":"400"}],"label-md":["14px",{"lineHeight":"1","letterSpacing":"0.01em","fontWeight":"500"}],"body-lg":["18px",{"lineHeight":"1.6","fontWeight":"400"}],"h3":["20px",{"lineHeight":"1.4","fontWeight":"600"}]} } } };
+</script>
+<style>.material-symbols-outlined { font-variation-settings: 'FILL' 0, 'wght' 400, 'GRAD' 0, 'opsz' 24; }</style>
+</head>
+<body class="bg-background text-on-background font-body-md text-body-md antialiased min-h-screen">
+
+<nav class="fixed left-0 top-0 flex flex-col h-full z-50 bg-slate-950 w-64 border-r border-slate-800 font-inter text-sm font-medium">
+  <div class="p-lg border-b border-slate-800 flex items-center gap-sm">
+    <div class="w-8 h-8 rounded bg-teal-600/20 flex items-center justify-center text-teal-500 font-black"><span class="material-symbols-outlined text-[20px]">hub</span></div>
+    <div>
+      <div class="text-teal-500 font-black tracking-tight leading-tight">Project OS</div>
+      <div class="font-label-sm text-label-sm text-slate-500 uppercase">Enterprise Tier</div>
+    </div>
+  </div>
+  <div class="flex-1 py-lg flex flex-col gap-xs">
+    <a class="flex items-center gap-3 px-4 py-2 text-teal-400 border-r-2 border-teal-600 bg-teal-600/5" href="#"><span class="material-symbols-outlined">dashboard</span>Dashboard</a>
+    <a class="flex items-center gap-3 px-4 py-2 text-slate-400 hover:bg-slate-900 hover:text-slate-200" href="#"><span class="material-symbols-outlined">assignment</span>Projects</a>
+    <a class="flex items-center gap-3 px-4 py-2 text-slate-400 hover:bg-slate-900 hover:text-slate-200" href="#"><span class="material-symbols-outlined">check_circle</span>Tasks</a>
+    <a class="flex items-center gap-3 px-4 py-2 text-slate-400 hover:bg-slate-900 hover:text-slate-200" href="#"><span class="material-symbols-outlined">group</span>Team</a>
+    <a class="flex items-center gap-3 px-4 py-2 text-slate-400 hover:bg-slate-900 hover:text-slate-200" href="#"><span class="material-symbols-outlined">bar_chart</span>Analytics</a>
+  </div>
+</nav>
+
+<div class="ml-64 flex flex-col min-h-screen">
+  <header class="flex justify-between items-center px-8 h-16 w-full z-40 bg-slate-900/80 backdrop-blur-md sticky top-0 border-b border-slate-800 font-inter text-sm">
+    <div class="flex items-center gap-md">
+      <div class="text-lg font-bold text-slate-50 tracking-tight">Enterprise Pro</div>
+      <div class="h-6 w-[1px] bg-slate-700 mx-2"></div>
+      <div class="relative flex items-center">
+        <span class="material-symbols-outlined absolute left-3 text-slate-400 text-[18px]">search</span>
+        <input class="bg-slate-800/50 border border-slate-700 text-slate-200 rounded-full pl-10 pr-4 py-1.5 focus:outline-none focus:border-teal-600 focus:ring-1 focus:ring-teal-600 transition-all w-64 text-sm placeholder:text-slate-500" placeholder="Search resources..." type="text"/>
+      </div>
+    </div>
+    <div class="flex items-center gap-lg">
+      <button class="bg-teal-600 hover:bg-teal-500 text-white px-4 py-1.5 rounded-md font-medium flex items-center gap-2"><span class="material-symbols-outlined text-[18px]">add</span>New Project</button>
+    </div>
+  </header>
+
+  <main class="flex-1 p-margin">
+    <div class="mb-xl flex justify-between items-end">
+      <div>
+        <h1 class="font-h1 text-h1 text-on-surface mb-1">Operative Overview</h1>
+        <p class="font-body-sm text-body-sm text-on-surface-variant">Global resource allocation and portfolio health matrix.</p>
+      </div>
+      <button class="px-sm py-1.5 border border-outline-variant rounded bg-surface-container-low text-on-surface font-label-md text-label-md hover:bg-surface-variant flex items-center gap-2"><span class="material-symbols-outlined text-[18px]">calendar_today</span>Q3 FY24</button>
+    </div>
+
+    <div class="grid grid-cols-1 xl:grid-cols-12 gap-gutter">
+      <!-- Left column: Project Status -->
+      <div class="xl:col-span-3 flex flex-col gap-lg">
+        <h2 class="font-h3 text-h3 text-on-surface border-b border-outline-variant pb-2">Portfolio Health</h2>
+        <div class="bg-surface-container-low border border-outline-variant rounded-lg p-lg">
+          <div class="flex justify-between items-start mb-md">
+            <div><div class="font-label-md text-label-md text-on-surface mb-1">Project Alpha-Net</div><div class="font-body-sm text-body-sm text-on-surface-variant">Infrastructure Migration</div></div>
+            <span class="bg-error/10 text-error rounded-full px-xs py-0.5 font-label-sm text-label-sm flex items-center gap-1"><span class="material-symbols-outlined text-[14px]">warning</span>At Risk</span>
+          </div>
+          <div class="mb-sm flex justify-between font-label-sm text-label-sm"><span class="text-on-surface-variant">Completion</span><span class="text-on-surface">68%</span></div>
+          <div class="h-1.5 w-full bg-surface-container-highest rounded-full overflow-hidden"><div class="h-full bg-error rounded-full" style="width: 68%;"></div></div>
+        </div>
+        <div class="bg-surface-container-low border border-outline-variant rounded-lg p-lg">
+          <div class="flex justify-between items-start mb-md">
+            <div><div class="font-label-md text-label-md text-on-surface mb-1">Nexus Data Pipeline</div><div class="font-body-sm text-body-sm text-on-surface-variant">Analytics Core</div></div>
+            <span class="bg-secondary/10 text-secondary rounded-full px-xs py-0.5 font-label-sm text-label-sm flex items-center gap-1"><span class="material-symbols-outlined text-[14px]">check_circle</span>On Track</span>
+          </div>
+          <div class="mb-sm flex justify-between font-label-sm text-label-sm"><span class="text-on-surface-variant">Completion</span><span class="text-on-surface">92%</span></div>
+          <div class="h-1.5 w-full bg-surface-container-highest rounded-full overflow-hidden"><div class="h-full bg-secondary rounded-full" style="width: 92%;"></div></div>
+        </div>
+        <div class="bg-surface-container-low border border-outline-variant rounded-lg p-lg">
+          <div class="flex justify-between items-start mb-md">
+            <div><div class="font-label-md text-label-md text-on-surface mb-1">Horizon UI Overhaul</div><div class="font-body-sm text-body-sm text-on-surface-variant">Client Portal</div></div>
+            <span class="bg-tertiary/10 text-tertiary rounded-full px-xs py-0.5 font-label-sm text-label-sm flex items-center gap-1"><span class="material-symbols-outlined text-[14px]">schedule</span>Delayed</span>
+          </div>
+          <div class="mb-sm flex justify-between font-label-sm text-label-sm"><span class="text-on-surface-variant">Completion</span><span class="text-on-surface">34%</span></div>
+          <div class="h-1.5 w-full bg-surface-container-highest rounded-full overflow-hidden"><div class="h-full bg-tertiary rounded-full" style="width: 34%;"></div></div>
+        </div>
+      </div>
+
+      <!-- Middle: KPIs + chart -->
+      <div class="xl:col-span-6 flex flex-col gap-lg">
+        <div class="grid grid-cols-2 gap-lg">
+          <div class="bg-surface-container-low border border-outline-variant rounded-lg p-lg"><div class="flex items-center gap-sm mb-md text-on-surface-variant"><span class="material-symbols-outlined text-[20px]">folder_open</span><span class="font-label-md text-label-md uppercase">Active Projects</span></div><div class="font-display text-display text-on-surface">24</div><div class="mt-xs text-secondary font-label-sm flex items-center gap-1"><span class="material-symbols-outlined text-[14px]">trending_up</span>+3 this quarter</div></div>
+          <div class="bg-surface-container-low border border-outline-variant rounded-lg p-lg"><div class="flex items-center gap-sm mb-md text-on-surface-variant"><span class="material-symbols-outlined text-[20px]">local_fire_department</span><span class="font-label-md text-label-md uppercase">Budget Burn Rate</span></div><div class="font-display text-display text-on-surface">$1.2M</div><div class="mt-xs text-error font-label-sm flex items-center gap-1"><span class="material-symbols-outlined text-[14px]">trending_up</span>8% above baseline</div></div>
+          <div class="bg-surface-container-low border border-outline-variant rounded-lg p-lg"><div class="flex items-center gap-sm mb-md text-on-surface-variant"><span class="material-symbols-outlined text-[20px]">report_problem</span><span class="font-label-md text-label-md uppercase">Open Risks</span></div><div class="font-display text-display text-on-surface">17</div><div class="mt-xs text-tertiary font-label-sm flex items-center gap-1"><span class="material-symbols-outlined text-[14px]">remove</span>Stable</div></div>
+          <div class="bg-surface-container-low border border-outline-variant rounded-lg p-lg"><div class="flex items-center gap-sm mb-md text-on-surface-variant"><span class="material-symbols-outlined text-[20px]">speed</span><span class="font-label-md text-label-md uppercase">Team Velocity</span></div><div class="font-display text-display text-on-surface">86<span class="text-h3 font-h3 text-on-surface-variant ml-1">pts</span></div><div class="mt-xs text-secondary font-label-sm flex items-center gap-1"><span class="material-symbols-outlined text-[14px]">trending_up</span>+12% sprint over sprint</div></div>
+        </div>
+
+        <div class="bg-surface-container-low border border-outline-variant rounded-lg p-lg flex-1 flex flex-col min-h-[320px]">
+          <div class="flex justify-between items-center mb-lg"><h3 class="font-h3 text-h3 text-on-surface">Resource Workload vs. Time</h3><button class="text-on-surface-variant hover:text-on-surface"><span class="material-symbols-outlined">more_vert</span></button></div>
+          <div class="flex-1 relative flex items-end border-l border-b border-outline-variant pb-2 pl-2">
+            <div class="absolute -left-8 bottom-0 top-0 flex flex-col justify-between font-label-sm text-on-surface-variant py-2"><span>100%</span><span>50%</span><span>0%</span></div>
+            <div class="relative w-full h-[80%] flex items-end overflow-hidden px-1">
+              <div class="w-1/4 h-[40%] bg-gradient-to-t from-primary/40 to-primary/10 rounded-t-sm border-t-2 border-primary"></div>
+              <div class="w-1/4 h-[70%] bg-gradient-to-t from-primary/40 to-primary/10 rounded-t-sm border-t-2 border-primary -ml-1"></div>
+              <div class="w-1/4 h-[60%] bg-gradient-to-t from-primary/40 to-primary/10 rounded-t-sm border-t-2 border-primary -ml-1"></div>
+              <div class="w-1/4 h-[90%] bg-gradient-to-t from-primary/40 to-primary/10 rounded-t-sm border-t-2 border-primary -ml-1"></div>
+              <div class="absolute bottom-0 left-0 w-full h-full flex items-end pointer-events-none">
+                <div class="w-1/3 h-[30%] bg-gradient-to-t from-tertiary/30 to-tertiary/5 border-t border-tertiary"></div>
+                <div class="w-1/3 h-[50%] bg-gradient-to-t from-tertiary/30 to-tertiary/5 border-t border-tertiary"></div>
+                <div class="w-1/3 h-[20%] bg-gradient-to-t from-tertiary/30 to-tertiary/5 border-t border-tertiary"></div>
+              </div>
+            </div>
+          </div>
+          <div class="flex justify-between px-2 pt-2 font-label-sm text-on-surface-variant"><span>Week 1</span><span>Week 2</span><span>Week 3</span><span>Week 4</span></div>
+          <div class="flex justify-center gap-lg mt-md">
+            <div class="flex items-center gap-xs font-label-sm text-on-surface"><div class="w-3 h-3 rounded-full bg-primary"></div>Dev Capacity</div>
+            <div class="flex items-center gap-xs font-label-sm text-on-surface"><div class="w-3 h-3 rounded-full bg-tertiary"></div>QA Workload</div>
+          </div>
+        </div>
+      </div>
+
+      <!-- Right column: Actionable Items -->
+      <div class="xl:col-span-3 flex flex-col gap-lg">
+        <h2 class="font-h3 text-h3 text-on-surface border-b border-outline-variant pb-2">Actionable Items</h2>
+        <div class="bg-error/5 border border-error/20 rounded-lg p-md">
+          <div class="flex items-center gap-sm mb-md text-error"><span class="material-symbols-outlined text-[20px]">block</span><span class="font-label-md text-label-md uppercase">Critical Blockers</span></div>
+          <div class="flex flex-col gap-sm">
+            <div class="bg-surface border border-error/30 rounded p-sm flex items-start gap-sm"><div class="w-2 h-2 rounded-full bg-error mt-1.5 shrink-0"></div><div><div class="font-label-md text-label-md text-on-surface mb-0.5">API Dependency unresolved</div><div class="font-body-sm text-on-surface-variant text-[12px]">Project Alpha-Net blocked by external vendor API key delay.</div></div></div>
+            <div class="bg-surface border border-error/30 rounded p-sm flex items-start gap-sm"><div class="w-2 h-2 rounded-full bg-error mt-1.5 shrink-0"></div><div><div class="font-label-md text-label-md text-on-surface mb-0.5">DB Sync Failure</div><div class="font-body-sm text-on-surface-variant text-[12px]">Prod environment reporting consistency errors in node cluster B.</div></div></div>
+          </div>
+        </div>
+        <div class="bg-surface-container-low border border-outline-variant rounded-lg p-md">
+          <div class="flex items-center gap-sm mb-md text-secondary"><span class="material-symbols-outlined text-[20px]">flag</span><span class="font-label-md text-label-md uppercase">Upcoming Milestones</span></div>
+          <div class="relative pl-sm border-l border-outline-variant ml-sm flex flex-col gap-md">
+            <div class="relative"><div class="absolute -left-[21px] top-1 w-3 h-3 rounded-full bg-secondary ring-4 ring-surface-container-low"></div><div class="font-label-sm text-secondary mb-0.5">Tomorrow, 10:00 AM</div><div class="font-label-md text-on-surface">Sprint Planning Q3-S2</div></div>
+            <div class="relative"><div class="absolute -left-[21px] top-1 w-3 h-3 rounded-full bg-outline-variant ring-4 ring-surface-container-low"></div><div class="font-label-sm text-on-surface-variant mb-0.5">Oct 14th</div><div class="font-label-md text-on-surface">Security Audit Sign-off</div></div>
+            <div class="relative"><div class="absolute -left-[21px] top-1 w-3 h-3 rounded-full bg-outline-variant ring-4 ring-surface-container-low"></div><div class="font-label-sm text-on-surface-variant mb-0.5">Oct 18th</div><div class="font-label-md text-on-surface">Client Demo: Nexus Core</div></div>
+          </div>
+        </div>
+      </div>
+    </div>
+  </main>
+</div>
+</body></html>

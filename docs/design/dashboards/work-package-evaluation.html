@@ -1,0 +1,130 @@
+<!DOCTYPE html>
+<html class="dark" lang="en"><head>
+<meta charset="utf-8"/>
+<meta content="width=device-width, initial-scale=1.0" name="viewport"/>
+<title>Work Packages Evaluation</title>
+<script src="https://cdn.tailwindcss.com?plugins=forms,container-queries"></script>
+<link href="https://fonts.googleapis.com/css2?family=Material+Symbols+Outlined:wght,FILL@100..700,0..1&amp;display=swap" rel="stylesheet"/>
+<script id="tailwind-config">
+tailwind.config = { darkMode: "class", theme: { extend: { colors: {"error-container":"#93000a","surface-container-highest":"#2d3449","tertiary-fixed":"#ffdbd1","on-tertiary-container":"#ffd1c4","on-tertiary-fixed":"#3a0a00","on-primary":"#013739","surface":"#0b1326","surface-tint":"#a1cfd1","tertiary-container":"#ac3811","tertiary":"#ffb59f","outline-variant":"#404848","on-secondary-fixed-variant":"#3e494a","on-tertiary-fixed-variant":"#862300","on-background":"#dae2fd","on-surface-variant":"#c0c8c8","secondary-fixed-dim":"#bec8c9","inverse-on-surface":"#283044","inverse-surface":"#dae2fd","primary-fixed":"#bdebed","on-surface":"#dae2fd","on-primary-container":"#b5e3e5","on-primary-fixed":"#002021","primary-container":"#3b6769","on-error-container":"#ffdad6","surface-container-high":"#222a3d","secondary":"#bec8c9","surface-container-lowest":"#060e20","on-tertiary":"#5f1600","tertiary-fixed-dim":"#ffb59f","secondary-container":"#3e494a","on-secondary-fixed":"#131d1e","background":"#0b1326","secondary-fixed":"#dae5e5","on-secondary":"#283233","outline":"#8a9292","surface-dim":"#0b1326","surface-variant":"#2d3449","surface-bright":"#31394d","on-secondary-container":"#acb7b8","primary-fixed-dim":"#a1cfd1","on-primary-fixed-variant":"#204d4f","primary":"#a1cfd1","on-error":"#690005","inverse-primary":"#396567","surface-container-low":"#131b2e","surface-container":"#171f33","error":"#ffb4ab"}, borderRadius:{"DEFAULT":"0.25rem","lg":"0.5rem","xl":"0.75rem","full":"9999px"}, spacing:{"xl":"32px","base":"4px","xs":"8px","lg":"24px","margin":"32px","gutter":"24px","sm":"12px","md":"16px","xxl":"48px"}, fontFamily:{"label-sm":["Inter"],"label-md":["Inter"],"h1":["Inter"],"body-sm":["Inter"],"h3":["Inter"],"display":["Inter"],"body-md":["Inter"],"body-lg":["Inter"],"h2":["Inter"]}, fontSize:{"label-sm":["12px",{"lineHeight":"1","letterSpacing":"0.05em","fontWeight":"600"}],"label-md":["14px",{"lineHeight":"1","letterSpacing":"0.01em","fontWeight":"500"}],"h1":["32px",{"lineHeight":"1.2","letterSpacing":"-0.02em","fontWeight":"600"}],"body-sm":["14px",{"lineHeight":"1.5","fontWeight":"400"}],"h3":["20px",{"lineHeight":"1.4","fontWeight":"600"}],"display":["48px",{"lineHeight":"1.1","letterSpacing":"-0.02em","fontWeight":"700"}],"body-md":["16px",{"lineHeight":"1.6","fontWeight":"400"}],"body-lg":["18px",{"lineHeight":"1.6","fontWeight":"400"}],"h2":["24px",{"lineHeight":"1.3","letterSpacing":"-0.01em","fontWeight":"600"}]} } } };
+</script>
+<style>body { font-family: 'Inter', sans-serif; }</style>
+</head>
+<body class="bg-surface text-on-surface min-h-screen font-body-md text-body-md antialiased">
+
+<header class="flex justify-between items-center px-8 h-16 w-full fixed top-0 z-50 bg-surface/80 backdrop-blur-md border-b border-outline-variant">
+  <div class="flex items-center gap-xl">
+    <span class="text-on-surface font-h3 text-h3 tracking-tighter">ProjectInsight Pro</span>
+  </div>
+  <nav class="hidden md:flex items-center gap-lg">
+    <a class="font-body-sm text-on-surface-variant hover:text-on-surface" href="#">Portfolio</a>
+    <a class="font-body-sm text-on-surface-variant hover:text-on-surface" href="#">Resources</a>
+    <a class="font-body-sm text-on-surface-variant hover:text-on-surface" href="#">Reporting</a>
+  </nav>
+</header>
+
+<aside class="fixed left-0 top-16 h-[calc(100vh-64px)] flex flex-col pt-6 pb-4 w-64 border-r border-outline-variant bg-surface-variant z-40 hidden md:flex">
+  <div class="px-lg mb-lg flex items-center gap-sm">
+    <div class="w-10 h-10 rounded bg-primary-container/20 flex items-center justify-center border border-primary-container/30"><span class="material-symbols-outlined text-primary-container">waterfall_chart</span></div>
+    <div><h2 class="text-on-surface font-h3 truncate w-40">Project Alpha</h2><p class="text-on-surface-variant font-label-sm mt-xs">Phase: Execution</p></div>
+  </div>
+  <div class="px-lg mb-xl">
+    <button class="w-full bg-primary-container text-on-primary-container font-label-md py-sm rounded-lg flex items-center justify-center gap-xs"><span class="material-symbols-outlined" style="font-variation-settings:'FILL' 1;">add</span>New Task</button>
+  </div>
+  <nav class="flex-1 flex flex-col gap-xs px-sm">
+    <a class="flex items-center gap-md px-md py-sm rounded-lg text-on-surface-variant hover:text-on-surface hover:bg-surface-container font-label-sm uppercase" href="#"><span class="material-symbols-outlined">dashboard</span>Dashboard</a>
+    <a class="flex items-center gap-md px-md py-sm rounded-lg text-on-surface-variant hover:text-on-surface hover:bg-surface-container font-label-sm uppercase" href="#"><span class="material-symbols-outlined">format_list_bulleted</span>Task Board</a>
+    <a class="flex items-center gap-md px-md py-sm rounded-lg text-on-surface-variant hover:text-on-surface hover:bg-surface-container font-label-sm uppercase" href="#"><span class="material-symbols-outlined">stacked_line_chart</span>Gantt Chart</a>
+    <a class="flex items-center gap-md px-md py-sm rounded-lg text-on-surface bg-surface-container-high border-l-2 border-primary-container font-label-sm uppercase" href="#"><span class="material-symbols-outlined text-primary-container" style="font-variation-settings:'FILL' 1;">inventory_2</span>Work Packages</a>
+  </nav>
+</aside>
+
+<main class="md:ml-64 pt-16 p-margin min-h-screen flex flex-col gap-xl">
+  <div class="flex flex-col gap-sm">
+    <div class="flex items-center gap-xs text-on-surface-variant font-label-sm uppercase">
+      <span>Projects</span><span class="material-symbols-outlined" style="font-size:16px;">chevron_right</span>
+      <span>Project Alpha</span><span class="material-symbols-outlined" style="font-size:16px;">chevron_right</span>
+      <span class="text-primary-container">Execution Phase</span>
+    </div>
+    <div class="flex justify-between items-end">
+      <div>
+        <h1 class="font-display text-display text-on-surface">Work Packages Evaluation</h1>
+        <p class="font-body-md text-on-surface-variant mt-xs">Monitor critical path components and task dependencies.</p>
+      </div>
+      <div class="flex gap-md">
+        <button class="bg-surface-container border border-outline-variant text-on-surface font-label-md px-lg py-sm rounded-lg flex items-center gap-xs"><span class="material-symbols-outlined" style="font-size:18px;">filter_list</span>Filter</button>
+        <button class="bg-surface-container border border-outline-variant text-on-surface font-label-md px-lg py-sm rounded-lg flex items-center gap-xs"><span class="material-symbols-outlined" style="font-size:18px;">download</span>Export</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- KPIs -->
+  <div class="grid grid-cols-1 md:grid-cols-4 gap-gutter">
+    <div class="bg-surface-container rounded-xl border border-outline-variant p-lg flex flex-col gap-sm"><div class="flex justify-between items-center text-on-surface-variant"><span class="font-label-sm uppercase">Total Work Packages</span><span class="material-symbols-outlined text-primary-container">inventory_2</span></div><div class="font-display text-display text-on-surface">24</div><div class="h-1 w-full bg-surface-container-highest rounded-full overflow-hidden"><div class="h-full bg-primary-container w-[100%] rounded-full"></div></div></div>
+    <div class="bg-surface-container rounded-xl border border-outline-variant p-lg flex flex-col gap-sm"><div class="flex justify-between items-center text-on-surface-variant"><span class="font-label-sm uppercase">Critical Path Tasks</span><span class="material-symbols-outlined text-error">warning</span></div><div class="flex items-baseline gap-xs"><span class="font-display text-display text-on-surface">8</span><span class="font-label-sm text-error bg-error-container/20 px-xs py-[2px] rounded">3 Delayed</span></div><div class="h-1 w-full bg-surface-container-highest rounded-full overflow-hidden"><div class="h-full bg-error w-[37.5%] rounded-full"></div></div></div>
+    <div class="bg-surface-container rounded-xl border border-outline-variant p-lg flex flex-col gap-sm"><div class="flex justify-between items-center text-on-surface-variant"><span class="font-label-sm uppercase">Overall Completion</span><span class="material-symbols-outlined text-primary">donut_large</span></div><div class="flex items-baseline gap-xs"><span class="font-display text-display text-on-surface">68%</span><span class="font-label-sm text-primary-container">+5% this week</span></div><div class="h-1 w-full bg-surface-container-highest rounded-full overflow-hidden"><div class="h-full bg-primary w-[68%] rounded-full"></div></div></div>
+    <div class="bg-surface-container rounded-xl border border-outline-variant p-lg flex flex-col gap-sm"><div class="flex justify-between items-center text-on-surface-variant"><span class="font-label-sm uppercase">Days to Milestone</span><span class="material-symbols-outlined text-tertiary">event</span></div><div class="flex items-baseline gap-xs"><span class="font-display text-display text-on-surface">14</span><span class="font-label-sm text-on-surface-variant">Beta Release</span></div><div class="h-1 w-full bg-surface-container-highest rounded-full overflow-hidden"><div class="h-full bg-tertiary w-[80%] rounded-full"></div></div></div>
+  </div>
+
+  <div class="grid grid-cols-1 lg:grid-cols-12 gap-gutter items-start">
+    <!-- Timeline Matrix -->
+    <div class="lg:col-span-8 xl:col-span-9 bg-surface-container rounded-xl border border-outline-variant overflow-hidden flex flex-col">
+      <div class="px-lg py-md border-b border-outline-variant flex justify-between items-center bg-surface-container-highest/30">
+        <h3 class="font-h3 text-on-surface">Execution Timeline Matrix</h3>
+        <div class="flex gap-sm">
+          <div class="flex items-center gap-xs font-label-sm text-on-surface-variant"><div class="w-3 h-3 rounded-full bg-primary-container"></div>Planned</div>
+          <div class="flex items-center gap-xs font-label-sm text-on-surface-variant"><div class="w-3 h-3 rounded-full bg-primary"></div>Actual</div>
+        </div>
+      </div>
+      <div class="overflow-x-auto">
+        <table class="w-full text-left border-collapse min-w-[800px]">
+          <thead><tr class="bg-surface-container border-b border-outline-variant text-on-surface-variant font-label-sm uppercase"><th class="pl-lg pr-md py-sm w-1/3">Work Package / Task</th><th class="px-md py-sm w-24">Status</th><th class="px-md py-sm w-16">Own</th><th class="px-md py-sm w-16">%</th><th class="pr-lg pl-md py-sm text-center">Timeline (Weeks 1-4)</th></tr></thead>
+          <tbody class="font-body-sm text-on-surface">
+            <tr class="border-b border-outline-variant bg-surface-container-highest/10"><td class="pl-lg pr-md py-md font-label-md flex items-center gap-sm"><span class="material-symbols-outlined text-on-surface-variant" style="font-size:18px;">folder</span>WP-01: Core Architecture</td><td class="px-md py-md"><span class="inline-block px-xs py-[2px] rounded font-label-sm bg-primary-container/20 text-primary-container border border-primary-container/30">In Progress</span></td><td class="px-md py-md"><div class="w-6 h-6 rounded-full bg-tertiary text-on-tertiary flex items-center justify-center font-label-sm">JS</div></td><td class="px-md py-md">80%</td><td class="pr-lg pl-md py-md align-middle"><div class="relative h-4 w-full bg-surface-container-highest rounded-sm overflow-hidden flex items-center"><div class="absolute left-0 h-2 bg-primary-container rounded-sm" style="width:75%;"></div><div class="absolute left-0 h-1 bg-primary bottom-0 rounded-sm" style="width:80%;"></div></div></td></tr>
+            <tr class="border-b border-outline-variant"><td class="pl-[48px] pr-md py-md flex items-center gap-xs"><span class="material-symbols-outlined text-outline" style="font-size:16px;">subdirectory_arrow_right</span>Database Schema Design</td><td class="px-md py-md"><span class="inline-block px-xs py-[2px] rounded font-label-sm bg-outline-variant text-on-surface-variant">Completed</span></td><td class="px-md py-md"><div class="w-6 h-6 rounded-full bg-secondary-container text-on-secondary-container flex items-center justify-center font-label-sm">AK</div></td><td class="px-md py-md">100%</td><td class="pr-lg pl-md py-md"><div class="relative h-4 w-full bg-surface-container-highest rounded-sm overflow-hidden flex items-center"><div class="absolute left-0 h-2 bg-outline rounded-sm" style="width:25%;"></div><div class="absolute left-0 h-1 bg-outline-variant bottom-0 rounded-sm" style="width:25%;"></div></div></td></tr>
+            <tr class="border-b border-outline-variant"><td class="pl-[48px] pr-md py-md flex items-center gap-xs"><span class="material-symbols-outlined text-outline" style="font-size:16px;">subdirectory_arrow_right</span>API Gateway Implementation<span class="material-symbols-outlined text-tertiary-container ml-xs" style="font-size:14px;">link</span></td><td class="px-md py-md"><span class="inline-block px-xs py-[2px] rounded font-label-sm bg-primary-container/20 text-primary-container border border-primary-container/30">In Progress</span></td><td class="px-md py-md"><div class="w-6 h-6 rounded-full bg-tertiary text-on-tertiary flex items-center justify-center font-label-sm">JS</div></td><td class="px-md py-md">60%</td><td class="pr-lg pl-md py-md"><div class="relative h-4 w-full bg-surface-container-highest rounded-sm overflow-hidden flex items-center"><div class="absolute left-[25%] h-2 bg-primary-container rounded-sm" style="width:50%;"></div><div class="absolute left-[25%] h-1 bg-primary bottom-0 rounded-sm" style="width:30%;"></div></div></td></tr>
+            <tr class="border-b border-outline-variant bg-surface-container-highest/10 border-l-2 border-l-error"><td class="pl-lg pr-md py-md font-label-md flex items-center gap-sm"><span class="material-symbols-outlined text-on-surface-variant" style="font-size:18px;">folder</span>WP-02: User Authentication</td><td class="px-md py-md"><span class="inline-block px-xs py-[2px] rounded font-label-sm bg-error-container/20 text-error border border-error/30">Delayed</span></td><td class="px-md py-md"><div class="w-6 h-6 rounded-full bg-primary-container text-on-primary-container flex items-center justify-center font-label-sm">MR</div></td><td class="px-md py-md text-error">45%</td><td class="pr-lg pl-md py-md"><div class="relative h-4 w-full bg-surface-container-highest rounded-sm overflow-hidden flex items-center"><div class="absolute left-[40%] h-2 bg-primary-container rounded-sm" style="width:40%;"></div><div class="absolute left-[40%] h-1 bg-error bottom-0 rounded-sm" style="width:15%;"></div></div></td></tr>
+            <tr class="border-b border-outline-variant"><td class="pl-[48px] pr-md py-md flex items-center gap-xs"><span class="material-symbols-outlined text-outline" style="font-size:16px;">subdirectory_arrow_right</span>OAuth Integration<span class="material-symbols-outlined text-error ml-xs" style="font-size:14px;">block</span></td><td class="px-md py-md"><span class="inline-block px-xs py-[2px] rounded font-label-sm bg-error-container/20 text-error border border-error/30">Blocked</span></td><td class="px-md py-md"><div class="w-6 h-6 rounded-full bg-primary-container text-on-primary-container flex items-center justify-center font-label-sm">MR</div></td><td class="px-md py-md">10%</td><td class="pr-lg pl-md py-md"><div class="relative h-4 w-full bg-surface-container-highest rounded-sm overflow-hidden flex items-center"><div class="absolute left-[50%] h-2 bg-outline rounded-sm" style="width:20%;"></div><div class="absolute left-[50%] h-1 bg-error bottom-0 rounded-sm" style="width:5%;"></div></div></td></tr>
+          </tbody>
+        </table>
+      </div>
+    </div>
+
+    <!-- Right sidebar: Insight Engine + Task Detail -->
+    <div class="lg:col-span-4 xl:col-span-3 flex flex-col gap-gutter">
+      <div class="bg-surface-container rounded-xl border border-outline-variant p-lg relative overflow-hidden">
+        <div class="absolute top-0 right-0 w-32 h-32 bg-primary-container/10 rounded-full blur-2xl -mr-16 -mt-16"></div>
+        <div class="flex items-center gap-sm mb-md"><span class="material-symbols-outlined text-primary-container" style="font-variation-settings:'FILL' 1;">auto_awesome</span><h3 class="font-h3 text-on-surface">Insight Engine</h3></div>
+        <div class="bg-surface-container-high rounded border border-outline-variant p-md mb-md">
+          <p class="font-body-sm text-on-surface mb-xs"><strong class="text-error">Critical Path Risk Detected:</strong> WP-02 is currently delayed by 4 days, threatening the Beta Release milestone.</p>
+          <p class="font-body-sm text-on-surface-variant">Suggestion: Reallocate backend resource 'AK' from WP-01 (completed) to assist 'MR' with OAuth Integration.</p>
+        </div>
+        <button class="w-full bg-surface-container-highest border border-outline-variant text-on-surface font-label-sm py-sm rounded">Review Reallocation Plan</button>
+      </div>
+
+      <div class="bg-surface-container rounded-xl border border-outline-variant p-lg flex flex-col gap-md flex-1">
+        <div class="flex justify-between items-start">
+          <div><span class="font-label-sm text-on-surface-variant uppercase">Task Details</span><h3 class="font-h3 text-on-surface mt-xs">API Gateway Implementation</h3></div>
+          <button class="text-on-surface-variant hover:text-primary-container"><span class="material-symbols-outlined">edit</span></button>
+        </div>
+        <div class="flex flex-wrap gap-sm">
+          <span class="inline-block px-xs py-[2px] rounded font-label-sm bg-primary-container/20 text-primary-container border border-primary-container/30">In Progress</span>
+          <span class="inline-block px-xs py-[2px] rounded font-label-sm bg-surface-container-high text-on-surface border border-outline-variant flex items-center gap-[2px]"><span class="material-symbols-outlined" style="font-size:14px;">flag</span>High Priority</span>
+        </div>
+        <div class="grid grid-cols-2 gap-sm py-md border-y border-outline-variant">
+          <div><span class="font-label-sm text-on-surface-variant block mb-[2px]">Start Date</span><span class="font-body-sm text-on-surface">Oct 12, 2023</span></div>
+          <div><span class="font-label-sm text-on-surface-variant block mb-[2px]">End Date</span><span class="font-body-sm text-on-surface">Oct 26, 2023</span></div>
+        </div>
+        <div>
+          <span class="font-label-sm text-on-surface-variant block mb-xs">Description</span>
+          <p class="font-body-sm text-on-surface-variant line-clamp-3">Implement the main routing tier using GraphQL federation. Ensure logging and rate limiting middleware are integrated per spec documented in Confluence.</p>
+        </div>
+        <div class="mt-auto pt-md">
+          <span class="font-label-sm text-on-surface-variant block mb-xs">Dependencies</span>
+          <div class="flex items-center gap-sm bg-surface-container-high p-sm rounded border border-outline-variant"><span class="material-symbols-outlined text-outline" style="font-size:18px;">account_tree</span><span class="font-body-sm text-on-surface">Blocks: <a class="text-primary-container hover:underline" href="#">OAuth Integration</a></span></div>
+        </div>
+      </div>
+    </div>
+  </div>
+</main>
+</body></html>
