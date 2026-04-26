@@ -379,8 +379,29 @@ Read paths use Supabase client directly with RLS — list and detail bypass any 
 
 **Verification:** `npx tsc --noEmit` clean, `npm test` 27/27 pass, `npm run build` succeeds (14 routes).
 
-### Backend (pending)
-_To be added by /backend_
+### Backend (done)
+
+**Migration applied to `iqerihohwabyjzkpcujq`:** `supabase/migrations/20260425150000_proj2_projects_lifecycle.sql`
+- 2 new tables (`projects`, `project_lifecycle_events`) with RLS enabled, 6 indexes
+- 5 RLS policies (4 on projects, 1 on lifecycle events; events INSERT/UPDATE/DELETE denied → only the SECURITY DEFINER function writes)
+- Cross-tenant guard trigger `enforce_project_responsible_user_in_tenant` (BEFORE INSERT/UPDATE)
+- `transition_project_status(p_project_id, p_to_status, p_comment)` — atomic state-machine + audit; returns `jsonb`; `EXECUTE` granted to `authenticated`
+- moddatetime trigger on `projects.updated_at`
+- anon-SELECT revoked on both new tables (consistent with PROJ-1 hardening)
+- Advisors: 0 new warnings introduced (the one remaining advisor warning is about a global Auth setting unrelated to PROJ-2)
+
+**API routes:** `src/app/api/projects/`
+- `route.ts` — POST create, GET list (cursor pagination, filters, RLS-scoped)
+- `[id]/route.ts` — GET detail (project + last 20 events), PATCH update (lifecycle_status excluded), DELETE (soft default; `?hard=true` admin-only via service-role)
+- `[id]/transition/route.ts` — POST lifecycle change via RPC, error-code mapping (23514→422, 42501→403, 02000→404, 22023→422)
+- Shared `route-helpers.ts` reused for auth + admin checks + error envelope
+
+**FK constraint names verified to match frontend named-FK shorthand:**
+- `projects_responsible_user_id_fkey`, `projects_created_by_fkey`, `project_lifecycle_events_changed_by_fkey`
+
+**Tests:** 49 vitest cases in 3 colocated files (project list/create + project detail/update/delete + transition); total project test count 76 (39 PROJ-1 + 37 PROJ-2).
+
+**Verification:** `npx tsc --noEmit` clean, `npm test` 76/76, `npm run build` 17 routes.
 
 ## QA Test Results
 _To be added by /qa_
