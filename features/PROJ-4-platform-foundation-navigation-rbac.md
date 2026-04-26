@@ -1,6 +1,6 @@
 # PROJ-4: Platform Foundation — Navigation, Project Roles, RBAC Enforcement
 
-## Status: Architected
+## Status: In Progress
 **Created:** 2026-04-25
 **Last Updated:** 2026-04-26
 
