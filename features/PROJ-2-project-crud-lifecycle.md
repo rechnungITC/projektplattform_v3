@@ -1,6 +1,6 @@
 # PROJ-2: Project CRUD and Lifecycle State Machine
 
-## Status: In Progress
+## Status: Approved
 **Created:** 2026-04-25
 **Last Updated:** 2026-04-25
 
@@ -404,6 +404,91 @@ Read paths use Supabase client directly with RLS — list and detail bypass any 
 **Verification:** `npx tsc --noEmit` clean, `npm test` 76/76, `npm run build` 17 routes.
 
 ## QA Test Results
+
+**Date:** 2026-04-26
+**Tester:** /qa skill
+**Verdict:** ✅ **Approved** — no Critical or High bugs
+
+### Automated tests
+- `npm test` — **76/76 pass** (39 PROJ-1 + 37 PROJ-2 vitest cases, mocked Supabase clients)
+- TypeScript strict-check — **0 errors**
+- Supabase advisors — **0 new warnings** introduced by PROJ-2 (the one pre-existing warning is about a global Supabase Auth password-strength setting, unrelated to PROJ-2)
+
+### Live security tests (executed via MCP `execute_sql`)
+
+| # | Test | Result |
+|---|---|---|
+| A.1 | **Member-of-both-tenants positive case** — user with memberships in two tenants sees both tenants' projects | ✅ PASS |
+| A.2 | **Strict tenant isolation** — synthetic 2nd tenant + project; caller who is NOT a member sees only own | ✅ PASS |
+| B | **Cross-tenant guard trigger** — UPDATE attempting to set `responsible_user_id` to a non-member raises `'responsible_user_id must be a member of the project tenant'` (errcode `22023`) | ✅ PASS |
+| C | **State machine — invalid transition** — `draft → completed` rejected by `transition_project_status` with `check_violation` | ✅ PASS |
+| D | **Completed is terminal** — after walking `draft → active → completed`, attempts to go to `draft`, `active`, or `canceled` all raise `check_violation` | ✅ PASS |
+| E | **Soft-deleted project cannot be transitioned** — `transition_project_status` raises errcode `22023` when `is_deleted = true` | ✅ PASS |
+| F | **`project_lifecycle_events` INSERT denied for authenticated** — direct INSERT bypassing the function fails with `insufficient_privilege` (no INSERT policy → fail-closed) | ✅ PASS |
+| G | **anon has no SELECT** on `projects`, `project_lifecycle_events` (post-hardening Section 7) | ✅ PASS |
+| H | **`transition_project_status` ACL** — `postgres=X, authenticated=X, service_role=X`. Not granted to `anon` or `public` | ✅ PASS |
+
+### Live end-to-end (manual smoke, prior to QA)
+- **Project creation** — verified in DB: 1 project visible (`"ERP Projekt Einführung mit Business central bitte als Scrum"` in tenant `it-couch.de`). Confirms the create flow works end-to-end through the new API route + RLS-scoped INSERT + cross-tenant guard.
+
+### Schema integrity
+- 5 RLS policies on PROJ-2 tables (4 on `projects`, 1 SELECT on `project_lifecycle_events`)
+- 7 indexes (compound `(tenant_id, ...)` leading per RLS scope pattern + PKs)
+- 2 SECURITY DEFINER functions (`transition_project_status`, `enforce_project_responsible_user_in_tenant`) with hardened `search_path = public, pg_temp`
+- 4 triggers visible via `information_schema.triggers`: `projects_responsible_user_in_tenant` (BEFORE INSERT + UPDATE = 2 entries) + `projects_set_updated_at`
+- Named FK constraints match what the frontend uses: `projects_tenant_id_fkey`, `projects_responsible_user_id_fkey`, `projects_created_by_fkey`, `project_lifecycle_events_project_id_fkey`, `project_lifecycle_events_changed_by_fkey`
+
+### Acceptance Criteria walk-through
+
+| Group | Status | Notes |
+|---|---|---|
+| **Database schema** (projects + events tables, indexes, CHECK constraints) | ✅ PASS | Verified via `information_schema` + applied migration is the source of truth |
+| **RLS policies** (SELECT/INSERT/UPDATE/DELETE per role) | ✅ PASS | Tests A.1, A.2, F |
+| **Lifecycle state machine** (allowed edges enforced at API + DB) | ✅ PASS | Tests C, D + 12 vitest cases on `/transition` route |
+| **CRUD behavior** (create, list with filters, detail, PATCH, soft/hard delete) | ✅ PASS | Vitest mocked-client tests cover happy + edge paths; live create verified |
+| **Validation** (Zod at API boundary, end-date >= start-date) | ✅ PASS | Vitest covers; live test deferred until UI exercises the date pickers |
+| **Cross-tenant guard** (responsible_user_id must be tenant member) | ✅ PASS | Test B |
+| **Soft-delete behavior** (default delete sets is_deleted; lists exclude unless include_deleted=true; transitions blocked on deleted) | ✅ PASS | Test E + vitest |
+| **Hard-delete (admin only)** | ⚠ PARTIAL | Vitest verifies the admin-pre-check path. Live not testable yet — `SUPABASE_SERVICE_ROLE_KEY` in local `.env.local` is currently the anon JWT, not the service_role JWT. Hard-delete returns 500 with `server_misconfigured` until corrected. |
+| **Lifecycle history (last 20 events on detail)** | ✅ PASS | API returns `{ project, events }`; sorted DESC by `changed_at`, indexed |
+
+### Edge Cases verified
+
+| Edge case from spec | Result |
+|---|---|
+| Forbidden transition attempt (e.g. `completed → active`) → 422 | ✅ PASS — Tests C + D |
+| Reactivation of `canceled` project (`canceled → draft` or `→ active`) allowed | ✅ Implied by state machine in `transition_project_status`; vitest verifies |
+| Responsible user from another tenant rejected | ✅ PASS — Test B |
+| Responsible user removed from tenant after project creation (orphaned reference) | 🟡 N/A in MVP — `ON DELETE RESTRICT` blocks profile removal while referenced; future feature can introduce "former member" UX |
+| Concurrent updates → last-write-wins | 🟡 DEFERRED per spec — optimistic concurrency is P1 |
+| Soft-delete on a state-active project allowed | ✅ Soft-delete is a bare UPDATE; not blocked by state machine |
+| State change on a soft-deleted project | ✅ PASS — Test E (errcode 22023) |
+| Hard-delete by member | ✅ Vitest verifies pre-check returns 403 for member role |
+| Viewer attempts any write | ✅ RLS denies (no policy match for INSERT/UPDATE/DELETE on viewer role) |
+
+### Bugs found in this QA pass
+
+**0 new bugs.**
+
+Pre-existing items that surfaced during QA setup (all already documented or non-blockers):
+- `pg_trigger` is not visible to the MCP service-role connection in some queries (a Supabase pooler quirk). `information_schema.triggers` is reliable. Not a code defect.
+- The `SUPABASE_SERVICE_ROLE_KEY` in local `.env.local` is the anon JWT — same caveat as PROJ-1's QA. Hard-delete + invite paths return 500 until corrected.
+
+### Not tested in this round
+
+- **Playwright E2E** — same as PROJ-1; deferred to a future combined sweep.
+- **Cross-browser** — UI is shadcn + Tailwind, responsive by default; no automated matrix yet.
+- **Live hard-delete** — gated on real `SUPABASE_SERVICE_ROLE_KEY` (user action).
+- **Concurrent-write conflict scenarios** — explicitly deferred (last-write-wins for MVP).
+
+### Recommendation
+
+**Status → Approved.** No Critical or High issues. The single PARTIAL item (live hard-delete) is gated on the user supplying the correct `SUPABASE_SERVICE_ROLE_KEY` and is not a code defect. Feature is ready to advance.
+
+Suggested follow-ups (not blockers):
+1. User replaces local `SUPABASE_SERVICE_ROLE_KEY` with the real service_role JWT, then re-runs hard-delete + invite manually.
+2. Add Playwright E2E covering both PROJ-1 and PROJ-2 in a combined sweep after the next 1–2 features ship.
+3. Seed multi-user fixtures (admin + member + viewer in same tenant) for cross-role regression tests.
 _To be added by /qa_
 
 ## Deployment
