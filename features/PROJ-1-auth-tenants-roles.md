@@ -342,6 +342,43 @@ Frontend done; build green, TypeScript clean.
 - `NEXT_PUBLIC_SUPABASE_URL` and `NEXT_PUBLIC_SUPABASE_ANON_KEY` must be in `.env.local` to connect.
 - Backend Supabase migrations + RLS policies + Edge Function for tenant routing are next.
 
+## Implementation Notes (Backend)
+
+Backend implementation complete and applied to Supabase project `iqerihohwabyjzkpcujq`.
+
+**Migration applied:** `supabase/migrations/20260425120000_proj1_auth_tenants_roles.sql`
+- 3 tables (`profiles`, `tenants`, `tenant_memberships`) with RLS enabled
+- 5 functions (`is_tenant_member`, `has_tenant_role`, `is_tenant_admin`, `enforce_admin_invariant`, `handle_new_user`) — all `SECURITY DEFINER` with hardened `search_path`
+- 9 RLS policies (3 profiles, 2 tenants, 4 tenant_memberships)
+- 4 triggers (last-admin BEFORE UPDATE/DELETE, plus updated_at touchups for profiles/tenants)
+- Partial unique index on `tenants(domain) WHERE domain IS NOT NULL`
+- `handle_new_user` is granted **only** to `service_role` (bypasses RLS by design; called only via Edge Function)
+
+**Edge Function deployed:** `setup-tenant-on-signup` (v1, ACTIVE, verify_jwt=true)
+- Authenticates the caller via JWT, calls `handle_new_user` RPC with service-role key
+- Read its env vars `SUPABASE_URL` + `SUPABASE_SERVICE_ROLE_KEY` from Supabase auto-injection (no manual config needed for the function itself)
+
+**Frontend update:** `src/app/onboarding/onboarding-client.tsx` now calls the Edge Function via `supabase.functions.invoke('setup-tenant-on-signup')` after 2 empty membership polls (instead of polling indefinitely).
+
+**Custom Next.js API routes:**
+- `POST /api/tenants/[id]/invite` — admin only, uses service-role for `auth.admin.inviteUserByEmail` with metadata
+- `PATCH /api/tenants/[id]` — admin only, normalizes `domain` to lowercase
+- `PATCH /api/tenants/[id]/members/[userId]` — admin only, surfaces last-admin trigger as 422
+- `DELETE /api/tenants/[id]/members/[userId]` — admin only, same trigger behavior
+- Shared helper at `src/app/api/_lib/route-helpers.ts` (auth + admin checks, error envelope)
+
+**Tests:** 27 vitest tests passing across 3 route test files (mocked Supabase client; covers happy/validation/auth/authz paths).
+
+**⚠️ Action required to test full flow:**
+1. **Service-role key in `.env.local`:** Get from Supabase Dashboard → Project Settings → API → `service_role` (the JWT-format one), and set `SUPABASE_SERVICE_ROLE_KEY=...`. Without it, `/api/tenants/*` routes throw at request time.
+2. **Vercel/production deploy:** the same env var must be set as a Vercel secret. **Never** commit it.
+
+**Deviations from design (accepted):**
+- `tenants.created_by` uses `ON DELETE SET NULL` (founder departure shouldn't delete the tenant).
+- `profiles.display_name` is NOT NULL with fallback to email's local-part.
+- `tenants.updated_at` column added (the spec implied it but didn't list it).
+- Domain normalization (lowercase + trim) on PATCH `/api/tenants/[id]`.
+
 ## QA Test Results
 _To be added by /qa_
 

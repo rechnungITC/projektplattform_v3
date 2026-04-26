@@ -31,6 +31,9 @@ import type { Tenant, TenantMembership } from "@/types/auth"
 
 const POLL_INTERVAL_MS = 1000
 const POLL_TIMEOUT_MS = 10_000
+// After this many empty polls we proactively invoke the Edge Function so
+// the user isn't stuck waiting for a hook that may have missed.
+const POLLS_BEFORE_EDGE_FUNCTION = 2
 
 const tenantNameSchema = z.object({
   name: z
@@ -59,17 +62,43 @@ function emailDomain(email: string): string {
 
 export function OnboardingClient({ userId, userEmail }: OnboardingClientProps) {
   const [phase, setPhase] = React.useState<Phase>({ kind: "polling" })
+  const [retryToken, setRetryToken] = React.useState(0)
 
   // Poll tenant_memberships up to POLL_TIMEOUT_MS for the row created by the
-  // signup auth hook. Once present, decide whether to show the rename form
-  // or send the user straight to the dashboard.
+  // signup Edge Function. After POLLS_BEFORE_EDGE_FUNCTION empty polls, we
+  // proactively invoke the function ourselves (the architectural decision
+  // for this MVP is to skip an auth.users webhook in favor of frontend-
+  // initiated setup). Once a membership row exists, we decide whether to
+  // show the rename form or send the user straight to the dashboard.
   React.useEffect(() => {
     let cancelled = false
     const supabase = createClient()
     const startedAt = Date.now()
+    let pollCount = 0
+    let edgeFunctionInvoked = false
+
+    const invokeEdgeFunction = async () => {
+      edgeFunctionInvoked = true
+      const { error } = await supabase.functions.invoke(
+        "setup-tenant-on-signup",
+        { body: {} }
+      )
+      if (error && !cancelled) {
+        setPhase({
+          kind: "error",
+          message:
+            error.message ??
+            "Workspace setup failed. Please retry or contact support.",
+        })
+        toast.error("Could not set up workspace", {
+          description: error.message,
+        })
+      }
+    }
 
     const tick = async () => {
       if (cancelled) return
+      pollCount += 1
 
       const { data, error } = await supabase
         .from("tenant_memberships")
@@ -112,11 +141,20 @@ export function OnboardingClient({ userId, userEmail }: OnboardingClientProps) {
         return
       }
 
+      // No membership yet. After a couple of empty polls, kick off the
+      // Edge Function which will create the profile + tenant + membership.
+      if (
+        !edgeFunctionInvoked &&
+        pollCount >= POLLS_BEFORE_EDGE_FUNCTION
+      ) {
+        void invokeEdgeFunction()
+      }
+
       if (Date.now() - startedAt > POLL_TIMEOUT_MS) {
         setPhase({
           kind: "error",
           message:
-            "We couldn't set up your workspace automatically. Please reload, or contact support if the problem persists.",
+            "We couldn't set up your workspace automatically. Please retry, or contact support if the problem persists.",
         })
         return
       }
@@ -129,14 +167,19 @@ export function OnboardingClient({ userId, userEmail }: OnboardingClientProps) {
     return () => {
       cancelled = true
     }
-  }, [userId, userEmail])
+  }, [userId, userEmail, retryToken])
+
+  const retry = React.useCallback(() => {
+    setPhase({ kind: "polling" })
+    setRetryToken((n) => n + 1)
+  }, [])
 
   if (phase.kind === "polling" || phase.kind === "redirecting") {
     return <PollingState />
   }
 
   if (phase.kind === "error") {
-    return <ErrorState message={phase.message} />
+    return <ErrorState message={phase.message} onRetry={retry} />
   }
 
   return <NameTenantForm tenant={phase.tenant} />
@@ -162,7 +205,13 @@ function PollingState() {
   )
 }
 
-function ErrorState({ message }: { message: string }) {
+function ErrorState({
+  message,
+  onRetry,
+}: {
+  message: string
+  onRetry: () => void
+}) {
   return (
     <div className="flex min-h-screen items-center justify-center bg-muted/30 p-4">
       <Card className="w-full max-w-md">
@@ -174,11 +223,7 @@ function ErrorState({ message }: { message: string }) {
           <Alert variant="destructive" role="alert">
             <AlertDescription>{message}</AlertDescription>
           </Alert>
-          <Button
-            type="button"
-            onClick={() => window.location.reload()}
-            className="w-full"
-          >
+          <Button type="button" onClick={onRetry} className="w-full">
             Try again
           </Button>
         </CardContent>
