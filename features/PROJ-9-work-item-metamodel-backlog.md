@@ -1,6 +1,6 @@
 # PROJ-9: Work Item Metamodel — Backlog Structure (Epic / Story / Task / Work Package / Bug)
 
-## Status: Planned
+## Status: Architected
 **Created:** 2026-04-25
 **Last Updated:** 2026-04-25
 
@@ -87,7 +87,254 @@ Introduces the unified planning-object metamodel: one `work_items` table with a 
 <!-- Sections below are added by subsequent skills -->
 
 ## Tech Design (Solution Architect)
-_To be added by /architecture_
+
+### A) Kurzantwort
+
+**Eine `work_items`-Tabelle mit STI** (`kind`-Diskriminator) trägt Epic/Feature/Story/Task/Subtask/Bug/Work-Package. Phasen + Meilensteine bleiben in eigenen Tabellen (kommen mit PROJ-19) — sie haben zeitspezifische Felder, die das Metamodell nicht braucht. **Methodenabhängige Sichtbarkeit + Parent-Child-Regeln** leben als TypeScript-Code-Registry (`src/lib/work-items/metamodel.ts`); CHECK-Constraints + ein BEFORE-INSERT/UPDATE-Trigger validieren defense-in-depth in der DB. **Sprints + Sprint-Assignments + Dependencies** kommen in derselben Migration (sie sind tight-coupled an work_items; PROJ-7 braucht sie sofort).
+
+### B) Component Structure (UI)
+
+```
+/projects/[id]/backlog              ← Backlog tab (PROJ-7 mounts; PROJ-9 ships content)
+├── BacklogToolbar
+│   ├── KindFilter (Multiselect: epic/feature/story/task/bug/work_package)
+│   ├── StatusFilter
+│   ├── ResponsibleFilter
+│   ├── ViewToggle: List | Board | Tree
+│   └── NewWorkItemButton (kind picker — only allowed kinds for the project's method)
+├── BacklogList (Table: title, kind badge, status badge, priority, responsible, parent breadcrumb)
+├── BacklogBoard (Kanban: 5 columns by status; arrow-button move per ADR backlog-board-view)
+├── BacklogTree (parent-child hierarchy view)
+└── WorkItemDetailDrawer (right-side Sheet: full edit form, parent chain, AI-proposal source if present)
+
+Dialogs:
+├── NewWorkItemDialog (kind, parent, title, description, status, priority, responsible)
+├── EditWorkItemDialog
+├── ChangeParentDialog (validates allowed-parent-kinds client-side; server is source of truth)
+├── ChangeStatusDialog (board arrow-button uses this)
+├── DeleteWorkItemDialog (cascade NULL on children)
+└── ChangeKindDialog (admin-only, advanced — preserves history)
+```
+
+### C) Data Model
+
+#### `work_items` — STI table per V2 ADR `work-item-metamodel.md` (extended for V3)
+
+| Column | Type | Notes |
+|---|---|---|
+| `id` | UUID PK | |
+| `tenant_id` | UUID NOT NULL | FK tenants ON DELETE CASCADE — denormalized for RLS perf |
+| `project_id` | UUID NOT NULL | FK projects ON DELETE CASCADE |
+| `kind` | TEXT NOT NULL | CHECK in `('epic','feature','story','task','subtask','bug','work_package')` |
+| `parent_id` | UUID | FK work_items ON DELETE SET NULL (children remain visible as orphans) |
+| `phase_id` | UUID | FK phases ON DELETE SET NULL (PROJ-19 builds the table) |
+| `milestone_id` | UUID | FK milestones ON DELETE SET NULL (PROJ-19) |
+| `sprint_id` | UUID | FK sprints ON DELETE SET NULL |
+| `title` | TEXT NOT NULL | length ≤ 255 |
+| `description` | TEXT | optional, ≤ 10000 chars |
+| `status` | TEXT NOT NULL DEFAULT `'todo'` | CHECK in `('todo','in_progress','blocked','done','cancelled')` |
+| `priority` | TEXT NOT NULL DEFAULT `'medium'` | CHECK in `('low','medium','high','critical')` |
+| `responsible_user_id` | UUID | FK profiles ON DELETE RESTRICT (preserve audit) |
+| `attributes` | JSONB DEFAULT `'{}'::jsonb` | Method-specific fields (story_points, slack_days, acceptance_criteria, …) |
+| `position` | DOUBLE PRECISION | for ordering within parent or sprint (fractional indexing — no rebalance on insert) |
+| `created_from_proposal_id` | UUID nullable | FK ai_proposals (PROJ-12 ADR) — single AI-link column per V3-ai-proposal-architecture |
+| `created_by` | UUID NOT NULL | FK profiles ON DELETE RESTRICT |
+| `created_at`, `updated_at` | TIMESTAMPTZ | audit |
+| `is_deleted` | BOOLEAN DEFAULT false | soft-delete |
+
+**Indexes:**
+- `(project_id, kind, status)` — Backlog filter hot path
+- `(project_id, parent_id)` — Tree view
+- `(project_id, sprint_id)` — Sprint board
+- `(parent_id)` — child lookup
+- `(responsible_user_id)` — "my items" queries
+- Partial `(project_id) WHERE kind = 'bug'` — cross-method bug filter (per spec)
+- Partial `(project_id) WHERE is_deleted = false` — default list scope
+
+#### `sprints` — Scrum-only entity, tight-coupled to work_items
+
+| Column | Type | Notes |
+|---|---|---|
+| `id` | UUID PK | |
+| `tenant_id` | UUID NOT NULL FK | |
+| `project_id` | UUID NOT NULL FK | |
+| `name` | TEXT NOT NULL | e.g. "Sprint 7" |
+| `goal` | TEXT | optional sprint goal |
+| `start_date`, `end_date` | DATE | start ≤ end |
+| `state` | TEXT NOT NULL DEFAULT `'planned'` | CHECK in `('planned','active','closed')` |
+| `created_by`, `created_at`, `updated_at` | audit | |
+
+Indexes: `(project_id, state)`, `(project_id, start_date DESC)`.
+
+**State-machine** (analogous to PROJ-2's `transition_project_status` but lighter):
+- `planned → active` (only one active sprint per project at a time)
+- `active → closed`
+- `closed → ` (terminal)
+- DB function `set_sprint_state(p_sprint_id, p_to_state)` enforces single-active rule.
+
+#### `dependencies` — Predecessor/Successor for Waterfall + PMI
+
+| Column | Type | Notes |
+|---|---|---|
+| `id` | UUID PK | |
+| `tenant_id` | UUID NOT NULL FK | |
+| `project_id` | UUID NOT NULL FK | (denormalized for RLS) |
+| `predecessor_id` | UUID NOT NULL FK work_items ON DELETE CASCADE | |
+| `successor_id` | UUID NOT NULL FK work_items ON DELETE CASCADE | |
+| `type` | TEXT NOT NULL | CHECK in `('FS','SS','FF','SF')` (Finish-to-Start etc.) |
+| `lag_days` | INTEGER DEFAULT 0 | |
+| `created_at`, `created_by` | audit | |
+| UNIQUE `(predecessor_id, successor_id, type)` | | one edge per type pair |
+
+**Cycle prevention**: BEFORE INSERT trigger that does a recursive CTE check; raises `check_violation` if adding the edge would create a cycle.
+
+**Same-project guard**: BEFORE INSERT trigger ensures predecessor + successor belong to the same project.
+
+### D) Method Visibility & Parent-Child Registries (TypeScript)
+
+Per V2 ADR `method-object-mapping.md`, sichtbarkeit und parent-rules sind code-level constants. V3 platziert sie in `src/lib/work-items/metamodel.ts`:
+
+```
+WORK_ITEM_METHOD_VISIBILITY: Record<WorkItemKind, ProjectMethod[]>
+ALLOWED_PARENT_KINDS:        Record<WorkItemKind, (WorkItemKind | null)[]>
+```
+
+| Kind | Methods | Allowed parents |
+|---|---|---|
+| `epic` | scrum, safe | `[null]` (top-level) |
+| `feature` | safe | `['epic', null]` |
+| `story` | scrum, kanban, safe | `['epic', 'feature', null]` |
+| `task` | scrum, kanban, safe, waterfall, pmi | `['story', null]` |
+| `subtask` | scrum, safe | `['task']` (required parent) |
+| `bug` | **all** | any (or `null`) — cross-method per spec |
+| `work_package` | waterfall, pmi | `[null]` (uses `phase_id`/`milestone_id` instead) |
+
+**When `projects.project_method` is `general`**: all kinds allowed (creator can structure freely before committing to a method).
+
+### E) Parent-Child Validation (Defense in Depth)
+
+Three layers:
+
+1. **TypeScript / Zod** — frontend & API route validate against `ALLOWED_PARENT_KINDS` for nice error messages.
+2. **DB function `validate_work_item_parent(p_kind text, p_parent_id uuid)`** — SECURITY DEFINER, called by the trigger; reads parent's kind and checks against the SAME constants (replicated in SQL). Returns `void` or raises `check_violation`.
+3. **DB trigger BEFORE INSERT/UPDATE** of `parent_id` or `kind` — invokes (2). Catches any path that bypasses the API.
+
+**Why duplicate the rules in TS + SQL**: the TS list is consumed by the UI (filtering kind dropdowns); the SQL list is the runtime guard. Both source from a single conceptual table — when adding a new kind, both files change in the same migration. Acceptable trade-off for the defense-in-depth.
+
+### F) Cycle Prevention (Parent Chain)
+
+When `parent_id` is set, a BEFORE INSERT/UPDATE trigger walks the prospective parent chain via recursive CTE and rejects if `NEW.id` would appear as an ancestor:
+
+```
+WITH RECURSIVE chain AS (
+  SELECT parent_id FROM work_items WHERE id = NEW.parent_id
+  UNION ALL
+  SELECT w.parent_id FROM work_items w JOIN chain c ON w.id = c.parent_id
+)
+SELECT 1 FROM chain WHERE parent_id = NEW.id  -- if found → cycle
+```
+
+Same logic for `dependencies` (predecessor/successor cycles).
+
+### G) RLS Strategy (uses PROJ-4 helpers)
+
+| Table | SELECT | INSERT | UPDATE | DELETE |
+|---|---|---|---|---|
+| `work_items` | `is_tenant_member(tenant_id) AND is_project_member(project_id)` | `has_project_role(project_id, 'lead') OR has_project_role(project_id, 'editor')` | same as INSERT | `is_project_lead(project_id)` (hard delete) |
+| `sprints` | `is_project_member(project_id)` | `has_project_role(project_id, 'lead') OR has_project_role(project_id, 'editor')` | same | `is_project_lead(project_id)` |
+| `dependencies` | `is_project_member(project_id)` | same as work_items INSERT | same | `is_project_lead(project_id)` |
+
+**Soft-delete (`is_deleted = true`)** falls under UPDATE → editors and leads can soft-delete; hard delete is admin/lead only via `?hard=true` API param (mirrors PROJ-2 pattern).
+
+**anon SELECT** revoked on all three new tables (consistent with PROJ-1 and PROJ-2 hardening).
+
+### H) AI Proposal Integration
+
+Per ADR `v3-ai-proposal-architecture.md`:
+- New domain rows that originated from AI carry `created_from_proposal_id UUID nullable FK ai_proposals`. Single column, opt-in.
+- When the user accepts an AI proposal targeting `target_table='work_items'`, the API:
+  1. Reads `proposed_payload` from `ai_proposals`
+  2. Inserts into `work_items` with `created_from_proposal_id = <proposal id>`
+  3. Updates `ai_proposals.review_state = 'accepted'`, sets `reviewed_by`, `reviewed_at`
+  4. Optionally creates `work_item_stakeholders` rows for accepted suggestions (PROJ-7 architecture)
+
+**Method-aware AI**: The AI proposal Edge Function (PROJ-12) reads `projects.project_method` and only proposes kinds in `WORK_ITEM_METHOD_VISIBILITY[method]`. Bugs are always allowed.
+
+### I) API Surface (Next.js App Router)
+
+```
+POST   /api/projects/[id]/work-items                     create
+GET    /api/projects/[id]/work-items                     list (filtered, paginated)
+GET    /api/projects/[id]/work-items/[wid]               detail
+PATCH  /api/projects/[id]/work-items/[wid]               update master data (NOT status; NOT parent_id)
+PATCH  /api/projects/[id]/work-items/[wid]/status        change status (board arrow-button)
+PATCH  /api/projects/[id]/work-items/[wid]/parent        change parent (validates allowed-parent-kinds)
+PATCH  /api/projects/[id]/work-items/[wid]/sprint        assign / unassign sprint
+DELETE /api/projects/[id]/work-items/[wid]               soft delete
+DELETE /api/projects/[id]/work-items/[wid]?hard=true     hard delete (lead only)
+
+POST   /api/projects/[id]/sprints                        create sprint
+PATCH  /api/projects/[id]/sprints/[sid]                  update master data
+POST   /api/projects/[id]/sprints/[sid]/state            transition state (planned→active→closed)
+
+POST   /api/projects/[id]/dependencies                   create dependency
+DELETE /api/projects/[id]/dependencies/[did]             remove dependency
+```
+
+All routes:
+- Authn via SSR client; 401 if no session
+- Authz via PROJ-4 RLS + clean 403 from API pre-check (`requireProjectAccess(projectId, 'edit_master')` from PROJ-4 M2 follow-up)
+- Zod validation; CHECK violations from DB → 422 with field-level message
+
+### J) Migration Plan
+
+Single migration file `supabase/migrations/20260428100000_proj9_work_items_sprints_dependencies.sql`:
+
+1. Sprints table + indexes (must come BEFORE work_items because of FK)
+2. Phases + milestones tables (if PROJ-19 not yet applied — coordinate with PROJ-19 architecture)
+3. `work_items` table + indexes
+4. Dependencies table + indexes
+5. Validation functions: `validate_work_item_parent`, `prevent_work_item_cycle`, `prevent_dependency_cycle`, `validate_dependency_same_project`
+6. Triggers wiring (4 triggers on work_items, 2 on dependencies, 1 on sprints)
+7. RLS enable + 12 policies (4 tables × ~3 policies each)
+8. anon hardening
+9. `set_sprint_state` SECURITY DEFINER function + grant
+
+**Coordination with PROJ-19** (Phasen + Milestones): if PROJ-19 ships before PROJ-9, the `phases` + `milestones` tables already exist and we just FK to them. If PROJ-9 ships first, PROJ-9 includes them as part of its migration (with the schema PROJ-19 needs). **Recommendation**: PROJ-19 ships first OR they share a migration. Either way, the FK is to existing tables.
+
+### K) Tech Decisions Justified
+
+| Decision | Why |
+|---|---|
+| Single `work_items` STI table (vs separate tables per kind) | Per V2 ADR `work-item-metamodel.md`: easier reporting, easier KI integration, consistent audit, easy to add new kinds |
+| Phases + Milestones stay separate (not in `work_items`) | Time-specific fields (`planned_start`/`planned_end`/`sequence_number`/`target_date`) don't apply to other kinds; PROJ-19's existing model is mature |
+| `attributes JSONB` for method-specific fields (story_points, slack_days) | Avoids 30 sparsely-populated columns; CHECK can validate JSON shape per kind via SQL/check constraint or app-level Zod |
+| `position` as fractional double for ordering | No reindexing on insert; lexicographic position via ordering between adjacent items |
+| Cycle prevention as triggers (not just Zod) | DB-level guarantee; Zod can be bypassed (direct SQL, future bulk import) |
+| `parent_id` ON DELETE SET NULL (not CASCADE) | Children become orphans visible to user, preserving the trail; user can re-parent or delete manually |
+| Dependencies as separate table (not edges in work_items) | Multiple types per pair (FS/SS/FF/SF), `lag_days` field, easier to reason about |
+| Sprints in PROJ-9 (not PROJ-7) | Tight FK coupling: work_items.sprint_id requires sprints. Lives with the data it references |
+| 4 dependency types (FS/SS/FF/SF) | Industry standard; matches Gantt convention |
+
+### L) Out of Scope (deferred)
+
+- **Sprint planning UI** — burndown, velocity, retrospective views (separate sub-feature)
+- **Story-points modeling beyond `attributes.story_points: number`** — fancy estimation poker, t-shirt sizes, etc.
+- **Method conversion logic** — Scrum-to-Waterfall translation of work items (explicit Nicht-AK)
+- **AI-suggested work items** — content lives in PROJ-12, mechanism already defined here
+- **Backlog refinement workflow** (group sessions, voting) — future
+- **Bulk operations** (multi-select status change, bulk reparent) — V1 ist single-row only
+
+### M) Trade-offs Acknowledged
+
+| Trade-off | Chosen | Why okay |
+|---|---|---|
+| Defense-in-depth via duplicated TS + SQL constants | both | TS for nice errors / type safety; SQL for guarantee. Updated together when adding kinds. |
+| Sprints + Dependencies in PROJ-9 (not separate features) | bundled | Tight coupling to work_items; building separately means 3 migrations instead of 1 |
+| `attributes JSONB` instead of typed columns | JSONB | Method-specific fields are sparse; typed columns would mean ~20 nullable columns. Trade-off: Zod-validated at API boundary; no DB enforcement of JSON shape (yet). |
+| `parent_id` SET NULL on parent delete | orphans visible | Rather than silently disappearing data, user sees orphans and decides. UI surfaces them with "(former parent)" indicator. |
+| 4 dependency types in V1 | full set | Cheap to add; Gantt rendering will use all of them when PROJ-7 ships |
+| Sprint state machine in DB function | DB function | Same pattern as PROJ-2's `transition_project_status` — atomic, defense-in-depth |
 
 ## Implementation Notes
 _To be added by /frontend and /backend_
