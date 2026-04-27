@@ -1,6 +1,8 @@
 # PROJ-19: Phases & Milestones — Cross-cutting Schedule Backbone
 
 ## Status: In Progress
+<!-- Frontend (commit 96f2976) + Backend (commit pending) shipped; QA pending -->
+
 **Created:** 2026-04-25
 **Last Updated:** 2026-04-25
 
