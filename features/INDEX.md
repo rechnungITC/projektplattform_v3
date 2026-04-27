@@ -32,7 +32,7 @@
 | PROJ-16 | Master Data UI — Users, Stakeholder Rollup, Catalog Overrides | Planned | [Spec](PROJ-16-master-data-ui.md) | 2026-04-25 |
 | PROJ-17 | Tenant Administration — Branding, Modules, Privacy, Export, Offboarding | Planned | [Spec](PROJ-17-tenant-administration.md) | 2026-04-25 |
 | PROJ-18 | Compliance Automatik & Process Templates | Planned | [Spec](PROJ-18-compliance-automatik.md) | 2026-04-25 |
-| PROJ-19 | Phases & Milestones — Cross-cutting Schedule Backbone | Planned | [Spec](PROJ-19-phases-milestones-cross-cutting.md) | 2026-04-25 |
+| PROJ-19 | Phases & Milestones — Cross-cutting Schedule Backbone | Architected | [Spec](PROJ-19-phases-milestones-cross-cutting.md) | 2026-04-25 |
 | PROJ-20 | Risks & Decisions Catalog (Cross-cutting Governance Backbone) | Planned | [Spec](PROJ-20-risks-decisions-catalog.md) | 2026-04-25 |
 
 <!-- Add features above this line -->
