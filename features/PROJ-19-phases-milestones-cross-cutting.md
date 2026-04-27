@@ -1,6 +1,6 @@
 # PROJ-19: Phases & Milestones — Cross-cutting Schedule Backbone
 
-## Status: In Progress
+## Status: Approved
 <!-- Frontend (commit 96f2976) + Backend (commit pending) shipped; QA pending -->
 
 **Created:** 2026-04-25
@@ -322,7 +322,59 @@ Sections:
 _To be added by /frontend and /backend_
 
 ## QA Test Results
-_To be added by /qa_
+
+**Date:** 2026-04-28  
+**Tester:** /qa (combined pass with PROJ-7 + PROJ-9)  
+**Environment:** Supabase project `iqerihohwabyjzkpcujq`, Next.js dev build.
+
+### Automated checks
+| Suite | Result |
+|---|---|
+| `npx tsc --noEmit` | ✅ clean |
+| `npm test` (Vitest) | ✅ 76/76 pass |
+| `npm run build` | ✅ compiles, all 18 pages generated |
+
+### Live database smoke tests via Supabase MCP
+| Check | Result |
+|---|---|
+| `phases` + `milestones` tables exist with all columns | ✅ |
+| 4 + 4 RLS policies (SELECT/INSERT/UPDATE/DELETE × 2 tables) | ✅ |
+| `transition_phase_status` SECURITY DEFINER, `search_path = public, pg_temp` | ✅ |
+| `phase_seq_unique_idx` deferrable unique on `(project_id, sequence_number)` | ✅ |
+| `anon` SELECT revoked on both tables | ✅ |
+| `moddatetime` triggers on `updated_at` | ✅ |
+
+### Acceptance criteria walkthrough
+| AC | Status | Notes |
+|---|---|---|
+| `phases` table with all spec columns + named CHECK | ✅ | `planned_end >= planned_start` enforced. |
+| `phases` CRUD endpoints | ✅ | `/api/projects/[id]/phases` POST/GET; `/[pid]` GET/PATCH/DELETE. |
+| Sequence unique per project | ✅ | Deferrable unique index supports atomic 2-pass reorder. |
+| Reordering API | ✅ | `/api/projects/[id]/phases/reorder` (offset-to-negatives + 1..N). |
+| Status transitions: `planned → in_progress → completed`, any → `cancelled` | ✅ | `transition_phase_status` enforces; surfaces 422 on illegal. |
+| `pg_notify` hook on `completed` for PROJ-18 | ✅ | Implemented; consumer ships with PROJ-18. |
+| `milestones` table + columns | ✅ | `phase_id` FK with `ON DELETE SET NULL`. |
+| Milestones CRUD | ✅ | `/api/projects/[id]/milestones` + `[mid]`. |
+| Filter by phase / status | ✅ | RLS-scoped query supports it. |
+| Overdue computation drives PROJ-7 health | ⚪ | Health formula still scaffold (PROJ-7 cross-cut deferred until risks/budget land). |
+| RBAC: project membership for read; editor+ for write | ✅ | Via PROJ-4 helpers. |
+| Tenant + project RLS | ✅ |
+| Audit hooks (PROJ-10) | ⚪ | PROJ-10 not yet built. |
+| Phase delete with attached work_packages — `?force=true` | ✅ | Implemented in DELETE handler; default 422, force flips `phase_id` to NULL on children. |
+| Date-order validation `planned_end < planned_start` → 422 | ✅ |
+| Cross-tenant access → 404 | ✅ | RLS scoping. |
+
+### Bugs & findings
+**No Critical or High bugs.**
+
+| Severity | ID | Finding |
+|---|---|---|
+| Medium | M1 | Same trigger-only SECURITY DEFINER PostgREST exposure as PROJ-9; tracked once in the M1 entry of PROJ-9. |
+| Low | L1 | Two unindexed FKs on `created_by`/`tenant_id` (Supabase advisor INFO). |
+| Info | I1 | No E2E coverage yet; same as PROJ-9. |
+
+### Production-ready decision
+**READY** — no Critical or High bugs.
 
 ## Deployment
 _To be added by /deploy_

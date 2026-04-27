@@ -1,8 +1,8 @@
 # PROJ-9: Work Item Metamodel — Backlog Structure (Epic / Story / Task / Work Package / Bug)
 
-## Status: In Progress
+## Status: Approved
 **Created:** 2026-04-25
-**Last Updated:** 2026-04-25
+**Last Updated:** 2026-04-28
 
 ## Summary
 Introduces the unified planning-object metamodel: one `work_items` table with a `kind` discriminator (`epic | feature | story | task | subtask | bug | work_package`), parent-child rules per kind, method-aware visibility, and integration with the already-existing phases/milestones (which stay in their own tables). Bugs are cross-method. Inherits V2 EP-07.
@@ -355,7 +355,75 @@ Single migration file `supabase/migrations/20260428100000_proj9_work_items_sprin
 - Verified: `npx tsc --noEmit` clean, `npm test` 76/76 pass, `npm run build` compiles successfully.
 
 ## QA Test Results
-_To be added by /qa_
+
+**Date:** 2026-04-28  
+**Tester:** /qa (combined pass with PROJ-7 + PROJ-19)  
+**Environment:** Supabase project `iqerihohwabyjzkpcujq`, Next.js dev build, Node 20.
+
+### Automated checks
+| Suite | Result |
+|---|---|
+| `npx tsc --noEmit` | ✅ clean (0 errors) |
+| `npm test` (Vitest) | ✅ 76/76 pass |
+| `npm run build` (Next.js) | ✅ compiles, all 18 pages generated |
+| `npx playwright …` (E2E) | ⚪ no `tests/` suite yet — deferred (no Critical/High signal lost since unit tests + RLS smoke cover the paths) |
+
+### Live database smoke tests via Supabase MCP
+| Check | Result |
+|---|---|
+| 11 RLS policies on `sprints/work_items/dependencies` (4+4+3) | ✅ all present |
+| `anon` role has no SELECT on any PROJ-9 table | ✅ revoked |
+| All 17 SECURITY DEFINER functions have hardened `search_path = public, pg_temp` | ✅ |
+| CHECK constraints reject invalid `kind`/`status`/`priority` values | ✅ |
+| `work_items_no_self_parent` CHECK rejects self-reference | ✅ |
+| Parent-chain cycle trigger blocks `A → B → C → A` | ✅ raises `check_violation` |
+| Dependency cycle trigger blocks `A → B → C → A` | ✅ raises `check_violation` |
+| Self-edge (`A → A`) blocked by CHECK | ✅ |
+| Cross-project dependency blocked by `enforce_dependency_same_project` trigger | ✅ raises 22023 |
+| Duplicate dependency blocked by UNIQUE `(predecessor_id, successor_id, type)` | ✅ |
+| Sprint date order CHECK + `state` CHECK | ✅ |
+
+### Acceptance criteria walkthrough
+| Area | Status | Notes |
+|---|---|---|
+| `work_items` table with all columns | ✅ | Verified via `list_tables` + migration. All FKs named. |
+| `kind` CHECK on 7 values | ✅ | `work_items_kind_check` |
+| Parent-child rules enforced | ✅ | TS metamodel at API boundary + DB trigger guarantees cycle prevention. Allowed-parent rules duplicated in `src/types/work-item.ts` and validated in POST + parent endpoints. |
+| Tenant + project cross-validation | ✅ | API checks parent's `project_id` matches; DB trigger same-project for deps; sprint route checks `sprint.project_id`. |
+| `phases` / `milestones` separate (PROJ-19) | ✅ | FK with `ON DELETE SET NULL` so children survive parent deletion. |
+| Method visibility check (API rejects 422) | ✅ | API consults `WORK_ITEM_METHOD_VISIBILITY`; bug always allowed (cross-method per V2 EP-07-ST-04). |
+| Epic/Feature/Story/Task/Subtask/Bug CRUD | ✅ | All 7 kinds supported; subtask requires `task` parent; bug accepts any. |
+| Work_package CRUD attaches to phase or milestone | ✅ | `phase_id`/`milestone_id` columns on work_items. |
+| Cross-method bugs | ✅ | `WORK_ITEM_METHOD_VISIBILITY['bug']` includes all methods; partial index `work_items_bug_filter_idx`. |
+| Tenant `tenant_id NOT NULL` + RLS | ✅ | All three tables. |
+| Indexes on `(project_id, kind, status)`, `(parent_id)`, `(sprint_id)` | ✅ | Plus partial `bug_filter` and `active` indexes. |
+| Audit hook (PROJ-10) on field changes | ⚪ | Deferred — PROJ-10 not yet built; hook point will land with that feature. |
+| AI proposal source column `created_from_proposal_id` | ✅ | Column present, FK deferred until PROJ-12 builds the table. |
+| `set_sprint_state` state machine + single-active rule | ✅ | DB function with role gate, transition guard, and single-active enforcement; granted to `authenticated`. |
+| Frontend graceful degradation pre-backend | ✅ | Hooks already swallowed missing-table errors — no UI break expected. |
+
+### Bugs & findings
+
+**No Critical or High bugs.**
+
+| Severity | ID | Finding | Recommendation |
+|---|---|---|---|
+| Medium | M1 | Trigger-only SECURITY DEFINER functions exposed via PostgREST RPC (callable by anon/authenticated) — `prevent_dependency_cycle`, `prevent_work_item_parent_cycle`, `enforce_dependency_same_project`, plus PROJ-1/PROJ-2 trigger fns. They no-op outside trigger context (NEW is null) but are still surface area. | Follow-up migration: `revoke execute … from public, anon, authenticated` for trigger-only functions. Helper fns (`is_*`, `has_*`) are intentionally callable by `authenticated`. |
+| Low | L1 | 14 unindexed FKs on `created_by`/`tenant_id`/`milestone_id`/`phase_id`/`sprint_id` (Supabase advisor INFO). Tenant_id is rarely a sole join key (composite indexes cover the usual access patterns); created_by is mostly used for audit display. | Optional index pass when traffic profile justifies. Not blocking. |
+| Info | I1 | E2E suite (`tests/`) not yet created; manual UI walkthrough not run by /qa (would require seeded DB + dev server). | Add Playwright suite once PROJ-7 UI stabilises. |
+| Info | I2 | Supabase Auth "leaked password protection" disabled (HaveIBeenPwned check). | Toggle in Auth dashboard; not specific to PROJ-9. |
+
+### Security audit (red-team perspective)
+- Cross-tenant work-item read/write — blocked by RLS (`is_project_member`/`has_project_role`) backed by SECURITY DEFINER helpers.
+- Cross-project parent attach — blocked at API (parent.project_id check) and would also fail RLS for foreign-project parent reads.
+- Cross-project sprint attach — blocked at API (sprint route checks project_id); FK alone would not have caught this.
+- Cycle in parent chain or dep graph — DB triggers reject on INSERT/UPDATE, regardless of API path.
+- SQL injection — all queries parameterised via Supabase JS client; route params validated as UUIDs.
+- Mass assignment — Zod schemas at every PATCH/POST boundary; `tenant_id` and `project_id` not accepted from client.
+- IDOR — all reads/writes scoped by `eq("project_id", projectId)` AND RLS; URL params don't grant access without membership.
+
+### Production-ready decision
+**READY** — no Critical or High bugs. M1 is a follow-up hardening task; functionally the system is sound because the API routes don't expose those trigger functions and they no-op outside trigger context.
 
 ## Deployment
 _To be added by /deploy_

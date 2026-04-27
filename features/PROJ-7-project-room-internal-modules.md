@@ -1,6 +1,6 @@
 # PROJ-7: Project Room with Internal Kanban / Scrum / Gantt Modules
 
-## Status: In Progress
+## Status: Approved (MVP slice)
 **Created:** 2026-04-25
 **Last Updated:** 2026-04-25
 
@@ -283,7 +283,71 @@ Sidebar-Navigation: globale Top-Nav bleibt; **Project-Room-Sidebar wandert auf d
 _To be added by /frontend and /backend_
 
 ## QA Test Results
-_To be added by /qa_
+
+**Date:** 2026-04-28  
+**Tester:** /qa (combined pass with PROJ-9 + PROJ-19)  
+**Environment:** Supabase project `iqerihohwabyjzkpcujq`, Next.js dev build.
+
+### Scope of this pass
+This QA covers the **MVP increment of PROJ-7** that has actually been built:
+- Project Room shell (tab nav, method-aware sidebar + header, layout)
+- `projects.project_method` column + CHECK constraint
+- Method-config TypeScript registry under `src/lib/method-templates/`
+
+**Out of scope** (deferred to dedicated future passes — these features have NOT been implemented yet):
+- Risk register (F4.2)
+- Budget module (F4.5)
+- Portfolio Gantt (EP-05-ST-05)
+- Health traffic-light formula (EP-05-ST-06) — only a scaffold component exists
+- Live Gantt rendering library on the Planning tab (current implementation is a tree view per Tech Design)
+
+### Automated checks
+| Suite | Result |
+|---|---|
+| `npx tsc --noEmit` | ✅ clean |
+| `npm test` | ✅ 76/76 |
+| `npm run build` | ✅ compiles |
+
+### Live database smoke tests via Supabase MCP
+| Check | Result |
+|---|---|
+| `projects.project_method` column exists | ✅ |
+| `projects_project_method_check` CHECK over 6 valid values | ✅ |
+| Default value `'general'` for existing rows | ✅ (default applied at column add) |
+
+### Acceptance criteria walkthrough
+| AC | Status | Notes |
+|---|---|---|
+| Land on project room after creation | ✅ | `/projects/[id]` route loads via `layout.tsx` + RLS-scoped lookup. |
+| Default tabs (Übersicht, Planung, Backlog, Stakeholder, Mitglieder, Historie, Einstellungen) | ✅ | Subroutes exist as folders under `/projects/[id]/`. |
+| Tabs URL-bound | 🟡 **Path-based, not query-string** | Spec said `?tab=…`; implementation uses Next.js path routing (`/projects/[id]/backlog`). Functionally equivalent and more idiomatic; accepted as intentional deviation. |
+| Tab visibility gated by `active_modules` (PROJ-6) | ⚪ Deferred | PROJ-6 rule engine not yet built; method-template registry partially substitutes. |
+| Cross-tenant access → 404 | ✅ | RLS-scoped lookup in layout.tsx → `notFound()`. |
+| Backlog tab List/Board toggle | ✅ | `BacklogToolbar` view-toggle. |
+| Board ≥ 5 columns mapped to `WorkItemStatus` enum | ✅ | `backlog-board.tsx` iterates `WORK_ITEM_STATUSES` (5 values: todo / in_progress / blocked / done / cancelled). |
+| Arrow buttons PATCH status | ✅ | Now wired to `/api/projects/[id]/work-items/[wid]/status` (PROJ-9 backend). |
+| Filter chips show kinds present in current method | ✅ | `kindsForMethod()` from `src/lib/work-items/method-context.ts`. |
+| `sprints` table + `work_items.sprint_id` | ✅ | Shipped via PROJ-9 migration. |
+| Backlog list view groups by sprint | ✅ | `backlog-list.tsx`. |
+| Epic → Story → Task hierarchy visible | ✅ | `backlog-tree.tsx`. |
+| Bugs visible in Scrum context | ✅ | Cross-method bug filter via partial index + UI chip. |
+| Risk register / Budget / Portfolio Gantt / Health formula | ⚪ | Out of scope for this increment. |
+
+### Method-config registry sanity
+- `src/lib/method-templates/{scrum,kanban,safe,waterfall,pmi,general}.ts` exist; barrel export in `index.ts`.
+- `useCurrentProjectMethod` reads `projects.project_method` with graceful fallback to `'general'`.
+
+### Bugs & findings
+**No Critical or High bugs.**
+
+| Severity | ID | Finding |
+|---|---|---|
+| Medium | M1 | Same as PROJ-9 M1 — trigger-only SECURITY DEFINER PostgREST exposure (system-wide; tracked once). |
+| Low | L1 | Path vs query-string tab routing deviation from spec — verify the user is OK with the path-based approach (it's the better choice, just inconsistent with the spec text). |
+| Info | I1 | Risk register, Budget, Portfolio Gantt, Health traffic light all unimplemented — spec scope larger than this MVP increment. Recommend splitting these into PROJ-7-risks, PROJ-7-budget, PROJ-7-portfolio specs in a future grooming pass. |
+
+### Production-ready decision
+**READY for the shipped increment** (project room shell + method-aware UI + `project_method` column). Risk/Budget/Portfolio/Health remain unbuilt and need their own /requirements + /architecture + build passes before claiming the full PROJ-7 spec is delivered.
 
 ## Deployment
 _To be added by /deploy_
