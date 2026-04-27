@@ -28,6 +28,9 @@ const patchSchema = z
     planned_start_date: dateString.nullable().optional(),
     planned_end_date: dateString.nullable().optional(),
     responsible_user_id: z.string().uuid().optional(),
+    project_method: z
+      .enum(["scrum", "kanban", "safe", "waterfall", "pmi", "general"])
+      .optional(),
     is_deleted: z.boolean().optional(),
   })
   .refine(

@@ -31,6 +31,9 @@ const createSchema = z
     responsible_user_id: z.string().uuid().optional(),
     project_type: z.enum(PROJECT_TYPES as unknown as [string, ...string[]])
       .default("general"),
+    project_method: z
+      .enum(["scrum", "kanban", "safe", "waterfall", "pmi", "general"])
+      .default("general"),
   })
   .refine(
     (val) =>
@@ -89,6 +92,7 @@ export async function POST(request: Request) {
     planned_end_date: data.planned_end_date ?? null,
     responsible_user_id: data.responsible_user_id ?? userId,
     project_type: data.project_type,
+    project_method: data.project_method,
     created_by: userId,
   }
 
