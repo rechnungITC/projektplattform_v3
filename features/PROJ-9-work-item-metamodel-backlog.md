@@ -337,7 +337,22 @@ Single migration file `supabase/migrations/20260428100000_proj9_work_items_sprin
 | Sprint state machine in DB function | DB function | Same pattern as PROJ-2's `transition_project_status` — atomic, defense-in-depth |
 
 ## Implementation Notes
-_To be added by /frontend and /backend_
+
+### Backend (2026-04-28)
+- Migration `20260428110000_proj9_work_items_sprints_dependencies.sql` applied via Supabase MCP and saved to disk.
+- Tables created in order: `sprints` → `work_items` → `dependencies` (FK chain). All three have RLS enabled and anon SELECT revoked.
+- Cycle prevention via three SECURITY DEFINER triggers (`prevent_work_item_parent_cycle`, `prevent_dependency_cycle`, `enforce_dependency_same_project`); all set `search_path = public, pg_temp`.
+- Sprint state machine in `set_sprint_state(uuid, text)` — enforces allowed transitions (`planned → active → closed`) and the single-active rule per project. Granted to authenticated.
+- `parent_id` and FK to phases/milestones/sprints all use `ON DELETE SET NULL` so children survive parent deletion as orphans (per spec).
+- 11 RLS policies wired against PROJ-4 helpers (`is_project_member`, `has_project_role`, `is_project_lead`, `is_tenant_admin`); dependencies are immutable (no UPDATE policy).
+- API routes (10 files):
+  - `POST/GET /api/projects/[id]/work-items`
+  - `GET/PATCH/DELETE /api/projects/[id]/work-items/[wid]` (`?hard=true` on DELETE)
+  - `PATCH /api/projects/[id]/work-items/[wid]/{status,parent,sprint}`
+  - `POST/GET /api/projects/[id]/sprints`, `GET/PATCH/DELETE /api/projects/[id]/sprints/[sid]`, `POST /api/projects/[id]/sprints/[sid]/state`
+  - `POST/GET /api/projects/[id]/dependencies`, `DELETE /api/projects/[id]/dependencies/[did]`
+- Defense-in-depth: TS metamodel registries (kind visibility, allowed parents) duplicated at the API boundary for clean 422 errors before the DB CHECK constraints / triggers fire. SQL is the runtime guarantee.
+- Verified: `npx tsc --noEmit` clean, `npm test` 76/76 pass, `npm run build` compiles successfully.
 
 ## QA Test Results
 _To be added by /qa_
