@@ -1,6 +1,6 @@
 # PROJ-19: Phases & Milestones — Cross-cutting Schedule Backbone
 
-## Status: Architected
+## Status: In Progress
 **Created:** 2026-04-25
 **Last Updated:** 2026-04-25
 

@@ -1,23 +1,33 @@
 import type { Metadata } from "next"
-import { ClipboardList } from "lucide-react"
+import { notFound } from "next/navigation"
 
-import { ComingSoonCard } from "@/components/app/coming-soon-card"
+import { createClient } from "@/lib/supabase/server"
+
+import { PlanungClient } from "./planung-client"
 
 export const metadata: Metadata = {
   title: "Planung · Projektplattform",
 }
 
-export default function ProjectPlanungPage() {
-  return (
-    <div className="mx-auto w-full max-w-5xl px-4 py-8 sm:px-6 sm:py-10">
-      <ComingSoonCard
-        title="Planung"
-        description="Phasen & Meilensteine kommen mit PROJ-19."
-        icon={ClipboardList}
-      >
-        Wir aktivieren die Planungsansicht automatisch, sobald PROJ-19
-        ausgeliefert ist.
-      </ComingSoonCard>
-    </div>
-  )
+interface PageProps {
+  params: Promise<{ id: string }>
+}
+
+export default async function ProjectPlanungPage({ params }: PageProps) {
+  const { id } = await params
+
+  // Confirm the project exists and is visible to this user (RLS-scoped).
+  // 404 to avoid existence leaks for cross-tenant attempts (Tech Design § G).
+  const supabase = await createClient()
+  const { data: project, error } = await supabase
+    .from("projects")
+    .select("id")
+    .eq("id", id)
+    .maybeSingle()
+
+  if (error || !project) {
+    notFound()
+  }
+
+  return <PlanungClient projectId={project.id} />
 }
