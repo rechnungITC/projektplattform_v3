@@ -1,12 +1,16 @@
 import { NextResponse } from "next/server"
 import { z } from "zod"
 
-import { apiError, getAuthenticatedUserId } from "@/app/api/_lib/route-helpers"
+import {
+  apiError,
+  getAuthenticatedUserId,
+  requireProjectAccess,
+} from "@/app/api/_lib/route-helpers"
 
 // POST /api/projects/[id]/members — add a project member.
-// Requires the caller to be tenant_admin OR project_lead. RLS enforces this
-// alongside the API check; the cross-tenant guard trigger ensures the target
-// user is a member of the project's tenant.
+// Pre-checked via `requireProjectAccess(..., 'manage_members')` for clean 403
+// instead of falling through to RLS denial. RLS still gates the INSERT and
+// the cross-tenant trigger guards the target user.
 
 const addMemberSchema = z.object({
   user_id: z.string().uuid(),
@@ -46,6 +50,14 @@ export async function POST(
     return apiError("unauthorized", "Not signed in.", 401)
   }
 
+  const access = await requireProjectAccess(
+    supabase,
+    projectId,
+    userId,
+    "manage_members"
+  )
+  if (access.error) return access.error
+
   const { data: row, error } = await supabase
     .from("project_memberships")
     .insert({
@@ -58,17 +70,23 @@ export async function POST(
     .single()
 
   if (error) {
-    // Cross-tenant guard trigger: user not in tenant
     if (error.code === "22023") {
       return apiError("invalid_parameter", error.message, 422, "user_id")
     }
-    // Unique constraint violation (already a member)
     if (error.code === "23505") {
-      return apiError("already_member", "User is already a member of this project.", 409, "user_id")
+      return apiError(
+        "already_member",
+        "User is already a member of this project.",
+        409,
+        "user_id"
+      )
     }
-    // RLS denial
     if (error.code === "42501") {
-      return apiError("forbidden", "Only project leads or tenant admins can add members.", 403)
+      return apiError(
+        "forbidden",
+        "Only project leads or tenant admins can add members.",
+        403
+      )
     }
     return apiError("create_failed", error.message, 500)
   }

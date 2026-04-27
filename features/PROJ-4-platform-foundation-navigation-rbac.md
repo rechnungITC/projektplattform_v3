@@ -322,7 +322,26 @@ All membership routes are admin-or-lead-gated and return 422 when the last-lead 
 | Soft-delete and lifecycle gated at API, not RLS | API enforces the lead-only rule for these specific updates | RLS can't easily distinguish "set is_deleted" from "edit name" without column-level policies; API-layer enforcement is the readable path |
 
 ## Implementation Notes
-_To be added by /frontend and /backend_
+
+### M1 + M2 follow-up (2026-04-27)
+
+Closes both Medium follow-ups acknowledged in the original QA pass.
+
+**Migration:** `supabase/migrations/20260428130000_proj4_bootstrap_project_lead.sql`
+- New SECURITY DEFINER PL/pgSQL function `public.bootstrap_project_lead(p_project_id uuid, p_user_id uuid)` — `search_path = public, pg_temp`, `EXECUTE` granted to `authenticated` only (revoked from `public`, `anon`).
+- Hard preconditions enforced inside the function body (each raises with an SQLSTATE the API maps cleanly): `auth.uid() = p_user_id` (no privilege escalation), project exists + not soft-deleted, caller is in `tenant_memberships` for the project's tenant, and **no project_memberships row exists yet** for the project (one-shot semantics).
+
+**API route changes:**
+- `src/app/api/projects/route.ts` — replaces direct `project_memberships` INSERT with `supabase.rpc("bootstrap_project_lead", …)` after the project insert succeeds. Bootstrap failure returns 500 with `bootstrap_failed` code; the project insert is intentionally not rolled back (the caller can re-bootstrap via `POST /members`).
+- `src/app/api/_lib/route-helpers.ts` — adds `requireProjectAccess(supabase, projectId, userId, action)` with action matrix `view | edit | manage_members`. Returns the project row on success or a typed `NextResponse<ApiErrorBody>` (404 for RLS-hidden, 403 for forbidden).
+- `src/app/api/projects/[id]/members/route.ts` and `…/members/[userId]/route.ts` — call the helper with `'manage_members'` before any mutation. RLS remains the final gate.
+
+**Test coverage:** vitest moved from 76 → 97 passing.
+- `route.test.ts` — added two tests verifying the RPC is called with correct params and that an RPC failure surfaces as `bootstrap_failed` 500.
+- New `members/route.test.ts` (8 tests) — auth, validation, 404 for missing project, 403 for non-lead/editor, happy paths for `tenant_admin` and `project_lead`, plus 22023/23505 mapping.
+- New `members/[userId]/route.test.ts` (10 tests) — PATCH + DELETE flows, including `check_violation` → 422 mapping for the last-lead invariant.
+
+**No schema changes** to existing tables; RLS policies unchanged.
 
 ## QA Test Results
 
@@ -365,10 +384,10 @@ _To be added by /frontend and /backend_
 | **Global navigation** (Projekte / Stammdaten / Konnektoren / Reports / Einstellungen, admin-gated Konnektoren, active highlight) | ✅ PASS | Top-nav extension shipped; routes resolve; visibility logic verified. |
 | **Project secondary navigation** (path-based 7-tab nav, Übersicht/Planung/Backlog/Stakeholder/Mitglieder/Historie/Einstellungen) | ✅ PASS | Path-based segments; tab state survives via URL. |
 | **`project_memberships` schema** (id, project_id, user_id, role CHECK, unique on (project_id, user_id)) | ✅ PASS | Migration applied; backfill complete. |
-| **Auto-lead-on-create** (creator becomes project_lead) | ⚠ PARTIAL | API route inserts the lead row after project creation. **Caveat**: tenant_member (non-admin) creators may hit RLS denial on the `project_memberships` INSERT because the policy requires `is_tenant_admin OR is_project_lead` — and the new project has no leads yet at the moment of the second INSERT. **Documented as TODO in API route**: switch to a SECURITY DEFINER RPC that creates both rows atomically and bootstraps the lead. Not blocking for the existing user (tenant_admin) but blocks future non-admin signups from creating projects. |
+| **Auto-lead-on-create** (creator becomes project_lead) | ✅ PASS | `POST /api/projects` calls `bootstrap_project_lead` RPC after the project insert. RPC is SECURITY DEFINER, bypasses RLS only for the very first membership, and refuses if any of `auth.uid() ≠ p_user_id`, project missing, caller not tenant-member, or memberships already exist. Works for both tenant_admin and non-admin tenant_member creators. (Closed M1 — see findings.) |
 | **Tenant-admin bypass** (admin can do everything without explicit project_membership) | ✅ PASS | Helpers check `is_tenant_admin(p.tenant_id)` first; verified live. |
 | **Helper functions** (`is_project_member`, `has_project_role`, `is_project_lead`) | ✅ PASS | All present, SECURITY DEFINER + STABLE + hardened search_path; granted to authenticated. |
-| **RBAC enforcement layers** (UI hide / API pre-check / RLS) | ⚠ PARTIAL | UI hide via `useProjectAccess` works. RLS layer verified. **API pre-check is implicit** — routes rely on RLS to deny rather than pre-checking with a shared `requireProjectAccess` helper. Defense-in-depth still holds because RLS is the ultimate guard, but a tighter API pre-check would give cleaner 403 messages instead of generic 500/400 from Postgres. |
+| **RBAC enforcement layers** (UI hide / API pre-check / RLS) | ✅ PASS | UI hide via `useProjectAccess`, API pre-check via `requireProjectAccess(..., 'manage_members')` on all three member routes (returns clean 404 for RLS-hidden projects and 403 with helpful copy for non-lead/admin callers), RLS as the final gate. (Closed M2 — see findings.) |
 | **404 vs 403 mapping** (cross-tenant → 404, same-tenant-no-access → 403) | 🟡 NEEDS LIVE TEST | RLS naturally hides cross-tenant projects (404 from `maybeSingle().eq.id` returning null). 403 mapping for same-tenant-no-write only works if the project has a member-but-not-lead/editor — not testable until a second user joins. Will be fully validated when PROJ-8/9 ship and additional users sign up. |
 
 ### Edge Cases verified
@@ -380,7 +399,7 @@ _To be added by /frontend and /backend_
 | `tenant_admin` accessing a project they're not a member of | ✅ PASS — admin-equivalence in helpers |
 | `tenant_member` who is project_lead vs. project_viewer on different projects | 🟡 NOT YET TESTABLE — requires multiple non-admin users; structurally enforced by the schema |
 | Deleted user's project_memberships rows | 🟡 NOT TESTABLE without deleting an auth user; FK is `ON DELETE RESTRICT` so the deletion would itself be blocked first — by design (audit preservation) |
-| User has tenant role `member` but no project_memberships row | ⚠ KNOWN GAP — when the (non-admin) user creates a project, the auto-lead INSERT may fail RLS until the bootstrap RPC is added. Documented in the spec; not blocking for the current single-user. |
+| User has tenant role `member` but no project_memberships row | ✅ RESOLVED — `bootstrap_project_lead` RPC handles the chicken-and-egg case for non-admin creators. |
 
 ### Bugs found
 
@@ -388,8 +407,8 @@ _To be added by /frontend and /backend_
 
 | ID | Severity | Description | Recommendation |
 |---|---|---|---|
-| PROJ-4-M1 | Medium | Auto-lead-on-create RLS gap: a non-admin tenant_member creating a project may hit `42501` on the second INSERT (the `project_memberships` row). The user-context client cannot satisfy `is_tenant_admin OR is_project_lead` because no lead exists yet. | Replace the second INSERT with a `SECURITY DEFINER` RPC `bootstrap_project_lead(p_project_id, p_user_id)` that bypasses RLS for the bootstrap. Apply alongside next migration. |
-| PROJ-4-M2 | Medium | API routes (`POST/PATCH/DELETE /api/projects/[id]/members[/userId]`) lack a shared `requireProjectAccess(projectId, action)` pre-check; they rely on RLS for authorization. Errors arrive as 500 with Postgres messages instead of clean 403 with helpful copy. | Extract `requireProjectAccess` into `_lib/route-helpers.ts` mirroring the existing `requireTenantAdmin`. Defer to next iteration; not blocking. |
+| ~~PROJ-4-M1~~ Resolved | Medium | Auto-lead-on-create RLS gap: a non-admin tenant_member creating a project may hit `42501` on the second INSERT. | **Fixed** in migration `20260428130000_proj4_bootstrap_project_lead.sql`. New SECURITY DEFINER RPC `public.bootstrap_project_lead(p_project_id, p_user_id)` enforces: `auth.uid() = p_user_id`, project exists + not deleted, caller is tenant member of project's tenant, and **no memberships exist yet** (one-shot bootstrap). `POST /api/projects` calls the RPC instead of direct INSERT. EXECUTE granted to `authenticated` only (revoked from public/anon). |
+| ~~PROJ-4-M2~~ Resolved | Medium | Member API routes lack a shared pre-check helper; errors surfaced as 500. | **Fixed** by adding `requireProjectAccess(supabase, projectId, userId, action)` in `src/app/api/_lib/route-helpers.ts`. Action matrix: `view` (any tenant member), `edit` (admin/lead/editor), `manage_members` (admin/lead). Returns the project row on success or a typed `NextResponse` on failure (404 for RLS-hidden, 403 with helpful copy for forbidden). All three member routes (`POST /members`, `PATCH /members/[userId]`, `DELETE /members/[userId]`) refactored to call it before any mutation. RLS still gates the underlying writes. |
 
 ### Not tested in this round
 
@@ -399,12 +418,61 @@ _To be added by /frontend and /backend_
 
 ### Recommendation
 
-**Status → Approved.** No Critical or High bugs. Two Medium items (M1 + M2) are acknowledged as follow-ups; both have clear remediation paths and don't block usage. PROJ-4 foundation is solid enough for PROJ-7+ to build on top.
+**Status → Approved.** No Critical or High bugs. Both Medium follow-ups (M1 + M2) closed on **2026-04-27** in the same change:
+- M1 — migration `20260428130000_proj4_bootstrap_project_lead.sql` applied; `POST /api/projects` now calls `bootstrap_project_lead` RPC.
+- M2 — `requireProjectAccess` helper added in `src/app/api/_lib/route-helpers.ts`; all three member routes refactored.
+
+Test impact: vitest goes from 76 → 97 passing (+21 new tests covering the RPC path and three member-route scenarios across role gating, last-lead trigger, and unique-violation mapping). TypeScript strict, production build green.
 
 Suggested next:
-1. **Apply M1 fix** (bootstrap RPC) before the second non-admin user creates a project.
-2. **Apply M2 fix** (shared `requireProjectAccess`) when extending the member API for bulk operations or invite flows.
-3. **Playwright E2E** — combined with PROJ-1/2/4 pass after PROJ-7 frontend lands (more UI surface to cover at once).
+1. **Playwright E2E** — combined with PROJ-1/2/4 pass after PROJ-7 frontend lands.
+2. **Audit-log of role changes** — picked up by PROJ-10 (Change Management).
+
+---
+
+## QA Verification Round — M1 + M2 follow-up
+
+**Date:** 2026-04-27
+**Tester:** /qa skill
+**Verdict:** ✅ **Approved (verification pass)** — no Critical or High bugs introduced; M1 + M2 fully closed.
+
+This is a focused verification of the M1 + M2 hardening, not a fresh QA cycle. PROJ-4 stays `Approved`.
+
+### Automated regression
+- `npm test --run` — **97/97 pass** (was 76/76 pre-change; +21 new tests for the bootstrap RPC and the three member routes).
+- TypeScript strict-check — **0 errors**.
+- `npm run build` — green, all routes generated.
+- `next lint` is broken project-wide due to Next.js 16 removal of `next lint`; pre-existing, unrelated to this change.
+
+### Live red-team tests on `bootstrap_project_lead` (via MCP `execute_sql`)
+
+Each case impersonates the caller via `request.jwt.claims` (so `auth.uid()` returns the chosen sub) and runs the RPC, capturing SQLSTATE and SQLERRM.
+
+| # | Attack | Expected | Actual |
+|---|---|---|---|
+| A | Caller spoofs another user (`bootstrap(P, victim)` with caller ≠ victim) | 42501 + "caller must bootstrap themselves" | ✅ exact match |
+| B | Caller=user, but project already has memberships (`one-shot` violation) | 22023 + "project already has memberships; use POST /members" | ✅ exact match |
+| C | Project does not exist | P0002 + "project not found" | ✅ exact match |
+| D | Caller is not a tenant_member of the project's tenant | 42501 + "caller is not a member of the project tenant" | ✅ exact match |
+| E | Happy path — fresh project, caller=user, caller is tenant member | success + lead row inserted | ✅ no error; postcheck shows the `lead` row in `project_memberships` |
+| F | Soft-deleted project (`is_deleted = true`) | P0002 + "project not found" | ✅ exact match (treated as non-existent) |
+| G | Anon caller (no JWT) | EXECUTE blocked at GRANT level | ✅ `has_function_privilege('anon', …)` = `false`; only `authenticated` and `postgres`/`service_role` have EXECUTE |
+
+### Live verification of `requireProjectAccess`
+Single-user setup limits cross-role testing. Verified the structurally-relevant paths:
+- **Cross-tenant lookup** is implicitly RLS-hidden — same mechanism as the existing PROJ-2 RLS verification (returns null → 404). Behavior unchanged from the original QA pass.
+- **404 vs 403 mapping for the member routes** — the helper now returns 404 for "RLS-hidden / not found" and 403 with helpful copy for "not allowed". The 403 branch is exercised by the new vitest suites (`members/route.test.ts`, `members/[userId]/route.test.ts`) using mocked RLS-scoped lookups.
+- **Multi-user 403 case** (same-tenant member but no project_lead role) — still **NOT YET LIVE-TESTABLE** because the deployment has only one user. Structurally enforced and unit-tested.
+
+### Side observation — not introduced by this change
+While cleaning up QA fixtures, observed that `enforce_last_lead` blocks **cascade** deletes of `project_memberships` triggered by `DELETE FROM projects`. This is **pre-existing PROJ-4 trigger behavior**, not caused by M1 or M2, but it means `DELETE FROM projects` always fails for projects with a lead (which is every project after the backfill). In practice we use `is_deleted` (soft-delete) per PROJ-2 lifecycle, so this never runs. Filed as info-level note for a future trigger review:
+
+| Severity | ID | Finding |
+|---|---|---|
+| Info | I-OBS | `enforce_last_lead` fires on cascade-delete from `projects` → `project_memberships`, blocking hard-delete of any project with a lead. Likely intentional (audit preservation, soft-delete is the official path), but worth a `tg_argv` check or a `WHEN (TG_OP = 'DELETE' AND NOT (SELECT EXISTS(SELECT 1 FROM projects WHERE id = OLD.project_id)))`-style guard if hard-delete is ever needed. Pre-existing, not within M1/M2 scope. |
+
+### Production-ready decision
+**READY** — no Critical or High bugs introduced by M1 + M2. The two original Medium findings are now Resolved end-to-end (live RPC works, helper is exercised by tests + structural verification). Status `Approved` confirmed.
 
 ## Deployment
 _To be added by /deploy_

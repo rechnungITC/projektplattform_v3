@@ -120,35 +120,26 @@ export async function POST(request: Request) {
     return apiError("create_failed", error.message, 500)
   }
 
-  // PROJ-4: auto-lead-on-create. Per ADR v3-project-memberships-schema, the
-  // creator is automatically a project_lead. We do this in the API route
-  // (not via trigger) so it's explicit and easy to debug. The RLS INSERT
-  // policy on project_memberships allows admin OR project_lead — but the
-  // first project_lead row has to exist first. Since the creator (= caller)
-  // by definition has tenant role 'admin' or 'member' (they just created
-  // the project), the RLS check `is_tenant_admin(p.tenant_id)` evaluates
-  // to true for tenant admins; non-admin members get blocked.
-  //
-  // Workaround: we use the user-context client and rely on the fact that
-  // `is_tenant_admin OR is_project_lead` allows the row when the caller is
-  // a tenant admin. For tenant members who are not admins, we'd need a
-  // service-role insert OR a special policy. For MVP we leave this as a
-  // documented edge case — non-admin members can still create projects
-  // (PROJ-2 INSERT policy permits) but they will not auto-receive the
-  // lead row until /backend hardens the path. They can add themselves
-  // via the API once project_memberships table allows it.
-  //
-  // TODO PROJ-4 follow-up: switch to a SECURITY DEFINER RPC that creates
-  // both rows atomically and bypasses RLS for the lead bootstrap.
+  // PROJ-4: auto-lead-on-create. The creator becomes project_lead via the
+  // SECURITY DEFINER `bootstrap_project_lead` RPC. The RPC enforces:
+  // caller = p_user_id, project exists, caller is a tenant member, and no
+  // memberships exist yet on the project. This bypasses the RLS chicken-
+  // and-egg (`is_tenant_admin OR is_project_lead`) for non-admin creators.
   if (row) {
-    await supabase
-      .from("project_memberships")
-      .insert({
-        project_id: row.id,
-        user_id: userId,
-        role: "lead",
-        created_by: userId,
-      })
+    const { error: bootstrapError } = await supabase.rpc(
+      "bootstrap_project_lead",
+      { p_project_id: row.id, p_user_id: userId }
+    )
+    if (bootstrapError) {
+      // The project insert succeeded; bootstrap is best-effort. We do not
+      // roll back the project, but we surface a 500 so the caller knows
+      // the auto-lead step failed and can be re-run via POST /members.
+      return apiError(
+        "bootstrap_failed",
+        `Project created (${row.id}) but auto-lead bootstrap failed: ${bootstrapError.message}`,
+        500
+      )
+    }
   }
 
   return NextResponse.json({ project: row }, { status: 201 })

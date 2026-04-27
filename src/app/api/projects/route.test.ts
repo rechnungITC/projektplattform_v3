@@ -9,6 +9,7 @@ import { beforeEach, describe, expect, it, vi } from "vitest"
 // We swap which chain is returned per test by mutating fromMock's behavior.
 
 const getUserMock = vi.fn()
+const rpcMock = vi.fn()
 
 const insertChain = {
   insert: vi.fn().mockReturnThis(),
@@ -49,6 +50,7 @@ vi.mock("@/lib/supabase/server", () => ({
   createClient: vi.fn(async () => ({
     auth: { getUser: getUserMock },
     from: fromMock,
+    rpc: rpcMock,
   })),
 }))
 
@@ -83,6 +85,7 @@ beforeEach(() => {
   listChain.limit.mockReturnValue(listChain)
   listChain.or.mockReturnValue(listChain)
   listChain.__result = { data: [], error: null }
+  rpcMock.mockResolvedValue({ data: null, error: null })
 })
 
 // -----------------------------------------------------------------------------
@@ -233,6 +236,46 @@ describe("POST /api/projects", () => {
       makePostRequest({ tenant_id: TENANT_ID, name: "X" })
     )
     expect(res.status).toBe(403)
+  })
+
+  it("calls bootstrap_project_lead RPC after creating the project", async () => {
+    nextOp = "insert"
+    getUserMock.mockResolvedValue({ data: { user: { id: USER_ID } } })
+    insertChain.single.mockResolvedValue({
+      data: { id: "p1", tenant_id: TENANT_ID },
+      error: null,
+    })
+
+    const res = await POST(
+      makePostRequest({ tenant_id: TENANT_ID, name: "Bootstrap" })
+    )
+
+    expect(res.status).toBe(201)
+    expect(rpcMock).toHaveBeenCalledWith("bootstrap_project_lead", {
+      p_project_id: "p1",
+      p_user_id: USER_ID,
+    })
+  })
+
+  it("returns 500 if bootstrap_project_lead RPC fails", async () => {
+    nextOp = "insert"
+    getUserMock.mockResolvedValue({ data: { user: { id: USER_ID } } })
+    insertChain.single.mockResolvedValue({
+      data: { id: "p1", tenant_id: TENANT_ID },
+      error: null,
+    })
+    rpcMock.mockResolvedValue({
+      data: null,
+      error: { message: "caller is not a member of the project tenant" },
+    })
+
+    const res = await POST(
+      makePostRequest({ tenant_id: TENANT_ID, name: "X" })
+    )
+    expect(res.status).toBe(500)
+    const body = await res.json()
+    expect(body.error.code).toBe("bootstrap_failed")
+    expect(body.error.message).toContain("p1")
   })
 })
 
