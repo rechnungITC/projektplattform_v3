@@ -80,20 +80,22 @@ export const WORK_ITEM_PRIORITY_LABELS: Record<WorkItemPriority, string> = {
 }
 
 /**
- * Method visibility per kind. Bug is in every method by spec
- * (cross-method bugs — V2 EP-07-ST-04).
+ * Method visibility per kind (PROJ-6 — flat 7-method list).
+ * Bug is creatable in every method (cross-method, V2 EP-07-ST-04).
+ * When `projects.project_method` is NULL ("no method chosen"), all
+ * kinds are creatable — handled by `isKindVisibleInMethod` accepting null.
  */
 export const WORK_ITEM_METHOD_VISIBILITY: Record<
   WorkItemKind,
   ProjectMethod[]
 > = {
-  epic: ["scrum", "safe", "general"],
-  feature: ["safe", "general"],
-  story: ["scrum", "kanban", "safe", "general"],
-  task: ["scrum", "kanban", "safe", "waterfall", "pmi", "general"],
-  subtask: ["scrum", "safe", "general"],
-  bug: ["scrum", "kanban", "safe", "waterfall", "pmi", "general"],
-  work_package: ["waterfall", "pmi", "general"],
+  epic: ["scrum", "safe"],
+  feature: ["safe"],
+  story: ["scrum", "kanban", "safe", "vxt2"],
+  task: ["scrum", "kanban", "safe", "waterfall", "pmi", "prince2", "vxt2"],
+  subtask: ["scrum", "safe"],
+  bug: ["scrum", "kanban", "safe", "waterfall", "pmi", "prince2", "vxt2"],
+  work_package: ["waterfall", "pmi", "prince2", "vxt2"],
 }
 
 /**
@@ -171,10 +173,13 @@ export function isAllowedParent(
 
 /**
  * True when a kind is creatable in the given project method.
+ * When the method is NULL ("no method chosen"), every kind is creatable —
+ * the user can structure freely before committing to a method.
  */
 export function isKindVisibleInMethod(
   kind: WorkItemKind,
-  method: ProjectMethod
+  method: ProjectMethod | null
 ): boolean {
+  if (method === null) return true
   return WORK_ITEM_METHOD_VISIBILITY[kind].includes(method)
 }

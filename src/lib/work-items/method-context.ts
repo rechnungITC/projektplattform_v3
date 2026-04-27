@@ -1,8 +1,10 @@
 /**
- * Method context helpers — resolves the active project method and the
- * kinds creatable for it. PROJ-7 introduced `projects.project_method`;
- * frontend reads the column with a graceful fallback to `'general'`
- * for projects/migrations that pre-date the column.
+ * Method context helpers (PROJ-6) — resolves the active project method and
+ * the kinds creatable for it.
+ *
+ * `projects.project_method` is now nullable (PROJ-6 migration). NULL means
+ * "no method chosen yet" — every kind is creatable in that state, so the
+ * user can structure freely before committing.
  */
 
 "use client"
@@ -21,37 +23,35 @@ import {
 } from "@/types/project-method"
 
 /**
- * Returns the current project method — uses the override when present,
- * otherwise defaults to `'general'`. Server components and tests pass
- * the method directly; client components prefer
- * {@link useCurrentProjectMethod}.
+ * Returns the current project method, or null when not yet chosen.
+ * Server components and tests can pass the method directly; client
+ * components prefer {@link useCurrentProjectMethod}.
  */
 export function getCurrentMethod(
   override?: ProjectMethod | null
-): ProjectMethod {
+): ProjectMethod | null {
   if (override && (PROJECT_METHODS as readonly string[]).includes(override)) {
     return override
   }
-  return "general"
+  return null
 }
 
 /**
  * Reads `projects.project_method` for the given project.
  *
- * - Returns `'general'` while loading, on error, or when the column
- *   doesn't exist yet (graceful degradation for the period between
- *   shipping the frontend and shipping the backend migration).
- * - The hook is safe to call in any client component within a project
- *   route; it cleans up on unmount.
+ * - Returns `null` ("no method chosen yet") while loading, on error,
+ *   or when the column is unset.
+ * - Safe to call in any client component within a project route;
+ *   cleans up on unmount.
  */
 export function useCurrentProjectMethod(
   projectId: string | null | undefined
-): ProjectMethod {
-  const [method, setMethod] = React.useState<ProjectMethod>("general")
+): ProjectMethod | null {
+  const [method, setMethod] = React.useState<ProjectMethod | null>(null)
 
   React.useEffect(() => {
     if (!projectId) {
-      setMethod("general")
+      setMethod(null)
       return
     }
 
@@ -68,9 +68,7 @@ export function useCurrentProjectMethod(
         if (cancelled) return
 
         if (error) {
-          // Column not yet present (PROJ-7 backend pending) or other
-          // RLS / network error — degrade silently.
-          setMethod("general")
+          setMethod(null)
           return
         }
 
@@ -79,10 +77,10 @@ export function useCurrentProjectMethod(
         if (raw && (PROJECT_METHODS as readonly string[]).includes(raw)) {
           setMethod(raw as ProjectMethod)
         } else {
-          setMethod("general")
+          setMethod(null)
         }
       } catch {
-        if (!cancelled) setMethod("general")
+        if (!cancelled) setMethod(null)
       }
     })()
 
@@ -96,10 +94,13 @@ export function useCurrentProjectMethod(
 
 /**
  * Returns the kinds creatable in the given method, in the canonical
- * `WORK_ITEM_KINDS` order. Bug is always included (cross-method per
- * V2 EP-07-ST-04).
+ * `WORK_ITEM_KINDS` order. When method is null, every kind is creatable.
+ * Bug is always included for non-null methods (cross-method per V2 EP-07-ST-04).
  */
-export function kindsForMethod(method: ProjectMethod): WorkItemKind[] {
+export function kindsForMethod(
+  method: ProjectMethod | null
+): WorkItemKind[] {
+  if (method === null) return [...WORK_ITEM_KINDS]
   return WORK_ITEM_KINDS.filter((kind) =>
     WORK_ITEM_METHOD_VISIBILITY[kind].includes(method)
   )
@@ -107,10 +108,12 @@ export function kindsForMethod(method: ProjectMethod): WorkItemKind[] {
 
 /**
  * True when the given kind is creatable in the given method.
+ * When method is null, returns true (every kind is creatable).
  */
 export function isKindCreatable(
   kind: WorkItemKind,
-  method: ProjectMethod
+  method: ProjectMethod | null
 ): boolean {
+  if (method === null) return true
   return WORK_ITEM_METHOD_VISIBILITY[kind].includes(method)
 }

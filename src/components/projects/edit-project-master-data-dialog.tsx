@@ -69,14 +69,20 @@ const editProjectSchema = z
     planned_start_date: z.date().nullable().optional(),
     planned_end_date: z.date().nullable().optional(),
     responsible_user_id: z.string().uuid("Pick a responsible user"),
-    project_method: z.enum([
-      "scrum",
-      "kanban",
-      "safe",
-      "waterfall",
-      "pmi",
-      "general",
-    ]),
+    // PROJ-6: method becomes nullable. Empty / null means "noch nicht
+    // festgelegt" — first save commits it; further changes are blocked
+    // by the DB trigger.
+    project_method: z
+      .enum([
+        "scrum",
+        "kanban",
+        "safe",
+        "waterfall",
+        "pmi",
+        "prince2",
+        "vxt2",
+      ])
+      .nullable(),
   })
   .refine(
     (values) => {
@@ -128,7 +134,7 @@ export function EditProjectMasterDataDialog({
         ? parseIsoDate(project.planned_end_date)
         : null,
       responsible_user_id: project.responsible_user_id,
-      project_method: (project.project_method ?? "general") as ProjectMethod,
+      project_method: (project.project_method ?? null) as ProjectMethod | null,
     }),
     [project]
   )
@@ -334,34 +340,45 @@ export function EditProjectMasterDataDialog({
             <FormField
               control={form.control}
               name="project_method"
-              render={({ field }) => (
-                <FormItem>
-                  <FormLabel>Project method</FormLabel>
-                  <Select
-                    value={field.value}
-                    onValueChange={field.onChange}
-                    disabled={submitting}
-                  >
-                    <FormControl>
-                      <SelectTrigger>
-                        <SelectValue />
-                      </SelectTrigger>
-                    </FormControl>
-                    <SelectContent>
-                      {PROJECT_METHODS.map((m) => (
-                        <SelectItem key={m} value={m}>
-                          {PROJECT_METHOD_LABELS[m]}
+              render={({ field }) => {
+                const methodLocked = project.project_method != null
+                return (
+                  <FormItem>
+                    <FormLabel>
+                      Methode{methodLocked ? " (fixiert)" : ""}
+                    </FormLabel>
+                    <Select
+                      value={field.value ?? "__none__"}
+                      onValueChange={(v) =>
+                        field.onChange(v === "__none__" ? null : v)
+                      }
+                      disabled={submitting || methodLocked}
+                    >
+                      <FormControl>
+                        <SelectTrigger>
+                          <SelectValue placeholder="Methode wählen" />
+                        </SelectTrigger>
+                      </FormControl>
+                      <SelectContent>
+                        <SelectItem value="__none__">
+                          Noch nicht festgelegt
                         </SelectItem>
-                      ))}
-                    </SelectContent>
-                  </Select>
-                  <FormDescription>
-                    Wechseln der Methode kann die Sichtbarkeit von
-                    Work-Items und das Project-Room-Layout beeinflussen.
-                  </FormDescription>
-                  <FormMessage />
-                </FormItem>
-              )}
+                        {PROJECT_METHODS.map((m) => (
+                          <SelectItem key={m} value={m}>
+                            {PROJECT_METHOD_LABELS[m]}
+                          </SelectItem>
+                        ))}
+                      </SelectContent>
+                    </Select>
+                    <FormDescription>
+                      {methodLocked
+                        ? "Die Methode ist nach der Erstwahl fixiert. Lege ein Sub-Projekt mit einer anderen Methode an, oder beantrage eine Methoden-Migration."
+                        : "Sobald gesetzt, ist die Methode fixiert. Sub-Projekte können später eine andere Methode haben."}
+                    </FormDescription>
+                    <FormMessage />
+                  </FormItem>
+                )
+              }}
             />
 
             <DialogFooter>

@@ -81,7 +81,7 @@ interface NewWorkItemDialogProps {
   projectId: string
   /** When set, skips step 1 and pre-selects the kind. */
   initialKind?: WorkItemKind | null
-  method: ProjectMethod
+  method: ProjectMethod | null
   onCreated: () => void | Promise<void>
 }
 

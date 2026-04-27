@@ -60,14 +60,19 @@ const newProjectSchema = z
       .min(1, "Name is required")
       .max(255, "Name must be 255 characters or fewer"),
     project_type: z.enum(["erp", "construction", "software", "general"]),
-    project_method: z.enum([
-      "scrum",
-      "kanban",
-      "safe",
-      "waterfall",
-      "pmi",
-      "general",
-    ]),
+    // PROJ-6: method is optional at creation. NULL = "noch nicht festgelegt"
+    // (the user can pick later). Once set, the DB trigger blocks changes.
+    project_method: z
+      .enum([
+        "scrum",
+        "kanban",
+        "safe",
+        "waterfall",
+        "pmi",
+        "prince2",
+        "vxt2",
+      ])
+      .nullable(),
     description: z
       .string()
       .max(5000, "Description must be 5000 characters or fewer")
@@ -119,7 +124,7 @@ export function NewProjectDialog({
     defaultValues: {
       name: "",
       project_type: "general" satisfies ProjectType,
-      project_method: "general" satisfies ProjectMethod,
+      project_method: null as ProjectMethod | null,
       description: "",
       project_number: "",
       planned_start_date: null,
@@ -133,7 +138,7 @@ export function NewProjectDialog({
       form.reset({
         name: "",
         project_type: "general",
-        project_method: "general",
+        project_method: null,
         description: "",
         project_number: "",
         planned_start_date: null,
@@ -271,8 +276,10 @@ export function NewProjectDialog({
                 <FormItem>
                   <FormLabel>Methode</FormLabel>
                   <Select
-                    value={field.value}
-                    onValueChange={field.onChange}
+                    value={field.value ?? "__none__"}
+                    onValueChange={(v) =>
+                      field.onChange(v === "__none__" ? null : v)
+                    }
                     disabled={submitting}
                   >
                     <FormControl>
@@ -281,6 +288,9 @@ export function NewProjectDialog({
                       </SelectTrigger>
                     </FormControl>
                     <SelectContent>
+                      <SelectItem value="__none__">
+                        Noch nicht festgelegt
+                      </SelectItem>
                       {PROJECT_METHODS.map((m) => (
                         <SelectItem key={m} value={m}>
                           {PROJECT_METHOD_LABELS[m]}
@@ -289,7 +299,9 @@ export function NewProjectDialog({
                     </SelectContent>
                   </Select>
                   <FormDescription>
-                    {PROJECT_METHOD_DESCRIPTIONS[field.value as ProjectMethod]}
+                    {field.value
+                      ? PROJECT_METHOD_DESCRIPTIONS[field.value as ProjectMethod]
+                      : "Du kannst die Methode später wählen — sobald gesetzt, ist sie fixiert. Sub-Projekte können eine andere Methode haben."}
                   </FormDescription>
                   <FormMessage />
                 </FormItem>

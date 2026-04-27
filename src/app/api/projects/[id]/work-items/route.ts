@@ -2,21 +2,19 @@ import { NextResponse } from "next/server"
 import { z } from "zod"
 
 import { apiError, getAuthenticatedUserId } from "@/app/api/_lib/route-helpers"
+import {
+  ALLOWED_PARENT_KINDS,
+  WORK_ITEM_KINDS,
+  WORK_ITEM_METHOD_VISIBILITY,
+  type WorkItemKind,
+} from "@/types/work-item"
+import type { ProjectMethod } from "@/types/project-method"
 
 // -----------------------------------------------------------------------------
 // Schemas — mirror the TS metamodel in src/types/work-item.ts (defense in
 // depth: DB CHECK constraints + triggers are the actual guarantee).
 // -----------------------------------------------------------------------------
 
-const WORK_ITEM_KINDS = [
-  "epic",
-  "feature",
-  "story",
-  "task",
-  "subtask",
-  "bug",
-  "work_package",
-] as const
 const WORK_ITEM_STATUSES = [
   "todo",
   "in_progress",
@@ -25,42 +23,9 @@ const WORK_ITEM_STATUSES = [
   "cancelled",
 ] as const
 const WORK_ITEM_PRIORITIES = ["low", "medium", "high", "critical"] as const
-const PROJECT_METHODS = [
-  "scrum",
-  "kanban",
-  "safe",
-  "waterfall",
-  "pmi",
-  "general",
-] as const
-
-type WorkItemKind = (typeof WORK_ITEM_KINDS)[number]
-type ProjectMethod = (typeof PROJECT_METHODS)[number]
-
-// Method visibility — matches src/types/work-item.ts.
-const WORK_ITEM_METHOD_VISIBILITY: Record<WorkItemKind, ProjectMethod[]> = {
-  epic: ["scrum", "safe", "general"],
-  feature: ["safe", "general"],
-  story: ["scrum", "kanban", "safe", "general"],
-  task: ["scrum", "kanban", "safe", "waterfall", "pmi", "general"],
-  subtask: ["scrum", "safe", "general"],
-  bug: ["scrum", "kanban", "safe", "waterfall", "pmi", "general"],
-  work_package: ["waterfall", "pmi", "general"],
-}
-
-// Allowed parent kinds per child kind (Tech Design § D).
-const ALLOWED_PARENT_KINDS: Record<WorkItemKind, (WorkItemKind | null)[]> = {
-  epic: [null],
-  feature: ["epic", null],
-  story: ["epic", "feature", null],
-  task: ["story", null],
-  subtask: ["task"],
-  bug: ["epic", "feature", "story", "task", "subtask", "work_package", null],
-  work_package: [null],
-}
 
 const createSchema = z.object({
-  kind: z.enum(WORK_ITEM_KINDS),
+  kind: z.enum(WORK_ITEM_KINDS as unknown as [string, ...string[]]),
   parent_id: z.string().uuid().nullable().optional(),
   phase_id: z.string().uuid().nullable().optional(),
   milestone_id: z.string().uuid().nullable().optional(),
@@ -117,12 +82,14 @@ export async function POST(
   if (projErr) return apiError("internal_error", projErr.message, 500)
   if (!project) return apiError("not_found", "Project not found.", 404)
 
-  const method = (project as { project_method?: ProjectMethod | null })
-    .project_method ?? "general"
-  const kind = parsed.data.kind
+  const method =
+    (project as { project_method?: ProjectMethod | null }).project_method ??
+    null
+  const kind = parsed.data.kind as WorkItemKind
 
-  // Method visibility check — bug is allowed in every method (cross-method).
-  if (!WORK_ITEM_METHOD_VISIBILITY[kind].includes(method)) {
+  // Method visibility check — bug is allowed in every method (cross-method);
+  // when method is null ("not yet chosen"), every kind is creatable.
+  if (method !== null && !WORK_ITEM_METHOD_VISIBILITY[kind].includes(method)) {
     return apiError(
       "method_violation",
       `Kind '${kind}' is not visible in method '${method}'.`,

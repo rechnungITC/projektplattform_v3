@@ -35,7 +35,7 @@ interface ChangeKindDialogProps {
   onOpenChange: (open: boolean) => void
   projectId: string
   item: WorkItemWithProfile
-  method: ProjectMethod
+  method: ProjectMethod | null
   onChanged: () => void | Promise<void>
 }
 

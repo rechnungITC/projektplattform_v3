@@ -3,6 +3,8 @@ import { z } from "zod"
 
 import { createAdminClient } from "@/lib/supabase/admin"
 
+import { PROJECT_METHODS } from "@/types/project-method"
+
 import {
   apiError,
   getAuthenticatedUserId,
@@ -28,8 +30,11 @@ const patchSchema = z
     planned_start_date: dateString.nullable().optional(),
     planned_end_date: dateString.nullable().optional(),
     responsible_user_id: z.string().uuid().optional(),
+    // PROJ-6: method is locked once set. PATCH may only set it (NULL → real)
+    // or restate it (no-op write). Trigger blocks anything else.
     project_method: z
-      .enum(["scrum", "kanban", "safe", "waterfall", "pmi", "general"])
+      .enum(PROJECT_METHODS as unknown as [string, ...string[]])
+      .nullable()
       .optional(),
     is_deleted: z.boolean().optional(),
   })
@@ -155,6 +160,15 @@ export async function PATCH(request: Request, context: RouteContext) {
       return apiError("constraint_violation", error.message, 422)
     }
     if (error.code === "42501") {
+      // Distinguish the method-immutability trigger from a generic RLS denial.
+      if (error.message.toLowerCase().includes("project_method is immutable")) {
+        return apiError(
+          "method_locked",
+          "Die Methode ist nach der Erstwahl fixiert. Lege ein Sub-Projekt mit einer anderen Methode an, oder beantrage eine Methoden-Migration.",
+          409,
+          "project_method"
+        )
+      }
       return apiError("forbidden", "Not allowed to update this project.", 403)
     }
     return apiError("update_failed", error.message, 500)

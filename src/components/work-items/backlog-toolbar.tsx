@@ -53,7 +53,7 @@ export interface BacklogFilters {
 
 interface BacklogToolbarProps {
   projectId: string
-  method: ProjectMethod
+  method: ProjectMethod | null
   filters: BacklogFilters
   onFiltersChange: (next: BacklogFilters) => void
   viewMode: BacklogViewMode

@@ -3,54 +3,23 @@ import { z } from "zod"
 
 import { createAdminClient } from "@/lib/supabase/admin"
 import { apiError, getAuthenticatedUserId } from "@/app/api/_lib/route-helpers"
+import {
+  ALLOWED_PARENT_KINDS,
+  WORK_ITEM_KINDS,
+  WORK_ITEM_METHOD_VISIBILITY,
+  type WorkItemKind,
+} from "@/types/work-item"
+import type { ProjectMethod } from "@/types/project-method"
 
-const WORK_ITEM_KINDS = [
-  "epic",
-  "feature",
-  "story",
-  "task",
-  "subtask",
-  "bug",
-  "work_package",
-] as const
 const WORK_ITEM_PRIORITIES = ["low", "medium", "high", "critical"] as const
-const PROJECT_METHODS = [
-  "scrum",
-  "kanban",
-  "safe",
-  "waterfall",
-  "pmi",
-  "general",
-] as const
-
-type WorkItemKind = (typeof WORK_ITEM_KINDS)[number]
-type ProjectMethod = (typeof PROJECT_METHODS)[number]
-
-const WORK_ITEM_METHOD_VISIBILITY: Record<WorkItemKind, ProjectMethod[]> = {
-  epic: ["scrum", "safe", "general"],
-  feature: ["safe", "general"],
-  story: ["scrum", "kanban", "safe", "general"],
-  task: ["scrum", "kanban", "safe", "waterfall", "pmi", "general"],
-  subtask: ["scrum", "safe", "general"],
-  bug: ["scrum", "kanban", "safe", "waterfall", "pmi", "general"],
-  work_package: ["waterfall", "pmi", "general"],
-}
-
-const ALLOWED_PARENT_KINDS: Record<WorkItemKind, (WorkItemKind | null)[]> = {
-  epic: [null],
-  feature: ["epic", null],
-  story: ["epic", "feature", null],
-  task: ["story", null],
-  subtask: ["task"],
-  bug: ["epic", "feature", "story", "task", "subtask", "work_package", null],
-  work_package: [null],
-}
 
 // PATCH master data: NOT status (use /status), NOT parent_id (use /parent).
 // `kind` is allowed here (admin re-classification — see ChangeKindDialog).
 const updateSchema = z
   .object({
-    kind: z.enum(WORK_ITEM_KINDS).optional(),
+    kind: z
+      .enum(WORK_ITEM_KINDS as unknown as [string, ...string[]])
+      .optional(),
     title: z.string().trim().min(1).max(255).optional(),
     description: z.string().max(10000).nullable().optional(),
     priority: z.enum(WORK_ITEM_PRIORITIES).optional(),
@@ -151,9 +120,13 @@ export async function PATCH(
     if (projErr) return apiError("internal_error", projErr.message, 500)
     const method =
       (project as { project_method?: ProjectMethod | null } | null)
-        ?.project_method ?? "general"
+        ?.project_method ?? null
 
-    if (!WORK_ITEM_METHOD_VISIBILITY[parsed.data.kind].includes(method)) {
+    // Method=null means "no method chosen yet" — every kind is creatable.
+    if (
+      method !== null &&
+      !WORK_ITEM_METHOD_VISIBILITY[parsed.data.kind as WorkItemKind].includes(method)
+    ) {
       return apiError(
         "method_violation",
         `Kind '${parsed.data.kind}' is not visible in method '${method}'.`,
@@ -162,6 +135,7 @@ export async function PATCH(
       )
     }
 
+    const newKind = parsed.data.kind as WorkItemKind
     if (current.parent_id) {
       const { data: parent } = await supabase
         .from("work_items")
@@ -169,21 +143,18 @@ export async function PATCH(
         .eq("id", current.parent_id)
         .maybeSingle()
       const parentKind = (parent as { kind?: WorkItemKind } | null)?.kind ?? null
-      if (
-        parentKind &&
-        !ALLOWED_PARENT_KINDS[parsed.data.kind].includes(parentKind)
-      ) {
+      if (parentKind && !ALLOWED_PARENT_KINDS[newKind].includes(parentKind)) {
         return apiError(
           "invalid_parent_kind",
-          `${parsed.data.kind} cannot have a ${parentKind} parent. Reassign parent first.`,
+          `${newKind} cannot have a ${parentKind} parent. Reassign parent first.`,
           422,
           "kind"
         )
       }
-    } else if (!ALLOWED_PARENT_KINDS[parsed.data.kind].includes(null)) {
+    } else if (!ALLOWED_PARENT_KINDS[newKind].includes(null)) {
       return apiError(
         "invalid_parent_kind",
-        `${parsed.data.kind} requires a parent — assign one first.`,
+        `${newKind} requires a parent — assign one first.`,
         422,
         "kind"
       )

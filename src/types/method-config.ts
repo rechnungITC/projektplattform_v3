@@ -49,8 +49,12 @@ export type TopHeaderMode = "sprint-selector" | "phase-bar" | "simple"
 export type DefaultCenterView = "board" | "list" | "gantt" | "wbs"
 
 export interface MethodConfig {
-  /** The method this config describes. */
-  method: ProjectMethod
+  /**
+   * The method this config describes. `null` is used by the neutral
+   * fallback rendered when `projects.project_method` has not been set
+   * yet (PROJ-6 — "noch nicht gewählt").
+   */
+  method: ProjectMethod | null
   /** Human-readable label, e.g. "Scrum". */
   label: string
   /** Top header mode (Sprint-Selector / Phase-Bar / simple). */

@@ -1,11 +1,12 @@
 /**
- * Project method enum — drives the method-aware rendering of the
- * Project Room shell (PROJ-7). Persisted in `projects.project_method`
- * once the backend migration lands; the frontend gracefully degrades
- * to `'general'` when the column is missing.
+ * Project method enum — flat list of 7 first-class methods (PROJ-6).
+ * Persisted in `projects.project_method` (nullable). NULL means
+ * "no method chosen yet"; once set, the method is hard-locked
+ * (DB trigger `enforce_method_immutable`). Sub-projects under a
+ * parent project may pick a different method.
  *
- * `general` means "method not yet decided" — all kinds are creatable so
- * the user can structure freely before committing.
+ * The V2 split into "active methods" (4) + "templates" (3) is
+ * superseded by this design: PMI, PRINCE2, VXT2 are first-class.
  */
 export type ProjectMethod =
   | "scrum"
@@ -13,7 +14,8 @@ export type ProjectMethod =
   | "safe"
   | "waterfall"
   | "pmi"
-  | "general"
+  | "prince2"
+  | "vxt2"
 
 export const PROJECT_METHODS: readonly ProjectMethod[] = [
   "scrum",
@@ -21,7 +23,8 @@ export const PROJECT_METHODS: readonly ProjectMethod[] = [
   "safe",
   "waterfall",
   "pmi",
-  "general",
+  "prince2",
+  "vxt2",
 ] as const
 
 export const PROJECT_METHOD_LABELS: Record<ProjectMethod, string> = {
@@ -30,7 +33,8 @@ export const PROJECT_METHOD_LABELS: Record<ProjectMethod, string> = {
   safe: "SAFe",
   waterfall: "Wasserfall",
   pmi: "PMI",
-  general: "Allgemein",
+  prince2: "PRINCE2",
+  vxt2: "VXT 2.0",
 }
 
 /**
@@ -43,15 +47,31 @@ export const PROJECT_METHOD_DESCRIPTIONS: Record<ProjectMethod, string> = {
   safe: "Skalierter Agile-Ansatz mit Epics, Features und Stories.",
   waterfall: "Sequenzielle Phasen mit Arbeitspaketen und Abhängigkeiten.",
   pmi: "Phasen-Gates mit Arbeitspaketen, Meilensteinen und Gantt.",
-  general:
-    "Pragmatischer Mix aus Phasen und Backlog. Methode später wechselbar.",
+  prince2:
+    "Strukturierte Phasenübergänge, formale Freigaben, Lenkungsausschuss.",
+  vxt2: "Hybrid aus Wasserfall-Phasen oben und agilem Arbeiten in den Teams.",
 }
 
 /**
- * True when the method is anything other than `'general'` — i.e. the
- * project has explicitly committed to a method. Useful for warnings
- * ("changing the method may hide existing work items").
+ * The leading planning objects per method — what a project of this
+ * method is "about". Used by the rule engine to derive starter_kinds.
  */
-export function isMethodSet(method: ProjectMethod): boolean {
-  return method !== "general"
+export const PROJECT_METHOD_LEAD_OBJECTS: Record<ProjectMethod, string[]> = {
+  scrum: ["Epic", "Story", "Task", "Subtask", "Bug"],
+  kanban: ["Story", "Task", "Bug"],
+  safe: ["Epic", "Feature", "Story", "Task", "Subtask", "Bug"],
+  waterfall: ["Phase", "Meilenstein", "Arbeitspaket"],
+  pmi: ["Phase", "Meilenstein", "Arbeitspaket"],
+  prince2: ["Phase", "Meilenstein", "Arbeitspaket"],
+  vxt2: ["Phase", "Story", "Task", "Arbeitspaket"],
+}
+
+/**
+ * True when a project has explicitly committed to a method (i.e. the
+ * method is not NULL). Useful for warnings and lock indicators.
+ */
+export function isMethodSet(
+  method: ProjectMethod | null | undefined
+): method is ProjectMethod {
+  return method != null
 }

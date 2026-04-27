@@ -7,6 +7,7 @@ import {
   LIFECYCLE_STATUSES,
   PROJECT_TYPES,
 } from "@/types/project"
+import { PROJECT_METHODS } from "@/types/project-method"
 
 import { apiError, getAuthenticatedUserId } from "../_lib/route-helpers"
 
@@ -31,9 +32,15 @@ const createSchema = z
     responsible_user_id: z.string().uuid().optional(),
     project_type: z.enum(PROJECT_TYPES as unknown as [string, ...string[]])
       .default("general"),
+    // PROJ-6: method is optional and nullable. NULL = "no method chosen yet".
+    // Once set, the DB trigger `enforce_method_immutable` blocks changes.
     project_method: z
-      .enum(["scrum", "kanban", "safe", "waterfall", "pmi", "general"])
-      .default("general"),
+      .enum(PROJECT_METHODS as unknown as [string, ...string[]])
+      .optional()
+      .nullable(),
+    // PROJ-6: optional sub-project parent. Cross-tenant guard + depth-2 +
+    // self-parent guard are enforced by triggers; surface 422 on violation.
+    parent_project_id: z.string().uuid().optional().nullable(),
   })
   .refine(
     (val) =>
@@ -92,7 +99,8 @@ export async function POST(request: Request) {
     planned_end_date: data.planned_end_date ?? null,
     responsible_user_id: data.responsible_user_id ?? userId,
     project_type: data.project_type,
-    project_method: data.project_method,
+    project_method: data.project_method ?? null,
+    parent_project_id: data.parent_project_id ?? null,
     created_by: userId,
   }
 
@@ -103,10 +111,23 @@ export async function POST(request: Request) {
     .single()
 
   if (error) {
-    // Cross-tenant guard trigger (responsible_user_id not in tenant) raises
-    // SQLSTATE 22023 — surface as 422 with a helpful message.
+    // 22023 covers multiple guards: responsible_user cross-tenant,
+    // sub-project cross-tenant / depth / self-parent. Route the error to
+    // the right field by message content for cleaner client UX.
     if (error.code === "22023") {
+      const msg = error.message.toLowerCase()
+      if (msg.includes("sub-project") || msg.includes("hierarchy") || msg.includes("parent")) {
+        return apiError("invalid_parameter", error.message, 422, "parent_project_id")
+      }
       return apiError("invalid_parameter", error.message, 422, "responsible_user_id")
+    }
+    if (error.code === "23503") {
+      // FK violation — most likely parent_project_id pointing nowhere.
+      const msg = error.message.toLowerCase()
+      if (msg.includes("parent")) {
+        return apiError("invalid_parameter", error.message, 422, "parent_project_id")
+      }
+      return apiError("invalid_parameter", error.message, 422)
     }
     // CHECK constraint violation (e.g. unknown project_type if zod was bypassed).
     if (error.code === "23514") {

@@ -1,13 +1,16 @@
 import {
-  ClipboardList,
+  ChartGantt,
+  Flag,
   History,
   LayoutDashboard,
-  ListTodo,
+  Layers,
+  Package,
   Settings as SettingsIcon,
   Sparkles,
   Target,
   Users,
   Users2,
+  ShieldCheck,
 } from "lucide-react"
 
 import type { MethodConfig, SidebarSection } from "@/types/method-config"
@@ -18,14 +21,18 @@ import {
 } from "@/types/work-item"
 
 /**
- * General-purpose config — used when the project has not yet committed
- * to a method. Mirrors the original PROJ-4 tab order so behavior
- * stays familiar; defaults to the list view in the Backlog tab.
+ * PRINCE2 config (PROJ-6). Sidebar leads with Phasen / Arbeitspakete /
+ * Meilensteine plus an explicit Lenkungsausschuss / Freigaben section
+ * to reflect PRINCE2's strong governance gates. Top header is the
+ * phase-bar like PMI.
  */
 const SIDEBAR_SECTIONS: SidebarSection[] = [
   { id: "overview", label: "Übersicht", icon: LayoutDashboard, tabPath: "" },
-  { id: "planning", label: "Planung", icon: ClipboardList, tabPath: "planung" },
-  { id: "backlog", label: "Backlog", icon: ListTodo, tabPath: "backlog" },
+  { id: "phases", label: "Phasen", icon: Layers, tabPath: "planung" },
+  { id: "work-packages", label: "Arbeitspakete", icon: Package, tabPath: "backlog" },
+  { id: "milestones", label: "Meilensteine", icon: Flag, tabPath: "planung?tab=meilensteine" },
+  { id: "approvals", label: "Freigaben", icon: ShieldCheck, tabPath: "governance" },
+  { id: "gantt", label: "Gantt", icon: ChartGantt, tabPath: "planung" },
   { id: "ai", label: "KI-Vorschläge", icon: Sparkles, tabPath: "ai-proposals" },
   { id: "stakeholder", label: "Stakeholder", icon: Users, tabPath: "stakeholder" },
   { id: "members", label: "Mitglieder", icon: Users2, tabPath: "mitglieder" },
@@ -35,20 +42,20 @@ const SIDEBAR_SECTIONS: SidebarSection[] = [
 ]
 
 const VISIBLE_KINDS: WorkItemKind[] = WORK_ITEM_KINDS.filter((kind) =>
-  WORK_ITEM_METHOD_VISIBILITY[kind].includes("general")
+  WORK_ITEM_METHOD_VISIBILITY[kind].includes("prince2")
 )
 
-export const generalConfig: MethodConfig = {
-  method: "general",
-  label: "Allgemein",
-  topHeaderMode: "simple",
+export const prince2Config: MethodConfig = {
+  method: "prince2",
+  label: "PRINCE2",
+  topHeaderMode: "phase-bar",
   sidebarSections: SIDEBAR_SECTIONS,
   defaultCenterView: "list",
   hasSprints: false,
   hasPhases: true,
   hasDependencies: false,
-  allowedAiKinds: ["epic", "work_package", "task", "bug"],
-  stakeholderAttachableKinds: ["story", "task", "work_package", "bug"],
+  allowedAiKinds: ["work_package", "task", "bug"],
+  stakeholderAttachableKinds: ["work_package", "task", "bug"],
   workItemKindsVisible: VISIBLE_KINDS,
-  ritualsLabel: "Wöchentliches Stand-up · Status-Review · Retrospektive",
+  ritualsLabel: "Stage-Gate · Lenkungsausschuss · Lessons Learned",
 }

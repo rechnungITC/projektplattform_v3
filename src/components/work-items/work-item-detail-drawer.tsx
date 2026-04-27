@@ -47,7 +47,7 @@ interface WorkItemDetailDrawerProps {
   onOpenChange: (open: boolean) => void
   projectId: string
   workItemId: string | null
-  method: ProjectMethod
+  method: ProjectMethod | null
   onChanged: () => void | Promise<void>
 }
 

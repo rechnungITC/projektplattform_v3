@@ -44,8 +44,8 @@ const DEFAULT_FILTERS: BacklogFilters = {
 }
 
 export function BacklogClient({ projectId, tenantId: _tenantId }: BacklogClientProps) {
-  // Until PROJ-7 ships projects.project_method, we treat the method as 'general'
-  // (all kinds visible). PROJ-7 will swap this for the real value.
+  // PROJ-6: when projects.project_method is NULL ("not yet chosen") all
+  // kinds are creatable. getCurrentMethod() returns null in that case.
   const method = getCurrentMethod()
   const canEdit = useProjectAccess(projectId, "edit_master")
 
