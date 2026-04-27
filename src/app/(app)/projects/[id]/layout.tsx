@@ -1,6 +1,6 @@
 import { notFound } from "next/navigation"
 
-import { ProjectRoomShell } from "@/components/projects/project-room-shell"
+import { ProjectRoomLayout } from "@/components/project-room/project-room-layout"
 import { createClient } from "@/lib/supabase/server"
 
 interface ProjectLayoutProps {
@@ -10,7 +10,8 @@ interface ProjectLayoutProps {
 
 /**
  * Project room layout. Confirms the project exists (RLS-scoped) and
- * renders the secondary tab navigation around the active tab's page.
+ * mounts the method-aware Project Room shell — left sidebar + top
+ * header (PROJ-7) wrapping the original PROJ-4 tab nav.
  *
  * 404 to avoid existence leaks for cross-tenant attempts (per Tech Design § G).
  */
@@ -31,5 +32,5 @@ export default async function ProjectLayout({
     notFound()
   }
 
-  return <ProjectRoomShell projectId={id}>{children}</ProjectRoomShell>
+  return <ProjectRoomLayout projectId={id}>{children}</ProjectRoomLayout>
 }

@@ -26,7 +26,19 @@ import {
   FormMessage,
 } from "@/components/ui/form"
 import { Input } from "@/components/ui/input"
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from "@/components/ui/select"
 import { Textarea } from "@/components/ui/textarea"
+import {
+  PROJECT_METHODS,
+  PROJECT_METHOD_LABELS,
+  type ProjectMethod,
+} from "@/types/project-method"
 import type { Project } from "@/types/project"
 
 import { DatePickerField } from "./date-picker-field"
@@ -57,6 +69,14 @@ const editProjectSchema = z
     planned_start_date: z.date().nullable().optional(),
     planned_end_date: z.date().nullable().optional(),
     responsible_user_id: z.string().uuid("Pick a responsible user"),
+    project_method: z.enum([
+      "scrum",
+      "kanban",
+      "safe",
+      "waterfall",
+      "pmi",
+      "general",
+    ]),
   })
   .refine(
     (values) => {
@@ -84,7 +104,7 @@ interface EditProjectMasterDataDialogProps {
     | "planned_start_date"
     | "planned_end_date"
     | "responsible_user_id"
-  >
+  > & { project_method?: ProjectMethod | null }
   onSaved: () => void | Promise<void>
 }
 
@@ -108,6 +128,7 @@ export function EditProjectMasterDataDialog({
         ? parseIsoDate(project.planned_end_date)
         : null,
       responsible_user_id: project.responsible_user_id,
+      project_method: (project.project_method ?? "general") as ProjectMethod,
     }),
     [project]
   )
@@ -139,6 +160,11 @@ export function EditProjectMasterDataDialog({
         planned_start_date: dateToIsoDate(values.planned_start_date),
         planned_end_date: dateToIsoDate(values.planned_end_date),
         responsible_user_id: values.responsible_user_id,
+        // PROJ-7: send project_method along with the master-data update.
+        // Backend column is added in the PROJ-7 migration; until then, the
+        // PATCH route silently ignores unknown fields (Supabase update
+        // accepts subset).
+        project_method: values.project_method,
       }
 
       const response = await fetch(`/api/projects/${project.id}`, {
@@ -300,6 +326,39 @@ export function EditProjectMasterDataDialog({
                       disabled={submitting}
                     />
                   </FormControl>
+                  <FormMessage />
+                </FormItem>
+              )}
+            />
+
+            <FormField
+              control={form.control}
+              name="project_method"
+              render={({ field }) => (
+                <FormItem>
+                  <FormLabel>Project method</FormLabel>
+                  <Select
+                    value={field.value}
+                    onValueChange={field.onChange}
+                    disabled={submitting}
+                  >
+                    <FormControl>
+                      <SelectTrigger>
+                        <SelectValue />
+                      </SelectTrigger>
+                    </FormControl>
+                    <SelectContent>
+                      {PROJECT_METHODS.map((m) => (
+                        <SelectItem key={m} value={m}>
+                          {PROJECT_METHOD_LABELS[m]}
+                        </SelectItem>
+                      ))}
+                    </SelectContent>
+                  </Select>
+                  <FormDescription>
+                    Wechseln der Methode kann die Sichtbarkeit von
+                    Work-Items und das Project-Room-Layout beeinflussen.
+                  </FormDescription>
                   <FormMessage />
                 </FormItem>
               )}

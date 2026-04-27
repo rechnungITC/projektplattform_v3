@@ -1,31 +1,97 @@
 /**
- * Method context helpers — wraps the kind-filtering logic so PROJ-7
- * can flip the source from a hardcoded `'general'` to the project's
- * actual method when `projects.project_method` ships.
- *
- * PROJ-7 pending: read `project.project_method` from the project row.
- * For now, default to `'general'` which allows all kinds.
+ * Method context helpers — resolves the active project method and the
+ * kinds creatable for it. PROJ-7 introduced `projects.project_method`;
+ * frontend reads the column with a graceful fallback to `'general'`
+ * for projects/migrations that pre-date the column.
  */
 
+"use client"
+
+import * as React from "react"
+
+import { createClient } from "@/lib/supabase/client"
 import {
   WORK_ITEM_KINDS,
   WORK_ITEM_METHOD_VISIBILITY,
   type WorkItemKind,
 } from "@/types/work-item"
-import type { ProjectMethod } from "@/types/project-method"
+import {
+  PROJECT_METHODS,
+  type ProjectMethod,
+} from "@/types/project-method"
 
 /**
- * Returns the current project method.
- *
- * Until PROJ-7 ships, this always returns `'general'` so every kind is
- * visible. The signature accepts an optional override that PROJ-7 can
- * pipe in once the column exists; today the override is unused.
+ * Returns the current project method — uses the override when present,
+ * otherwise defaults to `'general'`. Server components and tests pass
+ * the method directly; client components prefer
+ * {@link useCurrentProjectMethod}.
  */
-export function getCurrentMethod(override?: ProjectMethod | null): ProjectMethod {
-  // PROJ-7 pending: read project.project_method from the project row.
-  // For now, default to 'general' which allows all kinds.
-  if (override) return override
+export function getCurrentMethod(
+  override?: ProjectMethod | null
+): ProjectMethod {
+  if (override && (PROJECT_METHODS as readonly string[]).includes(override)) {
+    return override
+  }
   return "general"
+}
+
+/**
+ * Reads `projects.project_method` for the given project.
+ *
+ * - Returns `'general'` while loading, on error, or when the column
+ *   doesn't exist yet (graceful degradation for the period between
+ *   shipping the frontend and shipping the backend migration).
+ * - The hook is safe to call in any client component within a project
+ *   route; it cleans up on unmount.
+ */
+export function useCurrentProjectMethod(
+  projectId: string | null | undefined
+): ProjectMethod {
+  const [method, setMethod] = React.useState<ProjectMethod>("general")
+
+  React.useEffect(() => {
+    if (!projectId) {
+      setMethod("general")
+      return
+    }
+
+    let cancelled = false
+    void (async () => {
+      try {
+        const supabase = createClient()
+        const { data, error } = await supabase
+          .from("projects")
+          .select("project_method")
+          .eq("id", projectId)
+          .maybeSingle()
+
+        if (cancelled) return
+
+        if (error) {
+          // Column not yet present (PROJ-7 backend pending) or other
+          // RLS / network error — degrade silently.
+          setMethod("general")
+          return
+        }
+
+        const raw = (data as { project_method?: string | null } | null)
+          ?.project_method
+        if (raw && (PROJECT_METHODS as readonly string[]).includes(raw)) {
+          setMethod(raw as ProjectMethod)
+        } else {
+          setMethod("general")
+        }
+      } catch {
+        if (!cancelled) setMethod("general")
+      }
+    })()
+
+    return () => {
+      cancelled = true
+    }
+  }, [projectId])
+
+  return method
 }
 
 /**

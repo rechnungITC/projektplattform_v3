@@ -1,3 +1,5 @@
+import type { ProjectMethod } from "@/types/project-method"
+
 export type LifecycleStatus =
   | "draft"
   | "active"
@@ -60,6 +62,12 @@ export interface Project {
   responsible_user_id: string
   lifecycle_status: LifecycleStatus
   project_type: ProjectType
+  /**
+   * PROJ-7: Drives the method-aware Project Room shell. Optional / nullable
+   * because the column may not yet exist on rows created before the backend
+   * migration. Frontend code should default to `'general'` when missing.
+   */
+  project_method?: ProjectMethod | null
   created_by: string
   created_at: string
   updated_at: string

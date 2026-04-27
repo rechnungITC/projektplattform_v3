@@ -36,6 +36,12 @@ import {
 import { Textarea } from "@/components/ui/textarea"
 import { useAuth } from "@/hooks/use-auth"
 import {
+  PROJECT_METHODS,
+  PROJECT_METHOD_DESCRIPTIONS,
+  PROJECT_METHOD_LABELS,
+  type ProjectMethod,
+} from "@/types/project-method"
+import {
   PROJECT_TYPES,
   PROJECT_TYPE_LABELS,
   type ProjectType,
@@ -54,6 +60,14 @@ const newProjectSchema = z
       .min(1, "Name is required")
       .max(255, "Name must be 255 characters or fewer"),
     project_type: z.enum(["erp", "construction", "software", "general"]),
+    project_method: z.enum([
+      "scrum",
+      "kanban",
+      "safe",
+      "waterfall",
+      "pmi",
+      "general",
+    ]),
     description: z
       .string()
       .max(5000, "Description must be 5000 characters or fewer")
@@ -105,6 +119,7 @@ export function NewProjectDialog({
     defaultValues: {
       name: "",
       project_type: "general" satisfies ProjectType,
+      project_method: "general" satisfies ProjectMethod,
       description: "",
       project_number: "",
       planned_start_date: null,
@@ -118,6 +133,7 @@ export function NewProjectDialog({
       form.reset({
         name: "",
         project_type: "general",
+        project_method: "general",
         description: "",
         project_number: "",
         planned_start_date: null,
@@ -133,6 +149,10 @@ export function NewProjectDialog({
       const payload = {
         name: values.name.trim(),
         project_type: values.project_type,
+        // PROJ-7: forward-compatible — POST /api/projects ignores
+        // unknown fields today; will persist once the backend
+        // migration adds the column.
+        project_method: values.project_method,
         description:
           values.description && values.description.length > 0
             ? values.description
@@ -239,6 +259,38 @@ export function NewProjectDialog({
                       ))}
                     </SelectContent>
                   </Select>
+                  <FormMessage />
+                </FormItem>
+              )}
+            />
+
+            <FormField
+              control={form.control}
+              name="project_method"
+              render={({ field }) => (
+                <FormItem>
+                  <FormLabel>Methode</FormLabel>
+                  <Select
+                    value={field.value}
+                    onValueChange={field.onChange}
+                    disabled={submitting}
+                  >
+                    <FormControl>
+                      <SelectTrigger>
+                        <SelectValue placeholder="Methode wählen" />
+                      </SelectTrigger>
+                    </FormControl>
+                    <SelectContent>
+                      {PROJECT_METHODS.map((m) => (
+                        <SelectItem key={m} value={m}>
+                          {PROJECT_METHOD_LABELS[m]}
+                        </SelectItem>
+                      ))}
+                    </SelectContent>
+                  </Select>
+                  <FormDescription>
+                    {PROJECT_METHOD_DESCRIPTIONS[field.value as ProjectMethod]}
+                  </FormDescription>
                   <FormMessage />
                 </FormItem>
               )}

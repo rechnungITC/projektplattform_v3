@@ -11,6 +11,8 @@ import {
 import Link from "next/link"
 import * as React from "react"
 
+import { HealthSnapshot } from "@/components/project-room/health-snapshot"
+import { RitualsCard } from "@/components/project-room/rituals-card"
 import { EditProjectMasterDataDialog } from "@/components/projects/edit-project-master-data-dialog"
 import { HardDeleteConfirmDialog } from "@/components/projects/hard-delete-confirm-dialog"
 import { LifecycleBadge } from "@/components/projects/lifecycle-badge"
@@ -49,6 +51,8 @@ import {
 } from "@/components/ui/table"
 import { useAuth } from "@/hooks/use-auth"
 import { useProject } from "@/hooks/use-project"
+import { getMethodConfig } from "@/lib/method-templates"
+import { useCurrentProjectMethod } from "@/lib/work-items/method-context"
 import {
   ALLOWED_TRANSITIONS,
   LIFECYCLE_STATUS_LABELS,
@@ -63,6 +67,8 @@ export function ProjectDetailClient({ projectId }: ProjectDetailClientProps) {
   const { currentRole } = useAuth()
   const { project, events, isLoading, error, notFound, refresh } =
     useProject(projectId)
+  const method = useCurrentProjectMethod(projectId)
+  const config = React.useMemo(() => getMethodConfig(method), [method])
 
   const [editOpen, setEditOpen] = React.useState(false)
   const [transitionTarget, setTransitionTarget] =
@@ -207,6 +213,12 @@ export function ProjectDetailClient({ projectId }: ProjectDetailClientProps) {
           </div>
         </CardHeader>
       </Card>
+
+      {/* Health snapshot — V1 stub; real numbers ship later */}
+      <HealthSnapshot />
+
+      {/* Method-specific rituals reminder */}
+      <RitualsCard config={config} />
 
       {/* Master data */}
       <Card>

@@ -20,7 +20,7 @@
 | PROJ-4 | Platform Foundation — Navigation, Project Roles, RBAC Enforcement | Approved | [Spec](PROJ-4-platform-foundation-navigation-rbac.md) | 2026-04-25 |
 | PROJ-5 | Guided Project Creation Wizard with Type/Method-Aware Questions | Planned | [Spec](PROJ-5-guided-project-creation-wizard.md) | 2026-04-25 |
 | PROJ-6 | Project Types, Methods Catalog, and Rule Engine | Planned | [Spec](PROJ-6-project-types-methods-rule-engine.md) | 2026-04-25 |
-| PROJ-7 | Project Room with Internal Kanban / Scrum / Gantt Modules | Architected | [Spec](PROJ-7-project-room-internal-modules.md) | 2026-04-25 |
+| PROJ-7 | Project Room with Internal Kanban / Scrum / Gantt Modules | In Progress | [Spec](PROJ-7-project-room-internal-modules.md) | 2026-04-25 |
 | PROJ-8 | Stakeholders and Organization | Planned | [Spec](PROJ-8-stakeholders-organization.md) | 2026-04-25 |
 | PROJ-9 | Work Item Metamodel — Backlog Structure | In Progress | [Spec](PROJ-9-work-item-metamodel-backlog.md) | 2026-04-25 |
 | PROJ-10 | Change Management — Field-level Versioning, Compare, Undo, Copy, Audit | Planned | [Spec](PROJ-10-change-management-versioning.md) | 2026-04-25 |
