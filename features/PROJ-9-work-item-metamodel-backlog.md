@@ -1,6 +1,6 @@
 # PROJ-9: Work Item Metamodel — Backlog Structure (Epic / Story / Task / Work Package / Bug)
 
-## Status: Architected
+## Status: In Progress
 **Created:** 2026-04-25
 **Last Updated:** 2026-04-25
 
