@@ -1,6 +1,6 @@
 # PROJ-4: Platform Foundation — Navigation, Project Roles, RBAC Enforcement
 
-## Status: In Progress
+## Status: Approved
 **Created:** 2026-04-25
 **Last Updated:** 2026-04-26
 
@@ -325,7 +325,86 @@ All membership routes are admin-or-lead-gated and return 422 when the last-lead 
 _To be added by /frontend and /backend_
 
 ## QA Test Results
-_To be added by /qa_
+
+**Date:** 2026-04-27
+**Tester:** /qa skill
+**Verdict:** ✅ **Approved** — no Critical or High bugs
+
+### Automated tests
+- `npm test` — **76/76 pass** (existing vitest suite; no new tests added for PROJ-4 backend in this round, deferred to a future targeted test pass)
+- TypeScript strict-check — **0 errors**
+- `npm run build` — green, 21 routes generated
+
+### Schema integrity (via `information_schema` + `pg_catalog`)
+- `project_memberships` table exists with 4 RLS policies
+- 5 helper functions (`is_project_member`, `has_project_role`, `is_project_lead`, `enforce_project_membership_user_in_tenant`, `enforce_last_lead`)
+- 4 triggers visible: `project_memberships_last_lead_update`, `project_memberships_last_lead_delete`, `project_memberships_user_in_tenant` (BEFORE INSERT + BEFORE UPDATE OF user_id, project_id — appears as 2 entries)
+- Named FK constraints: `project_memberships_project_id_fkey`, `project_memberships_user_id_fkey`, `project_memberships_created_by_fkey`
+- anon SELECT revoked (0 grants)
+- Backfill applied — both existing projects (`info@it-couch.de`'s "ERP Projekt..." and "Test") have a `lead` row with the responsible_user
+
+### Live security tests (via MCP `execute_sql`)
+
+| # | Test | Result |
+|---|---|---|
+| A | **Cross-tenant guard** — INSERT with a `user_id` not in the project's tenant raises `'must be a member of the project tenant'` (errcode `22023`). FK violation also catches non-existent UUID. Either path = blocked. | ✅ PASS |
+| B | **Last-lead demote** — UPDATE the sole lead's role to `editor` raises `check_violation`; row stays `lead`. | ✅ PASS |
+| C | **Last-lead delete** — DELETE the sole lead row raises `check_violation`; row remains. | ✅ PASS |
+| D | **`is_project_lead` admin-equivalence + actual-lead** — both paths return TRUE. Function correctly distinguishes between tenant_admin shortcut and direct `project_memberships` row. | ✅ PASS |
+| E | **`transition_project_status` ACL** — `postgres=X, authenticated=X, service_role=X`. Not granted to anon/public. Function body now also enforces `is_tenant_admin OR is_project_lead` (PROJ-4 tightening). | ✅ PASS |
+
+### PROJ-2 RLS update verification
+- `projects.UPDATE` policy now requires `is_tenant_admin OR has_project_role(id, 'lead') OR has_project_role(id, 'editor')`.
+- `transition_project_status` SECURITY DEFINER body tightened to `is_tenant_admin OR is_project_lead` (no longer accepts `tenant_role='member'` without project_lead).
+- Both effective: existing user is tenant_admin → all paths still work end-to-end.
+
+### Acceptance Criteria walk-through
+
+| Group | Status | Notes |
+|---|---|---|
+| **Global navigation** (Projekte / Stammdaten / Konnektoren / Reports / Einstellungen, admin-gated Konnektoren, active highlight) | ✅ PASS | Top-nav extension shipped; routes resolve; visibility logic verified. |
+| **Project secondary navigation** (path-based 7-tab nav, Übersicht/Planung/Backlog/Stakeholder/Mitglieder/Historie/Einstellungen) | ✅ PASS | Path-based segments; tab state survives via URL. |
+| **`project_memberships` schema** (id, project_id, user_id, role CHECK, unique on (project_id, user_id)) | ✅ PASS | Migration applied; backfill complete. |
+| **Auto-lead-on-create** (creator becomes project_lead) | ⚠ PARTIAL | API route inserts the lead row after project creation. **Caveat**: tenant_member (non-admin) creators may hit RLS denial on the `project_memberships` INSERT because the policy requires `is_tenant_admin OR is_project_lead` — and the new project has no leads yet at the moment of the second INSERT. **Documented as TODO in API route**: switch to a SECURITY DEFINER RPC that creates both rows atomically and bootstraps the lead. Not blocking for the existing user (tenant_admin) but blocks future non-admin signups from creating projects. |
+| **Tenant-admin bypass** (admin can do everything without explicit project_membership) | ✅ PASS | Helpers check `is_tenant_admin(p.tenant_id)` first; verified live. |
+| **Helper functions** (`is_project_member`, `has_project_role`, `is_project_lead`) | ✅ PASS | All present, SECURITY DEFINER + STABLE + hardened search_path; granted to authenticated. |
+| **RBAC enforcement layers** (UI hide / API pre-check / RLS) | ⚠ PARTIAL | UI hide via `useProjectAccess` works. RLS layer verified. **API pre-check is implicit** — routes rely on RLS to deny rather than pre-checking with a shared `requireProjectAccess` helper. Defense-in-depth still holds because RLS is the ultimate guard, but a tighter API pre-check would give cleaner 403 messages instead of generic 500/400 from Postgres. |
+| **404 vs 403 mapping** (cross-tenant → 404, same-tenant-no-access → 403) | 🟡 NEEDS LIVE TEST | RLS naturally hides cross-tenant projects (404 from `maybeSingle().eq.id` returning null). 403 mapping for same-tenant-no-write only works if the project has a member-but-not-lead/editor — not testable until a second user joins. Will be fully validated when PROJ-8/9 ship and additional users sign up. |
+
+### Edge Cases verified
+
+| Edge case from spec | Result |
+|---|---|
+| Cross-tenant project access attempt | 🟡 IMPLICITLY VIA RLS — same as PROJ-2 (RLS hides; route returns null → 404) |
+| Last project_lead demoted/removed | ✅ PASS — DB trigger blocks (Tests B + C) |
+| `tenant_admin` accessing a project they're not a member of | ✅ PASS — admin-equivalence in helpers |
+| `tenant_member` who is project_lead vs. project_viewer on different projects | 🟡 NOT YET TESTABLE — requires multiple non-admin users; structurally enforced by the schema |
+| Deleted user's project_memberships rows | 🟡 NOT TESTABLE without deleting an auth user; FK is `ON DELETE RESTRICT` so the deletion would itself be blocked first — by design (audit preservation) |
+| User has tenant role `member` but no project_memberships row | ⚠ KNOWN GAP — when the (non-admin) user creates a project, the auto-lead INSERT may fail RLS until the bootstrap RPC is added. Documented in the spec; not blocking for the current single-user. |
+
+### Bugs found
+
+**0 Critical/High.** Two **Medium** caveats that don't block deployment:
+
+| ID | Severity | Description | Recommendation |
+|---|---|---|---|
+| PROJ-4-M1 | Medium | Auto-lead-on-create RLS gap: a non-admin tenant_member creating a project may hit `42501` on the second INSERT (the `project_memberships` row). The user-context client cannot satisfy `is_tenant_admin OR is_project_lead` because no lead exists yet. | Replace the second INSERT with a `SECURITY DEFINER` RPC `bootstrap_project_lead(p_project_id, p_user_id)` that bypasses RLS for the bootstrap. Apply alongside next migration. |
+| PROJ-4-M2 | Medium | API routes (`POST/PATCH/DELETE /api/projects/[id]/members[/userId]`) lack a shared `requireProjectAccess(projectId, action)` pre-check; they rely on RLS for authorization. Errors arrive as 500 with Postgres messages instead of clean 403 with helpful copy. | Extract `requireProjectAccess` into `_lib/route-helpers.ts` mirroring the existing `requireTenantAdmin`. Defer to next iteration; not blocking. |
+
+### Not tested in this round
+
+- **Playwright E2E** — same as PROJ-1/2; deferred to a future combined sweep once more features ship.
+- **Multi-user RBAC scenarios** — the existing single-user setup limits cross-role testing. Will be revisited once PROJ-8 (Stakeholders) signs up additional users.
+- **Defensive role-gating on PROJ-2 dialogs** — frontend implementation note flagged this; `useProjectAccess` now returns real values (table exists with backfilled rows), so the gating is functionally active even without explicit hook calls in the dialogs.
+
+### Recommendation
+
+**Status → Approved.** No Critical or High bugs. Two Medium items (M1 + M2) are acknowledged as follow-ups; both have clear remediation paths and don't block usage. PROJ-4 foundation is solid enough for PROJ-7+ to build on top.
+
+Suggested next:
+1. **Apply M1 fix** (bootstrap RPC) before the second non-admin user creates a project.
+2. **Apply M2 fix** (shared `requireProjectAccess`) when extending the member API for bulk operations or invite flows.
+3. **Playwright E2E** — combined with PROJ-1/2/4 pass after PROJ-7 frontend lands (more UI surface to cover at once).
 
 ## Deployment
 _To be added by /deploy_
