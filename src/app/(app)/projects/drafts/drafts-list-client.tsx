@@ -32,43 +32,63 @@ function formatRelative(iso: string): string {
 
 export function DraftsListClient() {
   const router = useRouter()
-  const { user, currentTenant } = useAuth()
+  const { currentTenant } = useAuth()
   const tenantId = currentTenant?.id ?? null
 
   const [drafts, setDrafts] = React.useState<WizardDraft[]>([])
-  const [hydrated, setHydrated] = React.useState(false)
+  const [loading, setLoading] = React.useState(true)
 
-  const reload = React.useCallback(() => {
+  const reload = React.useCallback(async () => {
     if (!tenantId) return
-    setDrafts(listDrafts(tenantId, user.id))
-  }, [tenantId, user.id])
+    try {
+      setLoading(true)
+      const fetched = await listDrafts(tenantId)
+      setDrafts(fetched)
+    } catch (err) {
+      toast.error("Entwürfe konnten nicht geladen werden", {
+        description: err instanceof Error ? err.message : "Unbekannter Fehler",
+      })
+    } finally {
+      setLoading(false)
+    }
+  }, [tenantId])
 
   React.useEffect(() => {
-    reload()
-    setHydrated(true)
+    void reload()
   }, [reload])
 
   const onDiscard = React.useCallback(
-    (draftId: string) => {
-      if (!tenantId) return
+    async (draftId: string) => {
       const confirmed = window.confirm("Diesen Entwurf endgültig verwerfen?")
       if (!confirmed) return
-      discardDraft(tenantId, user.id, draftId)
-      reload()
-      toast.success("Entwurf verworfen")
+      try {
+        await discardDraft(draftId)
+        toast.success("Entwurf verworfen")
+        await reload()
+      } catch (err) {
+        toast.error("Entwurf konnte nicht verworfen werden", {
+          description: err instanceof Error ? err.message : "Unbekannter Fehler",
+        })
+      }
     },
-    [tenantId, user.id, reload]
+    [reload]
   )
-
-  if (!hydrated) {
-    return null
-  }
 
   if (!tenantId) {
     return (
       <Card>
         <CardContent className="py-10 text-center text-muted-foreground">
           Kein aktiver Mandant ausgewählt.
+        </CardContent>
+      </Card>
+    )
+  }
+
+  if (loading) {
+    return (
+      <Card>
+        <CardContent className="py-10 text-center text-muted-foreground">
+          Lade Entwürfe …
         </CardContent>
       </Card>
     )

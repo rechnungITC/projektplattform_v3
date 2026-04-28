@@ -18,7 +18,7 @@ import { Button } from "@/components/ui/button"
 import { useAuth } from "@/hooks/use-auth"
 import { computeRules } from "@/lib/project-rules/engine"
 import {
-  discardDraft,
+  finalizeDraft,
   getDraft,
   saveDraft,
 } from "@/lib/wizard/draft-storage"
@@ -100,27 +100,39 @@ export function WizardClient({ draftId }: WizardClientProps) {
   // Hydrate from existing draft if present.
   React.useEffect(() => {
     if (!draftId || !tenantId) return
-    const existing = getDraft(tenantId, user.id, draftId)
-    if (existing) {
-      form.reset(existing.data)
-    } else {
-      toast.error("Entwurf nicht gefunden", {
-        description:
-          "Der Entwurf wurde gelöscht oder gehört einem anderen Mandanten.",
-      })
-      router.replace("/projects/drafts")
+    let cancelled = false
+    void (async () => {
+      try {
+        const existing = await getDraft(draftId)
+        if (cancelled) return
+        if (existing) {
+          form.reset(existing.data)
+        } else {
+          toast.error("Entwurf nicht gefunden", {
+            description:
+              "Der Entwurf wurde gelöscht oder gehört einem anderen Mandanten.",
+          })
+          router.replace("/projects/drafts")
+        }
+      } catch (err) {
+        toast.error("Entwurf konnte nicht geladen werden", {
+          description: err instanceof Error ? err.message : "Unbekannter Fehler",
+        })
+      }
+    })()
+    return () => {
+      cancelled = true
     }
-  }, [draftId, tenantId, user.id, form, router])
+  }, [draftId, tenantId, form, router])
 
   const persistDraft = React.useCallback(
     async (data: WizardData, options?: { silent?: boolean }) => {
       if (!tenantId) return
       try {
         setSavingDraft(true)
-        const saved = saveDraft({
+        const saved = await saveDraft({
           id: draftIdState,
           tenantId,
-          userId: user.id,
           data,
         })
         setDraftIdState(saved.id)
@@ -135,7 +147,7 @@ export function WizardClient({ draftId }: WizardClientProps) {
         setSavingDraft(false)
       }
     },
-    [tenantId, user.id, draftIdState]
+    [tenantId, draftIdState]
   )
 
   const validateStep = React.useCallback(
@@ -249,48 +261,17 @@ export function WizardClient({ draftId }: WizardClientProps) {
     }
     setSubmitting(true)
     try {
-      const payload = {
-        name: data.name.trim(),
-        project_type: data.project_type,
-        project_method: data.project_method,
-        description: data.description?.trim() || null,
-        project_number: data.project_number?.trim() || null,
-        planned_start_date: data.planned_start_date
-          ? data.planned_start_date.slice(0, 10)
-          : null,
-        planned_end_date: data.planned_end_date
-          ? data.planned_end_date.slice(0, 10)
-          : null,
-        responsible_user_id: data.responsible_user_id,
-        tenant_id: tenantId,
-        // type_specific_data is sent forward-compatible; the column is added
-        // in /backend. POST /api/projects today ignores unknown fields.
-        type_specific_data: data.type_specific_data,
-      }
-      const response = await fetch("/api/projects", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify(payload),
+      // Ensure the latest answers are in the server-side draft before finalizing.
+      // The finalize endpoint reads the draft and uses it as the source of truth.
+      const draft = await saveDraft({
+        id: draftIdState,
+        tenantId,
+        data,
       })
-      if (!response.ok) {
-        const text = await response.text().catch(() => "")
-        toast.error("Projekt konnte nicht angelegt werden", {
-          description: text || `HTTP ${response.status}`,
-        })
-        setSubmitting(false)
-        return
-      }
-      const created = await response.json().catch(() => null)
-      // Best-effort cleanup; the dedicated finalize endpoint (in /backend)
-      // makes this atomic with the project create.
-      if (draftIdState) {
-        discardDraft(tenantId, user.id, draftIdState)
-      }
-      toast.success("Projekt angelegt", {
-        description: data.name,
-      })
+      const project = await finalizeDraft(draft.id)
+      toast.success("Projekt angelegt", { description: data.name })
       router.replace(
-        created?.id ? `/projects/${created.id}` : "/projects"
+        project?.id ? `/projects/${project.id}` : "/projects"
       )
     } catch (err) {
       toast.error("Projekt konnte nicht angelegt werden", {
@@ -298,7 +279,7 @@ export function WizardClient({ draftId }: WizardClientProps) {
       })
       setSubmitting(false)
     }
-  }, [form, tenantId, user.id, draftIdState, router])
+  }, [form, tenantId, draftIdState, router])
 
   const onCancel = React.useCallback(() => {
     if (form.formState.isDirty) {

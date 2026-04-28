@@ -1,122 +1,111 @@
 /**
- * PROJ-5 — temporary localStorage adapter for wizard drafts. The /backend
- * phase replaces every call here with a fetch() to /api/wizard-drafts;
- * the public surface (listDrafts, getDraft, saveDraft, discardDraft)
- * stays identical so consumers don't need to change.
+ * PROJ-5 — server-side wizard draft storage adapter.
  *
- * Tenant + user are part of the storage key so two users on the same
- * machine can't see each other's drafts. The future RLS policy enforces
- * the same boundary on the server.
+ * Backed by `/api/wizard-drafts` (table `project_wizard_drafts` with
+ * owner-only RLS). Drafts are scoped to tenant + creator.
+ *
+ * The previous localStorage adapter was a stand-in for the frontend phase;
+ * it has been replaced wholesale. The public surface (listDrafts, getDraft,
+ * saveDraft, discardDraft, finalizeDraft) is what consumers use.
  */
 
-import type { WizardDraft, WizardData } from "@/types/wizard"
+import type { WizardData, WizardDraft } from "@/types/wizard"
 
-const KEY_PREFIX = "projektplattform.wizard.drafts"
-
-function storageKey(tenantId: string, userId: string): string {
-  return `${KEY_PREFIX}.${tenantId}.${userId}`
+interface ApiErrorBody {
+  error?: { code?: string; message?: string }
 }
 
-function readAll(tenantId: string, userId: string): WizardDraft[] {
-  if (typeof window === "undefined") return []
+async function safeError(response: Response): Promise<string> {
   try {
-    const raw = window.localStorage.getItem(storageKey(tenantId, userId))
-    if (!raw) return []
-    const parsed = JSON.parse(raw)
-    return Array.isArray(parsed) ? (parsed as WizardDraft[]) : []
+    const body = (await response.json()) as ApiErrorBody
+    return body.error?.message ?? `HTTP ${response.status}`
   } catch {
-    return []
+    return `HTTP ${response.status}`
   }
 }
 
-function writeAll(
-  tenantId: string,
-  userId: string,
-  drafts: WizardDraft[]
-): void {
-  if (typeof window === "undefined") return
-  window.localStorage.setItem(
-    storageKey(tenantId, userId),
-    JSON.stringify(drafts)
+export async function listDrafts(tenantId: string): Promise<WizardDraft[]> {
+  const response = await fetch(
+    `/api/wizard-drafts?tenant_id=${encodeURIComponent(tenantId)}`,
+    { method: "GET", cache: "no-store" }
   )
-}
-
-function newId(): string {
-  if (typeof crypto !== "undefined" && "randomUUID" in crypto) {
-    return crypto.randomUUID()
+  if (!response.ok) {
+    throw new Error(await safeError(response))
   }
-  return `draft_${Date.now()}_${Math.random().toString(36).slice(2, 10)}`
+  const body = (await response.json()) as { drafts: WizardDraft[] }
+  return body.drafts ?? []
 }
 
-export function listDrafts(tenantId: string, userId: string): WizardDraft[] {
-  const all = readAll(tenantId, userId)
-  return [...all].sort((a, b) => b.updated_at.localeCompare(a.updated_at))
-}
-
-export function getDraft(
-  tenantId: string,
-  userId: string,
-  id: string
-): WizardDraft | null {
-  return readAll(tenantId, userId).find((d) => d.id === id) ?? null
+export async function getDraft(id: string): Promise<WizardDraft | null> {
+  const response = await fetch(`/api/wizard-drafts/${encodeURIComponent(id)}`, {
+    method: "GET",
+    cache: "no-store",
+  })
+  if (response.status === 404) return null
+  if (!response.ok) {
+    throw new Error(await safeError(response))
+  }
+  const body = (await response.json()) as { draft: WizardDraft }
+  return body.draft ?? null
 }
 
 interface SaveDraftInput {
   id?: string
   tenantId: string
-  userId: string
   data: WizardData
 }
 
-export function saveDraft(input: SaveDraftInput): WizardDraft {
-  const all = readAll(input.tenantId, input.userId)
-  const now = new Date().toISOString()
-  const denormName = input.data.name.trim() || null
-
+export async function saveDraft(input: SaveDraftInput): Promise<WizardDraft> {
   if (input.id) {
-    const existing = all.find((d) => d.id === input.id)
-    if (existing) {
-      const updated: WizardDraft = {
-        ...existing,
-        name: denormName,
-        project_type: input.data.project_type,
-        project_method: input.data.project_method,
-        data: input.data,
-        updated_at: now,
+    const response = await fetch(
+      `/api/wizard-drafts/${encodeURIComponent(input.id)}`,
+      {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ data: input.data }),
       }
-      writeAll(
-        input.tenantId,
-        input.userId,
-        all.map((d) => (d.id === input.id ? updated : d))
-      )
-      return updated
+    )
+    if (!response.ok) {
+      throw new Error(await safeError(response))
     }
+    const body = (await response.json()) as { draft: WizardDraft }
+    return body.draft
   }
 
-  const created: WizardDraft = {
-    id: input.id ?? newId(),
-    tenant_id: input.tenantId,
-    created_by: input.userId,
-    name: denormName,
-    project_type: input.data.project_type,
-    project_method: input.data.project_method,
-    data: input.data,
-    created_at: now,
-    updated_at: now,
+  const response = await fetch("/api/wizard-drafts", {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ tenant_id: input.tenantId, data: input.data }),
+  })
+  if (!response.ok) {
+    throw new Error(await safeError(response))
   }
-  writeAll(input.tenantId, input.userId, [...all, created])
-  return created
+  const body = (await response.json()) as { draft: WizardDraft }
+  return body.draft
 }
 
-export function discardDraft(
-  tenantId: string,
-  userId: string,
-  id: string
-): void {
-  const all = readAll(tenantId, userId)
-  writeAll(
-    tenantId,
-    userId,
-    all.filter((d) => d.id !== id)
+export async function discardDraft(id: string): Promise<void> {
+  const response = await fetch(`/api/wizard-drafts/${encodeURIComponent(id)}`, {
+    method: "DELETE",
+  })
+  if (response.status === 404) return // already gone
+  if (!response.ok) {
+    throw new Error(await safeError(response))
+  }
+}
+
+/**
+ * Atomic-ish finalize — backend creates the project, runs the auto-lead
+ * bootstrap, then deletes the draft. Returns the new project id.
+ */
+export async function finalizeDraft(id: string): Promise<{ id: string }> {
+  const response = await fetch(
+    `/api/wizard-drafts/${encodeURIComponent(id)}/finalize`,
+    { method: "POST" }
   )
+  if (!response.ok) {
+    throw new Error(await safeError(response))
+  }
+  const body = (await response.json()) as { project: { id: string } }
+  return body.project
 }

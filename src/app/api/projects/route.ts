@@ -41,6 +41,10 @@ const createSchema = z
     // PROJ-6: optional sub-project parent. Cross-tenant guard + depth-2 +
     // self-parent guard are enforced by triggers; surface 422 on violation.
     parent_project_id: z.string().uuid().optional().nullable(),
+    // PROJ-5: type-specific extras from the wizard's Step 4. Stored as JSONB.
+    // The wizard sends this; per-type extension tables (PROJ-15) can later
+    // extract data from this column.
+    type_specific_data: z.record(z.string(), z.string()).optional().nullable(),
   })
   .refine(
     (val) =>
@@ -101,6 +105,7 @@ export async function POST(request: Request) {
     project_type: data.project_type,
     project_method: data.project_method ?? null,
     parent_project_id: data.parent_project_id ?? null,
+    type_specific_data: data.type_specific_data ?? {},
     created_by: userId,
   }
 

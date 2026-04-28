@@ -208,10 +208,25 @@ No new npm packages. Everything is already installed:
 - `NewProjectDialog` (single-step modal) deleted — the wizard is now the only creation path; both project-list buttons (header + empty-state) link to the wizard.
 - New shadcn primitives needed: none. All required components were already installed.
 
-### Backend (pending — /backend phase)
-- Migration: `project_wizard_drafts` table (multi-tenant, RLS owner-only) + `projects.type_specific_data` JSONB column.
-- API routes: list / get / create / update / discard drafts; finalize endpoint (atomic create + draft cleanup).
-- Swap the localStorage adapter for fetch-to-API on the wizard side.
+### Backend (this commit)
+- Migration `20260428170000_proj5_wizard_drafts_and_type_specific_data.sql`:
+  - `project_wizard_drafts` table (tenant-scoped, owner-only RLS — 4 policies: SELECT/INSERT/UPDATE/DELETE all gated on `created_by = auth.uid() AND is_tenant_member(tenant_id)`).
+  - `projects.type_specific_data` JSONB column (default `'{}'::jsonb`).
+  - Indexes: `(tenant_id, created_by)` and `(updated_at desc)`.
+  - `pwd_set_updated_at` trigger via `extensions.moddatetime`.
+- API routes:
+  - `GET /api/wizard-drafts?tenant_id=…` — list current user's drafts (RLS scoped).
+  - `POST /api/wizard-drafts` — create draft.
+  - `GET/PATCH/DELETE /api/wizard-drafts/[id]` — single-draft operations (404 hides RLS denials).
+  - `POST /api/wizard-drafts/[id]/finalize` — atomic-ish: read draft → insert project → run PROJ-4 auto-lead RPC → delete draft.
+- Existing `POST /api/projects` extended to accept and persist `type_specific_data`.
+- localStorage adapter replaced with fetch-based one in `src/lib/wizard/draft-storage.ts`. Public surface stays compatible (now async).
+- 16 new Vitest tests across `route.test.ts` + `[id]/route.test.ts` (137 total in suite, all green).
+
+### Open follow-ups (deferred)
+- 90-day auto-purge cron for stale drafts.
+- KI-Dialog (F2.1b) entry-page toggle (gated by PROJ-12).
+- Move ERP-specific Step-4 answers from `type_specific_data` JSONB into a per-type table (PROJ-15).
 
 ## QA Test Results
 _To be added by /qa_
