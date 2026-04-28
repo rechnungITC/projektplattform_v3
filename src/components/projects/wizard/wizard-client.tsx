@@ -16,10 +16,21 @@ import {
 } from "@/components/ui/card"
 import { Button } from "@/components/ui/button"
 import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert"
+import {
+  AlertDialog,
+  AlertDialogAction,
+  AlertDialogCancel,
+  AlertDialogContent,
+  AlertDialogDescription,
+  AlertDialogFooter,
+  AlertDialogHeader,
+  AlertDialogTitle,
+} from "@/components/ui/alert-dialog"
 import { useAuth } from "@/hooks/use-auth"
 import { computeRules } from "@/lib/project-rules/engine"
 import {
   DraftConflictError,
+  discardDraft,
   finalizeDraft,
   getDraft,
   saveDraft,
@@ -97,6 +108,8 @@ export function WizardClient({ draftId }: WizardClientProps) {
     draftId: string
     message: string
   } | null>(null)
+  const [submitError, setSubmitError] = React.useState<string | null>(null)
+  const [cancelOpen, setCancelOpen] = React.useState(false)
   const [submitting, setSubmitting] = React.useState(false)
   const [savingDraft, setSavingDraft] = React.useState(false)
 
@@ -303,6 +316,7 @@ export function WizardClient({ draftId }: WizardClientProps) {
       toast.error("Projekttyp fehlt")
       return
     }
+    setSubmitError(null)
     setSubmitting(true)
     try {
       // Ensure the latest answers are in the server-side draft before finalizing.
@@ -320,22 +334,49 @@ export function WizardClient({ draftId }: WizardClientProps) {
         project?.id ? `/projects/${project.id}` : "/projects"
       )
     } catch (err) {
+      const message =
+        err instanceof Error ? err.message : "Unbekannter Fehler"
+      setSubmitError(message)
       toast.error("Projekt konnte nicht angelegt werden", {
-        description: err instanceof Error ? err.message : "Unbekannter Fehler",
+        description: message,
       })
       setSubmitting(false)
     }
   }, [form, tenantId, persistDraft, router])
 
-  const onCancel = React.useCallback(() => {
-    if (form.formState.isDirty) {
-      const confirmed = window.confirm(
-        "Änderungen verwerfen? Ein Entwurf bleibt gespeichert, falls du bereits einen Schritt vorangekommen bist."
-      )
-      if (!confirmed) return
+  const onCancelClick = React.useCallback(() => {
+    if (!form.formState.isDirty && !draftIdState) {
+      router.push("/projects")
+      return
+    }
+    setCancelOpen(true)
+  }, [form.formState.isDirty, draftIdState, router])
+
+  const onCancelDiscard = React.useCallback(async () => {
+    if (!tenantId) return
+    setCancelOpen(false)
+    if (draftIdState) {
+      try {
+        await discardDraft(draftIdState)
+        toast.success("Entwurf verworfen")
+      } catch (err) {
+        toast.error("Entwurf konnte nicht verworfen werden", {
+          description: err instanceof Error ? err.message : "Unbekannter Fehler",
+        })
+      }
     }
     router.push("/projects")
-  }, [form.formState.isDirty, router])
+  }, [tenantId, draftIdState, router])
+
+  const onCancelSaveAndExit = React.useCallback(async () => {
+    setCancelOpen(false)
+    const data = form.getValues()
+    const saved = await persistDraft(data, { silent: true })
+    if (saved) {
+      toast.success("Entwurf gespeichert")
+      router.push("/projects/drafts")
+    }
+  }, [form, persistDraft, router])
 
   if (!tenantId) {
     return (
@@ -386,6 +427,30 @@ export function WizardClient({ draftId }: WizardClientProps) {
               </AlertDescription>
             </Alert>
           ) : null}
+          {submitError ? (
+            <Alert variant="destructive">
+              <AlertTriangle className="h-4 w-4" aria-hidden />
+              <AlertTitle>Projekt konnte nicht angelegt werden</AlertTitle>
+              <AlertDescription className="space-y-2">
+                <p>{submitError}</p>
+                <Button
+                  type="button"
+                  size="sm"
+                  variant="outline"
+                  onClick={() => void onCreate()}
+                  disabled={submitting}
+                >
+                  {submitting ? (
+                    <Loader2
+                      className="mr-2 h-4 w-4 animate-spin"
+                      aria-hidden
+                    />
+                  ) : null}
+                  Erneut versuchen
+                </Button>
+              </AlertDescription>
+            </Alert>
+          ) : null}
           {step === "basics" ? (
             <StepBasics tenantId={tenantId} />
           ) : step === "type" ? (
@@ -406,7 +471,7 @@ export function WizardClient({ draftId }: WizardClientProps) {
               <Button
                 type="button"
                 variant="outline"
-                onClick={onCancel}
+                onClick={onCancelClick}
                 disabled={submitting}
               >
                 Abbrechen
@@ -464,6 +529,37 @@ export function WizardClient({ draftId }: WizardClientProps) {
           </div>
         </CardContent>
       </Card>
+
+      <AlertDialog open={cancelOpen} onOpenChange={setCancelOpen}>
+        <AlertDialogContent>
+          <AlertDialogHeader>
+            <AlertDialogTitle>Wizard abbrechen?</AlertDialogTitle>
+            <AlertDialogDescription>
+              Du hast Änderungen vorgenommen. Was soll mit dem aktuellen Stand
+              passieren?
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter className="flex-col gap-2 sm:flex-row sm:justify-between sm:space-x-0">
+            <AlertDialogCancel className="sm:order-1">
+              Weiter bearbeiten
+            </AlertDialogCancel>
+            <div className="flex flex-col gap-2 sm:order-2 sm:flex-row sm:gap-2">
+              <Button
+                type="button"
+                variant="outline"
+                onClick={() => void onCancelDiscard()}
+              >
+                Entwurf verwerfen
+              </Button>
+              <AlertDialogAction
+                onClick={() => void onCancelSaveAndExit()}
+              >
+                Speichern & schließen
+              </AlertDialogAction>
+            </div>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
     </FormProvider>
   )
 }

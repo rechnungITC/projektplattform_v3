@@ -11,6 +11,10 @@ const PUBLIC_ROUTES = [
   "/forgot-password",
   "/reset-password",
   "/auth/callback",
+  // Cron endpoints authenticate via Bearer token (CRON_SECRET), not session
+  // cookies. Bypass the auth middleware so Vercel Cron can reach the handler;
+  // the route validates the secret itself.
+  "/api/cron",
 ]
 
 function isPublicRoute(pathname: string): boolean {

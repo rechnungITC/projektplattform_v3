@@ -40,6 +40,7 @@ import {
   type ProjectMethod,
 } from "@/types/project-method"
 import type { Project } from "@/types/project"
+import { dateToIsoDate } from "@/lib/dates/iso-date"
 
 import { DatePickerField } from "./date-picker-field"
 import { ResponsibleUserPicker } from "./responsible-user-picker"
@@ -411,14 +412,6 @@ function parseIsoDate(value: string): Date {
   const month = Number(monthStr)
   const day = Number(dayStr)
   return new Date(year, month - 1, day)
-}
-
-function dateToIsoDate(value: Date | null | undefined): string | null {
-  if (!value) return null
-  const yyyy = value.getFullYear()
-  const mm = String(value.getMonth() + 1).padStart(2, "0")
-  const dd = String(value.getDate()).padStart(2, "0")
-  return `${yyyy}-${mm}-${dd}`
 }
 
 async function safeReadError(response: Response): Promise<string> {

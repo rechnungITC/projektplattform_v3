@@ -27,6 +27,7 @@ import {
 } from "@/components/ui/form"
 import { Input } from "@/components/ui/input"
 import { Textarea } from "@/components/ui/textarea"
+import { dateToIsoDate } from "@/lib/dates/iso-date"
 
 const newSprintSchema = z
   .object({
@@ -253,14 +254,6 @@ export function NewSprintDialog({
       </DialogContent>
     </Dialog>
   )
-}
-
-function dateToIsoDate(value: Date | null | undefined): string | null {
-  if (!value) return null
-  const yyyy = value.getFullYear()
-  const mm = String(value.getMonth() + 1).padStart(2, "0")
-  const dd = String(value.getDate()).padStart(2, "0")
-  return `${yyyy}-${mm}-${dd}`
 }
 
 async function safeReadError(response: Response): Promise<string> {

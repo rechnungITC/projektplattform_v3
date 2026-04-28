@@ -9,6 +9,7 @@ import { z } from "zod"
 
 import { DatePickerField } from "@/components/projects/date-picker-field"
 import { Button } from "@/components/ui/button"
+import { dateToIsoDate } from "@/lib/dates/iso-date"
 import {
   Dialog,
   DialogContent,
@@ -280,14 +281,6 @@ export function MilestoneStatusDialog({
 function parseIsoDate(value: string): Date {
   const [yearStr, monthStr, dayStr] = value.slice(0, 10).split("-")
   return new Date(Number(yearStr), Number(monthStr) - 1, Number(dayStr))
-}
-
-function dateToIsoDate(value: Date | null | undefined): string | null {
-  if (!value) return null
-  const yyyy = value.getFullYear()
-  const mm = String(value.getMonth() + 1).padStart(2, "0")
-  const dd = String(value.getDate()).padStart(2, "0")
-  return `${yyyy}-${mm}-${dd}`
 }
 
 async function safeReadError(response: Response): Promise<string> {

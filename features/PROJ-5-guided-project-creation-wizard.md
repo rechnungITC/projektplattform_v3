@@ -351,7 +351,17 @@ Status flipped to **Approved**. Ready for `/deploy` (auto-deploy already shipped
   - Method follow-up content (Scrum sprint length, Kanban WIP, etc.) was a QA-found gap (M2) — closed in commit `295f1a1` with a `METHOD_REQUIRED_INFO` map. Specific keys per method documented in the spec's Tech Design section.
   - Date helper `dateToIsoDate` / `parseLocalDate` extracted to `src/lib/dates/iso-date.ts`. Existing duplicate copies in `milestones/`, `sprints/`, `phases/` dialogs were left in place; opportunistic migration when those files are touched.
 
-### Follow-ups
-- Fix the `npm run lint` script — `next lint` was removed in Next.js 16. Replace with direct ESLint invocation (`eslint . --ext ts,tsx`) or remove the script.
-- Migrate the 4 legacy duplicates of `dateToIsoDate` (in `milestones/`, `sprints/`, `phases/`) to the shared helper at `src/lib/dates/iso-date.ts`.
-- L1, L2 from QA bug audit remain open (minor UX polish — retry button after finalize failure; cancel-discards-draft confirm).
+### Follow-ups (closed in post-deploy commits)
+
+| Item | Commit | Details |
+|---|---|---|
+| Lint script fix | post-deploy | `next lint` (removed in Next.js 16) → `eslint . --ext ts,tsx`. Migrated `.eslintrc.json` to flat-config (`eslint.config.mjs`) by spreading the now-flat-native `eslint-config-next/core-web-vitals`. Existing codebase has 41 pre-existing lint findings (32 errors, 9 warnings) surfaced for the first time — separate cleanup ticket. |
+| Date-helper migration | post-deploy | All 8 duplicate `dateToIsoDate` definitions in `phases/`, `sprints/`, `milestones/`, `projects/` dialogs replaced with imports from `src/lib/dates/iso-date.ts`. Single source of truth. |
+| L1 — Retry button | post-deploy | Submit failure now shows a destructive Alert with explicit "Erneut versuchen" button (with spinner). |
+| L2 — Cancel dialog | post-deploy | `window.confirm` replaced with shadcn `AlertDialog` offering 3 actions: Weiter bearbeiten, Entwurf verwerfen, Speichern & schließen. Only opens when the form is dirty or a draft already exists; otherwise navigates straight to /projects. |
+| 90-day auto-purge | post-deploy | Vercel Cron job at `/api/cron/purge-wizard-drafts` (daily 03:00 UTC) deletes drafts where `updated_at < now() - 90 days`. Bearer-token authenticated against `CRON_SECRET` env var. Auth middleware bypasses `/api/cron/*` because cron uses bearer auth, not cookies. **Setup needed:** add `CRON_SECRET` (32+ random chars) to Vercel env vars; without it, the route returns 500. |
+
+### Still open (genuinely deferred)
+- KI-Dialog (F2.1b) — gated by PROJ-12.
+- Fix the 41 pre-existing lint errors surfaced by the new lint script.
+- Migrate ERP-specific Step-4 answers from `type_specific_data` JSONB into a per-type table (PROJ-15).
