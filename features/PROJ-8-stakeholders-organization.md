@@ -1,8 +1,8 @@
 # PROJ-8: Stakeholders and Organization
 
-## Status: Planned
+## Status: Architected
 **Created:** 2026-04-25
-**Last Updated:** 2026-04-25
+**Last Updated:** 2026-04-28
 
 ## Summary
 Models stakeholders as first-class business entities (separate from technical users — see V2 ADR `stakeholder-vs-user.md`). Internal or external. Person or organization. Per-type suggestion lists. Includes the influence/impact matrix for visual prioritization. Inherits V2 EP-06.
@@ -85,7 +85,124 @@ Models stakeholders as first-class business entities (separate from technical us
 <!-- Sections below are added by subsequent skills -->
 
 ## Tech Design (Solution Architect)
-_To be added by /architecture_
+
+### What changes for the user
+
+Today the Stakeholder tab is a Coming-Soon stub. After PROJ-8: a full project-scoped stakeholder list with two views — a sortable table and a 4×4 influence/impact matrix — plus a "Suggestions" sidebar that pulls typical roles from the project type catalog (e.g. an ERP project suggests Sponsor, Key-User, IT-Architect, Datenschutzbeauftragte:r). Single-click "Add" creates a stakeholder shell with the role pre-filled. Edit happens in a slide-in drawer. The matrix is exportable as PNG for steering committee slides.
+
+### Component structure
+
+```
+/projects/[id]/stakeholder  (Server Component shell + RLS gate)
++-- Stakeholder Tab Header
+|   +-- View toggle (List / Matrix)
+|   +-- "+ Stakeholder" button (opens edit drawer in create mode)
+|   +-- Search field (filter by name / role / org_unit)
+|   +-- "Inaktive einblenden" toggle
++-- Suggestions Sidebar (collapsible, hidden when no suggestions left)
+|   +-- "Empfohlen für [project type]" header
+|   +-- Suggestion card per role: label, "Add" + "Verwerfen" buttons
++-- Main View (one of:)
+|   +-- List View
+|   |   +-- Table (Name, Rolle, Org, Origin, Einfluss/Impact, Status)
+|   |   +-- Row click -> opens edit drawer
+|   |   +-- Empty state: "Noch keine Stakeholder"
+|   +-- Matrix View (F5.3)
+|       +-- 4x4 grid (x = Einfluss, y = Impact)
+|       +-- Cell shows count badge + colored dot markers
+|       +-- Click cell -> list of stakeholders in that bucket
+|       +-- Click marker -> edit drawer
+|       +-- "Als PNG exportieren" button
++-- Edit Drawer (shadcn Sheet, slide from right)
+|   +-- Form (RHF + Zod)
+|   |   +-- Kind radio (Person / Organisation)
+|   |   +-- Origin radio (Intern / Extern)
+|   |   +-- Name (required)
+|   |   +-- Rolle (combobox from project type catalog + free-text fallback)
+|   |   +-- Organisationseinheit
+|   |   +-- E-Mail, Telefon (Class-3, marked)
+|   |   +-- Verknüpftes Konto (User picker, optional)
+|   |   +-- Einfluss + Impact (segmented control, 4 levels each)
+|   |   +-- Notizen (Textarea, Class-3)
+|   +-- Footer: Speichern / Abbrechen / Deaktivieren (when editing)
+```
+
+### Data model
+
+**New table: `stakeholders`**
+- Identity: id (UUID), tenant_id (multi-tenant invariant), project_id (cascade-delete on project)
+- Classification: kind (`person` / `organization`), origin (`internal` / `external`)
+- Identity fields (Class-3 — personal data flagged for PROJ-12 export redaction):
+  name (required), contact_email, contact_phone, linked_user_id (FK auth.users ON DELETE SET NULL), notes
+- Domain fields (not Class-3): role_key (free or from project-type catalog), org_unit
+- Steering fields: influence + impact (each `low` / `medium` / `high` / `critical`)
+- Lifecycle: is_active (boolean, default true), created_by, created_at, updated_at
+
+**New table: `stakeholder_suggestion_dismissals`**
+- Composite key: (project_id, role_key)
+- tenant_id (multi-tenant invariant)
+- dismissed_by, dismissed_at (timestamps for "show me the dismissal trail")
+- ON DELETE CASCADE from project
+
+**Row-Level Security (both tables)**
+- Read: any project member (via PROJ-4's `is_project_member` helper)
+- Write: project_editor, project_lead, or tenant_admin (via existing PROJ-4 helpers)
+- Cross-tenant access blocked by `is_tenant_member(tenant_id)` check on every policy
+- Class-3 fields are stored normally (encryption at rest is Postgres' job); the privacy registry that PROJ-12 reads will mark these column names so an AI export pass can redact them.
+
+### Tech decisions and why
+
+| Decision | Why |
+|---|---|
+| **Two-table model** (stakeholders + suggestion_dismissals) | Separates "dismissals" from the main entity. Audit is cleaner per-action. Project deletion cascades both. JSON-array-in-stakeholders would be harder to audit and query. |
+| **`role_key` is free-text with autocomplete** from PROJ-6's `standard_roles` | Lets users type novel roles (e.g. "Operations-Manager Standort Süd") without forcing pre-defined enum. Catalog roles are first-class suggestions but not the only valid input. |
+| **Four-step influence/impact scale** | Matches V2 ADR. Tenant-level customization is a PROJ-17 concern; keeping the column as text enum (not numeric) makes admin queries readable. |
+| **Edit drawer (Sheet) instead of modal dialog** | Drawer keeps the table visible behind the form so the user retains context. Modal would force a full-screen overlay for what's a 1-screen edit. |
+| **Matrix renders client-side**, PNG export via `html-to-image` | Server-rendering PNG would require a headless browser. The matrix is a 4x4 grid + dots — html-to-image (~12 KB) on a div is fast and zero-server-cost. |
+| **No audit log in v1** | Spec lists PROJ-10 as a Required dependency, but PROJ-10 is still Planned. **Decision: build PROJ-8 without audit hooks; flag explicitly.** When PROJ-10 ships, a hook will be added in a follow-up commit — every editable column is field-level and easy to wire later. |
+| **No data privacy registry yet** | Same reasoning — PROJ-12 isn't built. Class-3 fields are documented in the migration as comments; enforcement (e.g. AI export redaction) lands with PROJ-12. |
+| **Soft-deactivate via `is_active`**, not hard-delete | Keeps the audit trail intact (when PROJ-10 lands), preserves stakeholder history on closed projects, and reactivation is a single PATCH. |
+
+### New surfaces added
+
+**API routes** (built in `/backend`):
+- list, get, create, update stakeholders (project-scoped, RLS-gated)
+- deactivate / reactivate (small POST endpoints)
+- suggestions (computed: catalog roles minus dismissed minus already-added)
+- dismiss / clear-dismissals
+
+**Pages**:
+- `/projects/[id]/stakeholder` — replaces today's Coming-Soon stub; List view default, Matrix view via `?view=matrix` query
+
+**Components** (under `src/components/projects/stakeholders/`):
+- StakeholderTabClient (orchestrator with view toggle)
+- StakeholderTable
+- StakeholderMatrix + matrix-cell + PNG-export wrapper
+- StakeholderForm (used inside the Sheet)
+- StakeholderSuggestions (sidebar)
+
+### Dependencies
+
+One small new npm package:
+- `html-to-image` (~12 KB) — converts the matrix DOM tree into a downloadable PNG.
+
+Already installed and reused:
+- `react-hook-form` + `zod` — same pattern as PROJ-2, PROJ-5
+- shadcn `Sheet`, `Form`, `Select`, `Input`, `Textarea`, `Card`, `Table`, `Badge`, `RadioGroup`, `Toggle`, `ScrollArea`
+- PROJ-6 catalog (`standard_roles` per project type)
+- PROJ-4 helpers (`is_project_member`, `has_project_role`)
+- Lucide icons
+
+### Out of scope for this build (deferred)
+
+- KI-based stakeholder analysis (PROJ-12)
+- External contact-data enrichment
+- Communication-mode generation (PROJ-13)
+- Multi-project stakeholder dedup
+- Tenant-wide stakeholder rollup (PROJ-16 admin views)
+- Audit log entries for edits (waits for PROJ-10)
+- Class-3 privacy-registry enforcement (waits for PROJ-12)
+- Tenant-configurable influence/impact labels (PROJ-17)
 
 ## Implementation Notes
 _To be added by /frontend and /backend_
