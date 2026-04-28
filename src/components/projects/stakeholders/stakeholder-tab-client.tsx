@@ -28,6 +28,7 @@ import {
   type StakeholderInput,
 } from "@/lib/stakeholders/api"
 import {
+  STAKEHOLDER_SCORE_LABELS,
   type Stakeholder,
   type StakeholderScore,
   type StakeholderSuggestion,
@@ -56,12 +57,16 @@ export function StakeholderTabClient({ projectId }: StakeholderTabClientProps) {
   const [suggestions, setSuggestions] = React.useState<StakeholderSuggestion[]>(
     []
   )
-  const [hasDismissals, setHasDismissals] = React.useState(false)
+  const [dismissedCount, setDismissedCount] = React.useState(0)
   const [loading, setLoading] = React.useState(true)
   const [suggestionsLoading, setSuggestionsLoading] = React.useState(true)
   const [view, setView] = React.useState<View>("list")
   const [includeInactive, setIncludeInactive] = React.useState(false)
   const [search, setSearch] = React.useState("")
+  const [bucketFilter, setBucketFilter] = React.useState<{
+    influence: StakeholderScore
+    impact: StakeholderScore
+  } | null>(null)
   const [drawer, setDrawer] = React.useState<DrawerState>({ mode: "closed" })
   const [submitting, setSubmitting] = React.useState(false)
 
@@ -82,8 +87,9 @@ export function StakeholderTabClient({ projectId }: StakeholderTabClientProps) {
   const reloadSuggestions = React.useCallback(async () => {
     try {
       setSuggestionsLoading(true)
-      const list = await listStakeholderSuggestions(projectId)
-      setSuggestions(list)
+      const result = await listStakeholderSuggestions(projectId)
+      setSuggestions(result.suggestions)
+      setDismissedCount(result.dismissed_count)
     } catch {
       // Suggestions failures are non-blocking; silently ignore.
     } finally {
@@ -100,15 +106,25 @@ export function StakeholderTabClient({ projectId }: StakeholderTabClientProps) {
   }, [reloadSuggestions])
 
   const filtered = React.useMemo(() => {
-    if (!search.trim()) return stakeholders
+    let result = stakeholders
+    if (bucketFilter) {
+      result = result.filter(
+        (s) =>
+          s.influence === bucketFilter.influence &&
+          s.impact === bucketFilter.impact
+      )
+    }
     const q = search.trim().toLowerCase()
-    return stakeholders.filter(
-      (s) =>
-        s.name.toLowerCase().includes(q) ||
-        (s.role_key ?? "").toLowerCase().includes(q) ||
-        (s.org_unit ?? "").toLowerCase().includes(q)
-    )
-  }, [stakeholders, search])
+    if (q) {
+      result = result.filter(
+        (s) =>
+          s.name.toLowerCase().includes(q) ||
+          (s.role_key ?? "").toLowerCase().includes(q) ||
+          (s.org_unit ?? "").toLowerCase().includes(q)
+      )
+    }
+    return result
+  }, [stakeholders, search, bucketFilter])
 
   const onCreate = async (input: StakeholderInput) => {
     setSubmitting(true)
@@ -172,10 +188,9 @@ export function StakeholderTabClient({ projectId }: StakeholderTabClientProps) {
   const onSuggestionDismiss = async (sug: StakeholderSuggestion) => {
     try {
       await dismissSuggestion(projectId, sug.role_key)
-      setSuggestions((prev) =>
-        prev.filter((s) => s.role_key !== sug.role_key)
-      )
-      setHasDismissals(true)
+      // Server is source of truth for dismissed_count — refetch to keep the
+      // recover-link visible across reloads (PROJ-8 QA M1 fix).
+      void reloadSuggestions()
     } catch (err) {
       toast.error("Vorschlag konnte nicht verworfen werden", {
         description: err instanceof Error ? err.message : "Unbekannter Fehler",
@@ -186,7 +201,6 @@ export function StakeholderTabClient({ projectId }: StakeholderTabClientProps) {
   const onClearDismissals = async () => {
     try {
       await clearDismissedSuggestions(projectId)
-      setHasDismissals(false)
       void reloadSuggestions()
       toast.success("Verworfene Vorschläge zurückgeholt")
     } catch (err) {
@@ -196,7 +210,8 @@ export function StakeholderTabClient({ projectId }: StakeholderTabClientProps) {
     }
   }
 
-  // Matrix cell-click filters the list view to that bucket.
+  // Matrix cell-click smart action: 1 match → edit, 0 → create, n>1 →
+  // switch to list with a structured bucket filter (not a search-string hack).
   const onMatrixCell = (
     influence: StakeholderScore,
     impact: StakeholderScore
@@ -209,9 +224,9 @@ export function StakeholderTabClient({ projectId }: StakeholderTabClientProps) {
     } else if (matches.length === 0) {
       setDrawer({ mode: "create" })
     } else {
-      // Switch to list view filtered to this bucket.
+      setBucketFilter({ influence, impact })
+      setSearch("")
       setView("list")
-      setSearch(matches.map((m) => m.name).join(" OR ") || "")
     }
   }
 
@@ -268,6 +283,30 @@ export function StakeholderTabClient({ projectId }: StakeholderTabClientProps) {
             </label>
           </div>
 
+          {bucketFilter ? (
+            <div className="flex flex-wrap items-center justify-between gap-2 rounded-md border bg-muted/40 px-3 py-2 text-sm">
+              <span>
+                Quadrant:{" "}
+                <strong>
+                  Einfluss {STAKEHOLDER_SCORE_LABELS[bucketFilter.influence]}
+                </strong>
+                {" · "}
+                <strong>
+                  Impact {STAKEHOLDER_SCORE_LABELS[bucketFilter.impact]}
+                </strong>{" "}
+                ({filtered.length})
+              </span>
+              <Button
+                type="button"
+                variant="ghost"
+                size="sm"
+                onClick={() => setBucketFilter(null)}
+              >
+                Filter entfernen
+              </Button>
+            </div>
+          ) : null}
+
           {loading ? (
             <p className="text-sm text-muted-foreground">Lade Stakeholder …</p>
           ) : view === "list" ? (
@@ -290,7 +329,7 @@ export function StakeholderTabClient({ projectId }: StakeholderTabClientProps) {
           <StakeholderSuggestions
             suggestions={suggestions}
             loading={suggestionsLoading}
-            hasDismissals={hasDismissals}
+            hasDismissals={dismissedCount > 0}
             onAdd={onSuggestionAdd}
             onDismiss={(s) => void onSuggestionDismiss(s)}
             onClearDismissals={() => void onClearDismissals()}

@@ -75,5 +75,10 @@ export async function GET(_request: Request, ctx: Ctx) {
       label_de: role.label_de,
     }))
 
-  return NextResponse.json({ suggestions })
+  return NextResponse.json({
+    suggestions,
+    // Drives the "Verworfene zurückholen" link in the UI; needed so the
+    // affordance survives a page reload (PROJ-8 QA bug M1).
+    dismissed_count: dismissedRoleKeys.size,
+  })
 }

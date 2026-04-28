@@ -323,8 +323,8 @@ Already installed and reused:
 
 | Severity | ID | Description | Where |
 |---|---|---|---|
-| Medium | M1 | **`hasDismissals` resets on page reload.** Local state only — set when user dismisses in current session, cleared on remount. After reload the user has no UI affordance to recover dismissed roles even if dismissals exist on the server. Fix: extend the suggestions API to return `dismissed_count` (or expose a separate `GET .../suggestions/dismissed` endpoint), drive the link visibility from server state. | `src/components/projects/stakeholders/stakeholder-tab-client.tsx` + suggestions route handler |
-| Medium | M2 | **Matrix cell-click with multiple matches puts " OR " into the search box.** The search filter is a simple `includes`, so the bogus query string filters to zero results. Either build a real bucket-filter mode (preferred) or scroll the list to the first match. | `stakeholder-tab-client.tsx` `onMatrixCell` |
+| Medium | M1 | `hasDismissals` resets on page reload. | **Resolved** — suggestions API now returns `dismissed_count`; orchestrator drives the recover-link from `dismissedCount > 0` and refetches on every dismiss/clear (commit at QA-fix iteration). |
+| Medium | M2 | Matrix cell-click with multiple matches puts " OR " into the search box. | **Resolved** — replaced with a structured `bucketFilter` state. Cell-click switches to list view + sets bucket filter; banner shows "Quadrant: Einfluss X · Impact Y (n)" with "Filter entfernen" button. Search and bucket filter compose. |
 | Low | L1 | **Deactivate has no confirm dialog.** Click in drawer → instant deactivate, drawer closes, the row disappears from the default list. Recovery needs the "Inaktive einblenden" toggle. Worth a confirm or an explicit toast with "rückgängig". | drawer secondary action |
 | Low | L2 | **`linked_user_id` Zod schema is `z.string()`** — accepts any string, not just UUID-or-empty. Picker UI returns UUIDs only, so this is theoretical, but tightening to `z.union([z.literal(""), z.string().uuid()])` is cheap. | `stakeholder-form.tsx` |
 | Low | L3 | **Cleared `role_key` doesn't unmark the suggestion as used.** A user who adds via "Sponsor" suggestion, then clears the field, leaves the suggestion side without a "used" claim — but the role_key is now NULL so the API also doesn't see it as used; it correctly *re-appears* in suggestions. Edge case; not a bug per se. | suggestions endpoint logic |
@@ -336,11 +336,11 @@ Already installed and reused:
 
 **READY** for status `Approved`.
 
-No Critical or High bugs. The two Medium bugs are UX-quality issues with non-blocking workarounds:
-- M1: dismissed roles are still recoverable via the API; the UI just doesn't surface the action after reload. Backend works correctly.
-- M2: cell-click with overflow falls back to a no-op search. The matrix still functions for direct-marker click, single-match cells, and empty-cell-create.
+Both Medium bugs (M1, M2) resolved before deploy:
+- M1: server-driven `dismissed_count`; recover-link visible after reload.
+- M2: structured bucket filter replaces the search-OR hack.
 
-Recommendation: address both Mediums in a small follow-up commit before the next deploy iteration, but they don't block status `Approved` per the standard rules.
+Re-verification: 148 / 148 vitest pass; build clean; live RLS audit unchanged.
 
 ### Suggested follow-ups (not blockers)
 1. Fix M1 (~15 min) — extend suggestions endpoint with a count of dismissals; drive the recover-link from server state.

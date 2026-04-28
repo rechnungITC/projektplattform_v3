@@ -105,18 +105,24 @@ export async function reactivateStakeholder(
   if (!response.ok) throw new Error(await safeError(response))
 }
 
+export interface SuggestionsResponse {
+  suggestions: StakeholderSuggestion[]
+  dismissed_count: number
+}
+
 export async function listStakeholderSuggestions(
   projectId: string
-): Promise<StakeholderSuggestion[]> {
+): Promise<SuggestionsResponse> {
   const response = await fetch(`${base(projectId)}/suggestions`, {
     method: "GET",
     cache: "no-store",
   })
   if (!response.ok) throw new Error(await safeError(response))
-  const body = (await response.json()) as {
-    suggestions: StakeholderSuggestion[]
+  const body = (await response.json()) as SuggestionsResponse
+  return {
+    suggestions: body.suggestions ?? [],
+    dismissed_count: body.dismissed_count ?? 0,
   }
-  return body.suggestions ?? []
 }
 
 export async function dismissSuggestion(
