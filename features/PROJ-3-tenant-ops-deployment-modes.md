@@ -1,8 +1,8 @@
 # PROJ-3: Tenant Operations and Deployment Modes (Stand-alone vs SaaS)
 
-## Status: Planned
+## Status: Architected
 **Created:** 2026-04-25
-**Last Updated:** 2026-04-25
+**Last Updated:** 2026-04-29
 
 ## Summary
 Defines the operational dimension of the platform: how it runs as multi-tenant SaaS today (V3 default), how an enterprise customer can run it stand-alone on their own infrastructure later, and how updates/backups/restores work. Inherits V2 EP-01 (Mandanten-/Betriebsarchitektur), with PROJ-1 already covering the multi-tenant data model and tenant isolation. PROJ-3 covers what's left: stand-alone operation mode and the update/operations strategy.
@@ -68,7 +68,89 @@ Defines the operational dimension of the platform: how it runs as multi-tenant S
 <!-- Sections below are added by subsequent skills -->
 
 ## Tech Design (Solution Architect)
-_To be added by /architecture_
+
+### Realitätscheck: was ist schon da, was fehlt
+
+PROJ-1 hat den Multi-Tenant-Datenstand fertig: jede Tabelle hat `tenant_id`, RLS-Helfer enforcen Isolation. Der `TenantSwitcher` blendet sich heute schon aus, wenn der User in <2 Mandanten sitzt — das ist genau das Verhalten, das ein Stand-alone-Deployment braucht. **PROJ-3 ist deshalb fast keine Code-Änderung, sondern primär:**
+
+1. ein Boot-Time-Konfig-Mechanismus für zwei Env-Variablen,
+2. eine kleine UI-Verstärkung (Switcher in Stand-alone immer aus, defense-in-depth),
+3. ein Hook für PROJ-12 (externer LLM-Hard-Block),
+4. drei Operations-Dokumente.
+
+### Komponentenstruktur
+
+```
+App-Boot (Server)
+├── lib/operation-mode.ts         (neu — typisierter Konfig-Reader)
+│   ├── OPERATION_MODE = "shared" | "standalone"   (default: "shared")
+│   └── EXTERNAL_AI_DISABLED = boolean              (default: false)
+│
+├── Header / Sidebar
+│   └── TenantSwitcher (existiert)
+│        ├── heute: hidden bei memberships.length < 2
+│        └── neu:  zusätzlich hidden bei mode === "standalone"
+│
+└── PROJ-12 KI-Assistenz (zukünftig)
+     └── ruft isExternalAIBlocked() vor jedem externen LLM-Call
+
+docs/deployment/
+├── standalone.md          (neu — Setup-Guide)
+├── update-strategy.md     (neu — Reihenfolge + Rollback)
+└── backup-restore.md      (neu — Backups, PITR, Cold-Restore)
+
+.env.local.example
+└── neue Sektionen für die zwei Env-Variablen mit Erklärtext
+```
+
+### Datenmodell
+
+**Keine DB-Änderungen.** PROJ-3 berührt nur:
+- Konfiguration über Env-Variablen (boot-time, server-side).
+- Drei Markdown-Dokumente unter `docs/deployment/`.
+- Eine Zeile UI-Logik im `TenantSwitcher`.
+
+### Tech-Entscheidungen
+
+| Entscheidung | Warum |
+|---|---|
+| Eine Codebasis für Shared *und* Stand-alone | Spec-Vorgabe „no V3 code branches". Mode ist ein Runtime-Flag, kein Build-Profil — vermeidet Drift zwischen den Welten. |
+| Default `OPERATION_MODE=shared` | V3 ist heute als SaaS deployed; ein fehlendes Env auf bestehenden Instanzen darf das Verhalten nicht ändern. |
+| `EXTERNAL_AI_DISABLED` als eigenständige Achse | Auch ein SaaS-Mandant kann aus Compliance-Gründen externe LLMs blocken wollen, ohne Stand-alone zu werden. Zwei Dimensionen, zwei Schalter. |
+| Konfig boot-time, server-side gelesen | Sicherheitsrelevante Schalter (AI-Block) gehören nie auf den Browser. Server-Component-Layer rendert die UI mit dem aufgelösten Mode-Wert. |
+| Dokumentation als Markdown im Repo | Versioniert mit dem Code; Releases tragen den passenden Stand. Keine zusätzliche Dokumentations-Plattform. |
+| Kein Stand-alone-Installer in MVP | Spec-Out-of-Scope. Stand-alone-Setup bleibt manuell mit Guide. |
+
+### Sicherheitsdimension
+
+`EXTERNAL_AI_DISABLED=true` ist die zweite Verteidigungslinie über der Class-3-Sperre aus PROJ-12. Wenn beides aktiv ist:
+- PROJ-12 erkennt Class-3-Felder und blockt externe Calls automatisch.
+- PROJ-3 blockt **alle** externen LLM-Calls, nicht nur die mit Class-3-Daten.
+
+Die Logik ist eine harte Frühprüfung: greift bevor die LLM-Library überhaupt geladen wird. PROJ-12 dockt später hier an — der Hook landet jetzt, der Konsument folgt.
+
+### Bestehende Tests
+
+Die Multi-Tenant-Isolations-Tests aus PROJ-1, PROJ-8 und PROJ-20 testen den Stand-alone-Fall implizit mit, sobald das Test-Tenant der einzige Mandant in der Test-DB ist. Spec-AC „Multi-tenant isolation must hold in stand-alone mode" ist damit ohne neue Tests erfüllt — aber wir validieren das im QA-Pass durch eine kurze Stichprobe gegen die bestehende Test-Datenbank.
+
+### Abhängigkeiten
+
+Keine neuen npm-Pakete. Keine neue Migration. Keine neuen API-Routen.
+
+### Out-of-Scope-Erinnerungen (aus der Spec)
+
+- Kein One-Click-Stand-alone-Installer
+- Kein Migrations-Tool zwischen SaaS- und Stand-alone-Mandanten
+- Kein Hot-Standby / Streaming Replication
+- Keine Auto-Scaling-, SLA- oder Monitoring-Stacks
+
+### Verifikation nach Implementation
+
+- Server-Component liest `OPERATION_MODE` und liefert den richtigen UI-State.
+- Standalone-Modus blendet TenantSwitcher aus, auch bei mehreren Memberships.
+- `isExternalAIBlocked()` liefert `true` bei `EXTERNAL_AI_DISABLED=true`.
+- Bestehende Vitest-Suite bleibt grün.
+- Doku-Links unter `docs/deployment/` zeigen auf existierende, vollständige Dateien.
 
 ## Implementation Notes
 _To be added by /frontend and /backend_
