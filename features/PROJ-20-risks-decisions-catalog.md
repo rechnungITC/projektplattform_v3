@@ -1,6 +1,6 @@
 # PROJ-20: Risks & Decisions Catalog (Cross-cutting Governance Backbone)
 
-## Status: Architected
+## Status: In Progress
 **Created:** 2026-04-25
 **Last Updated:** 2026-04-28
 
@@ -178,7 +178,37 @@ Keine neuen npm-Pakete. Verwendet vorhandene shadcn-Bausteine (Card, Dialog, Tab
 Beide Entscheidungen sind backend-identisch — nur die UI in `components/projects/decisions/` und `components/projects/open-items/` setzt sie um.
 
 ## Implementation Notes
-_To be added by /frontend and /backend_
+
+### Backend (2026-04-28)
+
+**Migrations applied to project iqerihohwabyjzkpcujq:**
+- `20260429120000_proj20_risks_decisions_open_items.sql` — three tables, RLS, audit-whitelist extension, decisions INSERT trigger (`record_decision_insert`), predecessor flip trigger (`decisions_after_insert_flip_predecessor`), convert RPCs.
+- `20260429120100_proj20_harden_trigger_only_functions.sql` — revoke EXECUTE on the two trigger-only functions (advisor hardening; mirrors PROJ-10 follow-up).
+
+**Key implementation choices:**
+- Risks live in PROJ-20 (PROJ-7 deferred them in MVP slice). PROJ-7's spec text referencing "the risks table" was aspirational — there was no table.
+- Decisions are append-only at the API: `POST /api/projects/[id]/decisions` handles both new entries and revisions (via `supersedes_decision_id`); no PATCH route. The body fields (`decision_text`, `rationale`, `decided_at`, etc.) are not in `_tracked_audit_columns('decisions')` because they are immutable; only `is_revised` is tracked, and a separate INSERT trigger writes one summary audit row per new decision (reason: `decision_logged` or `decision_revised`).
+- Predecessor flip: AFTER-INSERT trigger sets `is_revised=true` on the supersedes_decision_id row. The standard PROJ-10 update-trigger then writes the audit row for that field flip, so the lineage of revisions appears in the audit log too.
+- Open items are one-way: status `converted` and the `converted_to_*` fields are gated by three CHECK constraints — the API PATCH route additionally refuses any edit on a converted item with 409.
+- Convert is atomic via SECURITY DEFINER RPC (`convert_open_item_to_task`, `convert_open_item_to_decision`): inside one transaction it inserts the target row, then sets the open_item to `converted`. RPC has internal authorization (editor/lead/admin) so the SECURITY DEFINER privilege escalation is bounded.
+
+**API surface (8 routes):**
+- `GET /api/projects/[id]/risks` (status filter), `POST /api/projects/[id]/risks`
+- `GET/PATCH/DELETE /api/projects/[id]/risks/[rid]`
+- `GET /api/projects/[id]/decisions` (`include_revised=true` to see superseded), `POST /api/projects/[id]/decisions` (new + revision)
+- `GET /api/projects/[id]/decisions/[did]`
+- `GET /api/projects/[id]/open-items` (status filter), `POST /api/projects/[id]/open-items`
+- `GET/PATCH/DELETE /api/projects/[id]/open-items/[oid]`
+- `POST /api/projects/[id]/open-items/[oid]/convert-to-task`
+- `POST /api/projects/[id]/open-items/[oid]/convert-to-decision`
+
+**Tests:** 35 new vitest cases across 6 test files. Full suite 190/190 green (was 155 before PROJ-20). Type-check and ESLint clean on touched files.
+
+**Open follow-ups (handed to /frontend):**
+- Build Risiken tab (replace coming-soon page) with matrix + table + drawer + HistoryTab.
+- Build Entscheidungen tab with timeline + Open Items panel + revise/convert dialogs.
+- Add two nav entries to `project-room-shell.tsx` (`AlertTriangle`, `Gavel` icons).
+- Ensure `is_revised=true` decisions render with "Vorgänger anzeigen" expander (Option A).
 
 ## QA Test Results
 _To be added by /qa_
