@@ -61,7 +61,7 @@ function reasonBadge(reason: string | null): React.ReactNode {
  *
  * - Groups entries by date.
  * - Shows old → new value diffs.
- * - Per-row "Rücknahme" button (calls /api/audit/[id]/undo with stale-write
+ * - Per-row "Rücknahme" button (calls /api/audit/entries/[id]/undo with stale-write
  *   guard handled server-side).
  * - "Auf Stand zurücksetzen" button per entry triggers full-entity restore
  *   to that entry's timestamp.

@@ -210,6 +210,32 @@ Beide Entscheidungen sind backend-identisch — nur die UI in `components/projec
 - Add two nav entries to `project-room-shell.tsx` (`AlertTriangle`, `Gavel` icons).
 - Ensure `is_revised=true` decisions render with "Vorgänger anzeigen" expander (Option A).
 
+### Frontend (2026-04-29)
+
+**New pages:**
+- `src/app/(app)/projects/[id]/risiken/page.tsx` — replaces the PROJ-7 coming-soon page; mounts `RiskTabClient`.
+- `src/app/(app)/projects/[id]/entscheidungen/page.tsx` — new; mounts `DecisionsTabClient` with the decisions timeline and the open-items panel side by side.
+
+**New components:**
+- `components/projects/risks/risk-form.tsx`, `risk-table.tsx`, `risk-matrix.tsx` (5×5), `risk-tab-client.tsx` (list/matrix toggle, status filter, drawer with Stammdaten + Historie tabs).
+- `components/projects/decisions/decision-form.tsx` (handles new + revision via `supersedes` prop), `decision-card.tsx` (with "Vorgänger anzeigen" Collapsible), `decisions-timeline.tsx` (walks supersedes chain), `decisions-tab-client.tsx`.
+- `components/projects/open-items/open-item-form.tsx`, `convert-to-decision-dialog.tsx`, `open-items-panel.tsx` (sidebar; convert dropdown → Aufgabe / Entscheidung).
+
+**API client wrappers:** `lib/risks/api.ts`, `lib/decisions/api.ts`, `lib/open-items/api.ts`.
+
+**Project room shell:** added two nav entries (`AlertTriangle` for Risiken between Stakeholder and Mitglieder, `Gavel` for Entscheidungen right after).
+
+**Type touch-up:** extended `AuditEntityType` (and labels) with `risks`, `decisions`, `open_items` so HistoryTab inside the risk drawer can pull from `/api/audit/risks/[id]/history`.
+
+**Pre-existing infra fix (Next 16 dev-mode):** `/api/audit/[id]/undo` → `/api/audit/entries/[id]/undo`. The previous layout had `[id]` and `[entity_type]` as siblings under `/api/audit/`; production build tolerated it, but Next 16 dev (Turbopack and Webpack alike) refuses with a slug-name conflict. Production contract is identical: only call site (`lib/audit/api.ts`) was updated. Migration `proj10_audit_undo_path_rename` is implicit — just a route move; no DB change.
+
+**Verification:**
+- Type-check clean.
+- `npm run build` succeeds; new routes appear in the route table.
+- `npx vitest run` 190/190 green (no test changes needed; the path move only affects the URL string in the lib client).
+- Dev server starts cleanly, both new pages compile through to the auth-redirect proxy.
+- Lint baseline: +4 `react-hooks/set-state-in-effect` instances of the established repo convention; no new rule classes.
+
 ## QA Test Results
 _To be added by /qa_
 

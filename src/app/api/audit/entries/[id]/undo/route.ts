@@ -5,9 +5,9 @@ import {
   apiError,
   getAuthenticatedUserId,
   requireProjectAccess,
-} from "../../../_lib/route-helpers"
+} from "../../../../_lib/route-helpers"
 
-// PROJ-10 — POST /api/audit/[id]/undo
+// PROJ-10 — POST /api/audit/entries/[id]/undo
 // Selectively rolls back one field on one entity using the SECURITY DEFINER
 // `audit_undo_field` RPC. Refuses if the field has been further modified
 // after the targeted audit entry (no silent stale rollback).

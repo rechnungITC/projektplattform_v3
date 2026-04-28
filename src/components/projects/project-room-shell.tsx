@@ -1,7 +1,9 @@
 "use client"
 
 import {
+  AlertTriangle,
   ClipboardList,
+  Gavel,
   History,
   LayoutDashboard,
   ListTodo,
@@ -21,7 +23,16 @@ interface ProjectRoomShellProps {
 }
 
 interface ProjectTab {
-  segment: "" | "planung" | "backlog" | "stakeholder" | "mitglieder" | "historie" | "einstellungen"
+  segment:
+    | ""
+    | "planung"
+    | "backlog"
+    | "stakeholder"
+    | "risiken"
+    | "entscheidungen"
+    | "mitglieder"
+    | "historie"
+    | "einstellungen"
   label: string
   icon: React.ComponentType<{ className?: string }>
 }
@@ -31,6 +42,8 @@ const TABS: readonly ProjectTab[] = [
   { segment: "planung", label: "Planung", icon: ClipboardList },
   { segment: "backlog", label: "Backlog", icon: ListTodo },
   { segment: "stakeholder", label: "Stakeholder", icon: Users },
+  { segment: "risiken", label: "Risiken", icon: AlertTriangle },
+  { segment: "entscheidungen", label: "Entscheidungen", icon: Gavel },
   { segment: "mitglieder", label: "Mitglieder", icon: Users2 },
   { segment: "historie", label: "Historie", icon: History },
   { segment: "einstellungen", label: "Einstellungen", icon: SettingsIcon },

@@ -44,7 +44,7 @@ export class AuditConflictError extends Error {
 
 export async function undoAuditEntry(auditId: string): Promise<void> {
   const response = await fetch(
-    `/api/audit/${encodeURIComponent(auditId)}/undo`,
+    `/api/audit/entries/${encodeURIComponent(auditId)}/undo`,
     { method: "POST" }
   )
   if (response.status === 409) {
