@@ -1,6 +1,6 @@
 # PROJ-9: Work Item Metamodel — Backlog Structure (Epic / Story / Task / Work Package / Bug)
 
-## Status: Approved
+## Status: Deployed
 **Created:** 2026-04-25
 **Last Updated:** 2026-04-28
 
@@ -426,4 +426,8 @@ Single migration file `supabase/migrations/20260428100000_proj9_work_items_sprin
 **READY** — no Critical or High bugs. M1 is a follow-up hardening task; functionally the system is sound because the API routes don't expose those trigger functions and they no-op outside trigger context.
 
 ## Deployment
-_To be added by /deploy_
+
+- **Date deployed:** 2026-04-28
+- **Production URL:** https://projektplattform-v3.vercel.app
+- **Git tag:** `v0.1.0-mvp-backbone`
+- **Deviations:** none observed.

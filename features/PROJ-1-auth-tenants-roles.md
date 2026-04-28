@@ -1,6 +1,6 @@
 # PROJ-1: Authentication, Tenants, and Role-Based Membership
 
-## Status: Approved
+## Status: Deployed
 **Created:** 2026-04-25
 **Last Updated:** 2026-04-25
 
@@ -455,4 +455,8 @@ Suggested follow-ups (not blockers):
 3. Seed a realistic 2-tenant + 3-user fixture for cross-tenant RLS regression tests.
 
 ## Deployment
-_To be added by /deploy_
+
+- **Date deployed:** 2026-04-28
+- **Production URL:** https://projektplattform-v3.vercel.app
+- **Git tag:** `v0.1.0-mvp-backbone`
+- **Deviations:** none observed.

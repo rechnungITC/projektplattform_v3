@@ -1,6 +1,6 @@
 # PROJ-6: Project Types, Methods Catalog, and Rule Engine
 
-## Status: Approved
+## Status: Deployed
 **Created:** 2026-04-25
 **Last Updated:** 2026-04-27
 
@@ -446,4 +446,8 @@ Suggested next:
 4. **Method-migration RPC** as a separate small story — audit-tracked one-shot to unlock PROJ-6's intentional immutability when business reality demands it.
 
 ## Deployment
-_To be added by /deploy_
+
+- **Date deployed:** 2026-04-28
+- **Production URL:** https://projektplattform-v3.vercel.app
+- **Git tag:** `v0.1.0-mvp-backbone`
+- **Deviations:** none observed.

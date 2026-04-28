@@ -1,6 +1,6 @@
 # PROJ-19: Phases & Milestones — Cross-cutting Schedule Backbone
 
-## Status: Approved
+## Status: Deployed
 <!-- Frontend (commit 96f2976) + Backend (commit pending) shipped; QA pending -->
 
 **Created:** 2026-04-25
@@ -377,4 +377,8 @@ _To be added by /frontend and /backend_
 **READY** — no Critical or High bugs.
 
 ## Deployment
-_To be added by /deploy_
+
+- **Date deployed:** 2026-04-28
+- **Production URL:** https://projektplattform-v3.vercel.app
+- **Git tag:** `v0.1.0-mvp-backbone`
+- **Deviations:** none observed.

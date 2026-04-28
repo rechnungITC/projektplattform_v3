@@ -1,6 +1,6 @@
 # PROJ-7: Project Room with Internal Kanban / Scrum / Gantt Modules
 
-## Status: Approved (MVP slice)
+## Status: Deployed (MVP slice)
 **Created:** 2026-04-25
 **Last Updated:** 2026-04-25
 
@@ -350,4 +350,11 @@ This QA covers the **MVP increment of PROJ-7** that has actually been built:
 **READY for the shipped increment** (project room shell + method-aware UI + `project_method` column). Risk/Budget/Portfolio/Health remain unbuilt and need their own /requirements + /architecture + build passes before claiming the full PROJ-7 spec is delivered.
 
 ## Deployment
-_To be added by /deploy_
+
+- **Date deployed:** 2026-04-28
+- **Production URL:** https://projektplattform-v3.vercel.app
+- **Git tag:** `v0.1.0-mvp-backbone`
+- **Deviations:**
+  - Added Coming-Soon stub pages for 4 sidebar entries pointing to features that aren't built yet (risiken → PROJ-20, ai-proposals → PROJ-12, governance → PROJ-18, abhaengigkeiten → PROJ-9 UI). Tracked in commit `2fa73fb`.
+  - Trimmed duplicate-route sections from 7 method templates (safe, scrum, kanban, vxt2, pmi, prince2, waterfall) until the underlying backlog/planung pages honor query / sub-tab modes. Affected sections: Epics & Features, Sprint-Board, Velocity, Meilensteine, Arbeitspakete, Board, Gantt. Tracked in commit `2fa73fb`.
+  - Sidebar active-state detector now honors query strings (`isActiveSection` extension in `method-sidebar.tsx`). Tracked in commit `2fa73fb`.

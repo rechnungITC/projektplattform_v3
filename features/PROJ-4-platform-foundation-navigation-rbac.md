@@ -1,6 +1,6 @@
 # PROJ-4: Platform Foundation — Navigation, Project Roles, RBAC Enforcement
 
-## Status: Approved
+## Status: Deployed
 **Created:** 2026-04-25
 **Last Updated:** 2026-04-26
 
@@ -475,4 +475,8 @@ While cleaning up QA fixtures, observed that `enforce_last_lead` blocks **cascad
 **READY** — no Critical or High bugs introduced by M1 + M2. The two original Medium findings are now Resolved end-to-end (live RPC works, helper is exercised by tests + structural verification). Status `Approved` confirmed.
 
 ## Deployment
-_To be added by /deploy_
+
+- **Date deployed:** 2026-04-28
+- **Production URL:** https://projektplattform-v3.vercel.app
+- **Git tag:** `v0.1.0-mvp-backbone`
+- **Deviations:** none observed.
