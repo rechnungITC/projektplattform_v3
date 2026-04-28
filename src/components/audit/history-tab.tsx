@@ -132,6 +132,12 @@ export function HistoryTab({
       toast.success(`Auf Stand zurückgesetzt`, {
         description: `${result.fields_restored} Feld(er) angepasst.`,
       })
+      if (result.warnings.length > 0) {
+        const fields = result.warnings.map((w) => w.field).join(", ")
+        toast.warning("Personenbezogene Daten wiederhergestellt", {
+          description: `Restore hat zuvor bereinigte Class-3-Felder erneut gesetzt: ${fields}. Bitte DSGVO-Vorgaben prüfen.`,
+        })
+      }
       await reload()
       onMutated?.()
     } catch (err) {

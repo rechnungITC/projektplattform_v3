@@ -57,11 +57,16 @@ export async function undoAuditEntry(auditId: string): Promise<void> {
   }
 }
 
+export interface RestoreWarning {
+  field: string
+  reason: string
+}
+
 export async function restoreEntity(
   entityType: AuditEntityType,
   entityId: string,
   targetChangedAt: string
-): Promise<{ fields_restored: number }> {
+): Promise<{ fields_restored: number; warnings: RestoreWarning[] }> {
   const response = await fetch(
     `/api/audit/${encodeURIComponent(entityType)}/${encodeURIComponent(entityId)}/restore`,
     {
@@ -74,8 +79,14 @@ export async function restoreEntity(
     const err = await safeError(response)
     throw new Error(err.message)
   }
-  const body = (await response.json()) as { fields_restored: number }
-  return body
+  const body = (await response.json()) as {
+    fields_restored: number
+    warnings?: RestoreWarning[]
+  }
+  return {
+    fields_restored: body.fields_restored,
+    warnings: body.warnings ?? [],
+  }
 }
 
 export interface ReportFilter {

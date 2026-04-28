@@ -403,7 +403,7 @@ No new npm packages. The audit feature is database-heavy:
 | Concurrent edits on same field | both rows recorded; last wins; surfaced in UI | ✅ Trigger fires per-UPDATE so both audits land |
 | DSGVO right-to-be-forgotten | depersonalize stakeholder; audit ages out | ✅ Stakeholder edits clear name/email; retention cron deletes >730d entries |
 | Undo after retention purge | button disabled with explanation | ⚠️ Currently silently 404s (audit entry no longer exists). UI shows "Audit entry not found" toast. **Bug L1**. |
-| Restore across DSGVO redaction | restore writes redacted values back; warning logged | ⚠️ No warning logged. Silent restore writes whatever's in old_value (which may be the pre-redaction value). **Bug M1.** |
+| Restore across DSGVO redaction | restore writes redacted values back; warning logged | ✅ **Resolved (M1, 2026-04-28).** `audit_restore_entity()` returns a `warnings jsonb` payload listing every Class-3 stakeholder field where current value was NULL/`[redacted:class-3]` and target is non-null; the route forwards it; HistoryTab shows a `toast.warning("Personenbezogene Daten wiederhergestellt", …)`. Migration `20260428210000_proj10_audit_restore_redaction_warning.sql`. Vitest covers the warning + null-warnings paths. |
 | Cross-tenant audit query | empty list | ✅ RLS enforced |
 | Massive bulk imports | audit hook batches inserts; rate-limit log | ⏳ Bulk-import path not built; if/when imports come, audit may need optimization |
 
@@ -426,7 +426,7 @@ No new npm packages. The audit feature is database-heavy:
 
 | Severity | ID | Description | Fix complexity |
 |---|---|---|---|
-| Medium | M1 | **Restore across DSGVO redaction silently writes back redacted values.** Spec says "log warning" — currently no warning logged on `retention_export_log` or in the response. The restore would re-introduce a previously-cleared value, potentially undoing a GDPR action. | Medium — add a check inside `audit_restore_entity()` that flags rows where current value is NULL/redaction-marker and emit a warning in the response payload. |
+| ~~Medium~~ Resolved | M1 | ~~Restore across DSGVO redaction silently writes back redacted values.~~ **Fixed 2026-04-28.** `audit_restore_entity()` now returns `warnings jsonb`; restore route forwards it; UI surfaces a warning toast naming each Class-3 field whose redaction was overwritten. Restore still proceeds (spec contract is "log warning", not "block"). | — |
 | Low | L1 | **Undo button after retention purge silently 404s.** When a user tries to undo a row whose audit entry has been purged, the API returns 404; spec says "button disabled with explanation". UI doesn't pre-disable. Acceptable since the History tab won't even show purged rows (they're deleted). | Low — only relevant if user keeps a stale tab open across purge. |
 | Low | L2 | **Race window in `audit_undo_field`** between the SELECT (current value check) and UPDATE. Truly atomic would put `WHERE field = entry.new_value` on the UPDATE. Window is sub-millisecond inside one transaction; in practice negligible. | Low — fix when the function is touched next. |
 | Low | L3 | **HistoryTab not yet on work-item / phase / milestone / project editors.** Documented as deferred. Stakeholder coverage delivers most user value; rest is a follow-up. | Medium — work-item drawer needs Tabs refactor. |
@@ -438,20 +438,17 @@ No new npm packages. The audit feature is database-heavy:
 
 ### Production-Ready Decision
 
-**READY** for status `Approved`.
+**READY** for status `Approved` → `Deployed`.
 
-No Critical or High bugs. The single Medium (M1 — restore across DSGVO redaction) is an edge case with a documented spec contract; current behaviour is "silent restore" which technically deviates from "log warning". Fixing is small (~15 min) but doesn't block shipping the foundation.
-
-Recommendation: ship as Approved; address M1 in a small follow-up commit (or the user can decide to fix it before Deploy with Pfad B).
+No Critical or High bugs. M1 (restore across DSGVO redaction) is fixed in this iteration: warnings are returned by `audit_restore_entity()`, surfaced in the route response, and shown as a toast in HistoryTab. 155/155 vitest green. No outstanding blockers — proceeding to `/deploy`.
 
 ### Suggested follow-ups (not blockers)
-1. Fix M1 — emit a warning marker in the restore response when any field's old_value is the redaction sentinel (`[redacted:class-3]` or `NULL` after a GDPR clear).
-2. Mount HistoryTab in the work-item / phase / milestone / project editors (L3).
-3. Write the R2 ADR before allowing PLs to undo edits made by other users (I3).
-4. Two-version compare picker (I1).
-5. Add `metadata` JSONB to copyable entities so `copied_from` can be recorded (I2).
-6. Pre-disable the undo button on entries whose audit row is older than retention (L1).
-7. Enforce front-end admin gate on `/reports/audit` so non-admins see a "Forbidden" card instead of an empty table (I5).
+1. Mount HistoryTab in the work-item / phase / milestone / project editors (L3).
+2. Write the R2 ADR before allowing PLs to undo edits made by other users (I3).
+3. Two-version compare picker (I1).
+4. Add `metadata` JSONB to copyable entities so `copied_from` can be recorded (I2).
+5. Pre-disable the undo button on entries whose audit row is older than retention (L1).
+6. Enforce front-end admin gate on `/reports/audit` so non-admins see a "Forbidden" card instead of an empty table (I5).
 
 ## Deployment
 _To be added by /deploy_

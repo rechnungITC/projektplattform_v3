@@ -94,6 +94,7 @@ export async function POST(request: Request, ctx: Ctx) {
       success: boolean
       message: string
       fields_restored: number
+      warnings: Array<{ field: string; reason: string }> | null
     }>()
 
   if (rpcErr) {
@@ -106,5 +107,6 @@ export async function POST(request: Request, ctx: Ctx) {
   return NextResponse.json({
     ok: true,
     fields_restored: result.fields_restored,
+    warnings: result.warnings ?? [],
   })
 }
