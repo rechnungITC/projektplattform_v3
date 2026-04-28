@@ -294,12 +294,26 @@ No new npm packages. The audit feature is database-heavy:
 
 **Tests:** 4 new vitest cases for the history endpoint (152 total, all green).
 
-### Frontend (pending — /frontend phase)
-- HistoryTab component, mounted in stakeholder + work-item drawers + project + phase + milestone editors.
-- Per-row "Diesen Schritt zurücknehmen" button (calls undo API).
-- Restore picker (timestamp dropdown → confirm dialog).
-- Copy buttons on stakeholder + work-item drawers.
-- `/reports/audit` admin page (filters + table + CSV export).
+### Frontend (this commit)
+- `src/lib/audit/api.ts` — fetch wrappers + `AuditConflictError` for stale-write detection.
+- `src/components/audit/history-tab.tsx` — generic, reusable HistoryTab:
+  groups entries by date, per-row Undo + Restore buttons, reason badges,
+  `formatValue` slot for entity-specific rendering, `onMutated` callback.
+- Stakeholder drawer (PROJ-8): edit-mode wrapped in Tabs (Stammdaten | Historie).
+  Form footer gets a new "Kopieren" button next to Deaktivieren/Reaktivieren.
+- `/reports/audit` admin page: filters (entity_type, field_name, actor_user_id,
+  from/to date), Suchen + CSV-Export buttons. Server-side admin gate enforces
+  the export.
+
+### Open follow-ups
+- Mount HistoryTab in the work-item detail drawer (PROJ-9 surface) — needs a
+  Tabs refactor of that drawer, deferred.
+- HistoryTab in phase + milestone editors and project settings page.
+- Front-end admin-role gate on the /reports/audit page (currently anyone with
+  the URL renders the layout; the data API returns RLS-scoped rows and the
+  CSV export specifically requires admin server-side, so non-admins get a
+  403 toast).
+- ADR for "PL undoes another user's edit" (spec R2 risk).
 
 ## QA Test Results
 _To be added by /qa_

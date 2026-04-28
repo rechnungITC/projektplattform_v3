@@ -4,6 +4,7 @@ import { LayoutGrid, List, Plus } from "lucide-react"
 import * as React from "react"
 import { toast } from "sonner"
 
+import { HistoryTab } from "@/components/audit/history-tab"
 import { Button } from "@/components/ui/button"
 import {
   Sheet,
@@ -13,11 +14,12 @@ import {
   SheetTitle,
 } from "@/components/ui/sheet"
 import { Switch } from "@/components/ui/switch"
-import { Tabs, TabsList, TabsTrigger } from "@/components/ui/tabs"
+import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs"
 import { Input } from "@/components/ui/input"
 import { useAuth } from "@/hooks/use-auth"
 import {
   clearDismissedSuggestions,
+  copyStakeholder,
   createStakeholder,
   deactivateStakeholder,
   dismissSuggestion,
@@ -159,6 +161,20 @@ export function StakeholderTabClient({ projectId }: StakeholderTabClientProps) {
       })
     } finally {
       setSubmitting(false)
+    }
+  }
+
+  const onCopy = async (s: Stakeholder) => {
+    try {
+      const created = await copyStakeholder(projectId, s.id)
+      toast.success("Kopie angelegt", { description: created.name })
+      setDrawer({ mode: "edit", stakeholder: created })
+      void reloadStakeholders()
+      void reloadSuggestions()
+    } catch (err) {
+      toast.error("Kopie fehlgeschlagen", {
+        description: err instanceof Error ? err.message : "Unbekannter Fehler",
+      })
     }
   }
 
@@ -361,24 +377,50 @@ export function StakeholderTabClient({ projectId }: StakeholderTabClientProps) {
           </SheetHeader>
           <div className="mt-4">
             {drawer.mode === "edit" ? (
-              <StakeholderForm
-                tenantId={tenantId}
-                initial={drawer.stakeholder}
-                onCancel={() => setDrawer({ mode: "closed" })}
-                onSubmit={(input) => onUpdate(drawer.stakeholder.id, input)}
-                submitting={submitting}
-                secondaryAction={
-                  <Button
-                    type="button"
-                    variant="outline"
-                    onClick={() => void onToggleActive(drawer.stakeholder)}
-                  >
-                    {drawer.stakeholder.is_active
-                      ? "Deaktivieren"
-                      : "Reaktivieren"}
-                  </Button>
-                }
-              />
+              <Tabs defaultValue="form">
+                <TabsList>
+                  <TabsTrigger value="form">Stammdaten</TabsTrigger>
+                  <TabsTrigger value="history">Historie</TabsTrigger>
+                </TabsList>
+                <TabsContent value="form" className="mt-4">
+                  <StakeholderForm
+                    tenantId={tenantId}
+                    initial={drawer.stakeholder}
+                    onCancel={() => setDrawer({ mode: "closed" })}
+                    onSubmit={(input) => onUpdate(drawer.stakeholder.id, input)}
+                    submitting={submitting}
+                    secondaryAction={
+                      <div className="flex gap-2">
+                        <Button
+                          type="button"
+                          variant="outline"
+                          onClick={() => void onCopy(drawer.stakeholder)}
+                        >
+                          Kopieren
+                        </Button>
+                        <Button
+                          type="button"
+                          variant="outline"
+                          onClick={() =>
+                            void onToggleActive(drawer.stakeholder)
+                          }
+                        >
+                          {drawer.stakeholder.is_active
+                            ? "Deaktivieren"
+                            : "Reaktivieren"}
+                        </Button>
+                      </div>
+                    }
+                  />
+                </TabsContent>
+                <TabsContent value="history" className="mt-4">
+                  <HistoryTab
+                    entityType="stakeholders"
+                    entityId={drawer.stakeholder.id}
+                    onMutated={() => void reloadStakeholders()}
+                  />
+                </TabsContent>
+              </Tabs>
             ) : drawer.mode === "create" ? (
               <StakeholderForm
                 tenantId={tenantId}

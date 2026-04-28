@@ -105,6 +105,19 @@ export async function reactivateStakeholder(
   if (!response.ok) throw new Error(await safeError(response))
 }
 
+export async function copyStakeholder(
+  projectId: string,
+  sid: string
+): Promise<Stakeholder> {
+  const response = await fetch(
+    `${base(projectId)}/${encodeURIComponent(sid)}/copy`,
+    { method: "POST" }
+  )
+  if (!response.ok) throw new Error(await safeError(response))
+  const body = (await response.json()) as { stakeholder: Stakeholder }
+  return body.stakeholder
+}
+
 export interface SuggestionsResponse {
   suggestions: StakeholderSuggestion[]
   dismissed_count: number
