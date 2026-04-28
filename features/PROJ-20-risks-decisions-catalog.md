@@ -1,6 +1,6 @@
 # PROJ-20: Risks & Decisions Catalog (Cross-cutting Governance Backbone)
 
-## Status: In Review
+## Status: Approved
 **Created:** 2026-04-25
 **Last Updated:** 2026-04-29
 
@@ -254,7 +254,7 @@ Beide Entscheidungen sind backend-identisch — nur die UI in `components/projec
 |---|---|---|
 | Table with the documented columns + nullable FKs | ✅ | All FKs verified: phase + risk + supersedes → SET NULL; tenant + project → CASCADE; created_by → RESTRICT |
 | **No mutating PATCH on body fields at the API** | ✅ | `/api/projects/[id]/decisions/[did]` only exports GET; collection POST handles new + revision |
-| **No mutating PATCH on body fields at the DB** | ❌ **Bug H1.** | A direct UPDATE via the user-context Supabase client mutates `decision_text`/`rationale` silently (RLS UPDATE policy is too broad; tracked-columns whitelist for `decisions` only contains `is_revised`, so the mutation isn't even audited) |
+| **No mutating PATCH on body fields at the DB** | ✅ **Resolved (H1, 2026-04-29).** Migration `20260429140000_proj20_decisions_immutability_trigger.sql` adds a BEFORE-UPDATE trigger that rejects every column change except a one-way `is_revised: false → true` initiated via the predecessor-flip path. Live red-team retest: direct UPDATE of `decision_text`/`rationale` now raises `decisions are immutable. Create a revision …`. |
 | CRUD endpoints under `/api/projects/[id]/decisions` | ✅ | Routes exist; revision flow protected by predecessor-must-exist-and-not-already-revised checks (returns 409 if already revised) |
 | Project room "Decisions" tab lists chronologically with revision links | ✅ | `DecisionsTimeline` walks the supersedes chain and attaches predecessors to each current row; "Vorgänger anzeigen" Collapsible per card (Option A) |
 | Every decision logged in PROJ-10 audit with reason `decision_logged` or `decision_revised` | ✅ | Live verified: insert wrote 1 row reason=`decision_logged`; revision wrote 1 row reason=`decision_revised` plus a `is_revised` flip row on the predecessor |
@@ -271,7 +271,7 @@ Beide Entscheidungen sind backend-identisch — nur die UI in `components/projec
 
 | Case | Spec | Result |
 |---|---|---|
-| Decision with no decider stakeholder | allowed; UI warns | ⚠️ Half-met. `decider_stakeholder_id` is nullable and accepted by the API. **The UI form does not expose a decider picker at all** (also no phase/risk picker), so the user can't set or omit a decider deliberately. **Bug M2 (UI gap, not a regression).** |
+| Decision with no decider stakeholder | allowed; UI warns | ✅ **Resolved (M2, 2026-04-29).** `DecisionForm` now exposes a Stakeholder Select (active stakeholders for the project, fetched via the existing `listStakeholders` API). On submit with no decider, a `toast.warning("Kein Entscheider dokumentiert", …)` fires per the spec edge case. Phase and Risk pickers remain a low-priority follow-up (L4). |
 | Revising a decision multiple times | forms a chain | ✅ DB allows multi-level chain; DecisionsTimeline walks it; `decisions_after_insert_flip_predecessor` flips one ancestor at a time |
 | Open item with both task AND decision conversion | second blocked; status final | ✅ Convert RPC checks `if status='converted' return already_converted`; CHECK constraint pins the final state |
 | Cross-tenant access | 404 (RLS) | ✅ Verified live: non-member counted 0 risks/open_items in test project; INSERT as non-member silently denied (no row appeared) |
@@ -290,8 +290,8 @@ Beide Entscheidungen sind backend-identisch — nur die UI in `components/projec
 | `convert_open_item_to_*` are SECURITY DEFINER but executable by `authenticated`; internal auth gate | ✅ Internal `has_project_role / is_project_lead / is_tenant_admin` check; verified `forbidden` return for non-member |
 | Trigger-only SECURITY DEFINER functions hardened | ✅ `record_decision_insert` and `decisions_after_insert_flip_predecessor` revoked from `public, anon, authenticated` (proj20_harden migration) |
 | `audit_log_entity_type_check` whitelist extended for the new types | ✅ Verified |
-| **Decision body immutability** | ❌ **H1** — see Bug Audit |
-| **`is_revised` integrity** | ⚠️ **M1** — see Bug Audit |
+| **Decision body immutability** | ✅ **Resolved (H1).** BEFORE-UPDATE trigger rejects body changes; tested live. |
+| **`is_revised` integrity** | ✅ **Resolved (M1).** Same trigger pins `is_revised` to one-way `false → true`; tested live. |
 | SQL injection via dynamic SQL in convert RPCs | ✅ All values are passed as `$1`/`$2` placeholders; `format(... %I)` for identifiers in audit-log RPCs |
 | XSS via title fields (titles render in JSX with React's auto-escape) | ✅ No `dangerouslySetInnerHTML`; React handles all interpolation |
 | Rate limiting on the new endpoints | — Not implemented (consistent with the rest of the API; pre-existing baseline gap) |
@@ -300,9 +300,9 @@ Beide Entscheidungen sind backend-identisch — nur die UI in `components/projec
 
 | Severity | ID | Description | Fix complexity |
 |---|---|---|---|
-| **High** | H1 | **Decision body fields (`decision_text`, `rationale`, `decided_at`, `title`, etc.) are silently mutable via direct DB UPDATE** as any project editor/lead. The RLS UPDATE policy permits the row to be updated, and `_tracked_audit_columns('decisions')` only contains `is_revised`, so a body mutation leaves no audit trail. The API has no PATCH route, but Supabase clients can still call `supabase.from('decisions').update(...)` directly. **Breaks the V2 binding contract that decisions are immutable.** | Low — add a BEFORE UPDATE trigger on `decisions` that REJECTS any column change except `is_revised: false → true`, *plus* allow that path only when invoked from `decisions_after_insert_flip_predecessor` (use a session GUC like `decisions.allow_revise_flip` set inside the flip trigger and checked by the BEFORE-UPDATE trigger). |
-| **Medium** | M1 | **`is_revised` flag can be flipped manually back to `false`** by an editor/lead, "resurrecting" a previously revised decision so that both versions appear in the current-list. The audit trail does record the flip (since `is_revised` IS tracked), so it's visible — but the timeline will show two "current" decisions. | Low — same BEFORE UPDATE trigger as H1: pin `is_revised` to one-way `false → true`. |
-| **Medium** | M2 | **DecisionForm is missing the decider/phase/risk pickers.** The DB columns and API accept these fields, but the UI form exposes only `title`, `decision_text`, `rationale`. Spec edge case "decision with no decider stakeholder → UI warns" cannot trigger because the user can't set a decider in the first place. | Medium — wire `ResponsibleUserPicker` (or a `StakeholderPicker`), a phase select, and a risk select into the form. Optional: if `decider_stakeholder_id` is null on submit, show a Toast warning per the spec. |
+| ~~High~~ Resolved | H1 | ~~Decision body fields silently mutable via direct DB UPDATE~~ **Fixed 2026-04-29.** Migration `20260429140000_proj20_decisions_immutability_trigger.sql` adds `enforce_decision_immutability()` BEFORE-UPDATE trigger that rejects every column change except a one-way `is_revised: false → true` initiated via the predecessor-flip path (transaction-local GUC `decisions.allow_revise_flip` is set inside `decisions_after_insert_flip_predecessor` and consumed once by the new trigger). Live retest: direct body UPDATE → `check_violation`; legitimate revise flow + 3-generation chain still works. | — |
+| ~~Medium~~ Resolved | M1 | ~~`is_revised` can be flipped back to `false`~~ **Fixed 2026-04-29 (same migration).** The new BEFORE-UPDATE trigger pins `is_revised` to one-way `false → true`. Live retest: setting `is_revised=false` raises `check_violation`. | — |
+| ~~Medium~~ Resolved | M2 | ~~DecisionForm missing decider picker~~ **Fixed 2026-04-29.** `DecisionForm` now renders a Stakeholder Select (active stakeholders for the project) and emits `toast.warning("Kein Entscheider dokumentiert", …)` on submit with no decider, per the spec edge case. Phase + Risk pickers remain a low-priority follow-up (L4). | — |
 | Low | L1 | Bulk-import migration (`decision_imported` reason) deferred — out of scope for this MVP slice. | — |
 | Low | L2 | `decided_at` is always the server-side `now()` from the API; backdating is allowed by the schema but not exposed in the form. | Low — add an optional date-time input to DecisionForm. |
 | Low | L3 | New endpoints have no rate limiting (consistent with rest of API). | — |
@@ -321,19 +321,18 @@ Beide Entscheidungen sind backend-identisch — nur die UI in `components/projec
 
 ### Production-Ready Decision
 
-**NOT READY.** H1 (decision body mutability) violates a load-bearing V2 architectural principle ("Decisions are immutable"). The combination of (a) RLS allowing UPDATE and (b) audit-tracked-columns excluding the body means a tenant editor can silently rewrite history. Even though the API has no PATCH route, the Supabase client surface is enough for an exploit.
+**READY** for status `Approved`.
 
-M1 (is_revised flip-back) shares the same root cause and is fixed by the same trigger, so they should be addressed together.
+H1 + M1 + M2 all fixed in one iteration (Pfad A). H1 + M1 closed by a single BEFORE-UPDATE trigger that pins decisions to insert-only with a one-way `is_revised` flip, verified end-to-end against the live database (direct body mutation → rejected; `is_revised=false` flip-back → rejected; legitimate 3-generation revision chain → succeeds). M2 closed by adding a Stakeholder Select to DecisionForm with the spec-mandated warning toast on submit-without-decider.
 
-M2 (decider/phase/risk pickers missing) is UI-only — small follow-up that does not block H1's fix but should land before deploy so the spec's edge-case AC is testable.
-
-**Recommended next step:** `/backend` to add the BEFORE-UPDATE immutability trigger on `decisions` (closes H1 + M1 in one migration), then `/frontend` to add the missing pickers (M2), then re-run `/qa`.
+No Critical or High bugs remain. Type-check, build, and 190/190 vitest all green. Lint baseline unchanged.
 
 ### Suggested follow-ups (not blockers)
-1. L2 — backdate decided_at via the form (small UI add).
-2. L1 — bulk-import migration with `decision_imported` reason (when needed).
+1. L1 — bulk-import migration with `decision_imported` reason (when needed).
+2. L2 — backdate decided_at via the form (small UI add).
 3. L3 — rate limiting on the new endpoints (consistent project-wide pattern).
-4. I1 — E2E test suite (project-wide gap, not a PROJ-20 regression).
+4. L4 — phase + risk pickers in DecisionForm (DB+API already accept; UI gap only).
+5. I1 — E2E test suite (project-wide gap, not a PROJ-20 regression).
 
 ## Deployment
 _To be added by /deploy_

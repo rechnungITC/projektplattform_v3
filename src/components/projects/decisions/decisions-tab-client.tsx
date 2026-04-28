@@ -18,7 +18,9 @@ import {
   type DecisionInput,
   listDecisions,
 } from "@/lib/decisions/api"
+import { listStakeholders } from "@/lib/stakeholders/api"
 import type { Decision } from "@/types/decision"
+import type { Stakeholder } from "@/types/stakeholder"
 
 import { DecisionForm } from "./decision-form"
 import { DecisionsTimeline } from "./decisions-timeline"
@@ -34,6 +36,7 @@ interface DecisionsTabClientProps {
 
 export function DecisionsTabClient({ projectId }: DecisionsTabClientProps) {
   const [decisions, setDecisions] = React.useState<Decision[]>([])
+  const [stakeholders, setStakeholders] = React.useState<Stakeholder[]>([])
   const [loading, setLoading] = React.useState(true)
   const [drawer, setDrawer] = React.useState<DrawerState>({ mode: "closed" })
   const [submitting, setSubmitting] = React.useState(false)
@@ -41,10 +44,12 @@ export function DecisionsTabClient({ projectId }: DecisionsTabClientProps) {
   const reload = React.useCallback(async () => {
     try {
       setLoading(true)
-      // Pull all decisions including revised — DecisionsTimeline walks the
-      // chain to attach predecessors to each current row.
-      const list = await listDecisions(projectId, { includeRevised: true })
-      setDecisions(list)
+      const [decisionList, stakeholderList] = await Promise.all([
+        listDecisions(projectId, { includeRevised: true }),
+        listStakeholders(projectId),
+      ])
+      setDecisions(decisionList)
+      setStakeholders(stakeholderList)
     } catch (err) {
       toast.error("Entscheidungen konnten nicht geladen werden", {
         description: err instanceof Error ? err.message : "Unbekannter Fehler",
@@ -147,12 +152,14 @@ export function DecisionsTabClient({ projectId }: DecisionsTabClientProps) {
             {drawer.mode === "revise" ? (
               <DecisionForm
                 supersedes={drawer.predecessor}
+                stakeholders={stakeholders}
                 onCancel={() => setDrawer({ mode: "closed" })}
                 onSubmit={onCreate}
                 submitting={submitting}
               />
             ) : drawer.mode === "create" ? (
               <DecisionForm
+                stakeholders={stakeholders}
                 onCancel={() => setDrawer({ mode: "closed" })}
                 onSubmit={onCreate}
                 submitting={submitting}
