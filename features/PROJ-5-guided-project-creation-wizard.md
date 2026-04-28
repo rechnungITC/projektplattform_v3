@@ -1,6 +1,6 @@
 # PROJ-5: Guided Project Creation Wizard with Type/Method-Aware Questions
 
-## Status: In Review
+## Status: Approved
 **Created:** 2026-04-25
 **Last Updated:** 2026-04-28
 
@@ -308,27 +308,28 @@ No new npm packages. Everything is already installed:
 
 ### Bug Audit
 
-| Severity | ID | Description | Where |
+| Severity | ID | Description | Status |
 |---|---|---|---|
-| High | M1 | **Date timezone bug.** StepBasics serializes dates via `value.toISOString()` (UTC). In CET/UTC+1, picking 1. May produces ISO `2026-04-30T23:00:00Z`; finalize `slice(0,10)` then writes `2026-04-30` — date shifts back by one day. The existing codebase has a `dateToIsoDate(date)` helper (e.g. `src/components/milestones/new-milestone-dialog.tsx:275`) that uses local-time components and should be reused. | `src/components/projects/wizard/step-basics.tsx` (DatePickerField onChange) and/or `src/app/api/wizard-drafts/[id]/finalize/route.ts` (`isoDateOnly`) |
-| Medium | M2 | **Method-driven follow-up questions not implemented.** Spec says "Different methods produce different follow-up questions (e.g. Scrum asks about sprint length)". `computeRules(type, method).required_info` only returns the project type's `required_info`; method contributes `starter_kinds` but no extra questions. Either extend the catalog with method-specific `required_info`, or note as intentional MVP scope. | `src/lib/project-rules/engine.ts` + `src/lib/project-types/catalog.ts` |
-| Medium | M3 | **Two-tab last-write-wins, no warning.** Spec asks for "show a warning when save target is older than current state". PATCH overwrites without optimistic concurrency. Two tabs editing the same draft silently overwrite each other. Fix: add `If-Unmodified-Since` or version column. | `src/app/api/wizard-drafts/[id]/route.ts` |
-| Low | L1 | **No explicit retry button after finalize failure.** User has to re-click "Projekt anlegen". A dedicated "Retry" button would be clearer, especially after a network error. | `src/components/projects/wizard/wizard-client.tsx` (onCreate error path) |
-| Low | L2 | **Cancel does not offer to discard draft.** Cancel returns to /projects but the draft persists silently. Could add a 3-button confirm: "Discard, Save as draft, Continue editing". | wizard-client.tsx |
-| Info | I1 | 90-day auto-purge cron deferred per design. | spec |
-| Info | I2 | KI-Dialog (F2.1b) deferred per spec (gated by PROJ-12). | spec |
+| High | M1 | Date timezone bug. StepBasics serialized dates via `value.toISOString()` (UTC), shifting CET picks back one day. | **Resolved** — extracted `dateToIsoDate` + `parseLocalDate` to `src/lib/dates/iso-date.ts`; StepBasics + StepReview now use them (commit `295f1a1`). |
+| Medium | M2 | Method-driven follow-up questions not implemented. | **Resolved** — `METHOD_REQUIRED_INFO` map in `engine.ts` (Scrum sprint length, Kanban WIP, SAFe PI, Waterfall sign-off, PMI/PRINCE2/VXT2 method-specific keys); `computeRules` merges with type-priority dedup (commit `295f1a1`). |
+| Medium | M3 | Two-tab last-write-wins, no warning. | **Resolved** — PATCH accepts `expected_updated_at`; mismatch → 409 with current row. Wizard tracks `lastSeenUpdatedAt`, shows destructive Alert with "Neueste Version laden" on 409 (commit `295f1a1`). |
+| Low | L1 | No explicit retry button after finalize failure. | Open — toast + clickable button covers it; revisit if user feedback shows confusion. |
+| Low | L2 | Cancel does not offer to discard draft. | Open — minor UX polish, deferred. |
+| Info | I1 | 90-day auto-purge cron deferred per design. | Deferred. |
+| Info | I2 | KI-Dialog (F2.1b) deferred per spec. | Deferred (PROJ-12 gate). |
 
 ### Production-Ready Decision
 
-**NOT READY for status `Approved`.**
+**READY** — all High and Medium bugs from the initial QA pass are resolved. Remaining Low/Info items are non-blockers and explicitly deferred.
 
-Blocker: **High M1 (date timezone bug)** — visible to any user not in UTC. Fix is small (replace `toISOString()` with the existing `dateToIsoDate` helper).
+Re-verification:
+- 140 / 140 vitest pass (+3 new from this iteration: 1 conflict test, 2 method-merge tests)
+- Build clean, auto-deploy completed
+- M1 verified by replacing date helpers; round-trip is now timezone-stable
+- M2 verified by `engine.test.ts` cases asserting method-keys appear / don't appear correctly
+- M3 verified by `[id]/route.test.ts` 409 case + manual UI flow inspection
 
-Once M1 is fixed and verified:
-- M2 (method follow-ups) and M3 (two-tab warning) are spec-AC gaps; user decides whether to fix in PROJ-5 or defer to a follow-up.
-- L1, L2, I1, I2 are acceptable for shipping.
-
-After fix → re-run `/qa` for status `Approved` → `/deploy`.
+Status flipped to **Approved**. Ready for `/deploy` (auto-deploy already shipped the fixes; `/deploy` formalizes the status update + tag if desired).
 
 ### Suggested follow-ups (not blockers)
 1. Seed a test-user fixture (second account in the active tenant) so future Playwright E2E suites can exercise the wizard against the real API surface end-to-end.
