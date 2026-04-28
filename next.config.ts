@@ -1,4 +1,5 @@
 import type { NextConfig } from "next"
+import { withSentryConfig } from "@sentry/nextjs"
 
 const SECURITY_HEADERS = [
   // Clickjacking — site cannot be embedded in iframes
@@ -17,6 +18,24 @@ const SECURITY_HEADERS = [
     key: "Permissions-Policy",
     value: "camera=(), microphone=(), geolocation=(), interest-cohort=()",
   },
+  // CSP in report-only mode: surfaces violations in the browser console without
+  // blocking. Flip the header name to `Content-Security-Policy` after a clean
+  // run on prod traffic to enforce. No report-uri — DevTools console only.
+  {
+    key: "Content-Security-Policy-Report-Only",
+    value: [
+      "default-src 'self'",
+      "script-src 'self' 'unsafe-inline' 'unsafe-eval'",
+      "style-src 'self' 'unsafe-inline'",
+      "img-src 'self' data: blob: https:",
+      "font-src 'self' data:",
+      "connect-src 'self' https://*.supabase.co wss://*.supabase.co https://*.ingest.sentry.io https://*.ingest.de.sentry.io https://*.ingest.us.sentry.io",
+      "frame-ancestors 'none'",
+      "base-uri 'self'",
+      "form-action 'self'",
+      "object-src 'none'",
+    ].join("; "),
+  },
 ]
 
 const nextConfig: NextConfig = {
@@ -30,4 +49,12 @@ const nextConfig: NextConfig = {
   },
 }
 
-export default nextConfig
+// Sentry wrapper is a no-op without NEXT_PUBLIC_SENTRY_DSN / SENTRY_AUTH_TOKEN.
+// `silent: true` suppresses build noise when those env vars are absent.
+export default withSentryConfig(nextConfig, {
+  silent: !process.env.CI,
+  org: process.env.SENTRY_ORG,
+  project: process.env.SENTRY_PROJECT,
+  authToken: process.env.SENTRY_AUTH_TOKEN,
+  widenClientFileUpload: true,
+})

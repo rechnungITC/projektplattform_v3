@@ -84,35 +84,67 @@ Open the production URL and walk through:
    - `Referrer-Policy: origin-when-cross-origin` ✓
    - `Strict-Transport-Security: max-age=31536000; includeSubDomains` ✓
    - `Permissions-Policy: camera=(), microphone=(), geolocation=(), interest-cohort=()` ✓
-9. DevTools → Console: no red errors
+   - `Content-Security-Policy-Report-Only: …` ✓ (logs only, does not block)
+9. DevTools → Console: no red errors. CSP violations appear here as warnings —
+   note them down. After a clean run on real traffic, flip the header name in
+   `next.config.ts` from `Content-Security-Policy-Report-Only` to
+   `Content-Security-Policy` to enforce.
 10. Vercel Dashboard → Logs: no `function_duration` outliers, no 500s
 
 If anything fails, see "Rollback" below.
 
 ## Phase 6 — post-deploy bookkeeping
 
+After the production URL is verified, tag the release:
+
 ```bash
-# After the production URL is verified, tag the release
-git tag -a v0.1.0-mvp-backbone -m "MVP backbone: PROJ-1, 2, 4, 6, 7, 9, 19"
+git tag -a v0.1.0-mvp-backbone -m "MVP backbone: PROJ-1, 2, 4, 6, 7, 9, 19
+
+Approved features in this release:
+- PROJ-1  Authentication, Tenants, Role-Based Membership
+- PROJ-2  Project CRUD + Lifecycle State Machine
+- PROJ-4  Platform Foundation — Navigation + RBAC
+- PROJ-6  Project Types, Methods Catalog, Rule Engine
+- PROJ-7  Project Room (MVP slice)
+- PROJ-9  Work Item Metamodel — Backlog
+- PROJ-19 Phases & Milestones"
+
 git push origin v0.1.0-mvp-backbone
 ```
 
-Update each Approved feature spec with a "Deployment" section noting:
-- Date deployed
-- Production URL
-- Git tag
-- Any deviations encountered
+Then flip the spec + INDEX status from `Approved` → `Deployed` using the
+prebuilt patch (created during deploy hardening, applies cleanly against
+the 7 specs + `features/INDEX.md`):
 
-Update `features/INDEX.md` — flip the status of all deployed features
-to `Deployed`.
+```bash
+git apply docs/production/deployed-flip.patch
+# fill in Date deployed + Production URL placeholders in each spec
+git add features/INDEX.md features/PROJ-{1,2,4,6,7,9,19}-*.md
+git commit -m "docs(deploy): flip MVP backbone features to Deployed
+
+Co-Authored-By: Claude Opus 4.7 (1M context) <noreply@anthropic.com>"
+```
+
+After applying, each of the 7 specs has a "Deployment" section with
+placeholders for date / production URL / deviations — fill those in
+before committing.
 
 ## Phase 7 — production-ready essentials (recommended after first deploy)
 
 These are not blocking the first deploy but should land in week one:
 
-1. **Error tracking** — Sentry. See `docs/production/error-tracking.md`.
-   Approx. 5 min of work. Adds two `NEXT_PUBLIC_SENTRY_DSN` + `SENTRY_AUTH_TOKEN`
-   env vars.
+1. **Error tracking** — Sentry scaffold is already wired in (`@sentry/nextjs`,
+   `sentry.{client,server,edge}.config.ts`, `instrumentation.ts`,
+   `withSentryConfig` wrapper in `next.config.ts`). The SDK no-ops without
+   a DSN. To activate: create a Sentry project, then add to Vercel env vars
+   (Production + Preview + Development):
+   - `NEXT_PUBLIC_SENTRY_DSN` (browser)
+   - `SENTRY_DSN` (server, same value)
+   - `SENTRY_AUTH_TOKEN` (CI only, for source-map upload)
+   - `SENTRY_ORG` and `SENTRY_PROJECT` (CI only, for source-map upload)
+
+   Trigger a redeploy after adding the vars. See `docs/production/error-tracking.md`
+   for the full setup.
 2. **Lighthouse pass** — run against the production URL. Target ≥ 90 in all
    four categories. See `docs/production/performance.md`.
 3. **Rate limiting** on the auth endpoints — see `docs/production/rate-limiting.md`.

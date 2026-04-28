@@ -1,0 +1,189 @@
+diff --git a/features/INDEX.md b/features/INDEX.md
+index b4015d4..d956907 100644
+--- a/features/INDEX.md
++++ b/features/INDEX.md
+@@ -14,15 +14,15 @@
+ 
+ | ID | Feature | Status | Spec | Created |
+ |----|---------|--------|------|---------|
+-| PROJ-1 | Authentication, Tenants, Role-Based Membership | Approved | [Spec](PROJ-1-auth-tenants-roles.md) | 2026-04-25 |
+-| PROJ-2 | Project CRUD + Lifecycle State Machine | Approved | [Spec](PROJ-2-project-crud-lifecycle.md) | 2026-04-25 |
++| PROJ-1 | Authentication, Tenants, Role-Based Membership | Deployed | [Spec](PROJ-1-auth-tenants-roles.md) | 2026-04-25 |
++| PROJ-2 | Project CRUD + Lifecycle State Machine | Deployed | [Spec](PROJ-2-project-crud-lifecycle.md) | 2026-04-25 |
+ | PROJ-3 | Tenant Operations and Deployment Modes (Stand-alone vs SaaS) | Planned | [Spec](PROJ-3-tenant-ops-deployment-modes.md) | 2026-04-25 |
+-| PROJ-4 | Platform Foundation — Navigation, Project Roles, RBAC Enforcement | Approved | [Spec](PROJ-4-platform-foundation-navigation-rbac.md) | 2026-04-25 |
++| PROJ-4 | Platform Foundation — Navigation, Project Roles, RBAC Enforcement | Deployed | [Spec](PROJ-4-platform-foundation-navigation-rbac.md) | 2026-04-25 |
+ | PROJ-5 | Guided Project Creation Wizard with Type/Method-Aware Questions | Planned | [Spec](PROJ-5-guided-project-creation-wizard.md) | 2026-04-25 |
+-| PROJ-6 | Project Types, Methods Catalog, and Rule Engine | Approved | [Spec](PROJ-6-project-types-methods-rule-engine.md) | 2026-04-25 |
+-| PROJ-7 | Project Room with Internal Kanban / Scrum / Gantt Modules | Approved (MVP slice) | [Spec](PROJ-7-project-room-internal-modules.md) | 2026-04-25 |
++| PROJ-6 | Project Types, Methods Catalog, and Rule Engine | Deployed | [Spec](PROJ-6-project-types-methods-rule-engine.md) | 2026-04-25 |
++| PROJ-7 | Project Room with Internal Kanban / Scrum / Gantt Modules | Deployed (MVP slice) | [Spec](PROJ-7-project-room-internal-modules.md) | 2026-04-25 |
+ | PROJ-8 | Stakeholders and Organization | Planned | [Spec](PROJ-8-stakeholders-organization.md) | 2026-04-25 |
+-| PROJ-9 | Work Item Metamodel — Backlog Structure | Approved | [Spec](PROJ-9-work-item-metamodel-backlog.md) | 2026-04-25 |
++| PROJ-9 | Work Item Metamodel — Backlog Structure | Deployed | [Spec](PROJ-9-work-item-metamodel-backlog.md) | 2026-04-25 |
+ | PROJ-10 | Change Management — Field-level Versioning, Compare, Undo, Copy, Audit | Planned | [Spec](PROJ-10-change-management-versioning.md) | 2026-04-25 |
+ | PROJ-11 | Resources, Capacities, and Schedule Logic | Planned | [Spec](PROJ-11-resources-capacity-schedule.md) | 2026-04-25 |
+ | PROJ-12 | KI Assistance and Data-Privacy Paths | Planned | [Spec](PROJ-12-ki-assistance-privacy-paths.md) | 2026-04-25 |
+@@ -32,7 +32,7 @@
+ | PROJ-16 | Master Data UI — Users, Stakeholder Rollup, Catalog Overrides | Planned | [Spec](PROJ-16-master-data-ui.md) | 2026-04-25 |
+ | PROJ-17 | Tenant Administration — Branding, Modules, Privacy, Export, Offboarding | Planned | [Spec](PROJ-17-tenant-administration.md) | 2026-04-25 |
+ | PROJ-18 | Compliance Automatik & Process Templates | Planned | [Spec](PROJ-18-compliance-automatik.md) | 2026-04-25 |
+-| PROJ-19 | Phases & Milestones — Cross-cutting Schedule Backbone | Approved | [Spec](PROJ-19-phases-milestones-cross-cutting.md) | 2026-04-25 |
++| PROJ-19 | Phases & Milestones — Cross-cutting Schedule Backbone | Deployed | [Spec](PROJ-19-phases-milestones-cross-cutting.md) | 2026-04-25 |
+ | PROJ-20 | Risks & Decisions Catalog (Cross-cutting Governance Backbone) | Planned | [Spec](PROJ-20-risks-decisions-catalog.md) | 2026-04-25 |
+ 
+ <!-- Add features above this line -->
+diff --git a/features/PROJ-1-auth-tenants-roles.md b/features/PROJ-1-auth-tenants-roles.md
+index 462e03e..f8ac738 100644
+--- a/features/PROJ-1-auth-tenants-roles.md
++++ b/features/PROJ-1-auth-tenants-roles.md
+@@ -1,6 +1,6 @@
+ # PROJ-1: Authentication, Tenants, and Role-Based Membership
+ 
+-## Status: Approved
++## Status: Deployed
+ **Created:** 2026-04-25
+ **Last Updated:** 2026-04-25
+ 
+@@ -455,4 +455,8 @@ Suggested follow-ups (not blockers):
+ 3. Seed a realistic 2-tenant + 3-user fixture for cross-tenant RLS regression tests.
+ 
+ ## Deployment
+-_To be added by /deploy_
++
++- **Date deployed:** _to fill in after first prod deploy_
++- **Production URL:** _to fill in after first prod deploy_
++- **Git tag:** `v0.1.0-mvp-backbone`
++- **Deviations:** _none observed / list any here_
+diff --git a/features/PROJ-19-phases-milestones-cross-cutting.md b/features/PROJ-19-phases-milestones-cross-cutting.md
+index f9483ac..1c106f6 100644
+--- a/features/PROJ-19-phases-milestones-cross-cutting.md
++++ b/features/PROJ-19-phases-milestones-cross-cutting.md
+@@ -1,6 +1,6 @@
+ # PROJ-19: Phases & Milestones — Cross-cutting Schedule Backbone
+ 
+-## Status: Approved
++## Status: Deployed
+ <!-- Frontend (commit 96f2976) + Backend (commit pending) shipped; QA pending -->
+ 
+ **Created:** 2026-04-25
+@@ -377,4 +377,8 @@ _To be added by /frontend and /backend_
+ **READY** — no Critical or High bugs.
+ 
+ ## Deployment
+-_To be added by /deploy_
++
++- **Date deployed:** _to fill in after first prod deploy_
++- **Production URL:** _to fill in after first prod deploy_
++- **Git tag:** `v0.1.0-mvp-backbone`
++- **Deviations:** _none observed / list any here_
+diff --git a/features/PROJ-2-project-crud-lifecycle.md b/features/PROJ-2-project-crud-lifecycle.md
+index 1e71328..0edc794 100644
+--- a/features/PROJ-2-project-crud-lifecycle.md
++++ b/features/PROJ-2-project-crud-lifecycle.md
+@@ -1,6 +1,6 @@
+ # PROJ-2: Project CRUD and Lifecycle State Machine
+ 
+-## Status: Approved
++## Status: Deployed
+ **Created:** 2026-04-25
+ **Last Updated:** 2026-04-25
+ 
+@@ -492,4 +492,8 @@ Suggested follow-ups (not blockers):
+ _To be added by /qa_
+ 
+ ## Deployment
+-_To be added by /deploy_
++
++- **Date deployed:** _to fill in after first prod deploy_
++- **Production URL:** _to fill in after first prod deploy_
++- **Git tag:** `v0.1.0-mvp-backbone`
++- **Deviations:** _none observed / list any here_
+diff --git a/features/PROJ-4-platform-foundation-navigation-rbac.md b/features/PROJ-4-platform-foundation-navigation-rbac.md
+index 20c3930..e4f9a1c 100644
+--- a/features/PROJ-4-platform-foundation-navigation-rbac.md
++++ b/features/PROJ-4-platform-foundation-navigation-rbac.md
+@@ -1,6 +1,6 @@
+ # PROJ-4: Platform Foundation — Navigation, Project Roles, RBAC Enforcement
+ 
+-## Status: Approved
++## Status: Deployed
+ **Created:** 2026-04-25
+ **Last Updated:** 2026-04-26
+ 
+@@ -475,4 +475,8 @@ While cleaning up QA fixtures, observed that `enforce_last_lead` blocks **cascad
+ **READY** — no Critical or High bugs introduced by M1 + M2. The two original Medium findings are now Resolved end-to-end (live RPC works, helper is exercised by tests + structural verification). Status `Approved` confirmed.
+ 
+ ## Deployment
+-_To be added by /deploy_
++
++- **Date deployed:** _to fill in after first prod deploy_
++- **Production URL:** _to fill in after first prod deploy_
++- **Git tag:** `v0.1.0-mvp-backbone`
++- **Deviations:** _none observed / list any here_
+diff --git a/features/PROJ-6-project-types-methods-rule-engine.md b/features/PROJ-6-project-types-methods-rule-engine.md
+index 8195102..8679929 100644
+--- a/features/PROJ-6-project-types-methods-rule-engine.md
++++ b/features/PROJ-6-project-types-methods-rule-engine.md
+@@ -1,6 +1,6 @@
+ # PROJ-6: Project Types, Methods Catalog, and Rule Engine
+ 
+-## Status: Approved
++## Status: Deployed
+ **Created:** 2026-04-25
+ **Last Updated:** 2026-04-27
+ 
+@@ -446,4 +446,8 @@ Suggested next:
+ 4. **Method-migration RPC** as a separate small story — audit-tracked one-shot to unlock PROJ-6's intentional immutability when business reality demands it.
+ 
+ ## Deployment
+-_To be added by /deploy_
++
++- **Date deployed:** _to fill in after first prod deploy_
++- **Production URL:** _to fill in after first prod deploy_
++- **Git tag:** `v0.1.0-mvp-backbone`
++- **Deviations:** _none observed / list any here_
+diff --git a/features/PROJ-7-project-room-internal-modules.md b/features/PROJ-7-project-room-internal-modules.md
+index 1bf763c..4080f7a 100644
+--- a/features/PROJ-7-project-room-internal-modules.md
++++ b/features/PROJ-7-project-room-internal-modules.md
+@@ -1,6 +1,6 @@
+ # PROJ-7: Project Room with Internal Kanban / Scrum / Gantt Modules
+ 
+-## Status: Approved (MVP slice)
++## Status: Deployed (MVP slice)
+ **Created:** 2026-04-25
+ **Last Updated:** 2026-04-25
+ 
+@@ -350,4 +350,8 @@ This QA covers the **MVP increment of PROJ-7** that has actually been built:
+ **READY for the shipped increment** (project room shell + method-aware UI + `project_method` column). Risk/Budget/Portfolio/Health remain unbuilt and need their own /requirements + /architecture + build passes before claiming the full PROJ-7 spec is delivered.
+ 
+ ## Deployment
+-_To be added by /deploy_
++
++- **Date deployed:** _to fill in after first prod deploy_
++- **Production URL:** _to fill in after first prod deploy_
++- **Git tag:** `v0.1.0-mvp-backbone`
++- **Deviations:** _none observed / list any here_
+diff --git a/features/PROJ-9-work-item-metamodel-backlog.md b/features/PROJ-9-work-item-metamodel-backlog.md
+index 3529277..b4c2040 100644
+--- a/features/PROJ-9-work-item-metamodel-backlog.md
++++ b/features/PROJ-9-work-item-metamodel-backlog.md
+@@ -1,6 +1,6 @@
+ # PROJ-9: Work Item Metamodel — Backlog Structure (Epic / Story / Task / Work Package / Bug)
+ 
+-## Status: Approved
++## Status: Deployed
+ **Created:** 2026-04-25
+ **Last Updated:** 2026-04-28
+ 
+@@ -426,4 +426,8 @@ Single migration file `supabase/migrations/20260428100000_proj9_work_items_sprin
+ **READY** — no Critical or High bugs. M1 is a follow-up hardening task; functionally the system is sound because the API routes don't expose those trigger functions and they no-op outside trigger context.
+ 
+ ## Deployment
+-_To be added by /deploy_
++
++- **Date deployed:** _to fill in after first prod deploy_
++- **Production URL:** _to fill in after first prod deploy_
++- **Git tag:** `v0.1.0-mvp-backbone`
++- **Deviations:** _none observed / list any here_
