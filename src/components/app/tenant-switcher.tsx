@@ -14,11 +14,24 @@ import {
 import { useAuth } from "@/hooks/use-auth"
 import { cn } from "@/lib/utils"
 
-export function TenantSwitcher() {
+interface TenantSwitcherProps {
+  /**
+   * PROJ-3: when "standalone", hide the tenant switcher unconditionally
+   * (defense-in-depth: stand-alone deployments only ever have one tenant,
+   * but if they somehow gain a second, the switcher must still stay out
+   * of the UI per the operational contract).
+   */
+  operationMode?: "shared" | "standalone"
+}
+
+export function TenantSwitcher({
+  operationMode = "shared",
+}: TenantSwitcherProps) {
   const { memberships, currentTenant, setCurrentTenant } = useAuth()
 
-  // Hide the switcher if the user belongs to fewer than 2 tenants.
-  if (memberships.length < 2) {
+  // Hide the switcher in stand-alone mode, or if the user belongs to fewer
+  // than 2 tenants. Both conditions collapse to the same single-tenant UX.
+  if (operationMode === "standalone" || memberships.length < 2) {
     if (!currentTenant) return null
     return (
       <span

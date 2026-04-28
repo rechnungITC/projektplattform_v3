@@ -3,6 +3,7 @@ import { redirect } from "next/navigation"
 import { TopNav } from "@/components/app/top-nav"
 import { AuthProvider } from "@/hooks/use-auth"
 import { loadServerAuth } from "@/lib/auth-helpers"
+import { getOperationMode } from "@/lib/operation-mode"
 
 export default async function AppLayout({
   children,
@@ -20,6 +21,8 @@ export default async function AppLayout({
     redirect("/onboarding")
   }
 
+  const operationMode = getOperationMode()
+
   return (
     <AuthProvider
       user={snapshot.user}
@@ -28,7 +31,7 @@ export default async function AppLayout({
       initialTenantId={snapshot.initialTenantId}
     >
       <div className="flex min-h-screen flex-col">
-        <TopNav />
+        <TopNav operationMode={operationMode} />
         <main className="flex-1 bg-muted/20">{children}</main>
       </div>
     </AuthProvider>

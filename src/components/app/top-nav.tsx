@@ -72,7 +72,13 @@ function isActive(item: NavItem, pathname: string): boolean {
   return pathname === item.href || pathname.startsWith(`${item.href}/`)
 }
 
-export function TopNav() {
+interface TopNavProps {
+  /** PROJ-3: passed down from the server layout so TenantSwitcher can hide
+   *  itself in stand-alone mode without needing to read process.env. */
+  operationMode?: "shared" | "standalone"
+}
+
+export function TopNav({ operationMode = "shared" }: TopNavProps) {
   const pathname = usePathname() ?? "/"
   const { currentRole } = useAuth()
   const [mobileOpen, setMobileOpen] = React.useState(false)
@@ -121,7 +127,7 @@ export function TopNav() {
         <div className="flex-1" aria-hidden />
 
         <div className="flex items-center gap-2">
-          <TenantSwitcher />
+          <TenantSwitcher operationMode={operationMode} />
           <UserMenu />
           {/* Mobile drawer trigger — desktop hides this */}
           <Sheet open={mobileOpen} onOpenChange={setMobileOpen}>

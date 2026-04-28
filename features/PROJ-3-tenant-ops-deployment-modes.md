@@ -1,6 +1,6 @@
 # PROJ-3: Tenant Operations and Deployment Modes (Stand-alone vs SaaS)
 
-## Status: Architected
+## Status: In Progress
 **Created:** 2026-04-25
 **Last Updated:** 2026-04-29
 
@@ -153,7 +153,74 @@ Keine neuen npm-Pakete. Keine neue Migration. Keine neuen API-Routen.
 - Doku-Links unter `docs/deployment/` zeigen auf existierende, vollständige Dateien.
 
 ## Implementation Notes
-_To be added by /frontend and /backend_
+
+### Combined backend + frontend + docs pass (2026-04-29)
+
+PROJ-3 was implemented as one cohesive commit because the backend lib, the
+single UI consumer, and the docs are tightly coupled — splitting into two
+skill cycles would have produced broken intermediate states (the lib
+without its consumer is dead code).
+
+**Code changes (small):**
+
+- `src/lib/operation-mode.ts` — typed reader for the two env switches:
+  - `OPERATION_MODE`: `"shared" | "standalone"` with case-insensitive,
+    typo-safe parse (anything other than the literal `"standalone"`
+    falls back to `"shared"`).
+  - `EXTERNAL_AI_DISABLED`: strict opt-in, only the literal `"true"`
+    enables the block.
+  - Helpers: `getOperationMode()`, `isStandalone()`,
+    `isExternalAIBlocked()`, `getOperationModeSnapshot()`.
+- `src/lib/operation-mode.test.ts` — 11 unit tests covering defaults,
+  case-insensitive parse, typo-safe fallback, strict opt-in for the AI
+  block, and independence between the two flags.
+- `src/app/(app)/layout.tsx` — server component reads `getOperationMode()`
+  and prop-drills it to `TopNav`.
+- `src/components/app/top-nav.tsx` — accepts `operationMode` prop and
+  forwards to `TenantSwitcher`.
+- `src/components/app/tenant-switcher.tsx` — adds `operationMode` prop;
+  hide condition extended from `memberships.length < 2` to
+  `operationMode === "standalone" || memberships.length < 2`. Single
+  source of truth for the standalone collapse.
+- `.env.local.example` — new sections documenting the two env vars
+  with inline rationale.
+
+**Docs (new):**
+
+- `docs/deployment/standalone.md` — when, why, required env, initial
+  setup checklist, smoke-test, and a comparison table SaaS vs
+  stand-alone.
+- `docs/deployment/update-strategy.md` — ordered procedure (migrations
+  → edge functions → app → flags), backward-compat rules, two-layer
+  rollback (one-click app vs schema), pre-deploy sanity check.
+- `docs/deployment/backup-restore.md` — RTO/RPO definitions, daily
+  backup verification, cold-restore steps, PITR with operator
+  confirmation, scope boundaries (per-tenant restore + multi-region DR
+  out of scope).
+
+**No DB changes**, no new API routes, no new npm packages, no new
+migration. PROJ-1 already enforces multi-tenant isolation at the data
+layer; PROJ-3 only adds the deployment-topology dimension on top.
+
+**Verification:**
+- `npx vitest run` → **201/201** green (was 190; +11 new lib tests).
+- `npx tsc --noEmit` → clean.
+- `npm run build` → clean; the route table is unchanged.
+- `npm run lint` → baseline unchanged at 51 problems (none from PROJ-3).
+- Existing multi-tenant isolation tests in PROJ-1 / PROJ-8 / PROJ-20
+  cover the stand-alone case implicitly (test DB has one tenant) — no
+  new tests needed for the AC "Multi-tenant isolation must hold in
+  stand-alone mode."
+
+**Open follow-ups (handed to /qa):**
+- Smoke-test the standalone-mode UI by setting `OPERATION_MODE=standalone`
+  in dev and verifying the TenantSwitcher hides even when the user
+  technically has more than one membership.
+- Spot-check the `EXTERNAL_AI_DISABLED` flag is read correctly (no
+  consumer yet — PROJ-12 will be the first; for now, just unit-test
+  coverage and presence in `.env.local.example`).
+- Verify the deployment docs are link-clean and accurate against the
+  current Supabase project layout.
 
 ## QA Test Results
 _To be added by /qa_
