@@ -1,9 +1,7 @@
 import {
   GitCompare,
   History,
-  Kanban,
   LayoutDashboard,
-  Layers,
   ListChecks,
   Settings as SettingsIcon,
   Sparkles,
@@ -24,11 +22,11 @@ import {
  * Stories) and Program-Increment view stubs. Mirrors Scrum's sidebar
  * with an Epics-and-Features layer.
  */
+// Duplicate-route entries (Epics & Features → backlog?kind=epic, Sprint-Board
+// → backlog?view=board) are deferred until the backlog page filters by query.
 const SIDEBAR_SECTIONS: SidebarSection[] = [
   { id: "overview", label: "Übersicht", icon: LayoutDashboard, tabPath: "" },
-  { id: "epics", label: "Epics & Features", icon: Layers, tabPath: "backlog?kind=epic" },
   { id: "backlog", label: "Backlog", icon: ListChecks, tabPath: "backlog" },
-  { id: "board", label: "Sprint-Board", icon: Kanban, tabPath: "backlog?view=board" },
   { id: "releases", label: "Releases", icon: GitCompare, tabPath: "planung" },
   { id: "ai", label: "KI-Vorschläge", icon: Sparkles, tabPath: "ai-proposals" },
   { id: "stakeholder", label: "Stakeholder", icon: Users, tabPath: "stakeholder" },

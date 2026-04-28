@@ -1,13 +1,11 @@
 import {
   GitCompare,
   History,
-  Kanban,
   LayoutDashboard,
   ListChecks,
   Settings as SettingsIcon,
   Sparkles,
   Target,
-  TrendingUp,
   Users,
   Users2,
 } from "lucide-react"
@@ -24,12 +22,12 @@ import {
  * Backlog → Sprint Board → Releases → Velocity, plus the cross-cutting
  * AI / Stakeholder / Risk / Budget items.
  */
+// Sprint-Board (backlog?view=board) and Velocity (planung alias) are deferred
+// until the underlying pages differentiate by query / sub-tab.
 const SIDEBAR_SECTIONS: SidebarSection[] = [
   { id: "overview", label: "Übersicht", icon: LayoutDashboard, tabPath: "" },
   { id: "backlog", label: "Backlog", icon: ListChecks, tabPath: "backlog" },
-  { id: "board", label: "Sprint-Board", icon: Kanban, tabPath: "backlog?view=board" },
   { id: "releases", label: "Releases", icon: GitCompare, tabPath: "planung" },
-  { id: "velocity", label: "Velocity", icon: TrendingUp, tabPath: "planung" },
   { id: "ai", label: "KI-Vorschläge", icon: Sparkles, tabPath: "ai-proposals" },
   { id: "stakeholder", label: "Stakeholder", icon: Users, tabPath: "stakeholder" },
   { id: "members", label: "Mitglieder", icon: Users2, tabPath: "mitglieder" },

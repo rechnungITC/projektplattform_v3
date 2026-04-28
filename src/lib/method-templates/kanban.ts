@@ -2,7 +2,6 @@ import {
   History,
   Kanban,
   LayoutDashboard,
-  ListChecks,
   Settings as SettingsIcon,
   Sparkles,
   Target,
@@ -21,10 +20,11 @@ import {
  * Kanban config — pull-system focus, no sprints. Sidebar leads with
  * Board, then Backlog. Top-header is a simple project banner.
  */
+// "Backlog" entry (same target as Board) is deferred until the backlog page
+// supports a list/board view-switch.
 const SIDEBAR_SECTIONS: SidebarSection[] = [
   { id: "overview", label: "Übersicht", icon: LayoutDashboard, tabPath: "" },
-  { id: "board", label: "Board", icon: Kanban, tabPath: "backlog?view=board" },
-  { id: "backlog", label: "Backlog", icon: ListChecks, tabPath: "backlog" },
+  { id: "board", label: "Board", icon: Kanban, tabPath: "backlog" },
   { id: "ai", label: "KI-Vorschläge", icon: Sparkles, tabPath: "ai-proposals" },
   { id: "stakeholder", label: "Stakeholder", icon: Users, tabPath: "stakeholder" },
   { id: "members", label: "Mitglieder", icon: Users2, tabPath: "mitglieder" },

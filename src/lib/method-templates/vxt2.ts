@@ -1,12 +1,8 @@
 import {
-  ChartGantt,
-  Flag,
   History,
-  Kanban,
   LayoutDashboard,
   Layers,
   ListTodo,
-  Package,
   Settings as SettingsIcon,
   Sparkles,
   Target,
@@ -25,14 +21,13 @@ import {
  * VXT 2.0 config (PROJ-6). Hybrid: Wasserfall-Phasen oben, agile
  * Stories/Tasks im Backlog unten. Sidebar bietet beide Welten parallel.
  */
+// Meilensteine (planung sub-tab), Arbeitspakete (backlog filter), Board
+// (backlog view) and Gantt (planung alias) are deferred until the underlying
+// pages support those query/sub-tab modes.
 const SIDEBAR_SECTIONS: SidebarSection[] = [
   { id: "overview", label: "Übersicht", icon: LayoutDashboard, tabPath: "" },
   { id: "phases", label: "Phasen", icon: Layers, tabPath: "planung" },
-  { id: "milestones", label: "Meilensteine", icon: Flag, tabPath: "planung?tab=meilensteine" },
-  { id: "work-packages", label: "Arbeitspakete", icon: Package, tabPath: "backlog?kind=work_package" },
   { id: "backlog", label: "Backlog", icon: ListTodo, tabPath: "backlog" },
-  { id: "board", label: "Board", icon: Kanban, tabPath: "backlog?view=board" },
-  { id: "gantt", label: "Gantt", icon: ChartGantt, tabPath: "planung" },
   { id: "ai", label: "KI-Vorschläge", icon: Sparkles, tabPath: "ai-proposals" },
   { id: "stakeholder", label: "Stakeholder", icon: Users, tabPath: "stakeholder" },
   { id: "members", label: "Mitglieder", icon: Users2, tabPath: "mitglieder" },

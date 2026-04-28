@@ -2,7 +2,7 @@
 
 import { ChevronLeft, ChevronRight, Menu } from "lucide-react"
 import Link from "next/link"
-import { usePathname } from "next/navigation"
+import { usePathname, useSearchParams } from "next/navigation"
 import * as React from "react"
 
 import { Button } from "@/components/ui/button"
@@ -166,6 +166,8 @@ function SidebarNav({
   onNavigate,
 }: SidebarNavProps) {
   const pathname = usePathname() ?? ""
+  const searchParams = useSearchParams()
+  const searchString = searchParams?.toString() ?? ""
   const base = `/projects/${projectId}`
 
   return (
@@ -176,7 +178,12 @@ function SidebarNav({
             const href = section.tabPath
               ? `${base}/${section.tabPath}`
               : base
-            const active = isActiveSection(pathname, base, section.tabPath)
+            const active = isActiveSection(
+              pathname,
+              searchString,
+              base,
+              section.tabPath
+            )
             const Icon = section.icon
             const link = (
               <Link
@@ -226,14 +233,29 @@ function SidebarNav({
 
 function isActiveSection(
   pathname: string,
+  search: string,
   base: string,
   tabPath: string
 ): boolean {
-  // Strip query strings off the configured tabPath when comparing.
-  const cleanTabPath = tabPath.split("?")[0]
-  if (!cleanTabPath) {
-    return pathname === base
+  const [tabPathName, tabQuery] = tabPath.split("?")
+  const target = tabPathName ? `${base}/${tabPathName}` : base
+  const pathMatches =
+    pathname === target || pathname.startsWith(`${target}/`)
+  if (!pathMatches) return false
+
+  // Path matches; honor query-string filter so sibling tabs that share the
+  // same pathname (e.g. `backlog?view=board` vs `backlog?kind=epic`) only
+  // light up when their specific filter is satisfied.
+  if (tabQuery) {
+    const expected = new URLSearchParams(tabQuery)
+    const actual = new URLSearchParams(search)
+    for (const [key, value] of expected.entries()) {
+      if (actual.get(key) !== value) return false
+    }
+    return true
   }
-  const target = `${base}/${cleanTabPath}`
-  return pathname === target || pathname.startsWith(`${target}/`)
+
+  // tabPath has no query → only active when URL has none either, so a
+  // bare-path sibling cedes to a more-specific query-string sibling.
+  return search === ""
 }

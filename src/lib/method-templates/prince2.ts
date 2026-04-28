@@ -1,6 +1,4 @@
 import {
-  ChartGantt,
-  Flag,
   History,
   LayoutDashboard,
   Layers,
@@ -26,13 +24,13 @@ import {
  * to reflect PRINCE2's strong governance gates. Top header is the
  * phase-bar like PMI.
  */
+// Meilensteine (planung sub-tab) and Gantt (planung alias) are deferred
+// until the planung page supports those sub-views.
 const SIDEBAR_SECTIONS: SidebarSection[] = [
   { id: "overview", label: "Übersicht", icon: LayoutDashboard, tabPath: "" },
   { id: "phases", label: "Phasen", icon: Layers, tabPath: "planung" },
   { id: "work-packages", label: "Arbeitspakete", icon: Package, tabPath: "backlog" },
-  { id: "milestones", label: "Meilensteine", icon: Flag, tabPath: "planung?tab=meilensteine" },
   { id: "approvals", label: "Freigaben", icon: ShieldCheck, tabPath: "governance" },
-  { id: "gantt", label: "Gantt", icon: ChartGantt, tabPath: "planung" },
   { id: "ai", label: "KI-Vorschläge", icon: Sparkles, tabPath: "ai-proposals" },
   { id: "stakeholder", label: "Stakeholder", icon: Users, tabPath: "stakeholder" },
   { id: "members", label: "Mitglieder", icon: Users2, tabPath: "mitglieder" },

@@ -1,6 +1,4 @@
 import {
-  ChartGantt,
-  Flag,
   History,
   LayoutDashboard,
   Layers,
@@ -25,13 +23,13 @@ import {
  * a first-class entry; default center view is `list` (with Gantt as a
  * secondary toggle once shipped).
  */
+// Gantt (planung alias) and Meilensteine (planung sub-tab) are deferred
+// until the planung page supports those sub-views.
 const SIDEBAR_SECTIONS: SidebarSection[] = [
   { id: "overview", label: "Übersicht", icon: LayoutDashboard, tabPath: "" },
   { id: "phases", label: "Phasen", icon: Layers, tabPath: "planung" },
   { id: "work-packages", label: "Arbeitspakete", icon: Package, tabPath: "backlog" },
   { id: "dependencies", label: "Abhängigkeiten", icon: Network, tabPath: "abhaengigkeiten" },
-  { id: "gantt", label: "Gantt", icon: ChartGantt, tabPath: "planung" },
-  { id: "milestones", label: "Meilensteine", icon: Flag, tabPath: "planung?tab=meilensteine" },
   { id: "ai", label: "KI-Vorschläge", icon: Sparkles, tabPath: "ai-proposals" },
   { id: "stakeholder", label: "Stakeholder", icon: Users, tabPath: "stakeholder" },
   { id: "members", label: "Mitglieder", icon: Users2, tabPath: "mitglieder" },
