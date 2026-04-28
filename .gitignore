@@ -31,6 +31,9 @@ yarn-error.log*
 # vercel
 .vercel
 
+# JetBrains IDE (WebStorm / IntelliJ)
+.idea/
+
 # claude code personal settings
 .claude/settings.local.json
 

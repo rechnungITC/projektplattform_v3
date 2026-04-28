@@ -149,9 +149,15 @@ These are not blocking the first deploy but should land in week one:
    four categories. See `docs/production/performance.md`.
 3. **Rate limiting** on the auth endpoints — see `docs/production/rate-limiting.md`.
    Optional today; required if non-employee users sign up.
-4. **CSP header** — security-headers.md notes this is the most fragile;
-   start with `Content-Security-Policy-Report-Only` to find violations
-   before flipping to enforcing mode.
+4. **CSP header** — currently `Content-Security-Policy-Report-Only` so
+   violations are logged to the browser console without blocking. After
+   1–2 days of observation on real prod traffic and zero violations in
+   user-affecting contexts, flip to enforcing in `next.config.ts`:
+   - rename header key `Content-Security-Policy-Report-Only` → `Content-Security-Policy`
+   - if console reported violations, add the missing source(s) to the
+     relevant directive before flipping
+   - `'unsafe-eval'` was removed during initial deploy hardening. If the
+     report shows JS that needs `eval()`, re-add it (rare in Next.js prod).
 5. **Auth leaked-password protection** — Supabase Dashboard → Authentication →
    Settings → enable "Leaked password protection" (HaveIBeenPwned check). One
    click. Removes the standing advisor warning.

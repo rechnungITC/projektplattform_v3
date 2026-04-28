@@ -19,13 +19,19 @@ const SECURITY_HEADERS = [
     value: "camera=(), microphone=(), geolocation=(), interest-cohort=()",
   },
   // CSP in report-only mode: surfaces violations in the browser console without
-  // blocking. Flip the header name to `Content-Security-Policy` after a clean
-  // run on prod traffic to enforce. No report-uri — DevTools console only.
+  // blocking. After a clean observation window on prod traffic (see
+  // docs/production/deployment-runbook.md Phase 7), flip the header name to
+  // `Content-Security-Policy` to enforce. No report-uri — DevTools console only.
+  //
+  // 'unsafe-inline' is required by Next.js for hydration + theme bootstrap
+  // inline scripts. 'unsafe-eval' has been removed — Next.js production
+  // bundles do not require eval; if the report shows violations during the
+  // observation window, re-add temporarily.
   {
     key: "Content-Security-Policy-Report-Only",
     value: [
       "default-src 'self'",
-      "script-src 'self' 'unsafe-inline' 'unsafe-eval'",
+      "script-src 'self' 'unsafe-inline'",
       "style-src 'self' 'unsafe-inline'",
       "img-src 'self' data: blob: https:",
       "font-src 'self' data:",
