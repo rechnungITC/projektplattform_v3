@@ -21,7 +21,7 @@
 | PROJ-5 | Guided Project Creation Wizard with Type/Method-Aware Questions | Deployed | [Spec](PROJ-5-guided-project-creation-wizard.md) | 2026-04-25 |
 | PROJ-6 | Project Types, Methods Catalog, and Rule Engine | Deployed | [Spec](PROJ-6-project-types-methods-rule-engine.md) | 2026-04-25 |
 | PROJ-7 | Project Room with Internal Kanban / Scrum / Gantt Modules | Deployed (MVP slice) | [Spec](PROJ-7-project-room-internal-modules.md) | 2026-04-25 |
-| PROJ-8 | Stakeholders and Organization | Architected | [Spec](PROJ-8-stakeholders-organization.md) | 2026-04-25 |
+| PROJ-8 | Stakeholders and Organization | In Progress | [Spec](PROJ-8-stakeholders-organization.md) | 2026-04-25 |
 | PROJ-9 | Work Item Metamodel — Backlog Structure | Deployed | [Spec](PROJ-9-work-item-metamodel-backlog.md) | 2026-04-25 |
 | PROJ-10 | Change Management — Field-level Versioning, Compare, Undo, Copy, Audit | Planned | [Spec](PROJ-10-change-management-versioning.md) | 2026-04-25 |
 | PROJ-11 | Resources, Capacities, and Schedule Logic | Planned | [Spec](PROJ-11-resources-capacity-schedule.md) | 2026-04-25 |

@@ -1,6 +1,6 @@
 # PROJ-8: Stakeholders and Organization
 
-## Status: Architected
+## Status: In Progress
 **Created:** 2026-04-25
 **Last Updated:** 2026-04-28
 
@@ -205,7 +205,34 @@ Already installed and reused:
 - Tenant-configurable influence/impact labels (PROJ-17)
 
 ## Implementation Notes
-_To be added by /frontend and /backend_
+
+### Backend (this commit)
+- Migration `20260428180000_proj8_stakeholders.sql`:
+  - `stakeholders` table (tenant + project scoped, soft-deactivate via `is_active`).
+  - `stakeholder_suggestion_dismissals` table (composite key project_id + role_key).
+  - 4 RLS policies on `stakeholders` (member-read, editor/lead/admin write, lead/admin delete).
+  - 3 RLS policies on `stakeholder_suggestion_dismissals` (member-read, editor/lead/admin insert+delete).
+  - Indexes: `(project_id, is_active)`, `(project_id, role_key) where active`, `(linked_user_id) where not null`, `(project_id)` on dismissals.
+  - Class-3 columns documented via `comment on column` for the future PROJ-12 privacy registry.
+  - `moddatetime` trigger keeps `updated_at` fresh.
+- 7 API routes:
+  - `GET/POST /api/projects/[id]/stakeholders`
+  - `GET/PATCH /api/projects/[id]/stakeholders/[sid]`
+  - `POST /api/projects/[id]/stakeholders/[sid]/deactivate`
+  - `POST /api/projects/[id]/stakeholders/[sid]/reactivate`
+  - `GET /api/projects/[id]/stakeholders/suggestions`
+  - `POST /api/projects/[id]/stakeholders/suggestions/dismiss`
+  - `POST /api/projects/[id]/stakeholders/suggestions/clear`
+- Suggestions endpoint computes the list at request time: catalog `standard_roles` minus active-stakeholder roles minus dismissed roles. No persistence beyond the dismissal table.
+- Project access gated via existing PROJ-4 helpers (`requireProjectAccess(... "view"/"edit")`).
+- Types: `src/types/stakeholder.ts` exports kind/origin/score enums + `Stakeholder` + `StakeholderSuggestion`.
+- 8 new vitest cases in `src/app/api/projects/[id]/stakeholders/route.test.ts` covering 401 / 400 / 404 / 403 / happy paths for POST + filter behavior on GET. 148 total tests, all green.
+
+### Frontend (pending — /frontend phase)
+- Stakeholder tab page (replaces Coming-Soon stub) with List + Matrix views.
+- Edit drawer (Sheet) with the full form.
+- Suggestions sidebar.
+- PNG export of the matrix via `html-to-image`.
 
 ## QA Test Results
 _To be added by /qa_
