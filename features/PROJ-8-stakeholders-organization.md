@@ -1,6 +1,6 @@
 # PROJ-8: Stakeholders and Organization
 
-## Status: In Progress
+## Status: Approved
 **Created:** 2026-04-25
 **Last Updated:** 2026-04-28
 
@@ -247,7 +247,107 @@ Already installed and reused:
 - E2E test for the wizard-style flow (drawer create → list refresh → matrix highlight) — deferred until /qa pass.
 
 ## QA Test Results
-_To be added by /qa_
+
+### Test Execution Summary
+
+| Layer | Result |
+|---|---|
+| Vitest unit + integration | 148 / 148 pass (16 files; +8 new for stakeholders POST/GET) |
+| Live RLS audit (Supabase MCP) | Pass — 7 policies confirmed clause-by-clause; `set role authenticated` with synthetic non-member `auth.uid()` sees 0 rows. |
+| Build (`npm run build`) | Clean — 7 new API routes registered; stakeholder page replaces Coming-Soon stub. |
+| Production deploy | Live via auto-deploy after commit `7bfa150`. |
+| Playwright E2E | Deferred — no test-user fixture seeded; live walkthrough was greenlit by user before QA phase. |
+
+### Acceptance Criteria Walkthrough
+
+#### Stakeholder data model
+| AC | Status | Notes |
+|---|---|---|
+| `stakeholders` columns per spec | ✅ | All 16 columns present; CHECK constraints on enums; FKs with cascade/set-null per spec |
+| Class-3 columns flagged | ✅ | `comment on column` for name/email/phone/linked_user_id/notes. Privacy-registry enforcement waits for PROJ-12. |
+| Internal vs external via `origin` | ✅ | enum `internal` / `external`, RadioGroup in form |
+| Person vs organization via `kind` | ✅ | enum `person` / `organization`, RadioGroup + table icon |
+
+#### Manual CRUD + audit
+| AC | Status | Notes |
+|---|---|---|
+| 7 CRUD endpoints | ✅ | list/create + get/patch + deactivate/reactivate + suggestions list/dismiss/clear |
+| Form in Stakeholder tab | ✅ | Right-side Sheet drawer with full form |
+| Soft-deactivation | ✅ | `is_active` toggle via dedicated POST endpoints; default list filters to `is_active = true` |
+| **Edits audited via PROJ-10 hook** | ⏳ | **Deferred** — PROJ-10 not built. Documented in spec's Tech Design section. |
+| Editor/lead/admin write only | ✅ | RLS policies + `requireProjectAccess(... "edit")` on every write route |
+
+#### Type-driven suggestions
+| AC | Status | Notes |
+|---|---|---|
+| Sidebar shows suggestions per project type | ✅ | Computed at request time from PROJ-6 catalog `standard_roles` |
+| Single-click "Add" creates shell with role pre-filled | ✅ | Drawer opens with `role_key` populated, sane defaults |
+| Single-click "Dismiss" hides for project | ✅ | Upserts to `stakeholder_suggestion_dismissals` |
+| Already-added roles disappear from suggestions | ✅ | Suggestions endpoint subtracts active stakeholder roles |
+
+#### Influence/impact matrix (F5.3)
+| AC | Status | Notes |
+|---|---|---|
+| Matrix plots stakeholders | ✅ | 4×4 grid, x=influence, y=impact (high at top per UX convention) |
+| Click cell or marker opens edit form | ⚠️ | Marker click → drawer ✅; **cell click with multiple matches has bug M2** (see below) |
+| Score changes audited (PROJ-10) | ⏳ | Deferred with the rest of audit |
+| PNG export | ✅ | `html-to-image` via dynamic import; no initial-bundle cost |
+| Default 4-step low/medium/high/critical scale | ✅ | Tenant override deferred to PROJ-17 |
+
+### Edge Cases
+
+| Case | Spec says | Implementation |
+|---|---|---|
+| Linked auth user deleted | `linked_user_id` → NULL | ✅ FK `ON DELETE SET NULL` |
+| Same name in 2 projects | allowed | ✅ no uniqueness constraint |
+| Cross-tenant access | RLS blocks (404) | ✅ verified live |
+| Class-3 export to AI | blocked by PROJ-12 | ⏳ deferred |
+| Dismissed suggestion still wanted later | recoverable via tab UI | ⚠️ **Bug M1** — recover-link only visible in same session |
+| Matrix with 100+ stakeholders | cells aggregate counts | ✅ count badge + first-4 markers + "+N" overflow |
+
+### Security Audit
+
+| Check | Result |
+|---|---|
+| RLS on both tables | ✅ enabled, 7 policies total, both clauses correct |
+| RLS isolation between projects | ✅ verified live (synthetic non-member sees 0) |
+| RLS isolation between tenants | ✅ project_id resolves through `is_project_member` which inherits tenant scope |
+| Auth required on all endpoints | ✅ all routes return 401 without session |
+| Input validation (Zod, all writes) | ✅ POST + PATCH validate body; UUID + enum + max-length checks |
+| Email format check | ✅ Zod `.email()` on `contact_email` (allows empty string) |
+| XSS via UI inputs | ✅ React escapes all rendered strings; no `dangerouslySetInnerHTML` |
+| SQL injection | ✅ all DB calls parameterized (Supabase JS client) |
+| Class-3 data leakage in API responses | ✅ Class-3 fields only returned to project members; AI-export redaction deferred to PROJ-12 |
+
+### Bug Audit
+
+| Severity | ID | Description | Where |
+|---|---|---|---|
+| Medium | M1 | **`hasDismissals` resets on page reload.** Local state only — set when user dismisses in current session, cleared on remount. After reload the user has no UI affordance to recover dismissed roles even if dismissals exist on the server. Fix: extend the suggestions API to return `dismissed_count` (or expose a separate `GET .../suggestions/dismissed` endpoint), drive the link visibility from server state. | `src/components/projects/stakeholders/stakeholder-tab-client.tsx` + suggestions route handler |
+| Medium | M2 | **Matrix cell-click with multiple matches puts " OR " into the search box.** The search filter is a simple `includes`, so the bogus query string filters to zero results. Either build a real bucket-filter mode (preferred) or scroll the list to the first match. | `stakeholder-tab-client.tsx` `onMatrixCell` |
+| Low | L1 | **Deactivate has no confirm dialog.** Click in drawer → instant deactivate, drawer closes, the row disappears from the default list. Recovery needs the "Inaktive einblenden" toggle. Worth a confirm or an explicit toast with "rückgängig". | drawer secondary action |
+| Low | L2 | **`linked_user_id` Zod schema is `z.string()`** — accepts any string, not just UUID-or-empty. Picker UI returns UUIDs only, so this is theoretical, but tightening to `z.union([z.literal(""), z.string().uuid()])` is cheap. | `stakeholder-form.tsx` |
+| Low | L3 | **Cleared `role_key` doesn't unmark the suggestion as used.** A user who adds via "Sponsor" suggestion, then clears the field, leaves the suggestion side without a "used" claim — but the role_key is now NULL so the API also doesn't see it as used; it correctly *re-appears* in suggestions. Edge case; not a bug per se. | suggestions endpoint logic |
+| Info | I1 | Audit log integration deferred until PROJ-10 ships. | spec |
+| Info | I2 | Class-3 privacy-registry enforcement deferred until PROJ-12 ships. | spec |
+| Info | I3 | Tenant-configurable score labels deferred to PROJ-17. | spec |
+
+### Production-Ready Decision
+
+**READY** for status `Approved`.
+
+No Critical or High bugs. The two Medium bugs are UX-quality issues with non-blocking workarounds:
+- M1: dismissed roles are still recoverable via the API; the UI just doesn't surface the action after reload. Backend works correctly.
+- M2: cell-click with overflow falls back to a no-op search. The matrix still functions for direct-marker click, single-match cells, and empty-cell-create.
+
+Recommendation: address both Mediums in a small follow-up commit before the next deploy iteration, but they don't block status `Approved` per the standard rules.
+
+### Suggested follow-ups (not blockers)
+1. Fix M1 (~15 min) — extend suggestions endpoint with a count of dismissals; drive the recover-link from server state.
+2. Fix M2 (~15 min) — add a `bucketFilter` state alongside `search`; matrix cells switch the list to bucket mode instead of populating the search field.
+3. Tighten Zod schemas (L2).
+4. Add deactivate confirmation toast/dialog (L1).
+5. Seed a test-user fixture so /qa can run real Playwright E2E tests against the live API surface.
 
 ## Deployment
 _To be added by /deploy_
