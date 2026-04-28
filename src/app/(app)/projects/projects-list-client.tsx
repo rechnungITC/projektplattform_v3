@@ -1,11 +1,11 @@
 "use client"
 
 import { ChevronLeft, ChevronRight, Plus, X } from "lucide-react"
+import Link from "next/link"
 import { useRouter, useSearchParams } from "next/navigation"
 import * as React from "react"
 
 import { LifecycleBadge } from "@/components/projects/lifecycle-badge"
-import { NewProjectDialog } from "@/components/projects/new-project-dialog"
 import { ProjectsTable } from "@/components/projects/projects-table"
 import { ResponsibleUserPicker } from "@/components/projects/responsible-user-picker"
 import { SoftDeleteConfirmDialog } from "@/components/projects/soft-delete-confirm-dialog"
@@ -65,7 +65,6 @@ export function ProjectsListClient() {
     searchParams.get(RESPONSIBLE_PARAM)?.trim() || undefined
   const cursor = searchParams.get(CURSOR_PARAM) || undefined
 
-  const [newOpen, setNewOpen] = React.useState(false)
   const [pendingDelete, setPendingDelete] =
     React.useState<ProjectWithResponsible | null>(null)
   const [history, setHistory] = React.useState<string[]>([])
@@ -182,9 +181,11 @@ export function ProjectsListClient() {
           </p>
         </div>
         {canCreate ? (
-          <Button onClick={() => setNewOpen(true)} className="self-start sm:self-auto">
-            <Plus className="mr-2 h-4 w-4" aria-hidden />
-            New project
+          <Button asChild className="self-start sm:self-auto">
+            <Link href="/projects/new/wizard">
+              <Plus className="mr-2 h-4 w-4" aria-hidden />
+              New project
+            </Link>
           </Button>
         ) : null}
       </div>
@@ -295,9 +296,11 @@ export function ProjectsListClient() {
             </CardHeader>
             {canCreate && !filtersActive ? (
               <CardContent>
-                <Button onClick={() => setNewOpen(true)}>
-                  <Plus className="mr-2 h-4 w-4" aria-hidden />
-                  Create your first project
+                <Button asChild>
+                  <Link href="/projects/new/wizard">
+                    <Plus className="mr-2 h-4 w-4" aria-hidden />
+                    Create your first project
+                  </Link>
                 </Button>
               </CardContent>
             ) : null}
@@ -328,13 +331,6 @@ export function ProjectsListClient() {
           </Button>
         </div>
       )}
-
-      <NewProjectDialog
-        open={newOpen}
-        onOpenChange={setNewOpen}
-        tenantId={currentTenant.id}
-        onCreated={refresh}
-      />
 
       {pendingDelete ? (
         <SoftDeleteConfirmDialog

@@ -1,6 +1,6 @@
 # PROJ-5: Guided Project Creation Wizard with Type/Method-Aware Questions
 
-## Status: Architected
+## Status: In Progress
 **Created:** 2026-04-25
 **Last Updated:** 2026-04-28
 
@@ -198,7 +198,20 @@ No new npm packages. Everything is already installed:
 - Stakeholder suggestions during the wizard (PROJ-8).
 
 ## Implementation Notes
-_To be added by /frontend and /backend_
+
+### Frontend (this commit)
+- Wizard route at `/projects/new/wizard`, drafts list at `/projects/drafts`.
+- 5-step orchestrator (`wizard-client.tsx`) owns React Hook Form state, navigation gating, and draft auto-save on step transition.
+- Step 4 is fully data-driven: `computeRules(type, method).required_info` from PROJ-6 produces the field list at runtime — no hard-coded forms per type.
+- Drafts persist in `localStorage` keyed by tenant + user. The adapter (`src/lib/wizard/draft-storage.ts`) keeps a list/get/save/discard surface that the /backend phase will swap for fetch-to-API calls without consumer changes.
+- Project create wires to existing `POST /api/projects` (PROJ-2). `type_specific_data` is sent as a forward-compatible field; the column is added by /backend. After successful create, the localStorage draft is discarded.
+- `NewProjectDialog` (single-step modal) deleted — the wizard is now the only creation path; both project-list buttons (header + empty-state) link to the wizard.
+- New shadcn primitives needed: none. All required components were already installed.
+
+### Backend (pending — /backend phase)
+- Migration: `project_wizard_drafts` table (multi-tenant, RLS owner-only) + `projects.type_specific_data` JSONB column.
+- API routes: list / get / create / update / discard drafts; finalize endpoint (atomic create + draft cleanup).
+- Swap the localStorage adapter for fetch-to-API on the wizard side.
 
 ## QA Test Results
 _To be added by /qa_
