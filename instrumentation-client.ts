@@ -11,3 +11,7 @@ if (dsn) {
     debug: false,
   })
 }
+
+// Required by @sentry/nextjs to instrument client-side App Router transitions.
+// No-op when Sentry isn't initialized.
+export const onRouterTransitionStart = Sentry.captureRouterTransitionStart
