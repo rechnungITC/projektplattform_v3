@@ -1,8 +1,8 @@
 # PROJ-20: Risks & Decisions Catalog (Cross-cutting Governance Backbone)
 
-## Status: Planned
+## Status: Architected
 **Created:** 2026-04-25
-**Last Updated:** 2026-04-25
+**Last Updated:** 2026-04-28
 
 ## Summary
 Cross-cutting governance backbone: Risks (with score, mitigation, status) and Decisions (immutable, dated, with rationale, optional revision link) as first-class project entities. V2's Risk register (F4.2) lives operationally inside the project room (PROJ-7), but the immutable Decision concept — distinct from Open Items and Tasks per V2's `term-boundaries.md` — needs its own home. PROJ-20 is the place. Open Items also fit here as a lightweight clarification artifact.
@@ -79,7 +79,103 @@ Cross-cutting governance backbone: Risks (with score, mitigation, status) and De
 <!-- Sections below are added by subsequent skills -->
 
 ## Tech Design (Solution Architect)
-_To be added by /architecture_
+
+### Realitätscheck: Risks gehören in PROJ-20
+
+Die Spec verweist beim Risikoregister auf PROJ-7. PROJ-7 ist aber nur als „MVP-Slice" deployed — die Risiken-Seite ist eine Coming-Soon-Karte, ein `risks`-Table existiert nicht. **PROJ-20 baut deshalb alle drei Bausteine selbst:** Risiken, Entscheidungen, Offene Punkte. Decisions und Risks teilen sich denselben UX-Rahmen (Governance), das passt thematisch.
+
+### Komponentenstruktur
+
+```
+Projektraum
+├── Tab „Risiken"    (vorher Coming-Soon → jetzt real)
+│   ├── Risiko-Matrix (5×5: Wahrscheinlichkeit × Auswirkung)
+│   ├── Risiko-Tabelle (Filter nach Status: offen/gemindert/akzeptiert/geschlossen)
+│   └── Risiko-Drawer (Anlegen/Bearbeiten + HistoryTab aus PROJ-10)
+│
+└── Tab „Entscheidungen"   (neu)
+    ├── Entscheidungs-Timeline (chronologisch, mit Revisions-Kette)
+    │   └── Entscheidungs-Karte (Body schreibgeschützt; „Revidieren"-Button legt Nachfolger an)
+    ├── Panel „Offene Punkte" (leichte Klärungsliste, daneben/darunter)
+    │   ├── Offener-Punkt-Karte (Titel, Status, Ansprechpartner)
+    │   └── Aktion „Umwandeln in" → Aufgabe (legt Work-Item an) | Entscheidung
+    └── Dialog „Neue Entscheidung" (mit Stakeholder-Picker, optional Phasen-/Risiko-Verknüpfung)
+```
+
+Zwei neue Tabs in der Projektraum-Navigation: Icon `AlertTriangle` für Risiken, `Gavel` für Entscheidungen.
+
+### Datenmodell (Klartext)
+
+**Risiken** — operativ, änderbar
+- Titel, Beschreibung, Wahrscheinlichkeit 1–5, Auswirkung 1–5, abgeleiteter Score (W×A)
+- Status: offen / gemindert / akzeptiert / geschlossen
+- Minderungsmaßnahme, verantwortliche Person
+- Standard PROJ-10-Feldhistorie auf jeder Änderung
+
+**Entscheidungen** — Governance, Body unveränderlich
+- Titel, Entscheidungs-Text, Begründung, Entscheidungs-Zeitpunkt
+- Entscheider (FK auf Stakeholder, optional)
+- Optionale Kontext-Links: Phase, Risiko
+- `supersedes_decision_id`-Kette für Revisionen; `is_revised`-Flag kippt beim Vorgänger
+- Body-Felder werden **niemals** per PATCH geändert — Revisionen sind neue Datensätze
+- Audit beim INSERT: Reason `decision_logged` bzw. `decision_revised`
+
+**Offene Punkte** — Klärungsartefakte
+- Titel, Beschreibung, Ansprechpartner (Freitext oder Stakeholder-FK)
+- Status: offen / in_klärung / geschlossen / umgewandelt
+- Beim Umwandeln: `converted_to_entity_type` + `converted_to_entity_id` werden gespeichert; Status sperrt auf `umgewandelt`
+- Feld-Audit auf Edits; Umwandlung ist eine Einbahnstraße
+
+Alle drei Tabellen: `tenant_id`, `project_id` (FK CASCADE), RLS via `is_project_member()`.
+
+### Tech-Entscheidungen
+
+| Entscheidung | Warum |
+|---|---|
+| Risiken liegen in PROJ-20, nicht in PROJ-7 | PROJ-7 ist als MVP-Slice ohne Risiken deployed; die Tab-Seite ist leer. PROJ-20 ist die natürliche Heimat, weil Decisions und Risks denselben Governance-UX-Rahmen teilen. |
+| Decisions sind append-only auf der API | Spec-Regel + V2-`term-boundaries`. Erzwungen auf der API-Schicht (PATCH lehnt Body-Änderungen ab); RLS unverändert. |
+| Insert-Trigger für Decisions-Audit | Der PROJ-10-Trigger feuert nur auf UPDATE. Ein zusätzlicher Trigger schreibt pro INSERT eine Audit-Zeile mit dem vollen Body in `new_value`, Reason `decision_logged` / `decision_revised`. |
+| PROJ-10-Whitelist erweitern | `risks`, `decisions`, `open_items` zur `audit_log_entry_type_check`-Constraint und zu `_tracked_audit_columns()` ergänzen. |
+| Umwandlung Offener-Punkt → Entscheidung/Aufgabe als POST-Endpoint | `/api/open-items/[id]/convert-to-decision` und `/convert-to-task`. Atomar in einer Transaktion (legt Zielentität an + setzt Status auf `umgewandelt`). |
+| KI entscheidet nie automatisch | UI bietet nur „KI-Vorschlag in Entscheidung umwandeln (mit meiner Freigabe)" — niemals einen Auto-Pfad. PROJ-12 dockt hier an. |
+
+### Neue Code-Oberfläche
+
+**Migration (eine):**
+- `20260429_proj20_risks_decisions_open_items.sql` — drei Tabellen, Indizes, RLS-Policies, Audit-Whitelist-Erweiterung, Insert-Trigger für Decisions
+
+**API-Routen:**
+- `/api/projects/[id]/risks` (GET, POST), `/api/risks/[rid]` (GET, PATCH, DELETE)
+- `/api/projects/[id]/decisions` (GET, POST — POST behandelt neu *und* Revision via `supersedes_decision_id`)
+- `/api/projects/[id]/open-items` (GET, POST), `/api/open-items/[oid]` (PATCH, DELETE)
+- `/api/open-items/[oid]/convert-to-task`, `/api/open-items/[oid]/convert-to-decision`
+
+**UI-Seiten/Komponenten:**
+- `app/(app)/projects/[id]/risiken/page.tsx` ersetzen (Coming-Soon → real)
+- Neu: `app/(app)/projects/[id]/entscheidungen/page.tsx`
+- Zwei Nav-Einträge in `project-room-shell.tsx` ergänzen
+- Neu: `components/projects/risks/` und `components/projects/decisions/`
+
+### Abhängigkeiten
+
+Keine neuen npm-Pakete. Verwendet vorhandene shadcn-Bausteine (Card, Dialog, Table, Tabs, Badge) plus `HistoryTab` aus PROJ-10.
+
+### Out-of-Scope (aus der Spec)
+
+- Keine Freigabe-Workflows auf Entscheidungen
+- Kein KI-Auto-Decide-Pfad
+- Kein Voting
+- Compliance-Tags (PROJ-18) entscheiden separat, ob eine Entscheidung ein Compliance-Increment ist
+
+---
+
+### Festgelegte Design-Entscheidungen
+
+**Frage 1 — Offene Punkte: Option A (kombiniert).** Das Panel „Offene Punkte" lebt im Tab „Entscheidungen" als zweite Sektion neben der Decisions-Timeline. Begründung: Offene Punkte sind per Design temporär (werden in Entscheidungen oder Aufgaben umgewandelt) und gehören thematisch dorthin; spart einen Nav-Eintrag (Projektraum bleibt bei 9 Tabs statt 10).
+
+**Frage 2 — Revisions-Anzeige: Option A (Expander).** Die Decisions-Timeline zeigt nur die jeweils aktuellste Revision; ein „Vorgänger anzeigen"-Expander öffnet die Kette inline. Begründung: häufiger Lesefall („was gilt heute?") ist ohne Klick beantwortet; der vollständige Verlauf bleibt über Expander und HistoryTab erreichbar.
+
+Beide Entscheidungen sind backend-identisch — nur die UI in `components/projects/decisions/` und `components/projects/open-items/` setzt sie um.
 
 ## Implementation Notes
 _To be added by /frontend and /backend_
