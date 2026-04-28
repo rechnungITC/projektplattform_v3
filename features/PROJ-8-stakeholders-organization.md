@@ -1,6 +1,6 @@
 # PROJ-8: Stakeholders and Organization
 
-## Status: Approved
+## Status: Deployed
 **Created:** 2026-04-25
 **Last Updated:** 2026-04-28
 
@@ -350,4 +350,21 @@ Re-verification: 148 / 148 vitest pass; build clean; live RLS audit unchanged.
 5. Seed a test-user fixture so /qa can run real Playwright E2E tests against the live API surface.
 
 ## Deployment
-_To be added by /deploy_
+
+- **Date deployed:** 2026-04-28
+- **Production URL:** https://projektplattform-v3.vercel.app
+- **Live entry point:** `/projects/[id]/stakeholder` (Stakeholder tab in the project room)
+- **Migration applied:** `20260428180000_proj8_stakeholders.sql` (live in Supabase project `iqerihohwabyjzkpcujq`)
+- **Deployed via:** GitHub push → Vercel auto-deploy. Final commit before tag: `3a61ef6` (M1 + M2 fixes from QA).
+- **Git tag:** `v0.3.0-PROJ-8`
+- **Deviations from spec:**
+  - Audit-log integration deferred until PROJ-10 ships (documented in Tech Design + Implementation Notes).
+  - Class-3 privacy-registry enforcement deferred until PROJ-12 ships (Class-3 columns are flagged via `comment on column` in the migration).
+  - Tenant-configurable influence/impact labels deferred to PROJ-17.
+  - Both QA-found Medium bugs (M1 server-driven dismissals; M2 bucket filter) closed before deploy in commit `3a61ef6`.
+
+### Follow-ups (not blocking)
+- L1: confirm dialog for deactivate.
+- L2: tighten `linked_user_id` Zod to `union(literal(""), uuid())`.
+- L3: edge case where cleared `role_key` re-surfaces a suggestion (low impact).
+- Seed test-user fixture so future Playwright E2E suites can exercise the flow against the real API.
