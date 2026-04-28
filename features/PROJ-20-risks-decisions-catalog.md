@@ -1,6 +1,6 @@
 # PROJ-20: Risks & Decisions Catalog (Cross-cutting Governance Backbone)
 
-## Status: Approved
+## Status: Deployed
 **Created:** 2026-04-25
 **Last Updated:** 2026-04-29
 
@@ -335,4 +335,14 @@ No Critical or High bugs remain. Type-check, build, and 190/190 vitest all green
 5. I1 — E2E test suite (project-wide gap, not a PROJ-20 regression).
 
 ## Deployment
-_To be added by /deploy_
+
+- **Production URL:** https://projektplattform-v3.vercel.app
+- **Entry points:** `/projects/[id]/risiken` (replaces the PROJ-7 coming-soon) and `/projects/[id]/entscheidungen` (new tab combining decisions timeline + open items panel).
+- **Deployed:** 2026-04-29 via auto-deploy from `main`. Final pre-tag commit: `c8033c5` (H1+M1+M2 fix).
+- **Migrations applied to project iqerihohwabyjzkpcujq (Supabase):**
+  - `20260429120000_proj20_risks_decisions_open_items.sql` — risks + decisions + open_items tables, RLS, audit-whitelist extension, decisions INSERT trigger, predecessor flip trigger, convert RPCs.
+  - `20260429120100_proj20_harden_trigger_only_functions.sql` — revoke EXECUTE on the trigger-only functions.
+  - `20260429140000_proj20_decisions_immutability_trigger.sql` — `enforce_decision_immutability()` BEFORE-UPDATE trigger that closes H1 + M1 (decision body and is_revised pinned to insert-only / one-way false→true via the legitimate flip path).
+- **Vercel deploy status:** GitHub commit status on `c8033c5` = `success` ("Deployment has completed").
+- **Pre-deploy checks:** `npm run build` ✅; `npm run lint` baseline unchanged at 51 problems (none from PROJ-20); `npx vitest run` 190/190 ✅; `npx tsc --noEmit` clean ✅.
+- **Tag:** `v0.5.0-PROJ-20`.
