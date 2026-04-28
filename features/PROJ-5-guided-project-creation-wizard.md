@@ -1,6 +1,6 @@
 # PROJ-5: Guided Project Creation Wizard with Type/Method-Aware Questions
 
-## Status: Approved
+## Status: Deployed
 **Created:** 2026-04-25
 **Last Updated:** 2026-04-28
 
@@ -337,4 +337,21 @@ Status flipped to **Approved**. Ready for `/deploy` (auto-deploy already shipped
 3. Optimistic concurrency on draft updates (`updated_at` check or row-version) — closes M3.
 
 ## Deployment
-_To be added by /deploy_
+
+- **Date deployed:** 2026-04-28
+- **Production URL:** https://projektplattform-v3.vercel.app
+- **Live entry points:** `/projects/new/wizard` (the wizard) and `/projects/drafts` (resume list)
+- **Migration applied:** `20260428170000_proj5_wizard_drafts_and_type_specific_data.sql` (live in Supabase project `iqerihohwabyjzkpcujq`)
+- **Deployed via:** GitHub push → Vercel auto-deploy (commit `295f1a1` shipped the M1/M2/M3 fixes; `0444ded` flipped status to Approved)
+- **Git tag:** `v0.2.0-PROJ-5`
+- **Deviations from spec:**
+  - 90-day auto-purge cron deferred (manual discard works for MVP).
+  - KI-Dialog (F2.1b) deferred per spec — gated by PROJ-12.
+  - Two-tab warning implemented as 409+banner; spec wording said "warn when save target is older than current state" — this implementation matches the intent (server detects, UI surfaces).
+  - Method follow-up content (Scrum sprint length, Kanban WIP, etc.) was a QA-found gap (M2) — closed in commit `295f1a1` with a `METHOD_REQUIRED_INFO` map. Specific keys per method documented in the spec's Tech Design section.
+  - Date helper `dateToIsoDate` / `parseLocalDate` extracted to `src/lib/dates/iso-date.ts`. Existing duplicate copies in `milestones/`, `sprints/`, `phases/` dialogs were left in place; opportunistic migration when those files are touched.
+
+### Follow-ups
+- Fix the `npm run lint` script — `next lint` was removed in Next.js 16. Replace with direct ESLint invocation (`eslint . --ext ts,tsx`) or remove the script.
+- Migrate the 4 legacy duplicates of `dateToIsoDate` (in `milestones/`, `sprints/`, `phases/`) to the shared helper at `src/lib/dates/iso-date.ts`.
+- L1, L2 from QA bug audit remain open (minor UX polish — retry button after finalize failure; cancel-discards-draft confirm).
