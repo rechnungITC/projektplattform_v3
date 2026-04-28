@@ -1,6 +1,6 @@
 # PROJ-3: Tenant Operations and Deployment Modes (Stand-alone vs SaaS)
 
-## Status: In Progress
+## Status: Approved
 **Created:** 2026-04-25
 **Last Updated:** 2026-04-29
 
@@ -223,7 +223,86 @@ layer; PROJ-3 only adds the deployment-topology dimension on top.
   current Supabase project layout.
 
 ## QA Test Results
-_To be added by /qa_
+
+**Run:** 2026-04-29 · QA pass + dev-server smoke test in standalone mode + bundle leak check.
+
+### Acceptance Criteria
+
+#### Stand-alone mode definition
+| AC | Result | Evidence |
+|---|---|---|
+| Stand-alone deployment guide in `docs/deployment/` (Supabase setup, env vars, migration apply order, edge function deployment) | ✅ | `docs/deployment/standalone.md` covers required env, initial setup steps (provision → migrate → seed tenant → deploy → smoke-test), and SaaS-vs-standalone comparison table |
+| Stand-alone runs with one tenant + same codebase as SaaS — no V3 forks | ✅ | `OPERATION_MODE` is a runtime flag; no build profiles, no preprocessor branches; lib + UI is identical between modes |
+| Cross-tenant UI affordances (TenantSwitcher) collapse when only one tenant | ✅ | Existing behaviour preserved (`memberships.length < 2` already collapsed it); PROJ-3 adds `operationMode === "standalone"` as a parallel hide-condition for defense in depth |
+| Differences vs SaaS documented for auth, updates, monitoring, configuration | ✅ | `standalone.md` "Differences from SaaS — at a glance" table |
+| Local LLM models listed as supported AI provider path | ✅ | `standalone.md` "When to use" mentions "local Ollama, on-prem GPU"; `EXTERNAL_AI_DISABLED=true` documented for external-block |
+
+#### Update strategy
+| AC | Result | Evidence |
+|---|---|---|
+| Ordered update procedure documented (migrations → edge functions → app → flags) | ✅ | `update-strategy.md` "Ordered procedure (every release)" |
+| Migrations are designed backward-compatible (rolling deploy works) | ✅ | `update-strategy.md` "Backward-compatible migrations" with ✅/❌ examples |
+| Rollback possible: each migration has a documented down-step or recovery procedure; previous Vercel/Next build is one click away | ✅ | `update-strategy.md` "Rollback" section: app rollback (Vercel one-click) + schema rollback (per-migration recovery procedure) |
+| Daily Postgres backup documented (Supabase managed) or scripted (self-hosted); object-storage versioning enabled | ✅ | `backup-restore.md` "Backup layers" table |
+| Recovery procedure documented: cold-restore from latest backup, PITR via WAL where available | ✅ | `backup-restore.md` "Cold-restore procedure" + "Point-in-time recovery (PITR)" |
+
+### Edge Cases
+
+| Case | Spec | Result |
+|---|---|---|
+| Multi-tenant isolation must hold in stand-alone mode | tests written for SaaS isolation must continue to pass with one tenant | ✅ Existing isolation tests in PROJ-1 / PROJ-8 / PROJ-20 cover this implicitly — the test DB has exactly one tenant. Vitest 201/201 green. |
+| Migration drift | sequential apply | ✅ `update-strategy.md` "Stand-alone-specific concerns: Migration drift" — Supabase CLI tracks applied migrations via `supabase_migrations.schema_migrations`, won't re-apply |
+| Stand-alone customer wants no external AI | `EXTERNAL_AI_DISABLED=true` env hard-blocks all external LLM calls | ✅ Hook lands now: `isExternalAIBlocked()` exported from `lib/operation-mode.ts`; 11 unit tests cover the strict opt-in semantics. PROJ-12 will be the first consumer; until then the contract is in place but not exercised. **Note I1.** |
+| SaaS instance with one tenant must not differ from real stand-alone | config flag is the only difference | ✅ For 1 tenant + `OPERATION_MODE=shared`: TenantSwitcher renders the static tenant name. For 1 tenant + `OPERATION_MODE=standalone`: identical static tenant name (the `< 2` branch and the `=== "standalone"` branch share the same rendered output). User-visible behaviour is identical for the natural case. |
+| Restore at PITR overwrites recent data — operator confirmation required | document the data-loss window | ✅ `backup-restore.md` "Operator confirmation step": confirmation in writing required before triggering restore; data-loss window must be communicated to affected users |
+
+### Security Audit (red team)
+
+| Check | Result |
+|---|---|
+| Env vars are server-only (no `NEXT_PUBLIC_OPERATION_MODE` / `_AI_DISABLED`) | ✅ Grep confirms zero references in source or `.env.local.example`; the AI block is security-relevant and must not leak |
+| Env values do NOT appear in compiled client bundles | ✅ Grep against `.next/static/chunks/` for both env names returns zero hits (sanity grep for "Übersicht" returns hits, proving the search works) |
+| Single source of truth for env reads | ✅ Only `lib/operation-mode.ts` reads `process.env.OPERATION_MODE` and `process.env.EXTERNAL_AI_DISABLED`; all other code paths consume the typed helpers |
+| Typo-safe parse for `OPERATION_MODE` | ✅ Anything other than the literal `"standalone"` (case-insensitive, trimmed) falls back to `"shared"` — fail-safe direction (never accidentally upgrade to standalone) |
+| Strict opt-in for `EXTERNAL_AI_DISABLED` | ✅ Only literal `"true"` enables the block; `"1"`, `"yes"` etc. evaluate to false. Strict opt-in for the disable direction means an accidentally-typed value won't accidentally LEAVE AI enabled — wait, that's the wrong direction. Strict opt-in means `EXTERNAL_AI_DISABLED=true` is the only way to TURN ON the block. A typo (`EXTERNAL_AI_DISABLED=tru`) leaves AI **allowed** — which is the more permissive default. **Note as I2 (low):** for this specific flag, fail-permissive is debatable. Spec doesn't specify direction; conservative interpretation says fail-restrictive (i.e. any non-empty value should block). Marked for follow-up discussion, not a blocker. |
+| RLS / DB schema changes | ✅ None. PROJ-3 makes zero schema changes. Multi-tenant isolation enforcement remains 100% PROJ-1's responsibility |
+| Tenant data leak between modes | ✅ Modes don't change data; the same row-level filters apply. Verified by reasoning + the unchanged isolation tests |
+
+### Regression check
+
+| Area | Result |
+|---|---|
+| `npx vitest run` 201/201 (190 prior + 11 PROJ-3 lib tests) | ✅ |
+| `npx tsc --noEmit` | ✅ clean |
+| `npm run build` | ✅ clean; route table unchanged |
+| `npm run lint` | ✅ baseline 51 problems (none from PROJ-3) |
+| Dev server starts under `OPERATION_MODE=standalone EXTERNAL_AI_DISABLED=true` | ✅ Ready in 246ms, no errors |
+| Login page renders under standalone mode | ✅ HTTP 200 |
+| `<TopNav>` + `<TenantSwitcher>` consumer chain | ✅ Single consumer each — `(app)/layout.tsx` → `TopNav` → `TenantSwitcher`; no orphan call sites |
+| Existing isolation tests (PROJ-1 / PROJ-8 / PROJ-20) | ✅ All still in place and green |
+
+### Bug Audit
+
+| Severity | ID | Description | Fix complexity |
+|---|---|---|---|
+| Low | L1 | **`backup-restore.md` mixes `pg_dump` (logical) and "base backup" (physical) without explicitly telling the stand-alone operator to set up `pg_basebackup` for PITR**, even though the PITR section relies on it. The spec text says "self-hosted documents `pg_basebackup` + WAL archive flow" — currently only WAL archiving is explicit; `pg_basebackup` is implicit. | Low — add one paragraph + example `pg_basebackup` invocation to `backup-restore.md`. |
+| Info | I1 | `isExternalAIBlocked()` has no consumer until PROJ-12. The contract is in place and unit-tested, but the end-to-end blocking can't be exercised yet. Spec acknowledges PROJ-12 as the consumer — flagged as a deferred validation, not a bug. | — |
+| Info | I2 | **Strict opt-in semantics for `EXTERNAL_AI_DISABLED`**: only the literal `"true"` enables the block. A typo (`tru`, `1`, `yes`) leaves AI **allowed**. Spec is silent on direction. Conservative compliance interpretation would prefer fail-restrictive (any non-empty value blocks). Flagged for follow-up discussion before PROJ-12 wires the consumer. | Low — change `=== "true"` to `!== ""` and `!== "false"`. Needs explicit decision first. |
+| Info | I3 | E2E (Playwright) tests for the standalone-mode UI not written. Repo has zero E2E tests today; backend smoke covered via dev-server probe + bundle inspection. Project-wide gap, not a PROJ-3 regression. | — |
+
+### Production-Ready Decision
+
+**READY** for status `Approved`.
+
+No Critical, High, or Medium bugs. The single Low (L1, doc clarity around `pg_basebackup`) doesn't block deploy and is fixable in a 5-minute follow-up commit.
+
+Two Info items (I2 the strict-opt-in semantics, I3 missing E2E suite) are explicitly acknowledged as deferred discussion / project-wide gap. Neither holds back PROJ-3 specifically.
+
+### Suggested follow-ups (not blockers)
+1. L1 — add explicit `pg_basebackup` setup paragraph to `backup-restore.md`.
+2. I2 — discuss fail-permissive vs fail-restrictive semantics for `EXTERNAL_AI_DISABLED` before PROJ-12 ships.
+3. I3 — E2E test suite (project-wide gap, not PROJ-3 specific).
+4. PROJ-12 wiring — when the AI consumer lands, exercise the `isExternalAIBlocked()` block end-to-end and verify a UI banner / log line warns the operator that external LLM calls are suppressed.
 
 ## Deployment
 _To be added by /deploy_
