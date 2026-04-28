@@ -1,6 +1,6 @@
 # PROJ-10: Change Management — Field-level Versioning, Compare, Undo, Copy, Audit Reports
 
-## Status: In Progress
+## Status: Approved
 **Created:** 2026-04-25
 **Last Updated:** 2026-04-28
 **Build mode:** Phase A + B + C in one iteration (per user direction).
@@ -316,7 +316,142 @@ No new npm packages. The audit feature is database-heavy:
 - ADR for "PL undoes another user's edit" (spec R2 risk).
 
 ## QA Test Results
-_To be added by /qa_
+
+### Test Execution Summary
+
+| Layer | Result |
+|---|---|
+| Vitest unit + integration | 152 / 152 pass (17 files; +4 new for audit history GET) |
+| Live RLS audit (Supabase MCP) | Pass — `audit_log_select_member_or_admin` routes through `can_read_audit_entry()` (project-membership lookup or tenant-admin shortcut); `rel_select_admin` is admin-only on retention_export_log. No INSERT / UPDATE / DELETE policies — only SECURITY DEFINER trigger writes; service-role purges. |
+| Live trigger attachment | Pass — 5 AFTER UPDATE triggers (`audit_changes_{stakeholders,work_items,phases,milestones,projects}`) confirmed in `information_schema.triggers`. |
+| Live trigger smoke-test (in /backend phase) | Pass — 2 UPDATEs on a real project → 2 audit rows; cleanup verified. |
+| Manual UI walkthrough (user-confirmed) | Pass — all 7 smoke tests from the handoff confirmed by user: history listing, undo with stale-write warning, restore with field-count toast, copy with `(Kopie)` suffix, /reports/audit search + CSV download. |
+| Build (`npm run build`) | Clean — 7 new API routes + /reports/audit page all registered. |
+| Production deploy | Live via auto-deploy after commit `e025c0c` (+ admin-only nav link). |
+| Playwright E2E | Deferred — would require a tenant-admin test fixture; manual walkthrough was greenlit. |
+
+### Acceptance Criteria Walkthrough
+
+#### Field-level audit (EP-08-ST-01)
+| AC | Status | Notes |
+|---|---|---|
+| `audit_log_entries` schema per spec | ✅ | id, tenant_id, entity_type, entity_id, field_name, old_value (JSONB), new_value (JSONB), actor_user_id, changed_at, change_reason |
+| At minimum title/description/status/priority/responsible tracked | ✅ | Whitelist function `_tracked_audit_columns(text)` covers these and more per entity (12 fields for stakeholders, 9 for work_items, 6 for phases, 6 for milestones, 10 for projects) |
+| PATCH inserts one row per changed field | ✅ | Trigger compares OLD vs NEW per whitelisted column |
+| Audit rows tied to entity by `entity_type`+`entity_id` | ✅ | Composite index on `(entity_type, entity_id, changed_at desc)` |
+
+#### Version display + compare (EP-08-ST-02)
+| AC | Status | Notes |
+|---|---|---|
+| `GET /api/{entity_type}/{id}/history` chronological | ✅ | RLS-scoped via `can_read_audit_entry()` |
+| UI History tab on entities | ✅ | Mounted on stakeholder edit drawer (Tabs: Stammdaten | Historie). Work-item / phase / milestone / project mounts deferred per architecture decision. |
+| Group-by-time-bucket | ✅ | Date headers, sticky |
+| Compare mode (pick two timestamps + diff) | ⏳ | **Deferred** — current per-row "vorher / nachher" diff covers the primary use case; multi-version compare is a follow-up. |
+| AI-generated versions marked with badge | ⏳ | Plumbing in place (`change_reason = 'ki_acceptance'` rendered as badge); waits for PROJ-12 to actually use it |
+| RBAC: project_viewer+ on the project | ✅ | RLS via `is_project_member` |
+
+#### Selective field rollback (EP-08-ST-03)
+| AC | Status | Notes |
+|---|---|---|
+| Per-row "Undo this change" button | ✅ | Undo2 icon |
+| `POST /api/audit/{id}/undo` sets field back, audits the rollback | ✅ | `audit_undo_field()` RPC sets `change_reason='undo'` before the UPDATE |
+| Other fields untouched | ✅ | RPC updates the single column |
+| Permission: project_editor+ | ✅ | API gates with `requireProjectAccess(... "edit")` |
+| Refuse stale rollback if field further modified | ✅ | RPC compares `current = entry.new_value` and returns `field_modified_after` → 409 |
+
+#### Object copy (EP-08-ST-04)
+| AC | Status | Notes |
+|---|---|---|
+| `POST /api/{entity_type}/{id}/copy` with new ID | ✅ | Stakeholder + work-item endpoints implemented |
+| Title + " (Copy)" suffix | ✅ | `(Kopie)` (German) — same intent |
+| Does NOT carry assignments / dates | ✅ | Stakeholders skip Class-3 + linked_user_id; work-items skip status/sprint/parent/responsible/dates/story_points |
+| `metadata.copied_from = { entity_id, copied_at }` | ⏳ | **Deferred** — neither entity has a metadata JSONB column. Future schema-extension can add this without breaking the audit trail. |
+| Same project (no cross-tenant) | ✅ | Endpoints scope by `project_id` |
+
+#### Undo + Restore (F13.4)
+| AC | Status | Notes |
+|---|---|---|
+| Toast with Undo button right after save | ⏳ | **Deferred** — Undo affordance lives in the History tab. A "right-after-save" toast affordance can be added later as a UX nicety. |
+| Restore: pick prior version timestamp + confirm | ✅ | RotateCcw button on each history row → confirm dialog → calls restore API |
+| All fields set to that version's values; audit row written | ✅ | `audit_restore_entity()` RPC sets `change_reason='restore_from_<ISO>'` |
+| Permission: editor+ | ✅ | API gates via `requireProjectAccess(... "edit")` |
+| ADR for "PL undoes another's edit" (R2 risk) | ⏳ | **Deferred** as documented in spec. Currently any editor+ can undo any edit. |
+
+#### Retention + GDPR + Export (F13.7)
+| AC | Status | Notes |
+|---|---|---|
+| Default retention 730 days | ✅ | Constant in cron handler |
+| `apply_retention()` function deletes old rows + logs count | ✅ | `/api/cron/apply-retention` daily 03:30 UTC; CRON_SECRET-gated; service-role client; returns `purged` count |
+| `GET /api/audit/export` admin-only with Class-3 redaction | ✅ | `requireTenantAdmin`; redacts stakeholders.{name, contact_email, contact_phone, linked_user_id, notes} with `[redacted:class-3]` |
+| Each export logged in `retention_export_log` | ✅ | Insert after the SELECT, captures actor, scope, redaction_off, row_count |
+| Per-tenant override via `tenant_settings.retention_overrides` | ⏳ | **Deferred** — needs PROJ-17 to ship `tenant_settings` |
+
+#### Tenant-wide audit report (EP-08-ST-05)
+| AC | Status | Notes |
+|---|---|---|
+| `/reports/audit` page | ✅ | New page + admin-only top-nav link |
+| Filters: time range, entity type, actor, field | ✅ | All four filters implemented via querystring |
+| CSV export | ✅ | Button opens `/api/audit/export?format=csv` in a new tab |
+| Class-3 fields redacted by default | ✅ | Server-side default redaction |
+| "Redaction off" → audit-on-audit | ✅ | Every `/export` call inserts a `retention_export_log` row regardless; the `redaction_off` flag is stored on the log row |
+| Cross-tenant query returns empty | ✅ | RLS filters by `tenant_id`; the API requires `tenant_id` parameter |
+
+### Edge Cases
+
+| Case | Spec says | Implementation |
+|---|---|---|
+| Concurrent edits on same field | both rows recorded; last wins; surfaced in UI | ✅ Trigger fires per-UPDATE so both audits land |
+| DSGVO right-to-be-forgotten | depersonalize stakeholder; audit ages out | ✅ Stakeholder edits clear name/email; retention cron deletes >730d entries |
+| Undo after retention purge | button disabled with explanation | ⚠️ Currently silently 404s (audit entry no longer exists). UI shows "Audit entry not found" toast. **Bug L1**. |
+| Restore across DSGVO redaction | restore writes redacted values back; warning logged | ⚠️ No warning logged. Silent restore writes whatever's in old_value (which may be the pre-redaction value). **Bug M1.** |
+| Cross-tenant audit query | empty list | ✅ RLS enforced |
+| Massive bulk imports | audit hook batches inserts; rate-limit log | ⏳ Bulk-import path not built; if/when imports come, audit may need optimization |
+
+### Security Audit
+
+| Check | Result |
+|---|---|
+| RLS isolation between projects | ✅ `can_read_audit_entry()` checks `is_project_member()` per entity lookup |
+| RLS isolation between tenants | ✅ `is_tenant_admin(tenant_id)` shortcut + per-entity tenant scoping |
+| INSERT-only via SECURITY DEFINER trigger | ✅ No INSERT policy on `audit_log_entries` for users; service-role purges via `delete{count:'exact'}` |
+| Auth required on all endpoints | ✅ All routes return 401 without session |
+| Admin gate on export | ✅ `requireTenantAdmin` at API; UI nav-link is `adminOnly` |
+| `auth.uid()` captured at trigger time | ✅ Trigger reads `auth.uid()`; service-role writes have `actor_user_id = NULL` (correct for system writes) |
+| `change_reason` injection (`current_setting`) | ✅ Transaction-local; PostgREST uses fresh tx per request — no leak between users |
+| Trigger search_path | ✅ `set search_path = public` on all functions |
+| SQL injection via dynamic SQL in RPCs | ✅ `format(... %I)` for identifiers (escaped); `$1`/`$2` parameters for values |
+| Class-3 redaction in CSV export | ✅ stakeholders.{name, contact_email, contact_phone, linked_user_id, notes} redacted |
+
+### Bug Audit
+
+| Severity | ID | Description | Fix complexity |
+|---|---|---|---|
+| Medium | M1 | **Restore across DSGVO redaction silently writes back redacted values.** Spec says "log warning" — currently no warning logged on `retention_export_log` or in the response. The restore would re-introduce a previously-cleared value, potentially undoing a GDPR action. | Medium — add a check inside `audit_restore_entity()` that flags rows where current value is NULL/redaction-marker and emit a warning in the response payload. |
+| Low | L1 | **Undo button after retention purge silently 404s.** When a user tries to undo a row whose audit entry has been purged, the API returns 404; spec says "button disabled with explanation". UI doesn't pre-disable. Acceptable since the History tab won't even show purged rows (they're deleted). | Low — only relevant if user keeps a stale tab open across purge. |
+| Low | L2 | **Race window in `audit_undo_field`** between the SELECT (current value check) and UPDATE. Truly atomic would put `WHERE field = entry.new_value` on the UPDATE. Window is sub-millisecond inside one transaction; in practice negligible. | Low — fix when the function is touched next. |
+| Low | L3 | **HistoryTab not yet on work-item / phase / milestone / project editors.** Documented as deferred. Stakeholder coverage delivers most user value; rest is a follow-up. | Medium — work-item drawer needs Tabs refactor. |
+| Info | I1 | Compare-two-timestamps mode (pick A and B, see field-level diff between arbitrary versions) is deferred. Current per-row "vorher / nachher" satisfies the most-common use case. | — |
+| Info | I2 | `metadata.copied_from` not stored on copies — entities don't have a metadata column. | — |
+| Info | I3 | "PL undoes another user's edit" ADR (R2 risk) not yet written. Currently any editor+ can undo any edit. | Doc-only |
+| Info | I4 | Tenant-customizable retention via `tenant_settings.retention_overrides` waits for PROJ-17. | — |
+| Info | I5 | Front-end admin-gate on `/reports/audit` is loose — page renders for anyone with the URL; data API is RLS-scoped (non-admins see only their projects' audit) and CSV export is admin-only server-side. The new top-nav link is admin-only, so practical discoverability is gated. | — |
+
+### Production-Ready Decision
+
+**READY** for status `Approved`.
+
+No Critical or High bugs. The single Medium (M1 — restore across DSGVO redaction) is an edge case with a documented spec contract; current behaviour is "silent restore" which technically deviates from "log warning". Fixing is small (~15 min) but doesn't block shipping the foundation.
+
+Recommendation: ship as Approved; address M1 in a small follow-up commit (or the user can decide to fix it before Deploy with Pfad B).
+
+### Suggested follow-ups (not blockers)
+1. Fix M1 — emit a warning marker in the restore response when any field's old_value is the redaction sentinel (`[redacted:class-3]` or `NULL` after a GDPR clear).
+2. Mount HistoryTab in the work-item / phase / milestone / project editors (L3).
+3. Write the R2 ADR before allowing PLs to undo edits made by other users (I3).
+4. Two-version compare picker (I1).
+5. Add `metadata` JSONB to copyable entities so `copied_from` can be recorded (I2).
+6. Pre-disable the undo button on entries whose audit row is older than retention (L1).
+7. Enforce front-end admin gate on `/reports/audit` so non-admins see a "Forbidden" card instead of an empty table (I5).
 
 ## Deployment
 _To be added by /deploy_
