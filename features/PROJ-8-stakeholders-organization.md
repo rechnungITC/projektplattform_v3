@@ -228,11 +228,23 @@ Already installed and reused:
 - Types: `src/types/stakeholder.ts` exports kind/origin/score enums + `Stakeholder` + `StakeholderSuggestion`.
 - 8 new vitest cases in `src/app/api/projects/[id]/stakeholders/route.test.ts` covering 401 / 400 / 404 / 403 / happy paths for POST + filter behavior on GET. 148 total tests, all green.
 
-### Frontend (pending — /frontend phase)
-- Stakeholder tab page (replaces Coming-Soon stub) with List + Matrix views.
-- Edit drawer (Sheet) with the full form.
-- Suggestions sidebar.
-- PNG export of the matrix via `html-to-image`.
+### Frontend (this commit)
+- `/projects/[id]/stakeholder` page replaces the Coming-Soon stub.
+- Components under `src/components/projects/stakeholders/`:
+  - `StakeholderTabClient` — orchestrator (state, view toggle, drawer, search, include-inactive switch, suggestions interactions).
+  - `StakeholderTable` — list view with kind icon, role/org, origin badge, color-coded influence/impact pills, active/inactive badge.
+  - `StakeholderMatrix` — 4×4 grid (impact rows × influence cols), cell shading scales with combined score, click cell → smart action (1 match opens edit drawer; 0 → create; >1 → switches to list filtered). Marker-click opens edit drawer.
+  - `StakeholderSuggestions` — sidebar with Add / Dismiss per suggested role + "Verworfene zurückholen" link.
+  - `StakeholderForm` — RHF + Zod, used in the right-side `Sheet`. Includes Class-3 hints under personal-data fields and a `ResponsibleUserPicker` for `linked_user_id`.
+- `src/lib/stakeholders/api.ts` — fetch wrappers for all 7 backend endpoints.
+- PNG export via dynamic import of `html-to-image` (only loaded on click, no initial-bundle cost).
+- Tabs / Switch / Sheet / Form / Table / Card / RadioGroup / Select / Badge primitives all from shadcn — no new component library added.
+
+### Open follow-ups
+- Audit-log integration when PROJ-10 ships (every editable column is field-level and easy to wire).
+- Class-3 export redaction when PROJ-12 ships.
+- Tenant-configurable influence/impact scale labels (PROJ-17).
+- E2E test for the wizard-style flow (drawer create → list refresh → matrix highlight) — deferred until /qa pass.
 
 ## QA Test Results
 _To be added by /qa_

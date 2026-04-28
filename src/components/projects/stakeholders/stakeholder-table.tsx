@@ -1,0 +1,129 @@
+"use client"
+
+import { Building2, User2 } from "lucide-react"
+
+import { Badge } from "@/components/ui/badge"
+import {
+  Table,
+  TableBody,
+  TableCell,
+  TableHead,
+  TableHeader,
+  TableRow,
+} from "@/components/ui/table"
+import { cn } from "@/lib/utils"
+import {
+  STAKEHOLDER_KIND_LABELS,
+  STAKEHOLDER_ORIGIN_LABELS,
+  STAKEHOLDER_SCORE_LABELS,
+  type Stakeholder,
+  type StakeholderScore,
+} from "@/types/stakeholder"
+
+const SCORE_TONE: Record<StakeholderScore, string> = {
+  low: "bg-muted text-muted-foreground",
+  medium: "bg-blue-100 text-blue-900 dark:bg-blue-900/40 dark:text-blue-100",
+  high: "bg-amber-100 text-amber-900 dark:bg-amber-900/40 dark:text-amber-100",
+  critical: "bg-red-100 text-red-900 dark:bg-red-900/40 dark:text-red-100",
+}
+
+interface StakeholderTableProps {
+  stakeholders: Stakeholder[]
+  onRowClick: (s: Stakeholder) => void
+}
+
+export function StakeholderTable({
+  stakeholders,
+  onRowClick,
+}: StakeholderTableProps) {
+  if (stakeholders.length === 0) {
+    return (
+      <div className="rounded-md border border-dashed py-12 text-center text-sm text-muted-foreground">
+        Noch keine Stakeholder. Wähle einen Vorschlag aus der Sidebar oder
+        klicke auf „+ Stakeholder".
+      </div>
+    )
+  }
+
+  return (
+    <div className="overflow-x-auto rounded-md border">
+      <Table>
+        <TableHeader>
+          <TableRow>
+            <TableHead className="w-[180px]">Name</TableHead>
+            <TableHead>Rolle</TableHead>
+            <TableHead className="hidden sm:table-cell">Org-Einheit</TableHead>
+            <TableHead className="hidden md:table-cell">Herkunft</TableHead>
+            <TableHead>Einfluss</TableHead>
+            <TableHead>Impact</TableHead>
+            <TableHead className="w-[80px] text-right">Status</TableHead>
+          </TableRow>
+        </TableHeader>
+        <TableBody>
+          {stakeholders.map((s) => {
+            const Icon = s.kind === "person" ? User2 : Building2
+            return (
+              <TableRow
+                key={s.id}
+                className="cursor-pointer"
+                onClick={() => onRowClick(s)}
+              >
+                <TableCell className="font-medium">
+                  <div className="flex items-center gap-2">
+                    <Icon
+                      className="h-4 w-4 shrink-0 text-muted-foreground"
+                      aria-hidden
+                    />
+                    <span className="truncate">{s.name}</span>
+                  </div>
+                  <p className="text-xs text-muted-foreground sm:hidden">
+                    {STAKEHOLDER_KIND_LABELS[s.kind]} ·{" "}
+                    {STAKEHOLDER_ORIGIN_LABELS[s.origin]}
+                  </p>
+                </TableCell>
+                <TableCell>{s.role_key ?? "—"}</TableCell>
+                <TableCell className="hidden sm:table-cell">
+                  {s.org_unit ?? "—"}
+                </TableCell>
+                <TableCell className="hidden md:table-cell">
+                  <Badge variant="outline">
+                    {STAKEHOLDER_ORIGIN_LABELS[s.origin]}
+                  </Badge>
+                </TableCell>
+                <TableCell>
+                  <span
+                    className={cn(
+                      "inline-flex rounded-full px-2 py-0.5 text-xs",
+                      SCORE_TONE[s.influence]
+                    )}
+                  >
+                    {STAKEHOLDER_SCORE_LABELS[s.influence]}
+                  </span>
+                </TableCell>
+                <TableCell>
+                  <span
+                    className={cn(
+                      "inline-flex rounded-full px-2 py-0.5 text-xs",
+                      SCORE_TONE[s.impact]
+                    )}
+                  >
+                    {STAKEHOLDER_SCORE_LABELS[s.impact]}
+                  </span>
+                </TableCell>
+                <TableCell className="text-right">
+                  {s.is_active ? (
+                    <Badge variant="secondary">Aktiv</Badge>
+                  ) : (
+                    <Badge variant="outline" className="text-muted-foreground">
+                      Inaktiv
+                    </Badge>
+                  )}
+                </TableCell>
+              </TableRow>
+            )
+          })}
+        </TableBody>
+      </Table>
+    </div>
+  )
+}
