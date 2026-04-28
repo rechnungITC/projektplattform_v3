@@ -1,8 +1,9 @@
 # PROJ-10: Change Management — Field-level Versioning, Compare, Undo, Copy, Audit Reports
 
-## Status: Planned
+## Status: Architected
 **Created:** 2026-04-25
-**Last Updated:** 2026-04-25
+**Last Updated:** 2026-04-28
+**Build mode:** Phase A + B + C in one iteration (per user direction).
 
 ## Summary
 Field-level audit history for all planning objects (work_items, phases, milestones, stakeholders, risks, budget) plus version compare, single-field rollback, full-version restore, object copy, and tenant-wide audit/activity reports. Inherits V2 EP-08, including the F13.x cross-cutting features. Retention and DSGVO export rules apply.
@@ -110,7 +111,156 @@ Field-level audit history for all planning objects (work_items, phases, mileston
 <!-- Sections below are added by subsequent skills -->
 
 ## Tech Design (Solution Architect)
-_To be added by /architecture_
+
+### What changes for the user
+
+Today, an edit to a stakeholder's name or a work-item's status disappears into the entity's `updated_at` — the *who*, *when*, and *what changed* are lost. Every project lead has at some point asked "wer hat das geändert?" and gotten no answer.
+
+After PROJ-10:
+- **Every edit is recorded field-by-field**, automatically, by a database trigger. There's no opt-in for app code; if a tracked column changes, an audit row appears.
+- **A History tab** on work-items, stakeholders, phases, milestones, and projects shows the timeline: who, when, which field, from what to what.
+- **Selective undo** per row: roll back only this one field, keep the rest.
+- **Full restore** to any prior version timestamp.
+- **Object copy** with a single click, structural fields only.
+- **Tenant-wide audit report** for the admin, with filters and CSV export.
+- **Retention cron** auto-purges old entries after 730 days (default).
+- **GDPR export** redacts class-3 fields automatically.
+
+### Phasing — the build splits into 3 logical bites
+
+The spec is large enough that one commit would be unwieldy. The architecture is designed so each phase ships independently and is useful on its own. The user decides at /backend time whether to ship Phase A first and pause for review, or roll all three through.
+
+| Phase | Deliverable | Useful on its own? |
+|---|---|---|
+| **A — Foundation** | `audit_log_entries` table + trigger + read API + History tab UI on work-items and stakeholders | ✅ Read-only history is already valuable for "wer hat das geändert?" |
+| **B — Write actions** | Selective undo, full restore, object copy (per entity) | ✅ Power-user features on top of A |
+| **C — Governance** | Retention cron, admin export, `/reports/audit` page with filters + CSV | ✅ Admin/compliance-facing, can land last |
+
+### Component structure (full target state)
+
+```
+HistoryTab (mounted in entity drawers / detail panels)
++-- Group header (date bucket)
+|   +-- Audit row
+|       +-- Actor avatar/name
+|       +-- Field name + arrow (old → new)
+|       +-- Reason badge (e.g. "KI-Akzeptanz", "Compliance-Trigger") if set
+|       +-- "Diesen Schritt zurücknehmen" button (Phase B, editor+)
++-- Compare picker (Phase B)
+|   +-- Two timestamp dropdowns
+|   +-- Field-level diff card
++-- Restore action (Phase B)
+    +-- "Auf Stand X.Y. zurücksetzen" → confirmation → write all fields
+
+Copy button (per entity drawer footer, Phase B)
+   +-- Confirmation toast
+   +-- Calls /copy → opens fresh drawer with the new entity
+
+/reports/audit (Phase C, /admin or /reports prefix, admin/PMO only)
++-- Filter sidebar
+|   +-- Entity type (multi-select)
+|   +-- Actor (user picker)
+|   +-- Field name (autocomplete)
+|   +-- Time range
+|   +-- "Redaktion aus" toggle (each toggle-on logs an audit-of-audit row)
++-- Audit table
+|   +-- Sortable columns: changed_at, entity_type, entity_id link, field, actor, reason
++-- CSV export button (downloads a class-3-redacted CSV)
+
+Existing entry points (touched in this feature)
++-- Work-item detail drawer → add HistoryTab
++-- Stakeholder edit drawer → add HistoryTab
++-- Phase / Milestone editors → add HistoryTab (Phase A scope, simple)
++-- Project settings page → add HistoryTab for project-level fields
+```
+
+### Data model
+
+**New table: `audit_log_entries`**
+- Identity: `id` (UUID), `tenant_id` (multi-tenant invariant)
+- Subject: `entity_type` (e.g. `stakeholders`, `work_items`), `entity_id` (UUID)
+- Change: `field_name`, `old_value` (JSONB), `new_value` (JSONB)
+- Provenance: `actor_user_id`, `changed_at`, `change_reason` (nullable enum-text — `ki_acceptance`, `compliance_trigger`, `restore`, `undo`, etc.)
+- INSERT-only from the user's perspective: filled by the DB trigger, never written by app code
+
+**New table: `retention_export_log`** (Phase C)
+- Identity, tenant_id, actor_user_id, exported_at, scope (JSONB filter that was applied), redaction_off (boolean)
+- Used to audit the audit-export action itself
+
+**New trigger function: `record_audit_changes()`** (DB-level, SECURITY DEFINER)
+- Generic across tables — uses `TG_TABLE_NAME` to look up the tracked-column whitelist per entity
+- Reads OLD vs NEW on UPDATE, emits one audit row per changed tracked column
+- Reads `current_setting('audit.change_reason', true)` for programmatic context (so PROJ-12's AI-accept flow can label the entry)
+
+**Whitelisted columns per entity** (only changes to these create audit rows)
+
+| Entity | Tracked fields |
+|---|---|
+| `stakeholders` | name, role_key, org_unit, contact_email, contact_phone, influence, impact, linked_user_id, notes, is_active, kind, origin |
+| `work_items` | title, description, status, priority, responsible_user_id, kind, sprint_id, parent_id, story_points |
+| `phases` | name, description, planned_start, planned_end, status, sequence_number |
+| `milestones` | name, description, target_date, actual_date, status, phase_id |
+| `projects` | name, description, project_number, planned_start_date, planned_end_date, responsible_user_id, project_type, project_method, lifecycle_status, type_specific_data |
+
+`created_at`, `updated_at`, `tenant_id`, `is_deleted`, `created_by`, internal IDs are intentionally **not** tracked — they're metadata, not user-visible state.
+
+**Stored where**
+Postgres in the existing Supabase project. RLS on `audit_log_entries`:
+- INSERT: only via the trigger (SECURITY DEFINER); no policy lets users insert directly
+- SELECT: project members for entries where the entity belongs to a project they can see; tenant admins for everything in their tenant
+- UPDATE / DELETE: nobody (including admins). Retention cron uses service-role to purge old rows.
+
+### Tech decisions and why
+
+| Decision | Why |
+|---|---|
+| **Postgres trigger** for the audit hook (not application-layer) | Atomic with the write — can't be bypassed by missing a hook call from a new code path. The spec explicitly recommends this. |
+| **One shared trigger function** parameterized via `TG_TABLE_NAME` | DRY. The whitelist per table lives in a small lookup function; adding a new audited table is a one-line `create trigger` plus an entry in the whitelist. |
+| **JSONB old/new** rather than typed columns | Handles every Postgres type uniformly (text, enum, uuid, jsonb, date, timestamptz). The audit log is read-mostly; queryability beats type-strictness. |
+| **INSERT-only audit rows** | Audit data is forensic — letting users edit it would defeat the point. Retention cron uses service-role to purge older-than-policy rows; that's the only deletion path. |
+| **Trigger captures `auth.uid()` for `actor_user_id`** | The DB knows who's logged in (Supabase sets the session). No app-layer plumbing needed. |
+| **`change_reason` set via `current_setting('audit.change_reason')`** | Lets Phase 2/PROJ-12 mark special edits ("ki_acceptance", "restore", "compliance_trigger") without a separate API surface. The default is NULL. |
+| **No audit on INSERT** | Entity creation is captured by the entity's own `created_at` + `created_by`. Re-emitting it as field-level audit (every column from NULL → new) would just spam the log. |
+| **Soft-deletes go through UPDATE, so they're audited** | Stakeholder.is_active and project.is_deleted both flip via UPDATE; trigger captures them. Hard-deletes via service-role bypass everything (intentional). |
+| **History tab as a shared component** consumed by 5+ drawers | Drawer wrappers stay light; History UI logic lives once. |
+| **Retention cron at 03:00 UTC** like PROJ-5's wizard purge | Same Vercel-Cron + CRON_SECRET pattern; consistent ops. |
+| **Phase the build (A → B → C)** | Reduces commit-size and review-effort. Phase A by itself answers "wer hat das geändert?" — the most-asked question and the bulk of the user value. |
+
+### API surface
+
+| Phase | Method + Path | Purpose |
+|---|---|---|
+| A | `GET /api/audit/[entity_type]/[entity_id]/history` | History list for an entity, RLS-scoped |
+| B | `POST /api/audit/[id]/undo` | Selective field rollback (one column back to `old_value`); validates the field hasn't been further modified since. Creates new audit row with reason = `undo` |
+| B | `POST /api/[entity_type]/[id]/copy` | Per-entity copy endpoint; structural fields only |
+| B | `POST /api/[entity_type]/[id]/restore` | Full version restore to a target timestamp; writes new audit row with reason = `restore_from_<ts>` |
+| C | `GET /api/audit/export?entity_type=…&actor=…&from=…&to=…` | Admin-only JSON/CSV export, class-3 redacted by default |
+| C | `GET /api/audit/reports?…` | Tenant-wide query for the `/reports/audit` page (same filter shape as export) |
+| C | `POST /api/cron/apply-retention` | Daily cron — deletes audit rows older than the retention policy (default 730 days, per-tenant override via PROJ-17's `tenant_settings.retention_overrides`) |
+
+### Security and privacy
+
+- **Class-3 columns** (e.g. `stakeholders.name`, `stakeholders.contact_email`, `stakeholders.notes`) are stored verbatim in the audit `old_value`/`new_value` JSONB. The export endpoint redacts them with `[redacted:class-3]` by default; turning redaction off requires admin role AND records its own audit-of-audit row.
+- **Cross-tenant query** is impossible by RLS construction (every policy carries `tenant_id` or routes through `is_project_member`).
+- **Concurrent edits** — last write wins on the entity itself; both audit rows record. UI surfaces them in chronological order; PR#R2 (the spec's note about "PL undoing edits made by another user") is documented as an ADR follow-up before Phase B's undo lands.
+
+### Dependencies
+
+No new npm packages. The audit feature is database-heavy:
+- Postgres triggers + JSONB (already used)
+- Same shadcn primitives as existing drawers (Card, Badge, Button, Tabs)
+- `date-fns` for relative-time labels in History UI (already installed)
+- Existing `requireProjectAccess` + tenant-admin helpers (PROJ-1 / PROJ-4)
+
+### Out of scope (explicit non-goals)
+
+- Mass historization across multiple objects (no batch undo of dozens of edits at once).
+- File-attachment versioning.
+- Project-level total rollback (the spec lists this as out of scope).
+- Restoration of hard-deleted objects.
+- Automated GDPR-compliance reporting (manual export today).
+- Retention-deadline notifications.
+- Audit on `tenant_memberships`, `project_memberships` — RBAC changes are themselves sensitive but tracked separately by PROJ-4's audit (different concern).
 
 ## Implementation Notes
 _To be added by /frontend and /backend_
