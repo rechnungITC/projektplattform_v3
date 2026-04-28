@@ -1,6 +1,6 @@
 # PROJ-10: Change Management — Field-level Versioning, Compare, Undo, Copy, Audit Reports
 
-## Status: Approved
+## Status: Deployed
 **Created:** 2026-04-25
 **Last Updated:** 2026-04-28
 **Build mode:** Phase A + B + C in one iteration (per user direction).
@@ -451,4 +451,14 @@ No Critical or High bugs. M1 (restore across DSGVO redaction) is fixed in this i
 6. Enforce front-end admin gate on `/reports/audit` so non-admins see a "Forbidden" card instead of an empty table (I5).
 
 ## Deployment
-_To be added by /deploy_
+
+- **Production URL:** https://projektplattform-v3.vercel.app
+- **Entry points:** `/projects/[id]/stakeholder` (HistoryTab on stakeholder drawer); `/reports/audit` (admin tenant-wide report + CSV export).
+- **Deployed:** 2026-04-28 via auto-deploy from `main`. Final pre-tag commit: `6a35d3d` (M1 closed).
+- **Migrations applied to project iqerihohwabyjzkpcujq (Supabase):**
+  - `20260428190000_proj10_audit_log_entries.sql`
+  - `20260428200000_proj10_audit_undo_restore_rpcs.sql`
+  - `20260428210000_proj10_audit_restore_redaction_warning.sql` (M1)
+- **Vercel deploy status:** GitHub commit status on `6a35d3d` = `success` ("Deployment has completed").
+- **Pre-deploy checks:** `npm run build` ✅; `npm run lint` baseline unchanged (37 errors / 9 warnings, all pre-existing — same as the v0.3.0-PROJ-8 deploy); `npx vitest run` 155/155 ✅.
+- **Tag:** `v0.4.0-PROJ-10`.
