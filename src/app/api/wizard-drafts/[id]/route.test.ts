@@ -126,6 +126,39 @@ describe("PATCH /api/wizard-drafts/[id]", () => {
     expect(res.status).toBe(400)
   })
 
+  it("returns 409 when expected_updated_at is stale (PROJ-5 M3)", async () => {
+    nextOp = "read"
+    getUserMock.mockResolvedValue({ data: { user: { id: USER_ID } } })
+    const current = {
+      id: DRAFT_ID,
+      tenant_id: "t1",
+      created_by: USER_ID,
+      name: "Latest",
+      project_type: null,
+      project_method: null,
+      data: {},
+      created_at: "2026-04-28T00:00:00Z",
+      updated_at: "2026-04-28T01:00:00Z",
+    }
+    readChain.maybeSingle.mockResolvedValue({ data: current, error: null })
+    const req = new Request(`http://localhost/api/wizard-drafts/${DRAFT_ID}`, {
+      method: "PATCH",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        data: { name: "stale write" },
+        expected_updated_at: "2026-04-28T00:00:00Z",
+      }),
+    })
+    const res = await PATCH(req, { params: Promise.resolve({ id: DRAFT_ID }) })
+    expect(res.status).toBe(409)
+    const body = (await res.json()) as {
+      error: { code: string }
+      current: { id: string }
+    }
+    expect(body.error.code).toBe("conflict")
+    expect(body.current.id).toBe(DRAFT_ID)
+  })
+
   it("returns 200 and persists denormalized name", async () => {
     nextOp = "update"
     getUserMock.mockResolvedValue({ data: { user: { id: USER_ID } } })

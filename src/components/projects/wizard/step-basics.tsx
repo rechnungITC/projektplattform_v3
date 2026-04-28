@@ -14,6 +14,7 @@ import {
 } from "@/components/ui/form"
 import { Input } from "@/components/ui/input"
 import { Textarea } from "@/components/ui/textarea"
+import { dateToIsoDate, parseLocalDate } from "@/lib/dates/iso-date"
 
 import type { WizardData } from "@/types/wizard"
 
@@ -94,10 +95,8 @@ export function StepBasics({ tenantId }: StepBasicsProps) {
               <FormLabel>Geplanter Start</FormLabel>
               <FormControl>
                 <DatePickerField
-                  value={field.value ? new Date(field.value) : null}
-                  onChange={(date) =>
-                    field.onChange(date ? date.toISOString() : null)
-                  }
+                  value={parseLocalDate(field.value)}
+                  onChange={(date) => field.onChange(dateToIsoDate(date))}
                 />
               </FormControl>
               <FormMessage />
@@ -112,10 +111,8 @@ export function StepBasics({ tenantId }: StepBasicsProps) {
               <FormLabel>Geplantes Ende</FormLabel>
               <FormControl>
                 <DatePickerField
-                  value={field.value ? new Date(field.value) : null}
-                  onChange={(date) =>
-                    field.onChange(date ? date.toISOString() : null)
-                  }
+                  value={parseLocalDate(field.value)}
+                  onChange={(date) => field.onChange(dateToIsoDate(date))}
                 />
               </FormControl>
               <FormMessage />

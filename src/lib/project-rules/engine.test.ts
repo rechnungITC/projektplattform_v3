@@ -86,7 +86,34 @@ describe("computeRules — type/method matrix", () => {
   it("Construction is structurally available but minimal", () => {
     const r = computeRules("construction", "waterfall")
     expect(r.active_modules.length).toBeGreaterThan(0)
-    // Required info is empty until the construction extension lands
-    expect(r.required_info).toEqual([])
+    // The construction profile contributes no required_info until the
+    // construction extension lands; the chosen method (waterfall) does
+    // contribute its own follow-ups (e.g. signoff_authority — PROJ-5 M2).
+    const typeKeys = r.required_info
+      .filter((info) => info.key === "target_systems" || info.key === "business_units")
+      .map((info) => info.key)
+    expect(typeKeys).toEqual([])
+  })
+
+  it("Method follow-ups are merged in (PROJ-5 M2)", () => {
+    const generalScrum = computeRules("general", "scrum")
+    const generalScrumKeys = generalScrum.required_info.map((r) => r.key)
+    expect(generalScrumKeys).toContain("sprint_length_weeks")
+    expect(generalScrumKeys).toContain("definition_of_done")
+
+    const generalWaterfall = computeRules("general", "waterfall")
+    const generalWaterfallKeys = generalWaterfall.required_info.map((r) => r.key)
+    expect(generalWaterfallKeys).toContain("signoff_authority")
+    expect(generalWaterfallKeys).not.toContain("sprint_length_weeks")
+  })
+
+  it("Method follow-ups are not added when method is null", () => {
+    const r = computeRules("erp", null)
+    const keys = r.required_info.map((info) => info.key)
+    // type-specific keys still present
+    expect(keys).toContain("target_systems")
+    // no method-specific keys
+    expect(keys).not.toContain("sprint_length_weeks")
+    expect(keys).not.toContain("signoff_authority")
   })
 })

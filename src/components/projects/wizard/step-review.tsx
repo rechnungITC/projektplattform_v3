@@ -8,15 +8,15 @@ import {
   CardHeader,
   CardTitle,
 } from "@/components/ui/card"
+import { parseLocalDate } from "@/lib/dates/iso-date"
 import { computeRules } from "@/lib/project-rules/engine"
 import { PROJECT_METHOD_LABELS } from "@/types/project-method"
 import { PROJECT_TYPE_LABELS } from "@/types/project"
 import type { WizardData } from "@/types/wizard"
 
 function formatDate(iso: string | null): string {
-  if (!iso) return "—"
-  const d = new Date(iso)
-  if (Number.isNaN(d.getTime())) return "—"
+  const d = parseLocalDate(iso)
+  if (!d) return "—"
   return d.toLocaleDateString("de-DE", {
     year: "numeric",
     month: "2-digit",

@@ -53,6 +53,21 @@ interface SaveDraftInput {
   id?: string
   tenantId: string
   data: WizardData
+  /**
+   * Optimistic concurrency token. When provided on PATCH, the API returns
+   * `DraftConflictError` if another client wrote a newer version since.
+   * Pass the `updated_at` of the most recently fetched/saved version.
+   */
+  expectedUpdatedAt?: string
+}
+
+export class DraftConflictError extends Error {
+  readonly current: WizardDraft
+  constructor(message: string, current: WizardDraft) {
+    super(message)
+    this.name = "DraftConflictError"
+    this.current = current
+  }
 }
 
 export async function saveDraft(input: SaveDraftInput): Promise<WizardDraft> {
@@ -62,9 +77,22 @@ export async function saveDraft(input: SaveDraftInput): Promise<WizardDraft> {
       {
         method: "PATCH",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ data: input.data }),
+        body: JSON.stringify({
+          data: input.data,
+          expected_updated_at: input.expectedUpdatedAt,
+        }),
       }
     )
+    if (response.status === 409) {
+      const body = (await response.json()) as {
+        error: { message: string }
+        current: WizardDraft
+      }
+      throw new DraftConflictError(
+        body.error?.message ?? "Draft was modified elsewhere.",
+        body.current
+      )
+    }
     if (!response.ok) {
       throw new Error(await safeError(response))
     }

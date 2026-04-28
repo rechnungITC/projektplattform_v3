@@ -35,6 +35,13 @@ const wizardDataSchema = z
 
 const patchSchema = z.object({
   data: wizardDataSchema,
+  /**
+   * Optimistic concurrency token (PROJ-5 spec § "Two browser tabs").
+   * If provided and the row's current `updated_at` is different, the API
+   * returns 409 with the current row so the client can offer "reload draft".
+   * Omit to opt into last-write-wins.
+   */
+  expected_updated_at: z.string().optional(),
 })
 
 interface Ctx {
@@ -109,8 +116,40 @@ export async function PATCH(request: Request, ctx: Ctx) {
     return apiError("unauthorized", "Not signed in.", 401)
   }
 
-  const data = parsed.data.data
+  const { data, expected_updated_at } = parsed.data
   const denormName = data.name?.trim() ? data.name.trim() : null
+
+  // Optimistic concurrency precheck — if the caller provided an expected
+  // timestamp, verify the row hasn't moved since they loaded it. Return
+  // 409 with the current row so the client can offer "reload draft".
+  if (expected_updated_at) {
+    const { data: existing, error: existingErr } = await supabase
+      .from("project_wizard_drafts")
+      .select(
+        "id, tenant_id, created_by, name, project_type, project_method, data, created_at, updated_at"
+      )
+      .eq("id", id)
+      .maybeSingle()
+    if (existingErr) {
+      return apiError("read_failed", existingErr.message, 500)
+    }
+    if (!existing) {
+      return apiError("not_found", "Draft not found.", 404)
+    }
+    if (existing.updated_at !== expected_updated_at) {
+      return NextResponse.json(
+        {
+          error: {
+            code: "conflict",
+            message:
+              "Draft was modified in another session. Reload to see the latest version.",
+          },
+          current: existing,
+        },
+        { status: 409 }
+      )
+    }
+  }
 
   const { data: row, error } = await supabase
     .from("project_wizard_drafts")

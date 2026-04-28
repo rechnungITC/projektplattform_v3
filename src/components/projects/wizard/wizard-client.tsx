@@ -1,7 +1,7 @@
 "use client"
 
 import { zodResolver } from "@hookform/resolvers/zod"
-import { Loader2, Save } from "lucide-react"
+import { AlertTriangle, Loader2, Save } from "lucide-react"
 import { useRouter } from "next/navigation"
 import * as React from "react"
 import { useForm, FormProvider } from "react-hook-form"
@@ -15,9 +15,11 @@ import {
   CardTitle,
 } from "@/components/ui/card"
 import { Button } from "@/components/ui/button"
+import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert"
 import { useAuth } from "@/hooks/use-auth"
 import { computeRules } from "@/lib/project-rules/engine"
 import {
+  DraftConflictError,
   finalizeDraft,
   getDraft,
   saveDraft,
@@ -88,6 +90,13 @@ export function WizardClient({ draftId }: WizardClientProps) {
   const [draftIdState, setDraftIdState] = React.useState<string | undefined>(
     draftId
   )
+  const [lastSeenUpdatedAt, setLastSeenUpdatedAt] = React.useState<
+    string | undefined
+  >(undefined)
+  const [conflict, setConflict] = React.useState<{
+    draftId: string
+    message: string
+  } | null>(null)
   const [submitting, setSubmitting] = React.useState(false)
   const [savingDraft, setSavingDraft] = React.useState(false)
 
@@ -107,6 +116,7 @@ export function WizardClient({ draftId }: WizardClientProps) {
         if (cancelled) return
         if (existing) {
           form.reset(existing.data)
+          setLastSeenUpdatedAt(existing.updated_at)
         } else {
           toast.error("Entwurf nicht gefunden", {
             description:
@@ -127,28 +137,62 @@ export function WizardClient({ draftId }: WizardClientProps) {
 
   const persistDraft = React.useCallback(
     async (data: WizardData, options?: { silent?: boolean }) => {
-      if (!tenantId) return
+      if (!tenantId) return null
       try {
         setSavingDraft(true)
         const saved = await saveDraft({
           id: draftIdState,
           tenantId,
           data,
+          expectedUpdatedAt: draftIdState ? lastSeenUpdatedAt : undefined,
         })
         setDraftIdState(saved.id)
+        setLastSeenUpdatedAt(saved.updated_at)
+        setConflict(null)
         if (!options?.silent) {
           toast.success("Entwurf gespeichert")
         }
+        return saved
       } catch (err) {
-        toast.error("Entwurf konnte nicht gespeichert werden", {
-          description: err instanceof Error ? err.message : "Unbekannter Fehler",
-        })
+        if (err instanceof DraftConflictError) {
+          setConflict({
+            draftId: err.current.id,
+            message: err.message,
+          })
+          toast.warning("Entwurf wurde anderswo geändert", {
+            description:
+              "Eine andere Sitzung hat eine neuere Version gespeichert.",
+          })
+        } else {
+          toast.error("Entwurf konnte nicht gespeichert werden", {
+            description:
+              err instanceof Error ? err.message : "Unbekannter Fehler",
+          })
+        }
+        return null
       } finally {
         setSavingDraft(false)
       }
     },
-    [tenantId, draftIdState]
+    [tenantId, draftIdState, lastSeenUpdatedAt]
   )
+
+  const reloadFromConflict = React.useCallback(async () => {
+    if (!conflict) return
+    try {
+      const fresh = await getDraft(conflict.draftId)
+      if (fresh) {
+        form.reset(fresh.data)
+        setLastSeenUpdatedAt(fresh.updated_at)
+        setConflict(null)
+        toast.success("Neueste Version geladen")
+      }
+    } catch (err) {
+      toast.error("Konnte neueste Version nicht laden", {
+        description: err instanceof Error ? err.message : "Unbekannter Fehler",
+      })
+    }
+  }, [conflict, form])
 
   const validateStep = React.useCallback(
     async (target: WizardStep): Promise<boolean> => {
@@ -263,11 +307,13 @@ export function WizardClient({ draftId }: WizardClientProps) {
     try {
       // Ensure the latest answers are in the server-side draft before finalizing.
       // The finalize endpoint reads the draft and uses it as the source of truth.
-      const draft = await saveDraft({
-        id: draftIdState,
-        tenantId,
-        data,
-      })
+      // persistDraft handles conflict (409) detection and surfaces the banner;
+      // returns null on error so we abort finalize.
+      const draft = await persistDraft(data, { silent: true })
+      if (!draft) {
+        setSubmitting(false)
+        return
+      }
       const project = await finalizeDraft(draft.id)
       toast.success("Projekt angelegt", { description: data.name })
       router.replace(
@@ -279,7 +325,7 @@ export function WizardClient({ draftId }: WizardClientProps) {
       })
       setSubmitting(false)
     }
-  }, [form, tenantId, draftIdState, router])
+  }, [form, tenantId, persistDraft, router])
 
   const onCancel = React.useCallback(() => {
     if (form.formState.isDirty) {
@@ -323,6 +369,23 @@ export function WizardClient({ draftId }: WizardClientProps) {
           />
         </CardHeader>
         <CardContent className="space-y-6">
+          {conflict ? (
+            <Alert variant="destructive">
+              <AlertTriangle className="h-4 w-4" aria-hidden />
+              <AlertTitle>Entwurf wurde anderswo geändert</AlertTitle>
+              <AlertDescription className="space-y-2">
+                <p>{conflict.message}</p>
+                <Button
+                  type="button"
+                  size="sm"
+                  variant="outline"
+                  onClick={() => void reloadFromConflict()}
+                >
+                  Neueste Version laden
+                </Button>
+              </AlertDescription>
+            </Alert>
+          ) : null}
           {step === "basics" ? (
             <StepBasics tenantId={tenantId} />
           ) : step === "type" ? (
