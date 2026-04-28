@@ -1,6 +1,6 @@
 # PROJ-10: Change Management — Field-level Versioning, Compare, Undo, Copy, Audit Reports
 
-## Status: Architected
+## Status: In Progress
 **Created:** 2026-04-25
 **Last Updated:** 2026-04-28
 **Build mode:** Phase A + B + C in one iteration (per user direction).
@@ -263,7 +263,43 @@ No new npm packages. The audit feature is database-heavy:
 - Audit on `tenant_memberships`, `project_memberships` — RBAC changes are themselves sensitive but tracked separately by PROJ-4's audit (different concern).
 
 ## Implementation Notes
-_To be added by /frontend and /backend_
+
+### Backend (this commit) — Phases A + B + C all shipped together
+
+**Migrations applied to project `iqerihohwabyjzkpcujq`:**
+- `20260428190000_proj10_audit_log_entries.sql` — table, indexes, trigger function `record_audit_changes()`, triggers on 5 tables, helper `can_read_audit_entry()`, RLS read policy, retention_export_log table.
+- `20260428200000_proj10_audit_undo_restore_rpcs.sql` — `audit_undo_field()`, `audit_restore_entity()` SECURITY DEFINER RPCs.
+
+**Trigger smoke-tested live:** 2 UPDATEs on a real project → 2 audit rows; cleanup verified.
+
+**API routes (7):**
+- `GET /api/audit/[entity_type]/[entity_id]/history` — list (RLS-gated by `can_read_audit_entry`)
+- `POST /api/audit/[id]/undo` — selective field rollback (refuses on stale `field_modified_after`)
+- `POST /api/audit/[entity_type]/[entity_id]/restore` — full version restore via RPC
+- `POST /api/projects/[id]/stakeholders/[sid]/copy` — copy with structural fields only (Class-3 personal data NOT carried)
+- `POST /api/projects/[id]/work-items/[wid]/copy` — copy with title + description + kind only
+- `GET /api/audit/reports` — tenant-wide query (filters: entity_type, actor, field, date range)
+- `GET /api/audit/export?format=json|csv&redaction_off=…` — tenant-admin only; Class-3 redaction by default; every export logged in `retention_export_log`
+- `GET /api/cron/apply-retention` — daily 03:30 UTC, deletes audit rows older than 730 days; CRON_SECRET-gated
+
+**vercel.json:** added second cron entry (`apply-retention`).
+
+**Trigger semantics:**
+- INSERT not audited (entity's own `created_at`/`created_by` cover that).
+- UPDATE compares each whitelisted column via `to_jsonb(OLD)`/`to_jsonb(NEW)`; emits one audit row per changed column.
+- `change_reason` read from `current_setting('audit.change_reason', true)`; PROJ-12's KI-accept will set this; undo/restore RPCs set it to `'undo'` / `'restore_from_<ts>'`.
+- DELETE not audited (soft-delete via column flip is captured by the UPDATE path; hard-delete via service-role bypasses everything intentionally).
+
+**Class-3 redaction in export:** stakeholders.{name, contact_email, contact_phone, linked_user_id, notes} replaced with `[redacted:class-3]`. Other entity types pass through.
+
+**Tests:** 4 new vitest cases for the history endpoint (152 total, all green).
+
+### Frontend (pending — /frontend phase)
+- HistoryTab component, mounted in stakeholder + work-item drawers + project + phase + milestone editors.
+- Per-row "Diesen Schritt zurücknehmen" button (calls undo API).
+- Restore picker (timestamp dropdown → confirm dialog).
+- Copy buttons on stakeholder + work-item drawers.
+- `/reports/audit` admin page (filters + table + CSV export).
 
 ## QA Test Results
 _To be added by /qa_
