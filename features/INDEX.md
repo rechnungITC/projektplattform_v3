@@ -18,7 +18,7 @@
 | PROJ-2 | Project CRUD + Lifecycle State Machine | Deployed | [Spec](PROJ-2-project-crud-lifecycle.md) | 2026-04-25 |
 | PROJ-3 | Tenant Operations and Deployment Modes (Stand-alone vs SaaS) | Planned | [Spec](PROJ-3-tenant-ops-deployment-modes.md) | 2026-04-25 |
 | PROJ-4 | Platform Foundation — Navigation, Project Roles, RBAC Enforcement | Deployed | [Spec](PROJ-4-platform-foundation-navigation-rbac.md) | 2026-04-25 |
-| PROJ-5 | Guided Project Creation Wizard with Type/Method-Aware Questions | In Progress | [Spec](PROJ-5-guided-project-creation-wizard.md) | 2026-04-25 |
+| PROJ-5 | Guided Project Creation Wizard with Type/Method-Aware Questions | In Review | [Spec](PROJ-5-guided-project-creation-wizard.md) | 2026-04-25 |
 | PROJ-6 | Project Types, Methods Catalog, and Rule Engine | Deployed | [Spec](PROJ-6-project-types-methods-rule-engine.md) | 2026-04-25 |
 | PROJ-7 | Project Room with Internal Kanban / Scrum / Gantt Modules | Deployed (MVP slice) | [Spec](PROJ-7-project-room-internal-modules.md) | 2026-04-25 |
 | PROJ-8 | Stakeholders and Organization | Planned | [Spec](PROJ-8-stakeholders-organization.md) | 2026-04-25 |

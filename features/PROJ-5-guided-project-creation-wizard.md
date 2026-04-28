@@ -1,6 +1,6 @@
 # PROJ-5: Guided Project Creation Wizard with Type/Method-Aware Questions
 
-## Status: In Progress
+## Status: In Review
 **Created:** 2026-04-25
 **Last Updated:** 2026-04-28
 
@@ -229,7 +229,111 @@ No new npm packages. Everything is already installed:
 - Move ERP-specific Step-4 answers from `type_specific_data` JSONB into a per-type table (PROJ-15).
 
 ## QA Test Results
-_To be added by /qa_
+
+### Test Execution Summary
+
+| Layer | Result |
+|---|---|
+| Vitest unit + integration | 137 / 137 pass (15 files; +16 new for wizard-drafts) |
+| Live RLS audit (Supabase MCP) | Pass — owner sees draft (1 row), random `auth.uid()` sees nothing (0 rows). 4 policies verified clause-by-clause. |
+| Build (`npm run build`) | Clean — 3 new API routes + 2 new pages registered |
+| Production deploy | Live since `dpl_AyxFM2kjY32CFNYDBJ92fFU1dwdy` (auto-deploy via push) |
+| Playwright E2E | Deferred — requires test-user fixtures (no test account in DB; manual user-walkthrough was greenlit by user before backend phase) |
+
+### Acceptance Criteria Walkthrough
+
+#### Wizard structure
+| AC | Status | Notes |
+|---|---|---|
+| ≥ 5 logically separated steps | ✅ | Basics → Type → Method → Follow-ups → Review |
+| Each step shows only relevant fields | ✅ | |
+| Required fields visually marked | ✅ | `*` suffix in StepBasics + Step 4 |
+| Block forward progression while required missing | ✅ | `validateStep` per-step gate |
+| Save and resume drafts | ✅ | Server-side via `project_wizard_drafts` |
+| Exactly one project record on completion | ✅ | Atomic insert via `POST /api/wizard-drafts/[id]/finalize` |
+
+#### Dynamic follow-ups
+| AC | Status | Notes |
+|---|---|---|
+| Type-driven follow-ups | ✅ | ERP/Software profiles ship with `required_info` keys |
+| Method-driven follow-ups | ❌ | **Bug M2 — see below.** Catalog has type-specific `required_info` only; method contributes `starter_kinds` but no extra questions. |
+| Irrelevant fields not shown | ✅ | StepFollowups renders only `computeRules(...).required_info` |
+| Rule-based / extensible | ✅ | Driven by PROJ-6 catalog + engine |
+
+#### Draft persistence
+| AC | Status | Notes |
+|---|---|---|
+| Table with `tenant_id`, `created_by`, `data` JSONB, timestamps | ✅ | Migration applied; columns + denormalized name/type/method |
+| User can list / open / edit / discard own drafts | ✅ | `/projects/drafts` page + DraftsListClient |
+| Draft does not appear in project list | ✅ | Separate table |
+| 90-day auto-purge | ⏳ | **Deferred per design.** Manual discard works. |
+
+#### Hand-off to project creation
+| AC | Status | Notes |
+|---|---|---|
+| POSTs to project create API | ✅ | Via finalize endpoint |
+| All wizard fields land in matching columns | ✅ | |
+| Type-specific extras → `type_specific_data` JSONB | ✅ | Column added in migration |
+| On success, draft row deleted | ✅ | Best-effort delete inside finalize handler |
+| Failed transfers log + keep draft | ⚠️ | Draft is preserved on failure but no structured log entry beyond the API error response. Acceptable for MVP. |
+
+#### KI-driven alternative (F2.1b)
+| AC | Status | Notes |
+|---|---|---|
+| All gated by PROJ-12 | ⏳ | **Deferred per spec.** No code path built. |
+
+### Edge Cases
+
+| Case | Spec says | Implementation |
+|---|---|---|
+| User reloads mid-wizard | auto-save on step transition; reload restores latest | ✅ Auto-save on Next/Back transitions; resume via `?draftId=…` |
+| Two browser tabs editing same draft | last-write-wins; **show warning when save target is older** | ⚠️ **Bug M3 — Last-write-wins works, but no version check / no warning.** |
+| Tenant A loads tenant B's draft | blocked by RLS (404) | ✅ Verified live (RLS audit) |
+| Type/method changes mid-wizard | already-answered follow-ups kept | ✅ `type_specific_data` keeps old keys; new combo only renders new keys |
+| Network failure on submit | wizard does not lose draft; **retry button visible** | ⚠️ **Bug L1 — Toast shows error and `Projekt anlegen` button stays clickable, but no explicit "Retry" UI.** |
+| Catalog adds new required field | next open shows new field, blocks completion | ✅ `validateStep("followups")` re-evaluates `computeRules` on every visit |
+
+### Security Audit
+
+| Check | Result |
+|---|---|
+| RLS isolation between users (live) | ✅ Owner sees own row, random `auth.uid()` sees nothing |
+| RLS isolation between tenants | ✅ `is_tenant_member(tenant_id)` clause on every policy |
+| Tenant-id from request body cannot escalate | ✅ Insert policy `with check` rejects non-member tenant_id |
+| Auth required on all endpoints | ✅ All routes return 401 without session (covered in vitest) |
+| Input validation (Zod, all writes) | ✅ POST + PATCH validate body; UUID + enum checks on params |
+| JSONB structure attacks | ✅ `data` accepts any JSON shape but Postgres handles it safely; downstream is read-only `data.*` access |
+| Existing security headers | ✅ All 6 headers apply (HSTS, X-Frame-Options, CSP-Report-Only, …) |
+| Sensitive data leakage in API responses | ✅ Drafts contain only what the user typed; service-role key never client-side |
+
+### Bug Audit
+
+| Severity | ID | Description | Where |
+|---|---|---|---|
+| High | M1 | **Date timezone bug.** StepBasics serializes dates via `value.toISOString()` (UTC). In CET/UTC+1, picking 1. May produces ISO `2026-04-30T23:00:00Z`; finalize `slice(0,10)` then writes `2026-04-30` — date shifts back by one day. The existing codebase has a `dateToIsoDate(date)` helper (e.g. `src/components/milestones/new-milestone-dialog.tsx:275`) that uses local-time components and should be reused. | `src/components/projects/wizard/step-basics.tsx` (DatePickerField onChange) and/or `src/app/api/wizard-drafts/[id]/finalize/route.ts` (`isoDateOnly`) |
+| Medium | M2 | **Method-driven follow-up questions not implemented.** Spec says "Different methods produce different follow-up questions (e.g. Scrum asks about sprint length)". `computeRules(type, method).required_info` only returns the project type's `required_info`; method contributes `starter_kinds` but no extra questions. Either extend the catalog with method-specific `required_info`, or note as intentional MVP scope. | `src/lib/project-rules/engine.ts` + `src/lib/project-types/catalog.ts` |
+| Medium | M3 | **Two-tab last-write-wins, no warning.** Spec asks for "show a warning when save target is older than current state". PATCH overwrites without optimistic concurrency. Two tabs editing the same draft silently overwrite each other. Fix: add `If-Unmodified-Since` or version column. | `src/app/api/wizard-drafts/[id]/route.ts` |
+| Low | L1 | **No explicit retry button after finalize failure.** User has to re-click "Projekt anlegen". A dedicated "Retry" button would be clearer, especially after a network error. | `src/components/projects/wizard/wizard-client.tsx` (onCreate error path) |
+| Low | L2 | **Cancel does not offer to discard draft.** Cancel returns to /projects but the draft persists silently. Could add a 3-button confirm: "Discard, Save as draft, Continue editing". | wizard-client.tsx |
+| Info | I1 | 90-day auto-purge cron deferred per design. | spec |
+| Info | I2 | KI-Dialog (F2.1b) deferred per spec (gated by PROJ-12). | spec |
+
+### Production-Ready Decision
+
+**NOT READY for status `Approved`.**
+
+Blocker: **High M1 (date timezone bug)** — visible to any user not in UTC. Fix is small (replace `toISOString()` with the existing `dateToIsoDate` helper).
+
+Once M1 is fixed and verified:
+- M2 (method follow-ups) and M3 (two-tab warning) are spec-AC gaps; user decides whether to fix in PROJ-5 or defer to a follow-up.
+- L1, L2, I1, I2 are acceptable for shipping.
+
+After fix → re-run `/qa` for status `Approved` → `/deploy`.
+
+### Suggested follow-ups (not blockers)
+1. Seed a test-user fixture (second account in the active tenant) so future Playwright E2E suites can exercise the wizard against the real API surface end-to-end.
+2. Add method-specific `required_info` entries to the catalog (Scrum sprint length, SAFe PI cadence, Wasserfall change-control gate, …) — closes M2.
+3. Optimistic concurrency on draft updates (`updated_at` check or row-version) — closes M3.
 
 ## Deployment
 _To be added by /deploy_
