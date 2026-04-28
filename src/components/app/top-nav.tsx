@@ -3,6 +3,7 @@
 import {
   BarChart3,
   Database,
+  FileSearch,
   FolderKanban,
   Menu,
   Plug,
@@ -51,6 +52,12 @@ const NAV_ITEMS: readonly NavItem[] = [
   { href: "/stammdaten", label: "Stammdaten", icon: Database },
   { href: "/konnektoren", label: "Konnektoren", icon: Plug, adminOnly: true },
   { href: "/reports", label: "Reports", icon: BarChart3 },
+  {
+    href: "/reports/audit",
+    label: "Audit",
+    icon: FileSearch,
+    adminOnly: true,
+  },
   {
     href: "/settings/profile",
     label: "Einstellungen",
