@@ -17,6 +17,8 @@ import { Switch } from "@/components/ui/switch"
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs"
 import { Input } from "@/components/ui/input"
 import { useAuth } from "@/hooks/use-auth"
+import { promoteStakeholderToResource } from "@/lib/resources/api"
+import { isModuleActive } from "@/lib/tenant-settings/modules"
 import {
   clearDismissedSuggestions,
   copyStakeholder,
@@ -52,8 +54,9 @@ interface StakeholderTabClientProps {
 }
 
 export function StakeholderTabClient({ projectId }: StakeholderTabClientProps) {
-  const { currentTenant } = useAuth()
+  const { currentTenant, tenantSettings } = useAuth()
   const tenantId = currentTenant?.id ?? null
+  const resourcesModuleActive = isModuleActive(tenantSettings, "resources")
 
   const [stakeholders, setStakeholders] = React.useState<Stakeholder[]>([])
   const [suggestions, setSuggestions] = React.useState<StakeholderSuggestion[]>(
@@ -192,6 +195,22 @@ export function StakeholderTabClient({ projectId }: StakeholderTabClientProps) {
       void reloadSuggestions()
     } catch (err) {
       toast.error("Status konnte nicht geändert werden", {
+        description: err instanceof Error ? err.message : "Unbekannter Fehler",
+      })
+    }
+  }
+
+  const onPromoteToResource = async (s: Stakeholder) => {
+    try {
+      const { resource, created } = await promoteStakeholderToResource(s.id)
+      toast.success(
+        created
+          ? `„${resource.display_name}" als Ressource angelegt`
+          : `Mit existierender Ressource „${resource.display_name}" verknüpft`,
+        { description: "Verwaltung unter Stammdaten → Ressourcen." }
+      )
+    } catch (err) {
+      toast.error("Beförderung fehlgeschlagen", {
         description: err instanceof Error ? err.message : "Unbekannter Fehler",
       })
     }
@@ -390,7 +409,7 @@ export function StakeholderTabClient({ projectId }: StakeholderTabClientProps) {
                     onSubmit={(input) => onUpdate(drawer.stakeholder.id, input)}
                     submitting={submitting}
                     secondaryAction={
-                      <div className="flex gap-2">
+                      <div className="flex flex-wrap gap-2">
                         <Button
                           type="button"
                           variant="outline"
@@ -409,6 +428,17 @@ export function StakeholderTabClient({ projectId }: StakeholderTabClientProps) {
                             ? "Deaktivieren"
                             : "Reaktivieren"}
                         </Button>
+                        {resourcesModuleActive ? (
+                          <Button
+                            type="button"
+                            variant="outline"
+                            onClick={() =>
+                              void onPromoteToResource(drawer.stakeholder)
+                            }
+                          >
+                            Als Ressource übernehmen
+                          </Button>
+                        ) : null}
                       </div>
                     }
                   />

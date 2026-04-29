@@ -1,5 +1,5 @@
 import type { Metadata } from "next"
-import { ChevronRight, FileSearch } from "lucide-react"
+import { Activity, ChevronRight, FileSearch } from "lucide-react"
 import Link from "next/link"
 
 import {
@@ -21,6 +21,14 @@ const REPORTS = [
     title: "Audit-Bericht",
     description:
       "Mandantenweite Änderungshistorie mit Filtern und CSV-Export. Class-3-Felder werden im Export standardmäßig redaktioniert.",
+    adminOnly: true,
+  },
+  {
+    href: "/reports/utilization",
+    icon: Activity,
+    title: "Auslastung",
+    description:
+      "Mandantenweite Ressourcen-Auslastung über alle Projekte als Heatmap. Wöchentliche, monatliche oder quartalsweise Buckets, CSV-Export.",
     adminOnly: true,
   },
 ]

@@ -33,6 +33,7 @@ import { WORK_ITEM_KIND_LABELS } from "@/types/work-item"
 import type { ProjectMethod } from "@/types/project-method"
 
 import { ChangeKindDialog } from "./change-kind-dialog"
+import { WorkItemAllocations } from "./work-item-allocations"
 import { ChangeParentDialog } from "./change-parent-dialog"
 import { ChangeSprintDialog } from "./change-sprint-dialog"
 import { ChangeStatusDialog } from "./change-status-dialog"
@@ -206,6 +207,13 @@ export function WorkItemDetailDrawer({
                   </CollapsibleContent>
                 </Collapsible>
               ) : null}
+
+              {/* Resource allocation (PROJ-11) */}
+              <WorkItemAllocations
+                projectId={projectId}
+                workItemId={item.id}
+                canEdit={canEdit}
+              />
 
               {/* AI source */}
               {item.created_from_proposal_id ? (
