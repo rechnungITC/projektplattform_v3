@@ -7,6 +7,7 @@ import {
   History,
   LayoutDashboard,
   ListTodo,
+  MessageSquare,
   Settings as SettingsIcon,
   Sparkles,
   Users,
@@ -35,6 +36,7 @@ interface ProjectTab {
     | "risiken"
     | "entscheidungen"
     | "ai-proposals"
+    | "kommunikation"
     | "mitglieder"
     | "historie"
     | "einstellungen"
@@ -66,6 +68,12 @@ const TABS: readonly ProjectTab[] = [
     label: "KI-Vorschläge",
     icon: Sparkles,
     requiresModule: "ai_proposals",
+  },
+  {
+    segment: "kommunikation",
+    label: "Kommunikation",
+    icon: MessageSquare,
+    requiresModule: "communication",
   },
   { segment: "mitglieder", label: "Mitglieder", icon: Users2 },
   { segment: "historie", label: "Historie", icon: History },
