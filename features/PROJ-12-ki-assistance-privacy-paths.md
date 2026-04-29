@@ -1,6 +1,6 @@
 # PROJ-12: KI Assistance and Data-Privacy Paths
 
-## Status: In Progress
+## Status: In Review
 **Created:** 2026-04-25
 **Last Updated:** 2026-04-29
 
@@ -432,7 +432,163 @@ risks:       title (2), probability (1), impact (1) — vorhandene Risiken als N
 - `npm run lint` → baseline +2 instances of the established `react-hooks/set-state-in-effect` pattern (matches the existing repo baseline of 41 instances of the same rule; no new rule classes).
 
 ## QA Test Results
-_To be added by /qa_
+
+**Run:** 2026-04-29 · QA pass + live DB red-team + Stub-provider end-to-end against project `iqerihohwabyjzkpcujq`.
+
+### Acceptance Criteria
+
+#### Model routing (ST-01)
+| AC | Result | Evidence |
+|---|---|---|
+| Single `aiRouter.invoke({ purpose, payload, classification, tenant_id })` API | ✅ | `lib/ai/router.ts#invokeRiskGeneration` |
+| Routes to Anthropic for class-1/2; routes local for class-3 | ✅ | `router.test.ts` covers all four branches; live test confirmed Stub fallback when no key |
+| Logs every call with timestamp/tenant/project/purpose/classification/provider/success-error | ✅ | `ki_runs` row written per call; status enum ('success' / 'error' / 'external_blocked') |
+| Errors return structured envelope; UI shows friendly message | ✅ | Suggest route returns 502 with `error_message`; `GeneratePanel` toast |
+
+#### Class-3 block (ST-02)
+| AC | Result | Evidence |
+|---|---|---|
+| Central `classifyPayload()` returns max class | ✅ | `classify.ts#classifyRiskAutoContext` + 5 vitest cases |
+| Class-3 → external rejected (no bypass) | ✅ | `router.test.ts` "logs 'external_blocked' when classification is 3"; UI Alert in `GeneratePanel` |
+| Block events logged | ✅ | `ki_runs.status='external_blocked'` carries timestamp + tenant + project + actor |
+| User-facing message on block | ✅ | `GeneratePanel` shows "Externes Modell wurde geblockt" Alert + toast warning |
+
+#### Privacy classification (F12.1)
+| AC | Result | Evidence |
+|---|---|---|
+| Field-level registry `table.column → 1\|2\|3` | ✅ | `data-privacy-registry.ts`; 50+ entries |
+| Default = 3 for unspecified | ✅ | `data-privacy-registry.test.ts` covers fallback |
+| Initial classifications match V2 table | ✅ | projects.name=2, project_type=1, lifecycle=1, profiles.email=3, stakeholders.name/email=3 — all verified in unit tests |
+| GDPR delete concept documented | ⏳ | Documented as a paragraph in this spec; deferred export endpoint per spec to PROJ-17 |
+| DSGVO export endpoint deferred | ✅ | Per spec, delivered by PROJ-17 |
+
+#### Proposal generation (ST-03)
+| AC | Result | Evidence |
+|---|---|---|
+| `POST /api/projects/[id]/ki/suggest` triggers proposal run | ✅ | Route handler + 4 vitest cases |
+| Proposals stored in `ki_suggestions` with full provenance | ✅ | DB schema + live test |
+| Method-aware kinds | ⚠️ | Risks aren't method-gated (every project type has them). Method-aware filtering kicks in for work_items in a later slice — flag I1. |
+| Proposals do NOT mutate active project objects | ✅ | Suggestions live in their own table; only the accept-RPC writes to the entity layer |
+| Generation requires explicit user action | ✅ | No background polling; only `/ki/suggest` POST triggers a run |
+
+#### Review + approve flow (ST-04)
+| AC | Result | Evidence |
+|---|---|---|
+| UI tab "KI Vorschläge" with pending proposals | ✅ | `app/(app)/projects/[id]/ai-proposals/page.tsx` |
+| Per proposal: Accept / Reject / Edit | ✅ | `SuggestionCard` |
+| Acceptance creates entity with `change_reason='ki_acceptance'` and link back | ✅ | Live verified: 1 audit row, full payload in `new_value` |
+| Rejection logs reason (optional) | ✅ | `rejectSuggestion(reason)` |
+| No mass-acceptance | ✅ | UI exposes only single accept |
+| No automatic acceptance by rules | ✅ | No auto path in code |
+
+#### Traceability (F12.2)
+| AC | Result | Evidence |
+|---|---|---|
+| Every AI-generated record carries metadata | ✅ | `ki_provenance` row + `ki_suggestions.ki_run_id` + `ki_runs.model_id`; `was_modified` flag |
+| Detail view shows the metadata badge | ✅ | RiskTable + RiskMatrix render Sparkles+KI badge for KI-derived risks |
+| Filter "AI-derived only" | ✅ | "Nur KI-erzeugt" Switch in RiskTabClient |
+| Exportable AI-event log | ⏳ | `ki_runs` rows are visible to project members via the existing audit/runs SELECT path; a dedicated export view is a follow-up — flag L1 |
+
+#### Per-tenant model selection (F10.2)
+| AC | Result | Evidence |
+|---|---|---|
+| `tenant_settings.ai_provider_config` JSONB | ⏳ Deferred (PROJ-17) | Per locked design |
+| Admin UI in PROJ-17 | ⏳ | Per locked design |
+| Class-3 hard block applies regardless of config | ✅ | Router checks classification + `EXTERNAL_AI_DISABLED` independently |
+
+#### Compliance hints (F12.3)
+| AC | Result | Evidence |
+|---|---|---|
+| `compliance_hints` catalog | ⏳ Deferred | Own slice |
+| Recommendations not blockers | ⏳ | Own slice |
+| Acknowledge button | ⏳ | Own slice |
+
+#### KI-driven wizard alternative (F2.1b)
+| AC | Result | Evidence |
+|---|---|---|
+| Optional toggle on wizard entry | ⏳ Deferred | Per locked design (PROJ-5 already deployed; hooking adds risk) |
+| Free-text dialog → wizard Review step | ⏳ | Own slice |
+| Class-3 input blocked from external | ⏳ | Own slice (router already enforces this rule) |
+
+### Edge Cases
+
+| Case | Spec | Result |
+|---|---|---|
+| Tenant admin tries to disable class-3 block | impossible by design | ✅ No setting exposes it |
+| Stand-alone with no external AI | `external_provider='none'`, all calls local | ✅ `EXTERNAL_AI_DISABLED=true` honored; router routes local; `ANTHROPIC_API_KEY` absent → Stub fallback |
+| Proposal accepted on changed-method project | row created, hidden by method visibility | ⚠️ Untested explicitly. Risks aren't method-gated so the case doesn't apply for the MVP slice. Re-verify when work_item suggestions ship. |
+| Proposal rejected, user wants to undo | re-run is the path; no un-reject | ✅ Reject is terminal; no "un-reject" button in UI |
+| AI run timeout | error returned; no partial proposals | ✅ Provider errors caught in router → ki_runs.status='error', no suggestions persisted |
+| Cost limit per tenant | block + clear error (deferred PROJ-17) | ⏳ Deferred per spec |
+| Ollama base URL unreachable | graceful fail | ✅ Provider throws "not implemented"; router falls back to Stub for local |
+| User edits proposal then accepts | metadata says modified | ✅ `is_modified` flips true; `was_modified` carried into provenance; `original_payload` stays for diff in UI |
+
+### Security Audit (red team)
+
+| Check | Result |
+|---|---|
+| Cross-tenant SELECT on ki_runs / ki_suggestions / ki_provenance | ✅ Non-member counts are 0 across all three tables for another tenant's project |
+| Direct INSERT into ki_provenance by user | ✅ Blocked — no INSERT policy on the table; insertion only via `accept_ki_suggestion_risk` SECURITY DEFINER RPC |
+| Direct INSERT into audit_log_entries (PROJ-10 carryover) | ✅ Still blocked — only SELECT policy |
+| Class-3 payload routed externally | ✅ Router escalates to local provider; tested live + unit |
+| ANTHROPIC_API_KEY absent → router fails closed? | ✅ Falls back to Stub; tests cover; no silent error |
+| Convert RPC `accept_ki_suggestion_risk` requires editor+ | ✅ Internal `has_project_role / is_project_lead / is_tenant_admin` check |
+| Tampering with `ki_suggestions` to bypass single-accept invariant | ❌ **H2** — see Bug Audit |
+| `ki_runs` UPDATE for final status / tokens / error | ❌ **H1** — see Bug Audit |
+| Information leak via accept-RPC ordering (state-before-auth) | ⚠️ **L1** — see Bug Audit |
+| `classifyPayload` defense-in-depth on auto-context allowlist | ✅ Confirmed — adding a Class-3 field to the auto-context shape forces local routing |
+| SQL injection via dynamic SQL in convert/accept RPCs | ✅ All values are `$1`/`$2` placeholders; no `format()` with raw text |
+| XSS via suggestion title / mitigation in JSX | ✅ React auto-escapes; no `dangerouslySetInnerHTML` |
+
+### Regression check
+
+| Area | Result |
+|---|---|
+| `npx vitest run` 224/224 (201 prior + 23 PROJ-12) | ✅ |
+| `npx tsc --noEmit` | ✅ |
+| `npm run build` | ✅; `/projects/[id]/ai-proposals` and `/projects/[id]/risiken` both compiled |
+| `npm run lint` | ✅ +2 instances of established `react-hooks/set-state-in-effect` pattern; no new rule classes |
+| PROJ-3 `isExternalAIBlocked()` consumer wired | ✅ Router uses it; covered by `router.test.ts` |
+| PROJ-10 HistoryTab reasons rendering | ✅ `ki_acceptance` styled distinctly; existing `undo`/`restore_from_*` reasons unchanged |
+| PROJ-20 risks / decisions / open_items unaffected | ✅ PROJ-12 migration only ADDS three tables + one RPC; no schema changes to existing entities |
+| Dev server smoke probe (Turbopack) | ✅ `/projects/[id]/ai-proposals`, `/projects/[id]/risiken`, `/api/projects/[id]/ki/suggest` all return 307 (auth-redirect) without compile errors |
+
+### Bug Audit
+
+| Severity | ID | Description | Fix complexity |
+|---|---|---|---|
+| **High** | H1 | **`ki_runs` UPDATE silently fails under RLS.** The router optimistically inserts a run row with `status='success'`, then UPDATEs with the final status (success/error/external_blocked) + tokens + latency + error_message. The migration creates SELECT and INSERT policies but **no UPDATE policy** — RLS denies UPDATE without raising an error, so the row stays at the optimistic 'success' even when the provider erred or the call was external-blocked. Result: telemetry is wrong, error trail is empty, audit shows 'success' for failures. Verified live: a user-context UPDATE to `status='external_blocked', input_tokens=120, output_tokens=210, latency_ms=850` was silently dropped. | Low — add an UPDATE policy on `ki_runs` for editor+, with the same `using` and `with check` predicates as INSERT. |
+| **High** | H2 | **`ki_suggestions` status is mutable from terminal states.** A project editor can directly UPDATE `status='accepted'` → `'draft'`, clear `accepted_entity_*` and `accepted_at`, and the suggestion is re-armed for another accept call — producing a SECOND risk row from the same suggestion (verified live: ran `accept_ki_suggestion_risk` twice on the same suggestion, got two distinct risk_ids; ki_provenance ended up with two rows pointing at different risks while `ki_suggestions.accepted_entity_id` was overwritten by the second accept). Same root cause as PROJ-20 H1: RLS UPDATE policy is too permissive, no DB-level state-machine enforcement. The spec contract "no mass-acceptance / no automatic acceptance" is bypassable via direct DB. | Low — BEFORE-UPDATE trigger on `ki_suggestions` that pins terminal states (`accepted`, `rejected` are sealed) and only allows draft → accepted/rejected/edit. Mirrors the `enforce_decision_immutability()` pattern from PROJ-20. Consider also UNIQUE on `ki_provenance.ki_suggestion_id` as a belt-and-suspenders. |
+| Low | L1 | **Accept-RPC checks state before authorization.** A non-member calling `accept_ki_suggestion_risk(<known UUID>)` learns whether the suggestion exists and is in a terminal state via the `suggestion_not_draft` return. Cross-tenant UUIDs aren't enumerable, so the practical leak is bounded — but the cleaner pattern is auth-before-state. | Low — reorder the RPC: check `has_project_role(...)` first; return `forbidden` regardless of state. Apply same fix to `convert_open_item_to_*` RPCs from PROJ-20 if affected (verified separately). |
+| Low | L2 | **AI-event-log export view not built.** Spec mentions "Exportable AI-event log (per PROJ-10 audit + a dedicated view)." `ki_runs` rows are queryable via the existing SELECT path but no `/api/ki/runs/export` endpoint exists. Project members can derive it from raw queries; admins use the existing audit export for `ki_acceptance` reasons. | Low — small follow-up endpoint, can ship in the next AI slice. |
+| Info | I1 | **Method-aware filtering for proposals not exercised.** Spec says proposals should be "method-aware (only kinds visible for the project's method are proposed)". Risks aren't method-gated so the AC doesn't apply to the MVP slice. Re-verify when work-item suggestions ship. | — |
+| Info | I2 | **Per-tenant model selection deferred.** Per locked design, owned by PROJ-17. Class-3 hard block already applies regardless. | — |
+| Info | I3 | **Compliance hints catalog deferred.** Per locked design, separate slice. | — |
+| Info | I4 | **KI-driven wizard alternative deferred.** Per locked design, separate slice. | — |
+| Info | I5 | **No E2E tests for the KI-Vorschläge tab.** Project-wide gap (no Playwright tests anywhere yet). Backend rigour achieved via direct DB red-team probes; UI rigour is type-check + build + dev-server compile probe. | — |
+
+### Production-Ready Decision
+
+**NOT READY.**
+
+H1 + H2 share a structural pattern with PROJ-20's H1/M1 (RLS UPDATE policies too permissive over state-machine tables). They're independent here, but the same fix shape (BEFORE-UPDATE state-machine trigger + targeted UPDATE policy) closes both.
+
+H1 is silent: telemetry is wrong but no user-visible failure. H2 is silent until a malicious or curious editor pokes at the DB directly via the Supabase JS client — at which point one suggestion can spawn N duplicate risks with broken provenance.
+
+L1 is a small reorder in the SECURITY DEFINER RPCs, harmless on its own but worth shipping with the H-fixes.
+
+**Recommended next step:** `/backend` to:
+1. Add `ki_runs` UPDATE policy (closes H1).
+2. Add `enforce_ki_suggestion_immutability()` BEFORE-UPDATE trigger that pins `status` to `draft → accepted | rejected` (closes H2).
+3. Add UNIQUE on `ki_provenance.ki_suggestion_id` (defense in depth on H2).
+4. Reorder `accept_ki_suggestion_risk` to check authorization first (closes L1).
+
+Then re-run `/qa`.
+
+### Suggested follow-ups (not blockers)
+1. L2 — small `/api/ki/runs/export` endpoint when the audit-export workflow needs structured AI telemetry.
+2. I1–I5 — deferred per locked design or project-wide.
+3. Add Playwright E2E for the KI flow once the test infra exists.
 
 ## Deployment
 _To be added by /deploy_
