@@ -1,6 +1,6 @@
 # PROJ-11: Resources, Capacities, and Schedule Logic
 
-## Status: Approved
+## Status: Deployed
 **Created:** 2026-04-25
 **Last Updated:** 2026-04-25
 
@@ -455,4 +455,27 @@ Mit B-A-A bleibt die Spec-AC-Liste **fast unverändert**, mit zwei Korrekturen:
 Recommend proceeding to `/deploy`.
 
 ## Deployment
-_To be added by /deploy_
+
+**Deployed:** 2026-04-29
+**Production URL:** https://projektplattform-v3.vercel.app
+**Deployed by:** push to `main` → Vercel auto-deploy
+**Tag:** `v1.14.0-PROJ-11`
+
+### What went live
+- Migration `20260429240000_proj11_resources_capacity_utilization` (already applied to Supabase project `iqerihohwabyjzkpcujq` during /backend; the deploy commit makes the file part of the canonical history). Three new tables (`resources`, `resource_availabilities`, `work_item_resources`) with full RLS, audit triggers, plus the `utilization_report(tenant_id, start, end, bucket)` PG function (`SECURITY INVOKER`).
+- Backend: 8 new API routes under `/api/resources/*`, `/api/projects/[id]/work-items/[wid]/resources/*`, `/api/stakeholders/[id]/promote-to-resource`, `/api/reports/utilization`. Tenant-admin only on the report; editor+/admin on writes; class-3 PII classification across all personal fields.
+- Frontend: tenant pool at `/stammdaten/resources`, utilization heatmap at `/reports/utilization`, allocation section in the work-item detail drawer, "Als Ressource übernehmen" action on stakeholder rows. New `resources` module key promoted from RESERVED to TOGGLEABLE.
+- Tenant settings: `resources` backfilled into all existing tenants' `active_modules`.
+
+### Post-deploy smoke-test checklist (manual, recommended)
+- [ ] Open Stakeholder tab → bearbeiten → "Als Ressource übernehmen" → toast says "angelegt"; do the same on a stakeholder for the same `linked_user_id` from another project → toast says "verknüpft mit existierender".
+- [ ] `/stammdaten/resources` → CRUD a resource; add an availability segment for a date range; delete it; verify list refreshes.
+- [ ] Open a work item with a phase → "Ressourcen-Allocation" → pick a resource → 50% → toast "Allocation angelegt"; change percent inline → blur → toast.
+- [ ] As tenant-admin, open `/reports/utilization` → choose a date range covering a phased work item → verify heatmap colors match the math (50% phase × 0.8 FTE = 40%); switch bucket to "Monatlich"; click CSV → file downloads with proper RFC-4180 quoting.
+- [ ] Toggle the `resources` module off in `/settings/tenant` → reload → `/stammdaten/resources` returns 404, `/reports/utilization` blocked, "Ressourcen-Allocation" section disappears from work-item drawer, "Als Ressource übernehmen" button hides on stakeholder rows.
+
+### Known follow-ups (not blocking)
+- **L1 (Low)**: Stakeholder deactivation does not propagate to derived resource (spec edge case). Manual workaround documented in QA. Future slice will add a small trigger or domain-event handler.
+- **PMO-Rolle** for the utilization report (deferred per design choice 3A) — currently tenant-admin only. Add a `pmo` role to `tenant_memberships.role` enum if customers ask.
+- **Real-Postgres CI integration test** for triggers/RLS — recurring follow-up across PROJ-12, PROJ-13, PROJ-17, PROJ-11. Live red-team probes cover it for now.
+- **Time-segmented availability** is implemented schema-wise (`resource_availabilities`) but the `utilization_report` function currently uses only `fte_default × availability_default` and ignores the segment overrides. The schema is ready; aggregation lookup of segments is a small follow-up that won't require a migration.
