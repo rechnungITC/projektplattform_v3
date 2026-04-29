@@ -36,6 +36,8 @@ yarn-error.log*
 
 # claude code personal settings
 .claude/settings.local.json
+# claude code session locks (transient runtime state)
+.claude/scheduled_tasks.lock
 
 # mcp server config (contains personal access tokens)
 .mcp.json

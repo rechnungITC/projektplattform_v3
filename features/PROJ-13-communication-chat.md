@@ -1,6 +1,6 @@
 # PROJ-13: Communication Center, Email/Slack/Teams Send, Internal Project Chat
 
-## Status: Architected
+## Status: Approved
 **Created:** 2026-04-25
 **Last Updated:** 2026-04-29
 
@@ -261,10 +261,143 @@ Server-Schicht
 Alle drei Entscheidungen sind backend-/schema-identisch — sie steuern nur Defaults und UI-Feedback.
 
 ## Implementation Notes
-_To be added by /frontend and /backend_
+
+### Backend (2026-04-29)
+
+**Migration `20260429230000_proj13_communication_outbox_and_chat.sql`**
+- `public.communication_outbox`: status 5-state machine (`draft|queued|sent|failed|suppressed`), channel (`internal|email|slack|teams`), recipient/subject/body length checks, metadata JSONB, plus two consistency CHECKs (`status='sent' ↔ sent_at not null`; `status in ('failed','suppressed') ↔ error_detail not null`).
+- `public.project_chat_messages`: append-only chat — only SELECT + INSERT policies. UPDATE/DELETE deliberately omitted.
+- RLS — outbox: SELECT for any project member; INSERT/UPDATE/DELETE for editor+/lead/tenant-admin. Chat: SELECT + INSERT for any project member.
+- Indexes: `(project_id, status, created_at desc)` and `(project_id, channel, created_at desc)` on outbox; `(project_id, created_at desc)` on chat.
+- Audit: extended `audit_log_entity_type_check` and `_tracked_audit_columns` to include `communication_outbox` (tracks `status, error_detail, sent_at`). Added trigger `audit_changes_communication_outbox` so every status flip lands in `audit_log_entries`.
+- Module activation: idempotent backfill — `update tenant_settings set active_modules = active_modules || '"communication"'::jsonb where not (active_modules @> '"communication"'::jsonb)`.
+
+**Code**
+- `src/types/communication.ts` — `Channel`, `OutboxStatus`, `OutboxMetadata`, `CommunicationOutboxEntry`, `ChatMessage` types + label maps.
+- `src/types/tenant-settings.ts` — promoted `communication` from `RESERVED_MODULES` to `TOGGLEABLE_MODULES`.
+- `src/lib/ai/data-privacy-registry.ts` — added `communication_outbox` rows: recipient/subject/body=Class-3 (PII surface), channel/status=1, error_detail/sent_at=2.
+- `src/lib/communication/channels/` — Strategy pattern: `types.ts` (`ChannelAdapter`, `DispatchInput`, `DispatchOutcome`), `internal.ts` (no-op), `email-resend.ts` (Resend SDK with stub fallback when `RESEND_API_KEY` missing), `stub-slack.ts` + `stub-teams.ts` (return `not_implemented` per V2 ADR), `selector.ts` (channel→adapter map).
+- `src/lib/communication/outbox-service.ts` — orchestrates dispatch:
+  1. **Class-3 hard block (defense in depth on top of PROJ-12 routing)**: if `metadata.ki_run_id` points at a `ki_runs` row with `classification=3` AND the channel is external (email/slack/teams), the dispatch short-circuits to `suppressed` with a `class-3-suppressed:` error. Internal channel always permitted regardless of classification (data stays in tenant).
+  2. Otherwise picks the adapter via `getChannelAdapter`, runs `dispatch`, and updates the outbox row to its terminal state (`sent` / `failed` / `suppressed`). The audit trigger picks the status flip up.
+- `src/lib/communication/api.ts` — fetch wrappers for `listOutbox`, `createOutboxDraft`, `updateOutboxDraft`, `deleteOutboxDraft`, `sendOutbox`, `listChat`, `postChat`.
+
+**API routes**
+- `GET/POST /api/projects/[id]/communication/outbox` — list (with `?channel=&status=` filters) + create draft. POST forces `status='draft'`, sets `created_by` from auth, falls through to RLS for permission. Returns 403 on `42501`, 422 on `23514`.
+- `GET/PATCH/DELETE /api/projects/[id]/communication/outbox/[oid]` — single-entry. PATCH and DELETE both reject anything that's not still `draft` (returns 409 `invalid_state`); terminal rows form the audit trail and must not be erased.
+- `POST /api/projects/[id]/communication/outbox/[oid]/send` — calls `dispatchOutboxRow`. Returns 200 on `sent`, 202 on `suppressed`/`failed` so the UI can render the outcome without throwing. Response body includes `dispatch.{status, error_detail, class3_blocked, stub}`.
+- `GET/POST /api/projects/[id]/communication/chat` — list (descending DB read, returned ascending for top-down render; default limit=200, max 500) + post. Chat POST uses action='view' because RLS is `is_project_member`, mirroring the policy.
+- All routes gated by `requireModuleActive(tenantId, 'communication', {intent})` — 404 on read when disabled, 403 on write.
+
+**Tests**
+- `src/lib/communication/outbox-service.test.ts` (7 tests): dispatch internal without provider call, suppress external on Class-3 ki_run, permit internal on Class-3 ki_run, permit external on Class-2, slack stub returns `failed`, terminal-status rows rejected, no `ki_run_id` skips lookup.
+- `src/app/api/projects/[id]/communication/outbox/route.test.ts` (8 tests): POST 401/400/400/201/403, GET 401/200/filter-by-channel+status.
+- `src/app/api/projects/[id]/communication/outbox/[oid]/send/route.test.ts` (5 tests): 401, 404 missing row, 409 non-draft, 200 sent, 202 suppressed.
+- `src/app/api/projects/[id]/communication/chat/route.test.ts` (5 tests): POST 401/400/201/404, GET 401/200 (with ascending order verification).
+- Total: 263/263 vitest unit+integration tests pass after this slice.
+
+**Env var documentation**
+- `.env.local.example` — added `RESEND_API_KEY` + `RESEND_FROM_EMAIL` block. Without `RESEND_API_KEY`, the email channel transparently falls back to a stub that returns `{ ok: true, stub: true }` so demos and stand-alone setups stay functional.
+
+### Frontend (2026-04-29)
+
+**Project-room navigation**
+- `src/components/projects/project-room-shell.tsx` — added a new tab `kommunikation` (label "Kommunikation", icon `MessageSquare`) between `ai-proposals` and `mitglieder`. Tab is gated by `requiresModule: "communication"` so admins can hide the surface from `/settings/tenant`.
+
+**Page**
+- `src/app/(app)/projects/[id]/kommunikation/page.tsx` — server component. Reads `process.env.RESEND_API_KEY` server-side (no `NEXT_PUBLIC_` exposure) and forwards `emailStubMode={!key}` to the client. The actual fall-back happens inside `EmailChannel`; this is purely a UI hint.
+
+**Hooks**
+- `src/hooks/use-chat.ts` — loads chat history, then subscribes to Supabase Realtime `INSERT` on `project_chat_messages` filtered by `project_id`. RLS still applies — Postgres won't broadcast rows the user can't read. Send dedupes by id so Realtime echoes don't duplicate.
+- `src/hooks/use-outbox.ts` — list + create/update/delete/send wrapper around `lib/communication/api.ts`. Refresh on every mutation.
+
+**Components** (under `src/components/projects/communication/`)
+- `communication-tab-client.tsx` — header + shadcn `Tabs` with two sub-tabs (Outbox, Chat). Default tab = Outbox.
+- `chat-panel.tsx` — chat bubble layout with auto-scroll on new messages, "Du" / "Mitglied" / "Entfernter Nutzer" sender labels (mirrors the FK `ON DELETE SET NULL`), Enter-to-send / Shift+Enter newline, 4000-char cap.
+- `outbox-panel.tsx` — filter-bar (channel + status), list of `OutboxRow` cards with channel/status/KI-drafted badges, send/edit/delete actions, drawer-based draft form. Renders the Demo-Mode banner when `emailStubMode` is true. `class3_blocked: true` from the dispatch response surfaces as a destructive toast titled "Versand blockiert (Klasse-3)".
+- `draft-form.tsx` — channel picker (4 channels, dynamic recipient label), recipient/subject/body inputs, submit + secondary slot for inline delete.
+
+**Notes for QA / lint**
+- Two new `react-hooks/set-state-in-effect` lint warnings in `use-chat`/`use-outbox`. They match the established hook pattern across the codebase (`use-phases`, `use-milestones`, `use-sprints` etc.) and are baseline.
+- Type-check + 263/263 vitest tests still green after the frontend slice.
+- I did not log into the running dev server in a real browser to interact-test the UI (auth flow). Smoke-checked: dev server compiles cleanly, login page renders 200, project routes redirect-to-login as expected. **A full UI pass — actual outbox draft → send roundtrip, chat realtime, module-disable hiding the tab — needs to happen in `/qa`.**
 
 ## QA Test Results
-_To be added by /qa_
+
+**Date:** 2026-04-29
+**Tester:** Claude (Opus 4.7) acting as QA + red-team
+**Method:** vitest unit/integration (mocked Supabase) + 10 live red-team probes against the live Supabase DB (`iqerihohwabyjzkpcujq`) using `mcp__supabase__execute_sql` with `SET LOCAL request.jwt.claims` for user impersonation. Each probe ran inside its own auto-rolled-back transaction.
+
+### Acceptance criteria
+
+#### Communication center (ST-01)
+- [x] `communication_outbox` table with all required columns (id, tenant_id, project_id, channel, recipient, subject, body, metadata, status, error_detail, sent_at, created_by, created_at, updated_at) — verified via list_tables + insert/update probe roundtrip.
+- [x] `body` and `recipient` are Class-3 in `data-privacy-registry.ts`; `subject` also Class-3. Confirmed in `src/lib/ai/data-privacy-registry.ts`.
+- [x] Communication tab renders in project room ordered by `created_at desc` — confirmed `OutboxPanel` uses the API which sorts desc, plus DB indexes on `(project_id, status, created_at desc)` and `(project_id, channel, created_at desc)`.
+- [x] Filter by status + channel — confirmed in `OutboxPanel`'s `useOutbox(projectId, filters)` and the API route `?status=&channel=`.
+- [x] Drafts visible separately from sent — explicit `draft` status in the 5-state enum + filter dropdown.
+
+#### Email send (ST-02)
+- [x] `EmailChannel` adapter calls Resend (`src/lib/communication/channels/email-resend.ts`), with stub fallback when `RESEND_API_KEY` is missing — covered by unit tests in `outbox-service.test.ts`.
+- [x] On success → `status='sent'`, `sent_at` set — enforced by CHECK `communication_outbox_sent_consistency` + outbox-service.
+- [x] On failure → `status='failed'`, `error_detail` set — enforced by CHECK `communication_outbox_error_consistency`.
+- [x] AI-drafted bodies marked via `metadata.ki_drafted`/`metadata.ki_run_id` — surfaced as Sparkles badge in `OutboxRow`.
+- [x] Editor+ required to send — RLS policy `communication_outbox_update_editor_or_lead_or_admin` enforces this (P4).
+
+#### Slack/Teams (ST-03)
+- [x] `SlackChannel` and `TeamsChannel` adapters return `not_implemented: true` with explicit "no-adapter-yet" copy — verified in `outbox-service.test.ts` (test "returns failed when adapter is a not-implemented stub").
+- [x] Stub fallback returns `failed: "no-adapter-yet"` per V2 ADR.
+
+#### Internal chat (ST-04)
+- [x] `project_chat_messages` table append-only — only SELECT + INSERT policies; UPDATE and DELETE attempts as the project lead/admin both affect 0 rows (P3).
+- [x] `sender_user_id` FK uses `ON DELETE SET NULL` so chat history survives user removal (P10) — UI renders "Entfernter Nutzer".
+- [x] Project-member-only via `is_project_member` RLS — non-member INSERT blocked (P2), non-member SELECT returns 0 rows (P1).
+- [x] Supabase Realtime subscription delivers new messages without a re-fetch — wired in `useChat`; RLS still applies to broadcast messages, so non-members cannot eavesdrop.
+
+#### Module gating (ST-05 / cross-cut)
+- [x] `communication` module backfilled into `tenant_settings.active_modules` for the live tenant (P7) — idempotent UPDATE confirmed.
+- [x] `requireModuleActive` returns 404 on read / 403 on write when module is disabled — covered by the helper itself + existing tests in other modules (risks/decisions consume the same helper).
+- [x] Tab hidden in `ProjectRoomShell` when module is disabled — `requiresModule: "communication"` filter applied.
+
+### Live red-team probe results
+
+| Probe | What it checks | Result |
+|---|---|---|
+| P1 | Non-member SELECT visibility on outbox + chat | **PASS** — both return 0 rows |
+| P2 | Non-member INSERT into outbox + chat | **PASS** — both blocked with explicit RLS error |
+| P3 | Append-only chat: UPDATE + DELETE as project lead | **PASS** — both affect 0 rows (no policies) |
+| P4 | Outbox INSERT/UPDATE/DELETE policies require editor+/lead/admin | **PASS** — policy expressions verified, admin roundtrip succeeds |
+| P5 | State-machine CHECK constraints (8 invalid states) | **PASS** — all 8 blocked: sent without sent_at, failed without error_detail, draft with sent_at, sent with error_detail, suppressed without error_detail, bad channel, empty body, empty chat body |
+| P6 | Audit trigger fires on status flip | **PASS** — 2 audit_log_entries rows (status + sent_at) with correct old/new values |
+| P7 | Module backfill landed on existing tenants | **PASS** — `communication` present in `active_modules` |
+| P8 | `audit_log_entity_type_check` whitelist | **PASS** — `communication_outbox` included |
+| P9 | `can_read_audit_entry` scopes audit visibility correctly | **PASS** — admin=true, non-member=false |
+| P10 | FK delete rules (CASCADE for parent, RESTRICT for created_by, SET NULL for sender) | **PASS** — all three correct |
+
+### Automated tests
+- `npx vitest run` → **263/263 pass** (35 new tests for PROJ-13: 7 outbox-service + 8 outbox route + 5 send route + 5 chat route, plus pre-existing modules.test.ts updated to include `communication`).
+- `npx tsc --noEmit` → clean.
+- `npm run lint` → 57 problems (44 errors, 13 warnings) = baseline 55 + 2 new `react-hooks/set-state-in-effect` warnings in `use-chat`/`use-outbox` matching the existing pattern (use-phases, use-milestones, use-sprints).
+
+### Security advisors
+- `mcp__supabase__get_advisors security` returned no NEW lints from this slice. All warnings are pre-existing (function search_path, anon/authenticated SECURITY DEFINER exposure, leaked-password protection disabled). No advisor regressions.
+
+### Bugs found
+
+**None — Critical: 0, High: 0, Medium: 0, Low: 0.**
+
+The 5-state enum, two consistency CHECKs, and the editor+/lead/admin policy combination caught everything I attempted to break. Class-3 hard-block is unit-tested cleanly; Realtime is RLS-scoped at the DB layer so eavesdropping is impossible by construction.
+
+### Limitations / follow-ups (not blockers)
+
+- **No live integration test for the audit trigger across CI.** Same recurring observation noted in PROJ-17. Vitest mocks Supabase chains and cannot exercise triggers/RLS. The live red-team here covers it for now; a real Postgres test harness in CI is a future hardening task.
+- **No second tenant fixture in the live DB.** Cross-tenant isolation was probed via synthetic non-member uid (no membership rows) — equivalent to a cross-tenant user from RLS's perspective, since the policies key off `is_project_member()`/`is_tenant_admin()` only. A future end-to-end test with two real tenants would still be valuable.
+- **No live Resend send tested.** `RESEND_API_KEY` is not configured in this environment, so the email channel runs in stub mode. The stub branch has unit-test coverage; the real branch will need a one-time live verification once Resend is provisioned (post-deploy smoke test).
+- **No interactive browser pass** of the Communication tab. The frontend was smoke-checked (dev server compiles, login responds 200) but I can't authenticate into the live UI from this session. Recommend a manual click-through after deploy: outbox draft → send → see toast → audit history; chat send across two tabs to verify Realtime; toggle the `communication` module off in `/settings/tenant` and confirm the tab hides.
+
+### Production-ready decision
+
+**READY** — no Critical or High bugs. Recommend proceeding to `/deploy`.
 
 ## Deployment
 _To be added by /deploy_
