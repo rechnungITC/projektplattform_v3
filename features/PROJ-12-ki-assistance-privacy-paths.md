@@ -1,6 +1,6 @@
 # PROJ-12: KI Assistance and Data-Privacy Paths
 
-## Status: Architected
+## Status: In Progress
 **Created:** 2026-04-25
 **Last Updated:** 2026-04-29
 
@@ -358,7 +358,53 @@ risks:       title (2), probability (1), impact (1) — vorhandene Risiken als N
 `classifyPayload` läuft als zweite Verteidigungslinie über den fertigen Auto-Context — falls die Allowlist erweitert wird und versehentlich ein Klasse-3-Feld enthält, blockt der Router immer noch.
 
 ## Implementation Notes
-_To be added by /frontend and /backend_
+
+### Backend (2026-04-29)
+
+**Migration applied to project iqerihohwabyjzkpcujq:**
+- `20260429160000_proj12_ki_runs_suggestions_provenance.sql` — three tables (`ki_runs`, `ki_suggestions`, `ki_provenance`) with RLS via the existing `is_project_member` / `has_project_role` / `is_tenant_admin` helpers; one SECURITY DEFINER RPC `accept_ki_suggestion_risk` that creates a risk row + provenance link + ki_acceptance audit row in one transaction.
+
+**Key implementation choices:**
+- `ki_provenance` is a separate join table (entity_type, entity_id) → suggestion. No schema churn at the entity layer; the same provenance shape will work for decisions / work_items / open_items in later slices.
+- Status enum `external_blocked` is used as a *successful-but-routed-local* tag — the run delivered suggestions, but the router refused to send Class-3 / EXTERNAL_AI_DISABLED payloads to the cloud provider. Errors are `error`; clean cloud calls are `success`.
+- Audit on KI acceptance: the `accept_ki_suggestion_risk` RPC writes one `audit_log_entries` row with `change_reason='ki_acceptance'`, `field_name='_record'`, and the full payload as `new_value`. HistoryTab + audit reports surface this directly.
+
+**npm packages added:**
+- `ai` (Vercel AI SDK v6) — provider-agnostic structured-output generation.
+- `@ai-sdk/anthropic` — direct Claude provider, reads `ANTHROPIC_API_KEY`.
+
+**Lib modules (8 new):**
+- `lib/ai/types.ts` — shared types (RiskAutoContext, RiskSuggestion, RouterRiskResult).
+- `lib/ai/data-privacy-registry.ts` — `table.column → 1|2|3` map; default-3 for unknown.
+- `lib/ai/classify.ts` — `classifyRiskAutoContext()` walks the curated context and returns max class observed.
+- `lib/ai/auto-context.ts` — server-side collector; explicit allowlist queries (no Class-3 fields requested).
+- `lib/ai/providers/types.ts` — `AIRiskProvider` interface.
+- `lib/ai/providers/stub.ts` — deterministic fake; always works without an API key.
+- `lib/ai/providers/anthropic.ts` — real call via `generateObject` with a Zod schema.
+- `lib/ai/providers/ollama.ts` — placeholder that throws; reserved for the later iteration.
+- `lib/ai/router.ts` — picks provider, classifies, logs `ki_runs`, persists `ki_suggestions`, returns the run summary.
+
+**API routes (5 new):**
+- `POST /api/projects/[id]/ki/suggest` — generate, returns run + suggestion ids.
+- `GET  /api/projects/[id]/ki/suggestions` — list with optional status filter.
+- `POST /api/ki/suggestions/[id]/accept` — atomic create entity + provenance via RPC.
+- `POST /api/ki/suggestions/[id]/reject` — conditional UPDATE; 409 if not draft.
+- `PATCH /api/ki/suggestions/[id]` — inline edit a draft suggestion's payload.
+
+**Frontend client wrapper:** `lib/ki/api.ts` (typed fetch around the 5 routes).
+
+**Types module:** `src/types/ki.ts` (`KiRun`, `KiSuggestion`, `KiProvenance`, plus enums).
+
+**Verification:**
+- `npx vitest run` — **224/224 green** (was 201; +23 new: 4 registry + 5 classify + 4 router + 4 suggest route + 5 accept route + 1 misc).
+- `npx tsc --noEmit` — clean.
+- `npm run build` — clean; new routes appear in the route table.
+- `npm run lint` — baseline 51 problems unchanged; PROJ-12 introduces zero new lint findings.
+
+**Open follow-ups (handed to /frontend):**
+- Replace `app/(app)/projects/[id]/ai-proposals/page.tsx` (currently the coming-soon card) with the real KI-Vorschläge tab: generate-button, suggestion list with inline-edit, accept/reject flow, run history.
+- Add a "Nur KI-erzeugt"-filter to the existing Risiken-Tab and a "KI-erzeugt"-badge to risk cards (left-join on `ki_provenance`).
+- Show the KI-acceptance reason as a badge in HistoryTab (currently the `change_reason` is recorded but not styled as a distinct chip).
 
 ## QA Test Results
 _To be added by /qa_
