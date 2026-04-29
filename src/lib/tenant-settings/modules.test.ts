@@ -47,6 +47,7 @@ describe("activeToggleableModules", () => {
       "decisions",
       "ai_proposals",
       "audit_reports",
+      "communication",
     ])
   })
 })

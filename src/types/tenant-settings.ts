@@ -30,6 +30,7 @@ export const TOGGLEABLE_MODULES: readonly ModuleKey[] = [
   "decisions",
   "ai_proposals",
   "audit_reports",
+  "communication",
 ] as const
 
 /** Modules that exist in the schema as future-reserved keys but are not
@@ -37,7 +38,6 @@ export const TOGGLEABLE_MODULES: readonly ModuleKey[] = [
 export const RESERVED_MODULES: readonly ModuleKey[] = [
   "connectors",
   "vendor",
-  "communication",
 ] as const
 
 export const MODULE_LABELS: Record<ModuleKey, string> = {
@@ -45,9 +45,9 @@ export const MODULE_LABELS: Record<ModuleKey, string> = {
   decisions: "Entscheidungen",
   ai_proposals: "KI-Vorschläge",
   audit_reports: "Audit-Reports",
+  communication: "Kommunikation",
   connectors: "Konnektoren",
   vendor: "Vendor",
-  communication: "Kommunikation",
 }
 
 export type DataClass = 1 | 2 | 3

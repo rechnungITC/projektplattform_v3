@@ -99,6 +99,19 @@ const REGISTRY: Record<string, DataClass> = {
   "audit_log_entries.actor_user_id": 3,
   "audit_log_entries.changed_at": 2,
   "audit_log_entries.change_reason": 1,
+
+  // -------------------- communication_outbox (PROJ-13) ------------------
+  // recipient + subject + body are PII by default — the audience and the
+  // free-text body can name people, emails, etc. Class-3-by-default so
+  // that PROJ-17's tenant export redacts them and PROJ-12 KI cannot pull
+  // outbox content into external models without explicit override.
+  "communication_outbox.recipient": 3,
+  "communication_outbox.subject": 3,
+  "communication_outbox.body": 3,
+  "communication_outbox.channel": 1,
+  "communication_outbox.status": 1,
+  "communication_outbox.error_detail": 2,
+  "communication_outbox.sent_at": 2,
 }
 
 /**
