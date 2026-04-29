@@ -1,6 +1,6 @@
 # PROJ-17: Tenant Administration — Branding, Modules, Privacy Defaults, Export, Offboarding
 
-## Status: Approved
+## Status: Deployed
 **Created:** 2026-04-25
 **Last Updated:** 2026-04-29
 
@@ -441,4 +441,18 @@ No outstanding Critical / High / Medium bugs. Three Info items remain deferred p
 3. Add a vitest integration test that exercises the audit trigger via a real (or test-DB) Postgres so future schema changes that break the trigger get caught at unit-test time. (Pattern recurs across PROJ-12 / PROJ-20 / PROJ-17 — three iterations of the same blind spot.)
 
 ## Deployment
-_To be added by /deploy_
+
+- **Production URL:** https://projektplattform-v3.vercel.app
+- **Entry points:** `/settings/tenant` (5-section admin page); module-gated visibility on `/reports/audit` (TopNav) and `/projects/[id]/{risiken,entscheidungen,ai-proposals}` (project room).
+- **Deployed:** 2026-04-29 via auto-deploy from `main`. Final pre-tag commit: `cf2f099` (H1+H2+H3 fix).
+- **Migrations applied to project iqerihohwabyjzkpcujq (Supabase):**
+  - `20260429200000_proj17_tenant_settings_and_branding.sql` — `tenants.language` + `tenants.branding`, new `tenant_settings` table with RLS + bootstrap trigger + backfill, audit-extension for both new entity types.
+  - `20260429220000_proj17_audit_trigger_pk_resolution_and_settings_rls.sql` — fix H1 + H2 + H3: `record_audit_changes()` resolves entity_id + tenant_id per `TG_TABLE_NAME`, `tenant_settings_select` widened from admin-only to tenant member.
+- **Vercel deploy status:** GitHub commit status on `cf2f099` = `success` ("Deployment has completed").
+- **Pre-deploy checks:** `npm run build` ✅; `npm run lint` baseline 55 unchanged from frontend slice; `npx vitest run` 237/237 ✅; `npx tsc --noEmit` clean ✅.
+- **Tag:** `v0.8.0-PROJ-17`.
+- **Behavior in production:** existing tenant has all 4 toggleable modules enabled, `default_class=3` (privacy-by-default), `external_provider='none'` (Stub fallback in PROJ-12 router unchanged), no retention override (730-day system default). Admin can now save changes to all five sections via `/settings/tenant`. The deferred `ANTHROPIC_API_KEY` decision from PROJ-12 still applies — set it in Vercel env to enable real Claude calls.
+- **Cross-feature unlocks now live:**
+  - PROJ-12 router consumes `tenant_settings.privacy_defaults` for unknown-field classification fallback and `ai_provider_config.model_id` / `external_provider` for provider selection.
+  - PROJ-10 retention cron iterates per tenant and reads `retention_overrides.audit_log_days`.
+- **Carried-over follow-ups (own slices):** ST-04 (GDPR export), ST-05 (offboarding), I1 (gate suggestion-id-only KI routes), I3 (vitest integration tests against real Postgres so trigger / RLS regressions surface earlier).
