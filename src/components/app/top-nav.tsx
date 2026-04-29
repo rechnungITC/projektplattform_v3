@@ -24,13 +24,17 @@ import {
   SheetTrigger,
 } from "@/components/ui/sheet"
 import { useAuth } from "@/hooks/use-auth"
+import { isModuleActive } from "@/lib/tenant-settings/modules"
 import { cn } from "@/lib/utils"
+import type { ModuleKey } from "@/types/tenant-settings"
 
 interface NavItem {
   href: string
   label: string
   icon: React.ComponentType<{ className?: string }>
   adminOnly?: boolean
+  /** PROJ-17: hide nav entry when this module is disabled for the tenant. */
+  requiresModule?: ModuleKey
   /**
    * Custom matcher for the active state. By default we use
    * `pathname === href || pathname.startsWith(href + "/")`.
@@ -57,6 +61,7 @@ const NAV_ITEMS: readonly NavItem[] = [
     label: "Audit",
     icon: FileSearch,
     adminOnly: true,
+    requiresModule: "audit_reports",
   },
   {
     href: "/settings/profile",
@@ -80,12 +85,15 @@ interface TopNavProps {
 
 export function TopNav({ operationMode = "shared" }: TopNavProps) {
   const pathname = usePathname() ?? "/"
-  const { currentRole } = useAuth()
+  const { currentRole, tenantSettings } = useAuth()
   const [mobileOpen, setMobileOpen] = React.useState(false)
 
-  const visibleItems = NAV_ITEMS.filter(
-    (item) => !item.adminOnly || currentRole === "admin"
-  )
+  const visibleItems = NAV_ITEMS.filter((item) => {
+    if (item.adminOnly && currentRole !== "admin") return false
+    if (item.requiresModule && !isModuleActive(tenantSettings, item.requiresModule))
+      return false
+    return true
+  })
 
   return (
     <header className="sticky top-0 z-40 border-b bg-background/95 backdrop-blur supports-[backdrop-filter]:bg-background/60">

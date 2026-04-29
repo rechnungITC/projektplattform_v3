@@ -1,5 +1,5 @@
-import { TenantSection } from "./tenant-section"
+import { TenantSettingsSections } from "@/components/settings/tenant/tenant-settings-sections"
 
 export default function TenantSettingsPage() {
-  return <TenantSection />
+  return <TenantSettingsSections />
 }

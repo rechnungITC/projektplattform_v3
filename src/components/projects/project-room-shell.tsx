@@ -8,6 +8,7 @@ import {
   LayoutDashboard,
   ListTodo,
   Settings as SettingsIcon,
+  Sparkles,
   Users,
   Users2,
 } from "lucide-react"
@@ -15,7 +16,10 @@ import Link from "next/link"
 import { usePathname } from "next/navigation"
 import * as React from "react"
 
+import { useAuth } from "@/hooks/use-auth"
+import { isModuleActive } from "@/lib/tenant-settings/modules"
 import { cn } from "@/lib/utils"
+import type { ModuleKey } from "@/types/tenant-settings"
 
 interface ProjectRoomShellProps {
   projectId: string
@@ -30,11 +34,14 @@ interface ProjectTab {
     | "stakeholder"
     | "risiken"
     | "entscheidungen"
+    | "ai-proposals"
     | "mitglieder"
     | "historie"
     | "einstellungen"
   label: string
   icon: React.ComponentType<{ className?: string }>
+  /** PROJ-17: hide tab when this module is disabled for the tenant. */
+  requiresModule?: ModuleKey
 }
 
 const TABS: readonly ProjectTab[] = [
@@ -42,8 +49,24 @@ const TABS: readonly ProjectTab[] = [
   { segment: "planung", label: "Planung", icon: ClipboardList },
   { segment: "backlog", label: "Backlog", icon: ListTodo },
   { segment: "stakeholder", label: "Stakeholder", icon: Users },
-  { segment: "risiken", label: "Risiken", icon: AlertTriangle },
-  { segment: "entscheidungen", label: "Entscheidungen", icon: Gavel },
+  {
+    segment: "risiken",
+    label: "Risiken",
+    icon: AlertTriangle,
+    requiresModule: "risks",
+  },
+  {
+    segment: "entscheidungen",
+    label: "Entscheidungen",
+    icon: Gavel,
+    requiresModule: "decisions",
+  },
+  {
+    segment: "ai-proposals",
+    label: "KI-Vorschläge",
+    icon: Sparkles,
+    requiresModule: "ai_proposals",
+  },
   { segment: "mitglieder", label: "Mitglieder", icon: Users2 },
   { segment: "historie", label: "Historie", icon: History },
   { segment: "einstellungen", label: "Einstellungen", icon: SettingsIcon },
@@ -54,6 +77,7 @@ export function ProjectRoomShell({
   children,
 }: ProjectRoomShellProps) {
   const pathname = usePathname() ?? ""
+  const { tenantSettings } = useAuth()
   const base = `/projects/${projectId}`
 
   function isActive(segment: ProjectTab["segment"]): boolean {
@@ -65,6 +89,10 @@ export function ProjectRoomShell({
     return pathname === tabPath || pathname.startsWith(`${tabPath}/`)
   }
 
+  const visibleTabs = TABS.filter(
+    (t) => !t.requiresModule || isModuleActive(tenantSettings, t.requiresModule)
+  )
+
   return (
     <div className="flex flex-col">
       <nav
@@ -73,7 +101,7 @@ export function ProjectRoomShell({
       >
         <div className="mx-auto w-full max-w-5xl px-4 sm:px-6">
           <ul className="flex gap-1 overflow-x-auto py-2">
-            {TABS.map((tab) => {
+            {visibleTabs.map((tab) => {
               const active = isActive(tab.segment)
               const href = tab.segment === "" ? base : `${base}/${tab.segment}`
               const Icon = tab.icon

@@ -301,6 +301,29 @@ Alle drei Entscheidungen sind backend-/schema-identisch — sie steuern nur Defa
 - ST-05 tenant offboarding (soft-delete + 30-day grace + worker + deletion_log).
 - Suggestion-id-only routes (accept/reject/edit) gated by `ai_proposals` once we add a tenant-lookup helper.
 
+### Frontend (2026-04-29)
+
+**5 sections on `/settings/tenant` (admin-gated at the page level):**
+- `BaseDataSection` — workspace name + email-domain (existing inputs) + new `language` Select with hint that the visible UI effect lands with the i18n slice + new `logo_url` (HTTPS-validated) + new `accent_color` (Hex regex with live color-swatch preview). Submits via the existing `PATCH /api/tenants/[id]` (now extended). Replaces the previous `tenant-section.tsx`.
+- `ModulesSection` — Switches for the 4 toggleable modules; reserved modules (`connectors`, `vendor`, `communication`) shown as „Demnächst" disabled rows. Saves via `updateTenantSettings` and refreshes the auth snapshot.
+- `PrivacySection` — RadioGroup for `default_class` (1 / 2 / 3 with descriptions; 3 marked „empfohlen"); shows an Alert when the user picks a more conservative class than current („Mehr Daten werden lokal verarbeitet"). Plus a numeric input for `audit_log_days` retention override; empty = system default (730).
+- `AiProviderSection` — RadioGroup for `external_provider` (`none` vs `anthropic`); when `anthropic` is picked, surfaces an optional `model_id` input with a `<datalist>` of the three current Claude models. Persistent Alert reminding that Class-3-Hard-Block is enforced by the router regardless of this setting.
+- `DangerZoneSection` — placeholder for ST-04 export and ST-05 offboarding with explanation that those need their own slices.
+
+**Module-gated nav:**
+- `TopNav` adds `requiresModule` to the nav-item shape; the audit-reports admin link disappears when that module is off.
+- `ProjectRoomShell` extended with `risks`, `decisions`, and `ai_proposals` gating. Bonus: the **previously-missing AI-Vorschläge tab is now in the project-room nav** (Sparkles icon, between Entscheidungen and Mitglieder) — gated by `ai_proposals`.
+
+**Tenant branding as CSS variable:**
+- `(app)/layout.tsx` renders `--color-brand-600` as an inline style on the root container when the tenant has a valid `accent_color`. Server-rendered to avoid FOUC. Future themed UI can read `var(--color-brand-600)` directly without further plumbing.
+
+**Verification:**
+- `npx vitest run` → **237/237 green**.
+- `npx tsc --noEmit` → clean.
+- `npm run build` → clean; route table includes `/settings/tenant`, `/api/tenants/[id]/settings`, plus the previously-existing pages.
+- Dev-server smoke probe — `/settings/tenant`, `/reports/audit`, `/projects/[id]/{risiken,entscheidungen,ai-proposals}`, and `/api/tenants/[id]/settings` all return 307 (auth-redirect via middleware) without compile errors.
+- `npm run lint` → 55 problems (was 53; +2 warnings of the existing `react-hooks/incompatible-library` pattern from `form.watch()` calls — no new rule classes, no new errors).
+
 ## QA Test Results
 _To be added by /qa_
 

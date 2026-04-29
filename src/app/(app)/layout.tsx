@@ -23,6 +23,15 @@ export default async function AppLayout({
 
   const operationMode = getOperationMode()
 
+  // PROJ-17: expose tenant accent color as a CSS variable so future themed
+  // UI can pick it up via `var(--color-brand-600)`. Server-rendered to
+  // avoid the FOUC of a client-side update.
+  const accentColor = snapshot.tenantConfig?.branding.accent_color ?? null
+  const brandStyle =
+    accentColor && /^#[0-9A-Fa-f]{6}$/.test(accentColor)
+      ? ({ ["--color-brand-600" as string]: accentColor } as React.CSSProperties)
+      : undefined
+
   return (
     <AuthProvider
       user={snapshot.user}
@@ -31,7 +40,7 @@ export default async function AppLayout({
       initialTenantId={snapshot.initialTenantId}
       initialTenantConfig={snapshot.tenantConfig}
     >
-      <div className="flex min-h-screen flex-col">
+      <div className="flex min-h-screen flex-col" style={brandStyle}>
         <TopNav operationMode={operationMode} />
         <main className="flex-1 bg-muted/20">{children}</main>
       </div>
