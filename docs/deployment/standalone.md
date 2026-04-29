@@ -105,6 +105,54 @@ recovery, and cold-restore procedures.
 | AI providers | Anthropic + Vercel AI Gateway by default | Customer choice. `EXTERNAL_AI_DISABLED=true` to block all external calls. |
 | Billing | Per-tenant on the SaaS plan | Out of scope (commercial license / support contract) |
 
+## Connector framework (PROJ-14)
+
+The connector framework (PROJ-14 plumbing slice) introduces an
+encrypted credential store at `public.tenant_secrets`, decrypted only
+in the API layer.
+
+### Required env-var
+
+| Var | Required for | Without it |
+|---|---|---|
+| `SECRETS_ENCRYPTION_KEY` | `/konnektoren` UI + per-tenant credential pflege | Every editable connector reports `error: encryption_unavailable`; tenant credentials cannot be written. Existing env-var-based defaults (RESEND_API_KEY, ANTHROPIC_API_KEY) keep working. |
+
+Generate any 32+ char random string and store it as a server secret in
+Vercel + Supabase. Never prefix `NEXT_PUBLIC_`.
+
+### Connector status enum
+
+The registry reports one of:
+
+- `adapter_missing` — code-level stub, real adapter not yet shipped (Jira, MCP in this slice).
+- `adapter_ready_unconfigured` — code shipped, no credentials set.
+- `adapter_ready_configured` — credentials present (env or tenant_secret).
+- `error` — configured but health probe failed (e.g. `encryption_unavailable`).
+
+A stand-alone deployment that runs entirely on-prem can have every
+external connector either `adapter_missing` or `adapter_ready_unconfigured`
+and still operate the platform. Only the affected surfaces (real email
+send, real KI vs stub) degrade.
+
+### Credential precedence
+
+`tenant_secrets` (per-tenant, encrypted) > env vars > stub fallback.
+Env-only defaults are convenient for stand-alone deployments where
+there's exactly one tenant; SaaS deployments prefer per-tenant secrets
+because they survive deploys and are auditable.
+
+### Rotating the encryption key
+
+Currently a manual operation:
+
+1. Add the new key as `SECRETS_ENCRYPTION_KEY_NEW` in env.
+2. Run a one-shot SQL job that decrypts every row in `tenant_secrets`
+   with the OLD key and re-encrypts with NEW.
+3. Swap `SECRETS_ENCRYPTION_KEY` to the new value; redeploy.
+
+A scheduled-rotation surface (UI + admin RPC) is a follow-up slice.
+For MVP, rotation is rare and manual.
+
 ## What's not in scope
 
 - A productized one-click installer.
