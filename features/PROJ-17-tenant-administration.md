@@ -1,6 +1,6 @@
 # PROJ-17: Tenant Administration — Branding, Modules, Privacy Defaults, Export, Offboarding
 
-## Status: In Review
+## Status: Approved
 **Created:** 2026-04-25
 **Last Updated:** 2026-04-29
 
@@ -339,7 +339,7 @@ Alle drei Entscheidungen sind backend-/schema-identisch — sie steuern nur Defa
 | `accent_color` hex `#RRGGBB` | ✅ | Zod regex on the API; UI live-preview swatch |
 | Language change applies on next reload | ⏳ Deferred per design | Stored, not yet wired to UI strings (i18n is its own slice) |
 | Accent color exposed as `--color-brand-600` | ✅ | (app)/layout.tsx server-renders the inline CSS variable when valid |
-| Audit on changes | ❌ **H1+H2** — see Bug Audit | Live UPDATE on `tenants.language` raises `null value in column "tenant_id"` from the audit trigger; `tenant_settings` UPDATE raises `null value in column "entity_id"` |
+| Audit on changes | ✅ **Resolved (H1+H2, 2026-04-29).** Trigger now resolves entity_id + tenant_id per `TG_TABLE_NAME`. Live retest: `tenants.language` `de→en` + `branding {} → {logo_url, accent_color}` write 2 audit rows; `tenant_settings.active_modules` + `privacy_defaults` updates write 2 more. All 4 carry the correct entity_id and tenant_id. |
 
 #### Active modules (ST-02)
 | AC | Result | Evidence |
@@ -347,9 +347,9 @@ Alle drei Entscheidungen sind backend-/schema-identisch — sie steuern nur Defa
 | `tenant_settings.active_modules` JSONB | ✅ | Verified live; backfill landed defaults |
 | Default modules are the 4 toggleable ones | ✅ | `risks`, `decisions`, `ai_proposals`, `audit_reports` in default value |
 | Optional reserved modules listed but disabled | ✅ | `connectors`, `vendor`, `communication` shown as „Demnächst" |
-| Disabling hides nav + APIs return 404/403 | ❌ **H3** — see Bug Audit | The 13 gated routes correctly call `requireModuleActive`, but the helper queries `tenant_settings` with the user's auth context. SELECT policy on `tenant_settings` is admin-only → non-admin members see 0 rows → helper falls open → module **stays accessible** for the only people the gate is meant to constrain |
+| Disabling hides nav + APIs return 404/403 | ✅ **Resolved (H3, 2026-04-29).** SELECT policy widened from `is_tenant_admin` to `is_tenant_member`. Non-admin members can now read `tenant_settings`, so `requireModuleActive` sees the actual `active_modules` array and gates correctly. UPDATE policy stays admin-only — threat model around who can change the settings is unchanged. |
 | Existing data preserved when module disabled | ✅ | Toggling `active_modules` doesn't touch entity tables |
-| Audit on toggles | ❌ **H1** | Same root cause as ST-01 audit failure — blocks any toggle from saving |
+| Audit on toggles | ✅ **Resolved (H1, 2026-04-29).** Same trigger fix; `active_modules` toggles now write the correct audit row. |
 
 #### Privacy default class (ST-03)
 | AC | Result | Evidence |
@@ -395,9 +395,9 @@ Alle drei Entscheidungen sind backend-/schema-identisch — sie steuern nur Defa
 | Bootstrap trigger creates tenant_settings on tenant insert | ✅ Verified by live row count |
 | Branding logo_url HTTPS-only | ✅ Zod blocks `javascript:` / `data:` / `http://` URLs at the API |
 | Branding accent_color regex | ✅ Zod regex `^#[0-9A-Fa-f]{6}$` |
-| **Audit trail on settings changes** | ❌ **H1** — audit trigger fails on UPDATE, rolling back the change |
-| **Audit trail on tenant.language/branding changes** | ❌ **H2** — same root cause |
-| **Module gate is enforced for non-admin members** | ❌ **H3** — gate silently fails open due to admin-only SELECT |
+| **Audit trail on settings changes** | ✅ **Resolved (H1).** Trigger now writes correct entity_id; verified live. |
+| **Audit trail on tenant.language/branding changes** | ✅ **Resolved (H2).** Trigger sets `tenant_id := id` for the tenants table; verified live. |
+| **Module gate is enforced for non-admin members** | ✅ **Resolved (H3).** SELECT widened to `is_tenant_member`; non-admin reads now see `active_modules` and the gate works. |
 
 ### Regression check
 
@@ -414,31 +414,31 @@ Alle drei Entscheidungen sind backend-/schema-identisch — sie steuern nur Defa
 
 | Severity | ID | Description | Fix complexity |
 |---|---|---|---|
-| **High** | H1 | **`tenant_settings` UPDATE fails universally.** The PROJ-10 audit trigger `record_audit_changes()` reads `(v_new->>'id')::uuid` for `audit_log_entries.entity_id`, but `tenant_settings`'s primary key is `tenant_id` (no `id` column). Every UPDATE that touches a tracked column raises `null value in column "entity_id"` and rolls back. **Saving any setting via the new admin UI fails with a 500.** | Low — extend `record_audit_changes()` to resolve the entity-id column per `TG_TABLE_NAME`: `tenants.id` for `tenants`, `tenant_settings.tenant_id` for `tenant_settings`, fall back to `id` for everything else. |
-| **High** | H2 | **`tenants` UPDATE fails when a tracked column changes.** Same trigger reads `(v_new->>'tenant_id')::uuid` for the audit row's tenant_id — but the `tenants` table itself has no `tenant_id` column (it IS the tenant). Pre-PROJ-17 this was fine because `tenants` had no tracked columns; PROJ-17 added `language`+`branding`, so the trigger now fires and fails on every language/branding update. UPDATE rolls back; the admin sees a 500 from `PATCH /api/tenants/[id]` whenever language or branding is changed. | Low — same fix as H1: in the trigger, set `v_tenant := (v_new->>'id')::uuid` for the `tenants` table (the tenant IS the row). |
-| **High** | H3 | **Module gating is silently disabled for non-admin members.** `tenant_settings` SELECT policy is `is_tenant_admin(tenant_id)`. The `requireModuleActive` helper falls back to "module active" when settings is null (defensive default). Combined: a non-admin member's call to a gated API route reads `tenant_settings` → 0 rows under their auth → helper returns null → module appears active. Effect: an admin can disable `risks` in the UI, but every non-admin member's call to `/api/projects/[id]/risks` keeps returning 200. The same applies to nav-filtering: `useAuth().tenantSettings` is null for non-admin members, so `isModuleActive(null, …)` returns true, and the Risiken/Entscheidungen/KI-Vorschläge tabs stay visible in their TopNav and ProjectRoomShell. **The entire ST-02 spec contract is not enforced for the only users it's supposed to constrain.** | Low — change the `tenant_settings_select` RLS policy from `is_tenant_admin(tenant_id)` to `is_tenant_member(tenant_id)`. UPDATE policy stays admin-only, so the threat model around who can change the settings is unchanged. |
+| ~~High~~ Resolved | H1 | ~~tenant_settings UPDATE fails universally~~ **Fixed 2026-04-29.** Migration `20260429220000_proj17_audit_trigger_pk_resolution_and_settings_rls.sql` extends `record_audit_changes()` with a CASE on `TG_TABLE_NAME`: `tenant_settings` uses `tenant_id` for both `entity_id` and `tenant_id`. Live retest: UPDATE on `active_modules` + `privacy_defaults` succeeded with two correct audit rows (entity_id = tenant_id, both fields tracked). | — |
+| ~~High~~ Resolved | H2 | ~~tenants UPDATE fails when language/branding change~~ **Fixed 2026-04-29 (same migration).** Trigger now sets `entity_id := id` and `tenant_id := id` for the `tenants` table — the tenant IS the row. Live retest: UPDATE on `language` (de→en) + `branding` ({} → full object) succeeded with two correct audit rows. | — |
+| ~~High~~ Resolved | H3 | ~~Module gating silently disabled for non-admin members~~ **Fixed 2026-04-29 (same migration).** `tenant_settings_select_admin` policy dropped, replaced with `tenant_settings_select_member` using `public.is_tenant_member(tenant_id)`. Non-admin tenant members can now read `active_modules` so `requireModuleActive` and `isModuleActive` see the real value and gate correctly in both API and UI. UPDATE policy stays admin-only — change-rights are unchanged. Live retest: cross-tenant non-member still sees 0 rows (RLS isolation holds); admin still sees their own row. | — |
 | Info | I1 | Suggestion-id-only routes (accept/reject/edit on `/api/ki/suggestions/[id]/*`) are still not gated by `ai_proposals`. Documented as a known follow-up from the backend slice — same scope, same trade-off. | — |
 | Info | I2 | The `tenants` and `tenant_settings` audit trail reads work for admins; non-admins are explicitly hidden by `can_read_audit_entry`'s `false` branch. Once H1/H2 are fixed, the audit rows that get inserted will be admin-readable. Until then, no audit rows exist for these entity types because the UPDATE itself fails. | — |
 | Info | I3 | E2E test for the settings flow not written (project-wide E2E gap). Existing vitest mocks bypass the trigger so they don't catch H1/H2. | — |
 
 ### Production-Ready Decision
 
-**NOT READY.**
+**READY** for status `Approved` → `Deployed`.
 
-H1 + H2 + H3 all share the same shape as PROJ-12 H1/H2 and PROJ-20 H1/M1: a feature ships with a structural mismatch between RLS / triggers and the new table-shape, and the unit-test mocks don't catch it because they don't exercise the trigger / RLS path. The pattern is now familiar: the second-order test (live DB red-team) catches it, the fix is small and localized.
+H1 + H2 + H3 all closed in one migration (Pfad A) that mirrors the established fix pattern from PROJ-12 / PROJ-20: structural RLS / trigger mismatch caught by the live red-team, fixed locally. Verified end-to-end:
+- `tenant_settings` UPDATE writes 2 correct audit rows (entity_id + tenant_id both = tenant_id).
+- `tenants` UPDATE for `language` + `branding` writes 2 correct audit rows (entity_id + tenant_id both = id).
+- Cross-tenant SELECT isolation holds (non-member still sees 0 rows).
+- Admin still sees their own settings via the wider `is_tenant_member` predicate.
+- UPDATE on `tenant_settings` remains admin-only (policy split into select-member / update-admin).
+- Vitest 237/237 still green; tsc + build clean.
 
-H1 + H2 are blocking — every admin save in the new settings UI fails today. H3 turns ST-02's main promise (module gating) into security theater for non-admins. All three need to land before deploy.
-
-**Recommended next step:** `/backend` for one migration that:
-1. Updates `record_audit_changes()` to resolve entity_id and tenant_id correctly per table (closes H1 + H2).
-2. Replaces `tenant_settings_select_admin` with `tenant_settings_select_member` using `is_tenant_member(tenant_id)` (closes H3).
-
-Then re-run `/qa`.
+No outstanding Critical / High / Medium bugs. Three Info items remain deferred per locked design or as project-wide gaps.
 
 ### Suggested follow-ups (not blockers)
 1. I1 — gate the suggestion-id-only KI routes once we add a tenant-lookup helper.
 2. I3 — Playwright E2E for the settings flow once test infra exists.
-3. Add a vitest integration test that exercises the audit trigger via a real (or test-DB) Postgres so future schema changes that break the trigger get caught at unit-test time.
+3. Add a vitest integration test that exercises the audit trigger via a real (or test-DB) Postgres so future schema changes that break the trigger get caught at unit-test time. (Pattern recurs across PROJ-12 / PROJ-20 / PROJ-17 — three iterations of the same blind spot.)
 
 ## Deployment
 _To be added by /deploy_
