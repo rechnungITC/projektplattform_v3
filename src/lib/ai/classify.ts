@@ -20,37 +20,46 @@ function bumpMax(current: DataClass, candidate: DataClass): DataClass {
 
 function classifyRecord(
   table: string,
-  record: Record<string, unknown>
+  record: Record<string, unknown>,
+  tenantDefault: DataClass
 ): DataClass {
   let max: DataClass = 1
   for (const [key, value] of Object.entries(record)) {
     if (value === null || value === undefined || value === "") continue
-    max = bumpMax(max, classifyField(table, key))
+    max = bumpMax(max, classifyField(table, key, tenantDefault))
     if (max === 3) return 3
   }
   return max
 }
 
-export function classifyRiskAutoContext(ctx: RiskAutoContext): DataClass {
+/**
+ * `tenantDefault` (PROJ-17) is the fallback class for *unknown* fields.
+ * Defaults to 3 (most conservative) when not provided. Known Class-3
+ * fields always stay Class 3 regardless of the tenant default.
+ */
+export function classifyRiskAutoContext(
+  ctx: RiskAutoContext,
+  tenantDefault: DataClass = 3
+): DataClass {
   let max: DataClass = 1
 
-  max = bumpMax(max, classifyRecord("projects", ctx.project))
+  max = bumpMax(max, classifyRecord("projects", ctx.project, tenantDefault))
   if (max === 3) return 3
 
   for (const phase of ctx.phases) {
-    max = bumpMax(max, classifyRecord("phases", phase))
+    max = bumpMax(max, classifyRecord("phases", phase, tenantDefault))
     if (max === 3) return 3
   }
   for (const milestone of ctx.milestones) {
-    max = bumpMax(max, classifyRecord("milestones", milestone))
+    max = bumpMax(max, classifyRecord("milestones", milestone, tenantDefault))
     if (max === 3) return 3
   }
   for (const item of ctx.work_items) {
-    max = bumpMax(max, classifyRecord("work_items", item))
+    max = bumpMax(max, classifyRecord("work_items", item, tenantDefault))
     if (max === 3) return 3
   }
   for (const risk of ctx.existing_risks) {
-    max = bumpMax(max, classifyRecord("risks", risk))
+    max = bumpMax(max, classifyRecord("risks", risk, tenantDefault))
     if (max === 3) return 3
   }
 

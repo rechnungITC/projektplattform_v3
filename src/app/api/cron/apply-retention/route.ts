@@ -1,15 +1,25 @@
 import { NextResponse } from "next/server"
 
 import { createAdminClient } from "@/lib/supabase/admin"
+import type { RetentionOverrides } from "@/types/tenant-settings"
 
 import { apiError } from "../../_lib/route-helpers"
 
-// PROJ-10 — daily cron that purges audit_log_entries older than the policy.
-// Default 730 days. Per-tenant overrides via PROJ-17's tenant_settings come
-// later — for now a single global cutoff applies.
-// Triggered by Vercel Cron with `Authorization: Bearer ${CRON_SECRET}`.
+// PROJ-10 + PROJ-17 — daily cron that purges audit_log_entries older than
+// each tenant's policy. PROJ-17 introduced `tenant_settings.retention_overrides
+// .audit_log_days` — when set, that wins for the tenant; otherwise the system
+// default of 730 days applies. Triggered by Vercel Cron with
+// `Authorization: Bearer ${CRON_SECRET}`.
 
-const RETENTION_DAYS = 730
+const SYSTEM_DEFAULT_RETENTION_DAYS = 730
+const MS_PER_DAY = 24 * 60 * 60 * 1000
+
+interface PerTenantPurge {
+  tenant_id: string
+  retention_days: number
+  cutoff: string
+  purged: number
+}
 
 export async function GET(request: Request) {
   const expected = process.env.CRON_SECRET
@@ -25,24 +35,60 @@ export async function GET(request: Request) {
     return apiError("unauthorized", "Invalid or missing cron secret.", 401)
   }
 
-  const cutoff = new Date(
-    Date.now() - RETENTION_DAYS * 24 * 60 * 60 * 1000
-  ).toISOString()
-
   const supabase = createAdminClient()
-  const { data, error, count } = await supabase
-    .from("audit_log_entries")
-    .delete({ count: "exact" })
-    .lt("changed_at", cutoff)
-    .select("id")
 
-  if (error) {
-    return apiError("delete_failed", error.message, 500)
+  // Pull all tenants + their per-tenant retention override (if any).
+  const { data: tenants, error: tenantsErr } = await supabase
+    .from("tenants")
+    .select(
+      "id, tenant_settings!inner(retention_overrides)"
+    )
+
+  if (tenantsErr) {
+    return apiError("read_failed", tenantsErr.message, 500)
+  }
+
+  const reports: PerTenantPurge[] = []
+  let totalPurged = 0
+
+  for (const row of tenants ?? []) {
+    const tenantId = row.id as string
+    const tsRows = row.tenant_settings as
+      | Array<{ retention_overrides: RetentionOverrides | null }>
+      | { retention_overrides: RetentionOverrides | null }
+      | null
+    const overrides = Array.isArray(tsRows) ? tsRows[0] : tsRows
+    const tenantDays = overrides?.retention_overrides?.audit_log_days
+    const retentionDays =
+      typeof tenantDays === "number" && tenantDays > 0
+        ? tenantDays
+        : SYSTEM_DEFAULT_RETENTION_DAYS
+    const cutoff = new Date(Date.now() - retentionDays * MS_PER_DAY).toISOString()
+
+    const { data, error, count } = await supabase
+      .from("audit_log_entries")
+      .delete({ count: "exact" })
+      .eq("tenant_id", tenantId)
+      .lt("changed_at", cutoff)
+      .select("id")
+
+    if (error) {
+      return apiError("delete_failed", error.message, 500)
+    }
+
+    const purged = count ?? data?.length ?? 0
+    totalPurged += purged
+    reports.push({
+      tenant_id: tenantId,
+      retention_days: retentionDays,
+      cutoff,
+      purged,
+    })
   }
 
   return NextResponse.json({
     ok: true,
-    cutoff,
-    purged: count ?? data?.length ?? 0,
+    total_purged: totalPurged,
+    tenants: reports,
   })
 }

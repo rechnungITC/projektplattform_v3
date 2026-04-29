@@ -38,6 +38,15 @@ function buildSupabaseMock(opts: {
       if (table === "ki_suggestions") {
         return insertSuggestionsChain
       }
+      if (table === "tenant_settings") {
+        // Empty settings => router uses defaults (no tenant override).
+        const chain: { select: unknown; eq: unknown; maybeSingle: unknown } = {
+          select: () => chain,
+          eq: () => chain,
+          maybeSingle: async () => ({ data: null, error: null }),
+        }
+        return chain
+      }
       throw new Error(`unexpected table ${table}`)
     }),
     _insertRunChain: insertRunChain,

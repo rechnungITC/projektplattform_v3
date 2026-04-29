@@ -3,6 +3,7 @@ import { z } from "zod"
 
 import { collectRiskAutoContext } from "@/lib/ai/auto-context"
 import { invokeRiskGeneration } from "@/lib/ai/router"
+import { requireModuleActive } from "@/lib/tenant-settings/server"
 
 import {
   apiError,
@@ -59,6 +60,14 @@ export async function POST(request: Request, ctx: Ctx) {
 
   const access = await requireProjectAccess(supabase, projectId, userId, "edit")
   if (access.error) return access.error
+
+  const moduleDenial = await requireModuleActive(
+    supabase,
+    access.project.tenant_id,
+    "ai_proposals",
+    { intent: "write" }
+  )
+  if (moduleDenial) return moduleDenial
 
   let context
   try {

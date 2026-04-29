@@ -10,6 +10,12 @@ import type {
   Tenant,
   TenantMembership,
 } from "@/types/auth"
+import type {
+  ResolvedTenantConfig,
+  TenantBranding,
+  TenantLanguage,
+  TenantSettings,
+} from "@/types/tenant-settings"
 
 const ACTIVE_TENANT_COOKIE = "active_tenant_id"
 
@@ -19,6 +25,10 @@ interface AuthContextValue {
   memberships: TenantMembership[]
   currentTenant: Tenant | null
   currentRole: Role | null
+  /** PROJ-17 — resolved settings + branding + language for the active tenant. */
+  tenantSettings: TenantSettings | null
+  tenantLanguage: TenantLanguage
+  tenantBranding: TenantBranding
   setCurrentTenant: (tenantId: string) => void
   refresh: () => Promise<void>
 }
@@ -30,6 +40,8 @@ interface AuthProviderProps {
   initialProfile: Profile | null
   initialMemberships: TenantMembership[]
   initialTenantId: string | null
+  /** PROJ-17 — initial tenant+settings snapshot from the server layout. */
+  initialTenantConfig: ResolvedTenantConfig | null
   children: React.ReactNode
 }
 
@@ -54,11 +66,14 @@ export function AuthProvider({
   initialProfile,
   initialMemberships,
   initialTenantId,
+  initialTenantConfig,
   children,
 }: AuthProviderProps) {
   const [profile, setProfile] = React.useState<Profile | null>(initialProfile)
   const [memberships, setMemberships] =
     React.useState<TenantMembership[]>(initialMemberships)
+  const [tenantConfig, setTenantConfig] =
+    React.useState<ResolvedTenantConfig | null>(initialTenantConfig)
 
   const [currentTenantId, setCurrentTenantId] = React.useState<string | null>(
     () => {
@@ -126,6 +141,42 @@ export function AuthProvider({
         setCurrentTenantId(normalized[0]?.tenant_id ?? null)
       }
     }
+
+    // PROJ-17: refresh tenant_settings + branding for the active tenant.
+    if (currentTenantId) {
+      const [tenantBaseRes, tenantSettingsRes] = await Promise.all([
+        supabase
+          .from("tenants")
+          .select("id, language, branding")
+          .eq("id", currentTenantId)
+          .maybeSingle(),
+        supabase
+          .from("tenant_settings")
+          .select(
+            "tenant_id, active_modules, privacy_defaults, ai_provider_config, retention_overrides, created_at, updated_at"
+          )
+          .eq("tenant_id", currentTenantId)
+          .maybeSingle(),
+      ])
+      const base = tenantBaseRes.data as
+        | { id: string; language: TenantLanguage; branding: TenantBranding }
+        | null
+      const settings = tenantSettingsRes.data as TenantSettings | null
+      if (base && settings) {
+        setTenantConfig({
+          tenant_id: base.id,
+          language: base.language,
+          branding: base.branding ?? {},
+          settings,
+        })
+      } else if (!settings) {
+        // Tenant exists but settings missing (RLS-hidden for non-admins).
+        // Keep the previous snapshot or null out so consumers fail open.
+        setTenantConfig(null)
+      }
+    } else {
+      setTenantConfig(null)
+    }
   }, [user.id, currentTenantId])
 
   const currentMembership = React.useMemo(
@@ -140,10 +191,21 @@ export function AuthProvider({
       memberships,
       currentTenant: currentMembership?.tenant ?? null,
       currentRole: currentMembership?.role ?? null,
+      tenantSettings: tenantConfig?.settings ?? null,
+      tenantLanguage: tenantConfig?.language ?? "de",
+      tenantBranding: tenantConfig?.branding ?? {},
       setCurrentTenant,
       refresh,
     }),
-    [user, profile, memberships, currentMembership, setCurrentTenant, refresh]
+    [
+      user,
+      profile,
+      memberships,
+      currentMembership,
+      tenantConfig,
+      setCurrentTenant,
+      refresh,
+    ]
   )
 
   return <AuthContext.Provider value={value}>{children}</AuthContext.Provider>

@@ -1,6 +1,8 @@
 import { NextResponse } from "next/server"
 import { z } from "zod"
 
+import { requireModuleActive } from "@/lib/tenant-settings/server"
+
 import {
   apiError,
   getAuthenticatedUserId,
@@ -33,6 +35,14 @@ export async function GET(_request: Request, ctx: Ctx) {
 
   const access = await requireProjectAccess(supabase, projectId, userId, "view")
   if (access.error) return access.error
+
+  const moduleDenial = await requireModuleActive(
+    supabase,
+    access.project.tenant_id,
+    "decisions",
+    { intent: "read" }
+  )
+  if (moduleDenial) return moduleDenial
 
   const { data, error } = await supabase
     .from("decisions")

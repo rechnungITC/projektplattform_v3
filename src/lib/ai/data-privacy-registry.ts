@@ -103,12 +103,22 @@ const REGISTRY: Record<string, DataClass> = {
 
 /**
  * Resolve the privacy class for a single `<table>.<column>` reference.
- * Returns 3 (the safe default) for unknown fields — adding a new column
- * to a tracked table without registering it here defaults to local-only
- * routing, which is the right failure direction.
+ *
+ * `tenantDefault` (PROJ-17) overrides the system fallback for *unknown*
+ * fields only — known Class-3 entries always stay Class 3. The tenant
+ * cannot deklassify a registered field, only relax the safety net for
+ * fields the registry doesn't list yet.
+ *
+ * System default (no tenant override): 3.
  */
-export function classifyField(table: string, column: string): DataClass {
-  return REGISTRY[`${table}.${column}`] ?? 3
+export function classifyField(
+  table: string,
+  column: string,
+  tenantDefault: DataClass = 3
+): DataClass {
+  const known = REGISTRY[`${table}.${column}`]
+  if (known !== undefined) return known
+  return tenantDefault
 }
 
 /**

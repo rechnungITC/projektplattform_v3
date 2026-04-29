@@ -7,6 +7,23 @@ import {
   requireTenantAdmin,
 } from "../../_lib/route-helpers"
 
+const brandingSchema = z
+  .object({
+    logo_url: z
+      .string()
+      .url()
+      .startsWith("https://", "Logo URL must be HTTPS")
+      .max(500)
+      .nullable()
+      .optional(),
+    accent_color: z
+      .string()
+      .regex(/^#[0-9A-Fa-f]{6}$/, "Accent color must be a #RRGGBB hex string")
+      .nullable()
+      .optional(),
+  })
+  .strict()
+
 // At least one field must be provided. We validate "at least one" via
 // .refine() AFTER the field-level checks so per-field error messages still
 // surface for the common case.
@@ -14,10 +31,16 @@ const tenantPatchSchema = z
   .object({
     name: z.string().min(1).max(255).optional(),
     domain: z.string().min(1).max(255).nullable().optional(),
+    language: z.enum(["de", "en"]).optional(),
+    branding: brandingSchema.optional(),
   })
   .refine(
-    (val) => val.name !== undefined || val.domain !== undefined,
-    { message: "Provide at least one of: name, domain." }
+    (val) =>
+      val.name !== undefined ||
+      val.domain !== undefined ||
+      val.language !== undefined ||
+      val.branding !== undefined,
+    { message: "Provide at least one of: name, domain, language, branding." }
   )
 
 interface RouteContext {
@@ -61,18 +84,20 @@ export async function PATCH(request: Request, context: RouteContext) {
   if (denied) return denied
 
   // Build the update payload from only-provided fields.
-  const updates: Record<string, string | null> = {}
+  const updates: Record<string, unknown> = {}
   if (parsed.data.name !== undefined) updates.name = parsed.data.name
   if (parsed.data.domain !== undefined) {
     updates.domain =
       parsed.data.domain === null ? null : parsed.data.domain.trim().toLowerCase()
   }
+  if (parsed.data.language !== undefined) updates.language = parsed.data.language
+  if (parsed.data.branding !== undefined) updates.branding = parsed.data.branding
 
   const { data, error } = await supabase
     .from("tenants")
     .update(updates)
     .eq("id", tenantId)
-    .select("id, name, domain, created_at, created_by")
+    .select("id, name, domain, language, branding, created_at, created_by")
     .maybeSingle()
 
   if (error) {

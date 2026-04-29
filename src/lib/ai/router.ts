@@ -22,6 +22,11 @@
 import type { SupabaseClient } from "@supabase/supabase-js"
 
 import { isExternalAIBlocked } from "@/lib/operation-mode"
+import type {
+  AiProviderConfig,
+  DataClass as TenantDataClass,
+  PrivacyDefaults,
+} from "@/types/tenant-settings"
 
 import { classifyRiskAutoContext } from "./classify"
 import { AnthropicRiskProvider } from "./providers/anthropic"
@@ -49,15 +54,54 @@ interface ProviderChoice {
   externalBlocked: boolean
 }
 
-function selectProvider(classification: DataClass): ProviderChoice {
+interface TenantOverrides {
+  privacyDefault: TenantDataClass
+  providerConfig: AiProviderConfig
+}
+
+const DEFAULT_TENANT_OVERRIDES: TenantOverrides = {
+  privacyDefault: 3,
+  providerConfig: { external_provider: "none" },
+}
+
+async function loadTenantOverrides(
+  supabase: SupabaseClient,
+  tenantId: string
+): Promise<TenantOverrides> {
+  const { data } = await supabase
+    .from("tenant_settings")
+    .select("privacy_defaults, ai_provider_config")
+    .eq("tenant_id", tenantId)
+    .maybeSingle()
+
+  if (!data) return DEFAULT_TENANT_OVERRIDES
+
+  const privacy = data.privacy_defaults as PrivacyDefaults | null
+  const provider = data.ai_provider_config as AiProviderConfig | null
+  return {
+    privacyDefault: privacy?.default_class ?? 3,
+    providerConfig: provider ?? { external_provider: "none" },
+  }
+}
+
+function selectProvider(
+  classification: DataClass,
+  tenantConfig: AiProviderConfig
+): ProviderChoice {
+  // `externalBlocked` semantics: the run *wanted* to go external but was
+  // blocked. That's the case for env-level kill-switch (EXTERNAL_AI_DISABLED)
+  // and Class-3 payloads. A tenant config of external_provider='none' is a
+  // deliberate config choice — not a block — so it doesn't flip this flag.
   const externalDisabledByEnv = isExternalAIBlocked()
   const externalDisabledByClass = classification === 3
-  const wantsExternal = !externalDisabledByEnv && !externalDisabledByClass
+  const tenantPicksLocal = tenantConfig.external_provider === "none"
+  const wantsExternal =
+    !externalDisabledByEnv && !externalDisabledByClass && !tenantPicksLocal
   const apiKeyPresent = Boolean(process.env.ANTHROPIC_API_KEY)
 
   if (wantsExternal && apiKeyPresent) {
     return {
-      provider: new AnthropicRiskProvider(),
+      provider: new AnthropicRiskProvider(tenantConfig.model_id),
       externalBlocked: false,
     }
   }
@@ -75,8 +119,15 @@ export async function invokeRiskGeneration({
   context,
   count,
 }: InvokeRiskGenerationArgs): Promise<RouterRiskResult> {
-  const classification = classifyRiskAutoContext(context)
-  const { provider, externalBlocked } = selectProvider(classification)
+  const overrides = await loadTenantOverrides(supabase, tenantId)
+  const classification = classifyRiskAutoContext(
+    context,
+    overrides.privacyDefault as DataClass
+  )
+  const { provider, externalBlocked } = selectProvider(
+    classification,
+    overrides.providerConfig
+  )
 
   // Insert the run row up-front so we have a stable id even if the
   // provider call fails. Status is filled in after we know the outcome.

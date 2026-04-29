@@ -1,6 +1,8 @@
 import { NextResponse } from "next/server"
 import { z } from "zod"
 
+import { requireModuleActive } from "@/lib/tenant-settings/server"
+
 import {
   apiError,
   getAuthenticatedUserId,
@@ -46,6 +48,14 @@ export async function GET(request: Request, ctx: Ctx) {
 
   const access = await requireProjectAccess(supabase, projectId, userId, "view")
   if (access.error) return access.error
+
+  const moduleDenial = await requireModuleActive(
+    supabase,
+    access.project.tenant_id,
+    "decisions",
+    { intent: "read" }
+  )
+  if (moduleDenial) return moduleDenial
 
   const url = new URL(request.url)
   const includeRevised = url.searchParams.get("include_revised") === "true"
@@ -95,6 +105,14 @@ export async function POST(request: Request, ctx: Ctx) {
 
   const access = await requireProjectAccess(supabase, projectId, userId, "edit")
   if (access.error) return access.error
+
+  const moduleDenial = await requireModuleActive(
+    supabase,
+    access.project.tenant_id,
+    "decisions",
+    { intent: "write" }
+  )
+  if (moduleDenial) return moduleDenial
 
   const data = parsed.data
 

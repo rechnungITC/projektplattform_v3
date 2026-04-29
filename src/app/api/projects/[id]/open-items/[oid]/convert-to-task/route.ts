@@ -1,6 +1,8 @@
 import { NextResponse } from "next/server"
 import { z } from "zod"
 
+import { requireModuleActive } from "@/lib/tenant-settings/server"
+
 import {
   apiError,
   getAuthenticatedUserId,
@@ -29,6 +31,14 @@ export async function POST(_request: Request, ctx: Ctx) {
 
   const access = await requireProjectAccess(supabase, projectId, userId, "edit")
   if (access.error) return access.error
+
+  const moduleDenial = await requireModuleActive(
+    supabase,
+    access.project.tenant_id,
+    "decisions",
+    { intent: "write" }
+  )
+  if (moduleDenial) return moduleDenial
 
   const { data: result, error: rpcErr } = await supabase
     .rpc("convert_open_item_to_task", { p_open_item_id: oid })

@@ -1,6 +1,7 @@
 import { NextResponse } from "next/server"
 import { z } from "zod"
 
+import { requireModuleActive } from "@/lib/tenant-settings/server"
 import { RISK_STATUSES } from "@/types/risk"
 
 import {
@@ -51,6 +52,14 @@ export async function GET(_request: Request, ctx: Ctx) {
   const access = await requireProjectAccess(supabase, projectId, userId, "view")
   if (access.error) return access.error
 
+  const moduleDenial = await requireModuleActive(
+    supabase,
+    access.project.tenant_id,
+    "risks",
+    { intent: "read" }
+  )
+  if (moduleDenial) return moduleDenial
+
   const { data, error } = await supabase
     .from("risks")
     .select(SELECT_COLUMNS)
@@ -98,6 +107,14 @@ export async function PATCH(request: Request, ctx: Ctx) {
   const access = await requireProjectAccess(supabase, projectId, userId, "edit")
   if (access.error) return access.error
 
+  const moduleDenial = await requireModuleActive(
+    supabase,
+    access.project.tenant_id,
+    "risks",
+    { intent: "write" }
+  )
+  if (moduleDenial) return moduleDenial
+
   const data = parsed.data
   const update: Record<string, unknown> = {}
   if (data.title !== undefined) update.title = data.title.trim()
@@ -144,6 +161,14 @@ export async function DELETE(_request: Request, ctx: Ctx) {
 
   const access = await requireProjectAccess(supabase, projectId, userId, "edit")
   if (access.error) return access.error
+
+  const moduleDenial = await requireModuleActive(
+    supabase,
+    access.project.tenant_id,
+    "risks",
+    { intent: "write" }
+  )
+  if (moduleDenial) return moduleDenial
 
   const { error } = await supabase
     .from("risks")

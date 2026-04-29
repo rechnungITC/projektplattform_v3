@@ -2,6 +2,12 @@ import { cookies } from "next/headers"
 
 import { createClient } from "@/lib/supabase/server"
 import type { Profile, Tenant, TenantMembership } from "@/types/auth"
+import type {
+  ResolvedTenantConfig,
+  TenantBranding,
+  TenantLanguage,
+  TenantSettings,
+} from "@/types/tenant-settings"
 
 const ACTIVE_TENANT_COOKIE = "active_tenant_id"
 
@@ -12,6 +18,13 @@ export interface ServerAuthSnapshot {
   profile: Profile | null
   memberships: TenantMembership[]
   initialTenantId: string | null
+  /**
+   * Resolved tenant + settings snapshot for the currently active tenant.
+   * Null when the user has no active tenant (no memberships) or when the
+   * lookup failed (e.g. brand-new tenant whose settings row hasn't backfilled
+   * yet — the bootstrap trigger covers normal cases).
+   */
+  tenantConfig: ResolvedTenantConfig | null
 }
 
 /**
@@ -56,10 +69,45 @@ export async function loadServerAuth(): Promise<ServerAuthSnapshot | null> {
       ? cookieTenantId
       : memberships[0]?.tenant_id ?? null
 
+  let tenantConfig: ResolvedTenantConfig | null = null
+  if (initialTenantId) {
+    const [tenantBaseRes, tenantSettingsRes] = await Promise.all([
+      supabase
+        .from("tenants")
+        .select("id, language, branding")
+        .eq("id", initialTenantId)
+        .maybeSingle(),
+      supabase
+        .from("tenant_settings")
+        .select(
+          "tenant_id, active_modules, privacy_defaults, ai_provider_config, retention_overrides, created_at, updated_at"
+        )
+        .eq("tenant_id", initialTenantId)
+        .maybeSingle(),
+    ])
+    const base = tenantBaseRes.data as
+      | {
+          id: string
+          language: TenantLanguage
+          branding: TenantBranding
+        }
+      | null
+    const settings = tenantSettingsRes.data as TenantSettings | null
+    if (base && settings) {
+      tenantConfig = {
+        tenant_id: base.id,
+        language: base.language,
+        branding: base.branding ?? {},
+        settings,
+      }
+    }
+  }
+
   return {
     user,
     profile: (profileRes.data as Profile | null) ?? null,
     memberships,
     initialTenantId,
+    tenantConfig,
   }
 }

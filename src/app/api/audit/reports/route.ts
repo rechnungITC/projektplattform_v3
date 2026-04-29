@@ -1,6 +1,7 @@
 import { NextResponse } from "next/server"
 import { z } from "zod"
 
+import { requireModuleActive } from "@/lib/tenant-settings/server"
 import { AUDIT_ENTITY_TYPES } from "@/types/audit"
 
 import {
@@ -53,6 +54,14 @@ export async function GET(request: Request) {
   }
 
   const f = parsed.data
+  const moduleDenial = await requireModuleActive(
+    supabase,
+    f.tenant_id,
+    "audit_reports",
+    { intent: "read" }
+  )
+  if (moduleDenial) return moduleDenial
+
   let query = supabase
     .from("audit_log_entries")
     .select(

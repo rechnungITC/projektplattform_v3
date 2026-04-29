@@ -1,6 +1,7 @@
 import { NextResponse } from "next/server"
 import { z } from "zod"
 
+import { requireModuleActive } from "@/lib/tenant-settings/server"
 import { RISK_STATUSES } from "@/types/risk"
 
 import {
@@ -41,6 +42,14 @@ export async function GET(request: Request, ctx: Ctx) {
 
   const access = await requireProjectAccess(supabase, projectId, userId, "view")
   if (access.error) return access.error
+
+  const moduleDenial = await requireModuleActive(
+    supabase,
+    access.project.tenant_id,
+    "risks",
+    { intent: "read" }
+  )
+  if (moduleDenial) return moduleDenial
 
   const url = new URL(request.url)
   const statusFilter = url.searchParams.get("status")
@@ -94,6 +103,14 @@ export async function POST(request: Request, ctx: Ctx) {
 
   const access = await requireProjectAccess(supabase, projectId, userId, "edit")
   if (access.error) return access.error
+
+  const moduleDenial = await requireModuleActive(
+    supabase,
+    access.project.tenant_id,
+    "risks",
+    { intent: "write" }
+  )
+  if (moduleDenial) return moduleDenial
 
   const data = parsed.data
   const insertPayload = {

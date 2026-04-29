@@ -1,6 +1,8 @@
 import { NextResponse } from "next/server"
 import { z } from "zod"
 
+import { requireModuleActive } from "@/lib/tenant-settings/server"
+
 import {
   apiError,
   getAuthenticatedUserId,
@@ -50,6 +52,14 @@ export async function GET(_request: Request, ctx: Ctx) {
   const access = await requireProjectAccess(supabase, projectId, userId, "view")
   if (access.error) return access.error
 
+  const moduleDenial = await requireModuleActive(
+    supabase,
+    access.project.tenant_id,
+    "decisions",
+    { intent: "read" }
+  )
+  if (moduleDenial) return moduleDenial
+
   const { data, error } = await supabase
     .from("open_items")
     .select(SELECT_COLUMNS)
@@ -96,6 +106,14 @@ export async function PATCH(request: Request, ctx: Ctx) {
 
   const access = await requireProjectAccess(supabase, projectId, userId, "edit")
   if (access.error) return access.error
+
+  const moduleDenial = await requireModuleActive(
+    supabase,
+    access.project.tenant_id,
+    "decisions",
+    { intent: "write" }
+  )
+  if (moduleDenial) return moduleDenial
 
   // Refuse PATCH on already-converted items — they are sealed by design.
   const { data: existing, error: lookupErr } = await supabase
@@ -161,6 +179,14 @@ export async function DELETE(_request: Request, ctx: Ctx) {
 
   const access = await requireProjectAccess(supabase, projectId, userId, "edit")
   if (access.error) return access.error
+
+  const moduleDenial = await requireModuleActive(
+    supabase,
+    access.project.tenant_id,
+    "decisions",
+    { intent: "write" }
+  )
+  if (moduleDenial) return moduleDenial
 
   const { error } = await supabase
     .from("open_items")

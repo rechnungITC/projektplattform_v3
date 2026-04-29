@@ -29,6 +29,7 @@ export default async function AppLayout({
       initialProfile={snapshot.profile}
       initialMemberships={snapshot.memberships}
       initialTenantId={snapshot.initialTenantId}
+      initialTenantConfig={snapshot.tenantConfig}
     >
       <div className="flex min-h-screen flex-col">
         <TopNav operationMode={operationMode} />

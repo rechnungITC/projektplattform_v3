@@ -1,6 +1,6 @@
 # PROJ-17: Tenant Administration — Branding, Modules, Privacy Defaults, Export, Offboarding
 
-## Status: Architected
+## Status: In Progress
 **Created:** 2026-04-25
 **Last Updated:** 2026-04-29
 
@@ -253,7 +253,53 @@ Keine neuen npm-Pakete.
 Alle drei Entscheidungen sind backend-/schema-identisch — sie steuern nur Defaults und UI-Form.
 
 ## Implementation Notes
-_To be added by /frontend and /backend_
+
+### Backend (2026-04-29)
+
+**Migration applied to project iqerihohwabyjzkpcujq:**
+- `20260429200000_proj17_tenant_settings_and_branding.sql` — `tenants.language` + `tenants.branding`, new `tenant_settings` table (1:1 FK CASCADE, RLS admin-only, JSONB for active_modules/privacy_defaults/ai_provider_config/retention_overrides), AFTER-INSERT trigger that bootstraps the settings row on tenant create, backfill for the existing tenant. Audit-extension: `tenants` and `tenant_settings` added to PROJ-10's whitelist + tracked-columns + UPDATE triggers; `can_read_audit_entry` returns false for non-admins on these entity types (admins already pass via the early shortcut).
+
+**API surface (3 routes touched + 2 new):**
+- `PATCH /api/tenants/[id]` extended to accept `language` + `branding` (Zod validates: language ∈ {de,en}; branding.logo_url HTTPS-only + max 500 chars; branding.accent_color `#RRGGBB` regex). SELECT now returns the full row including the new fields.
+- `GET /api/tenants/[id]/settings` — admin-only.
+- `PATCH /api/tenants/[id]/settings` — admin-only, partial Zod-validated update (active_modules from a fixed enum, privacy_defaults.default_class ∈ {1,2,3}, ai_provider_config.external_provider ∈ {anthropic,none}, retention_overrides.audit_log_days ∈ [1,3650]).
+
+**Auth integration:**
+- `loadServerAuth` now resolves the active tenant's settings + branding + language and returns them as `tenantConfig`. The (app) layout passes this through `AuthProvider`. `useAuth()` exposes `tenantSettings`, `tenantLanguage`, `tenantBranding` for any client component — no round-trips for the nav. Refresh re-fetches both base + settings when the user switches tenants.
+
+**Module gating:**
+- Helper `lib/tenant-settings/server.ts#requireModuleActive(supabase, tenantId, key, { intent })` — 404 for read intent (no existence leak), 403 for write intent. Falls open when `tenant_settings` row is missing (defensive — keeps the platform usable for legacy state).
+- Applied to: risks (5 handlers across 2 files), decisions (3 handlers across 2 files), open_items (5 handlers + 2 convert RPCs gated as `decisions`), KI suggest + suggestions list (2 entry points gated as `ai_proposals`), audit/reports + audit/export (2 dashboards gated as `audit_reports`). The embedded HistoryTab (`/api/audit/[entity_type]/[entity_id]/history`), the undo route, and the restore route are NOT gated by `audit_reports` — those are per-entity surfaces, not the dashboard.
+- The accept/reject/edit endpoints on `/api/ki/suggestions/[id]/*` are NOT gated this iteration — they would require an extra tenant-id lookup. Documented as a small follow-up; the suggest + list entry points already block the new-data path.
+
+**PROJ-12 router consumes tenant config:**
+- `lib/ai/router.ts#invokeRiskGeneration` reads tenant_settings.privacy_defaults + ai_provider_config at call time. The classifier (`classifyRiskAutoContext`) accepts a tenant default-class override that applies to *unknown* fields only — known Class-3 entries always stay Class 3 (no deklassification). Provider selection respects `external_provider='none'` (forces local) and uses `model_id` if specified, otherwise the env / Opus default.
+- `external_provider='none'` does NOT flip `external_blocked` — it's a deliberate config, not a block. Only env-level kill-switch and Class-3 payloads count as "blocked".
+
+**PROJ-10 retention cron consumes tenant overrides:**
+- `apply-retention` cron now iterates per tenant and reads `tenant_settings.retention_overrides.audit_log_days` (joined inline). Falls back to the system default of 730 days when no override is set. Returns a per-tenant breakdown in the response so cron logs are diagnosable.
+
+**Lib + types added:**
+- `src/types/tenant-settings.ts` — `TenantLanguage`, `TenantBranding`, `ModuleKey`, `TOGGLEABLE_MODULES`, `RESERVED_MODULES`, `MODULE_LABELS`, `PrivacyDefaults`, `AiProviderConfig`, `RetentionOverrides`, `TenantSettings`, `ResolvedTenantConfig`.
+- `src/lib/tenant-settings/modules.ts` — `isModuleActive` / `activeToggleableModules` (fail-open semantics).
+- `src/lib/tenant-settings/server.ts` — `requireModuleActive` (server-only).
+- `src/lib/tenant-settings/api.ts` — typed fetch wrapper for the future settings-page UI.
+
+**Verification:**
+- `npx vitest run` → **237/237 green** (was 224; +13 new: 5 modules helper + 8 settings route).
+- `npx tsc --noEmit` → clean.
+- `npm run build` → clean; route table includes `/api/tenants/[id]/settings`.
+- `npm run lint` → baseline 53 unchanged; PROJ-17 introduces zero new lint findings.
+
+**Open follow-ups (handed to /frontend):**
+- Build the new sections on `/settings/tenant`: Stammdaten (with language + branding inputs), Module (4 toggles), Datenschutz (default-class radio + warning + retention input), KI-Provider, Gefahrenzone placeholder.
+- Apply module gating to UI: `TopNav` filters out tabs whose modules are off; `ProjectRoomShell` hides Risiken/Entscheidungen/AI-Proposals tabs accordingly; settings page's „Reports" link respects `audit_reports`.
+- Optional: render `branding.accent_color` as a CSS variable so future themed UI can pick it up.
+
+**Carried-over follow-ups (own slices):**
+- ST-04 GDPR data export (Edge Function + Storage + signed URL).
+- ST-05 tenant offboarding (soft-delete + 30-day grace + worker + deletion_log).
+- Suggestion-id-only routes (accept/reject/edit) gated by `ai_proposals` once we add a tenant-lookup helper.
 
 ## QA Test Results
 _To be added by /qa_

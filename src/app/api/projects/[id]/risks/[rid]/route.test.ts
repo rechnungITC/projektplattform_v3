@@ -38,6 +38,14 @@ const fromMock = vi.fn((table: string) => {
   if (table === "tenant_memberships") return tenantMembershipChain
   if (table === "project_memberships") return projectMembershipChain
   if (table === "risks") return riskChain
+  if (table === "tenant_settings") {
+    const chain: { select: unknown; eq: unknown; maybeSingle: unknown } = {
+      select: () => chain,
+      eq: () => chain,
+      maybeSingle: async () => ({ data: null, error: null }),
+    }
+    return chain
+  }
   throw new Error(`unexpected table ${table}`)
 })
 
