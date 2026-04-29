@@ -1,6 +1,6 @@
 # PROJ-12: KI Assistance and Data-Privacy Paths
 
-## Status: Approved
+## Status: Deployed
 **Created:** 2026-04-25
 **Last Updated:** 2026-04-29
 
@@ -585,4 +585,15 @@ No Critical, High, or Medium bugs remain. Type-check, build, vitest 224/224 all 
 3. Add Playwright E2E for the KI flow once the test infra exists.
 
 ## Deployment
-_To be added by /deploy_
+
+- **Production URL:** https://projektplattform-v3.vercel.app
+- **Entry points:** `/projects/[id]/ai-proposals` (replaces the PROJ-12 coming-soon page); KI-derived risks surface in `/projects/[id]/risiken` with the "Nur KI-erzeugt" filter and the Sparkles+KI badge.
+- **Deployed:** 2026-04-29 via auto-deploy from `main`. Final pre-tag commit: `dcd70ce` (H1+H2+L1 fix).
+- **Migrations applied to project iqerihohwabyjzkpcujq (Supabase):**
+  - `20260429160000_proj12_ki_runs_suggestions_provenance.sql` — three tables (`ki_runs`, `ki_suggestions`, `ki_provenance`), RLS, accept-RPC.
+  - `20260429180000_proj12_immutability_trigger_and_rls_fixes.sql` — H1 (ki_runs UPDATE policy), H2 (ki_suggestions immutability trigger + ki_provenance UNIQUE), L1 (auth-before-state reorder for accept_ki_suggestion_risk + both PROJ-20 convert RPCs).
+- **Vercel deploy status:** GitHub commit status on `dcd70ce` = `success` ("Deployment has completed").
+- **Pre-deploy checks:** `npm run build` ✅; `npm run lint` baseline 53 unchanged; `npx vitest run` 224/224 ✅; `npx tsc --noEmit` clean ✅.
+- **Tag:** `v0.7.0-PROJ-12`.
+- **Provider behaviour in production today:** `ANTHROPIC_API_KEY` is **not set** in Vercel env, so the router falls back to the deterministic Stub provider. Suggestions appear immediately and follow the full provenance + audit trail, but the content is templated rather than KI-generated. To switch to real Claude Opus 4.7 calls in production, add `ANTHROPIC_API_KEY` (and optionally `ANTHROPIC_MODEL`) to the Vercel project's environment and redeploy. The class-3 hard block + `EXTERNAL_AI_DISABLED` switch keep working either way.
+- **Cost note:** when the API key is added, every "Vorschläge anfordern" click costs Anthropic tokens. Watch the `ki_runs.input_tokens / output_tokens / latency_ms` columns for the first few days to size cost expectations and pre-empt the deferred PROJ-17 cost-limit feature.

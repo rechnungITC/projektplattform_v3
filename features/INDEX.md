@@ -25,7 +25,7 @@
 | PROJ-9 | Work Item Metamodel — Backlog Structure | Deployed | [Spec](PROJ-9-work-item-metamodel-backlog.md) | 2026-04-25 |
 | PROJ-10 | Change Management — Field-level Versioning, Compare, Undo, Copy, Audit | Deployed | [Spec](PROJ-10-change-management-versioning.md) | 2026-04-25 |
 | PROJ-11 | Resources, Capacities, and Schedule Logic | Planned | [Spec](PROJ-11-resources-capacity-schedule.md) | 2026-04-25 |
-| PROJ-12 | KI Assistance and Data-Privacy Paths | Approved | [Spec](PROJ-12-ki-assistance-privacy-paths.md) | 2026-04-25 |
+| PROJ-12 | KI Assistance and Data-Privacy Paths | Deployed | [Spec](PROJ-12-ki-assistance-privacy-paths.md) | 2026-04-25 |
 | PROJ-13 | Communication Center, Email/Slack/Teams Send, Internal Project Chat | Planned | [Spec](PROJ-13-communication-chat.md) | 2026-04-25 |
 | PROJ-14 | Connector Framework, Jira Integration, MCP Bridge, Stand-alone Hooks | Planned | [Spec](PROJ-14-integrations-connectors.md) | 2026-04-25 |
 | PROJ-15 | Vendor and Procurement (Stammdaten, Eval Matrix, Document Slots) | Planned | [Spec](PROJ-15-vendor-procurement.md) | 2026-04-25 |
