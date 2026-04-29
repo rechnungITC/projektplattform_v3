@@ -112,6 +112,23 @@ const REGISTRY: Record<string, DataClass> = {
   "communication_outbox.status": 1,
   "communication_outbox.error_detail": 2,
   "communication_outbox.sent_at": 2,
+
+  // -------------------- resources (PROJ-11) ------------------------------
+  // All resource fields are personal data — the resource IS a person (or
+  // a named external party). Even FTE/availability is HR-relevant and
+  // never leaves the local LLM path. Allocations are linkage data — Class 2.
+  "resources.display_name": 3,
+  "resources.kind": 1,
+  "resources.fte_default": 3,
+  "resources.availability_default": 3,
+  "resources.is_active": 1,
+  "resources.linked_user_id": 3,
+  "resources.source_stakeholder_id": 3,
+  "resource_availabilities.start_date": 2,
+  "resource_availabilities.end_date": 2,
+  "resource_availabilities.fte": 3,
+  "resource_availabilities.note": 3,
+  "work_item_resources.allocation_pct": 2,
 }
 
 /**

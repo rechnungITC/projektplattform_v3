@@ -23,6 +23,7 @@ export type ModuleKey =
   | "connectors"
   | "vendor"
   | "communication"
+  | "resources"
 
 /** Modules that are actually built in V3 today and toggleable. */
 export const TOGGLEABLE_MODULES: readonly ModuleKey[] = [
@@ -31,6 +32,7 @@ export const TOGGLEABLE_MODULES: readonly ModuleKey[] = [
   "ai_proposals",
   "audit_reports",
   "communication",
+  "resources",
 ] as const
 
 /** Modules that exist in the schema as future-reserved keys but are not
@@ -46,6 +48,7 @@ export const MODULE_LABELS: Record<ModuleKey, string> = {
   ai_proposals: "KI-Vorschläge",
   audit_reports: "Audit-Reports",
   communication: "Kommunikation",
+  resources: "Ressourcen",
   connectors: "Konnektoren",
   vendor: "Vendor",
 }
