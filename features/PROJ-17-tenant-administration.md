@@ -1,6 +1,6 @@
 # PROJ-17: Tenant Administration — Branding, Modules, Privacy Defaults, Export, Offboarding
 
-## Status: In Progress
+## Status: In Review
 **Created:** 2026-04-25
 **Last Updated:** 2026-04-29
 
@@ -325,7 +325,120 @@ Alle drei Entscheidungen sind backend-/schema-identisch — sie steuern nur Defa
 - `npm run lint` → 55 problems (was 53; +2 warnings of the existing `react-hooks/incompatible-library` pattern from `form.watch()` calls — no new rule classes, no new errors).
 
 ## QA Test Results
-_To be added by /qa_
+
+**Run:** 2026-04-29 · QA pass + live DB red-team against project `iqerihohwabyjzkpcujq`. Three High bugs found; all share a clean structural fix.
+
+### Acceptance Criteria
+
+#### Tenant base data (ST-01)
+| AC | Result | Evidence |
+|---|---|---|
+| `tenants.name` editable (PROJ-1) | ✅ | Existing flow works for name/domain alone |
+| New `language` + `branding` columns | ✅ schema | Verified live: columns exist with CHECK constraints |
+| `logo_url` HTTPS-only | ✅ | Zod regex on the API; live DB CHECK enforces JSON shape |
+| `accent_color` hex `#RRGGBB` | ✅ | Zod regex on the API; UI live-preview swatch |
+| Language change applies on next reload | ⏳ Deferred per design | Stored, not yet wired to UI strings (i18n is its own slice) |
+| Accent color exposed as `--color-brand-600` | ✅ | (app)/layout.tsx server-renders the inline CSS variable when valid |
+| Audit on changes | ❌ **H1+H2** — see Bug Audit | Live UPDATE on `tenants.language` raises `null value in column "tenant_id"` from the audit trigger; `tenant_settings` UPDATE raises `null value in column "entity_id"` |
+
+#### Active modules (ST-02)
+| AC | Result | Evidence |
+|---|---|---|
+| `tenant_settings.active_modules` JSONB | ✅ | Verified live; backfill landed defaults |
+| Default modules are the 4 toggleable ones | ✅ | `risks`, `decisions`, `ai_proposals`, `audit_reports` in default value |
+| Optional reserved modules listed but disabled | ✅ | `connectors`, `vendor`, `communication` shown as „Demnächst" |
+| Disabling hides nav + APIs return 404/403 | ❌ **H3** — see Bug Audit | The 13 gated routes correctly call `requireModuleActive`, but the helper queries `tenant_settings` with the user's auth context. SELECT policy on `tenant_settings` is admin-only → non-admin members see 0 rows → helper falls open → module **stays accessible** for the only people the gate is meant to constrain |
+| Existing data preserved when module disabled | ✅ | Toggling `active_modules` doesn't touch entity tables |
+| Audit on toggles | ❌ **H1** | Same root cause as ST-01 audit failure — blocks any toggle from saving |
+
+#### Privacy default class (ST-03)
+| AC | Result | Evidence |
+|---|---|---|
+| `tenant_settings.privacy_defaults` JSONB | ✅ | Schema + CHECK constraint enforces `default_class ∈ {1,2,3}` (verified live: `default_class=4` rejected) |
+| AI router honors tenant default for unclassified fields | ✅ Read path works | `lib/ai/router.ts#loadTenantOverrides` reads the row and passes the value into `classifyRiskAutoContext`. Cannot exercise end-to-end because the user can't actually CHANGE the default (H1 blocks UPDATE). |
+| Existing class-3 fields stay class-3 | ✅ | Registry lookup is authoritative; `classifyField(table, column, tenantDefault)` only uses the override for unknown fields |
+| Setting default lower than 1 not allowed | ✅ | DB CHECK + Zod both enforce |
+| Higher (more conservative) shows warning | ✅ | `PrivacySection` renders an Alert when the new default is higher than the current value |
+
+#### Cross-feature consumers (PROJ-12 + PROJ-10)
+| AC | Result | Evidence |
+|---|---|---|
+| PROJ-12 router reads `privacy_defaults` + `ai_provider_config` | ✅ | `loadTenantOverrides` lookup verified live as authenticated user; `classifyRiskAutoContext` and `selectProvider` use the values |
+| PROJ-12 router falls back safely when settings is null | ✅ | DEFAULT_TENANT_OVERRIDES sets default_class=3 + external_provider='none'; tested by router.test.ts |
+| PROJ-10 retention cron iterates per tenant | ✅ | Code path reads `tenant_settings.retention_overrides.audit_log_days` per tenant; system default 730 fallback in place |
+
+#### Deferred per locked design
+- ST-04 GDPR data export — own slice (Edge Function + Storage + signed URL + progress)
+- ST-05 tenant offboarding — own slice (soft-delete + 30-day grace + worker + deletion_log + PROJ-13 dependency)
+
+### Edge Cases
+
+| Case | Spec | Result |
+|---|---|---|
+| Disabling 'communication' while drafts exist | drafts preserved | ⏳ N/A (communication module not built) |
+| Privacy default raised to 3 then lowered | both audited | ❌ Currently no save would succeed at all (H1) |
+| GDPR export of huge tenant | streams + progress | ⏳ Deferred (ST-04) |
+| Offboarding restored after 31 days | not allowed | ⏳ Deferred (ST-05) |
+| Hard-delete fails partway | marks errored | ⏳ Deferred (ST-05) |
+| Cross-tenant view of another tenant's offboarding | impossible | ⏳ N/A |
+
+### Security Audit (red team)
+
+| Check | Result |
+|---|---|
+| CHECK constraint rejects `default_class=4` | ✅ Live verified |
+| CHECK constraint rejects `external_provider='openai'` | ✅ Live verified |
+| Non-admin tenant member SELECT on tenant_settings | ✅ Returns 0 rows (RLS) — but see H3 caveat |
+| Non-admin direct UPDATE on tenant_settings | ✅ Silently 0-affected (RLS UPDATE policy) |
+| Non-admin direct INSERT on tenant_settings | ✅ Denied — no INSERT policy exists |
+| Cross-tenant access | ✅ SELECT scoped to admin's own tenant only |
+| Bootstrap trigger creates tenant_settings on tenant insert | ✅ Verified by live row count |
+| Branding logo_url HTTPS-only | ✅ Zod blocks `javascript:` / `data:` / `http://` URLs at the API |
+| Branding accent_color regex | ✅ Zod regex `^#[0-9A-Fa-f]{6}$` |
+| **Audit trail on settings changes** | ❌ **H1** — audit trigger fails on UPDATE, rolling back the change |
+| **Audit trail on tenant.language/branding changes** | ❌ **H2** — same root cause |
+| **Module gate is enforced for non-admin members** | ❌ **H3** — gate silently fails open due to admin-only SELECT |
+
+### Regression check
+
+| Area | Result |
+|---|---|
+| `npx vitest run` 237/237 | ✅ Passes — but does not exercise the audit trigger (mocks bypass it) |
+| `npx tsc --noEmit` | ✅ |
+| `npm run build` | ✅ |
+| `npm run lint` | ✅ baseline 55 (was 53; +2 warnings of the existing `react-hooks/incompatible-library` pattern) |
+| Dev server starts cleanly | ✅ |
+| PROJ-1 tenant rename (name + domain only, no language/branding) | ✅ Still works — `name`/`domain` are not in the tracked-columns list, so the audit trigger doesn't iterate them |
+
+### Bug Audit
+
+| Severity | ID | Description | Fix complexity |
+|---|---|---|---|
+| **High** | H1 | **`tenant_settings` UPDATE fails universally.** The PROJ-10 audit trigger `record_audit_changes()` reads `(v_new->>'id')::uuid` for `audit_log_entries.entity_id`, but `tenant_settings`'s primary key is `tenant_id` (no `id` column). Every UPDATE that touches a tracked column raises `null value in column "entity_id"` and rolls back. **Saving any setting via the new admin UI fails with a 500.** | Low — extend `record_audit_changes()` to resolve the entity-id column per `TG_TABLE_NAME`: `tenants.id` for `tenants`, `tenant_settings.tenant_id` for `tenant_settings`, fall back to `id` for everything else. |
+| **High** | H2 | **`tenants` UPDATE fails when a tracked column changes.** Same trigger reads `(v_new->>'tenant_id')::uuid` for the audit row's tenant_id — but the `tenants` table itself has no `tenant_id` column (it IS the tenant). Pre-PROJ-17 this was fine because `tenants` had no tracked columns; PROJ-17 added `language`+`branding`, so the trigger now fires and fails on every language/branding update. UPDATE rolls back; the admin sees a 500 from `PATCH /api/tenants/[id]` whenever language or branding is changed. | Low — same fix as H1: in the trigger, set `v_tenant := (v_new->>'id')::uuid` for the `tenants` table (the tenant IS the row). |
+| **High** | H3 | **Module gating is silently disabled for non-admin members.** `tenant_settings` SELECT policy is `is_tenant_admin(tenant_id)`. The `requireModuleActive` helper falls back to "module active" when settings is null (defensive default). Combined: a non-admin member's call to a gated API route reads `tenant_settings` → 0 rows under their auth → helper returns null → module appears active. Effect: an admin can disable `risks` in the UI, but every non-admin member's call to `/api/projects/[id]/risks` keeps returning 200. The same applies to nav-filtering: `useAuth().tenantSettings` is null for non-admin members, so `isModuleActive(null, …)` returns true, and the Risiken/Entscheidungen/KI-Vorschläge tabs stay visible in their TopNav and ProjectRoomShell. **The entire ST-02 spec contract is not enforced for the only users it's supposed to constrain.** | Low — change the `tenant_settings_select` RLS policy from `is_tenant_admin(tenant_id)` to `is_tenant_member(tenant_id)`. UPDATE policy stays admin-only, so the threat model around who can change the settings is unchanged. |
+| Info | I1 | Suggestion-id-only routes (accept/reject/edit on `/api/ki/suggestions/[id]/*`) are still not gated by `ai_proposals`. Documented as a known follow-up from the backend slice — same scope, same trade-off. | — |
+| Info | I2 | The `tenants` and `tenant_settings` audit trail reads work for admins; non-admins are explicitly hidden by `can_read_audit_entry`'s `false` branch. Once H1/H2 are fixed, the audit rows that get inserted will be admin-readable. Until then, no audit rows exist for these entity types because the UPDATE itself fails. | — |
+| Info | I3 | E2E test for the settings flow not written (project-wide E2E gap). Existing vitest mocks bypass the trigger so they don't catch H1/H2. | — |
+
+### Production-Ready Decision
+
+**NOT READY.**
+
+H1 + H2 + H3 all share the same shape as PROJ-12 H1/H2 and PROJ-20 H1/M1: a feature ships with a structural mismatch between RLS / triggers and the new table-shape, and the unit-test mocks don't catch it because they don't exercise the trigger / RLS path. The pattern is now familiar: the second-order test (live DB red-team) catches it, the fix is small and localized.
+
+H1 + H2 are blocking — every admin save in the new settings UI fails today. H3 turns ST-02's main promise (module gating) into security theater for non-admins. All three need to land before deploy.
+
+**Recommended next step:** `/backend` for one migration that:
+1. Updates `record_audit_changes()` to resolve entity_id and tenant_id correctly per table (closes H1 + H2).
+2. Replaces `tenant_settings_select_admin` with `tenant_settings_select_member` using `is_tenant_member(tenant_id)` (closes H3).
+
+Then re-run `/qa`.
+
+### Suggested follow-ups (not blockers)
+1. I1 — gate the suggestion-id-only KI routes once we add a tenant-lookup helper.
+2. I3 — Playwright E2E for the settings flow once test infra exists.
+3. Add a vitest integration test that exercises the audit trigger via a real (or test-DB) Postgres so future schema changes that break the trigger get caught at unit-test time.
 
 ## Deployment
 _To be added by /deploy_
