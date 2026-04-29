@@ -1,6 +1,6 @@
 "use client"
 
-import { LayoutGrid, List, Plus } from "lucide-react"
+import { LayoutGrid, List, Plus, Sparkles } from "lucide-react"
 import * as React from "react"
 import { toast } from "sonner"
 
@@ -20,8 +20,10 @@ import {
   SheetHeader,
   SheetTitle,
 } from "@/components/ui/sheet"
+import { Switch } from "@/components/ui/switch"
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs"
 import { useAuth } from "@/hooks/use-auth"
+import { listSuggestions } from "@/lib/ki/api"
 import {
   createRisk,
   deleteRisk,
@@ -57,21 +59,38 @@ export function RiskTabClient({ projectId }: RiskTabClientProps) {
   const tenantId = currentTenant?.id ?? null
 
   const [risks, setRisks] = React.useState<Risk[]>([])
+  const [kiDerivedRiskIds, setKiDerivedRiskIds] = React.useState<Set<string>>(
+    new Set()
+  )
   const [loading, setLoading] = React.useState(true)
   const [view, setView] = React.useState<View>("list")
   const [statusFilter, setStatusFilter] = React.useState<
     RiskStatus | typeof ALL_STATUS
   >(ALL_STATUS)
+  const [kiOnly, setKiOnly] = React.useState(false)
   const [drawer, setDrawer] = React.useState<DrawerState>({ mode: "closed" })
   const [submitting, setSubmitting] = React.useState(false)
 
   const reload = React.useCallback(async () => {
     try {
       setLoading(true)
-      const list = await listRisks(projectId, {
-        status: statusFilter === ALL_STATUS ? undefined : statusFilter,
-      })
-      setRisks(list)
+      const [riskList, acceptedSuggestions] = await Promise.all([
+        listRisks(projectId, {
+          status: statusFilter === ALL_STATUS ? undefined : statusFilter,
+        }),
+        listSuggestions(projectId, { status: "accepted" }).catch(() => []),
+      ])
+      setRisks(riskList)
+      setKiDerivedRiskIds(
+        new Set(
+          acceptedSuggestions
+            .filter(
+              (s) =>
+                s.accepted_entity_type === "risks" && s.accepted_entity_id
+            )
+            .map((s) => s.accepted_entity_id as string)
+        )
+      )
     } catch (err) {
       toast.error("Risiken konnten nicht geladen werden", {
         description: err instanceof Error ? err.message : "Unbekannter Fehler",
@@ -80,6 +99,11 @@ export function RiskTabClient({ projectId }: RiskTabClientProps) {
       setLoading(false)
     }
   }, [projectId, statusFilter])
+
+  const visibleRisks = React.useMemo(() => {
+    if (!kiOnly) return risks
+    return risks.filter((r) => kiDerivedRiskIds.has(r.id))
+  }, [risks, kiOnly, kiDerivedRiskIds])
 
   React.useEffect(() => {
     void reload()
@@ -180,18 +204,25 @@ export function RiskTabClient({ projectId }: RiskTabClientProps) {
               ))}
             </SelectContent>
           </Select>
+          <label className="flex items-center gap-2 text-sm">
+            <Switch checked={kiOnly} onCheckedChange={setKiOnly} />
+            <Sparkles className="h-3.5 w-3.5" aria-hidden />
+            Nur KI-erzeugt
+          </label>
         </div>
 
         {loading ? (
           <p className="text-sm text-muted-foreground">Lade Risiken …</p>
         ) : view === "list" ? (
           <RiskTable
-            risks={risks}
+            risks={visibleRisks}
+            kiDerivedIds={kiDerivedRiskIds}
             onRowClick={(r) => setDrawer({ mode: "edit", risk: r })}
           />
         ) : (
           <RiskMatrix
-            risks={risks}
+            risks={visibleRisks}
+            kiDerivedIds={kiDerivedRiskIds}
             onMarkerClick={(r) => setDrawer({ mode: "edit", risk: r })}
           />
         )}

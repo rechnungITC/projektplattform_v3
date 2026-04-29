@@ -406,6 +406,31 @@ risks:       title (2), probability (1), impact (1) — vorhandene Risiken als N
 - Add a "Nur KI-erzeugt"-filter to the existing Risiken-Tab and a "KI-erzeugt"-badge to risk cards (left-join on `ki_provenance`).
 - Show the KI-acceptance reason as a badge in HistoryTab (currently the `change_reason` is recorded but not styled as a distinct chip).
 
+### Frontend (2026-04-29)
+
+**KI-Vorschläge tab (replaces the coming-soon page):**
+- `components/projects/ai-proposals/ai-proposals-tab-client.tsx` — orchestrator with three tabs (Offen / Übernommen / Abgelehnt) + per-tab counts.
+- `components/projects/ai-proposals/generate-panel.tsx` — count selector, generate button, post-run badges (classification + provider + model id), defensive `<Alert>` when `external_blocked=true` so the user knows the LLM did NOT go to the cloud.
+- `components/projects/ai-proposals/suggestion-card.tsx` — per-suggestion card with score chip, accept / reject / inline-edit buttons, reject-with-reason field, and a "KI-Originalfassung anzeigen" Collapsible when the user has edited the payload.
+- `components/projects/ai-proposals/suggestion-edit-form.tsx` — Zod-validated edit form mirroring the risk shape.
+- `app/(app)/projects/[id]/ai-proposals/page.tsx` — replaces `<ComingSoon …/>` with `<AiProposalsTabClient …/>`.
+
+**Risiken tab additions:**
+- "Nur KI-erzeugt" Switch in the toolbar; a Set of KI-derived risk-IDs is built client-side from `listSuggestions(projectId, { status: "accepted" })` and joined with the risks list — no new backend endpoint needed.
+- `RiskTable`: small "KI" badge with Sparkles icon next to the title for KI-derived risks.
+- `RiskMatrix`: Sparkles icon prefix on risk markers; tooltip annotates "(aus KI-Vorschlag)".
+
+**HistoryTab (PROJ-10) reason styling:**
+- `ki_acceptance` renders as a primary-tinted Badge with an "Aus KI-Vorschlag übernommen" tooltip.
+- Bonus pass while editing the helper: `decision_logged`, `decision_revised`, `open_item_converted_to_task`, `open_item_converted_to_decision` reasons now also have human labels in the badge (previously they showed the raw reason string).
+
+**Verification:**
+- `npx vitest run` → **224/224 green** (no test changes needed; the frontend is wired through existing typed clients).
+- `npx tsc --noEmit` → clean.
+- `npm run build` → clean; `/projects/[id]/ai-proposals` and `/projects/[id]/risiken` both compile.
+- Dev-server smoke probe — both pages return HTTP 307 (auth-redirect via middleware) without compile errors; `/api/projects/[id]/ki/suggest` also reachable.
+- `npm run lint` → baseline +2 instances of the established `react-hooks/set-state-in-effect` pattern (matches the existing repo baseline of 41 instances of the same rule; no new rule classes).
+
 ## QA Test Results
 _To be added by /qa_
 

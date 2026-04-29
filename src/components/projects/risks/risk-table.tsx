@@ -1,5 +1,7 @@
 "use client"
 
+import { Sparkles } from "lucide-react"
+
 import { Badge } from "@/components/ui/badge"
 import {
   Table,
@@ -23,10 +25,16 @@ function scoreTone(score: number): string {
 
 interface RiskTableProps {
   risks: Risk[]
+  /** Set of risk IDs that originated from a KI-Vorschlag (PROJ-12). */
+  kiDerivedIds?: Set<string>
   onRowClick: (r: Risk) => void
 }
 
-export function RiskTable({ risks, onRowClick }: RiskTableProps) {
+export function RiskTable({
+  risks,
+  kiDerivedIds,
+  onRowClick,
+}: RiskTableProps) {
   if (risks.length === 0) {
     return (
       <div className="rounded-md border border-dashed py-12 text-center text-sm text-muted-foreground">
@@ -56,7 +64,19 @@ export function RiskTable({ risks, onRowClick }: RiskTableProps) {
               onClick={() => onRowClick(r)}
             >
               <TableCell className="font-medium">
-                <div>{r.title}</div>
+                <div className="flex items-center gap-1.5">
+                  <span>{r.title}</span>
+                  {kiDerivedIds?.has(r.id) ? (
+                    <Badge
+                      variant="outline"
+                      className="gap-1 px-1.5 py-0 text-[10px] font-normal"
+                      title="Aus KI-Vorschlag übernommen"
+                    >
+                      <Sparkles className="h-3 w-3" aria-hidden />
+                      KI
+                    </Badge>
+                  ) : null}
+                </div>
                 {r.description ? (
                   <p className="line-clamp-1 text-xs text-muted-foreground">
                     {r.description}

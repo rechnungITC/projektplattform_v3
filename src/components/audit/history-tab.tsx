@@ -49,7 +49,23 @@ function reasonBadge(reason: string | null): React.ReactNode {
   if (reason.startsWith("restore_from_"))
     return <Badge variant="outline">Restore</Badge>
   if (reason === "ki_acceptance")
-    return <Badge variant="outline">KI-Akzeptanz</Badge>
+    return (
+      <Badge
+        variant="outline"
+        className="border-primary/50 bg-primary/10 text-primary"
+        title="Aus KI-Vorschlag übernommen"
+      >
+        KI-Akzeptanz
+      </Badge>
+    )
+  if (reason === "decision_logged")
+    return <Badge variant="outline">Entscheidung geloggt</Badge>
+  if (reason === "decision_revised")
+    return <Badge variant="outline">Entscheidung revidiert</Badge>
+  if (reason === "open_item_converted_to_task")
+    return <Badge variant="outline">→ Aufgabe</Badge>
+  if (reason === "open_item_converted_to_decision")
+    return <Badge variant="outline">→ Entscheidung</Badge>
   if (reason === "compliance_trigger")
     return <Badge variant="outline">Compliance</Badge>
   return <Badge variant="outline">{reason}</Badge>

@@ -1,5 +1,6 @@
 "use client"
 
+import { Sparkles } from "lucide-react"
 import * as React from "react"
 
 import { cn } from "@/lib/utils"
@@ -7,6 +8,8 @@ import type { Risk } from "@/types/risk"
 
 interface RiskMatrixProps {
   risks: Risk[]
+  /** Set of risk IDs that originated from a KI-Vorschlag (PROJ-12). */
+  kiDerivedIds?: Set<string>
   onMarkerClick: (r: Risk) => void
 }
 
@@ -25,7 +28,11 @@ function cellTone(probability: number, impact: number): string {
  * (5 top, 1 bottom). Each open risk is a small chip placed in its cell;
  * closed/accepted risks are dimmed.
  */
-export function RiskMatrix({ risks, onMarkerClick }: RiskMatrixProps) {
+export function RiskMatrix({
+  risks,
+  kiDerivedIds,
+  onMarkerClick,
+}: RiskMatrixProps) {
   // Group risks by (probability, impact) cell
   const buckets = new Map<string, Risk[]>()
   for (const r of risks) {
@@ -77,14 +84,24 @@ export function RiskMatrix({ risks, onMarkerClick }: RiskMatrixProps) {
                         type="button"
                         onClick={() => onMarkerClick(r)}
                         className={cn(
-                          "max-w-full truncate rounded-sm border bg-background px-1.5 py-0.5 text-left text-xs hover:bg-accent",
+                          "flex max-w-full items-center gap-1 truncate rounded-sm border bg-background px-1.5 py-0.5 text-left text-xs hover:bg-accent",
                           (r.status === "closed" ||
                             r.status === "accepted") &&
                             "opacity-60"
                         )}
-                        title={r.title}
+                        title={
+                          kiDerivedIds?.has(r.id)
+                            ? `${r.title} (aus KI-Vorschlag)`
+                            : r.title
+                        }
                       >
-                        {r.title}
+                        {kiDerivedIds?.has(r.id) ? (
+                          <Sparkles
+                            className="h-3 w-3 shrink-0 text-primary"
+                            aria-hidden
+                          />
+                        ) : null}
+                        <span className="truncate">{r.title}</span>
                       </button>
                     ))}
                   </div>
