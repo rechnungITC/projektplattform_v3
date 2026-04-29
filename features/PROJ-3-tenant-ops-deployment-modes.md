@@ -1,6 +1,6 @@
 # PROJ-3: Tenant Operations and Deployment Modes (Stand-alone vs SaaS)
 
-## Status: Approved
+## Status: Deployed
 **Created:** 2026-04-25
 **Last Updated:** 2026-04-29
 
@@ -304,4 +304,13 @@ Two Info items remain deferred: I2 (strict-opt-in semantics for `EXTERNAL_AI_DIS
 3. PROJ-12 wiring — when the AI consumer lands, exercise the `isExternalAIBlocked()` block end-to-end and verify a UI banner / log line warns the operator that external LLM calls are suppressed.
 
 ## Deployment
-_To be added by /deploy_
+
+- **Production URL:** https://projektplattform-v3.vercel.app (continues to run in `shared` mode by default — no Vercel env change needed).
+- **Deployed:** 2026-04-29 via auto-deploy from `main`. Final pre-tag commit: `ddcb6d4` (L1 doc fix).
+- **Behavior change in production:** None for the existing SaaS deployment. `OPERATION_MODE` defaults to `"shared"` when the env var is absent, so omitting both new vars in Vercel preserves the prior behavior exactly. The new code paths (`isStandalone()`, `isExternalAIBlocked()`) are dormant until a customer opts in.
+- **No DB migration this iteration.**
+- **Vercel env (production):** intentionally NOT setting `OPERATION_MODE` or `EXTERNAL_AI_DISABLED` — defaults are correct for SaaS. Stand-alone customers configure these in their own deployment.
+- **Vercel deploy status:** GitHub commit status on `ddcb6d4` = `success` ("Deployment has completed").
+- **Pre-deploy checks:** `npm run build` ✅; `npm run lint` baseline 51 (none from PROJ-3); `npx vitest run` 201/201 ✅; `npx tsc --noEmit` clean ✅.
+- **Tag:** `v0.6.0-PROJ-3`.
+- **Docs published:** `docs/deployment/standalone.md`, `docs/deployment/update-strategy.md`, `docs/deployment/backup-restore.md` — versioned with the code, available at the repo path.
