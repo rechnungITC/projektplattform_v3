@@ -1,8 +1,8 @@
 # PROJ-17: Tenant Administration — Branding, Modules, Privacy Defaults, Export, Offboarding
 
-## Status: Planned
+## Status: Architected
 **Created:** 2026-04-25
-**Last Updated:** 2026-04-25
+**Last Updated:** 2026-04-29
 
 ## Summary
 Turns `/einstellungen` into the full tenant-admin center. Beyond what PROJ-1 already exposes (rename tenant, manage domain), this adds: tenant base data (display name, language, branding URL/color), module enable/disable, privacy default class, GDPR Art. 15/20 data export, and tenant offboarding (soft-delete with grace period). Inherits V2 EP-15.
@@ -98,7 +98,159 @@ Turns `/einstellungen` into the full tenant-admin center. Beyond what PROJ-1 alr
 <!-- Sections below are added by subsequent skills -->
 
 ## Tech Design (Solution Architect)
-_To be added by /architecture_
+
+### Realitätscheck und Scope
+
+Die Spec ist groß — fünf Stories, davon drei UI-/Konfig-lastig (ST-01 Branding, ST-02 Module, ST-03 Privacy-Default) und zwei mit schwerer Infrastruktur (ST-04 GDPR-Export = Edge Function + Storage + Signed-URL + Progress, ST-05 Offboarding = Soft-Delete + 30-Tage-Grace + Worker + Deletion-Log). Wir bauen einen **MVP-Slice mit den drei Konfig-Stories und liefern dabei die deferred-Items aus PROJ-12 und PROJ-10 mit, die alle dieselbe `tenant_settings`-Tabelle teilen** — ein Schritt löst drei Cross-Feature-Schulden ab.
+
+Bestand vor dieser Iteration:
+- `tenants` hat `id, name, domain, created_by, created_at, updated_at`. Keine Branding-/Sprach-Felder.
+- Eine `tenant_settings`-Tabelle existiert noch nicht (PROJ-10 + PROJ-12 hatten sie als „später" markiert).
+- `/settings/tenant` ist eine schlanke Seite mit Name + Domain (PROJ-1).
+
+### MVP-Scope (diese Iteration)
+
+```
+✅ IN dieser Iteration                       ⏳ DEFERRED (eigene Slices)
+─────────────────────────────────────────    ───────────────────────────────
+ST-01 Tenant-Stammdaten (lang + branding)    ST-04 GDPR-Datenexport
+ST-02 Aktive Module (UI + API-Gating)        ST-05 Tenant-Offboarding
+ST-03 Privacy-Default-Klasse                 (Beide brauchen Edge-Functions
+PROJ-12 ai_provider_config (jetzt UI)         + Storage + Worker — eigene
+PROJ-10 retention_overrides (jetzt UI)        Slice rechtfertigen.)
+```
+
+### Komponentenstruktur
+
+```
+/settings/tenant   (admin-only — existiert; wird aufgebrochen in Sektionen)
+├── Section „Stammdaten"   (existierend → erweitert)
+│   ├── Name (existiert)
+│   ├── Domain (existiert)
+│   ├── Sprache  (Select de | en) — neu
+│   └── Branding — neu
+│       ├── Logo-URL (HTTPS only)
+│       └── Accent-Color (#RRGGBB)
+│
+├── Section „Module"   (neu)
+│   ├── Core-Module (immer aktiv, schreibgeschützt: Projekte, Stammdaten, Mitglieder)
+│   └── Optionale Module-Toggles
+│       ├── Risiken
+│       ├── Entscheidungen
+│       ├── KI-Vorschläge
+│       └── Audit-Reports
+│   (Konnektoren / Vendor / Kommunikation = noch nicht gebaut → ausgegraut mit „Demnächst")
+│
+├── Section „Datenschutz"   (neu)
+│   ├── Default-Klasse für unspezifizierte Felder (1 / 2 / 3, default 3)
+│   │   └── Warnung wenn höher gewählt: „Mehr Daten werden lokal verarbeitet"
+│   └── Retention-Overrides
+│       └── Audit-Log-Aufbewahrung (Tage, default 730)
+│
+├── Section „KI-Provider"   (neu — PROJ-12 unlock)
+│   ├── Externes Modell aktiv (Anthropic / aus / Stub-only)
+│   ├── Modell-ID (claude-opus-4-7 / claude-sonnet-4-6 / claude-haiku-4-5-20251001)
+│   └── Hinweis: Klasse-3-Hard-Block greift unabhängig von dieser Konfiguration
+│
+└── Section „Gefahrenzone"   (Platzhalter für ST-05 Offboarding — sichtbar als „Demnächst")
+
+Konsumenten der neuen Settings (Nicht-UI-Code-Pfade):
+├── Top-Nav → liest active_modules, blendet Risiken/Entscheidungen/KI-Vorschläge aus
+├── Project-Room-Sidebar → liest active_modules, blendet projekt-interne Tabs aus
+├── PROJ-12-Router → liest privacy_defaults.default_class für unklassifizierte Felder
+├── PROJ-12-Router → liest ai_provider_config.{external_provider, model_id}
+├── PROJ-10-Retention-Cron → liest retention_overrides.audit_log_days, fallback 730
+└── /api/projects/[id]/risks (etc.) → return 404 wenn Modul deaktiviert ist
+```
+
+### Datenmodell (Klartext)
+
+**Erweiterung an `tenants`:**
+- `language` — `de` oder `en`, default `de`
+- `branding` — JSONB mit `logo_url` (HTTPS) und `accent_color` (`#RRGGBB`); beide optional
+- Beide Klasse 1 (technisch); Audit-Trail über die existierenden PROJ-10-Mechanismen
+
+**Neue Tabelle `tenant_settings`:**
+- 1:1 Beziehung zu `tenants` (UNIQUE FK auf tenant_id mit ON DELETE CASCADE)
+- `active_modules` JSONB — Liste der aktiven Modul-Schlüssel; Default-Wert beim Anlegen: alle aktiv
+- `privacy_defaults` JSONB — `{ default_class: 1|2|3 }`
+- `ai_provider_config` JSONB — `{ external_provider: 'anthropic'|'none', model_id?: string }`
+- `retention_overrides` JSONB — z. B. `{ audit_log_days: 365 }`; leer bedeutet System-Default
+
+Die Tabelle wird per Trigger automatisch beim Anlegen eines Tenants angelegt und mit Defaults initialisiert. Eine Backfill-Migration füllt sie für die aktuell existierenden Tenants.
+
+**RLS:**
+- `tenant_settings` SELECT + UPDATE: nur `is_tenant_admin(tenant_id)`. Members ohne Admin-Rolle sehen die Settings nicht.
+- `tenants.language` + `tenants.branding`: Members können lesen (für UI-Rendering); Update-Pfad bleibt admin-only über die existierende `tenants_update_admin`-Policy.
+
+### Tech-Entscheidungen
+
+| Entscheidung | Warum |
+|---|---|
+| ST-01 + ST-02 + ST-03 als gemeinsamer Slice | Alle drei lieben dasselbe `tenant_settings`-Schema; eine Migration, eine Admin-Seite, ein API-Endpunkt für `/api/tenants/[id]/settings`. Splitten würde drei Mini-Slices ohne Mehrwert erzeugen. |
+| ST-04 + ST-05 in eigene Slices | Beide bringen schwere Infrastruktur (Edge Functions, Storage, scheduled Worker, deletion_log) — sind keine UI-Erweiterung sondern eigenständige Sub-Systeme. ST-05 hängt zusätzlich an PROJ-13 (E-Mail), das auch noch nicht da ist. |
+| `tenant_settings` als separate Tabelle, nicht als Spalten an `tenants` | Trennt User-facing Identität (Name, Domain) von Konfiguration. Settings können wachsen, ohne `tenants` zu spammen. RLS-Policies bleiben einfacher (Admin-only auf Settings vs gemischt auf Tenants). |
+| AI-Provider-UI hier statt in PROJ-12 | PROJ-12 wartete laut Spec auf PROJ-17 für genau diese Stelle. Statt eine isolierte Admin-Seite in PROJ-12 zu bauen, wird sie hier nativ integriert. |
+| Retention-Override-UI hier statt in PROJ-10 | Gleicher Grund — PROJ-10 hat den `retention_overrides`-JSONB-Hook bereits dokumentiert; hier wird er erstmals befüllbar. |
+| Module-Gating: API antwortet 404, Nav blendet aus | Spec: „deactivated module APIs return 404 for reads, 403 for writes". 404 statt 403 für Reads verhindert Existenz-Leak (Nutzer:in soll nicht erkennen, ob ein Modul existiert aber gesperrt ist oder gar nicht gibt). 403 für Writes ist klarer Auth-Fehler. |
+| Settings im Auth-Snapshot mitliefern | `loadServerAuth` zieht in einem Schritt User + Memberships + jetzt auch das aktive Tenant-Settings-Blob. Spart Round-Trips bei Nav-Render und vermeidet flackernde Module-Tabs. |
+| Sprach-Switch nutzt vorhandenes TS-Wörterbuch | Spec: „i18n is a separate work item; for now reads from a TS dictionary with de/en keys". Wir liefern das Wörterbuch noch nicht — die Sprach-Auswahl wird gespeichert, aber UI bleibt fest auf de bis ein i18n-Pass nachzieht. ST-01-AC „applies on next page reload" wird damit nicht heute, sondern bei i18n-Slice erfüllt. **Klarstellung im Header: `language` ist gespeichert, sichtbarer Effekt erst mit dem i18n-Slice.** |
+| Trigger erstellt `tenant_settings`-Zeile beim Tenant-Insert | Garantiert „jeder Tenant hat genau eine Settings-Zeile". Vermeidet NULL-Pfade in den Konsumenten. |
+
+### Sicherheitsdimension
+
+- Settings-Tabelle ist tenant-scoped via UNIQUE FK auf tenants.id; CASCADE-DELETE räumt auf, wenn der Tenant gelöscht wird (relevant für ST-05 Offboarding-Slice).
+- RLS lässt nur tenant_admin lesen + schreiben; cross-tenant 0 Rows.
+- Privacy-Default kann Klasse-3-Felder NICHT deklassifizieren — die Field-Registry-Lookups bleiben autoritativ. Nur „unbekannte" Felder werden vom Default-Wert beeinflusst.
+- Branding-Logo-URL ist HTTPS-validiert (Zod). Verhindert mixed-content-Warnung im Browser; verhindert javascript:- oder data:-URLs aus dem Setting.
+- Accent-Color via Zod-Regex `^#[0-9A-Fa-f]{6}$` validiert. Verhindert CSS-Injection.
+- Module-Toggle: Server-seitig auch im API-Gate, nicht nur im Nav. Andernfalls könnte ein Power-User die Module per direktem URL-Aufruf umgehen.
+- AI-Provider-Setting kann den Klasse-3-Hard-Block NICHT überschreiben (PROJ-12-Vertrag). Auch wenn `external_provider='anthropic'` gesetzt ist, geht ein Klasse-3-Payload weiterhin lokal.
+
+### Neue Code-Oberfläche
+
+**Eine Migration:** `proj17_tenant_settings_and_branding.sql` — `tenants`-Spalten + `tenant_settings`-Tabelle + RLS + Trigger + Backfill.
+
+**API-Routen:**
+- `GET /api/tenants/[id]/settings` — admin-only, liefert das volle Settings-Blob
+- `PATCH /api/tenants/[id]/settings` — admin-only, Zod-validiert, partielle Updates
+- `PATCH /api/tenants/[id]` — bereits existierend, erweitert um `language` + `branding`
+
+**Lib-Module (neu):**
+- `lib/tenant-settings/api.ts` — typed fetch-wrapper für die UI
+- `lib/tenant-settings/modules.ts` — Modul-Schlüssel-Konstanten + Default-Set + Helfer `isModuleActive(settings, key)`
+- Konsumenten in PROJ-12 (`router.ts`) und PROJ-10 (`apply-retention`) lesen das Blob beim Aufruf
+
+**UI:**
+- `app/(app)/settings/tenant/page.tsx` — bleibt der Page-Container, bekommt Sektionen
+- `components/settings/tenant/{base-data-section,modules-section,privacy-section,ai-provider-section}.tsx` — pro Sektion eine Form
+- `loadServerAuth` erweitert um `tenantSettings` für den aktuellen Tenant
+- `useAuth()` exportiert die Settings clientseitig
+- `TopNav` + `ProjectRoomShell` filtern Tabs anhand `isModuleActive`
+- Risiken/Entscheidungen/AI-Proposals API-Routen prüfen am Anfang `requireModuleActive('risks')` etc.
+
+### Abhängigkeiten
+
+Keine neuen npm-Pakete.
+
+### Out-of-Scope-Erinnerungen (aus der Spec)
+
+- Self-Service-Tenant-Signup
+- Billing/Lizenzierung
+- File-Upload (Branding-Logo bleibt URL-basiert)
+- Per-Tenant-Custom-Translations über das de/en-Dictionary hinaus
+- Reaktivierung nach 30-Tage-Grace
+- Partial-Deletion (nur dieses Projekt löschen) — separater Pfad
+
+### Festgelegte Design-Entscheidungen
+
+**Frage 1 — Modul-Toggle-Set: Option A (alle gebauten Module).** `risks`, `decisions`, `ai_proposals`, `audit_reports` sind toggle-bar. `connectors`, `vendor`, `communication` erscheinen als ausgegraut „Demnächst" — Schema akzeptiert sie schon, UI rendert disabled.
+
+**Frage 2 — Defaults beim Tenant-Insert: Option A (privacy-by-default).** Alle vier toggle-baren Module aktiv, `default_class=3`, `ai_provider_config={ external_provider: 'none' }`. Externer Provider wird zum expliziten Opt-in, das ein Tenant-Admin pro Tenant aktivieren muss. Matcht die V2-Architektur-Direktive „KI als Vorschlagsschicht, nie still" und harmoniert mit der aktuellen Vercel-Konfig (kein API-Key gesetzt).
+
+**Frage 3 — Sprach-Setting: Option A (speichern, wirkungslos bis i18n).** Das Select rendert mit `de | en`, persistiert die Auswahl, hat aber heute keinen sichtbaren UI-Effekt — die i18n-Schicht ist ein eigener Slice. Damit bleibt das Schema stabil und ST-01 zählt als erfüllt; ein Hinweistext im Select erklärt den Status.
+
+Alle drei Entscheidungen sind backend-/schema-identisch — sie steuern nur Defaults und UI-Form.
 
 ## Implementation Notes
 _To be added by /frontend and /backend_
