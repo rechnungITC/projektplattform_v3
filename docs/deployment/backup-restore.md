@@ -16,6 +16,7 @@ V3 has two restore objectives:
 | Layer | SaaS | Stand-alone |
 |---|---|---|
 | Daily logical backup | Automated by Supabase, retained per the project plan | `pg_dump` via cron, store off-host (S3-compatible / customer object store) |
+| Physical base backup (PITR base) | Automated by Supabase paid plans | `pg_basebackup -D /var/backups/pg/base -Ft -z -P` weekly, store off-host. Required as the foundation that WAL replay applies on top of. |
 | WAL archiving (PITR) | Available on Supabase paid plans; toggle in Dashboard | `archive_command` in `postgresql.conf` to push WAL to durable storage; retain for the customer's RPO window |
 | Object storage | Supabase Storage versioning enabled per bucket | Backups of the storage volume (rsync / snapshots) |
 | Application code | Git is the canonical source; tags mark each deploy | Same — keep `git fetch --tags` up to date on the deploy host |
@@ -23,6 +24,22 @@ V3 has two restore objectives:
 V3 today does NOT use Supabase Storage for any business object; the
 storage backup line is for completeness in case PROJ-12 or PROJ-13
 later add file uploads.
+
+### Two backup tracks for stand-alone
+
+Stand-alone customers run two backup tracks in parallel — they serve
+different recovery objectives and **cannot replace each other**:
+
+- **Logical track** (`pg_dump`): portable, easy to inspect, easy to
+  restore into a fresh Postgres of the same major version. Use for
+  cold-restore (full DB loss → fresh cluster). RPO: 24 hours typically.
+- **Physical track** (`pg_basebackup` + WAL archive): cluster-level
+  snapshot at byte level. Use for point-in-time recovery to a precise
+  timestamp. RPO: as low as the WAL archive cadence (often <5 minutes).
+
+A stand-alone operator who skips the physical track loses PITR — only
+cold-restore from yesterday's `pg_dump` is possible. Document this in
+the customer's runbook explicitly.
 
 ## Daily backup verification
 
@@ -64,8 +81,10 @@ backup loses too much:
 3. **Trigger PITR.**
    - SaaS: Supabase Dashboard → Database → Point-in-time recovery →
      pick timestamp.
-   - Stand-alone: stop Postgres, restore the base backup, replay WAL
-     up to the target timestamp via `recovery_target_time`.
+   - Stand-alone: stop Postgres, restore the latest `pg_basebackup`
+     into the data directory, configure `recovery_target_time` in
+     `postgresql.conf`, start Postgres in recovery mode, let it replay
+     archived WAL up to the target timestamp.
 4. **Re-apply post-target migrations** — same step as cold-restore.
 5. **Communicate the data-loss window** to affected users (they may
    need to redo work between target and the incident timestamp).

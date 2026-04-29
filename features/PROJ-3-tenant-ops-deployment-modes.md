@@ -285,24 +285,23 @@ layer; PROJ-3 only adds the deployment-topology dimension on top.
 
 | Severity | ID | Description | Fix complexity |
 |---|---|---|---|
-| Low | L1 | **`backup-restore.md` mixes `pg_dump` (logical) and "base backup" (physical) without explicitly telling the stand-alone operator to set up `pg_basebackup` for PITR**, even though the PITR section relies on it. The spec text says "self-hosted documents `pg_basebackup` + WAL archive flow" — currently only WAL archiving is explicit; `pg_basebackup` is implicit. | Low — add one paragraph + example `pg_basebackup` invocation to `backup-restore.md`. |
+| ~~Low~~ Resolved | L1 | ~~`backup-restore.md` mixes `pg_dump` and "base backup" without explicit `pg_basebackup` setup~~ **Fixed 2026-04-29.** Added a "Physical base backup (PITR base)" row to the Backup-layers table with a concrete `pg_basebackup -D /var/backups/pg/base -Ft -z -P` invocation, plus a "Two backup tracks for stand-alone" subsection that calls out logical vs physical tracks explicitly. Tightened the PITR step to reference the latest `pg_basebackup` directly. | — |
 | Info | I1 | `isExternalAIBlocked()` has no consumer until PROJ-12. The contract is in place and unit-tested, but the end-to-end blocking can't be exercised yet. Spec acknowledges PROJ-12 as the consumer — flagged as a deferred validation, not a bug. | — |
 | Info | I2 | **Strict opt-in semantics for `EXTERNAL_AI_DISABLED`**: only the literal `"true"` enables the block. A typo (`tru`, `1`, `yes`) leaves AI **allowed**. Spec is silent on direction. Conservative compliance interpretation would prefer fail-restrictive (any non-empty value blocks). Flagged for follow-up discussion before PROJ-12 wires the consumer. | Low — change `=== "true"` to `!== ""` and `!== "false"`. Needs explicit decision first. |
 | Info | I3 | E2E (Playwright) tests for the standalone-mode UI not written. Repo has zero E2E tests today; backend smoke covered via dev-server probe + bundle inspection. Project-wide gap, not a PROJ-3 regression. | — |
 
 ### Production-Ready Decision
 
-**READY** for status `Approved`.
+**READY** for status `Approved` → `Deployed`.
 
-No Critical, High, or Medium bugs. The single Low (L1, doc clarity around `pg_basebackup`) doesn't block deploy and is fixable in a 5-minute follow-up commit.
+No Critical, High, Medium, or Low bugs. L1 fixed in this iteration (Pfad B): `backup-restore.md` now has explicit `pg_basebackup` instructions plus a "Two backup tracks" subsection that distinguishes logical (cold-restore) from physical (PITR) and warns operators that skipping the physical track loses PITR.
 
-Two Info items (I2 the strict-opt-in semantics, I3 missing E2E suite) are explicitly acknowledged as deferred discussion / project-wide gap. Neither holds back PROJ-3 specifically.
+Two Info items remain deferred: I2 (strict-opt-in semantics for `EXTERNAL_AI_DISABLED`) needs an explicit decision before PROJ-12 wires the consumer, and I3 (project-wide E2E gap) is not PROJ-3-specific.
 
 ### Suggested follow-ups (not blockers)
-1. L1 — add explicit `pg_basebackup` setup paragraph to `backup-restore.md`.
-2. I2 — discuss fail-permissive vs fail-restrictive semantics for `EXTERNAL_AI_DISABLED` before PROJ-12 ships.
-3. I3 — E2E test suite (project-wide gap, not PROJ-3 specific).
-4. PROJ-12 wiring — when the AI consumer lands, exercise the `isExternalAIBlocked()` block end-to-end and verify a UI banner / log line warns the operator that external LLM calls are suppressed.
+1. I2 — discuss fail-permissive vs fail-restrictive semantics for `EXTERNAL_AI_DISABLED` before PROJ-12 ships.
+2. I3 — E2E test suite (project-wide gap, not PROJ-3 specific).
+3. PROJ-12 wiring — when the AI consumer lands, exercise the `isExternalAIBlocked()` block end-to-end and verify a UI banner / log line warns the operator that external LLM calls are suppressed.
 
 ## Deployment
 _To be added by /deploy_
