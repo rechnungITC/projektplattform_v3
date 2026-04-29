@@ -1,6 +1,6 @@
 # PROJ-12: KI Assistance and Data-Privacy Paths
 
-## Status: In Review
+## Status: Approved
 **Created:** 2026-04-25
 **Last Updated:** 2026-04-29
 
@@ -533,9 +533,9 @@ risks:       title (2), probability (1), impact (1) — vorhandene Risiken als N
 | Class-3 payload routed externally | ✅ Router escalates to local provider; tested live + unit |
 | ANTHROPIC_API_KEY absent → router fails closed? | ✅ Falls back to Stub; tests cover; no silent error |
 | Convert RPC `accept_ki_suggestion_risk` requires editor+ | ✅ Internal `has_project_role / is_project_lead / is_tenant_admin` check |
-| Tampering with `ki_suggestions` to bypass single-accept invariant | ❌ **H2** — see Bug Audit |
-| `ki_runs` UPDATE for final status / tokens / error | ❌ **H1** — see Bug Audit |
-| Information leak via accept-RPC ordering (state-before-auth) | ⚠️ **L1** — see Bug Audit |
+| Tampering with `ki_suggestions` to bypass single-accept invariant | ✅ **Resolved (H2).** Trigger pins terminal states; live retest verified. |
+| `ki_runs` UPDATE for final status / tokens / error | ✅ **Resolved (H1).** UPDATE policy added; live retest persisted status='external_blocked' + tokens + latency. |
+| Information leak via accept-RPC ordering (state-before-auth) | ✅ **Resolved (L1).** RPCs reordered; non-member gets 'forbidden' regardless of state. |
 | `classifyPayload` defense-in-depth on auto-context allowlist | ✅ Confirmed — adding a Class-3 field to the auto-context shape forces local routing |
 | SQL injection via dynamic SQL in convert/accept RPCs | ✅ All values are `$1`/`$2` placeholders; no `format()` with raw text |
 | XSS via suggestion title / mitigation in JSX | ✅ React auto-escapes; no `dangerouslySetInnerHTML` |
@@ -557,9 +557,9 @@ risks:       title (2), probability (1), impact (1) — vorhandene Risiken als N
 
 | Severity | ID | Description | Fix complexity |
 |---|---|---|---|
-| **High** | H1 | **`ki_runs` UPDATE silently fails under RLS.** The router optimistically inserts a run row with `status='success'`, then UPDATEs with the final status (success/error/external_blocked) + tokens + latency + error_message. The migration creates SELECT and INSERT policies but **no UPDATE policy** — RLS denies UPDATE without raising an error, so the row stays at the optimistic 'success' even when the provider erred or the call was external-blocked. Result: telemetry is wrong, error trail is empty, audit shows 'success' for failures. Verified live: a user-context UPDATE to `status='external_blocked', input_tokens=120, output_tokens=210, latency_ms=850` was silently dropped. | Low — add an UPDATE policy on `ki_runs` for editor+, with the same `using` and `with check` predicates as INSERT. |
-| **High** | H2 | **`ki_suggestions` status is mutable from terminal states.** A project editor can directly UPDATE `status='accepted'` → `'draft'`, clear `accepted_entity_*` and `accepted_at`, and the suggestion is re-armed for another accept call — producing a SECOND risk row from the same suggestion (verified live: ran `accept_ki_suggestion_risk` twice on the same suggestion, got two distinct risk_ids; ki_provenance ended up with two rows pointing at different risks while `ki_suggestions.accepted_entity_id` was overwritten by the second accept). Same root cause as PROJ-20 H1: RLS UPDATE policy is too permissive, no DB-level state-machine enforcement. The spec contract "no mass-acceptance / no automatic acceptance" is bypassable via direct DB. | Low — BEFORE-UPDATE trigger on `ki_suggestions` that pins terminal states (`accepted`, `rejected` are sealed) and only allows draft → accepted/rejected/edit. Mirrors the `enforce_decision_immutability()` pattern from PROJ-20. Consider also UNIQUE on `ki_provenance.ki_suggestion_id` as a belt-and-suspenders. |
-| Low | L1 | **Accept-RPC checks state before authorization.** A non-member calling `accept_ki_suggestion_risk(<known UUID>)` learns whether the suggestion exists and is in a terminal state via the `suggestion_not_draft` return. Cross-tenant UUIDs aren't enumerable, so the practical leak is bounded — but the cleaner pattern is auth-before-state. | Low — reorder the RPC: check `has_project_role(...)` first; return `forbidden` regardless of state. Apply same fix to `convert_open_item_to_*` RPCs from PROJ-20 if affected (verified separately). |
+| ~~High~~ Resolved | H1 | ~~`ki_runs` UPDATE silently fails under RLS~~ **Fixed 2026-04-29.** Migration `20260429180000_proj12_immutability_trigger_and_rls_fixes.sql` adds an UPDATE policy on `ki_runs` mirroring the INSERT predicate (editor+ on the project, or tenant admin). Live retest: user-context UPDATE to `status='external_blocked', input_tokens=120, output_tokens=210, latency_ms=850` now persists. Router telemetry is correct end-to-end. | — |
+| ~~High~~ Resolved | H2 | ~~`ki_suggestions` status mutable from terminal states~~ **Fixed 2026-04-29 (same migration).** New `enforce_ki_suggestion_immutability()` BEFORE-UPDATE trigger pins terminal states (accepted, rejected are sealed) and seals immutable columns (tenant_id, project_id, ki_run_id, purpose, original_payload, created_by, created_at). Plus a UNIQUE on `ki_provenance.ki_suggestion_id` as belt-and-suspenders. Live retest: direct UPDATE to flip `accepted` → `draft` raised `check_violation`; legitimate edit on a draft (payload + is_modified) still works. | — |
+| ~~Low~~ Resolved | L1 | ~~Accept-RPC checks state before authorization~~ **Fixed 2026-04-29 (same migration).** All three SECURITY DEFINER RPCs now check authorization before state: `accept_ki_suggestion_risk` (PROJ-12) and `convert_open_item_to_task` / `convert_open_item_to_decision` (PROJ-20 — same pattern, fixed in the same pass). Live retest: non-member calling on an existing draft suggestion gets `forbidden` immediately, no state leak. | — |
 | Low | L2 | **AI-event-log export view not built.** Spec mentions "Exportable AI-event log (per PROJ-10 audit + a dedicated view)." `ki_runs` rows are queryable via the existing SELECT path but no `/api/ki/runs/export` endpoint exists. Project members can derive it from raw queries; admins use the existing audit export for `ki_acceptance` reasons. | Low — small follow-up endpoint, can ship in the next AI slice. |
 | Info | I1 | **Method-aware filtering for proposals not exercised.** Spec says proposals should be "method-aware (only kinds visible for the project's method are proposed)". Risks aren't method-gated so the AC doesn't apply to the MVP slice. Re-verify when work-item suggestions ship. | — |
 | Info | I2 | **Per-tenant model selection deferred.** Per locked design, owned by PROJ-17. Class-3 hard block already applies regardless. | — |
@@ -569,21 +569,15 @@ risks:       title (2), probability (1), impact (1) — vorhandene Risiken als N
 
 ### Production-Ready Decision
 
-**NOT READY.**
+**READY** for status `Approved` → `Deployed`.
 
-H1 + H2 share a structural pattern with PROJ-20's H1/M1 (RLS UPDATE policies too permissive over state-machine tables). They're independent here, but the same fix shape (BEFORE-UPDATE state-machine trigger + targeted UPDATE policy) closes both.
+H1 + H2 + L1 all closed in one iteration (Pfad B). Single migration `20260429180000_proj12_immutability_trigger_and_rls_fixes.sql`:
+- `ki_runs` UPDATE policy added (closes H1; router telemetry now persists correctly).
+- `enforce_ki_suggestion_immutability()` BEFORE-UPDATE trigger pins terminal states (closes H2; verified that the duplicate-risk attack now raises `check_violation`).
+- `ki_provenance.ki_suggestion_id` UNIQUE constraint as belt-and-suspenders (defense in depth on H2).
+- All three SECURITY DEFINER RPCs reordered: auth check first, state check second (closes L1; non-member callers get `forbidden` regardless of state). Same fix applied to PROJ-20's `convert_open_item_to_task` and `convert_open_item_to_decision` since they shared the pattern.
 
-H1 is silent: telemetry is wrong but no user-visible failure. H2 is silent until a malicious or curious editor pokes at the DB directly via the Supabase JS client — at which point one suggestion can spawn N duplicate risks with broken provenance.
-
-L1 is a small reorder in the SECURITY DEFINER RPCs, harmless on its own but worth shipping with the H-fixes.
-
-**Recommended next step:** `/backend` to:
-1. Add `ki_runs` UPDATE policy (closes H1).
-2. Add `enforce_ki_suggestion_immutability()` BEFORE-UPDATE trigger that pins `status` to `draft → accepted | rejected` (closes H2).
-3. Add UNIQUE on `ki_provenance.ki_suggestion_id` (defense in depth on H2).
-4. Reorder `accept_ki_suggestion_risk` to check authorization first (closes L1).
-
-Then re-run `/qa`.
+No Critical, High, or Medium bugs remain. Type-check, build, vitest 224/224 all green; lint baseline unchanged at 53.
 
 ### Suggested follow-ups (not blockers)
 1. L2 — small `/api/ki/runs/export` endpoint when the audit-export workflow needs structured AI telemetry.
