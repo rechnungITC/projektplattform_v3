@@ -1,6 +1,6 @@
 # PROJ-14: Connector Framework, Jira Integration, MCP Bridge, Stand-alone Deployment Hooks
 
-## Status: Approved
+## Status: Deployed
 **Created:** 2026-04-25
 **Last Updated:** 2026-04-25
 
@@ -517,4 +517,35 @@ The architecture decision to do "Plumbing-only" paid off — the surface is smal
 **READY** — no Critical, High, Medium, or Low bugs. Recommend proceeding to `/deploy`.
 
 ## Deployment
-_To be added by /deploy_
+
+**Deployed:** 2026-04-29
+**Production URL:** https://projektplattform-v3.vercel.app
+**Deployed by:** push to `main` → Vercel auto-deploy
+**Tag:** `v1.15.0-PROJ-14`
+**Scope:** Plumbing-only (A-A-A locked) — registry + tenant_secrets + Resend as end-to-end demo. Real Jira/MCP/Teams adapters follow as PROJ-14b/c/d/e.
+
+### What went live
+- Migration `20260429250000_proj14_connector_registry_and_tenant_secrets` (already applied to Supabase project `iqerihohwabyjzkpcujq` during /backend; the deploy commit makes it part of the canonical history). One new table (`tenant_secrets`), three SECURITY DEFINER pgcrypto helpers (`encrypt_tenant_secret`, `decrypt_tenant_secret`, `set_session_encryption_key`), tenant-admin-only RLS.
+- Backend: `lib/connectors/` (types + secrets + descriptors + registry + api), 5 admin-gated API routes under `/api/connectors/*`.
+- Frontend: top-level `/konnektoren` admin page with 6 connector cards + drawer + Email credential form + Test-Connection action. Top-Nav already had the admin-only "Konnektoren" entry pre-staged.
+- Doc: `docs/deployment/standalone.md` extended with the "Connector framework (PROJ-14)" section.
+
+### Required env-var (post-deploy action)
+- **`SECRETS_ENCRYPTION_KEY`** must be set as a server-secret in Vercel + the Supabase project for the credential UI to function. Without it the registry cleanly degrades — every editable connector reports `error: encryption_unavailable` and writes are refused — but no crash. Generate any 32+ char random string and add it via the Vercel project Settings (Environment Variables, Production scope, **not** prefixed with `NEXT_PUBLIC_`). After adding, redeploy (env vars don't apply retroactively).
+
+### Post-deploy smoke-test checklist (manual, recommended)
+- [ ] As tenant-admin: open `/konnektoren` → 6 cards visible with status badges.
+- [ ] Click Email card → drawer opens; fill `re_xxx` test API key + `noreply@example.com` → Save → toast "Credentials gespeichert" + auto-test toast.
+- [ ] Click Slack/Teams/Jira/MCP cards → drawer shows `adapter_missing` status + "Folgt in der nächsten Slice" card; no credential form.
+- [ ] Click Anthropic card → status reflects whether `ANTHROPIC_API_KEY` is set in Vercel; credential pflege not editable in this slice.
+- [ ] As non-admin: nav entry hidden; direct `/konnektoren` URL renders error card with the underlying 403 message.
+- [ ] Verify in Supabase SQL editor: `select count(*) from tenant_secrets;` reflects only the test credentials you saved.
+
+### Known follow-ups (not blocking)
+- **PROJ-14b — Jira-Export** (REST + Field-Mapping + Retry + Sync-Log).
+- **PROJ-14c — MCP-Bridge** (Deno-Edge-Function + minimal Tool-Set + per-tenant service token).
+- **PROJ-14d — Real-Teams-Adapter** (Microsoft Graph or webhook, replaces PROJ-13's `stub-teams.ts`).
+- **PROJ-14e — Bidirektionaler Jira-Sync** (Webhook + Conflict-Resolution + `external_refs` table).
+- **EmailChannel ↔ tenant_secrets wiring**: today PROJ-13's `EmailChannel` reads `RESEND_API_KEY` from env directly. Plumbing stores tenant credentials but the channel doesn't yet check `tenant_secrets` first. Small follow-up (no migration needed) — wired in the next slice that touches the email channel.
+- **Audit-trail gap on `tenant_secrets`** — pgcrypto-encrypted bytea is not diffable. A separate `tenant_secret_changes` audit table (without payload content) is a future hardening task.
+- **Encryption-key rotation is manual.** Procedure documented in `docs/deployment/standalone.md`. Automated UI-driven rotation is a follow-up slice.
