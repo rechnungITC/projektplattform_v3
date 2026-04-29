@@ -1,8 +1,8 @@
 # PROJ-12: KI Assistance and Data-Privacy Paths
 
-## Status: Planned
+## Status: Architected
 **Created:** 2026-04-25
-**Last Updated:** 2026-04-25
+**Last Updated:** 2026-04-29
 
 ## Summary
 Builds the platform's AI integration layer: a single model-routing component (cloud Claude vs local Ollama), a class-3 hard block that prevents personal data from reaching external models, KI proposals for planning units (work items, risks, decisions) generated only after explicit user action, and a review/approve flow that never auto-mutates business data. Also covers F12.1 privacy classification, F12.2 traceability, F12.3 contextual compliance hints, and F2.1b KI-driven wizard alternative. Inherits V2 EP-10.
@@ -126,7 +126,236 @@ Builds the platform's AI integration layer: a single model-routing component (cl
 <!-- Sections below are added by subsequent skills -->
 
 ## Tech Design (Solution Architect)
-_To be added by /architecture_
+
+### Realitätscheck und Scope
+
+Die Spec ist groß — 9 funktionale Bereiche von Modell-Routing bis KI-Wizard. Ein Single-Iteration-Build wäre das Doppelte des bisherigen Tempos und würde das Risiko in einer Iteration bündeln, ohne dass das Produkt unterwegs nutzbar wird. **Wir bauen einen vollständigen Vertical Slice „KI-Vorschläge für Risiken" und legen die Fundamente so, dass weitere Slices (Decisions, Work-Items, Wizard, Compliance-Hints) inkremental dazu kommen.**
+
+Bestandsstand vor dieser Iteration:
+- `/projects/[id]/ai-proposals` ist Coming-Soon — wird durch diese Iteration real.
+- `work_items` hat bereits `created_from_proposal_id` aus PROJ-9 — PROJ-12 nutzt das.
+- `risks`, `decisions`, `open_items` haben keine AI-Provenienz-Spalten; wir lösen das mit einer **separaten Provenienz-Tabelle**, statt jede Entitätstabelle anzufassen.
+- `EXTERNAL_AI_DISABLED`-Hook aus PROJ-3 existiert und wird hier zum ersten Mal konsumiert.
+
+### MVP-Scope (diese Iteration)
+
+```
+✅ IN dieser Iteration                       ⏳ DEFERRED (eigene Slices)
+─────────────────────────────────────────    ───────────────────────────────
+Privacy-Klassifikations-Register             KI-Wizard-Alternative (F2.1b)
+Klasse-3 Hard-Block                          Compliance-Hints-Katalog (F12.3)
+Provider-Abstraktion (Anthropic + Stub)      Per-Tenant-Modell-Auswahl-UI
+Modell-Router mit Klassifikations-Check      Decisions- und Work-Item-Vorschläge
+KI-Run-Logging                               Streaming-UI (Iteration 2)
+Risk-Vorschläge (vollständige Vertikale)     Ollama-Provider (Iteration 2)
+Review/Accept/Reject/Edit-UI                 Cost-Tracking pro Tenant
+Provenance-Tracking auf akzeptierten Risks   PROJ-17 Admin-UI für AI-Provider-Config
+Audit-Reason `ki_acceptance`
+```
+
+### Komponentenstruktur
+
+```
+Projektraum
+└── Tab „KI-Vorschläge"   (vorher Coming-Soon → jetzt real)
+    ├── Generate-Button („Vorschläge für Risiken anfordern")
+    │   └── Optional: Kontext-Eingabe (Freitext oder Auto-Kontext aus Projekt)
+    │
+    ├── Vorschlagsliste (gefiltert nach Status: draft / accepted / rejected)
+    │   └── Vorschlags-Karte
+    │       ├── Provenance-Badge: „KI · Claude · 14:32 · run_id"
+    │       ├── Inline-Edit (Felder: title, probability, impact, mitigation, …)
+    │       ├── Accept-Button → legt echtes Risk an, audit-reason `ki_acceptance`
+    │       ├── Reject-Button → optionaler Begründungstext
+    │       └── Klassifikations-Hinweis (falls Klasse-3-Felder im Kontext)
+    │
+    └── Run-Historie (zusammengefaltet, einsehbar pro Vorschlag)
+
+Risiken-Tab (existiert)
+└── Filter „Nur KI-erzeugt" (neu — joint mit ki_provenance)
+└── Risk-Karte: Badge „KI-erzeugt" sichtbar wenn provenance-Eintrag existiert
+
+Server-Schicht
+├── lib/ai/data-privacy-registry.ts   (Klassifikations-Map table.column → 1|2|3)
+├── lib/ai/classify.ts                (classifyPayload-Helper, höchste Klasse)
+├── lib/ai/router.ts                  (aiRouter.invoke; ruft classify, dann Provider)
+├── lib/ai/providers/
+│   ├── anthropic.ts                  (echte Claude-Calls via @ai-sdk/anthropic)
+│   ├── stub.ts                       (deterministischer Fake für Tests + Stand-alone)
+│   └── ollama.ts                     (Stub-Stand mit „not implemented" — Iteration 2)
+├── api/projects/[id]/ki/suggest      (POST: Vorschläge generieren)
+├── api/ki/suggestions/[id]/accept    (POST: → Risiko anlegen, audit_reason `ki_acceptance`)
+├── api/ki/suggestions/[id]/reject    (POST)
+└── api/ki/suggestions/[id]/edit      (PATCH: Inline-Edit vor Accept)
+```
+
+### Datenmodell (Klartext)
+
+**Drei neue Tabellen, alle multi-tenant + RLS-geschützt:**
+
+**ki_runs** — eine Zeile pro KI-Aufruf (auch wenn der Klasse-3-Block greift)
+- Wer (actor, tenant, project), wann, Zweck (`risks` für jetzt; später erweiterbar)
+- Höchste Datenklasse im Payload (1 / 2 / 3)
+- Ausgewählter Provider (`anthropic` / `stub` / `ollama`) und Modell-ID
+- Status (`success` / `error` / `external_blocked`)
+- Token-Verbrauch und Dauer (für spätere Cost-Tracking-Slice)
+- Optionaler Error-Text bei Fehlern
+
+**ki_suggestions** — eine Zeile pro generiertem Einzelvorschlag
+- Verknüpfung zur `ki_run`-Zeile (Sammelaufrufe können mehrere Vorschläge erzeugen)
+- Tenant + Project Scope (RLS)
+- Vorschlags-Inhalt als JSONB (entitätstyp-spezifisches Schema, Zod-validiert)
+- Status: `draft` (frisch generiert) / `accepted` / `rejected` / `modified` (vom User editiert vor Accept)
+- Bei Accept: Verweis auf die erzeugte Entität (`accepted_entity_type`, `accepted_entity_id`)
+- Bei Reject: optionaler Begründungstext
+- Modified-Tracking: ursprünglicher Inhalt bleibt im JSONB; Edit-Diff sichtbar
+
+**ki_provenance** — Verknüpfung von akzeptierten Entitäten zu ihrer Suggestion
+- (entity_type, entity_id) → ki_suggestion_id
+- Genau eine Zeile pro KI-akzeptierter Entität
+- Wird beim Accept-RPC atomar zusammen mit der Entität angelegt
+- Filter „Nur KI-erzeugt" auf dem Risiken-Tab macht einen Left-Join über diese Tabelle
+- Dasselbe Schema funktioniert später für decisions / work_items / open_items — ohne Schema-Änderung an den Entitätstabellen
+
+**Privacy-Klassifikations-Register** — TypeScript-Modul ohne DB
+- Map `{ "stakeholders.name": 3, "stakeholders.contact_email": 3, "projects.name": 2, "projects.project_type": 1, … }`
+- Default für unspezifizierte Felder = 3 (sicher)
+- Wird vom `classifyPayload`-Helper konsumiert; jedes ausgehende AI-Payload wird geprüft
+
+### Tech-Entscheidungen
+
+| Entscheidung | Warum |
+|---|---|
+| Vercel AI SDK (`ai` + `@ai-sdk/anthropic`) | Standard auf Vercel-Stack, Streaming + Tool-Calls eingebaut, Provider-Switch über String. PRD nennt explizit den Anthropic-Pfad. |
+| Direct-Provider statt AI Gateway in MVP | PRD-Vorgabe „via Anthropic SDK"; AI Gateway bleibt eine spätere Option, sobald mehrere Modelle verglichen werden. |
+| Eine `ki_provenance`-Tabelle statt Spalten an jeder Entitätstabelle | Vermeidet Schema-Änderungen an risks / decisions / work_items / open_items. Eine Provenienz-Quelle für alles. Einfacher zu erweitern, wenn eine neue Entitätsart KI-Vorschläge bekommt. |
+| Klassifikation als TS-Modul, nicht als DB-Tabelle | Statische Konfiguration, deployt mit dem Code, versioniert über Git. Eine DB-Tabelle würde laufzeit-änderbar, was für eine Sicherheits-Klassifikation nicht gewollt ist. |
+| Klasse-3-Block im Router (vor dem Provider-Call) | Wenn das Payload Klasse-3 enthält UND der gewählte Provider extern ist, blockt der Router noch bevor die Library lädt. Defense vor `EXTERNAL_AI_DISABLED` (PROJ-3) — beide greifen, beide werden geloggt. |
+| `EXTERNAL_AI_DISABLED` (PROJ-3) wird hier konsumiert | Der Hook aus PROJ-3 ist jetzt ein echter Konsument: bei `true` werden alle externen Provider übersprungen, der Router fällt auf den lokalen Provider zurück (Stub heute, Ollama morgen). |
+| Stub-Provider statt Mock | Ein echter Code-Pfad, der deterministische Fake-Vorschläge erzeugt. Ermöglicht E2E-Tests ohne Anthropic-Quota, Demos ohne API-Key, Stand-alone-Bootstrap ohne Ollama. |
+| Risk-Vorschläge als erste Vertikale | Klares Schema (Titel, P, A, Mitigation), keine Append-only-Komplexität wie Decisions, keine Hierarchie wie Work-Items. Schnellster Pfad zu „KI-Akzept landet als echtes Datum". |
+| Accept-Endpoint als SECURITY DEFINER RPC | Atomares Anlegen von (Risk, ki_provenance)-Paar in einer Transaktion. Audit-Reason `ki_acceptance` wird über die GUC-Konvention (PROJ-10) gesetzt. |
+| Klasse-3 Block kann nicht überschrieben werden | Spec: „No bypass — even tenant admins cannot override." Keine Setting-Toggle, keine Admin-Override. UI bietet diese Option auch nicht an. |
+| Server-only Lese-Pfade für Klassifikation | Das Register und die Klassifikations-Logik leben in Server-Code. Der Browser sieht nur das Resultat („dieses Payload enthält Klasse-3 → Block"), nie die Klassifikations-Tabelle selbst. |
+| Audit-Reason auf akzeptierten Entitäten = `ki_acceptance` | Konsistent mit PROJ-10 (Reasons werden als String festgehalten); History-Tab und Audit-Reports filtern danach. |
+
+### Sicherheitsdimension
+
+**Verteidigungsschichten gegen unbeabsichtigten Class-3-Leak:**
+1. `data-privacy-registry.ts` — statische Klassifikation pro Feld
+2. `classifyPayload()` im Router — höchste Klasse im Payload
+3. Block bei Klasse-3 + externer Provider → 403 mit `external-blocked`
+4. `EXTERNAL_AI_DISABLED=true` (PROJ-3) — kein externer Provider unabhängig vom Payload
+5. RLS auf `ki_runs` / `ki_suggestions` — Cross-Tenant-Lecks bleiben technisch unmöglich
+6. Audit-Trail über jeden AI-Aufruf — auch der geblockte Aufruf wird gelogged
+
+**Abuse-Vektoren, die wir blocken:**
+- Tenant-Admin versucht, ein Setting zu setzen, das die Klasse-3-Sperre öffnet → existiert nicht in der UI; nicht in der Spec; keine API-Route exponiert
+- User editiert einen Vorschlag und versucht, Klasse-3-Daten in den extern-routbaren Kontext zu schmuggeln → Edit-Endpoint klassifiziert den editierten Inhalt erneut, blockt bei Klasse-3
+- Externer Provider liefert halluzinierte Klasse-3-Daten zurück → akzeptierter Vorschlag landet im Audit, ist nachvollziehbar, kann gelöscht werden
+
+### Neue Code-Oberfläche
+
+**Eine Migration:** `proj12_ki_suggestions_runs_provenance.sql` — drei Tabellen, RLS, ein SECURITY DEFINER Accept-RPC.
+
+**API-Routen (4 neu):**
+- `POST /api/projects/[id]/ki/suggest` — generiert Vorschläge für angegebenen Zweck
+- `POST /api/ki/suggestions/[id]/accept` — atomar Entität anlegen + Provenance setzen
+- `POST /api/ki/suggestions/[id]/reject` — Statuswechsel + optionaler Reason
+- `PATCH /api/ki/suggestions/[id]` — Inline-Edit der Felder vor Accept
+
+**Lib-Module (5 neu):**
+- `lib/ai/data-privacy-registry.ts`, `lib/ai/classify.ts`, `lib/ai/router.ts`, `lib/ai/providers/{anthropic,stub,ollama}.ts`
+
+**UI-Seiten + Komponenten:**
+- `app/(app)/projects/[id]/ai-proposals/page.tsx` ersetzen
+- `components/projects/ai-proposals/` — Tab-Client, Vorschlagsliste, Vorschlagskarte mit Inline-Edit, Run-Historie
+
+**Risiken-Tab Erweiterung:**
+- Filter „Nur KI-erzeugt" am bestehenden RiskTabClient
+- Provenance-Badge auf Risiko-Karten
+- HistoryTab zeigt `ki_acceptance`-Reason als Badge
+
+### Abhängigkeiten
+
+**Neue npm-Pakete:**
+- `ai` (Vercel AI SDK) — Provider-agnostische Streaming-Schicht
+- `@ai-sdk/anthropic` — Direct-Anthropic-Provider, nutzt `ANTHROPIC_API_KEY` env
+
+**Neue Env-Variablen** (alle server-side, nicht NEXT_PUBLIC_):
+- `ANTHROPIC_API_KEY` — Pflicht für externen Provider; falls fehlend, fällt der Router automatisch auf den Stub-Provider zurück (Stand-alone-Setup ohne externen Key bleibt funktional)
+- `EXTERNAL_AI_DISABLED` (existiert aus PROJ-3) — wird jetzt konsumiert
+
+### Out-of-Scope-Erinnerungen (aus der Spec)
+
+- Auto-Anonymisierung von Klasse-3-Feldern
+- KI-basierte rechtliche Bewertung
+- Bypass-Workflow für Klasse-3
+- Self-Confidence des Modells
+- Fine-Tuning
+- KI-generierte Kommunikation (PROJ-13)
+- MCP-Bridge (PROJ-14)
+
+### Drei offene Design-Fragen — beide Optionen zur Wahl
+
+#### Frage 1 — Welche Vorschlagsart in dieser Iteration?
+
+**Option A: Risks** *(in obiger Skizze gezeigt)*
+- Pro: Klares, kleines Schema; PROJ-20 frisch deployed; Compliance-Wert direkt sichtbar (Risikoregister mit KI-Vorschlägen).
+- Pro: Risk-Score ist DB-berechnet → der Vorschlag liefert nur P+I, der Score erscheint automatisch.
+- Contra: Risiken sind ein eher niedrig-frequentierter Anwendungsfall (man legt nicht 20 Risiken pro Tag an).
+
+**Option B: Work-Items**
+- Pro: Hochfrequent — Backlog-Anlage ist der häufigste Anwendungsfall; KI-Wert sofort spürbar.
+- Pro: `created_from_proposal_id` existiert schon in der work_items-Tabelle.
+- Contra: Komplexeres Schema (kind, parent, sprint, story_points), Methoden-Aware-Filterung (PROJ-9), Hierarchie-Semantik. Größerer Umfang.
+- Contra: Sprint/Phase-Zuordnung beim KI-Vorschlag unklar — der User muss das oft nachjustieren.
+
+#### Frage 2 — Anthropic-Modell-Default?
+
+**Option A: Claude Opus 4.7** (`claude-opus-4-7`)
+- Pro: Bestes Ergebnis, niedrigere Halluzinationsrate, passt zur Marke „enterprise".
+- Contra: 5×–8× teurer als Sonnet pro Token.
+
+**Option B: Claude Sonnet 4.6** (`claude-sonnet-4-6`)
+- Pro: Sehr gutes Preis-/Leistungsverhältnis; passt zu MVP-Volumina.
+- Pro: Schneller; gute Latenz für interaktiven Review-Workflow.
+- Contra: Gelegentlich schwächer bei strukturierten Outputs als Opus.
+
+#### Frage 3 — Auto-Kontext oder User-Kontext?
+
+**Option A: Auto-Kontext** *(in obiger Skizze gezeigt)*
+- Server zieht selbst Projekttyp, Phasen, vorhandene Work-Items, Stakeholder-Rollen als Kontext.
+- Pro: Niedrige Hürde — User klickt einen Button, Vorschläge erscheinen.
+- Contra: Klasse-3-Felder (Stakeholder-Namen) im Kontext → Klasse-3-Block greift → externer Provider kommt nie zum Zug.
+
+**Option B: User-Freitext-Kontext**
+- User tippt einen kurzen Kontextbeschreibung („wir bereiten ein ERP-Rollout vor, Phase Spec, 3 Module").
+- Pro: Klare Trennung — der User entscheidet bewusst, was er schickt; Klasse-3-Risiko deutlich niedriger.
+- Pro: Spec sagt „Generation requires explicit user action; no background polling that costs tokens silently" — explizite Eingabe verstärkt das.
+- Contra: Höhere Hürde.
+
+### Festgelegte Design-Entscheidungen
+
+**Frage 1 — Vorschlagsart: Option A (Risks).** Klares Schema, schneller Vertikal-Slice, baut auf dem frisch deployten PROJ-20 auf.
+
+**Frage 2 — Modell-Default: Option A (Claude Opus 4.7, `claude-opus-4-7`).** Beste Qualität, niedrigste Halluzinationsrate. Der Default lässt sich per Env-Variable (`ANTHROPIC_MODEL`) ohne Code-Änderung auf Sonnet umschwenken, falls Volumen-/Kostenlage das nötig macht.
+
+**Frage 3 — Kontext-Quelle: Option A (Auto-Kontext mit kuratierter Allowlist).** Damit der externe Provider tatsächlich zum Einsatz kommt, definiert der Auto-Context-Sammler eine **Allowlist** von Feldern, die garantiert Klasse 1–2 sind — und keine Klasse-3-Felder einbezieht. Default-Allowlist:
+
+```
+projects:    name (Klasse 2), project_type (1), project_method (1),
+             lifecycle_status (1), planned_start_date (2),
+             planned_end_date (2)
+phases:      name (1), planned_start (2), planned_end (2), status (1)
+milestones:  name (1), target_date (2), status (1)
+work_items:  title (2), kind (1), status (1)        — KEINE description (kann Klasse-3-Freitext enthalten)
+risks:       title (2), probability (1), impact (1) — vorhandene Risiken als Negativ-Beispiele für Generierung
+```
+
+**NICHT im Auto-Kontext:** Stakeholder (alle Felder Klasse 3), Profile-Daten, Notizen, Beschreibungstexte, Audit-Log. Wenn ein User mit diesen Daten arbeiten will, wird das in einer späteren Slice über einen explizit gewählten Kontext-Erweiterungs-Toggle abgebildet — und wird dann Klasse-3 klassifiziert und zwingend lokal geroutet.
+
+`classifyPayload` läuft als zweite Verteidigungslinie über den fertigen Auto-Context — falls die Allowlist erweitert wird und versehentlich ein Klasse-3-Feld enthält, blockt der Router immer noch.
 
 ## Implementation Notes
 _To be added by /frontend and /backend_
