@@ -1,6 +1,6 @@
 # PROJ-13: Communication Center, Email/Slack/Teams Send, Internal Project Chat
 
-## Status: Approved
+## Status: Deployed
 **Created:** 2026-04-25
 **Last Updated:** 2026-04-29
 
@@ -400,4 +400,28 @@ The 5-state enum, two consistency CHECKs, and the editor+/lead/admin policy comb
 **READY** — no Critical or High bugs. Recommend proceeding to `/deploy`.
 
 ## Deployment
-_To be added by /deploy_
+
+**Deployed:** 2026-04-29
+**Production URL:** https://projektplattform-v3.vercel.app
+**Deployed by:** push to `main` → Vercel auto-deploy
+**Tag:** `v1.13.0-PROJ-13`
+
+### What went live
+- Migration `20260429230000_proj13_communication_outbox_and_chat.sql` (already applied to Supabase project `iqerihohwabyjzkpcujq` during /backend; the deploy commit just made the file part of the canonical history).
+- Backend: 4 API routes under `/api/projects/[id]/communication/*`, channel adapter strategy (internal/email-resend/stub-slack/stub-teams), outbox-service with Class-3 hard block.
+- Frontend: new "Kommunikation" tab on the project room (gated by `communication` module), Outbox panel + Chat panel + Realtime subscription, Demo-Mode banner when no `RESEND_API_KEY` is configured.
+- Tenant settings: `communication` promoted from `RESERVED_MODULES` to `TOGGLEABLE_MODULES`; backfilled into all existing tenants' `active_modules`.
+
+### Post-deploy smoke-test checklist (manual, recommended)
+- [ ] Open `/projects/<id>/kommunikation` as the tenant admin → see "Outbox" + "Chat" sub-tabs.
+- [ ] Outbox: create a draft (channel=internal), then click "Senden" → status flips to `sent`, toast shows.
+- [ ] Outbox: create a draft (channel=email), click "Senden" → if no `RESEND_API_KEY`: Demo-Mode toast; otherwise real Resend send.
+- [ ] Outbox: create a draft (channel=slack or teams) → "Senden" → toast surfaces "no-adapter-yet".
+- [ ] Chat: post a message → appears immediately in the list; in a second browser tab, the same message arrives via Realtime.
+- [ ] In `/settings/tenant`, toggle the `communication` module off → reload the project room → "Kommunikation" tab disappears; deep-linking to `/projects/<id>/kommunikation` returns the data via API as long as the tenant_settings row resolves (the helper fails open if missing).
+- [ ] Audit history: edit a draft outbox entry → see the field-level diff in the project's history tab (covered by PROJ-10 audit trigger).
+
+### Known follow-ups (not blocking)
+- Real Slack/Teams adapters land in their own slice (waiting on PROJ-14 connector framework + per-tenant webhook config).
+- Real Resend send requires setting `RESEND_API_KEY` + `RESEND_FROM_EMAIL` in Vercel project env. Without those vars the email channel runs in stub mode and the UI surfaces a Demo-Mode banner.
+- A real-Postgres integration test for the audit trigger is the recurring follow-up first noted in PROJ-17. Live red-team probes have covered it for now.
