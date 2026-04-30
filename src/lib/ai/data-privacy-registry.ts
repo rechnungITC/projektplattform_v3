@@ -150,6 +150,40 @@ const REGISTRY: Record<string, DataClass> = {
   "vendor_documents.title": 2,
   "vendor_documents.external_url": 2,
   "vendor_documents.note": 2,
+
+  // -------------------- budget (PROJ-22) --------------------------------
+  // Budget structure is business context (Class 2) — amounts and currency
+  // are projektrelevant aber nicht personenbezogen. Buchungs-Notizen sind
+  // Class-3, weil sie Personen explizit erwähnen können ("Bonus für Frau
+  // Müller", "Beratungs-Tag mit Hr. Schmidt"). PROJ-12-Routing leitet
+  // Class-3 nie an externe Modelle.
+  "budget_categories.name": 2,
+  "budget_categories.description": 2,
+  "budget_items.name": 2,
+  "budget_items.description": 2,
+  "budget_items.planned_amount": 2,
+  "budget_items.planned_currency": 1,
+  "budget_items.is_active": 1,
+  "budget_postings.kind": 1,
+  "budget_postings.amount": 2,
+  "budget_postings.currency": 1,
+  "budget_postings.posted_at": 2,
+  "budget_postings.source": 1,
+  // Buchungs-Notiz: PII-Risiko durch freien Text → Class 3.
+  "budget_postings.note": 3,
+  // Vendor-Rechnung: Nummer + Datum + Betrag sind Geschäftskontext.
+  // Notiz kann personenbezogene Anmerkungen enthalten → Class 3.
+  "vendor_invoices.invoice_number": 1,
+  "vendor_invoices.invoice_date": 2,
+  "vendor_invoices.gross_amount": 2,
+  "vendor_invoices.currency": 1,
+  "vendor_invoices.note": 3,
+  // FX-Raten sind reine Marktdaten — Class 1.
+  "fx_rates.from_currency": 1,
+  "fx_rates.to_currency": 1,
+  "fx_rates.rate": 1,
+  "fx_rates.valid_on": 2,
+  "fx_rates.source": 1,
 }
 
 /**
