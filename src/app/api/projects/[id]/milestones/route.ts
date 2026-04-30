@@ -2,6 +2,11 @@ import { NextResponse } from "next/server"
 import { z } from "zod"
 
 import { apiError, getAuthenticatedUserId } from "@/app/api/_lib/route-helpers"
+import {
+  isScheduleConstructAllowedInMethod,
+  scheduleConstructRejectionMessage,
+} from "@/lib/work-items/schedule-method-visibility"
+import type { ProjectMethod } from "@/types/project-method"
 
 const isoDate = z.string().regex(/^\d{4}-\d{2}-\d{2}$/, "Use YYYY-MM-DD")
 
@@ -34,9 +39,20 @@ export async function POST(
   if (!userId) return apiError("unauthorized", "Not signed in.", 401)
 
   const { data: project, error: projErr } = await supabase
-    .from("projects").select("tenant_id").eq("id", projectId).maybeSingle()
+    .from("projects").select("tenant_id, project_method").eq("id", projectId).maybeSingle()
   if (projErr) return apiError("internal_error", projErr.message, 500)
   if (!project) return apiError("not_found", "Project not found.", 404)
+
+  // PROJ-26: method-gating — milestones only in waterfall/pmi/prince2/vxt2 (or NULL/setup).
+  const projectMethod = project.project_method as ProjectMethod | null
+  if (!isScheduleConstructAllowedInMethod("milestones", projectMethod)) {
+    return apiError(
+      "schedule_construct_not_allowed_in_method",
+      scheduleConstructRejectionMessage("milestones", projectMethod as ProjectMethod),
+      422,
+      "project_method"
+    )
+  }
 
   const { data, error } = await supabase
     .from("milestones").insert({
