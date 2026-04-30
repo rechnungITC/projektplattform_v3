@@ -13,6 +13,7 @@ import {
   Sparkles,
   Users,
   Users2,
+  Wallet,
 } from "lucide-react"
 import Link from "next/link"
 import { usePathname } from "next/navigation"
@@ -39,6 +40,7 @@ interface ProjectTab {
     | "ai-proposals"
     | "kommunikation"
     | "lieferanten"
+    | "budget"
     | "mitglieder"
     | "historie"
     | "einstellungen"
@@ -82,6 +84,12 @@ const TABS: readonly ProjectTab[] = [
     label: "Lieferanten",
     icon: Building2,
     requiresModule: "vendor",
+  },
+  {
+    segment: "budget",
+    label: "Budget",
+    icon: Wallet,
+    requiresModule: "budget",
   },
   { segment: "mitglieder", label: "Mitglieder", icon: Users2 },
   { segment: "historie", label: "Historie", icon: History },
