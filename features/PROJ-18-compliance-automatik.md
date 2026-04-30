@@ -1,6 +1,6 @@
 # PROJ-18: Compliance Automatik & Process Templates
 
-## Status: Approved
+## Status: Deployed
 **Created:** 2026-04-25
 **Last Updated:** 2026-04-25
 
@@ -656,4 +656,27 @@ E2E tests deferred to post-fix run — they cannot exercise the compliance flow 
 Production-ready: **YES**. Recommended next step: `/deploy proj 18`.
 
 ## Deployment
-_To be added by /deploy_
+
+**Deployed: 2026-04-30** — production live.
+
+- **Production URL**: https://projektplattform-v3.vercel.app (auto-deploy from `main`)
+- **Supabase project**: `iqerihohwabyjzkpcujq` (eu-west-1) — migration `20260430180000_proj18_compliance_automatik.sql` applied at QA-prep time.
+- **Git tag**: `v1.21.0-PROJ-18`
+- **Pre-deploy gates passed**:
+  - `npm run build` → `✓ Compiled successfully in 5.4s` (41 routes generated)
+  - `npm test` → 51 files / 372 tests pass
+  - `npx tsc --noEmit` → clean
+  - Playwright E2E → 8/8 pass (chromium + Mobile Safari)
+  - Vercel auto-deploys from `main` on push (tag does not trigger a new deploy by itself)
+- **Migration verification**: 7 platform-default tags seeded for the live tenant `329f25e5-8b8d-42ac-9f11-4c529883f9a2` (count confirmed). RLS verified via cross-tenant red-team — foreign user sees 0 tags, admin sees 7.
+- **Vitest config tweak shipped alongside**: `tests/**` excluded from vitest discovery so Playwright specs don't break the unit-test run; `/test-results`, `/playwright-report` added to `.gitignore`.
+- **Commits** (4 logical slices on `main`):
+  - `feat(PROJ-18): backend — compliance tags, trigger engine, audit + RLS`
+  - `feat(PROJ-18): frontend — compliance drawer section + phase warnings`
+  - `fix(PROJ-18): QA round 1 — slug rename + phase-close warnings + ST-05`
+  - `test(PROJ-18): QA pass — 372/372 vitest, 8/8 e2e, RLS+trigger live-verified`
+- **Known carry-over (non-blocking)**:
+  - LOW-1 — admin can rename platform-default `display_name`. Spec amendment recommended.
+  - LOW-2 — INSERT-time provenance is in `attributes.compliance_origin`, not in `audit_log_entries.change_reason`.
+  - MEDIUM-1 — phase-gate UX is inline panel, not modal-at-close. Backend now provides everything needed for a follow-up frontend slice.
+  - ST-06 (template UI) deferred to PROJ-18b per locked scope decision.
