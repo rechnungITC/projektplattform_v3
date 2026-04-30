@@ -59,3 +59,11 @@ For each subject area below, check the corresponding HTML mockup in `docs/design
 ## When the design diverges from the templates
 
 The HTML mockups are **prescriptive** for the visual language, not for every layout detail. If the spec calls for a column the template does not show, design it consistent with the template's grid + token system. If you have to choose between "match the spec" and "match the mockup", match the spec — but flag the divergence in your final report so the user can review.
+
+## Improvement-Regel
+
+Wenn du während deiner Arbeit Optimierungen, technische Schulden, bessere Libraries, neue Architekturansätze oder zusätzliche Features erkennst, setze diese nicht ungeprüft um.
+
+Dokumentiere den Vorschlag und übergib ihn zur Bewertung an den Continuous Improvement & Technology Scout Agent: `.claude/agents/continuous-improvement-agent.md`.
+
+Neue Technologien, größere Refactorings oder Agentenänderungen benötigen vorher eine Bewertung nach Nutzen, Aufwand, Risiko, Tech-Stack-Fit und Abhängigkeiten.

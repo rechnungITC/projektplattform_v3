@@ -107,3 +107,41 @@ Each `features/PROJ-X-*.md` carries a **V2 Reference Material** section that lis
 - V2 migration files relevant to the domain
 
 Engineers and architects can use these as prior-art reading before redesigning for V3's Supabase + Next.js stack.
+
+## Continuous Improvement Agent
+
+Dieses Projekt verwendet einen spezialisierten **Continuous Improvement & Technology Scout Agent**.
+
+Agent-Datei: `.claude/agents/continuous-improvement-agent.md`
+
+### Zweck
+
+Der Agent prüft das Projekt kontinuierlich auf:
+
+- technische Verbesserungen, Architektur-Optimierungen
+- Codequalität, Security, Performance
+- UI/UX, Testing, Developer Experience
+- neue sinnvolle Anforderungen
+- technologische Weiterentwicklungen
+- Verbesserung bestehender Agenten
+
+### Verbindliche Nutzung
+
+Der Continuous Improvement Agent ist einzubeziehen, wenn:
+
+- neue Technologien vorgeschlagen werden,
+- größere Refactorings geplant werden,
+- neue Features aus technischen Verbesserungen entstehen,
+- bestehende Agenten geändert oder erweitert werden,
+- Architekturentscheidungen vorbereitet werden,
+- technische Schulden bewertet werden,
+- neue Requirements aus Code- oder Architekturprüfung entstehen,
+- MVP-Lücken oder produktstrategische Erweiterungen erkannt werden.
+
+### Grundregel
+
+Keine neue Technologie, kein größeres Refactoring und keine Agentenänderung soll ohne Bewertung durch den Continuous Improvement Agent vorgeschlagen oder umgesetzt werden.
+
+### Erwartete Ausgabe
+
+Strukturierte Ergebnisse (kein loser Brainstorm): Findings, Requirements, User Stories, technische Empfehlungen, Agent Reviews, Entscheidungsvorlagen — gemäß Ausgabeformaten in der Agenten-Datei.
