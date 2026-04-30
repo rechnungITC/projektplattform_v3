@@ -27,6 +27,7 @@ import {
   AlertDialogTitle,
 } from "@/components/ui/alert-dialog"
 import { useAuth } from "@/hooks/use-auth"
+import { useWizardOverrides } from "@/hooks/use-wizard-overrides"
 import { computeRules } from "@/lib/project-rules/engine"
 import {
   DraftConflictError,
@@ -95,6 +96,11 @@ export function WizardClient({ draftId }: WizardClientProps) {
   const router = useRouter()
   const { user, currentTenant } = useAuth()
   const tenantId = currentTenant?.id ?? null
+
+  // PROJ-5 + PROJ-16 — fetch tenant-side overrides once. Fail-soft: if the
+  // fetch errors (RLS, network), the wizard falls back to the unmodified
+  // code catalog and never refuses to render.
+  const overrides = useWizardOverrides()
 
   const [step, setStep] = React.useState<WizardStep>("basics")
   const [furthestStep, setFurthestStep] = React.useState<WizardStep>("basics")
@@ -252,7 +258,11 @@ export function WizardClient({ draftId }: WizardClientProps) {
         }
         case "followups": {
           if (!data.project_type) return false
-          const rules = computeRules(data.project_type, data.project_method)
+          const rules = computeRules(
+            data.project_type,
+            data.project_method,
+            overrides.projectTypeOverrides.get(data.project_type) ?? null
+          )
           let ok = true
           for (const info of rules.required_info) {
             const value = data.type_specific_data[info.key] ?? ""
@@ -274,7 +284,7 @@ export function WizardClient({ draftId }: WizardClientProps) {
           return true
       }
     },
-    [form]
+    [form, overrides.projectTypeOverrides]
   )
 
   const goToStep = React.useCallback(
@@ -456,14 +466,31 @@ export function WizardClient({ draftId }: WizardClientProps) {
           ) : step === "type" ? (
             <StepType />
           ) : step === "method" ? (
-            <StepMethod projectType={data.project_type} />
+            <StepMethod
+              projectType={data.project_type}
+              methodEnabled={overrides.methodEnabled}
+              hasMethodOverrides={overrides.hasMethodOverrides}
+            />
           ) : step === "followups" ? (
             <StepFollowups
               projectType={data.project_type as ProjectType}
               projectMethod={data.project_method}
+              projectTypeOverride={
+                data.project_type
+                  ? overrides.projectTypeOverrides.get(data.project_type) ??
+                    null
+                  : null
+              }
             />
           ) : (
-            <StepReview />
+            <StepReview
+              projectTypeOverride={
+                data.project_type
+                  ? overrides.projectTypeOverrides.get(data.project_type) ??
+                    null
+                  : null
+              }
+            />
           )}
 
           <div className="flex flex-wrap items-center justify-between gap-2 border-t pt-4">

@@ -1,9 +1,13 @@
 /**
- * Rule engine (PROJ-6) — pure function `computeRules(type, method)`.
+ * Rule engine (PROJ-6 + PROJ-5 extensions) — pure function
+ * `computeRules(type, method, overrides?)`.
  *
  * No DB access, no I/O. Combines:
  *   - the project type profile (active modules, suggested roles, required info)
  *   - the method's leading objects, intersected with `WORK_ITEM_METHOD_VISIBILITY`
+ *   - optional tenant-side project-type override (PROJ-16): when present,
+ *     `standard_roles` and/or `required_info` from the override REPLACE
+ *     the catalog values for the resolved profile.
  *
  * Used both server-side (API endpoints) and client-side (wizard preview).
  */
@@ -13,6 +17,7 @@ import {
   type ProjectTypeProfile,
   type RequiredInfo,
 } from "@/lib/project-types/catalog"
+import type { ProjectTypeOverrideFields } from "@/types/master-data"
 import type { ProjectMethod } from "@/types/project-method"
 import type { ProjectType } from "@/types/project"
 import {
@@ -150,9 +155,20 @@ function mergeRequiredInfo(
 
 export function computeRules(
   type: ProjectType,
-  method: ProjectMethod | null
+  method: ProjectMethod | null,
+  overrides: ProjectTypeOverrideFields | null = null
 ): ProjectRules {
-  const profile: ProjectTypeProfile = getProjectTypeProfile(type)
+  const baseProfile: ProjectTypeProfile = getProjectTypeProfile(type)
+  // Apply tenant-side overrides on top of the catalog. Only fields
+  // present in the override are replaced; everything else inherits.
+  const profile: ProjectTypeProfile = overrides
+    ? {
+        ...baseProfile,
+        standard_roles: overrides.standard_roles ?? baseProfile.standard_roles,
+        required_info: overrides.required_info ?? baseProfile.required_info,
+      }
+    : baseProfile
+
   const methodInfo =
     method !== null ? METHOD_REQUIRED_INFO[method] ?? [] : []
   return {

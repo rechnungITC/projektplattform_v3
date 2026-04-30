@@ -10,6 +10,7 @@ import {
 } from "@/components/ui/card"
 import { parseLocalDate } from "@/lib/dates/iso-date"
 import { computeRules } from "@/lib/project-rules/engine"
+import type { ProjectTypeOverrideFields } from "@/types/master-data"
 import { PROJECT_METHOD_LABELS } from "@/types/project-method"
 import { PROJECT_TYPE_LABELS } from "@/types/project"
 import type { WizardData } from "@/types/wizard"
@@ -24,7 +25,12 @@ function formatDate(iso: string | null): string {
   })
 }
 
-export function StepReview() {
+interface StepReviewProps {
+  /** PROJ-16 tenant-side override for the chosen project-type, or null. */
+  projectTypeOverride?: ProjectTypeOverrideFields | null
+}
+
+export function StepReview({ projectTypeOverride }: StepReviewProps = {}) {
   const form = useFormContext<WizardData>()
   const data = form.getValues()
 
@@ -36,7 +42,11 @@ export function StepReview() {
 
   const rules =
     data.project_type !== null
-      ? computeRules(data.project_type, data.project_method)
+      ? computeRules(
+          data.project_type,
+          data.project_method,
+          projectTypeOverride ?? null
+        )
       : null
 
   return (

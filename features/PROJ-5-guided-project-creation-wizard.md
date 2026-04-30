@@ -365,3 +365,30 @@ Status flipped to **Approved**. Ready for `/deploy` (auto-deploy already shipped
 - KI-Dialog (F2.1b) — gated by PROJ-12.
 - Fix the 41 pre-existing lint errors surfaced by the new lint script.
 - Migrate ERP-specific Step-4 answers from `type_specific_data` JSONB into a per-type table (PROJ-15).
+
+## Extensions (2026-04-30) — PROJ-16 Override Application
+
+Two follow-ups originally documented as PROJ-16 deferreds — both small, both shipped together as a single patch slice.
+
+### What landed
+- **Method-Toggle filtering in Step 3** — the wizard's method picker now reads `tenant_method_overrides` (PROJ-16). Methods with `enabled=false` are filtered out of the radio group entirely. A banner ("Tenant-Konfiguration aktiv: dein Tenant-Admin hat einige Methoden deaktiviert") appears when at least one method is explicitly disabled. If a resumed draft has a now-disabled method picked, the form clears it on mount.
+- **Project-Type-Override application in Steps 4 + Review** — `computeRules(type, method, overrides?)` now takes an optional `ProjectTypeOverrideFields` argument. When present, `standard_roles` and/or `required_info` from the override REPLACE the catalog values (partial overrides supported — passing only one field leaves the other inherited). Method-side `required_info` merge still applies on top of the type-side override.
+- **Migration `20260430140000_proj5_open_overrides_select_to_members.sql`** — switched RLS SELECT policies on `tenant_project_type_overrides` and `tenant_method_overrides` from `is_tenant_admin` to `is_tenant_member`. Writes (PUT/DELETE) stay admin-only via `adminTenantContext` in `[key]/route.ts`. Without this change non-admin users hitting the wizard would 403 on the override fetch.
+- **`/api/master-data/project-type-overrides` + `/api/master-data/method-overrides` GET routes** — switched from `adminTenantContext` to a new `memberTenantContext` helper. The stakeholder rollup route (`/api/master-data/stakeholders`) keeps `adminTenantContext` because it's HR-relevant.
+- **`useWizardOverrides` hook** — fetches both override lists once on mount via existing API endpoints. Fail-soft: any error (RLS, network) falls back to the unmodified code catalog so the wizard never refuses to render.
+
+### Tests
+- 4 new vitest cases in `engine.test.ts`:
+  - `override.standard_roles replaces the catalog list`
+  - `override.required_info replaces type-side info; method merge still applies`
+  - `partial override (only roles) leaves required_info from catalog`
+  - `null overrides argument behaves identically to omitting it`
+- Total: **330/330 vitest tests pass** (was 326, +4 new). tsc clean. Lint baseline 73 (no new errors).
+
+### Manual smoke-test checklist (post-deploy)
+- [ ] As tenant-admin: open `/stammdaten/methoden` → disable e.g. SAFe + Prince2.
+- [ ] Open `/projects/new/wizard` → Step 3 (Methode) → SAFe + Prince2 are NOT in the radio group; banner "Tenant-Konfiguration aktiv" is visible.
+- [ ] Re-enable both → reload wizard → all 7 methods back.
+- [ ] As tenant-admin: `/stammdaten/projekttypen` → ERP → activate Standard-Rollen override + replace with custom roles (e.g. only "Tenant-Lead").
+- [ ] Wizard → Step 2 ERP → Step 4 → Step 5 (Review): Detail-Fragen-Karte zeigt nur die Method-side follow-ups (sprint_length etc.), nicht die ERP-Catalog-Defaults (target_systems etc.) — falls override.required_info gesetzt.
+- [ ] As non-admin tenant member: open `/projects/new/wizard` → method filter and project-type overrides apply correctly (read-path opened to tenant_member by the migration).

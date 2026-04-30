@@ -1,6 +1,7 @@
 "use client"
 
-import { AlertTriangle } from "lucide-react"
+import { AlertTriangle, Info } from "lucide-react"
+import * as React from "react"
 import { useFormContext } from "react-hook-form"
 
 import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert"
@@ -37,14 +38,42 @@ const SUGGESTED_METHODS_BY_TYPE: Record<string, ProjectMethod[]> = {
 
 interface StepMethodProps {
   projectType: string | null
+  /**
+   * PROJ-16 tenant-side method overrides. Methods marked `false` are
+   * filtered out of the picker. Default-true when the prop is missing
+   * or doesn't include a key (defensive fail-soft).
+   */
+  methodEnabled?: Record<ProjectMethod, boolean>
+  /** True when at least one method is explicitly disabled — show a hint. */
+  hasMethodOverrides?: boolean
 }
 
-export function StepMethod({ projectType }: StepMethodProps) {
+export function StepMethod({
+  projectType,
+  methodEnabled,
+  hasMethodOverrides,
+}: StepMethodProps) {
   const form = useFormContext<WizardData>()
-  const ordered =
+  const orderedAll =
     projectType && projectType in SUGGESTED_METHODS_BY_TYPE
       ? SUGGESTED_METHODS_BY_TYPE[projectType]
       : [...PROJECT_METHODS]
+  const ordered = methodEnabled
+    ? orderedAll.filter((m) => methodEnabled[m] !== false)
+    : orderedAll
+
+  // If the resumed wizard has a now-disabled method picked, clear it so
+  // the form doesn't carry an invalid value into submit.
+  const currentValue = form.watch("project_method")
+  React.useEffect(() => {
+    if (
+      methodEnabled &&
+      currentValue &&
+      methodEnabled[currentValue] === false
+    ) {
+      form.setValue("project_method", null)
+    }
+  }, [methodEnabled, currentValue, form])
 
   return (
     <div className="space-y-4">
@@ -56,6 +85,17 @@ export function StepMethod({ projectType }: StepMethodProps) {
           ändern. Wähle bewusst — oder lasse sie vorerst offen.
         </AlertDescription>
       </Alert>
+
+      {hasMethodOverrides ? (
+        <Alert>
+          <Info className="h-4 w-4" aria-hidden />
+          <AlertTitle>Tenant-Konfiguration aktiv</AlertTitle>
+          <AlertDescription>
+            Dein Tenant-Admin hat einige Methoden deaktiviert. Verfügbar sind
+            unten nur die freigeschalteten — die übrigen sind ausgeblendet.
+          </AlertDescription>
+        </Alert>
+      ) : null}
 
       <FormField
         control={form.control}

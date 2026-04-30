@@ -467,8 +467,8 @@ Plumbing-style slice with focused scope; nothing surprising in the live red-team
 
 - **No interactive browser pass.** Cannot authenticate into the live UI from this session. Manual smoke-test list lives in the Frontend section of the spec.
 - **ST-01 follow-ups (PROJ-16-A1):** `last_login` column + outbox-audit-on-invite explicitly deferred per the locked Q1 design (offen-halten für SSO / page-konsolidierung).
-- **Wizard-Filtering by Method-Toggle:** the override storage works; PROJ-5's wizard still reads the code catalog directly. Tenant-disabled methods aren't yet hidden in the wizard. Small follow-up (single-route change, no migration).
-- **Project-Type-Override-Anwendung im Wizard:** stored override fields are not yet consumed by PROJ-5's project-creation wizard. Same shape of follow-up as above.
+- ~~**Wizard-Filtering by Method-Toggle:**~~ ✅ shipped 2026-04-30 as a PROJ-5 extension slice — see PROJ-5 spec → Extensions section. Migration `20260430140000_proj5_open_overrides_select_to_members.sql` opens RLS SELECT to tenant_member; wizard reads via `useWizardOverrides` hook.
+- ~~**Project-Type-Override-Anwendung im Wizard:**~~ ✅ shipped 2026-04-30 as the same PROJ-5 extension slice — `computeRules(type, method, overrides?)` takes an optional override argument; partial overrides supported.
 - **No CI integration test for triggers/RLS** — recurring observation across PROJ-12/13/14/16. Live red-team probes cover it for now.
 - **`document_templates`** override field mentioned in the spec but not present on `ProjectTypeProfile`. When the catalog grows, extend `ProjectTypeOverrideSchema` + `resolveProjectTypeProfile` in lockstep.
 - **`adminTenantContext` resolves "first tenant_membership"** — same caveat as PROJ-14 connectors. SaaS users with multiple tenant memberships get the chronologically-first one. Follow-up: switch to the active-tenant cookie (PROJ-3) once the resolution path is harmonized.
@@ -500,8 +500,8 @@ Plumbing-style slice with focused scope; nothing surprising in the live red-team
 
 ### Known follow-ups (not blocking)
 - **PROJ-16-A1 (ST-01-Lücken):** `last_login` Spalte in `/settings/members` (braucht SECURITY DEFINER fn auf `auth.users`); optionaler Outbox-Audit-Eintrag bei Invite. Bewusst deferred per A-mit-Offenheit-Lock-in.
-- **PROJ-5 Wizard-Filter durch Method-Toggle:** override-Storage funktioniert; Wizard liest aktuell noch direkt aus dem Code-Catalog. Kleine Wizard-Slice nachgezogen — kein Migration-Aufwand.
-- **PROJ-5 Project-Type-Override-Anwendung im Wizard:** override-Storage funktioniert; Wizard rendert weiterhin gegen den Code-Catalog. Gleiche Form von Follow-up.
+- ~~**PROJ-5 Wizard-Filter durch Method-Toggle:**~~ ✅ shipped 2026-04-30 (PROJ-5 extensions slice).
+- ~~**PROJ-5 Project-Type-Override-Anwendung im Wizard:**~~ ✅ shipped 2026-04-30 (same slice).
 - **`adminTenantContext` resolves „erste tenant_membership"** — gleicher Caveat wie PROJ-14. Harmonisierung mit aktivem Tenant-Cookie ist eigene Slice.
 - **`document_templates`** override field fehlt aktuell auf `ProjectTypeProfile`. Wenn der Catalog wächst, `ProjectTypeOverrideSchema` + `resolveProjectTypeProfile` in lockstep erweitern.
 - **CI-Integrationstest für Trigger/RLS** — wiederkehrende Beobachtung über PROJ-12/13/14/16. Live red-team probes decken das vorerst ab.

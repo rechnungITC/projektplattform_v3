@@ -116,4 +116,42 @@ describe("computeRules — type/method matrix", () => {
     expect(keys).not.toContain("sprint_length_weeks")
     expect(keys).not.toContain("signoff_authority")
   })
+
+  // PROJ-5 + PROJ-16 — tenant-side overrides
+  it("override.standard_roles replaces the catalog list", () => {
+    const r = computeRules("erp", null, {
+      standard_roles: [{ key: "tenant_lead", label_de: "Tenant-Lead" }],
+    })
+    expect(r.suggested_roles).toEqual([
+      { key: "tenant_lead", label_de: "Tenant-Lead" },
+    ])
+  })
+
+  it("override.required_info replaces type-side info; method merge still applies", () => {
+    const r = computeRules("erp", "scrum", {
+      required_info: [{ key: "tenant_only", label_de: "Tenant-eigen" }],
+    })
+    const keys = r.required_info.map((i) => i.key)
+    // Type-side baseline (target_systems, business_units, …) is gone
+    expect(keys).not.toContain("target_systems")
+    // The override entry survives
+    expect(keys).toContain("tenant_only")
+    // Method-side merge still adds scrum follow-ups
+    expect(keys).toContain("sprint_length_weeks")
+  })
+
+  it("partial override (only roles) leaves required_info from catalog", () => {
+    const baseline = computeRules("erp", null)
+    const r = computeRules("erp", null, {
+      standard_roles: [{ key: "x", label_de: "X" }],
+    })
+    expect(r.suggested_roles).toEqual([{ key: "x", label_de: "X" }])
+    expect(r.required_info).toEqual(baseline.required_info)
+  })
+
+  it("null overrides argument behaves identically to omitting it", () => {
+    const a = computeRules("software", "kanban")
+    const b = computeRules("software", "kanban", null)
+    expect(a).toEqual(b)
+  })
 })

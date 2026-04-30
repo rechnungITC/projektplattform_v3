@@ -14,6 +14,7 @@ import {
 } from "@/components/ui/form"
 import { Textarea } from "@/components/ui/textarea"
 import { computeRules } from "@/lib/project-rules/engine"
+import type { ProjectTypeOverrideFields } from "@/types/master-data"
 import type { ProjectMethod } from "@/types/project-method"
 import type { ProjectType } from "@/types/project"
 import type { WizardData } from "@/types/wizard"
@@ -21,20 +22,28 @@ import type { WizardData } from "@/types/wizard"
 interface StepFollowupsProps {
   projectType: ProjectType
   projectMethod: ProjectMethod | null
+  /** PROJ-16 tenant-side override for this type, or null when none. */
+  projectTypeOverride?: ProjectTypeOverrideFields | null
 }
 
 /**
- * Step 4 — type/method-aware questions, sourced from the PROJ-6 catalog.
- * Each `RequiredInfo` from `computeRules` becomes a textarea field in
- * `type_specific_data`. The orchestrator validates that all are filled
- * before allowing transition to the Review step.
+ * Step 4 — type/method-aware questions, sourced from the PROJ-6 catalog
+ * with optional PROJ-16 tenant overrides applied. Each `RequiredInfo`
+ * from `computeRules` becomes a textarea field in `type_specific_data`.
+ * The orchestrator validates that all are filled before allowing
+ * transition to the Review step.
  */
 export function StepFollowups({
   projectType,
   projectMethod,
+  projectTypeOverride,
 }: StepFollowupsProps) {
   const form = useFormContext<WizardData>()
-  const rules = computeRules(projectType, projectMethod)
+  const rules = computeRules(
+    projectType,
+    projectMethod,
+    projectTypeOverride ?? null
+  )
 
   if (rules.required_info.length === 0) {
     return (
