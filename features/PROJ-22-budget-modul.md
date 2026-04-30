@@ -1,6 +1,6 @@
 # PROJ-22: Budget-Modul mit Historisierung, Vendor-Integration & Multi-Currency
 
-## Status: Approved
+## Status: Deployed
 **Created:** 2026-04-30
 **Last Updated:** 2026-04-30
 
@@ -757,4 +757,23 @@ Spec ST-08 fordert explizite Registrierung: `budget_postings.note → Class-3`, 
 Recommended path: `/deploy proj 22`, danach optional ein kleiner UI-Folge-PR für die Vendor-Drawer-Integration.
 
 ## Deployment
-_To be added by /deploy_
+
+**Deployed: 2026-04-30** — production live.
+
+- **Production URL**: https://projektplattform-v3.vercel.app (auto-deploy from `main`)
+- **Supabase project**: `iqerihohwabyjzkpcujq` (eu-west-1) — migration `20260430200000_proj22_budget_modul.sql` applied during the backend slice.
+- **Git tag**: `v1.22.0-PROJ-22`
+- **Pre-deploy gates**:
+  - `npm run build` → ✓ Compiled in 6.6 s, 42 routes generated (11 new API routes + 2 new pages all present)
+  - `npm test` → 53 files / 388 tests pass
+  - `npx tsc --noEmit` → clean
+  - Playwright E2E → 14/14 pass (chromium + Mobile Safari)
+- **Migration verification**: 5 new tables with RLS, 1 view, `tenant_settings.budget_settings` JSONB column, `budget` module key backfilled. Live red-team confirmed cross-tenant isolation, immutability of `budget_postings`, UNIQUE on `reverses_posting_id`, FX identity-CHECK, posted_at-window CHECK.
+- **Commits** (5 logical slices on `main` for PROJ-22 specifically):
+  - `feat(PROJ-22): backend — 3-level budget hierarchy + immutable postings + FX` (2f34c4e)
+  - `fix(PROJ-22): privacy-registry — classify 23 budget + invoice + fx fields` (08a28c0)
+  - `feat(PROJ-22): frontend — Budget tab + Vendor-invoices + FX-rates admin` (016ce67)
+  - `test(PROJ-22): QA pass — 388/388 vitest, 14/14 e2e, RLS+module-gate verified` (ccb9246)
+  - Plus documentation: `docs: import Jira export + cross-mapping` (fb52d28), `docs(PROJ-21): spec + tech design` (95ca640) — bundled in this push for narrative continuity.
+- **Carry-over (non-blocking, future PR)**:
+  - 🟡 `VendorInvoicesTab` component exists standalone but isn't yet integrated into the PROJ-15 vendor-detail-drawer. Backend works; users currently access invoice creation via the budget UI's Posting flow indirectly. Small UX-polish PR.
