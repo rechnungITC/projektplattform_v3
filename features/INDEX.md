@@ -28,7 +28,7 @@
 | PROJ-12 | KI Assistance and Data-Privacy Paths | Deployed | [Spec](PROJ-12-ki-assistance-privacy-paths.md) | 2026-04-25 |
 | PROJ-13 | Communication Center, Email/Slack/Teams Send, Internal Project Chat | Deployed | [Spec](PROJ-13-communication-chat.md) | 2026-04-25 |
 | PROJ-14 | Connector Framework, Jira Integration, MCP Bridge, Stand-alone Hooks | Deployed (Plumbing slice) | [Spec](PROJ-14-integrations-connectors.md) | 2026-04-25 |
-| PROJ-15 | Vendor and Procurement (Stammdaten, Eval Matrix, Document Slots) | Approved | [Spec](PROJ-15-vendor-procurement.md) | 2026-04-25 |
+| PROJ-15 | Vendor and Procurement (Stammdaten, Eval Matrix, Document Slots) | Deployed | [Spec](PROJ-15-vendor-procurement.md) | 2026-04-25 |
 | PROJ-16 | Master Data UI — Users, Stakeholder Rollup, Catalog Overrides | Deployed | [Spec](PROJ-16-master-data-ui.md) | 2026-04-25 |
 | PROJ-17 | Tenant Administration — Branding, Modules, Privacy, Export, Offboarding | Deployed | [Spec](PROJ-17-tenant-administration.md) | 2026-04-25 |
 | PROJ-18 | Compliance Automatik & Process Templates | Planned | [Spec](PROJ-18-compliance-automatik.md) | 2026-04-25 |

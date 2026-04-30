@@ -1,6 +1,6 @@
 # PROJ-15: Vendor and Procurement (Stammdaten, Project Assignment, Evaluation Matrix, Document Slots)
 
-## Status: Approved
+## Status: Deployed
 **Created:** 2026-04-25
 **Last Updated:** 2026-04-25
 
@@ -452,4 +452,32 @@ Clean QA pass. The HTTPS-only DB CHECK proved its worth (5 invalid URL schemes b
 **READY** — no Critical, High, Medium, or Low bugs. Recommend proceeding to `/deploy`.
 
 ## Deployment
-_To be added by /deploy_
+
+**Deployed:** 2026-04-30
+**Production URL:** https://projektplattform-v3.vercel.app
+**Deployed by:** push to `main` → Vercel auto-deploy
+**Tag:** `v1.18.0-PROJ-15`
+
+### What went live
+- Migration `20260430160000_proj15_vendor_procurement` (already applied to Supabase project `iqerihohwabyjzkpcujq` during /backend; the deploy commit makes it part of the canonical history). 4 new tables — `vendors`, `vendor_project_assignments`, `vendor_evaluations`, `vendor_documents` — with RLS, audit triggers, HTTPS-only DB CHECKs, and the idempotent `vendor` module backfill on every existing tenant.
+- Backend: `lib/vendors/api.ts`, 10 admin/editor-gated API routes (vendors CRUD + evaluations + documents + project-assignments).
+- Frontend: 2 new pages (`/stammdaten/vendors` + `/projects/[id]/lieferanten`), 4 components under `src/components/vendors/`, 4 new hooks, Stammdaten-Index extended to 5 cards, Project-Room-Tab "Lieferanten" added (vendor module-gated).
+- Module: `vendor` promoted from RESERVED_MODULES to TOGGLEABLE_MODULES; admins can per-tenant toggle in `/settings/tenant`.
+
+### Post-deploy smoke-test checklist (manual, recommended)
+- [ ] As tenant-admin: `/stammdaten` → 5 Cards inkl. Lieferanten.
+- [ ] `/stammdaten/vendors` → "Neuer Lieferant" → Name + HTTPS-Website → Save → erscheint in Liste.
+- [ ] Vendor-Card klicken → Drawer mit 4 sub-tabs. Bewertungen-Tab → 3 Bewertungen anlegen → Avg-Score-Banner sichtbar.
+- [ ] Dokumente-Tab → URL mit `http://` → Toast-Fehler "URL muss mit https://"; mit `https://` → OK + "Öffnen" Link funktioniert.
+- [ ] Projekte-Tab → zeigt Counter (read-only).
+- [ ] Project-Room → Tab "Lieferanten" → Vendor zuordnen → Rolle Lieferant → Save. Erneut zuordnen mit gleicher Rolle → Vendor ist nicht mehr im Picker (Pre-emptive Filter).
+- [ ] Inline-Edit auf scope_note → blur speichert; reload zeigt geänderten Wert.
+- [ ] Toggle `vendor` Modul aus in `/settings/tenant` → Tab + Stammdaten-Card verschwinden; Direct-URLs liefern Module-Disabled 404.
+- [ ] Vendor mit existierender Bewertung + Doc + Project-Assignment löschen → CASCADE-Confirm → Rest wird mitgelöscht (verifiziert in /qa P3).
+
+### Known follow-ups (not blocking)
+- **ST-05 KI-Vertragsprüfung** — gated by Legal § 1 RDG-Approval. Eigene Slice wenn Legal grünes Licht gibt.
+- **PATCH auf evaluations + documents** — MVP-Vereinfachung; admin macht delete + re-add. Kleine Erweiterung, wenn Admins das verlangen.
+- **Resource-Matching gegen PROJ-11 FTE** — Cross-cutting, eigene Slice.
+- **Time-banded Gantt of vendor assignments** — out-of-scope per Spec.
+- **`adminTenantContext`/`vendorTenantContext` resolves "erste Membership"** — gleicher Caveat wie PROJ-14/15/16. Harmonisierung mit aktivem Tenant-Cookie ist eigene Slice.
