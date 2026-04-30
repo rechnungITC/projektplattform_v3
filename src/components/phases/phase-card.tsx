@@ -13,6 +13,7 @@ import {
 import Link from "next/link"
 import * as React from "react"
 
+import { PhaseComplianceWarnings } from "@/components/compliance/phase-compliance-warnings"
 import { MilestoneCard } from "@/components/milestones/milestone-card"
 import { NewMilestoneDialog } from "@/components/milestones/new-milestone-dialog"
 import { DeletePhaseDialog } from "@/components/phases/delete-phase-dialog"
@@ -200,6 +201,9 @@ export function PhaseCard({
             {phase.description}
           </p>
         ) : null}
+
+        {/* Compliance warnings (PROJ-18) */}
+        <PhaseComplianceWarnings projectId={projectId} phaseId={phase.id} />
 
         {/* Milestones */}
         <section aria-label="Meilensteine in dieser Phase" className="space-y-2">

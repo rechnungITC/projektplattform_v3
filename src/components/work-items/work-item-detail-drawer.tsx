@@ -9,6 +9,7 @@ import {
 } from "lucide-react"
 import * as React from "react"
 
+import { WorkItemComplianceSection } from "@/components/compliance/work-item-compliance-section"
 import { SprintStateBadge } from "@/components/sprints/sprint-state-badge"
 import { Avatar, AvatarFallback } from "@/components/ui/avatar"
 import { Badge } from "@/components/ui/badge"
@@ -213,6 +214,14 @@ export function WorkItemDetailDrawer({
                 projectId={projectId}
                 workItemId={item.id}
                 canEdit={canEdit}
+              />
+
+              {/* Compliance (PROJ-18) */}
+              <WorkItemComplianceSection
+                projectId={projectId}
+                workItemId={item.id}
+                canEdit={canEdit}
+                onTagsChanged={handleChanged}
               />
 
               {/* AI source */}
