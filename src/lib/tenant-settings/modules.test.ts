@@ -35,8 +35,9 @@ describe("isModuleActive", () => {
 
 describe("activeToggleableModules", () => {
   it("returns the intersection of toggleable + active", () => {
+    // `connectors` is RESERVED, so it gets filtered out even when "active".
     const result = activeToggleableModules(
-      settings(["risks", "ai_proposals", "vendor"])
+      settings(["risks", "ai_proposals", "connectors"])
     )
     expect(result).toEqual(["risks", "ai_proposals"])
   })
@@ -49,6 +50,7 @@ describe("activeToggleableModules", () => {
       "audit_reports",
       "communication",
       "resources",
+      "vendor",
     ])
   })
 })

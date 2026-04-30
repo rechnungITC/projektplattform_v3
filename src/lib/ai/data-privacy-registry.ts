@@ -129,6 +129,27 @@ const REGISTRY: Record<string, DataClass> = {
   "resource_availabilities.fte": 3,
   "resource_availabilities.note": 3,
   "work_item_resources.allocation_pct": 2,
+
+  // -------------------- vendors (PROJ-15) -------------------------------
+  // Vendor as an organization is Class 2 business-context — not personal
+  // data. The contact email IS personal data → Class 3.
+  "vendors.name": 2,
+  "vendors.category": 2,
+  "vendors.primary_contact_email": 3,
+  "vendors.website": 1,
+  "vendors.status": 1,
+  "vendor_project_assignments.role": 1,
+  "vendor_project_assignments.scope_note": 2,
+  "vendor_project_assignments.valid_from": 2,
+  "vendor_project_assignments.valid_until": 2,
+  "vendor_evaluations.criterion": 2,
+  "vendor_evaluations.score": 1,
+  // Comment may quote personal observations → conservative Class 3.
+  "vendor_evaluations.comment": 3,
+  "vendor_documents.kind": 1,
+  "vendor_documents.title": 2,
+  "vendor_documents.external_url": 2,
+  "vendor_documents.note": 2,
 }
 
 /**
