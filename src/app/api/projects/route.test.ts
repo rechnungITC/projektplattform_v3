@@ -113,7 +113,10 @@ describe("POST /api/projects", () => {
     )
 
     expect(res.status).toBe(201)
-    expect(await res.json()).toEqual({ project: created })
+    expect(await res.json()).toEqual({
+      project: created,
+      applied_default_tags: [],
+    })
     expect(insertChain.insert).toHaveBeenCalledWith(
       expect.objectContaining({
         tenant_id: TENANT_ID,

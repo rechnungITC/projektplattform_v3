@@ -8,6 +8,7 @@
  * shallow — placeholder until the construction extension lands.
  */
 
+import type { ComplianceTagKey } from "@/lib/compliance/types"
 import { PROJECT_TYPES, type ProjectType } from "@/types/project"
 
 /**
@@ -52,6 +53,11 @@ export interface ProjectTypeProfile {
   standard_roles: readonly StandardRole[]
   standard_modules: readonly ProjectModule[]
   required_info: readonly RequiredInfo[]
+  /**
+   * PROJ-18 ST-05: compliance tag keys auto-attached when creating a
+   * project of this type. Tenant overrides may replace this list.
+   */
+  default_tag_keys: readonly ComplianceTagKey[]
   /**
    * When true, the type is structurally available but lacks deep domain
    * support (e.g. construction). UIs should show a banner.
@@ -125,6 +131,7 @@ const ERP_PROFILE: ProjectTypeProfile = {
       description_de: "Daten- und Prozessmigration aus dem Altsystem.",
     },
   ],
+  default_tag_keys: ["iso-9001", "vendor-evaluation", "dsgvo"],
 }
 
 const SOFTWARE_PROFILE: ProjectTypeProfile = {
@@ -151,6 +158,7 @@ const SOFTWARE_PROFILE: ProjectTypeProfile = {
       description_de: "Eingesetzte Frameworks, Sprachen, Cloud-Provider.",
     },
   ],
+  default_tag_keys: ["iso-27001", "change-management"],
 }
 
 const GENERAL_PROFILE: ProjectTypeProfile = {
@@ -161,6 +169,7 @@ const GENERAL_PROFILE: ProjectTypeProfile = {
   standard_roles: [ROLE_PL, ROLE_SPONSOR],
   standard_modules: ["backlog", "planning", "members", "history"],
   required_info: [],
+  default_tag_keys: [],
 }
 
 const CONSTRUCTION_PROFILE: ProjectTypeProfile = {
@@ -171,6 +180,7 @@ const CONSTRUCTION_PROFILE: ProjectTypeProfile = {
   standard_roles: [ROLE_PL, ROLE_SPONSOR],
   standard_modules: ["backlog", "planning", "members", "history"],
   required_info: [],
+  default_tag_keys: ["iso-9001"],
   is_placeholder: true,
 }
 

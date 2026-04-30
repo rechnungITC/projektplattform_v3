@@ -33,6 +33,12 @@ export const ProjectTypeOverrideSchema: z.ZodType<ProjectTypeOverrideFields> =
     .object({
       standard_roles: z.array(StandardRoleSchema).max(50).optional(),
       required_info: z.array(RequiredInfoSchema).max(50).optional(),
+      // PROJ-18 ST-05: tenant-additive replacement of platform-default tag keys.
+      // Slug shape mirrors `compliance_tags.key` CHECK constraint.
+      default_tag_keys: z
+        .array(z.string().regex(/^[a-z][a-z0-9-]{1,63}$/))
+        .max(20)
+        .optional(),
     })
     .strict()
 
@@ -63,6 +69,7 @@ export function resolveProjectTypeProfile(
     ...base,
     standard_roles: override.standard_roles ?? base.standard_roles,
     required_info: override.required_info ?? base.required_info,
+    default_tag_keys: override.default_tag_keys ?? base.default_tag_keys,
   }
 }
 

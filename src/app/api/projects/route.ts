@@ -1,11 +1,16 @@
 import { NextResponse } from "next/server"
 import { z } from "zod"
 
+import { applyTriggerForNewTag } from "@/lib/compliance/trigger"
+import { resolveProjectTypeProfile } from "@/lib/project-types/overrides"
+import { createAdminClient } from "@/lib/supabase/admin"
+import type { ProjectTypeOverrideFields } from "@/types/master-data"
 import {
   decodeCursor,
   encodeCursor,
   LIFECYCLE_STATUSES,
   PROJECT_TYPES,
+  type ProjectType,
 } from "@/types/project"
 import { PROJECT_METHODS } from "@/types/project-method"
 
@@ -45,6 +50,9 @@ const createSchema = z
     // The wizard sends this; per-type extension tables (PROJ-15) can later
     // extract data from this column.
     type_specific_data: z.record(z.string(), z.string()).optional().nullable(),
+    // PROJ-18 ST-05: optional list of compliance tag keys the wizard chose
+    // to skip from the type's default set. When omitted, all defaults apply.
+    skip_default_tag_keys: z.array(z.string()).max(20).optional(),
   })
   .refine(
     (val) =>
@@ -168,7 +176,108 @@ export async function POST(request: Request) {
     }
   }
 
-  return NextResponse.json({ project: row }, { status: 201 })
+  // PROJ-18 ST-05: apply default compliance tags from the project-type catalog
+  // (with tenant override). Implementation: create a "Projektstart & Compliance"
+  // root work-item, then attach each default tag — the trigger fires per tag.
+  // Skip when the type has no defaults or the wizard deselected everything.
+  let appliedTags: string[] = []
+  if (row) {
+    try {
+      const { data: overrideRow } = await supabase
+        .from("tenant_project_type_overrides")
+        .select("overrides")
+        .eq("tenant_id", data.tenant_id)
+        .eq("type_key", data.project_type)
+        .maybeSingle()
+      const override =
+        ((overrideRow as { overrides?: ProjectTypeOverrideFields } | null)
+          ?.overrides ?? null)
+      const profile = resolveProjectTypeProfile(
+        data.project_type as ProjectType,
+        override
+      )
+      const skipped = new Set(data.skip_default_tag_keys ?? [])
+      const defaultKeys = (profile?.default_tag_keys ?? []).filter(
+        (k) => !skipped.has(k)
+      )
+      if (defaultKeys.length > 0) {
+        // Resolve tag-keys to tag rows for this tenant.
+        const { data: tagRows } = await supabase
+          .from("compliance_tags")
+          .select("id, key")
+          .eq("tenant_id", data.tenant_id)
+          .in("key", defaultKeys)
+          .eq("is_active", true)
+        const tagsToAttach = (tagRows ?? []) as { id: string; key: string }[]
+        if (tagsToAttach.length > 0) {
+          // Use the admin client so we can write the work-item + attachments
+          // even before the project membership row is propagated through RLS.
+          let admin
+          try {
+            admin = createAdminClient()
+          } catch {
+            admin = null
+          }
+          if (admin) {
+            const { data: rootWorkItem } = await admin
+              .from("work_items")
+              .insert({
+                tenant_id: data.tenant_id,
+                project_id: row.id,
+                kind: "work_package",
+                parent_id: null,
+                title: "Projektstart & Compliance",
+                description:
+                  "Auto-generierte Wurzel-Aufgabe für die Standard-Compliance-Schritte des Projekttyps. " +
+                  "Tags wurden aus dem Typ-Katalog (PROJ-18 ST-05) abgeleitet.",
+                status: "todo",
+                priority: "medium",
+                attributes: { compliance_origin: { reason: "project_default_tags" } },
+                created_by: userId,
+              })
+              .select("id, tenant_id, project_id")
+              .single()
+            if (rootWorkItem) {
+              const root = rootWorkItem as {
+                id: string
+                tenant_id: string
+                project_id: string
+              }
+              for (const tag of tagsToAttach) {
+                const { error: linkErr } = await admin
+                  .from("work_item_tags")
+                  .insert({
+                    tenant_id: root.tenant_id,
+                    work_item_id: root.id,
+                    tag_id: tag.id,
+                    created_by: userId,
+                  })
+                if (!linkErr) {
+                  await applyTriggerForNewTag({
+                    supabase: admin,
+                    tenantId: root.tenant_id,
+                    projectId: root.project_id,
+                    workItemId: root.id,
+                    tagId: tag.id,
+                    userId,
+                  }).catch(() => {})
+                  appliedTags.push(tag.key)
+                }
+              }
+            }
+          }
+        }
+      }
+    } catch {
+      // Best-effort — project creation already succeeded.
+      appliedTags = []
+    }
+  }
+
+  return NextResponse.json(
+    { project: row, applied_default_tags: appliedTags },
+    { status: 201 }
+  )
 }
 
 // -----------------------------------------------------------------------------

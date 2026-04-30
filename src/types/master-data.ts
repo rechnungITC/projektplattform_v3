@@ -16,6 +16,13 @@ export interface ProjectTypeOverrideFields {
   standard_roles?: Array<{ key: string; label_de: string }>
   /** Replaces the inherited list when present. */
   required_info?: Array<{ key: string; label_de: string; description?: string }>
+  /**
+   * PROJ-18 ST-05: replaces the catalog's compliance tag-key list when
+   * present. Empty array means "no default tags for this type". Tags must
+   * already exist in `compliance_tags` for the tenant or they're silently
+   * skipped at apply time.
+   */
+  default_tag_keys?: string[]
 }
 
 export interface ProjectTypeOverrideRow {
