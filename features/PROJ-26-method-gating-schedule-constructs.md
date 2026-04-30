@@ -1,6 +1,6 @@
 # PROJ-26: Method-Gating für Schedule-Constructs (Sprints, Phasen, Milestones)
 
-## Status: Approved
+## Status: Deployed
 **Created:** 2026-05-01
 **Last Updated:** 2026-05-01
 
@@ -407,4 +407,14 @@ Suggested next:
 3. Optional UI-pass: hide schedule-construct create-buttons when not allowed (L1) — bundle with PROJ-23 sidebar polish or schedule as a dedicated cleanup story.
 
 ## Deployment
-_To be added by /deploy_
+
+- **Date deployed:** 2026-05-01
+- **Production URL:** https://projektplattform-v3.vercel.app
+- **Vercel auto-deploy:** triggered by push to `main`
+- **Migration applied to live Supabase:** ✅ already applied during /backend phase to project `iqerihohwabyjzkpcujq` (migration `20260501100000_proj26_schedule_method_gating.sql`)
+- **Git tag:** `v1.24.0-PROJ-26`
+- **Deviations:** none observed.
+- **Post-deploy notes:**
+  - Defense-in-Depth-Strategie wirkt: API gibt 422 mit Klartext-Hinweis vor dem Insert; falls je ein Pfad das umgeht, blockt der DB-Trigger mit ERRCODE 22023.
+  - Bestehende Mismatch-Datensätze (1 sprint, 5 phases, 4 milestones) bleiben in Produktion sichtbar/editierbar — by design (Trigger BEFORE INSERT, kein Cleanup).
+  - Sidebar-Buttons-Cleanup (L1-Finding aus QA) bleibt für UI-Pass deferred; backend-Härtung ist die durchsetzende Schicht.

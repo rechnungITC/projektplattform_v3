@@ -1,8 +1,8 @@
 # PROJ-23: Globale Sidebar-Navigation (UI-Refactor)
 
-## Status: Approved
+## Status: Deployed
 **Created:** 2026-04-30
-**Last Updated:** 2026-04-30
+**Last Updated:** 2026-05-01
 
 ## Summary
 Komplette UI-Reorientierung von horizontaler Top-Tab-Navigation auf eine **vertikale, persistente Sidebar links**. Betrifft sowohl die **Top-Level-Navigation** (Projekte / Stammdaten / Reports / Einstellungen) als auch die **Project-Room-Tabs** (Übersicht / Planung / Backlog / Stakeholder / Risiken / Entscheidungen / KI-Vorschläge / Kommunikation / Lieferanten / Budget / Mitglieder / Historie / Einstellungen). Reine Frontend-Slice — keine Datenmodell-Änderungen, keine API-Änderungen.
@@ -437,4 +437,9 @@ Keine.
 **READY** — 0 Critical, 0 High. Die Medium-Findung ist ein bewusst hingenommener UX-Kompromiss mit klarem Mitigation-Pfad. Kein Deploy-Blocker.
 
 ## Deployment
-_To be added by /deploy_
+
+- **Date deployed:** 2026-05-01
+- **Production URL:** https://projektplattform-v3.vercel.app
+- **Vercel auto-deploy:** triggered by push to `main`
+- **Git tag:** `v1.23.0-PROJ-23`
+- **Deviations:** none observed.
