@@ -1,5 +1,12 @@
 import type { Metadata } from "next"
-import { ChevronRight, Database, Users } from "lucide-react"
+import {
+  ChevronRight,
+  Database,
+  FolderTree,
+  ListChecks,
+  Users,
+  Users2,
+} from "lucide-react"
 import Link from "next/link"
 
 import {
@@ -14,13 +21,47 @@ export const metadata: Metadata = {
   title: "Stammdaten · Projektplattform",
 }
 
-const SECTIONS = [
+interface Section {
+  href: string
+  icon: React.ComponentType<{ className?: string }>
+  title: string
+  description: string
+  /** True when only tenant_admin can navigate here. UI-only hint;
+   *  server-side admin-gating happens in the API routes. */
+  adminOnly?: boolean
+}
+
+const SECTIONS: Section[] = [
   {
     href: "/stammdaten/resources",
     icon: Users,
     title: "Ressourcen",
     description:
       "Mandantenweiter Pool plannbarer Personen und Parteien. FTE, Verfügbarkeit, Allokationen.",
+  },
+  {
+    href: "/stammdaten/stakeholder",
+    icon: Users2,
+    title: "Stakeholder-Rollup",
+    description:
+      "Tenant-weite Übersicht aller Stakeholder mit Projekt-Beteiligung. Read-only — Pflege bleibt pro Projekt.",
+    adminOnly: true,
+  },
+  {
+    href: "/stammdaten/projekttypen",
+    icon: FolderTree,
+    title: "Projekttypen",
+    description:
+      "Tenant-spezifische Anpassungen der Standard-Rollen und Pflicht-Infos pro Projekttyp.",
+    adminOnly: true,
+  },
+  {
+    href: "/stammdaten/methoden",
+    icon: ListChecks,
+    title: "Methoden",
+    description:
+      "Aktivieren oder deaktivieren der verfügbaren Projektmethoden pro Tenant. Mindestens eine bleibt aktiv.",
+    adminOnly: true,
   },
 ]
 
@@ -30,8 +71,9 @@ export default function StammdatenPage() {
       <header className="mb-6">
         <h1 className="text-2xl font-semibold tracking-tight">Stammdaten</h1>
         <p className="text-sm text-muted-foreground">
-          Zentrale Master-Daten. Stakeholder werden weiter pro Projekt
-          gepflegt; weitere Bereiche (Lieferanten, …) folgen mit PROJ-15 / 16.
+          Zentrale Master-Daten. Stakeholder-Pflege bleibt pro Projekt; das
+          Rollup hier ist nur Übersicht. Lieferanten-Stammdaten folgen mit
+          PROJ-15.
         </p>
       </header>
 
@@ -58,6 +100,11 @@ export default function StammdatenPage() {
                     </CardDescription>
                   </div>
                 </CardHeader>
+                {s.adminOnly ? (
+                  <CardContent className="text-xs text-muted-foreground">
+                    Nur für Tenant-Admins.
+                  </CardContent>
+                ) : null}
               </Card>
             </Link>
           )
@@ -72,7 +119,7 @@ export default function StammdatenPage() {
                 Lieferanten · Master-Daten
               </CardTitle>
               <CardDescription className="mt-1">
-                Folgt mit PROJ-15 / PROJ-16.
+                Folgt mit PROJ-15.
               </CardDescription>
             </div>
           </CardHeader>
