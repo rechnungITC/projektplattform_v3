@@ -1,7 +1,7 @@
 import type { Metadata } from "next"
 import {
+  Building2,
   ChevronRight,
-  Database,
   FolderTree,
   ListChecks,
   Users,
@@ -63,6 +63,13 @@ const SECTIONS: Section[] = [
       "Aktivieren oder deaktivieren der verfügbaren Projektmethoden pro Tenant. Mindestens eine bleibt aktiv.",
     adminOnly: true,
   },
+  {
+    href: "/stammdaten/vendors",
+    icon: Building2,
+    title: "Lieferanten",
+    description:
+      "Mandantenweiter Vendor-Pool mit Bewertungen, Dokumenten-Slots und Projekt-Zuordnungen.",
+  },
 ]
 
 export default function StammdatenPage() {
@@ -72,8 +79,8 @@ export default function StammdatenPage() {
         <h1 className="text-2xl font-semibold tracking-tight">Stammdaten</h1>
         <p className="text-sm text-muted-foreground">
           Zentrale Master-Daten. Stakeholder-Pflege bleibt pro Projekt; das
-          Rollup hier ist nur Übersicht. Lieferanten-Stammdaten folgen mit
-          PROJ-15.
+          Rollup hier ist nur Übersicht. Lieferanten und ihre Bewertungen
+          gehören in die Stammdaten.
         </p>
       </header>
 
@@ -109,24 +116,6 @@ export default function StammdatenPage() {
             </Link>
           )
         })}
-        <Card className="h-full">
-          <CardHeader className="flex flex-row items-start gap-3 space-y-0">
-            <div className="flex h-9 w-9 shrink-0 items-center justify-center rounded-md bg-muted text-muted-foreground">
-              <Database className="h-5 w-5" aria-hidden />
-            </div>
-            <div className="flex-1">
-              <CardTitle className="text-base text-muted-foreground">
-                Lieferanten · Master-Daten
-              </CardTitle>
-              <CardDescription className="mt-1">
-                Folgt mit PROJ-15.
-              </CardDescription>
-            </div>
-          </CardHeader>
-          <CardContent className="text-xs text-muted-foreground">
-            Demnächst.
-          </CardContent>
-        </Card>
       </div>
     </div>
   )

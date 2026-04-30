@@ -2,6 +2,7 @@
 
 import {
   AlertTriangle,
+  Building2,
   ClipboardList,
   Gavel,
   History,
@@ -37,6 +38,7 @@ interface ProjectTab {
     | "entscheidungen"
     | "ai-proposals"
     | "kommunikation"
+    | "lieferanten"
     | "mitglieder"
     | "historie"
     | "einstellungen"
@@ -74,6 +76,12 @@ const TABS: readonly ProjectTab[] = [
     label: "Kommunikation",
     icon: MessageSquare,
     requiresModule: "communication",
+  },
+  {
+    segment: "lieferanten",
+    label: "Lieferanten",
+    icon: Building2,
+    requiresModule: "vendor",
   },
   { segment: "mitglieder", label: "Mitglieder", icon: Users2 },
   { segment: "historie", label: "Historie", icon: History },
