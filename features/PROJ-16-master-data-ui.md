@@ -1,6 +1,6 @@
 # PROJ-16: Master Data UI — Users, Stakeholder Rollup, Project Type & Method Catalog Overrides
 
-## Status: Approved
+## Status: Deployed
 **Created:** 2026-04-25
 **Last Updated:** 2026-04-25
 
@@ -478,4 +478,30 @@ Plumbing-style slice with focused scope; nothing surprising in the live red-team
 **READY** — no Critical, High, Medium, or Low bugs. Recommend proceeding to `/deploy`.
 
 ## Deployment
-_To be added by /deploy_
+
+**Deployed:** 2026-04-30
+**Production URL:** https://projektplattform-v3.vercel.app
+**Deployed by:** push to `main` → Vercel auto-deploy
+**Tag:** `v1.16.0-PROJ-16`
+
+### What went live
+- Migration `20260430120000_proj16_master_data_overrides` (already applied to Supabase project `iqerihohwabyjzkpcujq` during /backend; the deploy commit makes it part of the canonical history). Two new tables (`tenant_project_type_overrides`, `tenant_method_overrides`) with admin-only RLS, the `enforce_min_one_method_enabled` BEFORE-trigger, audit-whitelist + tracked-columns extension.
+- Backend: `lib/master-data/api.ts`, `lib/project-types/overrides.ts`, `lib/method-templates/overrides.ts`, 5 admin-gated API routes under `/api/master-data/*`.
+- Frontend: 3 new pages under `/stammdaten/{stakeholder,projekttypen,methoden}` + extended `/stammdaten` index (1 → 4 cards).
+- ST-01 explicitly unchanged — `/settings/members` from PROJ-1 keeps its current shape; deferred ergänzungen tracked as `PROJ-16-A1`.
+
+### Post-deploy smoke-test checklist (manual, recommended)
+- [ ] As tenant-admin: `/stammdaten` → 4 Cards mit Admin-Hint auf 3 davon.
+- [ ] `/stammdaten/stakeholder` → Tabelle lädt; Filter (active/role/org-unit/search) wirkt; CSV-Download liefert Datei mit `[redacted]` in den `contact_email`/`contact_phone` Spalten.
+- [ ] `/stammdaten/projekttypen` → 4 Cards (erp, construction, software, general); klick eine → Drawer öffnet → Override für „Standard-Rollen" aktivieren → Eintrag hinzufügen → Speichern → Toast „Override gespeichert"; Card zeigt „Override aktiv". Override komplett löschen → Confirm → Card zeigt wieder „Inherited".
+- [ ] `/stammdaten/methoden` → 7 Method-Cards. 6 deaktivieren → klappt; die 7. → Toast „Mindestens eine Methode muss aktiviert bleiben"; Switch springt zurück. DB-Trigger backt das race-safe.
+- [ ] Als non-admin: Direct-URL-Zugriff auf `/stammdaten/projekttypen` → Error-Card mit 403 von der API. Nav-Cards sind sichtbar (UI-only Hint), aber Inhalts-Page rendert die Fehler-Karte.
+- [ ] Verify in `/reports/audit`: changes to project-type-overrides / method-overrides land im Audit-Log mit korrekten old/new values.
+
+### Known follow-ups (not blocking)
+- **PROJ-16-A1 (ST-01-Lücken):** `last_login` Spalte in `/settings/members` (braucht SECURITY DEFINER fn auf `auth.users`); optionaler Outbox-Audit-Eintrag bei Invite. Bewusst deferred per A-mit-Offenheit-Lock-in.
+- **PROJ-5 Wizard-Filter durch Method-Toggle:** override-Storage funktioniert; Wizard liest aktuell noch direkt aus dem Code-Catalog. Kleine Wizard-Slice nachgezogen — kein Migration-Aufwand.
+- **PROJ-5 Project-Type-Override-Anwendung im Wizard:** override-Storage funktioniert; Wizard rendert weiterhin gegen den Code-Catalog. Gleiche Form von Follow-up.
+- **`adminTenantContext` resolves „erste tenant_membership"** — gleicher Caveat wie PROJ-14. Harmonisierung mit aktivem Tenant-Cookie ist eigene Slice.
+- **`document_templates`** override field fehlt aktuell auf `ProjectTypeProfile`. Wenn der Catalog wächst, `ProjectTypeOverrideSchema` + `resolveProjectTypeProfile` in lockstep erweitern.
+- **CI-Integrationstest für Trigger/RLS** — wiederkehrende Beobachtung über PROJ-12/13/14/16. Live red-team probes decken das vorerst ab.
