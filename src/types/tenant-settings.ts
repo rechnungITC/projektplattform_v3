@@ -24,6 +24,7 @@ export type ModuleKey =
   | "vendor"
   | "communication"
   | "resources"
+  | "budget"
 
 /** Modules that are actually built in V3 today and toggleable. */
 export const TOGGLEABLE_MODULES: readonly ModuleKey[] = [
@@ -34,6 +35,7 @@ export const TOGGLEABLE_MODULES: readonly ModuleKey[] = [
   "communication",
   "resources",
   "vendor",
+  "budget",
 ] as const
 
 /** Modules that exist in the schema as future-reserved keys but are not
@@ -51,6 +53,7 @@ export const MODULE_LABELS: Record<ModuleKey, string> = {
   resources: "Ressourcen",
   connectors: "Konnektoren",
   vendor: "Lieferanten",
+  budget: "Budget",
 }
 
 export type DataClass = 1 | 2 | 3
@@ -72,12 +75,27 @@ export interface RetentionOverrides {
   audit_log_days?: number
 }
 
+export type SupportedCurrency = "EUR" | "USD" | "CHF" | "GBP" | "JPY"
+
+export const SUPPORTED_CURRENCIES: readonly SupportedCurrency[] = [
+  "EUR",
+  "USD",
+  "CHF",
+  "GBP",
+  "JPY",
+] as const
+
+export interface BudgetSettings {
+  default_currency: SupportedCurrency
+}
+
 export interface TenantSettings {
   tenant_id: string
   active_modules: ModuleKey[]
   privacy_defaults: PrivacyDefaults
   ai_provider_config: AiProviderConfig
   retention_overrides: RetentionOverrides
+  budget_settings: BudgetSettings
   created_at: string
   updated_at: string
 }

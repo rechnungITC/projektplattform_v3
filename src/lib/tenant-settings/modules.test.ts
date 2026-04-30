@@ -11,6 +11,7 @@ function settings(modules: TenantSettings["active_modules"]): TenantSettings {
     privacy_defaults: { default_class: 3 },
     ai_provider_config: { external_provider: "none" },
     retention_overrides: {},
+    budget_settings: { default_currency: "EUR" },
     created_at: "2026-04-29T00:00:00Z",
     updated_at: "2026-04-29T00:00:00Z",
   }
@@ -51,6 +52,7 @@ describe("activeToggleableModules", () => {
       "communication",
       "resources",
       "vendor",
+      "budget",
     ])
   })
 })
