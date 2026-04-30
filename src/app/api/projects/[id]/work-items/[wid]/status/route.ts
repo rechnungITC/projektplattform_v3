@@ -2,12 +2,22 @@ import { NextResponse } from "next/server"
 import { z } from "zod"
 
 import { apiError, getAuthenticatedUserId } from "@/app/api/_lib/route-helpers"
+import { applyTriggerForWorkItem } from "@/lib/compliance/trigger"
+import type { CompliancePhase } from "@/lib/compliance/types"
 
 const STATUSES = ["todo", "in_progress", "blocked", "done", "cancelled"] as const
 
 const schema = z.object({
   status: z.enum(STATUSES),
 })
+
+const STATUS_TO_COMPLIANCE_PHASE: Partial<Record<
+  (typeof STATUSES)[number],
+  CompliancePhase
+>> = {
+  in_progress: "in_progress",
+  done: "done",
+}
 
 export async function PATCH(
   request: Request,
@@ -55,5 +65,26 @@ export async function PATCH(
     return apiError("update_failed", error.message, 500)
   }
   if (!data) return apiError("not_found", "Work item not found.", 404)
+
+  // PROJ-18: fire compliance trigger for the new phase, if any. The
+  // UNIQUE(work_item_id, tag_id, phase) idempotency key prevents double-
+  // firing on retries or repeated transitions.
+  const phase = STATUS_TO_COMPLIANCE_PHASE[parsed.data.status]
+  if (phase) {
+    try {
+      await applyTriggerForWorkItem({
+        supabase,
+        tenantId: (data as { tenant_id: string }).tenant_id,
+        projectId,
+        workItemId,
+        phase,
+        userId,
+      })
+    } catch {
+      // Non-fatal — status change still succeeds. The UI doesn't block on
+      // trigger errors; missing forms are surfaced via phase-warnings.
+    }
+  }
+
   return NextResponse.json({ work_item: data })
 }
