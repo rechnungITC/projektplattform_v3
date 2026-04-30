@@ -119,9 +119,11 @@ export function ProjectRoomShell({
 
   return (
     <div className="flex flex-col">
+      {/* PROJ-23: horizontal nav is mobile-only (≤ 767 px). On md+ the
+       *  ProjectSidebar in <AppShell> takes over. */}
       <nav
         aria-label="Project sections"
-        className="sticky top-14 z-30 border-b bg-background/95 backdrop-blur supports-[backdrop-filter]:bg-background/60"
+        className="sticky top-0 z-30 border-b bg-background/95 backdrop-blur supports-[backdrop-filter]:bg-background/60 md:hidden"
       >
         <div className="mx-auto w-full max-w-5xl px-4 sm:px-6">
           <ul className="flex gap-1 overflow-x-auto py-2">
