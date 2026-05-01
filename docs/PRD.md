@@ -53,6 +53,7 @@ The product thesis: enterprise projects fail at the seams between execution, gov
 | PROJ-23 | P2 | Globale Sidebar-Navigation: Top-Level + Project-Room als vertikale Sidebar links, mit Branding + Hotkeys + Persistenz. Reine UI-Foundation. | Planned |
 | PROJ-24 | P2 | Cost-Stack: role_rates (versioniert), Velocity-Modell für Stories, generische work_item_cost_lines mit source_type für spätere Erweiterung (LV, Stückliste). | Planned |
 | PROJ-25 | P2 | Drag-and-Drop: Backlog↔Sprint, Gantt-Verschieben/Resize/Dependencies-Linien. Erweiterung PROJ-7 + PROJ-19. | Planned |
+| PROJ-28 | P2 | Method-aware Project-Room Navigation: Sidebar-Labels + URL-Slugs (Wasserfall: /arbeitspakete, /phasen; Scrum: /releases) per Methode. Schließt PROJ-26 deferred-frontend (L1). | Planned |
 | _TBD_ | P2 | Governance workflows: approval gates, escalations, formal decisions | Planned |
 
 ## Success Metrics
