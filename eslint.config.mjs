@@ -146,9 +146,27 @@ const config = [
       "src/components/work-items/new-work-item-dialog.tsx",
       "src/components/work-items/work-item-allocations.tsx",
       "src/lib/work-items/method-context.ts",
+      // PROJ-21: snapshot UI uses the same dialog-reset + effect-driven
+      // data-load patterns documented above.
+      "src/components/reports/ki-narrative-modal.tsx",
+      "src/hooks/use-snapshots.ts",
     ],
     rules: {
       "react-hooks/set-state-in-effect": "off",
+    },
+  },
+  {
+    // PROJ-21 — tenant-branding logo in snapshot pages.
+    //
+    // The frozen snapshot HTML is rendered server-side and then
+    // captured by headless Puppeteer for the PDF. Next/Image is lazy
+    // (intersection-observer driven) and would not have completed
+    // loading by the time Puppeteer finishes the print snapshot,
+    // resulting in missing logos. Use a plain `<img>` so the source
+    // resolves before the print frame finalizes.
+    files: ["src/components/reports/snapshot-header.tsx"],
+    rules: {
+      "@next/next/no-img-element": "off",
     },
   },
   {

@@ -1,6 +1,6 @@
 # PROJ-21: Output Rendering — Status-Report & Executive-Summary
 
-## Status: Architected
+## Status: In Progress
 **Created:** 2026-04-30
 **Last Updated:** 2026-04-30
 
@@ -394,7 +394,78 @@ Alle 3 Decisions aus dem Spec wurden mit den **Recommended Defaults** gelockt:
 Wenn der User mit einer der 3 nicht einverstanden ist: zurück zur Diskussion, Decision umlocken, Tech Design entsprechend anpassen.
 
 ## Implementation Notes
-_To be added by /frontend and /backend_
+
+### Frontend (2026-05-01)
+
+Shipped as one focused commit. All 14 frontend files build cleanly; the runtime depends on the upcoming `/backend` slice (table + 4 API routes).
+
+**Library + types (Tier 1)**
+- `src/lib/reports/types.ts` — `SnapshotKind`, `SnapshotContent`, `ReportSnapshot`, `SnapshotListItem`, `CreateSnapshotRequest`, `PreviewKiRequest`/`Response` + helper labels (`SNAPSHOT_KIND_LABELS`, `TRAFFIC_LIGHT_LABELS`).
+- `src/lib/reports/status-traffic-light.ts` — pure deterministic formula per Tech Design § Decision 3:
+  - GREEN: 0 overdue milestones AND 0 critical-open risks
+  - YELLOW: ≤ 2 overdue OR exactly 1 critical risk
+  - RED: anything else
+  - "Critical" matches `risk-matrix.tsx`: `score >= 16` AND `status = open`. "Overdue" excludes `completed`/`achieved`/`closed`/`cancelled` milestones.
+- `src/lib/reports/status-traffic-light.test.ts` — 23 vitest cases pinning every threshold transition + edge cases (malformed dates, completed-but-overdue milestones, no-data fallback to GREEN).
+
+**Server-rendered body components (Tier 2)**
+- `src/components/reports/traffic-light-pill.tsx` — print-friendly pill with solid colors (survives `@media print`).
+- `src/components/reports/snapshot-header.tsx` — frozen tenant-branding header (logo or initials fallback, accent-color strip, project metadata).
+- `src/components/reports/snapshot-footer.tsx` — version + generator + KI-source footer.
+- `src/components/reports/snapshot-section.tsx` — wrapper rendering the "—" placeholder for empty sections per spec § ST-04.
+- `src/components/reports/status-report-body.tsx` — locked section order: Header / Phasen-Timeline (table) / Aktuelle & nächste Meilensteine (next 5) / Top-5-Risiken / Top-5-Entscheidungen (with `is_revised` badge) / Offene Punkte (count + 3 most overdue) / Backlog-Übersicht (by kind + by status) / KI-Kurzfazit (when present) / Footer.
+- `src/components/reports/executive-summary-body.tsx` — A4-portrait-fit one-pager: Header / Aktueller Stand (KI-narrative or manual fallback) / Top-3-Risiken / Top-3-Entscheidungen / Nächste-2-Meilensteine / Footer.
+
+**Client UI (Tier 3)**
+- `src/components/reports/ki-narrative-modal.tsx` — preview + edit modal triggered by the "+ KI-Kurzfazit"-DropdownMenu-Item. On open, requests a preview from the backend; user can edit the text up to 1000 chars; commits with or without the KI block.
+- `src/components/reports/snapshot-create-button.tsx` — DropdownMenu with 4 actions: Status-Report direct/with-KI, Executive-Summary direct/with-KI. Toast on success surfaces the snapshot URL with a "URL kopieren" action.
+- `src/components/reports/snapshot-row.tsx` — single row with kind-Badge, version, KI-flag, PDF-status (`available` / `pending` / `failed`); shows "PDF erneut rendern" button on `failed`.
+- `src/components/reports/snapshot-list.tsx` — list with skeleton-loading + empty-state + error message.
+- `src/components/project-room/reports-section.tsx` — Card wrapper that gates the create button by `useProjectAccess(projectId, "edit_master")`.
+
+**Hooks (Tier 4)**
+- `src/hooks/use-snapshots.ts` — `useSnapshots(projectId)` with `snapshots`, `loading`, `error`, `create(body)`, `retryPdf(id)`, `refresh()`. Wires against the upcoming backend contract:
+  - `GET /api/projects/[id]/snapshots`
+  - `POST /api/projects/[id]/snapshots`
+  - `POST /api/projects/[id]/snapshots/[sid]/render-pdf`
+- `src/hooks/use-snapshot-preview-ki.ts` — `useSnapshotPreviewKi(projectId)` with `preview`, `loading`, `error`, `generate(body)`, `reset()`. Wires against `POST /api/projects/[id]/snapshots/preview-ki`.
+
+**Snapshot routes (Tier 5)**
+- `src/app/reports/snapshots/[snapshotId]/page.tsx` — public-facing-but-tenant-scoped HTML view. Lives **outside** the `(app)` layout group so the AppShell chrome doesn't wrap it. Reads `report_snapshots` via the server Supabase client (RLS-gated); 404s on cross-tenant or unknown IDs (leak-safe).
+- `src/app/reports/snapshots/[snapshotId]/print/page.tsx` — Puppeteer-target. Same data, no chrome. `robots: noindex`. Used by the backend's headless Chromium during the synchronous PDF render.
+
+**Project Detail wiring (Tier 6)**
+- `src/app/(app)/projects/[id]/project-detail-client.tsx` — `<ReportsSection projectId={projectId} kiNarrativeEnabled={false} />` inserted between `<RitualsCard />` and the existing Master-Data card. The `kiNarrativeEnabled` prop is hard-coded to `false` for V1; backend will replace the literal with a tenant-settings-driven value (`tenant_settings.output_rendering.ki_narrative_enabled`) when the corresponding column is added.
+
+**Lint additions (3 file-pattern overrides in `eslint.config.mjs`)** — all matching established PROJ-29 Block A patterns:
+- `react-hooks/set-state-in-effect` extended to `ki-narrative-modal.tsx` + `use-snapshots.ts` (legitimate dialog-reset + effect-driven data load).
+- `@next/next/no-img-element` off in `snapshot-header.tsx` (Puppeteer-print needs synchronous `<img>` rather than Next/Image's lazy loading).
+
+**Verified**
+- TypeScript strict — 0 errors
+- `npx vitest run` — **530 → 553 (+23)** all passing (new status-traffic-light suite)
+- `npm run lint` — exit 0, ✖ 0 problems
+- `npm run build` — green; new routes `/reports/snapshots/[snapshotId]` + `/reports/snapshots/[snapshotId]/print` registered
+
+**Backend handoff**
+The frontend assumes the following contracts from `/backend`:
+- Migration: `report_snapshots` table per spec § ST-01 + `output_rendering` module added to `TOGGLEABLE_MODULES` + `tenant_settings.output_rendering.ki_narrative_enabled` JSONB key.
+- API routes:
+  - `GET /api/projects/[id]/snapshots` → `{ snapshots: SnapshotListItem[] }`
+  - `POST /api/projects/[id]/snapshots` body `CreateSnapshotRequest` → `{ snapshot: ReportSnapshot, snapshotUrl: string }`
+  - `POST /api/projects/[id]/snapshots/preview-ki` body `PreviewKiRequest` → `PreviewKiResponse`
+  - `GET /api/projects/[id]/snapshots/[sid]/pdf` → 302 redirect to signed Supabase Storage URL
+  - `POST /api/projects/[id]/snapshots/[sid]/render-pdf` → 204 (retry path for failed PDFs)
+- `lib/reports/aggregate-snapshot-data.ts` — server-side data aggregator that produces a `SnapshotContent` for create-time freezing.
+- `lib/reports/puppeteer-render.ts` — synchronous PDF capture + Supabase Storage upload.
+- Replace the hard-coded `kiNarrativeEnabled={false}` in `ProjectDetailClient` with the real flag once `tenant_settings.output_rendering.ki_narrative_enabled` exists in the type.
+
+**Out of this slice (handled by /backend)**
+- Migration + RLS policies + audit-whitelist for `report_snapshots`.
+- 5 API routes.
+- Puppeteer-driven PDF render + Supabase Storage bucket setup.
+- KI-narrative routing per PROJ-12 data-class rules.
+- Module-toggle integration (`output_rendering` in `TOGGLEABLE_MODULES`).
 
 ## QA Test Results
 _To be added by /qa_

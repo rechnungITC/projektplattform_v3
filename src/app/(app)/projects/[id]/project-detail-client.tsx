@@ -12,6 +12,7 @@ import Link from "next/link"
 import * as React from "react"
 
 import { HealthSnapshot } from "@/components/project-room/health-snapshot"
+import { ReportsSection } from "@/components/project-room/reports-section"
 import { RitualsCard } from "@/components/project-room/rituals-card"
 import { EditProjectMasterDataDialog } from "@/components/projects/edit-project-master-data-dialog"
 import { HardDeleteConfirmDialog } from "@/components/projects/hard-delete-confirm-dialog"
@@ -219,6 +220,13 @@ export function ProjectDetailClient({ projectId }: ProjectDetailClientProps) {
 
       {/* Method-specific rituals reminder */}
       <RitualsCard config={config} />
+
+      {/* PROJ-21: Reports — Status-Report + Executive-Summary snapshots.
+          The KI-Kurzfazit-Toggle is feature-flagged per tenant via
+          `tenant_settings.output_rendering.ki_narrative_enabled`. The
+          flag access is wired in /backend; until then we default to
+          off (the dropdown shows the "Direkt erzeugen" path only). */}
+      <ReportsSection projectId={projectId} kiNarrativeEnabled={false} />
 
       {/* Master data */}
       <Card>

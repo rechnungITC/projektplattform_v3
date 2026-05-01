@@ -34,7 +34,7 @@
 | PROJ-18 | Compliance Automatik & Process Templates | Deployed | [Spec](PROJ-18-compliance-automatik.md) | 2026-04-25 |
 | PROJ-19 | Phases & Milestones — Cross-cutting Schedule Backbone | Deployed | [Spec](PROJ-19-phases-milestones-cross-cutting.md) | 2026-04-25 |
 | PROJ-20 | Risks & Decisions Catalog (Cross-cutting Governance Backbone) | Deployed | [Spec](PROJ-20-risks-decisions-catalog.md) | 2026-04-25 |
-| PROJ-21 | Output Rendering — Status-Report & Executive-Summary | Architected | [Spec](PROJ-21-output-rendering.md) | 2026-04-30 |
+| PROJ-21 | Output Rendering — Status-Report & Executive-Summary | In Progress | [Spec](PROJ-21-output-rendering.md) | 2026-04-30 |
 | PROJ-22 | Budget-Modul mit Historisierung, Vendor-Integration & Multi-Currency | Deployed | [Spec](PROJ-22-budget-modul.md) | 2026-04-30 |
 | PROJ-23 | Globale Sidebar-Navigation (UI-Refactor) | Deployed | [Spec](PROJ-23-sidebar-global.md) | 2026-04-30 |
 | PROJ-24 | Cost-Stack — Tagessätze pro Rolle, Velocity-Modell & Kosten pro Work-Item | Planned | [Spec](PROJ-24-cost-stack.md) | 2026-04-30 |
