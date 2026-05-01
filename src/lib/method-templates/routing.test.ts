@@ -4,6 +4,7 @@ import { LayoutDashboard } from "lucide-react"
 import type { SidebarSection } from "@/types/method-config"
 import type { TenantSettings } from "@/types/tenant-settings"
 
+import { getMethodConfig } from "./index"
 import {
   filterSectionsByModules,
   getCanonicalSlug,
@@ -379,6 +380,17 @@ describe("module-gating matrix (8 methods × 6 modules)", () => {
     "budget",
   ] as const
 
+  const ALL_METHODS = [
+    "scrum",
+    "safe",
+    "kanban",
+    "waterfall",
+    "pmi",
+    "prince2",
+    "vxt2",
+    null,
+  ] as const
+
   function settingsWith(active: readonly string[]): TenantSettings {
     return {
       tenant_id: "t",
@@ -392,59 +404,41 @@ describe("module-gating matrix (8 methods × 6 modules)", () => {
     }
   }
 
-  // For each method config, verify each PROJ-17 module gates exactly
-  // one section. Toggling one module off should remove exactly one
-  // section from the rendered list compared to "all on".
-  it.each([
-    ["scrum"],
-    ["safe"],
-    ["kanban"],
-    ["waterfall"],
-    ["pmi"],
-    ["prince2"],
-    ["vxt2"],
-    ["null"],
-  ] as const)("each PROJ-17 module gates one section in %s template", (methodKey) => {
-    const method = methodKey === "null" ? null : (methodKey as
-      | "scrum"
-      | "safe"
-      | "kanban"
-      | "waterfall"
-      | "pmi"
-      | "prince2"
-      | "vxt2")
-    const allOn = settingsWith(ALL_MODULES)
-    // Use getMethodConfig via a helper section list — pull through public API.
-    // We grab sections via the routing helpers.
-    const allSections = (() => {
-      // small re-import of getMethodConfig is unnecessary — we test the
-      // filter, not the registry. Instead synthesize from public API.
-      const overview = parseSectionFromPathname(PREFIX, PROJECT_ID, method)
-      expect(overview).toBe("overview")
-      // Use filterSectionsByModules against the registry's sections —
-      // we re-resolve the visible sections by module key.
-      // (We could expose a getSidebarSectionsForMethod helper, but the
-      //  filter test below already proves the contract per method.)
-      return null
-    })()
-    void allSections
+  // End-to-end matrix: for every method × module pair, toggling the
+  // module off via filterSectionsByModules drops exactly the section
+  // gated by that module from the rendered sidebar list. Verifies the
+  // chain method-template → SidebarSection.requiresModule → filter.
+  for (const method of ALL_METHODS) {
+    const methodLabel = method ?? "null"
+    const config = getMethodConfig(method)
 
     for (const moduleKey of ALL_MODULES) {
-      const off = settingsWith(ALL_MODULES.filter((m) => m !== moduleKey))
-      // The section gated by this module should appear in `allOn` but
-      // not in `off`. We verify by checking visibility of href: section
-      // ids match module keys 1-1 in our templates, except `ai`
-      // (id=`ai`, module=`ai_proposals`).
-      const sectionId = moduleKey === "ai_proposals" ? "ai" : moduleKey
-      const href = getProjectSectionHref(PROJECT_ID, sectionId, method)
-      // section exists in this method's template iff href !== bare prefix
-      const exists = href !== PREFIX
-      if (!exists) continue // method may not have this section
-      // We don't have direct access to filtered sections here without
-      // re-importing the registry, so we verify via the filter helper
-      // below instead.
-      expect(allOn.active_modules).toContain(moduleKey)
-      expect(off.active_modules).not.toContain(moduleKey)
+      it(`${methodLabel} template: ${moduleKey} module gates exactly its section`, () => {
+        const allOn = filterSectionsByModules(
+          config.sidebarSections,
+          settingsWith(ALL_MODULES),
+        )
+        const off = filterSectionsByModules(
+          config.sidebarSections,
+          settingsWith(ALL_MODULES.filter((m) => m !== moduleKey)),
+        )
+        const dropped = allOn.filter((s) => !off.includes(s))
+        // Every method template must declare the gated section.
+        expect(dropped).toHaveLength(1)
+        expect(dropped[0].requiresModule).toBe(moduleKey)
+      })
     }
-  })
+
+    it(`${methodLabel} template: every PROJ-17 module is represented exactly once`, () => {
+      const required = config.sidebarSections
+        .map((s) => s.requiresModule)
+        .filter((m): m is (typeof ALL_MODULES)[number] => m != null)
+      // Deduplication check.
+      expect(new Set(required).size).toBe(required.length)
+      // Coverage check — every PROJ-17 module appears.
+      for (const m of ALL_MODULES) {
+        expect(required, `${methodLabel} must gate ${m}`).toContain(m)
+      }
+    })
+  }
 })
