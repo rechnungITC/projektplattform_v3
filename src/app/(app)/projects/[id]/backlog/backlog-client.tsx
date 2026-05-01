@@ -28,6 +28,7 @@ import { ChevronDown, Plus } from "lucide-react"
 import { useProjectAccess } from "@/hooks/use-project-access"
 import { useSprints } from "@/hooks/use-sprints"
 import { useWorkItems } from "@/hooks/use-work-items"
+import { getMethodConfig } from "@/lib/method-templates"
 import { useCurrentProjectMethod } from "@/lib/work-items/method-context"
 import type { WorkItemKind, WorkItemWithProfile } from "@/types/work-item"
 
@@ -46,6 +47,11 @@ const DEFAULT_FILTERS: BacklogFilters = {
 export function BacklogClient({ projectId, tenantId: _tenantId }: BacklogClientProps) {
   const method = useCurrentProjectMethod(projectId)
   const canEdit = useProjectAccess(projectId, "edit_master")
+  // PROJ-28: hide Sprints in non-agile methods. Backend already
+  // hard-blocks sprint INSERT in those methods (PROJ-26), so this is a
+  // pure UX-cleanup. Method = null (Setup) keeps Sprints visible
+  // because every construct is permitted until a method is chosen.
+  const showSprints = method === null || getMethodConfig(method).hasSprints
 
   const [filters, setFilters] = React.useState<BacklogFilters>(DEFAULT_FILTERS)
   const [viewMode, setViewMode] = React.useState<BacklogViewMode>("list")
@@ -138,39 +144,41 @@ export function BacklogClient({ projectId, tenantId: _tenantId }: BacklogClientP
         )}
       </div>
 
-      <Collapsible className="mt-8 rounded-lg border" defaultOpen>
-        <div className="flex items-center justify-between gap-2 px-4 py-3">
-          <CollapsibleTrigger asChild>
-            <button
-              type="button"
-              className="flex items-center gap-2 text-sm font-medium hover:opacity-80"
-            >
-              <ChevronDown className="h-4 w-4" />
-              Sprints
-              <span className="text-muted-foreground">({sprints.length})</span>
-            </button>
-          </CollapsibleTrigger>
-          {canEdit && (
-            <Button
-              size="sm"
-              variant="outline"
-              onClick={() => setNewSprintOpen(true)}
-            >
-              <Plus className="mr-1 h-4 w-4" /> Neuer Sprint
-            </Button>
-          )}
-        </div>
-        <CollapsibleContent>
-          <div className="border-t px-4 py-3">
-            <SprintsList
-              projectId={projectId}
-              sprints={sprints}
-              loading={sprintsLoading}
-              onChanged={refreshSprints}
-            />
+      {showSprints && (
+        <Collapsible className="mt-8 rounded-lg border" defaultOpen>
+          <div className="flex items-center justify-between gap-2 px-4 py-3">
+            <CollapsibleTrigger asChild>
+              <button
+                type="button"
+                className="flex items-center gap-2 text-sm font-medium hover:opacity-80"
+              >
+                <ChevronDown className="h-4 w-4" />
+                Sprints
+                <span className="text-muted-foreground">({sprints.length})</span>
+              </button>
+            </CollapsibleTrigger>
+            {canEdit && (
+              <Button
+                size="sm"
+                variant="outline"
+                onClick={() => setNewSprintOpen(true)}
+              >
+                <Plus className="mr-1 h-4 w-4" /> Neuer Sprint
+              </Button>
+            )}
           </div>
-        </CollapsibleContent>
-      </Collapsible>
+          <CollapsibleContent>
+            <div className="border-t px-4 py-3">
+              <SprintsList
+                projectId={projectId}
+                sprints={sprints}
+                loading={sprintsLoading}
+                onChanged={refreshSprints}
+              />
+            </div>
+          </CollapsibleContent>
+        </Collapsible>
+      )}
 
       <NewWorkItemDialog
         open={createOpen}
@@ -236,12 +244,14 @@ export function BacklogClient({ projectId, tenantId: _tenantId }: BacklogClientP
         />
       )}
 
-      <NewSprintDialog
-        open={newSprintOpen}
-        onOpenChange={setNewSprintOpen}
-        projectId={projectId}
-        onCreated={refreshSprints}
-      />
+      {showSprints && (
+        <NewSprintDialog
+          open={newSprintOpen}
+          onOpenChange={setNewSprintOpen}
+          projectId={projectId}
+          onCreated={refreshSprints}
+        />
+      )}
     </div>
   )
 }
