@@ -41,7 +41,8 @@
 | PROJ-25 | Drag-and-Drop Stack — Backlog↔Sprint + Gantt voll | Planned | [Spec](PROJ-25-dnd-stack.md) | 2026-04-30 |
 | PROJ-26 | Method-Gating für Schedule-Constructs (Sprints, Phasen, Milestones) | Deployed | [Spec](PROJ-26-method-gating-schedule-constructs.md) | 2026-05-01 |
 | PROJ-27 | Cross-Project Work-Item Links + Sub-Project Bridge | Architected | [Spec](PROJ-27-cross-project-links-and-subproject-bridge.md) | 2026-05-01 |
+| PROJ-28 | Method-aware Project-Room Navigation (Labels + Routes) | In Progress | [Spec](PROJ-28-method-aware-navigation.md) | 2026-05-01 |
 
 <!-- Add features above this line -->
 
-## Next Available ID: PROJ-28
+## Next Available ID: PROJ-29
