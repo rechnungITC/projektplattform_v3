@@ -67,7 +67,6 @@ async function writeEmptyStorageState(reason: string): Promise<void> {
     JSON.stringify({ cookies: [], origins: [] }, null, 2),
     "utf8",
   )
-  // eslint-disable-next-line no-console -- intentional CI breadcrumb
   console.warn(
     `[PROJ-29 globalSetup] auth provisioning skipped (${reason}). ` +
       `Existing unauth E2E tests will run. Auth-fixture-using tests ` +
@@ -205,7 +204,6 @@ async function globalSetup(_config: FullConfig): Promise<void> {
   await mkdir(dirname(storagePath), { recursive: true })
   await writeFile(storagePath, JSON.stringify(storageState, null, 2), "utf8")
 
-  // eslint-disable-next-line no-console -- intentional CI breadcrumb
   console.info(
     `[PROJ-29 globalSetup] ready — storage state at ${storagePath}`
   )

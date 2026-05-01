@@ -33,6 +33,21 @@ const config = [
     },
   },
   {
+    // PROJ-29 Block C — Playwright fixture `use(...)` parameter.
+    //
+    // Playwright's fixture API destructures a `use` parameter:
+    //   test.extend({ myFixture: async ({ browser }, use) => { await use(...) } })
+    // The new React 19 `react-hooks/rules-of-hooks` rule mis-detects
+    // this as React's `use()` hook because the inner function is not
+    // named like a custom hook (uppercase / `use*`). It is not a React
+    // component or hook — it's a Node test fixture. Override on the
+    // single file that uses this pattern.
+    files: ["tests/fixtures/auth-fixture.ts"],
+    rules: {
+      "react-hooks/rules-of-hooks": "off",
+    },
+  },
+  {
     // PROJ-29 Block A — auth-flow `window.location.href` assignment.
     //
     // The new React 19 `react-hooks/immutability` rule mis-reads
