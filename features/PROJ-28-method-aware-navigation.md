@@ -1,6 +1,6 @@
 # PROJ-28: Method-aware Project-Room Navigation (Labels + Routes)
 
-## Status: Approved
+## Status: Deployed
 **Created:** 2026-05-01
 **Last Updated:** 2026-05-01
 
@@ -668,4 +668,21 @@ Suggested next:
 3. Optional follow-up: re-introduce `method_aware_routes` tenant flag if/when multi-tenant rollout becomes real — small follow-up (≤ 1 hour: `tenant_settings.feature_flags` JSONB + middleware short-circuit).
 
 ## Deployment
-_To be added by /deploy_
+
+- **Date deployed:** 2026-05-01
+- **Production URL:** https://projektplattform-v3.vercel.app
+- **Vercel auto-deploy:** triggered by push of 12 commits (`0fd792a..2056e0a`) to `main`
+- **DB migration applied to live Supabase:** ✅ none — PROJ-28 has zero DB schema delta
+- **Git tag:** `v1.25.0-PROJ-28`
+- **Deviations:**
+  - Feature-Flag `method_aware_routes` (spec § ST-09) **deferred** — single-tenant pilot, canonical URLs stay valid → rollback = `git revert`. Documented in Implementation Notes § Phase 5 + QA M1.
+  - Sentry breadcrumb on 308 redirect uses `console.info` (picked up by Vercel/Sentry transport) instead of structured `Sentry.addBreadcrumb` — 1-line upgrade when monitoring needs grow.
+- **Post-deploy verification:**
+  - 6 project sub-routes live (canonical: `backlog`, `planung`, `abhaengigkeiten`, `governance`; aliases: `arbeitspakete`, `phasen`, `releases`) — all 307-gate to `/login` for unauthenticated probes ✅
+  - Vercel build green, no runtime errors
+  - 308-Redirect-Logik nur für authenticated requests aktiv (kein Leak von `project_method` über Auth-Grenze; verifiziert per RLS-scoped Supabase-Lookup)
+  - Method-Switch-Verhalten: Auto-Redirect bei nächster Nav, kein Banner, kein 404 (per Tech Design § 3)
+- **Rollback story:** `git revert 78cb89e..2056e0a` (4 docs/test commits) + `git revert 47bec0a..29b2142` (8 implementation commits) → `git push origin main`. Canonical URLs (`/backlog`, `/planung`) stayed valid throughout the rollout, so any user mid-session continues without 404.
+- **Next steps for rollout-monitoring:**
+  - 90-Tage-Sentry-Statistik der `[PROJ-28] method-aware redirect`-Breadcrumbs prüfen — falls < 1 % Traffic je Alias, Aliase ggf. zurückbauen.
+  - Logged-in Playwright fixture als separates Spec — würde ST-10 vollständig grün machen + retroaktiven Lift für PROJ-23/PROJ-22/PROJ-18.
