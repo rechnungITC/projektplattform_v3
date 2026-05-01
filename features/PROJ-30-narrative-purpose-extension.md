@@ -1,8 +1,8 @@
 # PROJ-30: KI-Narrative-Purpose Erweiterung des AI-Routers
 
-## Status: Planned
+## Status: In Progress
 **Created:** 2026-05-01
-**Last Updated:** 2026-05-01
+**Last Updated:** 2026-05-02
 
 ## Summary
 Schließt eine bewusst-deferred Lücke aus PROJ-21 (Output Rendering): heute returnt `POST /api/projects/[id]/snapshots/preview-ki` einen **templated Stub-Text** mit `provider="stub"` — der PROJ-12 AI-Router ist purpose-typed für `risks` und kann (noch) keinen narrative-Text erzeugen.
@@ -349,7 +349,59 @@ PROJ-30 ist eine reine Code-Migration in 4 Phasen. Keine DB-Schritte.
 | 5 | `ki_runs.purpose`-Schema | **A** — text bleibt, kein CHECK-Constraint |
 
 ## Implementation Notes
-_To be added by /backend_
+
+### Backend (2026-05-02)
+
+Shipped als ein Slice (Architecture + Backend zusammen). **Keine DB-Migration**, reine Code-Erweiterung. 6 Implementierungs-Phasen, alle TypeScript strict + Vitest grün.
+
+**Phase 1 — Type-System Erweiterung** (`src/lib/ai/types.ts`)
+- `AIPurpose` Union erweitert um `"narrative"`.
+- `NarrativeAutoContext` Interface: strikt Class-1/2; KEINE `lead_name` / `sponsor_name` / `responsible_user_id`. Felder: `kind`, `project` (Class-1/2 Metadaten), `phases_summary` (counts), `top_risks` (≤3), `top_decisions` (≤3), `upcoming_milestones` (≤3), `backlog_counts` (by_kind + by_status).
+- `NarrativeGenerationOutput` + `RouterNarrativeResult` analog zum Risk-Pendant.
+
+**Phase 2 — Provider-Interface-Refactor** (`src/lib/ai/providers/`)
+- `AIRiskProvider` → `AIProvider` (beide Methoden optional). Deprecated `AIRiskProvider`-Type-Alias für Backward-Compat.
+- `AnthropicRiskProvider` → `AnthropicProvider`. Neue Methode `generateNarrative` mit eigenem System-Prompt (3-Sätze-Pflicht, deutsche Sprache, "keine personenbezogenen Daten erfinden") + Zod-Schema für strukturierten Output.
+- `StubRiskProvider` → `StubProvider`. Neue Methode `generateNarrative` mit deterministischem Templated-Text pro Snapshot-Kind.
+- `OllamaRiskProvider` → `OllamaProvider`. Beide Methoden throw "not implemented" — Router fängt und fällt auf Stub.
+- Deprecated Klass-Aliase (`AnthropicRiskProvider`, `StubRiskProvider`, `OllamaRiskProvider`) damit Risk-only-Imports kompilieren.
+
+**Phase 3 — Whitelist-Classifier** (`src/lib/ai/classify.ts`)
+- `classifyNarrativeAutoContext` mit `NARRATIVE_FIELD_WHITELIST` + `NARRATIVE_BLOCK_KEYS`. Jedes nicht-whitelist-Feld → Class 3 (fail-safe Defense-in-Depth).
+- 7 Vitest-Cases pinnen das Verhalten.
+
+**Phase 4 — Router-Refactor + invokeNarrativeGeneration** (`src/lib/ai/router.ts`)
+- Shared Helpers extrahiert: `insertKiRun`, `updateKiRunStatus`. `loadTenantOverrides` + `selectProvider` waren bereits Funktionen.
+- `invokeRiskGeneration` refactored — kein Verhaltensdelta, alle 4 bestehenden Risk-Tests grün. Type wechselt auf generic `AIProvider`; defensive Throw bei fehlender Methode (type-narrowing).
+- `invokeNarrativeGeneration` neu: gleiche Pipeline (Klassifikation → selectProvider → ki_runs-Insert → Provider-Call → ki_runs-Update). **Kein** `ki_suggestions`-Insert (transient by design). Provider-Error → Last-Defense-Fallback auf `StubProvider.generateNarrative` mit `status='error'` im Audit. Class-3 → `status='external_blocked'` + Stub-Text.
+
+**Phase 5 — Auto-Context-Builder** (`src/lib/ai/auto-context.ts`)
+- `buildNarrativeAutoContext(supabase, projectId, kind)`: parallele SELECTs aus projects/phases/risks (top-3 open, score=probability×impact desc)/decisions (latest 3)/milestones (upcoming, target_date >= today, top 3)/work_items (counts).
+- **Strikt kein** `responsible_user_id`-Join zu `profiles`.
+
+**Phase 6 — preview-ki-Route Umstellung** (`src/app/api/projects/[id]/snapshots/preview-ki/route.ts`)
+- Stub-Inline-Body durch `buildNarrativeAutoContext` + `invokeNarrativeGeneration` ersetzt.
+- Response-Shape unverändert (`{ text, classification, provider }`) — Frontend-Modal bleibt unangetastet.
+- Provider-Error → 200 mit Stub-Text + `console.warn`. Hard-Fallback bei DB-Ausfall: 200 mit hardcoded Stub-Text + `console.error`. UI sieht **niemals** ein 5xx.
+
+**Tests (12 neue Cases)**
+- `classify.test.ts` +7 Narrative-Classifier-Tests (whitelist behaviour: empty, populated, top-level un-whitelisted, nested un-whitelisted, list-item un-whitelisted, null-handling, tenantDefault).
+- `router.test.ts` +5 Narrative-Router-Tests (happy path mit Stub, kein ki_suggestions-Insert, Class-3-Fallback, ki_runs-Insert-Fail, `purpose='narrative'`-Verifikation).
+
+**Verified end-state**
+- TypeScript strict — 0 errors
+- `npm run lint` — exit 0
+- `npx vitest run` — **572/572** (560 → 572, +12 PROJ-30 cases)
+- `npm run build` — green
+- Keine DB-Migration, keine neuen npm-Pakete
+
+**User-supplied Domain Knowledge** (parallel offline gepflegt unter `docs/Projektwissen wasserfall/`, `docs/Stakeholderwissen/`, `docs/Reporting tools/`, `docs/projektplattform_skills/`, `docs/wizard-prep/`): umfangreiche Markdown-Wissensbasis für ERP-Fragenkatalog, Wasserfall-Phasenmodell, Stakeholder-Kommunikation, Default-Skills (ERP/CRM/Bauleitung/Software). Diese Materialien gehören NICHT zu PROJ-30 (V1 nutzt nur Class-1/2-Auto-Context und braucht keine externe Knowledge-Base), aber sind direkter Input für die kommenden Specs PROJ-33 (Adaptive Dialog), PROJ-39 (Skills/Tools-System) und PROJ-37 (Rich Layouts).
+
+**Out of this slice (deferred)**
+- Multi-Provider-Routing (Tenant Custom Keys) → PROJ-32.
+- Skills/Tool-Use-Cross-Provider → PROJ-39.
+- Interview-Purpose (Adaptive Dialog) → PROJ-33; nutzt denselben Helper-Pattern.
+- Async-Render → PROJ-30b falls Pilot-Latenz-Bedarf.
 
 ## QA Test Results
 _To be added by /qa_
