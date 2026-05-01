@@ -114,6 +114,25 @@ async function globalSetup(_config: FullConfig): Promise<void> {
     return
   }
 
+  // 1.5) Profile row — tenants.created_by FK references profiles(id),
+  //      not auth.users(id), and there is no auto-create trigger.
+  const { error: profileError } = await admin
+    .from("profiles")
+    .upsert(
+      {
+        id: E2E_USER_ID,
+        email: E2E_TEST_EMAIL,
+        display_name: "[E2E] Test User",
+      },
+      { onConflict: "id" },
+    )
+  if (profileError) {
+    await writeEmptyStorageState(
+      `profiles upsert failed: ${profileError.message}`,
+    )
+    return
+  }
+
   // 2) Idempotent test tenant — clearly E2E-marked.
   const { error: tenantError } = await admin
     .from("tenants")
@@ -135,19 +154,19 @@ async function globalSetup(_config: FullConfig): Promise<void> {
     return
   }
 
-  // 3) Idempotent admin membership.
-  await admin
-    .from("tenant_memberships")
-    .delete()
-    .eq("tenant_id", E2E_TENANT_ID)
-    .eq("user_id", E2E_USER_ID)
+  // 3) Idempotent admin membership — upsert on the (tenant_id, user_id)
+  //    unique constraint so a stale row from a previous partial run
+  //    doesn't block the rerun.
   const { error: membershipError } = await admin
     .from("tenant_memberships")
-    .insert({
-      tenant_id: E2E_TENANT_ID,
-      user_id: E2E_USER_ID,
-      role: "admin",
-    })
+    .upsert(
+      {
+        tenant_id: E2E_TENANT_ID,
+        user_id: E2E_USER_ID,
+        role: "admin",
+      },
+      { onConflict: "tenant_id,user_id" },
+    )
   if (membershipError) {
     await writeEmptyStorageState(
       `tenant_memberships insert failed: ${membershipError.message}`,
