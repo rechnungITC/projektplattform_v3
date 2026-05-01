@@ -43,7 +43,7 @@
 | PROJ-27 | Cross-Project Work-Item Links + Sub-Project Bridge | Architected | [Spec](PROJ-27-cross-project-links-and-subproject-bridge.md) | 2026-05-01 |
 | PROJ-28 | Method-aware Project-Room Navigation (Labels + Routes) | Deployed | [Spec](PROJ-28-method-aware-navigation.md) | 2026-05-01 |
 | PROJ-29 | Hygiene-Slice (Lint-Baseline · Function-Hardening · Auth-Fixture-Skelett) | Deployed | [Spec](PROJ-29-hygiene-slice.md) | 2026-05-01 |
-| PROJ-30 | KI-Narrative-Purpose Erweiterung des AI-Routers | Architected | [Spec](PROJ-30-narrative-purpose-extension.md) | 2026-05-01 |
+| PROJ-30 | KI-Narrative-Purpose Erweiterung des AI-Routers | In Progress | [Spec](PROJ-30-narrative-purpose-extension.md) | 2026-05-01 |
 
 <!-- Add features above this line -->
 
