@@ -38,6 +38,11 @@ import {
 import { Progress } from "@/components/ui/progress"
 import { useMilestones } from "@/hooks/use-milestones"
 import { useProjectAccess } from "@/hooks/use-project-access"
+import {
+  getMethodSlug,
+  getProjectSectionHref,
+} from "@/lib/method-templates/routing"
+import { useCurrentProjectMethod } from "@/lib/work-items/method-context"
 import { cn } from "@/lib/utils"
 import type { Phase } from "@/types/phase"
 
@@ -57,6 +62,17 @@ export function PhaseCard({
 }: PhaseCardProps) {
   const canEdit = useProjectAccess(projectId, "edit_master")
   const canTransition = useProjectAccess(projectId, "transition")
+  const method = useCurrentProjectMethod(projectId)
+  // Phase-aware methods (Waterfall/PMI/PRINCE2) call this section
+  // "Arbeitspakete" (id=work-packages); hybrid/agile methods keep
+  // "Backlog" (id=backlog). Pick whichever the method declares.
+  const targetSection =
+    getMethodSlug("work-packages", method) != null ? "work-packages" : "backlog"
+  const backlogHref = `${getProjectSectionHref(
+    projectId,
+    targetSection,
+    method,
+  )}?phase=${phase.id}`
 
   const [editOpen, setEditOpen] = React.useState(false)
   const [statusOpen, setStatusOpen] = React.useState(false)
@@ -249,7 +265,7 @@ export function PhaseCard({
             Arbeitspakete in dieser Phase
           </span>
           <Link
-            href={`/projects/${projectId}/backlog?phase=${phase.id}`}
+            href={backlogHref}
             className="text-sm text-primary underline-offset-4 hover:underline"
           >
             Im Backlog öffnen

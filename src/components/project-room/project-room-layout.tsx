@@ -10,18 +10,14 @@ interface ProjectRoomLayoutProps {
 }
 
 /**
- * Project Room layout — slimmed down for PROJ-23.
+ * Project Room layout.
  *
- * The PROJ-7 MethodSidebar (Sprint-Switcher, Swimlane-Filter) and
- * MethodHeader (project name + sprint selector banner) are intentionally
- * not rendered here for now — the user explicitly asked for a clean
- * black-on-white project area without the M3-tinted chrome. The
- * components themselves still live under `src/components/project-room/`
- * and can be re-introduced surgically per page once the UX direction is
- * settled.
+ * On md+ viewports the desktop `ProjectSidebar` in `<AppShell>` is the
+ * primary navigation; this layout only wraps the mobile horizontal tab
+ * strip via `ProjectRoomShell` (≤ 767 px).
  *
- * The new ProjectSidebar in <AppShell> already shows the project name +
- * lifecycle hints, so we don't lose orientation by removing the banner.
+ * Both the mobile strip and the desktop sidebar are method-aware via
+ * `MethodConfig.sidebarSections` (PROJ-28).
  */
 export function ProjectRoomLayout({
   projectId,

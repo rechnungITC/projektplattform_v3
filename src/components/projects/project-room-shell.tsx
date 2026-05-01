@@ -1,138 +1,67 @@
 "use client"
 
-import {
-  AlertTriangle,
-  Building2,
-  ClipboardList,
-  Gavel,
-  History,
-  LayoutDashboard,
-  ListTodo,
-  MessageSquare,
-  Settings as SettingsIcon,
-  Sparkles,
-  Users,
-  Users2,
-  Wallet,
-} from "lucide-react"
 import Link from "next/link"
 import { usePathname } from "next/navigation"
 import * as React from "react"
 
 import { useAuth } from "@/hooks/use-auth"
-import { isModuleActive } from "@/lib/tenant-settings/modules"
+import { getMethodConfig } from "@/lib/method-templates"
+import {
+  filterSectionsByModules,
+  getProjectSectionHref,
+  isSectionActive,
+} from "@/lib/method-templates/routing"
+import { useCurrentProjectMethod } from "@/lib/work-items/method-context"
 import { cn } from "@/lib/utils"
-import type { ModuleKey } from "@/types/tenant-settings"
 
 interface ProjectRoomShellProps {
   projectId: string
   children: React.ReactNode
 }
 
-interface ProjectTab {
-  segment:
-    | ""
-    | "planung"
-    | "backlog"
-    | "stakeholder"
-    | "risiken"
-    | "entscheidungen"
-    | "ai-proposals"
-    | "kommunikation"
-    | "lieferanten"
-    | "budget"
-    | "mitglieder"
-    | "historie"
-    | "einstellungen"
-  label: string
-  icon: React.ComponentType<{ className?: string }>
-  /** PROJ-17: hide tab when this module is disabled for the tenant. */
-  requiresModule?: ModuleKey
-}
-
-const TABS: readonly ProjectTab[] = [
-  { segment: "", label: "Übersicht", icon: LayoutDashboard },
-  { segment: "planung", label: "Planung", icon: ClipboardList },
-  { segment: "backlog", label: "Backlog", icon: ListTodo },
-  { segment: "stakeholder", label: "Stakeholder", icon: Users },
-  {
-    segment: "risiken",
-    label: "Risiken",
-    icon: AlertTriangle,
-    requiresModule: "risks",
-  },
-  {
-    segment: "entscheidungen",
-    label: "Entscheidungen",
-    icon: Gavel,
-    requiresModule: "decisions",
-  },
-  {
-    segment: "ai-proposals",
-    label: "KI-Vorschläge",
-    icon: Sparkles,
-    requiresModule: "ai_proposals",
-  },
-  {
-    segment: "kommunikation",
-    label: "Kommunikation",
-    icon: MessageSquare,
-    requiresModule: "communication",
-  },
-  {
-    segment: "lieferanten",
-    label: "Lieferanten",
-    icon: Building2,
-    requiresModule: "vendor",
-  },
-  {
-    segment: "budget",
-    label: "Budget",
-    icon: Wallet,
-    requiresModule: "budget",
-  },
-  { segment: "mitglieder", label: "Mitglieder", icon: Users2 },
-  { segment: "historie", label: "Historie", icon: History },
-  { segment: "einstellungen", label: "Einstellungen", icon: SettingsIcon },
-] as const
-
+/**
+ * Mobile horizontal tab strip for the Project Room (≤ 767 px).
+ *
+ * PROJ-28: tabs come from the active method's `MethodConfig
+ * .sidebarSections` filtered by tenant modules — same source as the
+ * desktop `ProjectSidebar`, so labels and URL slugs stay consistent
+ * across viewports.
+ *
+ * On md+ viewports this nav is hidden and `<AppShell>`'s
+ * `ProjectSidebar` takes over.
+ */
 export function ProjectRoomShell({
   projectId,
   children,
 }: ProjectRoomShellProps) {
   const pathname = usePathname() ?? ""
   const { tenantSettings } = useAuth()
-  const base = `/projects/${projectId}`
-
-  function isActive(segment: ProjectTab["segment"]): boolean {
-    if (segment === "") {
-      // Übersicht: only active when we're at the bare project page.
-      return pathname === base
-    }
-    const tabPath = `${base}/${segment}`
-    return pathname === tabPath || pathname.startsWith(`${tabPath}/`)
-  }
-
-  const visibleTabs = TABS.filter(
-    (t) => !t.requiresModule || isModuleActive(tenantSettings, t.requiresModule)
+  const method = useCurrentProjectMethod(projectId)
+  const config = getMethodConfig(method)
+  const visibleSections = React.useMemo(
+    () => filterSectionsByModules(config.sidebarSections, tenantSettings),
+    [config.sidebarSections, tenantSettings]
   )
 
   return (
     <div className="flex flex-col">
-      {/* PROJ-23: horizontal nav is mobile-only (≤ 767 px). On md+ the
-       *  ProjectSidebar in <AppShell> takes over. */}
       <nav
         aria-label="Project sections"
         className="sticky top-0 z-30 border-b bg-background/95 backdrop-blur supports-[backdrop-filter]:bg-background/60 md:hidden"
       >
         <div className="mx-auto w-full max-w-5xl px-4 sm:px-6">
           <ul className="flex gap-1 overflow-x-auto py-2">
-            {visibleTabs.map((tab) => {
-              const active = isActive(tab.segment)
-              const href = tab.segment === "" ? base : `${base}/${tab.segment}`
-              const Icon = tab.icon
+            {visibleSections.map((section) => {
+              const active = isSectionActive(
+                pathname,
+                projectId,
+                section.id,
+                method,
+              )
+              const href = getProjectSectionHref(projectId, section.id, method)
+              const Icon = section.icon
               return (
-                <li key={tab.segment}>
+                <li key={section.id}>
                   <Link
                     href={href}
                     className={cn(
@@ -144,7 +73,7 @@ export function ProjectRoomShell({
                     aria-current={active ? "page" : undefined}
                   >
                     <Icon className="h-4 w-4" aria-hidden />
-                    <span>{tab.label}</span>
+                    <span>{section.label}</span>
                   </Link>
                 </li>
               )
