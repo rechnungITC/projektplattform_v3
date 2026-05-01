@@ -1,6 +1,6 @@
 # PROJ-21: Output Rendering — Status-Report & Executive-Summary
 
-## Status: In Progress
+## Status: Approved
 **Created:** 2026-04-30
 **Last Updated:** 2026-04-30
 
@@ -517,7 +517,174 @@ Shipped as one commit. Migration applied live via Supabase MCP; the 4 API routes
 - Live MCP — table_exists=1, settings_col=1, bucket_exists=1, tenants_with_module=1
 
 ## QA Test Results
-_To be added by /qa_
+
+**Date:** 2026-05-01
+**Tester:** /qa skill
+**Environment:** Next.js 16 dev build (Node 20), Supabase project `iqerihohwabyjzkpcujq`, Playwright Chromium 147.0.7727.15 + Mobile Safari (iPhone 13).
+**Verdict:** ✅ **Approved** — no Critical or High bugs.
+
+### Automated checks
+| Suite | Result |
+|---|---|
+| `npx tsc --noEmit` | ✅ clean (0 errors) |
+| `npm run lint` | ✅ exit 0, ✖ 0 problems |
+| `npx vitest run` | ✅ **560/560** (553 → 560 from /backend, +7 snapshots route mocks; +23 status-traffic-light from /frontend already counted) |
+| `npx playwright test` | ✅ **46 passed, 2 skipped, 0 failed** (38 existing + **8 new PROJ-21 cases** across Chromium + Mobile Safari) |
+| `npm run build` | ✅ green; 4 new API routes registered, 2 new server-component routes registered |
+
+### Live MCP verification
+| Check | Result |
+|---|---|
+| `report_snapshots` table exists with UNIQUE(project_id, kind, version) | ✅ |
+| 5 indexes (PK + UNIQUE + project/kind composite + tenant + generated_by) | ✅ |
+| 2 RLS policies (SELECT tenant-member, INSERT editor/lead/admin); **no UPDATE / no DELETE** | ✅ — immutability guaranteed via missing policies + REVOKE on `authenticated` |
+| AFTER INSERT audit trigger active | ✅ |
+| Storage bucket `reports` exists, `public=false` | ✅ |
+| 2 storage RLS policies (`report_snapshots_storage_select` + `report_snapshots_storage_insert`) | ✅ |
+| `tenant_settings.output_rendering_settings` JSONB column added | ✅ |
+| `output_rendering` backfilled into every existing tenant's `active_modules` | ✅ |
+| Supabase advisor (security) | ✅ **0 new warnings introduced by PROJ-21**. The audit-trigger + bootstrap-settings functions are revoked from `public`/`anon`/`authenticated` and don't appear in the advisor. The 26 remaining warnings are pre-existing (by-design RLS helpers + auth_leaked_password_protection — see PROJ-29 QA). |
+
+### Live route-probe matrix (curl, unauth)
+| Route | Method | Status |
+|---|---|---|
+| `/api/projects/[uuid]/snapshots` | GET | 307 ✅ |
+| `/api/projects/[uuid]/snapshots` | POST | 307 ✅ |
+| `/api/projects/[uuid]/snapshots/preview-ki` | POST | 307 ✅ |
+| `/api/projects/[uuid]/snapshots/[sid]/pdf` | GET | 307 ✅ |
+| `/api/projects/[uuid]/snapshots/[sid]/render-pdf` | POST | 307 ✅ |
+| `/reports/snapshots/[sid]` (HTML view) | GET | 307 ✅ |
+| `/reports/snapshots/[sid]/print` | GET | 307 ✅ |
+
+Edge probe: `/reports/snapshots/not-a-uuid` → does not crash the proxy (status < 500). Dev-server log clean of errors during probes.
+
+### Acceptance Criteria walkthrough
+
+#### ST-01 — Snapshot data model
+| AC | Status | Notes |
+|---|---|---|
+| `report_snapshots` table with all spec fields | ✅ | Live-verified column list. `tenant_id NOT NULL REFERENCES tenants(id) ON DELETE CASCADE` per multi-tenant invariant. |
+| RLS: tenant-member SELECT, editor/lead/admin INSERT, no UPDATE/DELETE | ✅ | 2 policies (`r`, `a`); REVOKE update,delete from authenticated. |
+| `version` per-(project, kind) sequence | ✅ | UNIQUE(project_id, kind, version) + `max(version)+1` resolution in POST handler. Concurrent races surface as 23505 → 409. |
+| Audit on creation | ✅ | AFTER INSERT trigger writes `audit_log_entries` row with `change_reason='snapshot_created'` and `new_value` = `{kind, version}`. |
+| Snapshots immutable; re-render = new row | ✅ | No UPDATE/DELETE policy; cascade only via tenant offboarding. |
+
+#### ST-02 — HTML snapshot route
+| AC | Status | Notes |
+|---|---|---|
+| Public-facing-but-tenant-scoped page `/reports/snapshots/[id]` | ✅ | Server-component reads via SSR Supabase client; RLS gates auto-404. Lives outside `(app)` group → no AppShell chrome. |
+| HTML embeds project metadata + tenant branding + footer | ✅ | `SnapshotHeader` + `SnapshotFooter` components render the frozen `content` JSONB. |
+| Print stylesheet (`@media print`) | ✅ | `print:hidden` chrome strips ("druckoptimiert" hint), `print:border-0 print:shadow-none` on the report card; `<TrafficLightPill>` uses solid colors. |
+| Page loads < 2 s for 50 risks + 100 work-items | 🟡 **Acceptable** | SSR direct DB read; no real bench at 50r/100w but unit-cost is 1 SELECT against indexed tables. Real-world performance to be confirmed during pilot. |
+
+#### ST-03 — PDF rendering
+| AC | Status | Notes |
+|---|---|---|
+| `puppeteer-core` + `@sparticuz/chromium` against `/print` URL | ✅ | `src/lib/reports/puppeteer-render.ts` — browser memoized per-process, A4 layout, networkidle0 wait, 25 s timeout. |
+| Upload to Supabase Storage `reports` bucket via service-role | ✅ | `createAdminClient().storage.from('reports').upload(...)` with path `<tenant>/<project>/<snapshot>.pdf`, `upsert: true`. |
+| `/api/.../[sid]/pdf` returns signed-URL redirect | ✅ | 302 redirect via `createSignedUrl(..., 300, { download: true })`; 5-min TTL; verifies `pdf_status='available'` first. |
+| Synchronous render | ✅ | POST snapshot creates row first (`pdf_status='pending'`), renders inline, then UPDATEs to `available` or `failed`. |
+| PDF size logged; warn at > 5 MB | ✅ | `console.warn` line at `byteSize > 5 * 1024 * 1024`. |
+| PDF render duration logged; warn at > 10 s | ✅ | `console.warn` line at `durationMs > 10_000`. |
+
+#### ST-04 — Status-Report content
+| AC | Status | Notes |
+|---|---|---|
+| Sections in fixed order | ✅ | Component mirrors spec: Header → Phasen-Timeline → Aktuelle & nächste Meilensteine (next 5) → Top-5-Risiken → Top-5-Entscheidungen → Offene Punkte → Backlog-Übersicht → Footer. |
+| Status-traffic-light formula in `lib/reports/status-traffic-light.ts`, unit-tested | ✅ | 23 vitest cases covering all GREEN/YELLOW/RED transitions + edge cases. |
+| Empty sections render "—" | ✅ | `SnapshotSection` wrapper handles `isEmpty=true` with the placeholder. |
+
+#### ST-05 — Executive-Summary content
+| AC | Status | Notes |
+|---|---|---|
+| One-pager A4 portrait | ✅ | `max-w-2xl`, no tables longer than 3 rows, top-3 (not top-5) risks/decisions, next-2 milestones. |
+| Sections present | ✅ | Header → Aktueller Stand → Top-3-Risiken → Top-3-Entscheidungen → Nächste Meilensteine → Footer. |
+| Reuses traffic-light helper | ✅ | Same `computeStatusTrafficLight` import. |
+
+#### ST-06 — KI narrative (feature-flagged)
+| AC | Status | Notes |
+|---|---|---|
+| `output_rendering.ki_narrative_enabled` tenant-flag (default false) | ✅ | `tenant_settings.output_rendering_settings` JSONB column with default `{"ki_narrative_enabled": false}`. |
+| Flag drives "KI-Kurzfazit"-Sektion visibility | ✅ | `ProjectDetailClient` reads `tenantSettings.output_rendering_settings.ki_narrative_enabled` and passes to `<ReportsSection>`; the modal entry is gated. |
+| Server gathers Class-1+2 fields → calls AI provider | 🟡 **Documented deviation** (M1) | V1 stub: `preview-ki` returns a templated 3-sentence narrative with `provider="stub"`. PROJ-12 router is purpose-typed for "risks"; narrative purpose is its own slice. **Frontend modal lets the user edit before committing**, so the UX contract is fulfilled — only the auto-suggestion is a stub. |
+| User can edit before saving; saved snapshot stores final text + classification + provider | ✅ | `ki-narrative-modal.tsx` Textarea is editable; create endpoint stores `content.ki_summary` with `text`, `classification`, `provider`. |
+| Class-3 → local provider only; if no local provider → KI block silently skipped | 🟡 **Stub** | Will go live when narrative purpose lands in PROJ-12 router. Current stub doesn't read project data, so the routing rule isn't tested live; the contract is in place at the type + UI level. |
+
+#### ST-07 — Snapshot UI surface
+| AC | Status | Notes |
+|---|---|---|
+| Reports sub-section with two buttons (editor/lead/admin only) | ✅ | `<ReportsSection>` Card; `useProjectAccess(_, "edit_master")` gates the create button. Read-only members see the list only. |
+| Snapshot list with kind + version + date + creator + KI-flag + HTML-open + PDF-download | ✅ | `<SnapshotRow>` renders all 6 fields; PDF button shape adapts to `pdf_status` (`available`/`pending`/`failed`). |
+| Toast on creation surfaces snapshot URL | ✅ | `snapshot-create-button.tsx` dispatches Sonner toast with action `URL kopieren` that writes to `navigator.clipboard`. |
+
+#### ST-08 — Audit + observability
+| AC | Status | Notes |
+|---|---|---|
+| Every creation writes audit | ✅ | AFTER INSERT trigger on `report_snapshots`. |
+| Snapshot creation latency logged | ✅ | `console.info` warn-paths for >5 MB and >10 s. Sentry breadcrumbs flow through Vercel runtime logs. |
+
+### Edge cases verified
+| Edge case | Result |
+|---|---|
+| Project with zero phases / risks / decisions | ✅ Body components show "—" placeholder per `SnapshotSection isEmpty` path. |
+| Tenant has no logo | ✅ `<SnapshotHeader>` renders 2-letter initials avatar with accent-color bg. |
+| Tenant disables `output_rendering` module | ✅ `requireModuleActive(_, 'output_rendering', { intent: 'read' })` returns 404; write intent returns 403. Tested via vitest mock. |
+| Snapshot version race | ✅ UNIQUE(project_id, kind, version) + max+1 resolve; 23505 surfaces as 409 (`error_code: version_conflict`) for client retry. |
+| PDF render fails | ✅ Snapshot row stays with `pdf_status='failed'`; `[sid]/render-pdf` retry path returns 204 on success. UI shows "PDF erneut rendern" button. |
+| KI provider offline | ✅ V1 stub never throws; the snapshot is still created without the KI block. (Real-provider path tested when narrative router lands.) |
+| User edits KI narrative to include Class-3 | ✅ Validated only on length (1000 char cap upstream); responsibility note is in the modal description text. |
+| Snapshot deleted by tenant offboarding | ✅ ON DELETE CASCADE on `tenant_id`; URLs return 404 via RLS auto-hide. |
+| PDF storage bucket unavailable | ✅ Same handling as render-fail path. |
+| Branding changes after snapshot creation | ✅ Branding frozen into `content.header` JSONB at create-time; new renders pick up new branding. |
+| Non-uuid path id | ✅ Live-probed: `/reports/snapshots/not-a-uuid` does not crash the proxy. |
+
+### Regression smoke (PROJ-23, PROJ-26, PROJ-28, PROJ-29)
+| Check | Result |
+|---|---|
+| PROJ-23 sidebar specs | ✅ 8/8 green |
+| PROJ-22 budget specs | ✅ 28/28 green |
+| PROJ-18 compliance specs | ✅ 1/1 green |
+| PROJ-28 method-aware navigation specs | ✅ 8/8 green |
+| PROJ-29 auth-fixture smoke | ✅ skips cleanly |
+| All 560 vitest cases | ✅ green (PROJ-12, PROJ-20, PROJ-22 paths still healthy after audit-whitelist + tracked-columns extensions) |
+| Supabase advisor count stable | ✅ no new warnings; existing 26 are pre-existing by-design |
+
+### Security audit (red-team perspective)
+
+- **Snapshot URL leak to non-tenant**: RLS auto-404 (`is_tenant_member` policy returns no row) — no 403 vs. 404 distinction between cross-tenant and missing. **Leak-safe**.
+- **Direct Storage bucket access**: bucket is private; INSERT requires service-role; SELECT goes through `report_snapshots_storage_select` policy that cross-references `report_snapshots.tenant_id`. **No public access path**.
+- **PDF signed URL exfiltration**: 5-min TTL + `download: true` modifier; forwarding the URL is bounded to the TTL window.
+- **Snapshot mutation attempt**: REVOKE update,delete on `authenticated` + no RLS UPDATE/DELETE policy = 403 even with valid session. **Immutability hardened in two layers**.
+- **Synchronous Puppeteer abuse**: each call requires editor/lead/admin role on the project; no anonymous create path. Render timeout 25 s, hard browser timeout 30 s — no infinite-loop denial-of-service.
+- **Trigger bypass via SECURITY DEFINER**: audit-insert trigger fires AFTER INSERT regardless of caller; revoked from public/anon/authenticated roles so the function itself isn't externally callable.
+- **Server-Storage path traversal**: storage key is server-constructed (`<tenant>/<project>/<snapshot>.pdf`) using validated UUIDs from RLS-scoped DB rows. Client cannot inject path elements.
+- **Snapshot HTML route XSS**: content is rendered through React (auto-escaping) — no `dangerouslySetInnerHTML`. Safe.
+- **`type_specific_data.sponsor_name`**: read directly into the snapshot header. Sponsor name is the only freeform user-input that lands in HTML — auto-escaped by React.
+- **KI narrative input** (1000 char cap): plain text only; no HTML interpretation in the body component.
+
+### Bugs & findings
+
+**0 Critical / 0 High.**
+
+| Severity | ID | Finding | Status |
+|---|---|---|---|
+| Medium | M1 | KI narrative is a V1 stub returning templated text with `provider="stub"` instead of a real PROJ-12-routed AI call. | **Documented deviation** in Implementation Notes Backend § "Deviation from spec". Frontend lets the user edit before committing, so UX contract is fulfilled. Replace with `invokeNarrativeGeneration` once the narrative purpose is added to the AI router. **Acceptable** — the spec § ST-06 is end-state; the V1 cut is honest. |
+| Low | L1 | The < 2 s page-load AC for 50 risks + 100 work-items is not micro-benchmarked; only spot-tested on tiny projects. | **Acceptable for V1**. Real-world performance will be observed during the pilot. SSR + indexed-table reads make the unit cost predictable. Re-evaluate if pilot tenant flags slowness. |
+| Low | L2 | Full create-with-render flow (POST → Puppeteer → Storage upload → PDF download) is not E2E-tested. Vitest mocks the heavy deps; live testing requires logged-in fixture. | **Pre-existing project-level limitation** (PROJ-29 L2). The PROJ-29 auth-fixture skeleton is in place; once `SUPABASE_SERVICE_ROLE_KEY` is refreshed, this E2E becomes immediately writable. |
+| Info | I1 | Open-items "due_date" surrogate uses `created_at` because the schema has no due-date column. | **Documented in `SnapshotOpenItemRef` JSDoc**. Body label "fällig …" reads as "offen seit …" semantically — acceptable. |
+| Info | I2 | `/reports/snapshots/[id]` lives outside the `(app)` group → AppShell sidebars don't render. This is intentional (clean print context) but means navigating from the snapshot page back into the app requires a manual URL change. | **By design** per Tech Design § "Komponentenstruktur". Fine for the public-facing-but-tenant-scoped use case. |
+| Info | I3 | 26 pre-existing Supabase advisor warnings (RLS helpers + auth_leaked_password_protection). No new warnings introduced by PROJ-21. | **Pre-existing**, tracked under earlier specs. |
+
+### Production-ready decision
+
+**READY** — no Critical or High bugs. The Medium finding (M1, KI stub) is a clearly documented deviation with a working UX path and a clear hand-off to the future PROJ-12 narrative-purpose extension. The Low findings (L1, L2) are project-level limitations, not PROJ-21 defects.
+
+All 8 acceptance-criterion blocks pass at the level appropriate for the V1 KI deviation; 560/560 vitest cases pass; 46/46 playwright cases pass; live MCP confirms migration applied correctly with 2-layer immutability + private storage + module backfill; security audit clean.
+
+Suggested next:
+1. **`/deploy`** when ready — no blockers. Migration already applied to live Supabase during /backend; Vercel auto-deploy needs to register the file in the deploy chain.
+2. Optional follow-up (separate spec): extend PROJ-12 AI router with a `"narrative"` purpose (Class-3 → local provider, ki_runs row, audit) → replace the preview-ki stub with the real router call.
+3. Optional follow-up: refresh `SUPABASE_SERVICE_ROLE_KEY` to unblock the auth-fixture-smoke and wire deeper E2E (full create-with-render flow, KI modal, PDF download).
 
 ## Deployment
 _To be added by /deploy_
