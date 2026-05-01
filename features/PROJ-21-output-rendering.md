@@ -1,6 +1,6 @@
 # PROJ-21: Output Rendering — Status-Report & Executive-Summary
 
-## Status: Approved
+## Status: Deployed
 **Created:** 2026-04-30
 **Last Updated:** 2026-04-30
 
@@ -687,4 +687,27 @@ Suggested next:
 3. Optional follow-up: refresh `SUPABASE_SERVICE_ROLE_KEY` to unblock the auth-fixture-smoke and wire deeper E2E (full create-with-render flow, KI modal, PDF download).
 
 ## Deployment
-_To be added by /deploy_
+
+- **Date deployed:** 2026-05-01
+- **Production URL:** https://projektplattform-v3.vercel.app
+- **Vercel auto-deploy:** triggered by push of 4 commits (`844f210..0b6d8c2`) to `main`
+- **DB migration applied to live Supabase:** ✅ already applied during /backend phase via Supabase MCP `apply_migration` (`20260501140000_proj21_report_snapshots.sql`). Vercel deploy registered the migration file in the deploy chain; the DB state was already in place pre-deploy.
+- **Storage bucket:** `reports` (private) created via the migration; RLS policies live.
+- **Module backfill:** `output_rendering` already in every existing tenant's `active_modules` (migration backfill applied live).
+- **Git tag:** `v1.27.0-PROJ-21`
+- **Deviations** (all documented in Implementation Notes + QA findings):
+  - **M1 / KI narrative**: V1 stub returns templated text with `provider="stub"`. Frontend lets user edit before committing — UX contract fulfilled. Replace with PROJ-12 narrative-purpose router call when that extension lands.
+  - **L1 / Page-load < 2s for 50 risks + 100 work-items**: not micro-benchmarked; observe during pilot.
+  - **L2 / Full create-with-render E2E**: not E2E-tested (project-level fixture limitation from PROJ-29; auth-fixture skeleton in place, awaits valid SUPABASE_SERVICE_ROLE_KEY).
+- **Post-deploy verification:**
+  - `https://projektplattform-v3.vercel.app/login` returns 200 ✅
+  - `https://projektplattform-v3.vercel.app/api/projects/<uuid>/snapshots` returns 307 → /login (auth-gate intact) ✅
+  - `https://projektplattform-v3.vercel.app/reports/snapshots/<uuid>` returns 307 → /login (auth-gate intact) ✅
+  - Vercel build green
+  - Existing routes unaffected (PROJ-23/PROJ-26/PROJ-28 routes still 307-gate as before)
+- **Rollback story:** `git revert 0b6d8c2..04d6f6c` (4 commits — frontend, backend, QA, docs). The DB migration (`CREATE TABLE`, RLS policies, audit trigger, storage bucket) is forward-only — revert needs a hand-written `DROP TABLE / DROP POLICY / DROP BUCKET` migration if a true rollback is required. **In practice the table is empty and isolated**; leaving it in place after a code revert is safe.
+- **Next steps for follow-up:**
+  - Extend PROJ-12 AI router with `"narrative"` purpose (Class-3 → local-provider routing, ki_runs row, audit) → replace `preview-ki` stub with real router call.
+  - Refresh `SUPABASE_SERVICE_ROLE_KEY` to the new `sb_secret_` format → unblocks the auth-fixture-smoke E2E from PROJ-29 → enables deeper PROJ-21 E2E (full create-with-render flow, KI modal, PDF download path).
+  - First pilot snapshot: confirm < 2 s page-load with realistic data (50 risks + 100 work-items); revisit if slower.
+  - Monitor PDF render duration logs (`>10s` warn-line) over the first month — if frequent, consider deferring to PROJ-21b async-render.
