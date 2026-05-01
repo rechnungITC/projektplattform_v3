@@ -11,12 +11,22 @@
 import type { LucideIcon } from "lucide-react"
 
 import type { ProjectMethod } from "@/types/project-method"
+import type { ModuleKey } from "@/types/tenant-settings"
 import type { WorkItemKind } from "@/types/work-item"
 
 /**
  * A single sidebar nav entry. The `tabPath` is appended to
  * `/projects/[id]` — pass an empty string for the Übersicht tab so it
  * resolves to the bare project page.
+ *
+ * `routeSlug` (PROJ-28) is the URL-facing slug for this section in the
+ * current method. When omitted, defaults to `tabPath`. Used by the
+ * 308-redirect middleware to map canonical folders to method-specific
+ * URLs (e.g. waterfall: tabPath `backlog` → routeSlug `arbeitspakete`).
+ *
+ * `requiresModule` (PROJ-28) gates the section behind a tenant-module
+ * toggle (PROJ-17). When the module is inactive for the tenant, the
+ * section is filtered out of the sidebar before rendering.
  */
 export interface SidebarSection {
   /** Stable id used for `key` and active-link lookups. */
@@ -26,9 +36,21 @@ export interface SidebarSection {
   icon: LucideIcon
   /**
    * The path appended after `/projects/[id]`. Use `""` for the bare
-   * Übersicht route.
+   * Übersicht route. This is the **folder name** under
+   * `src/app/(app)/projects/[id]/`.
    */
   tabPath: string
+  /**
+   * Optional URL-facing slug for this section in the current method.
+   * Defaults to `tabPath` when omitted. Per PROJ-28 the middleware
+   * 308-redirects between canonical and method-specific slugs.
+   */
+  routeSlug?: string
+  /**
+   * Optional tenant-module gate (PROJ-17). When set, the section is
+   * filtered out when the module is inactive for the tenant.
+   */
+  requiresModule?: ModuleKey
   /** Optional pill text rendered to the right of the label. */
   badge?: string
 }
