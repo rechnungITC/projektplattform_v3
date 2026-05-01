@@ -1,6 +1,6 @@
 # PROJ-29: Hygiene-Slice (Lint-Baseline · Function-Hardening · Auth-Fixture-Skelett)
 
-## Status: Approved
+## Status: Deployed
 **Created:** 2026-05-01
 **Last Updated:** 2026-05-01
 
@@ -486,4 +486,22 @@ Suggested next:
 3. Optional follow-up (separate spec): in 6 months, audit the 4 file-pattern overrides for false-positive lint rules — if React 19 lint rules have been refined upstream (or canonical alternatives like parent-key remount have become standard), tighten or remove the overrides.
 
 ## Deployment
-_To be added by /deploy_
+
+- **Date deployed:** 2026-05-01
+- **Production URL:** https://projektplattform-v3.vercel.app
+- **Vercel auto-deploy:** triggered by push of 7 commits (`3f365ba..01497df`) to `main`
+- **DB migration applied to live Supabase:** ✅ already applied during /backend phase (Phase 1) via Supabase MCP `apply_migration` to project `iqerihohwabyjzkpcujq`. The Vercel deploy registers the migration file in the repo deploy chain; the DB state itself was already in place.
+- **Git tag:** `v1.26.0-PROJ-29`
+- **Deviations** (all documented in Implementation Notes + QA findings):
+  - **M1 / Block A**: 5 file-pattern overrides in `eslint.config.mjs` (3 of them for legitimate-React-pattern false-positives, not 3rd-party). Stricter than spec § ST-A AC; rationale documented inline.
+  - **M2 / Block C**: test-tenant seed lives in `globalSetup` (Supabase admin upserts) instead of an SQL migration. Deviates from spec § 4 design decision A; rationale documented.
+  - **L1 / Block C**: local `SUPABASE_SERVICE_ROLE_KEY` is invalid (likely rotated to `sb_secret_` format); auth-fixture-smoke skips cleanly — env-config concern, not code defect.
+- **Post-deploy verification:**
+  - `https://projektplattform-v3.vercel.app/login` returns 200 ✅
+  - `https://projektplattform-v3.vercel.app/projects/<uuid>/arbeitspakete` returns 307 → /login (auth-gate intact, PROJ-28 routing still works) ✅
+  - Vercel build green, no runtime errors
+  - Supabase advisor remains at 30 warnings post-deploy ✅ (stable)
+- **Rollback story:** `git revert 075be75..01497df` (3 documentation/test commits) + `git revert 0e011c9..57706a2` (4 implementation commits) → `git push origin main`. The DB migration (Block B) is `CREATE OR REPLACE FUNCTION` — idempotent and forward-only; revert would re-apply identical bodies without `SET search_path`, requires a separate hand-written migration to undo. **In practice the Block B change is safe enough that it should not need rollback.**
+- **Next steps for follow-up:**
+  - Refresh `SUPABASE_SERVICE_ROLE_KEY` to the new `sb_secret_` format → unlocks auth-fixture-smoke E2E.
+  - In ~6 months: audit the 4 React-19 lint-rule overrides — if upstream rules have been refined or canonical alternatives are widely adopted, tighten or remove the overrides.
