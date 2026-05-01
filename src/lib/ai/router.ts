@@ -28,15 +28,21 @@ import type {
   PrivacyDefaults,
 } from "@/types/tenant-settings"
 
-import { classifyRiskAutoContext } from "./classify"
-import { AnthropicRiskProvider } from "./providers/anthropic"
-import { StubRiskProvider } from "./providers/stub"
-import type { AIRiskProvider } from "./providers/types"
+import {
+  classifyNarrativeAutoContext,
+  classifyRiskAutoContext,
+} from "./classify"
+import { AnthropicProvider } from "./providers/anthropic"
+import { StubProvider } from "./providers/stub"
+import type { AIProvider } from "./providers/types"
 import type {
   AIProviderName,
+  AIPurpose,
   DataClass,
+  NarrativeAutoContext,
   RiskAutoContext,
   RiskSuggestion,
+  RouterNarrativeResult,
   RouterRiskResult,
 } from "./types"
 
@@ -50,7 +56,7 @@ interface InvokeRiskGenerationArgs {
 }
 
 interface ProviderChoice {
-  provider: AIRiskProvider
+  provider: AIProvider
   externalBlocked: boolean
 }
 
@@ -101,14 +107,72 @@ function selectProvider(
 
   if (wantsExternal && apiKeyPresent) {
     return {
-      provider: new AnthropicRiskProvider(tenantConfig.model_id),
+      provider: new AnthropicProvider(tenantConfig.model_id),
       externalBlocked: false,
     }
   }
   return {
-    provider: new StubRiskProvider(),
+    provider: new StubProvider(),
     externalBlocked: externalDisabledByEnv || externalDisabledByClass,
   }
+}
+
+/** Shared helper: insert a `ki_runs` row up-front (PROJ-12 + PROJ-30). */
+async function insertKiRun(
+  supabase: SupabaseClient,
+  args: {
+    tenantId: string
+    projectId: string
+    actorUserId: string
+    purpose: AIPurpose
+    classification: DataClass
+    provider: AIProvider
+  },
+): Promise<string> {
+  const { data, error } = await supabase
+    .from("ki_runs")
+    .insert({
+      tenant_id: args.tenantId,
+      project_id: args.projectId,
+      actor_user_id: args.actorUserId,
+      purpose: args.purpose,
+      classification: args.classification,
+      provider: args.provider.name,
+      model_id: args.provider.modelId,
+      status: "success", // optimistic; updated on error path
+    })
+    .select("id")
+    .single()
+  if (error || !data) {
+    throw new Error(
+      `ki_runs insert failed: ${error?.message ?? "unknown error"}`,
+    )
+  }
+  return data.id as string
+}
+
+/** Shared helper: finalize a `ki_runs` row with status + token counts. */
+async function updateKiRunStatus(
+  supabase: SupabaseClient,
+  runId: string,
+  fields: {
+    status: "success" | "error" | "external_blocked"
+    inputTokens: number | null
+    outputTokens: number | null
+    latencyMs: number | null
+    errorMessage: string | null
+  },
+): Promise<void> {
+  await supabase
+    .from("ki_runs")
+    .update({
+      status: fields.status,
+      input_tokens: fields.inputTokens,
+      output_tokens: fields.outputTokens,
+      latency_ms: fields.latencyMs,
+      error_message: fields.errorMessage,
+    })
+    .eq("id", runId)
 }
 
 export async function invokeRiskGeneration({
@@ -122,36 +186,21 @@ export async function invokeRiskGeneration({
   const overrides = await loadTenantOverrides(supabase, tenantId)
   const classification = classifyRiskAutoContext(
     context,
-    overrides.privacyDefault as DataClass
+    overrides.privacyDefault as DataClass,
   )
   const { provider, externalBlocked } = selectProvider(
     classification,
-    overrides.providerConfig
+    overrides.providerConfig,
   )
 
-  // Insert the run row up-front so we have a stable id even if the
-  // provider call fails. Status is filled in after we know the outcome.
-  const { data: runRow, error: runErr } = await supabase
-    .from("ki_runs")
-    .insert({
-      tenant_id: tenantId,
-      project_id: projectId,
-      actor_user_id: actorUserId,
-      purpose: "risks",
-      classification,
-      provider: provider.name,
-      model_id: provider.modelId,
-      status: "success", // optimistic; updated on error path below
-    })
-    .select("id")
-    .single()
-
-  if (runErr || !runRow) {
-    throw new Error(
-      `ki_runs insert failed: ${runErr?.message ?? "unknown error"}`
-    )
-  }
-  const runId = runRow.id as string
+  const runId = await insertKiRun(supabase, {
+    tenantId,
+    projectId,
+    actorUserId,
+    purpose: "risks",
+    classification,
+    provider,
+  })
 
   let suggestions: RiskSuggestion[] = []
   let inputTokens: number | null = null
@@ -160,6 +209,11 @@ export async function invokeRiskGeneration({
   let providerError: string | null = null
 
   try {
+    if (!provider.generateRiskSuggestions) {
+      throw new Error(
+        `Provider ${provider.name} does not implement generateRiskSuggestions`,
+      )
+    }
     const result = await provider.generateRiskSuggestions({ context, count })
     suggestions = result.suggestions
     inputTokens = result.usage.input_tokens
@@ -178,7 +232,6 @@ export async function invokeRiskGeneration({
     finalStatus = "success"
   }
 
-  // Persist suggestions (only when we actually got some).
   let suggestionIds: string[] = []
   if (suggestions.length > 0) {
     const { data: sugRows, error: sugErr } = await supabase
@@ -193,7 +246,7 @@ export async function invokeRiskGeneration({
           original_payload: s,
           status: "draft",
           created_by: actorUserId,
-        }))
+        })),
       )
       .select("id")
     if (sugErr || !sugRows) {
@@ -206,17 +259,13 @@ export async function invokeRiskGeneration({
     }
   }
 
-  // Update the run row with the final outcome.
-  await supabase
-    .from("ki_runs")
-    .update({
-      status: finalStatus,
-      input_tokens: inputTokens,
-      output_tokens: outputTokens,
-      latency_ms: latencyMs,
-      error_message: providerError,
-    })
-    .eq("id", runId)
+  await updateKiRunStatus(supabase, runId, {
+    status: finalStatus,
+    inputTokens,
+    outputTokens,
+    latencyMs,
+    errorMessage: providerError,
+  })
 
   return {
     run_id: runId,
@@ -225,6 +274,114 @@ export async function invokeRiskGeneration({
     model_id: provider.modelId,
     status: finalStatus,
     suggestion_ids: suggestionIds,
+    external_blocked: externalBlocked,
+    error_message: providerError ?? undefined,
+  }
+}
+
+// ---------------------------------------------------------------------------
+// PROJ-30 — narrative-purpose router
+// ---------------------------------------------------------------------------
+
+interface InvokeNarrativeGenerationArgs {
+  supabase: SupabaseClient
+  tenantId: string
+  projectId: string
+  actorUserId: string
+  context: NarrativeAutoContext
+}
+
+/**
+ * PROJ-30 — generate a 3-sentence narrative for the PROJ-21 KI-Kurzfazit.
+ *
+ * Mirrors `invokeRiskGeneration` but:
+ *   - calls `provider.generateNarrative` instead of risk-suggestions
+ *   - never writes to `ki_suggestions` (narrative is transient)
+ *   - on provider error: returns the StubProvider's deterministic
+ *     fallback text (status='error') so the UI never sees a 5xx
+ *
+ * Class-3 hard-block + tenant-config-respect inherit from
+ * `selectProvider`. The whitelist-based `classifyNarrativeAutoContext`
+ * is the second defense line that catches accidental Class-3 leaks
+ * into the auto-context shape.
+ */
+export async function invokeNarrativeGeneration({
+  supabase,
+  tenantId,
+  projectId,
+  actorUserId,
+  context,
+}: InvokeNarrativeGenerationArgs): Promise<RouterNarrativeResult> {
+  const overrides = await loadTenantOverrides(supabase, tenantId)
+  const classification = classifyNarrativeAutoContext(
+    context,
+    overrides.privacyDefault as DataClass,
+  )
+  const { provider, externalBlocked } = selectProvider(
+    classification,
+    overrides.providerConfig,
+  )
+
+  const runId = await insertKiRun(supabase, {
+    tenantId,
+    projectId,
+    actorUserId,
+    purpose: "narrative",
+    classification,
+    provider,
+  })
+
+  let text = ""
+  let inputTokens: number | null = null
+  let outputTokens: number | null = null
+  let latencyMs: number | null = null
+  let providerError: string | null = null
+
+  try {
+    if (!provider.generateNarrative) {
+      throw new Error(
+        `Provider ${provider.name} does not implement generateNarrative`,
+      )
+    }
+    const result = await provider.generateNarrative({ context })
+    text = result.text
+    inputTokens = result.usage.input_tokens
+    outputTokens = result.usage.output_tokens
+    latencyMs = result.usage.latency_ms
+  } catch (err) {
+    providerError = err instanceof Error ? err.message : String(err)
+    // Final defense: synthesize stub text so callers never see an empty
+    // narrative. The Stub provider produces deterministic fallback for
+    // both snapshot kinds. Any error in the Stub itself bubbles up
+    // (truly broken environment).
+    const fallback = await new StubProvider().generateNarrative({ context })
+    text = fallback.text
+  }
+
+  let finalStatus: "success" | "error" | "external_blocked"
+  if (providerError) {
+    finalStatus = "error"
+  } else if (externalBlocked) {
+    finalStatus = "external_blocked"
+  } else {
+    finalStatus = "success"
+  }
+
+  await updateKiRunStatus(supabase, runId, {
+    status: finalStatus,
+    inputTokens,
+    outputTokens,
+    latencyMs,
+    errorMessage: providerError,
+  })
+
+  return {
+    run_id: runId,
+    classification,
+    provider: provider.name as AIProviderName,
+    model_id: provider.modelId,
+    status: finalStatus,
+    text,
     external_blocked: externalBlocked,
     error_message: providerError ?? undefined,
   }

@@ -1,6 +1,8 @@
 import { NextResponse } from "next/server"
 import { z } from "zod"
 
+import { buildNarrativeAutoContext } from "@/lib/ai/auto-context"
+import { invokeNarrativeGeneration } from "@/lib/ai/router"
 import type { PreviewKiResponse } from "@/lib/reports/types"
 import { requireModuleActive } from "@/lib/tenant-settings/server"
 
@@ -10,21 +12,19 @@ import {
   requireProjectAccess,
 } from "../../../../_lib/route-helpers"
 
-// PROJ-21 § ST-06 — KI-Narrative preview.
+// PROJ-21 § ST-06 + PROJ-30 — KI-Narrative preview.
 //
-// V1 deviation: the existing PROJ-12 AI router (lib/ai/router.ts) is
-// purpose-typed for "risks" and does not yet implement a "narrative"
-// purpose. Wiring the narrative path through the router (Class-3
-// routing → local provider, fallback handling, ki_runs row, audit) is
-// a substantive PROJ-12 extension. Until that lands, this route
-// returns a graceful fallback: a templated 3-sentence narrative with
-// classification=2 and provider="stub". The frontend's KI modal
-// already lets the user edit the text before committing, so the UX is
-// correct — only the auto-generated content is a stub.
+// PROJ-30 replaced the V1 stub with a real router invocation:
+//   1. Build a curated Class-1/2-only auto-context (no personenbezogene
+//      Felder).
+//   2. Invoke `invokeNarrativeGeneration` — runs Class-3 hardlock,
+//      provider-selection, ki_runs audit, and falls back to deterministic
+//      stub-text on provider error so the UI never sees a 5xx.
+//   3. Surface `{ text, classification, provider }` to the frontend
+//      modal, which lets the user edit before committing the snapshot.
 //
-// Tracked in PROJ-21 implementation notes as a deviation; once the
-// narrative purpose lands in the AI router, replace the stub with
-// `invokeNarrativeGeneration({...})`.
+// `tenant_settings.output_rendering_settings.ki_narrative_enabled` is
+// the per-tenant feature flag; gated below.
 
 const previewSchema = z.object({
   kind: z.enum(["status_report", "executive_summary"]),
@@ -81,17 +81,53 @@ export async function POST(request: Request, ctx: Ctx) {
     )
   }
 
-  // V1 stub — see route header. Replace with router call once
-  // narrative purpose lands in PROJ-12.
-  const fallbackText =
-    body.kind === "status_report"
-      ? "Das Projekt befindet sich in der laufenden Umsetzung. Die wichtigsten Risiken sind aktiv betreut, die nächsten Meilensteine sind terminlich auf Kurs. Im nächsten Lenkungskreis stehen Phasenfreigabe und Budget-Status auf der Agenda."
-      : "Das Projekt liegt im Plan. Top-Risiken sind unter Beobachtung. Nächster Meilenstein steht termingerecht."
+  try {
+    const context = await buildNarrativeAutoContext(
+      supabase,
+      projectId,
+      body.kind,
+    )
+    const result = await invokeNarrativeGeneration({
+      supabase,
+      tenantId,
+      projectId,
+      actorUserId: userId,
+      context,
+    })
 
-  const response: PreviewKiResponse = {
-    text: fallbackText,
-    classification: 2,
-    provider: "stub",
+    if (result.status === "error") {
+      console.warn(
+        "[PROJ-30] narrative provider error",
+        JSON.stringify({
+          run_id: result.run_id,
+          provider: result.provider,
+          message: result.error_message,
+        }),
+      )
+    }
+
+    const response: PreviewKiResponse = {
+      text: result.text,
+      classification: result.classification,
+      provider: result.provider,
+    }
+    return NextResponse.json(response)
+  } catch (err) {
+    // Last-resort fallback: even the router/builder couldn't run
+    // (DB outage etc.). Return stub text so the UI never sees a 5xx.
+    console.error(
+      "[PROJ-30] preview-ki hard-fallback",
+      err instanceof Error ? err.message : String(err),
+    )
+    const fallbackText =
+      body.kind === "status_report"
+        ? "Das Projekt befindet sich in der laufenden Umsetzung. Die wichtigsten Risiken sind aktiv betreut, die nächsten Meilensteine sind terminlich auf Kurs. Im nächsten Lenkungskreis stehen Phasenfreigabe und Budget-Status auf der Agenda."
+        : "Das Projekt liegt im Plan. Top-Risiken sind unter Beobachtung. Nächster Meilenstein steht termingerecht."
+    const response: PreviewKiResponse = {
+      text: fallbackText,
+      classification: 2,
+      provider: "stub",
+    }
+    return NextResponse.json(response)
   }
-  return NextResponse.json(response)
 }

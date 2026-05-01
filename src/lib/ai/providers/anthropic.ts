@@ -14,10 +14,14 @@ import { generateObject } from "ai"
 import { z } from "zod"
 
 import type {
-  AIRiskProvider,
+  AIProvider,
+  NarrativeGenerationRequest,
   RiskGenerationRequest,
 } from "./types"
-import type { RiskGenerationOutput } from "../types"
+import type {
+  NarrativeGenerationOutput,
+  RiskGenerationOutput,
+} from "../types"
 
 const RiskSuggestionSchema = z.object({
   title: z
@@ -124,7 +128,93 @@ function buildUserPrompt(request: RiskGenerationRequest): string {
   return lines.join("\n")
 }
 
-export class AnthropicRiskProvider implements AIRiskProvider {
+// PROJ-30 — narrative-purpose schema + prompt
+const NarrativeResponseSchema = z.object({
+  text: z
+    .string()
+    .min(20)
+    .max(600)
+    .describe(
+      "Three sentences (German) summarising 'Wo stehen wir?' for a steering committee.",
+    ),
+})
+
+const NARRATIVE_SYSTEM_PROMPT = `Du bist ein erfahrener Projektberater und schreibst Lenkungskreis-Kurzfazite.
+
+Aufgabe: 3 Sätze für die Sektion "Aktueller Stand" eines Status-Reports oder einer Executive-Summary.
+
+Pflichtregeln:
+- GENAU 3 Sätze, deutsche Sprache, sachlich-professionell.
+- Beziehe dich auf Phasen-Status, Top-Risiken, anstehende Meilensteine, Backlog-Stand. Nicht alles in jedem Satz — wähle das relevanteste.
+- KEINE personenbezogenen Daten, KEINE Namen, KEINE Spekulation über Personen oder deren Absichten — selbst wenn der Kontext sie nahelegt. Die Datenschicht hat bewusst keine Personen-Felder im Kontext; erfinde keine.
+- Bei Status-Report: vollständiger 3-Satz-Pass mit konkreter Aussage zu Risiken + Meilensteinen.
+- Bei Executive-Summary: noch knapper, sponsor-tauglich, kein Fachjargon.
+- Bei leerem Projekt (keine Phasen/Risiken/Meilensteine): "Projekt im Aufbau" als ersten Satz, dann konstruktiver Vorblick auf die nächsten Schritte.`
+
+function buildNarrativePrompt(request: NarrativeGenerationRequest): string {
+  const ctx = request.context
+  const lines: string[] = [
+    `Snapshot-Typ: ${ctx.kind === "status_report" ? "Status-Report" : "Executive-Summary"}`,
+    `Projekt: ${ctx.project.name}`,
+    `Typ: ${ctx.project.project_type ?? "—"}`,
+    `Methode: ${ctx.project.project_method ?? "—"}`,
+    `Lifecycle: ${ctx.project.lifecycle_status}`,
+    ctx.project.planned_start_date
+      ? `Geplanter Start: ${ctx.project.planned_start_date}`
+      : "",
+    ctx.project.planned_end_date
+      ? `Geplantes Ende: ${ctx.project.planned_end_date}`
+      : "",
+    "",
+  ].filter(Boolean)
+
+  lines.push(
+    `Phasen: ${ctx.phases_summary.total} insgesamt — Status-Verteilung: ${
+      Object.entries(ctx.phases_summary.by_status)
+        .map(([k, v]) => `${k}=${v}`)
+        .join(", ") || "—"
+    }`,
+    "",
+  )
+
+  if (ctx.top_risks.length > 0) {
+    lines.push("Top-Risiken (sortiert nach Score):")
+    for (const r of ctx.top_risks) {
+      lines.push(`  - ${r.title} (Score=${r.score}, ${r.status})`)
+    }
+    lines.push("")
+  }
+
+  if (ctx.upcoming_milestones.length > 0) {
+    lines.push("Anstehende Meilensteine:")
+    for (const m of ctx.upcoming_milestones) {
+      lines.push(`  - ${m.name} (${m.status})${m.target_date ? ` Ziel: ${m.target_date}` : ""}`)
+    }
+    lines.push("")
+  }
+
+  if (ctx.top_decisions.length > 0) {
+    lines.push("Letzte Entscheidungen:")
+    for (const d of ctx.top_decisions) {
+      lines.push(`  - ${d.title} (entschieden: ${d.decided_at})`)
+    }
+    lines.push("")
+  }
+
+  const kindCounts = Object.entries(ctx.backlog_counts.by_kind)
+    .map(([k, v]) => `${k}=${v}`)
+    .join(", ")
+  const statusCounts = Object.entries(ctx.backlog_counts.by_status)
+    .map(([k, v]) => `${k}=${v}`)
+    .join(", ")
+  lines.push(
+    `Backlog (Counts): nach Kind {${kindCounts || "—"}}, nach Status {${statusCounts || "—"}}`,
+  )
+
+  return lines.join("\n")
+}
+
+export class AnthropicProvider implements AIProvider {
   readonly name = "anthropic" as const
   readonly modelId: string
 
@@ -164,4 +254,37 @@ export class AnthropicRiskProvider implements AIRiskProvider {
       },
     }
   }
+
+  async generateNarrative(
+    request: NarrativeGenerationRequest,
+  ): Promise<NarrativeGenerationOutput> {
+    const start = Date.now()
+    const result = await generateObject({
+      model: anthropic(this.modelId),
+      schema: NarrativeResponseSchema,
+      system: NARRATIVE_SYSTEM_PROMPT,
+      prompt: buildNarrativePrompt(request),
+      temperature: 0.3,
+    })
+
+    const usage = result.usage as
+      | { inputTokens?: number; outputTokens?: number }
+      | undefined
+
+    return {
+      text: result.object.text,
+      usage: {
+        input_tokens: usage?.inputTokens ?? null,
+        output_tokens: usage?.outputTokens ?? null,
+        latency_ms: Date.now() - start,
+      },
+    }
+  }
 }
+
+/**
+ * Deprecated alias — Risk-only callers can keep using the old class
+ * name without changing imports. Prefer {@link AnthropicProvider} in
+ * new code.
+ */
+export const AnthropicRiskProvider = AnthropicProvider

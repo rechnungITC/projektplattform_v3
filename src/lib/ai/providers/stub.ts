@@ -1,7 +1,7 @@
 /**
- * PROJ-12 — Stub provider.
+ * PROJ-12 + PROJ-30 — Stub provider.
  *
- * Deterministic fake risk-suggestion generator. Used:
+ * Deterministic fake AI provider. Used:
  *   - automatically as fallback when ANTHROPIC_API_KEY is missing or when
  *     the router routes locally (Class-3 payload, EXTERNAL_AI_DISABLED, …)
  *     and Ollama isn't wired yet;
@@ -10,13 +10,22 @@
  *
  * The shape is identical to what the Anthropic provider returns so the
  * downstream pipeline doesn't care which provider produced the data.
+ *
+ * PROJ-30: extended to implement `generateNarrative` — returns a templated
+ * 3-sentence text shaped by the snapshot kind. This becomes the
+ * canonical local-only fallback for the PROJ-21 KI-Kurzfazit feature.
  */
 
 import type {
-  AIRiskProvider,
+  AIProvider,
+  NarrativeGenerationRequest,
   RiskGenerationRequest,
 } from "./types"
-import type { RiskGenerationOutput, RiskSuggestion } from "../types"
+import type {
+  NarrativeGenerationOutput,
+  RiskGenerationOutput,
+  RiskSuggestion,
+} from "../types"
 
 const TEMPLATES: Array<Omit<RiskSuggestion, "title"> & { titleSeed: string }> = [
   {
@@ -87,15 +96,20 @@ function tagFromContext(request: RiskGenerationRequest, idx: number): string {
   return `${TEMPLATES[idx % TEMPLATES.length]!.titleSeed}${tag}`
 }
 
-export class StubRiskProvider implements AIRiskProvider {
+const NARRATIVE_FALLBACK_STATUS_REPORT =
+  "Das Projekt befindet sich in der laufenden Umsetzung. Die wichtigsten Risiken sind aktiv betreut, die nächsten Meilensteine sind terminlich auf Kurs. Im nächsten Lenkungskreis stehen Phasenfreigabe und Budget-Status auf der Agenda."
+
+const NARRATIVE_FALLBACK_EXEC_SUMMARY =
+  "Das Projekt liegt im Plan. Top-Risiken sind unter Beobachtung. Nächster Meilenstein steht termingerecht."
+
+export class StubProvider implements AIProvider {
   readonly name = "stub" as const
   readonly modelId = "stub-deterministic-v1"
 
   async generateRiskSuggestions(
-    request: RiskGenerationRequest
+    request: RiskGenerationRequest,
   ): Promise<RiskGenerationOutput> {
     const start = Date.now()
-    // Deterministic: pick the first N templates for the requested count.
     const count = Math.max(1, Math.min(request.count, TEMPLATES.length))
     const suggestions = Array.from({ length: count }, (_, i) => {
       const t = TEMPLATES[i % TEMPLATES.length]!
@@ -118,4 +132,28 @@ export class StubRiskProvider implements AIRiskProvider {
       },
     }
   }
+
+  async generateNarrative(
+    request: NarrativeGenerationRequest,
+  ): Promise<NarrativeGenerationOutput> {
+    const start = Date.now()
+    const text =
+      request.context.kind === "status_report"
+        ? NARRATIVE_FALLBACK_STATUS_REPORT
+        : NARRATIVE_FALLBACK_EXEC_SUMMARY
+
+    return {
+      text,
+      usage: {
+        input_tokens: 0,
+        output_tokens: 0,
+        latency_ms: Date.now() - start,
+      },
+    }
+  }
 }
+
+/**
+ * Deprecated alias — keep import surface stable for Risk-only callers.
+ */
+export const StubRiskProvider = StubProvider

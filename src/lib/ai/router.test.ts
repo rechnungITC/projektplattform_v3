@@ -1,7 +1,7 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest"
 
-import { invokeRiskGeneration } from "./router"
-import type { RiskAutoContext } from "./types"
+import { invokeNarrativeGeneration, invokeRiskGeneration } from "./router"
+import type { NarrativeAutoContext, RiskAutoContext } from "./types"
 
 interface ChainResult {
   data: unknown
@@ -182,7 +182,7 @@ describe("invokeRiskGeneration", () => {
 
     await expect(
       invokeRiskGeneration({
-         
+
         supabase: supabase as any,
         tenantId: "00000000-0000-4000-8000-000000000001",
         projectId: "00000000-0000-4000-8000-000000000002",
@@ -191,5 +191,166 @@ describe("invokeRiskGeneration", () => {
         count: 1,
       })
     ).rejects.toThrow(/ki_runs insert failed/)
+  })
+})
+
+// ---------------------------------------------------------------------------
+// PROJ-30 — invokeNarrativeGeneration tests
+// ---------------------------------------------------------------------------
+
+function baseNarrativeRouterContext(): NarrativeAutoContext {
+  return {
+    kind: "status_report",
+    project: {
+      name: "ERP Rollout",
+      project_type: "erp_implementation",
+      project_method: "waterfall",
+      lifecycle_status: "active",
+      planned_start_date: "2026-04-01",
+      planned_end_date: "2026-12-31",
+    },
+    phases_summary: { total: 3, by_status: { active: 1, planned: 2 } },
+    top_risks: [],
+    top_decisions: [],
+    upcoming_milestones: [],
+    backlog_counts: { by_kind: {}, by_status: {} },
+  }
+}
+
+describe("invokeNarrativeGeneration", () => {
+  let originalApiKey: string | undefined
+  let originalAiBlock: string | undefined
+
+  beforeEach(() => {
+    originalApiKey = process.env.ANTHROPIC_API_KEY
+    originalAiBlock = process.env.EXTERNAL_AI_DISABLED
+    delete process.env.ANTHROPIC_API_KEY
+    delete process.env.EXTERNAL_AI_DISABLED
+  })
+  afterEach(() => {
+    if (originalApiKey === undefined) delete process.env.ANTHROPIC_API_KEY
+    else process.env.ANTHROPIC_API_KEY = originalApiKey
+    if (originalAiBlock === undefined) delete process.env.EXTERNAL_AI_DISABLED
+    else process.env.EXTERNAL_AI_DISABLED = originalAiBlock
+  })
+
+  it("happy path with stub provider returns templated narrative", async () => {
+    const supabase = buildSupabaseMock({
+      insertRunResult: {
+        data: { id: "run-narrative-1" },
+        error: null,
+      },
+    })
+
+    const result = await invokeNarrativeGeneration({
+
+      supabase: supabase as any,
+      tenantId: "00000000-0000-4000-8000-000000000001",
+      projectId: "00000000-0000-4000-8000-000000000002",
+      actorUserId: "00000000-0000-4000-8000-000000000003",
+      context: baseNarrativeRouterContext(),
+    })
+
+    expect(result.run_id).toBe("run-narrative-1")
+    expect(result.provider).toBe("stub")
+    expect(result.text.length).toBeGreaterThan(20)
+    expect(result.status).toBe("success")
+    expect(result.external_blocked).toBe(false)
+  })
+
+  it("never writes to ki_suggestions (narrative is transient)", async () => {
+    const supabase = buildSupabaseMock({
+      insertRunResult: {
+        data: { id: "run-narrative-2" },
+        error: null,
+      },
+    })
+
+    await invokeNarrativeGeneration({
+
+      supabase: supabase as any,
+      tenantId: "00000000-0000-4000-8000-000000000001",
+      projectId: "00000000-0000-4000-8000-000000000002",
+      actorUserId: "00000000-0000-4000-8000-000000000003",
+      context: baseNarrativeRouterContext(),
+    })
+
+    // ki_suggestions chain insert should never have been called.
+    expect(
+      (supabase as ReturnType<typeof buildSupabaseMock>)._insertSuggestionsChain
+        .insert,
+    ).not.toHaveBeenCalled()
+  })
+
+  it("Class-3 context produces stub fallback (defense-in-depth)", async () => {
+    const supabase = buildSupabaseMock({
+      insertRunResult: {
+        data: { id: "run-narrative-3" },
+        error: null,
+      },
+    })
+
+    // Inject a Class-3 indicator that the whitelist classifier flips.
+    const ctx = baseNarrativeRouterContext() as NarrativeAutoContext & {
+      lead_name?: string
+    }
+    ctx.lead_name = "Anna Beispiel"
+
+    const result = await invokeNarrativeGeneration({
+
+      supabase: supabase as any,
+      tenantId: "00000000-0000-4000-8000-000000000001",
+      projectId: "00000000-0000-4000-8000-000000000002",
+      actorUserId: "00000000-0000-4000-8000-000000000003",
+      context: ctx,
+    })
+
+    expect(result.classification).toBe(3)
+    expect(result.provider).toBe("stub")
+    expect(result.external_blocked).toBe(true)
+    expect(result.text.length).toBeGreaterThan(20)
+  })
+
+  it("returns status='error' when ki_runs insert fails", async () => {
+    const supabase = buildSupabaseMock({
+      insertRunResult: {
+        data: null,
+        error: { message: "RLS denied" },
+      },
+    })
+
+    await expect(
+      invokeNarrativeGeneration({
+
+        supabase: supabase as any,
+        tenantId: "00000000-0000-4000-8000-000000000001",
+        projectId: "00000000-0000-4000-8000-000000000002",
+        actorUserId: "00000000-0000-4000-8000-000000000003",
+        context: baseNarrativeRouterContext(),
+      }),
+    ).rejects.toThrow(/ki_runs insert failed/)
+  })
+
+  it("uses purpose='narrative' on the ki_runs insert payload", async () => {
+    const supabase = buildSupabaseMock({
+      insertRunResult: {
+        data: { id: "run-narrative-4" },
+        error: null,
+      },
+    })
+
+    await invokeNarrativeGeneration({
+
+      supabase: supabase as any,
+      tenantId: "00000000-0000-4000-8000-000000000001",
+      projectId: "00000000-0000-4000-8000-000000000002",
+      actorUserId: "00000000-0000-4000-8000-000000000003",
+      context: baseNarrativeRouterContext(),
+    })
+
+    const insertCall = (
+      supabase as ReturnType<typeof buildSupabaseMock>
+    )._insertRunChain.insert.mock.calls[0]?.[0] as Record<string, unknown>
+    expect(insertCall?.purpose).toBe("narrative")
   })
 })
