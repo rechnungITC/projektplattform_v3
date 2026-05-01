@@ -21,66 +21,73 @@ export function useTenantMembers(
   const [members, setMembers] = React.useState<TenantMember[]>([])
   const [loading, setLoading] = React.useState<boolean>(Boolean(tenantId))
   const [error, setError] = React.useState<string | null>(null)
-
-  const fetchOnce = React.useCallback(async () => {
-    if (!tenantId) {
-      setMembers([])
-      setLoading(false)
-      return
-    }
-
-    setLoading(true)
-    setError(null)
-
-    try {
-      const supabase = createClient()
-      const { data, error: queryError } = await supabase
-        .from("tenant_memberships")
-        .select(
-          "id, user_id, role, created_at, profile:profiles ( id, email, display_name )"
-        )
-        .eq("tenant_id", tenantId)
-
-      if (queryError) {
-        setError(queryError.message)
-        setMembers([])
-        return
-      }
-
-      type Row = {
-        id: string
-        user_id: string
-        role: Role
-        created_at: string
-        profile: Pick<Profile, "id" | "email" | "display_name"> | null
-      }
-
-      const normalized = ((data ?? []) as unknown as Array<
-        Row & { profile: Row["profile"] | Row["profile"][] }
-      >).map((row): TenantMember => {
-        const profile = Array.isArray(row.profile) ? row.profile[0] : row.profile
-        return {
-          membership_id: row.id,
-          user_id: row.user_id,
-          email: profile?.email ?? "",
-          display_name: profile?.display_name ?? null,
-          role: row.role,
-          created_at: row.created_at,
-        }
-      })
-
-      setMembers(normalized)
-    } catch (err) {
-      setError(err instanceof Error ? err.message : "Unknown error")
-      setMembers([])
-    } finally {
-      setLoading(false)
-    }
-  }, [tenantId])
+  const [tick, setTick] = React.useState(0)
 
   React.useEffect(() => {
-    void fetchOnce()
-  }, [fetchOnce])
+    let cancelled = false
+    void (async () => {
+      if (!tenantId) {
+        if (!cancelled) {
+          setMembers([])
+          setLoading(false)
+        }
+        return
+      }
+      try {
+        const supabase = createClient()
+        const { data, error: queryError } = await supabase
+          .from("tenant_memberships")
+          .select(
+            "id, user_id, role, created_at, profile:profiles ( id, email, display_name )"
+          )
+          .eq("tenant_id", tenantId)
 
-  return { members, loading, error, refresh: fetchOnce }
+        if (cancelled) return
+        if (queryError) {
+          setError(queryError.message)
+          setMembers([])
+          return
+        }
+
+        type Row = {
+          id: string
+          user_id: string
+          role: Role
+          created_at: string
+          profile: Pick<Profile, "id" | "email" | "display_name"> | null
+        }
+
+        const normalized = ((data ?? []) as unknown as Array<
+          Row & { profile: Row["profile"] | Row["profile"][] }
+        >).map((row): TenantMember => {
+          const profile = Array.isArray(row.profile) ? row.profile[0] : row.profile
+          return {
+            membership_id: row.id,
+            user_id: row.user_id,
+            email: profile?.email ?? "",
+            display_name: profile?.display_name ?? null,
+            role: row.role,
+            created_at: row.created_at,
+          }
+        })
+        setMembers(normalized)
+      } catch (err) {
+        if (!cancelled) {
+          setError(err instanceof Error ? err.message : "Unknown error")
+          setMembers([])
+        }
+      } finally {
+        if (!cancelled) setLoading(false)
+      }
+    })()
+    return () => {
+      cancelled = true
+    }
+  }, [tenantId, tick])
+
+  const refresh = React.useCallback(async () => {
+    setTick((t) => t + 1)
+  }, [])
+
+  return { members, loading, error, refresh }
 }

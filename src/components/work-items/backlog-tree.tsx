@@ -85,7 +85,11 @@ function TreeNodeRow({ node, depth, onSelect }: TreeNodeRowProps) {
   const hasChildren = node.children.length > 0
 
   return (
-    <li role="treeitem" aria-expanded={hasChildren ? expanded : undefined}>
+    <li
+      role="treeitem"
+      aria-selected={false}
+      aria-expanded={hasChildren ? expanded : undefined}
+    >
       <div
         className={cn(
           "group flex items-center gap-2 rounded-md px-2 py-1.5 hover:bg-accent",

@@ -49,26 +49,34 @@ export function useOutbox(
   const [entries, setEntries] = React.useState<CommunicationOutboxEntry[]>([])
   const [loading, setLoading] = React.useState(true)
   const [error, setError] = React.useState<string | null>(null)
-
-  const refresh = React.useCallback(async () => {
-    try {
-      setLoading(true)
-      const opts: OutboxListOptions = {}
-      if (filters.channel) opts.channel = filters.channel
-      if (filters.status) opts.status = filters.status
-      const list = await listOutbox(projectId, opts)
-      setEntries(list)
-      setError(null)
-    } catch (err) {
-      setError(err instanceof Error ? err.message : "Unbekannter Fehler")
-    } finally {
-      setLoading(false)
-    }
-  }, [projectId, filters.channel, filters.status])
+  const [tick, setTick] = React.useState(0)
 
   React.useEffect(() => {
-    void refresh()
-  }, [refresh])
+    let cancelled = false
+    void (async () => {
+      try {
+        const opts: OutboxListOptions = {}
+        if (filters.channel) opts.channel = filters.channel
+        if (filters.status) opts.status = filters.status
+        const list = await listOutbox(projectId, opts)
+        if (cancelled) return
+        setEntries(list)
+        setError(null)
+      } catch (err) {
+        if (cancelled) return
+        setError(err instanceof Error ? err.message : "Unbekannter Fehler")
+      } finally {
+        if (!cancelled) setLoading(false)
+      }
+    })()
+    return () => {
+      cancelled = true
+    }
+  }, [projectId, filters.channel, filters.status, tick])
+
+  const refresh = React.useCallback(async () => {
+    setTick((t) => t + 1)
+  }, [])
 
   const createDraft = React.useCallback(
     async (input: OutboxDraftInput) => {

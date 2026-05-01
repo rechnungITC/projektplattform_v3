@@ -145,7 +145,7 @@ export function NewSprintDialog({
         <DialogHeader>
           <DialogTitle>Neuer Sprint</DialogTitle>
           <DialogDescription>
-            Status startet immer mit „Geplant". Aktivierung später über das
+            Status startet immer mit „Geplant&ldquo;. Aktivierung später über das
             Status-Dialog.
           </DialogDescription>
         </DialogHeader>

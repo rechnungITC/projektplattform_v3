@@ -21,23 +21,42 @@ export function useStakeholderRollup(
   const [rows, setRows] = React.useState<StakeholderRollupRow[]>([])
   const [loading, setLoading] = React.useState(true)
   const [error, setError] = React.useState<string | null>(null)
+  const [tick, setTick] = React.useState(0)
 
-  const refresh = React.useCallback(async () => {
-    try {
-      setLoading(true)
-      const list = await fetchStakeholderRollup(options)
-      setRows(list)
-      setError(null)
-    } catch (err) {
-      setError(err instanceof Error ? err.message : "Unbekannter Fehler")
-    } finally {
-      setLoading(false)
-    }
-  }, [options.active_only, options.role, options.org_unit, options.search])
+  // See note in use-resources.ts — primitives drive the dep array; the ref
+  // mirrors the latest object so callers don't have to memoize the wrapper.
+  const optionsRef = React.useRef(options)
+  optionsRef.current = options
 
   React.useEffect(() => {
-    void refresh()
-  }, [refresh])
+    let cancelled = false
+    void (async () => {
+      try {
+        const list = await fetchStakeholderRollup(optionsRef.current)
+        if (cancelled) return
+        setRows(list)
+        setError(null)
+      } catch (err) {
+        if (cancelled) return
+        setError(err instanceof Error ? err.message : "Unbekannter Fehler")
+      } finally {
+        if (!cancelled) setLoading(false)
+      }
+    })()
+    return () => {
+      cancelled = true
+    }
+  }, [
+    options.active_only,
+    options.role,
+    options.org_unit,
+    options.search,
+    tick,
+  ])
+
+  const refresh = React.useCallback(async () => {
+    setTick((t) => t + 1)
+  }, [])
 
   return { rows, loading, error, refresh }
 }

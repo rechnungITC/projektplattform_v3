@@ -23,45 +23,52 @@ export function useDependencies(
   const [dependencies, setDependencies] = React.useState<Dependency[]>([])
   const [loading, setLoading] = React.useState<boolean>(Boolean(projectId))
   const [error, setError] = React.useState<string | null>(null)
-
-  const fetchOnce = React.useCallback(async () => {
-    if (!projectId) {
-      setDependencies([])
-      setLoading(false)
-      return
-    }
-
-    setLoading(true)
-    setError(null)
-
-    try {
-      const supabase = createClient()
-      const { data, error: queryError } = await supabase
-        .from("dependencies")
-        .select(
-          "id, tenant_id, project_id, predecessor_id, successor_id, type, lag_days, created_by, created_at"
-        )
-        .eq("project_id", projectId)
-        .order("created_at", { ascending: false })
-
-      if (queryError) {
-        setDependencies([])
-        setError(null)
-        return
-      }
-
-      setDependencies((data ?? []) as Dependency[])
-    } catch {
-      setDependencies([])
-      setError(null)
-    } finally {
-      setLoading(false)
-    }
-  }, [projectId])
+  const [tick, setTick] = React.useState(0)
 
   React.useEffect(() => {
-    void fetchOnce()
-  }, [fetchOnce])
+    let cancelled = false
+    void (async () => {
+      if (!projectId) {
+        if (!cancelled) {
+          setDependencies([])
+          setLoading(false)
+        }
+        return
+      }
+      try {
+        const supabase = createClient()
+        const { data, error: queryError } = await supabase
+          .from("dependencies")
+          .select(
+            "id, tenant_id, project_id, predecessor_id, successor_id, type, lag_days, created_by, created_at"
+          )
+          .eq("project_id", projectId)
+          .order("created_at", { ascending: false })
 
-  return { dependencies, loading, error, refresh: fetchOnce }
+        if (cancelled) return
+        if (queryError) {
+          setDependencies([])
+          setError(null)
+          return
+        }
+        setDependencies((data ?? []) as Dependency[])
+      } catch {
+        if (!cancelled) {
+          setDependencies([])
+          setError(null)
+        }
+      } finally {
+        if (!cancelled) setLoading(false)
+      }
+    })()
+    return () => {
+      cancelled = true
+    }
+  }, [projectId, tick])
+
+  const refresh = React.useCallback(async () => {
+    setTick((t) => t + 1)
+  }, [])
+
+  return { dependencies, loading, error, refresh }
 }

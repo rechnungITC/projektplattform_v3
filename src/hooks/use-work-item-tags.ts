@@ -32,28 +32,38 @@ export function useWorkItemTags(
   >([])
   const [loading, setLoading] = React.useState(true)
   const [error, setError] = React.useState<string | null>(null)
-
-  const refresh = React.useCallback(async () => {
-    if (!workItemId) {
-      setRows([])
-      setLoading(false)
-      return
-    }
-    try {
-      setLoading(true)
-      const list = await listWorkItemTags(projectId, workItemId)
-      setRows(list)
-      setError(null)
-    } catch (err) {
-      setError(err instanceof Error ? err.message : "Unbekannter Fehler")
-    } finally {
-      setLoading(false)
-    }
-  }, [projectId, workItemId])
+  const [tick, setTick] = React.useState(0)
 
   React.useEffect(() => {
-    void refresh()
-  }, [refresh])
+    let cancelled = false
+    void (async () => {
+      if (!workItemId) {
+        if (!cancelled) {
+          setRows([])
+          setLoading(false)
+        }
+        return
+      }
+      try {
+        const list = await listWorkItemTags(projectId, workItemId)
+        if (cancelled) return
+        setRows(list)
+        setError(null)
+      } catch (err) {
+        if (cancelled) return
+        setError(err instanceof Error ? err.message : "Unbekannter Fehler")
+      } finally {
+        if (!cancelled) setLoading(false)
+      }
+    })()
+    return () => {
+      cancelled = true
+    }
+  }, [projectId, workItemId, tick])
+
+  const refresh = React.useCallback(async () => {
+    setTick((t) => t + 1)
+  }, [])
 
   const attach = React.useCallback(
     async (tagId: string): Promise<AttachResult> => {

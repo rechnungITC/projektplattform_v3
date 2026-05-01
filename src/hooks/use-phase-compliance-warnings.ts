@@ -19,28 +19,38 @@ export function usePhaseComplianceWarnings(
   const [warnings, setWarnings] = React.useState<ComplianceWarning[]>([])
   const [loading, setLoading] = React.useState(true)
   const [error, setError] = React.useState<string | null>(null)
-
-  const refresh = React.useCallback(async () => {
-    if (!phaseId) {
-      setWarnings([])
-      setLoading(false)
-      return
-    }
-    try {
-      setLoading(true)
-      const list = await listPhaseComplianceWarnings(projectId, phaseId)
-      setWarnings(list)
-      setError(null)
-    } catch (err) {
-      setError(err instanceof Error ? err.message : "Unbekannter Fehler")
-    } finally {
-      setLoading(false)
-    }
-  }, [projectId, phaseId])
+  const [tick, setTick] = React.useState(0)
 
   React.useEffect(() => {
-    void refresh()
-  }, [refresh])
+    let cancelled = false
+    void (async () => {
+      if (!phaseId) {
+        if (!cancelled) {
+          setWarnings([])
+          setLoading(false)
+        }
+        return
+      }
+      try {
+        const list = await listPhaseComplianceWarnings(projectId, phaseId)
+        if (cancelled) return
+        setWarnings(list)
+        setError(null)
+      } catch (err) {
+        if (cancelled) return
+        setError(err instanceof Error ? err.message : "Unbekannter Fehler")
+      } finally {
+        if (!cancelled) setLoading(false)
+      }
+    })()
+    return () => {
+      cancelled = true
+    }
+  }, [projectId, phaseId, tick])
+
+  const refresh = React.useCallback(async () => {
+    setTick((t) => t + 1)
+  }, [])
 
   return { warnings, loading, error, refresh }
 }

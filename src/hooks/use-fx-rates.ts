@@ -23,23 +23,31 @@ export function useFxRates(tenantId: string): UseFxRatesResult {
   const [rates, setRates] = React.useState<FxRate[]>([])
   const [loading, setLoading] = React.useState(true)
   const [error, setError] = React.useState<string | null>(null)
-
-  const refresh = React.useCallback(async () => {
-    try {
-      setLoading(true)
-      const list = await listFxRates(tenantId)
-      setRates(list)
-      setError(null)
-    } catch (err) {
-      setError(err instanceof Error ? err.message : "Unbekannter Fehler")
-    } finally {
-      setLoading(false)
-    }
-  }, [tenantId])
+  const [tick, setTick] = React.useState(0)
 
   React.useEffect(() => {
-    void refresh()
-  }, [refresh])
+    let cancelled = false
+    void (async () => {
+      try {
+        const list = await listFxRates(tenantId)
+        if (cancelled) return
+        setRates(list)
+        setError(null)
+      } catch (err) {
+        if (cancelled) return
+        setError(err instanceof Error ? err.message : "Unbekannter Fehler")
+      } finally {
+        if (!cancelled) setLoading(false)
+      }
+    })()
+    return () => {
+      cancelled = true
+    }
+  }, [tenantId, tick])
+
+  const refresh = React.useCallback(async () => {
+    setTick((t) => t + 1)
+  }, [])
 
   const create = React.useCallback(
     async (input: FxRateInput) => {

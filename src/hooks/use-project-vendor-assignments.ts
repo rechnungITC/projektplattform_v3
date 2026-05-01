@@ -32,23 +32,31 @@ export function useProjectVendorAssignments(
   >([])
   const [loading, setLoading] = React.useState(true)
   const [error, setError] = React.useState<string | null>(null)
-
-  const refresh = React.useCallback(async () => {
-    try {
-      setLoading(true)
-      const list = await listProjectAssignments(projectId)
-      setAssignments(list)
-      setError(null)
-    } catch (err) {
-      setError(err instanceof Error ? err.message : "Unbekannter Fehler")
-    } finally {
-      setLoading(false)
-    }
-  }, [projectId])
+  const [tick, setTick] = React.useState(0)
 
   React.useEffect(() => {
-    void refresh()
-  }, [refresh])
+    let cancelled = false
+    void (async () => {
+      try {
+        const list = await listProjectAssignments(projectId)
+        if (cancelled) return
+        setAssignments(list)
+        setError(null)
+      } catch (err) {
+        if (cancelled) return
+        setError(err instanceof Error ? err.message : "Unbekannter Fehler")
+      } finally {
+        if (!cancelled) setLoading(false)
+      }
+    })()
+    return () => {
+      cancelled = true
+    }
+  }, [projectId, tick])
+
+  const refresh = React.useCallback(async () => {
+    setTick((t) => t + 1)
+  }, [])
 
   const add = React.useCallback(
     async (input: AssignmentInput) => {

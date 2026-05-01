@@ -23,23 +23,31 @@ export function useVendorInvoices(vendorId: string): UseVendorInvoicesResult {
   const [invoices, setInvoices] = React.useState<VendorInvoiceWithBookings[]>([])
   const [loading, setLoading] = React.useState(true)
   const [error, setError] = React.useState<string | null>(null)
-
-  const refresh = React.useCallback(async () => {
-    try {
-      setLoading(true)
-      const list = await listVendorInvoices(vendorId)
-      setInvoices(list)
-      setError(null)
-    } catch (err) {
-      setError(err instanceof Error ? err.message : "Unbekannter Fehler")
-    } finally {
-      setLoading(false)
-    }
-  }, [vendorId])
+  const [tick, setTick] = React.useState(0)
 
   React.useEffect(() => {
-    void refresh()
-  }, [refresh])
+    let cancelled = false
+    void (async () => {
+      try {
+        const list = await listVendorInvoices(vendorId)
+        if (cancelled) return
+        setInvoices(list)
+        setError(null)
+      } catch (err) {
+        if (cancelled) return
+        setError(err instanceof Error ? err.message : "Unbekannter Fehler")
+      } finally {
+        if (!cancelled) setLoading(false)
+      }
+    })()
+    return () => {
+      cancelled = true
+    }
+  }, [vendorId, tick])
+
+  const refresh = React.useCallback(async () => {
+    setTick((t) => t + 1)
+  }, [])
 
   const create = React.useCallback(
     async (input: VendorInvoiceInput) => {

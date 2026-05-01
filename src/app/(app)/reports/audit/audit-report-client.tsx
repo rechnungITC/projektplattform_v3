@@ -225,7 +225,7 @@ export function AuditReportClient() {
                   colSpan={6}
                   className="py-10 text-center text-sm text-muted-foreground"
                 >
-                  Filter setzen und „Suchen" drücken.
+                  Filter setzen und „Suchen&ldquo; drücken.
                 </TableCell>
               </TableRow>
             ) : (

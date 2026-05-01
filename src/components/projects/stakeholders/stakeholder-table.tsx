@@ -40,7 +40,7 @@ export function StakeholderTable({
     return (
       <div className="rounded-md border border-dashed py-12 text-center text-sm text-muted-foreground">
         Noch keine Stakeholder. Wähle einen Vorschlag aus der Sidebar oder
-        klicke auf „+ Stakeholder".
+        klicke auf „+ Stakeholder&ldquo;.
       </div>
     )
   }

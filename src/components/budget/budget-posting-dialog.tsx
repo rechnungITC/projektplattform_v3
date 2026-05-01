@@ -92,7 +92,7 @@ export function BudgetPostingDialog({
     <Dialog open={open} onOpenChange={onOpenChange}>
       <DialogContent className="sm:max-w-md">
         <DialogHeader>
-          <DialogTitle>Buchung auf „{item.name}"</DialogTitle>
+          <DialogTitle>Buchung auf „{item.name}&ldquo;</DialogTitle>
           <DialogDescription>
             Plan: {item.planned_amount} {item.planned_currency}. Beträge in
             Fremdwährung erscheinen als Multi-Currency-Hinweis.

@@ -25,28 +25,38 @@ export function useVendorEvaluations(
   const [evaluations, setEvaluations] = React.useState<VendorEvaluation[]>([])
   const [loading, setLoading] = React.useState<boolean>(Boolean(vendorId))
   const [error, setError] = React.useState<string | null>(null)
-
-  const refresh = React.useCallback(async () => {
-    if (!vendorId) {
-      setEvaluations([])
-      setLoading(false)
-      return
-    }
-    try {
-      setLoading(true)
-      const list = await listEvaluations(vendorId)
-      setEvaluations(list)
-      setError(null)
-    } catch (err) {
-      setError(err instanceof Error ? err.message : "Unbekannter Fehler")
-    } finally {
-      setLoading(false)
-    }
-  }, [vendorId])
+  const [tick, setTick] = React.useState(0)
 
   React.useEffect(() => {
-    void refresh()
-  }, [refresh])
+    let cancelled = false
+    void (async () => {
+      if (!vendorId) {
+        if (!cancelled) {
+          setEvaluations([])
+          setLoading(false)
+        }
+        return
+      }
+      try {
+        const list = await listEvaluations(vendorId)
+        if (cancelled) return
+        setEvaluations(list)
+        setError(null)
+      } catch (err) {
+        if (cancelled) return
+        setError(err instanceof Error ? err.message : "Unbekannter Fehler")
+      } finally {
+        if (!cancelled) setLoading(false)
+      }
+    })()
+    return () => {
+      cancelled = true
+    }
+  }, [vendorId, tick])
+
+  const refresh = React.useCallback(async () => {
+    setTick((t) => t + 1)
+  }, [])
 
   const add = React.useCallback(
     async (input: EvaluationInput) => {

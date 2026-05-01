@@ -42,23 +42,31 @@ export function useBudgetCategories(projectId: string): UseBudgetCategoriesResul
   const [categories, setCategories] = React.useState<BudgetCategory[]>([])
   const [loading, setLoading] = React.useState(true)
   const [error, setError] = React.useState<string | null>(null)
-
-  const refresh = React.useCallback(async () => {
-    try {
-      setLoading(true)
-      const list = await listBudgetCategories(projectId)
-      setCategories(list)
-      setError(null)
-    } catch (err) {
-      setError(err instanceof Error ? err.message : "Unbekannter Fehler")
-    } finally {
-      setLoading(false)
-    }
-  }, [projectId])
+  const [tick, setTick] = React.useState(0)
 
   React.useEffect(() => {
-    void refresh()
-  }, [refresh])
+    let cancelled = false
+    void (async () => {
+      try {
+        const list = await listBudgetCategories(projectId)
+        if (cancelled) return
+        setCategories(list)
+        setError(null)
+      } catch (err) {
+        if (cancelled) return
+        setError(err instanceof Error ? err.message : "Unbekannter Fehler")
+      } finally {
+        if (!cancelled) setLoading(false)
+      }
+    })()
+    return () => {
+      cancelled = true
+    }
+  }, [projectId, tick])
+
+  const refresh = React.useCallback(async () => {
+    setTick((t) => t + 1)
+  }, [])
 
   const create = React.useCallback(
     async (input: BudgetCategoryInput) => {
@@ -103,23 +111,31 @@ export function useBudgetItems(projectId: string): UseBudgetItemsResult {
   const [items, setItems] = React.useState<BudgetItemWithTotals[]>([])
   const [loading, setLoading] = React.useState(true)
   const [error, setError] = React.useState<string | null>(null)
-
-  const refresh = React.useCallback(async () => {
-    try {
-      setLoading(true)
-      const list = await listBudgetItems(projectId)
-      setItems(list)
-      setError(null)
-    } catch (err) {
-      setError(err instanceof Error ? err.message : "Unbekannter Fehler")
-    } finally {
-      setLoading(false)
-    }
-  }, [projectId])
+  const [tick, setTick] = React.useState(0)
 
   React.useEffect(() => {
-    void refresh()
-  }, [refresh])
+    let cancelled = false
+    void (async () => {
+      try {
+        const list = await listBudgetItems(projectId)
+        if (cancelled) return
+        setItems(list)
+        setError(null)
+      } catch (err) {
+        if (cancelled) return
+        setError(err instanceof Error ? err.message : "Unbekannter Fehler")
+      } finally {
+        if (!cancelled) setLoading(false)
+      }
+    })()
+    return () => {
+      cancelled = true
+    }
+  }, [projectId, tick])
+
+  const refresh = React.useCallback(async () => {
+    setTick((t) => t + 1)
+  }, [])
 
   const create = React.useCallback(
     async (input: BudgetItemInput) => {
@@ -167,28 +183,38 @@ export function useBudgetPostings(
   const [postings, setPostings] = React.useState<BudgetPosting[]>([])
   const [loading, setLoading] = React.useState(true)
   const [error, setError] = React.useState<string | null>(null)
-
-  const refresh = React.useCallback(async () => {
-    if (!itemId) {
-      setPostings([])
-      setLoading(false)
-      return
-    }
-    try {
-      setLoading(true)
-      const list = await listBudgetPostings(projectId, { itemId })
-      setPostings(list)
-      setError(null)
-    } catch (err) {
-      setError(err instanceof Error ? err.message : "Unbekannter Fehler")
-    } finally {
-      setLoading(false)
-    }
-  }, [projectId, itemId])
+  const [tick, setTick] = React.useState(0)
 
   React.useEffect(() => {
-    void refresh()
-  }, [refresh])
+    let cancelled = false
+    void (async () => {
+      if (!itemId) {
+        if (!cancelled) {
+          setPostings([])
+          setLoading(false)
+        }
+        return
+      }
+      try {
+        const list = await listBudgetPostings(projectId, { itemId })
+        if (cancelled) return
+        setPostings(list)
+        setError(null)
+      } catch (err) {
+        if (cancelled) return
+        setError(err instanceof Error ? err.message : "Unbekannter Fehler")
+      } finally {
+        if (!cancelled) setLoading(false)
+      }
+    })()
+    return () => {
+      cancelled = true
+    }
+  }, [projectId, itemId, tick])
+
+  const refresh = React.useCallback(async () => {
+    setTick((t) => t + 1)
+  }, [])
 
   const create = React.useCallback(
     async (input: BudgetPostingInput) => {
@@ -225,23 +251,31 @@ export function useBudgetSummary(
   const [summary, setSummary] = React.useState<BudgetSummary | null>(null)
   const [loading, setLoading] = React.useState(true)
   const [error, setError] = React.useState<string | null>(null)
-
-  const refresh = React.useCallback(async () => {
-    try {
-      setLoading(true)
-      const data = await getBudgetSummary(projectId, inCurrency)
-      setSummary(data)
-      setError(null)
-    } catch (err) {
-      setError(err instanceof Error ? err.message : "Unbekannter Fehler")
-    } finally {
-      setLoading(false)
-    }
-  }, [projectId, inCurrency])
+  const [tick, setTick] = React.useState(0)
 
   React.useEffect(() => {
-    void refresh()
-  }, [refresh])
+    let cancelled = false
+    void (async () => {
+      try {
+        const data = await getBudgetSummary(projectId, inCurrency)
+        if (cancelled) return
+        setSummary(data)
+        setError(null)
+      } catch (err) {
+        if (cancelled) return
+        setError(err instanceof Error ? err.message : "Unbekannter Fehler")
+      } finally {
+        if (!cancelled) setLoading(false)
+      }
+    })()
+    return () => {
+      cancelled = true
+    }
+  }, [projectId, inCurrency, tick])
+
+  const refresh = React.useCallback(async () => {
+    setTick((t) => t + 1)
+  }, [])
 
   return { summary, loading, error, refresh }
 }

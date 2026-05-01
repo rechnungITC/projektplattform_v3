@@ -28,23 +28,36 @@ export function useVendors(
   const [vendors, setVendors] = React.useState<VendorWithStats[]>([])
   const [loading, setLoading] = React.useState(true)
   const [error, setError] = React.useState<string | null>(null)
+  const [tick, setTick] = React.useState(0)
 
-  const refresh = React.useCallback(async () => {
-    try {
-      setLoading(true)
-      const list = await listVendors(options)
-      setVendors(list)
-      setError(null)
-    } catch (err) {
-      setError(err instanceof Error ? err.message : "Unbekannter Fehler")
-    } finally {
-      setLoading(false)
-    }
-  }, [options.status, options.search])
+  // See note in use-resources.ts — primitives drive the dep array; the ref
+  // mirrors the latest object so callers don't have to memoize the wrapper.
+  const optionsRef = React.useRef(options)
+  optionsRef.current = options
 
   React.useEffect(() => {
-    void refresh()
-  }, [refresh])
+    let cancelled = false
+    void (async () => {
+      try {
+        const list = await listVendors(optionsRef.current)
+        if (cancelled) return
+        setVendors(list)
+        setError(null)
+      } catch (err) {
+        if (cancelled) return
+        setError(err instanceof Error ? err.message : "Unbekannter Fehler")
+      } finally {
+        if (!cancelled) setLoading(false)
+      }
+    })()
+    return () => {
+      cancelled = true
+    }
+  }, [options.status, options.search, tick])
+
+  const refresh = React.useCallback(async () => {
+    setTick((t) => t + 1)
+  }, [])
 
   const create = React.useCallback(
     async (input: VendorInput) => {

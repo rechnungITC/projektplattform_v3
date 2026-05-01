@@ -41,49 +41,56 @@ export function usePhases(
   const [phases, setPhases] = React.useState<Phase[]>([])
   const [loading, setLoading] = React.useState<boolean>(Boolean(projectId))
   const [error, setError] = React.useState<string | null>(null)
-
-  const fetchOnce = React.useCallback(async () => {
-    if (!projectId) {
-      setPhases([])
-      setLoading(false)
-      return
-    }
-
-    setLoading(true)
-    setError(null)
-
-    try {
-      const supabase = createClient()
-      const { data, error: queryError } = await supabase
-        .from("phases")
-        .select(
-          "id, tenant_id, project_id, name, description, planned_start, planned_end, actual_start, actual_end, sequence_number, status, created_by, created_at, updated_at, is_deleted"
-        )
-        .eq("project_id", projectId)
-        .eq("is_deleted", false)
-        .order("sequence_number", { ascending: true })
-
-      if (queryError) {
-        // Most likely cause right now: the table doesn't exist yet (PROJ-19
-        // backend pending). Don't surface this as a hard error.
-        setPhases([])
-        setError(null)
-        return
-      }
-
-      setPhases((data ?? []) as RawPhaseRow[])
-    } catch {
-      // Same swallow-the-missing-table pattern as use-project-role.ts.
-      setPhases([])
-      setError(null)
-    } finally {
-      setLoading(false)
-    }
-  }, [projectId])
+  const [tick, setTick] = React.useState(0)
 
   React.useEffect(() => {
-    void fetchOnce()
-  }, [fetchOnce])
+    let cancelled = false
+    void (async () => {
+      if (!projectId) {
+        if (!cancelled) {
+          setPhases([])
+          setLoading(false)
+        }
+        return
+      }
+      try {
+        const supabase = createClient()
+        const { data, error: queryError } = await supabase
+          .from("phases")
+          .select(
+            "id, tenant_id, project_id, name, description, planned_start, planned_end, actual_start, actual_end, sequence_number, status, created_by, created_at, updated_at, is_deleted"
+          )
+          .eq("project_id", projectId)
+          .eq("is_deleted", false)
+          .order("sequence_number", { ascending: true })
 
-  return { phases, loading, error, refresh: fetchOnce }
+        if (cancelled) return
+        if (queryError) {
+          // Most likely cause right now: the table doesn't exist yet (PROJ-19
+          // backend pending). Don't surface this as a hard error.
+          setPhases([])
+          setError(null)
+          return
+        }
+        setPhases((data ?? []) as RawPhaseRow[])
+      } catch {
+        // Same swallow-the-missing-table pattern as use-project-role.ts.
+        if (!cancelled) {
+          setPhases([])
+          setError(null)
+        }
+      } finally {
+        if (!cancelled) setLoading(false)
+      }
+    })()
+    return () => {
+      cancelled = true
+    }
+  }, [projectId, tick])
+
+  const refresh = React.useCallback(async () => {
+    setTick((t) => t + 1)
+  }, [])
+
+  return { phases, loading, error, refresh }
 }

@@ -31,52 +31,58 @@ export function useSprints(
   const [sprints, setSprints] = React.useState<Sprint[]>([])
   const [loading, setLoading] = React.useState<boolean>(Boolean(projectId))
   const [error, setError] = React.useState<string | null>(null)
-
-  const fetchOnce = React.useCallback(async () => {
-    if (!projectId) {
-      setSprints([])
-      setLoading(false)
-      return
-    }
-
-    setLoading(true)
-    setError(null)
-
-    try {
-      const supabase = createClient()
-      let query = supabase
-        .from("sprints")
-        .select(
-          "id, tenant_id, project_id, name, goal, start_date, end_date, state, created_by, created_at, updated_at"
-        )
-        .eq("project_id", projectId)
-        .order("start_date", { ascending: false, nullsFirst: false })
-        .order("created_at", { ascending: false })
-
-      if (options.state) {
-        query = query.eq("state", options.state)
-      }
-
-      const { data, error: queryError } = await query
-
-      if (queryError) {
-        setSprints([])
-        setError(null)
-        return
-      }
-
-      setSprints((data ?? []) as RawRow[])
-    } catch {
-      setSprints([])
-      setError(null)
-    } finally {
-      setLoading(false)
-    }
-  }, [projectId, options.state])
+  const [tick, setTick] = React.useState(0)
 
   React.useEffect(() => {
-    void fetchOnce()
-  }, [fetchOnce])
+    let cancelled = false
+    void (async () => {
+      if (!projectId) {
+        if (!cancelled) {
+          setSprints([])
+          setLoading(false)
+        }
+        return
+      }
+      try {
+        const supabase = createClient()
+        let query = supabase
+          .from("sprints")
+          .select(
+            "id, tenant_id, project_id, name, goal, start_date, end_date, state, created_by, created_at, updated_at"
+          )
+          .eq("project_id", projectId)
+          .order("start_date", { ascending: false, nullsFirst: false })
+          .order("created_at", { ascending: false })
 
-  return { sprints, loading, error, refresh: fetchOnce }
+        if (options.state) {
+          query = query.eq("state", options.state)
+        }
+
+        const { data, error: queryError } = await query
+        if (cancelled) return
+        if (queryError) {
+          setSprints([])
+          setError(null)
+          return
+        }
+        setSprints((data ?? []) as RawRow[])
+      } catch {
+        if (!cancelled) {
+          setSprints([])
+          setError(null)
+        }
+      } finally {
+        if (!cancelled) setLoading(false)
+      }
+    })()
+    return () => {
+      cancelled = true
+    }
+  }, [projectId, options.state, tick])
+
+  const refresh = React.useCallback(async () => {
+    setTick((t) => t + 1)
+  }, [])
+
+  return { sprints, loading, error, refresh }
 }

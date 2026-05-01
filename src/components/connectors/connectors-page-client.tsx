@@ -343,7 +343,7 @@ function CredentialPanel({
   return (
     <Card>
       <CardContent className="py-4 text-sm text-muted-foreground">
-        Credential-Form für „{entry.descriptor.label}" folgt mit der nächsten
+        Credential-Form für „{entry.descriptor.label}&ldquo; folgt mit der nächsten
         Slice.
       </CardContent>
     </Card>

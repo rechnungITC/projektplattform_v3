@@ -51,127 +51,135 @@ export function useWorkItems(
   const [items, setItems] = React.useState<WorkItemWithProfile[]>([])
   const [loading, setLoading] = React.useState<boolean>(Boolean(projectId))
   const [error, setError] = React.useState<string | null>(null)
+  const [tick, setTick] = React.useState(0)
 
   // Stable JSON key so the effect dependency array doesn't churn on
   // identical filter objects passed by parent re-renders.
   const filterKey = JSON.stringify(options)
-
-  const fetchOnce = React.useCallback(async () => {
-    if (!projectId) {
-      setItems([])
-      setLoading(false)
-      return
-    }
-
-    setLoading(true)
-    setError(null)
-
-    try {
-      const supabase = createClient()
-      let query = supabase
-        .from("work_items")
-        .select(
-          "id, tenant_id, project_id, kind, parent_id, phase_id, milestone_id, sprint_id, title, description, status, priority, responsible_user_id, attributes, position, created_from_proposal_id, created_by, created_at, updated_at, is_deleted, responsible:profiles!work_items_responsible_user_id_fkey ( id, display_name, email )"
-        )
-        .eq("project_id", projectId)
-        .order("position", { ascending: true, nullsFirst: false })
-        .order("created_at", { ascending: true })
-
-      if (!options.includeDeleted) {
-        query = query.eq("is_deleted", false)
-      }
-
-      if (options.bugsOnly) {
-        query = query.eq("kind", "bug")
-      } else if (options.kinds && options.kinds.length > 0) {
-        query = query.in("kind", options.kinds)
-      }
-
-      if (options.statuses && options.statuses.length > 0) {
-        query = query.in("status", options.statuses)
-      }
-
-      if (options.responsibleUserId !== undefined) {
-        if (options.responsibleUserId === null) {
-          query = query.is("responsible_user_id", null)
-        } else {
-          query = query.eq("responsible_user_id", options.responsibleUserId)
-        }
-      }
-
-      if (options.sprintId !== undefined) {
-        if (options.sprintId === null) {
-          query = query.is("sprint_id", null)
-        } else {
-          query = query.eq("sprint_id", options.sprintId)
-        }
-      }
-
-      if (options.parentId !== undefined) {
-        if (options.parentId === null) {
-          query = query.is("parent_id", null)
-        } else {
-          query = query.eq("parent_id", options.parentId)
-        }
-      }
-
-      const { data, error: queryError } = await query
-
-      if (queryError) {
-        // PROJ-9 backend pending — table likely doesn't exist yet.
-        // Don't surface this as a hard error.
-        setItems([])
-        setError(null)
-        return
-      }
-
-      const normalized = ((data ?? []) as unknown as RawRow[]).map(
-        (row): WorkItemWithProfile => {
-          const responsible = Array.isArray(row.responsible)
-            ? row.responsible[0]
-            : row.responsible
-          return {
-            id: row.id,
-            tenant_id: row.tenant_id,
-            project_id: row.project_id,
-            kind: row.kind,
-            parent_id: row.parent_id,
-            phase_id: row.phase_id,
-            milestone_id: row.milestone_id,
-            sprint_id: row.sprint_id,
-            title: row.title,
-            description: row.description,
-            status: row.status,
-            priority: row.priority,
-            responsible_user_id: row.responsible_user_id,
-            attributes:
-              (row.attributes as Record<string, unknown> | null) ?? {},
-            position: row.position,
-            created_from_proposal_id: row.created_from_proposal_id,
-            created_by: row.created_by,
-            created_at: row.created_at,
-            updated_at: row.updated_at,
-            is_deleted: row.is_deleted,
-            responsible_display_name: responsible?.display_name ?? null,
-            responsible_email: responsible?.email ?? null,
-          }
-        }
-      )
-
-      setItems(normalized)
-    } catch {
-      // Same swallow-the-missing-table pattern as use-phases.ts.
-      setItems([])
-      setError(null)
-    } finally {
-      setLoading(false)
-    }
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [projectId, filterKey])
+  const optionsRef = React.useRef(options)
+  optionsRef.current = options
 
   React.useEffect(() => {
-    void fetchOnce()
-  }, [fetchOnce])
+    let cancelled = false
+    void (async () => {
+      if (!projectId) {
+        if (!cancelled) {
+          setItems([])
+          setLoading(false)
+        }
+        return
+      }
+      try {
+        const opts = optionsRef.current
+        const supabase = createClient()
+        let query = supabase
+          .from("work_items")
+          .select(
+            "id, tenant_id, project_id, kind, parent_id, phase_id, milestone_id, sprint_id, title, description, status, priority, responsible_user_id, attributes, position, created_from_proposal_id, created_by, created_at, updated_at, is_deleted, responsible:profiles!work_items_responsible_user_id_fkey ( id, display_name, email )"
+          )
+          .eq("project_id", projectId)
+          .order("position", { ascending: true, nullsFirst: false })
+          .order("created_at", { ascending: true })
 
-  return { items, loading, error, refresh: fetchOnce }
+        if (!opts.includeDeleted) {
+          query = query.eq("is_deleted", false)
+        }
+
+        if (opts.bugsOnly) {
+          query = query.eq("kind", "bug")
+        } else if (opts.kinds && opts.kinds.length > 0) {
+          query = query.in("kind", opts.kinds)
+        }
+
+        if (opts.statuses && opts.statuses.length > 0) {
+          query = query.in("status", opts.statuses)
+        }
+
+        if (opts.responsibleUserId !== undefined) {
+          if (opts.responsibleUserId === null) {
+            query = query.is("responsible_user_id", null)
+          } else {
+            query = query.eq("responsible_user_id", opts.responsibleUserId)
+          }
+        }
+
+        if (opts.sprintId !== undefined) {
+          if (opts.sprintId === null) {
+            query = query.is("sprint_id", null)
+          } else {
+            query = query.eq("sprint_id", opts.sprintId)
+          }
+        }
+
+        if (opts.parentId !== undefined) {
+          if (opts.parentId === null) {
+            query = query.is("parent_id", null)
+          } else {
+            query = query.eq("parent_id", opts.parentId)
+          }
+        }
+
+        const { data, error: queryError } = await query
+        if (cancelled) return
+        if (queryError) {
+          // PROJ-9 backend pending — table likely doesn't exist yet.
+          // Don't surface this as a hard error.
+          setItems([])
+          setError(null)
+          return
+        }
+
+        const normalized = ((data ?? []) as unknown as RawRow[]).map(
+          (row): WorkItemWithProfile => {
+            const responsible = Array.isArray(row.responsible)
+              ? row.responsible[0]
+              : row.responsible
+            return {
+              id: row.id,
+              tenant_id: row.tenant_id,
+              project_id: row.project_id,
+              kind: row.kind,
+              parent_id: row.parent_id,
+              phase_id: row.phase_id,
+              milestone_id: row.milestone_id,
+              sprint_id: row.sprint_id,
+              title: row.title,
+              description: row.description,
+              status: row.status,
+              priority: row.priority,
+              responsible_user_id: row.responsible_user_id,
+              attributes:
+                (row.attributes as Record<string, unknown> | null) ?? {},
+              position: row.position,
+              created_from_proposal_id: row.created_from_proposal_id,
+              created_by: row.created_by,
+              created_at: row.created_at,
+              updated_at: row.updated_at,
+              is_deleted: row.is_deleted,
+              responsible_display_name: responsible?.display_name ?? null,
+              responsible_email: responsible?.email ?? null,
+            }
+          }
+        )
+        setItems(normalized)
+      } catch {
+        // Same swallow-the-missing-table pattern as use-phases.ts.
+        if (!cancelled) {
+          setItems([])
+          setError(null)
+        }
+      } finally {
+        if (!cancelled) setLoading(false)
+      }
+    })()
+    return () => {
+      cancelled = true
+    }
+  }, [projectId, filterKey, tick])
+
+  const refresh = React.useCallback(async () => {
+    setTick((t) => t + 1)
+  }, [])
+
+  return { items, loading, error, refresh }
 }

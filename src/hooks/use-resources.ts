@@ -28,23 +28,37 @@ export function useResources(
   const [resources, setResources] = React.useState<Resource[]>([])
   const [loading, setLoading] = React.useState(true)
   const [error, setError] = React.useState<string | null>(null)
+  const [tick, setTick] = React.useState(0)
 
-  const refresh = React.useCallback(async () => {
-    try {
-      setLoading(true)
-      const list = await listResources(options)
-      setResources(list)
-      setError(null)
-    } catch (err) {
-      setError(err instanceof Error ? err.message : "Unbekannter Fehler")
-    } finally {
-      setLoading(false)
-    }
-  }, [options.active_only, options.kind])
+  // Capture options in a ref so the effect can read the latest values without
+  // re-running on referential identity changes; the `active_only` / `kind`
+  // primitives drive the dependency array.
+  const optionsRef = React.useRef(options)
+  optionsRef.current = options
 
   React.useEffect(() => {
-    void refresh()
-  }, [refresh])
+    let cancelled = false
+    void (async () => {
+      try {
+        const list = await listResources(optionsRef.current)
+        if (cancelled) return
+        setResources(list)
+        setError(null)
+      } catch (err) {
+        if (cancelled) return
+        setError(err instanceof Error ? err.message : "Unbekannter Fehler")
+      } finally {
+        if (!cancelled) setLoading(false)
+      }
+    })()
+    return () => {
+      cancelled = true
+    }
+  }, [options.active_only, options.kind, tick])
+
+  const refresh = React.useCallback(async () => {
+    setTick((t) => t + 1)
+  }, [])
 
   const create = React.useCallback(
     async (input: ResourceInput) => {

@@ -168,7 +168,7 @@ export function ProjectTypesPageClient() {
                     ?.label_de ?? drawer.typeKey}
                 </SheetTitle>
                 <SheetDescription>
-                  Override speichert eine vollständige Liste pro Feld. „Reset"
+                  Override speichert eine vollständige Liste pro Feld. „Reset&ldquo;
                   pro Feld setzt zurück auf den Code-Default. Komplettes
                   Löschen entfernt den Override für diesen Typ.
                 </SheetDescription>

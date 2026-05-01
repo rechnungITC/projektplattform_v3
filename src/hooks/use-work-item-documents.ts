@@ -19,28 +19,38 @@ export function useWorkItemDocuments(
   const [documents, setDocuments] = React.useState<WorkItemDocument[]>([])
   const [loading, setLoading] = React.useState(true)
   const [error, setError] = React.useState<string | null>(null)
-
-  const refresh = React.useCallback(async () => {
-    if (!workItemId) {
-      setDocuments([])
-      setLoading(false)
-      return
-    }
-    try {
-      setLoading(true)
-      const list = await listWorkItemDocuments(projectId, workItemId)
-      setDocuments(list)
-      setError(null)
-    } catch (err) {
-      setError(err instanceof Error ? err.message : "Unbekannter Fehler")
-    } finally {
-      setLoading(false)
-    }
-  }, [projectId, workItemId])
+  const [tick, setTick] = React.useState(0)
 
   React.useEffect(() => {
-    void refresh()
-  }, [refresh])
+    let cancelled = false
+    void (async () => {
+      if (!workItemId) {
+        if (!cancelled) {
+          setDocuments([])
+          setLoading(false)
+        }
+        return
+      }
+      try {
+        const list = await listWorkItemDocuments(projectId, workItemId)
+        if (cancelled) return
+        setDocuments(list)
+        setError(null)
+      } catch (err) {
+        if (cancelled) return
+        setError(err instanceof Error ? err.message : "Unbekannter Fehler")
+      } finally {
+        if (!cancelled) setLoading(false)
+      }
+    })()
+    return () => {
+      cancelled = true
+    }
+  }, [projectId, workItemId, tick])
+
+  const refresh = React.useCallback(async () => {
+    setTick((t) => t + 1)
+  }, [])
 
   return { documents, loading, error, refresh }
 }

@@ -70,8 +70,8 @@ export function BudgetCategoryDialog({
             {initial ? "Kategorie bearbeiten" : "Kategorie anlegen"}
           </DialogTitle>
           <DialogDescription>
-            Top-Level-Gruppe für Budget-Posten (z.B. „Personalkosten",
-            „Lizenzen").
+            Top-Level-Gruppe für Budget-Posten (z.B. „Personalkosten&ldquo;,
+            „Lizenzen&ldquo;).
           </DialogDescription>
         </DialogHeader>
         <div className="space-y-4">

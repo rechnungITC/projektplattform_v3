@@ -107,7 +107,7 @@ export function ProjectTypeOverrideForm({
   if (!base) {
     return (
       <p className="text-sm text-destructive">
-        Unbekannter Projekttyp „{typeKey}".
+        Unbekannter Projekttyp „{typeKey}&ldquo;.
       </p>
     )
   }
