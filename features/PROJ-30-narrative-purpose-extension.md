@@ -1,8 +1,9 @@
 # PROJ-30: KI-Narrative-Purpose Erweiterung des AI-Routers
 
-## Status: Approved
+## Status: Deployed
 **Created:** 2026-05-01
 **Last Updated:** 2026-05-02
+**Deployed:** 2026-05-02 — Production: https://projektplattform-v3.vercel.app — Tag: `v1.30.0-PROJ-30`
 
 ## Summary
 Schließt eine bewusst-deferred Lücke aus PROJ-21 (Output Rendering): heute returnt `POST /api/projects/[id]/snapshots/preview-ki` einen **templated Stub-Text** mit `provider="stub"` — der PROJ-12 AI-Router ist purpose-typed für `risks` und kann (noch) keinen narrative-Text erzeugen.
