@@ -28,7 +28,7 @@ import { ChevronDown, Plus } from "lucide-react"
 import { useProjectAccess } from "@/hooks/use-project-access"
 import { useSprints } from "@/hooks/use-sprints"
 import { useWorkItems } from "@/hooks/use-work-items"
-import { getCurrentMethod } from "@/lib/work-items/method-context"
+import { useCurrentProjectMethod } from "@/lib/work-items/method-context"
 import type { WorkItemKind, WorkItemWithProfile } from "@/types/work-item"
 
 interface BacklogClientProps {
@@ -44,9 +44,7 @@ const DEFAULT_FILTERS: BacklogFilters = {
 }
 
 export function BacklogClient({ projectId, tenantId: _tenantId }: BacklogClientProps) {
-  // PROJ-6: when projects.project_method is NULL ("not yet chosen") all
-  // kinds are creatable. getCurrentMethod() returns null in that case.
-  const method = getCurrentMethod()
+  const method = useCurrentProjectMethod(projectId)
   const canEdit = useProjectAccess(projectId, "edit_master")
 
   const [filters, setFilters] = React.useState<BacklogFilters>(DEFAULT_FILTERS)

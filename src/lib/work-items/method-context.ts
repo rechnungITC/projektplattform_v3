@@ -23,20 +23,6 @@ import {
 } from "@/types/project-method"
 
 /**
- * Returns the current project method, or null when not yet chosen.
- * Server components and tests can pass the method directly; client
- * components prefer {@link useCurrentProjectMethod}.
- */
-export function getCurrentMethod(
-  override?: ProjectMethod | null
-): ProjectMethod | null {
-  if (override && (PROJECT_METHODS as readonly string[]).includes(override)) {
-    return override
-  }
-  return null
-}
-
-/**
  * Reads `projects.project_method` for the given project.
  *
  * - Returns `null` ("no method chosen yet") while loading, on error,
