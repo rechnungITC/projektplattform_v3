@@ -1,12 +1,16 @@
 import {
+  AlertTriangle,
+  Building2,
+  Gavel,
   History,
   Kanban,
   LayoutDashboard,
+  MessageSquare,
   Settings as SettingsIcon,
   Sparkles,
-  Target,
   Users,
   Users2,
+  Wallet,
 } from "lucide-react"
 
 import type { MethodConfig, SidebarSection } from "@/types/method-config"
@@ -17,18 +21,21 @@ import {
 } from "@/types/work-item"
 
 /**
- * Kanban config — pull-system focus, no sprints. Sidebar leads with
- * Board, then Backlog. Top-header is a simple project banner.
+ * Kanban config — pull-system focus, no sprints, no phases. Sidebar
+ * leads with the Board (which uses the canonical `backlog` folder), no
+ * route alias because the term "Backlog" works for Kanban as-is.
  */
-// "Backlog" entry (same target as Board) is deferred until the backlog page
-// supports a list/board view-switch.
 const SIDEBAR_SECTIONS: SidebarSection[] = [
   { id: "overview", label: "Übersicht", icon: LayoutDashboard, tabPath: "" },
   { id: "board", label: "Board", icon: Kanban, tabPath: "backlog" },
-  { id: "ai", label: "KI-Vorschläge", icon: Sparkles, tabPath: "ai-proposals" },
   { id: "stakeholder", label: "Stakeholder", icon: Users, tabPath: "stakeholder" },
+  { id: "risks", label: "Risiken", icon: AlertTriangle, tabPath: "risiken", requiresModule: "risks" },
+  { id: "decisions", label: "Entscheidungen", icon: Gavel, tabPath: "entscheidungen", requiresModule: "decisions" },
+  { id: "ai", label: "KI-Vorschläge", icon: Sparkles, tabPath: "ai-proposals", requiresModule: "ai_proposals" },
+  { id: "communication", label: "Kommunikation", icon: MessageSquare, tabPath: "kommunikation", requiresModule: "communication" },
+  { id: "vendor", label: "Lieferanten", icon: Building2, tabPath: "lieferanten", requiresModule: "vendor" },
+  { id: "budget", label: "Budget", icon: Wallet, tabPath: "budget", requiresModule: "budget" },
   { id: "members", label: "Mitglieder", icon: Users2, tabPath: "mitglieder" },
-  { id: "risks", label: "Risiken", icon: Target, tabPath: "risiken" },
   { id: "history", label: "Historie", icon: History, tabPath: "historie" },
   { id: "settings", label: "Einstellungen", icon: SettingsIcon, tabPath: "einstellungen" },
 ]

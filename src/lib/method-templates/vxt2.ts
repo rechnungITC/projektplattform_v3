@@ -1,13 +1,17 @@
 import {
+  AlertTriangle,
+  Building2,
+  Gavel,
   History,
   LayoutDashboard,
   Layers,
   ListTodo,
+  MessageSquare,
   Settings as SettingsIcon,
   Sparkles,
-  Target,
   Users,
   Users2,
+  Wallet,
 } from "lucide-react"
 
 import type { MethodConfig, SidebarSection } from "@/types/method-config"
@@ -20,18 +24,23 @@ import {
 /**
  * VXT 2.0 config (PROJ-6). Hybrid: Wasserfall-Phasen oben, agile
  * Stories/Tasks im Backlog unten. Sidebar bietet beide Welten parallel.
+ *
+ * PROJ-28: routeSlug=phasen for the Phasen section; the Backlog stays
+ * canonical (`backlog`) because this is the agile half of the hybrid
+ * and renaming it would mislead users.
  */
-// Meilensteine (planung sub-tab), Arbeitspakete (backlog filter), Board
-// (backlog view) and Gantt (planung alias) are deferred until the underlying
-// pages support those query/sub-tab modes.
 const SIDEBAR_SECTIONS: SidebarSection[] = [
   { id: "overview", label: "Übersicht", icon: LayoutDashboard, tabPath: "" },
-  { id: "phases", label: "Phasen", icon: Layers, tabPath: "planung" },
+  { id: "phases", label: "Phasen", icon: Layers, tabPath: "planung", routeSlug: "phasen" },
   { id: "backlog", label: "Backlog", icon: ListTodo, tabPath: "backlog" },
-  { id: "ai", label: "KI-Vorschläge", icon: Sparkles, tabPath: "ai-proposals" },
   { id: "stakeholder", label: "Stakeholder", icon: Users, tabPath: "stakeholder" },
+  { id: "risks", label: "Risiken", icon: AlertTriangle, tabPath: "risiken", requiresModule: "risks" },
+  { id: "decisions", label: "Entscheidungen", icon: Gavel, tabPath: "entscheidungen", requiresModule: "decisions" },
+  { id: "ai", label: "KI-Vorschläge", icon: Sparkles, tabPath: "ai-proposals", requiresModule: "ai_proposals" },
+  { id: "communication", label: "Kommunikation", icon: MessageSquare, tabPath: "kommunikation", requiresModule: "communication" },
+  { id: "vendor", label: "Lieferanten", icon: Building2, tabPath: "lieferanten", requiresModule: "vendor" },
+  { id: "budget", label: "Budget", icon: Wallet, tabPath: "budget", requiresModule: "budget" },
   { id: "members", label: "Mitglieder", icon: Users2, tabPath: "mitglieder" },
-  { id: "risks", label: "Risiken", icon: Target, tabPath: "risiken" },
   { id: "history", label: "Historie", icon: History, tabPath: "historie" },
   { id: "settings", label: "Einstellungen", icon: SettingsIcon, tabPath: "einstellungen" },
 ]

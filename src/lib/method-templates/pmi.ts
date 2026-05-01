@@ -1,13 +1,17 @@
 import {
+  AlertTriangle,
+  Building2,
+  Gavel,
   History,
   LayoutDashboard,
   Layers,
+  MessageSquare,
   Package,
   Settings as SettingsIcon,
   Sparkles,
-  Target,
   Users,
   Users2,
+  Wallet,
 } from "lucide-react"
 
 import type { MethodConfig, SidebarSection } from "@/types/method-config"
@@ -18,20 +22,23 @@ import {
 } from "@/types/work-item"
 
 /**
- * PMI / Prince2 config (Tech Design § 2). Sidebar leads with Phasen,
- * Arbeitspakete, Meilensteine and a Gantt entry. Top-header is a
- * horizontal phase bar.
+ * PMI config (Tech Design § 2). Sidebar leads with Phasen, Arbeitspakete
+ * and a Gantt entry. Top-header is a horizontal phase bar.
+ *
+ * PROJ-28: routeSlug aliases mirror Waterfall (phasen + arbeitspakete).
  */
-// Meilensteine (planung sub-tab) and Gantt (planung alias) are deferred
-// until the planung page supports those sub-views.
 const SIDEBAR_SECTIONS: SidebarSection[] = [
   { id: "overview", label: "Übersicht", icon: LayoutDashboard, tabPath: "" },
-  { id: "phases", label: "Phasen", icon: Layers, tabPath: "planung" },
-  { id: "work-packages", label: "Arbeitspakete", icon: Package, tabPath: "backlog" },
-  { id: "ai", label: "KI-Vorschläge", icon: Sparkles, tabPath: "ai-proposals" },
+  { id: "phases", label: "Phasen", icon: Layers, tabPath: "planung", routeSlug: "phasen" },
+  { id: "work-packages", label: "Arbeitspakete", icon: Package, tabPath: "backlog", routeSlug: "arbeitspakete" },
   { id: "stakeholder", label: "Stakeholder", icon: Users, tabPath: "stakeholder" },
+  { id: "risks", label: "Risiken", icon: AlertTriangle, tabPath: "risiken", requiresModule: "risks" },
+  { id: "decisions", label: "Entscheidungen", icon: Gavel, tabPath: "entscheidungen", requiresModule: "decisions" },
+  { id: "ai", label: "KI-Vorschläge", icon: Sparkles, tabPath: "ai-proposals", requiresModule: "ai_proposals" },
+  { id: "communication", label: "Kommunikation", icon: MessageSquare, tabPath: "kommunikation", requiresModule: "communication" },
+  { id: "vendor", label: "Lieferanten", icon: Building2, tabPath: "lieferanten", requiresModule: "vendor" },
+  { id: "budget", label: "Budget", icon: Wallet, tabPath: "budget", requiresModule: "budget" },
   { id: "members", label: "Mitglieder", icon: Users2, tabPath: "mitglieder" },
-  { id: "risks", label: "Risiken", icon: Target, tabPath: "risiken" },
   { id: "history", label: "Historie", icon: History, tabPath: "historie" },
   { id: "settings", label: "Einstellungen", icon: SettingsIcon, tabPath: "einstellungen" },
 ]
