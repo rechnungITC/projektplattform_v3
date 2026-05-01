@@ -12,6 +12,7 @@ function settings(modules: TenantSettings["active_modules"]): TenantSettings {
     ai_provider_config: { external_provider: "none" },
     retention_overrides: {},
     budget_settings: { default_currency: "EUR" },
+    output_rendering_settings: { ki_narrative_enabled: false },
     created_at: "2026-04-29T00:00:00Z",
     updated_at: "2026-04-29T00:00:00Z",
   }
@@ -53,6 +54,7 @@ describe("activeToggleableModules", () => {
       "resources",
       "vendor",
       "budget",
+      "output_rendering",
     ])
   })
 })

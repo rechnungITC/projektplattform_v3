@@ -65,12 +65,17 @@ export interface SnapshotPhaseRef {
 export interface SnapshotMilestoneRef {
   id: string
   name: string
+  /** Mirrors `milestones.target_date` (date column, ISO string). */
   due_date: string | null
   status: string
   phase_id: string | null
 }
 
-/** Data subset of an `open_items` row needed by the body. */
+/** Data subset of an `open_items` row needed by the body. The
+ *  `open_items` schema has no due-date; "overdue" here means the
+ *  item has been open longest without conversion. The aggregator
+ *  surfaces `created_at` as `due_date` so existing renderers stay
+ *  unchanged; the body label "fällig …" reads as "offen seit …". */
 export interface SnapshotOpenItemRef {
   id: string
   title: string

@@ -467,6 +467,55 @@ The frontend assumes the following contracts from `/backend`:
 - KI-narrative routing per PROJ-12 data-class rules.
 - Module-toggle integration (`output_rendering` in `TOGGLEABLE_MODULES`).
 
+### Backend (2026-05-01)
+
+Shipped as one commit. Migration applied live via Supabase MCP; the 4 API routes + 2 server-side lib modules + 7 vitest cases all green.
+
+**Migration (`supabase/migrations/20260501140000_proj21_report_snapshots.sql`, applied live)**
+- New `report_snapshots` table per spec § ST-01: tenant_id + project_id + kind enum (`status_report`/`executive_summary`) + version int + generated_by + generated_at + content JSONB + pdf_storage_key + pdf_status enum + ki_summary_classification (1-3) + ki_provider. UNIQUE (project_id, kind, version) for race-resilience.
+- 3 indexes: `(project_id, kind, version DESC)` for the per-project list + `tenant_id` for offboarding cascades + `generated_by` for actor lookups.
+- RLS: tenant-member SELECT, project-editor / lead / tenant-admin INSERT, **no UPDATE / DELETE** (immutability) — REVOKE on `authenticated` role.
+- AFTER INSERT trigger `report_snapshots_audit_insert` writes a synthetic `audit_log_entries` row (`change_reason='snapshot_created'`, `new_value` = {kind, version}).
+- `audit_log_entity_type_check` extended to include `report_snapshots`.
+- `_tracked_audit_columns('report_snapshots')` returns empty array (immutable rows; audit only on creation).
+- New `output_rendering_settings JSONB` column on `tenant_settings` with default `{"ki_narrative_enabled": false}` + `jsonb_typeof = 'object'` constraint.
+- `output_rendering` added to `TOGGLEABLE_MODULES` + idempotently backfilled into every existing tenant's `active_modules`. The `tenant_bootstrap_settings(uuid)` SECURITY DEFINER function rewrites the default literal so new tenants land with `output_rendering` already on.
+- Storage bucket `reports` (private) created with RLS policies: tenant-member SELECT (cross-references `report_snapshots.pdf_storage_key`), service-role-only INSERT (Puppeteer pipeline uses `createAdminClient`).
+
+**Type updates (`src/types/tenant-settings.ts`)**
+- `ModuleKey` extended with `"output_rendering"`.
+- `TOGGLEABLE_MODULES` extended with `"output_rendering"`.
+- `MODULE_LABELS["output_rendering"] = "Reports"`.
+- New `OutputRenderingSettings` interface + `TenantSettings.output_rendering_settings` field.
+
+**Server lib modules (`src/lib/reports/`)**
+- `aggregate-snapshot-data.ts` — pulls project, tenant branding, phases (sorted by sequence_number), milestones (full list for traffic-light count + next-5 by `target_date` ascending for the body), risks (top-5 open by score desc), latest-5 decisions, open-items (total count + 3 oldest unresolved), work-item counts by kind + status. Lead-name from `profiles`; sponsor-name from `projects.type_specific_data.sponsor_name`. Computes traffic-light at create-time via the pure helper from `/frontend`. Returns `SnapshotContent` ready for verbatim freeze into `report_snapshots.content`. Open-items use `created_at` as the surrogate "due_date" since the schema has no due column — documented in `SnapshotOpenItemRef` JSDoc.
+- `puppeteer-render.ts` — wraps `puppeteer-core` + `@sparticuz/chromium` for synchronous PDF capture. Browser instance memoized per-process so warm Vercel functions skip the cold start. Uploads via `createAdminClient().storage.from('reports').upload(...)` with the path convention `<tenant_id>/<project_id>/<snapshot_id>.pdf`. Returns `{ storageKey, byteSize, durationMs }`.
+
+**API routes (`src/app/api/projects/[id]/snapshots/`)**
+- `route.ts` GET — list snapshots for a project (view-access). Joins `profiles` for `generated_by_name`. Returns `{ snapshots: SnapshotListItem[] }`.
+- `route.ts` POST — create snapshot (edit-access + module active). Resolves next version via `max(version)+1` on `(project_id, kind)`. Calls `aggregateSnapshotData` → INSERT row with `pdf_status='pending'` → `renderSnapshotPdf` synchronously → UPDATE `pdf_storage_key` + `pdf_status='available'` (or `'failed'` on render error; row stays). Returns `{ snapshot, snapshotUrl }`. UNIQUE-collision (concurrent create) surfaces as 409.
+- `preview-ki/route.ts` POST — graceful-fallback 3-sentence narrative (V1 stub; see deviation below). Honours the per-tenant `ki_narrative_enabled` flag (403 when disabled).
+- `[sid]/pdf/route.ts` GET — issues a 302 redirect to a 5-min signed Storage URL. Returns 409 when `pdf_status !== 'available'`.
+- `[sid]/render-pdf/route.ts` POST — retry path for failed PDFs; returns 204 on success, 500 on render failure (DB row flipped to `pdf_status='failed'`).
+
+**Frontend wiring**
+- `ProjectDetailClient` now reads `tenantSettings?.output_rendering_settings?.ki_narrative_enabled` instead of the hardcoded `false`. The DropdownMenu's "+ KI-Kurzfazit" path becomes visible when the tenant flag is on.
+
+**Tests**
+- `src/app/api/projects/[id]/snapshots/route.test.ts` — 7 cases covering GET 401/200-shape/module-disabled, POST 401/403/400-missing-kind/400-unknown-kind. Heavy server-only deps (aggregator, Puppeteer) are mocked; full create-with-render path is exercised by `/qa` live.
+- `src/lib/tenant-settings/modules.test.ts` updated to include `output_rendering` in the toggleable list.
+
+**Deviation from spec** (M1) — **KI narrative is a graceful-fallback stub in V1.** The existing PROJ-12 AI router (`src/lib/ai/router.ts`) is purpose-typed for `"risks"` only; wiring a `"narrative"` purpose through the router (Class-3 routing → local provider, `ki_runs` row, audit) is a substantive PROJ-12 extension. Until that lands, `preview-ki` returns a templated 3-sentence narrative with `classification=2` and `provider="stub"`. The frontend modal already lets the user edit before committing, so the UX is correct — only the auto-generated suggestion is a stub. Replace with `invokeNarrativeGeneration({...})` once the AI router gains the narrative purpose.
+
+**Verified end-state**
+- TypeScript strict — 0 errors
+- `npm run lint` — exit 0, ✖ 0 problems
+- `npx vitest run` — **553 → 560 (+7)** all passing
+- `npm run build` — green; 4 new API routes registered
+- Supabase advisor — verified post-migration; no new warnings introduced
+- Live MCP — table_exists=1, settings_col=1, bucket_exists=1, tenants_with_module=1
+
 ## QA Test Results
 _To be added by /qa_
 

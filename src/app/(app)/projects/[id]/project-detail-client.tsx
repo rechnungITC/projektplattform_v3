@@ -65,7 +65,7 @@ interface ProjectDetailClientProps {
 }
 
 export function ProjectDetailClient({ projectId }: ProjectDetailClientProps) {
-  const { currentRole } = useAuth()
+  const { currentRole, tenantSettings } = useAuth()
   const { project, events, isLoading, error, notFound, refresh } =
     useProject(projectId)
   const method = useCurrentProjectMethod(projectId)
@@ -222,11 +222,15 @@ export function ProjectDetailClient({ projectId }: ProjectDetailClientProps) {
       <RitualsCard config={config} />
 
       {/* PROJ-21: Reports — Status-Report + Executive-Summary snapshots.
-          The KI-Kurzfazit-Toggle is feature-flagged per tenant via
-          `tenant_settings.output_rendering.ki_narrative_enabled`. The
-          flag access is wired in /backend; until then we default to
-          off (the dropdown shows the "Direkt erzeugen" path only). */}
-      <ReportsSection projectId={projectId} kiNarrativeEnabled={false} />
+          KI-Kurzfazit-Toggle via tenant_settings.output_rendering_settings.
+          ki_narrative_enabled (default false; flip on for pilot tenants). */}
+      <ReportsSection
+        projectId={projectId}
+        kiNarrativeEnabled={
+          tenantSettings?.output_rendering_settings?.ki_narrative_enabled ===
+          true
+        }
+      />
 
       {/* Master data */}
       <Card>

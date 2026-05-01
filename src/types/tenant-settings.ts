@@ -25,6 +25,7 @@ export type ModuleKey =
   | "communication"
   | "resources"
   | "budget"
+  | "output_rendering"
 
 /** Modules that are actually built in V3 today and toggleable. */
 export const TOGGLEABLE_MODULES: readonly ModuleKey[] = [
@@ -36,6 +37,7 @@ export const TOGGLEABLE_MODULES: readonly ModuleKey[] = [
   "resources",
   "vendor",
   "budget",
+  "output_rendering",
 ] as const
 
 /** Modules that exist in the schema as future-reserved keys but are not
@@ -54,6 +56,7 @@ export const MODULE_LABELS: Record<ModuleKey, string> = {
   connectors: "Konnektoren",
   vendor: "Lieferanten",
   budget: "Budget",
+  output_rendering: "Reports",
 }
 
 export type DataClass = 1 | 2 | 3
@@ -89,6 +92,12 @@ export interface BudgetSettings {
   default_currency: SupportedCurrency
 }
 
+export interface OutputRenderingSettings {
+  /** PROJ-21 § ST-06 — feature-flag for the KI-Kurzfazit option in
+   *  Status-Report and Executive-Summary. Default false. */
+  ki_narrative_enabled: boolean
+}
+
 export interface TenantSettings {
   tenant_id: string
   active_modules: ModuleKey[]
@@ -96,6 +105,7 @@ export interface TenantSettings {
   ai_provider_config: AiProviderConfig
   retention_overrides: RetentionOverrides
   budget_settings: BudgetSettings
+  output_rendering_settings: OutputRenderingSettings
   created_at: string
   updated_at: string
 }
