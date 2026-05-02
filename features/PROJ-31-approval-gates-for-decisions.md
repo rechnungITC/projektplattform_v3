@@ -583,6 +583,8 @@ This re-introduces a hygiene class that PROJ-29 explicitly closed. PROJ-29 basel
 **Fix:** Add `SET search_path = public` (or `SET search_path = ''` plus fully-qualified table refs) to both functions in a small follow-up migration.
 **Decision:** Should be fixed before / together with deploy to keep the V3 advisor baseline at "0 PROJ-31-class warnings".
 
+**Resolved:** 2026-05-02 — Follow-up migration `20260502130000_proj31_function_search_path.sql` applied. Both functions now `SET search_path = public`. Advisor re-scan returns 0 PROJ-31-class `function_search_path_mutable` warnings.
+
 #### Bug-L1 (Low) — TRUNCATE bypasses append-only immutability trigger
 **Severity:** Low
 **Detail:** The `enforce_approval_event_immutability` trigger fires BEFORE UPDATE / BEFORE DELETE; TRUNCATE bypasses both. A service-role caller (e.g. SQL Editor) can erase the audit-trail.
