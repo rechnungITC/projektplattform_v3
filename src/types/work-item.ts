@@ -99,9 +99,13 @@ export const WORK_ITEM_METHOD_VISIBILITY: Record<
 }
 
 /**
- * Allowed parent kinds per child kind (Tech Design § D).
+ * Allowed parent kinds per child kind (Tech Design § D + PROJ-36 § A).
  * `null` means the kind may be top-level. `subtask` requires a `task` parent.
  * `bug` may attach to any other kind or stand alone.
+ *
+ * PROJ-36 extensions (Waterfall WBS hierarchy):
+ *   - `task` may now sit under `work_package` (or `story`, or top-level)
+ *   - `work_package` may now sit under another `work_package` (multi-level WBS)
  */
 export const ALLOWED_PARENT_KINDS: Record<
   WorkItemKind,
@@ -110,7 +114,7 @@ export const ALLOWED_PARENT_KINDS: Record<
   epic: [null],
   feature: ["epic", null],
   story: ["epic", "feature", null],
-  task: ["story", null],
+  task: ["story", "work_package", null],
   subtask: ["task"],
   bug: [
     "epic",
@@ -121,7 +125,7 @@ export const ALLOWED_PARENT_KINDS: Record<
     "work_package",
     null,
   ],
-  work_package: [null],
+  work_package: ["work_package", null],
 }
 
 export interface WorkItem {
@@ -145,7 +149,41 @@ export interface WorkItem {
   created_at: string
   updated_at: string
   is_deleted: boolean
+  // PROJ-36 Phase 36-α — WBS hierarchy + WBS-Code + roll-up.
+  // Die folgenden Felder sind OPTIONAL bis die PROJ-36-Migration deployed
+  // ist (DB-Spalten existieren noch nicht; Hooks selecten sie noch nicht).
+  // Sobald PROJ-36 Phase 36-α live ist, werden diese Felder auf required
+  // umgestellt und der Optional-Marker entfernt.
+  /** ltree-encoded path of the item in the WBS tree (e.g. "1.2.3").
+   *  Auto-maintained by `tg_work_items_outline_path_maintain`. */
+  outline_path?: string | null
+  /** Anzeige-Code wie "1.2.3" oder "AP-001". Auto wenn `wbs_code_is_custom=false`,
+   *  manueller Wert wenn true. Max 50 chars, regex `^[A-Za-z0-9._-]+$`. */
+  wbs_code?: string | null
+  /** True wenn der WBS-Code manuell überschrieben wurde — verhindert
+   *  Auto-Regenerierung bei outline_path-Änderungen. */
+  wbs_code_is_custom?: boolean
+  /** Aus Kindern abgeleitetes frühestes geplantes Start-Datum (Min). */
+  derived_planned_start?: string | null
+  /** Aus Kindern abgeleitetes spätestes geplantes End-Datum (Max). */
+  derived_planned_end?: string | null
+  /** Summe der Kind-Aufwände (eigene + deren derived) in Stunden. */
+  derived_estimate_hours?: number | null
 }
+
+/**
+ * PROJ-36 — Polymorphic dependency edge type.
+ * Used for cross-level dependencies (project ↔ phase ↔ work_package ↔ todo).
+ * Polymorphic FK validation lives in a DB trigger (Composite-CASE pattern).
+ */
+export type DependencyEntityType =
+  | "project"
+  | "phase"
+  | "work_package"
+  | "todo"
+
+/** Constraint type per MS-Project / Gantt convention. */
+export type DependencyConstraintType = "FS" | "SS" | "FF" | "SF"
 
 export interface WorkItemWithProfile extends WorkItem {
   responsible_display_name: string | null

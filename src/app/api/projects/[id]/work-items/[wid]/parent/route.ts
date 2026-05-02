@@ -2,28 +2,7 @@ import { NextResponse } from "next/server"
 import { z } from "zod"
 
 import { apiError, getAuthenticatedUserId } from "@/app/api/_lib/route-helpers"
-
-const WORK_ITEM_KINDS = [
-  "epic",
-  "feature",
-  "story",
-  "task",
-  "subtask",
-  "bug",
-  "work_package",
-] as const
-
-type WorkItemKind = (typeof WORK_ITEM_KINDS)[number]
-
-const ALLOWED_PARENT_KINDS: Record<WorkItemKind, (WorkItemKind | null)[]> = {
-  epic: [null],
-  feature: ["epic", null],
-  story: ["epic", "feature", null],
-  task: ["story", null],
-  subtask: ["task"],
-  bug: ["epic", "feature", "story", "task", "subtask", "work_package", null],
-  work_package: [null],
-}
+import { ALLOWED_PARENT_KINDS, type WorkItemKind } from "@/types/work-item"
 
 const schema = z.object({
   parent_id: z.string().uuid().nullable(),
