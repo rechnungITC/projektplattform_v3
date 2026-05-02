@@ -1,6 +1,6 @@
 # PROJ-33: Erweitertes Stakeholder-Management — Stammdaten + Skill/Persönlichkeit + Self-Assessment
 
-## Status: Planned
+## Status: Architected
 **Created:** 2026-05-02
 **Last Updated:** 2026-05-02
 
@@ -203,7 +203,260 @@ Jede Phase ist deploybar + QA-bar. /architecture entscheidet ob 1 PROJ-X mit int
 <!-- Sections below are added by subsequent skills -->
 
 ## Tech Design (Solution Architect)
-_To be added by /architecture_
+
+> **CIA-validiert** vor Architecture-Design. 7 Forks geklärt, alle architecturally addressable, kein Stack-Bruch nötig.
+> Detailbrief in Section 7 unten.
+
+### 1. Big Picture in einem Satz
+
+PROJ-33 erweitert Stakeholder um vier zusammenhängende Bausteine — qualitative Steuerungs-Felder, einen tenant-erweiterbaren Stakeholder-Typ-Catalog, Skill+Big5-Profile mit Self-vs-Fremd-Vergleichs-Visualisierung, und einen Magic-Link-Self-Assessment-Flow für externe Stakeholder. Wird als **eine Spec mit 4 internen Phasen** (33-α/β/γ/δ) ausgeliefert, jede Phase deploybar.
+
+### 2. UI-Komponenten (was der Nutzer sieht)
+
+```
+PROJ-33 Oberflächen
+│
+├── Stakeholder-Form (erweitert — bestehende Component)
+│   ├── Sektion "Basis" (unverändert: Name, Rolle, Email, Influence/Impact)
+│   └── Sektion "Qualitative Bewertung" (NEU, eingeklappt by default)
+│       ├── Begründung / Treiber (Rich-Text)
+│       ├── Stakeholder-Typ (Dropdown aus Catalog: global + tenant)
+│       ├── Management-Ebene (Enum: Top / Oberes / Mittleres / Unteres / Operativ)
+│       ├── Entscheidungsbefugnis (Enum: Keine / Beratend / Empfehlend / Entscheidend)
+│       ├── Haltung (Enum: Unterstützend / Neutral / Kritisch / Blockierend)
+│       ├── Konflikt-Potenzial (low/medium/high/critical — gleiche Skala wie Influence)
+│       ├── Kommunikationsbedarf (Enum: Niedrig / Normal / Hoch / Kritisch)
+│       └── Bevorzugter Kanal (Enum: Meeting / Email / Chat / Bericht / Dashboard)
+│
+├── Stakeholder-Detail-Page (erweitert)
+│   ├── Header (Name, Type-Badge mit Catalog-Farbe, Haltungs-Icon)
+│   ├── Tab "Basis" (existing)
+│   ├── Tab "Qualitative Bewertung" (NEU — read-only Übersicht, edit via Form)
+│   ├── Tab "Profil" (NEU — 2 Radar-Charts side-by-side)
+│   │   ├── Skill-Profil (5 Achsen: Domänenwissen / Methodenkompetenz /
+│   │   │  IT-Affinität / Verhandlungsgeschick / Entscheidungskraft)
+│   │   ├── Persönlichkeitsprofil Big5/OCEAN (5 Achsen: Openness /
+│   │   │  Conscientiousness / Extraversion / Agreeableness / Emotional Stability)
+│   │   ├── Self-vs-Fremd-Overlay (zwei Polygone: Fremd solid, Self dashed)
+│   │   └── Differenz-Marker bei >30% Abweichung pro Dimension
+│   └── Tab "Audit-Trail" (NEU — Profile-Änderungen über Zeit)
+│
+├── Self-Assessment-Magic-Link-Page  (NEU — public, server-rendered, kein Login)
+│   ├── Mobile-First Layout (externe Stakeholder kommen oft via Handy)
+│   ├── Greeting "Hallo {Vorname}" + Tenant-Branding-Name (kein Projektname)
+│   ├── Skill-Section (5 Slider 0-100)
+│   ├── Big5-Section (5 Slider 0-100, mit Erläuterung pro Dimension)
+│   ├── Submit-Button "Profil absenden"
+│   └── Confirmation-State (idempotent — zweiter Klick zeigt "bereits abgegeben")
+│
+├── Tenant-Admin-UI für Stakeholder-Type-Catalog (NEU)
+│   ├── Pfad: /stammdaten/stakeholder-types
+│   ├── Tab "Globale Defaults" (4 read-only: Promoter, Supporter, Critic, Blocker)
+│   └── Tab "Eigene Typen" (CRUD: Add/Edit/Disable)
+│
+└── PM-Action: "Self-Assessment versenden" Button auf Stakeholder-Detail
+    ├── Generiert signed Magic-Link-Token (HMAC-SHA256, 14 Tage gültig)
+    ├── Versendet via PROJ-13 Outbox (Mail mit Vorname + Tenant-Branding-Name)
+    └── Status: Pending → Completed | Expired | Revoked
+```
+
+### 3. Datenmodell (Klartext, keine SQL)
+
+**Bleibt unverändert:**
+- `stakeholders.kind` (existing person / organization) — orthogonal zum neuen Stakeholder-Typ. **CIA-Fund O1:** explizit dokumentieren, dass beide Felder NICHT verschmolzen werden.
+
+**Erweitert:**
+- `stakeholders` bekommt **8 neue Spalten** (alle nullable, sichere Defaults für Backfill):
+  - Begründung-Text
+  - Stakeholder-Typ-Schlüssel (Lookup auf Catalog)
+  - Management-Ebene
+  - Entscheidungsbefugnis
+  - Haltung
+  - Konflikt-Potenzial
+  - Kommunikationsbedarf
+  - Bevorzugter Kanal
+
+**Neu (4 Tabellen):**
+
+1. **`stakeholder_type_catalog`** — DB-Catalog mit globalen Defaults + tenant-eigenen Einträgen:
+   - Tenant-Pointer (NULL = global default)
+   - Schlüssel + deutsches/englisches Label + Farb-Code
+   - Reihenfolge + Aktiv-Flag
+
+2. **`stakeholder_skill_profiles`** — 1:1 mit Stakeholder, hält 5 Skill-Werte:
+   - Stakeholder-Pointer (Primary Key)
+   - 5 Werte je 0-100 (PM-bewertet, "fremd")
+   - 5 Werte je 0-100 (Self-Assessment, optional, NULL bis Self-Submit)
+   - Audit-Felder (wer hat zuletzt aktualisiert, wann)
+
+3. **`stakeholder_personality_profiles`** — analog mit 5 Big5/OCEAN-Werten
+
+4. **`stakeholder_self_assessment_invites`** — Magic-Link-Workflow-State:
+   - Stakeholder-Pointer + Tenant-Pointer
+   - Magic-Link-Token (signiert, persistiert als 2. Validierungs-Schicht)
+   - Ablauf-Zeitpunkt (14 Tage)
+   - Status: pending / completed / expired / revoked
+   - Submitted-Payload (für Audit, JSON-Snapshot der eingereichten Werte)
+
+**Neu (1 Audit-Tabelle):**
+- **`stakeholder_profile_audit_events`** — append-only Events-Log für Profile-Änderungen:
+  - Stakeholder-Pointer + Tenant-Pointer
+  - Event-Typ (skill_updated / personality_updated / self_assessment_submitted / invite_sent / invite_revoked)
+  - Akteur-Typ + ID (User ODER Stakeholder via Token — 2 Akteure)
+  - JSON-Payload mit Vorher/Nachher-Werten
+  - Zeitstempel
+
+**Audit-Strategie (Hybrid per CIA-Empfehlung):**
+- **Block A** qualitative Felder auf `stakeholders` → existing PROJ-10 Field-Versioning-Trigger erweitert (Spalten ins `audit_tracked_columns`-Set aufnehmen). Wiederverwendung der existierenden Audit-Routes + Undo/Restore-UI.
+- **Profile-Tabellen** (Skill / Personality) → eigene `stakeholder_profile_audit_events`-Tabelle, weil PROJ-10 nur User-Akteure kennt. Self-Assessment via Token hat keinen `auth.uid()` — der Token ist der Akteur.
+
+### 4. Tech-Entscheidungen (das Warum für PM)
+
+#### 4.1 Warum **eine Spec mit 4 internen Phasen** statt 4 separater PROJ-Specs?
+Die Bausteine ergeben **nur zusammen** den User-Wert: Self-vs-Fremd-Vergleich braucht alle 4. Eine Auslieferung von "qualitativen Feldern" ohne "Self-Assessment" liefert ein erweitertes Formular, aber kein Differenzbild. Vier separate PROJ-Specs würden 4× INDEX-Verwaltung, 4× Architecture-Review, 4× QA, 4× Deploy bedeuten — ROI negativ. Mit interner Phasierung 33-α/β/γ/δ bleibt jede Phase deploybar (analog PROJ-31, das auch interne Phasen hatte), die Spec-Kosten verdoppeln sich aber nicht.
+
+#### 4.2 Warum **DB-Catalog für Stakeholder-Typen** statt TS-Konstanten wie PROJ-6?
+Das PROJ-6-Pattern (Code-Default + Field-Override) erlaubt nur das Überschreiben von Feldern eines bekannten Schlüssels — es lässt **keine neuen Schlüssel** zu. PROJ-33 verlangt aber explizit, dass Tenants eigene Typen wie "Champion" oder "Schweiger" hinzufügen können. Ein DB-Catalog mit globalen Default-Einträgen (`tenant_id IS NULL`) plus tenant-eigenen Custom-Einträgen ist die einfachste Form, die diese Anforderung erfüllt. Die 4 Defaults sind als Code-Konstanten zusätzlich verfügbar, damit KI-Prompts (PROJ-36 später) sie hardcoded referenzieren können.
+
+#### 4.3 Warum **Big5/OCEAN** statt DISG?
+DISG ist Trademark + lizenzpflichtig in vielen Jurisdiktionen. Big5/OCEAN ist akademisches Public-Domain-Modell, breit akzeptiert in Wissenschaft + Personalwesen, semantisch gleich aussagekräftig. Sprachregelung "Emotional Stability" statt "Neuroticism" macht die Achse positiv-framed (für Business-Kontext lesbarer). Kein Lizenzrisiko, keine Trademark-Frage, keine spätere Rückfrage von Legal.
+
+#### 4.4 Warum **recharts** als Chart-Library?
+Keine Chart-Lib ist heute installiert. recharts ist die etablierteste React-Lib mit deklarativem RadarChart-Component, ~58 KB gzipped wenn nur RadarChart importiert wird. Tree-Shakable. Wir laden den Profil-Tab via `dynamic()` — der Initial-Bundle der App wächst nicht. shadcn-charts (Wrapper um recharts) wird optional adoptiert für Theme-Konsistenz mit dem bestehenden Design-System. Spätere Slices (PROJ-21 Reports, PROJ-22 Budget-Charts, PROJ-35 Critical-Path) können denselben Stack nutzen.
+
+#### 4.5 Warum **Token-Modul side-by-side** statt Refactor von PROJ-31?
+Production hat aktuell offene Approval-Tokens mit 7-Tage-Lifetime. Ein Refactor von `approval-token.ts` zu einem generischen `magic-link-token.ts` würde die Token-Form ändern und alle aktiven Tokens invalidieren (HIGH-Severity-Risk laut CIA). Stattdessen: eigene `self-assessment-token.ts` mit eigener Payload-Struktur (`stakeholder_id` + `tenant_id` + `exp`), aber **gemeinsames Server-Secret** `APPROVAL_TOKEN_SECRET`. Eine env-var weniger zu verwalten, kein Production-Bruch, ~120 Zeilen Code-Duplikation akzeptabel. Wenn ein dritter Magic-Link-Use-Case kommt, ist die Generalisierung dann gerechtfertigt (heute YAGNI).
+
+#### 4.6 Warum **hybrid Audit** statt einer Pattern für alles?
+PROJ-10 Audit-Trigger funktionieren elegant für editable Felder mit User-Akteuren. Stakeholders sind bereits abgedeckt — neue qualitative Felder ins Tracking-Set aufnehmen ist trivial. Aber: Self-Assessment via Token hat **keinen** `auth.uid()`. Den Trigger zu erweitern, um Token-Akteure zu erkennen, würde das PROJ-10-Pattern strukturell verbiegen. Eigene `stakeholder_profile_audit_events`-Tabelle (analog PROJ-31 Approval-Events) trennt das sauber: Block A nutzt existing Trigger, Profile-Tabellen haben eigenen append-only Audit-Pfad mit `actor_kind` (user/stakeholder).
+
+#### 4.7 Warum **Class-2** statt Class-3 für Big5-Werte?
+DSGVO Art. 9 ("besondere Kategorien") trifft auf medizinisch-diagnostische Persönlichkeits-Daten zu, nicht auf Self-Assessment-Sliders. Big5 ist statistisches Persönlichkeits-Maß, nicht klinische Diagnose. Class-3-Hard-Block würde KI-Coaching (PROJ-36) strukturell tot machen, weil **jeder** Big5-Lookup lokal routen müsste — Latency + Quality-Gap der Local-LLMs würde das Feature unbrauchbar machen. Class-2 erlaubt Cloud-Routing mit Tenant-Default-Override-Möglichkeit: Tenants mit höchsten Privacy-Anforderungen können via Tenant-Setting auf Class-3 hochstufen. Dann lokales Routing erzwungen.
+
+#### 4.8 Warum **Vorname + Tenant-Branding-Name** in Self-Assessment-Mail (nicht Projektname)?
+Reiner "Hallo Max"-Mail-Body ohne Kontext sieht wie Phishing aus — Spam-Filter könnten markieren, Empfänger werden zögern. Tenant-Name ("Firma X bittet dich um deine Selbsteinschätzung") gibt Vertrauenskontext, ohne dass der Tenant-Name selbst sensibel ist (er ist öffentliche Information: Domain, Briefkopf). Projektname dagegen kann sensitiv sein ("Restrukturierung Q4", "M&A-Vorhaben Codename") und bleibt deshalb ausgeklammert — konsistent mit PROJ-31 Approval-Mails, die auch keinen Projektnamen tragen.
+
+### 5. Workflow-Diagramm (Self-Assessment-Lifecycle)
+
+```
+[PM auf Stakeholder-Detail]
+        │
+        ▼
+[Klick: "Self-Assessment versenden"]
+        │
+        ▼
+[Server: Token signieren (HMAC + 14 Tage)
+         Invite-Row erstellen
+         Outbox-Mail in PROJ-13 einreihen
+         Audit-Event "invite_sent"]
+        │
+[Status: pending]
+        │
+        │  ─────► [PM revoked Invite] ──► [Status: revoked, Token klick zeigt "zurückgezogen"]
+        │
+        │  ─────► [14 Tage abgelaufen] ──► [Status: expired automatisch]
+        │
+        ▼
+[Stakeholder klickt Magic-Link in Mail]
+        │
+[/self-assessment/[token] — public, server-rendered]
+        │
+[Token-Validierung in Reihenfolge:
+  1. HMAC-Signatur
+  2. Ablaufzeit
+  3. DB-Token-Match (2. Schicht)
+  4. Tenant-ID-Match
+  5. Stakeholder existiert
+  6. Status = pending]
+        │
+        ▼
+[Self-Assessment-Form (5 Skill + 5 Big5 Slider)]
+        │
+        ▼
+[Stakeholder klickt Submit]
+        │
+[Server: Werte in skill_profiles.self_* + personality_profiles.self_*
+         Status: completed
+         Submitted-Payload als JSON-Snapshot (Audit)
+         Audit-Event "self_assessment_submitted" mit actor_stakeholder_id]
+        │
+        ▼
+[Confirmation: "Vielen Dank, du kannst das Fenster schließen"]
+
+[PM sieht später im Profil-Tab: 2 Radar-Charts mit Self+Fremd-Overlay]
+```
+
+### 6. CIA-Findings (Risiken die das Design entschärft)
+
+| ID | Risiko | Severity | Im Design entschärft durch |
+|----|--------|----------|---------------------------|
+| R1 | Token-Refactor bricht Production-Approval-Tokens | **HIGH** | Side-by-Side-Module, kein Refactor von approval-token.ts; gemeinsames Secret |
+| R2 | DB-Catalog mit beliebigen Tenant-Keys lockert Type-Safety | **MID** | Resolver-Funktion + RLS-FK-Validation gegen `(tenant_id, key)` |
+| R3 | Class-3-Big5 würde KI-Coaching strukturell töten | **HIGH** | Class-2-Default mit Tenant-Hochstuf-Option |
+| R4 | "Hallo Max"-Mail als Phishing-Anschein | **MID** | Tenant-Branding-Name als Kontext-Hint; Sanitizer auf Mail-Title |
+| R5 | Self-Assessment-Slider-Bias (Default-/Akzeptanz-Bias) | **LOW/MID** | Quality-Topic, kein Block; UI kann optional Warnung zeigen |
+| R6 | Catalog-RLS-Komplexität (global vs tenant) | **MID** | Zwei klare Policies: SELECT erlaubt `tenant_id IS NULL OR is_tenant_member`, CRUD beschränkt auf `tenant_id IS NOT NULL AND is_tenant_admin` |
+
+**Out-of-spec-Funde** als Cross-Cutting-Empfehlungen markiert:
+- **O1** Naming-Disambiguation `kind` vs `stakeholder_type_key` — wird im Datenmodell-Header dokumentiert (Section 3 oben)
+- **O2** `sanitizeApprovalTitle` zu `sanitizeMailTitle` als shared utility extrahieren — Quick-Win in Phase 33-δ
+- **O3** Big5-Slider mit 5-Punkt-Likert-Snapping (UI-Empfehlung) — wird im /frontend mit Mockups getestet
+- **O4** Self-Assessment-Page Mobile-First-Vorgabe — separat dokumentiert
+- **O5** Generic `getPrivacyClass(tenant_id, table, column)`-Lookup — PROJ-NN-Kandidat sobald 3+ Tabellen das brauchen
+
+### 7. Empfohlene interne Phasierung (verbindlich für /backend + /qa)
+
+| Phase | Block | Inhalt | Migration | Aufwand | Acceptance-Gate |
+|---|---|---|---|---|---|
+| **33-α** | A + G + F.1 | Qualitative Felder + Migration + PROJ-10-Audit erweitern | 1 Migration | ~2 PT | Stakeholder-Form zeigt qualitative Sektion, edit + Audit-History funktioniert. Deploybar isoliert. |
+| **33-β** | B | Stakeholder-Type-Catalog + Tenant-Admin-UI | 1 Migration + UI | ~2 PT | Tenant-Admin kann eigene Typen anlegen, Stakeholder-Form zeigt Catalog-Dropdown. Deploybar isoliert. |
+| **33-γ** | C + E | Skill + Big5-Profile + Radar-Visualisierung + recharts | 2 Migrationen + Component | ~2 PT | PM kann Skill+Big5 für Stakeholder pflegen, Radar-Chart rendert (ohne Self-Werte). Deploybar isoliert. |
+| **33-δ** | D + F.2 + Public-Page + O2-Refactor | Self-Assessment Magic-Link + Public Page + Profile-Audit-Events + Sanitizer-Refactor | 1 Migration + Public Page + 2 Routes | ~2 PT | PM versendet Invite, externer Stakeholder füllt aus, PM sieht Self+Fremd-Overlay. Vollständiger Use-Case. |
+
+Jede Phase hat eigenen QA-Pass und eigenen Deploy. /architecture-Empfehlung: **NICHT** alle 4 Phasen in einem PR mergen.
+
+### 8. Dependencies
+
+**Neue npm-Packages:**
+- `recharts` (~58 KB gzipped, peer-react 19 supported) — für Radar-Charts. Optional + später: shadcn-charts Wrapper.
+
+**Neue Env-Variablen:** keine.
+- Magic-Link-Tokens nutzen bestehende `APPROVAL_TOKEN_SECRET` (CIA-Empfehlung Fork 4)
+
+**Touched-but-unchanged-Code** (zur Awareness):
+- `src/lib/stakeholders/` (neu): `self-assessment-token.ts`, `self-assessment-mail.ts`, `approval-rules.ts` analog Pattern aus PROJ-31
+- `src/app/api/projects/[id]/stakeholders/[sid]/profile/` (neu): Skill + Personality CRUD-Routes
+- `src/app/api/projects/[id]/stakeholders/[sid]/self-assessment-invite/` (neu): Invite-Versand
+- `src/app/api/self-assessment/[token]/` (neu): Public GET + POST analog `/api/approve/[token]`
+- `src/app/self-assessment/[token]/` (neu): Public Page analog `/approve/[token]`
+- `src/app/(app)/stammdaten/stakeholder-types/` (neu): Tenant-Admin-Catalog-UI
+- `src/components/stakeholders/` (erweitert): Form + Detail-Page + Profile-Tab + Radar-Component
+- `src/lib/communication/sanitize-mail-title.ts` (neu, refactor aus PROJ-31): shared Sanitizer
+- `src/lib/supabase/middleware.ts` (erweitert): PUBLIC_ROUTES um `/self-assessment` + `/api/self-assessment`
+- `supabase/migrations/`: 4 neue Migrationen (eine pro Phase)
+
+### 9. Aufwandsschätzung (CIA-bestätigt)
+
+- **Phase 33-α** (qualitative Felder + Migration + Audit): ~2 PT
+- **Phase 33-β** (Catalog + Tenant-Admin-UI): ~2 PT
+- **Phase 33-γ** (Skill + Big5 + Radar + recharts): ~2 PT
+- **Phase 33-δ** (Self-Assessment-Flow + Public-Page + Audit-Events + Sanitizer-Refactor): ~2 PT
+- **Total**: ~8 PT (Frontend + Backend + QA pro Phase je ~0.5 PT eingerechnet)
+
+### 10. Was NICHT in PROJ-33 ist (Architektur-Boundaries)
+
+- Kein Refactor von `stakeholders.kind` (orthogonal zum neuen Stakeholder-Typ)
+- Kein Refactor von `approval-token.ts` (Side-by-Side statt Generalize)
+- Kein generischer `magic-link-token.ts` (YAGNI bis 3. Use-Case)
+- Kein generischer `getPrivacyClass(...)`-Lookup (PROJ-NN-Kandidat)
+- Kein Communication-Tracking (Sentiment, Reaktionszeit) — PROJ-34
+- Kein Critical-Path-Indikator — PROJ-35
+- Kein KI-Coaching — PROJ-36 (braucht PROJ-32 Multi-Provider zwingend)
+- Kein Bulk-Self-Assessment-Versand (eine Mail an N Stakeholder mit einem Klick)
+
+### 11. Approval-Empfehlung
+
+**Umsetzbar mit aktueller Architektur ohne Stack-Erweiterung außer `recharts`.** Alle 4 Locked-Decisions kompatibel, alle 6 CIA-Risiken im Design entschärft. Phasierung gibt Deploy-Granularität. CIA-Empfehlung: **/frontend + /backend können parallel an Phase 33-α starten.**
 
 ## Implementation Notes
 _To be added by /frontend + /backend_
