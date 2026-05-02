@@ -672,6 +672,31 @@ deploy. No production user could have hit the broken flow because no
 Approval was submitted in that window (the submit endpoint is
 session-gated and there's no production test data).
 
+### Post-Deploy Hotfix #2 — BUG-D2 (Critical, fixed forward)
+**Discovery:** Once the middleware no longer bounced `/approve/[token]`,
+the page returned HTTP 500 in production.
+
+**Root cause:** `src/app/approve/[token]/page.tsx` is a server component
+that uses `fetch()` to call its backing API `/api/approve/[token]`. With
+no `NEXT_PUBLIC_BASE_URL` set, the fetch URL was relative (`/api/...`).
+Next.js server-side fetch in Vercel's serverless runtime requires an
+**absolute URL**.
+
+**Fix:** Resolution chain in `resolveBaseURL()` (`page.tsx:19-32`):
+1. `NEXT_PUBLIC_BASE_URL` (explicit env)
+2. `VERCEL_URL` (auto-injected on every Vercel deployment)
+3. Request `host` header via `next/headers`
+4. `http://localhost:3000` (last-resort dev fallback)
+
+The page now works out of the box on any Vercel deployment without
+requiring `NEXT_PUBLIC_BASE_URL` to be configured.
+
+**Hotfix shipped:** `f99e553`. Live verification:
+- `/approve/abc.def` → **404** (route reached, invalid token → notFound) ✅
+- `/api/approve/abc.def` → **404** (HMAC verify fails) ✅
+- `/api/projects/.../approval` (no auth) → **307 → /login** (auth-gate) ✅
+- `/approvals` (no auth) → **307 → /login** (auth-gate) ✅
+
 **Lesson recorded:** Add a checklist item to /deploy:
 > For every route documented as **public**, run a curl probe **without
 > auth cookies** and assert the response is NOT 307 → /login. A 200, 404,
