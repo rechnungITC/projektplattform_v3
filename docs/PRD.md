@@ -57,6 +57,7 @@ The product thesis: enterprise projects fail at the seams between execution, gov
 | PROJ-29 | P2 | Hygiene-Slice: ESLint-Baseline auf 0 (97→0), 3 Supabase-Functions search_path-hardenen, Playwright-Logged-In-Auth-Fixture-Skelett. Quick-Win vor PROJ-21. | Planned |
 | PROJ-30 | P1 | KI-Narrative-Purpose: Erweiterung des PROJ-12 AI-Routers um `narrative`-Purpose; ersetzt PROJ-21 preview-ki Stub durch echten AI-Call mit Class-3-Defense-in-Depth. Validates Multi-Purpose-Pattern für PROJ-33. | Planned |
 | _TBD_ | P2 | Governance workflows: approval gates, escalations, formal decisions | Planned |
+| _TBD_ | P2 | **Erweitertes Stakeholder-Management**: Skill-/Persönlichkeitsprofile (DISG, lizenz-geklärt), Kommunikations-Tracking (Sentiment/Kooperation/Reaktionszeit), KI-Coaching-Purpose, kritischer-Pfad-Indikator. Domain-Wissen: `docs/Stakeholderwissen/`. Promotion via `/requirements` (Single-Responsibility-Split in 3-4 Specs) + CIA-Review (überschneidet PROJ-8/13/12/30). | Domain-Knowledge |
 
 ## Success Metrics
 
