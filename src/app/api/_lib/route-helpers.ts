@@ -71,6 +71,33 @@ export async function requireTenantAdmin(
 }
 
 /**
+ * Verify the user is a member of the given tenant (any role). Mirrors
+ * `requireTenantAdmin` but accepts any non-null membership.
+ *
+ * Returns null on success, or a NextResponse error to forward.
+ */
+export async function requireTenantMember(
+  supabase: Awaited<ReturnType<typeof createClient>>,
+  tenantId: string,
+  userId: string
+): Promise<NextResponse<ApiErrorBody> | null> {
+  const { data, error } = await supabase
+    .from("tenant_memberships")
+    .select("role")
+    .eq("tenant_id", tenantId)
+    .eq("user_id", userId)
+    .maybeSingle()
+
+  if (error) {
+    return apiError("internal_error", error.message, 500)
+  }
+  if (!data) {
+    return apiError("forbidden", "Not a member of this tenant.", 403)
+  }
+  return null
+}
+
+/**
  * Project-level access actions. The matrix:
  *   view            tenant_member or higher (any tenant_role) — RLS-equivalent
  *   edit            tenant_admin OR project_lead OR project_editor

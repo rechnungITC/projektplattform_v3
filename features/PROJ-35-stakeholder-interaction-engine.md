@@ -1,8 +1,8 @@
 # PROJ-35: Stakeholder-Wechselwirkungs-Engine — Risiko-Score, Eskalations-Indikatoren & Tonalitäts-Empfehlungen
 
-## Status: Architected
+## Status: 35-α Backend Approved (β + γ pending; 35-α frontend pending)
 **Created:** 2026-05-02
-**Last Updated:** 2026-05-02 (Tech Design + CIA-Review locked alle 6 Forks)
+**Last Updated:** 2026-05-02 (QA pass — 0 Critical/High, 1 Medium, 1 Low, 2 Doc-Drift)
 
 ## Summary
 
@@ -490,10 +490,195 @@ CHECK-Constraint auf `event_type` muss in 35-α-Migration erweitert werden um de
 - ❌ Tenant-konfigurierbare Eskalations-Patterns (PROJ-35.next)
 
 ## Implementation Notes
-_To be added by /backend + /frontend._
+
+### Phase 35-α — Backend (2026-05-02)
+
+**Entscheidungen vor /backend-Start:**
+- Pattern-Activation/Deactivation: **DB-Trigger (PL/pgSQL)** statt API-Layer (User-Lock — abweichend von CIA-Empfehlung; Begründung: kein Update-Pfad kann Patterns überspringen, auch direkter SQL/MCP-Write)
+- Big5-Tonalitäts-Lookup: **alle 32 Einträge komplett** befüllt mit psychologischer Begründung pro Quadrant
+- Scope: **vollständige Phase 35-α** in einem Run
+
+**Migration `supabase/migrations/20260502230000_proj35a_risk_score_engine.sql`** (live applied via MCP, version `20260502233032`):
+- Neue Spalte `tenant_settings.risk_score_overrides JSONB DEFAULT '{}'::jsonb` (CIA-Fork-6 lock)
+- Neue Spalte `stakeholders.current_escalation_patterns text[] DEFAULT array[]::text[]` (Snapshot für Diff-Audit)
+- Audit-Event-CHECK erweitert:
+  - `event_type` + `escalation_pattern_changed`
+  - `actor_kind` + `system` (für Trigger-getriebene Events ohne user/stakeholder-Akteur)
+  - `actor_consistency` 3-Wege-OR mit `system`-Branch
+  - `profile_kind` + `escalation`
+- Helper-Function `compute_escalation_patterns(p_attitude, p_conflict_potential, p_decision_authority, p_influence, p_agreeableness, p_emotional_stability) → text[]` — pure SQL `IMMUTABLE`, mirror der TS-Logik
+- Trigger-Function `audit_escalation_patterns()` — joins stakeholders + stakeholder_personality_profiles, computes new patterns, writes activated/deactivated audit-events, updates snapshot column. `set search_path = 'public', 'pg_temp'` per Security-Rule
+- 4 Triggers: `AFTER UPDATE OF` relevant cols + `AFTER INSERT` auf `stakeholders` + `stakeholder_personality_profiles`. `OF`-Klausel verhindert Recursion (snapshot-column ist nicht in der Liste)
+
+**Compute-Bibliothek `src/lib/risk-score/`** (54 Vitest-Cases):
+- `defaults.ts` — Multiplikator-Konstanten (`RISK_SCORE_DEFAULTS as const`) + Skala-Mapping (`riskBucket()` green/yellow/orange/red)
+- `merge-overrides.ts` — `mergeRiskScoreConfig(overrides)` mit Zod-Schema (`riskScoreOverridesSchema`); per-key fallback auf Default bei DB-Drift; Mutation-frei
+- `compute.ts` — `computeRiskScore(input, config) → { score, bucket, factors, big5_missing }`; Formel: `infW × infN × impW × impN × attF × cnfF × big5Mod × authF`; clamped 0..10, gerundet auf 2 Dezimalstellen
+- `escalation-patterns.ts` — `detectEscalationPatterns(input) → key[]`; Mirror der PG-Function; `ESCALATION_PATTERN_META` mit Severity (1..5) + UI-Empfehlungstext + Label
+- `perception-gap.ts` — `computeSkillGap()` + `computeBig5Gap()`; status `no_self|low_coverage|computed`; `COVERAGE_THRESHOLD=0.6`, `FLAG_DELTA_THRESHOLD=30`; Dimensionen sortiert nach `|delta|` DESC
+- `big5-tonality-table.ts` — 32 Quadranten-Lookup-Konstante + `resolveTonality()` mit `preferred_channel`-Override + `high_communication_need`-Note-Append; Threshold `< 50 = low`
+
+**API Route `src/app/api/tenants/[id]/settings/risk-score/route.ts`:**
+- `GET` — returns `{ defaults, overrides, effective }` via `mergeRiskScoreConfig`
+- `PUT` — Zod-validated Save; Tenant-Admin RBAC via `requireTenantAdmin`
+- `DELETE` — clears overrides → effective = pure defaults
+
+**ADRs:**
+- `docs/decisions/risk-score-defaults.md` — Multiplikator-Werte mit Begründung
+- `docs/decisions/big5-tonality-lookup.md` — 32 Quadranten mit psychologischer Begründung
+
+**Architecture-Doc:**
+- `docs/architecture/stakeholder-risk-engine.md` — Compute-Pipeline + Audit-Pipeline + Code-Layout + Skalierungs-Schwellwerte
+
+**Verification:**
+- `npx tsc --noEmit` exit 0
+- `npm run lint` exit 0
+- `npm test --run` **685/685** (+54 cases vom risk-score-Lib)
+- `npm run build` green; neue Route `/api/tenants/[id]/settings/risk-score` im Manifest
+- Live DB Smoke-Test (Supabase MCP): `compute_escalation_patterns()` returnt korrekt full-house (3 Patterns), no-patterns (leeres Array), unknown_critical isoliert
+
+**Phase 35-α Backend complete. Frontend Tenant-Admin-Page (`/settings/tenant/risk-score`) folgt in `/frontend proj 35`. Danach `/qa proj 35` für 35-α.**
+
+### Phase 35-β
+_Not yet started._
+
+### Phase 35-γ
+_Not yet started._
 
 ## QA Test Results
-_To be added by /qa._
+
+### Phase 35-α (Backend Slice)
+
+**Date:** 2026-05-02
+**Phase:** 35-α (Compute-Bibliothek + Migration + Tenant-Config-API + Audit-Trigger + ADRs)
+**Verdict:** **Approved** — 0 Critical / 0 High / 1 Medium (FIXED post-QA) / 1 Low / 2 Doc-Drift
+
+### Automated Test Suite
+
+| Layer | Result |
+|---|---|
+| TypeScript strict (`npx tsc --noEmit`) | ✅ exit 0 |
+| ESLint (`npm run lint`) | ✅ exit 0 |
+| Vitest (`npm test --run`) | ✅ **685/685** (+54 new cases vom risk-score-Lib) |
+| Production Build (`npm run build`) | ✅ green; `/api/tenants/[id]/settings/risk-score` im Manifest |
+| Supabase Advisors | ✅ **0 neue PROJ-35-α-class warnings** (alle gemeldeten WARN sind pre-existing oder nicht-Migration-bezogen) |
+
+### Live DB Red-Team — 9 Tests, alle pass
+
+| Test | Expected | Actual | Result |
+|---|---|---|---|
+| 1. Baseline-State des Test-Stakeholders | leeres `current_escalation_patterns`-Array | `[]` | ✅ Pass |
+| 2. Activate `blocker_decider` via stakeholders UPDATE | Snapshot enthält `blocker_decider`; 1 Audit-Event mit `actor_kind=system, action=activated` | exact match | ✅ Pass |
+| 3. Add `amplified_conflict` (zweiter Pattern) | NEW Audit-Event nur für neu aktiviertes Pattern (kein Re-Fire des bestehenden) | exakt 1 NEW Event für `amplified_conflict` | ✅ Pass |
+| 4. Deactivate `blocker_decider` durch attitude-Wechsel | Snapshot reduziert; Audit-Event mit `action=deactivated` | exact match | ✅ Pass |
+| 5. No-op-UPDATE + same-value-UPDATE | Trigger fired aber kein Event geschrieben (Idempotenz) | total_events unverändert bei 3 | ✅ Pass |
+| 6. Cross-Table-Trigger-Fan-Out | personality_profile-UPDATE fires Trigger und joinst korrekt mit stakeholders | `dark_profile` korrekt zur Snapshot-Liste hinzugefügt | ✅ Pass |
+| 7. TS↔SQL-Parität für `compute_escalation_patterns()` | gleiche Patterns wie TS-Implementation für 3 Fixtures | exakt match: full-house mit attitude=null, full-house mit blocking, isoliertes unknown_critical | ✅ Pass |
+| 8. JSONB-Override-Persistenz | Override-Struktur persistiert + retrievable | exact match | ✅ Pass |
+| 9. Cleanup auf Baseline | Stakeholder reset, Override geleert, Snapshot zurück auf `[]` | exact match | ✅ Pass |
+
+### Live Security Audit — 7 Vectors
+
+| Vector | Mitigation | Live-Verified |
+|---|---|---|
+| **Sec-1** search_path-Hardening | Beide Functions mit `set search_path = 'public', 'pg_temp'` | ✅ proconfig zeigt `search_path=public, pg_temp` |
+| **Sec-2** SECURITY DEFINER (avoid) | Beide Functions sind nicht-DEFINER (regulär, INVOKER) | ✅ `prosecdef=false` |
+| **Sec-3** Invalid event_type injection | CHECK-Constraint blockt `evil_event_type` | ✅ `ERROR 23514` |
+| **Sec-4** actor_kind=system mit non-NULL user_id | actor_consistency CHECK blockt | ✅ `ERROR 23514` |
+| **Sec-5** Audit-Tampering via DELETE | Append-only-Trigger blockt auch service_role | ✅ `ERROR 23514: append-only` |
+| **Sec-6** RLS auf tenant_settings | SELECT=member, UPDATE=admin (Defense-in-Depth) | ✅ 2 Policies live verifiziert |
+| **Sec-7** Cross-Module-Replay | Audit-Event mit ungültigem `event_type` aus PROJ-33 wird zurückgewiesen | ✅ CHECK ist explizit erlaubt-Liste |
+
+### AC-Walkthrough — Phase 35-α-Scope (Backend-only)
+
+| AC | Status | Note |
+|---|---|---|
+| **B1.1** Defaults als TS-Konstanten + ADR | ✅ Pass | `RISK_SCORE_DEFAULTS` mit `Object.freeze`; ADR `risk-score-defaults.md` |
+| **B1.2** `tenant_settings.risk_score_overrides` JSONB-Spalte | ✅ Pass | Live verified (column_default `'{}'::jsonb`) |
+| **B1.3** Zod-Schema-Validierung | ✅ Pass | `riskScoreOverridesSchema` mit min(0)/max(10) per numeric guard |
+| **B1.4** Resolver pure-TS, kein DB-Call in Hot-Path | ✅ Pass mit Naming-Drift | Heißt `mergeRiskScoreConfig(overrides)` statt Spec-Name `resolveRiskScoreConfig(tenantId)`. Funktional identisch — siehe Doc-Drift-1 |
+| **B1.5** Tenant-Admin-UI | ⏸ SKIPPED | Frontend, in `/frontend proj 35` |
+| **B1.6** RBAC: GET=alle Member, PUT/DELETE=admin | 🟡 Bug-1 (Medium) | Aktuelle Route hat GET=admin-only. RLS ist korrekt (member kann SELECT) — Fix in /frontend oder API-Route-Tweak nötig |
+| **B1.7** Override-Audit via PROJ-10 audit_log_entries | ✅ Pass | tenant_settings ist im audit-tracked-set (PROJ-17, deployed) |
+| **B2.1** Pro Big5-Dim: delta=self-fremd | ✅ Pass | `computeBig5Gap` in perception-gap.ts |
+| **B2.2** Pro Skill-Dim: delta=self-fremd | ✅ Pass | `computeSkillGap` in perception-gap.ts |
+| **B2.3** Aggregat (architectural-overridden) | ✅ Pass | Tech-Design ändert das auf 2 separate Aggregate (CIA-Fork-3). Spec-AC ist veraltet — siehe Doc-Drift-2 |
+| **B2.4** Flag bei `\|delta\| ≥ 30`, sortiert DESC | ✅ Pass | `FLAG_DELTA_THRESHOLD=30`, sort by `Math.abs(delta)` |
+| **B2.5** Keine Self-Werte → Hinweis + CTA | ⏸ SKIPPED | Frontend |
+| **B2.6** Risk-Score nutzt nur Fremd-Werte | ✅ Pass | `computeRiskScore` liest `agreeableness_fremd` only |
+| **B3.1** Pattern-Detector pure-TS | ✅ Pass mit API-Shape-Drift | Returnt `EscalationPatternKey[]` statt `{key,severity,message}[]`. Meta liegt in separatem `ESCALATION_PATTERN_META` lookup — siehe Bug-2 (Low) |
+| **B3.2** UI-Banner Alert-Variants | ⏸ SKIPPED | Frontend |
+| **B3.3** Audit-Event bei Pattern-Activation/Deactivation | ✅ Pass | DB-Trigger live verified (Tests 2, 3, 4) |
+| **B3.4** Tenant-Admins können Patterns nicht überschreiben | ✅ Pass | Patterns hardcoded in TS + PG, keine API zur Override |
+| **B4.1** 32-Einträge-Lookup mit binärem Threshold | ✅ Pass | `BIG5_TONALITY_TABLE` hat exact 32 entries (Vitest-Coverage) |
+| **B4.2** Pro Eintrag {tone,detail_depth,channel_preference,notes[]} mit ≥3 Notes | ✅ Pass | Vitest-Test "each entry has ... (≥3)" |
+| **B4.3** `resolveTonality()` mit Fallback bei null | ✅ Pass | `TONALITY_FALLBACK` mit "unvollständig"-Hinweis |
+| **B4.4** preferred_channel-Override | ✅ Pass | `applyOverrides` in big5-tonality-table.ts |
+| **B4.5** UI-Card Output | ⏸ SKIPPED | Frontend |
+| **B4.6** Vitest-Coverage alle 32 Einträge | ✅ Pass | "contains exactly 32 entries (2^5 quadrants)" + per-entry-shape-Coverage |
+| **B4.7** ADR mit psychologischer Begründung | ✅ Pass | `docs/decisions/big5-tonality-lookup.md` |
+
+### Bugs Found
+
+#### Bug-1 — Medium — B1.6 RBAC-Inkonsistenz — **FIXED**
+**Severity:** Medium (workaround vorhanden via DB-RLS)
+**Steps to Reproduce:** GET `/api/tenants/[id]/settings/risk-score` als nicht-Admin Tenant-Member.
+**Expected:** 200 OK mit aktueller Override-Config (für Tooltip "Warum dieser Score?").
+**Actual (vor Fix):** 403 Forbidden — Route nutzte `requireTenantAdmin` auf GET.
+**Fix Applied (2026-05-02, post-QA):**
+- Neuer Helper `requireTenantMember()` in `src/app/api/_lib/route-helpers.ts` (mirrors `requireTenantAdmin`, accepts any role).
+- GET-Handler in `src/app/api/tenants/[id]/settings/risk-score/route.ts` auf `requireTenantMember` umgestellt; PUT + DELETE bleiben Admin-only.
+- Re-verified: tsc clean · lint clean · vitest 685/685 grün.
+
+#### Bug-2 — Low — B3.1 API-Shape-Drift
+**Severity:** Low (UI muss zusätzliches Lookup machen, kein Funktionsverlust)
+**Discovered:** Code-Review.
+**Spec sagt:** `detectEscalationPatterns()` returnt `Array von { pattern_key, severity, message }`.
+**Implementation:** Returnt `EscalationPatternKey[]`. Severity/Label/Recommendation kommen via separatem `ESCALATION_PATTERN_META[key]`-Lookup.
+**Impact:** UI-Code in 35-β muss `result.map(k => ({ key: k, ...ESCALATION_PATTERN_META[k] }))` mappen.
+**Fix-Empfehlung:** Entweder (a) Detector-Funktion API erweitern um direkt-resolved Objects, oder (b) Spec-AC anpassen + Doc als "korrekt by-design" markieren. Beide Optionen ~5 Min.
+
+#### Doc-Drift-1 — Trivial — B1.4 Naming
+**Severity:** Trivial (kosmetisch, kein Functional-Bug)
+**Discovered:** AC-Walkthrough.
+Spec sagt `resolveRiskScoreConfig(tenantId)`, Implementation heißt `mergeRiskScoreConfig(overrides)`. Implementation-Name ist sauberer (Tenant-Lookup ist Aufrufer-Verantwortung). Spec-Update genügt.
+
+#### Doc-Drift-2 — Trivial — B2.3 Aggregat-Strategie
+**Severity:** Trivial (Spec wurde durch Tech-Design überschrieben, AC nicht synchronisiert)
+**Discovered:** AC-Walkthrough.
+Spec-AC sagt "max(\|delta\|) über alle 10 Dimensionen". CIA-Fork-3-Lock im Tech-Design ändert das auf 2 separate Aggregate (Skill + Big5) mit 60%-Coverage-Threshold. Implementation folgt Tech-Design (richtig). Spec-AC sollte synchronisiert werden.
+
+### Regression Check
+
+- ✅ Vitest **685/685** unverändert grün; kein PROJ-1..PROJ-33 Regress
+- ✅ Existing PROJ-33-γ Audit-Trigger funktioniert weiterhin (skill_profile-/personality_profile-UPDATE schreibt fremd_updated/self_updated Events neben den neuen escalation_pattern_changed)
+- ✅ Bestehende `actor_kind=user|stakeholder` Audit-Events bleiben gültig (3-Wege-OR im neuen actor_consistency-CHECK)
+- ✅ `stakeholder_profile_audit_events.profile_kind` jetzt `skill|personality|escalation` — bestehende Rows mit skill/personality unangetastet
+- ✅ Production Build green; neue Route im Manifest
+
+### Production-Ready Decision
+
+**Recommendation:** **APPROVED for `/deploy proj 35` (Phase 35-α — Backend only)**
+
+- 0 Critical / 0 High Bugs.
+- 1 Medium (RBAC) hat eindeutigen Workaround via DB-RLS und betrifft nur 35-β UI-Use-Case (Tooltip-Read als Member).
+- 1 Low + 2 Trivial sind UI-Plan-Hinweise für 35-β oder Doc-Updates.
+- Migration replayed + verifiziert (live applied via MCP, 11 Schema-Änderungen, 4 Triggers, 2 Functions).
+- 9 Live-DB-Red-Team-Tests grün — inkl. Trigger-Idempotenz, Cross-Table-Fan-Out, TS↔SQL-Parität, Cleanup-Verhalten.
+- 7 Security-Vectors abgedeckt + dokumentiert; alle CHECK-Constraints + RLS + search_path-Hardening live verifiziert.
+
+**Suggested Fix-Order vor /deploy:**
+- Optional: Bug-1 als Quick-Fix in API-Route (5 Min, GET → `requireTenantMember`) → eliminiert UI-Workaround in 35-β.
+- Optional: Bug-2 als API-Refactor in escalation-patterns.ts (5 Min, return Object-Array) → cleaner UI-Konsumierung in 35-β.
+- Optional: Doc-Drifts in Spec syncen.
+
+Falls Bugs deferred: Production-ready für 35-α-Backend-only-Auslieferung. UI-Slice (35-β) muss die Open-Items adressieren.
+
+### Suggested Next
+
+1. **`/deploy proj 35`** — Phase 35-α Backend (Migration ist bereits live via MCP; Code-Push + Tag `v1.35.0-PROJ-35-alpha`).
+2. **`/frontend proj 35`** — Tenant-Admin-Page `/settings/tenant/risk-score` (Form + Live-Preview-Pane für Multiplikator-Konfiguration). Adressiert Bug-1 + Bug-2 als pragmatischen Fix während des Builds.
+3. **Phase 35-β** — `phases.is_critical`-Migration + Stakeholder-Detail-UI (Risk-Banner · Pattern-Banner · Tonalitäts-Card · Wahrnehmungslücke-Section).
 
 ## Deployment
 _To be added by /deploy._
