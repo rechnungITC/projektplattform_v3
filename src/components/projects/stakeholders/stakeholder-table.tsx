@@ -1,6 +1,6 @@
 "use client"
 
-import { Building2, User2 } from "lucide-react"
+import { Building2, Circle, User2 } from "lucide-react"
 
 import { Badge } from "@/components/ui/badge"
 import {
@@ -11,12 +11,19 @@ import {
   TableHeader,
   TableRow,
 } from "@/components/ui/table"
+import {
+  Tooltip,
+  TooltipContent,
+  TooltipTrigger,
+} from "@/components/ui/tooltip"
 import { cn } from "@/lib/utils"
 import {
+  STAKEHOLDER_ATTITUDE_LABELS,
   STAKEHOLDER_KIND_LABELS,
   STAKEHOLDER_ORIGIN_LABELS,
   STAKEHOLDER_SCORE_LABELS,
   type Stakeholder,
+  type StakeholderAttitude,
   type StakeholderScore,
 } from "@/types/stakeholder"
 
@@ -25,6 +32,14 @@ const SCORE_TONE: Record<StakeholderScore, string> = {
   medium: "bg-blue-100 text-blue-900 dark:bg-blue-900/40 dark:text-blue-100",
   high: "bg-amber-100 text-amber-900 dark:bg-amber-900/40 dark:text-amber-100",
   critical: "bg-red-100 text-red-900 dark:bg-red-900/40 dark:text-red-100",
+}
+
+// PROJ-33 — Haltungs-Icon-Farbcoding für die Liste.
+const ATTITUDE_TONE: Record<StakeholderAttitude, string> = {
+  supportive: "fill-emerald-500 text-emerald-500",
+  neutral: "fill-muted-foreground/40 text-muted-foreground/40",
+  critical: "fill-amber-500 text-amber-500",
+  blocking: "fill-red-600 text-red-600",
 }
 
 interface StakeholderTableProps {
@@ -56,6 +71,7 @@ export function StakeholderTable({
             <TableHead className="hidden md:table-cell">Herkunft</TableHead>
             <TableHead>Einfluss</TableHead>
             <TableHead>Impact</TableHead>
+            <TableHead className="w-[60px] text-center">Haltung</TableHead>
             <TableHead className="w-[80px] text-right">Status</TableHead>
           </TableRow>
         </TableHeader>
@@ -109,6 +125,23 @@ export function StakeholderTable({
                   >
                     {STAKEHOLDER_SCORE_LABELS[s.impact]}
                   </span>
+                </TableCell>
+                <TableCell className="text-center">
+                  {s.attitude ? (
+                    <Tooltip>
+                      <TooltipTrigger asChild>
+                        <Circle
+                          className={cn("inline-block h-3 w-3", ATTITUDE_TONE[s.attitude])}
+                          aria-label={STAKEHOLDER_ATTITUDE_LABELS[s.attitude]}
+                        />
+                      </TooltipTrigger>
+                      <TooltipContent>
+                        Haltung: {STAKEHOLDER_ATTITUDE_LABELS[s.attitude]}
+                      </TooltipContent>
+                    </Tooltip>
+                  ) : (
+                    <span className="text-muted-foreground">—</span>
+                  )}
                 </TableCell>
                 <TableCell className="text-right">
                   {s.is_active ? (

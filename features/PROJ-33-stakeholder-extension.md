@@ -505,7 +505,43 @@ Jede Phase hat eigenen QA-Pass und eigenen Deploy. /architecture-Empfehlung: **N
 
 **Phase 33-α Backend ist done. Frontend-Phase kommt als Folge-Schritt.**
 
-### Phase 33-β / γ / δ
+### Phase 33-α Frontend (2026-05-02)
+
+**API client** — `src/lib/stakeholders/api.ts`:
+- `StakeholderInput`-Interface erweitert um die 8 PROJ-33-Felder. Alle nullable.
+- Importiert die 5 neuen Type-Aliases aus `src/types/stakeholder.ts`.
+
+**Form** — `src/components/projects/stakeholders/stakeholder-form.tsx`:
+- Imports erweitert (Collapsible, ChevronDown, 5 neue Type-Constants + Labels).
+- Zod-Schema erweitert um 8 neue Felder als String (NO_VALUE-Sentinel-Pattern).
+- `emptyValues()` + `fromStakeholder()` füllen DB-Defaults: `attitude='neutral'`, `decision_authority='none'`. Andere Felder = `NO_VALUE`.
+- `handleSubmit()` mappt NO_VALUE → null via `selectToNullable<T>()`.
+- **Neue Sektion "Qualitative Bewertung (optional)"** als Collapsible (eingeklappt by default) zwischen Notes und Submit-Row:
+  - `reasoning` Textarea (3 rows, max 5000)
+  - `stakeholder_type_key` Input (free text bis Phase 33-β Catalog landet)
+  - 2x2 Grid Selects: `management_level` + `decision_authority`, `attitude` + `conflict_potential`, `communication_need` + `preferred_channel`
+
+**Tabelle** — `src/components/projects/stakeholders/stakeholder-table.tsx`:
+- Neue Spalte "Haltung" zwischen "Impact" und "Status" — farb-kodierter `Circle`-Icon mit Tooltip:
+  - supportive → emerald-500
+  - neutral → muted-foreground/40
+  - critical → amber-500
+  - blocking → red-600
+- Wenn `attitude=null` → "—" anstelle des Icons.
+
+**Verification:**
+- `npx tsc --noEmit` exit 0
+- `npm run lint` exit 0
+- `npm test --run` 600/600 (Existing Tests grün; keine neuen Cases — Form-Logik via NO_VALUE-Sentinel ist trivial-test-relevant, /qa wird E2E ergänzen)
+- `npm run build` green; alle Routen unverändert
+
+**Browser-Test ausstehend** — User kann via `npm run dev` lokal verifizieren, dass:
+- Stakeholder-Form öffnet, "Qualitative Bewertung" eingeklappt sichtbar
+- Klick auf Header öffnet Sektion; alle 8 Felder editierbar
+- Save speichert, neuladen behält Werte
+- Tabelle zeigt Haltungs-Icon mit korrekter Farbe + Tooltip
+
+### Phase 33-α — Frontend done. Phase 33-β/γ/δ
 _Not yet started._
 
 ## QA Test Results

@@ -1,13 +1,18 @@
 "use client"
 
 import { zodResolver } from "@hookform/resolvers/zod"
-import { Loader2 } from "lucide-react"
+import { ChevronDown, Loader2 } from "lucide-react"
 import * as React from "react"
 import { useForm } from "react-hook-form"
 import { z } from "zod"
 
 import { ResponsibleUserPicker } from "@/components/projects/responsible-user-picker"
 import { Button } from "@/components/ui/button"
+import {
+  Collapsible,
+  CollapsibleContent,
+  CollapsibleTrigger,
+} from "@/components/ui/collapsible"
 import {
   Form,
   FormControl,
@@ -28,19 +33,37 @@ import {
 } from "@/components/ui/select"
 import { Textarea } from "@/components/ui/textarea"
 import {
+  COMMUNICATION_NEED_LABELS,
+  COMMUNICATION_NEEDS,
+  DECISION_AUTHORITIES,
+  DECISION_AUTHORITY_LABELS,
+  MANAGEMENT_LEVEL_LABELS,
+  MANAGEMENT_LEVELS,
+  PREFERRED_CHANNEL_LABELS,
+  PREFERRED_CHANNELS,
+  STAKEHOLDER_ATTITUDE_LABELS,
+  STAKEHOLDER_ATTITUDES,
   STAKEHOLDER_KINDS,
   STAKEHOLDER_KIND_LABELS,
   STAKEHOLDER_ORIGINS,
   STAKEHOLDER_ORIGIN_LABELS,
   STAKEHOLDER_SCORES,
   STAKEHOLDER_SCORE_LABELS,
+  type CommunicationNeed,
+  type DecisionAuthority,
+  type ManagementLevel,
+  type PreferredChannel,
   type Stakeholder,
+  type StakeholderAttitude,
   type StakeholderKind,
   type StakeholderOrigin,
   type StakeholderScore,
 } from "@/types/stakeholder"
 
 import type { StakeholderInput } from "@/lib/stakeholders/api"
+
+// PROJ-33 — sentinel for "no selection" in Selects. Maps to null on submit.
+const NO_VALUE = "__none__"
 
 const formSchema = z.object({
   kind: z.enum(STAKEHOLDER_KINDS as unknown as [StakeholderKind, ...StakeholderKind[]]),
@@ -66,6 +89,15 @@ const formSchema = z.object({
   ),
   linked_user_id: z.string(),
   notes: z.string().max(5000),
+  // PROJ-33 — qualitative Bewertungs-Felder (alle optional, NO_VALUE → null).
+  reasoning: z.string().max(5000),
+  stakeholder_type_key: z.string().max(64),
+  management_level: z.string(),
+  decision_authority: z.string(),
+  attitude: z.string(),
+  conflict_potential: z.string(),
+  communication_need: z.string(),
+  preferred_channel: z.string(),
 })
 
 type FormValues = z.infer<typeof formSchema>
@@ -94,6 +126,15 @@ function emptyValues(prefillRoleKey?: string | null): FormValues {
     impact: "medium",
     linked_user_id: "",
     notes: "",
+    // PROJ-33 — DB-defaults gespiegelt: attitude=neutral, decision_authority=none.
+    reasoning: "",
+    stakeholder_type_key: "",
+    management_level: NO_VALUE,
+    decision_authority: "none",
+    attitude: "neutral",
+    conflict_potential: NO_VALUE,
+    communication_need: NO_VALUE,
+    preferred_channel: NO_VALUE,
   }
 }
 
@@ -110,7 +151,19 @@ function fromStakeholder(s: Stakeholder): FormValues {
     impact: s.impact,
     linked_user_id: s.linked_user_id ?? "",
     notes: s.notes ?? "",
+    reasoning: s.reasoning ?? "",
+    stakeholder_type_key: s.stakeholder_type_key ?? "",
+    management_level: s.management_level ?? NO_VALUE,
+    decision_authority: s.decision_authority ?? "none",
+    attitude: s.attitude ?? "neutral",
+    conflict_potential: s.conflict_potential ?? NO_VALUE,
+    communication_need: s.communication_need ?? NO_VALUE,
+    preferred_channel: s.preferred_channel ?? NO_VALUE,
   }
+}
+
+function selectToNullable<T extends string>(value: string): T | null {
+  return value && value !== NO_VALUE ? (value as T) : null
 }
 
 /**
@@ -149,6 +202,15 @@ export function StakeholderForm({
       impact: values.impact,
       linked_user_id: values.linked_user_id || null,
       notes: values.notes.trim() || null,
+      // PROJ-33 — qualitative fields: NO_VALUE → null.
+      reasoning: values.reasoning.trim() || null,
+      stakeholder_type_key: values.stakeholder_type_key.trim() || null,
+      management_level: selectToNullable<ManagementLevel>(values.management_level),
+      decision_authority: selectToNullable<DecisionAuthority>(values.decision_authority),
+      attitude: selectToNullable<StakeholderAttitude>(values.attitude),
+      conflict_potential: selectToNullable<StakeholderScore>(values.conflict_potential),
+      communication_need: selectToNullable<CommunicationNeed>(values.communication_need),
+      preferred_channel: selectToNullable<PreferredChannel>(values.preferred_channel),
     }
     await onSubmit(input)
   }
@@ -388,6 +450,244 @@ export function StakeholderForm({
             </FormItem>
           )}
         />
+
+        {/* PROJ-33 Phase 33-α — qualitative Bewertung. Eingeklappt by default,
+            damit das Formular nicht überfüllt wirkt. */}
+        <Collapsible className="border-t pt-4">
+          <CollapsibleTrigger asChild>
+            <button
+              type="button"
+              className="flex w-full items-center justify-between text-left text-sm font-medium text-muted-foreground hover:text-foreground"
+            >
+              <span>Qualitative Bewertung (optional)</span>
+              <ChevronDown
+                className="h-4 w-4 transition-transform data-[state=open]:rotate-180"
+                aria-hidden
+              />
+            </button>
+          </CollapsibleTrigger>
+          <CollapsibleContent className="mt-4 space-y-4">
+            <FormField
+              control={form.control}
+              name="reasoning"
+              render={({ field }) => (
+                <FormItem>
+                  <FormLabel>Begründung / Treiber</FormLabel>
+                  <FormControl>
+                    <Textarea
+                      rows={3}
+                      placeholder="Warum hat dieser Stakeholder den dokumentierten Einfluss/Impact?"
+                      {...field}
+                    />
+                  </FormControl>
+                  <FormDescription>
+                    Frei formuliert. Hilft beim späteren KI-Coaching (PROJ-36).
+                  </FormDescription>
+                  <FormMessage />
+                </FormItem>
+              )}
+            />
+
+            <FormField
+              control={form.control}
+              name="stakeholder_type_key"
+              render={({ field }) => (
+                <FormItem>
+                  <FormLabel>Stakeholder-Typ</FormLabel>
+                  <FormControl>
+                    <Input
+                      placeholder="z. B. promoter, supporter, critic, blocker"
+                      {...field}
+                    />
+                  </FormControl>
+                  <FormDescription>
+                    Frei wählbar. Catalog mit Defaults + Tenant-Custom-Werten
+                    folgt in Phase 33-β.
+                  </FormDescription>
+                  <FormMessage />
+                </FormItem>
+              )}
+            />
+
+            <div className="grid gap-4 sm:grid-cols-2">
+              <FormField
+                control={form.control}
+                name="management_level"
+                render={({ field }) => (
+                  <FormItem>
+                    <FormLabel>Management-Ebene</FormLabel>
+                    <FormControl>
+                      <Select
+                        value={field.value || NO_VALUE}
+                        onValueChange={field.onChange}
+                      >
+                        <SelectTrigger>
+                          <SelectValue placeholder="– keine Auswahl –" />
+                        </SelectTrigger>
+                        <SelectContent>
+                          <SelectItem value={NO_VALUE}>– keine Auswahl –</SelectItem>
+                          {MANAGEMENT_LEVELS.map((l) => (
+                            <SelectItem key={l} value={l}>
+                              {MANAGEMENT_LEVEL_LABELS[l]}
+                            </SelectItem>
+                          ))}
+                        </SelectContent>
+                      </Select>
+                    </FormControl>
+                    <FormMessage />
+                  </FormItem>
+                )}
+              />
+
+              <FormField
+                control={form.control}
+                name="decision_authority"
+                render={({ field }) => (
+                  <FormItem>
+                    <FormLabel>Entscheidungsbefugnis</FormLabel>
+                    <FormControl>
+                      <Select
+                        value={field.value || "none"}
+                        onValueChange={field.onChange}
+                      >
+                        <SelectTrigger>
+                          <SelectValue />
+                        </SelectTrigger>
+                        <SelectContent>
+                          {DECISION_AUTHORITIES.map((a) => (
+                            <SelectItem key={a} value={a}>
+                              {DECISION_AUTHORITY_LABELS[a]}
+                            </SelectItem>
+                          ))}
+                        </SelectContent>
+                      </Select>
+                    </FormControl>
+                    <FormMessage />
+                  </FormItem>
+                )}
+              />
+            </div>
+
+            <div className="grid gap-4 sm:grid-cols-2">
+              <FormField
+                control={form.control}
+                name="attitude"
+                render={({ field }) => (
+                  <FormItem>
+                    <FormLabel>Haltung</FormLabel>
+                    <FormControl>
+                      <Select
+                        value={field.value || "neutral"}
+                        onValueChange={field.onChange}
+                      >
+                        <SelectTrigger>
+                          <SelectValue />
+                        </SelectTrigger>
+                        <SelectContent>
+                          {STAKEHOLDER_ATTITUDES.map((a) => (
+                            <SelectItem key={a} value={a}>
+                              {STAKEHOLDER_ATTITUDE_LABELS[a]}
+                            </SelectItem>
+                          ))}
+                        </SelectContent>
+                      </Select>
+                    </FormControl>
+                    <FormMessage />
+                  </FormItem>
+                )}
+              />
+
+              <FormField
+                control={form.control}
+                name="conflict_potential"
+                render={({ field }) => (
+                  <FormItem>
+                    <FormLabel>Konflikt-Potenzial</FormLabel>
+                    <FormControl>
+                      <Select
+                        value={field.value || NO_VALUE}
+                        onValueChange={field.onChange}
+                      >
+                        <SelectTrigger>
+                          <SelectValue placeholder="– keine Auswahl –" />
+                        </SelectTrigger>
+                        <SelectContent>
+                          <SelectItem value={NO_VALUE}>– keine Auswahl –</SelectItem>
+                          {STAKEHOLDER_SCORES.map((s) => (
+                            <SelectItem key={s} value={s}>
+                              {STAKEHOLDER_SCORE_LABELS[s]}
+                            </SelectItem>
+                          ))}
+                        </SelectContent>
+                      </Select>
+                    </FormControl>
+                    <FormMessage />
+                  </FormItem>
+                )}
+              />
+            </div>
+
+            <div className="grid gap-4 sm:grid-cols-2">
+              <FormField
+                control={form.control}
+                name="communication_need"
+                render={({ field }) => (
+                  <FormItem>
+                    <FormLabel>Kommunikationsbedarf</FormLabel>
+                    <FormControl>
+                      <Select
+                        value={field.value || NO_VALUE}
+                        onValueChange={field.onChange}
+                      >
+                        <SelectTrigger>
+                          <SelectValue placeholder="– keine Auswahl –" />
+                        </SelectTrigger>
+                        <SelectContent>
+                          <SelectItem value={NO_VALUE}>– keine Auswahl –</SelectItem>
+                          {COMMUNICATION_NEEDS.map((c) => (
+                            <SelectItem key={c} value={c}>
+                              {COMMUNICATION_NEED_LABELS[c]}
+                            </SelectItem>
+                          ))}
+                        </SelectContent>
+                      </Select>
+                    </FormControl>
+                    <FormMessage />
+                  </FormItem>
+                )}
+              />
+
+              <FormField
+                control={form.control}
+                name="preferred_channel"
+                render={({ field }) => (
+                  <FormItem>
+                    <FormLabel>Bevorzugter Kanal</FormLabel>
+                    <FormControl>
+                      <Select
+                        value={field.value || NO_VALUE}
+                        onValueChange={field.onChange}
+                      >
+                        <SelectTrigger>
+                          <SelectValue placeholder="– keine Auswahl –" />
+                        </SelectTrigger>
+                        <SelectContent>
+                          <SelectItem value={NO_VALUE}>– keine Auswahl –</SelectItem>
+                          {PREFERRED_CHANNELS.map((p) => (
+                            <SelectItem key={p} value={p}>
+                              {PREFERRED_CHANNEL_LABELS[p]}
+                            </SelectItem>
+                          ))}
+                        </SelectContent>
+                      </Select>
+                    </FormControl>
+                    <FormMessage />
+                  </FormItem>
+                )}
+              />
+            </div>
+          </CollapsibleContent>
+        </Collapsible>
 
         <div className="flex flex-wrap items-center justify-between gap-2 border-t pt-4">
           <div>{secondaryAction}</div>

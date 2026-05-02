@@ -4,7 +4,12 @@
  */
 
 import type {
+  CommunicationNeed,
+  DecisionAuthority,
+  ManagementLevel,
+  PreferredChannel,
   Stakeholder,
+  StakeholderAttitude,
   StakeholderKind,
   StakeholderOrigin,
   StakeholderScore,
@@ -52,6 +57,15 @@ export interface StakeholderInput {
   impact: StakeholderScore
   linked_user_id?: string | null
   notes?: string | null
+  // PROJ-33 Phase 33-α — qualitative Bewertungs-Felder. Alle nullable.
+  reasoning?: string | null
+  stakeholder_type_key?: string | null
+  management_level?: ManagementLevel | null
+  decision_authority?: DecisionAuthority | null
+  attitude?: StakeholderAttitude | null
+  conflict_potential?: StakeholderScore | null
+  communication_need?: CommunicationNeed | null
+  preferred_channel?: PreferredChannel | null
 }
 
 export async function createStakeholder(
