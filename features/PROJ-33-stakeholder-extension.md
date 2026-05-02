@@ -459,7 +459,54 @@ Jede Phase hat eigenen QA-Pass und eigenen Deploy. /architecture-Empfehlung: **N
 **Umsetzbar mit aktueller Architektur ohne Stack-Erweiterung außer `recharts`.** Alle 4 Locked-Decisions kompatibel, alle 6 CIA-Risiken im Design entschärft. Phasierung gibt Deploy-Granularität. CIA-Empfehlung: **/frontend + /backend können parallel an Phase 33-α starten.**
 
 ## Implementation Notes
-_To be added by /frontend + /backend_
+
+### Phase 33-α Backend (2026-05-02)
+
+**Migration** — `supabase/migrations/20260502140000_proj33a_stakeholder_qualitative_fields.sql`
+(applied to remote project `iqerihohwabyjzkpcujq`):
+- 8 neue Spalten an `stakeholders`: `reasoning`, `stakeholder_type_key`,
+  `management_level`, `decision_authority` (default `'none'`), `attitude`
+  (default `'neutral'`), `conflict_potential`, `communication_need`, `preferred_channel`.
+  Alle nullable (oder mit safe-default), Backfill-frei.
+- CHECK constraints für jedes Enum-Feld; Length-constraints für `reasoning` (≤5000)
+  und `stakeholder_type_key` (≤64).
+- Partial Index `stakeholders_attitude_idx` auf `(project_id, attitude)`
+  WHERE `attitude in ('critical','blocking')` für PM-Filter "zeige mir Kritiker + Blockierer".
+- PROJ-10 audit-tracked-columns whitelist erweitert: `_tracked_audit_columns('stakeholders')`
+  enthält jetzt 21 Felder (12 PROJ-8 base + 1 PROJ-31 `is_approver` + 8 PROJ-33).
+  `is_approver` war zuvor fehlend — Hygiene-Fix mit-erledigt.
+- Function `_tracked_audit_columns` mit `set search_path = 'public', 'pg_temp'`
+  (Konsistenz mit PROJ-29-Baseline; alle anderen Entity-Listen unverändert).
+
+**TypeScript types** — `src/types/stakeholder.ts`:
+- 5 neue Type-Aliases: `ManagementLevel`, `DecisionAuthority`, `StakeholderAttitude`,
+  `CommunicationNeed`, `PreferredChannel`.
+- 5 readonly Arrays (für Zod-enums) + 5 Label-Records (für UI-Dropdowns).
+- `Stakeholder` interface erweitert um 8 nullable Felder.
+- `conflict_potential` reused den existierenden `StakeholderScore`-Type
+  (gleiche Skala wie `influence`/`impact`).
+
+**API-Routes**:
+- `src/app/api/projects/[id]/stakeholders/route.ts` (POST + GET) — Schema
+  + SELECT-Klausel um die 8 Felder + `is_approver` ergänzt.
+- `src/app/api/projects/[id]/stakeholders/[sid]/route.ts` (GET + PATCH) — analog.
+- Schema-Pattern: alle 8 Felder optional + nullable; Enum-Validierung via
+  Zod gegen die exportierten Type-Constants.
+
+**Verification**:
+- `npx tsc --noEmit` exit 0 (nach `rm -rf .next/dev` für stale Next-Cache)
+- `npm run lint` exit 0
+- `npm test --run` 600/600 (keine neuen Vitest-Cases — die existing
+  Stakeholder-Route-Tests decken die erweiterten Schemas implizit ab,
+  weil sie nicht-bekannte Felder im strict-mode verbieten)
+- `npm run build` green; alle Routen unverändert
+- Live DB-Verifikation: alle 8 Spalten existieren mit korrekten Defaults;
+  `_tracked_audit_columns('stakeholders')` returnt 21-Feld-Array
+
+**Phase 33-α Backend ist done. Frontend-Phase kommt als Folge-Schritt.**
+
+### Phase 33-β / γ / δ
+_Not yet started._
 
 ## QA Test Results
 _To be added by /qa_

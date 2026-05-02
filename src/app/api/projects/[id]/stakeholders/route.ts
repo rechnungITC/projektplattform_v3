@@ -2,6 +2,11 @@ import { NextResponse } from "next/server"
 import { z } from "zod"
 
 import {
+  COMMUNICATION_NEEDS,
+  DECISION_AUTHORITIES,
+  MANAGEMENT_LEVELS,
+  PREFERRED_CHANNELS,
+  STAKEHOLDER_ATTITUDES,
   STAKEHOLDER_KINDS,
   STAKEHOLDER_ORIGINS,
   STAKEHOLDER_SCORES,
@@ -33,6 +38,33 @@ const createSchema = z.object({
     .default("medium"),
   linked_user_id: z.string().uuid().optional().nullable(),
   notes: z.string().max(5000).optional().nullable(),
+  // PROJ-33 Phase 33-α — qualitative fields (alle nullable)
+  reasoning: z.string().max(5000).optional().nullable(),
+  stakeholder_type_key: z.string().max(64).optional().nullable(),
+  management_level: z
+    .enum(MANAGEMENT_LEVELS as unknown as [string, ...string[]])
+    .optional()
+    .nullable(),
+  decision_authority: z
+    .enum(DECISION_AUTHORITIES as unknown as [string, ...string[]])
+    .optional()
+    .nullable(),
+  attitude: z
+    .enum(STAKEHOLDER_ATTITUDES as unknown as [string, ...string[]])
+    .optional()
+    .nullable(),
+  conflict_potential: z
+    .enum(STAKEHOLDER_SCORES as unknown as [string, ...string[]])
+    .optional()
+    .nullable(),
+  communication_need: z
+    .enum(COMMUNICATION_NEEDS as unknown as [string, ...string[]])
+    .optional()
+    .nullable(),
+  preferred_channel: z
+    .enum(PREFERRED_CHANNELS as unknown as [string, ...string[]])
+    .optional()
+    .nullable(),
 })
 
 interface Ctx {
@@ -59,7 +91,7 @@ export async function GET(request: Request, ctx: Ctx) {
   let query = supabase
     .from("stakeholders")
     .select(
-      "id, tenant_id, project_id, kind, origin, name, role_key, org_unit, contact_email, contact_phone, influence, impact, linked_user_id, notes, is_active, created_by, created_at, updated_at"
+      "id, tenant_id, project_id, kind, origin, name, role_key, org_unit, contact_email, contact_phone, influence, impact, linked_user_id, notes, is_active, is_approver, reasoning, stakeholder_type_key, management_level, decision_authority, attitude, conflict_potential, communication_need, preferred_channel, created_by, created_at, updated_at"
     )
     .eq("project_id", projectId)
     .order("created_at", { ascending: true })

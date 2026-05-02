@@ -10,6 +10,110 @@ export type StakeholderKind = "person" | "organization"
 export type StakeholderOrigin = "internal" | "external"
 export type StakeholderScore = "low" | "medium" | "high" | "critical"
 
+// PROJ-33 Phase 33-α — qualitative Bewertungs-Felder.
+
+export type ManagementLevel =
+  | "top"
+  | "upper"
+  | "middle"
+  | "lower"
+  | "operational"
+
+export type DecisionAuthority =
+  | "none"
+  | "advisory"
+  | "recommending"
+  | "deciding"
+
+export type StakeholderAttitude =
+  | "supportive"
+  | "neutral"
+  | "critical"
+  | "blocking"
+
+export type CommunicationNeed = "low" | "normal" | "high" | "critical"
+
+export type PreferredChannel =
+  | "meeting"
+  | "email"
+  | "chat"
+  | "report"
+  | "dashboard"
+
+export const MANAGEMENT_LEVELS: readonly ManagementLevel[] = [
+  "top",
+  "upper",
+  "middle",
+  "lower",
+  "operational",
+] as const
+
+export const DECISION_AUTHORITIES: readonly DecisionAuthority[] = [
+  "none",
+  "advisory",
+  "recommending",
+  "deciding",
+] as const
+
+export const STAKEHOLDER_ATTITUDES: readonly StakeholderAttitude[] = [
+  "supportive",
+  "neutral",
+  "critical",
+  "blocking",
+] as const
+
+export const COMMUNICATION_NEEDS: readonly CommunicationNeed[] = [
+  "low",
+  "normal",
+  "high",
+  "critical",
+] as const
+
+export const PREFERRED_CHANNELS: readonly PreferredChannel[] = [
+  "meeting",
+  "email",
+  "chat",
+  "report",
+  "dashboard",
+] as const
+
+export const MANAGEMENT_LEVEL_LABELS: Record<ManagementLevel, string> = {
+  top: "Top Management",
+  upper: "Oberes Management",
+  middle: "Mittleres Management",
+  lower: "Unteres Management",
+  operational: "Operative Ebene",
+}
+
+export const DECISION_AUTHORITY_LABELS: Record<DecisionAuthority, string> = {
+  none: "Keine",
+  advisory: "Beratend",
+  recommending: "Empfehlend",
+  deciding: "Entscheidend",
+}
+
+export const STAKEHOLDER_ATTITUDE_LABELS: Record<StakeholderAttitude, string> = {
+  supportive: "Unterstützend",
+  neutral: "Neutral",
+  critical: "Kritisch",
+  blocking: "Blockierend",
+}
+
+export const COMMUNICATION_NEED_LABELS: Record<CommunicationNeed, string> = {
+  low: "Niedrig",
+  normal: "Normal",
+  high: "Hoch",
+  critical: "Kritisch",
+}
+
+export const PREFERRED_CHANNEL_LABELS: Record<PreferredChannel, string> = {
+  meeting: "Meeting",
+  email: "E-Mail",
+  chat: "Chat",
+  report: "Bericht",
+  dashboard: "Dashboard",
+}
+
 export const STAKEHOLDER_KINDS: readonly StakeholderKind[] = [
   "person",
   "organization",
@@ -66,6 +170,15 @@ export interface Stakeholder {
    * fetched payloads simply lack the field.
    */
   is_approver?: boolean
+  // PROJ-33 Phase 33-α — qualitative Bewertungs-Felder. Alle nullable.
+  reasoning?: string | null
+  stakeholder_type_key?: string | null
+  management_level?: ManagementLevel | null
+  decision_authority?: DecisionAuthority | null
+  attitude?: StakeholderAttitude | null
+  conflict_potential?: StakeholderScore | null
+  communication_need?: CommunicationNeed | null
+  preferred_channel?: PreferredChannel | null
   created_by: string
   created_at: string
   updated_at: string
