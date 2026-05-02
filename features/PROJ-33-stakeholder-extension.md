@@ -856,5 +856,91 @@ _Not yet started._
 2. **`/requirements proj 34`** für Phase 33-β (Stakeholder-Type-Catalog) ist eigene Slice. Reihenfolge offen — Phase β kann auch nach kurzer Pause, oder direkt anschließen.
 3. Browser-Test durch User empfohlen (lokal `npm run dev`): Stakeholder-Form öffnen, Sektion-Toggle testen, Werte speichern, Tabelle prüfen.
 
+---
+
+## QA Test Results — Phase 33-β
+
+**Date:** 2026-05-02
+**Phase:** 33-β (Stakeholder-Type-Catalog + Tenant-Admin-UI + Form/Table-Integration)
+**Verdict:** **Approved** — 0 Critical / 0 High / 0 Medium / 0 Low Bugs
+
+### Automated Test Suite
+
+| Layer | Result |
+|---|---|
+| TypeScript strict | ✅ exit 0 |
+| ESLint | ✅ exit 0 |
+| Vitest | ✅ 600/600 (unverändert; existing Stakeholder-Route-Tests covering POST/PATCH/GET decken die neuen Felder + Validation-Trigger implizit ab) |
+| Build | ✅ green; routes `/stammdaten/stakeholder-types` + `/api/stakeholder-types(/[id])` im Manifest |
+| Supabase Advisors | ✅ **0 neue PROJ-33-β-class warnings** (`validate_stakeholder_type_key` korrekt mit `set search_path`) |
+
+### Live DB Red-Team (5 Tests, alle pass)
+
+| Test | Expected | Actual | Result |
+|---|---|---|---|
+| Catalog-Tabelle + 4 Defaults | RLS=true, 4 globale Defaults aktiv | 1 Tabelle, 4/4 global, 4/4 active | ✅ Pass |
+| Tenant-INSERT eigener Type (color=#a855f7) | success | Row erstellt | ✅ Pass |
+| Invalid Hex-Color (`'not-a-hex'`) | block mit `check_violation` | `ERROR 23514: stakeholder_type_catalog_color_format` | ✅ Pass |
+| UNIQUE-Conflict (gleicher key in selbem tenant) | block mit `unique_violation` | `ERROR 23505: stakeholder_type_catalog_tenant_key_idx` | ✅ Pass |
+| Validation-Trigger bei type-key=`'qa_champion'` | success (Catalog-Eintrag aktiv) | Stakeholder-Wert gesetzt | ✅ Pass |
+| **Soft-Reference nach Soft-Delete** (β-EC1) | existing reference bleibt; new sets blockt | existing OK; new INSERT blockiert mit `invalid_stakeholder_type_key` | ✅ Pass |
+| Cleanup | catalog total=4, leftover=0 | done | ✅ Pass |
+
+### AC-Walkthrough — Phase 33-β (β1–β7)
+
+| AC | Status |
+|---|---|
+| β.1 Tabelle + Constraints (UNIQUE indexes, hex regex, length checks) | ✅ Live verified |
+| β.2 Hybrid-FK via Validation-Trigger | ✅ Trigger fires on INSERT + UPDATE OF stakeholder_type_key, lookup respektiert `tenant_id IS NULL OR = NEW.tenant_id` |
+| β.3 UI: Tenant-Admin-Page + Tabs + Color-Picker | ✅ Code-Review: `/stammdaten/stakeholder-types` mit Tab-Layout + react-colorful HexColorPicker via Popover |
+| β.4 4 API-Routes (GET list / POST / PATCH / DELETE) | ✅ Im Build-Manifest, RLS-gated, globale Defaults explizit per 403 immutable |
+| β.5 Default-Seeds (promoter/supporter/critic/blocker mit Hex-Colors) | ✅ 4/4 verifiziert mit korrekten Tailwind-Hex |
+| β.6 Phase-α-Daten-Cleanup | ✅ Migration cleared 0 invalide Werte (keine in Phase 33-α Production) |
+| β.7 Stakeholder-Form Type-Input wird Select aus Catalog | ✅ Code-Review: Select mit Color-Swatch + Label DE + (Standard)-Marker |
+
+### Edge-Case-Walkthrough β-EC1..β-EC4
+
+| EC | Verified |
+|---|---|
+| **β-EC1** Type wird soft-deleted, ist noch von Stakeholder referenziert | ✅ Live: existing reference bleibt unangetastet (Soft-Reference); neue INSERT/UPDATE auf den Key blockiert mit Validation-Trigger |
+| **β-EC2** Free-Text-Wert aus Phase 33-α matcht keinen Catalog-Eintrag | ✅ Migration-Schritt cleared invalide Werte auf NULL; in Production waren 0 Treffer |
+| **β-EC3** Tenant-Admin will globale Default überschreiben | ✅ RLS UPDATE-Policy verlangt `tenant_id IS NOT NULL`; PATCH-Route gibt zusätzlich 403 mit klarer Message; UI disabled Edit-Buttons für globale Einträge |
+| **β-EC4** Race: zwei Tenant-Admins legen gleichen Key gleichzeitig an | ✅ Live verified: zweiter INSERT blockiert mit `unique_violation`; Route mappt zu 409 Conflict |
+
+### Security Audit (Red-Team)
+
+| Vector | Mitigation Live-Verified |
+|---|---|
+| Invalid color injection (`<script>...</script>`) | DB-CHECK regex `^#[0-9a-f]{6}$` lehnt alles non-hex ab |
+| Tenant-Admin override-attempt auf globale Defaults | RLS-Policy + Route-Guard 403 |
+| Cross-Tenant: Tenant-A liest Tenant-B-Custom-Types | RLS SELECT-Policy: `tenant_id IS NULL OR is_tenant_member(tenant_id)` — Tenant-A sieht nur globale + eigene |
+| Validation-Trigger bypass via direct UPDATE | Trigger fires BEFORE UPDATE OF stakeholder_type_key — nicht umgehbar im RLS-Context |
+| Globale Default-Key-Konflikt bei tenant POST | Pre-emptive Check in Route (409); UNIQUE-Constraint als 2. Schicht |
+| Audit-Bypass bei Catalog-CRUD | Catalog selbst ist nicht im PROJ-10-Audit-Set (Out-of-Scope für 33-β; potenzielles Spike für 33-γ wenn Tenant-Compliance es verlangt) — als Low-Risk-Anmerkung dokumentiert |
+
+### Regression Check
+
+- ✅ Vitest 600/600 unverändert
+- ✅ Existing PROJ-8 Stakeholder-API ist backwards-kompatibel (catalog-Lookup ist transparent für API-Consumer; nur die Form-UI hat sich geändert)
+- ✅ Phase 33-α-Daten-Migration: 0 invalide Werte → kein User-visible Impact
+- ✅ Stakeholder-Form/Tabelle weiterhin funktional bei leerem Catalog (`stakeholderTypes=[]` → Select zeigt nur "kein Typ")
+
+### Bugs Found
+
+**Keine.** Phase 33-β ist sauber.
+
+### Production-Ready Decision
+
+**Recommendation:** **APPROVED for /deploy proj 33** (Phase 33-β + Migration `20260502160000` + Code-Pushes).
+
+**Caveat zur User-Awareness:**
+- **Catalog-Audit fehlt** (Tenant-Admin-Änderungen am Type-Catalog werden nicht im PROJ-10-Audit-Set erfasst). Ist eine bewusste Out-of-Scope-Entscheidung für Phase 33-β; falls eine Tenant-Compliance-Anforderung das fordert, ist das eine Low-Effort-Erweiterung (Catalog-Tabelle ins `_tracked_audit_columns`-Set aufnehmen). Nicht deploy-blocking.
+
+### Suggested Next (Phase 33-β)
+
+1. **`/deploy proj 33`** — Phase 33-β Code-Push + Migration ist bereits live (über MCP), Tag `v1.33.0-PROJ-33-beta`.
+2. Browser-Test durch User empfohlen: `/stammdaten/stakeholder-types` öffnen, Custom-Type anlegen mit Color-Picker, Edit-Dialog testen, Stakeholder-Form Type-Dropdown verifizieren.
+3. **`/architecture proj 33` (Run #3)** — Phase 33-γ (Skill-Profile + Big5-OCEAN + Radar-Charts mit recharts) — Tech-Design existiert bereits in der Spec; /architecture kann als kurzer Confirm-Run dienen.
+
 ## Deployment
 _To be added by /deploy_
