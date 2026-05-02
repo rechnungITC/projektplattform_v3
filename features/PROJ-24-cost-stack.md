@@ -367,7 +367,19 @@ Migration: `supabase/migrations/20260502160000_proj24_cost_stack_alpha.sql` (≈
 - `role_rates.updated_at + moddatetime trigger` is technically present but unreachable today (no UPDATE policy). Kept for symmetry with the rest of the schema; can be removed if we ever decide append-only-with-no-UPDATE-trigger is the canonical pattern.
 - The view filters soft-deleted work-items but **keeps** their cost-lines in the table (per locked decision §4 #9). On work-item un-delete, the cost-lines reappear in the view automatically. This is the desired behavior.
 
-**Migration not yet applied to remote.** The orchestrator (main session) applies the migration to Supabase via MCP after this slice.
+**Migration applied to remote** (Supabase project `iqerihohwabyjzkpcujq`, version `20260502023517_proj24_cost_stack_alpha`) on 2026-05-02 by the orchestrator session via MCP.
+
+### Phase 24-α follow-up — `_resolve_role_rate` lockdown (2026-05-02)
+
+Migration: `supabase/migrations/20260502170000_proj24_resolve_role_rate_lockdown.sql`. Applied as `proj24_resolve_role_rate_lockdown`.
+
+**Trigger:** Supabase security advisor (lint 0029, `authenticated_security_definer_function_executable`) flagged `_resolve_role_rate` as callable by any signed-in user via REST RPC. Because the function is SECURITY DEFINER and returns a `role_rates` row including the Class-3 `daily_rate`, this would let User A (tenant A) query rates of tenant B by passing an arbitrary `p_tenant_id` — RLS does NOT apply to SECURITY DEFINER calls.
+
+**Fix:** `revoke execute on function public._resolve_role_rate(uuid, text, date) from authenticated`. The cost-calc engine (24-β) runs server-side with service_role (admin-client), which already carries implicit execute privilege; no authenticated-user call path exists.
+
+**Why DEFINER + lockdown instead of INVOKER:** DEFINER + revoke signals "internal server-only helper" cleanly. INVOKER would have worked too (RLS on `role_rates` already enforces tenant boundaries on SELECT), but the engine's cost-line synthesis runs under service_role anyway (PROJ-22 budget-postings pattern) — keeping the auth context uniform inside the engine path avoids a bug surface.
+
+**Note:** `decrypt_tenant_secret` (PROJ-14) shows the same advisor pattern but is a separate, pre-existing concern — out of scope for PROJ-24 and tracked elsewhere.
 
 ## QA Test Results
 _To be added by /qa_
