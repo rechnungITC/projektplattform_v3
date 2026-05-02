@@ -1,6 +1,6 @@
 # PROJ-24: Cost-Stack — Tagessätze pro Rolle, Velocity-Modell & Kosten pro Work-Item
 
-## Status: In Progress (Phase 24-β engine done)
+## Status: In Progress (Phase 24-γ API done)
 **Created:** 2026-04-30
 **Last Updated:** 2026-05-02
 
@@ -407,6 +407,57 @@ Migration: `supabase/migrations/20260502170000_proj24_resolve_role_rate_lockdown
 **Open for next phases:**
 - 24-γ: 6 API routes per ST-07. Routes will compose `resolveRoleRates` (admin client) + `calculateWorkItemCosts` (pure call) + a service-role admin client to insert into `work_item_cost_lines`. Manual cost-lines (`source_type='manual'`) bypass the engine.
 - 24-δ: hook into the existing PROJ-11 `POST/PUT/DELETE /api/projects/[id]/work-items/[wid]/resources` route to emit Replace-on-Update cost-lines on every allocation mutation. Fail-open contract: a cost-calc or lookup error must not block the allocation write — a warning-flagged cost-line is written instead.
+
+### Phase 24-γ — API routes (`/backend`, 2026-05-02)
+
+**Built — 6 routes per ST-07:**
+
+| # | Method+Path | Auth | Notes |
+|---|---|---|---|
+| 1 | `GET /api/tenants/[id]/role-rates` | tenant-member via RLS | versioned list, sorted `role_key ASC, valid_from DESC` |
+| 2 | `POST /api/tenants/[id]/role-rates` | tenant-admin (`requireTenantAdmin`) | append-only versioning, `23505` → 409 `rate_exists` |
+| 3 | `DELETE /api/tenants/[id]/role-rates/[rid]` | tenant-admin (`requireTenantAdmin`) | read-then-delete to capture snapshot for audit; race → 404 |
+| 4 | `GET /api/projects/[id]/cost-summary` | project-member via RLS + project-existence 404 | aggregates per-Epic / per-Phase / per-Sprint / unsorted |
+| 5 | `GET /api/projects/[id]/work-items/[wid]/cost-lines` | project-view via `requireProjectAccess` | RLS-scoped list, `created_at DESC`, `limit(500)` |
+| 6 | `POST /api/projects/[id]/work-items/[wid]/cost-lines` | project-edit via `requireProjectAccess` | `source_type='manual'` hardcoded; engine path is **not** invoked here |
+
+**Auth strategy:**
+- Read paths rely on RLS for tenant/project boundaries. Where existence-leak via empty-list mattered (cost-summary, work-item cost-lines), the route resolves the project up-front and returns 404 on null — same pattern as PROJ-22 budget routes.
+- Write paths use the existing `requireTenantAdmin` / `requireProjectAccess` helpers from `_lib/route-helpers.ts` for clean 403s on top of RLS.
+
+**Audit strategy:**
+- INSERT and DELETE on `role_rates` and `work_item_cost_lines` go through a new helper `src/app/api/_lib/cost-audit.ts` (`writeCostAuditEntry`). The helper uses `createAdminClient()` because `audit_log_entries` RLS only permits SELECT — service-role is required for writes. Same approach as PROJ-22 `budget_postings` synthetic-audit (Architecture Decision 4 in PROJ-22 spec).
+- UPDATE on `work_item_cost_lines` (manual edits) is covered by the PROJ-10 audit trigger added in 24-α — no API-level synthetic audit needed there.
+- Audit failures are best-effort: caught and `console.error`-logged, never thrown. The user's primary mutation has already succeeded by then.
+
+**Validation strategy:**
+- Currency whitelist reuses `SUPPORTED_CURRENCIES` from `@/types/tenant-settings` (single source of truth, also used by PROJ-22). Did **not** hardcode a duplicate list.
+- `source_metadata` is constrained to ≤ 4 KB serialized (`JSON.stringify(v).length <= 4096`) at the Zod layer to defend against JSONB bloat from free-text notes — Class-3 per `data-privacy-registry`.
+- `source_type` is **hardcoded** to `'manual'` in the cost-lines POST — never read from the body, even if the client sends it. Engine-derived cost-lines (`source_type='resource_allocation'`) come from the PROJ-11 resources hook in 24-δ via service-role, not this user-facing endpoint.
+
+**Tests — 35 cases, all green (`npx vitest run src/app/api/...`):**
+- `role-rates/route.test.ts` (12 cases): GET 401/200/cross-tenant-empty/400; POST 401/403-non-admin/403-no-membership/400-validation×3/409-duplicate/201-happy with audit-write verification.
+- `role-rates/[rid]/route.test.ts` (5 cases): DELETE 401/403/404/400-invalid-id/204-happy with audit-snapshot verification.
+- `cost-summary/route.test.ts` (5 cases): 401/400-invalid-id/404-cross-project/200-happy with epic transitive-closure rollup, multi-currency-warning=true with re-pull from cost-lines, empty-project no-op.
+- `cost-lines/route.test.ts` (13 cases): GET 401/404-cross-project/200-empty/200-happy; POST 401/403-read-only-member/400-negative-amount/400-invalid-currency/400-source_metadata>4KB/404-cross-project/201-happy with audit + source_type-hardcode verification + spoofed-source_type-ignored verification.
+
+**Patterns reused from the repo:**
+- Mock-chain pattern from `master-data/stakeholders/route.test.ts` and `tenants/[id]/invite/route.test.ts` — `vi.mock` for `@/lib/supabase/server` + `@/lib/supabase/admin`, chainable `from()` returning per-table mock with `.then()` for list-paths.
+- Synthetic-audit pattern from `projects/[id]/budget/postings/route.ts` — service-role admin client write, best-effort, `field_name` as INSERT/DELETE marker, `change_reason` as German human-readable label.
+- `requireProjectAccess(...,"edit")` reused for the cost-lines POST path; matches PROJ-11 resources route.
+- `apiError(code, message, status, field?)` envelope from `route-helpers.ts` — consistent with all PROJ-1+ routes.
+
+**Caveats documented in code:**
+- `cost-lines/route.ts` notes that `source_type='manual'` is hardcoded and the engine path is intentionally separate (will live in the 24-δ resources-route hook).
+- `cost-lines/route.ts` documents the 4-KB `source_metadata` cap and the Class-3 sensitivity (PROJ-12 routing).
+- `role-rates/route.ts` documents that POST uses `requireTenantAdmin` for clean 403s on top of RLS, and that the synthetic-audit helper uses service-role because `audit_log_entries` SELECT-only RLS.
+- `cost-audit.ts` (helper, also from this phase) carries a header comment explaining why the helper is needed (PROJ-10 trigger only fires on UPDATE) and that audit failures are non-fatal.
+
+**Lint cleanup:**
+- Removed two unused `eslint-disable-next-line no-console` directives from `cost-audit.ts` — the project does not enable `no-console`, so the directives were dead code.
+
+**Open for next phase:**
+- 24-δ: hook into the PROJ-11 `POST/PUT/DELETE /api/projects/[id]/work-items/[wid]/resources` route to emit Replace-on-Update cost-lines via the engine. Will reuse `writeCostAuditEntry` for the INSERT-audit on `resource_allocation` cost-lines. Fail-open: a cost-calc / lookup error writes a `amount=0` cost-line with `source_metadata.warning` flag rather than blocking the allocation write.
 
 ## QA Test Results
 _To be added by /qa_
