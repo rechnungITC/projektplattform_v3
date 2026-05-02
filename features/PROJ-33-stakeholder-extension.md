@@ -598,6 +598,177 @@ Phase 33-β ist deploybar wenn:
 - **EC-β3: Tenant-Admin will einen globalen Default überschreiben** → RLS lehnt UPDATE für `tenant_id IS NULL` ab; UI zeigt Buttons für globale Defaults disabled.
 - **EC-β4: Race: zwei Tenant-Admins legen gleichzeitig den gleichen Custom-Key an** → UNIQUE-Constraint auf `(tenant_id, key)` lehnt den zweiten ab (409 Conflict im API-Layer).
 
+---
+
+## Tech Design Appendix — Phase 33-γ (Skill + Big5 + Radar-Charts)
+
+> **Status:** locked durch /architecture proj 33 Run #4 (2026-05-02). 2 zusätzliche Forks aus Q&A:
+> - **Schema = 2 separate Tabellen** (skill + personality split)
+> - **Audit-Plan = Pre-bake** der events-Tabelle in γ-Migration (für δ-Reuse)
+
+### γ.1 — Datenmodell (2 separate Profile-Tabellen)
+
+**Tabelle `stakeholder_skill_profiles`** (1:1 mit Stakeholder, 5 Dimensionen):
+- `stakeholder_id` UUID (Primary Key, FK auf stakeholders)
+- `tenant_id` UUID (für RLS)
+- 5 fachliche Dimensionen, jeweils 0-100 Integer:
+  - `domain_knowledge_fremd` / `domain_knowledge_self` (PM-Bewertung / Selbst-Bewertung)
+  - `method_competence_fremd` / `method_competence_self`
+  - `it_affinity_fremd` / `it_affinity_self`
+  - `negotiation_skill_fremd` / `negotiation_skill_self`
+  - `decision_power_fremd` / `decision_power_self`
+- `fremd_assessed_by` UUID (welcher PM hat zuletzt PM-Werte gesetzt)
+- `fremd_assessed_at` timestamptz
+- `self_assessed_at` timestamptz (NULL bis Phase δ Self-Assessment landet)
+- `created_at` / `updated_at`
+
+**Tabelle `stakeholder_personality_profiles`** (1:1 mit Stakeholder, 5 Big5-Dimensionen):
+- Analog struktur, aber 5 OCEAN-Dimensionen:
+  - `openness_fremd` / `openness_self`
+  - `conscientiousness_fremd` / `conscientiousness_self`
+  - `extraversion_fremd` / `extraversion_self`
+  - `agreeableness_fremd` / `agreeableness_self`
+  - `emotional_stability_fremd` / `emotional_stability_self` (positiv-framed statt Neuroticism)
+- gleiche Audit-/Timestamp-Felder
+
+**Phase-γ-Befüllung:**
+- PM editiert via UI → `*_fremd`-Spalten + `fremd_assessed_by/at` werden gesetzt
+- `*_self`-Spalten + `self_assessed_at` bleiben NULL bis Phase 33-δ Self-Assessment-Submit
+
+**RLS für beide Tabellen:**
+- SELECT/UPSERT: `is_tenant_member(tenant_id)` (alle Tenant-Member sehen, Editor+ kann editieren)
+- DELETE nur via Cascade (stakeholder löschen → profile löscht)
+
+**Privacy-Class:**
+- Class-2 (CIA-Empfehlung Fork 6 aus 1. /architecture-Run)
+- Tenant kann via `tenant_settings.privacy_classification` auf Class-3 hochstufen → KI-Coaching (PROJ-36) muss dann lokal routen
+
+### γ.2 — Audit-Tabelle pre-baked
+
+**Tabelle `stakeholder_profile_audit_events`** (append-only, analog PROJ-31 Pattern):
+- `id` UUID PK
+- `tenant_id` UUID
+- `stakeholder_id` UUID
+- `profile_kind` text (`'skill'` | `'personality'`)
+- `event_type` text (`'fremd_updated'` | `'self_updated'` | `'self_assessed_via_token'`)
+- `actor_kind` text (`'user'` | `'stakeholder'`) — pre-baked für Phase δ
+- `actor_user_id` UUID NULL (gefüllt wenn actor_kind='user')
+- `actor_stakeholder_id` UUID NULL (gefüllt wenn actor_kind='stakeholder' via Magic-Link)
+- `payload` jsonb (Vorher/Nachher-Werte als JSON-Snapshot)
+- `created_at` timestamptz
+
+**RLS:**
+- SELECT: `is_tenant_member(tenant_id)`
+- INSERT: `is_tenant_member(tenant_id)` (durch Edge-Function via SECURITY DEFINER, oder direkt von API-Route)
+- UPDATE/DELETE: blockiert via Trigger (analog PROJ-31 `enforce_approval_event_immutability`)
+
+**Phase γ schreibt Events:**
+- Wenn PM-Edit → `actor_kind='user'`, `event_type='fremd_updated'`, payload = vorher/nachher-Diff
+- Self-Events bleiben für Phase δ leer
+
+### γ.3 — UI-Komponenten
+
+```
+Phase 33-γ Oberflächen
+│
+├── Stakeholder-Detail-Page (erweitert)
+│   ├── Tab "Profil" (NEU)
+│   │   ├── 2 Radar-Charts side-by-side (recharts via shadcn-charts Wrapper)
+│   │   │   ├── Skill-Chart (5 Achsen)
+│   │   │   └── Big5-Chart (5 Achsen)
+│   │   ├── Self-vs-Fremd-Overlay (zwei Polygone, falls beide vorhanden)
+│   │   │   - Fremd: solid Polygon mit Catalog-Color
+│   │   │   - Self: dashed Polygon mit kontrastierender Farbe
+│   │   │   - Wenn nur Fremd da: einfaches Polygon ohne Overlay
+│   │   ├── Differenz-Liste (sortiert nach |Self - Fremd|)
+│   │   │   - "Conscientiousness: PM 30%, Self 90% — Δ +60% (Selbstüberschätzung?)"
+│   │   │   - Highlights ab |Δ| > 30%
+│   │   └── Edit-Mode-Toggle für PM (Sliders 0-100 pro Dimension)
+│   └── Tab "Profil-Audit" (NEU)
+│       └── Timeline aller Profile-Änderungen aus stakeholder_profile_audit_events
+│
+├── Stakeholder-Profile-Edit-Sheet (NEU)
+│   ├── 2 Sections: Skill (5 Slider) + Big5 (5 Slider)
+│   ├── Slider 0-100 mit numerischer Anzeige + 25/50/75-Marker
+│   ├── Erläuterung pro Big5-Dimension (Tooltip)
+│   └── Save-Button (POST/PATCH /api/projects/[id]/stakeholders/[sid]/profile)
+│
+└── (Phase δ) Externer Stakeholder klickt Magic-Link → Self-Assessment-Form
+    füllt *_self-Spalten + self_assessed_at
+```
+
+### γ.4 — API-Routes
+
+| Route | Auth | Purpose |
+|---|---|---|
+| `GET /api/projects/[id]/stakeholders/[sid]/profile` | session (view) | Liefert Skill + Big5 + Audit-Events kombiniert |
+| `PUT /api/projects/[id]/stakeholders/[sid]/profile/skill` | session (edit) | UPSERT der 5 Skill-Fremd-Werte; schreibt Audit-Event |
+| `PUT /api/projects/[id]/stakeholders/[sid]/profile/personality` | session (edit) | UPSERT der 5 Big5-Fremd-Werte; schreibt Audit-Event |
+
+### γ.5 — Tech-Entscheidungen (PM-readable)
+
+#### Warum **2 separate Tabellen** statt einer kombinierten?
+Skill-Profile (fachliche Kompetenzen) und Persönlichkeitsprofile (Big5/OCEAN) sind verschiedene Konzepte mit unterschiedlicher Privacy-Klassifizierung-Tendenz: Skill ist Class-2 unkritisch, Big5 könnte Tenants als Class-3-Hard-Block hochstufen. Wenn KI-Coaching (PROJ-36) später nur Skill-Daten lesen will (ohne Big5-Personality-Profile zu berühren), erlauben getrennte Tabellen das mit einer Query — kombinierte Tabelle würde RLS-Column-Policies brauchen, die Postgres nicht nativ unterstützt.
+
+#### Warum **Pre-bake der Audit-Events-Tabelle in Phase γ**?
+Phase γ schreibt nur User-Akteur-Events (PM editiert). Phase δ ergänzt Stakeholder-Akteure via Magic-Link. Wenn die Tabelle erst in δ angelegt wird, haben γ-Era-Profile-Edits keine Audit-Trail-History — das wäre Compliance-relevant für Tenants mit Auditing-Anforderungen. Pre-bake ist 5 Minuten Migration-Code, spart später Migration + nachträgliche Backfill-Komplexität.
+
+#### Warum **shadcn-charts Wrapper** für recharts?
+shadcn bietet einen Wrapper (`ChartContainer`) mit Theme-CSS-Variables, der recharts in den vorhandenen Tailwind/Design-System einklinkt. Konsistenz mit kommenden Chart-Surfaces (PROJ-21 Reports, PROJ-22 Budget, PROJ-35 Critical-Path). Installation via `npx shadcn@latest add chart` — bringt nur den Wrapper, recharts ist bereits installiert.
+
+#### Warum **0-100 Sliders** statt 5-Punkt-Likert?
+Big5-Inventory-Wissenschaft nutzt typischerweise 5-Punkt-Likert. Aber: PM bewertet hier subjektiv-grob, nicht klinisch. 0-100 erlaubt feinere Differenzierung wenn der PM einen Stakeholder als "ziemlich, aber nicht extrem extravertiert" einschätzt. UI kann optional 25/50/75-Marker zeigen (CIA Out-of-spec O3) — ist im UI-Design entscheidbar, kein DB-Schema-Lock.
+
+#### Warum **Edit-Sheet** statt direkt-edit-im-Tab?
+Der "Profil"-Tab ist primär eine Read-View (Radar-Charts + Differenz-Liste). Wenn PM ändern will, klickt "Profil bearbeiten" → Sheet von rechts mit den 10 Slidern. Trennung Read vs Edit reduziert visuelle Komplexität + verhindert versehentliche Werte-Drift bei nur-lesendem Stakeholder-Stoebern.
+
+### γ.6 — Dependencies
+
+**Neue npm-Packages:** keine zusätzlichen.
+- `recharts@^3.2.1` ist bereits installiert (Phase 33-β unten).
+- shadcn-charts Wrapper via `npx shadcn@latest add chart` (kein npm-Install, nur Component-Copy).
+
+**Touched Code:**
+- `supabase/migrations/`: 1 neue Migration (3 Tabellen + Trigger + RLS + Indexes)
+- `src/types/stakeholder-profile.ts` (neu): TS-Types
+- `src/lib/stakeholder-profiles/api.ts` (neu): fetch wrappers
+- `src/app/api/projects/[id]/stakeholders/[sid]/profile/route.ts` (neu) + `[skill|personality]/route.ts` (neu)
+- `src/components/stakeholders/profile/` (neu):
+  - `radar-chart.tsx` (recharts wrapper, accepts {fremd, self} data)
+  - `profile-tab.tsx` (orchestrator: 2 Charts + Diff-List + Edit-Toggle)
+  - `profile-edit-sheet.tsx` (10 Slider + Save)
+  - `profile-audit-timeline.tsx` (event-list)
+- `src/components/projects/stakeholders/stakeholder-tab-client.tsx` (erweitert): "Profil"-Tab im Edit-Drawer
+
+### γ.7 — Acceptance-Gate (für /qa)
+
+Phase 33-γ ist deploybar wenn:
+1. PM kann via UI für jeden Stakeholder Skill (5 Werte) und Big5 (5 Werte) speichern
+2. Radar-Charts rendern korrekt (mobile + desktop)
+3. Audit-Trail zeigt Profile-Änderungen mit User-Akteur
+4. Wenn Self-Werte NULL → nur Fremd-Polygon dargestellt; bei beiden → Overlay mit Differenz-Liste
+5. Privacy-Class: Big5-Werte als Class-2 markiert (PROJ-12 Privacy-Registry erweitert)
+6. Migration-Replay erprobt + 0 invalide Daten
+
+### γ.8 — Edge-Cases (zusätzlich zu α/β-Set)
+
+- **EC-γ1: PM editiert Profil, Stakeholder hat noch keinen Profile-Eintrag** → UPSERT pattern: erste PUT erstellt Row, weitere updaten.
+- **EC-γ2: Tenant-Privacy-Setting wechselt Big5 zu Class-3 mid-flight** → existing Big5-Werte bleiben gespeichert, aber KI-Coaching (PROJ-36) liest sie nicht mehr für External-Provider; lokale Provider OK.
+- **EC-γ3: Slider-Werte 0 oder 100** → erlaubt; Audit-Event protokolliert.
+- **EC-γ4: Stakeholder ohne `is_active`** → Profil bleibt erhalten (kein Cascade). Re-aktivieren bringt Profil zurück.
+- **EC-γ5: Self-Werte vorhanden vor Phase γ** → unmöglich, Self-Spalten existieren erst ab γ-Migration.
+
+### γ.9 — Aufwandsschätzung (revidiert)
+
+- **Backend** (Migration + 3 Routes + Audit-Events-Trigger): ~1.5 PT
+- **Frontend** (Radar-Component + Profile-Tab + Edit-Sheet + Audit-Timeline): ~1.5 PT
+- **QA** (Vitest für Audit-Trigger + Privacy-Routing-Smoke + UI-Visual-Regression): ~0.5 PT
+- **Total**: ~3.5 PT — leicht über der ursprünglichen ~2-PT-Schätzung wegen 2 Charts + Audit-Pre-Bake.
+
+### γ.10 — Approval-Empfehlung
+
+**Umsetzbar mit aktueller Architektur.** Die einzige zusätzliche shadcn-Komponente (`chart`) ist Standard-Setup. Pre-bake-Audit reduziert spätere δ-Komplexität signifikant. /backend kann direkt mit der γ-Migration starten.
+
 ## Implementation Notes
 
 ### Phase 33-α Backend (2026-05-02)
