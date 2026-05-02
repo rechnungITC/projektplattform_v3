@@ -1,10 +1,11 @@
 # PROJ-33: Erweitertes Stakeholder-Management — Stammdaten + Skill/Persönlichkeit + Self-Assessment
 
-## Status: In Progress (Phase 33-α + β Deployed; γ/δ pending)
+## Status: In Progress (Phase 33-α + β + γ Deployed; δ pending)
 **Created:** 2026-05-02
 **Last Updated:** 2026-05-02
 **Phase 33-α Deployed:** 2026-05-02 — Tag: `v1.33.0-PROJ-33-alpha`
 **Phase 33-β Deployed:** 2026-05-02 — Tag: `v1.33.0-PROJ-33-beta`
+**Phase 33-γ Deployed:** 2026-05-02 — Tag: `v1.33.0-PROJ-33-gamma`
 Production: https://projektplattform-v3.vercel.app
 
 > ⚠️ **Scope-Warning:** Diese Spec deckt 4 fachlich zusammenhängende, technisch aber unabhängig deploybare Blöcke (A bis D, siehe Acceptance Criteria). Das Spec-Volumen liegt bei ~7-8 Personentagen Implementation. Für `/architecture` und `/backend` empfohlen wird **internes Phasing** der Migrationen + Feature-Flags pro Block, sodass jede Phase getrennt QA + Deploy hat. CIA-Review zwingend bei `/architecture` (touched: PROJ-8, PROJ-13, PROJ-31; introduces: catalog-Pattern, Big5-Methodik, Magic-Link-Flow #2).
