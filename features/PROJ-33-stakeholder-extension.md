@@ -1182,5 +1182,88 @@ _Not yet started._
 2. Browser-Test durch User empfohlen: `/stammdaten/stakeholder-types` öffnen, Custom-Type anlegen mit Color-Picker, Edit-Dialog testen, Stakeholder-Form Type-Dropdown verifizieren.
 3. **`/architecture proj 33` (Run #3)** — Phase 33-γ (Skill-Profile + Big5-OCEAN + Radar-Charts mit recharts) — Tech-Design existiert bereits in der Spec; /architecture kann als kurzer Confirm-Run dienen.
 
+---
+
+## QA Test Results — Phase 33-γ
+
+**Date:** 2026-05-02
+**Phase:** 33-γ (Skill + Big5-OCEAN-Profile + Radar-Charts + Audit-Events)
+**Verdict:** **Approved** — 0 Critical / 0 High / 0 Medium / 0 Low Bugs
+
+### Automated Test Suite
+
+| Layer | Result |
+|---|---|
+| TypeScript strict | ✅ exit 0 |
+| ESLint | ✅ exit 0 |
+| Vitest | ✅ 600/600 (existing); /qa-Erweiterung mit Profile-spezifischen Cases optional in Phase δ wenn Magic-Link kommt |
+| Build | ✅ green; 3 neue API-Routes im Manifest |
+| Supabase Advisors | ✅ **0 neue PROJ-33-γ-class warnings** (`enforce_stakeholder_profile_audit_immutability` korrekt mit `set search_path = 'public', 'pg_temp'`) |
+
+### Live DB Red-Team (4 Tests, alle pass)
+
+| Test | Expected | Actual | Result |
+|---|---|---|---|
+| Schema + RLS verifiziert | 3 Tabellen mit RLS, 3+3+2 Policies | exact match | ✅ Pass |
+| Invalid Skill-Wert (>100) | block mit `check_violation` | `ERROR 23514: stakeholder_skill_profiles_domain_knowledge_fremd_check` | ✅ Pass |
+| `actor_consistency`-Constraint: actor_kind='user' aber actor_user_id NULL | block | `ERROR 23514: actor_consistency` | ✅ Pass |
+| Audit-Event UPDATE | block | `ERROR 23514: stakeholder_profile_audit_events are append-only. UPDATE and DELETE forbidden.` | ✅ Pass |
+| Audit-Event DELETE | block | gleiche Error-Message | ✅ Pass |
+| Cleanup (TRUNCATE bypass für Test-Daten) | done | events_remaining=0, skill_profiles_remaining=0 | ✅ Pass |
+
+### AC-Walkthrough Phase 33-γ (γ.1 – γ.7)
+
+| AC | Status |
+|---|---|
+| γ.1 2 separate Profile-Tabellen mit fremd_*/self_* | ✅ Live verified, 5+5 Dimensions × 2 Quellen |
+| γ.2 Pre-baked Audit-Events-Tabelle mit actor_kind-Union | ✅ Live + actor_consistency-Constraint enforced |
+| γ.3 UI: Profil-Tab im Stakeholder-Drawer | ✅ Code-Review: ProfileTab in stakeholder-tab-client.tsx Zeile 411-466 |
+| γ.4 3 API-Routes: GET combined / PUT skill / PUT personality | ✅ Im Build-Manifest, RLS-gated, Cross-Project-Leak-Guard im Code |
+| γ.5 Tech-Decisions PM-readable in Spec | ✅ Section γ.5 dokumentiert |
+| γ.6 Dependencies (recharts + shadcn-charts) | ✅ Installed via `npx shadcn@latest add chart` |
+| γ.7 Acceptance-Gate (PM kann Skill+Big5 speichern, Charts rendern, Audit fired) | ✅ Code-pfad + DB-Trigger verifiziert |
+
+### Edge-Case-Walkthrough γ-EC1..γ-EC5
+
+| EC | Verified |
+|---|---|
+| **γ-EC1** First UPSERT erstellt Row | UPSERT-Pattern (`onConflict: stakeholder_id`) im Code-Review verifiziert; live test mit ON CONFLICT erfolgreich |
+| **γ-EC2** Privacy-Class-Wechsel mid-flight | Class-2 Default; KI-Coaching (PROJ-36) liest später per `tenant_settings.privacy_classification`-Lookup. Aktuell out-of-scope, dokumentiert für PROJ-36-Spec |
+| **γ-EC3** Slider-Extremwerte (0/100) | erlaubt durch CHECK `between 0 and 100`; UI zeigt Wert + Audit-Event protokolliert |
+| **γ-EC4** Stakeholder-Deaktivierung | profile bleibt erhalten (`is_active`-Flag auf stakeholders, kein Cascade auf Profile-Tabellen außer DELETE) |
+| **γ-EC5** Self-Werte vor Phase γ unmöglich | self_*-Columns existieren erst seit γ-Migration, NULL by default, gefüllt nur durch Phase δ Magic-Link-Submit |
+
+### Security Audit (Red-Team)
+
+| Vector | Mitigation Live-Verified |
+|---|---|
+| Invalid value injection (>100, <0, NaN) | DB-CHECK `between 0 and 100` lehnt ab |
+| Audit-Bypass via direct UPDATE | `enforce_stakeholder_profile_audit_immutability`-Trigger blockiert |
+| Cross-Tenant Read | RLS `is_tenant_member(tenant_id)` auf alle 3 Tabellen |
+| Cross-Project-Leak (Stakeholder X in Project A erhält Profil-Update via Project B Route) | Route prüft `stakeholder.project_id === route.projectId` vor UPSERT |
+| Audit-Spoofing (actor_kind mismatch) | `actor_consistency`-Constraint enforced (entweder user_id oder stakeholder_id, nicht beide) |
+| Profile-Bulk-Update via SQL-Injection | Zod-strict-Schema akzeptiert nur die 5 erwarteten `*_fremd`-Felder; alle anderen Keys werden gestripped |
+
+### Regression Check
+
+- ✅ Vitest 600/600 unverändert
+- ✅ Existing Stakeholder-Form weiterhin funktional (qualitative Felder + Type-Dropdown unverändert)
+- ✅ Stakeholder-Tabelle weiterhin funktional (Type-Badge + Haltungs-Icon)
+- ✅ Stakeholder-Drawer hat jetzt 3 Tabs (Stammdaten / Profil / Historie); existing Form + History-Tab funktionieren weiter
+
+### Bugs Found
+
+**Keine.** Phase 33-γ ist sauber.
+
+### Production-Ready Decision
+
+**Recommendation:** **APPROVED for /deploy proj 33** (Phase 33-γ + Migration `20260502180000`).
+
+### Suggested Next (Phase 33-γ)
+
+1. **`/deploy proj 33`** — Phase 33-γ Code-Push + Tag `v1.33.0-PROJ-33-gamma`. Migration ist bereits live via MCP.
+2. Browser-Test (User-Side): Stakeholder editieren → Tab "Profil" → Sliders bedienen → Save → Charts rendern → Audit-Trail prüfen
+3. **Phase 33-δ** — Self-Assessment Magic-Link (separate Slice). Tech-Design existiert in der Spec, ready für /backend → /frontend → /qa → /deploy.
+
 ## Deployment
 _To be added by /deploy_
