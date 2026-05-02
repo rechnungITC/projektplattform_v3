@@ -1,6 +1,6 @@
 # PROJ-31: Approval-Gates für formale Decisions
 
-## Status: Planned
+## Status: Architected
 **Created:** 2026-05-02
 **Last Updated:** 2026-05-02
 
@@ -188,7 +188,202 @@ Token landet in falschen Händen (Email-Forwarding etc.). **Verhalten:** Token i
 <!-- Sections below are added by subsequent skills -->
 
 ## Tech Design (Solution Architect)
-_To be added by /architecture_
+
+> **CIA-validiert** vor Architecture-Design (Briefing in Section 6 unten).
+> Alle 4 Locked Decisions aus /requirements bleiben — die Architektur löst sie ohne Stack-Erweiterung.
+
+### 1. Big Picture in einem Satz
+
+Decisions bleiben **unveränderbar** (V2-Invariante, durch DB-Trigger erzwungen). Approval-Status läuft **daneben** in einer eigenen 1:1-Tabelle. Externe Approver bekommen einen 7-Tage-gültigen Einmal-Pass per Email. Quorum-Berechnung ist eine atomare DB-Operation, kein App-Code.
+
+### 2. UI-Komponenten (was der Nutzer sieht)
+
+```
+PROJ-31 Oberflächen
+│
+├── Decision-Form (erweitert — bestehende Component)
+│   ├── "Formal" Indikator (auto-gesetzt durch PROJ-6-Regel oder manuell flagbar)
+│   ├── Approver-Selector
+│   │   ├── Multi-Select aus Stakeholder-Pool
+│   │   ├── Filter: nur Stakeholders mit "Genehmigungs-Berechtigung"
+│   │   └── Visuelle Trennung "Intern (Plattform-Account) / Extern (Magic-Link)"
+│   ├── Quorum-Slider (1 von N bis N von N)
+│   └── Submit-Button "Zur Genehmigung einreichen" (statt "Speichern")
+│
+├── Decision-Detail-Page (erweitert — bestehende Component)
+│   ├── Approval-Status-Banner (oben: pending / approved / rejected / withdrawn)
+│   ├── Approver-Liste (mit Status pro Person: pending / approved / rejected / withdrawn)
+│   ├── Audit-Trail-Tab (neu — Timeline aller Events, immutable)
+│   └── Withdraw-Button (nur sichtbar für Owner+PM, nur wenn Status = pending)
+│
+├── Magic-Link-Approval-Page  (NEU — public, token-authentifiziert, kein Login)
+│   ├── Token-Validierung (Server-Side, vor Render)
+│   ├── Decision-Body (Title, Decision-Text, Rationale)
+│   ├── Approve-Button + optionale Kommentar-Textarea
+│   ├── Reject-Button  + optionale Kommentar-Textarea
+│   └── Confirmation-State (nach Klick: idempotent, zweiter Klick zeigt "bereits geantwortet")
+│
+└── Internes Approval-Dashboard  (NEU)
+    ├── Liste pending Approvals für eingeloggten User
+    │   (Stakeholder.linked_user_id = auth.uid())
+    ├── Click-Through zur Decision-Detail-Page
+    └── Empty-State "Keine offenen Genehmigungen"
+```
+
+### 3. Datenmodell (Klartext, keine SQL)
+
+**Bleibt unverändert:**
+- `decisions` — der Decision-Body bleibt absolut unangetastet. Der existierende Immutability-Trigger bleibt scharf.
+
+**Erweitert (1 Spalte):**
+- `stakeholders` bekommt eine **Genehmigungs-Berechtigung** (Boolean). Default: nein.
+
+**Neu (3 Tabellen):**
+
+1. **`decision_approval_state`** — eine Zeile pro Decision, die Genehmigung braucht:
+   - Welche Decision (Pointer)
+   - Status (pending / approved / rejected / withdrawn)
+   - Quorum (z.B. "3 von 5 müssen zustimmen")
+   - Tenant-Pointer für Multi-Tenant-Isolation
+
+2. **`decision_approvers`** — eine Zeile pro nominierten Approver pro Decision:
+   - Welche Decision, welcher Stakeholder
+   - Magic-Link-Token (signiertes Geheimnis, in DB persistiert als zweite Validierungs-Schicht)
+   - Token-Ablaufdatum (7 Tage nach Versand)
+   - Antwort: zustimmen / ablehnen / noch offen
+   - Antwort-Zeitpunkt + optionaler Kommentar
+
+3. **`decision_approval_events`** — Append-only Audit-Log:
+   - Welche Decision, welcher Event-Typ (eingereicht / Approver-geantwortet / Quorum erreicht / Quorum unmöglich / zurückgezogen / revidiert)
+   - Wer hat es ausgelöst (Plattform-User ODER Stakeholder, beide möglich)
+   - Zeitstempel + JSON-Payload mit Detail
+   - **Keine Updates, keine Deletes** — nur Inserts erlaubt (per RLS-Policy)
+
+**Approval-Regeln** (Methode × Phase → braucht Approval?) sind **kein DB-Inhalt**, sondern eine TypeScript-Konstante in `src/lib/decisions/approval-rules.ts`. Begründung: PROJ-6 Catalog ist heute auch ein TS-Modul (kein DB-Catalog). Konsistenz mit der bestehenden Rule-Engine. Tenant-Overrides können später als DB-Schicht draufgelegt werden, sind aber nicht MVP.
+
+### 4. Tech-Entscheidungen (das Warum für PM)
+
+#### 4.1 Warum **getrennte Tabellen** statt Spalten an Decisions?
+Decisions sind seit V2 als unveränderbar zementiert — der DB-Trigger blockt jedes UPDATE. Wenn wir Approval-Felder direkt an `decisions` ran-bauen, würde **jede Quorum-Status-Änderung sofort von der DB abgelehnt**. Die saubere Lösung: Decision-Body bleibt eingesperrt, der Approval-Workflow läuft in eigener Tabelle. Anderer Vorteil: ein neuer Approval-Workflow-Typ (z.B. später für Budget) kann dasselbe Pattern wiederverwenden.
+
+#### 4.2 Warum **Magic-Link** statt Plattform-Account für externe Approver?
+Steering-Committee-Mitglieder oder externe Sponsoren genehmigen vielleicht 4× im Jahr eine Decision. Ihnen einen vollen Account, Login-Onboarding und Tenant-Membership aufzudrücken ist Reibung ohne Mehrwert. Ein 7-Tage-Token per Email ist der pragmatische Mittelweg: signiert mit Server-Secret, in DB persistiert, einzeln revoke-bar.
+
+#### 4.3 Warum **HMAC-Signatur** und nicht JWT?
+Beide funktionieren. Aber: wir speichern den Token sowieso in der DB (als zweite Validierungs-Schicht — selbst wenn das Server-Secret später rotiert wird, gilt der Token nur, wenn er auch in der DB steht). Damit fallen die Stateless-Vorteile von JWT weg. HMAC mit der Node-Standard-Library ist eine Handvoll Zeilen Code; eine JWT-Bibliothek wäre Dependency-Bloat ohne Nutzen.
+
+#### 4.4 Warum **DB-Funktion** für die Quorum-Berechnung?
+Wenn 5 Approver gleichzeitig auf "Zustimmen" klicken, müssen alle 5 den gleichen Quorum-Status sehen — keiner darf einen veralteten Stand bekommen. In der App-Schicht zu locken (Redis, Mutex etc.) ist Stack-Erweiterung. Die billigste, atomare Lösung ist eine PostgreSQL-Funktion mit "Advisory-Lock" pro Decision-ID — die DB serialisiert konkurrierende Calls automatisch. Etabliert das erste Lock-Pattern im Projekt; spätere Race-Condition-Stellen können es wiederverwenden.
+
+#### 4.5 Warum **bestehendes Mail-Outbox-Pattern** (PROJ-13) und keine eigene Mail-Pipeline?
+PROJ-13 ist deployed mit Retry-Logik, Audit-Trail, Class-3-Hard-Block. Approval-Mails wären eine zweite parallel laufende Mail-Pipeline — Wartungs-Albtraum. Stattdessen: Approval-Mail-Insert in dieselbe Outbox, mit explizitem Marker für den Versand-Zweck.
+
+**Wichtige Konstruktionsregel** (CIA R2): Der Class-3-Block in der Outbox ist heute KI-Run-getrieben (greift nur wenn `metadata.ki_run_id` gesetzt ist). Eine Approval-Mail ist kein KI-Run und würde am Block vorbei. **Lösung:** Eine dedizierte Builder-Funktion `buildApprovalOutboxRow()` mit strenger Eingabe-Whitelist (Title + Token + Empfänger — niemals Decision-Body). Code-Review-pflicht: niemand darf an dieser Funktion vorbei direkt in `communication_outbox` einfügen.
+
+#### 4.6 Warum **`stakeholders.linked_user_id`** und kein neues Approver-User-Mapping?
+PROJ-8 hat das Mapping bereits: jeder Stakeholder kann optional einen `linked_user_id`-Pointer auf einen Plattform-Account haben. Internes Dashboard-Filter wird zu einer Zeile JOIN. Stakeholder ohne `linked_user_id` aber mit Genehmigungs-Berechtigung sind ausschließlich externe Approver — die UI muss das visuell trennen, das Datenmodell muss nichts ändern.
+
+### 5. Workflow-Diagramm (Decision-Lifecycle)
+
+```
+[Decision wird erstellt]
+        │
+        ▼
+[Gate-Check: PROJ-6-Regel + manueller Flag]
+        │
+        ├─── requires_approval = false ──► [Decision direkt nutzbar]
+        │
+        ▼
+   requires_approval = true
+        │
+[Status: draft]
+        │
+        ▼
+[PM nominiert N Approver, setzt Quorum M]
+        │
+        ▼
+[Submit → Tokens generiert → Mails versendet]
+        │
+[Status: pending]
+        │
+        ├──► [Approver klickt approve]  ┐
+        │           ▼                   │
+        │    [Counter erhöht]           │
+        │    [DB-Lock-Berechnung]       │ Race-Condition-frei
+        │           ▼                   │ via Advisory-Lock
+        │    [M erreicht?]              │
+        │           ├── ja ──► [Status: approved]
+        │           └── nein ──► [warte]
+        │                              │
+        ├──► [Approver klickt reject]   │
+        │           ▼                   │
+        │    [Counter erhöht]           │
+        │    [N - M + 1 erreicht?]      │
+        │           ├── ja ──► [Status: rejected (Quorum unmöglich)]
+        │           └── nein ──► [warte]
+        │
+        ├──► [PM klickt withdraw] ──► [Status: withdrawn]
+        │
+        └──► [Decision wird via supersedes_decision_id revidiert]
+                    ──► [alter Workflow: status=withdrawn, Event=revised]
+                    ──► [neue Decision startet eigenen Workflow]
+
+                    Jede Transition schreibt einen Event in
+                    decision_approval_events (append-only Audit-Trail).
+```
+
+### 6. CIA-Findings (Risiken die das Design entschärft)
+
+| ID | Risiko | Severity | Im Design entschärft durch |
+|----|--------|----------|---------------------------|
+| R1 | Decisions-Immutability-Trigger blockt Spalten-Erweiterung | **HIGH** | Eigene Tabelle `decision_approval_state` (1:1) statt Spalten an `decisions` |
+| R2 | PROJ-13-Class-3-Block ist KI-Run-getrieben, greift nicht für Approval-Mails | **HIGH** | Dedizierter `buildApprovalOutboxRow`-Builder mit Eingabe-Whitelist; Architektur-Vorgabe als Code-Review-Pflicht |
+| R3 | Stakeholder-Soft-Delete-Pattern fehlt (Approver verlässt Projekt mid-flight) | **MID** | Cascading-Trigger auf `stakeholders.is_approver` UPDATE/DELETE → invalidiert offene Approvals |
+| R4 | Magic-Link-Replay nach Decision-Revision | **MID** | Token-Validierungs-Reihenfolge: HMAC → tenant_id → expires_at → approval_status → is_revised |
+| R5 | Quorum-Konkurrenz ohne etabliertes Lock-Pattern | **MID** | PostgreSQL `pg_advisory_xact_lock` in DB-Funktion `record_approval_response()` |
+
+**Out-of-spec-Funde** (CIA O1-O3) als spätere PROJ-X-Kandidaten markiert:
+- O1: Privacy-Class-Marker auf `decisions.decision_text` fehlt → PROJ-32-Spike "Governance-Tabellen Privacy-Klassifizierung"
+- O2: Stakeholder-Soft-Delete-Pattern als Cross-Cutting-Architektur-Entscheidung dokumentieren (für PROJ-22 Budget, PROJ-19 Phasen wiederverwendbar)
+- O3: Stakeholder.linked_user_id-Wechsel cascading auf `decision_approvers` → kleiner Trigger in derselben Migration
+
+### 7. Dependencies
+
+**Neue npm-Packages:** keine.
+- HMAC-Signatur via `node:crypto` (Standard-Library)
+- Mail-Versand via existierendes `resend` (PROJ-13)
+- DB-Locks via PostgreSQL-Builtins
+
+**Neue Env-Variablen:** eine.
+- `APPROVAL_TOKEN_SECRET` (256-bit min, in Vercel-Env-Vars)
+
+**Touched-but-unchanged-Code** (zur Awareness, nicht für /backend):
+- `src/lib/decisions/` (neu): `approval-rules.ts` (TS-Konstanten), `approval-mail.ts` (Whitelist-Builder), `token.ts` (HMAC sign/verify)
+- `src/app/api/projects/[id]/decisions/[did]/approval/` (neu): Routes für Submit, Withdraw, Approver-Response
+- `src/app/approve/[token]/` (neu): Public Approval-Page (kein Auth)
+- `src/app/dashboard/approvals/` (neu): Internes Approval-Dashboard
+- `src/components/projects/decisions/` (erweitert): `decision-form.tsx`, `decisions-tab-client.tsx`
+- `supabase/migrations/`: 1 neue Migration mit allen 3 Tabellen + 1 RPC + 2 Trigger + RLS-Policies
+
+### 8. Aufwandsschätzung (Indikation)
+
+- **Backend** (Migration + RPC + Routes + Mail-Builder + Token-Sign/Verify): ~2 Personentage
+- **Frontend** (Decision-Form-Erweiterung + Approval-Page + Dashboard + Audit-Trail-Tab): ~2 Personentage
+- **QA** (Vitest + Playwright + Red-Team-Tests für Token-Forgery, Cross-Tenant-Leak, Body-Leak): ~1 Personentag
+- **Total**: ~5 Personentage. Vergleichbar mit PROJ-30-Komplexität.
+
+### 9. Was NICHT in PROJ-31 ist (Architektur-Boundaries)
+
+- Kein neuer Catalog-DB-Refactor (Approval-Regeln bleiben TS-Modul)
+- Kein neues Mail-Backend (Outbox-Wiederverwendung)
+- Kein Crypto-Hash-Chain für Audit (DB-Felder reichen)
+- Kein App-Layer-Lock (DB-Advisory-Lock)
+- Kein neues npm package
+- Kein KI im Approval-Flow (Class-3-Risk; eigene Spec wenn nötig)
+
+### 10. Approval-Empfehlung
+
+**Umsetzbar mit aktueller Architektur, ohne Stack-Erweiterung.** Die einzige nicht-triviale Risiko-Entschärfung (R2 Mail-Body-Whitelist) ist eine Konstruktionsregel, kein technischer Filter — Architekt + /backend-Phase müssen gemeinsam wachsam sein. Der Rest ist Standard-Pattern-Anwendung.
 
 ## Implementation Notes
 _To be added by /frontend + /backend_
