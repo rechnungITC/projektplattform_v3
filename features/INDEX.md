@@ -47,8 +47,9 @@
 | PROJ-31 | Approval-Gates für formale Decisions (Quorum, Magic-Link für externe Stakeholder) | Deployed | [Spec](PROJ-31-approval-gates-for-decisions.md) | 2026-05-02 |
 | PROJ-32 | Tenant Custom AI Provider Keys (Multi-Provider Anthropic / OpenAI / Google / Ollama) | Reserved | _spec pending — see PRD entry_ | _reserved_ |
 | PROJ-33 | Erweitertes Stakeholder-Management (qualitative Felder + Skill/Big5-Profile + Self-Assessment Magic-Link) | Deployed (33-α + β + γ + δ live) | [Spec](PROJ-33-stakeholder-extension.md) | 2026-05-02 |
-| PROJ-35 | Stakeholder-Wechselwirkungs-Engine (Risiko-Score, Eskalations-Indikatoren, Tonalitäts-Empfehlungen, Critical-Path-Risk, Stakeholder-Health-Dashboard) | 35-α Backend Deployed (35-α Frontend + β + γ pending) | [Spec](PROJ-35-stakeholder-interaction-engine.md) | 2026-05-02 |
+| PROJ-35 | Stakeholder-Wechselwirkungs-Engine (Risiko-Score, Eskalations-Indikatoren, Tonalitäts-Empfehlungen, Critical-Path-Risk, Stakeholder-Health-Dashboard) | Approved (35-α Frontend ready for /deploy · Backend deployed · β + γ pending) | [Spec](PROJ-35-stakeholder-interaction-engine.md) | 2026-05-02 |
+| PROJ-36 | Waterfall-WBS Hierarchy & Roll-up (4-Ebenen-Hierarchie · ltree outline_path · WBS-Code auto+override · Hybrid Roll-up · polymorphe Dependencies per ADR-004) | Planned | [Spec](PROJ-36-waterfall-wbs-hierarchy-rollup.md) | 2026-05-03 |
 
 <!-- Add features above this line -->
 
-## Next Available ID: PROJ-36
+## Next Available ID: PROJ-37
