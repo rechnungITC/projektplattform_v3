@@ -1,6 +1,6 @@
 # PROJ-33: Erweitertes Stakeholder-Management — Stammdaten + Skill/Persönlichkeit + Self-Assessment
 
-## Status: In Progress (Phase 33-α + β + γ Deployed; δ Approved — ready for /deploy)
+## Status: Deployed (Phase 33-α + β + γ + δ live in production)
 **Created:** 2026-05-02
 **Last Updated:** 2026-05-02
 **Phase 33-α Deployed:** 2026-05-02 — Tag: `v1.33.0-PROJ-33-alpha`
@@ -1451,4 +1451,32 @@ Alle UPSERT-Routes verifizieren erst, dass der Stakeholder zum project_id gehör
 3. **Phase 33-δ schließt PROJ-33 vollständig ab.** Nächste sinnvolle Slice: **PROJ-35** (Stakeholder-Wechselwirkungs-Engine — Risk-Score, Eskalations-Indikatoren, Tonalitäts-Empfehlungen) — Tech-Design existiert als Sketched-Spec, ready für `/requirements proj 35` Confirm-Run.
 
 ## Deployment
-_To be added by /deploy_
+
+### Phase 33-α (2026-05-02)
+- Migration `20260502120000_proj33a_stakeholder_qualitative_fields.sql` live via MCP.
+- Frontend + Backend Code-Push: Tag `v1.33.0-PROJ-33-alpha`.
+- Production URL: `https://projektplattform-v3.vercel.app`.
+
+### Phase 33-β (2026-05-02)
+- Migration `20260502160000_proj33b_stakeholder_type_catalog.sql` live via MCP.
+- Frontend + Backend Code-Push: Tag `v1.33.0-PROJ-33-beta`.
+
+### Phase 33-γ (2026-05-02)
+- Migration `20260502180000_proj33c_skill_personality_profiles.sql` live via MCP.
+- Frontend + Backend Code-Push: Tag `v1.33.0-PROJ-33-gamma`.
+
+### Phase 33-δ (2026-05-02)
+- **Migration:** `20260502200000_proj33d_self_assessment_invites.sql` live via MCP (live-version `20260502201449`). Schema verified: 11 Spalten, 4 Indexes, 3 RLS Policies, `updated_at`-Trigger, status-CHECK-Constraint.
+- **Code-Push:** Commits `4255af1` (Backend + Frontend) + `cbc3fd1` (QA Test Results) gepusht zu `origin/main`. Vercel Auto-Deploy triggered.
+- **Tag:** `v1.33.0-PROJ-33-delta` erstellt + gepusht.
+- **Production URL:** `https://projektplattform-v3.vercel.app`.
+- **3 neue Routes im Manifest:**
+  - `/api/projects/[id]/stakeholders/[sid]/self-assessment-invite` (POST · DELETE)
+  - `/api/self-assessment/[token]` (GET · POST · public, token-auth)
+  - `/self-assessment/[token]` (public Page, kein Login)
+- **Deployment-Verification (User-Action empfohlen):**
+  - Browser-Test: Stakeholder-Detail → "Self-Assessment versenden" → Outbox-Mail in Communication-Center checken → Magic-Link kopieren → Inkognito-Tab öffnen → Sliders bedienen → Submit → PM-View zeigt Self+Fremd-Overlay im Radar-Chart.
+  - Re-open des verbrauchten Tokens muss "Bereits abgegeben"-Page zeigen (idempotency).
+  - Revoke-Workflow: Pending-Invite via Card revoken → Token-Klick zeigt "Einladung zurückgezogen"-Page.
+
+**Phase 33-δ schließt PROJ-33 vollständig ab. Nächste sinnvolle Slice: PROJ-35 (Stakeholder-Wechselwirkungs-Engine).**
