@@ -6,16 +6,22 @@ import {
   getAuthenticatedUserId,
   requireTenantAdmin,
 } from "../../../_lib/route-helpers"
+import {
+  SUPPORTED_CURRENCIES,
+  VELOCITY_FACTOR_MAX,
+  VELOCITY_FACTOR_MIN,
+} from "@/types/tenant-settings"
 
 // PROJ-17 — GET/PATCH /api/tenants/[id]/settings
 //
 // Admin-only configuration surface for module gating, privacy defaults,
-// AI-provider selection, and retention overrides. RLS additionally enforces
-// tenant_admin (with the same predicate as `requireTenantAdmin`) — this
-// route fails fast with a friendly 403 instead of leaking RLS-shape errors.
+// AI-provider selection, retention overrides, and (PROJ-24 ST-02) cost-stack
+// defaults. RLS additionally enforces tenant_admin (with the same predicate
+// as `requireTenantAdmin`) — this route fails fast with a friendly 403
+// instead of leaking RLS-shape errors.
 
 const SELECT_COLUMNS =
-  "tenant_id, active_modules, privacy_defaults, ai_provider_config, retention_overrides, created_at, updated_at"
+  "tenant_id, active_modules, privacy_defaults, ai_provider_config, retention_overrides, cost_settings, created_at, updated_at"
 
 const TOGGLEABLE_MODULES = [
   "risks",
@@ -51,22 +57,37 @@ const retentionOverridesSchema = z
   })
   .strict()
 
+// PROJ-24 ST-02 — cost-settings JSONB column.
+const costSettingsSchema = z
+  .object({
+    velocity_factor: z
+      .number()
+      .min(VELOCITY_FACTOR_MIN, `velocity_factor >= ${VELOCITY_FACTOR_MIN}`)
+      .max(VELOCITY_FACTOR_MAX, `velocity_factor <= ${VELOCITY_FACTOR_MAX}`),
+    default_currency: z.enum(
+      SUPPORTED_CURRENCIES as unknown as [string, ...string[]]
+    ),
+  })
+  .strict()
+
 const settingsPatchSchema = z
   .object({
     active_modules: z.array(moduleSchema).optional(),
     privacy_defaults: privacyDefaultsSchema.optional(),
     ai_provider_config: aiProviderConfigSchema.optional(),
     retention_overrides: retentionOverridesSchema.optional(),
+    cost_settings: costSettingsSchema.optional(),
   })
   .refine(
     (val) =>
       val.active_modules !== undefined ||
       val.privacy_defaults !== undefined ||
       val.ai_provider_config !== undefined ||
-      val.retention_overrides !== undefined,
+      val.retention_overrides !== undefined ||
+      val.cost_settings !== undefined,
     {
       message:
-        "Provide at least one of: active_modules, privacy_defaults, ai_provider_config, retention_overrides.",
+        "Provide at least one of: active_modules, privacy_defaults, ai_provider_config, retention_overrides, cost_settings.",
     }
   )
 
@@ -138,6 +159,8 @@ export async function PATCH(request: Request, ctx: Ctx) {
     updates.ai_provider_config = parsed.data.ai_provider_config
   if (parsed.data.retention_overrides !== undefined)
     updates.retention_overrides = parsed.data.retention_overrides
+  if (parsed.data.cost_settings !== undefined)
+    updates.cost_settings = parsed.data.cost_settings
 
   const { data, error } = await supabase
     .from("tenant_settings")

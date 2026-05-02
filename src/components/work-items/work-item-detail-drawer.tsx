@@ -35,6 +35,7 @@ import type { ProjectMethod } from "@/types/project-method"
 
 import { ChangeKindDialog } from "./change-kind-dialog"
 import { WorkItemAllocations } from "./work-item-allocations"
+import { WorkItemCostSection } from "./work-item-cost-section"
 import { ChangeParentDialog } from "./change-parent-dialog"
 import { ChangeSprintDialog } from "./change-sprint-dialog"
 import { ChangeStatusDialog } from "./change-status-dialog"
@@ -211,6 +212,13 @@ export function WorkItemDetailDrawer({
 
               {/* Resource allocation (PROJ-11) */}
               <WorkItemAllocations
+                projectId={projectId}
+                workItemId={item.id}
+                canEdit={canEdit}
+              />
+
+              {/* Plan-Kosten (PROJ-24) */}
+              <WorkItemCostSection
                 projectId={projectId}
                 workItemId={item.id}
                 canEdit={canEdit}

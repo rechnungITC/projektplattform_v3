@@ -22,7 +22,17 @@ import {
   TableHeader,
   TableRow,
 } from "@/components/ui/table"
+import {
+  Tooltip,
+  TooltipContent,
+  TooltipProvider,
+  TooltipTrigger,
+} from "@/components/ui/tooltip"
 import { useProjectAccess } from "@/hooks/use-project-access"
+import {
+  listWorkItemCostTotals,
+  type WorkItemCostTotal,
+} from "@/lib/cost/api"
 import {
   WORK_ITEM_KIND_LABELS,
   type WorkItemWithProfile,
@@ -62,6 +72,9 @@ export function BacklogList({
     return map
   }, [items])
 
+  // PROJ-24 — Plan-Kosten pro Item, eine Batched-Fetch.
+  const costsByItem = useWorkItemCostTotals(projectId, items.length)
+
   if (loading) {
     return (
       <div role="status" aria-label="Lädt Work Items" className="space-y-2">
@@ -99,6 +112,7 @@ export function BacklogList({
             <TableHead className="w-24">Priorität</TableHead>
             <TableHead className="w-44">Verantwortlich</TableHead>
             <TableHead className="w-48">Übergeordnet</TableHead>
+            <TableHead className="w-32 text-right">Plan-Kosten</TableHead>
             <TableHead className="w-12 text-right" aria-label="Aktionen" />
           </TableRow>
         </TableHeader>
@@ -167,6 +181,9 @@ export function BacklogList({
                   )}
                 </TableCell>
                 <TableCell className="text-right">
+                  <CostCell rows={costsByItem.get(item.id) ?? []} />
+                </TableCell>
+                <TableCell className="text-right">
                   {canEdit ? (
                     <DropdownMenu>
                       <DropdownMenuTrigger asChild>
@@ -232,4 +249,129 @@ export function BacklogList({
       </Table>
     </div>
   )
+}
+
+/**
+ * PROJ-24 — fetch per-item cost-totals once per project, key by work_item_id.
+ * Each work-item may have multiple rows in the view (one per currency).
+ */
+function useWorkItemCostTotals(
+  projectId: string,
+  itemCount: number
+): Map<string, WorkItemCostTotal[]> {
+  const [byItem, setByItem] = React.useState<Map<string, WorkItemCostTotal[]>>(
+    () => new Map()
+  )
+
+  React.useEffect(() => {
+    if (itemCount === 0) {
+      setByItem(new Map())
+      return
+    }
+    let cancelled = false
+    void (async () => {
+      try {
+        const totals = await listWorkItemCostTotals(projectId)
+        if (cancelled) return
+        const map = new Map<string, WorkItemCostTotal[]>()
+        for (const t of totals) {
+          const arr = map.get(t.work_item_id) ?? []
+          arr.push(t)
+          map.set(t.work_item_id, arr)
+        }
+        setByItem(map)
+      } catch {
+        // Cost-totals are an optional surface — fail silently to keep the
+        // backlog functional even if the cost-stack errors.
+        if (!cancelled) setByItem(new Map())
+      }
+    })()
+    return () => {
+      cancelled = true
+    }
+  }, [projectId, itemCount])
+
+  return byItem
+}
+
+interface CostCellProps {
+  rows: WorkItemCostTotal[]
+}
+
+function CostCell({ rows }: CostCellProps) {
+  // No cost-lines or all empty → "—"
+  const meaningful = rows.filter(
+    (r) => r.cost_lines_count > 0 && r.total_cost != null && r.currency != null
+  )
+  if (meaningful.length === 0) {
+    return <span className="text-xs text-muted-foreground">—</span>
+  }
+
+  const isMultiCurrency = meaningful.length > 1
+  const isEstimated = meaningful.some((r) => r.is_estimated)
+
+  // Use the first row for the inline display (most-frequent currency from
+  // the view); a tooltip lists all currency buckets.
+  const primary = meaningful[0]
+  const inline = (
+    <span className="font-mono tabular-nums">
+      {isEstimated ? "≈ " : ""}
+      {formatCostAmount(Number(primary.total_cost))} {primary.currency}
+    </span>
+  )
+
+  if (!isMultiCurrency && !isEstimated) {
+    return inline
+  }
+
+  const tooltipLines: string[] = []
+  if (isEstimated) {
+    tooltipLines.push("Story-Point-basiert (geschätzt)")
+  }
+  if (isMultiCurrency) {
+    tooltipLines.push("Mehrere Währungen:")
+    for (const r of meaningful) {
+      tooltipLines.push(
+        `  ${formatCostAmount(Number(r.total_cost))} ${r.currency}`
+      )
+    }
+    tooltipLines.push("(FX-Konvertierung in Reports)")
+  }
+
+  return (
+    <TooltipProvider delayDuration={150}>
+      <Tooltip>
+        <TooltipTrigger asChild>
+          <span className="cursor-help font-mono tabular-nums">
+            {isEstimated ? "≈ " : ""}
+            {isMultiCurrency
+              ? `${meaningful.length}×`
+              : formatCostAmount(Number(primary.total_cost))}{" "}
+            {!isMultiCurrency ? primary.currency : ""}
+          </span>
+        </TooltipTrigger>
+        <TooltipContent side="left">
+          <div className="whitespace-pre text-xs">
+            {tooltipLines.join("\n")}
+          </div>
+        </TooltipContent>
+      </Tooltip>
+    </TooltipProvider>
+  )
+}
+
+function formatCostAmount(value: number): string {
+  if (value >= 1_000_000) {
+    return (value / 1_000_000).toLocaleString("de-DE", {
+      minimumFractionDigits: 1,
+      maximumFractionDigits: 1,
+    }) + " M"
+  }
+  if (value >= 10_000) {
+    return Math.round(value).toLocaleString("de-DE")
+  }
+  return value.toLocaleString("de-DE", {
+    minimumFractionDigits: 2,
+    maximumFractionDigits: 2,
+  })
 }

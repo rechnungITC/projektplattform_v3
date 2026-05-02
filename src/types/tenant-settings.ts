@@ -98,6 +98,28 @@ export interface OutputRenderingSettings {
   ki_narrative_enabled: boolean
 }
 
+/**
+ * PROJ-24 ST-02 — Cost-stack defaults at the tenant level.
+ *
+ * `velocity_factor` is the conversion factor from Story Points to
+ * person-days for SP-based work-items (Stories). Range [0.1, 5.0],
+ * default 0.5 (i.e. one Fibonacci point ≈ a half person-day).
+ * `default_currency` is used as the default for newly-created role rates
+ * and manual cost-lines.
+ */
+export interface CostSettings {
+  velocity_factor: number
+  default_currency: SupportedCurrency
+}
+
+export const COST_SETTINGS_DEFAULTS: CostSettings = {
+  velocity_factor: 0.5,
+  default_currency: "EUR",
+}
+
+export const VELOCITY_FACTOR_MIN = 0.1
+export const VELOCITY_FACTOR_MAX = 5.0
+
 export interface TenantSettings {
   tenant_id: string
   active_modules: ModuleKey[]
@@ -106,6 +128,7 @@ export interface TenantSettings {
   retention_overrides: RetentionOverrides
   budget_settings: BudgetSettings
   output_rendering_settings: OutputRenderingSettings
+  cost_settings: CostSettings
   created_at: string
   updated_at: string
 }

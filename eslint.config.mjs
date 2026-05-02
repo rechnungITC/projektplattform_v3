@@ -162,6 +162,10 @@ const config = [
       // dialog-reset patterns identical to existing rule)
       "src/components/stakeholders/profile/profile-tab.tsx",
       "src/components/stakeholders/profile/profile-edit-sheet.tsx",
+      // PROJ-24-ε: cost-stack frontend dialogs + backlog cost-totals fetch.
+      "src/components/cost/tenant-role-rates-page-client.tsx",
+      "src/components/work-items/work-item-cost-section.tsx",
+      "src/components/work-items/backlog-list.tsx",
     ],
     rules: {
       "react-hooks/set-state-in-effect": "off",

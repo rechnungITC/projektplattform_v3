@@ -5,6 +5,7 @@
 
 import type {
   AiProviderConfig,
+  CostSettings,
   ModuleKey,
   PrivacyDefaults,
   RetentionOverrides,
@@ -44,6 +45,7 @@ export interface TenantSettingsPatch {
   privacy_defaults?: PrivacyDefaults
   ai_provider_config?: AiProviderConfig
   retention_overrides?: RetentionOverrides
+  cost_settings?: CostSettings
 }
 
 export async function updateTenantSettings(

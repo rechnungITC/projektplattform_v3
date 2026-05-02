@@ -153,7 +153,7 @@ export function AuthProvider({
         supabase
           .from("tenant_settings")
           .select(
-            "tenant_id, active_modules, privacy_defaults, ai_provider_config, retention_overrides, created_at, updated_at"
+            "tenant_id, active_modules, privacy_defaults, ai_provider_config, retention_overrides, cost_settings, created_at, updated_at"
           )
           .eq("tenant_id", currentTenantId)
           .maybeSingle(),

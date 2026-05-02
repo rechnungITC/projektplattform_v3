@@ -257,6 +257,7 @@ describe("filterSectionsByModules", () => {
       retention_overrides: {},
       budget_settings: { default_currency: "EUR" },
       output_rendering_settings: { ki_narrative_enabled: false },
+      cost_settings: { velocity_factor: 0.5, default_currency: "EUR" },
       created_at: "",
       updated_at: "",
     }
@@ -401,6 +402,7 @@ describe("module-gating matrix (8 methods × 6 modules)", () => {
       retention_overrides: {},
       budget_settings: { default_currency: "EUR" },
       output_rendering_settings: { ki_narrative_enabled: false },
+      cost_settings: { velocity_factor: 0.5, default_currency: "EUR" },
       created_at: "",
       updated_at: "",
     }

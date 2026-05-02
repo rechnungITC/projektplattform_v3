@@ -13,6 +13,7 @@ function settings(modules: TenantSettings["active_modules"]): TenantSettings {
     retention_overrides: {},
     budget_settings: { default_currency: "EUR" },
     output_rendering_settings: { ki_narrative_enabled: false },
+    cost_settings: { velocity_factor: 0.5, default_currency: "EUR" },
     created_at: "2026-04-29T00:00:00Z",
     updated_at: "2026-04-29T00:00:00Z",
   }

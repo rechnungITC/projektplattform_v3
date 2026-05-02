@@ -14,6 +14,7 @@ import { useAuth } from "@/hooks/use-auth"
 
 import { AiProviderSection } from "./ai-provider-section"
 import { BaseDataSection } from "./base-data-section"
+import { CostDefaultsSection } from "./cost-defaults-section"
 import { DangerZoneSection } from "./danger-zone-section"
 import { ModulesSection } from "./modules-section"
 import { PrivacySection } from "./privacy-section"
@@ -62,6 +63,7 @@ export function TenantSettingsSections() {
       <BaseDataSection />
       <ModulesSection />
       <PrivacySection />
+      <CostDefaultsSection />
       <AiProviderSection />
       <DangerZoneSection />
     </div>

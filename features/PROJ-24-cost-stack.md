@@ -1,6 +1,6 @@
 # PROJ-24: Cost-Stack — Tagessätze pro Rolle, Velocity-Modell & Kosten pro Work-Item
 
-## Status: In Progress (Phase 24-δ Backend done — Frontend pending)
+## Status: In Progress (Phase 24-ε Frontend done — ready for QA + branch merge)
 **Created:** 2026-04-30
 **Last Updated:** 2026-05-02
 
@@ -496,6 +496,85 @@ Each hook resolves the tenant_id from the project, instantiates a service-role a
 - Tenant-Settings-Page: neuer Abschnitt "Kosten-Defaults" (`velocity_factor`, `default_currency`).
 - Work-Item-Drawer: neuer Abschnitt "Kosten" (Total + Aufschlüsselung pro Cost-Line + manuelle Cost-Line-Action + Multi-Currency-Banner wenn `multi_currency_count > 0`).
 - Backlog-Liste: kleine Cost-Cell pro Item-Zeile mit "≈"-Tilde für SP-basiert (`is_estimated=true`).
+
+### Phase 24-ε — Frontend (`/frontend`, 2026-05-02)
+
+**Built — 4 surfaces, all using shadcn/ui primitives:**
+
+#### Slice A — Admin-Page `/settings/tenant/role-rates`
+- `src/app/(app)/settings/tenant/role-rates/page.tsx` (15 Z., RSC wrapper).
+- `src/components/cost/tenant-role-rates-page-client.tsx` (~370 Z.) — Tab-frei,
+  Card-pro-Rolle Layout. Rollen werden gruppiert + valid_from-Historie pro
+  Rolle absteigend sortiert. Status-Badge pro Rate: "Aktiv" (jüngstes mit
+  `valid_from ≤ heute`), "Zukünftig" (`valid_from > heute`), "Historisch".
+- `CreateRoleRateDialog` mit `<datalist>` für existierende `role_key`-Werte
+  (Free-Text-Input, kein FK auf Catalog — bewusst gewählt per Locked-Decision §4 #4).
+- Delete-Confirm warnt explizit, dass bestehende Cost-Lines NICHT zurückgerechnet
+  werden (Replace-on-Update fired nur bei Allocation/Item-Updates).
+- Admin-only via `useAuth().currentRole === 'admin'` Gate (RLS = defense-in-depth).
+- `src/types/role-rate.ts`, `src/lib/role-rates/api.ts`, `src/hooks/use-role-rates.ts`
+  als unterstützende Module — Pattern 1:1 von PROJ-22 fx-rates kopiert.
+
+#### Slice B — Tenant-Settings Cost-Defaults
+- `src/components/settings/tenant/cost-defaults-section.tsx` (~190 Z.) — react-hook-form +
+  zodResolver, 2-Spalten-Layout (`velocity_factor` + `default_currency`).
+- Eingebettet in `tenant-settings-sections.tsx` zwischen `PrivacySection`
+  und `AiProviderSection`.
+- **API-Erweiterung** (gehört zu ST-02, war noch offen): `GET/PATCH /api/tenants/[id]/settings`
+  hat jetzt `cost_settings` in `SELECT_COLUMNS`, im Zod `costSettingsSchema`
+  (`velocity_factor` ∈ [0.1, 5.0] + `default_currency` aus `SUPPORTED_CURRENCIES`),
+  und im PATCH-Update-Pfad. `TenantSettings.cost_settings` als TS-Interface
+  `CostSettings` ergänzt; `COST_SETTINGS_DEFAULTS` als Konstante exportiert.
+- `useAuth.tsx` SELECT-Liste um `cost_settings` erweitert, damit das Tenant-Snapshot
+  den neuen Default trägt — das vermeidet eine Round-Trip-Latenz beim
+  ersten Sheet-Open.
+- 3 Test-Fixtures in `routing.test.ts` (×2) und `modules.test.ts` um
+  `cost_settings: { velocity_factor: 0.5, default_currency: "EUR" }` ergänzt.
+
+#### Slice C — Work-Item-Drawer Cost-Section
+- `src/components/work-items/work-item-cost-section.tsx` (~430 Z.) —
+  Card mit `Receipt`-Icon, Plan-Kosten-Total + Cost-Line-Tabelle.
+- **Multi-Currency-Banner**: wenn Cost-Lines verschiedene Währungen haben,
+  zeigt eine Alert + die Aggregat-Anzeige listet pro Währung getrennt
+  (kein silentes Summieren — Locked-Decision aus γ + §10 spec).
+- **Engine-Hints**: `source_metadata.warning` wird in Klartext umgewandelt
+  ("Tagessatz für Rolle fehlt" / "Stakeholder ohne Rolle" / "Ressource ohne
+  Stakeholder-Bezug" / "Weder Dauer noch SP gepflegt").
+- **≈-Prefix** für SP-basierte Lines (`source_metadata.basis === "story_points"`).
+- `ManualCostLineDialog` für `source_type='manual'` Cost-Lines mit
+  `default_currency` aus den Tenant-Settings vorgewählt + Class-3-Hinweis
+  unter dem Notes-Feld.
+- Eingebettet in `work-item-detail-drawer.tsx` zwischen Allocations (PROJ-11)
+  und Compliance (PROJ-18).
+- `src/lib/cost/api.ts` — neue `WorkItemCostLine`/`ManualCostLineInput`-Types
+  + `listWorkItemCostLines` / `createManualCostLine` Wrappers.
+
+#### Slice D — Backlog Cost-Cell
+- **Neue Spalte "Plan-Kosten"** in `backlog-list.tsx` (32-tw Breite, rechtsbündig).
+- `useWorkItemCostTotals(projectId, itemCount)` macht **eine** Batched-Fetch
+  pro Backlog-Render (kein N+1) und keyed nach `work_item_id` → Cell-Lookup
+  in O(1). Failt silently (Cost-Stack-Fehler darf Backlog nicht blocken).
+- `CostCell`-Komponente: kompakte Anzeige mit Tausender-Abkürzung
+  ("≈ 4,5 M EUR", "12.480 EUR"), Tooltip listet Multi-Currency-Buckets
+  + Estimated-Kontext.
+- **Neuer Endpoint** `GET /api/projects/[id]/work-item-cost-totals` — flacher
+  Read aus `work_item_cost_totals`-View, 1 Row pro `(work_item_id, currency)`,
+  RLS-gated. Pattern: `requireProjectAccess(...,"view")` + 2000-Row-Limit.
+
+**Verification:**
+- `npx tsc --noEmit` exit 0
+- `npm run lint` exit 0 (4 neue Files in PROJ-29 `set-state-in-effect`-Override-Liste:
+  `cost/tenant-role-rates-page-client.tsx`, `work-items/work-item-cost-section.tsx`,
+  `work-items/backlog-list.tsx`)
+- `npm test --run` 690/690 (unverändert — keine neuen Test-Cases, /qa wird E2E ergänzen)
+- `npm run build` green; alle 7 PROJ-24-Routen + neue Page im Manifest:
+  - `/api/tenants/[id]/role-rates` (+ `/[rid]`)
+  - `/api/projects/[id]/cost-summary`
+  - `/api/projects/[id]/work-items/[wid]/cost-lines`
+  - `/api/projects/[id]/work-item-cost-totals` (NEU für Backlog-Cell)
+  - `/settings/tenant/role-rates` (NEU)
+
+**Phase 24-ε komplett. Ready für `/qa proj 24` und Branch-Merge in `main`.**
 
 ## QA Test Results
 _To be added by /qa_
