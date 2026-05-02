@@ -25,6 +25,7 @@ import {
   FormMessage,
 } from "@/components/ui/form"
 import { Input } from "@/components/ui/input"
+import { Label } from "@/components/ui/label"
 import { useAuth } from "@/hooks/use-auth"
 import { createClient } from "@/lib/supabase/client"
 
@@ -123,12 +124,18 @@ function DisplayNameCard() {
                 <AlertDescription>{formError}</AlertDescription>
               </Alert>
             )}
-            <FormItem>
-              <FormLabel>Email</FormLabel>
-              <FormControl>
-                <Input value={profile?.email ?? user.email ?? ""} disabled />
-              </FormControl>
-            </FormItem>
+            {/* Email is read-only and not part of the form state, so it
+                uses plain Label/Input instead of FormItem/FormLabel/
+                FormControl which would call `useFormField` outside a
+                FormField context (shadcn/ui requires the wrapper). */}
+            <div className="space-y-2">
+              <Label htmlFor="profile-email">Email</Label>
+              <Input
+                id="profile-email"
+                value={profile?.email ?? user.email ?? ""}
+                disabled
+              />
+            </div>
             <FormField
               control={form.control}
               name="display_name"
