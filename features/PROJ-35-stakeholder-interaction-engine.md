@@ -1,6 +1,6 @@
 # PROJ-35: Stakeholder-Wechselwirkungs-Engine — Risiko-Score, Eskalations-Indikatoren & Tonalitäts-Empfehlungen
 
-## Status: 35-α Deployed (Backend + Frontend live); β + γ pending
+## Status: 35-α Deployed · 35-β implementiert (ready for /qa) · γ pending
 **Created:** 2026-05-02
 **Last Updated:** 2026-05-03 (35-α Frontend live in production; Tag v1.35.1-PROJ-35-alpha-frontend)
 
@@ -539,8 +539,53 @@ CHECK-Constraint auf `event_type` muss in 35-α-Migration erweitert werden um de
 
 **Phase 35-α Backend complete. Frontend Tenant-Admin-Page (`/settings/tenant/risk-score`) folgt in `/frontend proj 35`. Danach `/qa proj 35` für 35-α.**
 
-### Phase 35-β
-_Not yet started._
+### Phase 35-β (2026-05-03)
+
+**Implementation:**
+
+- **Migration `20260503190000_proj35b_phases_is_critical.sql`** (live applied via MCP):
+  - `phases.is_critical BOOLEAN NOT NULL DEFAULT false` — Domain-autoritativer Critical-Path-Marker
+  - Wird in 35-γ Health-Dashboard für Critical-Path-Indikator konsumiert; Heuristik-Fallback (target_date < end - 14d) bleibt verfügbar wenn alle Phasen `false` sind
+
+- **Profile-Bundle-Endpoint erweitert** (`/api/projects/[id]/stakeholders/[sid]/profile`):
+  - SELECT auf `stakeholders` ergänzt um `attitude, conflict_potential, decision_authority, influence, impact, communication_need, preferred_channel, current_escalation_patterns`
+  - Zusätzlicher Read von `tenant_settings.risk_score_overrides` (für Multiplikator-Resolution clientseitig)
+  - Bundle-Response erweitert um 3 neue Felder: `stakeholder_qualitative` · `escalation_patterns` (Snapshot) · `risk_score_overrides`
+  - Type `StakeholderProfileBundle` in `src/types/stakeholder-profile.ts` entsprechend erweitert (Felder optional für Backwards-Compat)
+
+- **4 neue UI-Komponenten unter `src/components/stakeholders/risk/`:**
+  - `risk-banner.tsx` — Score 0..10 + Bucket-Farbe (rot/orange/gelb/grün) + Tooltip-Aufschlüsselung mit allen 6 Faktoren; Big5-missing-Hint
+  - `escalation-pattern-banner.tsx` — 0..N Alerts pro aktivem Pattern, sortiert nach Severity DESC; severity ≥ 4 → destructive variant
+  - `tonality-card.tsx` — Empfohlener Kommunikationsstil (Tonalität/Detailtiefe/Kanal) + max 4 Notes; "Profil unvollständig"-Badge bei Fallback
+  - `perception-gap-section.tsx` — Skill + Big5 separate Aggregate mit Coverage-Threshold; Empty-State mit "Self-Assessment versenden"-CTA wenn keine Self-Werte
+
+- **Integration in `profile-tab.tsx`:**
+  - `mergeRiskScoreConfig` aus tenant overrides
+  - `computeRiskScore` mit Big5-Modifier
+  - `detectEscalationPatterns` (TS mirror der PG-Function)
+  - `resolveTonality` mit `communication_need='critical'`-Override
+  - `computeSkillGap` + `computeBig5Gap` mit 60%-Coverage
+  - `handleInviteSelfAssessment` ruft `createSelfAssessmentInvite` (PROJ-33-δ-API)
+  - Alle 4 neuen Komponenten am Top des Profil-Tabs (vor Self-Assessment-Card + Charts)
+
+**B-Block Coverage (35-β-Scope):**
+
+- ✅ B1.6 Risk-Banner mit Tooltip-Aufschlüsselung
+- ✅ B2.4 Wahrnehmungslücke geflagged ab `|delta| ≥ 30`, sortiert DESC
+- ✅ B2.5 "Self-Assessment noch ausstehend"-CTA mit PROJ-33-δ-Invite
+- ✅ B3.2 Pattern-Banner als `Alert variant=destructive` (severity≥4)
+- ✅ B4.5 Tonalitäts-Card mit "Empfohlener Kommunikationsstil" + 3 Sub-Felder + Notes
+- ⏳ B5.1-B5.5 Critical-Path-Indikator → in 35-γ (braucht Stakeholder×Work-Item-Join + Health-Dashboard-Compute-Strategy)
+
+**Verification:**
+
+- ✅ `npx tsc --noEmit` exit 0
+- ✅ `npm run lint` exit 0
+- ✅ `npm test --run` 775/775 unverändert grün
+- ✅ `npm run build` green
+- Migration live via MCP
+
+**Phase 35-β Backend + Frontend implemented. Browser-Test User-Action: Stakeholder öffnen → Profil-Tab → Risk-Banner mit Score sollte sichtbar sein, ggf. Pattern-Banner wenn Hochrisiko-Konstellation, Tonalitäts-Card wenn Big5 vollständig, Wahrnehmungslücke-Section mit Self-Assessment-CTA wenn keine Self-Werte.**
 
 ### Phase 35-γ
 _Not yet started._
@@ -896,8 +941,53 @@ User-Direktive: alle 5 Bugs in einem Refactor-Cycle gefixt vor /deploy.
   - Member-View: als nicht-Admin User auf Page → "Nur für Tenant-Admins"-Alert
 - **Phase 35-α ist damit vollständig live (Backend + Frontend).**
 
-### Phase 35-β
-_Not yet started._
+### Phase 35-β (2026-05-03)
+
+**Implementation:**
+
+- **Migration `20260503190000_proj35b_phases_is_critical.sql`** (live applied via MCP):
+  - `phases.is_critical BOOLEAN NOT NULL DEFAULT false` — Domain-autoritativer Critical-Path-Marker
+  - Wird in 35-γ Health-Dashboard für Critical-Path-Indikator konsumiert; Heuristik-Fallback (target_date < end - 14d) bleibt verfügbar wenn alle Phasen `false` sind
+
+- **Profile-Bundle-Endpoint erweitert** (`/api/projects/[id]/stakeholders/[sid]/profile`):
+  - SELECT auf `stakeholders` ergänzt um `attitude, conflict_potential, decision_authority, influence, impact, communication_need, preferred_channel, current_escalation_patterns`
+  - Zusätzlicher Read von `tenant_settings.risk_score_overrides` (für Multiplikator-Resolution clientseitig)
+  - Bundle-Response erweitert um 3 neue Felder: `stakeholder_qualitative` · `escalation_patterns` (Snapshot) · `risk_score_overrides`
+  - Type `StakeholderProfileBundle` in `src/types/stakeholder-profile.ts` entsprechend erweitert (Felder optional für Backwards-Compat)
+
+- **4 neue UI-Komponenten unter `src/components/stakeholders/risk/`:**
+  - `risk-banner.tsx` — Score 0..10 + Bucket-Farbe (rot/orange/gelb/grün) + Tooltip-Aufschlüsselung mit allen 6 Faktoren; Big5-missing-Hint
+  - `escalation-pattern-banner.tsx` — 0..N Alerts pro aktivem Pattern, sortiert nach Severity DESC; severity ≥ 4 → destructive variant
+  - `tonality-card.tsx` — Empfohlener Kommunikationsstil (Tonalität/Detailtiefe/Kanal) + max 4 Notes; "Profil unvollständig"-Badge bei Fallback
+  - `perception-gap-section.tsx` — Skill + Big5 separate Aggregate mit Coverage-Threshold; Empty-State mit "Self-Assessment versenden"-CTA wenn keine Self-Werte
+
+- **Integration in `profile-tab.tsx`:**
+  - `mergeRiskScoreConfig` aus tenant overrides
+  - `computeRiskScore` mit Big5-Modifier
+  - `detectEscalationPatterns` (TS mirror der PG-Function)
+  - `resolveTonality` mit `communication_need='critical'`-Override
+  - `computeSkillGap` + `computeBig5Gap` mit 60%-Coverage
+  - `handleInviteSelfAssessment` ruft `createSelfAssessmentInvite` (PROJ-33-δ-API)
+  - Alle 4 neuen Komponenten am Top des Profil-Tabs (vor Self-Assessment-Card + Charts)
+
+**B-Block Coverage (35-β-Scope):**
+
+- ✅ B1.6 Risk-Banner mit Tooltip-Aufschlüsselung
+- ✅ B2.4 Wahrnehmungslücke geflagged ab `|delta| ≥ 30`, sortiert DESC
+- ✅ B2.5 "Self-Assessment noch ausstehend"-CTA mit PROJ-33-δ-Invite
+- ✅ B3.2 Pattern-Banner als `Alert variant=destructive` (severity≥4)
+- ✅ B4.5 Tonalitäts-Card mit "Empfohlener Kommunikationsstil" + 3 Sub-Felder + Notes
+- ⏳ B5.1-B5.5 Critical-Path-Indikator → in 35-γ (braucht Stakeholder×Work-Item-Join + Health-Dashboard-Compute-Strategy)
+
+**Verification:**
+
+- ✅ `npx tsc --noEmit` exit 0
+- ✅ `npm run lint` exit 0
+- ✅ `npm test --run` 775/775 unverändert grün
+- ✅ `npm run build` green
+- Migration live via MCP
+
+**Phase 35-β Backend + Frontend implemented. Browser-Test User-Action: Stakeholder öffnen → Profil-Tab → Risk-Banner mit Score sollte sichtbar sein, ggf. Pattern-Banner wenn Hochrisiko-Konstellation, Tonalitäts-Card wenn Big5 vollständig, Wahrnehmungslücke-Section mit Self-Assessment-CTA wenn keine Self-Werte.**
 
 ### Phase 35-γ
 _Not yet started._

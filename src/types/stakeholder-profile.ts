@@ -132,12 +132,41 @@ export interface SelfAssessmentInviteSummary {
   created_at: string
 }
 
+/** PROJ-35 Phase 35-β — qualitative + risk-derived fields piggy-backed on
+ *  the profile bundle so the UI can render banners + tonality without a
+ *  separate round-trip. Optional for backwards compatibility with older
+ *  bundle responses. */
+export interface StakeholderQualitativeFields {
+  attitude: "supportive" | "neutral" | "critical" | "blocking" | null
+  conflict_potential: "low" | "medium" | "high" | "critical" | null
+  decision_authority:
+    | "none"
+    | "advisory"
+    | "recommending"
+    | "deciding"
+    | null
+  influence: "low" | "medium" | "high" | "critical" | null
+  impact: "low" | "medium" | "high" | "critical" | null
+  communication_need: "low" | "medium" | "high" | "critical" | null
+  preferred_channel: string | null
+}
+
 export interface StakeholderProfileBundle {
   skill: StakeholderSkillProfile | null
   personality: StakeholderPersonalityProfile | null
   events: StakeholderProfileAuditEvent[]
   /** Most recent invite (any status) — null if no invite was ever sent. */
   latest_invite: SelfAssessmentInviteSummary | null
+  /** PROJ-35-β — qualitative fields read from `stakeholders` for the
+   *  Risk-Banner / Tonality computation. */
+  stakeholder_qualitative?: StakeholderQualitativeFields | null
+  /** PROJ-35-β — current snapshot of detected escalation patterns (from
+   *  `stakeholders.current_escalation_patterns`). Maintained by the
+   *  PG audit-trigger on stakeholder + Big5 changes. */
+  escalation_patterns?: string[]
+  /** PROJ-35-β — tenant-level multiplier overrides; merged with TS-defaults
+   *  client-side to compute the effective Risk-Score. */
+  risk_score_overrides?: Record<string, unknown>
 }
 
 /**

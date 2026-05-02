@@ -9,10 +9,26 @@ import {
   type RadarPoint,
 } from "@/components/stakeholders/profile/profile-radar-chart"
 import { ProfileEditSheet } from "@/components/stakeholders/profile/profile-edit-sheet"
+import { EscalationPatternBanner } from "@/components/stakeholders/risk/escalation-pattern-banner"
+import { PerceptionGapSection } from "@/components/stakeholders/risk/perception-gap-section"
+import { RiskBanner } from "@/components/stakeholders/risk/risk-banner"
+import { TonalityCard } from "@/components/stakeholders/risk/tonality-card"
 import { Badge } from "@/components/ui/badge"
 import { Button } from "@/components/ui/button"
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
 import { Skeleton } from "@/components/ui/skeleton"
+import { resolveTonality } from "@/lib/risk-score/big5-tonality-table"
+import { computeRiskScore } from "@/lib/risk-score/compute"
+import type { Influence, Impact, Attitude, ConflictPotential, DecisionAuthority } from "@/lib/risk-score/defaults"
+import {
+  detectEscalationPatterns,
+  type EscalationPatternKey,
+} from "@/lib/risk-score/escalation-patterns"
+import { mergeRiskScoreConfig } from "@/lib/risk-score/merge-overrides"
+import {
+  computeBig5Gap,
+  computeSkillGap,
+} from "@/lib/risk-score/perception-gap"
 import {
   createSelfAssessmentInvite,
   revokeSelfAssessmentInvite,
@@ -103,6 +119,66 @@ export function ProfileTab({
   const hasFremd = bundle?.skill?.fremd_assessed_at != null || bundle?.personality?.fremd_assessed_at != null
   const hasSelf = bundle?.skill?.self_assessed_at != null || bundle?.personality?.self_assessed_at != null
 
+  // PROJ-35-β — derive Risk-Score, Escalation-Patterns, Tonality and
+  // Wahrnehmungslücke from the bundle. Sub-millisecond compute, safe to
+  // run unmemoized on every render.
+  const qualitative = bundle?.stakeholder_qualitative ?? null
+  const effectiveConfig = mergeRiskScoreConfig(
+    bundle?.risk_score_overrides ?? {},
+  )
+  const riskScoreInput = {
+    influence: (qualitative?.influence ?? null) as Influence | null,
+    impact: (qualitative?.impact ?? null) as Impact | null,
+    attitude: (qualitative?.attitude ?? null) as Attitude | null,
+    conflict_potential:
+      (qualitative?.conflict_potential ?? null) as ConflictPotential | null,
+    decision_authority:
+      (qualitative?.decision_authority ?? null) as DecisionAuthority | null,
+    agreeableness_fremd: bundle?.personality?.agreeableness_fremd ?? null,
+  }
+  const riskResult = computeRiskScore(riskScoreInput, effectiveConfig)
+
+  const detectedPatterns: EscalationPatternKey[] = qualitative
+    ? detectEscalationPatterns({
+        attitude: riskScoreInput.attitude,
+        conflict_potential: riskScoreInput.conflict_potential,
+        decision_authority: riskScoreInput.decision_authority,
+        influence: riskScoreInput.influence,
+        agreeableness_fremd: bundle?.personality?.agreeableness_fremd ?? null,
+        emotional_stability_fremd:
+          bundle?.personality?.emotional_stability_fremd ?? null,
+      })
+    : []
+
+  const tonality = resolveTonality({
+    big5_fremd: {
+      openness: bundle?.personality?.openness_fremd ?? null,
+      conscientiousness:
+        bundle?.personality?.conscientiousness_fremd ?? null,
+      extraversion: bundle?.personality?.extraversion_fremd ?? null,
+      agreeableness: bundle?.personality?.agreeableness_fremd ?? null,
+      emotional_stability:
+        bundle?.personality?.emotional_stability_fremd ?? null,
+    },
+    high_communication_need: qualitative?.communication_need === "critical",
+  })
+
+  const skillGap = computeSkillGap(bundle?.skill ?? null)
+  const big5Gap = computeBig5Gap(bundle?.personality ?? null)
+
+  const invitePending = bundle?.latest_invite?.status === "pending"
+  const handleInviteSelfAssessment = async () => {
+    try {
+      await createSelfAssessmentInvite(projectId, stakeholderId)
+      toast.success("Self-Assessment-Invite versendet")
+      void reload()
+    } catch (err) {
+      toast.error("Invite konnte nicht versendet werden", {
+        description: err instanceof Error ? err.message : "Unbekannter Fehler",
+      })
+    }
+  }
+
   return (
     <div className="space-y-6">
       <div className="flex flex-wrap items-center justify-between gap-2">
@@ -131,6 +207,17 @@ export function ProfileTab({
           Profil bearbeiten
         </Button>
       </div>
+
+      {/* PROJ-35-β — risk-derived insights at the top of the profile tab */}
+      <RiskBanner result={riskResult} />
+      <EscalationPatternBanner patterns={detectedPatterns} />
+      <TonalityCard resolved={tonality} />
+      <PerceptionGapSection
+        skillGap={skillGap}
+        big5Gap={big5Gap}
+        onInviteSelfAssessment={handleInviteSelfAssessment}
+        invitePending={invitePending}
+      />
 
       <SelfAssessmentInviteCard
         projectId={projectId}
