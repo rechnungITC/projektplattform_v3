@@ -944,7 +944,45 @@ Phase 33-γ ist deploybar wenn:
 
 **Phase 33-β komplett (Backend + Frontend). Ready für /qa proj 33.**
 
-### Phase 33-γ + δ
+### Phase 33-γ Backend (2026-05-02)
+
+**Migration** — `supabase/migrations/20260502180000_proj33c_skill_personality_profiles.sql`
+(applied to remote project `iqerihohwabyjzkpcujq`):
+- `stakeholder_skill_profiles` (1:1 mit Stakeholder, 5 Dimensionen × {fremd, self}). PK = stakeholder_id.
+- `stakeholder_personality_profiles` (1:1 analog, OCEAN-Dimensionen mit `emotional_stability` statt `neuroticism`).
+- `stakeholder_profile_audit_events` (append-only, mit `actor_kind` Union: 'user' | 'stakeholder' für Phase-δ-Reuse).
+- CHECK-Constraints: alle Werte 0-100 (oder NULL), `actor_consistency` für Audit-Events (entweder user_id oder stakeholder_id, nicht beide).
+- RLS: SELECT/INSERT/UPDATE für Tenant-Member auf Profil-Tabellen; Audit-Events nur SELECT+INSERT (UPDATE/DELETE blocked via `enforce_stakeholder_profile_audit_immutability`-Trigger).
+- Search-Path-hardened: alle neuen Functions `set search_path = 'public', 'pg_temp'`.
+
+**TypeScript types** — `src/types/stakeholder-profile.ts`:
+- `SKILL_DIMENSIONS` + `PERSONALITY_DIMENSIONS` Konstanten + Labels + Big5-Beschreibungen für UI-Tooltips.
+- `StakeholderSkillProfile` / `StakeholderPersonalityProfile` Interfaces.
+- `StakeholderProfileAuditEvent` mit Discriminated-Union via `actor_kind`.
+- `StakeholderProfileBundle` für GET-Response.
+- Mapped-Types `SkillProfileInput` / `PersonalityProfileInput` (Phase-γ schreibt nur `_fremd`-Felder).
+
+**API client** — `src/lib/stakeholder-profiles/api.ts`:
+- `getStakeholderProfile(projectId, sid)` — fetched bundle (skill + personality + last 50 events).
+- `updateSkillProfile()` / `updatePersonalityProfile()` — UPSERT-PUT.
+
+**API routes** (3 neue):
+- `GET /api/projects/[id]/stakeholders/[sid]/profile` — combined bundle.
+- `PUT /api/projects/[id]/stakeholders/[sid]/profile/skill` — UPSERT skill, write audit-event.
+- `PUT /api/projects/[id]/stakeholders/[sid]/profile/personality` — UPSERT personality, write audit-event.
+
+Alle UPSERT-Routes verifizieren erst, dass der Stakeholder zum project_id gehört (Cross-Project-Leak-Guard), captureen alte Werte für Audit-Payload (vorher/nachher), führen UPSERT durch, schreiben Audit-Event mit actor_kind='user'. Audit-Insert ist non-fatal — bei Fehler wird Profile-Update bestätigt + Server-Error geloggt.
+
+**Verification:**
+- `npx tsc --noEmit` exit 0
+- `npm run lint` exit 0
+- `npm test --run` 600/600 (keine neuen Vitest-Cases — /qa wird ergänzen)
+- `npm run build` green; alle 3 neuen Routes im Manifest
+- Live DB-Smoke: 3 Tabellen + RLS aktiviert (3+3+2 Policies), 2 immutability-Trigger auf events, 2 touch-updated Trigger auf Profile-Tabellen
+
+**Phase 33-γ Backend done. Frontend (Radar-Component + Profil-Tab + Edit-Sheet + Audit-Timeline) ist die nächste Slice.**
+
+### Phase 33-δ
 _Not yet started._
 
 ## QA Test Results
