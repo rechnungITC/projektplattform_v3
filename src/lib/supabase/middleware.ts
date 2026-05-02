@@ -15,6 +15,12 @@ const PUBLIC_ROUTES = [
   // cookies. Bypass the auth middleware so Vercel Cron can reach the handler;
   // the route validates the secret itself.
   "/api/cron",
+  // PROJ-31 — Magic-Link approval flow. The public approve page and its
+  // backing API authenticate via the signed token in the URL, not via a
+  // Supabase session cookie. External stakeholders without a Plattform-
+  // Account need to reach these routes without bouncing to /login.
+  "/approve",
+  "/api/approve",
 ]
 
 function isPublicRoute(pathname: string): boolean {
