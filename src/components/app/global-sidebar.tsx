@@ -7,7 +7,6 @@ import {
   ChevronRight,
   Coins,
   Database,
-  FileSearch,
   FolderKanban,
   Gauge,
   Globe2,
@@ -118,13 +117,6 @@ const NAV_ITEMS: readonly NavItem[] = [
   { href: "/stammdaten", label: "Stammdaten", icon: Database },
   { href: "/konnektoren", label: "Konnektoren", icon: Plug, adminOnly: true },
   { href: "/reports", label: "Reports", icon: BarChart3 },
-  {
-    href: "/reports/audit",
-    label: "Audit",
-    icon: FileSearch,
-    adminOnly: true,
-    requiresModule: "audit_reports",
-  },
   {
     href: "/settings/profile",
     label: "Einstellungen",
