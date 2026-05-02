@@ -679,7 +679,50 @@ Phase 33-β ist deploybar wenn:
 - Save speichert, neuladen behält Werte
 - Tabelle zeigt Haltungs-Icon mit korrekter Farbe + Tooltip
 
-### Phase 33-α — Frontend done. Phase 33-β/γ/δ
+### Phase 33-α — Frontend done. Phase 33-β Backend (2026-05-02)
+
+**Migration** — `supabase/migrations/20260502160000_proj33b_stakeholder_type_catalog.sql`
+(applied to remote project `iqerihohwabyjzkpcujq`):
+- Tabelle `stakeholder_type_catalog`: id, tenant_id (NULL=global), key, label_de, label_en, color, display_order, is_active, audit-Timestamps.
+- 2 partial UNIQUE indexes — Tenant-scoped `(tenant_id, key) WHERE tenant_id IS NOT NULL` + Global `(key) WHERE tenant_id IS NULL`.
+- RLS: SELECT für alle (`tenant_id IS NULL OR is_tenant_member`), CRUD nur Tenant-Admin auf eigene Einträge (`tenant_id IS NOT NULL`).
+- 4 Default-Seeds (alle `tenant_id=NULL`): promoter (#10b981), supporter (#3b82f6), critic (#f59e0b), blocker (#ef4444).
+- Validation-Function `validate_stakeholder_type_key()` mit `set search_path = 'public', 'pg_temp'` (PROJ-29-Hygiene). Lookup gegen Catalog mit `tenant_id IS NULL OR tenant_id = NEW.tenant_id`.
+- 2 Trigger auf `stakeholders`: BEFORE INSERT + BEFORE UPDATE OF stakeholder_type_key. UPDATE-Trigger nutzt `WHEN (NEW IS DISTINCT FROM OLD)` für Performance.
+- Phase-α-Daten-Cleanup: 0 invalide Werte gefunden (Migration cleared sie auf NULL — Audit-Trigger fired aber keine Rows in Phase 33-α-Production hatten ungültige Keys).
+- `touch_updated_at`-Trigger auf Catalog für updated_at-Maintenance.
+
+**TypeScript types** — `src/types/stakeholder-type.ts`:
+- `StakeholderType` Interface (DB-Shape).
+- `StakeholderTypeInput` für Create/Update.
+- `STAKEHOLDER_TYPE_DEFAULT_KEYS` Konstanten-Array (für KI-Prompts in PROJ-36 + UI-Fallbacks).
+- `isGlobalDefault(t)` Helper.
+
+**API client** — `src/lib/stakeholder-types/api.ts`:
+- `listStakeholderTypes()` — GET (RLS handled tenant-scoping).
+- `createStakeholderType(input)`, `updateStakeholderType(id, input)`, `deactivateStakeholderType(id)`.
+
+**API routes** (2 neue):
+- `src/app/api/stakeholder-types/route.ts`:
+  - GET — list active (global + tenant) sorted by display_order, label_de.
+  - POST — tenant-admin only; lower-cases key; rejects pre-emptively if key collides with global default; UNIQUE-Constraint catch via 409.
+- `src/app/api/stakeholder-types/[id]/route.ts`:
+  - PATCH — tenant-admin edit eigene rows; globale Defaults → 403 ("immutable").
+  - DELETE — soft-delete via `is_active=false`; globale Defaults → 403.
+
+**Verification:**
+- `npx tsc --noEmit` exit 0
+- `npm run lint` exit 0
+- `npm test --run` 600/600 (keine neuen Vitest-Cases, /qa wird ergänzen)
+- `npm run build` green
+- Live DB-Smoke:
+  - Catalog total=4 (alle global), 4 RLS-Policies, 2 Validation-Triggers
+  - Validation-Trigger: `UPDATE stakeholders SET stakeholder_type_key='evil_unknown'` → blocked mit `check_violation: invalid_stakeholder_type_key`
+  - Default-Seeds verifiziert: promoter/supporter/critic/blocker mit korrekten Tailwind-Hex-Colors
+
+**Phase 33-β Backend done. Frontend (Color-Picker + Admin-UI + Stakeholder-Form-Update) als nächste Slice.**
+
+### Phase 33-γ + δ
 _Not yet started._
 
 ## QA Test Results
