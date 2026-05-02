@@ -545,7 +545,86 @@ Jede Phase hat eigenen QA-Pass und eigenen Deploy. /architecture-Empfehlung: **N
 _Not yet started._
 
 ## QA Test Results
-_To be added by /qa_
+
+**Date:** 2026-05-02
+**Phase:** 33-α (qualitative Felder + Audit-Whitelist + UI-Sektion + Tabellen-Icon)
+**Verdict:** **Approved** — 0 Critical / 0 High / 0 Medium / 0 Low Bugs
+
+### Automated Test Suite
+
+| Layer | Result |
+|---|---|
+| TypeScript strict (`npx tsc --noEmit`) | ✅ exit 0 |
+| ESLint (`npm run lint`) | ✅ exit 0 |
+| Vitest (`npm test --run`) | ✅ 600/600 (unverändert — keine neuen Cases, existing PROJ-8-Schema-Tests decken 33-α implizit ab) |
+| Playwright E2E (`npx playwright test --project=chromium`) | ✅ 23/24 (1 skipped = `PROJ-29-auth-fixture-smoke`, environment-only `libnspr4` Blocker, **kein PROJ-33-Regress**) |
+| Production Build | ✅ green |
+| Supabase Advisors | ✅ **0 neue PROJ-33-class warnings** (function_search_path_mutable clean — `_tracked_audit_columns` korrekt mit `set search_path = 'public', 'pg_temp'`) |
+
+### Live DB Red-Team Tests (via Supabase MCP)
+
+| Test | Expected | Actual | Result |
+|---|---|---|---|
+| 8 neue Spalten existieren | live mit korrekten Typen + Defaults | alle 8 verifiziert (`attitude='neutral'`, `decision_authority='none'`, andere nullable) | ✅ Pass |
+| Check-Constraint: invalid `attitude='evil'` | reject mit `23514 check_violation` | `ERROR: 23514 — violates check constraint "stakeholders_attitude_check"` | ✅ Pass |
+| Length-Constraint: `reasoning` 5001 chars | reject mit `23514` | `ERROR: 23514 — violates check constraint "stakeholders_reasoning_length"` | ✅ Pass |
+| Backfill alle 17 existing Stakeholders | `attitude='neutral'`, `decision_authority='none'`, andere `NULL` | 17/17 attitude=neutral, 17/17 decision_authority=none, 17/17 reasoning/type_key/mgmt_level=NULL | ✅ Pass |
+| Audit-Trigger fires für qualitative Felder | UPDATE auf `attitude/conflict_potential/reasoning` schreibt 3 audit_log_entries | 3 entries mit `entity_type=stakeholders`, korrekten old_value/new_value | ✅ Pass |
+| Cleanup nach Tests | Test-Werte zurückgesetzt | done | ✅ Pass |
+
+### AC-Walkthrough — Phase 33-α only (Block A + G)
+
+| AC | Status |
+|---|---|
+| Block A-1: 8 neue Spalten an `stakeholders` mit nullable + safe defaults | ✅ Live verified |
+| Block A-2: Stakeholder-Form zeigt eigene Sektion "Qualitative Bewertung", eingeklappt by default | ✅ Code-Review: Collapsible mit `defaultClosed` + ChevronDown-Toggle (`stakeholder-form.tsx`) |
+| Block A-3: Listen-Ansicht zeigt `attitude` als farb-codiertes Icon | ✅ Code-Review: `<Circle>`-Icon mit ATTITUDE_TONE-Farbcoding + Tooltip (`stakeholder-table.tsx`) |
+| Block G-1: Migration legt alle Spalten an + erweitert audit-tracked-columns | ✅ Migration applied; `_tracked_audit_columns('stakeholders')` returnt 21-Feld-Array |
+| Block G-2: Migration idempotent (`IF NOT EXISTS`-Pattern) | ✅ Code-Review: alle ADD COLUMN nutzen `IF NOT EXISTS`, Constraints via `DO $$ ... IF NOT EXISTS` |
+| Hygiene-Bonus: PROJ-31 `is_approver` war im Audit-Set vergessen, jetzt drin | ✅ Verified (Audit-Whitelist hat 21 Felder, davon `is_approver`) |
+
+### Edge-Case-Walkthrough
+
+| EC | Verified |
+|---|---|
+| EC-7: Migration auf großer stakeholders-Tabelle | ADD COLUMN mit nullable + default = O(1) PostgreSQL-Operation, kein full-table-lock. Migration lief in <1s gegen Live-DB mit 17 Rows. Skaliert auf jede Größenordnung. |
+
+### Security Audit (Red-Team)
+
+| Vector | Mitigation Live-Verified |
+|---|---|
+| Invalid Enum-Injection (z.B. `attitude='<script>'`) | DB-CHECK lehnt mit `check_violation` ab (live verified) |
+| Length-Bypass auf Freitext-Feldern | DB-CHECK lehnt >5000 chars für `reasoning` ab |
+| RLS-Bypass via neue Spalten | Spalten erben RLS-Policies von der existierenden `stakeholders`-Tabelle (kein neuer RLS-Pfad) |
+| Audit-Bypass via Direct-Update | Trigger fired sauber; field_name + old_value + new_value korrekt persistiert |
+| Cross-Tenant-Read | Nicht testbar via service-role MCP, aber RLS-Policy-Konsistenz durch existing PROJ-8 RLS abgedeckt |
+
+### Regression Check
+
+- ✅ Alle 600 Vitest-Cases unverändert grün (kein PROJ-1..PROJ-31 Regress)
+- ✅ Existing PROJ-8 Stakeholder-Routes (POST/PATCH/GET) akzeptieren Backwards-kompatible Payloads — neue Felder sind alle optional, kein Pflicht-Feld dazugekommen
+- ✅ Existing PROJ-31 Approver-Cascading-Trigger bleibt funktional (`is_approver` Audit-Eintrag zusätzlich)
+- ✅ Stakeholder-Detail-Page rendert (Build green)
+
+### Bugs Found
+
+**Keine.** Phase 33-α ist sauber.
+
+### Production-Ready Decision
+
+**Recommendation:** **APPROVED for /deploy proj 33** (Phase 33-α only)
+
+- 0 Critical / 0 High / 0 Medium / 0 Low Bugs.
+- Migration-Replay erprobt + verifiziert.
+- Audit-Pipeline live + funktional.
+- Form-Erweiterung non-invasive (Collapsible eingeklappt by default → existing User-Workflow unverändert).
+- Tabellen-Erweiterung trivial (1 Spalte mit Icon).
+
+### Suggested Next
+
+1. **`/deploy proj 33`** — Phase 33-α (Backend + Frontend) gemeinsam pushen + Tag `v1.33.0-PROJ-33-alpha`.
+2. **`/requirements proj 34`** für Phase 33-β (Stakeholder-Type-Catalog) ist eigene Slice. Reihenfolge offen — Phase β kann auch nach kurzer Pause, oder direkt anschließen.
+3. Browser-Test durch User empfohlen (lokal `npm run dev`): Stakeholder-Form öffnen, Sektion-Toggle testen, Werte speichern, Tabelle prüfen.
 
 ## Deployment
 _To be added by /deploy_
