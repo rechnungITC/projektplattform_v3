@@ -1,8 +1,8 @@
 # PROJ-35: Stakeholder-Wechselwirkungs-Engine — Risiko-Score, Eskalations-Indikatoren & Tonalitäts-Empfehlungen
 
-## Status: Planned
+## Status: Architected
 **Created:** 2026-05-02
-**Last Updated:** 2026-05-02 (Decisions locked via /requirements)
+**Last Updated:** 2026-05-02 (Tech Design + CIA-Review locked alle 6 Forks)
 
 ## Summary
 
@@ -281,7 +281,213 @@ PROJ-35 darum ist die **Logik**; PROJ-36 ist die **Sprache**. PROJ-35 muss vor P
 <!-- Sections below to be added by subsequent skills -->
 
 ## Tech Design (Solution Architect)
-_To be added by /architecture (CIA-Review zwingend — kreuzt PROJ-9/19/20/17 deployed; lockt 6 Open-Questions oben)._
+
+> **CIA-Review abgeschlossen** (2026-05-02). Alle 6 Open-Questions aus dem /requirements-Run gelockt. Gesamt-Empfehlung: **MVP-light bei Performance/Speicher, audit-strict bei Governance, domain-treu bei Datenmodell.** Detaillierter Review-Report wurde im /architecture-Skill konsumiert; Quintessenz unten als Architektur-Lock dokumentiert.
+
+### 1. Big Picture in einem Satz
+
+PROJ-35 baut eine **deterministische Berechnungs-Bibliothek** in TypeScript, die aus den schon vorhandenen Stakeholder-Profilen (PROJ-33-α/β/γ/δ) drei Sichten liefert: einen **Risk-Score** (0–10, farbkodiert), **Eskalations-Patterns** (4 Hochrisiko-Konstellationen) und eine **Tonalitäts-Empfehlung** (32-Quadranten-Lookup auf Big5). Plus ein Health-Dashboard, das diese drei Sichten projekt-weit aggregiert + ein Sparkline-Trend.
+
+### 2. Komponenten-Struktur (was der Nutzer sieht)
+
+```
+Stakeholder-Detail (PROJ-8 + PROJ-33-Tabs, deployed)
+├── Risk-Score-Banner (NEU — am Top des Profil-Tabs)
+│   ├── Score (0-10) + Bucket-Farbe (rot/orange/gelb/grün)
+│   └── Tooltip "Warum dieser Score?" → Formel-Aufschlüsselung
+├── Eskalations-Pattern-Banner (NEU — 0-N Banner)
+│   ├── Pattern-Key + Severity-Farbe
+│   └── UI-Empfehlungstext
+├── Tonalitäts-Empfehlung-Card (NEU)
+│   ├── Tonalität + Detailtiefe + Kanal
+│   └── 4 Notes als Bullet-List
+├── Wahrnehmungslücke-Section (NEU — 0-2 Aggregate)
+│   ├── Skill-Lücke (wenn min. 60% Skill-Self-Werte vorhanden)
+│   └── Big5-Lücke (wenn min. 60% Big5-Self-Werte vorhanden)
+├── Trend-Sparkline (NEU)
+│   ├── Toggle 30/90/365 Tage (Default 90)
+│   └── Score-Bucket-Achterbahn-Visualization
+
+Stakeholder-Health-Dashboard (NEU — eigene Page + Sidebar-Tab)
+├── Header
+│   ├── Aggregat-Metriken (Bucket-Counts, Top-Score, Avg-Wahrnehmungslücke)
+│   └── Filter-Bar (Bucket · with-patterns · on-critical-path)
+├── Ranking-Tabelle (DESC nach Risk-Score)
+│   ├── Stakeholder-Name + Bucket-Farbe
+│   ├── Risk-Score + Top-Pattern + Critical-Path-Flag
+│   └── Quick-Actions (Self-Assessment-Invite · Stakeholder öffnen)
+└── Empty-State + Counter-Badge im Sidebar-Tab
+
+Tenant-Settings (PROJ-17, deployed)
+└── /settings/tenant/risk-score (NEU — Tenant-Admin only)
+    ├── Multiplikator-Forms (attitude · conflict · authority · adversity_weight)
+    ├── "Auf Defaults zurücksetzen"-Button
+    └── Live-Preview-Pane (hypothetisches Stakeholder-Profil)
+```
+
+### 3. Datenmodell (Klartext)
+
+**1 neue Spalte:**
+- `tenant_settings.risk_score_overrides` — JSONB-Spalte mit Default `'{}'::jsonb`. Speichert tenant-spezifische Multiplikator-Overrides. Schema-validiert via Zod beim Schreiben (RBAC: nur tenant_admin schreibbar).
+
+**1 neue Spalte (PROJ-19-Erweiterung in 35-β):**
+- `phases.is_critical BOOLEAN NOT NULL DEFAULT false` — opt-in-Marker, den der PM manuell setzt. Domain-autoritativ. Migration ist trivial (alle Existing-Phasen bleiben `false`).
+
+**Keine neuen Tabellen.** Risk-Score, Patterns, Tonalität werden alle **on-the-fly in TypeScript** berechnet (kein DB-View, keine Materialisierung). Trend-Sparkline liest aus existing Audit-Tabellen (`audit_log_entries` + `stakeholder_profile_audit_events`) ad-hoc.
+
+**1 neues Audit-Event-Type:**
+- `stakeholder_profile_audit_events.event_type='escalation_pattern_changed'` — wird via Trigger geschrieben wenn ein Pattern aktiviert/deaktiviert wird. Payload: `{ pattern_key, action: 'activated'|'deactivated', input_snapshot }`. Append-only via existing γ-Trigger.
+
+### 4. Tech-Entscheidungen (das Warum für PM)
+
+#### 4.1 Risk-Score in TypeScript, nicht in der Datenbank (CIA Fork 1)
+**Entscheidung:** Compute-on-Read als pure TS-Funktion in `src/lib/risk-score/compute.ts`.
+
+**Warum:** Tenant-Override-JSON aus `tenant_settings` ist in TypeScript trivial zu mergen, in einer SQL-View aber stateful (jeder Read müsste das JSON parsen + casten). 100 Stakeholder × 4 Multiplikatoren = 400 Multiplikationen — sub-millisekunden. Wir kippen erst auf DB-View ab **~2.000 aktiven Stakeholdern pro Tenant** ODER ab Listing-Pages mit > 500 Rows ohne Pagination — beides weit weg. Code ist deterministisch + side-effect-free, also später Drop-in materialisierbar.
+
+#### 4.2 Trend-Sparkline ad-hoc, keine Materialisierung (CIA Fork 2)
+**Entscheidung:** Sparkline berechnet pro Render aus existing Audit-Tabellen.
+
+**Warum:** Materialisierung würde 36k Rows/Jahr/Tenant kosten + Backfill-Komplexität (zwei Audit-Quellen mergen) + Cron-Job für nächtliches Aggregieren. Bei 365 Events × 100 Stakeholder ist das eine indexierte Range-Query, kein Performance-Risiko. Wir kippen erst bei **~10.000 Audit-Events pro Stakeholder** (≈ 27 Jahre Historie). Frontend-Hook `useStakeholderRiskTrend` versteckt die Source — Materialisierung später ist friction-frei austauschbar.
+
+#### 4.3 Wahrnehmungslücke in zwei getrennten Aggregaten (CIA Fork 3)
+**Entscheidung:** `skill_perception_gap` + `big5_perception_gap` separat. Mindest-Coverage 60% pro Aggregate.
+
+**Warum:** Die ursprüngliche Spec-Idee `max(|delta|)` über alle 10 Dimensionen produziert Falsch-Positive, wenn nur Skill-Self-Werte vorhanden sind aber 0 Big5-Self-Werte. Skill und Persönlichkeit sind unterschiedliche Achsen — fachlich UND juristisch (Big5 ist Class-2, Skill ist Class-2 aber kontextual anders). 60%-Coverage verhindert "Lücke wegen 1 von 5 Werten"-Noise. Threshold ist hardcoded für MVP (siehe OF-2 unten).
+
+#### 4.4 Eskalations-Patterns als Audit-Events (CIA Fork 4)
+**Entscheidung:** Pattern-Activation/Deactivation wird in `stakeholder_profile_audit_events` mit `event_type='escalation_pattern_changed'` geschrieben.
+
+**Warum:** PROJ-33-γ hat append-only-Audit-Pattern bereits etabliert; Konsistenz schlägt Aufwand. Compliance-Wert ist hoch: bei einem späteren Stakeholder-Eskalations-Audit muss nachvollziehbar sein, **wann** ein Stakeholder als Hochrisiko geflagged wurde — Lazy-on-Read würde das fragmentieren. Trigger-Mechanismus wird auf existing Profile-Trigger aufgesetzt (~0.5 PT statt ~2 PT für separates Subsystem). Trigger fires NUR bei Änderung der relevanten Felder (`influence`, `impact`, `attitude`, `conflict_potential`, `decision_authority`, `agreeableness`, `emotional_stability`), nicht bei jedem `updated_at`-Bump.
+
+#### 4.5 `phases.is_critical` als neue Spalte (CIA Fork 5)
+**Entscheidung:** Migration `phases.is_critical BOOLEAN DEFAULT false` in 35-β + UI-Toggle im Edit-Phase-Dialog in 35-γ.
+
+**Warum:** PM-Domain-Wissen ist autoritativ — die Heuristik (`milestone.target_date < project.planned_end_date - 14d`) ist eine Vermutung, kein Fakt. ERP-Projekte haben oft kritische Phasen *früh* (z.B. Datenmigration in Phase 2 von 5), die per Heuristik falsch-negative produzieren würden. Migration ist 1 Spalte mit `DEFAULT false`, kein Backfill-Pain. **Best-of-Both:** Heuristik greift als Fallback wenn alle Phasen `is_critical=false` (User hat noch nichts manuell markiert).
+
+#### 4.6 Tenant-Config-Migration mit explizitem Default (CIA Fork 6)
+**Entscheidung:** Atomic Migration `ALTER TABLE tenant_settings ADD COLUMN risk_score_overrides JSONB NOT NULL DEFAULT '{}'::jsonb` in 35-α. Plus serverseitiger Merge-Helper.
+
+**Warum:** Lazy-on-Read ist ein bekanntes Anti-Pattern — verstreut Default-Logik über alle Read-Pfade und macht "config exists vs. config empty" untestbar. Migration ist 5 Zeilen SQL und stellt Existing-Tenants gleich. Override mit `null`-Wert für eine Multiplikator-Dimension fällt automatisch auf Default zurück (Default-Defense gegen Override-Drift).
+
+#### 4.7 Sub-Decisions aus CIA-Open-Questions
+
+- **OF-1 (Override-Scope tenant vs project):** **MVP = tenant-level**. Project-level-Override in PROJ-35.next wenn Multi-Domain-Tenants es validiert anfordern. Verhindert Premature-Generalization.
+- **OF-2 (60%-Coverage hardcoded vs konfigurierbar):** **MVP = hardcoded `0.6`**. Tenant-Konfigurierbarkeit ist YAGNI — Threshold ist statistisch motiviert, nicht business-domain-spezifisch.
+
+### 5. Phasen-Plan (verbindlich für /backend + /frontend)
+
+| Phase | Inhalt | Migrationen | Aufwand |
+|---|---|---|---|
+| **35-α** | Compute-Bibliothek (Risk-Score · Wahrnehmungslücke · 32-Big5-Lookup · Pattern-Detector) + Tenant-Override-Migration + Tenant-Admin-Page `/settings/tenant/risk-score` + Audit-Event-Trigger für Patterns | 1 Migration: `tenant_settings.risk_score_overrides` + Erweiterung Audit-Event-Type-CHECK | ~3 PT |
+| **35-β** | Critical-Path-Indikator (`phases.is_critical`-Migration + Backend-Compute-Erweiterung) + Stakeholder-Detail-UI (Risk-Banner · Pattern-Banner · Tonalitäts-Card · Wahrnehmungslücke-Section) | 1 Migration: `phases.is_critical` | ~3 PT |
+| **35-γ** | Sparkline-Komponente + Stakeholder-Health-Dashboard (Page + Tab-Shortcut + Counter-Badge) + Phase-Edit-Dialog `is_critical`-Toggle | 0 Migrationen | ~2 PT |
+
+**Total: ~8 PT** (CIA-bestätigt, MVP-light + audit-strict).
+
+### 6. Cross-Phase-Synergien
+
+- **α + β:** Compute-Bibliothek aus α wird in β für Critical-Path-Indikator wiederverwendet (DRY).
+- **α + γ:** Pattern-Audit-Events aus α werden in γ optional als Sparkline-Marker gerendert (Wert für Health-Dashboard ohne Extra-Source).
+- **β + γ:** `phases.is_critical`-Migration in β + UI-Toggle in γ (Migration vor UI ist die richtige Reihenfolge).
+
+### 7. Anti-Patterns die NICHT in MVP rein
+
+- ❌ **Materialized View für Risk-Score** — Trigger-Pflege, Refresh-Strategie, Override-Drift-Risiko.
+- ❌ **`stakeholder_risk_score_history`-Tabelle** — 36k Rows/Jahr ohne Nachweis dass ad-hoc kippt.
+- ❌ **Eigene Pattern-Engine-DSL** — 4 hardcoded Patterns + Tenant-Settings für Schwellwerte reichen.
+- ❌ **Big5-Empfehlungs-LLM-Call** — 32-Lookup ist deterministisch + Class-2-konform.
+- ❌ **Real-time-Push fürs Dashboard** — Polling alle 30s reicht; Realtime ist 1 PT für 0 validierten Need.
+
+### 8. Component-Tree der TypeScript-Bibliothek
+
+```
+src/lib/risk-score/                    (NEU — ~3 PT in 35-α)
+├── compute.ts                         (pure: stakeholder + profiles + config → score 0-10)
+├── compute.test.ts                    (Snapshot + alle Multiplikator-Kombinationen)
+├── defaults.ts                        (TS-Konstanten + ADR-Link)
+├── merge-overrides.ts                 (deep-merge Defaults + tenant_settings)
+├── merge-overrides.test.ts
+├── escalation-patterns.ts             (Pattern-Detector pure-Function)
+├── escalation-patterns.test.ts
+├── perception-gap.ts                  (Skill-Lücke + Big5-Lücke separat)
+├── perception-gap.test.ts
+├── big5-tonality-table.ts             (32-Quadranten-Lookup-Konstante)
+└── big5-tonality-table.test.ts        (Snapshot über alle 32 Einträge)
+
+src/hooks/use-stakeholder-risk.ts      (NEU — Frontend-Hook in 35-β)
+src/hooks/use-stakeholder-risk-trend.ts (NEU — Sparkline-Hook in 35-γ)
+
+src/components/stakeholders/risk/      (NEU — UI-Komponenten in 35-β + γ)
+├── risk-banner.tsx
+├── escalation-pattern-banner.tsx
+├── tonality-card.tsx
+├── perception-gap-section.tsx
+└── risk-trend-sparkline.tsx
+
+src/components/projects/health/        (NEU — Health-Dashboard in 35-γ)
+├── health-dashboard-page.tsx
+├── health-ranking-table.tsx
+├── health-aggregate-metrics.tsx
+└── health-filter-bar.tsx
+
+src/app/settings/tenant/risk-score/    (NEU — Tenant-Admin-Page in 35-α)
+└── page.tsx + form.tsx + preview.tsx
+
+src/app/api/tenants/[id]/settings/risk-score/  (NEU — Tenant-Config-API in 35-α)
+└── route.ts (GET · PUT · DELETE)
+
+docs/decisions/                        (NEU — 2 ADRs in 35-α)
+├── risk-score-defaults.md             (Multiplikator-Werte mit Begründung)
+└── big5-tonality-lookup.md            (32 Quadranten mit psychologischer Begründung)
+
+docs/architecture/                     (NEU — 1 Architektur-Doc in 35-α)
+└── stakeholder-risk-engine.md         (~1 Seite, Pipeline-Diagramm + Audit-Tabellen)
+```
+
+### 9. Dependencies (zu installieren)
+
+**Keine neuen NPM-Packages.** Alle Komponenten sind reine TypeScript-Logik mit existing shadcn/ui-Komponenten (`Card`, `Alert`, `Badge`, `Tabs`, `Tooltip`, `Select`, `Input`) + recharts (bereits in PROJ-33-γ installiert für Radar-Charts; wird hier für Sparkline wiederverwendet).
+
+### 10. Audit-Konsistenz
+
+| Event | Tabelle | Trigger | Audit-Pattern-Source |
+|---|---|---|---|
+| qualitative Felder geändert (`attitude`, `influence`, ...) | `audit_log_entries` | existing PROJ-10 | unverändert |
+| Skill-Profile geändert | `stakeholder_profile_audit_events` | existing PROJ-33-γ | unverändert |
+| Big5-Profile geändert | `stakeholder_profile_audit_events` | existing PROJ-33-γ | unverändert |
+| **Eskalations-Pattern aktiviert/deaktiviert (NEU)** | `stakeholder_profile_audit_events` | NEU in 35-α (Trigger-Erweiterung) | `event_type='escalation_pattern_changed'` |
+
+CHECK-Constraint auf `event_type` muss in 35-α-Migration erweitert werden um den neuen Wert.
+
+### 11. Performance-Budget
+
+| Operation | Budget | Realistic Estimate |
+|---|---|---|
+| Risk-Score-Compute (1 Stakeholder) | < 5 ms | ~0.05 ms (sub-ms in V8 für 4 Multiplikationen) |
+| Health-Dashboard-Query (100 Stakeholder) | < 200 ms | ~50-100 ms (1 indexed query + TS-Compute-Loop) |
+| Sparkline-Render (90-Tage-Range, 1 Stakeholder) | < 100 ms | ~20-50 ms (~7-30 Audit-Events pro Stakeholder) |
+| Tenant-Override-Save | < 300 ms | ~100 ms (1 UPDATE auf tenant_settings + Audit-Insert) |
+
+### 12. Risiken (CIA-identifiziert + Mitigationen)
+
+- **R1 — Override-Drift:** Tenant-Admin setzt invalide Multiplikator-Werte. **Mitigation:** Zod-Schema mit `min/max` in der API + Frontend-Form-Validation.
+- **R2 — Audit-Volumen:** Pattern-Computation bei jedem Stakeholder-Touch erzeugt Audit-Spam. **Mitigation:** Trigger nur bei Änderung der relevanten Felder, nicht bei jedem `updated_at`-Bump.
+- **R3 — `is_critical`-RBAC:** Spalte erbt `phases`-RLS, aber UPDATE muss `has_tenant_role(tenant_id, 'manager')` o.ä. erzwingen. **Mitigation:** API-Route mit `requireProjectAccess(..., "edit")`.
+
+### 13. Approval-Empfehlung
+
+**Ready for /backend (Phase 35-α).** Alle CIA-Forks gelockt, Phasenplan dokumentiert, Performance-Budget realistisch, Audit-Konsistenz mit PROJ-10 + PROJ-33-γ gewahrt. Migration-Risiko niedrig (1 Spalte additiv, 1 CHECK-Erweiterung). Keine neuen NPM-Packages.
+
+### 14. Was NICHT in PROJ-35 ist (Architektur-Boundaries)
+
+- ❌ KI-generierte Empfehlungstexte (das ist PROJ-36)
+- ❌ Communication-Sentiment-Multiplikator (das ist PROJ-34)
+- ❌ Project-level Risk-Score-Overrides (PROJ-35.next)
+- ❌ Tenant-konfigurierbarer Coverage-Threshold (PROJ-35.next, YAGNI im MVP)
+- ❌ Materialized Trend-History (PROJ-35.next bei Skalierungs-Trigger)
+- ❌ Mid-Band-Lookup-Table (3⁵=243 Big5-Quadranten — PROJ-35.next)
+- ❌ Tenant-konfigurierbare Eskalations-Patterns (PROJ-35.next)
 
 ## Implementation Notes
 _To be added by /backend + /frontend._
