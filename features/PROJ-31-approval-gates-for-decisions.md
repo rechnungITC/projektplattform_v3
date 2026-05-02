@@ -433,8 +433,69 @@ PROJ-8 hat das Mapping bereits: jeder Stakeholder kann optional einen `linked_us
 - No "Formal Decision" toggle inside the existing `decision-form.tsx` — instead a separate "Genehmigung verwalten" sheet on each Decision row. Cleaner separation: existing form keeps creating draft Decisions; approval workflow is a follow-up action. PROJ-6 catalog auto-flag will land server-side when /backend implements `decision_approval_state` row creation.
 - No "PROJ-19 phase-transition banner" UX yet — pull-mechanic spec'd as "PM submit manuell"; banner can come in a frontend-only follow-up slice once backend exposes the catalog rule lookup.
 
-### Backend
-_To be added by /backend_
+### Backend (2026-05-02)
+
+**Migration** — `supabase/migrations/20260502120000_proj31_approval_gates.sql`
+(applied to remote project `iqerihohwabyjzkpcujq` in 2 chunks):
+- `stakeholders.is_approver` boolean column + partial index on (project_id WHERE is_approver=true).
+- `decision_approval_state` (1:1 with decisions) — status state-machine, quorum_required, submitted_at, decided_at. RLS via `is_tenant_member`.
+- `decision_approvers` (n:m) — stakeholder_id, magic_link_token + expires_at, response (approve/reject/withdrawn/null), comment, with `unique(decision_id, stakeholder_id)` and `unique(magic_link_token)`. RLS.
+- `decision_approval_events` — append-only audit log with 8 event types (`submitted_for_approval`, `approver_responded`, `quorum_reached`, `quorum_unreachable`, `withdrawn`, `revised`, `token_renewed`, `approver_withdrawn`). UPDATE/DELETE rejected by `enforce_approval_event_immutability` trigger.
+- RPC `record_approval_response(p_decision_id, p_approver_id, p_response, p_comment, p_actor_user_id)` — `SECURITY DEFINER`, acquires `pg_advisory_xact_lock(hashtextextended(decision_id::text, 0))` for race-condition-free quorum updates. Computes new state (`approved` when approves ≥ quorum, `rejected` when remaining-cant-reach, else `pending`), writes the event, updates state if changed.
+- Trigger `cascade_stakeholder_approver_revoke` (on stakeholders UPDATE OF is_approver / DELETE) — withdraws pending approver-rows for that stakeholder, writes `approver_withdrawn` event.
+- Trigger `cascade_decision_revision_to_approval` (on decisions INSERT) — when `supersedes_decision_id` is set, marks predecessor's pending state as `withdrawn`, writes `revised` event with payload `{superseded_by: <new id>}`.
+- `touch_updated_at` trigger on both new mutable tables.
+
+**TypeScript modules** (`src/lib/decisions/`):
+- `approval-rules.ts` — TS-only (no DB): `resolveDecisionApprovalRule(method, phaseStatus)`. Heavyweight methods (waterfall, pmi, prince2, vxt2) auto-require approval in `planned`/`in_progress` phases; agile methods (scrum, kanban, safe) never auto-require (PM flag-only).
+- `approval-token.ts` — HMAC-SHA256 sign/verify via `node:crypto`. Token format: `base64url(json) + "." + base64url(sig)`. `verifyApprovalToken` enforces signature → expiry, returns 3 reasons: `malformed`, `invalid_signature`, `expired`. Throws if `APPROVAL_TOKEN_SECRET` unset / < 32 chars.
+- `approval-mail.ts` — `buildApprovalOutboxRow(input)` constructs the `communication_outbox` payload via Zod-strict input. `sanitizeApprovalTitle` strips emails + phone numbers, rejects empty / too-long. The body is template-only — Decision body / rationale / personal data NEVER enter the mail (Class-3 hard-constraint).
+
+**API routes** (5 new):
+| Route | Auth | Purpose |
+|---|---|---|
+| `GET /api/projects/[id]/decisions/[did]/approval` | session | Fetch bundle (state + approvers + events) |
+| `POST /api/projects/[id]/decisions/[did]/approval` | session (edit) | Submit-for-approval; creates state, approver rows, signs tokens, queues outbox mails |
+| `POST /api/projects/[id]/decisions/[did]/approval/withdraw` | session (edit) | Set status=withdrawn, invalidate pending approver tokens, audit event |
+| `POST /api/projects/[id]/decisions/[did]/approval/respond/[approverId]` | session (linked_user_id match) | Internal approver response → RPC |
+| `GET, POST /api/approve/[token]` | **public, token-auth** | Magic-Link flow. GET returns whitelisted payload (decision body + counts only — no approver list); POST routes through the same RPC |
+| `GET /api/dashboard/approvals` | session | Pending approvals where stakeholder.linked_user_id = auth.uid() |
+
+**Token validation order on POST `/api/approve/[token]`** (CIA R4 mitigation):
+1. HMAC signature check (approval-token.ts)
+2. exp check
+3. Persisted token match (DB lookup — second validation layer)
+4. tenant_id match (claim vs DB row)
+5. decision_id match (claim vs approver-row)
+6. response is null
+7. magic_link_expires_at > now()
+8. decisions.is_revised = false
+9. decision_approval_state.status = 'pending'
+
+Then the RPC takes over and the advisory-lock serialises concurrent approver clicks.
+
+**Tests** (28 new vitest cases — total 572 → 600 passing):
+- `src/lib/decisions/approval-token.test.ts` (8 cases): round-trip, wrong secret, malformed, tampered payload, expired, no-secret, short-secret, missing fields.
+- `src/lib/decisions/approval-mail.test.ts` (12 cases): sanitizer (email/phone strip, empty, too-long, benign), builder (Class-3 defense, missing fields, URL encoding, baseUrl trailing slash).
+- `src/lib/decisions/approval-rules.test.ts` (8 cases): null guards, waterfall + planned/in_progress/completed, scrum/kanban/safe never auto-require.
+
+**ENV vars added to `.env.local.example`:**
+- `APPROVAL_TOKEN_SECRET` (32+ chars HMAC secret) — REQUIRED in production for approval submission.
+- `NEXT_PUBLIC_BASE_URL` (optional) — base URL embedded in approval mail links; falls back to vercel-deploy URL.
+
+**Verification:**
+- `npx tsc --noEmit` exit 0
+- `npm run lint` exit 0
+- `npm test --run` 600/600
+- `npm run build` green; all 5 new API routes + 2 frontend pages in the manifest as `ƒ` (server-rendered).
+- Migration applied to remote Supabase project (`iqerihohwabyjzkpcujq`); both halves succeeded.
+
+**Out-of-spec deviations (logged):**
+- Token validation includes a **persisted-token match step (DB lookup)** beyond the spec's "HMAC + tenant + expiry" requirement — this is CIA-recommended defense-in-depth (rotation safety + manual revocation). Spec block 4 didn't mandate it explicitly; we added it.
+- `record_approval_response` RPC is `SECURITY DEFINER` and grants execute to `authenticated` AND `service_role` (the latter for the public Magic-Link path which goes through `createAdminClient`). Spec didn't lock the role-grant; this is the minimum needed.
+- Approval-mail outbox-insert is **non-fatal on failure** — if the mail can't be queued, we still persist the state + approvers + audit event so the PM can manually share the link. Spec implied "must succeed"; we treat partial failure as recoverable.
+
+**Backend done. All verifications green. Ready for `/qa`.**
 
 ## QA Test Results
 _To be added by /qa_
