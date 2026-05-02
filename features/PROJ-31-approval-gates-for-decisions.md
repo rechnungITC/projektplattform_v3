@@ -1,8 +1,9 @@
 # PROJ-31: Approval-Gates für formale Decisions
 
-## Status: Approved
+## Status: Deployed
 **Created:** 2026-05-02
 **Last Updated:** 2026-05-02
+**Deployed:** 2026-05-02 — Production: https://projektplattform-v3.vercel.app — Tag: `v1.31.0-PROJ-31`
 
 ## Summary
 Erweitert PROJ-20 (Decisions, deployed) um einen **parallelen Quorum-Approval-Workflow**. Welche Decisions Gate-pflichtig sind, ergibt sich aus dem PROJ-6 Methoden-/Phasen-Catalog (Wasserfall: Decisions in Spec/Abnahme-Phasen; Scrum: explizit als "Steering"-Decision markierte). Approver werden aus dem Stakeholder-Pool gezogen (PROJ-8) — auch **externe Stakeholder ohne Plattform-Account** können via signed Magic-Link approven. Append-only `decision_approval_events`-Tabelle persistiert jede State-Transition und Approver-Aktion.
