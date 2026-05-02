@@ -1,6 +1,6 @@
 # PROJ-24: Cost-Stack — Tagessätze pro Rolle, Velocity-Modell & Kosten pro Work-Item
 
-## Status: In Progress (Phase 24-α DB done)
+## Status: In Progress (Phase 24-β engine done)
 **Created:** 2026-04-30
 **Last Updated:** 2026-05-02
 
@@ -380,6 +380,33 @@ Migration: `supabase/migrations/20260502170000_proj24_resolve_role_rate_lockdown
 **Why DEFINER + lockdown instead of INVOKER:** DEFINER + revoke signals "internal server-only helper" cleanly. INVOKER would have worked too (RLS on `role_rates` already enforces tenant boundaries on SELECT), but the engine's cost-line synthesis runs under service_role anyway (PROJ-22 budget-postings pattern) — keeping the auth context uniform inside the engine path avoids a bug surface.
 
 **Note:** `decrypt_tenant_secret` (PROJ-14) shows the same advisor pattern but is a separate, pre-existing concern — out of scope for PROJ-24 and tracked elsewhere.
+
+### Phase 24-β — Cost-calc engine + role-rate-lookup (`/backend`, 2026-05-02)
+
+**Built:**
+- `src/lib/cost/types.ts` — shared TypeScript types: `RoleRateSnapshot`, `AllocationInput`, `WorkItemCostInput`, `CostLineDraft`, `CostCalcResult`, `CostCalcWarning` (with `kind: 'no_role_key' | 'no_stakeholder' | 'no_rate_for_role' | 'no_basis'`), `RoleRateLookupKey`. Field semantics documented inline — notably that `story_points` and `estimated_duration_days` are pre-extracted from `work_items.attributes` JSONB by the caller (they are NOT native columns; see migration `20260428110000_proj9_…`).
+- `src/lib/cost/calculate-work-item-costs.ts` — pure-TS engine, **no Supabase imports**. Routes story-point items (kind in `('story','feature','epic')` AND `story_points > 0`) through `sp × velocity_factor × pct/100 × daily_rate`; routes everything else with `estimated_duration_days > 0` through `days × pct/100 × daily_rate`. Item-level locked tie-break: when both basis values are present, **duration wins** (deterministic, no warning). Per-allocation iteration is sorted by `allocation_id` for byte-identical output across calls. Rounding: `Math.round(x * 100) / 100` once per cost-line, matching `numeric(14,2)`.
+- `src/lib/cost/role-rate-lookup.ts` — DB-bound layer that resolves a batch of `(tenant_id, role_key, as_of_date)` keys via the `_resolve_role_rate(...)` RPC. Dedupes identical keys before dispatch. **Fail-open** — per-key RPC errors are logged and surface as `missing[]` (not thrown) so a temporary DB hiccup does not block allocation writes (per Tech Design §12). Documented contract: caller MUST pass a service-role admin client (the lockdown migration revoked EXECUTE from `authenticated`); the layer does not introspect headers to verify this.
+- `src/lib/cost/index.ts` — public surface, re-exports `calculateWorkItemCosts`, `resolveRoleRates`, plus all types.
+
+**Tests:** 28 cases, all green (`npx vitest run src/lib/cost/`).
+- 19 cases for the engine (`calculate-work-item-costs.test.ts`): SP happy path, duration happy path, multi-allocation, multi-currency within one item, allocation_pct=0/null skipped silently, `no_role_key` warning, `no_stakeholder` warning, `no_rate_for_role` placeholder cost-line + warning, item with no basis emits ONE item-level `no_basis` warning (not per allocation), duration-wins tie-break with no metadata leakage from the SP path, `velocity_factor=0` produces amount=0 cost-lines without warning, `kind='task'` ignores SP and falls back to no-basis when no duration, `kind='task'` with duration uses duration path, two rounding cases (1×0.3333×1000=333.30 and 1×(1/3)×1000=333.33), determinism check via `JSON.stringify` equality + sort-by-allocation_id verification, empty-allocations no-op, empty-allocations + no-basis still emits the item-level `no_basis` warning.
+- 9 cases for the lookup (`role-rate-lookup.test.ts`): empty-keys short-circuit (no RPC call), 2-of-2 resolved happy path, mixed resolved+null-data missing, fail-open RPC error → missing (verifies a single `console.error` is logged), dedup of identical keys (1 RPC call for 4 identical inputs), no-dedup across different `as_of_date` (rate may differ over time), stringified-numeric coercion (`"1234.56"` → `1234.56` — PostgREST sometimes serializes `numeric` as string), malformed RPC payload → missing without crashing, exact RPC argument shape verification (`p_tenant_id`, `p_role_key`, `p_as_of_date`).
+
+**Edge cases covered beyond the spec:**
+- Determinism is **explicitly** verified via `JSON.stringify(r1) === JSON.stringify(r2)` + a sort-order assertion (engine sorts allocations by `allocation_id` ascending).
+- `kind='task'` with `story_points` set but no duration: falls through to no-basis warning (SP_KINDS deliberately excludes task/subtask/bug/work_package).
+- Stringified `numeric` from PostgREST is coerced via `Number(...)`; malformed payloads are treated as missing rather than throwing — same fail-open philosophy as RPC errors.
+- Duplicate `RoleRateLookupKey` requests dedupe to a single RPC call to keep the lookup cheap when many work-items share the same role.
+
+**Caveats / annotations in the code:**
+- `calculate-work-item-costs.ts` documents that the engine is pure-TS and that the SP-vs-duration tie-break is locked to "duration wins" — a comment explains the rationale.
+- `role-rate-lookup.ts` carries an explicit JSDoc warning that the supplied client MUST be service-role; supabase-js does not expose a way to verify this at runtime, so the constraint is enforced at the call-site (PROJ-24-γ API routes will use `createAdminClient()` from `@/lib/supabase/admin`).
+- `parseRpcRow` defensively handles three response shapes (`null`, single object, single-element array) because supabase-js' composite-return shape varies with PostgREST versions.
+
+**Open for next phases:**
+- 24-γ: 6 API routes per ST-07. Routes will compose `resolveRoleRates` (admin client) + `calculateWorkItemCosts` (pure call) + a service-role admin client to insert into `work_item_cost_lines`. Manual cost-lines (`source_type='manual'`) bypass the engine.
+- 24-δ: hook into the existing PROJ-11 `POST/PUT/DELETE /api/projects/[id]/work-items/[wid]/resources` route to emit Replace-on-Update cost-lines on every allocation mutation. Fail-open contract: a cost-calc or lookup error must not block the allocation write — a warning-flagged cost-line is written instead.
 
 ## QA Test Results
 _To be added by /qa_
