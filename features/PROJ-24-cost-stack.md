@@ -1,8 +1,8 @@
 # PROJ-24: Cost-Stack — Tagessätze pro Rolle, Velocity-Modell & Kosten pro Work-Item
 
-## Status: Approved (24-α/β/γ/δ/ε complete · QA passed · ready for branch merge + /deploy)
+## Status: Deployed (24-α/β/γ/δ/ε live in production — 2026-05-03)
 **Created:** 2026-04-30
-**Last Updated:** 2026-05-02
+**Last Updated:** 2026-05-03
 
 ## Summary
 Bringt Geld an die Arbeit. Drei Säulen:
@@ -685,4 +685,41 @@ Caveat zur User-Awareness:
    - Backlog-Liste öffnen, Cost-Cell-Spalte prüfen (≈-Tilde bei Stories, exakte Werte bei Arbeitspaketen)
 
 ## Deployment
-_To be added by /deploy_
+
+**Date:** 2026-05-03
+**Production URL:** https://projektplattform-v3.vercel.app
+**Vercel Deployment:** https://vercel.com/it-couch/projektplattform-v3/DKQUitPbGLdnX51yapXgJNuwRoRc
+**Tag:** `v1.24.0-PROJ-24-cost-stack`
+**Commit (merge HEAD):** `a3e26ce` (chore: rename α + lockdown migrations to avoid main timestamp collision)
+
+### Branch-Merge-Pipeline
+
+PROJ-24 wurde auf einem Feature-Branch `feat/PROJ-24-cost-stack` entwickelt (9 Commits: Tech-Design + 24-α + Lockdown + 24-β + 24-γ + 24-δ + 24-ε + QA + Migration-Rename) und vor dem Merge in `main` gerebased:
+
+1. **Migration-Rename** — Beide α-Migrationen umnummeriert wegen Timestamp-Konflikt mit PROJ-33-β:
+   - `20260502160000_proj24_cost_stack_alpha.sql` → `20260503100000_proj24_cost_stack_alpha.sql`
+   - `20260502170000_proj24_resolve_role_rate_lockdown.sql` → `20260503110000_proj24_resolve_role_rate_lockdown.sql`
+2. **Rebase auf `main`** — 1 Konflikt in `eslint.config.mjs` (PROJ-33-β/γ-Override-Liste vs. PROJ-24-ε-Override-Liste): beide Listen kombiniert.
+3. **Re-Verification post-rebase**: `tsc 0 · lint 0 · vitest 775/775 · build green`.
+4. **Fast-Forward Merge** in `main` (15b6aa2..a3e26ce, 9 Commits).
+5. **Push to `origin/main`** — Vercel auto-deploy ausgelöst.
+6. **Vercel build success** bestätigt via GitHub commit-status (`state=success`, `description="Deployment has completed"`).
+
+### Migration-DB-Hygiene-Caveat
+
+Die α-Migration ist remote unter Version `20260502023517_proj24_cost_stack_alpha` registriert (Timestamp aus dem MCP-`apply_migration`-Aufruf). Lokal heißt die Datei jetzt `20260503100000_…`. Die SQL-Inhalte sind identisch.
+
+**Bei einem zukünftigen `supabase db push` aus `main`** würde das Tool die Datei `20260503100000_…` als unangewendet sehen und versuchen, sie nochmals zu applien — Fehlschlag, weil Tabellen schon existieren. Empfohlene Korrektur (nicht jetzt blockend):
+- `supabase migration repair 20260503100000` (oder via Dashboard die remote-Version umbenennen).
+- Alternativ: lokales File auf `20260502023517_…` umbenennen, damit es zur DB passt.
+
+Die Frontend-Cost-Surfaces sowie alle PROJ-24-Routen funktionieren in Production unabhängig von dieser File/DB-Naming-Diskrepanz.
+
+### Production-Smoke-Plan (User-Side)
+
+Nach dem Deploy bitte verifizieren:
+1. `https://projektplattform-v3.vercel.app/settings/tenant/role-rates` öffnet, Senior-Dev-Rate kann angelegt werden, Status-Badge "Aktiv" zeigt.
+2. `/settings/tenant` zeigt Section "Kosten-Defaults" mit Velocity-Faktor + Default-Währung; Speichern persistiert.
+3. Work-Item-Drawer öffnet, Allocation hinzufügen → Cost-Section zeigt automatisch eine `resource_allocation`-Cost-Line.
+4. Backlog-Liste zeigt neue Spalte "Plan-Kosten" mit `≈`-Tilde bei Stories und exakten Werten bei Arbeitspaketen.
+5. Sentry-Dashboard auf neue PROJ-24-Errors prüfen (sollte clean sein bei Erfolg).
