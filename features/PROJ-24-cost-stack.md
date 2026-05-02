@@ -336,7 +336,7 @@ Begründung: Die UI ist relativ simpel; die Komplexität liegt im Versioning + P
 
 ### Phase 24-α — Database foundation (`/backend`, 2026-05-02)
 
-Migration: `supabase/migrations/20260502160000_proj24_cost_stack_alpha.sql` (≈ 320 lines).
+Migration: `supabase/migrations/20260503100000_proj24_cost_stack_alpha.sql` (≈ 320 lines, renamed from `20260502160000_…` during branch-merge to resolve timestamp collision with PROJ-33-β).
 
 **Built:**
 - Table `public.role_rates` (id, tenant_id, role_key, daily_rate(10,2), currency, valid_from, created_by, timestamps). UNIQUE on `(tenant_id, role_key, valid_from)`. RLS: SELECT for tenant-member, INSERT/DELETE for tenant-admin, **no UPDATE policy** (append-only versioning, mirrors `fx_rates`). Index `(tenant_id, role_key, valid_from desc)` for the lookup path. CHECKs: `daily_rate >= 0`, `_is_supported_currency(currency)`, `char_length(role_key) between 1 and 100`.
@@ -371,7 +371,7 @@ Migration: `supabase/migrations/20260502160000_proj24_cost_stack_alpha.sql` (≈
 
 ### Phase 24-α follow-up — `_resolve_role_rate` lockdown (2026-05-02)
 
-Migration: `supabase/migrations/20260502170000_proj24_resolve_role_rate_lockdown.sql`. Applied as `proj24_resolve_role_rate_lockdown`.
+Migration: `supabase/migrations/20260503110000_proj24_resolve_role_rate_lockdown.sql` (renamed from `20260502170000_…` during branch-merge). Applied as `proj24_resolve_role_rate_lockdown`.
 
 **Trigger:** Supabase security advisor (lint 0029, `authenticated_security_definer_function_executable`) flagged `_resolve_role_rate` as callable by any signed-in user via REST RPC. Because the function is SECURITY DEFINER and returns a `role_rates` row including the Class-3 `daily_rate`, this would let User A (tenant A) query rates of tenant B by passing an arbitrary `p_tenant_id` — RLS does NOT apply to SECURITY DEFINER calls.
 
@@ -671,7 +671,7 @@ Each hook resolves the tenant_id from the project, instantiates a service-role a
 **Recommendation:** **APPROVED for branch-merge into `main` + `/deploy proj 24`**.
 
 Caveat zur User-Awareness:
-- Die α-Migration `20260502160000_proj24_cost_stack_alpha.sql` hat **denselben Timestamp** wie `20260502160000_proj33b_stakeholder_type_catalog.sql` auf `main`. Beim Branch-Merge muss die PROJ-24-Migration umnummeriert werden (z. B. `20260502210000_…`). Die Remote-DB hält sie bereits unter Version `20260502023517_proj24_cost_stack_alpha`, daher ist die Umbenennung lokal-only — KEINE neue Apply-Aktion nötig, nur File-System-Hygiene für `supabase migrations list` Konsistenz.
+- Die α-Migration wurde auf dem Branch ursprünglich als `20260502160000_proj24_cost_stack_alpha.sql` angelegt, dann beim Merge in `main` auf `20260503100000_proj24_cost_stack_alpha.sql` umnummeriert (Timestamp-Konflikt mit `20260502160000_proj33b_stakeholder_type_catalog.sql` auf `main`). Die Lockdown-Migration analog auf `20260503110000_…`. Die Remote-DB hält die α-Migration unter Version `20260502023517_proj24_cost_stack_alpha`, daher ist die Umbenennung lokal-only — KEINE neue Apply-Aktion nötig, nur File-System-Hygiene für `supabase migrations list` Konsistenz.
 - Audit-Whitelist greift nur für **API-erzeugte** INSERT/DELETE-Operations (synthetic via `writeCostAuditEntry`). Direkte SQL-Writes (z. B. via Supabase Studio) bypassen die Audit-Spur — bewusste Entscheidung im 24-α-Spec, dokumentiert in der Migration und im Header von `cost-audit.ts`.
 
 ### Suggested Next

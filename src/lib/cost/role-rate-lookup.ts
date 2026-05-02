@@ -7,7 +7,7 @@
  *
  * SECURITY: this layer MUST be invoked with a service-role Supabase client.
  *
- *   Migration `20260502170000_proj24_resolve_role_rate_lockdown.sql` revokes
+ *   Migration `20260503110000_proj24_resolve_role_rate_lockdown.sql` revokes
  *   EXECUTE on `_resolve_role_rate` from `authenticated`; only `service_role`
  *   retains it. Callers must use `createAdminClient()` from
  *   `@/lib/supabase/admin`. This module does NOT verify that the supplied
