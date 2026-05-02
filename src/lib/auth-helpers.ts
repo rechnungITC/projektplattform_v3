@@ -80,7 +80,7 @@ export async function loadServerAuth(): Promise<ServerAuthSnapshot | null> {
       supabase
         .from("tenant_settings")
         .select(
-          "tenant_id, active_modules, privacy_defaults, ai_provider_config, retention_overrides, created_at, updated_at"
+          "tenant_id, active_modules, privacy_defaults, ai_provider_config, retention_overrides, budget_settings, output_rendering_settings, cost_settings, risk_score_overrides, created_at, updated_at"
         )
         .eq("tenant_id", initialTenantId)
         .maybeSingle(),

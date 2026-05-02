@@ -129,6 +129,11 @@ export interface TenantSettings {
   budget_settings: BudgetSettings
   output_rendering_settings: OutputRenderingSettings
   cost_settings: CostSettings
+  /** PROJ-35 — tenant-specific Risk-Score multiplier overrides. Empty object
+   *  means: use TS-defaults from `src/lib/risk-score/defaults.ts`. Optional
+   *  on the type so test fixtures + older snapshots stay compatible; the DB
+   *  column is NOT NULL DEFAULT '{}'. */
+  risk_score_overrides?: Record<string, unknown>
   created_at: string
   updated_at: string
 }
