@@ -172,6 +172,22 @@ export async function PATCH(request: Request, ctx: Ctx) {
   if (data.linked_user_id !== undefined)
     update.linked_user_id = data.linked_user_id ?? null
   if (data.notes !== undefined) update.notes = data.notes?.trim() || null
+  // PROJ-33 Phase 33-α — qualitative Bewertungs-Felder
+  if (data.reasoning !== undefined)
+    update.reasoning = data.reasoning?.trim() || null
+  if (data.stakeholder_type_key !== undefined)
+    update.stakeholder_type_key = data.stakeholder_type_key?.trim() || null
+  if (data.management_level !== undefined)
+    update.management_level = data.management_level ?? null
+  if (data.decision_authority !== undefined)
+    update.decision_authority = data.decision_authority ?? null
+  if (data.attitude !== undefined) update.attitude = data.attitude ?? null
+  if (data.conflict_potential !== undefined)
+    update.conflict_potential = data.conflict_potential ?? null
+  if (data.communication_need !== undefined)
+    update.communication_need = data.communication_need ?? null
+  if (data.preferred_channel !== undefined)
+    update.preferred_channel = data.preferred_channel ?? null
 
   const { data: row, error } = await supabase
     .from("stakeholders")

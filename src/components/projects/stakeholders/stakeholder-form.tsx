@@ -209,7 +209,7 @@ export function StakeholderForm({
       notes: values.notes.trim() || null,
       // PROJ-33 — qualitative fields: NO_VALUE → null.
       reasoning: values.reasoning.trim() || null,
-      stakeholder_type_key: values.stakeholder_type_key.trim() || null,
+      stakeholder_type_key: selectToNullable<string>(values.stakeholder_type_key),
       management_level: selectToNullable<ManagementLevel>(values.management_level),
       decision_authority: selectToNullable<DecisionAuthority>(values.decision_authority),
       attitude: selectToNullable<StakeholderAttitude>(values.attitude),
@@ -471,7 +471,13 @@ export function StakeholderForm({
               />
             </button>
           </CollapsibleTrigger>
-          <CollapsibleContent className="mt-4 space-y-4">
+          {/* forceMount: keep all fields mounted so react-hook-form Controllers
+              don't lose state when the section is closed. CSS hides the
+              content via Radix's data-state attribute. */}
+          <CollapsibleContent
+            forceMount
+            className="mt-4 space-y-4 data-[state=closed]:hidden"
+          >
             <FormField
               control={form.control}
               name="reasoning"
