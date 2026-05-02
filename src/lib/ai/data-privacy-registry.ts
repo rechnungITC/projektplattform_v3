@@ -184,6 +184,24 @@ const REGISTRY: Record<string, DataClass> = {
   "fx_rates.rate": 1,
   "fx_rates.valid_on": 2,
   "fx_rates.source": 1,
+
+  // -------------------- cost-stack (PROJ-24) ----------------------------
+  // Tagessätze sind Personalkosten — sensibel. daily_rate ist Class 3
+  // (kann auf Gehälter zurückrechnen / leakt Personalkosten-Niveau).
+  // role_key/valid_from/currency sind reines Geschäftskontext-Material.
+  "role_rates.daily_rate": 3,
+  "role_rates.role_key": 2,
+  "role_rates.valid_from": 2,
+  "role_rates.currency": 2,
+  // work_item_cost_lines: Beträge + Currency + Datum sind Class 2;
+  // source_type ist reine Diskriminator-Enum (Class 1); source_metadata
+  // ist freier JSONB-Container und kann Notizen/Personenbezug enthalten
+  // ("Beratungs-Tag mit Hr. Schmidt") → conservative Class 3.
+  "work_item_cost_lines.amount": 2,
+  "work_item_cost_lines.currency": 2,
+  "work_item_cost_lines.source_type": 1,
+  "work_item_cost_lines.source_metadata": 3,
+  "work_item_cost_lines.occurred_on": 2,
 }
 
 /**

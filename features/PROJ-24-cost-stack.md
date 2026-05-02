@@ -1,6 +1,6 @@
 # PROJ-24: Cost-Stack — Tagessätze pro Rolle, Velocity-Modell & Kosten pro Work-Item
 
-## Status: Architected
+## Status: In Progress (Phase 24-α DB done)
 **Created:** 2026-04-30
 **Last Updated:** 2026-05-02
 
@@ -333,7 +333,41 @@ Reihenfolge der nächsten Skills:
 Begründung: Die UI ist relativ simpel; die Komplexität liegt im Versioning + Pure-TS-Engine + dem invasiven Hook in der PROJ-11-Route. Backend-First erlaubt es, die Engine isoliert zu testen, bevor UI darauf aufsetzt.
 
 ## Implementation Notes
-_To be added by /frontend and /backend_
+
+### Phase 24-α — Database foundation (`/backend`, 2026-05-02)
+
+Migration: `supabase/migrations/20260502160000_proj24_cost_stack_alpha.sql` (≈ 320 lines).
+
+**Built:**
+- Table `public.role_rates` (id, tenant_id, role_key, daily_rate(10,2), currency, valid_from, created_by, timestamps). UNIQUE on `(tenant_id, role_key, valid_from)`. RLS: SELECT for tenant-member, INSERT/DELETE for tenant-admin, **no UPDATE policy** (append-only versioning, mirrors `fx_rates`). Index `(tenant_id, role_key, valid_from desc)` for the lookup path. CHECKs: `daily_rate >= 0`, `_is_supported_currency(currency)`, `char_length(role_key) between 1 and 100`.
+- Table `public.work_item_cost_lines` (id, tenant_id, project_id, work_item_id, source_type, amount(14,2), currency, occurred_on, source_ref_id, source_metadata jsonb default `{}`, created_by, created_at). RLS: SELECT for project-member, INSERT/UPDATE/DELETE for `has_project_role(project_id, 'editor') OR is_project_lead OR is_tenant_admin` — same pattern as `budget_items`. CHECKs: `source_type in ('resource_allocation','manual','lv_position','material','stueckliste','mischkalkulation')`, `amount >= 0`, `_is_supported_currency(currency)`. Indexes: `(work_item_id, source_type)`, `(project_id)`, partial `(source_ref_id) where source_ref_id is not null` for the Replace-on-Update path.
+- Column `tenant_settings.cost_settings` (JSONB, default `{"velocity_factor": 0.5, "default_currency": "EUR"}`). Velocity-factor range `[0.1, 5.0]` is Zod-validated in the TS layer (24-γ), not in the DB — consistent with other JSONB settings columns.
+- View `public.work_item_cost_totals` with `security_invoker = true`. Columns: `work_item_id, tenant_id, project_id, total_cost numeric(14,2), currency char(3), cost_lines_count int, multi_currency_count int, is_estimated boolean`. Filters soft-deleted work-items (`wi.is_deleted = false`) per locked decision §4 #9. The `currency` column picks the most-frequent currency on the item (deterministic tie-break by `max(currency)`); `total_cost` is a raw sum that is only semantically valid when `multi_currency_count = 1` — UI must surface the multi-currency warning.
+- Helper `public._resolve_role_rate(p_tenant_id uuid, p_role_key text, p_as_of_date date) returns role_rates`. SECURITY DEFINER, `set search_path = public, pg_temp` (PROJ-29 hardening). Returns the latest row with `valid_from <= as_of_date` for the given (tenant, role) — NULL if no match. Execute revoked from `public, anon`, granted to `authenticated, service_role`.
+- Audit-Whitelist: extended `audit_log_entity_type_check` with `role_rates` and `work_item_cost_lines`. Updated `_tracked_audit_columns(text)` to cover both new tables. `tenant_settings.cost_settings` added to its tracked-columns array so velocity/default-currency edits are auditable.
+- Trigger: `audit_changes_work_item_cost_lines` on UPDATE only (manual lines are editable). `role_rates` has no UPDATE-trigger because it is append-only — INSERT/DELETE audit will be wired via API-route synthetic entries in 24-γ (same pattern as PROJ-22 `budget_postings`).
+
+**Privacy registry** (`src/lib/ai/data-privacy-registry.ts`):
+- `role_rates.daily_rate` → 3 (Personalkosten, sensibel)
+- `role_rates.role_key` / `valid_from` / `currency` → 2
+- `work_item_cost_lines.amount` / `currency` / `occurred_on` → 2
+- `work_item_cost_lines.source_type` → 1 (Diskriminator-Enum)
+- `work_item_cost_lines.source_metadata` → 3 (freier JSONB, kann Notes mit Personenbezug enthalten)
+
+**Deviations from spec:** none.
+
+**Open for next phases:**
+- 24-β: pure-TS cost-calc-engine in `src/lib/cost/` (`calculateWorkItemCosts` + `role-rate-lookup` + tests).
+- 24-γ: 6 API routes per ST-07 (role-rates CRUD, cost-lines CRUD, project cost-summary). Synthetic-INSERT-Audit entries for `role_rates` and `resource_allocation`-cost-lines (service-role admin client, mirrors PROJ-22 budget-postings).
+- 24-δ: hook into the existing PROJ-11 `POST/PUT/DELETE /api/projects/[id]/work-items/[wid]/resources` route to emit Replace-on-Update cost-lines. Fail-open contract: a cost-calc error must not block the allocation write — the cost-line is written with `amount=0` and a `source_metadata.warning` flag (per Tech Design §12).
+
+**Caveats / watch-outs surfaced during DB design:**
+- `total_cost` in the view is a raw sum across currencies; consumers MUST gate on `multi_currency_count = 1` before treating the number as authoritative. UI work in 24-frontend will surface a multi-currency banner in the work-item drawer.
+- `source_ref_id` partial index supports the 24-δ Replace-on-Update path. If we later reuse `source_ref_id` for cross-source dedup (e.g. LV-Positionen), confirm there is no conflict with the resource_allocation case.
+- `role_rates.updated_at + moddatetime trigger` is technically present but unreachable today (no UPDATE policy). Kept for symmetry with the rest of the schema; can be removed if we ever decide append-only-with-no-UPDATE-trigger is the canonical pattern.
+- The view filters soft-deleted work-items but **keeps** their cost-lines in the table (per locked decision §4 #9). On work-item un-delete, the cost-lines reappear in the view automatically. This is the desired behavior.
+
+**Migration not yet applied to remote.** The orchestrator (main session) applies the migration to Supabase via MCP after this slice.
 
 ## QA Test Results
 _To be added by /qa_

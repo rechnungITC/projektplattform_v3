@@ -37,7 +37,7 @@
 | PROJ-21 | Output Rendering — Status-Report & Executive-Summary | Deployed | [Spec](PROJ-21-output-rendering.md) | 2026-04-30 |
 | PROJ-22 | Budget-Modul mit Historisierung, Vendor-Integration & Multi-Currency | Deployed | [Spec](PROJ-22-budget-modul.md) | 2026-04-30 |
 | PROJ-23 | Globale Sidebar-Navigation (UI-Refactor) | Deployed | [Spec](PROJ-23-sidebar-global.md) | 2026-04-30 |
-| PROJ-24 | Cost-Stack — Tagessätze pro Rolle, Velocity-Modell & Kosten pro Work-Item | Architected | [Spec](PROJ-24-cost-stack.md) | 2026-04-30 |
+| PROJ-24 | Cost-Stack — Tagessätze pro Rolle, Velocity-Modell & Kosten pro Work-Item | In Progress (Phase 24-α DB done) | [Spec](PROJ-24-cost-stack.md) | 2026-04-30 |
 | PROJ-25 | Drag-and-Drop Stack — Backlog↔Sprint + Gantt voll | Planned | [Spec](PROJ-25-dnd-stack.md) | 2026-04-30 |
 | PROJ-26 | Method-Gating für Schedule-Constructs (Sprints, Phasen, Milestones) | Deployed | [Spec](PROJ-26-method-gating-schedule-constructs.md) | 2026-05-01 |
 | PROJ-27 | Cross-Project Work-Item Links + Sub-Project Bridge | Architected | [Spec](PROJ-27-cross-project-links-and-subproject-bridge.md) | 2026-05-01 |
