@@ -55,17 +55,21 @@ export function ProfileRadarChart({
 
   return (
     <div className="space-y-3">
-      <ResponsiveContainer width="100%" height={280}>
-        <RadarChart data={chartData} margin={{ top: 8, right: 24, bottom: 8, left: 24 }}>
+      <ResponsiveContainer width="100%" height={520}>
+        <RadarChart
+          data={chartData}
+          margin={{ top: 40, right: 100, bottom: 40, left: 100 }}
+          outerRadius="78%"
+        >
           <PolarGrid />
           <PolarAngleAxis
             dataKey="dimension"
-            tick={{ fontSize: 11, fill: "currentColor" }}
+            tick={{ fontSize: 13, fill: "currentColor" }}
           />
           <PolarRadiusAxis
             angle={90}
             domain={[0, 100]}
-            tick={{ fontSize: 9 }}
+            tick={{ fontSize: 10 }}
           />
           {hasFremd && (
             <Radar

@@ -126,7 +126,7 @@ export function ProfileTab({
         </Button>
       </div>
 
-      <div className="grid gap-6 md:grid-cols-2">
+      <div className="space-y-6">
         <Card>
           <CardHeader>
             <CardTitle className="text-base">Skill-Profil</CardTitle>
@@ -196,23 +196,9 @@ export function ProfileTab({
             <CardTitle className="text-base">Audit-Trail (letzte 50)</CardTitle>
           </CardHeader>
           <CardContent>
-            <ol className="space-y-2 text-sm">
+            <ol className="space-y-3">
               {bundle.events.map((e) => (
-                <li key={e.id} className="flex items-center justify-between">
-                  <span>
-                    <span className="font-medium">
-                      {e.profile_kind === "skill"
-                        ? "Skill"
-                        : "Persönlichkeit"}
-                    </span>
-                    {" — "}
-                    {translateEventType(e.event_type)}
-                  </span>
-                  <span className="text-xs text-muted-foreground">
-                    {new Date(e.created_at).toLocaleString("de-DE")} ·{" "}
-                    {e.actor_kind === "user" ? "PM" : "Stakeholder"}
-                  </span>
-                </li>
+                <AuditEventRow key={e.id} event={e} />
               ))}
             </ol>
           </CardContent>
@@ -246,4 +232,146 @@ function translateEventType(t: string): string {
     default:
       return t
   }
+}
+
+const SKILL_LABEL_MAP: Record<string, string> = {
+  domain_knowledge_fremd: "Domänenwissen",
+  method_competence_fremd: "Methodenkompetenz",
+  it_affinity_fremd: "IT-Affinität",
+  negotiation_skill_fremd: "Verhandlungsgeschick",
+  decision_power_fremd: "Entscheidungskraft",
+}
+
+const PERSONALITY_LABEL_MAP: Record<string, string> = {
+  openness_fremd: "Offenheit",
+  conscientiousness_fremd: "Gewissenhaftigkeit",
+  extraversion_fremd: "Extraversion",
+  agreeableness_fremd: "Verträglichkeit",
+  emotional_stability_fremd: "Emotionale Stabilität",
+}
+
+function AuditEventRow({
+  event,
+}: {
+  event: {
+    id: string
+    profile_kind: "skill" | "personality"
+    event_type: string
+    actor_kind: string
+    created_at: string
+    payload: Record<string, unknown> | null
+  }
+}) {
+  const [open, setOpen] = React.useState(false)
+
+  const labelMap =
+    event.profile_kind === "skill" ? SKILL_LABEL_MAP : PERSONALITY_LABEL_MAP
+
+  // Compute per-dimension diff from payload
+  const before = (event.payload?.before ?? {}) as Record<string, unknown> | null
+  const after = (event.payload?.after ?? {}) as Record<string, unknown> | null
+  const diffs: Array<{ key: string; label: string; before: number | null; after: number | null }> = []
+  for (const fieldKey of Object.keys(labelMap)) {
+    const b = (before as Record<string, unknown> | null)?.[fieldKey]
+    const a = (after as Record<string, unknown> | null)?.[fieldKey]
+    const beforeVal = typeof b === "number" ? b : null
+    const afterVal = typeof a === "number" ? a : null
+    if (beforeVal === afterVal && afterVal === null) continue
+    diffs.push({
+      key: fieldKey,
+      label: labelMap[fieldKey] ?? fieldKey,
+      before: beforeVal,
+      after: afterVal,
+    })
+  }
+
+  const changed = diffs.filter((d) => d.before !== d.after)
+  const unchanged = diffs.filter((d) => d.before === d.after)
+  const hasDiff = changed.length > 0
+
+  return (
+    <li className="rounded-md border bg-card">
+      <button
+        type="button"
+        onClick={() => setOpen(!open)}
+        className="flex w-full items-center justify-between px-3 py-2 text-left text-sm hover:bg-accent"
+      >
+        <span className="flex items-center gap-2">
+          <span className="font-medium">
+            {event.profile_kind === "skill" ? "Skill" : "Persönlichkeit"}
+          </span>
+          <span className="text-muted-foreground">—</span>
+          <span>{translateEventType(event.event_type)}</span>
+          {hasDiff && (
+            <span className="rounded-full bg-muted px-2 py-0.5 text-xs">
+              {changed.length} Feld{changed.length === 1 ? "" : "er"}
+            </span>
+          )}
+        </span>
+        <span className="text-xs text-muted-foreground">
+          {new Date(event.created_at).toLocaleString("de-DE")} ·{" "}
+          {event.actor_kind === "user" ? "PM" : "Stakeholder"}
+        </span>
+      </button>
+      {open && hasDiff && (
+        <div className="border-t bg-muted/30 px-3 py-2">
+          <table className="w-full text-xs">
+            <thead>
+              <tr className="text-left text-muted-foreground">
+                <th className="pb-1">Dimension</th>
+                <th className="pb-1 w-20 text-right">Vorher</th>
+                <th className="pb-1 w-6 text-center">→</th>
+                <th className="pb-1 w-20 text-right">Nachher</th>
+                <th className="pb-1 w-16 text-right">Δ</th>
+              </tr>
+            </thead>
+            <tbody>
+              {changed.map((d) => {
+                const delta =
+                  d.before !== null && d.after !== null
+                    ? d.after - d.before
+                    : null
+                return (
+                  <tr key={d.key} className="border-t border-muted">
+                    <td className="py-1">{d.label}</td>
+                    <td className="py-1 text-right tabular-nums text-muted-foreground">
+                      {d.before ?? "—"}
+                    </td>
+                    <td className="py-1 text-center text-muted-foreground">→</td>
+                    <td className="py-1 text-right tabular-nums font-medium">
+                      {d.after ?? "—"}
+                    </td>
+                    <td
+                      className={
+                        delta === null
+                          ? "py-1 text-right tabular-nums text-muted-foreground"
+                          : delta > 0
+                            ? "py-1 text-right tabular-nums text-emerald-600"
+                            : delta < 0
+                              ? "py-1 text-right tabular-nums text-amber-700"
+                              : "py-1 text-right tabular-nums text-muted-foreground"
+                      }
+                    >
+                      {delta === null ? "—" : delta > 0 ? `+${delta}` : delta}
+                    </td>
+                  </tr>
+                )
+              })}
+              {unchanged.length > 0 && (
+                <tr className="border-t border-muted">
+                  <td
+                    colSpan={5}
+                    className="py-1 text-xs italic text-muted-foreground"
+                  >
+                    {unchanged.length} weitere Dimension
+                    {unchanged.length === 1 ? "" : "en"} unverändert
+                  </td>
+                </tr>
+              )}
+            </tbody>
+          </table>
+        </div>
+      )}
+    </li>
+  )
 }
