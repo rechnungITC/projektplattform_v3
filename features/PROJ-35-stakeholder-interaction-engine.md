@@ -1,8 +1,8 @@
 # PROJ-35: Stakeholder-Wechselwirkungs-Engine — Risiko-Score, Eskalations-Indikatoren & Tonalitäts-Empfehlungen
 
-## Status: 35-α Backend Approved (β + γ pending; 35-α frontend pending)
+## Status: 35-α Backend Deployed (35-α Frontend + β + γ pending)
 **Created:** 2026-05-02
-**Last Updated:** 2026-05-02 (QA pass — 0 Critical/High, 1 Medium, 1 Low, 2 Doc-Drift)
+**Last Updated:** 2026-05-02 (35-α Backend live in production; Tag v1.35.0-PROJ-35-alpha)
 
 ## Summary
 
@@ -681,4 +681,34 @@ Falls Bugs deferred: Production-ready für 35-α-Backend-only-Auslieferung. UI-S
 3. **Phase 35-β** — `phases.is_critical`-Migration + Stakeholder-Detail-UI (Risk-Banner · Pattern-Banner · Tonalitäts-Card · Wahrnehmungslücke-Section).
 
 ## Deployment
-_To be added by /deploy._
+
+### Phase 35-α — Backend (2026-05-02)
+
+- **Migration:** `20260502230000_proj35a_risk_score_engine.sql` live applied via Supabase MCP. Schema verified: `tenant_settings.risk_score_overrides` JSONB-Spalte, `stakeholders.current_escalation_patterns` text[]-Spalte, 4 Triggers, 2 Functions, 4 erweiterte CHECK-Constraints.
+- **Code-Push:** Commit `a839c10` (Phase 35-α Backend + QA + Bug-1-Fix) gepusht zu `origin/main`. Vercel Auto-Deploy triggered.
+- **Tag:** `v1.35.0-PROJ-35-alpha` erstellt + gepusht.
+- **Production URL:** `https://projektplattform-v3.vercel.app`.
+- **Neue Route im Manifest:**
+  - `GET/PUT/DELETE /api/tenants/[id]/settings/risk-score` (Tenant-Admin-Config; GET = Member-Read, PUT/DELETE = Admin-Only)
+- **Was deployed wurde (Backend-Slice):**
+  - Compute-Bibliothek `src/lib/risk-score/` (6 Module + 5 Test-Files, 54 Cases)
+  - Tenant-Override-API mit RBAC + Zod-Validation
+  - PG-Trigger-getriebene Pattern-Audit-Pipeline (4 Triggers)
+  - 2 ADRs + 1 Architecture-Doc
+- **Was NICHT deployed wurde:**
+  - Tenant-Admin-Page UI (`/settings/tenant/risk-score`) — folgt in `/frontend proj 35`
+  - Stakeholder-Detail-Banner + Pattern-Banner + Tonalitäts-Card — Phase 35-β
+  - Health-Dashboard + Sparkline — Phase 35-γ
+- **Deployment-Verification (User-Action empfohlen nach Vercel-Build-Done):**
+  - Backend-only smoke: `curl https://projektplattform-v3.vercel.app/api/tenants/[your-tenant-id]/settings/risk-score` mit Auth → erwartet 200 mit `{ defaults, overrides, effective }`-JSON
+  - Live DB Red-Team in Production: Trigger-Aktivierung via Stakeholder-UPDATE testen → Audit-Event mit `actor_kind=system` sollte erscheinen
+  - Browser-Test sinnvoll erst nach `/frontend proj 35` (UI-Slice).
+
+### Phase 35-α Frontend
+_Pending — kommt in `/frontend proj 35` (Tenant-Admin-Page mit Live-Preview)._
+
+### Phase 35-β
+_Not yet started._
+
+### Phase 35-γ
+_Not yet started._
