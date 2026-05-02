@@ -1,8 +1,8 @@
 # PROJ-35: Stakeholder-Wechselwirkungs-Engine — Risiko-Score, Eskalations-Indikatoren & Tonalitäts-Empfehlungen
 
-## Status: 35-α Backend live; Frontend Approved (alle 5 Bugs gefixt); β + γ pending
+## Status: 35-α Deployed (Backend + Frontend live); β + γ pending
 **Created:** 2026-05-02
-**Last Updated:** 2026-05-03 (Frontend re-iteration — alle 5 Bugs gefixt; ready for /deploy)
+**Last Updated:** 2026-05-03 (35-α Frontend live in production; Tag v1.35.1-PROJ-35-alpha-frontend)
 
 ## Summary
 
@@ -877,6 +877,24 @@ User-Direktive: alle 5 Bugs in einem Refactor-Cycle gefixt vor /deploy.
 **Out-of-Scope für Phase 35-α (für 35-β):**
 - Bug-2 (`detectEscalationPatterns` API-Shape) — wird in 35-β beim UI-Konsumieren adressiert
 - Doc-Drift-1 + Doc-Drift-2 — kosmetische Spec-AC-Updates
+
+### Phase 35-α Frontend Deployment (2026-05-03)
+
+- **Code-Push:** Commit `3f94ed9` (Phase 35-α Frontend mit allen 5 QA-Bug-Fixes) gepusht zu `origin/main`. Vercel Auto-Deploy triggered.
+- **Tag:** `v1.35.1-PROJ-35-alpha-frontend` erstellt + gepusht.
+- **Production URL:** `https://projektplattform-v3.vercel.app/settings/tenant/risk-score`.
+- **Was deployed wurde:**
+  - Page-Route `/settings/tenant/risk-score` (Tenant-Admin-only)
+  - Form mit 5 Multiplikator-Buckets (attitude · conflict · authority · influence_norm · impact_norm) + 3 Skalare (influence_weight · impact_weight · adversity_weight)
+  - Live-Preview-Pane mit hypothetischem Stakeholder-Profil → Score updates sub-millisekunden bei jeder Form-Eingabe (kein Save-Roundtrip nötig)
+  - Reset-Workflow via shadcn AlertDialog
+  - Validation-Clear-onChange für UX-Polish
+- **Recovery-Notiz:** Frontend-Code ging während eines parallelen PROJ-24-Merge-Cycles in den Git-Stash — wurde via `git stash pop` recovered, ohne weitere Code-Änderungen. Alle Re-Iteration-Fixes bleiben erhalten.
+- **Deployment-Verification (User-Action empfohlen nach Vercel-Build-Done):**
+  - Browser-Test: `/settings/tenant/risk-score` als Tenant-Admin → Multiplikator ändern (z.B. attitude.blocking 2.5 → 5.0) → Live-Preview-Score updates sofort
+  - Reset-Workflow: AlertDialog erscheint, Cancel + Confirm beide testen
+  - Member-View: als nicht-Admin User auf Page → "Nur für Tenant-Admins"-Alert
+- **Phase 35-α ist damit vollständig live (Backend + Frontend).**
 
 ### Phase 35-β
 _Not yet started._
