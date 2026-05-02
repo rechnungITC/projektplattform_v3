@@ -29,8 +29,8 @@ export async function GET(_request: Request, ctx: Ctx) {
   const access = await requireProjectAccess(supabase, projectId, userId, "view")
   if (access.error) return access.error
 
-  // Fetch all 3 in parallel — RLS handles tenant scoping.
-  const [skillRes, personalityRes, eventsRes] = await Promise.all([
+  // Fetch all 4 in parallel — RLS handles tenant scoping.
+  const [skillRes, personalityRes, eventsRes, inviteRes] = await Promise.all([
     supabase
       .from("stakeholder_skill_profiles")
       .select("*")
@@ -49,6 +49,13 @@ export async function GET(_request: Request, ctx: Ctx) {
       .eq("stakeholder_id", sid)
       .order("created_at", { ascending: false })
       .limit(50),
+    supabase
+      .from("stakeholder_self_assessment_invites")
+      .select("id, status, magic_link_expires_at, submitted_at, created_at")
+      .eq("stakeholder_id", sid)
+      .order("created_at", { ascending: false })
+      .limit(1)
+      .maybeSingle(),
   ])
 
   if (skillRes.error)
@@ -57,12 +64,15 @@ export async function GET(_request: Request, ctx: Ctx) {
     return apiError("internal_error", personalityRes.error.message, 500)
   if (eventsRes.error)
     return apiError("internal_error", eventsRes.error.message, 500)
+  if (inviteRes.error)
+    return apiError("internal_error", inviteRes.error.message, 500)
 
   return NextResponse.json({
     bundle: {
       skill: skillRes.data ?? null,
       personality: personalityRes.data ?? null,
       events: eventsRes.data ?? [],
+      latest_invite: inviteRes.data ?? null,
     },
   })
 }

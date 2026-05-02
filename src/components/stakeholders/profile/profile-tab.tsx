@@ -1,6 +1,6 @@
 "use client"
 
-import { Pencil } from "lucide-react"
+import { Loader2, Mail, Pencil, X } from "lucide-react"
 import * as React from "react"
 import { toast } from "sonner"
 
@@ -9,15 +9,21 @@ import {
   type RadarPoint,
 } from "@/components/stakeholders/profile/profile-radar-chart"
 import { ProfileEditSheet } from "@/components/stakeholders/profile/profile-edit-sheet"
+import { Badge } from "@/components/ui/badge"
 import { Button } from "@/components/ui/button"
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
 import { Skeleton } from "@/components/ui/skeleton"
+import {
+  createSelfAssessmentInvite,
+  revokeSelfAssessmentInvite,
+} from "@/lib/stakeholders/api"
 import { getStakeholderProfile } from "@/lib/stakeholder-profiles/api"
 import {
   PERSONALITY_DIMENSIONS,
   PERSONALITY_DIMENSION_LABELS,
   SKILL_DIMENSIONS,
   SKILL_DIMENSION_LABELS,
+  type SelfAssessmentInviteStatus,
   type StakeholderProfileBundle,
 } from "@/types/stakeholder-profile"
 
@@ -126,6 +132,13 @@ export function ProfileTab({
         </Button>
       </div>
 
+      <SelfAssessmentInviteCard
+        projectId={projectId}
+        stakeholderId={stakeholderId}
+        invite={bundle?.latest_invite ?? null}
+        onChange={() => void reload()}
+      />
+
       <div className="space-y-6">
         <Card>
           <CardHeader>
@@ -216,6 +229,161 @@ export function ProfileTab({
         onSaved={() => void reload()}
       />
     </div>
+  )
+}
+
+interface InviteCardProps {
+  projectId: string
+  stakeholderId: string
+  invite: {
+    id: string
+    status: SelfAssessmentInviteStatus
+    magic_link_expires_at: string
+    submitted_at: string | null
+    created_at: string
+  } | null
+  onChange: () => void
+}
+
+function inviteStatusBadge(status: SelfAssessmentInviteStatus) {
+  switch (status) {
+    case "pending":
+      return (
+        <Badge className="bg-blue-100 text-blue-900 hover:bg-blue-100 dark:bg-blue-900/40 dark:text-blue-100">
+          Versendet · ausstehend
+        </Badge>
+      )
+    case "completed":
+      return (
+        <Badge className="bg-emerald-100 text-emerald-900 hover:bg-emerald-100 dark:bg-emerald-900/40 dark:text-emerald-100">
+          Abgegeben
+        </Badge>
+      )
+    case "revoked":
+      return <Badge variant="outline">Zurückgezogen</Badge>
+    case "expired":
+      return <Badge variant="outline">Abgelaufen</Badge>
+  }
+}
+
+function SelfAssessmentInviteCard({
+  projectId,
+  stakeholderId,
+  invite,
+  onChange,
+}: InviteCardProps) {
+  const [busy, setBusy] = React.useState<"send" | "revoke" | null>(null)
+
+  const handleSend = async () => {
+    setBusy("send")
+    try {
+      const result = await createSelfAssessmentInvite(projectId, stakeholderId)
+      toast.success("Self-Assessment-Einladung versendet", {
+        description: `Link gültig bis ${new Date(result.expires_at).toLocaleDateString("de-DE")}.`,
+      })
+      onChange()
+    } catch (err) {
+      toast.error("Einladung konnte nicht versendet werden", {
+        description: err instanceof Error ? err.message : "Unbekannter Fehler",
+      })
+    } finally {
+      setBusy(null)
+    }
+  }
+
+  const handleRevoke = async () => {
+    if (!invite) return
+    setBusy("revoke")
+    try {
+      await revokeSelfAssessmentInvite(projectId, stakeholderId, invite.id)
+      toast.success("Einladung zurückgezogen")
+      onChange()
+    } catch (err) {
+      toast.error("Einladung konnte nicht zurückgezogen werden", {
+        description: err instanceof Error ? err.message : "Unbekannter Fehler",
+      })
+    } finally {
+      setBusy(null)
+    }
+  }
+
+  const isPending = invite?.status === "pending"
+  const canSendNew = !invite || !isPending
+
+  return (
+    <Card>
+      <CardHeader>
+        <CardTitle className="text-base">Self-Assessment-Einladung</CardTitle>
+      </CardHeader>
+      <CardContent className="flex flex-wrap items-center justify-between gap-3 text-sm">
+        <div className="flex flex-col gap-1">
+          {invite ? (
+            <>
+              <div className="flex items-center gap-2">
+                {inviteStatusBadge(invite.status)}
+                <span className="text-xs text-muted-foreground">
+                  Versendet am{" "}
+                  {new Date(invite.created_at).toLocaleDateString("de-DE")}
+                </span>
+              </div>
+              {isPending && (
+                <p className="text-xs text-muted-foreground">
+                  Gültig bis{" "}
+                  {new Date(invite.magic_link_expires_at).toLocaleDateString(
+                    "de-DE",
+                  )}
+                  .
+                </p>
+              )}
+              {invite.submitted_at && (
+                <p className="text-xs text-muted-foreground">
+                  Antwort am{" "}
+                  {new Date(invite.submitted_at).toLocaleDateString("de-DE")}.
+                </p>
+              )}
+            </>
+          ) : (
+            <p className="text-xs text-muted-foreground">
+              Noch keine Einladung versendet. Der Stakeholder kann via
+              Magic-Link selbst eine Einschätzung abgeben (5 Minuten, kein
+              Login erforderlich).
+            </p>
+          )}
+        </div>
+
+        <div className="flex flex-wrap gap-2">
+          {isPending && (
+            <Button
+              type="button"
+              variant="outline"
+              onClick={handleRevoke}
+              disabled={busy !== null}
+            >
+              {busy === "revoke" ? (
+                <Loader2 className="mr-2 h-4 w-4 animate-spin" aria-hidden />
+              ) : (
+                <X className="mr-2 h-4 w-4" aria-hidden />
+              )}
+              Einladung zurückziehen
+            </Button>
+          )}
+          {canSendNew && (
+            <Button
+              type="button"
+              onClick={handleSend}
+              disabled={busy !== null}
+            >
+              {busy === "send" ? (
+                <Loader2 className="mr-2 h-4 w-4 animate-spin" aria-hidden />
+              ) : (
+                <Mail className="mr-2 h-4 w-4" aria-hidden />
+              )}
+              {invite ? "Neue Einladung versenden" : "Self-Assessment versenden"}
+            </Button>
+          )}
+        </div>
+      </CardContent>
+    </Card>
   )
 }
 

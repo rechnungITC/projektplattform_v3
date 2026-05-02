@@ -8,10 +8,17 @@
  * Approval-Mail" — enforced via a strict input whitelist (sanitized title +
  * approval URL only).
  *
+ * PROJ-33 Phase 33-δ extracted the title-sanitizer to
+ * `@/lib/comms/mail-sanitize` so the Self-Assessment mail-builder can
+ * reuse it. `sanitizeApprovalTitle` is preserved as a thin re-export to
+ * keep existing imports + tests working unchanged.
+ *
  * Code review pledge: any new caller of communication_outbox insert from
  * the approval flow MUST go through this builder. Direct inserts at other
  * call sites are forbidden by code review, not by the DB.
  */
+
+import { sanitizeMailTitle } from "@/lib/comms/mail-sanitize"
 
 export interface BuildApprovalOutboxRowInput {
   tenantId: string
@@ -47,33 +54,19 @@ export interface ApprovalOutboxRow {
   created_by: string
 }
 
-const TITLE_MAX_LEN = 200
-
 /**
- * Sanitize the title to prevent PII / Class-3 leakage.
- *
- * Strips email-shaped sub-strings and phone-number-shaped sub-strings
- * (patterns common in V2-imported Decision titles). Rejects (returns null)
- * if the title is too long or empty after trim.
+ * Backwards-compatible alias for the shared `sanitizeMailTitle`. Existing
+ * imports of `sanitizeApprovalTitle` continue to work; new callers should
+ * import directly from `@/lib/comms/mail-sanitize`.
  */
 export function sanitizeApprovalTitle(raw: string): string | null {
-  if (typeof raw !== "string") return null
-  let s = raw.trim()
-  if (s.length === 0) return null
-
-  // Strip emails.
-  s = s.replace(/\b[A-Za-z0-9._%+-]+@[A-Za-z0-9.-]+\.[A-Za-z]{2,}\b/g, "[…]")
-  // Strip phone-number-ish sequences (5+ digits, spaces/dashes allowed).
-  s = s.replace(/(?:\+?\d[\d\s\-/]{4,}\d)/g, "[…]")
-
-  if (s.length > TITLE_MAX_LEN) return null
-  return s
+  return sanitizeMailTitle(raw)
 }
 
 export function buildApprovalOutboxRow(
   input: BuildApprovalOutboxRowInput,
 ): ApprovalOutboxRow {
-  const safeTitle = sanitizeApprovalTitle(input.decisionTitle)
+  const safeTitle = sanitizeMailTitle(input.decisionTitle)
   if (!safeTitle) {
     throw new Error(
       "buildApprovalOutboxRow: decision title rejected by sanitizer (empty, too long, or PII-shaped).",

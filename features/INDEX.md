@@ -46,7 +46,7 @@
 | PROJ-30 | KI-Narrative-Purpose Erweiterung des AI-Routers | Deployed | [Spec](PROJ-30-narrative-purpose-extension.md) | 2026-05-01 |
 | PROJ-31 | Approval-Gates für formale Decisions (Quorum, Magic-Link für externe Stakeholder) | Deployed | [Spec](PROJ-31-approval-gates-for-decisions.md) | 2026-05-02 |
 | PROJ-32 | Tenant Custom AI Provider Keys (Multi-Provider Anthropic / OpenAI / Google / Ollama) | Reserved | _spec pending — see PRD entry_ | _reserved_ |
-| PROJ-33 | Erweitertes Stakeholder-Management (qualitative Felder + Skill/Big5-Profile + Self-Assessment Magic-Link) | 33-α + β + γ Deployed · δ pending | [Spec](PROJ-33-stakeholder-extension.md) | 2026-05-02 |
+| PROJ-33 | Erweitertes Stakeholder-Management (qualitative Felder + Skill/Big5-Profile + Self-Assessment Magic-Link) | 33-α + β + γ Deployed · δ In Review | [Spec](PROJ-33-stakeholder-extension.md) | 2026-05-02 |
 | PROJ-35 | Stakeholder-Wechselwirkungs-Engine (Risiko-Score, Eskalations-Indikatoren, Tonalitäts-Empfehlungen, Critical-Path-Risk, Stakeholder-Health-Dashboard) | Sketched (pending /requirements + /architecture) | [Spec](PROJ-35-stakeholder-interaction-engine.md) | 2026-05-02 |
 
 <!-- Add features above this line -->

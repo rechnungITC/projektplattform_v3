@@ -21,6 +21,12 @@ const PUBLIC_ROUTES = [
   // Account need to reach these routes without bouncing to /login.
   "/approve",
   "/api/approve",
+  // PROJ-33 Phase 33-δ — Self-Assessment Magic-Link flow. Same auth model
+  // as /approve: signed token in URL, no session cookie. External
+  // stakeholders fill out a Skill+Big5 self-assessment without a Plattform-
+  // Account.
+  "/self-assessment",
+  "/api/self-assessment",
 ]
 
 function isPublicRoute(pathname: string): boolean {

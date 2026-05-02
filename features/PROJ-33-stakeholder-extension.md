@@ -1,6 +1,6 @@
 # PROJ-33: Erweitertes Stakeholder-Management — Stammdaten + Skill/Persönlichkeit + Self-Assessment
 
-## Status: In Progress (Phase 33-α + β + γ Deployed; δ pending)
+## Status: In Progress (Phase 33-α + β + γ Deployed; δ Backend + Frontend ready for QA)
 **Created:** 2026-05-02
 **Last Updated:** 2026-05-02
 **Phase 33-α Deployed:** 2026-05-02 — Tag: `v1.33.0-PROJ-33-alpha`
@@ -1012,8 +1012,74 @@ Alle UPSERT-Routes verifizieren erst, dass der Stakeholder zum project_id gehör
 
 **Phase 33-γ komplett (Backend + Frontend). Ready für /qa proj 33.**
 
-### Phase 33-δ
-_Not yet started._
+### Phase 33-δ — Backend + Frontend Implementation Notes (2026-05-02)
+
+**Status:** Backend + Frontend ready for QA. Closes the loop with migration (live), token module (HMAC + 9 tests), mail builder (+ shared O2 sanitizer), 4 routes (PM POST/DELETE + public GET/POST), public Magic-Link page (page + form + invalid-view), middleware-Whitelist, profile-Bundle-Erweiterung mit `latest_invite`, sowie PM-UI `SelfAssessmentInviteCard` im Profil-Tab.
+
+**Migration `supabase/migrations/20260502200000_proj33d_self_assessment_invites.sql`**
+- New table `stakeholder_self_assessment_invites (id, tenant_id, stakeholder_id, magic_link_token UNIQUE, magic_link_expires_at, status pending|completed|revoked|expired, submitted_at, submitted_payload jsonb, created_by, created_at, updated_at)`.
+- ON DELETE CASCADE on stakeholder + tenant; manual DELETE blocked (no DELETE RLS policy).
+- RLS: tenant-member SELECT/INSERT/UPDATE; PM-rolle gegated im Application-Layer via `requireProjectAccess(..., "edit")`.
+- updated_at trigger via existing `touch_updated_at()`.
+- `stakeholder_profile_audit_events` was already pre-baked in 33-γ (actor_kind union user|stakeholder).
+
+**Token module `src/lib/stakeholders/self-assessment-token.ts` + tests**
+- HMAC-SHA256 sign/verify, payload `{ stakeholder_id, tenant_id, exp }`.
+- Reuses `APPROVAL_TOKEN_SECRET` env var (CIA-Fork-4 decision: shared secret, side-by-side module — keine Refactor von `approval-token.ts`, der aktive PROJ-31-Tokens invalidieren würde).
+- 9 vitest cases inkl. cross-module replay defense (PROJ-31 verifier rejects PROJ-33 tokens als malformed).
+
+**Mail builder `src/lib/stakeholders/self-assessment-mail.ts` + tests + O2-Refactor**
+- `buildSelfAssessmentOutboxRow` analog `buildApprovalOutboxRow`. Body enthält nur Vorname + Tenant-Branding-Name + Magic-Link-URL — kein Projektname, keine Decision-Bodies, keine PII anderer Stakeholder.
+- `sanitizeFirstName` extrahiert ersten Token, strippt Mails/Phones via shared `sanitizeMailTitle`, fällt graceful auf "Hallo" zurück bei leeren/unbenutzbaren Inputs.
+- **O2-Refactor:** `sanitizeApprovalTitle` → ausgelagert nach `src/lib/comms/mail-sanitize.ts` als `sanitizeMailTitle`. `approval-mail.ts` re-exportiert `sanitizeApprovalTitle` als thin wrapper für Backwards-Compat (existing PROJ-31 tests + imports unverändert grün).
+- 13 vitest cases (sanitizeFirstName edge-cases + builder body/recipient/url-encoding).
+
+**Routes**
+- `POST /api/projects/[id]/stakeholders/[sid]/self-assessment-invite` — generiert Invite, signiert HMAC-Token mit 14-Tage-Ablauf, queued Outbox-Mail (best-effort, non-fatal bei Mail-Provider-Down per EC-9), schreibt Audit-Event mit `payload.kind='invite_sent'`. Refused mit 409, wenn pending invite bereits existiert (forces revoke-first).
+- `DELETE /api/projects/[id]/stakeholders/[sid]/self-assessment-invite?invite_id=...` — flippt Status auf `revoked`, schreibt Audit-Event mit `payload.kind='invite_revoked'`. 404 bei Cross-Project-Access; 409 wenn nicht-pending.
+- `GET /api/self-assessment/[token]` — token-auth public endpoint via `createAdminClient()`. Lazy-expire-promotion, returnt invite-Status + Stakeholder.first_name + Tenant-Branding-Name.
+- `POST /api/self-assessment/[token]` — idempotenter Submit. UPSERT'd nur die `*_self`-Spalten (Fremd-Bewertung bleibt unangetastet), persistiert `submitted_payload`, schreibt 2 Audit-Events (skill + personality) mit `actor_kind='stakeholder'`, `actor_stakeholder_id=stakeholder_id`.
+
+**Public Page `src/app/self-assessment/[token]/`**
+- Server-rendered `page.tsx` (kein Login), routet zu `ExpiredOrInvalidView` für expired/revoked/completed/inactive States.
+- `self-assessment-form.tsx` (client) rendert 5 Skill-Slider + 5 Big5-Slider mit Tooltips, Default 50, step 5. Submit POSTs zur `/api/self-assessment/[token]`-Route, blockt nach Erfolg + zeigt Success-Card.
+- Mobile-first Layout (max-w-2xl, responsive Padding) per O4-Empfehlung aus Spec.
+
+**Audit-Trail-Notes**
+- `event_type` für Invite-Lifecycle reitet auf `self_assessed_via_token` (existing CHECK-Wert), `payload.kind` differenziert `invite_sent` vs `invite_revoked` vs `self_assessment_submitted`. Saubere Erweiterung ohne CHECK-Widening.
+- Submit schreibt 2 Events (1× skill, 1× personality) mit identischem invite_id im payload — vereinfacht Audit-Filter im Stakeholder-Drawer.
+
+**Type-Erweiterung** — `src/types/stakeholder-profile.ts`:
+- `SelfAssessmentInviteStatus` Union-Type, `SelfAssessmentInviteSummary` interface.
+- `StakeholderProfileBundle.latest_invite: SelfAssessmentInviteSummary | null`.
+- Bundle-Endpoint `GET /api/projects/[id]/stakeholders/[sid]/profile` liefert das jüngste Invite (any status) zusätzlich zu Skill/Personality/Events.
+
+**Client-API** — `src/lib/stakeholders/api.ts`:
+- `createSelfAssessmentInvite(projectId, sid)` → `{ invite_id, magic_link_url, expires_at }`.
+- `revokeSelfAssessmentInvite(projectId, sid, inviteId)` (DELETE mit `invite_id` im Querystring).
+
+**Middleware** — `src/lib/supabase/middleware.ts`:
+- PUBLIC_ROUTES erweitert um `/self-assessment` und `/api/self-assessment` (analog `/approve` aus PROJ-31).
+
+**PM-UI** — `src/components/stakeholders/profile/profile-tab.tsx`:
+- Neue Card "Self-Assessment-Einladung" zwischen Header und Skill-Radar.
+- Status-Badge (Versendet · ausstehend / Abgegeben / Zurückgezogen / Abgelaufen) + Versanddatum + Ablaufdatum + ggf. Antwortdatum.
+- Aktionen kontextabhängig:
+  - bei `pending` → "Einladung zurückziehen" + Send-Aktion verborgen
+  - bei kein Invite oder non-pending Status → Primary-Button "Self-Assessment versenden" / "Neue Einladung versenden"
+- Toast-Feedback (sonner) inkl. Ablaufdatum bei Send-Erfolg.
+
+**Verification**
+- `npx tsc --noEmit` exit 0
+- `npm run lint` exit 0
+- `npm test --run` 631/631 (was 600 — +6 mail-sanitize, +9 self-assessment-token, +13 self-assessment-mail, +3 misc)
+- `npm run build` green; Routes im Manifest:
+  - `ƒ /api/projects/[id]/stakeholders/[sid]/self-assessment-invite` (PM POST/DELETE)
+  - `ƒ /api/self-assessment/[token]` (public GET/POST)
+  - `ƒ /self-assessment/[token]` (public Page)
+- Migration `20260502200000_proj33d_self_assessment_invites.sql` live applied via Supabase MCP an Projekt `iqerihohwabyjzkpcujq` — RLS aktiv, 3 Policies, 4 Indexes, 0 neue Advisor-Warnungen.
+
+**Phase 33-δ komplett (Backend + Frontend + Migration live). Ready für `/qa proj 33` (Phase δ).**
 
 ## QA Test Results
 

@@ -117,10 +117,27 @@ export interface StakeholderProfileAuditEvent {
   created_at: string
 }
 
+// PROJ-33 Phase 33-δ — Self-Assessment Magic-Link invite shape.
+export type SelfAssessmentInviteStatus =
+  | "pending"
+  | "completed"
+  | "revoked"
+  | "expired"
+
+export interface SelfAssessmentInviteSummary {
+  id: string
+  status: SelfAssessmentInviteStatus
+  magic_link_expires_at: string
+  submitted_at: string | null
+  created_at: string
+}
+
 export interface StakeholderProfileBundle {
   skill: StakeholderSkillProfile | null
   personality: StakeholderPersonalityProfile | null
   events: StakeholderProfileAuditEvent[]
+  /** Most recent invite (any status) — null if no invite was ever sent. */
+  latest_invite: SelfAssessmentInviteSummary | null
 }
 
 /**
