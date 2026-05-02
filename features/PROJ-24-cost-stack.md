@@ -1,6 +1,6 @@
 # PROJ-24: Cost-Stack — Tagessätze pro Rolle, Velocity-Modell & Kosten pro Work-Item
 
-## Status: In Progress (Phase 24-ε Frontend done — ready for QA + branch merge)
+## Status: Approved (24-α/β/γ/δ/ε complete · QA passed · ready for branch merge + /deploy)
 **Created:** 2026-04-30
 **Last Updated:** 2026-05-02
 
@@ -577,7 +577,112 @@ Each hook resolves the tenant_id from the project, instantiates a service-role a
 **Phase 24-ε komplett. Ready für `/qa proj 24` und Branch-Merge in `main`.**
 
 ## QA Test Results
-_To be added by /qa_
+
+**Date:** 2026-05-03
+**Phase:** 24-α/β/γ/δ/ε (full feature: migration · engine · API · synthesizer hooks · frontend)
+**Verdict:** **Approved** — 0 Critical / 0 High / 0 Medium / 0 Low Bugs
+
+### Automated Test Suite (branch `feat/PROJ-24-cost-stack` HEAD `22604c2`)
+
+| Layer | Result |
+|---|---|
+| TypeScript strict (`npx tsc --noEmit`) | ✅ exit 0 |
+| ESLint (`npm run lint`) | ✅ exit 0 |
+| Vitest (`npm test --run`) | ✅ 690/690 (was 600 before PROJ-24 → +90 cases: 28 engine, 9 lookup, 35 API, 16 synthesizer + 2 misc) |
+| Production Build (`npm run build`) | ✅ green; all 7 PROJ-24 routes + new admin page in manifest |
+| Supabase Advisors (security) | ✅ **0 new PROJ-24 warnings** (only pre-existing pre-PROJ-24 lints) |
+
+### Live DB Red-Team Tests (Supabase MCP, project `iqerihohwabyjzkpcujq`)
+
+| # | Test | Expected | Actual | Result |
+|---|---|---|---|---|
+| 1 | Schema + RLS on `role_rates`, `work_item_cost_lines`, `work_item_cost_totals` | RLS=true on both tables, view present | role_rates RLS=true 3 policies, cost_lines RLS=true 4 policies, view present | ✅ Pass |
+| 2 | All 6 CHECK constraints present | currency_supported, daily_rate_nonneg, role_key_length on rates; amount_nonneg, currency_supported, source_type_check on cost-lines | exact match | ✅ Pass |
+| 3 | `tenant_settings.cost_settings` JSONB column with default | `{"velocity_factor": 0.5, "default_currency": "EUR"}` | exact match | ✅ Pass |
+| 4 | Invalid `daily_rate=-1` rejected | check_violation `role_rates_daily_rate_nonneg` | `ERROR 23514` | ✅ Pass |
+| 5 | Invalid `currency='XXX'` rejected | check_violation `role_rates_currency_supported` | `ERROR 23514` | ✅ Pass |
+| 6 | Invalid `source_type='evil_injection'` rejected | check_violation `work_item_cost_lines_source_type_check` | `ERROR 23514` | ✅ Pass |
+| 7 | Negative `amount=-50` rejected | check_violation `work_item_cost_lines_amount_nonneg` | `ERROR 23514` | ✅ Pass |
+| 8 | UNIQUE `(tenant_id, role_key, valid_from)` happy path | INSERT senior-dev/2026-05-03/1200 succeeds | row created | ✅ Pass |
+| 9 | UNIQUE duplicate rejected | second INSERT same key→date fails | `ERROR 23505 role_rates_unique_per_role_and_date` | ✅ Pass |
+| 10 | Append-only versioning works | second valid_from on same role allowed | second row created (1300/2026-06-01) | ✅ Pass |
+| 11 | No UPDATE policy on `role_rates` | only SELECT/INSERT/DELETE policies present | exact 3 policies (no UPDATE) | ✅ Pass |
+| 12 | `_resolve_role_rate` lockdown | EXECUTE only for `postgres` + `service_role` | exact match | ✅ Pass |
+| 13 | Versioned lookup logic | (May→1200, Jul→1300, before-May→NULL) | exact match | ✅ Pass |
+| 14 | View shape | 8 columns: work_item_id, tenant_id, project_id, total_cost, currency, cost_lines_count, multi_currency_count, is_estimated | exact match | ✅ Pass |
+| 15 | QA-row cleanup | 0 leftover rows in `role_rates`/`work_item_cost_lines` | done | ✅ Pass |
+
+### AC-Walkthrough — ST-01 .. ST-09 (PROJ-24 spec)
+
+| AC | Status |
+|---|---|
+| **ST-01** `role_rates` table — UNIQUE(tenant_id, role_key, valid_from), no UPDATE policy, CHECKs (daily_rate >= 0, currency whitelist) | ✅ Live verified (Tests 1, 2, 4, 5, 8, 9, 11) |
+| **ST-02** `tenant_settings.cost_settings` JSONB with `velocity_factor` + `default_currency`; PROJ-17 UI extended with "Kosten-Defaults" section | ✅ Migration: Test 3 ✓; Frontend: `cost-defaults-section.tsx` + API extension verified by build |
+| **ST-03** `work_item_cost_lines` table — source_type CHECK enum, RLS for project-member SELECT + project-editor INSERT/UPDATE/DELETE, indexes on (work_item_id, source_type) and (project_id) | ✅ Live verified (Tests 1, 2, 6, 7) |
+| **ST-04** Cost-Calc-Engine `calculateWorkItemCosts` — pure-TS, duration- + SP-velocity-paths, role-rate cutoff at `work_item.created_at` | ✅ 28 vitest cases pass (Phase 24-β: src/lib/cost/calculate-work-item-costs.test.ts) |
+| **ST-05** View `work_item_cost_totals` security_invoker=true with `total_cost`, `currency`, `cost_lines_count`, `multi_currency_count`, `is_estimated` | ✅ View shape verified (Test 14); cost-summary route consumes it |
+| **ST-06** Auto-cost-line-generation on allocation+work-item changes — Replace-on-Update | ✅ 16 synthesizer tests + 8+ route-hook tests pass (Phase 24-δ); fail-open contract documented in synthesize-cost-lines.ts header |
+| **ST-07** 6 API endpoints (role-rates CRUD, cost-summary, cost-lines list/create) + 1 added in 24-ε (work-item-cost-totals batch read for Backlog) | ✅ All 7 routes in build manifest, 35 API-route tests pass |
+| **ST-08** UI — admin-page `/settings/tenant/role-rates` · drawer Cost-Section · backlog Cost-Cell · tenant-settings Cost-Defaults | ✅ Phase 24-ε: 4 surfaces built, lint+build green |
+| **ST-09** Audit + Privacy — `role_rates` and `work_item_cost_lines` in audit-whitelist; `daily_rate=Class 3`, `source_metadata=Class 3`, others Class 1/2 | ✅ Privacy registry verified in `data-privacy-registry.ts`: daily_rate=3, role_key/currency/valid_from=2, amount/currency/occurred_on=2, source_type=1, source_metadata=3 |
+
+### Edge-Case-Walkthrough (9 cases from spec)
+
+| EC | Verified |
+|---|---|
+| **EC-1** Allocation existiert, aber keine `role_rates` für die Rolle | ✅ Engine emits placeholder cost-line with `source_metadata.warning='no_rate_for_role'`; UI renders "Tagessatz für Rolle fehlt" (`work-item-cost-section.tsx:warningHint`) |
+| **EC-2** Stakeholder ohne `role_key` (NULL) | ✅ Engine warns `no_role_key`, no cost-line; UI renders "Stakeholder ohne Rolle" |
+| **EC-3** Resource ohne `source_stakeholder_id` | ✅ Engine warns `no_stakeholder`, no cost-line; UI renders "Ressource ohne Stakeholder-Bezug" |
+| **EC-4** Velocity-Faktor=0 → SP-Cost-Lines mit amount=0 | ✅ 1 dedicated vitest case (`calculate-work-item-costs.test.ts: velocity_factor=0 produces amount=0 cost-lines without warning`) |
+| **EC-5** Story ohne Sprint — Velocity-Faktor pro SP, nicht pro Sprint | ✅ Engine doesn't reference sprint at all (verified by code-review of `calculate-work-item-costs.ts`); cost = sp × velocity × pct × rate |
+| **EC-6** Item-Wechsel zwischen Story und Work-Package — alte Cost-Lines gelöscht, neue berechnet | ✅ Synthesizer fires on `kind` attribute change in PATCH `/work-items/[wid]` route (Phase 24-δ); Replace-on-Update strategy DELETEs old + INSERTs new |
+| **EC-7** Tagessatz-Änderung mid-Projekt — alte Cost-Lines bleiben mit altem Satz | ✅ Cutoff at `work_item.created_at` (verified Test 13); engine reads rate-snapshot once, never re-reads |
+| **EC-8** Multi-Currency in einem Item — view zeigt `multi_currency_count > 0` | ✅ View shape includes `multi_currency_count`; UI renders Multi-Currency-Banner (`WorkItemCostSection`) + per-currency aggregat |
+| **EC-9** Item soft-deleted — Cost-Lines bleiben, view filtert | ✅ View has `wi.is_deleted = false` filter (per α migration); cost-lines stay in table for audit-trail per locked decision §4 #9 |
+
+### Security Audit (Red-Team)
+
+| Vector | Mitigation Live-Verified |
+|---|---|
+| Class-3 daily_rate exposure to anon role via REST | `_resolve_role_rate` lockdown (Test 12) — only `service_role` + `postgres` can EXECUTE; revoked from `anon`+`authenticated` |
+| RLS bypass on `role_rates` for non-admin tenant member | INSERT/DELETE require `is_tenant_admin(tenant_id)`; SELECT permits tenant-member but only daily_rate read (Class 3 acknowledged in registry) |
+| Cross-tenant `role_rates` read via crafted RPC | RPC removed from authenticated; engine uses service-role admin client which captures tenant_id at call-site |
+| Source-type injection for `work_item_cost_lines` | CHECK enforced at DB layer (Test 6); API route additionally hardcodes `source_type='manual'` ignoring client input |
+| `source_metadata` JSONB bloat (DoS/Class-3 leak) | API route enforces `JSON.stringify(v).length <= 4096`; Class 3 in registry — never sent to external LLMs |
+| Audit-bypass via direct UPDATE | role_rates has NO UPDATE policy (Test 11) — append-only; cost-lines UPDATE captured by PROJ-10 trigger |
+| User crafts negative amount via API | DB CHECK rejects (Test 7) + Zod schema rejects in route layer |
+| Replay-attack on synthesizer (multiple concurrent allocation writes) | Synthesizer uses Replace-on-Update under service-role; eventual consistency acceptable per fail-open contract |
+
+### Regression Check
+
+- ✅ Vitest 690/690 (no PROJ-1..PROJ-23 / PROJ-25..PROJ-31 regressions)
+- ✅ ESLint clean (3 new files in PROJ-29 set-state-in-effect override list, documented inline)
+- ✅ Build manifest unchanged for non-cost routes
+- ✅ Existing PROJ-11 work-item-resources route still works — synthesizer hook is fire-and-forget after primary write, fail-open
+- ✅ Existing PROJ-22 budget routes untouched (cost-stack uses separate `cost_settings` JSONB key on tenant_settings)
+- ✅ PROJ-17 tenant-settings GET/PATCH now reaches `cost_settings`; existing 3 test fixtures updated; 690-case suite still green
+
+### Bugs Found
+
+**Keine.** Phase 24 ist sauber.
+
+### Production-Ready Decision
+
+**Recommendation:** **APPROVED for branch-merge into `main` + `/deploy proj 24`**.
+
+Caveat zur User-Awareness:
+- Die α-Migration `20260502160000_proj24_cost_stack_alpha.sql` hat **denselben Timestamp** wie `20260502160000_proj33b_stakeholder_type_catalog.sql` auf `main`. Beim Branch-Merge muss die PROJ-24-Migration umnummeriert werden (z. B. `20260502210000_…`). Die Remote-DB hält sie bereits unter Version `20260502023517_proj24_cost_stack_alpha`, daher ist die Umbenennung lokal-only — KEINE neue Apply-Aktion nötig, nur File-System-Hygiene für `supabase migrations list` Konsistenz.
+- Audit-Whitelist greift nur für **API-erzeugte** INSERT/DELETE-Operations (synthetic via `writeCostAuditEntry`). Direkte SQL-Writes (z. B. via Supabase Studio) bypassen die Audit-Spur — bewusste Entscheidung im 24-α-Spec, dokumentiert in der Migration und im Header von `cost-audit.ts`.
+
+### Suggested Next
+
+1. **Step 3** — Migration umbenennen (`20260502160000` → `20260502210000`), Branch auf `main` rebase, fast-forward Merge.
+2. **Step 4b** — `/deploy proj 24` (push + tag `v1.24.0-PROJ-24-cost-stack`).
+3. Browser-Test durch User vor Tag empfohlen:
+   - `/settings/tenant/role-rates` öffnen, Senior-Dev-Rate anlegen, ersten Tag prüfen
+   - `/settings/tenant` öffnen, Cost-Defaults-Section ändern (z. B. velocity_factor=0.6), Speichern
+   - Work-Item-Drawer öffnen, Allocation hinzufügen → Cost-Section sollte automatisch eine `resource_allocation`-Cost-Line zeigen
+   - Backlog-Liste öffnen, Cost-Cell-Spalte prüfen (≈-Tilde bei Stories, exakte Werte bei Arbeitspaketen)
 
 ## Deployment
 _To be added by /deploy_
