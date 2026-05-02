@@ -1,8 +1,16 @@
 import { beforeEach, describe, expect, it, vi } from "vitest"
 
 // PROJ-11 — allocation join endpoint tests.
+// PROJ-24 Phase δ — extended with cost-line synthesizer hook tests.
 
 const getUserMock = vi.fn()
+const synthesizeMock = vi.fn(
+  async (_input: Record<string, unknown>) => ({
+    written: 0,
+    warnings: [],
+    hadCostCalcError: false,
+  })
+)
 
 const projectChain = {
   select: vi.fn().mockReturnThis(),
@@ -71,6 +79,15 @@ vi.mock("@/lib/supabase/server", () => ({
   })),
 }))
 
+vi.mock("@/lib/supabase/admin", () => ({
+  createAdminClient: vi.fn(() => ({})),
+}))
+
+vi.mock("@/lib/cost", () => ({
+  synthesizeResourceAllocationCostLines: (input: Record<string, unknown>) =>
+    synthesizeMock(input),
+}))
+
 import { GET, POST } from "./route"
 
 const TENANT_ID = "11111111-1111-4111-8111-111111111111"
@@ -92,6 +109,11 @@ function makePost(body: unknown): Request {
 
 beforeEach(() => {
   vi.clearAllMocks()
+  synthesizeMock.mockResolvedValue({
+    written: 0,
+    warnings: [],
+    hadCostCalcError: false,
+  })
   projectChain.select.mockReturnValue(projectChain)
   projectChain.eq.mockReturnValue(projectChain)
   tenantMembershipChain.select.mockReturnValue(tenantMembershipChain)
@@ -184,6 +206,100 @@ describe("POST allocation", () => {
       { params: Promise.resolve({ id: PROJECT_ID, wid: WORK_ITEM_ID }) }
     )
     expect(res.status).toBe(409)
+  })
+
+  // -------------------------------------------------------------------------
+  // PROJ-24 Phase δ — cost-line synthesizer hook
+  // -------------------------------------------------------------------------
+  it("triggers cost-line synthesizer after successful allocation create", async () => {
+    getUserMock.mockResolvedValue({ data: { user: { id: USER_ID } } })
+    insertChain.single.mockResolvedValue({
+      data: {
+        id: "a1",
+        tenant_id: TENANT_ID,
+        project_id: PROJECT_ID,
+        work_item_id: WORK_ITEM_ID,
+        resource_id: RESOURCE_ID,
+        allocation_pct: 50,
+      },
+      error: null,
+    })
+    const res = await POST(
+      makePost({ resource_id: RESOURCE_ID, allocation_pct: 50 }),
+      { params: Promise.resolve({ id: PROJECT_ID, wid: WORK_ITEM_ID }) }
+    )
+    expect(res.status).toBe(201)
+    expect(synthesizeMock).toHaveBeenCalledTimes(1)
+    const call = synthesizeMock.mock.calls[0][0] as Record<string, unknown>
+    expect(call.tenantId).toBe(TENANT_ID)
+    expect(call.projectId).toBe(PROJECT_ID)
+    expect(call.workItemId).toBe(WORK_ITEM_ID)
+    expect(call.actorUserId).toBe(USER_ID)
+  })
+
+  it("does NOT trigger synthesizer when allocation insert failed (5xx path)", async () => {
+    getUserMock.mockResolvedValue({ data: { user: { id: USER_ID } } })
+    insertChain.single.mockResolvedValue({
+      data: null,
+      error: { code: "99999", message: "boom" },
+    })
+    const res = await POST(
+      makePost({ resource_id: RESOURCE_ID, allocation_pct: 50 }),
+      { params: Promise.resolve({ id: PROJECT_ID, wid: WORK_ITEM_ID }) }
+    )
+    expect(res.status).toBe(500)
+    expect(synthesizeMock).not.toHaveBeenCalled()
+  })
+
+  it("returns 201 even when synthesizer reports hadCostCalcError (fail-open)", async () => {
+    getUserMock.mockResolvedValue({ data: { user: { id: USER_ID } } })
+    insertChain.single.mockResolvedValue({
+      data: {
+        id: "a1",
+        tenant_id: TENANT_ID,
+        project_id: PROJECT_ID,
+        work_item_id: WORK_ITEM_ID,
+        resource_id: RESOURCE_ID,
+        allocation_pct: 50,
+      },
+      error: null,
+    })
+    synthesizeMock.mockResolvedValue({
+      written: 0,
+      warnings: [],
+      hadCostCalcError: true,
+    })
+    const res = await POST(
+      makePost({ resource_id: RESOURCE_ID, allocation_pct: 50 }),
+      { params: Promise.resolve({ id: PROJECT_ID, wid: WORK_ITEM_ID }) }
+    )
+    expect(res.status).toBe(201)
+    expect(synthesizeMock).toHaveBeenCalledTimes(1)
+  })
+
+  it("returns 201 even when synthesizer rejects (defense-in-depth — synthesizer must NEVER throw, but caller is wrapped)", async () => {
+    getUserMock.mockResolvedValue({ data: { user: { id: USER_ID } } })
+    insertChain.single.mockResolvedValue({
+      data: {
+        id: "a1",
+        tenant_id: TENANT_ID,
+        project_id: PROJECT_ID,
+        work_item_id: WORK_ITEM_ID,
+        resource_id: RESOURCE_ID,
+        allocation_pct: 50,
+      },
+      error: null,
+    })
+    synthesizeMock.mockRejectedValueOnce(new Error("engine blew up"))
+    const errorSpy = vi
+      .spyOn(console, "error")
+      .mockImplementation(() => undefined)
+    const res = await POST(
+      makePost({ resource_id: RESOURCE_ID, allocation_pct: 50 }),
+      { params: Promise.resolve({ id: PROJECT_ID, wid: WORK_ITEM_ID }) }
+    )
+    expect(res.status).toBe(201)
+    errorSpy.mockRestore()
   })
 })
 

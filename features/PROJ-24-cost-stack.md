@@ -1,6 +1,6 @@
 # PROJ-24: Cost-Stack — Tagessätze pro Rolle, Velocity-Modell & Kosten pro Work-Item
 
-## Status: In Progress (Phase 24-γ API done)
+## Status: In Progress (Phase 24-δ Backend done — Frontend pending)
 **Created:** 2026-04-30
 **Last Updated:** 2026-05-02
 
@@ -458,6 +458,44 @@ Migration: `supabase/migrations/20260502170000_proj24_resolve_role_rate_lockdown
 
 **Open for next phase:**
 - 24-δ: hook into the PROJ-11 `POST/PUT/DELETE /api/projects/[id]/work-items/[wid]/resources` route to emit Replace-on-Update cost-lines via the engine. Will reuse `writeCostAuditEntry` for the INSERT-audit on `resource_allocation` cost-lines. Fail-open: a cost-calc / lookup error writes a `amount=0` cost-line with `source_metadata.warning` flag rather than blocking the allocation write.
+
+### Phase 24-δ — Cost-line synthesizer + route hooks (`/backend`, 2026-05-02)
+
+**Built:**
+- `src/lib/cost/synthesize-cost-lines.ts` (~455 lines) — central helper `synthesizeResourceAllocationCostLines({adminClient, tenantId, projectId, workItemId, actorUserId})`. Replace-on-Update strategy per Tech Design §4 #2 + §5 Scenario B:
+  - Reads work-item (`is_deleted` filter, attribute extraction for `story_points` / `estimated_duration_days` / `kind`), all current `work_item_resources` allocations, the chain `resource → source_stakeholder_id → stakeholders.role_key`, and tenant-velocity from `tenant_settings.cost_settings`.
+  - Pre-resolves the latest applicable rates via `resolveRoleRates()` using `work_item.created_at` as the cutoff (locked decision §12).
+  - Runs `calculateWorkItemCosts()` (pure-TS) to compute draft cost-lines.
+  - DELETEs all existing `resource_allocation` cost-lines for the item, then INSERTs the new set. Manual cost-lines (`source_type='manual'`) are NEVER touched.
+  - Writes one synthetic-DELETE audit per dropped row + one synthetic-INSERT audit per new row via `writeCostAuditEntry`.
+- **Fail-open contract:** the helper NEVER throws. DB errors set `hadCostCalcError=true` and surface warnings; the caller's primary mutation has already succeeded by the time this runs.
+- Public surface in `src/lib/cost/index.ts` extended: `synthesizeResourceAllocationCostLines` + types `SynthesizeCostLinesInput` / `SynthesizeCostLinesResult`.
+
+**Route hooks — 4 sites, all best-effort fire-and-forget after primary write:**
+- `POST /api/projects/[id]/work-items/[wid]/resources` — after a new allocation is inserted.
+- `PATCH /api/projects/[id]/work-items/[wid]/resources/[aid]` — after an allocation update.
+- `DELETE /api/projects/[id]/work-items/[wid]/resources/[aid]` — after an allocation removal.
+- `PATCH /api/projects/[id]/work-items/[wid]` — after a work-item update **only when** a cost-driver attribute changed (`kind`, `attributes.story_points`, `attributes.estimated_duration_days`). Pure-`title` patches skip the synthesizer to keep the cheap path cheap.
+
+Each hook resolves the tenant_id from the project, instantiates a service-role admin client (`createAdminClient`), and calls the synthesizer with `actorUserId = current user`. Synthesizer warnings are returned in the API response payload so the UI can surface them; the response status is unaffected by synthesizer outcomes (fail-open).
+
+**Tests — +59 cases, all green (`npm test --run` 631 → 690):**
+- `src/lib/cost/synthesize-cost-lines.test.ts` (16 cases): happy path (new allocation → 1 cost-line + 1 INSERT audit), Replace-on-Update (1 existing → 1 DELETE audit + 1 INSERT audit), soft-deleted work-item (no synthesis), missing role_key warning, missing stakeholder warning, missing rate warning (placeholder cost-line with `source_metadata.warning`), engine error → fail-open, audit-write error swallowed, multi-currency within one item, manual cost-lines untouched by Replace-on-Update, velocity-factor=0 → amount=0 cost-lines, story-points basis, duration basis, mixed-basis tie-break, no-basis no-cost-lines, allocation-pct=0 silently skipped.
+- `src/app/api/projects/[id]/work-items/[wid]/resources/route.test.ts` (8 new cases on top of PROJ-11 baseline): synthesizer fired on POST 201, NOT fired on POST 5xx, synthesizer arg shape verified, fail-open on synthesizer error.
+- `src/app/api/projects/[id]/work-items/[wid]/resources/[aid]/route.test.ts` (PATCH + DELETE): synthesizer fired with right args, fail-open behavior.
+- `src/app/api/projects/[id]/work-items/[wid]/route.test.ts` (5 new cases): cost-driver attribute change fires synthesizer, kind change fires synthesizer, unrelated attribute change does NOT fire, title-only patch does NOT fire, synthesizer rejection still returns 200.
+
+**Verification:**
+- `npx tsc --noEmit` exit 0
+- `npm run lint` exit 0
+- `npm test --run` 690/690 (was 631 — +59 cases for the synthesizer + hooks)
+- `npm run build` green; all 4 route surfaces and the new synthesizer module in the manifest
+
+**Phase 24-δ Backend komplett. Open for 24-ε:**
+- `/settings/tenant/role-rates` — Tenant-Admin Page (Tabelle + valid_from-Historie + Add/Delete-Aktionen).
+- Tenant-Settings-Page: neuer Abschnitt "Kosten-Defaults" (`velocity_factor`, `default_currency`).
+- Work-Item-Drawer: neuer Abschnitt "Kosten" (Total + Aufschlüsselung pro Cost-Line + manuelle Cost-Line-Action + Multi-Currency-Banner wenn `multi_currency_count > 0`).
+- Backlog-Liste: kleine Cost-Cell pro Item-Zeile mit "≈"-Tilde für SP-basiert (`is_estimated=true`).
 
 ## QA Test Results
 _To be added by /qa_

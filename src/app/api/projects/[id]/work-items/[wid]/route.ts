@@ -1,6 +1,7 @@
 import { NextResponse } from "next/server"
 import { z } from "zod"
 
+import { synthesizeResourceAllocationCostLines } from "@/lib/cost"
 import { createAdminClient } from "@/lib/supabase/admin"
 import { apiError, getAuthenticatedUserId } from "@/app/api/_lib/route-helpers"
 import {
@@ -101,6 +102,37 @@ export async function PATCH(
   const { userId, supabase } = await getAuthenticatedUserId()
   if (!userId) return apiError("unauthorized", "Not signed in.", 401)
 
+  // PROJ-24 Phase δ — capture pre-update cost-driver state to decide whether
+  // the cost-line hook needs to fire after the UPDATE. We pull `attributes`
+  // (for story_points + estimated_duration_days) and `kind` only if any of
+  // those would be modified — otherwise we don't pay for the read.
+  const willTouchCostDrivers =
+    parsed.data.kind !== undefined || parsed.data.attributes !== undefined
+  let preUpdateCostDrivers: {
+    kind: string
+    storyPoints: unknown
+    duration: unknown
+    tenantId: string
+  } | null = null
+  if (willTouchCostDrivers) {
+    const { data: pre, error: preErr } = await supabase
+      .from("work_items")
+      .select("kind, attributes, tenant_id")
+      .eq("id", workItemId)
+      .eq("project_id", projectId)
+      .maybeSingle()
+    if (preErr) return apiError("internal_error", preErr.message, 500)
+    if (pre) {
+      const attrs = (pre as { attributes?: Record<string, unknown> | null }).attributes ?? {}
+      preUpdateCostDrivers = {
+        kind: (pre as { kind: string }).kind,
+        storyPoints: attrs.story_points,
+        duration: attrs.estimated_duration_days,
+        tenantId: (pre as { tenant_id: string }).tenant_id,
+      }
+    }
+  }
+
   // If kind is changing, validate against project method + existing parent.
   if (parsed.data.kind) {
     const { data: current, error: currentErr } = await supabase
@@ -176,6 +208,45 @@ export async function PATCH(
     if (error.code === "42501") return apiError("forbidden", "Not allowed.", 403)
     return apiError("update_failed", error.message, 500)
   }
+
+  // PROJ-24 Phase δ — if any cost-driver attribute (story_points,
+  // estimated_duration_days) or `kind` semantically changed, refresh the
+  // resource_allocation cost-lines (Replace-on-Update). FAIL-OPEN — never
+  // throws, never alters the response.
+  if (preUpdateCostDrivers) {
+    const updatedRow = data as {
+      kind?: string
+      attributes?: Record<string, unknown> | null
+      tenant_id?: string
+    } | null
+    const newAttrs = (updatedRow?.attributes ?? {}) as Record<string, unknown>
+    const newKind = updatedRow?.kind ?? preUpdateCostDrivers.kind
+    const newSp = newAttrs.story_points
+    const newDur = newAttrs.estimated_duration_days
+    const driverChanged =
+      newKind !== preUpdateCostDrivers.kind ||
+      newSp !== preUpdateCostDrivers.storyPoints ||
+      newDur !== preUpdateCostDrivers.duration
+    if (driverChanged) {
+      try {
+        const adminClient = createAdminClient()
+        await synthesizeResourceAllocationCostLines({
+          adminClient,
+          tenantId: updatedRow?.tenant_id ?? preUpdateCostDrivers.tenantId,
+          projectId,
+          workItemId,
+          actorUserId: userId,
+        })
+      } catch (err) {
+        console.error(
+          `[PROJ-24] cost-line synthesis skipped (work-item PATCH) for work_item=${workItemId}: ${
+            err instanceof Error ? err.message : String(err)
+          }`
+        )
+      }
+    }
+  }
+
   return NextResponse.json({ work_item: data })
 }
 

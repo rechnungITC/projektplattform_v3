@@ -1,6 +1,8 @@
 import { NextResponse } from "next/server"
 import { z } from "zod"
 
+import { synthesizeResourceAllocationCostLines } from "@/lib/cost"
+import { createAdminClient } from "@/lib/supabase/admin"
 import { requireModuleActive } from "@/lib/tenant-settings/server"
 
 import {
@@ -8,6 +10,38 @@ import {
   getAuthenticatedUserId,
   requireProjectAccess,
 } from "../../../../../../_lib/route-helpers"
+
+/**
+ * PROJ-24 Phase δ — best-effort cost-line synthesis hook.
+ *
+ * Wraps `synthesizeResourceAllocationCostLines` with an admin-client init
+ * fallback. NEVER throws. Caller's primary mutation (allocation update or
+ * delete) has already succeeded — a cost-calc failure must not surface as
+ * a 5xx (Tech Design §12 fail-open contract).
+ */
+async function safeSynthesizeCostLines(
+  tenantId: string,
+  projectId: string,
+  workItemId: string,
+  userId: string
+): Promise<void> {
+  try {
+    const adminClient = createAdminClient()
+    await synthesizeResourceAllocationCostLines({
+      adminClient,
+      tenantId,
+      projectId,
+      workItemId,
+      actorUserId: userId,
+    })
+  } catch (err) {
+    console.error(
+      `[PROJ-24] cost-line synthesis skipped for work_item=${workItemId}: ${
+        err instanceof Error ? err.message : String(err)
+      }`
+    )
+  }
+}
 
 // PROJ-11 — single allocation endpoints.
 // PATCH  /api/projects/[id]/work-items/[wid]/resources/[aid]
@@ -86,6 +120,10 @@ export async function PATCH(request: Request, ctx: Ctx) {
     }
     return apiError("update_failed", error.message, 500)
   }
+
+  // PROJ-24 Phase δ — Replace-on-Update cost-lines.
+  await safeSynthesizeCostLines(access.project.tenant_id, projectId, wid, userId)
+
   return NextResponse.json({ allocation: row })
 }
 
@@ -125,5 +163,11 @@ export async function DELETE(_request: Request, ctx: Ctx) {
     }
     return apiError("delete_failed", error.message, 500)
   }
+
+  // PROJ-24 Phase δ — Replace-on-Update cost-lines (engine sees the
+  // reduced allocation set; if this was the last allocation, all
+  // resource_allocation cost-lines for the work-item end up cleared).
+  await safeSynthesizeCostLines(access.project.tenant_id, projectId, wid, userId)
+
   return new NextResponse(null, { status: 204 })
 }

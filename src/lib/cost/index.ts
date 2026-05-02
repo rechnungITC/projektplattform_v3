@@ -8,6 +8,11 @@
 
 export { calculateWorkItemCosts } from "./calculate-work-item-costs"
 export { resolveRoleRates } from "./role-rate-lookup"
+export { synthesizeResourceAllocationCostLines } from "./synthesize-cost-lines"
+export type {
+  SynthesizeCostLinesInput,
+  SynthesizeCostLinesResult,
+} from "./synthesize-cost-lines"
 export type {
   AllocationInput,
   CostCalcResult,

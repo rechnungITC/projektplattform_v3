@@ -1,6 +1,8 @@
 import { NextResponse } from "next/server"
 import { z } from "zod"
 
+import { synthesizeResourceAllocationCostLines } from "@/lib/cost"
+import { createAdminClient } from "@/lib/supabase/admin"
 import { requireModuleActive } from "@/lib/tenant-settings/server"
 
 import {
@@ -143,5 +145,29 @@ export async function POST(request: Request, ctx: Ctx) {
     }
     return apiError("create_failed", error.message, 500)
   }
+
+  // PROJ-24 Phase δ — synthesize Replace-on-Update cost-lines for this
+  // work-item. FAIL-OPEN: synthesizer never throws; allocation has already
+  // been persisted and the response MUST NOT change shape on cost-calc
+  // errors (see Tech Design §12).
+  try {
+    const adminClient = createAdminClient()
+    await synthesizeResourceAllocationCostLines({
+      adminClient,
+      tenantId: access.project.tenant_id,
+      projectId,
+      workItemId: wid,
+      actorUserId: userId,
+    })
+  } catch (err) {
+    // createAdminClient() can throw if SUPABASE_SERVICE_ROLE_KEY is missing
+    // — even that must not block the allocation response.
+    console.error(
+      `[PROJ-24] cost-line synthesis skipped (admin client init failed): ${
+        err instanceof Error ? err.message : String(err)
+      }`
+    )
+  }
+
   return NextResponse.json({ allocation: row }, { status: 201 })
 }
