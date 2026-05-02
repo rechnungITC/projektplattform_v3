@@ -1,6 +1,6 @@
 "use client"
 
-import { ChevronDown, ChevronRight, Gavel, RotateCcw } from "lucide-react"
+import { CheckSquare, ChevronDown, ChevronRight, Gavel, RotateCcw } from "lucide-react"
 import * as React from "react"
 
 import { Badge } from "@/components/ui/badge"
@@ -19,6 +19,8 @@ interface DecisionCardProps {
   /** Predecessors in chronological order, newest first; may be empty. */
   predecessors: Decision[]
   onRevise: (d: Decision) => void
+  /** PROJ-31 — open the approval-management sheet for this decision. */
+  onManageApproval?: (d: Decision) => void
 }
 
 function formatDate(iso: string): string {
@@ -35,6 +37,7 @@ export function DecisionCard({
   decision,
   predecessors,
   onRevise,
+  onManageApproval,
 }: DecisionCardProps) {
   const [open, setOpen] = React.useState(false)
   const hasPredecessors = predecessors.length > 0
@@ -54,6 +57,18 @@ export function DecisionCard({
           </div>
           <div className="flex items-center gap-2 text-xs text-muted-foreground">
             <span>{formatDate(decision.decided_at)}</span>
+            {onManageApproval ? (
+              <Button
+                type="button"
+                variant="outline"
+                size="sm"
+                onClick={() => onManageApproval(decision)}
+                title="Genehmigung verwalten"
+              >
+                <CheckSquare className="mr-1.5 h-3.5 w-3.5" aria-hidden />
+                Genehmigung
+              </Button>
+            ) : null}
             <Button
               type="button"
               variant="outline"

@@ -2,6 +2,7 @@
 
 import {
   BarChart3,
+  CheckSquare,
   Database,
   FileSearch,
   FolderKanban,
@@ -54,6 +55,7 @@ const NAV_ITEMS: readonly NavItem[] = [
       pathname === "/projects" ||
       pathname.startsWith("/projects/"),
   },
+  { href: "/approvals", label: "Genehmigungen", icon: CheckSquare },
   { href: "/stammdaten", label: "Stammdaten", icon: Database },
   { href: "/konnektoren", label: "Konnektoren", icon: Plug, adminOnly: true },
   { href: "/reports", label: "Reports", icon: BarChart3 },

@@ -1,6 +1,6 @@
 # PROJ-31: Approval-Gates für formale Decisions
 
-## Status: Architected
+## Status: In Progress
 **Created:** 2026-05-02
 **Last Updated:** 2026-05-02
 
@@ -386,7 +386,55 @@ PROJ-8 hat das Mapping bereits: jeder Stakeholder kann optional einen `linked_us
 **Umsetzbar mit aktueller Architektur, ohne Stack-Erweiterung.** Die einzige nicht-triviale Risiko-Entschärfung (R2 Mail-Body-Whitelist) ist eine Konstruktionsregel, kein technischer Filter — Architekt + /backend-Phase müssen gemeinsam wachsam sein. Der Rest ist Standard-Pattern-Anwendung.
 
 ## Implementation Notes
-_To be added by /frontend + /backend_
+
+### Frontend (2026-05-02)
+
+**Types & API client:**
+- `src/types/decision-approval.ts` — `ApprovalStatus`, `ApproverResponse`, `DecisionApprovalBundle`, `PendingApprovalSummary`, `ApprovalTokenPayload`.
+- `src/types/stakeholder.ts` — extended `Stakeholder` with optional `is_approver?: boolean`. Optional until PROJ-31 backend migration lands.
+- `src/lib/decisions/approval-api.ts` — fetch wrappers for `submitDecisionForApproval`, `withdrawDecisionApproval`, `getDecisionApprovalBundle`, `listPendingApprovals`, `respondAsInternalApprover`, `fetchApprovalByToken`, `respondViaToken`. All routes 4xx until `/backend` lands.
+
+**Components** (new directory `src/components/projects/decisions/approval/`):
+- `approval-status-badge.tsx` — small Badge with variant per status.
+- `approver-selector.tsx` — multi-select with visual split "Intern (Plattform-Account) / Extern (Magic-Link per Email)" via Stakeholder.linked_user_id check.
+- `submit-for-approval-form.tsx` — wraps selector + quorum-Input; effective quorum derived at render (no setState-in-effect).
+- `approval-status-banner.tsx` — top-of-bundle Alert with status-specific copy.
+- `approver-list.tsx` — per-Approver row with response Badge (Zugestimmt / Abgelehnt / Offen).
+- `approval-trail-timeline.tsx` — append-only event Timeline, narrows `payload?.comment | response` via IIFE pattern (TypeScript-clean).
+- `withdraw-decision-dialog.tsx` — confirm Dialog with optional reason.
+- `decision-approval-sheet.tsx` — orchestrator: loads bundle, branches to SubmitForApprovalForm (status=draft) or Tabs(Approver/Audit-Trail) view with Withdraw-Button (status=pending+).
+
+**Pages:**
+- `src/app/approve/[token]/page.tsx` (NEW, public, server-rendered, robots: noindex) — fetches token-payload server-side; renders Decision body + ApproveForm. Branch to `ExpiredOrInvalidView` if `expired || status ∈ {withdrawn, approved, rejected}`.
+- `src/app/approve/[token]/approve-form.tsx` — client component with idempotent submit (after first response, switches to confirmation state).
+- `src/app/approve/[token]/expired-or-invalid-view.tsx` — error view with status-specific copy.
+- `src/app/(app)/approvals/page.tsx` (NEW) — internal Approver-Dashboard wrapping `ApprovalsListClient`.
+- `src/app/(app)/approvals/approvals-list-client.tsx` — fetches `listPendingApprovals()`, renders Skeleton/Empty/List with deep-link to `/projects/[id]/decisions/[did]`.
+
+**Wiring into existing surfaces:**
+- `src/components/projects/decisions/decision-card.tsx` — added optional `onManageApproval` prop; renders new "Genehmigung"-button in the action row when prop provided.
+- `src/components/projects/decisions/decisions-timeline.tsx` — passes the callback through.
+- `src/components/projects/decisions/decisions-tab-client.tsx` — adds `approvalDecision` state + opens `DecisionApprovalSheet` on click; reloads the timeline on `onChanged`.
+- `src/components/app/global-sidebar.tsx` — new nav item `/approvals` with `CheckSquare` icon between Projekte and Stammdaten.
+
+**Lint config:**
+- `eslint.config.mjs` — added 2 new files to the documented PROJ-29 `set-state-in-effect` exception list (effect-driven initial-load pattern, same as deployed components):
+  - `src/app/(app)/approvals/approvals-list-client.tsx`
+  - `src/components/projects/decisions/approval/decision-approval-sheet.tsx`
+
+**Verification:**
+- `npx tsc --noEmit` exit 0
+- `npm run lint` exit 0
+- `npm test --run` 572/572
+- `npm run build` green; new routes `/approvals` and `/approve/[token]` both `ƒ` (server-rendered) in the manifest.
+- Browser-Test skipped — backend API routes (POST `/api/projects/[id]/decisions/[did]/approval`, GET `/api/dashboard/approvals`, GET/POST `/api/approve/[token]`) return 404 until `/backend` ships them.
+
+**Out-of-scope deviations from spec (logged):**
+- No "Formal Decision" toggle inside the existing `decision-form.tsx` — instead a separate "Genehmigung verwalten" sheet on each Decision row. Cleaner separation: existing form keeps creating draft Decisions; approval workflow is a follow-up action. PROJ-6 catalog auto-flag will land server-side when /backend implements `decision_approval_state` row creation.
+- No "PROJ-19 phase-transition banner" UX yet — pull-mechanic spec'd as "PM submit manuell"; banner can come in a frontend-only follow-up slice once backend exposes the catalog rule lookup.
+
+### Backend
+_To be added by /backend_
 
 ## QA Test Results
 _To be added by /qa_

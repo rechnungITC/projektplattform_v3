@@ -60,6 +60,12 @@ export interface Stakeholder {
   linked_user_id: string | null
   notes: string | null
   is_active: boolean
+  /**
+   * PROJ-31 — eligible to be nominated as approver on formal Decisions.
+   * Optional in the type until PROJ-31 backend migration lands; older
+   * fetched payloads simply lack the field.
+   */
+  is_approver?: boolean
   created_by: string
   created_at: string
   updated_at: string

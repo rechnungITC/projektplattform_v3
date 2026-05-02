@@ -13,6 +13,7 @@ interface DecisionsTimelineProps {
    *  by walking the supersedes chain. */
   decisions: Decision[]
   onRevise: (d: Decision) => void
+  onManageApproval?: (d: Decision) => void
 }
 
 /**
@@ -53,6 +54,7 @@ function buildChains(
 export function DecisionsTimeline({
   decisions,
   onRevise,
+  onManageApproval,
 }: DecisionsTimelineProps) {
   const chains = buildChains(decisions)
 
@@ -78,6 +80,7 @@ export function DecisionsTimeline({
           decision={current}
           predecessors={predecessors}
           onRevise={onRevise}
+          onManageApproval={onManageApproval}
         />
       ))}
     </div>

@@ -22,6 +22,7 @@ import { listStakeholders } from "@/lib/stakeholders/api"
 import type { Decision } from "@/types/decision"
 import type { Stakeholder } from "@/types/stakeholder"
 
+import { DecisionApprovalSheet } from "./approval/decision-approval-sheet"
 import { DecisionForm } from "./decision-form"
 import { DecisionsTimeline } from "./decisions-timeline"
 
@@ -40,6 +41,9 @@ export function DecisionsTabClient({ projectId }: DecisionsTabClientProps) {
   const [loading, setLoading] = React.useState(true)
   const [drawer, setDrawer] = React.useState<DrawerState>({ mode: "closed" })
   const [submitting, setSubmitting] = React.useState(false)
+  // PROJ-31 — separate sheet for managing the approval workflow.
+  const [approvalDecision, setApprovalDecision] =
+    React.useState<Decision | null>(null)
 
   const reload = React.useCallback(async () => {
     try {
@@ -113,6 +117,7 @@ export function DecisionsTabClient({ projectId }: DecisionsTabClientProps) {
                 onRevise={(d) =>
                   setDrawer({ mode: "revise", predecessor: d })
                 }
+                onManageApproval={(d) => setApprovalDecision(d)}
               />
             )}
           </div>
@@ -168,6 +173,16 @@ export function DecisionsTabClient({ projectId }: DecisionsTabClientProps) {
           </div>
         </SheetContent>
       </Sheet>
+
+      <DecisionApprovalSheet
+        projectId={projectId}
+        decision={approvalDecision}
+        open={approvalDecision !== null}
+        onOpenChange={(open) => {
+          if (!open) setApprovalDecision(null)
+        }}
+        onChanged={() => void reload()}
+      />
     </>
   )
 }

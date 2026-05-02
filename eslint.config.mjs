@@ -150,6 +150,10 @@ const config = [
       // data-load patterns documented above.
       "src/components/reports/ki-narrative-modal.tsx",
       "src/hooks/use-snapshots.ts",
+      // PROJ-31: approval-management surfaces use the same effect-driven
+      // initial data-load pattern as the rest of the project-room.
+      "src/app/(app)/approvals/approvals-list-client.tsx",
+      "src/components/projects/decisions/approval/decision-approval-sheet.tsx",
     ],
     rules: {
       "react-hooks/set-state-in-effect": "off",
