@@ -459,6 +459,143 @@ Jede Phase hat eigenen QA-Pass und eigenen Deploy. /architecture-Empfehlung: **N
 
 **Umsetzbar mit aktueller Architektur ohne Stack-Erweiterung außer `recharts`.** Alle 4 Locked-Decisions kompatibel, alle 6 CIA-Risiken im Design entschärft. Phasierung gibt Deploy-Granularität. CIA-Empfehlung: **/frontend + /backend können parallel an Phase 33-α starten.**
 
+---
+
+## Tech Design Appendix — Phase 33-β (Stakeholder-Type-Catalog)
+
+> **Status:** locked durch /architecture proj 33 Run #2 (2026-05-02). 2 zusätzliche Forks aus Q&A:
+> - **FK-Strategy = Hybrid** Composite via Validation-Trigger
+> - **Color-UX = `react-colorful`** Color-Picker
+
+### β.1 — Konkrete Tabellen-Form (`stakeholder_type_catalog`)
+
+**Spalten:**
+- `id` UUID (PK, für interne Referenzen, NICHT für FK von stakeholders)
+- `tenant_id` UUID NULL (NULL = globaler Default; sonst Tenant-eigen)
+- `key` text NOT NULL (max 64; UNIQUE per `(tenant_id, key)`)
+- `label_de` text NOT NULL (max 100)
+- `label_en` text NULL (max 100)
+- `color` text NOT NULL (Hex-Format `#rrggbb`, regex-validiert)
+- `display_order` int NOT NULL DEFAULT 0
+- `is_active` boolean NOT NULL DEFAULT true
+- `created_at` / `updated_at` timestamptz
+
+**Default-Seeds (`tenant_id IS NULL`, immutable):**
+
+| Key | Label DE | Color (Hex) | Tailwind-Equivalent |
+|---|---|---|---|
+| `promoter` | Promoter | `#10b981` | emerald-500 |
+| `supporter` | Supporter | `#3b82f6` | blue-500 |
+| `critic` | Kritiker | `#f59e0b` | amber-500 |
+| `blocker` | Blockierer | `#ef4444` | red-500 |
+
+**Constraint-Set:**
+- UNIQUE `(tenant_id, key)` — erlaubt Tenant-A "champion" parallel zu Tenant-B "champion"
+- CHECK `length(key) BETWEEN 1 AND 64`
+- CHECK `length(label_de) BETWEEN 1 AND 100`
+- CHECK `color ~* '^#[0-9a-f]{6}$'`
+- RLS:
+  - SELECT: `tenant_id IS NULL OR is_tenant_member(tenant_id)`
+  - INSERT/UPDATE/DELETE: `is_tenant_admin(tenant_id) AND tenant_id IS NOT NULL` (globale Defaults bleiben immutable)
+
+### β.2 — Hybrid-FK via Validation-Trigger
+
+**Warum kein nativer Composite-FK?**
+PostgreSQL FK kann nicht "OR NULL" beim Composite-Match. Wir wollen aber:
+- Wenn `stakeholder_type_catalog.tenant_id IS NULL` (global) → erlaubt für alle Tenants
+- Wenn `stakeholder_type_catalog.tenant_id = X` → nur für Tenant X erlaubt
+
+**Lösung:** Validation-Trigger auf `stakeholders` BEFORE INSERT/UPDATE OF `stakeholder_type_key`:
+- Wenn `stakeholder_type_key IS NULL` → OK
+- Sonst: Lookup `stakeholder_type_catalog WHERE key = NEW.stakeholder_type_key AND (tenant_id IS NULL OR tenant_id = NEW.tenant_id) AND is_active = true`
+- Wenn kein Match → `raise exception 'invalid_stakeholder_type_key'`
+
+**Migration-Verhalten für Phase 33-α-Daten:**
+- Phase 33-α hat `stakeholder_type_key` als Free-Text gestartet — bisher haben Nutzer wahrscheinlich nur die 4 globalen Defaults eingegeben, oder gar nichts (Phase α ist <1 Tag alt).
+- Trigger fires nur für **NEUE INSERT/UPDATE**. Existing Rows mit ungültigen Keys bleiben unbeschadet (data-immutable Migration).
+- Zusätzlicher Cleanup-Step in Migration: Werte, die nicht den 4 Defaults entsprechen, werden auf NULL gesetzt mit Audit-Log-Eintrag (Begründung: "PROJ-33-β: invalid free-text key cleared for catalog enforcement").
+
+### β.3 — UI-Komponenten
+
+```
+Phase 33-β Oberflächen
+│
+├── /stammdaten/stakeholder-types  (NEU)
+│   ├── Tenant-Admin-only Page
+│   ├── Tab "Globale Defaults" — read-only Liste der 4 Einträge mit Farb-Swatch
+│   ├── Tab "Eigene Typen" (Tenant-Custom)
+│   │   ├── CRUD-Tabelle: Label DE, Label EN, Color-Swatch, Reihenfolge, Aktiv-Toggle
+│   │   ├── "+ Neuer Typ"-Button → öffnet Sheet-Form
+│   │   └── Klick auf Eintrag → öffnet Edit-Form
+│   └── Sheet-Form (Add / Edit)
+│       ├── Key (Input, lower-case-only, dasher-separator-validiert)
+│       ├── Label DE (Input)
+│       ├── Label EN (Input, optional)
+│       ├── Color (react-colorful HexColorPicker + Hex-Input-Field, mit Vorschau-Swatch)
+│       ├── Display-Order (Input number)
+│       └── Aktiv-Toggle
+│
+├── /stakeholder-Form (erweitert — bestehende Component aus Phase 33-α)
+│   └── Sektion "Qualitative Bewertung"
+│       └── Stakeholder-Typ Input wird zu Select-Component
+│           - Listet globale Defaults + tenant-eigene aktive Einträge
+│           - Anzeige: Farb-Swatch + Label DE
+│           - Optional "kein Typ" als erste Option
+│
+└── /Stakeholder-Tabelle (erweitert)
+    └── Type-Badge mit Catalog-Farbe (statt nur free-text)
+```
+
+### β.4 — API-Routes
+
+| Route | Auth | Purpose |
+|---|---|---|
+| `GET /api/stakeholder-types` | session | Listet aktive Types (global + tenant) für Dropdowns |
+| `POST /api/stakeholder-types` | tenant-admin | Erstellt tenant-eigenen Type (`tenant_id` = active) |
+| `PATCH /api/stakeholder-types/[id]` | tenant-admin | Edit, nur eigene (RLS-gated, server-side double-check) |
+| `DELETE /api/stakeholder-types/[id]` | tenant-admin | Soft-delete via `is_active=false` |
+
+**Globale Defaults bleiben immutable** — RLS-Policy verbietet UPDATE/DELETE für `tenant_id IS NULL`.
+
+### β.5 — Dependencies
+
+**Neue npm-Packages:**
+- `react-colorful` (~2 KB gzipped, peer-react 19 supported) — HexColorPicker-Component für Type-Color-UX
+
+**Touched Code:**
+- `supabase/migrations/`: 1 neue Migration (Catalog-Table + 4 Seeds + Validation-Trigger + RLS)
+- `src/types/stakeholder-type.ts` (neu): TS-Types für Catalog-Eintrag
+- `src/lib/stakeholder-types/api.ts` (neu): fetch wrappers
+- `src/app/api/stakeholder-types/route.ts` + `[id]/route.ts` (neu): CRUD-Routes
+- `src/app/(app)/stammdaten/stakeholder-types/page.tsx` + `client.tsx` (neu): Admin-UI
+- `src/components/projects/stakeholders/stakeholder-form.tsx` (erweitert): Type-Input wird Select
+- `src/components/projects/stakeholders/stakeholder-table.tsx` (erweitert): Type-Badge mit Catalog-Color
+- `src/components/master-data/` (erweitert): Sidebar-Nav-Eintrag
+
+### β.6 — Aufwandsschätzung
+
+- **Backend** (Migration + 4 Routes + Validation-Trigger): ~1 PT
+- **Frontend** (Admin-UI + Color-Picker-Integration + Stakeholder-Form-Update): ~1 PT
+- **QA** (Live-DB-Red-Team + Vitest-Cases für Trigger + UI-Smoke): ~0.5 PT
+- **Total**: ~2.5 PT — passt zur ursprünglichen ~2 PT Phasierungs-Schätzung
+
+### β.7 — Acceptance-Gate (für /qa)
+
+Phase 33-β ist deploybar wenn:
+1. Tenant-Admin kann eigene Stakeholder-Types anlegen, editieren, soft-deleten
+2. Stakeholder-Form Type-Input ist ein Select mit globalen + tenant-eigenen Werten
+3. Validation-Trigger lehnt invalid keys mit klarer Fehlermeldung ab
+4. Globale Defaults sind immutable (RLS + Live-Red-Team-Test)
+5. Existing Phase 33-α-Daten bleiben unbeschadet (kein silent data loss)
+6. Color-Picker rendert + speichert Hex-Werte korrekt
+
+### β.8 — Edge-Cases (zusätzlich zu Phase-α-Set)
+
+- **EC-β1: Tenant-Admin deaktiviert einen Type, der noch verwendet wird** → Stakeholder-Eintrag behält Wert (Soft-Reference erlaubt das); UI zeigt "Type X (deaktiviert)" als Badge mit grauer Farbe.
+- **EC-β2: Free-Text-Wert aus Phase 33-α matcht keinen Catalog-Eintrag** → Migration cleared den Wert auf NULL mit Audit-Log-Eintrag.
+- **EC-β3: Tenant-Admin will einen globalen Default überschreiben** → RLS lehnt UPDATE für `tenant_id IS NULL` ab; UI zeigt Buttons für globale Defaults disabled.
+- **EC-β4: Race: zwei Tenant-Admins legen gleichzeitig den gleichen Custom-Key an** → UNIQUE-Constraint auf `(tenant_id, key)` lehnt den zweiten ab (409 Conflict im API-Layer).
+
 ## Implementation Notes
 
 ### Phase 33-α Backend (2026-05-02)
