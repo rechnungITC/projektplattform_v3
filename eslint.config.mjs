@@ -158,6 +158,10 @@ const config = [
       // reset on prop change + effect-driven initial-load patterns.
       "src/components/master-data/stakeholder-type-form-dialog.tsx",
       "src/components/master-data/stakeholder-types-page-client.tsx",
+      // PROJ-33-γ: profile-tab + edit-sheet (effect-driven initial-load +
+      // dialog-reset patterns identical to existing rule)
+      "src/components/stakeholders/profile/profile-tab.tsx",
+      "src/components/stakeholders/profile/profile-edit-sheet.tsx",
     ],
     rules: {
       "react-hooks/set-state-in-effect": "off",

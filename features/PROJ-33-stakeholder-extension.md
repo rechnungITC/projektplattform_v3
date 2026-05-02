@@ -982,6 +982,35 @@ Alle UPSERT-Routes verifizieren erst, dass der Stakeholder zum project_id gehör
 
 **Phase 33-γ Backend done. Frontend (Radar-Component + Profil-Tab + Edit-Sheet + Audit-Timeline) ist die nächste Slice.**
 
+### Phase 33-γ Frontend (2026-05-02)
+
+**Dependencies installed:**
+- `recharts@^2.15.4` (~58 KB gzipped) — RadarChart-Component
+- shadcn-charts wrapper (`src/components/ui/chart.tsx`)
+- shadcn-slider (`src/components/ui/slider.tsx`)
+
+**Components** (neu in `src/components/stakeholders/profile/`):
+- `profile-radar-chart.tsx` — generic RadarChart mit Self-vs-Fremd-Polygon-Overlay (Self solid + dashed Polygon overlay), unterstützt Legend + Tooltip via recharts Standard-Components.
+- `profile-edit-sheet.tsx` — Sheet mit Tabs (Skill / Big5), 5 Slider pro Tab mit 0-100/step-5/0-25-50-75-100-Markern + clear-Button + Big5-Tooltips (Beschreibungen aus PERSONALITY_DIMENSION_DESCRIPTIONS). Save = `Promise.all(updateSkill, updatePersonality)`.
+- `profile-tab.tsx` — orchestrator: lädt bundle, rendert 2 RadarCharts side-by-side + Differenz-Liste (sortiert nach |Δ|, highlighted ab |Δ| ≥ 30 mit Trainings-Hinweis) + Audit-Trail (letzte 50 Events mit Zeitstempel + Aktor-Kind).
+
+**Wiring** — `stakeholder-tab-client.tsx`:
+- Neuer Tab "Profil" zwischen "Stammdaten" und "Historie" im Edit-Drawer.
+- ProfileTab erhält `projectId`, `stakeholderId`, `stakeholderName` Props.
+
+**ESLint** (`eslint.config.mjs`):
+- 2 neue Files zur PROJ-29 `set-state-in-effect`-Override-Liste:
+  - `src/components/stakeholders/profile/profile-tab.tsx` (effect-driven Initial-Load)
+  - `src/components/stakeholders/profile/profile-edit-sheet.tsx` (Dialog-Reset-Pattern)
+
+**Verification:**
+- `npx tsc --noEmit` exit 0
+- `npm run lint` exit 0
+- `npm test --run` 600/600
+- `npm run build` green
+
+**Phase 33-γ komplett (Backend + Frontend). Ready für /qa proj 33.**
+
 ### Phase 33-δ
 _Not yet started._
 
