@@ -31,16 +31,6 @@ const updateSchema = z
     attributes: z.record(z.string(), z.unknown()).optional(),
     position: z.number().optional(),
     is_deleted: z.boolean().optional(),
-    // PROJ-36 Phase 36-α — manual WBS-Code override + toggle.
-    // - Setting wbs_code with wbs_code_is_custom=true overrides the auto-gen.
-    // - Setting wbs_code_is_custom=false alone re-triggers auto-gen from
-    //   outline_path (User-Confirm-Dialog im Frontend warnt vor Regenerierung).
-    wbs_code: z
-      .string()
-      .regex(/^[A-Za-z0-9._-]{1,50}$/, "Invalid WBS-Code format")
-      .nullable()
-      .optional(),
-    wbs_code_is_custom: z.boolean().optional(),
   })
   .refine((v) => Object.keys(v).length > 0, {
     message: "At least one field required.",
