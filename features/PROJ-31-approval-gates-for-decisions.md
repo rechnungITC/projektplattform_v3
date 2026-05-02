@@ -629,4 +629,63 @@ This re-introduces a hygiene class that PROJ-29 explicitly closed. PROJ-29 basel
 2. **`/deploy proj 31`** — code-only push (Migration already applied via MCP).
 
 ## Deployment
-_To be added by /deploy_
+
+**Date:** 2026-05-02
+**Production URL:** https://projektplattform-v3.vercel.app
+**Tag:** `v1.31.0-PROJ-31`
+**Commits in production:**
+- `67a6b27` feat — feature specification
+- `6bc30a1` docs — Tech Design (CIA-validated)
+- `acb82a9` feat — frontend (8 components, 3 pages, sidebar, types, API client)
+- `91c0aee` feat — backend (migration, RPC, 5 routes, token/mail/rules modules)
+- `ebea82d` test — QA pass Approved
+- `db57d4c` fix — search_path hardening (BUG-M1)
+- `b84ecb4` deploy — Deployed bookkeeping
+- `fd0c9d5` fix — middleware PUBLIC_ROUTES whitelist for Magic-Link (post-deploy hotfix)
+
+### Post-Deploy Hotfix — BUG-D1 (Critical, fixed forward)
+**Discovery:** Live route-probe immediately after the first deploy showed
+`/approve/[token]` returning HTTP 307 → `/login`. The Magic-Link flow was
+broken — the auth proxy (src/proxy.ts) calls `updateSession` which
+redirects all unauthenticated requests **except** those matching
+`PUBLIC_ROUTES` in `src/lib/supabase/middleware.ts:8-18`. That allow-list
+did not include `/approve` or `/api/approve`.
+
+**Impact:** Without the fix, the entire external-Approver flow (the most
+distinctive PROJ-31 capability) would have been non-functional in
+production — Magic-Link mails would have led recipients to the login
+page instead of the Approval-Page.
+
+**Why QA missed it:** /qa probed live routes via curl pre-deploy and saw
+307 — but interpreted that as the expected auth-gate without verifying
+the spec contract that `/approve/[token]` is **public**. Lesson: every
+route-class that is intentionally public needs a pre-deploy curl check
+that asserts NOT-307 (i.e. the route IS reached, not bounced).
+
+**Fix:** Added `/approve` and `/api/approve` to `PUBLIC_ROUTES` in
+`src/lib/supabase/middleware.ts`. Token-auth is still enforced inside
+the routes themselves; this whitelist only exempts them from the
+session-cookie bounce.
+
+**Hotfix shipped:** `fd0c9d5` — pushed within 5 minutes of the initial
+deploy. No production user could have hit the broken flow because no
+Approval was submitted in that window (the submit endpoint is
+session-gated and there's no production test data).
+
+**Lesson recorded:** Add a checklist item to /deploy:
+> For every route documented as **public**, run a curl probe **without
+> auth cookies** and assert the response is NOT 307 → /login. A 200, 404,
+> or 410 means the route is reached; 307 means the middleware ate it.
+
+### Action Required by Operator (User)
+
+Before any production tenant can submit a Decision for Approval:
+1. Generate a 32+-char secret: `openssl rand -base64 32`
+2. Set in Vercel Project Settings → Environment Variables (Production):
+   - `APPROVAL_TOKEN_SECRET=<generated-secret>`
+3. **Optional:** `NEXT_PUBLIC_BASE_URL=https://projektplattform-v3.vercel.app`
+4. Trigger a redeploy (Vercel does not auto-redeploy on env-var change).
+
+Without the token-secret, the submit-endpoint throws a clear error
+("APPROVAL_TOKEN_SECRET is not set or too short"). The other endpoints
+(GET bundle, dashboard listing, withdraw) are unaffected.

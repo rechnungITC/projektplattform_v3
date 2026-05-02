@@ -1,4 +1,5 @@
 import type { Metadata } from "next"
+import { headers } from "next/headers"
 import { notFound } from "next/navigation"
 
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
@@ -16,10 +17,26 @@ interface PageProps {
   params: Promise<{ token: string }>
 }
 
+async function resolveBaseURL(): Promise<string> {
+  // Prefer the explicit env var (set in Vercel for production).
+  const explicit = process.env.NEXT_PUBLIC_BASE_URL
+  if (explicit) return explicit.replace(/\/$/, "")
+  // Vercel auto-injects VERCEL_URL on every deployment (no scheme).
+  const vercel = process.env.VERCEL_URL
+  if (vercel) return `https://${vercel}`
+  // Fall back to the request's own host header (covers the local dev
+  // server and any other deploy target).
+  const h = await headers()
+  const host = h.get("host")
+  const proto = h.get("x-forwarded-proto") ?? "http"
+  if (host) return `${proto}://${host}`
+  return "http://localhost:3000"
+}
+
 async function fetchPayload(
   token: string,
 ): Promise<ApprovalTokenPayload | null> {
-  const baseURL = process.env.NEXT_PUBLIC_BASE_URL ?? ""
+  const baseURL = await resolveBaseURL()
   const response = await fetch(
     `${baseURL}/api/approve/${encodeURIComponent(token)}`,
     { method: "GET", cache: "no-store" },
