@@ -154,6 +154,10 @@ const config = [
       // initial data-load pattern as the rest of the project-room.
       "src/app/(app)/approvals/approvals-list-client.tsx",
       "src/components/projects/decisions/approval/decision-approval-sheet.tsx",
+      // PROJ-33-β: stakeholder-type-catalog admin UI uses the same dialog-
+      // reset on prop change + effect-driven initial-load patterns.
+      "src/components/master-data/stakeholder-type-form-dialog.tsx",
+      "src/components/master-data/stakeholder-types-page-client.tsx",
     ],
     rules: {
       "react-hooks/set-state-in-effect": "off",

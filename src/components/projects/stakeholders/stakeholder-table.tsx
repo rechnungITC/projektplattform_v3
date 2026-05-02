@@ -1,6 +1,7 @@
 "use client"
 
 import { Building2, Circle, User2 } from "lucide-react"
+import * as React from "react"
 
 import { Badge } from "@/components/ui/badge"
 import {
@@ -26,6 +27,7 @@ import {
   type StakeholderAttitude,
   type StakeholderScore,
 } from "@/types/stakeholder"
+import type { StakeholderType } from "@/types/stakeholder-type"
 
 const SCORE_TONE: Record<StakeholderScore, string> = {
   low: "bg-muted text-muted-foreground",
@@ -44,13 +46,22 @@ const ATTITUDE_TONE: Record<StakeholderAttitude, string> = {
 
 interface StakeholderTableProps {
   stakeholders: Stakeholder[]
+  /** PROJ-33-β — Catalog für Type-Badge-Color-Lookup. Optional. */
+  stakeholderTypes?: StakeholderType[]
   onRowClick: (s: Stakeholder) => void
 }
 
 export function StakeholderTable({
   stakeholders,
+  stakeholderTypes = [],
   onRowClick,
 }: StakeholderTableProps) {
+  // PROJ-33-β — Lookup von type_key zu Catalog-Eintrag (für Color-Badge).
+  const typeByKey = React.useMemo(() => {
+    const m = new Map<string, StakeholderType>()
+    for (const t of stakeholderTypes) m.set(t.key, t)
+    return m
+  }, [stakeholderTypes])
   if (stakeholders.length === 0) {
     return (
       <div className="rounded-md border border-dashed py-12 text-center text-sm text-muted-foreground">
@@ -97,7 +108,47 @@ export function StakeholderTable({
                     {STAKEHOLDER_ORIGIN_LABELS[s.origin]}
                   </p>
                 </TableCell>
-                <TableCell>{s.role_key ?? "—"}</TableCell>
+                <TableCell>
+                  <div className="flex items-center gap-2">
+                    <span>{s.role_key ?? "—"}</span>
+                    {s.stakeholder_type_key &&
+                      (() => {
+                        const t = typeByKey.get(s.stakeholder_type_key)
+                        if (!t) {
+                          return (
+                            <Badge variant="outline" className="text-xs">
+                              {s.stakeholder_type_key}
+                            </Badge>
+                          )
+                        }
+                        return (
+                          <Tooltip>
+                            <TooltipTrigger asChild>
+                              <span
+                                className="inline-flex items-center gap-1 rounded-full border px-2 py-0.5 text-xs"
+                                style={{
+                                  backgroundColor: `${t.color}20`,
+                                  borderColor: t.color,
+                                  color: t.color,
+                                }}
+                              >
+                                <span
+                                  className="inline-block h-2 w-2 rounded-full"
+                                  style={{ backgroundColor: t.color }}
+                                />
+                                <span>{t.label_de}</span>
+                              </span>
+                            </TooltipTrigger>
+                            <TooltipContent>
+                              {t.is_active
+                                ? `Stakeholder-Typ: ${t.label_de}`
+                                : `Stakeholder-Typ (deaktiviert): ${t.label_de}`}
+                            </TooltipContent>
+                          </Tooltip>
+                        )
+                      })()}
+                  </div>
+                </TableCell>
                 <TableCell className="hidden sm:table-cell">
                   {s.org_unit ?? "—"}
                 </TableCell>

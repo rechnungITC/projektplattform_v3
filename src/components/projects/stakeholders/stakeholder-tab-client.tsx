@@ -31,12 +31,14 @@ import {
   updateStakeholder,
   type StakeholderInput,
 } from "@/lib/stakeholders/api"
+import { listStakeholderTypes } from "@/lib/stakeholder-types/api"
 import {
   STAKEHOLDER_SCORE_LABELS,
   type Stakeholder,
   type StakeholderScore,
   type StakeholderSuggestion,
 } from "@/types/stakeholder"
+import type { StakeholderType } from "@/types/stakeholder-type"
 
 import { StakeholderForm } from "./stakeholder-form"
 import { StakeholderMatrix } from "./stakeholder-matrix"
@@ -59,6 +61,7 @@ export function StakeholderTabClient({ projectId }: StakeholderTabClientProps) {
   const resourcesModuleActive = isModuleActive(tenantSettings, "resources")
 
   const [stakeholders, setStakeholders] = React.useState<Stakeholder[]>([])
+  const [stakeholderTypes, setStakeholderTypes] = React.useState<StakeholderType[]>([])
   const [suggestions, setSuggestions] = React.useState<StakeholderSuggestion[]>(
     []
   )
@@ -109,6 +112,14 @@ export function StakeholderTabClient({ projectId }: StakeholderTabClientProps) {
   React.useEffect(() => {
     void reloadSuggestions()
   }, [reloadSuggestions])
+
+  // PROJ-33-β — load stakeholder-type catalog (global + tenant). Failures
+  // are non-blocking; UI falls back to free-text-display.
+  React.useEffect(() => {
+    void listStakeholderTypes()
+      .then(setStakeholderTypes)
+      .catch(() => undefined)
+  }, [])
 
   const filtered = React.useMemo(() => {
     let result = stakeholders
@@ -347,6 +358,7 @@ export function StakeholderTabClient({ projectId }: StakeholderTabClientProps) {
           ) : view === "list" ? (
             <StakeholderTable
               stakeholders={filtered}
+              stakeholderTypes={stakeholderTypes}
               onRowClick={(s) => setDrawer({ mode: "edit", stakeholder: s })}
             />
           ) : (
@@ -404,6 +416,7 @@ export function StakeholderTabClient({ projectId }: StakeholderTabClientProps) {
                 <TabsContent value="form" className="mt-4">
                   <StakeholderForm
                     tenantId={tenantId}
+                    stakeholderTypes={stakeholderTypes}
                     initial={drawer.stakeholder}
                     onCancel={() => setDrawer({ mode: "closed" })}
                     onSubmit={(input) => onUpdate(drawer.stakeholder.id, input)}
@@ -454,6 +467,7 @@ export function StakeholderTabClient({ projectId }: StakeholderTabClientProps) {
             ) : drawer.mode === "create" ? (
               <StakeholderForm
                 tenantId={tenantId}
+                stakeholderTypes={stakeholderTypes}
                 prefillRoleKey={drawer.prefillRoleKey ?? null}
                 onCancel={() => setDrawer({ mode: "closed" })}
                 onSubmit={onCreate}

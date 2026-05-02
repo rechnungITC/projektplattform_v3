@@ -61,6 +61,7 @@ import {
 } from "@/types/stakeholder"
 
 import type { StakeholderInput } from "@/lib/stakeholders/api"
+import type { StakeholderType } from "@/types/stakeholder-type"
 
 // PROJ-33 — sentinel for "no selection" in Selects. Maps to null on submit.
 const NO_VALUE = "__none__"
@@ -104,6 +105,9 @@ type FormValues = z.infer<typeof formSchema>
 
 interface StakeholderFormProps {
   tenantId: string
+  /** PROJ-33-β — catalog für stakeholder_type_key dropdown. Optional;
+   *  empty array fällt auf "kein Typ"-only zurück. */
+  stakeholderTypes?: StakeholderType[]
   initial?: Stakeholder | null
   prefillRoleKey?: string | null
   onCancel: () => void
@@ -173,6 +177,7 @@ function selectToNullable<T extends string>(value: string): T | null {
  */
 export function StakeholderForm({
   tenantId,
+  stakeholderTypes = [],
   initial,
   prefillRoleKey,
   onCancel,
@@ -495,14 +500,40 @@ export function StakeholderForm({
                 <FormItem>
                   <FormLabel>Stakeholder-Typ</FormLabel>
                   <FormControl>
-                    <Input
-                      placeholder="z. B. promoter, supporter, critic, blocker"
-                      {...field}
-                    />
+                    <Select
+                      value={field.value || NO_VALUE}
+                      onValueChange={field.onChange}
+                    >
+                      <SelectTrigger>
+                        <SelectValue placeholder="– keine Auswahl –" />
+                      </SelectTrigger>
+                      <SelectContent>
+                        <SelectItem value={NO_VALUE}>– keine Auswahl –</SelectItem>
+                        {stakeholderTypes
+                          .filter((t) => t.is_active)
+                          .map((t) => (
+                            <SelectItem key={t.id} value={t.key}>
+                              <span className="flex items-center gap-2">
+                                <span
+                                  className="inline-block h-3 w-3 rounded-full border"
+                                  style={{ backgroundColor: t.color }}
+                                  aria-hidden
+                                />
+                                <span>{t.label_de}</span>
+                                {t.tenant_id === null && (
+                                  <span className="text-xs text-muted-foreground">
+                                    (Standard)
+                                  </span>
+                                )}
+                              </span>
+                            </SelectItem>
+                          ))}
+                      </SelectContent>
+                    </Select>
                   </FormControl>
                   <FormDescription>
-                    Frei wählbar. Catalog mit Defaults + Tenant-Custom-Werten
-                    folgt in Phase 33-β.
+                    Globale Defaults + tenant-eigene Typen aus dem Catalog.
+                    Tenant-Admin verwaltet eigene Typen unter Stammdaten.
                   </FormDescription>
                   <FormMessage />
                 </FormItem>

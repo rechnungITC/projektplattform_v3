@@ -722,6 +722,55 @@ Phase 33-β ist deploybar wenn:
 
 **Phase 33-β Backend done. Frontend (Color-Picker + Admin-UI + Stakeholder-Form-Update) als nächste Slice.**
 
+### Phase 33-β Frontend (2026-05-02)
+
+**Dependency installed:**
+- `react-colorful@^5.6.1` (~2 KB gzipped) — HexColorPicker für Catalog-Color-UX.
+
+**Tenant-Admin-UI** (`/stammdaten/stakeholder-types`):
+- `src/app/(app)/stammdaten/stakeholder-types/page.tsx` — Page wrapping `StakeholderTypesPageClient`.
+- `src/components/master-data/stakeholder-types-page-client.tsx` — Tab-Layout:
+  - "Eigene Typen" (CRUD-Tabelle mit Add/Edit/Deactivate-Aktionen)
+  - "Globale Defaults" (read-only Liste der 4 Default-Einträge)
+  - Empty-State + Skeleton-Loading
+- `src/components/master-data/stakeholder-type-form-dialog.tsx` — Add/Edit-Dialog mit:
+  - Key-Input (lower-case, regex-validiert, nicht änderbar nach Erstellung)
+  - Label DE + EN Inputs
+  - **HexColorPicker via Popover** (react-colorful) mit Live-Vorschau-Swatch + Hex-Input-Field
+  - Display-Order Input + Aktiv-Toggle Checkbox
+
+**Stammdaten-Landing** (`src/app/(app)/stammdaten/page.tsx`):
+- Neuer Section-Eintrag "Stakeholder-Typen" mit `Tags`-Icon zwischen Stakeholder-Rollup und Projekttypen, `adminOnly: true`.
+
+**Stakeholder-Form** (`stakeholder-form.tsx`):
+- Type-Input wird Select aus Catalog (statt Free-Text):
+  - Listet aktive Types nach `display_order`
+  - Jedes SelectItem zeigt Color-Swatch + Label DE; globale Defaults haben "(Standard)"-Suffix
+  - "kein Typ"-Default als erste Option (NO_VALUE → null)
+- Description-Hint aktualisiert: verweist auf Stammdaten-Pflege durch Tenant-Admin
+
+**Stakeholder-Tabelle** (`stakeholder-table.tsx`):
+- Type-Badge in der Rolle-Spalte: zeigt Color-Swatch + Label DE mit Tooltip
+- Memoized `typeByKey`-Map für O(1)-Lookup pro Row
+- Fallback: wenn `stakeholder_type_key` keinen Catalog-Match findet (z.B. nach Soft-Delete), zeigt outline-Badge mit dem rohen Key
+
+**Tab-Client** (`stakeholder-tab-client.tsx`):
+- `listStakeholderTypes()` lädt einmal beim Mount (non-blocking, fail-silent)
+- Pass `stakeholderTypes`-Prop an `StakeholderForm` (3 Stellen: edit-form, create-form) + `StakeholderTable`
+
+**ESLint** (`eslint.config.mjs`):
+- 2 neue Files zur PROJ-29 `set-state-in-effect`-Override-Liste:
+  - `src/components/master-data/stakeholder-type-form-dialog.tsx` (Dialog-Reset-Pattern)
+  - `src/components/master-data/stakeholder-types-page-client.tsx` (Effect-driven Initial-Load)
+
+**Verification:**
+- `npx tsc --noEmit` exit 0
+- `npm run lint` exit 0
+- `npm test --run` 600/600
+- `npm run build` green; routes `/stammdaten/stakeholder-types` + `/api/stakeholder-types(/[id])` im Manifest
+
+**Phase 33-β komplett (Backend + Frontend). Ready für /qa proj 33.**
+
 ### Phase 33-γ + δ
 _Not yet started._
 

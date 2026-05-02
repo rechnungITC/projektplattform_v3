@@ -4,6 +4,7 @@ import {
   ChevronRight,
   FolderTree,
   ListChecks,
+  Tags,
   Users,
   Users2,
 } from "lucide-react"
@@ -45,6 +46,14 @@ const SECTIONS: Section[] = [
     title: "Stakeholder-Rollup",
     description:
       "Tenant-weite Übersicht aller Stakeholder mit Projekt-Beteiligung. Read-only — Pflege bleibt pro Projekt.",
+    adminOnly: true,
+  },
+  {
+    href: "/stammdaten/stakeholder-types",
+    icon: Tags,
+    title: "Stakeholder-Typen",
+    description:
+      "Globale Defaults (Promoter/Supporter/Kritiker/Blockierer) plus eigene Typen pro Tenant — werden im Stakeholder-Form als Dropdown angeboten.",
     adminOnly: true,
   },
   {
