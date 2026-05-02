@@ -38,6 +38,15 @@ const createSchema = z.object({
   attributes: z.record(z.string(), z.unknown()).optional(),
   position: z.number().optional(),
   created_from_proposal_id: z.string().uuid().nullable().optional(),
+  // PROJ-36 Phase 36-α — optional WBS-Code overrides on create. Without
+  // these fields, the auto-generation trigger sets wbs_code from
+  // outline_path. With wbs_code + wbs_code_is_custom=true, the user-supplied
+  // code wins.
+  wbs_code: z
+    .string()
+    .regex(/^[A-Za-z0-9._-]{1,50}$/, "Invalid WBS-Code format")
+    .optional(),
+  wbs_code_is_custom: z.boolean().optional(),
 })
 
 // -----------------------------------------------------------------------------
