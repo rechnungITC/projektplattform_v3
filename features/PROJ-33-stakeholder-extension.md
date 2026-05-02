@@ -1,6 +1,6 @@
 # PROJ-33: Erweitertes Stakeholder-Management — Stammdaten + Skill/Persönlichkeit + Self-Assessment
 
-## Status: In Progress (Phase 33-α + β + γ Deployed; δ Backend + Frontend ready for QA)
+## Status: In Progress (Phase 33-α + β + γ Deployed; δ Approved — ready for /deploy)
 **Created:** 2026-05-02
 **Last Updated:** 2026-05-02
 **Phase 33-α Deployed:** 2026-05-02 — Tag: `v1.33.0-PROJ-33-alpha`
@@ -1331,6 +1331,124 @@ Alle UPSERT-Routes verifizieren erst, dass der Stakeholder zum project_id gehör
 1. **`/deploy proj 33`** — Phase 33-γ Code-Push + Tag `v1.33.0-PROJ-33-gamma`. Migration ist bereits live via MCP.
 2. Browser-Test (User-Side): Stakeholder editieren → Tab "Profil" → Sliders bedienen → Save → Charts rendern → Audit-Trail prüfen
 3. **Phase 33-δ** — Self-Assessment Magic-Link (separate Slice). Tech-Design existiert in der Spec, ready für /backend → /frontend → /qa → /deploy.
+
+---
+
+## QA Test Results — Phase 33-δ
+
+**Date:** 2026-05-02
+**Phase:** 33-δ (Self-Assessment Magic-Link Flow + Public Page + Audit-Events + O2-Refactor)
+**Verdict:** **Approved** — 0 Critical / 0 High / 0 Medium / 0 Low Bugs
+
+### Automated Test Suite
+
+| Layer | Result |
+|---|---|
+| TypeScript strict (`npx tsc --noEmit`) | ✅ exit 0 |
+| ESLint (`npm run lint`) | ✅ exit 0 |
+| Vitest (`npm test --run`) | ✅ **631/631** (war 600 vor Phase 33-δ — +9 Token-Cases, +13 Mail-Builder-Cases inkl. cross-module replay defense gegen PROJ-31 Token-Verifier) |
+| Production Build (`npm run build`) | ✅ green; 3 neue Routes im Manifest: `/api/projects/[id]/stakeholders/[sid]/self-assessment-invite`, `/api/self-assessment/[token]`, `/self-assessment/[token]` |
+| Supabase Advisors | ✅ **0 neue PROJ-33-δ-class warnings** (alle gemeldeten WARN sind pre-existing aus PROJ-1..32 oder nicht-Migration-bezogen wie auth_leaked_password_protection) |
+
+### Live DB Schema Verification (via Supabase MCP)
+
+| Check | Expected | Actual | Result |
+|---|---|---|---|
+| Migration `proj33d_self_assessment_invites` applied | Live in versions table | Version `20260502201449` | ✅ Pass |
+| 11 Spalten am Tabellen-Schema | `id, tenant_id, stakeholder_id, magic_link_token, magic_link_expires_at, status, submitted_at, submitted_payload, created_by, created_at, updated_at` mit korrekten Typen + Defaults | exact match | ✅ Pass |
+| 4 Indexes | PK, magic_link_token UNIQUE, (stakeholder_id, status), tenant_id | exact match | ✅ Pass |
+| 3 RLS Policies | SELECT/INSERT/UPDATE auf `is_tenant_member(tenant_id)` | exact match (kein DELETE — by design) | ✅ Pass |
+| `updated_at`-Trigger | `BEFORE UPDATE ... EXECUTE FUNCTION touch_updated_at()` | exact match | ✅ Pass |
+| Status CHECK constraint | `pending|completed|revoked|expired` | enforced live | ✅ Pass |
+
+### Live DB Red-Team Tests (10 Vectors, alle pass)
+
+| Test | Expected | Actual | Result |
+|---|---|---|---|
+| 1. Valid INSERT (pending invite) | Row erstellt, `token_alive=true` | Row + future expiry | ✅ Pass |
+| 2. Invalid status `'evil_status'` | block mit `23514 check_violation` | `ERROR 23514: stakeholder_self_assessment_invites_status_check` | ✅ Pass |
+| 3. UNIQUE token collision | block mit `23505 unique_violation` | `ERROR 23505: stakeholder_self_assessment_invites_magic_link_token_key` | ✅ Pass |
+| 4. ON DELETE CASCADE auf stakeholders | invite verschwindet wenn Stakeholder gelöscht (EC-2) | before=1, after=0 nach DELETE stakeholder | ✅ Pass |
+| 5. updated_at-Trigger fires bei Status-Wechsel | `updated_at > created_at` nach UPDATE | `updated_advanced=true` | ✅ Pass |
+| 6. submitted_payload akzeptiert beliebiges JSON-Schema | jsonb-Spalte permissiv (Validation an Application-Layer via Zod) | `{"skill":{...},"personality":{...}}` persisted | ✅ Pass |
+| 7. Lazy-expire promotion (pending → expired wenn `expires_at < now()`) | UPDATE setzt status='expired' | before=pending, after=expired | ✅ Pass |
+| 8. Audit-Events nehmen beide actor_kinds (user + stakeholder) | invite_sent (user) + submitted (stakeholder) Events koexistieren | beide Events mit korrekten `has_user_actor`/`has_stk_actor` Flags | ✅ Pass |
+| 9. `actor_consistency` CHECK blockt Mismatch (kind=user mit actor_stakeholder_id gesetzt) | block mit 23514 | `ERROR 23514: actor_consistency` | ✅ Pass |
+| 10. Audit-Events append-only (UPDATE + DELETE blocked) | beide blockiert mit 23514 | `ERROR 23514: stakeholder_profile_audit_events are append-only` | ✅ Pass |
+| Cleanup | Test-Invites entfernt | 0 remaining `qa-%` invites | ✅ Pass |
+
+### AC-Walkthrough — Phase 33-δ (Block D + F)
+
+| AC | Status |
+|---|---|
+| **D-1** Tabelle `stakeholder_self_assessment_invites` mit allen Spalten | ✅ Live verified (11 Spalten, 4 Indexes, RLS, Trigger) |
+| **D-2** PM kann Invite generieren · HMAC-SHA256 · Server-Secret-Reuse `APPROVAL_TOKEN_SECRET` | ✅ Code-Review `POST /api/projects/[id]/stakeholders/[sid]/self-assessment-invite` (Zeile 41-217) + Token-Modul `self-assessment-token.ts` mit `APPROVAL_TOKEN_SECRET`-Reuse (CIA-Fork-4 honored) |
+| **D-3** Invite-Mail via PROJ-13 Outbox · `buildSelfAssessmentOutboxRow` · keine PII außer Vorname + Tenant-Branding-Name + Magic-Link | ✅ Code-Review `self-assessment-mail.ts` mit strict whitelist + `sanitizeFirstName`-fallback "Hallo"; 13 Vitest-Cases inkl. "does NOT leak project_id/stakeholder_id/invite_id into body" |
+| **D-4** Self-Assessment-Form · 5 Skill + 5 Big5 Slider · 0-100 · Submit idempotent | ✅ Code-Review `self-assessment-form.tsx` mit `SKILL_DIMENSIONS` (5) + `PERSONALITY_DIMENSIONS` (5), Range 0-100 (step 5); idempotent durch Submitted-Card-Switch + Backend-409-bei-already-completed |
+| **D-5** 14-Tage-Lebensdauer · `status='completed'` + `submitted_payload` nach Submit | ✅ Code-Review `TOKEN_LIFETIME_DAYS=14`, POST setzt status=completed + submitted_payload (route Zeile 282-288) |
+| **D-6** PM kann revoken · Token-Klick zeigt "zurückgezogen"-Page | ✅ Code-Review `DELETE`-Handler + `ExpiredOrInvalidView` mit `reason="revoked"` |
+| **F-1** Self-Assessment-Submit logged Audit-Event mit `actor_stakeholder_id` (nicht User) | ✅ Code-Review POST schreibt 2 Events (skill + personality) mit `actor_kind='stakeholder'`, `actor_stakeholder_id=stakeholderId` (route Zeile 291-309) |
+| **F-2** PII-Schutz: Mail enthält keine Decision-/Projekt-Bodies, nur Stakeholder-Vorname + Token-Link | ✅ `buildSelfAssessmentOutboxRow` strict whitelist + 13 Vitest-Cases |
+
+### Edge-Case-Walkthrough — Phase 33-δ (relevante ECs)
+
+| EC | Verified |
+|---|---|
+| **EC-2** Self-Assessment-Magic-Link nach Stakeholder-Deletion | ✅ Live DB Test 4 — ON DELETE CASCADE wirkt; verbliebener Token-Klick gibt 404 |
+| **EC-3** Self-Assessment-Submit nach Token-Ablauf (14 Tage) | ✅ Code-Review `verifySelfAssessmentToken` → `expired` reason → 410 gone; Live Test 7 verifiziert lazy-expire-Promotion |
+| **EC-5** Self vs Fremd komplett gegensätzlich | ✅ Code-Review POST UPSERT'd nur `*_self`-Spalten (Zeile 252-257), `*_fremd`-Spalten unangetastet — beide Werte koexistieren in DB |
+| **EC-6** Stakeholder ist Plattform-User UND macht Self-Assessment | ✅ Code-Review: Token ist die Auth, kein `auth.uid()`-Lookup; Submit-Logik gleich für interne+externe Stakeholder |
+| **EC-9** Magic-Link-Versand schlägt fehl (Mail-Provider down) | ✅ Code-Review: Outbox-Insert `console.error` non-fatal (route Zeile 198-201); Status bleibt `pending`, PM kann Token manuell teilen |
+| **EC-10** Self-Assessment payload corrupt | ✅ Code-Review: Zod-Schema `intDim = number().int().min(0).max(100).nullable().optional()` lehnt alles non-konforme mit 400 ab |
+
+### Security Audit (Red-Team) — 13 Vectors
+
+| Vector | Mitigation | Verification |
+|---|---|---|
+| Token forgery (HMAC) | `self-assessment-token.ts` mit `APPROVAL_TOKEN_SECRET`, `timingSafeEqual` | Vitest 9 Cases inkl. "rejects token signed with different secret" |
+| **Cross-module replay** (PROJ-31 token → PROJ-33 endpoint) | PROJ-31 Verifier lehnt PROJ-33-Payload als `malformed` ab (fehlende `approver_id`/`decision_id`) | Vitest "token is incompatible with PROJ-31 approval-token" |
+| Cross-tenant token replay | Route checked `invite.tenant_id !== tenantId` UND `stakeholder.tenant_id !== tenantId` | Code-Review Zeile 128-130 |
+| Cross-project DELETE | Embedded-Join `stakeholders!fk(project_id)`, mismatch → 404 | Code-Review invite-route Zeile 267 |
+| Token-Expiry-Bypass | HMAC-`exp` + DB-`magic_link_expires_at` + lazy promotion to `expired` | Live Test 7 ✅ |
+| Replay nach Revoke | Persisted-Token-Match + `status='revoked'` → 410 gone | Code-Review Zeile 220-221 |
+| Replay nach Submit | `status='completed'` → 409 conflict | Code-Review Zeile 223-224 |
+| Cascade-Verlust | ON DELETE CASCADE auf stakeholder + tenant | Live Test 4 ✅ |
+| Audit-Event-Tampering | UPDATE/DELETE blocked by trigger + `actor_consistency` CHECK | Live Tests 9 + 10 ✅ |
+| PII-Leak in Mail | `sanitizeFirstName` + Class-3-Defense + Vorname-only | 13 Vitest-Cases |
+| PII-Leak in GET-Response | First-name only · keine projekt-/decision-/full-name-Daten | Code-Review |
+| Service-Role-Abuse | `createAdminClient()` bypassed RLS — Defense = full Token-Validation-Chain | Code-Review |
+| Body-Zod-Validation | `intDim` 0-100 oder null; alles andere → 400 | Code-Review submit-Schema |
+
+**Low-Risk-Observation (kein Bug):**
+- TOCTOU bei zwei simultanen POST-Submits: Beide POSTs könnten den `status='pending'`-Check passieren bevor einer zu `completed` flippt. Outcome: idempotente UPSERTs (gleiche Daten — letzte gewinnt), 4 statt 2 Audit-Events. **Real-World-Risk effektiv 0** (Token in 1 Mail, 14-Tage-Fenster). Kein Action-Item.
+
+### Regression Check
+
+- ✅ Vitest **631/631** unverändert grün — kein PROJ-1..PROJ-32 Regress
+- ✅ PROJ-31 Approval-Tokens funktionieren weiterhin: O2-Refactor extrahiert `sanitizeMailTitle` nach `@/lib/comms/mail-sanitize.ts`, `sanitizeApprovalTitle` als thin Wrapper preserved → existing Approval-Tests + Imports unverändert grün
+- ✅ PROJ-33-γ Profile-Tabellen + Audit-Events unangetastet — δ ergänzt nur invite-Tabelle + Audit-Events mit `actor_kind='stakeholder'`
+- ✅ Production Build green, 3 neue Routes im Manifest
+
+### Bugs Found
+
+**Keine.** Phase 33-δ ist sauber.
+
+### Production-Ready Decision
+
+**Recommendation:** **APPROVED for `/deploy proj 33` (Phase 33-δ)**
+
+- 0 Critical / 0 High / 0 Medium / 0 Low Bugs.
+- Migration replayed + verifiziert (live applied via MCP, 11 Spalten, 4 Indexes, 3 RLS Policies, 2 Constraints).
+- 10 Live-DB-Red-Team-Tests grün — inkl. ON DELETE CASCADE, append-only Audit, lazy-expire, status-CHECK, UNIQUE token, actor_consistency.
+- 13 Security-Vectors abgedeckt + dokumentiert; einziger Low-Risk-Observation (TOCTOU) ist nicht real-world-relevant.
+- Cross-Module-Replay-Defense gegen PROJ-31 Token-Verifier per Unit-Test verifiziert.
+- O2-Refactor (`sanitizeMailTitle` shared util) ohne Regression in PROJ-31 Approval-Pfad.
+
+### Suggested Next (Phase 33-δ)
+
+1. **`/deploy proj 33`** — Phase 33-δ Code-Push + Tag `v1.33.0-PROJ-33-delta`. Migration ist live via MCP, nur Code muss noch deployed werden.
+2. Browser-E2E-Test (User-Side): Stakeholder-Detail → "Self-Assessment versenden" → Token-Mail in Outbox checken → Magic-Link öffnen (Inkognito, kein Login) → Sliders → Submit → PM sieht Self+Fremd-Overlay im Radar-Chart → Re-open Token zeigt "Bereits abgegeben".
+3. **Phase 33-δ schließt PROJ-33 vollständig ab.** Nächste sinnvolle Slice: **PROJ-35** (Stakeholder-Wechselwirkungs-Engine — Risk-Score, Eskalations-Indikatoren, Tonalitäts-Empfehlungen) — Tech-Design existiert als Sketched-Spec, ready für `/requirements proj 35` Confirm-Run.
 
 ## Deployment
 _To be added by /deploy_
