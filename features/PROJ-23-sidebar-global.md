@@ -443,3 +443,40 @@ Keine.
 - **Vercel auto-deploy:** triggered by push to `main`
 - **Git tag:** `v1.23.0-PROJ-23`
 - **Deviations:** none observed.
+
+### Phase 23b — Settings Sub-Nav (2026-05-03)
+
+Kleine Folge-Slice nach den PROJ-22/24/35-α-Deploys: drei Tenant-Admin-Pages
+(`/settings/tenant/role-rates`, `/settings/tenant/fx-rates`,
+`/settings/tenant/risk-score`) waren bisher nur per Direkt-URL erreichbar.
+Beide Settings-Navigations-Komponenten bekommen ein deklaratives `children`-
+Modell, damit die Sub-Pages sichtbar werden ohne den Top-Level zu überladen.
+
+**Modifizierte Files** (2):
+- `src/app/(app)/settings/settings-tabs.tsx` — `SettingsTab`-Interface bekommt
+  `children`-Prop. Top-Level "Tenant" wird zu Group-Header (kein Link mehr,
+  Span statt `<Link>`), darunter eingerückte Sub-Tabs (Allgemein, Tagessätze,
+  FX-Raten, Risk-Score). Pro Child eigener `aria-current` + active-Logic mit
+  `exact`-Flag (für `/settings/tenant` Allgemein-Eintrag).
+- `src/components/app/global-sidebar.tsx` — neues `NavSubItem`-Interface +
+  `SETTINGS_CHILDREN` (Profil, Workspace, Tagessätze, FX-Raten, Risk-Score,
+  Mitglieder). Settings-Item wird `Collapsible`-Wrapper mit Chevron-Toggle.
+  Default-open wenn parent-route active; User-Override über `useState<bool|null>`,
+  pure derivation (kein `useEffect`) — bleibt lint-clean unter
+  `react-hooks/set-state-in-effect`.
+
+**Patterns:**
+- Mobile: gleiche Sub-Tabs als horizontale Liste mit `ml-4`-Einrückung
+  (Settings-Tabs sind ohnehin `flex-row gap-1 overflow-x-auto md:flex-col`).
+- a11y: `aria-current="page"` auf aktivem Sub-Tab; `aria-label` auf
+  Chevron-Trigger ("ausklappen"/"einklappen").
+
+**Verification:**
+- `npx tsc --noEmit` exit 0
+- `npm run lint` exit 0
+- `npm test --run` 775/775
+- `npm run build` green
+
+**Out-of-Scope (deferred):** keine zusätzlichen Sub-Tabs; falls künftige Tenant-
+Pages dazukommen (z. B. PROJ-32 AI-Provider-Keys, PROJ-17 Branding-Eigene-Page),
+einfach in `TENANT_CHILDREN` / `SETTINGS_CHILDREN` ergänzen.
