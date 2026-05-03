@@ -1,6 +1,6 @@
 # PROJ-35: Stakeholder-Wechselwirkungs-Engine — Risiko-Score, Eskalations-Indikatoren & Tonalitäts-Empfehlungen
 
-## Status: 35-α Deployed · 35-β Approved (ready for /deploy) · γ pending
+## Status: 35-α + β Deployed · γ pending
 **Created:** 2026-05-02
 **Last Updated:** 2026-05-03 (35-α Frontend live in production; Tag v1.35.1-PROJ-35-alpha-frontend)
 
@@ -1076,3 +1076,30 @@ _Not yet started._
 1. **`/deploy proj 35`** — Phase 35-β Code-Push + Tag `v1.35.2-PROJ-35-beta`. Migration bereits live via MCP, nur Code muss gepusht werden.
 2. Browser-Test (User-Action): Stakeholder mit komplettem Profil → Risk-Banner sollte erscheinen; Stakeholder ohne Self-Werte → Self-Assessment-Invite-CTA in Wahrnehmungslücke.
 3. **Phase 35-γ** — Trend-Sparkline + Health-Dashboard + Critical-Path-Indikator (~2 PT).
+
+---
+
+## Deployment — Phase 35-β (2026-05-04)
+
+- **Migration:** `20260503190000_proj35b_phases_is_critical.sql` live applied via Supabase MCP. Schema verified: `phases.is_critical BOOLEAN NOT NULL DEFAULT false`; 11 existing phases auf `false` gebackfilled.
+- **Code-Push:** Commit `f88a570` (Phase 35-β Backend + Frontend) bereits in `origin/main` aus früherem Push. QA-Results-Commit `a521d51` (test pass + Spec-Update) gepusht. Vercel Auto-Deploy triggered.
+- **Tag:** `v1.35.2-PROJ-35-beta` erstellt + gepusht.
+- **Production URL:** `https://projektplattform-v3.vercel.app`
+- **Was deployed wurde (35-β-Slice):**
+  - Profile-Bundle-Endpoint erweitert (qualitative + escalation_patterns + risk_score_overrides)
+  - 4 neue UI-Komponenten unter `src/components/stakeholders/risk/`:
+    - Risk-Banner (Score 0..10 + Bucket-Color + Faktor-Tooltip)
+    - Eskalations-Pattern-Banner (severity-coded Alerts, sortiert DESC)
+    - Tonalitäts-Card (32-Quadranten-Lookup + 3 Sub-Felder + max 4 Notes)
+    - Wahrnehmungslücke (Skill+Big5 separate, 60%-Coverage, Self-Assessment-Invite-CTA)
+  - ProfileTab Integration mit Compute-Lib aus 35-α
+  - phases.is_critical Spalte (Critical-Path-Marker für 35-γ)
+- **Deployment-Verification (User-Action empfohlen nach Vercel-Build):**
+  - Stakeholder mit komplettem Profil öffnen → Profil-Tab → Risk-Banner mit Score sichtbar
+  - Hochrisiko-Profil setzen (attitude=blocking + decision_authority=deciding) → Pattern-Banner mit Alert variant=destructive
+  - Stakeholder ohne Big5 → Tonalitäts-Card mit "Profil unvollständig"-Badge
+  - Stakeholder ohne Self-Werte → Wahrnehmungslücke mit "Self-Assessment versenden"-Button
+- **Phase 35-β ist damit vollständig live (Backend + Frontend).**
+
+### Phase 35-γ
+_Not yet started — Trend-Sparkline + Health-Dashboard + Critical-Path-Indikator (~2 PT)._
