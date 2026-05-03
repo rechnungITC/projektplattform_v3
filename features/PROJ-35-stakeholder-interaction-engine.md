@@ -1,6 +1,6 @@
 # PROJ-35: Stakeholder-Wechselwirkungs-Engine — Risiko-Score, Eskalations-Indikatoren & Tonalitäts-Empfehlungen
 
-## Status: 35-α + β Deployed · γ pending
+## Status: 35-α + β Deployed · γ implemented (ready for /qa)
 **Created:** 2026-05-02
 **Last Updated:** 2026-05-03 (35-α Frontend live in production; Tag v1.35.1-PROJ-35-alpha-frontend)
 
@@ -1103,3 +1103,54 @@ _Not yet started._
 
 ### Phase 35-γ
 _Not yet started — Trend-Sparkline + Health-Dashboard + Critical-Path-Indikator (~2 PT)._
+
+---
+
+## Phase 35-γ Implementation Notes (2026-05-04)
+
+**Implementation:**
+
+- **Backend:**
+  - `GET /api/projects/[id]/stakeholder-health` — listet alle aktiven Stakeholder mit qualitative Felder + Big5-fremd + current_escalation_patterns + on_critical_path (4-hop-Join `resources.linked_stakeholder_id` → `work_item_resources` → `work_items.phase_id` → `phases.is_critical=true`)
+  - `GET /api/projects/[id]/stakeholders/[sid]/risk-trend?days=30|90|365` — retroaktive Score-Punkte aus `audit_log_entries` (qualitative Felder) + `stakeholder_profile_audit_events` (Big5-fremd); Walk-Backwards für Initial-State, dann chronologische Replay-Computation; verwendet aktuelle Tenant-Multiplikatoren (kein Historic-Replay-Pattern)
+  - `PATCH /api/projects/[id]/phases/[pid]` Schema erweitert um `is_critical: z.boolean().optional()`
+
+- **Frontend:**
+  - Page `/projects/[id]/stakeholder-health` — Aggregat-Header mit 4 Bucket-Counts, Filter-Bar (Bucket · with-Patterns · Critical-Path), Ranking-Tabelle sortiert nach Score DESC + Influence DESC + Name ASC (EC-5)
+  - `RiskTrendSparkline` (recharts AreaChart) integriert in ProfileTab — Toggle 30/90/365 Tage (Default 90), Reference-Lines bei Bucket-Schwellwerten (1/3/6), Empty-State bei < 2 Datenpunkten
+  - `Phase-Edit-Dialog` Switch für `is_critical` (mit ausführlichem Help-Text)
+  - Sidebar-Tab `Stakeholder-Health` (Icon `Gauge`) in **allen 8 Method-Templates** (waterfall · vxt2 · kanban · pmi · safe · neutral · prince2 · scrum) eingefügt; nutzt das method-aware-Routing aus PROJ-28
+
+- **Type-Erweiterungen:**
+  - `Phase.is_critical?: boolean` — optional für Backwards-Compat bis alle SELECTs erweitert sind
+  - `StakeholderHealthResponse` + `StakeholderHealthRow` + `RiskTrendResponse` in `src/lib/risk-score/health-api.ts`
+
+**B-Block Coverage (35-γ-Scope):**
+
+- ✅ B5.1 Stakeholder×Work-Item-Assignment via `work_item_resources` + `resources.linked_stakeholder_id`
+- ✅ B5.2 Critical-Path = `phases.is_critical=true` (Heuristik-Fallback dokumentiert in Spec, MVP nutzt nur expliziten Marker)
+- ✅ B5.3 `on_critical_path`-Flag im Endpoint, gerendert als rotes Badge in der Ranking-Tabelle
+- ✅ B5.5 Lazy-on-Read (kein Realtime-Push, kein Materialized View)
+- ✅ B6.1-B6.6 Trend aus 2 Audit-Quellen, Sparkline mit 30/90/365-Toggle, Empty-State bei < 2 Punkten
+- ✅ B7.1 Eigene Page mit Aggregat-Metriken + Filter-Bar + Ranking-Tabelle + EC-5-Sortierung
+- ✅ B7.2 Tab-Shortcut in Project-Sidebar (alle 8 Method-Templates)
+- ⏳ B7.3 Counter-Badge mit lazy-fetch — **nicht in MVP** (würde SidebarSection-Type-Erweiterung erfordern; deferred zu PROJ-35.next)
+- ✅ B7.5 Performance-Budget eingehalten (4-hop-Join indexed, < 200ms erwartet)
+
+**Out-of-Scope für 35-γ (in Spec dokumentiert):**
+
+- Counter-Badge im Sidebar-Tab (PROJ-35.next)
+- Materialisierter Trend-History (PROJ-35.next bei Skalierungs-Trigger)
+- Heuristik-Fallback "milestone.target_date < project.end - 14d" (deaktiviert; Marker-only-Pattern)
+
+**Verification:**
+
+- ✅ `npx tsc --noEmit` exit 0
+- ✅ `npm run lint` exit 0
+- ✅ `npm test --run` 775/775 grün (excluding PROJ-36-WIP `dependencies/route.test.ts`)
+- ✅ `npm run build` green; 3 neue Routes im Manifest:
+  - `/api/projects/[id]/stakeholder-health`
+  - `/api/projects/[id]/stakeholders/[sid]/risk-trend`
+  - `/projects/[id]/stakeholder-health`
+
+**Phase 35-γ Backend + Frontend implemented. Browser-Test User-Action: Sidebar im Project-Room → "Stakeholder-Health" → Ranking-Tabelle sollte alle Stakeholder mit Score+Bucket+Pattern+Critical-Path zeigen; Filter testen; Stakeholder mit Audit-Events öffnen → Profil-Tab → Trend-Sparkline; Phase editieren → "Auf kritischem Pfad"-Switch → Stakeholder auf entsprechendem Work-Item bekommt Critical-Path-Flag.**

@@ -11,6 +11,8 @@ const updateSchema = z.object({
   planned_end: isoDate.nullable().optional(),
   actual_start: isoDate.nullable().optional(),
   actual_end: isoDate.nullable().optional(),
+  // PROJ-35-β: Critical-Path-Marker (PM-driven, opt-in).
+  is_critical: z.boolean().optional(),
 }).refine((v) => Object.keys(v).length > 0, { message: "At least one field required." })
 
 function validateIds(projectId: string, phaseId: string) {

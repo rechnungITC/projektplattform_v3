@@ -26,6 +26,7 @@ import {
   FormMessage,
 } from "@/components/ui/form"
 import { Input } from "@/components/ui/input"
+import { Switch } from "@/components/ui/switch"
 import { Textarea } from "@/components/ui/textarea"
 import type { Phase } from "@/types/phase"
 import { dateToIsoDate } from "@/lib/dates/iso-date"
@@ -44,6 +45,7 @@ const editPhaseSchema = z
       .or(z.literal("")),
     planned_start: z.date().nullable().optional(),
     planned_end: z.date().nullable().optional(),
+    is_critical: z.boolean().optional(),
   })
   .refine(
     (values) => {
@@ -81,6 +83,7 @@ export function EditPhaseDialog({
       description: phase.description ?? "",
       planned_start: phase.planned_start ? parseIsoDate(phase.planned_start) : null,
       planned_end: phase.planned_end ? parseIsoDate(phase.planned_end) : null,
+      is_critical: phase.is_critical ?? false,
     }),
     [phase]
   )
@@ -107,6 +110,7 @@ export function EditPhaseDialog({
             : null,
         planned_start: dateToIsoDate(values.planned_start),
         planned_end: dateToIsoDate(values.planned_end),
+        is_critical: values.is_critical ?? false,
       }
 
       const response = await fetch(
@@ -237,6 +241,33 @@ export function EditPhaseDialog({
                 )}
               />
             </div>
+
+            <FormField
+              control={form.control}
+              name="is_critical"
+              render={({ field }) => (
+                <FormItem className="flex items-start gap-3 rounded-md border p-3">
+                  <FormControl>
+                    <Switch
+                      checked={field.value ?? false}
+                      onCheckedChange={field.onChange}
+                      disabled={submitting}
+                      aria-label="Auf kritischem Pfad"
+                    />
+                  </FormControl>
+                  <div className="space-y-0.5">
+                    <FormLabel className="text-sm font-medium">
+                      Auf kritischem Pfad
+                    </FormLabel>
+                    <p className="text-xs text-muted-foreground">
+                      Markiert diese Phase als kritisch für den Projekterfolg
+                      (z.B. Datenmigration, Cutover, Genehmigung). Treibt den
+                      Critical-Path-Indikator im Stakeholder-Health-Dashboard.
+                    </p>
+                  </div>
+                </FormItem>
+              )}
+            />
 
             <DialogFooter>
               <Button

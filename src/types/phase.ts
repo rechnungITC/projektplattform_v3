@@ -52,6 +52,10 @@ export interface Phase {
   created_at: string
   updated_at: string
   is_deleted: boolean
+  /** PROJ-35-β — domain-authoritative Critical-Path-Marker. PM opts the
+   *  phase in via the Edit-Phase-Dialog; default false. Drives the
+   *  Critical-Path-Indikator in the Stakeholder-Health-Dashboard. */
+  is_critical?: boolean
 }
 
 export interface PhaseWithCounts extends Phase {

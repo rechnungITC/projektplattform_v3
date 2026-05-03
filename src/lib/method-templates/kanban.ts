@@ -1,6 +1,7 @@
 import {
   AlertTriangle,
   Building2,
+  Gauge,
   Gavel,
   History,
   Kanban,
@@ -29,6 +30,7 @@ const SIDEBAR_SECTIONS: SidebarSection[] = [
   { id: "overview", label: "Übersicht", icon: LayoutDashboard, tabPath: "" },
   { id: "board", label: "Board", icon: Kanban, tabPath: "backlog" },
   { id: "stakeholder", label: "Stakeholder", icon: Users, tabPath: "stakeholder" },
+  { id: "stakeholder-health", label: "Stakeholder-Health", icon: Gauge, tabPath: "stakeholder-health" },
   { id: "risks", label: "Risiken", icon: AlertTriangle, tabPath: "risiken", requiresModule: "risks" },
   { id: "decisions", label: "Entscheidungen", icon: Gavel, tabPath: "entscheidungen", requiresModule: "decisions" },
   { id: "ai", label: "KI-Vorschläge", icon: Sparkles, tabPath: "ai-proposals", requiresModule: "ai_proposals" },

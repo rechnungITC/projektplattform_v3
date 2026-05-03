@@ -1,6 +1,7 @@
 import {
   AlertTriangle,
   Building2,
+  Gauge,
   Gavel,
   GitCompare,
   History,
@@ -35,6 +36,7 @@ const SIDEBAR_SECTIONS: SidebarSection[] = [
   { id: "backlog", label: "Backlog", icon: ListChecks, tabPath: "backlog" },
   { id: "releases", label: "Releases", icon: GitCompare, tabPath: "planung", routeSlug: "releases" },
   { id: "stakeholder", label: "Stakeholder", icon: Users, tabPath: "stakeholder" },
+  { id: "stakeholder-health", label: "Stakeholder-Health", icon: Gauge, tabPath: "stakeholder-health" },
   { id: "risks", label: "Risiken", icon: AlertTriangle, tabPath: "risiken", requiresModule: "risks" },
   { id: "decisions", label: "Entscheidungen", icon: Gavel, tabPath: "entscheidungen", requiresModule: "decisions" },
   { id: "ai", label: "KI-Vorschläge", icon: Sparkles, tabPath: "ai-proposals", requiresModule: "ai_proposals" },

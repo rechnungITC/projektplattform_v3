@@ -12,6 +12,7 @@ import { ProfileEditSheet } from "@/components/stakeholders/profile/profile-edit
 import { EscalationPatternBanner } from "@/components/stakeholders/risk/escalation-pattern-banner"
 import { PerceptionGapSection } from "@/components/stakeholders/risk/perception-gap-section"
 import { RiskBanner } from "@/components/stakeholders/risk/risk-banner"
+import { RiskTrendSparkline } from "@/components/stakeholders/risk/risk-trend-sparkline"
 import { TonalityCard } from "@/components/stakeholders/risk/tonality-card"
 import { Badge } from "@/components/ui/badge"
 import { Button } from "@/components/ui/button"
@@ -217,6 +218,11 @@ export function ProfileTab({
         big5Gap={big5Gap}
         onInviteSelfAssessment={handleInviteSelfAssessment}
         invitePending={invitePending}
+      />
+      {/* PROJ-35-γ — Risk-Trend Sparkline */}
+      <RiskTrendSparkline
+        projectId={projectId}
+        stakeholderId={stakeholderId}
       />
 
       <SelfAssessmentInviteCard
