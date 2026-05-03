@@ -11,7 +11,7 @@
  * overrides are applied on every render without a round-trip).
  *
  * `on_critical_path` flag is server-side: a stakeholder is on critical
- * path if any of their assigned work-items (via resources.linked_stakeholder_id
+ * path if any of their assigned work-items (via resources.source_stakeholder_id
  * → work_item_resources → work_items.phase_id → phases.is_critical=true)
  * sits on a critical phase. Heuristic-Fallback (target_date < end - 14d)
  * not enabled in MVP — relies on PMs explicitly marking phases.
@@ -91,13 +91,13 @@ export async function GET(_request: Request, ctx: Ctx) {
   const { data: critData, error: critErr } = await supabase
     .from("resources")
     .select(
-      "linked_stakeholder_id, work_item_resources!inner(work_item_id, work_items!inner(phase_id, phases!inner(is_critical)))",
+      "source_stakeholder_id, work_item_resources!inner(work_item_id, work_items!inner(phase_id, phases!inner(is_critical)))",
     )
-    .not("linked_stakeholder_id", "is", null)
+    .not("source_stakeholder_id", "is", null)
   if (critErr) return apiError("internal_error", critErr.message, 500)
 
   type CritRow = {
-    linked_stakeholder_id: string
+    source_stakeholder_id: string
     work_item_resources?: Array<{
       work_item_id: string
       work_items?: {
@@ -108,7 +108,7 @@ export async function GET(_request: Request, ctx: Ctx) {
   }
   const criticalStakeholderIds = new Set<string>()
   for (const r of (critData ?? []) as unknown as CritRow[]) {
-    const sId = r.linked_stakeholder_id
+    const sId = r.source_stakeholder_id
     if (!sId) continue
     const allocations = r.work_item_resources ?? []
     const onCritical = allocations.some(
