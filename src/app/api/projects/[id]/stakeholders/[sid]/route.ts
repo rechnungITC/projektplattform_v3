@@ -2,86 +2,19 @@ import { NextResponse } from "next/server"
 import { z } from "zod"
 
 import {
-  COMMUNICATION_NEEDS,
-  DECISION_AUTHORITIES,
-  MANAGEMENT_LEVELS,
-  PREFERRED_CHANNELS,
-  STAKEHOLDER_ATTITUDES,
-  STAKEHOLDER_KINDS,
-  STAKEHOLDER_ORIGINS,
-  STAKEHOLDER_SCORES,
-} from "@/types/stakeholder"
-
-import {
   apiError,
   getAuthenticatedUserId,
   requireProjectAccess,
 } from "../../../../_lib/route-helpers"
+import {
+  normalizeStakeholderPayload,
+  stakeholderPatchSchema as patchSchema,
+} from "../_schema"
 
 // PROJ-8 — single-stakeholder endpoints.
 // GET   /api/projects/[id]/stakeholders/[sid]
 // PATCH /api/projects/[id]/stakeholders/[sid]
-
-const patchSchema = z
-  .object({
-    kind: z.enum(STAKEHOLDER_KINDS as unknown as [string, ...string[]]).optional(),
-    origin: z
-      .enum(STAKEHOLDER_ORIGINS as unknown as [string, ...string[]])
-      .optional(),
-    name: z.string().trim().min(1).max(255).optional(),
-    role_key: z.string().max(100).optional().nullable(),
-    org_unit: z.string().max(255).optional().nullable(),
-    contact_email: z
-      .string()
-      .email()
-      .max(320)
-      .optional()
-      .nullable()
-      .or(z.literal("")),
-    contact_phone: z.string().max(64).optional().nullable(),
-    influence: z
-      .enum(STAKEHOLDER_SCORES as unknown as [string, ...string[]])
-      .optional(),
-    impact: z
-      .enum(STAKEHOLDER_SCORES as unknown as [string, ...string[]])
-      .optional(),
-    linked_user_id: z.string().uuid().optional().nullable(),
-    notes: z.string().max(5000).optional().nullable(),
-    // PROJ-33 Phase 33-α — qualitative fields (alle nullable)
-    reasoning: z.string().max(5000).optional().nullable(),
-    stakeholder_type_key: z.string().max(64).optional().nullable(),
-    management_level: z
-      .enum(MANAGEMENT_LEVELS as unknown as [string, ...string[]])
-      .optional()
-      .nullable(),
-    decision_authority: z
-      .enum(DECISION_AUTHORITIES as unknown as [string, ...string[]])
-      .optional()
-      .nullable(),
-    attitude: z
-      .enum(STAKEHOLDER_ATTITUDES as unknown as [string, ...string[]])
-      .optional()
-      .nullable(),
-    conflict_potential: z
-      .enum(STAKEHOLDER_SCORES as unknown as [string, ...string[]])
-      .optional()
-      .nullable(),
-    communication_need: z
-      .enum(COMMUNICATION_NEEDS as unknown as [string, ...string[]])
-      .optional()
-      .nullable(),
-    preferred_channel: z
-      .enum(PREFERRED_CHANNELS as unknown as [string, ...string[]])
-      .optional()
-      .nullable(),
-    // PROJ-31 — toggle eligibility for Decision approvals. Existing
-    // PROJ-31 cascade-trigger (`stakeholders_cascade_approver_revoke`)
-    // automatically clears pending approver-rows when this is set to false.
-    is_approver: z.boolean().optional(),
-  })
-  .refine((val) => Object.keys(val).length > 0, {
-    message: "At least one field must be provided.",
-  })
+// Schema lives in `../_schema.ts` so the drift-test can introspect it.
 
 interface Ctx {
   params: Promise<{ id: string; sid: string }>
@@ -158,43 +91,14 @@ export async function PATCH(request: Request, ctx: Ctx) {
   const access = await requireProjectAccess(supabase, projectId, userId, "edit")
   if (access.error) return access.error
 
-  // Build the update object — only fields explicitly present in the request
-  // body get persisted. Empty strings on optional text fields become NULL.
-  const data = parsed.data
-  const update: Record<string, unknown> = {}
-  if (data.kind !== undefined) update.kind = data.kind
-  if (data.origin !== undefined) update.origin = data.origin
-  if (data.name !== undefined) update.name = data.name.trim()
-  if (data.role_key !== undefined) update.role_key = data.role_key?.trim() || null
-  if (data.org_unit !== undefined) update.org_unit = data.org_unit?.trim() || null
-  if (data.contact_email !== undefined)
-    update.contact_email = data.contact_email?.trim() || null
-  if (data.contact_phone !== undefined)
-    update.contact_phone = data.contact_phone?.trim() || null
-  if (data.influence !== undefined) update.influence = data.influence
-  if (data.impact !== undefined) update.impact = data.impact
-  if (data.linked_user_id !== undefined)
-    update.linked_user_id = data.linked_user_id ?? null
-  if (data.notes !== undefined) update.notes = data.notes?.trim() || null
-  // PROJ-33 Phase 33-α — qualitative Bewertungs-Felder
-  if (data.reasoning !== undefined)
-    update.reasoning = data.reasoning?.trim() || null
-  if (data.stakeholder_type_key !== undefined)
-    update.stakeholder_type_key = data.stakeholder_type_key?.trim() || null
-  if (data.management_level !== undefined)
-    update.management_level = data.management_level ?? null
-  if (data.decision_authority !== undefined)
-    update.decision_authority = data.decision_authority ?? null
-  if (data.attitude !== undefined) update.attitude = data.attitude ?? null
-  if (data.conflict_potential !== undefined)
-    update.conflict_potential = data.conflict_potential ?? null
-  if (data.communication_need !== undefined)
-    update.communication_need = data.communication_need ?? null
-  if (data.preferred_channel !== undefined)
-    update.preferred_channel = data.preferred_channel ?? null
-  // PROJ-31 — eligible-approver flag (cascade-trigger clears pending
-  // approver-rows when toggled false).
-  if (data.is_approver !== undefined) update.is_approver = data.is_approver
+  // Spread-Pattern: parsed.data only contains fields the client actually
+  // sent (PATCH-semantics). Spread + normalize handles every schema field
+  // automatically — no manual `if (data.X !== undefined) update.X = ...`
+  // chain to forget. New schema fields flow through automatically.
+  //
+  // Drift-test in route.test.ts asserts every schema key lands in the DB
+  // payload, so any future field that fails to propagate fails CI loudly.
+  const update = normalizeStakeholderPayload(parsed.data)
 
   const { data: row, error } = await supabase
     .from("stakeholders")

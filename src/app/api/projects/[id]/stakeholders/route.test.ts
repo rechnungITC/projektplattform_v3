@@ -185,6 +185,97 @@ describe("POST /api/projects/[id]/stakeholders", () => {
   })
 })
 
+// ---------------------------------------------------------------------------
+// Schema-vs-DB-Payload Drift Detection (POST)
+// ---------------------------------------------------------------------------
+// Why this test: we had a recurring bug class where a Zod schema accepted a
+// field but the route's explicit insertPayload object dropped it silently.
+// Result: form sends value → schema validates → DB never gets it → re-open
+// shows old/default value (looks like a save bug to the user).
+//
+// This test introspects the Zod schema's keys and asserts that EACH of them
+// (with a non-default value) ends up in the supabase `.insert(...)` payload.
+// Adding a new schema field that isn't wired through to the DB will fail
+// this test loudly.
+describe("POST /api/projects/[id]/stakeholders — schema/DB-payload drift", () => {
+  it("forwards every Zod-schema field to the DB insert payload", async () => {
+    const { stakeholderCreateSchema } = await import("./_schema")
+    getUserMock.mockResolvedValue({ data: { user: { id: USER_ID } } })
+
+    // Build a "kitchen sink" body with one explicit value per schema key.
+    // Values are chosen so the route's `?? null` / `?? undefined` defaults
+    // never kick in — we want to see the *user-supplied* value land in the
+    // payload.
+    const kitchenSink = {
+      kind: "person",
+      origin: "internal",
+      name: "DriftTest",
+      role_key: "drift-key",
+      org_unit: "drift-unit",
+      contact_email: "drift@example.com",
+      contact_phone: "+49 30 123",
+      influence: "high",
+      impact: "high",
+      linked_user_id: USER_ID,
+      notes: "drift-notes",
+      reasoning: "drift-reasoning",
+      stakeholder_type_key: "promoter",
+      management_level: "top",
+      decision_authority: "deciding",
+      attitude: "supportive",
+      conflict_potential: "low",
+      communication_need: "high",
+      preferred_channel: "email",
+      is_approver: true,
+    }
+
+    // Sanity: every schema key is covered in the kitchen sink.
+    const schemaKeys = Object.keys(stakeholderCreateSchema.shape)
+    for (const key of schemaKeys) {
+      expect(kitchenSink, `kitchen sink missing key '${key}'`).toHaveProperty(
+        key
+      )
+    }
+
+    insertChain.single.mockResolvedValue({
+      data: { id: "drift-1", ...kitchenSink, tenant_id: TENANT_ID },
+      error: null,
+    })
+    const res = await POST(makePost(kitchenSink), {
+      params: Promise.resolve({ id: PROJECT_ID }),
+    })
+    expect(res.status).toBe(201)
+
+    // Capture the payload handed to supabase.insert(...).
+    const arg = insertChain.insert.mock.calls[0]?.[0] as Record<string, unknown>
+    expect(arg, "insert was not called").toBeTruthy()
+
+    // Every schema key MUST be present in the payload (or a cleaned-up
+    // variant). Trimmed-string equality is acceptable.
+    for (const key of schemaKeys) {
+      const expected = (kitchenSink as Record<string, unknown>)[key]
+      const actual = arg[key]
+      // Empty optional strings get null'd by the route's trim()-then-||
+      // pattern. Match either raw value, trimmed value, or null fallback
+      // for empty inputs.
+      if (typeof expected === "string") {
+        expect(actual, `field '${key}' was dropped before reaching DB`).toBe(
+          expected.trim() || null
+        )
+      } else {
+        expect(actual, `field '${key}' was dropped before reaching DB`).toBe(
+          expected
+        )
+      }
+    }
+
+    // Server-set fields are also present.
+    expect(arg.tenant_id).toBe(TENANT_ID)
+    expect(arg.project_id).toBe(PROJECT_ID)
+    expect(arg.created_by).toBe(USER_ID)
+  })
+})
+
 describe("GET /api/projects/[id]/stakeholders", () => {
   it("returns 401 when not signed in", async () => {
     getUserMock.mockResolvedValue({ data: { user: null } })

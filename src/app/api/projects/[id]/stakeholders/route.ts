@@ -2,74 +2,21 @@ import { NextResponse } from "next/server"
 import { z } from "zod"
 
 import {
-  COMMUNICATION_NEEDS,
-  DECISION_AUTHORITIES,
-  MANAGEMENT_LEVELS,
-  PREFERRED_CHANNELS,
-  STAKEHOLDER_ATTITUDES,
-  STAKEHOLDER_KINDS,
-  STAKEHOLDER_ORIGINS,
-  STAKEHOLDER_SCORES,
-} from "@/types/stakeholder"
-
-import {
   apiError,
   getAuthenticatedUserId,
   requireProjectAccess,
 } from "../../../_lib/route-helpers"
+import {
+  normalizeStakeholderPayload,
+  stakeholderCreateSchema as createSchema,
+} from "./_schema"
 
 // PROJ-8 — collection endpoint for project stakeholders.
 // GET  /api/projects/[id]/stakeholders?include_inactive=false
 // POST /api/projects/[id]/stakeholders
 
-const createSchema = z.object({
-  kind: z.enum(STAKEHOLDER_KINDS as unknown as [string, ...string[]]),
-  origin: z.enum(STAKEHOLDER_ORIGINS as unknown as [string, ...string[]]),
-  name: z.string().trim().min(1).max(255),
-  role_key: z.string().max(100).optional().nullable(),
-  org_unit: z.string().max(255).optional().nullable(),
-  contact_email: z.string().email().max(320).optional().nullable().or(z.literal("")),
-  contact_phone: z.string().max(64).optional().nullable(),
-  influence: z
-    .enum(STAKEHOLDER_SCORES as unknown as [string, ...string[]])
-    .default("medium"),
-  impact: z
-    .enum(STAKEHOLDER_SCORES as unknown as [string, ...string[]])
-    .default("medium"),
-  linked_user_id: z.string().uuid().optional().nullable(),
-  notes: z.string().max(5000).optional().nullable(),
-  // PROJ-33 Phase 33-α — qualitative fields (alle nullable)
-  reasoning: z.string().max(5000).optional().nullable(),
-  stakeholder_type_key: z.string().max(64).optional().nullable(),
-  management_level: z
-    .enum(MANAGEMENT_LEVELS as unknown as [string, ...string[]])
-    .optional()
-    .nullable(),
-  decision_authority: z
-    .enum(DECISION_AUTHORITIES as unknown as [string, ...string[]])
-    .optional()
-    .nullable(),
-  attitude: z
-    .enum(STAKEHOLDER_ATTITUDES as unknown as [string, ...string[]])
-    .optional()
-    .nullable(),
-  conflict_potential: z
-    .enum(STAKEHOLDER_SCORES as unknown as [string, ...string[]])
-    .optional()
-    .nullable(),
-  communication_need: z
-    .enum(COMMUNICATION_NEEDS as unknown as [string, ...string[]])
-    .optional()
-    .nullable(),
-  preferred_channel: z
-    .enum(PREFERRED_CHANNELS as unknown as [string, ...string[]])
-    .optional()
-    .nullable(),
-  // PROJ-31 — flag stakeholder as eligible approver for formal Decisions.
-  // Default false (DB default). Toggling to true enables the stakeholder
-  // in the Decision-Approval-Sheet's approver picker.
-  is_approver: z.boolean().optional(),
-})
+// Schema lives in `_schema.ts` so the drift-test can introspect it.
+// See `route.test.ts` "drift" describe block.
 
 interface Ctx {
   params: Promise<{ id: string }>
@@ -143,37 +90,20 @@ export async function POST(request: Request, ctx: Ctx) {
   const access = await requireProjectAccess(supabase, projectId, userId, "edit")
   if (access.error) return access.error
 
-  const data = parsed.data
-  // BUGFIX 2026-05-04: insertPayload muss ALLE Schema-Felder durchreichen.
-  // Vorher fehlten alle PROJ-33-α qualitativen Felder + is_approver — bei
-  // Stakeholder-Create wurden sie vom Schema akzeptiert, aber stillschweigend
-  // verworfen weil sie nicht im insertPayload landeten. Das ist der
-  // wiederkehrende „Wert verfällt nach Speichern"-Bug.
+  // Spread-Pattern: Schema is the single source of truth. Every field the
+  // schema accepts flows through to the DB automatically. Only string fields
+  // need normalization (trim → NULL on empty); enums/booleans/UUIDs pass
+  // through unchanged. New schema fields will appear in the payload
+  // automatically — no manual mapping list to forget.
+  //
+  // Drift-test in route.test.ts asserts every schema key lands in the DB
+  // payload. If a future contributor adds a field to _schema.ts but it
+  // doesn't propagate, the test fails loudly.
   const insertPayload = {
+    ...normalizeStakeholderPayload(parsed.data),
+    // Server-only fields (NOT in Zod schema):
     tenant_id: access.project.tenant_id,
     project_id: projectId,
-    kind: data.kind,
-    origin: data.origin,
-    name: data.name.trim(),
-    role_key: data.role_key?.trim() || null,
-    org_unit: data.org_unit?.trim() || null,
-    contact_email: data.contact_email?.trim() || null,
-    contact_phone: data.contact_phone?.trim() || null,
-    influence: data.influence,
-    impact: data.impact,
-    linked_user_id: data.linked_user_id ?? null,
-    notes: data.notes?.trim() || null,
-    // PROJ-33-α qualitative Bewertungs-Felder (alle nullable; Schema validates)
-    reasoning: data.reasoning?.trim() || null,
-    stakeholder_type_key: data.stakeholder_type_key?.trim() || null,
-    management_level: data.management_level ?? null,
-    decision_authority: data.decision_authority ?? undefined, // DB-default 'none'
-    attitude: data.attitude ?? undefined, // DB-default 'neutral'
-    conflict_potential: data.conflict_potential ?? null,
-    communication_need: data.communication_need ?? null,
-    preferred_channel: data.preferred_channel ?? null,
-    // PROJ-31 — eligible-approver flag (DB-default false)
-    is_approver: data.is_approver ?? undefined,
     created_by: userId,
   }
 
