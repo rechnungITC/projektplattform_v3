@@ -1,6 +1,6 @@
 # PROJ-35: Stakeholder-Wechselwirkungs-Engine — Risiko-Score, Eskalations-Indikatoren & Tonalitäts-Empfehlungen
 
-## Status: 35-α Deployed · 35-β implementiert (ready for /qa) · γ pending
+## Status: 35-α Deployed · 35-β Approved (ready for /deploy) · γ pending
 **Created:** 2026-05-02
 **Last Updated:** 2026-05-03 (35-α Frontend live in production; Tag v1.35.1-PROJ-35-alpha-frontend)
 
@@ -991,3 +991,88 @@ User-Direktive: alle 5 Bugs in einem Refactor-Cycle gefixt vor /deploy.
 
 ### Phase 35-γ
 _Not yet started._
+
+---
+
+## QA Test Results — Phase 35-β (2026-05-03)
+
+**Verdict:** **Approved** — 0 Critical / 0 High / 0 Medium / 0 Low
+
+### Automated Test Suite
+
+- TypeScript strict ✅ exit 0 · ESLint ✅ exit 0 · Vitest **775/775** (35-β-Scope) · Build green
+- ⚠️ Gesamt-Vitest 779/781: 2 Failures in `dependencies/route.test.ts` — **uncommitted PROJ-36-WIP**, nicht 35-β-Regression
+
+### Live DB Verification
+
+- Migration `proj35b_phases_is_critical` applied — 11 existing phases auf `is_critical=false` gebackfilled
+- Profile-Bundle SELECT für Test-Stakeholder (Sven ZZZZ): `qualitative` + `escalation_patterns` + `risk_score_overrides` befüllt mit erwartetem Shape
+- Pattern-Helper TS↔SQL-Parität verifiziert via `compute_escalation_patterns()`
+
+### Compute Spot-Check (vitest)
+
+| Profil | Score | Bucket |
+|---|---|---|
+| Sven ZZZZ (medium/medium/supportive/null/none, agreeableness=55) | 0.05 | green ✅ |
+| Worst-case (critical/critical/blocking/critical/deciding, agreeableness=10) | 7.28 | red ✅ |
+
+### AC-Walkthrough
+
+| AC | Status |
+|---|---|
+| **B1.6** Risk-Banner mit Score 0..10 + Bucket-Farbe + Tooltip-Aufschlüsselung | ✅ |
+| **B2.1-B2.4** Wahrnehmungslücke pro Dim, sortiert DESC, geflagged ab \|delta\|≥30 | ✅ |
+| **B2.5** "Self-Assessment ausstehend"-CTA → PROJ-33-δ-Invite | ✅ |
+| **B2.6** Risk-Score nutzt nur Fremd-Werte | ✅ |
+| **B3.2** Pattern-Banner als Alert variant=destructive (severity≥4) | ✅ |
+| **B4.3** `resolveTonality()` mit Fallback bei null | ✅ |
+| **B4.4** preferred_channel-Override | ✅ |
+| **B4.5** Tonalitäts-Card: 3 Sub-Felder + max 4 Notes + "Profil unvollständig"-Badge | ✅ |
+| **B5.1-B5.5** Critical-Path-Indikator | ⏳ verschoben auf 35-γ |
+
+### Edge Cases
+
+| EC | Verified |
+|---|---|
+| **EC-1** Kein Big5 → big5_modifier=1.0 + Tooltip-Hint | ✅ |
+| **EC-3** Stakeholder gerade geändert → Recompute on next render | ✅ |
+| **EC-6** Big5 alle null → covered by EC-1 | ✅ |
+| **EC-7** Tenant-Override invalid → Fallback Defaults via Zod safeParse | ✅ |
+| **EC-10** Big5-Wert exakt = 50 → high-Band (deterministic threshold) | ✅ |
+
+### Security Audit
+
+| Vector | Mitigation |
+|---|---|
+| Cross-Tenant-Read via Bundle | RLS auf stakeholders + tenant_settings; cross-tenant → 404 |
+| New SELECT-Drift | Optional-Chaining + Default `{}`; Zod-Validation am Read-Pfad |
+| XSS via Labels / Notes | TS-Konstanten (`ESCALATION_PATTERN_META` · `BIG5_TONALITY_TABLE`); keine User-Eingabe |
+| API-Auth | `requireProjectAccess('view')` für Bundle-Read |
+| Snapshot-Tampering | `current_escalation_patterns` ist trigger-maintained (35-α); UI read-only |
+
+### Regression Check
+
+- ✅ Vitest 775/775 ohne PROJ-36-WIP grün
+- ✅ Existing PROJ-33-γ Profile-Tab unangetastet (Skill+Big5 Radar-Charts weiterhin funktional)
+- ✅ PROJ-33-δ Self-Assessment-Invite-CTA korrekt verdrahtet
+- ✅ PROJ-35-α Compute-Lib + DB-Trigger unangetastet
+
+### Bugs Found
+
+**Keine.** 35-β ist sauber.
+
+**Externe Beobachtung (kein 35-β-Bug):** 2 Vitest-Failures in `dependencies/route.test.ts` — uncommitted PROJ-36-Polymorphic-Dependencies-WIP. Wird im PROJ-36-Cycle gefixt.
+
+### Production-Ready Decision
+
+**APPROVED for `/deploy proj 35` (Phase 35-β)**
+
+- 0 Critical / 0 High / 0 Medium / 0 Low Bugs.
+- Migration live verifiziert; Endpoint + UI tsc/lint/build green; Compute-Spot-Check passt.
+- Critical-Path-Indikator (B5) korrekt auf 35-γ verschoben (nicht-blocking).
+
+### Suggested Next
+
+1. **`/deploy proj 35`** — Phase 35-β Code-Push + Tag `v1.35.2-PROJ-35-beta`. Migration bereits live via MCP, nur Code muss gepusht werden.
+2. Browser-Test (User-Action): Stakeholder mit komplettem Profil → Risk-Banner sollte erscheinen; Stakeholder ohne Self-Werte → Self-Assessment-Invite-CTA in Wahrnehmungslücke.
+3. **Phase 35-γ** — Trend-Sparkline + Health-Dashboard + Critical-Path-Indikator (~2 PT).
