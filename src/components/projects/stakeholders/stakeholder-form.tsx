@@ -24,6 +24,7 @@ import {
 } from "@/components/ui/form"
 import { Input } from "@/components/ui/input"
 import { RadioGroup, RadioGroupItem } from "@/components/ui/radio-group"
+import { Switch } from "@/components/ui/switch"
 import {
   Select,
   SelectContent,
@@ -99,6 +100,8 @@ const formSchema = z.object({
   conflict_potential: z.string(),
   communication_need: z.string(),
   preferred_channel: z.string(),
+  // PROJ-31 — eligible-approver flag for formal Decisions.
+  is_approver: z.boolean(),
 })
 
 type FormValues = z.infer<typeof formSchema>
@@ -139,6 +142,7 @@ function emptyValues(prefillRoleKey?: string | null): FormValues {
     conflict_potential: NO_VALUE,
     communication_need: NO_VALUE,
     preferred_channel: NO_VALUE,
+    is_approver: false,
   }
 }
 
@@ -163,6 +167,7 @@ function fromStakeholder(s: Stakeholder): FormValues {
     conflict_potential: s.conflict_potential ?? NO_VALUE,
     communication_need: s.communication_need ?? NO_VALUE,
     preferred_channel: s.preferred_channel ?? NO_VALUE,
+    is_approver: s.is_approver ?? false,
   }
 }
 
@@ -216,6 +221,7 @@ export function StakeholderForm({
       conflict_potential: selectToNullable<StakeholderScore>(values.conflict_potential),
       communication_need: selectToNullable<CommunicationNeed>(values.communication_need),
       preferred_channel: selectToNullable<PreferredChannel>(values.preferred_channel),
+      is_approver: values.is_approver,
     }
     await onSubmit(input)
   }
@@ -385,6 +391,30 @@ export function StakeholderForm({
                 Falls dieser Stakeholder auch einen Plattform-Account hat.
               </FormDescription>
               <FormMessage />
+            </FormItem>
+          )}
+        />
+
+        <FormField
+          control={form.control}
+          name="is_approver"
+          render={({ field }) => (
+            <FormItem className="flex flex-row items-start justify-between gap-3 rounded-md border p-3">
+              <div className="space-y-0.5">
+                <FormLabel className="text-sm">Genehmiger-berechtigt</FormLabel>
+                <FormDescription className="text-xs">
+                  Erlaubt, diesen Stakeholder als Approver für formale
+                  Entscheidungen auszuwählen (PROJ-31). Beim Deaktivieren
+                  werden offene Approver-Anfragen automatisch zurückgezogen.
+                </FormDescription>
+              </div>
+              <FormControl>
+                <Switch
+                  checked={field.value}
+                  onCheckedChange={field.onChange}
+                  aria-label="Genehmiger-berechtigt"
+                />
+              </FormControl>
             </FormItem>
           )}
         />

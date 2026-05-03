@@ -74,6 +74,10 @@ const patchSchema = z
       .enum(PREFERRED_CHANNELS as unknown as [string, ...string[]])
       .optional()
       .nullable(),
+    // PROJ-31 — toggle eligibility for Decision approvals. Existing
+    // PROJ-31 cascade-trigger (`stakeholders_cascade_approver_revoke`)
+    // automatically clears pending approver-rows when this is set to false.
+    is_approver: z.boolean().optional(),
   })
   .refine((val) => Object.keys(val).length > 0, {
     message: "At least one field must be provided.",

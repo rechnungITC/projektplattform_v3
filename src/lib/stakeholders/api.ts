@@ -66,6 +66,9 @@ export interface StakeholderInput {
   conflict_potential?: StakeholderScore | null
   communication_need?: CommunicationNeed | null
   preferred_channel?: PreferredChannel | null
+  // PROJ-31 hotfix — flag stakeholder as eligible approver for formal
+  // Decisions (surfaces them in Decision-Approval-Sheet's approver picker).
+  is_approver?: boolean
 }
 
 export async function createStakeholder(

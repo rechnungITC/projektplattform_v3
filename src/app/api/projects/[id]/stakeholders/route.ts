@@ -65,6 +65,10 @@ const createSchema = z.object({
     .enum(PREFERRED_CHANNELS as unknown as [string, ...string[]])
     .optional()
     .nullable(),
+  // PROJ-31 — flag stakeholder as eligible approver for formal Decisions.
+  // Default false (DB default). Toggling to true enables the stakeholder
+  // in the Decision-Approval-Sheet's approver picker.
+  is_approver: z.boolean().optional(),
 })
 
 interface Ctx {
