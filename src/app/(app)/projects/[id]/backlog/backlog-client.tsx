@@ -25,12 +25,21 @@ import {
   CollapsibleTrigger,
 } from "@/components/ui/collapsible"
 import { ChevronDown, Plus } from "lucide-react"
+import { useAuth } from "@/hooks/use-auth"
 import { useProjectAccess } from "@/hooks/use-project-access"
 import { useSprints } from "@/hooks/use-sprints"
 import { useWorkItems } from "@/hooks/use-work-items"
 import { getMethodConfig } from "@/lib/method-templates"
 import { useCurrentProjectMethod } from "@/lib/work-items/method-context"
 import type { WorkItemKind, WorkItemWithProfile } from "@/types/work-item"
+
+/**
+ * PROJ-36 Phase 36-γ — localStorage key for view-mode persistence.
+ * One slot per (user_id, project_id) combination.
+ */
+function viewModeStorageKey(userId: string, projectId: string): string {
+  return `wbs-view-mode-${userId}-${projectId}`
+}
 
 interface BacklogClientProps {
   projectId: string
@@ -47,6 +56,7 @@ const DEFAULT_FILTERS: BacklogFilters = {
 export function BacklogClient({ projectId, tenantId: _tenantId }: BacklogClientProps) {
   const method = useCurrentProjectMethod(projectId)
   const canEdit = useProjectAccess(projectId, "edit_master")
+  const { user } = useAuth()
   // PROJ-28: hide Sprints in non-agile methods. Backend already
   // hard-blocks sprint INSERT in those methods (PROJ-26), so this is a
   // pure UX-cleanup. Method = null (Setup) keeps Sprints visible
@@ -54,7 +64,12 @@ export function BacklogClient({ projectId, tenantId: _tenantId }: BacklogClientP
   const showSprints = method === null || getMethodConfig(method).hasSprints
 
   const [filters, setFilters] = React.useState<BacklogFilters>(DEFAULT_FILTERS)
+  // PROJ-36 Phase 36-γ — view mode default heuristic + localStorage persistence:
+  //   1. localStorage value (if valid) wins.
+  //   2. Otherwise default to "tree" if any item has a parent_id, else "list".
+  //   3. Persist on change (per user_id × project_id).
   const [viewMode, setViewMode] = React.useState<BacklogViewMode>("list")
+  const [viewModeReady, setViewModeReady] = React.useState(false)
 
   const {
     items,
@@ -66,6 +81,51 @@ export function BacklogClient({ projectId, tenantId: _tenantId }: BacklogClientP
     responsibleUserId: filters.responsibleUserId ?? undefined,
     bugsOnly: filters.bugsOnly,
   })
+
+  // PROJ-36 Phase 36-γ — resolve initial view-mode once items are loaded.
+  // Pinned to a ref so the heuristic doesn't fight the user when items
+  // change later (e.g. after a filter narrows the result set).
+  React.useEffect(() => {
+    if (viewModeReady) return
+    if (typeof window === "undefined" || !user?.id) return
+
+    const stored = window.localStorage.getItem(
+      viewModeStorageKey(user.id, projectId)
+    )
+    if (stored === "list" || stored === "tree" || stored === "board") {
+      // One-shot initial sync from localStorage; further changes flow via
+      // handleViewModeChange. The setStates here run only once per mount.
+      // eslint-disable-next-line react-hooks/set-state-in-effect
+      setViewMode(stored)
+      setViewModeReady(true)
+      return
+    }
+
+    // Heuristic only fires after the initial fetch settles.
+    if (itemsLoading) return
+    const hasHierarchy = items.some((it) => it.parent_id !== null)
+    setViewMode(hasHierarchy ? "tree" : "list")
+    setViewModeReady(true)
+  }, [viewModeReady, user?.id, projectId, items, itemsLoading])
+
+  // Persist on change.
+  const handleViewModeChange = React.useCallback(
+    (next: BacklogViewMode) => {
+      setViewMode(next)
+      if (typeof window === "undefined" || !user?.id) return
+      // Only persist "list" / "tree" — board is the legacy preference,
+      // still allowed but the spec only persists list/tree.
+      try {
+        window.localStorage.setItem(
+          viewModeStorageKey(user.id, projectId),
+          next
+        )
+      } catch {
+        // Quota / disabled storage — silently drop.
+      }
+    },
+    [user?.id, projectId]
+  )
 
   const {
     sprints,
@@ -137,6 +197,7 @@ export function BacklogClient({ projectId, tenantId: _tenantId }: BacklogClientP
         )}
         {viewMode === "tree" && (
           <BacklogTree
+            projectId={projectId}
             items={items}
             loading={itemsLoading}
             onSelect={handleSelect}

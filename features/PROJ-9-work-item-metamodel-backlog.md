@@ -401,7 +401,7 @@ Die TypeScript-Konstante (heute in der Codebase, Round 1) wird erweitert:
 | `feature` | `epic`, `null` | `epic`, `null` (unverändert) |
 | `story` | `feature`, `epic`, `null` | `feature`, `epic`, `null` (unverändert) |
 | `task` | `story`, `null` | `story`, `work_package`, `null` |
-| `subtask` | `task`, `null` | `task`, `null` (unverändert) |
+| `subtask` | `task` | `task` (required parent, unverändert) |
 | `bug` | `null` | `null` (unverändert) |
 | **`work_package`** | `null` | **`work_package`, `null`** |
 

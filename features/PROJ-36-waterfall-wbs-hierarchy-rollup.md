@@ -5,12 +5,12 @@
 **Last Updated:** 2026-05-03
 
 ## Origin
-Diese Spec entstand aus einem CIA-Review (2026-05-03) zur User-Anfrage „Wasserfall-Modell wie MS Project". Die Architektur-Grundlage liegt in **ADR-004** ([`docs/decisions/project-phase-workpackage-todo-hierarchy.md`](../docs/decisions/project-phase-workpackage-todo-hierarchy.md)). Single-Responsibility: nur **Hierarchie + abgeleitete Felder + polymorphe Dependencies**. Gantt-Interaktion und Critical-Path sind explizit Out-of-Scope (PROJ-25).
+Diese Spec entstand aus einem CIA-Review (2026-05-03) zur User-Anfrage „Wasserfall-Modell wie MS Project". Die Architektur-Grundlage liegt in **ADR-004** ([`docs/decisions/project-phase-workpackage-todo-hierarchy.md`](../docs/decisions/project-phase-workpackage-todo-hierarchy.md)). Single-Responsibility: nur **WBS-/Tree-/Roll-up-Schicht** auf dem von PROJ-9-Round-2 gelieferten Hierarchie- und Dependency-Backbone. Gantt-Interaktion und Critical-Path sind explizit Out-of-Scope (PROJ-25).
 
 ## Dependencies
-- Requires: **PROJ-9** (Work Item Metamodel) — erweitert `ALLOWED_PARENT_KINDS`, migriert `dependencies`-Tabelle.
-- Requires: **PROJ-19** (Phases & Milestones) — `work_items.phase_id` bleibt unverändert.
-- Requires: **PROJ-1** (Tenants) — `tenant_id` auf neuer `dependencies`-Tabelle.
+- Requires: **PROJ-9 Round 2** (Work Item Metamodel) — liefert `outline_path`, `sequence_in_parent`, erweiterte `ALLOWED_PARENT_KINDS` und die polymorphe `dependencies`-Tabelle als Schema-Backbone.
+- Requires: **PROJ-19** (Phases & Milestones) — `work_items.phase_id` bleibt der Cross-Level-Bezug; Phasen/Milestones bleiben separate Tabellen.
+- Requires: **PROJ-1** (Tenants) — Tenant-/RLS-Invarianten gelten unverändert auch für die konsumierten Backbone-Strukturen.
 - Compatible: **PROJ-26** (Method-Gating) — WBS-Hierarchie ist cross-method, kein Refactor nötig.
 - Architektur: **ADR-004** (project-phase-workpackage-todo-hierarchy) — verbindlich.
 - Unblocks: **PROJ-25** (Drag-and-Drop Gantt) — kann Tree + Polymorphic Deps nutzen, statt eigene `phase_dependencies` zu bauen.
@@ -18,7 +18,7 @@ Diese Spec entstand aus einem CIA-Review (2026-05-03) zur User-Anfrage „Wasser
 
 ## User Stories
 
-1. **WBS-Hierarchie wie MS Project** — Als Projektleiter eines Wasserfall-Projekts möchte ich meine Arbeit hierarchisch in **Phase → Arbeitspaket → Sub-Arbeitspaket → Task → Subtask** strukturieren können, damit ich ein komplexes Projekt in steuerungsfähige Pakete zerlegen kann.
+1. **WBS-Hierarchie wie MS Project** — Als Projektleiter eines Wasserfall-Projekts möchte ich meine Arbeit **innerhalb einer Phase** hierarchisch in **Arbeitspaket → Sub-Arbeitspaket → Task → Subtask** strukturieren können, damit ich ein komplexes Projekt in steuerungsfähige Pakete zerlegen kann.
 
 2. **Auto-WBS-Code** — Als Projektleiter möchte ich, dass für jede Hierarchie-Ebene automatisch ein WBS-Code (z. B. `1.2.3`) generiert wird, damit ich Items in Steering-Meetings und Reports eindeutig referenzieren kann, ohne manuell zu nummerieren.
 
@@ -37,17 +37,9 @@ Diese Spec entstand aus einem CIA-Review (2026-05-03) zur User-Anfrage „Wasser
 ## Acceptance Criteria
 
 ### A. Hierarchy Schema
-- [ ] `ALLOWED_PARENT_KINDS` (TS-Konstante in `src/lib/work-items/parent-kinds.ts` oder vergleichbar) wird erweitert:
-  - `task` allowed parents: `work_package`, `story`, `null` (vorher: `story`, `null`)
-  - `work_package` allowed parents: `work_package`, `null` (vorher: `null`)
-  - `subtask` allowed parents: bleibt `task`, `null`
-  - alle anderen Kinds unverändert
-- [ ] **`ltree`-Extension** wird per Migration aktiviert (`CREATE EXTENSION IF NOT EXISTS ltree;`).
-- [ ] Spalte `work_items.outline_path ltree` (nullable) wird hinzugefügt.
-- [ ] Trigger pflegt `outline_path` auto bei INSERT/UPDATE auf `parent_id` oder `sequence_in_parent` (Pfad = `parent.outline_path || sequence_in_parent`).
-- [ ] GIST-Index auf `outline_path` für schnelle Subtree-Queries (`WHERE outline_path <@ 'X.Y'`).
-- [ ] Cycle-Prevention-Trigger aus PROJ-9 bleibt aktiv (kein Bruch).
-- [ ] Backfill: bei Migration werden alle bestehenden `work_items` mit korrekten `outline_path`-Werten initialisiert (rekursiv von Wurzel).
+- [ ] PROJ-36 konsumiert den von PROJ-9-Round-2 gelieferten Hierarchie-Backbone (`outline_path`, `sequence_in_parent`, erweiterte `ALLOWED_PARENT_KINDS`) als Voraussetzung.
+- [ ] PROJ-36 definiert oder migriert diesen Backbone nicht erneut.
+- [ ] Tree-View, Indent/Outdent und WBS-Semantik bauen auf diesem Backbone auf.
 
 ### B. WBS-Code (Auto + Override)
 - [ ] Spalte `work_items.wbs_code TEXT` (nullable, max 50 chars).
@@ -71,36 +63,10 @@ Diese Spec entstand aus einem CIA-Review (2026-05-03) zur User-Anfrage „Wasser
 - [ ] „Gesamt"-Anzeige (additiv, OpenProject-Pattern): `displayed_effort = COALESCE(own_estimate, 0) + COALESCE(derived_estimate, 0)`. Bei Datumsfeldern: Anzeige beider Werte ohne Aggregation, da Min/Max nicht additiv sind.
 - [ ] Performance-Anforderung: Roll-up-Recompute bei Child-Change < 200 ms für Subtree mit 1000 Items.
 
-### D. Polymorphe Dependencies (per ADR-004)
-- [ ] Neue Tabelle `dependencies` (ersetzt heutige PROJ-9 `dependencies`):
-  ```
-  id              UUID PK
-  tenant_id       UUID NOT NULL REFERENCES tenants(id) ON DELETE CASCADE
-  from_type       TEXT NOT NULL  -- enum: 'project' | 'phase' | 'work_package' | 'todo'
-  from_id         UUID NOT NULL
-  to_type         TEXT NOT NULL  -- gleiche enum
-  to_id           UUID NOT NULL
-  constraint_type TEXT NOT NULL  -- 'FS' | 'SS' | 'FF' | 'SF' (default 'FS')
-  lag_days        INTEGER NOT NULL DEFAULT 0  -- signed (negative = lead)
-  created_at      TIMESTAMPTZ DEFAULT now()
-  created_by      UUID REFERENCES auth.users(id)
-  ```
-- [ ] CHECK-Constraint: `(from_type, from_id) != (to_type, to_id)` (keine Self-Dependency).
-- [ ] BEFORE-INSERT-Trigger validiert: `from_id` existiert in passender Tabelle (`projects` für `from_type='project'`; `phases` für `'phase'`; `work_items` für `'work_package'` oder `'todo'`). Selbiges für `to_id`.
-- [ ] BEFORE-INSERT-Trigger validiert: `from_id` und `to_id` resolven beide auf denselben `tenant_id` (cross-tenant hard-block). Cross-Project innerhalb desselben Tenants ist erlaubt.
-- [ ] BEFORE-INSERT-Trigger validiert: kein Cycle (rekursive CTE über polymorphe Edges).
-- [ ] UNIQUE-Constraint: `(from_type, from_id, to_type, to_id, constraint_type)`.
-- [ ] RLS-Policies: SELECT/INSERT/UPDATE/DELETE nur über `is_tenant_member(tenant_id)`.
-- [ ] **Type-Mapping für Migration**: bestehende Zeilen aus PROJ-9-`dependencies` werden migriert mit:
-  - `from_type` = abgeleitet aus `work_items.kind` der `predecessor_id`:
-    - `kind='work_package'` → `'work_package'`
-    - alle anderen Kinds (`task`, `subtask`, `epic`, `story`, `feature`, `bug`) → `'todo'`
-  - `to_type` = analog aus `work_items.kind` der `successor_id`
-  - `lag_days` und `constraint_type` werden 1:1 übernommen
-- [ ] Migration ist **reversibel** (DOWN-Script erstellt alte `(predecessor_id, successor_id)`-Schema wieder her).
-- [ ] Migration ist **idempotent** (re-run-safe).
-- [ ] Migration-Verifikations-SELECT am Ende: `SELECT count(*) FROM dependencies = (count vorher)`.
-- [ ] **PROJ-25 ST-04 `phase_dependencies`-Plan entfällt** (Hinweis in PROJ-25-Spec dokumentiert).
+### D. Dependency Backbone Consumption (per ADR-004)
+- [ ] PROJ-36 verwendet die polymorphe `dependencies`-Struktur, die von PROJ-9-Round-2 geliefert wird.
+- [ ] PROJ-36 besitzt **nicht** das Schema, die Migration, Trigger, Cycle-Detection, Tenant-Boundary-Prüfung oder RLS-Logik der `dependencies`-Tabelle.
+- [ ] PROJ-36-UI bleibt kompatibel mit Dependencies auf `project`, `phase`, `work_package` und `todo`.
 
 ### E. Tree-View UI (View-Toggle, kein DnD)
 - [ ] Bestehende Route `/projects/[id]/arbeitspakete` bekommt einen **View-Toggle**: „Liste" (heutige flache Ansicht) | „Hierarchie" (neue Tree-View).
@@ -115,29 +81,21 @@ Diese Spec entstand aus einem CIA-Review (2026-05-03) zur User-Anfrage „Wasser
 
 ### F. Method-Gating (cross-method)
 - [ ] PROJ-26 wird **nicht** geändert. WBS-Hierarchie ist cross-method erlaubt — auch ein Scrum-Projekt kann `work_package → task` nutzen.
-- [ ] Method-Visibility (welche Kinds in Pickern erscheinen) bleibt PROJ-26-gesteuert.
+- [ ] Method-Visibility (welche Kinds in Pickern erscheinen und angelegt werden dürfen) bleibt PROJ-6/26-gesteuert.
 - [ ] Parent-Child-Regeln (`ALLOWED_PARENT_KINDS`) gelten kind-spezifisch unabhängig von der Methode.
 
 ### G. Multi-Tenant + RLS + Class-3
-- [ ] `dependencies.tenant_id` `NOT NULL`.
-- [ ] RLS-Helper-Funktionen aus PROJ-1 wiederverwendet (`is_tenant_member`).
-- [ ] Cross-Project-Dependency innerhalb Tenant erlaubt; Trigger verifiziert Tenant-Übereinstimmung.
 - [ ] WBS-Code, `outline_path`, `wbs_code_is_custom` enthalten **keine personenbezogenen Daten** → keine Class-3-Klassifikation nötig.
 
 ### H. Migration-Plan
 - [ ] Migration-Datei `supabase/migrations/20260503xxxxxx_proj36_wbs_hierarchy_polymorphic_deps.sql`:
-  1. `CREATE EXTENSION IF NOT EXISTS ltree;`
-  2. `ALTER TABLE work_items ADD COLUMN outline_path ltree, wbs_code TEXT, wbs_code_is_custom BOOLEAN NOT NULL DEFAULT false, derived_planned_start DATE, derived_planned_end DATE, derived_estimate_hours NUMERIC(10,2);`
-  3. Backfill `outline_path` rekursiv aus `parent_id`-Ketten.
-  4. Backfill `wbs_code` aus `outline_path` (alle initial nicht-custom).
-  5. Trigger erstellen: `tg_work_items_outline_path_maintain`, `tg_work_items_wbs_code_autogen`, `tg_work_items_rollup_recompute`.
-  6. Neue `dependencies`-Tabelle anlegen (siehe Schema in §D).
-  7. Daten aus alter Tabelle migrieren (kind-basiertes Mapping).
-  8. Alte Tabelle droppen, neue umbenennen (oder direkt unter `dependencies`-Namen anlegen, alte temporär `dependencies_legacy`).
-  9. RLS-Policies + Trigger für neue Tabelle.
-  10. Verifikations-SELECT (Row-Count Diff = 0).
+  1. `ALTER TABLE work_items ADD COLUMN wbs_code TEXT, wbs_code_is_custom BOOLEAN NOT NULL DEFAULT false, derived_planned_start DATE, derived_planned_end DATE, derived_estimate_hours NUMERIC(10,2);`
+  2. Backfill `wbs_code` aus vorhandenem `outline_path` (initial alle nicht-custom).
+  3. Trigger erstellen: `tg_work_items_wbs_code_autogen`, `tg_work_items_rollup_recompute`.
+  4. Verifikations-SELECTs für neue WBS-/Roll-up-Spalten.
+- [ ] `outline_path`, `sequence_in_parent`, erweiterte Parent-Regeln und polymorphe `dependencies` gelten in dieser Migration als bereits durch PROJ-9-Round-2 bereitgestellt.
 - [ ] DOWN-Migration vorhanden (`supabase/migrations/.../down.sql` oder Inline-Notizen).
-- [ ] CIA-Pflicht für `/architecture`-Phase: Migration auf Kopie der Prod-DB testen, bevor sie in `/backend` gemerged wird (Multi-Tenant-Invariant + Backfill-Korrektheit).
+- [ ] CIA-Pflicht für `/architecture`-Phase: Migration auf Kopie der Prod-DB testen, bevor sie in `/backend` gemerged wird (Backfill-Korrektheit + Roll-up-Recompute).
 
 ## Edge Cases
 
@@ -145,16 +103,12 @@ Diese Spec entstand aus einem CIA-Review (2026-05-03) zur User-Anfrage „Wasser
 2. **Manual WBS-Code kollidiert mit Auto-Gen-Sibling** — User setzt manuell `1.2` auf Item A; Sibling B würde Auto `1.2` bekommen. Resolution: B springt auf nächste freie Nummer (`1.3`).
 3. **Custom-WBS-Code beim Parent-Wechsel** — User hat `AP-001` auf Item X. X wird in anderen Parent verschoben. `wbs_code_is_custom` bleibt `true`, Code bleibt `AP-001` (regeneriert nicht).
 4. **`wbs_code_is_custom` zurück auf false** — UI fragt: „Code wird von 'AP-001' auf '1.3.2' regeneriert. Fortfahren?"
-5. **Cross-Project-Dependency-Cycle** — Projekt A's Phase → Projekt B's Phase → Projekt A's WP. Cycle-Prevention muss polymorph + cross-project traversieren. Recursive CTE on dependency graph; Fail mit „Cycle detected zwischen Projekt A und Projekt B".
-6. **Dependency Projekt → Todo (cross-level)** — ADR-004 erlaubt jede `(from_type, to_type)`-Kombination. Datenmodell akzeptiert; UI kann ungewöhnliche Kombinationen (z. B. Projekt → Subtask) per Filter ausblenden, aber Trigger blockt sie nicht.
-7. **Phase-Delete mit aktiven Dependencies** — `ON DELETE CASCADE` auf der polymorphen `dependencies`-Tabelle ist nicht direkt FK-bar (polymorph). Lösung: ON DELETE-Trigger auf `phases`/`projects`/`work_items` löscht passende Rows in `dependencies`. UI warnt User vor Cascade-Delete.
 8. **Hybrid-Roll-up Parent ohne Kinder** — `derived_*` ist `NULL`. UI zeigt nur „Eigenes: 40h" ohne „Derived"-Spalte.
 9. **Mixed Children Kinds** — WP enthält `task` + `subtask` + `epic`. Roll-up summiert alle Kinder mit Estimate; Kind ist irrelevant.
 10. **outline_path-Tiefe > 10** — Theoretisch ltree max ~256 Levels (safe). UI warnt bei Tiefe > 10 („Diese WBS ist sehr tief verschachtelt — überlege strukturelle Vereinfachung").
 11. **WBS-Code mit lokalen Number-Formats** — Spec verwendet ausschließlich Punkt-Separator (`1.2.3`); keine Lokalisierung.
 12. **Concurrent Reorder zweier User** — PROJ-10-Field-Versioning greift; `sequence_in_parent` mit optimistic locking (`updated_at`-Stempel). Bei Konflikt: zweiter Save bekommt 409.
-13. **Migration-Lauf während aktiver Sessions** — Migration ist transactional; alte `dependencies`-Reads würden nach Commit auf neue Tabelle zugreifen. Keine Down-Time, aber laufende Open-Transactions können fehlschlagen → Migration in Maintenance-Window planen.
-14. **Tenant-Cross-Tenant-Dependency-Versuch** — User in Tenant A versucht Dependency auf Phase in Tenant B. Trigger blockiert mit `RAISE EXCEPTION 'Cross-tenant dependencies not allowed'`. RLS sollte schon vorher schützen, aber Trigger als Defense-in-Depth.
+13. **Migration-Lauf während aktiver Sessions** — WBS-/Roll-up-Migration ist additiv; Outline-/Dependency-Backbone wird bereits durch PROJ-9-Round-2 vorausgesetzt.
 
 ## Technical Requirements
 
@@ -163,12 +117,11 @@ Diese Spec entstand aus einem CIA-Review (2026-05-03) zur User-Anfrage „Wasser
   - Roll-up-Recompute bei Child-Update < 200 ms (Trigger).
   - Tree-View Initial-Render < 1 s für 1 000 Items (Server-Side-Aggregation + Client-Virtualisierung).
 - **Security:**
-  - RLS auf `dependencies` mit `is_tenant_member(tenant_id)`.
-  - Cross-Tenant-Dependencies hard-blocked auf Trigger-Ebene (nicht nur RLS).
+  - Tenant-/RLS-Sicherheit für den konsumierten Hierarchie-/Dependency-Backbone wird durch PROJ-9-Round-2 vorausgesetzt.
 - **Migration Safety:**
   - DOWN-Migration verfügbar.
   - Idempotent (re-run-safe).
-  - Pre-Migration Row-Count-Verification (Count(alt) = Count(neu)).
+  - Verifikation der neuen WBS-/Roll-up-Spalten nach Backfill.
 - **Test-Coverage:**
   - Vitest-Unit für: `outline_path`-Berechnung, `wbs_code`-Auto-Gen, Roll-up-Math, polymorphe Cycle-Detection.
   - Integration: Migration auf Kopie der Prod-DB.
@@ -183,7 +136,7 @@ Diese Spec entstand aus einem CIA-Review (2026-05-03) zur User-Anfrage „Wasser
 - Critical-Path-Berechnung + UI-Highlight → **PROJ-25** oder **PROJ-25b**
 - Resource-Roll-up auf Summary-Items → **PROJ-11b** (Implementation-Note in PROJ-11)
 - Cost-Roll-up auf Parent → **PROJ-24**
-- Auto-Schedule-Engine (Dependency-driven Auto-Move) → künftiges PROJ-39
+- Auto-Schedule-Engine (Dependency-driven Auto-Move) → künftige eigene Schedule-/Auto-Planning-Slice
 - Baseline-Snapshots / Re-Planning → künftig
 
 ## V2 Reference Material
