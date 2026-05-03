@@ -1,6 +1,6 @@
 # PROJ-32: Tenant Custom AI Provider Keys (Multi-Provider)
 
-## Status: Planned (Phase 32-a specced)
+## Status: Architected (Phase 32-a — Tech Design locked, ready für /backend)
 
 **Created:** 2026-05-04
 **Last Updated:** 2026-05-04
@@ -197,7 +197,148 @@ Jede Sub-Phase deploybar; full-Slice = ~3.5 PT.
 <!-- Sections below to be added by subsequent skills -->
 
 ## Tech Design (Solution Architect)
-_To be added by /architecture (CIA-Review zwingend — kreuzt PROJ-12, PROJ-14, PROJ-17 deployed; introduces Encryption-At-Rest-Pattern für AI-Keys)._
+
+> **CIA-Review komplett** (2026-05-04). Sechs offene Forks gelockt; Synergien & Anti-Patterns dokumentiert. Sub-Slice 32a ist build-ready.
+
+### 1. Big Picture (PM-Sprache)
+
+**Was wird gebaut?** Tenant-Admin gibt seinen Anthropic-API-Key in einer neuen Settings-Sub-Page ein. Der Key wird verschlüsselt in einer neuen Tabelle `tenant_ai_keys` gespeichert (gleicher Encryption-Pattern wie PROJ-14-Connector-Secrets). Der existierende AI-Router (PROJ-12) ruft pro Anfrage einen neuen `key-resolver`-Helper auf, der aus dem Tenant-Kontext entweder den entschlüsselten Tenant-Key, den Platform-Fallback-Key oder ein Hard-Block-Signal zurückgibt. Class-3-Anfragen ohne Tenant-Key werden auf das lokale Modell (existierender PROJ-12-Pfad) geroutet — kein externer Call.
+
+**Warum dieser Schnitt?** PROJ-14 hat das Encryption-Pattern (pgcrypto + Vault-Session-Key) bereits in Production. PROJ-12 hat den Class-3-Routing-Pfad bereits in Production. Wir bauen also nur das Bindeglied — neue Tabelle + neue API-Routes + ein kleines Resolver-Modul + eine Admin-UI-Page. Keine neuen Encryption-Patterns, keine neuen Routing-Patterns. Risiko-minimal.
+
+**Was ist NICHT Teil von 32a?** OpenAI/Google/Ollama (32b/c), Cost-Caps (32d), Provider-Priority-Selection (32c). Die Schema-Forwards-Compat (`provider`-Spalte mit Whitelist statt einzelner Tabelle pro Provider) ist aber bereits in 32a eingebaut, damit 32b/c nur den CHECK-Constraint erweitern müssen.
+
+### 2. Component Structure
+
+```
+Tenant-Settings (Admin-Only)
+└── /settings/tenant/ai-keys              ← neue Sub-Page (PROJ-17 Tab-Pattern)
+    └── AI-Keys Card (Anthropic)
+        ├── State-Switch: not_set | valid | invalid | unknown
+        ├── Eingabefeld + "Speichern + Validieren" (state: not_set, rotate)
+        ├── Fingerprint-Anzeige "sk-ant-...abcd" (state: valid, invalid, unknown)
+        ├── "Re-Test"-Button → POST /validate
+        ├── "Rotieren"-Button → öffnet Eingabefeld → PUT
+        └── "Löschen"-Button + AlertDialog → DELETE
+
+API-Layer
+├── GET    /api/tenants/[id]/ai-keys/anthropic            ← Status + Fingerprint
+├── PUT    /api/tenants/[id]/ai-keys/anthropic            ← Save + Test-Call + Persist
+├── POST   /api/tenants/[id]/ai-keys/anthropic/validate   ← Re-Test ohne Key-Änderung
+└── DELETE /api/tenants/[id]/ai-keys/anthropic            ← Lösch-Flow
+
+AI-Router-Pfad (PROJ-12 erweitert)
+src/lib/ai/router.ts
+└── resolveAnthropicKey(tenantId, dataClass) → { source, key? }    ← neuer Aufruf
+    └── src/lib/ai/key-resolver.ts                                  ← NEUES Modul (Fork 6)
+        ├── React.cache-Wrapper für Per-Request-Cache (Fork 4)
+        ├── decrypt_tenant_secret RPC-Call (Fork 1: Reuse PROJ-14)
+        └── Fallback-Logik: tenant → platform → blocked
+
+src/lib/ai/providers/anthropic.ts
+└── createAnthropic({ apiKey: tenantKey }) Factory                  ← Refactor (Fork 2)
+
+Datenbank
+└── public.tenant_ai_keys                                            ← NEU
+    ├── encrypted_key bytea (via PROJ-14 RPC encrypt_tenant_secret)
+    ├── key_fingerprint text (für UI-Display + Audit)
+    ├── last_validated_at + last_validation_status
+    └── RLS: nur is_tenant_admin(tenant_id) für ALL operations
+
+Audit-Trail
+└── PROJ-10 audit_log_entries (existing)
+    └── Whitelist-Erweiterung um entity_type='tenant_ai_keys'       ← Fork 5
+```
+
+### 3. Data Model (plain language)
+
+**Neue Tabelle `tenant_ai_keys`** speichert pro Tenant pro Provider genau einen aktiven Key (Single-Key-Decision aus /requirements):
+
+- **Welcher Tenant** (FK auf tenants, ON DELETE CASCADE — Off-Boarding löscht automatisch)
+- **Welcher Provider** (`'anthropic'` für 32a; CHECK-Constraint wird in 32b um `'openai'`, `'google'` erweitert; in 32c um `'ollama'`)
+- **Verschlüsselter Key** (`bytea` via PROJ-14 pgcrypto-Pattern — niemals im Klartext gespeichert, niemals in API-Response zurückgegeben)
+- **Fingerprint** (z.B. `"sk-ant-...abcd"` — für UI-Display und Audit-Log; nicht-personenbezogen, DSGVO-redaction-safe)
+- **Validierungsstatus** (`valid` / `invalid` / `rate_limited` / `unknown`) + Timestamp letzter erfolgreicher Test-Call
+- **Created-By** (welcher Tenant-Admin hat den Key gesetzt — für Audit)
+- **UNIQUE-Constraint** auf `(tenant_id, provider)` — verhindert technisch zwei aktive Keys pro Provider pro Tenant
+
+**Storage-Pattern (Fork 1 lock):** Der Verschlüsselungs-Mechanismus aus PROJ-14 (`encrypt_tenant_secret(jsonb) → uuid` und `decrypt_tenant_secret(uuid) → jsonb`) wird **direkt wiederverwendet**. Kein eigener Encryption-Pfad für AI-Keys. Vorteil: Vault-Session-Key, Audit-Logging und Rotation-Strategy sind bereits in Production-Pattern bewiesen. Nachteil: AI-Key wird als JSONB-Wrapper (`{"api_key": "sk-ant-..."}`) gespeichert — minimale Indirektion, akzeptabel.
+
+**Per-Request-Cache (Fork 4 lock):** Innerhalb eines einzelnen Server-Requests wird der entschlüsselte Key per `React.cache()` gemerkt. Damit verursacht ein Multi-Step-AI-Call (z.B. Narrative + Suggestion in einem Render) nur EINE Decryption-Operation, nicht viele. Cache lebt nur für die Dauer des Requests — keine Cross-Request-Persistence (das wäre ein Security-Risiko).
+
+### 4. Tech Decisions (für PM)
+
+Sechs Architektur-Forks waren offen; CIA hat alle gelockt:
+
+**Fork 1 — Encryption-Storage:** Wir benutzen die existierenden PROJ-14-RPCs (`encrypt_tenant_secret`/`decrypt_tenant_secret`). **Begründung:** Pattern ist seit 2 Wochen in Production, hat Audit-Logging, Vault-Session-Key, und ist bereits security-reviewed. Eigene Encryption für AI-Keys wäre Redundanz mit Drift-Risiko.
+
+**Fork 2 — Vercel-AI-SDK Key-Injection:** Wir refactorn `src/lib/ai/providers/anthropic.ts` so, dass es eine **Factory-Funktion** statt eines Default-Imports nutzt. Pro Request wird `createAnthropic({ apiKey: tenantKey })` aufgerufen. **Begründung:** Vercel-AI-SDK v6 unterstützt das nativ. Die Alternative (env-Variable überschreiben pro Request) ist nicht thread-safe in Server-Components.
+
+**Fork 3 — Test-Call-Endpoint:** Validation läuft via Raw-`fetch` GET `/v1/models` mit dem Key in `x-api-key`-Header. Strukturiertes Error-Mapping (200→valid, 401/403→invalid, 429→rate_limited, Timeout/5xx→unknown). **Begründung:** `/v1/models` ist günstiger und schneller als ein Tokens-Call. Raw-fetch statt SDK-Wrapper, weil das SDK Retry-Logik einbaut, die wir bei Validation NICHT wollen — wir wollen genau einen Test-Call mit klarem Status.
+
+**Fork 4 — Key-Decryption-Caching:** Per-Request-Cache via `React.cache()` (server-only). **Begründung:** Multi-Step-AI-Calls (PROJ-12 Narrative + PROJ-30 Refinement) brauchen den Key mehrfach pro Request. Decryption ist eine RPC-Round-Trip — drei davon pro Request wären 50-150ms unnötige Latenz. Cross-Request-Cache (Redis o.ä.) ist explizit ausgeschlossen — würde Plain-Key-Material länger im Memory halten als nötig.
+
+**Fork 5 — Audit-Pattern:** Wir nutzen die existierende `audit_log_entries`-Tabelle aus PROJ-10. Whitelist wird um `entity_type='tenant_ai_keys'` erweitert. **Begründung:** Eine separate `tenant_ai_keys_audit`-Tabelle wäre Pattern-Drift. Existing Audit-Trail hat DSGVO-Redaction-Logik, RLS und Export-Pfad bereits.
+
+**Fork 6 — AI-Router-Erweiterung:** Wir legen ein **separates Modul** `src/lib/ai/key-resolver.ts` an, das vom Router aufgerufen wird. **Begründung:** Der existierende Router (`src/lib/ai/router.ts`) hat schon Class-3-Routing-Logik; ein zusätzlicher Key-Resolution-Schritt würde ihn unübersichtlich machen. Ein eigenes Modul ist testbar (Vitest), wiederverwendbar (32b/c) und macht den Router-Code lesbarer.
+
+### 5. Cross-Fork-Synergien (CIA-Empfehlung)
+
+- **Fork 1 + Fork 4** zusammen: Decryption-RPC läuft nur 1× pro Request. Die teuerste Operation (Vault-Session-Key + pgcrypto-Decrypt) ist gecached.
+- **Fork 5 + Fork 1**: Audit-Eintrag wird direkt in der API-Route geschrieben (vor/nach `encrypt_tenant_secret`-Call), nicht via DB-Trigger — damit hat der Audit-Eintrag den vollen User-Kontext (Actor + Tenant + Action).
+- **Fork 6 + Fork 2**: `key-resolver.ts` returnt `{ source, key }`; der AnthropicProvider-Factory-Call liegt im AI-Router, nicht im Resolver. Trennung: Resolver entscheidet WELCHEN Key zu nutzen; Router/Provider nutzt ihn dann.
+
+### 6. Sub-Phasing (Build-Plan)
+
+| Sub-Phase | Inhalt | Migration | UI | Aufwand |
+|---|---|---|---|---|
+| **32a.1** | Migration `tenant_ai_keys`-Tabelle + RLS + key-resolver.ts (ohne UI) + Tests Vitest | 1 Migration | — | ~1.5 PT |
+| **32a.2** | 4 API-Routes (GET/PUT/POST validate/DELETE) + Test-Call-Logic + Audit-Whitelist erweitern | — | — | ~1 PT |
+| **32a.3** | Tenant-Admin-UI (Sub-Page + 4 States + Sidebar-Tab) + E2E-Test | — | Tenant-Admin-Page | ~1 PT |
+
+Jede Sub-Phase ist deploybar (32a.1 funktioniert ohne UI für Class-3-Block-Effekt; 32a.2 schaltet Validation frei; 32a.3 macht es endbenutzer-tauglich).
+
+### 7. Anti-Patterns (explizit ausgeschlossen)
+
+- ❌ **Plain-Key in der Datenbank** — auch nicht "vorübergehend" für Migration. Encryption ab Tag 1.
+- ❌ **Plain-Key in der API-Response** — auch nicht für den Tenant-Admin selbst. Niemand soll den Key zurücklesen können (US-1 Spec-Decision: vergessener Key → bei Anthropic neuen generieren).
+- ❌ **Key in Logs** — weder in Vercel-Logs noch in Sentry, noch in `audit_log_entries`. Nur Fingerprint.
+- ❌ **Cross-Request-Cache** (z.B. Redis, in-memory Map mit längerer Lifetime) — Sicherheitsrisiko, nicht erlaubt.
+- ❌ **Eigene Encryption-Pipeline** statt PROJ-14-RPCs — Pattern-Drift.
+- ❌ **Separate Audit-Tabelle** für AI-Keys — Pattern-Drift.
+- ❌ **Default-`anthropic`-Import im AI-Router** — muss überall durch Factory ersetzt werden, sonst läuft heimlich noch der env-Key.
+
+### 8. Risks & Mitigations
+
+| Risiko | Severity | Mitigation |
+|---|---|---|
+| Plain-Key liegt während eines Requests im JS-Memory (Decryption-Window) | Medium | Per-Request-Cache via React.cache; Memory wird nach Request-Ende GCed; kein Persist außer encrypted |
+| Anthropic-API-Outage während Key-Save | Low | EC-1: `unknown`-Status, Persist mit Warning, Re-Test-Button |
+| Vault-Session-Key-Rotation-Strategie für AI-Keys | Medium | EC-4: gleiche Strategie wie PROJ-14 — Ops-Runbook, nicht App-Feature in 32a |
+| Multi-Provider-Schema-Fork bei 32b (provider-spezifische Felder) | Low | CHECK-Constraint statt 1-Tabelle-pro-Provider; 32b extends nur den CHECK + ggf. provider-spezifische Spalten als nullable |
+| Audit-Whitelist-Lücke (Vergessen, `tenant_ai_keys` zu whitelisten) | High | Whitelist-Erweiterung Teil von 32a.2-Migration; QA-Block F.1 verifiziert via Live-DB |
+| Existing AI-Code überspringt key-resolver | High | Code-Search im /backend: jeder `import { anthropic } from "@ai-sdk/anthropic"` muss durch Factory-Aufruf ersetzt werden; kein Direct-Import mehr erlaubt |
+| Tenant löscht Key während laufender AI-Anfrage | Low | EC-10: aktive Anfrage läuft mit gecachtem Key zu Ende; nächste blocked |
+
+### 9. Dependencies (packages to install)
+
+**Keine neuen npm-Packages.** Alle benötigten Bausteine sind bereits installiert:
+- `@ai-sdk/anthropic` (PROJ-12) — `createAnthropic`-Factory ist Teil davon
+- `pgcrypto` Postgres-Extension (PROJ-14) — bereits enabled
+- `react` (Next.js) — `cache()` ist core
+- `zod` — bereits installiert für API-Validation
+
+### 10. Approval-Recommendation
+
+Tech Design ist **build-ready**. Empfohlene nächste Schritte:
+
+1. `/backend proj 32` startet mit Sub-Phase 32a.1 (Migration + key-resolver + Vitest)
+2. Nach Sub-Phase 32a.1 deploy: `/backend proj 32` für 32a.2 (API-Routes + Validation)
+3. `/frontend proj 32` für 32a.3 (Admin-UI)
+4. `/qa proj 32` integriert testet alle 3 Sub-Phasen mit Live-DB Red-Team auf RLS und Class-3-Block
+5. `/deploy proj 32` als atomarer Production-Cut
+
+Weitere Slices (32b/c/d) brauchen eigene `/requirements`-Pässe, sobald 32a in Production stabil ist.
 
 ## Implementation Notes
 _To be added by /backend + /frontend._
