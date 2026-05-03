@@ -64,7 +64,7 @@ export function ApprovalsListClient() {
       {items.map((item) => (
         <li key={item.approver_id}>
           <Link
-            href={`/projects/${item.project_id}/decisions/${item.decision_id}`}
+            href={`/projects/${item.project_id}/entscheidungen?decision=${item.decision_id}`}
             className="block rounded-md border bg-card p-4 transition-colors hover:bg-accent"
           >
             <div className="flex items-start justify-between gap-3">

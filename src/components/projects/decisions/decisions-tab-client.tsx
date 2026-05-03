@@ -1,6 +1,7 @@
 "use client"
 
 import { Plus } from "lucide-react"
+import { useSearchParams } from "next/navigation"
 import * as React from "react"
 import { toast } from "sonner"
 
@@ -66,6 +67,22 @@ export function DecisionsTabClient({ projectId }: DecisionsTabClientProps) {
   React.useEffect(() => {
     void reload()
   }, [reload])
+
+  // PROJ-31 — Deep-link from /approvals: scroll to ?decision=<id> after data loads.
+  const searchParams = useSearchParams()
+  const targetDecisionId = searchParams?.get("decision") ?? null
+  React.useEffect(() => {
+    if (loading || !targetDecisionId) return
+    const el = document.getElementById(`decision-${targetDecisionId}`)
+    if (el) {
+      el.scrollIntoView({ behavior: "smooth", block: "start" })
+      el.classList.add("ring-2", "ring-primary", "ring-offset-2")
+      const timer = window.setTimeout(() => {
+        el.classList.remove("ring-2", "ring-primary", "ring-offset-2")
+      }, 2500)
+      return () => window.clearTimeout(timer)
+    }
+  }, [loading, targetDecisionId])
 
   const onCreate = async (input: DecisionInput) => {
     setSubmitting(true)

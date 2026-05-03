@@ -43,7 +43,7 @@ export function DecisionCard({
   const hasPredecessors = predecessors.length > 0
 
   return (
-    <Card>
+    <Card id={`decision-${decision.id}`}>
       <CardContent className="space-y-3 py-4">
         <div className="flex flex-wrap items-start justify-between gap-2">
           <div className="flex min-w-0 items-center gap-2">
