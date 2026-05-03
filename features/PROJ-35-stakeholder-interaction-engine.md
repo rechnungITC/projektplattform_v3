@@ -1,6 +1,6 @@
 # PROJ-35: Stakeholder-Wechselwirkungs-Engine — Risiko-Score, Eskalations-Indikatoren & Tonalitäts-Empfehlungen
 
-## Status: 35-α + β Deployed · γ Approved (ready for /deploy)
+## Status: Deployed (alle 3 Phasen α + β + γ live)
 **Created:** 2026-05-02
 **Last Updated:** 2026-05-03 (35-α Frontend live in production; Tag v1.35.1-PROJ-35-alpha-frontend)
 
@@ -1249,3 +1249,27 @@ _Not yet started — Trend-Sparkline + Health-Dashboard + Critical-Path-Indikato
    - Phase editieren → "Auf kritischem Pfad"-Switch aktivieren → entsprechende Stakeholder bekommen Critical-Path-Flag in der Tabelle
    - Stakeholder mit Audit-Events → Profil-Tab → Trend-Sparkline mit 30/90/365-Toggle
 3. Damit ist **PROJ-35 vollständig live (alle 3 Phasen)**.
+
+---
+
+## Deployment — Phase 35-γ (2026-05-04)
+
+- **Migration:** keine eigene Migration in 35-γ; `phases.is_critical` ist bereits aus 35-β live.
+- **Code-Push:**
+  - Commit `40f55da` (Phase 35-γ Backend + Frontend) — bereits in `origin/main`
+  - Commit `c7d53b7` (Bug-1 Fix `source_stakeholder_id` + QA-Pass-Docs) — pushed. Vercel Auto-Deploy triggered.
+- **Tag:** `v1.35.3-PROJ-35-gamma` erstellt + gepusht.
+- **Production URL:** `https://projektplattform-v3.vercel.app`
+- **Was deployed wurde (35-γ-Slice):**
+  - `/api/projects/[id]/stakeholder-health` — Health-Dashboard-Daten + 4-hop-Critical-Path-Detection
+  - `/api/projects/[id]/stakeholders/[sid]/risk-trend?days=30|90|365` — retroaktiver Score-Replay
+  - `/projects/[id]/stakeholder-health` — Page mit Aggregaten + Filter + Ranking-Tabelle
+  - `RiskTrendSparkline` integriert in ProfileTab
+  - `Phase-Edit-Dialog` mit `is_critical`-Switch
+  - Sidebar-Tab "Stakeholder-Health" in allen 8 Method-Templates
+- **Recovery-Notiz:** Während QA wurde Bug-1 (column name `linked_stakeholder_id` → `source_stakeholder_id`) catched und sofort gefixt. Wäre Production-500 gewesen.
+- **Deployment-Verification (User-Action empfohlen nach Vercel-Build):**
+  - Sidebar im Project-Room → "Stakeholder-Health" → Ranking-Tabelle sichtbar
+  - Phase editieren → "Auf kritischem Pfad"-Switch aktivieren → Stakeholder auf Work-Items dieser Phase bekommt Critical-Path-Flag in der Tabelle
+  - Stakeholder mit Audit-Events öffnen → Profil-Tab → Trend-Sparkline mit 30/90/365-Toggle
+- **PROJ-35 ist damit vollständig live (alle 3 Phasen α + β + γ).**
