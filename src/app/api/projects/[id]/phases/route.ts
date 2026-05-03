@@ -8,20 +8,10 @@ import {
 } from "@/lib/work-items/schedule-method-visibility"
 import type { ProjectMethod } from "@/types/project-method"
 
-const isoDate = z.string().regex(/^\d{4}-\d{2}-\d{2}$/, "Use YYYY-MM-DD")
-
-const createSchema = z
-  .object({
-    name: z.string().trim().min(1).max(255),
-    description: z.string().max(5000).optional().nullable(),
-    planned_start: isoDate.optional().nullable(),
-    planned_end: isoDate.optional().nullable(),
-    sequence_number: z.number().int().positive().optional(),
-  })
-  .refine(
-    (v) => !v.planned_start || !v.planned_end || v.planned_end >= v.planned_start,
-    { message: "planned_end must be >= planned_start", path: ["planned_end"] }
-  )
+import {
+  normalizePhasePayload,
+  phaseCreateSchema as createSchema,
+} from "./_schema"
 
 export async function POST(
   request: Request,
@@ -77,18 +67,19 @@ export async function POST(
     seq = (maxRow?.sequence_number ?? 0) + 1
   }
 
+  // Spread-Pattern: schema is the single source of truth. Server-set fields
+  // (sequence_number resolution, tenant_id, created_by) override schema input.
+  const insertPayload = {
+    ...normalizePhasePayload(parsed.data),
+    tenant_id: project.tenant_id,
+    project_id: projectId,
+    sequence_number: seq,
+    created_by: userId,
+  }
+
   const { data: row, error } = await supabase
     .from("phases")
-    .insert({
-      tenant_id: project.tenant_id,
-      project_id: projectId,
-      name: parsed.data.name,
-      description: parsed.data.description ?? null,
-      planned_start: parsed.data.planned_start ?? null,
-      planned_end: parsed.data.planned_end ?? null,
-      sequence_number: seq,
-      created_by: userId,
-    })
+    .insert(insertPayload)
     .select()
     .single()
 

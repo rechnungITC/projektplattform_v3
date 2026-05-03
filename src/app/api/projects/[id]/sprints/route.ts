@@ -8,19 +8,10 @@ import {
 } from "@/lib/work-items/schedule-method-visibility"
 import type { ProjectMethod } from "@/types/project-method"
 
-const isoDate = z.string().regex(/^\d{4}-\d{2}-\d{2}$/, "Use YYYY-MM-DD")
-
-const createSchema = z
-  .object({
-    name: z.string().trim().min(1).max(255),
-    goal: z.string().max(5000).nullable().optional(),
-    start_date: isoDate.nullable().optional(),
-    end_date: isoDate.nullable().optional(),
-  })
-  .refine(
-    (v) => !v.start_date || !v.end_date || v.end_date >= v.start_date,
-    { message: "end_date must be >= start_date", path: ["end_date"] }
-  )
+import {
+  normalizeSprintPayload,
+  sprintCreateSchema as createSchema,
+} from "./_schema"
 
 // -----------------------------------------------------------------------------
 // POST /api/projects/[id]/sprints  --  create
@@ -73,17 +64,17 @@ export async function POST(
     )
   }
 
+  // Spread-Pattern: schema is the single source of truth.
+  const insertPayload = {
+    ...normalizeSprintPayload(parsed.data),
+    tenant_id: project.tenant_id,
+    project_id: projectId,
+    created_by: userId,
+  }
+
   const { data: row, error } = await supabase
     .from("sprints")
-    .insert({
-      tenant_id: project.tenant_id,
-      project_id: projectId,
-      name: parsed.data.name,
-      goal: parsed.data.goal ?? null,
-      start_date: parsed.data.start_date ?? null,
-      end_date: parsed.data.end_date ?? null,
-      created_by: userId,
-    })
+    .insert(insertPayload)
     .select()
     .single()
 

@@ -141,3 +141,77 @@ describe("POST /api/projects/[id]/sprints — PROJ-26 method-gating", () => {
     expect(res.status).toBe(401)
   })
 })
+
+// ---------------------------------------------------------------------------
+// Schema-vs-DB-Payload Drift Detection (POST)
+// ---------------------------------------------------------------------------
+describe("POST /api/projects/[id]/sprints — schema/DB-payload drift", () => {
+  it("forwards every Zod-schema field to the DB insert payload", async () => {
+    const { sprintCreateSchema } = await import("./_schema")
+    getUserMock.mockResolvedValue({ data: { user: { id: USER_ID } } })
+    projectChain.maybeSingle.mockResolvedValue({
+      data: { tenant_id: TENANT_ID, project_method: "scrum" },
+      error: null,
+    })
+
+    // createSchema is wrapped in .refine() — unwrap via _def.schema.shape.
+    const inner =
+      "shape" in sprintCreateSchema
+        ? (sprintCreateSchema as unknown as { shape: Record<string, unknown> })
+        : (
+            sprintCreateSchema as unknown as {
+              _def: { schema: { shape: Record<string, unknown> } }
+            }
+          )._def.schema
+    const schemaKeys = Object.keys(
+      (inner as { shape: Record<string, unknown> }).shape
+    )
+
+    const kitchenSink = {
+      name: "Drift-Test Sprint",
+      goal: "Drift-Test goal description.",
+      start_date: "2026-01-01",
+      end_date: "2026-01-14",
+    }
+
+    for (const key of schemaKeys) {
+      expect(kitchenSink, `kitchen sink missing key '${key}'`).toHaveProperty(
+        key
+      )
+    }
+
+    sprintInsertChain.single.mockResolvedValue({
+      data: { id: "drift-1", ...kitchenSink },
+      error: null,
+    })
+
+    const { request, context } = makePost(kitchenSink)
+    const res = await POST(request, context)
+    expect(res.status).toBe(201)
+
+    const arg = sprintInsertChain.insert.mock.calls[0]?.[0] as Record<
+      string,
+      unknown
+    >
+    expect(arg, "insert was not called").toBeTruthy()
+
+    for (const key of schemaKeys) {
+      const expected = (kitchenSink as Record<string, unknown>)[key]
+      const actual = arg[key]
+      // start_date / end_date are YYYY-MM-DD (not trimmed); only name + goal trim.
+      if (typeof expected === "string" && (key === "name" || key === "goal")) {
+        expect(actual, `field '${key}' was dropped before reaching DB`).toBe(
+          expected.trim() || null
+        )
+      } else {
+        expect(actual, `field '${key}' was dropped before reaching DB`).toBe(
+          expected
+        )
+      }
+    }
+
+    expect(arg.tenant_id).toBe(TENANT_ID)
+    expect(arg.project_id).toBe(PROJECT_ID)
+    expect(arg.created_by).toBe(USER_ID)
+  })
+})

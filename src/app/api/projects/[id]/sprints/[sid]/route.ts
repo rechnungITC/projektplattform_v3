@@ -3,22 +3,10 @@ import { z } from "zod"
 
 import { apiError, getAuthenticatedUserId } from "@/app/api/_lib/route-helpers"
 
-const isoDate = z.string().regex(/^\d{4}-\d{2}-\d{2}$/, "Use YYYY-MM-DD")
-
-const updateSchema = z
-  .object({
-    name: z.string().trim().min(1).max(255).optional(),
-    goal: z.string().max(5000).nullable().optional(),
-    start_date: isoDate.nullable().optional(),
-    end_date: isoDate.nullable().optional(),
-  })
-  .refine((v) => Object.keys(v).length > 0, {
-    message: "At least one field required.",
-  })
-  .refine(
-    (v) => !v.start_date || !v.end_date || v.end_date >= v.start_date,
-    { message: "end_date must be >= start_date", path: ["end_date"] }
-  )
+import {
+  normalizeSprintPayload,
+  sprintPatchSchema as updateSchema,
+} from "../_schema"
 
 function validateIds(projectId: string, sprintId: string) {
   if (!z.string().uuid().safeParse(projectId).success) {
@@ -80,9 +68,12 @@ export async function PATCH(
   const { userId, supabase } = await getAuthenticatedUserId()
   if (!userId) return apiError("unauthorized", "Not signed in.", 401)
 
+  // Spread-Pattern: schema is the single source of truth.
+  const update = normalizeSprintPayload(parsed.data)
+
   const { data, error } = await supabase
     .from("sprints")
-    .update(parsed.data)
+    .update(update)
     .eq("id", sprintId)
     .eq("project_id", projectId)
     .select()

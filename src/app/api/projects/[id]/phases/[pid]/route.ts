@@ -3,17 +3,10 @@ import { z } from "zod"
 
 import { apiError, getAuthenticatedUserId } from "@/app/api/_lib/route-helpers"
 
-const isoDate = z.string().regex(/^\d{4}-\d{2}-\d{2}$/)
-const updateSchema = z.object({
-  name: z.string().trim().min(1).max(255).optional(),
-  description: z.string().max(5000).nullable().optional(),
-  planned_start: isoDate.nullable().optional(),
-  planned_end: isoDate.nullable().optional(),
-  actual_start: isoDate.nullable().optional(),
-  actual_end: isoDate.nullable().optional(),
-  // PROJ-35-β: Critical-Path-Marker (PM-driven, opt-in).
-  is_critical: z.boolean().optional(),
-}).refine((v) => Object.keys(v).length > 0, { message: "At least one field required." })
+import {
+  normalizePhasePayload,
+  phasePatchSchema as updateSchema,
+} from "../_schema"
 
 function validateIds(projectId: string, phaseId: string) {
   if (!z.string().uuid().safeParse(projectId).success) {
@@ -67,8 +60,11 @@ export async function PATCH(
   const { userId, supabase } = await getAuthenticatedUserId()
   if (!userId) return apiError("unauthorized", "Not signed in.", 401)
 
+  // Spread-Pattern: schema is the single source of truth.
+  const update = normalizePhasePayload(parsed.data)
+
   const { data, error } = await supabase
-    .from("phases").update(parsed.data).eq("id", phaseId).eq("project_id", projectId)
+    .from("phases").update(update).eq("id", phaseId).eq("project_id", projectId)
     .select().single()
   if (error) {
     if (error.code === "PGRST116") return apiError("not_found", "Phase not found.", 404)
