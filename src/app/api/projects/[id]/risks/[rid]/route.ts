@@ -2,34 +2,22 @@ import { NextResponse } from "next/server"
 import { z } from "zod"
 
 import { requireModuleActive } from "@/lib/tenant-settings/server"
-import { RISK_STATUSES } from "@/types/risk"
 
 import {
   apiError,
   getAuthenticatedUserId,
   requireProjectAccess,
 } from "../../../../_lib/route-helpers"
+import {
+  normalizeRiskPayload,
+  riskPatchSchema as patchSchema,
+} from "../_schema"
 
 // PROJ-20 — single-risk endpoints.
 // GET    /api/projects/[id]/risks/[rid]
 // PATCH  /api/projects/[id]/risks/[rid]
 // DELETE /api/projects/[id]/risks/[rid]
-
-const patchSchema = z
-  .object({
-    title: z.string().trim().min(1).max(255).optional(),
-    description: z.string().max(5000).optional().nullable(),
-    probability: z.number().int().min(1).max(5).optional(),
-    impact: z.number().int().min(1).max(5).optional(),
-    status: z
-      .enum(RISK_STATUSES as unknown as [string, ...string[]])
-      .optional(),
-    mitigation: z.string().max(5000).optional().nullable(),
-    responsible_user_id: z.string().uuid().optional().nullable(),
-  })
-  .refine((val) => Object.keys(val).length > 0, {
-    message: "At least one field must be provided.",
-  })
+// Schema lives in `../_schema.ts` so the drift-test can introspect it.
 
 const SELECT_COLUMNS =
   "id, tenant_id, project_id, title, description, probability, impact, score, status, mitigation, responsible_user_id, created_by, created_at, updated_at"
@@ -115,18 +103,9 @@ export async function PATCH(request: Request, ctx: Ctx) {
   )
   if (moduleDenial) return moduleDenial
 
-  const data = parsed.data
-  const update: Record<string, unknown> = {}
-  if (data.title !== undefined) update.title = data.title.trim()
-  if (data.description !== undefined)
-    update.description = data.description?.trim() || null
-  if (data.probability !== undefined) update.probability = data.probability
-  if (data.impact !== undefined) update.impact = data.impact
-  if (data.status !== undefined) update.status = data.status
-  if (data.mitigation !== undefined)
-    update.mitigation = data.mitigation?.trim() || null
-  if (data.responsible_user_id !== undefined)
-    update.responsible_user_id = data.responsible_user_id ?? null
+  // Spread-Pattern. parsed.data only contains client-sent fields (PATCH-
+  // semantics). New schema fields flow through automatically.
+  const update = normalizeRiskPayload(parsed.data)
 
   const { data: row, error } = await supabase
     .from("risks")

@@ -224,6 +224,93 @@ describe("PATCH work_items: cost-driver hook", () => {
     expect(synthesizeMock).toHaveBeenCalledTimes(1)
   })
 
+  // ---------------------------------------------------------------------------
+  // PROJ-36 Phase 36-α — WBS-Code PATCH paths
+  // ---------------------------------------------------------------------------
+
+  it("rejects invalid WBS-Code (regex violation)", async () => {
+    const res = await PATCH(
+      makePatch({ wbs_code: "AP 001 with space" }),
+      makeCtx()
+    )
+    expect(res.status).toBe(400)
+    const body = (await res.json()) as {
+      error: { code: string; field?: string }
+    }
+    expect(body.error.code).toBe("validation_error")
+    expect(body.error.field).toBe("wbs_code")
+    // No DB call should happen on validation failure.
+    expect(workItemUpdateChain.update).not.toHaveBeenCalled()
+  })
+
+  it("PATCH wbs_code forces wbs_code_is_custom=true", async () => {
+    workItemUpdateChain.single.mockResolvedValue({
+      data: {
+        id: WORK_ITEM_ID,
+        kind: "work_package",
+        attributes: {},
+        tenant_id: TENANT_ID,
+        wbs_code: "AP-001",
+        wbs_code_is_custom: true,
+      },
+      error: null,
+    })
+    const res = await PATCH(makePatch({ wbs_code: "AP-001" }), makeCtx())
+    expect(res.status).toBe(200)
+    // Verify the route forced is_custom=true on the UPDATE payload.
+    expect(workItemUpdateChain.update).toHaveBeenCalledTimes(1)
+    const payload = workItemUpdateChain.update.mock.calls[0][0] as Record<
+      string,
+      unknown
+    >
+    expect(payload.wbs_code).toBe("AP-001")
+    expect(payload.wbs_code_is_custom).toBe(true)
+  })
+
+  it("PATCH wbs_code_is_custom=false alone nulls wbs_code (reset-to-auto)", async () => {
+    workItemUpdateChain.single.mockResolvedValue({
+      data: {
+        id: WORK_ITEM_ID,
+        kind: "work_package",
+        attributes: {},
+        tenant_id: TENANT_ID,
+        wbs_code: "1.2.3",
+        wbs_code_is_custom: false,
+      },
+      error: null,
+    })
+    const res = await PATCH(
+      makePatch({ wbs_code_is_custom: false }),
+      makeCtx()
+    )
+    expect(res.status).toBe(200)
+    expect(workItemUpdateChain.update).toHaveBeenCalledTimes(1)
+    const payload = workItemUpdateChain.update.mock.calls[0][0] as Record<
+      string,
+      unknown
+    >
+    expect(payload.wbs_code_is_custom).toBe(false)
+    expect(payload.wbs_code).toBeNull()
+  })
+
+  it("23505 unique-constraint surfaces as wbs_code_conflict (422)", async () => {
+    workItemUpdateChain.single.mockResolvedValue({
+      data: null,
+      error: {
+        code: "23505",
+        message:
+          'duplicate key value violates unique constraint "work_items_wbs_code_unique_per_sibling"',
+      },
+    })
+    const res = await PATCH(makePatch({ wbs_code: "AP-001" }), makeCtx())
+    expect(res.status).toBe(422)
+    const body = (await res.json()) as {
+      error: { code: string; field?: string }
+    }
+    expect(body.error.code).toBe("wbs_code_conflict")
+    expect(body.error.field).toBe("wbs_code")
+  })
+
   it("response stays 200 when synthesizer rejects (fail-open)", async () => {
     workItemPreChain.maybeSingle.mockResolvedValue({
       data: {
@@ -252,5 +339,117 @@ describe("PATCH work_items: cost-driver hook", () => {
     )
     expect(res.status).toBe(200)
     errorSpy.mockRestore()
+  })
+})
+
+// ---------------------------------------------------------------------------
+// Schema-vs-DB-Payload Drift Detection (PATCH)
+// ---------------------------------------------------------------------------
+// work_items PATCH was already spread-safe (`{ ...parsed.data }`) before
+// the schema extraction. This test makes that property regression-proof:
+// any future refactor that re-introduces explicit field-by-field mapping
+// AND drops a key fails CI loudly.
+describe("PATCH /api/projects/[id]/work-items/[wid] — schema/DB-payload drift", () => {
+  it("forwards every Zod-schema field to the DB update payload", async () => {
+    const { workItemPatchSchema } = await import("../_schema")
+    getUserMock.mockResolvedValue({ data: { user: { id: USER_ID } } })
+
+    // patchSchema is wrapped in .refine() — unwrap via _def.schema.shape.
+    const inner =
+      "shape" in workItemPatchSchema
+        ? (workItemPatchSchema as unknown as {
+            shape: Record<string, unknown>
+          })
+        : (
+            workItemPatchSchema as unknown as {
+              _def: { schema: { shape: Record<string, unknown> } }
+            }
+          )._def.schema
+    const schemaKeys = Object.keys(
+      (inner as { shape: Record<string, unknown> }).shape
+    )
+
+    const PHASE_ID = "66666666-6666-4666-8666-666666666666"
+    const SPRINT_ID = "77777777-7777-4777-8777-777777777777"
+    const MILESTONE_ID = "88888888-8888-4888-8888-888888888888"
+
+    const kitchenSink: Record<string, unknown> = {
+      kind: "story",
+      title: "Drift-Test Item",
+      description: "Drift-Test description.",
+      priority: "high",
+      responsible_user_id: USER_ID,
+      sprint_id: SPRINT_ID,
+      phase_id: PHASE_ID,
+      milestone_id: MILESTONE_ID,
+      attributes: { story_points: 5, planned_start: "2026-05-01" },
+      position: 100,
+      is_deleted: false,
+      wbs_code: "1.2.3",
+      wbs_code_is_custom: true,
+    }
+
+    for (const key of schemaKeys) {
+      expect(kitchenSink, `kitchen sink missing key '${key}'`).toHaveProperty(
+        key
+      )
+    }
+
+    workItemUpdateChain.single.mockResolvedValue({
+      data: {
+        id: WORK_ITEM_ID,
+        ...kitchenSink,
+        tenant_id: TENANT_ID,
+      },
+      error: null,
+    })
+    workItemPreChain.maybeSingle.mockResolvedValue({
+      data: {
+        id: WORK_ITEM_ID,
+        kind: "story",
+        attributes: { story_points: 3 },
+        tenant_id: TENANT_ID,
+        parent_id: null,
+        project_id: PROJECT_ID,
+      },
+      error: null,
+    })
+
+    const res = await PATCH(makePatch(kitchenSink), makeCtx())
+    expect(res.status).toBe(200)
+
+    const arg = workItemUpdateChain.update.mock.calls[0]?.[0] as Record<
+      string,
+      unknown
+    >
+    expect(arg, "update was not called").toBeTruthy()
+
+    for (const key of schemaKeys) {
+      const expected = kitchenSink[key]
+      const actual = arg[key]
+      // wbs_code triggers wbs_code_is_custom=true side-effect — actual
+      // value can differ from kitchenSink for that one field.
+      if (key === "wbs_code_is_custom") {
+        expect(typeof actual).toBe("boolean")
+        continue
+      }
+      if (typeof expected === "string") {
+        expect(actual, `field '${key}' was dropped before reaching DB`).toBe(
+          expected.trim() || null
+        )
+      } else if (
+        expected &&
+        typeof expected === "object" &&
+        !Array.isArray(expected)
+      ) {
+        expect(actual, `field '${key}' was dropped before reaching DB`).toEqual(
+          expected
+        )
+      } else {
+        expect(actual, `field '${key}' was dropped before reaching DB`).toBe(
+          expected
+        )
+      }
+    }
   })
 })

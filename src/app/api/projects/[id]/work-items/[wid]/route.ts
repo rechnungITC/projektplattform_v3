@@ -6,35 +6,16 @@ import { createAdminClient } from "@/lib/supabase/admin"
 import { apiError, getAuthenticatedUserId } from "@/app/api/_lib/route-helpers"
 import {
   ALLOWED_PARENT_KINDS,
-  WORK_ITEM_KINDS,
   WORK_ITEM_METHOD_VISIBILITY,
   type WorkItemKind,
 } from "@/types/work-item"
 import type { ProjectMethod } from "@/types/project-method"
 
-const WORK_ITEM_PRIORITIES = ["low", "medium", "high", "critical"] as const
+import { workItemPatchSchema as updateSchema } from "../_schema"
 
 // PATCH master data: NOT status (use /status), NOT parent_id (use /parent).
 // `kind` is allowed here (admin re-classification — see ChangeKindDialog).
-const updateSchema = z
-  .object({
-    kind: z
-      .enum(WORK_ITEM_KINDS as unknown as [string, ...string[]])
-      .optional(),
-    title: z.string().trim().min(1).max(255).optional(),
-    description: z.string().max(10000).nullable().optional(),
-    priority: z.enum(WORK_ITEM_PRIORITIES).optional(),
-    responsible_user_id: z.string().uuid().nullable().optional(),
-    sprint_id: z.string().uuid().nullable().optional(),
-    phase_id: z.string().uuid().nullable().optional(),
-    milestone_id: z.string().uuid().nullable().optional(),
-    attributes: z.record(z.string(), z.unknown()).optional(),
-    position: z.number().optional(),
-    is_deleted: z.boolean().optional(),
-  })
-  .refine((v) => Object.keys(v).length > 0, {
-    message: "At least one field required.",
-  })
+// Schema lives in `../_schema.ts` so the drift-test can introspect it.
 
 function validateIds(projectId: string, workItemId: string) {
   if (!z.string().uuid().safeParse(projectId).success) {
@@ -193,9 +174,28 @@ export async function PATCH(
     }
   }
 
+  // PROJ-36 Phase 36-α — WBS-Code semantics:
+  //   1. body has wbs_code (string)        → user override; force is_custom=true.
+  //   2. body has wbs_code_is_custom=false  → reset-to-auto; null out wbs_code so
+  //      the autogen trigger regenerates from outline_path on the next UPDATE.
+  //   3. otherwise: passthrough.
+  const updatePayload: Record<string, unknown> = { ...parsed.data }
+  const hasWbsCode = "wbs_code" in parsed.data
+  const hasWbsCustomFlag = "wbs_code_is_custom" in parsed.data
+  if (hasWbsCode && parsed.data.wbs_code != null) {
+    updatePayload.wbs_code_is_custom = true
+  } else if (
+    hasWbsCustomFlag &&
+    parsed.data.wbs_code_is_custom === false &&
+    !hasWbsCode
+  ) {
+    // Reset-to-auto: null wbs_code so the trigger picks it up.
+    updatePayload.wbs_code = null
+  }
+
   const { data, error } = await supabase
     .from("work_items")
-    .update(parsed.data)
+    .update(updatePayload)
     .eq("id", workItemId)
     .eq("project_id", projectId)
     .select()
@@ -205,6 +205,16 @@ export async function PATCH(
     if (error.code === "PGRST116") return apiError("not_found", "Work item not found.", 404)
     if (error.code === "23514") return apiError("constraint_violation", error.message, 422)
     if (error.code === "23503") return apiError("invalid_reference", error.message, 422)
+    if (error.code === "23505") {
+      // PROJ-36 Phase 36-α — partial UNIQUE index on
+      // (project_id, parent_id, wbs_code) collides with a sibling.
+      return apiError(
+        "wbs_code_conflict",
+        "Dieser WBS-Code wird bereits von einem Geschwister-Element verwendet.",
+        422,
+        "wbs_code"
+      )
+    }
     if (error.code === "42501") return apiError("forbidden", "Not allowed.", 403)
     return apiError("update_failed", error.message, 500)
   }

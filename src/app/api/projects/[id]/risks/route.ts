@@ -9,22 +9,15 @@ import {
   getAuthenticatedUserId,
   requireProjectAccess,
 } from "../../../_lib/route-helpers"
+import {
+  normalizeRiskPayload,
+  riskCreateSchema as createSchema,
+} from "./_schema"
 
 // PROJ-20 — collection endpoint for project risks.
 // GET  /api/projects/[id]/risks?status=open|...
 // POST /api/projects/[id]/risks
-
-const createSchema = z.object({
-  title: z.string().trim().min(1).max(255),
-  description: z.string().max(5000).optional().nullable(),
-  probability: z.number().int().min(1).max(5),
-  impact: z.number().int().min(1).max(5),
-  status: z
-    .enum(RISK_STATUSES as unknown as [string, ...string[]])
-    .default("open"),
-  mitigation: z.string().max(5000).optional().nullable(),
-  responsible_user_id: z.string().uuid().optional().nullable(),
-})
+// Schema lives in `_schema.ts` so the drift-test can introspect it.
 
 const SELECT_COLUMNS =
   "id, tenant_id, project_id, title, description, probability, impact, score, status, mitigation, responsible_user_id, created_by, created_at, updated_at"
@@ -112,17 +105,12 @@ export async function POST(request: Request, ctx: Ctx) {
   )
   if (moduleDenial) return moduleDenial
 
-  const data = parsed.data
+  // Spread-Pattern. New schema fields flow through automatically. Drift-test
+  // in route.test.ts asserts every schema key reaches the payload.
   const insertPayload = {
+    ...normalizeRiskPayload(parsed.data),
     tenant_id: access.project.tenant_id,
     project_id: projectId,
-    title: data.title.trim(),
-    description: data.description?.trim() || null,
-    probability: data.probability,
-    impact: data.impact,
-    status: data.status,
-    mitigation: data.mitigation?.trim() || null,
-    responsible_user_id: data.responsible_user_id ?? null,
     created_by: userId,
   }
 

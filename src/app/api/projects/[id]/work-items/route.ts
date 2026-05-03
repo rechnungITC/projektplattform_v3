@@ -10,10 +10,8 @@ import {
 } from "@/types/work-item"
 import type { ProjectMethod } from "@/types/project-method"
 
-// -----------------------------------------------------------------------------
-// Schemas — mirror the TS metamodel in src/types/work-item.ts (defense in
-// depth: DB CHECK constraints + triggers are the actual guarantee).
-// -----------------------------------------------------------------------------
+// Schemas live in `_schema.ts` so the drift-tests can introspect them.
+import { workItemCreateSchema as createSchema } from "./_schema"
 
 const WORK_ITEM_STATUSES = [
   "todo",
@@ -22,23 +20,6 @@ const WORK_ITEM_STATUSES = [
   "done",
   "cancelled",
 ] as const
-const WORK_ITEM_PRIORITIES = ["low", "medium", "high", "critical"] as const
-
-const createSchema = z.object({
-  kind: z.enum(WORK_ITEM_KINDS as unknown as [string, ...string[]]),
-  parent_id: z.string().uuid().nullable().optional(),
-  phase_id: z.string().uuid().nullable().optional(),
-  milestone_id: z.string().uuid().nullable().optional(),
-  sprint_id: z.string().uuid().nullable().optional(),
-  title: z.string().trim().min(1).max(255),
-  description: z.string().max(10000).nullable().optional(),
-  status: z.enum(WORK_ITEM_STATUSES).optional(),
-  priority: z.enum(WORK_ITEM_PRIORITIES).optional(),
-  responsible_user_id: z.string().uuid().nullable().optional(),
-  attributes: z.record(z.string(), z.unknown()).optional(),
-  position: z.number().optional(),
-  created_from_proposal_id: z.string().uuid().nullable().optional(),
-})
 
 // -----------------------------------------------------------------------------
 // POST /api/projects/[id]/work-items  --  create
@@ -133,22 +114,15 @@ export async function POST(
     }
   }
 
+  // Spread-Pattern. Every schema field flows through automatically. DB
+  // defaults (status='todo', priority='medium', attributes='{}') fire on
+  // omitted keys. Drift-test in route.test.ts asserts every schema key
+  // reaches the payload.
   const insertPayload = {
+    ...parsed.data,
+    // Server-only fields (NOT in Zod schema):
     tenant_id: project.tenant_id,
     project_id: projectId,
-    kind,
-    parent_id: parsed.data.parent_id ?? null,
-    phase_id: parsed.data.phase_id ?? null,
-    milestone_id: parsed.data.milestone_id ?? null,
-    sprint_id: parsed.data.sprint_id ?? null,
-    title: parsed.data.title,
-    description: parsed.data.description ?? null,
-    status: parsed.data.status ?? "todo",
-    priority: parsed.data.priority ?? "medium",
-    responsible_user_id: parsed.data.responsible_user_id ?? null,
-    attributes: parsed.data.attributes ?? {},
-    position: parsed.data.position ?? null,
-    created_from_proposal_id: parsed.data.created_from_proposal_id ?? null,
     created_by: userId,
   }
 

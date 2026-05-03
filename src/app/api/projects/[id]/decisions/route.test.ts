@@ -198,6 +198,76 @@ describe("POST /api/projects/[id]/decisions", () => {
   })
 })
 
+// ---------------------------------------------------------------------------
+// Schema-vs-DB-Payload Drift Detection (POST)
+// ---------------------------------------------------------------------------
+// See stakeholders route.test.ts for the rationale. This test catches the
+// "schema accepts field but route silently drops it" bug class.
+describe("POST /api/projects/[id]/decisions — schema/DB-payload drift", () => {
+  it("forwards every Zod-schema field to the DB insert payload", async () => {
+    const { decisionCreateSchema } = await import("./_schema")
+    getUserMock.mockResolvedValue({ data: { user: { id: USER_ID } } })
+
+    const STAKEHOLDER_ID = "66666666-6666-4666-8666-666666666666"
+    const PHASE_ID = "77777777-7777-4777-8777-777777777777"
+    const RISK_ID = "88888888-8888-4888-8888-888888888888"
+
+    const kitchenSink = {
+      title: "Drift-Test Decision",
+      decision_text: "We chose option X for reasons.",
+      rationale: "Lower risk + better integration.",
+      decided_at: "2026-05-04T10:00:00Z",
+      decider_stakeholder_id: STAKEHOLDER_ID,
+      context_phase_id: PHASE_ID,
+      context_risk_id: RISK_ID,
+      // supersedes_decision_id intentionally omitted — we don't want to
+      // exercise the supersedes-validation path here.
+      supersedes_decision_id: null,
+    }
+
+    // Sanity: every schema key is in the kitchen sink.
+    const schemaKeys = Object.keys(decisionCreateSchema.shape)
+    for (const key of schemaKeys) {
+      expect(kitchenSink, `kitchen sink missing key '${key}'`).toHaveProperty(
+        key
+      )
+    }
+
+    decisionsChain.single.mockResolvedValue({
+      data: { id: "drift-1", ...kitchenSink, tenant_id: TENANT_ID },
+      error: null,
+    })
+    const res = await POST(makePost(kitchenSink), {
+      params: Promise.resolve({ id: PROJECT_ID }),
+    })
+    expect(res.status).toBe(201)
+
+    const arg = decisionsChain.insert.mock.calls[0]?.[0] as Record<
+      string,
+      unknown
+    >
+    expect(arg, "insert was not called").toBeTruthy()
+
+    for (const key of schemaKeys) {
+      const expected = (kitchenSink as Record<string, unknown>)[key]
+      const actual = arg[key]
+      if (typeof expected === "string") {
+        expect(actual, `field '${key}' was dropped before reaching DB`).toBe(
+          expected.trim() || null
+        )
+      } else {
+        expect(actual, `field '${key}' was dropped before reaching DB`).toBe(
+          expected
+        )
+      }
+    }
+
+    expect(arg.tenant_id).toBe(TENANT_ID)
+    expect(arg.project_id).toBe(PROJECT_ID)
+    expect(arg.created_by).toBe(USER_ID)
+  })
+})
+
 describe("GET /api/projects/[id]/decisions", () => {
   it("filters out revised by default", async () => {
     getUserMock.mockResolvedValue({ data: { user: { id: USER_ID } } })

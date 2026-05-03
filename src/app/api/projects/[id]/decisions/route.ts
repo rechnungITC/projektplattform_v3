@@ -8,6 +8,10 @@ import {
   getAuthenticatedUserId,
   requireProjectAccess,
 } from "../../../_lib/route-helpers"
+import {
+  decisionCreateSchema as createSchema,
+  normalizeDecisionPayload,
+} from "./_schema"
 
 // PROJ-20 — collection endpoint for decisions.
 // GET  /api/projects/[id]/decisions?include_revised=false
@@ -16,21 +20,8 @@ import {
 // Decisions are append-only: there is no PATCH route. Revising a decision
 // means POSTing a fresh body with `supersedes_decision_id` pointing at the
 // predecessor. A DB trigger flips the predecessor's `is_revised` flag.
-
-const createSchema = z.object({
-  title: z.string().trim().min(1).max(255),
-  decision_text: z.string().trim().min(1).max(10000),
-  rationale: z.string().max(10000).optional().nullable(),
-  decided_at: z
-    .string()
-    .min(1)
-    .refine((s) => !Number.isNaN(Date.parse(s)), "Invalid ISO timestamp")
-    .optional(),
-  decider_stakeholder_id: z.string().uuid().optional().nullable(),
-  context_phase_id: z.string().uuid().optional().nullable(),
-  context_risk_id: z.string().uuid().optional().nullable(),
-  supersedes_decision_id: z.string().uuid().optional().nullable(),
-})
+//
+// Schema lives in `_schema.ts` so the drift-test can introspect it.
 
 const SELECT_COLUMNS =
   "id, tenant_id, project_id, title, decision_text, rationale, decided_at, decider_stakeholder_id, context_phase_id, context_risk_id, supersedes_decision_id, is_revised, created_by, created_at"
@@ -145,17 +136,15 @@ export async function POST(request: Request, ctx: Ctx) {
     }
   }
 
+  // Spread-Pattern: schema is the single source of truth. New schema fields
+  // flow through automatically. Drift-test in route.test.ts asserts every
+  // schema key reaches this payload.
   const insertPayload = {
+    ...normalizeDecisionPayload(data),
+    decided_at: data.decided_at ?? new Date().toISOString(),
+    // Server-only fields (NOT in Zod schema):
     tenant_id: access.project.tenant_id,
     project_id: projectId,
-    title: data.title.trim(),
-    decision_text: data.decision_text.trim(),
-    rationale: data.rationale?.trim() || null,
-    decided_at: data.decided_at ?? new Date().toISOString(),
-    decider_stakeholder_id: data.decider_stakeholder_id ?? null,
-    context_phase_id: data.context_phase_id ?? null,
-    context_risk_id: data.context_risk_id ?? null,
-    supersedes_decision_id: data.supersedes_decision_id ?? null,
     created_by: userId,
   }
 

@@ -178,3 +178,78 @@ describe("DELETE /api/projects/[id]/risks/[rid]", () => {
     expect(res.status).toBe(403)
   })
 })
+
+// ---------------------------------------------------------------------------
+// Schema-vs-DB-Payload Drift Detection (PATCH)
+// ---------------------------------------------------------------------------
+describe("PATCH /api/projects/[id]/risks/[rid] — schema/DB-payload drift", () => {
+  it("forwards every Zod-schema field to the DB update payload", async () => {
+    const { riskPatchSchema } = await import("../_schema")
+    getUserMock.mockResolvedValue({ data: { user: { id: USER_ID } } })
+
+    // patchSchema is wrapped in .refine() — unwrap via _def.schema.shape.
+    const inner =
+      "shape" in riskPatchSchema
+        ? (riskPatchSchema as unknown as { shape: Record<string, unknown> })
+        : (
+            riskPatchSchema as unknown as {
+              _def: { schema: { shape: Record<string, unknown> } }
+            }
+          )._def.schema
+    const schemaKeys = Object.keys(
+      (inner as { shape: Record<string, unknown> }).shape
+    )
+
+    const kitchenSink: Record<string, unknown> = {
+      title: "Drift-Test Risk",
+      description: "Updated risk description.",
+      probability: 5,
+      impact: 4,
+      status: "mitigated",
+      mitigation: "Updated mitigation plan.",
+      responsible_user_id: USER_ID,
+    }
+
+    for (const key of schemaKeys) {
+      expect(kitchenSink, `kitchen sink missing key '${key}'`).toHaveProperty(
+        key
+      )
+    }
+
+    riskChain.maybeSingle.mockResolvedValue({
+      data: { id: RISK_ID, project_id: PROJECT_ID },
+      error: null,
+    })
+    riskChain.single.mockResolvedValue({
+      data: { id: RISK_ID, ...kitchenSink, tenant_id: TENANT_ID },
+      error: null,
+    })
+
+    const res = await PATCH(
+      new Request("http://localhost/x", {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(kitchenSink),
+      }),
+      { params: Promise.resolve({ id: PROJECT_ID, rid: RISK_ID }) }
+    )
+    expect(res.status).toBe(200)
+
+    const arg = riskChain.update.mock.calls[0]?.[0] as Record<string, unknown>
+    expect(arg, "update was not called").toBeTruthy()
+
+    for (const key of schemaKeys) {
+      const expected = kitchenSink[key]
+      const actual = arg[key]
+      if (typeof expected === "string") {
+        expect(actual, `field '${key}' was dropped before reaching DB`).toBe(
+          expected.trim() || null
+        )
+      } else {
+        expect(actual, `field '${key}' was dropped before reaching DB`).toBe(
+          expected
+        )
+      }
+    }
+  })
+})
