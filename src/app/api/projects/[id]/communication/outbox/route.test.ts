@@ -254,3 +254,79 @@ describe("GET /api/projects/[id]/communication/outbox", () => {
     expect(listChain.eq).toHaveBeenCalledWith("status", "sent")
   })
 })
+
+// ---------------------------------------------------------------------------
+// Schema-vs-DB-Payload Drift Detection (POST)
+// ---------------------------------------------------------------------------
+describe("POST /api/projects/[id]/communication/outbox — schema/DB-payload drift", () => {
+  it("forwards every Zod-schema field to the DB insert payload", async () => {
+    const { outboxCreateSchema } = await import("./_schema")
+    getUserMock.mockResolvedValue({ data: { user: { id: USER_ID } } })
+
+    const kitchenSink = {
+      channel: "email",
+      recipient: "lead@example.com",
+      subject: "Drift-Test Subject",
+      body: "Drift-Test body content.",
+      metadata: { trace_id: "abc-123" },
+    }
+
+    const schemaKeys = Object.keys(outboxCreateSchema.shape)
+    for (const key of schemaKeys) {
+      expect(kitchenSink, `kitchen sink missing key '${key}'`).toHaveProperty(
+        key
+      )
+    }
+
+    insertChain.single.mockResolvedValue({
+      data: {
+        id: "drift-1",
+        tenant_id: TENANT_ID,
+        project_id: PROJECT_ID,
+        ...kitchenSink,
+        status: "draft",
+      },
+      error: null,
+    })
+
+    const res = await POST(makePost(kitchenSink), {
+      params: Promise.resolve({ id: PROJECT_ID }),
+    })
+    expect(res.status).toBe(201)
+
+    const arg = insertChain.insert.mock.calls[0]?.[0] as Record<string, unknown>
+    expect(arg, "insert was not called").toBeTruthy()
+
+    for (const key of schemaKeys) {
+      const expected = (kitchenSink as Record<string, unknown>)[key]
+      const actual = arg[key]
+      // recipient + subject are trimmed; channel is enum; body is NOT trimmed;
+      // metadata is JSONB.
+      if (
+        typeof expected === "string" &&
+        (key === "recipient" || key === "subject")
+      ) {
+        expect(actual, `field '${key}' was dropped before reaching DB`).toBe(
+          expected.trim() || null
+        )
+      } else if (
+        expected &&
+        typeof expected === "object" &&
+        !Array.isArray(expected)
+      ) {
+        expect(actual, `field '${key}' was dropped before reaching DB`).toEqual(
+          expected
+        )
+      } else {
+        expect(actual, `field '${key}' was dropped before reaching DB`).toBe(
+          expected
+        )
+      }
+    }
+
+    expect(arg.tenant_id).toBe(TENANT_ID)
+    expect(arg.project_id).toBe(PROJECT_ID)
+    expect(arg.created_by).toBe(USER_ID)
+    expect(arg.status).toBe("draft")
+  })
+})

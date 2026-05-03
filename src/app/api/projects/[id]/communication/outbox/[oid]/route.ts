@@ -2,30 +2,21 @@ import { NextResponse } from "next/server"
 import { z } from "zod"
 
 import { requireModuleActive } from "@/lib/tenant-settings/server"
-import { CHANNELS } from "@/types/communication"
 
 import {
   apiError,
   getAuthenticatedUserId,
   requireProjectAccess,
 } from "../../../../../_lib/route-helpers"
+import {
+  normalizeOutboxPayload,
+  outboxPatchSchema as patchSchema,
+} from "../_schema"
 
 // PROJ-13 — single-outbox endpoints.
 // GET    /api/projects/[id]/communication/outbox/[oid]
 // PATCH  /api/projects/[id]/communication/outbox/[oid]   (drafts only)
 // DELETE /api/projects/[id]/communication/outbox/[oid]   (drafts only)
-
-const patchSchema = z
-  .object({
-    channel: z.enum(CHANNELS as unknown as [string, ...string[]]).optional(),
-    recipient: z.string().trim().min(1).max(320).optional(),
-    subject: z.string().trim().max(255).optional().nullable(),
-    body: z.string().min(1).max(50000).optional(),
-    metadata: z.record(z.string(), z.unknown()).optional(),
-  })
-  .refine((val) => Object.keys(val).length > 0, {
-    message: "At least one field must be provided.",
-  })
 
 const SELECT_COLUMNS =
   "id, tenant_id, project_id, channel, recipient, subject, body, metadata, status, error_detail, sent_at, created_by, created_at, updated_at"
@@ -132,14 +123,8 @@ export async function PATCH(request: Request, ctx: Ctx) {
     )
   }
 
-  const data = parsed.data
-  const update: Record<string, unknown> = {}
-  if (data.channel !== undefined) update.channel = data.channel
-  if (data.recipient !== undefined) update.recipient = data.recipient.trim()
-  if (data.subject !== undefined)
-    update.subject = data.subject?.trim() || null
-  if (data.body !== undefined) update.body = data.body
-  if (data.metadata !== undefined) update.metadata = data.metadata
+  // Spread-Pattern: schema is the single source of truth.
+  const update = normalizeOutboxPayload(parsed.data)
 
   const { data: row, error } = await supabase
     .from("communication_outbox")

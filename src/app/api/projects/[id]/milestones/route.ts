@@ -8,15 +8,10 @@ import {
 } from "@/lib/work-items/schedule-method-visibility"
 import type { ProjectMethod } from "@/types/project-method"
 
-const isoDate = z.string().regex(/^\d{4}-\d{2}-\d{2}$/, "Use YYYY-MM-DD")
-
-const createSchema = z.object({
-  phase_id: z.string().uuid().optional().nullable(),
-  name: z.string().trim().min(1).max(255),
-  description: z.string().max(5000).optional().nullable(),
-  target_date: isoDate,
-  status: z.enum(["planned", "achieved", "missed", "cancelled"]).default("planned"),
-})
+import {
+  milestoneCreateSchema as createSchema,
+  normalizeMilestonePayload,
+} from "./_schema"
 
 export async function POST(
   request: Request,
@@ -54,17 +49,17 @@ export async function POST(
     )
   }
 
+  // Spread-Pattern: schema is the single source of truth. Drift-test in
+  // route.test.ts asserts every schema key reaches this payload.
+  const insertPayload = {
+    ...normalizeMilestonePayload(parsed.data),
+    tenant_id: project.tenant_id,
+    project_id: projectId,
+    created_by: userId,
+  }
+
   const { data, error } = await supabase
-    .from("milestones").insert({
-      tenant_id: project.tenant_id,
-      project_id: projectId,
-      phase_id: parsed.data.phase_id ?? null,
-      name: parsed.data.name,
-      description: parsed.data.description ?? null,
-      target_date: parsed.data.target_date,
-      status: parsed.data.status,
-      created_by: userId,
-    }).select().single()
+    .from("milestones").insert(insertPayload).select().single()
 
   if (error) {
     if (error.code === "23514") return apiError("constraint_violation", error.message, 422)

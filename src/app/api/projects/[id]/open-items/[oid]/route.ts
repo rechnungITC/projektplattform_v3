@@ -8,6 +8,10 @@ import {
   getAuthenticatedUserId,
   requireProjectAccess,
 } from "../../../../_lib/route-helpers"
+import {
+  normalizeOpenItemPayload,
+  openItemPatchSchema as patchSchema,
+} from "../_schema"
 
 // PROJ-20 — single-open-item endpoints.
 // GET    /api/projects/[id]/open-items/[oid]
@@ -18,18 +22,6 @@ import {
 // that path is exclusive to the convert-to-* endpoints, which run in an
 // atomic SECURITY DEFINER RPC. Open Items are one-way: once converted, the
 // CHECK constraint pins them.
-
-const patchSchema = z
-  .object({
-    title: z.string().trim().min(1).max(255).optional(),
-    description: z.string().max(5000).optional().nullable(),
-    status: z.enum(["open", "in_clarification", "closed"] as const).optional(),
-    contact: z.string().max(255).optional().nullable(),
-    contact_stakeholder_id: z.string().uuid().optional().nullable(),
-  })
-  .refine((val) => Object.keys(val).length > 0, {
-    message: "At least one field must be provided.",
-  })
 
 const SELECT_COLUMNS =
   "id, tenant_id, project_id, title, description, status, contact, contact_stakeholder_id, converted_to_entity_type, converted_to_entity_id, created_by, created_at, updated_at"
@@ -136,15 +128,8 @@ export async function PATCH(request: Request, ctx: Ctx) {
     )
   }
 
-  const data = parsed.data
-  const update: Record<string, unknown> = {}
-  if (data.title !== undefined) update.title = data.title.trim()
-  if (data.description !== undefined)
-    update.description = data.description?.trim() || null
-  if (data.status !== undefined) update.status = data.status
-  if (data.contact !== undefined) update.contact = data.contact?.trim() || null
-  if (data.contact_stakeholder_id !== undefined)
-    update.contact_stakeholder_id = data.contact_stakeholder_id ?? null
+  // Spread-Pattern: schema is the single source of truth.
+  const update = normalizeOpenItemPayload(parsed.data)
 
   const { data: row, error } = await supabase
     .from("open_items")

@@ -1,14 +1,16 @@
 import { NextResponse } from "next/server"
-import { z } from "zod"
 
 import { requireModuleActive } from "@/lib/tenant-settings/server"
-import { VENDOR_ROLES } from "@/types/vendor"
 
 import {
   apiError,
   getAuthenticatedUserId,
   requireProjectAccess,
 } from "../../../_lib/route-helpers"
+import {
+  normalizeVendorAssignmentPayload,
+  vendorAssignmentCreateSchema as createSchema,
+} from "./_schema"
 
 // PROJ-15 — project ↔ vendor assignments.
 // GET  /api/projects/[id]/vendor-assignments  → list with vendor name
@@ -18,24 +20,6 @@ const SELECT_COLUMNS = `
   id, tenant_id, project_id, vendor_id, role, scope_note, valid_from, valid_until, created_by, created_at, updated_at,
   vendors:vendor_id ( name )
 `.replace(/\s+/g, " ").trim()
-
-const isoDate = z.string().regex(/^\d{4}-\d{2}-\d{2}$/, "Expected YYYY-MM-DD")
-
-const createSchema = z
-  .object({
-    vendor_id: z.string().uuid(),
-    role: z.enum(VENDOR_ROLES as unknown as [string, ...string[]]),
-    scope_note: z.string().trim().max(2000).optional().nullable(),
-    valid_from: isoDate.optional().nullable(),
-    valid_until: isoDate.optional().nullable(),
-  })
-  .refine(
-    (v) => !v.valid_from || !v.valid_until || v.valid_from <= v.valid_until,
-    {
-      message: "valid_from must be ≤ valid_until",
-      path: ["valid_until"],
-    }
-  )
 
 interface DBRow {
   id: string
@@ -139,15 +123,11 @@ export async function POST(request: Request, ctx: Ctx) {
   )
   if (moduleDenial) return moduleDenial
 
-  const data = parsed.data
+  // Spread-Pattern: schema is the single source of truth.
   const insertPayload = {
+    ...normalizeVendorAssignmentPayload(parsed.data),
     tenant_id: access.project.tenant_id,
     project_id: projectId,
-    vendor_id: data.vendor_id,
-    role: data.role,
-    scope_note: data.scope_note?.trim() || null,
-    valid_from: data.valid_from ?? null,
-    valid_until: data.valid_until ?? null,
     created_by: userId,
   }
 

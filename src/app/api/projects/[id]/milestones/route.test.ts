@@ -155,3 +155,68 @@ describe("POST /api/projects/[id]/milestones — PROJ-26 method-gating", () => {
     expect(res.status).toBe(401)
   })
 })
+
+// ---------------------------------------------------------------------------
+// Schema-vs-DB-Payload Drift Detection (POST)
+// ---------------------------------------------------------------------------
+describe("POST /api/projects/[id]/milestones — schema/DB-payload drift", () => {
+  it("forwards every Zod-schema field to the DB insert payload", async () => {
+    const { milestoneCreateSchema } = await import("./_schema")
+    getUserMock.mockResolvedValue({ data: { user: { id: USER_ID } } })
+    projectChain.maybeSingle.mockResolvedValue({
+      data: { tenant_id: TENANT_ID, project_method: "pmi" },
+      error: null,
+    })
+
+    const PHASE_ID = "77777777-7777-4777-8777-777777777777"
+
+    const kitchenSink = {
+      phase_id: PHASE_ID,
+      name: "Drift-Test Milestone",
+      description: "Drift-Test description.",
+      target_date: "2026-12-31",
+      status: "planned" as const,
+    }
+
+    const schemaKeys = Object.keys(milestoneCreateSchema.shape)
+    for (const key of schemaKeys) {
+      expect(kitchenSink, `kitchen sink missing key '${key}'`).toHaveProperty(
+        key
+      )
+    }
+
+    milestoneInsertChain.single.mockResolvedValue({
+      data: { id: "drift-1", ...kitchenSink, tenant_id: TENANT_ID },
+      error: null,
+    })
+
+    const { request, context } = makePost(kitchenSink)
+    const res = await POST(request, context)
+    expect(res.status).toBe(201)
+
+    const arg = milestoneInsertChain.insert.mock.calls[0]?.[0] as Record<
+      string,
+      unknown
+    >
+    expect(arg, "insert was not called").toBeTruthy()
+
+    for (const key of schemaKeys) {
+      const expected = (kitchenSink as Record<string, unknown>)[key]
+      const actual = arg[key]
+      // target_date is YYYY-MM-DD — not in TRIM_FIELDS, passes through.
+      if (typeof expected === "string" && key !== "target_date") {
+        expect(actual, `field '${key}' was dropped before reaching DB`).toBe(
+          expected.trim() || null
+        )
+      } else {
+        expect(actual, `field '${key}' was dropped before reaching DB`).toBe(
+          expected
+        )
+      }
+    }
+
+    expect(arg.tenant_id).toBe(TENANT_ID)
+    expect(arg.project_id).toBe(PROJECT_ID)
+    expect(arg.created_by).toBe(USER_ID)
+  })
+})

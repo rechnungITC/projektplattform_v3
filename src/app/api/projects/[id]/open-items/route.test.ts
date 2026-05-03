@@ -152,6 +152,67 @@ describe("POST /api/projects/[id]/open-items", () => {
   })
 })
 
+// ---------------------------------------------------------------------------
+// Schema-vs-DB-Payload Drift Detection (POST)
+// ---------------------------------------------------------------------------
+describe("POST /api/projects/[id]/open-items — schema/DB-payload drift", () => {
+  it("forwards every Zod-schema field to the DB insert payload", async () => {
+    const { openItemCreateSchema } = await import("./_schema")
+    getUserMock.mockResolvedValue({ data: { user: { id: USER_ID } } })
+
+    const STAKEHOLDER_ID = "66666666-6666-4666-8666-666666666666"
+
+    const kitchenSink = {
+      title: "Drift-Test Open Item",
+      description: "Drift-Test description.",
+      status: "in_clarification" as const,
+      contact: "external@example.com",
+      contact_stakeholder_id: STAKEHOLDER_ID,
+    }
+
+    const schemaKeys = Object.keys(openItemCreateSchema.shape)
+    for (const key of schemaKeys) {
+      expect(kitchenSink, `kitchen sink missing key '${key}'`).toHaveProperty(
+        key
+      )
+    }
+
+    openItemsChain.single.mockResolvedValue({
+      data: { id: "drift-1", ...kitchenSink, tenant_id: TENANT_ID },
+      error: null,
+    })
+
+    const res = await POST(makePost(kitchenSink), {
+      params: Promise.resolve({ id: PROJECT_ID }),
+    })
+    expect(res.status).toBe(201)
+
+    const arg = openItemsChain.insert.mock.calls[0]?.[0] as Record<
+      string,
+      unknown
+    >
+    expect(arg, "insert was not called").toBeTruthy()
+
+    for (const key of schemaKeys) {
+      const expected = (kitchenSink as Record<string, unknown>)[key]
+      const actual = arg[key]
+      if (typeof expected === "string") {
+        expect(actual, `field '${key}' was dropped before reaching DB`).toBe(
+          expected.trim() || null
+        )
+      } else {
+        expect(actual, `field '${key}' was dropped before reaching DB`).toBe(
+          expected
+        )
+      }
+    }
+
+    expect(arg.tenant_id).toBe(TENANT_ID)
+    expect(arg.project_id).toBe(PROJECT_ID)
+    expect(arg.created_by).toBe(USER_ID)
+  })
+})
+
 describe("GET /api/projects/[id]/open-items", () => {
   it("returns 200 with list", async () => {
     getUserMock.mockResolvedValue({ data: { user: { id: USER_ID } } })

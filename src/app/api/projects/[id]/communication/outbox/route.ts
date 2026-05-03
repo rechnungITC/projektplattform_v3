@@ -1,5 +1,4 @@
 import { NextResponse } from "next/server"
-import { z } from "zod"
 
 import { requireModuleActive } from "@/lib/tenant-settings/server"
 import { CHANNELS, OUTBOX_STATUSES } from "@/types/communication"
@@ -9,18 +8,16 @@ import {
   getAuthenticatedUserId,
   requireProjectAccess,
 } from "../../../../_lib/route-helpers"
+import {
+  normalizeOutboxPayload,
+  outboxCreateSchema as createSchema,
+} from "./_schema"
 
 // PROJ-13 — outbox collection.
 // GET  /api/projects/[id]/communication/outbox?channel=&status=
 // POST /api/projects/[id]/communication/outbox        (creates a draft)
-
-const createSchema = z.object({
-  channel: z.enum(CHANNELS as unknown as [string, ...string[]]),
-  recipient: z.string().trim().min(1).max(320),
-  subject: z.string().trim().max(255).optional().nullable(),
-  body: z.string().min(1).max(50000),
-  metadata: z.record(z.string(), z.unknown()).optional(),
-})
+//
+// Schema lives in `_schema.ts` so the drift-test can introspect it.
 
 const SELECT_COLUMNS =
   "id, tenant_id, project_id, channel, recipient, subject, body, metadata, status, error_detail, sent_at, created_by, created_at, updated_at"
@@ -114,15 +111,12 @@ export async function POST(request: Request, ctx: Ctx) {
   )
   if (moduleDenial) return moduleDenial
 
-  const data = parsed.data
+  // Spread-Pattern: schema is the single source of truth.
   const insertPayload = {
+    ...normalizeOutboxPayload(parsed.data),
     tenant_id: access.project.tenant_id,
     project_id: projectId,
-    channel: data.channel,
-    recipient: data.recipient.trim(),
-    subject: data.subject?.trim() || null,
-    body: data.body,
-    metadata: data.metadata ?? {},
+    metadata: parsed.data.metadata ?? {},
     status: "draft",
     created_by: userId,
   }

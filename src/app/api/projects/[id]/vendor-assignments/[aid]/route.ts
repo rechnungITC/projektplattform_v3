@@ -2,13 +2,16 @@ import { NextResponse } from "next/server"
 import { z } from "zod"
 
 import { requireModuleActive } from "@/lib/tenant-settings/server"
-import { VENDOR_ROLES } from "@/types/vendor"
 
 import {
   apiError,
   getAuthenticatedUserId,
   requireProjectAccess,
 } from "../../../../_lib/route-helpers"
+import {
+  normalizeVendorAssignmentPayload,
+  vendorAssignmentPatchSchema as patchSchema,
+} from "../_schema"
 
 // PROJ-15 — single project-vendor-assignment.
 // PATCH  /api/projects/[id]/vendor-assignments/[aid]
@@ -18,26 +21,6 @@ const SELECT_COLUMNS = `
   id, tenant_id, project_id, vendor_id, role, scope_note, valid_from, valid_until, created_by, created_at, updated_at,
   vendors:vendor_id ( name )
 `.replace(/\s+/g, " ").trim()
-
-const isoDate = z.string().regex(/^\d{4}-\d{2}-\d{2}$/, "Expected YYYY-MM-DD")
-
-const patchSchema = z
-  .object({
-    role: z.enum(VENDOR_ROLES as unknown as [string, ...string[]]).optional(),
-    scope_note: z.string().trim().max(2000).optional().nullable(),
-    valid_from: isoDate.optional().nullable(),
-    valid_until: isoDate.optional().nullable(),
-  })
-  .refine((val) => Object.keys(val).length > 0, {
-    message: "At least one field must be provided.",
-  })
-  .refine(
-    (v) => !v.valid_from || !v.valid_until || v.valid_from <= v.valid_until,
-    {
-      message: "valid_from must be ≤ valid_until",
-      path: ["valid_until"],
-    }
-  )
 
 interface DBRow {
   id: string
@@ -101,13 +84,8 @@ export async function PATCH(request: Request, ctx: Ctx) {
   )
   if (moduleDenial) return moduleDenial
 
-  const data = parsed.data
-  const update: Record<string, unknown> = {}
-  if (data.role !== undefined) update.role = data.role
-  if (data.scope_note !== undefined)
-    update.scope_note = data.scope_note?.trim() || null
-  if (data.valid_from !== undefined) update.valid_from = data.valid_from ?? null
-  if (data.valid_until !== undefined) update.valid_until = data.valid_until ?? null
+  // Spread-Pattern: schema is the single source of truth.
+  const update = normalizeVendorAssignmentPayload(parsed.data)
 
   const { data: row, error } = await supabase
     .from("vendor_project_assignments")

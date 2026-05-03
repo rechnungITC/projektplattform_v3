@@ -1,5 +1,4 @@
 import { NextResponse } from "next/server"
-import { z } from "zod"
 
 import { requireModuleActive } from "@/lib/tenant-settings/server"
 import { OPEN_ITEM_STATUSES } from "@/types/open-item"
@@ -9,20 +8,16 @@ import {
   getAuthenticatedUserId,
   requireProjectAccess,
 } from "../../../_lib/route-helpers"
+import {
+  openItemCreateSchema as createSchema,
+  normalizeOpenItemPayload,
+} from "./_schema"
 
 // PROJ-20 — collection endpoint for open items.
 // GET  /api/projects/[id]/open-items?status=open|in_clarification|...
 // POST /api/projects/[id]/open-items
-
-const createSchema = z.object({
-  title: z.string().trim().min(1).max(255),
-  description: z.string().max(5000).optional().nullable(),
-  status: z
-    .enum(["open", "in_clarification", "closed"] as const)
-    .default("open"),
-  contact: z.string().max(255).optional().nullable(),
-  contact_stakeholder_id: z.string().uuid().optional().nullable(),
-})
+//
+// Schema lives in `_schema.ts` so the drift-test can introspect it.
 
 const SELECT_COLUMNS =
   "id, tenant_id, project_id, title, description, status, contact, contact_stakeholder_id, converted_to_entity_type, converted_to_entity_id, created_by, created_at, updated_at"
@@ -109,15 +104,13 @@ export async function POST(request: Request, ctx: Ctx) {
   )
   if (moduleDenial) return moduleDenial
 
-  const data = parsed.data
+  // Spread-Pattern: schema is the single source of truth. New schema fields
+  // flow through automatically. Drift-test in route.test.ts asserts every
+  // schema key reaches this payload.
   const insertPayload = {
+    ...normalizeOpenItemPayload(parsed.data),
     tenant_id: access.project.tenant_id,
     project_id: projectId,
-    title: data.title.trim(),
-    description: data.description?.trim() || null,
-    status: data.status,
-    contact: data.contact?.trim() || null,
-    contact_stakeholder_id: data.contact_stakeholder_id ?? null,
     created_by: userId,
   }
 

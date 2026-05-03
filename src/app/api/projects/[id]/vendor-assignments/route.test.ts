@@ -173,3 +173,87 @@ describe("POST /api/projects/[id]/vendor-assignments", () => {
     expect(res.status).toBe(422)
   })
 })
+
+// ---------------------------------------------------------------------------
+// Schema-vs-DB-Payload Drift Detection (POST)
+// ---------------------------------------------------------------------------
+describe("POST /api/projects/[id]/vendor-assignments — schema/DB-payload drift", () => {
+  it("forwards every Zod-schema field to the DB insert payload", async () => {
+    const { vendorAssignmentCreateSchema } = await import("./_schema")
+    getUserMock.mockResolvedValue({ data: { user: { id: USER_ID } } })
+
+    // createSchema is wrapped in .refine() — unwrap via _def.schema.shape.
+    const inner =
+      "shape" in vendorAssignmentCreateSchema
+        ? (vendorAssignmentCreateSchema as unknown as {
+            shape: Record<string, unknown>
+          })
+        : (
+            vendorAssignmentCreateSchema as unknown as {
+              _def: { schema: { shape: Record<string, unknown> } }
+            }
+          )._def.schema
+    const schemaKeys = Object.keys(
+      (inner as { shape: Record<string, unknown> }).shape
+    )
+
+    const kitchenSink = {
+      vendor_id: VENDOR_ID,
+      role: "lieferant",
+      scope_note: "Drift-Test scope",
+      valid_from: "2026-01-01",
+      valid_until: "2026-12-31",
+    }
+
+    for (const key of schemaKeys) {
+      expect(kitchenSink, `kitchen sink missing key '${key}'`).toHaveProperty(
+        key
+      )
+    }
+
+    insertChain.single.mockResolvedValue({
+      data: {
+        id: "drift-1",
+        tenant_id: TENANT_ID,
+        project_id: PROJECT_ID,
+        ...kitchenSink,
+        created_by: USER_ID,
+        created_at: "2026-04-30T00:00:00Z",
+        updated_at: "2026-04-30T00:00:00Z",
+        vendors: { name: "Drift Inc." },
+      },
+      error: null,
+    })
+
+    const res = await POST(makePost(kitchenSink), {
+      params: Promise.resolve({ id: PROJECT_ID }),
+    })
+    expect(res.status).toBe(201)
+
+    const arg = insertChain.insert.mock.calls[0]?.[0] as Record<string, unknown>
+    expect(arg, "insert was not called").toBeTruthy()
+
+    for (const key of schemaKeys) {
+      const expected = (kitchenSink as Record<string, unknown>)[key]
+      const actual = arg[key]
+      // valid_from / valid_until are YYYY-MM-DD — not trimmed.
+      // role is enum — not trimmed.
+      if (
+        typeof expected === "string" &&
+        key === "scope_note"
+      ) {
+        expect(actual, `field '${key}' was dropped before reaching DB`).toBe(
+          expected.trim() || null
+        )
+      } else {
+        expect(actual, `field '${key}' was dropped before reaching DB`).toBe(
+          expected
+        )
+      }
+    }
+
+    expect(arg.tenant_id).toBe(TENANT_ID)
+    expect(arg.project_id).toBe(PROJECT_ID)
+    expect(arg.created_by).toBe(USER_ID)
+  })
+})

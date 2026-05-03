@@ -3,16 +3,10 @@ import { z } from "zod"
 
 import { apiError, getAuthenticatedUserId } from "@/app/api/_lib/route-helpers"
 
-const isoDate = z.string().regex(/^\d{4}-\d{2}-\d{2}$/)
-
-const updateSchema = z.object({
-  phase_id: z.string().uuid().nullable().optional(),
-  name: z.string().trim().min(1).max(255).optional(),
-  description: z.string().max(5000).nullable().optional(),
-  target_date: isoDate.optional(),
-  actual_date: isoDate.nullable().optional(),
-  status: z.enum(["planned", "achieved", "missed", "cancelled"]).optional(),
-}).refine((v) => Object.keys(v).length > 0, { message: "At least one field required." })
+import {
+  milestonePatchSchema as updateSchema,
+  normalizeMilestonePayload,
+} from "../_schema"
 
 function validateIds(projectId: string, milestoneId: string) {
   if (!z.string().uuid().safeParse(projectId).success) {
@@ -67,8 +61,11 @@ export async function PATCH(
     return apiError("invalid_actual_date", "actual_date is only allowed when status='achieved'.", 422, "actual_date")
   }
 
+  // Spread-Pattern: schema is the single source of truth.
+  const update = normalizeMilestonePayload(parsed.data)
+
   const { data, error } = await supabase
-    .from("milestones").update(parsed.data).eq("id", milestoneId).eq("project_id", projectId)
+    .from("milestones").update(update).eq("id", milestoneId).eq("project_id", projectId)
     .select().single()
 
   if (error) {
