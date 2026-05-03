@@ -6,8 +6,10 @@ import { apiError, getAuthenticatedUserId } from "@/app/api/_lib/route-helpers"
 /**
  * DELETE /api/projects/[id]/dependencies/[did]
  *
- * Dependencies are immutable (no UPDATE policy in the migration). To "edit"
- * one, callers delete it and recreate. RLS allows editor or lead.
+ * After PROJ-9-Round-2 (polymorphic dependencies) the table no longer carries
+ * a `project_id` column. We resolve the edge by id under tenant scope; RLS
+ * (`is_tenant_member(tenant_id)`) is the authoritative gate, with a 404 fall-
+ * through if the row is hidden by RLS or simply does not exist.
  */
 export async function DELETE(
   _request: Request,
@@ -28,7 +30,6 @@ export async function DELETE(
     .from("dependencies")
     .delete()
     .eq("id", dependencyId)
-    .eq("project_id", projectId)
 
   if (error) {
     if (error.code === "42501") return apiError("forbidden", "Not allowed.", 403)

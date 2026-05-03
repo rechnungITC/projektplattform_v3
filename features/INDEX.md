@@ -22,7 +22,7 @@
 | PROJ-6 | Project Types, Methods Catalog, and Rule Engine | Deployed | [Spec](PROJ-6-project-types-methods-rule-engine.md) | 2026-04-25 |
 | PROJ-7 | Project Room with Internal Kanban / Scrum / Gantt Modules | Deployed (MVP slice) | [Spec](PROJ-7-project-room-internal-modules.md) | 2026-04-25 |
 | PROJ-8 | Stakeholders and Organization | Deployed | [Spec](PROJ-8-stakeholders-organization.md) | 2026-04-25 |
-| PROJ-9 | Work Item Metamodel — Backlog Structure (+ Round-2: polymorphic dependencies · outline_path · extended ALLOWED_PARENT_KINDS) | Deployed (R1) · In Review (R2 QA active) | [Spec](PROJ-9-work-item-metamodel-backlog.md) | 2026-04-25 |
+| PROJ-9 | Work Item Metamodel — Backlog Structure (+ Round-2: polymorphic dependencies · outline_path · extended ALLOWED_PARENT_KINDS) | Deployed (R1) · Approved (R2 — ready for /deploy) | [Spec](PROJ-9-work-item-metamodel-backlog.md) | 2026-04-25 |
 | PROJ-10 | Change Management — Field-level Versioning, Compare, Undo, Copy, Audit | Deployed | [Spec](PROJ-10-change-management-versioning.md) | 2026-04-25 |
 | PROJ-11 | Resources, Capacities, and Schedule Logic | Deployed | [Spec](PROJ-11-resources-capacity-schedule.md) | 2026-04-25 |
 | PROJ-12 | KI Assistance and Data-Privacy Paths | Deployed | [Spec](PROJ-12-ki-assistance-privacy-paths.md) | 2026-04-25 |
@@ -50,7 +50,11 @@
 | PROJ-35 | Stakeholder-Wechselwirkungs-Engine (Risiko-Score, Eskalations-Indikatoren, Tonalitäts-Empfehlungen, Critical-Path-Risk, Stakeholder-Health-Dashboard) | 35-α + β Deployed · γ pending | [Spec](PROJ-35-stakeholder-interaction-engine.md) | 2026-05-02 |
 | PROJ-36 | Waterfall-WBS UI/UX Layer — WBS-Code (auto+override) · Hybrid Roll-up · Tree-View (react-arborist) · Indent/Outdent. Schema-Backbone in PROJ-9-R2. ~5.5 PT (α + γ). | Architected | [Spec](PROJ-36-waterfall-wbs-hierarchy-rollup.md) | 2026-05-03 |
 | PROJ-37 | Voice Agent Assistant ("Hey Sven") — sprachgesteuerter Projektassistent mit Wake/Push-to-Talk, Gesprächs-Overlay, Statusabfragen, Navigation und gesicherter Aktionsausführung über bestehende Flows. | Planned | [Spec](PROJ-37-voice-agent-assistant.md) | 2026-05-04 |
+| PROJ-38 | Assistant Orchestrator & Intent Runtime — technische Laufzeitschicht für Intent-Erkennung, Bestätigungsgates, Tool-/API-Ausführung, Session-Kontext und Audit hinter dem Voice/Text-Assistenten. | Planned | [Spec](PROJ-38-assistant-orchestrator-intent-runtime.md) | 2026-05-04 |
+| PROJ-39 | Assistant Action Packs — konkrete v1-Fähigkeiten für Projektstatus, Navigation, Projekt-Suche/Öffnen und dialogische Projektanlage über Wizard-/Report-/Project-Room-Integrationen. | Planned | [Spec](PROJ-39-assistant-action-packs-project-status-navigation-creation.md) | 2026-05-04 |
+| PROJ-40 | Assistant Conversation Audit & Transcript Governance — Persistenz-, Redaktions-, Audit-, Retention- und Export-Governance für Assistant-Sessions, Turns und Transkripte. | Planned | [Spec](PROJ-40-assistant-conversation-audit-transcript-governance.md) | 2026-05-04 |
+| PROJ-41 | Assistant Speech, Provider & Wake-Word Infrastructure — Speech-to-Text, Text-to-Speech, Wake-/Push-to-Talk-Modi, Providerwahl, Fallbacks und Deployment-/Mikrofonvoraussetzungen. | Planned | [Spec](PROJ-41-assistant-speech-provider-wakeword-infrastructure.md) | 2026-05-04 |
 
 <!-- Add features above this line -->
 
-## Next Available ID: PROJ-38
+## Next Available ID: PROJ-42

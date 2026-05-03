@@ -39,6 +39,7 @@
 | [v3-ai-proposal-architecture.md](v3-ai-proposal-architecture.md) | Central `ai_proposals` table (target_table + target_row_id + proposed_payload + review_state + traceability); domain tables get one optional `created_from_proposal_id` column. |
 | [v3-master-data-and-global-catalogs.md](v3-master-data-and-global-catalogs.md) | Three-tier model: code-registries (project_types, methods), tenant master data (stakeholders, vendors), project junction tables (project_stakeholders, etc.) with cross-tenant guard. |
 | [v3-project-memberships-schema.md](v3-project-memberships-schema.md) | Concrete Supabase schema for the `project_memberships` table required by `role-model.md` (lead/editor/viewer); cross-tenant guard, last-lead invariant, auto-lead-on-create. |
+| [project-phase-workpackage-todo-hierarchy.md](project-phase-workpackage-todo-hierarchy.md) | Explizite 4-Ebenen-Hierarchie `projects → phases → work_packages → todos` mit einer einzigen typ-gesteuerten polymorphen `dependencies`-Tabelle (`from_type`, `to_type`, `constraint_type`); ersetzt heutige work-item-only-`dependencies` und macht PROJ-25 `phase_dependencies` überflüssig. |
 
 ## Pflege-Regel (unchanged from V2)
 

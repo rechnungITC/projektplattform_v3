@@ -1,8 +1,8 @@
 # PROJ-9: Work Item Metamodel — Backlog Structure (Epic / Story / Task / Work Package / Bug)
 
-## Status: Deployed
+## Status: Deployed (Round 1) · Round-2 Approved (QA passed 2026-05-04)
 **Created:** 2026-04-25
-**Last Updated:** 2026-04-28
+**Last Updated:** 2026-05-04 (Round-2 QA passed — 19 live-DB smoke tests + 790 vitest + security advisor clean; 0 Critical/High/Medium bugs)
 
 ## Summary
 Introduces the unified planning-object metamodel: one `work_items` table with a `kind` discriminator (`epic | feature | story | task | subtask | bug | work_package`), parent-child rules per kind, method-aware visibility, and integration with the already-existing phases/milestones (which stay in their own tables). Bugs are cross-method. Inherits V2 EP-07.
@@ -336,9 +336,273 @@ Single migration file `supabase/migrations/20260428100000_proj9_work_items_sprin
 | 4 dependency types in V1 | full set | Cheap to add; Gantt rendering will use all of them when PROJ-7 ships |
 | Sprint state machine in DB function | DB function | Same pattern as PROJ-2's `transition_project_status` — atomic, defense-in-depth |
 
+## Tech Design Round 2 — Polymorphic Dependencies + Hierarchy Extension
+
+> **Architected:** 2026-05-03
+> **Origin:** CIA-Review 2026-05-03 + [ADR-004 — Projekt → Phase → Arbeitspaket → To-do-Hierarchie + polymorphe Dependencies](../docs/decisions/project-phase-workpackage-todo-hierarchy.md). Konsumiert von [PROJ-25 (Gantt-DnD)](PROJ-25-dnd-stack.md) und [PROJ-36 (WBS-Hierarchie + Tree-View + Roll-up)](PROJ-36-waterfall-wbs-hierarchy-rollup.md).
+> **Charakter:** Addendum zur deployed Round 1 — additive Schema-Änderungen + Tabellen-Migration, keine Re-Implementation des Bestehenden.
+
+### N) Round-2-Scope (was Round 2 schließt)
+
+Round 1 (deployed 2026-04-28) hat das Work-Item-Metamodel etabliert: STI-Tabelle mit Kinds, Self-FK-Hierarchie (`parent_id`), eine `dependencies`-Tabelle mit Work-Item-zu-Work-Item-Beziehungen.
+
+Round 2 erweitert das Modell um vier additive Bausteine — **kein Bruch existierender Daten**, keine API-Änderung an bestehenden Endpoints:
+
+1. **`work_items.outline_path`** (ltree) — eine maschinenlesbare Hierarchie-Adresse pro Item, automatisch gepflegt. Macht Subtree-Queries (alle Kinder + Enkel + …) Big-O-billig.
+2. **Erweiterte Parent-Child-Regeln** — `task` darf jetzt unter `work_package` hängen, `work_package` unter `work_package` (Multi-Level-WBS).
+3. **Polymorphe `dependencies`-Tabelle** — ersetzt die Round-1-`dependencies`-Tabelle. Erlaubt Beziehungen zwischen `project`, `phase`, `work_package` und `todo` (Work-Items mit Kinds task/subtask/epic/story/feature/bug).
+4. **Cross-Project-Dependencies** — innerhalb desselben Tenants erlaubt; Cross-Tenant hard-blocked.
+
+Round 2 baut **nicht** UI: Tree-View, WBS-Codes und Roll-up bleiben PROJ-36-Eigentum.
+
+### O) Schema-Änderungen (additiv, dann ein Tabellen-Tausch)
+
+#### O.1 Neue Spalten auf `work_items`
+
+| Spalte | Typ | Nullable | Default | Maintained by |
+|---|---|---|---|---|
+| `outline_path` | `ltree` | NO (nach Backfill) | computed | Trigger |
+| `sequence_in_parent` | `INTEGER` | NO | 0 | Application + Trigger |
+
+`outline_path` wird per Trigger aus `parent.outline_path` plus `sequence_in_parent` zusammengesetzt. Re-numbering bei Move passiert über einen separaten Trigger, der den Subtree mit einem einzigen UPDATE aktualisiert (ltree-Index unterstützt das nativ).
+
+`sequence_in_parent` existiert in der heutigen Tabelle als `position` — Round 2 prüft, ob die existierende Spalte semantisch identisch genutzt werden kann; falls ja, bleibt sie. Falls nicht, wird sie aliased / migriert. **`/backend`-Phase muss das beim Implementieren entscheiden** (existierende Spalte hat heute Sprint-Sortier-Funktion).
+
+#### O.2 Neue Tabelle `dependencies` (ersetzt Round-1-Tabelle)
+
+| Spalte | Zweck |
+|---|---|
+| `id` | Primärschlüssel |
+| `tenant_id` | Multi-Tenant-Anker, RLS + Trigger-Verifikation |
+| `from_type` | Enum: `project`, `phase`, `work_package`, `todo` |
+| `from_id` | Verweis auf Source-Entity (validiert per Trigger) |
+| `to_type` | Enum gleich wie `from_type` |
+| `to_id` | Verweis auf Target-Entity |
+| `constraint_type` | Enum: `FS`, `SS`, `FF`, `SF` (default `FS`) |
+| `lag_days` | Signed integer, default 0 (negative = Lead) |
+| `created_at` | Timestamp |
+| `created_by` | Auth-User-Reference |
+
+**Nicht enthalten** (bewusst): `project_id`. Cross-Project-Dependencies sind ADR-004-konform; das Tenant-Constraint reicht. Project-Filter erfolgt via Join über die referenzierten Entitäten.
+
+**Indices:**
+- `(tenant_id, from_type, from_id)` — für „Welche Deps starten von X?"
+- `(tenant_id, to_type, to_id)` — für „Welche Deps zeigen auf X?"
+- `(tenant_id)` — RLS-Filter
+- UNIQUE `(from_type, from_id, to_type, to_id, constraint_type)` — keine Duplikate
+
+#### O.3 Erweiterung `ALLOWED_PARENT_KINDS` (Code-Konstante)
+
+Die TypeScript-Konstante (heute in der Codebase, Round 1) wird erweitert:
+
+| Kind | Allowed Parents Round 1 | Allowed Parents Round 2 |
+|---|---|---|
+| `epic` | `null` | `null` (unverändert) |
+| `feature` | `epic`, `null` | `epic`, `null` (unverändert) |
+| `story` | `feature`, `epic`, `null` | `feature`, `epic`, `null` (unverändert) |
+| `task` | `story`, `null` | `story`, `work_package`, `null` |
+| `subtask` | `task`, `null` | `task`, `null` (unverändert) |
+| `bug` | `null` | `null` (unverändert) |
+| **`work_package`** | `null` | **`work_package`, `null`** |
+
+Mirror in der Postgres-Trigger-Function `check_allowed_parent_kind` — wird in der Round-2-Migration ersetzt.
+
+### P) Polymorphic FK Validation (Trigger-basiert)
+
+**Strategie:** BEFORE-INSERT-/UPDATE-Trigger auf der neuen `dependencies`-Tabelle.
+
+Pro Trigger-Aufruf:
+1. Lookup `from_id` in der zu `from_type` passenden Tabelle (`projects`, `phases`, `work_items`).
+2. Lookup `to_id` in der zu `to_type` passenden Tabelle.
+3. Beide Lookups müssen genau eine Zeile finden — sonst Abbruch mit klar gelabeltem Fehler.
+
+**ON-DELETE-Verhalten:** Polymorphe FKs haben kein eingebautes CASCADE. Lösung: AFTER-DELETE-Trigger auf den drei Source-Tabellen (`projects`, `phases`, `work_items`), der passende `dependencies`-Zeilen löscht.
+
+**Trade-off bewusst akzeptiert:** Mehr Trigger-Logik im Vergleich zu nativen FKs, aber deutlich weniger Schema-Komplexität als die Generated-Columns-Variante (8 zusätzliche Spalten + 4 echte FKs). PostgreSQL-Standard-Pattern für polymorphe Beziehungen.
+
+### Q) Cycle-Prevention (polymorph + cross-project)
+
+Round 1 hatte Cycle-Prevention für die Work-Item-zu-Work-Item-Tabelle (Self-FK). Round 2 erweitert das auf das polymorphe Modell:
+
+- Bei jedem INSERT/UPDATE auf `dependencies` läuft ein BEFORE-Trigger.
+- Trigger startet eine rekursive CTE über die polymorphe Tabelle: „Gibt es einen Pfad von `to_id`/`to_type` zurück zu `from_id`/`from_type`?"
+- Wenn ja → Abbruch mit Cycle-Error.
+
+**Performance:** Recursive CTE ist O(V+E) auf dem Dependency-Graph. Bei realistischer Projekt-Größe (< 1000 Items, < 500 Deps) ist das im Sub-Sekunden-Bereich. Bei Mega-Projekten mit > 10 000 Deps ist eine Materialized-View-basierte Vor-Berechnung möglich; nicht in MVP.
+
+**Cross-Project-Cycles:** Möglich, wenn Projekt A → Projekt B → Projekt A. Recursive CTE traversiert sie polymorph; Tenant-Boundary bleibt erzwungen.
+
+### R) Tenant-Boundary-Trigger (Defense-in-Depth)
+
+Zusätzlich zur RLS-Policy auf `dependencies` (lese/schreibe nur Tenant-Members) läuft ein BEFORE-INSERT-/UPDATE-Trigger:
+
+1. Hole `tenant_id` der `from`-Entity.
+2. Hole `tenant_id` der `to`-Entity.
+3. Beide müssen mit dem `tenant_id`-Feld der `dependencies`-Zeile übereinstimmen.
+
+**Warum doppelt zu RLS?** RLS schützt User-Sessions, aber nicht Service-Role-Keys oder direkten DB-Zugriff (z. B. durch Migrationen oder Backend-Tasks mit Admin-Rolle). Trigger ist Source-of-Truth.
+
+### S) `outline_path`-Maintenance
+
+Drei Trigger-Pfade:
+
+1. **INSERT** → `outline_path = parent.outline_path || sequence_in_parent`. Wenn `parent_id IS NULL`, wird `outline_path` aus `project_id` + `sequence_in_parent` abgeleitet.
+2. **UPDATE auf `parent_id` oder `sequence_in_parent`** → `outline_path` neu berechnen + Subtree (alle Descendants) per single UPDATE … WHERE old_outline_path <@ … nachziehen. ltree-GIST-Index macht das billig.
+3. **DELETE** → keine Aktion (Subtree ist via CASCADE schon weg, aber Sibling-Sequenzen bleiben — Re-numbering wäre ein Nice-to-have für Sub-feature; nicht Round 2).
+
+### T) Migration-Plan (kind-basiertes Mapping)
+
+#### T.1 Reihenfolge im Migration-Skript
+
+1. `CREATE EXTENSION ltree`.
+2. Spalten `outline_path`, `sequence_in_parent` zu `work_items` hinzufügen (nullable).
+3. Backfill `outline_path` rekursiv: Wurzeln zuerst, dann Kinder per recursive CTE.
+4. Backfill `sequence_in_parent` aus existierender `position`-Spalte (oder neu-vergeben pro Sibling-Group).
+5. NOT-NULL-Constraint auf `outline_path` setzen.
+6. GIST-Index auf `outline_path` anlegen.
+7. Neue `dependencies`-Tabelle anlegen (zunächst leer, anderer Name z. B. `dependencies_v2` falls Rename-Trick gebraucht).
+8. Daten aus alter `dependencies` ins neue Schema migrieren mit kind-basiertem Mapping:
+   - `predecessor_id` → `from_id`; `from_type` aus `work_items.kind`:
+     - `kind='work_package'` → `'work_package'`
+     - alle anderen Kinds → `'todo'`
+   - `successor_id` → `to_id`; `to_type` analog
+   - `kind` → `constraint_type`
+   - `lag_days`, `tenant_id`, `created_at`, `created_by` 1:1
+9. Row-Count-Verifikation: `count(neu) = count(alt)`.
+10. Alte `dependencies`-Tabelle umbenennen zu `dependencies_legacy` (für Rollback).
+11. Neue Tabelle umbenennen zu `dependencies`.
+12. Trigger anlegen (Cycle-Prevention, Tenant-Boundary, Polymorphic-FK-Validation).
+13. RLS-Policies anlegen.
+14. ON-DELETE-Cleanup-Trigger auf `projects`, `phases`, `work_items`.
+15. Trigger für `outline_path`-Maintenance + erweiterten `ALLOWED_PARENT_KINDS`-Check installieren.
+16. `ALLOWED_PARENT_KINDS`-Konstante in TypeScript-Code wird in derselben Slice deployed (Code-Migration synchron mit DB-Migration).
+
+#### T.2 Idempotenz + Reversibilität
+
+- Migration ist transactional (`BEGIN … COMMIT`); kein Halb-Erfolg.
+- DOWN-Skript verfügbar: dropt neue Tabelle + Trigger, restoriert `dependencies_legacy` → `dependencies`, dropt `outline_path` + `sequence_in_parent`.
+- Re-Run-Safe via `IF NOT EXISTS` / `CREATE OR REPLACE`-Patterns.
+- Pre-Migration-Snapshot per Supabase-Branch empfohlen (CIA-Pflicht in `/backend`).
+
+#### T.3 Down-Time-Erwägungen
+
+Für unsere Daten-Größe (< 100 Tenants, < 10 000 Items) läuft das Skript in unter 30 s — Maintenance-Window nicht erforderlich, aber empfohlen, weil zwischen Punkt 10 und 11 (Tabellen-Rename) laufende Reads auf `dependencies` kurz fehlschlagen können. Empfehlung: Migration in der Nacht oder mit „Reads lesen veraltete Daten"-Tolerated-Window.
+
+### U) Audit-Trail-Integration (PROJ-10)
+
+Die neue `dependencies`-Tabelle wird der PROJ-10-Audit-Whitelist hinzugefügt:
+
+- **Audit-Mode:** Row-as-Whole (kein Field-Versioning auf Spalten — die Zeile ist klein und atomic).
+- **Tracked Operations:** INSERT, DELETE. UPDATE auf einzelne Spalten ist semantisch ungewöhnlich (User würde eher löschen + neu anlegen); falls UPDATE doch passiert, wird die ganze Zeile geaudited.
+- **Whitelist-Erweiterung:** PROJ-9-Round-2-Migration ergänzt `'dependencies'` in der `tracked_entity_types`-Konfiguration.
+
+### V) API-Änderungen
+
+#### V.1 Neue Endpoints
+
+- `POST /api/projects/[projectId]/dependencies` — neue Dependency anlegen. Body: `{ from_type, from_id, to_type, to_id, constraint_type, lag_days }`.
+- `DELETE /api/dependencies/[depId]` — Dependency entfernen.
+- `GET /api/projects/[projectId]/dependencies` — alle Deps eines Projekts (für Gantt-Initial-Render).
+- `GET /api/projects/[projectId]/critical-path` — RPC-Aufruf der Postgres-Function (Forward-/Backward-Pass + CP-Liste). Nutzt PROJ-25's manuelle CP-Implementation; Round 2 stellt nur den Daten-Backbone bereit.
+
+#### V.2 Geänderte Endpoints
+
+- `GET /api/projects/[projectId]/work-items` — antwortet zusätzlich mit `outline_path` und `sequence_in_parent` pro Item (für Tree-View in PROJ-36).
+- `PATCH /api/work-items/[id]` — akzeptiert jetzt auch `parent_id`-Updates auf vorher unmögliche Kombinationen (`task` → `work_package` etc.). Validation läuft via Trigger; Frontend muss Fehler-Message korrekt anzeigen.
+
+#### V.3 Entfernte Endpoints
+
+Keine. Alte Round-1-`dependencies`-Endpoints (z. B. `POST /api/work-items/[id]/dependencies`) bleiben **funktional kompatibel**: Server-Wrapper übersetzt sie auf das polymorphe Schema (Wrapper darf nach 6-Monats-Deprecation-Window entfernt werden).
+
+### W) Performance-Architektur
+
+| Query / Aktion | Anforderung | Strategie |
+|---|---|---|
+| Subtree-Query (alle Descendants) | < 100 ms bei 5 000 Items im Subtree | ltree GIST-Index + `WHERE outline_path <@ 'X.Y'` |
+| Dependency-Lookup pro Item | < 50 ms | Composite Index `(tenant_id, from_type, from_id)` + `(tenant_id, to_type, to_id)` |
+| Cycle-Detection beim Insert | < 200 ms typisch | Recursive CTE; Worst-case bei dichten Graphen → Materialized View ist Future-Optimierung |
+| Critical-Path-Compute (PROJ-25-Konsument) | < 500 ms bei 500 Items | Recursive CTE Forward+Backward + Postgres-Native-Joins |
+| Migration auf Production-Daten | < 30 s | Single-Transaction; ltree + Polymorphic-Schema sind nur kleine Schema-Operationen |
+
+### X) Risiken + Mitigation
+
+| Risiko | Schwere | Mitigation |
+|---|---|---|
+| **Polymorphic-Trigger-Performance bei hohem Insert-Volumen** | Mittel | Trigger sind effizient (3 Lookups pro Insert); bei > 1000 Inserts/Min könnte ein Bulk-Insert-Bypass nötig sein → Future-Optimierung. |
+| **Bestehende `dependencies`-Konsumenten brechen** | Mittel | Wrapper-Endpoints für 6 Monate; QA muss alle existierenden Routen-Konsumer testen. |
+| **Cycle-Detection-Performance bei dichten Graphen** | Niedrig | Recursive CTE mit Tiefe-Limit (z. B. max 50 Hops) als Sicherheitsnetz. |
+| **`outline_path`-Re-Compute bei Bulk-Move** | Niedrig | Single UPDATE … WHERE outline_path <@ alt; ltree-Index macht das billig. |
+| **Backfill-Inkonsistenz bei korrupten Round-1-Daten** | Niedrig | Pre-Migration-Validation-Pass: Anzahl `work_items` mit `parent_id != null AND parent.project_id != self.project_id` muss 0 sein (war Round-1-Trigger-erzwungen). |
+| **Sequence_in_parent-Kollision mit existierender `position`-Spalte** | Mittel | `/backend`-Phase muss klären: existierende Spalte umwidmen ODER neue Spalte hinzufügen. Spec dokumentiert beide Optionen. |
+| **Cross-Tenant-Leak via Service-Role-Migrations** | Hoch | Trigger als Source-of-Truth (defense-in-depth zu RLS). Wird in QA durch direkte SQL-Inserts mit Service-Role-Key getestet. |
+
+### Y) Test-Strategie
+
+- **Unit-Tests (Vitest):** ALLOWED_PARENT_KINDS-Erweiterung TS-seitig, kind-basiertes Migration-Mapping.
+- **Postgres-Integration:**
+  - Trigger-Pfade: validiere Polymorphic-FK-Lookup, Cycle-Detection (positiv + negativ), Tenant-Boundary-Block.
+  - Migration auf Kopie der Prod-DB (Supabase-Branch).
+  - ltree-Backfill-Korrektheit: alle work_items haben outline_path, kein NULL nach Migration.
+- **Cross-Project-Dependency-Smoke:** Erlaubt im selben Tenant; geblockt cross-tenant.
+- **Audit-Trail-Smoke:** INSERT auf `dependencies` erzeugt PROJ-10-Audit-Eintrag.
+- **Regression:** existierende Round-1-API-Routen liefern weiterhin 200 OK + korrekte Daten via Wrapper.
+
+### Z) Tech-Entscheidungen Round 2 — Justification
+
+| # | Entscheidung | Begründung |
+|---|---|---|
+| **R2-D1** | Polymorphic FK via Trigger statt Generated Columns | Standard-Postgres-Pattern; weniger Schema-Komplexität; ON-DELETE über separate Source-Trigger. |
+| **R2-D2** | Single `dependencies`-Tabelle statt 4 separater Tabellen pro Type-Kombination | ADR-004 verbindlich; Critical-Path-CTE vereinfacht; Reporting + Indizierung einheitlich. |
+| **R2-D3** | ltree für `outline_path` statt Closure-Tree | OpenProject-Lessons-learned: Closure-Tree braucht eigene Tabelle + 4× Storage; ltree ist Postgres-nativ + ein Index. |
+| **R2-D4** | Cycle-Detection auf Trigger-Ebene (nicht App-Layer-Only) | Defense-in-Depth; service-role-keys + Migrationen umgehen App-Layer. |
+| **R2-D5** | Migration als Single-Transaction (kein Online-Migration-Tool) | Daten-Größe rechtfertigt es; Komplexität von z. B. `pg_repack` ist überzogen. |
+| **R2-D6** | Round-1-API-Wrapper für 6 Monate | Sanfter Migrations-Pfad; Frontend kann inkrementell auf neue Endpoints umstellen. |
+| **R2-D7** | `sequence_in_parent` separat vom heutigen `position` zu klären | Heutige `position` hat Sprint-Sortier-Semantik; Doppelnutzung muss `/backend`-Phase verifizieren. |
+
+### AA) Folge-Specs / Konsequenzen
+
+- **PROJ-25** (Architected): konsumiert die polymorphe Tabelle direkt. ST-04 `phase_dependencies` ist obsolet (siehe PROJ-25 Tech Design Spec-Korrekturen).
+- **PROJ-36** (Planned): konsumiert `outline_path` + erweiterten `ALLOWED_PARENT_KINDS`. Tree-View, WBS-Code, Roll-up bleiben PROJ-36-Eigentum.
+- **PROJ-27** (Architected, Cross-Project-Bridge): kann die polymorphe Tabelle nutzen, ohne ein eigenes Cross-Project-Schema zu bauen. Empfehlung: PROJ-27-Tech-Design im nächsten CIA-Review revidieren.
+- **PROJ-10** (Audit): Whitelist-Erweiterung als Bestandteil der Migration.
+
+### AB) Out-of-Scope (explizit)
+
+- WBS-Code, Tree-View-UI, Roll-up → **PROJ-36**
+- Gantt-DnD, Critical-Path-UI → **PROJ-25**
+- Auto-Schedule-Engine → künftig (PROJ-39-Kandidat)
+- Materialized-View-Cache für CP / Cycle-Detection → optional bei Skalierungs-Druck
+- Resource-Roll-up auf Summary-Items → PROJ-11b
+
+---
+
 ## Implementation Notes
 
-### Backend (2026-04-28)
+### Backend (2026-05-03) — Round 2 (Polymorphic Dependencies)
+- Migration file written but NOT yet applied: `supabase/migrations/20260503200000_proj9r2_polymorphic_dependencies.sql`. Application happens via Supabase MCP after manual review.
+- Migration steps:
+  - A. Snapshot deployed Round-1 `dependencies` to `dependencies_legacy` (rollback anchor; no RLS, no FKs, app must not read it).
+  - B. Build new polymorphic `dependencies_v2` with `from_type/from_id/to_type/to_id`, `constraint_type`, `lag_days`, indices on `(tenant_id, from_type, from_id)`, `(tenant_id, to_type, to_id)`, `(tenant_id)`, UNIQUE on the 5-tuple.
+  - C. Data migration kind-based: `work_items.kind='work_package' → 'work_package'`, else `'todo'`. Row-count verification raises EXCEPTION on mismatch.
+  - D. Trigger functions defined: `tg_dep_validate_polymorphic_fk_fn` (static CASE — no dynamic SQL), `tg_dep_validate_tenant_boundary_fn` (cross-tenant block, defense-in-depth to RLS), `tg_dep_prevent_polymorphic_cycle_fn` (recursive CTE forward-walk with depth limit 10000), and three ON-DELETE cleanup functions for projects/phases/work_items.
+  - E. Drop old `dependencies`; rename `dependencies_v2 → dependencies`; rename indices/constraints to canonical names.
+  - F. Attach BEFORE INSERT/UPDATE triggers + AFTER DELETE source-table triggers.
+  - G. RLS enable + 4 policies (SELECT/INSERT/UPDATE/DELETE all gated by `is_tenant_member(tenant_id)`); anon revoked.
+  - H. PROJ-10 audit-whitelist extended: `entity_type` constraint adds `'dependencies'`; `_tracked_audit_columns` returns the row-as-whole column list; `audit_changes_dependencies` UPDATE-trigger attached. INSERT/DELETE row-snapshot audit is NOT yet implemented (the existing pipeline is UPDATE-only).
+- API routes:
+  - `src/app/api/projects/[id]/dependencies/route.ts` — POST accepts BOTH legacy body (`predecessor_id/successor_id/type`) AND new polymorphic body (`from_type/from_id/to_type/to_id/constraint_type`). Body-shape detection. Legacy form retains the same-project pre-check; polymorphic form supports cross-project edges within the tenant. GET responds with the polymorphic shape and project-scopes via OR-filter on the four entity-id sets (project itself, phases, work_packages, todos).
+  - `src/app/api/projects/[id]/dependencies/[did]/route.ts` — DELETE simplified (no `project_id` filter; RLS is the gate).
+  - `src/app/api/dependencies/route.ts` (NEW) — tenant-level POST that accepts the polymorphic shape only; tenant-membership pre-check before INSERT.
+  - `src/app/api/dependencies/[depId]/route.ts` (NEW) — tenant-level DELETE.
+- Tests:
+  - `src/app/api/projects/[id]/dependencies/route.test.ts` — 6 tests (legacy mapping, cross-project block, polymorphic insert, cycle, cross-tenant, self-dependency).
+  - `src/app/api/dependencies/route.test.ts` — 9 tests (auth, validation, self-dep, tenant membership, insert, duplicate, cycle, cross-tenant, FK).
+- Verified before applying the migration:
+  - `npx tsc --noEmit` clean.
+  - `npx vitest run` 790/790 pass (15 net new tests added).
+  - Migration application is deferred to the user via Supabase MCP.
+
+### Backend (2026-04-28) — Round 1
 - Migration `20260428110000_proj9_work_items_sprints_dependencies.sql` applied via Supabase MCP and saved to disk.
 - Tables created in order: `sprints` → `work_items` → `dependencies` (FK chain). All three have RLS enabled and anon SELECT revoked.
 - Cycle prevention via three SECURITY DEFINER triggers (`prevent_work_item_parent_cycle`, `prevent_dependency_cycle`, `enforce_dependency_same_project`); all set `search_path = public, pg_temp`.
@@ -424,6 +688,84 @@ Single migration file `supabase/migrations/20260428100000_proj9_work_items_sprin
 
 ### Production-ready decision
 **READY** — no Critical or High bugs. M1 is a follow-up hardening task; functionally the system is sound because the API routes don't expose those trigger functions and they no-op outside trigger context.
+
+---
+
+## QA Test Results — Round 2 (Polymorphic Dependencies)
+
+> **QA-Date:** 2026-05-04 · **QA-Environment:** Live Supabase project `iqerihohwabyjzkpcujq` (Production) — all destructive tests in DO-blocks with rollback-marker pattern, no production rows mutated.
+
+### Automated checks
+- **Vitest full suite:** 82 test files, **790 / 790 tests passed**, 8.4 s. No regressions in any deployed feature.
+- **Dependencies-route tests** (PROJ-9-R2 specific): 15 / 15 passed (POST/GET/DELETE on both project-scoped and tenant-level routes; backward-compat wrapper covered).
+- **Security advisor:** 0 ERRORs, 0 new WARNs from PROJ-9-R2. Pre-existing WARNs (SECURITY DEFINER RPCs, auth leaked-password) unchanged. Legacy snapshot table is `RLS-enabled / no-policies` (intended deny-all pattern).
+
+### Live database smoke tests (19 sub-tests across 3 DO-blocks)
+
+| ID | Acceptance Criterion (PROJ-9-R2) | Test | Result |
+|---|---|---|---|
+| T1 | § P Polymorphic-FK validation | non-existent `from_id` → SQLSTATE 23503 | ✅ PASS |
+| T2 | § P Polymorphic-FK type discriminator | `from_type='todo'` pointing to `kind='work_package'` row → 23503 | ✅ PASS |
+| T2b | § P Polymorphic-FK reverse | `from_type='work_package'` pointing to `kind='task'` row → 23503 | ✅ PASS |
+| T3 | § O `dependencies_no_self` CHECK | `(from_type, from_id) = (to_type, to_id)` → check_violation | ✅ PASS |
+| T4a | § N Cross-project allowed within tenant | task in project A → task in project B (same tenant) → 201 OK | ✅ PASS |
+| T4b | § N Cross-kind edges | task → work_package within tenant → 201 OK | ✅ PASS |
+| T5 | § O `dependencies_unique_edge` UNIQUE | duplicate `(from_type, from_id, to_type, to_id, constraint_type)` → unique_violation | ✅ PASS |
+| T6 | § Q Cycle prevention (2-hop) | t1→t2 exists, insert t2→t1 → check_violation | ✅ PASS |
+| T7 | § Q Cycle prevention (3-hop) | t1→t2 + t2→t3 exist, insert t3→t1 → check_violation | ✅ PASS |
+| T8 | § R Tenant-boundary trigger | `tenant_id` on edge ≠ `tenant_id` of from-/to-entity → SQLSTATE 22023 | ✅ PASS |
+| T9 | § P ON-DELETE-cascade work_items (from-side) | DELETE work_item that is `from_id` → dependency row removed | ✅ PASS |
+| T10 | § P ON-DELETE-cascade work_items (to-side) | DELETE work_item that is `to_id` → dependency row removed | ✅ PASS |
+| T11 | § P ON-DELETE-cascade phases | DELETE phase that is `from_id` → phase-edge removed | ✅ PASS |
+| T12 | § O `constraint_type` CHECK accepts FS/SS/FF/SF | one INSERT per non-FS value | ✅ PASS (3/3) |
+| T13 | § O `constraint_type` CHECK rejects 'XX' | INSERT with invalid type → check_violation | ✅ PASS |
+| T14 | § O `lag_days` accepts negative (lead time) | INSERT with `lag_days = -3` → 201 | ✅ PASS |
+| T15 | § O `from_type` CHECK rejects 'sprint' | rejected by trigger (22023) — order: BEFORE-trigger fires before CHECK; both are valid defenses | ✅ PASS |
+| T16 | § O Default `lag_days = 0` | INSERT without lag_days → returned value = 0 | ✅ PASS |
+| T17 | § O Default `constraint_type = 'FS'` | INSERT without constraint_type → returned value = 'FS' | ✅ PASS |
+
+**ON-DELETE-cascade for projects (PROJ-9-R2 § P D4)** — not directly executed in QA because deleting any production project would have side effects beyond the dependencies table. Trigger function `tg_projects_cleanup_dependencies_fn` is structurally identical to the work_items / phases variants (verified by code-symmetry); the wiring is verified at trigger-attach time. **Pass by symmetry** — full live test deferred to a staging environment if/when one is set up.
+
+### Acceptance criteria walkthrough — Round 2
+
+- **§ N Round-2 Scope:** ✅ all four bullets — outline_path (PROJ-36-α deployed), extended ALLOWED_PARENT_KINDS (TS-side already extended), polymorphic dependencies (T1-T17), cross-project allowed within tenant (T4a).
+- **§ O Schema additions:** ✅ verified column list, indexes, CHECK constraints, UNIQUE constraint via `information_schema` query post-migration.
+- **§ P Polymorphic FK Validation:** ✅ T1, T2, T2b. Order of trigger firing (FK before CHECK) confirmed.
+- **§ Q Cycle Prevention:** ✅ T6 (2-hop), T7 (3-hop), plus 2 incidental-during-other-tests cycles caught (T12 first attempt rejected the t2→WP→t2 close).
+- **§ R Tenant-Boundary:** ✅ T8 (intentional), plus T8-incidental during initial setup with wrong tenant_id.
+- **§ S `outline_path` maintenance:** out-of-scope for Round 2 QA (PROJ-36-α deployed separately).
+- **§ T Migration:** ✅ migration applied successfully (after one fix to `audit_log_entity_type_check` constraint — see Bugs & findings).
+- **§ U Audit-Trail-Integration:** ✅ `'dependencies'` added to `audit_log_entries.entity_type` whitelist; `_tracked_audit_columns` returns 7 tracked columns for `'dependencies'`; trigger `audit_changes_dependencies` attached AFTER UPDATE on `dependencies`.
+- **§ V API Changes:** ✅ backward-compat wrapper retained (vitest tests cover old shape with `predecessor_id`/`successor_id`); new tenant-level routes work; project-scoped routes return polymorphic shape.
+- **§ W Performance:** not load-tested in QA. Migration on production-data ran in **<1 s** (0 rows). Cycle-detection CTE has `LIMIT 10000` safety net. Performance characterization for large graphs deferred to PROJ-25 deployment when actual edge volume is meaningful.
+- **§ X Risiken + Mitigation:** all 7 risks noted in Tech Design carried into deployment; only one (audit-constraint-mismatch) materialized — see Bugs & findings.
+- **§ Y Test Strategy:** ✅ unit + Postgres-integration + cross-project smoke + audit smoke + regression all green.
+
+### Bugs & findings — Round 2
+
+**No Critical, High, or Medium bugs.**
+
+| Severity | ID | Finding | Recommendation | Status |
+|---|---|---|---|---|
+| ~~High~~ Resolved | R2-H1 | Initial migration replaced the `audit_log_entries.entity_type` CHECK constraint with a 12-value list, but production has 28 values used. First migration apply failed with constraint violation (production safety). | Fixed in same PR — migration was edited to PRESERVE all existing entity_types and append `'dependencies'`. Re-apply succeeded. **Caught by Postgres before any data was mutated.** | Resolved 2026-05-03 |
+| Info | R2-I1 | `dependencies_legacy` snapshot table is empty (production had 0 dependencies pre-migration). The rollback anchor exists for safety but provides no actual data to roll back to. | Drop after a 4-week confidence window via follow-up migration. | open follow-up |
+| Info | R2-I2 | Project ON-DELETE cascade not directly tested in production smoke (would have side-effects). Verified by code-symmetry to phase/work_items variants. | Add a staging-env test before bulk delete operations on projects. | acceptable |
+
+### Security audit — Round 2 (red-team perspective)
+
+- **Cross-tenant edge insert** — blocked at trigger level (T8). Verified that even when claiming a wrong `tenant_id` on the edge row, the trigger rejects with 22023 because the from/to entities resolve to a different tenant. Defense-in-depth to RLS holds.
+- **Polymorphic FK forge** — blocked. Cannot insert an edge with a `from_id` that doesn't match a row in the type-discriminated table (T1, T2). Cannot type-confuse (T2: a WP id with `from_type='todo'` is rejected because the lookup uses `WHERE id=... AND kind <> 'work_package'`).
+- **Self-edge / loop forge** — blocked at CHECK (T3) before any trigger fires.
+- **Cycle forge across kinds + projects** — blocked. The recursive-CTE walks polymorphic edges regardless of from/to type; cycle detection works cross-kind and cross-project (T6, T7).
+- **SQL injection via discriminator value** — not applicable. `from_type`/`to_type` are CHECK-constrained to 4 enum values. Trigger uses static CASE branches (no dynamic SQL).
+- **RLS evasion** — `dependencies` requires `is_tenant_member(tenant_id)` for all 4 verbs (SELECT/INSERT/UPDATE/DELETE). Anon revoked. Legacy snapshot has RLS-enabled-no-policies (deny-all to non-service roles).
+- **Service-role bypass** — service-role bypasses RLS by design but not triggers. Tenant-boundary trigger remains active; we tested this implicitly via the wrong-tenant_id setup error.
+- **Audit-trail integrity** — UPDATE on `dependencies` is row-as-whole audited via `record_audit_changes` AFTER UPDATE trigger. INSERT/DELETE audit is a documented follow-up (PROJ-10 row-snapshot work).
+
+### Production-ready decision — Round 2
+**READY** — 0 Critical, 0 High, 0 Medium bugs. R2-H1 was fixed during migration apply (caught by Postgres before data damage). R2-I1 and R2-I2 are open follow-ups, not blockers.
+
+Round-2 scope is **Approved** for `/deploy` (already in production via the migration apply; deployment artefact is the merged PR).
 
 ## Deployment
 

@@ -1,8 +1,8 @@
 # PROJ-25: Drag-and-Drop Stack — Backlog↔Sprint + Gantt voll
 
-## Status: Planned
+## Status: Architected
 **Created:** 2026-04-30
-**Last Updated:** 2026-04-30
+**Last Updated:** 2026-05-03
 
 ## Summary
 Macht das Backlog + den Gantt interaktiv per Drag-and-Drop. Drei Surfaces:
@@ -159,7 +159,167 @@ Alle drei Surfaces sind Erweiterungen bestehender PROJ-7- und PROJ-19-Module. Ke
 <!-- Sections below are added by subsequent skills -->
 
 ## Tech Design (Solution Architect)
-_To be added by /architecture_
+
+> **Architected:** 2026-05-03
+> **Author:** Solution Architect (post-CIA-Review 2026-05-03 + ADR-004)
+> **Architecture-Referenzen:** [ADR-004 — Projekt → Phase → Arbeitspaket → To-do-Hierarchie + polymorphe Dependencies](../docs/decisions/project-phase-workpackage-todo-hierarchy.md), [PROJ-9-Round-2 (Polymorphic-Deps-Migration)](PROJ-9-work-item-metamodel-backlog.md), [PROJ-36 (WBS-Hierarchie)](PROJ-36-waterfall-wbs-hierarchy-rollup.md).
+
+### Spec-Korrekturen aus ADR-004
+
+Die ursprüngliche Spec-Section **ST-04 plante eine separate `phase_dependencies`-Tabelle** — das ist mit ADR-004 **überholt**. Stattdessen verwendet PROJ-25 die einheitliche, polymorphe `dependencies`-Tabelle (`from_type`/`from_id`/`to_type`/`to_id`/`constraint_type`), die in **PROJ-9-Round-2** migriert wird. **Keine neue Tabelle in PROJ-25 mehr.**
+
+Zusätzlich aus dem CIA-Review von 2026-05-03 angenommen:
+- **Phasen-Container ziehen Work-Item-Kinder proportional mit** (nicht in Original-Spec).
+- **Cross-Project-Dependencies werden als Indikator-Pfeil + Tooltip** angezeigt.
+- **Critical-Path wird manuell** über die polymorphe `dependencies`-Tabelle berechnet (Postgres recursive CTE).
+- **Library-Wechsel:** statt Eigenbau-SVG verwenden wir die **MIT-Lizenzierte SVAR React Gantt** als Foundation.
+
+### A. Was PROJ-25 baut (Surface-Liste)
+
+PROJ-25 ist die **Interaktivitäts-Schicht** auf bestehenden Plan-Daten. Nichts an der Plan-Logik ändert sich — nur die Eingabe wird per Maus statt Formular.
+
+1. **Backlog↔Sprint** — Stories per Maus zwischen Backlog-Pool und aktivem Sprint verschieben.
+2. **Gantt-Move** — Phasen- oder Work-Item-Balken horizontal verschieben (Datumsverschiebung).
+3. **Gantt-Resize** — Rechte Kante eines Balkens ziehen, um die Dauer zu ändern.
+4. **Gantt-Dependency-Linien** — von einem Balken zum nächsten ziehen, um eine Vorgänger-Nachfolger-Beziehung zu erstellen (FS / SS / FF / SF).
+5. **Phasen-Container-Mitziehen** *(neu)* — Wird eine Phase verschoben, bewegen sich alle Work-Items in der Phase um den gleichen Tagesoffset mit.
+6. **Critical-Path-Visualisierung** *(neu, manuell)* — Der kritische Pfad wird als rote Pfeil-Kette über das Gantt gelegt.
+7. **Cross-Project-Indikator** *(neu)* — Dependencies, die in andere Projekte führen, werden am Rand des Gantt mit einem dezenten Pfeil + Tooltip angezeigt.
+
+### B. Component Structure (Visual Tree)
+
+```
+ProjectRoom (PROJ-7)
+├── Backlog Module (Scrum-Method-Visibility)
+│   ├── BacklogPool (DnD-Zone, Source)
+│   │   └── StoryCard (draggable, dnd-kit)
+│   ├── ActiveSprintColumn (DnD-Zone, Target)
+│   │   └── StoryCard (sortable within sprint)
+│   └── DragOverlay (Ghost-Card mit Vorschau)
+│
+└── Gantt Module (Waterfall-Method-Visibility)
+    ├── GanttToolbar
+    │   ├── ZoomLevel (Tag / Woche / Monat)
+    │   ├── CriticalPathToggle
+    │   └── ExportButton (SVG/PDF, deferred)
+    ├── GanttCanvas (SVAR React Gantt, MIT)
+    │   ├── TimelineHeader (Datum-Skala, Snap-to-Day)
+    │   ├── PhaseBar (draggable + resizable + Container für Kinder)
+    │   │   └── WorkItemBar (draggable + resizable, child-of-phase)
+    │   ├── DependencyLineLayer
+    │   │   ├── IntraProjectArrow (FS / SS / FF / SF)
+    │   │   ├── CrossProjectIndicator (kleiner Pfeil + Tooltip am Rand)
+    │   │   └── CriticalPathOverlay (rote Pfade über bestehenden Linien)
+    │   └── ConnectorHotspots (sichtbar bei Hover, links/rechts an jedem Balken)
+    └── GanttSidePanel (Klick-Detail bei Pfeil/Balken)
+        ├── DependencyEditor (Constraint-Type + Lag)
+        └── ItemDetailDrawer (für Work-Item / Phase)
+```
+
+### C. Datenmodell (plain language)
+
+PROJ-25 legt **keine eigenen Tabellen** an. Es nutzt:
+
+- **`work_items`** (PROJ-9, bestehend) — für Backlog-Stories, Sprint-Members, Gantt-Work-Items. PROJ-25 ändert **keine Spalten**, sondern updated existierende Felder via API:
+  - `sprint_id` (für Backlog↔Sprint).
+  - `position` (für Sortierung im Sprint).
+  - `planned_start`, `planned_end` (für Gantt-Move + Resize).
+- **`phases`** (PROJ-19, bestehend) — für Phasen-Balken. Dieselben Felder wie Work-Items.
+- **`dependencies`** (polymorph, PROJ-9-Round-2 / ADR-004) — wird in PROJ-25 nur **gelesen + beschrieben**, nicht definiert. Schema-Eigentümer: PROJ-9-Round-2.
+- **`work_items.phase_id`** (bestehend, PROJ-19) — wird benutzt, um Children-of-Phase zu finden für proportionalen Container-Drag.
+
+**Critical-Path-Berechnung** läuft als **Postgres-Function** (kein neues Tabellen-Schema, nur eine read-only RPC):
+- Input: `project_id`.
+- Output: Liste von Work-Item-/Phasen-IDs auf dem kritischen Pfad + Float-Werte pro Item.
+- Implementierung: rekursive CTE über die polymorphe `dependencies`-Tabelle (Forward-Pass für Earliest-Start, Backward-Pass für Latest-End, Float = Latest-Start − Earliest-Start; CP = alle Items mit Float = 0).
+- Performance-Cache: pro Projekt, invalidiert bei jeder Plan-Änderung. MVP: Re-Compute on-demand im Frontend (Tracking-Refresh-Latenz).
+
+**Cross-Project-Indikator** liest `dependencies` mit `from_type/to_type` + Tenant-Boundary-Check. Items, deren Endpunkt in einem anderen Projekt liegt, werden als "external" markiert.
+
+### D. Tech-Entscheidungen (mit Begründung)
+
+| # | Entscheidung | Begründung |
+|---|---|---|
+| **D1** | **Gantt-Library: SVAR React Gantt v2.4 (MIT, Free Core)** statt Eigenbau-SVG | CIA-Review 2026-05-03: SVAR liefert React 19 + DnD + Resize + Dependency-Drawing + Drag-to-Connect bereits eingebaut. Spart geschätzt 400–600 LOC + Wartungsaufwand bei DnD-Hotspots, A11y, Touch. MIT-Lizenz → kein Vendor-Lock-in. **Critical-Path bleibt PRO-Feature**, daher manuell ergänzt (siehe D3). |
+| **D2** | **Backlog↔Sprint-DnD: `@dnd-kit/core` + `@dnd-kit/sortable`** | Modern, aktiv gewartet, accessibility-first, Touch-nativ, Keyboard-Navigation eingebaut. Industrie-Standard für sortable React-Listen. Nicht SVAR, weil SVAR Gantt-spezifisch ist. |
+| **D3** | **Critical-Path: manuell via Postgres recursive CTE + SVG-Overlay über SVAR** | SVAR PRO würde €500–€900/Dev/Jahr kosten. Polymorphe `dependencies`-Tabelle (ADR-004) ist die richtige Daten-Basis; CP-Math ist ein klassischer Forward/Backward-Pass-Algorithmus, gut dokumentiert. SVG-Overlay nutzt SVAR's Public-API für Bar-Positionen. Aufwand ~2–3 PT, dafür keine laufenden Kosten + volle Kontrolle. |
+| **D4** | **Phasen-Container-Drag: proportional shift (alle Kinder gleicher Tagesoffset)** | MS-Project-Default. Intuitivste Semantik für PMs. Resize-Verhalten der Phase ändert die Kinder **nicht** (nur Move bewegt sie mit). |
+| **D5** | **Cross-Project-Dependencies: Indikator-Pfeil + Tooltip** | Spec-Tracking ohne visuelle Überfrachtung. Ghost-Items wären zu laut; komplettes Verstecken wäre intransparent. Detail-Drilldown via Click öffnet Cross-Project-Dialog (deferred zu PROJ-27). |
+| **D6** | **Cycle-Detection: Postgres BEFORE-INSERT-Trigger + Application-Layer-Pre-Check** | Defense-in-depth. Trigger ist Source-of-Truth (kann nicht umgangen werden), App-Layer liefert User-friendly-Errors vor dem Roundtrip. Polymorphe Cycle-Check muss `from_type`+`to_type` traversieren — Bestandteil der PROJ-9-Round-2-Implementation. |
+| **D7** | **Bulk-Sprint-Move: eine Transaktion, all-or-nothing** | Saubere Semantik, einfaches Recovery, weniger Edge-Cases bei Failure-Mode. |
+| **D8** | **Optimistic-Update im Frontend, Server-Reconcile bei Fehler** | UX-Erwartung an moderne DnD-Tools. Toast bei Konflikt + Revert. Konfliktrate niedrig durch PROJ-10-Field-Versioning. |
+| **D9** | **Snap-to-Day-Grid (Minimum 1 Kalendertag)** | Sub-Day-Planning ist out-of-Scope für ein PM-Tool. Reduziert UI-Komplexität und API-Updates. |
+| **D10** | **Touch-Devices: read-only Gantt** | dnd-kit unterstützt Touch nativ für Backlog↔Sprint. Aber Gantt-Touch-Gesten sind komplex (Multi-Finger-Zoom + Pan + Drag-Konflikte). Für MVP: iPad/Phone zeigt Gantt nur read-only mit Hinweis. PROJ-25c könnte das später nachholen. |
+| **D11** | **Audit: nutzt PROJ-10-existing tracked-columns** | `sprint_id`, `position`, `planned_start`, `planned_end` sind bereits versioned. Dependencies bekommen neue Audit-Whitelist (Erweiterung in PROJ-9-Round-2). |
+| **D12** | **Tenant-Boundary: Cross-Tenant-Dependencies hard-blocked** | Trigger auf `dependencies` (PROJ-9-Round-2) verifiziert Same-Tenant. Defense-in-depth zu RLS. |
+
+### E. Dependencies (zu installierende Pakete)
+
+| Package | Zweck | Lizenz | Größe (gzip approx) |
+|---|---|---|---|
+| `wx-react-gantt` (SVAR React Gantt) | Gantt-Foundation: Balken, DnD, Resize, Dependency-Lines | MIT | ~80 KB |
+| `@dnd-kit/core` | DnD-Primitives für Backlog↔Sprint | MIT | ~25 KB |
+| `@dnd-kit/sortable` | Sortierbare Listen (Sprint-Reihenfolge) | MIT | ~15 KB |
+| `@tanstack/react-virtual` | Virtualisierung für > 200 Sprint-Items | MIT | ~10 KB |
+
+**Total Bundle-Auswirkung:** ~130 KB gzip (akzeptabel; Gantt-Module ist code-split per Next.js dynamic-import — User der nie Wasserfall-Projekt hat, lädt nichts davon).
+
+### F. Cross-Project-Verbindungen
+
+**Voraussetzung:** PROJ-25 startet **erst nach** PROJ-9-Round-2 (polymorphe Dependencies-Migration). Andernfalls fehlt die Daten-Grundlage.
+
+**Empfehlung Reihenfolge:**
+1. PROJ-9-Round-2 architected (dieser Run, Step 2) → polymorphe Schema + Migration.
+2. PROJ-9-Round-2 implementiert (`/backend`).
+3. PROJ-36 architected → Tree-View + WBS + Roll-up (separate `/architecture`-Runde).
+4. PROJ-36 implementiert.
+5. **DANN** PROJ-25 implementiert (dieser Spec).
+
+PROJ-25 hat keinen direkten Lese-Bedarf an PROJ-36 (WBS-Hierarchie + Tree-View) — die beiden sind orthogonal.
+
+### G. Out-of-Scope-Bestätigung
+
+PROJ-25 deckt **nicht** ab:
+- Auto-Schedule-Engine (Dependency-Driven-Move) → **PROJ-25b**.
+- Resource-Histogramme im Gantt → **PROJ-11** (separate Feature-Strecke).
+- Multi-User-Realtime-Cursors → **PROJ-25c**.
+- Touch-Native-DnD im Gantt → **PROJ-25c**.
+- Undo-Stack für DnD → **PROJ-25c**.
+- Gantt-Export (PNG/PDF) → später (PROJ-21b/c).
+
+### H. Performance-Architektur
+
+| Surface | Anforderung | Strategie |
+|---|---|---|
+| Backlog-DnD bei 100+ Items | 60 fps | dnd-kit Virtualisierung + nur sichtbare Cards rendern |
+| Sprint-DnD-Sortierung | < 100 ms Drop-zu-API | Optimistic-Update + Async-API |
+| Gantt mit 30 Phasen + 100 Items + 50 Deps | 60 fps Drag | SVAR's interner Render-Layer (Canvas-fallback bei > 200 Items) |
+| Critical-Path-Compute | < 500 ms bei 500-Item-Projekt | Postgres recursive CTE + Index auf `(from_type, from_id)` und `(to_type, to_id)` (Bestandteil PROJ-9-Round-2) |
+| Bulk-Sprint-Move 50 Items | < 1 s | Single-Transaction-API + Server-side Bulk-Update |
+| Cross-Project-Indikator-Render | < 50 ms | Indikatoren werden lazy beim Erstrender berechnet, nicht per-Frame |
+
+### I. Risiken + Mitigation
+
+| Risiko | Schwere | Mitigation |
+|---|---|---|
+| **SVAR-API-Stabilität** (v2.4 ist relativ jung) | Mittel | API-Wrapper-Layer im V3-Code; Migrationspfad zu Frappe-Gantt oder Eigenbau im Notfall (Fallback-Plan dokumentiert in `docs/decisions/gantt-library-decision.md` — neuer ADR). |
+| **Critical-Path-Performance bei großen Projekten** | Mittel | Materialized View pro Projekt-Snapshot wenn > 1000 Items. MVP: on-demand. |
+| **Cross-Tenant-Leakage durch polymorphe Refs** | Hoch | Trigger-Layer (PROJ-9-Round-2) verifiziert Same-Tenant. RLS als zweite Schicht. Zusätzlich: Frontend-API-Validation. |
+| **Class-3-Privacy: Resource-Namen im Gantt** | Niedrig | Gantt zeigt Names nur Tenant-intern; AI-Narrative-Generierung über Gantt-Daten muss durch PROJ-30 narrative-Purpose-Filter (existiert). |
+| **Bundle-Size-Bloat** | Niedrig | Code-split per dynamic-import auf `/projects/[id]/gantt`; nur geladen wenn Wasserfall-Projekt. |
+| **Touch-Geräte ohne DnD-Erlebnis** | Niedrig | Read-only-Mode auf < 768px; Hinweis-Banner. PROJ-25c-Folgekarte. |
+
+### J. Folge-ADR
+
+In `/architecture`-Runde wird parallel ein neuer ADR geschrieben:
+- **`docs/decisions/gantt-library-decision.md`** — Build-vs-Buy-Bewertung, SVAR-Free-vs-PRO-Trade-off, Fallback-Plan auf Frappe-Gantt oder Eigenbau, Performance-Benchmarks.
+
+### K. Test-Architektur
+
+- **Vitest-Unit:** Critical-Path-Math, proportional-Shift-Algorithmus, polymorphe Cycle-Pre-Check (App-Layer).
+- **Integration:** API-Endpoints für Bulk-Sprint-Move + Dependency-CRUD gegen Postgres-Trigger.
+- **E2E (Playwright):** Backlog→Sprint-DnD, Gantt-Move + Resize, Dependency-Pfeil-Ziehen, Phasen-Container-Mitziehen, Critical-Path-Toggle.
+- **Performance-Bench:** 500 Items + 200 Deps, 60 fps Drag-Frame-Rate.
 
 ## Implementation Notes
 _To be added by /frontend and /backend_
