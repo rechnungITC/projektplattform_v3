@@ -22,7 +22,7 @@
 | PROJ-6 | Project Types, Methods Catalog, and Rule Engine | Deployed | [Spec](PROJ-6-project-types-methods-rule-engine.md) | 2026-04-25 |
 | PROJ-7 | Project Room with Internal Kanban / Scrum / Gantt Modules | Deployed (MVP slice) | [Spec](PROJ-7-project-room-internal-modules.md) | 2026-04-25 |
 | PROJ-8 | Stakeholders and Organization | Deployed | [Spec](PROJ-8-stakeholders-organization.md) | 2026-04-25 |
-| PROJ-9 | Work Item Metamodel — Backlog Structure (+ Round-2: polymorphic dependencies · outline_path · extended ALLOWED_PARENT_KINDS) | Deployed (R1) · Approved (R2 — ready for /deploy) | [Spec](PROJ-9-work-item-metamodel-backlog.md) | 2026-04-25 |
+| PROJ-9 | Work Item Metamodel — Backlog Structure (+ Round-2: polymorphic dependencies · outline_path · extended ALLOWED_PARENT_KINDS) | Deployed (R1 + R2 live) | [Spec](PROJ-9-work-item-metamodel-backlog.md) | 2026-04-25 |
 | PROJ-10 | Change Management — Field-level Versioning, Compare, Undo, Copy, Audit | Deployed | [Spec](PROJ-10-change-management-versioning.md) | 2026-04-25 |
 | PROJ-11 | Resources, Capacities, and Schedule Logic | Deployed | [Spec](PROJ-11-resources-capacity-schedule.md) | 2026-04-25 |
 | PROJ-12 | KI Assistance and Data-Privacy Paths | Deployed | [Spec](PROJ-12-ki-assistance-privacy-paths.md) | 2026-04-25 |

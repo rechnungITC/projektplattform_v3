@@ -1,8 +1,8 @@
 # PROJ-9: Work Item Metamodel — Backlog Structure (Epic / Story / Task / Work Package / Bug)
 
-## Status: Deployed (Round 1) · Round-2 Approved (QA passed 2026-05-04)
+## Status: Deployed (R1 + R2 live in production)
 **Created:** 2026-04-25
-**Last Updated:** 2026-05-04 (Round-2 QA passed — 19 live-DB smoke tests + 790 vitest + security advisor clean; 0 Critical/High/Medium bugs)
+**Last Updated:** 2026-05-04 (R2 deployed — git tag `v0.9.0-proj9r2`, commit `60cccd9`; migration applied to Supabase; API routes live via Vercel auto-deploy)
 
 ## Summary
 Introduces the unified planning-object metamodel: one `work_items` table with a `kind` discriminator (`epic | feature | story | task | subtask | bug | work_package`), parent-child rules per kind, method-aware visibility, and integration with the already-existing phases/milestones (which stay in their own tables). Bugs are cross-method. Inherits V2 EP-07.
@@ -769,7 +769,20 @@ Round-2 scope is **Approved** for `/deploy` (already in production via the migra
 
 ## Deployment
 
+### Round 1
 - **Date deployed:** 2026-04-28
 - **Production URL:** https://projektplattform-v3.vercel.app
 - **Git tag:** `v0.1.0-mvp-backbone`
 - **Deviations:** none observed.
+
+### Round 2 — Polymorphic Dependencies
+- **Date deployed:** 2026-05-04
+- **Production URL:** https://projektplattform-v3.vercel.app
+- **Git tag:** `v0.9.0-proj9r2`
+- **Commit:** `60cccd9`
+- **Migrations applied:**
+  - `20260503200000_proj9r2_polymorphic_dependencies.sql`
+  - `20260503210000_proj9r2_legacy_rls_hardening.sql`
+- **Deviations:** during initial migration apply, the `audit_log_entity_type_check` constraint was inadvertently overwritten with a 12-value list (vs. the 28 production values). Postgres rejected the migration before any data mutation; constraint definition was corrected to PRESERVE all existing entity_types and additively append `'dependencies'`. Re-apply succeeded. No production data was touched during the failure.
+- **Lint pre-existing issue noted:** `risk-trend-sparkline.tsx:53` (PROJ-35 code) has a `react-hooks/set-state-in-effect` ESLint error — unrelated to PROJ-9-R2; PROJ-35 is already deployed with this code; recommend cleanup in next PROJ-35 slice.
+- **Follow-up:** drop `dependencies_legacy` snapshot table after a 4-week confidence window (ID R2-I1).
