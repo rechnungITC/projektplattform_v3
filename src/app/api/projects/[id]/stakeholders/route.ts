@@ -144,6 +144,11 @@ export async function POST(request: Request, ctx: Ctx) {
   if (access.error) return access.error
 
   const data = parsed.data
+  // BUGFIX 2026-05-04: insertPayload muss ALLE Schema-Felder durchreichen.
+  // Vorher fehlten alle PROJ-33-α qualitativen Felder + is_approver — bei
+  // Stakeholder-Create wurden sie vom Schema akzeptiert, aber stillschweigend
+  // verworfen weil sie nicht im insertPayload landeten. Das ist der
+  // wiederkehrende „Wert verfällt nach Speichern"-Bug.
   const insertPayload = {
     tenant_id: access.project.tenant_id,
     project_id: projectId,
@@ -158,6 +163,17 @@ export async function POST(request: Request, ctx: Ctx) {
     impact: data.impact,
     linked_user_id: data.linked_user_id ?? null,
     notes: data.notes?.trim() || null,
+    // PROJ-33-α qualitative Bewertungs-Felder (alle nullable; Schema validates)
+    reasoning: data.reasoning?.trim() || null,
+    stakeholder_type_key: data.stakeholder_type_key?.trim() || null,
+    management_level: data.management_level ?? null,
+    decision_authority: data.decision_authority ?? undefined, // DB-default 'none'
+    attitude: data.attitude ?? undefined, // DB-default 'neutral'
+    conflict_potential: data.conflict_potential ?? null,
+    communication_need: data.communication_need ?? null,
+    preferred_channel: data.preferred_channel ?? null,
+    // PROJ-31 — eligible-approver flag (DB-default false)
+    is_approver: data.is_approver ?? undefined,
     created_by: userId,
   }
 

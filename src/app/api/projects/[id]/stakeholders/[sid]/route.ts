@@ -192,6 +192,9 @@ export async function PATCH(request: Request, ctx: Ctx) {
     update.communication_need = data.communication_need ?? null
   if (data.preferred_channel !== undefined)
     update.preferred_channel = data.preferred_channel ?? null
+  // PROJ-31 — eligible-approver flag (cascade-trigger clears pending
+  // approver-rows when toggled false).
+  if (data.is_approver !== undefined) update.is_approver = data.is_approver
 
   const { data: row, error } = await supabase
     .from("stakeholders")
