@@ -1,6 +1,6 @@
 # PROJ-32: Tenant Custom AI Provider Keys (Multi-Provider)
 
-## Status: Deployed (Phase 32-a live in production — 2026-05-04)
+## Status: Deployed 32a · Architected 32c (Tech Design CIA-locked, awaiting 3 user-approvals before /backend) · 32b/32d to be specced
 
 **Created:** 2026-05-04
 **Last Updated:** 2026-05-04
@@ -13,12 +13,12 @@ PROJ-32 wird in 4 Sub-Slices ausgeliefert. Jede Slice ist standalone deploybar.
 
 | Sub-Slice | Scope | Status | Aufwand |
 |---|---|---|---|
-| **32a** | Tenant-Anthropic-Key (encrypted storage, validation, fallback-policy) | **In dieser Spec definiert** | ~3-4 PT |
+| **32a** | Tenant-Anthropic-Key (encrypted storage, validation, fallback-policy) | **Deployed 2026-05-04** | ~3-4 PT |
 | 32b | OpenAI + Google AI Studio (analog 32a, gleiches Storage-Pattern) | _to be specced_ | ~3 PT |
-| 32c | Ollama (lokal-only, kein Cloud-Key, aber Endpoint-URL pro Tenant) + Provider-Priority | _to be specced_ | ~2 PT |
+| **32c** | Ollama (Endpoint-URL + optional Bearer) + Generic-Provider-Schema-Migration + Per-Purpose-Priority | **Specced** (in dieser Spec) | ~4-5 PT (revised from ~2 PT) |
 | 32d | Cost-Caps + Token-Logging + Tenant-Cost-Dashboard | _to be specced_ | ~3 PT |
 
-**Total geschätzt:** ~11-12 PT über alle 4 Slices.
+**Total geschätzt:** ~13-15 PT über alle 4 Slices (+2 PT vs initiale Schätzung — der generische Schema-Refactor in 32c ist substanzieller als ursprünglich angenommen).
 
 ## Dependencies
 
@@ -513,5 +513,418 @@ Run via Supabase MCP DO-block with `set local role = authenticated` + JWT-claim 
 
 **Next steps (separate slices, not 32a):**
 - 32b — OpenAI + Google AI Studio (analog 32a)
-- 32c — Ollama endpoint URL + provider priority
+- 32c — Ollama endpoint URL + provider priority (specced below)
 - 32d — Cost-Caps + Tenant-Cost-Dashboard
+
+---
+
+## Phase 32-c — Ollama Endpoint + Generic Provider Schema + Per-Purpose Priority
+
+> Diese Spec deckt **32c** vollständig ab. 32b und 32d werden separat specced.
+
+### Locked Decisions (von /requirements 2026-05-04)
+
+1. **Schema:** Generic `tenant_ai_providers` Tabelle mit verschlüsselter JSONB-Config. Ersetzt `tenant_ai_keys` (32a). Datenmigration aus 32a ist Teil dieser Slice.
+2. **Priority:** Per-Purpose-Priority — Tenant-Admin definiert pro `(ai_purpose, data_class)`-Kombination eine geordnete Provider-Liste.
+3. **Class-3 mit Ollama:** Ja — Ollama gilt als Class-3-fähig. Der AI-Router darf Class-3-Daten an einen tenant-konfigurierten Ollama-Endpoint senden, weil Ollama auf tenant-eigener Infrastruktur läuft (Daten verlassen die tenant-Domäne nicht).
+4. **Ollama-Auth:** Endpoint-URL Pflicht; Bearer-Token optional (verschlüsselt analog 32a). HTTPS empfohlen, HTTP für interne URLs erlaubt.
+
+## User Stories — 32c
+
+### US-1 — Tenant-Admin: Ollama-Endpoint hinterlegen
+**Als** Tenant-Admin
+**möchte ich** in den Workspace-Einstellungen eine Ollama-Endpoint-URL und optional einen Bearer-Token hinterlegen
+**damit** Class-3-AI-Calls über meinen lokalen Ollama-Server laufen können statt blockiert zu werden.
+
+### US-2 — Tenant-Admin: Modell pro Endpoint auswählen
+**Als** Tenant-Admin
+**möchte ich** den Modellnamen festlegen den der Ollama-Endpoint nutzen soll (z.B. `llama3.1:70b`)
+**damit** der Router den richtigen Modellnamen an Ollama mitgibt und nicht den Default ratet.
+
+### US-3 — Tenant-Admin: Provider-Priority pro Purpose+Class konfigurieren
+**Als** Tenant-Admin
+**möchte ich** pro AI-Purpose (risks, narrative, …) und pro Data-Class (1/2/3) eine Provider-Reihenfolge festlegen
+**damit** ich differenzieren kann (z.B. Class-3-narratives → ollama only; Class-1-risks → anthropic preferred, ollama fallback).
+
+### US-4 — System: Class-3-Routing zu Ollama
+**Als** Plattform
+**möchte ich** Class-3-AI-Calls eines Tenants an dessen konfigurierten Ollama-Endpoint senden statt zu blockieren
+**damit** Tenants mit eigener Ollama-Infrastruktur AI-Funktionen für Class-3-Daten nutzen können.
+
+### US-5 — System: Health-Check des Ollama-Endpoints
+**Als** Plattform
+**möchte ich** beim Speichern und auf Re-Test prüfen ob der Ollama-Endpoint erreichbar ist und das gewünschte Modell vorhält
+**damit** Tenants früh sehen wenn ihr Endpoint nicht funktionsfähig ist.
+
+### US-6 — Migration: bestehende 32a-Daten in das neue Schema überführen
+**Als** Plattform
+**möchte ich** dass die existierenden Anthropic-Keys aus `tenant_ai_keys` in die neue `tenant_ai_providers`-Tabelle übernommen werden
+**damit** kein Tenant-Admin nach dem Deploy seinen Key neu eingeben muss.
+
+## Acceptance Criteria — 32c
+
+### Block A — Generic Provider-Schema (Migration)
+
+- [ ] **A.1** Neue Tabelle `public.tenant_ai_providers`:
+  - `id uuid primary key default gen_random_uuid()`
+  - `tenant_id uuid not null references tenants(id) on delete cascade`
+  - `provider text not null check (provider in ('anthropic','ollama'))` — 32b erweitert um `'openai'`, `'google'`
+  - `encrypted_config bytea not null` — pgcrypto-verschlüsseltes JSONB. Shape provider-spezifisch:
+    - `anthropic`: `{api_key: string, model_id?: string}`
+    - `ollama`: `{endpoint_url: string, bearer_token?: string, model_id: string}`
+  - `key_fingerprint text not null` — analog 32a (Anthropic-Key-Tail oder Ollama-Hostname)
+  - `last_validated_at timestamptz`, `last_validation_status text check (... in ('valid','invalid','rate_limited','unreachable','model_missing','unknown'))`
+  - `created_by uuid references profiles(id) on delete set null`
+  - `created_at`, `updated_at` (trigger-managed)
+  - `unique (tenant_id, provider)` — analog 32a Single-Provider-Decision
+- [ ] **A.2** RLS aktiviert; SELECT/INSERT/UPDATE/DELETE alle nur für `is_tenant_admin(tenant_id)`. Encrypted-config NIE direkt auslesbar für Member.
+- [ ] **A.3** Neue RPC `decrypt_tenant_ai_provider(p_tenant_id uuid, p_provider text) returns jsonb` — member-callable für Routing, gibt das entschlüsselte JSONB-Config-Objekt zurück, NULL wenn keine Row existiert. Gates auf `is_tenant_member`.
+- [ ] **A.4** Daten-Migration: alle `tenant_ai_keys`-Rows werden in `tenant_ai_providers` übernommen mit `provider='anthropic'` und `encrypted_config` = re-encrypt of `{api_key: <decrypted>}`. Migration ist zero-downtime: alte Tabelle bleibt während Roll-out parallel bestehen, wird in einem späteren Cleanup-Migration nach Verifikation gelöscht (separate Migration).
+- [ ] **A.5** Audit-RPC `record_tenant_ai_provider_audit(...)` analog 32a — admin-only, fingerprints only, action ∈ `('create','rotate','delete','validate')`. CHECK auf `audit_log_entries.entity_type` erweitert um `'tenant_ai_providers'`.
+
+### Block B — Ollama-Konfiguration
+
+- [ ] **B.1** `endpoint_url` Validation (Zod):
+  - Muss valides URL-Format sein
+  - Schemes: `https://` (preferred) oder `http://` (erlaubt mit Warnung im UI)
+  - Max 500 Zeichen
+  - Trailing-Slash wird normalisiert (entfernt)
+- [ ] **B.2** `bearer_token` Validation:
+  - Optional
+  - Wenn gesetzt: 8–500 Zeichen
+  - Wird verschlüsselt im JSONB gespeichert
+- [ ] **B.3** `model_id` Validation:
+  - Pflicht (z.B. `"llama3.1:70b"`, `"qwen2.5:32b"`)
+  - 1–100 Zeichen, kein Whitespace am Anfang/Ende
+- [ ] **B.4** Ollama-Validation-Endpoint (analog Anthropic-Validator):
+  - Server-side Test-Call zu `<endpoint_url>/api/tags` (5s Timeout)
+  - Wenn Bearer-Token gesetzt: `Authorization: Bearer <token>` Header
+  - 200 OK + Modell `model_id` ist in der Response → `valid`
+  - 200 OK + Modell fehlt → `model_missing` (Tenant-Admin muss `ollama pull <model>` ausführen)
+  - 401/403 → `invalid` (Bearer-Token falsch)
+  - Connection-Refused / DNS-Failure / Timeout → `unreachable`
+  - Sonst → `unknown`
+
+### Block C — Provider-Priority (Per-Purpose × Per-Class)
+
+- [ ] **C.1** Neue Tabelle `public.tenant_ai_provider_priority`:
+  - `tenant_id uuid not null`
+  - `purpose text not null check (purpose in ('risks','narrative','decisions','work_items','open_items'))` — synchron mit `AIPurpose`-Type aus PROJ-12
+  - `data_class smallint not null check (data_class in (1,2,3))`
+  - `provider_order text[] not null` — geordnetes Array, z.B. `['anthropic','ollama']`. Provider die nicht in der Liste stehen werden NIE für diese Purpose+Class genutzt.
+  - `created_at`, `updated_at` (trigger-managed)
+  - `primary key (tenant_id, purpose, data_class)`
+- [ ] **C.2** RLS analog A.2 — admin-only.
+- [ ] **C.3** Default-Behaviour wenn KEINE Priority-Row existiert für (purpose, data_class):
+  - Class-3 → `['ollama']` wenn Ollama konfiguriert, sonst `[]` (= blocked)
+  - Class-1/2 → `['anthropic','ollama']` wenn beide konfiguriert, sonst was vorhanden ist
+- [ ] **C.4** Validation: jeder String in `provider_order` muss einer der konfigurierten Provider in `tenant_ai_providers` sein, sonst 422-Response. Verhindert Tippfehler oder dangling references.
+- [ ] **C.5** Resolver-Logik (`src/lib/ai/key-resolver.ts` erweitert):
+  - Gegebene `(tenantId, purpose, dataClass)` → laden der Priority-Row (oder Default)
+  - Iteriere durch `provider_order`: für jeden Provider, prüfe ob Konfiguration existiert + nicht `invalid`
+  - Returne `{ source: 'tenant', provider: 'anthropic'|'ollama', config }` für ersten match
+  - Returne `{ source: 'platform', ... }` für Class-1/2 wenn kein Tenant-Provider available
+  - Returne `{ source: 'blocked', reason }` für Class-3 ohne validen Tenant-Provider
+
+### Block D — AI-Router-Erweiterung für Ollama
+
+- [ ] **D.1** Neuer Provider `src/lib/ai/providers/ollama.ts`:
+  - Implementiert `AIProvider`-Interface (analog `AnthropicProvider`)
+  - Konstruktor nimmt `{endpoint_url, model_id, bearer_token?}` entgegen
+  - `generateRiskSuggestions` + `generateNarrative` rufen Ollama via Vercel AI SDK (`@ai-sdk/ollama` oder native fetch zu `/api/chat`)
+  - Strukturierte Output via Zod-Schema (gleicher Pattern wie Anthropic)
+- [ ] **D.2** Router (`src/lib/ai/router.ts`) wählt zwischen `AnthropicProvider`, `OllamaProvider`, `StubProvider` basierend auf Resolver-Output. `selectProvider`-Signatur erweitert um `purpose`-Parameter.
+- [ ] **D.3** `external_blocked` semantics: Ollama-Pfad ist NICHT external_blocked (auch bei Class-3) — Daten verlassen die Tenant-Infrastruktur nicht. `ki_runs.status='success'` bei Ollama-Run, nicht `external_blocked`.
+
+### Block E — Tenant-Admin-UI
+
+- [ ] **E.1** Erweiterung der existierenden `/settings/tenant/ai-keys` Sub-Page:
+  - Provider-Cards: Anthropic-Card (existing) + Ollama-Card (neu)
+  - Ollama-Card-Felder: `endpoint_url`, `bearer_token` (password-input, optional), `model_id`
+  - Save-Button validiert Endpoint via `/api/tenants/[id]/ai-providers/ollama/validate`
+- [ ] **E.2** Neue Sub-Section "Provider-Priority":
+  - Matrix-View: Rows = AI-Purposes, Columns = Data-Classes (1/2/3)
+  - Pro Zelle: Multi-Select-DnD-Liste der Provider in der gewünschten Reihenfolge
+  - Speichern-Button persistiert die Matrix
+  - "Als Default zurücksetzen" Reset-Button
+- [ ] **E.3** Hinweis-Card: "Mit konfiguriertem Ollama-Endpoint können Class-3-Daten an Ihren lokalen Ollama-Server gesendet werden. Daten verlassen Ihre Infrastruktur nicht."
+- [ ] **E.4** Status-Badges für Ollama-Card spiegeln die erweiterten Validation-States: `valid` / `invalid` / `unreachable` / `model_missing` / `unknown`.
+- [ ] **E.5** "AI-Keys" Sidebar-Eintrag wird umbenannt zu "AI-Provider" (passend zur Generic-Schema-Decision).
+
+### Block F — API-Routes
+
+- [ ] **F.1** `GET    /api/tenants/[id]/ai-providers` — returnt alle Provider-Configs als Liste mit Status + Fingerprint, NIE die verschlüsselte Config.
+- [ ] **F.2** `GET    /api/tenants/[id]/ai-providers/[provider]` — analog 32a.
+- [ ] **F.3** `PUT    /api/tenants/[id]/ai-providers/[provider]` — body provider-spezifisch (Anthropic: `{api_key}`, Ollama: `{endpoint_url, model_id, bearer_token?}`); validiert via Zod-Discriminated-Union. Test-Call gegen Provider, persistiert nur bei `valid` (Anthropic) oder `valid|model_missing` (Ollama, mit Warning).
+- [ ] **F.4** `POST   /api/tenants/[id]/ai-providers/[provider]/validate` — re-test ohne Änderung.
+- [ ] **F.5** `DELETE /api/tenants/[id]/ai-providers/[provider]` — analog 32a.
+- [ ] **F.6** `GET    /api/tenants/[id]/ai-priority` — returnt die komplette Priority-Matrix.
+- [ ] **F.7** `PUT    /api/tenants/[id]/ai-priority` — body `{rules: [{purpose, data_class, provider_order}, ...]}`; validiert + upsert.
+- [ ] **F.8** Alle Endpoints admin-only via `requireTenantAdmin`.
+- [ ] **F.9** Rückwärtskompatibilität: alte `/api/tenants/[id]/ai-keys/[provider]`-Endpoints aus 32a bleiben **bestehen** und delegieren an die neuen Endpoints (Wrapper). Werden in einer späteren Cleanup-Slice entfernt nachdem alle Frontend-Caller migriert sind.
+
+### Block G — Audit + Compliance
+
+- [ ] **G.1** Insert/Update/Delete schreibt Audit-Event mit `entity_type='tenant_ai_providers'`, Fingerprint-only.
+- [ ] **G.2** Provider-Priority Änderungen werden auch auditiert: `entity_type='tenant_ai_provider_priority'`, `change_reason='priority_update'`, `old_value`/`new_value` = Provider-Order-Array (kein PII).
+- [ ] **G.3** Tenant-Offboarding: ON DELETE CASCADE auf tenant_id löscht beide neuen Tabellen automatisch.
+
+## Edge Cases — 32c
+
+- **EC-1: Ollama-Endpoint nicht erreichbar während Save** → Status `unreachable`, Persist mit Warning-Banner "Endpoint nicht erreichbar — Konfiguration trotzdem gespeichert. Re-Test ausführen wenn Endpoint online ist."
+- **EC-2: Ollama-Server hat das Modell nicht gepulled** → Status `model_missing`, klare Fehlermeldung "Modell `<model_id>` nicht gefunden. Auf dem Ollama-Server: `ollama pull <model_id>` ausführen."
+- **EC-3: Tenant gibt HTTP-URL ein** → Save erfolgreich, aber UI zeigt Warning-Banner: "HTTP-Endpoint — Daten werden unverschlüsselt übertragen. Nur für interne / private Netzwerke geeignet."
+- **EC-4: Tenant löscht Anthropic-Provider obwohl Priority darauf verweist** → DELETE schlägt mit 422 fehl ("Anthropic ist in 3 Priority-Rules referenziert. Erst Priority anpassen, dann löschen."). Alternative: cascade-clean Priority-Rules — too magic, abgelehnt.
+- **EC-5: Ollama-Endpoint antwortet langsam (> 30s pro AI-Call)** → AI-SDK-Default-Timeout greift; `ki_runs.status='error'`, error_message logged. UI zeigt Toast "Ollama Timeout — bitte Endpoint-Performance prüfen."
+- **EC-6: Ollama-Endpoint liefert kaputtes JSON für Structured-Output** → AI-SDK retry (1× max), dann `ki_runs.status='error'`. Kein Auto-Fallback auf andere Provider — User entscheidet ob Re-Run mit anderer Priority sinnvoll ist.
+- **EC-7: Tenant entfernt alle Provider aber Priority-Matrix verweist noch auf sie** → Resolver behandelt das als `[]` (leere Reihenfolge) → Class-3 blocked, Class-1/2 platform-fallback. Defensiv, kein Crash.
+- **EC-8: Migration aus 32a schlägt mid-flight fehl** → Migration ist transaktional (BEGIN/COMMIT). Alte tenant_ai_keys-Daten bleiben unverändert bis Migration vollständig durch. Zero-downtime.
+- **EC-9: Tenant ändert Priority während laufender AI-Anfrage** → Aktive Anfrage läuft mit gecachtem Resolver-State zu Ende (React.cache scoped per-request), nächste Anfrage greift neue Priority.
+- **EC-10: Bearer-Token wird kompromittiert** → Tenant rotiert via PUT (analog 32a). Audit-Trail behält alten Fingerprint.
+- **EC-11: Ollama-Endpoint ist hinter Cloudflare/Tunnel-Reverse-Proxy mit Self-Signed-TLS** → Aus Vercel-Functions raus reichbar wenn das Cert öffentlich vertraut wird (Cloudflare löst das automatisch). Self-signed certs werden NICHT akzeptiert (`fetch` lehnt sie standardmäßig ab) — Tenant muss valides Cert verwenden. Spec dokumentiert das, kein workaround.
+
+## Out of Scope — 32c
+
+- ❌ Multi-Endpoint pro Provider (z.B. zwei Ollama-Server für HA) — Single-Endpoint-Pattern ausreichend
+- ❌ Ollama-Streaming für Chat-UI — Response-Pattern bleibt `generateObject` (structured-output)
+- ❌ OpenAI / Google AI Studio — separate Slice 32b
+- ❌ Cost-Tracking pro Provider — Slice 32d
+- ❌ Auto-Migration aller Frontend-Caller weg von `/api/tenants/[id]/ai-keys/...` — Wrapper-Pattern bleibt für Backwards-Compat; Cleanup-Migration nach 32b/d
+- ❌ VPN-/Tunnel-Setup für Tenants — Tenant-Verantwortung
+- ❌ Self-signed-cert support — Tenant muss valides öffentliches Cert nutzen
+
+## Technical Requirements — 32c
+
+- **Performance:**
+  - GET `/api/tenants/[id]/ai-providers` < 100ms (single indexed query)
+  - PUT mit Test-Call: < 5s für Anthropic (HTTPS round-trip), < 6s für Ollama (HTTPS + Modell-Listing)
+  - Resolver-Per-Purpose-Lookup: < 5ms (1 query auf priority + 1 query auf providers, beide indexed)
+- **Security:**
+  - `endpoint_url` darf KEIN file:// oder javascript:// Scheme sein
+  - `bearer_token` mit gleichem pgcrypto-Pattern verschlüsselt wie 32a-Keys
+  - SSRF-Defense: Endpoint-URLs werden nicht aus tenant-untrustworthy-input rekursiv verarbeitet (kein "follow redirects")
+  - Alle 4 Validation-States (`valid`, `invalid`, `unreachable`, `model_missing`) sind sicher zu reporten — keine Information-Leakage über interne Tenant-Topologie
+- **Audit:** Insert/Update/Delete + Priority-Updates → audit_log_entries; nur Fingerprint + provider-order, NIE plain config
+- **Migration-Strategy:**
+  - Phase 1: neue Tabelle anlegen + Daten kopieren (alte Tabelle bleibt)
+  - Phase 2: Code switcht auf neues Schema; alte Endpoints werden Wrapper
+  - Phase 3 (separate Cleanup-Slice): alte Tabelle + Wrapper-Endpoints löschen wenn alle Frontend-Caller migriert sind
+- **Backwards-Compat:** Alle existierenden 32a-API-Routes funktionieren unverändert während des Roll-outs. Tenant-Admin sieht beim ersten Login nach Deploy seine Anthropic-Config in der neuen UI ohne sie neu eingeben zu müssen.
+
+## Empfohlene interne Phasierung — 32c
+
+| Sub-Phase | Scope | Migration | UI | Aufwand |
+|---|---|---|---|---|
+| **32-c.1** | Block A (Schema + Migration aus 32a) — neue Tabellen + decrypt RPC + Daten-Copy. NUR Backend, keine UI-Änderung. | 2 Migrations | — | ~1.5 PT |
+| **32-c.2** | Block B + D — Ollama-Provider-Klasse, Validator, Provider-Selection im Router. | — | — | ~1.5 PT |
+| **32-c.3** | Block C + F (priority) — Priority-Tabelle + Resolver-Erweiterung + Priority-API-Routes. | 1 Migration | — | ~1 PT |
+| **32-c.4** | Block E + G — Admin-UI-Erweiterung (Ollama-Card + Priority-Matrix), Audit-Komplettierung, Backwards-Compat-Wrapper. | — | Tenant-Admin-Page | ~1 PT |
+
+Jede Sub-Phase ist eigenständig deploybar. Full-Slice = ~5 PT (revised von initialer ~2 PT-Schätzung).
+
+## Aufwandsschätzung — 32c
+
+- **Backend:** ~3 PT (Schema-Migration + Daten-Migration + Generic-Decrypt-RPC + Ollama-Provider + Priority-Logik + 7 API-Routes + Validation-Logic)
+- **Frontend:** ~1.5 PT (Ollama-Card + Priority-Matrix + Status-Badges + UI-Migration auf neue Endpoints)
+- **QA:** ~0.5 PT (Schema-Migration-Test, Class-3-Routing-zu-Ollama-Verification, Priority-Resolver-Combinatorics, Live-Red-Team gegen die neuen Tabellen)
+- **Total:** ~5 PT
+
+## Success Verification (für /qa)
+
+- [ ] Vitest: `resolveProvider(tenantId, purpose, dataClass)` mit Combinatorics — alle 5 purposes × 3 classes × {only-anthropic, only-ollama, both, neither} = 60 cases stichprobenartig
+- [ ] Live-DB Red-Team: RLS verhindert Member-Read auf `encrypted_config`; Cross-Tenant-Read 0 rows; ON DELETE CASCADE bei Tenant-Delete; Priority-Updates auditiert
+- [ ] Ollama-Test-Call-Flow: validen Ollama (z.B. lokaler Test-Container) vs invalides Bearer vs unreachable URL vs falsches Modell-Name
+- [ ] Class-3-Routing: Tenant mit Ollama, Class-3-Anfrage → läuft über Ollama, `ki_runs.provider='ollama'`, `external_blocked=false`
+- [ ] Class-3-Block: Tenant ohne Ollama (nur Anthropic), Class-3-Anfrage → blocked, StubProvider
+- [ ] Priority-Override: Tenant setzt Priority `[ollama, anthropic]` für Class-1-narrative → Ollama wird genutzt obwohl Anthropic verfügbar
+- [ ] Migration-Verification: nach Deploy hat jeder Tenant der 32a-Anthropic-Key gesetzt hatte, weiterhin funktionierende AI-Calls (kein Tenant-Admin-Reset nötig)
+- [ ] E2E (Playwright): Admin konfiguriert Ollama → Validation → Priority-Matrix-Edit → Save → Class-3-Anfrage → Erfolg
+- [ ] Backwards-Compat: bestehende `/api/tenants/[id]/ai-keys/anthropic` Endpoints liefern weiterhin korrekte Responses
+
+---
+
+<!-- Sections below for Phase 32-c will be added by subsequent skills -->
+
+### Tech Design (32-c)
+
+> **CIA-Review komplett** (2026-05-04). Sieben offene Forks gelockt; 3 User-Approval-Punkte vor Implementation explizit ausgewiesen. Sub-Slice 32c ist nach User-Approval build-ready.
+
+#### 1. Big Picture (PM-Sprache)
+
+**Was wird gebaut?** Drei zusammenhängende Erweiterungen bauen aufeinander auf:
+
+1. **Generischer Provider-Speicher** — die 32a-Tabelle (Anthropic-spezifisch) wird durch eine generische Tabelle abgelöst, die jede Art von AI-Provider speichern kann (Anthropic-Key, Ollama-Endpoint, später OpenAI/Google). Die existierenden 32a-Daten werden in einer Migration in das neue Format kopiert.
+2. **Ollama-Endpoint** — Tenant-Admin kann eine eigene Ollama-Server-URL hinterlegen (mit optionalem Bearer-Token). Der AI-Router routet AI-Anfragen dorthin — auch Class-3-Anfragen, weil Ollama auf der Tenant-Infrastruktur läuft und die Daten den Tenant-Kontrollbereich nicht verlassen.
+3. **Per-Purpose-Priority-Matrix** — Tenant-Admin definiert pro AI-Purpose (risks, narrative, ...) und pro Data-Class (1/2/3) eine geordnete Liste der Provider, die genutzt werden sollen. Beispiel: "Class-3-narratives → ausschließlich Ollama. Class-1-risks → erst Anthropic, dann Ollama als Fallback."
+
+**Warum dieser Schnitt?** Der einzige Weg, Ollama sauber zu integrieren, ohne 32a-Code zu duplizieren, ist das Schema generisch zu machen. Sonst würde es eine Anthropic-Tabelle, eine Ollama-Tabelle, eine OpenAI-Tabelle (32b), eine Google-Tabelle (32b) — vier parallele Strukturen mit identischer RLS, identischem Audit, identischem Decrypt-Pattern. Das wäre Pattern-Drift garantiert. Der CIA-Review hat dual-write + hard-cutover als die einzige zero-risk-Migration identifiziert.
+
+#### 2. Component Structure (Visual Tree)
+
+```
+Tenant-Settings (Admin-Only)
+└── /settings/tenant/ai-providers   (umbenannt von /ai-keys)
+    ├── Anthropic-Card (existing aus 32a)
+    │   └── 4 States: not_set | valid | invalid | unknown
+    ├── Ollama-Card (NEU)
+    │   ├── endpoint_url + bearer_token (optional) + model_id
+    │   └── 5 States: not_set | valid | invalid | unreachable | model_missing | unknown
+    └── Provider-Priority Section (NEU)
+        ├── Preset-Selector
+        │   ├── "Class-3 nur Ollama, sonst Anthropic" (default für Tenants mit Ollama)
+        │   ├── "Anthropic für alles"
+        │   ├── "Ollama für alles"
+        │   └── "Custom" → öffnet Custom-Matrix
+        └── Custom-Matrix (15 Cells: 5 Purposes × 3 Classes, DnD-List pro Cell)
+
+API-Layer
+├── GET    /api/tenants/[id]/ai-providers              ← Liste aller Provider
+├── GET    /api/tenants/[id]/ai-providers/[provider]   ← einzelner Provider-Status
+├── PUT    /api/tenants/[id]/ai-providers/[provider]   ← Save mit Test-Call
+├── DELETE /api/tenants/[id]/ai-providers/[provider]
+├── POST   /api/tenants/[id]/ai-providers/[provider]/validate
+├── GET    /api/tenants/[id]/ai-priority               ← komplette Matrix
+└── PUT    /api/tenants/[id]/ai-priority               ← Matrix-Save (mit Class-3-Defense)
+
+AI-Routing-Layer
+src/lib/ai/router.ts (refactored)
+└── selectProvider(supabase, tenantId, purpose, classification, ...)
+    └── src/lib/ai/key-resolver.ts (refactored — Layered Cache)
+        ├── cached: getTenantProviders(tenantId)        ← bulk fetch + bulk decrypt
+        ├── cached: getPriorityMatrix(tenantId)          ← bulk fetch
+        └── pure: resolveProvider(purpose, dataClass)    ← combines both
+
+src/lib/ai/providers/
+├── anthropic.ts (unchanged from 32a)
+├── ollama.ts (NEU — produktiv, ersetzt Placeholder)
+└── stub.ts (unchanged)
+
+Datenbank
+├── public.tenant_ai_providers (NEU)
+│   ├── encrypted_config bytea (provider-spezifischer JSONB-Inhalt)
+│   ├── key_fingerprint text
+│   └── last_validated_at + last_validation_status
+├── public.tenant_ai_provider_priority (NEU)
+│   └── (tenant_id, purpose, data_class) → provider_order text[]
+└── public.tenant_ai_keys (DROP nach Cleanup-Migration in derselben Slice)
+
+Audit-Trail
+└── PROJ-10 audit_log_entries
+    ├── entity_type='tenant_ai_providers'         (extended)
+    └── entity_type='tenant_ai_provider_priority' (extended)
+```
+
+#### 3. Data Model (plain language)
+
+**`tenant_ai_providers`** — ein Eintrag pro Tenant pro Provider:
+- Welcher Tenant + welcher Provider (`anthropic` / `ollama`; 32b erweitert um `openai` / `google`)
+- Verschlüsselter Config-JSONB (provider-spezifisch):
+  - `anthropic`: enthält den API-Key
+  - `ollama`: enthält Endpoint-URL, Modellname, optional Bearer-Token
+- Fingerprint (key-Tail oder Endpoint-Host für Display)
+- Letzter Validierungsstatus + Timestamp
+- Created-By + Created/Updated-Timestamps
+
+Verschlüsselung nutzt das bestehende PROJ-14-Pattern (pgcrypto + Vault-Session-Key) — keine neue Krypto. Der gesamte JSONB-Body wird verschlüsselt, nicht nur einzelne Felder, damit Provider-spezifische Strukturen flexibel bleiben.
+
+**`tenant_ai_provider_priority`** — eine Zeile pro `(tenant, purpose, data_class)`:
+- 5 AI-Purposes × 3 Data-Classes = max. 15 Zeilen pro Tenant
+- `provider_order text[]` — geordnete Liste, z.B. `['ollama', 'anthropic']` (erste Wahl, dann Fallback)
+- Wenn keine Zeile existiert für eine Kombination, fällt der Resolver auf einen hartkodierten Default zurück (Class-3 → Ollama-only wenn vorhanden, Class-1/2 → Anthropic-preferred)
+
+**Routing-Beispiel:**
+- Tenant hat Anthropic-Key + Ollama-Endpoint konfiguriert
+- Priority sagt: `(narrative, class_3)` → `['ollama']`
+- AI-Router-Aufruf für narrative-purpose mit Class-3-Daten
+- Resolver findet Ollama-Provider in der Liste → Provider-Konfig wird entschlüsselt → Ollama-Provider ausgeführt → Response zurück
+
+#### 4. Tech Decisions (für PM)
+
+Sieben Architektur-Forks waren offen; CIA hat alle gelockt:
+
+**Fork A — Ollama-SDK-Wahl:** Wir nutzen `@ai-sdk/openai-compatible` (Vercel first-party). **Begründung:** Ollama exponiert einen stabilen OpenAI-kompatiblen Endpoint. Das Pattern spiegelt 32a exakt (`createAnthropic` → `createOpenAICompatible`). Konsistenz zum Anthropic-Provider, native `generateObject`-Support, und 32b (OpenAI/Google) wird denselben SDK-Pfad nutzen.
+
+**Fork B — Migration-Strategie:** Dual-Write innerhalb derselben Slice mit Cleanup-Migration. **Begründung:** Big-Bang hat keinen Rollback-Pfad bei Daten-Migration-Bug. Wrapper-Pattern wäre permanenter Tech-Debt. Dual-Write erlaubt zero-downtime: neue Tabelle parallel, App schreibt für ein Deploy in beide, dann Cleanup. Wegen minimaler Daten-Menge (nahe 0 Zeilen in Production) ist das praktisch risikofrei.
+
+**Fork C — Priority-Storage:** Eigene Tabelle mit Row-pro-Cell statt JSONB-im-Tenant-Settings. **Begründung:** PROJ-10-Audit-Pattern arbeitet field-level — eine JSONB-Spalte würde jede Matrix-Edit als ein einziger Audit-Diff erscheinen lassen, der den Diff-Viewer unbrauchbar macht. Eigene Rows erlauben pro-Cell-Audit. Performance: 15 Rows pro Tenant ist DB-trivial.
+
+**Fork D — Resolver-Caching:** Layered Cache — getProviders + getPriorityMatrix sind separat gecacht, der Resolver kombiniert ohne eigenen Cache. **Begründung:** Single-Cache der Resolver-Funktion würde bei Multi-Step-AI-Calls (mehrere Purposes pro Request) Cache-Slot-Explosion erzeugen. Layered = 2 RPC-Roundtrips total, egal wie oft der Resolver innerhalb eines Requests aufgerufen wird.
+
+**Fork E — Ollama-Reachability:** Synchrones 5s-Timeout beim Save mit 5 Status-Codes. **Begründung:** UX-Erwartung ist 32a-Pattern (User klickt Save, sieht sofort `valid`/`invalid`). Async-Polling wäre Overhead für eine einmalige Setup-Aktion. 5 Status-Codes (`valid` / `invalid` / `unreachable` / `model_missing` / `unknown`) geben dem Admin klare nächste Schritte (z.B. "Modell pullen mit `ollama pull <name>`").
+
+**Fork F — UI für Priority-Matrix:** Preset-Selector + Custom-Mode. **Begründung:** Tenant-Admins sind nicht-technisch. Eine 15-Zellen-Matrix als Default-UI ist eine Spreadsheet-Trap. 4 Presets decken 95 % der Tenants ab; "Custom" öffnet die volle Matrix für Spezialfälle. Preset-Wahl wird in die Matrix-Rows expandiert, nicht separat gespeichert — keine Dual-State-Sorgen zwischen Preset-Pointer und Matrix-Inhalt.
+
+**Fork G — Backwards-Compat:** Hard-Cutover (keine Wrapper-Routes). **Begründung:** Es gibt keine externen Konsumenten der 32a-Routes — nur das Admin-UI. Wrapper wären permanenter Tech-Debt für ein nicht-existierendes Problem. Frontend-Migration auf neue Routes passiert in derselben Slice.
+
+#### 5. Cross-Fork-Synergien
+
+- **A.1 ↔ Anthropic-Pattern:** Da Ollama via OpenAI-Compatible-SDK angesprochen wird, kann der `OllamaProvider` strukturell parallel zum `AnthropicProvider` aufgebaut werden — minimaler Implementations-Risk.
+- **B.3 ↔ G.3:** Dual-Write + Hard-Cutover sind atomisch. Ein einziger Deploy, ein einziger Rollback-Punkt.
+- **C.1 ↔ D.2:** 15-Zeilen-Matrix als Bulk-Fetch + Layered Cache passen perfekt — eine RPC, ein Cache-Slot.
+- **F.2 ↔ C.1:** Preset expandiert auf 15 Rows in der C.1-Tabelle — keine Preset-vs-Matrix-Dual-State-Sorge.
+- **E.1 ↔ A.1:** OpenAI-kompatibler Endpoint hat klar definiertes `/v1/models` — `model_missing`-Status sauber implementierbar.
+
+#### 6. Sub-Phasing (Build-Plan, revised)
+
+| Sub-Phase | Inhalt | Migration | UI | Aufwand |
+|---|---|---|---|---|
+| **32-c-α** | Generic Schema (`tenant_ai_providers`) + Daten-Migration aus 32a + Decrypt-RPC + Resolver-Refactor (Layered Cache) | 2 Migrations | — | ~2 PT |
+| **32-c-β** | OllamaProvider + Validator + Router-Erweiterung (purpose-Parameter) + 5 neue API-Routes (Hard-Cutover) | — | — | ~2 PT |
+| **32-c-γ** | Priority-Tabelle + Priority-API-Routes + Admin-UI (Preset-Selector + Custom-Matrix) + 32a-Cleanup-Migration | 2 Migrations | Tenant-Admin-Page | ~2 PT |
+
+Total: **~6 PT** (revised von der initialen 5-PT-Schätzung — der CIA-Review hat herausgearbeitet dass die UI-Preset-Logik + Migration-Sicherheit substanzieller sind als gedacht, mit 1 PT Buffer empfohlen).
+
+#### 7. Anti-Patterns (explizit ausgeschlossen)
+
+- ❌ **Plaintext-Logging** — `last_validation_error` darf nie Token / Endpoint-URL / Auth-Header enthalten.
+- ❌ **Class-3-Bypass über Priority-Matrix** — auch wenn Ollama Class-3-fähig ist, darf ein Admin nicht "Class-3 → Anthropic" konfigurieren können. Backend-Validation rejected jede Matrix-Save mit `data_class=3 AND provider_order contains external_provider`.
+- ❌ **Cross-Tenant-Provider-Sharing** — keine globale Ollama-Endpoint-Definition, jeder Tenant hat eigene Rows.
+- ❌ **Lazy Re-Encryption** — wenn `SECRETS_ENCRYPTION_KEY` rotiert, muss eine separate Migration laufen, nicht "lazy bei nächstem Decrypt".
+- ❌ **Provider-Switching ohne Re-Validation** — wenn Admin Anthropic-Key updated, muss `last_validation_status` auf `unknown` gesetzt werden bis Re-Validate läuft.
+- ❌ **Wrapper-Routes** für 32a-Backwards-Compat (siehe Fork G).
+- ❌ **Single Resolver-Cache** das alle (purpose, dataClass)-Kombinationen separat cached (siehe Fork D).
+
+#### 8. Risks & Mitigations
+
+| Risiko | Severity | Mitigation |
+|---|---|---|
+| Daten-Migration verliert Anthropic-Keys bei Decrypt-Fehler | **HIGH** | Migration in Transaktion + Rollback-Marker + DO-Block-Smoke-Test (siehe Memory `feedback_postgres_smoke_tests.md`) |
+| Class-3 routet versehentlich auf Anthropic durch Priority-Matrix-Bug | **HIGH** | Backend-Validation rejected Matrix mit `data_class=3 + external-provider`; Defense-in-Depth in `selectProvider` |
+| SSRF via Ollama-URL (Endpoint-URL kann auf private/cloud-metadata-IPs zeigen) | **HIGH** | URL-Validation: blockt 169.254.x.x (cloud-metadata), 127.0.0.1 außer für lokale Tests; Tenant kann RFC1918-IPs nur explizit whitelisten |
+| RLS-Policy-Änderung ohne expliziten User-Approval | **HIGH** | `.claude/rules/security.md` § "Code Review Triggers" verlangt User-Approval — siehe **Approval Punkt 1** unten |
+| 5s-Timeout zu kurz für interne Tenant-Netze | MEDIUM | UX-Hint im UI; Provider-Save trotz Validation-Fail; `last_validation_status='unreachable'` zeigt klar an |
+| Preset-Drift: User editiert Custom, geht zurück auf Preset 1, Override geht verloren | LOW | Konfirm-Dialog vor Preset-Wechsel mit Custom-Override |
+| Layered-Cache-Inconsistency wenn Matrix mid-Request geändert | LOW | React.cache ist per-Request; Update wird im nächsten Request sichtbar — akzeptabel |
+
+#### 9. Dependencies (packages to install)
+
+- `@ai-sdk/openai-compatible` (~600 KB, Vercel first-party, AI-SDK-v6-versioniert) — für Ollama via OpenAI-Compatible-Endpoint.
+
+Keine weiteren neuen Packages. `pgcrypto` (PROJ-14) + `react` (cache) + `zod` (Validation) sind bereits installiert.
+
+#### 10. Approval-Punkte vor Implementation
+
+CIA-Review fordert drei explizite User-Approval-Punkte vor Beginn der Implementation:
+
+1. **RLS-Policy-Änderungen** auf zwei neuen Tabellen (`tenant_ai_providers`, `tenant_ai_provider_priority`) — Approval gemäß `.claude/rules/security.md` § "Code Review Triggers".
+2. **Aufwand-Erhöhung** von ursprünglich ~2 PT (Spec) → ~5 PT (revised in Spec) → **~6 PT** (CIA-Review). Dreierteilung der Sub-Phasen 32-c-α/β/γ.
+3. **Hard-Cutover** der 32a-API-Routes ohne Wrapper. Frontend-Migration auf neue Endpoints passiert in derselben Slice — Rollback nur via Vercel-Promotion + neuer Migration.
+
+#### 11. Approval-Recommendation
+
+Tech Design ist **build-ready unter den drei Approval-Punkten**. Empfohlene nächste Schritte nach User-Approval:
+
+1. `/backend proj 32` startet mit Sub-Phase 32-c-α (Generic Schema + Daten-Migration + Resolver-Refactor)
+2. Nach 32-c-α deploy: 32-c-β (OllamaProvider + API-Routes Hard-Cutover)
+3. `/frontend proj 32` für 32-c-γ (Preset-Selector + Custom-Matrix-UI)
+4. `/qa proj 32` integriert testet alle 3 Sub-Phasen mit Live-DB Red-Team auf RLS, Class-3-Defense, Priority-Combinatorics, und Migration-Verifikation
+5. `/deploy proj 32` als atomarer Production-Cut mit der Cleanup-Migration als finale Atomizität.
+
+### Implementation Notes (32-c)
+_To be added by /backend + /frontend._
+
+### QA Test Results (32-c)
+_To be added by /qa._
+
+### Deployment (32-c)
+_To be added by /deploy._
