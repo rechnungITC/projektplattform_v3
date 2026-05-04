@@ -1,6 +1,6 @@
 # PROJ-32: Tenant Custom AI Provider Keys (Multi-Provider)
 
-## Status: Deployed 32a · Architected 32c (Tech Design CIA-locked, awaiting 3 user-approvals before /backend) · 32b/32d to be specced
+## Status: Deployed 32a · In Progress 32c (32-c-α schema live in prod, β/γ pending) · 32b/32d to be specced
 
 **Created:** 2026-05-04
 **Last Updated:** 2026-05-04
@@ -921,7 +921,51 @@ Tech Design ist **build-ready unter den drei Approval-Punkten**. Empfohlene näc
 5. `/deploy proj 32` als atomarer Production-Cut mit der Cleanup-Migration als finale Atomizität.
 
 ### Implementation Notes (32-c)
-_To be added by /backend + /frontend._
+
+#### Sub-Phase 32-c-α — Generic Schema + Migration + RPCs (Backend)
+
+**Migrations applied to production (2026-05-04):**
+
+- `20260504400000_proj32c_alpha_tenant_ai_providers.sql` — schema layer
+  - New table `tenant_ai_providers` with PK `id uuid`, FK to tenants ON DELETE CASCADE, FK to profiles ON DELETE SET NULL, UNIQUE(tenant_id, provider).
+  - 4 RLS policies (admin-only SELECT/INSERT/UPDATE/DELETE).
+  - Provider whitelist CHECK: `('anthropic', 'ollama')` — 32b extends to add OpenAI/Google.
+  - Validation status CHECK: 6 states (`valid` / `invalid` / `rate_limited` / `unreachable` / `model_missing` / `unknown`) — extends 32a's 4-state model with Ollama-specific failure modes.
+  - SECURITY DEFINER RPC `decrypt_tenant_ai_provider(uuid, text) → jsonb`. Member-callable; defense-in-depth via `is_tenant_member` gate. Returns full JSONB config (provider-specific shape) instead of single string (32a returned text).
+  - Audit-log CHECK extended with `'tenant_ai_providers'` AND `'tenant_ai_provider_priority'` (forward-compat for 32-c-γ — γ does not need to touch the constraint).
+  - SECURITY DEFINER RPC `record_tenant_ai_provider_audit(uuid, text, text, text, text)`. Admin-gated. Same pattern as 32a's `record_tenant_ai_key_audit`.
+
+- `20260504400100_proj32c_alpha_data_copy_rpc.sql` — operational helper
+  - SECURITY DEFINER RPC `migrate_tenant_ai_keys_to_providers() → jsonb`. Idempotent: skips any (tenant_id, provider) pair already in the target table. Returns `{migrated, skipped, total_source_rows}`.
+  - Postgres-only execute grant (anon / authenticated / public explicitly revoked) — this is an ops one-shot, not an end-user RPC.
+  - Implementation: iterates `tenant_ai_keys`, decrypts plaintext via the GUC-bound encryption key, builds `{api_key: <plain>}` JSONB, re-encrypts, inserts into new table.
+
+**Live red-team verification (rollback-marker pattern, all in production):**
+
+- 9/9 RLS + RPC defense checks pass — same level of confidence as 32a's red-team.
+- Member SELECT/INSERT blocked by RLS (counts: 0 rows, error 42501).
+- Member decrypt RPC reaches member-gate; fails on missing GUC (P0001) — gate works.
+- Member audit RPC blocked with P0003 forbidden (admin-only).
+- Admin invalid action / invalid provider rejected with P0001.
+- Admin valid audit succeeds; audit row contains only `{"fingerprint": ...}` — no plaintext.
+- Plaintext-key regex scan across all tenant_ai_providers audit rows returns 0 hits.
+
+**Data-copy smoke test (rollback-marker, in production):**
+
+- Synthetic legacy row inserted → `migrate_tenant_ai_keys_to_providers()` returned `{migrated:1, skipped:0}`.
+- Roundtrip verified: decrypted JSONB equals original plaintext.
+- JSONB shape: `{"api_key": <plain>}` exactly matches the spec.
+- Idempotency: 2nd call returned `{migrated:0, skipped:1}`.
+
+**Production state at α deploy:**
+
+- `tenant_ai_keys`: 0 rows → migrator is a no-op until any 32a key is created. The migrator is parked in production as a safety net for any rows that appear between α and β deploys.
+
+**Out of scope for α (intentional, will be done in β / γ):**
+
+- App code changes (router, key-resolver, providers, API routes) — purely DB layer in α per Fork B's dual-write strategy.
+- Ollama provider implementation — 32-c-β.
+- Priority matrix table + UI — 32-c-γ.
 
 ### QA Test Results (32-c)
 _To be added by /qa._
