@@ -1,6 +1,6 @@
 # PROJ-32: Tenant Custom AI Provider Keys (Multi-Provider)
 
-## Status: Deployed 32a · In Progress 32c (α + β + γ implemented, ready for /qa + /deploy) · 32b/32d to be specced
+## Status: Deployed 32a · Deployed 32c (α + β + γ live, /qa pending) · 32b/32d to be specced
 
 **Created:** 2026-05-04
 **Last Updated:** 2026-05-04
@@ -1121,3 +1121,28 @@ _To be added by /qa._
 **Tag:** `v1.32cb-PROJ-32` — covers the cumulative α + β state.
 
 **Next step:** 32-c-γ — priority matrix table + admin UI (Ollama Card + Preset/Matrix) + 32a-cleanup-migration.
+
+---
+
+**Sub-Phase 32-c-γ deployed: 2026-05-04**
+
+**Deployment commits:**
+- `bbad871` — backend+frontend phase 32-c-γ: priority matrix + Ollama UI + 32a cleanup
+- Auto-deploy to Vercel via push to `main`.
+
+**Production verification (2026-05-04):**
+- ✅ HTTP 307 (auth-gate redirect) on the new priority endpoint:
+  - `GET / PUT /api/tenants/[id]/ai-priority`
+- ✅ Renamed page `/settings/tenant/ai-providers` returns 200 (previously `/ai-keys`).
+- ✅ DB schema: `tenant_ai_provider_priority` with 5 RLS policies + Class-3-CHECK + non-empty-CHECK live in production. Legacy `tenant_ai_keys` table + 3 legacy RPCs dropped (verified empty before drop).
+- ✅ Sidebar nav label "AI-Provider" replaces "AI-Keys".
+
+**Migrations applied (cumulative for γ):**
+- `20260504500000_proj32c_gamma_priority_and_cleanup.sql`
+- `20260504500100_proj32c_gamma_fix_empty_array_check.sql` (red-team-discovered fix)
+
+**Tag:** `v1.32cgamma-PROJ-32`
+
+**Rollback path:** Vercel promotion + rollback migration `drop table public.tenant_ai_provider_priority cascade; drop function public.record_tenant_ai_priority_audit(uuid, text, smallint, text[], text[]);` and re-create the legacy `tenant_ai_keys` schema if needed (would require restoring data from a Supabase point-in-time backup — production has been empty throughout, so this is theoretical).
+
+**32-c is now complete end-to-end.** Recommend `/qa proj 32` for a full end-to-end QA pass + tag bump to `v1.32c-PROJ-32` on QA pass.
