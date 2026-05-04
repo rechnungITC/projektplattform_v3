@@ -170,23 +170,51 @@ const getTenantProviders = cache(
 )
 
 /**
- * Bulk-fetch the priority matrix for a tenant. In 32-c-β this is a
- * placeholder that returns an empty Map — the table is created in
- * 32-c-γ. The resolver therefore relies on the hard-coded defaults
- * defined in `defaultProviderOrder()` below, which already encode the
- * SaaS-mandate (Class-3 → local only).
+ * Bulk-fetch the priority matrix for a tenant. Reads all configured
+ * (purpose, data_class) → provider_order rules in a single SELECT and
+ * returns them as a Map keyed by `${purpose}:${dataClass}` for O(1)
+ * lookup in the pure resolver function.
  *
- * Cached per-request via `React.cache()`.
+ * Cached per-request via `React.cache()` (Fork D.2).
+ *
+ * Member-callable: the priority table itself contains no plaintext key
+ * material — only references to provider names — and member-level RLS
+ * was added in 32-c-γ so the routing path can read it. Without this,
+ * every AI call by a non-admin would silently fall back to defaults.
  */
 const getPriorityMatrix = cache(
   async (
-    _supabase: SupabaseClient,
-    _tenantId: string,
+    supabase: SupabaseClient,
+    tenantId: string,
   ): Promise<Map<string, AIKeyProvider[]>> => {
-    // 32-c-γ TODO: SELECT (purpose, data_class, provider_order) from
-    // tenant_ai_provider_priority and build the map. The map key shape
-    // is `${purpose}:${dataClass}` so lookups are O(1).
-    return new Map()
+    const result = new Map<string, AIKeyProvider[]>()
+    const { data, error } = await supabase
+      .from("tenant_ai_provider_priority")
+      .select("purpose, data_class, provider_order")
+      .eq("tenant_id", tenantId)
+
+    if (error) {
+      // Treat as "no rules" rather than throwing — defaults are still safe.
+      console.error(
+        `[key-resolver] getPriorityMatrix failed for ${tenantId}: ${error.message}. Falling back to defaults.`,
+      )
+      return result
+    }
+
+    for (const row of data ?? []) {
+      const purpose = row.purpose as AIPurpose | null
+      const dataClass = row.data_class as DataClass | null
+      const order = row.provider_order as string[] | null
+      if (!purpose || dataClass == null || !Array.isArray(order)) continue
+      const key = `${purpose}:${dataClass}`
+      // Filter to known providers; the DB CHECK already enforces this
+      // but defense-in-depth at the boundary doesn't hurt.
+      const filtered = order.filter(
+        (p): p is AIKeyProvider => p === "anthropic" || p === "ollama",
+      )
+      if (filtered.length > 0) result.set(key, filtered)
+    }
+    return result
   },
 )
 

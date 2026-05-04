@@ -102,8 +102,8 @@ const SETTINGS_CHILDREN: readonly NavSubItem[] = [
     adminOnly: true,
   },
   {
-    href: "/settings/tenant/ai-keys",
-    label: "AI-Keys",
+    href: "/settings/tenant/ai-providers",
+    label: "AI-Provider",
     icon: KeyRound,
     adminOnly: true,
   },

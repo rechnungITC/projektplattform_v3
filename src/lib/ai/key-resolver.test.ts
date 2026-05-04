@@ -46,6 +46,12 @@ function buildSupabaseMock(opts: {
     maybeSingle: vi.fn().mockResolvedValue({ data: null, error: null }),
   }
 
+  // 32-c-γ priority matrix — empty rules so resolver uses defaults.
+  const priorityChain = {
+    select: vi.fn().mockReturnThis(),
+    eq: vi.fn().mockResolvedValue({ data: [], error: null }),
+  }
+
   return {
     rpc: vi.fn(async (fn: string, args?: { p_provider?: string }) => {
       if (fn === "set_session_encryption_key") {
@@ -63,7 +69,10 @@ function buildSupabaseMock(opts: {
       }
       throw new Error(`unexpected rpc ${fn}`)
     }),
-    from: vi.fn(() => statusChain),
+    from: vi.fn((table: string) => {
+      if (table === "tenant_ai_provider_priority") return priorityChain
+      return statusChain
+    }),
   } as unknown as Parameters<typeof resolveAnthropicKey>[0]["supabase"]
 }
 

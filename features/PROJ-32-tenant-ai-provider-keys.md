@@ -1,6 +1,6 @@
 # PROJ-32: Tenant Custom AI Provider Keys (Multi-Provider)
 
-## Status: Deployed 32a · In Progress 32c (α + β implemented, γ pending) · 32b/32d to be specced
+## Status: Deployed 32a · In Progress 32c (α + β + γ implemented, ready for /qa + /deploy) · 32b/32d to be specced
 
 **Created:** 2026-05-04
 **Last Updated:** 2026-05-04
@@ -1014,6 +1014,70 @@ Tech Design ist **build-ready unter den drei Approval-Punkten**. Empfohlene näc
 - Ollama config Card in admin UI — 32-c-γ.
 - Cleanup migration that drops `tenant_ai_keys` legacy table — 32-c-γ.
 - Page URL rename `/settings/tenant/ai-keys` → `/settings/tenant/ai-providers` — 32-c-γ.
+
+#### Sub-Phase 32-c-γ — Priority Matrix + Admin UI Expansion + 32a Cleanup
+
+**Migrations applied to production (2026-05-04):**
+
+- `20260504500000_proj32c_gamma_priority_and_cleanup.sql`
+  - Defensive guard at top: aborts if `tenant_ai_keys` still has rows. (Prod: 0 rows → guard passes.)
+  - Creates `tenant_ai_provider_priority` table with PK `(tenant_id, purpose, data_class)`. CHECK constraints enforce purpose whitelist (matches `AIPurpose` union), data_class ∈ {1,2,3}, known providers, and the **Class-3 defense-in-depth** check (`data_class = 3 ⇒ NOT (provider_order && {anthropic})`).
+  - 5 RLS policies: 4 admin-only (INSERT/UPDATE/DELETE/SELECT) + 1 member-callable SELECT (the resolver routing path needs to read priority — the table holds no key material, only provider names).
+  - SECURITY DEFINER RPC `record_tenant_ai_priority_audit(uuid, text, smallint, text[], text[])` — admin-gated, writes one audit row per changed cell with `old_value` / `new_value` as JSONB arrays.
+  - **Drops** legacy 32a artefacts: `tenant_ai_keys` table, `decrypt_tenant_ai_key` RPC, `record_tenant_ai_key_audit` RPC, and the `migrate_tenant_ai_keys_to_providers` helper. `audit_log_entries.entity_type` whitelist still includes `'tenant_ai_keys'` (deferred — purely cosmetic; 32d cleanup-slice can remove it).
+- `20260504500100_proj32c_gamma_fix_empty_array_check.sql`
+  - Fix discovered in red-team: original `array_length(provider_order, 1) >= 1` returns NULL on empty arrays which CHECK treats as pass. Replaced with `cardinality(provider_order) >= 1`.
+
+**Resolver activation:**
+
+- `getPriorityMatrix` in `src/lib/ai/key-resolver.ts` now actually reads `tenant_ai_provider_priority` (was a stub returning `new Map()` in β). Bulk-fetch returns a Map keyed by `${purpose}:${dataClass}` for O(1) lookup in the pure resolver. On error, falls through to defaults (defense-in-depth: a broken priority lookup must not block routing).
+
+**Priority API routes:**
+
+- `GET /api/tenants/[id]/ai-priority` — returns the full matrix as `{rules: [{purpose, data_class, provider_order, updated_at, updated_by}]}`. Admin-only.
+- `PUT /api/tenants/[id]/ai-priority` — atomic full-matrix replace via DELETE-all + INSERT-new in the same request:
+  - Zod-validated discriminated body with up to 15 rules.
+  - Class-3 backend validation (CIA HIGH-risk lock): rejects with 422 if any rule with `data_class=3` contains a non-local provider. The DB CHECK is the second line of defense.
+  - Duplicate `(purpose, data_class)` rejected with 400 (friendlier than DB PK violation).
+  - Audit RPC called once per changed cell — unchanged cells skip audit (delta-aware).
+
+**Admin UI — full restructure:**
+
+- Page URL renamed `/settings/tenant/ai-keys` → `/settings/tenant/ai-providers`.
+- Page client renamed `ai-keys-page-client.tsx` → `ai-providers-page-client.tsx`. Component: `AiProvidersPageClient`.
+- Sidebar nav entry updated: label `"AI-Keys"` → `"AI-Provider"`, href `/ai-keys` → `/ai-providers`.
+- Three sections on the page:
+  1. **Anthropic Card** — same UX as 32a (4 states + Save/Re-Test/Rotate/Delete + AlertDialog).
+  2. **Ollama Card** (new) — endpoint URL + model_id + optional bearer_token + 6 states (`not_set` / `valid` / `invalid` / `unreachable` / `model_missing` / `unknown`) with status-specific Alert banners (e.g. `model_missing` shows "ollama pull <model>" hint). HTTP-URL warning. Bearer-Token field is optional (≥ 8 chars when set).
+  3. **PriorityMatrixSection** (new) — Preset Selector with 4 options (CIA Fork F.2):
+     - "Class-3 nur Ollama, Class-1/2 Anthropic preferred" (default for SaaS-Tenants with Ollama)
+     - "Anthropic für alles" (Class-3 implicitly blocked)
+     - "Ollama für alles" (full on-prem)
+     - "Custom" — opens 15-cell matrix editor with per-cell add/remove/reorder controls. Class-3 cells filter the candidate pool to local providers only.
+  - Preset detection: comparing draft against each preset's expansion to show the current preset selection. Preset choice is NOT a separate field — it expands into the matrix rows.
+  - Save/Reset buttons; Save disabled when matrix is unchanged (`dirty` flag).
+
+**Tests:**
+
+- 944/944 vitest passing (was 934 before γ; +10 new):
+  - `ai-priority/route.test.ts`: 10 tests covering authn, authz, Zod validation, Class-3 rejection (CIA HIGH-risk lock), duplicate-key detection, atomic replace, delta audit.
+- Updated `key-resolver.test.ts` and `router-class3.test.ts` mocks to handle the new `tenant_ai_provider_priority` table.
+- ESLint clean. TypeScript clean. `next build` clean — `/api/tenants/[id]/ai-priority` route + renamed `/settings/tenant/ai-providers` page registered.
+
+**Live red-team (production DB, rollback-marker pattern):**
+
+- Schema verified: priority table + 5 RLS policies + new audit RPC live; legacy `tenant_ai_keys` table + 3 legacy RPCs dropped.
+- DB CHECK constraints verified:
+  - `class3_anthropic_blocked`: ✅ CHECK_VIOLATION on `(narrative, 3, ['anthropic','ollama'])`
+  - `unknown_provider_blocked`: ✅ CHECK_VIOLATION on `('unknown_provider')`
+  - `empty_array_blocked`: ✅ CHECK_VIOLATION (after the fix migration — original CHECK had a NULL gap)
+  - `class3_ollama_only`, `class1_both_ok`: ✅ both inserted successfully
+
+**Out of scope for γ (intentional, future slices):**
+
+- Cleanup of `'tenant_ai_keys'` from `audit_log_entries.entity_type` CHECK whitelist — deferred to 32d cleanup-slice.
+- E2E Playwright tests for the full Anthropic + Ollama + Preset flow — not blocking; full integration tests cover the API + manual smoke covers the UI.
+- 32b (OpenAI / Google) and 32d (cost caps) — separate slices.
 
 ### QA Test Results (32-c)
 _To be added by /qa._

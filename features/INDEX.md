@@ -45,7 +45,7 @@
 | PROJ-29 | Hygiene-Slice (Lint-Baseline · Function-Hardening · Auth-Fixture-Skelett) | Deployed | [Spec](PROJ-29-hygiene-slice.md) | 2026-05-01 |
 | PROJ-30 | KI-Narrative-Purpose Erweiterung des AI-Routers | Deployed | [Spec](PROJ-30-narrative-purpose-extension.md) | 2026-05-01 |
 | PROJ-31 | Approval-Gates für formale Decisions (Quorum, Magic-Link für externe Stakeholder) | Deployed | [Spec](PROJ-31-approval-gates-for-decisions.md) | 2026-05-02 |
-| PROJ-32 | Tenant Custom AI Provider Keys (Multi-Provider Anthropic / OpenAI / Google / Ollama) — 4 Sub-Slices | Deployed 32a · In Progress 32c (α + β implemented, γ pending); 32b/d to be specced | [Spec](PROJ-32-tenant-ai-provider-keys.md) | 2026-05-04 |
+| PROJ-32 | Tenant Custom AI Provider Keys (Multi-Provider Anthropic / OpenAI / Google / Ollama) — 4 Sub-Slices | Deployed 32a · In Progress 32c (α + β + γ implemented, deploy pending); 32b/d to be specced | [Spec](PROJ-32-tenant-ai-provider-keys.md) | 2026-05-04 |
 | PROJ-33 | Erweitertes Stakeholder-Management (qualitative Felder + Skill/Big5-Profile + Self-Assessment Magic-Link) | Deployed (33-α + β + γ + δ live) | [Spec](PROJ-33-stakeholder-extension.md) | 2026-05-02 |
 | PROJ-35 | Stakeholder-Wechselwirkungs-Engine (Risiko-Score, Eskalations-Indikatoren, Tonalitäts-Empfehlungen, Critical-Path-Risk, Stakeholder-Health-Dashboard) | Deployed (alle 3 Phasen α + β + γ live) | [Spec](PROJ-35-stakeholder-interaction-engine.md) | 2026-05-02 |
 | PROJ-36 | Waterfall-WBS UI/UX Layer — WBS-Code (auto+override) · Hybrid Roll-up · Tree-View (react-arborist) · Indent/Outdent. Schema-Backbone in PROJ-9-R2. | Deployed (α re-deployed 2026-05-04 + γ live, β deferred) | [Spec](PROJ-36-waterfall-wbs-hierarchy-rollup.md) | 2026-05-03 |
@@ -54,7 +54,7 @@
 | PROJ-39 | Assistant Action Packs — konkrete v1-Fähigkeiten für Projektstatus, Navigation, Projekt-Suche/Öffnen und dialogische Projektanlage über Wizard-/Report-/Project-Room-Integrationen. | Planned | [Spec](PROJ-39-assistant-action-packs-project-status-navigation-creation.md) | 2026-05-04 |
 | PROJ-40 | Assistant Conversation Audit & Transcript Governance — Persistenz-, Redaktions-, Audit-, Retention- und Export-Governance für Assistant-Sessions, Turns und Transkripte. | Planned | [Spec](PROJ-40-assistant-conversation-audit-transcript-governance.md) | 2026-05-04 |
 | PROJ-41 | Assistant Speech, Provider & Wake-Word Infrastructure — Speech-to-Text, Text-to-Speech, Wake-/Push-to-Talk-Modi, Providerwahl, Fallbacks und Deployment-/Mikrofonvoraussetzungen. | Planned | [Spec](PROJ-41-assistant-speech-provider-wakeword-infrastructure.md) | 2026-05-04 |
-| PROJ-42 | Schema-Drift-CI-Guard — Pre-Merge-Job, der jeden `.from(...).select(...)` und API-Zod-Schema gegen `information_schema.columns` der Shadow-DB checkt. Stub aus PROJ-36-α-Inzident; via `/requirements` zu vollständigem Spec ausbauen. | Planned (stub) | [Spec](PROJ-42-schema-drift-ci-guard.md) | 2026-05-04 |
+| PROJ-42 | Schema-Drift-CI-Guard — GitHub-Actions-Workflow als Required-Check auf `main`, der `.from(...).select(...)`-Calls in `src/` via TypeScript-AST gegen `information_schema.columns` einer Docker-Shadow-DB prüft. Hard-Fail bei Drift. α-Slice: SELECT-only; β/γ deferred (INSERT/UPDATE/Zod, Prod-Drift). | Architected | [Spec](PROJ-42-schema-drift-ci-guard.md) | 2026-05-04 |
 
 <!-- Add features above this line -->
 
