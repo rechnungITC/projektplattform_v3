@@ -55,15 +55,30 @@ const PIXELS_PER_DAY = 16
 const PADDING_DAYS = 7
 const RESIZE_HANDLE_WIDTH = 6
 
-interface DragState {
-  phaseId: string
-  mode: "move" | "resize"
-  startX: number
-  origStart: Date
-  origEnd: Date
-  // Live deltas while dragging; flushed to API on mouseUp.
-  deltaDays: number
-}
+type DragState =
+  | {
+      kind: "phase"
+      phaseId: string
+      mode: "move" | "resize"
+      startX: number
+      origStart: Date
+      origEnd: Date
+      deltaDays: number
+    }
+  | {
+      kind: "milestone"
+      milestoneId: string
+      startX: number
+      origDate: Date
+      deltaDays: number
+    }
+  | {
+      kind: "link"
+      fromPhaseId: string
+      mouseX: number
+      mouseY: number
+      targetPhaseId: string | null
+    }
 
 function toDate(value: string | null): Date | null {
   if (!value) return null
@@ -227,7 +242,7 @@ export function GanttView({
     return m
   }, [phases, calendarStart])
 
-  const onMouseDown = (
+  const startPhaseDrag = (
     e: React.MouseEvent<SVGRectElement | SVGGElement>,
     phase: Phase,
     mode: "move" | "resize",
@@ -240,6 +255,7 @@ export function GanttView({
     e.preventDefault()
     e.stopPropagation()
     setDrag({
+      kind: "phase",
       phaseId: phase.id,
       mode,
       startX: e.clientX,
@@ -249,65 +265,218 @@ export function GanttView({
     })
   }
 
+  const startMilestoneDrag = (
+    e: React.MouseEvent<SVGElement>,
+    milestone: Milestone,
+  ) => {
+    if (!canEdit) return
+    if (milestone.status === "achieved" || milestone.status === "cancelled") return
+    const td = toDate(milestone.target_date)
+    if (!td) return
+    e.preventDefault()
+    e.stopPropagation()
+    setDrag({
+      kind: "milestone",
+      milestoneId: milestone.id,
+      startX: e.clientX,
+      origDate: td,
+      deltaDays: 0,
+    })
+  }
+
+  const startLinkDrag = (
+    e: React.MouseEvent<SVGElement>,
+    fromPhaseId: string,
+  ) => {
+    if (!canEdit) return
+    e.preventDefault()
+    e.stopPropagation()
+    // Use SVG-local coords by reading from event clientX/Y; the path
+    // d-string consumes the same SVG viewBox so client→SVG is 1:1 here.
+    const svg = (e.currentTarget.ownerSVGElement ?? e.currentTarget) as SVGSVGElement
+    const rect = svg.getBoundingClientRect()
+    setDrag({
+      kind: "link",
+      fromPhaseId,
+      mouseX: e.clientX - rect.left,
+      mouseY: e.clientY - rect.top,
+      targetPhaseId: null,
+    })
+  }
+
   React.useEffect(() => {
     if (!drag) return
 
     const onMove = (e: MouseEvent) => {
-      const dx = e.clientX - drag.startX
-      const deltaDays = Math.round(dx / PIXELS_PER_DAY)
-      if (deltaDays === drag.deltaDays) return
-      setDrag((prev) => (prev ? { ...prev, deltaDays } : null))
+      if (drag.kind === "phase" || drag.kind === "milestone") {
+        const dx = e.clientX - drag.startX
+        const deltaDays = Math.round(dx / PIXELS_PER_DAY)
+        if (deltaDays === drag.deltaDays) return
+        setDrag((prev) => (prev ? { ...prev, deltaDays } : null))
+        return
+      }
+      if (drag.kind === "link") {
+        // Locate the SVG and translate clientXY → SVG-local coords.
+        const svg = document.querySelector(
+          'svg[role="region"], svg[aria-label="Gantt-Diagramm der Phasen"]',
+        ) as SVGSVGElement | null
+        const targetEl = document.elementFromPoint(e.clientX, e.clientY)
+        // Element under cursor may carry data-phase-target with the phase id.
+        let targetPhaseId: string | null = null
+        if (targetEl instanceof Element) {
+          const node = targetEl.closest<SVGElement>("[data-phase-target]")
+          targetPhaseId = node?.getAttribute("data-phase-target") ?? null
+          if (targetPhaseId === drag.fromPhaseId) targetPhaseId = null
+        }
+        if (svg) {
+          const rect = svg.getBoundingClientRect()
+          setDrag((prev) =>
+            prev && prev.kind === "link"
+              ? {
+                  ...prev,
+                  mouseX: e.clientX - rect.left,
+                  mouseY: e.clientY - rect.top,
+                  targetPhaseId,
+                }
+              : prev,
+          )
+        }
+      }
     }
 
     const onUp = async () => {
-      // Capture before resetting state.
-      const finalDelta = drag.deltaDays
-      const phaseId = drag.phaseId
-      const mode = drag.mode
-      const orig = { start: drag.origStart, end: drag.origEnd }
+      const snapshot = drag
       setDrag(null)
 
-      if (finalDelta === 0) return
-
-      let newStart = orig.start
-      let newEnd = orig.end
-      if (mode === "move") {
-        newStart = addDays(orig.start, finalDelta)
-        newEnd = addDays(orig.end, finalDelta)
-      } else {
-        // resize — only end moves; enforce 1-day minimum.
-        newEnd = addDays(orig.end, finalDelta)
-        if (daysBetween(orig.start, newEnd) < 1) {
-          newEnd = addDays(orig.start, 1)
+      if (snapshot.kind === "phase") {
+        if (snapshot.deltaDays === 0) return
+        let newStart = snapshot.origStart
+        let newEnd = snapshot.origEnd
+        if (snapshot.mode === "move") {
+          newStart = addDays(snapshot.origStart, snapshot.deltaDays)
+          newEnd = addDays(snapshot.origEnd, snapshot.deltaDays)
+        } else {
+          newEnd = addDays(snapshot.origEnd, snapshot.deltaDays)
+          if (daysBetween(snapshot.origStart, newEnd) < 1) {
+            newEnd = addDays(snapshot.origStart, 1)
+          }
         }
+        setSubmitting(snapshot.phaseId)
+        try {
+          const res = await fetch(
+            `/api/projects/${projectId}/phases/${snapshot.phaseId}`,
+            {
+              method: "PATCH",
+              headers: { "Content-Type": "application/json" },
+              body: JSON.stringify({
+                planned_start: toIsoDate(newStart),
+                planned_end: toIsoDate(newEnd),
+              }),
+            },
+          )
+          if (!res.ok) {
+            const err = await res.json().catch(() => ({}))
+            throw new Error(err?.message ?? `HTTP ${res.status}`)
+          }
+          // Phase-Container "mitziehen": when MOVING (not resizing), shift
+          // every child milestone by the same number of days.
+          if (snapshot.mode === "move") {
+            const childMilestones = milestones.filter(
+              (m) => m.phase_id === snapshot.phaseId,
+            )
+            await Promise.all(
+              childMilestones.map((m) => {
+                const td = toDate(m.target_date)
+                if (!td) return Promise.resolve()
+                const shifted = addDays(td, snapshot.deltaDays)
+                return fetch(
+                  `/api/projects/${projectId}/milestones/${m.id}`,
+                  {
+                    method: "PATCH",
+                    headers: { "Content-Type": "application/json" },
+                    body: JSON.stringify({ target_date: toIsoDate(shifted) }),
+                  },
+                ).catch(() => undefined)
+              }),
+            )
+          }
+          toast.success("Phase aktualisiert")
+          onChanged()
+        } catch (err) {
+          toast.error("Aktualisierung fehlgeschlagen", {
+            description:
+              err instanceof Error ? err.message : "Unbekannter Fehler",
+          })
+          onChanged()
+        } finally {
+          setSubmitting(null)
+        }
+        return
       }
 
-      setSubmitting(phaseId)
-      try {
-        const res = await fetch(
-          `/api/projects/${projectId}/phases/${phaseId}`,
-          {
-            method: "PATCH",
-            headers: { "Content-Type": "application/json" },
-            body: JSON.stringify({
-              planned_start: toIsoDate(newStart),
-              planned_end: toIsoDate(newEnd),
-            }),
-          },
-        )
-        if (!res.ok) {
-          const err = await res.json().catch(() => ({}))
-          throw new Error(err?.message ?? `HTTP ${res.status}`)
+      if (snapshot.kind === "milestone") {
+        if (snapshot.deltaDays === 0) return
+        const newDate = addDays(snapshot.origDate, snapshot.deltaDays)
+        setSubmitting(snapshot.milestoneId)
+        try {
+          const res = await fetch(
+            `/api/projects/${projectId}/milestones/${snapshot.milestoneId}`,
+            {
+              method: "PATCH",
+              headers: { "Content-Type": "application/json" },
+              body: JSON.stringify({ target_date: toIsoDate(newDate) }),
+            },
+          )
+          if (!res.ok) {
+            const err = await res.json().catch(() => ({}))
+            throw new Error(err?.message ?? `HTTP ${res.status}`)
+          }
+          toast.success("Meilenstein verschoben")
+          onChanged()
+        } catch (err) {
+          toast.error("Verschieben fehlgeschlagen", {
+            description:
+              err instanceof Error ? err.message : "Unbekannter Fehler",
+          })
+          onChanged()
+        } finally {
+          setSubmitting(null)
         }
-        toast.success("Phase aktualisiert")
-        onChanged()
-      } catch (err) {
-        toast.error("Aktualisierung fehlgeschlagen", {
-          description: err instanceof Error ? err.message : "Unbekannter Fehler",
-        })
-        onChanged() // refresh anyway to revert optimistic state
-      } finally {
-        setSubmitting(null)
+        return
+      }
+
+      if (snapshot.kind === "link") {
+        const target = snapshot.targetPhaseId
+        if (!target || target === snapshot.fromPhaseId) return
+        // Look up project tenant_id via projects fetch — simpler: just rely
+        // on server-side derivation via the project-scoped route.
+        try {
+          const res = await fetch(
+            `/api/projects/${projectId}/dependencies`,
+            {
+              method: "POST",
+              headers: { "Content-Type": "application/json" },
+              body: JSON.stringify({
+                from_type: "phase",
+                from_id: snapshot.fromPhaseId,
+                to_type: "phase",
+                to_id: target,
+                constraint_type: "FS",
+              }),
+            },
+          )
+          if (!res.ok) {
+            const err = await res.json().catch(() => ({}))
+            throw new Error(err?.message ?? `HTTP ${res.status}`)
+          }
+          toast.success("Dependency erstellt")
+          onChanged()
+        } catch (err) {
+          toast.error("Dependency-Erstellung fehlgeschlagen", {
+            description:
+              err instanceof Error ? err.message : "Unbekannter Fehler",
+          })
+        }
       }
     }
 
@@ -317,7 +486,7 @@ export function GanttView({
       window.removeEventListener("mousemove", onMove)
       window.removeEventListener("mouseup", onUp)
     }
-  }, [drag, projectId, onChanged])
+  }, [drag, projectId, milestones, onChanged])
 
   if (phases.length === 0) {
     return (
@@ -416,12 +585,13 @@ export function GanttView({
           }
 
           // Apply live drag delta visually.
-          const isDragging = drag?.phaseId === phase.id
+          const isDragging =
+            drag?.kind === "phase" && drag.phaseId === phase.id
           const startDays = daysBetween(calendarStart, ps)
           const durationDays = daysBetween(ps, pe)
           let x = startDays * PIXELS_PER_DAY
           let width = durationDays * PIXELS_PER_DAY
-          if (isDragging && drag) {
+          if (isDragging && drag.kind === "phase") {
             if (drag.mode === "move") {
               x += drag.deltaDays * PIXELS_PER_DAY
             } else {
@@ -434,6 +604,8 @@ export function GanttView({
 
           const locked = phase.status === "completed"
           const draggable = canEdit && !locked
+          const isLinkTarget =
+            drag?.kind === "link" && drag.targetPhaseId === phase.id
 
           return (
             <g
@@ -450,20 +622,24 @@ export function GanttView({
                 />
               ) : null}
 
-              {/* Bar */}
+              {/* Bar — also the link-drop-zone (data-phase-target wired
+                  to the elementFromPoint detection in onMove). */}
               <rect
                 x={x}
                 y={rowY + 4}
                 width={width}
                 height={ROW_HEIGHT - 8}
                 rx={4}
+                data-phase-target={phase.id}
                 className={cn(
                   barClasses(phase.status),
                   draggable ? "cursor-grab" : "cursor-default",
                   isDragging && "opacity-80 shadow-lg",
+                  isLinkTarget &&
+                    "stroke-foreground stroke-[3px]",
                   submitting === phase.id && "animate-pulse",
                 )}
-                onMouseDown={(e) => onMouseDown(e, phase, "move")}
+                onMouseDown={(e) => startPhaseDrag(e, phase, "move")}
               />
 
               {/* Resize handle (right edge) — only if draggable */}
@@ -474,8 +650,23 @@ export function GanttView({
                   width={RESIZE_HANDLE_WIDTH}
                   height={ROW_HEIGHT - 8}
                   className="fill-foreground/30 cursor-col-resize"
-                  onMouseDown={(e) => onMouseDown(e, phase, "resize")}
+                  onMouseDown={(e) => startPhaseDrag(e, phase, "resize")}
                 />
+              ) : null}
+
+              {/* Link-out hotspot — small circle at the right edge,
+                  visible only when canEdit. Drag from here to another
+                  bar to create an FS-dependency. */}
+              {draggable ? (
+                <circle
+                  cx={x + width}
+                  cy={rowY + ROW_HEIGHT / 2}
+                  r={4}
+                  className="fill-primary stroke-primary-foreground stroke-1 cursor-crosshair opacity-60 hover:opacity-100"
+                  onMouseDown={(e) => startLinkDrag(e, phase.id)}
+                >
+                  <title>Dependency-Verknüpfung ziehen</title>
+                </circle>
               ) : null}
 
               {/* Label inside or beside the bar */}
@@ -513,13 +704,35 @@ export function GanttView({
             view) are quietly skipped for Stage 2; a future slice can
             add a dedicated bottom row. */}
         {milestones.map((m) => {
-          if (!m.phase_id) return null
-          const layout = phaseLayout.get(m.phase_id)
-          if (!layout) return null
+          // For phase-container drag-with-children: when the parent phase
+          // is being moved, milestones in that phase preview-shift by the
+          // same delta on screen.
+          const phaseShift =
+            drag?.kind === "phase" &&
+            drag.mode === "move" &&
+            m.phase_id === drag.phaseId
+              ? drag.deltaDays
+              : 0
+
+          // Layout: prefer the phase row; orphan milestones can drift
+          // visually if the parent phase has no dates yet — render them
+          // in the bottom area as a fallback.
+          const layout = m.phase_id ? phaseLayout.get(m.phase_id) : undefined
           const td = toDate(m.target_date)
           if (!td) return null
-          const x = daysBetween(calendarStart, td) * PIXELS_PER_DAY
-          const cy = layout.midY
+
+          const cy = layout?.midY ?? totalHeight - ROW_HEIGHT / 2
+          const draggable =
+            canEdit && m.status !== "achieved" && m.status !== "cancelled"
+          const isDraggingThis =
+            drag?.kind === "milestone" && drag.milestoneId === m.id
+
+          const baseX = daysBetween(calendarStart, td) * PIXELS_PER_DAY
+          const x =
+            baseX +
+            (isDraggingThis ? drag.deltaDays * PIXELS_PER_DAY : 0) +
+            phaseShift * PIXELS_PER_DAY
+
           const size = 8
           return (
             <g
@@ -528,8 +741,14 @@ export function GanttView({
             >
               <polygon
                 points={`${x},${cy - size} ${x + size},${cy} ${x},${cy + size} ${x - size},${cy}`}
-                className={milestoneFill(m.status)}
+                className={cn(
+                  milestoneFill(m.status),
+                  draggable ? "cursor-grab" : "cursor-default",
+                  isDraggingThis && "opacity-80",
+                  submitting === m.id && "animate-pulse",
+                )}
                 strokeWidth={1.5}
+                onMouseDown={(e) => startMilestoneDrag(e, m)}
               />
               <title>
                 {m.name} · {new Date(m.target_date).toLocaleDateString("de-DE")}
@@ -584,6 +803,35 @@ export function GanttView({
             </g>
           )
         })}
+
+        {/* Ghost-arrow while a link drag is in progress. */}
+        {drag?.kind === "link" &&
+          (() => {
+            const from = phaseLayout.get(drag.fromPhaseId)
+            if (!from) return null
+            const x1 = from.x + from.width
+            const y1 = from.midY
+            const x2 = drag.mouseX
+            const y2 = drag.mouseY
+            const dx = Math.max(20, Math.abs(x2 - x1) / 2)
+            const path = `M ${x1} ${y1} C ${x1 + dx} ${y1}, ${x2 - dx} ${y2}, ${x2} ${y2}`
+            return (
+              <path
+                d={path}
+                fill="none"
+                stroke="currentColor"
+                strokeWidth={2}
+                strokeDasharray="4 3"
+                className={
+                  drag.targetPhaseId
+                    ? "text-primary"
+                    : "text-foreground/40"
+                }
+                markerEnd="url(#gantt-arrow)"
+                pointerEvents="none"
+              />
+            )
+          })()}
       </svg>
     </div>
   )
