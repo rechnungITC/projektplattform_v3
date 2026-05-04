@@ -626,9 +626,28 @@ function BacklogTreeRow({
         </button>
       </div>
 
-      {/* Eigenes Datum */}
+      {/* Eigenes Datum — klickbar öffnet Edit-Dialog */}
       <div className="hidden w-[10%] text-xs md:block">
-        {ownStart || ownEnd ? (
+        {onEditRequest ? (
+          <button
+            type="button"
+            onClick={(event) => {
+              event.stopPropagation()
+              onEditRequest(item)
+            }}
+            className="rounded px-1 py-0.5 text-left hover:bg-muted"
+            title="Eigenes Datum bearbeiten"
+            aria-label="Eigenes Datum bearbeiten"
+          >
+            {ownStart || ownEnd ? (
+              <span>
+                {formatDateShort(ownStart)} – {formatDateShort(ownEnd)}
+              </span>
+            ) : (
+              <span className="text-muted-foreground">—</span>
+            )}
+          </button>
+        ) : ownStart || ownEnd ? (
           <span>
             {formatDateShort(ownStart)} – {formatDateShort(ownEnd)}
           </span>
@@ -657,9 +676,24 @@ function BacklogTreeRow({
         )}
       </div>
 
-      {/* Eigener Aufwand */}
+      {/* Eigener Aufwand — klickbar öffnet Edit-Dialog */}
       <div className="hidden w-[8%] text-right font-mono text-xs tabular-nums md:block">
-        {formatHours(ownEffort)}
+        {onEditRequest ? (
+          <button
+            type="button"
+            onClick={(event) => {
+              event.stopPropagation()
+              onEditRequest(item)
+            }}
+            className="rounded px-1 py-0.5 hover:bg-muted"
+            title="Eigenen Aufwand bearbeiten"
+            aria-label="Eigenen Aufwand bearbeiten"
+          >
+            {formatHours(ownEffort)}
+          </button>
+        ) : (
+          formatHours(ownEffort)
+        )}
       </div>
 
       {/* Roll-up Aufwand */}
@@ -685,9 +719,24 @@ function BacklogTreeRow({
         {total != null ? formatHours(total) : "—"}
       </div>
 
-      {/* Status */}
+      {/* Status — klickbar öffnet Status-Dialog */}
       <div className="ml-auto w-[10%] text-right">
-        <WorkItemStatusBadge status={item.status} />
+        {onChangeStatusRequest ? (
+          <button
+            type="button"
+            onClick={(event) => {
+              event.stopPropagation()
+              onChangeStatusRequest(item)
+            }}
+            className="rounded hover:opacity-80"
+            title="Status ändern"
+            aria-label={`Status ${item.status} ändern`}
+          >
+            <WorkItemStatusBadge status={item.status} />
+          </button>
+        ) : (
+          <WorkItemStatusBadge status={item.status} />
+        )}
       </div>
 
       {/* Actions menu — parity with BacklogList row dropdown */}
