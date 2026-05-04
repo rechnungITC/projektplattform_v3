@@ -30,11 +30,20 @@ import * as React from "react"
 import { toast } from "sonner"
 
 import { cn } from "@/lib/utils"
+import { type Milestone, MILESTONE_STATUS_LABELS } from "@/types/milestone"
 import { PHASE_STATUS_LABELS, type Phase } from "@/types/phase"
+
+interface PhaseDependency {
+  id: string
+  from_id: string
+  to_id: string
+  constraint_type: "FS" | "SS" | "FF" | "SF"
+}
 
 interface GanttViewProps {
   projectId: string
   phases: Phase[]
+  milestones: Milestone[]
   canEdit: boolean
   onChanged: () => void
 }
@@ -80,12 +89,56 @@ function addDays(d: Date, n: number): Date {
 export function GanttView({
   projectId,
   phases,
+  milestones,
   canEdit,
   onChanged,
 }: GanttViewProps) {
   const [drag, setDrag] = React.useState<DragState | null>(null)
   const [submitting, setSubmitting] = React.useState<string | null>(null)
+  const [dependencies, setDependencies] = React.useState<PhaseDependency[]>([])
   const containerRef = React.useRef<HTMLDivElement>(null)
+
+  // Phase-to-phase dependency edges (Stage 2 read-only).
+  // Polymorphic table supports project/phase/work_package/todo — for now
+  // we render only edges whose both ends are 'phase' so the arrows match
+  // the bars on screen.
+  React.useEffect(() => {
+    if (!projectId) return
+    let cancelled = false
+    void (async () => {
+      try {
+        const res = await fetch(`/api/projects/${projectId}/dependencies`)
+        if (!res.ok) return
+        const data = await res.json()
+        const rows = Array.isArray(data?.dependencies) ? data.dependencies : []
+        if (cancelled) return
+        const phaseEdges: PhaseDependency[] = rows
+          .filter(
+            (r: { from_type?: string; to_type?: string }) =>
+              r.from_type === "phase" && r.to_type === "phase",
+          )
+          .map(
+            (r: {
+              id: string
+              from_id: string
+              to_id: string
+              constraint_type: PhaseDependency["constraint_type"]
+            }) => ({
+              id: r.id,
+              from_id: r.from_id,
+              to_id: r.to_id,
+              constraint_type: r.constraint_type,
+            }),
+          )
+        setDependencies(phaseEdges)
+      } catch {
+        // silent — Gantt still renders without arrows.
+      }
+    })()
+    return () => {
+      cancelled = true
+    }
+  }, [projectId, phases])
 
   // Compute the calendar window from all phase dates, pad each side.
   const { calendarStart, totalDays } = React.useMemo(() => {
@@ -145,6 +198,34 @@ export function GanttView({
     }
     return lines
   }, [totalDays])
+
+  // Pre-compute the static layout of each phase bar (no drag delta applied)
+  // so dependency arrows + milestones can position themselves without
+  // duplicating the math inside the bar-render block.
+  const phaseLayout = React.useMemo(() => {
+    const m = new Map<
+      string,
+      { x: number; y: number; width: number; midY: number }
+    >()
+    phases.forEach((phase, idx) => {
+      const ps = toDate(phase.planned_start)
+      const pe = toDate(phase.planned_end)
+      if (!ps || !pe) return
+      const rowY = HEADER_HEIGHT + idx * (ROW_HEIGHT + ROW_GAP)
+      const x = daysBetween(calendarStart, ps) * PIXELS_PER_DAY
+      const width = Math.max(
+        PIXELS_PER_DAY,
+        daysBetween(ps, pe) * PIXELS_PER_DAY,
+      )
+      m.set(phase.id, {
+        x,
+        y: rowY + 4,
+        width,
+        midY: rowY + ROW_HEIGHT / 2,
+      })
+    })
+    return m
+  }, [phases, calendarStart])
 
   const onMouseDown = (
     e: React.MouseEvent<SVGRectElement | SVGGElement>,
@@ -426,9 +507,100 @@ export function GanttView({
             </g>
           )
         })}
+
+        {/* Milestone diamonds — positioned at target_date within their
+            phase row. Orphan milestones (no phase_id or phase not in
+            view) are quietly skipped for Stage 2; a future slice can
+            add a dedicated bottom row. */}
+        {milestones.map((m) => {
+          if (!m.phase_id) return null
+          const layout = phaseLayout.get(m.phase_id)
+          if (!layout) return null
+          const td = toDate(m.target_date)
+          if (!td) return null
+          const x = daysBetween(calendarStart, td) * PIXELS_PER_DAY
+          const cy = layout.midY
+          const size = 8
+          return (
+            <g
+              key={`ms-${m.id}`}
+              aria-label={`Meilenstein ${m.name} – ${MILESTONE_STATUS_LABELS[m.status]}`}
+            >
+              <polygon
+                points={`${x},${cy - size} ${x + size},${cy} ${x},${cy + size} ${x - size},${cy}`}
+                className={milestoneFill(m.status)}
+                strokeWidth={1.5}
+              />
+              <title>
+                {m.name} · {new Date(m.target_date).toLocaleDateString("de-DE")}
+                {m.status === "achieved" ? " · erreicht" : ""}
+                {m.status === "missed" ? " · verpasst" : ""}
+              </title>
+            </g>
+          )
+        })}
+
+        {/* Phase-to-phase dependency arrows. FS = right-edge of from
+            connects to left-edge of to. Other constraint types render
+            with the same path for now (constraint_type label visible
+            in the title tooltip); polish in PROJ-25 Stage 3. */}
+        <defs>
+          <marker
+            id="gantt-arrow"
+            viewBox="0 0 10 10"
+            refX="8"
+            refY="5"
+            markerWidth="6"
+            markerHeight="6"
+            orient="auto-start-reverse"
+          >
+            <path d="M 0 0 L 10 5 L 0 10 z" className="fill-foreground/70" />
+          </marker>
+        </defs>
+        {dependencies.map((dep) => {
+          const from = phaseLayout.get(dep.from_id)
+          const to = phaseLayout.get(dep.to_id)
+          if (!from || !to) return null
+          const x1 = from.x + from.width
+          const y1 = from.midY
+          const x2 = to.x
+          const y2 = to.midY
+          // Smooth bezier with horizontal control points scaled by gap.
+          const dx = Math.max(20, Math.abs(x2 - x1) / 2)
+          const path = `M ${x1} ${y1} C ${x1 + dx} ${y1}, ${x2 - dx} ${y2}, ${x2} ${y2}`
+          return (
+            <g key={`dep-${dep.id}`}>
+              <path
+                d={path}
+                fill="none"
+                stroke="currentColor"
+                strokeWidth={1.5}
+                className="text-foreground/60"
+                markerEnd="url(#gantt-arrow)"
+              />
+              <title>
+                Dependency {dep.constraint_type} · von Phase nach Phase
+              </title>
+            </g>
+          )
+        })}
       </svg>
     </div>
   )
+}
+
+function milestoneFill(status: Milestone["status"]): string {
+  switch (status) {
+    case "achieved":
+      return "fill-emerald-600 stroke-emerald-700"
+    case "missed":
+      return "fill-destructive stroke-destructive"
+    case "cancelled":
+      return "fill-muted stroke-muted-foreground/50"
+    case "planned":
+    default:
+      return "fill-amber-500 stroke-amber-700"
+  }
 }
 
 function barClasses(status: Phase["status"]): string {

@@ -29,7 +29,7 @@ export function PlanungClient({ projectId }: PlanungClientProps) {
     loading: phasesLoading,
     refresh: refreshPhases,
   } = usePhases(projectId)
-  const { refresh: refreshMilestones } = useMilestones(projectId)
+  const { milestones, refresh: refreshMilestones } = useMilestones(projectId)
 
   const [tab, setTab] = React.useState<"phasen" | "meilensteine" | "gantt">(
     "phasen",
@@ -128,6 +128,7 @@ export function PlanungClient({ projectId }: PlanungClientProps) {
           <GanttView
             projectId={projectId}
             phases={phases}
+            milestones={milestones}
             canEdit={canEdit}
             onChanged={refreshAll}
           />
