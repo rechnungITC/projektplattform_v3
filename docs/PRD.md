@@ -69,6 +69,30 @@ The product thesis: enterprise projects fail at the seams between execution, gov
 | _TBD_ | P2 | Governance workflows: approval gates, escalations, formal decisions | Planned |
 | _TBD_ | P2 | **Erweitertes Stakeholder-Management**: Skill-/Persönlichkeitsprofile (DISG, lizenz-geklärt), Kommunikations-Tracking (Sentiment/Kooperation/Reaktionszeit), KI-Coaching-Purpose, kritischer-Pfad-Indikator. Domain-Wissen: `docs/Stakeholderwissen/`. Promotion via `/requirements` (Single-Responsibility-Split in 3-4 Specs) + CIA-Review (überschneidet PROJ-8/13/12/30). | Domain-Knowledge |
 
+### Recommended Delivery Sequence — Assistant Track
+
+To avoid a flashy but unreliable assistant, the voice/agent roadmap should be delivered as a controlled sequence rather than a broad MVP dump:
+
+1. **Release 1 — Controlled Assistant Core**
+   - PROJ-37 baseline shell only (overlay, text-first or push-to-talk entry)
+   - PROJ-38 core runtime (intent schema, confirmation gates, session context, policy checks)
+   - PROJ-39 first action packs (project status, project lookup/open, navigation, project creation via wizard draft/review)
+   - Goal: useful assistant behavior without uncontrolled mutation or free-form agent drift
+
+2. **Release 2 — Governance & Audit Hardening**
+   - PROJ-40 conversation audit, transcript governance, retention, export/redaction compatibility
+   - Goal: assistant becomes enterprise-safe, not just usable
+
+3. **Release 3 — Speech / Provider Infrastructure**
+   - PROJ-41 speech-to-text, text-to-speech, provider controls, browser/deployment readiness, optional wake-word behind flag
+   - Goal: voice UX becomes robust after runtime and governance are stable
+
+4. **Release 4 — Domain Expansion**
+   - later assistant domain packs beyond the initial project-status/navigation/creation scope
+   - Goal: broaden capability only after the core is reliable
+
+This sequence is deliberate: **runtime first, governed actions second, compliance third, comfort last**.
+
 ## Success Metrics
 
 _To be refined with stakeholders. Initial proposals:_
