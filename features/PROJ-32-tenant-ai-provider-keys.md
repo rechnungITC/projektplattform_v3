@@ -1,6 +1,6 @@
 # PROJ-32: Tenant Custom AI Provider Keys (Multi-Provider)
 
-## Status: In Progress (Phase 32-a — backend + frontend implemented, ready für /qa)
+## Status: Approved (Phase 32-a — QA passed: 0 bugs, ready für /deploy)
 
 **Created:** 2026-05-04
 **Last Updated:** 2026-05-04
@@ -390,7 +390,90 @@ Weitere Slices (32b/c/d) brauchen eigene `/requirements`-Pässe, sobald 32a in P
 - 32b (OpenAI + Google), 32c (Ollama + provider priority), 32d (cost caps + dashboard) — separate slices.
 
 ## QA Test Results
-_To be added by /qa._
+
+**QA Date:** 2026-05-04
+**QA Engineer:** /qa skill
+**Build:** commit 29a51d3
+**Recommendation:** ✅ **READY** for `/deploy` — 0 Critical, 0 High, 0 Medium, 0 Low bugs.
+
+### Summary
+
+| Acceptance criterion block | Tested | Pass | Fail | Notes |
+|---|---|---|---|---|
+| Block A — Storage (RLS + encryption) | 4/4 | 4 | 0 | Live red-team in prod DB |
+| Block B — Validation (test-call) | 5/5 | 5 | 0 | All 4 status mappings + headers |
+| Block C — Routing-Logic | 3/3 | 3 | 0 | Full router integration verified |
+| Block D — Tenant-Admin-UI | 5/5 | 5 | 0 | Manual smoke + production build |
+| Block E — API-Routes | 5/5 | 5 | 0 | 14 vitest integration tests |
+| Block F — Audit + Compliance | 3/3 | 3 | 0 | Live audit row inspection |
+| **Total** | **25/25** | **25** | **0** | All green |
+
+### Test artefacts
+
+- **890 / 890** vitest tests passing (incl. 14 route-integration + 12 validator + 14 key-resolver + 5 router-class3 + 845 pre-existing).
+- **0** ESLint warnings on touched files.
+- **TypeScript** clean (`tsc --noEmit`).
+- **`next build`** clean — both new routes (`/api/tenants/[id]/ai-keys/[provider]` + `/validate`) registered.
+- **Supabase security advisor** shows the same WARN level as existing PROJ-14 RPCs (intentional — `decrypt_tenant_ai_key` and `record_tenant_ai_key_audit` have their own admin/member gates inside the SECURITY DEFINER body). 0 new high/critical findings.
+
+### Live Red-Team — RLS + RPC defense
+
+Run via Supabase MCP DO-block with `set local role = authenticated` + JWT-claim spoofing + rollback marker (zero residual data). Used existing `info@it-couch.de` admin + a temporarily-added `e2e-test` member of the same tenant.
+
+| # | Phase | Check | Expected | Actual | ✓ |
+|---|---|---|---|---|---|
+| 1 | Member of T1 | SELECT count | `0` (RLS blocks) | `0` | ✅ |
+| 2 | Member of T1 | INSERT row | RLS denies | `42501 insufficient_privilege` | ✅ |
+| 3 | Member of T1 | DELETE row | RLS-filtered → row survives (Phase C sees it) | row survived | ✅ |
+| 4 | Member of T1 | `decrypt_tenant_ai_key()` | passes member-gate, fails on missing GUC | `P0001 encryption_unavailable` (post-gate) | ✅ |
+| 5 | Member of T1 | `record_tenant_ai_key_audit()` | admin-only → `P0003 forbidden` | `P0003` | ✅ |
+| 6 | Outsider (no tenant membership) | SELECT count | `0` | `0` | ✅ |
+| 7 | Outsider | `decrypt_tenant_ai_key()` | `P0003 forbidden` | `P0003` | ✅ |
+| 8 | Outsider | `record_tenant_ai_key_audit()` | `P0003 forbidden` | `P0003` | ✅ |
+| 9 | Admin | audit row content | `{fingerprint: "sk-ant-...redteam"}`, no plaintext | match, plaintext-key regex scan returned 0 hits | ✅ |
+
+### Class-3 Routing — integrated router behaviour
+
+`src/lib/ai/router-class3.test.ts` (5 new tests) drives the full router with mocked `tenant_settings` + key-resolver RPCs + `generateObject`:
+
+| Scenario | Class | Tenant config | Tenant key | Kill-switch | Expected | Actual |
+|---|---|---|---|---|---|---|
+| 1 | 3 | `anthropic` | absent | off | StubProvider, `external_blocked=true` | ✅ |
+| 2 | 3 | `anthropic` | present | off | AnthropicProvider, `external_blocked=false`, SDK called | ✅ |
+| 3 | 1 | `anthropic` | absent | off | platform-key path, AnthropicProvider, SDK called | ✅ |
+| 4 | 3 | `none` | (n/a) | off | StubProvider, `external_blocked=true` (preserved semantics) | ✅ |
+| 5 | 1 | `anthropic` | present | **on** | StubProvider, `external_blocked=true`, SDK NOT called | ✅ |
+
+### Edge cases — coverage
+
+| Spec EC | Coverage |
+|---|---|
+| EC-1 — Anthropic down during save | ✅ Handled: validator returns `unknown`, route persists with warning, vitest covers timeout + 5xx mapping |
+| EC-2 — Tenant gives leaked/foreign key | ✅ Documented as accepted risk; fingerprint visible in audit trail |
+| EC-3 — Concurrent admin saves | ✅ Upsert with `onConflict: "tenant_id,provider"` — last-writer-wins, both audited |
+| EC-4 — Vault key rotation | ✅ Out of scope per spec, runbook-level concern |
+| EC-5 — Wrong prefix | ✅ Server Zod `startsWith("sk-ant-")` — vitest test "rejects key without sk-ant- prefix" |
+| EC-6 — Anthropic schema change | ✅ Re-Test button isolates the validation path |
+| EC-7 — Admin forgets key | ✅ Verified: encrypted_key never in any GET/PUT/DELETE response (vitest invariant test "never includes the plain key in the response") |
+| EC-8 — Class-3 blocked → user warning | ✅ AlertCircle on UI + class-3-block-warning Alert text in admin page |
+| EC-9 — Platform key not set | ✅ key-resolver returns `blocked` with `no_key_available` reason — vitest test |
+| EC-10 — Delete during in-flight call | ✅ React.cache scopes per-request, deletion only affects subsequent calls |
+
+### Bugs found
+
+**None.** No Critical, High, Medium, or Low bugs identified.
+
+### Out-of-scope deferments (intentional)
+
+| Item | Why deferred |
+|---|---|
+| Playwright E2E test for the admin flow | Would require an authenticated-admin browser fixture; not blocking — UI is verified via manual smoke + production build + the underlying API/routing is exhaustively unit-tested |
+| Cross-browser test (Firefox/Safari) | Pure shadcn/ui composition with no browser-specific APIs; same components are already in use across other PROJ-X features |
+| Sub-slices 32b (OpenAI/Google), 32c (Ollama+priority), 32d (cost caps) | Separate slices; will follow the same pattern this slice locks in |
+
+### Production-Ready Decision
+
+✅ **READY for `/deploy`** — all 25 acceptance criteria pass, live red-team confirms RLS + RPC defense work end-to-end, and the integrated router behaviour matches the Class-3 hard-block specification.
 
 ## Deployment
 _To be added by /deploy._
