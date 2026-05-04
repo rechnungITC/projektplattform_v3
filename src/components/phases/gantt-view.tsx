@@ -111,7 +111,37 @@ export function GanttView({
   const [drag, setDrag] = React.useState<DragState | null>(null)
   const [submitting, setSubmitting] = React.useState<string | null>(null)
   const [dependencies, setDependencies] = React.useState<PhaseDependency[]>([])
+  const [criticalPhaseIds, setCriticalPhaseIds] = React.useState<Set<string>>(
+    new Set(),
+  )
+  const [criticalPathOn, setCriticalPathOn] = React.useState(false)
+  const [criticalPathLoading, setCriticalPathLoading] = React.useState(false)
   const containerRef = React.useRef<HTMLDivElement>(null)
+
+  // Fetch the critical-path phase set when the toggle flips on, or when
+  // the underlying phase/dep set changes while it's already on.
+  React.useEffect(() => {
+    if (!criticalPathOn || !projectId) return
+    let cancelled = false
+    // eslint-disable-next-line react-hooks/set-state-in-effect -- one-shot loading flag for async fetch
+    setCriticalPathLoading(true)
+    void (async () => {
+      try {
+        const res = await fetch(`/api/projects/${projectId}/critical-path`)
+        if (!res.ok) throw new Error(`HTTP ${res.status}`)
+        const body = (await res.json()) as { phase_ids: string[] }
+        if (cancelled) return
+        setCriticalPhaseIds(new Set(body.phase_ids ?? []))
+      } catch {
+        if (!cancelled) setCriticalPhaseIds(new Set())
+      } finally {
+        if (!cancelled) setCriticalPathLoading(false)
+      }
+    })()
+    return () => {
+      cancelled = true
+    }
+  }, [criticalPathOn, projectId, phases, dependencies])
 
   // Phase-to-phase dependency edges (Stage 2 read-only).
   // Polymorphic table supports project/phase/work_package/todo — for now
@@ -500,12 +530,40 @@ export function GanttView({
   }
 
   return (
-    <div
-      ref={containerRef}
-      className="overflow-x-auto rounded-md border bg-card"
-      role="region"
-      aria-label="Gantt-Diagramm der Phasen"
-    >
+    <div className="space-y-2">
+      <div className="flex items-center justify-end gap-2">
+        <button
+          type="button"
+          onClick={() => setCriticalPathOn((on) => !on)}
+          className={cn(
+            "inline-flex items-center gap-1.5 rounded-md border px-3 py-1.5 text-xs font-medium transition-colors",
+            criticalPathOn
+              ? "border-destructive bg-destructive/10 text-destructive hover:bg-destructive/20"
+              : "border-border bg-background hover:bg-accent",
+          )}
+          aria-pressed={criticalPathOn}
+          aria-label="Kritischen Pfad ein-/ausblenden"
+        >
+          <span
+            aria-hidden
+            className={cn(
+              "inline-block h-2 w-2 rounded-full",
+              criticalPathOn ? "bg-destructive" : "bg-muted-foreground/40",
+            )}
+          />
+          Kritischer Pfad
+          {criticalPathOn && criticalPathLoading ? " …" : null}
+          {criticalPathOn && !criticalPathLoading && criticalPhaseIds.size > 0
+            ? ` · ${criticalPhaseIds.size}`
+            : null}
+        </button>
+      </div>
+      <div
+        ref={containerRef}
+        className="overflow-x-auto rounded-md border bg-card"
+        role="region"
+        aria-label="Gantt-Diagramm der Phasen"
+      >
       <svg
         width={totalWidth}
         height={totalHeight}
@@ -606,6 +664,8 @@ export function GanttView({
           const draggable = canEdit && !locked
           const isLinkTarget =
             drag?.kind === "link" && drag.targetPhaseId === phase.id
+          const isCritical =
+            criticalPathOn && criticalPhaseIds.has(phase.id)
 
           return (
             <g
@@ -637,6 +697,8 @@ export function GanttView({
                   isDragging && "opacity-80 shadow-lg",
                   isLinkTarget &&
                     "stroke-foreground stroke-[3px]",
+                  isCritical &&
+                    "stroke-destructive stroke-[3px]",
                   submitting === phase.id && "animate-pulse",
                 )}
                 onMouseDown={(e) => startPhaseDrag(e, phase, "move")}
@@ -787,18 +849,26 @@ export function GanttView({
           // Smooth bezier with horizontal control points scaled by gap.
           const dx = Math.max(20, Math.abs(x2 - x1) / 2)
           const path = `M ${x1} ${y1} C ${x1 + dx} ${y1}, ${x2 - dx} ${y2}, ${x2} ${y2}`
+          // Edge is critical when both endpoints are on the CP set.
+          const isCriticalEdge =
+            criticalPathOn &&
+            criticalPhaseIds.has(dep.from_id) &&
+            criticalPhaseIds.has(dep.to_id)
           return (
             <g key={`dep-${dep.id}`}>
               <path
                 d={path}
                 fill="none"
                 stroke="currentColor"
-                strokeWidth={1.5}
-                className="text-foreground/60"
+                strokeWidth={isCriticalEdge ? 2.5 : 1.5}
+                className={
+                  isCriticalEdge ? "text-destructive" : "text-foreground/60"
+                }
                 markerEnd="url(#gantt-arrow)"
               />
               <title>
                 Dependency {dep.constraint_type} · von Phase nach Phase
+                {isCriticalEdge ? " · KRITISCH" : ""}
               </title>
             </g>
           )
@@ -833,6 +903,7 @@ export function GanttView({
             )
           })()}
       </svg>
+      </div>
     </div>
   )
 }
