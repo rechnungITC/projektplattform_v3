@@ -3,23 +3,11 @@ import { z } from "zod"
 
 import { apiError, getAuthenticatedUserId } from "@/app/api/_lib/route-helpers"
 import { requireModuleActive } from "@/lib/tenant-settings/server"
-import { SUPPORTED_CURRENCIES } from "@/types/tenant-settings"
 
-const patchSchema = z
-  .object({
-    name: z.string().trim().min(1).max(100).optional(),
-    description: z.string().max(2000).nullable().optional(),
-    planned_amount: z.number().nonnegative().optional(),
-    planned_currency: z
-      .enum(SUPPORTED_CURRENCIES as unknown as [string, ...string[]])
-      .optional(),
-    position: z.number().int().min(0).max(10000).optional(),
-    is_active: z.boolean().optional(),
-    category_id: z.string().uuid().optional(),
-  })
-  .refine((v) => Object.keys(v).length > 0, {
-    message: "At least one field required.",
-  })
+import {
+  budgetItemPatchSchema as patchSchema,
+  normalizeBudgetItemPayload,
+} from "../_schema"
 
 function validateIds(projectId: string, itemId: string) {
   if (!z.string().uuid().safeParse(projectId).success) {
@@ -90,9 +78,12 @@ export async function PATCH(
     }
   }
 
+  // Spread-Pattern: schema is the single source of truth.
+  const update = normalizeBudgetItemPayload(parsed.data)
+
   const { data, error } = await supabase
     .from("budget_items")
-    .update(parsed.data)
+    .update(update)
     .eq("id", itemId)
     .eq("project_id", projectId)
     .select()

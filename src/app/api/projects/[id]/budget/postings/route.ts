@@ -4,17 +4,11 @@ import { z } from "zod"
 import { apiError, getAuthenticatedUserId } from "@/app/api/_lib/route-helpers"
 import { createAdminClient } from "@/lib/supabase/admin"
 import { requireModuleActive } from "@/lib/tenant-settings/server"
-import { SUPPORTED_CURRENCIES } from "@/types/tenant-settings"
 
-const createSchema = z.object({
-  item_id: z.string().uuid(),
-  kind: z.enum(["actual", "reservation"] as const),
-  amount: z.number().nonnegative(),
-  currency: z.enum(SUPPORTED_CURRENCIES as unknown as [string, ...string[]]),
-  posted_at: z.string().regex(/^\d{4}-\d{2}-\d{2}$/, "YYYY-MM-DD required"),
-  note: z.string().max(500).nullable().optional(),
-  source_ref_id: z.string().uuid().nullable().optional(),
-})
+import {
+  budgetPostingCreateSchema as createSchema,
+  normalizeBudgetPostingPayload,
+} from "./_schema"
 
 // GET /api/projects/[id]/budget/postings?item_id=...
 export async function GET(
@@ -132,22 +126,21 @@ export async function POST(
   )
   if (moduleDenial) return moduleDenial
 
+  // Spread-Pattern: schema is the single source of truth. `source` is
+  // server-derived from source_ref_id; reverses_posting_id is null for
+  // direct POST (only set by the /reverse endpoint).
+  const insertPayload = {
+    ...normalizeBudgetPostingPayload(parsed.data),
+    tenant_id: item.tenant_id,
+    project_id: projectId,
+    source: parsed.data.source_ref_id ? "vendor_invoice" : "manual",
+    reverses_posting_id: null,
+    created_by: userId,
+  }
+
   const { data: posting, error: insertErr } = await supabase
     .from("budget_postings")
-    .insert({
-      tenant_id: item.tenant_id,
-      project_id: projectId,
-      item_id: parsed.data.item_id,
-      kind: parsed.data.kind,
-      amount: parsed.data.amount,
-      currency: parsed.data.currency,
-      posted_at: parsed.data.posted_at,
-      note: parsed.data.note ?? null,
-      source: parsed.data.source_ref_id ? "vendor_invoice" : "manual",
-      source_ref_id: parsed.data.source_ref_id ?? null,
-      reverses_posting_id: null,
-      created_by: userId,
-    })
+    .insert(insertPayload)
     .select()
     .single()
 

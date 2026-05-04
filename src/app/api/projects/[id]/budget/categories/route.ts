@@ -4,11 +4,10 @@ import { z } from "zod"
 import { apiError, getAuthenticatedUserId } from "@/app/api/_lib/route-helpers"
 import { requireModuleActive } from "@/lib/tenant-settings/server"
 
-const createSchema = z.object({
-  name: z.string().trim().min(1).max(100),
-  description: z.string().max(2000).nullable().optional(),
-  position: z.number().int().min(0).max(10000).optional(),
-})
+import {
+  budgetCategoryCreateSchema as createSchema,
+  normalizeBudgetCategoryPayload,
+} from "./_schema"
 
 // GET /api/projects/[id]/budget/categories
 export async function GET(
@@ -95,16 +94,19 @@ export async function POST(
   )
   if (moduleDenial) return moduleDenial
 
+  // Spread-Pattern: schema is the single source of truth. position default
+  // is applied via the spread fallback below.
+  const insertPayload = {
+    ...normalizeBudgetCategoryPayload(parsed.data),
+    position: parsed.data.position ?? 0,
+    tenant_id: project.tenant_id,
+    project_id: projectId,
+    created_by: userId,
+  }
+
   const { data, error } = await supabase
     .from("budget_categories")
-    .insert({
-      tenant_id: project.tenant_id,
-      project_id: projectId,
-      name: parsed.data.name,
-      description: parsed.data.description ?? null,
-      position: parsed.data.position ?? 0,
-      created_by: userId,
-    })
+    .insert(insertPayload)
     .select()
     .single()
 

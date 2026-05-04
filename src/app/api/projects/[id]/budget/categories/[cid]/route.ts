@@ -4,15 +4,10 @@ import { z } from "zod"
 import { apiError, getAuthenticatedUserId } from "@/app/api/_lib/route-helpers"
 import { requireModuleActive } from "@/lib/tenant-settings/server"
 
-const patchSchema = z
-  .object({
-    name: z.string().trim().min(1).max(100).optional(),
-    description: z.string().max(2000).nullable().optional(),
-    position: z.number().int().min(0).max(10000).optional(),
-  })
-  .refine((v) => Object.keys(v).length > 0, {
-    message: "At least one field required.",
-  })
+import {
+  budgetCategoryPatchSchema as patchSchema,
+  normalizeBudgetCategoryPayload,
+} from "../_schema"
 
 function validateIds(projectId: string, categoryId: string) {
   if (!z.string().uuid().safeParse(projectId).success) {
@@ -66,9 +61,12 @@ export async function PATCH(
   )
   if (moduleDenial) return moduleDenial
 
+  // Spread-Pattern: schema is the single source of truth.
+  const update = normalizeBudgetCategoryPayload(parsed.data)
+
   const { data, error } = await supabase
     .from("budget_categories")
-    .update(parsed.data)
+    .update(update)
     .eq("id", categoryId)
     .eq("project_id", projectId)
     .select()

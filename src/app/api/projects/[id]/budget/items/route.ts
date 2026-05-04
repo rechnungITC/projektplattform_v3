@@ -4,17 +4,11 @@ import { z } from "zod"
 import { apiError, getAuthenticatedUserId } from "@/app/api/_lib/route-helpers"
 import { requireModuleActive } from "@/lib/tenant-settings/server"
 import type { BudgetItem, BudgetItemTotals, BudgetItemWithTotals } from "@/types/budget"
-import { SUPPORTED_CURRENCIES } from "@/types/tenant-settings"
 
-const createSchema = z.object({
-  category_id: z.string().uuid(),
-  name: z.string().trim().min(1).max(100),
-  description: z.string().max(2000).nullable().optional(),
-  planned_amount: z.number().nonnegative(),
-  planned_currency: z.enum(SUPPORTED_CURRENCIES as unknown as [string, ...string[]]),
-  position: z.number().int().min(0).max(10000).optional(),
-  is_active: z.boolean().optional(),
-})
+import {
+  budgetItemCreateSchema as createSchema,
+  normalizeBudgetItemPayload,
+} from "./_schema"
 
 // GET /api/projects/[id]/budget/items
 //   Returns the full list of items joined with their aggregated totals
@@ -141,20 +135,20 @@ export async function POST(
   )
   if (moduleDenial) return moduleDenial
 
+  // Spread-Pattern: schema is the single source of truth. Server-side
+  // defaults for position + is_active are applied alongside the spread.
+  const insertPayload = {
+    ...normalizeBudgetItemPayload(parsed.data),
+    position: parsed.data.position ?? 0,
+    is_active: parsed.data.is_active ?? true,
+    tenant_id: cat.tenant_id,
+    project_id: projectId,
+    created_by: userId,
+  }
+
   const { data, error } = await supabase
     .from("budget_items")
-    .insert({
-      tenant_id: cat.tenant_id,
-      project_id: projectId,
-      category_id: parsed.data.category_id,
-      name: parsed.data.name,
-      description: parsed.data.description ?? null,
-      planned_amount: parsed.data.planned_amount,
-      planned_currency: parsed.data.planned_currency,
-      position: parsed.data.position ?? 0,
-      is_active: parsed.data.is_active ?? true,
-      created_by: userId,
-    })
+    .insert(insertPayload)
     .select()
     .single()
 
