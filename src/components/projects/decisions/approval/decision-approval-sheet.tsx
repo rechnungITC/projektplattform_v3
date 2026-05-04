@@ -22,6 +22,7 @@ import type { Stakeholder } from "@/types/stakeholder"
 import { ApprovalStatusBanner } from "./approval-status-banner"
 import { ApprovalTrailTimeline } from "./approval-trail-timeline"
 import { ApproverList } from "./approver-list"
+import { ExtendDeadlineDialog } from "./extend-deadline-dialog"
 import { MyApprovalActionPanel } from "./my-approval-action-panel"
 import { SubmitForApprovalForm } from "./submit-for-approval-form"
 import { WithdrawDecisionDialog } from "./withdraw-decision-dialog"
@@ -162,7 +163,15 @@ export function DecisionApprovalSheet({
                 </Tabs>
 
                 {status === "pending" && (
-                  <div className="flex justify-end pt-2">
+                  <div className="flex flex-wrap items-center justify-end gap-2 pt-2">
+                    <ExtendDeadlineDialog
+                      projectId={projectId}
+                      decisionId={decision.id}
+                      currentDeadline={bundle.state.deadline_at ?? null}
+                      onExtended={() => {
+                        void handleSubmitted()
+                      }}
+                    />
                     <Button
                       type="button"
                       variant="destructive"

@@ -1,4 +1,4 @@
-import { CalendarClock, CheckCircle2, Clock, XCircle, X } from "lucide-react"
+import { CalendarClock, CheckCircle2, Clock, TimerOff, XCircle, X } from "lucide-react"
 
 import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert"
 import { Badge } from "@/components/ui/badge"
@@ -47,6 +47,11 @@ export function ApprovalStatusBanner({
     case "withdrawn":
       icon = <X className="h-4 w-4 text-muted-foreground" aria-hidden />
       body = "Der Projektmanager hat diese Entscheidung zurückgezogen."
+      break
+    case "expired":
+      icon = <TimerOff className="h-4 w-4 text-amber-700" aria-hidden />
+      body =
+        "Die Frist ist abgelaufen, ohne dass das Quorum erreicht wurde. Eine Revision oder Neuvorlage ist nötig."
       break
   }
 

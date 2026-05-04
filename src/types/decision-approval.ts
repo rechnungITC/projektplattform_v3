@@ -12,6 +12,7 @@ export type ApprovalStatus =
   | "approved"
   | "rejected"
   | "withdrawn"
+  | "expired"
 
 export const APPROVAL_STATUS_LABELS: Record<ApprovalStatus, string> = {
   draft: "Entwurf",
@@ -19,6 +20,7 @@ export const APPROVAL_STATUS_LABELS: Record<ApprovalStatus, string> = {
   approved: "Genehmigt",
   rejected: "Abgelehnt",
   withdrawn: "Zurückgezogen",
+  expired: "Frist abgelaufen",
 }
 
 export type ApproverResponse = "approve" | "reject" | null
@@ -42,6 +44,9 @@ export type ApprovalEventType =
   | "withdrawn"
   | "revised"
   | "token_renewed"
+  | "deadline_reminder_sent"
+  | "deadline_extended"
+  | "deadline_expired"
 
 export interface DecisionApprovalState {
   decision_id: string

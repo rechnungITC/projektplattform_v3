@@ -13,6 +13,7 @@ const VARIANT: Record<
   approved: "default",
   rejected: "destructive",
   withdrawn: "outline",
+  expired: "destructive",
 }
 
 export function ApprovalStatusBadge({ status }: { status: ApprovalStatus }) {

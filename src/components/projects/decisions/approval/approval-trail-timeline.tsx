@@ -1,10 +1,13 @@
 import {
   ArrowRight,
+  BellRing,
+  CalendarPlus,
   Check,
   CircleSlash,
   HelpCircle,
   RotateCcw,
   Send,
+  TimerOff,
   X,
 } from "lucide-react"
 
@@ -23,6 +26,9 @@ const EVENT_LABELS: Record<ApprovalEventType, string> = {
   withdrawn: "Vom PM zurückgezogen",
   revised: "Durch Revision ersetzt",
   token_renewed: "Magic-Link erneuert",
+  deadline_reminder_sent: "Frist-Erinnerung versendet",
+  deadline_extended: "Frist verlängert",
+  deadline_expired: "Frist abgelaufen",
 }
 
 const EVENT_ICONS: Record<ApprovalEventType, React.ReactNode> = {
@@ -35,6 +41,9 @@ const EVENT_ICONS: Record<ApprovalEventType, React.ReactNode> = {
   withdrawn: <CircleSlash className="h-3.5 w-3.5" aria-hidden />,
   revised: <ArrowRight className="h-3.5 w-3.5" aria-hidden />,
   token_renewed: <RotateCcw className="h-3.5 w-3.5" aria-hidden />,
+  deadline_reminder_sent: <BellRing className="h-3.5 w-3.5 text-amber-600" aria-hidden />,
+  deadline_extended: <CalendarPlus className="h-3.5 w-3.5 text-blue-600" aria-hidden />,
+  deadline_expired: <TimerOff className="h-3.5 w-3.5 text-destructive" aria-hidden />,
 }
 
 interface ApprovalTrailTimelineProps {

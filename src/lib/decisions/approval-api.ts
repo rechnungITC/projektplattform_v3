@@ -49,6 +49,28 @@ export async function submitDecisionForApproval(
   if (!response.ok) throw new Error(await safeError(response))
 }
 
+/**
+ * PROJ-31 follow-up — extend the deadline for a pending approval.
+ * The server enforces forward-only + max 90 days extension.
+ */
+export async function extendApprovalDeadline(
+  projectId: string,
+  decisionId: string,
+  newDeadlineIso: string,
+): Promise<{ deadline_at: string }> {
+  const response = await fetch(
+    `${decisionBase(projectId, decisionId)}/extend-deadline`,
+    {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ new_deadline_at: newDeadlineIso }),
+    },
+  )
+  if (!response.ok) throw new Error(await safeError(response))
+  const body = (await response.json()) as { deadline_at: string }
+  return body
+}
+
 export async function withdrawDecisionApproval(
   projectId: string,
   decisionId: string,
