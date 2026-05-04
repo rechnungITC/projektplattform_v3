@@ -216,17 +216,6 @@ export async function PATCH(
       )
     }
     if (error.code === "42501") return apiError("forbidden", "Not allowed.", 403)
-    if (error.code === "42703") {
-      // PROJ-36 α-migration not deployed in this environment — the route
-      // accepts wbs_code/wbs_code_is_custom in the schema, but the DB has
-      // no such columns yet. Return a clean 503 so the UI can show "WBS
-      // editing is temporarily unavailable" instead of a 500-stacktrace.
-      return apiError(
-        "wbs_unavailable",
-        "WBS-Code-Editing ist derzeit deaktiviert (Schema-Migration ausstehend).",
-        503
-      )
-    }
     return apiError("update_failed", error.message, 500)
   }
 

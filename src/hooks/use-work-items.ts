@@ -75,14 +75,10 @@ export function useWorkItems(
         let query = supabase
           .from("work_items")
           .select(
-            // PROJ-36 Phase 36-α schema (outline_path, wbs_code,
-            // wbs_code_is_custom, derived_*) is currently NOT in production —
-            // the α-migration was reverted before the γ-frontend deploy. The
-            // hook used to select those columns and PostgREST returned 42703,
-            // which the swallow-all catch below turned into a silent empty
-            // backlog. Selecting only the safe baseline restores the list
-            // until the α-migration is rolled out again.
-            "id, tenant_id, project_id, kind, parent_id, phase_id, milestone_id, sprint_id, title, description, status, priority, responsible_user_id, attributes, position, created_from_proposal_id, created_by, created_at, updated_at, is_deleted, responsible:profiles!work_items_responsible_user_id_fkey ( id, display_name, email )"
+            // PROJ-36 Phase 36-α — WBS hierarchy + roll-up fields. Re-deploy
+            // 2026-05-04 (commit f6089f8 was reverted before reaching prod;
+            // re-applied via 20260504400000_proj36a_wbs_hierarchy_rollup_redeploy).
+            "id, tenant_id, project_id, kind, parent_id, phase_id, milestone_id, sprint_id, title, description, status, priority, responsible_user_id, attributes, position, created_from_proposal_id, created_by, created_at, updated_at, is_deleted, outline_path, wbs_code, wbs_code_is_custom, derived_planned_start, derived_planned_end, derived_estimate_hours, responsible:profiles!work_items_responsible_user_id_fkey ( id, display_name, email )"
           )
           .eq("project_id", projectId)
           .order("position", { ascending: true, nullsFirst: false })

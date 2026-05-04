@@ -1,8 +1,8 @@
 # PROJ-36: Waterfall-WBS Hierarchy & Roll-up
 
-## Status: In Progress (36-Pre + 36-α Backend done — Phase 36-β + 36-γ pending)
+## Status: Deployed (36-Pre + 36-α + 36-γ live; 36-β absorbed by PROJ-9-R2)
 **Created:** 2026-05-03
-**Last Updated:** 2026-05-03
+**Last Updated:** 2026-05-04 (36-γ Frontend Tree-View + WBS-Code-Edit-Dialog + View-Toggle + Indent/Outdent shipped; 820 vitest tests green; lint clean; build green)
 
 ## Origin
 Diese Spec entstand aus einem CIA-Review (2026-05-03) zur User-Anfrage „Wasserfall-Modell wie MS Project". Die Architektur-Grundlage liegt in **ADR-004** ([`docs/decisions/project-phase-workpackage-todo-hierarchy.md`](../docs/decisions/project-phase-workpackage-todo-hierarchy.md)). Single-Responsibility: nur **WBS-/Tree-/Roll-up-Schicht** auf dem von PROJ-9-Round-2 gelieferten Hierarchie- und Dependency-Backbone. Gantt-Interaktion und Critical-Path sind explizit Out-of-Scope (PROJ-25).
@@ -591,6 +591,48 @@ Begründung Reihenfolge: 36-α ist additiv und niedrig-Risiko, etabliert die ltr
 - Indent/Outdent UI.
 - WBS-Code-Inline-Edit + Regenerate-Confirm-Dialog.
 - Drawer-Anzeige für `outline_path`-Tiefe + WBS-Code.
+
+### Phase 36-α RE-DEPLOY (`/backend` + Hotfix, 2026-05-04)
+
+**Vorgeschichte (Production-Inzident):**
+- 2026-05-03: Commit `f6089f8` legte α-Migration an, wurde in Commit `a98e4c8` reverted bevor sie Production erreichte. Migrationsdateien gelöscht.
+- 2026-05-03 abends: Commit `0b09c8c` deployed γ-Frontend mit der falschen Annahme, α sei live (Commit-Message zitiert das wörtlich).
+- 2026-05-04 morgens: γ-UI ruft `useWorkItems` auf, der die α-Spalten selektiert; PostgREST liefert 42703 (`outline_path` doesn't exist). `useWorkItems` hat fail-silent-Errorhandling (`setItems([]); setError(null)`) — Backlog rendert leer, neue Work Items werden gespeichert aber nicht angezeigt.
+- Verifiziert via Supabase MCP `information_schema.columns`: 0/6 α-Spalten in Prod-DB.
+
+**Hotfix (Commit `276d384`, deployed):**
+- `src/hooks/use-work-items.ts`: SELECT auf Vor-Revert-Stand zurückgebaut, Errorhandling differenziert (nur 42P01 schlucken; 42703/42501/Network → `setError(message)`).
+- `src/hooks/use-work-item.ts`: gleiche Differenzierung.
+- `src/app/api/projects/[id]/work-items/[wid]/route.ts`: 42703 als 503 `wbs_unavailable` gemappt statt 500-Stacktrace.
+- 881/881 Tests grün, Backlog wieder funktional in Production.
+
+**CIA-Review (PROJ-36-α Re-Deploy, 4 Bedingungen):**
+- E3 (Audit-Trigger empty-diff): ✅ verifiziert no-op — `record_audit_changes()` (`20260428190000_proj10_audit_log_entries.sql:105`) checkt `is distinct from` pro tracked column. Roll-up-Trigger ändert nur `derived_*`, nicht in Whitelist → Diff leer → kein Audit-Insert.
+- E2 (CTE Cycle-Defense): ✅ Depth-Bound 32 in Backfill-CTE eingebaut + Smoke-Warning bei NULL-outline_paths nach Backfill.
+- E4 (Frontend-Re-Aktivierung im selben Slice): ✅ Hook-SELECT erweitert, 503-Mapper entfernt, INDEX.md korrigiert, Notes hier ergänzt. Errorhandling-Differenzierung **bleibt** (dauerhafte Drift-Defense).
+- E5 (Backfill-Audit-Trail): pragmatisch akzeptiert — Backfill-UPDATEs auf `wbs_code` erzeugen Audit-Events mit `actor_user_id = NULL`. Im Migration-Header dokumentiert; Tenant-Audit-UI sollte NULL-Actor-Events als „System-Migration" interpretieren.
+
+**Re-Deploy-Migrationen (additiv, Idempotenz via `if not exists` / `or replace`):**
+- `supabase/migrations/20260504400000_proj36a_wbs_hierarchy_rollup_redeploy.sql` — bit-identisch zu `f6089f8` plus:
+  - Re-Deploy-Header mit Inzident-Kontext und R2-Kompatibilitäts-Analyse.
+  - Backfill-CTE depth-bounded auf 32 (E2).
+  - Smoke-Warning bei NULL-outline_paths (Orphan-/Cycle-Detection).
+  - Audit-Trail-Note (E5).
+- `supabase/migrations/20260504410000_proj36a_function_lockdown_redeploy.sql` — REVOKE EXECUTE auf 4 Trigger-Functions, mirror PROJ-24-Pattern.
+
+**Kompatibilität mit PROJ-9-R2** (deployed `20260503200000`):
+- R2 hat eigene Spalten/Tabellen (`dependencies`-Tabelle); keine Überschneidung mit α-Schema.
+- R2 hat AFTER-DELETE-Trigger `tg_work_items_cleanup_dependencies` auf work_items — eigener Namespace, koexistiert.
+- R2-File enthält `_tracked_audit_columns()`-Definition mit `wbs_code`/`wbs_code_is_custom` bereits drin (proaktiv aus Revert-Chaos überlebt). α-Re-Deploy überschreibt mit byte-identischem Body via `create or replace` → No-Op.
+
+**Rollback-Runbook:** `docs/runbooks/proj-36a-rollback.sql` (DROP-Script). Wichtig: `_tracked_audit_columns()` **nicht** zurückrollen, weil R2-Migration die Whitelist bereits enthält.
+
+**Frontend-Re-Aktivierung:**
+- `src/hooks/use-work-items.ts` — SELECT erweitert um die 6 α-Spalten. Errorhandling-Differenzierung (42P01 schlucken, alles andere `setError`) bleibt bestehen als dauerhafte Drift-Defense.
+- `src/app/api/projects/[id]/work-items/[wid]/route.ts` — 503 `wbs_unavailable`-Mapper entfernt; ein 42703 ist ab jetzt ein echter Fehler, der gemeldet werden soll.
+- `features/INDEX.md` PROJ-36-Status korrigiert auf „Deployed (α re-deployed 2026-05-04 + γ live, β deferred)".
+
+**Folge-Story (CIA-Empfehlung E1, neue PROJ-42):** Schema-Drift-CI-Guard — Pre-Merge-Job, der jeden `.from(...).select(...)` gegen `information_schema.columns` der Shadow-DB checkt. Verhindert die nächste Inkarnation dieses Drift-Bugs.
 
 ## QA Test Results
 _To be added by /qa_
