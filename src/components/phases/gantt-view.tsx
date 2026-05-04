@@ -32,10 +32,15 @@ import { toast } from "sonner"
 import { cn } from "@/lib/utils"
 import { type Milestone, MILESTONE_STATUS_LABELS } from "@/types/milestone"
 import { PHASE_STATUS_LABELS, type Phase } from "@/types/phase"
+import type { WorkItemWithProfile } from "@/types/work-item"
 
-interface PhaseDependency {
+type LinkType = "phase" | "work_package"
+
+interface PolymorphicDependency {
   id: string
+  from_type: LinkType
   from_id: string
+  to_type: LinkType
   to_id: string
   constraint_type: "FS" | "SS" | "FF" | "SF"
 }
@@ -44,6 +49,8 @@ interface GanttViewProps {
   projectId: string
   phases: Phase[]
   milestones: Milestone[]
+  /** PROJ-25 Stage 5 — work_items with kind='work_package' for the project. */
+  workPackages?: WorkItemWithProfile[]
   canEdit: boolean
   onChanged: () => void
 }
@@ -66,6 +73,15 @@ type DragState =
       deltaDays: number
     }
   | {
+      kind: "workpackage"
+      workPackageId: string
+      mode: "move" | "resize"
+      startX: number
+      origStart: Date
+      origEnd: Date
+      deltaDays: number
+    }
+  | {
       kind: "milestone"
       milestoneId: string
       startX: number
@@ -74,10 +90,12 @@ type DragState =
     }
   | {
       kind: "link"
-      fromPhaseId: string
+      fromType: LinkType
+      fromId: string
       mouseX: number
       mouseY: number
-      targetPhaseId: string | null
+      targetType: LinkType | null
+      targetId: string | null
     }
 
 function toDate(value: string | null): Date | null {
@@ -105,18 +123,20 @@ export function GanttView({
   projectId,
   phases,
   milestones,
+  workPackages = [],
   canEdit,
   onChanged,
 }: GanttViewProps) {
   const [drag, setDrag] = React.useState<DragState | null>(null)
   const [submitting, setSubmitting] = React.useState<string | null>(null)
-  const [dependencies, setDependencies] = React.useState<PhaseDependency[]>([])
+  const [dependencies, setDependencies] = React.useState<PolymorphicDependency[]>([])
   const [criticalPhaseIds, setCriticalPhaseIds] = React.useState<Set<string>>(
     new Set(),
   )
   const [criticalPathOn, setCriticalPathOn] = React.useState(false)
   const [criticalPathLoading, setCriticalPathLoading] = React.useState(false)
   const containerRef = React.useRef<HTMLDivElement>(null)
+  const svgRef = React.useRef<SVGSVGElement>(null)
 
   // Fetch the critical-path phase set when the toggle flips on, or when
   // the underlying phase/dep set changes while it's already on.
@@ -143,10 +163,9 @@ export function GanttView({
     }
   }, [criticalPathOn, projectId, phases, dependencies])
 
-  // Phase-to-phase dependency edges (Stage 2 read-only).
-  // Polymorphic table supports project/phase/work_package/todo — for now
-  // we render only edges whose both ends are 'phase' so the arrows match
-  // the bars on screen.
+  // Polymorphic dependency edges between phase + work_package bars.
+  // Stage 5 broadens the filter from phase-only to phase OR work_package
+  // so the arrows can connect both kinds of bars on screen.
   React.useEffect(() => {
     if (!projectId) return
     let cancelled = false
@@ -157,25 +176,30 @@ export function GanttView({
         const data = await res.json()
         const rows = Array.isArray(data?.dependencies) ? data.dependencies : []
         if (cancelled) return
-        const phaseEdges: PhaseDependency[] = rows
+        const supported: PolymorphicDependency[] = rows
           .filter(
             (r: { from_type?: string; to_type?: string }) =>
-              r.from_type === "phase" && r.to_type === "phase",
+              (r.from_type === "phase" || r.from_type === "work_package") &&
+              (r.to_type === "phase" || r.to_type === "work_package"),
           )
           .map(
             (r: {
               id: string
+              from_type: LinkType
               from_id: string
+              to_type: LinkType
               to_id: string
-              constraint_type: PhaseDependency["constraint_type"]
+              constraint_type: PolymorphicDependency["constraint_type"]
             }) => ({
               id: r.id,
+              from_type: r.from_type,
               from_id: r.from_id,
+              to_type: r.to_type,
               to_id: r.to_id,
               constraint_type: r.constraint_type,
             }),
           )
-        setDependencies(phaseEdges)
+        setDependencies(supported)
       } catch {
         // silent — Gantt still renders without arrows.
       }
@@ -183,14 +207,38 @@ export function GanttView({
     return () => {
       cancelled = true
     }
-  }, [projectId, phases])
+  }, [projectId, phases, workPackages])
 
-  // Compute the calendar window from all phase dates, pad each side.
+  // Group work-packages by their parent phase. Orphan WPs (no phase_id
+  // or phase not in the phase list) get bucketed under the synthetic
+  // key "__unphased__" and render at the end.
+  const ORPHAN_BUCKET = "__unphased__"
+  const wpsByPhase = React.useMemo(() => {
+    const map = new Map<string, WorkItemWithProfile[]>()
+    const phaseIds = new Set(phases.map((p) => p.id))
+    for (const wp of workPackages) {
+      if (wp.is_deleted) continue
+      const key =
+        wp.phase_id && phaseIds.has(wp.phase_id) ? wp.phase_id : ORPHAN_BUCKET
+      const list = map.get(key) ?? []
+      list.push(wp)
+      map.set(key, list)
+    }
+    return map
+  }, [workPackages, phases])
+
+  // Compute the calendar window from phase + work-package dates, pad each side.
   const { calendarStart, totalDays } = React.useMemo(() => {
     const dates: Date[] = []
     for (const p of phases) {
       const ps = toDate(p.planned_start)
       const pe = toDate(p.planned_end)
+      if (ps) dates.push(ps)
+      if (pe) dates.push(pe)
+    }
+    for (const wp of workPackages) {
+      const ps = toDate(wp.planned_start ?? null)
+      const pe = toDate(wp.planned_end ?? null)
       if (ps) dates.push(ps)
       if (pe) dates.push(pe)
     }
@@ -210,10 +258,36 @@ export function GanttView({
       calendarStart: addDays(min, -PADDING_DAYS),
       totalDays: daysBetween(min, max) + PADDING_DAYS * 2,
     }
-  }, [phases])
+  }, [phases, workPackages])
+
+  // Build the row list — each phase followed by its work-packages, then
+  // any orphan WPs at the end. Each item gets a stable rowIndex used by
+  // the bar-render and layout maps below.
+  type Row =
+    | { kind: "phase"; phase: Phase; rowIndex: number }
+    | {
+        kind: "work_package"
+        item: WorkItemWithProfile
+        rowIndex: number
+      }
+  const rows: Row[] = React.useMemo(() => {
+    const out: Row[] = []
+    let idx = 0
+    for (const phase of phases) {
+      out.push({ kind: "phase", phase, rowIndex: idx++ })
+      const children = wpsByPhase.get(phase.id) ?? []
+      for (const wp of children) {
+        out.push({ kind: "work_package", item: wp, rowIndex: idx++ })
+      }
+    }
+    for (const wp of wpsByPhase.get(ORPHAN_BUCKET) ?? []) {
+      out.push({ kind: "work_package", item: wp, rowIndex: idx++ })
+    }
+    return out
+  }, [phases, wpsByPhase])
 
   const totalWidth = totalDays * PIXELS_PER_DAY
-  const totalHeight = HEADER_HEIGHT + phases.length * (ROW_HEIGHT + ROW_GAP)
+  const totalHeight = HEADER_HEIGHT + rows.length * (ROW_HEIGHT + ROW_GAP)
 
   // Month-label ticks across the calendar window.
   const monthTicks = React.useMemo(() => {
@@ -244,25 +318,36 @@ export function GanttView({
     return lines
   }, [totalDays])
 
-  // Pre-compute the static layout of each phase bar (no drag delta applied)
-  // so dependency arrows + milestones can position themselves without
-  // duplicating the math inside the bar-render block.
-  const phaseLayout = React.useMemo(() => {
+  // Pre-compute the static layout of each bar (phase + work_package).
+  // Keyed by `${type}:${id}` so arrows + critical-path + milestone code
+  // can resolve any endpoint regardless of kind. A view-only `phaseLayout`
+  // map is derived from it for the existing milestone positioning code.
+  const barLayout = React.useMemo(() => {
     const m = new Map<
       string,
       { x: number; y: number; width: number; midY: number }
     >()
-    phases.forEach((phase, idx) => {
-      const ps = toDate(phase.planned_start)
-      const pe = toDate(phase.planned_end)
+    rows.forEach((row) => {
+      const rowY = HEADER_HEIGHT + row.rowIndex * (ROW_HEIGHT + ROW_GAP)
+      let ps: Date | null = null
+      let pe: Date | null = null
+      let key: string
+      if (row.kind === "phase") {
+        ps = toDate(row.phase.planned_start)
+        pe = toDate(row.phase.planned_end)
+        key = `phase:${row.phase.id}`
+      } else {
+        ps = toDate(row.item.planned_start ?? null)
+        pe = toDate(row.item.planned_end ?? null)
+        key = `work_package:${row.item.id}`
+      }
       if (!ps || !pe) return
-      const rowY = HEADER_HEIGHT + idx * (ROW_HEIGHT + ROW_GAP)
       const x = daysBetween(calendarStart, ps) * PIXELS_PER_DAY
       const width = Math.max(
         PIXELS_PER_DAY,
         daysBetween(ps, pe) * PIXELS_PER_DAY,
       )
-      m.set(phase.id, {
+      m.set(key, {
         x,
         y: rowY + 4,
         width,
@@ -270,7 +355,21 @@ export function GanttView({
       })
     })
     return m
-  }, [phases, calendarStart])
+  }, [rows, calendarStart])
+
+  // Phase-only view used by the milestone block.
+  const phaseLayout = React.useMemo(() => {
+    const m = new Map<
+      string,
+      { x: number; y: number; width: number; midY: number }
+    >()
+    for (const [key, layout] of barLayout) {
+      if (key.startsWith("phase:")) {
+        m.set(key.slice("phase:".length), layout)
+      }
+    }
+    return m
+  }, [barLayout])
 
   const startPhaseDrag = (
     e: React.MouseEvent<SVGRectElement | SVGGElement>,
@@ -287,6 +386,28 @@ export function GanttView({
     setDrag({
       kind: "phase",
       phaseId: phase.id,
+      mode,
+      startX: e.clientX,
+      origStart: ps,
+      origEnd: pe,
+      deltaDays: 0,
+    })
+  }
+
+  const startWorkPackageDrag = (
+    e: React.MouseEvent<SVGRectElement | SVGGElement>,
+    wp: WorkItemWithProfile,
+    mode: "move" | "resize",
+  ) => {
+    if (!canEdit) return
+    const ps = toDate(wp.planned_start ?? null)
+    const pe = toDate(wp.planned_end ?? null)
+    if (!ps || !pe) return
+    e.preventDefault()
+    e.stopPropagation()
+    setDrag({
+      kind: "workpackage",
+      workPackageId: wp.id,
       mode,
       startX: e.clientX,
       origStart: ps,
@@ -316,21 +437,22 @@ export function GanttView({
 
   const startLinkDrag = (
     e: React.MouseEvent<SVGElement>,
-    fromPhaseId: string,
+    fromType: LinkType,
+    fromId: string,
   ) => {
     if (!canEdit) return
     e.preventDefault()
     e.stopPropagation()
-    // Use SVG-local coords by reading from event clientX/Y; the path
-    // d-string consumes the same SVG viewBox so client→SVG is 1:1 here.
     const svg = (e.currentTarget.ownerSVGElement ?? e.currentTarget) as SVGSVGElement
     const rect = svg.getBoundingClientRect()
     setDrag({
       kind: "link",
-      fromPhaseId,
+      fromType,
+      fromId,
       mouseX: e.clientX - rect.left,
       mouseY: e.clientY - rect.top,
-      targetPhaseId: null,
+      targetType: null,
+      targetId: null,
     })
   }
 
@@ -338,7 +460,11 @@ export function GanttView({
     if (!drag) return
 
     const onMove = (e: MouseEvent) => {
-      if (drag.kind === "phase" || drag.kind === "milestone") {
+      if (
+        drag.kind === "phase" ||
+        drag.kind === "milestone" ||
+        drag.kind === "workpackage"
+      ) {
         const dx = e.clientX - drag.startX
         const deltaDays = Math.round(dx / PIXELS_PER_DAY)
         if (deltaDays === drag.deltaDays) return
@@ -346,17 +472,27 @@ export function GanttView({
         return
       }
       if (drag.kind === "link") {
-        // Locate the SVG and translate clientXY → SVG-local coords.
-        const svg = document.querySelector(
-          'svg[role="region"], svg[aria-label="Gantt-Diagramm der Phasen"]',
-        ) as SVGSVGElement | null
+        const svg = svgRef.current
         const targetEl = document.elementFromPoint(e.clientX, e.clientY)
-        // Element under cursor may carry data-phase-target with the phase id.
-        let targetPhaseId: string | null = null
+        let targetType: LinkType | null = null
+        let targetId: string | null = null
         if (targetEl instanceof Element) {
-          const node = targetEl.closest<SVGElement>("[data-phase-target]")
-          targetPhaseId = node?.getAttribute("data-phase-target") ?? null
-          if (targetPhaseId === drag.fromPhaseId) targetPhaseId = null
+          const node = targetEl.closest<SVGElement>("[data-bar-target]")
+          const raw = node?.getAttribute("data-bar-target") ?? null
+          if (raw) {
+            const colon = raw.indexOf(":")
+            if (colon > 0) {
+              const t = raw.slice(0, colon) as LinkType
+              const id = raw.slice(colon + 1)
+              if (
+                (t === "phase" || t === "work_package") &&
+                !(t === drag.fromType && id === drag.fromId)
+              ) {
+                targetType = t
+                targetId = id
+              }
+            }
+          }
         }
         if (svg) {
           const rect = svg.getBoundingClientRect()
@@ -366,7 +502,8 @@ export function GanttView({
                   ...prev,
                   mouseX: e.clientX - rect.left,
                   mouseY: e.clientY - rect.top,
-                  targetPhaseId,
+                  targetType,
+                  targetId,
                 }
               : prev,
           )
@@ -444,6 +581,50 @@ export function GanttView({
         return
       }
 
+      if (snapshot.kind === "workpackage") {
+        if (snapshot.deltaDays === 0) return
+        let newStart = snapshot.origStart
+        let newEnd = snapshot.origEnd
+        if (snapshot.mode === "move") {
+          newStart = addDays(snapshot.origStart, snapshot.deltaDays)
+          newEnd = addDays(snapshot.origEnd, snapshot.deltaDays)
+        } else {
+          newEnd = addDays(snapshot.origEnd, snapshot.deltaDays)
+          if (daysBetween(snapshot.origStart, newEnd) < 1) {
+            newEnd = addDays(snapshot.origStart, 1)
+          }
+        }
+        setSubmitting(snapshot.workPackageId)
+        try {
+          const res = await fetch(
+            `/api/projects/${projectId}/work-items/${snapshot.workPackageId}`,
+            {
+              method: "PATCH",
+              headers: { "Content-Type": "application/json" },
+              body: JSON.stringify({
+                planned_start: toIsoDate(newStart),
+                planned_end: toIsoDate(newEnd),
+              }),
+            },
+          )
+          if (!res.ok) {
+            const err = await res.json().catch(() => ({}))
+            throw new Error(err?.message ?? `HTTP ${res.status}`)
+          }
+          toast.success("Arbeitspaket aktualisiert")
+          onChanged()
+        } catch (err) {
+          toast.error("Aktualisierung fehlgeschlagen", {
+            description:
+              err instanceof Error ? err.message : "Unbekannter Fehler",
+          })
+          onChanged()
+        } finally {
+          setSubmitting(null)
+        }
+        return
+      }
+
       if (snapshot.kind === "milestone") {
         if (snapshot.deltaDays === 0) return
         const newDate = addDays(snapshot.origDate, snapshot.deltaDays)
@@ -476,10 +657,13 @@ export function GanttView({
       }
 
       if (snapshot.kind === "link") {
-        const target = snapshot.targetPhaseId
-        if (!target || target === snapshot.fromPhaseId) return
-        // Look up project tenant_id via projects fetch — simpler: just rely
-        // on server-side derivation via the project-scoped route.
+        if (!snapshot.targetType || !snapshot.targetId) return
+        if (
+          snapshot.targetType === snapshot.fromType &&
+          snapshot.targetId === snapshot.fromId
+        ) {
+          return
+        }
         try {
           const res = await fetch(
             `/api/projects/${projectId}/dependencies`,
@@ -487,10 +671,10 @@ export function GanttView({
               method: "POST",
               headers: { "Content-Type": "application/json" },
               body: JSON.stringify({
-                from_type: "phase",
-                from_id: snapshot.fromPhaseId,
-                to_type: "phase",
-                to_id: target,
+                from_type: snapshot.fromType,
+                from_id: snapshot.fromId,
+                to_type: snapshot.targetType,
+                to_id: snapshot.targetId,
                 constraint_type: "FS",
               }),
             },
@@ -565,6 +749,7 @@ export function GanttView({
         aria-label="Gantt-Diagramm der Phasen"
       >
       <svg
+        ref={svgRef}
         width={totalWidth}
         height={totalHeight}
         className="block min-w-full select-none"
@@ -615,9 +800,13 @@ export function GanttView({
         ))}
 
         {/* Phase rows */}
-        {phases.map((phase, idx) => {
+        {phases.map((phase) => {
           const ps = toDate(phase.planned_start)
           const pe = toDate(phase.planned_end)
+          const phaseRow = rows.find(
+            (r) => r.kind === "phase" && r.phase.id === phase.id,
+          )
+          const idx = phaseRow?.rowIndex ?? 0
           const rowY = HEADER_HEIGHT + idx * (ROW_HEIGHT + ROW_GAP)
 
           if (!ps || !pe) {
@@ -663,7 +852,9 @@ export function GanttView({
           const locked = phase.status === "completed"
           const draggable = canEdit && !locked
           const isLinkTarget =
-            drag?.kind === "link" && drag.targetPhaseId === phase.id
+            drag?.kind === "link" &&
+            drag.targetType === "phase" &&
+            drag.targetId === phase.id
           const isCritical =
             criticalPathOn && criticalPhaseIds.has(phase.id)
 
@@ -690,7 +881,7 @@ export function GanttView({
                 width={width}
                 height={ROW_HEIGHT - 8}
                 rx={4}
-                data-phase-target={phase.id}
+                data-bar-target={`phase:${phase.id}`}
                 className={cn(
                   barClasses(phase.status),
                   draggable ? "cursor-grab" : "cursor-default",
@@ -723,9 +914,9 @@ export function GanttView({
                 <circle
                   cx={x + width}
                   cy={rowY + ROW_HEIGHT / 2}
-                  r={4}
-                  className="fill-primary stroke-primary-foreground stroke-1 cursor-crosshair opacity-60 hover:opacity-100"
-                  onMouseDown={(e) => startLinkDrag(e, phase.id)}
+                  r={5}
+                  className="fill-primary stroke-primary-foreground stroke-1 cursor-crosshair opacity-70 hover:opacity-100"
+                  onMouseDown={(e) => startLinkDrag(e, "phase", phase.id)}
                 >
                   <title>Dependency-Verknüpfung ziehen</title>
                 </circle>
@@ -757,6 +948,143 @@ export function GanttView({
                   height={12}
                 />
               ) : null}
+            </g>
+          )
+        })}
+
+        {/* Work-package rows — Stage 5. Rendered after the parent phase
+            in the row stream so they visually nest under their phase.
+            Smaller bars + lighter color than phases. Drag/resize and
+            link semantics mirror phases. */}
+        {workPackages.map((wp) => {
+          const wpRow = rows.find(
+            (r) => r.kind === "work_package" && r.item.id === wp.id,
+          )
+          if (!wpRow) return null
+          const idx = wpRow.rowIndex
+          const rowY = HEADER_HEIGHT + idx * (ROW_HEIGHT + ROW_GAP)
+          const ps = toDate(wp.planned_start ?? null)
+          const pe = toDate(wp.planned_end ?? null)
+
+          if (!ps || !pe) {
+            return (
+              <g key={`wp-${wp.id}`} aria-label={wp.title}>
+                <rect
+                  x={0}
+                  y={rowY}
+                  width={totalWidth}
+                  height={ROW_HEIGHT}
+                  className="fill-muted/15"
+                />
+                <text
+                  x={32}
+                  y={rowY + ROW_HEIGHT / 2 + 4}
+                  fontSize={11}
+                  className="fill-muted-foreground italic"
+                >
+                  ↳ {wp.title} — keine Daten gepflegt
+                </text>
+              </g>
+            )
+          }
+
+          const isDragging =
+            drag?.kind === "workpackage" && drag.workPackageId === wp.id
+          const startDays = daysBetween(calendarStart, ps)
+          const durationDays = daysBetween(ps, pe)
+          let x = startDays * PIXELS_PER_DAY
+          let width = Math.max(PIXELS_PER_DAY, durationDays * PIXELS_PER_DAY)
+          if (isDragging && drag.kind === "workpackage") {
+            if (drag.mode === "move") x += drag.deltaDays * PIXELS_PER_DAY
+            else
+              width = Math.max(
+                PIXELS_PER_DAY,
+                width + drag.deltaDays * PIXELS_PER_DAY,
+              )
+          }
+
+          const isLinkTarget =
+            drag?.kind === "link" &&
+            drag.targetType === "work_package" &&
+            drag.targetId === wp.id
+
+          return (
+            <g key={`wp-${wp.id}`} aria-label={`Arbeitspaket ${wp.title}`}>
+              {idx % 2 === 1 ? (
+                <rect
+                  x={0}
+                  y={rowY}
+                  width={totalWidth}
+                  height={ROW_HEIGHT}
+                  className="fill-muted/15"
+                />
+              ) : null}
+
+              {/* Indent visual: small chevron-bullet indicating "child of phase" */}
+              <text
+                x={12}
+                y={rowY + ROW_HEIGHT / 2 + 4}
+                fontSize={11}
+                className="fill-muted-foreground pointer-events-none"
+              >
+                ↳
+              </text>
+
+              {/* WP bar — slimmer than phase bars, indigo accent. */}
+              <rect
+                x={x}
+                y={rowY + 8}
+                width={width}
+                height={ROW_HEIGHT - 16}
+                rx={3}
+                data-bar-target={`work_package:${wp.id}`}
+                className={cn(
+                  "fill-indigo-400 stroke-indigo-700",
+                  canEdit ? "cursor-grab" : "cursor-default",
+                  isDragging && "opacity-80 shadow-md",
+                  isLinkTarget && "stroke-foreground stroke-[3px]",
+                  submitting === wp.id && "animate-pulse",
+                )}
+                onMouseDown={(e) => startWorkPackageDrag(e, wp, "move")}
+              />
+
+              {canEdit ? (
+                <rect
+                  x={x + width - RESIZE_HANDLE_WIDTH}
+                  y={rowY + 8}
+                  width={RESIZE_HANDLE_WIDTH}
+                  height={ROW_HEIGHT - 16}
+                  className="fill-foreground/30 cursor-col-resize"
+                  onMouseDown={(e) => startWorkPackageDrag(e, wp, "resize")}
+                />
+              ) : null}
+
+              {canEdit ? (
+                <circle
+                  cx={x + width}
+                  cy={rowY + ROW_HEIGHT / 2}
+                  r={5}
+                  className="fill-primary stroke-primary-foreground stroke-1 cursor-crosshair opacity-70 hover:opacity-100"
+                  onMouseDown={(e) =>
+                    startLinkDrag(e, "work_package", wp.id)
+                  }
+                >
+                  <title>Dependency-Verknüpfung ziehen</title>
+                </circle>
+              ) : null}
+
+              <text
+                x={x + 8}
+                y={rowY + ROW_HEIGHT / 2 + 3}
+                fontSize={11}
+                className={cn(
+                  "pointer-events-none",
+                  width > 60 ? "fill-white" : "fill-foreground",
+                )}
+              >
+                {wp.wbs_code ? `${wp.wbs_code} · ` : ""}
+                {wp.title}
+              </text>
             </g>
           )
         })}
@@ -839,8 +1167,8 @@ export function GanttView({
           </marker>
         </defs>
         {dependencies.map((dep) => {
-          const from = phaseLayout.get(dep.from_id)
-          const to = phaseLayout.get(dep.to_id)
+          const from = barLayout.get(`${dep.from_type}:${dep.from_id}`)
+          const to = barLayout.get(`${dep.to_type}:${dep.to_id}`)
           if (!from || !to) return null
           const x1 = from.x + from.width
           const y1 = from.midY
@@ -849,9 +1177,12 @@ export function GanttView({
           // Smooth bezier with horizontal control points scaled by gap.
           const dx = Math.max(20, Math.abs(x2 - x1) / 2)
           const path = `M ${x1} ${y1} C ${x1 + dx} ${y1}, ${x2 - dx} ${y2}, ${x2} ${y2}`
-          // Edge is critical when both endpoints are on the CP set.
+          // Edge is critical when both endpoints are phases on the CP set.
+          // (Work-packages don't participate in CP math in this MVP slice.)
           const isCriticalEdge =
             criticalPathOn &&
+            dep.from_type === "phase" &&
+            dep.to_type === "phase" &&
             criticalPhaseIds.has(dep.from_id) &&
             criticalPhaseIds.has(dep.to_id)
           return (
@@ -867,7 +1198,7 @@ export function GanttView({
                 markerEnd="url(#gantt-arrow)"
               />
               <title>
-                Dependency {dep.constraint_type} · von Phase nach Phase
+                Dependency {dep.constraint_type} · {dep.from_type} → {dep.to_type}
                 {isCriticalEdge ? " · KRITISCH" : ""}
               </title>
             </g>
@@ -877,7 +1208,7 @@ export function GanttView({
         {/* Ghost-arrow while a link drag is in progress. */}
         {drag?.kind === "link" &&
           (() => {
-            const from = phaseLayout.get(drag.fromPhaseId)
+            const from = barLayout.get(`${drag.fromType}:${drag.fromId}`)
             if (!from) return null
             const x1 = from.x + from.width
             const y1 = from.midY
@@ -893,9 +1224,7 @@ export function GanttView({
                 strokeWidth={2}
                 strokeDasharray="4 3"
                 className={
-                  drag.targetPhaseId
-                    ? "text-primary"
-                    : "text-foreground/40"
+                  drag.targetType ? "text-primary" : "text-foreground/40"
                 }
                 markerEnd="url(#gantt-arrow)"
                 pointerEvents="none"

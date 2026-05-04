@@ -387,6 +387,8 @@ describe("PATCH /api/projects/[id]/work-items/[wid] — schema/DB-payload drift"
       is_deleted: false,
       wbs_code: "1.2.3",
       wbs_code_is_custom: true,
+      planned_start: "2026-05-10",
+      planned_end: "2026-05-20",
     }
 
     for (const key of schemaKeys) {

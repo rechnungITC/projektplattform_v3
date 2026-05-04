@@ -15,6 +15,7 @@ import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs"
 import { useMilestones } from "@/hooks/use-milestones"
 import { usePhases } from "@/hooks/use-phases"
 import { useProjectAccess } from "@/hooks/use-project-access"
+import { useWorkItems } from "@/hooks/use-work-items"
 
 interface PlanungClientProps {
   projectId: string
@@ -30,6 +31,10 @@ export function PlanungClient({ projectId }: PlanungClientProps) {
     refresh: refreshPhases,
   } = usePhases(projectId)
   const { milestones, refresh: refreshMilestones } = useMilestones(projectId)
+  const { items: workItems, refresh: refreshWorkItems } = useWorkItems(
+    projectId,
+    { kinds: ["work_package"] },
+  )
 
   const [tab, setTab] = React.useState<"phasen" | "meilensteine" | "gantt">(
     "phasen",
@@ -39,8 +44,12 @@ export function PlanungClient({ projectId }: PlanungClientProps) {
   const [reorderOpen, setReorderOpen] = React.useState(false)
 
   const refreshAll = React.useCallback(async () => {
-    await Promise.all([refreshPhases(), refreshMilestones()])
-  }, [refreshPhases, refreshMilestones])
+    await Promise.all([
+      refreshPhases(),
+      refreshMilestones(),
+      refreshWorkItems(),
+    ])
+  }, [refreshPhases, refreshMilestones, refreshWorkItems])
 
   const nextSequence = React.useMemo(() => {
     if (phases.length === 0) return 1
@@ -129,6 +138,7 @@ export function PlanungClient({ projectId }: PlanungClientProps) {
             projectId={projectId}
             phases={phases}
             milestones={milestones}
+            workPackages={workItems}
             canEdit={canEdit}
             onChanged={refreshAll}
           />

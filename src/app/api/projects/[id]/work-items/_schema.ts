@@ -67,6 +67,17 @@ export const workItemPatchSchema = z
       .nullable()
       .optional(),
     wbs_code_is_custom: z.boolean().optional(),
+    // PROJ-25 Stage 5 — own dates so work-packages can render on the Gantt.
+    planned_start: z
+      .string()
+      .regex(/^\d{4}-\d{2}-\d{2}$/, "YYYY-MM-DD erwartet")
+      .nullable()
+      .optional(),
+    planned_end: z
+      .string()
+      .regex(/^\d{4}-\d{2}-\d{2}$/, "YYYY-MM-DD erwartet")
+      .nullable()
+      .optional(),
   })
   .refine((v) => Object.keys(v).length > 0, {
     message: "At least one field required.",

@@ -78,7 +78,7 @@ export function useWorkItems(
             // PROJ-36 Phase 36-α — WBS hierarchy + roll-up fields. Re-deploy
             // 2026-05-04 (commit f6089f8 was reverted before reaching prod;
             // re-applied via 20260504400000_proj36a_wbs_hierarchy_rollup_redeploy).
-            "id, tenant_id, project_id, kind, parent_id, phase_id, milestone_id, sprint_id, title, description, status, priority, responsible_user_id, attributes, position, created_from_proposal_id, created_by, created_at, updated_at, is_deleted, outline_path, wbs_code, wbs_code_is_custom, derived_planned_start, derived_planned_end, derived_estimate_hours, responsible:profiles!work_items_responsible_user_id_fkey ( id, display_name, email )"
+            "id, tenant_id, project_id, kind, parent_id, phase_id, milestone_id, sprint_id, title, description, status, priority, responsible_user_id, attributes, position, created_from_proposal_id, created_by, created_at, updated_at, is_deleted, outline_path, wbs_code, wbs_code_is_custom, planned_start, planned_end, derived_planned_start, derived_planned_end, derived_estimate_hours, responsible:profiles!work_items_responsible_user_id_fkey ( id, display_name, email )"
           )
           .eq("project_id", projectId)
           .order("position", { ascending: true, nullsFirst: false })

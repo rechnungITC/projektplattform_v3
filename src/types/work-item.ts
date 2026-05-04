@@ -169,6 +169,10 @@ export interface WorkItem {
   derived_planned_end?: string | null
   /** Summe der Kind-Aufwände (eigene + deren derived) in Stunden. */
   derived_estimate_hours?: number | null
+  /** PROJ-25 Stage 5 — own start date (used by Gantt). */
+  planned_start?: string | null
+  /** PROJ-25 Stage 5 — own end date (used by Gantt). */
+  planned_end?: string | null
 }
 
 /**
