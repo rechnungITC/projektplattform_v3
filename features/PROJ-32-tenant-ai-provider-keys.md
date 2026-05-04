@@ -1,6 +1,6 @@
 # PROJ-32: Tenant Custom AI Provider Keys (Multi-Provider)
 
-## Status: Approved (Phase 32-a — QA passed: 0 bugs, ready für /deploy)
+## Status: Deployed (Phase 32-a live in production — 2026-05-04)
 
 **Created:** 2026-05-04
 **Last Updated:** 2026-05-04
@@ -476,4 +476,42 @@ Run via Supabase MCP DO-block with `set local role = authenticated` + JWT-claim 
 ✅ **READY for `/deploy`** — all 25 acceptance criteria pass, live red-team confirms RLS + RPC defense work end-to-end, and the integrated router behaviour matches the Class-3 hard-block specification.
 
 ## Deployment
-_To be added by /deploy._
+
+**Phase 32-a deployed:** 2026-05-04
+**Production URL:** https://projektplattform-v3.vercel.app
+**Admin UI:** https://projektplattform-v3.vercel.app/settings/tenant/ai-keys
+**Deployment commits:**
+- `29a51d3` — feat(PROJ-32): backend + frontend implementation
+- `54e00b3` — test(PROJ-32): QA pass
+- Auto-deploy to Vercel via push to `main`.
+
+**Production verification (2026-05-04):**
+- ✅ Production URL HTTP 200 (auth-gate redirect to `/login` working)
+- ✅ Security headers active (HSTS, CSP, Permissions-Policy, Referrer-Policy)
+- ✅ All 4 new routes registered:
+  - `GET    /api/tenants/[id]/ai-keys/[provider]` → 307 (auth-middleware redirect, route exists)
+  - `PUT    /api/tenants/[id]/ai-keys/[provider]` → 307
+  - `DELETE /api/tenants/[id]/ai-keys/[provider]` → 307
+  - `POST   /api/tenants/[id]/ai-keys/[provider]/validate` → 307
+- ✅ `/settings/tenant/ai-keys` returns 200
+- ✅ Schema in prod DB: `tenant_ai_keys` table + 4 RLS policies + `decrypt_tenant_ai_key` RPC + `record_tenant_ai_key_audit` RPC + extended `audit_log_entity_type_check` constraint — all live, 0 rows (expected fresh-deploy state).
+
+**Migrations applied to production:**
+- `20260504300000_proj32a_tenant_ai_keys.sql`
+- `20260504310000_proj32a_audit_extension_and_rpc.sql`
+
+**Required env vars (already provisioned via PROJ-12 / PROJ-14):**
+- `SECRETS_ENCRYPTION_KEY` — pgcrypto symmetric key (PROJ-14, in Vercel + Supabase Edge env)
+- `ANTHROPIC_API_KEY` (optional — platform-key fallback for Class-1/2 only)
+- `EXTERNAL_AI_DISABLED` (optional kill-switch)
+
+**Rollback path (if needed):**
+1. Vercel Dashboard → Deployments → promote previous working deployment to production.
+2. Schema rollback: `drop table public.tenant_ai_keys cascade; drop function public.decrypt_tenant_ai_key(uuid, text); drop function public.record_tenant_ai_key_audit(uuid, text, text, text, text); alter table public.audit_log_entries drop constraint audit_log_entity_type_check;` then re-add the prior CHECK without `tenant_ai_keys`. Application code reverts to pre-PROJ-32a behaviour automatically (env-only Anthropic key) on Vercel rollback.
+
+**Tag:** `v1.32a-PROJ-32` — `git tag -a v1.32a-PROJ-32 ...`
+
+**Next steps (separate slices, not 32a):**
+- 32b — OpenAI + Google AI Studio (analog 32a)
+- 32c — Ollama endpoint URL + provider priority
+- 32d — Cost-Caps + Tenant-Cost-Dashboard

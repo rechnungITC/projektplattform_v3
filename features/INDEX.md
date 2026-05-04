@@ -45,7 +45,7 @@
 | PROJ-29 | Hygiene-Slice (Lint-Baseline · Function-Hardening · Auth-Fixture-Skelett) | Deployed | [Spec](PROJ-29-hygiene-slice.md) | 2026-05-01 |
 | PROJ-30 | KI-Narrative-Purpose Erweiterung des AI-Routers | Deployed | [Spec](PROJ-30-narrative-purpose-extension.md) | 2026-05-01 |
 | PROJ-31 | Approval-Gates für formale Decisions (Quorum, Magic-Link für externe Stakeholder) | Deployed | [Spec](PROJ-31-approval-gates-for-decisions.md) | 2026-05-02 |
-| PROJ-32 | Tenant Custom AI Provider Keys (Multi-Provider Anthropic / OpenAI / Google / Ollama) — 4 Sub-Slices | Approved (32a QA passed 0 bugs; b/c/d to be specced) | [Spec](PROJ-32-tenant-ai-provider-keys.md) | 2026-05-04 |
+| PROJ-32 | Tenant Custom AI Provider Keys (Multi-Provider Anthropic / OpenAI / Google / Ollama) — 4 Sub-Slices | Deployed (32a live in production; b/c/d to be specced) | [Spec](PROJ-32-tenant-ai-provider-keys.md) | 2026-05-04 |
 | PROJ-33 | Erweitertes Stakeholder-Management (qualitative Felder + Skill/Big5-Profile + Self-Assessment Magic-Link) | Deployed (33-α + β + γ + δ live) | [Spec](PROJ-33-stakeholder-extension.md) | 2026-05-02 |
 | PROJ-35 | Stakeholder-Wechselwirkungs-Engine (Risiko-Score, Eskalations-Indikatoren, Tonalitäts-Empfehlungen, Critical-Path-Risk, Stakeholder-Health-Dashboard) | Deployed (alle 3 Phasen α + β + γ live) | [Spec](PROJ-35-stakeholder-interaction-engine.md) | 2026-05-02 |
 | PROJ-36 | Waterfall-WBS UI/UX Layer — WBS-Code (auto+override) · Hybrid Roll-up · Tree-View (react-arborist) · Indent/Outdent. Schema-Backbone in PROJ-9-R2. | Deployed (α + γ live) | [Spec](PROJ-36-waterfall-wbs-hierarchy-rollup.md) | 2026-05-03 |
