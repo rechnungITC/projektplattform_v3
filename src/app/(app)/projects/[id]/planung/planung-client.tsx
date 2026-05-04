@@ -3,6 +3,7 @@
 import { ArrowUpDown, Plus } from "lucide-react"
 import * as React from "react"
 
+import { GanttView } from "@/components/phases/gantt-view"
 import { NewMilestoneDialog } from "@/components/milestones/new-milestone-dialog"
 import { MilestonesList } from "@/components/milestones/milestones-list"
 import { NewPhaseDialog } from "@/components/phases/new-phase-dialog"
@@ -30,7 +31,9 @@ export function PlanungClient({ projectId }: PlanungClientProps) {
   } = usePhases(projectId)
   const { refresh: refreshMilestones } = useMilestones(projectId)
 
-  const [tab, setTab] = React.useState<"phasen" | "meilensteine">("phasen")
+  const [tab, setTab] = React.useState<"phasen" | "meilensteine" | "gantt">(
+    "phasen",
+  )
   const [newPhaseOpen, setNewPhaseOpen] = React.useState(false)
   const [newMilestoneOpen, setNewMilestoneOpen] = React.useState(false)
   const [reorderOpen, setReorderOpen] = React.useState(false)
@@ -65,13 +68,16 @@ export function PlanungClient({ projectId }: PlanungClientProps) {
 
       <Tabs
         value={tab}
-        onValueChange={(value) => setTab(value as "phasen" | "meilensteine")}
+        onValueChange={(value) =>
+          setTab(value as "phasen" | "meilensteine" | "gantt")
+        }
         className="space-y-4"
       >
         <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
           <TabsList>
             <TabsTrigger value="phasen">Phasen</TabsTrigger>
             <TabsTrigger value="meilensteine">Meilensteine</TabsTrigger>
+            <TabsTrigger value="gantt">Gantt</TabsTrigger>
           </TabsList>
 
           <div className="flex flex-wrap items-center gap-2">
@@ -116,6 +122,19 @@ export function PlanungClient({ projectId }: PlanungClientProps) {
 
         <TabsContent value="meilensteine" className="space-y-4">
           <MilestonesList projectId={projectId} phases={phases} />
+        </TabsContent>
+
+        <TabsContent value="gantt" className="space-y-4">
+          <GanttView
+            projectId={projectId}
+            phases={phases}
+            canEdit={canEdit}
+            onChanged={refreshAll}
+          />
+          <p className="text-xs text-muted-foreground">
+            Tipp: Phasen-Balken horizontal verschieben (Move) oder rechte Kante
+            ziehen (Resize). Abgeschlossene Phasen sind gesperrt.
+          </p>
         </TabsContent>
       </Tabs>
 
