@@ -22,6 +22,7 @@ import type { Stakeholder } from "@/types/stakeholder"
 import { ApprovalStatusBanner } from "./approval-status-banner"
 import { ApprovalTrailTimeline } from "./approval-trail-timeline"
 import { ApproverList } from "./approver-list"
+import { MyApprovalActionPanel } from "./my-approval-action-panel"
 import { SubmitForApprovalForm } from "./submit-for-approval-form"
 import { WithdrawDecisionDialog } from "./withdraw-decision-dialog"
 
@@ -131,6 +132,17 @@ export function DecisionApprovalSheet({
                   receivedRejections={receivedRejections}
                   totalApprovers={bundle.approvers.length}
                 />
+
+                {status === "pending" && (
+                  <MyApprovalActionPanel
+                    projectId={projectId}
+                    decisionId={decision.id}
+                    approvers={bundle.approvers}
+                    onResponded={() => {
+                      void handleSubmitted()
+                    }}
+                  />
+                )}
 
                 <Tabs defaultValue="approvers">
                   <TabsList>

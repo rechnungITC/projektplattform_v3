@@ -55,7 +55,7 @@ export async function GET(_request: Request, ctx: Ctx) {
     supabase
       .from("decision_approvers")
       .select(
-        "id, decision_id, stakeholder_id, magic_link_expires_at, response, responded_at, comment, " +
+        "id, decision_id, stakeholder_id, magic_link_expires_at, response, responded_at, comment, request_info_comment, request_info_at, " +
           "stakeholders!decision_approvers_stakeholder_id_fkey(name, linked_user_id)",
       )
       .eq("decision_id", decisionId)
@@ -81,6 +81,8 @@ export async function GET(_request: Request, ctx: Ctx) {
     response: "approve" | "reject" | "withdrawn" | null
     responded_at: string | null
     comment: string | null
+    request_info_comment: string | null
+    request_info_at: string | null
     stakeholders?: { name?: string; linked_user_id?: string | null } | null
   }
 
@@ -93,10 +95,13 @@ export async function GET(_request: Request, ctx: Ctx) {
       stakeholder_id: r.stakeholder_id,
       stakeholder_name: r.stakeholders?.name ?? null,
       is_internal: Boolean(r.stakeholders?.linked_user_id),
+      linked_user_id: r.stakeholders?.linked_user_id ?? null,
       magic_link_expires_at: r.magic_link_expires_at,
       response: r.response,
       responded_at: r.responded_at,
       comment: r.comment,
+      request_info_comment: r.request_info_comment,
+      request_info_at: r.request_info_at,
     }
   })
 

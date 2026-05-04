@@ -96,7 +96,9 @@ export async function respondAsInternalApprover(
   projectId: string,
   decisionId: string,
   approverId: string,
-  payload: { response: "approve" | "reject"; comment?: string | null },
+  payload:
+    | { action: "approve" | "reject" | "request_info"; comment?: string | null }
+    | { response: "approve" | "reject"; comment?: string | null },
 ): Promise<void> {
   const response = await fetch(
     `${decisionBase(projectId, decisionId)}/respond/${encodeURIComponent(approverId)}`,

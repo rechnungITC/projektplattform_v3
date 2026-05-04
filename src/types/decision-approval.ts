@@ -35,6 +35,8 @@ export const APPROVER_RESPONSE_LABELS: Record<
 export type ApprovalEventType =
   | "submitted_for_approval"
   | "approver_responded"
+  | "approver_requested_info"
+  | "approver_withdrawn"
   | "quorum_reached"
   | "quorum_unreachable"
   | "withdrawn"
@@ -62,6 +64,12 @@ export interface DecisionApprover {
   response: ApproverResponse
   responded_at: string | null
   comment: string | null
+  /** PROJ-31 follow-up — most recent info-request comment (overwritten). */
+  request_info_comment?: string | null
+  /** PROJ-31 follow-up — timestamp of the most recent info-request. */
+  request_info_at?: string | null
+  /** Display-only — linked Plattform-User UUID (when stakeholder is internal). */
+  linked_user_id?: string | null
 }
 
 export interface DecisionApprovalEvent {

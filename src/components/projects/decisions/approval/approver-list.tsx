@@ -1,4 +1,4 @@
-import { Check, Hourglass, X } from "lucide-react"
+import { Check, HelpCircle, Hourglass, X } from "lucide-react"
 
 import { Badge } from "@/components/ui/badge"
 import {
@@ -38,6 +38,16 @@ export function ApproverList({ approvers }: ApproverListProps) {
             {a.comment && (
               <span className="mt-1 text-xs italic text-muted-foreground">
                 „{a.comment}&quot;
+              </span>
+            )}
+            {!a.response && a.request_info_comment && a.request_info_at && (
+              <span className="mt-1 flex items-start gap-1 text-xs text-amber-700">
+                <HelpCircle className="mt-0.5 h-3 w-3 shrink-0" aria-hidden />
+                <span>
+                  Info angefordert (
+                  {new Date(a.request_info_at).toLocaleDateString("de-DE")}
+                  ): „{a.request_info_comment}&quot;
+                </span>
               </span>
             )}
           </div>

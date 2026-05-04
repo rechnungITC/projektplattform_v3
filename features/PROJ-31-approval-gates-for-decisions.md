@@ -388,6 +388,38 @@ PROJ-8 hat das Mapping bereits: jeder Stakeholder kann optional einen `linked_us
 
 ## Implementation Notes
 
+### Round 2 — Approver Action UI + Project Feedback (2026-05-04)
+
+**Bug fixed first:** the dashboard listed pending approvals but linked to `/projects/[id]/decisions/[did]` (404 — page never built). Fixed by routing to `/projects/[id]/entscheidungen?decision=<id>` and adding deep-link auto-scroll on the existing tab page (`decision-card` got DOM `id="decision-<id>"`, `decisions-tab-client` reads `useSearchParams` and pulses a ring highlight on mount). Commit `ee25951`.
+
+**Round-2 capability added:** approvers can now act inline from the decision-approval sheet — three buttons (`Freigeben` / `Ablehnen` / `Info anfordern`) on a new "Meine Aktion" panel, visible when the logged-in user is a nominated internal approver who has not yet finally responded.
+
+**Schema additions:**
+- Migration `20260504020000_proj31_approver_request_info_channel.sql` — adds `decision_approvers.request_info_comment text` and `request_info_at timestamptz` (both nullable, additive).
+- `ApprovalEventType` extended with `approver_requested_info` and `approver_withdrawn` (latter reserved for future use).
+
+**Action semantics:**
+- **Freigeben (approve)** — final, optional comment. Calls existing `record_approval_response` RPC (race-safe quorum update). Triggers a project-feedback outbox row (informational e-mail to the responsible PM).
+- **Ablehnen (reject)** — final, comment required (5–4000 chars). Same RPC. Triggers an `open_item` (action: revise or withdraw) **and** an outbox row.
+- **Info anfordern (request_info)** — non-final. Sets `request_info_comment` + `request_info_at` (latest-only — repeated requests overwrite), appends `approver_requested_info` audit event, leaves the approver in pending. Triggers an `open_item` (action: provide info to approver) **and** an outbox row. The approver can repeat the request or finally respond afterwards.
+
+**Project-Feedback helper:** `src/lib/decisions/approval-feedback.ts` — pure-function builders for open-item title/description and outbox subject/body per action; `lookupProjectResponsibleRecipient` resolves the PM via `projects.responsible_user_id` → `user_profiles.email` (falls back to internal-channel with the user-id when no e-mail is on file). Errors are swallowed-with-warn — primary approver response is always persisted regardless of feedback-pipeline hiccups.
+
+**API contract:**
+- POST `/api/projects/[id]/decisions/[did]/approval/respond/[approverId]` accepts a discriminated union `{ action: "approve" | "reject" | "request_info", comment }`. Backward-compat: legacy `{ response, comment }` body still accepted (migrated server-side to the matching action; `reject` requires comment ≥ 5 chars in both shapes).
+- Magic-Link `/api/approve/[token]` deliberately **not** extended — external approvers stay binary (approve/reject) per Class-3 security posture (no recurring-loop UX exposed to public tokens).
+
+**UI components:**
+- `my-approval-action-panel.tsx` — new. Three buttons + comment dialogs + "info already requested" banner.
+- `approver-list.tsx` — surfaces the latest info-request inline as a small amber `HelpCircle` row when the approver still has no final response.
+- `approval-trail-timeline.tsx` — event labels + icons for the two new event types.
+- `decision-approval-sheet.tsx` — mounts `MyApprovalActionPanel` between status banner and the Approver / Audit-Trail tabs, only when `state.status = pending`.
+
+**Out of scope of round 2:**
+- Magic-Link defer flow (external approvers cannot request info).
+- Withdraw-own-response (audit event is reserved but UX not built).
+- E-mail-template-system for the outbox (uses plain text body).
+
 ### Frontend (2026-05-02)
 
 **Types & API client:**

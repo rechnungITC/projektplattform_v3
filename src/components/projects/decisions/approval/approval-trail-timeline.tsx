@@ -2,6 +2,7 @@ import {
   ArrowRight,
   Check,
   CircleSlash,
+  HelpCircle,
   RotateCcw,
   Send,
   X,
@@ -15,6 +16,8 @@ import {
 const EVENT_LABELS: Record<ApprovalEventType, string> = {
   submitted_for_approval: "Zur Genehmigung eingereicht",
   approver_responded: "Approver-Antwort erhalten",
+  approver_requested_info: "Approver hat Informationen angefordert",
+  approver_withdrawn: "Approver hat Antwort zurückgezogen",
   quorum_reached: "Quorum erreicht — genehmigt",
   quorum_unreachable: "Quorum unmöglich — abgelehnt",
   withdrawn: "Vom PM zurückgezogen",
@@ -25,6 +28,8 @@ const EVENT_LABELS: Record<ApprovalEventType, string> = {
 const EVENT_ICONS: Record<ApprovalEventType, React.ReactNode> = {
   submitted_for_approval: <Send className="h-3.5 w-3.5" aria-hidden />,
   approver_responded: <Check className="h-3.5 w-3.5" aria-hidden />,
+  approver_requested_info: <HelpCircle className="h-3.5 w-3.5 text-amber-600" aria-hidden />,
+  approver_withdrawn: <RotateCcw className="h-3.5 w-3.5" aria-hidden />,
   quorum_reached: <Check className="h-3.5 w-3.5 text-emerald-600" aria-hidden />,
   quorum_unreachable: <X className="h-3.5 w-3.5 text-destructive" aria-hidden />,
   withdrawn: <CircleSlash className="h-3.5 w-3.5" aria-hidden />,
