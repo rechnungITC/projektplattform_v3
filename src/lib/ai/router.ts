@@ -32,8 +32,9 @@ import {
   classifyNarrativeAutoContext,
   classifyRiskAutoContext,
 } from "./classify"
-import { resolveAnthropicKey, type ResolvedAIKey } from "./key-resolver"
+import { resolveProvider, type ResolvedProvider } from "./key-resolver"
 import { AnthropicProvider } from "./providers/anthropic"
+import { OllamaProvider } from "./providers/ollama"
 import { StubProvider } from "./providers/stub"
 import type { AIProvider } from "./providers/types"
 import type {
@@ -91,9 +92,10 @@ async function loadTenantOverrides(
   }
 }
 
-async function selectProvider(
+async function selectProviderForPurpose(
   supabase: SupabaseClient,
   tenantId: string,
+  purpose: AIPurpose,
   classification: DataClass,
   tenantConfig: AiProviderConfig,
 ): Promise<ProviderChoice> {
@@ -102,13 +104,9 @@ async function selectProvider(
   // and Class-3 payloads. A tenant config of external_provider='none' is a
   // deliberate config choice — not a block — so it doesn't flip this flag.
   //
-  // PROJ-32a: when the tenant DID pick anthropic, key-resolver decides
-  // tenant-key vs platform-key vs blocked (Class-3 + no tenant-key).
-
-  // PROJ-32a: always run the key resolver for external providers.
-  // For non-external providers ('none'), the kill-switch / class-3 logic
-  // still needs to flag externalBlocked (preserved from the pre-32a
-  // behaviour). We compute that locally without an RPC round-trip.
+  // 32-c-β: the resolver now returns a discriminated union with
+  // {tenant, ollama|anthropic, config} | {platform, anthropic, key} |
+  // {blocked, reason}. The router maps each shape to a Provider class.
   if (tenantConfig.external_provider === "none") {
     const externalDisabledByEnv = isExternalAIBlocked()
     const externalDisabledByClass = classification === 3
@@ -118,10 +116,10 @@ async function selectProvider(
     }
   }
 
-  const resolved: ResolvedAIKey = await resolveAnthropicKey({
+  const resolved: ResolvedProvider = await resolveProvider({
     supabase,
     tenantId,
-    provider: "anthropic",
+    purpose,
     dataClass: classification,
   })
 
@@ -130,12 +128,43 @@ async function selectProvider(
       provider: new StubProvider(),
       externalBlocked:
         resolved.reason === "external_ai_disabled" ||
-        resolved.reason === "class3_no_tenant_key",
+        resolved.reason === "class3_no_local_provider",
     }
   }
 
+  if (resolved.source === "platform") {
+    // Platform-key path is always Anthropic.
+    return {
+      provider: new AnthropicProvider(tenantConfig.model_id, resolved.key),
+      externalBlocked: false,
+    }
+  }
+
+  // Tenant-source — dispatch by provider kind.
+  if (resolved.config.kind === "anthropic") {
+    return {
+      provider: new AnthropicProvider(
+        tenantConfig.model_id,
+        resolved.config.api_key,
+      ),
+      externalBlocked: false,
+    }
+  }
+  if (resolved.config.kind === "ollama") {
+    return {
+      provider: new OllamaProvider({
+        endpointUrl: resolved.config.endpoint_url,
+        modelId: resolved.config.model_id,
+        bearerToken: resolved.config.bearer_token,
+      }),
+      // Ollama on tenant infrastructure is NOT externalBlocked — data
+      // does not leave the tenant control domain. ki_runs.status='success'.
+      externalBlocked: false,
+    }
+  }
+  // Should be unreachable (TS narrowing covers all union arms).
   return {
-    provider: new AnthropicProvider(tenantConfig.model_id, resolved.key),
+    provider: new StubProvider(),
     externalBlocked: false,
   }
 }
@@ -211,9 +240,10 @@ export async function invokeRiskGeneration({
     context,
     overrides.privacyDefault as DataClass,
   )
-  const { provider, externalBlocked } = await selectProvider(
+  const { provider, externalBlocked } = await selectProviderForPurpose(
     supabase,
     tenantId,
+    "risks",
     classification,
     overrides.providerConfig,
   )
@@ -342,9 +372,10 @@ export async function invokeNarrativeGeneration({
     context,
     overrides.privacyDefault as DataClass,
   )
-  const { provider, externalBlocked } = await selectProvider(
+  const { provider, externalBlocked } = await selectProviderForPurpose(
     supabase,
     tenantId,
+    "narrative",
     classification,
     overrides.providerConfig,
   )

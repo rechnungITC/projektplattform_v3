@@ -83,7 +83,7 @@ export function AiKeysPageClient() {
   React.useEffect(() => {
     if (!tenantId) return
     let cancelled = false
-    fetch(`/api/tenants/${tenantId}/ai-keys/${PROVIDER}`, { cache: "no-store" })
+    fetch(`/api/tenants/${tenantId}/ai-providers/${PROVIDER}`, { cache: "no-store" })
       .then(async (r) => {
         if (!r.ok) {
           const body = await r.json().catch(() => ({}))
@@ -157,7 +157,7 @@ export function AiKeysPageClient() {
     if (!tenantId || !keyShapeOk) return
     setSubmitting(true)
     try {
-      const r = await fetch(`/api/tenants/${tenantId}/ai-keys/${PROVIDER}`, {
+      const r = await fetch(`/api/tenants/${tenantId}/ai-providers/${PROVIDER}`, {
         method: "PUT",
         headers: { "content-type": "application/json" },
         body: JSON.stringify({ key: trimmed }),
@@ -192,7 +192,7 @@ export function AiKeysPageClient() {
     setValidating(true)
     try {
       const r = await fetch(
-        `/api/tenants/${tenantId}/ai-keys/${PROVIDER}/validate`,
+        `/api/tenants/${tenantId}/ai-providers/${PROVIDER}/validate`,
         { method: "POST" },
       )
       if (!r.ok) {
@@ -219,7 +219,7 @@ export function AiKeysPageClient() {
     if (!tenantId) return
     setSubmitting(true)
     try {
-      const r = await fetch(`/api/tenants/${tenantId}/ai-keys/${PROVIDER}`, {
+      const r = await fetch(`/api/tenants/${tenantId}/ai-providers/${PROVIDER}`, {
         method: "DELETE",
       })
       if (!r.ok) {

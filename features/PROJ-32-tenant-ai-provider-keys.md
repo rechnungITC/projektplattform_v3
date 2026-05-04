@@ -1,6 +1,6 @@
 # PROJ-32: Tenant Custom AI Provider Keys (Multi-Provider)
 
-## Status: Deployed 32a · In Progress 32c (32-c-α schema live in prod, β/γ pending) · 32b/32d to be specced
+## Status: Deployed 32a · In Progress 32c (α + β implemented, γ pending) · 32b/32d to be specced
 
 **Created:** 2026-05-04
 **Last Updated:** 2026-05-04
@@ -966,6 +966,54 @@ Tech Design ist **build-ready unter den drei Approval-Punkten**. Empfohlene näc
 - App code changes (router, key-resolver, providers, API routes) — purely DB layer in α per Fork B's dual-write strategy.
 - Ollama provider implementation — 32-c-β.
 - Priority matrix table + UI — 32-c-γ.
+
+#### Sub-Phase 32-c-β — OllamaProvider + Router Refactor + Hard-Cutover
+
+**Code added (Forks A.1, D.2, G.3):**
+
+- `src/lib/ai/providers/ollama.ts` (replaces 32a placeholder) — production OllamaProvider via `@ai-sdk/openai-compatible` factory `createOpenAICompatible({ baseURL, name, apiKey })`. Uses Ollama's OpenAI-compatible endpoint at `<endpoint_url>/v1`. `generateObject` works identically to AnthropicProvider for both `risks` and `narrative` purposes.
+- `src/lib/ai/ollama-config-validator.ts` — sanitization + test-call:
+  - `sanitizeOllamaUrl` enforces http/https schemes, blocks `169.254.x.x` cloud-metadata range (CIA HIGH-risk SSRF mitigation), strips trailing slashes.
+  - `validateOllamaConfig` performs a single GET `<baseURL>/api/tags` (5s timeout, no retry, no redirect-follow). Six status codes: `valid` / `invalid` (401/403) / `rate_limited` (429) / `unreachable` (timeout/network) / `model_missing` (200 OK but model not in /api/tags) / `unknown`.
+  - `buildOllamaFingerprint` returns `ollama:<host>/<model>` for non-personal display in audit + UI.
+
+**Resolver refactor (Layered Cache, Fork D.2):**
+
+- `src/lib/ai/key-resolver.ts` — primary export is now `resolveProvider(supabase, tenantId, purpose, dataClass)` returning a discriminated union `{tenant, provider, config} | {platform, anthropic, key} | {blocked, reason}`.
+- `getTenantProviders` and `getPriorityMatrix` are React.cache-wrapped (per-request layered cache). 32-c-β returns an empty priority matrix (placeholder until 32-c-γ); resolver therefore relies on `defaultProviderOrder()` defaults.
+- **Class-3 defense-in-depth:** `clampForClass3()` removes any non-local provider from the resolution order regardless of priority-matrix content. Even if a future bad matrix names Anthropic for Class-3, the resolver refuses it.
+- Legacy `resolveAnthropicKey()` preserved as a thin wrapper around `resolveProvider()` so any unmigrated 32a-shaped callers keep working until cleanup.
+
+**Behavioral change vs 32a (CIA-locked):** Class-3 + tenant Anthropic key now returns BLOCKED instead of routing to Anthropic. Anthropic is a cloud provider — data leaves the tenant control domain even with a tenant key. Only Ollama keeps Class-3 strictly local. Production impact: zero existing tenants affected (tenant_ai_keys had 0 rows at deploy time).
+
+**Router refactor (Fork F + Class-3 mitigation):**
+
+- `src/lib/ai/router.ts` — `selectProvider` renamed to `selectProviderForPurpose` and accepts an additional `purpose: AIPurpose` parameter. Both `invokeRiskGeneration` ('risks') and `invokeNarrativeGeneration` ('narrative') now pass their purpose explicitly.
+- Router dispatches to AnthropicProvider / OllamaProvider / StubProvider based on the resolver's discriminated-union output. Ollama-on-tenant-infra is **not** flagged `external_blocked` — `ki_runs.status='success'` for successful Ollama runs.
+
+**API routes (Hard-Cutover, Fork G.3):**
+
+- New: `GET /api/tenants/[id]/ai-providers` — collection list of all configured providers with status + fingerprint.
+- New: `GET / PUT / DELETE /api/tenants/[id]/ai-providers/[provider]` — per-provider CRUD with discriminated PUT body schema (Anthropic: `{key}`, Ollama: `{endpoint_url, model_id, bearer_token?}`).
+- New: `POST /api/tenants/[id]/ai-providers/[provider]/validate` — re-test against stored config without changing it.
+- **Deleted:** the 32a `/api/tenants/[id]/ai-keys/[provider]` and `/api/tenants/[id]/ai-keys/[provider]/validate` routes plus their tests. No wrapper routes (Fork G.3 lock).
+- All routes use the new `record_tenant_ai_provider_audit` RPC (action ∈ `create | rotate | delete | validate`).
+
+**Frontend migration:**
+
+- `src/components/settings/tenant/ai-keys/ai-keys-page-client.tsx` — all four `fetch()` calls migrated to `/api/tenants/[id]/ai-providers/[provider]`. Page URL `/settings/tenant/ai-keys` kept as-is for 32-c-β; rename and full UI refresh (Ollama Card + Priority Matrix) is 32-c-γ scope.
+
+**Tests:**
+
+- 934 / 934 vitest passing (was 887 before 32-c-β; +47 new tests across `ollama-config-validator.test.ts` (24 tests), `ai-providers/[provider]/route.test.ts` (19 tests), updated `key-resolver.test.ts` (15 tests including new Class-3 semantics), updated `router-class3.test.ts` (6 tests for full router-resolver-provider integration)).
+- ESLint clean. TypeScript clean. `next build` clean — 3 new `/ai-providers/...` routes registered, old `/ai-keys/...` routes gone.
+
+**Out of scope for β (intentional, will be done in γ):**
+
+- Priority-matrix table (`tenant_ai_provider_priority`) + admin UI — 32-c-γ.
+- Ollama config Card in admin UI — 32-c-γ.
+- Cleanup migration that drops `tenant_ai_keys` legacy table — 32-c-γ.
+- Page URL rename `/settings/tenant/ai-keys` → `/settings/tenant/ai-providers` — 32-c-γ.
 
 ### QA Test Results (32-c)
 _To be added by /qa._

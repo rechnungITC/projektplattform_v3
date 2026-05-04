@@ -1,16 +1,20 @@
 /**
- * PROJ-32a — QA verification: Class-3 routing through the full router.
+ * PROJ-32 — QA verification: integrated router behavior across 32a + 32-c-β.
  *
- * These tests assert the *integrated* router behavior (not just the
- * key-resolver in isolation) for the new contract:
+ * After 32-c-β:
+ *   * Resolver reads from `tenant_ai_providers` via the new RPC
+ *     `decrypt_tenant_ai_provider` (returns provider-specific JSONB).
+ *   * Class-3 routing accepts ONLY local providers (Ollama). Anthropic is
+ *     never Class-3-eligible — even with a tenant key, because data still
+ *     leaves the tenant control domain.
  *
- *   - tenant config = anthropic, no tenant key, Class-3 → blocked (stub)
- *   - tenant config = anthropic, tenant key, Class-3   → external (anthropic)
- *   - tenant config = anthropic, no tenant key, Class-1 → platform fallback
- *   - tenant config = none, Class-3                    → external_blocked=true
- *
- * The Anthropic SDK call is intercepted by stubbing `generateObject` so no
- * real network call happens.
+ * Scenarios covered:
+ *   1. Class-3 + tenant Anthropic only → BLOCKED (Anthropic clamped out)
+ *   2. Class-3 + tenant Ollama → tenant source (Ollama)
+ *   3. Class-1 + tenant Anthropic → tenant source (Anthropic)
+ *   4. Class-1 + no tenant providers → platform fallback
+ *   5. tenant config 'none' + Class-3 → externalBlocked=true preserved
+ *   6. EXTERNAL_AI_DISABLED kill-switch → blocked even with tenant Ollama
  */
 
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest"
@@ -25,6 +29,10 @@ vi.mock("@ai-sdk/anthropic", () => ({
   createAnthropic: vi.fn(() => vi.fn(() => ({}))),
 }))
 
+vi.mock("@ai-sdk/openai-compatible", () => ({
+  createOpenAICompatible: vi.fn(() => vi.fn(() => ({}))),
+}))
+
 import { invokeRiskGeneration } from "./router"
 import type { RiskAutoContext } from "./types"
 
@@ -35,7 +43,10 @@ interface ChainResult {
 
 function buildSupabase(opts: {
   tenantSettings: Record<string, unknown> | null
-  decryptResult: ChainResult
+  /** Anthropic provider config (decrypted). Default: not configured. */
+  anthropicDecrypt?: ChainResult
+  /** Ollama provider config (decrypted). Default: not configured. */
+  ollamaDecrypt?: ChainResult
   insertRunResult: ChainResult
   insertSuggestionsResult?: ChainResult
 }) {
@@ -55,14 +66,27 @@ function buildSupabase(opts: {
     ),
   }
 
+  // Status read for tenant_ai_providers — RLS denies non-admin.
+  const providerStatusChain = {
+    select: vi.fn().mockReturnThis(),
+    eq: vi.fn().mockReturnThis(),
+    maybeSingle: vi.fn().mockResolvedValue({ data: null, error: null }),
+  }
+
   let kiRunsCallCount = 0
   return {
-    rpc: vi.fn(async (fn: string) => {
+    rpc: vi.fn(async (fn: string, args?: { p_provider?: string }) => {
       if (fn === "set_session_encryption_key") {
         return { data: null, error: null }
       }
-      if (fn === "decrypt_tenant_ai_key") {
-        return opts.decryptResult
+      if (fn === "decrypt_tenant_ai_provider") {
+        if (args?.p_provider === "anthropic") {
+          return opts.anthropicDecrypt ?? { data: null, error: null }
+        }
+        if (args?.p_provider === "ollama") {
+          return opts.ollamaDecrypt ?? { data: null, error: null }
+        }
+        return { data: null, error: null }
       }
       throw new Error(`unexpected rpc ${fn}`)
     }),
@@ -72,6 +96,7 @@ function buildSupabase(opts: {
         return kiRunsCallCount === 1 ? insertRunChain : updateChain
       }
       if (table === "ki_suggestions") return insertSuggestionsChain
+      if (table === "tenant_ai_providers") return providerStatusChain
       if (table === "tenant_settings") {
         const chain: { select: unknown; eq: unknown; maybeSingle: unknown } = {
           select: () => chain,
@@ -129,7 +154,23 @@ function class1Context(): RiskAutoContext {
   }
 }
 
-describe("PROJ-32a router integration — Class-3 hard block via tenant key", () => {
+const ANTHROPIC_CONFIG = { data: { api_key: "sk-ant-tenant" }, error: null }
+const OLLAMA_CONFIG = {
+  data: {
+    endpoint_url: "https://ollama.example.com",
+    model_id: "llama3.1:70b",
+  },
+  error: null,
+}
+const EMPTY_DECRYPT = { data: null, error: null }
+
+const COMMON_ARGS = {
+  tenantId: "00000000-0000-4000-8000-000000000001",
+  projectId: "00000000-0000-4000-8000-000000000002",
+  actorUserId: "00000000-0000-4000-8000-000000000003",
+}
+
+describe("PROJ-32 router integration — Class-3 hard block via tenant key", () => {
   beforeEach(() => {
     process.env.SECRETS_ENCRYPTION_KEY = "test-encryption-key-32-chars-long-x"
     delete process.env.EXTERNAL_AI_DISABLED
@@ -140,40 +181,82 @@ describe("PROJ-32a router integration — Class-3 hard block via tenant key", ()
     delete process.env.ANTHROPIC_API_KEY
   })
 
-  it("Class-3 + tenant config 'anthropic' + NO tenant key → blocked, stub provider", async () => {
+  it("Class-3 + tenant Anthropic only → BLOCKED (Anthropic not Class-3-eligible)", async () => {
     process.env.ANTHROPIC_API_KEY = "sk-ant-platform"
     const supabase = buildSupabase({
       tenantSettings: {
         privacy_defaults: { default_class: 3 },
         ai_provider_config: { external_provider: "anthropic" },
       },
-      decryptResult: { data: null, error: null },
-      insertRunResult: { data: { id: "run-c3" }, error: null },
+      anthropicDecrypt: ANTHROPIC_CONFIG,
+      ollamaDecrypt: EMPTY_DECRYPT,
+      insertRunResult: { data: { id: "run-c3-anthropic-blocked" }, error: null },
     })
     const result = await invokeRiskGeneration({
-      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+       
       supabase: supabase as any,
-      tenantId: "00000000-0000-4000-8000-000000000001",
-      projectId: "00000000-0000-4000-8000-000000000002",
-      actorUserId: "00000000-0000-4000-8000-000000000003",
+      ...COMMON_ARGS,
       context: class3Context(),
-      count: 2,
+      count: 1,
     })
     expect(result.classification).toBe(3)
     expect(result.provider).toBe("stub")
     expect(result.external_blocked).toBe(true)
-    // Anthropic SDK must NOT have been called
     expect(generateObjectMock).not.toHaveBeenCalled()
   })
 
-  it("Class-3 + tenant config 'anthropic' + tenant key set → tenant source (anthropic)", async () => {
+  it("Class-3 + tenant Ollama → tenant source (Ollama)", async () => {
     const supabase = buildSupabase({
       tenantSettings: {
         privacy_defaults: { default_class: 3 },
         ai_provider_config: { external_provider: "anthropic" },
       },
-      decryptResult: { data: "sk-ant-tenant-key", error: null },
-      insertRunResult: { data: { id: "run-c3-ok" }, error: null },
+      anthropicDecrypt: EMPTY_DECRYPT,
+      ollamaDecrypt: OLLAMA_CONFIG,
+      insertRunResult: { data: { id: "run-c3-ollama" }, error: null },
+      insertSuggestionsResult: {
+        data: [{ id: "s-1" }],
+        error: null,
+      },
+    })
+    generateObjectMock.mockResolvedValueOnce({
+      object: {
+        suggestions: [
+          {
+            title: "T",
+            description: "D",
+            probability: 3,
+            impact: 3,
+            mitigation: "M",
+          },
+        ],
+      },
+      usage: { inputTokens: 100, outputTokens: 50 },
+    })
+    const result = await invokeRiskGeneration({
+       
+      supabase: supabase as any,
+      ...COMMON_ARGS,
+      context: class3Context(),
+      count: 1,
+    })
+    expect(result.classification).toBe(3)
+    expect(result.provider).toBe("ollama")
+    // Critical: Ollama on tenant infra is NOT externalBlocked.
+    expect(result.external_blocked).toBe(false)
+    expect(result.status).toBe("success")
+    expect(generateObjectMock).toHaveBeenCalledOnce()
+  })
+
+  it("Class-1 + tenant Anthropic → tenant source (Anthropic)", async () => {
+    const supabase = buildSupabase({
+      tenantSettings: {
+        privacy_defaults: { default_class: 1 },
+        ai_provider_config: { external_provider: "anthropic" },
+      },
+      anthropicDecrypt: ANTHROPIC_CONFIG,
+      ollamaDecrypt: EMPTY_DECRYPT,
+      insertRunResult: { data: { id: "run-c1-anthropic" }, error: null },
       insertSuggestionsResult: {
         data: [{ id: "s-1" }, { id: "s-2" }],
         error: null,
@@ -201,31 +284,28 @@ describe("PROJ-32a router integration — Class-3 hard block via tenant key", ()
       usage: { inputTokens: 100, outputTokens: 50 },
     })
     const result = await invokeRiskGeneration({
-      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+       
       supabase: supabase as any,
-      tenantId: "00000000-0000-4000-8000-000000000001",
-      projectId: "00000000-0000-4000-8000-000000000002",
-      actorUserId: "00000000-0000-4000-8000-000000000003",
-      context: class3Context(),
+      ...COMMON_ARGS,
+      context: class1Context(),
       count: 2,
     })
-    expect(result.classification).toBe(3)
     expect(result.provider).toBe("anthropic")
     expect(result.external_blocked).toBe(false)
     expect(result.status).toBe("success")
-    // Anthropic SDK was actually called
     expect(generateObjectMock).toHaveBeenCalledOnce()
   })
 
-  it("Class-1 + tenant config 'anthropic' + no tenant key → platform fallback", async () => {
-    process.env.ANTHROPIC_API_KEY = "sk-ant-platform-key-xxxxxxxxxxxxxxxxxxxxxxxxxx"
+  it("Class-1 + no tenant providers → platform fallback", async () => {
+    process.env.ANTHROPIC_API_KEY = "sk-ant-platform-fallback"
     const supabase = buildSupabase({
       tenantSettings: {
         privacy_defaults: { default_class: 1 },
         ai_provider_config: { external_provider: "anthropic" },
       },
-      decryptResult: { data: null, error: null },
-      insertRunResult: { data: { id: "run-c1" }, error: null },
+      anthropicDecrypt: EMPTY_DECRYPT,
+      ollamaDecrypt: EMPTY_DECRYPT,
+      insertRunResult: { data: { id: "run-c1-platform" }, error: null },
       insertSuggestionsResult: {
         data: [{ id: "s-1" }],
         error: null,
@@ -246,11 +326,9 @@ describe("PROJ-32a router integration — Class-3 hard block via tenant key", ()
       usage: { inputTokens: 50, outputTokens: 30 },
     })
     const result = await invokeRiskGeneration({
-      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+       
       supabase: supabase as any,
-      tenantId: "00000000-0000-4000-8000-000000000001",
-      projectId: "00000000-0000-4000-8000-000000000002",
-      actorUserId: "00000000-0000-4000-8000-000000000003",
+      ...COMMON_ARGS,
       context: class1Context(),
       count: 1,
     })
@@ -265,15 +343,14 @@ describe("PROJ-32a router integration — Class-3 hard block via tenant key", ()
         privacy_defaults: { default_class: 3 },
         ai_provider_config: { external_provider: "none" },
       },
-      decryptResult: { data: null, error: null },
+      anthropicDecrypt: EMPTY_DECRYPT,
+      ollamaDecrypt: EMPTY_DECRYPT,
       insertRunResult: { data: { id: "run-none-c3" }, error: null },
     })
     const result = await invokeRiskGeneration({
-      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+       
       supabase: supabase as any,
-      tenantId: "00000000-0000-4000-8000-000000000001",
-      projectId: "00000000-0000-4000-8000-000000000002",
-      actorUserId: "00000000-0000-4000-8000-000000000003",
+      ...COMMON_ARGS,
       context: class3Context(),
       count: 1,
     })
@@ -282,23 +359,22 @@ describe("PROJ-32a router integration — Class-3 hard block via tenant key", ()
     expect(result.external_blocked).toBe(true)
   })
 
-  it("EXTERNAL_AI_DISABLED kill-switch → blocked even with tenant key", async () => {
+  it("EXTERNAL_AI_DISABLED kill-switch → blocked even with tenant Ollama", async () => {
     process.env.EXTERNAL_AI_DISABLED = "true"
     const supabase = buildSupabase({
       tenantSettings: {
-        privacy_defaults: { default_class: 1 },
+        privacy_defaults: { default_class: 3 },
         ai_provider_config: { external_provider: "anthropic" },
       },
-      decryptResult: { data: "sk-ant-tenant-key", error: null },
+      anthropicDecrypt: EMPTY_DECRYPT,
+      ollamaDecrypt: OLLAMA_CONFIG,
       insertRunResult: { data: { id: "run-killed" }, error: null },
     })
     const result = await invokeRiskGeneration({
-      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+       
       supabase: supabase as any,
-      tenantId: "00000000-0000-4000-8000-000000000001",
-      projectId: "00000000-0000-4000-8000-000000000002",
-      actorUserId: "00000000-0000-4000-8000-000000000003",
-      context: class1Context(),
+      ...COMMON_ARGS,
+      context: class3Context(),
       count: 1,
     })
     expect(result.provider).toBe("stub")
