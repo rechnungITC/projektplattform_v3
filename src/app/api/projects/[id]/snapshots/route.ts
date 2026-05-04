@@ -67,14 +67,15 @@ export async function GET(_request: Request, ctx: Ctx) {
   )
   const userMap = new Map<string, string>()
   if (userIds.length > 0) {
+    // profiles.id is the PK (= auth.users.id) — there is no profiles.user_id column.
     const { data: profiles } = await supabase
       .from("profiles")
-      .select("user_id, display_name, email")
-      .in("user_id", userIds)
+      .select("id, display_name, email")
+      .in("id", userIds)
     for (const p of profiles ?? []) {
       const name =
         (p.display_name as string | null) ?? (p.email as string | null) ?? "—"
-      userMap.set(p.user_id as string, name)
+      userMap.set(p.id as string, name)
     }
   }
 
@@ -136,10 +137,11 @@ export async function POST(request: Request, ctx: Ctx) {
   const nextVersion = ((latest?.version as number | undefined) ?? 0) + 1
 
   // Generator display name for the frozen header.
+  // profiles.id is the PK (= auth.users.id); there is no profiles.user_id column.
   const { data: actorProfile } = await supabase
     .from("profiles")
     .select("display_name, email")
-    .eq("user_id", userId)
+    .eq("id", userId)
     .maybeSingle<{ display_name: string | null; email: string | null }>()
   const generatorDisplayName =
     actorProfile?.display_name ?? actorProfile?.email ?? "Unbekannt"

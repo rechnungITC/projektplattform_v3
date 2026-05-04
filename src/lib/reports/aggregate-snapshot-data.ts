@@ -211,12 +211,13 @@ export async function aggregateSnapshotData(
   }
 
   // Lead + sponsor names — derive from project.responsible_user_id.
+  // profiles.id is the PK (= auth.users.id); there is no profiles.user_id column.
   let leadName: string | null = null
   if (project.responsible_user_id) {
     const { data: leadProfile } = await supabase
       .from("profiles")
       .select("display_name, email")
-      .eq("user_id", project.responsible_user_id as string)
+      .eq("id", project.responsible_user_id as string)
       .maybeSingle<{ display_name: string | null; email: string | null }>()
     leadName = leadProfile?.display_name ?? leadProfile?.email ?? null
   }
