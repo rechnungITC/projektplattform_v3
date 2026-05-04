@@ -36,6 +36,7 @@ import {
 } from "@/components/ui/select"
 import { Textarea } from "@/components/ui/textarea"
 import { useAuth } from "@/hooks/use-auth"
+import { usePhases } from "@/hooks/use-phases"
 import { useSprints } from "@/hooks/use-sprints"
 import {
   WORK_ITEM_KIND_LABELS,
@@ -47,6 +48,7 @@ import {
 import { WorkItemKindBadge } from "./work-item-kind-badge"
 
 const NO_SPRINT_VALUE = "__none__"
+const NO_PHASE_VALUE = "__none__"
 
 const editWorkItemSchema = z.object({
   title: z
@@ -62,6 +64,7 @@ const editWorkItemSchema = z.object({
   priority: z.enum(WORK_ITEM_PRIORITIES),
   responsible_user_id: z.string().nullable(),
   sprint_id: z.string().nullable(),
+  phase_id: z.string().nullable(),
   attributes_json: z
     .string()
     .max(20000, "Attribute (JSON) zu groß")
@@ -102,6 +105,7 @@ export function EditWorkItemDialog({
 }: EditWorkItemDialogProps) {
   const { currentTenant } = useAuth()
   const { sprints } = useSprints(projectId)
+  const { phases } = usePhases(projectId)
   const [submitting, setSubmitting] = React.useState(false)
 
   const form = useForm<EditWorkItemValues>({
@@ -112,6 +116,7 @@ export function EditWorkItemDialog({
       priority: item.priority,
       responsible_user_id: item.responsible_user_id,
       sprint_id: item.sprint_id,
+      phase_id: item.phase_id,
       attributes_json: stringifyAttributes(item.attributes),
     },
   })
@@ -124,6 +129,7 @@ export function EditWorkItemDialog({
         priority: item.priority,
         responsible_user_id: item.responsible_user_id,
         sprint_id: item.sprint_id,
+        phase_id: item.phase_id,
         attributes_json: stringifyAttributes(item.attributes),
       })
     }
@@ -142,6 +148,7 @@ export function EditWorkItemDialog({
         priority: values.priority,
         responsible_user_id: values.responsible_user_id,
         sprint_id: values.sprint_id,
+        phase_id: values.phase_id,
         attributes,
       }
 
@@ -290,6 +297,49 @@ export function EditWorkItemDialog({
                         ))}
                       </SelectContent>
                     </Select>
+                    <FormMessage />
+                  </FormItem>
+                )}
+              />
+              <FormField
+                control={form.control}
+                name="phase_id"
+                render={({ field }) => (
+                  <FormItem>
+                    <FormLabel>Phase</FormLabel>
+                    <Select
+                      value={field.value ?? NO_PHASE_VALUE}
+                      onValueChange={(v) =>
+                        field.onChange(v === NO_PHASE_VALUE ? null : v)
+                      }
+                      disabled={submitting || phases.length === 0}
+                    >
+                      <FormControl>
+                        <SelectTrigger>
+                          <SelectValue
+                            placeholder={
+                              phases.length === 0
+                                ? "Keine Phasen vorhanden"
+                                : "Phase wählen"
+                            }
+                          />
+                        </SelectTrigger>
+                      </FormControl>
+                      <SelectContent>
+                        <SelectItem value={NO_PHASE_VALUE}>
+                          Keine Phase
+                        </SelectItem>
+                        {phases.map((p) => (
+                          <SelectItem key={p.id} value={p.id}>
+                            {p.sequence_number}. {p.name}
+                          </SelectItem>
+                        ))}
+                      </SelectContent>
+                    </Select>
+                    <FormDescription>
+                      Ordnet das Item zeitlich einer Projekt-Phase zu (für
+                      Wasserfall-WBS + Gantt).
+                    </FormDescription>
                     <FormMessage />
                   </FormItem>
                 )}

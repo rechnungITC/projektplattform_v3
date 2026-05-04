@@ -20,6 +20,7 @@ import {
 import {
   Form,
   FormControl,
+  FormDescription,
   FormField,
   FormItem,
   FormLabel,
@@ -35,6 +36,7 @@ import {
 } from "@/components/ui/select"
 import { Textarea } from "@/components/ui/textarea"
 import { useAuth } from "@/hooks/use-auth"
+import { usePhases } from "@/hooks/use-phases"
 import { useSprints } from "@/hooks/use-sprints"
 import { useWorkItems } from "@/hooks/use-work-items"
 import {
@@ -54,6 +56,7 @@ import { WorkItemKindBadge } from "./work-item-kind-badge"
 
 const NO_PARENT_VALUE = "__none__"
 const NO_SPRINT_VALUE = "__none__"
+const NO_PHASE_VALUE = "__none__"
 
 const newWorkItemSchema = z.object({
   title: z
@@ -71,6 +74,7 @@ const newWorkItemSchema = z.object({
   priority: z.enum(WORK_ITEM_PRIORITIES),
   responsible_user_id: z.string().nullable(),
   sprint_id: z.string().nullable(),
+  phase_id: z.string().nullable(),
 })
 
 type NewWorkItemValues = z.infer<typeof newWorkItemSchema>
@@ -96,6 +100,7 @@ export function NewWorkItemDialog({
   const { user, currentTenant } = useAuth()
   const { items: candidateParents } = useWorkItems(projectId)
   const { sprints } = useSprints(projectId)
+  const { phases } = usePhases(projectId)
 
   const [submitting, setSubmitting] = React.useState(false)
   const [selectedKind, setSelectedKind] = React.useState<WorkItemKind | null>(
@@ -122,6 +127,7 @@ export function NewWorkItemDialog({
       priority: "medium",
       responsible_user_id: user?.id ?? null,
       sprint_id: null,
+      phase_id: null,
     },
   })
 
@@ -136,6 +142,7 @@ export function NewWorkItemDialog({
         priority: "medium",
         responsible_user_id: user?.id ?? null,
         sprint_id: null,
+        phase_id: null,
       })
     }
   }, [open, initialKind, user?.id, form])
@@ -167,6 +174,7 @@ export function NewWorkItemDialog({
         priority: values.priority,
         responsible_user_id: values.responsible_user_id,
         sprint_id: sprintAvailable ? values.sprint_id : null,
+        phase_id: values.phase_id,
       }
 
       const response = await fetch(`/api/projects/${projectId}/work-items`, {
@@ -455,6 +463,50 @@ export function NewWorkItemDialog({
                 )}
               />
             ) : null}
+
+            <FormField
+              control={form.control}
+              name="phase_id"
+              render={({ field }) => (
+                <FormItem>
+                  <FormLabel>Phase</FormLabel>
+                  <Select
+                    value={field.value ?? NO_PHASE_VALUE}
+                    onValueChange={(v) =>
+                      field.onChange(v === NO_PHASE_VALUE ? null : v)
+                    }
+                    disabled={submitting || phases.length === 0}
+                  >
+                    <FormControl>
+                      <SelectTrigger>
+                        <SelectValue
+                          placeholder={
+                            phases.length === 0
+                              ? "Keine Phasen vorhanden"
+                              : "Phase wählen (optional)"
+                          }
+                        />
+                      </SelectTrigger>
+                    </FormControl>
+                    <SelectContent>
+                      <SelectItem value={NO_PHASE_VALUE}>
+                        Keine Phase
+                      </SelectItem>
+                      {phases.map((p) => (
+                        <SelectItem key={p.id} value={p.id}>
+                          {p.sequence_number}. {p.name}
+                        </SelectItem>
+                      ))}
+                    </SelectContent>
+                  </Select>
+                  <FormDescription>
+                    Ordnet das Item zeitlich einer Projekt-Phase zu (für
+                    Wasserfall-WBS + Gantt).
+                  </FormDescription>
+                  <FormMessage />
+                </FormItem>
+              )}
+            />
 
             <FormField
               control={form.control}
