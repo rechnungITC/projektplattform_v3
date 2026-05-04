@@ -201,6 +201,11 @@ export function BacklogClient({ projectId, tenantId: _tenantId }: BacklogClientP
             items={items}
             loading={itemsLoading}
             onSelect={handleSelect}
+            onEditRequest={setEditTarget}
+            onChangeStatusRequest={setStatusTarget}
+            onChangeParentRequest={setParentTarget}
+            onDeleteRequest={setDeleteTarget}
+            onChanged={refreshItems}
           />
         )}
       </div>

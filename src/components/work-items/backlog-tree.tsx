@@ -6,6 +6,7 @@ import {
   IndentDecrease,
   IndentIncrease,
   Loader2,
+  MoreHorizontal,
   PencilLine,
   Pilcrow,
 } from "lucide-react"
@@ -16,6 +17,13 @@ import { toast } from "sonner"
 import { Alert, AlertDescription } from "@/components/ui/alert"
 import { Button } from "@/components/ui/button"
 import { Card, CardContent } from "@/components/ui/card"
+import {
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuItem,
+  DropdownMenuSeparator,
+  DropdownMenuTrigger,
+} from "@/components/ui/dropdown-menu"
 import { Skeleton } from "@/components/ui/skeleton"
 import {
   Tooltip,
@@ -48,6 +56,16 @@ interface BacklogTreeProps {
   items: WorkItemWithProfile[]
   loading: boolean
   onSelect: (id: string) => void
+  /**
+   * Row-action callbacks (parity with BacklogList's 3-dots menu).
+   * Without these, the tree-view has only inline title + WBS-code edit
+   * and users have no obvious way to change status, priority,
+   * responsible, sprint, parent, or delete.
+   */
+  onEditRequest?: (item: WorkItemWithProfile) => void
+  onChangeStatusRequest?: (item: WorkItemWithProfile) => void
+  onChangeParentRequest?: (item: WorkItemWithProfile) => void
+  onDeleteRequest?: (item: WorkItemWithProfile) => void
   /** Re-fetch list after a mutation (parent_id change, wbs_code change). */
   onChanged?: () => void | Promise<void>
 }
@@ -85,6 +103,10 @@ export function BacklogTree({
   items,
   loading,
   onSelect,
+  onEditRequest,
+  onChangeStatusRequest,
+  onChangeParentRequest,
+  onDeleteRequest,
   onChanged,
 }: BacklogTreeProps) {
   const treeRef = React.useRef<TreeApi<TreeNode> | undefined>(undefined)
@@ -385,6 +407,10 @@ export function BacklogTree({
                   {...props}
                   onSelectItem={onSelect}
                   onEditWbsCode={setEditingWbsItem}
+                  onEditRequest={onEditRequest}
+                  onChangeStatusRequest={onChangeStatusRequest}
+                  onChangeParentRequest={onChangeParentRequest}
+                  onDeleteRequest={onDeleteRequest}
                   pendingMoveId={pendingMoveId}
                 />
               )}
@@ -432,6 +458,7 @@ function TreeHeader() {
       <div className="hidden w-[8%] text-right md:block">Roll-up</div>
       <div className="hidden w-[8%] text-right md:block">Gesamt</div>
       <div className="ml-auto w-[10%] text-right">Status</div>
+      <div className="w-8" aria-hidden />
     </div>
   )
 }
@@ -446,6 +473,10 @@ interface BacklogTreeRowProps {
   tree: TreeApi<TreeNode>
   onSelectItem: (id: string) => void
   onEditWbsCode: (item: WorkItemWithProfile) => void
+  onEditRequest?: (item: WorkItemWithProfile) => void
+  onChangeStatusRequest?: (item: WorkItemWithProfile) => void
+  onChangeParentRequest?: (item: WorkItemWithProfile) => void
+  onDeleteRequest?: (item: WorkItemWithProfile) => void
   pendingMoveId: string | null
 }
 
@@ -455,6 +486,10 @@ function BacklogTreeRow({
   tree,
   onSelectItem,
   onEditWbsCode,
+  onEditRequest,
+  onChangeStatusRequest,
+  onChangeParentRequest,
+  onDeleteRequest,
   pendingMoveId,
 }: BacklogTreeRowProps) {
   const item = node.data.item
@@ -653,6 +688,78 @@ function BacklogTreeRow({
       {/* Status */}
       <div className="ml-auto w-[10%] text-right">
         <WorkItemStatusBadge status={item.status} />
+      </div>
+
+      {/* Actions menu — parity with BacklogList row dropdown */}
+      <div className="w-8 text-right">
+        {onEditRequest ||
+        onChangeStatusRequest ||
+        onChangeParentRequest ||
+        onDeleteRequest ? (
+          <DropdownMenu>
+            <DropdownMenuTrigger asChild>
+              <Button
+                variant="ghost"
+                size="icon"
+                className="h-7 w-7"
+                aria-label={`Aktionen für „${item.title}"`}
+                onClick={(event) => event.stopPropagation()}
+              >
+                <MoreHorizontal className="h-4 w-4" aria-hidden />
+              </Button>
+            </DropdownMenuTrigger>
+            <DropdownMenuContent
+              align="end"
+              className="w-48"
+              onClick={(event) => event.stopPropagation()}
+            >
+              {onEditRequest ? (
+                <DropdownMenuItem
+                  onSelect={(event) => {
+                    event.preventDefault()
+                    onEditRequest(item)
+                  }}
+                >
+                  Bearbeiten
+                </DropdownMenuItem>
+              ) : null}
+              {onChangeStatusRequest ? (
+                <DropdownMenuItem
+                  onSelect={(event) => {
+                    event.preventDefault()
+                    onChangeStatusRequest(item)
+                  }}
+                >
+                  Status ändern
+                </DropdownMenuItem>
+              ) : null}
+              {onChangeParentRequest ? (
+                <DropdownMenuItem
+                  onSelect={(event) => {
+                    event.preventDefault()
+                    onChangeParentRequest(item)
+                  }}
+                >
+                  Übergeordnet ändern
+                </DropdownMenuItem>
+              ) : null}
+              {onDeleteRequest ? (
+                <>
+                  <DropdownMenuSeparator />
+                  <DropdownMenuItem
+                    className="text-destructive focus:text-destructive"
+                    onSelect={(event) => {
+                      event.preventDefault()
+                      onDeleteRequest(item)
+                    }}
+                  >
+                    Löschen
+                  </DropdownMenuItem>
+                </>
+              ) : null}
+            </DropdownMenuContent>
+          </DropdownMenu>
+        ) : null}
       </div>
     </div>
   )
