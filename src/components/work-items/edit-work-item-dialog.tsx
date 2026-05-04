@@ -65,6 +65,8 @@ const editWorkItemSchema = z.object({
   responsible_user_id: z.string().nullable(),
   sprint_id: z.string().nullable(),
   phase_id: z.string().nullable(),
+  planned_start: z.string().nullable(),
+  planned_end: z.string().nullable(),
   attributes_json: z
     .string()
     .max(20000, "Attribute (JSON) zu groß")
@@ -117,6 +119,8 @@ export function EditWorkItemDialog({
       responsible_user_id: item.responsible_user_id,
       sprint_id: item.sprint_id,
       phase_id: item.phase_id,
+      planned_start: item.planned_start ?? null,
+      planned_end: item.planned_end ?? null,
       attributes_json: stringifyAttributes(item.attributes),
     },
   })
@@ -130,6 +134,8 @@ export function EditWorkItemDialog({
         responsible_user_id: item.responsible_user_id,
         sprint_id: item.sprint_id,
         phase_id: item.phase_id,
+        planned_start: item.planned_start ?? null,
+        planned_end: item.planned_end ?? null,
         attributes_json: stringifyAttributes(item.attributes),
       })
     }
@@ -149,6 +155,8 @@ export function EditWorkItemDialog({
         responsible_user_id: values.responsible_user_id,
         sprint_id: values.sprint_id,
         phase_id: values.phase_id,
+        planned_start: values.planned_start,
+        planned_end: values.planned_end,
         attributes,
       }
 
@@ -339,6 +347,55 @@ export function EditWorkItemDialog({
                     <FormDescription>
                       Ordnet das Item zeitlich einer Projekt-Phase zu (für
                       Wasserfall-WBS + Gantt).
+                    </FormDescription>
+                    <FormMessage />
+                  </FormItem>
+                )}
+              />
+            </div>
+
+            <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
+              <FormField
+                control={form.control}
+                name="planned_start"
+                render={({ field }) => (
+                  <FormItem>
+                    <FormLabel>Geplanter Start</FormLabel>
+                    <FormControl>
+                      <Input
+                        type="date"
+                        value={field.value ?? ""}
+                        onChange={(e) =>
+                          field.onChange(e.target.value || null)
+                        }
+                        disabled={submitting}
+                      />
+                    </FormControl>
+                    <FormDescription>
+                      Eigenes Start-Datum (optional). Im Gantt sichtbar.
+                    </FormDescription>
+                    <FormMessage />
+                  </FormItem>
+                )}
+              />
+              <FormField
+                control={form.control}
+                name="planned_end"
+                render={({ field }) => (
+                  <FormItem>
+                    <FormLabel>Geplantes Ende</FormLabel>
+                    <FormControl>
+                      <Input
+                        type="date"
+                        value={field.value ?? ""}
+                        onChange={(e) =>
+                          field.onChange(e.target.value || null)
+                        }
+                        disabled={submitting}
+                      />
+                    </FormControl>
+                    <FormDescription>
+                      Eigenes End-Datum (optional). Im Gantt sichtbar.
                     </FormDescription>
                     <FormMessage />
                   </FormItem>

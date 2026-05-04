@@ -75,6 +75,8 @@ const newWorkItemSchema = z.object({
   responsible_user_id: z.string().nullable(),
   sprint_id: z.string().nullable(),
   phase_id: z.string().nullable(),
+  planned_start: z.string().nullable(),
+  planned_end: z.string().nullable(),
 })
 
 type NewWorkItemValues = z.infer<typeof newWorkItemSchema>
@@ -128,6 +130,8 @@ export function NewWorkItemDialog({
       responsible_user_id: user?.id ?? null,
       sprint_id: null,
       phase_id: null,
+      planned_start: null,
+      planned_end: null,
     },
   })
 
@@ -143,6 +147,8 @@ export function NewWorkItemDialog({
         responsible_user_id: user?.id ?? null,
         sprint_id: null,
         phase_id: null,
+        planned_start: null,
+        planned_end: null,
       })
     }
   }, [open, initialKind, user?.id, form])
@@ -175,6 +181,8 @@ export function NewWorkItemDialog({
         responsible_user_id: values.responsible_user_id,
         sprint_id: sprintAvailable ? values.sprint_id : null,
         phase_id: values.phase_id,
+        planned_start: values.planned_start,
+        planned_end: values.planned_end,
       }
 
       const response = await fetch(`/api/projects/${projectId}/work-items`, {
@@ -507,6 +515,55 @@ export function NewWorkItemDialog({
                 </FormItem>
               )}
             />
+
+            <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
+              <FormField
+                control={form.control}
+                name="planned_start"
+                render={({ field }) => (
+                  <FormItem>
+                    <FormLabel>Geplanter Start</FormLabel>
+                    <FormControl>
+                      <Input
+                        type="date"
+                        value={field.value ?? ""}
+                        onChange={(e) =>
+                          field.onChange(e.target.value || null)
+                        }
+                        disabled={submitting}
+                      />
+                    </FormControl>
+                    <FormDescription>
+                      Eigenes Start-Datum (optional). Im Gantt sichtbar.
+                    </FormDescription>
+                    <FormMessage />
+                  </FormItem>
+                )}
+              />
+              <FormField
+                control={form.control}
+                name="planned_end"
+                render={({ field }) => (
+                  <FormItem>
+                    <FormLabel>Geplantes Ende</FormLabel>
+                    <FormControl>
+                      <Input
+                        type="date"
+                        value={field.value ?? ""}
+                        onChange={(e) =>
+                          field.onChange(e.target.value || null)
+                        }
+                        disabled={submitting}
+                      />
+                    </FormControl>
+                    <FormDescription>
+                      Eigenes End-Datum (optional). Im Gantt sichtbar.
+                    </FormDescription>
+                    <FormMessage />
+                  </FormItem>
+                )}
+              />
+            </div>
 
             <FormField
               control={form.control}
