@@ -1019,4 +1019,41 @@ Tech Design ist **build-ready unter den drei Approval-Punkten**. Empfohlene näc
 _To be added by /qa._
 
 ### Deployment (32-c)
-_To be added by /deploy._
+
+**Sub-Phases 32-c-α + 32-c-β deployed: 2026-05-04**
+
+**Production URL:** https://projektplattform-v3.vercel.app
+**Admin UI:** https://projektplattform-v3.vercel.app/settings/tenant/ai-keys (URL rename to `/ai-providers` deferred to 32-c-γ)
+
+**Deployment commits:**
+- `7c58887` — backend phase 32-c-α: generic schema + RPCs + data-copy helper
+- `b7ea5a1` — backend phase 32-c-β: OllamaProvider + router refactor + hard-cutover routes
+- Auto-deploy to Vercel via push to `main`.
+
+**Production verification (2026-05-04):**
+- ✅ HTTP 307 (auth-gate redirect) on all five new endpoints:
+  - `GET    /api/tenants/[id]/ai-providers`
+  - `GET    /api/tenants/[id]/ai-providers/[provider]`
+  - `PUT    /api/tenants/[id]/ai-providers/[provider]`
+  - `DELETE /api/tenants/[id]/ai-providers/[provider]`
+  - `POST   /api/tenants/[id]/ai-providers/[provider]/validate`
+- ✅ Old `/api/tenants/[id]/ai-keys/...` routes deleted (Hard-Cutover Fork G.3); 404 after auth-middleware passes.
+- ✅ DB schema live: `tenant_ai_providers` (0 rows), `tenant_ai_keys` (0 rows — legacy), `decrypt_tenant_ai_provider`, `record_tenant_ai_provider_audit`, `migrate_tenant_ai_keys_to_providers` all present.
+- ✅ Frontend page `/settings/tenant/ai-keys` returns 200 (calls new `/ai-providers` endpoints internally).
+
+**Migrations applied (cumulative for α + β):**
+- `20260504400000_proj32c_alpha_tenant_ai_providers.sql`
+- `20260504400100_proj32c_alpha_data_copy_rpc.sql`
+- (β was app-only — no new migrations)
+
+**Behavioral change in production after this deploy:**
+- Class-3 + tenant Anthropic key now BLOCKED (was: routed to Anthropic). Anthropic is cloud — only Ollama keeps Class-3 strictly local.
+- Affected tenants: 0 (`tenant_ai_keys` empty at deploy time).
+
+**Rollback path (if needed):**
+1. Vercel Dashboard → Deployments → promote previous working deployment (commit `7c58887` for α-only state, or `23753b2` for pre-32c state).
+2. Schema rollback for both α tables: `drop function public.decrypt_tenant_ai_provider(uuid, text); drop function public.record_tenant_ai_provider_audit(uuid, text, text, text, text); drop function public.migrate_tenant_ai_keys_to_providers(); drop table public.tenant_ai_providers cascade;` then revert audit_log_entries CHECK constraint to remove `tenant_ai_providers` + `tenant_ai_provider_priority` from the whitelist.
+
+**Tag:** `v1.32cb-PROJ-32` — covers the cumulative α + β state.
+
+**Next step:** 32-c-γ — priority matrix table + admin UI (Ollama Card + Preset/Matrix) + 32a-cleanup-migration.
