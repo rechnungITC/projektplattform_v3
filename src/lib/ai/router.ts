@@ -32,6 +32,7 @@ import {
   classifyNarrativeAutoContext,
   classifyRiskAutoContext,
 } from "./classify"
+import { resolveAnthropicKey, type ResolvedAIKey } from "./key-resolver"
 import { AnthropicProvider } from "./providers/anthropic"
 import { StubProvider } from "./providers/stub"
 import type { AIProvider } from "./providers/types"
@@ -90,30 +91,52 @@ async function loadTenantOverrides(
   }
 }
 
-function selectProvider(
+async function selectProvider(
+  supabase: SupabaseClient,
+  tenantId: string,
   classification: DataClass,
-  tenantConfig: AiProviderConfig
-): ProviderChoice {
+  tenantConfig: AiProviderConfig,
+): Promise<ProviderChoice> {
   // `externalBlocked` semantics: the run *wanted* to go external but was
   // blocked. That's the case for env-level kill-switch (EXTERNAL_AI_DISABLED)
   // and Class-3 payloads. A tenant config of external_provider='none' is a
   // deliberate config choice — not a block — so it doesn't flip this flag.
-  const externalDisabledByEnv = isExternalAIBlocked()
-  const externalDisabledByClass = classification === 3
-  const tenantPicksLocal = tenantConfig.external_provider === "none"
-  const wantsExternal =
-    !externalDisabledByEnv && !externalDisabledByClass && !tenantPicksLocal
-  const apiKeyPresent = Boolean(process.env.ANTHROPIC_API_KEY)
+  //
+  // PROJ-32a: when the tenant DID pick anthropic, key-resolver decides
+  // tenant-key vs platform-key vs blocked (Class-3 + no tenant-key).
 
-  if (wantsExternal && apiKeyPresent) {
+  // PROJ-32a: always run the key resolver for external providers.
+  // For non-external providers ('none'), the kill-switch / class-3 logic
+  // still needs to flag externalBlocked (preserved from the pre-32a
+  // behaviour). We compute that locally without an RPC round-trip.
+  if (tenantConfig.external_provider === "none") {
+    const externalDisabledByEnv = isExternalAIBlocked()
+    const externalDisabledByClass = classification === 3
     return {
-      provider: new AnthropicProvider(tenantConfig.model_id),
-      externalBlocked: false,
+      provider: new StubProvider(),
+      externalBlocked: externalDisabledByEnv || externalDisabledByClass,
     }
   }
+
+  const resolved: ResolvedAIKey = await resolveAnthropicKey({
+    supabase,
+    tenantId,
+    provider: "anthropic",
+    dataClass: classification,
+  })
+
+  if (resolved.source === "blocked") {
+    return {
+      provider: new StubProvider(),
+      externalBlocked:
+        resolved.reason === "external_ai_disabled" ||
+        resolved.reason === "class3_no_tenant_key",
+    }
+  }
+
   return {
-    provider: new StubProvider(),
-    externalBlocked: externalDisabledByEnv || externalDisabledByClass,
+    provider: new AnthropicProvider(tenantConfig.model_id, resolved.key),
+    externalBlocked: false,
   }
 }
 
@@ -188,7 +211,9 @@ export async function invokeRiskGeneration({
     context,
     overrides.privacyDefault as DataClass,
   )
-  const { provider, externalBlocked } = selectProvider(
+  const { provider, externalBlocked } = await selectProvider(
+    supabase,
+    tenantId,
     classification,
     overrides.providerConfig,
   )
@@ -317,7 +342,9 @@ export async function invokeNarrativeGeneration({
     context,
     overrides.privacyDefault as DataClass,
   )
-  const { provider, externalBlocked } = selectProvider(
+  const { provider, externalBlocked } = await selectProvider(
+    supabase,
+    tenantId,
     classification,
     overrides.providerConfig,
   )

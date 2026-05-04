@@ -1,6 +1,6 @@
 # PROJ-32: Tenant Custom AI Provider Keys (Multi-Provider)
 
-## Status: Architected (Phase 32-a — Tech Design locked, ready für /backend)
+## Status: In Progress (Phase 32-a — backend + frontend implemented, ready für /qa)
 
 **Created:** 2026-05-04
 **Last Updated:** 2026-05-04
@@ -341,7 +341,53 @@ Tech Design ist **build-ready**. Empfohlene nächste Schritte:
 Weitere Slices (32b/c/d) brauchen eigene `/requirements`-Pässe, sobald 32a in Production stabil ist.
 
 ## Implementation Notes
-_To be added by /backend + /frontend._
+
+### Sub-Phase 32a.1 — Schema + key-resolver (Backend)
+
+**Migrations applied to production:**
+- `20260504300000_proj32a_tenant_ai_keys.sql`
+  - `tenant_ai_keys` table: PK (tenant_id, provider), FK to tenants ON DELETE CASCADE, FK to profiles ON DELETE SET NULL.
+  - 4 RLS policies (admin-only SELECT/INSERT/UPDATE/DELETE).
+  - `decrypt_tenant_ai_key(uuid, text)` SECURITY DEFINER RPC — member-callable for AI routing, returns plaintext or `null`. Defense-in-depth via `is_tenant_member` gate.
+- `20260504310000_proj32a_audit_extension_and_rpc.sql`
+  - `audit_log_entries.entity_type` CHECK extended with `'tenant_ai_keys'` (preserves all 29 prior entity types).
+  - `record_tenant_ai_key_audit(uuid, text, text, text, text)` SECURITY DEFINER RPC — admin-only audit-write. Stores fingerprint pairs, never plaintext keys.
+
+**New library code:**
+- `src/lib/ai/key-resolver.ts` — Fork 4 + 6 lock. Per-request `React.cache()` + 3-source resolution (tenant / platform / blocked). 14 Vitest tests covering all 4 key-states × 3 dataClasses + kill-switch + misconfig + RPC errors.
+- `src/lib/ai/anthropic-key-validator.ts` — Fork 3 lock. Raw fetch GET `/v1/models`, 5s timeout, status mapping (200→valid / 401-403→invalid / 429→rate_limited / timeout-5xx→unknown). 12 Vitest tests covering all status mappings + header verification + fingerprint builder edge cases.
+
+### Sub-Phase 32a.2 — API Routes + Validation (Backend)
+
+**New API routes:**
+- `GET    /api/tenants/[id]/ai-keys/[provider]` — status + fingerprint metadata. Never returns the encrypted key.
+- `PUT    /api/tenants/[id]/ai-keys/[provider]` — body `{key}` Zod-validated (`sk-ant-` prefix, 30-500 chars), test-call against Anthropic, encrypt via PROJ-14 RPCs, upsert, audit. Rejects with 422 on 401/403 from Anthropic.
+- `POST   /api/tenants/[id]/ai-keys/[provider]/validate` — re-test stored key without changing it. Updates `last_validated_at` + status. Audits as `action='validate'`.
+- `DELETE /api/tenants/[id]/ai-keys/[provider]` — idempotent delete + audit.
+- All 4 routes are admin-only via `requireTenantAdmin`. 14 Vitest integration tests covering authn, authz, status mapping, encryption flow, key-shape validation, and confirming the plain key never appears in responses.
+
+**Audit-trail:** Every create/rotate/delete/validate goes through `record_tenant_ai_key_audit`. Old + new fingerprint stored as JSONB. Plain key never logged anywhere.
+
+### Sub-Phase 32a.3 — AI-Router Wiring + Admin UI
+
+**Router refactor (Fork 2 + Fork 6 locked):**
+- `src/lib/ai/providers/anthropic.ts` — `AnthropicProvider` constructor now accepts optional `apiKey`. When set, uses `createAnthropic({ apiKey })` factory; when absent, falls back to env-driven default import. Both `generateRiskSuggestions` and `generateNarrative` use the per-instance `sdkProvider`.
+- `src/lib/ai/router.ts` — `selectProvider` is now async + accepts `(supabase, tenantId, classification, tenantConfig)`. When tenant config picks `anthropic`, calls `resolveAnthropicKey()` and passes the resolved key to the AnthropicProvider constructor. When tenant config picks `none`, preserves the prior class-3 / kill-switch externalBlocked semantics. Both `invokeRiskGeneration` and `invokeNarrativeGeneration` await the new signature.
+
+**Admin UI:**
+- New page `src/app/(app)/settings/tenant/ai-keys/page.tsx` + client `src/components/settings/tenant/ai-keys/ai-keys-page-client.tsx`.
+- Card with 4 states (not_set / valid / invalid / unknown) — each with the right action set (Save / Re-Test / Rotate / Delete).
+- Client-side key-shape validation (`sk-ant-` prefix, ≥30 chars) before allowing Save.
+- AlertDialog for Delete with class-3-block-warning explaining the consequence.
+- Status badges (CheckCircle2 / AlertCircle / HelpCircle / outline) for instant visual state read.
+- `KeyRound` icon entry "AI-Keys" in the global sidebar settings group (admin-only, between Risk-Score and Mitglieder).
+
+**Test summary:** 881/881 vitest tests passing (51 AI-lib tests + 14 route integration tests + 12 validator tests + the rest pre-existing). `next build` clean. TypeScript clean. ESLint clean.
+
+**Out of scope for 32a (intentional):**
+- E2E Playwright tests for the admin flow → /qa
+- Live Red-Team against RLS via authenticated session → /qa
+- 32b (OpenAI + Google), 32c (Ollama + provider priority), 32d (cost caps + dashboard) — separate slices.
 
 ## QA Test Results
 _To be added by /qa._

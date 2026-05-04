@@ -7,9 +7,16 @@
  *
  * Default model: claude-opus-4-7 (locked design choice). Override via
  * the ANTHROPIC_MODEL env var without code changes.
+ *
+ * PROJ-32a: the constructor now accepts an explicit `apiKey`. When set,
+ * a per-instance `createAnthropic({ apiKey })` factory is used so that
+ * tenant-supplied keys flow through here without leaking via env vars.
+ * When omitted, falls back to the default env-driven `anthropic` import
+ * (platform-key path).
  */
 
-import { anthropic } from "@ai-sdk/anthropic"
+import { anthropic as defaultAnthropic, createAnthropic } from "@ai-sdk/anthropic"
+import type { AnthropicProvider as AnthropicSDKProvider } from "@ai-sdk/anthropic"
 import { generateObject } from "ai"
 import { z } from "zod"
 
@@ -217,9 +224,14 @@ function buildNarrativePrompt(request: NarrativeGenerationRequest): string {
 export class AnthropicProvider implements AIProvider {
   readonly name = "anthropic" as const
   readonly modelId: string
+  /** When set, a tenant-specific provider factory is used. */
+  private readonly sdkProvider: AnthropicSDKProvider
 
-  constructor(modelId?: string) {
+  constructor(modelId?: string, apiKey?: string) {
     this.modelId = modelId ?? process.env.ANTHROPIC_MODEL ?? "claude-opus-4-7"
+    this.sdkProvider = apiKey
+      ? createAnthropic({ apiKey })
+      : defaultAnthropic
   }
 
   async generateRiskSuggestions(
@@ -227,7 +239,7 @@ export class AnthropicProvider implements AIProvider {
   ): Promise<RiskGenerationOutput> {
     const start = Date.now()
     const result = await generateObject({
-      model: anthropic(this.modelId),
+      model: this.sdkProvider(this.modelId),
       schema: ResponseSchema,
       system: SYSTEM_PROMPT,
       prompt: buildUserPrompt(request),
@@ -260,7 +272,7 @@ export class AnthropicProvider implements AIProvider {
   ): Promise<NarrativeGenerationOutput> {
     const start = Date.now()
     const result = await generateObject({
-      model: anthropic(this.modelId),
+      model: this.sdkProvider(this.modelId),
       schema: NarrativeResponseSchema,
       system: NARRATIVE_SYSTEM_PROMPT,
       prompt: buildNarrativePrompt(request),
