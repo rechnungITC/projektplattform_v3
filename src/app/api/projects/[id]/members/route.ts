@@ -7,15 +7,12 @@ import {
   requireProjectAccess,
 } from "@/app/api/_lib/route-helpers"
 
+import { addMemberSchema, normalizeMemberPayload } from "./_schema"
+
 // POST /api/projects/[id]/members — add a project member.
 // Pre-checked via `requireProjectAccess(..., 'manage_members')` for clean 403
 // instead of falling through to RLS denial. RLS still gates the INSERT and
 // the cross-tenant trigger guards the target user.
-
-const addMemberSchema = z.object({
-  user_id: z.string().uuid(),
-  role: z.enum(["lead", "editor", "viewer"]),
-})
 
 export async function POST(
   request: Request,
@@ -58,14 +55,16 @@ export async function POST(
   )
   if (access.error) return access.error
 
+  // Spread-Pattern: schema is the single source of truth.
+  const insertPayload = {
+    ...normalizeMemberPayload(parsed.data),
+    project_id: projectId,
+    created_by: userId,
+  }
+
   const { data: row, error } = await supabase
     .from("project_memberships")
-    .insert({
-      project_id: projectId,
-      user_id: parsed.data.user_id,
-      role: parsed.data.role,
-      created_by: userId,
-    })
+    .insert(insertPayload)
     .select()
     .single()
 

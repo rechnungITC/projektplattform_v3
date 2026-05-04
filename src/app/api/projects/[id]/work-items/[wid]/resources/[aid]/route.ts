@@ -10,6 +10,10 @@ import {
   getAuthenticatedUserId,
   requireProjectAccess,
 } from "../../../../../../_lib/route-helpers"
+import {
+  normalizeResourceAllocationPayload,
+  resourceAllocationPatchSchema as patchSchema,
+} from "../_schema"
 
 /**
  * PROJ-24 Phase δ — best-effort cost-line synthesis hook.
@@ -49,14 +53,6 @@ async function safeSynthesizeCostLines(
 
 const SELECT_COLUMNS =
   "id, tenant_id, project_id, work_item_id, resource_id, allocation_pct, created_by, created_at, updated_at"
-
-const patchSchema = z
-  .object({
-    allocation_pct: z.number().min(0).max(200).optional(),
-  })
-  .refine((val) => Object.keys(val).length > 0, {
-    message: "At least one field must be provided.",
-  })
 
 interface Ctx {
   params: Promise<{ id: string; wid: string; aid: string }>
@@ -102,9 +98,12 @@ export async function PATCH(request: Request, ctx: Ctx) {
   )
   if (moduleDenial) return moduleDenial
 
+  // Spread-Pattern: schema is the single source of truth.
+  const update = normalizeResourceAllocationPayload(parsed.data)
+
   const { data: row, error } = await supabase
     .from("work_item_resources")
-    .update({ allocation_pct: parsed.data.allocation_pct })
+    .update(update)
     .eq("id", aid)
     .eq("project_id", projectId)
     .eq("work_item_id", wid)

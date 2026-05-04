@@ -255,3 +255,49 @@ describe("POST /api/projects/[id]/members", () => {
     expect((await res.json()).error.code).toBe("already_member")
   })
 })
+
+// ---------------------------------------------------------------------------
+// Schema-vs-DB-Payload Drift Detection (POST)
+// ---------------------------------------------------------------------------
+describe("POST /api/projects/[id]/members — schema/DB-payload drift", () => {
+  it("forwards every Zod-schema field to the DB insert payload", async () => {
+    const { addMemberSchema } = await import("./_schema")
+    getUserMock.mockResolvedValue({ data: { user: { id: USER_ID } } })
+    setupAccessChains({ tenantRole: "admin" })
+
+    const kitchenSink = {
+      user_id: TARGET_USER_ID,
+      role: "editor" as const,
+    }
+
+    const schemaKeys = Object.keys(addMemberSchema.shape)
+    for (const key of schemaKeys) {
+      expect(kitchenSink, `kitchen sink missing key '${key}'`).toHaveProperty(
+        key
+      )
+    }
+
+    const insertChain = newQueryChain()
+    insertChain.single.mockResolvedValue({
+      data: { id: "drift-1", ...kitchenSink, project_id: PROJECT_ID },
+      error: null,
+    })
+    enqueue("project_memberships", insertChain)
+
+    const res = await POST(makePostRequest(kitchenSink), makeContext())
+    expect(res.status).toBe(201)
+
+    const arg = insertChain.insert.mock.calls[0]?.[0] as Record<string, unknown>
+    expect(arg, "insert was not called").toBeTruthy()
+
+    for (const key of schemaKeys) {
+      const expected = (kitchenSink as Record<string, unknown>)[key]
+      expect(arg[key], `field '${key}' was dropped before reaching DB`).toBe(
+        expected
+      )
+    }
+
+    expect(arg.project_id).toBe(PROJECT_ID)
+    expect(arg.created_by).toBe(USER_ID)
+  })
+})

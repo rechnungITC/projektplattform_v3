@@ -10,6 +10,10 @@ import {
   getAuthenticatedUserId,
   requireProjectAccess,
 } from "../../../../../_lib/route-helpers"
+import {
+  normalizeResourceAllocationPayload,
+  resourceAllocationCreateSchema as createSchema,
+} from "./_schema"
 
 // PROJ-11 — work-item allocation join.
 // GET  /api/projects/[id]/work-items/[wid]/resources
@@ -17,11 +21,6 @@ import {
 
 const SELECT_COLUMNS =
   "id, tenant_id, project_id, work_item_id, resource_id, allocation_pct, created_by, created_at, updated_at"
-
-const createSchema = z.object({
-  resource_id: z.string().uuid(),
-  allocation_pct: z.number().min(0).max(200),
-})
 
 interface Ctx {
   params: Promise<{ id: string; wid: string }>
@@ -107,12 +106,12 @@ export async function POST(request: Request, ctx: Ctx) {
   if (wiErr) return apiError("read_failed", wiErr.message, 500)
   if (!wi) return apiError("not_found", "Work item not found.", 404)
 
+  // Spread-Pattern: schema is the single source of truth.
   const insertPayload = {
+    ...normalizeResourceAllocationPayload(parsed.data),
     tenant_id: access.project.tenant_id,
     project_id: projectId,
     work_item_id: wid,
-    resource_id: parsed.data.resource_id,
-    allocation_pct: parsed.data.allocation_pct,
     created_by: userId,
   }
 

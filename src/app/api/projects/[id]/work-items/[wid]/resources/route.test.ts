@@ -330,3 +330,54 @@ describe("GET allocations", () => {
     expect(body.allocations).toHaveLength(1)
   })
 })
+
+// ---------------------------------------------------------------------------
+// Schema-vs-DB-Payload Drift Detection (POST)
+// ---------------------------------------------------------------------------
+describe("POST /api/projects/[id]/work-items/[wid]/resources — schema/DB-payload drift", () => {
+  it("forwards every Zod-schema field to the DB insert payload", async () => {
+    const { resourceAllocationCreateSchema } = await import("./_schema")
+    getUserMock.mockResolvedValue({ data: { user: { id: USER_ID } } })
+    workItemChain.maybeSingle.mockResolvedValue({
+      data: { id: WORK_ITEM_ID, project_id: PROJECT_ID },
+      error: null,
+    })
+
+    const kitchenSink = {
+      resource_id: RESOURCE_ID,
+      allocation_pct: 75,
+    }
+
+    const schemaKeys = Object.keys(resourceAllocationCreateSchema.shape)
+    for (const key of schemaKeys) {
+      expect(kitchenSink, `kitchen sink missing key '${key}'`).toHaveProperty(
+        key
+      )
+    }
+
+    insertChain.single.mockResolvedValue({
+      data: { id: "drift-1", ...kitchenSink, tenant_id: TENANT_ID },
+      error: null,
+    })
+
+    const res = await POST(makePost(kitchenSink), {
+      params: Promise.resolve({ id: PROJECT_ID, wid: WORK_ITEM_ID }),
+    })
+    expect(res.status).toBe(201)
+
+    const arg = insertChain.insert.mock.calls[0]?.[0] as Record<string, unknown>
+    expect(arg, "insert was not called").toBeTruthy()
+
+    for (const key of schemaKeys) {
+      const expected = (kitchenSink as Record<string, unknown>)[key]
+      expect(arg[key], `field '${key}' was dropped before reaching DB`).toBe(
+        expected
+      )
+    }
+
+    expect(arg.tenant_id).toBe(TENANT_ID)
+    expect(arg.project_id).toBe(PROJECT_ID)
+    expect(arg.work_item_id).toBe(WORK_ITEM_ID)
+    expect(arg.created_by).toBe(USER_ID)
+  })
+})

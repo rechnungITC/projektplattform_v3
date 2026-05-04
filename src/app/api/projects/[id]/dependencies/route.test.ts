@@ -271,3 +271,121 @@ describe("POST /api/projects/[id]/dependencies — polymorphic body shape", () =
     expect(body.error.code).toBe("self_dependency")
   })
 })
+
+// ---------------------------------------------------------------------------
+// Schema-vs-DB-Payload Drift Detection (POST)
+// ---------------------------------------------------------------------------
+// Two body shapes — both must produce a complete `NormalizedInsert` payload.
+describe("POST /api/projects/[id]/dependencies — schema/DB-payload drift", () => {
+  it("polymorphic shape: every schema field reaches the DB insert", async () => {
+    const { polymorphicSchema } = await import("./_schema")
+    getUserMock.mockResolvedValue({ data: { user: { id: USER_ID } } })
+    setProject({ id: PROJECT_ID, tenant_id: TENANT_ID })
+
+    const kitchenSink = {
+      from_type: "work_package" as const,
+      from_id: PRED_ID,
+      to_type: "todo" as const,
+      to_id: SUCC_ID,
+      constraint_type: "FF" as const,
+      lag_days: 3,
+    }
+
+    const schemaKeys = Object.keys(polymorphicSchema.shape)
+    for (const key of schemaKeys) {
+      expect(kitchenSink, `kitchen sink missing key '${key}'`).toHaveProperty(
+        key
+      )
+    }
+
+    dependenciesInsertChain.single.mockResolvedValue({
+      data: { id: "drift-1", ...kitchenSink, tenant_id: TENANT_ID },
+      error: null,
+    })
+
+    const res = await POST(makePost(kitchenSink), {
+      params: Promise.resolve({ id: PROJECT_ID }),
+    })
+    expect(res.status).toBe(201)
+
+    const arg = dependenciesInsertChain.insert.mock.calls[0]?.[0] as Record<
+      string,
+      unknown
+    >
+    expect(arg, "insert was not called").toBeTruthy()
+
+    for (const key of schemaKeys) {
+      const expected = (kitchenSink as Record<string, unknown>)[key]
+      expect(arg[key], `field '${key}' was dropped before reaching DB`).toBe(
+        expected
+      )
+    }
+
+    expect(arg.tenant_id).toBe(TENANT_ID)
+    expect(arg.created_by).toBe(USER_ID)
+  })
+
+  it("legacy shape: every schema field is translated and reaches the DB insert", async () => {
+    const { legacySchema } = await import("./_schema")
+    getUserMock.mockResolvedValue({ data: { user: { id: USER_ID } } })
+    setProject({ id: PROJECT_ID, tenant_id: TENANT_ID })
+    setWorkItems([
+      { id: PRED_ID, project_id: PROJECT_ID, kind: "work_package" },
+      { id: SUCC_ID, project_id: PROJECT_ID, kind: "todo" },
+    ])
+
+    const kitchenSink = {
+      predecessor_id: PRED_ID,
+      successor_id: SUCC_ID,
+      type: "SS" as const,
+      lag_days: 5,
+    }
+
+    const schemaKeys = Object.keys(legacySchema.shape)
+    for (const key of schemaKeys) {
+      expect(kitchenSink, `kitchen sink missing key '${key}'`).toHaveProperty(
+        key
+      )
+    }
+
+    dependenciesInsertChain.single.mockResolvedValue({
+      data: {
+        id: "drift-2",
+        from_type: "work_package",
+        from_id: PRED_ID,
+        to_type: "todo",
+        to_id: SUCC_ID,
+        constraint_type: "SS",
+        lag_days: 5,
+        tenant_id: TENANT_ID,
+      },
+      error: null,
+    })
+
+    const res = await POST(makePost(kitchenSink), {
+      params: Promise.resolve({ id: PROJECT_ID }),
+    })
+    expect(res.status).toBe(201)
+
+    const arg = dependenciesInsertChain.insert.mock.calls[0]?.[0] as Record<
+      string,
+      unknown
+    >
+    expect(arg, "insert was not called").toBeTruthy()
+
+    // Legacy → polymorphic translation matrix:
+    //   predecessor_id → from_id
+    //   successor_id   → to_id
+    //   type           → constraint_type
+    //   (work_items.kind lookup) → from_type / to_type
+    //   lag_days       → lag_days
+    expect(arg.from_id).toBe(kitchenSink.predecessor_id)
+    expect(arg.to_id).toBe(kitchenSink.successor_id)
+    expect(arg.constraint_type).toBe(kitchenSink.type)
+    expect(arg.lag_days).toBe(kitchenSink.lag_days)
+    expect(arg.from_type).toBe("work_package") // from work_items.kind
+    expect(arg.to_type).toBe("todo")
+    expect(arg.tenant_id).toBe(TENANT_ID)
+    expect(arg.created_by).toBe(USER_ID)
+  })
+})

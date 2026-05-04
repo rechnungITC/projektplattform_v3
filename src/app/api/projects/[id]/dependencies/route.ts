@@ -3,6 +3,12 @@ import { z } from "zod"
 
 import { apiError, getAuthenticatedUserId } from "@/app/api/_lib/route-helpers"
 
+import {
+  type DependencyEntityType,
+  legacySchema,
+  polymorphicSchema,
+} from "./_schema"
+
 // PROJ-9 Round 2 — polymorphic dependencies.
 //
 // This project-scoped endpoint accepts BOTH the legacy Round-1 body shape
@@ -21,24 +27,6 @@ import { apiError, getAuthenticatedUserId } from "@/app/api/_lib/route-helpers"
 //   - cycle prevention (`tg_dep_prevent_polymorphic_cycle`)
 //   - UNIQUE (from_type, from_id, to_type, to_id, constraint_type)
 //   - no self-edge
-
-const polymorphicSchema = z.object({
-  from_type: z.enum(["project", "phase", "work_package", "todo"]),
-  from_id: z.string().uuid(),
-  to_type: z.enum(["project", "phase", "work_package", "todo"]),
-  to_id: z.string().uuid(),
-  constraint_type: z.enum(["FS", "SS", "FF", "SF"]).default("FS"),
-  lag_days: z.number().int().optional(),
-})
-
-const legacySchema = z.object({
-  predecessor_id: z.string().uuid(),
-  successor_id: z.string().uuid(),
-  type: z.enum(["FS", "SS", "FF", "SF"]).default("FS"),
-  lag_days: z.number().int().optional(),
-})
-
-type DependencyEntityType = "project" | "phase" | "work_package" | "todo"
 
 interface NormalizedInsert {
   from_type: DependencyEntityType
