@@ -84,8 +84,10 @@ export async function GET(request: Request) {
 
   const safeRows = (rows ?? []) as unknown as PendingRow[]
   let remindersSent = 0
+  let approverRemindersSent = 0
   let expired = 0
   const errors: string[] = []
+  const appBaseUrl = process.env.NEXT_PUBLIC_APP_URL ?? ""
 
   for (const row of safeRows) {
     if (!row.decisions || row.decisions.is_revised) continue
@@ -154,10 +156,12 @@ export async function GET(request: Request) {
       continue
     }
 
+    const daysLeft = Math.ceil(
+      (deadline.getTime() - now.getTime()) / (1000 * 60 * 60 * 24),
+    )
+
+    // 2a) PM notification (existing behaviour).
     if (responsibleUserId) {
-      const daysLeft = Math.ceil(
-        (deadline.getTime() - now.getTime()) / (1000 * 60 * 60 * 24),
-      )
       await supabase.from("communication_outbox").insert({
         tenant_id: row.tenant_id,
         project_id: row.decisions.project_id,
@@ -172,10 +176,98 @@ export async function GET(request: Request) {
           decision_id: row.decision_id,
           source: "proj31_deadline_reminder",
           days_left: daysLeft,
+          target: "pm",
         },
         status: "queued",
         created_by: responsibleUserId,
       })
+    }
+
+    // 2b) Approver-side reminder — every nominated approver who has not
+    // finally responded gets their own outbox row. Internal approvers
+    // (linked_user_id) get an in-app notification; external approvers
+    // (contact_email + still-valid magic-link) get an e-mail with a
+    // direct approve-link. Expired magic-link approvers are skipped
+    // (token renewal is a separate slice).
+    type ApproverReminderRow = {
+      id: string
+      response: string | null
+      magic_link_token: string
+      magic_link_expires_at: string | null
+      stakeholders: {
+        name: string | null
+        linked_user_id: string | null
+        contact_email: string | null
+      } | null
+    }
+    const { data: approverList } = await supabase
+      .from("decision_approvers")
+      .select(
+        "id, response, magic_link_token, magic_link_expires_at, " +
+          "stakeholders!decision_approvers_stakeholder_id_fkey(name, linked_user_id, contact_email)",
+      )
+      .eq("decision_id", row.decision_id)
+      .is("response", null)
+
+    for (const ap of (approverList ?? []) as unknown as ApproverReminderRow[]) {
+      const stakeholder = ap.stakeholders
+      if (!stakeholder) continue
+      const subject = `Frist-Erinnerung: "${row.decisions.title}" — bitte um Ihre Zustimmung`
+      const baseBody =
+        `Die Decision "${row.decisions.title}" (${projectName}) wartet auf Ihre Zustimmung.\n` +
+        `Frist: ${deadline.toLocaleDateString("de-DE")} (${daysLeft} ${daysLeft === 1 ? "Tag" : "Tage"} verbleiben).\n\n` +
+        `Bitte freigeben, ablehnen oder weitere Informationen anfordern.`
+
+      if (stakeholder.linked_user_id) {
+        await supabase.from("communication_outbox").insert({
+          tenant_id: row.tenant_id,
+          project_id: row.decisions.project_id,
+          channel: "internal",
+          recipient: stakeholder.linked_user_id,
+          subject,
+          body: appBaseUrl
+            ? `${baseBody}\n\nÖffnen: ${appBaseUrl}/approvals`
+            : baseBody,
+          metadata: {
+            decision_id: row.decision_id,
+            approver_id: ap.id,
+            source: "proj31_deadline_reminder_approver",
+            target: "approver_internal",
+            days_left: daysLeft,
+          },
+          status: "queued",
+          created_by: stakeholder.linked_user_id,
+        })
+        approverRemindersSent++
+      } else if (stakeholder.contact_email) {
+        const linkExpired =
+          ap.magic_link_expires_at &&
+          new Date(ap.magic_link_expires_at).getTime() < now.getTime()
+        if (linkExpired) continue
+        const approveUrl = appBaseUrl
+          ? `${appBaseUrl}/approve/${ap.magic_link_token}`
+          : null
+        await supabase.from("communication_outbox").insert({
+          tenant_id: row.tenant_id,
+          project_id: row.decisions.project_id,
+          channel: "email",
+          recipient: stakeholder.contact_email,
+          subject,
+          body: approveUrl
+            ? `${baseBody}\n\nApprove-Link: ${approveUrl}\n\n(Der Link läuft am ${ap.magic_link_expires_at ? new Date(ap.magic_link_expires_at).toLocaleDateString("de-DE") : "Tokens gemäß Konfiguration"} ab.)`
+            : baseBody,
+          metadata: {
+            decision_id: row.decision_id,
+            approver_id: ap.id,
+            source: "proj31_deadline_reminder_approver",
+            target: "approver_external",
+            days_left: daysLeft,
+          },
+          status: "queued",
+          created_by: responsibleUserId ?? null,
+        })
+        approverRemindersSent++
+      }
     }
 
     await supabase
@@ -196,6 +288,7 @@ export async function GET(request: Request) {
 
   return NextResponse.json({
     remindersSent,
+    approverRemindersSent,
     expired,
     inspected: safeRows.length,
     errors,
