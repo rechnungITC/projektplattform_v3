@@ -189,3 +189,69 @@ describe("GET /api/wizard-drafts", () => {
     expect(listChain.eq).toHaveBeenCalledWith("tenant_id", TENANT_ID)
   })
 })
+
+// ---------------------------------------------------------------------------
+// Schema-vs-DB-Payload Drift Detection (POST)
+// ---------------------------------------------------------------------------
+describe("POST /api/wizard-drafts — schema/DB-payload drift", () => {
+  it("forwards every wizardDataSchema key to the data JSONB column", async () => {
+    const { wizardDataSchema } = await import("./_schema")
+    nextOp = "insert"
+    getUserMock.mockResolvedValue({ data: { user: { id: USER_ID } } })
+
+    const RESPONSIBLE_USER_ID = "77777777-7777-4777-8777-777777777777"
+
+    const wizardData = {
+      name: "Drift Project",
+      description: "Drift-Test description",
+      project_number: "DR-001",
+      planned_start_date: "2026-05-01",
+      planned_end_date: "2026-12-31",
+      responsible_user_id: RESPONSIBLE_USER_ID,
+      project_type: "software" as const,
+      project_method: "scrum" as const,
+      type_specific_data: { tech_stack: "Next.js" },
+    }
+
+    const dataKeys = Object.keys(wizardDataSchema.shape)
+    for (const key of dataKeys) {
+      expect(wizardData, `kitchen sink missing key '${key}'`).toHaveProperty(
+        key
+      )
+    }
+
+    insertChain.single.mockResolvedValue({
+      data: { id: "drift-1", tenant_id: TENANT_ID, data: wizardData },
+      error: null,
+    })
+
+    const res = await POST(
+      makePost({ tenant_id: TENANT_ID, data: wizardData })
+    )
+    expect(res.status).toBe(201)
+
+    const arg = insertChain.insert.mock.calls[0]?.[0] as Record<
+      string,
+      unknown
+    >
+    expect(arg, "insert was not called").toBeTruthy()
+
+    // The route stores the full WizardData blob in the `data` JSONB column.
+    // Every wizardDataSchema key must reach that blob.
+    const dataBlob = arg.data as Record<string, unknown>
+    for (const key of dataKeys) {
+      const expected = (wizardData as Record<string, unknown>)[key]
+      expect(
+        dataBlob[key],
+        `field '${key}' was dropped from data JSONB column`
+      ).toEqual(expected)
+    }
+
+    // Denormalized columns (PROJ-5 indexed-search support):
+    expect(arg.tenant_id).toBe(TENANT_ID)
+    expect(arg.created_by).toBe(USER_ID)
+    expect(arg.name).toBe("Drift Project")
+    expect(arg.project_type).toBe("software")
+    expect(arg.project_method).toBe("scrum")
+  })
+})

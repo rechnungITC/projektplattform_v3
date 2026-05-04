@@ -4,17 +4,8 @@ import { z } from "zod"
 import { apiError, getAuthenticatedUserId } from "@/app/api/_lib/route-helpers"
 import { requireModuleActive } from "@/lib/tenant-settings/server"
 import type { VendorInvoice, VendorInvoiceWithBookings } from "@/types/budget"
-import { SUPPORTED_CURRENCIES } from "@/types/tenant-settings"
 
-const createSchema = z.object({
-  invoice_number: z.string().trim().min(1).max(100),
-  invoice_date: z.string().regex(/^\d{4}-\d{2}-\d{2}$/, "YYYY-MM-DD required"),
-  gross_amount: z.number().nonnegative(),
-  currency: z.enum(SUPPORTED_CURRENCIES as unknown as [string, ...string[]]),
-  project_id: z.string().uuid().nullable().optional(),
-  file_storage_key: z.string().max(1000).nullable().optional(),
-  note: z.string().max(2000).nullable().optional(),
-})
+import { invoiceCreateSchema as createSchema, normalizeInvoicePayload } from "./_schema"
 
 // GET /api/vendors/[vid]/invoices
 //   Lists all invoices of a vendor. Joins booked-amount aggregation per invoice.
@@ -154,15 +145,9 @@ export async function POST(
   const { data, error } = await supabase
     .from("vendor_invoices")
     .insert({
+      ...normalizeInvoicePayload(parsed.data),
       tenant_id: vendor.tenant_id,
       vendor_id: vendorId,
-      project_id: parsed.data.project_id ?? null,
-      invoice_number: parsed.data.invoice_number,
-      invoice_date: parsed.data.invoice_date,
-      gross_amount: parsed.data.gross_amount,
-      currency: parsed.data.currency,
-      file_storage_key: parsed.data.file_storage_key ?? null,
-      note: parsed.data.note ?? null,
       created_by: userId,
     })
     .select()

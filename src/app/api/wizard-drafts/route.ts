@@ -1,41 +1,13 @@
 import { NextResponse } from "next/server"
 import { z } from "zod"
 
-import { PROJECT_METHODS } from "@/types/project-method"
-import { PROJECT_TYPES } from "@/types/project"
-
 import { apiError, getAuthenticatedUserId } from "../_lib/route-helpers"
+
+import { wizardDraftCreateSchema as createSchema } from "./_schema"
 
 // PROJ-5 — wizard drafts collection endpoint.
 // GET  /api/wizard-drafts           — current user's drafts in current tenant
 // POST /api/wizard-drafts           — create a new draft
-
-const wizardDataSchema = z
-  .object({
-    name: z.string().max(255).optional().default(""),
-    description: z.string().max(5000).optional().default(""),
-    project_number: z.string().max(100).optional().default(""),
-    planned_start_date: z.string().nullable().optional().default(null),
-    planned_end_date: z.string().nullable().optional().default(null),
-    responsible_user_id: z.string().uuid().optional().nullable(),
-    project_type: z
-      .enum(PROJECT_TYPES as unknown as [string, ...string[]])
-      .nullable()
-      .optional()
-      .default(null),
-    project_method: z
-      .enum(PROJECT_METHODS as unknown as [string, ...string[]])
-      .nullable()
-      .optional()
-      .default(null),
-    type_specific_data: z.record(z.string(), z.string()).optional().default({}),
-  })
-  .passthrough()
-
-const createSchema = z.object({
-  tenant_id: z.string().uuid(),
-  data: wizardDataSchema,
-})
 
 const listQuerySchema = z.object({
   tenant_id: z.string().uuid(),

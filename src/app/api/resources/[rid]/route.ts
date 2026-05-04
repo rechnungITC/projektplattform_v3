@@ -2,12 +2,12 @@ import { NextResponse } from "next/server"
 import { z } from "zod"
 
 import { requireModuleActive } from "@/lib/tenant-settings/server"
-import { RESOURCE_KINDS } from "@/types/resource"
 
 import {
   apiError,
   getAuthenticatedUserId,
 } from "../../_lib/route-helpers"
+import { normalizeResourcePayload, resourcePatchSchema as patchSchema } from "../_schema"
 
 // PROJ-11 — single-resource endpoints.
 // GET    /api/resources/[rid]
@@ -16,21 +16,6 @@ import {
 
 const SELECT_COLUMNS =
   "id, tenant_id, source_stakeholder_id, linked_user_id, display_name, kind, fte_default, availability_default, is_active, created_by, created_at, updated_at"
-
-const patchSchema = z
-  .object({
-    display_name: z.string().trim().min(1).max(200).optional(),
-    kind: z
-      .enum(RESOURCE_KINDS as unknown as [string, ...string[]])
-      .optional(),
-    fte_default: z.number().min(0).max(1).optional(),
-    availability_default: z.number().min(0).max(1).optional(),
-    is_active: z.boolean().optional(),
-    linked_user_id: z.string().uuid().optional().nullable(),
-  })
-  .refine((val) => Object.keys(val).length > 0, {
-    message: "At least one field must be provided.",
-  })
 
 interface Ctx {
   params: Promise<{ rid: string }>
@@ -109,16 +94,8 @@ export async function PATCH(request: Request, ctx: Ctx) {
   )
   if (moduleDenial) return moduleDenial
 
-  const data = parsed.data
-  const update: Record<string, unknown> = {}
-  if (data.display_name !== undefined) update.display_name = data.display_name.trim()
-  if (data.kind !== undefined) update.kind = data.kind
-  if (data.fte_default !== undefined) update.fte_default = data.fte_default
-  if (data.availability_default !== undefined)
-    update.availability_default = data.availability_default
-  if (data.is_active !== undefined) update.is_active = data.is_active
-  if (data.linked_user_id !== undefined)
-    update.linked_user_id = data.linked_user_id ?? null
+  // Spread-Pattern: schema is the single source of truth.
+  const update = normalizeResourcePayload(parsed.data)
 
   const { data: row, error } = await supabase
     .from("resources")

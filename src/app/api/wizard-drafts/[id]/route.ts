@@ -1,48 +1,14 @@
 import { NextResponse } from "next/server"
 import { z } from "zod"
 
-import { PROJECT_METHODS } from "@/types/project-method"
-import { PROJECT_TYPES } from "@/types/project"
-
 import { apiError, getAuthenticatedUserId } from "../../_lib/route-helpers"
+
+import { wizardDraftPatchSchema as patchSchema } from "../_schema"
 
 // PROJ-5 — single-draft endpoints.
 // GET    /api/wizard-drafts/[id]    — fetch one draft
 // PATCH  /api/wizard-drafts/[id]    — overwrite the data blob (last-write-wins)
 // DELETE /api/wizard-drafts/[id]    — discard
-
-const wizardDataSchema = z
-  .object({
-    name: z.string().max(255).optional().default(""),
-    description: z.string().max(5000).optional().default(""),
-    project_number: z.string().max(100).optional().default(""),
-    planned_start_date: z.string().nullable().optional().default(null),
-    planned_end_date: z.string().nullable().optional().default(null),
-    responsible_user_id: z.string().uuid().optional().nullable(),
-    project_type: z
-      .enum(PROJECT_TYPES as unknown as [string, ...string[]])
-      .nullable()
-      .optional()
-      .default(null),
-    project_method: z
-      .enum(PROJECT_METHODS as unknown as [string, ...string[]])
-      .nullable()
-      .optional()
-      .default(null),
-    type_specific_data: z.record(z.string(), z.string()).optional().default({}),
-  })
-  .passthrough()
-
-const patchSchema = z.object({
-  data: wizardDataSchema,
-  /**
-   * Optimistic concurrency token (PROJ-5 spec § "Two browser tabs").
-   * If provided and the row's current `updated_at` is different, the API
-   * returns 409 with the current row so the client can offer "reload draft".
-   * Omit to opt into last-write-wins.
-   */
-  expected_updated_at: z.string().optional(),
-})
 
 interface Ctx {
   params: Promise<{ id: string }>

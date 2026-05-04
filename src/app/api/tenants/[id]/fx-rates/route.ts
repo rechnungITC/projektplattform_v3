@@ -3,20 +3,11 @@ import { z } from "zod"
 
 import { apiError, getAuthenticatedUserId } from "@/app/api/_lib/route-helpers"
 import { requireModuleActive } from "@/lib/tenant-settings/server"
-import { SUPPORTED_CURRENCIES } from "@/types/tenant-settings"
 
-const createSchema = z
-  .object({
-    from_currency: z.enum(SUPPORTED_CURRENCIES as unknown as [string, ...string[]]),
-    to_currency: z.enum(SUPPORTED_CURRENCIES as unknown as [string, ...string[]]),
-    rate: z.number().positive(),
-    valid_on: z.string().regex(/^\d{4}-\d{2}-\d{2}$/, "YYYY-MM-DD required"),
-    source: z.enum(["manual", "tenant_override"] as const).optional(),
-  })
-  .refine((v) => v.from_currency !== v.to_currency, {
-    message: "from_currency must differ from to_currency",
-    path: ["to_currency"],
-  })
+import {
+  fxRateCreateSchema as createSchema,
+  normalizeFxRatePayload,
+} from "./_schema"
 
 // GET /api/tenants/[id]/fx-rates
 export async function GET(
@@ -86,12 +77,9 @@ export async function POST(
   const { data, error } = await supabase
     .from("fx_rates")
     .insert({
-      tenant_id: tenantId,
-      from_currency: parsed.data.from_currency,
-      to_currency: parsed.data.to_currency,
-      rate: parsed.data.rate,
-      valid_on: parsed.data.valid_on,
+      ...normalizeFxRatePayload(parsed.data),
       source: parsed.data.source ?? "manual",
+      tenant_id: tenantId,
       created_by: userId,
     })
     .select()

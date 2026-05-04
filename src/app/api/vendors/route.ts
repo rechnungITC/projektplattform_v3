@@ -1,11 +1,11 @@
 import { NextResponse } from "next/server"
-import { z } from "zod"
 
 import { requireModuleActive } from "@/lib/tenant-settings/server"
 import { VENDOR_STATUSES } from "@/types/vendor"
 
 import { apiError } from "../_lib/route-helpers"
 
+import { vendorCreateSchema as createSchema, normalizeVendorPayload } from "./_schema"
 import { vendorTenantContext } from "./_lib/tenant"
 
 // PROJ-15 — vendor master data collection.
@@ -14,23 +14,6 @@ import { vendorTenantContext } from "./_lib/tenant"
 
 const SELECT_COLUMNS =
   "id, tenant_id, name, category, primary_contact_email, website, status, created_by, created_at, updated_at"
-
-const createSchema = z.object({
-  name: z.string().trim().min(1).max(255),
-  category: z.string().trim().max(120).optional().nullable(),
-  primary_contact_email: z.string().trim().email().max(320).optional().nullable(),
-  website: z
-    .string()
-    .trim()
-    .url()
-    .startsWith("https://", "Website muss HTTPS sein")
-    .max(2000)
-    .optional()
-    .nullable(),
-  status: z
-    .enum(VENDOR_STATUSES as unknown as [string, ...string[]])
-    .default("active"),
-})
 
 interface VendorRow {
   id: string
@@ -158,14 +141,10 @@ export async function POST(request: Request) {
   )
   if (moduleDenial) return moduleDenial
 
-  const data = parsed.data
+  // Spread-Pattern: schema is the single source of truth.
   const insertPayload = {
+    ...normalizeVendorPayload(parsed.data),
     tenant_id: ctx.tenantId,
-    name: data.name.trim(),
-    category: data.category?.trim() || null,
-    primary_contact_email: data.primary_contact_email?.trim() || null,
-    website: data.website?.trim() || null,
-    status: data.status,
     created_by: ctx.userId,
   }
 

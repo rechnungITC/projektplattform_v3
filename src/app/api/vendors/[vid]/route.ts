@@ -2,9 +2,9 @@ import { NextResponse } from "next/server"
 import { z } from "zod"
 
 import { requireModuleActive } from "@/lib/tenant-settings/server"
-import { VENDOR_STATUSES } from "@/types/vendor"
 
 import { apiError } from "../../_lib/route-helpers"
+import { normalizeVendorPayload, vendorPatchSchema as patchSchema } from "../_schema"
 import { vendorTenantContext } from "../_lib/tenant"
 
 // PROJ-15 — single vendor endpoints.
@@ -14,33 +14,6 @@ import { vendorTenantContext } from "../_lib/tenant"
 
 const SELECT_COLUMNS =
   "id, tenant_id, name, category, primary_contact_email, website, status, created_by, created_at, updated_at"
-
-const patchSchema = z
-  .object({
-    name: z.string().trim().min(1).max(255).optional(),
-    category: z.string().trim().max(120).optional().nullable(),
-    primary_contact_email: z
-      .string()
-      .trim()
-      .email()
-      .max(320)
-      .optional()
-      .nullable(),
-    website: z
-      .string()
-      .trim()
-      .url()
-      .startsWith("https://", "Website muss HTTPS sein")
-      .max(2000)
-      .optional()
-      .nullable(),
-    status: z
-      .enum(VENDOR_STATUSES as unknown as [string, ...string[]])
-      .optional(),
-  })
-  .refine((val) => Object.keys(val).length > 0, {
-    message: "At least one field must be provided.",
-  })
 
 interface Ctx {
   params: Promise<{ vid: string }>
@@ -108,14 +81,8 @@ export async function PATCH(request: Request, ctx: Ctx) {
   )
   if (moduleDenial) return moduleDenial
 
-  const data = parsed.data
-  const update: Record<string, unknown> = {}
-  if (data.name !== undefined) update.name = data.name.trim()
-  if (data.category !== undefined) update.category = data.category?.trim() || null
-  if (data.primary_contact_email !== undefined)
-    update.primary_contact_email = data.primary_contact_email?.trim() || null
-  if (data.website !== undefined) update.website = data.website?.trim() || null
-  if (data.status !== undefined) update.status = data.status
+  // Spread-Pattern: schema is the single source of truth.
+  const update = normalizeVendorPayload(parsed.data)
 
   const { data: row, error } = await auth.supabase
     .from("vendors")

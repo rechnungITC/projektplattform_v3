@@ -153,3 +153,75 @@ describe("PATCH /api/tenants/[id]/settings", () => {
     expect(res.status).toBe(403)
   })
 })
+
+// ---------------------------------------------------------------------------
+// Schema-vs-DB-Payload Drift Detection (PATCH)
+// ---------------------------------------------------------------------------
+describe("PATCH /api/tenants/[id]/settings — schema/DB-payload drift", () => {
+  it("forwards every Zod-schema field to the DB update payload", async () => {
+    const { tenantSettingsPatchSchema } = await import("./_schema")
+    getUserMock.mockResolvedValue({ data: { user: { id: USER_ID } } })
+
+    // patchSchema is wrapped in .refine() — unwrap via _def.schema.shape.
+    const inner =
+      "shape" in tenantSettingsPatchSchema
+        ? (tenantSettingsPatchSchema as unknown as {
+            shape: Record<string, unknown>
+          })
+        : (
+            tenantSettingsPatchSchema as unknown as {
+              _def: { schema: { shape: Record<string, unknown> } }
+            }
+          )._def.schema
+    const schemaKeys = Object.keys(
+      (inner as { shape: Record<string, unknown> }).shape
+    )
+
+    const kitchenSink: Record<string, unknown> = {
+      active_modules: ["risks", "decisions"],
+      privacy_defaults: { default_class: 2 },
+      ai_provider_config: { external_provider: "anthropic", model_id: "x" },
+      retention_overrides: { audit_log_days: 90 },
+      cost_settings: { velocity_factor: 1.0, default_currency: "EUR" },
+    }
+
+    for (const key of schemaKeys) {
+      expect(kitchenSink, `kitchen sink missing key '${key}'`).toHaveProperty(
+        key
+      )
+    }
+
+    settingsChain.maybeSingle.mockResolvedValue({
+      data: { ...SETTINGS_ROW, ...kitchenSink },
+      error: null,
+    })
+
+    const driftReq = new Request(
+      `http://localhost/api/tenants/${TENANT_ID}/settings`,
+      {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(kitchenSink),
+      }
+    )
+    const res = await PATCH(driftReq, {
+      params: Promise.resolve({ id: TENANT_ID }),
+    })
+    expect(res.status).toBe(200)
+
+    const arg = settingsChain.update.mock.calls[0]?.[0] as Record<
+      string,
+      unknown
+    >
+    expect(arg, "update was not called").toBeTruthy()
+
+    for (const key of schemaKeys) {
+      const expected = kitchenSink[key]
+      const actual = arg[key]
+      // All fields are arrays / JSONB objects — toEqual for deep equality.
+      expect(actual, `field '${key}' was dropped before reaching DB`).toEqual(
+        expected
+      )
+    }
+  })
+})

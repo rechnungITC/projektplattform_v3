@@ -1,16 +1,15 @@
 import { NextResponse } from "next/server"
-import { z } from "zod"
 
 import {
   apiError,
   getAuthenticatedUserId,
   requireTenantAdmin,
 } from "../../../_lib/route-helpers"
+
 import {
-  SUPPORTED_CURRENCIES,
-  VELOCITY_FACTOR_MAX,
-  VELOCITY_FACTOR_MIN,
-} from "@/types/tenant-settings"
+  normalizeTenantSettingsPayload,
+  tenantSettingsPatchSchema as settingsPatchSchema,
+} from "./_schema"
 
 // PROJ-17 — GET/PATCH /api/tenants/[id]/settings
 //
@@ -22,74 +21,6 @@ import {
 
 const SELECT_COLUMNS =
   "tenant_id, active_modules, privacy_defaults, ai_provider_config, retention_overrides, cost_settings, created_at, updated_at"
-
-const TOGGLEABLE_MODULES = [
-  "risks",
-  "decisions",
-  "ai_proposals",
-  "audit_reports",
-  "connectors",
-  "vendor",
-  "communication",
-] as const
-
-const moduleSchema = z.enum(TOGGLEABLE_MODULES)
-
-const privacyDefaultsSchema = z.object({
-  default_class: z.union([z.literal(1), z.literal(2), z.literal(3)]),
-})
-
-const aiProviderConfigSchema = z
-  .object({
-    external_provider: z.enum(["anthropic", "none"]),
-    model_id: z.string().min(1).max(100).optional(),
-  })
-  .strict()
-
-const retentionOverridesSchema = z
-  .object({
-    audit_log_days: z
-      .number()
-      .int()
-      .min(1)
-      .max(3650, "Retention cannot exceed 10 years")
-      .optional(),
-  })
-  .strict()
-
-// PROJ-24 ST-02 — cost-settings JSONB column.
-const costSettingsSchema = z
-  .object({
-    velocity_factor: z
-      .number()
-      .min(VELOCITY_FACTOR_MIN, `velocity_factor >= ${VELOCITY_FACTOR_MIN}`)
-      .max(VELOCITY_FACTOR_MAX, `velocity_factor <= ${VELOCITY_FACTOR_MAX}`),
-    default_currency: z.enum(
-      SUPPORTED_CURRENCIES as unknown as [string, ...string[]]
-    ),
-  })
-  .strict()
-
-const settingsPatchSchema = z
-  .object({
-    active_modules: z.array(moduleSchema).optional(),
-    privacy_defaults: privacyDefaultsSchema.optional(),
-    ai_provider_config: aiProviderConfigSchema.optional(),
-    retention_overrides: retentionOverridesSchema.optional(),
-    cost_settings: costSettingsSchema.optional(),
-  })
-  .refine(
-    (val) =>
-      val.active_modules !== undefined ||
-      val.privacy_defaults !== undefined ||
-      val.ai_provider_config !== undefined ||
-      val.retention_overrides !== undefined ||
-      val.cost_settings !== undefined,
-    {
-      message:
-        "Provide at least one of: active_modules, privacy_defaults, ai_provider_config, retention_overrides, cost_settings.",
-    }
-  )
 
 interface Ctx {
   params: Promise<{ id: string }>
@@ -150,17 +81,10 @@ export async function PATCH(request: Request, ctx: Ctx) {
   const denied = await requireTenantAdmin(supabase, tenantId, userId)
   if (denied) return denied
 
-  const updates: Record<string, unknown> = {}
-  if (parsed.data.active_modules !== undefined)
-    updates.active_modules = parsed.data.active_modules
-  if (parsed.data.privacy_defaults !== undefined)
-    updates.privacy_defaults = parsed.data.privacy_defaults
-  if (parsed.data.ai_provider_config !== undefined)
-    updates.ai_provider_config = parsed.data.ai_provider_config
-  if (parsed.data.retention_overrides !== undefined)
-    updates.retention_overrides = parsed.data.retention_overrides
-  if (parsed.data.cost_settings !== undefined)
-    updates.cost_settings = parsed.data.cost_settings
+  // Spread-Pattern: schema is the single source of truth. Optional fields
+  // that weren't provided are absent from parsed.data, so the spread leaves
+  // them untouched on the row.
+  const updates = normalizeTenantSettingsPayload(parsed.data)
 
   const { data, error } = await supabase
     .from("tenant_settings")

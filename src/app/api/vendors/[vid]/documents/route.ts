@@ -2,10 +2,10 @@ import { NextResponse } from "next/server"
 import { z } from "zod"
 
 import { requireModuleActive } from "@/lib/tenant-settings/server"
-import { VENDOR_DOCUMENT_KINDS } from "@/types/vendor"
 
 import { apiError } from "../../../_lib/route-helpers"
 import { vendorTenantContext } from "../../_lib/tenant"
+import { documentCreateSchema as createSchema, normalizeDocumentPayload } from "./_schema"
 
 // PROJ-15 — vendor documents (metadata + external_url, NO upload).
 // GET  /api/vendors/[vid]/documents
@@ -13,21 +13,6 @@ import { vendorTenantContext } from "../../_lib/tenant"
 
 const SELECT_COLUMNS =
   "id, tenant_id, vendor_id, kind, title, external_url, document_date, note, created_by, created_at"
-
-const isoDate = z.string().regex(/^\d{4}-\d{2}-\d{2}$/, "Expected YYYY-MM-DD")
-
-const createSchema = z.object({
-  kind: z.enum(VENDOR_DOCUMENT_KINDS as unknown as [string, ...string[]]),
-  title: z.string().trim().min(1).max(200),
-  external_url: z
-    .string()
-    .trim()
-    .url()
-    .startsWith("https://", "URL muss HTTPS sein")
-    .max(2000),
-  document_date: isoDate.optional().nullable(),
-  note: z.string().trim().max(2000).optional().nullable(),
-})
 
 interface Ctx {
   params: Promise<{ vid: string }>
@@ -107,13 +92,9 @@ export async function POST(request: Request, ctx: Ctx) {
   const { data: row, error } = await auth.supabase
     .from("vendor_documents")
     .insert({
+      ...normalizeDocumentPayload(data),
       tenant_id: auth.tenantId,
       vendor_id: vid,
-      kind: data.kind,
-      title: data.title.trim(),
-      external_url: data.external_url.trim(),
-      document_date: data.document_date ?? null,
-      note: data.note?.trim() || null,
       created_by: auth.userId,
     })
     .select(SELECT_COLUMNS)

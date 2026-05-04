@@ -187,3 +187,68 @@ describe("GET /api/resources", () => {
     expect(listChain.eq).toHaveBeenCalledWith("kind", "external")
   })
 })
+
+// ---------------------------------------------------------------------------
+// Schema-vs-DB-Payload Drift Detection (POST)
+// ---------------------------------------------------------------------------
+describe("POST /api/resources — schema/DB-payload drift", () => {
+  it("forwards every Zod-schema field to the DB insert payload", async () => {
+    const { resourceCreateSchema } = await import("./_schema")
+    getUserMock.mockResolvedValue({ data: { user: { id: USER_ID } } })
+
+    const STAKEHOLDER_ID = "66666666-6666-4666-8666-666666666666"
+    const LINKED_USER_ID = "77777777-7777-4777-8777-777777777777"
+
+    const kitchenSink = {
+      display_name: "Drift Resource",
+      kind: "internal" as const,
+      fte_default: 0.8,
+      availability_default: 0.9,
+      is_active: true,
+      source_stakeholder_id: STAKEHOLDER_ID,
+      linked_user_id: LINKED_USER_ID,
+    }
+
+    const schemaKeys = Object.keys(resourceCreateSchema.shape)
+    for (const key of schemaKeys) {
+      expect(kitchenSink, `kitchen sink missing key '${key}'`).toHaveProperty(
+        key
+      )
+    }
+
+    insertChain.single.mockResolvedValue({
+      data: { id: "drift-1", ...kitchenSink, tenant_id: TENANT_ID },
+      error: null,
+    })
+
+    const res = await POST(
+      new Request("http://localhost/api/resources", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(kitchenSink),
+      })
+    )
+    expect(res.status).toBe(201)
+
+    const arg = insertChain.insert.mock.calls[0]?.[0] as Record<string, unknown>
+    expect(arg, "insert was not called").toBeTruthy()
+
+    for (const key of schemaKeys) {
+      const expected = (kitchenSink as Record<string, unknown>)[key]
+      const actual = arg[key]
+      // display_name is trimmed; everything else passes through.
+      if (typeof expected === "string" && key === "display_name") {
+        expect(actual, `field '${key}' was dropped before reaching DB`).toBe(
+          expected.trim() || null
+        )
+      } else {
+        expect(actual, `field '${key}' was dropped before reaching DB`).toBe(
+          expected
+        )
+      }
+    }
+
+    expect(arg.tenant_id).toBe(TENANT_ID)
+    expect(arg.created_by).toBe(USER_ID)
+  })
+})

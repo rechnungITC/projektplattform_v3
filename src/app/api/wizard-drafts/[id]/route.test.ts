@@ -221,3 +221,71 @@ describe("DELETE /api/wizard-drafts/[id]", () => {
     expect(res.status).toBe(404)
   })
 })
+
+// ---------------------------------------------------------------------------
+// Schema-vs-DB-Payload Drift Detection (PATCH)
+// ---------------------------------------------------------------------------
+describe("PATCH /api/wizard-drafts/[id] — schema/DB-payload drift", () => {
+  it("forwards every wizardDataSchema key to the data JSONB column", async () => {
+    const { wizardDataSchema } = await import("../_schema")
+    nextOp = "update"
+    getUserMock.mockResolvedValue({ data: { user: { id: USER_ID } } })
+
+    const RESPONSIBLE_USER_ID = "77777777-7777-4777-8777-777777777777"
+
+    const wizardData = {
+      name: "Updated Project",
+      description: "Updated description",
+      project_number: "DR-002",
+      planned_start_date: "2026-06-01",
+      planned_end_date: "2026-12-31",
+      responsible_user_id: RESPONSIBLE_USER_ID,
+      project_type: "construction" as const,
+      project_method: "waterfall" as const,
+      type_specific_data: { trade: "Electrical" },
+    }
+
+    const dataKeys = Object.keys(wizardDataSchema.shape)
+    for (const key of dataKeys) {
+      expect(wizardData, `kitchen sink missing key '${key}'`).toHaveProperty(
+        key
+      )
+    }
+
+    updateChain.single.mockResolvedValue({
+      data: { id: DRAFT_ID, data: wizardData },
+      error: null,
+    })
+
+    const res = await PATCH(
+      new Request(`http://localhost/api/wizard-drafts/${DRAFT_ID}`, {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ data: wizardData }),
+      }),
+      { params: Promise.resolve({ id: DRAFT_ID }) }
+    )
+    expect(res.status).toBe(200)
+
+    const arg = updateChain.update.mock.calls[0]?.[0] as Record<
+      string,
+      unknown
+    >
+    expect(arg, "update was not called").toBeTruthy()
+
+    // Every wizardDataSchema key must reach the `data` JSONB column.
+    const dataBlob = arg.data as Record<string, unknown>
+    for (const key of dataKeys) {
+      const expected = (wizardData as Record<string, unknown>)[key]
+      expect(
+        dataBlob[key],
+        `field '${key}' was dropped from data JSONB column`
+      ).toEqual(expected)
+    }
+
+    // Denormalized columns:
+    expect(arg.name).toBe("Updated Project")
+    expect(arg.project_type).toBe("construction")
+    expect(arg.project_method).toBe("waterfall")
+  })
+})

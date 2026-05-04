@@ -261,3 +261,64 @@ describe("POST /api/tenants/[id]/role-rates", () => {
     expect(auditPayload.field_name).toBe("row_created")
   })
 })
+
+// ---------------------------------------------------------------------------
+// Schema-vs-DB-Payload Drift Detection (POST)
+// ---------------------------------------------------------------------------
+describe("POST /api/tenants/[id]/role-rates — schema/DB-payload drift", () => {
+  it("forwards every Zod-schema field to the DB insert payload", async () => {
+    const { roleRateCreateSchema } = await import("./_schema")
+    getUserMock.mockResolvedValue({ data: { user: { id: USER_ID } } })
+    tenantMembershipChain.maybeSingle.mockResolvedValue({
+      data: { role: "admin" },
+      error: null,
+    })
+
+    const kitchenSink = {
+      role_key: "Senior Engineer",
+      daily_rate: 1234,
+      currency: "EUR",
+      valid_from: "2026-05-01",
+    }
+
+    const schemaKeys = Object.keys(roleRateCreateSchema.shape)
+    for (const key of schemaKeys) {
+      expect(kitchenSink, `kitchen sink missing key '${key}'`).toHaveProperty(
+        key
+      )
+    }
+
+    roleRatesChain.__insertResult = {
+      data: { id: "drift-1", ...kitchenSink, tenant_id: TENANT_ID },
+      error: null,
+    }
+
+    const res = await POST(makePostReq(kitchenSink), makeCtx())
+    expect(res.status).toBe(201)
+
+    const arg = roleRatesChain.insert.mock.calls[0]?.[0] as Record<
+      string,
+      unknown
+    >
+    expect(arg, "insert was not called").toBeTruthy()
+
+    for (const key of schemaKeys) {
+      const expected = (kitchenSink as Record<string, unknown>)[key]
+      const actual = arg[key]
+      // role_key is trimmed; daily_rate is number; currency enum;
+      // valid_from is YYYY-MM-DD.
+      if (typeof expected === "string" && key === "role_key") {
+        expect(actual, `field '${key}' was dropped before reaching DB`).toBe(
+          expected.trim() || null
+        )
+      } else {
+        expect(actual, `field '${key}' was dropped before reaching DB`).toBe(
+          expected
+        )
+      }
+    }
+
+    expect(arg.tenant_id).toBe(TENANT_ID)
+    expect(arg.created_by).toBe(USER_ID)
+  })
+})

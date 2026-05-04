@@ -1,5 +1,4 @@
 import { NextResponse } from "next/server"
-import { z } from "zod"
 
 import { requireModuleActive } from "@/lib/tenant-settings/server"
 import { RESOURCE_KINDS } from "@/types/resource"
@@ -9,22 +8,14 @@ import {
   getAuthenticatedUserId,
 } from "../_lib/route-helpers"
 
+import { normalizeResourcePayload, resourceCreateSchema as createSchema } from "./_schema"
+
 // PROJ-11 — tenant-scoped resources collection.
 // GET  /api/resources?active_only=&kind=
 // POST /api/resources
 
 const SELECT_COLUMNS =
   "id, tenant_id, source_stakeholder_id, linked_user_id, display_name, kind, fte_default, availability_default, is_active, created_by, created_at, updated_at"
-
-const createSchema = z.object({
-  display_name: z.string().trim().min(1).max(200),
-  kind: z.enum(RESOURCE_KINDS as unknown as [string, ...string[]]).default("internal"),
-  fte_default: z.number().min(0).max(1).default(1),
-  availability_default: z.number().min(0).max(1).default(1),
-  is_active: z.boolean().default(true),
-  source_stakeholder_id: z.string().uuid().optional().nullable(),
-  linked_user_id: z.string().uuid().optional().nullable(),
-})
 
 async function activeTenantId(
   supabase: Awaited<ReturnType<typeof getAuthenticatedUserId>>["supabase"],
@@ -112,16 +103,10 @@ export async function POST(request: Request) {
   )
   if (moduleDenial) return moduleDenial
 
-  const data = parsed.data
+  // Spread-Pattern: schema is the single source of truth.
   const insertPayload = {
+    ...normalizeResourcePayload(parsed.data),
     tenant_id: tenantId,
-    display_name: data.display_name.trim(),
-    kind: data.kind,
-    fte_default: data.fte_default,
-    availability_default: data.availability_default,
-    is_active: data.is_active,
-    source_stakeholder_id: data.source_stakeholder_id ?? null,
-    linked_user_id: data.linked_user_id ?? null,
     created_by: userId,
   }
 

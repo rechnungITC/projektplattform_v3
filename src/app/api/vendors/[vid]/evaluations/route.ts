@@ -5,6 +5,7 @@ import { requireModuleActive } from "@/lib/tenant-settings/server"
 
 import { apiError } from "../../../_lib/route-helpers"
 import { vendorTenantContext } from "../../_lib/tenant"
+import { evaluationCreateSchema as createSchema, normalizeEvaluationPayload } from "./_schema"
 
 // PROJ-15 — vendor evaluations.
 // GET  /api/vendors/[vid]/evaluations
@@ -12,12 +13,6 @@ import { vendorTenantContext } from "../../_lib/tenant"
 
 const SELECT_COLUMNS =
   "id, tenant_id, vendor_id, criterion, score, comment, created_by, created_at, updated_at"
-
-const createSchema = z.object({
-  criterion: z.string().trim().min(1).max(200),
-  score: z.number().int().min(1).max(5),
-  comment: z.string().trim().max(2000).optional().nullable(),
-})
 
 interface Ctx {
   params: Promise<{ vid: string }>
@@ -99,11 +94,9 @@ export async function POST(request: Request, ctx: Ctx) {
   const { data: row, error } = await auth.supabase
     .from("vendor_evaluations")
     .insert({
+      ...normalizeEvaluationPayload(data),
       tenant_id: auth.tenantId,
       vendor_id: vid,
-      criterion: data.criterion.trim(),
-      score: data.score,
-      comment: data.comment?.trim() || null,
       created_by: auth.userId,
     })
     .select(SELECT_COLUMNS)

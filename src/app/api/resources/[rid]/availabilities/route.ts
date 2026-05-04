@@ -7,6 +7,7 @@ import {
   apiError,
   getAuthenticatedUserId,
 } from "../../../_lib/route-helpers"
+import { availabilityCreateSchema as createSchema, normalizeAvailabilityPayload } from "./_schema"
 
 // PROJ-11 — date-segmented availability overrides for a resource.
 // GET  /api/resources/[rid]/availabilities
@@ -14,20 +15,6 @@ import {
 
 const SELECT_COLUMNS =
   "id, tenant_id, resource_id, start_date, end_date, fte, note, created_at"
-
-const isoDate = z.string().regex(/^\d{4}-\d{2}-\d{2}$/, "Expected YYYY-MM-DD")
-
-const createSchema = z
-  .object({
-    start_date: isoDate,
-    end_date: isoDate,
-    fte: z.number().min(0).max(1),
-    note: z.string().trim().max(500).optional().nullable(),
-  })
-  .refine((v) => v.start_date <= v.end_date, {
-    message: "start_date must be ≤ end_date",
-    path: ["end_date"],
-  })
 
 interface Ctx {
   params: Promise<{ rid: string }>
@@ -114,14 +101,11 @@ export async function POST(request: Request, ctx: Ctx) {
   )
   if (moduleDenial) return moduleDenial
 
-  const data = parsed.data
+  // Spread-Pattern: schema is the single source of truth.
   const insertPayload = {
+    ...normalizeAvailabilityPayload(parsed.data),
     tenant_id: resource.tenant_id as string,
     resource_id: rid,
-    start_date: data.start_date,
-    end_date: data.end_date,
-    fte: data.fte,
-    note: data.note?.trim() || null,
   }
 
   const { data: row, error } = await supabase
