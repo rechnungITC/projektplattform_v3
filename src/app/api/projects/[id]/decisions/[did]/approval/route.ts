@@ -25,6 +25,11 @@ import { signApprovalToken } from "@/lib/decisions/approval-token"
 const submitSchema = z.object({
   approver_stakeholder_ids: z.array(z.string().uuid()).min(1).max(20),
   quorum_required: z.number().int().min(1).max(20),
+  deadline_at: z
+    .string()
+    .datetime({ offset: true })
+    .nullable()
+    .optional(),
 })
 
 const TOKEN_LIFETIME_DAYS = 7
@@ -44,7 +49,7 @@ export async function GET(_request: Request, ctx: Ctx) {
   const { data: state, error: stateErr } = await supabase
     .from("decision_approval_state")
     .select(
-      "decision_id, tenant_id, status, quorum_required, submitted_at, decided_at",
+      "decision_id, tenant_id, status, quorum_required, submitted_at, decided_at, deadline_at",
     )
     .eq("decision_id", decisionId)
     .maybeSingle()
@@ -137,7 +142,7 @@ export async function POST(request: Request, ctx: Ctx) {
       first?.path?.[0]?.toString(),
     )
   }
-  const { approver_stakeholder_ids, quorum_required } = parsed.data
+  const { approver_stakeholder_ids, quorum_required, deadline_at } = parsed.data
   if (quorum_required > approver_stakeholder_ids.length) {
     return apiError(
       "validation_error",
@@ -216,6 +221,7 @@ export async function POST(request: Request, ctx: Ctx) {
         quorum_required,
         submitted_at: new Date().toISOString(),
         decided_at: null,
+        deadline_at: deadline_at ?? null,
       },
       { onConflict: "decision_id" },
     )

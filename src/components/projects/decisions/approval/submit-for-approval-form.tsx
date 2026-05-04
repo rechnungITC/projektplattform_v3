@@ -38,6 +38,7 @@ export function SubmitForApprovalForm({
 }: SubmitForApprovalFormProps) {
   const [selected, setSelected] = React.useState<string[]>([])
   const [rawQuorum, setRawQuorum] = React.useState<number>(1)
+  const [deadlineDate, setDeadlineDate] = React.useState<string>("")
   const [submitting, setSubmitting] = React.useState(false)
 
   // Derived: clamp the displayed/submitted quorum to [1, N] without an effect.
@@ -52,9 +53,15 @@ export function SubmitForApprovalForm({
     if (!canSubmit) return
     setSubmitting(true)
     try {
+      // Convert YYYY-MM-DD to ISO at end-of-day local time so the deadline
+      // covers the whole calendar day the user picked.
+      const deadlineIso = deadlineDate
+        ? new Date(`${deadlineDate}T23:59:59.000Z`).toISOString()
+        : null
       await submitDecisionForApproval(projectId, decisionId, {
         approver_stakeholder_ids: selected,
         quorum_required: quorum,
+        deadline_at: deadlineIso,
       })
       toast.success("Zur Genehmigung eingereicht", {
         description: `${selected.length} Approver eingeladen, Quorum ${quorum} von ${selected.length}.`,
@@ -106,6 +113,23 @@ export function SubmitForApprovalForm({
         <p className="text-xs text-muted-foreground">
           Wie viele der ausgewählten Approver müssen zustimmen, damit die
           Entscheidung als genehmigt gilt.
+        </p>
+      </div>
+
+      <div className="space-y-2">
+        <Label htmlFor="deadline-input">Frist (optional)</Label>
+        <Input
+          id="deadline-input"
+          type="date"
+          min={new Date().toISOString().slice(0, 10)}
+          value={deadlineDate}
+          onChange={(e) => setDeadlineDate(e.target.value)}
+          disabled={submitting}
+          className="w-48"
+        />
+        <p className="text-xs text-muted-foreground">
+          Bis wann sollen die Approver entscheiden? Nur sichtbar — das System
+          erzwingt keine automatische Ablehnung bei Fristablauf.
         </p>
       </div>
 

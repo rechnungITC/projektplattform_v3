@@ -14,6 +14,7 @@ import * as React from "react"
 import { HealthSnapshot } from "@/components/project-room/health-snapshot"
 import { ReportsSection } from "@/components/project-room/reports-section"
 import { RitualsCard } from "@/components/project-room/rituals-card"
+import { PendingApprovalsCard } from "@/components/projects/decisions/pending-approvals-card"
 import { EditProjectMasterDataDialog } from "@/components/projects/edit-project-master-data-dialog"
 import { HardDeleteConfirmDialog } from "@/components/projects/hard-delete-confirm-dialog"
 import { LifecycleBadge } from "@/components/projects/lifecycle-badge"
@@ -220,6 +221,9 @@ export function ProjectDetailClient({ projectId }: ProjectDetailClientProps) {
 
       {/* Method-specific rituals reminder */}
       <RitualsCard config={config} />
+
+      {/* PROJ-31 follow-up — pending approvals widget. Self-hides when empty. */}
+      <PendingApprovalsCard projectId={projectId} />
 
       {/* PROJ-21: Reports — Status-Report + Executive-Summary snapshots.
           KI-Kurzfazit-Toggle via tenant_settings.output_rendering_settings.

@@ -32,6 +32,8 @@ const decisionBase = (projectId: string, decisionId: string) =>
 export interface SubmitForApprovalInput {
   approver_stakeholder_ids: string[]
   quorum_required: number
+  /** PROJ-31 follow-up — optional response deadline (ISO with offset). */
+  deadline_at?: string | null
 }
 
 export async function submitDecisionForApproval(
@@ -78,11 +80,16 @@ export async function getDecisionApprovalBundle(
  * Internal Approver-Dashboard query — pending approvals for the logged-in
  * user, joined via stakeholders.linked_user_id.
  */
-export async function listPendingApprovals(): Promise<PendingApprovalSummary[]> {
-  const response = await fetch("/api/dashboard/approvals", {
-    method: "GET",
-    cache: "no-store",
-  })
+export async function listPendingApprovals(
+  filter: "pending" | "answered" = "pending",
+): Promise<PendingApprovalSummary[]> {
+  const response = await fetch(
+    `/api/dashboard/approvals?filter=${filter}`,
+    {
+      method: "GET",
+      cache: "no-store",
+    },
+  )
   if (!response.ok) throw new Error(await safeError(response))
   const body = (await response.json()) as { approvals: PendingApprovalSummary[] }
   return body.approvals ?? []

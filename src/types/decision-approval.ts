@@ -50,6 +50,8 @@ export interface DecisionApprovalState {
   quorum_required: number | null
   submitted_at: string | null
   decided_at: string | null
+  /** PROJ-31 follow-up — optional response deadline (informational). */
+  deadline_at?: string | null
 }
 
 export interface DecisionApprover {
@@ -107,6 +109,13 @@ export interface PendingApprovalSummary {
   approver_id: string
   magic_link_expires_at: string | null
   submitted_at: string | null
+  /** PROJ-31 follow-up — optional response deadline. */
+  deadline_at?: string | null
+  /** PROJ-31 follow-up — set when filter=answered. */
+  response?: "approve" | "reject" | null
+  responded_at?: string | null
+  comment?: string | null
+  approval_status?: ApprovalStatus
 }
 
 /**
