@@ -75,9 +75,14 @@ export function useWorkItems(
         let query = supabase
           .from("work_items")
           .select(
-            // PROJ-36 Phase 36-α — additional WBS hierarchy + roll-up fields
-            // (outline_path, wbs_code, wbs_code_is_custom, derived_*).
-            "id, tenant_id, project_id, kind, parent_id, phase_id, milestone_id, sprint_id, title, description, status, priority, responsible_user_id, attributes, position, created_from_proposal_id, created_by, created_at, updated_at, is_deleted, outline_path, wbs_code, wbs_code_is_custom, derived_planned_start, derived_planned_end, derived_estimate_hours, responsible:profiles!work_items_responsible_user_id_fkey ( id, display_name, email )"
+            // PROJ-36 Phase 36-α schema (outline_path, wbs_code,
+            // wbs_code_is_custom, derived_*) is currently NOT in production —
+            // the α-migration was reverted before the γ-frontend deploy. The
+            // hook used to select those columns and PostgREST returned 42703,
+            // which the swallow-all catch below turned into a silent empty
+            // backlog. Selecting only the safe baseline restores the list
+            // until the α-migration is rolled out again.
+            "id, tenant_id, project_id, kind, parent_id, phase_id, milestone_id, sprint_id, title, description, status, priority, responsible_user_id, attributes, position, created_from_proposal_id, created_by, created_at, updated_at, is_deleted, responsible:profiles!work_items_responsible_user_id_fkey ( id, display_name, email )"
           )
           .eq("project_id", projectId)
           .order("position", { ascending: true, nullsFirst: false })
@@ -124,10 +129,18 @@ export function useWorkItems(
         const { data, error: queryError } = await query
         if (cancelled) return
         if (queryError) {
-          // PROJ-9 backend pending — table likely doesn't exist yet.
-          // Don't surface this as a hard error.
+          // 42P01 = `undefined_table` — tolerate so a fresh tenant without
+          // the work_items table yet doesn't render a hard error. Every
+          // other code (42703 missing column, 42501 RLS, network) MUST be
+          // surfaced — the previous swallow-all hid a production schema
+          // drift for hours (see PROJ-36 α-revert / γ-deploy incident).
+          if (queryError.code === "42P01") {
+            setItems([])
+            setError(null)
+            return
+          }
           setItems([])
-          setError(null)
+          setError(queryError.message)
           return
         }
 
@@ -179,11 +192,12 @@ export function useWorkItems(
           }
         )
         setItems(normalized)
-      } catch {
-        // Same swallow-the-missing-table pattern as use-phases.ts.
+      } catch (caught) {
+        // Network/runtime errors — surface them so they reach Sentry and the
+        // user instead of becoming a silent empty list.
         if (!cancelled) {
           setItems([])
-          setError(null)
+          setError(caught instanceof Error ? caught.message : "Failed to load work items.")
         }
       } finally {
         if (!cancelled) setLoading(false)

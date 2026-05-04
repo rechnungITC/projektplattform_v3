@@ -73,10 +73,19 @@ export function useWorkItem(
 
         if (cancelled) return
         if (queryError) {
-          // Likely the table doesn't exist yet (PROJ-9 backend pending).
+          // 42P01 = `undefined_table` — tolerate (table not yet provisioned).
+          // Every other Postgres/PostgREST error MUST be surfaced so it
+          // reaches Sentry instead of silently rendering "not found".
+          if (queryError.code === "42P01") {
+            setItem(null)
+            setParentChain([])
+            setError(null)
+            setNotFound(false)
+            return
+          }
           setItem(null)
           setParentChain([])
-          setError(null)
+          setError(queryError.message)
           setNotFound(false)
           return
         }
@@ -137,11 +146,11 @@ export function useWorkItem(
           nextParentId = parentRow.parent_id
         }
         if (!cancelled) setParentChain(chain)
-      } catch {
+      } catch (caught) {
         if (!cancelled) {
           setItem(null)
           setParentChain([])
-          setError(null)
+          setError(caught instanceof Error ? caught.message : "Failed to load work item.")
         }
       } finally {
         if (!cancelled) setLoading(false)
