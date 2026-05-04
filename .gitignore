@@ -58,3 +58,4 @@ next-env.d.ts
 # Windows-download artifacts (Mark-of-the-Web "alternate data stream"
 # slip through to WSL as plain files). Worthless to track.
 *:Zone.Identifier
+.gitnexus
