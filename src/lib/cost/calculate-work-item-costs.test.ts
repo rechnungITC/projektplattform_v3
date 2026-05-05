@@ -344,6 +344,23 @@ describe("calculateWorkItemCosts — item-level basis", () => {
     expect(result.warnings[0].kind).toBe("no_basis")
   })
 
+  it("kind='feature' with story_points falls back to no_basis when no duration", () => {
+    const result = calculateWorkItemCosts({
+      work_item: makeWorkItem({
+        kind: "feature",
+        story_points: 8,
+        estimated_duration_days: null,
+      }),
+      allocations: [makeAllocation()],
+      role_rates: [makeRate()],
+      velocity_factor: 0.5,
+      default_currency: "EUR",
+    })
+    expect(result.cost_lines).toHaveLength(0)
+    expect(result.warnings).toHaveLength(1)
+    expect(result.warnings[0].kind).toBe("no_basis")
+  })
+
   it("kind='task' with duration uses duration path (SP is irrelevant for tasks)", () => {
     const result = calculateWorkItemCosts({
       work_item: makeWorkItem({

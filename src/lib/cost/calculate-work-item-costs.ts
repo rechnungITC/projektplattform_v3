@@ -8,7 +8,7 @@
  *
  * Costing formulas (Spec ST-04):
  *
- *   Story-point path (kind in story/feature/epic AND story_points > 0):
+ *   Story-point path (kind = story AND story_points > 0):
  *     amount = story_points
  *            × velocity_factor
  *            × (allocation_pct / 100)
@@ -64,7 +64,7 @@ import type {
 } from "./types"
 
 /** Kinds for which `story_points × velocity_factor` is the costing basis. */
-const SP_KINDS: ReadonlySet<string> = new Set(["story", "feature", "epic"])
+const SP_KINDS: ReadonlySet<string> = new Set(["story"])
 
 interface CalculateInput {
   work_item: WorkItemCostInput
@@ -103,7 +103,7 @@ export function calculateWorkItemCosts(input: CalculateInput): CostCalcResult {
       allocation_id: null,
       kind: "no_basis",
       detail:
-        "Work-item has neither a positive story_points value (for kind story/feature/epic) " +
+        "Work-item has neither a positive story_points value (for kind story) " +
         "nor a positive estimated_duration_days value — no cost-lines can be computed.",
     })
     return { cost_lines, warnings }

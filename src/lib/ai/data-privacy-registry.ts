@@ -193,6 +193,10 @@ const REGISTRY: Record<string, DataClass> = {
   "role_rates.role_key": 2,
   "role_rates.valid_from": 2,
   "role_rates.currency": 2,
+  // tenant cost defaults: velocity impacts person-cost derivation and is
+  // treated as sensitive planning logic; default_currency is business context.
+  "tenant_settings.cost_settings.velocity_factor": 3,
+  "tenant_settings.cost_settings.default_currency": 2,
   // work_item_cost_lines: Beträge + Currency + Datum sind Class 2;
   // source_type ist reine Diskriminator-Enum (Class 1); source_metadata
   // ist freier JSONB-Container und kann Notizen/Personenbezug enthalten

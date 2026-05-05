@@ -66,9 +66,9 @@ export interface AllocationInput {
 export interface WorkItemCostInput {
   work_item_id: string
   /** One of `'epic' | 'feature' | 'story' | 'task' | 'subtask' | 'bug' |
-   *  'work_package'`. The engine routes SP-based costing to
-   *  ('epic', 'feature', 'story') and duration-based costing to all kinds
-   *  that carry an `estimated_duration_days` value. */
+   *  'work_package'`. The engine routes SP-based costing only to `story`
+   *  and duration-based costing to all kinds that carry an
+   *  `estimated_duration_days` value. */
   kind: string
   /** Pulled from `attributes.story_points`. NULL when absent. */
   story_points: number | null
