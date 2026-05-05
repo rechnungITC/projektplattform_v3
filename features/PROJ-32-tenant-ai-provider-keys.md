@@ -1,6 +1,6 @@
 # PROJ-32: Tenant Custom AI Provider Keys (Multi-Provider)
 
-## Status: Deployed 32a · Approved 32c (α + β + γ live + QA pass; 1 Low bug deferred) · 32b/32d to be specced
+## Status: Deployed 32a + 32c (full slice live + QA Approved + tagged) · 32b/32d to be specced
 
 **Created:** 2026-05-04
 **Last Updated:** 2026-05-04
