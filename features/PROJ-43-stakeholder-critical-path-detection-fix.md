@@ -485,3 +485,186 @@ oder via Vercel-Dashboard: vorigen Deploy promoten.
 - 43-β — Sprint-Pfad + Method-Gating
 - 43-γ — Computed-Critical-Path-Marker (deferred)
 - Promote-to-Resource Identity-Mapping-Bug (PROJ-44-Kandidat oder PROJ-29-Folge)
+
+## Tech Design (Solution Architect) — 43-β
+
+> Tech-Design für PROJ-43-β (Sprint-Pfad + Method-Gating). Folge-Slice von 43-α. γ erhält ein eigenes Tech-Design beim Slice-Start.
+
+### Was geändert wird
+
+Ein **kleines Vier-Komponenten-Paket**:
+
+```
+β-Slice
+├── Datenbank          neue Spalte sprints.is_critical (analog phases.is_critical)
+├── API-Route          Detection-Query erweitert um Method-Gating + Sprint-Pfad
+├── UI                 Edit-Sprint-Dialog erhält "kritisch"-Checkbox
+└── Tests              vitest-Cases für Scrum-Methode + Method-Gating-Verhalten
+```
+
+Alles andere bleibt unverändert.
+
+### Wesentliche Kurskorrektur gegenüber Original-Spec
+
+**AC-β-4 + AC-β-5 (Audit-Whitelist-Update + PROJ-42-CI-Run für Audit) sind nach Recon nicht erforderlich.**
+
+Hintergrund: Der β-Slice wird gegen `phases.is_critical` (PROJ-35-β) als Vorbild gebaut. PROJ-35-β hat `phases.is_critical` **bewusst nicht** in das Field-Level-Audit-Whitelist (`_tracked_audit_columns`) aufgenommen — die Entscheidung gilt für genau diese Klasse von Marker-Boolean-Spalten („PM-Aussage, opt-in"). Wir folgen dem Präzedenzfall: `sprints.is_critical` wird ebenfalls nicht audit-tracked.
+
+Wirkung: kein Update an den 14 vorhandenen `_tracked_audit_columns`-Re-Definitionen über alle PROJ-Migrations hinweg, kein zusätzlicher CI-Risikopunkt.
+
+PROJ-42 Schema-Drift-CI bleibt automatisch grün, weil neue Spalten nach Migration nur **dazukommen** (kein SELECT auf entfernte Spalten).
+
+### Wie die Detection nach 43-β arbeitet
+
+Die drei α-Pfade (Resource-Stakeholder / Resource-LinkedUser / Direkt-Verantwortlicher) bleiben erhalten. Neu kommt die **Wegabhängigkeit der Verbindung „Work-Item → kritisches Konstrukt"**:
+
+```
+α-Pfade A/B/C → Work-Item → ?
+                              ├─ wenn Methode hat Phasen → phase ist_critical?
+                              └─ wenn Methode hat Sprints → sprint ist_critical?
+                              ⟶ Vereinigungsmenge der Treffer
+```
+
+Das Method-Gating entscheidet **pro Projekt**, welche Pfade aktiv sind:
+
+| Methode des Projekts | Phase-Pfad | Sprint-Pfad |
+|---|---|---|
+| Wasserfall, PMI, PRINCE2, VXT 2.0 | aktiv | inaktiv |
+| Scrum, SAFe | inaktiv | aktiv |
+| (zukünftig) Hybrid mit beiden Konstrukten | aktiv | aktiv |
+| keine Methode gewählt (NULL) | aktiv | aktiv |
+
+Quelle ist der bestehende PROJ-26-TS-Helper `SCHEDULE_CONSTRUCT_METHOD_VISIBILITY` — kein neuer Catalog-Lookup, kein RPC, keine doppelte Wahrheit.
+
+### Aggregations-Strategie
+
+Wie in α: Pfade werden parallel ausgeführt, Ergebnisse als `Set<stakeholder_id>` vereinigt. Inaktive Pfade werden gar nicht erst abgesetzt — Performance-Vorteil für reine Wasserfall-Projekte (keine Sprint-Query nötig).
+
+### Datenmodell
+
+**Eine Spalte:**
+
+| Spalte | Tabelle | Typ | Default | Audit-getrackt? |
+|---|---|---|---|---|
+| `is_critical` | `sprints` | `boolean not null` | `false` | nein (Präzedenzfall PROJ-35-β) |
+
+**Migration:** `add column if not exists is_critical boolean not null default false` (idempotent, Roll-forward-only). Kein Backfill nötig — alle existierenden Sprints starten korrekt mit `false`.
+
+### UI-Erweiterung
+
+**`edit-sprint-dialog.tsx`** erhält eine Checkbox „Auf kritischem Pfad" — exakt das Pattern aus `edit-phase-dialog.tsx:247` mit identischer Beschriftung und Tooltip-Begründung.
+
+**`new-sprint-dialog.tsx`** könnte die Checkbox initial auch zeigen — Empfehlung: **nicht** in β, weil neu angelegte Sprints standardmäßig `false` sind und der Dialog-Footprint klein bleiben soll. Markierung erfolgt im späteren Edit.
+
+**Sprint-Card-Badge** (analog Phase-Card, Critical-Path-Anzeige in Listen): **out of scope für β**, kann als Folge-Slice oder Hygiene-Erweiterung. Reine Lese-Komponente.
+
+### Sicherheit & Berechtigungen
+
+- **Authentifizierung:** unverändert. Edit-Sprint-Dialog läuft schon mit `requireProjectAccess`-`edit`-Permission.
+- **RLS:** unverändert. Lesen über bestehende Sprint-Policies; Schreiben (Toggle der Checkbox) geht über bestehende Sprint-Update-Route.
+- **Class-3-PII:** unberührt. `is_critical` ist ein boolean-Marker ohne personenbezogenen Inhalt.
+
+### Performance-Profil
+
+- **Status quo nach α:** 2 parallele Queries (Pfade A/B + Pfad C, alle gegen Phasen)
+- **Nach 43-β bei Wasserfall-Methoden:** unverändert (Sprint-Pfad nicht aktiv → keine Zusatz-Query)
+- **Nach 43-β bei Scrum/SAFe:** 2 parallele Queries (Pfade A/B + Pfad C, jetzt gegen Sprints statt Phasen — gleiche Anzahl Queries, andere Endknoten)
+- **Nach 43-β bei Hybrid:** 4 parallele Queries (je 2 für Phase-Pfad und Sprint-Pfad). Aktuell kein Methoden-Hybrid registriert, also Latenz-Risiko theoretisch.
+- **Index:** `sprints` hat `sprints_project_state_idx` und `sprints_project_start_date_idx` (PROJ-9). Sprint-Joins gehen über `work_items.sprint_id`, dafür existiert `work_items_project_sprint_idx`. Keine zusätzliche Migration für Indizes nötig.
+
+### Test-Strategie
+
+Erweiterung der bestehenden `route.test.ts` um vier Cases plus eine UI-Test-Datei für den Edit-Dialog:
+
+| Test | Szenario | Erwartung |
+|---|---|---|
+| T9 (Scrum) | Projekt-Methode `scrum`, Sprint mit `is_critical=true`, responsible_user_id auf Sprint-Item | Stakeholder markiert, Phase-Pfad **nicht** ausgewertet |
+| T10 (Wasserfall) | Projekt-Methode `waterfall`, Sprint-Datensätze vorhanden (Migrations-Erbe), Sprint-`is_critical=true` | Stakeholder **nicht** markiert (Sprint-Pfad inaktiv) |
+| T11 (Hybrid theoretisch) | Methode mit beiden Konstrukten (Mock erweitert die Visibility-Map) | Beide Pfade laufen, Set-Idempotenz |
+| T12 (NULL-Methode) | Methode = NULL (Setup-Phase) | Beide Pfade aktiv, Stakeholder markiert wenn entweder Phase- oder Sprint-Pfad trifft |
+| UI: edit-sprint-dialog.test.tsx | Checkbox togglet, Form-Submit überträgt `is_critical: true` | Submit-Payload enthält den Wert |
+
+### Begründung der gewählten Lösung (für PM-Review)
+
+**Warum keine Audit-Tracking-Pflicht?**
+Marker-Booleans wie `is_critical` sind PM-Hand-Aussage, nicht Geschäftsdaten-Mutation. Field-Level-Audit ist dafür gedacht, fachliche Inhaltsänderungen revidierbar zu halten („Welcher Stakeholder-Name wurde wann geändert?"). Eine Markierung ist orthogonal — sie darf jederzeit geändert werden, der Dashboard-Effekt ist sofort sichtbar. Genau diese Argumentation hat PROJ-35-β für `phases.is_critical` getroffen, β folgt der Linie.
+
+**Warum nicht das Method-Gating in einer SQL-Funktion?**
+Die TS-Visibility-Map ist die kanonische Quelle (PROJ-26 nennt sie explizit „TS-Registry, mit DB-Trigger-Spiegel"). API-seitiges Gating bleibt in der gleichen Datei wie die Detection-Logik selbst — eine Stelle, ein Test.
+
+**Warum kein „Standardmäßig kritisch" für Sprints in Scrum-Projekten?**
+Hieße eine implizite Aussage „in Scrum ist jeder Sprint kritisch", was den Zweck des Markers — gezielte PM-Markierung — aushöhlt. `false`-Default ist semantisch korrekt.
+
+**Warum kein Sprint-Card-Badge in β?**
+Reines Lese-UI-Polish ohne Datenfluss-Implikation. Trennt sich sauber als kleiner Folge-Slice ab und blockiert die Detection-Korrektur nicht.
+
+### Komponentenstruktur
+
+```
+DB Migration            sprints add column is_critical boolean default false
+└── (idempotent, kein Backfill)
+
+API-Endpoint            GET /api/projects/[id]/stakeholder-health
+└── route.ts
+    ├── 1. Auth + Projekt-Zugriff (unverändert)
+    ├── 2. Aktive Stakeholder + linked_user_id-Map (unverändert)
+    ├── 3. Method-Gating          ← NEU
+    │     └── visible_constructs = SCHEDULE_CONSTRUCT_METHOD_VISIBILITY[project.method]
+    ├── 4. Critical-Path-Detection — bedingt erweitert:
+    │     ├── if 'phases' visible:
+    │     │   ├── Pfad A: WIR via source_stakeholder_id   (parallel)
+    │     │   ├── Pfad B: WIR via linked_user_id           (parallel)
+    │     │   └── Pfad C: work_items.responsible_user_id   (parallel)
+    │     │   ↘ alle drei gegen phases.is_critical
+    │     └── if 'sprints' visible:
+    │         ├── Pfad A': WIR via source_stakeholder_id  (parallel)
+    │         ├── Pfad B': WIR via linked_user_id          (parallel)
+    │         └── Pfad C': work_items.responsible_user_id  (parallel)
+    │         ↘ alle drei gegen sprints.is_critical via work_items.sprint_id
+    │     → Vereinigungsmenge aller Treffer
+    ├── 5. Tenant-Overrides laden (unverändert)
+    └── 6. Antwort komponieren (unverändert)
+
+UI                      src/components/sprints/edit-sprint-dialog.tsx
+└── Checkbox "Auf kritischem Pfad" — analog edit-phase-dialog.tsx:247
+```
+
+### Abhängigkeiten
+
+**Keine neuen Pakete.** Genutzt werden:
+- bestehende `SCHEDULE_CONSTRUCT_METHOD_VISIBILITY`-Map (PROJ-26)
+- bestehende Form-Patterns (react-hook-form + Zod) im Edit-Sprint-Dialog
+- bestehende Sprint-Update-Route (Toggle des Boolean) — keine neue API nötig
+
+### Migrations-/Deploy-Risiko
+
+- **Schema-Drift-Risiko (PROJ-42-α SELECT-Check):** keines, neue Spalte ist additiv.
+- **RLS-Risiko:** keines, kein Policy-Change.
+- **Audit-Whitelist-Risiko:** keines (Präzedenzfall, siehe Kurskorrektur).
+- **Frontend-Regression:** keine, Antwort-Shape bleibt identisch (`on_critical_path: boolean`).
+- **Rollback:** zwei Schritte: (a) Migration revert (`drop column is_critical`) — sicher, weil keine FK; (b) Single-File-Code-Revert. Kein Daten-Verlust.
+
+### Open Questions / Architektur-Entscheidungen für /backend
+
+| Frage | Default-Empfehlung | Veränderbar in /backend? |
+|---|---|---|
+| Wo wird `project.project_method` für Method-Gating gelesen? | aus `requireProjectAccess`-Result, falls vorhanden — sonst zusätzlicher SELECT auf `projects.project_method` | ja, abhängig von Hilfs-Funktion |
+| Wird `is_critical` initial im New-Sprint-Dialog angezeigt? | **nein** (Edit-only in β) | ja |
+| Sprint-Card zeigt "kritisch"-Badge? | **nein** in β (separater Lese-UI-Slice) | ja |
+| `compute_critical_path_phases`-RPC für Sprints replizieren? | **nein** in β (γ-Thema) | nein, Slice-Grenze |
+
+### Übergabe an Implementierung
+
+Hauptsächlich Backend-Slice mit kleinem UI-Anteil → bevorzugte Reihenfolge: `/backend` (Migration + Route + Tests) → `/frontend` (Edit-Sprint-Checkbox + Test) → `/qa` → `/deploy`. UI-Slice ist klein genug, um an Backend zu hängen, falls gewünscht.
+
+### Geänderter AC-Satz vs. Spec-Original
+
+| Original-AC | Status nach β-Tech-Design | Begründung |
+|---|---|---|
+| AC-β-1 (Migration `is_critical`) | unverändert | ✓ |
+| AC-β-2 (Edit-Sprint-Checkbox) | unverändert | ✓ |
+| AC-β-3 (Method-Gating per Catalog) | unverändert, gelöst per TS-Helper | ✓ |
+| AC-β-4 (Audit-Whitelists ergänzen) | **gestrichen** (Präzedenzfall PROJ-35-β) | siehe Kurskorrektur |
+| AC-β-5 (PROJ-42 CI grün im Migrations-PR) | **redundant** (Schema-Drift trifft additive Spalten nicht) | siehe Kurskorrektur |
+| AC-β-6 (Test für Scrum-Methode) | unverändert | ✓ |
+| AC-β-7 (Migration idempotent) | unverändert | ✓ |
