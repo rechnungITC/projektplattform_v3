@@ -36,6 +36,12 @@ export interface Sprint {
   start_date: string | null
   end_date: string | null
   state: SprintState
+  /**
+   * PROJ-43-β — Domain-Marker: PM kennzeichnet Sprint als kritisch für den
+   * Projekterfolg. Treibt den Critical-Path-Indikator im Stakeholder-Health-
+   * Dashboard. Method-gated (Scrum/SAFe/NULL only). Default false.
+   */
+  is_critical: boolean
   created_by: string
   created_at: string
   updated_at: string

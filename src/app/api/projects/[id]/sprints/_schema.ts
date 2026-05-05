@@ -16,6 +16,8 @@ export const sprintCreateSchema = z
     goal: z.string().max(5000).nullable().optional(),
     start_date: isoDate.nullable().optional(),
     end_date: isoDate.nullable().optional(),
+    /** PROJ-43-β: Critical-Path-Marker. Default false on insert. */
+    is_critical: z.boolean().optional(),
   })
   .refine((v) => !v.start_date || !v.end_date || v.end_date >= v.start_date, {
     message: "end_date must be >= start_date",
@@ -28,6 +30,8 @@ export const sprintPatchSchema = z
     goal: z.string().max(5000).nullable().optional(),
     start_date: isoDate.nullable().optional(),
     end_date: isoDate.nullable().optional(),
+    /** PROJ-43-β: Critical-Path-Marker. PM toggles via Edit-Sprint-Dialog. */
+    is_critical: z.boolean().optional(),
   })
   .refine((v) => Object.keys(v).length > 0, {
     message: "At least one field required.",

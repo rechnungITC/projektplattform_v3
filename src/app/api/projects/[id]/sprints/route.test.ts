@@ -172,6 +172,7 @@ describe("POST /api/projects/[id]/sprints — schema/DB-payload drift", () => {
       goal: "Drift-Test goal description.",
       start_date: "2026-01-01",
       end_date: "2026-01-14",
+      is_critical: false,
     }
 
     for (const key of schemaKeys) {

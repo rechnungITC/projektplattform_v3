@@ -26,6 +26,7 @@ import {
   FormMessage,
 } from "@/components/ui/form"
 import { Input } from "@/components/ui/input"
+import { Switch } from "@/components/ui/switch"
 import { Textarea } from "@/components/ui/textarea"
 import type { Sprint } from "@/types/sprint"
 import { dateToIsoDate } from "@/lib/dates/iso-date"
@@ -44,6 +45,7 @@ const editSprintSchema = z
       .or(z.literal("")),
     start_date: z.date().nullable().optional(),
     end_date: z.date().nullable().optional(),
+    is_critical: z.boolean().optional(),
   })
   .refine(
     (values) => {
@@ -82,6 +84,7 @@ export function EditSprintDialog({
       goal: sprint.goal ?? "",
       start_date: parseIsoDate(sprint.start_date),
       end_date: parseIsoDate(sprint.end_date),
+      is_critical: sprint.is_critical ?? false,
     },
   })
 
@@ -92,6 +95,7 @@ export function EditSprintDialog({
         goal: sprint.goal ?? "",
         start_date: parseIsoDate(sprint.start_date),
         end_date: parseIsoDate(sprint.end_date),
+        is_critical: sprint.is_critical ?? false,
       })
     }
   }, [open, sprint, form])
@@ -105,6 +109,7 @@ export function EditSprintDialog({
           values.goal && values.goal.length > 0 ? values.goal.trim() : null,
         start_date: dateToIsoDate(values.start_date),
         end_date: dateToIsoDate(values.end_date),
+        is_critical: values.is_critical ?? false,
       }
 
       const response = await fetch(
@@ -234,6 +239,34 @@ export function EditSprintDialog({
                 )}
               />
             </div>
+
+            <FormField
+              control={form.control}
+              name="is_critical"
+              render={({ field }) => (
+                <FormItem className="flex items-start gap-3 rounded-md border p-3">
+                  <FormControl>
+                    <Switch
+                      checked={field.value ?? false}
+                      onCheckedChange={field.onChange}
+                      disabled={submitting}
+                      aria-label="Auf kritischem Pfad"
+                    />
+                  </FormControl>
+                  <div className="space-y-0.5">
+                    <FormLabel className="text-sm font-medium">
+                      Auf kritischem Pfad
+                    </FormLabel>
+                    <p className="text-xs text-muted-foreground">
+                      Markiert diesen Sprint als kritisch für den Projekterfolg.
+                      Treibt den Critical-Path-Indikator im Stakeholder-Health-
+                      Dashboard. Nur wirksam in Methoden mit Sprint-Konstrukt
+                      (Scrum, SAFe).
+                    </p>
+                  </div>
+                </FormItem>
+              )}
+            />
 
             <DialogFooter>
               <Button

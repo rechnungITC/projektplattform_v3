@@ -1,6 +1,6 @@
 # PROJ-43: Stakeholder-Health Critical-Path Detection — Korrektheits- und Coverage-Fix
 
-## Status: Deployed (43-α) + In Progress (43-β backend; awaiting /frontend + /qa)
+## Status: Deployed (43-α) + In Progress (43-β backend + frontend; awaiting /qa)
 **Created:** 2026-05-05
 **Last Updated:** 2026-05-05
 
@@ -715,3 +715,22 @@ Hauptsächlich Backend-Slice mit kleinem UI-Anteil → bevorzugte Reihenfolge: `
 **Open für /frontend:**
 - `edit-sprint-dialog.tsx` Checkbox „Auf kritischem Pfad" analog `edit-phase-dialog.tsx:247`
 - Optional: kleiner Vitest-Case dafür
+
+## Frontend Implementation Notes — 43-β (2026-05-06)
+
+**Geändert:**
+- `src/types/sprint.ts` — `Sprint`-Interface um `is_critical: boolean` erweitert (Doku-Kommentar zu PROJ-43-β-Semantik).
+- `src/hooks/use-sprints.ts` — SELECT um `is_critical` ergänzt, sonst hätte das Edit-Dialog-Feld nie den persistierten Wert geladen.
+- `src/app/api/projects/[id]/sprints/_schema.ts` — `is_critical: z.boolean().optional()` in beiden Schemas (`sprintCreateSchema` + `sprintPatchSchema`). Schema-Drift-CI-Tests zwingen das Feld in die kitchen-sink-Fixtures (POST + PATCH); beide aktualisiert mit `is_critical: false`/`true`.
+- `src/components/sprints/edit-sprint-dialog.tsx` — Switch-FormField analog `edit-phase-dialog.tsx:247`. Beschriftung „Auf kritischem Pfad" + Help-Text inkl. Hinweis auf Method-Gating („Nur wirksam in Methoden mit Sprint-Konstrukt — Scrum, SAFe").
+
+**Bewusst NICHT angefasst:**
+- `new-sprint-dialog.tsx` — Default `false` ist semantisch korrekt; PM markiert kritisch nachträglich.
+- `sprint-card.tsx` — Critical-Path-Badge in Sprint-Karten ist optionale Lese-UI-Polish, separater kleiner Slice.
+
+**Verifikation:**
+- `npx vitest run` → 1082/1082 grün, inkl. der zwei zuvor wegen Drift-Tests rot gelaufenen Sprint-Schema-Cases (POST + PATCH).
+- `npm run build` → ✓ 51 Pages, 7.8s, keine neuen Fehler.
+- `npm run lint` → 0 errors, nur die pre-existing `incompatible-library` Warning in `edit-work-item-dialog.tsx:412`.
+
+**AC-β-2 abgeschlossen:** Edit-Sprint-Checkbox live im UI, Toggle persistiert via PATCH → `sprints.is_critical` → Stakeholder-Health-Detection. β-Slice damit voll backend+frontend implementiert, awaiting /qa.

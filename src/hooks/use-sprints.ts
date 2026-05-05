@@ -48,7 +48,7 @@ export function useSprints(
         let query = supabase
           .from("sprints")
           .select(
-            "id, tenant_id, project_id, name, goal, start_date, end_date, state, created_by, created_at, updated_at"
+            "id, tenant_id, project_id, name, goal, start_date, end_date, state, is_critical, created_by, created_at, updated_at"
           )
           .eq("project_id", projectId)
           .order("start_date", { ascending: false, nullsFirst: false })

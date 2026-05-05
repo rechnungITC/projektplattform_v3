@@ -64,6 +64,7 @@ describe("PATCH /api/projects/[id]/sprints/[sid] — schema/DB-payload drift", (
       goal: "Updated goal.",
       start_date: "2026-01-01",
       end_date: "2026-01-14",
+      is_critical: true,
     }
 
     for (const key of schemaKeys) {
