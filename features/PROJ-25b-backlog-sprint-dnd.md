@@ -382,8 +382,47 @@ All eight frontend pieces are wired and the production build is green:
 - Vitest: 31/31 green (15 bulk + 5 single-item + 11 selection-hook).
 - `npm run build`: ✓ Compiled successfully in 7.7s — no warnings on PROJ-25b code paths.
 
-## QA Test Results
-_To be added by /qa_
+## QA Test Results — 2026-05-06
+
+QA Engineer pass against the spec ACs returned **GO with conditions**.
+
+### Tests
+- `sprint-bulk/route.test.ts` — 15/15 PASS
+- `[wid]/sprint/route.test.ts` — 5/5 PASS (now 7/7 after Auflage A wiring)
+- `use-story-selection.test.ts` — 11/11 PASS
+- `tsc --noEmit` — clean for PROJ-25b paths
+- `eslint` — 0 findings on PROJ-25b paths
+
+### AC matrix (Highlights)
+- ST-01 (DnD core, drop targets, single + bulk PATCH, method gate, only-stories, source-sprint refresh): **erfüllt**
+- ST-06 (a11y polish — aria-live, Esc-cancel, dynamic aria-labels, KeyboardSensor): **erfüllt** (Sensor-Vorhandensein verifiziert; UX-Korrektheit der Pfeiltasten bleibt ein E2E-Folge-Item, siehe Auflage B)
+- Multi-Select (Ctrl/Cmd toggle, Shift range, visuelles Highlight, Stack-Visualisierung, Bulk-Endpoint, Max-50, Reset-after-drop): **erfüllt**
+- Sprint-State (Frontend-Gate + Backend-422): **erfüllt**
+- Tenant-Isolation: abgedeckt durch RLS + `WHERE project_id` — Cross-Tenant-Leak nicht möglich
+
+### Auflage A — `requireProjectAccess(projectId, "edit")` ergänzt (umgesetzt 2026-05-06)
+QA flagged that both PATCH endpoints relied on RLS alone for the edit check. The route convention in V3 (cost-lines, parent, copy, resources) calls the helper **before** any mutating work, so a clean 403 surfaces ahead of any RLS short-row filter. Both endpoints now follow the convention:
+- `src/app/api/projects/[id]/work-items/sprint-bulk/route.ts` — helper added before sprint guard
+- `src/app/api/projects/[id]/work-items/[wid]/sprint/route.ts` — helper added before sprint guard
+
+Tests updated to mock the `projects`, `tenant_memberships`, `project_memberships` chains accordingly. 20/20 still green.
+
+### Auflage B — deferred follow-up items (logged, **not blocking**)
+1. **Playwright E2E suite (6 cases)** — drag handle visibility per method · Ctrl-click toggle · Shift-click range · DnD between Backlog ↔ Sprint A ↔ Sprint B · closed-sprint reject · keyboard-only DnD path. To be picked up before PROJ-25c (Touch/Mobile polish).
+2. **Performance benchmark** — 30 sprints × 100 stories scenario; Single-drag ≥ 55fps, Multi-drag-50 ≥ 50fps, Initial render < 500ms (per ST-07 AC). Risk is judged low because `@dnd-kit` is a known 60fps stack, but the AC remains formally open. Recommended PROJ-25b-α follow-up slice.
+
+### Auflage C — micro-cleanups (logged, low priority)
+- `work_item_ids` de-duplication should run **before** the `.max(50)` Zod gate (today: 50 IDs accepted that may dedupe to 1 — no security impact, just spec-text drift).
+- Toast text on `items_not_found` should match the spec wording verbatim ("Eine oder mehrere Stories wurden inzwischen gelöscht").
+- `apiError` helper should also carry the `failed_ids` field; current implementation inlines `NextResponse.json(...)` in two spots in the bulk route. Cosmetic.
+
+### Top-3 residual risks
+1. Performance unbewiesen → Auflage B
+2. Optimistic-Update sub-spec (D3 trade-off, drop appears after PATCH settles, not before) — UX-Detail, no data integrity issue
+3. No DnD-flow E2E coverage at all → Auflage B
+
+### Recommendation
+**GO** — Auflage A umgesetzt. Auflagen B+C als Folge-Items dokumentiert, Deploy freigegeben.
 
 ## Deployment
 _To be added by /deploy_

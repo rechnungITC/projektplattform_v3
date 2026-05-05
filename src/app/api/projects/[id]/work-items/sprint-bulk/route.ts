@@ -1,7 +1,11 @@
 import { NextResponse } from "next/server"
 import { z } from "zod"
 
-import { apiError, getAuthenticatedUserId } from "@/app/api/_lib/route-helpers"
+import {
+  apiError,
+  getAuthenticatedUserId,
+  requireProjectAccess,
+} from "@/app/api/_lib/route-helpers"
 
 /**
  * PROJ-25b — Bulk Sprint Assignment.
@@ -60,6 +64,11 @@ export async function PATCH(
 
   const { userId, supabase } = await getAuthenticatedUserId()
   if (!userId) return apiError("unauthorized", "Not signed in.", 401)
+
+  // Defense-in-depth: surface a clean 403 before relying on RLS row-level
+  // filters. Caller must hold an edit role on the project.
+  const access = await requireProjectAccess(supabase, projectId, userId, "edit")
+  if (access.error) return access.error
 
   // Sprint guard — same shape as the single-item route. Sprint must exist,
   // belong to this project, and not be closed.

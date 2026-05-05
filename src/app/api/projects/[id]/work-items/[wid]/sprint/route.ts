@@ -1,7 +1,11 @@
 import { NextResponse } from "next/server"
 import { z } from "zod"
 
-import { apiError, getAuthenticatedUserId } from "@/app/api/_lib/route-helpers"
+import {
+  apiError,
+  getAuthenticatedUserId,
+  requireProjectAccess,
+} from "@/app/api/_lib/route-helpers"
 
 const schema = z.object({
   sprint_id: z.string().uuid().nullable(),
@@ -38,6 +42,11 @@ export async function PATCH(
 
   const { userId, supabase } = await getAuthenticatedUserId()
   if (!userId) return apiError("unauthorized", "Not signed in.", 401)
+
+  // Defense-in-depth: surface a clean 403 before relying on RLS row-level
+  // filters. Caller must hold an edit role on the project.
+  const access = await requireProjectAccess(supabase, projectId, userId, "edit")
+  if (access.error) return access.error
 
   // Cross-project guard + sprint-state guard. If a sprint is supplied, ensure
   // it belongs to the same project (FK only enforces existence, not project

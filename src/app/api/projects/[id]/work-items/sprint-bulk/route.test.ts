@@ -15,6 +15,24 @@ import { beforeEach, describe, expect, it, vi } from "vitest"
 
 const getUserMock = vi.fn()
 
+const projectsChain = {
+  select: vi.fn().mockReturnThis(),
+  eq: vi.fn().mockReturnThis(),
+  maybeSingle: vi.fn(),
+}
+
+const tenantMembershipChain = {
+  select: vi.fn().mockReturnThis(),
+  eq: vi.fn().mockReturnThis(),
+  maybeSingle: vi.fn(),
+}
+
+const projectMembershipChain = {
+  select: vi.fn().mockReturnThis(),
+  eq: vi.fn().mockReturnThis(),
+  maybeSingle: vi.fn(),
+}
+
 const sprintsChain = {
   select: vi.fn().mockReturnThis(),
   eq: vi.fn().mockReturnThis(),
@@ -57,6 +75,9 @@ const workItemsUpdate: ThenableChain = {
 let nextWorkItems: "match" | "update" = "match"
 
 const fromMock = vi.fn((table: string) => {
+  if (table === "projects") return projectsChain
+  if (table === "tenant_memberships") return tenantMembershipChain
+  if (table === "project_memberships") return projectMembershipChain
   if (table === "sprints") return sprintsChain
   if (table === "work_items") {
     return nextWorkItems === "match" ? workItemsMatch : workItemsUpdate
@@ -80,6 +101,7 @@ const OTHER_PROJECT_ID = "22222222-2222-4222-8222-222222222222"
 const SPRINT_ID = "33333333-3333-4333-8333-333333333333"
 const CLOSED_SPRINT_ID = "44444444-4444-4444-8444-444444444444"
 const USER_ID = "55555555-5555-4555-8555-555555555555"
+const TENANT_ID = "66666666-6666-4666-8666-666666666666"
 const STORY_A = "aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa"
 const STORY_B = "bbbbbbbb-bbbb-4bbb-8bbb-bbbbbbbbbbbb"
 const STORY_C = "cccccccc-cccc-4ccc-8ccc-cccccccccccc"
@@ -99,6 +121,25 @@ function makeReq(body: unknown, projectId: string = PROJECT_ID): Request {
 beforeEach(() => {
   vi.clearAllMocks()
   nextWorkItems = "match"
+
+  projectsChain.select.mockReturnValue(projectsChain)
+  projectsChain.eq.mockReturnValue(projectsChain)
+  projectsChain.maybeSingle.mockResolvedValue({
+    data: { id: PROJECT_ID, tenant_id: TENANT_ID },
+    error: null,
+  })
+  tenantMembershipChain.select.mockReturnValue(tenantMembershipChain)
+  tenantMembershipChain.eq.mockReturnValue(tenantMembershipChain)
+  tenantMembershipChain.maybeSingle.mockResolvedValue({
+    data: { role: "admin" },
+    error: null,
+  })
+  projectMembershipChain.select.mockReturnValue(projectMembershipChain)
+  projectMembershipChain.eq.mockReturnValue(projectMembershipChain)
+  projectMembershipChain.maybeSingle.mockResolvedValue({
+    data: { role: "lead" },
+    error: null,
+  })
 
   sprintsChain.select.mockReturnValue(sprintsChain)
   sprintsChain.eq.mockReturnValue(sprintsChain)
