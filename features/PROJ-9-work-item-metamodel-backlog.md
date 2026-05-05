@@ -785,4 +785,15 @@ Round-2 scope is **Approved** for `/deploy` (already in production via the migra
   - `20260503210000_proj9r2_legacy_rls_hardening.sql`
 - **Deviations:** during initial migration apply, the `audit_log_entity_type_check` constraint was inadvertently overwritten with a 12-value list (vs. the 28 production values). Postgres rejected the migration before any data mutation; constraint definition was corrected to PRESERVE all existing entity_types and additively append `'dependencies'`. Re-apply succeeded. No production data was touched during the failure.
 - **Lint pre-existing issue noted:** `risk-trend-sparkline.tsx:53` (PROJ-35 code) has a `react-hooks/set-state-in-effect` ESLint error — unrelated to PROJ-9-R2; PROJ-35 is already deployed with this code; recommend cleanup in next PROJ-35 slice.
-- **Follow-up:** drop `dependencies_legacy` snapshot table after a 4-week confidence window (ID R2-I1).
+
+### R2 follow-ups — closed in 2026-05-05 housekeeping slice
+
+| ID | Status | Closed by |
+|---|---|---|
+| **R2-I1** Drop `dependencies_legacy` snapshot | ✅ closed | `20260505300000_proj9_drop_dependencies_legacy.sql` (table was empty in prod, no rollback value) |
+| **L1** Index pass on missing FKs | ✅ closed | `20260505300100_proj9_l1_fk_indexes.sql` (6 partial indexes on work_items.{sprint_id,phase_id,milestone_id,created_by} + dependencies.created_by + sprints.created_by; tenant_id-alone skipped because composite indexes cover those access patterns) |
+| **R2-I2** Project ON-DELETE-CASCADE smoke in staging | ⏳ deferred | Acceptable — verified by code-symmetry. Re-test when staging environment exists. |
+| **PROJ-10 INSERT/DELETE row-snapshot audit** | ✅ closed for `dependencies` | `20260505300200_proj9_audit_dependencies_insert_delete.sql` adds two SECURITY DEFINER trigger functions writing `field_name='__row__'` audit entries. The general PROJ-10 row-snapshot pipeline is still a future item, but the dependencies-specific gap is now closed. |
+| **Lint `risk-trend-sparkline.tsx:53`** | ✅ already clean | Lint error not reproducible on current main; presumably fixed in a subsequent PROJ-35 commit. |
+| **Wrapper-route sunset** for legacy dependencies POST body (`predecessor_id` / `successor_id` / `type`) | ⏳ scheduled | Sunset target ~**2026-11-04** (6 months post-R2 deploy). Tracking item: remove the legacy-body branch in `src/app/api/projects/[id]/dependencies/route.ts` POST handler and adjust the route test. No new feature ID — register here as a maintenance ticket. |
+| **Dependencies UI page** | ✅ closed | New page at `/projects/[id]/abhaengigkeiten` replaces the previous ComingSoon placeholder. List view with type filter + delete row + human-readable from/to labels. Full Gantt visualization stays in PROJ-25 scope. |
