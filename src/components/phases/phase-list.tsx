@@ -11,10 +11,15 @@ import { Card, CardContent } from "@/components/ui/card"
 import { Skeleton } from "@/components/ui/skeleton"
 import { useProjectAccess } from "@/hooks/use-project-access"
 import type { Phase } from "@/types/phase"
+import type { WorkItemWithProfile } from "@/types/work-item"
 
 interface PhaseListProps {
   projectId: string
   phases: Phase[]
+  /** Optional — work_packages for the project. Passed down to PhaseCard so
+   * each card can render its assigned WPs in-place. Empty/undefined → fallback
+   * placeholder. */
+  workItems?: WorkItemWithProfile[]
   loading: boolean
   onChanged: () => void | Promise<void>
 }
@@ -22,6 +27,7 @@ interface PhaseListProps {
 export function PhaseList({
   projectId,
   phases,
+  workItems,
   loading,
   onChanged,
 }: PhaseListProps) {
@@ -87,6 +93,9 @@ export function PhaseList({
             key={phase.id}
             projectId={projectId}
             phase={phase}
+            phaseWorkItems={(workItems ?? []).filter(
+              (wp) => wp.phase_id === phase.id && !wp.is_deleted,
+            )}
             onChanged={onChanged}
             onReorderRequest={canTransition ? () => setReorderOpen(true) : undefined}
           />

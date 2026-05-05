@@ -124,6 +124,7 @@ export function PlanungClient({ projectId }: PlanungClientProps) {
           <PhaseList
             projectId={projectId}
             phases={phases}
+            workItems={workItems}
             loading={phasesLoading}
             onChanged={refreshAll}
           />

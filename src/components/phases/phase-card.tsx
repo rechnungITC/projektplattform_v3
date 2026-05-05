@@ -45,10 +45,18 @@ import {
 import { useCurrentProjectMethod } from "@/lib/work-items/method-context"
 import { cn } from "@/lib/utils"
 import type { Phase } from "@/types/phase"
+import type { WorkItemWithProfile } from "@/types/work-item"
+
+import { WorkItemKindBadge } from "@/components/work-items/work-item-kind-badge"
+import { WorkItemStatusBadge } from "@/components/work-items/work-item-status-badge"
+import { toast } from "sonner"
+import { X } from "lucide-react"
 
 interface PhaseCardProps {
   projectId: string
   phase: Phase
+  /** Work-items already filtered to phase_id === phase.id (passed by PhaseList). */
+  phaseWorkItems?: WorkItemWithProfile[]
   onChanged: () => void | Promise<void>
   /** Triggered when the user picks "Sortieren" from the actions menu. */
   onReorderRequest?: () => void
@@ -57,6 +65,7 @@ interface PhaseCardProps {
 export function PhaseCard({
   projectId,
   phase,
+  phaseWorkItems = [],
   onChanged,
   onReorderRequest,
 }: PhaseCardProps) {
@@ -255,21 +264,41 @@ export function PhaseCard({
           )}
         </section>
 
-        {/* Work packages — minimal placeholder; PROJ-9 owns the live count. */}
+        {/* Work packages — live list of WPs assigned to this phase. */}
         <section
           aria-label="Arbeitspakete in dieser Phase"
-          className="flex items-center justify-between rounded-md border bg-muted/30 px-3 py-2 text-sm"
+          className="space-y-2"
         >
-          <span className="inline-flex items-center gap-2 text-muted-foreground">
-            <ListTree className="h-4 w-4" aria-hidden />
-            Arbeitspakete in dieser Phase
-          </span>
-          <Link
-            href={backlogHref}
-            className="text-sm text-primary underline-offset-4 hover:underline"
-          >
-            Im Backlog öffnen
-          </Link>
+          <div className="flex items-center justify-between">
+            <h3 className="inline-flex items-center gap-2 text-sm font-medium">
+              <ListTree className="h-4 w-4" aria-hidden />
+              Arbeitspakete ({phaseWorkItems.length})
+            </h3>
+            <Link
+              href={backlogHref}
+              className="text-xs text-primary underline-offset-4 hover:underline"
+            >
+              Im Backlog öffnen
+            </Link>
+          </div>
+          {phaseWorkItems.length === 0 ? (
+            <p className="rounded-md border bg-muted/30 px-3 py-2 text-xs text-muted-foreground">
+              Keine Arbeitspakete dieser Phase zugeordnet. Im Backlog kannst du
+              Pakete dieser Phase zuweisen.
+            </p>
+          ) : (
+            <ul className="space-y-1.5">
+              {phaseWorkItems.map((wp) => (
+                <PhaseWorkItemRow
+                  key={wp.id}
+                  projectId={projectId}
+                  workItem={wp}
+                  canEdit={canEdit}
+                  onChanged={onChanged}
+                />
+              ))}
+            </ul>
+          )}
         </section>
       </CardContent>
 
@@ -346,4 +375,84 @@ function parseIso(value: string): Date | null {
   const day = Number(dayStr)
   if (!year || !month || !day) return null
   return new Date(year, month - 1, day)
+}
+
+interface PhaseWorkItemRowProps {
+  projectId: string
+  workItem: WorkItemWithProfile
+  canEdit: boolean
+  onChanged: () => void | Promise<void>
+}
+
+/**
+ * Compact row for one WP inside a PhaseCard's work-items section.
+ * Click on title → opens detail-drawer (via project-room navigation).
+ * Click on "X" → unassigns WP from this phase (PATCH phase_id: null).
+ */
+function PhaseWorkItemRow({
+  projectId,
+  workItem,
+  canEdit,
+  onChanged,
+}: PhaseWorkItemRowProps) {
+  const [pending, setPending] = React.useState(false)
+
+  const handleRemove = React.useCallback(async () => {
+    setPending(true)
+    try {
+      const res = await fetch(
+        `/api/projects/${projectId}/work-items/${workItem.id}`,
+        {
+          method: "PATCH",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ phase_id: null }),
+        },
+      )
+      if (!res.ok) {
+        const body = (await res.json().catch(() => null)) as {
+          error?: { message?: string }
+        } | null
+        throw new Error(
+          body?.error?.message ?? `Fehler ${res.status} beim Entfernen aus Phase`,
+        )
+      }
+      toast.success("Aus Phase entfernt", {
+        description: workItem.title,
+      })
+      await onChanged()
+    } catch (err) {
+      toast.error("Konnte Arbeitspaket nicht aus Phase entfernen", {
+        description: err instanceof Error ? err.message : String(err),
+      })
+    } finally {
+      setPending(false)
+    }
+  }, [projectId, workItem.id, workItem.title, onChanged])
+
+  return (
+    <li
+      className={cn(
+        "flex items-center gap-2 rounded-md border bg-card px-3 py-1.5 text-sm",
+        pending && "opacity-60",
+      )}
+    >
+      <WorkItemKindBadge kind={workItem.kind} iconOnly />
+      <span className="flex-1 truncate font-medium">{workItem.title}</span>
+      <WorkItemStatusBadge status={workItem.status} />
+      {canEdit ? (
+        <Button
+          type="button"
+          variant="ghost"
+          size="icon"
+          className="h-6 w-6 shrink-0"
+          aria-label={`„${workItem.title}" aus dieser Phase entfernen`}
+          title="Aus Phase entfernen"
+          disabled={pending}
+          onClick={handleRemove}
+        >
+          <X className="h-3.5 w-3.5" aria-hidden />
+        </Button>
+      ) : null}
+    </li>
+  )
 }
