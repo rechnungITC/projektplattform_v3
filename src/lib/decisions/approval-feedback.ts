@@ -149,14 +149,14 @@ export async function lookupProjectResponsibleRecipient(
     .maybeSingle()
   if (projErr || !project?.responsible_user_id) return null
 
-  // auth.users is not directly readable by all RLS-bound clients — try a
-  // user-profile join first, fall back to the in-app channel using the
-  // user-id as recipient.
+  // auth.users is not directly readable by all RLS-bound clients — read
+  // the email from public.profiles (id mirrors auth.users.id), fall back
+  // to the in-app channel using the user-id as recipient.
   type ProfileRow = { email: string | null }
   const { data: profile } = await supabase
-    .from("user_profiles")
+    .from("profiles")
     .select("email")
-    .eq("user_id", project.responsible_user_id)
+    .eq("id", project.responsible_user_id)
     .maybeSingle<ProfileRow>()
 
   if (profile?.email) {

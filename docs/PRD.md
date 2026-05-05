@@ -66,6 +66,7 @@ The product thesis: enterprise projects fail at the seams between execution, gov
 | PROJ-39 | P1 | Assistant Action Packs — erste produktive Assistant-Fähigkeiten: Projektstatus, Navigation, Projekt-Suche/Öffnen und dialogische Projektanlage über den bestehenden Wizard. | Planned |
 | PROJ-40 | P1 | Assistant Conversation Audit & Transcript Governance — Governance-Schicht für Assistant-Sessions, Turn-Audit, Transcript-Retention, Redaction, Export und Tenant-Policies. | Planned |
 | PROJ-41 | P1 | Assistant Speech, Provider & Wake-Word Infrastructure — Speech-/Provider-Basis für STT, TTS, Wake-/Push-to-Talk, Mikrofon-/Browser-Voraussetzungen und Fallback-Verhalten. | Planned |
+| PROJ-42 | P1 | Schema-Drift-CI-Guard — GitHub-Actions-Workflow als Required-Check auf `main`, der `.from(...).select(...)`-Calls in `src/` via TypeScript-AST gegen `information_schema.columns` einer Docker-Shadow-DB prüft. Hard-Fail bei Drift. Reaktion auf 2026-05-04 PROJ-36-α/γ-Inzident. α-Slice: SELECT-only; β/γ später. | Deployed |
 | _TBD_ | P2 | Governance workflows: approval gates, escalations, formal decisions | Planned |
 | _TBD_ | P2 | **Erweitertes Stakeholder-Management**: Skill-/Persönlichkeitsprofile (DISG, lizenz-geklärt), Kommunikations-Tracking (Sentiment/Kooperation/Reaktionszeit), KI-Coaching-Purpose, kritischer-Pfad-Indikator. Domain-Wissen: `docs/Stakeholderwissen/`. Promotion via `/requirements` (Single-Responsibility-Split in 3-4 Specs) + CIA-Review (überschneidet PROJ-8/13/12/30). | Domain-Knowledge |
 
