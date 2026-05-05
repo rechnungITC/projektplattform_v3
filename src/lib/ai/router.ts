@@ -34,7 +34,9 @@ import {
 } from "./classify"
 import { resolveProvider, type ResolvedProvider } from "./key-resolver"
 import { AnthropicProvider } from "./providers/anthropic"
+import { GoogleProvider } from "./providers/google"
 import { OllamaProvider } from "./providers/ollama"
+import { OpenAIProvider } from "./providers/openai"
 import { StubProvider } from "./providers/stub"
 import type { AIProvider } from "./providers/types"
 import type {
@@ -159,6 +161,24 @@ async function selectProviderForPurpose(
       }),
       // Ollama on tenant infrastructure is NOT externalBlocked — data
       // does not leave the tenant control domain. ki_runs.status='success'.
+      externalBlocked: false,
+    }
+  }
+  if (resolved.config.kind === "openai") {
+    return {
+      provider: new OpenAIProvider({
+        apiKey: resolved.config.api_key,
+        modelId: resolved.config.model_id,
+      }),
+      externalBlocked: false,
+    }
+  }
+  if (resolved.config.kind === "google") {
+    return {
+      provider: new GoogleProvider({
+        apiKey: resolved.config.api_key,
+        modelId: resolved.config.model_id,
+      }),
       externalBlocked: false,
     }
   }

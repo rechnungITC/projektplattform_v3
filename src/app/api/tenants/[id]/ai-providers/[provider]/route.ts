@@ -26,10 +26,18 @@ import {
   validateAnthropicKey,
 } from "@/lib/ai/anthropic-key-validator"
 import {
+  buildGoogleFingerprint,
+  validateGoogleKey,
+} from "@/lib/ai/google-key-validator"
+import {
   buildOllamaFingerprint,
   sanitizeOllamaUrl,
   validateOllamaConfig,
 } from "@/lib/ai/ollama-config-validator"
+import {
+  buildOpenAIFingerprint,
+  validateOpenAIKey,
+} from "@/lib/ai/openai-key-validator"
 import {
   EncryptionUnavailableError,
   isEncryptionAvailable,
@@ -39,7 +47,12 @@ interface Ctx {
   params: Promise<{ id: string; provider: string }>
 }
 
-const ALLOWED_PROVIDERS = ["anthropic", "ollama"] as const
+const ALLOWED_PROVIDERS = [
+  "anthropic",
+  "ollama",
+  "openai",
+  "google",
+] as const
 type Provider = (typeof ALLOWED_PROVIDERS)[number]
 
 function isAllowedProvider(p: string): p is Provider {
@@ -56,6 +69,32 @@ const anthropicPutSchema = z.object({
     .min(30, "Key must be at least 30 characters.")
     .max(500, "Key is implausibly long.")
     .startsWith("sk-ant-", "Anthropic keys must start with 'sk-ant-'."),
+})
+
+const openaiPutSchema = z.object({
+  key: z
+    .string()
+    .min(20, "Key must be at least 20 characters.")
+    .max(500, "Key is implausibly long.")
+    .startsWith("sk-", "OpenAI keys must start with 'sk-'."),
+  model_id: z
+    .string()
+    .min(1)
+    .max(100)
+    .optional(),
+})
+
+const googlePutSchema = z.object({
+  key: z
+    .string()
+    .min(20, "Key must be at least 20 characters.")
+    .max(500, "Key is implausibly long.")
+    .startsWith("AIza", "Google AI Studio keys must start with 'AIza'."),
+  model_id: z
+    .string()
+    .min(1)
+    .max(100)
+    .optional(),
 })
 
 const ollamaPutSchema = z.object({
@@ -201,6 +240,58 @@ export async function PUT(request: Request, ctx: Ctx) {
     }
     configJsonb = { api_key: parsed.data.key }
     fingerprint = buildAnthropicFingerprint(parsed.data.key)
+    validationStatus = validation.status
+    validationDetail = validation.detail
+  } else if (provider === "openai") {
+    const parsed = openaiPutSchema.safeParse(body)
+    if (!parsed.success) {
+      const first = parsed.error.issues[0]
+      return apiError(
+        "validation_error",
+        first?.message ?? "Invalid request body.",
+        400,
+        first?.path?.[0]?.toString(),
+      )
+    }
+    const validation = await validateOpenAIKey(parsed.data.key)
+    if (validation.status === "invalid") {
+      return apiError(
+        "validation_error",
+        validation.detail ?? "OpenAI rejected the key.",
+        422,
+        "key",
+      )
+    }
+    configJsonb = parsed.data.model_id
+      ? { api_key: parsed.data.key, model_id: parsed.data.model_id }
+      : { api_key: parsed.data.key }
+    fingerprint = buildOpenAIFingerprint(parsed.data.key)
+    validationStatus = validation.status
+    validationDetail = validation.detail
+  } else if (provider === "google") {
+    const parsed = googlePutSchema.safeParse(body)
+    if (!parsed.success) {
+      const first = parsed.error.issues[0]
+      return apiError(
+        "validation_error",
+        first?.message ?? "Invalid request body.",
+        400,
+        first?.path?.[0]?.toString(),
+      )
+    }
+    const validation = await validateGoogleKey(parsed.data.key)
+    if (validation.status === "invalid") {
+      return apiError(
+        "validation_error",
+        validation.detail ?? "Google rejected the key.",
+        422,
+        "key",
+      )
+    }
+    configJsonb = parsed.data.model_id
+      ? { api_key: parsed.data.key, model_id: parsed.data.model_id }
+      : { api_key: parsed.data.key }
+    fingerprint = buildGoogleFingerprint(parsed.data.key)
     validationStatus = validation.status
     validationDetail = validation.detail
   } else {

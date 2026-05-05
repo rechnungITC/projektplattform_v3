@@ -45,10 +45,17 @@ const PURPOSES = [
 
 // Must stay in lockstep with the tenant_ai_provider_priority CHECK
 // constraint and the AIKeyProvider union in key-resolver.ts.
-const KNOWN_PROVIDERS = ["anthropic", "ollama"] as const
+const KNOWN_PROVIDERS = [
+  "anthropic",
+  "ollama",
+  "openai",
+  "google",
+] as const
 
 // Local-only providers for Class-3. Keep in lockstep with the DB CHECK
-// constraint `tenant_ai_provider_priority_class3_local_only`.
+// constraint `tenant_ai_provider_priority_class3_local_only`. After
+// 32-b adds OpenAI + Google (both cloud), the local set stays just
+// `ollama` — Class-3 routes only to tenant-on-prem infrastructure.
 const LOCAL_PROVIDERS: readonly string[] = ["ollama"]
 
 const ruleSchema = z.object({
@@ -57,7 +64,11 @@ const ruleSchema = z.object({
   provider_order: z
     .array(z.enum(KNOWN_PROVIDERS))
     .min(1, "provider_order must contain at least one provider.")
-    .max(KNOWN_PROVIDERS.length, "provider_order has duplicates."),
+    .max(KNOWN_PROVIDERS.length, "provider_order is too long.")
+    .refine(
+      (arr) => new Set(arr).size === arr.length,
+      "provider_order must not contain duplicates.",
+    ),
 })
 
 const putBodySchema = z.object({

@@ -31,7 +31,7 @@ import { isExternalAIBlocked } from "@/lib/operation-mode"
 
 import type { AIPurpose, DataClass } from "./types"
 
-export type AIKeyProvider = "anthropic" | "ollama"
+export type AIKeyProvider = "anthropic" | "ollama" | "openai" | "google"
 
 /** Provider configs after decryption — provider-specific JSONB shapes. */
 export type ProviderConfig =
@@ -42,6 +42,8 @@ export type ProviderConfig =
       model_id: string
       bearer_token?: string
     }
+  | { kind: "openai"; api_key: string; model_id?: string }
+  | { kind: "google"; api_key: string; model_id?: string }
 
 export interface ProviderRecord {
   provider: AIKeyProvider
@@ -133,7 +135,12 @@ const getTenantProviders = cache(
     // could batch into one query if RPC supported tuple inputs, but
     // 2-4 providers per tenant is small enough that the latency is
     // dominated by the GUC + decrypt itself.
-    const providers: AIKeyProvider[] = ["anthropic", "ollama"]
+    const providers: AIKeyProvider[] = [
+      "anthropic",
+      "ollama",
+      "openai",
+      "google",
+    ]
     for (const provider of providers) {
       const { data, error } = await supabase.rpc("decrypt_tenant_ai_provider", {
         p_tenant_id: tenantId,
@@ -235,8 +242,13 @@ function defaultProviderOrder(
   if (dataClass === 3) {
     return available.has("ollama") ? ["ollama"] : []
   }
+  // Class-1/2 default: Anthropic preferred, then OpenAI, Google, Ollama as
+  // fallbacks. The order encodes our quality bias for risk + narrative
+  // generation; tenants override per-purpose via the priority matrix.
   const order: AIKeyProvider[] = []
   if (available.has("anthropic")) order.push("anthropic")
+  if (available.has("openai")) order.push("openai")
+  if (available.has("google")) order.push("google")
   if (available.has("ollama")) order.push("ollama")
   return order
 }
@@ -345,6 +357,28 @@ function parseProviderConfig(
       bearer_token: typeof bearer === "string" && bearer.length > 0
         ? bearer
         : undefined,
+    }
+  }
+
+  if (provider === "openai") {
+    const apiKey = obj.api_key
+    if (typeof apiKey !== "string" || apiKey.length === 0) return null
+    const model = obj.model_id
+    return {
+      kind: "openai",
+      api_key: apiKey,
+      model_id: typeof model === "string" && model.length > 0 ? model : undefined,
+    }
+  }
+
+  if (provider === "google") {
+    const apiKey = obj.api_key
+    if (typeof apiKey !== "string" || apiKey.length === 0) return null
+    const model = obj.model_id
+    return {
+      kind: "google",
+      api_key: apiKey,
+      model_id: typeof model === "string" && model.length > 0 ? model : undefined,
     }
   }
 

@@ -186,7 +186,7 @@ describe("PUT /api/tenants/[id]/ai-priority", () => {
     const res = await PUT(
       makeReq({
         rules: [
-          { purpose: "risks", data_class: 1, provider_order: ["openai"] },
+          { purpose: "risks", data_class: 1, provider_order: ["mistral"] },
         ],
       }),
       { params: Promise.resolve({ id: TENANT_ID }) },

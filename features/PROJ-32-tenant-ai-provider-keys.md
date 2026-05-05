@@ -1,6 +1,6 @@
 # PROJ-32: Tenant Custom AI Provider Keys (Multi-Provider)
 
-## Status: Deployed 32a + 32c (full slice live + QA Approved + tagged) · 32b/32d to be specced
+## Status: Deployed 32a + 32c + 32b (OpenAI + Google live) · 32d to be specced
 
 **Created:** 2026-05-04
 **Last Updated:** 2026-05-04
@@ -14,7 +14,7 @@ PROJ-32 wird in 4 Sub-Slices ausgeliefert. Jede Slice ist standalone deploybar.
 | Sub-Slice | Scope | Status | Aufwand |
 |---|---|---|---|
 | **32a** | Tenant-Anthropic-Key (encrypted storage, validation, fallback-policy) | **Deployed 2026-05-04** | ~3-4 PT |
-| 32b | OpenAI + Google AI Studio (analog 32a, gleiches Storage-Pattern) | _to be specced_ | ~3 PT |
+| **32b** | OpenAI + Google AI Studio (analog 32a, gleiches Storage-Pattern) | **Deployed 2026-05-05** | ~2 PT (delivered) |
 | **32c** | Ollama (Endpoint-URL + optional Bearer) + Generic-Provider-Schema-Migration + Per-Purpose-Priority | **Specced** (in dieser Spec) | ~4-5 PT (revised from ~2 PT) |
 | 32d | Cost-Caps + Token-Logging + Tenant-Cost-Dashboard | _to be specced_ | ~3 PT |
 
@@ -1266,3 +1266,92 @@ Tech Design ist **build-ready unter den drei Approval-Punkten**. Empfohlene näc
 **Rollback path:** Vercel promotion + rollback migration `drop table public.tenant_ai_provider_priority cascade; drop function public.record_tenant_ai_priority_audit(uuid, text, smallint, text[], text[]);` and re-create the legacy `tenant_ai_keys` schema if needed (would require restoring data from a Supabase point-in-time backup — production has been empty throughout, so this is theoretical).
 
 **32-c is now complete end-to-end.** Recommend `/qa proj 32` for a full end-to-end QA pass + tag bump to `v1.32c-PROJ-32` on QA pass.
+
+---
+
+## Phase 32-b — OpenAI + Google AI Studio (deployed 2026-05-05)
+
+### Locked Decisions (from /requirements 2026-05-05)
+
+1. **Both providers in one slice** — OpenAI + Google together; consistent shipping rhythm.
+2. **OpenAI validation:** GET `/v1/models` with `Authorization: Bearer <key>` (analog 32a Anthropic-Validator).
+3. **Google API variant:** Gemini API (api_key) on `generativelanguage.googleapis.com` — NOT Vertex AI service-account JSON. Single-string-key flow.
+4. **Class-3 eligibility:** Both cloud, Class-3 stays Ollama-only — consistent with 32a/c.
+
+### Deployment commits
+
+- `<commit>` — feat(PROJ-32): backend+frontend phase 32-b — OpenAI + Google providers + ki_runs CHECK extension + Class-3 cloud-block fix
+- Auto-deploy via push to `main`.
+
+### Migrations applied to production
+
+- `20260505100000_proj32b_openai_google_providers.sql`
+  - Extended `tenant_ai_providers.provider` CHECK to include `'openai','google'`
+  - Extended `tenant_ai_provider_priority_known_providers` CHECK
+  - Extended `record_tenant_ai_provider_audit` provider whitelist
+- `20260505100100_proj32b_fix_class3_cloud_check.sql` — **HIGH-severity fix**
+  - Original Class-3 CHECK was hardcoded to block only `'anthropic'`. After 32-b's whitelist extension, OpenAI and Google would have slipped through. Fix uses `provider_order <@ {ollama}` (subset semantics) so all current and future cloud providers are caught.
+  - Caught by red-team smoke test before any production data touched the new providers.
+- `20260505100200_proj32b_extend_ki_runs_provider_check.sql`
+  - Extended `ki_runs.provider` CHECK to include `'openai','google'`
+  - Bonus fix: `ki_runs.purpose` CHECK was missing `'narrative'` (pre-existing bug from PROJ-30 deploy). Fixed in same migration.
+
+### Code changes
+
+- `src/lib/ai/providers/openai.ts` (new) — `OpenAIProvider` via `@ai-sdk/openai` `createOpenAI` factory. Default model `gpt-4o`.
+- `src/lib/ai/providers/google.ts` (new) — `GoogleProvider` via `@ai-sdk/google` `createGoogleGenerativeAI` factory. Default model `gemini-2.0-flash-exp`.
+- `src/lib/ai/openai-key-validator.ts` (new) — raw fetch GET /v1/models, Bearer header, 5s timeout, status mapping.
+- `src/lib/ai/google-key-validator.ts` (new) — raw fetch GET /v1beta/models, x-goog-api-key header, 5s timeout. Treats 400 as invalid (Google's typical bad-key response).
+- `src/lib/ai/key-resolver.ts` — `AIKeyProvider` and `ProviderConfig` unions extended; `parseProviderConfig` handles `'openai'`/`'google'`; `defaultProviderOrder` for Class-1/2 prefers Anthropic → OpenAI → Google → Ollama.
+- `src/lib/ai/router.ts` — dispatches `OpenAIProvider` and `GoogleProvider` from resolver output.
+- `src/lib/ai/types.ts` — `AIProviderName` union extended.
+- `src/app/api/tenants/[id]/ai-providers/[provider]/route.ts` — `ALLOWED_PROVIDERS` + 2 new Zod schemas (`openaiPutSchema`, `googlePutSchema`) + 2 new dispatch branches.
+- `src/app/api/tenants/[id]/ai-providers/[provider]/validate/route.ts` — extended ALLOWED + 2 dispatch branches.
+- `src/app/api/tenants/[id]/ai-priority/route.ts` — `KNOWN_PROVIDERS` extended; added duplicate-detection in Zod refine.
+- `src/components/settings/tenant/ai-providers/ai-providers-page-client.tsx` — `LoadState` covers all 4 providers; new `CloudKeyCard` generic component used for OpenAI + Google; pages renders 4 cards (Anthropic, OpenAI, Google, Ollama) + Priority section.
+- `src/components/settings/tenant/ai-providers/priority-matrix-section.tsx` — `ProviderName` + `AvailMap` + `CLOUD_PROVIDERS` extended; presets use `availableCloud()` helper to expand cloud order; CellEditor candidate pool includes all 3 cloud providers for Class-1/2 cells; Class-3 cells still filter to Ollama only.
+
+### Live red-team verification (production DB)
+
+Two new red-teams via DO-block + rollback marker:
+
+| Check | Result |
+|---|---|
+| Insert `'openai'` provider | accepted ✅ |
+| Insert `'google'` provider | accepted ✅ |
+| Insert `'mistral'` provider (unknown) | CHECK_VIOLATION ✅ |
+| Class-2 priority `['anthropic','openai','google','ollama']` | accepted ✅ |
+| Class-3 priority `['openai']` | CHECK_VIOLATION ✅ (after fix) |
+| Class-3 priority `['google']` | CHECK_VIOLATION ✅ (after fix) |
+| Class-3 priority `['google','ollama']` (mixed) | CHECK_VIOLATION ✅ (after fix) |
+| Class-3 priority `['anthropic']` | CHECK_VIOLATION ✅ (regression-free) |
+| Class-3 priority `['ollama']` | accepted ✅ |
+| ki_runs insert with `provider='openai'` | accepted (CHECK extended) ✅ |
+| ki_runs insert with `purpose='narrative'` | accepted (bonus fix) ✅ |
+
+### Tests
+
+- 1009 / 1009 vitest passing (was 982 after 32-c QA; +27 new):
+  - `openai-key-validator.test.ts` (10 tests)
+  - `google-key-validator.test.ts` (11 tests)
+  - 8 new PUT/route tests for OpenAI + Google flows in `ai-providers/[provider]/route.test.ts`
+- ESLint clean. TypeScript clean. `next build` clean.
+
+### Production verification
+
+- ✅ All `/api/tenants/[id]/ai-providers/<provider>` routes accept `openai`, `google` in addition to `anthropic`, `ollama`
+- ✅ `/api/tenants/[id]/ai-priority` PUT accepts the new providers in priority matrices
+- ✅ `/settings/tenant/ai-providers` admin UI shows 4 cards now (Anthropic, OpenAI, Google, Ollama) + extended Priority section
+
+### HIGH-severity finding caught (& fixed) during 32-b
+
+The Class-3 CHECK constraint from 32-c-γ was hardcoded as `not (provider_order && {anthropic})`, which only catches the specific provider name `anthropic`. After 32-b extended the provider whitelist with OpenAI and Google, **a tenant could have configured Class-3 → OpenAI without any database-level rejection** — relying solely on the API-route validation. Defense-in-depth was broken.
+
+**Fix:** `20260505100100_proj32b_fix_class3_cloud_check.sql` rewrites the CHECK as `provider_order <@ {ollama}` (subset semantics): Class-3 must contain ONLY local providers. This is future-proof — adding any new provider in 32d will not require updating this CHECK.
+
+**Production impact:** zero (caught and fixed before any tenant data touched the new whitelist).
+
+### Recommended next steps
+
+- 32d (Cost-Caps + Token-Logging + Tenant-Cost-Dashboard) — last sub-slice of PROJ-32. ~3 PT.
+- /qa proj 32 for an end-to-end pass after 32d if a clean QA-Approved milestone is desired.

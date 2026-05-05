@@ -124,7 +124,7 @@ describe("GET /api/tenants/[id]/ai-providers/[provider]", () => {
   it("returns 400 for unsupported provider", async () => {
     getUserMock.mockResolvedValue({ data: { user: { id: USER_ID } } })
     const res = await GET(makeReq(), {
-      params: Promise.resolve({ id: TENANT_ID, provider: "openai" }),
+      params: Promise.resolve({ id: TENANT_ID, provider: "mistral" }),
     })
     expect(res.status).toBe(400)
   })
@@ -244,6 +244,78 @@ describe("PUT — Anthropic", () => {
       p_action: "rotate",
       p_old_fingerprint: "sk-ant-...prev",
     })
+  })
+})
+
+describe("PUT — OpenAI", () => {
+  const VALID_OPENAI = "sk-proj-test-key-1234567890123456789012"
+
+  it("rejects key without sk- prefix", async () => {
+    getUserMock.mockResolvedValue({ data: { user: { id: USER_ID } } })
+    const res = await PUT(makeReq({ key: "AIza-bogus-1234567890" }), {
+      params: Promise.resolve({ id: TENANT_ID, provider: "openai" }),
+    })
+    expect(res.status).toBe(400)
+  })
+
+  it("rejects with 422 when OpenAI returns 401", async () => {
+    getUserMock.mockResolvedValue({ data: { user: { id: USER_ID } } })
+    globalThis.fetch = vi.fn(
+      async () => ({ ok: false, status: 401 }) as Response,
+    )
+    const res = await PUT(makeReq({ key: VALID_OPENAI }), {
+      params: Promise.resolve({ id: TENANT_ID, provider: "openai" }),
+    })
+    expect(res.status).toBe(422)
+  })
+
+  it("happy path persists + audits + plain key never in response", async () => {
+    getUserMock.mockResolvedValue({ data: { user: { id: USER_ID } } })
+    const res = await PUT(makeReq({ key: VALID_OPENAI }), {
+      params: Promise.resolve({ id: TENANT_ID, provider: "openai" }),
+    })
+    expect(res.status).toBe(200)
+    const body = await res.json()
+    expect(body.status).toBe("valid")
+    expect(body.fingerprint).toMatch(/^sk-\.\.\..{4}$/)
+    const serialized = JSON.stringify(body)
+    expect(serialized).not.toContain(VALID_OPENAI)
+  })
+})
+
+describe("PUT — Google", () => {
+  const VALID_GOOGLE = "AIzaTest-key-1234567890123456789012"
+
+  it("rejects key without AIza prefix", async () => {
+    getUserMock.mockResolvedValue({ data: { user: { id: USER_ID } } })
+    const res = await PUT(makeReq({ key: "sk-bogus-12345678901234567890" }), {
+      params: Promise.resolve({ id: TENANT_ID, provider: "google" }),
+    })
+    expect(res.status).toBe(400)
+  })
+
+  it("rejects with 422 when Google returns 400", async () => {
+    getUserMock.mockResolvedValue({ data: { user: { id: USER_ID } } })
+    globalThis.fetch = vi.fn(
+      async () => ({ ok: false, status: 400 }) as Response,
+    )
+    const res = await PUT(makeReq({ key: VALID_GOOGLE }), {
+      params: Promise.resolve({ id: TENANT_ID, provider: "google" }),
+    })
+    expect(res.status).toBe(422)
+  })
+
+  it("happy path persists + audits + plain key never in response", async () => {
+    getUserMock.mockResolvedValue({ data: { user: { id: USER_ID } } })
+    const res = await PUT(makeReq({ key: VALID_GOOGLE }), {
+      params: Promise.resolve({ id: TENANT_ID, provider: "google" }),
+    })
+    expect(res.status).toBe(200)
+    const body = await res.json()
+    expect(body.status).toBe("valid")
+    expect(body.fingerprint).toMatch(/^AIza\.\.\..{4}$/)
+    const serialized = JSON.stringify(body)
+    expect(serialized).not.toContain(VALID_GOOGLE)
   })
 })
 

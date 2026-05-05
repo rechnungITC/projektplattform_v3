@@ -34,7 +34,7 @@ const PURPOSES = [
 type Purpose = (typeof PURPOSES)[number]
 
 type DataClass = 1 | 2 | 3
-type ProviderName = "anthropic" | "ollama"
+type ProviderName = "anthropic" | "ollama" | "openai" | "google"
 
 const PURPOSE_LABELS: Record<Purpose, string> = {
   risks: "Risiken",
@@ -46,10 +46,13 @@ const PURPOSE_LABELS: Record<Purpose, string> = {
 
 const PROVIDER_LABELS: Record<ProviderName, string> = {
   anthropic: "Anthropic",
+  openai: "OpenAI",
+  google: "Google",
   ollama: "Ollama (lokal)",
 }
 
 const LOCAL_PROVIDERS: ProviderName[] = ["ollama"]
+const CLOUD_PROVIDERS: ProviderName[] = ["anthropic", "openai", "google"]
 
 interface PriorityRule {
   purpose: Purpose
@@ -74,14 +77,13 @@ const PRESETS: Record<
   class3_local_class12_anthropic: {
     label: "Class-3 nur Ollama, Class-1/2 Anthropic preferred",
     description:
-      "Standard für SaaS-Tenants mit eigenem Ollama. Class-3 strikt lokal, Class-1/2 nutzen Anthropic-Cloud zuerst, Ollama als Fallback.",
+      "Standard für SaaS-Tenants mit eigenem Ollama. Class-3 strikt lokal, Class-1/2 nutzen Anthropic-Cloud zuerst, dann OpenAI / Google / Ollama als Fallback.",
     build: (avail) => {
       const rules: PriorityRule[] = []
       for (const purpose of PURPOSES) {
         if (avail.ollama)
           rules.push({ purpose, data_class: 3, provider_order: ["ollama"] })
-        const order: ProviderName[] = []
-        if (avail.anthropic) order.push("anthropic")
+        const order: ProviderName[] = [...availableCloud(avail)]
         if (avail.ollama) order.push("ollama")
         for (const dc of [1, 2] as DataClass[]) {
           if (order.length > 0)
@@ -106,7 +108,6 @@ const PRESETS: Record<
               provider_order: ["anthropic"],
             })
         }
-        // No Class-3 rules — falls back to default which blocks if no Ollama.
       }
       return rules
     },
@@ -114,7 +115,7 @@ const PRESETS: Record<
   ollama_only: {
     label: "Ollama für alles (volles On-Prem)",
     description:
-      "Alle Anfragen über lokalen Ollama-Endpoint. Anthropic wird auch dann nicht genutzt wenn ein Tenant-Key gesetzt ist.",
+      "Alle Anfragen über lokalen Ollama-Endpoint. Cloud-Provider werden auch dann nicht genutzt wenn Tenant-Keys gesetzt sind.",
     build: (avail) => {
       if (!avail.ollama) return []
       const rules: PriorityRule[] = []
@@ -130,7 +131,17 @@ const PRESETS: Record<
 
 interface AvailMap {
   anthropic: boolean
+  openai: boolean
+  google: boolean
   ollama: boolean
+}
+
+function availableCloud(avail: AvailMap): ProviderName[] {
+  const order: ProviderName[] = []
+  if (avail.anthropic) order.push("anthropic")
+  if (avail.openai) order.push("openai")
+  if (avail.google) order.push("google")
+  return order
 }
 
 // ---------------------------------------------------------------------------
@@ -178,15 +189,24 @@ function detectPreset(rules: PriorityRule[], avail: AvailMap): PresetKey {
 export function PriorityMatrixSection({
   tenantId,
   anthropicAvailable,
+  openaiAvailable,
+  googleAvailable,
   ollamaAvailable,
 }: {
   tenantId: string
   anthropicAvailable: boolean
+  openaiAvailable: boolean
+  googleAvailable: boolean
   ollamaAvailable: boolean
 }) {
   const avail = React.useMemo<AvailMap>(
-    () => ({ anthropic: anthropicAvailable, ollama: ollamaAvailable }),
-    [anthropicAvailable, ollamaAvailable],
+    () => ({
+      anthropic: anthropicAvailable,
+      openai: openaiAvailable,
+      google: googleAvailable,
+      ollama: ollamaAvailable,
+    }),
+    [anthropicAvailable, openaiAvailable, googleAvailable, ollamaAvailable],
   )
 
   const [loading, setLoading] = React.useState(true)
@@ -297,7 +317,8 @@ export function PriorityMatrixSection({
     )
   }
 
-  const noProvider = !avail.anthropic && !avail.ollama
+  const noProvider =
+    !avail.anthropic && !avail.openai && !avail.google && !avail.ollama
   const dirty = !rulesEqual(draftRules, persistedRules)
 
   return (
@@ -389,6 +410,8 @@ function PresetSelector({
           if (
             key === "class3_local_class12_anthropic" &&
             !avail.anthropic &&
+            !avail.openai &&
+            !avail.google &&
             !avail.ollama
           )
             disabled = true
@@ -508,7 +531,7 @@ function CellEditor({
   const isClass3 = dataClass === 3
   const candidatePool: ProviderName[] = isClass3
     ? LOCAL_PROVIDERS
-    : (["anthropic", "ollama"] as ProviderName[])
+    : ([...CLOUD_PROVIDERS, "ollama"] as ProviderName[])
 
   function addProvider(p: ProviderName) {
     if (current.includes(p)) return

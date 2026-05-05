@@ -13,7 +13,12 @@ export type AIPurpose =
 
 export type DataClass = 1 | 2 | 3
 
-export type AIProviderName = "anthropic" | "stub" | "ollama"
+export type AIProviderName =
+  | "anthropic"
+  | "stub"
+  | "ollama"
+  | "openai"
+  | "google"
 
 /**
  * Auto-context for risk-suggestion generation. The shape mirrors the

@@ -15,14 +15,21 @@ import {
   requireTenantAdmin,
 } from "../../../../../_lib/route-helpers"
 import { validateAnthropicKey } from "@/lib/ai/anthropic-key-validator"
+import { validateGoogleKey } from "@/lib/ai/google-key-validator"
 import { validateOllamaConfig } from "@/lib/ai/ollama-config-validator"
+import { validateOpenAIKey } from "@/lib/ai/openai-key-validator"
 import { isEncryptionAvailable } from "@/lib/connectors/secrets"
 
 interface Ctx {
   params: Promise<{ id: string; provider: string }>
 }
 
-const ALLOWED_PROVIDERS = ["anthropic", "ollama"] as const
+const ALLOWED_PROVIDERS = [
+  "anthropic",
+  "ollama",
+  "openai",
+  "google",
+] as const
 
 export async function POST(_request: Request, ctx: Ctx) {
   const { id: tenantId, provider } = await ctx.params
@@ -112,7 +119,32 @@ export async function POST(_request: Request, ctx: Ctx) {
     const validation = await validateAnthropicKey(apiKey)
     validationStatus = validation.status
     validationDetail = validation.detail
+  } else if (provider === "openai") {
+    const apiKey = config.api_key
+    if (typeof apiKey !== "string" || apiKey.length === 0) {
+      return apiError(
+        "decrypt_failed",
+        "Decrypted OpenAI config is missing api_key.",
+        500,
+      )
+    }
+    const validation = await validateOpenAIKey(apiKey)
+    validationStatus = validation.status
+    validationDetail = validation.detail
+  } else if (provider === "google") {
+    const apiKey = config.api_key
+    if (typeof apiKey !== "string" || apiKey.length === 0) {
+      return apiError(
+        "decrypt_failed",
+        "Decrypted Google config is missing api_key.",
+        500,
+      )
+    }
+    const validation = await validateGoogleKey(apiKey)
+    validationStatus = validation.status
+    validationDetail = validation.detail
   } else {
+    // ollama
     const endpoint = config.endpoint_url
     const model = config.model_id
     const bearer = config.bearer_token

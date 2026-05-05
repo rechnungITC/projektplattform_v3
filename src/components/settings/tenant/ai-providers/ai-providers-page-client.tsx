@@ -40,7 +40,7 @@ import { toast } from "sonner"
 
 import { PriorityMatrixSection } from "./priority-matrix-section"
 
-type ProviderName = "anthropic" | "ollama"
+type ProviderName = "anthropic" | "ollama" | "openai" | "google"
 
 type ProviderStatus =
   | "not_set"
@@ -63,7 +63,13 @@ interface ProviderState {
 
 type LoadState =
   | { kind: "loading" }
-  | { kind: "ready"; anthropic: ProviderState; ollama: ProviderState }
+  | {
+      kind: "ready"
+      anthropic: ProviderState
+      openai: ProviderState
+      google: ProviderState
+      ollama: ProviderState
+    }
   | { kind: "error"; message: string }
 
 function formatTimestamp(iso: string | null | undefined): string {
@@ -103,10 +109,15 @@ export function AiProvidersPageClient() {
       return (await r.json()) as ProviderState
     }
 
-    Promise.all([loadProvider("anthropic"), loadProvider("ollama")])
-      .then(([anthropic, ollama]) => {
+    Promise.all([
+      loadProvider("anthropic"),
+      loadProvider("openai"),
+      loadProvider("google"),
+      loadProvider("ollama"),
+    ])
+      .then(([anthropic, openai, google, ollama]) => {
         if (!cancelled) {
-          setState({ kind: "ready", anthropic, ollama })
+          setState({ kind: "ready", anthropic, openai, google, ollama })
         }
       })
       .catch((err: unknown) => {
@@ -188,11 +199,39 @@ export function AiProvidersPageClient() {
         onChanged={reload}
       />
 
+      <CloudKeyCard
+        provider="openai"
+        title="OpenAI"
+        description="GPT-4o + andere OpenAI-Modelle für Class-1 / Class-2-Daten. Cloud-Provider — nicht für Class-3 erlaubt."
+        keyPrefix="sk-"
+        keyExample="sk-proj-…"
+        keyHint="Muss mit sk- beginnen und mindestens 20 Zeichen haben."
+        deleteImpactText="Class-1/Class-2-Anfragen routen anschließend zum nächsten Cloud-Provider in der Priority-Matrix oder zum Plattform-Fallback."
+        state={state.openai}
+        tenantId={tenantId!}
+        onChanged={reload}
+      />
+
+      <CloudKeyCard
+        provider="google"
+        title="Google AI Studio (Gemini)"
+        description="Gemini-Modelle (gemini-2.0-flash-exp) für Class-1 / Class-2-Daten. Cloud-Provider — nicht für Class-3 erlaubt."
+        keyPrefix="AIza"
+        keyExample="AIza…"
+        keyHint="Muss mit AIza beginnen (Gemini API key, kein Vertex-AI Service-Account)."
+        deleteImpactText="Class-1/Class-2-Anfragen routen anschließend zum nächsten Cloud-Provider in der Priority-Matrix oder zum Plattform-Fallback."
+        state={state.google}
+        tenantId={tenantId!}
+        onChanged={reload}
+      />
+
       <OllamaCard state={state.ollama} tenantId={tenantId!} onChanged={reload} />
 
       <PriorityMatrixSection
         tenantId={tenantId!}
         anthropicAvailable={state.anthropic.status !== "not_set"}
+        openaiAvailable={state.openai.status !== "not_set"}
+        googleAvailable={state.google.status !== "not_set"}
         ollamaAvailable={state.ollama.status !== "not_set"}
       />
     </div>
@@ -741,6 +780,252 @@ function OllamaCard({
               Class-3-Anfragen werden anschließend blockiert (kein lokaler
               Provider mehr). Class-1/Class-2 fallen auf Anthropic /
               Plattform-Key zurück. Audit-Log behält den Vorgang.
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogCancel disabled={submitting}>Abbrechen</AlertDialogCancel>
+            <AlertDialogAction
+              onClick={handleDelete}
+              disabled={submitting}
+              className="bg-destructive text-destructive-foreground hover:bg-destructive/90"
+            >
+              {submitting && (
+                <Loader2 className="mr-2 h-4 w-4 animate-spin" aria-hidden />
+              )}
+              Endgültig löschen
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
+    </Card>
+  )
+}
+
+// ---------------------------------------------------------------------------
+// Generic cloud-provider Card (used for OpenAI + Google — same shape as
+// Anthropic but parameterized prefix / labels). Anthropic stays as its
+// own component because of historical separation; could be unified later.
+// ---------------------------------------------------------------------------
+
+function CloudKeyCard({
+  provider,
+  title,
+  description,
+  keyPrefix,
+  keyExample,
+  keyHint,
+  deleteImpactText,
+  state,
+  tenantId,
+  onChanged,
+}: {
+  provider: "openai" | "google"
+  title: string
+  description: string
+  keyPrefix: string
+  keyExample: string
+  keyHint: string
+  deleteImpactText: string
+  state: ProviderState
+  tenantId: string
+  onChanged: () => void
+}) {
+  const [editing, setEditing] = React.useState(false)
+  const [keyInput, setKeyInput] = React.useState("")
+  const [submitting, setSubmitting] = React.useState(false)
+  const [validating, setValidating] = React.useState(false)
+  const [deleteOpen, setDeleteOpen] = React.useState(false)
+
+  const isSet = state.status !== "not_set"
+  const trimmed = keyInput.trim()
+  const keyShapeOk =
+    trimmed.length >= 20 &&
+    trimmed.length <= 500 &&
+    trimmed.startsWith(keyPrefix)
+
+  async function handleSave() {
+    if (!keyShapeOk) return
+    setSubmitting(true)
+    try {
+      const r = await fetch(
+        `/api/tenants/${tenantId}/ai-providers/${provider}`,
+        {
+          method: "PUT",
+          headers: { "content-type": "application/json" },
+          body: JSON.stringify({ key: trimmed }),
+        },
+      )
+      if (!r.ok) {
+        const body = await r.json().catch(() => ({}))
+        throw new Error(body?.error?.message ?? `HTTP ${r.status}`)
+      }
+      const result = (await r.json()) as ProviderState
+      if (result.status === "valid") {
+        toast.success(`${title}-Key gespeichert und validiert.`)
+      } else if (result.status === "unknown") {
+        toast.warning(
+          result.validation_warning ??
+            `${title}-Key gespeichert, Validierung steht aus.`,
+        )
+      } else {
+        toast.warning(`${title}-Key gespeichert, aber nicht valide.`)
+      }
+      setKeyInput("")
+      setEditing(false)
+      onChanged()
+    } catch (err) {
+      toast.error(err instanceof Error ? err.message : "Speichern fehlgeschlagen")
+    } finally {
+      setSubmitting(false)
+    }
+  }
+
+  async function handleValidate() {
+    setValidating(true)
+    try {
+      const r = await fetch(
+        `/api/tenants/${tenantId}/ai-providers/${provider}/validate`,
+        { method: "POST" },
+      )
+      if (!r.ok) {
+        const body = await r.json().catch(() => ({}))
+        throw new Error(body?.error?.message ?? `HTTP ${r.status}`)
+      }
+      const result = (await r.json()) as ProviderState
+      if (result.status === "valid") toast.success(`${title}-Key ist valide.`)
+      else if (result.status === "invalid")
+        toast.error(`${title}-Key ist nicht valide. Bitte rotieren.`)
+      else toast.warning(`Validierung unvollständig — ${title} nicht erreichbar.`)
+      onChanged()
+    } catch (err) {
+      toast.error(err instanceof Error ? err.message : "Re-Test fehlgeschlagen")
+    } finally {
+      setValidating(false)
+    }
+  }
+
+  async function handleDelete() {
+    setSubmitting(true)
+    try {
+      const r = await fetch(
+        `/api/tenants/${tenantId}/ai-providers/${provider}`,
+        { method: "DELETE" },
+      )
+      if (!r.ok) {
+        const body = await r.json().catch(() => ({}))
+        throw new Error(body?.error?.message ?? `HTTP ${r.status}`)
+      }
+      toast.success(`${title}-Key gelöscht.`)
+      setDeleteOpen(false)
+      setEditing(false)
+      setKeyInput("")
+      onChanged()
+    } catch (err) {
+      toast.error(err instanceof Error ? err.message : "Löschen fehlgeschlagen")
+    } finally {
+      setSubmitting(false)
+    }
+  }
+
+  return (
+    <Card>
+      <CardHeader>
+        <CardTitle className="flex items-center gap-2">
+          <KeyRound className="h-5 w-5" aria-hidden />
+          {title} <StatusBadge status={state.status} />
+        </CardTitle>
+        <CardDescription>{description}</CardDescription>
+      </CardHeader>
+      <CardContent className="space-y-4">
+        {isSet && state.fingerprint && (
+          <dl className="grid grid-cols-1 gap-2 text-sm sm:grid-cols-3">
+            <div>
+              <dt className="text-muted-foreground">Fingerprint</dt>
+              <dd className="font-mono">{state.fingerprint}</dd>
+            </div>
+            <div>
+              <dt className="text-muted-foreground">Letzte Validierung</dt>
+              <dd>{formatTimestamp(state.last_validated_at)}</dd>
+            </div>
+            <div>
+              <dt className="text-muted-foreground">Status</dt>
+              <dd>{state.last_validation_status ?? "—"}</dd>
+            </div>
+          </dl>
+        )}
+
+        {state.status === "invalid" && (
+          <Alert variant="destructive">
+            <AlertCircle className="h-4 w-4" aria-hidden />
+            <AlertTitle>Letzte Validierung fehlgeschlagen</AlertTitle>
+            <AlertDescription>
+              {title} hat den Key abgelehnt. Bitte rotieren oder löschen.
+            </AlertDescription>
+          </Alert>
+        )}
+
+        {(editing || !isSet) && (
+          <div className="space-y-2">
+            <Label htmlFor={`${provider}-key`}>{title} API-Key</Label>
+            <Input
+              id={`${provider}-key`}
+              type="password"
+              autoComplete="off"
+              spellCheck={false}
+              placeholder={keyExample}
+              value={keyInput}
+              onChange={(e) => setKeyInput(e.target.value)}
+              disabled={submitting}
+            />
+            <p className="text-xs text-muted-foreground">{keyHint}</p>
+            <div className="flex flex-wrap gap-2">
+              <Button onClick={handleSave} disabled={!keyShapeOk || submitting}>
+                {submitting && (
+                  <Loader2 className="mr-2 h-4 w-4 animate-spin" aria-hidden />
+                )}
+                Speichern + Validieren
+              </Button>
+              {editing && (
+                <Button
+                  variant="ghost"
+                  onClick={() => {
+                    setEditing(false)
+                    setKeyInput("")
+                  }}
+                  disabled={submitting}
+                >
+                  Abbrechen
+                </Button>
+              )}
+            </div>
+          </div>
+        )}
+
+        {isSet && !editing && (
+          <div className="flex flex-wrap gap-2">
+            <Button variant="outline" onClick={handleValidate} disabled={validating}>
+              {validating && (
+                <Loader2 className="mr-2 h-4 w-4 animate-spin" aria-hidden />
+              )}
+              Re-Test
+            </Button>
+            <Button variant="outline" onClick={() => setEditing(true)}>
+              Rotieren
+            </Button>
+            <Button variant="destructive" onClick={() => setDeleteOpen(true)}>
+              <Trash2 className="mr-2 h-4 w-4" aria-hidden /> Löschen
+            </Button>
+          </div>
+        )}
+      </CardContent>
+
+      <AlertDialog open={deleteOpen} onOpenChange={setDeleteOpen}>
+        <AlertDialogContent>
+          <AlertDialogHeader>
+            <AlertDialogTitle>{title}-Key löschen?</AlertDialogTitle>
+            <AlertDialogDescription>
+              {deleteImpactText} Diese Aktion ist nicht rückgängig — der
+              Audit-Log behält den Vorgang.
             </AlertDialogDescription>
           </AlertDialogHeader>
           <AlertDialogFooter>
