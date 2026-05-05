@@ -1,6 +1,6 @@
 # PROJ-43: Stakeholder-Health Critical-Path Detection — Korrektheits- und Coverage-Fix
 
-## Status: In Progress (43-α implemented, awaiting QA)
+## Status: Approved (43-α)
 **Created:** 2026-05-05
 **Last Updated:** 2026-05-05
 
@@ -347,8 +347,98 @@ Backend-only Slice → direkter Sprung zu `/backend`, kein `/frontend` nötig. Q
 
 **Nicht angefasst:** β (Sprint-Pfad + Method-Gating), γ (Computed-Critical-Path-Marker), Promote-to-Resource-Edge-Case. Bleibt jeweils eigener Slice.
 
-## QA Test Results
-_To be added by /qa_
+## QA Test Results — 43-α (2026-05-06)
+
+**Tester:** /qa skill
+**Scope:** PROJ-43-α (three-path Critical-Path-Detection). β/γ aus dem Scope ausgeklammert (eigene Slices).
+
+### Acceptance Criteria
+
+| AC | Quelle | Test/Beleg | Ergebnis |
+|---|---|---|---|
+| AC-α-1 (`responsible_user_id`-Pfad) | route.ts:180-185 (Path C) | T3 | ✓ pass |
+| AC-α-2 (`linked_user_id`-only Resource) | route.ts:173-176 (Path B) | T2 | ✓ pass |
+| AC-α-3 (Idempotenz Multipath) | `Set<string>` (route.ts:160) | T4 | ✓ pass |
+| AC-α-4 (kein Falsch-Positive) | Map nur über `linked_user_id`-Keys | T5 | ✓ pass |
+| AC-α-5 (`is_active=true`-Filter) | route.ts:85 (Status quo aus PROJ-35-γ) | code review | ✓ pass |
+| AC-α-6 (Projekt-Filter) | route.ts:121 + 127 | T8 | ✓ pass |
+| AC-α-7 (kein Schema-Change) | git diff: nur route.ts + route.test.ts | manual | ✓ pass |
+| AC-α-8 (3 isolierte Tests) | T1+T2+T3 isoliert | vitest | ✓ pass |
+| AC-α-9 (Performance < +50ms p95) | static: 2 parallele indizierte Queries | static | ✓ static pass; live-bench post-deploy |
+
+### Edge Cases
+
+| EC | Verifiziert via | Ergebnis |
+|---|---|---|
+| EC-α-1 (User nicht mehr Tenant-Member) | code review: keine User-Membership-Prüfung im Pfad | ✓ verhält sich wie Spec verlangt |
+| EC-α-2 (User auf 2 Items, 1 kritisch) | Set-Idempotenz | ✓ |
+| EC-α-3 (Mehrere Stakeholder share `linked_user_id`) | `Map<string, string[]>` (route.ts:134) | ✓ beide flagged |
+| EC-α-4 (Resource hat beide Links) | Path A + B addieren separat | ✓ |
+| EC-α-5 (`is_deleted=true`) | route.ts:167+181 Filter | T7 ✓ |
+| EC-α-6 (Phase gelöscht → `phase_id=null`) | `wi.phases?.is_critical !== true` (route.ts:168) | ✓ wird übersprungen |
+
+### Automated Tests
+
+- `npx vitest run src/app/api/projects/[id]/stakeholder-health/route.test.ts` → **10/10 grün** (Duration 745ms)
+- `npx vitest run` (volle Suite) → **1078/1078 grün** über 124 Test-Files (Duration 13.97s)
+- Keine Regression in Stakeholder/Resources/Work-Item-Bereich.
+
+### Security Audit (Red Team)
+
+| Check | Ergebnis |
+|---|---|
+| Class-3-PII-Boundary für `linked_user_id` | ✓ wird geladen (route.ts:81+118), aber nicht in `StakeholderHealthRow`-Interface (Zeilen 47-63) und nicht im Mapping (198-215) durchgereicht |
+| Antwort-Shape-Test verhindert Leak-Regression | ✓ route.test.ts:349-361 assertet `Object.keys(...).not.toContain("linked_user_id")` |
+| Auth (`requireProjectAccess view`) | ✓ unverändert |
+| RLS auf alle 4 Queries (stakeholders, work_item_resources, work_items, tenant_settings) | ✓ Supabase-Client respektiert Policies |
+| Input-Validation (`projectId`) | ✓ via `requireProjectAccess` |
+| SQL-Injection | ✓ keine — nur Supabase-Builder, keine string-Concat |
+| Cross-Tenant-Leak | ✓ alle Queries über RLS gescopt; tenant_id aus access-Result |
+
+**Keine Security-Findings.**
+
+### Regression Test (PROJ-35-γ Stakeholder-Health-Dashboard)
+
+| Konsument | Erwartetes Shape | Status |
+|---|---|---|
+| `health-api.ts:18-33` (`StakeholderHealthRow`) | id, name, is_active, attitude, conflict_potential, decision_authority, influence, impact, communication_need, preferred_channel, current_escalation_patterns, agreeableness_fremd, emotional_stability_fremd, on_critical_path | ✓ exakt |
+| `stakeholder-health-page-client.tsx:160+352` (`on_critical_path` lesend) | unverändert | ✓ |
+| Top-level Response (`{ stakeholders, risk_score_overrides, tenant_id }`) | unverändert | ✓ |
+| Referenz auf `linked_user_id` in UI | nicht vorhanden | ✓ kein UI-Leak |
+
+**Keine Regression im PROJ-35-γ-Dashboard.**
+
+### Performance (AC-α-9)
+
+Statische Analyse:
+- Pfade A+B als eine indizierte Query (`work_item_resources_project_id_created_at_idx`)
+- Pfad C als zweite indizierte Query (`work_items(project_id, ...)` + `work_items_responsible_user_idx`)
+- Beide via `Promise.all` parallel — Netto-Gewinn vs. alter Single-Query bei nur einem zusätzlichen Roundtrip
+- TS-Aggregation O(W·R + W) bei realistischen Größen (W≤100, R≤200) ⇒ < 1 ms
+
+Live-p95-Bench (50 Stakeholders × 100 Work-Items × 20 Phases) ist in der QA-Umgebung mangels seeded Pilot-Daten nicht durchführbar. Empfehlung: Post-Deploy-Smoke gegen Pilot-Tenant via Vercel/Sentry-Latency-Monitoring.
+
+### Bugs Found
+
+**Keine.**
+
+| Severity | Count |
+|---|---|
+| Critical | 0 |
+| High | 0 |
+| Medium | 0 |
+| Low | 0 |
+
+### Production-Ready Decision
+
+**READY** — keine Critical/High-Bugs, alle 9 Acceptance Criteria erfüllt (AC-α-9 als static pass mit Post-Deploy-Smoke-Empfehlung), Class-3-PII-Boundary geprüft, kein Regressionsrisiko für PROJ-35-γ.
+
+### Out-of-Scope-Erinnerungen (für Folge-Slices)
+
+- 43-β (Sprint-Pfad + Method-Gating) — eigener Slice
+- 43-γ (Computed-Critical-Path-Marker) — eigener Slice, deferred
+- Promote-to-Resource Identity-Mapping-Bug — separater Kandidat (PROJ-44 oder PROJ-29-Folge)
+- Performance-Live-Bench mit Pilot-Daten — Post-Deploy
 
 ## Deployment
 _To be added by /deploy_
