@@ -1,6 +1,6 @@
 # PROJ-43: Stakeholder-Health Critical-Path Detection — Korrektheits- und Coverage-Fix
 
-## Status: Deployed (43-α)
+## Status: Deployed (43-α) + In Progress (43-β backend; awaiting /frontend + /qa)
 **Created:** 2026-05-05
 **Last Updated:** 2026-05-05
 
@@ -668,3 +668,50 @@ Hauptsächlich Backend-Slice mit kleinem UI-Anteil → bevorzugte Reihenfolge: `
 | AC-β-5 (PROJ-42 CI grün im Migrations-PR) | **redundant** (Schema-Drift trifft additive Spalten nicht) | siehe Kurskorrektur |
 | AC-β-6 (Test für Scrum-Methode) | unverändert | ✓ |
 | AC-β-7 (Migration idempotent) | unverändert | ✓ |
+
+## Implementation Notes — 43-β (2026-05-06)
+
+**Migration:** `supabase/migrations/20260506100000_proj43b_sprints_is_critical.sql`
+- Idempotent `add column if not exists is_critical boolean not null default false` analog zu PROJ-35-β.
+- Live appliziert per `mcp__supabase__apply_migration` auf Projekt `iqerihohwabyjzkpcujq`; Smoke-Check via `information_schema.columns` bestätigt: `boolean NOT NULL DEFAULT false`.
+- Audit-Whitelist **bewusst nicht angefasst** (PROJ-35-β-Präzedenz, AC-β-4 als überspecifiziert markiert).
+
+**Geändert:** `src/app/api/projects/[id]/stakeholder-health/route.ts`
+- Extra-SELECT `projects.project_method` nach Stakeholder-Load (gezielt isoliert, kein Helper-Refactor).
+- `phasesActive` / `sprintsActive` via `isScheduleConstructAllowedInMethod` aus `@/lib/work-items/schedule-method-visibility`.
+- Vier parallele Queries via `Promise.all` (statt zwei) — inaktive Pfade kurzschließen via `Promise.resolve({data: [], error: null})`, kein Datenbank-Roundtrip.
+- Phase-Pfad und Sprint-Pfad teilen sich die Set-Aggregation in `criticalStakeholderIds` → Idempotenz garantiert für die theoretische Hybrid-Methode.
+
+**Geändert:** `src/app/api/projects/[id]/stakeholder-health/route.test.ts`
+- T9 (Scrum-only) → Sprint-Pfad aktiv, Phase-Pfad inaktiv, Sprint-`is_critical=true` flagt Stakeholder.
+- T10 (Wasserfall-only) → Sprint-Daten werden ignoriert (Sprint-Pfad inaktiv); ohne Phase-Daten kein Match.
+- T11 (NULL-Methode, Setup) → Beide Pfade aktiv.
+- T12 (Kanban) → Beide Pfade inaktiv, auch maximal kritische Daten flaggen niemanden.
+- Bestehende α-Tests (T1-T8 + Auth + Shape) unverändert grün.
+
+**Schema-Drift-Risiko (PROJ-42):** geprüft. Neue Spalte `sprints.is_critical` ist additiv → SELECT-Drift-Check trivial grün; keine entfernten Spalten in `src/`.
+
+**Verifikation:**
+- `npx vitest run src/app/api/projects/[id]/stakeholder-health/route.test.ts` → 14/14 grün, Duration 685ms
+- `npx vitest run` (volle Suite) → 1082/1082 grün über 124 Files, +4 Neue, 0 Regressionen
+- `npx tsc --noEmit` → keine neuen Type-Fehler in route.ts / route.test.ts
+
+**AC-Abdeckung (43-β):**
+| AC | Test | Status |
+|---|---|---|
+| AC-β-1 (Migration `is_critical`) | live appliziert + smoke-check | ✓ |
+| AC-β-2 (Edit-Sprint-Checkbox) | offen — folgt im /frontend-Slice | offen |
+| AC-β-3 (Method-Gating per Catalog) | T9 (Scrum), T10 (Waterfall), T11 (NULL), T12 (Kanban) | ✓ |
+| AC-β-4 (Audit-Whitelist) | **gestrichen** per Tech-Design-Kurskorrektur | n/a |
+| AC-β-5 (PROJ-42 CI grün) | redundant — additive Spalte | n/a |
+| AC-β-6 (Test für Scrum) | T9 | ✓ |
+| AC-β-7 (Migration idempotent) | `add column if not exists` | ✓ |
+
+**Nicht angefasst:**
+- `sprintPatchSchema` / `sprintCreateSchema` in `_schema.ts` — UI-Wiring kommt mit /frontend-Slice (Edit-Sprint-Checkbox + react-hook-form-Anbindung).
+- New-Sprint-Dialog (Default `is_critical=false` reicht).
+- Sprint-Card-Badge analog Phase-Card — out of scope, kann separater Lese-UI-Slice werden.
+
+**Open für /frontend:**
+- `edit-sprint-dialog.tsx` Checkbox „Auf kritischem Pfad" analog `edit-phase-dialog.tsx:247`
+- Optional: kleiner Vitest-Case dafür

@@ -360,3 +360,167 @@ describe("GET /api/projects/[id]/stakeholder-health — PROJ-43-α three-path de
     expect(Object.keys(body.stakeholders[0]!)).not.toContain("linked_user_id")
   })
 })
+
+// ---------------------------------------------------------------------------
+// PROJ-43-β — Sprint path + method-gating
+// ---------------------------------------------------------------------------
+
+describe("GET /api/projects/[id]/stakeholder-health — PROJ-43-β method-gating", () => {
+  it("T9 Scrum-only: sprint with is_critical=true flags stakeholder, phase data ignored", async () => {
+    projectChain.maybeSingle.mockResolvedValue({
+      data: { id: PROJECT_ID, tenant_id: TENANT_ID, project_method: "scrum" },
+      error: null,
+    })
+    stakeholdersChain.__result = {
+      data: [stakeholder(STK_ICKE, USER_ICKE)],
+      error: null,
+    }
+    // Sprint-side WIR row — picked up by sprint-WIR query.
+    wirChain.__result = {
+      data: [
+        {
+          resources: { source_stakeholder_id: null, linked_user_id: USER_ICKE },
+          work_items: {
+            is_deleted: false,
+            sprint_id: "sprint-1",
+            sprints: { is_critical: true },
+          },
+        },
+      ],
+      error: null,
+    }
+
+    const { request, context } = makeReq()
+    const res = await GET(request, context)
+    expect(res.status).toBe(200)
+    const body = (await res.json()) as {
+      stakeholders: Array<{ id: string; on_critical_path: boolean }>
+    }
+    expect(body.stakeholders[0]?.id).toBe(STK_ICKE)
+    expect(body.stakeholders[0]?.on_critical_path).toBe(true)
+  })
+
+  it("T10 Waterfall-only: sprint data with is_critical=true is ignored (sprint path inactive)", async () => {
+    projectChain.maybeSingle.mockResolvedValue({
+      data: {
+        id: PROJECT_ID,
+        tenant_id: TENANT_ID,
+        project_method: "waterfall",
+      },
+      error: null,
+    })
+    stakeholdersChain.__result = {
+      data: [stakeholder(STK_ICKE, USER_ICKE)],
+      error: null,
+    }
+    // Sprint-shaped data — should be ignored because sprint path is inactive
+    // for waterfall projects. Phase path runs but its data (workItemsChain
+    // and wirChain when interpreted as phase rows) has no phases.is_critical.
+    wirChain.__result = {
+      data: [
+        {
+          resources: { source_stakeholder_id: null, linked_user_id: USER_ICKE },
+          work_items: {
+            is_deleted: false,
+            sprint_id: "sprint-1",
+            sprints: { is_critical: true },
+            // no phases field → phase loop will not flag
+          },
+        },
+      ],
+      error: null,
+    }
+
+    const { request, context } = makeReq()
+    const res = await GET(request, context)
+    const body = (await res.json()) as {
+      stakeholders: Array<{ id: string; on_critical_path: boolean }>
+    }
+    expect(body.stakeholders[0]?.on_critical_path).toBe(false)
+  })
+
+  it("T11 NULL method (project setup): both phase + sprint paths active", async () => {
+    projectChain.maybeSingle.mockResolvedValue({
+      data: { id: PROJECT_ID, tenant_id: TENANT_ID, project_method: null },
+      error: null,
+    })
+    stakeholdersChain.__result = {
+      data: [stakeholder(STK_ICKE, USER_ICKE)],
+      error: null,
+    }
+    // Phase-shaped row — phase path matches.
+    wirChain.__result = {
+      data: [
+        {
+          resources: { source_stakeholder_id: null, linked_user_id: USER_ICKE },
+          work_items: {
+            is_deleted: false,
+            phase_id: "phase-1",
+            phases: { is_critical: true },
+            sprint_id: null,
+            sprints: null,
+          },
+        },
+      ],
+      error: null,
+    }
+
+    const { request, context } = makeReq()
+    const res = await GET(request, context)
+    const body = (await res.json()) as {
+      stakeholders: Array<{ id: string; on_critical_path: boolean }>
+    }
+    expect(body.stakeholders[0]?.on_critical_path).toBe(true)
+  })
+
+  it("T12 Kanban: neither phase nor sprint path active → all stakeholders false", async () => {
+    projectChain.maybeSingle.mockResolvedValue({
+      data: {
+        id: PROJECT_ID,
+        tenant_id: TENANT_ID,
+        project_method: "kanban",
+      },
+      error: null,
+    })
+    stakeholdersChain.__result = {
+      data: [stakeholder(STK_ICKE, USER_ICKE)],
+      error: null,
+    }
+    // Even with maximal critical data: kanban locks both paths.
+    wirChain.__result = {
+      data: [
+        {
+          resources: { source_stakeholder_id: STK_ICKE, linked_user_id: null },
+          work_items: {
+            is_deleted: false,
+            phase_id: "phase-1",
+            phases: { is_critical: true },
+            sprint_id: "sprint-1",
+            sprints: { is_critical: true },
+          },
+        },
+      ],
+      error: null,
+    }
+    workItemsChain.__result = {
+      data: [
+        {
+          responsible_user_id: USER_ICKE,
+          is_deleted: false,
+          phase_id: "phase-1",
+          phases: { is_critical: true },
+          sprint_id: "sprint-1",
+          sprints: { is_critical: true },
+        },
+      ],
+      error: null,
+    }
+
+    const { request, context } = makeReq()
+    const res = await GET(request, context)
+    const body = (await res.json()) as {
+      stakeholders: Array<{ id: string; on_critical_path: boolean }>
+    }
+    expect(body.stakeholders[0]?.on_critical_path).toBe(false)
+  })
+})

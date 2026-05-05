@@ -1,6 +1,7 @@
 /**
  * PROJ-35 Phase 35-γ — Stakeholder-Health-Dashboard data endpoint.
  * PROJ-43-α — Critical-Path-Detection extended to three paths.
+ * PROJ-43-β — Sprint path + method-gating via PROJ-26 visibility map.
  *
  * GET /api/projects/[id]/stakeholder-health
  *   → { stakeholders[], risk_score_overrides, tenant_id }
@@ -12,24 +13,30 @@
  * overrides are applied on every render without a round-trip).
  *
  * `on_critical_path` flag is server-side. A stakeholder is on the critical
- * path if ANY of these three paths reaches a work-item that sits in a
- * phase with `is_critical=true` AND the work-item is not soft-deleted:
+ * path if ANY active path reaches a non-deleted work-item that sits in a
+ * critical schedule construct (phase or sprint, depending on method):
  *
  *   Path A — Resource via stakeholder link
  *     stakeholders.id ↔ resources.source_stakeholder_id
- *     → work_item_resources → work_items.phase_id → phases.is_critical
+ *     → work_item_resources → work_items → critical phase OR sprint
  *
  *   Path B — Resource via user link (Gap 1b)
  *     stakeholders.linked_user_id ↔ resources.linked_user_id
- *     → work_item_resources → work_items.phase_id → phases.is_critical
+ *     → work_item_resources → work_items → critical phase OR sprint
  *
  *   Path C — Direct responsible user on work-item (Gap 1)
  *     stakeholders.linked_user_id ↔ work_items.responsible_user_id
- *     → work_items.phase_id → phases.is_critical
+ *     → work_items → critical phase OR sprint
  *
- * All three paths are project-filtered. Heuristic-Fallback (target_date
+ * Method-gating (PROJ-43-β): `phases` paths run only when the project's
+ * method allows phases (waterfall, pmi, prince2, vxt2) or method is NULL;
+ * `sprints` paths run only when the project's method allows sprints
+ * (scrum, safe) or method is NULL. For Kanban projects neither path
+ * runs and on_critical_path is false for all stakeholders.
+ *
+ * All paths are project-filtered. Heuristic-Fallback (target_date
  * < end - 14d) not enabled in MVP — relies on PMs explicitly marking
- * phases. Sprint-only items are out of scope (PROJ-43-β, deferred).
+ * phases/sprints. γ (computed-critical-path-marker) deferred.
  */
 
 import { NextResponse } from "next/server"
@@ -39,6 +46,8 @@ import {
   getAuthenticatedUserId,
   requireProjectAccess,
 } from "@/app/api/_lib/route-helpers"
+import { isScheduleConstructAllowedInMethod } from "@/lib/work-items/schedule-method-visibility"
+import type { ProjectMethod } from "@/types/project-method"
 
 interface Ctx {
   params: Promise<{ id: string }>
@@ -105,41 +114,34 @@ export async function GET(_request: Request, ctx: Ctx) {
   }
   const rawStakeholders = (stkData ?? []) as unknown as StakeholderRowFromSupabase[]
 
-  // 2. Critical-Path-Detection (PROJ-43-α): three project-filtered queries
-  //    run in parallel, results unified into a single Set<stakeholder_id>.
-  //    Filtering for is_deleted/is_critical happens in TS to keep the
-  //    Supabase query shape stable for unit-test mocking.
-  const [wirRes, wiRes] = await Promise.all([
-    // Path A + B combined: every allocation in this project, with the
-    // resource's stakeholder/user links and the work-item's phase status.
-    supabase
-      .from("work_item_resources")
-      .select(
-        "resources!inner(source_stakeholder_id, linked_user_id), " +
-          "work_items!inner(is_deleted, phase_id, phases(is_critical))",
-      )
-      .eq("project_id", projectId),
-    // Path C: every work-item in this project that has a responsible user,
-    // with the phase status. RLS confines to the project's tenant.
-    supabase
-      .from("work_items")
-      .select("responsible_user_id, is_deleted, phase_id, phases(is_critical)")
-      .eq("project_id", projectId)
-      .not("responsible_user_id", "is", null),
-  ])
-  if (wirRes.error) return apiError("internal_error", wirRes.error.message, 500)
-  if (wiRes.error) return apiError("internal_error", wiRes.error.message, 500)
+  // 2a. Method-gating (PROJ-43-β): read project's method to decide which
+  //     schedule-construct paths run. NULL method (project still in setup)
+  //     means every construct is allowed, mirroring PROJ-26 semantics.
+  const { data: methodRow, error: methodErr } = await supabase
+    .from("projects")
+    .select("project_method")
+    .eq("id", projectId)
+    .maybeSingle()
+  if (methodErr) return apiError("internal_error", methodErr.message, 500)
+  const projectMethod =
+    (methodRow as { project_method: ProjectMethod | null } | null)
+      ?.project_method ?? null
+  const phasesActive = isScheduleConstructAllowedInMethod(
+    "phases",
+    projectMethod,
+  )
+  const sprintsActive = isScheduleConstructAllowedInMethod(
+    "sprints",
+    projectMethod,
+  )
 
-  // Build linked_user_id → stakeholder_id[] lookup for Path B/C resolution.
-  const stakeholdersByLinkedUser = new Map<string, string[]>()
-  for (const s of rawStakeholders) {
-    if (!s.linked_user_id) continue
-    const list = stakeholdersByLinkedUser.get(s.linked_user_id) ?? []
-    list.push(s.id)
-    stakeholdersByLinkedUser.set(s.linked_user_id, list)
-  }
-
-  type WirCritRow = {
+  // 2b. Critical-Path-Detection: project-filtered queries run in parallel,
+  //     results unified into a single Set<stakeholder_id>. Filtering for
+  //     is_deleted/is_critical happens in TS to keep the Supabase query
+  //     shape stable for unit-test mocking. Inactive paths skip their
+  //     queries entirely (Performance-Vorteil für reine Wasserfall- oder
+  //     reine Scrum-Projekte).
+  type WirPhaseRow = {
     resources: {
       source_stakeholder_id: string | null
       linked_user_id: string | null
@@ -150,38 +152,136 @@ export async function GET(_request: Request, ctx: Ctx) {
       phases: { is_critical: boolean } | null
     } | null
   }
-  type WiCritRow = {
+  type WiPhaseRow = {
     responsible_user_id: string
     is_deleted: boolean
     phase_id: string | null
     phases: { is_critical: boolean } | null
   }
+  type WirSprintRow = {
+    resources: {
+      source_stakeholder_id: string | null
+      linked_user_id: string | null
+    } | null
+    work_items: {
+      is_deleted: boolean
+      sprint_id: string | null
+      sprints: { is_critical: boolean } | null
+    } | null
+  }
+  type WiSprintRow = {
+    responsible_user_id: string
+    is_deleted: boolean
+    sprint_id: string | null
+    sprints: { is_critical: boolean } | null
+  }
+
+  const wirPhasePromise = phasesActive
+    ? supabase
+        .from("work_item_resources")
+        .select(
+          "resources!inner(source_stakeholder_id, linked_user_id), " +
+            "work_items!inner(is_deleted, phase_id, phases(is_critical))",
+        )
+        .eq("project_id", projectId)
+    : Promise.resolve({ data: [] as WirPhaseRow[], error: null as null })
+  const wiPhasePromise = phasesActive
+    ? supabase
+        .from("work_items")
+        .select("responsible_user_id, is_deleted, phase_id, phases(is_critical)")
+        .eq("project_id", projectId)
+        .not("responsible_user_id", "is", null)
+    : Promise.resolve({ data: [] as WiPhaseRow[], error: null as null })
+  const wirSprintPromise = sprintsActive
+    ? supabase
+        .from("work_item_resources")
+        .select(
+          "resources!inner(source_stakeholder_id, linked_user_id), " +
+            "work_items!inner(is_deleted, sprint_id, sprints(is_critical))",
+        )
+        .eq("project_id", projectId)
+    : Promise.resolve({ data: [] as WirSprintRow[], error: null as null })
+  const wiSprintPromise = sprintsActive
+    ? supabase
+        .from("work_items")
+        .select(
+          "responsible_user_id, is_deleted, sprint_id, sprints(is_critical)",
+        )
+        .eq("project_id", projectId)
+        .not("responsible_user_id", "is", null)
+    : Promise.resolve({ data: [] as WiSprintRow[], error: null as null })
+
+  const [wirPhaseRes, wiPhaseRes, wirSprintRes, wiSprintRes] = await Promise.all(
+    [wirPhasePromise, wiPhasePromise, wirSprintPromise, wiSprintPromise],
+  )
+  if (wirPhaseRes.error)
+    return apiError("internal_error", wirPhaseRes.error.message, 500)
+  if (wiPhaseRes.error)
+    return apiError("internal_error", wiPhaseRes.error.message, 500)
+  if (wirSprintRes.error)
+    return apiError("internal_error", wirSprintRes.error.message, 500)
+  if (wiSprintRes.error)
+    return apiError("internal_error", wiSprintRes.error.message, 500)
+
+  // Build linked_user_id → stakeholder_id[] lookup for Path B/C resolution.
+  const stakeholdersByLinkedUser = new Map<string, string[]>()
+  for (const s of rawStakeholders) {
+    if (!s.linked_user_id) continue
+    const list = stakeholdersByLinkedUser.get(s.linked_user_id) ?? []
+    list.push(s.id)
+    stakeholdersByLinkedUser.set(s.linked_user_id, list)
+  }
 
   const criticalStakeholderIds = new Set<string>()
 
-  // Paths A + B — resource allocations on critical phases.
-  for (const row of (wirRes.data ?? []) as unknown as WirCritRow[]) {
-    const wi = row.work_items
-    const res = row.resources
-    if (!wi || !res) continue
-    if (wi.is_deleted) continue
-    if (wi.phases?.is_critical !== true) continue
+  // Phase paths — A+B (resource allocations) and C (direct responsible).
+  if (phasesActive) {
+    for (const row of (wirPhaseRes.data ?? []) as unknown as WirPhaseRow[]) {
+      const wi = row.work_items
+      const res = row.resources
+      if (!wi || !res) continue
+      if (wi.is_deleted) continue
+      if (wi.phases?.is_critical !== true) continue
 
-    if (res.source_stakeholder_id) {
-      criticalStakeholderIds.add(res.source_stakeholder_id) // Path A
+      if (res.source_stakeholder_id) {
+        criticalStakeholderIds.add(res.source_stakeholder_id)
+      }
+      if (res.linked_user_id) {
+        const matched = stakeholdersByLinkedUser.get(res.linked_user_id)
+        if (matched) for (const sid of matched) criticalStakeholderIds.add(sid)
+      }
     }
-    if (res.linked_user_id) {
-      const matched = stakeholdersByLinkedUser.get(res.linked_user_id) // Path B
+    for (const row of (wiPhaseRes.data ?? []) as unknown as WiPhaseRow[]) {
+      if (row.is_deleted) continue
+      if (row.phases?.is_critical !== true) continue
+      const matched = stakeholdersByLinkedUser.get(row.responsible_user_id)
       if (matched) for (const sid of matched) criticalStakeholderIds.add(sid)
     }
   }
 
-  // Path C — direct responsible_user_id on work-items in critical phases.
-  for (const row of (wiRes.data ?? []) as unknown as WiCritRow[]) {
-    if (row.is_deleted) continue
-    if (row.phases?.is_critical !== true) continue
-    const matched = stakeholdersByLinkedUser.get(row.responsible_user_id)
-    if (matched) for (const sid of matched) criticalStakeholderIds.add(sid)
+  // Sprint paths — A'+B' (resource allocations) and C' (direct responsible).
+  if (sprintsActive) {
+    for (const row of (wirSprintRes.data ?? []) as unknown as WirSprintRow[]) {
+      const wi = row.work_items
+      const res = row.resources
+      if (!wi || !res) continue
+      if (wi.is_deleted) continue
+      if (wi.sprints?.is_critical !== true) continue
+
+      if (res.source_stakeholder_id) {
+        criticalStakeholderIds.add(res.source_stakeholder_id)
+      }
+      if (res.linked_user_id) {
+        const matched = stakeholdersByLinkedUser.get(res.linked_user_id)
+        if (matched) for (const sid of matched) criticalStakeholderIds.add(sid)
+      }
+    }
+    for (const row of (wiSprintRes.data ?? []) as unknown as WiSprintRow[]) {
+      if (row.is_deleted) continue
+      if (row.sprints?.is_critical !== true) continue
+      const matched = stakeholdersByLinkedUser.get(row.responsible_user_id)
+      if (matched) for (const sid of matched) criticalStakeholderIds.add(sid)
+    }
   }
 
   // 3. Tenant overrides (for client-side merge with TS-defaults).
