@@ -173,6 +173,15 @@ export function useWorkItems(
               wbs_code_is_custom:
                 (row as { wbs_code_is_custom?: boolean }).wbs_code_is_custom ??
                 false,
+              // PROJ-25 Stage 5 — own date columns. Ohne dieses Mapping
+              // werden sie zwar aus der DB gezogen (SELECT enthält sie),
+              // aber das Frontend bekommt sie nie zu sehen → save-revert
+              // beim Wiederöffnen des Edit-Dialogs.
+              planned_start:
+                (row as { planned_start?: string | null }).planned_start ??
+                null,
+              planned_end:
+                (row as { planned_end?: string | null }).planned_end ?? null,
               derived_planned_start:
                 (row as { derived_planned_start?: string | null })
                   .derived_planned_start ?? null,

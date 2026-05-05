@@ -65,7 +65,7 @@ export function useWorkItem(
         const { data, error: queryError } = await supabase
           .from("work_items")
           .select(
-            "id, tenant_id, project_id, kind, parent_id, phase_id, milestone_id, sprint_id, title, description, status, priority, responsible_user_id, attributes, position, created_from_proposal_id, created_by, created_at, updated_at, is_deleted, responsible:profiles!work_items_responsible_user_id_fkey ( id, display_name, email )"
+            "id, tenant_id, project_id, kind, parent_id, phase_id, milestone_id, sprint_id, title, description, status, priority, responsible_user_id, attributes, position, created_from_proposal_id, created_by, created_at, updated_at, is_deleted, outline_path, wbs_code, wbs_code_is_custom, planned_start, planned_end, derived_planned_start, derived_planned_end, derived_estimate_hours, responsible:profiles!work_items_responsible_user_id_fkey ( id, display_name, email )"
           )
           .eq("project_id", projectId)
           .eq("id", workItemId)
@@ -124,6 +124,28 @@ export function useWorkItem(
           created_at: row.created_at,
           updated_at: row.updated_at,
           is_deleted: row.is_deleted,
+          outline_path:
+            (row as { outline_path?: string | null }).outline_path ?? null,
+          wbs_code: (row as { wbs_code?: string | null }).wbs_code ?? null,
+          wbs_code_is_custom:
+            (row as { wbs_code_is_custom?: boolean }).wbs_code_is_custom ??
+            false,
+          // PROJ-25 Stage 5 — own date columns. Without this mapping the
+          // edit-dialog opened from the detail-drawer would lose them on
+          // save (selected by query, dropped here).
+          planned_start:
+            (row as { planned_start?: string | null }).planned_start ?? null,
+          planned_end:
+            (row as { planned_end?: string | null }).planned_end ?? null,
+          derived_planned_start:
+            (row as { derived_planned_start?: string | null })
+              .derived_planned_start ?? null,
+          derived_planned_end:
+            (row as { derived_planned_end?: string | null })
+              .derived_planned_end ?? null,
+          derived_estimate_hours:
+            (row as { derived_estimate_hours?: number | null })
+              .derived_estimate_hours ?? null,
           responsible_display_name: responsible?.display_name ?? null,
           responsible_email: responsible?.email ?? null,
         })
