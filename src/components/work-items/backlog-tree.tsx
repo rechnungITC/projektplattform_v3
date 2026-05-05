@@ -41,6 +41,7 @@ import {
   ownPlannedStart,
   totalEffort,
 } from "@/lib/work-items/wbs-display"
+import type { Phase } from "@/types/phase"
 import {
   ALLOWED_PARENT_KINDS,
   type WorkItemKind,
@@ -54,6 +55,8 @@ import { WorkItemStatusBadge } from "./work-item-status-badge"
 interface BacklogTreeProps {
   projectId: string
   items: WorkItemWithProfile[]
+  /** Phasen des Projekts — für die Phase-Spalte. */
+  phases?: Phase[]
   loading: boolean
   onSelect: (id: string) => void
   /**
@@ -101,6 +104,7 @@ const DEPTH_WARNING_THRESHOLD = 10
 export function BacklogTree({
   projectId,
   items,
+  phases = [],
   loading,
   onSelect,
   onEditRequest,
@@ -109,6 +113,12 @@ export function BacklogTree({
   onDeleteRequest,
   onChanged,
 }: BacklogTreeProps) {
+  const phaseById = React.useMemo(() => {
+    const map = new Map<string, Phase>()
+    for (const p of phases) map.set(p.id, p)
+    return map
+  }, [phases])
+  const showPhaseColumn = phases.length > 0
   const treeRef = React.useRef<TreeApi<TreeNode> | undefined>(undefined)
   const [selectedId, setSelectedId] = React.useState<string | null>(null)
   const [pendingMoveId, setPendingMoveId] = React.useState<string | null>(null)
@@ -377,7 +387,7 @@ export function BacklogTree({
       </div>
 
       <div className="overflow-hidden rounded-md border bg-card">
-        <TreeHeader />
+        <TreeHeader showPhaseColumn={showPhaseColumn} />
         <div ref={setContainerRef} className="w-full">
           {containerWidth > 0 ? (
             <Tree<TreeNode>
@@ -411,6 +421,8 @@ export function BacklogTree({
                   onChangeStatusRequest={onChangeStatusRequest}
                   onChangeParentRequest={onChangeParentRequest}
                   onDeleteRequest={onDeleteRequest}
+                  phaseById={phaseById}
+                  showPhaseColumn={showPhaseColumn}
                   pendingMoveId={pendingMoveId}
                 />
               )}
@@ -444,7 +456,7 @@ export function BacklogTree({
 // Header — sticky column labels above the virtualized tree body
 // ---------------------------------------------------------------------------
 
-function TreeHeader() {
+function TreeHeader({ showPhaseColumn }: { showPhaseColumn: boolean }) {
   return (
     <div
       role="row"
@@ -452,6 +464,9 @@ function TreeHeader() {
     >
       <div className="w-[28%] min-w-[260px] pl-1">Name</div>
       <div className="hidden w-[10%] sm:block">WBS-Code</div>
+      {showPhaseColumn ? (
+        <div className="hidden w-[10%] md:block">Phase</div>
+      ) : null}
       <div className="hidden w-[10%] md:block">Eig. Datum</div>
       <div className="hidden w-[10%] md:block">Roll-up Datum</div>
       <div className="hidden w-[8%] text-right md:block">Eig. Aufwand</div>
@@ -477,6 +492,8 @@ interface BacklogTreeRowProps {
   onChangeStatusRequest?: (item: WorkItemWithProfile) => void
   onChangeParentRequest?: (item: WorkItemWithProfile) => void
   onDeleteRequest?: (item: WorkItemWithProfile) => void
+  phaseById: Map<string, Phase>
+  showPhaseColumn: boolean
   pendingMoveId: string | null
 }
 
@@ -490,6 +507,8 @@ function BacklogTreeRow({
   onChangeStatusRequest,
   onChangeParentRequest,
   onDeleteRequest,
+  phaseById,
+  showPhaseColumn,
   pendingMoveId,
 }: BacklogTreeRowProps) {
   const item = node.data.item
@@ -625,6 +644,39 @@ function BacklogTreeRow({
           ) : null}
         </button>
       </div>
+
+      {/* Phase — klickbar öffnet Edit-Dialog (nur sichtbar wenn Projekt Phasen hat) */}
+      {showPhaseColumn ? (
+        <div className="hidden w-[10%] text-xs md:block">
+          {(() => {
+            const phase = item.phase_id ? phaseById.get(item.phase_id) : null
+            const label = phase
+              ? `${phase.sequence_number}. ${phase.name}`
+              : "—"
+            return onEditRequest ? (
+              <button
+                type="button"
+                onClick={(event) => {
+                  event.stopPropagation()
+                  onEditRequest(item)
+                }}
+                className={cn(
+                  "truncate rounded px-1 py-0.5 text-left hover:bg-muted",
+                  phase ? "text-foreground" : "text-muted-foreground"
+                )}
+                title="Phase ändern"
+                aria-label={`Phase ${label} ändern`}
+              >
+                {label}
+              </button>
+            ) : (
+              <span className={phase ? "" : "text-muted-foreground"}>
+                {label}
+              </span>
+            )
+          })()}
+        </div>
+      ) : null}
 
       {/* Eigenes Datum — klickbar öffnet Edit-Dialog */}
       <div className="hidden w-[10%] text-xs md:block">

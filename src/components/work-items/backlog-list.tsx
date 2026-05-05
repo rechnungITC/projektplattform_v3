@@ -33,6 +33,7 @@ import {
   listWorkItemCostTotals,
   type WorkItemCostTotal,
 } from "@/lib/cost/api"
+import type { Phase } from "@/types/phase"
 import {
   WORK_ITEM_KIND_LABELS,
   type WorkItemWithProfile,
@@ -45,6 +46,8 @@ import { WorkItemStatusBadge } from "./work-item-status-badge"
 interface BacklogListProps {
   projectId: string
   items: WorkItemWithProfile[]
+  /** Phasen des Projekts — für die Phase-Spalte. Leeres Array bei Methoden ohne Phasen. */
+  phases?: Phase[]
   loading: boolean
   onSelect: (id: string) => void
   onEditRequest: (item: WorkItemWithProfile) => void
@@ -56,6 +59,7 @@ interface BacklogListProps {
 export function BacklogList({
   projectId,
   items,
+  phases = [],
   loading,
   onSelect,
   onEditRequest,
@@ -71,6 +75,15 @@ export function BacklogList({
     for (const it of items) map.set(it.id, it)
     return map
   }, [items])
+
+  // Phase-Lookup für die Phase-Spalte (id → "1. Initialisierung").
+  const phaseById = React.useMemo(() => {
+    const map = new Map<string, Phase>()
+    for (const p of phases) map.set(p.id, p)
+    return map
+  }, [phases])
+
+  const showPhaseColumn = phases.length > 0
 
   // PROJ-24 — Plan-Kosten pro Item, eine Batched-Fetch.
   const costsByItem = useWorkItemCostTotals(projectId, items.length)
@@ -111,6 +124,9 @@ export function BacklogList({
             <TableHead className="w-28">Status</TableHead>
             <TableHead className="w-24">Priorität</TableHead>
             <TableHead className="w-44">Verantwortlich</TableHead>
+            {showPhaseColumn ? (
+              <TableHead className="w-40">Phase</TableHead>
+            ) : null}
             <TableHead className="w-48">Übergeordnet</TableHead>
             <TableHead className="w-32 text-right">Plan-Kosten</TableHead>
             <TableHead className="w-12 text-right" aria-label="Aktionen" />
@@ -167,6 +183,40 @@ export function BacklogList({
                     <span className="text-sm text-muted-foreground">—</span>
                   )}
                 </TableCell>
+                {showPhaseColumn ? (
+                  <TableCell>
+                    {(() => {
+                      const phase = item.phase_id
+                        ? phaseById.get(item.phase_id)
+                        : null
+                      const label = phase
+                        ? `${phase.sequence_number}. ${phase.name}`
+                        : "—"
+                      return (
+                        <button
+                          type="button"
+                          onClick={(event) => {
+                            event.stopPropagation()
+                            onEditRequest(item)
+                          }}
+                          className="rounded px-1 py-0.5 text-left text-xs hover:bg-muted"
+                          title="Phase ändern"
+                          aria-label={`Phase ${label} ändern`}
+                        >
+                          <span
+                            className={
+                              phase
+                                ? "text-foreground"
+                                : "text-muted-foreground"
+                            }
+                          >
+                            {label}
+                          </span>
+                        </button>
+                      )
+                    })()}
+                  </TableCell>
+                ) : null}
                 <TableCell>
                   {parent ? (
                     <div className="flex items-center gap-1 text-xs text-muted-foreground">

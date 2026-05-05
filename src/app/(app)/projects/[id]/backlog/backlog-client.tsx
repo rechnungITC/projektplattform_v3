@@ -26,6 +26,7 @@ import {
 } from "@/components/ui/collapsible"
 import { ChevronDown, Plus } from "lucide-react"
 import { useAuth } from "@/hooks/use-auth"
+import { usePhases } from "@/hooks/use-phases"
 import { useProjectAccess } from "@/hooks/use-project-access"
 import { useSprints } from "@/hooks/use-sprints"
 import { useWorkItems } from "@/hooks/use-work-items"
@@ -133,6 +134,11 @@ export function BacklogClient({ projectId, tenantId: _tenantId }: BacklogClientP
     refresh: refreshSprints,
   } = useSprints(projectId)
 
+  // Phase-Lookup für Phase-Spalte in Backlog-List + Tree.
+  // Bei Methoden ohne Phasen (Scrum/Kanban) bleibt die Liste leer und die
+  // Spalte rendert "—" für alle Items.
+  const { phases } = usePhases(projectId)
+
   // Dialogs / drawer state
   const [createOpen, setCreateOpen] = React.useState(false)
   const [createKind, setCreateKind] = React.useState<WorkItemKind | null>(null)
@@ -178,6 +184,7 @@ export function BacklogClient({ projectId, tenantId: _tenantId }: BacklogClientP
           <BacklogList
             projectId={projectId}
             items={items}
+            phases={phases}
             loading={itemsLoading}
             onSelect={handleSelect}
             onEditRequest={setEditTarget}
@@ -199,6 +206,7 @@ export function BacklogClient({ projectId, tenantId: _tenantId }: BacklogClientP
           <BacklogTree
             projectId={projectId}
             items={items}
+            phases={phases}
             loading={itemsLoading}
             onSelect={handleSelect}
             onEditRequest={setEditTarget}
