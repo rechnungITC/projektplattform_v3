@@ -752,11 +752,69 @@ export function GanttView({
         </button>
       </div>
       <div
-        ref={containerRef}
-        className="overflow-x-auto rounded-md border bg-card"
+        className="flex rounded-md border bg-card"
         role="region"
         aria-label="Gantt-Diagramm der Phasen"
       >
+        {/* Left fixed table column — name + dates per row.
+            OpenProject-style split: items stay visible even without bars. */}
+        <div className="w-72 shrink-0 border-r">
+          <div
+            style={{ height: HEADER_HEIGHT }}
+            className="flex items-center gap-2 border-b bg-muted/50 px-3 text-xs font-medium text-muted-foreground"
+          >
+            <span className="flex-1">Name</span>
+            <span className="w-20 text-right">Start</span>
+            <span className="w-20 text-right">Ende</span>
+          </div>
+          {rows.map((row, idx) => {
+            const isPhase = row.kind === "phase"
+            const ps = isPhase ? row.phase.planned_start : row.item.planned_start
+            const pe = isPhase ? row.phase.planned_end : row.item.planned_end
+            const label = isPhase
+              ? `${row.phase.sequence_number}. ${row.phase.name}`
+              : row.item.title
+            const onClick = !isPhase && onEditWorkItemRequest
+              ? () => onEditWorkItemRequest!(row.item)
+              : undefined
+            return (
+              <div
+                key={isPhase ? `phase-${row.phase.id}` : `wp-${row.item.id}`}
+                style={{ height: ROW_HEIGHT + ROW_GAP }}
+                className={cn(
+                  "flex items-center gap-2 border-b border-border/40 px-3 text-xs",
+                  idx % 2 === 1 && "bg-muted/15",
+                  !isPhase && "pl-6",
+                  onClick && "cursor-pointer hover:bg-muted/30",
+                )}
+                onClick={onClick}
+                title={onClick ? "Datum pflegen" : undefined}
+              >
+                <span
+                  className={cn(
+                    "flex-1 truncate",
+                    isPhase ? "font-medium" : "text-muted-foreground",
+                  )}
+                >
+                  {!isPhase ? "↳ " : null}
+                  {label}
+                </span>
+                <span className="w-20 text-right tabular-nums text-muted-foreground">
+                  {ps ? formatDateShort(ps) : "—"}
+                </span>
+                <span className="w-20 text-right tabular-nums text-muted-foreground">
+                  {pe ? formatDateShort(pe) : "—"}
+                </span>
+              </div>
+            )
+          })}
+        </div>
+
+        {/* Right scrollable Gantt-bar column */}
+        <div
+          ref={containerRef}
+          className="flex-1 overflow-x-auto"
+        >
       <svg
         ref={svgRef}
         width={totalWidth}
@@ -777,6 +835,40 @@ export function GanttView({
             opacity={0.3}
           />
         ))}
+
+        {/* Today-Marker — vertikale rote Linie auf dem heutigen Datum,
+            falls innerhalb des Calendar-Windows. Mirror OpenProject pattern. */}
+        {(() => {
+          const today = new Date()
+          today.setUTCHours(0, 0, 0, 0)
+          const days = daysBetween(calendarStart, today)
+          if (days < 0 || days > totalDays) return null
+          const x = days * PIXELS_PER_DAY
+          return (
+            <g aria-label="Heute">
+              <line
+                x1={x}
+                x2={x}
+                y1={0}
+                y2={totalHeight}
+                stroke="currentColor"
+                className="text-destructive"
+                strokeWidth={2}
+                strokeDasharray="4 3"
+                opacity={0.6}
+              />
+              <text
+                x={x + 4}
+                y={HEADER_HEIGHT - 4}
+                fontSize={10}
+                fontWeight={600}
+                className="fill-destructive"
+              >
+                heute
+              </text>
+            </g>
+          )
+        })()}
 
         {/* Month-tick header */}
         <rect
@@ -1262,9 +1354,17 @@ export function GanttView({
             )
           })()}
       </svg>
+        </div>
       </div>
     </div>
   )
+}
+
+function formatDateShort(iso: string): string {
+  const slice = iso.slice(0, 10)
+  const parts = slice.split("-")
+  if (parts.length !== 3) return slice
+  return `${parts[2]}.${parts[1]}.`
 }
 
 function milestoneFill(status: Milestone["status"]): string {
