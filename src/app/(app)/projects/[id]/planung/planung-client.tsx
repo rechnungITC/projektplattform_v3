@@ -12,10 +12,12 @@ import { PhasesTimeline } from "@/components/phases/phases-timeline"
 import { ReorderPhasesDialog } from "@/components/phases/reorder-phases-dialog"
 import { Button } from "@/components/ui/button"
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs"
+import { EditWorkItemDialog } from "@/components/work-items/edit-work-item-dialog"
 import { useMilestones } from "@/hooks/use-milestones"
 import { usePhases } from "@/hooks/use-phases"
 import { useProjectAccess } from "@/hooks/use-project-access"
 import { useWorkItems } from "@/hooks/use-work-items"
+import type { WorkItemWithProfile } from "@/types/work-item"
 
 interface PlanungClientProps {
   projectId: string
@@ -42,6 +44,8 @@ export function PlanungClient({ projectId }: PlanungClientProps) {
   const [newPhaseOpen, setNewPhaseOpen] = React.useState(false)
   const [newMilestoneOpen, setNewMilestoneOpen] = React.useState(false)
   const [reorderOpen, setReorderOpen] = React.useState(false)
+  const [editWorkItem, setEditWorkItem] =
+    React.useState<WorkItemWithProfile | null>(null)
 
   const refreshAll = React.useCallback(async () => {
     await Promise.all([
@@ -142,6 +146,7 @@ export function PlanungClient({ projectId }: PlanungClientProps) {
             workPackages={workItems}
             canEdit={canEdit}
             onChanged={refreshAll}
+            onEditWorkItemRequest={setEditWorkItem}
           />
           <p className="text-xs text-muted-foreground">
             Tipp: Phasen-Balken horizontal verschieben (Move) oder rechte Kante
@@ -170,6 +175,21 @@ export function PlanungClient({ projectId }: PlanungClientProps) {
         phases={phases}
         onReordered={refreshAll}
       />
+
+      {editWorkItem ? (
+        <EditWorkItemDialog
+          open={!!editWorkItem}
+          onOpenChange={(open) => {
+            if (!open) setEditWorkItem(null)
+          }}
+          projectId={projectId}
+          item={editWorkItem}
+          onSaved={async () => {
+            await refreshAll()
+            setEditWorkItem(null)
+          }}
+        />
+      ) : null}
     </div>
   )
 }

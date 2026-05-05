@@ -53,6 +53,14 @@ interface GanttViewProps {
   workPackages?: WorkItemWithProfile[]
   canEdit: boolean
   onChanged: () => void
+  /**
+   * Optional — called when the user clicks a WP-Bar (or a placeholder for a
+   * WP without dates). The parent should open the edit-dialog so the user
+   * can pencil in planned_start / planned_end. Without dates the bar is
+   * just a grey band, and the link-drag-hotspot is missing → user can
+   * neither see the WP on the timeline nor wire dependencies.
+   */
+  onEditWorkItemRequest?: (item: WorkItemWithProfile) => void
 }
 
 const ROW_HEIGHT = 36
@@ -126,6 +134,7 @@ export function GanttView({
   workPackages = [],
   canEdit,
   onChanged,
+  onEditWorkItemRequest,
 }: GanttViewProps) {
   const [drag, setDrag] = React.useState<DragState | null>(null)
   const [submitting, setSubmitting] = React.useState<string | null>(null)
@@ -967,22 +976,43 @@ export function GanttView({
           const pe = toDate(wp.planned_end ?? null)
 
           if (!ps || !pe) {
+            const placeholderClickable =
+              canEdit && onEditWorkItemRequest !== undefined
             return (
-              <g key={`wp-${wp.id}`} aria-label={wp.title}>
+              <g
+                key={`wp-${wp.id}`}
+                aria-label={wp.title}
+                className={placeholderClickable ? "cursor-pointer" : undefined}
+                onClick={
+                  placeholderClickable
+                    ? () => onEditWorkItemRequest!(wp)
+                    : undefined
+                }
+              >
                 <rect
                   x={0}
                   y={rowY}
                   width={totalWidth}
                   height={ROW_HEIGHT}
-                  className="fill-muted/15"
+                  className={cn(
+                    "fill-muted/15",
+                    placeholderClickable && "hover:fill-muted/30",
+                  )}
                 />
                 <text
                   x={32}
                   y={rowY + ROW_HEIGHT / 2 + 4}
                   fontSize={11}
-                  className="fill-muted-foreground italic"
+                  className={cn(
+                    "italic",
+                    placeholderClickable
+                      ? "fill-primary"
+                      : "fill-muted-foreground",
+                  )}
                 >
-                  ↳ {wp.title} — keine Daten gepflegt
+                  ↳ {wp.title} — {placeholderClickable
+                    ? "Datum pflegen, um Bar + Dependencies zu aktivieren"
+                    : "keine Daten gepflegt"}
                 </text>
               </g>
             )
