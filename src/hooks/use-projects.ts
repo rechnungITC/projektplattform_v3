@@ -71,7 +71,7 @@ export function useProjects(args: UseProjectsArgs): UseProjectsResult {
         let query = supabase
           .from("projects")
           .select(
-            "id, tenant_id, name, description, project_number, planned_start_date, planned_end_date, responsible_user_id, lifecycle_status, project_type, created_by, created_at, updated_at, is_deleted, responsible:profiles!projects_responsible_user_id_fkey ( id, email, display_name )"
+            "id, tenant_id, name, description, project_number, planned_start_date, planned_end_date, responsible_user_id, lifecycle_status, project_type, project_method, created_by, created_at, updated_at, is_deleted, responsible:profiles!projects_responsible_user_id_fkey ( id, email, display_name )"
           )
           .eq("tenant_id", tenantId)
           .order("updated_at", { ascending: false })
@@ -131,6 +131,7 @@ export function useProjects(args: UseProjectsArgs): UseProjectsResult {
             responsible_user_id: row.responsible_user_id,
             lifecycle_status: row.lifecycle_status,
             project_type: row.project_type,
+            project_method: row.project_method,
             created_by: row.created_by,
             created_at: row.created_at,
             updated_at: row.updated_at,

@@ -65,6 +65,7 @@ const HOOKS_TO_CHECK: HookCheck[] = [
   {
     file: "src/hooks/use-phases.ts",
     table: "phases",
+    directCast: true,
   },
   {
     file: "src/hooks/use-milestones.ts",

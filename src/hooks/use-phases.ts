@@ -28,6 +28,8 @@ type RawPhaseRow = {
   created_at: string
   updated_at: string
   is_deleted: boolean
+  /** PROJ-35-β — Critical-Path-Marker (PM-driven, opt-in). */
+  is_critical: boolean
 }
 
 /**
@@ -58,7 +60,7 @@ export function usePhases(
         const { data, error: queryError } = await supabase
           .from("phases")
           .select(
-            "id, tenant_id, project_id, name, description, planned_start, planned_end, actual_start, actual_end, sequence_number, status, created_by, created_at, updated_at, is_deleted"
+            "id, tenant_id, project_id, name, description, planned_start, planned_end, actual_start, actual_end, sequence_number, status, created_by, created_at, updated_at, is_deleted, is_critical"
           )
           .eq("project_id", projectId)
           .eq("is_deleted", false)
