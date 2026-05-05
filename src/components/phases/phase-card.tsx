@@ -451,7 +451,7 @@ function PhaseWorkItemRow({
       {displayStart || displayEnd ? (
         <span
           className={cn(
-            "hidden whitespace-nowrap text-xs text-muted-foreground sm:inline",
+            "whitespace-nowrap text-xs text-muted-foreground",
             isDerived && "italic",
           )}
           title={
