@@ -66,9 +66,25 @@ interface GanttViewProps {
 const ROW_HEIGHT = 36
 const ROW_GAP = 4
 const HEADER_HEIGHT = 32
-const PIXELS_PER_DAY = 16
 const PADDING_DAYS = 7
 const RESIZE_HANDLE_WIDTH = 6
+
+// Zoom-Levels — jeweils Pixel-pro-Tag-Faktor. "week" entspricht dem
+// bisherigen Default. day = sehr detailliert (3 Wochen Window passt
+// noch komfortabel). year = sehr breit (Jahresübersicht).
+type ZoomLevel = "day" | "week" | "month" | "quarter"
+const ZOOM_PIXELS_PER_DAY: Record<ZoomLevel, number> = {
+  day: 32,
+  week: 16,
+  month: 6,
+  quarter: 2,
+}
+const ZOOM_LABELS: Record<ZoomLevel, string> = {
+  day: "Tag",
+  week: "Woche",
+  month: "Monat",
+  quarter: "Quartal",
+}
 
 type DragState =
   | {
@@ -139,6 +155,8 @@ export function GanttView({
   const [drag, setDrag] = React.useState<DragState | null>(null)
   const [submitting, setSubmitting] = React.useState<string | null>(null)
   const [dependencies, setDependencies] = React.useState<PolymorphicDependency[]>([])
+  const [zoomLevel, setZoomLevel] = React.useState<ZoomLevel>("week")
+  const pixelsPerDay = ZOOM_PIXELS_PER_DAY[zoomLevel]
   const [criticalPhaseIds, setCriticalPhaseIds] = React.useState<Set<string>>(
     new Set(),
   )
@@ -295,7 +313,7 @@ export function GanttView({
     return out
   }, [phases, wpsByPhase])
 
-  const totalWidth = totalDays * PIXELS_PER_DAY
+  const totalWidth = totalDays * pixelsPerDay
   const totalHeight = HEADER_HEIGHT + rows.length * (ROW_HEIGHT + ROW_GAP)
 
   // Month-label ticks across the calendar window.
@@ -307,7 +325,7 @@ export function GanttView({
       const days = daysBetween(calendarStart, cursor)
       if (days >= 0) {
         ticks.push({
-          x: days * PIXELS_PER_DAY,
+          x: days * pixelsPerDay,
           label: cursor.toLocaleDateString("de-DE", {
             month: "short",
             year: "2-digit",
@@ -317,15 +335,15 @@ export function GanttView({
       cursor.setUTCMonth(cursor.getUTCMonth() + 1)
     }
     return ticks
-  }, [calendarStart, totalDays])
+  }, [calendarStart, totalDays, pixelsPerDay])
 
   const dayGridLines = React.useMemo(() => {
     const lines: number[] = []
     for (let d = 0; d <= totalDays; d += 7) {
-      lines.push(d * PIXELS_PER_DAY)
+      lines.push(d * pixelsPerDay)
     }
     return lines
-  }, [totalDays])
+  }, [totalDays, pixelsPerDay])
 
   // Pre-compute the static layout of each bar (phase + work_package).
   // Keyed by `${type}:${id}` so arrows + critical-path + milestone code
@@ -351,10 +369,10 @@ export function GanttView({
         key = `work_package:${row.item.id}`
       }
       if (!ps || !pe) return
-      const x = daysBetween(calendarStart, ps) * PIXELS_PER_DAY
+      const x = daysBetween(calendarStart, ps) * pixelsPerDay
       const width = Math.max(
-        PIXELS_PER_DAY,
-        daysBetween(ps, pe) * PIXELS_PER_DAY,
+        pixelsPerDay,
+        daysBetween(ps, pe) * pixelsPerDay,
       )
       m.set(key, {
         x,
@@ -364,7 +382,7 @@ export function GanttView({
       })
     })
     return m
-  }, [rows, calendarStart])
+  }, [rows, calendarStart, pixelsPerDay])
 
   // Phase-only view used by the milestone block.
   const phaseLayout = React.useMemo(() => {
@@ -475,7 +493,7 @@ export function GanttView({
         drag.kind === "workpackage"
       ) {
         const dx = e.clientX - drag.startX
-        const deltaDays = Math.round(dx / PIXELS_PER_DAY)
+        const deltaDays = Math.round(dx / pixelsPerDay)
         if (deltaDays === drag.deltaDays) return
         setDrag((prev) => (prev ? { ...prev, deltaDays } : null))
         return
@@ -709,7 +727,7 @@ export function GanttView({
       window.removeEventListener("mousemove", onMove)
       window.removeEventListener("mouseup", onUp)
     }
-  }, [drag, projectId, milestones, onChanged])
+  }, [drag, projectId, milestones, onChanged, pixelsPerDay])
 
   if (phases.length === 0) {
     return (
@@ -724,7 +742,31 @@ export function GanttView({
 
   return (
     <div className="space-y-2">
-      <div className="flex items-center justify-end gap-2">
+      <div className="flex flex-wrap items-center justify-end gap-2">
+        {/* Zoom — 4 Levels (Tag → Quartal). Aktive Stufe als gefüllter
+            Button, andere als outline. */}
+        <div
+          role="group"
+          aria-label="Zoom-Level"
+          className="inline-flex overflow-hidden rounded-md border"
+        >
+          {(["day", "week", "month", "quarter"] as const).map((level) => (
+            <button
+              key={level}
+              type="button"
+              onClick={() => setZoomLevel(level)}
+              aria-pressed={zoomLevel === level}
+              className={cn(
+                "px-2.5 py-1.5 text-xs font-medium transition-colors",
+                zoomLevel === level
+                  ? "bg-foreground text-background"
+                  : "bg-background hover:bg-accent",
+              )}
+            >
+              {ZOOM_LABELS[level]}
+            </button>
+          ))}
+        </div>
         <button
           type="button"
           onClick={() => setCriticalPathOn((on) => !on)}
@@ -843,7 +885,7 @@ export function GanttView({
           today.setUTCHours(0, 0, 0, 0)
           const days = daysBetween(calendarStart, today)
           if (days < 0 || days > totalDays) return null
-          const x = days * PIXELS_PER_DAY
+          const x = days * pixelsPerDay
           return (
             <g aria-label="Heute">
               <line
@@ -937,15 +979,15 @@ export function GanttView({
             drag?.kind === "phase" && drag.phaseId === phase.id
           const startDays = daysBetween(calendarStart, ps)
           const durationDays = daysBetween(ps, pe)
-          let x = startDays * PIXELS_PER_DAY
-          let width = durationDays * PIXELS_PER_DAY
+          let x = startDays * pixelsPerDay
+          let width = durationDays * pixelsPerDay
           if (isDragging && drag.kind === "phase") {
             if (drag.mode === "move") {
-              x += drag.deltaDays * PIXELS_PER_DAY
+              x += drag.deltaDays * pixelsPerDay
             } else {
               width = Math.max(
-                PIXELS_PER_DAY,
-                width + drag.deltaDays * PIXELS_PER_DAY,
+                pixelsPerDay,
+                width + drag.deltaDays * pixelsPerDay,
               )
             }
           }
@@ -1114,14 +1156,14 @@ export function GanttView({
             drag?.kind === "workpackage" && drag.workPackageId === wp.id
           const startDays = daysBetween(calendarStart, ps)
           const durationDays = daysBetween(ps, pe)
-          let x = startDays * PIXELS_PER_DAY
-          let width = Math.max(PIXELS_PER_DAY, durationDays * PIXELS_PER_DAY)
+          let x = startDays * pixelsPerDay
+          let width = Math.max(pixelsPerDay, durationDays * pixelsPerDay)
           if (isDragging && drag.kind === "workpackage") {
-            if (drag.mode === "move") x += drag.deltaDays * PIXELS_PER_DAY
+            if (drag.mode === "move") x += drag.deltaDays * pixelsPerDay
             else
               width = Math.max(
-                PIXELS_PER_DAY,
-                width + drag.deltaDays * PIXELS_PER_DAY,
+                pixelsPerDay,
+                width + drag.deltaDays * pixelsPerDay,
               )
           }
 
@@ -1239,11 +1281,11 @@ export function GanttView({
           const isDraggingThis =
             drag?.kind === "milestone" && drag.milestoneId === m.id
 
-          const baseX = daysBetween(calendarStart, td) * PIXELS_PER_DAY
+          const baseX = daysBetween(calendarStart, td) * pixelsPerDay
           const x =
             baseX +
-            (isDraggingThis ? drag.deltaDays * PIXELS_PER_DAY : 0) +
-            phaseShift * PIXELS_PER_DAY
+            (isDraggingThis ? drag.deltaDays * pixelsPerDay : 0) +
+            phaseShift * pixelsPerDay
 
           const size = 8
           return (
