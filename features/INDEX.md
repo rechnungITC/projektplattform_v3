@@ -55,7 +55,7 @@
 | PROJ-40 | Assistant Conversation Audit & Transcript Governance — Persistenz-, Redaktions-, Audit-, Retention- und Export-Governance für Assistant-Sessions, Turns und Transkripte. | Planned | [Spec](PROJ-40-assistant-conversation-audit-transcript-governance.md) | 2026-05-04 |
 | PROJ-41 | Assistant Speech, Provider & Wake-Word Infrastructure — Speech-to-Text, Text-to-Speech, Wake-/Push-to-Talk-Modi, Providerwahl, Fallbacks und Deployment-/Mikrofonvoraussetzungen. | Planned | [Spec](PROJ-41-assistant-speech-provider-wakeword-infrastructure.md) | 2026-05-04 |
 | PROJ-42 | Schema-Drift-CI-Guard — GitHub-Actions-Workflow als Required-Check auf `main`, der `.from(...).select(...)`-Calls in `src/` via TypeScript-AST gegen `information_schema.columns` einer Docker-Shadow-DB prüft. Hard-Fail bei Drift. α-Slice: SELECT-only; β/γ deferred (INSERT/UPDATE/Zod, Prod-Drift). | Deployed (α live; manual branch-protection setup pending) | [Spec](PROJ-42-schema-drift-ci-guard.md) | 2026-05-04 |
-| PROJ-25b | Backlog ↔ Sprint Drag-and-Drop — `@dnd-kit/core` + a11y-Polish (aria-live, Keyboard-DnD, Escape-Cancel) + Multi-Select (Ctrl/Shift-Click + Bulk-API) + Performance-Benchmark (60fps Target). Schließt PROJ-25-Deferred-Items D-1 bis D-5. | Planned | [Spec](PROJ-25b-backlog-sprint-dnd.md) | 2026-05-05 |
+| PROJ-25b | Backlog ↔ Sprint Drag-and-Drop — `@dnd-kit/core` + a11y-Polish (aria-live, Keyboard-DnD, Escape-Cancel) + Multi-Select (Ctrl/Shift-Click + Bulk-API) + Performance-Benchmark (60fps Target). Schließt PROJ-25-Deferred-Items D-1 bis D-5. | In Progress (Backend half live, frontend pending) | [Spec](PROJ-25b-backlog-sprint-dnd.md) | 2026-05-05 |
 
 <!-- Add features above this line -->
 

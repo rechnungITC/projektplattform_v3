@@ -39,14 +39,15 @@ export async function PATCH(
   const { userId, supabase } = await getAuthenticatedUserId()
   if (!userId) return apiError("unauthorized", "Not signed in.", 401)
 
-  // Cross-project guard: if a sprint is supplied, ensure it belongs to the
-  // same project. Without this, a malicious caller could attach a work item
-  // to another project's sprint (RLS would block read of foreign sprints,
-  // but the FK only enforces existence — not project match).
+  // Cross-project guard + sprint-state guard. If a sprint is supplied, ensure
+  // it belongs to the same project (FK only enforces existence, not project
+  // match) and reject closed sprints — a closed sprint is a frozen historical
+  // artifact, attaching new work items to it would corrupt velocity reports.
+  // PROJ-25b adds the closed-state check (was tech-debt from PROJ-7).
   if (parsed.data.sprint_id) {
     const { data: sprint, error: sprintErr } = await supabase
       .from("sprints")
-      .select("id, project_id")
+      .select("id, project_id, state")
       .eq("id", parsed.data.sprint_id)
       .maybeSingle()
     if (sprintErr) return apiError("internal_error", sprintErr.message, 500)
@@ -55,6 +56,14 @@ export async function PATCH(
       return apiError(
         "invalid_sprint",
         "Sprint is not in this project.",
+        422,
+        "sprint_id"
+      )
+    }
+    if (sprint.state === "closed") {
+      return apiError(
+        "sprint_closed",
+        "Cannot assign work items to a closed sprint.",
         422,
         "sprint_id"
       )
