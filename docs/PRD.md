@@ -52,7 +52,8 @@ The product thesis: enterprise projects fail at the seams between execution, gov
 | PROJ-22 | P1 | Budget-Modul: 3 Ebenen (Kategorien/Posten/Buchungen) + Vendor-Invoice-Integration + Multi-Currency mit FX. Schließt P0-Lücke aus PROJ-7. | Planned |
 | PROJ-23 | P2 | Globale Sidebar-Navigation: Top-Level + Project-Room als vertikale Sidebar links, mit Branding + Hotkeys + Persistenz. Reine UI-Foundation. | Planned |
 | PROJ-24 | P2 | Cost-Stack: role_rates (versioniert), Velocity-Modell für Stories, generische work_item_cost_lines mit source_type für spätere Erweiterung (LV, Stückliste). | Planned |
-| PROJ-25 | P2 | Drag-and-Drop: Backlog↔Sprint, Gantt-Verschieben/Resize/Dependencies-Linien. Erweiterung PROJ-7 + PROJ-19. | Planned |
+| PROJ-25 | P2 | Drag-and-Drop: Backlog↔Sprint, Gantt-Verschieben/Resize/Dependencies-Linien. Erweiterung PROJ-7 + PROJ-19. | Deployed (Gantt half) |
+| PROJ-25b | P2 | Backlog↔Sprint DnD via `@dnd-kit/core` + a11y-Polish (aria-live, Keyboard-DnD, Escape-Cancel) + Multi-Select (Ctrl/Shift + Bulk-API) + Perf-Benchmark (60fps). Schließt PROJ-25-Deferred-Items D-1 bis D-5. | Planned |
 | PROJ-28 | P2 | Method-aware Project-Room Navigation: Sidebar-Labels + URL-Slugs (Wasserfall: /arbeitspakete, /phasen; Scrum: /releases) per Methode. Schließt PROJ-26 deferred-frontend (L1). | Planned |
 | PROJ-29 | P2 | Hygiene-Slice: ESLint-Baseline auf 0 (97→0), 3 Supabase-Functions search_path-hardenen, Playwright-Logged-In-Auth-Fixture-Skelett. Quick-Win vor PROJ-21. | Planned |
 | PROJ-30 | P1 | KI-Narrative-Purpose: Erweiterung des PROJ-12 AI-Routers um `narrative`-Purpose; ersetzt PROJ-21 preview-ki Stub durch echten AI-Call mit Class-3-Defense-in-Depth. Validates Multi-Purpose-Pattern für PROJ-33. | Deployed |
