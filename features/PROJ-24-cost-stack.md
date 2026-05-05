@@ -336,7 +336,7 @@ Begründung: Die UI ist relativ simpel; die Komplexität liegt im Versioning + P
 
 ### Phase 24-α — Database foundation (`/backend`, 2026-05-02)
 
-Migration: `supabase/migrations/20260503100000_proj24_cost_stack_alpha.sql` (≈ 320 lines, renamed from `20260502160000_…` during branch-merge to resolve timestamp collision with PROJ-33-β).
+Migration: `supabase/migrations/20260502023517_proj24_cost_stack_alpha.sql` (≈ 320 lines, originally `20260502160000_…` on the feature branch; renamed during merge to `20260503100000_…` to avoid timestamp collision with PROJ-33-β, then renamed again via hygiene cleanup to align with the remote-tracked version `20260502023517_…`).
 
 **Built:**
 - Table `public.role_rates` (id, tenant_id, role_key, daily_rate(10,2), currency, valid_from, created_by, timestamps). UNIQUE on `(tenant_id, role_key, valid_from)`. RLS: SELECT for tenant-member, INSERT/DELETE for tenant-admin, **no UPDATE policy** (append-only versioning, mirrors `fx_rates`). Index `(tenant_id, role_key, valid_from desc)` for the lookup path. CHECKs: `daily_rate >= 0`, `_is_supported_currency(currency)`, `char_length(role_key) between 1 and 100`.
@@ -671,7 +671,7 @@ Each hook resolves the tenant_id from the project, instantiates a service-role a
 **Recommendation:** **APPROVED for branch-merge into `main` + `/deploy proj 24`**.
 
 Caveat zur User-Awareness:
-- Die α-Migration wurde auf dem Branch ursprünglich als `20260502160000_proj24_cost_stack_alpha.sql` angelegt, dann beim Merge in `main` auf `20260503100000_proj24_cost_stack_alpha.sql` umnummeriert (Timestamp-Konflikt mit `20260502160000_proj33b_stakeholder_type_catalog.sql` auf `main`). Die Lockdown-Migration analog auf `20260503110000_…`. Die Remote-DB hält die α-Migration unter Version `20260502023517_proj24_cost_stack_alpha`, daher ist die Umbenennung lokal-only — KEINE neue Apply-Aktion nötig, nur File-System-Hygiene für `supabase migrations list` Konsistenz.
+- Die α-Migration wurde auf dem Branch ursprünglich als `20260502160000_proj24_cost_stack_alpha.sql` angelegt, dann beim Merge in `main` zwischenzeitlich auf `20260503100000_…` umnummeriert (Timestamp-Konflikt mit `20260502160000_proj33b_stakeholder_type_catalog.sql` auf `main`), und schließlich via Hygiene-Cleanup auf `20260502023517_proj24_cost_stack_alpha.sql` umbenannt, damit sie dem Remote-Tracking entspricht — KEINE neue Apply-Aktion nötig. Die Lockdown-Migration analog auf `20260503110000_…` (Remote-Version noch zu klären, siehe Hygiene-Caveat unten).
 - Audit-Whitelist greift nur für **API-erzeugte** INSERT/DELETE-Operations (synthetic via `writeCostAuditEntry`). Direkte SQL-Writes (z. B. via Supabase Studio) bypassen die Audit-Spur — bewusste Entscheidung im 24-α-Spec, dokumentiert in der Migration und im Header von `cost-audit.ts`.
 
 ### Suggested Next
@@ -697,7 +697,7 @@ Caveat zur User-Awareness:
 PROJ-24 wurde auf einem Feature-Branch `feat/PROJ-24-cost-stack` entwickelt (9 Commits: Tech-Design + 24-α + Lockdown + 24-β + 24-γ + 24-δ + 24-ε + QA + Migration-Rename) und vor dem Merge in `main` gerebased:
 
 1. **Migration-Rename** — Beide α-Migrationen umnummeriert wegen Timestamp-Konflikt mit PROJ-33-β:
-   - `20260502160000_proj24_cost_stack_alpha.sql` → `20260503100000_proj24_cost_stack_alpha.sql`
+   - `20260502160000_proj24_cost_stack_alpha.sql` → `20260503100000_…` (merge-time rename) → `20260502023517_proj24_cost_stack_alpha.sql` (hygiene-cleanup rename to match remote-tracked version)
    - `20260502170000_proj24_resolve_role_rate_lockdown.sql` → `20260503110000_proj24_resolve_role_rate_lockdown.sql`
 2. **Rebase auf `main`** — 1 Konflikt in `eslint.config.mjs` (PROJ-33-β/γ-Override-Liste vs. PROJ-24-ε-Override-Liste): beide Listen kombiniert.
 3. **Re-Verification post-rebase**: `tsc 0 · lint 0 · vitest 775/775 · build green`.
@@ -707,13 +707,31 @@ PROJ-24 wurde auf einem Feature-Branch `feat/PROJ-24-cost-stack` entwickelt (9 C
 
 ### Migration-DB-Hygiene-Caveat
 
-Die α-Migration ist remote unter Version `20260502023517_proj24_cost_stack_alpha` registriert (Timestamp aus dem MCP-`apply_migration`-Aufruf). Lokal heißt die Datei jetzt `20260503100000_…`. Die SQL-Inhalte sind identisch.
+**α-Migration — RESOLVED** (via `cleanup/proj24-migration-hygiene`, 2026-05-05):
+Die α-Migration war remote unter Version `20260502023517_proj24_cost_stack_alpha` registriert, lokal aber als `20260503100000_…` abgelegt. Die Datei wurde via `git mv` auf `supabase/migrations/20260502023517_proj24_cost_stack_alpha.sql` umbenannt. Local file und Remote-Tracking stimmen jetzt überein — `supabase db push` wird diese Migration nicht mehr als unangewendet betrachten.
 
-**Bei einem zukünftigen `supabase db push` aus `main`** würde das Tool die Datei `20260503100000_…` als unangewendet sehen und versuchen, sie nochmals zu applien — Fehlschlag, weil Tabellen schon existieren. Empfohlene Korrektur (nicht jetzt blockend):
-- `supabase migration repair 20260503100000` (oder via Dashboard die remote-Version umbenennen).
-- Alternativ: lokales File auf `20260502023517_…` umbenennen, damit es zur DB passt.
+**TODO — Lockdown-Migration (erfordert Supabase-Zugang):**
+Die Remote-Version von `20260503110000_proj24_resolve_role_rate_lockdown.sql` ist unbekannt (kein Supabase-MCP im Hygiene-Cleanup-Session). Vor dem nächsten `supabase db push` bitte abgleichen:
 
-Die Frontend-Cost-Surfaces sowie alle PROJ-24-Routen funktionieren in Production unabhängig von dieser File/DB-Naming-Diskrepanz.
+1. **Remote-Version prüfen:**
+   - Supabase Dashboard → Database → Migrations, oder
+   - `supabase migration list` (wenn Supabase CLI lokal mit dem Projekt verlinkt ist)
+
+2. **Abgleichen, falls Remote-Version ≠ `20260503110000`:**
+   - **Option A — lokale Datei auf Remote-Version umbenennen:**
+     ```bash
+     git mv supabase/migrations/20260503110000_proj24_resolve_role_rate_lockdown.sql \
+            supabase/migrations/<remote-version>_proj24_resolve_role_rate_lockdown.sql
+     git commit -m "chore(PROJ-24): align lockdown migration filename with remote-tracked version"
+     git push -u origin <branch>
+     ```
+   - **Option B — Remote-Tracking auf lokalen Dateinamen setzen:**
+     ```bash
+     supabase migration repair --status applied 20260503110000
+     ```
+     Trägt `20260503110000_proj24_resolve_role_rate_lockdown` in die Remote-`supabase_migrations.schema_migrations`-Tabelle ein, damit sie dem lokalen Dateinamen entspricht.
+
+   Option A bevorzugt, wenn der Remote-Timestamp semantisch korrekt ist. Option B, wenn der Remote-Timestamp auto-generiert/unbekannt war.
 
 ### Production-Smoke-Plan (User-Side)
 
