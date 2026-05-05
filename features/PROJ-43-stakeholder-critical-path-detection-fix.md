@@ -1,6 +1,6 @@
 # PROJ-43: Stakeholder-Health Critical-Path Detection — Korrektheits- und Coverage-Fix
 
-## Status: Approved (43-α)
+## Status: Deployed (43-α)
 **Created:** 2026-05-05
 **Last Updated:** 2026-05-05
 
@@ -131,7 +131,7 @@ CIA-Review (2026-05-05) hat die drei eingangs identifizierten Gaps bestätigt, e
 
 ## Out-of-Scope (explizit)
 
-- **Promote-to-Resource Edge-Case** (`promote-to-resource/route.ts:67-72` setzt `source_stakeholder_id` nicht, wenn Resource bereits mit anderer `source_stakeholder_id` existiert) — **separater Slice**, ist Identity-Mapping-Bug, nicht Critical-Path-Bug. Empfehlung CIA: PROJ-44-Kandidat oder PROJ-29-Folge.
+- **Promote-to-Resource Edge-Case** (`promote-to-resource/route.ts:67-72` setzt `source_stakeholder_id` nicht, wenn Resource bereits mit anderer `source_stakeholder_id` existiert) — **separater Slice**, ist Identity-Mapping-Bug, nicht Critical-Path-Bug. Empfehlung CIA: PROJ-51-Kandidat oder PROJ-29-Folge.
 - **Falsch-Positive-Detection bei Stakeholder-Namensgleichheit** ohne `linked_user_id`/Resource-Link — bewusst nicht im Scope, da PROJ-43 nur über harte FK-Verknüpfungen geht.
 - **Decision-Approvals als Critical-Path-Quelle** — nicht relevant (CIA bestätigt: Decisions sind Governance-Pfad, nicht Schedule-Pfad).
 - **Materialized-View für Detection-Query in α** — TypeScript-In-Memory-Aggregation ist für ≤50 Stakeholder × ≤500 Work-Items ausreichend; CIA empfiehlt explizit gegen MView in α.
@@ -437,8 +437,51 @@ Live-p95-Bench (50 Stakeholders × 100 Work-Items × 20 Phases) ist in der QA-Um
 
 - 43-β (Sprint-Pfad + Method-Gating) — eigener Slice
 - 43-γ (Computed-Critical-Path-Marker) — eigener Slice, deferred
-- Promote-to-Resource Identity-Mapping-Bug — separater Kandidat (PROJ-44 oder PROJ-29-Folge)
+- Promote-to-Resource Identity-Mapping-Bug — separater Kandidat (PROJ-51 oder PROJ-29-Folge)
 - Performance-Live-Bench mit Pilot-Daten — Post-Deploy
 
-## Deployment
-_To be added by /deploy_
+## Deployment — 43-α (2026-05-06)
+
+**Production URL:** https://projektplattform-v3.vercel.app
+**Deploy-Trigger:** Push to `main` (`e01a1da`), Vercel Auto-Deploy
+**Tag:** `v1.43.0-α`
+
+### Pre-Deploy Checks
+
+| Check | Status |
+|---|---|
+| `npm run build` | ✓ grün — 51 statische Pages generiert in 7.8s |
+| `npm run lint` | ✓ 0 errors (1 pre-existing warning in `edit-work-item-dialog.tsx:410`, nicht PROJ-43-bezogen) |
+| `npx vitest run` (full suite) | ✓ 1078/1078 grün |
+| QA Approved | ✓ 9/9 AC erfüllt, 0 Bugs |
+| Schema-Change / Migration | keine — Backend-only Slice |
+| Env-Vars-Update | keine |
+
+### Scope
+
+**Geändert:**
+- `src/app/api/projects/[id]/stakeholder-health/route.ts` — Detection-Logik Pfade A/B/C
+- `src/app/api/projects/[id]/stakeholder-health/route.test.ts` — neu, 10 Test-Cases
+
+Keine UI-Änderung, kein Schema-Change, keine Audit-Whitelist-Anpassung.
+
+### Post-Deploy-Smoke (Empfehlung)
+
+1. **Funktional:** Stakeholder-Health-Dashboard auf Pilot-Tenant öffnen, prüfen dass „Test"-User (über `responsible_user_id` zugewiesen) jetzt zusammen mit „icke" das Critical-Path-Badge bekommt.
+2. **Performance:** Vercel-Function-Logs für `/api/projects/[id]/stakeholder-health` auf p95-Latenz prüfen — Erwartung < ursprünglich + 50ms (AC-α-9 Live-Verifikation).
+3. **Sentry:** Auf neue Fehler in der Route filtern (Tags: `route=stakeholder-health`, `tenant_id`).
+
+### Rollback
+
+Single-File-Backend-Slice → Rollback ist trivial:
+```
+git revert 39b9336
+git push origin main
+```
+oder via Vercel-Dashboard: vorigen Deploy promoten.
+
+### Out-of-Scope (für eigene Slices)
+
+- 43-β — Sprint-Pfad + Method-Gating
+- 43-γ — Computed-Critical-Path-Marker (deferred)
+- Promote-to-Resource Identity-Mapping-Bug (PROJ-44-Kandidat oder PROJ-29-Folge)
