@@ -6,6 +6,7 @@ import * as React from "react"
 import { Avatar, AvatarFallback } from "@/components/ui/avatar"
 import { Button } from "@/components/ui/button"
 import { Card, CardContent } from "@/components/ui/card"
+import { Checkbox } from "@/components/ui/checkbox"
 import {
   DropdownMenu,
   DropdownMenuContent,
@@ -54,6 +55,9 @@ interface BacklogListProps {
   onChangeStatusRequest: (item: WorkItemWithProfile) => void
   onChangeParentRequest: (item: WorkItemWithProfile) => void
   onDeleteRequest: (item: WorkItemWithProfile) => void
+  /** Multi-select state — controlled by parent (backlog-client). */
+  selectedIds?: Set<string>
+  onSelectionChange?: (next: Set<string>) => void
 }
 
 export function BacklogList({
@@ -66,6 +70,8 @@ export function BacklogList({
   onChangeStatusRequest,
   onChangeParentRequest,
   onDeleteRequest,
+  selectedIds,
+  onSelectionChange,
 }: BacklogListProps) {
   const canEdit = useProjectAccess(projectId, "edit_master")
 
@@ -84,6 +90,32 @@ export function BacklogList({
   }, [phases])
 
   const showPhaseColumn = phases.length > 0
+  const selectionEnabled =
+    selectedIds !== undefined && onSelectionChange !== undefined
+  const allSelected =
+    selectionEnabled && items.length > 0 && items.every((it) => selectedIds!.has(it.id))
+  const someSelected =
+    selectionEnabled && items.some((it) => selectedIds!.has(it.id)) && !allSelected
+
+  const toggleAll = React.useCallback(() => {
+    if (!selectionEnabled || !onSelectionChange) return
+    if (allSelected) {
+      onSelectionChange(new Set())
+    } else {
+      onSelectionChange(new Set(items.map((it) => it.id)))
+    }
+  }, [allSelected, items, onSelectionChange, selectionEnabled])
+
+  const toggleOne = React.useCallback(
+    (id: string) => {
+      if (!selectionEnabled || !onSelectionChange) return
+      const next = new Set(selectedIds)
+      if (next.has(id)) next.delete(id)
+      else next.add(id)
+      onSelectionChange(next)
+    },
+    [onSelectionChange, selectedIds, selectionEnabled],
+  )
 
   // PROJ-24 — Plan-Kosten pro Item, eine Batched-Fetch.
   const costsByItem = useWorkItemCostTotals(projectId, items.length)
@@ -119,6 +151,17 @@ export function BacklogList({
       <Table>
         <TableHeader>
           <TableRow>
+            {selectionEnabled ? (
+              <TableHead className="w-10">
+                <Checkbox
+                  checked={
+                    allSelected ? true : someSelected ? "indeterminate" : false
+                  }
+                  onCheckedChange={() => toggleAll()}
+                  aria-label="Alle auswählen"
+                />
+              </TableHead>
+            ) : null}
             <TableHead className="w-32">Typ</TableHead>
             <TableHead>Titel</TableHead>
             <TableHead className="w-28">Status</TableHead>
@@ -149,6 +192,18 @@ export function BacklogList({
                 tabIndex={0}
                 aria-label={`Work Item: ${item.title}`}
               >
+                {selectionEnabled ? (
+                  <TableCell
+                    className="w-10"
+                    onClick={(event) => event.stopPropagation()}
+                  >
+                    <Checkbox
+                      checked={selectedIds!.has(item.id)}
+                      onCheckedChange={() => toggleOne(item.id)}
+                      aria-label={`„${item.title}" auswählen`}
+                    />
+                  </TableCell>
+                ) : null}
                 <TableCell>
                   <WorkItemKindBadge kind={item.kind} />
                 </TableCell>

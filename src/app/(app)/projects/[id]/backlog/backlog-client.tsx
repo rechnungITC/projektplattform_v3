@@ -12,6 +12,7 @@ import {
 import { BacklogBoard } from "@/components/work-items/backlog-board"
 import { BacklogList } from "@/components/work-items/backlog-list"
 import { BacklogTree } from "@/components/work-items/backlog-tree"
+import { BulkAssignPhaseDialog } from "@/components/work-items/bulk-assign-phase-dialog"
 import { ChangeParentDialog } from "@/components/work-items/change-parent-dialog"
 import { ChangeStatusDialog } from "@/components/work-items/change-status-dialog"
 import { DeleteWorkItemDialog } from "@/components/work-items/delete-work-item-dialog"
@@ -109,24 +110,30 @@ export function BacklogClient({ projectId, tenantId: _tenantId }: BacklogClientP
     setViewModeReady(true)
   }, [viewModeReady, user?.id, projectId, items, itemsLoading])
 
-  // Persist on change.
-  const handleViewModeChange = React.useCallback(
-    (next: BacklogViewMode) => {
-      setViewMode(next)
-      if (typeof window === "undefined" || !user?.id) return
-      // Only persist "list" / "tree" — board is the legacy preference,
-      // still allowed but the spec only persists list/tree.
-      try {
-        window.localStorage.setItem(
-          viewModeStorageKey(user.id, projectId),
-          next
-        )
-      } catch {
-        // Quota / disabled storage — silently drop.
-      }
-    },
-    [user?.id, projectId]
+  // Bulk-selection state — declared above handleViewModeChange so the
+  // setter is available there. Only used in list-view.
+  const [selectedIdsState, setSelectedIdsState] = React.useState<Set<string>>(
+    new Set(),
   )
+
+  // Persist on change. (Plain function — React Compiler memoizes; manual
+  // useCallback would conflict with its inferred dependency analysis.)
+  const handleViewModeChange = (next: BacklogViewMode) => {
+    setViewMode(next)
+    // Bulk-selection only exists in list-view; drop it on switch-away.
+    if (next !== "list") setSelectedIdsState(new Set())
+    if (typeof window === "undefined" || !user?.id) return
+    // Only persist "list" / "tree" — board is the legacy preference,
+    // still allowed but the spec only persists list/tree.
+    try {
+      window.localStorage.setItem(
+        viewModeStorageKey(user.id, projectId),
+        next,
+      )
+    } catch {
+      // Quota / disabled storage — silently drop.
+    }
+  }
 
   const {
     sprints,
@@ -157,6 +164,20 @@ export function BacklogClient({ projectId, tenantId: _tenantId }: BacklogClientP
 
   const [newSprintOpen, setNewSprintOpen] = React.useState(false)
 
+  // Alias the state-pair declared at the top so the rest of the component
+  // can use the cleaner names.
+  const selectedIds = selectedIdsState
+  const setSelectedIds = setSelectedIdsState
+  const [bulkAssignPhaseOpen, setBulkAssignPhaseOpen] = React.useState(false)
+
+  // Derived: only ids that still exist in the current items list. Stale
+  // ids (item deleted/filtered) silently drop out instead of being
+  // mutated in an effect.
+  const selectedItems = React.useMemo(
+    () => items.filter((it) => selectedIds.has(it.id)),
+    [items, selectedIds],
+  )
+
   const handleCreateRequest = (initialKind: WorkItemKind) => {
     setCreateKind(initialKind)
     setCreateOpen(true)
@@ -167,6 +188,10 @@ export function BacklogClient({ projectId, tenantId: _tenantId }: BacklogClientP
     setDrawerOpen(true)
   }
 
+  const clearSelection = () => {
+    setSelectedIds(new Set())
+  }
+
   return (
     <div className="mx-auto w-full max-w-7xl px-4 py-6 sm:px-6">
       <BacklogToolbar
@@ -175,9 +200,32 @@ export function BacklogClient({ projectId, tenantId: _tenantId }: BacklogClientP
         filters={filters}
         onFiltersChange={setFilters}
         viewMode={viewMode}
-        onViewModeChange={setViewMode}
+        onViewModeChange={handleViewModeChange}
         onCreateRequest={handleCreateRequest}
       />
+
+      {/* Bulk-action bar — only in list-view, only when selection > 0. */}
+      {viewMode === "list" && selectedIds.size > 0 ? (
+        <div className="mt-4 flex flex-wrap items-center gap-3 rounded-md border bg-muted/40 px-4 py-2 text-sm">
+          <span className="font-medium">
+            {selectedIds.size} ausgewählt
+          </span>
+          <span className="ml-auto flex flex-wrap items-center gap-2">
+            {phases.length > 0 ? (
+              <Button
+                size="sm"
+                variant="outline"
+                onClick={() => setBulkAssignPhaseOpen(true)}
+              >
+                Phase zuweisen
+              </Button>
+            ) : null}
+            <Button size="sm" variant="ghost" onClick={clearSelection}>
+              Auswahl aufheben
+            </Button>
+          </span>
+        </div>
+      ) : null}
 
       <div className="mt-6">
         {viewMode === "list" && (
@@ -191,6 +239,8 @@ export function BacklogClient({ projectId, tenantId: _tenantId }: BacklogClientP
             onChangeStatusRequest={setStatusTarget}
             onChangeParentRequest={setParentTarget}
             onDeleteRequest={setDeleteTarget}
+            selectedIds={selectedIds}
+            onSelectionChange={setSelectedIds}
           />
         )}
         {viewMode === "board" && (
@@ -326,6 +376,18 @@ export function BacklogClient({ projectId, tenantId: _tenantId }: BacklogClientP
           onCreated={refreshSprints}
         />
       )}
+
+      <BulkAssignPhaseDialog
+        open={bulkAssignPhaseOpen}
+        onOpenChange={setBulkAssignPhaseOpen}
+        projectId={projectId}
+        items={selectedItems}
+        phases={phases}
+        onAssigned={async () => {
+          await refreshItems()
+          clearSelection()
+        }}
+      />
     </div>
   )
 }
