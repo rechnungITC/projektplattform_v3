@@ -32,6 +32,7 @@ import {
   classifyNarrativeAutoContext,
   classifyRiskAutoContext,
 } from "./classify"
+import { checkCostCap } from "./cost-cap"
 import { resolveProvider, type ResolvedProvider } from "./key-resolver"
 import { AnthropicProvider } from "./providers/anthropic"
 import { GoogleProvider } from "./providers/google"
@@ -62,6 +63,8 @@ interface InvokeRiskGenerationArgs {
 interface ProviderChoice {
   provider: AIProvider
   externalBlocked: boolean
+  /** When set, the call was blocked for a non-routing reason (e.g. cost cap). */
+  blockedReason?: string
 }
 
 interface TenantOverrides {
@@ -189,6 +192,35 @@ async function selectProviderForPurpose(
   }
 }
 
+/**
+ * 32-d cost-cap gate. Called between provider selection and provider
+ * invocation. If the tenant's monthly token usage has hit the configured
+ * cap (cap_action='block'), swap the chosen provider for the StubProvider
+ * and flag externalBlocked + blockedReason. Skips the cap check when the
+ * already-selected provider is the StubProvider (nothing external to gate).
+ */
+async function applyCostCap(
+  supabase: SupabaseClient,
+  tenantId: string,
+  choice: ProviderChoice,
+): Promise<ProviderChoice> {
+  if (choice.provider.name === "stub") return choice
+  const cap = await checkCostCap({ supabase, tenantId })
+  if (!cap.blocked) {
+    if (cap.warn && cap.detail) {
+      // Soft warning: the call still goes through, but log the detail
+      // so the run's error_message reflects the warn state.
+      return { ...choice, blockedReason: `WARN: ${cap.detail}` }
+    }
+    return choice
+  }
+  return {
+    provider: new StubProvider(),
+    externalBlocked: true,
+    blockedReason: cap.detail ?? "Monthly token cap exceeded.",
+  }
+}
+
 /** Shared helper: insert a `ki_runs` row up-front (PROJ-12 + PROJ-30). */
 async function insertKiRun(
   supabase: SupabaseClient,
@@ -260,12 +292,17 @@ export async function invokeRiskGeneration({
     context,
     overrides.privacyDefault as DataClass,
   )
-  const { provider, externalBlocked } = await selectProviderForPurpose(
+  const choice = await selectProviderForPurpose(
     supabase,
     tenantId,
     "risks",
     classification,
     overrides.providerConfig,
+  )
+  const { provider, externalBlocked, blockedReason } = await applyCostCap(
+    supabase,
+    tenantId,
+    choice,
   )
 
   const runId = await insertKiRun(supabase, {
@@ -334,12 +371,15 @@ export async function invokeRiskGeneration({
     }
   }
 
+  // Prefer the cap-block detail over the (possibly-empty) provider error
+  // when the call was gated by the cost cap.
+  const finalErrorMessage = providerError ?? blockedReason ?? null
   await updateKiRunStatus(supabase, runId, {
     status: finalStatus,
     inputTokens,
     outputTokens,
     latencyMs,
-    errorMessage: providerError,
+    errorMessage: finalErrorMessage,
   })
 
   return {
@@ -350,7 +390,7 @@ export async function invokeRiskGeneration({
     status: finalStatus,
     suggestion_ids: suggestionIds,
     external_blocked: externalBlocked,
-    error_message: providerError ?? undefined,
+    error_message: finalErrorMessage ?? undefined,
   }
 }
 
@@ -392,12 +432,17 @@ export async function invokeNarrativeGeneration({
     context,
     overrides.privacyDefault as DataClass,
   )
-  const { provider, externalBlocked } = await selectProviderForPurpose(
+  const choice = await selectProviderForPurpose(
     supabase,
     tenantId,
     "narrative",
     classification,
     overrides.providerConfig,
+  )
+  const { provider, externalBlocked, blockedReason } = await applyCostCap(
+    supabase,
+    tenantId,
+    choice,
   )
 
   const runId = await insertKiRun(supabase, {
@@ -450,7 +495,7 @@ export async function invokeNarrativeGeneration({
     inputTokens,
     outputTokens,
     latencyMs,
-    errorMessage: providerError,
+    errorMessage: providerError ?? blockedReason ?? null,
   })
 
   return {
@@ -461,6 +506,6 @@ export async function invokeNarrativeGeneration({
     status: finalStatus,
     text,
     external_blocked: externalBlocked,
-    error_message: providerError ?? undefined,
+    error_message: providerError ?? blockedReason ?? undefined,
   }
 }

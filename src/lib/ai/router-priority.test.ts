@@ -100,6 +100,14 @@ function buildSupabase(opts: {
       if (table === "ki_suggestions") return insertSuggestionsChain
       if (table === "tenant_ai_providers") return providerStatusChain
       if (table === "tenant_ai_provider_priority") return priorityChain
+      if (table === "tenant_ai_cost_caps") {
+        const chain: { select: unknown; eq: unknown; maybeSingle: unknown } = {
+          select: () => chain,
+          eq: () => chain,
+          maybeSingle: async () => ({ data: null, error: null }),
+        }
+        return chain
+      }
       if (table === "tenant_settings") {
         const chain: { select: unknown; eq: unknown; maybeSingle: unknown } = {
           select: () => chain,
@@ -315,6 +323,14 @@ describe("PROJ-32-c-γ priority-driven routing", () => {
             select: vi.fn().mockResolvedValue({ data: [{ id: "s-1" }], error: null }),
           }
         if (table === "tenant_ai_providers") return providerStatusChain
+        if (table === "tenant_ai_cost_caps") {
+          const c: { select: unknown; eq: unknown; maybeSingle: unknown } = {
+            select: () => c,
+            eq: () => c,
+            maybeSingle: async () => ({ data: null, error: null }),
+          }
+          return c
+        }
         if (table === "tenant_ai_provider_priority") {
           const chain = {
             select: vi.fn(() => chain),
@@ -417,6 +433,14 @@ describe("PROJ-32-c-γ priority-driven routing", () => {
             eq: vi.fn().mockReturnThis(),
             maybeSingle: vi.fn().mockResolvedValue({ data: null, error: null }),
           }
+        if (table === "tenant_ai_cost_caps") {
+          const c: { select: unknown; eq: unknown; maybeSingle: unknown } = {
+            select: () => c,
+            eq: () => c,
+            maybeSingle: async () => ({ data: null, error: null }),
+          }
+          return c
+        }
         if (table === "tenant_ai_provider_priority") return errChain
         if (table === "tenant_settings") {
           const chain: { select: unknown; eq: unknown; maybeSingle: unknown } = {

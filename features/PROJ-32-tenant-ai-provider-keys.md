@@ -1,6 +1,6 @@
 # PROJ-32: Tenant Custom AI Provider Keys (Multi-Provider)
 
-## Status: Deployed 32a + 32c + 32b (OpenAI + Google live) · 32d to be specced
+## Status: Deployed 32a + 32b + 32c + 32d (full PROJ-32 slice live)
 
 **Created:** 2026-05-04
 **Last Updated:** 2026-05-04
@@ -15,8 +15,8 @@ PROJ-32 wird in 4 Sub-Slices ausgeliefert. Jede Slice ist standalone deploybar.
 |---|---|---|---|
 | **32a** | Tenant-Anthropic-Key (encrypted storage, validation, fallback-policy) | **Deployed 2026-05-04** | ~3-4 PT |
 | **32b** | OpenAI + Google AI Studio (analog 32a, gleiches Storage-Pattern) | **Deployed 2026-05-05** | ~2 PT (delivered) |
-| **32c** | Ollama (Endpoint-URL + optional Bearer) + Generic-Provider-Schema-Migration + Per-Purpose-Priority | **Specced** (in dieser Spec) | ~4-5 PT (revised from ~2 PT) |
-| 32d | Cost-Caps + Token-Logging + Tenant-Cost-Dashboard | _to be specced_ | ~3 PT |
+| **32c** | Ollama (Endpoint-URL + optional Bearer) + Generic-Provider-Schema-Migration + Per-Purpose-Priority | **Deployed 2026-05-04** | ~6 PT (delivered as α/β/γ) |
+| **32d** | Cost-Caps + Token-Logging + Tenant-Cost-Dashboard | **Deployed 2026-05-05** | ~2 PT (delivered) |
 
 **Total geschätzt:** ~13-15 PT über alle 4 Slices (+2 PT vs initiale Schätzung — der generische Schema-Refactor in 32c ist substanzieller als ursprünglich angenommen).
 
@@ -1355,3 +1355,65 @@ The Class-3 CHECK constraint from 32-c-γ was hardcoded as `not (provider_order 
 
 - 32d (Cost-Caps + Token-Logging + Tenant-Cost-Dashboard) — last sub-slice of PROJ-32. ~3 PT.
 - /qa proj 32 for an end-to-end pass after 32d if a clean QA-Approved milestone is desired.
+
+---
+
+## Phase 32-d — Cost-Caps + Token-Logging + Cost-Dashboard (deployed 2026-05-05)
+
+### Locked Decisions (from /requirements 2026-05-05)
+
+1. **Monthly Token-Budget pro Tenant** — getrennte Caps für Input + Output Tokens. NULL = unlimited. Reset am 1. des Monats (UTC) implizit über calendar-month-aggregate.
+2. **Token logging via existing ki_runs** — kein neuer Log-Pfad; aggregate vom existing `input_tokens` / `output_tokens`.
+3. **Dashboard:** aktueller Monat per-provider + 6-month trend (Sparkline).
+4. **Pre-Call SELECT-Aggregat** — `tenant_ai_monthly_usage` RPC; cap_action ∈ {'block','warn_only'}.
+
+### Deployment commits
+
+- `<commit>` — feat(PROJ-32): backend+frontend phase 32-d — cost caps + token logging + cost dashboard
+- Auto-deploy via push to `main`.
+
+### Migrations applied to production
+
+- `20260505200000_proj32d_cost_caps.sql`
+  - New table `tenant_ai_cost_caps` (PK = tenant_id), 4 RLS policies (member-callable SELECT for routing path, admin-only writes)
+  - Partial index `ki_runs_tenant_billing_idx` on (tenant_id, created_at DESC) WHERE status in ('success','error') — keeps the pre-call aggregate under 5ms
+  - `record_tenant_ai_cost_cap_audit` SECURITY DEFINER RPC (admin-only)
+  - `tenant_ai_monthly_usage(uuid, int, int)` SECURITY DEFINER RPC returning per-provider token totals for a calendar month — used by both the pre-call gate and the dashboard
+  - audit_log `entity_type` whitelist extended with `'tenant_ai_cost_caps'`
+
+### Code
+
+- `src/lib/ai/cost-cap.ts` (new) — `checkCostCap()` for the pre-call gate (returns `{blocked, warn, detail}`) + `getCostDashboardData()` for the dashboard. React.cache wrappers per request to avoid duplicate aggregation queries.
+- `src/lib/ai/router.ts` — new `applyCostCap()` helper called between `selectProviderForPurpose()` and provider invocation. When blocked, swaps in StubProvider + flags `externalBlocked=true` + carries `blockedReason` into `error_message`. `warn_only` lets the call through but prefixes the reason with `WARN:`.
+- `src/app/api/tenants/[id]/ai-cost-cap/route.ts` (new) — GET + PUT, admin-only. Field-level audit on changed cap config.
+- `src/app/api/tenants/[id]/ai-cost-dashboard/route.ts` (new) — GET, admin-only. Returns cap + current-month + 6-month trend.
+- `src/components/settings/tenant/ai-providers/cost-cap-section.tsx` (new) — UI with current-month progress bars per cap, per-provider table, recharts LineChart for the 6-month trend, cap config form (input/output cap inputs + cap_action select).
+
+### Tests
+
+- 1022 / 1022 vitest passing (was 1009 after 32-b; +13 new):
+  - `cost-cap.test.ts` (9 unit tests covering cap-config-fetch, no-cap, block, warn_only, exact-cap-edge, multi-provider aggregation, DB-error-fallback, dashboard 6-month trend)
+  - `router-cost-cap.test.ts` (4 router-integration tests: block, warn_only, under-cap, stub-skip)
+- ESLint clean. TypeScript clean. `next build` clean — `/api/tenants/[id]/ai-cost-cap` + `/ai-cost-dashboard` routes registered.
+
+### Class-3 + Cost-Cap interaction
+
+The cost-cap gate sits AFTER the provider-resolution gate. Class-3 + no Ollama still routes to StubProvider (resolver), and the cap check is then skipped entirely (Stub never costs tokens). Class-3 + Ollama → Ollama runs and the call counts toward the cap (Ollama-self-hosted has cost too — compute, not tokens, but the spec measures in tokens for consistency).
+
+### Recommended next steps for the entire PROJ-32 slice
+
+PROJ-32 is now fully deployed end-to-end:
+- 32-a Anthropic
+- 32-b OpenAI + Google
+- 32-c Ollama + generic schema + per-purpose priority
+- 32-d Cost caps + dashboard
+
+Optional polish slices for the future (out of scope):
+- Per-provider cost caps (currently aggregate)
+- Per-provider €-pricing tables for €-based caps
+- Soft-warning email notifications at e.g. 80% threshold
+- Drill-down dashboard (provider × purpose × project × user)
+- Async background-job aggregation for the pre-call check (currently sync SELECT, ~5ms acceptable for v1)
+- E2E Playwright admin-flow test for the full provider-management UI
+
+Tag: `v1.32d-PROJ-32` covers Phase 32-d. The full PROJ-32 slice can also be tagged with a `v1.32-PROJ-32` umbrella tag if desired.

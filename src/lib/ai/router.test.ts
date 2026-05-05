@@ -47,6 +47,15 @@ function buildSupabaseMock(opts: {
         }
         return chain
       }
+      if (table === "tenant_ai_cost_caps") {
+        // 32-d cost-cap config — no caps configured.
+        const c: { select: unknown; eq: unknown; maybeSingle: unknown } = {
+          select: () => c,
+          eq: () => c,
+          maybeSingle: async () => ({ data: null, error: null }),
+        }
+        return c
+      }
       throw new Error(`unexpected table ${table}`)
     }),
     _insertRunChain: insertRunChain,

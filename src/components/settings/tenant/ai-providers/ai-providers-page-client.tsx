@@ -38,6 +38,7 @@ import { Label } from "@/components/ui/label"
 import { useAuth } from "@/hooks/use-auth"
 import { toast } from "sonner"
 
+import { CostCapSection } from "./cost-cap-section"
 import { PriorityMatrixSection } from "./priority-matrix-section"
 
 type ProviderName = "anthropic" | "ollama" | "openai" | "google"
@@ -234,6 +235,8 @@ export function AiProvidersPageClient() {
         googleAvailable={state.google.status !== "not_set"}
         ollamaAvailable={state.ollama.status !== "not_set"}
       />
+
+      <CostCapSection tenantId={tenantId!} />
     </div>
   )
 }

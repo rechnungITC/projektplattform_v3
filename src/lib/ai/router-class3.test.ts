@@ -97,6 +97,15 @@ function buildSupabase(opts: {
       }
       if (table === "ki_suggestions") return insertSuggestionsChain
       if (table === "tenant_ai_providers") return providerStatusChain
+      if (table === "tenant_ai_cost_caps") {
+        // 32-d cost-cap config — no caps configured.
+        const chain: { select: unknown; eq: unknown; maybeSingle: unknown } = {
+          select: () => chain,
+          eq: () => chain,
+          maybeSingle: async () => ({ data: null, error: null }),
+        }
+        return chain
+      }
       if (table === "tenant_ai_provider_priority") {
         // 32-c-γ: priority matrix lookup. Return no rules so the resolver
         // falls back to defaultProviderOrder() which encodes the SaaS-mandate.
