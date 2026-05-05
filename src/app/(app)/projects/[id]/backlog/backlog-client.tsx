@@ -10,6 +10,8 @@ import {
   type BacklogViewMode,
 } from "@/components/work-items/backlog-toolbar"
 import { BacklogBoard } from "@/components/work-items/backlog-board"
+import { BacklogDndProvider } from "@/components/work-items/backlog-dnd-provider"
+import { BacklogDropZone } from "@/components/work-items/backlog-drop-zone"
 import { BacklogList } from "@/components/work-items/backlog-list"
 import { BacklogTree } from "@/components/work-items/backlog-tree"
 import { BulkAssignPhaseDialog } from "@/components/work-items/bulk-assign-phase-dialog"
@@ -192,8 +194,55 @@ export function BacklogClient({ projectId, tenantId: _tenantId }: BacklogClientP
     setSelectedIds(new Set())
   }
 
-  return (
-    <div className="mx-auto w-full max-w-7xl px-4 py-6 sm:px-6">
+  // PROJ-25b — view-mode content (list/board/tree). Wrapped in BacklogDropZone
+  // only when sprints are active; the drop-zone catches sprint→backlog detach
+  // drags and is meaningless without a sprints section. Reused below across
+  // both branches of the DnD-conditional render.
+  const viewContent = (
+    <div className="mt-6">
+      {viewMode === "list" && (
+        <BacklogList
+          projectId={projectId}
+          items={items}
+          phases={phases}
+          loading={itemsLoading}
+          onSelect={handleSelect}
+          onEditRequest={setEditTarget}
+          onChangeStatusRequest={setStatusTarget}
+          onChangeParentRequest={setParentTarget}
+          onDeleteRequest={setDeleteTarget}
+          selectedIds={selectedIds}
+          onSelectionChange={setSelectedIds}
+        />
+      )}
+      {viewMode === "board" && (
+        <BacklogBoard
+          projectId={projectId}
+          items={items}
+          loading={itemsLoading}
+          onSelect={handleSelect}
+          onChanged={refreshItems}
+        />
+      )}
+      {viewMode === "tree" && (
+        <BacklogTree
+          projectId={projectId}
+          items={items}
+          phases={phases}
+          loading={itemsLoading}
+          onSelect={handleSelect}
+          onEditRequest={setEditTarget}
+          onChangeStatusRequest={setStatusTarget}
+          onChangeParentRequest={setParentTarget}
+          onDeleteRequest={setDeleteTarget}
+          onChanged={refreshItems}
+        />
+      )}
+    </div>
+  )
+
+  const toolbarAndBulk = (
+    <>
       <BacklogToolbar
         projectId={projectId}
         method={method}
@@ -226,49 +275,10 @@ export function BacklogClient({ projectId, tenantId: _tenantId }: BacklogClientP
           </span>
         </div>
       ) : null}
+    </>
+  )
 
-      <div className="mt-6">
-        {viewMode === "list" && (
-          <BacklogList
-            projectId={projectId}
-            items={items}
-            phases={phases}
-            loading={itemsLoading}
-            onSelect={handleSelect}
-            onEditRequest={setEditTarget}
-            onChangeStatusRequest={setStatusTarget}
-            onChangeParentRequest={setParentTarget}
-            onDeleteRequest={setDeleteTarget}
-            selectedIds={selectedIds}
-            onSelectionChange={setSelectedIds}
-          />
-        )}
-        {viewMode === "board" && (
-          <BacklogBoard
-            projectId={projectId}
-            items={items}
-            loading={itemsLoading}
-            onSelect={handleSelect}
-            onChanged={refreshItems}
-          />
-        )}
-        {viewMode === "tree" && (
-          <BacklogTree
-            projectId={projectId}
-            items={items}
-            phases={phases}
-            loading={itemsLoading}
-            onSelect={handleSelect}
-            onEditRequest={setEditTarget}
-            onChangeStatusRequest={setStatusTarget}
-            onChangeParentRequest={setParentTarget}
-            onDeleteRequest={setDeleteTarget}
-            onChanged={refreshItems}
-          />
-        )}
-      </div>
-
-      {showSprints && (
+  const sprintsSection = showSprints ? (
         <Collapsible className="mt-8 rounded-lg border" defaultOpen>
           <div className="flex items-center justify-between gap-2 px-4 py-3">
             <CollapsibleTrigger asChild>
@@ -302,6 +312,26 @@ export function BacklogClient({ projectId, tenantId: _tenantId }: BacklogClientP
             </div>
           </CollapsibleContent>
         </Collapsible>
+      ) : null
+
+  return (
+    <div className="mx-auto w-full max-w-7xl px-4 py-6 sm:px-6">
+      {showSprints ? (
+        <BacklogDndProvider
+          projectId={projectId}
+          items={items}
+          sprints={sprints}
+          onChanged={refreshItems}
+        >
+          {toolbarAndBulk}
+          <BacklogDropZone>{viewContent}</BacklogDropZone>
+          {sprintsSection}
+        </BacklogDndProvider>
+      ) : (
+        <>
+          {toolbarAndBulk}
+          {viewContent}
+        </>
       )}
 
       <NewWorkItemDialog

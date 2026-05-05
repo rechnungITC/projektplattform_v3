@@ -48,6 +48,8 @@ import {
   type WorkItemWithProfile,
 } from "@/types/work-item"
 
+import { useBacklogDndOptional } from "./backlog-dnd-provider"
+import { DraggableStoryHandle } from "./draggable-story-handle"
 import { EditWbsCodeDialog } from "./edit-wbs-code-dialog"
 import { WorkItemKindBadge } from "./work-item-kind-badge"
 import { WorkItemStatusBadge } from "./work-item-status-badge"
@@ -516,6 +518,12 @@ function BacklogTreeRow({
   const isPending = pendingMoveId === item.id
   const isSelected = node.isSelected
 
+  // PROJ-25b — DnD multi-select highlight (independent of node.isSelected,
+  // which is react-arborist's single-select state).
+  const dnd = useBacklogDndOptional()
+  const dndSelected =
+    dnd !== null && item.kind === "story" ? dnd.isSelected(item.id) : false
+
   const ownStart = ownPlannedStart(item)
   const ownEnd = ownPlannedEnd(item)
   const ownEffort = ownEstimateHours(item)
@@ -538,6 +546,7 @@ function BacklogTreeRow({
       className={cn(
         "group flex items-center gap-2 border-b px-2 text-sm",
         isSelected && "bg-accent",
+        dndSelected && "bg-primary/5 ring-2 ring-inset ring-primary",
         isPending && "opacity-60"
       )}
     >
@@ -566,6 +575,13 @@ function BacklogTreeRow({
         ) : (
           <span className="ml-1 inline-block h-4 w-4 shrink-0" aria-hidden />
         )}
+        {dnd !== null && item.kind === "story" ? (
+          <DraggableStoryHandle
+            workItemId={item.id}
+            storyTitle={item.title}
+            selected={dndSelected}
+          />
+        ) : null}
         <WorkItemKindBadge kind={item.kind} iconOnly />
         {node.isEditing ? (
           <input
@@ -584,6 +600,18 @@ function BacklogTreeRow({
             type="button"
             onClick={(event) => {
               event.stopPropagation()
+              // PROJ-25b — Ctrl/Cmd-Click and Shift-Click extend the DnD
+              // multi-select instead of opening the detail drawer.
+              if (dnd !== null && item.kind === "story") {
+                if (event.ctrlKey || event.metaKey) {
+                  dnd.toggle(item.id)
+                  return
+                }
+                if (event.shiftKey) {
+                  dnd.range(item.id, dnd.orderedStoryIds)
+                  return
+                }
+              }
               tree.select(node.id)
               onSelectItem(item.id)
             }}

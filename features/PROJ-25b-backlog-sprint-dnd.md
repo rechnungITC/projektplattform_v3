@@ -1,6 +1,6 @@
 # PROJ-25b: Backlog ↔ Sprint Drag-and-Drop (mit a11y-Polish + Multi-Select + Perf-Benchmark)
 
-## Status: In Progress (Backend half)
+## Status: In Progress (Backend + Frontend implemented; QA pending)
 **Created:** 2026-05-05
 **Last Updated:** 2026-05-05
 
@@ -322,8 +322,65 @@ The 7 design decisions from `/architecture` (D1–D7) hold for the backend slice
 - D7 (Sprint-State validation in both Frontend + Backend) → backend half is in place; frontend half lands in `/frontend`.
 
 ### Deferred / not yet built
-- All frontend pieces (BacklogDndProvider, drag handles, drop targets, multi-select, Drag-Overlay, aria-live region) — `/frontend` slice.
 - Playwright performance benchmark (30 sprints × 100 stories) — `/qa` slice.
+- Playwright E2E (Single-Drag, Multi-Drag, Keyboard-DnD, Escape-Cancel, Closed-Sprint-Reject, Method-Gate) — `/qa` slice.
+- Optional: SprintCard count-badge in-place refresh (today the per-card `useWorkItems({sprintId})` doesn't auto-refetch when the global items list changes; pre-existing tech-debt — story disappears from the backlog list correctly, only the "(N items)" badge in the sprint header may be stale until a manual page-refresh).
+
+## Implementation Notes — Frontend (2026-05-05)
+
+### Frontend slice landed
+
+All eight frontend pieces are wired and the production build is green:
+
+1. **`useStorySelection` hook** — `src/hooks/use-story-selection.ts`
+   - `useReducer`-based: actions `toggle` / `range` / `clear` / `set`.
+   - Tracks an "anchor" for Shift-Click range, falls back to single-select if the anchor was filtered out.
+   - 11 Vitest cases (toggle/range forward+backward/range-replaces-not-additive/anchor-fallback/clear/set).
+
+2. **`BacklogDndProvider` + `useBacklogDnd` / `useBacklogDndOptional`** — `src/components/work-items/backlog-dnd-provider.tsx`
+   - Wraps `<DndContext>` from `@dnd-kit/core` with `PointerSensor` (6 px activation distance) + `KeyboardSensor`.
+   - Owns the multi-select state via `useStorySelection`.
+   - `handleDragEnd`: resolves `sprint:<uuid>` / `backlog` droppable IDs → dispatches single-item PATCH or bulk PATCH based on selection size, runs frontend closed-sprint guard, calls `refreshItems` on success, fires Sonner-error-toast on failure. Same-sprint drops are no-ops (filter `idsToMove`).
+   - aria-live region (`role=status`, `aria-live=polite`, sr-only) is rendered locally inside the provider so the screen-reader stream is anchored to the backlog page (D6).
+
+3. **`DragOverlayCard`** — `src/components/work-items/drag-overlay-card.tsx`
+   - Single card for 1-item drags; 2-3 stacked cards with subtle rotation for 2-3 items; `+N Stories`-Badge on the corner. `aria-hidden` (the live-region carries the SR-narrative).
+
+4. **`DraggableStoryHandle`** — `src/components/work-items/draggable-story-handle.tsx`
+   - GripVertical button + `useDraggable`. Only rendered for `kind === 'story'`. Keyboard semantics inherited from `KeyboardSensor` (Space/Arrow/Space/Esc).
+
+5. **`DroppableSprintCard`** — `src/components/sprints/droppable-sprint-card.tsx`
+   - Wraps `SprintCard` with `useDroppable`. Visual: blue ring on hover + accept; red ring + `cursor-not-allowed` on hover when `state === 'closed'`. Droppable ID `sprint:<uuid>`.
+
+6. **`BacklogDropZone`** — `src/components/work-items/backlog-drop-zone.tsx`
+   - Wraps the list/tree as the detach-target (drop here ⇒ `sprint_id := null`). Droppable ID `backlog`.
+
+7. **List + Tree integration** — `src/components/work-items/backlog-list.tsx` + `backlog-tree.tsx`
+   - Both call `useBacklogDndOptional` (returns null when no provider, so the file stays usable in non-DnD contexts).
+   - Add a leftmost drag-handle column (List) / inline handle (Tree) for `kind === 'story'`.
+   - On `kind === 'story'`: Ctrl/Cmd-Click → `toggle`, Shift-Click → `range` (against `orderedStoryIds`), plain click → existing detail-drawer / tree-select.
+   - Selected stories get `bg-primary/5 ring-2 ring-inset ring-primary` (+ `aria-selected={true}`).
+   - Tree keeps `disableDrag` on `react-arborist` (G — the two DnD systems must not collide).
+
+8. **Sprints + Client integration** — `src/components/sprints/sprints-list.tsx` + `src/app/(app)/projects/[id]/backlog/backlog-client.tsx`
+   - `SprintsList` swaps `SprintCard` → `DroppableSprintCard` only when `useBacklogDndOptional()` returns a context (Wasserfall projects without sprints don't pay the wrapper cost).
+   - `BacklogClient` wraps `toolbar + view + sprints-section` in `<BacklogDndProvider>` only when `showSprints` is true (Scrum/Hybrid/Kanban; Wasserfall renders the plain content).
+   - The view content (list/tree/board) is wrapped in `<BacklogDropZone>` so a sprint→backlog detach drag has a target.
+
+### Locked design decisions — re-validated for the frontend slice
+- **D1** (`@dnd-kit/core` ^6.3.1 + `@dnd-kit/sortable` ^10.0.0) — installed.
+- **D2** (Selection via React-Context + `useReducer`) — `useStorySelection` + `BacklogDndProvider`.
+- **D3** (Optimistic-Update via local refresh, no SWR/React-Query) — drop handler calls `refreshItems()` after the PATCH settles; on failure it relies on the unchanged source state plus a Sonner toast.
+- **D4** (Bulk-Limit 50, hardcoded) — backend already enforces; frontend doesn't gate ahead of time, but the DnD UX never selects > backlog-size on a single Ctrl/Shift session.
+- **D5** (Stack-Cards with `+N`-Badge) — `DragOverlayCard`.
+- **D6** (aria-live local under backlog header) — rendered as the last child of the provider, scoped to the page.
+- **D7** (Sprint-State validation in both Frontend + Backend) — frontend gate in `handleDragEnd` (`sprint.state === 'closed'` → announce + toast, no PATCH); backend already guards (422 `sprint_closed`).
+
+### Validation
+- ESLint: 0 errors, 1 pre-existing warning (`edit-work-item-dialog.tsx:410` React-Hook-Form-watch incompat) — not related to PROJ-25b.
+- TypeScript: PROJ-25b files clean. The 4 pre-existing `tsc` errors live in `src/app/api/tenants/[id]/ai-priority/route.test.ts` (out of scope).
+- Vitest: 31/31 green (15 bulk + 5 single-item + 11 selection-hook).
+- `npm run build`: ✓ Compiled successfully in 7.7s — no warnings on PROJ-25b code paths.
 
 ## QA Test Results
 _To be added by /qa_

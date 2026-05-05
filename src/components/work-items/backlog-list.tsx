@@ -34,12 +34,15 @@ import {
   listWorkItemCostTotals,
   type WorkItemCostTotal,
 } from "@/lib/cost/api"
+import { cn } from "@/lib/utils"
 import type { Phase } from "@/types/phase"
 import {
   WORK_ITEM_KIND_LABELS,
   type WorkItemWithProfile,
 } from "@/types/work-item"
 
+import { useBacklogDndOptional } from "./backlog-dnd-provider"
+import { DraggableStoryHandle } from "./draggable-story-handle"
 import { WorkItemKindBadge } from "./work-item-kind-badge"
 import { WorkItemPriorityBadge } from "./work-item-priority-badge"
 import { WorkItemStatusBadge } from "./work-item-status-badge"
@@ -120,6 +123,11 @@ export function BacklogList({
   // PROJ-24 — Plan-Kosten pro Item, eine Batched-Fetch.
   const costsByItem = useWorkItemCostTotals(projectId, items.length)
 
+  // PROJ-25b — DnD multi-select. Optional: column only renders when a
+  // BacklogDndProvider is mounted above this list.
+  const dnd = useBacklogDndOptional()
+  const dndEnabled = dnd !== null
+
   if (loading) {
     return (
       <div role="status" aria-label="Lädt Work Items" className="space-y-2">
@@ -162,6 +170,9 @@ export function BacklogList({
                 />
               </TableHead>
             ) : null}
+            {dndEnabled ? (
+              <TableHead className="w-10" aria-label="Verschieben" />
+            ) : null}
             <TableHead className="w-32">Typ</TableHead>
             <TableHead>Titel</TableHead>
             <TableHead className="w-28">Status</TableHead>
@@ -178,11 +189,35 @@ export function BacklogList({
         <TableBody>
           {items.map((item) => {
             const parent = item.parent_id ? itemsById.get(item.parent_id) : null
+            const dndSelected =
+              dndEnabled && item.kind === "story"
+                ? dnd!.isSelected(item.id)
+                : false
             return (
               <TableRow
                 key={item.id}
-                className="cursor-pointer"
-                onClick={() => onSelect(item.id)}
+                className={cn(
+                  "cursor-pointer",
+                  dndSelected && "bg-primary/5 ring-2 ring-inset ring-primary",
+                )}
+                onClick={(event) => {
+                  // PROJ-25b — Ctrl/Cmd-Click toggles DnD selection,
+                  // Shift-Click extends a range. Plain click keeps the
+                  // existing "open detail drawer" behavior.
+                  if (dndEnabled && item.kind === "story") {
+                    if (event.ctrlKey || event.metaKey) {
+                      event.preventDefault()
+                      dnd!.toggle(item.id)
+                      return
+                    }
+                    if (event.shiftKey) {
+                      event.preventDefault()
+                      dnd!.range(item.id, dnd!.orderedStoryIds)
+                      return
+                    }
+                  }
+                  onSelect(item.id)
+                }}
                 onKeyDown={(event) => {
                   if (event.key === "Enter" || event.key === " ") {
                     event.preventDefault()
@@ -191,6 +226,7 @@ export function BacklogList({
                 }}
                 tabIndex={0}
                 aria-label={`Work Item: ${item.title}`}
+                aria-selected={dndSelected || undefined}
               >
                 {selectionEnabled ? (
                   <TableCell
@@ -202,6 +238,20 @@ export function BacklogList({
                       onCheckedChange={() => toggleOne(item.id)}
                       aria-label={`„${item.title}" auswählen`}
                     />
+                  </TableCell>
+                ) : null}
+                {dndEnabled ? (
+                  <TableCell
+                    className="w-10"
+                    onClick={(event) => event.stopPropagation()}
+                  >
+                    {item.kind === "story" ? (
+                      <DraggableStoryHandle
+                        workItemId={item.id}
+                        storyTitle={item.title}
+                        selected={dndSelected}
+                      />
+                    ) : null}
                   </TableCell>
                 ) : null}
                 <TableCell>

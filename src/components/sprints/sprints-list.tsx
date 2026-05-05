@@ -2,10 +2,12 @@
 
 import * as React from "react"
 
+import { useBacklogDndOptional } from "@/components/work-items/backlog-dnd-provider"
 import { Card, CardContent } from "@/components/ui/card"
 import { Skeleton } from "@/components/ui/skeleton"
 import type { Sprint } from "@/types/sprint"
 
+import { DroppableSprintCard } from "./droppable-sprint-card"
 import { SprintCard } from "./sprint-card"
 
 interface SprintsListProps {
@@ -21,6 +23,11 @@ export function SprintsList({
   loading,
   onChanged,
 }: SprintsListProps) {
+  // Sprints are drop-targets only when a DnD provider is mounted upstream
+  // (i.e. on the Backlog page in Scrum/Hybrid methods). Without a provider,
+  // useBacklogDndOptional returns null and we render the plain SprintCard.
+  const dnd = useBacklogDndOptional()
+
   // Active sprint pinned to the top, then planned, then closed.
   const ordered = React.useMemo(() => {
     const order: Record<Sprint["state"], number> = {
@@ -58,14 +65,23 @@ export function SprintsList({
 
   return (
     <div className="space-y-3">
-      {ordered.map((sprint) => (
-        <SprintCard
-          key={sprint.id}
-          projectId={projectId}
-          sprint={sprint}
-          onChanged={onChanged}
-        />
-      ))}
+      {ordered.map((sprint) =>
+        dnd ? (
+          <DroppableSprintCard
+            key={sprint.id}
+            projectId={projectId}
+            sprint={sprint}
+            onChanged={onChanged}
+          />
+        ) : (
+          <SprintCard
+            key={sprint.id}
+            projectId={projectId}
+            sprint={sprint}
+            onChanged={onChanged}
+          />
+        )
+      )}
     </div>
   )
 }
