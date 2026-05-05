@@ -269,7 +269,7 @@ export function NewWorkItemDialog({
   // Step 2 (form) — kind locked.
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
-      <DialogContent className="sm:max-w-lg">
+      <DialogContent className="flex max-h-[90vh] flex-col sm:max-w-lg">
         <DialogHeader>
           <DialogTitle className="flex items-center gap-2">
             {!initialKind ? (
@@ -295,9 +295,10 @@ export function NewWorkItemDialog({
         <Form {...form}>
           <form
             onSubmit={form.handleSubmit(onSubmit)}
-            className="space-y-4"
+            className="flex min-h-0 flex-1 flex-col"
             noValidate
           >
+            <div className="min-h-0 flex-1 space-y-4 overflow-y-auto pr-1">
             <FormField
               control={form.control}
               name="title"
@@ -579,7 +580,16 @@ export function NewWorkItemDialog({
               )}
             />
 
-            <DialogFooter>
+            {selectedKind === "work_package" ? (
+              <p className="rounded-md border border-dashed bg-muted/30 px-3 py-2 text-xs text-muted-foreground">
+                💡 <strong>Ressourcen & Budget</strong> für dieses Arbeitspaket
+                kannst du nach dem Anlegen im Detail-Drawer zuweisen — Klick
+                auf das Item in der Liste.
+              </p>
+            ) : null}
+            </div>
+
+            <DialogFooter className="mt-4 border-t pt-4">
               <Button
                 type="button"
                 variant="ghost"
