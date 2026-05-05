@@ -1,13 +1,14 @@
 "use client"
 
 import { zodResolver } from "@hookform/resolvers/zod"
-import { Loader2 } from "lucide-react"
+import { AlertTriangle, Loader2 } from "lucide-react"
 import * as React from "react"
 import { useForm } from "react-hook-form"
 import { toast } from "sonner"
 import { z } from "zod"
 
 import { ResponsibleUserPicker } from "@/components/projects/responsible-user-picker"
+import { Alert, AlertDescription } from "@/components/ui/alert"
 import { Button } from "@/components/ui/button"
 import {
   Dialog,
@@ -37,6 +38,7 @@ import {
 import { Textarea } from "@/components/ui/textarea"
 import { useAuth } from "@/hooks/use-auth"
 import { usePhases } from "@/hooks/use-phases"
+import type { Phase } from "@/types/phase"
 import { useSprints } from "@/hooks/use-sprints"
 import {
   WORK_ITEM_KIND_LABELS,
@@ -404,6 +406,13 @@ export function EditWorkItemDialog({
               />
             </div>
 
+            <PhaseDateRangeWarning
+              phaseId={form.watch("phase_id")}
+              wpStart={form.watch("planned_start")}
+              wpEnd={form.watch("planned_end")}
+              phases={phases}
+            />
+
             <FormField
               control={form.control}
               name="responsible_user_id"
@@ -527,4 +536,78 @@ async function safeReadError(response: Response): Promise<string> {
   } catch {
     return `Anfrage fehlgeschlagen (${response.status})`
   }
+}
+
+interface PhaseDateRangeWarningProps {
+  phaseId: string | null
+  wpStart: string | null
+  wpEnd: string | null
+  phases: Phase[]
+}
+
+/**
+ * Soft-warning when the work-item's own planned dates fall outside the
+ * range of its assigned phase. No hard block — the user might intentionally
+ * cross phase boundaries (e.g. preparation work that starts before the
+ * formal phase, or runs past it). The warning gives them a heads-up that
+ * the timeline will look odd in the Gantt view.
+ *
+ * Audit-Empfehlung 3 aus dem Phase-↔-Work-Item-Audit (2026-05-04).
+ */
+function PhaseDateRangeWarning({
+  phaseId,
+  wpStart,
+  wpEnd,
+  phases,
+}: PhaseDateRangeWarningProps) {
+  if (!phaseId) return null
+  const phase = phases.find((p) => p.id === phaseId)
+  if (!phase) return null
+  if (!phase.planned_start && !phase.planned_end) return null
+
+  const messages: string[] = []
+  if (wpStart && phase.planned_start && wpStart < phase.planned_start) {
+    messages.push(
+      `Start liegt vor Phase-Beginn (${formatDate(phase.planned_start)}).`,
+    )
+  }
+  if (wpEnd && phase.planned_end && wpEnd > phase.planned_end) {
+    messages.push(
+      `Ende liegt nach Phase-Schluss (${formatDate(phase.planned_end)}).`,
+    )
+  }
+  if (messages.length === 0) return null
+
+  const phaseLabel = `${phase.sequence_number}. ${phase.name}`
+  return (
+    <Alert variant="default" className="border-amber-500/50 bg-amber-50/40">
+      <AlertTriangle className="h-4 w-4 text-amber-600" aria-hidden />
+      <AlertDescription>
+        <strong>Datums-Hinweis:</strong> Das Arbeitspaket liegt teilweise
+        außerhalb der Phase „{phaseLabel}&ldquo;.
+        <ul className="mt-1 list-disc pl-5 text-xs">
+          {messages.map((m, i) => (
+            <li key={i}>{m}</li>
+          ))}
+        </ul>
+        <span className="mt-1 block text-xs text-muted-foreground">
+          Du kannst trotzdem speichern — der Hinweis verhindert versehentliche
+          Plan-Lücken.
+        </span>
+      </AlertDescription>
+    </Alert>
+  )
+}
+
+function formatDate(iso: string): string {
+  const [yearStr, monthStr, dayStr] = iso.slice(0, 10).split("-")
+  const year = Number(yearStr)
+  const month = Number(monthStr)
+  const day = Number(dayStr)
+  if (!year || !month || !day) return iso
+  return new Date(year, month - 1, day).toLocaleDateString("de-DE", {
+    year: "numeric",
+    month: "short",
+    day: "numeric",
+  })
 }
