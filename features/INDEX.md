@@ -38,7 +38,7 @@
 | PROJ-22 | Budget-Modul mit Historisierung, Vendor-Integration & Multi-Currency | Deployed | [Spec](PROJ-22-budget-modul.md) | 2026-04-30 |
 | PROJ-23 | Globale Sidebar-Navigation (UI-Refactor) | Deployed | [Spec](PROJ-23-sidebar-global.md) | 2026-04-30 |
 | PROJ-24 | Cost-Stack — Tagessätze pro Rolle, Velocity-Modell & Kosten pro Work-Item | Deployed (24-α/β/γ/δ/ε live in production) | [Spec](PROJ-24-cost-stack.md) | 2026-04-30 |
-| PROJ-25 | Drag-and-Drop Stack — Backlog↔Sprint + Gantt voll (SVAR React Gantt MIT · polymorphe Deps · Critical-Path manuell · Phasen-Container-Mitziehen) | Approved (Gantt half — Stages 1-5 deployed; Backlog↔Sprint DnD deferred to PROJ-25b) | [Spec](PROJ-25-dnd-stack.md) | 2026-04-30 |
+| PROJ-25 | Drag-and-Drop Stack — Backlog↔Sprint + Gantt voll (SVAR React Gantt MIT · polymorphe Deps · Critical-Path manuell · Phasen-Container-Mitziehen) | Deployed (Gantt half live — Stages 1-5 + Today/Zoom/Edit-Dialog; Backlog↔Sprint DnD deferred to PROJ-25b) | [Spec](PROJ-25-dnd-stack.md) | 2026-04-30 |
 | PROJ-26 | Method-Gating für Schedule-Constructs (Sprints, Phasen, Milestones) | Deployed | [Spec](PROJ-26-method-gating-schedule-constructs.md) | 2026-05-01 |
 | PROJ-27 | Cross-Project Work-Item Links + Sub-Project Bridge | Architected | [Spec](PROJ-27-cross-project-links-and-subproject-bridge.md) | 2026-05-01 |
 | PROJ-28 | Method-aware Project-Room Navigation (Labels + Routes) | Deployed | [Spec](PROJ-28-method-aware-navigation.md) | 2026-05-01 |

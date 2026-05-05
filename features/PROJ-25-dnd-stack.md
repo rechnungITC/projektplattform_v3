@@ -1,8 +1,8 @@
 # PROJ-25: Drag-and-Drop Stack — Backlog↔Sprint + Gantt voll
 
-## Status: Approved (Gantt half — Stages 1-5 deployed; Backlog↔Sprint DnD deferred to PROJ-25b)
+## Status: Deployed (Gantt half — Stages 1-5 + Today/Zoom/Edit-Dialog live in production; Backlog↔Sprint DnD deferred to PROJ-25b)
 **Created:** 2026-04-30
-**Last Updated:** 2026-05-05 (formal QA pass after 8 silent-shipped commits)
+**Last Updated:** 2026-05-05 (formal /qa + /deploy closure after 8 silent-shipped commits)
 
 ## Summary
 Macht das Backlog + den Gantt interaktiv per Drag-and-Drop. Drei Surfaces:
@@ -479,6 +479,6 @@ The "fixes" already committed during the Stage cycle (Stage-5 phase-link bug, pl
 - ✅ `compute_critical_path_phases` RPC handles unknown project → returns `[]`
 - ✅ 1022/1022 vitest still green; no regressions
 
-**Tag:** `v1.25-PROJ-25` (planned with the formal /deploy closure that follows this /qa pass).
+**Tag:** `v1.25-PROJ-25` — created 2026-05-05 as part of the formal /deploy closure (annotated tag pointing at the /qa pass commit `2fd5387`; tags the Gantt-half slice as v1.25-α).
 
 **Rollback path:** Vercel promote previous deployment + drop `compute_critical_path_phases` function + `ALTER TABLE work_items DROP COLUMN planned_start, planned_end`. Both columns are nullable + additive — no downstream code requires their presence (the gantt-view component falls back to the rolled-up derived dates from PROJ-36 when the own dates are NULL).
