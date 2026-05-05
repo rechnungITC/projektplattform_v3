@@ -429,6 +429,16 @@ function PhaseWorkItemRow({
     }
   }, [projectId, workItem.id, workItem.title, onChanged])
 
+  // PROJ-43-α follow-up — show planned dates so saved values are visible
+  // here, not only in the Gantt or the Edit-Dialog. Falls back to the
+  // PROJ-36 rolled-up derived values when own dates are unset.
+  const displayStart =
+    workItem.planned_start ?? workItem.derived_planned_start ?? null
+  const displayEnd =
+    workItem.planned_end ?? workItem.derived_planned_end ?? null
+  const isDerived =
+    !workItem.planned_start && !!workItem.derived_planned_start
+
   return (
     <li
       className={cn(
@@ -438,6 +448,21 @@ function PhaseWorkItemRow({
     >
       <WorkItemKindBadge kind={workItem.kind} iconOnly />
       <span className="flex-1 truncate font-medium">{workItem.title}</span>
+      {displayStart || displayEnd ? (
+        <span
+          className={cn(
+            "hidden whitespace-nowrap text-xs text-muted-foreground sm:inline",
+            isDerived && "italic",
+          )}
+          title={
+            isDerived
+              ? "Aus Kind-Elementen abgeleitet (Roll-up)"
+              : "Eigenes Start- und End-Datum"
+          }
+        >
+          {formatDate(displayStart)} – {formatDate(displayEnd)}
+        </span>
+      ) : null}
       <WorkItemStatusBadge status={workItem.status} />
       {canEdit ? (
         <Button
