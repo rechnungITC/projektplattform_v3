@@ -1,6 +1,7 @@
 import { NextResponse } from "next/server"
 import { z } from "zod"
 
+import { createAdminClient } from "@/lib/supabase/admin"
 import { LIFECYCLE_STATUSES } from "@/types/project"
 
 import { apiError, getAuthenticatedUserId } from "../../../_lib/route-helpers"
@@ -64,10 +65,15 @@ export async function POST(request: Request, context: RouteContext) {
     return apiError("unauthorized", "Not signed in.", 401)
   }
 
-  const { data, error } = await supabase.rpc("transition_project_status", {
+  // PROJ-Security — switch to admin-client; RPC enforces authz against
+  // p_actor_user_id (no longer relies on auth.uid()). EXECUTE will be
+  // revoked from `authenticated` once all callers are migrated.
+  const adminClient = createAdminClient()
+  const { data, error } = await adminClient.rpc("transition_project_status", {
     p_project_id: projectId,
     p_to_status: parsed.data.to_status,
     p_comment: parsed.data.comment ?? null,
+    p_actor_user_id: userId,
   })
 
   if (error) {

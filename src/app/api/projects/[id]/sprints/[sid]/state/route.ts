@@ -2,6 +2,7 @@ import { NextResponse } from "next/server"
 import { z } from "zod"
 
 import { apiError, getAuthenticatedUserId } from "@/app/api/_lib/route-helpers"
+import { createAdminClient } from "@/lib/supabase/admin"
 
 const schema = z.object({
   to_state: z.enum(["planned", "active", "closed"]),
@@ -66,9 +67,12 @@ export async function POST(
     return apiError("not_found", "Sprint not found in this project.", 404)
   }
 
-  const { data, error } = await supabase.rpc("set_sprint_state", {
+  // PROJ-Security — admin-client + explicit actor for the state-machine RPC.
+  const adminForRpc = createAdminClient()
+  const { data, error } = await adminForRpc.rpc("set_sprint_state", {
     p_sprint_id: sprintId,
     p_to_state: parsed.data.to_state,
+    p_actor_user_id: userId,
   })
 
   if (error) {

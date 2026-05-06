@@ -43,10 +43,13 @@ export async function POST(
         )
       : []
 
-  const { data, error } = await supabase.rpc("transition_phase_status", {
+  // PROJ-Security — admin-client + explicit actor for the state-machine RPC.
+  const adminForRpc = createAdminClient()
+  const { data, error } = await adminForRpc.rpc("transition_phase_status", {
     p_phase_id: phaseId,
     p_to_status: parsed.data.to_status,
     p_comment: parsed.data.comment ?? null,
+    p_actor_user_id: userId,
   })
 
   if (error) {

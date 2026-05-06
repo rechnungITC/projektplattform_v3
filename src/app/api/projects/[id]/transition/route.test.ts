@@ -14,6 +14,13 @@ vi.mock("@/lib/supabase/server", () => ({
   })),
 }))
 
+// PROJ-Security — RPC now goes through the service-role admin client.
+vi.mock("@/lib/supabase/admin", () => ({
+  createAdminClient: vi.fn(() => ({
+    rpc: rpcMock,
+  })),
+}))
+
 import { POST } from "./route"
 
 // -----------------------------------------------------------------------------
@@ -60,6 +67,7 @@ describe("POST /api/projects/[id]/transition", () => {
       p_project_id: PROJECT_ID,
       p_to_status: "active",
       p_comment: "kickoff",
+      p_actor_user_id: USER_ID,
     })
   })
 
