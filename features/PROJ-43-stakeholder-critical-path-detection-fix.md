@@ -1,8 +1,8 @@
 # PROJ-43: Stakeholder-Health Critical-Path Detection — Korrektheits- und Coverage-Fix
 
-## Status: Deployed (43-α + β) + In Progress (43-γ backend + frontend; awaiting /qa)
+## Status: Deployed (43-α + β) + Approved (43-γ; QA passed 2026-05-06, awaiting /deploy)
 **Created:** 2026-05-05
-**Last Updated:** 2026-05-05
+**Last Updated:** 2026-05-06
 
 ## Kontext
 
@@ -1155,3 +1155,105 @@ Vollständiger CIA-Bericht ist in der Session-Konversation 2026-05-06 dokumentie
 | AC-γ-5 (Tooltip-Differenzierung) | `criticalPathSourceLabel`-Helper + `title={…}` | ✓ Frontend |
 
 γ-Slice damit voll backend+frontend implementiert, awaiting /qa.
+
+## QA Test Results — 43-γ (2026-05-06)
+
+**Tester:** /qa skill
+**Scope:** PROJ-43-γ (Computed-Critical-Path-Marker via `compute_critical_path_phases`-RPC + sources-Differenzierung). δ (Sprint-Computed-Pendant) bleibt explizit ausgeklammert.
+
+### Acceptance Criteria
+
+| AC | Quelle | Test/Beleg | Ergebnis |
+|---|---|---|---|
+| AC-γ-1 (computed Quelle) | `route.ts:236-250` (5. Promise mit Method-Gating + try/catch-Fallback); Set-Lookup `computedCriticalPhaseIds` (271) | T13 (RPC-only) flagt Stakeholder bei `phases.is_critical=false` + RPC liefert phase-1 | ✓ pass |
+| AC-γ-2 (`OR`-Verknüpfung) | `isManual \|\| isComputed` pro Phase-Loop (route.ts:295-298, 313-316) | T13 (computed-only) + T14 (manual-only) + T17 (beide) | ✓ pass |
+| AC-γ-3 (kein System-UPDATE auf manueller Spalte) | grep: keine `update("phases")`/`update("sprints")`-Calls in `route.ts`; keine Trigger; Edit-Phase-Switch bleibt voll bedienbar | code review | ✓ pass |
+| AC-γ-4 (Read-only-Anzeige Edit-Phase-Dialog) | `edit-phase-dialog.tsx:81-105` useEffect lädt `/critical-path`; `edit-phase-dialog.tsx:291-303` Sparkles-Badge mit `title=` neben Switch; Switch bleibt unabhängig bedienbar | code review + build pass | ✓ pass |
+| AC-γ-5 (Tooltip-Differenzierung) | `stakeholder-health-page-client.tsx:351-360` Badge `title={criticalPathSourceLabel(...)}`; Helper unterscheidet 4 Fälle (none/manual/computed/both) | T17 (both) liefert `{ manual: true, computed: true }`; Helper-Coverage explizit | ✓ pass |
+
+### Edge Cases
+
+| EC | Verifiziert via | Ergebnis |
+|---|---|---|
+| EC-γ-1 (RPC schlägt fehl) | `.catch(() => ({ data: [], error: null }))` (route.ts:249); manual bleibt einzige Quelle | T15 `mockRejectedValue` → 200, manual-only flagged | ✓ pass |
+| EC-γ-2 (PM markiert manuell, Algorithmus erkennt nicht) | `manual=true` reicht für `on_critical_path=true`; computed=false ändert nichts | T14 explizit | ✓ pass |
+| EC-γ-3 (Performance >500 Phasen) | RPC + Set-Lookup O(n) in TS; Method-Gating spart Aufruf bei Kanban/Scrum-only | T16 bestätigt Short-Circuit; Live-Bench post-deploy | ✓ static pass |
+
+**Zusatz-Edge:**
+- Methoden-Gating short-circuited den RPC bei Kanban (T16, `expect(rpcMock).not.toHaveBeenCalled()`) und bei Scrum/SAFe (`phasesActive=false` ⇒ `Promise.resolve({data:[]})`, kein Roundtrip).
+- Älteres Frontend-Payload-Schema ohne `critical_path_sources` → Helper liefert neutralen Default „Auf kritischem Pfad" (Backward-Compat-Pfad in `criticalPathSourceLabel`).
+- `phase_id === null` in Phase-Loops kurzschließt computed-Pfad (`row.phase_id !== null && computedCriticalPhaseIds.has(...)`) — Cascade-`set null` führt nicht zu Falsch-Treffern.
+
+### Automated Tests
+
+- `npx vitest run src/app/api/projects/[id]/stakeholder-health/route.test.ts` → **19/19 grün** (Duration 1.11s); +5 neue γ-Cases (T13-T17) ergänzen die α/β-Suite ohne Regression.
+- `npx vitest run` (volle Suite) → **1087/1087 grün** über 124 Files (Duration 13.90s) — 0 Regressionen vs. β.
+- `npm run build` → ✓ 51 Pages, type-check sauber.
+- `npm run lint` → 0 errors, 1 pre-existing Warning unrelated zu PROJ-43 (`edit-work-item-dialog.tsx:410` react-hook-form `watch()`).
+
+### Security Audit (Red Team)
+
+| Check | Ergebnis |
+|---|---|
+| RPC-Aufruf ist project-skoped (`p_project_id`) | ✓ identisch zum bestehenden `/critical-path`-Endpoint (PROJ-25), keine Cross-Project-Abfrage möglich |
+| RLS bleibt aktiv für RPC-Konsumenten | ✓ RPC ist `SECURITY DEFINER`; Aufruf liegt hinter `requireProjectAccess "view"`-Gate |
+| Error-Swallowing maskiert keine Auth-/RLS-Verletzung | ✓ `.catch(() => empty)` greift nur für RPC-Errors; Auth/RLS-Failures werden vorher in `requireProjectAccess` und vor dem RPC-Promise geprüft |
+| Class-3-PII-Risiko durch `critical_path_sources` | ✓ zwei Booleans, keine personenbezogenen Daten |
+| Antwort-Shape-Schutz (`linked_user_id` weiterhin nicht exposed) | ✓ unverändert; `StakeholderHealthRow` nicht erweitert um PII |
+| XSS via Tooltip-`title=` | ✓ Helper liefert statische deutsche Strings, kein User-Input; `title` ist HTML-attribute-escaped |
+| `useSWR`/Fetch-Surface im Edit-Phase-Dialog | ✓ kein `useSWR` — direkter `fetch` mit `let cancelled`-Pattern (V3-Standard, kein Race-Condition-Vektor) |
+| Authz auf `/critical-path` | ✓ unverändert (`requireProjectAccess "view"`) — gleiche Permission wie Stakeholder-Health |
+| Cross-Tenant-Leak | ✓ alle RPC-Aufrufe auf `projectId`-Bound, RLS scoped Tenant |
+| `Set<string>`-Lookup auf `phase_id` (computed) | ✓ String-Vergleich, kein Code-Eval |
+
+**Keine Security-Findings.**
+
+### Regression Test (PROJ-25 Critical-Path-Endpoint + PROJ-35-γ Health-Dashboard + PROJ-43-α/β)
+
+| Bereich | Belege | Ergebnis |
+|---|---|---|
+| `/api/projects/[id]/critical-path`-Endpoint (PROJ-25) | unverändert; nur Konsumenten-Zugang erweitert (Edit-Phase-Dialog zusätzlich zum Gantt-View) | ✓ |
+| Stakeholder-Health-Response-Shape | additiv: `critical_path_sources` ist optional in `health-api.ts`, Konsumenten ohne Zugriff bleiben funktional | ✓ |
+| α/β-Pfade A/B/C + Method-Gating | T1-T12 weiter grün; γ erweitert nur die Phase-Loops um den computed-OR-Check | ✓ |
+| Sprint-Pfade (β) | unverändert — γ erweitert ausdrücklich nur Phasen-Pfad; Sprint-Treffer bleiben `manual` | ✓ kein Drift |
+| Edit-Phase-Dialog Switch-Verhalten | Switch bleibt voll bedienbar; Badge ist read-only und purely informational | ✓ |
+| Gantt-View (`gantt-view.tsx`) | gleicher `/critical-path`-Endpoint, kein gemeinsamer State, kein Konflikt | ✓ |
+
+**Keine Regression in den Vorgänger-Slices oder im PROJ-25-Stack.**
+
+### Performance
+
+Statische Analyse:
+- 1 zusätzlicher RPC-Roundtrip via `Promise.all` parallel zu den 4 bestehenden Detection-Queries → keine Latenz-Addition (Promise-Slowest gewinnt).
+- Method-Gating spart RPC bei Kanban (T16) sowie bei Scrum/SAFe (`phasesActive=false`) komplett.
+- Set-Lookup `computedCriticalPhaseIds.has(phase_id)` ist O(1) pro Work-Item-Iteration.
+- Edit-Phase-Dialog: `fetch` läuft nur, wenn Dialog offen ist (`if (!open || !projectId) return`); idle-Tabs zahlen 0.
+
+Live-p95-Bench bei >200 Phasen ist Eskalations-Schwelle zur VIEW (Tech-Design dokumentiert) — Empfehlung: Post-Deploy-Monitoring via Sentry-Performance-Tags `critical_path_source: rpc`.
+
+### Bugs Found
+
+**Keine.**
+
+| Severity | Count |
+|---|---|
+| Critical | 0 |
+| High | 0 |
+| Medium | 0 |
+| Low | 0 |
+
+### Open / nicht im Scope für γ
+
+- **δ-Slice (Sprint-Computed-Pendant)** — `compute_critical_path_sprints`-RPC existiert nicht; ausdrücklich Out-of-Scope für γ. PROJ-44+ Kandidat.
+- **Shadcn-Tooltip statt nativem `title=`** — UI-Polish, kann separater kleiner Slice werden; native `title=` deckt Differenzierung im Pilot-Use ab.
+- **Live-p95-Bench bei >200 Phasen** — Post-Deploy via Sentry, Eskalations-Pfad zu VIEW dokumentiert.
+- **Edit-Phase-Dialog Vitest-Case für Badge-Sichtbarkeit** — Bestehende Suite deckt Logic-Pfad; UI-Test nicht zwingend für γ-Pilot, kann als Follow-up.
+
+### Production-Ready Decision
+
+**READY** — alle 5 Acceptance Criteria erfüllt, alle 3 Edge Cases (γ-1/γ-2/γ-3) verifiziert, 0 Bugs, kein Regressionsrisiko für PROJ-25/PROJ-35-γ/PROJ-43-α/β, Class-3-PII-Boundary geprüft, RPC-Fail-Path graceful, Method-Gating-Short-Circuit verifiziert.
+
+**Empfohlene Folge-Schritte:**
+1. `/deploy` für γ-Slice (Backend + Frontend zusammen, kein Schema-Change, kein Migrations-Risiko).
+2. Sentry-Tag `critical_path_source: rpc` post-deploy aktivieren.
+3. Pilot-Tenant-Smoke: PM markiert Phase als nicht-kritisch, Gantt-Algorithmus erkennt sie → Stakeholder-Badge zeigt „Vom Gantt-Algorithmus erkannt"; Switch im Edit-Phase-Dialog zeigt zusätzlich Sparkles-Badge.
