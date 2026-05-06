@@ -70,6 +70,15 @@ vi.mock("@/lib/supabase/server", () => ({
   })),
 }))
 
+// PROJ-Security-α — `compute_critical_path_phases` is now invoked via the
+// service-role admin client (EXECUTE revoked from `authenticated`). Mock
+// the admin factory so it returns the same `rpc` mock used by tests.
+vi.mock("@/lib/supabase/admin", () => ({
+  createAdminClient: vi.fn(() => ({
+    rpc: rpcMock,
+  })),
+}))
+
 import { GET } from "./route"
 
 const PROJECT_ID = "11111111-1111-4111-8111-111111111111"

@@ -15,6 +15,7 @@ import {
   getAuthenticatedUserId,
   requireProjectAccess,
 } from "@/app/api/_lib/route-helpers"
+import { createAdminClient } from "@/lib/supabase/admin"
 
 interface Ctx {
   params: Promise<{ id: string }>
@@ -30,7 +31,11 @@ export async function GET(_request: Request, ctx: Ctx) {
   const access = await requireProjectAccess(supabase, projectId, userId, "view")
   if (access.error) return access.error
 
-  const { data, error } = await supabase.rpc("compute_critical_path_phases", {
+  // RPC executes via service-role admin client — EXECUTE has been revoked
+  // from `authenticated` (security hardening). Authorization is already
+  // enforced above by `requireProjectAccess`.
+  const adminClient = createAdminClient()
+  const { data, error } = await adminClient.rpc("compute_critical_path_phases", {
     p_project_id: projectId,
   })
   if (error) return apiError("internal_error", error.message, 500)

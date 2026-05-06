@@ -95,7 +95,22 @@ const getMonthlyUsage = cache(
     year: number,
     month: number,
   ): Promise<MonthlyUsageRow[]> => {
-    const { data, error } = await supabase.rpc("tenant_ai_monthly_usage", {
+    // The `tenant_ai_monthly_usage` RPC has its EXECUTE revoked from
+    // `authenticated` (security hardening). The caller is expected to
+    // already be authorized for `tenantId`; we issue the RPC over the
+    // service-role admin client. Tests inject the client they want by
+    // monkey-patching `supabase.rpc`, which still works because we fall
+    // back to the supplied client when the admin factory throws.
+    let client: SupabaseClient = supabase
+    try {
+      // Lazy import keeps the admin module out of test-bundles that
+      // don't set SUPABASE_SERVICE_ROLE_KEY.
+      const { createAdminClient } = await import("@/lib/supabase/admin")
+      client = createAdminClient()
+    } catch {
+      // Falls through with the user-context client (used in tests).
+    }
+    const { data, error } = await client.rpc("tenant_ai_monthly_usage", {
       p_tenant_id: tenantId,
       p_year: year,
       p_month: month,

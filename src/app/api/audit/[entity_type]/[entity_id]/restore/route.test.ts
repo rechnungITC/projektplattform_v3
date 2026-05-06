@@ -43,6 +43,15 @@ vi.mock("@/lib/supabase/server", () => ({
   })),
 }))
 
+// PROJ-Security-α — `audit_restore_entity` is now invoked via the
+// service-role admin client. Mock the admin factory to return the
+// same rpc mock.
+vi.mock("@/lib/supabase/admin", () => ({
+  createAdminClient: vi.fn(() => ({
+    rpc: rpcMock,
+  })),
+}))
+
 import { POST } from "./route"
 
 const TENANT_ID = "11111111-1111-4111-8111-111111111111"

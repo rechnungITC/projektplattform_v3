@@ -6,6 +6,7 @@ import {
   getAuthenticatedUserId,
   requireProjectAccess,
 } from "../../../../_lib/route-helpers"
+import { createAdminClient } from "@/lib/supabase/admin"
 
 // PROJ-10 — POST /api/audit/entries/[id]/undo
 // Selectively rolls back one field on one entity using the SECURITY DEFINER
@@ -62,7 +63,11 @@ export async function POST(_request: Request, ctx: Ctx) {
   const access = await requireProjectAccess(supabase, projectId, userId, "edit")
   if (access.error) return access.error
 
-  const { data: result, error: rpcErr } = await supabase
+  // RPC executes via service-role admin client — EXECUTE has been revoked
+  // from `authenticated`. Authorization is enforced above by the project-
+  // membership and field-level RLS check.
+  const adminClient = createAdminClient()
+  const { data: result, error: rpcErr } = await adminClient
     .rpc("audit_undo_field", { p_audit_id: id })
     .single<{
       success: boolean

@@ -49,6 +49,7 @@ import {
   getAuthenticatedUserId,
   requireProjectAccess,
 } from "@/app/api/_lib/route-helpers"
+import { createAdminClient } from "@/lib/supabase/admin"
 import { isScheduleConstructAllowedInMethod } from "@/lib/work-items/schedule-method-visibility"
 import type { ProjectMethod } from "@/types/project-method"
 
@@ -233,21 +234,26 @@ export async function GET(_request: Request, ctx: Ctx) {
   //     are swallowed: the computed source falls back to empty, so the
   //     manual flag remains the sole driver instead of returning 500
   //     (EC-γ-1: graceful degradation).
+  // Admin client for the RPC — EXECUTE has been revoked from `authenticated`
+  // for `compute_critical_path_phases`. Auth is already enforced by
+  // `requireProjectAccess` above.
+  const adminClient = phasesActive ? createAdminClient() : null
   const computedCriticalPhasesPromise: Promise<{
     data: string[]
     error: null
-  }> = phasesActive
-    ? Promise.resolve(
-        supabase.rpc("compute_critical_path_phases", {
-          p_project_id: projectId,
-        }) as PromiseLike<{ data: unknown; error: unknown }>,
-      )
-        .then((res) => ({
-          data: Array.isArray(res.data) ? (res.data as string[]) : [],
-          error: null as null,
-        }))
-        .catch(() => ({ data: [] as string[], error: null as null }))
-    : Promise.resolve({ data: [] as string[], error: null as null })
+  }> =
+    phasesActive && adminClient
+      ? Promise.resolve(
+          adminClient.rpc("compute_critical_path_phases", {
+            p_project_id: projectId,
+          }) as PromiseLike<{ data: unknown; error: unknown }>,
+        )
+          .then((res) => ({
+            data: Array.isArray(res.data) ? (res.data as string[]) : [],
+            error: null as null,
+          }))
+          .catch(() => ({ data: [] as string[], error: null as null }))
+      : Promise.resolve({ data: [] as string[], error: null as null })
 
   const [wirPhaseRes, wiPhaseRes, wirSprintRes, wiSprintRes, computedRes] =
     await Promise.all([

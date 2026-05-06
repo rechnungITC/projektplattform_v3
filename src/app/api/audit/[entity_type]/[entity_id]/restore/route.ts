@@ -8,6 +8,7 @@ import {
   getAuthenticatedUserId,
   requireProjectAccess,
 } from "../../../../_lib/route-helpers"
+import { createAdminClient } from "@/lib/supabase/admin"
 
 // PROJ-10 — POST /api/audit/[entity_type]/[entity_id]/restore
 // Body: { target_changed_at: ISO timestamp }
@@ -84,7 +85,11 @@ export async function POST(request: Request, ctx: Ctx) {
   const access = await requireProjectAccess(supabase, projectId, userId, "edit")
   if (access.error) return access.error
 
-  const { data: result, error: rpcErr } = await supabase
+  // RPC executes via service-role admin client — EXECUTE has been revoked
+  // from `authenticated`. Authorization is enforced above via the project
+  // membership check.
+  const adminClient = createAdminClient()
+  const { data: result, error: rpcErr } = await adminClient
     .rpc("audit_restore_entity", {
       p_entity_type: entity_type,
       p_entity_id: entity_id,
