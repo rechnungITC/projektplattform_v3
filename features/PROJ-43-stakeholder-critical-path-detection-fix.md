@@ -1,6 +1,6 @@
 # PROJ-43: Stakeholder-Health Critical-Path Detection — Korrektheits- und Coverage-Fix
 
-## Status: Deployed (43-α) + Deployed (43-β)
+## Status: Deployed (43-α + β) + Architected (43-γ)
 **Created:** 2026-05-05
 **Last Updated:** 2026-05-05
 
@@ -863,3 +863,213 @@ Migration kann optional zurückgerollt werden (`alter table public.sprints drop 
 - 43-γ — Computed-Critical-Path-Marker (deferred per Spec)
 - Sprint-Card-Critical-Path-Badge in `sprints-list.tsx` / `sprint-card.tsx`
 - Playwright-E2E für Edit-Sprint-Toggle
+
+## Tech Design (Solution Architect) — 43-γ
+
+> Tech-Design für PROJ-43-γ (Computed-Critical-Path-Marker). Architektur-Entscheidung von CIA-Review (2026-05-06) bestätigt; siehe „Begründung" weiter unten.
+
+### Was geändert wird
+
+Die γ-Slice fügt der Detection in `/api/projects/[id]/stakeholder-health/route.ts` **eine zusätzliche Quelle** für „kritische Phase" hinzu: die rechnerisch ermittelte Critical-Path-Liste aus der bestehenden RPC `compute_critical_path_phases` (eingeführt mit PROJ-25 Gantt-Slice).
+
+**Kein Schema-Change. Keine neue Tabelle. Keine neue Spalte. Keine Materialized-View. Keine Trigger.**
+
+```
+γ-Slice
+├── Datenbank          unverändert (RPC compute_critical_path_phases existiert bereits)
+├── API-Route          Detection-Query erhält 5. Promise: RPC-Call → Set<phase_id>
+├── UI                 Edit-Phase-Dialog zeigt Read-only-Badge "Vom Algorithmus erkannt"
+└── Tests              vitest-Cases für RPC-Match, RPC-Fail-Fallback, Method-Gating
+```
+
+### Wesentliche Architektur-Entscheidung
+
+**Vier Optionen wurden bewertet** (CIA-Review 2026-05-06). Die gewählte Option ist **D — API-Aggregation**. Die ursprüngliche Spec-Frage „VIEW vs. Materialized-View vs. gecachte Spalte" wird damit konkret beantwortet: keine davon.
+
+| Option | Ergebnis | Hauptgrund gegen |
+|---|---|---|
+| **A — Stateless VIEW** | „funktioniert, aber überflüssig" | RPC liefert bereits genau die richtige Form (`uuid[]`); zusätzliche VIEW wäre nur ein Wrapper |
+| **B — Materialized View** | **abgelehnt** | MVs erben **keine** RLS — Multi-Tenant-Invariant verletzt |
+| **C — Gecachte Spalte mit Refresh-Job** | **abgelehnt** | Verletzt V2-ADR „AI as proposal layer" — Algorithmus-Output würde wie PM-Aussage persistiert; gefährliches Präzedens |
+| **D — API-Aggregation in `route.ts`** | **gewählt** | Null neue DB-Persistenz; RPC-Call passt 1:1 zur bestehenden Set-Aggregation; Rollback ist eine Code-Hunk-Revert |
+
+**Eskalations-Pfad:** Wenn Telemetrie zeigt, dass die RPC bei einem Tenant > 200 ms p95 braucht (z.B. > 200 Phasen mit dichten FS-Edges), dann In-Place-Refactor zu Option A (VIEW) — Aggregations-Logik im Code bleibt gleich, nur die Quelle wechselt.
+
+### Wie die Detection nach 43-γ arbeitet
+
+Die α-Pfade (drei Resource/Responsible-User-Pfade) und β-Pfade (Phase + Sprint Method-Gating) bleiben unverändert. Neu kommt **eine zweite Critical-Quelle** pro Phase:
+
+```
+Phase ist kritisch wenn:
+   PM hat is_critical=true gesetzt (manuell, V2-Vorrang)
+   ODER
+   compute_critical_path_phases RPC liefert die Phase im Critical-Path-Set (computed)
+```
+
+Das `OR` löst AC-γ-2. Stakeholder werden dadurch **konsequent breiter** erkannt: sowohl PM-markierte als auch algorithmisch ermittelte kritische Phasen flaggen ihre zugeordneten Stakeholder.
+
+**Wichtig:** PM-Override gewinnt **immer**. Das bedeutet:
+- Markiert PM eine Phase manuell als kritisch, ist sie kritisch — auch wenn der Algorithmus sie übersieht (EC-γ-2).
+- Demarkiert PM eine algorithmisch erkannte Phase nicht, bleibt der Stakeholder kritisch über den Computed-Pfad — dieser Effekt ist gewollt, weil die zwei Quellen orthogonal sind.
+
+### Aggregations-Strategie
+
+Neue Schicht in `route.ts`:
+
+1. **5. Promise** parallel zu den bestehenden vier Detection-Queries: RPC-Call `compute_critical_path_phases(p_project_id)`. Ergebnis: `Set<phase_id>` (`computedCriticalPhaseIds`).
+2. **`OR`-Verknüpfung** in den Phase-Loops: ein Work-Item wird als „kritisch" gewertet, wenn entweder `wi.phases.is_critical === true` **oder** `computedCriticalPhaseIds.has(wi.phase_id)`.
+3. **Method-Gating respektiert**: RPC läuft nur wenn `phasesActive === true`. Für Kanban-Projekte (kein Phase-Konstrukt sichtbar) wird der RPC-Call gespart.
+4. **Graceful Degradation**: Wenn RPC fehlschlägt, fällt das Computed-Set auf leer zurück; Detection läuft weiter nur über manuelle Markierungen. EC-γ-1 ist damit per Design abgedeckt.
+
+### Datenmodell
+
+**Keine Änderung.** Genutzt werden ausschließlich bestehende Bausteine:
+
+| Baustein | Quelle | Status |
+|---|---|---|
+| `compute_critical_path_phases(p_project_id)` RPC | PROJ-25 (Gantt-Slice) | live |
+| `phases.is_critical` | PROJ-35-β | live (PM-Aussage) |
+| `sprints.is_critical` | PROJ-43-β | live (PM-Aussage) |
+| `/api/projects/[id]/critical-path`-Endpoint | PROJ-25 (Gantt-Slice) | live, wiederverwendet vom Edit-Phase-Dialog |
+
+### UI-Erweiterung
+
+**`edit-phase-dialog.tsx`** bekommt einen **read-only Badge** neben dem bestehenden Switch „Auf kritischem Pfad":
+
+```
+[Switch: Auf kritischem Pfad]   [✓ Vom Gantt-Algorithmus erkannt]   ← read-only
+                                 ↑ wenn Phase im Computed-Set
+```
+
+- Switch bleibt voll bedienbar — PM kann sich gegen den Algorithmus entscheiden.
+- Badge ist rein informativ: „Hier denkt der Gantt-Algorithmus, das ist kritisch."
+- Datenquelle: `useSWR("/api/projects/[id]/critical-path")` — Endpoint existiert seit PROJ-25, kein neuer Server-Path nötig.
+
+**Stakeholder-Health-Dashboard-Tooltip (AC-γ-5):** der Health-Endpoint exposed ein zusätzliches Feld `critical_path_sources: { manual: boolean, computed: boolean }` pro Stakeholder. Frontend zeigt im Tooltip:
+- nur `manual=true` → „Vom PM markiert"
+- nur `computed=true` → „Vom Algorithmus erkannt"
+- beide → „Beide Quellen bestätigen"
+
+Payload-Impact: 2 Booleans × ≤ 50 Stakeholder = vernachlässigbar.
+
+### Sicherheit & Berechtigungen
+
+- **RLS:** unverändert. RPC ist `SECURITY DEFINER` und projekt-skoped — keine Cross-Tenant-Leaks.
+- **Authentifizierung:** unverändert (`requireProjectAccess "view"`).
+- **Class-3-PII:** unberührt — Phase-IDs sind keine personenbezogenen Daten.
+- **Trigger / System-UPDATE:** **explizit verboten** durch AC-γ-3. Diese Architektur kommt ohne aus.
+
+### Performance-Profil
+
+- **Status quo nach β:** 2-4 parallele Queries je nach Method-Gating
+- **Nach γ bei Wasserfall/PMI/PRINCE2/VXT2:** +1 RPC-Call zu den 2 Phase-Queries → 3 parallele Operationen
+- **Nach γ bei Scrum/SAFe:** kein RPC-Call (phasesActive=false → Skip), 2 Sprint-Queries unverändert
+- **Nach γ bei NULL-Methode:** 2 Phase-Queries + 2 Sprint-Queries + 1 RPC = 5 parallele Operationen
+- **Nach γ bei Kanban:** keine Detection-Queries (beide Pfade inaktiv), kein RPC
+- **RPC-Latenz:** erwartet < 50 ms bei n=500 Phasen mit indizierten FS-Edges; CIA bestätigt
+- **Eskalation zu VIEW:** dokumentiert (Schwelle p95 > 200 ms)
+
+### Test-Strategie
+
+| Test | Szenario | Erwartung |
+|---|---|---|
+| T13 | RPC liefert `[phase-1]`, `phases.is_critical=false` auf phase-1 | Stakeholder via phase-1 wird als kritisch erkannt (computed-Pfad allein reicht) |
+| T14 | RPC liefert leer, `phases.is_critical=true` auf phase-1 | Stakeholder via phase-1 kritisch (manueller Pfad allein reicht) — EC-γ-2 |
+| T15 | RPC wirft Exception | Endpoint antwortet 200 mit nur manuellen Treffern, kein 500 — EC-γ-1 |
+| T16 | Methode `kanban` | RPC wird **nicht** aufgerufen, Performance-Schoner |
+| T17 | RPC liefert `[phase-1]` UND PM hat `phases.is_critical=true` auf phase-1 | `critical_path_sources.manual=true` UND `.computed=true` |
+| UI: edit-phase-dialog.test.tsx | Phase-ID im Critical-Path-Endpoint enthalten | Read-only-Badge sichtbar; Switch bleibt bedienbar |
+
+### Begründung der gewählten Lösung (für PM-Review)
+
+**Warum keine neue Datenbank-Persistenz?**
+Algorithmus-Output ist per V2-ADR-Pattern „AI as proposal layer" ein **Vorschlag**, keine kanonische Wahrheit. Persistenz würde Druck erzeugen, ihn als Wahrheit zu behandeln (Trigger füllen, Refresh-Jobs, Stale-Data-Diskussionen). Die ephemere API-Aggregation hält die Trennung sichtbar: PM-Spalte bleibt PM-eigen, Algorithmus-Set lebt nur für die Dauer eines Health-Requests.
+
+**Warum nicht die Materialized-View, die so populär ist?**
+Multi-Tenant-Killer. MVs erben in PostgreSQL **keine** RLS-Policies. Eine MV `phases_with_computed_critical_path` würde alle Tenant-Daten unsegmentiert enthalten; jede Cross-Tenant-Anfrage wäre ein Datenleck. Sicheres Aufsetzen würde tenant_id-Partitionierung + manuelle Refresh-Trigger + zusätzliche Authz-Schichten verlangen — der Aufwand übersteigt den Nutzen.
+
+**Warum nicht eine zweite Spalte auf `phases` (nebst `is_critical`)?**
+AC-γ-3 verbietet System-UPDATEs auf `phases.is_critical`. Eine Schwester-Spalte daneben mit demselben Mechanismus setzt ein gefährliches Präzedens — die Tabelle würde teils PM-eigen, teils System-eigen, das Field-Level-Audit (PROJ-10) bekäme System-Edits in den Audit-Trail, und der nächste Slice will dann die zwei Spalten verschmelzen. Sauberer ist, die zwei Quellen architektonisch getrennt zu halten.
+
+**Warum den bestehenden `/critical-path`-Endpoint für Edit-Phase-Dialog wiederverwenden?**
+Existiert seit PROJ-25, liefert exakt was der Dialog braucht (Phase-IDs des Critical-Paths). Ein neuer `/api/phases/[id]/computed-flag` wäre semantisch granularer, aber teurer in Wartung und Doppelaufruf-anfällig (Dialog würde N+1-mal anfragen statt einmal).
+
+**Warum kein Sprint-Computed-Pendant?**
+`compute_critical_path_phases` ist phasen-only. Eine analoge `compute_critical_path_sprints`-RPC existiert nicht und würde eine eigene FS-Chain-Berechnung über Sprints brauchen — das ist ein eigenständiger Slice (provisorisch δ oder PROJ-44+ Kandidat). γ deckt explizit nur Phasen ab.
+
+### Komponentenstruktur
+
+```
+API-Endpoint            GET /api/projects/[id]/stakeholder-health
+└── route.ts
+    ├── 1. Auth + Projekt-Zugriff (unverändert)
+    ├── 2. Aktive Stakeholder + linked_user_id-Map (unverändert)
+    ├── 3. Method-Gating (unverändert seit β)
+    ├── 4. Critical-Path-Detection — erweitert:
+    │     ├── Phase-Pfade A/B/C → matchen wenn manuell ODER computed kritisch
+    │     ├── Sprint-Pfade A'/B'/C' (unverändert seit β)
+    │     └── 5. RPC compute_critical_path_phases  ← NEU
+    │           → Set<phase_id> für OR-Logik in den Phase-Loops
+    │           → Fehler-Fallback: leeres Set, manueller Pfad allein
+    │     → Vereinigungsmenge der Stakeholder-IDs
+    │     → optional: critical_path_sources je Stakeholder (manual/computed)
+    ├── 5. Tenant-Overrides laden (unverändert)
+    └── 6. Antwort komponieren (Shape-Erweiterung optional)
+
+UI                      src/components/phases/edit-phase-dialog.tsx
+└── Read-only Badge "Vom Algorithmus erkannt" neben dem Switch
+   └── Datenquelle: useSWR("/api/projects/[id]/critical-path") — bestehend
+
+UI                      src/components/projects/stakeholder-health/* (Tooltip)
+└── Anzeige aus critical_path_sources, falls AC-γ-5 ausgerollt wird
+```
+
+### Abhängigkeiten
+
+**Keine neuen Pakete.** Genutzt werden:
+- bestehende Supabase-Client `.rpc(...)`-Methode
+- bestehender `/critical-path`-Endpoint für Edit-Phase-Dialog
+- `useSWR` (bereits im Stack)
+
+### Migrations-/Deploy-Risiko
+
+- **Schema-Drift-Risiko (PROJ-42-α):** keines, kein neuer SELECT auf nicht-existente Spalten; keine Migrations
+- **RLS-Risiko:** keines, kein Policy-Change
+- **Audit-Whitelist-Risiko:** keines, keine schreibenden Operationen
+- **Frontend-Regression:** Edit-Phase-Dialog wird ergänzt, nicht umgebaut; Health-Response erweitert sich additiv um optionales Feld
+- **Rollback:** trivial — drei Code-Hunk-Reverts (route.ts, edit-phase-dialog.tsx, optional Tooltip-Komponente)
+
+### Open Questions / Architektur-Entscheidungen für /backend
+
+| Frage | Default-Empfehlung | Veränderbar in /backend? |
+|---|---|---|
+| `critical_path_sources: { manual, computed }` im Response? | **ja**, additiv exposen — ermöglicht AC-γ-5 Tooltip ohne zweite API-Anfrage | ja |
+| FS-Chain-Fallback (RPC liefert „längste Phase" wenn keine FS-Deps existieren) — durchreichen oder unterdrücken? | **durchreichen** (V2-Pattern: Algorithmus liefert Empfehlung, PM filtert) | ja, via RPC-Aufruf-Parameter falls vorhanden |
+| Sprint-Computed-Quelle (analog zu Phase-RPC) | **out of scope für γ** — δ-Slice | nein, Slice-Grenze |
+| Edit-Phase-Dialog Datenquelle: bestehender `/critical-path`-Endpoint vs. neuer dedizierter | **bestehender Endpoint wiederverwenden** | ja, falls Lazy-Load-Performance enttäuscht |
+| Telemetrie-Tag für Eskalations-Schwelle | **`critical_path_source: rpc` in Sentry-Tags** für p95-Monitoring | ja |
+
+### AC-Mapping (Status nach γ-Tech-Design)
+
+| AC | Original | Nach Tech-Design |
+|---|---|---|
+| AC-γ-1 (VIEW oder gecachte Spalte) | offen | **konkretisiert: API-Aggregation, RPC-basiert, keine DB-Persistenz** |
+| AC-γ-2 (`OR`-Verknüpfung) | unverändert | ✓ realisiert via Set-Lookup pro Phase-Loop |
+| AC-γ-3 (kein System-UPDATE auf manueller Spalte) | unverändert | ✓ inhärent — keine Schreib-Operationen |
+| AC-γ-4 (Read-only-Anzeige im Edit-Phase-Dialog) | unverändert | ✓ via useSWR auf bestehendem Endpoint |
+| AC-γ-5 (Tooltip-Differenzierung) | unverändert | ✓ via additives `critical_path_sources`-Feld |
+
+### Übergabe an Implementierung
+
+Backend-+Frontend-Slice → bevorzugte Reihenfolge: `/backend` (RPC-Integration + Set-Logik + 5 Test-Cases) → `/frontend` (Edit-Phase-Badge + Stakeholder-Health-Tooltip) → `/qa` → `/deploy`. Geschätzter Gesamtaufwand: **~2 PT** (1 Backend, 1 Frontend) per CIA-Review.
+
+### CIA-Review
+
+Continuous Improvement Agent (2026-05-06) hat:
+- Vier Architektur-Optionen bewertet (A VIEW / B MV / C Spalte / D API-Aggregation) und **D** mit klaren Begründungen empfohlen
+- Anti-Patterns explizit benannt (Trigger / MV ohne RLS / System-UPDATE / 500 bei RPC-Fehler / Caching ohne Invalidation)
+- Folge-Slice-Map mit Backend/Frontend/QA/Deploy-Punkten geliefert
+- Eskalations-Pfad zu Option A (VIEW) für >200 Phasen-Tenants dokumentiert
+- Open Questions an /architecture-Skill-Owner gestellt — alle in Default-Empfehlungen oben adressiert
+
+Vollständiger CIA-Bericht ist in der Session-Konversation 2026-05-06 dokumentiert.
