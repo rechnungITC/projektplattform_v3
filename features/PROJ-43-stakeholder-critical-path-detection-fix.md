@@ -1,6 +1,6 @@
 # PROJ-43: Stakeholder-Health Critical-Path Detection — Korrektheits- und Coverage-Fix
 
-## Status: Deployed (43-α) + Approved (43-β)
+## Status: Deployed (43-α) + Deployed (43-β)
 **Created:** 2026-05-05
 **Last Updated:** 2026-05-05
 
@@ -813,3 +813,53 @@ Hauptsächlich Backend-Slice mit kleinem UI-Anteil → bevorzugte Reihenfolge: `
 ### Production-Ready Decision
 
 **READY** — keine Critical/High-Bugs, alle relevanten ACs erfüllt (β-4/β-5 per Tech-Design-Kurskorrektur entfallen), Security-Boundary geprüft, kein Regressionsrisiko für PROJ-26/PROJ-35-γ/PROJ-9. Live-DB-Smoke-Check bestätigt Migrations-Korrektheit auf Pilot-Tenant.
+
+## Deployment — 43-β (2026-05-06)
+
+**Production URL:** https://projektplattform-v3.vercel.app
+**Deploy-Trigger:** Push to `main` (`91c53de` mit Vorgängern `58864de` + `da806fc`), Vercel Auto-Deploy
+**Tag:** `v1.43.0-β`
+
+### Pre-Deploy Checks
+
+| Check | Status |
+|---|---|
+| `npm run build` | ✓ grün — 51 Pages, 7.4s |
+| `npm run lint` | ✓ 0 errors (1 pre-existing warning, nicht PROJ-43) |
+| `npx vitest run` | ✓ 1082/1082 |
+| QA Approved | ✓ 0 Bugs, alle ACs erfüllt |
+| Migration live | ✓ `sprints.is_critical` seit /backend-Phase aktiv (DB-Smoke 3/3 grün) |
+| Env-Vars-Update | keine |
+
+### Scope
+
+**Geändert (3 Commits):**
+- `da806fc` — Migration `20260506100000_proj43b_sprints_is_critical.sql` + Method-gated Detection in `route.ts` + 4 neue Test-Cases
+- `58864de` — Sprint-Type erweitert; `use-sprints` SELECT; `sprintCreateSchema` + `sprintPatchSchema`; Edit-Sprint Switch-FormField; 2 Drift-Test kitchen-sinks aktualisiert
+- `91c53de` — QA-Test-Results-Block + Status-Bumps
+
+Keine zusätzliche Migration im Deploy (Migration war bereits in /backend appliziert).
+
+### Post-Deploy-Smoke (Empfehlung)
+
+1. **Funktional:** Im Edit-Sprint-Dialog auf einem Scrum-Pilot-Projekt die „Auf kritischem Pfad"-Checkbox toggeln, speichern → im Stakeholder-Health-Dashboard prüfen, dass Stakeholder, die einem Work-Item in diesem Sprint zugeordnet sind, den Critical-Path-Badge erhalten.
+2. **Method-Gating:** Auf einem Wasserfall-Pilot-Projekt prüfen, dass die `is_critical`-Toggle für Sprints (falls vorhanden) keinen Dashboard-Effekt hat — Phase-Pfad bleibt einzige Quelle.
+3. **Performance:** Vercel-Function-Logs für `/api/projects/[id]/stakeholder-health` auf p95 prüfen — Erwartung: bei reinem Wasserfall-Projekt unverändert (Sprint-Pfad short-circuit), bei Scrum vergleichbar mit α (zwei parallele Queries statt drei, andere Endknoten).
+4. **Sentry:** auf neue Fehler in `route.ts` filtern, insbesondere zur neuen `projects.project_method`-Lookup-Query.
+
+### Rollback
+
+Single-File-Code-Revert + Migration-Rückrollung möglich, aber wegen `not null default false` ungefährlich:
+
+```
+git revert 91c53de 58864de da806fc
+git push origin main
+```
+
+Migration kann optional zurückgerollt werden (`alter table public.sprints drop column if exists is_critical;`) — nicht erforderlich, weil Spalte additiv und mit Default belegt ist. Existierende Daten unbetroffen.
+
+### Out-of-Scope (offen für Folge-Slices)
+
+- 43-γ — Computed-Critical-Path-Marker (deferred per Spec)
+- Sprint-Card-Critical-Path-Badge in `sprints-list.tsx` / `sprint-card.tsx`
+- Playwright-E2E für Edit-Sprint-Toggle
