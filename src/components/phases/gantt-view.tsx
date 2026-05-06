@@ -729,6 +729,31 @@ export function GanttView({
     }
   }, [drag, projectId, milestones, onChanged, pixelsPerDay])
 
+  // Delete a dependency edge by clicking the arrow.
+  const handleDeleteDependency = React.useCallback(
+    async (depId: string, label: string) => {
+      if (!canEdit) return
+      if (!window.confirm(`Abhängigkeit „${label}" löschen?`)) return
+      try {
+        const res = await fetch(
+          `/api/projects/${projectId}/dependencies/${depId}`,
+          { method: "DELETE" },
+        )
+        if (!res.ok && res.status !== 204) {
+          const err = await res.json().catch(() => ({}))
+          throw new Error(err?.message ?? `HTTP ${res.status}`)
+        }
+        toast.success("Abhängigkeit gelöscht")
+        onChanged()
+      } catch (err) {
+        toast.error("Abhängigkeit konnte nicht gelöscht werden", {
+          description: err instanceof Error ? err.message : "Unbekannter Fehler",
+        })
+      }
+    },
+    [canEdit, projectId, onChanged],
+  )
+
   if (phases.length === 0) {
     return (
       <div
@@ -1349,8 +1374,28 @@ export function GanttView({
             dep.to_type === "phase" &&
             criticalPhaseIds.has(dep.from_id) &&
             criticalPhaseIds.has(dep.to_id)
+          const depLabel = `${dep.constraint_type} ${dep.from_type} → ${dep.to_type}`
           return (
-            <g key={`dep-${dep.id}`}>
+            <g
+              key={`dep-${dep.id}`}
+              className={canEdit ? "cursor-pointer" : undefined}
+              onClick={
+                canEdit
+                  ? (e) => {
+                      e.stopPropagation()
+                      void handleDeleteDependency(dep.id, depLabel)
+                    }
+                  : undefined
+              }
+            >
+              {/* Wider transparent hit-area so the arrow is comfortably clickable. */}
+              <path
+                d={path}
+                fill="none"
+                stroke="transparent"
+                strokeWidth={12}
+                pointerEvents={canEdit ? "stroke" : "none"}
+              />
               <path
                 d={path}
                 fill="none"
@@ -1360,10 +1405,12 @@ export function GanttView({
                   isCriticalEdge ? "text-destructive" : "text-foreground/60"
                 }
                 markerEnd="url(#gantt-arrow)"
+                pointerEvents="none"
               />
               <title>
                 Dependency {dep.constraint_type} · {dep.from_type} → {dep.to_type}
                 {isCriticalEdge ? " · KRITISCH" : ""}
+                {canEdit ? " · klicken zum Löschen" : ""}
               </title>
             </g>
           )
