@@ -1,6 +1,6 @@
 # PROJ-43: Stakeholder-Health Critical-Path Detection — Korrektheits- und Coverage-Fix
 
-## Status: Deployed (43-α + β) + Approved (43-γ; QA passed 2026-05-06, awaiting /deploy)
+## Status: Deployed (43-α + β + γ live 2026-05-06)
 **Created:** 2026-05-05
 **Last Updated:** 2026-05-06
 
@@ -1257,3 +1257,54 @@ Live-p95-Bench bei >200 Phasen ist Eskalations-Schwelle zur VIEW (Tech-Design do
 1. `/deploy` für γ-Slice (Backend + Frontend zusammen, kein Schema-Change, kein Migrations-Risiko).
 2. Sentry-Tag `critical_path_source: rpc` post-deploy aktivieren.
 3. Pilot-Tenant-Smoke: PM markiert Phase als nicht-kritisch, Gantt-Algorithmus erkennt sie → Stakeholder-Badge zeigt „Vom Gantt-Algorithmus erkannt"; Switch im Edit-Phase-Dialog zeigt zusätzlich Sparkles-Badge.
+
+## Deployment — 43-γ (2026-05-06)
+
+**Production URL:** https://projektplattform-v3.vercel.app
+**Deploy-Trigger:** Push to `main` (`c9047eb` mit Vorgängern `4b45ad7` Backend + `e890ac7` Frontend), Vercel Auto-Deploy
+**Tag:** `v1.43.0-γ`
+
+### Pre-Deploy Checks
+
+| Check | Status |
+|---|---|
+| `npm run build` | ✓ grün — 51 Pages, type-check sauber |
+| `npm run lint` | ✓ 0 errors (1 pre-existing Warning unrelated to PROJ-43) |
+| `npx vitest run` (full suite) | ✓ 1087/1087 grün |
+| QA Approved | ✓ 5/5 ACs, 3/3 ECs, 0 Bugs |
+| Schema-Change / Migration | keine — γ ist Architektur-Option D (API-Aggregation, keine DB-Persistenz) |
+| Env-Vars-Update | keine |
+
+### Scope (3 Commits)
+
+- `4b45ad7` — Backend: 5. parallele Promise auf `compute_critical_path_phases`-RPC + dual-Set-Aggregation (`manualCriticalStakeholderIds` / `computedCriticalStakeholderIds`) + `critical_path_sources` im Response. 5 neue Test-Cases (T13-T17).
+- `e890ac7` — Frontend: Sparkles-Badge im Edit-Phase-Dialog (fetch `/api/projects/[id]/critical-path`, `let cancelled`-Pattern); `criticalPathSourceLabel` Helper + `title=`-Tooltip in Stakeholder-Health-Tabelle.
+- `c9047eb` — QA-Test-Results-Block + Status-Bumps (Approved).
+
+Keine Migration, kein Schema-Change, keine RLS-Policy-Änderung.
+
+### Post-Deploy-Smoke (Empfehlung)
+
+1. **Funktional:** Auf Pilot-Tenant Phase markieren als nicht-kritisch (`is_critical=false`), die durch Gantt-FS-Chain als kritisch erkannt wird → Stakeholder-Health-Dashboard zeigt Critical-Path-Badge mit Tooltip „Vom Gantt-Algorithmus erkannt"; Edit-Phase-Dialog zeigt Sparkles-Badge.
+2. **PM-Override:** Algorithmisch erkannte Phase manuell `is_critical=true` setzen → Tooltip wechselt zu „Vom PM markiert UND vom Gantt-Algorithmus erkannt".
+3. **Method-Gating:** Auf Kanban-Pilot-Projekt prüfen, dass `/api/projects/[id]/stakeholder-health` keinen RPC-Call ausführt (Vercel-Function-Logs).
+4. **Performance:** Vercel-Logs für `/api/projects/[id]/stakeholder-health` p95 prüfen — Eskalations-Schwelle zur VIEW dokumentiert ab > 200ms.
+5. **Sentry:** auf neue Fehler in `route.ts` filtern, insbesondere zur RPC-Promise-Kette.
+
+### Rollback
+
+Drei reine Code-Hunk-Reverts, keine Migration, kein Daten-Loss-Risiko:
+
+```
+git revert c9047eb e890ac7 4b45ad7
+git push origin main
+```
+
+oder via Vercel-Dashboard: vorigen Deploy (`1b3bdb1` β-State) auf Production promoten.
+
+### Out-of-Scope (offen für Folge-Slices)
+
+- δ-Slice: Sprint-Computed-Pendant (analoge `compute_critical_path_sprints`-RPC existiert nicht; eigenständiger Slice).
+- Live-p95-Bench bei >200 Phasen via Sentry-Performance-Tag — Post-Deploy.
+- Shadcn-Tooltip statt nativem `title=` — UI-Polish-Slice.
+- Edit-Phase-Dialog Vitest-Case für Sparkles-Badge-Sichtbarkeit — Follow-up.
