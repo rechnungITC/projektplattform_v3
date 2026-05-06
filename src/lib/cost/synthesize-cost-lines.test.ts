@@ -108,15 +108,21 @@ function makeMockClient(state: TableState) {
   const insertCalls: unknown[] = []
   const deleteCalls: number[] = []
 
-  // RPC stub for role-rate lookup.
+  // PROJ-54-α — RPC stub for `_resolve_resource_rate`. The helper returns a
+  // TABLE shape (postgrest surfaces as an array). Default = role-based
+  // resolution at 1000 EUR, simulating a stakeholder-role chain match.
   const rpc = vi.fn(async (_fn: string, _args: Record<string, unknown>) => ({
-    data: {
-      tenant_id: TENANT_ID,
-      role_key: "senior_dev",
-      daily_rate: 1000,
-      currency: "EUR",
-      valid_from: "2026-01-01",
-    },
+    data: [
+      {
+        tenant_id: TENANT_ID,
+        source: "role",
+        role_key: "senior_dev",
+        resource_id: null, // SQL helper sets null on role branch; lookup-layer fills it
+        daily_rate: 1000,
+        currency: "EUR",
+        valid_from: "2026-01-01",
+      },
+    ],
     error: null,
   }))
 
@@ -365,7 +371,10 @@ describe("synthesizeResourceAllocationCostLines", () => {
       data: [{ id: STAKEHOLDER_ID, role_key: null }],
       error: null,
     }
-    const { client, insertCalls } = makeMockClient(state)
+    const { client, insertCalls, rpc } = makeMockClient(state)
+    // PROJ-54-α — when stakeholder has no role_key AND no override exists,
+    // the SQL helper `_resolve_resource_rate` returns no row.
+    rpc.mockResolvedValue({ data: [], error: null })
 
     const result = await synthesizeResourceAllocationCostLines({
       adminClient: client,
