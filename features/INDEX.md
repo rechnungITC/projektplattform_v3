@@ -68,7 +68,8 @@
 | PROJ-51 | Modern UI/UX & Motion System — Design-System-Audit, Corporate-Farben, Interaction Tokens, shadcn/Radix Refresh, Motion Layer und View-Transition-Pruefung | Planned | [Spec](PROJ-51-modern-ui-ux-motion-system.md) | 2026-05-06 |
 | PROJ-52 | Gantt — Abhängigkeiten löschen via Klick (Hot-Fix für PROJ-25 Gantt-Half: User konnte Dependency-Pfeile zwar erstellen, aber nicht löschen — Click-Handler + Confirm + DELETE-API + 12px Hit-Area, canEdit-Gate) | Deployed | [Spec](PROJ-52-gantt-dependency-delete.md) | 2026-05-06 |
 | PROJ-53 | Gantt Timeline-Scale (MS-Project-Style) — zweireihiger Header mit Tagesnummern + Wochentag-Kürzel, ISO-KW-Anzeige, Wochenend-Bänder, echtes Tages-Grid; reine Frontend-Erweiterung in `gantt-view.tsx`, keine Migration/API. Sticky-Header deferred zu PROJ-53-β. | Deployed (α live 2026-05-06) | [Spec](PROJ-53-gantt-timeline-scale.md) | 2026-05-06 |
+| PROJ-54 | Resource-Level Tagessatz-Zuweisung — 2 Override-Spalten auf `resources` (Latest-only), neuer `_resolve_resource_rate`-Helper (Override → Rolle → null), `ResolvedRate`-Type mit Quellen-Feld, shadcn-Combobox (Rolle-Suche + Inline-Override) im Resource-Form, Bestand-Banner, Optimistic-Lock, async Recompute via Next.js `after()` mit Failed-Marker. Tenant-Admin-only. CIA-reviewed; α/β/γ-Slices, δ deferred. | In Progress (54-α Backend implemented; Frontend β + Recompute γ pending) | [Spec](PROJ-54-resource-day-rate-assignment.md) | 2026-05-06 |
 
 <!-- Add features above this line -->
 
-## Next Available ID: PROJ-54
+## Next Available ID: PROJ-55
