@@ -350,7 +350,14 @@ export function StakeholderHealthPageClient({ projectId }: Props) {
                     </TableCell>
                     <TableCell>
                       {d.raw.on_critical_path ? (
-                        <Badge variant="destructive">Auf kritischem Pfad</Badge>
+                        <Badge
+                          variant="destructive"
+                          title={criticalPathSourceLabel(
+                            d.raw.critical_path_sources,
+                          )}
+                        >
+                          Auf kritischem Pfad
+                        </Badge>
                       ) : (
                         <span className="text-xs text-muted-foreground">—</span>
                       )}
@@ -364,4 +371,23 @@ export function StakeholderHealthPageClient({ projectId }: Props) {
       </Card>
     </div>
   )
+}
+
+/**
+ * PROJ-43-γ — Tooltip-Text für den Critical-Path-Badge.
+ *
+ * Differenziert PM-markiert vs. algorithmisch erkannt vs. beide Quellen.
+ * Falls das Backend kein `critical_path_sources` mitliefert (älterer Payload
+ * vor PROJ-43-γ-Deploy), wird der neutrale Default angezeigt.
+ */
+function criticalPathSourceLabel(
+  sources?: { manual: boolean; computed: boolean },
+): string {
+  if (!sources) return "Auf kritischem Pfad"
+  if (sources.manual && sources.computed) {
+    return "Vom PM markiert UND vom Gantt-Algorithmus erkannt"
+  }
+  if (sources.manual) return "Vom PM markiert"
+  if (sources.computed) return "Vom Gantt-Algorithmus erkannt"
+  return "Auf kritischem Pfad"
 }

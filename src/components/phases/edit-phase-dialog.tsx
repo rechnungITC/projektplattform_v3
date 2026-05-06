@@ -1,13 +1,14 @@
 "use client"
 
 import { zodResolver } from "@hookform/resolvers/zod"
-import { Loader2 } from "lucide-react"
+import { Loader2, Sparkles } from "lucide-react"
 import * as React from "react"
 import { useForm } from "react-hook-form"
 import { toast } from "sonner"
 import { z } from "zod"
 
 import { DatePickerField } from "@/components/projects/date-picker-field"
+import { Badge } from "@/components/ui/badge"
 import { Button } from "@/components/ui/button"
 import {
   Dialog,
@@ -76,6 +77,34 @@ export function EditPhaseDialog({
   onSaved,
 }: EditPhaseDialogProps) {
   const [submitting, setSubmitting] = React.useState(false)
+
+  // PROJ-43-γ — Computed-Critical-Path-Anzeige.
+  //
+  // Reuses the existing /api/projects/[id]/critical-path endpoint
+  // (PROJ-25 Stage 4). Fetched only while the dialog is open to keep idle
+  // tabs cheap. RPC fail / network fail → empty Set, badge stays hidden;
+  // the manual switch is unaffected (PM-Aussage gewinnt — AC-γ-3).
+  const [computedCriticalPhaseIds, setComputedCriticalPhaseIds] =
+    React.useState<Set<string>>(new Set())
+  React.useEffect(() => {
+    if (!open || !projectId) return
+    let cancelled = false
+    void (async () => {
+      try {
+        const res = await fetch(`/api/projects/${projectId}/critical-path`)
+        if (!res.ok) throw new Error(`HTTP ${res.status}`)
+        const body = (await res.json()) as { phase_ids?: string[] }
+        if (cancelled) return
+        setComputedCriticalPhaseIds(new Set(body.phase_ids ?? []))
+      } catch {
+        if (!cancelled) setComputedCriticalPhaseIds(new Set())
+      }
+    })()
+    return () => {
+      cancelled = true
+    }
+  }, [open, projectId])
+  const isOnComputedCriticalPath = computedCriticalPhaseIds.has(phase.id)
 
   const defaultValues = React.useMemo<EditPhaseValues>(
     () => ({
@@ -256,13 +285,36 @@ export function EditPhaseDialog({
                     />
                   </FormControl>
                   <div className="space-y-0.5">
-                    <FormLabel className="text-sm font-medium">
-                      Auf kritischem Pfad
-                    </FormLabel>
+                    <div className="flex items-center gap-2">
+                      <FormLabel className="text-sm font-medium">
+                        Auf kritischem Pfad
+                      </FormLabel>
+                      {isOnComputedCriticalPath ? (
+                        <Badge
+                          variant="secondary"
+                          className="gap-1 text-[10px] font-normal"
+                          title="Vom Gantt-Algorithmus erkannt (compute_critical_path_phases). Manuelle PM-Markierung bleibt davon unberührt."
+                        >
+                          <Sparkles
+                            className="h-3 w-3"
+                            aria-hidden
+                          />
+                          Vom Algorithmus erkannt
+                        </Badge>
+                      ) : null}
+                    </div>
                     <p className="text-xs text-muted-foreground">
                       Markiert diese Phase als kritisch für den Projekterfolg
                       (z.B. Datenmigration, Cutover, Genehmigung). Treibt den
                       Critical-Path-Indikator im Stakeholder-Health-Dashboard.
+                      {isOnComputedCriticalPath ? (
+                        <>
+                          {" "}
+                          Der Gantt-Algorithmus hält diese Phase ebenfalls für
+                          kritisch — Du kannst dem zustimmen oder eigenständig
+                          entscheiden.
+                        </>
+                      ) : null}
                     </p>
                   </div>
                 </FormItem>

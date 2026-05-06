@@ -1,6 +1,6 @@
 # PROJ-43: Stakeholder-Health Critical-Path Detection — Korrektheits- und Coverage-Fix
 
-## Status: Deployed (43-α + β) + In Progress (43-γ backend; awaiting /frontend + /qa)
+## Status: Deployed (43-α + β) + In Progress (43-γ backend + frontend; awaiting /qa)
 **Created:** 2026-05-05
 **Last Updated:** 2026-05-05
 
@@ -1117,3 +1117,41 @@ Vollständiger CIA-Bericht ist in der Session-Konversation 2026-05-06 dokumentie
 **Open für /frontend:**
 - `edit-phase-dialog.tsx` — Read-only-Badge „Vom Algorithmus erkannt" via `useSWR("/api/projects/[id]/critical-path")`
 - Stakeholder-Health-Tooltip-Komponente — Auswertung von `critical_path_sources` für Differenzierung „Vom PM markiert" / „Vom Algorithmus erkannt" / „Beide Quellen bestätigen"
+
+## Frontend Implementation Notes — 43-γ (2026-05-06)
+
+**Geändert:**
+- `src/components/phases/edit-phase-dialog.tsx`:
+  - `useEffect` lädt `/api/projects/[id]/critical-path` während der Dialog offen ist (`let cancelled = false`-Pattern, V3-Standard).
+  - `Set<string>` für die Phase-IDs auf dem rechnerischen Pfad. RPC-Fehler → leeres Set, Badge bleibt aus, manueller Switch unbeeinflusst.
+  - **Read-only Badge** „Vom Algorithmus erkannt" (Sparkles-Icon) neben dem `is_critical`-Switch sichtbar, wenn `phase.id` im Computed-Set liegt. Title-Tooltip erklärt: „Vom Gantt-Algorithmus erkannt (compute_critical_path_phases). Manuelle PM-Markierung bleibt davon unberührt."
+  - Help-Text wird im Computed-Fall um einen Satz ergänzt: „Der Gantt-Algorithmus hält diese Phase ebenfalls für kritisch — Du kannst dem zustimmen oder eigenständig entscheiden."
+  - Switch bleibt voll bedienbar — AC-γ-3 sichergestellt: keine impliziten System-UPDATEs auf den manuellen Flag.
+- `src/components/projects/stakeholder-health/stakeholder-health-page-client.tsx`:
+  - `criticalPathSourceLabel(sources)` Helper-Funktion am Datei-Ende ergänzt — übersetzt `{ manual, computed }` in deutschen Tooltip-Text:
+    - beide → „Vom PM markiert UND vom Gantt-Algorithmus erkannt"
+    - nur manual → „Vom PM markiert"
+    - nur computed → „Vom Gantt-Algorithmus erkannt"
+    - kein Sources-Feld (älterer Payload) → „Auf kritischem Pfad"
+  - Critical-Path-Badge in der Stakeholder-Tabelle nutzt `title={...}` für die Source-Differenzierung. Native HTML-Tooltip — kein zusätzlicher Shadcn-Tooltip-Wrapper nötig, weil der Badge selbst kompakt bleibt und Hover schon die Information liefert.
+
+**Bewusst NICHT angefasst:**
+- Kein neuer API-Endpoint — `/api/projects/[id]/critical-path` wird wiederverwendet (existiert seit PROJ-25 Stage 4; Konsumenten-Pattern aus `gantt-view.tsx:177` gespiegelt).
+- Kein Shadcn-Tooltip-Komponentenwechsel — native `title=` reicht für die Differenzierung; aufwändigere Komponenten könnten in einem späteren Polish-Slice nachgezogen werden.
+- Kein neuer State-Store — Badge wird pro Dialog-Öffnung frisch geladen (idle Tabs sind dadurch günstig).
+
+**Verifikation:**
+- `npx vitest run` → **1087/1087 grün** (124 Files), 0 Regressionen
+- `npm run build` → ✓ 51 Pages, 7.3s, type-check sauber
+- `npm run lint` → 0 errors, 1 pre-existing Warning unrelated zu PROJ-43
+
+**AC-γ-Coverage komplett:**
+| AC | Test/Beleg | Status |
+|---|---|---|
+| AC-γ-1 (computed Quelle) | RPC-Promise + Set-Lookup im Phase-Loop | ✓ Backend |
+| AC-γ-2 (`OR`-Verknüpfung) | manual ∨ computed-Check pro Phase-Loop | ✓ Backend |
+| AC-γ-3 (kein System-UPDATE) | Switch bleibt unabhängig bedienbar; Backend hat 0 Schreiboperationen | ✓ |
+| AC-γ-4 (Read-only-Anzeige Edit-Phase) | Badge mit Sparkles + Help-Text-Ergänzung | ✓ Frontend |
+| AC-γ-5 (Tooltip-Differenzierung) | `criticalPathSourceLabel`-Helper + `title={…}` | ✓ Frontend |
+
+γ-Slice damit voll backend+frontend implementiert, awaiting /qa.
