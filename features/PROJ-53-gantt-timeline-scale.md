@@ -1,6 +1,6 @@
 # PROJ-53: Gantt Timeline-Scale — Tagesansicht, Wochenenden, KW (MS-Project-Style)
 
-## Status: Approved (QA passed 2026-05-06; awaiting /deploy)
+## Status: Deployed (α live in production 2026-05-06)
 **Created:** 2026-05-06
 **Last Updated:** 2026-05-06
 
@@ -249,3 +249,37 @@ PROJ-25-α Move/Resize/Dep-Drag, PROJ-52 Click-Delete, PROJ-19 CRUD, Critical-Pa
 ### Production-Ready
 
 ✅ **READY** für `/deploy`.
+
+---
+
+## Deployment
+
+**Phase 53-α deployed:** 2026-05-06
+
+**Production URL:** https://projektplattform-v3.vercel.app
+**Gantt UI:** https://projektplattform-v3.vercel.app/projects/[id]/planung
+
+**Deployment commit:** `7ee4e5a` — `feat(PROJ-53): MS-Project-Style Gantt Timeline-Scale (α)`
+
+**Tag:** `v1.53-PROJ-53` (annotated, on `7ee4e5a`)
+
+**Files shipped:**
+- `src/lib/dates/gantt-timeline.ts` (NEU, ~290 LOC)
+- `src/lib/dates/gantt-timeline.test.ts` (NEU, 34 Vitest-Cases)
+- `src/components/phases/gantt-view.tsx` (Two-Tier-Header + Wochenend-Bänder + Day-Grid + L-1 Today-Badge-Fix)
+- `features/PROJ-53-gantt-timeline-scale.md` (NEU)
+- `features/INDEX.md` (PROJ-53 Row + Next-ID Bump)
+
+**Migrations:** Keine — pure Frontend-Slice.
+
+**Production-Verifikation (2026-05-06):**
+- ✅ `/login` → HTTP 200 (`x-vercel-id: fra1::hj2pj-1778067549984-...`, `age: 0`)
+- ✅ `/projects/[id]/planung` → HTTP 307 (auth-gated, route registriert)
+- ✅ Vercel-Auto-Deploy erfolgreich von Push auf `main`
+
+**Rollback-Pfad:** Vercel-Dashboard → previous deployment promote. Kein DB-Rollback nötig (keine Migration). Code-Rollback: `git revert 7ee4e5a` auf main, push.
+
+**Bekannte Einschränkungen (siehe Out-of-Scope-Sektion):**
+- ST-05 Sticky-Header → PROJ-53-β (HTML-Strip-Mirror-Pipeline).
+- Feiertage tenant-region-konfigurierbar → PROJ-53-β/γ.
+- Multi-Locale (`en-US`) → später, wenn Tenant-Locale gepflegt wird.
