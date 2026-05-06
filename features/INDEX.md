@@ -66,7 +66,8 @@
 | PROJ-49 | Real Microsoft Teams Adapter — Microsoft Graph/Webhook-Delivery fuer PROJ-13 Outbox statt Stub-Transport | Planned | [Spec](PROJ-49-real-teams-adapter.md) | 2026-05-06 |
 | PROJ-50 | Bidirectional Jira Sync — Webhooks, External References, Konfliktauflösung und auditierbare Inbound-Updates | Planned | [Spec](PROJ-50-bidirectional-jira-sync.md) | 2026-05-06 |
 | PROJ-51 | Modern UI/UX & Motion System — Design-System-Audit, Corporate-Farben, Interaction Tokens, shadcn/Radix Refresh, Motion Layer und View-Transition-Pruefung | Planned | [Spec](PROJ-51-modern-ui-ux-motion-system.md) | 2026-05-06 |
+| PROJ-52 | Gantt — Abhängigkeiten löschen via Klick (Hot-Fix für PROJ-25 Gantt-Half: User konnte Dependency-Pfeile zwar erstellen, aber nicht löschen — Click-Handler + Confirm + DELETE-API + 12px Hit-Area, canEdit-Gate) | Deployed | [Spec](PROJ-52-gantt-dependency-delete.md) | 2026-05-06 |
 
 <!-- Add features above this line -->
 
-## Next Available ID: PROJ-52
+## Next Available ID: PROJ-53
