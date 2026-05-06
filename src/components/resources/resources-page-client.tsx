@@ -22,7 +22,9 @@ import {
   SheetTitle,
 } from "@/components/ui/sheet"
 import { Switch } from "@/components/ui/switch"
+import { useAuth } from "@/hooks/use-auth"
 import { useResources } from "@/hooks/use-resources"
+import { useRoleRates } from "@/hooks/use-role-rates"
 import type { ResourceInput } from "@/lib/resources/api"
 import {
   RESOURCE_KIND_LABELS,
@@ -59,6 +61,15 @@ export function ResourcesPageClient() {
 
   const { resources, loading, error, create, update, remove } =
     useResources(options)
+
+  // PROJ-54-β — Tagessatz-Combobox needs the tenant's role_rates catalog
+  // and admin-vs-not-admin gating. We fetch even when the drawer is
+  // closed because the GET is cheap (RLS-scoped + cached) and avoids
+  // a flash on first drawer-open.
+  const { currentTenant, currentRole } = useAuth()
+  const tenantId = currentTenant?.id ?? null
+  const isTenantAdmin = currentRole === "admin"
+  const { rates: roleRates } = useRoleRates(tenantId ?? "")
 
   async function onCreate(input: ResourceInput) {
     setSubmitting(true)
@@ -204,6 +215,8 @@ export function ResourcesPageClient() {
                 submitting={submitting}
                 onSubmit={onCreate}
                 onCancel={() => setDrawer({ mode: "closed" })}
+                roleRates={roleRates}
+                isTenantAdmin={isTenantAdmin}
               />
             ) : drawer.mode === "edit" ? (
               <>
@@ -212,6 +225,8 @@ export function ResourcesPageClient() {
                   submitting={submitting}
                   onSubmit={(input) => onUpdate(drawer.resource, input)}
                   onCancel={() => setDrawer({ mode: "closed" })}
+                  roleRates={roleRates}
+                  isTenantAdmin={isTenantAdmin}
                 />
                 <div className="border-t pt-6">
                   <AvailabilityList resourceId={drawer.resource.id} />
