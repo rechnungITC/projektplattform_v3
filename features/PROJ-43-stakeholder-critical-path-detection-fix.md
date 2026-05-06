@@ -1,6 +1,6 @@
 # PROJ-43: Stakeholder-Health Critical-Path Detection — Korrektheits- und Coverage-Fix
 
-## Status: Deployed (43-α) + In Progress (43-β backend + frontend; awaiting /qa)
+## Status: Deployed (43-α) + Approved (43-β)
 **Created:** 2026-05-05
 **Last Updated:** 2026-05-05
 
@@ -734,3 +734,82 @@ Hauptsächlich Backend-Slice mit kleinem UI-Anteil → bevorzugte Reihenfolge: `
 - `npm run lint` → 0 errors, nur die pre-existing `incompatible-library` Warning in `edit-work-item-dialog.tsx:412`.
 
 **AC-β-2 abgeschlossen:** Edit-Sprint-Checkbox live im UI, Toggle persistiert via PATCH → `sprints.is_critical` → Stakeholder-Health-Detection. β-Slice damit voll backend+frontend implementiert, awaiting /qa.
+
+## QA Test Results — 43-β (2026-05-06)
+
+**Tester:** /qa skill
+**Scope:** PROJ-43-β (Sprint-Pfad + Method-Gating + Edit-Sprint-Checkbox). γ aus dem Scope ausgeklammert.
+
+### Acceptance Criteria
+
+| AC | Quelle | Test/Beleg | Ergebnis |
+|---|---|---|---|
+| AC-β-1 (Migration `sprints.is_critical`) | Migration `20260506100000_proj43b_sprints_is_critical.sql` + Live-Smoke-Check `information_schema.columns` | DB-Query: `boolean NOT NULL DEFAULT false`, 0 NULL-Leaks bei 8 existierenden Sprints | ✓ pass |
+| AC-β-2 (Edit-Sprint-Checkbox) | `edit-sprint-dialog.tsx` Switch-Block analog `edit-phase-dialog.tsx:247` | Schema, defaultValues, form.reset, Payload — alle vier Stellen führen `is_critical` end-to-end | ✓ pass |
+| AC-β-3 (Method-Gating per Catalog) | `route.ts:129-136` via `isScheduleConstructAllowedInMethod` | T9 (Scrum), T10 (Waterfall), T11 (NULL), T12 (Kanban) | ✓ pass |
+| AC-β-4 (Audit-Whitelist-Update) | **gestrichen** per Tech-Design-Kurskorrektur | n/a (PROJ-35-β-Präzedenz) | n/a |
+| AC-β-5 (PROJ-42 CI grün im Migrations-PR) | redundant — additive Spalte trifft α-SELECT-Drift-Check trivial nicht | n/a | n/a |
+| AC-β-6 (Test für Scrum-Methode) | T9 Scrum-only test im `route.test.ts` | vitest 14/14 grün im File | ✓ pass |
+| AC-β-7 (Migration idempotent) | `add column if not exists` | grep-Bestätigt | ✓ pass |
+
+### Edge Cases
+
+| EC | Verifiziert via | Ergebnis |
+|---|---|---|
+| EC-β-1 (Hybrid: Phase + Sprint aktiv) | `phasesActive` + `sprintsActive` beide true → beide Loops laufen, Set dedupliziert. Aktuell **kein** Methode in PROJ-26 hybrid; T11 (NULL) deckt Semantik. Code ist hybrid-ready für künftige Methoden. | ✓ ready |
+| EC-β-2 (WI in kritischer Phase UND kritischem Sprint) | Pfade A/B/C unabhängig, geteiltes Set `criticalStakeholderIds` (route.ts:222) → Stakeholder einmal | ✓ |
+| EC-β-3 (Wasserfall + Sprint-Erbdaten) | T10 explizit; `sprintsActive=false` führt zu `Promise.resolve({data:[]})` (route.ts:203,212) | ✓ |
+
+### Automated Tests
+
+- `npx vitest run` (volle Suite) → **1082/1082 grün** über 124 Test-Files (Duration 12.10s)
+- `npx vitest run` für Sprints + Hooks + Schedule-Method-Visibility → **36/36 grün** (Duration 768ms)
+- `npm run build` → ✓ 51 Pages, 7.8s
+- `npm run lint` → 0 errors, 1 pre-existing Warning unrelated to PROJ-43 (`edit-work-item-dialog.tsx:412`, react-hook-form `watch()`)
+- `npx tsc --noEmit` → 4 pre-existing TS-Errors in `ai-priority/route.test.ts` (vorhanden vor PROJ-43-α), keine neuen Fehler durch β
+
+### Security Audit (Red Team)
+
+| Check | Ergebnis |
+|---|---|
+| RLS auf `sprints` (select/insert/update/delete) | ✓ alle 4 Policies unverändert vorhanden |
+| Column-Level-Permissions | ✓ neue Spalte erbt Row-Level-Access; kein GRANT-Override |
+| Class-3-PII-Risiko durch `is_critical` | ✓ boolean-Marker, kein PII |
+| XSS via Switch-Toggle | ✓ Switch sendet boolean; Zod `z.boolean()` validiert serverseitig |
+| SQL-Injection | ✓ Supabase-Builder, keine string-Concat |
+| Authz auf Sprint PATCH (incl. `is_critical`-Flag) | ✓ `requireProjectAccess "edit"` in `[sid]/route.ts` unverändert |
+| Cross-Tenant-Leak | ✓ neue Spalte über bestehende `sprints_select`-Policy gefiltert |
+| Method-Gating-Short-Circuit | ✓ `Promise.resolve({data:[]})` enthält keine DB-Daten — kein RLS-Bypass-Vektor |
+
+**Keine Security-Findings.**
+
+### Regression Test (PROJ-26 Method-Gating + PROJ-35-γ Health-Dashboard + PROJ-9 Sprints)
+
+| Bereich | Belege | Ergebnis |
+|---|---|---|
+| PROJ-26 Method-Visibility-Trigger | `sprints_method_visibility`-Trigger live in `pg_trigger` (DB-Query) | ✓ unverändert |
+| PROJ-9 Sprints CRUD | `src/app/api/projects/[id]/sprints/**` Tests inkl. Drift-Tests grün (POST + PATCH `is_critical` jetzt im kitchen-sink) | ✓ |
+| PROJ-35-γ Stakeholder-Health-Dashboard | `health-api.ts`-Konsumenten-Interface unverändert; α-Tests T1-T8 weiter grün; β nimmt nur method-gegated Pfade dazu | ✓ |
+| `use-sprints` Hook | SELECT um `is_critical` ergänzt; Hook-Caller bekommen Wert ohne API-Schema-Bruch | ✓ |
+| Edit-Phase-Dialog (Vorbild-Pattern) | unverändert — Switch wurde dupliziert, nicht generisiert | ✓ kein Drift |
+
+### Bugs Found
+
+**Keine.**
+
+| Severity | Count |
+|---|---|
+| Critical | 0 |
+| High | 0 |
+| Medium | 0 |
+| Low | 0 |
+
+### Open / nicht im Scope für β
+
+- **Sprint-Card-Critical-Path-Badge** in `sprints-list.tsx` / `sprint-card.tsx` analog Phase-Card → optionale Lese-UI-Polish-Slice. **Empfehlung:** kleiner Folge-Slice (geschätzt < 30 min).
+- **New-Sprint-Dialog Checkbox** → bewusst weggelassen, Default `false` ist semantisch korrekt.
+- **Browser-basierte E2E-Tests** für Edit-Sprint-Toggle — könnten als Playwright-Spec ergänzt werden, sind aber durch die Vitest-Drift-Tests + Switch-Pattern-Spiegelung von Edit-Phase ausreichend abgedeckt für Pilot-Use.
+
+### Production-Ready Decision
+
+**READY** — keine Critical/High-Bugs, alle relevanten ACs erfüllt (β-4/β-5 per Tech-Design-Kurskorrektur entfallen), Security-Boundary geprüft, kein Regressionsrisiko für PROJ-26/PROJ-35-γ/PROJ-9. Live-DB-Smoke-Check bestätigt Migrations-Korrektheit auf Pilot-Tenant.
