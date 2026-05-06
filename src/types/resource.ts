@@ -28,6 +28,16 @@ export interface Resource {
   fte_default: number
   availability_default: number
   is_active: boolean
+  /**
+   * PROJ-54-α — Per-resource Tagessatz-Override. NULL means "no override;
+   * fall back to role-rate resolution via stakeholder.role_key". Class-3 PII.
+   */
+  daily_rate_override: number | null
+  /**
+   * PROJ-54-α — ISO 4217 currency for daily_rate_override. NULL iff
+   * daily_rate_override is NULL.
+   */
+  daily_rate_override_currency: string | null
   created_by: string
   created_at: string
   updated_at: string

@@ -14,8 +14,10 @@ import { normalizeResourcePayload, resourcePatchSchema as patchSchema } from "..
 // PATCH  /api/resources/[rid]
 // DELETE /api/resources/[rid]
 
+// PROJ-54-α — Override-Spalten in der Antwort exposed (s. Hinweis im
+// `route.ts` der Collection).
 const SELECT_COLUMNS =
-  "id, tenant_id, source_stakeholder_id, linked_user_id, display_name, kind, fte_default, availability_default, is_active, created_by, created_at, updated_at"
+  "id, tenant_id, source_stakeholder_id, linked_user_id, display_name, kind, fte_default, availability_default, is_active, daily_rate_override, daily_rate_override_currency, created_by, created_at, updated_at"
 
 interface Ctx {
   params: Promise<{ rid: string }>
@@ -93,6 +95,33 @@ export async function PATCH(request: Request, ctx: Ctx) {
     { intent: "write" }
   )
   if (moduleDenial) return moduleDenial
+
+  // PROJ-54-α — Override-Spalten dürfen nur von Tenant-Admins geschrieben
+  // werden. Wir prüfen, ob die Felder im Payload sind (egal ob Wert oder
+  // explizit `null` zum Löschen) und gaten admin-only.
+  const touchesOverride =
+    Object.prototype.hasOwnProperty.call(parsed.data, "daily_rate_override") ||
+    Object.prototype.hasOwnProperty.call(
+      parsed.data,
+      "daily_rate_override_currency"
+    )
+  if (touchesOverride) {
+    const tenantId = existing.tenant_id as string
+    const { data: membership } = await supabase
+      .from("tenant_memberships")
+      .select("role")
+      .eq("tenant_id", tenantId)
+      .eq("user_id", userId)
+      .maybeSingle()
+    const role = (membership as { role?: string } | null)?.role
+    if (role !== "admin") {
+      return apiError(
+        "forbidden",
+        "Tenant-Admin-Rolle erforderlich, um den Tagessatz-Override zu ändern.",
+        403
+      )
+    }
+  }
 
   // Spread-Pattern: schema is the single source of truth.
   const update = normalizeResourcePayload(parsed.data)

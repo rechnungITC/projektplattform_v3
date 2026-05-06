@@ -207,6 +207,9 @@ describe("POST /api/resources — schema/DB-payload drift", () => {
       is_active: true,
       source_stakeholder_id: STAKEHOLDER_ID,
       linked_user_id: LINKED_USER_ID,
+      // PROJ-54-α — Override pair (admin-only at API; both null clears).
+      daily_rate_override: null,
+      daily_rate_override_currency: null,
     }
 
     const schemaKeys = Object.keys(resourceCreateSchema.shape)

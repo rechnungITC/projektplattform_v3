@@ -22,6 +22,17 @@ const fromMock = vi.fn((table: string) => {
     }
     return chain
   }
+  if (table === "tenant_memberships") {
+    // PROJ-54-α — admin-only gate for Override-Felder; default-mock
+    // returns admin so the existing kitchen-sink drift test passes
+    // without changes to its happy-path expectations.
+    const chain: { select: unknown; eq: unknown; maybeSingle: unknown } = {
+      select: () => chain,
+      eq: () => chain,
+      maybeSingle: async () => ({ data: { role: "admin" }, error: null }),
+    }
+    return chain
+  }
   throw new Error(`unexpected table ${table}`)
 })
 
@@ -73,6 +84,9 @@ describe("PATCH /api/resources/[rid] — schema/DB-payload drift", () => {
       availability_default: 0.7,
       is_active: false,
       linked_user_id: LINKED_USER_ID,
+      // PROJ-54-α — Override pair (admin-only at API; both null clears).
+      daily_rate_override: null,
+      daily_rate_override_currency: null,
     }
 
     for (const key of schemaKeys) {

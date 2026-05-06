@@ -57,6 +57,13 @@ export interface ResourceInput {
   is_active?: boolean
   source_stakeholder_id?: string | null
   linked_user_id?: string | null
+  /**
+   * PROJ-54-α — per-resource Tagessatz-Override (admin-only at the API).
+   * Both fields must be set together (DB CHECK + Zod refinement); pass
+   * `null` for both to clear an existing override.
+   */
+  daily_rate_override?: number | null
+  daily_rate_override_currency?: string | null
 }
 
 export async function createResource(

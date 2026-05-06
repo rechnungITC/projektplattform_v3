@@ -14,8 +14,13 @@ import { normalizeResourcePayload, resourceCreateSchema as createSchema } from "
 // GET  /api/resources?active_only=&kind=
 // POST /api/resources
 
+// PROJ-54-α — `daily_rate_override` and `daily_rate_override_currency`
+// are Class-3 PII (Personalkosten). They are returned to all tenant
+// members in α to support the Stammdaten-list. A future hardening Slice
+// can mask them for non-admins (separate response shape) — out of
+// PROJ-54-α scope.
 const SELECT_COLUMNS =
-  "id, tenant_id, source_stakeholder_id, linked_user_id, display_name, kind, fte_default, availability_default, is_active, created_by, created_at, updated_at"
+  "id, tenant_id, source_stakeholder_id, linked_user_id, display_name, kind, fte_default, availability_default, is_active, daily_rate_override, daily_rate_override_currency, created_by, created_at, updated_at"
 
 async function activeTenantId(
   supabase: Awaited<ReturnType<typeof getAuthenticatedUserId>>["supabase"],
@@ -102,6 +107,27 @@ export async function POST(request: Request) {
     { intent: "write" }
   )
   if (moduleDenial) return moduleDenial
+
+  // PROJ-54-α — Override-Felder dürfen nur Tenant-Admins setzen.
+  const wantsOverride =
+    parsed.data.daily_rate_override !== undefined &&
+    parsed.data.daily_rate_override !== null
+  if (wantsOverride) {
+    const { data: membership } = await supabase
+      .from("tenant_memberships")
+      .select("role")
+      .eq("tenant_id", tenantId)
+      .eq("user_id", userId)
+      .maybeSingle()
+    const role = (membership as { role?: string } | null)?.role
+    if (role !== "admin") {
+      return apiError(
+        "forbidden",
+        "Tenant-Admin-Rolle erforderlich, um einen eigenen Tagessatz zu setzen.",
+        403
+      )
+    }
+  }
 
   // Spread-Pattern: schema is the single source of truth.
   const insertPayload = {
