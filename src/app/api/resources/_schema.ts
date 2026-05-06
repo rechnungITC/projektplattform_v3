@@ -28,7 +28,7 @@ function bothOrNeither(val: {
 const overrideRefinement = {
   message:
     "daily_rate_override und daily_rate_override_currency müssen gemeinsam gesetzt oder beide leer sein.",
-  path: ["daily_rate_override"] as const,
+  path: ["daily_rate_override"],
 }
 
 export const resourceCreateSchema = z
