@@ -24,6 +24,11 @@ const brandingSchema = z
   })
   .strict()
 
+// PROJ-53-β: ISO-3166 country with optional subdivision (e.g. "DE-NW",
+// "AT", "CH-ZH"). Mirrors the DB CHECK constraint. NULL clears the field
+// → Gantt falls back to weekend-only behaviour.
+const HOLIDAY_REGION_RE = /^[A-Z]{2}(-[A-Z0-9]{1,3})?$/
+
 // At least one field must be provided. We validate "at least one" via
 // .refine() AFTER the field-level checks so per-field error messages still
 // surface for the common case.
@@ -33,14 +38,24 @@ const tenantPatchSchema = z
     domain: z.string().min(1).max(255).nullable().optional(),
     language: z.enum(["de", "en"]).optional(),
     branding: brandingSchema.optional(),
+    holiday_region: z
+      .string()
+      .regex(HOLIDAY_REGION_RE, "Region muss ISO-3166-Format haben (z. B. DE-NW, AT, CH-ZH).")
+      .max(20)
+      .nullable()
+      .optional(),
   })
   .refine(
     (val) =>
       val.name !== undefined ||
       val.domain !== undefined ||
       val.language !== undefined ||
-      val.branding !== undefined,
-    { message: "Provide at least one of: name, domain, language, branding." }
+      val.branding !== undefined ||
+      val.holiday_region !== undefined,
+    {
+      message:
+        "Provide at least one of: name, domain, language, branding, holiday_region.",
+    }
   )
 
 interface RouteContext {
@@ -92,12 +107,17 @@ export async function PATCH(request: Request, context: RouteContext) {
   }
   if (parsed.data.language !== undefined) updates.language = parsed.data.language
   if (parsed.data.branding !== undefined) updates.branding = parsed.data.branding
+  if (parsed.data.holiday_region !== undefined) {
+    updates.holiday_region = parsed.data.holiday_region
+  }
 
   const { data, error } = await supabase
     .from("tenants")
     .update(updates)
     .eq("id", tenantId)
-    .select("id, name, domain, language, branding, created_at, created_by")
+    .select(
+      "id, name, domain, language, branding, holiday_region, created_at, created_by"
+    )
     .maybeSingle()
 
   if (error) {

@@ -115,7 +115,7 @@ export function AuthProvider({
       supabase
         .from("tenant_memberships")
         .select(
-          "id, tenant_id, user_id, role, created_at, tenant:tenants ( id, name, domain, created_at, created_by )"
+          "id, tenant_id, user_id, role, created_at, tenant:tenants ( id, name, domain, holiday_region, created_at, created_by )"
         )
         .eq("user_id", user.id),
     ])

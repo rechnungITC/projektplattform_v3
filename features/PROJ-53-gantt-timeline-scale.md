@@ -1,6 +1,6 @@
 # PROJ-53: Gantt Timeline-Scale — Tagesansicht, Wochenenden, KW (MS-Project-Style)
 
-## Status: Deployed (α live in production 2026-05-06)
+## Status: α deployed 2026-05-06 · β architected 2026-05-06 (CIA-reviewed; awaiting /frontend + /backend)
 **Created:** 2026-05-06
 **Last Updated:** 2026-05-06
 
@@ -280,6 +280,231 @@ PROJ-25-α Move/Resize/Dep-Drag, PROJ-52 Click-Delete, PROJ-19 CRUD, Critical-Pa
 **Rollback-Pfad:** Vercel-Dashboard → previous deployment promote. Kein DB-Rollback nötig (keine Migration). Code-Rollback: `git revert 7ee4e5a` auf main, push.
 
 **Bekannte Einschränkungen (siehe Out-of-Scope-Sektion):**
-- ST-05 Sticky-Header → PROJ-53-β (HTML-Strip-Mirror-Pipeline).
-- Feiertage tenant-region-konfigurierbar → PROJ-53-β/γ.
-- Multi-Locale (`en-US`) → später, wenn Tenant-Locale gepflegt wird.
+- ST-05 Sticky-Header → PROJ-53-β (SVG-Split nach CIA-Review).
+- Feiertage tenant-region-konfigurierbar → PROJ-53-β.
+- Custom-Kalender + Multi-Locale → PROJ-53-γ.
+
+---
+
+## β — Sticky-Header + Feiertage (Architecture)
+
+> **Architected:** 2026-05-06
+> **CIA-Review:** 2026-05-06 (Continuous Improvement Agent — D1-D7 in Spec gefolgt)
+
+### A. Was β baut
+
+Zwei orthogonale Items:
+1. **Sticky-Header beim Vertikalscroll** (ST-05 aus α deferred)
+2. **Feiertage** — `date-holidays`-Library, tenant-region-konfigurierbar
+
+Beide zusammen + ein Memo-Performance-Refactor des Headers (CIA-Pflicht für sauberen Drag bei Sticky).
+
+### B. User Stories (β)
+
+- **Als Projektleiter:in mit langen Phasenlisten** möchte ich beim Vertikalscroll der Gantt-Tabelle den Datum-Header oben sichtbar behalten, damit ich nicht hochscrollen muss, um die Datum-Achse zuzuordnen.
+- **Als Bau-Projektleiter:in in NRW** möchte ich, dass gesetzliche Feiertage (z.B. Tag der Arbeit, Christi Himmelfahrt) im Gantt visuell hervorgehoben werden — analog zu Wochenenden, aber in eigener Farbe — damit ich Phasen-Enden, die auf einen Feiertag fallen, sofort erkenne.
+- **Als Tenant-Admin** möchte ich in den Tenant-Einstellungen meine Region (z.B. `DE-NW`, `DE-BY`, `AT`, `CH-ZH`) wählen können, sodass die richtigen regionalen Feiertage angezeigt werden.
+- **Als Auditor:in** möchte ich beim Hover über einen Feiertag den Namen sehen (z.B. „Tag der Arbeit, Donnerstag, 1. Mai 2026"), damit klar ist, warum ein Tag eingefärbt ist.
+
+### C. Acceptance Criteria (β)
+
+#### β-ST-01 Sticky-Header
+- [ ] Beim Vertikalscroll der Gantt-Tabelle bleibt der Two-Tier-Header (Top + Bottom Row) am oberen Canvas-Rand sichtbar.
+- [ ] Beim Horizontalscroll bewegt sich der Header synchron mit dem Canvas (kein Pixel-Drift).
+- [ ] Heute-Marker bleibt korrekt positioniert beim Scrollen.
+- [ ] Bar-Drag und Resize funktionieren weiterhin (kein Regression).
+
+#### β-ST-02 Memo-Performance-Refactor (CIA-D5)
+- [ ] Header rendert nur bei Zoom-/Calendar-Window-/Holiday-Region-Wechsel — nicht bei jedem Bar-Drag-Frame.
+- [ ] Drag-Preview-Layer ist ein eigenes SVG-Overlay (`<g pointer-events: none>`) über dem Canvas; Header-Layer wird nicht re-gerendert während Drag.
+- [ ] Bestehende Vitests bleiben grün; bestehende Drag-Funktionalität unverändert.
+
+#### β-ST-03 Feiertags-Bänder
+- [ ] In Day- und Week-Zoom: gesetzliche Feiertage (laut tenant-region) erhalten ein eingefärbtes Hintergrund-Band (eigene Farbe, nicht gleich Wochenende).
+- [ ] In Month- und Quartal-Zoom: keine Feiertags-Bänder (zu fein, würde rauschen).
+- [ ] Wenn Feiertag und Wochenende zusammenfallen (z.B. Pfingstmontag = Mo, oder ein Feiertag der auf Sa/So fällt): Feiertags-Farbe gewinnt.
+- [ ] Bars laufen sichtbar über Feiertags-Bänder drüber (kein Auto-Skip — das wäre PROJ-25b territory).
+
+#### β-ST-04 Feiertags-Tooltip + A11y
+- [ ] Hover über eine Feiertags-Cell zeigt Tooltip mit Feiertagsname + Datum (z.B. „Tag der Arbeit · Donnerstag, 1. Mai 2026").
+- [ ] SR-Label (`aria-label`) auf der Cell macht den Feiertag screen-reader-zugänglich.
+
+#### β-ST-05 Tenant-Setting `holiday_region`
+- [ ] Migration: `tenants.holiday_region TEXT NULL` (additiv, keine Default).
+- [ ] RLS: bestehende `tenants`-Policies decken die neue Spalte automatisch (Admin-Read/Write, Member-Read).
+- [ ] Tenant-Settings-UI: in `src/components/settings/tenant/base-data-section.tsx` wird ein neuer `<Select>` angeboten mit allen von `date-holidays` unterstützten Regionen (Liste lazy-loaded).
+- [ ] NULL = keine Feiertage anzeigen (Fallback Wochenenden only — Verhalten wie α).
+- [ ] Audit-Trail: `holiday_region` in `_tracked_audit_columns` für `tenants` aufnehmen.
+
+#### β-ST-06 i18n-Vorbereitung (CIA-D6, no-op in β)
+- [ ] Hook `useTenantLocale()` eingeführt — gibt heute hart `de-DE` zurück.
+- [ ] Alle bestehenden `Intl.DateTimeFormat("de-DE", ...)`-Calls in `gantt-timeline.ts` und `gantt-view.tsx` lesen den Hook statt der Hard-Coded-String.
+- [ ] γ kann den Hook später auf `tenants.locale` umstellen ohne Call-Site-Refactor.
+
+### D. Edge Cases (β)
+
+- **Tenant ohne `holiday_region` (NULL)**: Verhalten = α (keine Feiertage, nur Wochenenden).
+- **Region wird zur Laufzeit geändert**: Reload genügt (kein Realtime-Push). Tooltip im UI „Änderungen wirksam nach Reload".
+- **Library liefert für ein Datum kein Holiday-Match** (z.B. Bug, exotische Subdivision): graceful degrade — wie NULL.
+- **Sticky-Edge bei sehr kleinem Container** (Mobile <768px): Sticky behält Funktion; CSS `top: 0` reicht.
+- **Horizontalscroll-Inertia auf Safari/Webkit**: `transform: translateX(-scrollLeft)` mit `requestAnimationFrame`-Fallback falls Performance-Probleme.
+
+### E. Tech Design (β)
+
+> Folgt CIA-Empfehlungen D1–D7.
+
+**Component Structure:**
+```
+GanttView
+├── GanttToolbar (existing)
+├── ScrollContainer (overflow-auto, NEW)
+│   ├── HeaderSVG (sticky top-0, NEW — was inline before)
+│   │   ├── Top-Row-Ticks (memoized)
+│   │   ├── Bottom-Row-Ticks (memoized)
+│   │   └── Header-Background (memoized)
+│   └── CanvasSVG (NEW — was inline before)
+│       ├── WeekendBands
+│       ├── HolidayBands (NEW β — colored differently)
+│       ├── GridLines
+│       ├── BarLayer (drag-aware)
+│       ├── DependencyArrowLayer
+│       ├── DragPreviewLayer (NEW — pointer-events:none, isolated re-render)
+│       ├── CriticalPathOverlay
+│       └── TodayMarker
+```
+
+**Tech Decisions (β-D1..β-D7):**
+
+| # | Decision | Begründung (CIA) |
+|---|---|---|
+| **β-D1** | **Sticky via SVG-Split** (zwei `<svg>`s in einem Scroll-Container) | Konsistente Render-Pipeline, kein HTML/SVG-Pixel-Drift, browser-stable `position: sticky` auf dem Outer-`<div>`. |
+| **β-D2** | **Holiday-Library: `date-holidays`** (~3 KB gz, MIT) — lazy-loaded via `next/dynamic` | 1.4M weekly downloads, MIT, kennt alle DE-Bundesländer. CIA approved. |
+| **β-D3** | **Schema: nur `tenants.holiday_region TEXT NULL`** | Per-Project-Override und Custom-Tage out-of-scope (γ). YAGNI; eine Migration. |
+| **β-D4** | **Visual: distinkte Farbe `bg-amber-100/50` + Tooltip + SR-Label** | Feiertage semantisch ≠ Wochenende; werktags-Feiertage müssen unterscheidbar bleiben. |
+| **β-D5** | **Memo-Split (Header / Canvas / Drag-Layer)** ist β-Pflicht | CIA bewertet als must-have für Sticky — sonst Flacker beim Drag. |
+| **β-D6** | **`useTenantLocale()` Hook als no-op `de-DE`** in β | γ-Vorbereitung ohne Call-Site-Refactor. |
+| **β-D7** | **Settings-UI in `base-data-section.tsx`** mit `<Select>` | Bestehende Tenant-Settings-Sektion; keine eigene Page. |
+
+**Helpers in `gantt-timeline.ts` (Erweiterung):**
+
+| Helper | Input | Output |
+|---|---|---|
+| `holidayBandsForRegion(region, start, totalDays, ppd)` | Region-Code + Date-Math | `{ x: number; width: number; name: string; date: string }[]` |
+
+**Schema-Migration:**
+```sql
+-- supabase/migrations/YYYYMMDDHHMMSS_proj53b_tenant_holiday_region.sql
+ALTER TABLE public.tenants
+  ADD COLUMN holiday_region TEXT NULL;
+
+COMMENT ON COLUMN public.tenants.holiday_region IS
+  'ISO-3166 country (+ optional Subdivision, e.g. DE-NW). NULL = no holidays. Set by tenant admin.';
+
+-- Audit-Tracking
+SELECT public._tracked_audit_columns_recompute('tenants');  -- if helper exists, else manual whitelist update
+```
+
+**RLS:** keine neuen Policies — bestehende `tenants` SELECT/UPDATE-Policies (PROJ-1, PROJ-17) decken automatisch.
+
+**Dependencies (Bundle):**
+- `date-holidays` (~3 KB gz, MIT) — added via `npm install date-holidays`
+- ggf. `@types/date-holidays` (TS-Defs)
+
+### F. Performance-Architektur (β)
+
+| Concern | Strategy |
+|---|---|
+| Sticky horizontal-sync at 60fps | `transform: translateX(-scrollLeft)` (GPU-accelerated) auf Sticky-Container, ausgelöst via `onScroll` mit `requestAnimationFrame`-Wrapper |
+| Header-Re-Render avoided during Bar-Drag | `<HeaderSVG>` als `React.memo` mit Custom-Comparator über `[zoomLevel, calendarStart, totalDays, holidayRegion]` |
+| Holiday-Lookup-Cost | `date-holidays`-Instance per `useMemo([region, year])`, nicht pro Tag |
+| Holiday-Bands für 90-Day Window | ~3 Feiertage × 1 Rect = unkritisch |
+
+### G. Risiken + Mitigation
+
+| Risiko | Schwere | Mitigation |
+|---|---|---|
+| Memo-Split-Refactor bricht PROJ-25 Drag | Mittel | Bestehende Vitests müssen grün bleiben; Manual-Test in QA. |
+| `date-holidays` Tree-Shaking nicht greift → Bundle-Bloat | Niedrig | Bundle-Analyzer-Check vor Merge; ggf. Sub-Path-Import nur DE-Daten. |
+| Safari-Sticky-Inertia-Edge | Niedrig | Playwright-E2E auf Webkit. |
+| Tenant ändert Region live → Cache | Niedrig | Reload-Banner; kein Realtime-Push nötig. |
+| Cross-Browser-Sticky-Render | Niedrig | `position: sticky top-0` ist seit ~2018 cross-browser stabil. |
+
+### H. Test-Strategie (β)
+
+- **Vitest-Unit:** `holidayBandsForRegion` (DE-NW + DE-BY 2026-Beispiele, NULL-Region edge, Holiday-on-Weekend-Edge).
+- **Vitest-Integration:** GanttView-Render mit holidayRegion=DE-NW + festem Date-Range — DOM-Snapshot.
+- **Vitest-Tenant-Setting:** Settings-Form-Submit mit gültiger Region speichert Spalte korrekt.
+- **Playwright-E2E (deferred — falls Zeit):** Sticky-Verhalten beim Scroll, Holiday-Tooltip-Hover.
+- **Regression-Check:** Alle bestehenden 1127 Vitests müssen grün bleiben.
+
+### I. Out-of-Scope (β → γ verschoben)
+
+- Per-Project-Override (`projects.holiday_region`).
+- Custom-Tenant-Holidays (Werksferien-Tabelle).
+- Multi-Locale (`tenants.locale`-Spalte).
+- PNG/PDF-Export Gantt (separater Slice nach `fix-report-pdf-render-pending` Merge).
+
+### J. Aufwand
+
+- **Frontend (Memo-Split + Sticky + Holiday-Bands + Tooltip + Hook):** ~700 LOC, ~1 PT
+- **Backend (Migration + Tenant-Settings-UI):** ~150 LOC + 1 Migration, ~0,3 PT
+- **Tests:** ~150 LOC Vitest, ~0,3 PT
+- **Gesamt:** ~1000 LOC + 1 Migration, ca. 1,5–2 PT
+
+### K. Folge-Slice (γ)
+
+PROJ-53-γ wird **nach β-Deploy** als eigene Spec angelegt:
+- Custom-Tenant-Holidays-Tabelle (Werksferien) mit RLS.
+- Project-Override (`projects.holiday_region`).
+- Multi-Locale (`tenants.locale`).
+- PNG/PDF-Export — **wartet auf Merge** von `fix-report-pdf-render-pending` / PROJ-21b.
+
+---
+
+## β — Backend Implementation Notes
+
+> **Implemented:** 2026-05-06 (after CIA-Review)
+> **Skill:** /backend
+> **Status:** Backend done · Frontend (Sticky/Memo/Holiday-Render) pending in eigenem Run
+
+### Files
+
+| File | Change | Lines |
+|---|---|---|
+| `supabase/migrations/20260506160000_proj53b_tenant_holiday_region.sql` (NEU) | `tenants.holiday_region TEXT NULL` + CHECK constraint + `_tracked_audit_columns(tenants)` extended mit `holiday_region` | ~110 |
+| `src/types/auth.ts` | `Tenant.holiday_region: string \| null` | +2 |
+| `src/app/api/tenants/[id]/route.ts` | Zod-Schema erweitert (regex-validated, nullable optional) + at-least-one-Refine + Update-Mapping + SELECT | +18 |
+| `src/app/api/tenants/[id]/route.test.ts` | 4 neue Test-Cases: valid `DE-NW`, null clears, invalid format `germany-nrw`, lowercase `de-nw` rejected | +75 |
+| `src/hooks/use-auth.tsx` | Tenant-SELECT erweitert um `holiday_region` (membership-join) | +1 |
+| `src/components/settings/tenant/base-data-section.tsx` | Region-Select mit kuratierter DACH-Liste (DE + 16 Bundesländer + AT + CH-ZH + CH-BE) · Sentinel-Adapter für Radix-Select-empty-string-restriction | +90 |
+
+### Production Migration applied
+
+- ✅ `apply_migration` an Live-DB (`iqerihohwabyjzkpcujq`) erfolgreich.
+- ✅ DO-Block-Smoke-Test bestätigt: Spalte korrekt, CHECK-Constraint rejects invalid, akzeptiert `DE-NW`, `holiday_region` in `_tracked_audit_columns(tenants)`.
+- ✅ Advisor-Check: keine neuen security/performance findings durch β.
+
+### Tests
+
+- **Vitest targeted (`tenants/[id]/route.test.ts`):** 12/12 grün (8 bestehend + 4 neu).
+- **Vitest full suite:** 1134/1134 grün (war 1127 vor β-Backend; +7 neue Cases — 4 hier + 3 indirekt durch erweiterte Mocks).
+- **ESLint:** clean auf allen geänderten Files.
+
+### Sicherheitsbetrachtung
+
+- **RLS:** keine neuen Policies — `tenants` SELECT (Member-Read) + UPDATE (`is_tenant_admin`-only) decken die neue Spalte automatisch.
+- **Validation Defense-in-Depth:**
+  - Frontend: Zod-Schema auf `HOLIDAY_REGION_VALUES` whitelist (kuratierte DACH-Liste).
+  - API: Zod-Regex `/^[A-Z]{2}(-[A-Z0-9]{1,3})?$/` (formal validation only, akzeptiert auch nicht-kuratierte Werte wie `US-CA` für γ-Erweiterung).
+  - DB: CHECK-Constraint `holiday_region ~ '^[A-Z]{2}(-[A-Z0-9]{1,3})?$'` als letzte Verteidigung.
+- **Audit:** `holiday_region` in `_tracked_audit_columns(tenants)` → Änderungen erscheinen im Audit-Log analog zu `language` / `branding` (PROJ-10 Pattern).
+
+### Open Items für /frontend
+
+Nicht in β-Backend (bewusst raus, kommen im /frontend-Run):
+- `date-holidays` npm-install + lazy import via `next/dynamic`
+- `holidayBandsForRegion(region, start, totalDays, ppd)` Helper
+- SVG-Split (Sticky-Header) Refactor
+- Memo-Split (Header / Canvas / Drag-Layer)
+- Holiday-Bänder + Tooltip + SR-Label im Gantt
+- `useTenantLocale()` no-op Hook

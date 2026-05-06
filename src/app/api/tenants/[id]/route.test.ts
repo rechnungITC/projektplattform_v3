@@ -166,4 +166,81 @@ describe("PATCH /api/tenants/[id]", () => {
     expect(body.error.code).toBe("domain_taken")
     expect(body.error.field).toBe("domain")
   })
+
+  // ---------------------------------------------------------------------------
+  // PROJ-53-β: holiday_region
+  // ---------------------------------------------------------------------------
+
+  it("accepts a valid holiday_region (DE-NW)", async () => {
+    getUserMock.mockResolvedValue({ data: { user: { id: USER_ID } } })
+    membershipChain.maybeSingle.mockResolvedValue({
+      data: { role: "admin" },
+      error: null,
+    })
+    tenantUpdateChain.maybeSingle.mockResolvedValue({
+      data: { id: TENANT_ID, name: "x", holiday_region: "DE-NW" },
+      error: null,
+    })
+
+    const res = await PATCH(
+      makeRequest({ holiday_region: "DE-NW" }),
+      makeContext(),
+    )
+    expect(res.status).toBe(200)
+    expect(tenantUpdateChain.update).toHaveBeenCalledWith({
+      holiday_region: "DE-NW",
+    })
+  })
+
+  it("accepts null to clear holiday_region", async () => {
+    getUserMock.mockResolvedValue({ data: { user: { id: USER_ID } } })
+    membershipChain.maybeSingle.mockResolvedValue({
+      data: { role: "admin" },
+      error: null,
+    })
+    tenantUpdateChain.maybeSingle.mockResolvedValue({
+      data: { id: TENANT_ID, name: "x", holiday_region: null },
+      error: null,
+    })
+
+    const res = await PATCH(
+      makeRequest({ holiday_region: null }),
+      makeContext(),
+    )
+    expect(res.status).toBe(200)
+    expect(tenantUpdateChain.update).toHaveBeenCalledWith({
+      holiday_region: null,
+    })
+  })
+
+  it("rejects an invalid holiday_region format with 400", async () => {
+    getUserMock.mockResolvedValue({ data: { user: { id: USER_ID } } })
+    membershipChain.maybeSingle.mockResolvedValue({
+      data: { role: "admin" },
+      error: null,
+    })
+
+    const res = await PATCH(
+      makeRequest({ holiday_region: "germany-nrw" }),
+      makeContext(),
+    )
+    expect(res.status).toBe(400)
+    expect((await res.json()).error.code).toBe("validation_error")
+    expect(tenantUpdateChain.update).not.toHaveBeenCalled()
+  })
+
+  it("rejects lowercase region with 400", async () => {
+    getUserMock.mockResolvedValue({ data: { user: { id: USER_ID } } })
+    membershipChain.maybeSingle.mockResolvedValue({
+      data: { role: "admin" },
+      error: null,
+    })
+
+    const res = await PATCH(
+      makeRequest({ holiday_region: "de-nw" }),
+      makeContext(),
+    )
+    expect(res.status).toBe(400)
+    expect(tenantUpdateChain.update).not.toHaveBeenCalled()
+  })
 })

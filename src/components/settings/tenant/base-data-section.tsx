@@ -41,6 +41,41 @@ interface ApiErrorBody {
 
 const HEX_COLOR = /^#[0-9A-Fa-f]{6}$/
 
+// PROJ-53-β: Curated DACH-region list for the Region-Select. Empty string
+// in the form maps to NULL on the wire (= "no public-holiday rendering").
+// γ will broaden this via the full date-holidays catalogue.
+//
+// Radix Select forbids `value=""`, so we use a sentinel (`__none__`) at the
+// Select boundary and translate at the field-value bridge below.
+const HOLIDAY_REGION_NONE = "__none__"
+
+const HOLIDAY_REGION_OPTIONS: { value: string; label: string }[] = [
+  { value: "", label: "Keine Feiertage anzeigen" },
+  { value: "DE", label: "Deutschland (bundesweit)" },
+  { value: "DE-BW", label: "Baden-Württemberg" },
+  { value: "DE-BY", label: "Bayern" },
+  { value: "DE-BE", label: "Berlin" },
+  { value: "DE-BB", label: "Brandenburg" },
+  { value: "DE-HB", label: "Bremen" },
+  { value: "DE-HH", label: "Hamburg" },
+  { value: "DE-HE", label: "Hessen" },
+  { value: "DE-MV", label: "Mecklenburg-Vorpommern" },
+  { value: "DE-NI", label: "Niedersachsen" },
+  { value: "DE-NW", label: "Nordrhein-Westfalen" },
+  { value: "DE-RP", label: "Rheinland-Pfalz" },
+  { value: "DE-SL", label: "Saarland" },
+  { value: "DE-SN", label: "Sachsen" },
+  { value: "DE-ST", label: "Sachsen-Anhalt" },
+  { value: "DE-SH", label: "Schleswig-Holstein" },
+  { value: "DE-TH", label: "Thüringen" },
+  { value: "AT", label: "Österreich" },
+  { value: "CH", label: "Schweiz (national)" },
+  { value: "CH-ZH", label: "Schweiz · Zürich" },
+  { value: "CH-BE", label: "Schweiz · Bern" },
+]
+
+const HOLIDAY_REGION_VALUES = HOLIDAY_REGION_OPTIONS.map((o) => o.value)
+
 const schema = z.object({
   name: z
     .string()
@@ -58,6 +93,10 @@ const schema = z.object({
       "Bitte eine gültige Domain angeben (z. B. firma.de)"
     ),
   language: z.enum(["de", "en"]),
+  holiday_region: z.string().refine(
+    (value) => HOLIDAY_REGION_VALUES.includes(value),
+    "Bitte eine unterstützte Region wählen.",
+  ),
   logo_url: z
     .string()
     .max(500)
@@ -87,6 +126,7 @@ export function BaseDataSection() {
       name: currentTenant?.name ?? "",
       domain: currentTenant?.domain ?? "",
       language: tenantLanguage,
+      holiday_region: currentTenant?.holiday_region ?? "",
       logo_url: tenantBranding.logo_url ?? "",
       accent_color: tenantBranding.accent_color ?? "",
     },
@@ -97,6 +137,7 @@ export function BaseDataSection() {
       name: currentTenant?.name ?? "",
       domain: currentTenant?.domain ?? "",
       language: tenantLanguage,
+      holiday_region: currentTenant?.holiday_region ?? "",
       logo_url: tenantBranding.logo_url ?? "",
       accent_color: tenantBranding.accent_color ?? "",
     })
@@ -104,6 +145,7 @@ export function BaseDataSection() {
     currentTenant?.id,
     currentTenant?.name,
     currentTenant?.domain,
+    currentTenant?.holiday_region,
     tenantLanguage,
     tenantBranding.logo_url,
     tenantBranding.accent_color,
@@ -143,6 +185,8 @@ export function BaseDataSection() {
             domain:
               trimmedDomain.length > 0 ? trimmedDomain.toLowerCase() : null,
             language: values.language,
+            holiday_region:
+              values.holiday_region.length > 0 ? values.holiday_region : null,
             branding,
           }),
         }
@@ -255,6 +299,51 @@ export function BaseDataSection() {
                   <FormMessage />
                 </FormItem>
               )}
+            />
+
+            <FormField
+              control={form.control}
+              name="holiday_region"
+              render={({ field }) => {
+                const selectValue =
+                  field.value.length > 0 ? field.value : HOLIDAY_REGION_NONE
+                return (
+                  <FormItem>
+                    <FormLabel>Region für Feiertage</FormLabel>
+                    <Select
+                      value={selectValue}
+                      onValueChange={(next) =>
+                        field.onChange(
+                          next === HOLIDAY_REGION_NONE ? "" : next,
+                        )
+                      }
+                      disabled={submitting}
+                    >
+                      <FormControl>
+                        <SelectTrigger>
+                          <SelectValue />
+                        </SelectTrigger>
+                      </FormControl>
+                      <SelectContent>
+                        {HOLIDAY_REGION_OPTIONS.map((opt) => (
+                          <SelectItem
+                            key={opt.value || HOLIDAY_REGION_NONE}
+                            value={opt.value || HOLIDAY_REGION_NONE}
+                          >
+                            {opt.label}
+                          </SelectItem>
+                        ))}
+                      </SelectContent>
+                    </Select>
+                    <FormDescription>
+                      Wird im Gantt als farbliche Hervorhebung der
+                      gesetzlichen Feiertage benutzt. „Keine Feiertage
+                      anzeigen&ldquo; zeigt nur Wochenenden — wie bisher.
+                    </FormDescription>
+                    <FormMessage />
+                  </FormItem>
+                )
+              }}
             />
 
             <Alert>

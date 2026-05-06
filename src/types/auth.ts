@@ -12,6 +12,8 @@ export interface Tenant {
   id: string
   name: string
   domain: string | null
+  /** PROJ-53-β. ISO-3166 country with optional subdivision (e.g. "DE-NW", "AT", "CH-ZH"). NULL = no public-holiday rendering. */
+  holiday_region: string | null
   created_at: string
   created_by: string | null
 }
