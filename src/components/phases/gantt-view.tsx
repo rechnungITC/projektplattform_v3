@@ -29,6 +29,13 @@ import { Lock } from "lucide-react"
 import * as React from "react"
 import { toast } from "sonner"
 
+import {
+  bottomTicks as buildBottomTicks,
+  gridLines as buildGridLines,
+  headerConfigFor,
+  topTicks as buildTopTicks,
+  weekendBands as buildWeekendBands,
+} from "@/lib/dates/gantt-timeline"
 import { cn } from "@/lib/utils"
 import { type Milestone, MILESTONE_STATUS_LABELS } from "@/types/milestone"
 import { PHASE_STATUS_LABELS, type Phase } from "@/types/phase"
@@ -65,16 +72,18 @@ interface GanttViewProps {
 
 const ROW_HEIGHT = 36
 const ROW_GAP = 4
-const HEADER_HEIGHT = 32
+// PROJ-53: two-tier header — top + bottom row each 24 px.
+const TOP_HEADER_HEIGHT = 24
+const BOTTOM_HEADER_HEIGHT = 24
+const HEADER_HEIGHT = TOP_HEADER_HEIGHT + BOTTOM_HEADER_HEIGHT
 const PADDING_DAYS = 7
 const RESIZE_HANDLE_WIDTH = 6
 
-// Zoom-Levels — jeweils Pixel-pro-Tag-Faktor. "week" entspricht dem
-// bisherigen Default. day = sehr detailliert (3 Wochen Window passt
-// noch komfortabel). year = sehr breit (Jahresübersicht).
+// Zoom-Levels — Pixel-pro-Tag-Faktor.
+// PROJ-53 bumps day-zoom from 32 → 40 to fit "1 Mo" labels comfortably.
 type ZoomLevel = "day" | "week" | "month" | "quarter"
 const ZOOM_PIXELS_PER_DAY: Record<ZoomLevel, number> = {
-  day: 32,
+  day: 40,
   week: 16,
   month: 6,
   quarter: 2,
@@ -317,33 +326,35 @@ export function GanttView({
   const totalHeight = HEADER_HEIGHT + rows.length * (ROW_HEIGHT + ROW_GAP)
 
   // Month-label ticks across the calendar window.
-  const monthTicks = React.useMemo(() => {
-    const ticks: { x: number; label: string }[] = []
-    const cursor = new Date(calendarStart.getTime())
-    cursor.setUTCDate(1)
-    while (daysBetween(calendarStart, cursor) < totalDays) {
-      const days = daysBetween(calendarStart, cursor)
-      if (days >= 0) {
-        ticks.push({
-          x: days * pixelsPerDay,
-          label: cursor.toLocaleDateString("de-DE", {
-            month: "short",
-            year: "2-digit",
-          }),
-        })
-      }
-      cursor.setUTCMonth(cursor.getUTCMonth() + 1)
-    }
-    return ticks
-  }, [calendarStart, totalDays, pixelsPerDay])
+  // PROJ-53 — MS-Project-Style timeline scale:
+  //  - top-row major ticks (month / quarter / year per zoom)
+  //  - bottom-row minor ticks (day / week / month / quarter per zoom)
+  //  - weekend bands (only in day + week zoom)
+  //  - grid lines (density per zoom)
+  const headerConfig = headerConfigFor(zoomLevel)
 
-  const dayGridLines = React.useMemo(() => {
-    const lines: number[] = []
-    for (let d = 0; d <= totalDays; d += 7) {
-      lines.push(d * pixelsPerDay)
-    }
-    return lines
-  }, [totalDays, pixelsPerDay])
+  const topTicks = React.useMemo(
+    () => buildTopTicks(zoomLevel, calendarStart, totalDays, pixelsPerDay),
+    [zoomLevel, calendarStart, totalDays, pixelsPerDay],
+  )
+
+  const bottomTicks = React.useMemo(
+    () => buildBottomTicks(zoomLevel, calendarStart, totalDays, pixelsPerDay),
+    [zoomLevel, calendarStart, totalDays, pixelsPerDay],
+  )
+
+  const weekendBands = React.useMemo(
+    () =>
+      headerConfig.showWeekends
+        ? buildWeekendBands(calendarStart, totalDays, pixelsPerDay)
+        : [],
+    [headerConfig.showWeekends, calendarStart, totalDays, pixelsPerDay],
+  )
+
+  const gridLineXs = React.useMemo(
+    () => buildGridLines(zoomLevel, calendarStart, totalDays, pixelsPerDay),
+    [zoomLevel, calendarStart, totalDays, pixelsPerDay],
+  )
 
   // Pre-compute the static layout of each bar (phase + work_package).
   // Keyed by `${type}:${id}` so arrows + critical-path + milestone code
@@ -888,8 +899,24 @@ export function GanttView({
         height={totalHeight}
         className="block min-w-full select-none"
       >
-        {/* Day-grid weeklies */}
-        {dayGridLines.map((x, i) => (
+        {/* PROJ-53 — Weekend bands span the canvas area below the header.
+            Rendered first so bars + arrows + critical-path overlay sit on top. */}
+        {weekendBands.map((band, i) => (
+          <rect
+            key={`weekend-${i}`}
+            x={band.x}
+            y={HEADER_HEIGHT}
+            width={band.width}
+            height={totalHeight - HEADER_HEIGHT}
+            className="fill-muted"
+            opacity={headerConfig.weekendOpacity}
+            pointerEvents="none"
+          />
+        ))}
+
+        {/* PROJ-53 — Grid lines: density per zoom (every day / every Monday /
+            every 1st of month / every quarter-start). */}
+        {gridLineXs.map((x, i) => (
           <line
             key={`grid-${i}`}
             x1={x}
@@ -899,7 +926,7 @@ export function GanttView({
             stroke="currentColor"
             className="text-border"
             strokeWidth={1}
-            opacity={0.3}
+            opacity={zoomLevel === "day" ? 0.18 : 0.3}
           />
         ))}
 
@@ -924,10 +951,13 @@ export function GanttView({
                 strokeDasharray="4 3"
                 opacity={0.6}
               />
+              {/* PROJ-53 fix L-1: place "heute" badge inside the top-row
+                  (above the month label divider) so it no longer overlaps
+                  the bottom-row day cells. */}
               <text
-                x={x + 4}
-                y={HEADER_HEIGHT - 4}
-                fontSize={10}
+                x={x + 6}
+                y={TOP_HEADER_HEIGHT - 6}
+                fontSize={9}
                 fontWeight={600}
                 className="fill-destructive"
               >
@@ -937,35 +967,120 @@ export function GanttView({
           )
         })()}
 
-        {/* Month-tick header */}
+        {/* PROJ-53 — Two-tier MS-Project-style header.
+            Top row: month / quarter / year (major).
+            Bottom row: day / week / month / quarter (minor). */}
         <rect
           x={0}
           y={0}
           width={totalWidth}
-          height={HEADER_HEIGHT}
-          className="fill-muted/50"
+          height={TOP_HEADER_HEIGHT}
+          className="fill-muted"
+          opacity={0.65}
         />
-        {monthTicks.map((t, i) => (
-          <g key={`tick-${i}`}>
+        <rect
+          x={0}
+          y={TOP_HEADER_HEIGHT}
+          width={totalWidth}
+          height={BOTTOM_HEADER_HEIGHT}
+          className="fill-muted"
+          opacity={0.35}
+        />
+        <line
+          x1={0}
+          x2={totalWidth}
+          y1={TOP_HEADER_HEIGHT}
+          y2={TOP_HEADER_HEIGHT}
+          stroke="currentColor"
+          className="text-border"
+          strokeWidth={1}
+        />
+        <line
+          x1={0}
+          x2={totalWidth}
+          y1={HEADER_HEIGHT}
+          y2={HEADER_HEIGHT}
+          stroke="currentColor"
+          className="text-border"
+          strokeWidth={1}
+        />
+
+        {/* Top-row ticks (major) */}
+        {topTicks.map((t, i) => (
+          <g key={`top-${i}`}>
             <line
               x1={t.x}
               x2={t.x}
               y1={0}
-              y2={HEADER_HEIGHT}
+              y2={TOP_HEADER_HEIGHT}
               stroke="currentColor"
               className="text-border"
               strokeWidth={1}
             />
             <text
-              x={t.x + 4}
-              y={HEADER_HEIGHT / 2 + 4}
+              x={t.x + 6}
+              y={TOP_HEADER_HEIGHT / 2 + 4}
               className="fill-foreground"
               fontSize={11}
+              fontWeight={600}
             >
               {t.label}
             </text>
           </g>
         ))}
+
+        {/* Bottom-row ticks (minor) */}
+        {bottomTicks.map((t, i) => {
+          const fontSize = zoomLevel === "day" ? 10 : 11
+          // For day-zoom, weekend cells get a slightly stronger fill so
+          // Sa / So show up clearly even when the canvas weekend-band is
+          // dimmed by overlapping bars.
+          const weekendFill =
+            zoomLevel === "day" && t.isWeekend
+              ? "fill-muted opacity-50"
+              : undefined
+          // Center labels for narrow cells (day-zoom), left-aligned for wider ones.
+          const labelX =
+            headerConfig.bottomUnit === "day" ? t.x + t.width / 2 : t.x + 6
+          const textAnchor =
+            headerConfig.bottomUnit === "day" ? "middle" : "start"
+          return (
+            <g key={`bot-${i}`}>
+              {weekendFill ? (
+                <rect
+                  x={t.x}
+                  y={TOP_HEADER_HEIGHT}
+                  width={t.width}
+                  height={BOTTOM_HEADER_HEIGHT}
+                  className={weekendFill}
+                />
+              ) : null}
+              <line
+                x1={t.x}
+                x2={t.x}
+                y1={TOP_HEADER_HEIGHT}
+                y2={HEADER_HEIGHT}
+                stroke="currentColor"
+                className="text-border"
+                strokeWidth={1}
+                opacity={0.6}
+              />
+              <text
+                x={labelX}
+                y={TOP_HEADER_HEIGHT + BOTTOM_HEADER_HEIGHT / 2 + 4}
+                textAnchor={textAnchor}
+                className={cn(
+                  "fill-foreground",
+                  t.isWeekend && "fill-muted-foreground",
+                )}
+                fontSize={fontSize}
+              >
+                {t.label}
+              </text>
+              {t.tooltip ? <title>{t.tooltip}</title> : null}
+            </g>
+          )
+        })}
 
         {/* Phase rows */}
         {phases.map((phase) => {
