@@ -1,6 +1,8 @@
 import { NextResponse } from "next/server"
 import { z } from "zod"
 
+import { createAdminClient } from "@/lib/supabase/admin"
+
 import {
   apiError,
   getAuthenticatedUserId,
@@ -28,13 +30,18 @@ export async function POST(_request: Request, ctx: Ctx) {
     return apiError("validation_error", "Invalid suggestion id.", 400, "id")
   }
 
-  const { userId, supabase } = await getAuthenticatedUserId()
+  const { userId } = await getAuthenticatedUserId()
   if (!userId) {
     return apiError("unauthorized", "Not signed in.", 401)
   }
 
-  const { data: result, error: rpcErr } = await supabase
-    .rpc("accept_ki_suggestion_risk", { p_suggestion_id: id })
+  // PROJ-Security — admin-client + explicit actor.
+  const adminForRpc = createAdminClient()
+  const { data: result, error: rpcErr } = await adminForRpc
+    .rpc("accept_ki_suggestion_risk", {
+      p_suggestion_id: id,
+      p_actor_user_id: userId,
+    })
     .single<{ success: boolean; message: string; risk_id: string | null }>()
 
   if (rpcErr) {

@@ -10,6 +10,13 @@ vi.mock("@/lib/supabase/server", () => ({
   })),
 }))
 
+// PROJ-Security — RPC routed through admin-client.
+vi.mock("@/lib/supabase/admin", () => ({
+  createAdminClient: vi.fn(() => ({
+    rpc: rpcMock,
+  })),
+}))
+
 import { POST } from "./route"
 
 const ID = "44444444-4444-4444-8444-444444444444"

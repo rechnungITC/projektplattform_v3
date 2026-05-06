@@ -1,6 +1,7 @@
 import { NextResponse } from "next/server"
 import { z } from "zod"
 
+import { createAdminClient } from "@/lib/supabase/admin"
 import { requireModuleActive } from "@/lib/tenant-settings/server"
 
 import {
@@ -65,7 +66,9 @@ export async function POST(request: Request, ctx: Ctx) {
   if (moduleDenial) return moduleDenial
 
   const data = parsed.data
-  const { data: result, error: rpcErr } = await supabase
+  // PROJ-Security — admin-client + explicit actor.
+  const adminForRpc = createAdminClient()
+  const { data: result, error: rpcErr } = await adminForRpc
     .rpc("convert_open_item_to_decision", {
       p_open_item_id: oid,
       p_decision_text: data.decision_text.trim(),
@@ -73,6 +76,7 @@ export async function POST(request: Request, ctx: Ctx) {
       p_decider_stakeholder: data.decider_stakeholder_id ?? null,
       p_context_phase_id: data.context_phase_id ?? null,
       p_context_risk_id: data.context_risk_id ?? null,
+      p_actor_user_id: userId,
     })
     .single<{ success: boolean; message: string; decision_id: string | null }>()
 

@@ -1,6 +1,7 @@
 import { NextResponse } from "next/server"
 import { z } from "zod"
 
+import { createAdminClient } from "@/lib/supabase/admin"
 import { requireModuleActive } from "@/lib/tenant-settings/server"
 
 import {
@@ -40,8 +41,13 @@ export async function POST(_request: Request, ctx: Ctx) {
   )
   if (moduleDenial) return moduleDenial
 
-  const { data: result, error: rpcErr } = await supabase
-    .rpc("convert_open_item_to_task", { p_open_item_id: oid })
+  // PROJ-Security — admin-client + explicit actor.
+  const adminForRpc = createAdminClient()
+  const { data: result, error: rpcErr } = await adminForRpc
+    .rpc("convert_open_item_to_task", {
+      p_open_item_id: oid,
+      p_actor_user_id: userId,
+    })
     .single<{ success: boolean; message: string; work_item_id: string | null }>()
 
   if (rpcErr) {
