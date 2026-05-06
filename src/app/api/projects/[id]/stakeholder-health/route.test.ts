@@ -58,10 +58,15 @@ const fromMock = vi.fn((table: string) => {
   throw new Error(`unexpected table ${table}`)
 })
 
+// PROJ-43-γ: RPC mock for compute_critical_path_phases. Default returns
+// an empty critical-path so existing α/β tests behave unchanged.
+const rpcMock = vi.fn()
+
 vi.mock("@/lib/supabase/server", () => ({
   createClient: vi.fn(async () => ({
     auth: { getUser: getUserMock },
     from: fromMock,
+    rpc: rpcMock,
   })),
 }))
 
@@ -135,6 +140,9 @@ beforeEach(() => {
     data: null,
     error: null,
   })
+  // PROJ-43-γ default: RPC returns empty critical-path so existing α/β
+  // tests behave as before. Individual γ tests override.
+  rpcMock.mockResolvedValue({ data: [], error: null })
 })
 
 describe("GET /api/projects/[id]/stakeholder-health — PROJ-43-α three-path detection", () => {
@@ -522,5 +530,180 @@ describe("GET /api/projects/[id]/stakeholder-health — PROJ-43-β method-gating
       stakeholders: Array<{ id: string; on_critical_path: boolean }>
     }
     expect(body.stakeholders[0]?.on_critical_path).toBe(false)
+  })
+})
+
+// ---------------------------------------------------------------------------
+// PROJ-43-γ — Computed-Critical-Path-Marker via compute_critical_path_phases
+// ---------------------------------------------------------------------------
+
+describe("GET /api/projects/[id]/stakeholder-health — PROJ-43-γ computed critical path", () => {
+  it("T13 RPC-only: computed phase flags stakeholder even when manual flag is false", async () => {
+    projectChain.maybeSingle.mockResolvedValue({
+      data: { id: PROJECT_ID, tenant_id: TENANT_ID, project_method: null },
+      error: null,
+    })
+    stakeholdersChain.__result = {
+      data: [stakeholder(STK_ICKE, USER_ICKE)],
+      error: null,
+    }
+    workItemsChain.__result = {
+      data: [
+        {
+          responsible_user_id: USER_ICKE,
+          is_deleted: false,
+          phase_id: "phase-1",
+          phases: { is_critical: false }, // manual NOT set
+          sprint_id: null,
+          sprints: null,
+        },
+      ],
+      error: null,
+    }
+    rpcMock.mockResolvedValue({ data: ["phase-1"], error: null })
+
+    const { request, context } = makeReq()
+    const res = await GET(request, context)
+    const body = (await res.json()) as {
+      stakeholders: Array<{
+        id: string
+        on_critical_path: boolean
+        critical_path_sources?: { manual: boolean; computed: boolean }
+      }>
+    }
+    expect(body.stakeholders[0]?.on_critical_path).toBe(true)
+    expect(body.stakeholders[0]?.critical_path_sources?.manual).toBe(false)
+    expect(body.stakeholders[0]?.critical_path_sources?.computed).toBe(true)
+  })
+
+  it("T14 Manual-only: PM-marked phase still flags stakeholder when RPC returns empty", async () => {
+    projectChain.maybeSingle.mockResolvedValue({
+      data: { id: PROJECT_ID, tenant_id: TENANT_ID, project_method: null },
+      error: null,
+    })
+    stakeholdersChain.__result = {
+      data: [stakeholder(STK_ICKE, USER_ICKE)],
+      error: null,
+    }
+    workItemsChain.__result = {
+      data: [
+        {
+          responsible_user_id: USER_ICKE,
+          is_deleted: false,
+          phase_id: "phase-1",
+          phases: { is_critical: true },
+          sprint_id: null,
+          sprints: null,
+        },
+      ],
+      error: null,
+    }
+    rpcMock.mockResolvedValue({ data: [], error: null })
+
+    const { request, context } = makeReq()
+    const res = await GET(request, context)
+    const body = (await res.json()) as {
+      stakeholders: Array<{
+        on_critical_path: boolean
+        critical_path_sources?: { manual: boolean; computed: boolean }
+      }>
+    }
+    expect(body.stakeholders[0]?.on_critical_path).toBe(true)
+    expect(body.stakeholders[0]?.critical_path_sources?.manual).toBe(true)
+    expect(body.stakeholders[0]?.critical_path_sources?.computed).toBe(false)
+  })
+
+  it("T15 RPC error → graceful fallback: manual path still resolves, response 200", async () => {
+    projectChain.maybeSingle.mockResolvedValue({
+      data: { id: PROJECT_ID, tenant_id: TENANT_ID, project_method: null },
+      error: null,
+    })
+    stakeholdersChain.__result = {
+      data: [stakeholder(STK_ICKE, USER_ICKE)],
+      error: null,
+    }
+    workItemsChain.__result = {
+      data: [
+        {
+          responsible_user_id: USER_ICKE,
+          is_deleted: false,
+          phase_id: "phase-1",
+          phases: { is_critical: true },
+          sprint_id: null,
+          sprints: null,
+        },
+      ],
+      error: null,
+    }
+    rpcMock.mockRejectedValue(new Error("RPC down"))
+
+    const { request, context } = makeReq()
+    const res = await GET(request, context)
+    expect(res.status).toBe(200)
+    const body = (await res.json()) as {
+      stakeholders: Array<{
+        on_critical_path: boolean
+        critical_path_sources?: { manual: boolean; computed: boolean }
+      }>
+    }
+    expect(body.stakeholders[0]?.on_critical_path).toBe(true)
+    expect(body.stakeholders[0]?.critical_path_sources?.manual).toBe(true)
+    expect(body.stakeholders[0]?.critical_path_sources?.computed).toBe(false)
+  })
+
+  it("T16 Kanban: RPC is NOT called (Method-Gating short-circuits the computed path)", async () => {
+    projectChain.maybeSingle.mockResolvedValue({
+      data: {
+        id: PROJECT_ID,
+        tenant_id: TENANT_ID,
+        project_method: "kanban",
+      },
+      error: null,
+    })
+    stakeholdersChain.__result = {
+      data: [stakeholder(STK_ICKE, USER_ICKE)],
+      error: null,
+    }
+
+    const { request, context } = makeReq()
+    await GET(request, context)
+    expect(rpcMock).not.toHaveBeenCalled()
+  })
+
+  it("T17 Both sources: RPC and PM agree → critical_path_sources marks both true", async () => {
+    projectChain.maybeSingle.mockResolvedValue({
+      data: { id: PROJECT_ID, tenant_id: TENANT_ID, project_method: null },
+      error: null,
+    })
+    stakeholdersChain.__result = {
+      data: [stakeholder(STK_ICKE, USER_ICKE)],
+      error: null,
+    }
+    workItemsChain.__result = {
+      data: [
+        {
+          responsible_user_id: USER_ICKE,
+          is_deleted: false,
+          phase_id: "phase-1",
+          phases: { is_critical: true },
+          sprint_id: null,
+          sprints: null,
+        },
+      ],
+      error: null,
+    }
+    rpcMock.mockResolvedValue({ data: ["phase-1"], error: null })
+
+    const { request, context } = makeReq()
+    const res = await GET(request, context)
+    const body = (await res.json()) as {
+      stakeholders: Array<{
+        on_critical_path: boolean
+        critical_path_sources?: { manual: boolean; computed: boolean }
+      }>
+    }
+    expect(body.stakeholders[0]?.on_critical_path).toBe(true)
+    expect(body.stakeholders[0]?.critical_path_sources?.manual).toBe(true)
+    expect(body.stakeholders[0]?.critical_path_sources?.computed).toBe(true)
   })
 })

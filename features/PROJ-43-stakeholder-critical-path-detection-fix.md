@@ -1,6 +1,6 @@
 # PROJ-43: Stakeholder-Health Critical-Path Detection — Korrektheits- und Coverage-Fix
 
-## Status: Deployed (43-α + β) + Architected (43-γ)
+## Status: Deployed (43-α + β) + In Progress (43-γ backend; awaiting /frontend + /qa)
 **Created:** 2026-05-05
 **Last Updated:** 2026-05-05
 
@@ -1073,3 +1073,47 @@ Continuous Improvement Agent (2026-05-06) hat:
 - Open Questions an /architecture-Skill-Owner gestellt — alle in Default-Empfehlungen oben adressiert
 
 Vollständiger CIA-Bericht ist in der Session-Konversation 2026-05-06 dokumentiert.
+
+## Implementation Notes — 43-γ Backend (2026-05-06)
+
+**Geändert:**
+- `src/app/api/projects/[id]/stakeholder-health/route.ts`:
+  - Neue 5. parallele Promise via `Promise.resolve(supabase.rpc(...))` für `compute_critical_path_phases(p_project_id)` mit Method-Gating (`phasesActive ? RPC : empty-array`).
+  - `.catch(() => empty)` für graceful Fallback bei RPC-Fehler — Endpoint antwortet weiterhin 200, manueller Pfad bleibt aktiv (EC-γ-1).
+  - Aggregations-Refactor: zwei parallele Sets `manualCriticalStakeholderIds` + `computedCriticalStakeholderIds` statt einem. In den Phase-Loops `OR`-Logik (`phases.is_critical === true || computedCriticalPhaseIds.has(phase_id)`); pro Match wird das passende Set befüllt.
+  - Sprint-Pfade weiter ausschließlich „manual" (kein RPC-Pendant für Sprints — out of scope für γ, eigener δ-Slice).
+  - `StakeholderHealthRow` um `critical_path_sources: { manual, computed }` erweitert; `on_critical_path` ist die boolean-Vereinigung der beiden Sets.
+- `src/lib/risk-score/health-api.ts`:
+  - Konsumenten-Interface gespiegelt; `critical_path_sources` als **optional** markiert (TS sieht ältere Payloads ohne Feld noch sauber).
+
+**Bewusst NICHT angefasst:**
+- Keine Migration (Architektur-Entscheidung Option D verbietet DB-Persistenz).
+- Keine Trigger / Materialized-View / neue Spalte (CIA-Anti-Patterns).
+- `phases.is_critical` und `sprints.is_critical` bleiben PM-eigen — System macht keine UPDATEs.
+
+**Tests (`route.test.ts`):**
+- Neuer `rpcMock` im Supabase-Client-Mock; Default `{ data: [], error: null }` in `beforeEach` lässt α/β-Tests unverändert.
+- T13 (RPC-only): Computed-Phase ohne manuelle Markierung → flagged via computed.
+- T14 (Manual-only): RPC leer + manueller Flag → flagged via manual.
+- T15 (RPC error): `mockRejectedValue` → 200, manueller Pfad funktioniert weiter.
+- T16 (Kanban): RPC wird **nicht** aufgerufen, `expect(rpcMock).not.toHaveBeenCalled()`.
+- T17 (Both sources): RPC + manueller Flag → `critical_path_sources: { manual: true, computed: true }`.
+
+**Verifikation:**
+- `npx vitest run src/app/api/projects/[id]/stakeholder-health/route.test.ts` → **19/19 grün** (Duration 681ms)
+- `npx vitest run` (volle Suite) → **1087/1087 grün** über 124 Files (+5 vs. β)
+- `npm run build` → ✓ 51 Pages, 7.9s, type-check sauber
+- `npm run lint` → 0 errors, 1 pre-existing Warning unrelated zu PROJ-43
+
+**AC-Mapping (γ-Backend):**
+| AC | Test/Beleg | Status |
+|---|---|---|
+| AC-γ-1 (computed Quelle) | RPC-Promise + Set-Lookup im Phase-Loop | ✓ als API-Aggregation |
+| AC-γ-2 (`OR`-Verknüpfung) | `isManual \|\| isComputed`-Check pro Phase-Loop | ✓ |
+| AC-γ-3 (kein System-UPDATE auf manueller Spalte) | keine Schreiboperationen, keine Trigger | ✓ |
+| AC-γ-4 (Read-only-Anzeige Edit-Phase-Dialog) | offen — folgt im /frontend-Slice | offen |
+| AC-γ-5 (Tooltip-Differenzierung) | `critical_path_sources` im Response exposed | ✓ Backend-seitig vorhanden |
+
+**Open für /frontend:**
+- `edit-phase-dialog.tsx` — Read-only-Badge „Vom Algorithmus erkannt" via `useSWR("/api/projects/[id]/critical-path")`
+- Stakeholder-Health-Tooltip-Komponente — Auswertung von `critical_path_sources` für Differenzierung „Vom PM markiert" / „Vom Algorithmus erkannt" / „Beide Quellen bestätigen"

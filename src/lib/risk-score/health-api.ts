@@ -30,6 +30,15 @@ export interface StakeholderHealthRow {
   agreeableness_fremd: number | null
   emotional_stability_fremd: number | null
   on_critical_path: boolean
+  /**
+   * PROJ-43-γ — granular sources for the on_critical_path flag.
+   * Drives the dashboard tooltip ("Vom PM markiert" / "Vom Algorithmus erkannt"
+   * / "Beide"). Marked optional so older payloads (pre-γ) deserialize cleanly.
+   */
+  critical_path_sources?: {
+    manual: boolean
+    computed: boolean
+  }
 }
 
 export interface StakeholderHealthResponse {
