@@ -1,6 +1,6 @@
 # PROJ-51: Modern UI/UX & Motion System
 
-## Status: Architected
+## Status: In Progress (α dokumentiert; β–ε pending)
 **Created:** 2026-05-06
 **Last Updated:** 2026-05-07
 
@@ -226,7 +226,37 @@ Vollständiger CIA-Bericht in der Session-Konversation 2026-05-07 dokumentiert. 
 
 ## Implementation Notes
 
-Noch nicht implementiert. Dieser Spec schliesst die bisherige Dokumentationsluecke: `features/INDEX.md` referenziert PROJ-51 bereits, die Spec-Datei fehlte jedoch im Repo.
+### α — Audit + Inventory (2026-05-07)
+
+**Geliefert:**
+- `docs/design/PROJ-51-alpha-ui-audit-tokens.md` — Token-Diff-Tabelle: 19 Core-Tokens (shadcn → Dark-Teal-HSL), 35 Erweiterungs-Tokens (Material-3-Surface/Container/Tertiary), 3 Brand-Layer-Tokens, Sidebar-Mapping (8), Spacing/Typography/Border-Radius-Scales, WCAG-Kontrast-Validierungs-Critical-Pairs.
+- `docs/design/PROJ-51-alpha-impact-matrix.md` — Component-Impact-Matrix der 40 shadcn-Primitives (Tier 1 auto-reskin / Tier 2 manuell), Hardcoded-Color-Inventory: 4 Files mit ~10 Hex-Werten + 26 Files mit 105 Tailwind-Direct-Color-Treffern (`emerald`, `amber`, `red`, `indigo`, `teal`, ...), View-Transitions-Compat-Tabelle (Stand 2026-05), Migrations-Plan β→ε mit Files/Risiken/Rollback/Aufwand pro Slice.
+
+**Audit-Ergebnisse:**
+- **Token-Welten getrennt:** `globals.css` (shadcn-Slate-HSL aktiv) ↔ `tailwind.config.ts` (Dark-Teal-Hex als toter Code für shadcn). β-Bridge ist die Lösung.
+- **40 shadcn-Komponenten** auto-reskinbar via CSS-Var-Remap. Hoch-Risk-Re-Skin-Komponenten: `button`, `card`, `sidebar`, `chart`. Manueller Eingriff in γ.
+- **Hardcoded-Schwerpunkte** sind Status-Badges (Risk, Approval, Lifecycle, Health) + Charts. γ konsolidiert auf semantische Tokens (`--risk-low/medium/high/critical`, `--success`, `--warning`, `--chart-1..5`).
+- **Light-Mode** explizit deferred zu PROJ-53; MVP ist Dark-first.
+- **Browser-Compat** für View-Transitions-API: Chrome/Edge/Safari stable, Firefox 124+ Beta — Opt-In + Feature-Detection-Fallback (Framer-AnimatePresence) ist robust.
+
+**Aufwand-Schätzung (gesamt):**
+- α (dieser Slice): ✓ done, reine Doku
+- β (Token-Bridge + Branding): ~1 PT — solo-deploybar
+- γ (Component-Refresh): ~1 PT
+- δ (Motion-Layer): ~1 PT — `framer-motion` als neue Dependency
+- ε (Visual-Regression): ~1 PT — 8 Playwright-Snapshots
+- **Total: ~4-5 PT** für vollständigen Refresh
+
+**Open Decisions** für `/architecture`-Folge bzw. β-Start (Defaults gesetzt):
+1. Light-Mode → deferred PROJ-53 ✓
+2. WCAG-1.4 vs APCA → WCAG-1.4 (β.2 als Fallback)
+3. `next-themes` beibehalten → Ja
+4. Charts: eigene `--chart-1..5` neu, semantisch
+5. `tenants.branding.primary_hex` Format → `#RRGGBB` 6-digit-Hex
+
+**β-Start-Voraussetzungen erfüllt:** Token-Definition komplett, Migrations-Plan dokumentiert, Risiken benannt, Rollback-Strategie pro Slice spezifiziert.
+
+α-Slice damit dokumentations-vollständig. Ready für β.
 
 ## QA Test Results
 
