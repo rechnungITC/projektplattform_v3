@@ -421,13 +421,38 @@ PROJ-51-MVP ist damit deployt: Theme-Token-Bridge + Brand-Layer + Status-Token-M
 
 **Verifikation:** alle 4 Slices `npm run build` grün, 1159/1159 vitest grün, Vercel-Deploys live.
 
+### δ.3 + Theme-Toggle UI (2026-05-07)
+
+**δ.3 (`1735980`):** `vt-tab-panel` className auf den Children-Wrapper in
+`src/components/projects/project-room-shell.tsx` gelegt. Project-Room
+nutzt route-basierte Navigation (kein Tabs-Component) — der Wrapper im
+Shell ist die einzige Stelle, an der alle Tab-Panels durchlaufen, also
+genau dort die opt-in View-Transition. Negativ-Liste laut α-Impact-
+Matrix dokumentiert (Gantt + Kanban-Board sind Sub-Routes mit eigenen
+DnD-Animations und werden vom Wrapper nicht erfasst).
+
+**Theme-Toggle UI (`87b21cc`):** Dark-Teal als 4. Theme-Option im
+User-Menu freigeschaltet:
+- `globals.css`: Selector von `[data-theme="dark-teal"]` auf `.dark-teal`
+  umgestellt, damit `next-themes` mit `attribute="class"` die Klasse
+  automatisch auf `<html>` setzt, wenn `setTheme("dark-teal")` aufgerufen
+  wird.
+- `layout.tsx`: `themes={["light","dark","system","dark-teal"]}` an den
+  ThemeProvider übergeben — sonst normalisiert `next-themes` unbekannte
+  Werte zurück auf `defaultTheme`.
+- `user-menu.tsx`: 4. `<DropdownMenuRadioItem value="dark-teal">` mit
+  `Palette`-Icon zwischen Dark und System; Trigger-Icon-Branch ergänzt.
+
+Damit ist das Dark-Teal-Theme aus β nicht mehr nur opt-in via Dev-DOM-
+Tweak, sondern wirklich als End-User-Option live.
+
+**Verifikation:** `npm run build` grün, Commits gepusht, Live auf Vercel.
+
 ### Verbleibende Folge-Slices (alle nicht blockierend)
 | Slice | Was | Aufwand |
 |---|---|---|
 | **γ.6 batch 2** | Restliche ~28 Files: forms, charts (gantt/risk-matrix/heatmap), panels, reports | ~1.5 PT |
-| **δ.3** | `vt-tab-panel` opt-in auf Project-Room-Tabs + Stakeholder-Detail | ~0.3 PT |
 | **ε.3** | Test-Tenant-Seed + 6 authenticated-Page Snapshots | ~1 PT |
-| **Theme-Toggle UI** | Settings: Light/Dark/Dark-Teal-Wahl persistiert | ~0.5 PT |
 
 ## QA Test Results
 
