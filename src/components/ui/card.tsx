@@ -2,6 +2,10 @@ import * as React from "react"
 
 import { cn } from "@/lib/utils"
 
+// PROJ-51-γ.3 — Default `Card` keeps subtle shadow + adds gentle hover-lift
+// (shadow-md transition). Consumers that don't want the lift effect can
+// pass `className="hover:shadow-sm"` to override. `motion-reduce:`
+// disables the transition for users with reduced-motion preference.
 const Card = React.forwardRef<
   HTMLDivElement,
   React.HTMLAttributes<HTMLDivElement>
@@ -9,7 +13,7 @@ const Card = React.forwardRef<
   <div
     ref={ref}
     className={cn(
-      "rounded-lg border bg-card text-card-foreground shadow-sm",
+      "rounded-lg border bg-card text-card-foreground shadow-sm transition-shadow duration-200 hover:shadow-md motion-reduce:transition-none",
       className
     )}
     {...props}
