@@ -448,11 +448,56 @@ Tweak, sondern wirklich als End-User-Option live.
 
 **Verifikation:** `npm run build` grün, Commits gepusht, Live auf Vercel.
 
+### γ.6 batch 2 (2026-05-07, 4 Sub-Batches)
+
+19 weitere Komponenten in 4 Sub-Commits auf semantische Tokens migriert.
+Pro Sub-Batch eigener Commit + Push, damit jede Lock einzeln verifiziert.
+
+**γ.6 batch 2a — forms (`ad10592`):** decision-form, edit-work-item-
+dialog, change-kind-dialog, delete-work-item-dialog. Pattern: hartes
+`border-amber-300/bg-amber-50/text-amber-900` (+ dark twins) →
+`border-warning/40 bg-warning/10 text-warning`.
+
+**γ.6 batch 2b — charts/heatmaps (`be7f451`):** risk-matrix (cellTone),
+stakeholder-matrix (cellTone), utilization-heatmap (heatClass — 4-
+Stufen-Auslastung), phases-timeline (completed-pill emerald → success).
+Kein `-foreground`-Token für success/warning/info eingeführt; `text-
+foreground` + Alpha-Tönung hält WCAG-AA.
+
+**γ.6 batch 2c — panels (`f9a3424`):** open-items-panel statusIcon,
+suggestion-card scoreTone, outbox-panel emailStubMode-Banner. Reports
+(status-report-body, executive-summary-body) bewusst übersprungen —
+identisch zu traffic-light-pill ein print-friendly-Concern, gehört in
+einen Print-Layout-Slice mit `forcedTheme="light"`.
+
+**γ.6 batch 2d — tables/badges/banners (`dbf7fb0`):** risk-table,
+vendor-evaluations-tab, budget/format.ts (TRAFFIC_LIGHT_CLASSES für
+Budget-UI; print-Variante in traffic-light-pill bleibt hartcodiert),
+project-budget-tab-client (FX-Banner), stakeholder-table (SCORE_TONE +
+ATTITUDE_TONE), stakeholder-health-page-client (4-Bucket-Palette
+green/yellow/orange/red → `risk-low/medium/high/critical` — exakter
+1:1-Fit), profile-tab (3 Stellen: Delta-Chip, Invite-Status-Badges,
+Skill-Delta), ai-providers-page-client (HTTP-Warnung + StatusBadge).
+
+**Verifikation:** alle 4 Sub-Batches `npm run build` grün, finale
+1159/1159 vitest grün, Vercel-Deploys live.
+
+### Bewusst nicht migriert (Architektur-Entscheidungen)
+- `status-report-body.tsx` + `executive-summary-body.tsx` — Reports
+  rendern via Standard-Root-Layout, User-Theme würde in PDF/Print
+  durchschlagen. Print-Layout mit `forcedTheme="light"` als eigener
+  Slice.
+- `traffic-light-pill.tsx` — bewusst print-friendly hartcodiert.
+- `work-item-kind-badge.tsx` — 7 distinkte Taxonomie-Farben, lassen
+  sich nicht sinnvoll auf 4 Status-Tokens abbilden.
+- `ui/toast.tsx` — shadcn-Primitive, sollte über `variant="destructive"`
+  statt direkter Farbe gesteuert werden.
+
 ### Verbleibende Folge-Slices (alle nicht blockierend)
 | Slice | Was | Aufwand |
 |---|---|---|
-| **γ.6 batch 2** | Restliche ~28 Files: forms, charts (gantt/risk-matrix/heatmap), panels, reports | ~1.5 PT |
 | **ε.3** | Test-Tenant-Seed + 6 authenticated-Page Snapshots | ~1 PT |
+| **Print-Theme** | Print-Layout mit `forcedTheme="light"` für Reports + Migration der 3 Print-Files auf semantische Tokens | ~0.5 PT |
 
 ## QA Test Results
 
