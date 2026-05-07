@@ -1,6 +1,6 @@
 # PROJ-51: Modern UI/UX & Motion System
 
-## Status: In Progress (α dokumentiert; β–ε pending)
+## Status: In Progress (α + β deployed; γ/δ/ε pending)
 **Created:** 2026-05-06
 **Last Updated:** 2026-05-07
 
@@ -257,6 +257,49 @@ Vollständiger CIA-Bericht in der Session-Konversation 2026-05-07 dokumentiert. 
 **β-Start-Voraussetzungen erfüllt:** Token-Definition komplett, Migrations-Plan dokumentiert, Risiken benannt, Rollback-Strategie pro Slice spezifiziert.
 
 α-Slice damit dokumentations-vollständig. Ready für β.
+
+### β — Token-Bridge + Brand-Layer (2026-05-07)
+
+**Geliefert (3 Locks):**
+
+- **β.1** (`8b6cc25`) — `src/app/globals.css` + `tailwind.config.ts`
+  - `globals.css` `:root`: 19 Core-Tokens auf Dark-Teal-HSL (`--background: 222 56% 9%`, `--primary: 183 32% 73%`, ...) + 35 Material-3-Erweiterungs-Tokens (`--surface-container-low/high/highest`, `--primary-container`, `--tertiary`, `--outline-variant`, ...) + 3 Brand-Layer-Slots (`--brand-accent`, `--brand-accent-foreground`, `--brand-nav-active`) als Plattform-Default = primary
+  - `--chart-1..5` Material-3-distinct-Hues (teal/warm/secondary/error/on-surface)
+  - `--sidebar-*` (8 Vars) auf Dark-Teal — PROJ-23-Erbe zieht automatisch durch
+  - `.dark`-Block bleibt no-op (Dark = Default in PROJ-51; Light-Mode = PROJ-53)
+  - `tailwind.config.ts`: Material-3-Tokens von Hex → `hsl(var(--…))`; Brand-Layer-Utilities (`bg-brand-accent`, `text-brand-accent-foreground`, `border-brand-nav-active`)
+
+- **β.2** (`7ccfc31`) — `src/lib/branding/contrast.ts` + Tests
+  - `parseHex()` strict `#RRGGBB`-Parser
+  - `relativeLuminance()` WCAG 2.1 sRGB-linearization
+  - `contrastRatio()` (Lmax + 0.05) / (Lmin + 0.05)
+  - `pickBrandForeground()` → `"white" | "black"` (auto-WCAG-AA)
+  - `hexToHslTriplet()` → `H S% L%` für CSS-Var-Substitution
+  - `buildBrandStyleBlock()` für `<style data-tenant-brand>`-Pattern
+  - 21 Vitest-Cases grün
+
+- **β.3** (`4063c6a`) — `src/app/(app)/layout.tsx` Server-Component-Brand-Injection
+  - Existing `--color-brand-600` (PROJ-17 Legacy) bleibt für `profile-radar-chart.tsx`
+  - NEU: `--brand-accent` / `--brand-accent-foreground` / `--brand-nav-active` werden via Server-rendered inline-Style in den AppShell-Wrapper gesetzt
+  - Auto-Foreground via WCAG-1.4 (Helper aus β.2)
+  - Override scoped auf authenticated Routes (keine Leakage auf `/login`, `/signup`, `/onboarding`)
+  - Invalid/missing Brand-Hex → kein Override → Plattform-Default greift
+
+**Verifikation:**
+- `npm run build` ✓ 51 Pages, type-check sauber
+- `npx vitest run` ✓ 1155/1155 (127 Files; +21 neue β.2-Tests)
+- Vercel-Deploy: `dpl_5i87fjVmDwLGThidqyYBrmGg58Ee` → `dpl_4AuFP9qj5LXE6KcUnyiKX7Wt5rub` (live nach ~25s)
+
+**AC-Coverage (β):**
+| AC | Status |
+|---|---|
+| AC-7 (Corporate-Farben via CSS-Vars) | ✓ |
+| AC-8 (Tenant-Branding für Primary/Active-Nav-Slots) | ✓ |
+| AC-9 (Fallback-Tokens wenn Tenant nichts gesetzt hat) | ✓ |
+| AC-10 (Lesbarer Kontrast — WCAG-1.4-Auto-Foreground) | ✓ |
+| AC-11 (PDF-Branding aus PROJ-21 bleibt kompatibel) | ✓ — PDF-Render-Pfad nicht angefasst |
+
+β-Slice fertig & deployt. Solo-deploybar wie geplant. Ready für γ (Component-Refresh).
 
 ## QA Test Results
 
