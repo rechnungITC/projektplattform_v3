@@ -81,7 +81,12 @@ export function ProjectRoomShell({
           </ul>
         </div>
       </nav>
-      <div>{children}</div>
+      {/* PROJ-51-δ.3 — opt-in View-Transition for Project-Room tab switches.
+          Browsers w/o `view-transition-name` support ignore this no-op.
+          Negativ-Liste (per α impact-matrix): Gantt + Kanban-Board sind
+          Sub-Routes mit eigenen DnD-Animations — werden vom Tab-Wrapper
+          nicht erfasst, da deren Children eigene Container haben. */}
+      <div className="vt-tab-panel">{children}</div>
     </div>
   )
 }
