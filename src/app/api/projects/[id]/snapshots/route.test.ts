@@ -9,6 +9,7 @@ import { beforeEach, describe, expect, it, vi } from "vitest"
 const mocks = vi.hoisted(() => ({
   getUserMock: vi.fn(),
   fromMock: vi.fn(),
+  adminFromMock: vi.fn(),
   requireProjectAccessMock: vi.fn(),
   requireModuleActiveMock: vi.fn(),
 }))
@@ -42,6 +43,12 @@ vi.mock("@/lib/tenant-settings/server", () => ({
   requireModuleActive: mocks.requireModuleActiveMock,
 }))
 
+vi.mock("@/lib/supabase/admin", () => ({
+  createAdminClient: vi.fn(() => ({
+    from: mocks.adminFromMock,
+  })),
+}))
+
 // Stub out the heavy server-only dependencies so we can import the
 // route module without actually launching Chromium during the test.
 vi.mock("@/lib/reports/aggregate-snapshot-data", () => ({
@@ -50,6 +57,9 @@ vi.mock("@/lib/reports/aggregate-snapshot-data", () => ({
 vi.mock("@/lib/reports/puppeteer-render", () => ({
   renderSnapshotPdf: vi.fn(),
 }))
+
+import { aggregateSnapshotData } from "@/lib/reports/aggregate-snapshot-data"
+import { renderSnapshotPdf } from "@/lib/reports/puppeteer-render"
 
 import { GET, POST } from "./route"
 
@@ -69,6 +79,7 @@ function makeRequest(method: "GET" | "POST", body?: unknown): Request {
 const ctx = { params: Promise.resolve({ id: PROJECT_ID }) }
 
 beforeEach(() => {
+  vi.useRealTimers()
   vi.clearAllMocks()
   mocks.getUserMock.mockResolvedValue({ data: { user: { id: USER_ID } } })
   mocks.requireProjectAccessMock.mockResolvedValue({
@@ -76,6 +87,7 @@ beforeEach(() => {
   })
   mocks.requireModuleActiveMock.mockResolvedValue(null)
   mocks.fromMock.mockReset()
+  mocks.adminFromMock.mockReset()
 })
 
 describe("GET /api/projects/[id]/snapshots", () => {
@@ -132,6 +144,65 @@ describe("GET /api/projects/[id]/snapshots", () => {
     expect(first.pdf_status).toBe("available")
   })
 
+  it("marks stale pending PDFs as failed in list responses", async () => {
+    vi.useFakeTimers()
+    vi.setSystemTime(new Date("2026-05-07T10:00:00.000Z"))
+    const adminUpdate = vi.fn().mockReturnThis()
+    const adminEq = vi.fn(async () => ({ error: null }))
+
+    mocks.adminFromMock.mockImplementation((table: string) => {
+      if (table !== "report_snapshots") {
+        throw new Error(`unexpected admin from(${table})`)
+      }
+      return { update: adminUpdate, eq: adminEq }
+    })
+    mocks.fromMock.mockImplementation((table: string) => {
+      if (table === "report_snapshots") {
+        return {
+          select: vi.fn().mockReturnThis(),
+          eq: vi.fn().mockReturnThis(),
+          order: vi.fn().mockReturnThis(),
+          limit: vi.fn(async () => ({
+            data: [
+              {
+                id: "s-stale",
+                kind: "status_report",
+                version: 3,
+                generated_at: "2026-05-07T09:58:00.000Z",
+                generated_by: USER_ID,
+                content: { generated_by_name: "Tester" },
+                pdf_status: "pending",
+                ki_summary_classification: null,
+              },
+            ],
+            error: null,
+          })),
+        }
+      }
+      if (table === "profiles") {
+        return {
+          select: vi.fn().mockReturnThis(),
+          in: vi.fn(async () => ({
+            data: [
+              { id: USER_ID, display_name: "Tester", email: "t@e.test" },
+            ],
+            error: null,
+          })),
+        }
+      }
+      throw new Error(`unexpected from(${table})`)
+    })
+
+    const res = await GET(makeRequest("GET"), ctx)
+    expect(res.status).toBe(200)
+    const body = (await res.json()) as {
+      snapshots: Array<{ pdf_status: string }>
+    }
+    expect(body.snapshots[0]?.pdf_status).toBe("failed")
+    expect(adminUpdate).toHaveBeenCalledWith({ pdf_status: "failed" })
+    expect(adminEq).toHaveBeenCalledWith("id", "s-stale")
+  })
+
   it("forwards the module-disabled error from the server helper", async () => {
     mocks.requireModuleActiveMock.mockResolvedValue(
       new Response(null, { status: 404 }),
@@ -173,5 +244,77 @@ describe("POST /api/projects/[id]/snapshots", () => {
       ctx,
     )
     expect(res.status).toBe(400)
+  })
+
+  it("marks the snapshot failed when PDF rendering fails after insert", async () => {
+    const reportChains = [
+      {
+        select: vi.fn().mockReturnThis(),
+        eq: vi.fn().mockReturnThis(),
+        order: vi.fn().mockReturnThis(),
+        limit: vi.fn().mockReturnThis(),
+        maybeSingle: vi.fn(async () => ({ data: null, error: null })),
+      },
+      {
+        insert: vi.fn().mockReturnThis(),
+        select: vi.fn().mockReturnThis(),
+        single: vi.fn(async () => ({
+          data: {
+            id: "s-new",
+            tenant_id: TENANT_ID,
+            project_id: PROJECT_ID,
+            kind: "status_report",
+            version: 1,
+            generated_by: USER_ID,
+            generated_at: "2026-05-07T10:00:00Z",
+            content: {},
+            pdf_storage_key: null,
+            pdf_status: "pending",
+            ki_summary_classification: null,
+            ki_provider: null,
+          },
+          error: null,
+        })),
+      },
+    ]
+    const adminUpdate = vi.fn().mockReturnThis()
+    const adminEq = vi.fn(async () => ({ error: null }))
+
+    vi.mocked(aggregateSnapshotData).mockResolvedValue({
+      tenantId: TENANT_ID,
+      content: {},
+    } as Awaited<ReturnType<typeof aggregateSnapshotData>>)
+    vi.mocked(renderSnapshotPdf).mockRejectedValue(new Error("launch timeout"))
+    mocks.adminFromMock.mockImplementation((table: string) => {
+      if (table !== "report_snapshots") {
+        throw new Error(`unexpected admin from(${table})`)
+      }
+      return { update: adminUpdate, eq: adminEq }
+    })
+    mocks.fromMock.mockImplementation((table: string) => {
+      if (table === "report_snapshots") {
+        const chain = reportChains.shift()
+        if (!chain) throw new Error("unexpected report_snapshots call")
+        return chain
+      }
+      if (table === "profiles") {
+        return {
+          select: vi.fn().mockReturnThis(),
+          eq: vi.fn().mockReturnThis(),
+          maybeSingle: vi.fn(async () => ({
+            data: { display_name: "Tester", email: "t@e.test" },
+            error: null,
+          })),
+        }
+      }
+      throw new Error(`unexpected from(${table})`)
+    })
+
+    const res = await POST(makeRequest("POST", { kind: "status_report" }), ctx)
+    expect(res.status).toBe(200)
+    const body = (await res.json()) as { snapshot: { pdf_status: string } }
+    expect(body.snapshot.pdf_status).toBe("failed")
+    expect(adminUpdate).toHaveBeenCalledWith({ pdf_status: "failed" })
+    expect(adminEq).toHaveBeenCalledWith("id", "s-new")
   })
 })

@@ -40,7 +40,10 @@ export default async function SnapshotPrintPage({
   }
 
   return (
-    <div className="theme-print report-print bg-background p-8 text-foreground">
+    <div
+      className="theme-print report-print bg-background p-8 text-foreground"
+      data-report-print-ready="true"
+    >
       {data.kind === "status_report" ? (
         <StatusReportBody version={data.version} content={data.content} />
       ) : (

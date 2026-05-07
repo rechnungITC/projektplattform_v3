@@ -1,5 +1,6 @@
 import { NextResponse } from "next/server"
 
+import { updateSnapshotPdfStatus } from "@/lib/reports/pdf-status.server"
 import { renderSnapshotPdf } from "@/lib/reports/puppeteer-render"
 import { requireModuleActive } from "@/lib/tenant-settings/server"
 
@@ -61,10 +62,10 @@ export async function POST(request: Request, ctx: Ctx) {
       projectId,
       cookieHeader,
     })
-    await supabase
-      .from("report_snapshots")
-      .update({ pdf_storage_key: result.storageKey, pdf_status: "available" })
-      .eq("id", snapshot.id)
+    await updateSnapshotPdfStatus(snapshot.id, {
+      pdf_storage_key: result.storageKey,
+      pdf_status: "available",
+    })
     return new NextResponse(null, { status: 204 })
   } catch (renderErr) {
     console.error(
@@ -75,10 +76,7 @@ export async function POST(request: Request, ctx: Ctx) {
           renderErr instanceof Error ? renderErr.message : String(renderErr),
       }),
     )
-    await supabase
-      .from("report_snapshots")
-      .update({ pdf_status: "failed" })
-      .eq("id", snapshot.id)
+    await updateSnapshotPdfStatus(snapshot.id, { pdf_status: "failed" })
     return apiError(
       "render_failed",
       renderErr instanceof Error ? renderErr.message : "Render failed",

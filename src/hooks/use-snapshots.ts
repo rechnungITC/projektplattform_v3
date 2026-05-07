@@ -16,8 +16,10 @@ interface UseSnapshotsResult {
     body: CreateSnapshotRequest,
   ) => Promise<{ snapshot: ReportSnapshot; snapshotUrl: string } | null>
   retryPdf: (snapshotId: string) => Promise<void>
-  refresh: () => Promise<void>
+  refresh: (options?: { silent?: boolean }) => Promise<void>
 }
+
+const PENDING_POLL_MS = 5_000
 
 /**
  * Fetches the snapshot list for a project and exposes a `create`
@@ -32,8 +34,9 @@ export function useSnapshots(projectId: string): UseSnapshotsResult {
   const [loading, setLoading] = React.useState(true)
   const [error, setError] = React.useState<string | null>(null)
 
-  const refresh = React.useCallback(async () => {
-    setLoading(true)
+  const refresh = React.useCallback(async (options?: { silent?: boolean }) => {
+    const silent = options?.silent === true
+    if (!silent) setLoading(true)
     setError(null)
     try {
       const res = await fetch(`/api/projects/${projectId}/snapshots`, {
@@ -47,13 +50,23 @@ export function useSnapshots(projectId: string): UseSnapshotsResult {
     } catch (err) {
       setError(err instanceof Error ? err.message : "Unbekannter Fehler")
     } finally {
-      setLoading(false)
+      if (!silent) setLoading(false)
     }
   }, [projectId])
 
   React.useEffect(() => {
     void refresh()
   }, [refresh])
+
+  React.useEffect(() => {
+    if (!snapshots.some((snapshot) => snapshot.pdf_status === "pending")) {
+      return
+    }
+    const interval = window.setInterval(() => {
+      void refresh({ silent: true })
+    }, PENDING_POLL_MS)
+    return () => window.clearInterval(interval)
+  }, [refresh, snapshots])
 
   const create = React.useCallback(
     async (body: CreateSnapshotRequest) => {

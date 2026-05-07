@@ -2,8 +2,11 @@ import { NextResponse } from "next/server"
 import { z } from "zod"
 
 import { aggregateSnapshotData } from "@/lib/reports/aggregate-snapshot-data"
+import { normalizePdfStatus } from "@/lib/reports/pdf-status"
+import { updateSnapshotPdfStatus } from "@/lib/reports/pdf-status.server"
 import { renderSnapshotPdf } from "@/lib/reports/puppeteer-render"
 import type {
+  PdfStatus,
   ReportSnapshot,
   SnapshotKind,
   SnapshotListItem,
@@ -79,20 +82,42 @@ export async function GET(_request: Request, ctx: Ctx) {
     }
   }
 
-  const snapshots: SnapshotListItem[] = (rows ?? []).map((r) => ({
-    id: r.id as string,
-    kind: r.kind as SnapshotKind,
-    version: r.version as number,
-    generated_at: r.generated_at as string,
-    generated_by_name:
-      userMap.get(r.generated_by as string) ??
-      ((r.content as { generated_by_name?: string } | null)?.generated_by_name ??
-        "—"),
-    has_ki_summary:
-      Boolean((r.content as { ki_summary?: unknown } | null)?.ki_summary) ||
-      Boolean(r.ki_summary_classification),
-    pdf_status: r.pdf_status as SnapshotListItem["pdf_status"],
-  }))
+  const snapshots: SnapshotListItem[] = await Promise.all(
+    (rows ?? []).map(async (r) => {
+      const generatedAt = r.generated_at as string
+      const pdfStatus = normalizePdfStatus(
+        r.pdf_status as PdfStatus,
+        generatedAt,
+      )
+      if (r.pdf_status === "pending" && pdfStatus === "failed") {
+        await updateSnapshotPdfStatus(r.id as string, {
+          pdf_status: "failed",
+        }).catch((err) => {
+          console.error(
+            "[PROJ-21] stale pending PDF status repair failed",
+            JSON.stringify({
+              snapshotId: r.id,
+              error: err instanceof Error ? err.message : String(err),
+            }),
+          )
+        })
+      }
+      return {
+        id: r.id as string,
+        kind: r.kind as SnapshotKind,
+        version: r.version as number,
+        generated_at: generatedAt,
+        generated_by_name:
+          userMap.get(r.generated_by as string) ??
+          ((r.content as { generated_by_name?: string } | null)
+            ?.generated_by_name ?? "—"),
+        has_ki_summary:
+          Boolean((r.content as { ki_summary?: unknown } | null)?.ki_summary) ||
+          Boolean(r.ki_summary_classification),
+        pdf_status: pdfStatus,
+      }
+    }),
+  )
 
   return NextResponse.json({ snapshots })
 }
@@ -215,10 +240,10 @@ export async function POST(request: Request, ctx: Ctx) {
       projectId,
       cookieHeader,
     })
-    await supabase
-      .from("report_snapshots")
-      .update({ pdf_storage_key: result.storageKey, pdf_status: "available" })
-      .eq("id", inserted.id)
+    await updateSnapshotPdfStatus(inserted.id, {
+      pdf_storage_key: result.storageKey,
+      pdf_status: "available",
+    })
     if (result.byteSize > 5 * 1024 * 1024) {
       console.warn(
         "[PROJ-21] PDF >5MB",
@@ -249,10 +274,7 @@ export async function POST(request: Request, ctx: Ctx) {
           renderErr instanceof Error ? renderErr.message : String(renderErr),
       }),
     )
-    await supabase
-      .from("report_snapshots")
-      .update({ pdf_status: "failed" })
-      .eq("id", inserted.id)
+    await updateSnapshotPdfStatus(inserted.id, { pdf_status: "failed" })
     inserted.pdf_status = "failed"
   }
 

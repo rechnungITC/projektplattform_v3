@@ -12,7 +12,8 @@
  */
 
 import chromium from "@sparticuz/chromium"
-import puppeteer, { type Browser } from "puppeteer-core"
+import { existsSync } from "node:fs"
+import puppeteer, { type Browser, type Page } from "puppeteer-core"
 
 import { createAdminClient } from "@/lib/supabase/admin"
 
@@ -39,19 +40,55 @@ export interface RenderResult {
 }
 
 let cachedBrowser: Browser | null = null
+const PRINT_READY_SELECTOR = "[data-report-print-ready='true']"
+const BROWSER_START_TIMEOUT_MS = 15_000
+const PRINT_NAVIGATION_TIMEOUT_MS = 20_000
+const PRINT_READY_TIMEOUT_MS = 10_000
+const ASSET_READY_TIMEOUT_MS = 3_000
+const PDF_RENDER_TIMEOUT_MS = 15_000
+const STORAGE_UPLOAD_TIMEOUT_MS = 15_000
+const LOCAL_CHROME_CANDIDATES = [
+  "/usr/bin/chromium",
+  "/usr/bin/chromium-browser",
+  "/usr/bin/google-chrome",
+  "/usr/bin/google-chrome-stable",
+] as const
 
 async function getBrowser(): Promise<Browser> {
   if (cachedBrowser && cachedBrowser.connected) {
     return cachedBrowser
   }
-  const executablePath = await chromium.executablePath()
-  cachedBrowser = await puppeteer.launch({
-    args: chromium.args,
-    defaultViewport: { width: 1240, height: 1754 },
-    executablePath,
-    headless: true,
-  })
+  const executablePath = await withTimeout(
+    resolveExecutablePath(),
+    BROWSER_START_TIMEOUT_MS,
+    "Chromium executable resolution timed out",
+  )
+  cachedBrowser = await withTimeout(
+    puppeteer.launch({
+      args: chromium.args,
+      defaultViewport: { width: 1240, height: 1754 },
+      executablePath,
+      headless: true,
+    }),
+    BROWSER_START_TIMEOUT_MS,
+    "Chromium launch timed out",
+  )
   return cachedBrowser
+}
+
+async function resolveExecutablePath(): Promise<string> {
+  if (process.env.PUPPETEER_EXECUTABLE_PATH) {
+    return process.env.PUPPETEER_EXECUTABLE_PATH
+  }
+
+  if (process.env.NODE_ENV !== "production") {
+    const systemChrome = LOCAL_CHROME_CANDIDATES.find((path) =>
+      existsSync(path),
+    )
+    if (systemChrome) return systemChrome
+  }
+
+  return chromium.executablePath()
 }
 
 /**
@@ -70,26 +107,44 @@ export async function renderSnapshotPdf(input: RenderInput): Promise<RenderResul
   const page = await browser.newPage()
   try {
     if (input.cookieHeader) {
-      await page.setExtraHTTPHeaders({ Cookie: input.cookieHeader })
+      await page.setExtraHTTPHeaders({ cookie: input.cookieHeader })
     }
-    await page.goto(printUrl, {
-      waitUntil: "networkidle0",
-      timeout: 25_000,
+    const response = await page.goto(printUrl, {
+      waitUntil: "domcontentloaded",
+      timeout: PRINT_NAVIGATION_TIMEOUT_MS,
     })
-    const pdfBuffer = await page.pdf({
-      format: "A4",
-      printBackground: true,
-      margin: { top: "16mm", bottom: "16mm", left: "12mm", right: "12mm" },
+    if (!response) {
+      throw new Error("print page did not return a response")
+    }
+    if (!response.ok()) {
+      throw new Error(`print page responded with HTTP ${response.status()}`)
+    }
+    await page.waitForSelector(PRINT_READY_SELECTOR, {
+      timeout: PRINT_READY_TIMEOUT_MS,
     })
+    await page.emulateMediaType("print")
+    await waitForPageAssets(page)
+
+    const pdfBuffer = await withTimeout(
+      page.pdf({
+        format: "A4",
+        printBackground: true,
+        margin: { top: "16mm", bottom: "16mm", left: "12mm", right: "12mm" },
+      }),
+      PDF_RENDER_TIMEOUT_MS,
+      "PDF render timed out",
+    )
 
     const storageKey = `${input.tenantId}/${input.projectId}/${input.snapshotId}.pdf`
     const admin = createAdminClient()
-    const { error: uploadError } = await admin.storage
-      .from("reports")
-      .upload(storageKey, pdfBuffer, {
+    const { error: uploadError } = await withTimeout(
+      admin.storage.from("reports").upload(storageKey, pdfBuffer, {
         contentType: "application/pdf",
         upsert: true,
-      })
+      }),
+      STORAGE_UPLOAD_TIMEOUT_MS,
+      "PDF storage upload timed out",
+    )
     if (uploadError) {
       throw new Error(`storage upload failed: ${uploadError.message}`)
     }
@@ -102,4 +157,45 @@ export async function renderSnapshotPdf(input: RenderInput): Promise<RenderResul
   } finally {
     await page.close().catch(() => undefined)
   }
+}
+
+async function waitForPageAssets(page: Page) {
+  await page.evaluate(async (timeoutMs) => {
+    const imagesReady = Promise.all(
+      Array.from(document.images)
+        .filter((img) => !img.complete)
+        .map(
+          (img) =>
+            new Promise<void>((resolve) => {
+              img.addEventListener("load", () => resolve(), { once: true })
+              img.addEventListener("error", () => resolve(), { once: true })
+            }),
+        ),
+    )
+    await Promise.race([
+      Promise.all([document.fonts.ready, imagesReady]),
+      new Promise<void>((resolve) => window.setTimeout(resolve, timeoutMs)),
+    ])
+  }, ASSET_READY_TIMEOUT_MS)
+}
+
+function withTimeout<T>(
+  promise: Promise<T>,
+  timeoutMs: number,
+  message: string,
+): Promise<T> {
+  let timeoutId: ReturnType<typeof setTimeout>
+  return new Promise<T>((resolve, reject) => {
+    timeoutId = setTimeout(() => reject(new Error(message)), timeoutMs)
+    promise.then(
+      (value) => {
+        clearTimeout(timeoutId)
+        resolve(value)
+      },
+      (error) => {
+        clearTimeout(timeoutId)
+        reject(error)
+      },
+    )
+  })
 }

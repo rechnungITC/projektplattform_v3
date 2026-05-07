@@ -14,6 +14,7 @@ import { toast } from "sonner"
 
 import { Badge } from "@/components/ui/badge"
 import { Button } from "@/components/ui/button"
+import { isPdfPendingStale } from "@/lib/reports/pdf-status"
 import {
   SNAPSHOT_KIND_LABELS,
   type SnapshotListItem,
@@ -34,6 +35,9 @@ export function SnapshotRow({
   const generatedAt = new Date(snapshot.generated_at)
   const snapshotUrl = `/reports/snapshots/${snapshot.id}`
   const pdfUrl = `/api/projects/${projectId}/snapshots/${snapshot.id}/pdf`
+  const pendingIsStale =
+    snapshot.pdf_status === "pending" && isPdfPendingStale(snapshot.generated_at)
+  const pdfStatus = pendingIsStale ? "failed" : snapshot.pdf_status
 
   async function handleRetry() {
     setRetrying(true)
@@ -63,10 +67,15 @@ export function SnapshotRow({
               KI
             </Badge>
           ) : null}
-          {snapshot.pdf_status === "pending" ? (
+          {snapshot.pdf_status === "pending" && !pendingIsStale ? (
             <Badge variant="outline" className="gap-1 text-muted-foreground">
               <Loader2 className="h-3 w-3 animate-spin" aria-hidden />
               PDF in Arbeit
+            </Badge>
+          ) : pendingIsStale ? (
+            <Badge variant="destructive" className="gap-1">
+              <AlertCircle className="h-3 w-3" aria-hidden />
+              PDF hängt
             </Badge>
           ) : snapshot.pdf_status === "failed" ? (
             <Badge variant="destructive" className="gap-1">
@@ -91,14 +100,14 @@ export function SnapshotRow({
             HTML öffnen
           </Link>
         </Button>
-        {snapshot.pdf_status === "available" ? (
+        {pdfStatus === "available" ? (
           <Button asChild type="button" variant="outline" size="sm">
             <a href={pdfUrl} download>
               <Download className="mr-1 h-4 w-4" aria-hidden />
               PDF
             </a>
           </Button>
-        ) : snapshot.pdf_status === "failed" ? (
+        ) : pdfStatus === "failed" ? (
           <Button
             type="button"
             variant="outline"
@@ -111,7 +120,7 @@ export function SnapshotRow({
             ) : (
               <RefreshCcw className="mr-1 h-4 w-4" aria-hidden />
             )}
-            PDF erneut rendern
+            {pendingIsStale ? "PDF erneut versuchen" : "PDF erneut rendern"}
           </Button>
         ) : (
           <Button type="button" variant="outline" size="sm" disabled>
