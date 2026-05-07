@@ -44,16 +44,16 @@ function plusDaysIso(base: string, days: number): string {
 function heatClass(util: number): string {
   // util is in 0–100+ scale (already includes fte × availability)
   if (util > 100) {
-    return "bg-red-500/80 text-white dark:bg-red-600"
+    return "bg-destructive/80 text-destructive-foreground"
   }
   if (util > 90) {
-    return "bg-amber-400/80 text-amber-950 dark:bg-amber-500"
+    return "bg-warning/70 text-foreground"
   }
   if (util >= 50) {
-    return "bg-emerald-400/40 text-emerald-950 dark:bg-emerald-700/60 dark:text-emerald-100"
+    return "bg-success/40 text-foreground"
   }
   if (util > 0) {
-    return "bg-emerald-200/40 text-emerald-900 dark:bg-emerald-900/30 dark:text-emerald-200"
+    return "bg-success/20 text-foreground"
   }
   return "bg-muted/40 text-muted-foreground"
 }

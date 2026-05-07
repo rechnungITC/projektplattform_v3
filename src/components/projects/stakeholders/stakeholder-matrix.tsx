@@ -33,9 +33,9 @@ function cellTone(
   const score =
     STAKEHOLDER_SCORES.indexOf(influence) +
     STAKEHOLDER_SCORES.indexOf(impact)
-  if (score >= 5) return "bg-red-50 dark:bg-red-950/30"
-  if (score >= 3) return "bg-amber-50 dark:bg-amber-950/30"
-  if (score >= 1) return "bg-blue-50 dark:bg-blue-950/30"
+  if (score >= 5) return "bg-destructive/10"
+  if (score >= 3) return "bg-warning/10"
+  if (score >= 1) return "bg-info/10"
   return "bg-muted/30"
 }
 

@@ -92,7 +92,7 @@ function pillClasses(phase: Phase): string {
     case "in_progress":
       return "border-primary bg-primary text-primary-foreground hover:bg-primary/90"
     case "completed":
-      return "border-emerald-600 bg-emerald-600 text-white hover:bg-emerald-600/90"
+      return "border-success bg-success/15 text-success hover:bg-success/25"
     case "cancelled":
       return "border-muted bg-muted text-muted-foreground hover:bg-muted/80"
     case "planned":

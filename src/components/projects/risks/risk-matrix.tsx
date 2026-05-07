@@ -17,9 +17,9 @@ const SCALE = [1, 2, 3, 4, 5] as const
 
 function cellTone(probability: number, impact: number): string {
   const score = probability * impact
-  if (score >= 16) return "bg-red-50 dark:bg-red-900/20"
-  if (score >= 9) return "bg-amber-50 dark:bg-amber-900/20"
-  if (score >= 4) return "bg-blue-50 dark:bg-blue-900/15"
+  if (score >= 16) return "bg-destructive/10"
+  if (score >= 9) return "bg-warning/10"
+  if (score >= 4) return "bg-info/10"
   return "bg-muted/40"
 }
 
