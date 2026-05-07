@@ -34,15 +34,15 @@ const EVENT_LABELS: Record<ApprovalEventType, string> = {
 const EVENT_ICONS: Record<ApprovalEventType, React.ReactNode> = {
   submitted_for_approval: <Send className="h-3.5 w-3.5" aria-hidden />,
   approver_responded: <Check className="h-3.5 w-3.5" aria-hidden />,
-  approver_requested_info: <HelpCircle className="h-3.5 w-3.5 text-amber-600" aria-hidden />,
+  approver_requested_info: <HelpCircle className="h-3.5 w-3.5 text-warning" aria-hidden />,
   approver_withdrawn: <RotateCcw className="h-3.5 w-3.5" aria-hidden />,
-  quorum_reached: <Check className="h-3.5 w-3.5 text-emerald-600" aria-hidden />,
+  quorum_reached: <Check className="h-3.5 w-3.5 text-success" aria-hidden />,
   quorum_unreachable: <X className="h-3.5 w-3.5 text-destructive" aria-hidden />,
   withdrawn: <CircleSlash className="h-3.5 w-3.5" aria-hidden />,
   revised: <ArrowRight className="h-3.5 w-3.5" aria-hidden />,
   token_renewed: <RotateCcw className="h-3.5 w-3.5" aria-hidden />,
-  deadline_reminder_sent: <BellRing className="h-3.5 w-3.5 text-amber-600" aria-hidden />,
-  deadline_extended: <CalendarPlus className="h-3.5 w-3.5 text-blue-600" aria-hidden />,
+  deadline_reminder_sent: <BellRing className="h-3.5 w-3.5 text-warning" aria-hidden />,
+  deadline_extended: <CalendarPlus className="h-3.5 w-3.5 text-info" aria-hidden />,
   deadline_expired: <TimerOff className="h-3.5 w-3.5 text-destructive" aria-hidden />,
 }
 

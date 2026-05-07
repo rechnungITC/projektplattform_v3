@@ -41,7 +41,7 @@ export function ApproverList({ approvers }: ApproverListProps) {
               </span>
             )}
             {!a.response && a.request_info_comment && a.request_info_at && (
-              <span className="mt-1 flex items-start gap-1 text-xs text-amber-700">
+              <span className="mt-1 flex items-start gap-1 text-xs text-warning">
                 <HelpCircle className="mt-0.5 h-3 w-3 shrink-0" aria-hidden />
                 <span>
                   Info angefordert (

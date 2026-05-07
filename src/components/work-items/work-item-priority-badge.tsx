@@ -10,11 +10,12 @@ interface WorkItemPriorityBadgeProps {
   className?: string
 }
 
+// PROJ-51-γ.6 — `high` migrated to --warning token; dark:variants konsolidiert.
 const PRIORITY_CLASSES: Record<WorkItemPriority, string> = {
   low: "bg-muted text-muted-foreground hover:bg-muted/80 border-transparent",
   medium:
     "bg-secondary text-secondary-foreground hover:bg-secondary/80 border-transparent",
-  high: "bg-amber-100 text-amber-900 hover:bg-amber-100 border-amber-200 dark:bg-amber-950/40 dark:text-amber-200 dark:border-amber-900",
+  high: "bg-warning/15 text-warning border-warning/30 hover:bg-warning/20",
   critical:
     "bg-destructive text-destructive-foreground hover:bg-destructive/80 border-transparent",
 }

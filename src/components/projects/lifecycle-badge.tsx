@@ -10,11 +10,13 @@ interface LifecycleBadgeProps {
   className?: string
 }
 
+// PROJ-51-γ.6 — semantic-token-bound (per-mode adapt). draft = secondary,
+// active = success, paused = warning, completed = info, canceled = destructive.
 const STATUS_CLASSES: Record<LifecycleStatus, string> = {
   draft: "bg-secondary text-secondary-foreground hover:bg-secondary/80",
-  active: "bg-emerald-600 text-white hover:bg-emerald-600/90 border-transparent",
-  paused: "bg-amber-500 text-white hover:bg-amber-500/90 border-transparent",
-  completed: "bg-blue-600 text-white hover:bg-blue-600/90 border-transparent",
+  active: "bg-success/15 text-success border-success/30 hover:bg-success/20",
+  paused: "bg-warning/15 text-warning border-warning/30 hover:bg-warning/20",
+  completed: "bg-info/15 text-info border-info/30 hover:bg-info/20",
   canceled:
     "bg-destructive text-destructive-foreground hover:bg-destructive/80 border-transparent",
 }

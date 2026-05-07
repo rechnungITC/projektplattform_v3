@@ -37,7 +37,7 @@ export function ApprovalStatusBanner({
       } Approver haben noch nicht geantwortet.`
       break
     case "approved":
-      icon = <CheckCircle2 className="h-4 w-4 text-emerald-600" aria-hidden />
+      icon = <CheckCircle2 className="h-4 w-4 text-success" aria-hidden />
       body = `Quorum erreicht: ${receivedApprovals} von ${quorum} Approver haben zugestimmt.`
       break
     case "rejected":
@@ -49,7 +49,7 @@ export function ApprovalStatusBanner({
       body = "Der Projektmanager hat diese Entscheidung zurückgezogen."
       break
     case "expired":
-      icon = <TimerOff className="h-4 w-4 text-amber-700" aria-hidden />
+      icon = <TimerOff className="h-4 w-4 text-warning" aria-hidden />
       body =
         "Die Frist ist abgelaufen, ohne dass das Quorum erreicht wurde. Eine Revision oder Neuvorlage ist nötig."
       break
