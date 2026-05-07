@@ -7,12 +7,13 @@ interface PhaseStatusBadgeProps {
   className?: string
 }
 
+// PROJ-51-γ.2 — `completed` migrated to --success token (semantic alias of
+// --risk-low). Other states keep their shadcn semantic tokens.
 const STATUS_CLASSES: Record<PhaseStatus, string> = {
   planned: "bg-secondary text-secondary-foreground hover:bg-secondary/80",
   in_progress:
     "bg-primary text-primary-foreground hover:bg-primary/90 border-transparent",
-  completed:
-    "bg-emerald-600 text-white hover:bg-emerald-600/90 border-transparent",
+  completed: "bg-success/15 text-success border-success/30 hover:bg-success/20",
   cancelled:
     "bg-muted text-muted-foreground hover:bg-muted/80 border-transparent line-through",
 }

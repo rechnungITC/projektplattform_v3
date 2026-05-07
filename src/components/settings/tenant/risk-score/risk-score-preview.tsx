@@ -70,11 +70,12 @@ const BUCKET_LABEL: Record<RiskBucket, string> = {
   red: "Rot — Eskalation",
 }
 
+// PROJ-51-γ.2 — migrated to semantic risk tokens.
 const BUCKET_CLASSES: Record<RiskBucket, string> = {
-  green: "bg-emerald-100 text-emerald-800 border-emerald-300",
-  yellow: "bg-amber-100 text-amber-900 border-amber-300",
-  orange: "bg-orange-100 text-orange-900 border-orange-300",
-  red: "bg-red-100 text-red-900 border-red-300",
+  green: "bg-risk-low/10 text-risk-low border-risk-low/20",
+  yellow: "bg-risk-medium/10 text-risk-medium border-risk-medium/20",
+  orange: "bg-risk-high/10 text-risk-high border-risk-high/20",
+  red: "bg-risk-critical/10 text-risk-critical border-risk-critical/20",
 }
 
 interface RiskScorePreviewProps {

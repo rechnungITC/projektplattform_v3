@@ -10,10 +10,10 @@ interface MilestoneStatusBadgeProps {
   className?: string
 }
 
+// PROJ-51-γ.2 — `achieved` migrated to --success token.
 const STATUS_CLASSES: Record<MilestoneStatus, string> = {
   planned: "bg-secondary text-secondary-foreground hover:bg-secondary/80",
-  achieved:
-    "bg-emerald-600 text-white hover:bg-emerald-600/90 border-transparent",
+  achieved: "bg-success/15 text-success border-success/30 hover:bg-success/20",
   missed:
     "bg-destructive text-destructive-foreground hover:bg-destructive/80 border-transparent",
   cancelled:
