@@ -1,6 +1,14 @@
 "use client"
 
-import { LogOut, Monitor, Moon, Settings, Sun, User as UserIcon } from "lucide-react"
+import {
+  LogOut,
+  Monitor,
+  Moon,
+  Palette,
+  Settings,
+  Sun,
+  User as UserIcon,
+} from "lucide-react"
 import Link from "next/link"
 import { useTheme } from "next-themes"
 import { toast } from "sonner"
@@ -100,6 +108,8 @@ export function UserMenu() {
               <Moon className="mr-2 h-4 w-4" aria-hidden />
             ) : theme === "light" ? (
               <Sun className="mr-2 h-4 w-4" aria-hidden />
+            ) : theme === "dark-teal" ? (
+              <Palette className="mr-2 h-4 w-4" aria-hidden />
             ) : (
               <Monitor className="mr-2 h-4 w-4" aria-hidden />
             )}
@@ -117,6 +127,10 @@ export function UserMenu() {
               <DropdownMenuRadioItem value="dark">
                 <Moon className="mr-2 h-4 w-4" aria-hidden />
                 Dark
+              </DropdownMenuRadioItem>
+              <DropdownMenuRadioItem value="dark-teal">
+                <Palette className="mr-2 h-4 w-4" aria-hidden />
+                Dark Teal
               </DropdownMenuRadioItem>
               <DropdownMenuRadioItem value="system">
                 <Monitor className="mr-2 h-4 w-4" aria-hidden />

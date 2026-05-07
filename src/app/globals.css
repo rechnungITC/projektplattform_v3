@@ -22,11 +22,10 @@
       different tones per mode for AA contrast).
 
    3) Optional Dark-Teal theme (Material-3 dark-teal palette from
-      docs/design/design-system.md). Applied via the `[data-theme="dark-teal"]`
-      attribute selector — opt-in per tenant/user. Overrides BOTH shadcn
-      vars and the M-3 extension layer with Dark-Teal HSL values.
-      `next-themes` users that want this theme set
-      `<html data-theme="dark-teal" class="dark">`.
+      docs/design/design-system.md). Applied via a `.dark-teal` class on
+      `<html>` — set by `next-themes` when the user selects "Dark Teal"
+      in the user-menu Theme submenu. Overrides BOTH shadcn vars and the
+      M-3 extension layer with Dark-Teal HSL values.
 
    Brand layer: `--brand-*` always falls back to `--primary` so a
    tenant-injected override (Server Component in `(app)/layout.tsx`)
@@ -73,7 +72,7 @@
 
     /* ── Material-3 extension tokens (PROJ-51-β.1) ──────────────────────── */
     /* Aliased to existing shadcn vars so they track Light/Dark automatically.
-       The opt-in [data-theme="dark-teal"] block below replaces these with
+       The opt-in `.dark-teal` block below replaces these with
        explicit Material-3 dark-teal HSL values. */
     --surface: var(--background);
     --surface-bright: var(--background);
@@ -183,12 +182,12 @@
        resolve against `.dark` shadcn values via CSS-Var cascade). */
   }
 
-  /* ── Optional Dark-Teal theme (PROJ-51-β opt-in) ────────────────────── */
-  /* Apply via `<html data-theme="dark-teal" class="dark">` (or the
-     non-dark variant). All shadcn-named vars + the Material-3 extension
-     layer are remapped to the explicit Material-3 dark-teal HSL palette
-     defined in docs/design/design-system.md. */
-  [data-theme="dark-teal"] {
+  /* ── Optional Dark-Teal theme (PROJ-51-β + Theme-Toggle UI) ──────────── */
+  /* Applied as a `.dark-teal` class on <html> by next-themes when the user
+     picks "Dark-Teal" in the user-menu's Theme submenu. Self-contained:
+     defines every shadcn-named var + the Material-3 extension layer with
+     explicit dark-teal HSL values from docs/design/design-system.md. */
+  .dark-teal {
     --background: 222 56% 9%; /* #0b1326 */
     --foreground: 225 90% 92%; /* #dae2fd */
     --card: 224 41% 13%; /* #131b2e (= surface-container-low) */
