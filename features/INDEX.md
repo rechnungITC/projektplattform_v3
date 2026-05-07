@@ -72,7 +72,8 @@
 | PROJ-55 | Tenant Context, Settings Schema & Audit Hardening — behebt Review-Funde zu Active-Tenant-Auflösung, Module-Settings-Drift und Audit-Tracked-Columns fuer Ressourcen/Allokationen. Stabilisierung vor weiteren Stammdaten-/Resource-/Dashboard-Slices. | Planned | [Spec](PROJ-55-tenant-context-settings-audit-hardening.md) | 2026-05-07 |
 | PROJ-56 | Project Readiness & Health Command Center — ersetzt den Project-Room-Health-Stub durch echte Readiness-Checks, Health Score, Next-Best-Actions und Report-Integration aus Sicht eines Projektleiters. | Planned | [Spec](PROJ-56-project-readiness-health-command-center.md) | 2026-05-07 |
 | PROJ-57 | Participant, Stakeholder & Resource Linking Operating Model — macht die Beziehungen zwischen Tenant Member, Project Member, Stakeholder, Resource, Rolle und Tagessatz explizit, inkl. geführter Verknüpfung und Class-3-Masking. | Planned | [Spec](PROJ-57-participant-resource-linking-operating-model.md) | 2026-05-07 |
+| PROJ-58 | Interactive Project Graph & Decision Simulation — interaktive 2D-first Graph-Ansicht fuer Projektobjekte, Abhaengigkeiten, Critical Path, Stakeholder, Risiken, Entscheidungen, Budgetwirkungen und KI-reviewbare Entscheidungsbaum-Vorschlaege. | Planned | [Spec](PROJ-58-interactive-project-graph-simulation.md) | 2026-05-07 |
 
 <!-- Add features above this line -->
 
-## Next Available ID: PROJ-58
+## Next Available ID: PROJ-59

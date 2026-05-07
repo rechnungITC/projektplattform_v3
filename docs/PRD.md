@@ -72,6 +72,7 @@ The product thesis: enterprise projects fail at the seams between execution, gov
 | PROJ-55 | P1 | Tenant Context, Settings Schema & Audit Hardening — Stabilisiert Active-Tenant-Aufloesung, Module-Settings-Schema und Audit-Tracked-Columns fuer Ressourcen/Allokationen. Muss vor weiterem Resource-/Dashboard-Ausbau laufen. | Planned |
 | PROJ-56 | P1 | Project Readiness & Health Command Center — Projektleiter-Cockpit mit Readiness-Checkliste, echten Health-Scores, Next-Best-Actions und Report-Integration statt Health-Stub. | Planned |
 | PROJ-57 | P1 | Participant, Stakeholder & Resource Linking Operating Model — Gefuehrte Verknuepfung von Tenant Member, Project Member, Stakeholder, Resource, Rolle und Tagessatz inkl. Class-3-Masking und Rate-Source-Klarheit. | Planned |
+| PROJ-58 | P1 | Interactive Project Graph & Decision Simulation — 2D-first Graph-Ansicht fuer Projektobjekte, Abhaengigkeiten, Critical Path, Stakeholder, Risiken, Entscheidungen, Budgetwirkungen und KI-reviewbare Simulationsvorschlaege. | Planned |
 | _TBD_ | P2 | Governance workflows: approval gates, escalations, formal decisions | Planned |
 | _TBD_ | P2 | **Erweitertes Stakeholder-Management**: Skill-/Persönlichkeitsprofile (DISG, lizenz-geklärt), Kommunikations-Tracking (Sentiment/Kooperation/Reaktionszeit), KI-Coaching-Purpose, kritischer-Pfad-Indikator. Domain-Wissen: `docs/Stakeholderwissen/`. Promotion via `/requirements` (Single-Responsibility-Split in 3-4 Specs) + CIA-Review (überschneidet PROJ-8/13/12/30). | Domain-Knowledge |
 
