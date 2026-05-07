@@ -515,10 +515,49 @@ lesbar auf weißem Papier unabhängig vom App-Theme des Users.
 - `ui/toast.tsx` — shadcn-Primitive, sollte über `variant="destructive"`
   statt direkter Farbe gesteuert werden.
 
+### ε.3 — Authenticated Visual-Regression Baselines (2026-05-07, `a74e7f7`)
+
+Erweitert den `tests/PROJ-51-visual-regression.spec.ts`-Set um 6
+desktop-chromium-Snapshots für Top-Level-Pages, die **keine** Projekt-
+Seeds brauchen — nur den `[E2E]`-Tenant + Admin-Membership, den
+`tests/fixtures/global-setup.ts` ohnehin schon provisioniert:
+
+- Dashboard (`/`)
+- Projects-List (`/projects`)
+- Stammdaten-Root (`/stammdaten`)
+- Resources (`/stammdaten/resources`)
+- Settings-Root (`/settings`)
+- Tenant-Settings (`/settings/tenant`)
+
+Implementations-Details:
+- Neuer Spec-File `tests/PROJ-51-visual-regression-authenticated.spec.ts`,
+  importiert die PROJ-29-Auth-Fixture (`./fixtures/auth-fixture`).
+- Self-skip via `hasAuthStorageState()`: ohne valides
+  `SUPABASE_SERVICE_ROLE_KEY` schaltet die Fixture komplett aus, der
+  Spec wird zum No-Op.
+- `test.skip(({browserName}) => browserName !== "chromium", …)` —
+  Mobile-Safari-Hamburger-Layout ist ein eigener Follow-Up.
+- `maxDiffPixelRatio: 0.02` (gg. 0.01 unauth), um leichten Dashboard-
+  Daten-Jitter zu schlucken.
+- AppShell-Sidebar (`[data-sidebar='sidebar']`) als Hydration-Marker.
+
+Snapshot-PNGs werden beim ersten `npx playwright test --update-
+snapshots`-Run unter `tests/PROJ-51-visual-regression-authenticated.
+spec.ts-snapshots/` automatisch angelegt.
+
+**Bewusst nicht in diesem Slice:**
+- Project-Room-Pages (`/projects/[id]`, Gantt, Kanban, Risk-Matrix etc.)
+  — brauchen einen fixed-UUID Seed-Projekt-Datensatz, sonst sprengen
+  `Date.now()`-Timestamps + dynamische IDs jeden Pixel-Diff. Eigener
+  Follow-Up-Slice (~0.5 PT zusätzlich auf den `globalSetup`).
+- Mobile-Snapshots — das Hamburger-Shell ist Layout-different genug,
+  um eine eigene Snapshot-Suite zu rechtfertigen.
+
 ### Verbleibende Folge-Slices (alle nicht blockierend)
 | Slice | Was | Aufwand |
 |---|---|---|
-| **ε.3** | Test-Tenant-Seed + 6 authenticated-Page Snapshots | ~1 PT |
+| **ε.4** | Project-Room Snapshots mit fixed-UUID Seed-Projekt | ~0.5–1 PT |
+| **ε.5** | Mobile-Layout Snapshots (Hamburger-Shell) | ~0.5 PT |
 
 ## QA Test Results
 
