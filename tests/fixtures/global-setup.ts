@@ -4,6 +4,8 @@ import { createClient as createSupabaseClient } from "@supabase/supabase-js"
 import type { FullConfig } from "@playwright/test"
 
 import {
+  E2E_PROJECT_ID,
+  E2E_PROJECT_NAME,
   E2E_STORAGE_STATE_PATH,
   E2E_TENANT_ID,
   E2E_TENANT_NAME,
@@ -172,6 +174,32 @@ async function globalSetup(_config: FullConfig): Promise<void> {
       `tenant_memberships insert failed: ${membershipError.message}`,
     )
     return
+  }
+
+  // 3.5) PROJ-51-ε.4 — Idempotent seed project for Project-Room visual
+  //      regression. Pinned UUID so /projects/<E2E_PROJECT_ID>/* renders
+  //      a stable URL across runs. project_type "general" intentionally
+  //      avoids method-specific trigger spawn (no auto-phases / sprints
+  //      / WBS rows that would change between runs). Failure is non-
+  //      fatal: auth still works, only ε.4 snapshots will skip.
+  const { error: projectError } = await admin
+    .from("projects")
+    .upsert(
+      {
+        id: E2E_PROJECT_ID,
+        tenant_id: E2E_TENANT_ID,
+        name: E2E_PROJECT_NAME,
+        project_type: "general",
+        responsible_user_id: E2E_USER_ID,
+        created_by: E2E_USER_ID,
+      },
+      { onConflict: "id" },
+    )
+  if (projectError) {
+    console.warn(
+      `[PROJ-29 globalSetup] seed project upsert failed (ε.4 snapshots ` +
+        `will skip): ${projectError.message}`,
+    )
   }
 
   // 4) Sign in to obtain access/refresh tokens, then write a
