@@ -35,12 +35,15 @@ interface Props {
 
 const RANGES: Array<30 | 90 | 365> = [30, 90, 365]
 
+// PROJ-51-γ.5 — bound to semantic risk tokens (per-mode tuned in globals.css).
 const BUCKET_COLOR: Record<RiskTrendResponse["points"][number]["bucket"], string> = {
-  green: "#10b981",
-  yellow: "#f59e0b",
-  orange: "#f97316",
-  red: "#ef4444",
+  green: "hsl(var(--risk-low))",
+  yellow: "hsl(var(--risk-medium))",
+  orange: "hsl(var(--risk-high))",
+  red: "hsl(var(--risk-critical))",
 }
+
+const TREND_LINE_COLOR = "hsl(var(--chart-1))"
 
 export function RiskTrendSparkline({ projectId, stakeholderId }: Props) {
   const [days, setDays] = React.useState<30 | 90 | 365>(90)
@@ -127,8 +130,16 @@ export function RiskTrendSparkline({ projectId, stakeholderId }: Props) {
                     x2="0"
                     y2="1"
                   >
-                    <stop offset="0%" stopColor="#3b82f6" stopOpacity={0.3} />
-                    <stop offset="100%" stopColor="#3b82f6" stopOpacity={0} />
+                    <stop
+                      offset="0%"
+                      stopColor={TREND_LINE_COLOR}
+                      stopOpacity={0.3}
+                    />
+                    <stop
+                      offset="100%"
+                      stopColor={TREND_LINE_COLOR}
+                      stopOpacity={0}
+                    />
                   </linearGradient>
                 </defs>
                 <XAxis
@@ -174,7 +185,7 @@ export function RiskTrendSparkline({ projectId, stakeholderId }: Props) {
                 <Area
                   type="monotone"
                   dataKey="score"
-                  stroke="#3b82f6"
+                  stroke={TREND_LINE_COLOR}
                   fill="url(#risk-trend-fill)"
                   strokeWidth={2}
                 />

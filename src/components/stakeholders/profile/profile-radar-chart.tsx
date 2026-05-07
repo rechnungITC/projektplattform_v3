@@ -39,8 +39,11 @@ interface ProfileRadarChartProps {
 
 export function ProfileRadarChart({
   data,
-  fremdColor = "var(--color-brand-600, #3b82f6)",
-  selfColor = "#10b981",
+  // PROJ-51-γ.5 — bound to theme chart tokens. Callers can still override
+  // explicitly. fremd = primary trend (chart-1), self = secondary contrast
+  // line (chart-2). Both adapt per Light/Dark/Dark-Teal automatically.
+  fremdColor = "hsl(var(--chart-1))",
+  selfColor = "hsl(var(--chart-2))",
   hideLegend = false,
 }: ProfileRadarChartProps) {
   // Recharts data: each row is one axis with the two values normalized.
@@ -92,8 +95,8 @@ export function ProfileRadarChart({
           )}
           <Tooltip
             contentStyle={{
-              backgroundColor: "var(--color-popover, #fff)",
-              border: "1px solid var(--color-border, #e2e8f0)",
+              backgroundColor: "hsl(var(--popover))",
+              border: "1px solid hsl(var(--border))",
               borderRadius: 6,
               fontSize: 12,
             }}

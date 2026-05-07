@@ -340,7 +340,7 @@ export function CostCapSection({ tenantId }: { tenantId: string }) {
                 <Line
                   type="monotone"
                   dataKey="input"
-                  stroke="#2563eb"
+                  stroke="hsl(var(--chart-1))"
                   strokeWidth={2}
                   dot={{ r: 3 }}
                   name="Input"
@@ -348,7 +348,7 @@ export function CostCapSection({ tenantId }: { tenantId: string }) {
                 <Line
                   type="monotone"
                   dataKey="output"
-                  stroke="#16a34a"
+                  stroke="hsl(var(--chart-2))"
                   strokeWidth={2}
                   dot={{ r: 3 }}
                   name="Output"
