@@ -409,6 +409,26 @@ git commit -m "ci: seed visual-regression baselines"
 
 PROJ-51-MVP ist damit deployt: Theme-Token-Bridge + Brand-Layer + Status-Token-Migration + Button/Card-Microinteractions + Dialog-Backdrop-Blur + Motion-Provider + View-Transition-Hook + Visual-Regression-Baseline. Die offenen Follow-Ups sind Polish, kein Blocker.
 
+### γ.5 + γ.6 batch 1 + δ.2 + ε.2 (2026-05-07, Folge-Slices)
+
+**γ.5 (`8b56d8e`):** 3 Charts auf Theme-Tokens migriert (risk-trend-sparkline / profile-radar-chart / cost-cap-section).
+
+**γ.6 batch 1 (`f372aba`):** 6 Status-Domain-Files (work-item-status-badge, work-item-priority-badge, lifecycle-badge, 3 approval-Files). `work-item-kind-badge` (7 Taxonomie-Farben) + `traffic-light-pill` (print-friendly) bewusst übergangen.
+
+**δ.2 (`64a738a`):** 4 View-Transition-CSS-Utility-Classes als Consumer-opt-in.
+
+**ε.2 (`72b0af2`):** Signup-Snapshot + Login-Dark-Mode-Snapshot.
+
+**Verifikation:** alle 4 Slices `npm run build` grün, 1159/1159 vitest grün, Vercel-Deploys live.
+
+### Verbleibende Folge-Slices (alle nicht blockierend)
+| Slice | Was | Aufwand |
+|---|---|---|
+| **γ.6 batch 2** | Restliche ~28 Files: forms, charts (gantt/risk-matrix/heatmap), panels, reports | ~1.5 PT |
+| **δ.3** | `vt-tab-panel` opt-in auf Project-Room-Tabs + Stakeholder-Detail | ~0.3 PT |
+| **ε.3** | Test-Tenant-Seed + 6 authenticated-Page Snapshots | ~1 PT |
+| **Theme-Toggle UI** | Settings: Light/Dark/Dark-Teal-Wahl persistiert | ~0.5 PT |
+
 ## QA Test Results
 
 _To be added by /qa_
