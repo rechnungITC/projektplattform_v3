@@ -15,6 +15,22 @@ const badgeVariants = cva(
         destructive:
           "border-transparent bg-destructive text-destructive-foreground hover:bg-destructive/80",
         outline: "text-foreground",
+        // PROJ-51-γ — semantic status variants. Pattern:
+        //   bg-{token}/10 text-{token} border-{token}/20
+        // matches docs/design/design-system.md "status badge" example.
+        success:
+          "bg-success/10 text-success border-success/20 hover:bg-success/15",
+        warning:
+          "bg-warning/10 text-warning border-warning/20 hover:bg-warning/15",
+        info: "bg-info/10 text-info border-info/20 hover:bg-info/15",
+        "risk-low":
+          "bg-risk-low/10 text-risk-low border-risk-low/20 hover:bg-risk-low/15",
+        "risk-medium":
+          "bg-risk-medium/10 text-risk-medium border-risk-medium/20 hover:bg-risk-medium/15",
+        "risk-high":
+          "bg-risk-high/10 text-risk-high border-risk-high/20 hover:bg-risk-high/15",
+        "risk-critical":
+          "bg-risk-critical/10 text-risk-critical border-risk-critical/20 hover:bg-risk-critical/15",
       },
     },
     defaultVariants: {

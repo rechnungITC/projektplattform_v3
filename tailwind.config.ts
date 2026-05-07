@@ -112,6 +112,16 @@ const config: Config = {
         "brand-accent": "hsl(var(--brand-accent))",
         "brand-accent-foreground": "hsl(var(--brand-accent-foreground))",
         "brand-nav-active": "hsl(var(--brand-nav-active))",
+
+        // Semantic Risk + Status (PROJ-51-γ) — used as
+        // `bg-risk-low/10 text-risk-low border-risk-low/20` for badges.
+        "risk-low": "hsl(var(--risk-low))",
+        "risk-medium": "hsl(var(--risk-medium))",
+        "risk-high": "hsl(var(--risk-high))",
+        "risk-critical": "hsl(var(--risk-critical))",
+        success: "hsl(var(--success))",
+        warning: "hsl(var(--warning))",
+        info: "hsl(var(--info))",
       },
       borderRadius: {
         lg: "var(--radius)",

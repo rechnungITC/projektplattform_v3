@@ -121,6 +121,18 @@
     --brand-accent: 183 32% 73%; /* primary */
     --brand-accent-foreground: 184 96% 12%; /* on-primary */
     --brand-nav-active: 183 32% 73%; /* primary */
+
+    /* ── Semantic Risk + Status tokens (PROJ-51-γ) ───────────────────────── */
+    /* Light-tone HSL triplets sized for Dark-Teal backgrounds. Consumers use
+       `bg-risk-low/10 text-risk-low border-risk-low/20` patterns to mirror
+       the design-system.md status-badge convention. */
+    --risk-low: 142 71% 75%; /* light emerald — keine Action */
+    --risk-medium: 43 96% 75%; /* light amber — beobachten */
+    --risk-high: 25 95% 75%; /* light orange — proaktiv ansprechen */
+    --risk-critical: 5 100% 84%; /* light red — Eskalation (matches --destructive) */
+    --success: 142 71% 75%; /* alias of --risk-low; "on track / done" */
+    --warning: 43 96% 75%; /* alias of --risk-medium; "needs attention" */
+    --info: 183 32% 73%; /* primary teal; "info banner / hint" */
   }
 
   /* `.dark` class kept as a no-op alias so any component that still toggles
