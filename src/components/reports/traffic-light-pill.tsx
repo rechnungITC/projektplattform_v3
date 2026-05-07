@@ -9,8 +9,10 @@ interface TrafficLightPillProps {
 }
 
 /**
- * Status traffic-light badge. Print-friendly: uses solid colours that
- * survive the @media print stripping done in the snapshot pages.
+ * Status traffic-light badge. Print-friendly via the `.theme-print`
+ * wrapper on snapshot pages, which pins success/warning/destructive
+ * tokens to their Light-mode HSL — the badge stays AA-readable on
+ * white paper regardless of the user's app theme.
  */
 export function TrafficLightPill({
   light,
@@ -19,10 +21,10 @@ export function TrafficLightPill({
 }: TrafficLightPillProps) {
   const tone =
     light === "green"
-      ? "bg-emerald-100 text-emerald-900 ring-emerald-400"
+      ? "bg-success/15 text-success ring-success/40"
       : light === "yellow"
-        ? "bg-amber-100 text-amber-900 ring-amber-400"
-        : "bg-rose-100 text-rose-900 ring-rose-400"
+        ? "bg-warning/15 text-warning ring-warning/40"
+        : "bg-destructive/15 text-destructive ring-destructive/40"
   const padding =
     size === "lg" ? "px-4 py-1.5 text-base" : "px-2.5 py-0.5 text-xs"
   return (
@@ -40,10 +42,10 @@ export function TrafficLightPill({
         className={cn(
           "h-2 w-2 rounded-full",
           light === "green"
-            ? "bg-emerald-500"
+            ? "bg-success"
             : light === "yellow"
-              ? "bg-amber-500"
-              : "bg-rose-500",
+              ? "bg-warning"
+              : "bg-destructive",
         )}
       />
       {TRAFFIC_LIGHT_LABELS[light]}

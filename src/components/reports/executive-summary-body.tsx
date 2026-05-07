@@ -72,7 +72,7 @@ export function ExecutiveSummaryBody({
                 {formatDate(d.decided_at)}
               </span>
               {d.is_revised ? (
-                <span className="ml-2 rounded bg-amber-100 px-1.5 py-0.5 text-xs text-amber-900">
+                <span className="ml-2 rounded bg-warning/15 px-1.5 py-0.5 text-xs text-warning">
                   revidiert
                 </span>
               ) : null}

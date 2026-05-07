@@ -44,7 +44,7 @@ export default async function SnapshotPage({ params }: SnapshotPageProps) {
 
   return (
     <main className="min-h-svh bg-background px-4 py-10 sm:px-8">
-      <div className="mx-auto max-w-4xl rounded-lg border bg-white p-8 text-foreground shadow-sm print:border-0 print:shadow-none">
+      <div className="theme-print mx-auto max-w-4xl rounded-lg border bg-background p-8 text-foreground shadow-sm print:border-0 print:shadow-none">
         {data.kind === "status_report" ? (
           <StatusReportBody version={data.version} content={data.content} />
         ) : (

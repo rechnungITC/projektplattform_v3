@@ -274,6 +274,45 @@
     --warning: 43 96% 75%;
     --info: 183 32% 73%;
   }
+
+  /* ── Print/Report scope (PROJ-51-Print-Theme) ───────────────────────────
+     Forces a Light-mode token chain on a sub-tree regardless of `.dark`
+     or `.dark-teal` on `<html>`. Applied to the wrapper div in
+     `/reports/snapshots/[id]/print` (Puppeteer source) and the public
+     snapshot view, so the rendered PDF stays AA-readable on white paper
+     even if the user has dark mode active in the rest of the app.
+
+     `color-scheme: light` also nudges form-controls + scrollbars back to
+     light defaults inside the scope. */
+  .theme-print {
+    color-scheme: light;
+    --background: 0 0% 100%;
+    --foreground: 240 10% 3.9%;
+    --card: 0 0% 100%;
+    --card-foreground: 240 10% 3.9%;
+    --popover: 0 0% 100%;
+    --popover-foreground: 240 10% 3.9%;
+    --primary: 240 5.9% 10%;
+    --primary-foreground: 0 0% 98%;
+    --secondary: 240 4.8% 95.9%;
+    --secondary-foreground: 240 5.9% 10%;
+    --muted: 240 4.8% 95.9%;
+    --muted-foreground: 240 3.8% 46.1%;
+    --accent: 240 4.8% 95.9%;
+    --accent-foreground: 240 5.9% 10%;
+    --destructive: 0 84.2% 60.2%;
+    --destructive-foreground: 0 0% 98%;
+    --border: 240 5.9% 90%;
+    --input: 240 5.9% 90%;
+    --ring: 240 5.9% 10%;
+    --risk-low: 142 76% 36%;
+    --risk-medium: 38 92% 50%;
+    --risk-high: 25 95% 53%;
+    --risk-critical: 0 84% 60%;
+    --success: 142 76% 36%;
+    --warning: 38 92% 50%;
+    --info: 217 91% 60%;
+  }
 }
 
 @layer base {
