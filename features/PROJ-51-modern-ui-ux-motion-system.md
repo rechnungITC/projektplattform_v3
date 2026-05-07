@@ -1,8 +1,8 @@
 # PROJ-51: Modern UI/UX & Motion System
 
-## Status: Planned
+## Status: Architected
 **Created:** 2026-05-06
-**Last Updated:** 2026-05-06
+**Last Updated:** 2026-05-07
 
 ## Kontext
 
@@ -104,6 +104,125 @@ PROJ-51 ist deshalb kein einzelner Redesign-Big-Bang, sondern ein kontrollierter
 - Neues komponentenfremdes UI-Framework.
 - Marketing-Landingpage-Redesign.
 - PDF-Render-Pending-Fix — gehoert zu PROJ-21 Output Rendering.
+
+## Tech Design (Solution Architect) — 2026-05-07
+
+> CIA-Review (2026-05-07) hat 5 Architektur-Forks bewertet. Alle Empfehlungen wurden 1:1 übernommen. Der Hybrid-Token-Ansatz löst die heutige Inkonsistenz zwischen `tailwind.config.ts` (Dark-Teal-Hex als Utility-Classes) und `globals.css` (shadcn-Slate-HSL als CSS-Vars), ohne shadcn-Updates zu blockieren.
+
+### Locked Architektur-Entscheidungen
+
+| Fork | Entscheidung | Begründung (Kurz) |
+|---|---|---|
+| **Theme-Bridge** | **Hybrid** — shadcn-Core-Vars in `globals.css` auf Dark-Teal-HSL remappen + Material-3-Erweiterungs-Vars (`--surface-container-low`, `--primary-container`, `--on-primary-container`, `--tertiary`, `--outline-variant`) ergänzen. `tailwind.config.ts` bindet alle Tokens an `hsl(var(--…))`. | Eine Source-of-Truth pro Mode; alle 40 shadcn-Primitives reskinnen automatisch durch CSS-Var-Remap; Material-3-Tokens werden zugänglich für Dashboard-Components ohne Token-Drift. |
+| **Tenant-Branding** | **Dual-Layer** — Plattform-Tokens stabil; separate `--brand-*`-Tokens (`--brand-accent`, `--brand-accent-foreground`) nur für gezielte Brand-Slots (Primary-CTA, Active-Nav-Indikator, Logo). Tenant-Hex aus `tenants.branding.primary_hex` per Server Component in `<style data-tenant-brand>` injiziert; Auto-Foreground-Berechnung (WCAG-Contrast) im API-Helper. | shadcn-`--primary` bleibt **immer** Plattform-Teal — Funktions-Semantik (Active, Focus, Disabled) bleibt konsistent; Brand-Akzent ist additiver Layer; PDF-Render (PROJ-21) kann denselben JSONB-Hex unverändert nutzen. |
+| **Motion-Library** | **Hybrid Tailwind + Framer** — Tailwind `transition-*` / `animate-*` / `motion-safe:`/`motion-reduce:` für ≥80% (Hover, Focus, Active, Buttons, Cards). Framer Motion **nur** für `<AnimatePresence>` bei Drawer/Sheet/Custom-Toasts und View-Transitions-Fallback. Globaler `<MotionConfig reducedMotion="user">` in App-Layout. | Bundle ~30 KB tree-shaked, AC-20 deterministisch erfüllt, Konflikt mit @dnd-kit (PROJ-25b) ausgeschlossen weil nicht auf Backlog/Sprint-Drag verwendet. |
+| **View-Transitions** | **Opt-In pro Route** — `view-transition-name` nur auf Project-Room-Tab-Wechsel, Stakeholder-Detail-Open, Phase-Drawer-Open. Browser-Fallback: Framer-`AnimatePresence` oder reine Tailwind-Transitions. **Negativ-Liste:** Gantt, Kanban-Board, Print/PDF. | Browser-Support 2026 nicht universell; Global-Default würde mit Framer-AnimatePresence stacken; AC-21 (Status-Anzeigen nicht verdecken) erfordert defensives Vorgehen. |
+| **Visual-Regression** | **Playwright-Snapshots** — 8 Snapshot-Tests via `toHaveScreenshot({ maxDiffPixelRatio: 0.01 })`. Snapshots im Repo unter `tests/__screenshots__/`. CI-Trigger bei Änderungen in `src/components/ui/`, `src/app/globals.css`, `tailwind.config.ts`. | Playwright bereits im Stack — keine zusätzliche Dependency, keine Cloud-Cost; Storybook+Chromatic wäre 2 PT Setup + Cloud-Cost (~$100/Mo) disproportional zum Slice-Scope. |
+
+### Slice-Reihenfolge (verbindlich)
+
+```
+α (Audit, kein Code-Change) — sequentiell zuerst
+   ↓
+β (Token-Bridge + Branding-Layer) — Solo-deploybar
+   ↓
+γ ‖ δ (parallel; verschiedene Files)
+   ↓
+ε (Visual-Regression + Validierung) — sequentiell zuletzt
+```
+
+**Deploy-Solo-Kandidat:** β allein. Tokens etabliert, Komponenten reskinnen automatisch via shadcn-Var-Remap, kein neuer Library-Import. γ + δ + ε bilden zusammen den vollständigen Refresh.
+
+### α-Deliverables (präzisiert)
+
+| Datei | Inhalt |
+|---|---|
+| `docs/design/PROJ-51-alpha-ui-audit-tokens.md` (existiert bereits) | Token-Diff-Tabelle: shadcn-Var ↔ Material-3-Token ↔ Ziel-HSL-Wert. |
+| `docs/design/PROJ-51-alpha-impact-matrix.md` (NEU) | Component-Impact-Matrix der 40 shadcn-Primitives via GitNexus + Hardcoded-Color-Inventory (`risk-trend-sparkline.tsx` 4 hex-sentinels, `work-item-kind-badge.tsx` `indigo`/`teal` Tailwind-Classes, `gantt-view.tsx` `fill-indigo-400`) + View-Transitions-Compat-Tabelle + Migrations-Plan β→ε mit Risiken/Rollback pro Slice. |
+
+α produziert ausschließlich Dokumentation. Kein Bruch in Production möglich. AC-1, AC-2, AC-3, AC-4, AC-5, AC-6 sind α-Coverage.
+
+### β-Implementations-Skizze (Token-Bridge + Branding)
+
+```
+β-Slice
+├── globals.css           shadcn-Core-Vars → Dark-Teal-HSL (--background, --primary, ...)
+│                         + Material-3-Erweiterungs-Vars (--surface-container-low, ...)
+│                         + 3-4 --brand-*-Slots
+├── tailwind.config.ts    Hex-Werte raus → alle Tokens auf hsl(var(--…))
+├── app/layout.tsx        <style data-tenant-brand>-Injection per Server Component
+│                         (liest tenants.branding.primary_hex; auto-foreground per WCAG-Helper)
+├── lib/branding/
+│   ├── contrast.ts       WCAG-1.4-Helper: hex → black|white-foreground
+│   └── server.ts         Resolves tenant brand from request context
+└── docs/design/          PROJ-51-alpha-impact-matrix.md (Migrations-Plan)
+```
+
+### γ-Implementations-Skizze (Component-Refresh)
+
+- `Button` — Hover: `shadow-sm` → `shadow-md`, transition 200ms; Focus-visible: `ring-2 ring-primary`; Active: subtle scale 0.97
+- `Card` — Default `bg-surface-container-low border-outline-variant`; Hover-Lift `hover:shadow-md transition-shadow`
+- `Badge` — semantische Varianten (`success`, `warning`, `error`, `tertiary`) mit `bg-{token}/10 text-{token} border-{token}/20`
+- `Input` / `Select` / `Textarea` — Focus-Ring `outline-2 outline-primary` (statt shadcn-Default `ring-offset`)
+- `Dialog` / `Sheet` / `Popover` — Backdrop-Blur `backdrop-blur-sm` + `bg-black/40` + Shadow für Z-Hierarchy
+
+### δ-Implementations-Skizze (Motion-Layer)
+
+- App-Layout: `<MotionConfig reducedMotion="user">` als Provider
+- Drawer/Sheet/Dialog: `<AnimatePresence>` Wrapper mit `motion.div` initial/animate/exit (200ms)
+- Toast (Sonner): existing slide-in beibehalten, prefers-reduced-motion respekten
+- Microinteractions: Tailwind-only (`hover:`, `focus:`, `active:`, `motion-reduce:transition-none`)
+- View-Transitions: `view-transition-name` CSS auf opt-in Routes; `useViewTransition`-Hook mit Feature-Detection-Fallback
+
+### ε-Implementations-Skizze (Validierung)
+
+- Playwright-Snapshots: 8 Schlüssel-Pages
+  - Login, Project-Liste, Project-Room (Scrum/Waterfall/Kanban-Variant), Stakeholder-Detail, Settings/Tenant-Branding, PDF-Preview
+- Test-Tenant mit fixen Seeds (anti-flake)
+- CI-Trigger bei `src/components/ui/`, `src/app/globals.css`, `tailwind.config.ts`-Änderungen
+- WCAG-Kontrast-Smoke pro Token-Paar (manueller Audit + ein Lighthouse-Run pro Page)
+
+### Dependencies (zusätzlich zu Spec-Liste)
+
+- **NEW Package:** `framer-motion` (~30 KB tree-shaked); zu installieren in δ
+- **CSS-Var-Pattern:** bestehend (shadcn nutzt es bereits)
+- **PROJ-17 `tenants.branding`:** vorhandenes JSONB-Feld, kein Schema-Change
+- **PROJ-21 PDF-Render:** unberührt — eigener Render-Pfad mit eigenem `<style>`-Inline; PDF kann denselben Brand-Hex aus `tenants.branding.primary_hex` ohne Code-Sharing nutzen
+
+### Migrations-/Deploy-Risiko
+
+- **Schema-Drift-CI (PROJ-42-α):** kein Risiko — keine SQL-Änderungen
+- **RLS-Risiko:** kein Risiko — Frontend-only-Slice, keine Datenbank
+- **Frontend-Regression:** mittel — Token-Remap betrifft alle 40 shadcn-Primitives → Playwright-Snapshots in ε sind Pflicht-Gate vor `/deploy`
+- **Bundle-Risiko (γ + δ):** Framer-Motion-Import muss tree-shaked sein (`import { motion, AnimatePresence } from "framer-motion"` — nicht das Default); Bundle-Audit in ε-QA
+- **Tenant-Branding-Risiko:** Auto-Foreground-Helper (WCAG-1.4) muss Edge-Cases (Mid-Range-Helligkeiten) sauber wählen — APCA als Fallback erwägen falls WCAG-1.4 zu rigid
+- **Rollback:** β reverten = `globals.css` + `tailwind.config.ts` zurück; γ reverten = component-für-component möglich; δ reverten = Framer-Imports + `<MotionConfig>` weg
+
+### Offene Fragen für `/frontend`-Skill
+
+| Frage | Default-Empfehlung |
+|---|---|
+| Light-Mode in PROJ-51 mitliefern? | **Nein, deferred** — MVP ist Dark-first laut Spec; Light-Mode als eigener PROJ-53-Folge-Slice (kein Architektur-Bruch, nur zusätzlicher `:root[data-theme="light"]`-Block) |
+| `--brand-*`-Tokens in PDF-Render? | PDF-Renderer (Puppeteer-basiert) liest `tenants.branding.primary_hex` direkt aus DB für Print-CSS — keine CSS-Var-Notwendigkeit; konsistent mit App-Brand-Slot |
+| Next-16 `unstable_ViewTransition`-API stabil? | Vor δ-Start prüfen; falls nicht stabil → reine `document.startViewTransition`-API + Feature-Detection (Web-API-direkt) |
+| WCAG-1.4 oder APCA für Auto-Foreground? | WCAG-1.4 als Default (etablierter), APCA-Fallback bei mittleren Helligkeiten als β.2-Slice falls Pilot-Tenants Probleme melden |
+
+### Übergabe an Implementierung
+
+Reihenfolge: **`/architecture` ✓ → `/frontend` α (Audit) → `/frontend` β (Token-Bridge + Branding) → `/frontend` γ + δ parallel → `/frontend` ε → `/qa` → `/deploy`**.
+
+Geschätzter Gesamtaufwand: **~4-5 PT** (1 PT Audit, 1 PT β, 1 PT γ, 1 PT δ, 1 PT ε + QA + Deploy). Pilot-Reskinning via β allein deploybar in ~1.5 PT inkl. QA-Smoke.
+
+### CIA-Review
+
+Continuous Improvement Agent (2026-05-07) hat:
+- 5 Architektur-Forks bewertet, alle mit klaren Empfehlungen (1c / 2c / 3d / 4b / 5b)
+- Slice-Sequenz formalisiert: α → β (solo-deploybar) → γ ‖ δ → ε
+- Anti-Patterns explizit benannt: shadcn-`--primary` durch Tenant-Branding ersetzen, Framer auf jeder Komponente, View-Transitions ohne Fallback, Snapshot-Tests ohne Sub-Pixel-Toleranz
+- 4 offene Fragen markiert (Light-Mode, View-Transitions-API-Status, PDF-Brand, WCAG-vs-APCA)
+- Bundle-Budget benannt: ≤30 KB Framer-Motion tree-shaked
+
+Vollständiger CIA-Bericht in der Session-Konversation 2026-05-07 dokumentiert. Tech-Design folgt CIA-Empfehlungen 1:1.
 
 ## Implementation Notes
 
