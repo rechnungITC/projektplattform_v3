@@ -5,76 +5,129 @@
 @tailwind components;
 @tailwind utilities;
 
+/* =============================================================================
+   PROJ-51-β — Dark-Teal Theme tokens (Material-3 inspired).
+   ============================================================================
+   Replaces the prior shadcn-Slate defaults. All 40 shadcn UI primitives in
+   src/components/ui/ read these vars and re-skin automatically.
+
+   Mapping defined in docs/design/PROJ-51-alpha-ui-audit-tokens.md.
+   Light-Mode is deferred (PROJ-53 candidate); MVP is Dark-first.
+
+   Two layers:
+     1. Core (shadcn-named vars on Dark-Teal HSL).
+     2. Material-3 extensions (`--surface-container-*`, `--primary-container`,
+        etc.) — used by dashboard components and the new Tailwind utility
+        classes that bind to them.
+     3. Brand layer (`--brand-*`) — Plattform default = primary; tenants can
+        override via Server-Component-injected <style data-tenant-brand>.
+   ============================================================================ */
+
 @layer base {
   :root {
-    --background: 0 0% 100%;
-    --foreground: 240 10% 3.9%;
-    --card: 0 0% 100%;
-    --card-foreground: 240 10% 3.9%;
-    --popover: 0 0% 100%;
-    --popover-foreground: 240 10% 3.9%;
-    --primary: 240 5.9% 10%;
-    --primary-foreground: 0 0% 98%;
-    --secondary: 240 4.8% 95.9%;
-    --secondary-foreground: 240 5.9% 10%;
-    --muted: 240 4.8% 95.9%;
-    --muted-foreground: 240 3.8% 46.1%;
-    --accent: 240 4.8% 95.9%;
-    --accent-foreground: 240 5.9% 10%;
-    --destructive: 0 84.2% 60.2%;
-    --destructive-foreground: 0 0% 98%;
-    --border: 240 5.9% 90%;
-    --input: 240 5.9% 90%;
-    --ring: 240 5.9% 10%;
+    /* ── shadcn-named Core tokens (Dark-Teal HSL) ────────────────────────── */
+    --background: 222 56% 9%; /* #0b1326 */
+    --foreground: 225 90% 92%; /* #dae2fd */
+    --card: 224 41% 13%; /* #131b2e (= surface-container-low) */
+    --card-foreground: 225 90% 92%;
+    --popover: 225 38% 14%; /* #171f33 (= surface-container) */
+    --popover-foreground: 225 90% 92%;
+    --primary: 183 32% 73%; /* #a1cfd1 */
+    --primary-foreground: 184 96% 12%; /* #013739 */
+    --secondary: 184 9% 77%; /* #bec8c9 */
+    --secondary-foreground: 184 11% 18%; /* #283233 */
+    --muted: 224 28% 19%; /* #222a3d (= surface-container-high) */
+    --muted-foreground: 180 7% 77%; /* #c0c8c8 */
+    --accent: 183 28% 32%; /* #3b6769 (= primary-container) */
+    --accent-foreground: 183 53% 80%; /* #b5e3e5 */
+    --destructive: 5 100% 84%; /* #ffb4ab */
+    --destructive-foreground: 2 100% 21%; /* #690005 */
+    --border: 180 4% 27%; /* #404848 (= outline-variant) */
+    --input: 180 4% 27%;
+    --ring: 183 32% 73%; /* primary */
     --radius: 0.5rem;
-    --chart-1: 12 76% 61%;
-    --chart-2: 173 58% 39%;
-    --chart-3: 197 37% 24%;
-    --chart-4: 43 74% 66%;
-    --chart-5: 27 87% 67%;
-    --sidebar-background: 0 0% 98%;
-    --sidebar-foreground: 240 5.3% 26.1%;
-    --sidebar-primary: 240 5.9% 10%;
-    --sidebar-primary-foreground: 0 0% 98%;
-    --sidebar-accent: 240 4.8% 95.9%;
-    --sidebar-accent-foreground: 240 5.9% 10%;
-    --sidebar-border: 220 13% 91%;
-    --sidebar-ring: 217.2 91.2% 59.8%;
+
+    /* ── Charts (Material-3-inspired distinct hues) ──────────────────────── */
+    --chart-1: 183 32% 73%; /* primary teal */
+    --chart-2: 12 100% 81%; /* tertiary warm */
+    --chart-3: 184 9% 77%; /* secondary */
+    --chart-4: 5 100% 84%; /* destructive */
+    --chart-5: 225 90% 92%; /* on-surface */
+
+    /* ── Sidebar (PROJ-23 contract) ──────────────────────────────────────── */
+    --sidebar-background: 222 65% 8%; /* #060e20 (surface-container-lowest) */
+    --sidebar-foreground: 225 90% 92%; /* on-surface */
+    --sidebar-primary: 183 32% 73%; /* primary */
+    --sidebar-primary-foreground: 184 96% 12%; /* on-primary */
+    --sidebar-accent: 225 38% 14%; /* surface-container */
+    --sidebar-accent-foreground: 225 90% 92%;
+    --sidebar-border: 180 4% 27%; /* outline-variant */
+    --sidebar-ring: 183 32% 73%; /* primary */
+
+    /* ── Material-3 surface tier (NEW; consumed by dashboard components) ── */
+    --surface: 222 56% 9%;
+    --surface-bright: 224 18% 24%; /* #31394d */
+    --surface-container-lowest: 222 65% 8%;
+    --surface-container-low: 224 41% 13%;
+    --surface-container: 225 38% 14%;
+    --surface-container-high: 224 28% 19%;
+    --surface-container-highest: 224 23% 23%; /* #2d3449 */
+    --surface-variant: 224 23% 23%;
+    --surface-tint: 183 32% 73%;
+    --on-surface: 225 90% 92%;
+    --on-surface-variant: 180 7% 77%;
+    --inverse-surface: 225 90% 92%;
+    --inverse-on-surface: 222 25% 21%; /* #283044 */
+    --inverse-primary: 183 30% 31%; /* #396567 */
+
+    /* ── Material-3 outline ──────────────────────────────────────────────── */
+    --outline: 180 5% 56%; /* #8a9292 */
+    --outline-variant: 180 4% 27%;
+
+    /* ── Material-3 primary tier ─────────────────────────────────────────── */
+    --primary-fixed: 183 60% 84%; /* #bdebed */
+    --primary-fixed-dim: 183 32% 73%;
+    --primary-container: 183 28% 32%;
+    --on-primary-container: 183 53% 80%;
+    --on-primary-fixed: 183 100% 6%; /* #002021 */
+    --on-primary-fixed-variant: 183 42% 22%; /* #204d4f */
+
+    /* ── Material-3 secondary tier ───────────────────────────────────────── */
+    --secondary-fixed: 180 17% 87%; /* #dae5e5 */
+    --secondary-fixed-dim: 184 9% 77%;
+    --secondary-container: 186 9% 27%; /* #3e494a */
+    --on-secondary-container: 186 6% 70%; /* #acb7b8 */
+    --on-secondary-fixed: 186 21% 9%; /* #131d1e */
+    --on-secondary-fixed-variant: 186 9% 27%;
+
+    /* ── Material-3 tertiary tier (warm accent — warnings/delays) ────────── */
+    --tertiary: 12 100% 81%;
+    --tertiary-fixed: 12 100% 91%; /* #ffdbd1 */
+    --tertiary-fixed-dim: 12 100% 81%;
+    --tertiary-container: 13 82% 37%; /* #ac3811 */
+    --on-tertiary: 14 100% 19%; /* #5f1600 */
+    --on-tertiary-container: 14 100% 88%; /* #ffd1c4 */
+    --on-tertiary-fixed: 12 100% 11%; /* #3a0a00 */
+    --on-tertiary-fixed-variant: 14 100% 26%; /* #862300 */
+
+    /* ── Material-3 error tier (destructive aliases) ─────────────────────── */
+    --error-container: 357 100% 29%; /* #93000a */
+    --on-error-container: 4 100% 92%; /* #ffdad6 */
+
+    /* ── Brand layer (PROJ-51-β) ─────────────────────────────────────────── */
+    /* Plattform-default = primary. Tenants override via Server Component
+       injecting <style data-tenant-brand>{`:root{--brand-accent:…;…}`}</style>
+       into the layout. */
+    --brand-accent: 183 32% 73%; /* primary */
+    --brand-accent-foreground: 184 96% 12%; /* on-primary */
+    --brand-nav-active: 183 32% 73%; /* primary */
   }
 
+  /* `.dark` class kept as a no-op alias so any component that still toggles
+     `next-themes` does not break. PROJ-53 will introduce a true Light-Mode
+     `:root[data-theme="light"]` block. */
   .dark {
-    --background: 240 10% 3.9%;
-    --foreground: 0 0% 98%;
-    --card: 240 10% 3.9%;
-    --card-foreground: 0 0% 98%;
-    --popover: 240 10% 3.9%;
-    --popover-foreground: 0 0% 98%;
-    --primary: 0 0% 98%;
-    --primary-foreground: 240 5.9% 10%;
-    --secondary: 240 3.7% 15.9%;
-    --secondary-foreground: 0 0% 98%;
-    --muted: 240 3.7% 15.9%;
-    --muted-foreground: 240 5% 64.9%;
-    --accent: 240 3.7% 15.9%;
-    --accent-foreground: 0 0% 98%;
-    --destructive: 0 62.8% 30.6%;
-    --destructive-foreground: 0 0% 98%;
-    --border: 240 3.7% 15.9%;
-    --input: 240 3.7% 15.9%;
-    --ring: 240 4.9% 83.9%;
-    --chart-1: 220 70% 50%;
-    --chart-2: 160 60% 45%;
-    --chart-3: 30 80% 55%;
-    --chart-4: 280 65% 60%;
-    --chart-5: 340 75% 55%;
-    --sidebar-background: 240 5.9% 10%;
-    --sidebar-foreground: 240 4.8% 95.9%;
-    --sidebar-primary: 224.3 76.3% 48%;
-    --sidebar-primary-foreground: 0 0% 100%;
-    --sidebar-accent: 240 3.7% 15.9%;
-    --sidebar-accent-foreground: 240 4.8% 95.9%;
-    --sidebar-border: 240 3.7% 15.9%;
-    --sidebar-ring: 217.2 91.2% 59.8%;
+    /* identical to :root — Dark is the only mode in PROJ-51 */
   }
 }
 
