@@ -1,6 +1,6 @@
 # PROJ-51: Modern UI/UX & Motion System
 
-## Status: In Progress (α + β deployed; γ/δ/ε pending)
+## Status: In Progress (α + β + γ deployed; δ/ε pending)
 **Created:** 2026-05-06
 **Last Updated:** 2026-05-07
 
@@ -300,6 +300,48 @@ Vollständiger CIA-Bericht in der Session-Konversation 2026-05-07 dokumentiert. 
 | AC-11 (PDF-Branding aus PROJ-21 bleibt kompatibel) | ✓ — PDF-Render-Pfad nicht angefasst |
 
 β-Slice fertig & deployt. Solo-deploybar wie geplant. Ready für γ (Component-Refresh).
+
+### γ — Component-Refresh + Status-Token-Migration (2026-05-07)
+
+**Geliefert (3 Locks):**
+
+- **γ.1** (`ec1e04d`) — 7 semantische CSS-Var-Tokens + Badge-Variants
+  - `--risk-low/medium/high/critical` (light HSL für Dark-Teal-Background) + `--success` / `--warning` / `--info` (Aliase)
+  - Tailwind-Utilities (`bg-risk-low/10`, `text-success`, `border-warning/20`, etc.)
+  - `Badge`-Komponente um 7 neue Varianten erweitert: `success`, `warning`, `info`, `risk-low`, `risk-medium`, `risk-high`, `risk-critical` — folgt dem `bg-{token}/10 text-{token} border-{token}/20`-Pattern aus design-system.md
+
+- **γ.2** (`c5f6979`) — Migration der 6 Status-Badge-Konsumenten
+  - `risk-banner.tsx`: 4 Buckets (green/yellow/orange/red) → `--risk-low/medium/high/critical`
+  - `risk-score-preview.tsx`: gleicher Pattern
+  - `phase-status-badge.tsx`: `completed` → `--success`
+  - `milestone-status-badge.tsx`: `achieved` → `--success`
+  - `phase-compliance-warnings.tsx`: amber-50/300/600/900 + dark:variants → `--warning` (konsolidiert, da Dark = Default)
+  - `work-item-compliance-section.tsx`: `text-emerald-600 dark:text-emerald-400` → `text-success`
+
+- **γ.3** (`0c28fc2`) — Button + Card Microinteractions
+  - `Button`: `transition-all 150ms` + `active:scale-[0.98]` (subtile Press-Feedback) + Hover-Shadow-Lift (sm→md). `motion-reduce:transform-none` respektiert Accessibility-Pref. `link`-Variante opt-out für scale.
+  - `Card`: `transition-shadow 200ms` + `hover:shadow-md` (gentle lift). `motion-reduce:transition-none`. Consumer-Override über `className="hover:shadow-sm"` möglich.
+
+**Verifikation:**
+- `npm run build` ✓ 51 Pages, type-check sauber
+- `npx vitest run` ✓ 1155/1155 grün (127 Files)
+- Vercel-Deploy: `dpl_4AuFP9qj5LXE6KcUnyiKX7Wt5rub` → `dpl_79DKCiUeAggiPuZbwNEmMpTVWK62` (live nach ~25s)
+
+**AC-Coverage (γ):**
+| AC | Status |
+|---|---|
+| AC-12 (Hover/Active/Focus-Visible/Disabled-Zustände) | ✓ Button alle Varianten |
+| AC-13 (Schatten nur interaktiv/elevated) | ✓ Button + Card hover-shadow |
+| AC-14 (Konsistente Radius/Border/Shadow/Spacing-Tokens) | ✓ via Badge-Variants + globals.css |
+| AC-15 (shadcn/Radix bleibt Basis) | ✓ kein neues UI-System |
+| AC-16 (Mobile + Desktop ohne Bruch) | ✓ Token-Migration ändert keine Layouts |
+
+**Bewusst NICHT angefasst (γ-Out-of-Scope, kann γ.4 / Folge-Slice werden):**
+- Charts mit Hex-Konstanten (`risk-trend-sparkline.tsx`, `cost-cap-section.tsx`, `profile-radar-chart.tsx`) — `--chart-1..5` Tokens existieren, Migration ist kosmetisch
+- ~80 verbleibende Tailwind-Direct-Color-Treffer in 20 Files (profile-tab, lifecycle-badge, risk-matrix, stakeholder-table, approval-status-banner, ...) — Hauptarbeit ist erledigt; Rest = nachgelagerte Pflege
+- `Input`/`Select`/`Textarea`-Focus-Ring + `Dialog`/`Sheet`/`Popover`-Backdrop-Blur — können in γ.4 ergänzt werden
+
+γ-Slice in 3 Locks deployt. Ready für δ (Motion-Layer) oder γ.4 (rest of the audit-list).
 
 ## QA Test Results
 
