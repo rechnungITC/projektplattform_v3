@@ -482,12 +482,34 @@ Skill-Delta), ai-providers-page-client (HTTP-Warnung + StatusBadge).
 **Verifikation:** alle 4 Sub-Batches `npm run build` grün, finale
 1159/1159 vitest grün, Vercel-Deploys live.
 
+### Print-Theme (2026-05-07, `b05d987`)
+
+Schließt den batch-2c-Defer für die Print-friendly-Trio. Statt einen
+separaten ThemeProvider mit `forcedTheme="light"` einzuführen
+(funktioniert mit `next-themes` im selben Tree nicht zuverlässig),
+wurde eine **CSS-only-Scope** gebaut:
+
+- **`.theme-print` in `globals.css`:** redeklariert sämtliche relevante
+  Light-Mode-HSL-Tokens (shadcn Core + risk-* + success/warning/info)
+  direkt im Selector. Eltern-`.dark` oder `.dark-teal` werden
+  überspielt, weil `.theme-print` näher am Element steht. `color-
+  scheme: light` setzt zusätzlich Form-Controls + Scrollbars zurück.
+- **Wrapper-Anwendung:** `/reports/snapshots/[id]/page.tsx` (öffentliche
+  Ansicht) und `/print/page.tsx` (Puppeteer-Quelle) tragen jetzt
+  `theme-print` auf der Container-Div und nutzen `bg-background` statt
+  hartem `bg-white` — der Token resolved durch den Scope wieder zu
+  weiß.
+- **3 Print-Komponenten migriert:**
+  - `traffic-light-pill.tsx` — emerald/amber/rose → success/warning/
+    destructive (Badge-Tone + Dot + Ring). Docblock erklärt die Scope-
+    Abhängigkeit.
+  - `status-report-body.tsx` + `executive-summary-body.tsx` —
+    "revidiert"-Chip amber → warning.
+
+Damit sind die deferreds aus batch 2c geschlossen; Print/PDF bleibt AA-
+lesbar auf weißem Papier unabhängig vom App-Theme des Users.
+
 ### Bewusst nicht migriert (Architektur-Entscheidungen)
-- `status-report-body.tsx` + `executive-summary-body.tsx` — Reports
-  rendern via Standard-Root-Layout, User-Theme würde in PDF/Print
-  durchschlagen. Print-Layout mit `forcedTheme="light"` als eigener
-  Slice.
-- `traffic-light-pill.tsx` — bewusst print-friendly hartcodiert.
 - `work-item-kind-badge.tsx` — 7 distinkte Taxonomie-Farben, lassen
   sich nicht sinnvoll auf 4 Status-Tokens abbilden.
 - `ui/toast.tsx` — shadcn-Primitive, sollte über `variant="destructive"`
@@ -497,7 +519,6 @@ Skill-Delta), ai-providers-page-client (HTTP-Warnung + StatusBadge).
 | Slice | Was | Aufwand |
 |---|---|---|
 | **ε.3** | Test-Tenant-Seed + 6 authenticated-Page Snapshots | ~1 PT |
-| **Print-Theme** | Print-Layout mit `forcedTheme="light"` für Reports + Migration der 3 Print-Files auf semantische Tokens | ~0.5 PT |
 
 ## QA Test Results
 
