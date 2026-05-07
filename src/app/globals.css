@@ -288,6 +288,24 @@
 }
 
 @layer utilities {
+  /* PROJ-51-δ.2 — View-Transitions opt-in utility classes.
+     Apply on a container element that should animate across route
+     changes. Browsers without `view-transition-name` support ignore
+     these props (no-op fallback). Pair with `useViewTransition()` hook
+     for programmatic state-change transitions. */
+  .vt-page {
+    view-transition-name: page;
+  }
+  .vt-content {
+    view-transition-name: content;
+  }
+  .vt-detail {
+    view-transition-name: detail;
+  }
+  .vt-tab-panel {
+    view-transition-name: tab-panel;
+  }
+
   /* Subtle grid background for dashboard canvas areas
      (matches docs/design/dashboards/scrum-dashboard.html) */
   .bg-grid-pattern {
