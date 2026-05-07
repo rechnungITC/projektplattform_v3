@@ -1,6 +1,6 @@
 # PROJ-51: Modern UI/UX & Motion System
 
-## Status: In Progress (α + β + γ + δ + ε baseline deployed; ε.2 + γ.5 follow-ups pending)
+## Status: Deployed (α + β + γ + γ.5/γ.6 + δ + δ.2/δ.3 + ε + ε.2/ε.3/ε.4/ε.5 + Theme-Toggle + Print-Theme — alle Slices live; einzig `work-item-kind-badge` und `ui/toast` bewusst hartcodiert)
 **Created:** 2026-05-06
 **Last Updated:** 2026-05-07
 
@@ -553,11 +553,23 @@ spec.ts-snapshots/` automatisch angelegt.
 - Mobile-Snapshots — das Hamburger-Shell ist Layout-different genug,
   um eine eigene Snapshot-Suite zu rechtfertigen.
 
-### Verbleibende Folge-Slices (alle nicht blockierend)
-| Slice | Was | Aufwand |
-|---|---|---|
-| **ε.4** | Project-Room Snapshots mit fixed-UUID Seed-Projekt | ~0.5–1 PT |
-| **ε.5** | Mobile-Layout Snapshots (Hamburger-Shell) | ~0.5 PT |
+### ε.4 + ε.5 — Project-Room Seed + Mobile-Snapshots (2026-05-07, `feba11e`)
+
+**ε.4 — Project-Room Baselines:**
+- `tests/fixtures/constants.ts`: neue Konstanten `E2E_PROJECT_ID` + `E2E_PROJECT_NAME` (UUID `00000000-0000-0000-0000-000000000e21`).
+- `tests/fixtures/global-setup.ts`: idempotenter Upsert eines Test-Projekts unter dem `[E2E]`-Tenant mit `project_type: "general"` — kein Method-Trigger, also keine zusätzlichen Phasen/Sprints/WBS, die zwischen Runs jittern würden. Upsert-Fehler nicht fatal: nur ε.4-Snapshots skippen, Auth bleibt intakt.
+- `PROJ-51-visual-regression-authenticated.spec.ts`: neuer ε.4-`describe`-Block mit Project-Room-Overview-Snapshot auf `/projects/<E2E_PROJECT_ID>`. `maxDiffPixelRatio: 0.03` (vs. 0.02 sonst) für computed-path / last-edit-time-Jitter; fallback auf `test.skip` wenn Seed nicht erreichbar (HTTP ≥ 400).
+
+**ε.5 — Mobile-Layout Baselines:**
+- Neue Datei `tests/PROJ-51-visual-regression-mobile.spec.ts`.
+- 5 Mobile-Safari-only Snapshots (chromium per Project-Guard geskippt): Login + Signup (unauth) + Dashboard + Projects + Settings (authenticated).
+- Mischt plain `@playwright/test`-Runner (unauth) mit Auth-Fixture (authenticated). Mobile-Shell hat Sidebar hinter Hamburger versteckt → wartet auf `networkidle` statt auf `data-sidebar`-Selector.
+
+Snapshot-PNGs generieren beim ersten `npx playwright test --update-snapshots`-Run automatisch.
+
+### Status: PROJ-51 vollständig in Production
+
+Damit ist PROJ-51 als Slice-Familie technisch durch — alle 5 Bereiche (α Audit, β Brand-Layer + WCAG-Helpers, γ Component-Refresh + Status-Tokens + Microinteractions, δ Motion-Layer + View-Transitions, ε Visual-Regression) sind deployt und produktionsverfügbar. Die zwei verbleibenden Komponenten (`work-item-kind-badge`, `ui/toast`) bleiben bewusst hartcodiert — Begründung in den vorigen Notizen.
 
 ## QA Test Results
 
