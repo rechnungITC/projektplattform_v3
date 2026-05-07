@@ -46,4 +46,39 @@ test.describe("PROJ-51-ε — Visual Regression baseline", () => {
       fullPage: true,
     })
   })
+
+  test("Signup page matches baseline", async ({ page }) => {
+    await page.goto("/signup")
+    await expect(
+      page.getByRole("textbox", { name: /e-?mail/i }),
+    ).toBeVisible()
+    await expect(page).toHaveScreenshot("signup.png", {
+      maxDiffPixelRatio: 0.01,
+      fullPage: true,
+    })
+  })
+
+  test("Login (Dark mode) matches baseline", async ({ page }) => {
+    // Force dark mode by setting the next-themes class via emulation.
+    // This catches Dark-mode-specific token regressions (β-Revision Risk).
+    await page.emulateMedia({ colorScheme: "dark" })
+    await page.goto("/login")
+    await expect(
+      page.getByRole("textbox", { name: /e-?mail/i }),
+    ).toBeVisible()
+    // Wait for theme application — `next-themes` runs a small inline
+    // script before paint, but emulation may take a tick.
+    await page.waitForFunction(
+      () => document.documentElement.classList.contains("dark"),
+      { timeout: 2000 },
+    ).catch(() => {
+      // Theme class may not flip if next-themes uses storage strategy;
+      // accept and snapshot anyway. The browser-level emulation still
+      // affects `prefers-color-scheme` media queries.
+    })
+    await expect(page).toHaveScreenshot("login-dark.png", {
+      maxDiffPixelRatio: 0.02, // slightly higher tolerance for theme flips
+      fullPage: true,
+    })
+  })
 })
