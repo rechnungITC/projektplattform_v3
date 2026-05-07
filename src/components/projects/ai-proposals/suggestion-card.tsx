@@ -36,12 +36,9 @@ interface SuggestionCardProps {
 }
 
 function scoreTone(score: number): string {
-  if (score >= 16)
-    return "bg-red-100 text-red-900 dark:bg-red-900/40 dark:text-red-100"
-  if (score >= 9)
-    return "bg-amber-100 text-amber-900 dark:bg-amber-900/40 dark:text-amber-100"
-  if (score >= 4)
-    return "bg-blue-100 text-blue-900 dark:bg-blue-900/40 dark:text-blue-100"
+  if (score >= 16) return "bg-destructive/15 text-destructive"
+  if (score >= 9) return "bg-warning/15 text-warning"
+  if (score >= 4) return "bg-info/15 text-info"
   return "bg-muted text-muted-foreground"
 }
 

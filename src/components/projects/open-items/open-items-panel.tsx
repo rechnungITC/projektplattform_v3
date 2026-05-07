@@ -61,8 +61,8 @@ function statusIcon(status: OpenItem["status"]): React.ReactNode {
   if (status === "converted")
     return <ArrowRight className="h-3.5 w-3.5 text-muted-foreground" aria-hidden />
   if (status === "closed")
-    return <CheckCircle2 className="h-3.5 w-3.5 text-emerald-600" aria-hidden />
-  return <Circle className="h-3.5 w-3.5 text-amber-600" aria-hidden />
+    return <CheckCircle2 className="h-3.5 w-3.5 text-success" aria-hidden />
+  return <Circle className="h-3.5 w-3.5 text-warning" aria-hidden />
 }
 
 export function OpenItemsPanel({

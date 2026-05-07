@@ -177,7 +177,7 @@ export function OutboxPanel({ projectId, emailStubMode }: OutboxPanelProps) {
     <>
       <div className="space-y-4">
         {emailStubMode ? (
-          <div className="flex items-start gap-2 rounded-md border border-amber-200 bg-amber-50 p-3 text-sm text-amber-900 dark:border-amber-900 dark:bg-amber-950 dark:text-amber-200">
+          <div className="flex items-start gap-2 rounded-md border border-warning/40 bg-warning/10 p-3 text-sm text-warning">
             <AlertCircle className="mt-0.5 h-4 w-4 flex-shrink-0" aria-hidden />
             <div>
               <p className="font-medium">Demo-Modus für E-Mail</p>
