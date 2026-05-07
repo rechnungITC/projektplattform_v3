@@ -1,6 +1,7 @@
 import type { Metadata } from "next"
 import "./globals.css"
 
+import { ReducedMotionProvider } from "@/components/motion/reduced-motion-provider"
 import { ThemeProvider } from "@/components/theme-provider"
 import { Toaster } from "@/components/ui/sonner"
 
@@ -23,8 +24,10 @@ export default function RootLayout({
           enableSystem
           disableTransitionOnChange
         >
-          {children}
-          <Toaster />
+          <ReducedMotionProvider>
+            {children}
+            <Toaster />
+          </ReducedMotionProvider>
         </ThemeProvider>
       </body>
     </html>
