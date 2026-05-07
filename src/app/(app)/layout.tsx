@@ -4,6 +4,10 @@ import { redirect } from "next/navigation"
 import { AppShell } from "@/components/app/app-shell"
 import { AuthProvider } from "@/hooks/use-auth"
 import { loadServerAuth } from "@/lib/auth-helpers"
+import {
+  hexToHslTriplet,
+  pickBrandForeground,
+} from "@/lib/branding/contrast"
 import { getOperationMode } from "@/lib/operation-mode"
 
 export default async function AppLayout({
@@ -24,14 +28,23 @@ export default async function AppLayout({
 
   const operationMode = getOperationMode()
 
-  // PROJ-17: expose tenant accent color as a CSS variable so themed UI can
-  // pick it up via `var(--color-brand-600)`. Server-rendered to avoid the
-  // FOUC of a client-side update.
+  // PROJ-17: expose tenant accent color as `--color-brand-600` (legacy slot
+  // consumed by `profile-radar-chart.tsx`).
+  // PROJ-51-β.3: also expose the new Brand-Layer triplets so the Dark-Teal
+  // theme can re-tone the gezielte Brand-Slots (`bg-brand-accent`,
+  // `text-brand-accent-foreground`, `border-brand-nav-active`). Server-
+  // rendered (no FOUC). Auto-foreground via WCAG-1.4 contrast picker.
   const accentColor = snapshot.tenantConfig?.branding.accent_color ?? null
-  const brandStyle =
-    accentColor && /^#[0-9A-Fa-f]{6}$/.test(accentColor)
-      ? ({ ["--color-brand-600" as string]: accentColor } as React.CSSProperties)
-      : undefined
+  const accentTriplet = hexToHslTriplet(accentColor)
+  const brandStyle: React.CSSProperties | undefined = accentTriplet
+    ? ({
+        ["--color-brand-600" as string]: accentColor!,
+        ["--brand-accent" as string]: accentTriplet,
+        ["--brand-accent-foreground" as string]:
+          pickBrandForeground(accentColor) === "white" ? "0 0% 100%" : "0 0% 0%",
+        ["--brand-nav-active" as string]: accentTriplet,
+      } as React.CSSProperties)
+    : undefined
 
   // PROJ-23: read sidebar persistence cookies server-side so the initial
   // render doesn't flash a wrong-state sidebar.
