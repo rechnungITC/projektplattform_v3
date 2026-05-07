@@ -69,7 +69,10 @@
 | PROJ-52 | Gantt — Abhängigkeiten löschen via Klick (Hot-Fix für PROJ-25 Gantt-Half: User konnte Dependency-Pfeile zwar erstellen, aber nicht löschen — Click-Handler + Confirm + DELETE-API + 12px Hit-Area, canEdit-Gate) | Deployed | [Spec](PROJ-52-gantt-dependency-delete.md) | 2026-05-06 |
 | PROJ-53 | Gantt Timeline-Scale (MS-Project-Style) — α: zweireihiger Header + Wochenenden + ISO-KW + Tages-Grid (Frontend). β: Sticky-Header (SVG-Split) + Feiertage (`date-holidays`, `tenants.holiday_region`). γ: Custom-Kalender + Multi-Locale + PNG/PDF-Export. | Deployed (α 2026-05-06) · In Progress (β backend done; β frontend pending) | [Spec](PROJ-53-gantt-timeline-scale.md) | 2026-05-06 |
 | PROJ-54 | Resource-Level Tagessatz-Zuweisung — 2 Override-Spalten auf `resources` (Latest-only), neuer `_resolve_resource_rate`-Helper (Override → Rolle → null), `ResolvedRate`-Type mit Quellen-Feld, shadcn-Combobox (Rolle-Suche + Inline-Override) im Resource-Form, Bestand-Banner, Optimistic-Lock, async Recompute via Next.js `after()` mit Failed-Marker. Tenant-Admin-only. CIA-reviewed; α/β/γ-Slices, δ deferred. | In Progress (54-α Backend implemented; Frontend β + Recompute γ pending) | [Spec](PROJ-54-resource-day-rate-assignment.md) | 2026-05-06 |
+| PROJ-55 | Tenant Context, Settings Schema & Audit Hardening — behebt Review-Funde zu Active-Tenant-Auflösung, Module-Settings-Drift und Audit-Tracked-Columns fuer Ressourcen/Allokationen. Stabilisierung vor weiteren Stammdaten-/Resource-/Dashboard-Slices. | Planned | [Spec](PROJ-55-tenant-context-settings-audit-hardening.md) | 2026-05-07 |
+| PROJ-56 | Project Readiness & Health Command Center — ersetzt den Project-Room-Health-Stub durch echte Readiness-Checks, Health Score, Next-Best-Actions und Report-Integration aus Sicht eines Projektleiters. | Planned | [Spec](PROJ-56-project-readiness-health-command-center.md) | 2026-05-07 |
+| PROJ-57 | Participant, Stakeholder & Resource Linking Operating Model — macht die Beziehungen zwischen Tenant Member, Project Member, Stakeholder, Resource, Rolle und Tagessatz explizit, inkl. geführter Verknüpfung und Class-3-Masking. | Planned | [Spec](PROJ-57-participant-resource-linking-operating-model.md) | 2026-05-07 |
 
 <!-- Add features above this line -->
 
-## Next Available ID: PROJ-55
+## Next Available ID: PROJ-58
