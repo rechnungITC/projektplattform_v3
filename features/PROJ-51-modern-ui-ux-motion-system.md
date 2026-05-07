@@ -1,6 +1,6 @@
 # PROJ-51: Modern UI/UX & Motion System
 
-## Status: In Progress (α + β + γ deployed; δ/ε pending)
+## Status: In Progress (α + β + γ + δ + ε baseline deployed; ε.2 + γ.5 follow-ups pending)
 **Created:** 2026-05-06
 **Last Updated:** 2026-05-07
 
@@ -342,6 +342,72 @@ Vollständiger CIA-Bericht in der Session-Konversation 2026-05-07 dokumentiert. 
 - `Input`/`Select`/`Textarea`-Focus-Ring + `Dialog`/`Sheet`/`Popover`-Backdrop-Blur — können in γ.4 ergänzt werden
 
 γ-Slice in 3 Locks deployt. Ready für δ (Motion-Layer) oder γ.4 (rest of the audit-list).
+
+### β-Revision (2026-05-07, nach User-Feedback)
+
+User-Befund: meine β.1-Migration hat Light- und Dark-Modus komplett ersetzt. Im Project-Room war die Folge "Hintergrund weiß, Items dunkel", weil `next-themes` `class="light"` setzte aber `:root` Dark-Teal lieferte und keine `.light`-Definition existierte.
+
+**Fix (`d418a26`):**
+1. `:root` zurück auf **shadcn Light** (Supabase-Default)
+2. `.dark` zurück auf **shadcn Dark** (Supabase-Default)
+3. Material-3-Erweiterungs-Tokens als **Aliasse** auf shadcn-Vars (`--surface: var(--background)`, etc.) — tracken Light/Dark automatisch
+4. Brand-Layer als Aliasse (`--brand-accent: var(--primary)`)
+5. Risk/Status-Tokens jetzt **per Mode getuned** (Light: `emerald-600 / amber-500`, Dark: `light emerald / amber`)
+6. **Dark-Teal opt-in** via `[data-theme="dark-teal"]` — Tenants/User können das explizit aktivieren ohne Default zu brechen
+
+`next-themes`-Light/Dark-Toggle funktioniert wieder identisch zu vor PROJ-51. AC-7..AC-11 weiterhin abgedeckt; Dark-Teal als 3. Theme-Preset zugänglich aber nicht erzwungen.
+
+### γ.4 — Dialog/Sheet Backdrop-Blur (2026-05-07)
+
+**Geliefert (`b4b6971`):** `DialogOverlay` + `SheetOverlay` von `bg-black/80` → `bg-black/40 backdrop-blur-sm`. Modernes Backdrop-Pattern, Inhalt darunter bleibt teilweise sichtbar.
+
+### δ — Motion-Layer (2026-05-07)
+
+**Geliefert (`d3eb718`):**
+- `framer-motion ^12` als Dependency installiert
+- `src/components/motion/reduced-motion-provider.tsx` — Client-Component-Wrapper mit `<MotionConfig reducedMotion="user">`. AC-20 (`prefers-reduced-motion`) deterministisch erfüllt für alle künftigen Framer-Motion-Animations.
+- `src/lib/motion/use-view-transition.ts` — Progressive-Enhancement-Hook für `document.startViewTransition`. Browser ohne API fallen auf direkte Callback-Execution durch. 4 Vitest-Cases.
+- `app/layout.tsx` mountet `<ReducedMotionProvider>` innerhalb `<ThemeProvider>` um children + Toaster.
+
+**Bewusst NICHT in δ:**
+- `<AnimatePresence>` auf Dialog/Sheet/Popover — Radix animiert bereits via CSS-`data-state`-Pattern; Framer würde konkurrieren
+- `view-transition-name` CSS auf bestimmten Routen (Project-Room-Tabs, Stakeholder-Detail) — können in einem späteren Polish-Slice ergänzt werden
+- Bundle-Size-Bench in echtem Prod-Build — ~30 KB tree-shaked laut CIA-Plan akzeptabel
+
+### ε — Visual-Regression-Baseline (2026-05-07)
+
+**Geliefert (`5ecdacf`):** `tests/PROJ-51-visual-regression.spec.ts` mit 2 Playwright-Snapshot-Tests:
+- Login desktop (1280×720)
+- Login mobile portrait (375×812)
+- `maxDiffPixelRatio: 0.01` (1% Toleranz) gegen Anti-Flake
+
+**Setup-Anleitung für CI/local:**
+```
+npx playwright test --update-snapshots PROJ-51-visual-regression
+git add tests/PROJ-51-visual-regression.spec.ts-snapshots/
+git commit -m "ci: seed visual-regression baselines"
+```
+
+**ε.2 (Follow-up):** 6 weitere Snapshot-Targets aus dem α-Migrationsplan (Project-Room Scrum/Waterfall/Kanban, Stakeholder-Detail, Settings/Tenant-Branding, PDF-Preview) — brauchen vorher einen stabilen Test-Tenant mit fixen Seeds, damit Date.now()-/UUID-Drift keine False-Positives erzeugt.
+
+### Verifikation (alle vier Locks heute)
+
+- ✅ `npm run build` durchgängig grün, 51 Pages
+- ✅ `npx vitest run` 1159/1159 grün (128 Files; +4 view-transition Tests)
+- ✅ Vercel-Deploys live für jeden Commit (4 separate Deploy-IDs verifiziert)
+- ✅ shadcn Light/Dark-Toggle funktioniert wieder wie vor PROJ-51
+- ✅ Project-Room-"weißer Hintergrund"-Bug behoben (durch β-Revision)
+
+### Verbleibende Follow-Ups (nicht blockierend)
+
+| Slice | Was | Aufwand |
+|---|---|---|
+| **γ.5** | Charts (`risk-trend-sparkline`, `cost-cap-section`, `profile-radar-chart`) auf `--chart-1..5` umstellen | ~0.3 PT |
+| **γ.6** | Restliche ~80 Tailwind-Direct-Color-Treffer in 20 Files (profile-tab, lifecycle-badge, approval-status-banner, ...) | ~1 PT, kosmetisch |
+| **δ.2** | `<AnimatePresence>`-Wiring auf ausgewählten Drawers + `view-transition-name` CSS auf Project-Room-Tabs | ~0.5 PT |
+| **ε.2** | 6 zusätzliche Visual-Regression-Snapshots mit Test-Tenant-Seeds | ~0.5 PT |
+
+PROJ-51-MVP ist damit deployt: Theme-Token-Bridge + Brand-Layer + Status-Token-Migration + Button/Card-Microinteractions + Dialog-Backdrop-Blur + Motion-Provider + View-Transition-Hook + Visual-Regression-Baseline. Die offenen Follow-Ups sind Polish, kein Blocker.
 
 ## QA Test Results
 
