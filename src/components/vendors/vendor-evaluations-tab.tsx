@@ -22,9 +22,9 @@ function ScoreBadge({ score }: { score: number }) {
   const className = cn(
     "gap-1",
     score >= 4
-      ? "bg-emerald-500/15 text-emerald-700 dark:text-emerald-300"
+      ? "bg-success/15 text-success"
       : score === 3
-        ? "bg-amber-500/15 text-amber-700 dark:text-amber-300"
+        ? "bg-warning/15 text-warning"
         : "bg-destructive/15 text-destructive"
   )
   return (

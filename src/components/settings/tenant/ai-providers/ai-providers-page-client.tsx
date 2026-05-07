@@ -690,7 +690,7 @@ function OllamaCard({
                 disabled={submitting}
               />
               {isHttp && (
-                <p className="text-xs text-yellow-600">
+                <p className="text-xs text-warning">
                   HTTP-Endpoint — Daten werden unverschlüsselt übertragen.
                   Nur für interne / private Netzwerke geeignet.
                 </p>
@@ -1057,7 +1057,7 @@ function CloudKeyCard({
 function StatusBadge({ status }: { status: ProviderStatus }) {
   if (status === "valid")
     return (
-      <Badge className="bg-emerald-600 hover:bg-emerald-700">
+      <Badge className="bg-success/15 text-success hover:bg-success/15">
         <CheckCircle2 className="mr-1 h-3 w-3" aria-hidden /> valid
       </Badge>
     )

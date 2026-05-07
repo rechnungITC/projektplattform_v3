@@ -54,10 +54,10 @@ const BUCKET_LABEL: Record<RiskBucket, string> = {
 }
 
 const BUCKET_CLASSES: Record<RiskBucket, string> = {
-  green: "bg-emerald-100 text-emerald-800 border-emerald-300",
-  yellow: "bg-amber-100 text-amber-900 border-amber-300",
-  orange: "bg-orange-100 text-orange-900 border-orange-300",
-  red: "bg-red-100 text-red-900 border-red-300",
+  green: "bg-risk-low/15 text-risk-low border-risk-low/40",
+  yellow: "bg-risk-medium/15 text-risk-medium border-risk-medium/40",
+  orange: "bg-risk-high/15 text-risk-high border-risk-high/40",
+  red: "bg-risk-critical/15 text-risk-critical border-risk-critical/40",
 }
 
 const BUCKET_ORDER: RiskBucket[] = ["red", "orange", "yellow", "green"]
@@ -333,7 +333,7 @@ export function StakeholderHealthPageClient({ projectId }: Props) {
                       {d.topPatternLabel ? (
                         <span className="inline-flex items-center gap-1 text-xs">
                           <AlertTriangle
-                            className="h-3.5 w-3.5 text-orange-600"
+                            className="h-3.5 w-3.5 text-risk-high"
                             aria-hidden
                           />
                           {d.topPatternLabel}

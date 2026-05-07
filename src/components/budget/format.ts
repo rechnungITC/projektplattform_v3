@@ -21,9 +21,9 @@ export function formatCurrency(
 }
 
 export const TRAFFIC_LIGHT_CLASSES: Record<TrafficLightState, string> = {
-  green: "bg-emerald-100 text-emerald-900 dark:bg-emerald-900/40 dark:text-emerald-100",
-  yellow: "bg-amber-100 text-amber-900 dark:bg-amber-900/40 dark:text-amber-100",
-  red: "bg-red-100 text-red-900 dark:bg-red-900/40 dark:text-red-100",
+  green: "bg-success/15 text-success",
+  yellow: "bg-warning/15 text-warning",
+  red: "bg-destructive/15 text-destructive",
 }
 
 export const TRAFFIC_LIGHT_LABELS: Record<TrafficLightState, string> = {

@@ -31,17 +31,17 @@ import type { StakeholderType } from "@/types/stakeholder-type"
 
 const SCORE_TONE: Record<StakeholderScore, string> = {
   low: "bg-muted text-muted-foreground",
-  medium: "bg-blue-100 text-blue-900 dark:bg-blue-900/40 dark:text-blue-100",
-  high: "bg-amber-100 text-amber-900 dark:bg-amber-900/40 dark:text-amber-100",
-  critical: "bg-red-100 text-red-900 dark:bg-red-900/40 dark:text-red-100",
+  medium: "bg-info/15 text-info",
+  high: "bg-warning/15 text-warning",
+  critical: "bg-destructive/15 text-destructive",
 }
 
 // PROJ-33 — Haltungs-Icon-Farbcoding für die Liste.
 const ATTITUDE_TONE: Record<StakeholderAttitude, string> = {
-  supportive: "fill-emerald-500 text-emerald-500",
+  supportive: "fill-success text-success",
   neutral: "fill-muted-foreground/40 text-muted-foreground/40",
-  critical: "fill-amber-500 text-amber-500",
-  blocking: "fill-red-600 text-red-600",
+  critical: "fill-warning text-warning",
+  blocking: "fill-destructive text-destructive",
 }
 
 interface StakeholderTableProps {

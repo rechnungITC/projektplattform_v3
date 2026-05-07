@@ -249,13 +249,13 @@ export function ProjectBudgetTabClient({
 
       {/* Missing FX rates banner */}
       {summary && summary.missing_rates.length > 0 ? (
-        <div className="rounded-md border border-amber-300 bg-amber-50 p-3 text-sm dark:border-amber-900/60 dark:bg-amber-950/30">
+        <div className="rounded-md border border-warning/40 bg-warning/10 p-3 text-sm">
           <div className="flex items-start gap-2">
             <AlertTriangle
-              className="mt-0.5 h-4 w-4 text-amber-600 dark:text-amber-400"
+              className="mt-0.5 h-4 w-4 text-warning"
               aria-hidden
             />
-            <div className="space-y-1 text-amber-900 dark:text-amber-100">
+            <div className="space-y-1 text-warning">
               <p className="font-medium">FX-Raten fehlen</p>
               <ul className="list-disc space-y-0.5 pl-5 text-xs">
                 {summary.missing_rates.map((m) => (

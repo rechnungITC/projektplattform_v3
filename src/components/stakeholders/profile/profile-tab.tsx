@@ -275,7 +275,7 @@ export function ProfileTab({
                     <span
                       className={
                         Math.abs(d.delta) >= 30
-                          ? "rounded-full bg-amber-100 px-2 py-0.5 font-mono text-xs text-amber-900 dark:bg-amber-900/40 dark:text-amber-100"
+                          ? "rounded-full bg-warning/15 px-2 py-0.5 font-mono text-xs text-warning"
                           : "font-mono text-xs text-muted-foreground tabular-nums"
                       }
                     >
@@ -342,13 +342,13 @@ function inviteStatusBadge(status: SelfAssessmentInviteStatus) {
   switch (status) {
     case "pending":
       return (
-        <Badge className="bg-blue-100 text-blue-900 hover:bg-blue-100 dark:bg-blue-900/40 dark:text-blue-100">
+        <Badge className="bg-info/15 text-info hover:bg-info/15">
           Versendet · ausstehend
         </Badge>
       )
     case "completed":
       return (
-        <Badge className="bg-emerald-100 text-emerald-900 hover:bg-emerald-100 dark:bg-emerald-900/40 dark:text-emerald-100">
+        <Badge className="bg-success/15 text-success hover:bg-success/15">
           Abgegeben
         </Badge>
       )
@@ -607,9 +607,9 @@ function AuditEventRow({
                         delta === null
                           ? "py-1 text-right tabular-nums text-muted-foreground"
                           : delta > 0
-                            ? "py-1 text-right tabular-nums text-emerald-600"
+                            ? "py-1 text-right tabular-nums text-success"
                             : delta < 0
-                              ? "py-1 text-right tabular-nums text-amber-700"
+                              ? "py-1 text-right tabular-nums text-warning"
                               : "py-1 text-right tabular-nums text-muted-foreground"
                       }
                     >
