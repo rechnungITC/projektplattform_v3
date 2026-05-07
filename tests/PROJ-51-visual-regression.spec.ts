@@ -12,9 +12,11 @@
  * `npx playwright test --update-snapshots` once to seed the baselines,
  * after which any pixel-diff > 1% causes a failure.
  *
- * Authenticated pages (Project Room, Stammdaten, Settings) are deferred
- * to ε.2 because they need a stable seed-data tenant — without it,
- * Date.now()-based timestamps and dynamic UUIDs cause unbounded diffs.
+ * Authenticated pages (Dashboard, Stammdaten, Settings) live in
+ * `PROJ-51-visual-regression-authenticated.spec.ts` (ε.3) and use the
+ * PROJ-29 auth-fixture. Project-Room snapshots are still deferred —
+ * they need a fixed-UUID seed project to avoid Date.now() / dynamic-
+ * UUID diffs.
  */
 
 import { expect, test } from "@playwright/test"
