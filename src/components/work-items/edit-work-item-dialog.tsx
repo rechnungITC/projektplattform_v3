@@ -580,8 +580,8 @@ function PhaseDateRangeWarning({
 
   const phaseLabel = `${phase.sequence_number}. ${phase.name}`
   return (
-    <Alert variant="default" className="border-amber-500/50 bg-amber-50/40">
-      <AlertTriangle className="h-4 w-4 text-amber-600" aria-hidden />
+    <Alert variant="default" className="border-warning/40 bg-warning/10">
+      <AlertTriangle className="h-4 w-4 text-warning" aria-hidden />
       <AlertDescription>
         <strong>Datums-Hinweis:</strong> Das Arbeitspaket liegt teilweise
         außerhalb der Phase „{phaseLabel}&ldquo;.

@@ -99,7 +99,7 @@ export function DeleteWorkItemDialog({
         </AlertDialogHeader>
 
         {childCount > 0 ? (
-          <div className="rounded-md border border-amber-300 bg-amber-50 p-3 text-sm text-amber-900 dark:border-amber-800 dark:bg-amber-950/40 dark:text-amber-200">
+          <div className="rounded-md border border-warning/40 bg-warning/10 p-3 text-sm text-warning">
             Achtung: {childCount}{" "}
             {childCount === 1
               ? "untergeordnetes Element"

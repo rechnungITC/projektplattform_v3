@@ -196,7 +196,7 @@ export function DecisionForm({
               </Select>
               <FormDescription className="flex items-start gap-1">
                 <AlertCircle
-                  className="mt-0.5 h-3 w-3 shrink-0 text-amber-600"
+                  className="mt-0.5 h-3 w-3 shrink-0 text-warning"
                   aria-hidden
                 />
                 <span>
