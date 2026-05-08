@@ -483,4 +483,4 @@ All four commits were pushed to `origin/main` on 2026-05-05 and 2026-05-06; Verc
 - [x] Existing arrow-button fallback remains available for status movement.
 - [x] No API schema or database migration is required.
 
-**Out of scope / follow-up if required:** Hierarchical re-parenting by dragging Tasks under Stories is not part of this correction. That would mutate `parent_id`, not `status`, and must be specified as a separate hierarchy-DnD story because it touches Tree/List semantics, parent-kind validation and WBS/outline behavior.
+**Out of scope / follow-up:** Hierarchical re-parenting by dragging Tasks under Stories is not part of this correction. That mutates `parent_id`, not `status`, and is now specified separately as **PROJ-59 — Scrum Hierarchy Drag-and-Drop (Jira-like Story -> Task)** because it touches Tree/List semantics, parent-kind validation, Scrum UX and WBS/outline behavior.
