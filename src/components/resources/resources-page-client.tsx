@@ -225,6 +225,7 @@ export function ResourcesPageClient() {
           <div className="mt-4 space-y-6">
             {drawer.mode === "create" ? (
               <ResourceForm
+                key="create"
                 submitting={submitting}
                 onSubmit={onCreate}
                 onCancel={() => setDrawer({ mode: "closed" })}
@@ -233,7 +234,16 @@ export function ResourcesPageClient() {
               />
             ) : drawer.mode === "edit" ? (
               <>
+                {/*
+                  PROJ-54-β-BUG-1 fix: key the form by resource id so
+                  switching to a different resource within the open
+                  drawer unmounts/remounts the form and reinitializes
+                  its `tagessatz` useState. Without the key, the form
+                  reuses the previous resource's state and could fire
+                  an explicit-null clear on save (silent data loss).
+                */}
                 <ResourceForm
+                  key={drawer.resource.id}
                   initial={drawer.resource}
                   submitting={submitting}
                   onSubmit={(input) => onUpdate(drawer.resource, input)}

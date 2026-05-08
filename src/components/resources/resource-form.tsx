@@ -76,6 +76,14 @@ export function ResourceForm({
   // from the linked stakeholder). The user-facing distinction "selected
   // a role" vs "typed own value" is preserved in `tagessatz.role_key`
   // for label rendering only.
+  //
+  // PROJ-54-β-BUG-1 fix (2026-05-08): we track `userTouchedTagessatz`
+  // so the submit path only sends explicit nulls when the user has
+  // actively interacted with the combobox. Without this flag, an
+  // untouched form-render with stale state could clear the DB override
+  // (silent data loss). Combined with the parent's `key={initial?.id}`
+  // on the form (resets state on resource-switch), the form is now
+  // proof against both code-paths that produced the original bug.
   const initialTagessatz = React.useMemo<TagessatzComboboxValue>(() => {
     if (
       initial?.daily_rate_override != null &&
@@ -91,8 +99,17 @@ export function ResourceForm({
     }
     return { role_key: null, override: null }
   }, [initial])
-  const [tagessatz, setTagessatz] =
+  const [tagessatz, setTagessatzInner] =
     React.useState<TagessatzComboboxValue>(initialTagessatz)
+  const [userTouchedTagessatz, setUserTouchedTagessatz] =
+    React.useState(false)
+  const setTagessatz = React.useCallback(
+    (next: TagessatzComboboxValue) => {
+      setTagessatzInner(next)
+      setUserTouchedTagessatz(true)
+    },
+    [],
+  )
 
   // Translate role-selection into an override on submit (β.1 simplification —
   // role-as-resolution path needs stakeholder linkage UX which lands in β.2).
@@ -133,19 +150,24 @@ export function ResourceForm({
     // PROJ-54-β — when the admin set/changed the Tagessatz, persist it
     // as an override. When the admin (or non-admin) leaves it untouched,
     // we send neither field so the API doesn't trigger the admin-gate.
+    //
+    // PROJ-54-β-BUG-1 fix: never send explicit nulls when the user
+    // hasn't touched the combobox — that path produced silent data loss
+    // (override 1000 → null on a no-change save).
     const tagessatzPatch: Pick<
       ResourceInput,
       "daily_rate_override" | "daily_rate_override_currency"
     > = {}
-    const initialHadOverride = initial?.daily_rate_override != null
-    const wantsOverride = effectiveOverride != null
-    if (wantsOverride) {
-      tagessatzPatch.daily_rate_override = effectiveOverride.daily_rate
-      tagessatzPatch.daily_rate_override_currency = effectiveOverride.currency
-    } else if (initialHadOverride) {
-      // Admin cleared the field — explicit nulls clear the DB row.
-      tagessatzPatch.daily_rate_override = null
-      tagessatzPatch.daily_rate_override_currency = null
+    if (userTouchedTagessatz) {
+      const wantsOverride = effectiveOverride != null
+      if (wantsOverride) {
+        tagessatzPatch.daily_rate_override = effectiveOverride.daily_rate
+        tagessatzPatch.daily_rate_override_currency = effectiveOverride.currency
+      } else if (initial?.daily_rate_override != null) {
+        // Admin actively cleared the field — explicit nulls clear the DB row.
+        tagessatzPatch.daily_rate_override = null
+        tagessatzPatch.daily_rate_override_currency = null
+      }
     }
     setError(null)
     await onSubmit({
