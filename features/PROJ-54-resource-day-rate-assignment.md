@@ -1,8 +1,9 @@
 # PROJ-54: Resource-Level Tagessatz-Zuweisung mit intuitiver Auswahl + Pflicht-Gate
 
-## Status: In Progress (54-α + 54-β implemented; Recompute γ pending)
+## Status: In Review (54-β has Critical bug — silent data loss on save)
 **Created:** 2026-05-06
 **Last Updated:** 2026-05-08
+**QA-Found Critical Bug 2026-05-08:** Saving a resource with an existing override silently nulls the `daily_rate_override` columns. Production-not-ready until fixed. See QA Test Results below.
 
 ## Kontext
 
@@ -212,8 +213,64 @@ PROJ-54 schließt diese Lücken durch eine **Resource-Level-Override-Spalte plus
 - **54-γ Auto-Recompute** — `after()`-Hook + Failed-Marker + UI-Banner remain pending. The optimistic-lock token is already in place to make the γ-write race-safe.
 - **Class-3-PII masking for non-admins** — currently the override is returned in the SELECT response to all tenant members so the Stammdaten-Listen-Spalte can render it. A future hardening slice can introduce a separate response shape (or column-level RLS) for non-admins. Out of 54-β scope per spec ("future hardening Slice").
 
-## QA Test Results
-_To be added by /qa_
+## QA Test Results — 2026-05-08
+
+### Production-Ready Decision: **NOT READY** (1 Critical bug: silent data loss)
+
+### Critical Bug — `PROJ-54-β-BUG-1` — Silent override null-out on save
+
+**Severity:** Critical (silent data loss; affects every Tenant-Admin who saves an existing override-bearing resource).
+
+**Live Reproduction (verified against production):**
+- Resource `34bf1d5c-1966-4e7c-9bc4-e02950438af0` ("Einer der s Kann"), tenant `329f25e5-…`.
+- Audit-log entries (`audit_log_entries`):
+  - `2026-05-08 12:28:35.481806+00`: `daily_rate_override: 1200 → 1000` ✓ correct save (legitimate user edit).
+  - `2026-05-08 13:37:13.175719+00`: `daily_rate_override: 1000 → null` AND `daily_rate_override_currency: 'EUR' → null` ✗ silent data loss (user reports they did NOT clear the field).
+- Vercel runtime logs confirm a PATCH around the same window; the user reports the toast said "Ressource gespeichert" — i.e. the destructive write surfaced as success.
+
+**API/DB layers are NOT the cause:**
+- Supabase-js shape probe (`scripts test`): `typeof daily_rate_override === 'number'` (1200) and `typeof daily_rate_override_currency === 'string'` ("EUR"). No string/number coercion bug in transit.
+- Migration + DB columns intact; Zod schemas accept the override pair; admin-gate works.
+
+**Root cause (95% confidence — `src/components/resources/resource-form.tsx:79-149`):**
+1. `initialTagessatz` is computed via `useMemo([initial])`.
+2. `tagessatz` state is `useState(initialTagessatz)` — **React reads the initial value only at first mount**. Subsequent `initial`-prop changes recompute `initialTagessatz`, but the `tagessatz` state does NOT re-sync.
+3. The submit flow has an `else if (initialHadOverride)` branch (line 145) that sends explicit `null`s when `effectiveOverride` is null but `initial.daily_rate_override` was not null.
+4. Combination: when the in-memory `tagessatz` ends up null (e.g. user opens a different resource without closing the drawer; the Sheet keeps the form mounted; `initial`-prop changes but `tagessatz` stays from the previous resource), `effectiveOverride` is null, `initialHadOverride` reads the LATEST initial-prop and is true → null-clear PATCH fires.
+5. Same symptom can hit the simple "open one resource and just hit Save" flow if the user interacted with the combobox (e.g. clicked "Auswahl entfernen") and the page-client re-rendered the form with a fresh `updated`, since the `tagessatz` `useState` keeps the manually-cleared state across the prop change.
+
+**Why the test suite missed it:** the existing 21 PROJ-54-β tests assert (a) backend admin-gate, (b) optimistic-lock header wiring, (c) parser. There is no test of the form's null-clear branch — that's the gap that needs closing during the fix.
+
+**User reports the three UI symptoms together:**
+1. ResourceCard badge shows "Kein Override" after save (because the GET re-fetch returns null — DB now null).
+2. Combobox is empty when reopening the drawer (because `initial.daily_rate_override` is now null).
+3. Bestand-Banner reappears (same reason).
+
+All three are downstream of the single bug: the PATCH cleared the override.
+
+**Recommended fix paths (for /frontend):**
+- **Replace** `useState(initialTagessatz)` with a controlled pattern that re-syncs on `initial.id` change (drawer-open semantics). Preferred: derive `tagessatz` directly from `initial` on the render path and only persist a "user touched it" flag in state.
+- **Tighten** the null-clear branch: only send explicit nulls when the user *actively* cleared via the combobox's "Auswahl entfernen" path (a `userExplicitlyCleared` flag), not when `effectiveOverride` is null for any reason.
+- **Add** a vitest case: open drawer with `initial.daily_rate_override = 1000`, click Save without touching the combobox, expect the PATCH body to either NOT contain `daily_rate_override` at all, or to contain `1000` — never `null`.
+- **Optional defense-in-depth:** the route's PATCH could refuse to null both override fields unless the request explicitly carries `clear_override: true` (a deliberate user action).
+
+### Other / Lower-Severity Findings
+
+- **Medium:** the existing route.test.ts kitchen-sink test sends `daily_rate_override: null` and asserts the insert payload contains it — masking the issue above. After the fix lands, this test should be split into an "explicit clear" case and a "no-touch" case.
+- **Low:** `If-Unmodified-Since` header round-trip works (verified via the new tests + the production 409 trace), but the runtime log also shows a 412 status on one of the user's PATCH attempts — almost certainly Vercel/Next.js applying RFC-7232 precondition semantics differently than my server-side 409. Not data-affecting; cosmetic mismatch with the spec text. Worth verifying after the fix.
+
+### Tests Run (2026-05-08, against `92bfbba` deployed)
+- `npx vitest run` PROJ-54-β scope → 21/21 green (parser, optimistic-lock backend, api-lib header wiring).
+- `npx vitest run src/lib/cost/` → 47/47 green (unchanged from 54-α).
+- Live MCP probe of supabase-js return shape → number / string typing OK.
+- Audit-log live cross-check → confirms the silent null-out happened.
+
+### Recommendation
+**STOP** further PROJ-54 work (γ-Recompute is now blocked) and **HOTFIX the form** before any tenant-admin loses more override values. The fix is small (resource-form.tsx only), the test coverage gap is one new vitest case.
+
+After the fix:
+1. Re-run /qa with focus on the new test + manual reproduction (open existing override-resource, save without changes, verify DB unchanged).
+2. Optionally walk audit-log to find any other resources that already lost their override silently and propose a recovery list to the tenant-admin.
 
 ## Deployment
 _To be added by /deploy_
