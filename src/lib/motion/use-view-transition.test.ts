@@ -23,7 +23,14 @@ describe("useViewTransition", () => {
   })
 
   it("delegates to document.startViewTransition when present", () => {
-    const apiMock = vi.fn(() => ({ finished: Promise.resolve() }))
+    // Typed call-signature so `apiMock.mock.calls[0][0]` keeps the
+    // callback-argument tuple element — vi.fn(factory) without a generic
+    // narrows to `[]` since the factory takes no args, which makes TS5
+    // reject the positional index with TS2493 even though the mock does
+    // receive a callback at runtime.
+    const apiMock = vi.fn<
+      (cb: () => unknown) => { finished: Promise<void> }
+    >(() => ({ finished: Promise.resolve() }))
     ;(document as unknown as { startViewTransition: typeof apiMock })
       .startViewTransition = apiMock
     const cb = vi.fn()

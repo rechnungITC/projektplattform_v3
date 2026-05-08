@@ -40,7 +40,17 @@ function makePriorityChain() {
   return chain
 }
 
-const rpcMock = vi.fn(async () => ({ data: null, error: null }))
+// Typed call-signature so `rpcMock.mock.calls` keeps the (name, params)
+// tuple shape — vi.fn(factory) on its own infers `[]` (empty-tuple)
+// since the factory takes no args, which makes TS5 reject `c[0]` /
+// `calls[0][1]` with TS2493 even though the runtime mock does receive
+// those arguments.
+const rpcMock = vi.fn<
+  (name: string, params?: Record<string, unknown>) => Promise<{
+    data: null
+    error: null
+  }>
+>(async () => ({ data: null, error: null }))
 
 vi.mock("@/lib/supabase/server", () => ({
   createClient: vi.fn(async () => ({
