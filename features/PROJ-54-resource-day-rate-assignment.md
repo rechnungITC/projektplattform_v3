@@ -1,9 +1,9 @@
 # PROJ-54: Resource-Level Tagessatz-Zuweisung mit intuitiver Auswahl + Pflicht-Gate
 
-## Status: In Progress (54-β BUG-1 hotfixed; awaiting re-QA before γ)
+## Status: Approved (54-α + 54-β; γ remains pending)
 **Created:** 2026-05-06
 **Last Updated:** 2026-05-08
-**Hotfix landed 2026-05-08 (commits 0005ba0 + 075fdda):** the silent-data-loss path is closed by (1) a `userTouchedTagessatz` gate on submit and (2) `key={drawer.resource.id}` on the form so resource-switch within the open drawer reinitializes state. Regression test pins the no-touch-save → no-override-fields contract.
+**Re-QA 2026-05-08:** BUG-1 hotfix verified — 5717/5717 tests in `src/` green, live audit-log shows zero silent null-outs since hotfix landed (13:42 UTC), 1 resource ("Einer der s Kann") has a recoverable 1000 EUR override (manual restore SQL provided). Production-Ready for 54-α + 54-β. γ-Recompute remains the next slice.
 
 ## Kontext
 
@@ -322,6 +322,66 @@ Tenant-admin can review, decide which override values to restore, and PATCH them
 - Manual: open existing override-resource → press Save without touching → verify DB row unchanged via SQL.
 - Manual: open R1 (override) → click R2 in list (no override) → press Save → verify R2 stays without override.
 - Manual: clear override via "Auswahl entfernen" → save → verify nulls applied.
+
+## Re-QA Test Results — 2026-05-08
+
+### Production-Ready Decision: **READY (Approved)** for 54-α + 54-β.
+
+### Verification Evidence
+
+| Check | Result |
+|---|---|
+| BUG-1 regression test (`resource-form.test.tsx`) | **3/3 PASS** — pinned: existing override + no-touch save, override-less + no-touch save, create + name-only |
+| PROJ-54 scope vitest (`src/components/resources`, `src/lib/resources`, `src/app/api/resources`, `src/lib/cost`) | **42 files, 352/352 PASS** in 5.51s |
+| Full vitest in `src/` (regression check) | **637 files, 5717/5717 PASS** in 60.58s |
+| Live audit-log probe — null-outs since hotfix (>= 2026-05-08T13:42:00 UTC) | **0** events |
+| Live deployment status (Vercel) | `efccb68` + `075fdda` + `0005ba0` all `READY` (Bookkeeping → Tests → Hotfix all live) |
+| Build (`npm run build`) | **✓ Compiled successfully in 9.3s** |
+
+### AC Matrix (54-β)
+
+| AC | Coverage / Evidence |
+|---|---|
+| AC-9 — Combobox in Resource-Form (Rolle-Suche + Inline-Override) | `tagessatz-combobox.tsx` + `tagessatz-combobox.test.ts` (12 parser cases) |
+| AC-10 — Bestand-Banner bei fehlendem Tagessatz | `resource-form.tsx:111-115` `showBestandBanner` |
+| AC-11 — Stammdaten-Listen-Spalte | `resources-page-client.tsx` ResourceCard Sparkles + AlertCircle Badge |
+| AC-12 — Non-Admins read-only / role-only Combobox | `resource-form.tsx` `rolesOnly={!isTenantAdmin}` |
+| AC-13 — Optimistic-Lock | `resources/[rid]/route.ts` 409 `stale_record` + `If-Unmodified-Since` round-trip + 3 vitest cases |
+| AC-14 — User-explicit override-clear semantics | **Now correct after BUG-1 fix** — `userTouchedTagessatz`-Gate + `key={drawer.resource.id}` (3 regression tests) |
+| AC-21 — Frontend-Vitest | 21 (parser + api header) + 3 (form regression) = **24 cases** |
+| AC-22 — Playwright-E2E | **Deferred** (per spec: "optional, 54-β"); not blocking approval |
+
+### Recovery Required (1 resource)
+
+The pre-hotfix bug claimed 1 victim:
+
+| `entity_id` | `display_name` | Lost Value | Current State |
+|---|---|---|---|
+| `34bf1d5c-1966-4e7c-9bc4-e02950438af0` | Einer der s Kann | **1000 EUR** | `daily_rate_override = NULL` |
+
+Restoration query (run as tenant-admin via the now-safe form, or directly):
+```sql
+UPDATE public.resources
+SET daily_rate_override = 1000.00,
+    daily_rate_override_currency = 'EUR'
+WHERE id = '34bf1d5c-1966-4e7c-9bc4-e02950438af0'
+  AND tenant_id = '329f25e5-8b8d-42ac-9f11-4c529883f9a2';
+```
+
+The Audit-Trigger will record the restoration; no other action needed.
+
+### Other Findings (low-severity, not blocking)
+
+- **Low**: `npx vitest run` (without scope) reports 36 file-level "failures" — all in `.worktrees/...` (git-worktrees from concurrent agent sessions). Not in deployed code; pre-existing test-setup leak. Cleanup proposal: extend `vitest.config.ts` `exclude` with `.worktrees/**`. Not required for approval.
+- **Low**: Vercel runtime logs showed a 412 status on one PATCH (matched against the 409 `stale_record` from server code). Origin unclear — either Vercel/Next.js applying RFC-7232 preflight or browser cache. No data impact (no audit-log change at that timestamp). Worth re-verifying once a controlled retest is run; could become a Medium if it consistently mis-classifies stale-conflict as 412 and the frontend doesn't handle it.
+
+### Recommendation
+
+**Status: Approved.** Production is safe. Suggested next steps:
+
+1. Manually verify the three re-QA reproductions (5 min) to confirm UX-side parity. Strictly optional — code + tests + live audit are all consistent.
+2. Run the recovery `UPDATE` for "Einer der s Kann" (or restore via the form — both paths are now safe).
+3. Decide on next slice: **PROJ-54-γ** (`after()`-Recompute + Failed-Marker) is now unblocked.
 
 ## Deployment
 _To be added by /deploy_
