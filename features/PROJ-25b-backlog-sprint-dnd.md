@@ -452,3 +452,35 @@ All four commits were pushed to `origin/main` on 2026-05-05 and 2026-05-06; Verc
 - **C** (micro-cleanups: dedup-before-max-50, error-text wording, `apiError` carrying `failed_ids`) — logged as low-priority polish, not blocking deployment.
 
 **Git tag:** `v1.x.0-PROJ-25b` placed on commit `3e5219c` (PROJ-25b head).
+
+## Post-Deploy Correction — Kanban Board Status DnD
+
+### 2026-05-08 — Stories and Tasks movable in the Kanban board
+
+**User finding:** The Backlog/Sprint DnD slice was documented and deployed, but the **Kanban board view** still did not support direct Drag-and-Drop. Users could not drag Stories between status columns, could not move Tasks the same way, and Epic priority visibility had to stay explicit while Epics remain non-draggable.
+
+**Root cause:** PROJ-25b implemented DnD for the Backlog/Sprint planning flow (`sprint_id` assignment) in List/Tree/Sprint surfaces. The `BacklogBoard` remained the older status-board implementation with only arrow buttons calling `PATCH /api/projects/[id]/work-items/[wid]/status`. The spec text also over-focused on "Stories only" for Sprint-DnD and did not separately document Kanban-status-DnD behavior.
+
+**Correction scope:**
+
+- `src/components/work-items/backlog-board.tsx`
+  - Adds an internal `DndContext` for the Kanban board status columns.
+  - Makes **Stories** and **Tasks** draggable between status columns.
+  - Uses the existing status mutation route: `PATCH /api/projects/[id]/work-items/[wid]/status`.
+  - Keeps arrow buttons as keyboard/click fallback.
+  - Keeps **Epics** in a separate static section above the board.
+  - Shows Epic priority and status in that static section.
+  - Keeps non-Story/non-Task work items visible in the board, but not draggable.
+
+**Acceptance Criteria for this correction:**
+
+- [x] Kanban board columns are droppable status targets.
+- [x] Story cards can be moved between Kanban columns via drag-and-drop.
+- [x] Task cards can be moved between Kanban columns via drag-and-drop.
+- [x] Epic cards are not draggable in the board.
+- [x] Epic cards remain visible in a static list and show priority clearly.
+- [x] Existing click-to-open behavior remains available.
+- [x] Existing arrow-button fallback remains available for status movement.
+- [x] No API schema or database migration is required.
+
+**Out of scope / follow-up if required:** Hierarchical re-parenting by dragging Tasks under Stories is not part of this correction. That would mutate `parent_id`, not `status`, and must be specified as a separate hierarchy-DnD story because it touches Tree/List semantics, parent-kind validation and WBS/outline behavior.
