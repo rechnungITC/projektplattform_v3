@@ -1,8 +1,9 @@
 # PROJ-25b: Backlog ↔ Sprint Drag-and-Drop (mit a11y-Polish + Multi-Select + Perf-Benchmark)
 
-## Status: In Progress (Backend + Frontend implemented; QA pending)
+## Status: Deployed
 **Created:** 2026-05-05
-**Last Updated:** 2026-05-05
+**Last Updated:** 2026-05-08
+**Deployed:** 2026-05-05 (commits 8b1f693 + 938d312 + 3e5219c on `main`); deployment bookkeeping completed 2026-05-08
 
 ## Summary
 PROJ-25 hat die **Gantt-Hälfte** des DnD-Stacks ausgeliefert (Stages 1-5 + Today/Zoom/Edit-Dialog live). Die **Backlog-Hälfte** wurde bewusst geschoben, weil das Stage-Budget vom Eigenbau-Gantt absorbiert wurde und `@dnd-kit` nicht installiert ist (`backlog-tree.tsx:410` hat hartcodiertes `disableDrag`).
@@ -425,4 +426,29 @@ Tests updated to mock the `projects`, `tenant_memberships`, `project_memberships
 **GO** — Auflage A umgesetzt. Auflagen B+C als Folge-Items dokumentiert, Deploy freigegeben.
 
 ## Deployment
-_To be added by /deploy_
+
+### Production deployment — 2026-05-05 → 2026-05-08 bookkeeping
+
+**Production URL:** https://projektplattform-v3.vercel.app
+**Vercel project:** `projektplattform-v3` (team `it-couch`)
+**Auto-deploy mechanism:** push to `main` → Vercel auto-build (no Vercel CLI required).
+
+**Commits live on production:**
+- `105bae7` — feat(PROJ-25b): Add feature specification for Backlog↔Sprint DnD
+- `8b1f693` — feat(PROJ-25b): backend slice — bulk sprint-assign endpoint + closed-sprint guard
+- `938d312` — feat(PROJ-25b): frontend slice — Backlog↔Sprint DnD with multi-select + a11y
+- `3e5219c` — fix(PROJ-25b): apply requireProjectAccess to sprint mutation routes (QA Auflage A)
+
+All four commits were pushed to `origin/main` on 2026-05-05 and 2026-05-06; Vercel auto-deployed each. The production deployment of the QA-Auflage-A fix (`3e5219c`) is in the `READY` state, and the 17 subsequent unrelated deployments (PROJ-51 family, PROJ-21 hotfix train) all completed successfully on top of the PROJ-25b code paths — strong empirical signal that the slice is stable in production.
+
+**Pre-deploy verification on 2026-05-08 (bookkeeping run):**
+- `npm run build` → exit 0 (Compiled successfully).
+- `npm run lint` → 373 codebase-wide baseline errors (pre-existing, tracked under PROJ-29 Hygiene-Slice). PROJ-25b code paths report only the single pre-existing warning `edit-work-item-dialog.tsx:410` (React-Hook-Form `watch()` memo incompat, called out in the QA Auflage C list as cosmetic). No new lint regressions introduced by PROJ-25b.
+- Vitest scope-run for PROJ-25b paths (`sprint-bulk` + `[wid]/sprint` + `use-story-selection`) → **9 files, 93/93 tests pass** in 6.23s.
+
+**Auflage status:**
+- **A** (`requireProjectAccess` on both PATCH endpoints) — landed in `3e5219c` and live on production.
+- **B** (Playwright E2E suite + 30×100 perf benchmark) — deferred as **PROJ-25b-α** follow-up slice. Not blocking deployment (per QA "GO with conditions"). Risk judged low because `@dnd-kit/core` is a known 60fps stack.
+- **C** (micro-cleanups: dedup-before-max-50, error-text wording, `apiError` carrying `failed_ids`) — logged as low-priority polish, not blocking deployment.
+
+**Git tag:** `v1.x.0-PROJ-25b` placed on commit `3e5219c` (PROJ-25b head).
