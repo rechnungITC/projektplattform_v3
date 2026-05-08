@@ -96,6 +96,24 @@ export async function PATCH(request: Request, ctx: Ctx) {
   )
   if (moduleDenial) return moduleDenial
 
+  // PROJ-54-β — Optimistic Lock via If-Unmodified-Since.
+  // Caller sends the resource's `updated_at` as ISO string. If the row
+  // has been touched in between (a second editor saved or the recompute
+  // hook from γ wrote something), the DB timestamp is newer and we
+  // reject the PATCH with 409 instead of silently overwriting.
+  const ifUnmod = request.headers.get("if-unmodified-since")
+  if (ifUnmod) {
+    const headerMs = Date.parse(ifUnmod)
+    const dbMs = Date.parse(existing.updated_at as string)
+    if (Number.isFinite(headerMs) && Number.isFinite(dbMs) && dbMs > headerMs) {
+      return apiError(
+        "stale_record",
+        "Die Ressource wurde inzwischen geändert. Lade die Seite neu und versuche es erneut.",
+        409
+      )
+    }
+  }
+
   // PROJ-54-α — Override-Spalten dürfen nur von Tenant-Admins geschrieben
   // werden. Wir prüfen, ob die Felder im Payload sind (egal ob Wert oder
   // explizit `null` zum Löschen) und gaten admin-only.

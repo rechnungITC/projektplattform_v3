@@ -56,6 +56,91 @@ beforeEach(() => {
   resourcesChain.eq.mockReturnValue(resourcesChain)
 })
 
+describe("PATCH /api/resources/[rid] — PROJ-54-β optimistic lock", () => {
+  it("returns 409 stale_record when If-Unmodified-Since predates the row", async () => {
+    getUserMock.mockResolvedValue({ data: { user: { id: USER_ID } } })
+    // Row was written at 14:00; client carries a 13:30 token → conflict.
+    resourcesChain.maybeSingle.mockResolvedValue({
+      data: {
+        id: RESOURCE_ID,
+        tenant_id: TENANT_ID,
+        updated_at: "2026-05-08T14:00:00.000Z",
+      },
+      error: null,
+    })
+
+    const res = await PATCH(
+      new Request("http://localhost/x", {
+        method: "PATCH",
+        headers: {
+          "Content-Type": "application/json",
+          "If-Unmodified-Since": "2026-05-08T13:30:00.000Z",
+        },
+        body: JSON.stringify({ display_name: "Stale Save" }),
+      }),
+      { params: Promise.resolve({ rid: RESOURCE_ID }) }
+    )
+
+    expect(res.status).toBe(409)
+    const body = (await res.json()) as { error: { code: string } }
+    expect(body.error.code).toBe("stale_record")
+    expect(resourcesChain.update).not.toHaveBeenCalled()
+  })
+
+  it("accepts the PATCH when If-Unmodified-Since matches the row updated_at", async () => {
+    getUserMock.mockResolvedValue({ data: { user: { id: USER_ID } } })
+    const ts = "2026-05-08T14:00:00.000Z"
+    resourcesChain.maybeSingle.mockResolvedValue({
+      data: { id: RESOURCE_ID, tenant_id: TENANT_ID, updated_at: ts },
+      error: null,
+    })
+    resourcesChain.single.mockResolvedValue({
+      data: { id: RESOURCE_ID, display_name: "Fresh", tenant_id: TENANT_ID },
+      error: null,
+    })
+
+    const res = await PATCH(
+      new Request("http://localhost/x", {
+        method: "PATCH",
+        headers: {
+          "Content-Type": "application/json",
+          "If-Unmodified-Since": ts,
+        },
+        body: JSON.stringify({ display_name: "Fresh" }),
+      }),
+      { params: Promise.resolve({ rid: RESOURCE_ID }) }
+    )
+    expect(res.status).toBe(200)
+    expect(resourcesChain.update).toHaveBeenCalledTimes(1)
+  })
+
+  it("ignores a missing If-Unmodified-Since header (backwards-compat)", async () => {
+    getUserMock.mockResolvedValue({ data: { user: { id: USER_ID } } })
+    resourcesChain.maybeSingle.mockResolvedValue({
+      data: {
+        id: RESOURCE_ID,
+        tenant_id: TENANT_ID,
+        updated_at: "2026-05-08T14:00:00.000Z",
+      },
+      error: null,
+    })
+    resourcesChain.single.mockResolvedValue({
+      data: { id: RESOURCE_ID, display_name: "No-Header", tenant_id: TENANT_ID },
+      error: null,
+    })
+
+    const res = await PATCH(
+      new Request("http://localhost/x", {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ display_name: "No-Header" }),
+      }),
+      { params: Promise.resolve({ rid: RESOURCE_ID }) }
+    )
+    expect(res.status).toBe(200)
+  })
+})
+
 describe("PATCH /api/resources/[rid] — schema/DB-payload drift", () => {
   it("forwards every Zod-schema field to the DB update payload", async () => {
     const { resourcePatchSchema } = await import("../_schema")
