@@ -1,8 +1,8 @@
 # PROJ-54: Resource-Level Tagessatz-Zuweisung mit intuitiver Auswahl + Pflicht-Gate
 
-## Status: In Progress (54-α Backend implemented; Frontend β + Recompute γ pending)
+## Status: In Progress (54-α + 54-β implemented; Recompute γ pending)
 **Created:** 2026-05-06
-**Last Updated:** 2026-05-06
+**Last Updated:** 2026-05-08
 
 ## Kontext
 
@@ -34,7 +34,7 @@ PROJ-54 schließt diese Lücken durch eine **Resource-Level-Override-Spalte plus
 | Slice | Inhalt | Schema-Change | Status |
 |---|---|---|---|
 | **54-α** | Override-Spalten + SQL-Helper + Cost-Engine + Lookup-Layer + Audit-Whitelist + Tests | Ja (2 Spalten + 1 Helper) | **In Progress (Backend implemented; awaiting /qa)** |
-| **54-β** | Resource-Form Combobox + Stammdaten-Listen-Spalte + Bestand-Banner + Optimistic-Lock | Nein | Architected |
+| **54-β** | Resource-Form Combobox + Stammdaten-Listen-Spalte + Bestand-Banner + Optimistic-Lock | Nein | **Implemented (2026-05-08)** |
 | **54-γ** | `after()`-Recompute + Failed-Marker + UI-Banner + Bench | Ja (1 Spalte `recompute_status`) | Architected |
 | **54-δ** | Versionierte `resource_rate_overrides`-Tabelle | Ja | Deferred |
 
@@ -167,6 +167,50 @@ PROJ-54 schließt diese Lücken durch eine **Resource-Level-Override-Spalte plus
 **Open für /qa:**
 - Live-Smoke gegen Pilot-Tenant: Override setzen, Cost-Line erscheint mit `rate_source='override'` in source_metadata.
 - 54-β UI-Slice (Combobox, Banner, Listen-Spalte) als Folge.
+
+## Implementation Notes — 54-β (2026-05-08)
+
+### Done in this slice
+
+1. **TagessatzCombobox component** (`src/components/resources/tagessatz-combobox.tsx`, commit `99fed86` 2026-05-06)
+   - shadcn `Popover` + `Command` composition. Single input switches between role-from-catalog and inline-override (`<amount> <currency>`).
+   - Currency parsing accepts ISO codes (case-insensitive) + €/$/£/¥ symbols + comma/dot decimals; rejects negatives, zero, unsupported codes, free-form text.
+   - Exports `__parseInlineOverrideForTest` so the parser is unit-testable in isolation.
+
+2. **ResourceForm Tagessatz integration** (`src/components/resources/resource-form.tsx`, commit `204d4cb` 2026-05-06)
+   - Combobox wired with `roleRates` + `isTenantAdmin`. Non-admins see role-only UX (`rolesOnly`).
+   - **Bestand-Banner** shows when an existing resource has no override AND the combobox is empty (forces the first edit to set a rate).
+   - β.1 simplification: role-selection translates to an override on submit (the resource itself doesn't carry `role_key`; that comes from the linked stakeholder).
+
+3. **ResourcesPageClient wiring** (`src/components/resources/resources-page-client.tsx`, commit `237c969` 2026-05-06)
+   - Pulls `useRoleRates` + `useAuth.currentRole` and passes them to the form.
+   - **Stammdaten-Listen-Spalte** (commit `271728d` 2026-05-08): each card carries a Tagessatz badge — `Sparkles + 1500 EUR/Tag` for override-set resources, `AlertCircle + Kein Override` (destructive tone) for those without. Tenant-admins spot rate-gaps at a glance.
+
+4. **Backend admin-gate** (`src/app/api/resources/route.ts` + `[rid]/route.ts`, commit `a366ad0` 2026-05-06)
+   - POST + PATCH check `tenant_memberships.role === 'admin'` whenever the override pair is in the payload (incl. explicit nulls to clear).
+   - Override columns added to the SELECT response so the form can rehydrate.
+
+5. **Optimistic-Lock via `If-Unmodified-Since`** (commits `c21eb78` + `271728d` 2026-05-08)
+   - Backend PATCH parses the header, compares against `existing.updated_at`, returns **409 `stale_record`** when the DB row is newer. Missing header keeps "last write wins" (backwards-compat for callers without a token).
+   - Frontend `updateResource` accepts an `ifUnmodifiedSince` option; `useResources.update` forwards it; `ResourcesPageClient.onUpdate` passes `resource.updated_at`.
+   - 409 surfaces as a distinct toast ("Konflikt: Ressource wurde inzwischen geändert"); the drawer closes so the next open re-pulls the fresh row.
+
+6. **Tests (AC-21)** — total **21 cases** in three files:
+   - `tagessatz-combobox.test.ts` (commit `ed57bd4`) — 12 parser cases.
+   - `resources/api.test.ts` (commit `271728d`) — 3 cases: header sent when token is given, header omitted when not, error message propagated on 409.
+   - `[rid]/route.test.ts` (commit `c21eb78`) — 3 new optimistic-lock cases (stale-rejection, fresh-token accept, missing-header backwards-compat) + the existing kitchen-sink drift test stays green.
+
+### Verification
+
+- `npx vitest run` (PROJ-54-β scope) → **21/21 grün** in 1.29s across 5 files.
+- `npm run build` → ✓ Compiled successfully in 8.7s (full Next.js production build).
+- Auto-deployed to production on push to `main`.
+
+### Auflagen / deferred
+
+- **AC-22 Playwright-E2E** — explicitly listed as "optional, 54-β" in the spec; deferred (no E2E coverage today).
+- **54-γ Auto-Recompute** — `after()`-Hook + Failed-Marker + UI-Banner remain pending. The optimistic-lock token is already in place to make the γ-write race-safe.
+- **Class-3-PII masking for non-admins** — currently the override is returned in the SELECT response to all tenant members so the Stammdaten-Listen-Spalte can render it. A future hardening slice can introduce a separate response shape (or column-level RLS) for non-admins. Out of 54-β scope per spec ("future hardening Slice").
 
 ## QA Test Results
 _To be added by /qa_
