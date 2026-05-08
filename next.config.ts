@@ -46,11 +46,9 @@ const SECURITY_HEADERS = [
 
 const nextConfig: NextConfig = {
   outputFileTracingIncludes: {
-    "/api/projects/[id]/snapshots": [
-      "./node_modules/@sparticuz/chromium/bin/**/*",
-    ],
-    "/api/projects/[id]/snapshots/[sid]/render-pdf": [
-      "./node_modules/@sparticuz/chromium/bin/**/*",
+    "/api/projects/*/snapshots": ["node_modules/@sparticuz/chromium/bin/**/*"],
+    "/api/projects/*/snapshots/*/render-pdf": [
+      "node_modules/@sparticuz/chromium/bin/**/*",
     ],
   },
   async headers() {
