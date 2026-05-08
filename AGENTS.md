@@ -1,7 +1,7 @@
 <!-- gitnexus:start -->
 # GitNexus — Code Intelligence
 
-This project is indexed by GitNexus as **projektplattform_v3** (14534 symbols, 21933 relationships, 300 execution flows). Use the GitNexus MCP tools to understand code, assess impact, and navigate safely.
+This project is indexed by GitNexus as **projektplattform_v3** (14876 symbols, 22373 relationships, 300 execution flows). Use the GitNexus MCP tools to understand code, assess impact, and navigate safely.
 
 > If any GitNexus tool warns the index is stale, run `npx gitnexus analyze` in terminal first.
 
@@ -28,6 +28,17 @@ This project is indexed by GitNexus as **projektplattform_v3** (14534 symbols, 2
 | `gitnexus://repo/projektplattform_v3/clusters` | All functional areas |
 | `gitnexus://repo/projektplattform_v3/processes` | All execution flows |
 | `gitnexus://repo/projektplattform_v3/process/{name}` | Step-by-step execution trace |
+
+## Current Hotfix References
+
+| Area | File |
+|------|------|
+| PROJ-21 PDF hotfix documentation | `features/PROJ-21-output-rendering.md` |
+| PROJ-21 roadmap status | `docs/PRD.md` |
+| Vercel Chromium bundle tracing | `next.config.ts` |
+| PDF render implementation | `src/lib/reports/puppeteer-render.ts` |
+| Snapshot create route | `src/app/api/projects/[id]/snapshots/route.ts` |
+| Snapshot PDF retry route | `src/app/api/projects/[id]/snapshots/[sid]/render-pdf/route.ts` |
 
 ## CLI
 
