@@ -711,3 +711,51 @@ Suggested next:
   - Refresh `SUPABASE_SERVICE_ROLE_KEY` to the new `sb_secret_` format → unblocks the auth-fixture-smoke E2E from PROJ-29 → enables deeper PROJ-21 E2E (full create-with-render flow, KI modal, PDF download path).
   - First pilot snapshot: confirm < 2 s page-load with realistic data (50 risks + 100 work-items); revisit if slower.
   - Monitor PDF render duration logs (`>10s` warn-line) over the first month — if frequent, consider deferring to PROJ-21b async-render.
+
+## Post-Deploy Hotfixes
+
+### 2026-05-08 — PDF render pending state + Vercel Chromium trace
+
+**Symptom:** In production, snapshot PDFs could remain in `pdf_status='pending'` with the UI message "PDF wird erzeugt". A later production error exposed the root deployment issue:
+
+```json
+{"error":{"code":"render_failed","message":"The input directory \"/var/task/node_modules/@sparticuz/chromium/bin\" does not exist. Please provide the location of the brotli files."}}
+```
+
+**Root cause:**
+
+- The render flow already used `@sparticuz/chromium` and `puppeteer-core`, but the Vercel serverless bundle did not include `node_modules/@sparticuz/chromium/bin/*.br`.
+- The first `outputFileTracingIncludes` attempt used literal dynamic route keys with `[id]` / `[sid]`. Next/Turbopack applies route matching through glob semantics; bracket segments are not a reliable key shape there.
+- When render startup failed before storage upload, old UI states could still look permanently pending without a clear retry path.
+
+**Fix commits on `main`:**
+
+- `42ff541 fix(PROJ-21): stop stale PDF pending state`
+- `f354f06 fix(PROJ-21): include chromium binaries in Vercel trace`
+- `a202bb6 fix(PROJ-21): trace chromium assets with route globs`
+
+**Implemented behavior:**
+
+- Chromium launch, page navigation, PDF render and storage upload are bounded by explicit timeouts.
+- Render failures are persisted as `pdf_status='failed'` instead of leaving stale pending state.
+- Snapshot rows poll while a render is pending and surface stale pending states with a retry action.
+- Retry route can move failed/stale snapshots back through render and to `available`.
+- Vercel tracing now includes `node_modules/@sparticuz/chromium/bin/**/*` for:
+  - `/api/projects/*/snapshots`
+  - `/api/projects/*/snapshots/*/render-pdf`
+
+**Verification:**
+
+- `npx tsc --noEmit` clean.
+- `npm run lint` clean except the known React Hook Form compiler warning in `src/components/work-items/edit-work-item-dialog.tsx:410`.
+- Targeted Vitest coverage for PDF status helpers and snapshot create/retry routes passed.
+- Production `npm run build` passed locally and on Vercel.
+- Next trace verification confirmed both snapshot routes include all four required Chromium Brotli files:
+  - `al2023.tar.br`
+  - `chromium.br`
+  - `fonts.tar.br`
+  - `swiftshader.tar.br`
+- Vercel production deployment `dpl_4VCDNQg3xdPGkHfKhp6fJdJZKNqM` is `READY` and aliased to `https://projektplattform-v3.vercel.app`.
+- Production smoke: root URL returns the expected auth redirect to `/login?next=%2F`.
+
+**Residual note:** Full authenticated create-render-download E2E is still blocked by the project-level logged-in fixture limitation already tracked under PROJ-29 / PROJ-21 L2. Manual production confirmation on 2026-05-08 reported the PDF flow working after deployment.

@@ -48,7 +48,7 @@ The product thesis: enterprise projects fail at the seams between execution, gov
 | PROJ-18 | P1 | Compliance Automatik & Process Templates (ISO/DSGVO/MS-365/vendor-eval/...) | Planned |
 | _TBD_ | P2 | Construction extension: trades, sections, schedule logic, Gantt views | Planned |
 | _TBD_ | P2 | Software project extension: sprints, releases, technical dependencies | Planned |
-| PROJ-21 | P2 | Output rendering: Status-Report + Executive-Summary (HTML+PDF). Gantt, PPTX, Markdown deferred to PROJ-21b/c. | Planned |
+| PROJ-21 | P2 | Output rendering: Status-Report + Executive-Summary (HTML+PDF). Gantt, PPTX, Markdown deferred to PROJ-21b/c. | Deployed |
 | PROJ-22 | P1 | Budget-Modul: 3 Ebenen (Kategorien/Posten/Buchungen) + Vendor-Invoice-Integration + Multi-Currency mit FX. Schließt P0-Lücke aus PROJ-7. | Planned |
 | PROJ-23 | P2 | Globale Sidebar-Navigation: Top-Level + Project-Room als vertikale Sidebar links, mit Branding + Hotkeys + Persistenz. Reine UI-Foundation. | Planned |
 | PROJ-24 | P2 | Cost-Stack: role_rates (versioniert), Velocity-Modell für Stories, generische work_item_cost_lines mit source_type für spätere Erweiterung (LV, Stückliste). | Planned |
