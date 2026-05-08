@@ -1,6 +1,6 @@
 "use client"
 
-import { Plus, User, UserMinus } from "lucide-react"
+import { AlertCircle, Plus, Sparkles, User, UserMinus } from "lucide-react"
 import * as React from "react"
 import { toast } from "sonner"
 
@@ -89,13 +89,26 @@ export function ResourcesPageClient() {
   async function onUpdate(resource: Resource, input: ResourceInput) {
     setSubmitting(true)
     try {
-      const updated = await update(resource.id, input)
+      // PROJ-54-β — Optimistic-Lock: send the loaded row's `updated_at`
+      // so a parallel save by another editor (or the γ-recompute hook)
+      // surfaces as a 409 instead of silently overwriting.
+      const updated = await update(resource.id, input, {
+        ifUnmodifiedSince: resource.updated_at,
+      })
       toast.success("Ressource gespeichert")
       setDrawer({ mode: "edit", resource: updated })
     } catch (err) {
-      toast.error("Speichern fehlgeschlagen", {
-        description: err instanceof Error ? err.message : undefined,
-      })
+      const message = err instanceof Error ? err.message : undefined
+      const isStale = message?.includes("inzwischen geändert") ?? false
+      if (isStale) {
+        toast.error("Konflikt: Ressource wurde inzwischen geändert", {
+          description:
+            "Die Liste wird neu geladen. Bitte prüfe deine Änderungen und speichere erneut.",
+        })
+        setDrawer({ mode: "closed" })
+      } else {
+        toast.error("Speichern fehlgeschlagen", { description: message })
+      }
     } finally {
       setSubmitting(false)
     }
@@ -256,7 +269,17 @@ interface ResourceCardProps {
   onClick: () => void
 }
 
+function formatDailyRate(amount: number, currency: string): string {
+  return `${amount.toLocaleString("de-DE", {
+    minimumFractionDigits: 0,
+    maximumFractionDigits: 2,
+  })} ${currency}/Tag`
+}
+
 function ResourceCard({ resource, onClick }: ResourceCardProps) {
+  const hasOverride =
+    resource.daily_rate_override != null &&
+    resource.daily_rate_override_currency != null
   return (
     <li>
       <button
@@ -279,6 +302,28 @@ function ResourceCard({ resource, onClick }: ResourceCardProps) {
                   Inaktiv
                 </Badge>
               ) : null}
+              {hasOverride ? (
+                <Badge
+                  variant="outline"
+                  className="gap-1 text-xs"
+                  title="Eigener Tagessatz-Override"
+                >
+                  <Sparkles className="h-3 w-3" aria-hidden />
+                  {formatDailyRate(
+                    resource.daily_rate_override!,
+                    resource.daily_rate_override_currency!,
+                  )}
+                </Badge>
+              ) : (
+                <Badge
+                  variant="outline"
+                  className="gap-1 border-destructive/40 text-xs text-destructive"
+                  title="Kein Override gesetzt — Auflösung läuft über Rolle (sofern vorhanden)"
+                >
+                  <AlertCircle className="h-3 w-3" aria-hidden />
+                  Kein Override
+                </Badge>
+              )}
             </div>
             <p className="mt-1 text-xs text-muted-foreground">
               FTE {resource.fte_default} · Verfügbar{" "}

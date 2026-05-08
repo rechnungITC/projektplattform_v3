@@ -8,6 +8,7 @@ import {
   listResources,
   type ResourceInput,
   type ResourceListOptions,
+  type UpdateResourceOptions,
   updateResource,
 } from "@/lib/resources/api"
 import type { Resource } from "@/types/resource"
@@ -18,7 +19,11 @@ interface UseResourcesResult {
   error: string | null
   refresh: () => Promise<void>
   create: (input: ResourceInput) => Promise<Resource>
-  update: (id: string, input: Partial<ResourceInput>) => Promise<Resource>
+  update: (
+    id: string,
+    input: Partial<ResourceInput>,
+    options?: UpdateResourceOptions
+  ) => Promise<Resource>
   remove: (id: string) => Promise<void>
 }
 
@@ -70,8 +75,12 @@ export function useResources(
   )
 
   const update = React.useCallback(
-    async (id: string, input: Partial<ResourceInput>) => {
-      const updated = await updateResource(id, input)
+    async (
+      id: string,
+      input: Partial<ResourceInput>,
+      options?: UpdateResourceOptions
+    ) => {
+      const updated = await updateResource(id, input, options)
       await refresh()
       return updated
     },

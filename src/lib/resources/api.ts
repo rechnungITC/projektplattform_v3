@@ -94,15 +94,30 @@ export async function promoteStakeholderToResource(
   return (await response.json()) as { resource: Resource; created: boolean }
 }
 
+export interface UpdateResourceOptions {
+  /**
+   * PROJ-54-β — Optimistic-Lock token. Pass the loaded row's
+   * `updated_at`. On staleness the server returns 409 `stale_record`.
+   */
+  ifUnmodifiedSince?: string
+}
+
 export async function updateResource(
   resourceId: string,
-  input: Partial<ResourceInput>
+  input: Partial<ResourceInput>,
+  options: UpdateResourceOptions = {}
 ): Promise<Resource> {
+  const headers: Record<string, string> = {
+    "Content-Type": "application/json",
+  }
+  if (options.ifUnmodifiedSince) {
+    headers["If-Unmodified-Since"] = options.ifUnmodifiedSince
+  }
   const response = await fetch(
     `/api/resources/${encodeURIComponent(resourceId)}`,
     {
       method: "PATCH",
-      headers: { "Content-Type": "application/json" },
+      headers,
       body: JSON.stringify(input),
     }
   )
