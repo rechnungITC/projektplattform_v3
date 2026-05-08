@@ -1,9 +1,9 @@
 # PROJ-54: Resource-Level Tagessatz-Zuweisung mit intuitiver Auswahl + Pflicht-Gate
 
-## Status: In Review (54-β has Critical bug — silent data loss on save)
+## Status: In Progress (54-β BUG-1 hotfixed; awaiting re-QA before γ)
 **Created:** 2026-05-06
 **Last Updated:** 2026-05-08
-**QA-Found Critical Bug 2026-05-08:** Saving a resource with an existing override silently nulls the `daily_rate_override` columns. Production-not-ready until fixed. See QA Test Results below.
+**Hotfix landed 2026-05-08 (commits 0005ba0 + 075fdda):** the silent-data-loss path is closed by (1) a `userTouchedTagessatz` gate on submit and (2) `key={drawer.resource.id}` on the form so resource-switch within the open drawer reinitializes state. Regression test pins the no-touch-save → no-override-fields contract.
 
 ## Kontext
 
@@ -271,6 +271,57 @@ All three are downstream of the single bug: the PATCH cleared the override.
 After the fix:
 1. Re-run /qa with focus on the new test + manual reproduction (open existing override-resource, save without changes, verify DB unchanged).
 2. Optionally walk audit-log to find any other resources that already lost their override silently and propose a recovery list to the tenant-admin.
+
+## Hotfix Notes — BUG-1 (2026-05-08)
+
+### Diagnosis-driven fix (commits 0005ba0 + 075fdda)
+
+Two compounding causes, both addressed:
+
+1. **No-touch null-clear** (`src/components/resources/resource-form.tsx`)
+   - **Before:** the submit path's `else if (initialHadOverride)` branch sent explicit `{daily_rate_override: null, daily_rate_override_currency: null}` whenever `effectiveOverride` ended up null — including untouched saves where the combobox state had simply never been set or had been reset by a prop-only re-render.
+   - **After:** a `userTouchedTagessatz` flag is set ONLY when the wrapping `setTagessatz` callback fires (i.e. user picked a role, typed an inline override, or clicked "Auswahl entfernen"). The submit path skips both override fields entirely when the flag is false. Existing override values stay untouched on a no-touch save; admin-driven clears still flow through normally.
+
+2. **Resource-switch within an open drawer** (`src/components/resources/resources-page-client.tsx`)
+   - **Before:** the Sheet stayed open across drawer transitions, so React reused the same `ResourceForm` instance with new `initial` props. `useState(initialTagessatz)` ignored the prop change → state stuck on the previous resource → fix #1 alone wouldn't catch the cross-resource scenario.
+   - **After:** `key={drawer.resource.id}` on the form (and `key="create"` on the create variant) makes React unmount + remount on resource-switch. Fresh mount → fresh `useState(initialTagessatz)` → state re-derives from the new `initial` prop.
+
+### Test coverage closed
+
+`src/components/resources/resource-form.test.tsx` (3 cases) pins:
+- Existing override + no-touch save → onSubmit payload omits both override fields.
+- Override-less resource + no-touch save → same.
+- Create flow + name only → same.
+
+Pre-fix all three failed (payload contained `daily_rate_override: null`); post-fix all three pass.
+
+### Verification
+
+- `npx vitest run src/components/resources/ src/lib/resources/ src/app/api/resources/ src/lib/cost/` → **42 files, 352/352 green** (5.51s).
+- `npm run build` → ✓ Compiled successfully (9.3s).
+- Auto-deploy on push of 075fdda triggered.
+
+### Audit-log recovery (optional)
+
+`audit_log_entries` carries the silent null-out trail. Recovery query:
+
+```sql
+SELECT entity_id, old_value, changed_at
+FROM audit_log_entries
+WHERE entity_type = 'resources'
+  AND field_name = 'daily_rate_override'
+  AND new_value IS NULL
+  AND old_value IS NOT NULL
+  AND changed_at >= '2026-05-06';
+```
+
+Tenant-admin can review, decide which override values to restore, and PATCH them back via the now-safe form.
+
+### Open follow-up for re-QA
+
+- Manual: open existing override-resource → press Save without touching → verify DB row unchanged via SQL.
+- Manual: open R1 (override) → click R2 in list (no override) → press Save → verify R2 stays without override.
+- Manual: clear override via "Auswahl entfernen" → save → verify nulls applied.
 
 ## Deployment
 _To be added by /deploy_
