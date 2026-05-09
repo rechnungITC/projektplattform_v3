@@ -38,6 +38,15 @@ export interface Resource {
    * daily_rate_override is NULL.
    */
   daily_rate_override_currency: string | null
+  /**
+   * PROJ-54-γ — async cost-line recompute marker.
+   * - `null`: idle (no recompute pending or recently completed cleanly).
+   * - `'pending'`: scheduled by PATCH but the after() worker hasn't started yet.
+   * - `'running'`: after() worker is iterating the affected work-items.
+   * - `'failed'`: at least one work-item failed to recompute; UI shows a retry banner.
+   * Transient — not field-level audited.
+   */
+  recompute_status: "pending" | "running" | "failed" | null
   created_by: string
   created_at: string
   updated_at: string
