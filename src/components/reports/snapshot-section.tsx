@@ -20,7 +20,7 @@ export function SnapshotSection({
   isEmpty = false,
 }: SnapshotSectionProps) {
   return (
-    <section className="mt-6">
+    <section className="mt-6 break-inside-avoid print:break-inside-avoid">
       <h2 className="text-lg font-semibold text-foreground">{title}</h2>
       <div className="mt-2 text-sm">
         {isEmpty ? (

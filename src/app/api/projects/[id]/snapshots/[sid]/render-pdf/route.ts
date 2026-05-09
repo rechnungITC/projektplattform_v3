@@ -1,6 +1,7 @@
 import { NextResponse } from "next/server"
 
 import { renderSnapshotPdf } from "@/lib/reports/puppeteer-render"
+import { createAdminClient } from "@/lib/supabase/admin"
 import { requireModuleActive } from "@/lib/tenant-settings/server"
 
 import {
@@ -61,10 +62,10 @@ export async function POST(request: Request, ctx: Ctx) {
       projectId,
       cookieHeader,
     })
-    await supabase
-      .from("report_snapshots")
-      .update({ pdf_storage_key: result.storageKey, pdf_status: "available" })
-      .eq("id", snapshot.id)
+    await updateSnapshotPdfStatus(snapshot.id, {
+      pdf_storage_key: result.storageKey,
+      pdf_status: "available",
+    })
     return new NextResponse(null, { status: 204 })
   } catch (renderErr) {
     console.error(
@@ -75,14 +76,25 @@ export async function POST(request: Request, ctx: Ctx) {
           renderErr instanceof Error ? renderErr.message : String(renderErr),
       }),
     )
-    await supabase
-      .from("report_snapshots")
-      .update({ pdf_status: "failed" })
-      .eq("id", snapshot.id)
+    await updateSnapshotPdfStatus(snapshot.id, { pdf_status: "failed" })
     return apiError(
       "render_failed",
       renderErr instanceof Error ? renderErr.message : "Render failed",
       500,
     )
+  }
+}
+
+async function updateSnapshotPdfStatus(
+  snapshotId: string,
+  updates: { pdf_status: "available" | "failed"; pdf_storage_key?: string },
+) {
+  const admin = createAdminClient()
+  const { error } = await admin
+    .from("report_snapshots")
+    .update(updates)
+    .eq("id", snapshotId)
+  if (error) {
+    throw new Error(`snapshot pdf status update failed: ${error.message}`)
   }
 }
