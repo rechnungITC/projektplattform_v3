@@ -484,3 +484,5 @@ All four commits were pushed to `origin/main` on 2026-05-05 and 2026-05-06; Verc
 - [x] No API schema or database migration is required.
 
 **Out of scope / follow-up:** Hierarchical re-parenting by dragging Tasks under Stories is not part of this correction. That mutates `parent_id`, not `status`, and is now specified separately as **PROJ-59 — Scrum Hierarchy Drag-and-Drop (Jira-like Story -> Task)** because it touches Tree/List semantics, parent-kind validation, Scrum UX and WBS/outline behavior.
+
+**Supersession note — Sprint assignment kinds:** The original PROJ-25b Backlog -> Sprint DnD scope intentionally limited Sprint assignment to `kind = story`. The desired Jira-like Scrum workflow now requires Stories, Tasks and Bugs to be assignable to Sprints. That broader Sprint-assignment behavior is specified separately as **PROJ-60 — Scrum Sprint Assignment DnD for Stories, Tasks and Bugs** so it can update the single/bulk Sprint routes and UI kind-gating without mixing it with PROJ-59 Parent-DnD.
