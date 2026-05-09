@@ -165,6 +165,17 @@ export function BacklogClient({ projectId, tenantId: _tenantId }: BacklogClientP
     React.useState<WorkItemWithProfile | null>(null)
 
   const [newSprintOpen, setNewSprintOpen] = React.useState(false)
+  const [sprintItemsRefreshKey, setSprintItemsRefreshKey] = React.useState(0)
+
+  const refreshAfterSprintDnd = async () => {
+    await refreshItems()
+    setSprintItemsRefreshKey((key) => key + 1)
+  }
+
+  const refreshSprintSection = async () => {
+    await Promise.all([refreshItems(), refreshSprints()])
+    setSprintItemsRefreshKey((key) => key + 1)
+  }
 
   // Alias the state-pair declared at the top so the rest of the component
   // can use the cleaner names.
@@ -307,7 +318,8 @@ export function BacklogClient({ projectId, tenantId: _tenantId }: BacklogClientP
                 projectId={projectId}
                 sprints={sprints}
                 loading={sprintsLoading}
-                onChanged={refreshSprints}
+                onChanged={refreshSprintSection}
+                refreshKey={sprintItemsRefreshKey}
               />
             </div>
           </CollapsibleContent>
@@ -321,7 +333,7 @@ export function BacklogClient({ projectId, tenantId: _tenantId }: BacklogClientP
           projectId={projectId}
           items={items}
           sprints={sprints}
-          onChanged={refreshItems}
+          onChanged={refreshAfterSprintDnd}
         >
           {toolbarAndBulk}
           <BacklogDropZone>{viewContent}</BacklogDropZone>

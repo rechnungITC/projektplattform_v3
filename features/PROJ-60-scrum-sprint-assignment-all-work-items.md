@@ -49,6 +49,7 @@ This is deliberately separate from PROJ-59. PROJ-59 changes `parent_id` for hier
 - [x] `subtask`, `epic`, `feature` und `work_package` bleiben im MVP nicht sprint-droppable, sofern fachlich nicht anders entschieden.
 - [x] Backlog List und Tree zeigen Drag-Handles fuer Stories, Tasks und Bugs.
 - [x] Sprint cards/listen zeigen Stories, Tasks und Bugs, die `sprint_id = sprint.id` haben.
+- [x] Sprint-Items koennen innerhalb eines Sprints per Drag-and-Drop umsortiert werden.
 - [x] Drop auf Sprint ruft `PATCH /api/projects/[id]/work-items/[wid]/sprint` oder Bulk-Route mit `{ sprint_id }`.
 - [x] Drop auf Backlog-Zone loest `sprint_id = null`.
 - [x] Bulk-Route akzeptiert gemischte Sets aus Stories/Tasks/Bugs.
@@ -58,6 +59,7 @@ This is deliberately separate from PROJ-59. PROJ-59 changes `parent_id` for hier
 - [x] Sprint-Zuordnung veraendert nicht `parent_id`.
 - [x] Sprint-Zuordnung veraendert nicht `status`.
 - [x] Parent-Hierarchie bleibt nach Sprint-Zuordnung sichtbar.
+- [x] Story Points, geplanter Start und geplantes Ende sind direkt am Sprint-Item kompakt editierbar.
 - [ ] Audit erfasst `sprint_id`-Aenderungen wie bisher.
 
 ## Non-Functional Acceptance Criteria
@@ -155,6 +157,40 @@ Verification:
 - `npx eslint ...` on the changed PROJ-60 source/test files — passed.
 - `git diff --check` — passed.
 - `npx tsc --noEmit` — blocked by pre-existing PROJ-54 test-fixture type errors in `src/components/resources/resource-form.test.tsx` and `src/components/resources/tagessatz-combobox.integration.test.tsx`; no PROJ-60 file was reported.
+
+### 2026-05-09 — PROJ-60-beta: Sprint-internal DnD + inline planning fields
+
+Scope:
+
+- Sprint items become drag sources and drop targets inside Sprint cards.
+- Dropping onto a Sprint item reorders the Sprint by writing dense `position` values through the existing Work-Item PATCH route.
+- Dropping onto the Sprint card appends moved items to the end of that Sprint.
+- Dropping onto the Backlog drop-zone keeps the existing `sprint_id = null` detach behavior.
+- Sprint cards now expose compact inline fields per item:
+  - `SP` writes `attributes.story_points`.
+  - `Start` writes `planned_start`.
+  - `Ende` writes `planned_end`.
+- No new schema or API endpoint is introduced; the slice reuses `work_items.position`, `work_items.sprint_id`, `work_items.planned_start`, `work_items.planned_end` and `work_items.attributes`.
+
+Files:
+
+- `src/components/work-items/backlog-dnd-provider.tsx`
+  - Parses `sprint-item:<sprintId>:<workItemId>` drop targets and persists Sprint ordering.
+- `src/components/sprints/sprint-card.tsx`
+  - Renders draggable Sprint rows and compact inline planning inputs.
+- `src/components/sprints/droppable-sprint-card.tsx`
+  - Passes refresh keys into Sprint cards.
+- `src/components/sprints/sprints-list.tsx`
+  - Propagates Sprint item refresh keys.
+- `src/app/(app)/projects/[id]/backlog/backlog-client.tsx`
+  - Refreshes Backlog and Sprint item lists after Sprint-DnD / inline planning updates.
+
+Verification:
+
+- `npx eslint 'src/app/(app)/projects/[id]/backlog/backlog-client.tsx' src/components/work-items/backlog-dnd-provider.tsx src/components/sprints/sprint-card.tsx src/components/sprints/sprints-list.tsx src/components/sprints/droppable-sprint-card.tsx` — passed.
+- `npx vitest run 'src/app/api/projects/[id]/work-items/[wid]/sprint/route.test.ts' 'src/app/api/projects/[id]/work-items/sprint-bulk/route.test.ts'` — 22/22 passed.
+- `git diff --check` — passed.
+- `npx tsc --noEmit` — still blocked by pre-existing PROJ-54 resource test fixture errors; no PROJ-60 file was reported.
 
 ## Open Questions
 

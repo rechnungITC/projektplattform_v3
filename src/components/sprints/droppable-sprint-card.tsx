@@ -24,12 +24,14 @@ interface DroppableSprintCardProps {
   projectId: string
   sprint: Sprint
   onChanged: () => void | Promise<void>
+  refreshKey?: number
 }
 
 export function DroppableSprintCard({
   projectId,
   sprint,
   onChanged,
+  refreshKey = 0,
 }: DroppableSprintCardProps) {
   const { setNodeRef, isOver } = useDroppable({
     id: `sprint:${sprint.id}`,
@@ -47,7 +49,12 @@ export function DroppableSprintCard({
       )}
       aria-label={`Sprint ${sprint.name} (${sprint.state}) — Drop-Target`}
     >
-      <SprintCard projectId={projectId} sprint={sprint} onChanged={onChanged} />
+      <SprintCard
+        projectId={projectId}
+        sprint={sprint}
+        onChanged={onChanged}
+        refreshKey={refreshKey}
+      />
     </div>
   )
 }

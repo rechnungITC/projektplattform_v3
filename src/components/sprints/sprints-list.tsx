@@ -15,6 +15,7 @@ interface SprintsListProps {
   sprints: Sprint[]
   loading: boolean
   onChanged: () => void | Promise<void>
+  refreshKey?: number
 }
 
 export function SprintsList({
@@ -22,6 +23,7 @@ export function SprintsList({
   sprints,
   loading,
   onChanged,
+  refreshKey = 0,
 }: SprintsListProps) {
   // Sprints are drop-targets only when a DnD provider is mounted upstream
   // (i.e. on the Backlog page in Scrum/Hybrid methods). Without a provider,
@@ -72,6 +74,7 @@ export function SprintsList({
             projectId={projectId}
             sprint={sprint}
             onChanged={onChanged}
+            refreshKey={refreshKey}
           />
         ) : (
           <SprintCard
@@ -79,6 +82,7 @@ export function SprintsList({
             projectId={projectId}
             sprint={sprint}
             onChanged={onChanged}
+            refreshKey={refreshKey}
           />
         )
       )}

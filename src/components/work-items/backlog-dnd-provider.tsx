@@ -37,7 +37,8 @@ import { DragOverlayCard } from "./drag-overlay-card"
  *   - Drop on a closed sprint  → no-op (frontend gate; backend is
  *                                  defense-in-depth via 422 sprint_closed)
  *
- * Droppable IDs use a typed prefix: "sprint:<uuid>" or "backlog".
+ * Droppable IDs use a typed prefix: "sprint:<uuid>", "sprint-item:<sprintId>:<workItemId>"
+ * or "backlog".
  * Draggable IDs are bare work-item UUIDs.
  */
 
@@ -160,9 +161,26 @@ export function BacklogDndProvider({
     // Resolve target sprint_id from the typed droppable id.
     let targetSprintId: string | null = null
     let targetLabel: string
+    let targetItemId: string | null = null
     if (dropTarget === "backlog") {
       targetSprintId = null
       targetLabel = "Backlog"
+    } else if (dropTarget.startsWith("sprint-item:")) {
+      const [, sprintId, itemId] = dropTarget.split(":")
+      if (!sprintId || !itemId) return
+      targetSprintId = sprintId
+      targetItemId = itemId
+      const sprint = sprintsById.get(targetSprintId)
+      if (!sprint) {
+        announce("Ziel-Sprint nicht gefunden.")
+        return
+      }
+      if (sprint.state === "closed") {
+        announce(`Sprint '${sprint.name}' ist abgeschlossen — Drop nicht erlaubt.`)
+        toast.error(`Sprint '${sprint.name}' ist abgeschlossen — Drop nicht erlaubt.`)
+        return
+      }
+      targetLabel = `Sprint '${sprint.name}'`
     } else if (dropTarget.startsWith("sprint:")) {
       targetSprintId = dropTarget.slice("sprint:".length)
       const sprint = sprintsById.get(targetSprintId)
@@ -185,6 +203,9 @@ export function BacklogDndProvider({
     const ids = selection.isSelected(activeId)
       ? Array.from(selection.selectedIds)
       : [activeId]
+    if (targetItemId && ids.includes(targetItemId)) {
+      return
+    }
     const invalidIds = ids.filter((id) => {
       const item = itemsById.get(id)
       return !item || !isSprintAssignableKind(item.kind)
@@ -195,10 +216,13 @@ export function BacklogDndProvider({
       return
     }
 
-    // Filter out items that already sit on the target — no-op for those.
+    // Filter out items that already sit on the target — no-op for those,
+    // except when the drop is on a sprint item: that is an explicit reorder.
     const idsToMove = ids.filter((id) => {
       const it = itemsById.get(id)
-      return it ? it.sprint_id !== targetSprintId : true
+      if (!it) return true
+      if (targetItemId) return true
+      return it.sprint_id !== targetSprintId
     })
     if (idsToMove.length === 0) {
       // Everything was already on the target. Don't fire an API call.
@@ -231,6 +255,16 @@ export function BacklogDndProvider({
         }
         toast.error(msg)
         return
+      }
+
+      if (targetSprintId !== null) {
+        await persistSprintOrder({
+          projectId,
+          targetSprintId,
+          targetItemId,
+          movedIds: idsToMove,
+          items,
+        })
       }
 
       // Build the announcement.
@@ -311,4 +345,82 @@ export function BacklogDndProvider({
       </div>
     </Ctx.Provider>
   )
+}
+
+async function persistSprintOrder({
+  projectId,
+  targetSprintId,
+  targetItemId,
+  movedIds,
+  items,
+}: {
+  projectId: string
+  targetSprintId: string
+  targetItemId: string | null
+  movedIds: string[]
+  items: WorkItemWithProfile[]
+}): Promise<void> {
+  const movedSet = new Set(movedIds)
+  const ordered = items
+    .filter(
+      (item) =>
+        item.sprint_id === targetSprintId &&
+        !movedSet.has(item.id) &&
+        isSprintAssignableKind(item.kind)
+    )
+    .sort(compareWorkItemsByPosition)
+
+  const targetIndex =
+    targetItemId && !movedSet.has(targetItemId)
+      ? ordered.findIndex((item) => item.id === targetItemId)
+      : -1
+  const insertIndex = targetIndex >= 0 ? targetIndex : ordered.length
+
+  const movedItems = movedIds
+    .map((id) => items.find((item) => item.id === id))
+    .filter((item): item is WorkItemWithProfile => Boolean(item))
+    .sort(compareWorkItemsByPosition)
+
+  const nextOrder = [
+    ...ordered.slice(0, insertIndex),
+    ...movedItems,
+    ...ordered.slice(insertIndex),
+  ]
+
+  await Promise.all(
+    nextOrder.map((item, index) => {
+      const nextPosition = (index + 1) * 1000
+      if (item.position === nextPosition && item.sprint_id === targetSprintId) {
+        return Promise.resolve()
+      }
+      return fetch(`/api/projects/${projectId}/work-items/${item.id}`, {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          sprint_id: targetSprintId,
+          position: nextPosition,
+        }),
+      }).then(async (response) => {
+        if (!response.ok) {
+          const body = (await response.json().catch(() => null)) as
+            | { error?: { message?: string } }
+            | null
+          throw new Error(
+            body?.error?.message ??
+              `Sprint-Reihenfolge konnte nicht gespeichert werden (${response.status}).`
+          )
+        }
+      })
+    })
+  )
+}
+
+function compareWorkItemsByPosition(
+  a: WorkItemWithProfile,
+  b: WorkItemWithProfile
+): number {
+  const aPos = a.position ?? Number.MAX_SAFE_INTEGER
+  const bPos = b.position ?? Number.MAX_SAFE_INTEGER
+  if (aPos !== bPos) return aPos - bPos
+  return a.created_at.localeCompare(b.created_at)
 }
