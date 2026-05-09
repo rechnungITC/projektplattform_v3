@@ -1,10 +1,11 @@
 # PROJ-54: Resource-Level Tagessatz-Zuweisung mit intuitiver Auswahl + Pflicht-Gate
 
-## Status: Approved (54-α + 54-β; γ remains pending)
+## Status: In Progress (54-α + 54-β + 54-γ implemented; awaiting QA)
 **Created:** 2026-05-06
 **Last Updated:** 2026-05-09
 **Re-QA 2026-05-08:** BUG-1 hotfix verified — 5717/5717 tests in `src/` green, live audit-log shows zero silent null-outs since hotfix landed (13:42 UTC), 1 resource ("Einer der s Kann") has a recoverable 1000 EUR override (manual restore SQL provided). Production-Ready for 54-α + 54-β. γ-Recompute remains the next slice.
 **BUG-2 hotfix 2026-05-09 (commits 6c04ef0 + 9ebf1d6):** combobox-side bug — typing an inline override ("1500 EUR") was hidden by cmdk's fuzzy filter; only roles surfaced. Fix: `shouldFilter={false}` + manual role-key substring filter. Override item now always visible when `parseInlineOverride(search)` returns a value. 4 new integration tests pin it. Recovery for "Einer der s Kann" already done by tenant-admin (now 1200 EUR via restored override on 2026-05-09 09:04 UTC).
+**γ-slice landed 2026-05-09 (commits 360e437 + dc278fb + b4897a1):** Migration adds `resources.recompute_status` column (CHECK: pending/running/failed/null). PATCH route schedules a Next.js `after()` worker when the override changes — synthesizes cost-lines for every (project, work_item) pair with an allocation referencing the resource, then sets `recompute_status` to NULL on success or 'failed' on error. UI surfaces a spinning info banner in the form + "Recompute" pill on the card during pending/running, and a destructive AlertTriangle + "Speichern erneut" copy on failed.
 
 ## Kontext
 
@@ -37,7 +38,7 @@ PROJ-54 schließt diese Lücken durch eine **Resource-Level-Override-Spalte plus
 |---|---|---|---|
 | **54-α** | Override-Spalten + SQL-Helper + Cost-Engine + Lookup-Layer + Audit-Whitelist + Tests | Ja (2 Spalten + 1 Helper) | **In Progress (Backend implemented; awaiting /qa)** |
 | **54-β** | Resource-Form Combobox + Stammdaten-Listen-Spalte + Bestand-Banner + Optimistic-Lock | Nein | **Implemented (2026-05-08)** |
-| **54-γ** | `after()`-Recompute + Failed-Marker + UI-Banner + Bench | Ja (1 Spalte `recompute_status`) | Architected |
+| **54-γ** | `after()`-Recompute + Failed-Marker + UI-Banner + Bench | Ja (1 Spalte `recompute_status`) | **Implemented (2026-05-09)** |
 | **54-δ** | Versionierte `resource_rate_overrides`-Tabelle | Ja | Deferred |
 
 ## User Stories
