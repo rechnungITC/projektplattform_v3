@@ -1,7 +1,11 @@
 import { NextResponse } from "next/server"
 import { z } from "zod"
 
-import { apiError, getAuthenticatedUserId } from "@/app/api/_lib/route-helpers"
+import {
+  apiError,
+  getAuthenticatedUserId,
+  requireProjectAccess,
+} from "@/app/api/_lib/route-helpers"
 import { ALLOWED_PARENT_KINDS, type WorkItemKind } from "@/types/work-item"
 
 const schema = z.object({
@@ -39,6 +43,11 @@ export async function PATCH(
 
   const { userId, supabase } = await getAuthenticatedUserId()
   if (!userId) return apiError("unauthorized", "Not signed in.", 401)
+
+  // PROJ-59α: parent changes drive Scrum hierarchy DnD and must require the
+  // same explicit project edit capability as sprint assignment.
+  const access = await requireProjectAccess(supabase, projectId, userId, "edit")
+  if (access.error) return access.error
 
   // Read the child's kind for parent-rule validation.
   const { data: child, error: childErr } = await supabase

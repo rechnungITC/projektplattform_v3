@@ -1,8 +1,8 @@
 # PROJ-59: Scrum Hierarchy Drag-and-Drop (Jira-like Story -> Task)
 
-## Status: Planned
+## Status: In Progress
 **Created:** 2026-05-08
-**Last Updated:** 2026-05-08
+**Last Updated:** 2026-05-09
 
 ## Summary
 
@@ -143,8 +143,8 @@ Ziel ist eine Bedienung wie in Jira: Nutzer sehen im Scrum-Bereich klar, welche 
 
 ### Backend
 
-- Bestehende Parent-Route reviewen und ggf. Fehlermeldungen fuer DnD lesbarer machen.
-- Tests fuer `task -> story`, `task -> null`, `subtask -> task`, invalid parent kind, self-parent und cycle-fail ergaenzen.
+- Bestehende Parent-Route reviewen und ggf. Fehlermeldungen fuer DnD lesbarer machen. **PROJ-59α: edit-access hardening done.**
+- Tests fuer `task -> story`, `task -> null`, `subtask -> task`, invalid parent kind, self-parent und cycle-fail ergaenzen. **PROJ-59α: done.**
 - Optional: Response um Parent-Preview erweitern, falls Frontend nach Drop Breadcrumbs ohne Re-Fetch braucht.
 
 ### Frontend
@@ -174,6 +174,40 @@ Ziel ist eine Bedienung wie in Jira: Nutzer sehen im Scrum-Bereich klar, welche 
 | WBS/Waterfall Regression | Mittel | Method-Gating + PROJ-36-Regressionscheck. |
 | Jira-Erwartung kollidiert mit V3-Kind-Regeln | Mittel | Regeln sichtbar machen und invalid drops begruenden. |
 | Parent-Aenderung beeinflusst Reports/Kosten unerwartet | Mittel | Nach Drop Revalidation und Report-Aggregations-Test. |
+
+## Implementation Log
+
+### 2026-05-09 — PROJ-59α Parent Route Hardening + Route Tests
+
+**Scope completed:**
+
+- `src/app/api/projects/[id]/work-items/[wid]/parent/route.ts`
+  - Adds explicit `requireProjectAccess(supabase, projectId, userId, "edit")`.
+  - Keeps existing parent-kind validation via `ALLOWED_PARENT_KINDS`.
+  - Keeps existing self-parent, cross-project parent, deleted-parent and cycle handling.
+
+- `src/app/api/projects/[id]/work-items/[wid]/parent/route.test.ts`
+  - Covers unauthenticated access.
+  - Covers forbidden access before reading/updating work items.
+  - Covers `task -> story`.
+  - Covers `task -> null`.
+  - Covers `subtask -> task`.
+  - Covers invalid parent kind.
+  - Covers self-parent.
+  - Covers parent from another project.
+  - Covers DB cycle prevention surfaced as `cycle_detected`.
+
+**Verification:**
+
+- `npx vitest run src/app/api/projects/[id]/work-items/[wid]/parent/route.test.ts` — 9/9 passed.
+- `npx eslint src/app/api/projects/[id]/work-items/[wid]/parent/route.ts src/app/api/projects/[id]/work-items/[wid]/parent/route.test.ts` — passed.
+- `npx tsc --noEmit` currently fails on pre-existing PROJ-54 resource-form test tuple typing in `src/components/resources/resource-form.test.tsx`, unrelated to PROJ-59α.
+
+**Remaining PROJ-59 work:**
+
+- PROJ-59β: Drop-Intent architecture (`status:*` vs `sprint:*` vs `parent:*`).
+- PROJ-59γ: Scrum Board UX for Story parent drop-zones and "Ohne Story" drop target.
+- PROJ-59δ: Regression/E2E coverage across Status-DnD, Sprint-DnD, Tree Indent/Outdent and Waterfall/WBS gating.
 
 ## Open Questions
 
