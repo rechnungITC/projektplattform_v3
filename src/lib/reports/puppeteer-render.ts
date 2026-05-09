@@ -12,6 +12,7 @@
  */
 
 import chromium from "@sparticuz/chromium"
+import { existsSync } from "node:fs"
 import puppeteer, { type Browser } from "puppeteer-core"
 
 import { createAdminClient } from "@/lib/supabase/admin"
@@ -39,12 +40,19 @@ export interface RenderResult {
 }
 
 let cachedBrowser: Browser | null = null
+const PRINT_READY_SELECTOR = "[data-report-print-ready='true']"
+const LOCAL_CHROME_CANDIDATES = [
+  "/usr/bin/chromium",
+  "/usr/bin/chromium-browser",
+  "/usr/bin/google-chrome",
+  "/usr/bin/google-chrome-stable",
+] as const
 
 async function getBrowser(): Promise<Browser> {
   if (cachedBrowser && cachedBrowser.connected) {
     return cachedBrowser
   }
-  const executablePath = await chromium.executablePath()
+  const executablePath = await resolveExecutablePath()
   cachedBrowser = await puppeteer.launch({
     args: chromium.args,
     defaultViewport: { width: 1240, height: 1754 },
@@ -52,6 +60,29 @@ async function getBrowser(): Promise<Browser> {
     headless: true,
   })
   return cachedBrowser
+}
+
+async function resolveExecutablePath(): Promise<string> {
+  if (process.env.PUPPETEER_EXECUTABLE_PATH) {
+    return process.env.PUPPETEER_EXECUTABLE_PATH
+  }
+
+  if (process.env.NODE_ENV !== "production") {
+    const systemChrome = LOCAL_CHROME_CANDIDATES.find((path) =>
+      existsSync(path),
+    )
+    if (systemChrome) return systemChrome
+
+    try {
+      const { chromium: playwrightChromium } = await import("playwright")
+      const playwrightPath = playwrightChromium.executablePath()
+      if (existsSync(playwrightPath)) return playwrightPath
+    } catch {
+      // Fall through to the serverless Chromium binary below.
+    }
+  }
+
+  return chromium.executablePath()
 }
 
 /**
@@ -70,11 +101,43 @@ export async function renderSnapshotPdf(input: RenderInput): Promise<RenderResul
   const page = await browser.newPage()
   try {
     if (input.cookieHeader) {
-      await page.setExtraHTTPHeaders({ Cookie: input.cookieHeader })
+      await page.setExtraHTTPHeaders({ cookie: input.cookieHeader })
     }
-    await page.goto(printUrl, {
-      waitUntil: "networkidle0",
+    const response = await page.goto(printUrl, {
+      waitUntil: "domcontentloaded",
       timeout: 25_000,
+    })
+    if (!response) {
+      throw new Error("print page did not return a response")
+    }
+    if (!response.ok()) {
+      throw new Error(`print page responded with HTTP ${response.status()}`)
+    }
+    await page.waitForSelector(PRINT_READY_SELECTOR, {
+      timeout: 10_000,
+    })
+    await page.emulateMediaType("print")
+    await page.evaluate(async () => {
+      const assetsReady = Promise.all([
+        document.fonts.ready,
+        Promise.all(
+          Array.from(document.images)
+            .filter((img) => !img.complete)
+            .map(
+              (img) =>
+                new Promise<void>((resolve) => {
+                  img.addEventListener("load", () => resolve(), { once: true })
+                  img.addEventListener("error", () => resolve(), { once: true })
+                }),
+            ),
+        ),
+      ])
+      await Promise.race([
+        assetsReady,
+        new Promise<void>((resolve) => {
+          window.setTimeout(resolve, 3_000)
+        }),
+      ])
     })
     const pdfBuffer = await page.pdf({
       format: "A4",
