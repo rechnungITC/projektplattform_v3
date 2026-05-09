@@ -49,6 +49,20 @@ export async function listResources(
   return body.resources ?? []
 }
 
+/**
+ * PROJ-54-γ — fetch a single resource by id (used by the page client to
+ * poll `recompute_status` while the after()-worker is in flight).
+ */
+export async function fetchResource(resourceId: string): Promise<Resource> {
+  const response = await fetch(
+    `/api/resources/${encodeURIComponent(resourceId)}`,
+    { method: "GET", cache: "no-store" }
+  )
+  if (!response.ok) throw new Error(await safeError(response))
+  const body = (await response.json()) as { resource: Resource }
+  return body.resource
+}
+
 export interface ResourceInput {
   display_name: string
   kind?: ResourceKind
