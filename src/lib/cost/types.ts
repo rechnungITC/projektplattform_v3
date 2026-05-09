@@ -20,6 +20,36 @@
  */
 
 /**
+ * PROJ-54-α — One resolved daily-rate per resource, returned by
+ * `_resolve_resource_rate(...)` and the `resolveResourceRates()` lookup
+ * layer. Source-discriminated:
+ *   - `'override'` — taken directly from `resources.daily_rate_override`.
+ *     `role_key` is null and `valid_from` is null (no version date in α).
+ *   - `'role'` — derived from the role-rate chain
+ *     `resources.source_stakeholder_id → stakeholders.role_key → role_rates`.
+ *
+ * Resolution-order in the SQL helper: override wins; otherwise the latest
+ * role_rate with `valid_from <= as_of_date`; otherwise the helper returns
+ * no row (caller surfaces the missing-rate warning).
+ *
+ * Note: the lookup layer normalizes `resource_id` to always carry the input
+ * key's resource_id, even on the role-fallback branch (the SQL helper itself
+ * returns NULL for `resource_id` on the role branch).
+ */
+export interface ResolvedRate {
+  tenant_id: string
+  source: "override" | "role"
+  /** Set when `source === 'role'`; null for overrides. */
+  role_key: string | null
+  /** Always populated by the lookup layer (normalized from input key). */
+  resource_id: string | null
+  daily_rate: number
+  currency: string
+  /** Set when `source === 'role'`; null for overrides (Latest-only in α). */
+  valid_from: string | null
+}
+
+/**
  * One applicable role rate, as resolved by `_resolve_role_rate(...)` for a
  * given `(tenant_id, role_key, as_of_date)` triple.
  */
@@ -122,5 +152,19 @@ export interface RoleRateLookupKey {
   role_key: string
   /** ISO date string (YYYY-MM-DD). Lookup returns the latest row with
    *  `valid_from <= as_of_date`. */
+  as_of_date: string
+}
+
+/**
+ * PROJ-54-α — Lookup-key shape for `resolveResourceRates`. The lookup layer
+ * dedupes identical keys before issuing RPC calls. One key per resource
+ * resolves to either an override-rate, a role-rate, or no row.
+ */
+export interface ResourceRateLookupKey {
+  tenant_id: string
+  resource_id: string
+  /** ISO date string (YYYY-MM-DD). The role-rate fallback uses the latest
+   *  role_rate with `valid_from <= as_of_date`. Override-rates ignore the
+   *  date (Latest-only in α). */
   as_of_date: string
 }

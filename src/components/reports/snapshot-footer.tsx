@@ -14,7 +14,7 @@ export function SnapshotFooter({
 }: SnapshotFooterProps) {
   const generatedAt = new Date(content.generated_at)
   return (
-    <footer className="mt-8 border-t pt-4 text-xs text-muted-foreground">
+    <footer className="mt-8 break-inside-avoid border-t pt-4 text-xs text-muted-foreground print:break-inside-avoid">
       <p>
         {SNAPSHOT_KIND_LABELS[kind]} v{version} ·{" "}
         {generatedAt.toLocaleDateString("de-DE", { dateStyle: "long" })} ·{" "}

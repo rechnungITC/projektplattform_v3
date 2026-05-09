@@ -45,12 +45,12 @@ import type { SupabaseClient } from "@supabase/supabase-js"
 import { writeCostAuditEntry } from "@/app/api/_lib/cost-audit"
 
 import { calculateWorkItemCosts } from "./calculate-work-item-costs"
-import { resolveRoleRates } from "./role-rate-lookup"
+import { resolveResourceRates } from "./resource-rate-lookup"
 import type {
   AllocationInput,
   CostCalcWarning,
   CostLineDraft,
-  RoleRateLookupKey,
+  ResourceRateLookupKey,
   WorkItemCostInput,
 } from "./types"
 
@@ -256,23 +256,25 @@ async function runSynthesis(
     }
   })
 
-  // Pre-resolve rates for the distinct role_keys present in the allocation set
-  // at the work-item's `created_at` cutoff (Tech Design §12 — locked decision).
+  // PROJ-54-α — Pre-resolve rates per resource_id at the work-item's
+  // `created_at` cutoff. The SQL helper applies the canonical order:
+  //   override on resources.daily_rate_override → role-rate via stakeholder
+  //   role_key → no row (caller emits no_rate_for_role warning).
   const asOfDate = wi.created_at.slice(0, 10) // YYYY-MM-DD
-  const distinctRoleKeys = Array.from(
+  const distinctResourceIds = Array.from(
     new Set(
       allocationInputs
-        .map((a) => a.role_key)
-        .filter((k): k is string => typeof k === "string" && k.length > 0)
-    )
+        .map((a) => a.resource_id)
+        .filter((rid): rid is string => typeof rid === "string" && rid.length > 0),
+    ),
   )
-  const lookupKeys: RoleRateLookupKey[] = distinctRoleKeys.map((rk) => ({
+  const lookupKeys: ResourceRateLookupKey[] = distinctResourceIds.map((rid) => ({
     tenant_id: tenantId,
-    role_key: rk,
+    resource_id: rid,
     as_of_date: asOfDate,
   }))
 
-  const lookup = await resolveRoleRates({
+  const lookup = await resolveResourceRates({
     supabase: adminClient,
     keys: lookupKeys,
   })
@@ -326,7 +328,11 @@ async function runSynthesis(
     const result = calculateWorkItemCosts({
       work_item: workItemInput,
       allocations: allocationInputs,
-      role_rates: lookup.resolved,
+      // PROJ-54-α — pass per-resource resolutions; engine indexes by
+      // resource_id and falls back to role_rates only when no resolution
+      // exists (defensive — should not happen in production paths).
+      resolved_rates: lookup.resolved,
+      role_rates: [],
       velocity_factor: velocityFactor,
       default_currency: defaultCurrency,
     })
