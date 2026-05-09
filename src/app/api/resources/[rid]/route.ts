@@ -298,33 +298,51 @@ async function recomputeCostLinesForResource(
     }
   }
 
-  let anyFailed = false
-  for (const t of targets) {
-    try {
-      const result = await synthesizeResourceAllocationCostLines({
+  // PROJ-54-γ AC-19 (post-deploy bench fix 2026-05-09): synthesize
+  // every target in PARALLEL via Promise.allSettled. Sequential
+  // iteration was producing ~1.5s × N latency on real tenant data
+  // (e.g. 4 work-items = ~6s). The synthesizer is independent per
+  // work-item (no row-level conflicts), the admin client multiplexes
+  // requests over a single connection pool, and the Tech Design
+  // already budgeted for parallel execution ("≤ 50 Allocations
+  // parallel ~100ms p95"). allSettled (vs Promise.all) lets one
+  // work-item fail without aborting the rest — the failed marker
+  // covers the partial-failure case.
+  const settled = await Promise.allSettled(
+    targets.map((t) =>
+      synthesizeResourceAllocationCostLines({
         adminClient: admin,
         tenantId,
         projectId: t.project_id,
         workItemId: t.work_item_id,
         actorUserId,
       })
-      // The synthesizer is FAIL-OPEN — it never throws but it does
-      // surface errors via `hadCostCalcError`. Treat that as a γ-fail.
-      if (
-        result &&
-        typeof result === "object" &&
-        "hadCostCalcError" in result &&
-        (result as { hadCostCalcError?: boolean }).hadCostCalcError === true
-      ) {
-        anyFailed = true
-      }
-    } catch (err) {
+    )
+  )
+
+  let anyFailed = false
+  for (let i = 0; i < settled.length; i++) {
+    const outcome = settled[i]!
+    const t = targets[i]!
+    if (outcome.status === "rejected") {
       anyFailed = true
       console.error(
-        `[PROJ-54-γ] synthesize failed for work-item ${t.work_item_id}: ${
-          err instanceof Error ? err.message : String(err)
+        `[PROJ-54-γ] synthesize threw for work-item ${t.work_item_id}: ${
+          outcome.reason instanceof Error
+            ? outcome.reason.message
+            : String(outcome.reason)
         }`
       )
+      continue
+    }
+    const result = outcome.value
+    if (
+      result &&
+      typeof result === "object" &&
+      "hadCostCalcError" in result &&
+      (result as { hadCostCalcError?: boolean }).hadCostCalcError === true
+    ) {
+      anyFailed = true
     }
   }
 
