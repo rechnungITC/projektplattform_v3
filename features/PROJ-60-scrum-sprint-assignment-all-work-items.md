@@ -1,6 +1,6 @@
 # PROJ-60: Scrum Sprint Assignment DnD for Stories, Tasks and Bugs
 
-## Status: In Progress
+## Status: Approved
 **Created:** 2026-05-09
 **Last Updated:** 2026-05-09
 
@@ -60,7 +60,7 @@ This is deliberately separate from PROJ-59. PROJ-59 changes `parent_id` for hier
 - [x] Sprint-Zuordnung veraendert nicht `status`.
 - [x] Parent-Hierarchie bleibt nach Sprint-Zuordnung sichtbar.
 - [x] Story Points, geplanter Start und geplantes Ende sind direkt am Sprint-Item kompakt editierbar.
-- [ ] Audit erfasst `sprint_id`-Aenderungen wie bisher.
+- [x] Audit erfasst `sprint_id`-Aenderungen wie bisher.
 
 ## Non-Functional Acceptance Criteria
 
@@ -68,7 +68,7 @@ This is deliberately separate from PROJ-59. PROJ-59 changes `parent_id` for hier
 - [x] Gemischte Items sind visuell unterscheidbar durch Kind-Badges.
 - [x] Keine Regression bei PROJ-25b Story-only Multi-Select-DnD.
 - [x] Keine Regression bei PROJ-59 Parent-DnD.
-- [ ] 50-Item Bulk-Grenze bleibt bestehen, sofern nicht separat erweitert.
+- [x] 50-Item Bulk-Grenze bleibt bestehen, sofern nicht separat erweitert.
 
 ## Wechselwirkungen
 
@@ -191,6 +191,21 @@ Verification:
 - `npx vitest run 'src/app/api/projects/[id]/work-items/[wid]/sprint/route.test.ts' 'src/app/api/projects/[id]/work-items/sprint-bulk/route.test.ts'` — 22/22 passed.
 - `git diff --check` — passed.
 - `npx tsc --noEmit` — still blocked by pre-existing PROJ-54 resource test fixture errors; no PROJ-60 file was reported.
+
+### 2026-05-09 — PROJ-60 QA: Bulk cap regression + audit verification
+
+Findings/Fixes:
+
+- Verified `sprint_id` is part of the DB-level PROJ-10 tracked audit columns for `work_items`, so Single/Bulk Sprint assignment remains audit-covered by the existing trigger path.
+- Fixed the Bulk route's 50-item cap to apply after de-duplication. This matches the route contract: repeated multi-select IDs are legal-but-pointless and should not inflate the unique write count.
+- Added regression coverage for:
+  - `>50` unique work-item IDs rejected with `validation_error` on `work_item_ids`.
+  - `>50` raw duplicate IDs accepted when they de-dupe below the unique cap.
+
+Verification:
+
+- `npx vitest run 'src/app/api/projects/[id]/work-items/sprint-bulk/route.test.ts' 'src/app/api/projects/[id]/work-items/[wid]/sprint/route.test.ts' 'src/app/api/projects/[id]/work-items/[wid]/route.test.ts'` — 33/33 passed.
+- `npx eslint 'src/app/api/projects/[id]/work-items/sprint-bulk/route.ts' 'src/app/api/projects/[id]/work-items/sprint-bulk/route.test.ts'` — passed.
 
 ## Open Questions
 

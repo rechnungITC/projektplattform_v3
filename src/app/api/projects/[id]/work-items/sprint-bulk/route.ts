@@ -26,10 +26,11 @@ import { isSprintAssignableKind } from "@/lib/work-items/sprint-assignment"
 const MAX_BULK_ITEMS = 50
 
 const schema = z.object({
+  // The unique-item cap is enforced after de-duplication below. This keeps
+  // repeated multi-select IDs legal while preserving the 50-row write limit.
   work_item_ids: z
     .array(z.string().uuid())
-    .min(1, "Provide at least one work item id.")
-    .max(MAX_BULK_ITEMS, `Cannot bulk-update more than ${MAX_BULK_ITEMS} items.`),
+    .min(1, "Provide at least one work item id."),
   sprint_id: z.string().uuid().nullable(),
 })
 
@@ -62,6 +63,14 @@ export async function PATCH(
   // De-duplicate IDs — sending the same ID twice in a multi-select drag is
   // legal-but-pointless and would inflate the count check.
   const ids = Array.from(new Set(parsed.data.work_item_ids))
+  if (ids.length > MAX_BULK_ITEMS) {
+    return apiError(
+      "validation_error",
+      `Cannot bulk-update more than ${MAX_BULK_ITEMS} unique items.`,
+      400,
+      "work_item_ids"
+    )
+  }
 
   const { userId, supabase } = await getAuthenticatedUserId()
   if (!userId) return apiError("unauthorized", "Not signed in.", 401)

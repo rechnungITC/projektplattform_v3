@@ -200,7 +200,7 @@ describe("PATCH /api/projects/[id]/work-items/sprint-bulk — auth & body", () =
     expect(body.error.field).toBe("work_item_ids")
   })
 
-  it("returns 400 on > 50 work_item_ids", async () => {
+  it("returns 400 on > 50 unique work_item_ids", async () => {
     getUserMock.mockResolvedValue({ data: { user: { id: USER_ID } } })
     const ids = Array.from(
       { length: 51 },
@@ -213,6 +213,7 @@ describe("PATCH /api/projects/[id]/work-items/sprint-bulk — auth & body", () =
     expect(res.status).toBe(400)
     const body = await res.json()
     expect(body.error.code).toBe("validation_error")
+    expect(body.error.field).toBe("work_item_ids")
   })
 
   it("returns 400 on non-UUID id in array", async () => {
@@ -382,6 +383,30 @@ describe("PATCH sprint-bulk — pre-flight match", () => {
     expect(res.status).toBe(200)
     const body = await res.json()
     expect(body.updated).toBe(1)
+  })
+
+  it("allows more than 50 raw work_item_ids when they dedupe below the cap", async () => {
+    workItemsMatch.__result = {
+      data: [{ id: STORY_A, kind: "story" }],
+      error: null,
+    }
+    workItemsUpdate.__result = {
+      data: [{ id: STORY_A, sprint_id: SPRINT_ID }],
+      error: null,
+    }
+
+    const res = await PATCH(
+      makeReq({
+        work_item_ids: Array.from({ length: 51 }, () => STORY_A),
+        sprint_id: SPRINT_ID,
+      }),
+      { params: Promise.resolve({ id: PROJECT_ID }) }
+    )
+
+    expect(res.status).toBe(200)
+    const body = await res.json()
+    expect(body.updated).toBe(1)
+    expect(workItemsUpdate.in).toHaveBeenCalledWith("id", [STORY_A])
   })
 })
 
