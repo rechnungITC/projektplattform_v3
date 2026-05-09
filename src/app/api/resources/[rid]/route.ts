@@ -1,6 +1,8 @@
-import { NextResponse } from "next/server"
+import { after, NextResponse } from "next/server"
 import { z } from "zod"
 
+import { synthesizeResourceAllocationCostLines } from "@/lib/cost"
+import { createAdminClient } from "@/lib/supabase/admin"
 import { requireModuleActive } from "@/lib/tenant-settings/server"
 
 import {
@@ -17,7 +19,7 @@ import { normalizeResourcePayload, resourcePatchSchema as patchSchema } from "..
 // PROJ-54-α — Override-Spalten in der Antwort exposed (s. Hinweis im
 // `route.ts` der Collection).
 const SELECT_COLUMNS =
-  "id, tenant_id, source_stakeholder_id, linked_user_id, display_name, kind, fte_default, availability_default, is_active, daily_rate_override, daily_rate_override_currency, created_by, created_at, updated_at"
+  "id, tenant_id, source_stakeholder_id, linked_user_id, display_name, kind, fte_default, availability_default, is_active, daily_rate_override, daily_rate_override_currency, recompute_status, created_by, created_at, updated_at"
 
 interface Ctx {
   params: Promise<{ rid: string }>
@@ -141,8 +143,21 @@ export async function PATCH(request: Request, ctx: Ctx) {
     }
   }
 
+  // PROJ-54-γ — when the override changes, mark the row as recompute
+  // pending in the same UPDATE so a concurrent reader sees the
+  // intent-to-recompute immediately. The actual cost-line synthesis
+  // runs after the response via after().
+  const overrideChanged =
+    touchesOverride &&
+    (parsed.data.daily_rate_override !== existing.daily_rate_override ||
+      parsed.data.daily_rate_override_currency !==
+        existing.daily_rate_override_currency)
+
   // Spread-Pattern: schema is the single source of truth.
-  const update = normalizeResourcePayload(parsed.data)
+  const update: Record<string, unknown> = normalizeResourcePayload(parsed.data)
+  if (overrideChanged) {
+    update.recompute_status = "pending"
+  }
 
   const { data: row, error } = await supabase
     .from("resources")
@@ -167,7 +182,148 @@ export async function PATCH(request: Request, ctx: Ctx) {
     }
     return apiError("update_failed", error.message, 500)
   }
+
+  // PROJ-54-γ — Async cost-line recompute after the response.
+  // `after()` throws outside a Next.js request scope (e.g. unit tests
+  // calling the handler directly). Wrap so the response always wins.
+  if (overrideChanged) {
+    const tenantId = existing.tenant_id as string
+    try {
+      after(async () => {
+        try {
+          await recomputeCostLinesForResource(tenantId, rid, userId)
+        } catch (err) {
+          // recomputeCostLinesForResource handles its own errors and
+          // sets recompute_status='failed' on the row. This catch is a
+          // belt-and-braces guard so the after() worker never throws.
+          console.error(
+            `[PROJ-54-γ] after() recompute crashed for resource ${rid}: ${
+              err instanceof Error ? err.message : String(err)
+            }`
+          )
+        }
+      })
+    } catch (err) {
+      // Outside a Next.js request scope (unit tests). The PATCH
+      // response still goes back to the caller; the recompute simply
+      // doesn't run in this code path.
+      console.warn(
+        `[PROJ-54-γ] after() unavailable, recompute skipped: ${
+          err instanceof Error ? err.message : String(err)
+        }`
+      )
+    }
+  }
+
   return NextResponse.json({ resource: row })
+}
+
+/**
+ * PROJ-54-γ — recompute every work-item that has an open allocation
+ * referencing this resource, then flip `recompute_status` to either
+ * `null` (idle) on success or `'failed'` on any error.
+ *
+ * Runs via Next.js `after()` after the PATCH response is sent. Uses
+ * the service-role admin client so it can write `recompute_status`
+ * without an RLS round-trip and so the synthesizer (which also needs
+ * service-role) doesn't have to re-derive a separate client.
+ */
+async function recomputeCostLinesForResource(
+  tenantId: string,
+  resourceId: string,
+  actorUserId: string
+): Promise<void> {
+  let admin
+  try {
+    admin = createAdminClient()
+  } catch (err) {
+    // Service-role key missing in env. Mark the row failed via the
+    // user's own RLS-scoped session would be ideal, but we're already
+    // past the response — swallow + log so the function returns.
+    console.error(
+      `[PROJ-54-γ] cost-line recompute skipped (admin client init failed): ${
+        err instanceof Error ? err.message : String(err)
+      }`
+    )
+    return
+  }
+
+  // Mark running (best-effort — if this fails, the synthesize loop
+  // still runs).
+  await admin
+    .from("resources")
+    .update({ recompute_status: "running" })
+    .eq("id", resourceId)
+
+  // Find every work-item that has a (non-deleted) allocation referencing
+  // this resource. The tenant filter is implicit via the resource_id +
+  // work_item_resources.tenant_id, but we double-check with a tenant_id
+  // predicate as defense-in-depth.
+  const { data: allocs, error: allocErr } = await admin
+    .from("work_item_resources")
+    .select("project_id, work_item_id")
+    .eq("resource_id", resourceId)
+    .eq("tenant_id", tenantId)
+
+  if (allocErr) {
+    console.error(
+      `[PROJ-54-γ] failed to load allocations for resource ${resourceId}: ${allocErr.message}`
+    )
+    await admin
+      .from("resources")
+      .update({ recompute_status: "failed" })
+      .eq("id", resourceId)
+    return
+  }
+
+  type AllocRow = { project_id: string; work_item_id: string }
+  const rows = (allocs ?? []) as AllocRow[]
+  // De-duplicate by (project_id, work_item_id) — multiple allocations
+  // per work-item are possible (different responsibilities).
+  const seen = new Set<string>()
+  const targets: AllocRow[] = []
+  for (const r of rows) {
+    const k = `${r.project_id}::${r.work_item_id}`
+    if (!seen.has(k)) {
+      seen.add(k)
+      targets.push(r)
+    }
+  }
+
+  let anyFailed = false
+  for (const t of targets) {
+    try {
+      const result = await synthesizeResourceAllocationCostLines({
+        adminClient: admin,
+        tenantId,
+        projectId: t.project_id,
+        workItemId: t.work_item_id,
+        actorUserId,
+      })
+      // The synthesizer is FAIL-OPEN — it never throws but it does
+      // surface errors via `hadCostCalcError`. Treat that as a γ-fail.
+      if (
+        result &&
+        typeof result === "object" &&
+        "hadCostCalcError" in result &&
+        (result as { hadCostCalcError?: boolean }).hadCostCalcError === true
+      ) {
+        anyFailed = true
+      }
+    } catch (err) {
+      anyFailed = true
+      console.error(
+        `[PROJ-54-γ] synthesize failed for work-item ${t.work_item_id}: ${
+          err instanceof Error ? err.message : String(err)
+        }`
+      )
+    }
+  }
+
+  await admin
+    .from("resources")
+    .update({ recompute_status: anyFailed ? "failed" : null })
+    .eq("id", resourceId)
 }
 
 export async function DELETE(_request: Request, ctx: Ctx) {

@@ -20,7 +20,7 @@ import { normalizeResourcePayload, resourceCreateSchema as createSchema } from "
 // can mask them for non-admins (separate response shape) — out of
 // PROJ-54-α scope.
 const SELECT_COLUMNS =
-  "id, tenant_id, source_stakeholder_id, linked_user_id, display_name, kind, fte_default, availability_default, is_active, daily_rate_override, daily_rate_override_currency, created_by, created_at, updated_at"
+  "id, tenant_id, source_stakeholder_id, linked_user_id, display_name, kind, fte_default, availability_default, is_active, daily_rate_override, daily_rate_override_currency, recompute_status, created_by, created_at, updated_at"
 
 async function activeTenantId(
   supabase: Awaited<ReturnType<typeof getAuthenticatedUserId>>["supabase"],

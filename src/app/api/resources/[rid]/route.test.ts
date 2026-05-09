@@ -56,6 +56,118 @@ beforeEach(() => {
   resourcesChain.eq.mockReturnValue(resourcesChain)
 })
 
+describe("PATCH /api/resources/[rid] — PROJ-54-γ recompute_status pending marker", () => {
+  it("sets recompute_status='pending' when daily_rate_override changes", async () => {
+    getUserMock.mockResolvedValue({ data: { user: { id: USER_ID } } })
+    resourcesChain.maybeSingle.mockResolvedValue({
+      data: {
+        id: RESOURCE_ID,
+        tenant_id: TENANT_ID,
+        daily_rate_override: 1000,
+        daily_rate_override_currency: "EUR",
+        updated_at: "2026-05-09T09:00:00.000Z",
+      },
+      error: null,
+    })
+    resourcesChain.single.mockResolvedValue({
+      data: { id: RESOURCE_ID, tenant_id: TENANT_ID },
+      error: null,
+    })
+
+    const res = await PATCH(
+      new Request("http://localhost/x", {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          daily_rate_override: 1500,
+          daily_rate_override_currency: "EUR",
+        }),
+      }),
+      { params: Promise.resolve({ rid: RESOURCE_ID }) }
+    )
+    expect(res.status).toBe(200)
+
+    const updateArg = resourcesChain.update.mock.calls[0]?.[0] as Record<
+      string,
+      unknown
+    >
+    expect(updateArg.recompute_status).toBe("pending")
+    expect(updateArg.daily_rate_override).toBe(1500)
+  })
+
+  it("does NOT set recompute_status when only display_name changes", async () => {
+    getUserMock.mockResolvedValue({ data: { user: { id: USER_ID } } })
+    resourcesChain.maybeSingle.mockResolvedValue({
+      data: {
+        id: RESOURCE_ID,
+        tenant_id: TENANT_ID,
+        daily_rate_override: 1000,
+        daily_rate_override_currency: "EUR",
+        updated_at: "2026-05-09T09:00:00.000Z",
+      },
+      error: null,
+    })
+    resourcesChain.single.mockResolvedValue({
+      data: { id: RESOURCE_ID, tenant_id: TENANT_ID },
+      error: null,
+    })
+
+    const res = await PATCH(
+      new Request("http://localhost/x", {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ display_name: "Renamed" }),
+      }),
+      { params: Promise.resolve({ rid: RESOURCE_ID }) }
+    )
+    expect(res.status).toBe(200)
+
+    const updateArg = resourcesChain.update.mock.calls[0]?.[0] as Record<
+      string,
+      unknown
+    >
+    expect(updateArg).not.toHaveProperty("recompute_status")
+  })
+
+  it("does NOT set recompute_status when override pair is sent unchanged", async () => {
+    getUserMock.mockResolvedValue({ data: { user: { id: USER_ID } } })
+    resourcesChain.maybeSingle.mockResolvedValue({
+      data: {
+        id: RESOURCE_ID,
+        tenant_id: TENANT_ID,
+        daily_rate_override: 1000,
+        daily_rate_override_currency: "EUR",
+        updated_at: "2026-05-09T09:00:00.000Z",
+      },
+      error: null,
+    })
+    resourcesChain.single.mockResolvedValue({
+      data: { id: RESOURCE_ID, tenant_id: TENANT_ID },
+      error: null,
+    })
+
+    const res = await PATCH(
+      new Request("http://localhost/x", {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          daily_rate_override: 1000,
+          daily_rate_override_currency: "EUR",
+          display_name: "Tweaked",
+        }),
+      }),
+      { params: Promise.resolve({ rid: RESOURCE_ID }) }
+    )
+    expect(res.status).toBe(200)
+
+    const updateArg = resourcesChain.update.mock.calls[0]?.[0] as Record<
+      string,
+      unknown
+    >
+    expect(updateArg).not.toHaveProperty("recompute_status")
+  })
+})
+
 describe("PATCH /api/resources/[rid] — PROJ-54-β optimistic lock", () => {
   it("returns 409 stale_record when If-Unmodified-Since predates the row", async () => {
     getUserMock.mockResolvedValue({ data: { user: { id: USER_ID } } })
