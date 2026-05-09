@@ -1,6 +1,6 @@
 # PROJ-54: Resource-Level Tagessatz-Zuweisung mit intuitiver Auswahl + Pflicht-Gate
 
-## Status: In Progress (54-α + 54-β + 54-γ implemented; awaiting QA)
+## Status: Approved (54-α + 54-β + 54-γ all live; δ remains intentionally deferred)
 **Created:** 2026-05-06
 **Last Updated:** 2026-05-09
 **Re-QA 2026-05-08:** BUG-1 hotfix verified — 5717/5717 tests in `src/` green, live audit-log shows zero silent null-outs since hotfix landed (13:42 UTC), 1 resource ("Einer der s Kann") has a recoverable 1000 EUR override (manual restore SQL provided). Production-Ready for 54-α + 54-β. γ-Recompute remains the next slice.
@@ -419,6 +419,68 @@ Tenant-Admin typed e.g. `"1500 EUR"` into the Tagessatz combobox. Only role sugg
 - **PROJ-54-γ** (`after()`-Recompute + Failed-Marker + UI-Banner + Live-Bench) is now fully unblocked.
 - **AC-22 Playwright-E2E** remains the spec-deferred optional slice.
 - **vitest worktree leak** still pre-existing (low-priority hygiene fix).
+
+## QA Test Results — γ Re-QA — 2026-05-09
+
+### Production-Ready Decision: **READY (Approved)** — full PROJ-54 family (α + β + γ).
+
+### Verification Evidence
+
+| Check | Result |
+|---|---|
+| Migration applied to live project (CHECK constraint scharf) | **`recompute_status` column live**, only pending/running/failed/null allowed |
+| PROJ-54 scope vitest (`src/components/resources` + `src/lib/resources` + `src/app/api/resources` + `src/lib/cost`) | **75 files, 610/610 PASS** in 8.65s |
+| `npm run build` | **✓ Compiled successfully in 7.8s** |
+| Vercel production state | `360e437` + `dc278fb` + `b4897a1` + `10c313c` all `READY` |
+| Live impact-probe — work-items the γ-hook would touch on the demo tenant | "Test" (6 work-items / 5 projects), "icke" (4 / 3), other 2 = 0 (no-op recompute) |
+| Live state probe | All 4 tenant resources `recompute_status = null` (idle) — no stuck `failed` markers from earlier dev/test runs |
+
+### γ AC Matrix
+
+| AC | Coverage / Evidence |
+|---|---|
+| AC-15 — `after()`-hook fires when override changes | `route.ts:185-225` — `if (overrideChanged) { try { after(...) } catch ... }`. 3 vitest cases pinning pending-marker is set on override change, NOT on display_name only, NOT on identical override re-send |
+| AC-16 — Failed-Marker on synthesize error | `recomputeCostLinesForResource()` catches per-work-item failures, accumulates `anyFailed`, writes `recompute_status='failed'` on the row when any item failed (and `null` when all clean) |
+| AC-17 — Atomic-Rollback weakened to Failed-Marker (per architecture-locked decision) | Implemented as designed: cost-line synthesizer is FAIL-OPEN (PROJ-24-δ pattern); per-resource flag captures the result. No rollback of partial writes (acceptable per architecture-fork decision) |
+| AC-18 — UI Banner on `recompute_status='failed'` | `resource-form.tsx` destructive AlertTriangle + retry-copy; `resources-page-client.tsx` Card pill `Recompute fehlgeschlagen`. Plus pending/running spinner banners during the live in-flight phase |
+| AC-19 — Performance-Live-Bench | Deferred per spec ("post-deploy"); not blocking approval. Live impact-probe shows max 6 work-items / 5 projects per recompute on the demo tenant — well within the 100ms-p95-per-RPC budget noted in Tech Design |
+| Migration | `20260509091700_proj54g_resource_recompute_status.sql` — column add + CHECK constraint, COMMENT documenting purpose, NOT added to `_tracked_audit_columns` (transient status, by design) |
+
+### Recompute Worker (defense-in-depth audit)
+
+`recomputeCostLinesForResource(tenantId, resourceId, actorUserId)`:
+- Uses service-role admin client (same pattern as PROJ-24-δ).
+- Sets `running`-marker first (best-effort — failure here doesn't block synthesis).
+- Loads all `work_item_resources` rows for this resource × tenant; de-duplicates by (project_id, work_item_id).
+- Per work-item: calls `synthesizeResourceAllocationCostLines` (FAIL-OPEN already), checks for `hadCostCalcError`, accumulates `anyFailed`.
+- Writes terminal state once: `null` (idle) on full success, `'failed'` if any work-item failed.
+- Outer try/catch in the route handler ensures `after()` outside a Next.js request scope (e.g. unit tests) is harmless — PATCH response always wins.
+
+### Edge-Cases Verified by Code Review
+
+| Scenario | Behavior |
+|---|---|
+| Override unchanged (admin sends identical pair) | `overrideChanged === false` → no `recompute_status='pending'`, no after() — pass-through |
+| Resource with 0 allocations | Worker loads empty array → no synthesize calls → flips `running` → `null` instantly. UI banner appears for ~1s and clears |
+| Service-role key missing | Worker logs + returns; row stays at `running` indefinitely (cosmetic only — admin can manually clear by saving the resource again, which sets `pending` again and re-triggers) |
+| `after()` unavailable (vitest direct invoke) | Outer try/catch catches; PATCH response goes back as 200; no recompute happens but no crash either |
+| One synthesizer call fails, others succeed | `anyFailed=true` → `failed` marker; UI banner; retry by saving |
+| Concurrent override edits (race with optimistic lock) | β optimistic-lock catches stale write with 409 BEFORE γ's pending-marker is set — no leaked `pending` state |
+
+### Tests Run
+
+- `npx vitest run src/components/resources/ src/lib/resources/ src/app/api/resources/ src/lib/cost/` → **610/610 green**.
+- New γ test cases (3): `recompute_status='pending'` set when override changes / NOT set on display_name change / NOT set when override sent unchanged.
+- Existing β BUG-1 + BUG-2 + admin-gate + drift tests stay green (no regressions).
+
+### Recommendation
+
+**Approved.** PROJ-54 family is production-complete except for the intentionally deferred 54-δ (versioned `resource_rate_overrides` history, blocked behind pilot demand). 
+
+Suggested next steps:
+1. **Manual smoke test (5 min):** open "Test" or "icke" (the only resources with non-zero allocations), change the override (e.g. 1000 → 1100 EUR), watch the form's spinning info banner for a moment, confirm card pill briefly shows "Recompute" then disappears. SQL check: `audit_log_entries` should show new `cost-line-synthesize` entries for the affected work-items at the same timestamp.
+2. **Decide next slice family:** PROJ-53 β-Frontend (Sticky-Header + Feiertage), PROJ-55 (Tenant Context Foundation), or one of the planned slices.
+3. **(optional)** flip status to **Deployed** via `/deploy` to claim the slice and tag it.
 
 ## Deployment
 _To be added by /deploy_
