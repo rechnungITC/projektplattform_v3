@@ -2,8 +2,9 @@
 
 ## Status: Approved (54-α + 54-β; γ remains pending)
 **Created:** 2026-05-06
-**Last Updated:** 2026-05-08
+**Last Updated:** 2026-05-09
 **Re-QA 2026-05-08:** BUG-1 hotfix verified — 5717/5717 tests in `src/` green, live audit-log shows zero silent null-outs since hotfix landed (13:42 UTC), 1 resource ("Einer der s Kann") has a recoverable 1000 EUR override (manual restore SQL provided). Production-Ready for 54-α + 54-β. γ-Recompute remains the next slice.
+**BUG-2 hotfix 2026-05-09 (commits 6c04ef0 + 9ebf1d6):** combobox-side bug — typing an inline override ("1500 EUR") was hidden by cmdk's fuzzy filter; only roles surfaced. Fix: `shouldFilter={false}` + manual role-key substring filter. Override item now always visible when `parseInlineOverride(search)` returns a value. 4 new integration tests pin it. Recovery for "Einer der s Kann" already done by tenant-admin (now 1200 EUR via restored override on 2026-05-09 09:04 UTC).
 
 ## Kontext
 
@@ -382,6 +383,41 @@ The Audit-Trigger will record the restoration; no other action needed.
 1. Manually verify the three re-QA reproductions (5 min) to confirm UX-side parity. Strictly optional — code + tests + live audit are all consistent.
 2. Run the recovery `UPDATE` for "Einer der s Kann" (or restore via the form — both paths are now safe).
 3. Decide on next slice: **PROJ-54-γ** (`after()`-Recompute + Failed-Marker) is now unblocked.
+
+## BUG-2 Notes — 2026-05-09 (Combobox filter)
+
+### Symptom (live-reported)
+Tenant-Admin typed e.g. `"1500 EUR"` into the Tagessatz combobox. Only role suggestions appeared. The "Eigener Satz: 1500 EUR/Tag" CommandItem the user expected to click was nowhere to be seen — the inline-override path was unreachable from the UI.
+
+### Root cause
+`<Command shouldFilter>` (cmdk default) scores every CommandItem by fuzzy-matching its `value` prop against the search query.
+- Role items had values like `"Senior Developer 950 EUR"` — they fuzzy-matched on the shared `EUR` token and stayed visible.
+- The override item had `value="__override__"` — no character overlap with `"1500 EUR"` → score 0 → filtered out.
+
+### Fix (`6c04ef0`)
+1. Disable cmdk's filter: `<Command shouldFilter={false}>`.
+2. Filter the role list manually: `latestRates.filter(r => r.role_key.toLowerCase().includes(q))`.
+3. Render the override item unconditionally when `parseInlineOverride(search)` returns a non-null value.
+
+### Test coverage (`9ebf1d6`)
+`tagessatz-combobox.integration.test.tsx` — 4 cases:
+- Type `"1500 EUR"` → override item visible (the bug, now pinned).
+- Manual role filter contract: empty search shows all, substring narrows, non-match hides.
+- Both visible when search doubles as override + role-substring.
+- `rolesOnly={true}` still hides the override item (non-admin gate intact).
+
+### Verification
+- `npx vitest run src/components/resources/` → **7 files, 58/58 green** (1.41s).
+- `npm run build` → ✓ Compiled successfully in 9.6s.
+- Auto-deploy on push of 9ebf1d6.
+
+### Recovery status (BUG-1 victim)
+"Einer der s Kann" was successfully restored on 2026-05-09 09:04 UTC to **1200 EUR EUR** via the now-safe form (audit log: `null → 1200`). No further action required.
+
+### Open follow-ups
+- **PROJ-54-γ** (`after()`-Recompute + Failed-Marker + UI-Banner + Live-Bench) is now fully unblocked.
+- **AC-22 Playwright-E2E** remains the spec-deferred optional slice.
+- **vitest worktree leak** still pre-existing (low-priority hygiene fix).
 
 ## Deployment
 _To be added by /deploy_
