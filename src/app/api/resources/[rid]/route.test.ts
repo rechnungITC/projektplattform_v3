@@ -186,7 +186,7 @@ describe("PATCH /api/resources/[rid] — PROJ-54-β optimistic lock", () => {
         method: "PATCH",
         headers: {
           "Content-Type": "application/json",
-          "If-Unmodified-Since": "2026-05-08T13:30:00.000Z",
+          "X-If-Unmodified-Since": "2026-05-08T13:30:00.000Z",
         },
         body: JSON.stringify({ display_name: "Stale Save" }),
       }),
@@ -216,7 +216,7 @@ describe("PATCH /api/resources/[rid] — PROJ-54-β optimistic lock", () => {
         method: "PATCH",
         headers: {
           "Content-Type": "application/json",
-          "If-Unmodified-Since": ts,
+          "X-If-Unmodified-Since": ts,
         },
         body: JSON.stringify({ display_name: "Fresh" }),
       }),

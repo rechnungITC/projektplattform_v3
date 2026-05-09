@@ -111,7 +111,11 @@ export async function updateResource(
     "Content-Type": "application/json",
   }
   if (options.ifUnmodifiedSince) {
-    headers["If-Unmodified-Since"] = options.ifUnmodifiedSince
+    // BUG-3 fix (2026-05-09): custom `X-If-Unmodified-Since` header
+    // bypasses Vercel/Next.js edge-layer RFC-7232 semantics that
+    // otherwise return 412 before the route runs. Server reads it as
+    // the optimistic-lock token; on conflict it answers 409.
+    headers["X-If-Unmodified-Since"] = options.ifUnmodifiedSince
   }
   const response = await fetch(
     `/api/resources/${encodeURIComponent(resourceId)}`,

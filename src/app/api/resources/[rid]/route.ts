@@ -98,12 +98,20 @@ export async function PATCH(request: Request, ctx: Ctx) {
   )
   if (moduleDenial) return moduleDenial
 
-  // PROJ-54-β — Optimistic Lock via If-Unmodified-Since.
-  // Caller sends the resource's `updated_at` as ISO string. If the row
-  // has been touched in between (a second editor saved or the recompute
-  // hook from γ wrote something), the DB timestamp is newer and we
-  // reject the PATCH with 409 instead of silently overwriting.
-  const ifUnmod = request.headers.get("if-unmodified-since")
+  // PROJ-54-β — Optimistic Lock.
+  // BUG-3 fix (2026-05-09): we use a CUSTOM header `X-If-Unmodified-Since`
+  // instead of the standard `If-Unmodified-Since`. The standard header
+  // is intercepted by Vercel/Next.js's edge layer (RFC-7232 §3.4) and
+  // returns 412 BEFORE this handler runs — blocking every save the
+  // user attempts. Switching to a custom header bypasses all HTTP
+  // protocol-level precondition semantics; only this server enforces
+  // it, and only with our own 409 stale_record response.
+  // For backwards-compat we still read the standard header if present
+  // (no in-flight clients should be sending it after the same-version
+  // ship of route + lib, but defense-in-depth never hurts).
+  const ifUnmod =
+    request.headers.get("x-if-unmodified-since") ??
+    request.headers.get("if-unmodified-since")
   if (ifUnmod) {
     const headerMs = Date.parse(ifUnmod)
     const dbMs = Date.parse(existing.updated_at as string)
