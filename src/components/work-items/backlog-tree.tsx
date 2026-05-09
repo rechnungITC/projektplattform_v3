@@ -41,6 +41,7 @@ import {
   ownPlannedStart,
   totalEffort,
 } from "@/lib/work-items/wbs-display"
+import { isSprintAssignableKind } from "@/lib/work-items/sprint-assignment"
 import type { Phase } from "@/types/phase"
 import {
   ALLOWED_PARENT_KINDS,
@@ -49,7 +50,7 @@ import {
 } from "@/types/work-item"
 
 import { useBacklogDndOptional } from "./backlog-dnd-provider"
-import { DraggableStoryHandle } from "./draggable-story-handle"
+import { DraggableWorkItemHandle } from "./draggable-story-handle"
 import { EditWbsCodeDialog } from "./edit-wbs-code-dialog"
 import { WorkItemKindBadge } from "./work-item-kind-badge"
 import { WorkItemStatusBadge } from "./work-item-status-badge"
@@ -518,11 +519,12 @@ function BacklogTreeRow({
   const isPending = pendingMoveId === item.id
   const isSelected = node.isSelected
 
-  // PROJ-25b — DnD multi-select highlight (independent of node.isSelected,
+  // PROJ-60 — DnD multi-select highlight (independent of node.isSelected,
   // which is react-arborist's single-select state).
   const dnd = useBacklogDndOptional()
+  const sprintAssignable = isSprintAssignableKind(item.kind)
   const dndSelected =
-    dnd !== null && item.kind === "story" ? dnd.isSelected(item.id) : false
+    dnd !== null && sprintAssignable ? dnd.isSelected(item.id) : false
 
   const ownStart = ownPlannedStart(item)
   const ownEnd = ownPlannedEnd(item)
@@ -575,10 +577,11 @@ function BacklogTreeRow({
         ) : (
           <span className="ml-1 inline-block h-4 w-4 shrink-0" aria-hidden />
         )}
-        {dnd !== null && item.kind === "story" ? (
-          <DraggableStoryHandle
+        {dnd !== null && sprintAssignable ? (
+          <DraggableWorkItemHandle
             workItemId={item.id}
-            storyTitle={item.title}
+            workItemTitle={item.title}
+            workItemKind={item.kind}
             selected={dndSelected}
           />
         ) : null}
@@ -600,15 +603,15 @@ function BacklogTreeRow({
             type="button"
             onClick={(event) => {
               event.stopPropagation()
-              // PROJ-25b — Ctrl/Cmd-Click and Shift-Click extend the DnD
+              // PROJ-60 — Ctrl/Cmd-Click and Shift-Click extend the DnD
               // multi-select instead of opening the detail drawer.
-              if (dnd !== null && item.kind === "story") {
+              if (dnd !== null && sprintAssignable) {
                 if (event.ctrlKey || event.metaKey) {
                   dnd.toggle(item.id)
                   return
                 }
                 if (event.shiftKey) {
-                  dnd.range(item.id, dnd.orderedStoryIds)
+                  dnd.range(item.id, dnd.orderedSprintAssignableIds)
                   return
                 }
               }

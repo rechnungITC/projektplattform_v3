@@ -15,6 +15,7 @@ import * as React from "react"
 import { toast } from "sonner"
 
 import { useStorySelection } from "@/hooks/use-story-selection"
+import { isSprintAssignableKind } from "@/lib/work-items/sprint-assignment"
 import type { Sprint } from "@/types/sprint"
 import type { WorkItemWithProfile } from "@/types/work-item"
 
@@ -41,8 +42,8 @@ import { DragOverlayCard } from "./drag-overlay-card"
  */
 
 interface BacklogDndContextValue {
-  /** All currently visible story IDs in the order they are rendered. */
-  orderedStoryIds: readonly string[]
+  /** All currently visible sprint-assignable IDs in render order. */
+  orderedSprintAssignableIds: readonly string[]
   selectedIds: Set<string>
   isSelected: (id: string) => boolean
   toggle: (id: string) => void
@@ -112,8 +113,8 @@ export function BacklogDndProvider({
     return map
   }, [sprints])
 
-  const orderedStoryIds = React.useMemo(
-    () => items.filter((it) => it.kind === "story").map((it) => it.id),
+  const orderedSprintAssignableIds = React.useMemo(
+    () => items.filter((it) => isSprintAssignableKind(it.kind)).map((it) => it.id),
     [items]
   )
 
@@ -133,6 +134,8 @@ export function BacklogDndProvider({
 
   const handleDragStart = (event: DragStartEvent) => {
     const id = String(event.active.id)
+    const item = itemsById.get(id)
+    if (!item || !isSprintAssignableKind(item.kind)) return
     setActiveDragId(id)
     // If the dragged item is not in the current selection, treat the drag
     // as single-item (replace selection). Matches macOS Finder behavior.
@@ -182,6 +185,15 @@ export function BacklogDndProvider({
     const ids = selection.isSelected(activeId)
       ? Array.from(selection.selectedIds)
       : [activeId]
+    const invalidIds = ids.filter((id) => {
+      const item = itemsById.get(id)
+      return !item || !isSprintAssignableKind(item.kind)
+    })
+    if (invalidIds.length > 0) {
+      announce("Nur Stories, Tasks und Bugs können Sprints zugeordnet werden.")
+      toast.error("Nur Stories, Tasks und Bugs können Sprints zugeordnet werden.")
+      return
+    }
 
     // Filter out items that already sit on the target — no-op for those.
     const idsToMove = ids.filter((id) => {
@@ -226,15 +238,15 @@ export function BacklogDndProvider({
       if (isBulk) {
         announcement =
           targetSprintId === null
-            ? `${idsToMove.length} Stories wurden in den Backlog zurückverschoben.`
-            : `${idsToMove.length} Stories wurden ${targetLabel} zugewiesen.`
+            ? `${idsToMove.length} Items wurden in den Backlog zurückverschoben.`
+            : `${idsToMove.length} Items wurden ${targetLabel} zugewiesen.`
       } else {
-        const story = itemsById.get(idsToMove[0])
-        const storyLabel = story?.title ?? "Story"
+        const item = itemsById.get(idsToMove[0])
+        const itemLabel = item?.title ?? "Item"
         announcement =
           targetSprintId === null
-            ? `Story '${storyLabel}' wurde in den Backlog zurückverschoben.`
-            : `Story '${storyLabel}' wurde ${targetLabel} zugewiesen.`
+            ? `Item '${itemLabel}' wurde in den Backlog zurückverschoben.`
+            : `Item '${itemLabel}' wurde ${targetLabel} zugewiesen.`
       }
       announce(announcement)
 
@@ -249,7 +261,7 @@ export function BacklogDndProvider({
   }
 
   const value: BacklogDndContextValue = {
-    orderedStoryIds,
+    orderedSprintAssignableIds,
     selectedIds: selection.selectedIds,
     isSelected: selection.isSelected,
     toggle: selection.toggle,

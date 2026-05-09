@@ -105,6 +105,8 @@ const TENANT_ID = "66666666-6666-4666-8666-666666666666"
 const STORY_A = "aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa"
 const STORY_B = "bbbbbbbb-bbbb-4bbb-8bbb-bbbbbbbbbbbb"
 const STORY_C = "cccccccc-cccc-4ccc-8ccc-cccccccccccc"
+const TASK_A = "dddddddd-dddd-4ddd-8ddd-dddddddddddd"
+const BUG_A = "eeeeeeee-eeee-4eee-8eee-eeeeeeeeeeee"
 const FOREIGN_ID = "ffffffff-ffff-4fff-8fff-ffffffffffff"
 
 function makeReq(body: unknown, projectId: string = PROJECT_ID): Request {
@@ -341,7 +343,7 @@ describe("PATCH sprint-bulk — pre-flight match", () => {
     expect(workItemsUpdate.update).not.toHaveBeenCalled()
   })
 
-  it("returns 422 invalid_kind when a non-story slips through", async () => {
+  it("returns 422 invalid_kind when a non-sprint-assignable item slips through", async () => {
     workItemsMatch.__result = {
       data: [
         { id: STORY_A, kind: "story" },
@@ -388,7 +390,7 @@ describe("PATCH sprint-bulk — pre-flight match", () => {
 // -----------------------------------------------------------------------------
 
 describe("PATCH sprint-bulk — happy path", () => {
-  it("attaches three stories to a planned sprint atomically", async () => {
+  it("attaches stories, tasks and bugs to a planned sprint atomically", async () => {
     getUserMock.mockResolvedValue({ data: { user: { id: USER_ID } } })
     sprintsChain.maybeSingle.mockResolvedValue({
       data: { id: SPRINT_ID, project_id: PROJECT_ID, state: "planned" },
@@ -397,23 +399,23 @@ describe("PATCH sprint-bulk — happy path", () => {
     workItemsMatch.__result = {
       data: [
         { id: STORY_A, kind: "story" },
-        { id: STORY_B, kind: "story" },
-        { id: STORY_C, kind: "story" },
+        { id: TASK_A, kind: "task" },
+        { id: BUG_A, kind: "bug" },
       ],
       error: null,
     }
     workItemsUpdate.__result = {
       data: [
         { id: STORY_A, sprint_id: SPRINT_ID },
-        { id: STORY_B, sprint_id: SPRINT_ID },
-        { id: STORY_C, sprint_id: SPRINT_ID },
+        { id: TASK_A, sprint_id: SPRINT_ID },
+        { id: BUG_A, sprint_id: SPRINT_ID },
       ],
       error: null,
     }
 
     const res = await PATCH(
       makeReq({
-        work_item_ids: [STORY_A, STORY_B, STORY_C],
+        work_item_ids: [STORY_A, TASK_A, BUG_A],
         sprint_id: SPRINT_ID,
       }),
       { params: Promise.resolve({ id: PROJECT_ID }) }

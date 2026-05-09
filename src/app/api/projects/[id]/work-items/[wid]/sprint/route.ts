@@ -6,6 +6,7 @@ import {
   getAuthenticatedUserId,
   requireProjectAccess,
 } from "@/app/api/_lib/route-helpers"
+import { isSprintAssignableKind } from "@/lib/work-items/sprint-assignment"
 
 const schema = z.object({
   sprint_id: z.string().uuid().nullable(),
@@ -77,6 +78,23 @@ export async function PATCH(
         "sprint_id"
       )
     }
+  }
+
+  const { data: workItem, error: workItemErr } = await supabase
+    .from("work_items")
+    .select("id, kind")
+    .eq("id", workItemId)
+    .eq("project_id", projectId)
+    .maybeSingle()
+  if (workItemErr) return apiError("internal_error", workItemErr.message, 500)
+  if (!workItem) return apiError("not_found", "Work item not found.", 404)
+  if (!isSprintAssignableKind(workItem.kind)) {
+    return apiError(
+      "invalid_kind",
+      "Only stories, tasks and bugs can be assigned to a sprint.",
+      422,
+      "wid"
+    )
   }
 
   const { data, error } = await supabase

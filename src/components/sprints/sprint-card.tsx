@@ -1,6 +1,12 @@
 "use client"
 
-import { CalendarDays, MoreHorizontal, Pencil, PlayCircle, Trash2 } from "lucide-react"
+import {
+  CalendarDays,
+  MoreHorizontal,
+  Pencil,
+  PlayCircle,
+  Trash2,
+} from "lucide-react"
 import * as React from "react"
 
 import { Button } from "@/components/ui/button"
@@ -23,6 +29,9 @@ import { useWorkItems } from "@/hooks/use-work-items"
 import { cn } from "@/lib/utils"
 import type { Sprint } from "@/types/sprint"
 
+import { WorkItemKindBadge } from "../work-items/work-item-kind-badge"
+import { WorkItemPriorityBadge } from "../work-items/work-item-priority-badge"
+import { WorkItemStatusBadge } from "../work-items/work-item-status-badge"
 import { EditSprintDialog } from "./edit-sprint-dialog"
 import { SprintStateBadge } from "./sprint-state-badge"
 import { SprintStateDialog } from "./sprint-state-dialog"
@@ -47,6 +56,8 @@ export function SprintCard({
   const { items } = useWorkItems(projectId, { sprintId: sprint.id })
 
   const isActive = sprint.state === "active"
+  const visibleItems = items.slice(0, 6)
+  const hiddenItemCount = items.length - visibleItems.length
 
   return (
     <Card
@@ -126,11 +137,37 @@ export function SprintCard({
           </CardDescription>
         ) : null}
       </CardHeader>
-      {sprint.goal ? (
-        <CardContent className="pt-0">
-          <p className="whitespace-pre-wrap text-sm text-muted-foreground">
-            {sprint.goal}
-          </p>
+      {sprint.goal || visibleItems.length > 0 ? (
+        <CardContent className="space-y-3 pt-0">
+          {sprint.goal ? (
+            <p className="whitespace-pre-wrap text-sm text-muted-foreground">
+              {sprint.goal}
+            </p>
+          ) : null}
+          {visibleItems.length > 0 ? (
+            <div className="space-y-1.5" aria-label="Zugeordnete Sprint-Items">
+              {visibleItems.map((item) => (
+                <div
+                  key={item.id}
+                  className="flex min-w-0 items-center gap-2 rounded-md border bg-background px-2 py-1.5"
+                >
+                  <WorkItemKindBadge kind={item.kind} />
+                  <span className="min-w-0 flex-1 truncate text-sm font-medium">
+                    {item.title}
+                  </span>
+                  <div className="hidden shrink-0 sm:block">
+                    <WorkItemPriorityBadge priority={item.priority} />
+                  </div>
+                  <WorkItemStatusBadge status={item.status} />
+                </div>
+              ))}
+              {hiddenItemCount > 0 ? (
+                <p className="px-1 text-xs text-muted-foreground">
+                  +{hiddenItemCount} weitere Items
+                </p>
+              ) : null}
+            </div>
+          ) : null}
         </CardContent>
       ) : null}
 

@@ -35,6 +35,7 @@ import {
   type WorkItemCostTotal,
 } from "@/lib/cost/api"
 import { cn } from "@/lib/utils"
+import { isSprintAssignableKind } from "@/lib/work-items/sprint-assignment"
 import type { Phase } from "@/types/phase"
 import {
   WORK_ITEM_KIND_LABELS,
@@ -42,7 +43,7 @@ import {
 } from "@/types/work-item"
 
 import { useBacklogDndOptional } from "./backlog-dnd-provider"
-import { DraggableStoryHandle } from "./draggable-story-handle"
+import { DraggableWorkItemHandle } from "./draggable-story-handle"
 import { WorkItemKindBadge } from "./work-item-kind-badge"
 import { WorkItemPriorityBadge } from "./work-item-priority-badge"
 import { WorkItemStatusBadge } from "./work-item-status-badge"
@@ -123,8 +124,8 @@ export function BacklogList({
   // PROJ-24 — Plan-Kosten pro Item, eine Batched-Fetch.
   const costsByItem = useWorkItemCostTotals(projectId, items.length)
 
-  // PROJ-25b — DnD multi-select. Optional: column only renders when a
-  // BacklogDndProvider is mounted above this list.
+  // PROJ-60 — DnD multi-select for sprint-assignable work items. Optional:
+  // column only renders when a BacklogDndProvider is mounted above this list.
   const dnd = useBacklogDndOptional()
   const dndEnabled = dnd !== null
 
@@ -189,10 +190,9 @@ export function BacklogList({
         <TableBody>
           {items.map((item) => {
             const parent = item.parent_id ? itemsById.get(item.parent_id) : null
+            const sprintAssignable = isSprintAssignableKind(item.kind)
             const dndSelected =
-              dndEnabled && item.kind === "story"
-                ? dnd!.isSelected(item.id)
-                : false
+              dndEnabled && sprintAssignable ? dnd!.isSelected(item.id) : false
             return (
               <TableRow
                 key={item.id}
@@ -201,10 +201,10 @@ export function BacklogList({
                   dndSelected && "bg-primary/5 ring-2 ring-inset ring-primary",
                 )}
                 onClick={(event) => {
-                  // PROJ-25b — Ctrl/Cmd-Click toggles DnD selection,
+                  // PROJ-60 — Ctrl/Cmd-Click toggles DnD selection,
                   // Shift-Click extends a range. Plain click keeps the
                   // existing "open detail drawer" behavior.
-                  if (dndEnabled && item.kind === "story") {
+                  if (dndEnabled && sprintAssignable) {
                     if (event.ctrlKey || event.metaKey) {
                       event.preventDefault()
                       dnd!.toggle(item.id)
@@ -212,7 +212,7 @@ export function BacklogList({
                     }
                     if (event.shiftKey) {
                       event.preventDefault()
-                      dnd!.range(item.id, dnd!.orderedStoryIds)
+                      dnd!.range(item.id, dnd!.orderedSprintAssignableIds)
                       return
                     }
                   }
@@ -245,10 +245,11 @@ export function BacklogList({
                     className="w-10"
                     onClick={(event) => event.stopPropagation()}
                   >
-                    {item.kind === "story" ? (
-                      <DraggableStoryHandle
+                    {sprintAssignable ? (
+                      <DraggableWorkItemHandle
                         workItemId={item.id}
-                        storyTitle={item.title}
+                        workItemTitle={item.title}
+                        workItemKind={item.kind}
                         selected={dndSelected}
                       />
                     ) : null}

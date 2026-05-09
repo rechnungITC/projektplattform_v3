@@ -10,7 +10,7 @@ import type { WorkItemWithProfile } from "@/types/work-item"
 import { WorkItemKindBadge } from "./work-item-kind-badge"
 
 /**
- * PROJ-25b — drag-overlay payload.
+ * PROJ-60 — drag-overlay payload for sprint-assignable work items.
  *
  * - 1 item  → single ghost card
  * - 2 items → two stacked cards (slight rotation)
@@ -78,7 +78,7 @@ export function DragOverlayCard({ items }: DragOverlayCardProps) {
           className="absolute -right-2 -top-2 z-10 shadow"
         >
           {hiddenCount > 0 ? `+${items.length}` : `${items.length}`}{" "}
-          {items.length === 1 ? "Story" : "Stories"}
+          {items.length === 1 ? "Item" : "Items"}
         </Badge>
       ) : null}
     </div>

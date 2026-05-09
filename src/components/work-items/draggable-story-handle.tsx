@@ -5,15 +5,15 @@ import { GripVertical } from "lucide-react"
 import * as React from "react"
 
 import { cn } from "@/lib/utils"
+import { WORK_ITEM_KIND_LABELS, type WorkItemKind } from "@/types/work-item"
 
 /**
- * PROJ-25b — drag-handle for a story row (BacklogList or BacklogTree).
+ * PROJ-60 — drag-handle for sprint-assignable work-item rows.
  *
  * Renders a Grip-Icon button. The button (not the surrounding row) is the
  * drag activator — keeps row-click for "open detail drawer" intact.
  *
- * Only render this for `kind === 'story'`; the spec says only stories are
- * sprint-droppable. Render nothing for other kinds.
+ * Only render this for sprint-assignable kinds; render nothing for other kinds.
  *
  * Keyboard semantics provided by @dnd-kit/core's KeyboardSensor:
  *   Space         — start drag
@@ -21,30 +21,33 @@ import { cn } from "@/lib/utils"
  *   Space         — confirm drop
  *   Escape        — cancel
  */
-interface DraggableStoryHandleProps {
+interface DraggableWorkItemHandleProps {
   workItemId: string
-  storyTitle: string
+  workItemTitle: string
+  workItemKind: WorkItemKind
   /** True when this row is part of the current selection (visual + announce). */
   selected?: boolean
   className?: string
 }
 
-export function DraggableStoryHandle({
+export function DraggableWorkItemHandle({
   workItemId,
-  storyTitle,
+  workItemTitle,
+  workItemKind,
   selected = false,
   className,
-}: DraggableStoryHandleProps) {
+}: DraggableWorkItemHandleProps) {
   const { attributes, listeners, setNodeRef, isDragging } = useDraggable({
     id: workItemId,
-    data: { type: "story" },
+    data: { type: "sprint-assignable-work-item", kind: workItemKind },
   })
+  const kindLabel = WORK_ITEM_KIND_LABELS[workItemKind]
 
   return (
     <button
       ref={setNodeRef}
       type="button"
-      aria-label={`Story '${storyTitle}' verschieben`}
+      aria-label={`${kindLabel} '${workItemTitle}' verschieben`}
       className={cn(
         "inline-flex h-6 w-6 cursor-grab items-center justify-center rounded text-muted-foreground hover:bg-muted hover:text-foreground active:cursor-grabbing focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring",
         isDragging && "cursor-grabbing opacity-50",
@@ -56,5 +59,29 @@ export function DraggableStoryHandle({
     >
       <GripVertical className="h-4 w-4" aria-hidden />
     </button>
+  )
+}
+
+interface DraggableStoryHandleProps {
+  workItemId: string
+  storyTitle: string
+  selected?: boolean
+  className?: string
+}
+
+export function DraggableStoryHandle({
+  workItemId,
+  storyTitle,
+  selected = false,
+  className,
+}: DraggableStoryHandleProps) {
+  return (
+    <DraggableWorkItemHandle
+      workItemId={workItemId}
+      workItemTitle={storyTitle}
+      workItemKind="story"
+      selected={selected}
+      className={className}
+    />
   )
 }

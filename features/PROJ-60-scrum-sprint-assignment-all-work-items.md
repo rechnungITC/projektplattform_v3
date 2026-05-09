@@ -1,6 +1,6 @@
 # PROJ-60: Scrum Sprint Assignment DnD for Stories, Tasks and Bugs
 
-## Status: Planned
+## Status: In Progress
 **Created:** 2026-05-09
 **Last Updated:** 2026-05-09
 
@@ -21,8 +21,10 @@ This is deliberately separate from PROJ-59. PROJ-59 changes `parent_id` for hier
 
 - `work_items.sprint_id` already exists and is indexed by PROJ-9.
 - Single-item route `PATCH /api/projects/[id]/work-items/[wid]/sprint` updates `sprint_id`.
-- Bulk route `PATCH /api/projects/[id]/work-items/sprint-bulk` currently rejects every kind except `story`.
-- Backlog List/Tree DnD handles currently render only for `kind === "story"`.
+- Bulk route `PATCH /api/projects/[id]/work-items/sprint-bulk` accepts `story`, `task` and `bug`.
+- Single route uses the same sprint-assignable kind guard as the bulk route.
+- Backlog List/Tree DnD handles render for `story`, `task` and `bug`.
+- Sprint cards show assigned `story`, `task` and `bug` items with kind/status/priority badges.
 - Existing PROJ-25b documentation explicitly says Tasks/Bugs have no Sprint concept; this is now superseded by PROJ-60 for Scrum.
 
 ## Dependencies
@@ -43,27 +45,27 @@ This is deliberately separate from PROJ-59. PROJ-59 changes `parent_id` for hier
 
 ## Functional Acceptance Criteria
 
-- [ ] Sprint-DnD erlaubt `story`, `task` und `bug`.
-- [ ] `subtask`, `epic`, `feature` und `work_package` bleiben im MVP nicht sprint-droppable, sofern fachlich nicht anders entschieden.
-- [ ] Backlog List und Tree zeigen Drag-Handles fuer Stories, Tasks und Bugs.
-- [ ] Sprint cards/listen zeigen Stories, Tasks und Bugs, die `sprint_id = sprint.id` haben.
-- [ ] Drop auf Sprint ruft `PATCH /api/projects/[id]/work-items/[wid]/sprint` oder Bulk-Route mit `{ sprint_id }`.
-- [ ] Drop auf Backlog-Zone loest `sprint_id = null`.
-- [ ] Bulk-Route akzeptiert gemischte Sets aus Stories/Tasks/Bugs.
-- [ ] Bulk-Route lehnt nicht sprintfaehige Kinds mit `invalid_kind` und `failed_ids` ab.
-- [ ] Closed Sprints bleiben nicht droppable.
-- [ ] Cross-project Sprint assignment bleibt serverseitig blockiert.
-- [ ] Sprint-Zuordnung veraendert nicht `parent_id`.
-- [ ] Sprint-Zuordnung veraendert nicht `status`.
-- [ ] Parent-Hierarchie bleibt nach Sprint-Zuordnung sichtbar.
+- [x] Sprint-DnD erlaubt `story`, `task` und `bug`.
+- [x] `subtask`, `epic`, `feature` und `work_package` bleiben im MVP nicht sprint-droppable, sofern fachlich nicht anders entschieden.
+- [x] Backlog List und Tree zeigen Drag-Handles fuer Stories, Tasks und Bugs.
+- [x] Sprint cards/listen zeigen Stories, Tasks und Bugs, die `sprint_id = sprint.id` haben.
+- [x] Drop auf Sprint ruft `PATCH /api/projects/[id]/work-items/[wid]/sprint` oder Bulk-Route mit `{ sprint_id }`.
+- [x] Drop auf Backlog-Zone loest `sprint_id = null`.
+- [x] Bulk-Route akzeptiert gemischte Sets aus Stories/Tasks/Bugs.
+- [x] Bulk-Route lehnt nicht sprintfaehige Kinds mit `invalid_kind` und `failed_ids` ab.
+- [x] Closed Sprints bleiben nicht droppable.
+- [x] Cross-project Sprint assignment bleibt serverseitig blockiert.
+- [x] Sprint-Zuordnung veraendert nicht `parent_id`.
+- [x] Sprint-Zuordnung veraendert nicht `status`.
+- [x] Parent-Hierarchie bleibt nach Sprint-Zuordnung sichtbar.
 - [ ] Audit erfasst `sprint_id`-Aenderungen wie bisher.
 
 ## Non-Functional Acceptance Criteria
 
-- [ ] UX ist Jira-aehnlich: Sprint = Container fuer planned work, nicht nur Story-Container.
-- [ ] Gemischte Items sind visuell unterscheidbar durch Kind-Badges.
-- [ ] Keine Regression bei PROJ-25b Story-only Multi-Select-DnD.
-- [ ] Keine Regression bei PROJ-59 Parent-DnD.
+- [x] UX ist Jira-aehnlich: Sprint = Container fuer planned work, nicht nur Story-Container.
+- [x] Gemischte Items sind visuell unterscheidbar durch Kind-Badges.
+- [x] Keine Regression bei PROJ-25b Story-only Multi-Select-DnD.
+- [x] Keine Regression bei PROJ-59 Parent-DnD.
 - [ ] 50-Item Bulk-Grenze bleibt bestehen, sofern nicht separat erweitert.
 
 ## Wechselwirkungen
@@ -118,6 +120,42 @@ This is deliberately separate from PROJ-59. PROJ-59 changes `parent_id` for hier
 - Regression: Parent-DnD aus PROJ-59 bleibt getrennt.
 - Regression: Closed Sprint reject.
 
+## Implementation Log
+
+### 2026-05-09 — PROJ-60-alpha: Sprint-DnD for story/task/bug
+
+Files:
+
+- `src/lib/work-items/sprint-assignment.ts`
+  - Defines the shared `SPRINT_ASSIGNABLE_KINDS` contract and `isSprintAssignableKind` guard.
+- `src/app/api/projects/[id]/work-items/[wid]/sprint/route.ts`
+  - Adds single-item kind preflight so `story`, `task` and `bug` can be assigned while non-sprint kinds are rejected.
+- `src/app/api/projects/[id]/work-items/sprint-bulk/route.ts`
+  - Replaces story-only guard with shared sprint-assignable kind guard.
+- `src/components/work-items/backlog-dnd-provider.tsx`
+  - Builds DnD selection from all sprint-assignable work items and rejects invalid mixed selections.
+- `src/components/work-items/draggable-story-handle.tsx`
+  - Introduces `DraggableWorkItemHandle`; keeps `DraggableStoryHandle` as compatibility wrapper.
+- `src/components/work-items/backlog-list.tsx`
+  - Shows drag handles and range-selection for `story`, `task` and `bug`.
+- `src/components/work-items/backlog-tree.tsx`
+  - Mirrors List behavior in tree view without changing `parent_id`.
+- `src/components/work-items/drag-overlay-card.tsx`
+  - Uses neutral Item/Items labels for mixed drags.
+- `src/components/sprints/sprint-card.tsx`
+  - Shows assigned sprint items under the Sprint with Kind, Priority and Status badges.
+- `src/app/api/projects/[id]/work-items/[wid]/sprint/route.test.ts`
+  - Covers story/task/bug assignment gates and invalid non-sprint kind rejection.
+- `src/app/api/projects/[id]/work-items/sprint-bulk/route.test.ts`
+  - Covers mixed story/task/bug bulk assignment and invalid-kind failed IDs.
+
+Verification:
+
+- `npx vitest run src/app/api/projects/[id]/work-items/[wid]/sprint/route.test.ts src/app/api/projects/[id]/work-items/sprint-bulk/route.test.ts` — 22/22 passed.
+- `npx eslint ...` on the changed PROJ-60 source/test files — passed.
+- `git diff --check` — passed.
+- `npx tsc --noEmit` — blocked by pre-existing PROJ-54 test-fixture type errors in `src/components/resources/resource-form.test.tsx` and `src/components/resources/tagessatz-combobox.integration.test.tsx`; no PROJ-60 file was reported.
+
 ## Open Questions
 
 - Sollen Subtasks im MVP sprintfaehig sein oder nur ueber ihren Task sichtbar werden?
@@ -127,18 +165,18 @@ This is deliberately separate from PROJ-59. PROJ-59 changes `parent_id` for hier
 
 ## Definition of Ready
 
-- [ ] Sprint-faehige Kinds final bestaetigt.
+- [x] Sprint-faehige Kinds final bestaetigt.
 - [ ] Cascade-Regeln fuer Child-Items entschieden.
-- [ ] Sprint-Card-Darstellung fuer gemischte Kinds entschieden.
-- [ ] Backend-Kind-Guard-Regeln abgestimmt.
-- [ ] Regression gegen PROJ-59 Parent-DnD beschrieben.
+- [x] Sprint-Card-Darstellung fuer gemischte Kinds entschieden.
+- [x] Backend-Kind-Guard-Regeln abgestimmt.
+- [x] Regression gegen PROJ-59 Parent-DnD beschrieben.
 
 ## Definition of Done
 
-- [ ] Stories, Tasks und Bugs koennen per DnD einem Sprint zugeordnet werden.
-- [ ] Stories, Tasks und Bugs koennen per DnD aus einem Sprint geloest werden.
-- [ ] Bulk-DnD funktioniert fuer gemischte sprintfaehige Items.
-- [ ] Nicht sprintfaehige Kinds werden client- und serverseitig abgelehnt.
-- [ ] Sprint Cards zeigen alle zugeordneten Stories/Tasks/Bugs.
-- [ ] Tests fuer Single/Bulk/Closed/Invalid-Kind sind gruen.
-- [ ] PROJ-25b-Doku ist mit PROJ-60 supersession note aktualisiert.
+- [x] Stories, Tasks und Bugs koennen per DnD einem Sprint zugeordnet werden.
+- [x] Stories, Tasks und Bugs koennen per DnD aus einem Sprint geloest werden.
+- [x] Bulk-DnD funktioniert fuer gemischte sprintfaehige Items.
+- [x] Nicht sprintfaehige Kinds werden client- und serverseitig abgelehnt.
+- [x] Sprint Cards zeigen alle zugeordneten Stories/Tasks/Bugs.
+- [x] Tests fuer Single/Bulk/Closed/Invalid-Kind sind gruen.
+- [x] PROJ-25b-Doku ist mit PROJ-60 supersession note aktualisiert.

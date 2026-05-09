@@ -6,13 +6,14 @@ import {
   getAuthenticatedUserId,
   requireProjectAccess,
 } from "@/app/api/_lib/route-helpers"
+import { isSprintAssignableKind } from "@/lib/work-items/sprint-assignment"
 
 /**
  * PROJ-25b — Bulk Sprint Assignment.
  *
  * One transaction-like call to attach (or detach) multiple work items to a
  * sprint. Designed for the multi-select Drag-and-Drop flow on the Backlog
- * page: a single drag of N selected stories should land as one server-side
+ * page: a single drag of N selected sprint-assignable items should land as one server-side
  * action — partial success would leave the UI half-applied and the audit
  * log noisy.
  *
@@ -102,7 +103,7 @@ export async function PATCH(
 
   // Pre-flight match check: every supplied ID must resolve to a work item in
   // this project under the user's RLS view. If any ID is missing (deleted,
-  // foreign tenant, wrong project, kind ≠ story) we abort without writing.
+  // foreign tenant, wrong project, or not sprint-assignable) we abort without writing.
   // Cheaper than running the UPDATE blind and then having to roll back.
   const { data: matched, error: matchErr } = await supabase
     .from("work_items")
@@ -127,18 +128,17 @@ export async function PATCH(
     )
   }
 
-  // Only `kind = 'story'` is sprint-droppable. Frontend already gates the
-  // drag-handle, but we double-check server-side: epics/tasks/etc. carry no
-  // sprint semantics.
+  // PROJ-60: Stories, Tasks and Bugs are sprint-droppable. Frontend gates the
+  // drag-handle, but we double-check server-side for API callers and stale UIs.
   const wrongKind = (matched ?? [])
-    .filter((row) => row.kind !== "story")
+    .filter((row) => !isSprintAssignableKind(row.kind))
     .map((row) => row.id)
   if (wrongKind.length > 0) {
     return NextResponse.json(
       {
         error: {
           code: "invalid_kind",
-          message: "Only stories can be assigned to a sprint.",
+          message: "Only stories, tasks and bugs can be assigned to a sprint.",
           field: "work_item_ids",
         },
         failed_ids: wrongKind,
