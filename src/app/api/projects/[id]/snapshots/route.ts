@@ -3,8 +3,10 @@ import { z } from "zod"
 
 import { aggregateSnapshotData } from "@/lib/reports/aggregate-snapshot-data"
 import { renderSnapshotPdf } from "@/lib/reports/puppeteer-render"
+import { createAdminClient } from "@/lib/supabase/admin"
 import type {
   ReportSnapshot,
+  PdfStatus,
   SnapshotKind,
   SnapshotListItem,
 } from "@/lib/reports/types"
@@ -30,6 +32,7 @@ const SELECT_LIST = `
   id, kind, version, generated_at, generated_by, content, pdf_status,
   ki_summary_classification
 ` as const
+const STALE_PENDING_MS = 60_000
 
 interface Ctx {
   params: Promise<{ id: string }>
@@ -79,20 +82,23 @@ export async function GET(_request: Request, ctx: Ctx) {
     }
   }
 
-  const snapshots: SnapshotListItem[] = (rows ?? []).map((r) => ({
-    id: r.id as string,
-    kind: r.kind as SnapshotKind,
-    version: r.version as number,
-    generated_at: r.generated_at as string,
-    generated_by_name:
-      userMap.get(r.generated_by as string) ??
-      ((r.content as { generated_by_name?: string } | null)?.generated_by_name ??
-        "—"),
-    has_ki_summary:
-      Boolean((r.content as { ki_summary?: unknown } | null)?.ki_summary) ||
-      Boolean(r.ki_summary_classification),
-    pdf_status: r.pdf_status as SnapshotListItem["pdf_status"],
-  }))
+  const snapshots: SnapshotListItem[] = (rows ?? []).map((r) => {
+    const generatedAt = r.generated_at as string
+    return {
+      id: r.id as string,
+      kind: r.kind as SnapshotKind,
+      version: r.version as number,
+      generated_at: generatedAt,
+      generated_by_name:
+        userMap.get(r.generated_by as string) ??
+        ((r.content as { generated_by_name?: string } | null)
+          ?.generated_by_name ?? "—"),
+      has_ki_summary:
+        Boolean((r.content as { ki_summary?: unknown } | null)?.ki_summary) ||
+        Boolean(r.ki_summary_classification),
+      pdf_status: normalizePdfStatus(r.pdf_status as PdfStatus, generatedAt),
+    }
+  })
 
   return NextResponse.json({ snapshots })
 }
@@ -215,10 +221,10 @@ export async function POST(request: Request, ctx: Ctx) {
       projectId,
       cookieHeader,
     })
-    await supabase
-      .from("report_snapshots")
-      .update({ pdf_storage_key: result.storageKey, pdf_status: "available" })
-      .eq("id", inserted.id)
+    await updateSnapshotPdfStatus(inserted.id, {
+      pdf_storage_key: result.storageKey,
+      pdf_status: "available",
+    })
     if (result.byteSize > 5 * 1024 * 1024) {
       console.warn(
         "[PROJ-21] PDF >5MB",
@@ -249,10 +255,7 @@ export async function POST(request: Request, ctx: Ctx) {
           renderErr instanceof Error ? renderErr.message : String(renderErr),
       }),
     )
-    await supabase
-      .from("report_snapshots")
-      .update({ pdf_status: "failed" })
-      .eq("id", inserted.id)
+    await updateSnapshotPdfStatus(inserted.id, { pdf_status: "failed" })
     inserted.pdf_status = "failed"
   }
 
@@ -260,4 +263,25 @@ export async function POST(request: Request, ctx: Ctx) {
     snapshot: inserted,
     snapshotUrl: `${origin}/reports/snapshots/${inserted.id}`,
   })
+}
+
+function normalizePdfStatus(status: PdfStatus, generatedAt: string): PdfStatus {
+  if (status !== "pending") return status
+  const generatedTime = Date.parse(generatedAt)
+  if (Number.isNaN(generatedTime)) return status
+  return Date.now() - generatedTime > STALE_PENDING_MS ? "failed" : "pending"
+}
+
+async function updateSnapshotPdfStatus(
+  snapshotId: string,
+  updates: { pdf_status: PdfStatus; pdf_storage_key?: string },
+) {
+  const admin = createAdminClient()
+  const { error } = await admin
+    .from("report_snapshots")
+    .update(updates)
+    .eq("id", snapshotId)
+  if (error) {
+    throw new Error(`snapshot pdf status update failed: ${error.message}`)
+  }
 }

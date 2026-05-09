@@ -1,3 +1,5 @@
+import type * as React from "react"
+
 import { SnapshotFooter } from "./snapshot-footer"
 import { SnapshotHeader } from "./snapshot-header"
 import { SnapshotSection } from "./snapshot-section"
@@ -15,6 +17,12 @@ function formatDate(value: string | null): string {
   return d.toLocaleDateString("de-DE", { dateStyle: "medium" })
 }
 
+function formatNumber(value: number): string {
+  return new Intl.NumberFormat("de-DE", {
+    maximumFractionDigits: 1,
+  }).format(value)
+}
+
 /**
  * Pure server-rendered body for the Executive-Summary snapshot. Must
  * fit on a single A4 page when printed (spec § ST-05). Sections are
@@ -29,6 +37,7 @@ export function ExecutiveSummaryBody({
   const top3Risks = content.top_risks.slice(0, 3)
   const top3Decisions = content.top_decisions.slice(0, 3)
   const next2Milestones = content.upcoming_milestones.slice(0, 2)
+  const health = content.project_health
 
   return (
     <article className="report-page mx-auto max-w-2xl">
@@ -41,6 +50,22 @@ export function ExecutiveSummaryBody({
       <SnapshotSection title="Aktueller Stand" isEmpty={!summaryText}>
         {summaryText ? (
           <p className="text-base leading-relaxed">{summaryText}</p>
+        ) : null}
+      </SnapshotSection>
+
+      <SnapshotSection title="Projekt-Health" isEmpty={!health}>
+        {health ? (
+          <div className="grid gap-3 sm:grid-cols-3">
+            <Metric label="Health">{health.health.label}</Metric>
+            <Metric label="Budget">
+              {health.budget.utilization_percent === null
+                ? "—"
+                : `${formatNumber(health.budget.utilization_percent)}%`}
+            </Metric>
+            <Metric label="Kritische Risiken">
+              {health.risks.critical_open_count}
+            </Metric>
+          </div>
         ) : null}
       </SnapshotSection>
 
@@ -103,5 +128,20 @@ export function ExecutiveSummaryBody({
         content={content}
       />
     </article>
+  )
+}
+
+function Metric({
+  label,
+  children,
+}: {
+  label: string
+  children: React.ReactNode
+}) {
+  return (
+    <div className="rounded-md border p-3">
+      <p className="text-xs text-muted-foreground">{label}</p>
+      <p className="mt-1 text-lg font-semibold">{children}</p>
+    </div>
   )
 }

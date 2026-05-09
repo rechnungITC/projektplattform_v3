@@ -10,6 +10,7 @@
  */
 
 import type { DataClass } from "@/types/tenant-settings"
+import type { ProjectHealthSummary } from "@/lib/project-health/types"
 
 export type SnapshotKind = "status_report" | "executive_summary"
 
@@ -102,6 +103,8 @@ export interface SnapshotHeader {
 export interface SnapshotContent {
   header: SnapshotHeader
   traffic_light: TrafficLight
+  /** Frozen project-health basis used by Project-Room dashboard and reports. */
+  project_health: ProjectHealthSummary | null
   phases: SnapshotPhaseRef[]
   /** Next ≤ 5 upcoming milestones, sorted by `due_date` ascending. */
   upcoming_milestones: SnapshotMilestoneRef[]

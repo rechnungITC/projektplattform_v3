@@ -169,7 +169,7 @@ export function GlobalSidebar({ operationMode = "shared" }: GlobalSidebarProps) 
         <Link
           href="/"
           aria-label="Projektplattform Home"
-          className="rounded-md outline-none focus-visible:ring-2 focus-visible:ring-ring"
+          className="rounded-md outline-none focus-visible:ring-2 focus-visible:ring-[var(--brand-focus)]"
         >
           <TenantLogo
             logoUrl={tenantBranding?.logo_url ?? null}
@@ -277,7 +277,7 @@ function NavCollapsibleItem({
         </SidebarMenuButton>
         <CollapsibleTrigger
           aria-label={open ? `${item.label} einklappen` : `${item.label} ausklappen`}
-          className="absolute right-1 top-1 inline-flex h-7 w-7 items-center justify-center rounded-md text-sidebar-foreground/70 hover:bg-sidebar-accent hover:text-sidebar-accent-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-sidebar-ring data-[state=open]:rotate-90 transition-transform"
+          className="absolute right-1 top-1 inline-flex h-7 w-7 items-center justify-center rounded-md text-sidebar-foreground/70 transition-[background-color,color,transform] duration-[var(--motion-duration-base)] ease-[var(--motion-ease-standard)] hover:bg-[var(--brand-surface)] hover:text-sidebar-accent-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--brand-focus)] data-[state=open]:rotate-90 motion-reduce:transform-none"
         >
           <ChevronRight className="h-4 w-4" aria-hidden />
         </CollapsibleTrigger>

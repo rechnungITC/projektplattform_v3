@@ -101,7 +101,6 @@ Builds the first production-grade assistant command packs: project status retrie
 - Cross-tool actions in Jira/Slack/Teams
 
 ## Suggested Follow-up Epics (not authored yet)
-- **PROJ-40** Assistant Conversation Audit & Transcript Governance
-- **PROJ-41** Assistant Provider / Speech Infrastructure & Wake-Word Runtime
-- **PROJ-42** Assistant Domain Packs for Budget / Stakeholders / Approvals / Communication
-
+- **PROJ-40** Assistant Conversation Audit & Transcript Governance (authored)
+- **PROJ-41** Assistant Provider / Speech Infrastructure & Wake-Word Runtime (authored)
+- Future assistant domain packs for Budget / Stakeholders / Approvals / Communication must use the next available PROJ-ID, not PROJ-42. PROJ-42 is now Schema-Drift-CI-Guard.

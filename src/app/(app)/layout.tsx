@@ -4,6 +4,7 @@ import { redirect } from "next/navigation"
 import { AppShell } from "@/components/app/app-shell"
 import { AuthProvider } from "@/hooks/use-auth"
 import { loadServerAuth } from "@/lib/auth-helpers"
+import { normalizeHexColor, readableForeground } from "@/lib/brand-colors"
 import { getOperationMode } from "@/lib/operation-mode"
 
 export default async function AppLayout({
@@ -24,13 +25,21 @@ export default async function AppLayout({
 
   const operationMode = getOperationMode()
 
-  // PROJ-17: expose tenant accent color as a CSS variable so themed UI can
-  // pick it up via `var(--color-brand-600)`. Server-rendered to avoid the
-  // FOUC of a client-side update.
-  const accentColor = snapshot.tenantConfig?.branding.accent_color ?? null
+  // PROJ-17/51: expose tenant accent color as CSS variables so themed UI can
+  // pick it up without a client-side flash. `--color-brand-600` stays for
+  // backwards compatibility with earlier branded components.
+  const accentColor = normalizeHexColor(
+    snapshot.tenantConfig?.branding.accent_color
+  )
   const brandStyle =
-    accentColor && /^#[0-9A-Fa-f]{6}$/.test(accentColor)
-      ? ({ ["--color-brand-600" as string]: accentColor } as React.CSSProperties)
+    accentColor
+      ? ({
+          ["--color-brand-600" as string]: accentColor,
+          ["--brand-primary" as string]: accentColor,
+          ["--brand-primary-foreground" as string]:
+            readableForeground(accentColor),
+          ["--brand-focus" as string]: accentColor,
+        } as React.CSSProperties)
       : undefined
 
   // PROJ-23: read sidebar persistence cookies server-side so the initial

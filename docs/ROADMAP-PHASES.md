@@ -2,6 +2,8 @@
 
 6-Phasen-Roadmap für den Plattformausbau. Jede Story ist einer Phase zugeordnet (siehe Epic- und Story-Dateien). Reihenfolge ist verbindlich: Phase N hängt von N−1 ab, **Phase 1 ist Pflichtvoraussetzung für alle KI-relevanten Entwicklungen**.
 
+> Stand 2026-05-06: Dieses Dokument ist mit `features/INDEX.md` reconciled. Der fruehere Sprint-1-Status ist historisch und wurde durch den aktuellen PROJ-Status ersetzt.
+
 ## Phase-Übersicht
 
 | Phase | Fokus | Enthaltene Epics / Kernstories |
@@ -30,11 +32,11 @@ Ohne diese Stories darf keine Phase-4-Arbeit (KI) beginnen:
 
 | Phase | Stand |
 |---|---|
-| Phase 1 | ❌ Keine der Pflicht-Stories vollständig umgesetzt. Aktuelle `projects`-Tabelle hat keine `tenant_id`; Identity-Stub ist kein Rollenmodell; kein Model-Routing. |
-| Phase 2 | 🟡 Teile implementiert: `projects` CRUD + Lifecycle (Sprint 1), Projekttyp-Enum. Wizard + Methoden fehlen. |
-| Phase 3 | 🟡 Phasen + Meilensteine (Sprint 2) decken EP-07-ST-03 weitgehend. Versionierung/Rollback/Budget/Risiken/Ressourcen offen. |
-| Phase 4 | ❌ Komplett offen. |
-| Phase 5 | ❌ Komplett offen. |
-| Phase 6 | ❌ Komplett offen. |
+| Phase 1 | ✅ Durch PROJ-1, PROJ-2, PROJ-3, PROJ-4, PROJ-12 umgesetzt. Multi-Tenant/RLS, Rollen, Projektkern, Operationsmodus und KI-Datenschutzpfade sind live. |
+| Phase 2 | ✅ Durch PROJ-5, PROJ-6, PROJ-8, PROJ-16 umgesetzt. Wizard, Methoden-/Typenkatalog, Stakeholder-Grundmodell und Stammdaten-UI sind live. |
+| Phase 3 | ✅ Weitgehend umgesetzt durch PROJ-7, PROJ-9, PROJ-10, PROJ-11, PROJ-18, PROJ-19, PROJ-20, PROJ-22, PROJ-24, PROJ-25, PROJ-25b, PROJ-28. Rest: PROJ-27 ist architected; PROJ-25b ist approved, aber E2E/Perf-Follow-ups sind deferred. PROJ-51 ist als cross-cutting UI/UX-Polish-Slice geplant. |
+| Phase 4 | ✅ Grundschicht umgesetzt durch PROJ-12, PROJ-30, PROJ-31, PROJ-32, PROJ-33, PROJ-35. Offen: PROJ-34 Communication Tracking und PROJ-44 Context Ingestion als naechste KI-/Kontext-Ausbaustufen. |
+| Phase 5 | 🟡 Plumbing umgesetzt durch PROJ-13 und PROJ-14. Echte Adapter sind jetzt als PROJ-47 Jira Export, PROJ-48 MCP Bridge, PROJ-49 Teams Adapter und PROJ-50 bidirektionaler Jira Sync angelegt. |
+| Phase 6 | 🟡 Teilweise umgesetzt durch PROJ-3, PROJ-15 und PROJ-17. Weitere Enterprise-/Extension-Tiefe liegt in PROJ-45 Construction und PROJ-46 Software Extension. |
 
-Detailliertes Mapping auf Stories: [implementation-mapping.md](implementation-mapping.md).
+Detailliertes aktuelles Mapping: [features/INDEX.md](../features/INDEX.md) und [EPICS-TO-PROJS.md](EPICS-TO-PROJS.md).

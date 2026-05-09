@@ -216,8 +216,7 @@ export function ProjectDetailClient({ projectId }: ProjectDetailClientProps) {
         </CardHeader>
       </Card>
 
-      {/* Health snapshot — V1 stub; real numbers ship later */}
-      <HealthSnapshot />
+      <HealthSnapshot projectId={projectId} />
 
       {/* Method-specific rituals reminder */}
       <RitualsCard config={config} />

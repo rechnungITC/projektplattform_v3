@@ -13,6 +13,7 @@
 
 import type { SupabaseClient } from "@supabase/supabase-js"
 
+import { resolveProjectHealthSummary } from "@/lib/project-health/summary"
 import {
   computeStatusTrafficLight,
   type StatusTrafficLightResult,
@@ -230,6 +231,12 @@ export async function aggregateSnapshotData(
     risks: allRisks,
     now,
   })
+  const projectHealth = await resolveProjectHealthSummary({
+    supabase,
+    projectId: input.projectId,
+    tenantId,
+    now,
+  }).catch(() => null)
 
   const header: SnapshotHeader = {
     project_id: project.id as string,
@@ -251,6 +258,7 @@ export async function aggregateSnapshotData(
   const content: SnapshotContent = {
     header,
     traffic_light: trafficLight.light,
+    project_health: projectHealth,
     phases,
     upcoming_milestones: upcomingMilestones,
     top_risks: topRisks,

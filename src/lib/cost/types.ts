@@ -39,6 +39,33 @@ export interface RoleRateSnapshot {
 }
 
 /**
+ * PROJ-54-α — One resolved daily-rate per resource, returned by
+ * `_resolve_resource_rate(...)` and the `resolveResourceRates()` lookup
+ * layer. Source-discriminated:
+ *   - `'override'` — taken directly from `resources.daily_rate_override`.
+ *     `role_key` is null and `valid_from` is null (no version date in α).
+ *   - `'role'` — derived from the role-rate chain
+ *     `resources.source_stakeholder_id → stakeholders.role_key → role_rates`.
+ *
+ * Resolution-order in the SQL helper: override wins; otherwise the latest
+ * role_rate with `valid_from <= as_of_date`; otherwise the helper returns
+ * no row (caller surfaces the `no_rate_resolved` warning).
+ */
+export interface ResolvedRate {
+  tenant_id: string
+  /** Source-discriminator. */
+  source: "override" | "role"
+  /** Set when `source === 'role'`; null for overrides. */
+  role_key: string | null
+  /** Set when `source === 'override'`; null for role-based resolutions. */
+  resource_id: string | null
+  daily_rate: number
+  currency: string
+  /** Set when `source === 'role'`; null for overrides (Latest-only in α). */
+  valid_from: string | null
+}
+
+/**
  * The engine's view of a single allocation on a work-item. The caller
  * pre-resolves `role_key` and `source_stakeholder_id` from the
  * `work_item_resources × resources × stakeholders` join chain; either may
@@ -122,5 +149,19 @@ export interface RoleRateLookupKey {
   role_key: string
   /** ISO date string (YYYY-MM-DD). Lookup returns the latest row with
    *  `valid_from <= as_of_date`. */
+  as_of_date: string
+}
+
+/**
+ * PROJ-54-α — Lookup-key shape for `resolveResourceRates`. The lookup layer
+ * dedupes identical keys before issuing RPC calls. One key per resource
+ * resolves to either an override-rate, a role-rate, or no row.
+ */
+export interface ResourceRateLookupKey {
+  tenant_id: string
+  resource_id: string
+  /** ISO date string (YYYY-MM-DD). The role-rate fallback uses the latest
+   *  role_rate with `valid_from <= as_of_date`. Override-rates ignore the
+   *  date (Latest-only in α). */
   as_of_date: string
 }

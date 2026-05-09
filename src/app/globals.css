@@ -40,6 +40,20 @@
     --sidebar-accent-foreground: 240 5.9% 10%;
     --sidebar-border: 220 13% 91%;
     --sidebar-ring: 217.2 91.2% 59.8%;
+    --brand-primary: #0f172a;
+    --brand-primary-foreground: #ffffff;
+    --brand-primary-hover: color-mix(in srgb, var(--brand-primary) 90%, black);
+    --brand-secondary: #3b6769;
+    --brand-secondary-foreground: #ffffff;
+    --brand-focus: var(--brand-primary);
+    --brand-surface: color-mix(in srgb, var(--brand-primary) 8%, transparent);
+    --brand-border: color-mix(in srgb, var(--brand-primary) 28%, transparent);
+    --motion-duration-fast: 120ms;
+    --motion-duration-base: 180ms;
+    --motion-ease-standard: cubic-bezier(0.2, 0, 0, 1);
+    --motion-ease-emphasized: cubic-bezier(0.2, 0, 0, 1);
+    --shadow-button: 0 1px 2px rgb(15 23 42 / 0.1);
+    --shadow-button-hover: 0 4px 10px rgb(15 23 42 / 0.14);
   }
 
   .dark {
@@ -75,6 +89,16 @@
     --sidebar-accent-foreground: 240 4.8% 95.9%;
     --sidebar-border: 240 3.7% 15.9%;
     --sidebar-ring: 217.2 91.2% 59.8%;
+    --brand-primary: #a1cfd1;
+    --brand-primary-foreground: #06121f;
+    --brand-primary-hover: color-mix(in srgb, var(--brand-primary) 88%, white);
+    --brand-secondary: #3b6769;
+    --brand-secondary-foreground: #ffffff;
+    --brand-focus: var(--brand-primary);
+    --brand-surface: color-mix(in srgb, var(--brand-primary) 12%, transparent);
+    --brand-border: color-mix(in srgb, var(--brand-primary) 36%, transparent);
+    --shadow-button: 0 1px 2px rgb(0 0 0 / 0.22);
+    --shadow-button-hover: 0 4px 12px rgb(0 0 0 / 0.28);
   }
 }
 
@@ -105,5 +129,43 @@
   }
   .material-symbols-outlined[data-weight="fill"] {
     font-variation-settings: "FILL" 1, "wght" 400, "GRAD" 0, "opsz" 24;
+  }
+}
+
+@media print {
+  @page {
+    size: A4;
+    margin: 16mm 12mm;
+  }
+
+  html,
+  body {
+    background: #fff !important;
+  }
+
+  .report-print {
+    padding: 0 !important;
+  }
+
+  .report-page {
+    max-width: none !important;
+  }
+
+  .report-page,
+  .report-page * {
+    print-color-adjust: exact;
+    -webkit-print-color-adjust: exact;
+  }
+
+  .report-page table {
+    break-inside: auto;
+    page-break-inside: auto;
+  }
+
+  .report-page tr,
+  .report-page li,
+  .report-page .rounded-md {
+    break-inside: avoid;
+    page-break-inside: avoid;
   }
 }

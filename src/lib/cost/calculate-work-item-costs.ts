@@ -59,6 +59,7 @@ import type {
   CostCalcResult,
   CostCalcWarning,
   CostLineDraft,
+  ResolvedRate,
   RoleRateSnapshot,
   WorkItemCostInput,
 } from "./types"
@@ -72,6 +73,19 @@ interface CalculateInput {
   /** Pre-resolved by the lookup layer; one entry per (role_key) at the
    *  cutoff date. The engine matches by role_key. */
   role_rates: RoleRateSnapshot[]
+  /**
+   * PROJ-54-α — Pre-resolved per-resource rates. When present, takes
+   * precedence over `role_rates`: the engine first looks up
+   * `allocation.resource_id` here; only if no entry matches does it fall
+   * back to `role_rates` indexed by `role_key` (the PROJ-24 path).
+   *
+   * Each entry's `source` field discriminates `'override'` vs `'role'` and
+   * is recorded in `cost_line.source_metadata.rate_source` for audit-trace.
+   *
+   * Backwards-compat: callers that did not migrate to PROJ-54-α can omit
+   * this field; behavior is identical to PROJ-24.
+   */
+  resolved_rates?: ResolvedRate[]
   /** Tenant cost_settings.velocity_factor (Zod-validated to [0.1, 5.0] by
    *  the caller — but the engine does not assume a range and must handle
    *  velocity_factor = 0 cleanly). */
@@ -88,7 +102,14 @@ interface CalculateInput {
  * mutation of input arrays.
  */
 export function calculateWorkItemCosts(input: CalculateInput): CostCalcResult {
-  const { work_item, allocations, role_rates, velocity_factor, default_currency } = input
+  const {
+    work_item,
+    allocations,
+    role_rates,
+    resolved_rates,
+    velocity_factor,
+    default_currency,
+  } = input
 
   const cost_lines: CostLineDraft[] = []
   const warnings: CostCalcWarning[] = []
@@ -109,11 +130,27 @@ export function calculateWorkItemCosts(input: CalculateInput): CostCalcResult {
     return { cost_lines, warnings }
   }
 
-  // Build a role_key → rate index. Match purely on role_key — the caller
-  // has already filtered by tenant.
+  // Build a role_key → rate index (PROJ-24 path).
   const rateByRoleKey = new Map<string, RoleRateSnapshot>()
   for (const r of role_rates) {
     rateByRoleKey.set(r.role_key, r)
+  }
+
+  // PROJ-54-α — Build a resource_id → resolved-rate index, taking precedence
+  // over the role-rate index. Each ResolvedRate carries `source` so the
+  // engine can record `rate_source` in source_metadata.
+  //
+  // The lookup layer (`resolveResourceRates`) injects the input key's
+  // resource_id into every returned ResolvedRate, regardless of whether the
+  // SQL helper resolved via override or role-fallback. So `rr.resource_id`
+  // is reliably populated here.
+  const resolvedByResource = new Map<string, ResolvedRate>()
+  if (resolved_rates) {
+    for (const rr of resolved_rates) {
+      if (rr.resource_id) {
+        resolvedByResource.set(rr.resource_id, rr)
+      }
+    }
   }
 
   // Sort allocations for deterministic output ordering.
@@ -125,6 +162,51 @@ export function calculateWorkItemCosts(input: CalculateInput): CostCalcResult {
     // Disabled allocation (NULL or non-positive percentage) → silently skip.
     const pct = allocation.allocation_pct
     if (pct === null || pct === undefined || pct <= 0) {
+      continue
+    }
+
+    // PROJ-54-α — first try per-resource resolution (override path).
+    const resolved = resolvedByResource.get(allocation.resource_id) ?? null
+
+    if (resolved) {
+      const pctFraction = pct / 100
+      let amount: number
+      let metadata: Record<string, unknown>
+      if (basis === "duration") {
+        const days = work_item.estimated_duration_days as number
+        amount = days * pctFraction * resolved.daily_rate
+        metadata = {
+          basis: "duration",
+          estimated_duration_days: days,
+          allocation_pct: pct,
+          daily_rate: resolved.daily_rate,
+          rate_source: resolved.source,
+          ...(resolved.role_key ? { role_key: resolved.role_key } : {}),
+          ...(resolved.valid_from ? { valid_from: resolved.valid_from } : {}),
+        }
+      } else {
+        const sp = work_item.story_points as number
+        amount = sp * velocity_factor * pctFraction * resolved.daily_rate
+        metadata = {
+          basis: "story_points",
+          story_points: sp,
+          velocity_factor,
+          allocation_pct: pct,
+          daily_rate: resolved.daily_rate,
+          rate_source: resolved.source,
+          ...(resolved.role_key ? { role_key: resolved.role_key } : {}),
+          ...(resolved.valid_from ? { valid_from: resolved.valid_from } : {}),
+          estimated: "true",
+        }
+      }
+      cost_lines.push({
+        work_item_id: work_item.work_item_id,
+        source_type: "resource_allocation",
+        amount: round2(amount),
+        currency: resolved.currency,
+        source_ref_id: allocation.allocation_id,
+        source_metadata: metadata,
+      })
       continue
     }
 

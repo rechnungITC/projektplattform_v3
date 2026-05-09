@@ -8,6 +8,7 @@
 
 export { calculateWorkItemCosts } from "./calculate-work-item-costs"
 export { resolveRoleRates } from "./role-rate-lookup"
+export { resolveResourceRates } from "./resource-rate-lookup"
 export { synthesizeResourceAllocationCostLines } from "./synthesize-cost-lines"
 export type {
   SynthesizeCostLinesInput,
@@ -19,6 +20,8 @@ export type {
   CostCalcWarning,
   CostCalcWarningKind,
   CostLineDraft,
+  ResolvedRate,
+  ResourceRateLookupKey,
   RoleRateLookupKey,
   RoleRateSnapshot,
   WorkItemCostInput,

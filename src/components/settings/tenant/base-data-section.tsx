@@ -3,11 +3,12 @@
 import { zodResolver } from "@hookform/resolvers/zod"
 import { Loader2 } from "lucide-react"
 import * as React from "react"
-import { useForm } from "react-hook-form"
+import { useForm, useWatch } from "react-hook-form"
 import { toast } from "sonner"
 import { z } from "zod"
 
 import { Alert, AlertDescription } from "@/components/ui/alert"
+import { Badge } from "@/components/ui/badge"
 import { Button } from "@/components/ui/button"
 import {
   Card,
@@ -34,12 +35,17 @@ import {
   SelectValue,
 } from "@/components/ui/select"
 import { useAuth } from "@/hooks/use-auth"
+import {
+  LIGHT_BRAND_FOREGROUND,
+  contrastRatio,
+  formatContrastRatio,
+  normalizeHexColor,
+  readableForeground,
+} from "@/lib/brand-colors"
 
 interface ApiErrorBody {
   error?: { code?: string; message?: string }
 }
-
-const HEX_COLOR = /^#[0-9A-Fa-f]{6}$/
 
 const schema = z.object({
   name: z
@@ -70,7 +76,8 @@ const schema = z.object({
     .string()
     .optional()
     .refine(
-      (value) => !value || value.length === 0 || HEX_COLOR.test(value),
+      (value) =>
+        !value || value.length === 0 || Boolean(normalizeHexColor(value)),
       "Akzent-Farbe muss ein Hex-Wert (#RRGGBB) sein"
     ),
 })
@@ -91,6 +98,17 @@ export function BaseDataSection() {
       accent_color: tenantBranding.accent_color ?? "",
     },
   })
+  const accentColor = useWatch({
+    control: form.control,
+    name: "accent_color",
+  })
+  const normalizedAccent = normalizeHexColor(accentColor)
+  const accentForeground = normalizedAccent
+    ? readableForeground(normalizedAccent)
+    : LIGHT_BRAND_FOREGROUND
+  const accentContrast = normalizedAccent
+    ? contrastRatio(accentForeground, normalizedAccent)
+    : null
 
   React.useEffect(() => {
     form.reset({
@@ -290,22 +308,63 @@ export function BaseDataSection() {
                 <FormItem>
                   <FormLabel>Akzent-Farbe</FormLabel>
                   <FormControl>
-                    <div className="flex items-center gap-2">
+                    <div className="grid gap-3 sm:grid-cols-[1fr_auto]">
                       <Input
                         placeholder="#2563EB"
                         disabled={submitting}
                         className="font-mono"
                         {...field}
                       />
-                      {field.value && HEX_COLOR.test(field.value) ? (
-                        <span
-                          aria-label="Vorschau"
-                          className="h-9 w-9 shrink-0 rounded-md border"
-                          style={{ backgroundColor: field.value }}
-                        />
+                      {normalizedAccent ? (
+                        <div className="flex items-center gap-2">
+                          <span
+                            aria-label="Farbfeld-Vorschau"
+                            className="h-9 w-9 shrink-0 rounded-md border"
+                            style={{ backgroundColor: normalizedAccent }}
+                          />
+                          <Button
+                            type="button"
+                            variant="brand"
+                            size="sm"
+                            style={
+                              {
+                                "--brand-primary": normalizedAccent,
+                                "--brand-primary-foreground": accentForeground,
+                                "--brand-focus": normalizedAccent,
+                              } as React.CSSProperties
+                            }
+                          >
+                            Vorschau
+                          </Button>
+                          <Badge
+                            variant="brand"
+                            style={
+                              {
+                                "--brand-primary": normalizedAccent,
+                                "--brand-primary-foreground": accentForeground,
+                                "--brand-focus": normalizedAccent,
+                              } as React.CSSProperties
+                            }
+                          >
+                            Aktiv
+                          </Badge>
+                        </div>
                       ) : null}
                     </div>
                   </FormControl>
+                  <FormDescription>
+                    Wird als Corporate-Farbe für ausgewählte Buttons, aktive
+                    Navigation und Fokus-Zustände verwendet.
+                    {accentContrast !== null ? (
+                      <span className="mt-1 block">
+                        Kontrast mit automatischer Schriftfarbe:{" "}
+                        {formatContrastRatio(accentContrast)}:1
+                        {accentContrast < 4.5
+                          ? " — bitte eine kräftigere Farbe wählen."
+                          : " — geeignet für normale UI-Texte."}
+                      </span>
+                    ) : null}
+                  </FormDescription>
                   <FormMessage />
                 </FormItem>
               )}

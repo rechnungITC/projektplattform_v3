@@ -204,13 +204,15 @@ Diese 37 Issues sind die ältere Generation (F1.1, F2.1a, …). Sie überschneid
 
 ## Teil D — Synthese: Was ist neu, was Erweiterung, was Re-Evaluation?
 
+> Reconciliation 2026-05-06: Die urspruenglichen PROJ-Nummern in diesem Abschnitt waren Import-Vorschlaege vom 2026-04-30. Seitdem sind PROJ-22 bis PROJ-43 anderweitig belegt bzw. umgesetzt. Die aktuelle Nummerierung folgt `features/INDEX.md`.
+
 ### 🆕 Genuinely NEW — neue PROJ-X-Specs empfehlen
 
 | Vorschlag | Quelle | Kurz-Scope | Priorität |
 |-----------|--------|------------|-----------|
-| **PROJ-22 — Budget-Modul mit Historisierung** | PP-38 | Budget-Tabelle pro Projekt + Posten + Ist/Plan-Werte + Budget-Historie via PROJ-10 Audit. Im PRD bereits referenziert, aber nie umgesetzt. | P1 (MVP-Lücke schließen) |
-| **PROJ-23 — Stakeholder-Matrix-View** | PP-41 | 2×2-Matrix (Einfluss × Betroffenheit) für Stakeholder-Liste; reine Visualisierungsslice. | P2 |
-| **PROJ-24 — KI-geführter Projektdialog (Wizard-Phase 4)** | PP-57 | Konversationsschritt nach dem regelbasierten Wizard, fragt KI-getriebene Folgeinformationen ab. Erweitert PROJ-5. | P2 |
+| **PROJ-34 — Stakeholder Communication Tracking** | PP-41 + Stakeholderwissen | Interaktionshistorie, Sentiment, Kooperationssignale, Reaktionsverhalten, Coaching-Kontext. | P1 |
+| **PROJ-44 — Context Ingestion Pipeline** | PP-57 + target-picture | Dokumente, E-Mails und Meeting-Notizen als strukturierte Context Sources mit Proposal-Queue. | P1 |
+| **PROJ-47 — Jira Export Connector** | PP-114 / PP-55 | Outbound Jira-Adapter mit Field-Mapping, Export-Jobs, Sync-Log und Retry. | P1 |
 
 ### 🔧 EXTENSIONS — Folge-Slices an bestehenden PROJ-X
 
@@ -221,10 +223,10 @@ Diese 37 Issues sind die ältere Generation (F1.1, F2.1a, …). Sie überschneid
 | Projektübergreifender Copy | PROJ-10 | PP-46 | Cross-project-Copy für Work-Items + Stories inkl. Tenant-Boundary-Check. | P2 |
 | Stakeholder-Stub-Auto-Generierung | PROJ-8 + PROJ-6 | PP-94, PP-40 | Beim Projekt-Setup automatisch Stakeholder-Stubs aus catalog.standard_roles erzeugen. | P2 |
 | Gantt-Module Vollausbau (Drag, Resize, Dependencies, kritischer Pfad) | PROJ-7 | PP-91, PP-39 | Erweiterung der MVP-Gantt-Slice um interaktive Features + Pfad-Berechnung. | P2 |
-| Konkreter Jira-Connector | PROJ-14 | PP-114, PP-55 | Adapter-Implementierung + Field-Mapping + bidirektionale Sync auf dem Plumbing-Framework. | P1 (großer Slice) |
+| Konkreter Jira-Connector | PROJ-14 | PP-114, PP-55 | Aufgeteilt in PROJ-47 Jira Export und PROJ-50 bidirektionaler Jira Sync. | P1 |
 | Stand-alone-Deployment-Tooling | PROJ-3 | PP-115, PP-73 | Installer + Update-Strategie für Enterprise-Standalone-Deployments. | P2 |
 | Compliance-Hinweise per Projekttyp im Wizard/Banner | PROJ-18 (b) | PP-56 | Kontextabhängige UI-Hints zu Compliance-Anforderungen. Klein, in PROJ-18b einbettbar. | P2 |
-| Meeting-Modul | PROJ-13 | E8 (Jira-Epic) | Meeting-Termine + Agendapunkte + Beschluss-Verknüpfung; in V3 nicht abgebildet, von Jira-E8-Titel impliziert. | ⚠ Bestätigen mit Owner — der Begriff „Meeting" ist im Jira-Export nicht durch eine konkrete Story belegt; evtl. in „Communication" enthalten. |
+| Meeting-Modul | PROJ-13 / PROJ-44 | E8 (Jira-Epic) | Meeting-Termine + Agendapunkte + Beschluss-Verknüpfung; als Context Source in PROJ-44 vorgesehen, fachliches Meeting-Modul weiter mit Owner bestaetigen. | ⚠ Re-Eval |
 
 ### ⚠ RE-EVALUATION — Re-Eval mit Jira-Owner empfohlen
 
@@ -245,19 +247,19 @@ Diese 37 Issues sind die ältere Generation (F1.1, F2.1a, …). Sie überschneid
 ### Sofort (innerhalb der nächsten Iteration)
 
 1. **Jira-Hygiene** — die drei Duplikate (PP-89, PP-50, PP-54) im Quell-Tool zusammenführen, alte Nummern-Generation E1..E13 archivieren.
-2. **Descriptions nachziehen** — mit dem Jira-Owner die wichtigsten 5 Items klären (insbesondere PP-38 Budget, PP-41 Stakeholder-Matrix, PP-57 KI-Dialog, PP-114 Jira-Connector).
+2. **Descriptions nachziehen** — mit dem Jira-Owner die wichtigsten offenen Items klären (insbesondere PP-57 Context/KI-Dialog, PP-114 Jira-Connector, E8 Meeting-Begriff, Stakeholder-Kommunikationssignale).
 
 ### Geplant (nächste Slices, in Reihenfolge)
 
-3. **PROJ-22 — Budget-Modul** als nächstes anlegen (`/requirements PROJ-22 Budget-Modul`). Die Lücke ist im PRD selbst dokumentiert und P1-relevant.
-4. **PROJ-6-Folgeslice** — Methoden-Katalog um SAFe/PMI/PRINCE2/VXT2.0 erweitern, sobald ein konkreter Tenant einen davon braucht.
-5. **PROJ-14-Folgeslice** — konkrete Jira-Connector-Implementation, sobald der erste Tenant Jira-Sync verlangt (Plumbing steht).
+3. **PROJ-34 — Stakeholder Communication Tracking** an PROJ-33/35 andocken.
+4. **PROJ-44 — Context Ingestion Pipeline** als Produktisierung der ContextSource-Anforderung anlegen.
+5. **PROJ-47/50 — Jira Connector Split**: zuerst Export, danach bidirektionaler Sync.
 
 ### Optional (später)
 
-6. **PROJ-23 — Stakeholder-Matrix** als P2-Visualisierungsslice.
-7. **PROJ-24 — KI-geführter Projektdialog** sobald PROJ-12 + PROJ-5 stabil und Tenants nach Conversational-Wizard fragen.
-8. Sammlung der kleinen Extensions (PP-101 Selektiver Undo, PP-46 Cross-Project-Copy, PP-94 Stakeholder-Stub-Auto-Gen) in einem Bündelslice „PROJ-10b/8b — UX-Politur".
+6. **PROJ-45 — Construction Extension** sobald Bauprojekt-Tenant oder Demo-Pfad konkret wird.
+7. **PROJ-46 — Software Extension** sobald Release-/Test-Traceability gebraucht wird.
+8. Sammlung der kleinen Extensions (PP-101 Selektiver Undo, PP-46 Cross-Project-Copy, PP-94 Stakeholder-Stub-Auto-Gen) in separaten UX-/Hardening-Slices statt Nummern-Recycling.
 
 ### Nicht empfohlen
 
@@ -271,7 +273,7 @@ Diese 37 Issues sind die ältere Generation (F1.1, F2.1a, …). Sie überschneid
 |-----------|--------|--------|
 | ✅ COVERED | ~93 von 115 PP-Items | ~80 % |
 | 🔧 EXTEND | 12 von 115 | ~10 % |
-| 🆕 NEW | 3 echte neue PROJ-X (Budget, Stakeholder-Matrix, KI-Wizard-Phase4) | ~3 % |
+| 🆕 NEW | 8 nachtraeglich angelegte PROJ-X (PROJ-34, PROJ-44..50) | ~7 % |
 | ⚠ RE-EVAL | 3 Duplikate + 4 inhaltliche Re-Evals | ~6 % |
 
-**Bottom Line**: Der Jira-Import bestätigt im Wesentlichen die V3-Roadmap. **Die wichtigste echte Lücke ist Budget (PROJ-22)** — der Rest sind Folge-Slices an bestehenden PROJ-X.
+**Bottom Line**: Der Jira-Import bestätigt im Wesentlichen die V3-Roadmap. Die 2026-05-06-Reconciliation hat die verbliebenen echten Lücken in konkrete Specs ueberfuehrt: PROJ-34, PROJ-44, PROJ-45, PROJ-46 und PROJ-47..50.

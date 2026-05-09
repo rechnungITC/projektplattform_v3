@@ -86,6 +86,8 @@ describe("POST /api/projects/[id]/work-items — schema/DB-payload drift", () =>
       attributes: { story_points: 5 },
       position: 100,
       created_from_proposal_id: PROPOSAL_ID,
+      planned_start: "2026-05-10",
+      planned_end: "2026-05-20",
     }
 
     const schemaKeys = Object.keys(workItemCreateSchema.shape)

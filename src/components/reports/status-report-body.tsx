@@ -1,3 +1,5 @@
+import type * as React from "react"
+
 import { SnapshotFooter } from "./snapshot-footer"
 import { SnapshotHeader } from "./snapshot-header"
 import { SnapshotSection } from "./snapshot-section"
@@ -30,9 +32,30 @@ function formatDate(value: string | null): string {
  *   8. Footer (version, generator, date)
  */
 export function StatusReportBody({ version, content }: StatusReportBodyProps) {
+  const health = content.project_health
+
   return (
     <article className="report-page mx-auto max-w-3xl">
       <SnapshotHeader kind="status_report" version={version} content={content} />
+
+      <SnapshotSection title="Projekt-Health" isEmpty={!health}>
+        {health ? (
+          <div className="grid gap-3 sm:grid-cols-4">
+            <Metric label="Budget">
+              {health.budget.utilization_percent === null
+                ? "—"
+                : `${formatNumber(health.budget.utilization_percent)}%`}
+            </Metric>
+            <Metric label="Kritische Risiken">
+              {health.risks.critical_open_count}
+            </Metric>
+            <Metric label="Stakeholder max.">
+              {formatNumber(health.stakeholders.max_score)}
+            </Metric>
+            <Metric label="Health">{health.health.label}</Metric>
+          </div>
+        ) : null}
+      </SnapshotSection>
 
       <SnapshotSection
         title="Phasen-Timeline"
@@ -203,4 +226,25 @@ export function StatusReportBody({ version, content }: StatusReportBodyProps) {
       <SnapshotFooter kind="status_report" version={version} content={content} />
     </article>
   )
+}
+
+function Metric({
+  label,
+  children,
+}: {
+  label: string
+  children: React.ReactNode
+}) {
+  return (
+    <div className="rounded-md border p-3">
+      <p className="text-xs text-muted-foreground">{label}</p>
+      <p className="mt-1 text-lg font-semibold">{children}</p>
+    </div>
+  )
+}
+
+function formatNumber(value: number): string {
+  return new Intl.NumberFormat("de-DE", {
+    maximumFractionDigits: 1,
+  }).format(value)
 }

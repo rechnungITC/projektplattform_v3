@@ -8,9 +8,10 @@
  * that might re-introduce explicit field-by-field mappings.
  *
  * `attributes` is a JSONB-typed field that holds dynamic per-kind extras
- * (story_points, estimated_duration_days, planned_start, planned_end,
- * estimate_hours, …). The schema validates only that it's a plain
- * record — runtime-shape-validation is the caller's responsibility.
+ * (story_points, estimated_duration_days, estimate_hours, …). Date fields
+ * like planned_start/planned_end are first-class columns. The schema validates
+ * only that attributes is a plain record — runtime-shape-validation is the
+ * caller's responsibility.
  */
 
 import { z } from "zod"
@@ -41,6 +42,17 @@ export const workItemCreateSchema = z.object({
   attributes: z.record(z.string(), z.unknown()).optional(),
   position: z.number().optional(),
   created_from_proposal_id: z.string().uuid().nullable().optional(),
+  // PROJ-25 Stage 5 — own dates so work-packages can render on the Gantt.
+  planned_start: z
+    .string()
+    .regex(/^\d{4}-\d{2}-\d{2}$/, "YYYY-MM-DD erwartet")
+    .nullable()
+    .optional(),
+  planned_end: z
+    .string()
+    .regex(/^\d{4}-\d{2}-\d{2}$/, "YYYY-MM-DD erwartet")
+    .nullable()
+    .optional(),
 })
 
 // PATCH: master data updates. NOT status (use /status), NOT parent_id (use
