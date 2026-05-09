@@ -56,6 +56,7 @@ describe("activeToggleableModules", () => {
       "vendor",
       "budget",
       "output_rendering",
+      "organization",
     ])
   })
 })

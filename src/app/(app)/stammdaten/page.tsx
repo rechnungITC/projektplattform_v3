@@ -4,6 +4,7 @@ import {
   ChevronRight,
   FolderTree,
   ListChecks,
+  Network,
   Tags,
   Users,
   Users2,
@@ -78,6 +79,14 @@ const SECTIONS: Section[] = [
     title: "Lieferanten",
     description:
       "Mandantenweiter Vendor-Pool mit Bewertungen, Dokumenten-Slots und Projekt-Zuordnungen.",
+  },
+  {
+    href: "/stammdaten/organisation",
+    icon: Network,
+    title: "Organisation",
+    description:
+      "Unternehmensorganigramm — Gesellschaften, Standorte, Bereiche, Abteilungen und Teams als hierarchischer Baum (Tree + Tabelle).",
+    adminOnly: true,
   },
 ]
 
