@@ -1,6 +1,6 @@
 # PROJ-62: Organization Master Data + Tree-View
 
-## Status: Approved (full slice — Frontend + Backend)
+## Status: Deployed
 **Created:** 2026-05-09
 **Last Updated:** 2026-05-09
 **Priority:** P1
@@ -1061,3 +1061,27 @@ Rationale:
 1. **Branch-Merge** `feat/PROJ-62-organization-wip` → `main`. Vorgesehen ist ein Squash-Merge mit Commit-Message `feat(PROJ-62): organization master data + tree-view (frontend + backend)`. Die Migration ist bereits live in Supabase.
 2. **`/deploy für PROJ-62`** auf `main` — Vercel wird automatisch neu deployen, weil die Migration schon live ist.
 3. **Optional sofort danach:** PROJ-62-Polish-Slice für die 2 Medium + 7 Low UX-Polish-Items, oder das in PROJ-55 / PROJ-57-β bündeln.
+
+## Deployment
+
+- **Date deployed:** 2026-05-09
+- **Production URL:** https://projektplattform-v3.vercel.app
+- **Vercel auto-deploy:** triggered by push of squash-commit `8169854` to `main` (`f0791c8..8169854`)
+- **Deployment ID:** `dpl_CqFjEHaCyuJb3xvi33G57rEUYVFL` (target=production, region iad1)
+- **DB migration applied to live Supabase:** ✅ already applied during /backend phase via Supabase MCP `apply_migration` (`20260509220000_proj62_organization_master_data`). Vercel deploy registered the migration file in the deploy chain; the DB state was already in place pre-deploy.
+- **Git tag:** `v1.62.0-PROJ-62`
+- **Branch-merge:** Squash-merged from `feat/PROJ-62-organization-wip` to `main` as a single commit; non-PROJ-62 carryover (Snapshot-Noise: PROJ-24/PROJ-51/PROJ-60 spec edits, sprint-bulk routes, vitest/playwright config, work-item dialog tweak) was deliberately not pulled forward — stays on the wip branch as audit trail.
+- **Deviations** (all documented in Implementation Notes + QA findings):
+  - **M1 / Move-Bestätigungsdialog**: spec leaves the threshold for "kritische Strukturänderungen" open; backend RPC currently moves without confirm-hop. Accept-as-is (UX-Polish-Slice).
+  - **M2-Re / `requireModuleActive` gate not wired**: API routes do not call `requireModuleActive(tenantId, 'organization', …)`. Module-Toggle is declared (key in TOGGLEABLE_MODULES + backfilled) but not enforced at the API layer. Module is default-on for all current tenants; the gate is effectively a soft feature-flag. **Acceptable for V1 production.**
+  - **L1–L7 / 7 UX-Polish-Items**: bulk-action, type-hierarchy soft-warn, aria-live, vendor-detail-panel, depth-banner, location-blocker-dialog, optimistic-lock-refresh-action.
+- **Post-deploy verification:**
+  - Production root URL returns redirect to `/login` (auth-gate intact)
+  - `/api/organization-units` and other API routes redirect to `/login` (auth-gated as expected)
+  - `/stammdaten/organisation` redirects to `/login` (auth-gated)
+  - Vercel build green (verified via Vercel MCP `get_deployment`)
+- **Rollback story:** `git revert 8169854` (single squash commit). The DB migration (CREATE TABLE, RLS policies, audit trigger, RPC, view, module backfill) is forward-only — revert needs a hand-written `DROP TABLE / DROP POLICY / DROP FUNCTION / DROP VIEW` migration if a true rollback is required. **In practice the tables are empty and isolated**; leaving them in place after a code revert is safe (the page would 404 because the route is gone). Vercel "Promote to Production" of the previous deployment (`dpl_8azA9N8NYUghzWhr7deFLCiW6rx7`, commit `f0791c8`) is the immediate-rollback path.
+- **Next steps for follow-up:**
+  - PROJ-62-Polish-Slice for the 2 Medium + 7 Low UX-Polish-Items (or bundle into PROJ-55 / PROJ-57-β).
+  - PROJ-63 CSV-Importer next (depends on PROJ-62 schema).
+  - First pilot tenant: confirm tree-load < 200ms with realistic data (1000+ org-units); revisit if slower.
