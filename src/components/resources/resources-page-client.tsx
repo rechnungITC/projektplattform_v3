@@ -62,6 +62,58 @@ export function ResourcesPageClient() {
   const { resources, loading, error, create, update, remove, refresh } =
     useResources(options)
 
+  // PROJ-54-γ BUG-4 v2 (2026-05-09): auto-poll the open drawer's
+  // resource whenever its recompute_status is pending/running. This
+  // covers BOTH the post-save flow AND the page-reload-during-flight
+  // case. A single useEffect anchored on (drawer-id, status) is more
+  // robust than the previous setTimeout-from-onUpdate approach.
+  const drawerResourceId =
+    drawer.mode === "edit" ? drawer.resource.id : null
+  const drawerStatus =
+    drawer.mode === "edit" ? drawer.resource.recompute_status : null
+  React.useEffect(() => {
+    if (!drawerResourceId) return
+    if (drawerStatus !== "pending" && drawerStatus !== "running") return
+
+    let cancelled = false
+    const startedAt = Date.now()
+    const tick = async () => {
+      if (cancelled) return
+      if (Date.now() - startedAt > 30_000) return
+      try {
+        const fresh = await fetchResource(drawerResourceId)
+        if (cancelled) return
+        if (
+          fresh.recompute_status === "pending" ||
+          fresh.recompute_status === "running"
+        ) {
+          setTimeout(tick, 1000)
+          return
+        }
+        // Settled — push fresh state and refresh the list.
+        setDrawer((current) =>
+          current.mode === "edit" && current.resource.id === drawerResourceId
+            ? { mode: "edit", resource: fresh }
+            : current
+        )
+        void refresh()
+        if (fresh.recompute_status === "failed") {
+          toast.error("Recompute fehlgeschlagen", {
+            description:
+              "Mindestens ein Work-Item konnte nicht neu berechnet werden. Speichere erneut, um den Recompute neu zu starten.",
+          })
+        }
+      } catch {
+        if (cancelled) return
+        setTimeout(tick, 2000)
+      }
+    }
+    setTimeout(tick, 1000)
+    return () => {
+      cancelled = true
+    }
+  }, [drawerResourceId, drawerStatus, refresh])
+
   // PROJ-54-β — Tagessatz-Combobox needs the tenant's role_rates catalog
   // and admin-vs-not-admin gating. We fetch even when the drawer is
   // closed because the GET is cheap (RLS-scoped + cached) and avoids
@@ -97,51 +149,9 @@ export function ResourcesPageClient() {
       })
       toast.success("Ressource gespeichert")
       setDrawer({ mode: "edit", resource: updated })
-
-      // PROJ-54-γ BUG-4 (2026-05-09): the after() worker flips
-      // recompute_status from 'pending' → 'running' → null asynchronously
-      // — the PATCH response only sees the 'pending' state. Without
-      // polling the spinning banner stays forever. Poll every 1s for up
-      // to 30s; once the status flips off the in-flight states, refresh
-      // the form's `initial` so the banner clears (or shows 'failed').
-      if (
-        updated.recompute_status === "pending" ||
-        updated.recompute_status === "running"
-      ) {
-        const startedAt = Date.now()
-        const poll = async () => {
-          if (Date.now() - startedAt > 30_000) return
-          try {
-            const fresh = await fetchResource(resource.id)
-            if (
-              fresh.recompute_status === "pending" ||
-              fresh.recompute_status === "running"
-            ) {
-              setTimeout(poll, 1000)
-              return
-            }
-            // Settled — update the drawer (only if it's still open on
-            // the same resource) AND refresh the list so the card pill
-            // disappears too.
-            setDrawer((current) =>
-              current.mode === "edit" && current.resource.id === resource.id
-                ? { mode: "edit", resource: fresh }
-                : current
-            )
-            await refresh()
-            if (fresh.recompute_status === "failed") {
-              toast.error("Recompute fehlgeschlagen", {
-                description:
-                  "Mindestens ein Work-Item konnte nicht neu berechnet werden. Speichere erneut, um den Recompute neu zu starten.",
-              })
-            }
-          } catch {
-            // Polling fetch failed (network blip). Try again shortly.
-            setTimeout(poll, 2000)
-          }
-        }
-        setTimeout(poll, 1000)
-      }
+      // PROJ-54-γ BUG-4 v2: the recompute_status useEffect above will
+      // pick up the new pending/running state and poll until it
+      // settles, then update the drawer and refresh the list.
     } catch (err) {
       const message = err instanceof Error ? err.message : undefined
       const isStale = message?.includes("inzwischen geändert") ?? false
