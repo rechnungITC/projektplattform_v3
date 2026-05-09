@@ -15,7 +15,9 @@ const config = [
       "build/",
       "coverage/",
       "playwright-report/",
+      "test-results/",
       ".vercel/",
+      ".worktrees/",
     ],
   },
   {
@@ -166,6 +168,16 @@ const config = [
       "src/components/cost/tenant-role-rates-page-client.tsx",
       "src/components/work-items/work-item-cost-section.tsx",
       "src/components/work-items/backlog-list.tsx",
+      // PROJ-62: organization master-data dialogs + hooks use the same
+      // dialog-reset + effect-driven initial-load patterns documented above.
+      "src/components/organization/location-edit-dialog.tsx",
+      "src/components/organization/org-delete-confirm-dialog.tsx",
+      "src/components/organization/org-edit-dialog.tsx",
+      "src/components/organization/org-unit-combobox.tsx",
+      "src/hooks/use-organization-units.ts",
+      "src/hooks/use-organization-tree.ts",
+      "src/hooks/use-locations.ts",
+      "src/hooks/use-organization-landscape.ts",
     ],
     rules: {
       "react-hooks/set-state-in-effect": "off",

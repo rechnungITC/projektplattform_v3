@@ -47,6 +47,7 @@ const ROLE_RATES: RoleRate[] = [
     currency: "EUR",
     valid_from: "2026-01-01",
     created_at: "2026-01-01T00:00:00Z",
+    updated_at: "2026-01-01T00:00:00Z",
     created_by: "user-1",
   },
 ]

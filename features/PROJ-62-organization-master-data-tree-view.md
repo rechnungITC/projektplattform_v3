@@ -1,11 +1,12 @@
 # PROJ-62: Organization Master Data + Tree-View
 
-## Status: Architected
+## Status: In Progress (Frontend live; Backend pending)
 **Created:** 2026-05-09
 **Last Updated:** 2026-05-09
 **Priority:** P1
 **CIA-reviewed:** 2026-05-09 (slice cut, identity model, vendor strategy, tech-stack-fit)
 **Architected:** 2026-05-09 (4 open forks locked; component tree + data flows below)
+**Frontend:** 2026-05-09 (UI ships against future API contracts — error-state-tolerant)
 
 ## Summary
 
@@ -543,3 +544,89 @@ Wenn der User mit einer der 4 nicht einverstanden ist: zurück zur Diskussion, D
 ---
 
 _Use `/frontend` next to build the dual-surface UI (Tree + Table + Locations) and the shared org-unit-combobox component. Backend (migration + 8 API-Routen + 1 RPC) folgt im `/backend`-Slice._
+
+---
+
+## Implementation Notes
+
+### Frontend (2026-05-09)
+
+Shipped as one focused slice. All 18 unit tests pass, TypeScript-clean (PROJ-62 files), `npm run build` green, route `/stammdaten/organisation` registered.
+
+**Types + Module-Toggle**
+- `src/types/organization.ts` — `OrganizationUnit`, `OrganizationUnitTreeNode`, `Location`, `OrganizationLandscapeItem`, `OrganizationUnitComboboxItem`, all 4 request bodies, `OrganizationDependencyBlocker`. Frontend-defined contracts that backend will mirror.
+- `src/types/tenant-settings.ts` — added `"organization"` to `ModuleKey`, `TOGGLEABLE_MODULES`, `MODULE_LABELS["organization"] = "Organisation"`.
+- `src/lib/tenant-settings/modules.test.ts` — assertion list extended.
+
+**Pure lib + tests**
+- `src/lib/organization/tree-walk.ts` — `wouldCreateCycle`, `collectDescendants`, `breadcrumbPath`, `maxDepth`, `indexByParent`, `indexById`. Mirrors the upcoming DB-side cycle-prevention so DnD rejections happen before the API round-trip.
+- `src/lib/organization/tree-walk.test.ts` — 11 cases covering self-loops, deep descendants, breadcrumb walks, depth-cap, and unknown ids.
+
+**Hooks**
+- `src/hooks/use-organization-units.ts` — flat list with `refresh`, `create`, `patch`, `move`, `remove`. Preserves API error_code + blockers on rejection (so the delete-confirm-dialog can render the dependency list).
+- `src/hooks/use-organization-tree.ts` — server-built tree with optional vendor inclusion.
+- `src/hooks/use-locations.ts` — Locations CRUD analog to org-units, same blocker-error semantics.
+- `src/hooks/use-organization-landscape.ts` — read-only view for the "Vendors einblenden"-Toggle.
+
+**Components (10 files)**
+- `src/components/organization/org-unit-combobox.tsx` — shared typeahead component for parent picker, bulk-move, and PROJ-57-β. Debounced 200ms server-fetch, no client-side fuzzy filter (RLS-trimmed results), supports `excludeIds` to block descendant-as-parent before the API would.
+- `src/components/organization/org-edit-dialog.tsx` — create + edit form with optimistic-lock (`expected_updated_at`), cycle-prevention via `excludeIds = [editing.id, ...descendants]`, name + code + sort_order client-validation.
+- `src/components/organization/org-delete-confirm-dialog.tsx` — uses shadcn AlertDialog; renders the server's `OrganizationDependencyBlocker[]` when delete is rejected with `error_code='has_dependencies'`.
+- `src/components/organization/org-detail-panel.tsx` — right-side panel showing breadcrumb, type/code/location/inactive badges, counts (children/stakeholders/resources/tenant_members), edit + delete buttons (admin only).
+- `src/components/organization/org-filter-toolbar.tsx` — search + type-chips + location-chips + show-inactive switch + show-vendors switch (Tree-tab only) + filter-count badge + reset action.
+- `src/components/organization/org-tree.tsx` — `react-arborist` tree (analog PROJ-36-WBS), virtualized rendering, DnD via `onMove` with client-side `wouldCreateCycle` pre-check, vendor-rows shown read-only under virtual "Externe Lieferanten" branch with disabled drag/drop.
+- `src/components/organization/org-table.tsx` — flat alphabetical table with breadcrumb-parent display, type/status badges, dropdown actions.
+- `src/components/organization/location-table.tsx` — Locations CRUD table embedded in the third tab.
+- `src/components/organization/location-edit-dialog.tsx` — Location form with optimistic-lock.
+- `src/components/organization/location-select.tsx` — small Select wrapper for the "Kein Standort" / pick-one UX in the Org-Edit-Dialog.
+
+**Page + integration**
+- `src/components/organization/organization-page-client.tsx` — master client. 3-tab layout (Tree default / Tabelle / Standorte). Coordinates 4 hooks, owns the dialogs, applies filter chains (`filterTree`, `filterUnits`, `filterVendors`).
+- `src/components/organization/organization-page-client-wrapper.tsx` — `useAuth().currentRole === 'admin'` gates `canEdit`. Server-side RBAC enforcement happens in the API routes.
+- `src/app/(app)/stammdaten/organisation/page.tsx` — Next.js page wrapper.
+- `src/app/(app)/stammdaten/page.tsx` — added "Organisation" tile (lucide `Network` icon, adminOnly badge).
+
+**Lint additions (file-pattern overrides in `eslint.config.mjs`)** — analog PROJ-29 Block A + PROJ-21:
+- `react-hooks/set-state-in-effect` off for: `org-edit-dialog.tsx`, `org-delete-confirm-dialog.tsx`, `location-edit-dialog.tsx`, `org-unit-combobox.tsx`, `use-organization-units.ts`, `use-organization-tree.ts`, `use-locations.ts`, `use-organization-landscape.ts` — established dialog-reset + effect-driven data-load patterns.
+
+**Verified end-state**
+- `npx tsc --noEmit` — PROJ-62 files clean; only pre-existing PROJ-54 resource-form.test.tsx errors leak through.
+- `npx eslint src/components/organization/** src/hooks/use-organization-*.ts src/hooks/use-locations.ts src/lib/organization/** src/types/organization.ts src/app/(app)/stammdaten/organisation/**` — exit 0, 0 problems.
+- `npx vitest run src/lib/organization/ src/lib/tenant-settings/modules.test.ts` — **18/18** green.
+- `npm run build` — green; `/stammdaten/organisation` registered as dynamic route.
+
+**Backend handoff**
+The frontend assumes the following contracts from `/backend`:
+- Migration: `organization_units` + `locations` tables + 3 nullable FK columns + read-only `tenant_organization_landscape` view + Audit-Whitelist + `organization` module backfill.
+- API routes:
+  - `GET /api/organization-units` → `{ units: OrganizationUnit[] }`
+  - `POST /api/organization-units` body `CreateOrganizationUnitRequest` → `{ unit: OrganizationUnit }`
+  - `PATCH /api/organization-units/[id]` body `PatchOrganizationUnitRequest` → `{ unit }` (409 on `version_conflict`)
+  - `DELETE /api/organization-units/[id]` → 204 or 409 with `{ error_code: 'has_dependencies', blockers: OrganizationDependencyBlocker[] }`
+  - `POST /api/organization-units/[id]/move` body `MoveOrganizationUnitRequest` → `{ unit }` (409 on `cycle_detected` or `version_conflict`)
+  - `GET /api/organization-units/tree?include_vendors=...` → `{ tree: OrganizationUnitTreeNode[] }` (recursive CTE, depth-cap 12)
+  - `GET /api/organization-units/combobox?q=...&type=csv` → `{ items: OrganizationUnitComboboxItem[] }` (max 20 results)
+  - `GET /api/locations` / `POST /api/locations` / `PATCH /api/locations/[id]` / `DELETE /api/locations/[id]` — analog
+  - `GET /api/organization-landscape` → `{ items: OrganizationLandscapeItem[] }`
+- RPC: `move_organization_unit(unit_id, new_parent_id, expected_updated_at)` SECURITY DEFINER with DB-side cycle-detection.
+- Module-toggle `organization` added to `TOGGLEABLE_MODULES` enforced in `requireModuleActive` for all org/location routes.
+
+**Out of this slice (handled by /backend)**
+- Migration + RLS policies + audit-whitelist for `organization_units` + `locations`.
+- 8 API routes + 1 SECURITY DEFINER RPC.
+- `tenant_organization_landscape` view.
+- Same-tenant-parent trigger.
+- Module-toggle backfill in `tenant_settings.active_modules`.
+
+### Open visual-test items (post-backend)
+
+The frontend cannot be fully exercised in dev until the backend lands — fetch errors will surface as the "Daten konnten nicht geladen werden" Card. After `/backend` ships, manual visual checks:
+
+1. Create root unit → tree shows it under root.
+2. Create child via "+ Untereinheit" on a node → tree updates.
+3. DnD a unit onto a sibling → optimistic update + API confirm.
+4. DnD a unit onto its own descendant → client-side cycle-reject toast.
+5. Delete a unit with children → blocker dialog with sample names.
+6. Toggle "Vendors einblenden" → virtual "Externe Lieferanten" subtree appears, vendor rows are not draggable.
+7. Switch Tree → Tabelle tab → same data, flat sortable.
+8. Standorte tab → CRUD locations → Org-Edit-Dialog picks them up via `<LocationSelect>`.

@@ -199,6 +199,22 @@ Verification:
 - Soll ein Story-Drop optional alle Child-Tasks/Bugs mit in den Sprint nehmen? Vorschlag: spaeter als Bulk-Assistent, nicht im MVP.
 - Soll die Sprint-Card Items nach Story gruppieren oder flach nach Prioritaet/Status sortieren?
 
+## Deferred Items
+
+### PROJ-60-γ — `feature`-Kind sprintzuweisbar machen (decided 2026-05-09)
+
+**Scope:** `feature` (eigenes work_item_kind laut PROJ-9 `work_items_kind_check`) in die Sprint-DnD-fähige Menge mit aufnehmen. Heute klammert α `feature` explizit aus ("story/task/bug").
+
+**Begründung:** Konsistenz mit dem "Jira-like"-Anspruch von PROJ-60 + PROJ-61. In Jira sind Issue-Types oberhalb von Sub-Task standardmäßig sprintzuweisbar; reines Scrum behandelt Features dagegen als Sprint-übergreifend.
+
+**Zu klärende Punkte vor γ-Implementation:**
+- **Burndown-Reporting:** Feature-Punkte müssen sauber von Story-Punkten getrennt zählen, sonst Doppel-Counting wenn Stories und ihr Parent-Feature beide im selben Sprint stecken. PROJ-7-Module + PROJ-21-Reports prüfen.
+- **UX-Hinweis:** UI sollte sichtbar machen, dass ein Feature normalerweise als Container für Stories dient, nicht als Sprint-fit-Item.
+- **Method-Gating:** Sollte γ nur für Scrum/SAFe-Methoden aktiv sein, oder auch für Wasserfall-Methoden (in denen `feature` unklar ist)?
+- **Cascading-Frage:** Wenn ein Feature in einen Sprint gezogen wird, sollten seine Child-Stories automatisch mit? (Anschluss an die existierende Open Question "Story-Drop mit Child-Tasks/Bugs".)
+
+**Voraussetzung:** PROJ-60-α + β müssen Approved/Deployed sein, bevor γ startet (kein Scope-Creep im laufenden α-QA-Pfad).
+
 ## Definition of Ready
 
 - [x] Sprint-faehige Kinds final bestaetigt.
