@@ -3,6 +3,7 @@
 import { useDroppable } from "@dnd-kit/core"
 import * as React from "react"
 
+import { sprintDropId } from "@/lib/work-items/drop-intent"
 import { cn } from "@/lib/utils"
 import type { Sprint } from "@/types/sprint"
 
@@ -17,8 +18,7 @@ import { SprintCard } from "./sprint-card"
  *   • hover, droppable         → blue ring (drop will accept)
  *   • hover, closed            → red ring + cursor:not-allowed (drop rejected)
  *
- * The droppable id is `sprint:<sprint.id>`; the BacklogDndProvider parses
- * that prefix to resolve the target sprint.
+ * The droppable id comes from the shared PROJ-59β drop-intent helpers.
  */
 interface DroppableSprintCardProps {
   projectId: string
@@ -34,7 +34,7 @@ export function DroppableSprintCard({
   refreshKey = 0,
 }: DroppableSprintCardProps) {
   const { setNodeRef, isOver } = useDroppable({
-    id: `sprint:${sprint.id}`,
+    id: sprintDropId(sprint.id),
     data: { type: "sprint", state: sprint.state },
   })
   const isClosed = sprint.state === "closed"

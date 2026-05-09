@@ -20,11 +20,17 @@ import { Button } from "@/components/ui/button"
 import { Card, CardContent } from "@/components/ui/card"
 import { Skeleton } from "@/components/ui/skeleton"
 import { useProjectAccess } from "@/hooks/use-project-access"
+import {
+  PARENT_NONE_DROP_ID,
+  parentDropId,
+  parseWorkItemDropIntent,
+  statusDropId,
+} from "@/lib/work-items/drop-intent"
 import { cn } from "@/lib/utils"
 import {
   WORK_ITEM_KIND_LABELS,
   WORK_ITEM_STATUS_LABELS,
-  WORK_ITEM_STATUSES,
+  isAllowedParent,
   type WorkItemKind,
   type WorkItemStatus,
   type WorkItemWithProfile,
@@ -50,10 +56,15 @@ const COLUMN_ORDER: WorkItemStatus[] = [
   "cancelled",
 ]
 
-const DRAGGABLE_BOARD_KINDS: WorkItemKind[] = ["story", "task"]
+const DRAGGABLE_BOARD_KINDS: WorkItemKind[] = ["story", "task", "subtask", "bug"]
+const PARENT_DROP_TARGET_KINDS: WorkItemKind[] = ["story", "task"]
 
 function isBoardDraggable(item: WorkItemWithProfile): boolean {
   return DRAGGABLE_BOARD_KINDS.includes(item.kind)
+}
+
+function isParentDropTarget(item: WorkItemWithProfile): boolean {
+  return PARENT_DROP_TARGET_KINDS.includes(item.kind)
 }
 
 export function BacklogBoard({
@@ -152,6 +163,61 @@ export function BacklogBoard({
     }
   }
 
+  const moveItemToParent = async (
+    item: WorkItemWithProfile,
+    parentId: string | null
+  ) => {
+    if (item.parent_id === parentId) return
+    const parent = parentId ? itemsById.get(parentId) ?? null : null
+    const parentKind = parent?.kind ?? null
+    if (!isAllowedParent(item.kind, parentKind)) {
+      toast.error("Ungültiger Drop", {
+        description:
+          parentKind === null
+            ? `${WORK_ITEM_KIND_LABELS[item.kind]} darf nicht ohne übergeordnetes Element stehen.`
+            : `${WORK_ITEM_KIND_LABELS[item.kind]} darf nicht unter ${WORK_ITEM_KIND_LABELS[parentKind]} liegen.`,
+      })
+      return
+    }
+
+    setMovingId(item.id)
+    try {
+      const response = await fetch(
+        `/api/projects/${projectId}/work-items/${item.id}/parent`,
+        {
+          method: "PATCH",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ parent_id: parentId }),
+        }
+      )
+
+      if (!response.ok) {
+        const message = await safeReadError(response)
+        toast.error("Übergeordnetes Element konnte nicht geändert werden", {
+          description:
+            message === "cycle_detected"
+              ? "Diese Zuordnung würde eine Schleife erzeugen."
+              : message,
+        })
+        return
+      }
+
+      toast.success("Übergeordnet geändert", {
+        description: parent
+          ? `${item.title} liegt jetzt unter ${parent.title}.`
+          : `${item.title} steht jetzt ohne Story.`,
+      })
+      await onChanged()
+    } catch (err) {
+      const message = err instanceof Error ? err.message : "Unerwarteter Fehler"
+      toast.error("Übergeordnetes Element konnte nicht geändert werden", {
+        description: message,
+      })
+    } finally {
+      setMovingId(null)
+    }
+  }
+
   const handleDragStart = (event: DragStartEvent) => {
     const item = itemsById.get(String(event.active.id))
     if (!item || !isBoardDraggable(item)) return
@@ -163,8 +229,19 @@ export function BacklogBoard({
     setActiveId(null)
     if (!item || !isBoardDraggable(item)) return
     const target = event.over?.id ? String(event.over.id) : null
-    if (!target || !WORK_ITEM_STATUSES.includes(target as WorkItemStatus)) return
-    await moveItemToStatus(item, target as WorkItemStatus)
+    if (!target) return
+    const intent = parseWorkItemDropIntent(target)
+    if (intent.type === "status") {
+      await moveItemToStatus(item, intent.status)
+      return
+    }
+    if (intent.type === "parent") {
+      await moveItemToParent(item, intent.parentId)
+      return
+    }
+    if (intent.type === "parent-none") {
+      await moveItemToParent(item, null)
+    }
   }
 
   const handleDragCancel = () => {
@@ -182,6 +259,7 @@ export function BacklogBoard({
         {epics.length > 0 ? (
           <StaticEpicList epics={epics} onSelect={onSelect} />
         ) : null}
+        <NoStoryDropZone activeItem={activeItem} />
         <div
           className="grid grid-cols-1 gap-3 md:grid-cols-3 lg:grid-cols-5"
           role="list"
@@ -192,6 +270,7 @@ export function BacklogBoard({
               key={status}
               status={status}
               items={grouped[status]}
+              activeItem={activeItem}
               canEdit={canEdit}
               movingId={movingId}
               onSelect={onSelect}
@@ -250,6 +329,7 @@ function StaticEpicList({ epics, onSelect }: StaticEpicListProps) {
 interface BoardColumnProps {
   status: WorkItemStatus
   items: WorkItemWithProfile[]
+  activeItem: WorkItemWithProfile | null
   canEdit: boolean
   movingId: string | null
   onSelect: (id: string) => void
@@ -259,12 +339,13 @@ interface BoardColumnProps {
 function BoardColumn({
   status,
   items,
+  activeItem,
   canEdit,
   movingId,
   onSelect,
   onMove,
 }: BoardColumnProps) {
-  const { setNodeRef, isOver } = useDroppable({ id: status })
+  const { setNodeRef, isOver } = useDroppable({ id: statusDropId(status) })
 
   return (
     <section
@@ -294,6 +375,7 @@ function BoardColumn({
             <BoardCard
               key={item.id}
               item={item}
+              activeItem={activeItem}
               canEdit={canEdit}
               moving={movingId === item.id}
               onSelect={onSelect}
@@ -306,8 +388,43 @@ function BoardColumn({
   )
 }
 
+function NoStoryDropZone({
+  activeItem,
+}: {
+  activeItem: WorkItemWithProfile | null
+}) {
+  const allowed = activeItem ? isAllowedParent(activeItem.kind, null) : false
+  const { setNodeRef, isOver } = useDroppable({
+    id: PARENT_NONE_DROP_ID,
+    disabled: !activeItem,
+    data: { type: "parent-none" },
+  })
+
+  return (
+    <div
+      ref={setNodeRef}
+      className={cn(
+        "rounded-md border border-dashed px-2 py-2 text-center text-xs text-muted-foreground transition-colors",
+        allowed && "bg-background/50",
+        allowed && isOver && "border-primary bg-primary/10 text-primary",
+        !allowed &&
+          activeItem &&
+          "border-destructive/40 bg-destructive/5 text-destructive",
+        !allowed &&
+          activeItem &&
+          isOver &&
+          "border-destructive bg-destructive/10"
+      )}
+      aria-label="Ohne Story"
+    >
+      Ohne Story
+    </div>
+  )
+}
+
 interface BoardCardProps {
   item: WorkItemWithProfile
+  activeItem: WorkItemWithProfile | null
   canEdit: boolean
   moving: boolean
   onSelect: (id: string) => void
@@ -316,6 +433,7 @@ interface BoardCardProps {
 
 function BoardCard({
   item,
+  activeItem,
   canEdit,
   moving,
   onSelect,
@@ -333,6 +451,29 @@ function BoardCard({
     disabled: !draggable,
     data: { kind: item.kind, status: item.status },
   })
+  const canReceiveParentDrop =
+    canEdit &&
+    isParentDropTarget(item) &&
+    activeItem !== null &&
+    activeItem.id !== item.id
+  const canBeParent =
+    canReceiveParentDrop &&
+    isAllowedParent(activeItem.kind, item.kind)
+  const invalidParentHover =
+    canReceiveParentDrop &&
+    !isAllowedParent(activeItem.kind, item.kind)
+  const { setNodeRef: setDropNodeRef, isOver: isParentOver } = useDroppable({
+    id: parentDropId(item.id),
+    disabled: !canReceiveParentDrop,
+    data: { type: "parent", parentId: item.id, kind: item.kind },
+  })
+  const setCombinedNodeRef = React.useCallback(
+    (node: HTMLElement | null) => {
+      setNodeRef(node)
+      setDropNodeRef(node)
+    },
+    [setNodeRef, setDropNodeRef]
+  )
 
   const move = async (direction: "prev" | "next") => {
     const target = direction === "prev" ? prevStatus : nextStatus
@@ -348,7 +489,7 @@ function BoardCard({
 
   return (
     <Card
-      ref={setNodeRef}
+      ref={setCombinedNodeRef}
       style={style}
       role="button"
       tabIndex={0}
@@ -362,6 +503,9 @@ function BoardCard({
       className={cn(
         "cursor-pointer transition-colors hover:border-primary/40",
         draggable && "cursor-grab active:cursor-grabbing",
+        canBeParent && "ring-1 ring-primary/20",
+        canBeParent && isParentOver && "border-primary bg-primary/10 ring-primary/60",
+        invalidParentHover && isParentOver && "border-destructive bg-destructive/10",
         isDragging && "opacity-40",
         item.status === "cancelled" && "opacity-70"
       )}

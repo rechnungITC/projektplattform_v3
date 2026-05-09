@@ -30,6 +30,7 @@ import {
 import { Input } from "@/components/ui/input"
 import { useProjectAccess } from "@/hooks/use-project-access"
 import { useWorkItems } from "@/hooks/use-work-items"
+import { sprintItemDropId } from "@/lib/work-items/drop-intent"
 import { cn } from "@/lib/utils"
 import type { Sprint } from "@/types/sprint"
 import type { WorkItemWithProfile } from "@/types/work-item"
@@ -230,7 +231,7 @@ function DraggableSprintWorkItemRow({
     data: { type: "sprint-work-item", kind: item.kind, sprintId },
   })
   const { setNodeRef: setDropNodeRef, isOver } = useDroppable({
-    id: `sprint-item:${sprintId}:${item.id}`,
+    id: sprintItemDropId(sprintId, item.id),
     data: { type: "sprint-work-item-target", sprintId, workItemId: item.id },
   })
   const setNodeRef = React.useCallback(

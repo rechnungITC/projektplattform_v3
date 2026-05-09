@@ -1,6 +1,6 @@
 # PROJ-59: Scrum Hierarchy Drag-and-Drop (Jira-like Story -> Task)
 
-## Status: In Progress
+## Status: In Progress (γ board UX done)
 **Created:** 2026-05-08
 **Last Updated:** 2026-05-09
 
@@ -205,14 +205,64 @@ Ziel ist eine Bedienung wie in Jira: Nutzer sehen im Scrum-Bereich klar, welche 
 
 **Remaining PROJ-59 work:**
 
-- PROJ-59β: Drop-Intent architecture (`status:*` vs `sprint:*` vs `parent:*`).
-- PROJ-59γ: Scrum Board UX for Story parent drop-zones and "Ohne Story" drop target.
+- PROJ-59β: Drop-Intent architecture (`status:*` vs `sprint:*` vs `parent:*`) done.
+- PROJ-59γ: Scrum Board UX for Story parent drop-zones and "Ohne Story" drop target done.
 - PROJ-59δ: Regression/E2E coverage across Status-DnD, Sprint-DnD, Tree Indent/Outdent and Waterfall/WBS gating.
+
+### 2026-05-09 — PROJ-59β Drop-Intent Architecture
+
+**Scope completed:**
+
+- `src/lib/work-items/drop-intent.ts`
+  - Adds a shared parser for explicit DnD target IDs:
+    - `status:<status>` -> status move.
+    - `sprint:<sprintId>` / `sprint-item:<sprintId>:<workItemId>` / `backlog` -> sprint assignment, reorder or detach.
+    - `parent:<parentId>` / `parent-none` -> future hierarchy re-parenting.
+  - Adds small ID builders so surfaces do not hand-roll string prefixes.
+  - Keeps legacy raw status IDs (for example `in_progress`) as `unknown`, preventing accidental interpretation once parent targets land.
+
+- `src/components/work-items/backlog-board.tsx`
+  - Status columns now use explicit `status:*` droppable IDs.
+  - Drag-end resolves status movement through `parseWorkItemDropIntent()` instead of raw status-string matching.
+
+- `src/components/work-items/backlog-dnd-provider.tsx`
+  - Sprint/backlog drop handling now resolves through the same parser.
+  - Non-sprint intents (`status:*`, `parent:*`, `parent-none`) are ignored by the Sprint DnD provider.
+
+- `src/components/work-items/backlog-drop-zone.tsx`
+- `src/components/sprints/droppable-sprint-card.tsx`
+- `src/components/sprints/sprint-card.tsx`
+  - Sprint/backlog/sprint-item droppable IDs now use shared builders.
+
+**Verification:**
+
+- `npx vitest run src/lib/work-items/drop-intent.test.ts 'src/app/api/projects/[id]/work-items/[wid]/parent/route.test.ts' 'src/app/api/projects/[id]/work-items/[wid]/sprint/route.test.ts' 'src/app/api/projects/[id]/work-items/sprint-bulk/route.test.ts'` — 37/37 passed.
+- `npx eslint src/lib/work-items/drop-intent.ts src/lib/work-items/drop-intent.test.ts src/components/work-items/backlog-board.tsx src/components/work-items/backlog-dnd-provider.tsx src/components/work-items/backlog-drop-zone.tsx src/components/sprints/droppable-sprint-card.tsx src/components/sprints/sprint-card.tsx` — passed.
+- `npx tsc --noEmit` — passed.
+
+### 2026-05-10 — PROJ-59γ Scrum Board Parent-Drop UX
+
+**Scope completed:**
+
+- `src/components/work-items/backlog-board.tsx`
+  - Extends Board draggables from Story/Task to Story/Task/Subtask/Bug for hierarchy moves.
+  - Adds one global `parent-none` drop zone labelled "Ohne Story" for top-level detach moves.
+  - Makes Story and Task cards explicit `parent:<id>` drop targets, with green valid-drop and red reject hover states.
+  - Dispatches `parent:*` and `parent-none` intents to `PATCH /api/projects/[id]/work-items/[wid]/parent`.
+  - Keeps `status:*` intents routed only to the status endpoint; no combined status/sprint/parent mutation.
+  - Uses `isAllowedParent()` as client-side preflight while keeping backend validation authoritative.
+  - Shows cycle/invalid/server failures as toast feedback and refreshes the board through `onChanged()` after success.
+
+**Verification:**
+
+- `npx vitest run src/lib/work-items/drop-intent.test.ts 'src/app/api/projects/[id]/work-items/[wid]/parent/route.test.ts' 'src/app/api/projects/[id]/work-items/[wid]/sprint/route.test.ts' 'src/app/api/projects/[id]/work-items/sprint-bulk/route.test.ts'` — 37/37 passed.
+- `npx eslint src/components/work-items/backlog-board.tsx src/lib/work-items/drop-intent.ts src/lib/work-items/drop-intent.test.ts` — passed.
+- `npx tsc --noEmit` — passed.
 
 ## Open Questions
 
-- Soll im Board eine echte Jira-Swimlane nach Story entstehen, oder reichen Story-Karten als Drop-Zonen in den Statusspalten?
-- Soll `task -> null` im Scrum-Board aktiv angeboten werden oder nur ueber Parent-Dialog?
+- Soll im Board eine echte Jira-Swimlane nach Story entstehen, oder reichen Story-Karten als Drop-Zonen in den Statusspalten? **MVP-Entscheidung γ:** Story-/Task-Karten als Drop-Zonen; Swimlanes deferred.
+- Soll `task -> null` im Scrum-Board aktiv angeboten werden oder nur ueber Parent-Dialog? **MVP-Entscheidung γ:** aktiv ueber "Ohne Story"-Drop-Zone.
 - Sollen Tasks beim Drop unter eine Story automatisch denselben Sprint wie die Story bekommen? Vorschlag: nein, kein kombinierter Drop im MVP.
 - Soll ein Task beim Drop unter eine Story automatisch unter derselben Statusspalte sichtbar bleiben oder direkt in die Story-Gruppe umsortiert werden?
 - Soll Drag nur ueber einen Handle erlaubt sein, um versehentliches Reparenting zu vermeiden?
@@ -228,11 +278,11 @@ Ziel ist eine Bedienung wie in Jira: Nutzer sehen im Scrum-Bereich klar, welche 
 
 ## Definition of Done
 
-- [ ] Task -> Story Drag-and-Drop funktioniert im Scrum-Bereich.
-- [ ] Task -> Ohne Story funktioniert, sofern erlaubt.
-- [ ] Subtask -> Task funktioniert oder ist explizit aus dem MVP ausgeschlossen.
-- [ ] Ungueltige Drops werden client- und serverseitig blockiert.
+- [x] Task -> Story Drag-and-Drop funktioniert im Scrum-Bereich.
+- [x] Task -> Ohne Story funktioniert, sofern erlaubt.
+- [x] Subtask -> Task funktioniert.
+- [x] Ungueltige Drops werden client- und serverseitig blockiert.
 - [ ] Bestehende Status-DnD- und Sprint-DnD-Flows bleiben gruen.
-- [ ] Parent-Route ist mit relevanten Tests abgedeckt.
-- [ ] Dokumentation beschreibt Wechselwirkungen, Routing und Grenzen.
+- [x] Parent-Route ist mit relevanten Tests abgedeckt.
+- [x] Dokumentation beschreibt Wechselwirkungen, Routing und Grenzen.
 - [ ] Fachlicher Review mit Jira-erfahrenem Nutzer abgeschlossen.

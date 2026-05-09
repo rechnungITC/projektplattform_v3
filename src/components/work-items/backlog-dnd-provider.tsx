@@ -15,6 +15,7 @@ import * as React from "react"
 import { toast } from "sonner"
 
 import { useStorySelection } from "@/hooks/use-story-selection"
+import { parseWorkItemDropIntent } from "@/lib/work-items/drop-intent"
 import { isSprintAssignableKind } from "@/lib/work-items/sprint-assignment"
 import type { Sprint } from "@/types/sprint"
 import type { WorkItemWithProfile } from "@/types/work-item"
@@ -37,8 +38,8 @@ import { DragOverlayCard } from "./drag-overlay-card"
  *   - Drop on a closed sprint  → no-op (frontend gate; backend is
  *                                  defense-in-depth via 422 sprint_closed)
  *
- * Droppable IDs use a typed prefix: "sprint:<uuid>", "sprint-item:<sprintId>:<workItemId>"
- * or "backlog".
+ * Droppable IDs are parsed via `parseWorkItemDropIntent()` so Sprint,
+ * Status and Parent hierarchy drops stay mutually exclusive.
  * Draggable IDs are bare work-item UUIDs.
  */
 
@@ -159,17 +160,16 @@ export function BacklogDndProvider({
     }
 
     // Resolve target sprint_id from the typed droppable id.
+    const intent = parseWorkItemDropIntent(dropTarget)
     let targetSprintId: string | null = null
     let targetLabel: string
     let targetItemId: string | null = null
-    if (dropTarget === "backlog") {
+    if (intent.type === "sprint-backlog") {
       targetSprintId = null
       targetLabel = "Backlog"
-    } else if (dropTarget.startsWith("sprint-item:")) {
-      const [, sprintId, itemId] = dropTarget.split(":")
-      if (!sprintId || !itemId) return
-      targetSprintId = sprintId
-      targetItemId = itemId
+    } else if (intent.type === "sprint-item") {
+      targetSprintId = intent.sprintId
+      targetItemId = intent.workItemId
       const sprint = sprintsById.get(targetSprintId)
       if (!sprint) {
         announce("Ziel-Sprint nicht gefunden.")
@@ -181,8 +181,8 @@ export function BacklogDndProvider({
         return
       }
       targetLabel = `Sprint '${sprint.name}'`
-    } else if (dropTarget.startsWith("sprint:")) {
-      targetSprintId = dropTarget.slice("sprint:".length)
+    } else if (intent.type === "sprint") {
+      targetSprintId = intent.sprintId
       const sprint = sprintsById.get(targetSprintId)
       if (!sprint) {
         announce("Ziel-Sprint nicht gefunden.")

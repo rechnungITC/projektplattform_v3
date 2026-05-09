@@ -3,6 +3,7 @@
 import { useDroppable } from "@dnd-kit/core"
 import * as React from "react"
 
+import { SPRINT_BACKLOG_DROP_ID } from "@/lib/work-items/drop-intent"
 import { cn } from "@/lib/utils"
 
 /**
@@ -17,7 +18,7 @@ interface BacklogDropZoneProps {
 
 export function BacklogDropZone({ children }: BacklogDropZoneProps) {
   const { setNodeRef, isOver } = useDroppable({
-    id: "backlog",
+    id: SPRINT_BACKLOG_DROP_ID,
     data: { type: "backlog" },
   })
 
