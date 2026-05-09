@@ -487,3 +487,60 @@ Suggested next steps:
 
 ## Deployment
 _To be added by /deploy_
+
+---
+
+## QA Test Results — Re-QA — 2026-05-10
+
+**Tested:** 2026-05-10  
+**App URL:** local verification; production alias remains `https://projektplattform-v3.vercel.app`  
+**Tester:** QA Engineer (AI)
+
+### Production-Ready Decision
+
+**READY (Approved)** — PROJ-54 remains approved for α + β + γ. No new PROJ-54 bugs were found in this Re-QA. PROJ-54-δ stays intentionally deferred per spec.
+
+### Acceptance Criteria Status
+
+| Area | Status | Evidence |
+|---|---:|---|
+| α/β/γ scoped resource, rate, API, and cost behavior | PASS | `npx vitest run src/components/resources/ src/lib/resources/ src/app/api/resources/ src/lib/cost/` → 11 files, 87/87 tests passed |
+| Full repository unit/integration regression | PASS | `npm test` → 139 files, 1234/1234 tests passed |
+| Production build compatibility | PASS | `npm run build` → compiled successfully; static generation completed 57/57 pages |
+| Lint gate | PASS with unrelated warning | `npm run lint` → 0 errors, 1 existing React Compiler warning in `src/components/work-items/edit-work-item-dialog.tsx:410` (`form.watch(...)`) |
+| Browser E2E gate | BLOCKED by local host dependencies | `npm run test:e2e` executed 46/80 passed, 12 skipped, 22 failed because Playwright browsers cannot launch on this host (`libnspr4.so` missing for Chromium; WebKit system libraries missing). This is the same environment blocker observed earlier, not a PROJ-54 application failure. |
+
+### Edge Cases Status
+
+| Edge Case | Status |
+|---|---:|
+| Admin-only override path and combobox override entry remain covered by scoped resource tests | PASS |
+| BUG-1/BUG-2/BUG-4 regressions remain covered by existing PROJ-54 test set and full Vitest run | PASS |
+| Manual cross-browser smoke | BLOCKED locally by missing Playwright browser dependencies |
+
+### Security Audit Results
+
+- [x] Authentication/authorization-sensitive PROJ-54 routes remain covered by existing route tests in the scoped and full suites.
+- [x] Admin-gated override behavior remains covered by resource component/API tests.
+- [x] No new PROJ-54 code paths or data model changes were introduced during this QA pass.
+- [ ] Browser-level verification could not complete on this machine until Playwright host dependencies are installed.
+
+### Bugs Found
+
+No new PROJ-54 bugs found.
+
+### QA Environment Issue
+
+`npm run test:e2e` is currently not actionable on this host:
+
+- Chromium launch fails on `libnspr4.so: cannot open shared object file`.
+- Mobile Safari/WebKit launch reports missing system libraries including GTK 4, GStreamer, WebKit media, and related runtime packages.
+- `npx playwright install-deps` previously required sudo/TTY and could not complete in this environment.
+
+### Summary
+
+- **Acceptance Criteria:** PASS for automated PROJ-54 and full repository non-browser gates.
+- **Bugs Found:** 0 PROJ-54 bugs.
+- **Security:** PASS for available automated coverage; browser smoke blocked by host dependencies.
+- **Production Ready:** YES.
+- **Recommendation:** Keep PROJ-54 status as Approved. Resolve local Playwright system dependencies separately before using this machine as an E2E approval gate.
