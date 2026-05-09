@@ -1,6 +1,6 @@
 "use client"
 
-import { AlertCircle, Sparkles } from "lucide-react"
+import { AlertCircle, AlertTriangle, Loader2, Sparkles } from "lucide-react"
 import * as React from "react"
 
 import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert"
@@ -266,6 +266,36 @@ export function ResourceForm({
               Diese Resource hat keinen aufgelösten Tagessatz. Setze einen
               eigenen Satz oder verknüpfe einen Stakeholder mit Rolle, bevor
               weitere Allocations entstehen.
+            </AlertDescription>
+          </Alert>
+        ) : null}
+        {/* PROJ-54-γ — recompute status banners. */}
+        {initial?.recompute_status === "pending" ||
+        initial?.recompute_status === "running" ? (
+          <Alert className="mb-2 border-info/40 bg-info/10">
+            <Loader2
+              className="h-4 w-4 animate-spin text-info"
+              aria-hidden
+            />
+            <AlertTitle className="text-sm">
+              Cost-Lines werden neu berechnet …
+            </AlertTitle>
+            <AlertDescription className="text-xs">
+              Der Tagessatz wurde geändert, die abhängigen Work-Item-Kosten
+              werden im Hintergrund aktualisiert.
+            </AlertDescription>
+          </Alert>
+        ) : null}
+        {initial?.recompute_status === "failed" ? (
+          <Alert variant="destructive" className="mb-2">
+            <AlertTriangle className="h-4 w-4" aria-hidden />
+            <AlertTitle className="text-sm">
+              Cost-Line-Recompute fehlgeschlagen
+            </AlertTitle>
+            <AlertDescription className="text-xs">
+              Mindestens ein Work-Item konnte nicht neu berechnet werden.
+              Klicke erneut auf <em>Speichern</em> ohne den Tagessatz zu
+              ändern, um den Recompute neu zu starten.
             </AlertDescription>
           </Alert>
         ) : null}

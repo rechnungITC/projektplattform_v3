@@ -1,6 +1,6 @@
 "use client"
 
-import { AlertCircle, Plus, Sparkles, User, UserMinus } from "lucide-react"
+import { AlertCircle, AlertTriangle, Loader2, Plus, Sparkles, User, UserMinus } from "lucide-react"
 import * as React from "react"
 import { toast } from "sonner"
 
@@ -334,6 +334,28 @@ function ResourceCard({ resource, onClick }: ResourceCardProps) {
                   Kein Override
                 </Badge>
               )}
+              {/* PROJ-54-γ — recompute status indicator on the card. */}
+              {resource.recompute_status === "pending" ||
+              resource.recompute_status === "running" ? (
+                <Badge
+                  variant="outline"
+                  className="gap-1 border-info/40 text-xs text-info"
+                  title="Cost-Lines werden im Hintergrund neu berechnet"
+                >
+                  <Loader2 className="h-3 w-3 animate-spin" aria-hidden />
+                  Recompute
+                </Badge>
+              ) : null}
+              {resource.recompute_status === "failed" ? (
+                <Badge
+                  variant="outline"
+                  className="gap-1 border-destructive/40 text-xs text-destructive"
+                  title="Letzter Cost-Line-Recompute schlug fehl — Resource erneut speichern, um neu zu starten"
+                >
+                  <AlertTriangle className="h-3 w-3" aria-hidden />
+                  Recompute fehlgeschlagen
+                </Badge>
+              ) : null}
             </div>
             <p className="mt-1 text-xs text-muted-foreground">
               FTE {resource.fte_default} · Verfügbar{" "}
