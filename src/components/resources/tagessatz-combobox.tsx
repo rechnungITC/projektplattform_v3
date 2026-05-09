@@ -152,6 +152,21 @@ export function TagessatzCombobox({
     return parseInlineOverride(trimmed)
   }, [search, rolesOnly])
 
+  // PROJ-54-β-BUG-2 fix (2026-05-09): cmdk's built-in fuzzy filter
+  // hides the inline-override CommandItem because its value
+  // (`__override__`) doesn't match the user's search ("1500 EUR" → no
+  // overlap). Roles fuzzy-matched on shared substrings ("EUR") and
+  // surfaced, the override path was invisible. Filtering now happens
+  // manually below so the override item is guaranteed to appear when
+  // `inlineOverride` parses.
+  const filteredRates = React.useMemo(() => {
+    const q = search.trim().toLowerCase()
+    if (q.length === 0) return latestRates
+    return latestRates.filter((rate) =>
+      rate.role_key.toLowerCase().includes(q),
+    )
+  }, [latestRates, search])
+
   const triggerLabel = (() => {
     if (value.override) {
       return `Eigener Satz — ${formatRate(value.override.daily_rate, value.override.currency)}`
@@ -208,7 +223,7 @@ export function TagessatzCombobox({
         </Button>
       </PopoverTrigger>
       <PopoverContent className="w-[--radix-popover-trigger-width] p-0" align="start">
-        <Command shouldFilter>
+        <Command shouldFilter={false}>
           <CommandInput
             placeholder={
               rolesOnly
@@ -220,9 +235,9 @@ export function TagessatzCombobox({
           />
           <CommandList>
             <CommandEmpty>{emptyHint}</CommandEmpty>
-            {latestRates.length > 0 ? (
+            {filteredRates.length > 0 ? (
               <CommandGroup heading="Aus dem Rollen-Katalog">
-                {latestRates.map((rate) => {
+                {filteredRates.map((rate) => {
                   const isSelected =
                     value.role_key === rate.role_key && !value.override
                   return (
