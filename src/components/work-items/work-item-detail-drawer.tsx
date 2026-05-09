@@ -119,8 +119,8 @@ export function WorkItemDetailDrawer({
                 {item.title}
               </SheetTitle>
               {parentChain.length > 0 ? (
-                <SheetDescription>
-                  <span className="flex flex-wrap items-center gap-1 text-xs">
+                <SheetDescription asChild>
+                  <div className="flex flex-wrap items-center gap-1 text-xs">
                     {parentChain.map((p, idx) => (
                       <React.Fragment key={p.id}>
                         <span className="inline-flex items-center gap-1">
@@ -135,7 +135,7 @@ export function WorkItemDetailDrawer({
                         ) : null}
                       </React.Fragment>
                     ))}
-                  </span>
+                  </div>
                 </SheetDescription>
               ) : null}
             </SheetHeader>
