@@ -160,7 +160,9 @@ export async function DELETE(_request: Request, ctx: Ctx) {
       .limit(5),
     supabase
       .from("resources")
-      .select("id, name", { count: "exact" })
+      // PROJ-55-γ — the `resources` column is `display_name`, not
+      // `name` (V2 carry-over fixed during the audit-columns repair).
+      .select("id, display_name", { count: "exact" })
       .eq("organization_unit_id", id)
       .limit(5),
     supabase
@@ -194,7 +196,9 @@ export async function DELETE(_request: Request, ctx: Ctx) {
     blockers.push({
       kind: "resources",
       count: resourceRes.count ?? 0,
-      sample: (resourceRes.data ?? []).map((r) => (r.name as string) ?? ""),
+      sample: (resourceRes.data ?? []).map(
+        (r) => (r.display_name as string) ?? "",
+      ),
     })
   }
   if ((memberRes.count ?? 0) > 0) {
