@@ -1,15 +1,13 @@
 import type { Metadata } from "next"
 
-import { DashboardWelcome } from "./dashboard-welcome"
+import { DashboardClient } from "@/components/dashboard/dashboard-client"
 
 export const metadata: Metadata = {
   title: "Dashboard · Projektplattform",
+  description:
+    "My Work, Genehmigungen, Project Health und Alerts auf einen Blick.",
 }
 
 export default function DashboardPage() {
-  return (
-    <div className="mx-auto w-full max-w-7xl px-4 py-8 sm:px-6 sm:py-10">
-      <DashboardWelcome />
-    </div>
-  )
+  return <DashboardClient />
 }

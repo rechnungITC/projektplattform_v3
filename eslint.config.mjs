@@ -178,6 +178,13 @@ const config = [
       "src/hooks/use-organization-tree.ts",
       "src/hooks/use-locations.ts",
       "src/hooks/use-organization-landscape.ts",
+      // PROJ-64: dashboard summary + pending-approvals hooks use the
+      // effect-driven initial-load pattern. The pending-approvals hook
+      // additionally resets local state when the `enabled` flag flips
+      // (so toggling "summary owns the section" does not leak stale
+      // approvals through the panel).
+      "src/hooks/use-dashboard.ts",
+      "src/hooks/use-pending-approvals.ts",
     ],
     rules: {
       "react-hooks/set-state-in-effect": "off",
