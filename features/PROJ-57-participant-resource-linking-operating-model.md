@@ -1,6 +1,6 @@
 # PROJ-57: Participant, Stakeholder & Resource Linking Operating Model
 
-## Status: Planned
+## Status: In Progress (α + β-aggregator live; β-UI + γ + δ + ε deferred)
 **Created:** 2026-05-07
 **Last Updated:** 2026-05-07
 
@@ -173,3 +173,41 @@ _To be added by /qa_
 ## Deployment
 
 _To be added by /deploy_
+
+## Implementation Notes
+
+### 2026-05-11 — MVP foundation (α docs + β aggregator/API)
+
+**57-α — Operating model documented in spec sections** *Begriffliches Zielmodell* and *Slice-Struktur* above. The four-role model (Tenant Member / Project Member / Stakeholder / Resource) is canonical.
+
+**57-β — Aggregator + API**
+
+- `src/lib/participant-links/types.ts` — `ParticipantLink`, `ParticipantRateSource`, `ProjectParticipantLinksSnapshot`. The rate-source discriminated union classifies into `none` / `role_rate` / `override` / `unresolved`.
+- `src/lib/participant-links/aggregate.ts` — `resolveProjectParticipantLinks()` joins `project_memberships`, `stakeholders` and `resources` (tenant-scoped, filtered to project-relevant rows) and merges them on `user_id` first, then `source_stakeholder_id`, then standalone. Emits `link_warnings` for the three high-value gaps:
+  1. Stakeholder mit Login, aber kein Projektmitglied
+  2. Resource ohne Stakeholder-Bindung
+  3. Projektmitglied ohne Stakeholder-Erfassung
+- `GET /api/projects/[id]/participant-links` — auth-gated via `requireProjectAccess(..., "view")`. Returns `{ participant_links: ProjectParticipantLinksSnapshot }`.
+- 3 unit tests + 1 Playwright auth-gate smoke. Vitest: **1263 / 1263 green** (was 1260; +3).
+
+### Deferred follow-ups (PROJ-57-β UI + γ/δ/ε)
+
+- **β UI** — `RelationshipSummary`, `ParticipantLinkAssistant`, `RateSourceBadge` components in `src/components/projects/` consuming the new endpoint. Estimated 1 dev day.
+- **γ — Tagessatz source model** — explizit "dynamic role-rate" vs "fixed override" im Resource-Form. Erfordert kleine Schema-Erweiterung + Migration.
+- **δ — Class-3 masking** — Rate-Werte abhängig von `cost_admin`-Rolle maskieren. Erfordert Permission-Helper-Erweiterung.
+- **ε — Readiness-Integration** — Aggregator-Counts (`with_warnings`) als zusätzlicher Readiness-Item-Key in PROJ-56 einbinden. ~1h.
+
+Alle Deferrals sind additiv — die aktuelle Slice liefert die Daten, die FE-Komponenten konsumieren sie sukzessive.
+
+## QA Test Results
+
+- 3 aggregator unit tests pinning identity-merge + rate-source classification.
+- 1 route auth-gate smoke (Playwright × 2 browser projects).
+- Keine Critical/High Bugs. γ/δ/ε bewusst als deferred dokumentiert.
+
+## Deployment
+
+- **Date deployed:** 2026-05-11
+- **Production URL:** https://projektplattform-v3.vercel.app
+- **DB migration:** keine.
+- **Rollback plan:** `git revert` des Batch-5-Commits. Keine DB-Implikationen.
