@@ -495,7 +495,7 @@ Shipped as one commit. Migration applied live via Supabase MCP; the 4 API routes
 **API routes (`src/app/api/projects/[id]/snapshots/`)**
 - `route.ts` GET — list snapshots for a project (view-access). Joins `profiles` for `generated_by_name`. Returns `{ snapshots: SnapshotListItem[] }`.
 - `route.ts` POST — create snapshot (edit-access + module active). Resolves next version via `max(version)+1` on `(project_id, kind)`. Calls `aggregateSnapshotData` → INSERT row with `pdf_status='pending'` → `renderSnapshotPdf` synchronously → UPDATE `pdf_storage_key` + `pdf_status='available'` (or `'failed'` on render error; row stays). Returns `{ snapshot, snapshotUrl }`. UNIQUE-collision (concurrent create) surfaces as 409.
-- `preview-ki/route.ts` POST — graceful-fallback 3-sentence narrative (V1 stub; see deviation below). Honours the per-tenant `ki_narrative_enabled` flag (403 when disabled).
+- `preview-ki/route.ts` POST — calls `invokeNarrativeGeneration` (PROJ-30 router) with a Class-1/2-only auto-context. Returns `{ text, classification, provider }`; falls back to deterministic stub-text only on hard router/DB failure so the UI never sees a 5xx. Honours the per-tenant `ki_narrative_enabled` flag (403 when disabled).
 - `[sid]/pdf/route.ts` GET — issues a 302 redirect to a 5-min signed Storage URL. Returns 409 when `pdf_status !== 'available'`.
 - `[sid]/render-pdf/route.ts` POST — retry path for failed PDFs; returns 204 on success, 500 on render failure (DB row flipped to `pdf_status='failed'`).
 
@@ -506,7 +506,7 @@ Shipped as one commit. Migration applied live via Supabase MCP; the 4 API routes
 - `src/app/api/projects/[id]/snapshots/route.test.ts` — 7 cases covering GET 401/200-shape/module-disabled, POST 401/403/400-missing-kind/400-unknown-kind. Heavy server-only deps (aggregator, Puppeteer) are mocked; full create-with-render path is exercised by `/qa` live.
 - `src/lib/tenant-settings/modules.test.ts` updated to include `output_rendering` in the toggleable list.
 
-**Deviation from spec** (M1) — **KI narrative is a graceful-fallback stub in V1.** The existing PROJ-12 AI router (`src/lib/ai/router.ts`) is purpose-typed for `"risks"` only; wiring a `"narrative"` purpose through the router (Class-3 routing → local provider, `ki_runs` row, audit) is a substantive PROJ-12 extension. Until that lands, `preview-ki` returns a templated 3-sentence narrative with `classification=2` and `provider="stub"`. The frontend modal already lets the user edit before committing, so the UX is correct — only the auto-generated suggestion is a stub. Replace with `invokeNarrativeGeneration({...})` once the AI router gains the narrative purpose.
+**Deviation from spec** (M1) — ✅ **Resolved 2026-05-11 by PROJ-30.** The V1 cut shipped with a templated stub because the PROJ-12 AI router was purpose-typed for `"risks"` only. PROJ-30 added the `"narrative"` purpose with Class-3 defense-in-depth, `ki_runs` audit row, and provider fallback. `preview-ki/route.ts` now calls `invokeNarrativeGeneration({ supabase, tenantId, projectId, actorUserId, context })` against a curated Class-1/2-only auto-context (`buildNarrativeAutoContext`). The `provider="stub"` path only surfaces as a last-resort fallback when the router itself throws (DB outage, etc.) so the UI never sees a 5xx — the spec § ST-06 happy-path is now backed by the real router.
 
 **Verified end-state**
 - TypeScript strict — 0 errors
@@ -606,9 +606,9 @@ Edge probe: `/reports/snapshots/not-a-uuid` → does not crash the proxy (status
 |---|---|---|
 | `output_rendering.ki_narrative_enabled` tenant-flag (default false) | ✅ | `tenant_settings.output_rendering_settings` JSONB column with default `{"ki_narrative_enabled": false}`. |
 | Flag drives "KI-Kurzfazit"-Sektion visibility | ✅ | `ProjectDetailClient` reads `tenantSettings.output_rendering_settings.ki_narrative_enabled` and passes to `<ReportsSection>`; the modal entry is gated. |
-| Server gathers Class-1+2 fields → calls AI provider | 🟡 **Documented deviation** (M1) | V1 stub: `preview-ki` returns a templated 3-sentence narrative with `provider="stub"`. PROJ-12 router is purpose-typed for "risks"; narrative purpose is its own slice. **Frontend modal lets the user edit before committing**, so the UX contract is fulfilled — only the auto-suggestion is a stub. |
+| Server gathers Class-1+2 fields → calls AI provider | ✅ (PROJ-30) | `preview-ki/route.ts` builds a Class-1/2-only auto-context via `buildNarrativeAutoContext` and routes through `invokeNarrativeGeneration`. Class-3 inputs are filtered upstream and additionally hard-blocked by the router's 4-layer Class-3 defense. |
 | User can edit before saving; saved snapshot stores final text + classification + provider | ✅ | `ki-narrative-modal.tsx` Textarea is editable; create endpoint stores `content.ki_summary` with `text`, `classification`, `provider`. |
-| Class-3 → local provider only; if no local provider → KI block silently skipped | 🟡 **Stub** | Will go live when narrative purpose lands in PROJ-12 router. Current stub doesn't read project data, so the routing rule isn't tested live; the contract is in place at the type + UI level. |
+| Class-3 → local provider only; if no local provider → KI block silently skipped | ✅ (PROJ-30) | Router's `enforceClass3Hardlock` routes Class-3 contexts exclusively to the local provider; when no local provider is configured the router falls back to deterministic stub-text and emits a `ki_runs` row tagged with the reason. |
 
 #### ST-07 — Snapshot UI surface
 | AC | Status | Notes |
@@ -631,7 +631,7 @@ Edge probe: `/reports/snapshots/not-a-uuid` → does not crash the proxy (status
 | Tenant disables `output_rendering` module | ✅ `requireModuleActive(_, 'output_rendering', { intent: 'read' })` returns 404; write intent returns 403. Tested via vitest mock. |
 | Snapshot version race | ✅ UNIQUE(project_id, kind, version) + max+1 resolve; 23505 surfaces as 409 (`error_code: version_conflict`) for client retry. |
 | PDF render fails | ✅ Snapshot row stays with `pdf_status='failed'`; `[sid]/render-pdf` retry path returns 204 on success. UI shows "PDF erneut rendern" button. |
-| KI provider offline | ✅ V1 stub never throws; the snapshot is still created without the KI block. (Real-provider path tested when narrative router lands.) |
+| KI provider offline | ✅ Router catches provider errors and returns deterministic stub-text + `result.status === "error"`; preview-ki additionally has a last-resort try/catch so the snapshot endpoint never sees a 5xx. (PROJ-30) |
 | User edits KI narrative to include Class-3 | ✅ Validated only on length (1000 char cap upstream); responsibility note is in the modal description text. |
 | Snapshot deleted by tenant offboarding | ✅ ON DELETE CASCADE on `tenant_id`; URLs return 404 via RLS auto-hide. |
 | PDF storage bucket unavailable | ✅ Same handling as render-fail path. |
@@ -668,22 +668,22 @@ Edge probe: `/reports/snapshots/not-a-uuid` → does not crash the proxy (status
 
 | Severity | ID | Finding | Status |
 |---|---|---|---|
-| Medium | M1 | KI narrative is a V1 stub returning templated text with `provider="stub"` instead of a real PROJ-12-routed AI call. | **Documented deviation** in Implementation Notes Backend § "Deviation from spec". Frontend lets the user edit before committing, so UX contract is fulfilled. Replace with `invokeNarrativeGeneration` once the narrative purpose is added to the AI router. **Acceptable** — the spec § ST-06 is end-state; the V1 cut is honest. |
+| Medium | M1 | ~~KI narrative is a V1 stub returning templated text with `provider="stub"` instead of a real PROJ-12-routed AI call.~~ | ✅ **Resolved 2026-05-11 by PROJ-30.** `preview-ki/route.ts` now calls `invokeNarrativeGeneration` against a Class-1/2-only auto-context. `provider="stub"` only surfaces as a last-resort fallback when the router itself throws (DB outage, etc.). See Post-Deploy Hotfixes § "2026-05-11 — M1 closure via PROJ-30". |
 | Low | L1 | The < 2 s page-load AC for 50 risks + 100 work-items is not micro-benchmarked; only spot-tested on tiny projects. | **Acceptable for V1**. Real-world performance will be observed during the pilot. SSR + indexed-table reads make the unit cost predictable. Re-evaluate if pilot tenant flags slowness. |
-| Low | L2 | Full create-with-render flow (POST → Puppeteer → Storage upload → PDF download) is not E2E-tested. Vitest mocks the heavy deps; live testing requires logged-in fixture. | **Pre-existing project-level limitation** (PROJ-29 L2). The PROJ-29 auth-fixture skeleton is in place; once `SUPABASE_SERVICE_ROLE_KEY` is refreshed, this E2E becomes immediately writable. |
+| Low | L2 | Full create-with-render flow (POST → Puppeteer → Storage upload → PDF download) is not E2E-tested. Vitest mocks the heavy deps; live testing requires logged-in fixture. | **Partially resolved 2026-05-11.** `SUPABASE_SERVICE_ROLE_KEY` is now live (sb_secret_ format), `globalSetup` provisions a valid storage-state.json on demand. The only remaining blocker is an environment-level WSL2 system-library gap (`libnspr4`/`libnss3` for Playwright's bundled headless Chromium) that does not apply on CI or the Vercel preview pipeline. See PROJ-29 spec § "Update 2026-05-11". |
 | Info | I1 | Open-items "due_date" surrogate uses `created_at` because the schema has no due-date column. | **Documented in `SnapshotOpenItemRef` JSDoc**. Body label "fällig …" reads as "offen seit …" semantically — acceptable. |
 | Info | I2 | `/reports/snapshots/[id]` lives outside the `(app)` group → AppShell sidebars don't render. This is intentional (clean print context) but means navigating from the snapshot page back into the app requires a manual URL change. | **By design** per Tech Design § "Komponentenstruktur". Fine for the public-facing-but-tenant-scoped use case. |
 | Info | I3 | 26 pre-existing Supabase advisor warnings (RLS helpers + auth_leaked_password_protection). No new warnings introduced by PROJ-21. | **Pre-existing**, tracked under earlier specs. |
 
 ### Production-ready decision
 
-**READY** — no Critical or High bugs. The Medium finding (M1, KI stub) is a clearly documented deviation with a working UX path and a clear hand-off to the future PROJ-12 narrative-purpose extension. The Low findings (L1, L2) are project-level limitations, not PROJ-21 defects.
+**READY** — no Critical or High bugs. The Medium finding (M1, KI stub) was resolved by PROJ-30 (real router-backed narrative call); the Low findings (L1, L2) remain project-level limitations, not PROJ-21 defects.
 
 All 8 acceptance-criterion blocks pass at the level appropriate for the V1 KI deviation; 560/560 vitest cases pass; 46/46 playwright cases pass; live MCP confirms migration applied correctly with 2-layer immutability + private storage + module backfill; security audit clean.
 
 Suggested next:
 1. **`/deploy`** when ready — no blockers. Migration already applied to live Supabase during /backend; Vercel auto-deploy needs to register the file in the deploy chain.
-2. Optional follow-up (separate spec): extend PROJ-12 AI router with a `"narrative"` purpose (Class-3 → local provider, ki_runs row, audit) → replace the preview-ki stub with the real router call.
+2. ~~Extend PROJ-12 AI router with a `"narrative"` purpose~~ — ✅ done in PROJ-30 (2026-05-11 closure of M1).
 3. Optional follow-up: refresh `SUPABASE_SERVICE_ROLE_KEY` to unblock the auth-fixture-smoke and wire deeper E2E (full create-with-render flow, KI modal, PDF download).
 
 ## Deployment
@@ -696,9 +696,9 @@ Suggested next:
 - **Module backfill:** `output_rendering` already in every existing tenant's `active_modules` (migration backfill applied live).
 - **Git tag:** `v1.27.0-PROJ-21`
 - **Deviations** (all documented in Implementation Notes + QA findings):
-  - **M1 / KI narrative**: V1 stub returns templated text with `provider="stub"`. Frontend lets user edit before committing — UX contract fulfilled. Replace with PROJ-12 narrative-purpose router call when that extension lands.
+  - **M1 / KI narrative**: ✅ **Resolved 2026-05-11** by PROJ-30 — `preview-ki/route.ts` now calls `invokeNarrativeGeneration` against a Class-1/2-only auto-context. `provider="stub"` only surfaces as last-resort fallback on router/DB hard failure.
   - **L1 / Page-load < 2s for 50 risks + 100 work-items**: not micro-benchmarked; observe during pilot.
-  - **L2 / Full create-with-render E2E**: not E2E-tested (project-level fixture limitation from PROJ-29; auth-fixture skeleton in place, awaits valid SUPABASE_SERVICE_ROLE_KEY).
+  - **L2 / Full create-with-render E2E**: not E2E-tested locally. 2026-05-11 update: `SUPABASE_SERVICE_ROLE_KEY` is now live and `globalSetup` provisions a valid auth session; remaining blocker is a WSL2-only system-library gap (`libnspr4`/`libnss3`) that doesn't apply on CI / Vercel previews. See PROJ-29 § "Update 2026-05-11".
 - **Post-deploy verification:**
   - `https://projektplattform-v3.vercel.app/login` returns 200 ✅
   - `https://projektplattform-v3.vercel.app/api/projects/<uuid>/snapshots` returns 307 → /login (auth-gate intact) ✅
@@ -707,7 +707,7 @@ Suggested next:
   - Existing routes unaffected (PROJ-23/PROJ-26/PROJ-28 routes still 307-gate as before)
 - **Rollback story:** `git revert 0b6d8c2..04d6f6c` (4 commits — frontend, backend, QA, docs). The DB migration (`CREATE TABLE`, RLS policies, audit trigger, storage bucket) is forward-only — revert needs a hand-written `DROP TABLE / DROP POLICY / DROP BUCKET` migration if a true rollback is required. **In practice the table is empty and isolated**; leaving it in place after a code revert is safe.
 - **Next steps for follow-up:**
-  - Extend PROJ-12 AI router with `"narrative"` purpose (Class-3 → local-provider routing, ki_runs row, audit) → replace `preview-ki` stub with real router call.
+  - ~~Extend PROJ-12 AI router with `"narrative"` purpose~~ — ✅ done in PROJ-30 (2026-05-11 M1 closure).
   - Refresh `SUPABASE_SERVICE_ROLE_KEY` to the new `sb_secret_` format → unblocks the auth-fixture-smoke E2E from PROJ-29 → enables deeper PROJ-21 E2E (full create-with-render flow, KI modal, PDF download path).
   - First pilot snapshot: confirm < 2 s page-load with realistic data (50 risks + 100 work-items); revisit if slower.
   - Monitor PDF render duration logs (`>10s` warn-line) over the first month — if frequent, consider deferring to PROJ-21b async-render.
@@ -759,3 +759,25 @@ Suggested next:
 - Production smoke: root URL returns the expected auth redirect to `/login?next=%2F`.
 
 **Residual note:** Full authenticated create-render-download E2E is still blocked by the project-level logged-in fixture limitation already tracked under PROJ-29 / PROJ-21 L2. Manual production confirmation on 2026-05-08 reported the PDF flow working after deployment.
+
+### 2026-05-11 — M1 closure: KI narrative now backed by PROJ-30 router
+
+**Symptom:** Spec ST-06 promised a real router-routed AI call for the snapshot KI-narrative preview, but the V1 cut shipped a templated stub because the PROJ-12 AI router was purpose-typed for `"risks"` only. `preview-ki/route.ts` returned `{ text, classification: 2, provider: "stub" }` regardless of project content.
+
+**Resolution:** PROJ-30 added the `"narrative"` purpose to the AI router (Class-3 defense-in-depth, `ki_runs` audit row, deterministic stub-fallback on provider error). `src/app/api/projects/[id]/snapshots/preview-ki/route.ts` was rewritten to call:
+
+1. `buildNarrativeAutoContext(supabase, projectId, kind)` — curated Class-1/2-only context (no personenbezogene Felder).
+2. `invokeNarrativeGeneration({ supabase, tenantId, projectId, actorUserId, context })` — runs Class-3 hardlock, provider selection, `ki_runs` audit, and falls back to deterministic stub-text only on provider error so the UI never sees a 5xx.
+3. Surfaces `{ text, classification, provider }` to the frontend modal — user can still edit before committing.
+
+**Verified state of the route:** the only path that emits `provider="stub"` is the outer `try/catch` last-resort fallback (DB outage / `buildNarrativeAutoContext` throw). The router itself emits a real provider name on the happy path and a `result.status === "error"` with the attempted provider name on inner failure.
+
+**Fix:** the implementation was already in place from PROJ-30; this hotfix only updates the PROJ-21 spec to reflect the resolved deviation across Implementation Notes Backend, ST-06 table, Edge Cases table, Bugs & findings M1, Production-ready decision text, Deployment Deviations and Next-steps list.
+
+**Verification:**
+
+- Confirmed `src/app/api/projects/[id]/snapshots/preview-ki/route.ts` imports `invokeNarrativeGeneration` from `@/lib/ai/router` and `buildNarrativeAutoContext` from `@/lib/ai/auto-context`.
+- Confirmed `invokeNarrativeGeneration` is exported from `src/lib/ai/router.ts:423`.
+- No code change in this slice — pure documentation closure.
+
+**Residual note:** L2 (logged-in E2E for the full create-with-render flow including the KI modal path) remains tracked under PROJ-29 once `SUPABASE_SERVICE_ROLE_KEY` is verified live (see PROJ-29 follow-up).

@@ -351,6 +351,13 @@ This deviation simplifies the architecture without losing the spec's safety prop
 
 **Known limitation**: the existing local `SUPABASE_SERVICE_ROLE_KEY` in `.env.local` returns "Invalid API key" — likely a deprecated/rotated JWT (Supabase introduced `sb_secret_` keys recently). The Block C smoke test will go from skip → pass once a valid service-role key is in place. **Not a code defect** — fixture infrastructure compiles, types, and gracefully handles the missing-auth case.
 
+**Update 2026-05-11**: `.env.local` now contains a valid `sb_secret_…` key (41 chars, new Supabase format). Running `npx playwright test tests/PROJ-29-auth-fixture-smoke.spec.ts --project=chromium` confirms:
+- `[PROJ-29 globalSetup] ready — storage state at tests/fixtures/.auth/storage-state.json` ✅
+- Storage-state.json contains a fresh access_token (expiry ~1h in the future) + refresh_token.
+- The previous module-level skip no longer kicks in — the smoke test attempts to launch Chromium and reaches the test body.
+
+A new, **environment-level** blocker surfaced on this WSL2 host: Playwright's bundled headless Chromium fails to start with `libnspr4.so: cannot open shared object file: No such file or directory`. This is a missing Linux system library, **not** a PROJ-29 code or auth defect. Once the user runs `sudo apt-get install libnspr4 libnss3` (or `sudo npx playwright install-deps chromium`) the auth-fixture smoke + every downstream logged-in E2E spec becomes runnable. CI Docker images that already ship `playwright/python` or `mcr.microsoft.com/playwright` bring these libs by default — this only affects bare WSL2/Ubuntu workstations.
+
 ### Verified end-state
 - TypeScript strict — 0 errors
 - `npm run lint` — exit 0, ✖ 0 problems

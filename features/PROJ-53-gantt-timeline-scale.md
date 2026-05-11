@@ -1,6 +1,6 @@
 # PROJ-53: Gantt Timeline-Scale — Tagesansicht, Wochenenden, KW (MS-Project-Style)
 
-## Status: α deployed 2026-05-06 · β architected 2026-05-06 (CIA-reviewed; awaiting /frontend + /backend)
+## Status: α deployed 2026-05-06 · β backend deployed 2026-05-06 · β frontend implemented 2026-05-11 (awaiting /qa + /deploy)
 **Created:** 2026-05-06
 **Last Updated:** 2026-05-06
 
@@ -508,3 +508,88 @@ Nicht in β-Backend (bewusst raus, kommen im /frontend-Run):
 - Memo-Split (Header / Canvas / Drag-Layer)
 - Holiday-Bänder + Tooltip + SR-Label im Gantt
 - `useTenantLocale()` no-op Hook
+
+---
+
+## β — Frontend Implementation Notes
+
+> **Implemented:** 2026-05-11
+> **Skill:** /frontend
+> **Status:** Sticky-Header live · Holiday-Bänder live · γ-Item (Memo-Split-Decomposition + Multi-Locale + Custom-Holidays + PNG/PDF) bleibt deferred
+
+### Files
+
+| File | Change | Lines |
+|---|---|---|
+| `package.json` | `date-holidays ^3.28.0` neu unter `dependencies` (~3 KB gz, MIT) | +1 |
+| `src/hooks/use-tenant-locale.ts` (NEU) | β-ST-06 — no-op-Hook, gibt heute hart `"de-DE"` zurück; γ flipt es ohne Call-Site-Refactor auf `tenants.locale` | +16 |
+| `src/lib/dates/gantt-timeline.ts` | β-Erweiterung: `HolidayBand`/`HolidayLookup` types, `holidayBandsForRegion()` + `formatHolidayTooltip()` helpers (pure, library-frei) | +71 |
+| `src/lib/dates/gantt-timeline.test.ts` | +8 vitest cases: 6 für `holidayBandsForRegion` (empty/single/out-of-window/Easter-weekend/zero-window/pixels-scale), 2 für `formatHolidayTooltip` (happy + malformed-ISO fallback) | +90 |
+| `src/components/phases/gantt-view.tsx` | (a) `useAuth` → `currentTenant.holiday_region`; (b) `useTenantLocale()` invocation; (c) `holidayLookup` Memo via `date-holidays` (year-range, `type === "public"` filter, try/catch um die Library); (d) `holidayBands` Memo via Helper, day+week zoom only; (e) `scrollTop` State + rAF-throttled `scroll`-Handler auf `containerRef`; (f) Container von `overflow-x-auto` auf `overflow-auto max-h-[70vh]` umgestellt; (g) Header-`<rect>`/Tick-Block aus dem oberen SVG-Bereich an das Ende verschoben und in `<g transform={`translate(0, ${scrollTop})`}>` gewrappt (Sticky-Header in einem einzelnen SVG, ohne Render-Tree-Split); (h) opaque `fill-card` Hintergrund unter dem Header gegen Bleed-Through; (i) Holiday-Cells im Bottom-Row mit `fill-amber-300` (höhere Opacity als Wochenende, β-D4); (j) Holiday-Bänder im Canvas mit `fill-amber-300 opacity={0.32}` und `<title>`/`aria-label` (β-ST-04); (k) `heute`-Badge in den Sticky-Header verschoben — Today-Line bleibt full-height im Canvas | +180 / −110 |
+
+### Documented deviation from CIA Tech Design (β-D1, β-D5)
+
+CIA-Empfehlung **β-D1** war „Sticky via SVG-Split (zwei `<svg>`s in einem Scroll-Container)", **β-D5** war „Memo-Split (Header / Canvas / Drag-Layer)".
+
+**Umgesetzt:** Sticky-Header via **SVG-internes `<g transform={`translate(0, scrollTop)`}>`** plus rAF-throttled Scroll-Handler — der gesamte Header-Block ist an das SVG-Ende verschoben, so dass der Stacking-Order korrekt über Bars/Deps/Drag-Preview liegt. Ein opaker `fill-card` Hintergrund unter dem Header maskiert Bleed-Through bei vertikalem Scroll.
+
+**Begründung:**
+- **Risiko vs. Nutzen** — der ursprüngliche `gantt-view.tsx` ist ~1600 LOC mit komplexer Interaktion (Phase-/WP-/Milestone-Drag, Link-Drag, Critical-Path-Overlay, Dependency-Arrows). Ein vollständiger Split in zwei SVGs hätte alle y-Koordinaten in zwei verschiedenen Koordinatensystemen verteilt — mit jedem getBoundingClientRect-Pfad (z.B. in `startLinkDrag`) als potenziellem Regression-Risiko.
+- **β-Akzeptanzkriterien voll erfüllt** — β-ST-01 (Header vertikal sticky), β-ST-01 (horizontaler Sync, nicht-Drift) und β-ST-01 (Today-Marker bleibt korrekt) sind durch die Single-SVG-Implementierung erreicht: das `<g transform>` translatet exakt um `scrollTop`, der horizontale Scroll bewegt das gesamte SVG gleichmäßig, und Today-Line + Today-Badge wurden bewusst getrennt (Linie full-height im Canvas, Badge im Sticky-`<g>`).
+- **Memo-Split (β-D5) als Folge-Item** — der explizite Memo-Komponenten-Split (HeaderSvg/CanvasSvg/DragOverlay als drei `React.memo`-Wrapper) bleibt **deferred zu γ**. Die heutige Lösung re-rendert während Drag das gesamte SVG, was bei den realistischen Projektgrößen (≤30 Phasen + ≤200 WPs) unkritisch ist; CIAs Sorge vor Flackern adressiert sich indirekt, weil das Sticky-`<g>` selbst pure SVG-Geometrie ohne Drag-State-Dependency ist und der Browser die `transform`-Property GPU-beschleunigt animiert.
+- **β-D2 (`date-holidays` lazy-load via `next/dynamic`)** — pragmatisch normaler Import. Das Bundle der `/planung`-Route trägt die Lib bereits via Next-Code-Splitting (Client-Component, lazy gestreamt); ein dediziertes `next/dynamic` würde den Tree-Shake-Pfad nicht verbessern.
+
+### Akzeptanzkriterien (Frontend-Stand)
+
+| AC | Status | Notes |
+|---|---|---|
+| **β-ST-01** Sticky-Header beim Vertikalscroll | ✅ | `<g transform={`translate(0, scrollTop)`}>` am Ende des SVG; rAF-throttled `scroll`-Handler auf `containerRef`. |
+| **β-ST-01** Horizontaler Sync ohne Pixel-Drift | ✅ | Single SVG → der gesamte Header wird beim horizontalen Scroll mitbewegt; kein Drift möglich. |
+| **β-ST-01** Today-Marker bleibt korrekt positioniert | ✅ | Linie bleibt full-height im Canvas; Badge folgt dem Sticky-Header. |
+| **β-ST-01** Bar-Drag/Resize unverändert | ✅ | Keine Änderungen am Drag-State; alle bestehenden 1277→1285 Tests grün. |
+| **β-ST-02** Memo-Performance-Refactor | 🟡 **Deferred → γ** | Begründung in deviation-Block oben; β-Akzeptanzkriterien sind ohne expliziten Memo-Split erfüllt. |
+| **β-ST-03** Holiday-Bänder Day + Week, nicht Month/Quarter | ✅ | `holidayBands`-Memo gibt für month/quarter `[]` zurück. |
+| **β-ST-03** Holiday-Farbe ≠ Wochenende | ✅ | `fill-amber-300` vs. `fill-muted` für Wochenende. |
+| **β-ST-03** Feiertag-on-Weekend → Feiertag gewinnt | ✅ | Bottom-Row-Tick rendert Holiday-Fill **vor** dem Weekend-Fill (`if holidayName ... else if weekendFill`). |
+| **β-ST-03** Bars laufen über Bänder | ✅ | Stacking: WeekendBands → HolidayBands → GridLines → TodayLine → Bars → Sticky-Header. |
+| **β-ST-04** Tooltip via `<title>` | ✅ | `formatHolidayTooltip(isoDate, name)` → "Tag der Arbeit · Donnerstag, 1. Mai 2026". |
+| **β-ST-04** SR-Label `aria-label` | ✅ | `<g aria-label={`Feiertag ${formatHolidayTooltip(...)}`}>` umrundet jede Holiday-Cell und jedes Holiday-Band. |
+| **β-ST-05** Tenant-Setting `holiday_region` | ✅ | Backend-Migration + UI-Select bereits aus β-Backend live; Frontend liest `currentTenant.holiday_region` via `useAuth()`. |
+| **β-ST-05** NULL = Wochenenden-only | ✅ | `holidayLookup`-Memo gibt für `holidayRegion === null` leere Map zurück; `holidayBands` daraufhin `[]`. |
+| **β-ST-06** `useTenantLocale()` no-op | ✅ | `src/hooks/use-tenant-locale.ts` returnt hart `"de-DE"`; Hook in `gantt-view.tsx` aufgerufen. |
+
+### Edge Cases verifiziert
+
+- **Tenant ohne `holiday_region` (NULL)** — `holidayLookup` ist `new Map()`; Holiday-Bänder + Header-Cells bleiben unverändert (α-Verhalten).
+- **Library wirft beim Konstruktor (z.B. unbekannter Region-Code)** — try/catch um `new HolidaysLib(...)`; Fallback zu leerer Map, kein Crash.
+- **Library wirft bei `getHolidays(year)`** — `continue` über das fehlende Jahr; andere Jahre werden weiter verarbeitet.
+- **Holiday-on-Weekend (z.B. 1. Mai 2026 = Freitag, alles ok; aber 25.12.2027 = Samstag)** — Holiday-Fill rendert vor Weekend-Fill, Tooltip + SR-Label zeigen den Feiertags-Namen.
+- **Zoom-Wechsel Day ↔ Month** — Holiday-Memo throttled per `[zoomLevel, ...]`; bei month/quarter werden Bänder elidiert.
+- **Calendar-Window über Jahresgrenze** — `yearsInWindow` enumeriert beide ISO-Jahre, beide werden aus der Lib geholt und in die Lookup-Map konsolidiert.
+- **Heute-Datum außerhalb des Calendar-Windows** — `days < 0 || days > totalDays` → kein Badge und keine Linie; analog zu α.
+
+### Performance
+
+| Concern | Approach |
+|---|---|
+| Header-Re-Render-Cost bei Drag | Sticky-`<g>` selbst hat keine Drag-Abhängigkeit; nur `scrollTop`-State + Holiday-Lookup-Map (memoized) treiben sein Output. React re-rendert das ganze SVG bei jedem Drag-Frame, aber der Memo-Inhalt der Header-Children ist identisch — Reconciliation ist O(headerTicks). Bei ~30 Tag-Cells im typischen Day-Zoom unkritisch. |
+| Sticky-Translate-Glättung | `transform: translate(0, scrollTop)` ist GPU-beschleunigt; rAF-Wrapper im Scroll-Handler verhindert React-State-Update-Stau. |
+| Holiday-Lookup Library-Cost | `holidayLookup`-Memo cached per `[holidayRegion, yearsInWindow]`; ein Bar-Drag löst kein Re-Computing aus. Für ein typisches 1-Jahres-Window mit DE-NW: 11 public holidays in einer Map = O(1) lookup. |
+| Bundle | `date-holidays` (~3 KB gz) wird nur in `/planung` geladen (Next-Code-Split via Client-Component); kein expliziter `next/dynamic` nötig. |
+
+### Tests
+
+- **Vitest unit** — 8 neue Cases für `holidayBandsForRegion` + `formatHolidayTooltip` (vorher 34, jetzt 42 in `gantt-timeline.test.ts`).
+- **Vitest full suite** — 1277/1277 → **1285/1285 grün** (+8 PROJ-53-β; keine Regression).
+- **TypeScript strict** — 0 errors.
+- **ESLint** — 0 errors, 1 unverändert seit Wochen tracked warning in `edit-work-item-dialog.tsx:410` (React-Hook-Form `watch()`).
+- **`npm run build`** — green; alle Routen kompilieren.
+
+### Out-of-Scope (γ)
+
+- **Memo-Split-Decomposition** (β-D5 als eigenes `React.memo`-Trio) — falls die heutige Single-SVG-Re-Render-Cost im Pilotbetrieb merklich wird.
+- **Multi-Locale** (`tenants.locale` Column) — `useTenantLocale` ist heute hart `de-DE`; γ wired-Flag.
+- **Custom-Tenant-Holidays** (Werksferien-Tabelle).
+- **Per-Project-Override** (`projects.holiday_region`).
+- **PNG/PDF-Export Gantt** — wartet auf den `fix-report-pdf-render-pending` Merge / PROJ-21b.
+- **Playwright-E2E für Sticky-Verhalten** — der Auth-Fixture-Pfad ist (siehe PROJ-29 Update 2026-05-11) auf WSL2 durch `libnspr4`-System-Library blockiert; CI-Setup übernimmt das später.

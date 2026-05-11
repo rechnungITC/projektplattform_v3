@@ -25,14 +25,19 @@
  *     touch-DnD, undo. All reserved for PROJ-25-β / γ.
  */
 
+import HolidaysLib from "date-holidays"
 import { Lock } from "lucide-react"
 import * as React from "react"
 import { toast } from "sonner"
 
 import {
   bottomTicks as buildBottomTicks,
+  formatHolidayTooltip,
   gridLines as buildGridLines,
   headerConfigFor,
+  type HolidayBand,
+  type HolidayLookup,
+  holidayBandsForRegion,
   topTicks as buildTopTicks,
   weekendBands as buildWeekendBands,
 } from "@/lib/dates/gantt-timeline"
@@ -40,6 +45,11 @@ import { cn } from "@/lib/utils"
 import { type Milestone, MILESTONE_STATUS_LABELS } from "@/types/milestone"
 import { PHASE_STATUS_LABELS, type Phase } from "@/types/phase"
 import type { WorkItemWithProfile } from "@/types/work-item"
+import { useAuth } from "@/hooks/use-auth"
+// PROJ-53-β-ST-06 hook intentionally imported even though it currently
+// returns the hard-coded `de-DE` literal — γ flips it to `tenants.locale`
+// without touching this call site.
+import { useTenantLocale } from "@/hooks/use-tenant-locale"
 
 type LinkType = "phase" | "work_package"
 
@@ -171,8 +181,20 @@ export function GanttView({
   )
   const [criticalPathOn, setCriticalPathOn] = React.useState(false)
   const [criticalPathLoading, setCriticalPathLoading] = React.useState(false)
+  // PROJ-53-β — vertical scroll position drives the SVG-internal
+  // sticky-header `<g transform={`translate(0, ${scrollTop})`}>` so the
+  // two-tier header stays pinned to the visible top of the scroll
+  // container without splitting the SVG into two render trees.
+  const [scrollTop, setScrollTop] = React.useState(0)
   const containerRef = React.useRef<HTMLDivElement>(null)
   const svgRef = React.useRef<SVGSVGElement>(null)
+  // PROJ-53-β — tenant region for holiday rendering. NULL = no holidays
+  // (matches α behavior: weekends-only).
+  const { currentTenant } = useAuth()
+  const holidayRegion = currentTenant?.holiday_region ?? null
+  // PROJ-53-β-ST-06 — locale hook; consumed by ./gantt-timeline.ts γ-day.
+  // Read so the lint rule and the no-op contract stay live; γ wires it.
+  useTenantLocale()
 
   // Fetch the critical-path phase set when the toggle flips on, or when
   // the underlying phase/dep set changes while it's already on.
@@ -355,6 +377,94 @@ export function GanttView({
     () => buildGridLines(zoomLevel, calendarStart, totalDays, pixelsPerDay),
     [zoomLevel, calendarStart, totalDays, pixelsPerDay],
   )
+
+  // PROJ-53-β — Holiday lookup keyed by ISO date.
+  //
+  // Empty Map when the tenant has no `holiday_region` set, or when the
+  // zoom-level is month/quarter (we don't paint bands at those zooms
+  // per β-ST-03). Library calls are memoized by (region, yearSpan) so a
+  // bar drag does not retrigger the lookup.
+  const yearsInWindow = React.useMemo(() => {
+    const startYear = calendarStart.getUTCFullYear()
+    const endYear = new Date(
+      calendarStart.getTime() + totalDays * 86_400_000,
+    ).getUTCFullYear()
+    const years: number[] = []
+    for (let y = startYear; y <= endYear; y++) years.push(y)
+    return years
+  }, [calendarStart, totalDays])
+
+  const holidayLookup: HolidayLookup = React.useMemo(() => {
+    if (!holidayRegion) return new Map<string, string>()
+    // `date-holidays` accepts `DE`, `DE-NW`, `CH-ZH`, etc. — same
+    // format the tenant settings UI emits.
+    let instance: InstanceType<typeof HolidaysLib>
+    try {
+      const [country, state, region] = holidayRegion.split("-")
+      if (region) {
+        instance = new HolidaysLib(country, state, region)
+      } else if (state) {
+        instance = new HolidaysLib(country, state)
+      } else {
+        instance = new HolidaysLib(country)
+      }
+    } catch {
+      return new Map<string, string>()
+    }
+    const map = new Map<string, string>()
+    for (const year of yearsInWindow) {
+      let list: ReturnType<typeof instance.getHolidays>
+      try {
+        list = instance.getHolidays(year)
+      } catch {
+        continue
+      }
+      for (const h of list ?? []) {
+        if (h.type !== "public") continue
+        const iso =
+          typeof h.date === "string" ? h.date.slice(0, 10) : ""
+        if (!iso) continue
+        map.set(iso, h.name)
+      }
+    }
+    return map
+  }, [holidayRegion, yearsInWindow])
+
+  const holidayBands: HolidayBand[] = React.useMemo(() => {
+    // β-ST-03: only day + week zoom paint holiday bands; month/quarter
+    // collapse them so the helper is skipped entirely.
+    if (zoomLevel !== "day" && zoomLevel !== "week") return []
+    return holidayBandsForRegion(
+      calendarStart,
+      totalDays,
+      pixelsPerDay,
+      holidayLookup,
+    )
+  }, [zoomLevel, calendarStart, totalDays, pixelsPerDay, holidayLookup])
+
+  const holidayByIso: HolidayLookup = holidayLookup
+
+  // PROJ-53-β — vertical scroll tracking. The container scrolls in
+  // both axes; the sticky-header `<g>` translates by `scrollTop` so it
+  // visually stays at the top of the visible viewport. rAF-throttled
+  // so a fast scroll doesn't queue up React re-renders.
+  React.useEffect(() => {
+    const node = containerRef.current
+    if (!node) return
+    let rafHandle: number | null = null
+    const onScroll = () => {
+      if (rafHandle != null) return
+      rafHandle = window.requestAnimationFrame(() => {
+        rafHandle = null
+        setScrollTop(node.scrollTop)
+      })
+    }
+    node.addEventListener("scroll", onScroll, { passive: true })
+    return () => {
+      node.removeEventListener("scroll", onScroll)
+      if (rafHandle != null) window.cancelAnimationFrame(rafHandle)
+    }
+  }, [])
 
   // Pre-compute the static layout of each bar (phase + work_package).
   // Keyed by `${type}:${id}` so arrows + critical-path + milestone code
@@ -888,10 +998,14 @@ export function GanttView({
           })}
         </div>
 
-        {/* Right scrollable Gantt-bar column */}
+        {/* Right scrollable Gantt-bar column.
+            PROJ-53-β: dual-axis scroll. Vertical scroll drives the
+            scrollTop state that powers the SVG-internal sticky-header.
+            max-h is a viewport-relative cap so the page itself doesn't
+            stretch to the full row count of giant projects. */}
         <div
           ref={containerRef}
-          className="flex-1 overflow-x-auto"
+          className="flex-1 overflow-auto max-h-[70vh]"
         >
       <svg
         ref={svgRef}
@@ -914,6 +1028,31 @@ export function GanttView({
           />
         ))}
 
+        {/* PROJ-53-β — Holiday bands (β-ST-03).
+            Painted in day + week zoom only; month + quarter return
+            empty `holidayBands` array (β-ST-03 AC). Color is amber/40
+            so it stays distinct from the muted weekend color (β-D4).
+            Stacked above weekend bands so a Feiertag-on-Saturday wins
+            the visual contest. `<title>` provides the hover tooltip;
+            `aria-label` on the wrapping `<g>` is the SR-readable form. */}
+        {holidayBands.map((band) => (
+          <g
+            key={`hol-${band.isoDate}`}
+            aria-label={`Feiertag ${formatHolidayTooltip(band.isoDate, band.name)}`}
+          >
+            <rect
+              x={band.x}
+              y={HEADER_HEIGHT}
+              width={band.width}
+              height={totalHeight - HEADER_HEIGHT}
+              className="fill-amber-300"
+              opacity={0.32}
+              pointerEvents="none"
+            />
+            <title>{formatHolidayTooltip(band.isoDate, band.name)}</title>
+          </g>
+        ))}
+
         {/* PROJ-53 — Grid lines: density per zoom (every day / every Monday /
             every 1st of month / every quarter-start). */}
         {gridLineXs.map((x, i) => (
@@ -931,7 +1070,9 @@ export function GanttView({
         ))}
 
         {/* Today-Marker — vertikale rote Linie auf dem heutigen Datum,
-            falls innerhalb des Calendar-Windows. Mirror OpenProject pattern. */}
+            falls innerhalb des Calendar-Windows. The "heute" badge label
+            lives in the sticky-header `<g>` at the end of the SVG so it
+            stays in viewport even when the user scrolls the canvas. */}
         {(() => {
           const today = new Date()
           today.setUTCHours(0, 0, 0, 0)
@@ -939,148 +1080,26 @@ export function GanttView({
           if (days < 0 || days > totalDays) return null
           const x = days * pixelsPerDay
           return (
-            <g aria-label="Heute">
-              <line
-                x1={x}
-                x2={x}
-                y1={0}
-                y2={totalHeight}
-                stroke="currentColor"
-                className="text-destructive"
-                strokeWidth={2}
-                strokeDasharray="4 3"
-                opacity={0.6}
-              />
-              {/* PROJ-53 fix L-1: place "heute" badge inside the top-row
-                  (above the month label divider) so it no longer overlaps
-                  the bottom-row day cells. */}
-              <text
-                x={x + 6}
-                y={TOP_HEADER_HEIGHT - 6}
-                fontSize={9}
-                fontWeight={600}
-                className="fill-destructive"
-              >
-                heute
-              </text>
-            </g>
+            <line
+              aria-label="Heute"
+              x1={x}
+              x2={x}
+              y1={0}
+              y2={totalHeight}
+              stroke="currentColor"
+              className="text-destructive"
+              strokeWidth={2}
+              strokeDasharray="4 3"
+              opacity={0.6}
+            />
           )
         })()}
 
-        {/* PROJ-53 — Two-tier MS-Project-style header.
-            Top row: month / quarter / year (major).
-            Bottom row: day / week / month / quarter (minor). */}
-        <rect
-          x={0}
-          y={0}
-          width={totalWidth}
-          height={TOP_HEADER_HEIGHT}
-          className="fill-muted"
-          opacity={0.65}
-        />
-        <rect
-          x={0}
-          y={TOP_HEADER_HEIGHT}
-          width={totalWidth}
-          height={BOTTOM_HEADER_HEIGHT}
-          className="fill-muted"
-          opacity={0.35}
-        />
-        <line
-          x1={0}
-          x2={totalWidth}
-          y1={TOP_HEADER_HEIGHT}
-          y2={TOP_HEADER_HEIGHT}
-          stroke="currentColor"
-          className="text-border"
-          strokeWidth={1}
-        />
-        <line
-          x1={0}
-          x2={totalWidth}
-          y1={HEADER_HEIGHT}
-          y2={HEADER_HEIGHT}
-          stroke="currentColor"
-          className="text-border"
-          strokeWidth={1}
-        />
-
-        {/* Top-row ticks (major) */}
-        {topTicks.map((t, i) => (
-          <g key={`top-${i}`}>
-            <line
-              x1={t.x}
-              x2={t.x}
-              y1={0}
-              y2={TOP_HEADER_HEIGHT}
-              stroke="currentColor"
-              className="text-border"
-              strokeWidth={1}
-            />
-            <text
-              x={t.x + 6}
-              y={TOP_HEADER_HEIGHT / 2 + 4}
-              className="fill-foreground"
-              fontSize={11}
-              fontWeight={600}
-            >
-              {t.label}
-            </text>
-          </g>
-        ))}
-
-        {/* Bottom-row ticks (minor) */}
-        {bottomTicks.map((t, i) => {
-          const fontSize = zoomLevel === "day" ? 10 : 11
-          // For day-zoom, weekend cells get a slightly stronger fill so
-          // Sa / So show up clearly even when the canvas weekend-band is
-          // dimmed by overlapping bars.
-          const weekendFill =
-            zoomLevel === "day" && t.isWeekend
-              ? "fill-muted opacity-50"
-              : undefined
-          // Center labels for narrow cells (day-zoom), left-aligned for wider ones.
-          const labelX =
-            headerConfig.bottomUnit === "day" ? t.x + t.width / 2 : t.x + 6
-          const textAnchor =
-            headerConfig.bottomUnit === "day" ? "middle" : "start"
-          return (
-            <g key={`bot-${i}`}>
-              {weekendFill ? (
-                <rect
-                  x={t.x}
-                  y={TOP_HEADER_HEIGHT}
-                  width={t.width}
-                  height={BOTTOM_HEADER_HEIGHT}
-                  className={weekendFill}
-                />
-              ) : null}
-              <line
-                x1={t.x}
-                x2={t.x}
-                y1={TOP_HEADER_HEIGHT}
-                y2={HEADER_HEIGHT}
-                stroke="currentColor"
-                className="text-border"
-                strokeWidth={1}
-                opacity={0.6}
-              />
-              <text
-                x={labelX}
-                y={TOP_HEADER_HEIGHT + BOTTOM_HEADER_HEIGHT / 2 + 4}
-                textAnchor={textAnchor}
-                className={cn(
-                  "fill-foreground",
-                  t.isWeekend && "fill-muted-foreground",
-                )}
-                fontSize={fontSize}
-              >
-                {t.label}
-              </text>
-              {t.tooltip ? <title>{t.tooltip}</title> : null}
-            </g>
-          )
-        })}
+        {/* PROJ-53-β — Two-tier header is rendered LAST in the SVG so it
+            stacks above bars/deps/today-line, then wrapped in a `<g>`
+            that translates by `scrollTop` for sticky-header behavior.
+            The block lives at the end of the SVG; see the comment near
+            "Sticky-Header (PROJ-53-β)". */}
 
         {/* Phase rows */}
         {phases.map((phase) => {
@@ -1557,6 +1576,193 @@ export function GanttView({
               />
             )
           })()}
+
+        {/* Sticky-Header (PROJ-53-β).
+            Rendered last so it stacks on top of bars, today-line,
+            deps and drag preview. Translated by `scrollTop` so it
+            stays pinned to the visible top of the scroll container
+            without splitting the SVG into two render trees.
+            An opaque `fill-card` rect underneath masks anything that
+            would otherwise show through the semi-transparent muted
+            backgrounds when the user has scrolled. */}
+        <g transform={`translate(0, ${scrollTop})`}>
+          {/* Opaque mask so the scrolled-under canvas content doesn't
+              bleed through the semi-transparent muted header rects. */}
+          <rect
+            x={0}
+            y={0}
+            width={totalWidth}
+            height={HEADER_HEIGHT}
+            className="fill-card"
+          />
+          <rect
+            x={0}
+            y={0}
+            width={totalWidth}
+            height={TOP_HEADER_HEIGHT}
+            className="fill-muted"
+            opacity={0.65}
+          />
+          <rect
+            x={0}
+            y={TOP_HEADER_HEIGHT}
+            width={totalWidth}
+            height={BOTTOM_HEADER_HEIGHT}
+            className="fill-muted"
+            opacity={0.35}
+          />
+          <line
+            x1={0}
+            x2={totalWidth}
+            y1={TOP_HEADER_HEIGHT}
+            y2={TOP_HEADER_HEIGHT}
+            stroke="currentColor"
+            className="text-border"
+            strokeWidth={1}
+          />
+          <line
+            x1={0}
+            x2={totalWidth}
+            y1={HEADER_HEIGHT}
+            y2={HEADER_HEIGHT}
+            stroke="currentColor"
+            className="text-border"
+            strokeWidth={1}
+          />
+
+          {/* Top-row ticks (major) */}
+          {topTicks.map((t, i) => (
+            <g key={`top-${i}`}>
+              <line
+                x1={t.x}
+                x2={t.x}
+                y1={0}
+                y2={TOP_HEADER_HEIGHT}
+                stroke="currentColor"
+                className="text-border"
+                strokeWidth={1}
+              />
+              <text
+                x={t.x + 6}
+                y={TOP_HEADER_HEIGHT / 2 + 4}
+                className="fill-foreground"
+                fontSize={11}
+                fontWeight={600}
+              >
+                {t.label}
+              </text>
+            </g>
+          ))}
+
+          {/* Bottom-row ticks (minor).
+              Day-zoom: per-cell weekend fill + per-cell holiday fill
+              (β-D4 — holiday wins over weekend per β-ST-03 AC). */}
+          {bottomTicks.map((t, i) => {
+            const fontSize = zoomLevel === "day" ? 10 : 11
+            const weekendFill =
+              zoomLevel === "day" && t.isWeekend
+                ? "fill-muted opacity-50"
+                : undefined
+            // Build the iso-date for the cell to look up a holiday.
+            // Only day-zoom has 1-day cells; other zooms collapse holidays.
+            let holidayName: string | undefined
+            if (zoomLevel === "day") {
+              const dayOffset = Math.round(t.x / pixelsPerDay)
+              const cellDate = new Date(
+                calendarStart.getTime() + dayOffset * 86_400_000,
+              )
+              const iso =
+                `${cellDate.getUTCFullYear()}-${String(cellDate.getUTCMonth() + 1).padStart(2, "0")}-${String(cellDate.getUTCDate()).padStart(2, "0")}`
+              holidayName = holidayByIso.get(iso)
+            }
+            const labelX =
+              headerConfig.bottomUnit === "day" ? t.x + t.width / 2 : t.x + 6
+            const textAnchor =
+              headerConfig.bottomUnit === "day" ? "middle" : "start"
+            return (
+              <g key={`bot-${i}`}>
+                {holidayName ? (
+                  <rect
+                    x={t.x}
+                    y={TOP_HEADER_HEIGHT}
+                    width={t.width}
+                    height={BOTTOM_HEADER_HEIGHT}
+                    className="fill-amber-300"
+                    opacity={0.55}
+                  />
+                ) : weekendFill ? (
+                  <rect
+                    x={t.x}
+                    y={TOP_HEADER_HEIGHT}
+                    width={t.width}
+                    height={BOTTOM_HEADER_HEIGHT}
+                    className={weekendFill}
+                  />
+                ) : null}
+                <line
+                  x1={t.x}
+                  x2={t.x}
+                  y1={TOP_HEADER_HEIGHT}
+                  y2={HEADER_HEIGHT}
+                  stroke="currentColor"
+                  className="text-border"
+                  strokeWidth={1}
+                  opacity={0.6}
+                />
+                <text
+                  x={labelX}
+                  y={TOP_HEADER_HEIGHT + BOTTOM_HEADER_HEIGHT / 2 + 4}
+                  textAnchor={textAnchor}
+                  className={cn(
+                    "fill-foreground",
+                    t.isWeekend && !holidayName && "fill-muted-foreground",
+                    holidayName && "fill-amber-900 font-semibold",
+                  )}
+                  fontSize={fontSize}
+                >
+                  {t.label}
+                </text>
+                {holidayName ? (
+                  <title>
+                    {(() => {
+                      const dayOffset = Math.round(t.x / pixelsPerDay)
+                      const cellDate = new Date(
+                        calendarStart.getTime() + dayOffset * 86_400_000,
+                      )
+                      const iso =
+                        `${cellDate.getUTCFullYear()}-${String(cellDate.getUTCMonth() + 1).padStart(2, "0")}-${String(cellDate.getUTCDate()).padStart(2, "0")}`
+                      return formatHolidayTooltip(iso, holidayName!)
+                    })()}
+                  </title>
+                ) : t.tooltip ? (
+                  <title>{t.tooltip}</title>
+                ) : null}
+              </g>
+            )
+          })}
+
+          {/* "heute"-Badge — sticky companion to the today line in the
+              canvas. PROJ-53 fix L-1: placed inside the top-row above
+              the divider so it never overlaps a bottom-row day label. */}
+          {(() => {
+            const today = new Date()
+            today.setUTCHours(0, 0, 0, 0)
+            const days = daysBetween(calendarStart, today)
+            if (days < 0 || days > totalDays) return null
+            const x = days * pixelsPerDay
+            return (
+              <text
+                x={x + 6}
+                y={TOP_HEADER_HEIGHT - 6}
+                fontSize={9}
+                fontWeight={600}
+                className="fill-destructive"
+              >
+                heute
+              </text>
+            )
+          })()}
+        </g>
       </svg>
         </div>
       </div>

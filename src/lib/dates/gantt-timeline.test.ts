@@ -2,8 +2,10 @@ import { describe, expect, it } from "vitest"
 
 import {
   bottomTicks,
+  formatHolidayTooltip,
   gridLines,
   headerConfigFor,
+  holidayBandsForRegion,
   isoWeekNumber,
   isWeekend,
   quarterOf,
@@ -235,5 +237,101 @@ describe("gridLines", () => {
     // 2026-04-01 = day 90 → x=180; 2026-07-01 = day 181 → x=362
     expect(lines).toContain(180)
     expect(lines).toContain(362)
+  })
+})
+
+// PROJ-53-β — Holiday helper.
+describe("holidayBandsForRegion", () => {
+  const FIRST_MAY = new Map<string, string>([
+    ["2026-05-01", "Tag der Arbeit"],
+  ])
+  const EASTER_2026 = new Map<string, string>([
+    ["2026-04-03", "Karfreitag"],
+    ["2026-04-06", "Ostermontag"],
+  ])
+
+  it("returns no bands for an empty lookup", () => {
+    const bands = holidayBandsForRegion(
+      new Date(Date.UTC(2026, 3, 1)),
+      30,
+      10,
+      new Map(),
+    )
+    expect(bands).toEqual([])
+  })
+
+  it("emits a single 1-day-wide band at the matching offset", () => {
+    // Calendar starts 2026-04-25, day 0 = 2026-04-25.
+    // 2026-05-01 = day 6.
+    const bands = holidayBandsForRegion(
+      new Date(Date.UTC(2026, 3, 25)),
+      30,
+      10,
+      FIRST_MAY,
+    )
+    expect(bands).toEqual([
+      { x: 60, width: 10, isoDate: "2026-05-01", name: "Tag der Arbeit" },
+    ])
+  })
+
+  it("skips holidays that fall outside the calendar window", () => {
+    // Calendar covers 2026-04-25 .. 2026-04-29 (5 days), 2026-05-01 is outside.
+    const bands = holidayBandsForRegion(
+      new Date(Date.UTC(2026, 3, 25)),
+      5,
+      10,
+      FIRST_MAY,
+    )
+    expect(bands).toEqual([])
+  })
+
+  it("emits multiple bands sorted by offset for Easter weekend", () => {
+    // Calendar starts 2026-04-01, includes both Karfreitag (day 2) and
+    // Ostermontag (day 5).
+    const bands = holidayBandsForRegion(
+      new Date(Date.UTC(2026, 3, 1)),
+      30,
+      8,
+      EASTER_2026,
+    )
+    expect(bands).toEqual([
+      { x: 16, width: 8, isoDate: "2026-04-03", name: "Karfreitag" },
+      { x: 40, width: 8, isoDate: "2026-04-06", name: "Ostermontag" },
+    ])
+  })
+
+  it("returns no bands for a zero-length window", () => {
+    const bands = holidayBandsForRegion(
+      new Date(Date.UTC(2026, 3, 1)),
+      0,
+      8,
+      EASTER_2026,
+    )
+    expect(bands).toEqual([])
+  })
+
+  it("scales width with the supplied pixels-per-day", () => {
+    const bands = holidayBandsForRegion(
+      new Date(Date.UTC(2026, 4, 1)),
+      1,
+      40,
+      FIRST_MAY,
+    )
+    expect(bands).toHaveLength(1)
+    expect(bands[0].width).toBe(40)
+    expect(bands[0].x).toBe(0)
+  })
+})
+
+describe("formatHolidayTooltip", () => {
+  it("renders 'name · long-german-date' for a public holiday", () => {
+    const out = formatHolidayTooltip("2026-05-01", "Tag der Arbeit")
+    expect(out).toContain("Tag der Arbeit · ")
+    expect(out).toContain("2026")
+    expect(out).toContain("Mai")
+  })
+
+  it("falls back to just the name when the ISO date is malformed", () => {
+    expect(formatHolidayTooltip("not-a-date", "Test")).toBe("Test")
   })
 })

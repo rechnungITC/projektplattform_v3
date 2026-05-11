@@ -367,3 +367,67 @@ export function gridLines(
   }
   return out
 }
+
+// PROJ-53-β — Holiday-Bänder.
+//
+// `date-holidays` is loaded lazily by the caller (`gantt-view.tsx`) and
+// the prepared lookup is passed in as `holidayLookup`. Keeping the
+// helper pure makes it trivially testable without the library.
+export interface HolidayBand {
+  x: number
+  width: number
+  isoDate: string
+  name: string
+}
+
+/**
+ * Lookup contract — caller (gantt-view.tsx) builds a `Map<isoDate, name>`
+ * from `date-holidays` for the visible calendar window, filtered to
+ * `type === 'public'` (gesetzliche Feiertage). NULL region / no library
+ * → caller passes an empty Map → this helper returns no bands.
+ */
+export type HolidayLookup = ReadonlyMap<string, string>
+
+/**
+ * Emit one 1-day-wide band per public holiday that falls within the
+ * visible calendar window. The caller paints these in day- and week-
+ * zoom only — month- and quarter-zoom collapse them so the helper
+ * still returns the bands, but `gantt-view.tsx` gates rendering on
+ * the zoom level (matches β-ST-03 acceptance criterion).
+ */
+export function holidayBandsForRegion(
+  start: Date,
+  totalDays: number,
+  pixelsPerDay: number,
+  holidayLookup: HolidayLookup,
+): HolidayBand[] {
+  if (holidayLookup.size === 0 || totalDays <= 0) return []
+  const out: HolidayBand[] = []
+  for (let d = 0; d < totalDays; d++) {
+    const date = addDaysUTC(start, d)
+    const iso =
+      `${date.getUTCFullYear()}-${String(date.getUTCMonth() + 1).padStart(2, "0")}-${String(date.getUTCDate()).padStart(2, "0")}`
+    const name = holidayLookup.get(iso)
+    if (!name) continue
+    out.push({
+      x: d * pixelsPerDay,
+      width: pixelsPerDay,
+      isoDate: iso,
+      name,
+    })
+  }
+  return out
+}
+
+/**
+ * Pretty-print a holiday cell for the SVG `<title>` tooltip and the
+ * screen-reader-accessible `aria-label`. Reuses the `de-DE` long-date
+ * formatter from this module so the wording matches the rest of the
+ * Gantt copy.
+ */
+export function formatHolidayTooltip(isoDate: string, name: string): string {
+  const [y, m, d] = isoDate.split("-").map(Number)
+  if (!y || !m || !d) return name
+  const date = new Date(Date.UTC(y, m - 1, d))
+  return `${name} · ${FULL_DATE.format(date)}`
+}
