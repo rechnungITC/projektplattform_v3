@@ -2,6 +2,7 @@
 
 import {
   ChevronRight,
+  GitBranch,
   Loader2,
   Settings2,
   Sparkles,
@@ -27,15 +28,22 @@ import {
   SheetTitle,
 } from "@/components/ui/sheet"
 import { Skeleton } from "@/components/ui/skeleton"
+import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs"
 import { useProjectAccess } from "@/hooks/use-project-access"
+import { useProjectRole } from "@/hooks/use-project-role"
 import { useSprints } from "@/hooks/use-sprints"
 import { useWorkItem } from "@/hooks/use-work-item"
+import { useWorkItemLinks } from "@/hooks/use-work-item-links"
+import { cn } from "@/lib/utils"
 import { WORK_ITEM_KIND_LABELS } from "@/types/work-item"
 import type { ProjectMethod } from "@/types/project-method"
 
 import { ChangeKindDialog } from "./change-kind-dialog"
+import { CreateSubprojectFromWpDialog } from "./create-subproject-from-wp-dialog"
+import { DeliveredByBanner } from "./delivered-by-banner"
 import { WorkItemAllocations } from "./work-item-allocations"
 import { WorkItemCostSection } from "./work-item-cost-section"
+import { WorkItemLinksTab } from "./work-item-links-tab"
 import { ChangeParentDialog } from "./change-parent-dialog"
 import { ChangeSprintDialog } from "./change-sprint-dialog"
 import { ChangeStatusDialog } from "./change-status-dialog"
@@ -83,6 +91,23 @@ export function WorkItemDetailDrawer({
   const [sprintOpen, setSprintOpen] = React.useState(false)
   const [deleteOpen, setDeleteOpen] = React.useState(false)
   const [kindOpen, setKindOpen] = React.useState(false)
+  const [subProjectOpen, setSubProjectOpen] = React.useState(false)
+  const [activeTab, setActiveTab] = React.useState<"details" | "links">("details")
+
+  const { outgoing, incoming, pendingApproval } = useWorkItemLinks(
+    projectId,
+    open ? workItemId : null,
+  )
+  const { role: projectRole } = useProjectRole(projectId)
+  const linkCount = React.useMemo(
+    () =>
+      new Set(
+        [...outgoing, ...incoming, ...pendingApproval].map((link) => link.id),
+      ).size,
+    [outgoing, incoming, pendingApproval],
+  )
+  const actionablePendingCount =
+    projectRole === "lead" ? pendingApproval.length : 0
 
   const handleChanged = React.useCallback(async () => {
     await refresh()
@@ -90,7 +115,13 @@ export function WorkItemDetailDrawer({
   }, [refresh, onChanged])
 
   return (
-    <Sheet open={open} onOpenChange={onOpenChange}>
+    <Sheet
+      open={open}
+      onOpenChange={(nextOpen) => {
+        if (!nextOpen) setActiveTab("details")
+        onOpenChange(nextOpen)
+      }}
+    >
       <SheetContent className="w-full overflow-y-auto sm:max-w-lg">
         {loading ? (
           <DrawerSkeleton />
@@ -140,7 +171,40 @@ export function WorkItemDetailDrawer({
               ) : null}
             </SheetHeader>
 
-            <div className="mt-6 space-y-4">
+            <Tabs
+              value={activeTab}
+              onValueChange={(v) => setActiveTab(v as "details" | "links")}
+              className="mt-6"
+            >
+              <TabsList className="grid w-full grid-cols-2">
+                <TabsTrigger value="details">Details</TabsTrigger>
+                <TabsTrigger value="links" className="gap-1.5">
+                  <span>Verknüpfungen</span>
+                  {linkCount > 0 ? (
+                    <Badge
+                      variant={
+                        actionablePendingCount > 0 ? "default" : "secondary"
+                      }
+                      className={cn(
+                        "h-5 min-w-[1.25rem] justify-center px-1.5 text-[10px]",
+                        actionablePendingCount > 0 &&
+                          "bg-tertiary text-background",
+                      )}
+                      aria-label={
+                        actionablePendingCount > 0
+                          ? `${linkCount} Verknüpfungen — ${actionablePendingCount} warten auf Bestätigung`
+                          : `${linkCount} Verknüpfungen`
+                      }
+                    >
+                      {linkCount}
+                    </Badge>
+                  ) : null}
+                </TabsTrigger>
+              </TabsList>
+
+              <TabsContent value="details" className="mt-4 space-y-4">
+                <DeliveredByBanner projectId={projectId} workItemId={item.id} />
+
               {/* Responsible */}
               <section className="space-y-1">
                 <h3 className="text-xs font-semibold uppercase tracking-wide text-muted-foreground">
@@ -260,6 +324,17 @@ export function WorkItemDetailDrawer({
                     Aktionen
                   </h3>
                   <div className="flex flex-wrap gap-2">
+                    {item.kind === "work_package" ? (
+                      <Button
+                        type="button"
+                        size="sm"
+                        onClick={() => setSubProjectOpen(true)}
+                        className="bg-primary text-primary-foreground hover:bg-primary/90"
+                      >
+                        <GitBranch className="mr-1 h-4 w-4" aria-hidden />
+                        Sub-Projekt anlegen
+                      </Button>
+                    ) : null}
                     <Button
                       type="button"
                       variant="outline"
@@ -319,7 +394,16 @@ export function WorkItemDetailDrawer({
                 Typ: {WORK_ITEM_KIND_LABELS[item.kind]} · zuletzt geändert{" "}
                 {formatDateTime(item.updated_at)}
               </div>
-            </div>
+              </TabsContent>
+
+              <TabsContent value="links" className="mt-4">
+                <WorkItemLinksTab
+                  projectId={projectId}
+                  item={item}
+                  canEdit={canEdit}
+                />
+              </TabsContent>
+            </Tabs>
 
             <EditWorkItemDialog
               open={editOpen}
@@ -367,6 +451,17 @@ export function WorkItemDetailDrawer({
                 onOpenChange(false)
               }}
             />
+            {item.kind === "work_package" ? (
+              <CreateSubprojectFromWpDialog
+                open={subProjectOpen}
+                onOpenChange={setSubProjectOpen}
+                parentProjectId={projectId}
+                workItem={item}
+                onCreated={async () => {
+                  await handleChanged()
+                }}
+              />
+            ) : null}
           </>
         )}
       </SheetContent>

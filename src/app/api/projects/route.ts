@@ -14,7 +14,18 @@ import {
 } from "@/types/project"
 import { PROJECT_METHODS } from "@/types/project-method"
 
-import { apiError, getAuthenticatedUserId } from "../_lib/route-helpers"
+import {
+  normalizeCreateLinkInput,
+  readWorkItemInProject,
+  type ProjectRefRow,
+  type WorkItemLinkWorkItemRow,
+} from "@/app/api/projects/[id]/work-item-links/_helpers"
+
+import {
+  apiError,
+  getAuthenticatedUserId,
+  requireProjectAccess,
+} from "../_lib/route-helpers"
 
 // -----------------------------------------------------------------------------
 // Schemas
@@ -53,6 +64,10 @@ const createSchema = z
     // PROJ-18 ST-05: optional list of compliance tag keys the wizard chose
     // to skip from the type's default set. When omitted, all defaults apply.
     skip_default_tag_keys: z.array(z.string()).max(20).optional(),
+    // PROJ-27: optional Sub-Project bridge. When set together with
+    // parent_project_id, POST creates an approved whole-project `delivers`
+    // link from the parent work-package to the new sub-project.
+    bootstrap_link_from_work_item_id: z.string().uuid().optional().nullable(),
   })
   .refine(
     (val) =>
@@ -101,6 +116,49 @@ export async function POST(request: Request) {
   }
 
   const data = parsed.data
+
+  let bootstrapSource: WorkItemLinkWorkItemRow | null = null
+  if (data.bootstrap_link_from_work_item_id) {
+    if (!data.parent_project_id) {
+      return apiError(
+        "validation_error",
+        "parent_project_id is required when bootstrap_link_from_work_item_id is set.",
+        400,
+        "parent_project_id"
+      )
+    }
+    const parentAccess = await requireProjectAccess(
+      supabase,
+      data.parent_project_id,
+      userId,
+      "edit"
+    )
+    if (parentAccess.error) return parentAccess.error
+
+    const sourceRes = await readWorkItemInProject(
+      supabase,
+      data.parent_project_id,
+      data.bootstrap_link_from_work_item_id
+    )
+    if (sourceRes.error) return sourceRes.error
+    bootstrapSource = sourceRes.row
+    if (!bootstrapSource || bootstrapSource.kind !== "work_package") {
+      return apiError(
+        "invalid_bootstrap_work_item",
+        "Sub-project bootstrap requires a work_package source.",
+        422,
+        "bootstrap_link_from_work_item_id"
+      )
+    }
+    if (bootstrapSource.tenant_id !== data.tenant_id) {
+      return apiError(
+        "invalid_bootstrap_work_item",
+        "Bootstrap work item must belong to the new project's tenant.",
+        422,
+        "bootstrap_link_from_work_item_id"
+      )
+    }
+  }
 
   const insertPayload = {
     tenant_id: data.tenant_id,
@@ -171,6 +229,51 @@ export async function POST(request: Request) {
       return apiError(
         "bootstrap_failed",
         `Project created (${row.id}) but auto-lead bootstrap failed: ${bootstrapError.message}`,
+        500
+      )
+    }
+  }
+
+  if (row && bootstrapSource) {
+    const targetProject: ProjectRefRow = {
+      id: row.id,
+      tenant_id: data.tenant_id,
+      name: row.name ?? null,
+      parent_project_id: data.parent_project_id ?? null,
+      is_deleted: false,
+    }
+    const { error: linkError } = await supabase
+      .from("work_item_links")
+      .insert(
+        normalizeCreateLinkInput({
+          source: bootstrapSource,
+          targetProject,
+          linkType: "delivers",
+          lagDays: null,
+          approvalState: "approved",
+          approvalProjectId: null,
+          userId,
+        })
+      )
+
+    if (linkError) {
+      if (linkError.code === "23505") {
+        return apiError(
+          "bootstrap_link_exists",
+          "Project created but the bootstrap link already exists.",
+          409
+        )
+      }
+      if (linkError.code === "23514" || linkError.code === "23503" || linkError.code === "22023") {
+        return apiError(
+          "bootstrap_link_invalid",
+          `Project created (${row.id}) but bootstrap link failed: ${linkError.message}`,
+          422
+        )
+      }
+      return apiError(
+        "bootstrap_link_failed",
+        `Project created (${row.id}) but bootstrap link failed: ${linkError.message}`,
         500
       )
     }

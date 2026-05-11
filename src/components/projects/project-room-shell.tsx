@@ -4,6 +4,7 @@ import Link from "next/link"
 import { usePathname } from "next/navigation"
 import * as React from "react"
 
+import { ParentProjectBanner } from "@/components/projects/parent-project-banner"
 import { useAuth } from "@/hooks/use-auth"
 import { getMethodConfig } from "@/lib/method-templates"
 import {
@@ -45,6 +46,7 @@ export function ProjectRoomShell({
 
   return (
     <div className="flex flex-col">
+      <ParentProjectBanner projectId={projectId} />
       <nav
         aria-label="Project sections"
         className="sticky top-0 z-30 border-b bg-background/95 backdrop-blur supports-[backdrop-filter]:bg-background/60 md:hidden"

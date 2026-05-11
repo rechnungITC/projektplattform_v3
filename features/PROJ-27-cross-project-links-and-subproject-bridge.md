@@ -1,8 +1,8 @@
 # PROJ-27: Cross-Project Work-Item Links + Sub-Project Bridge
 
-## Status: Architected
+## Status: Implemented
 **Created:** 2026-05-01
-**Last Updated:** 2026-05-01
+**Last Updated:** 2026-05-11
 
 ## Summary
 Heute kann ein Work-Item nur zu einem anderen Work-Item im **selben Projekt** verknüpft werden (PROJ-9 `dependencies` mit `enforce_dependency_same_project`-Trigger). Damit ist der zentrale Anwendungsfall **"übergeordnetes Wasserfall-Projekt mit Scrum-Sub-Projekt für die Umsetzung"** nicht modellierbar — ein Arbeitspaket im Waterfall-Parent kann keine Verbindung zu einem Epic / Story im Scrum-Sub-Projekt aufbauen.
@@ -384,10 +384,78 @@ PROJ-27
 - **Realtime-Notifications** — V1 nutzt PROJ-13 (Email/In-App)
 
 ## Implementation Notes
-_To be added by /backend and /frontend_
+
+Implemented as the first production slice for semantic work-item links and
+the sub-project bridge.
+
+**Backend + database**
+- Migration `supabase/migrations/20260511210000_proj27_work_item_links.sql`
+  creates `work_item_links`, approval metadata, denormalized project columns,
+  partial unique indexes for item/item and item/project links, RLS, canonical
+  reverse-token storage, endpoint validation and cycle prevention.
+- Cross-project approval is represented by `approval_project_id`. Pending
+  links are routed to the project that must approve them; approve/reject
+  endpoints require manage-member access on that approval project.
+- New API surface:
+  - `POST /api/projects/[id]/work-item-links`
+  - `DELETE /api/projects/[id]/work-item-links/[lid]`
+  - `POST /api/projects/[id]/work-item-links/[lid]/approve`
+  - `POST /api/projects/[id]/work-item-links/[lid]/reject`
+  - `GET /api/projects/[id]/work-items/[wid]/links`
+  - `GET /api/projects/[id]/links/inbox`
+  - `GET /api/work-items/search`
+- `POST /api/projects` now accepts
+  `bootstrap_link_from_work_item_id` for the quick-action path. It validates
+  the parent work package, creates the sub-project, bootstraps the lead and
+  inserts an approved whole-project `delivers` link.
+
+**Frontend**
+- The work-item detail drawer now has a `Verknuepfungen` tab with incoming,
+  outgoing and pending approval links, plus deduplicated tab counters.
+- Work packages expose `Sub-Projekt anlegen`; the dialog creates a child
+  project and links it back to the source work package.
+- Parent/sub-project context is surfaced through `DeliveredByBanner` in the
+  drawer and `ParentProjectBanner` in the project room shell.
+- Link creation/search uses dedicated hooks and shared link-type registry
+  helpers in `src/lib/work-items/link-types.ts`.
+
+**Known deviations / deferred**
+- PROJ-13 notification emission for pending links is not wired in this slice.
+  The inbox route exists and can be polled by the UI.
+- Playwright E2E for the full bridge flow is still deferred; this slice is
+  covered by focused route/unit tests plus build/lint/schema-drift.
+- The database enforces the hybrid policy through endpoint/project validation
+  and pending approval metadata. The API owns the hierarchy classification and
+  approval-project selection.
 
 ## QA Test Results
-_To be added by /qa_
+
+Verified on 2026-05-11:
+
+- `npm test -- --run src/lib/work-items/link-types.test.ts src/app/api/projects/[id]/work-item-links/route.test.ts src/app/api/projects/route.test.ts`
+  - 3 test files passed
+  - 41 tests passed
+- `npm run build` passed.
+- `npm run lint` passed. One pre-existing warning remains in
+  `src/components/work-items/edit-work-item-dialog.tsx` around
+  `form.watch`; no new lint errors.
+- `git diff --check` passed.
+- `npm run check:schema-drift` passed against the live Supabase Postgres after
+  applying the PROJ-27 migration:
+  `364 SELECT calls verified across 65 tables; 0 drift; 80 dynamic calls skipped`.
+- GitNexus impact checks were run before touching changed code symbols. Final
+  `gitnexus detect-changes --scope all` reports medium risk and two expected
+  affected drawer flows:
+  `WorkItemDetailDrawer -> CreateClient` and
+  `WorkItemDetailDrawer -> UseAuth`.
 
 ## Deployment
-_To be added by /deploy_
+
+Migration `20260511210000_proj27_work_item_links.sql` was applied to the live
+Supabase project `iqerihohwabyjzkpcujq` on 2026-05-11 and recorded in
+`supabase_migrations.schema_migrations` as `proj27_work_item_links`.
+
+Rollback is forward-only: revert the application commit to hide the feature
+surface. A true database rollback would require a hand-written migration to
+drop `work_item_links`, its triggers/functions, policies and indexes after
+confirming no production links need to be preserved.
