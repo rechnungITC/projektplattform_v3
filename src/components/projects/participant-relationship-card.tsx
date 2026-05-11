@@ -17,6 +17,7 @@ import {
   CardTitle,
 } from "@/components/ui/card"
 import { Skeleton } from "@/components/ui/skeleton"
+import { useAuth } from "@/hooks/use-auth"
 import { cn } from "@/lib/utils"
 import type {
   ParticipantLink,
@@ -42,6 +43,12 @@ interface ParticipantRelationshipCardProps {
 export function ParticipantRelationshipCard({
   projectId,
 }: ParticipantRelationshipCardProps) {
+  const { currentRole } = useAuth()
+  // PROJ-57-δ — concrete rate amounts are Class-3. Only the
+  // tenant admin (= cost admin in V1) sees them; everyone else
+  // sees an "Override aktiv" placeholder so they know the rate
+  // is set without learning the value.
+  const canSeeRateAmount = currentRole === "admin"
   const [snapshot, setSnapshot] =
     React.useState<ProjectParticipantLinksSnapshot | null>(null)
   const [isLoading, setIsLoading] = React.useState(true)
@@ -121,7 +128,11 @@ export function ParticipantRelationshipCard({
             <CountsRow counts={snapshot.counts} />
             <ul className="space-y-1.5">
               {snapshot.participants.map((p) => (
-                <ParticipantRow key={p.identity_key} participant={p} />
+                <ParticipantRow
+                  key={p.identity_key}
+                  participant={p}
+                  canSeeRateAmount={canSeeRateAmount}
+                />
               ))}
             </ul>
           </>
@@ -179,7 +190,13 @@ function CountPill({
   )
 }
 
-function ParticipantRow({ participant }: { participant: ParticipantLink }) {
+function ParticipantRow({
+  participant,
+  canSeeRateAmount,
+}: {
+  participant: ParticipantLink
+  canSeeRateAmount: boolean
+}) {
   return (
     <li className="rounded-md border bg-card p-2">
       <div className="flex flex-wrap items-center gap-x-2 gap-y-1">
@@ -203,7 +220,10 @@ function ParticipantRow({ participant }: { participant: ParticipantLink }) {
         <RoleChip active={participant.is_project_member} label="Projekt" />
         <RoleChip active={participant.is_stakeholder} label="Stakeholder" />
         <RoleChip active={participant.is_resource} label="Resource" />
-        <RateSourceBadge rate={participant.rate_source} />
+        <RateSourceBadge
+          rate={participant.rate_source}
+          maskAmount={!canSeeRateAmount}
+        />
       </div>
       {participant.link_warnings.length > 0 && (
         <ul className="mt-1 space-y-0.5">
@@ -242,12 +262,20 @@ function RoleChip({ active, label }: { active: boolean; label: string }) {
 }
 
 /**
- * PROJ-57-β-UI — RateSourceBadge. Compact summary of how a
- * resource's daily rate is computed. Class-3 (concrete amount)
- * masking is the deferred PROJ-57-δ slice; for now we show the
- * amount inline.
+ * PROJ-57-β-UI + δ-masking — RateSourceBadge.
+ *
+ * The concrete amount is Class-3 and only rendered when the
+ * caller has cost-admin rights (`maskAmount={false}`). Non-admins
+ * see an "Override aktiv" placeholder so they know the rate is
+ * configured without learning the value.
  */
-export function RateSourceBadge({ rate }: { rate: ParticipantRateSource }) {
+export function RateSourceBadge({
+  rate,
+  maskAmount = false,
+}: {
+  rate: ParticipantRateSource
+  maskAmount?: boolean
+}) {
   if (rate.kind === "none") return null
   if (rate.kind === "role_rate") {
     return (
@@ -259,7 +287,9 @@ export function RateSourceBadge({ rate }: { rate: ParticipantRateSource }) {
   if (rate.kind === "override") {
     return (
       <span className="inline-flex items-center gap-1 rounded-full border border-violet-500/30 bg-violet-500/10 px-1.5 py-0.5 text-violet-700 dark:text-violet-400">
-        Override · {rate.amount.toLocaleString("de-DE")} {rate.currency}
+        {maskAmount
+          ? "Override aktiv"
+          : `Override · ${rate.amount.toLocaleString("de-DE")} ${rate.currency}`}
       </span>
     )
   }

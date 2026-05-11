@@ -31,6 +31,7 @@ export type ReadinessKey =
   | "budget_planned" // only if budget module active
   | "risks_captured" // open or explicit "none" confirmation
   | "report_snapshot_created" // only if output_rendering active
+  | "participant_links_clean" // PROJ-57-ε: no unresolved tenant↔stakeholder↔resource links
 
 export interface ReadinessItem {
   key: ReadinessKey

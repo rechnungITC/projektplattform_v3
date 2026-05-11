@@ -88,6 +88,7 @@ describe("resolveProjectReadiness", () => {
       risks: { count: 0 },
       budget_items: { count: 0 },
       report_snapshots: { count: 0 },
+      resources: { data: [] },
     })
 
     const snap = await resolveProjectReadiness({
@@ -131,6 +132,7 @@ describe("resolveProjectReadiness", () => {
       risks: { count: 2 },
       budget_items: { count: 8 },
       report_snapshots: { count: 1 },
+      resources: { data: [] },
     })
 
     const snap = await resolveProjectReadiness({
@@ -166,6 +168,7 @@ describe("resolveProjectReadiness", () => {
       risks: { count: 1 },
       budget_items: { count: 3 },
       report_snapshots: { count: 0 },
+      resources: { data: [] },
     })
 
     const snap = await resolveProjectReadiness({
@@ -202,7 +205,8 @@ describe("resolveProjectReadiness", () => {
       stakeholders: { count: 1 },
       risks: { count: 0 }, // module off — must be not_applicable
       budget_items: { count: 0 }, // module off
-      report_snapshots: { count: 0 }, // module off
+      report_snapshots: { count: 0 },
+      resources: { data: [] }, // module off
     })
 
     const snap = await resolveProjectReadiness({

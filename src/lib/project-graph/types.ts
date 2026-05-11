@@ -54,6 +54,13 @@ export interface GraphEdge {
   target_node_id: string
   kind: GraphEdgeKind
   label: string | null
+  /**
+   * PROJ-58-γ — when the edge maps to a row in `dependencies`,
+   * its DB id is exposed so the FE can target the edge directly
+   * for DELETE without re-parsing the composite id. `null` for
+   * derived/structural edges (belongs_to / influences / etc.).
+   */
+  dependency_id?: string | null
 }
 
 export interface ProjectGraphSnapshot {

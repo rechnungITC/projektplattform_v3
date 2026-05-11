@@ -98,6 +98,7 @@ describe("resolveProjectGraph", () => {
       decisions: { data: [] },
       stakeholders: { data: [] },
       budget_items: { count: 3 },
+      context_sources: { data: [] },
     })
 
     const snap = await resolveProjectGraph({
@@ -131,6 +132,7 @@ describe("resolveProjectGraph", () => {
       decisions: { data: [] },
       stakeholders: { data: [] },
       budget_items: { count: 0 },
+      context_sources: { data: [] },
     })
     const snap = await resolveProjectGraph({
       supabase,
@@ -184,6 +186,7 @@ describe("resolveProjectGraph", () => {
       decisions: { data: [] },
       stakeholders: { data: [] },
       budget_items: { count: 0 },
+      context_sources: { data: [] },
     })
     const snap = await resolveProjectGraph({
       supabase,

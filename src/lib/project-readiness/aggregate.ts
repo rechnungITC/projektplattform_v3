@@ -11,6 +11,7 @@
 import type { SupabaseClient } from "@supabase/supabase-js"
 
 import { getProjectSectionHref } from "@/lib/method-templates/routing"
+import { resolveProjectParticipantLinks } from "@/lib/participant-links/aggregate"
 import { isModuleActive } from "@/lib/tenant-settings/modules"
 import type { LifecycleStatus } from "@/types/project"
 import type { ProjectMethod } from "@/types/project-method"
@@ -286,6 +287,43 @@ export async function resolveProjectReadiness(
         ? `${snapshotsCount} Snapshot${snapshotsCount === 1 ? "" : "s"} erzeugt.`
         : "Erzeugen Sie einen Status-Report oder eine Executive-Summary, damit Steering-Kommunikation funktioniert.",
     target_url: href("overview"),
+  })
+
+  // --- 12. Participant links (PROJ-57-ε integration) ---
+  // Reuses the participant-links aggregator: warnings >= 1
+  // indicate unresolved tenant↔stakeholder↔resource gaps that
+  // shake confidence in cost rollups and stakeholder routing.
+  let participantWarnings = 0
+  try {
+    const links = await resolveProjectParticipantLinks({
+      supabase: args.supabase,
+      projectId: args.projectId,
+      tenantId: args.tenantId,
+      now,
+    })
+    participantWarnings = links.counts.with_warnings
+  } catch {
+    // Soft-fail: treat as 0 warnings, but mark the item as
+    // unknown rather than satisfied.
+    participantWarnings = -1
+  }
+  items.push({
+    key: "participant_links_clean",
+    status:
+      participantWarnings === -1
+        ? "open"
+        : participantWarnings === 0
+          ? "satisfied"
+          : "open",
+    severity: "info",
+    label: "Verknüpfungen sauber",
+    explanation:
+      participantWarnings === -1
+        ? "Beteiligten-Verknüpfungen konnten nicht ausgewertet werden."
+        : participantWarnings === 0
+          ? "Keine offenen Verknüpfungs-Warnungen zwischen Tenant / Projekt / Stakeholder / Resource."
+          : `${participantWarnings} Personen mit fehlenden Verknüpfungen (Stakeholder ohne Mitgliedschaft, Resource ohne Stakeholder etc.).`,
+    target_url: href("members"),
   })
 
   // --- Derive aggregate state + next actions ---

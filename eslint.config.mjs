@@ -193,6 +193,9 @@ const config = [
       // load pattern.
       "src/components/projects/participant-relationship-card.tsx",
       "src/components/projects/project-graph-view.tsx",
+      // PROJ-44-ε: context-sources master-data page uses the same
+      // effect-driven initial-load pattern.
+      "src/components/master-data/context-sources-page-client.tsx",
     ],
     rules: {
       "react-hooks/set-state-in-effect": "off",

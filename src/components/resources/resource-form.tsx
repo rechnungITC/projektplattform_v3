@@ -306,13 +306,14 @@ export function ResourceForm({
           rolesOnly={!isTenantAdmin}
           disabled={!isTenantAdmin && tagessatz.override != null}
         />
-        {tagessatz.role_key && tagessatz.override == null ? (
-          <p className="flex items-center gap-1 text-xs text-muted-foreground">
-            <Sparkles className="h-3 w-3" aria-hidden />
-            Beim Speichern wird der Rollen-Tagessatz als eigener Override
-            übernommen (Resource speichert keinen role_key direkt).
-          </p>
-        ) : null}
+        {/* PROJ-57-γ — explicit rate-source classification.
+            Mirrors the discriminated union in `ParticipantRateSource`
+            so the user sees the same source label as the project-room
+            RelationshipCard. */}
+        <TagessatzSourceHint
+          roleKey={tagessatz.role_key}
+          override={tagessatz.override}
+        />
       </div>
 
       <div className="flex items-center justify-between rounded-md border p-3">
@@ -346,5 +347,76 @@ export function ResourceForm({
         </Button>
       </div>
     </form>
+  )
+}
+
+/**
+ * PROJ-57-γ — Tagessatz Source Hint.
+ *
+ * Renders a small explainer below the Tagessatz-Combobox so the
+ * user understands which of the four rate sources is currently
+ * active for this resource. Mirrors the discriminated union in
+ * `ParticipantRateSource` so the language is consistent between
+ * the resource form and the project-room RelationshipCard.
+ */
+function TagessatzSourceHint({
+  roleKey,
+  override,
+}: {
+  roleKey: string | null
+  override: TagessatzComboboxValue["override"]
+}) {
+  const hasRole = !!roleKey
+  const hasOverride =
+    override != null &&
+    typeof override.daily_rate === "number" &&
+    override.daily_rate > 0
+  let icon: React.ReactNode
+  let title: string
+  let body: string
+  let tone: "info" | "success" | "warning"
+
+  if (hasRole && hasOverride) {
+    icon = <Sparkles className="h-3 w-3" aria-hidden />
+    tone = "info"
+    title = "Override aus Rolle abgeleitet"
+    body =
+      "Beim Speichern wird der Rollen-Tagessatz als eigener Override übernommen — Resource speichert keinen role_key direkt."
+  } else if (hasRole) {
+    icon = <Sparkles className="h-3 w-3" aria-hidden />
+    tone = "success"
+    title = "Dynamisch über Rolle"
+    body = `Tagessatz folgt der Rolle „${roleKey}". Wenn der Rollen-Tagessatz geändert wird, wirkt das automatisch auf diese Resource.`
+  } else if (hasOverride) {
+    icon = <Sparkles className="h-3 w-3" aria-hidden />
+    tone = "info"
+    title = "Fester individueller Override"
+    body =
+      "Der Tagessatz ist fest auf dieser Resource gepflegt und folgt keiner Rolle."
+  } else {
+    icon = <Sparkles className="h-3 w-3" aria-hidden />
+    tone = "warning"
+    title = "Tagessatz nicht aufgelöst"
+    body =
+      "Kein Override und keine Rollen-Verknüpfung — Kostenrechnung kann diese Resource nicht bewerten."
+  }
+
+  const cls =
+    tone === "success"
+      ? "border-emerald-500/30 bg-emerald-500/5 text-emerald-900 dark:text-emerald-200"
+      : tone === "warning"
+        ? "border-amber-500/30 bg-amber-500/5 text-amber-900 dark:text-amber-200"
+        : "border-sky-500/30 bg-sky-500/5 text-sky-900 dark:text-sky-200"
+
+  return (
+    <div
+      className={`flex items-start gap-2 rounded-md border px-2.5 py-2 text-xs ${cls}`}
+    >
+      {icon}
+      <div className="space-y-0.5">
+        <p className="font-medium">{title}</p>
+        <p className="text-[11px] opacity-80">{body}</p>
+      </div>
+    </div>
   )
 }

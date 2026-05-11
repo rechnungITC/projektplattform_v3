@@ -60,6 +60,7 @@ export async function resolveProjectGraph(
     decisionsRes,
     stakeholdersRes,
     budgetItemsRes,
+    contextSourcesRes,
   ] = await Promise.all([
     args.supabase
       .from("projects")
@@ -68,7 +69,7 @@ export async function resolveProjectGraph(
       .maybeSingle(),
     args.supabase
       .from("phases")
-      .select("id, name, status, sequence_number")
+      .select("id, name, status, sequence_number, is_critical")
       .eq("project_id", args.projectId)
       .eq("is_deleted", false)
       .order("sequence_number", { ascending: true })
@@ -101,7 +102,7 @@ export async function resolveProjectGraph(
       .limit(NODE_CAP_PER_KIND),
     args.supabase
       .from("decisions")
-      .select("id, title, is_revised, decided_at")
+      .select("id, title, is_revised, decided_at, rationale")
       .eq("project_id", args.projectId)
       .order("decided_at", { ascending: false })
       .limit(NODE_CAP_PER_KIND),
@@ -116,6 +117,14 @@ export async function resolveProjectGraph(
       .select("id", { count: "exact", head: true })
       .eq("project_id", args.projectId)
       .eq("is_active", true),
+    // PROJ-58-ζ — recent context-sources fuel the
+    // recommendation node track (AI suggestions for the graph).
+    args.supabase
+      .from("context_sources")
+      .select("id, kind, title, privacy_class")
+      .eq("project_id", args.projectId)
+      .order("created_at", { ascending: false })
+      .limit(5),
   ])
 
   const project = projectRes.data as
@@ -154,16 +163,27 @@ export async function resolveProjectGraph(
     name: string
     status: string | null
     sequence_number: number | null
+    is_critical: boolean | null
   }>) {
     const pid = nodeId("phase", p.id)
+    // PROJ-58-δ — critical-path overlay: phases on the critical
+    // path render as `warning` regardless of their normal tone.
     nodes.push({
       id: pid,
       kind: "phase",
       label: p.name,
-      detail: `Phase ${p.sequence_number ?? "?"} · ${p.status ?? "planned"}`,
-      tone: p.status === "active" ? "info" : "muted",
+      detail: `Phase ${p.sequence_number ?? "?"} · ${p.status ?? "planned"}${p.is_critical ? " · Kritischer Pfad" : ""}`,
+      tone: p.is_critical
+        ? "warning"
+        : p.status === "active"
+          ? "info"
+          : "muted",
       href: href("phases", method),
-      attributes: { status: p.status, sequence_number: p.sequence_number },
+      attributes: {
+        status: p.status,
+        sequence_number: p.sequence_number,
+        is_critical: Boolean(p.is_critical),
+      },
     })
     edges.push({
       id: edgeId(pid, projectNodeId, "belongs_to"),
@@ -270,6 +290,8 @@ export async function resolveProjectGraph(
       target_node_id: nodeId(toKind, d.to_id),
       kind: "depends_on",
       label: d.constraint_type ?? null,
+      // PROJ-58-γ — expose the row id so the FE can DELETE directly.
+      dependency_id: d.id,
     })
   }
 
@@ -312,8 +334,17 @@ export async function resolveProjectGraph(
     title: string
     is_revised: boolean
     decided_at: string | null
+    rationale: string | null
   }>) {
     const did = nodeId("decision", d.id)
+    // PROJ-58-ε — decision-simulation stub. Parse "+N €" and
+    // "+N Tage" patterns from the rationale so the graph can
+    // surface the decision's projected impact. Real per-
+    // alternative attributes (cost_delta / time_delta /
+    // risk_delta) are a future schema-extension slice; until
+    // then this regex-based parse keeps the UI honest about
+    // what's documented.
+    const sim = parseDecisionSimulation(d.rationale ?? null)
     nodes.push({
       id: did,
       kind: "decision",
@@ -325,7 +356,10 @@ export async function resolveProjectGraph(
           : "Offen",
       tone: d.is_revised ? "muted" : "info",
       href: `/projects/${args.projectId}/entscheidungen?decision=${d.id}`,
-      attributes: { is_revised: d.is_revised },
+      attributes: {
+        is_revised: d.is_revised,
+        simulation: sim,
+      },
     })
     edges.push({
       id: edgeId(did, projectNodeId, "influences"),
@@ -363,6 +397,39 @@ export async function resolveProjectGraph(
       target_node_id: projectNodeId,
       kind: "requires_stakeholder",
       label: null,
+    })
+  }
+
+  // --- Recommendation nodes (PROJ-58-ζ) ---
+  // Emit one recommendation node per recent context-source so the
+  // graph hints "AI could derive proposals from this input." The
+  // real proposal-from-context AI call is the PROJ-44-δ stub; the
+  // graph just surfaces the inputs that exist for review.
+  for (const c of (contextSourcesRes.data ?? []) as Array<{
+    id: string
+    kind: string
+    title: string
+    privacy_class: number
+  }>) {
+    const cid = nodeId("recommendation", c.id)
+    nodes.push({
+      id: cid,
+      kind: "recommendation",
+      label: `Vorschlag: ${c.title}`,
+      detail: `Quelle: ${c.kind} · Class ${c.privacy_class}`,
+      tone: "muted",
+      href: `/stammdaten/context-sources?source=${c.id}`,
+      attributes: {
+        source_kind: c.kind,
+        privacy_class: c.privacy_class,
+      },
+    })
+    edges.push({
+      id: edgeId(cid, projectNodeId, "influences"),
+      source_node_id: cid,
+      target_node_id: projectNodeId,
+      kind: "influences",
+      label: "AI-Vorschlag",
     })
   }
 
@@ -437,6 +504,31 @@ function nodeId(kind: GraphNodeKind, rawId: string): string {
 
 function edgeId(from: string, to: string, kind: GraphEdgeKind): string {
   return `${kind}:${from}→${to}`
+}
+
+/**
+ * PROJ-58-ε — best-effort simulation parser. Extracts cost +
+ * time deltas from free-text rationales. Returns `null` when no
+ * recognisable token is found.
+ */
+function parseDecisionSimulation(text: string | null): {
+  cost_delta_eur: number | null
+  time_delta_days: number | null
+} | null {
+  if (!text) return null
+  const costRe = /([+\-]?)\s*(\d[\d.,]*)\s*(€|EUR)/i
+  const timeRe = /([+\-]?)\s*(\d[\d.,]*)\s*(?:Tag(?:e|en)?|d|days?)/i
+  const cost = costRe.exec(text)
+  const time = timeRe.exec(text)
+  const parseAmount = (sign: string, raw: string): number => {
+    const n = Number.parseFloat(raw.replace(/\./g, "").replace(",", "."))
+    return Number.isFinite(n) ? (sign === "-" ? -n : n) : 0
+  }
+  if (!cost && !time) return null
+  return {
+    cost_delta_eur: cost ? parseAmount(cost[1], cost[2]) : null,
+    time_delta_days: time ? parseAmount(time[1], time[2]) : null,
+  }
 }
 
 function depTypeToKind(t: string): GraphNodeKind | null {

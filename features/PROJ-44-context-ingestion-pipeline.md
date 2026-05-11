@@ -1,6 +1,6 @@
 # PROJ-44: Context Ingestion Pipeline
 
-## Status: In Progress (α docs + β-foundation + γ classifier + δ proposal-stub live; ε UI deferred)
+## Status: Deployed (α docs + β-foundation + γ classifier + δ proposal-stub + ε UI live)
 **Created:** 2026-05-06
 **Last Updated:** 2026-05-11
 

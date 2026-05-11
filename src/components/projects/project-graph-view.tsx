@@ -119,7 +119,11 @@ export function ProjectGraphView({ projectId }: ProjectGraphViewProps) {
           </p>
         )}
         {snapshot && snapshot.nodes.length > 0 && (
-          <GraphSvg snapshot={snapshot} />
+          <GraphSvg
+            snapshot={snapshot}
+            projectId={projectId}
+            onEdgeDeleted={() => setReloadTick((t) => t + 1)}
+          />
         )}
       </CardContent>
     </Card>
@@ -166,7 +170,35 @@ const KIND_LABEL: Record<GraphNode["kind"], string> = {
   recommendation: "Vorschläge",
 }
 
-function GraphSvg({ snapshot }: { snapshot: ProjectGraphSnapshot }) {
+async function deleteDependency(
+  projectId: string,
+  dependencyId: string,
+): Promise<void> {
+  const res = await fetch(
+    `/api/projects/${encodeURIComponent(projectId)}/dependencies/${encodeURIComponent(dependencyId)}`,
+    { method: "DELETE" },
+  )
+  if (!res.ok) {
+    let msg = `HTTP ${res.status}`
+    try {
+      const body = (await res.json()) as { error?: { message?: string } }
+      msg = body.error?.message ?? msg
+    } catch {
+      // ignore
+    }
+    window.alert(`Abhängigkeit konnte nicht gelöscht werden: ${msg}`)
+  }
+}
+
+function GraphSvg({
+  snapshot,
+  projectId,
+  onEdgeDeleted,
+}: {
+  snapshot: ProjectGraphSnapshot
+  projectId: string
+  onEdgeDeleted: () => void
+}) {
   const positions = React.useMemo(
     () => computePositions(snapshot.nodes),
     [snapshot.nodes],
@@ -175,13 +207,37 @@ function GraphSvg({ snapshot }: { snapshot: ProjectGraphSnapshot }) {
   const width = 720
   const height = 540
   const [focusedNodeId, setFocusedNodeId] = React.useState<string | null>(null)
+  // PROJ-58-δ — Critical-Path overlay toggle. When active, only
+  // nodes on the critical path keep full opacity; everything else
+  // is dimmed so the path stands out at a glance.
+  const [criticalOverlay, setCriticalOverlay] = React.useState(false)
+  const isCritical = React.useCallback((node: GraphNode): boolean => {
+    return Boolean(
+      (node.attributes as { is_critical?: boolean } | undefined)?.is_critical,
+    )
+  }, [])
   const focused =
     focusedNodeId != null
       ? snapshot.nodes.find((n) => n.id === focusedNodeId) ?? null
       : null
+  const criticalCount = snapshot.nodes.filter(isCritical).length
 
   return (
     <div className="space-y-3">
+      <div className="flex items-center justify-between">
+        <p className="text-xs text-muted-foreground">
+          {snapshot.counts.nodes} Knoten · {snapshot.counts.edges} Kanten
+        </p>
+        <Button
+          type="button"
+          size="sm"
+          variant={criticalOverlay ? "default" : "outline"}
+          onClick={() => setCriticalOverlay((v) => !v)}
+          disabled={criticalCount === 0}
+        >
+          Kritischer Pfad{criticalCount > 0 ? ` (${criticalCount})` : ""}
+        </Button>
+      </div>
       <div className="overflow-hidden rounded-md border bg-card">
         <svg
           viewBox={`0 0 ${width} ${height}`}
@@ -194,6 +250,39 @@ function GraphSvg({ snapshot }: { snapshot: ProjectGraphSnapshot }) {
             const a = positions.get(edge.source_node_id)
             const b = positions.get(edge.target_node_id)
             if (!a || !b) return null
+            // PROJ-58-δ — edges between two critical nodes are
+            // highlighted when the overlay is active.
+            const sourceNode = snapshot.nodes.find((n) => n.id === edge.source_node_id)
+            const targetNode = snapshot.nodes.find((n) => n.id === edge.target_node_id)
+            const edgeOnCritical =
+              sourceNode != null &&
+              targetNode != null &&
+              isCritical(sourceNode) &&
+              isCritical(targetNode)
+            const opacity =
+              criticalOverlay && !edgeOnCritical ? 0.15 : 1
+            // PROJ-58-γ — when the edge maps to a `dependencies`
+            // row, allow click-to-delete with confirmation. Other
+            // edges (belongs_to / influences / …) are structural
+            // and not editable from the graph.
+            const isEditable = edge.dependency_id != null
+            const handleClick: React.MouseEventHandler<SVGLineElement> | undefined =
+              isEditable
+                ? (e) => {
+                    e.stopPropagation()
+                    if (
+                      !window.confirm(
+                        "Diese Abhängigkeit wirklich löschen? Das kann andere Pfade beeinflussen.",
+                      )
+                    ) {
+                      return
+                    }
+                    void deleteDependency(
+                      projectId,
+                      edge.dependency_id!,
+                    ).then(() => onEdgeDeleted())
+                  }
+                : undefined
             return (
               <line
                 key={edge.id}
@@ -201,10 +290,24 @@ function GraphSvg({ snapshot }: { snapshot: ProjectGraphSnapshot }) {
                 y1={a.y}
                 x2={b.x}
                 y2={b.y}
-                stroke="currentColor"
-                className="text-muted-foreground/40"
-                strokeWidth={1}
-              />
+                stroke={
+                  edgeOnCritical && criticalOverlay
+                    ? TONE_FILL.warning
+                    : "currentColor"
+                }
+                className={`${
+                  edgeOnCritical && criticalOverlay
+                    ? ""
+                    : "text-muted-foreground/40"
+                } ${isEditable ? "cursor-pointer" : ""}`}
+                strokeWidth={edgeOnCritical && criticalOverlay ? 2 : 1}
+                style={{ opacity }}
+                onClick={handleClick}
+              >
+                {isEditable && (
+                  <title>Klicken zum Löschen der Abhängigkeit</title>
+                )}
+              </line>
             )
           })}
           {/* Nodes */}
@@ -213,6 +316,8 @@ function GraphSvg({ snapshot }: { snapshot: ProjectGraphSnapshot }) {
             if (!pos) return null
             const radius = node.kind === "project" ? 22 : 10
             const isFocus = focusedNodeId === node.id
+            const critical = isCritical(node)
+            const opacity = criticalOverlay && !critical ? 0.2 : 1
             return (
               <g
                 key={node.id}
@@ -222,9 +327,19 @@ function GraphSvg({ snapshot }: { snapshot: ProjectGraphSnapshot }) {
                 onClick={() => setFocusedNodeId(node.id)}
                 tabIndex={0}
                 role="button"
-                aria-label={`${KIND_LABEL[node.kind]}: ${node.label}`}
+                aria-label={`${KIND_LABEL[node.kind]}: ${node.label}${critical ? " (kritischer Pfad)" : ""}`}
                 className="cursor-pointer outline-none focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-primary"
+                style={{ opacity }}
               >
+                {critical && (
+                  <circle
+                    r={radius + 4}
+                    fill="none"
+                    stroke={TONE_FILL.warning}
+                    strokeWidth={2}
+                    strokeDasharray="3 2"
+                  />
+                )}
                 <circle
                   r={radius}
                   fill={TONE_FILL[node.tone]}
@@ -287,6 +402,16 @@ function CountsLegend({ snapshot }: { snapshot: ProjectGraphSnapshot }) {
 }
 
 function NodeDetail({ node }: { node: GraphNode }) {
+  const sim = (
+    node.attributes as
+      | {
+          simulation?: {
+            cost_delta_eur: number | null
+            time_delta_days: number | null
+          } | null
+        }
+      | undefined
+  )?.simulation
   return (
     <div className="rounded-md border bg-card p-3 text-sm">
       <p className="text-xs uppercase tracking-wide text-muted-foreground">
@@ -295,6 +420,24 @@ function NodeDetail({ node }: { node: GraphNode }) {
       <p className="font-medium">{node.label}</p>
       {node.detail && (
         <p className="mt-1 text-xs text-muted-foreground">{node.detail}</p>
+      )}
+      {sim && (sim.cost_delta_eur != null || sim.time_delta_days != null) && (
+        <div className="mt-2 flex flex-wrap gap-1.5 text-[11px]">
+          {sim.cost_delta_eur != null && (
+            <span className="rounded-full border border-amber-500/30 bg-amber-500/10 px-2 py-0.5 text-amber-700 dark:text-amber-400">
+              Auswirkung Kosten:{" "}
+              {sim.cost_delta_eur >= 0 ? "+" : ""}
+              {sim.cost_delta_eur.toLocaleString("de-DE")} €
+            </span>
+          )}
+          {sim.time_delta_days != null && (
+            <span className="rounded-full border border-amber-500/30 bg-amber-500/10 px-2 py-0.5 text-amber-700 dark:text-amber-400">
+              Auswirkung Zeit:{" "}
+              {sim.time_delta_days >= 0 ? "+" : ""}
+              {sim.time_delta_days} Tage
+            </span>
+          )}
+        </div>
       )}
       {node.href && (
         <Link
