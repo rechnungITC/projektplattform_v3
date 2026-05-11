@@ -39,6 +39,22 @@ import type {
 import type { HealthLight, HealthState } from "@/lib/project-health/types"
 
 const MY_WORK_LIMIT = 25
+/**
+ * Fetch window for the My Work section. The JS post-sort below
+ * picks the top {@link MY_WORK_LIMIT} by (blocked → overdue →
+ * priority → due) — so we must fetch enough rows to virtually
+ * guarantee that the highest-priority items are present in the
+ * window even when the user has many open assigned items.
+ *
+ * We deliberately do NOT use a server-side `ORDER BY priority`
+ * because `work_items.priority` is a `text` column and Postgres
+ * would sort it alphabetically (medium > low > high > critical),
+ * which would EXCLUDE critical items from the fetch window for
+ * power users. The fetch order is therefore `planned_end ASC` so
+ * the most time-sensitive items are pulled first; the JS sort
+ * surfaces priority once the window is in memory.
+ */
+const MY_WORK_FETCH_CAP = MY_WORK_LIMIT * 4 // 100 rows
 const ALERT_LIMIT = 20
 const HEALTH_LIMIT = 12
 const APPROVAL_LIMIT = 25
@@ -238,11 +254,13 @@ async function loadMyWork(
   const projectIds = accessible.projects.map((p) => p.id)
   const projectMap = new Map(accessible.projects.map((p) => [p.id, p]))
 
-  // Pull active work items assigned to the user, capped. We sort
-  // server-side by status priority (blocked > in_progress > todo)
-  // approximated via a multi-stage approach: first fetch everything
-  // open, then sort + cap in JS so the priority math stays in one
-  // place.
+  // Pull active work items assigned to the user. Fetch order is
+  // `planned_end ASC` (most time-sensitive first) — we intentionally
+  // skip a server-side priority sort because the DB column is text
+  // and would sort alphabetically (medium > low > high > critical).
+  // The JS post-sort below applies the authoritative priority order
+  // (blocked → overdue → priority → due). See MY_WORK_FETCH_CAP for
+  // the window-size rationale.
   const { data, error, count } = await args.supabase
     .from("work_items")
     .select(
@@ -254,9 +272,8 @@ async function loadMyWork(
     .eq("responsible_user_id", args.userId)
     .eq("is_deleted", false)
     .in("status", ["todo", "in_progress", "blocked"])
-    .order("priority", { ascending: false })
     .order("planned_end", { ascending: true, nullsFirst: false })
-    .limit(MY_WORK_LIMIT * 2)
+    .limit(MY_WORK_FETCH_CAP)
 
   if (error) throw new Error(`my_work: ${error.message}`)
 

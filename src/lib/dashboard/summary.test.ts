@@ -339,4 +339,99 @@ describe("resolveDashboardSummary", () => {
     expect(summary.alerts.data?.items.length).toBeGreaterThanOrEqual(2)
     expect(summary.alerts.data?.items[0].kind).toBe("critical_risk")
   })
+
+  it("ranks My Work by priority regardless of DB return order (M1 regression)", async () => {
+    // Regression for the QA M1 finding: `work_items.priority` is a
+    // `text` column, so a server-side ORDER BY priority DESC sorts
+    // alphabetically (medium > low > high > critical). The fix is
+    // to skip the server-side priority order and let the JS post-
+    // sort be authoritative. This test simulates the DB returning
+    // the rows in a low-priority-first order and verifies the
+    // critical/high items still surface at the top.
+    const supabase = buildSupabase({
+      project_memberships: {
+        data: [
+          {
+            project_id: PROJECT_ID,
+            projects: {
+              id: PROJECT_ID,
+              tenant_id: TENANT_ID,
+              name: "Alpha",
+              project_type: "software",
+              project_method: "scrum",
+              lifecycle_status: "active",
+              responsible_user_id: USER_ID,
+              is_deleted: false,
+            },
+          },
+        ],
+      },
+      tenant_settings: { data: null },
+      work_items: {
+        // DB returns the rows in the order Postgres would produce
+        // for `ORDER BY priority DESC` on a text column: medium →
+        // low → high → critical. A future regression that re-adds
+        // the server-side sort would still pass IF we accidentally
+        // capped on this incoming order — the post-sort must
+        // re-rank these so the critical item is first.
+        data: [
+          {
+            id: "wi-medium",
+            project_id: PROJECT_ID,
+            kind: "task",
+            title: "Medium item",
+            status: "todo",
+            priority: "medium",
+            planned_end: "2026-06-10",
+          },
+          {
+            id: "wi-low",
+            project_id: PROJECT_ID,
+            kind: "task",
+            title: "Low item",
+            status: "todo",
+            priority: "low",
+            planned_end: "2026-06-11",
+          },
+          {
+            id: "wi-high",
+            project_id: PROJECT_ID,
+            kind: "task",
+            title: "High item",
+            status: "todo",
+            priority: "high",
+            planned_end: "2026-06-12",
+          },
+          {
+            id: "wi-critical",
+            project_id: PROJECT_ID,
+            kind: "task",
+            title: "Critical item",
+            status: "todo",
+            priority: "critical",
+            planned_end: "2026-06-13",
+          },
+        ],
+      },
+      decision_approvers: { data: [] },
+      risks: { data: [] },
+      milestones: { data: [] },
+      report_snapshots: { data: [] },
+    })
+
+    const summary = await resolveDashboardSummary({
+      supabase,
+      userId: USER_ID,
+      tenantId: TENANT_ID,
+      isTenantAdmin: false,
+    })
+
+    const items = summary.my_work.data?.items ?? []
+    expect(items.map((r) => r.priority)).toEqual([
+      "critical",
+      "high",
+      "medium",
+      "low",
+    ])
+  })
 })
