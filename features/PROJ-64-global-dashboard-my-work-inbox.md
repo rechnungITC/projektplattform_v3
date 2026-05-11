@@ -661,6 +661,7 @@ If a regression surfaces:
 - ~~Optional fix for M1 (priority sort)~~ — done 2026-05-11 (see "Deviations carried forward" above).
 - ~~Optional refinement for L1 (Reports scope)~~ — done 2026-05-11 (see "Deviations carried forward" above).
 - ~~Optional refinement for L2 (empty "unknown" rows)~~ — done 2026-05-11. `loadProjectHealth` now tracks `activeMilestoneByProject` and suppresses "unknown"-health rows for brand-new projects with zero signals (no open risks AND no active milestones). Regression test `"suppresses brand-new empty projects from Project Health exceptions (L2 polish)"` pins the behavior. Vitest: **1247 / 1247 green** (was 1246; +1).
+- ~~PROJ-64-γ Budget Alerts (AC-5 closure)~~ — done 2026-05-11. `loadAlerts` now performs one bulk read against the `budget_item_totals` view (filtered by `tenant_id` + `project_id IN (accessible)` + `is_active=true`), aggregates per project in JS, and emits three alert classes: `budget_overrun` (critical, ≥ 1 red item), `budget_threshold` (warning, yellow-only when red=0), and `missing_fx_rate` (info, ≥ 1 item with multi-currency postings). Module gate honored via `isModuleActive(settings, "budget")`. Regression test `"emits budget_overrun + budget_threshold + missing_fx_rate alerts (PROJ-64-γ)"` pins severity + detail. Vitest: **1248 / 1248 green** (was 1247; +1). AC-5 now fully ✅ (was 🟡).
 
 ### Performance benchmark plan (PROJ-64-α follow-up)
 

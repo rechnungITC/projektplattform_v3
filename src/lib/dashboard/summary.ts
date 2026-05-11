@@ -528,7 +528,8 @@ async function loadAlerts(
   const projectMap = new Map(accessible.projects.map((p) => [p.id, p]))
 
   const wantsRisks = settings ? isModuleActive(settings, "risks") : true
-  const [risksRes, milestonesRes] = await Promise.all([
+  const wantsBudget = settings ? isModuleActive(settings, "budget") : true
+  const [risksRes, milestonesRes, budgetRes] = await Promise.all([
     wantsRisks
       ? args.supabase
           .from("risks")
@@ -548,11 +549,28 @@ async function loadAlerts(
       .eq("is_deleted", false)
       .order("target_date", { ascending: true })
       .limit(ALERT_LIMIT),
+    // PROJ-64-γ — Budget alerts. One bulk read against the
+    // `budget_item_totals` view (already aggregates per item +
+    // exposes the traffic-light). Per-project counts are computed
+    // in JS below. No per-project fan-out.
+    wantsBudget
+      ? args.supabase
+          .from("budget_item_totals")
+          .select(
+            "item_id, project_id, planned_amount, actual_amount, traffic_light_state, multi_currency_postings_count, is_active",
+          )
+          .eq("tenant_id", args.tenantId)
+          .in("project_id", projectIds)
+          .eq("is_active", true)
+      : Promise.resolve({ data: [], error: null }),
   ])
 
   if (risksRes.error) throw new Error(`alerts.risks: ${risksRes.error.message}`)
   if (milestonesRes.error) {
     throw new Error(`alerts.milestones: ${milestonesRes.error.message}`)
+  }
+  if (budgetRes.error) {
+    throw new Error(`alerts.budget: ${budgetRes.error.message}`)
   }
 
   const items: AlertRow[] = []
@@ -607,6 +625,85 @@ async function loadAlerts(
         project.project_method,
       ),
     })
+  }
+
+  // PROJ-64-γ Budget alerts. Aggregate per project from the
+  // `budget_item_totals` view rows we already fetched.
+  const budgetCountsByProject = new Map<
+    string,
+    { red: number; yellow: number; multiCurrency: number; totalItems: number }
+  >()
+  for (const row of (budgetRes.data ?? []) as Array<{
+    project_id: string
+    traffic_light_state: string | null
+    multi_currency_postings_count: number | null
+  }>) {
+    const pid = row.project_id
+    const bucket = budgetCountsByProject.get(pid) ?? {
+      red: 0,
+      yellow: 0,
+      multiCurrency: 0,
+      totalItems: 0,
+    }
+    bucket.totalItems += 1
+    if (row.traffic_light_state === "red") bucket.red += 1
+    if (row.traffic_light_state === "yellow") bucket.yellow += 1
+    if ((row.multi_currency_postings_count ?? 0) > 0) bucket.multiCurrency += 1
+    budgetCountsByProject.set(pid, bucket)
+  }
+  for (const [pid, counts] of budgetCountsByProject) {
+    const project = projectMap.get(pid)
+    if (!project) continue
+    const href = getProjectSectionHref(project.id, "budget", project.project_method)
+    if (counts.red > 0) {
+      items.push({
+        id: `budget-overrun-${pid}`,
+        project_id: project.id,
+        project_name: project.name,
+        kind: "budget_overrun",
+        title: "Budget überschritten",
+        detail:
+          counts.red === 1
+            ? "1 Posten über dem Plan"
+            : `${counts.red} Posten über dem Plan`,
+        severity: "critical",
+        href,
+      })
+    } else if (counts.yellow > 0) {
+      items.push({
+        id: `budget-threshold-${pid}`,
+        project_id: project.id,
+        project_name: project.name,
+        kind: "budget_threshold",
+        title: "Budget nahe am Limit",
+        detail:
+          counts.yellow === 1
+            ? "1 Posten bei 90–100% Auslastung"
+            : `${counts.yellow} Posten bei 90–100% Auslastung`,
+        severity: "warning",
+        href,
+      })
+    }
+    // Multi-currency items hint at FX-rate coverage issues. The
+    // exact missing_fx_rate detection requires cross-checking
+    // fx_rates per (planned_currency, tenant_currency) — deferred
+    // to a follow-up; the alert here flags "potentially missing
+    // rates" so the project lead investigates in the budget tab.
+    if (counts.multiCurrency > 0) {
+      items.push({
+        id: `budget-fx-${pid}`,
+        project_id: project.id,
+        project_name: project.name,
+        kind: "missing_fx_rate",
+        title: "Multi-Currency-Posten erkannt",
+        detail:
+          counts.multiCurrency === 1
+            ? "1 Posten in Fremdwährung — FX-Rate prüfen"
+            : `${counts.multiCurrency} Posten in Fremdwährung — FX-Rates prüfen`,
+        severity: "info",
+        href,
+      })
+    }
   }
 
   items.sort((a, b) => severityWeight(b.severity) - severityWeight(a.severity))

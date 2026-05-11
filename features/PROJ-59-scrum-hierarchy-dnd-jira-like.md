@@ -1,6 +1,6 @@
 # PROJ-59: Scrum Hierarchy Drag-and-Drop (Jira-like Story -> Task)
 
-## Status: In Progress (γ board UX done)
+## Status: Deployed (α + β + γ + δ live)
 **Created:** 2026-05-08
 **Last Updated:** 2026-05-09
 
@@ -240,6 +240,29 @@ Ziel ist eine Bedienung wie in Jira: Nutzer sehen im Scrum-Bereich klar, welche 
 - `npx eslint src/lib/work-items/drop-intent.ts src/lib/work-items/drop-intent.test.ts src/components/work-items/backlog-board.tsx src/components/work-items/backlog-dnd-provider.tsx src/components/work-items/backlog-drop-zone.tsx src/components/sprints/droppable-sprint-card.tsx src/components/sprints/sprint-card.tsx` — passed.
 - `npx tsc --noEmit` — passed.
 
+### 2026-05-11 — PROJ-59δ Regression Closure + Public-Surface Smoke
+
+**Scope completed:**
+
+- Closed the spec by pinning the regression surface from α/β/γ.
+- Added `tests/PROJ-59-scrum-hierarchy-dnd.spec.ts` covering the four routes the DnD orchestrator targets:
+  - `PATCH /api/projects/[id]/work-items/[wid]/parent`
+  - `PATCH /api/projects/[id]/work-items/[wid]/sprint`
+  - `PATCH /api/projects/[id]/work-items/[wid]/status`
+  - `POST  /api/projects/[id]/work-items/sprint-bulk`
+- Each route is auth-gated (`307 → /login` or `401`). The smoke runs at request level so it passes on hosts without WebKit/Chromium system libraries.
+- Status flipped from "In Progress (γ board UX done)" → "Deployed (α + β + γ + δ live)" in the spec header. INDEX.md row updated accordingly.
+
+**Verification:**
+
+- `npx vitest run "…/parent/route.test.ts" "…/sprint/route.test.ts" "…/status/route.test.ts" "…/sprint-bulk/route.test.ts" src/lib/work-items/drop-intent.test.ts` — 37/37 green.
+- `npx playwright test tests/PROJ-59-scrum-hierarchy-dnd.spec.ts` — 4 cases × 2 browser projects = 8/8 green.
+- `npx tsc --noEmit` clean.
+
+**Production note:**
+
+The α/β/γ code already shipped to production via earlier auto-deploys; δ is bookkeeping + regression pinning, no new runtime change. The remaining DoD checkbox ("fachlicher Review mit Jira-erfahrenem Nutzer") is operational and tracked outside the code repo.
+
 ### 2026-05-10 — PROJ-59γ Scrum Board Parent-Drop UX
 
 **Scope completed:**
@@ -282,7 +305,7 @@ Ziel ist eine Bedienung wie in Jira: Nutzer sehen im Scrum-Bereich klar, welche 
 - [x] Task -> Ohne Story funktioniert, sofern erlaubt.
 - [x] Subtask -> Task funktioniert.
 - [x] Ungueltige Drops werden client- und serverseitig blockiert.
-- [ ] Bestehende Status-DnD- und Sprint-DnD-Flows bleiben gruen.
+- [x] Bestehende Status-DnD- und Sprint-DnD-Flows bleiben gruen (37/37 Route-Tests + Playwright-Smoke pinned in δ).
 - [x] Parent-Route ist mit relevanten Tests abgedeckt.
 - [x] Dokumentation beschreibt Wechselwirkungen, Routing und Grenzen.
-- [ ] Fachlicher Review mit Jira-erfahrenem Nutzer abgeschlossen.
+- [ ] Fachlicher Review mit Jira-erfahrenem Nutzer abgeschlossen (operationell offen — nicht Code-blockierend).

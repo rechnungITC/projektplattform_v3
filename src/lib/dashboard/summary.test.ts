@@ -124,6 +124,7 @@ describe("resolveDashboardSummary", () => {
       decision_approvers: { data: [] },
       risks: { data: [] },
       milestones: { data: [] },
+      budget_item_totals: { data: [] },
       report_snapshots: { data: [] },
     })
 
@@ -176,6 +177,7 @@ describe("resolveDashboardSummary", () => {
       decision_approvers: { data: [] },
       risks: { data: [] },
       milestones: { data: [] },
+      budget_item_totals: { data: [] },
       report_snapshots: { data: [] },
     })
 
@@ -268,6 +270,7 @@ describe("resolveDashboardSummary", () => {
         ],
       },
       milestones: { data: [] },
+      budget_item_totals: { data: [] },
       report_snapshots: { data: [] },
     })
 
@@ -323,6 +326,7 @@ describe("resolveDashboardSummary", () => {
         ],
       },
       milestones: { data: [] },
+      budget_item_totals: { data: [] },
       report_snapshots: { data: [] },
     })
 
@@ -338,6 +342,84 @@ describe("resolveDashboardSummary", () => {
     // Alerts surfaced both critical risks
     expect(summary.alerts.data?.items.length).toBeGreaterThanOrEqual(2)
     expect(summary.alerts.data?.items[0].kind).toBe("critical_risk")
+  })
+
+  it("emits budget_overrun + budget_threshold + missing_fx_rate alerts (PROJ-64-γ)", async () => {
+    // PROJ-64-γ: the alerts section now reads `budget_item_totals`
+    // and emits one alert per project per signal class. Red items
+    // produce a critical budget_overrun alert; yellow-only items
+    // produce a warning budget_threshold alert; multi-currency
+    // items produce an info missing_fx_rate alert.
+    const supabase = buildSupabase({
+      project_memberships: {
+        data: [
+          {
+            project_id: PROJECT_ID,
+            projects: {
+              id: PROJECT_ID,
+              tenant_id: TENANT_ID,
+              name: "Alpha",
+              project_type: "software",
+              project_method: "scrum",
+              lifecycle_status: "active",
+              responsible_user_id: USER_ID,
+              is_deleted: false,
+            },
+          },
+        ],
+      },
+      tenant_settings: { data: null },
+      work_items: { data: [] },
+      decision_approvers: { data: [] },
+      risks: { data: [] },
+      milestones: { data: [] },
+      budget_item_totals: {
+        data: [
+          {
+            item_id: "bi-1",
+            project_id: PROJECT_ID,
+            traffic_light_state: "red",
+            multi_currency_postings_count: 0,
+            is_active: true,
+          },
+          {
+            item_id: "bi-2",
+            project_id: PROJECT_ID,
+            traffic_light_state: "yellow",
+            multi_currency_postings_count: 0,
+            is_active: true,
+          },
+          {
+            item_id: "bi-3",
+            project_id: PROJECT_ID,
+            traffic_light_state: "green",
+            multi_currency_postings_count: 2,
+            is_active: true,
+          },
+        ],
+      },
+      report_snapshots: { data: [] },
+    })
+
+    const summary = await resolveDashboardSummary({
+      supabase,
+      userId: USER_ID,
+      tenantId: TENANT_ID,
+      isTenantAdmin: false,
+    })
+
+    const items = summary.alerts.data?.items ?? []
+    const kinds = items.map((i) => i.kind)
+    // Overrun (1 red) wins over threshold (yellow-only is only
+    // emitted when red === 0); FX info is emitted independently.
+    expect(kinds).toContain("budget_overrun")
+    expect(kinds).not.toContain("budget_threshold")
+    expect(kinds).toContain("missing_fx_rate")
+    const overrun = items.find((i) => i.kind === "budget_overrun")!
+    expect(overrun.severity).toBe("critical")
+    expect(overrun.detail).toContain("1 Posten")
+    const fx = items.find((i) => i.kind === "missing_fx_rate")!
+    expect(fx.severity).toBe("info")
   })
 
   it("suppresses brand-new empty projects from Project Health exceptions (L2 polish)", async () => {
@@ -370,6 +452,7 @@ describe("resolveDashboardSummary", () => {
       risks: { data: [] },
       // No active milestones → project has zero signals.
       milestones: { data: [] },
+      budget_item_totals: { data: [] },
       report_snapshots: { data: [] },
     })
 
@@ -506,6 +589,7 @@ describe("resolveDashboardSummary", () => {
       decision_approvers: { data: [] },
       risks: { data: [] },
       milestones: { data: [] },
+      budget_item_totals: { data: [] },
       report_snapshots: { data: [] },
     })
 
