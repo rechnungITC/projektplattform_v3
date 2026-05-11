@@ -1,6 +1,6 @@
 # PROJ-64: Global Dashboard / My Work Inbox
 
-## Status: Approved (QA pass; 1 Medium documented, no Critical/High)
+## Status: Deployed
 **Created:** 2026-05-10
 **Last Updated:** 2026-05-11
 
@@ -611,4 +611,54 @@ Suggested next:
 4. Optional refinement for L1: tighten `loadRecentReports` to `project_id IN (accessible_projects)` for cross-section consistency.
 
 ## Deployment
-_To be added by /deploy_
+
+- **Date deployed:** 2026-05-11
+- **Production URL:** https://projektplattform-v3.vercel.app
+- **Vercel deployment:** `dpl_5HtgkqVMF6up1YNzLbKzXcDcaQJm` (READY, target=production, region iad1)
+- **Squash commit:** `df3e9450e8ed0fcd0d7822cea932e46b127163e6`
+- **Build duration:** ~3 min (BUILDING → READY)
+- **Aliases assigned:** `projektplattform-v3.vercel.app`, `projektplattform-v3-it-couch.vercel.app`, `projektplattform-v3-git-main-it-couch.vercel.app`
+- **DB migration:** none (PROJ-64 reads existing tables only)
+- **Git tag:** `v1.64.0-PROJ-64`
+- **Previous rollback candidate:** `dpl_FCEvioG65hfwnWPeMZ8fy9fwgJP2` (commit `565e354` — PROJ-room health summary fix)
+
+### Pre-deploy verification
+
+- `npx tsc --noEmit` clean
+- `npm run lint` clean (only pre-existing react-hooks/incompatible-library warning at `edit-work-item-dialog.tsx:410`)
+- `npx vitest run` — 1244 / 1244 green (PROJ-64 contributes 9)
+- `npx playwright test` — 56 passed, 12 skipped (pre-existing PROJ-29 / PROJ-51 fixture skips)
+- `npm run build` — green; `/` registered as dynamic; `/api/dashboard/summary` registered as dynamic
+
+### Post-deploy smoke (live, unauth)
+
+| Route | Method | Status |
+|---|---|---|
+| `/` | GET | 307 → `/login?next=%2F` ✅ |
+| `/login` | GET | 200 ✅ |
+| `/api/dashboard/summary` | GET | 307 → `/login?next=%2Fapi%2Fdashboard%2Fsummary` ✅ |
+| `/api/dashboard/approvals` | GET | 307 (existing PROJ-31 endpoint unaffected) ✅ |
+| `/api/dashboard/approvals?filter=pending` | GET | 307 ✅ |
+
+Final-landing content check on `/` (following the redirect): 0 occurrences of the legacy placeholder copy "Your project dashboard will live here." — AC-1 verified live.
+
+### Deviations carried forward (from /qa)
+
+- **M1 (Medium):** `work_items.priority` is a `text` column → `ORDER BY priority DESC` sorts alphabetically (medium > low > high > critical) before the JS post-sort runs. Below the 50-row fetch cap this is invisible; above it, critical/high items can be excluded from the fetched window. Trivial follow-up: drop the server-side priority sort and rely on the JS post-sort, OR replace with a CASE-based RPC.
+- **L1 (Low):** Recent Reports section filters by `tenant_id` only, not by `project_memberships` scope. Consistent with PROJ-21 RLS but contradicts the dashboard's stricter project-access stance.
+- **L2 (Low):** Empty projects (zero risks AND zero milestones) surface as "unknown" Project Health rows. By design per AC-4 but can be noisy for new tenants.
+- **AC-5 partial:** budget alert kinds (`budget_overrun`/`budget_threshold`/`missing_fx_rate`) are wired in the type contract but not yet emitted — a deliberate perf deferral. FE renders them once backend emits.
+
+### Rollback plan
+
+If a regression surfaces:
+
+1. **Immediate (Vercel-only revert, no code change):** in the Vercel dashboard, promote `dpl_FCEvioG65hfwnWPeMZ8fy9fwgJP2` (commit `565e354`) back to production. Zero data implications because PROJ-64 introduced no DB migration.
+2. **Code revert:** `git revert df3e945` then push. The dashboard returns to the placeholder welcome card; existing `/api/dashboard/approvals` endpoint remains live.
+
+### Follow-up backlog
+
+- Optional fix for M1 (priority sort): drop server-side ORDER BY priority or replace with a CASE-based RPC.
+- Optional refinement for L1 (Reports scope): tighten `loadRecentReports` to `project_id IN (accessible_projects)` for cross-section consistency.
+- PROJ-64-γ: emit budget alerts (`budget_overrun` / `budget_threshold` / `missing_fx_rate`) via a pre-aggregated materialized view or lazy-loaded section.
+- Performance baseline: micro-benchmark the aggregator end-to-end on the live tenant (target < 1.5 s for typical data).
