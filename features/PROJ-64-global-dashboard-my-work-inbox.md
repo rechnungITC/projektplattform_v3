@@ -645,7 +645,7 @@ Final-landing content check on `/` (following the redirect): 0 occurrences of th
 ### Deviations carried forward (from /qa)
 
 - **M1 (Medium) — FIXED post-deploy on 2026-05-11.** The QA found that `work_items.priority` is a `text` column, so the original aggregator's `.order("priority", { ascending: false })` sorted alphabetically (medium > low > high > critical) — at the 50-row fetch cap, critical/high items could be excluded from the fetched window before the JS post-sort ran. The fix in `src/lib/dashboard/summary.ts` drops the server-side priority order entirely and widens the fetch cap from 50 → 100 rows (`MY_WORK_FETCH_CAP = MY_WORK_LIMIT * 4`); the fetch is ordered by `planned_end ASC` (most time-sensitive first), and the JS post-sort (blocked → overdue → priority → due) becomes the authoritative ranking. New regression test `"ranks My Work by priority regardless of DB return order (M1 regression)"` pins the behavior by feeding rows in low-priority-first DB order and verifying the response leads with `critical → high → medium → low`. Vitest: **1245 / 1245 green** (was 1244; +1).
-- **L1 (Low):** Recent Reports section filters by `tenant_id` only, not by `project_memberships` scope. Consistent with PROJ-21 RLS but contradicts the dashboard's stricter project-access stance.
+- **L1 (Low) — FIXED post-deploy on 2026-05-11.** `loadRecentReports` now accepts the resolved accessible-projects list and adds `.in("project_id", accessibleIds)` to the snapshot query. When the user has zero project memberships the function short-circuits to `{items: []}` without touching the DB. Cross-section consistency with My Work / Project Health is restored: tenant admins who are not project members no longer see snapshot rows for those projects. New regression test `"filters Recent Reports to project_memberships scope (L1 regression)"` pins the behavior by stubbing a foreign-project snapshot and asserting the response is empty. Vitest: **1246 / 1246 green** (was 1245; +1).
 - **L2 (Low):** Empty projects (zero risks AND zero milestones) surface as "unknown" Project Health rows. By design per AC-4 but can be noisy for new tenants.
 - **AC-5 partial:** budget alert kinds (`budget_overrun`/`budget_threshold`/`missing_fx_rate`) are wired in the type contract but not yet emitted — a deliberate perf deferral. FE renders them once backend emits.
 
@@ -659,6 +659,6 @@ If a regression surfaces:
 ### Follow-up backlog
 
 - ~~Optional fix for M1 (priority sort)~~ — done 2026-05-11 (see "Deviations carried forward" above).
-- Optional refinement for L1 (Reports scope): tighten `loadRecentReports` to `project_id IN (accessible_projects)` for cross-section consistency.
+- ~~Optional refinement for L1 (Reports scope)~~ — done 2026-05-11 (see "Deviations carried forward" above).
 - PROJ-64-γ: emit budget alerts (`budget_overrun` / `budget_threshold` / `missing_fx_rate`) via a pre-aggregated materialized view or lazy-loaded section.
 - Performance baseline: micro-benchmark the aggregator end-to-end on the live tenant (target < 1.5 s for typical data).

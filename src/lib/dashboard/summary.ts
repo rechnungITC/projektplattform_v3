@@ -128,7 +128,7 @@ export async function resolveDashboardSummary(
       loadAlerts(args, projectsEnvelope.data, settings, now),
     ),
     safeSection<{ items: ReportShortcut[] }>(() =>
-      loadRecentReports(args, settings),
+      loadRecentReports(args, projectsEnvelope.data, settings),
     ),
   ])
 
@@ -594,15 +594,25 @@ async function loadAlerts(
 
 async function loadRecentReports(
   args: ResolveDashboardSummaryArgs,
+  accessible: AccessibleProjects,
   settings: TenantSettings | null,
 ): Promise<{ items: ReportShortcut[] }> {
   if (settings && !isModuleActive(settings, "output_rendering")) {
     return { items: [] }
   }
+  if (accessible.projects.length === 0) {
+    // No `project_id IN (…)` would still match any tenant snapshot
+    // via RLS. Short-circuit to match the dashboard's stricter
+    // project-access stance — the user sees Recent Reports only
+    // for projects they are a member of.
+    return { items: [] }
+  }
+  const projectIds = accessible.projects.map((p) => p.id)
   const { data, error } = await args.supabase
     .from("report_snapshots")
     .select("id, kind, version, generated_at, project_id, projects!inner(name)")
     .eq("tenant_id", args.tenantId)
+    .in("project_id", projectIds)
     .order("generated_at", { ascending: false })
     .limit(REPORT_LIMIT)
 

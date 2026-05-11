@@ -340,6 +340,49 @@ describe("resolveDashboardSummary", () => {
     expect(summary.alerts.data?.items[0].kind).toBe("critical_risk")
   })
 
+  it("filters Recent Reports to project_memberships scope (L1 regression)", async () => {
+    // Regression for the QA L1 finding: `report_snapshots` are
+    // tenant-readable via RLS, so a naive `tenant_id = X` filter
+    // would surface project names from projects the user is not a
+    // member of. The dashboard's stricter project-access stance
+    // requires `project_id IN (accessible)`. This test ensures
+    // foreign-project snapshots never reach the response — and
+    // that when the user has zero memberships, the section is
+    // short-circuited to an empty list (no DB call needed).
+    const supabase = buildSupabase({
+      project_memberships: { data: [] },
+      tenant_settings: { data: null },
+      decision_approvers: { data: [] },
+      // The DB would normally return tenant-readable snapshots from
+      // any project. With the L1 fix, the function should NOT call
+      // report_snapshots at all when accessible_projects is empty
+      // — so even this stub being present should not leak.
+      report_snapshots: {
+        data: [
+          {
+            id: "snap-foreign",
+            kind: "status_report",
+            version: 1,
+            generated_at: "2026-05-01T00:00:00Z",
+            project_id: FOREIGN_PROJECT_ID,
+            projects: { name: "Foreign project" },
+          },
+        ],
+      },
+    })
+
+    const summary = await resolveDashboardSummary({
+      supabase,
+      userId: USER_ID,
+      tenantId: TENANT_ID,
+      isTenantAdmin: true,
+    })
+
+    // Even though the tenant snapshot stub contains a foreign-
+    // project row, the response must be empty.
+    expect(summary.reports.data?.items).toEqual([])
+  })
+
   it("ranks My Work by priority regardless of DB return order (M1 regression)", async () => {
     // Regression for the QA M1 finding: `work_items.priority` is a
     // `text` column, so a server-side ORDER BY priority DESC sorts
