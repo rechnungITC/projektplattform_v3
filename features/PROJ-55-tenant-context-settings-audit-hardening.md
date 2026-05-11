@@ -1,6 +1,6 @@
 # PROJ-55: Tenant Context, Settings Schema & Audit Hardening
 
-## Status: Deployed (α + β + γ + δ live)
+## Status: Deployed (α + β + γ + δ + ε strict-cookie 403 live)
 **Created:** 2026-05-07
 **Last Updated:** 2026-05-07
 

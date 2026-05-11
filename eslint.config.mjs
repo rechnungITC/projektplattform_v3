@@ -188,6 +188,11 @@ const config = [
       // PROJ-56: readiness checklist uses the same effect-driven
       // initial-load pattern as the HealthSnapshot it sits next to.
       "src/components/project-room/readiness-checklist.tsx",
+      // PROJ-57-β-UI + PROJ-58-β-UI: project-room cards consuming
+      // the new aggregator APIs via the same effect-driven initial
+      // load pattern.
+      "src/components/projects/participant-relationship-card.tsx",
+      "src/components/projects/project-graph-view.tsx",
     ],
     rules: {
       "react-hooks/set-state-in-effect": "off",

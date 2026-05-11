@@ -4,7 +4,19 @@
 
 export type KiRunStatus = "success" | "error" | "external_blocked"
 export type KiProviderName = "anthropic" | "stub" | "ollama"
-export type KiPurpose = "risks" | "decisions" | "work_items" | "open_items"
+/**
+ * PROJ-44-δ — `proposal_from_context` purpose. Takes a
+ * `context_sources` row (document / email / meeting notes) and
+ * returns proposals (work_items / risks / decisions / open items)
+ * for the project lead to review. Class-3 inputs are blocked at
+ * the router layer (no external LLM call).
+ */
+export type KiPurpose =
+  | "risks"
+  | "decisions"
+  | "work_items"
+  | "open_items"
+  | "proposal_from_context"
 export type KiSuggestionStatus = "draft" | "accepted" | "rejected"
 
 export interface KiRun {

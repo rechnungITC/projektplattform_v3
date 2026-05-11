@@ -339,9 +339,17 @@ export function WizardClient({ draftId }: WizardClientProps) {
         return
       }
       const project = await finalizeDraft(draft.id)
-      toast.success("Projekt angelegt", { description: data.name })
+      // PROJ-56-δ — handoff into the project-room with the
+      // wizard-source flag so the Readiness-Checklist surfaces
+      // its onboarding banner.
+      toast.success("Projekt angelegt", {
+        description:
+          "Projekt-Setup-Checkliste prüfen, damit das Projekt steuerbar ist.",
+      })
       router.replace(
-        project?.id ? `/projects/${project.id}` : "/projects"
+        project?.id
+          ? `/projects/${project.id}?from_wizard=1`
+          : "/projects",
       )
     } catch (err) {
       const message =

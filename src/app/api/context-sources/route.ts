@@ -17,6 +17,7 @@ import {
   apiError,
   getAuthenticatedUserId,
 } from "@/app/api/_lib/route-helpers"
+import { classifyContextSourcePrivacy } from "@/lib/context-sources/classify-privacy"
 import { CONTEXT_SOURCE_KINDS } from "@/types/context-source"
 
 const createSchema = z.object({
@@ -92,6 +93,29 @@ export async function POST(request: Request) {
     )
   }
 
+  // PROJ-44-γ — server-side privacy classifier. When the client
+  // omits `privacy_class`, infer it from title + excerpt via
+  // regex (no LLM call — Class-3 inputs must never leave the
+  // stack). The DB column still defaults to 3 so bypassing the
+  // classifier cannot mark personal data as Class 1.
+  const classification = body.privacy_class
+    ? null
+    : classifyContextSourcePrivacy({
+        title: body.title,
+        content_excerpt: body.content_excerpt,
+      })
+  const resolvedPrivacyClass =
+    body.privacy_class ?? classification?.privacy_class ?? 3
+  const mergedMetadata: Record<string, unknown> = {
+    ...(body.source_metadata ?? {}),
+  }
+  if (classification) {
+    mergedMetadata["proj44_privacy_inference"] = {
+      privacy_class: classification.privacy_class,
+      matched_patterns: classification.matched_patterns,
+    }
+  }
+
   const { data, error } = await supabase
     .from("context_sources")
     .insert({
@@ -101,9 +125,9 @@ export async function POST(request: Request) {
       title: body.title,
       content_excerpt: body.content_excerpt ?? null,
       content_full_url: body.content_full_url ?? null,
-      source_metadata: body.source_metadata ?? {},
+      source_metadata: mergedMetadata,
       language: body.language ?? null,
-      privacy_class: body.privacy_class ?? 3,
+      privacy_class: resolvedPrivacyClass,
       created_by: userId,
     })
     .select(LIST_SELECT)

@@ -1,6 +1,6 @@
 # PROJ-56: Project Readiness & Health Command Center
 
-## Status: Deployed (MVP: α + β + γ live; δ + ε deferred)
+## Status: Deployed (α + β + γ + δ wizard-handoff + ε report-integration live)
 **Created:** 2026-05-07
 **Last Updated:** 2026-05-07
 

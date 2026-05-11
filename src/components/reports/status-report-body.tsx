@@ -34,6 +34,12 @@ export function StatusReportBody({ version, content }: StatusReportBodyProps) {
     <article className="report-page mx-auto max-w-3xl">
       <SnapshotHeader kind="status_report" version={version} content={content} />
 
+      {content.readiness && (
+        <SnapshotSection title="Projekt-Setup" isEmpty={false}>
+          <ReadinessBlock readiness={content.readiness} />
+        </SnapshotSection>
+      )}
+
       <SnapshotSection
         title="Phasen-Timeline"
         isEmpty={content.phases.length === 0}
@@ -202,5 +208,47 @@ export function StatusReportBody({ version, content }: StatusReportBodyProps) {
 
       <SnapshotFooter kind="status_report" version={version} content={content} />
     </article>
+  )
+}
+
+/**
+ * PROJ-56-ε — frozen readiness snapshot for the printed report.
+ *
+ * Mirrors the live `ReadinessChecklist` widget at a glance: state
+ * badge + the three counters that drive the FE state machine.
+ */
+function ReadinessBlock({
+  readiness,
+}: {
+  readiness: NonNullable<
+    import("@/lib/reports/types").SnapshotContent["readiness"]
+  >
+}) {
+  const stateLabel =
+    readiness.state === "ready"
+      ? "Bereit"
+      : readiness.state === "ready_with_gaps"
+        ? "Bereit mit Lücken"
+        : "Setup unvollständig"
+  const stateClass =
+    readiness.state === "ready"
+      ? "bg-emerald-100 text-emerald-900"
+      : readiness.state === "ready_with_gaps"
+        ? "bg-amber-100 text-amber-900"
+        : "bg-red-100 text-red-900"
+  return (
+    <div className="flex flex-wrap items-center gap-4">
+      <span
+        className={`rounded-full px-3 py-1 text-xs font-medium ${stateClass}`}
+      >
+        {stateLabel}
+      </span>
+      <span className="text-sm text-muted-foreground">
+        <strong className="tabular-nums">{readiness.open_blockers}</strong>{" "}
+        Blocker · <strong className="tabular-nums">{readiness.open_warnings}</strong>{" "}
+        Warnungen · <strong className="tabular-nums">{readiness.satisfied}</strong>{" "}
+        erledigt
+      </span>
+    </div>
   )
 }

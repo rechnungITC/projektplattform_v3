@@ -1,6 +1,6 @@
 # PROJ-58: Interactive Project Graph & Decision Simulation
 
-## Status: In Progress (α docs + β-backend aggregator/API live; β-UI + γ/δ/ε/ζ/η deferred)
+## Status: In Progress (α docs + β-backend + β-UI SVG-renderer live; γ/δ/ε/ζ/η deferred until CIA-reviewed library decision)
 **Created:** 2026-05-07
 **Last Updated:** 2026-05-07
 

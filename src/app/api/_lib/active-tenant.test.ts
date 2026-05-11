@@ -106,13 +106,14 @@ describe("resolveActiveTenantId (PROJ-55-α)", () => {
     expect(tenantId).toBe(TENANT_B)
   })
 
-  it("falls back to the earliest membership when the cookie points at a tenant the user is NOT a member of", async () => {
+  it("returns null when the cookie points at a tenant the user is NOT a member of (PROJ-55-ε strict)", async () => {
     cookieValue.current = "00000000-0000-4000-8000-000000000000"
     const supabase = makeSupabaseStub({ memberships: [TENANT_A, TENANT_B] })
     const tenantId = await resolveActiveTenantId(USER_ID, supabase)
-    // Tampered cookie must NOT grant access to a non-member
-    // tenant. The resolver falls back to the legitimate
-    // earliest-membership tenant.
-    expect(tenantId).toBe(TENANT_A)
+    // PROJ-55-ε: a tampered / stale cookie must NOT silently
+    // grant access to a different workspace. The caller is
+    // expected to respond with 403; the user re-picks a
+    // workspace via the FE switcher.
+    expect(tenantId).toBeNull()
   })
 })

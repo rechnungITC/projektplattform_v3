@@ -128,6 +128,18 @@ export interface SnapshotContent {
   manual_summary: string | null
   generated_by_name: string
   generated_at: string
+  /**
+   * PROJ-56-ε — readiness snapshot at the moment the report was
+   * generated. Frozen with the report so the printed PDF reflects
+   * the state the project was in. Optional because pre-PROJ-56
+   * snapshots don't have it; the renderer falls back to "—".
+   */
+  readiness?: {
+    state: "not_ready" | "ready_with_gaps" | "ready"
+    open_blockers: number
+    open_warnings: number
+    satisfied: number
+  }
 }
 
 /** A snapshot row as returned by the API list endpoint. */

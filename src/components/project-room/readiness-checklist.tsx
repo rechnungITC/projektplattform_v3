@@ -8,9 +8,11 @@ import {
   Info,
   ListChecks,
   Loader2,
+  Sparkles,
   TriangleAlert,
 } from "lucide-react"
 import Link from "next/link"
+import { useSearchParams } from "next/navigation"
 import * as React from "react"
 
 import { Badge } from "@/components/ui/badge"
@@ -50,6 +52,15 @@ export function ReadinessChecklist({ projectId }: ReadinessChecklistProps) {
   const [isLoading, setIsLoading] = React.useState(true)
   const [error, setError] = React.useState<string | null>(null)
   const [showAll, setShowAll] = React.useState(false)
+  // PROJ-56-δ — wizard handoff. The wizard appends
+  // `?from_wizard=1` on its post-create redirect; we show a
+  // dismissable onboarding banner above the checklist.
+  const searchParams = useSearchParams()
+  const fromWizardFlag = searchParams?.get("from_wizard") === "1"
+  const [showWizardBanner, setShowWizardBanner] = React.useState(false)
+  React.useEffect(() => {
+    if (fromWizardFlag) setShowWizardBanner(true)
+  }, [fromWizardFlag])
 
   React.useEffect(() => {
     let cancelled = false
@@ -95,6 +106,33 @@ export function ReadinessChecklist({ projectId }: ReadinessChecklistProps) {
         {snapshot && <StateBadge state={snapshot.state} />}
       </CardHeader>
       <CardContent className="space-y-4">
+        {showWizardBanner && (
+          <div className="flex items-start gap-3 rounded-md border border-primary/30 bg-primary/5 p-3">
+            <Sparkles
+              className="mt-0.5 h-4 w-4 shrink-0 text-primary"
+              aria-hidden
+            />
+            <div className="flex-1 space-y-0.5">
+              <p className="text-sm font-medium text-foreground">
+                Willkommen — Setup-Check
+              </p>
+              <p className="text-xs text-muted-foreground">
+                Erste Schritte: prüfe die folgende Liste und ergänze offene
+                Punkte. Sobald der Status auf „Bereit&ldquo; steht, kannst du
+                Reports und Steering-Kommunikation starten.
+              </p>
+            </div>
+            <Button
+              type="button"
+              variant="ghost"
+              size="sm"
+              onClick={() => setShowWizardBanner(false)}
+              className="h-7 px-2 text-xs"
+            >
+              Verstanden
+            </Button>
+          </div>
+        )}
         {isLoading && (
           <p className="flex items-center gap-2 text-sm text-muted-foreground">
             <Loader2 className="h-4 w-4 animate-spin" aria-hidden /> Setup wird

@@ -1,6 +1,6 @@
 # PROJ-57: Participant, Stakeholder & Resource Linking Operating Model
 
-## Status: In Progress (α + β-aggregator live; β-UI + γ + δ + ε deferred)
+## Status: In Progress (α + β-aggregator + β-UI RelationshipCard live; γ + δ + ε deferred)
 **Created:** 2026-05-07
 **Last Updated:** 2026-05-07
 

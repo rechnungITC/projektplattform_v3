@@ -13,6 +13,7 @@ import * as React from "react"
 
 import { HealthSnapshot } from "@/components/project-room/health-snapshot"
 import { ReadinessChecklist } from "@/components/project-room/readiness-checklist"
+import { ParticipantRelationshipCard } from "@/components/projects/participant-relationship-card"
 import { ReportsSection } from "@/components/project-room/reports-section"
 import { RitualsCard } from "@/components/project-room/rituals-card"
 import { PendingApprovalsCard } from "@/components/projects/decisions/pending-approvals-card"
@@ -224,6 +225,13 @@ export function ProjectDetailClient({ projectId }: ProjectDetailClientProps) {
           answers "how is it running?", readiness answers "is the
           project actually set up?". */}
       <ReadinessChecklist projectId={projectId} />
+
+      {/* PROJ-57-β-UI — surfaces the four-role reconciliation
+          (Tenant Member / Project Member / Stakeholder / Resource)
+          plus the rate-source classification per person. Drives
+          the project-lead's "wer ist wer und ist alles verknüpft?"
+          mental model. */}
+      <ParticipantRelationshipCard projectId={projectId} />
 
       {/* Method-specific rituals reminder */}
       <RitualsCard config={config} />

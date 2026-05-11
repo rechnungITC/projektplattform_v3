@@ -46,9 +46,12 @@ export async function resolveActiveTenantId(
     if (!error && data?.tenant_id) {
       return data.tenant_id as string
     }
-    // Invalid / tampered cookie → fall through to membership
-    // fallback rather than failing the request; the user still
-    // ends up in *some* tenant they are legitimately a member of.
+    // PROJ-55-ε — Tampered / stale cookie. Do NOT fall back to a
+    // different tenant: returning the wrong workspace here would
+    // surface confusing data and could be a privilege-confusion
+    // class bug. Return null so the caller responds with 403,
+    // forcing the user to re-pick a workspace via the switcher.
+    return null
   }
 
   // 2) Fallback — earliest membership. Same shape the legacy

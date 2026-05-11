@@ -248,6 +248,31 @@ export async function aggregateSnapshotData(
       ? input.manualSummary.trim().slice(0, MANUAL_SUMMARY_MAX)
       : null
 
+  // PROJ-56-ε — freeze the readiness snapshot so the report
+  // reflects the project's setup-state at the moment of capture.
+  // Failures here are swallowed: the report still renders without
+  // the readiness section if the aggregator hiccups.
+  let readiness: SnapshotContent["readiness"]
+  try {
+    const { resolveProjectReadiness } = await import(
+      "@/lib/project-readiness/aggregate"
+    )
+    const snap = await resolveProjectReadiness({
+      supabase,
+      projectId: input.projectId,
+      tenantId,
+      now,
+    })
+    readiness = {
+      state: snap.state,
+      open_blockers: snap.counts.open_blockers,
+      open_warnings: snap.counts.open_warnings,
+      satisfied: snap.counts.satisfied,
+    }
+  } catch {
+    readiness = undefined
+  }
+
   const content: SnapshotContent = {
     header,
     traffic_light: trafficLight.light,
@@ -262,6 +287,7 @@ export async function aggregateSnapshotData(
     manual_summary: manualSummary,
     generated_by_name: input.generatorDisplayName,
     generated_at: now.toISOString(),
+    readiness,
   }
   // Suppress unused warning for `kind` — reserved for future
   // kind-specific aggregation (e.g. shorter lists for Executive-
