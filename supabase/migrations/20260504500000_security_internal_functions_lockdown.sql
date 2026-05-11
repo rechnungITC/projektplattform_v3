@@ -25,8 +25,18 @@
 --     decrypt_tenant_ai_key / record_tenant_ai_*_audit directly.
 --   - 1 method-keys validator (_valid_method_keys) used inside CHECK constraints.
 --   - 1 audit-readability gate (can_read_audit_entry) used inside RLS.
---   - 1 trigger / admin-only initializer (bootstrap_project_lead) called from
---     the project-creation trigger; never from client code.
+--   - 1 method-keys validator stand-in (the bootstrap_project_lead revoke
+--     listed below was a misclassification — see correction note).
+--
+-- CORRECTION (2026-05-11): bootstrap_project_lead WAS revoked here, but it is
+-- in fact called from API routes via supabase.rpc(...) — POST /api/projects
+-- and POST /api/wizard-drafts/[id]/finalize. The revoke broke every non-admin
+-- project creation with "permission denied for function bootstrap_project_lead".
+-- A follow-up migration (20260511180000_proj4_restore_bootstrap_project_lead_grant.sql)
+-- re-grants EXECUTE to `authenticated`. The revoke line below has been removed
+-- from this file so a fresh DB replay no longer re-introduces the bug.
+-- The function's SECURITY DEFINER body enforces caller=p_user_id, tenant
+-- membership, and one-shot-only — exposing it to `authenticated` is safe.
 --
 -- IMPORTANT — what REVOKE EXECUTE does NOT change:
 --   Trigger execution and inter-function calls are unaffected. SECURITY
@@ -68,8 +78,8 @@ revoke execute on function public.record_tenant_ai_key_audit(p_tenant_id uuid, p
 revoke execute on function public.record_tenant_ai_provider_audit(p_tenant_id uuid, p_provider text, p_action text, p_old_fingerprint text, p_new_fingerprint text)
   from public, anon, authenticated;
 
--- Validator + bootstrap (2).
+-- Validator (1).
 revoke execute on function public._valid_method_keys()
   from public, anon, authenticated;
-revoke execute on function public.bootstrap_project_lead(p_project_id uuid, p_user_id uuid)
-  from public, anon, authenticated;
+-- bootstrap_project_lead revoke removed (see CORRECTION note above). Re-grant
+-- is restored by 20260511180000_proj4_restore_bootstrap_project_lead_grant.sql.
