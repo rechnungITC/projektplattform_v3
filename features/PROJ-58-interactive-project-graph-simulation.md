@@ -1,6 +1,6 @@
 # PROJ-58: Interactive Project Graph & Decision Simulation
 
-## Status: Planned
+## Status: In Progress (α docs + β-backend aggregator/API live; β-UI + γ/δ/ε/ζ/η deferred)
 **Created:** 2026-05-07
 **Last Updated:** 2026-05-07
 
@@ -291,3 +291,45 @@ _To be added by /qa_
 ## Deployment
 
 _To be added by /deploy_
+
+## Implementation Notes
+
+### 2026-05-11 — Foundation slice (α docs + β-backend)
+
+**58-α — Architecture decisions documented in spec sections** *Zielbild* and *MVP-Schnitt* above. The MVP node/edge taxonomy is locked: 8 node kinds (project / phase / milestone / work_item / risk / decision / stakeholder / budget / recommendation) and 8 edge kinds (belongs_to / depends_on / blocks / unblocks / influences / causes_cost / increases_risk / requires_stakeholder).
+
+**58-β-backend — Read-only aggregator + API**
+
+- `src/lib/project-graph/types.ts` — library-agnostic `GraphNode` + `GraphEdge` + `ProjectGraphSnapshot`. The shape (id + kind + label + tone + href + attributes) maps cleanly to react-flow, cytoscape and d3 without further transformation.
+- `src/lib/project-graph/aggregate.ts` — `resolveProjectGraph()` pulls projects + phases + milestones + work_items + dependencies + risks + decisions + stakeholders + budget items in parallel. Capped per kind to keep the payload bounded. Polymorphic `dependencies` edges only emit when both endpoints survive the node cap; dangling edges are dropped.
+- `GET /api/projects/[id]/graph` — auth-gated via `requireProjectAccess(..., "view")`. Returns `{ graph: ProjectGraphSnapshot }`.
+
+**Tests**
+
+- 3 aggregator unit tests: full happy-path with all 5 source tables populated, empty-project edge case, dangling-edge filter.
+- 1 Playwright unauth smoke (2× browser projects).
+- Vitest: **1266 / 1266 green** (was 1263; +3).
+
+### Deferred follow-ups (PROJ-58-β-UI + γ/δ/ε/ζ/η)
+
+- **β-UI** — picks a library (react-flow recommended for 2D, MIT-licensed) and renders the snapshot at `/projects/[id]/graph`. New dep — CIA review per `.claude/rules/continuous-improvement.md` before adoption.
+- **γ — Beziehungspflege** — Edit-mode for edges (add/remove `depends_on` etc.) wired to the existing dependency routes.
+- **δ — Critical-Path Overlay** — toggle that highlights critical paths via `compute_critical_path_phases` / `compute_critical_path_work_items`.
+- **ε — Entscheidungssimulation** — Decision alternatives + "+ X Tage / Y EUR" delta calculations.
+- **ζ — KI-Vorschläge** — initial graph from `ai_proposals` flow.
+- **η — 3D/Motion** — progressive enhancement after the 2D MVP is stable.
+
+The aggregator is the foundation for all of these — every deferred slice consumes the same `ProjectGraphSnapshot` shape.
+
+## QA Test Results
+
+- 3 aggregator unit tests pinning node-kind counts, dangling-edge filter, empty-project handling.
+- 1 Playwright auth-gate smoke.
+- 0 Critical / High Bugs.
+
+## Deployment
+
+- **Date deployed:** 2026-05-11
+- **Production URL:** https://projektplattform-v3.vercel.app
+- **DB migration:** keine.
+- **Rollback plan:** `git revert` des Batch-6-Commits. Keine DB-Implikationen.
