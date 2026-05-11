@@ -19,8 +19,13 @@ import {
 // as `requireTenantAdmin`) — this route fails fast with a friendly 403
 // instead of leaking RLS-shape errors.
 
+// PROJ-55-β — SELECT shape must match `TenantSettings` in
+// src/types/tenant-settings.ts. Previously missed
+// `budget_settings`, `output_rendering_settings`, and
+// `risk_score_overrides`, which led to undefined fields in client
+// code that destructured the returned row.
 const SELECT_COLUMNS =
-  "tenant_id, active_modules, privacy_defaults, ai_provider_config, retention_overrides, cost_settings, created_at, updated_at"
+  "tenant_id, active_modules, privacy_defaults, ai_provider_config, retention_overrides, budget_settings, output_rendering_settings, cost_settings, risk_score_overrides, created_at, updated_at"
 
 interface Ctx {
   params: Promise<{ id: string }>

@@ -13,21 +13,19 @@ import { z } from "zod"
 
 import {
   SUPPORTED_CURRENCIES,
+  TOGGLEABLE_MODULES,
   VELOCITY_FACTOR_MAX,
   VELOCITY_FACTOR_MIN,
 } from "@/types/tenant-settings"
 
-const TOGGLEABLE_MODULES = [
-  "risks",
-  "decisions",
-  "ai_proposals",
-  "audit_reports",
-  "connectors",
-  "vendor",
-  "communication",
-] as const
-
-const moduleSchema = z.enum(TOGGLEABLE_MODULES)
+// PROJ-55-β — single source of truth: `TOGGLEABLE_MODULES` from
+// the tenant-settings types module. A local copy here drifted in
+// the past (missed `resources` / `budget` / `output_rendering` /
+// `organization`, still listed reserved `connectors`). `z.enum`
+// needs a non-empty tuple, hence the runtime cast.
+const moduleSchema = z.enum(
+  TOGGLEABLE_MODULES as unknown as readonly [string, ...string[]],
+)
 
 const privacyDefaultsSchema = z.object({
   default_class: z.union([z.literal(1), z.literal(2), z.literal(3)]),

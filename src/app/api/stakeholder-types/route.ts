@@ -8,6 +8,7 @@
 import { NextResponse } from "next/server"
 import { z } from "zod"
 
+import { resolveActiveTenantId } from "../_lib/active-tenant"
 import {
   apiError,
   getAuthenticatedUserId,
@@ -26,19 +27,8 @@ const createSchema = z.object({
   is_active: z.boolean().optional(),
 })
 
-async function resolveActiveTenantId(
-  userId: string,
-  supabase: Awaited<ReturnType<typeof getAuthenticatedUserId>>["supabase"],
-): Promise<string | null> {
-  const { data } = await supabase
-    .from("tenant_memberships")
-    .select("tenant_id")
-    .eq("user_id", userId)
-    .order("created_at", { ascending: true })
-    .limit(1)
-    .maybeSingle()
-  return (data?.tenant_id as string | undefined) ?? null
-}
+// PROJ-55-α — uses the shared cookie-aware resolver from
+// `@/app/api/_lib/active-tenant` (imported below).
 
 export async function GET() {
   const { userId, supabase } = await getAuthenticatedUserId()

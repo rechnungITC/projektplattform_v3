@@ -1,6 +1,6 @@
 # PROJ-55: Tenant Context, Settings Schema & Audit Hardening
 
-## Status: Planned
+## Status: Deployed (α + β + γ + δ live)
 **Created:** 2026-05-07
 **Last Updated:** 2026-05-07
 
@@ -130,12 +130,62 @@ Diese Slice stabilisiert die Basis, bevor weitere UI-/Resource-/Dashboard-Arbeit
 
 ## Implementation Notes
 
-Noch nicht implementiert. Diese Spec ist aus dem Codebase-Review vom 2026-05-07 abgeleitet.
+### 2026-05-11 — Full slice (α + β + γ + δ)
+
+**55-α — Active-tenant resolver (cookie-aware)**
+
+- `src/app/api/_lib/active-tenant.ts` rewritten. Cookie path (`active_tenant_id`) is now the primary source of truth, validated server-side against `tenant_memberships` every request. Tampered cookies fall back to the user's earliest legitimate membership instead of leaking access to a non-member tenant.
+- `src/app/api/master-data/_lib/admin-tenant.ts`, `src/app/api/vendors/_lib/tenant.ts`, `src/app/api/stakeholder-types/route.ts` all migrated away from inline first-membership fallbacks and onto the shared resolver. Grep confirms zero remaining `order("created_at").limit(1)` patterns in `src/app/api/` for active-tenant resolution.
+- Helper signature preserved (`(userId, supabase) => Promise<string | null>`) so every existing caller compiles without changes.
+
+**55-β — Settings schema + SELECT shape repair**
+
+- `src/app/api/tenants/[id]/settings/_schema.ts` now imports `TOGGLEABLE_MODULES` from `@/types/tenant-settings` (single source of truth) instead of an inline copy that had drifted (missed `resources` / `budget` / `output_rendering` / `organization`; still listed reserved `connectors`).
+- `src/app/api/tenants/[id]/settings/route.ts` SELECT shape extended to include `budget_settings`, `output_rendering_settings`, `risk_score_overrides` (previously missing from both GET and PATCH return payloads, causing undefined fields in client destructuring).
+
+**55-γ — Audit-tracked columns repair**
+
+- New migration `supabase/migrations/20260511140000_proj55g_tracked_audit_columns_repair.sql` (applied live via Supabase MCP). The previous `_tracked_audit_columns('resources')` branch referenced V2-era columns (`name`/`active`/`linked_stakeholder_id`) that no longer exist on the table, silently disabling audit tracking for the most-edited fields. Now tracks: `display_name`, `kind`, `fte_default`, `availability_default`, `is_active`, `linked_user_id`, `daily_rate_override`, `daily_rate_override_currency`, `organization_unit_id`.
+- `work_item_resources` now tracks `allocation_pct` (the only user-editable column on the table; the previous list referenced four columns that don't exist).
+- All other 24 CASE branches preserved verbatim from the live function definition. Migration is forward-only and idempotent (`CREATE OR REPLACE FUNCTION`).
+
+**55-δ — Regression tests**
+
+- `src/app/api/_lib/active-tenant.test.ts` — 5 cases pin: no-membership → null, single-membership → earliest, multi-membership without cookie → earliest, valid cookie wins, tampered cookie falls back to earliest legitimate membership.
+- Live MCP verification: `_tracked_audit_columns('resources')` returns the 9-column list, `_tracked_audit_columns('work_item_resources')` returns `[allocation_pct]`.
+- `npx tsc --noEmit` clean.
+- `npx vitest run` — **1253 / 1253 green** (was 1248; +5 from the new resolver tests).
+- `npm run lint` clean (only the pre-existing react-hooks/incompatible-library warning).
+
+### Acceptance Criteria coverage
+
+| AC | Status | Notes |
+|---|---|---|
+| AC-1 | ✅ | `resolveActiveTenantId` reads the `active_tenant_id` cookie and validates against `tenant_memberships`. |
+| AC-2 | ✅ | No inline `order("created_at").limit(1)` for active-tenant resolution remains in `src/app/api/`. |
+| AC-3 | 🟡 | Tampered cookie no longer grants the cookie value; we fall back to the earliest legitimate membership rather than 403. Pragmatic trade-off because returning 403 on every request without a cookie would break existing single-workspace flows. AC-3 may be re-tightened once the FE always writes the cookie on first sign-in (PROJ-55-ε candidate). |
+| AC-4 | ✅ | Settings schema imports the canonical `TOGGLEABLE_MODULES`. |
+| AC-5 | ✅ | GET/PATCH SELECT include `budget_settings`, `output_rendering_settings`, `risk_score_overrides`. |
+| AC-6 | ✅ | `connectors` stays out of `TOGGLEABLE_MODULES`; schema rejects it. |
+| AC-7 | ✅ | `_tracked_audit_columns('resources')` matches live schema (verified). |
+| AC-8 | ✅ | `_tracked_audit_columns('work_item_resources')` includes `allocation_pct`. |
+| AC-9 | ✅ | Resolver test covers single + multi-membership flows + cookie path. |
+| AC-10 | 🟡 | Module-toggle drift test ships with the `TOGGLEABLE_MODULES` import (any new module added to the type is automatically valid in PATCH); explicit module-by-module assertion is deferred. |
+| AC-11 | ✅ | Live MCP query confirms the audit-tracked columns. |
+| AC-12 | ✅ | lint + tsc + vitest all green. |
 
 ## QA Test Results
 
-_To be added by /qa_
+QA is partial — the slice is foundation-stabilization with focused unit coverage:
+- 5 new active-tenant unit tests (PROJ-55-α regression)
+- live SQL verification of the audit function
+- full vitest suite stays green at 1253/1253
+
+A deeper QA pass (manual multi-workspace smoke, cross-route 403 verification) is recommended after the next foundation slice lands, since PROJ-56/PROJ-57 will both stress the resolver further.
 
 ## Deployment
 
-_To be added by /deploy_
+- **Date deployed:** 2026-05-11
+- **Production URL:** https://projektplattform-v3.vercel.app
+- **DB migration:** `20260511140000_proj55g_tracked_audit_columns_repair.sql` applied live via Supabase MCP during the /backend phase. Mirror file committed for `supabase db push` idempotency.
+- **Rollback plan:** the audit function migration is forward-only; reverting the code does NOT touch the function. To rollback the function only, re-apply the PROJ-54-α-era function body (preserved in git history). The active-tenant resolver change is purely additive (cookie precedence + same fallback) — safe to revert via `git revert` without data implications.

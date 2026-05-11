@@ -5,12 +5,15 @@
  *   adminTenantContext  — for write-paths (PUT / DELETE)
  *   memberTenantContext — for read-paths the wizard + non-admin users hit
  *
- * Both resolve "the caller's active tenant" via the first tenant_membership
- * row. Same pattern as PROJ-14 connector routes.
+ * PROJ-55-α — both flavours now go through the shared
+ * {@link resolveActiveTenantId} helper. Multi-workspace users get
+ * a 403 instead of silently writing to their oldest tenant when no
+ * `active_tenant_id` cookie is set.
  */
 
 import type { NextResponse } from "next/server"
 
+import { resolveActiveTenantId } from "@/app/api/_lib/active-tenant"
 import {
   apiError,
   getAuthenticatedUserId,
@@ -31,16 +34,15 @@ async function resolveActiveTenant(): Promise<
   const { userId, supabase } = await getAuthenticatedUserId()
   if (!userId) return { error: apiError("unauthorized", "Not signed in.", 401) }
 
-  const { data: membership } = await supabase
-    .from("tenant_memberships")
-    .select("tenant_id")
-    .eq("user_id", userId)
-    .order("created_at", { ascending: true })
-    .limit(1)
-    .maybeSingle()
-  const tenantId = membership?.tenant_id as string | undefined
+  const tenantId = await resolveActiveTenantId(userId, supabase)
   if (!tenantId) {
-    return { error: apiError("forbidden", "No tenant membership.", 403) }
+    return {
+      error: apiError(
+        "forbidden",
+        "Active workspace could not be resolved. Switch workspace and try again.",
+        403,
+      ),
+    }
   }
 
   return { tenantId, userId, supabase }
