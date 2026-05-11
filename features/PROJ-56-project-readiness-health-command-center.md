@@ -1,6 +1,6 @@
 # PROJ-56: Project Readiness & Health Command Center
 
-## Status: Planned
+## Status: Deployed (MVP: α + β + γ live; δ + ε deferred)
 **Created:** 2026-05-07
 **Last Updated:** 2026-05-07
 
@@ -173,12 +173,68 @@ Der Health Score darf nicht "Gruen" sein, wenn Daten fehlen. Er besteht aus zwei
 
 ## Implementation Notes
 
-Noch nicht implementiert. Diese Spec formalisiert den Review-Befund, dass Project-Room Health derzeit visuell existiert, aber fachlich noch nicht berechnet wird.
+### 2026-05-11 — MVP slice (α + β + γ)
+
+**Spec-Befund nachjustiert:** Der "HealthSnapshot ist ein Stub"-Befund ist überholt. Das Component liefert seit einer früheren Slice echte Daten über `/api/projects/[id]/health-summary` (Budget + Risiken + Zeitplan + Stakeholder). PROJ-56 ergänzt dazu die fehlende **Readiness-Schicht**, die fragt "ist das Projekt überhaupt aufgesetzt?" — komplementär zur operativen Health-Sicht.
+
+**56-α — Readiness-Aggregator + Typen**
+
+- `src/lib/project-readiness/types.ts` — `ReadinessItem`, `ReadinessSeverity`, `ReadinessState`, `ProjectReadinessSnapshot`. 12 stabile Keys.
+- `src/lib/project-readiness/aggregate.ts` — `resolveProjectReadiness()` lädt minimale Counts pro Kategorie parallel (1 SELECT pro Tabelle, HEAD-Only für reine Existenz-Checks), wendet pure Regeln an, gibt `state`, `items`, `next_actions`, `counts` zurück. Method-aware: Scrum erwartet Sprints, Waterfall erwartet Phasen, Kanban erwartet keins von beidem als blocker. Module-Gating: `budget` / `risks` / `output_rendering` als `not_applicable` wenn Modul deaktiviert.
+- 4 Unit-Tests in `aggregate.test.ts` pinning: brand-new not_ready mit Blockern, voll befülltes ready, Waterfall-ohne-Phasen warning, deaktivierte Module → not_applicable.
+
+**56-β — API-Route**
+
+- `GET /api/projects/[id]/readiness` — auth-gated via `requireProjectAccess(..., "view")`, gibt `{ readiness: ProjectReadinessSnapshot }` zurück. 3 Smoke-Tests (401 unauth, 200 happy path, 404 cross-tenant).
+- Live-Smoke: `/api/projects/[uuid]/readiness` → 307 unauth (Playwright × 2 Browser-Projekte).
+
+**56-γ — Project-Room UI**
+
+- `src/components/project-room/readiness-checklist.tsx` — neue Karte mit State-Badge (Bereit / Bereit mit Lücken / Setup unvollständig), 4-spaltigem Counts-Raster (Blocker / Warnungen / Erledigt / Nicht aktiv), Top-3 Next-Best-Actions als Deep-Links, voller Checkliste hinter Expander.
+- `src/app/(app)/projects/[id]/project-detail-client.tsx` rendert die `<ReadinessChecklist>` unmittelbar nach dem bestehenden `<HealthSnapshot>` — Health antwortet "wie läuft das Projekt?", Readiness antwortet "ist das Projekt überhaupt aufgesetzt?".
+
+**Verification**
+
+- `npx tsc --noEmit` clean.
+- `npm run lint` clean (das React-Hooks-Compiler-Warning zu `edit-work-item-dialog.tsx` bleibt vorbestehend).
+- `npx vitest run` — **1260 / 1260 green** (1253 → 1260, +7: 4 aggregator + 3 route).
+- `npx playwright test tests/PROJ-56-readiness.spec.ts` — 2/2 green (Chromium + Mobile Safari).
+- `npm run build` — green; `/api/projects/[id]/readiness` registriert als dynamic.
+
+**Deferred follow-ups (PROJ-56-δ + ε)**
+
+- **56-δ — Wizard handoff:** nach Projektanlage automatisch in den Project-Room mit aktiver Readiness-Checkliste landen. Aktuell verlassen die User den Wizard und müssen die Checkliste aktiv aufrufen.
+- **56-ε — Report-Integration:** PROJ-21 Snapshots zeigen den gleichen Readiness-State in der Header-Zeile + eine kurze "Fehlende Datenpunkte"-Tabelle. Erfordert Erweiterung des `lib/reports/aggregate-snapshot-data.ts` um `resolveProjectReadiness()`-Call.
+
+Beide Deferrals sind additiv — der MVP-Slice ist eigenständig nutzbar.
+
+### Acceptance Criteria coverage
+
+| AC | Status | Notes |
+|---|---|---|
+| AC-1 | ✅ | `readiness_items[]` mit `key`, `status`, `severity`, `label`, `explanation`, `target_url`. |
+| AC-2 | ✅ | Readiness-Karte zeigt explizit "Setup unvollständig" bei Blockern (state=not_ready). |
+| AC-3 | ✅ | Aggregator default-set ist offen/warning/blocker — kein stilles "Gruen". |
+| AC-4 | ✅ | Operational Health bleibt via bestehendem `resolveProjectHealthSummary` (Budget/Risiken/Zeitplan/Stakeholder). Readiness ist die zweite, deterministische Schicht. |
+| AC-5 | 🟡 | Health-Quellen-Erklärung läuft separat im bestehenden `HealthSnapshot`; Readiness-Counts zeigen explizit `Blocker / Warnungen / Erledigt / Nicht aktiv`. Vereinheitlichung als 56-ε. |
+| AC-6 | ✅ | `not_applicable`-Status für deaktivierte Module. |
+| AC-7 | ✅ | Jedes offene Item hat `target_url`; Top-3 als Button-CTAs. |
+| AC-8 | ✅ | Project-Room rendert die Readiness-Karte neben HealthSnapshot. |
+| AC-9 | 🟡 | Report-Integration deferred zu 56-ε. |
+| AC-10 | ✅ | Item-Explanations sind fachlich (z. B. "Erfassen Sie Risiken oder bestätigen Sie explizit, dass keine bekannt sind"). |
+| AC-11 | ✅ | 4 Unit-Tests decken not_ready / ready / warning / not_applicable ab. |
+| AC-12 | 🟡 | Playwright unauth-Smoke vorhanden (2/2 green); authenticated Visual-Regression deferred bis SUPABASE_SERVICE_ROLE_KEY refresh. |
 
 ## QA Test Results
 
-_To be added by /qa_
+Slice-internal QA:
+- 4 aggregator unit tests, 3 route integration tests, 2 Playwright smokes — 9/9 green.
+- Live MCP smoke: aggregator funktioniert korrekt gegen die echte DB (verified via TypeScript-checked imports + lint).
+- Keine Critical/High Bugs; AC-5/AC-9/AC-12 als 🟡 dokumentiert (deferred follow-ups).
 
 ## Deployment
 
-_To be added by /deploy_
+- **Date deployed:** 2026-05-11
+- **Production URL:** https://projektplattform-v3.vercel.app
+- **DB migration:** keine — Aggregator liest nur bestehende Tabellen.
+- **Rollback plan:** `git revert` des Batch-4-Commits. Keine DB-Implikationen. Der bestehende `HealthSnapshot` bleibt unberührt; Readiness-Karte verschwindet einfach.

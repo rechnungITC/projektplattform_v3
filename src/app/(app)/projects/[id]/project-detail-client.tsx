@@ -12,6 +12,7 @@ import Link from "next/link"
 import * as React from "react"
 
 import { HealthSnapshot } from "@/components/project-room/health-snapshot"
+import { ReadinessChecklist } from "@/components/project-room/readiness-checklist"
 import { ReportsSection } from "@/components/project-room/reports-section"
 import { RitualsCard } from "@/components/project-room/rituals-card"
 import { PendingApprovalsCard } from "@/components/projects/decisions/pending-approvals-card"
@@ -217,6 +218,12 @@ export function ProjectDetailClient({ projectId }: ProjectDetailClientProps) {
       </Card>
 
       <HealthSnapshot projectId={projectId} />
+
+      {/* PROJ-56 — Readiness checklist surfaces structural setup
+          gaps next to the operational HealthSnapshot. Health
+          answers "how is it running?", readiness answers "is the
+          project actually set up?". */}
+      <ReadinessChecklist projectId={projectId} />
 
       {/* Method-specific rituals reminder */}
       <RitualsCard config={config} />

@@ -185,6 +185,9 @@ const config = [
       // approvals through the panel).
       "src/hooks/use-dashboard.ts",
       "src/hooks/use-pending-approvals.ts",
+      // PROJ-56: readiness checklist uses the same effect-driven
+      // initial-load pattern as the HealthSnapshot it sits next to.
+      "src/components/project-room/readiness-checklist.tsx",
     ],
     rules: {
       "react-hooks/set-state-in-effect": "off",
