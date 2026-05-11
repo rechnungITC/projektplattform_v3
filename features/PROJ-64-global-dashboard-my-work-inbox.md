@@ -660,5 +660,17 @@ If a regression surfaces:
 
 - ~~Optional fix for M1 (priority sort)~~ — done 2026-05-11 (see "Deviations carried forward" above).
 - ~~Optional refinement for L1 (Reports scope)~~ — done 2026-05-11 (see "Deviations carried forward" above).
+- ~~Optional refinement for L2 (empty "unknown" rows)~~ — done 2026-05-11. `loadProjectHealth` now tracks `activeMilestoneByProject` and suppresses "unknown"-health rows for brand-new projects with zero signals (no open risks AND no active milestones). Regression test `"suppresses brand-new empty projects from Project Health exceptions (L2 polish)"` pins the behavior. Vitest: **1247 / 1247 green** (was 1246; +1).
+
+### Performance benchmark plan (PROJ-64-α follow-up)
+
+A reproducible bench against the live tenant — to confirm the < 1.5 s initial-meaningful-content target — would consist of:
+
+1. **End-to-end latency (cold + warm):** `curl -w "%{time_total}\n"` against `https://projektplattform-v3.vercel.app/api/dashboard/summary` with a valid session cookie. Sample 10× cold + 30× warm; target p95 < 1.5 s.
+2. **Per-query plan inspection** via Supabase MCP `execute_sql` with `EXPLAIN ANALYZE` for the six aggregator queries (`project_memberships` + `tenant_settings` + `work_items` + `decision_approvers` + `risks` + `milestones` + `report_snapshots`). Verify each query uses an index scan (no seq scan on tables > 10k rows).
+3. **Section-level instrumentation:** wrap each `safeSection<T>()` thunk with `console.time(label)` / `console.timeEnd(label)` behind a `DASHBOARD_TIMING_ENABLED` env flag; Vercel function logs surface the per-section ms.
+4. **Tenant-shape sample sizes for the bench:** small tenant (~10 projects, ~50 work items), pilot tenant (~50 projects, ~500 work items), stress tenant (~200 projects, ~2k work items). Cap-tuning trigger: any section > 800 ms on the pilot tenant.
+
+The bench is **not blocking** for the current production tenant. Activate once a pilot tenant has realistic data volume.
 - PROJ-64-γ: emit budget alerts (`budget_overrun` / `budget_threshold` / `missing_fx_rate`) via a pre-aggregated materialized view or lazy-loaded section.
 - Performance baseline: micro-benchmark the aggregator end-to-end on the live tenant (target < 1.5 s for typical data).

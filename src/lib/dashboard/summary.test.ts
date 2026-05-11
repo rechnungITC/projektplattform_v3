@@ -340,6 +340,53 @@ describe("resolveDashboardSummary", () => {
     expect(summary.alerts.data?.items[0].kind).toBe("critical_risk")
   })
 
+  it("suppresses brand-new empty projects from Project Health exceptions (L2 polish)", async () => {
+    // Regression for the QA L2 finding: empty projects (no risks
+    // AND no active milestones) used to surface as "unknown"
+    // exception rows, cluttering the panel for new tenants. The
+    // L2 polish suppresses them — only projects with at least one
+    // signal (open risk or active milestone) make it to the list.
+    const supabase = buildSupabase({
+      project_memberships: {
+        data: [
+          {
+            project_id: PROJECT_ID,
+            projects: {
+              id: PROJECT_ID,
+              tenant_id: TENANT_ID,
+              name: "Empty project",
+              project_type: "software",
+              project_method: "scrum",
+              lifecycle_status: "active",
+              responsible_user_id: USER_ID,
+              is_deleted: false,
+            },
+          },
+        ],
+      },
+      tenant_settings: { data: null },
+      work_items: { data: [] },
+      decision_approvers: { data: [] },
+      risks: { data: [] },
+      // No active milestones → project has zero signals.
+      milestones: { data: [] },
+      report_snapshots: { data: [] },
+    })
+
+    const summary = await resolveDashboardSummary({
+      supabase,
+      userId: USER_ID,
+      tenantId: TENANT_ID,
+      isTenantAdmin: false,
+    })
+
+    // The empty project must NOT appear in the exceptions list.
+    expect(summary.project_health.data?.items).toEqual([])
+    // But the project is still counted as accessible — the FE can
+    // surface "No exceptions in N projects" using this counter.
+    expect(summary.project_health.data?.total_accessible_projects).toBe(1)
+  })
+
   it("filters Recent Reports to project_memberships scope (L1 regression)", async () => {
     // Regression for the QA L1 finding: `report_snapshots` are
     // tenant-readable via RLS, so a naive `tenant_id = X` filter

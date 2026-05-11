@@ -425,6 +425,12 @@ async function loadProjectHealth(
     }
   }
   const overdueByProject = new Map<string, number>()
+  // PROJ-64 L2 polish: also track whether a project has ANY active
+  // milestone, so the exception list can suppress "unknown"-health
+  // rows for brand-new empty projects (no risks AND no milestones
+  // at all) without violating AC-9 ("never show partial data as
+  // green/safe").
+  const activeMilestoneByProject = new Map<string, number>()
   for (const m of milestonesRes.data ?? []) {
     const pid = m.project_id as string
     const status = (m.status as string | null) ?? "planned"
@@ -436,6 +442,10 @@ async function loadProjectHealth(
     ) {
       continue
     }
+    activeMilestoneByProject.set(
+      pid,
+      (activeMilestoneByProject.get(pid) ?? 0) + 1,
+    )
     const target = m.target_date as string | null
     if (!target) continue
     const t = new Date(target).getTime()
@@ -468,6 +478,17 @@ async function loadProjectHealth(
     const lights: HealthState[] = [scheduleState, riskState]
     const health = combineHealthLight(lights)
     if (health === "green") continue
+    // PROJ-64 L2 polish: skip brand-new empty projects from the
+    // exception list. A project surfaces as "unknown" only when
+    // there is no signal at all (no open risks AND no active
+    // milestones) — those are not "stale data" per AC-9, they are
+    // simply projects without inputs yet. Suppressing them keeps
+    // the panel actionable. Projects with partial data (e.g. risks
+    // but no milestones) still surface because their light becomes
+    // yellow/red/green via the active signal.
+    const hasAnySignal =
+      openRisks > 0 || (activeMilestoneByProject.get(project.id) ?? 0) > 0
+    if (health === "unknown" && !hasAnySignal) continue
 
     exceptions.push({
       project_id: project.id,

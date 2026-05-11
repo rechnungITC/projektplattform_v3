@@ -1,8 +1,8 @@
 # PROJ-60: Scrum Sprint Assignment DnD for Stories, Tasks and Bugs
 
-## Status: Approved
+## Status: Deployed
 **Created:** 2026-05-09
-**Last Updated:** 2026-05-09
+**Last Updated:** 2026-05-11
 
 ## Summary
 
@@ -231,3 +231,25 @@ Verification:
 - [x] Sprint Cards zeigen alle zugeordneten Stories/Tasks/Bugs.
 - [x] Tests fuer Single/Bulk/Closed/Invalid-Kind sind gruen.
 - [x] PROJ-25b-Doku ist mit PROJ-60 supersession note aktualisiert.
+
+## Deployment
+
+- **Date deployed:** 2026-05-09 (auto-deploy on push to main); status formalisiert 2026-05-11.
+- **Production URL:** https://projektplattform-v3.vercel.app
+- **Deployed commits (Auswahl):**
+  - `f0791c8` fix(PROJ-60): complete sprint assignment QA
+  - `bedc544` feat(PROJ-60): add sprint item reorder and inline planning
+  - `cf835b5` feat(PROJ-60): allow sprint DnD for tasks and bugs
+- **Vercel deployment:** `dpl_8azA9N8NYUghzWhr7deFLCiW6rx7` (READY, target=production, commit f0791c8). Spätere PROJ-62/64-Deploys bauen darauf auf.
+- **DB migration:** keine PROJ-60-spezifische Migration; greift auf bestehende `sprints` + `work_items` RLS-Policies und PROJ-25b-Plumbing zurück.
+- **Git tag:** `v1.60.0-PROJ-60`
+- **Post-deploy smoke:** unauth-Probes auf den Sprint-Routen liefern 307 → /login wie vor PROJ-60. 33/33 PROJ-60-spezifische Vitest-Cases stabil im 1246/1246-Lauf.
+
+### Rollback plan
+
+1. **Vercel:** Promote auf `dpl_FCEvioG65hfwnWPeMZ8fy9fwgJP2` (565e354) — last known good before PROJ-60 deploy chain.
+2. **Code revert:** `git revert f0791c8 bedc544 cf835b5` (drei Commits). Keine DB-Implikationen.
+
+### Follow-up backlog
+
+- Nichts blockendes. PROJ-61 (Jira-like Releases) ist der natürliche nächste Slice und nutzt PROJ-60 als Sprint-DnD-Backbone.
