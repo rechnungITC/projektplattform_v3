@@ -2,6 +2,23 @@ import { expect, test } from "./fixtures/auth-fixture"
 import { E2E_PROJECT_ID } from "./fixtures/constants"
 
 test.describe("PROJ-58-θ / 3D graph renderer", () => {
+  test("exposes the graph route in project navigation", async ({
+    authenticatedPage,
+  }) => {
+    await authenticatedPage.goto(`/projects/${E2E_PROJECT_ID}`, {
+      waitUntil: "domcontentloaded",
+    })
+
+    const graphLink = authenticatedPage.getByRole("link", {
+      name: /^Graph$/,
+    })
+    await expect(graphLink).toBeVisible()
+    await expect(graphLink).toHaveAttribute(
+      "href",
+      new RegExp(`/projects/${E2E_PROJECT_ID}/graph$`),
+    )
+  })
+
   test("renders a non-empty 3D canvas with mocked graph data", async ({
     authenticatedPage,
   }) => {

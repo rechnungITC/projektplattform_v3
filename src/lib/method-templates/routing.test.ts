@@ -372,6 +372,42 @@ describe("resolveMethodAwareRedirect", () => {
   })
 })
 
+describe("PROJ-58 graph navigation", () => {
+  const ALL_METHODS = [
+    "scrum",
+    "safe",
+    "kanban",
+    "waterfall",
+    "pmi",
+    "prince2",
+    "vxt2",
+    null,
+  ] as const
+
+  for (const method of ALL_METHODS) {
+    const methodLabel = method ?? "null"
+
+    it(`${methodLabel} template exposes the project graph route`, () => {
+      const config = getMethodConfig(method)
+      const graph = config.sidebarSections.find(
+        (section) => section.id === "graph",
+      )
+
+      expect(graph).toMatchObject({
+        label: "Graph",
+        tabPath: "graph",
+      })
+      expect(graph?.requiresModule).toBeUndefined()
+      expect(getProjectSectionHref(PROJECT_ID, "graph", method)).toBe(
+        `${PREFIX}/graph`,
+      )
+      expect(
+        parseSectionFromPathname(`${PREFIX}/graph`, PROJECT_ID, method),
+      ).toBe("graph")
+    })
+  }
+})
+
 describe("module-gating matrix (8 methods × 6 modules)", () => {
   const ALL_MODULES = [
     "risks",

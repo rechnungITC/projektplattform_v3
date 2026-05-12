@@ -7,6 +7,7 @@ import {
   Kanban,
   LayoutDashboard,
   MessageSquare,
+  Network,
   Settings as SettingsIcon,
   Sparkles,
   Users,
@@ -29,6 +30,7 @@ import {
 const SIDEBAR_SECTIONS: SidebarSection[] = [
   { id: "overview", label: "Übersicht", icon: LayoutDashboard, tabPath: "" },
   { id: "board", label: "Board", icon: Kanban, tabPath: "backlog" },
+  { id: "graph", label: "Graph", icon: Network, tabPath: "graph" },
   { id: "stakeholder", label: "Stakeholder", icon: Users, tabPath: "stakeholder" },
   { id: "stakeholder-health", label: "Stakeholder-Health", icon: Gauge, tabPath: "stakeholder-health" },
   { id: "risks", label: "Risiken", icon: AlertTriangle, tabPath: "risiken", requiresModule: "risks" },

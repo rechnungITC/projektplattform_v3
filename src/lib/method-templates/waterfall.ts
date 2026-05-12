@@ -36,6 +36,7 @@ const SIDEBAR_SECTIONS: SidebarSection[] = [
   { id: "phases", label: "Phasen", icon: Layers, tabPath: "planung", routeSlug: "phasen" },
   { id: "work-packages", label: "Arbeitspakete", icon: Package, tabPath: "backlog", routeSlug: "arbeitspakete" },
   { id: "dependencies", label: "Abhängigkeiten", icon: Network, tabPath: "abhaengigkeiten" },
+  { id: "graph", label: "Graph", icon: Network, tabPath: "graph" },
   { id: "stakeholder", label: "Stakeholder", icon: Users, tabPath: "stakeholder" },
   { id: "stakeholder-health", label: "Stakeholder-Health", icon: Gauge, tabPath: "stakeholder-health" },
   { id: "risks", label: "Risiken", icon: AlertTriangle, tabPath: "risiken", requiresModule: "risks" },
