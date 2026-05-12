@@ -1,6 +1,6 @@
 # PROJ-58: Interactive Project Graph & Decision Simulation
 
-## Status: In Progress (α + β-backend + β-UI SVG + γ edge-delete + δ critical-overlay + ε decision-sim + ζ AI-proposal-nodes + η framer-motion polish live; θ 3D-Verbindungsgraph ist Must-have und pending /architecture)
+## Status: Architected (α + β-backend + β-UI SVG + γ edge-delete + δ critical-overlay + ε decision-sim + ζ AI-proposal-nodes + η framer-motion polish live; θ 3D-Verbindungsgraph ready for /frontend)
 **Created:** 2026-05-07
 **Last Updated:** 2026-05-12
 
@@ -108,7 +108,7 @@ MVP-Simulation:
 | **58-ε** | Entscheidungssimulation: `+ X Tage / Y EUR` Detail-Pill am Knoten | Nein | ✅ Deployed (2026-05-11) |
 | **58-ζ** | KI-Vorschlags-Knoten aus `ai_proposals` (recommendation-Knoten-Art) | Nein | ✅ Deployed (2026-05-11) |
 | **58-η** | Motion-Polish: framer-motion auf SVG-Renderer (Node-Enter, Hover, Critical-Path-Transitions) — `@xyflow/react` weiter deferred per CIA 2026-05-11 | Nein | ✅ Deployed (2026-05-12) |
-| **58-θ** | 3D-Verbindungsgraph: WebGL/Three.js-basierte Ansicht mit raeumlichem Layout, Kanten-Typisierung, Interaktion, Filter, Fallback und Visual-QA | Nein erwartet | 🔴 Must-have pending (`/architecture` next) |
+| **58-θ** | 3D-Verbindungsgraph: WebGL/Three.js-basierte Ansicht mit raeumlichem Layout, Kanten-Typisierung, Interaktion, Filter, Fallback und Visual-QA | Nein erwartet | 🟦 Architected (ready for `/frontend`) |
 
 ## Routing / Touchpoints
 
@@ -370,6 +370,163 @@ Konsequenz:
 - Bestehende 2D-SVG-Ansicht bleibt als Fallback und fachliche Basis erhalten.
 - `/architecture` muss den 3D-Renderer locken. Da aktuell nur `framer-motion` im Dependency-Tree vorhanden ist und `three`/`@react-three/fiber` noch nicht installiert sind, ist die Dependency-Entscheidung vor Implementierung explizit zu dokumentieren.
 - `58-θ` darf keine 3D-Spielerei werden: Akzeptanzkriterium ist lesbare, interaktive, raeumliche Kanten-/Knoten-Semantik fuer echte Projektsteuerung.
+
+## Tech Design (Solution Architect) — 58-θ 3D-Verbindungsgraph
+
+> **Architected:** 2026-05-12
+> **Scope:** Frontend-first. Keine neue Tabelle, keine neue API-Route, keine RLS-Aenderung. Der bestehende `GET /api/projects/[id]/graph` Snapshot bleibt die Quelle der Wahrheit.
+> **Produktentscheidung:** 3D ist Pflicht. Die Architektur bewertet nur den saubersten Weg dorthin.
+
+### Gesamtentscheidung
+
+`58-θ` baut die Graph-Route als **3D-first Experience** auf Basis von **Three.js + @react-three/fiber + @react-three/drei**. Die bestehende SVG-Ansicht bleibt als 2D-Fallback, fuer Reduced-Motion/WebGL-Blocker und als robuste Debug-/A11y-Absicherung.
+
+Warum diese Wahl:
+
+- Das Projekt nutzt React 19. Die offizielle React-Three-Fiber-Doku koppelt `@react-three/fiber@9` an React 19 und beschreibt R3F als React-Renderer fuer Three.js, sodass die Integration in die bestehende Next/React-Komponentenstruktur passt.
+- Three.js ist der stabile WebGL-Unterbau. Die aktuelle Three.js-Doku beschreibt `WebGLRenderer` als WebGL-2-Renderer; damit ist der Renderer-Pfad klar und browsernah.
+- Spezialbibliotheken wie `react-force-graph-3d` liefern schnelle Force-Graphs mit Richtungspfeilen/Partikeln, aber sie fuehren ein starkes Physics-/Force-Modell ein. Fuer Projektsteuerung braucht der Nutzer wiedererkennbare Raeume, Filter und stabile Positionen. Deshalb nutzt `58-θ` R3F/Three.js direkt und nur eine **deterministische Domänen-Layoutlogik**, keine zufaellig springende Force-Ansicht.
+
+### Component Structure (Visual Tree)
+
+```
+Project Graph Page
++-- ProjectGraphView (bestehender Fetch-/State-Container)
+    +-- GraphToolbar
+    |   +-- View Toggle: 3D / 2D Fallback
+    |   +-- Filter: Knotenarten, Kantentypen, Critical Path, nur Blocker
+    |   +-- Camera Actions: Fit, Reset, Fokus verlassen
+    +-- Graph3DCanvas (neu, route-lokal geladen)
+    |   +-- SceneRoot
+    |   |   +-- Camera + OrbitControls
+    |   |   +-- NodeLayer3D
+    |   |   +-- EdgeLayer3D
+    |   |   +-- CriticalPathOverlay3D
+    |   |   +-- SelectionRaycaster / HoverState
+    |   |   +-- PerformanceGuard / LOD
+    |   +-- WebGLUnavailableFallback
+    +-- Graph2DFallback (bestehender SVG-Renderer)
+    +-- GraphLegend
+    +-- GraphDetailPanel
+        +-- Focused Node Detail
+        +-- Focused Edge Detail
+        +-- Navigation to Domain Route
+```
+
+### Data Model (plain language)
+
+Es wird **kein neues Datenmodell** fuer `58-θ` eingefuehrt.
+
+Der bestehende Snapshot liefert:
+
+- Knoten mit ID, Typ, Label, Tonalitaet, Zielroute und fachlichen Attributen.
+- Kanten mit ID, Startknoten, Zielknoten, Beziehungstyp, Label und optionaler Dependency-ID.
+- Zaehlungen nach Knoten- und Kantentyp.
+
+Der 3D-Renderer erzeugt daraus nur eine Darstellungsform:
+
+- 3D-Position pro Knoten.
+- Kantenstil pro Beziehungstyp.
+- Richtungssignal pro Kante.
+- Anzeigezustand fuer Hover, Fokus, Filter, Critical Path und Reduced Motion.
+
+Quelle der Wahrheit bleibt immer die Domain/API. 3D speichert keine eigenen Projektdaten.
+
+### Layout-Entscheidung
+
+`58-θ` verwendet ein **deterministisches 3D-Domaenenlayout** statt einem freien Force-Layout.
+
+Grundordnung:
+
+- Projektknoten im Zentrum.
+- Phasen und Meilensteine als innere Zeit-/Struktur-Schale.
+- Work Items als Delivery-Schale.
+- Risiken, Entscheidungen, Stakeholder, Budget und Recommendations als thematische Satelliten-Schalen.
+- Cross-Project- und Dependency-Kanten werden bewusst raeumlich hervorgehoben, statt in der gleichen Ebene mit Strukturkanten zu verschwimmen.
+
+Warum:
+
+- Projektleiter muessen denselben Graphen mehrfach wiedererkennen.
+- Kritische Pfade und Blocker sollen nicht nach jedem Render anders liegen.
+- Edge-Clutter laesst sich durch Filter, Kurven, Tiefenstaffelung und LOD kontrollieren, ohne ein eigenes Physics-System zu bauen.
+
+### Edge Semantics
+
+Kanten sind der zentrale Zweck von `58-θ`; sie duerfen nicht zur unlesbaren Linienwolke werden.
+
+Jede Kante bekommt:
+
+- Richtung: Pfeilkopf oder animierter Partikel entlang der Kante.
+- Typ: klarer Farb-/Linienstil pro Kantentyp.
+- Kritikalitaet: staerkerer Kontrast fuer Critical Path und Blocker.
+- Quelle: `dependency_id` bedeutet editierbare Dependency-Kante; fehlende Dependency-ID bedeutet abgeleitete Domain-Kante.
+- Fokuszustand: Hover/Click hebt Kante, Startknoten und Zielknoten gemeinsam hervor.
+
+### Interaction Model
+
+Nutzer kann:
+
+- rotieren, zoomen und verschieben.
+- auf Knoten fokussieren.
+- auf Kanten fokussieren.
+- per Fit-to-view zur Gesamtansicht zurueck.
+- Filter fuer Knoten- und Kantentypen setzen.
+- Critical-Path-Overlay aktivieren.
+- bei Knoten zur bestehenden Detailroute springen.
+- bei editierbaren Dependency-Kanten den bestehenden Delete-/Confirm-Pfad weiterverwenden.
+
+### Performance- und Fallback-Strategie
+
+- 3D-Code wird route-lokal geladen, damit andere App-Bereiche keinen Bundle-Penalty tragen.
+- Bei fehlendem WebGL, sehr kleinem Viewport oder aktivem Reduced Motion bleibt der 2D-Fallback verfuegbar.
+- Bei grossen Graphen greift LOD:
+  - Labels nur fuer Fokus/nahe Knoten.
+  - weniger wichtige Kanten gedimmt.
+  - Filter-Presets fuer Management, Delivery, Risiko, Stakeholder und Budget.
+  - harte Warnung, wenn die Datenmenge oberhalb des erwarteten 250/500-Ziels liegt.
+
+### Dependencies
+
+Geplante neue Dependencies fuer `/frontend`:
+
+| Package | Zweck | Entscheidung |
+|---|---|---|
+| `three` | WebGL-/3D-Renderer-Grundlage | Installieren |
+| `@types/three` | TypeScript-Typen fuer Three.js | Installieren |
+| `@react-three/fiber` | React-Renderer fuer Three.js, passend zu React 19 mit v9 | Installieren |
+| `@react-three/drei` | OrbitControls, Html/Label-Helfer, Bounds/Fit-Hilfen | Installieren |
+
+Nicht gewaehlt fuer den ersten `58-θ`-Build:
+
+| Option | Warum nicht zuerst |
+|---|---|
+| `react-force-graph-3d` | Sehr schnell fuer Force-Graph-Prototypen, aber weniger Kontrolle ueber stabile PM-Domaenenraeume; als Spike-/Fallback-Kandidat behalten, falls R3F-Edge-Rendering zu teuer wird. |
+| Eigene Physics-/Graph-Engine | Explizit out-of-scope; zu viel Risiko fuer Wartung und Performance. |
+| `@xyflow/react` | 2D-Graph-Library, loest die 3D-Must-have-Anforderung nicht. |
+
+### Backend Need
+
+Kein neuer Backend-Slice fuer `58-θ`.
+
+Das bestehende Backend liefert bereits `nodes[]` und `edges[]`. Der `/frontend`-Slice darf optional kleine, rueckwaertskompatible Felder anfragen/anzeigen, aber keine Migration und keine neue Route sind fuer den 3D-Start erforderlich.
+
+### QA Gates fuer `/frontend`
+
+Pflicht vor Deploy:
+
+- Unit-Test fuer den 3D-Adapter: Snapshot -> 3D-Knoten/Kanten/Styles.
+- Component-Test fuer Filter, Fokuszustand und Fallback-Auswahl.
+- Playwright Desktop Screenshot: Canvas ist nicht blank, Knoten und Kanten sichtbar.
+- Playwright Mobile/Tablet Screenshot: keine Toolbar-/Canvas-/Detailpanel-Ueberdeckung.
+- Canvas/WebGL-Pixel-Smoke: mindestens Hintergrund, mehrere Knoten und mehrere Kanten rendern.
+- Reduced-Motion/Fallback-Test: 2D-Fallback erscheint nutzbar.
+- Performance-Smoke mit synthetischem 250-Knoten/500-Kanten-Snapshot.
+
+### Handoff
+
+Naechster Skill: `/frontend` fuer `58-θ`.
+
+Frontend baut zuerst den route-lokal geladenen 3D-Renderer und ersetzt die primaere Darstellung in `ProjectGraphView`; danach folgen Edge-Fokus, Filter, Detailpanel-Integration und Visual-QA. `/backend` ist erst noetig, wenn im UI-Test echte Datenluecken im bestehenden Graph-Snapshot sichtbar werden.
 
 ## QA Test Results
 
