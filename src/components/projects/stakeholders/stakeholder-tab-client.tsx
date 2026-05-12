@@ -44,6 +44,7 @@ import { StakeholderForm } from "./stakeholder-form"
 import { StakeholderMatrix } from "./stakeholder-matrix"
 import { StakeholderSuggestions } from "./stakeholder-suggestions"
 import { StakeholderTable } from "./stakeholder-table"
+import { CommunicationTab } from "@/components/stakeholders/communication/communication-tab"
 import { ProfileTab } from "@/components/stakeholders/profile/profile-tab"
 
 type View = "list" | "matrix"
@@ -413,6 +414,7 @@ export function StakeholderTabClient({ projectId }: StakeholderTabClientProps) {
                 <TabsList>
                   <TabsTrigger value="form">Stammdaten</TabsTrigger>
                   <TabsTrigger value="profile">Profil</TabsTrigger>
+                  <TabsTrigger value="communication">Kommunikation</TabsTrigger>
                   <TabsTrigger value="history">Historie</TabsTrigger>
                 </TabsList>
                 <TabsContent value="form" className="mt-4">
@@ -463,6 +465,12 @@ export function StakeholderTabClient({ projectId }: StakeholderTabClientProps) {
                     projectId={projectId}
                     stakeholderId={drawer.stakeholder.id}
                     stakeholderName={drawer.stakeholder.name}
+                  />
+                </TabsContent>
+                <TabsContent value="communication" className="mt-4">
+                  <CommunicationTab
+                    projectId={projectId}
+                    stakeholderId={drawer.stakeholder.id}
                   />
                 </TabsContent>
                 <TabsContent value="history" className="mt-4">
