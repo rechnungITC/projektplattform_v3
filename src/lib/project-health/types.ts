@@ -32,6 +32,11 @@ export interface ProjectHealthSummary {
     green_count: number
     state: HealthState
   }
+  communications: {
+    open_count: number
+    overdue_count: number
+    state: HealthState
+  }
   health: {
     light: HealthLight
     label: string

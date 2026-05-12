@@ -1,12 +1,19 @@
 "use client"
 
-import { Loader2, MessageSquarePlus, Trash2 } from "lucide-react"
+import {
+  CheckCircle2,
+  Clock,
+  Loader2,
+  MessageSquarePlus,
+  Trash2,
+} from "lucide-react"
 import * as React from "react"
 import { toast } from "sonner"
 
 import { Badge } from "@/components/ui/badge"
 import { Button } from "@/components/ui/button"
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
+import { Checkbox } from "@/components/ui/checkbox"
 import {
   Dialog,
   DialogContent,
@@ -29,8 +36,11 @@ import { Textarea } from "@/components/ui/textarea"
 import {
   createInteraction,
   deleteInteraction,
+  listAwaitingInteractions,
   listInteractions,
+  updateInteraction,
   updateParticipantSignal,
+  type AwaitingInteraction,
   type InteractionParticipant,
   type StakeholderInteraction,
 } from "@/lib/stakeholder-interactions/api"
@@ -133,6 +143,12 @@ export function CommunicationTab({
 
   return (
     <div className="space-y-4">
+      <AwaitingResponsesSection
+        projectId={projectId}
+        stakeholderId={stakeholderId}
+        reloadTick={reloadTick}
+        onChanged={onCreated}
+      />
       <AddInteractionForm
         projectId={projectId}
         stakeholderId={stakeholderId}
@@ -146,6 +162,121 @@ export function CommunicationTab({
         onSignalsChanged={onCreated}
       />
     </div>
+  )
+}
+
+// ---------------------------------------------------------------------------
+// PROJ-34-δ — Offene Antworten + Overdue-Badge + Quick-Action
+// ---------------------------------------------------------------------------
+
+function AwaitingResponsesSection({
+  projectId,
+  stakeholderId,
+  reloadTick,
+  onChanged,
+}: {
+  projectId: string
+  stakeholderId: string
+  reloadTick: number
+  onChanged: () => void
+}) {
+  const [rows, setRows] = React.useState<AwaitingInteraction[] | null>(null)
+
+  React.useEffect(() => {
+    let cancelled = false
+    listAwaitingInteractions(projectId, stakeholderId)
+      .then((r) => {
+        if (!cancelled) setRows(r)
+      })
+      .catch((err) => {
+        if (!cancelled) {
+          // Fail-soft: hide the section if the endpoint errors.
+          toast.error("Offene Antworten konnten nicht geladen werden", {
+            description:
+              err instanceof Error ? err.message : "Unbekannter Fehler",
+          })
+          setRows([])
+        }
+      })
+    return () => {
+      cancelled = true
+    }
+  }, [projectId, stakeholderId, reloadTick])
+
+  if (rows == null) return null
+  if (rows.length === 0) return null
+
+  const overdueCount = rows.filter((r) => r.is_overdue).length
+
+  const markResponded = async (id: string) => {
+    try {
+      await updateInteraction(projectId, id, {
+        awaiting_response: false,
+        response_received_date: new Date().toISOString(),
+      })
+      toast.success("Als beantwortet markiert.")
+      onChanged()
+    } catch (err) {
+      toast.error("Update fehlgeschlagen", {
+        description: err instanceof Error ? err.message : "Unbekannter Fehler",
+      })
+    }
+  }
+
+  return (
+    <Card>
+      <CardHeader>
+        <CardTitle className="flex items-center gap-2 text-sm">
+          <Clock className="h-4 w-4" aria-hidden /> Offene Antworten
+          <Badge variant="outline" className="ml-1 text-[10px]">
+            {rows.length}
+          </Badge>
+          {overdueCount > 0 ? (
+            <Badge variant="destructive" className="text-[10px]">
+              {overdueCount} überfällig
+            </Badge>
+          ) : null}
+        </CardTitle>
+      </CardHeader>
+      <CardContent className="space-y-2">
+        {rows.map((row) => {
+          const dueLabel = row.response_due_date
+            ? new Date(row.response_due_date).toLocaleDateString("de-DE")
+            : "(kein Fälligkeitsdatum)"
+          return (
+            <div
+              key={row.id}
+              className={`flex flex-wrap items-center justify-between gap-2 rounded-md border p-2 text-sm ${
+                row.is_overdue
+                  ? "border-red-500/40 bg-red-500/5"
+                  : "border-border"
+              }`}
+            >
+              <div className="flex min-w-0 flex-1 flex-col gap-1">
+                <p className="truncate">{row.summary}</p>
+                <p className="text-[11px] text-muted-foreground">
+                  Fällig: {dueLabel}{" "}
+                  {row.is_overdue ? (
+                    <span className="font-medium text-red-600">
+                      · überfällig
+                    </span>
+                  ) : null}
+                </p>
+              </div>
+              <Button
+                type="button"
+                size="sm"
+                variant="outline"
+                onClick={() => markResponded(row.id)}
+              >
+                <CheckCircle2 className="mr-1 h-3.5 w-3.5" aria-hidden />
+                Antwort erhalten
+              </Button>
+            </div>
+          )
+        })}
+      </CardContent>
+    </Card>
   )
 }
 
@@ -170,7 +301,14 @@ function AddInteractionForm({
     new Date().toISOString().slice(0, 16),
   )
   const [summary, setSummary] = React.useState("")
+  // PROJ-34-δ — only outbound interactions can plausibly await a reply.
+  // The form hides these inputs for non-outbound directions but the
+  // backend also enforces consistency on commit.
+  const [awaitingResponse, setAwaitingResponse] = React.useState(false)
+  const [responseDueDate, setResponseDueDate] = React.useState<string>("")
   const [submitting, setSubmitting] = React.useState(false)
+
+  const canAwaitResponse = direction === "outbound"
 
   const submit = async (event: React.FormEvent) => {
     event.preventDefault()
@@ -185,9 +323,16 @@ function AddInteractionForm({
         direction,
         interaction_date: new Date(interactionDate).toISOString(),
         summary: summary.trim(),
+        awaiting_response: canAwaitResponse ? awaitingResponse : false,
+        response_due_date:
+          canAwaitResponse && awaitingResponse && responseDueDate.length > 0
+            ? responseDueDate
+            : null,
       })
       toast.success("Interaktion erfasst.")
       setSummary("")
+      setAwaitingResponse(false)
+      setResponseDueDate("")
       onCreated()
     } catch (err) {
       toast.error("Anlegen fehlgeschlagen", {
@@ -282,6 +427,31 @@ function AddInteractionForm({
               rows={3}
             />
           </div>
+          {canAwaitResponse ? (
+            <div className="flex flex-wrap items-end gap-3">
+              <Label className="flex cursor-pointer items-center gap-2 text-xs">
+                <Checkbox
+                  checked={awaitingResponse}
+                  onCheckedChange={(v) => setAwaitingResponse(v === true)}
+                />
+                Antwort erwartet
+              </Label>
+              {awaitingResponse ? (
+                <div>
+                  <Label htmlFor="response-due-date" className="text-xs">
+                    Fällig am
+                  </Label>
+                  <Input
+                    id="response-due-date"
+                    type="date"
+                    value={responseDueDate}
+                    onChange={(e) => setResponseDueDate(e.target.value)}
+                    className="h-8 w-auto text-xs"
+                  />
+                </div>
+              ) : null}
+            </div>
+          ) : null}
           <div className="flex justify-end">
             <Button type="submit" size="sm" disabled={submitting}>
               {submitting ? (
