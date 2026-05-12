@@ -1,7 +1,15 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest"
 
-import { invokeNarrativeGeneration, invokeRiskGeneration } from "./router"
-import type { NarrativeAutoContext, RiskAutoContext } from "./types"
+import {
+  invokeNarrativeGeneration,
+  invokeRiskGeneration,
+  invokeSentimentGeneration,
+} from "./router"
+import type {
+  NarrativeAutoContext,
+  RiskAutoContext,
+  SentimentAutoContext,
+} from "./types"
 
 interface ChainResult {
   data: unknown
@@ -361,5 +369,109 @@ describe("invokeNarrativeGeneration", () => {
       supabase as ReturnType<typeof buildSupabaseMock>
     )._insertRunChain.insert.mock.calls[0]?.[0] as Record<string, unknown>
     expect(insertCall?.purpose).toBe("narrative")
+  })
+})
+
+// ---------------------------------------------------------------------------
+// PROJ-34-γ.1 — invokeSentimentGeneration tests
+// ---------------------------------------------------------------------------
+
+function baseSentimentContext(): SentimentAutoContext {
+  return {
+    summary:
+      "Stakeholder X war zurückhaltend, hat aber konstruktive Vorschläge gemacht.",
+    participants: [
+      { stakeholder_id: "11111111-1111-4111-8111-aaaaaaaaaaaa", label: "X" },
+      { stakeholder_id: "11111111-1111-4111-8111-bbbbbbbbbbbb", label: "Y" },
+    ],
+  }
+}
+
+describe("invokeSentimentGeneration", () => {
+  let originalApiKey: string | undefined
+  let originalAiBlock: string | undefined
+
+  beforeEach(() => {
+    originalApiKey = process.env.ANTHROPIC_API_KEY
+    originalAiBlock = process.env.EXTERNAL_AI_DISABLED
+    delete process.env.ANTHROPIC_API_KEY
+    delete process.env.EXTERNAL_AI_DISABLED
+  })
+  afterEach(() => {
+    if (originalApiKey === undefined) delete process.env.ANTHROPIC_API_KEY
+    else process.env.ANTHROPIC_API_KEY = originalApiKey
+    if (originalAiBlock === undefined) delete process.env.EXTERNAL_AI_DISABLED
+    else process.env.EXTERNAL_AI_DISABLED = originalAiBlock
+  })
+
+  it("returns one neutral signal per participant via stub provider", async () => {
+    const supabase = buildSupabaseMock({
+      insertRunResult: {
+        data: { id: "run-sentiment-1" },
+        error: null,
+      },
+    })
+
+    const result = await invokeSentimentGeneration({
+      supabase: supabase as any,
+      tenantId: "00000000-0000-4000-8000-000000000001",
+      projectId: "00000000-0000-4000-8000-000000000002",
+      actorUserId: "00000000-0000-4000-8000-000000000003",
+      context: baseSentimentContext(),
+    })
+
+    expect(result.run_id).toBe("run-sentiment-1")
+    expect(result.provider).toBe("stub")
+    expect(result.signals).toHaveLength(2)
+    expect(result.signals[0].sentiment).toBe(0)
+    expect(result.signals[0].cooperation_signal).toBe(0)
+    expect(result.signals.map((s) => s.stakeholder_id).sort()).toEqual([
+      "11111111-1111-4111-8111-aaaaaaaaaaaa",
+      "11111111-1111-4111-8111-bbbbbbbbbbbb",
+    ])
+    // Class-3 forces local routing — when the test tenant has no own
+    // provider keys, the router falls back to the Stub and flags
+    // external_blocked so callers can surface that to the user. The
+    // call still completes and the signals are populated.
+    expect(["success", "external_blocked"]).toContain(result.status)
+    expect(result.external_blocked).toBe(true)
+  })
+
+  it("always classifies as Class-3 (CIA-L1 lock)", async () => {
+    const supabase = buildSupabaseMock({
+      insertRunResult: { data: { id: "run-sentiment-2" }, error: null },
+    })
+
+    const result = await invokeSentimentGeneration({
+      supabase: supabase as any,
+      tenantId: "00000000-0000-4000-8000-000000000001",
+      projectId: "00000000-0000-4000-8000-000000000002",
+      actorUserId: "00000000-0000-4000-8000-000000000003",
+      context: {
+        summary: "Komplett harmloser Text ohne Personenbezug.",
+        participants: [],
+      },
+    })
+
+    expect(result.classification).toBe(3)
+  })
+
+  it("persists ki_runs purpose='sentiment'", async () => {
+    const supabase = buildSupabaseMock({
+      insertRunResult: { data: { id: "run-sentiment-3" }, error: null },
+    })
+
+    await invokeSentimentGeneration({
+      supabase: supabase as any,
+      tenantId: "00000000-0000-4000-8000-000000000001",
+      projectId: "00000000-0000-4000-8000-000000000002",
+      actorUserId: "00000000-0000-4000-8000-000000000003",
+      context: baseSentimentContext(),
+    })
+
+    const insertCall = (
+      supabase as ReturnType<typeof buildSupabaseMock>
+    )._insertRunChain.insert.mock.calls[0]?.[0] as Record<string, unknown>
+    expect(insertCall?.purpose).toBe("sentiment")
   })
 })

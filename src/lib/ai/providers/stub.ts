@@ -20,11 +20,13 @@ import type {
   AIProvider,
   NarrativeGenerationRequest,
   RiskGenerationRequest,
+  SentimentGenerationRequest,
 } from "./types"
 import type {
   NarrativeGenerationOutput,
   RiskGenerationOutput,
   RiskSuggestion,
+  SentimentGenerationOutput,
 } from "../types"
 
 const TEMPLATES: Array<Omit<RiskSuggestion, "title"> & { titleSeed: string }> = [
@@ -144,6 +146,36 @@ export class StubProvider implements AIProvider {
 
     return {
       text,
+      usage: {
+        input_tokens: 0,
+        output_tokens: 0,
+        latency_ms: Date.now() - start,
+      },
+    }
+  }
+
+  /**
+   * PROJ-34-γ.1 — deterministic sentiment fallback.
+   *
+   * Emits one neutral signal per participant (sentiment=0,
+   * cooperation_signal=0, confidence=0.3). The downstream review queue
+   * still requires a human accept/reject, so neutral defaults are safe.
+   * Real providers (Anthropic etc.) will fill these with actual values
+   * in a later slice; for now Stub keeps the pipeline running locally
+   * and in Class-3 tenants without their own AI keys.
+   */
+  async generateSentiment(
+    request: SentimentGenerationRequest,
+  ): Promise<SentimentGenerationOutput> {
+    const start = Date.now()
+    const signals = request.context.participants.map((p) => ({
+      stakeholder_id: p.stakeholder_id,
+      sentiment: 0,
+      cooperation_signal: 0,
+      confidence: 0.3,
+    }))
+    return {
+      signals,
       usage: {
         input_tokens: 0,
         output_tokens: 0,

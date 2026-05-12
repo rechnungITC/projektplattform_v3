@@ -31,6 +31,7 @@ import type {
 import {
   classifyNarrativeAutoContext,
   classifyRiskAutoContext,
+  classifySentimentAutoContext,
 } from "./classify"
 import { checkCostCap } from "./cost-cap"
 import { resolveProvider, type ResolvedProvider } from "./key-resolver"
@@ -49,6 +50,9 @@ import type {
   RiskSuggestion,
   RouterNarrativeResult,
   RouterRiskResult,
+  RouterSentimentResult,
+  SentimentAutoContext,
+  SentimentSignal,
 } from "./types"
 
 interface InvokeRiskGenerationArgs {
@@ -505,6 +509,123 @@ export async function invokeNarrativeGeneration({
     model_id: provider.modelId,
     status: finalStatus,
     text,
+    external_blocked: externalBlocked,
+    error_message: providerError ?? blockedReason ?? undefined,
+  }
+}
+
+// ---------------------------------------------------------------------------
+// PROJ-34-γ.1 — sentiment-purpose router
+// ---------------------------------------------------------------------------
+
+interface InvokeSentimentGenerationArgs {
+  supabase: SupabaseClient
+  tenantId: string
+  projectId: string
+  actorUserId: string
+  context: SentimentAutoContext
+}
+
+/**
+ * PROJ-34-γ.1 — generate per-participant sentiment + cooperation signals
+ * for an interaction summary.
+ *
+ * Class-3 hard-fixed per CIA-L1 — `classifySentimentAutoContext` always
+ * returns 3, so the router will only ever pick a tenant-supplied local
+ * provider or the deterministic Stub. The Stub emits neutral signals
+ * (0/0, confidence 0.3) so the downstream review queue still requires
+ * human accept/reject.
+ *
+ * Mirrors `invokeNarrativeGeneration`:
+ *   - calls `provider.generateSentiment`
+ *   - never writes to `ki_suggestions` (signals land on the
+ *     `stakeholder_interaction_participants` bridge via the route handler)
+ *   - on provider error: falls back to the StubProvider so the UI never
+ *     sees a 5xx
+ */
+export async function invokeSentimentGeneration({
+  supabase,
+  tenantId,
+  projectId,
+  actorUserId,
+  context,
+}: InvokeSentimentGenerationArgs): Promise<RouterSentimentResult> {
+  const overrides = await loadTenantOverrides(supabase, tenantId)
+  const classification = classifySentimentAutoContext(
+    context,
+    overrides.privacyDefault as DataClass,
+  )
+  const choice = await selectProviderForPurpose(
+    supabase,
+    tenantId,
+    "sentiment",
+    classification,
+    overrides.providerConfig,
+  )
+  const { provider, externalBlocked, blockedReason } = await applyCostCap(
+    supabase,
+    tenantId,
+    choice,
+  )
+
+  const runId = await insertKiRun(supabase, {
+    tenantId,
+    projectId,
+    actorUserId,
+    purpose: "sentiment",
+    classification,
+    provider,
+  })
+
+  let signals: SentimentSignal[] = []
+  let inputTokens: number | null = null
+  let outputTokens: number | null = null
+  let latencyMs: number | null = null
+  let providerError: string | null = null
+
+  try {
+    if (!provider.generateSentiment) {
+      throw new Error(
+        `Provider ${provider.name} does not implement generateSentiment`,
+      )
+    }
+    const result = await provider.generateSentiment({ context })
+    signals = result.signals
+    inputTokens = result.usage.input_tokens
+    outputTokens = result.usage.output_tokens
+    latencyMs = result.usage.latency_ms
+  } catch (err) {
+    providerError = err instanceof Error ? err.message : String(err)
+    // Final defense — synthesize neutral signals via the Stub so callers
+    // never see an empty response.
+    const fallback = await new StubProvider().generateSentiment!({ context })
+    signals = fallback.signals
+  }
+
+  let finalStatus: "success" | "error" | "external_blocked"
+  if (providerError) {
+    finalStatus = "error"
+  } else if (externalBlocked) {
+    finalStatus = "external_blocked"
+  } else {
+    finalStatus = "success"
+  }
+
+  await updateKiRunStatus(supabase, runId, {
+    status: finalStatus,
+    inputTokens,
+    outputTokens,
+    latencyMs,
+    errorMessage: providerError ?? blockedReason ?? null,
+  })
+
+  return {
+    run_id: runId,
+    classification,
+    provider: provider.name as AIProviderName,
+    model_id: provider.modelId,
+    status: finalStatus,
+    signals,
     external_blocked: externalBlocked,
     error_message: providerError ?? blockedReason ?? undefined,
   }
