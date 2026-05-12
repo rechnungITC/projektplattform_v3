@@ -1,8 +1,8 @@
 # PROJ-42 — Schema-Drift-CI-Guard
 
-## Status: Planned
+## Status: Deployed (α live + branch protection on `main` enforced as Required-Check since 2026-05-12)
 **Created:** 2026-05-04
-**Last Updated:** 2026-05-04
+**Last Updated:** 2026-05-12
 
 ## Origin
 
@@ -347,7 +347,7 @@ docker stop pp_drift
 - AC-10 ✅ — `.github/workflows/schema-drift.yml` defined with `pull_request` (branches: main) + `push` (branches: main) triggers. Non-zero exit fails the workflow (verified by exit=1 path).
 - AC-11 ✅ — `npm run check:schema-drift` invokes the same `tsx scripts/check-schema-drift/index.ts` entrypoint as CI. Same logic, same exit-code semantics.
 - AC-12 ✅ — End-to-end timing: 10s (stubs + migrations) + 1s (drift-check) = **11s total**. AC bound is 60s. Comfortable margin even for CI runner overhead.
-- AC-12b 🟡 — Workflow file present, but **branch-protection rule must be set manually one-time** in GitHub repo settings. Documented in the spec; not a code issue. **Not a bug** — explicit out-of-band step per spec.
+- AC-12b ✅ — Branch protection on `main` configured 2026-05-12 via `PUT /repos/.../branches/main/protection`. Required status check: `Verify SELECT columns vs migration schema`. `enforce_admins=false` (admin-bypass kept for emergencies), no required PR reviews (solo-dev workflow), `strict=false` (no rebase-up-to-date requirement). **Constraint:** GitHub branch-protection API is paywalled on private repos; the repo was therefore flipped to **public visibility** (no real secrets in HEAD or git history — verified by deep history sweep before the flip). Spec assumption „Klick in Settings → Branches" hatte den Account-Tier nicht antizipiert.
 
 **Reporting (3/3):**
 - AC-13 ✅ — Success summary verified: `✓ schema-drift: 285 SELECT calls verified across 60 tables — 0 drift (65 dynamic calls skipped).`
@@ -430,7 +430,7 @@ Without this step, the workflow runs but isn't blocking — the guard would warn
 
 ## Deployment (`/deploy`, 2026-05-05)
 
-**Status:** Deployed (α live; manual branch-protection setup still pending — see below).
+**Status:** Deployed (α live; branch protection on `main` enforced as Required-Check since 2026-05-12).
 
 **Deploy mechanism:** Build-tooling — no Vercel deploy step. The workflow file becomes active the moment it lands on `main`. From the next push or pull-request onwards, GitHub Actions runs the drift check automatically.
 
