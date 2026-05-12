@@ -64,7 +64,7 @@ export interface ProjectGraphFilterOptions {
   edgeFilter: Graph3DEdgeFilter
 }
 
-const KIND_ORDER: GraphNodeKind[] = [
+const KIND_ORDER: Exclude<GraphNodeKind, "project">[] = [
   "phase",
   "milestone",
   "work_item",
