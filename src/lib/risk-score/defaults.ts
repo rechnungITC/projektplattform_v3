@@ -71,6 +71,13 @@ export interface RiskScoreConfig {
   authority_factor: AuthorityFactor
   /** Strength of low-agreeableness contribution to risk. Range 0..1. */
   adversity_weight: number
+  /**
+   * PROJ-34-ζ — Weight of the communication-history signal on the risk
+   * score. Range 0..1. Default 0 (opt-in per CIA-L4): existing tenants
+   * see no score change until they actively raise this. The signal is
+   * derived from interaction sentiment + cooperation + overdue-count.
+   */
+  communication_weight: number
 }
 
 export const RISK_SCORE_DEFAULTS: Readonly<RiskScoreConfig> = Object.freeze({
@@ -92,6 +99,7 @@ export const RISK_SCORE_DEFAULTS: Readonly<RiskScoreConfig> = Object.freeze({
     deciding: 1.5,
   },
   adversity_weight: 0.3,
+  communication_weight: 0, // CIA-L4 — opt-in default 0
 })
 
 /**

@@ -69,6 +69,10 @@ export const riskScoreOverridesSchema = z.object({
   conflict_factor: conflictFactorSchema,
   authority_factor: authorityFactorSchema,
   adversity_weight: numericGuard.optional(),
+  // PROJ-34-ζ — opt-in communication-history weight. 0..1; default 0
+  // (CIA-L4). Existing tenants see no risk-score change until they
+  // raise this.
+  communication_weight: z.number().finite().min(0).max(1).optional(),
 })
 
 export type RiskScoreOverrides = z.infer<typeof riskScoreOverridesSchema>
@@ -136,5 +140,12 @@ export function mergeRiskScoreConfig(
       typeof o.adversity_weight === "number" && Number.isFinite(o.adversity_weight)
         ? o.adversity_weight
         : d.adversity_weight,
+    communication_weight:
+      typeof o.communication_weight === "number" &&
+      Number.isFinite(o.communication_weight) &&
+      o.communication_weight >= 0 &&
+      o.communication_weight <= 1
+        ? o.communication_weight
+        : d.communication_weight,
   }
 }
