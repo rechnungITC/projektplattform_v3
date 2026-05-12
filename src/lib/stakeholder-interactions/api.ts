@@ -104,6 +104,29 @@ export async function createInteraction(
   return body.interaction
 }
 
+export interface UpdateParticipantSignalPayload {
+  participant_sentiment?: number | null
+  participant_cooperation_signal?: number | null
+}
+
+export async function updateParticipantSignal(
+  projectId: string,
+  interactionId: string,
+  stakeholderId: string,
+  payload: UpdateParticipantSignalPayload,
+): Promise<InteractionParticipant> {
+  const res = await fetch(
+    `/api/projects/${encodeURIComponent(projectId)}/interactions/${encodeURIComponent(interactionId)}/participants/${encodeURIComponent(stakeholderId)}`,
+    {
+      method: "PATCH",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(payload),
+    },
+  )
+  const body = await unwrap<{ participant: InteractionParticipant }>(res)
+  return body.participant
+}
+
 export async function deleteInteraction(
   projectId: string,
   interactionId: string,
