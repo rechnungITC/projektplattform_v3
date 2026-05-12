@@ -104,6 +104,58 @@ export async function createInteraction(
   return body.interaction
 }
 
+export interface AwaitingInteraction {
+  id: string
+  channel: StakeholderInteraction["channel"]
+  direction: StakeholderInteraction["direction"]
+  interaction_date: string
+  summary: string
+  response_due_date: string | null
+  response_received_date: string | null
+  created_at: string
+  is_overdue: boolean
+}
+
+export async function listAwaitingInteractions(
+  projectId: string,
+  stakeholderId: string,
+): Promise<AwaitingInteraction[]> {
+  const res = await fetch(
+    `/api/projects/${encodeURIComponent(projectId)}/stakeholders/${encodeURIComponent(stakeholderId)}/interactions/awaiting`,
+    { cache: "no-store" },
+  )
+  const body = await unwrap<{ interactions: AwaitingInteraction[] }>(res)
+  return body.interactions
+}
+
+export interface UpdateInteractionPayload {
+  channel?: StakeholderInteraction["channel"]
+  direction?: StakeholderInteraction["direction"]
+  interaction_date?: string
+  summary?: string
+  awaiting_response?: boolean
+  response_due_date?: string | null
+  response_received_date?: string | null
+  replies_to_interaction_id?: string | null
+}
+
+export async function updateInteraction(
+  projectId: string,
+  interactionId: string,
+  payload: UpdateInteractionPayload,
+): Promise<StakeholderInteraction> {
+  const res = await fetch(
+    `/api/projects/${encodeURIComponent(projectId)}/interactions/${encodeURIComponent(interactionId)}`,
+    {
+      method: "PATCH",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(payload),
+    },
+  )
+  const body = await unwrap<{ interaction: StakeholderInteraction }>(res)
+  return body.interaction
+}
+
 export interface UpdateParticipantSignalPayload {
   participant_sentiment?: number | null
   participant_cooperation_signal?: number | null

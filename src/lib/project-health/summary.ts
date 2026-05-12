@@ -62,37 +62,52 @@ export async function resolveProjectHealthSummary({
   currency = "EUR",
   now,
 }: ResolveProjectHealthSummaryArgs): Promise<ProjectHealthSummary> {
-  const [budget, risksRes, milestonesRes, stakeholdersRes, settingsRes] =
-    await Promise.all([
-      resolveBudgetSummary({
-        supabase,
-        projectId,
-        tenantId,
-        inCurrency: currency,
-      }).catch(() => null),
-      supabase
-        .from("risks")
-        .select("id, title, probability, impact, score, status")
-        .eq("project_id", projectId),
-      supabase
-        .from("milestones")
-        .select("id, name, target_date, status, phase_id, is_deleted")
-        .eq("project_id", projectId)
-        .eq("is_deleted", false),
-      supabase
-        .from("stakeholders")
-        .select(
-          "id, is_active, influence, impact, attitude, conflict_potential, decision_authority, " +
-            "stakeholder_personality_profiles!stakeholder_personality_profiles_stakeholder_id_fkey(agreeableness_fremd)",
-        )
-        .eq("project_id", projectId)
-        .eq("is_active", true),
-      supabase
-        .from("tenant_settings")
-        .select("risk_score_overrides")
-        .eq("tenant_id", tenantId)
-        .maybeSingle(),
-    ])
+  const [
+    budget,
+    risksRes,
+    milestonesRes,
+    stakeholdersRes,
+    settingsRes,
+    awaitingRes,
+  ] = await Promise.all([
+    resolveBudgetSummary({
+      supabase,
+      projectId,
+      tenantId,
+      inCurrency: currency,
+    }).catch(() => null),
+    supabase
+      .from("risks")
+      .select("id, title, probability, impact, score, status")
+      .eq("project_id", projectId),
+    supabase
+      .from("milestones")
+      .select("id, name, target_date, status, phase_id, is_deleted")
+      .eq("project_id", projectId)
+      .eq("is_deleted", false),
+    supabase
+      .from("stakeholders")
+      .select(
+        "id, is_active, influence, impact, attitude, conflict_potential, decision_authority, " +
+          "stakeholder_personality_profiles!stakeholder_personality_profiles_stakeholder_id_fkey(agreeableness_fremd)",
+      )
+      .eq("project_id", projectId)
+      .eq("is_active", true),
+    supabase
+      .from("tenant_settings")
+      .select("risk_score_overrides")
+      .eq("tenant_id", tenantId)
+      .maybeSingle(),
+    // PROJ-34-δ — pending replies. RLS already scopes to project-members;
+    // we filter the soft-deleted rows and only need the due_date column
+    // for the lazy-overdue compute (CIA-L5).
+    supabase
+      .from("stakeholder_interactions")
+      .select("id, response_due_date")
+      .eq("project_id", projectId)
+      .eq("awaiting_response", true)
+      .is("deleted_at", null),
+  ])
 
   if (risksRes.error) throw new Error(`health risks: ${risksRes.error.message}`)
   if (milestonesRes.error) {
@@ -100,6 +115,11 @@ export async function resolveProjectHealthSummary({
   }
   if (stakeholdersRes.error) {
     throw new Error(`health stakeholders: ${stakeholdersRes.error.message}`)
+  }
+  if (awaitingRes.error) {
+    // PROJ-34-δ — graceful degradation: a missing communications table
+    // (e.g. before α migration applies on a fresh tenant) shouldn't break
+    // the overall health summary. We just skip the communications signal.
   }
 
   const risks: SnapshotRiskRef[] = (risksRes.data ?? []).map((r) => ({
@@ -149,10 +169,26 @@ export async function resolveProjectHealthSummary({
         state: "unknown" as HealthState,
       }
 
+  const nowDate = now ?? new Date()
+  const nowDateKey = nowDate.toISOString().slice(0, 10)
+  const awaitingRows = (awaitingRes.data ?? []) as Array<{
+    response_due_date: string | null
+  }>
+  const openCount = awaitingRows.length
+  const overdueCount = awaitingRows.filter(
+    (r) => r.response_due_date !== null && r.response_due_date < nowDateKey,
+  ).length
+  const communicationsSummary = {
+    open_count: openCount,
+    overdue_count: overdueCount,
+    state: summarizeCommunications(openCount, overdueCount),
+  }
+
   const healthLight = maxLight([
     traffic.light,
     stateToLight(budgetSummary.state),
     stateToLight(stakeholderSummary.state),
+    stateToLight(communicationsSummary.state),
   ])
 
   return {
@@ -181,6 +217,7 @@ export async function resolveProjectHealthSummary({
             : "green",
     },
     stakeholders: stakeholderSummary,
+    communications: communicationsSummary,
     health: {
       light: healthLight,
       label: HEALTH_LABELS[healthLight],
@@ -189,9 +226,20 @@ export async function resolveProjectHealthSummary({
         "kritische offene Risiken",
         "ueberfaellige Meilensteine",
         "Stakeholder-Risk-Score",
+        "ueberfaellige Antworten",
       ],
     },
   }
+}
+
+function summarizeCommunications(
+  openCount: number,
+  overdueCount: number,
+): HealthState {
+  if (openCount === 0) return "empty"
+  if (overdueCount >= 3) return "red"
+  if (overdueCount > 0) return "yellow"
+  return "green"
 }
 
 function summarizeBudget(
