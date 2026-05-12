@@ -3,6 +3,7 @@
 import {
   ChevronRight,
   GitBranch,
+  GripVertical,
   Loader2,
   Settings2,
   Sparkles,
@@ -53,6 +54,13 @@ import { WorkItemKindBadge } from "./work-item-kind-badge"
 import { WorkItemPriorityBadge } from "./work-item-priority-badge"
 import { WorkItemStatusBadge } from "./work-item-status-badge"
 
+const DRAWER_WIDTH_STORAGE_KEY = "work-item-detail-drawer.width"
+const DRAWER_DEFAULT_WIDTH = 640
+const DRAWER_MIN_WIDTH = 420
+const DRAWER_MAX_WIDTH = 960
+const DRAWER_VIEWPORT_MARGIN = 56
+const DRAWER_RESIZE_STEP = 32
+
 interface WorkItemDetailDrawerProps {
   open: boolean
   onOpenChange: (open: boolean) => void
@@ -71,6 +79,22 @@ export function WorkItemDetailDrawer({
   onChanged,
 }: WorkItemDetailDrawerProps) {
   const canEdit = useProjectAccess(projectId, "edit_master")
+  const [drawerWidth, setDrawerWidth] = React.useState(DRAWER_DEFAULT_WIDTH)
+
+  React.useEffect(() => {
+    if (typeof window === "undefined") return
+    let cancelled = false
+    queueMicrotask(() => {
+      if (cancelled) return
+      const saved = window.localStorage.getItem(DRAWER_WIDTH_STORAGE_KEY)
+      const parsed = saved ? Number(saved) : Number.NaN
+      if (!Number.isFinite(parsed)) return
+      setDrawerWidth(clampDrawerWidth(parsed, window.innerWidth))
+    })
+    return () => {
+      cancelled = true
+    }
+  }, [])
 
   const {
     item,
@@ -114,6 +138,88 @@ export function WorkItemDetailDrawer({
     await onChanged()
   }, [refresh, onChanged])
 
+  const commitDrawerWidth = React.useCallback((width: number) => {
+    const viewportWidth =
+      typeof window === "undefined" ? DRAWER_DEFAULT_WIDTH : window.innerWidth
+    const clamped = clampDrawerWidth(width, viewportWidth)
+    setDrawerWidth(clamped)
+    if (typeof window !== "undefined") {
+      window.localStorage.setItem(DRAWER_WIDTH_STORAGE_KEY, String(clamped))
+    }
+  }, [])
+
+  const nudgeDrawerWidth = React.useCallback((delta: number) => {
+    setDrawerWidth((current) => {
+      const viewportWidth =
+        typeof window === "undefined" ? DRAWER_DEFAULT_WIDTH : window.innerWidth
+      const clamped = clampDrawerWidth(current + delta, viewportWidth)
+      if (typeof window !== "undefined") {
+        window.localStorage.setItem(DRAWER_WIDTH_STORAGE_KEY, String(clamped))
+      }
+      return clamped
+    })
+  }, [])
+
+  const handleResizePointerDown = React.useCallback(
+    (event: React.PointerEvent<HTMLDivElement>) => {
+      if (event.pointerType === "mouse" && event.button !== 0) return
+      if (typeof window === "undefined" || window.innerWidth < 640) return
+
+      event.preventDefault()
+
+      const root = document.documentElement
+      const previousCursor = root.style.cursor
+      const previousUserSelect = document.body.style.userSelect
+      root.style.cursor = "ew-resize"
+      document.body.style.userSelect = "none"
+
+      const resizeFromPointer = (clientX: number) => {
+        commitDrawerWidth(window.innerWidth - clientX)
+      }
+      resizeFromPointer(event.clientX)
+
+      const handlePointerMove = (moveEvent: PointerEvent) => {
+        moveEvent.preventDefault()
+        resizeFromPointer(moveEvent.clientX)
+      }
+
+      const cleanup = () => {
+        window.removeEventListener("pointermove", handlePointerMove)
+        window.removeEventListener("pointerup", cleanup)
+        window.removeEventListener("pointercancel", cleanup)
+        root.style.cursor = previousCursor
+        document.body.style.userSelect = previousUserSelect
+      }
+
+      window.addEventListener("pointermove", handlePointerMove)
+      window.addEventListener("pointerup", cleanup)
+      window.addEventListener("pointercancel", cleanup)
+    },
+    [commitDrawerWidth],
+  )
+
+  const handleResizeKeyDown = React.useCallback(
+    (event: React.KeyboardEvent<HTMLDivElement>) => {
+      if (event.key === "ArrowLeft") {
+        event.preventDefault()
+        nudgeDrawerWidth(DRAWER_RESIZE_STEP)
+      }
+      if (event.key === "ArrowRight") {
+        event.preventDefault()
+        nudgeDrawerWidth(-DRAWER_RESIZE_STEP)
+      }
+      if (event.key === "Home") {
+        event.preventDefault()
+        commitDrawerWidth(DRAWER_MIN_WIDTH)
+      }
+      if (event.key === "End") {
+        event.preventDefault()
+        commitDrawerWidth(DRAWER_MAX_WIDTH)
+      }
+    },
+    [commitDrawerWidth, nudgeDrawerWidth],
+  )
+
   return (
     <Sheet
       open={open}
@@ -122,7 +228,33 @@ export function WorkItemDetailDrawer({
         onOpenChange(nextOpen)
       }}
     >
-      <SheetContent className="w-full overflow-y-auto sm:max-w-lg">
+      <SheetContent
+        className="w-full overflow-y-auto sm:min-w-[420px]"
+        style={
+          {
+            "--work-item-drawer-width": `${drawerWidth}px`,
+            width: "min(var(--work-item-drawer-width), 100vw)",
+            maxWidth: "min(960px, calc(100vw - 1rem))",
+          } as React.CSSProperties
+        }
+      >
+        <div
+          role="separator"
+          aria-orientation="vertical"
+          aria-valuemin={DRAWER_MIN_WIDTH}
+          aria-valuemax={DRAWER_MAX_WIDTH}
+          aria-valuenow={drawerWidth}
+          aria-label="Drawer-Breite anpassen"
+          tabIndex={0}
+          title="Breite anpassen"
+          onPointerDown={handleResizePointerDown}
+          onKeyDown={handleResizeKeyDown}
+          className="group absolute inset-y-0 left-0 z-20 hidden w-3 cursor-ew-resize touch-none items-center justify-center outline-none sm:flex"
+        >
+          <span className="flex h-14 w-1.5 items-center justify-center rounded-full bg-border text-muted-foreground opacity-70 transition group-hover:bg-primary/40 group-hover:text-primary group-hover:opacity-100 group-focus-visible:bg-primary/40 group-focus-visible:text-primary group-focus-visible:opacity-100">
+            <GripVertical className="h-4 w-4" aria-hidden />
+          </span>
+        </div>
         {loading ? (
           <DrawerSkeleton />
         ) : notFound || !item ? (
@@ -467,6 +599,17 @@ export function WorkItemDetailDrawer({
       </SheetContent>
     </Sheet>
   )
+}
+
+function clampDrawerWidth(width: number, viewportWidth: number): number {
+  if (!Number.isFinite(width)) return DRAWER_DEFAULT_WIDTH
+  const maxWidth =
+    viewportWidth < 640
+      ? viewportWidth
+      : Math.min(DRAWER_MAX_WIDTH, viewportWidth - DRAWER_VIEWPORT_MARGIN)
+  const safeMax = Math.max(320, maxWidth)
+  const safeMin = Math.min(DRAWER_MIN_WIDTH, safeMax)
+  return Math.min(Math.max(width, safeMin), safeMax)
 }
 
 function DrawerSkeleton() {

@@ -56,17 +56,17 @@ export function DeliveredByBanner({
           <p className="text-xs font-medium uppercase tracking-wide text-primary/80">
             Wird geliefert von
           </p>
-          <p className="truncate text-sm font-medium text-primary">
-            {projectName}
+          <div className="mt-0.5 flex min-w-0 flex-wrap items-center gap-1.5 text-sm font-medium text-primary">
+            <span className="min-w-0 max-w-full truncate">{projectName}</span>
             {method && method in PROJECT_METHOD_LABELS ? (
               <Badge
                 variant="outline"
-                className="ml-2 border-primary/30 bg-background/60 text-primary"
+                className="shrink-0 border-primary/30 bg-background/60 text-primary"
               >
                 {PROJECT_METHOD_LABELS[method as keyof typeof PROJECT_METHOD_LABELS]}
               </Badge>
             ) : null}
-          </p>
+          </div>
         </div>
       </div>
       {accessible && targetProjectId ? (
