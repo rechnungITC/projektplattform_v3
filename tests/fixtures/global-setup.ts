@@ -1,5 +1,10 @@
 import { mkdir, readFile, writeFile } from "node:fs/promises"
 import { dirname, resolve } from "node:path"
+import {
+  createChunks,
+  DEFAULT_COOKIE_OPTIONS,
+  stringToBase64URL,
+} from "@supabase/ssr"
 import { createClient as createSupabaseClient } from "@supabase/supabase-js"
 import type { FullConfig } from "@playwright/test"
 
@@ -13,6 +18,17 @@ import {
   E2E_TEST_PASSWORD,
   E2E_USER_ID,
 } from "./constants"
+
+type PlaywrightStorageCookie = {
+  name: string
+  value: string
+  domain: string
+  path: string
+  expires: number
+  httpOnly: boolean
+  secure: boolean
+  sameSite: "Strict" | "Lax" | "None"
+}
 
 /**
  * Tiny inline .env.local loader — Playwright's globalSetup runs in
@@ -54,7 +70,7 @@ async function loadEnvLocal(): Promise<void> {
  *   2. Upserts the [E2E] test tenant + test user + admin membership.
  *   3. Signs the user in to obtain access/refresh tokens.
  *   4. Persists Playwright storageState (Supabase auth tokens encoded
- *      into localStorage on the test origin) at
+ *      into SSR cookies and localStorage on the test origin) at
  *      `tests/fixtures/.auth/storage-state.json`. Gitignored.
  *
  * The fixture (`auth-fixture.ts`) loads this storage state to bypass
@@ -75,6 +91,29 @@ async function writeEmptyStorageState(reason: string): Promise<void> {
       `will fail at test time until SUPABASE_SERVICE_ROLE_KEY in ` +
       `.env.local is valid. Empty storage state at ${storagePath}.`,
   )
+}
+
+function buildSupabaseAuthCookies(
+  storageKey: string,
+  storageValue: string,
+  baseURL: string,
+): PlaywrightStorageCookie[] {
+  const parsedBaseURL = new URL(baseURL)
+  const encodedValue = `base64-${stringToBase64URL(storageValue)}`
+  const expires =
+    Math.floor(Date.now() / 1000) +
+    (DEFAULT_COOKIE_OPTIONS.maxAge ?? 400 * 24 * 60 * 60)
+
+  return createChunks(storageKey, encodedValue).map(({ name, value }) => ({
+    name,
+    value,
+    domain: parsedBaseURL.hostname,
+    path: DEFAULT_COOKIE_OPTIONS.path ?? "/",
+    expires,
+    httpOnly: DEFAULT_COOKIE_OPTIONS.httpOnly ?? false,
+    secure: parsedBaseURL.protocol === "https:",
+    sameSite: "Lax",
+  }))
 }
 
 async function globalSetup(_config: FullConfig): Promise<void> {
@@ -204,8 +243,9 @@ async function globalSetup(_config: FullConfig): Promise<void> {
 
   // 4) Sign in to obtain access/refresh tokens, then write a
   //    Playwright storage state that injects them into the test
-  //    origin's localStorage in the shape supabase-js expects.
+  //    origin's SSR cookies and localStorage in the shape Supabase expects.
   const baseURL = process.env.PLAYWRIGHT_BASE_URL ?? "http://localhost:3000"
+  const baseOrigin = new URL(baseURL).origin
   const tokenRes = await fetch(`${url}/auth/v1/token?grant_type=password`, {
     method: "POST",
     headers: { apikey: anonKey, "Content-Type": "application/json" },
@@ -231,12 +271,17 @@ async function globalSetup(_config: FullConfig): Promise<void> {
   const projectRef = new URL(url).hostname.split(".")[0]
   const supabaseStorageKey = `sb-${projectRef}-auth-token`
   const supabaseStorageValue = JSON.stringify(session)
+  const supabaseCookies = buildSupabaseAuthCookies(
+    supabaseStorageKey,
+    supabaseStorageValue,
+    baseURL,
+  )
 
   const storageState = {
-    cookies: [],
+    cookies: supabaseCookies,
     origins: [
       {
-        origin: baseURL,
+        origin: baseOrigin,
         localStorage: [
           {
             name: supabaseStorageKey,
