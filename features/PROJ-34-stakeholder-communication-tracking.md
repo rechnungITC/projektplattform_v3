@@ -1,6 +1,6 @@
 # PROJ-34: Stakeholder Communication Tracking
 
-## Status: Architected (CIA-reviewed 2026-05-12 — 8 architecture locks)
+## Status: In Progress (34-α backend + API + tab skeleton implemented 2026-05-12; β/γ.1/γ.2/δ/ε/ζ open)
 **Created:** 2026-05-06
 **Last Updated:** 2026-05-12
 
@@ -133,7 +133,7 @@ Akzeptanzkriterien:
 
 | Slice | Inhalt | Migration | UI | Aufwand |
 |---|---|---|---|---|
-| **34-α** | Interaction-Log (ST-01): Tabellen + RLS + API CRUD + Stakeholder-Detail Tab. Tabellen inkl. `deleted_at`-Soft-Delete + Field-Level-Audit-Trigger (CIA-L2) | 2 Tables (`stakeholder_interactions`, `stakeholder_interaction_participants` mit Per-Participant-Signal-Spalten per CIA-L3) + 1 Trigger (same-project) | "Kommunikation"-Tab + Inline-Add-Form + List | ~2 PT |
+| **34-α** | ✅ Implemented 2026-05-12 — Interaction-Log (ST-01): Tabellen + RLS + API CRUD + Stakeholder-Detail Tab. Tabellen inkl. `deleted_at`-Soft-Delete + Field-Level-Audit-Trigger (CIA-L2) | 2 Tables (`stakeholder_interactions`, `stakeholder_interaction_participants` mit Per-Participant-Signal-Spalten per CIA-L3) + 1 Trigger (same-project) | "Kommunikation"-Tab + Inline-Add-Form + List | ~2 PT |
 | **34-β** | Manual Signals (ST-02 Teil 1): Sentiment/Cooperation als Slider **pro Participant** | 0 (Spalten in α) | Slider im Edit-Form pro Participant + Pill am List-Item | ~0.5 PT |
 | **34-γ.1** | AI-Sentiment Backend: PROJ-12-Router `sentiment`-Purpose + Class-3-Lock + PROJ-32d Cost-Cap-Topf + Per-Participant-Output-Vektor | 0 (Spalten in α) + Router-Erweiterung | — | ~1.5 PT |
 | **34-γ.2** | AI-Sentiment UI: AI-Vorschlag-Pill + Review-Queue + Accept/Reject/Modify-Dialog | 0 | AI-Vorschlag-Pill + Modal | ~1 PT |
@@ -309,3 +309,85 @@ Diese Themen wurden vor dem Lock-Block adressiert; ursprüngliche Fragen-Formuli
 ---
 
 _Übergang zu `/architecture` erfolgt 2026-05-12 mit CIA-Review. Die 8 Architecture-Locks oben + Tech Design legen die Grundlage für `/backend`. `/frontend` braucht zusätzlich Mockups für die zwei verbleibenden UX-Fragen (OF-1 Aggregationsformel, OF-2 Method-spezifischer Overdue-Threshold)._
+
+## Implementation Notes — 34-α (2026-05-12)
+
+Erste Slice live: Interaction-Log + Tab-Skelett.
+
+**Migration** `supabase/migrations/20260512170000_proj34_alpha_interactions.sql`
+(via Supabase MCP applied):
+
+- Tabelle `stakeholder_interactions` mit Channel-/Direction-/Source-Enums,
+  Summary ≤500 Zeichen, 1-Hop-Reply-Chain, Soft-Delete `deleted_at`
+  (CIA-L2), Response-Consistency-CHECK (only Outbound darf
+  `response_received_date` setzen), Self-Reply-Block.
+- Bridge `stakeholder_interaction_participants` mit Per-Participant-Spalten
+  `participant_sentiment` / `participant_cooperation_signal` (CIA-L3)
+  inklusive Provenance-Spalten (`_source` / `_model` / `_provider` /
+  `_confidence`). Spalten sind in α nullable und werden erst in β/γ
+  befüllt.
+- Same-Project-/Same-Tenant-Trigger blocken Cross-Project-Participants
+  und Cross-Project-Replies (`P0003`-Errors mit lesbarem Code).
+- RLS: project-member SELECT/INSERT/UPDATE, project-manager + tenant-admin
+  DELETE.
+- `_tracked_audit_columns` + `audit_log_entity_type_check` extended;
+  AFTER-UPDATE-Trigger via `record_audit_changes` für PROJ-10-Audit.
+- 4 Indizes auf Interaction-Tabelle (tenant+project, project+date desc
+  partial, awaiting partial, replies) + 3 Indizes auf Bridge.
+
+**API (alle hinter `requireProjectAccess(... 'view'|'edit')`)**
+
+- `GET  /api/projects/[id]/stakeholders/[sid]/interactions` — Liste +
+  Participants pro Interaktion (zwei Round-Trips: Bridge-IDs, dann
+  Interactions+Participants).
+- `POST /api/projects/[id]/stakeholders/[sid]/interactions` — Insert
+  Interaction + URL-Stakeholder als Initial-Participant; Rollback der
+  Interaction-Row, falls Cross-Project-Participants den Trigger triggern.
+- `GET  /api/projects/[id]/interactions/[iid]` — Single Read, 404 für
+  Soft-Deleted.
+- `PATCH /api/projects/[id]/interactions/[iid]` — Partial-Update über
+  separates Schema **ohne** Zod-Defaults (sonst leakten
+  `awaiting_response=false`, `source='manual'` in jeden PATCH-Body und
+  triggerten den Update-Pfad bei leerem Body).
+- `DELETE /api/projects/[id]/interactions/[iid]` — Soft-Delete, setzt
+  `deleted_at`.
+
+**Frontend**
+
+- `CommunicationTab` als 4. Tab im Stakeholder-Drawer
+  (`stakeholder-tab-client.tsx`): Stammdaten / Profil / **Kommunikation** /
+  Historie.
+- Inline-Add-Form (Channel-Select, Direction-Select, datetime-local,
+  Summary-Textarea mit 500-Zeichen-Counter).
+- Interaction-Liste mit Badges (Channel, Direction, Multi-Participant-Count,
+  Antwort-offen) + Soft-Delete-Confirm-Dialog.
+- `loading` aus `interactions === null` derived (vermeidet React-Compiler-
+  Warning bei synchronem `setState` im Effect).
+
+**Tests**
+
+- 22 vitest-Cases über beide Route-Dateien:
+  - 401 unauthenticated für GET/POST/DELETE
+  - 403 unauthorized (kein Project-Membership + kein Tenant-Admin)
+  - 400 Validation (invalid Channel, Summary > 500, leerer PATCH-Body)
+  - 404 cross-project Stakeholder beim Create
+  - 200/201 Happy-Path GET-List, POST-Create
+  - 200 PATCH refresh
+  - 204 DELETE Soft-Delete
+  - 404 soft-deleted Reads
+
+**Schema-Drift-Guard** (PROJ-42): Migration vor PR-Open auf live Supabase
+appliziert; alle neuen `.from(...).select(...)`-Calls validieren gegen das
+neue Schema.
+
+**Known Deviations vs Tech Design**
+
+- Per-Participant-Editor-UI ist in α nicht aktiviert (Slider folgt in β);
+  bridge-Spalten existieren bereits damit β eine Pure-Frontend-Slice wird.
+- Aggregations-View für Interaction-Level-Sentiment (OF-1) noch nicht
+  modelliert; wird mit β/γ entschieden.
+- `replies_to_interaction_id` ist im POST-Body möglich, UI hat dafür aber
+  noch keinen Picker — deferred until response-behavior-Slice (δ).
+
+**Next slice:** 34-β — manuelle Sentiment-/Cooperation-Slider pro Participant
+am Edit-Form. Reine Frontend-Slice ohne Migration (Spalten existieren bereits).
