@@ -1,8 +1,8 @@
 # PROJ-27: Cross-Project Work-Item Links + Sub-Project Bridge
 
-## Status: Implemented
+## Status: Deployed
 **Created:** 2026-05-01
-**Last Updated:** 2026-05-11
+**Last Updated:** 2026-05-12
 
 ## Summary
 Heute kann ein Work-Item nur zu einem anderen Work-Item im **selben Projekt** verknüpft werden (PROJ-9 `dependencies` mit `enforce_dependency_same_project`-Trigger). Damit ist der zentrale Anwendungsfall **"übergeordnetes Wasserfall-Projekt mit Scrum-Sub-Projekt für die Umsetzung"** nicht modellierbar — ein Arbeitspaket im Waterfall-Parent kann keine Verbindung zu einem Epic / Story im Scrum-Sub-Projekt aufbauen.

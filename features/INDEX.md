@@ -40,7 +40,7 @@
 | PROJ-24 | Cost-Stack — Tagessätze pro Rolle, Velocity-Modell & Kosten pro Work-Item | Deployed (24-α/β/γ/δ/ε live in production) | [Spec](PROJ-24-cost-stack.md) | 2026-04-30 |
 | PROJ-25 | Drag-and-Drop Stack — Backlog↔Sprint + Gantt voll (SVAR React Gantt MIT · polymorphe Deps · Critical-Path manuell · Phasen-Container-Mitziehen) | Deployed (Gantt half live — Stages 1-5 + Today/Zoom/Edit-Dialog; Backlog↔Sprint DnD deferred to PROJ-25b) | [Spec](PROJ-25-dnd-stack.md) | 2026-04-30 |
 | PROJ-26 | Method-Gating für Schedule-Constructs (Sprints, Phasen, Milestones) | Deployed | [Spec](PROJ-26-method-gating-schedule-constructs.md) | 2026-05-01 |
-| PROJ-27 | Cross-Project Work-Item Links + Sub-Project Bridge | Architected | [Spec](PROJ-27-cross-project-links-and-subproject-bridge.md) | 2026-05-01 |
+| PROJ-27 | Cross-Project Work-Item Links + Sub-Project Bridge | Deployed | [Spec](PROJ-27-cross-project-links-and-subproject-bridge.md) | 2026-05-01 |
 | PROJ-28 | Method-aware Project-Room Navigation (Labels + Routes) | Deployed | [Spec](PROJ-28-method-aware-navigation.md) | 2026-05-01 |
 | PROJ-29 | Hygiene-Slice (Lint-Baseline · Function-Hardening · Auth-Fixture-Skelett) | Deployed | [Spec](PROJ-29-hygiene-slice.md) | 2026-05-01 |
 | PROJ-30 | KI-Narrative-Purpose Erweiterung des AI-Routers | Deployed | [Spec](PROJ-30-narrative-purpose-extension.md) | 2026-05-01 |
