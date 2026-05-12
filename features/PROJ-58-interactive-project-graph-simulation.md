@@ -1,6 +1,6 @@
 # PROJ-58: Interactive Project Graph & Decision Simulation
 
-## Status: Deployed (α + β-backend + β-UI SVG + γ edge-delete + δ critical-overlay + ε decision-sim + ζ AI-proposal-nodes + η framer-motion polish live; `@xyflow/react` weiter deferred per CIA)
+## Status: In Progress (α + β-backend + β-UI SVG + γ edge-delete + δ critical-overlay + ε decision-sim + ζ AI-proposal-nodes + η framer-motion polish live; θ 3D-Verbindungsgraph ist Must-have und pending /architecture)
 **Created:** 2026-05-07
 **Last Updated:** 2026-05-12
 
@@ -9,6 +9,8 @@
 Projektsteuerung ist heute in mehreren fachlich richtigen, aber getrennten Sichten verteilt: Project Room, Arbeitspakete, Gantt, Risiken, Entscheidungen, Stakeholder, Budget, Ressourcen und Reports. Fuer Projektleiter, Product Owner und Programmmanager fehlt eine visuelle Steuerungsschicht, die diese Beziehungen als Graph zeigt und Entscheidungen simulierbar macht.
 
 PROJ-58 beschreibt eine interaktive Graph-Ansicht fuer Projekte, Programme, Epics, Features, User Stories, Tasks/Arbeitspakete, Stakeholder, Risiken, Entscheidungen, Budgetpositionen, Meilensteine, Abhaengigkeiten und Massnahmen. Der Graph ist kein reines Schaubild, sondern ein Analyse- und Simulationswerkzeug fuer kritische Pfade, Entscheidungsalternativen, Kosten-, Termin-, Risiko- und Stakeholder-Auswirkungen.
+
+**Produktentscheidung 2026-05-12:** Eine saubere **3D-Darstellung der Verbindungen ist Must-have**. Die bisherige 2D-first/3D-deferred Linie ist damit fachlich ueberholt. Die bestehende 2D-SVG-Ansicht bleibt als Fallback und bereits gelieferte Basis erhalten, aber PROJ-58 gilt erst nach dem 3D-Verbindungsgraphen als vollstaendig geschlossen.
 
 Die Umsetzung muss die bestehenden Architekturregeln respektieren:
 
@@ -45,7 +47,8 @@ Als Projektleiter / Product Owner / Programmmanager moechte ich ein Projekt in e
 
 Der Nutzer soll:
 
-- Projektdaten als Graph mit typisierten Knoten und Kanten sehen.
+- Projektdaten als **raeumlichen 3D-Graph** mit typisierten Knoten und Kanten sehen.
+- Verbindungen in 3D sauber nachvollziehen koennen: Richtung, Typ, Kritikalitaet, Herkunft und Ziel muessen visuell unterscheidbar sein.
 - einen Zielzustand waehlen und den kritischen Pfad dorthin erkennen.
 - Engpaesse, Blocker, Risiken, Budget- und Stakeholder-Knoten hervorheben.
 - Entscheidungen als Knoten modellieren und Alternativen simulieren.
@@ -55,7 +58,15 @@ Der Nutzer soll:
 
 ## MVP-Schnitt
 
-Der MVP soll **2D-first** sein. 3D-Animation bleibt ein spaeter Slice, weil die fachliche Korrektheit des Graph-Modells wichtiger ist als visuelle Wirkung.
+Der PROJ-58-Zielzustand ist ab 2026-05-12 **3D-first fuer die Verbindungsdarstellung**. Der bisher gelieferte 2D-SVG-Graph bleibt als Fallback/Legacy-Ansicht bestehen, aber der MVP ist erst vollstaendig, wenn `58-θ` eine produktionsfaehige 3D-Verbindungsansicht liefert.
+
+3D-Must-have-Scope:
+
+- WebGL-/Canvas-basierte 3D-Szene mit Project-Zentrum, typisierten Knoten, gerichteten Kanten und sichtbarer Tiefenstaffelung.
+- Kanten muessen durch Typ, Richtung, Kritikalitaet und Interaktionszustand unterscheidbar sein.
+- Nutzer kann rotieren, zoomen, verschieben, fokussieren, Knoten/Kanten selektieren und in die bestehende Detailansicht springen.
+- Critical-Path, Blocker, Cross-Project-Links, Stakeholder-, Risiko-, Entscheidungs- und Budgetbeziehungen muessen in 3D filterbar bleiben.
+- Reduced-motion, Tastaturzugang und 2D-Fallback sind Pflicht, aber ersetzen die 3D-Darstellung nicht.
 
 MVP-Knotentypen:
 
@@ -97,6 +108,7 @@ MVP-Simulation:
 | **58-ε** | Entscheidungssimulation: `+ X Tage / Y EUR` Detail-Pill am Knoten | Nein | ✅ Deployed (2026-05-11) |
 | **58-ζ** | KI-Vorschlags-Knoten aus `ai_proposals` (recommendation-Knoten-Art) | Nein | ✅ Deployed (2026-05-11) |
 | **58-η** | Motion-Polish: framer-motion auf SVG-Renderer (Node-Enter, Hover, Critical-Path-Transitions) — `@xyflow/react` weiter deferred per CIA 2026-05-11 | Nein | ✅ Deployed (2026-05-12) |
+| **58-θ** | 3D-Verbindungsgraph: WebGL/Three.js-basierte Ansicht mit raeumlichem Layout, Kanten-Typisierung, Interaktion, Filter, Fallback und Visual-QA | Nein erwartet | 🔴 Must-have pending (`/architecture` next) |
 
 ## Routing / Touchpoints
 
@@ -152,8 +164,9 @@ Diese Fragen muessen vor `/backend` gelockt werden:
 
 | Frage | Default-Empfehlung | Begruendung |
 |---|---|---|
-| 2D vs. 3D im MVP | **2D-first**, 3D spaeter | Lesbarkeit, Barrierefreiheit, Performance und fachliche Validierung sind wichtiger als Effekt. |
-| Graph-Library | **Proven React graph/canvas library evaluieren** | Kein eigener Physics-/Layout-Engine-Bau. Kandidaten in /architecture gegen Next 16/React 19 pruefen. |
+| 2D vs. 3D im MVP | **3D-first fuer Verbindungen; 2D bleibt Fallback** | Product decision 2026-05-12: saubere 3D-Verbindungsdarstellung ist Must-have. Die alte 2D-first-Entscheidung ist fuer den Zielzustand superseded. |
+| Graph-Library / Renderer | **Proven Three.js/WebGL stack evaluieren** | Kein eigener 3D-/Physics-Engine-Bau. `/architecture` muss Three.js, ggf. React-Integration und Force/Layout-Optionen gegen Next 16/React 19 pruefen. |
+| 3D-Layout | **Deterministisches Layout mit optionaler Force-Stabilisierung** | Projektmanager brauchen wiedererkennbare Raeume; dauerhaft springende Physics-Layouts sind fuer Steuerung ungeeignet. |
 | Persistenzmodell | **Derived graph + optionale manuelle edges** | Bestehende Domain-Daten bleiben Quelle der Wahrheit; Graph ist Aggregations-/Steuerungsschicht. |
 | Simulation | **Hybrid: regelbasiert zuerst, KI als Vorschlag** | Zahlen muessen nachvollziehbar sein; KI darf erklaeren und vorschlagen, nicht heimlich rechnen. |
 | Critical Path | **API-Aggregation wiederverwenden** | Align mit PROJ-43-γ; keine MV/Trigger-Persistenz ohne belegten Performance-Bedarf. |
@@ -195,16 +208,31 @@ Diese Fragen muessen vor `/backend` gelockt werden:
 - [ ] AC-18: KI-Vorschlaege landen im Review-Flow und werden erst nach Nutzerfreigabe uebernommen.
 - [ ] AC-19: Wenn Nutzer neue Stories, Arbeitspakete, Risiken oder Entscheidungen hinzufuegt, aktualisiert sich der Graph nach Refresh bzw. Realtime-Event.
 - [ ] AC-20: System generiert zu kritischen Situationen konkrete Handlungsempfehlungen und visualisiert sie als Recommendation-Knoten oder Side-Panel-Hinweise.
+- [ ] AC-21: `58-θ` liefert eine echte 3D-Szene fuer `/projects/[id]/graph`; die bestehende 2D-SVG-Ansicht darf Fallback sein, aber nicht die primaere Zielansicht.
+- [ ] AC-22: Kanten werden in 3D als gerichtete Verbindungen gerendert; Richtung ist durch Pfeil, Partikel, Verlauf oder gleichwertiges visuelles Signal erkennbar.
+- [ ] AC-23: Kanten-Typen (`depends_on`, `blocks`, `influences`, `causes_cost`, usw.) sind in 3D durch Farbe, Stroke/Tube-Style, Label/Tooltip und Filter unterscheidbar.
+- [ ] AC-24: Nutzer kann per Orbit/Pan/Zoom und Fokusaktion Knotencluster aus unterschiedlichen Perspektiven untersuchen.
+- [ ] AC-25: Klick/Fokus auf eine Kante zeigt Startknoten, Zielknoten, Beziehungstyp, Quelle (`derived` vs. manuell), Kritikalitaet und ggf. zugrunde liegende Domain-ID.
+- [ ] AC-26: Critical-Path-Overlay funktioniert in 3D: On-Path-Knoten/-Kanten werden hervorgehoben, Off-Path-Elemente gedimmt, ohne komplett unsichtbar zu werden.
+- [ ] AC-27: Verbindungsmassen bleiben lesbar durch Filter, Edge-Bundling/Curving, Clustering oder Level-of-Detail; reine Linienwolken gelten als nicht akzeptiert.
+- [ ] AC-28: 3D-Labels duerfen die Szene nicht unkontrolliert ueberdecken; Labels muessen fokussiert, geclustert oder als Tooltip/Side-Panel erscheinen.
+- [ ] AC-29: 3D-Ansicht respektiert Berechtigungen und Class-3-Masking identisch zur 2D/API-Basis.
+- [ ] AC-30: Bei fehlendem WebGL oder aktivem Reduced-Motion bleibt eine robuste 2D-Fallback-Ansicht nutzbar; der Fallback darf die 3D-Pflicht im Normalfall nicht ersetzen.
 
 ### Nicht-funktionale Anforderungen
 
 - [ ] NFR-1: Graph bleibt bei 250 Knoten und 500 Kanten interaktiv nutzbar.
 - [ ] NFR-2: Initiale Graph-API antwortet fuer typische Projekte p95 < 800 ms ohne KI-Aufruf.
 - [ ] NFR-3: Layout-Engine blockiert nicht den Main Thread ueber laengere Zeit; grosse Layouts muessen progressiv/deferred rendern.
-- [ ] NFR-4: Reduced-motion wird respektiert; 3D/Motion ist opt-in/progressive enhancement.
+- [ ] NFR-4: Reduced-motion wird respektiert; 3D bleibt Pflicht im Normalmodus, Animation/Physics muss aber reduzierbar oder pausierbar sein.
 - [ ] NFR-5: Graph ist fuer Management und Fachbereiche lesbar: Legende, Filter, Sichten und klare Begriffe.
 - [ ] NFR-6: Loesung arbeitet methodenagnostisch fuer klassisch, agil und hybrid.
 - [ ] NFR-7: Server maskiert Class-3-Daten, bevor sie an den Client gehen.
+- [ ] NFR-8: 3D-Szene rendert auf Desktop und Tablet ohne blank canvas; Mobile bekommt mindestens nutzbaren read-only/fallback Pfad.
+- [ ] NFR-9: Initiales 3D-Rendern fuer typische Projekte startet sichtbar < 2 s nach API-Datenempfang.
+- [ ] NFR-10: Kamera, Zoom und Fokus duerfen keine UI-Overlaps mit Toolbar, Legende oder Side-Panel erzeugen.
+- [ ] NFR-11: 3D-Renderer wird route-lokal geladen, damit nicht-Graph-Seiten keinen relevanten Bundle-Penalty tragen.
+- [ ] NFR-12: Architektur muss eine bewusste Entscheidung dokumentieren, ob Three.js direkt, React-Wrapper oder eine spezialisierte 3D-Graph-Library genutzt wird.
 
 ## Edge Cases
 
@@ -217,6 +245,10 @@ Diese Fragen muessen vor `/backend` gelockt werden:
 - **EC-7: Zyklus im Graph** — fuer Visualisierung erlaubt, fuer Scheduling-Abhaengigkeiten durch bestehende Regeln blockiert.
 - **EC-8: Budgetmodul deaktiviert** — Budgetknoten werden als nicht aktiv markiert, nicht als gruen gerechnet.
 - **EC-9: Stakeholderdaten Class-3** — konkrete Coaching-/Persoenlichkeitsdetails bleiben maskiert oder nur berechtigten Rollen sichtbar.
+- **EC-10: WebGL nicht verfuegbar** — 2D-Fallback erscheint mit klarer, unaufdringlicher Meldung; keine leere Flaeche.
+- **EC-11: Sehr viele Kanten kreuzen sich** — Filter/Clustering/LOD wird angeboten; unlesbare Linienwolke gilt als Fehler.
+- **EC-12: Kamera verliert Kontext** — Reset/Fit-to-View bringt Nutzer jederzeit zur stabilen Gesamtansicht zurueck.
+- **EC-13: Mobile Viewport** — 3D darf vereinfacht sein, muss aber weder Text noch Controls ueberdecken.
 
 ## Out-of-Scope
 
@@ -225,7 +257,7 @@ Diese Fragen muessen vor `/backend` gelockt werden:
 - Vollstaendige Finanzbuchhaltung oder ERP-Kalkulation.
 - Rechtlich verbindliche Entscheidungsvorlage.
 - Vollstaendige KI-Autonomie ohne menschliche Kontrolle.
-- 3D-Graph als MVP-Pflicht.
+- 3D als reiner Effekt ohne fachlich lesbare Kanten-/Knoten-Semantik.
 - Eigene Physics-/Graph-Engine von Grund auf.
 - Cross-Tenant-Graphen.
 
@@ -237,7 +269,8 @@ Diese Fragen muessen vor `/backend` gelockt werden:
 - Wie werden Kosten- und Zeiteffekte initial gepflegt: manuell, Templates, historische Projektdaten oder KI-gestuetzt?
 - Wie werden Stakeholder-Klassen fuer Simulation normalisiert: Unterstuetzer, Kritiker, Blocker, Entscheider?
 - Welche Sichten sind MVP: Management, Delivery, Risiko, Stakeholder, Budget?
-- Wie detailliert soll 3D/Motion im spaeteren Slice sein?
+- Welche 3D-Renderer-/Library-Kombination erfuellt Next 16/React 19, Bundle- und Interaktionsanforderungen am saubersten?
+- Welche Knoten-/Kantenmenge ist der harte Cutover von Voll-3D zu Clustering/LOD?
 - Sollen Wahrscheinlichkeiten und Unsicherheiten im Entscheidungsbaum formal modelliert werden?
 - Wie werden externe Einfluesse modelliert: Budgetkuerzung, neue Anforderungen, Ressourcenengpass?
 - Soll PROJ-58 eigene Graph-Edge-Persistenz bekommen oder nur bestehende Domain-Relationen schreiben?
@@ -250,8 +283,8 @@ Diese Fragen muessen vor `/backend` gelockt werden:
 - [ ] Grundlogik fuer kritischen Pfad ist fachlich abgestimmt.
 - [ ] Grundlogik fuer Entscheidungssimulation ist beschrieben.
 - [ ] Eingabedaten und Stammdatenquellen sind identifiziert.
-- [ ] MVP-Scope ist gegen 3D/Full-Autonomy abgegrenzt.
-- [ ] Architekturfrage 2D vs. 3D ist bewertet.
+- [ ] 3D-Verbindungsgraph ist als Must-have akzeptiert.
+- [ ] Architekturfrage Renderer/Library/Layout fuer 3D ist bewertet.
 - [ ] KI-Rolle ist als Vorschlagsschicht beschrieben.
 - [ ] Datenschutz-/Class-3-Regeln sind abgestimmt.
 - [ ] Acceptance Criteria sind mit Stakeholdern abgestimmt.
@@ -259,6 +292,8 @@ Diese Fragen muessen vor `/backend` gelockt werden:
 ## DoD
 
 - [ ] Graph-Ansicht mit definierten Knotentypen ist verfuegbar.
+- [ ] 3D-Verbindungsansicht ist als primaere Graph-Erfahrung verfuegbar.
+- [ ] 3D-Kanten sind nach Typ, Richtung, Quelle und Kritikalitaet lesbar.
 - [ ] Beziehungen zwischen Knoten sind sichtbar und fuer erlaubte Typen pflegbar.
 - [ ] Kritischer Pfad kann berechnet und angezeigt werden.
 - [ ] Entscheidungsknoten koennen simuliert werden.
@@ -280,6 +315,10 @@ Diese Fragen muessen vor `/backend` gelockt werden:
 - Performance-Smoke mit 250 Knoten/500 Kanten.
 - Playwright fuer Zoom/Pan, Knoten-Auswahl, Detailroute, Filter/Sichten.
 - Visual-regression fuer Management-, Delivery-, Risiko- und Stakeholder-Sicht.
+- Playwright-Screenshots fuer 3D-Graph auf Desktop und Mobile.
+- Canvas/WebGL-Pixel-Smoke: Szene darf nicht blank sein, muss Knoten und Kanten sichtbar rendern.
+- Interaktions-Smoke fuer Orbit/Pan/Zoom/Fit-to-view, Knotenfokus und Kantenfokus.
+- Reduced-motion/Fallback-Test fuer 2D-Pfad bei deaktivierter/fehlender 3D-Faehigkeit.
 
 ## Implementation Notes
 
@@ -320,6 +359,17 @@ CIA-Verdict (2026-05-11 18:09): **keine** `@xyflow/react`-Adoption, stattdessen 
 - **Reduced-Motion** — Respektiert `prefers-reduced-motion` via `useReducedMotion()`; in dem Fall werden Animations-Durations auf 0 reduziert.
 
 Keine Schema-Änderungen. Aggregator + API + Layout bleiben unverändert. Tests: Vitest-Suite bleibt grün; build/lint clean.
+
+### 2026-05-12 — Product re-scope: 3D-Verbindungsgraph (θ) ist Must-have
+
+User-Entscheidung: Eine saubere 3D-Darstellung der Verbindungen ist Pflicht. Die fruehere 2D-first/3D-deferred Linie bleibt historisch dokumentiert, ist aber fuer den PROJ-58-Zielzustand superseded.
+
+Konsequenz:
+
+- PROJ-58 wird wieder auf **In Progress** gesetzt, bis `58-θ` gebaut, QA-geprueft und deployed ist.
+- Bestehende 2D-SVG-Ansicht bleibt als Fallback und fachliche Basis erhalten.
+- `/architecture` muss den 3D-Renderer locken. Da aktuell nur `framer-motion` im Dependency-Tree vorhanden ist und `three`/`@react-three/fiber` noch nicht installiert sind, ist die Dependency-Entscheidung vor Implementierung explizit zu dokumentieren.
+- `58-θ` darf keine 3D-Spielerei werden: Akzeptanzkriterium ist lesbare, interaktive, raeumliche Kanten-/Knoten-Semantik fuer echte Projektsteuerung.
 
 ## QA Test Results
 
