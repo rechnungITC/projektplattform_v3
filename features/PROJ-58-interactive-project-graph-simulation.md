@@ -1,6 +1,6 @@
 # PROJ-58: Interactive Project Graph & Decision Simulation
 
-## Status: In Progress (α + β-backend + β-UI SVG + γ edge-delete + δ critical-overlay + ε decision-sim + ζ AI-proposal-nodes + η framer-motion polish live; θ 3D-Frontend implemented, clean QA/deploy pending)
+## Status: Deployed (α + β-backend + β-UI SVG + γ edge-delete + δ critical-overlay + ε decision-sim + ζ AI-proposal-nodes + η framer-motion polish + θ 3D-Verbindungsgraph live)
 **Created:** 2026-05-07
 **Last Updated:** 2026-05-12
 
@@ -108,7 +108,7 @@ MVP-Simulation:
 | **58-ε** | Entscheidungssimulation: `+ X Tage / Y EUR` Detail-Pill am Knoten | Nein | ✅ Deployed (2026-05-11) |
 | **58-ζ** | KI-Vorschlags-Knoten aus `ai_proposals` (recommendation-Knoten-Art) | Nein | ✅ Deployed (2026-05-11) |
 | **58-η** | Motion-Polish: framer-motion auf SVG-Renderer (Node-Enter, Hover, Critical-Path-Transitions) — `@xyflow/react` weiter deferred per CIA 2026-05-11 | Nein | ✅ Deployed (2026-05-12) |
-| **58-θ** | 3D-Verbindungsgraph: WebGL/Three.js-basierte Ansicht mit raeumlichem Layout, Kanten-Typisierung, Interaktion, Filter, Fallback und Visual-QA | Nein erwartet | 🟨 Frontend implemented (QA/deploy pending) |
+| **58-θ** | 3D-Verbindungsgraph: WebGL/Three.js-basierte Ansicht mit raeumlichem Layout, Kanten-Typisierung, Interaktion, Filter, Fallback und Visual-QA | Nein | ✅ Deployed (2026-05-12, commit `e9f55c3`) |
 
 ## Routing / Touchpoints
 
@@ -543,20 +543,23 @@ Lokale Verification bisher:
 
 - `npm run test -- src/lib/project-graph/three-adapter.test.ts` — 3/3 gruen.
 - `npm run lint` — 0 Errors, 1 bestehende React-Hook-Form-Warnung in `src/components/work-items/edit-work-item-dialog.tsx`.
+- `npm run build` — gruen auf aktuellem `main` plus PROJ-58.
+- GitHub Checks auf PR #9 — Schema Drift Guard gruen, Vercel Preview gruen, Vercel Preview Comments gruen.
 - `npm run test:e2e -- tests/PROJ-58-graph-3d.spec.ts --project=chromium` — lokal blockiert, weil Chromium-Systemdependency `libnspr4.so` fehlt; `npx playwright install-deps chromium` kann ohne sudo-Passwort nicht durchlaufen.
-- `npm run build` im geteilten Arbeitsbaum ist aktuell durch fremden, ungestagten PROJ-34-WIP blockiert. Clean-build folgt in isoliertem Worktree vor Merge.
 
 ## QA Test Results
 
 - 3 aggregator unit tests pinning node-kind counts, dangling-edge filter, empty-project handling.
+- 3 adapter unit tests fuer Snapshot -> 3D-Szene, Filter und Critical-Edge-Dimming.
+- 1 Playwright 3D-canvas smoke spec angelegt; lokal wegen fehlender Chromium-Systemdependency nicht ausfuehrbar.
 - 1 Playwright auth-gate smoke.
 - 0 Critical / High Bugs.
 
 ## Deployment
 
-- **Date deployed:** 2026-05-11 initial graph slices; 2026-05-12 η motion-polish closeout.
+- **Date deployed:** 2026-05-11 initial graph slices; 2026-05-12 η motion-polish closeout; 2026-05-12 θ 3D-Verbindungsgraph.
 - **Production URL:** https://projektplattform-v3.vercel.app
-- **Production deployment verified:** `dpl_H2dSdTHDYdg1KUr4NPk59hGnRiYS` — Ready, production alias `https://projektplattform-v3.vercel.app`.
+- **Production deployment verified:** `dpl_91LLZenXsxd1uahPk9yMhKS683YN` — Ready, production alias `https://projektplattform-v3.vercel.app`.
 - **Route probe:** `/projects/[id]/graph` returns HTTP 307 to `/login?...`, confirming the auth-gated graph route is registered on production.
 - **DB migration:** keine.
-- **Rollback plan:** `git revert` of the relevant PROJ-58 commits (`6af5483`, later closing batches, or `1cb86e0` for η only), then Vercel redeploy. Keine DB-Implikationen.
+- **Rollback plan:** `git revert` of the relevant PROJ-58 commits (`6af5483`, later closing batches, `1cb86e0` for η only, or `e9f55c3` for θ 3D), then Vercel redeploy. Keine DB-Implikationen.
