@@ -1,6 +1,6 @@
 # PROJ-34: Stakeholder Communication Tracking
 
-## Status: Planned (deepened 2026-05-12 — architecture decisions still PROPOSED, not locked)
+## Status: Architected (CIA-reviewed 2026-05-12 — 8 architecture locks)
 **Created:** 2026-05-06
 **Last Updated:** 2026-05-12
 
@@ -85,11 +85,11 @@ Akzeptanzkriterien:
 | AC-2 | α | `POST/GET/PATCH/DELETE /api/projects/[id]/stakeholders/[sid]/interactions` |
 | AC-3 | α | Stakeholder-Detail-Tab "Kommunikation" mit Inline-Add-Form + List-View |
 | AC-4 | α | Multi-Stakeholder-Interaktion: 1 Meeting kann ≥ 1 Stakeholder zugeordnet werden |
-| AC-5 | β | Manuelle Sentiment-/Cooperation-Slider im Edit-Form persistieren mit `source='manual'` |
-| AC-6 | β | Pill-Anzeige der Werte in List-Item (Farbschema: rot=−2, gelb=0, grün=+2) |
-| AC-7 | γ | Neuer PROJ-12 Purpose `sentiment` + Provider-Routing mit Class-3-Hard-Block |
-| AC-8 | γ | AI-Vorschlag-Pill am Interaktion-Item; Accept/Reject/Modify-Dialog setzt `_source` korrekt |
-| AC-9 | γ | Class-3-Block fail-closed mit lesbarer Fehlermeldung (keine Default-Tenant-Bypass) |
+| AC-5 | β | Manuelle Sentiment-/Cooperation-Slider **pro Stakeholder-Participant** im Edit-Form (CIA-L3) persistieren mit `source='manual'` |
+| AC-6 | β | Pill-Anzeige der Werte in List-Item, eine Pill pro Participant (Farbschema: rot=−2, gelb=0, grün=+2) |
+| AC-7 | γ.1 | Neuer PROJ-12 Purpose `sentiment` (Class-3-fixed, Tenant-Provider-Pflicht) + Cost-Cap-Topf 500/Monat/Tenant (CIA-L7) |
+| AC-8 | γ.2 | AI-Vorschlag-Pill am Interaktion-Item; Accept/Reject/Modify-Dialog setzt `_source` korrekt; Per-Participant-Vektor statt Skalar |
+| AC-9 | γ.1 | Class-3-Block fail-closed mit lesbarer Fehlermeldung (keine Default-Tenant-Bypass, kein Class-2-Fallback per CIA-L1) |
 | AC-10 | δ | `awaiting_response` + `response_due_date` + `replies_to_interaction_id` Spalten + Logik |
 | AC-11 | δ | "Offene Antworten"-Section auf Stakeholder + Overdue-Badge |
 | AC-12 | δ | Project-Health-Signal (PROJ-56-Integration) zählt Overdue als yellow/red |
@@ -133,26 +133,162 @@ Akzeptanzkriterien:
 
 | Slice | Inhalt | Migration | UI | Aufwand |
 |---|---|---|---|---|
-| **34-α** | Interaction-Log (ST-01): Tabellen + RLS + API CRUD + Stakeholder-Detail Tab | 2 Tables (`stakeholder_interactions`, `stakeholder_interaction_participants`) + 1 Trigger (same-project) | "Kommunikation"-Tab + Inline-Add-Form + List | ~2 PT |
-| **34-β** | Manual Signals (ST-02 Teil 1): Sentiment/Cooperation als Slider | 0 (Spalten in α) | Slider im Edit-Form + Pill am List-Item | ~0.5 PT |
-| **34-γ** | AI-Sentiment (ST-02 Teil 2): PROJ-12-Router-Erweiterung `sentiment`-Purpose + Class-3-Block + Review-Workflow | 0 (Spalten in α) | AI-Vorschlag-Pill + Accept/Reject/Modify-Dialog | ~2 PT |
-| **34-δ** | Response-Behavior (ST-03): awaiting_response-Logik + Overdue + Project-Health-Feed | 0 (Spalten in α) | "Offene Antworten"-Section + Overdue-Badge + PROJ-56-Hook | ~1.5 PT |
-| **34-ε** | Coaching Context (ST-04): Recommendations-Tabelle + AI-Generation + Review + Citing | 1 Table (`stakeholder_coaching_recommendations`) | "Empfehlungen"-Section + Annotated Citations | ~2 PT |
-| **34-ζ** | PROJ-35 Feed: Communication-Signals optional in `compute_stakeholder_risk_score` | 0 (`tenant_settings.risk_score_overrides`-Patch) | Toggle in Risk-Score-Tenant-Config | ~1 PT |
+| **34-α** | Interaction-Log (ST-01): Tabellen + RLS + API CRUD + Stakeholder-Detail Tab. Tabellen inkl. `deleted_at`-Soft-Delete + Field-Level-Audit-Trigger (CIA-L2) | 2 Tables (`stakeholder_interactions`, `stakeholder_interaction_participants` mit Per-Participant-Signal-Spalten per CIA-L3) + 1 Trigger (same-project) | "Kommunikation"-Tab + Inline-Add-Form + List | ~2 PT |
+| **34-β** | Manual Signals (ST-02 Teil 1): Sentiment/Cooperation als Slider **pro Participant** | 0 (Spalten in α) | Slider im Edit-Form pro Participant + Pill am List-Item | ~0.5 PT |
+| **34-γ.1** | AI-Sentiment Backend: PROJ-12-Router `sentiment`-Purpose + Class-3-Lock + PROJ-32d Cost-Cap-Topf + Per-Participant-Output-Vektor | 0 (Spalten in α) + Router-Erweiterung | — | ~1.5 PT |
+| **34-γ.2** | AI-Sentiment UI: AI-Vorschlag-Pill + Review-Queue + Accept/Reject/Modify-Dialog | 0 | AI-Vorschlag-Pill + Modal | ~1 PT |
+| **34-δ** | Response-Behavior (ST-03): awaiting_response + Overdue **lazy-on-read via Generated Column** (CIA-L5) + Project-Health-Feed | 0 (Spalten in α) | "Offene Antworten"-Section + Overdue-Badge + PROJ-56-Hook | ~1 PT |
+| **34-ε** | Coaching Context (ST-04): Recommendations-Tabelle + AI-Generation + Review + Citing + DSGVO-Hard-Delete-Cascade (CIA-L6) | 1 Table (`stakeholder_coaching_recommendations`) | "Empfehlungen"-Section + Annotated Citations | ~2 PT |
+| **34-ζ** | PROJ-35 Feed: Communication-Signals optional in `compute_stakeholder_risk_score`. Default `communication_weight=0` (Opt-in per CIA-L4) | 0 (`tenant_settings.risk_score_overrides`-Patch) | Toggle in Risk-Score-Tenant-Config | ~1 PT |
 
-**Total: ~9 PT** — vergleichbar mit PROJ-35 (~8 PT).
+**Total: ~9.5 PT** (vs. 9 PT pre-CIA — +0.5 PT für γ-Split + Per-Participant-Sentiment, −0.5 PT für Lazy-Overdue ohne Cron).
 
 ## Aufwandsschätzung
 
-- **Backend** (Migrations + 4 API-Surfaces + PROJ-12-Router-Erweiterung + RLS + Audit-Hook): ~3.5 PT
-- **Frontend** (Stakeholder-Detail-Tab + Add/Edit-Form + AI-Vorschlag-Workflow + Coaching-Section + Health-Signal-Card): ~4 PT
-- **AI/Integration** (PROJ-12 `sentiment` + `coaching` Purposes, Class-3-Routing, Provider-Cost-Cap): ~1 PT
-- **QA** (Unit-Tests pro Slice, Class-3-Red-Team-Suite analog PROJ-30, Edge-Cases-Coverage, Playwright-Smoke): ~1 PT
-- **Total:** ~9 PT (entspricht der Phasierung oben).
+- **Backend** (3 Migrations + 4 API-Surfaces + PROJ-12-Router-Erweiterung + RLS + Audit-Hook + Per-Participant-Aggregation-View): ~4 PT
+- **Frontend** (Stakeholder-Detail-Tab + Add/Edit-Form mit Per-Participant-Slidern + AI-Vorschlag-Workflow + Coaching-Section + Health-Signal-Card): ~4 PT
+- **AI/Integration** (PROJ-12 `sentiment` + `coaching` Purposes Class-3-fixed, PROJ-32d Cost-Cap-Topf 500/Monat): ~1 PT
+- **QA** (Unit-Tests pro Slice, Class-3-Red-Team-Suite analog PROJ-30, Edge-Cases-Coverage inkl. 2-koop/2-obstr-Meeting, Playwright-Smoke): ~1 PT
+- **Total:** ~9.5 PT (CIA-bestätigt).
 
-## Open Questions for /architecture (CIA-Review-Themen)
+## Architecture Decisions LOCKED (CIA-Review 2026-05-12)
 
-Diese Themen sind explizit für `/architecture` mit CIA-Review markiert (kreuzt PROJ-12, PROJ-30, PROJ-32, PROJ-35, PROJ-10):
+Die ursprünglich offenen Architektur-Forks wurden vom Continuous Improvement Agent beantwortet. Folgende Punkte sind ab jetzt **gelockt** und gehen so in `/backend`:
+
+- **L1 — Class-3-fixed AI-Routing für Sentiment + Coaching.**
+  Alle User-Summaries werden ausnahmslos als Class-3 klassifiziert (personenbezogene Verhaltensbewertung). Tenant-Provider-Pflicht ohne Class-2-Bypass. Tenants ohne eigene Provider-Keys (PROJ-32) sehen kein AI-Sentiment.
+- **L2 — Field-Level-Audit + Soft-Delete (`deleted_at`) auf Interactions.**
+  Trigger `record_audit_changes` via PROJ-10-Pattern; Audit-Whitelist umfasst `summary`, `sentiment`, `cooperation_signal`, `awaiting_response`, `response_due_date`, `review_state`. Soft-Delete für reguläre Lifecycle-Löschungen. DSGVO-Redaktion bleibt Hard-Delete (siehe L6).
+- **L3 — Per-Participant-Sentiment statt 1-Wert-pro-Interaktion.**
+  `stakeholder_interaction_participants` trägt `participant_sentiment` + `participant_cooperation_signal` + `participant_signal_source`. Aggregierter Wert auf Interaction-Ebene als View/Computed (Median für MVP-Default — Aggregations-Formel-Wahl ist UX-Frage, gehört zum Frontend-Mockup).
+  Verhindert systematische Verwässerung des PROJ-35-Risk-Scores bei Multi-Stakeholder-Meetings (Edge-Case 2 koop / 2 obstr).
+- **L4 — `communication_weight` opt-in mit Default 0.**
+  PROJ-35-Integration aktiviert sich erst durch expliziten Tenant-Admin-Toggle. Bestehende Risk-Scores bleiben nach Deploy unverändert.
+- **L5 — Overdue-Detection lazy-on-read via Generated Column / View-Expression.**
+  Kein 4. Vercel-Cron, kein zusätzliches `CRON_SECRET`. Last-Größenordnung (≤100 offene Requests / Tenant) macht Cron unnötig.
+- **L6 — DSGVO-Class-3-Redaktion: Hard-Delete-Cascade.**
+  FK `ON DELETE CASCADE` von Interactions + Coaching-Recommendations auf Stakeholder. Zusätzlicher Audit-Replacement-Marker dokumentiert den Redaktions-Akt selbst, nicht den redaktierten Inhalt (DSGVO Art. 17 konform).
+- **L7 — Separater PROJ-32d Cost-Cap-Topf `sentiment` mit Default 500 Calls/Monat/Tenant.**
+  Eigener Cap statt geteilter Topf mit `narrative`/`risk`; verhindert Cross-Purpose-Budget-Erosion. Tenant-Admin kann anpassen.
+- **L8 — 7 Slices statt 6: γ wird in γ.1 (Backend-Router + DB) und γ.2 (UI-Review-Queue) gesplittet.**
+  Erlaubt feature-flag-gated Backend-Erprobung vor UI-Exposure. Neue Slice-Tabelle und PT-Schätzung oben aktualisiert (~9.5 PT).
+
+## Tech Design (Solution Architect)
+
+> PM-Sicht: Was wird gebaut, wo lebt es im Produkt, welche Datenflüsse, welche Tech-Wahl warum. Keine SQL/TS-Snippets.
+
+### A) Komponenten-Struktur
+
+```
+Project-Room
+└── Stakeholder-Detail-Page  (existing: src/app/(app)/projects/[id]/stakeholder/page.tsx)
+    ├── Profile-Tab           (existing — PROJ-33)
+    ├── Risk-Tab              (existing — PROJ-35)
+    └── Kommunikations-Tab    (NEW — PROJ-34)
+        ├── Add-Interaction-Form
+        │   ├── Channel-Select (email/meeting/chat/phone/other)
+        │   ├── Direction-Select (inbound/outbound/bidirectional)
+        │   ├── Date-Picker
+        │   ├── Stakeholder-Multi-Select  (existing combobox-Pattern aus PROJ-33)
+        │   ├── Summary-Textarea (≤500 Zeichen)
+        │   └── Awaiting-Response-Toggle + Due-Date-Picker
+        ├── Interaction-List
+        │   └── Interaction-Item
+        │       ├── Header (date, channel, direction, ggf. Overdue-Badge)
+        │       ├── Summary
+        │       ├── Per-Participant-Pills (Sentiment + Cooperation pro Stakeholder)
+        │       ├── AI-Vorschlag-Pill (wenn AI-Vorschlag pending — γ.2)
+        │       └── Edit/Delete-Menu
+        ├── Offene-Antworten-Section  (δ)
+        │   └── Outbound-Liste sortiert nach Due-Date, Overdue rot
+        └── Empfehlungen-Section  (ε — Coaching)
+            └── Recommendation-Card
+                ├── Kind-Badge (outreach/tonality/escalation/celebration)
+                ├── Text + zitierte Interaktionen + zitierte Profil-Felder
+                └── Review-Buttons (Accept / Reject / Modify)
+
+Tenant-Settings  (existing: src/app/(app)/settings/tenant/risk-score)
+└── Risk-Score-Config-Page
+    └── NEW Toggle "Kommunikations-Signale einbeziehen" (ζ)
+```
+
+### B) Daten-Modell (Plain Language)
+
+**Interaktion** (eine Kommunikation mit einem oder mehreren Stakeholdern):
+- Wo, wann, wie (Channel, Direction, Datum)
+- Eine Zusammenfassung in den Worten des Projektleiters (kein Roh-Inhalt extern!)
+- Wartet auf Antwort? Bis wann? Antwort kam wann?
+- Wer hat es erfasst (für RBAC-Edit-Rechte)
+- Wann gelöscht? (Soft-Delete für Recovery)
+
+**Teilnahme** (Bridge zwischen Interaktion und Stakeholder):
+- Welche Interaktion + welcher Stakeholder
+- **Sentiment pro Teilnehmer** (−2 bis +2) — kommt von Mensch oder von AI
+- **Kooperations-Signal pro Teilnehmer** (−2 bis +2)
+- Provenance: Quelle (manual/AI-vorgeschlagen/AI-akzeptiert/AI-abgelehnt), Provider, Modell, Konfidenz
+
+**Coaching-Empfehlung** (von AI vorgeschlagen, vom Mensch reviewed):
+- Welcher Stakeholder, welche Art Empfehlung
+- Empfehlungs-Text (≤1000 Zeichen)
+- Welche Interaktionen wurden als Quellen zitiert
+- Welche Profil-Felder (Big5, Skills) wurden als Quellen zitiert
+- Review-State: Entwurf / Akzeptiert / Abgelehnt / Modifiziert
+- Provenance: Provider, Modell
+
+**Tenant-Konfig-Patch** (kein neues Modell, nur Erweiterung):
+- `tenant_settings.risk_score_overrides.communication_weight` — Zahl 0..1, Default 0
+
+**Wo lebt es:** PostgreSQL via Supabase, RLS-geschützt nach Tenant + Project-Membership. Audit-Trail über bestehenden PROJ-10-Mechanismus.
+
+### C) Tech-Entscheidungen (warum diese Wahl, kein Code)
+
+| Entscheidung | Warum |
+|---|---|
+| **Eigene Tabellen statt JSONB auf `stakeholders`** | Interaktionen sind N:M zu Stakeholdern (1 Meeting → mehrere Stakeholder), JSONB skaliert nicht für Listen-Queries, Audit-Trail und RLS-Pflege wird komplex. |
+| **Per-Participant-Sentiment-Spalten auf der Bridge-Tabelle** | Verhindert Verwässerung im PROJ-35-Risk-Score; korrekte Modellierung der Realität (in einem Meeting können sich Stakeholder unterschiedlich verhalten). |
+| **Existierender PROJ-12-Router statt Direct-Anthropic-Call** | Class-3-Hard-Block kommt für lau mit; Provider-Switch über Tenant-Keys (PROJ-32) ist eingebaut; Cost-Cap-Pattern bereits da (PROJ-32d). |
+| **Soft-Delete für reguläre Löschung + Hard-Delete-Cascade nur für DSGVO** | DSGVO Art. 17 ist nicht-verhandelbar; reguläre Löschung muss reversibel sein (Bedienfehler-Recovery). |
+| **Lazy-on-Read für Overdue statt Cron** | Last ist klein, Cron-Slot bei Vercel begrenzt, weniger bewegliche Teile = weniger Bugs. |
+| **shadcn/ui Komponenten** (Card, Tabs, Slider, Dialog, Combobox) — alle existieren | Keine Custom-UI-Primitives, keine neuen Dependencies. |
+
+### D) Dependencies (Pakete)
+
+Keine neuen npm-Pakete. Alle benötigten UI-Primitives (shadcn Slider, Dialog, Tabs, Combobox) und Backend-Pattern (PROJ-12-Router, PROJ-10-Audit, PROJ-32d-Cost-Cap) sind bereits deployed.
+
+### E) Schnittstellen-Übersicht (API-Surface)
+
+- Liste der Interaktionen eines Stakeholders im Projekt
+- Erstelle / Update / Soft-Delete einer Interaktion
+- Triggere AI-Sentiment-Vorschlag für eine Interaktion (Class-3-checked)
+- Akzeptiere / Reject / Modifiziere AI-Vorschlag
+- Liste der Coaching-Empfehlungen eines Stakeholders
+- Triggere AI-Coaching-Generierung
+- Akzeptiere / Reject Coaching-Empfehlung
+- Tenant-Setting `communication_weight` lesen / setzen (PROJ-35-Integration-Hook)
+
+Alle Routes folgen dem existierenden Pattern `src/app/api/projects/[id]/stakeholders/[sid]/...`.
+
+### F) Datenfluss bei AI-Sentiment-Vorschlag (γ.1 + γ.2)
+
+1. Projektleiter erfasst eine Interaktion (Summary, Stakeholder).
+2. Server-Action triggert PROJ-12-Router mit Purpose `sentiment`, Class-3.
+3. Router prüft Tenant-Provider-Keys (PROJ-32). Wenn keine → fail-closed, UI zeigt "AI nicht verfügbar".
+4. Wenn vorhanden → Sentiment-Vektor pro Teilnehmer wird angefragt.
+5. Antwort landet in der Bridge-Tabelle als `_source='ai_proposed'`.
+6. Frontend rendert AI-Pill am Item, Projektleiter klickt Accept/Reject/Modify.
+7. State wechselt auf `ai_accepted` / `ai_rejected` / `manual` (bei Modify).
+8. Wenn Tenant `communication_weight > 0` und akzeptiert → PROJ-35-Risk-Score-Recompute via existierende RPC.
+
+### G) Verbleibende OFs für Frontend-Mockup (nicht Architecture-blocking)
+
+- **OF-1** Aggregationsformel für Per-Participant-Werte auf Interaction-Ebene: Mean / Median / Mode. → Wird im UI-Mockup bei `/frontend` entschieden.
+- **OF-2** Overdue-Threshold pro Projekt-Method (Scrum: 3 Tage / Waterfall: 14 Tage)? → Method-Gating-Entscheidung, gehört zum PROJ-26-Pattern.
+
+---
+
+## Beantwortete Open Questions (CIA-Review 2026-05-12)
+
+Diese Themen wurden vor dem Lock-Block adressiert; ursprüngliche Fragen-Formulierung bleibt zur Nachvollziehbarkeit erhalten:
 
 1. **Sentiment-AI-Routing Class-3-Path** — Sentiment-Analyse über User-erstellten Summary: Wann ist der Summary Class-2 (Stakeholder-Name + sachlicher Inhalt) vs Class-3 (personenbezogene Bewertung)? Default-Klassifizierung muss CIA reviewen. Vorschlag: alle Summaries → Class-3 → Tenant-Provider-Pflicht (PROJ-32).
 2. **Soft-Delete vs Field-Level-Audit für Interactions** — PROJ-10 hat Field-Level-Audit. Bei häufigen Edits einer Interaktion: pro Edit ein Audit-Row vs Soft-Delete + neue Row? Trade-off: Audit-Tabellengröße vs DSGVO-Export-Komplexität.
@@ -172,4 +308,4 @@ Diese Themen sind explizit für `/architecture` mit CIA-Review markiert (kreuzt 
 
 ---
 
-_Beim Übergang zu `/architecture` soll CIA die 7 Open Questions als Findings/Recommendations beantworten; daraus wird der finale Slice-Cut + die endgültige Datenmodell-Entscheidung gelockt._
+_Übergang zu `/architecture` erfolgt 2026-05-12 mit CIA-Review. Die 8 Architecture-Locks oben + Tech Design legen die Grundlage für `/backend`. `/frontend` braucht zusätzlich Mockups für die zwei verbleibenden UX-Fragen (OF-1 Aggregationsformel, OF-2 Method-spezifischer Overdue-Threshold)._
