@@ -163,5 +163,9 @@ export function mergeFormPreview(
       typeof overrides.adversity_weight === "number"
         ? overrides.adversity_weight
         : defaults.adversity_weight,
+    communication_weight:
+      typeof overrides.communication_weight === "number"
+        ? overrides.communication_weight
+        : defaults.communication_weight,
   }
 }
