@@ -1,80 +1,175 @@
 # PROJ-34: Stakeholder Communication Tracking
 
-## Status
-
-Planned
+## Status: Planned (deepened 2026-05-12 — architecture decisions still PROPOSED, not locked)
+**Created:** 2026-05-06
+**Last Updated:** 2026-05-12
 
 ## Summary
 
-Track stakeholder communication signals as structured project data: interaction history, response behavior, cooperation indicators, sentiment, and coaching context. This closes the gap referenced by PROJ-33 and PROJ-35 where stakeholder risk can use qualitative profile data but cannot yet learn from actual communication behavior.
+Stakeholder-Kommunikation als strukturierte Projektdaten erfassen: Interaktions-Historie, Sentiment, Kooperationssignale, Response-Verhalten, Coaching-Kontext. Schließt die Lücke, die PROJ-33 und PROJ-35 explizit offen gelassen haben — Stakeholder-Risiko nutzt heute nur qualitative Profil-Daten (Big5, Skills, Power/Influence), kann aber nicht aus tatsächlichem Kommunikationsverhalten lernen.
 
-## Source Requirements
-
-- `docs/Stakeholderwissen/`
-- `features/PROJ-33-stakeholder-extension.md`
-- `features/PROJ-35-stakeholder-interaction-engine.md`
-- `docs/PRD.md`
+Scope-Disziplin:
+- **In-Scope:** manuelle Erfassung von Interaktionen + Signale, AI-Vorschläge für Sentiment/Cooperation, Response-Latenz-Tracking, Coaching-Empfehlungen mit Quellenzitierung, optionales Risk-Score-Feed an PROJ-35.
+- **Out-of-Scope (eigene PROJs):** automatische E-Mail-Inbox-Ingestion (→ PROJ-44 Context Ingestion), realer Teams-Adapter (→ PROJ-49), autonomes Versenden von Nachrichten (→ PROJ-39 Assistant Action Packs).
 
 ## Dependencies
 
-- Requires: PROJ-8 stakeholder core
-- Requires: PROJ-13 communication center
-- Requires: PROJ-30 narrative purpose
-- Influences: PROJ-35 stakeholder risk score
-- Influences: PROJ-39 assistant action packs
+- **Requires:** PROJ-8 Stakeholder-Core (Stakeholder-Tabelle + Detail-Surface)
+- **Requires:** PROJ-13 Communication Center (Outbound-Mail/Chat als Sendekanal)
+- **Requires:** PROJ-12 KI Assistance (AI-Router + Class-3-Hard-Block)
+- **Requires:** PROJ-30 Narrative Purpose (Beweis-Pattern für Multi-Purpose-Router; PROJ-34 fügt `sentiment`-Purpose hinzu)
+- **Requires:** PROJ-32 Tenant Custom AI Provider Keys (SaaS-konformes Routing)
+- **Requires:** PROJ-33 Stakeholder Extension (qualitative Profile als Coaching-Input)
+- **Influences:** PROJ-35 Stakeholder-Wechselwirkungs-Engine (echte Kommunikations-Signale ergänzen Big5/Skill-basierten Risiko-Score)
+- **Influences:** PROJ-39 Assistant Action Packs (Coaching-Recommendations können später als Assistant-Vorschläge ausgespielt werden)
+- **Feeds (later):** PROJ-44 Context Ingestion kann automatisch in `stakeholder_interactions` schreiben statt nur in `context_sources`
+
+## V2 Reference Material
+
+- `docs/decisions/stakeholder-vs-user.md` — Stakeholder ist fachlich, nicht RBAC
+- `docs/decisions/stakeholder-data-model.md` — V2-Stakeholder-Model + Kommunikationsfelder
+- `docs/decisions/communication-framework.md` — V2-Kommunikations-Channels
+- `docs/Stakeholderwissen/` — Domain-Wissen-Pool (Sentiment, Reaktionsverhalten, Coaching-Patterns)
 
 ## User Stories
 
 ### ST-01 Interaction Log
-As a project lead, I want stakeholder interactions to be recorded with channel, date, participants, and summary so that communication history is not lost in free text.
+Als Projektleiter möchte ich Stakeholder-Interaktionen mit Channel, Datum, Beteiligten und Zusammenfassung erfassen, sodass die Kommunikationshistorie nicht in Freitext-Notizen verloren geht.
 
-Acceptance criteria:
-- [ ] Interactions are project-scoped and tenant-scoped.
-- [ ] An interaction can reference one or more stakeholders.
-- [ ] Supported channels include email, meeting, chat, phone, and other.
-- [ ] Raw personal content is classified before any AI processing.
+Akzeptanzkriterien:
+- Eine Interaktion ist projekt- und tenant-scoped (RLS via `is_tenant_member(tenant_id)` + `has_project_access(project_id, 'view')`).
+- Eine Interaktion kann **1 oder mehrere Stakeholder** referenzieren (`stakeholder_interaction_participants` N:M).
+- Channels: `email`, `meeting`, `chat`, `phone`, `other`.
+- Direction: `inbound` (Stakeholder → uns), `outbound` (uns → Stakeholder), `bidirectional` (Meeting).
+- Pflichtfelder: `channel`, `direction`, `interaction_date`, `summary` (≤ 500 Zeichen), ≥ 1 Stakeholder.
+- Raw-Content wird **nicht** persistiert — nur user-redigierter Summary. AI-Verarbeitung nur über den Summary, niemals über externen E-Mail-Body (Class-3-Schutz auf DB-Ebene).
+- Edit/Delete nur durch `created_by` oder Project-Manager-Rolle (PROJ-4 RBAC).
 
-### ST-02 Sentiment and Cooperation Signals
-As a project lead, I want interaction-level sentiment and cooperation signals so that emerging conflict can be detected early.
+### ST-02 Sentiment & Cooperation Signals
+Als Projektleiter möchte ich Sentiment und Kooperationssignale auf Interaktions-Ebene haben, sodass beginnender Konflikt früh sichtbar wird.
 
-Acceptance criteria:
-- [ ] Signals are stored as reviewable values, not hidden AI truth.
-- [ ] Users can override generated sentiment/cooperation values.
-- [ ] Class-3 data never leaves allowed provider paths.
+Akzeptanzkriterien:
+- `sentiment` ∈ {−2, −1, 0, +1, +2} (`strongly_negative`..`strongly_positive`); nullable wenn nicht erfasst.
+- `cooperation_signal` ∈ {−2, −1, 0, +1, +2} (`obstructive`..`collaborative`); nullable.
+- Beide Felder können **manuell** gesetzt UND als **AI-Proposal** vorgeschlagen werden. Source-Tracking: `manual` | `ai_proposed` | `ai_accepted` | `ai_rejected`.
+- AI-Routing geht ausschließlich über den **PROJ-12 Router** mit neuem Purpose `sentiment` und Class-3-Hard-Block: Wenn der Tenant kein eigenes Provider-Key-Set hat (PROJ-32) und der Summary als Class-3 klassifiziert ist, fail-closed mit "Sentiment AI nicht verfügbar".
+- AI-Vorschlag erscheint als Pill am Interaktions-Item; Accept/Reject/Modify-Dialog überschreibt Werte und setzt `_source` korrekt.
+- Provider/Model + `confidence` werden gespeichert (Source Traceability per V3-Prinzip 2).
 
 ### ST-03 Response Behavior
-As a project lead, I want the system to show response latency and missing-response patterns so that blocked stakeholder loops become visible.
+Als Projektleiter möchte ich Response-Latenz und Missing-Response-Muster sehen, sodass blockierte Stakeholder-Loops sichtbar werden.
 
-Acceptance criteria:
-- [ ] Open communication requests can be marked as awaiting response.
-- [ ] Overdue responses are visible in the stakeholder detail surface.
-- [ ] Response behavior can feed PROJ-35 risk scoring only after review.
+Akzeptanzkriterien:
+- Eine Interaktion mit `direction='outbound'` kann beim Erstellen als `awaiting_response=true` mit `response_due_date` markiert werden.
+- Inbound-Interaktion mit Bezug zur ursprünglichen Outbound-Interaktion (`replies_to_interaction_id`) schließt `awaiting_response` und setzt `response_received_date`.
+- "Overdue"-Indikator (lazy-compute: `awaiting_response AND response_due_date < CURRENT_DATE`) erscheint auf Stakeholder-Detail.
+- Liste **"Offene Antworten"** auf Stakeholder-Detail + Project-Room-Health-Signal (feeds PROJ-56 als zusätzliches Health-Input).
+- Response-Behavior darf **nur nach Review** in PROJ-35 Risk-Score einfließen (`tenant_settings.risk_score_overrides.communication_weight`).
 
 ### ST-04 Coaching Context
-As a project lead, I want communication recommendations based on stakeholder profile and recent interactions so that outreach is better targeted.
+Als Projektleiter möchte ich Kommunikationsempfehlungen basierend auf Stakeholder-Profil und jüngsten Interaktionen, sodass Ansprache zielgerichteter wird.
 
-Acceptance criteria:
-- [ ] Recommendations cite source interactions and profile inputs.
-- [ ] Recommendations are advisory only and never auto-send messages.
-- [ ] Assistant action packs can read approved recommendations later.
+Akzeptanzkriterien:
+- Coaching-Recommendation hat: `recommendation_kind` (`outreach`, `tonality`, `escalation`, `celebration`), `recommendation_text` (≤ 1000 Zeichen).
+- Jede Recommendation muss **Quellen zitieren**: `cited_interaction_ids[]` + `cited_profile_fields[]` (z.B. `['big5_neuroticism', 'skill_negotiation']`).
+- AI-only generiert (PROJ-12 Purpose `coaching`); `review_state` ∈ `draft|accepted|rejected|modified`.
+- Recommendations sind **rein advisory** — keine automatische Auslösung von Outbound-Kommunikation.
+- Bei DSGVO-Redaktion eines Stakeholders (PROJ-10/17): Recommendations werden mit redacted, da sie personenbezogen sind.
+- Assistant Action Packs (PROJ-39) können später `review_state='accepted'`-Recommendations lesen, dürfen aber nichts ausführen.
+
+## Acceptance Criteria (per Slice)
+
+| AC | Slice | Inhalt |
+|---|---|---|
+| AC-1 | α | `stakeholder_interactions` + `stakeholder_interaction_participants` Tabellen mit RLS (tenant + project access) |
+| AC-2 | α | `POST/GET/PATCH/DELETE /api/projects/[id]/stakeholders/[sid]/interactions` |
+| AC-3 | α | Stakeholder-Detail-Tab "Kommunikation" mit Inline-Add-Form + List-View |
+| AC-4 | α | Multi-Stakeholder-Interaktion: 1 Meeting kann ≥ 1 Stakeholder zugeordnet werden |
+| AC-5 | β | Manuelle Sentiment-/Cooperation-Slider im Edit-Form persistieren mit `source='manual'` |
+| AC-6 | β | Pill-Anzeige der Werte in List-Item (Farbschema: rot=−2, gelb=0, grün=+2) |
+| AC-7 | γ | Neuer PROJ-12 Purpose `sentiment` + Provider-Routing mit Class-3-Hard-Block |
+| AC-8 | γ | AI-Vorschlag-Pill am Interaktion-Item; Accept/Reject/Modify-Dialog setzt `_source` korrekt |
+| AC-9 | γ | Class-3-Block fail-closed mit lesbarer Fehlermeldung (keine Default-Tenant-Bypass) |
+| AC-10 | δ | `awaiting_response` + `response_due_date` + `replies_to_interaction_id` Spalten + Logik |
+| AC-11 | δ | "Offene Antworten"-Section auf Stakeholder + Overdue-Badge |
+| AC-12 | δ | Project-Health-Signal (PROJ-56-Integration) zählt Overdue als yellow/red |
+| AC-13 | ε | `stakeholder_coaching_recommendations` Tabelle + RLS + API |
+| AC-14 | ε | AI-Generation mit zitierten Interaktion-IDs + Profile-Feldern + `review_state` Workflow |
+| AC-15 | ε | DSGVO-Redaktion: Recommendation wird mit Stakeholder redacted (PROJ-10-Hook) |
+| AC-16 | ζ | `tenant_settings.risk_score_overrides.communication_weight` (0..1, default 0) |
+| AC-17 | ζ | PROJ-35 `compute_stakeholder_risk_score` liest optional Avg-Sentiment + Cooperation-Signal + Overdue-Count |
+
+## Edge Cases
+
+- **Stakeholder gelöscht (FK CASCADE)** — `stakeholder_interaction_participants` Cascade greift; wenn das die letzte Beteiligung der Interaktion war, bleibt die Interaktion bestehen aber ohne Participant → UI muss `(keine Stakeholder zugeordnet)` rendern.
+- **Multi-Tenant-Cross-Project** — eine Interaktion darf nie Stakeholder aus einem anderen Projekt referenzieren (Trigger: `enforce_interaction_stakeholder_same_project`).
+- **AI-Provider down während Sentiment-Routing** — Interaktion wird trotzdem gespeichert; Sentiment bleibt `null` + UI-Toast "AI-Vorschlag fehlgeschlagen, Werte können manuell gesetzt werden".
+- **Class-3-Hard-Block** — Tenant hat keine eigenen AI-Keys → AI-Pill verschwindet, Edit-Form nur manuell. Kein Fallback auf Platform-Keys.
+- **Coaching-Recommendation zitiert gelöschte Interaktion** — `cited_interaction_ids[]` filtert ID raus, UI zeigt `(Quelle nicht mehr verfügbar)` Hinweis.
+- **Self-Interaction (Stakeholder kommuniziert mit sich selbst über uns)** — nicht erlaubt, Trigger blockt `direction=bidirectional` bei nur 1 Stakeholder.
+- **Replies-to-Chain länger als 1** — `replies_to_interaction_id` ist nicht-rekursiv für MVP; Thread-View deferred.
 
 ## Out of Scope
 
-- Automatic email inbox ingestion. This belongs to PROJ-44.
-- Real Teams adapter. This belongs to PROJ-49.
-- Autonomous communication sending. This belongs to later assistant action packs.
+- ❌ **Automatische E-Mail-Inbox-Ingestion** → PROJ-44 Context Ingestion (write-path).
+- ❌ **Echter Teams/Slack-Adapter** für inbound → PROJ-49 / PROJ-14b.
+- ❌ **Autonomes Versenden** von AI-Coaching-Empfehlungen → PROJ-39 Assistant Action Packs.
+- ❌ **Sentiment-Per-Stakeholder bei Multi-Stakeholder-Meeting** — MVP: 1 Wert pro Interaktion; per-Participant-Signals deferred to PROJ-34-ν (zukünftig).
+- ❌ **Thread-View / Conversation-Reconstruction** — `replies_to_interaction_id` reicht für 1-Hop, kein Voll-Thread.
+- ❌ **Voice-Recordings / Transcripts** — PROJ-37/41 Assistant Speech.
+- ❌ **Materialized Sentiment-Aggregates** — alles compute-on-read solange < 500 Interactions/Stakeholder.
 
 ## Technical Requirements
 
-- Every new table must include `tenant_id UUID NOT NULL REFERENCES tenants(id) ON DELETE CASCADE`.
-- RLS must use established tenant and project membership helpers.
-- AI-derived fields must carry source traceability, model/provider identity, and review state.
-- Communication-derived risk inputs must be optional and auditable.
+- Jede neue Tabelle MUSS `tenant_id UUID NOT NULL REFERENCES tenants(id) ON DELETE CASCADE` haben.
+- RLS-Policies MÜSSEN über `is_tenant_member(tenant_id)` + `has_project_access(project_id, 'view'|'manage')` gehen — keine direkten `auth.uid()`-Vergleiche.
+- AI-derived Felder MÜSSEN `_source` (`manual|ai_*`), `_model`, `_provider`, `confidence` tracken (V3-Prinzip 2: AI as proposal layer).
+- AI-Calls MÜSSEN über `invokeSentimentGeneration` / `invokeCoachingGeneration` gehen — kein direkter Provider-Call aus der API-Route. Hard-Block für Class-3 ohne Tenant-Keys.
+- DSGVO-Export (PROJ-10/17): Interactions + Recommendations sind redaction-eligible.
+- Audit-Log: `_tracked_audit_columns`-Whitelist umfasst `sentiment`, `cooperation_signal`, `awaiting_response`, `response_due_date`, `review_state` (PROJ-10-Hook).
+- Schema-Drift-Guard (PROJ-42): Slice-Migration muss vor Frontend-`.from(...).select(...)` deployed werden.
 
-## V2 Reference Material
+## Empfohlene interne Phasierung (nicht-bindend für /architecture)
 
-- `docs/decisions/stakeholder-vs-user.md`
-- `docs/decisions/stakeholder-data-model.md`
-- `docs/decisions/communication-framework.md`
-- `docs/Stakeholderwissen/`
+| Slice | Inhalt | Migration | UI | Aufwand |
+|---|---|---|---|---|
+| **34-α** | Interaction-Log (ST-01): Tabellen + RLS + API CRUD + Stakeholder-Detail Tab | 2 Tables (`stakeholder_interactions`, `stakeholder_interaction_participants`) + 1 Trigger (same-project) | "Kommunikation"-Tab + Inline-Add-Form + List | ~2 PT |
+| **34-β** | Manual Signals (ST-02 Teil 1): Sentiment/Cooperation als Slider | 0 (Spalten in α) | Slider im Edit-Form + Pill am List-Item | ~0.5 PT |
+| **34-γ** | AI-Sentiment (ST-02 Teil 2): PROJ-12-Router-Erweiterung `sentiment`-Purpose + Class-3-Block + Review-Workflow | 0 (Spalten in α) | AI-Vorschlag-Pill + Accept/Reject/Modify-Dialog | ~2 PT |
+| **34-δ** | Response-Behavior (ST-03): awaiting_response-Logik + Overdue + Project-Health-Feed | 0 (Spalten in α) | "Offene Antworten"-Section + Overdue-Badge + PROJ-56-Hook | ~1.5 PT |
+| **34-ε** | Coaching Context (ST-04): Recommendations-Tabelle + AI-Generation + Review + Citing | 1 Table (`stakeholder_coaching_recommendations`) | "Empfehlungen"-Section + Annotated Citations | ~2 PT |
+| **34-ζ** | PROJ-35 Feed: Communication-Signals optional in `compute_stakeholder_risk_score` | 0 (`tenant_settings.risk_score_overrides`-Patch) | Toggle in Risk-Score-Tenant-Config | ~1 PT |
 
+**Total: ~9 PT** — vergleichbar mit PROJ-35 (~8 PT).
+
+## Aufwandsschätzung
+
+- **Backend** (Migrations + 4 API-Surfaces + PROJ-12-Router-Erweiterung + RLS + Audit-Hook): ~3.5 PT
+- **Frontend** (Stakeholder-Detail-Tab + Add/Edit-Form + AI-Vorschlag-Workflow + Coaching-Section + Health-Signal-Card): ~4 PT
+- **AI/Integration** (PROJ-12 `sentiment` + `coaching` Purposes, Class-3-Routing, Provider-Cost-Cap): ~1 PT
+- **QA** (Unit-Tests pro Slice, Class-3-Red-Team-Suite analog PROJ-30, Edge-Cases-Coverage, Playwright-Smoke): ~1 PT
+- **Total:** ~9 PT (entspricht der Phasierung oben).
+
+## Open Questions for /architecture (CIA-Review-Themen)
+
+Diese Themen sind explizit für `/architecture` mit CIA-Review markiert (kreuzt PROJ-12, PROJ-30, PROJ-32, PROJ-35, PROJ-10):
+
+1. **Sentiment-AI-Routing Class-3-Path** — Sentiment-Analyse über User-erstellten Summary: Wann ist der Summary Class-2 (Stakeholder-Name + sachlicher Inhalt) vs Class-3 (personenbezogene Bewertung)? Default-Klassifizierung muss CIA reviewen. Vorschlag: alle Summaries → Class-3 → Tenant-Provider-Pflicht (PROJ-32).
+2. **Soft-Delete vs Field-Level-Audit für Interactions** — PROJ-10 hat Field-Level-Audit. Bei häufigen Edits einer Interaktion: pro Edit ein Audit-Row vs Soft-Delete + neue Row? Trade-off: Audit-Tabellengröße vs DSGVO-Export-Komplexität.
+3. **Sentiment bei Multi-Stakeholder-Meeting** — MVP-Vorschlag: 1 Wert pro Interaktion. CIA soll prüfen ob das in Edge-Cases (4 Stakeholder, 2 kooperativ, 2 obstruktiv) falsche Signale ergibt für PROJ-35-Risk-Score. Alternativ: per-Participant-Signals (n*m Table-Rows) → Effort +1 PT.
+4. **PROJ-35 risk_score input weighting (Default)** — Wenn `communication_weight` neu eingeführt wird: Default 0 (opt-in) vs Default 0.2 (opt-out)? Sicherheits-Default: 0, weil bestehende Tenants nicht plötzlich andere Risk-Scores sehen sollen.
+5. **Overdue-Compute Strategy** — lazy-on-read vs nightly-cron-update. CIA-Empfehlung für PROJ-35 war lazy-bis-500. Bei 10 offenen Requests / Projekt eher unproblematisch — Vorschlag: lazy bestätigen.
+6. **AI-Coaching DSGVO-Lifecycle** — Coaching-Recommendation zitiert Profile-Felder + Interaktion-IDs. Bei DSGVO-Redaktion eines Stakeholders: Recommendation hart-löschen vs redacted-Marker? Vorschlag: Cascade-Delete via FK + Audit-Row "redacted-with-stakeholder".
+7. **Provider-Cost-Cap-Strategie** — Sentiment-AI läuft potentiell auf jeder neuen Interaktion. Bei 50 Interaktionen/Tag/Tenant ist das ~1500 API-Calls/Monat zusätzlich. PROJ-32d Cost-Cap muss `sentiment`-Purpose abdecken; CIA soll Default-Cap empfehlen.
+
+## Success Verification (für /qa)
+
+- **AC-Coverage:** alle 17 ACs als Unit/Integration/E2E gepinnt.
+- **Class-3-Red-Team:** 5+ Attacks analog PROJ-30 (Bypass-Versuche über raw_content, Provider-Force, Confidence-Manipulation).
+- **DSGVO-Coverage:** Redaktions-Test über Interaktion → Recommendation-Cascade.
+- **Performance-Baseline:** Stakeholder-Detail-Tab mit 100 Interaktionen lädt < 1.5 s (TTI).
+- **PROJ-42 Schema-Drift:** alle neuen `.from(...).select(...)`-Calls in Tests gegen Shadow-DB grün.
+
+---
+
+_Beim Übergang zu `/architecture` soll CIA die 7 Open Questions als Findings/Recommendations beantworten; daraus wird der finale Slice-Cut + die endgültige Datenmodell-Entscheidung gelockt._
