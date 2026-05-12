@@ -1,6 +1,6 @@
 # PROJ-58: Interactive Project Graph & Decision Simulation
 
-## Status: Architected (α + β-backend + β-UI SVG + γ edge-delete + δ critical-overlay + ε decision-sim + ζ AI-proposal-nodes + η framer-motion polish live; θ 3D-Verbindungsgraph ready for /frontend)
+## Status: In Progress (α + β-backend + β-UI SVG + γ edge-delete + δ critical-overlay + ε decision-sim + ζ AI-proposal-nodes + η framer-motion polish live; θ 3D-Frontend implemented, clean QA/deploy pending)
 **Created:** 2026-05-07
 **Last Updated:** 2026-05-12
 
@@ -108,7 +108,7 @@ MVP-Simulation:
 | **58-ε** | Entscheidungssimulation: `+ X Tage / Y EUR` Detail-Pill am Knoten | Nein | ✅ Deployed (2026-05-11) |
 | **58-ζ** | KI-Vorschlags-Knoten aus `ai_proposals` (recommendation-Knoten-Art) | Nein | ✅ Deployed (2026-05-11) |
 | **58-η** | Motion-Polish: framer-motion auf SVG-Renderer (Node-Enter, Hover, Critical-Path-Transitions) — `@xyflow/react` weiter deferred per CIA 2026-05-11 | Nein | ✅ Deployed (2026-05-12) |
-| **58-θ** | 3D-Verbindungsgraph: WebGL/Three.js-basierte Ansicht mit raeumlichem Layout, Kanten-Typisierung, Interaktion, Filter, Fallback und Visual-QA | Nein erwartet | 🟦 Architected (ready for `/frontend`) |
+| **58-θ** | 3D-Verbindungsgraph: WebGL/Three.js-basierte Ansicht mit raeumlichem Layout, Kanten-Typisierung, Interaktion, Filter, Fallback und Visual-QA | Nein erwartet | 🟨 Frontend implemented (QA/deploy pending) |
 
 ## Routing / Touchpoints
 
@@ -527,6 +527,24 @@ Pflicht vor Deploy:
 Naechster Skill: `/frontend` fuer `58-θ`.
 
 Frontend baut zuerst den route-lokal geladenen 3D-Renderer und ersetzt die primaere Darstellung in `ProjectGraphView`; danach folgen Edge-Fokus, Filter, Detailpanel-Integration und Visual-QA. `/backend` ist erst noetig, wenn im UI-Test echte Datenluecken im bestehenden Graph-Snapshot sichtbar werden.
+
+### 2026-05-12 — 3D-Frontend implementation (θ)
+
+`58-θ` ist frontendseitig umgesetzt und bleibt backendfrei:
+
+- `package.json` / `package-lock.json` installieren `three`, `@types/three`, `@react-three/fiber` und `@react-three/drei`.
+- `src/lib/project-graph/three-adapter.ts` erzeugt aus dem bestehenden `ProjectGraphSnapshot` eine deterministische 3D-Szene: Project-Zentrum, Domaenen-Shells fuer Phasen/Meilensteine/Work Items/Risiko/Stakeholder/Budget/Recommendations, Kanten-Stile, Critical-Path-Dimming und LOD-Warnung ab 250/500.
+- `src/components/projects/project-graph-3d-canvas.tsx` rendert die route-lokal geladene R3F/Three-Szene mit Orbit/Pan/Zoom, gerichteten Kanten (Linie + Pfeil + Partikel), fokussierbaren Knoten/Kanten, Labels nur fuer Fokus/Projekt/kritische Knoten und WebGL-Fallback.
+- `src/components/projects/project-graph-view.tsx` ist jetzt 3D-first: Toolbar mit 3D/2D Toggle, Critical-Overlay, Kamera-Reset, Sicht-Presets und Kantenfilter; die bisherige SVG-Ansicht bleibt 2D-Fallback fuer Reduced Motion/WebGL-Blocker.
+- Kantenfokus zeigt Start, Ziel, Typ, Quelle (`dependency_id` vs. derived), Kritikalitaet und nutzt den bestehenden Delete-Pfad fuer editierbare Dependency-Kanten.
+- `tests/PROJ-58-graph-3d.spec.ts` legt einen authentifizierten Playwright-Smoke mit gemocktem Graph-Snapshot an: Canvas sichtbar, `toDataURL` und Screenshot nicht leer.
+
+Lokale Verification bisher:
+
+- `npm run test -- src/lib/project-graph/three-adapter.test.ts` — 3/3 gruen.
+- `npm run lint` — 0 Errors, 1 bestehende React-Hook-Form-Warnung in `src/components/work-items/edit-work-item-dialog.tsx`.
+- `npm run test:e2e -- tests/PROJ-58-graph-3d.spec.ts --project=chromium` — lokal blockiert, weil Chromium-Systemdependency `libnspr4.so` fehlt; `npx playwright install-deps chromium` kann ohne sudo-Passwort nicht durchlaufen.
+- `npm run build` im geteilten Arbeitsbaum ist aktuell durch fremden, ungestagten PROJ-34-WIP blockiert. Clean-build folgt in isoliertem Worktree vor Merge.
 
 ## QA Test Results
 
