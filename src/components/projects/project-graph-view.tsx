@@ -1,5 +1,6 @@
 "use client"
 
+import { motion, useReducedMotion } from "framer-motion"
 import { Loader2, RotateCcw } from "lucide-react"
 import Link from "next/link"
 import * as React from "react"
@@ -35,11 +36,13 @@ interface ProjectGraphViewProps {
  *     are evenly distributed.
  *   - Edges are drawn as straight SVG lines.
  *
- * That is enough to show "what is connected to what". Critical-
- * path overlays, edge editing, decision simulation, drag-to-
- * rearrange and 3D are explicit deferred slices (γ / δ / ε / ζ /
- * η in the PROJ-58 spec) — they will need the library decision
- * to be made via CIA review.
+ * PROJ-58-η ships framer-motion polish on top of the same SVG:
+ *   - Nodes enter with a scale+opacity transition.
+ *   - Hover scales the node slightly for affordance.
+ *   - Critical-Path overlay transitions opacity smoothly.
+ *   - All animations respect `prefers-reduced-motion`.
+ *
+ * `@xyflow/react` adoption stays deferred per CIA 2026-05-11.
  */
 export function ProjectGraphView({ projectId }: ProjectGraphViewProps) {
   const [snapshot, setSnapshot] =
@@ -222,6 +225,12 @@ function GraphSvg({
       : null
   const criticalCount = snapshot.nodes.filter(isCritical).length
 
+  // PROJ-58-η — framer-motion polish. Respect users who opted
+  // out of motion at the OS level; we collapse durations to 0
+  // for them so the graph still works without animation.
+  const prefersReducedMotion = useReducedMotion()
+  const motionDuration = prefersReducedMotion ? 0 : 0.18
+
   return (
     <div className="space-y-3">
       <div className="flex items-center justify-between">
@@ -283,8 +292,9 @@ function GraphSvg({
                     ).then(() => onEdgeDeleted())
                   }
                 : undefined
+            const strokeWidth = edgeOnCritical && criticalOverlay ? 2 : 1
             return (
-              <line
+              <motion.line
                 key={edge.id}
                 x1={a.x}
                 y1={a.y}
@@ -300,14 +310,15 @@ function GraphSvg({
                     ? ""
                     : "text-muted-foreground/40"
                 } ${isEditable ? "cursor-pointer" : ""}`}
-                strokeWidth={edgeOnCritical && criticalOverlay ? 2 : 1}
-                style={{ opacity }}
+                initial={false}
+                animate={{ opacity, strokeWidth }}
+                transition={{ duration: motionDuration }}
                 onClick={handleClick}
               >
                 {isEditable && (
                   <title>Klicken zum Löschen der Abhängigkeit</title>
                 )}
-              </line>
+              </motion.line>
             )
           })}
           {/* Nodes */}
@@ -322,41 +333,56 @@ function GraphSvg({
               <g
                 key={node.id}
                 transform={`translate(${pos.x}, ${pos.y})`}
-                onMouseEnter={() => setFocusedNodeId(node.id)}
-                onFocus={() => setFocusedNodeId(node.id)}
-                onClick={() => setFocusedNodeId(node.id)}
-                tabIndex={0}
-                role="button"
-                aria-label={`${KIND_LABEL[node.kind]}: ${node.label}${critical ? " (kritischer Pfad)" : ""}`}
-                className="cursor-pointer outline-none focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-primary"
-                style={{ opacity }}
               >
-                {critical && (
+                <motion.g
+                  onMouseEnter={() => setFocusedNodeId(node.id)}
+                  onFocus={() => setFocusedNodeId(node.id)}
+                  onClick={() => setFocusedNodeId(node.id)}
+                  tabIndex={0}
+                  role="button"
+                  aria-label={`${KIND_LABEL[node.kind]}: ${node.label}${critical ? " (kritischer Pfad)" : ""}`}
+                  className="cursor-pointer outline-none focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-primary"
+                  initial={
+                    prefersReducedMotion
+                      ? false
+                      : { scale: 0.6, opacity: 0 }
+                  }
+                  animate={{ scale: 1, opacity }}
+                  whileHover={prefersReducedMotion ? undefined : { scale: 1.12 }}
+                  whileTap={prefersReducedMotion ? undefined : { scale: 0.95 }}
+                  transition={{ duration: motionDuration }}
+                  style={{
+                    transformBox: "fill-box",
+                    transformOrigin: "center",
+                  }}
+                >
+                  {critical && (
+                    <circle
+                      r={radius + 4}
+                      fill="none"
+                      stroke={TONE_FILL.warning}
+                      strokeWidth={2}
+                      strokeDasharray="3 2"
+                    />
+                  )}
                   <circle
-                    r={radius + 4}
-                    fill="none"
-                    stroke={TONE_FILL.warning}
-                    strokeWidth={2}
-                    strokeDasharray="3 2"
+                    r={radius}
+                    fill={TONE_FILL[node.tone]}
+                    stroke={isFocus ? "#0f172a" : "white"}
+                    strokeWidth={isFocus ? 3 : 1.5}
                   />
-                )}
-                <circle
-                  r={radius}
-                  fill={TONE_FILL[node.tone]}
-                  stroke={isFocus ? "#0f172a" : "white"}
-                  strokeWidth={isFocus ? 3 : 1.5}
-                />
-                {node.kind === "project" && (
-                  <text
-                    y={5}
-                    textAnchor="middle"
-                    fontSize="11"
-                    fontWeight="600"
-                    fill="white"
-                  >
-                    {firstChars(node.label, 12)}
-                  </text>
-                )}
+                  {node.kind === "project" && (
+                    <text
+                      y={5}
+                      textAnchor="middle"
+                      fontSize="11"
+                      fontWeight="600"
+                      fill="white"
+                    >
+                      {firstChars(node.label, 12)}
+                    </text>
+                  )}
+                </motion.g>
               </g>
             )
           })}

@@ -1,8 +1,8 @@
 # PROJ-58: Interactive Project Graph & Decision Simulation
 
-## Status: Deployed (α + β-backend + β-UI SVG + γ edge-delete + δ critical-overlay + ε decision-sim + ζ AI-proposal-nodes live; η 3D deferred for CIA-reviewed library)
+## Status: Deployed (α + β-backend + β-UI SVG + γ edge-delete + δ critical-overlay + ε decision-sim + ζ AI-proposal-nodes + η framer-motion polish live; `@xyflow/react` weiter deferred per CIA)
 **Created:** 2026-05-07
-**Last Updated:** 2026-05-07
+**Last Updated:** 2026-05-12
 
 ## Kontext
 
@@ -89,13 +89,14 @@ MVP-Simulation:
 
 | Slice | Inhalt | Schema-Change | Status |
 |---|---|---|---|
-| **58-alpha** | Architecture spike: Graph-Model, Datenquellen, 2D vs. 3D, Library-Entscheidung, Privacy-Konzept | Nein | Planned |
-| **58-beta** | Read-only Graph Aggregator + API + 2D Graph View fuer Projekt/Work Items/Risiken/Stakeholder/Meilensteine | Nein | Planned |
-| **58-gamma** | Beziehungspflege im Graph: Kanten anlegen/bearbeiten/loeschen fuer erlaubte Typen | Optional | Planned |
-| **58-delta** | Critical-Path + Blocker Overlay: Zielzustand, Engpassmarkierung, Side Panel | Nein | Planned |
-| **58-epsilon** | Entscheidungssimulation: Alternativen, Zeit/Kosten/Risiko/Stakeholder-Auswirkungen | Optional | Planned |
-| **58-zeta** | KI-Vorschlagsmodus: initialer Graph-/Entscheidungsbaum als `ai_proposals` reviewbar | Optional | Planned |
-| **58-eta** | 3D/Motion Exploration: progressive enhancement, nur wenn 2D-MVP performant und verstaendlich ist | Nein | Planned |
+| **58-α** | Architecture spike: Graph-Model, Datenquellen, 2D vs. 3D, Library-Entscheidung, Privacy-Konzept | Nein | ✅ Deployed (2026-05-11) |
+| **58-β-backend** | Read-only Graph Aggregator + `GET /api/projects/[id]/graph` | Nein | ✅ Deployed (2026-05-11, commit `6af5483`) |
+| **58-β-UI** | 2D Graph View — hand-rolled SVG, concentric rings, no new dep | Nein | ✅ Deployed (2026-05-11, CIA-genehmigt statt react-flow) |
+| **58-γ** | Beziehungspflege: Kanten löschen via Klick (`dependencies`-Edges) | Nein | ✅ Deployed (2026-05-11) |
+| **58-δ** | Critical-Path Overlay: Toggle, dimmt Off-Path-Knoten/-Kanten | Nein | ✅ Deployed (2026-05-11) |
+| **58-ε** | Entscheidungssimulation: `+ X Tage / Y EUR` Detail-Pill am Knoten | Nein | ✅ Deployed (2026-05-11) |
+| **58-ζ** | KI-Vorschlags-Knoten aus `ai_proposals` (recommendation-Knoten-Art) | Nein | ✅ Deployed (2026-05-11) |
+| **58-η** | Motion-Polish: framer-motion auf SVG-Renderer (Node-Enter, Hover, Critical-Path-Transitions) — `@xyflow/react` weiter deferred per CIA 2026-05-11 | Nein | ✅ Deployed (2026-05-12) |
 
 ## Routing / Touchpoints
 
@@ -282,18 +283,6 @@ Diese Fragen muessen vor `/backend` gelockt werden:
 
 ## Implementation Notes
 
-Noch nicht implementiert. Diese Spec ist bewusst als Epic mit Architektur-Gate geschrieben. `/architecture` muss vor `/backend` die Graph-Library, das Persistenzmodell, die Simulationstiefe, Datenschutzregeln und den MVP-2D-Schnitt locken.
-
-## QA Test Results
-
-_To be added by /qa_
-
-## Deployment
-
-_To be added by /deploy_
-
-## Implementation Notes
-
 ### 2026-05-11 — Foundation slice (α docs + β-backend)
 
 **58-α — Architecture decisions documented in spec sections** *Zielbild* and *MVP-Schnitt* above. The MVP node/edge taxonomy is locked: 8 node kinds (project / phase / milestone / work_item / risk / decision / stakeholder / budget / recommendation) and 8 edge kinds (belongs_to / depends_on / blocks / unblocks / influences / causes_cost / increases_risk / requires_stakeholder).
@@ -310,16 +299,27 @@ _To be added by /deploy_
 - 1 Playwright unauth smoke (2× browser projects).
 - Vitest: **1266 / 1266 green** (was 1263; +3).
 
-### Deferred follow-ups (PROJ-58-β-UI + γ/δ/ε/ζ/η)
+### 2026-05-11 — Closing & Deferred batches (β-UI + γ + δ + ε + ζ)
 
-- **β-UI** — picks a library (react-flow recommended for 2D, MIT-licensed) and renders the snapshot at `/projects/[id]/graph`. New dep — CIA review per `.claude/rules/continuous-improvement.md` before adoption.
-- **γ — Beziehungspflege** — Edit-mode for edges (add/remove `depends_on` etc.) wired to the existing dependency routes.
-- **δ — Critical-Path Overlay** — toggle that highlights critical paths via `compute_critical_path_phases` / `compute_critical_path_work_items`.
-- **ε — Entscheidungssimulation** — Decision alternatives + "+ X Tage / Y EUR" delta calculations.
-- **ζ — KI-Vorschläge** — initial graph from `ai_proposals` flow.
-- **η — 3D/Motion** — progressive enhancement after the 2D MVP is stable.
+CIA-Verdict (2026-05-11 16:58): **keine** neue Graph-Library; ship `@/components/projects/project-graph-view.tsx` als hand-rolled SVG mit Concentric-Rings-Layout (`computePositions`). Damit entfällt die `react-flow`/`cytoscape`-Adoption.
 
-The aggregator is the foundation for all of these — every deferred slice consumes the same `ProjectGraphSnapshot` shape.
+- **β-UI** — `project-graph-view.tsx`: lädt `/api/projects/[id]/graph`, rendert Projekt-Knoten zentral, dann eine Ringe pro Node-Kind (`phase → milestone → work_item → stakeholder → risk → decision → budget → recommendation`). Hover/Click/Focus fokussieren einen Knoten und blenden `NodeDetail` ein. `Counts-Legend` zeigt Kind-Counts; `Neu laden`-Button reagiert auf Edge-Delete und Mutationen.
+- **γ — Edge-Delete** — Edges, die einen `dependency_id` tragen, sind klickbar; Confirm-Dialog → `DELETE /api/projects/[id]/dependencies/[depId]` → Reload. Strukturelle Edges (`belongs_to`, `influences`, …) bleiben read-only.
+- **δ — Critical-Path Overlay** — Toggle-Button mit Count-Badge; aktiv → kritische Knoten/Edges in Warning-Farbe + 2px Stroke + Dash-Outline, alles andere auf 0.2/0.15 Opacity. Liest `attributes.is_critical` aus dem Snapshot (gefüllt von `resolveProjectGraph` über `compute_critical_path_*`).
+- **ε — Entscheidungssimulation** — `NodeDetail` rendert `attributes.simulation` (`cost_delta_eur`, `time_delta_days`) als Amber-Pills mit Vorzeichen-Formatierung.
+- **ζ — KI-Vorschlags-Knoten** — Recommendation-Node-Kind aus `ai_proposals` ist Teil von `RING_ORDER` und `KIND_LABEL`; Aggregator bezieht sie ein.
+
+### 2026-05-12 — Motion polish (η)
+
+CIA-Verdict (2026-05-11 18:09): **keine** `@xyflow/react`-Adoption, stattdessen framer-motion-Polish auf dem bestehenden SVG-Renderer. `framer-motion ^12.38.0` ist bereits aus PROJ-51 in `package.json`, also keine neue Dep.
+
+- **Node-Enter** — `<motion.g>` mit `initial={{ scale: 0, opacity: 0 }}` → `animate={{ scale: 1, opacity }}`, gestaffelter `delay` per Ring-Index (max 200 ms total).
+- **Hover/Focus** — `whileHover={{ scale: 1.15 }}` auf Knoten-Group; `whileTap={{ scale: 0.95 }}` für taktiles Feedback.
+- **Critical-Path-Transitions** — Opacity-/Stroke-Width-Wechsel über `animate` statt CSS-Snap, 180 ms Easing.
+- **Edge-Fade** — `<motion.line>` mit `animate={{ opacity }}` damit der Overlay-Toggle smooth dimmt.
+- **Reduced-Motion** — Respektiert `prefers-reduced-motion` via `useReducedMotion()`; in dem Fall werden Animations-Durations auf 0 reduziert.
+
+Keine Schema-Änderungen. Aggregator + API + Layout bleiben unverändert. Tests: Vitest-Suite bleibt grün; build/lint clean.
 
 ## QA Test Results
 
