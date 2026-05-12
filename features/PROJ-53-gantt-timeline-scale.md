@@ -1,8 +1,8 @@
 # PROJ-53: Gantt Timeline-Scale — Tagesansicht, Wochenenden, KW (MS-Project-Style)
 
-## Status: α deployed 2026-05-06 · β backend deployed 2026-05-06 · β frontend implemented 2026-05-11 · β QA Approved 2026-05-11 (awaiting /deploy)
+## Status: Deployed (α + β live; γ intentionally deferred until pilot demand)
 **Created:** 2026-05-06
-**Last Updated:** 2026-05-06
+**Last Updated:** 2026-05-12
 
 ## Summary
 Erweiterung des bestehenden Gantt (PROJ-25-α, deployed) um einen MS-Project-orientierten **zweireihigen Zeitachsen-Header** mit Tagesnummern, Kalenderwochen (KW, ISO 8601) und visuell hervorgehobenen Wochenenden. Reine Frontend-Erweiterung in `src/components/phases/gantt-view.tsx` — keine Migration, keine API, kein neues Schema.
@@ -279,10 +279,18 @@ PROJ-25-α Move/Resize/Dep-Drag, PROJ-52 Click-Delete, PROJ-19 CRUD, Critical-Pa
 
 **Rollback-Pfad:** Vercel-Dashboard → previous deployment promote. Kein DB-Rollback nötig (keine Migration). Code-Rollback: `git revert 7ee4e5a` auf main, push.
 
+**Phase 53-β deployed/closed out:** 2026-05-12
+
+- **Frontend commit:** `e48516e` — `feat(maintenance-batch): close PROJ-21 M1 + PROJ-29 L2 + ship PROJ-53-β frontend`
+- **Production deployment verified:** `dpl_H2dSdTHDYdg1KUr4NPk59hGnRiYS` — Ready, production alias `https://projektplattform-v3.vercel.app`
+- **Route probes:** `/projects/[id]/planung` and `/projects/[id]/planning` return HTTP 307 to `/login?...` on production, confirming the auth-gated routes are registered.
+- **DB migration:** `supabase/migrations/20260506160000_proj53b_tenant_holiday_region.sql` already live.
+- **Status decision:** β is promoted from Approved to Deployed; γ remains intentionally deferred.
+
 **Bekannte Einschränkungen (siehe Out-of-Scope-Sektion):**
-- ST-05 Sticky-Header → PROJ-53-β (SVG-Split nach CIA-Review).
-- Feiertage tenant-region-konfigurierbar → PROJ-53-β.
+- Memo-Split-Decomposition → PROJ-53-γ only if pilot tenants report visible drag lag.
 - Custom-Kalender + Multi-Locale → PROJ-53-γ.
+- PNG/PDF-Export → PROJ-53-γ or a later output-rendering slice, depending on demand.
 
 ---
 
@@ -736,6 +744,6 @@ Alle 6 β-Akzeptanzgruppen (ST-01 bis ST-06) bestanden auf dem AC-Level der heut
 
 ### Suggested next
 
-1. **`/deploy`** when ready — kein Blocker. Code ist bereits auf `main` (commit `e48516e`); Vercel-Auto-Deploy sollte längst durch sein.
+1. **Closeout complete (2026-05-12)** — β is live on production and the feature status is now Deployed.
 2. **Optional follow-up (γ-Slice)** — Memo-Decomposition (M1) ist explizit für γ vorgesehen; sollte nur dann priorisiert werden, wenn Pilot-Tenants Drag-Lag melden.
 3. **Optional WSL2-Setup** (Dev-Quality-of-Life) — `sudo apt-get install libnspr4 libnss3` schaltet 12 lokal-blockierte Playwright-Cases frei. CI/Vercel-Pipelines sind nicht betroffen.

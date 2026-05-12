@@ -329,7 +329,9 @@ Keine Schema-Änderungen. Aggregator + API + Layout bleiben unverändert. Tests:
 
 ## Deployment
 
-- **Date deployed:** 2026-05-11
+- **Date deployed:** 2026-05-11 initial graph slices; 2026-05-12 η motion-polish closeout.
 - **Production URL:** https://projektplattform-v3.vercel.app
+- **Production deployment verified:** `dpl_H2dSdTHDYdg1KUr4NPk59hGnRiYS` — Ready, production alias `https://projektplattform-v3.vercel.app`.
+- **Route probe:** `/projects/[id]/graph` returns HTTP 307 to `/login?...`, confirming the auth-gated graph route is registered on production.
 - **DB migration:** keine.
-- **Rollback plan:** `git revert` des Batch-6-Commits. Keine DB-Implikationen.
+- **Rollback plan:** `git revert` of the relevant PROJ-58 commits (`6af5483`, later closing batches, or `1cb86e0` for η only), then Vercel redeploy. Keine DB-Implikationen.

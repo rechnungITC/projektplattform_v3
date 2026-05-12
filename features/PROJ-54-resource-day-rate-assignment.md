@@ -1,8 +1,8 @@
 # PROJ-54: Resource-Level Tagessatz-Zuweisung mit intuitiver Auswahl + Pflicht-Gate
 
-## Status: Approved (54-α + 54-β + 54-γ all live; δ remains intentionally deferred)
+## Status: Deployed (54-α + 54-β + 54-γ live; δ intentionally deferred until pilot demand)
 **Created:** 2026-05-06
-**Last Updated:** 2026-05-09
+**Last Updated:** 2026-05-12
 **BUG-3 hotfix 2026-05-09 (commit 537fb75):** every PATCH save was returning **HTTP 412** before reaching the handler. Root cause: Vercel/Next.js edge layer applies RFC-7232 §3.4 semantics to the standard `If-Unmodified-Since` header and refuses the request preflight. Fix: rename the optimistic-lock token to a custom `X-If-Unmodified-Since` header — custom headers carry no protocol semantics, edge passes them through, the server's own 409 `stale_record` path remains the only conflict outcome. Server still reads the legacy header for one rollout cycle so in-flight clients aren't broken.
 
 **AC-19 perf fix 2026-05-09 (commit 1563649):** live observation showed the after()-hook was sequentializing the per-work-item synthesizer calls — ~1.5s/item × N work-items (≈ 6s for "icke"'s 4 items). Switched the worker loop from `for ... await` to `Promise.allSettled(targets.map(...))`. Synthesizer calls are independent per work-item, the admin client multiplexes the connection pool, and `allSettled` lets one item fail without aborting the rest. Closes the spec's "Live-Bench post-deploy" defer.
@@ -39,9 +39,9 @@ PROJ-54 schließt diese Lücken durch eine **Resource-Level-Override-Spalte plus
 
 | Slice | Inhalt | Schema-Change | Status |
 |---|---|---|---|
-| **54-α** | Override-Spalten + SQL-Helper + Cost-Engine + Lookup-Layer + Audit-Whitelist + Tests | Ja (2 Spalten + 1 Helper) | **In Progress (Backend implemented; awaiting /qa)** |
-| **54-β** | Resource-Form Combobox + Stammdaten-Listen-Spalte + Bestand-Banner + Optimistic-Lock | Nein | **Implemented (2026-05-08)** |
-| **54-γ** | `after()`-Recompute + Failed-Marker + UI-Banner + Bench | Ja (1 Spalte `recompute_status`) | **Implemented (2026-05-09)** |
+| **54-α** | Override-Spalten + SQL-Helper + Cost-Engine + Lookup-Layer + Audit-Whitelist + Tests | Ja (2 Spalten + 1 Helper) | **Deployed (2026-05-06)** |
+| **54-β** | Resource-Form Combobox + Stammdaten-Listen-Spalte + Bestand-Banner + Optimistic-Lock | Nein | **Deployed (2026-05-08)** |
+| **54-γ** | `after()`-Recompute + Failed-Marker + UI-Banner + Bench | Ja (1 Spalte `recompute_status`) | **Deployed (2026-05-09)** |
 | **54-δ** | Versionierte `resource_rate_overrides`-Tabelle | Ja | Deferred |
 
 ## User Stories
@@ -486,7 +486,22 @@ Suggested next steps:
 3. **(optional)** flip status to **Deployed** via `/deploy` to claim the slice and tag it.
 
 ## Deployment
-_To be added by /deploy_
+
+**Closeout date:** 2026-05-12
+
+**Production URL:** https://projektplattform-v3.vercel.app
+
+**Production deployment verified:** `dpl_H2dSdTHDYdg1KUr4NPk59hGnRiYS` — Ready, production alias `https://projektplattform-v3.vercel.app`.
+
+**Scope closed:** 54-α, 54-β and 54-γ are live. 54-δ (versioned `resource_rate_overrides` history) remains intentionally deferred until pilot demand requires historical override versions.
+
+**Migrations live:**
+- `supabase/migrations/20260506111756_proj54a_resource_rate_overrides.sql`
+- `supabase/migrations/20260509091700_proj54g_resource_recompute_status.sql`
+
+**Production route probe:** `/stammdaten/ressourcen` returns HTTP 307 to `/login?...`, confirming the auth-gated resource surface is registered on production.
+
+**Rollback path:** UI/API rollback via `git revert` of the relevant feature/hotfix commits and Vercel redeploy. DB migrations are additive and should not be rolled back in production unless a dedicated forward migration is authored.
 
 ---
 
