@@ -332,6 +332,28 @@ describe("resolveMethodAwareRedirect", () => {
     expect(r?.destination).toBe(`${PREFIX}/releases`)
   })
 
+  it("redirects /phasen to /releases in a Scrum project", () => {
+    const r = resolveMethodAwareRedirect(
+      `${PREFIX}/phasen`,
+      PROJECT_ID,
+      "scrum",
+    )
+    expect(r?.fromSlug).toBe("phasen")
+    expect(r?.toSlug).toBe("releases")
+    expect(r?.destination).toBe(`${PREFIX}/releases`)
+    expect(r?.sectionId).toBe("releases")
+  })
+
+  it("redirects /phasen to /releases in a SAFe project", () => {
+    const r = resolveMethodAwareRedirect(
+      `${PREFIX}/phasen`,
+      PROJECT_ID,
+      "safe",
+      "?foo=bar",
+    )
+    expect(r?.destination).toBe(`${PREFIX}/releases?foo=bar`)
+  })
+
   it("redirects foreign-method alias back to the active method's slug", () => {
     // /arbeitspakete in a Scrum project → Scrum has section
     // "work-packages"? No — Scrum's sidebarSections has no

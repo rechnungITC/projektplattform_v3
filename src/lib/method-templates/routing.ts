@@ -205,6 +205,21 @@ export function resolveMethodAwareRedirect(
     .split("#")[0]
   if (!firstSegment) return null
 
+  if (
+    (method === "scrum" || method === "safe") &&
+    firstSegment === "phasen"
+  ) {
+    const tail = remainder
+      .replace(/^\//, "")
+      .slice(firstSegment.length)
+    return {
+      fromSlug: firstSegment,
+      toSlug: "releases",
+      destination: `${prefix}/releases${tail}${search}`,
+      sectionId: "releases",
+    }
+  }
+
   const sectionId = parseSectionFromPathname(pathname, projectId, method)
   if (!sectionId) return null
 
