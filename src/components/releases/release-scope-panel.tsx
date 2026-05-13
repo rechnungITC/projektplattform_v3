@@ -46,6 +46,10 @@ export function ReleaseScopePanel({
   const [busyId, setBusyId] = React.useState<string | null>(null)
   const [error, setError] = React.useState<string | null>(null)
   const scopedIds = new Set(summary.items.map((item) => item.id))
+  const itemsById = new Map(summary.items.map((item) => [item.id, item]))
+  const sprintsById = new Map(
+    summary.sprint_contributions.map((sprint) => [sprint.sprint_id, sprint])
+  )
   const available = candidates
     .filter((item) => item.release_id !== summary.release.id)
     .filter((item) => !scopedIds.has(item.id))
@@ -102,6 +106,12 @@ export function ReleaseScopePanel({
             ) : (
               summary.items.map((item) => {
                 const explicitlyAssigned = item.release_id === summary.release.id
+                const parent = item.parent_id
+                  ? itemsById.get(item.parent_id)
+                  : null
+                const sprint = item.sprint_id
+                  ? sprintsById.get(item.sprint_id)
+                  : null
                 return (
                   <TableRow key={item.id}>
                     <TableCell>
@@ -121,6 +131,22 @@ export function ReleaseScopePanel({
                           {item.outside_release_window ? (
                             <Badge variant="outline" className="text-xs">
                               Außerhalb
+                            </Badge>
+                          ) : null}
+                          {sprint ? (
+                            <Badge
+                              variant="secondary"
+                              className="max-w-[220px] truncate text-xs"
+                            >
+                              Sprint {sprint.name}
+                            </Badge>
+                          ) : null}
+                          {parent ? (
+                            <Badge
+                              variant="outline"
+                              className="max-w-[220px] truncate text-xs"
+                            >
+                              Parent {parent.title}
                             </Badge>
                           ) : null}
                         </div>

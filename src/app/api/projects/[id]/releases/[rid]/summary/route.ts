@@ -15,11 +15,27 @@ import {
 
 import { requireReleaseProject, validateUuid } from "../../_helpers"
 
+const RELEASE_WORK_ITEM_SELECT =
+  "id, kind, parent_id, phase_id, milestone_id, sprint_id, release_id, title, status, priority, attributes, planned_start, planned_end"
+
 function validateIds(projectId: string, releaseId: string) {
   return (
     validateUuid(projectId, "id", "project id") ??
     validateUuid(releaseId, "rid", "release id")
   )
+}
+
+function mergeWorkItems(
+  rows: ReleaseSummaryWorkItem[]
+): ReleaseSummaryWorkItem[] {
+  const seen = new Set<string>()
+  const merged: ReleaseSummaryWorkItem[] = []
+  for (const row of rows) {
+    if (seen.has(row.id)) continue
+    seen.add(row.id)
+    merged.push(row)
+  }
+  return merged
 }
 
 // -----------------------------------------------------------------------------
@@ -58,19 +74,43 @@ export async function GET(
   }
   if (!release) return apiError("not_found", "Release not found.", 404)
 
-  const [workItemsRes, sprintsRes, phasesRes, milestonesRes] =
+  const explicitWorkItemsRes = await supabase
+    .from("work_items")
+    .select(RELEASE_WORK_ITEM_SELECT)
+    .eq("project_id", projectId)
+    .eq("is_deleted", false)
+    .eq("release_id", releaseId)
+    .in("kind", ["story", "task", "bug"])
+    .order("position", { ascending: true, nullsFirst: false })
+    .order("created_at", { ascending: true })
+    .limit(501)
+
+  if (explicitWorkItemsRes.error) {
+    return apiError("list_failed", explicitWorkItemsRes.error.message, 500)
+  }
+
+  const explicitWorkItems = (explicitWorkItemsRes.data ??
+    []) as ReleaseSummaryWorkItem[]
+  const explicitTruncated = explicitWorkItems.length > 500
+  const baseWorkItems = explicitWorkItems.slice(0, 500)
+  const releaseStoryIds = baseWorkItems
+    .filter((item) => item.kind === "story")
+    .map((item) => item.id)
+
+  const [childWorkItemsRes, sprintsRes, phasesRes, milestonesRes] =
     await Promise.all([
-      supabase
-        .from("work_items")
-        .select(
-          "id, kind, parent_id, phase_id, milestone_id, sprint_id, release_id, title, status, priority, attributes, planned_start, planned_end"
-        )
-        .eq("project_id", projectId)
-        .eq("is_deleted", false)
-        .in("kind", ["story", "task", "bug"])
-        .order("position", { ascending: true, nullsFirst: false })
-        .order("created_at", { ascending: true })
-        .limit(501),
+      !explicitTruncated && releaseStoryIds.length > 0
+        ? supabase
+            .from("work_items")
+            .select(RELEASE_WORK_ITEM_SELECT)
+            .eq("project_id", projectId)
+            .eq("is_deleted", false)
+            .in("kind", ["task", "bug"])
+            .in("parent_id", releaseStoryIds)
+            .order("position", { ascending: true, nullsFirst: false })
+            .order("created_at", { ascending: true })
+            .limit(501)
+        : Promise.resolve({ data: [], error: null }),
       supabase
         .from("sprints")
         .select("id, name, state, start_date, end_date")
@@ -93,8 +133,8 @@ export async function GET(
         .limit(200),
     ])
 
-  if (workItemsRes.error) {
-    return apiError("list_failed", workItemsRes.error.message, 500)
+  if (childWorkItemsRes.error) {
+    return apiError("list_failed", childWorkItemsRes.error.message, 500)
   }
   if (sprintsRes.error) {
     return apiError("list_failed", sprintsRes.error.message, 500)
@@ -106,10 +146,45 @@ export async function GET(
     return apiError("list_failed", milestonesRes.error.message, 500)
   }
 
-  const workItems = ((workItemsRes.data ?? []) as ReleaseSummaryWorkItem[]).slice(
-    0,
-    500
+  const childWorkItems = (childWorkItemsRes.data ??
+    []) as ReleaseSummaryWorkItem[]
+  const mergedScopedWorkItems = mergeWorkItems([
+    ...baseWorkItems,
+    ...childWorkItems,
+  ])
+  const scopedWorkItems = mergedScopedWorkItems.slice(0, 500)
+  const scopedIds = new Set(scopedWorkItems.map((item) => item.id))
+  const parentStoryIds = Array.from(
+    new Set(
+      scopedWorkItems
+        .map((item) => item.parent_id)
+        .filter(
+          (id): id is string => typeof id === "string" && !scopedIds.has(id)
+        )
+    )
   )
+
+  const parentStoriesRes =
+    parentStoryIds.length > 0
+      ? await supabase
+          .from("work_items")
+          .select(RELEASE_WORK_ITEM_SELECT)
+          .eq("project_id", projectId)
+          .eq("is_deleted", false)
+          .eq("kind", "story")
+          .in("id", parentStoryIds)
+          .limit(parentStoryIds.length)
+      : { data: [], error: null }
+
+  if (parentStoriesRes.error) {
+    return apiError("list_failed", parentStoriesRes.error.message, 500)
+  }
+
+  const parentStoryRefs = ((parentStoriesRes.data ??
+    []) as ReleaseSummaryWorkItem[]).filter(
+    (item) => item.release_id !== releaseId
+  )
+  const workItems = mergeWorkItems([...scopedWorkItems, ...parentStoryRefs])
   const summary = buildReleaseSummary({
     release: release as ReleaseRow,
     workItems,
@@ -120,6 +195,9 @@ export async function GET(
 
   return NextResponse.json({
     summary,
-    truncated: (workItemsRes.data?.length ?? 0) > 500,
+    truncated:
+      explicitTruncated ||
+      childWorkItems.length > 500 ||
+      mergedScopedWorkItems.length > 500,
   })
 }
