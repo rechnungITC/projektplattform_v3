@@ -98,10 +98,17 @@ function buildSupabase(opts: {
       if (table === "ki_suggestions") return insertSuggestionsChain
       if (table === "tenant_ai_providers") return providerStatusChain
       if (table === "tenant_ai_cost_caps") {
-        // 32-d cost-cap config — no caps configured.
-        const chain: { select: unknown; eq: unknown; maybeSingle: unknown } = {
+        // 32-d cost-cap config — no caps configured. ε.β added the
+        // `.is("purpose", null)` step for purpose-aware lookups.
+        const chain: {
+          select: unknown
+          eq: unknown
+          is: unknown
+          maybeSingle: unknown
+        } = {
           select: () => chain,
           eq: () => chain,
+          is: () => chain,
           maybeSingle: async () => ({ data: null, error: null }),
         }
         return chain

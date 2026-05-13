@@ -19,6 +19,8 @@
 import { cache } from "react"
 import type { SupabaseClient } from "@supabase/supabase-js"
 
+import type { AIPurpose } from "./types"
+
 export interface CostCapConfig {
   monthly_input_token_cap: number | null
   monthly_output_token_cap: number | null
@@ -61,19 +63,56 @@ function priorYearMonth(ym: YearMonth, monthsBack: number): YearMonth {
 // Cap config + monthly-usage cached per request.
 // ---------------------------------------------------------------------------
 
+/**
+ * PROJ-34-ε.β (CIA-L7) — purpose-aware cap config lookup.
+ *
+ * Tries the purpose-specific row first (`purpose = $P`); falls back to the
+ * NULL-purpose default row (`purpose IS NULL`). When no purpose is given,
+ * only the NULL-default row is considered.
+ *
+ * Per-purpose usage isolation is intentionally NOT implemented in this
+ * slice — the dashboard RPC stays purpose-agnostic. Purpose caps therefore
+ * apply against cumulative tenant token usage. v2 enhancement is tracked
+ * as a follow-up.
+ */
 const getCapConfig = cache(
   async (
     supabase: SupabaseClient,
     tenantId: string,
+    purpose?: AIPurpose,
   ): Promise<CostCapConfig | null> => {
+    if (purpose) {
+      const purposeRes = await supabase
+        .from("tenant_ai_cost_caps")
+        .select("monthly_input_token_cap, monthly_output_token_cap, cap_action")
+        .eq("tenant_id", tenantId)
+        .eq("purpose", purpose)
+        .maybeSingle()
+      if (purposeRes.error) {
+        console.error(
+          `[cost-cap] getCapConfig(${tenantId}, ${purpose}) failed: ${purposeRes.error.message}. Falling back to default.`,
+        )
+      } else if (purposeRes.data) {
+        return {
+          monthly_input_token_cap:
+            (purposeRes.data.monthly_input_token_cap as number | null) ?? null,
+          monthly_output_token_cap:
+            (purposeRes.data.monthly_output_token_cap as number | null) ?? null,
+          cap_action:
+            (purposeRes.data.cap_action as CostCapConfig["cap_action"]) ??
+            "block",
+        }
+      }
+    }
     const { data, error } = await supabase
       .from("tenant_ai_cost_caps")
       .select("monthly_input_token_cap, monthly_output_token_cap, cap_action")
       .eq("tenant_id", tenantId)
+      .is("purpose", null)
       .maybeSingle()
     if (error) {
       console.error(
-        `[cost-cap] getCapConfig failed for ${tenantId}: ${error.message}. Treating as no-cap.`,
+        `[cost-cap] getCapConfig default failed for ${tenantId}: ${error.message}. Treating as no-cap.`,
       )
       return null
     }
@@ -152,9 +191,11 @@ function sumUsage(rows: MonthlyUsageRow[]): {
 export async function checkCostCap(args: {
   supabase: SupabaseClient
   tenantId: string
+  /** PROJ-34-ε.β — when given, look up the purpose-specific cap first. */
+  purpose?: AIPurpose
 }): Promise<CostCapCheckResult> {
-  const { supabase, tenantId } = args
-  const cfg = await getCapConfig(supabase, tenantId)
+  const { supabase, tenantId, purpose } = args
+  const cfg = await getCapConfig(supabase, tenantId, purpose)
   if (!cfg) return { blocked: false, warn: false, detail: null }
   if (
     cfg.monthly_input_token_cap === null &&

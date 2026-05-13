@@ -18,11 +18,13 @@
 
 import type {
   AIProvider,
+  CoachingGenerationRequest,
   NarrativeGenerationRequest,
   RiskGenerationRequest,
   SentimentGenerationRequest,
 } from "./types"
 import type {
+  CoachingGenerationOutput,
   NarrativeGenerationOutput,
   RiskGenerationOutput,
   RiskSuggestion,
@@ -176,6 +178,29 @@ export class StubProvider implements AIProvider {
     }))
     return {
       signals,
+      usage: {
+        input_tokens: 0,
+        output_tokens: 0,
+        latency_ms: Date.now() - start,
+      },
+    }
+  }
+
+  /**
+   * PROJ-34-ε — coaching stub.
+   *
+   * Emits zero recommendations. Real providers fill the four kinds based
+   * on the aggregated profile + interaction context; the Stub's job is
+   * just to keep the pipeline running when a tenant has no compatible
+   * provider — the UI surfaces an empty-state with the external-blocked
+   * banner so the user knows manual coaching is the only path.
+   */
+  async generateCoaching(
+    _request: CoachingGenerationRequest,
+  ): Promise<CoachingGenerationOutput> {
+    const start = Date.now()
+    return {
+      recommendations: [],
       usage: {
         input_tokens: 0,
         output_tokens: 0,

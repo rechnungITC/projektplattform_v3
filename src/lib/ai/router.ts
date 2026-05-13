@@ -29,6 +29,7 @@ import type {
 } from "@/types/tenant-settings"
 
 import {
+  classifyCoachingAutoContext,
   classifyNarrativeAutoContext,
   classifyRiskAutoContext,
   classifySentimentAutoContext,
@@ -44,10 +45,13 @@ import type { AIProvider } from "./providers/types"
 import type {
   AIProviderName,
   AIPurpose,
+  CoachingAutoContext,
+  CoachingRecommendation,
   DataClass,
   NarrativeAutoContext,
   RiskAutoContext,
   RiskSuggestion,
+  RouterCoachingResult,
   RouterNarrativeResult,
   RouterRiskResult,
   RouterSentimentResult,
@@ -207,9 +211,10 @@ async function applyCostCap(
   supabase: SupabaseClient,
   tenantId: string,
   choice: ProviderChoice,
+  purpose: AIPurpose,
 ): Promise<ProviderChoice> {
   if (choice.provider.name === "stub") return choice
-  const cap = await checkCostCap({ supabase, tenantId })
+  const cap = await checkCostCap({ supabase, tenantId, purpose })
   if (!cap.blocked) {
     if (cap.warn && cap.detail) {
       // Soft warning: the call still goes through, but log the detail
@@ -307,6 +312,7 @@ export async function invokeRiskGeneration({
     supabase,
     tenantId,
     choice,
+    "risks",
   )
 
   const runId = await insertKiRun(supabase, {
@@ -447,6 +453,7 @@ export async function invokeNarrativeGeneration({
     supabase,
     tenantId,
     choice,
+    "narrative",
   )
 
   const runId = await insertKiRun(supabase, {
@@ -566,6 +573,7 @@ export async function invokeSentimentGeneration({
     supabase,
     tenantId,
     choice,
+    "sentiment",
   )
 
   const runId = await insertKiRun(supabase, {
@@ -627,6 +635,127 @@ export async function invokeSentimentGeneration({
     status: finalStatus,
     signals,
     external_blocked: externalBlocked,
+    error_message: providerError ?? blockedReason ?? undefined,
+  }
+}
+
+// ---------------------------------------------------------------------------
+// PROJ-34-ε — coaching-purpose router
+// ---------------------------------------------------------------------------
+
+interface InvokeCoachingGenerationArgs {
+  supabase: SupabaseClient
+  tenantId: string
+  projectId: string
+  actorUserId: string
+  context: CoachingAutoContext
+}
+
+/**
+ * PROJ-34-ε — generate 0..n coaching recommendations for a single
+ * stakeholder.
+ *
+ * Class-3 hard-fixed per CIA-L1 — `classifyCoachingAutoContext` always
+ * returns 3, so the router will only ever pick a tenant-supplied local
+ * provider or the deterministic Stub. The Stub emits zero recommendations
+ * (no neutral defaults; the UI shows the external-blocked banner so the
+ * PM knows manual coaching is the only path).
+ *
+ * Cost-cap is purpose-scoped via the new `purpose='coaching'` row (CIA-L7,
+ * with NULL-purpose fallback for tenants who haven't configured one).
+ */
+export async function invokeCoachingGeneration({
+  supabase,
+  tenantId,
+  projectId,
+  actorUserId,
+  context,
+}: InvokeCoachingGenerationArgs): Promise<RouterCoachingResult> {
+  const overrides = await loadTenantOverrides(supabase, tenantId)
+  const classification = classifyCoachingAutoContext(
+    context,
+    overrides.privacyDefault as DataClass,
+  )
+  const choice = await selectProviderForPurpose(
+    supabase,
+    tenantId,
+    "coaching",
+    classification,
+    overrides.providerConfig,
+  )
+  const { provider, externalBlocked, blockedReason } = await applyCostCap(
+    supabase,
+    tenantId,
+    choice,
+    "coaching",
+  )
+
+  const runId = await insertKiRun(supabase, {
+    tenantId,
+    projectId,
+    actorUserId,
+    purpose: "coaching",
+    classification,
+    provider,
+  })
+
+  let recommendations: CoachingRecommendation[] = []
+  let inputTokens: number | null = null
+  let outputTokens: number | null = null
+  let latencyMs: number | null = null
+  let providerError: string | null = null
+
+  try {
+    if (!provider.generateCoaching) {
+      throw new Error(
+        `Provider ${provider.name} does not implement generateCoaching`,
+      )
+    }
+    const result = await provider.generateCoaching({ context })
+    // Provider sanity-check: enforce ≤ 1 per kind contract.
+    const seenKinds = new Set<string>()
+    for (const r of result.recommendations) {
+      if (seenKinds.has(r.kind)) continue
+      seenKinds.add(r.kind)
+      recommendations.push(r)
+    }
+    inputTokens = result.usage.input_tokens
+    outputTokens = result.usage.output_tokens
+    latencyMs = result.usage.latency_ms
+  } catch (err) {
+    providerError = err instanceof Error ? err.message : String(err)
+    // Final defense — Stub returns [] so the UI handles the empty state
+    // rather than the caller seeing a 5xx.
+    const fallback = await new StubProvider().generateCoaching!({ context })
+    recommendations = fallback.recommendations
+  }
+
+  let finalStatus: "success" | "error" | "external_blocked"
+  if (providerError) {
+    finalStatus = "error"
+  } else if (externalBlocked) {
+    finalStatus = "external_blocked"
+  } else {
+    finalStatus = "success"
+  }
+
+  await updateKiRunStatus(supabase, runId, {
+    status: finalStatus,
+    inputTokens,
+    outputTokens,
+    latencyMs,
+    errorMessage: providerError ?? blockedReason ?? null,
+  })
+
+  return {
+    run_id: runId,
+    classification,
+    provider: provider.name as AIProviderName,
+    model_id: provider.modelId,
+    status: finalStatus,
+    recommendations,
+    external_blocked: externalBlocked,
+    tonality_hint: context.tonality_hint,
     error_message: providerError ?? blockedReason ?? undefined,
   }
 }
