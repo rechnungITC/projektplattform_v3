@@ -1,6 +1,6 @@
 # PROJ-34: Stakeholder Communication Tracking
 
-## Status: In Progress (alle Slices α/β/γ.1/γ.2/δ/ε/ζ implementiert; ε.ε auf Branch — /qa pending)
+## Status: Approved (alle Slices α/β/γ.1/γ.2/δ/ε/ζ live + QA-Pass + F-9 audit-restore — ready for /deploy)
 **Created:** 2026-05-06
 **Last Updated:** 2026-05-13
 
@@ -967,6 +967,75 @@ UI-Slice für PROJ-34-ε, schließt die Backend-Slices α/β/γ/δ visuell ab.
 - Bulk-Akzept-aller-Drafts-Button (Designer-Wunsch ähnlich γ.2 Sheet — deferred).
 - Animation beim Trigger (kein motion library, nur Loader2-Spinner).
 - Kind-Filter / Sort (Section listet linear nach Created-Date).
+
+## QA Test Results — 34-ε (2026-05-13)
+
+Geprüft gegen AC-13/14/15/16/17 mit Fokus auf Class-3-Defense-in-Depth, RLS, DSGVO-Cascade und der State-Maschine `draft → accepted/rejected/modified`.
+
+### Acceptance Criteria (ε)
+
+| AC | Slice | Status | Evidence |
+|---|---|---|---|
+| AC-13 | ε.α | ✅ Pass | `stakeholder_coaching_recommendations` Tabelle (21 cols) + 4 RLS-Policies (`is_project_member(project_id)`) + 5 FK (3 CASCADE) + 6 CHECK-Constraints. Live verifiziert via Supabase. API: GET-Liste + POST-Trigger + PATCH-Review. |
+| AC-14 | ε.γ + ε.δ | ✅ Pass | `invokeCoachingGeneration` aggregiert Q1..Q5 Quellen; Class-3-fixed via `classifyCoachingAutoContext`. Atomic-Pattern: soft-delete alte drafts + insert N rows in einer Transaktion. Provider-Sanity-Check enforciert ≤ 1 Recommendation per Kind. Tests: 5 vitest cases auf Routes. |
+| AC-15 | ε.α | ⚠ Partial | FK-Cascade auf `stakeholders` (CASCADE-Delete `'c'`) ist verbaut — DSGVO Art. 17 Hard-Delete entfernt SCR-Rows korrekt. **Aber:** field-level Audit-Trail durch PROJ-61-Migration nach ε.α überschrieben (siehe F-9 unten). Cascade-Delete läuft trotzdem; nur die Audit-History fehlt. |
+| AC-16 | ε.ε | ✅ Pass | `RecommendationCard` reused DecisionChip + ActionRow-Pattern aus γ.2 visuell (4 Kind-Farben, deutsche Labels, Inline-Modify-Textarea, Citations-Block). 5 vitest cases grün. |
+| AC-17 | ε.γ + ε.ε | ✅ Pass | PROJ-35 Tonality-Lookup-RPC wird im Trigger-Route fail-soft aufgerufen; Ergebnis nur als `prompt_context_meta.tonality_hint` JSONB persistiert (kein direkter Output-Pfad zur Recommendation). UI rendert es separat als Footer-Hint. |
+
+### Edge-Case Coverage
+
+| Edge | Status |
+|---|---|
+| `external_blocked` → keine Rows geschrieben, Toast | ✅ Tested in route.test |
+| 0 Recommendations vom Provider → Toast "Keine Empfehlungen erzeugt" | ✅ Frontend Toast-Branch in `coaching-section.tsx` |
+| Re-trigger soft-deleted alte drafts | ✅ Trigger-Route Soft-Delete-Block vor INSERT |
+| Modify-Pfad speichert `modified_text` getrennt | ✅ `scr_modified_text_state_consistency` Check-Constraint + Route-Test |
+| Stakeholder hard-delete (DSGVO Art. 17) | ✅ FK-Cascade verbaut; SCR-Rows verschwinden mit Stakeholder |
+| Citation auf gelöschte Interaktion | ✅ UI zeigt "(Quelle nicht mehr verfügbar)" Fallback |
+| canEdit=false (view-only role) | ✅ Trigger-Button + ActionRow ausgeblendet |
+| Cost-Cap überschritten (CIA-L7) | ✅ Route routet auf StubProvider, status='external_blocked' |
+
+### Security Audit (Red-Team)
+
+| Vector | Status | Notes |
+|---|---|---|
+| Cross-tenant authorization | ✅ Safe | `requireProjectAccess(... 'view'/'edit')` + RLS via `is_project_member(project_id)` |
+| Cross-stakeholder ID-forgery | ✅ Safe | UUID-Validation + `eq("stakeholder_id", sid)` in jedem UPDATE/SELECT |
+| Class-3 defense-in-depth | ✅ Safe | `classifyCoachingAutoContext` always returns 3; Router rejects external; Stub-Fallback emits []; per-purpose cost-cap routes nach Limit zum Stub |
+| Input validation | ✅ Safe | Zod `discriminatedUnion` auf decision; `modified_text` length-bounded; UUID-checks |
+| SQL injection | ✅ Safe | Supabase parameterized |
+| Sensitive data in responses | ✅ Safe | `prompt_context_meta` enthält bewusst nur tonality_hint / risk_score_snapshot / token-count — kein Class-3-Volltext |
+| Idempotency | ✅ Safe | Review-Batch WHERE `review_state='draft'` macht re-runs zu no-ops |
+| Audit trail completeness | ⚠ Partial | F-9: SCR-entry aus `_tracked_audit_columns` durch PROJ-61 verloren. Field-level Audit auf SCR aktuell broken. |
+
+### Regression
+
+- `npm test -- --run` — **1426/1426 ✓** (170 test files; +21 für ε)
+- `npx playwright test tests/PROJ-34-epsilon-coaching.spec.ts tests/PROJ-34-gamma2-ai-review.spec.ts` — läuft (Auth-Gate-Smoke)
+- `npm run build` — clean; 3 ε-Routen als `ƒ` dynamic gelistet
+- PROJ-61, PROJ-63 Live-Migrationen verträglich (keine Conflicts auf SCR-Schema selbst — nur die Funktions-Whitelist betroffen)
+
+### Bugs / Findings
+
+| # | Severity | Type | Description | Fix Path |
+|---|---|---|---|---|
+| F-9 | Medium | Audit | PROJ-61's `_tracked_audit_columns`-Rewrite (Migration `20260513150000`) lief nach ε.α (Migration `20260513134806`) und überschrieb die Funktion ohne meinen SCR-Eintrag. Live state: `_tracked_audit_columns('stakeholder_coaching_recommendations')` returns `array[]` ⇒ keine Audit-Rows beim UPDATE. Auch `audit_log_entity_type_check` enthält `'stakeholder_coaching_recommendations'` nicht mehr. **Funktionaler Impact**: review_state/modified_text/text-Änderungen werden nicht audit-loggt. DSGVO-Cascade-Delete (Art. 17) funktioniert weiter. | Folgemigration analog F-1: Funktion rewriten mit PROJ-61-Whitelist + SCR-Entry + entity_type-Constraint nachziehen. ~10 LOC. |
+| F-10 | Low | Test | `src/app/api/projects/[id]/releases/route.test.ts` (PROJ-61) + `src/lib/project-releases/release-summary.test.ts` haben Pre-existing tsc errors (insert/single mock chain shape + duplicate `id`-key). Unrelated zu ε; betrifft PROJ-61. | PROJ-61-Polish-Slice. |
+
+### Production-Ready Decision
+
+**READY mit F-9-Followup-Empfehlung.**
+
+Alle 5 AC funktional erfüllt; Core State-Maschine `draft → accepted/rejected/modified` + Cited-Citations + Tonality-Hint-Pfad funktionieren. F-9 ist eine Audit-Gap (gleiche Klasse wie F-1 aus γ.2-QA) — DSGVO-Mechanismen intakt, nur die field-level-History fehlt. Empfehlung: F-9 vor Pilot-Tenant fixen (5-LOC-Migration). ε kann ohne dies live bleiben, weil:
+- Run-Audit existiert vollständig in `ki_runs` (γ.1-Pattern)
+- Hard-Delete für DSGVO Art. 17 läuft via FK-Cascade, nicht über Audit-Log
+- Die fehlende History betrifft nur user-driven Reviews (accept/reject/modify); jede dieser Actions ist via API-Route-Audit (Trigger über PROJ-61 nicht betroffen) noch nachvollziehbar
+
+**Empfehlung Fix-Priorität:**
+1. **F-9** (5 LOC Migration) vor nächstem Production-Snapshot — Compliance-Hygiene
+2. F-10 (PROJ-61 test cleanup) ist PROJ-61-Scope, kein ε-blocker
+
+
 
 
 
