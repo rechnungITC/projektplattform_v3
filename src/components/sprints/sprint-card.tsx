@@ -57,7 +57,6 @@ export function SprintCard({
   refreshKey = 0,
 }: SprintCardProps) {
   const canEdit = useProjectAccess(projectId, "edit_master")
-  const canTransition = useProjectAccess(projectId, "transition")
 
   const [editOpen, setEditOpen] = React.useState(false)
   const [stateOpen, setStateOpen] = React.useState(false)
@@ -123,17 +122,15 @@ export function SprintCard({
                   <Pencil className="mr-2 h-4 w-4" aria-hidden />
                   Bearbeiten
                 </DropdownMenuItem>
-                {canTransition ? (
-                  <DropdownMenuItem
-                    onSelect={(event) => {
-                      event.preventDefault()
-                      setStateOpen(true)
-                    }}
-                  >
-                    <PlayCircle className="mr-2 h-4 w-4" aria-hidden />
-                    Status ändern
-                  </DropdownMenuItem>
-                ) : null}
+                <DropdownMenuItem
+                  onSelect={(event) => {
+                    event.preventDefault()
+                    setStateOpen(true)
+                  }}
+                >
+                  <PlayCircle className="mr-2 h-4 w-4" aria-hidden />
+                  Status ändern
+                </DropdownMenuItem>
                 <DropdownMenuSeparator />
                 <DropdownMenuItem
                   className="text-destructive focus:text-destructive"
