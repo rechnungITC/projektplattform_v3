@@ -62,11 +62,15 @@ export async function POST(
   if (access.error) return access.error
   const tenantId = (access.project as { tenant_id: string }).tenant_id
 
-  // Q1 — load stakeholder with qualitative profile fields.
+  // Q1 — qualitative profile lives on stakeholders directly (PROJ-33-α);
+  // Big5 and Skills live on their own per-stakeholder tables with
+  // `_fremd` (PM-Bewertung) + `_self` (Self-Assessment via Magic-Link)
+  // variants per PROJ-33-γ/δ. We prefer the fremd values for coaching
+  // and fall back to self when fremd is null.
   const stakeholderRes = await supabase
     .from("stakeholders")
     .select(
-      "id, name, reasoning, attitude, management_level, decision_authority, communication_need, preferred_channel, big5_openness, big5_conscientiousness, big5_extraversion, big5_agreeableness, big5_neuroticism, skill_negotiation, skill_communication, skill_technical, skill_leadership, skill_strategic",
+      "id, name, reasoning, attitude, management_level, decision_authority, communication_need, preferred_channel",
     )
     .eq("id", sid)
     .maybeSingle()
@@ -77,6 +81,26 @@ export async function POST(
     return apiError("not_found", "Stakeholder not found.", 404)
   }
   const sh = stakeholderRes.data as Record<string, unknown>
+
+  // Q1 personality: prefer fremd, fall back to self per dimension.
+  const personalityRes = await supabase
+    .from("stakeholder_personality_profiles")
+    .select(
+      "openness_fremd, openness_self, conscientiousness_fremd, conscientiousness_self, extraversion_fremd, extraversion_self, agreeableness_fremd, agreeableness_self, emotional_stability_fremd, emotional_stability_self",
+    )
+    .eq("stakeholder_id", sid)
+    .maybeSingle()
+  const pers = (personalityRes.data ?? {}) as Record<string, unknown>
+
+  // Q1 skills: same fremd/self preference.
+  const skillsRes = await supabase
+    .from("stakeholder_skill_profiles")
+    .select(
+      "decision_power_fremd, decision_power_self, domain_knowledge_fremd, domain_knowledge_self, it_affinity_fremd, it_affinity_self, method_competence_fremd, method_competence_self, negotiation_skill_fremd, negotiation_skill_self",
+    )
+    .eq("stakeholder_id", sid)
+    .maybeSingle()
+  const sk = (skillsRes.data ?? {}) as Record<string, unknown>
 
   // Q2 — last N interactions for THIS stakeholder. RLS filters tenant.
   const since = new Date(Date.now() - INTERACTION_WINDOW_DAYS * 24 * 3600 * 1000)
@@ -211,28 +235,39 @@ export async function POST(
 
   const profile: CoachingAutoContext["profile"] = {}
   const big5: NonNullable<CoachingAutoContext["profile"]["big5"]> = {}
-  for (const dim of [
-    "openness",
-    "conscientiousness",
-    "extraversion",
-    "agreeableness",
-    "neuroticism",
-  ] as const) {
-    const v = sh[`big5_${dim}`]
-    if (typeof v === "number") big5[dim] = v
+  // PROJ-33 stores 5 dimensions per stakeholder, fremd+self each.
+  // Map to the simpler CoachingAutoContext key shape. Emotional-stability
+  // is the German PROJ-33 equivalent of inverse neuroticism.
+  const dimMap: Array<
+    [keyof NonNullable<CoachingAutoContext["profile"]["big5"]>, string]
+  > = [
+    ["openness", "openness"],
+    ["conscientiousness", "conscientiousness"],
+    ["extraversion", "extraversion"],
+    ["agreeableness", "agreeableness"],
+    ["neuroticism", "emotional_stability"],
+  ]
+  for (const [out, dbDim] of dimMap) {
+    const fremd = pers[`${dbDim}_fremd`]
+    const self = pers[`${dbDim}_self`]
+    const v = typeof fremd === "number" ? fremd : typeof self === "number" ? self : null
+    if (v !== null) big5[out] = v
   }
   if (Object.keys(big5).length > 0) profile.big5 = big5
 
   const skills: NonNullable<CoachingAutoContext["profile"]["skills"]> = {}
-  for (const skill of [
-    "negotiation",
-    "communication",
-    "technical",
-    "leadership",
-    "strategic",
-  ]) {
-    const v = sh[`skill_${skill}`]
-    if (typeof v === "number") skills[skill] = v
+  const skillKeys = [
+    "decision_power",
+    "domain_knowledge",
+    "it_affinity",
+    "method_competence",
+    "negotiation_skill",
+  ]
+  for (const key of skillKeys) {
+    const fremd = sk[`${key}_fremd`]
+    const self = sk[`${key}_self`]
+    const v = typeof fremd === "number" ? fremd : typeof self === "number" ? self : null
+    if (v !== null) skills[key] = v
   }
   if (Object.keys(skills).length > 0) profile.skills = skills
 
