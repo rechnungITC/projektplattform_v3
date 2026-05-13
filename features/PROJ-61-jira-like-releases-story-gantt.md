@@ -1,6 +1,6 @@
 # PROJ-61: Jira-like Releases with Story Gantt / Phase Mapping
 
-## Status: Architected
+## Status: In Progress
 **Created:** 2026-05-09
 **Last Updated:** 2026-05-13
 
@@ -231,6 +231,43 @@ Bestehende Bausteine, die genutzt werden:
 - β: Release-Summary mit Zeitquellen, Sprint-Beiträgen und Health-Signalen.
 - γ: Release-UI + Story-Gantt ohne Datum-Drag.
 - δ: QA, Regression für `/planung`, Performance-Prüfung mit 500 Items und Doku-Abschluss.
+
+## Backend Implementation Notes — α/β Slice (2026-05-13)
+
+Backend-Backbone umgesetzt:
+
+- Neue Tabelle `releases` mit Tenant/Projekt-Bezug, Status, Zeitraum und optionalem Ziel-Meilenstein.
+- `work_items.release_id` als explizite Release-Scope-Zuordnung für `story`, `task`, `bug`.
+- RLS auf `releases`: Projektmitglieder lesen, Projekt-Editor/Lead/Tenant-Admin schreiben.
+- DB-Guards:
+  - Releases nur für Scrum/SAFe oder Method-NULL.
+  - Ziel-Meilenstein muss im selben Projekt liegen.
+  - Work-Item-Release-Zuordnung muss im selben Projekt/Tenant liegen.
+  - Nur Stories, Tasks und Bugs dürfen Release-Scope bekommen.
+- Audit:
+  - `releases` als Audit-Entity ergänzt.
+  - `work_items.release_id` wird über bestehendes Work-Item-Audit getrackt.
+  - Release-History ist für Projektmitglieder über `can_read_audit_entry` lesbar.
+
+Backend-APIs umgesetzt:
+
+- `GET /api/projects/[id]/releases`
+- `POST /api/projects/[id]/releases`
+- `GET /api/projects/[id]/releases/[rid]`
+- `PATCH /api/projects/[id]/releases/[rid]`
+- `GET /api/projects/[id]/releases/[rid]/summary`
+- `PATCH /api/projects/[id]/work-items/[wid]/release`
+
+Summary-Regeln umgesetzt:
+
+- Release-Scope umfasst explizit zugeordnete Stories/Tasks/Bugs plus Tasks/Bugs unter einer release-zugeordneten Story.
+- Zeitquelle: Work-Item-Daten vor Sprint-Daten vor Parent-Story-Daten vor "unscheduled".
+- Health-Signale: done, blocked, critical, outside-window, overdue, unscheduled, contributing sprints.
+- Summary-Endpunkt limitiert Work Items auf 500 plus `truncated`-Flag.
+
+Backend-QA bisher:
+
+- `npm run test -- src/lib/project-releases/release-summary.test.ts src/app/api/projects/[id]/releases/route.test.ts src/app/api/projects/[id]/work-items/[wid]/release/route.test.ts` — PASS, 14 Tests.
 
 ## Architecture Options
 
