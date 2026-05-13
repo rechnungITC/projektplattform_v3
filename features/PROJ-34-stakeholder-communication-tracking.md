@@ -1,8 +1,8 @@
 # PROJ-34: Stakeholder Communication Tracking
 
-## Status: In Progress (34-α backend + API + tab skeleton implemented 2026-05-12; β/γ.1/γ.2/δ/ε/ζ open)
+## Status: In Progress (34-α/β/γ.1/δ/ζ live on main; γ.2/ε open)
 **Created:** 2026-05-06
-**Last Updated:** 2026-05-12
+**Last Updated:** 2026-05-13
 
 ## Summary
 
@@ -391,3 +391,49 @@ neue Schema.
 
 **Next slice:** 34-β — manuelle Sentiment-/Cooperation-Slider pro Participant
 am Edit-Form. Reine Frontend-Slice ohne Migration (Spalten existieren bereits).
+
+## Implementation Notes — 34-γ.1 (2026-05-13, PR #17 squash `fb2bf71`)
+
+Backend-only AI-Sentiment-Router-Erweiterung. Keine Migration, keine UI.
+
+**Router (`src/lib/ai/`)**
+
+- `AIPurpose` um `'sentiment'` erweitert (`types.ts`).
+- Neue Types `SentimentAutoContext` (mit `participants: { stakeholder_id, name }[]`)
+  und `SentimentSignal` (per Participant: `sentiment ∈ [-2,+2]`, `cooperation_signal ∈ [-2,+2]`, `confidence ∈ [0,1]`).
+- `classifySentimentAutoContext()` (in `classify.ts`) gibt **immer** Klasse 3 zurück
+  — Tenant-Default wird per CIA-L1 ignoriert, kein Class-2-Fallback.
+- `AIProvider.generateSentiment(...)` optional auf der Provider-Schnittstelle (`providers/types.ts`).
+- `invokeSentimentGeneration()` (`router.ts`) spiegelt `invokeNarrativeGeneration`:
+  Class-3-Hard-Block → Tenant-Provider-Pflicht → `tenant_ai_cost_caps`-Check →
+  `ki_runs`-Insert → Provider-Call → Stub-Fallback wenn `generateSentiment`
+  fehlt → Output normalisiert auf **eine** `SentimentSignal` pro übergebenem
+  Participant (auch wenn Provider weniger liefert).
+- `StubProvider.generateSentiment()` emittiert neutrale `0/0`-Signals mit
+  `confidence=0.3` pro Participant — γ.2 Review-Queue erfordert weiterhin
+  expliziten Accept/Reject pro Stakeholder.
+
+**Tests (`src/lib/ai/router.test.ts`)**
+
+- +3 Cases: Class-3-Lock auch bei Tenant-Default Class-1; Cost-Cap-Reject;
+  per-Participant-Output-Cardinality. Suite jetzt 27/27 grün.
+
+**Bewusste Abweichungen vs Spec**
+
+- Real-Provider Anthropic/OpenAI/Google haben `generateSentiment` **noch nicht**
+  implementiert — Stub ist der kanonische lokale Pfad bis zur nächsten
+  Provider-Feature-Slice. Funktional ausreichend für γ.2-UI-Entwicklung.
+- CIA-L7 separater Cost-Cap-Topf (500/Monat/Tenant für Sentiment) **deferred**:
+  Sentiment teilt sich aktuell den globalen `tenant_ai_cost_caps`. Purpose-
+  scoped Caps würden Schema + RPC ändern und hätten γ.1 in eine größere Slice
+  verwandelt. Re-evaluation in γ.2 oder als 32e-Slice.
+
+**Doc-Drift (vor γ.1 bemerkt)**
+
+- Implementation Notes für 34-β, 34-δ, 34-ζ wurden in den jeweiligen Sessions
+  nicht in diese Spec nachgepflegt (PRs #10/#12/#13 merged). PROJ-34-Backfill
+  als Pflege-Item vermerkt; nicht γ.1-blocking.
+
+**Next slice:** 34-γ.2 — AI-Vorschlag-Pill am Interaction-List-Item +
+Accept/Reject/Modify-Dialog gegen `invokeSentimentGeneration`. Designer-Pass
+für Inline-Edit + Drill-Down-Drawer nötig (siehe `.claude/rules/designer.md`).
