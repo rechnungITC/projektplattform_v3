@@ -5,23 +5,26 @@
  * throw on non-ok with structured error parsing.
  */
 
+export type ParticipantSignalSource =
+  | "manual"
+  | "ai_proposed"
+  | "ai_accepted"
+  | "ai_rejected"
+
 export interface InteractionParticipant {
   interaction_id: string
   stakeholder_id: string
   participant_sentiment: number | null
-  participant_sentiment_source:
-    | "manual"
-    | "ai_proposed"
-    | "ai_accepted"
-    | "ai_rejected"
-    | null
+  participant_sentiment_source: ParticipantSignalSource | null
   participant_cooperation_signal: number | null
-  participant_cooperation_signal_source:
-    | "manual"
-    | "ai_proposed"
-    | "ai_accepted"
-    | "ai_rejected"
-    | null
+  participant_cooperation_signal_source: ParticipantSignalSource | null
+  // PROJ-34-γ.2 — AI-proposal metadata. Confidence is per-participant
+  // (γ.1 router writes a single confidence per SentimentSignal that
+  // covers both sentiment + cooperation). Provider/model live on the
+  // sentiment column set; cooperation reuses the same run.
+  participant_sentiment_confidence?: number | null
+  participant_sentiment_model?: string | null
+  participant_sentiment_provider?: string | null
 }
 
 export interface StakeholderInteraction {
@@ -177,6 +180,67 @@ export async function updateParticipantSignal(
   )
   const body = await unwrap<{ participant: InteractionParticipant }>(res)
   return body.participant
+}
+
+// ---------------------------------------------------------------------------
+// PROJ-34-γ.2 — AI Sentiment Review
+// ---------------------------------------------------------------------------
+
+export type AIReviewDecisionKind = "accept" | "reject" | "modify"
+
+export interface AIReviewDecision {
+  stakeholder_id: string
+  decision: AIReviewDecisionKind
+  overrides?: {
+    sentiment?: number | null
+    cooperation?: number | null
+  }
+}
+
+export interface AIReviewRunMetadata {
+  provider: string | null
+  model: string | null
+  status: "success" | "external_blocked" | "error" | "pending"
+  confidence_avg: number | null
+}
+
+/**
+ * Triggers `invokeSentimentGeneration` server-side for this interaction.
+ * Backend writes per-participant `_source = 'ai_proposed'` rows on success.
+ * Returns the run metadata so the UI can render a Stub/external_blocked banner
+ * before re-fetching the participants.
+ */
+export async function triggerSentimentReview(
+  projectId: string,
+  interactionId: string,
+): Promise<AIReviewRunMetadata> {
+  const res = await fetch(
+    `/api/projects/${encodeURIComponent(projectId)}/interactions/${encodeURIComponent(interactionId)}/sentiment-trigger`,
+    { method: "POST" },
+  )
+  const body = await unwrap<{ run: AIReviewRunMetadata }>(res)
+  return body.run
+}
+
+/**
+ * Batches Accept / Reject / Modify decisions for all open ai_proposed rows
+ * on this interaction. Backend transitions each row's `_source` to
+ * `ai_accepted` / `ai_rejected` / `manual` (Modify) atomically.
+ */
+export async function submitAIReviewBatch(
+  projectId: string,
+  interactionId: string,
+  decisions: AIReviewDecision[],
+): Promise<{ updated_participants: InteractionParticipant[] }> {
+  const res = await fetch(
+    `/api/projects/${encodeURIComponent(projectId)}/interactions/${encodeURIComponent(interactionId)}/ai-review`,
+    {
+      method: "PATCH",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ decisions }),
+    },
+  )
+  return unwrap<{ updated_participants: InteractionParticipant[] }>(res)
 }
 
 export async function deleteInteraction(
