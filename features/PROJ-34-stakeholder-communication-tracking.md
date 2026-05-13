@@ -567,6 +567,107 @@ neue Schema.
 **Next slice:** 34-β — manuelle Sentiment-/Cooperation-Slider pro Participant
 am Edit-Form. Reine Frontend-Slice ohne Migration (Spalten existieren bereits).
 
+## Implementation Notes — 34-β (2026-05-12, PR #10 squash `ffe1a20`) — *backfilled 2026-05-13*
+
+Manuelle Per-Participant-Slider für Sentiment + Cooperation. Reine
+Frontend + 1 API-Route, **keine Migration** (Spalten existierten bereits
+seit α).
+
+**Frontend (`src/components/stakeholders/communication/communication-tab.tsx`)**
+
+- `ParticipantSignalRow` für den fokussierten Stakeholder im 1-Participant-
+  Fall (multi-Participant kam erst mit γ.2 `ParticipantPillsStrip`).
+- `SignalEditDialog` mit zwei `SignalSlider`-Reihen (ToggleGroup über die
+  5 Stops −2..+2) und Reset-/Save-/Cancel-Actions.
+- `signalPill()` rendert die Werte mit Tonality-Farbschema (rot=−2, orange
+  =−1, neutral=0, grün=+1, dunkelgrün=+2) plus AI-Source-Marker `(KI ✓)` /
+  `(KI-Vorschlag)` als Vorbereitung für γ.
+
+**API (`src/app/api/projects/[id]/interactions/[iid]/participants/[psid]/route.ts`)**
+
+- PATCH-Endpoint mit Zod-Validation auf `participant_sentiment` /
+  `participant_cooperation_signal` (Int -2..2, nullable).
+- Source wird hart auf `'manual'` gesetzt wenn ein Wert kommt;
+  beim Clear (null) wird auch `_source` auf null gesetzt — damit der
+  γ.2-AI-Pill bei der nächsten Runde wieder erscheinen kann.
+- AI-Provenance-Spalten (`_model`, `_provider`, `_confidence`) werden
+  beim Manual-Edit auf null gesetzt (User-Edit erlischt AI-Quelle).
+
+**Helper (`src/lib/stakeholder-interactions/api.ts`)**
+
+- `updateParticipantSignal(projectId, interactionId, stakeholderId, payload)`
+  Client-Helper.
+
+**ACs**: AC-5 + AC-6 erfüllt.
+
+## Implementation Notes — 34-δ (2026-05-12, PR #12 squash `7dabb80`) — *backfilled 2026-05-13*
+
+Response-Latenz + Overdue-Tracking + PROJ-56-Health-Feed. Keine Migration
+(Spalten `awaiting_response`, `response_due_date`, `response_received_date`,
+`replies_to_interaction_id` waren in der α-Migration angelegt).
+
+**API**
+
+- Neue Route `GET /api/projects/[id]/stakeholders/[sid]/interactions/awaiting`
+  liefert nur die Interaktionen mit `awaiting_response=true`,
+  inkl. lazy-computed `is_overdue`-Flag (`response_due_date < today`).
+- Bestehende Create/Update-Routen erweitert um die drei Datums-Felder
+  + `replies_to_interaction_id` (mit Same-Project-Guard via Trigger
+  aus α).
+
+**Frontend (`communication-tab.tsx`)**
+
+- `AwaitingResponsesSection` oberhalb von `AddInteractionForm` listet
+  offene Outbound-Interaktionen sortiert nach `response_due_date`;
+  Overdue-Rows rot markiert + Quick-Action "Antwort eingetroffen".
+- `AddInteractionForm` zeigt für `direction=outbound` zusätzlich
+  `awaiting_response`-Checkbox + `response_due_date`-Picker.
+
+**Health-Feed (`src/lib/project-health/`)**
+
+- `summary.ts` zählt Overdue-Stakeholder-Interaktionen mit gewichtetem
+  Score in den Project-Health-Counter; `types.ts` führt das neue
+  Health-Signal-Feld als optional.
+- Speist PROJ-56 (Project Readiness & Health Command Center) als
+  zusätzlichen Indikator — bewusst hinter dem PROJ-56-`active_modules`-
+  Toggle, damit Tenants ohne PROJ-56 nichts merken.
+
+**Helper (`src/lib/stakeholder-interactions/api.ts`)**
+
+- `listAwaitingInteractions(projectId, stakeholderId)` + Typen
+  `AwaitingInteraction`.
+
+**ACs**: AC-10 + AC-11 + AC-12 erfüllt.
+
+## Implementation Notes — 34-ζ (2026-05-12, PR #13 squash `059b139`) — *backfilled 2026-05-13*
+
+PROJ-35-Risk-Score-Feed über tenant-konfigurierbares `communication_weight`.
+Keine neue Spalte; nutzt die bestehende JSONB-Spalte
+`tenant_settings.risk_score_overrides.communication_weight` (Zahl 0..1,
+Default 0 = opt-in).
+
+**Code (`src/lib/risk-score/`)**
+
+- `communication-signal.ts` — `computeCommunicationSignal(stakeholderId)`
+  aggregiert Per-Participant-Sentiment + Cooperation-Signale aus
+  `stakeholder_interaction_participants` (nur Rows mit
+  `_source ∈ {manual, ai_accepted}`, niemals `ai_proposed`/`ai_rejected`).
+- `compute.ts` — Risk-Score-Berechnung zieht `communication_signal *
+  communication_weight` ein. Default-Weight 0 ⇒ Bestands-Verhalten
+  unverändert für Tenants ohne Override.
+- `defaults.ts` — Default-Override-Struktur um `communication_weight: 0`
+  erweitert.
+- `merge-overrides.ts` — Override-Merge zieht das Feld korrekt durch.
+- `communication-signal.test.ts` — 5 Cases (only-accepted, mixed-source-
+  ignoring, empty-history, weight-zero-noop, weight-one-full).
+
+**Hotfix `d3ababc`**: Tenant-Settings-Form preview hat das
+`communication_weight`-Feld zunächst nicht angezeigt; nachgezogen in
+einem schnellen Follow-up-Commit (gleicher Tag).
+
+**ACs**: kein eigener AC im AC-Block — wird über PRD-Erfolgsmetrik
+"Kommunikations-Signale fließen optional in Risk-Score" erfüllt.
+
 ## Implementation Notes — 34-γ.1 (2026-05-13, PR #17 squash `fb2bf71`)
 
 Backend-only AI-Sentiment-Router-Erweiterung. Keine Migration, keine UI.
