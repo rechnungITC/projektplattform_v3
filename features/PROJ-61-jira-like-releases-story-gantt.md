@@ -269,6 +269,32 @@ Backend-QA bisher:
 
 - `npm run test -- src/lib/project-releases/release-summary.test.ts src/app/api/projects/[id]/releases/route.test.ts src/app/api/projects/[id]/work-items/[wid]/release/route.test.ts` — PASS, 14 Tests.
 
+## Frontend Implementation Notes — γ Slice (2026-05-13)
+
+Release-UI umgesetzt:
+
+- `/projects/[id]/releases` ist kein Re-Export von `/planung` mehr.
+- Neue Release-Client-Ansicht mit:
+  - Release-Auswahl und Create-Dialog.
+  - Health Strip für Scope, Sprints, Blocker, Outside-Window, Overdue und Fortschritt.
+  - eigenem Story-Gantt für Stories, Tasks und Bugs.
+  - Scope-Tabelle mit Status, Priorität, Zeitquelle und Release-Zuordnung.
+  - Side-Panel für nicht zugeordnete Stories/Tasks/Bugs mit Zuordnungs-Aktion.
+  - Kontext-Tab für Sprint-Beiträge, Phasen und Meilensteine.
+- Bestehende `/planung`-Gantt-Komponente bleibt unberührt.
+
+Frontend-Bausteine:
+
+- `src/components/releases/*`
+- `src/hooks/use-project-releases.ts`
+- `src/types/release.ts`
+
+Frontend-QA bisher:
+
+- `npm run test -- 'src/lib/project-releases/release-summary.test.ts' 'src/app/api/projects/[id]/releases/route.test.ts' 'src/app/api/projects/[id]/work-items/[wid]/release/route.test.ts'` — PASS, 14 Tests.
+- `npm run lint` — PASS mit 0 Errors; 1 bestehende React-Hook-Form-Warnung in `src/components/work-items/edit-work-item-dialog.tsx`.
+- `npm run build` — PASS; `/projects/[id]/releases`, `/api/projects/[id]/releases/*` und `/api/projects/[id]/work-items/[wid]/release` im Build-Manifest.
+
 ## Architecture Options
 
 ### Option A — First-class `releases` table
