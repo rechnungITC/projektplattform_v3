@@ -1,0 +1,5 @@
+unit_code,name,type,parent_code,location_code,description,is_active,sort_order
+ACME,Acme Group,group,,,Holding,true,10
+ACME-DE,Acme Deutschland,company,ACME,BER,Landesgesellschaft,true,20
+ACME-DE-IT,IT,department,ACME-DE,BER,Technologie,true,30
+ACME-DE-IT-PMO,PMO,team,ACME-DE-IT,BER,Projektmanagement,true,40

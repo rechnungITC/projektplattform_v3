@@ -1,0 +1,3 @@
+location_code,name,country,city,address,is_active
+BER,Berlin HQ,Deutschland,Berlin,,true
+HAM,Hamburg Office,Deutschland,Hamburg,,true

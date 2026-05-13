@@ -62,6 +62,7 @@ export interface OrganizationUnit {
   code: string | null
   type: OrganizationUnitType
   location_id: string | null
+  import_id: string | null
   description: string | null
   is_active: boolean
   sort_order: number | null
@@ -95,9 +96,11 @@ export interface Location {
   id: string
   tenant_id: string
   name: string
+  code: string | null
   country: string | null
   city: string | null
   address: string | null
+  import_id: string | null
   is_active: boolean
   created_at: string
   updated_at: string
@@ -149,6 +152,7 @@ export interface MoveOrganizationUnitRequest {
 
 export interface CreateLocationRequest {
   name: string
+  code?: string | null
   country?: string | null
   city?: string | null
   address?: string | null
@@ -157,6 +161,7 @@ export interface CreateLocationRequest {
 export interface PatchLocationRequest {
   expected_updated_at: string
   name?: string
+  code?: string | null
   country?: string | null
   city?: string | null
   address?: string | null

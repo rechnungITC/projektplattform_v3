@@ -1,0 +1,4 @@
+email,org_unit_code,entity_kind
+ada@example.com,ACME-DE-IT,tenant_member
+max@example.com,ACME-DE-IT-PMO,resource
+stakeholder@example.com,ACME-DE,stakeholder

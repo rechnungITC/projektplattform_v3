@@ -107,6 +107,7 @@ export function LocationTable({ canEdit }: LocationTableProps) {
           <TableHeader>
             <TableRow>
               <TableHead>Name</TableHead>
+              <TableHead className="hidden sm:table-cell">Code</TableHead>
               <TableHead className="hidden md:table-cell">Stadt</TableHead>
               <TableHead className="hidden lg:table-cell">Land</TableHead>
               <TableHead className="hidden lg:table-cell">Adresse</TableHead>
@@ -118,7 +119,7 @@ export function LocationTable({ canEdit }: LocationTableProps) {
             {locations.length === 0 ? (
               <TableRow>
                 <TableCell
-                  colSpan={6}
+                  colSpan={7}
                   className="py-8 text-center text-sm text-muted-foreground"
                 >
                   <MapPin
@@ -137,6 +138,9 @@ export function LocationTable({ canEdit }: LocationTableProps) {
                 .map((l) => (
                   <TableRow key={l.id}>
                     <TableCell className="font-medium">{l.name}</TableCell>
+                    <TableCell className="hidden sm:table-cell text-xs">
+                      {l.code ?? "—"}
+                    </TableCell>
                     <TableCell className="hidden md:table-cell text-xs">
                       {l.city ?? "—"}
                     </TableCell>

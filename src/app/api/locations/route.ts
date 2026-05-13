@@ -14,10 +14,11 @@ import { resolveActiveTenantId } from "../_lib/active-tenant"
 // POST /api/locations  → create (admin)
 
 const SELECT_COLUMNS =
-  "id, tenant_id, name, country, city, address, is_active, created_at, updated_at"
+  "id, tenant_id, name, code, country, city, address, import_id, is_active, created_at, updated_at"
 
 const createSchema = z.object({
   name: z.string().trim().min(1).max(120),
+  code: z.string().trim().max(50).nullable().optional(),
   country: z.string().trim().max(80).nullable().optional(),
   city: z.string().trim().max(80).nullable().optional(),
   address: z.string().trim().max(200).nullable().optional(),
@@ -75,6 +76,7 @@ export async function POST(request: Request) {
     .insert({
       tenant_id: tenantId,
       name: parsed.data.name,
+      code: parsed.data.code || null,
       country: parsed.data.country ?? null,
       city: parsed.data.city ?? null,
       address: parsed.data.address ?? null,
@@ -82,7 +84,12 @@ export async function POST(request: Request) {
     .select(SELECT_COLUMNS)
     .single()
 
-  if (error) return apiError("create_failed", error.message, 500)
+  if (error) {
+    if (error.code === "23505") {
+      return apiError("duplicate_code", "Location code already exists.", 409, "code")
+    }
+    return apiError("create_failed", error.message, 500)
+  }
 
   return NextResponse.json({ location: data }, { status: 201 })
 }

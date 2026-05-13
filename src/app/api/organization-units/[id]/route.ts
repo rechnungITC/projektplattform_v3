@@ -12,7 +12,7 @@ import {
 // DELETE /api/organization-units/[id]  → delete (admin, blocker-aware)
 
 const SELECT_COLUMNS =
-  "id, tenant_id, parent_id, name, code, type, location_id, description, is_active, sort_order, created_at, updated_at"
+  "id, tenant_id, parent_id, name, code, type, location_id, import_id, description, is_active, sort_order, created_at, updated_at"
 
 const TYPE_VALUES = [
   "group",

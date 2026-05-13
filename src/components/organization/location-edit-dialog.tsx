@@ -31,6 +31,7 @@ interface LocationEditDialogProps {
 
 interface FormState {
   name: string
+  code: string
   country: string
   city: string
   address: string
@@ -46,6 +47,7 @@ export function LocationEditDialog({
   const isEdit = editing !== null
   const [form, setForm] = React.useState<FormState>({
     name: "",
+    code: "",
     country: "",
     city: "",
     address: "",
@@ -60,11 +62,12 @@ export function LocationEditDialog({
       editing
         ? {
             name: editing.name,
+            code: editing.code ?? "",
             country: editing.country ?? "",
             city: editing.city ?? "",
             address: editing.address ?? "",
           }
-        : { name: "", country: "", city: "", address: "" },
+        : { name: "", code: "", country: "", city: "", address: "" },
     )
   }, [open, editing])
 
@@ -80,6 +83,7 @@ export function LocationEditDialog({
         await onUpdate(editing.id, {
           expected_updated_at: editing.updated_at,
           name: trimmedName,
+          code: form.code.trim() || null,
           country: form.country.trim() || null,
           city: form.city.trim() || null,
           address: form.address.trim() || null,
@@ -88,6 +92,7 @@ export function LocationEditDialog({
       } else {
         await onCreate({
           name: trimmedName,
+          code: form.code.trim() || null,
           country: form.country.trim() || null,
           city: form.city.trim() || null,
           address: form.address.trim() || null,
@@ -136,6 +141,19 @@ export function LocationEditDialog({
             {nameError ? (
               <p className="text-xs text-destructive">{nameError}</p>
             ) : null}
+          </div>
+
+          <div className="grid gap-1.5">
+            <Label htmlFor="loc-code">Code</Label>
+            <Input
+              id="loc-code"
+              value={form.code}
+              onChange={(e) =>
+                setForm((f) => ({ ...f, code: e.target.value }))
+              }
+              placeholder="z.B. HAM"
+              maxLength={50}
+            />
           </div>
 
           <div className="grid gap-1.5">

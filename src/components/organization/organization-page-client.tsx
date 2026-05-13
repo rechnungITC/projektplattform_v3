@@ -9,8 +9,11 @@
  */
 
 import * as React from "react"
+import { Upload } from "lucide-react"
+import Link from "next/link"
 import { toast } from "sonner"
 
+import { Button } from "@/components/ui/button"
 import {
   Card,
   CardContent,
@@ -276,15 +279,25 @@ export function OrganizationPageClient({
 
   return (
     <div className="space-y-4">
-      <header>
-        <h1 className="text-2xl font-semibold tracking-tight">
-          Organisation
-        </h1>
-        <p className="text-sm text-muted-foreground">
-          Pflege die Organisationsstruktur deines Tenants — Gesellschaften,
-          Standorte, Bereiche, Abteilungen und Teams. Stakeholder, Ressourcen
-          und Mitglieder können später diesen Einheiten zugeordnet werden.
-        </p>
+      <header className="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
+        <div>
+          <h1 className="text-2xl font-semibold tracking-tight">
+            Organisation
+          </h1>
+          <p className="text-sm text-muted-foreground">
+            Pflege die Organisationsstruktur deines Tenants — Gesellschaften,
+            Standorte, Bereiche, Abteilungen und Teams. Stakeholder, Ressourcen
+            und Mitglieder können später diesen Einheiten zugeordnet werden.
+          </p>
+        </div>
+        {canEdit ? (
+          <Button variant="outline" asChild>
+            <Link href="/stammdaten/organisation/import">
+              <Upload className="mr-2 h-4 w-4" aria-hidden />
+              CSV Import
+            </Link>
+          </Button>
+        ) : null}
       </header>
 
       {(unitsError || treeError) && (
