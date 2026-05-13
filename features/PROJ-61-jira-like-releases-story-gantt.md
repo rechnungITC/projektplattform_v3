@@ -1,8 +1,8 @@
 # PROJ-61: Jira-like Releases with Story Gantt / Phase Mapping
 
-## Status: Planned
+## Status: Architected
 **Created:** 2026-05-09
-**Last Updated:** 2026-05-09
+**Last Updated:** 2026-05-13
 
 ## Summary
 
@@ -114,6 +114,124 @@ PROJ-61 defines the Release planning layer and Story-Gantt view for Scrum/SAFe/s
   - `PATCH /api/projects/[id]/releases/[rid]`
   - `PATCH /api/projects/[id]/work-items/[wid]/release`
 
+## Tech Design (Solution Architect) — /architecture Lock (2026-05-13)
+
+### Architekturentscheidung
+
+PROJ-61 baut eine echte Release-Domäne. Releases werden nicht aus Phasen, Meilensteinen oder Sprints abgeleitet, sondern als eigene Planungscontainer geführt. Stories, Tasks und Bugs bekommen eine optionale Release-Zuordnung; Sprints, Phasen und Meilensteine bleiben Kontext, aber nicht die fachliche Quelle des Release-Scopes.
+
+Warum: Jira-Releases entsprechen fachlich eher Versionen/FixVersions als Projektphasen. Eine eigene Release-Domäne macht Scope, Reporting und spätere Jira-Synchronisierung eindeutig und verhindert, dass Scrum-Planung in den bestehenden Wasserfall-Gantt hineingemischt wird.
+
+### UI-Struktur
+
+```text
+/projects/[id]/releases
++-- Release Header
+|   +-- Release-Auswahl / Neuer Release
+|   +-- Status, Zeitraum, Ziel-Meilenstein
++-- Release Health Strip
+|   +-- Scope-Fortschritt
+|   +-- Blockierte Items
+|   +-- Items ausserhalb des Release-Fensters
+|   +-- Nicht geplante Items
++-- Release Scope
+|   +-- Stories
+|   |   +-- Child Tasks / Bugs
+|   +-- Sprint-Beitrag je Sprint
+|   +-- Ungeplante Items
++-- Story-Gantt
+|   +-- Release-Fenster als Rahmen
+|   +-- Sprint-Bänder als Zeitkontext
+|   +-- Story-Balken
+|   +-- eingerückte Task-/Bug-Zeilen
+|   +-- Marker für blockiert, überfällig, ausserhalb Fenster
++-- Kontext
+    +-- Meilenstein-Marker
+    +-- optionale Phasen-/Swimlane-Einblendung
+```
+
+`/projects/[id]/planung` bleibt die bestehende Phasen-/Meilenstein-/Arbeitspaket-Planung. `/projects/[id]/releases` bekommt eine eigene Release-Oberfläche für Scrum/SAFe/software-orientierte Projekte, statt weiter nur auf `PlanungClient` zu zeigen.
+
+### Datenmodell in Alltagssprache
+
+Jeder Release speichert:
+
+- Namen und Beschreibung.
+- Projekt und Tenant.
+- Start- und Enddatum des Release-Fensters.
+- Status wie geplant, aktiv, released, archiviert.
+- optionalen Ziel-Meilenstein.
+- wer ihn angelegt und zuletzt geändert hat.
+
+Jedes relevante Work Item kann optional einem Release zugeordnet werden. Für den MVP zählen `story`, `task` und `bug`; `epic` und `feature` bleiben über die bestehende Parent-Hierarchie sichtbar, aber nicht primärer Gantt-Balken. Child Tasks/Bugs erben im Gantt den Story-Kontext für die Darstellung, behalten aber ihre eigene Release-Zuordnung, falls sie explizit abweicht.
+
+Sprints bekommen keine harte Release-Besitzschaft. Ein Sprint kann zu einem Release beitragen, sobald mindestens ein enthaltenes Work Item diesem Release zugeordnet ist. Das hält spätere Scrum-Realität abbildbar, in der ein Sprint Fixes für mehrere Releases enthalten kann.
+
+### Zeitraum-Regeln
+
+Für die Timeline wird pro Item genau eine sichtbare Zeitquelle ausgewiesen:
+
+1. eigenes geplantes Start-/Enddatum des Work Items.
+2. Sprint-Zeitraum, wenn das Item keine eigenen Daten hat.
+3. Parent-Story-Zeitraum, wenn Child Task/Bug keine eigenen Daten und keinen Sprint hat.
+4. "Nicht geplant", wenn keine der Quellen verfügbar ist.
+
+Items ausserhalb des Release-Fensters bleiben sichtbar und werden markiert. Sie verschwinden nicht aus der Planung, weil genau diese Abweichung für Product Owner und Projektleitung entscheidend ist.
+
+### Backend-Design
+
+Backend ist erforderlich. Browser-only oder localStorage ist fachlich falsch, weil Releases tenant- und projektweit geteilt, auditierbar und später mit Jira synchronisierbar sein müssen.
+
+Der Backend-Schnitt wird in drei Schichten aufgebaut:
+
+- Release-Verwaltung: Releases pro Projekt listen, erstellen und ändern.
+- Scope-Zuordnung: Work Items einem Release zuordnen oder aus dem Release entfernen.
+- Release-Summary: Release, zugehörige Items, Sprint-Beiträge, Meilenstein-/Phasen-Kontext und Health-Signale gemeinsam liefern.
+
+Die Summary wird serverseitig vorbereitet, damit die UI bei bis zu 500 Work Items nicht mehrere voneinander abhängige Listen im Browser zusammenrechnen muss. RLS, Tenant-Grenzen und Cross-Project-Checks bleiben im API-/DB-Layer.
+
+### Frontend-Design
+
+Die bestehende `GanttView` bleibt für Phasen und Arbeitspakete zuständig. PROJ-61 bekommt eine eigene Story-Gantt-Komponente, die vorhandene Datums- und UI-Konventionen wiederverwendet, aber nicht die Phase-Gantt-Logik mutiert.
+
+Warum: `GanttView` ist auf Phasen, Meilensteine, Arbeitspakete, Drag/Resize und Abhängigkeitslinien ausgerichtet. Eine direkte Erweiterung auf Stories, Sprints und Release-Fenster hätte hohe Regressionsgefahr für Wasserfall/PMI/PRINCE2. Ein eigener Story-Gantt hält die Domänen sauber getrennt.
+
+### Technische Entscheidungen
+
+- First-class Release-Domäne: klare Jira/FixVersion-Abbildung und keine Überladung von Meilensteinen.
+- Explizite Work-Item-Zuordnung: Product Owner kontrollieren Release-Scope direkt; Sprints bleiben Lieferkontext.
+- Server-seitige Summary: bessere Performance und einheitliche Health-Regeln.
+- Eigener Story-Gantt: schützt den bestehenden Phase-Gantt vor Regressionen.
+- Keine neue UI-Library im MVP: vorhandene React-/Tailwind-/shadcn-Komponenten und bestehende Timeline-Hilfen reichen aus.
+- Method-aware Routing: Scrum/SAFe/software bekommen Release Planning; klassische Methoden behalten `/planung` als Planungszentrum.
+
+### Abhängigkeiten
+
+Keine neue Runtime-Dependency für den MVP.
+
+Bestehende Bausteine, die genutzt werden:
+
+- Work Items mit Kind, Sprint, Phase, Parent und eigenen Plan-Daten.
+- Sprints mit Start-/Enddatum.
+- Phasen und Meilensteine als Kontext.
+- Projektmethoden und method-aware Navigation.
+- Audit/RLS/Schema-Drift-Guard aus der Plattformbasis.
+
+### Architektur-Grenzen für die Umsetzung
+
+- `/planung` darf nicht auf Stories/Tasks/Bugs umgestellt werden.
+- `GanttView` darf nicht zur universellen Alles-Komponente wachsen.
+- Release-Scope, Sprint-Zuordnung und Parent-Hierarchie bleiben drei getrennte Konzepte.
+- Drag-and-Drop zur Datumspflege ist nicht MVP; Anzeige, Zuordnung und Health-Signale kommen zuerst.
+- Jira-Sync-Felder werden vorbereitet, aber nicht implementiert.
+
+### Slice-Empfehlung
+
+- α: Schema + Release-Grund-API + Work-Item-Release-Zuordnung.
+- β: Release-Summary mit Zeitquellen, Sprint-Beiträgen und Health-Signalen.
+- γ: Release-UI + Story-Gantt ohne Datum-Drag.
+- δ: QA, Regression für `/planung`, Performance-Prüfung mit 500 Items und Doku-Abschluss.
+
 ## Architecture Options
 
 ### Option A — First-class `releases` table
@@ -206,11 +324,11 @@ Use **Option A** for a Jira-like product. Releases/Versions are not the same as 
 
 ## Definition of Ready
 
-- [ ] Architekturentscheidung Release als Tabelle vs Milestone/Sprint-Derivat getroffen.
-- [ ] Jira Mapping fuer Release/FixVersion fachlich bestaetigt.
-- [ ] Date derivation precedence bestaetigt.
-- [ ] MVP-Scope fuer Story-Gantt festgelegt.
-- [ ] Regression-Grenzen zum bestehenden Phase-Gantt definiert.
+- [x] Architekturentscheidung Release als Tabelle vs Milestone/Sprint-Derivat getroffen.
+- [x] Jira Mapping fuer Release/FixVersion fachlich bestaetigt.
+- [x] Date derivation precedence bestaetigt.
+- [x] MVP-Scope fuer Story-Gantt festgelegt.
+- [x] Regression-Grenzen zum bestehenden Phase-Gantt definiert.
 
 ## Definition of Done
 

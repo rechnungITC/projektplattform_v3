@@ -5,15 +5,19 @@ import {
   Clock,
   Loader2,
   MessageSquarePlus,
+  ShieldAlert,
   Trash2,
+  X,
 } from "lucide-react"
 import * as React from "react"
 import { toast } from "sonner"
 
+import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert"
 import { Badge } from "@/components/ui/badge"
 import { Button } from "@/components/ui/button"
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
 import { Checkbox } from "@/components/ui/checkbox"
+import { useProjectAccess } from "@/hooks/use-project-access"
 import {
   Dialog,
   DialogContent,
@@ -80,6 +84,31 @@ const DIRECTION_LABELS: Record<StakeholderInteraction["direction"], string> = {
   bidirectional: "Bidirektional",
 }
 
+const EXTERNAL_BLOCKED_LS_KEY = (projectId: string) =>
+  `proj34:external_blocked:${projectId}`
+
+function readExternalBlocked(projectId: string): boolean {
+  if (typeof window === "undefined") return false
+  try {
+    return window.localStorage.getItem(EXTERNAL_BLOCKED_LS_KEY(projectId)) === "1"
+  } catch {
+    return false
+  }
+}
+
+function writeExternalBlocked(projectId: string, value: boolean) {
+  if (typeof window === "undefined") return
+  try {
+    if (value) {
+      window.localStorage.setItem(EXTERNAL_BLOCKED_LS_KEY(projectId), "1")
+    } else {
+      window.localStorage.removeItem(EXTERNAL_BLOCKED_LS_KEY(projectId))
+    }
+  } catch {
+    // localStorage may be disabled; banner just becomes session-scoped.
+  }
+}
+
 export function CommunicationTab({
   projectId,
   stakeholderId,
@@ -93,6 +122,24 @@ export function CommunicationTab({
   const [stakeholderLabels, setStakeholderLabels] = React.useState<
     Map<string, string>
   >(new Map())
+  // PROJ-34-γ.2 F-2 — persistent external_blocked banner. Initialised from
+  // localStorage via a lazy state initializer (SSR-safe — readExternal-
+  // Blocked short-circuits when window is undefined). projectId does not
+  // change during this component's lifetime (page-route param), so we do
+  // not need to re-derive on prop change.
+  const [externalBlocked, setExternalBlocked] = React.useState<boolean>(() =>
+    readExternalBlocked(projectId),
+  )
+  const onExternalBlocked = React.useCallback(() => {
+    setExternalBlocked(true)
+    writeExternalBlocked(projectId, true)
+  }, [projectId])
+  const onDismissExternalBlocked = React.useCallback(() => {
+    setExternalBlocked(false)
+    writeExternalBlocked(projectId, false)
+  }, [projectId])
+  // PROJ-34-γ.2 F-3 — gate the AI-Pill + trigger button on edit role.
+  const canEdit = useProjectAccess(projectId, "edit_master")
   // `loading` derived from `interactions === null` (first load) avoids
   // the React Compiler warning about synchronous setState inside the
   // effect. Subsequent reloads keep stale data visible.
@@ -178,6 +225,34 @@ export function CommunicationTab({
         reloadTick={reloadTick}
         onChanged={onCreated}
       />
+      {externalBlocked ? (
+        <Alert className="relative pr-10">
+          <ShieldAlert className="h-4 w-4" aria-hidden />
+          <AlertTitle>KI-Sentiment nicht verfügbar</AlertTitle>
+          <AlertDescription>
+            Für diesen Mandanten sind keine kompatiblen AI-Provider
+            hinterlegt — Stimmungs-/Kooperations-Werte können weiterhin
+            manuell erfasst werden. Tenant-Admin:{" "}
+            <a
+              href="/settings/tenant/ai-providers"
+              className="underline"
+            >
+              /settings/tenant/ai-providers
+            </a>
+            .
+          </AlertDescription>
+          <Button
+            type="button"
+            size="icon"
+            variant="ghost"
+            onClick={onDismissExternalBlocked}
+            aria-label="Hinweis schließen"
+            className="absolute right-2 top-2 h-6 w-6"
+          >
+            <X className="h-3.5 w-3.5" aria-hidden />
+          </Button>
+        </Alert>
+      ) : null}
       <AddInteractionForm
         projectId={projectId}
         stakeholderId={stakeholderId}
@@ -188,8 +263,10 @@ export function CommunicationTab({
         stakeholderId={stakeholderId}
         interactions={interactions ?? []}
         stakeholderLabels={stakeholderLabels}
+        canEdit={canEdit}
         onDelete={onDelete}
         onSignalsChanged={onCreated}
+        onExternalBlocked={onExternalBlocked}
       />
     </div>
   )
@@ -505,15 +582,19 @@ function InteractionList({
   stakeholderId,
   interactions,
   stakeholderLabels,
+  canEdit,
   onDelete,
   onSignalsChanged,
+  onExternalBlocked,
 }: {
   projectId: string
   stakeholderId: string
   interactions: StakeholderInteraction[]
   stakeholderLabels: Map<string, string>
+  canEdit: boolean
   onDelete: (id: string) => void
   onSignalsChanged: () => void
+  onExternalBlocked: () => void
 }) {
   if (interactions.length === 0) {
     return (
@@ -532,8 +613,10 @@ function InteractionList({
           stakeholderId={stakeholderId}
           interaction={it}
           stakeholderLabels={stakeholderLabels}
+          canEdit={canEdit}
           onDelete={onDelete}
           onSignalsChanged={onSignalsChanged}
+          onExternalBlocked={onExternalBlocked}
         />
       ))}
     </div>
@@ -545,15 +628,19 @@ function InteractionItem({
   stakeholderId,
   interaction,
   stakeholderLabels,
+  canEdit,
   onDelete,
   onSignalsChanged,
+  onExternalBlocked,
 }: {
   projectId: string
   stakeholderId: string
   interaction: StakeholderInteraction
   stakeholderLabels: Map<string, string>
+  canEdit: boolean
   onDelete: (id: string) => void
   onSignalsChanged: () => void
+  onExternalBlocked: () => void
 }) {
   const date = new Date(interaction.interaction_date)
   const dateLabel = date.toLocaleString("de-DE", {
@@ -611,6 +698,9 @@ function InteractionItem({
       const meta = await triggerSentimentReview(projectId, interaction.id)
       setRunMetadata(meta)
       if (meta.status === "external_blocked") {
+        // F-2: surface a persistent tab-level banner so the user does not
+        // lose the information after the toast disappears.
+        onExternalBlocked()
         toast.info("KI-Sentiment nicht verfügbar", {
           description:
             "Kein kompatibler AI-Provider hinterlegt. Werte können manuell gesetzt werden.",
@@ -657,9 +747,10 @@ function InteractionItem({
                 pendingCount={pendingCount}
                 onClick={() => setReviewOpen(true)}
                 onRetry={onTrigger}
+                disabled={!canEdit}
               />
             ) : null}
-            {!hasAnyAIRows && pillVariant === "hidden" ? (
+            {!hasAnyAIRows && pillVariant === "hidden" && canEdit ? (
               <Button
                 type="button"
                 size="sm"
