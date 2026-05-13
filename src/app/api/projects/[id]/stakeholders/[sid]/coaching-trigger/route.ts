@@ -103,52 +103,83 @@ export async function POST(
   const sk = (skillsRes.data ?? {}) as Record<string, unknown>
 
   // Q2 — last N interactions for THIS stakeholder. RLS filters tenant.
+  // Two-step query to avoid PostgREST embedded-resource filter edge cases
+  // (`stakeholder_interaction_participants!inner` with `.eq()` on the
+  // embedded col was returning 500 for stakeholders without participants
+  // and for some FK-ambiguity paths).
   const since = new Date(Date.now() - INTERACTION_WINDOW_DAYS * 24 * 3600 * 1000)
     .toISOString()
     .slice(0, 10)
-  const interactionsRes = await supabase
-    .from("stakeholder_interactions")
+
+  const participantsAllRes = await supabase
+    .from("stakeholder_interaction_participants")
     .select(
-      "id, channel, direction, interaction_date, summary, stakeholder_interaction_participants!inner(stakeholder_id, participant_sentiment, participant_cooperation_signal)",
+      "interaction_id, participant_sentiment, participant_cooperation_signal",
     )
     .eq("project_id", projectId)
-    .eq("stakeholder_interaction_participants.stakeholder_id", sid)
-    .is("deleted_at", null)
-    .gte("interaction_date", since)
-    .order("interaction_date", { ascending: false })
-    .limit(INTERACTION_WINDOW_LIMIT)
-  if (interactionsRes.error) {
-    return apiError("internal_error", interactionsRes.error.message, 500)
+    .eq("stakeholder_id", sid)
+  if (participantsAllRes.error) {
+    return apiError("internal_error", participantsAllRes.error.message, 500)
   }
+  const participantBySID = new Map<
+    string,
+    { sentiment: number | null; cooperation: number | null }
+  >()
+  for (const row of participantsAllRes.data ?? []) {
+    const r = row as {
+      interaction_id: string
+      participant_sentiment: number | null
+      participant_cooperation_signal: number | null
+    }
+    participantBySID.set(r.interaction_id, {
+      sentiment: r.participant_sentiment,
+      cooperation: r.participant_cooperation_signal,
+    })
+  }
+  const allInteractionIds = Array.from(participantBySID.keys())
 
-  type InteractionRow = {
-    id: string
+  let recentInteractions: Array<{
+    interaction_id: string
     channel: string
     direction: string
     interaction_date: string
     summary: string
-    stakeholder_interaction_participants: Array<{
-      stakeholder_id: string
-      participant_sentiment: number | null
-      participant_cooperation_signal: number | null
-    }>
-  }
-  const recentInteractions = (interactionsRes.data ?? []).map((row) => {
-    const r = row as InteractionRow
-    const participant = r.stakeholder_interaction_participants.find(
-      (p) => p.stakeholder_id === sid,
-    )
-    return {
-      interaction_id: r.id,
-      channel: r.channel,
-      direction: r.direction,
-      interaction_date: r.interaction_date,
-      summary: r.summary,
-      participant_sentiment: participant?.participant_sentiment ?? null,
-      participant_cooperation_signal:
-        participant?.participant_cooperation_signal ?? null,
+    participant_sentiment: number | null
+    participant_cooperation_signal: number | null
+  }> = []
+  if (allInteractionIds.length > 0) {
+    const interactionsRes = await supabase
+      .from("stakeholder_interactions")
+      .select("id, channel, direction, interaction_date, summary")
+      .eq("project_id", projectId)
+      .in("id", allInteractionIds)
+      .is("deleted_at", null)
+      .gte("interaction_date", since)
+      .order("interaction_date", { ascending: false })
+      .limit(INTERACTION_WINDOW_LIMIT)
+    if (interactionsRes.error) {
+      return apiError("internal_error", interactionsRes.error.message, 500)
     }
-  })
+    recentInteractions = (interactionsRes.data ?? []).map((row) => {
+      const r = row as {
+        id: string
+        channel: string
+        direction: string
+        interaction_date: string
+        summary: string
+      }
+      const p = participantBySID.get(r.id)
+      return {
+        interaction_id: r.id,
+        channel: r.channel,
+        direction: r.direction,
+        interaction_date: r.interaction_date,
+        summary: r.summary,
+        participant_sentiment: p?.sentiment ?? null,
+        participant_cooperation_signal: p?.cooperation ?? null,
+      }
+    })
+  }
 
   // Q3 + Q4 — PROJ-35 risk + tonality. RPC contract documented in PROJ-35.
   // Both calls are read-only and tolerate missing data (project may not
@@ -183,27 +214,23 @@ export async function POST(
   }
 
   // Q5 — response stats. Lazy aggregation on awaiting + response_received.
+  // Reuses `allInteractionIds` from the Q2 step; skips the query entirely
+  // when the stakeholder has zero participants (avoids the PostgREST
+  // `.in("id", [])` edge case).
   let awaitingCount = 0
   let avgLatencyHours: number | null = null
   let hasOverdue = false
-  const awaitingRes = await supabase
-    .from("stakeholder_interactions")
-    .select(
-      "interaction_date, awaiting_response, response_due_date, response_received_date",
-    )
-    .eq("project_id", projectId)
-    .in(
-      "id",
-      // Sub-select via the bridge — limit to interactions involving sid.
-      (
-        await supabase
-          .from("stakeholder_interaction_participants")
-          .select("interaction_id")
-          .eq("stakeholder_id", sid)
-          .limit(500)
-      ).data?.map((r) => (r as { interaction_id: string }).interaction_id) ?? [],
-    )
-    .is("deleted_at", null)
+  const awaitingRes =
+    allInteractionIds.length === 0
+      ? { data: [], error: null as null }
+      : await supabase
+          .from("stakeholder_interactions")
+          .select(
+            "interaction_date, awaiting_response, response_due_date, response_received_date",
+          )
+          .eq("project_id", projectId)
+          .in("id", allInteractionIds)
+          .is("deleted_at", null)
   if (!awaitingRes.error && awaitingRes.data) {
     const today = new Date().toISOString().slice(0, 10)
     let latencySumHours = 0
@@ -300,13 +327,33 @@ export async function POST(
     },
   }
 
-  const result = await invokeCoachingGeneration({
-    supabase,
-    tenantId,
-    projectId,
-    actorUserId: userId,
-    context,
-  })
+  // Wrap the router + DB-write tail in a try/catch so any unforeseen
+  // exception lands as a structured 500 with the actual error message,
+  // rather than the Next.js default empty 500.
+  let result: Awaited<ReturnType<typeof invokeCoachingGeneration>>
+  try {
+    result = await invokeCoachingGeneration({
+      supabase,
+      tenantId,
+      projectId,
+      actorUserId: userId,
+      context,
+    })
+  } catch (err) {
+    console.error("[PROJ-34-ε] coaching-trigger router error", {
+      tenantId,
+      projectId,
+      sid,
+      message: err instanceof Error ? err.message : String(err),
+    })
+    return apiError(
+      "internal_error",
+      err instanceof Error
+        ? `Coaching-Router-Fehler: ${err.message}`
+        : "Unbekannter Coaching-Router-Fehler",
+      500,
+    )
+  }
 
   // Soft-delete existing drafts (re-trigger overwrite — locked 2026-05-13).
   const softDelete = await supabase
