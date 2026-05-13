@@ -669,6 +669,20 @@ Hardening) angegangen werden können.
 - Unit tests: 6 (`ai-proposal-pill`) + 7 (`aggregate`) + 13 (route tests) = **26 new** tests, alle grün
 - E2E: 2 Playwright smoke tests (Auth-Gate), beide grün
 
+## Polish — 34-γ.2 Findings F-1 / F-2 / F-3 (2026-05-13)
+
+**F-1 Audit-Tracked-Columns Migration** — `20260513140000_proj34_gamma2_audit_columns_extension.sql`. Extends the `_tracked_audit_columns('stakeholder_interaction_participants')` whitelist with `participant_sentiment_model`, `_provider`, `_confidence`. Live on Supabase (verified via direct function call returning all 7 columns). AI-provenance changes on the bridge are now field-level audited via PROJ-10 trigger.
+
+**F-2 External-Blocked Tab-Banner** — persistent shadcn `Alert` above `AddInteractionForm` with `ShieldAlert` icon + link to `/settings/tenant/ai-providers`. Triggered when any `sentiment-trigger` call returns `status='external_blocked'`. Initialised lazily from localStorage key `proj34:external_blocked:{projectId}` (SSR-safe). Session-dismissable via X-button.
+
+**F-3 View-only Pill-Disable** — `useProjectAccess(projectId, "edit_master")` propagated through `InteractionList` → `InteractionItem`. AIProposalPill receives `disabled={!canEdit}` (component already supported tooltip "Nur Projekt-Manager dürfen KI-Vorschläge prüfen."). The "✦ KI-Analyse anfragen"-Trigger-Button is hidden completely for view-only users.
+
+**Tests / Build:**
+- `npx tsc --noEmit` clean
+- `npx eslint src/components/stakeholders/communication/` clean
+- `npx vitest run` — 45/45 across affected suites
+- `npm run build` — production build clean
+
 ## Deployment — 34-γ.2 (2026-05-13)
 
 - **PR:** [#22](https://github.com/rechnungITC/projektplattform_v3/pull/22), squash-merged 2026-05-13T11:15:35Z.
