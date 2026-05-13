@@ -1,6 +1,6 @@
 # PROJ-34: Stakeholder Communication Tracking
 
-## Status: Approved (34-α/β/γ.1/γ.2/δ/ζ ready for /deploy; ε open)
+## Status: In Progress (34-α/β/γ.1/γ.2/δ/ζ live on main; ε open)
 **Created:** 2026-05-06
 **Last Updated:** 2026-05-13
 
@@ -668,4 +668,14 @@ Hardening) angegangen werden können.
 **Test-Suite:**
 - Unit tests: 6 (`ai-proposal-pill`) + 7 (`aggregate`) + 13 (route tests) = **26 new** tests, alle grün
 - E2E: 2 Playwright smoke tests (Auth-Gate), beide grün
+
+## Deployment — 34-γ.2 (2026-05-13)
+
+- **PR:** [#22](https://github.com/rechnungITC/projektplattform_v3/pull/22), squash-merged 2026-05-13T11:15:35Z.
+- **Production:** https://projektplattform-v3.vercel.app/ via Vercel auto-deploy on main.
+- **Smoke (prod):** beide γ.2-Routen antworten mit HTTP 307 (Auth-Redirect) für unauthenticated callers — Auth-Gate funktioniert.
+  - `POST /api/projects/[id]/interactions/[iid]/sentiment-trigger` → 307 ✓
+  - `PATCH /api/projects/[id]/interactions/[iid]/ai-review` → 307 ✓
+- **CI:** Schema Drift Guard ✓ · Vercel Preview ✓ · Vercel Production ✓
+- **Bekannte Findings noch offen:** F-1 (Audit-Tracked-Columns) + F-2..F-8 — siehe QA-Block. Nicht-blockierend, gehören in eine Polish-Slice nach ε.
 
