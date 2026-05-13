@@ -12,11 +12,12 @@ import {
 // DELETE /api/locations/[id]  → delete (admin, blocker-aware)
 
 const SELECT_COLUMNS =
-  "id, tenant_id, name, country, city, address, is_active, created_at, updated_at"
+  "id, tenant_id, name, code, country, city, address, import_id, is_active, created_at, updated_at"
 
 const patchSchema = z.object({
   expected_updated_at: z.string().min(1),
   name: z.string().trim().min(1).max(120).optional(),
+  code: z.string().trim().max(50).nullable().optional(),
   country: z.string().trim().max(80).nullable().optional(),
   city: z.string().trim().max(80).nullable().optional(),
   address: z.string().trim().max(200).nullable().optional(),
@@ -73,6 +74,10 @@ export async function PATCH(request: Request, ctx: Ctx) {
   }
 
   const { expected_updated_at: _ignored, ...updates } = parsed.data
+  const normalizedUpdates = { ...updates }
+  if ("code" in normalizedUpdates) {
+    normalizedUpdates.code = normalizedUpdates.code || null
+  }
   if (Object.keys(updates).length === 0) {
     return apiError("validation_error", "Empty patch body.", 400)
   }
@@ -80,14 +85,19 @@ export async function PATCH(request: Request, ctx: Ctx) {
   const { data, error } = await supabase
     .from("locations")
     .update({
-      ...updates,
+      ...normalizedUpdates,
       updated_at: new Date().toISOString(),
     })
     .eq("id", id)
     .select(SELECT_COLUMNS)
     .single()
 
-  if (error) return apiError("update_failed", error.message, 500)
+  if (error) {
+    if (error.code === "23505") {
+      return apiError("duplicate_code", "Location code already exists.", 409, "code")
+    }
+    return apiError("update_failed", error.message, 500)
+  }
 
   return NextResponse.json({ location: data })
 }

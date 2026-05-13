@@ -18,6 +18,7 @@ interface UnitRow {
   code: string | null
   type: string
   location_id: string | null
+  import_id: string | null
   description: string | null
   is_active: boolean
   sort_order: number | null
@@ -38,7 +39,7 @@ interface TreeNode extends UnitRow {
 }
 
 const SELECT_COLUMNS =
-  "id, tenant_id, parent_id, name, code, type, location_id, description, is_active, sort_order, created_at, updated_at"
+  "id, tenant_id, parent_id, name, code, type, location_id, import_id, description, is_active, sort_order, created_at, updated_at"
 
 const MAX_DEPTH = 12
 

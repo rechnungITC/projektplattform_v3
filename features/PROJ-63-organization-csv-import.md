@@ -1,8 +1,8 @@
 # PROJ-63: Organization CSV Import
 
-## Status: Planned
+## Status: In Progress
 **Created:** 2026-05-09
-**Last Updated:** 2026-05-09
+**Last Updated:** 2026-05-13
 **Priority:** P1
 **CIA-reviewed:** 2026-05-09 (papaparse als neue Dep freigegeben; 2 fixe Layouts statt offenes Schema)
 
@@ -201,6 +201,20 @@ V2-Lessons-Learned:
 - **Privacy:** Class-2 (Geschäftskontext + Emails); Class-3 (PII detail) nicht erwartet, aber `description`-Spalte könnte freie Texte enthalten — kein Send an externe AI-Provider, kein Indexing in Sentry-Logs (`description` redacted).
 
 ## Surface-Inventar (geplant, finalisiert in /architecture)
+
+## Tech Design — /architecture Lock (2026-05-13)
+
+**Architektur-Entscheidung A1 — Upload/Preview/Commit bleibt synchron.** PROJ-63 verarbeitet maximal 5 MB und 10000 CSV-Zeilen in der Next.js API Route. Upload schreibt nur `organization_imports.status='preview'` plus JSON-Report; Commit schreibt erst nach Admin-Bestätigung in `locations`, `organization_units` oder die Person-FKs.
+
+**Architektur-Entscheidung A2 — Locations-CSV ist ein zweites Feld im gleichen Upload.** Für `orgchart_hierarchy` akzeptiert `include_locations=true` zusätzlich `locations_csv`. Dadurch bleiben Location-Codes im selben Preview/Commit konsistent und es entsteht kein zweiter Job-Typ.
+
+**Architektur-Entscheidung A3 — Cycle-Detection und Topological Sort im Backend-Service.** Die API validiert `unit_code`/`parent_code` komplett im Speicher gegen Import-Zeilen plus bestehende DB-Knoten. Self-Loops und Import-Zyklen werden vor dem Commit blockiert; Vorwärtsreferenzen bleiben erlaubt.
+
+**Architektur-Entscheidung A4 — additive Schema-Erweiterung.** PROJ-62 bleibt kompatibel. `locations` bekommt `code` und `import_id`, `organization_units` bekommt `import_id`. Bestehende Selects werden additiv erweitert; keine bestehenden Felder, RLS-Policies oder UI-Kontrakte werden umbenannt.
+
+**Architektur-Entscheidung A5 — Audit/Privacy.** `organization_imports` wird tenant-admin-only per RLS. Import-Start/Commit/Rollback erzeugen Import-Level-Audit-Zeilen mit `field_name='status'`; per-row Org-Änderungen laufen über die bestehenden Audit-Trigger. Person-Assignment-CSV enthält E-Mails, deshalb werden keine Roh-E-Mail-Adressen in structured logs geschrieben.
+
+**Architektur-Entscheidung A6 — Rollback bewusst begrenzt.** Rollback löscht nur importierte, seit Commit nicht manuell veränderte Org-Knoten/Locations (`import_id`, `created_at >= committed_at`). Person-Assignment ist non-destructive und wird nicht automatisch zurückgesetzt.
 
 **DB:**
 - 1 Migration (`20260510120000_proj63_organization_csv_import.sql`)
