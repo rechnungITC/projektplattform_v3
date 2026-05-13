@@ -1,5 +1,5 @@
 import type { Metadata } from "next"
-import { notFound } from "next/navigation"
+import { notFound, redirect } from "next/navigation"
 
 import { createClient } from "@/lib/supabase/server"
 
@@ -21,12 +21,19 @@ export default async function ProjectPlanungPage({ params }: PageProps) {
   const supabase = await createClient()
   const { data: project, error } = await supabase
     .from("projects")
-    .select("id")
+    .select("id, project_method")
     .eq("id", id)
     .maybeSingle()
 
   if (error || !project) {
     notFound()
+  }
+
+  if (
+    project.project_method === "scrum" ||
+    project.project_method === "safe"
+  ) {
+    redirect(`/projects/${project.id}/releases`)
   }
 
   return <PlanungClient projectId={project.id} />
