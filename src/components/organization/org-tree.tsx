@@ -336,7 +336,7 @@ export function OrgTree({
         <p className="text-sm font-medium">Noch keine Organisationsstruktur</p>
         <p className="max-w-sm text-xs text-muted-foreground">
           Lege eine Wurzel-Einheit (z.B. die Gesellschaft) an, oder importiere
-          per CSV (PROJ-63 — kommt mit dem nächsten Slice).
+          die Struktur per CSV.
         </p>
         {canEdit ? (
           <Button

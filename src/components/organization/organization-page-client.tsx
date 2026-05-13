@@ -307,9 +307,8 @@ export function OrganizationPageClient({
               Daten konnten nicht geladen werden
             </CardTitle>
             <CardDescription>
-              {unitsError ?? treeError}. Falls die Backend-Slice (PROJ-62-API)
-              noch nicht gelandet ist, ist das erwartet — die UI ist
-              eigenständig deploybar.
+              {unitsError ?? treeError}. Bitte lade die Seite erneut. Wenn der
+              Fehler bleibt, prüfe die Organisations-API und das Datenbank-Schema.
             </CardDescription>
           </CardHeader>
         </Card>
