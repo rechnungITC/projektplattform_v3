@@ -10,6 +10,7 @@ export type AIPurpose =
   | "work_items"
   | "open_items"
   | "narrative"
+  | "sentiment"
 
 export type DataClass = 1 | 2 | 3
 
@@ -163,6 +164,59 @@ export interface RouterNarrativeResult {
   model_id: string | null
   status: "success" | "error" | "external_blocked"
   text: string
+  external_blocked: boolean
+  error_message?: string
+}
+
+// ---------------------------------------------------------------------------
+// PROJ-34-γ.1 — sentiment-purpose types
+// ---------------------------------------------------------------------------
+
+/**
+ * Auto-context for sentiment classification of a single interaction.
+ *
+ * Always Class-3 per CIA-L1: the `summary` is user-redacted but still
+ * carries identifiable behavioural assessment of a named stakeholder.
+ * `classifySentimentAutoContext` therefore hard-fixes the result.
+ *
+ * Per-participant output (CIA-L3) — the prompt is told which
+ * stakeholder roles took part so it can emit one value per participant.
+ */
+export interface SentimentAutoContext {
+  summary: string
+  participants: Array<{
+    stakeholder_id: string
+    /**
+     * Short label only — no contact info, no profile data; the value is
+     * sent to the provider verbatim so callers must not include PII
+     * beyond the stakeholder's display name.
+     */
+    label: string
+  }>
+}
+
+export interface SentimentSignal {
+  stakeholder_id: string
+  /** Integer in `-2..+2`. */
+  sentiment: number
+  /** Integer in `-2..+2`. */
+  cooperation_signal: number
+  /** Confidence in `0..1`. */
+  confidence: number
+}
+
+export interface SentimentGenerationOutput {
+  signals: SentimentSignal[]
+  usage: ProviderUsage
+}
+
+export interface RouterSentimentResult {
+  run_id: string
+  classification: DataClass
+  provider: AIProviderName
+  model_id: string | null
+  status: "success" | "error" | "external_blocked"
+  signals: SentimentSignal[]
   external_blocked: boolean
   error_message?: string
 }

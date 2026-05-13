@@ -12,7 +12,12 @@
  */
 
 import { classifyField } from "./data-privacy-registry"
-import type { DataClass, NarrativeAutoContext, RiskAutoContext } from "./types"
+import type {
+  DataClass,
+  NarrativeAutoContext,
+  RiskAutoContext,
+  SentimentAutoContext,
+} from "./types"
 
 function bumpMax(current: DataClass, candidate: DataClass): DataClass {
   return (Math.max(current, candidate) as DataClass)
@@ -185,4 +190,22 @@ export function classifyNarrativeAutoContext(
   }
 
   return max
+}
+
+/**
+ * PROJ-34-γ.1 — sentiment classifier (CIA-L1).
+ *
+ * Sentiment- und Coaching-Summaries enthalten zwangsläufig identifizierbare
+ * Personenbezüge (Stakeholder-Namen + Verhaltensbewertung). Per CIA-L1
+ * werden sie ausnahmslos als Class-3 klassifiziert — kein Class-2-Bypass,
+ * Tenant-Provider-Pflicht ohne Ausnahme.
+ *
+ * Der `tenantDefault`-Parameter bleibt aus Symmetriegründen erhalten, hat
+ * aber keine Wirkung — Class-3 ist hier eine Konstante.
+ */
+export function classifySentimentAutoContext(
+  _ctx: SentimentAutoContext,
+  _tenantDefault: DataClass = 3,
+): DataClass {
+  return 3
 }

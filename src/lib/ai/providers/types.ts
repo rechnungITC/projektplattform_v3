@@ -13,6 +13,8 @@ import type {
   NarrativeGenerationOutput,
   RiskAutoContext,
   RiskGenerationOutput,
+  SentimentAutoContext,
+  SentimentGenerationOutput,
 } from "../types"
 
 export interface RiskGenerationRequest {
@@ -25,10 +27,14 @@ export interface NarrativeGenerationRequest {
   context: NarrativeAutoContext
 }
 
+export interface SentimentGenerationRequest {
+  context: SentimentAutoContext
+}
+
 /**
- * PROJ-30 — generic provider interface. Methods are optional so a
- * provider can support a subset of purposes (e.g. Ollama implements
- * neither; Anthropic + Stub implement both).
+ * PROJ-30 + PROJ-34-γ.1 — generic provider interface. Methods are optional
+ * so a provider can support a subset of purposes (e.g. Ollama implements
+ * none of them; Anthropic + Stub implement risk + narrative + sentiment).
  *
  * The router calls a method only after `selectProvider` has decided
  * the provider is appropriate; if a provider lacks the requested
@@ -43,6 +49,9 @@ export interface AIProvider {
   generateNarrative?(
     request: NarrativeGenerationRequest,
   ): Promise<NarrativeGenerationOutput>
+  generateSentiment?(
+    request: SentimentGenerationRequest,
+  ): Promise<SentimentGenerationOutput>
 }
 
 /**
