@@ -36,6 +36,7 @@ function buildSupabase(opts: {
   const capChain = {
     select: vi.fn().mockReturnThis(),
     eq: vi.fn().mockReturnThis(),
+    is: vi.fn().mockReturnThis(),
     maybeSingle: vi.fn(async () => ({
       data: opts.capRow,
       error: opts.capError ?? null,

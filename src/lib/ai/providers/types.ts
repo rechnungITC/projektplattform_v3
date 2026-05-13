@@ -9,6 +9,8 @@
 
 import type {
   AIProviderName,
+  CoachingAutoContext,
+  CoachingGenerationOutput,
   NarrativeAutoContext,
   NarrativeGenerationOutput,
   RiskAutoContext,
@@ -29,6 +31,10 @@ export interface NarrativeGenerationRequest {
 
 export interface SentimentGenerationRequest {
   context: SentimentAutoContext
+}
+
+export interface CoachingGenerationRequest {
+  context: CoachingAutoContext
 }
 
 /**
@@ -52,6 +58,9 @@ export interface AIProvider {
   generateSentiment?(
     request: SentimentGenerationRequest,
   ): Promise<SentimentGenerationOutput>
+  generateCoaching?(
+    request: CoachingGenerationRequest,
+  ): Promise<CoachingGenerationOutput>
 }
 
 /**

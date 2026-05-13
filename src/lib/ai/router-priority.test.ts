@@ -101,9 +101,15 @@ function buildSupabase(opts: {
       if (table === "tenant_ai_providers") return providerStatusChain
       if (table === "tenant_ai_provider_priority") return priorityChain
       if (table === "tenant_ai_cost_caps") {
-        const chain: { select: unknown; eq: unknown; maybeSingle: unknown } = {
+        const chain: {
+          select: unknown
+          eq: unknown
+          is: unknown
+          maybeSingle: unknown
+        } = {
           select: () => chain,
           eq: () => chain,
+          is: () => chain,
           maybeSingle: async () => ({ data: null, error: null }),
         }
         return chain
@@ -324,9 +330,15 @@ describe("PROJ-32-c-γ priority-driven routing", () => {
           }
         if (table === "tenant_ai_providers") return providerStatusChain
         if (table === "tenant_ai_cost_caps") {
-          const c: { select: unknown; eq: unknown; maybeSingle: unknown } = {
+          const c: {
+            select: unknown
+            eq: unknown
+            is: unknown
+            maybeSingle: unknown
+          } = {
             select: () => c,
             eq: () => c,
+            is: () => c,
             maybeSingle: async () => ({ data: null, error: null }),
           }
           return c
@@ -434,9 +446,15 @@ describe("PROJ-32-c-γ priority-driven routing", () => {
             maybeSingle: vi.fn().mockResolvedValue({ data: null, error: null }),
           }
         if (table === "tenant_ai_cost_caps") {
-          const c: { select: unknown; eq: unknown; maybeSingle: unknown } = {
+          const c: {
+            select: unknown
+            eq: unknown
+            is: unknown
+            maybeSingle: unknown
+          } = {
             select: () => c,
             eq: () => c,
+            is: () => c,
             maybeSingle: async () => ({ data: null, error: null }),
           }
           return c

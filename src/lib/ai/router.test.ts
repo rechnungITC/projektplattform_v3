@@ -56,10 +56,17 @@ function buildSupabaseMock(opts: {
         return chain
       }
       if (table === "tenant_ai_cost_caps") {
-        // 32-d cost-cap config — no caps configured.
-        const c: { select: unknown; eq: unknown; maybeSingle: unknown } = {
+        // 32-d cost-cap config — no caps configured. ε.β adds the
+        // `.is("purpose", null)` chain entry for the purpose-aware lookup.
+        const c: {
+          select: unknown
+          eq: unknown
+          is: unknown
+          maybeSingle: unknown
+        } = {
           select: () => c,
           eq: () => c,
+          is: () => c,
           maybeSingle: async () => ({ data: null, error: null }),
         }
         return c

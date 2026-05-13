@@ -13,6 +13,7 @@
 
 import { classifyField } from "./data-privacy-registry"
 import type {
+  CoachingAutoContext,
   DataClass,
   NarrativeAutoContext,
   RiskAutoContext,
@@ -205,6 +206,20 @@ export function classifyNarrativeAutoContext(
  */
 export function classifySentimentAutoContext(
   _ctx: SentimentAutoContext,
+  _tenantDefault: DataClass = 3,
+): DataClass {
+  return 3
+}
+
+/**
+ * PROJ-34-ε — coaching classifier (CIA-L1).
+ *
+ * Coaching recommendations are derived from interaction summaries and
+ * qualitative profile fields about a named stakeholder. Like Sentiment,
+ * this is always Class-3 — no Class-2 bypass.
+ */
+export function classifyCoachingAutoContext(
+  _ctx: CoachingAutoContext,
   _tenantDefault: DataClass = 3,
 ): DataClass {
   return 3

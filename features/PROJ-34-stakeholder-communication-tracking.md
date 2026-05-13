@@ -1,6 +1,6 @@
 # PROJ-34: Stakeholder Communication Tracking
 
-## Status: In Progress (34-α/β/γ.1/γ.2/δ/ζ live on main; ε architected — ready for /backend)
+## Status: In Progress (34-α/β/γ.1/γ.2/δ/ζ live; ε.α/β/γ/δ ready for /frontend; ε.ε open)
 **Created:** 2026-05-06
 **Last Updated:** 2026-05-13
 
@@ -865,4 +865,71 @@ Hardening) angegangen werden können.
   - `PATCH /api/projects/[id]/interactions/[iid]/ai-review` → 307 ✓
 - **CI:** Schema Drift Guard ✓ · Vercel Preview ✓ · Vercel Production ✓
 - **Bekannte Findings noch offen:** F-1 (Audit-Tracked-Columns) + F-2..F-8 — siehe QA-Block. Nicht-blockierend, gehören in eine Polish-Slice nach ε.
+
+## Implementation Notes — 34-ε Backend (2026-05-13, ε.α + ε.β + ε.γ + ε.δ)
+
+Vier Sub-Slices ohne UI in dieser Backend-Pass; ε.ε (Empfehlungen-Section + RecommendationCard) folgt im /frontend-Pass.
+
+### ε.α — Recommendations-Tabelle
+
+Migration `20260513160000_proj34_epsilon_coaching_recommendations.sql` (live applied). Tabelle `stakeholder_coaching_recommendations` mit 21 Spalten gemäß Tech Design:
+- Constraints: `recommendation_kind` ∈ {outreach,tonality,escalation,celebration}; `review_state` ∈ {draft,accepted,rejected,modified}; `recommendation_text` ≤ 1000; `modified_text` ≤ 1000 und nur bei `review_state='modified'` gefüllt; `confidence` ∈ [0,1].
+- Indizes: `(tenant_id, project_id)`, `(stakeholder_id, review_state)` partial `WHERE deleted_at IS NULL`, `(stakeholder_id, created_at DESC)` partial.
+- RLS via `is_project_member(project_id)` (4 Policies analog γ.2-Bridge).
+- FK-Kaskade auf `stakeholders` → DSGVO-Hard-Delete (CIA-L6 confirmed).
+- Audit-Trigger via PROJ-10 `record_audit_changes()`; Whitelist umfasst `recommendation_text`, `modified_text`, `review_state`, `deleted_at`.
+- `audit_log_entity_type_check` erweitert um neuen Eintrag.
+
+### ε.β — Cost-Cap Purpose-Scoping (CIA-L7 partial)
+
+Migration `20260513161000_proj34_epsilon_cost_cap_purpose.sql` (live applied). Erweitert `tenant_ai_cost_caps`:
+- Neue Spalte `purpose TEXT NULL` mit Check-Constraint auf bekannte Purposes.
+- Neuer synthetischer `id UUID PK` (statt `tenant_id PK`).
+- Neue Constraint `unique (tenant_id, purpose) NULLS NOT DISTINCT` (PG15+) — coexistiert NULL-Default-Row und Purpose-Rows.
+- Neuer Index `(tenant_id, purpose)` für Lookup-Performance.
+- Backwards-compatible: alle existierenden Caps haben `purpose=NULL` und bleiben aktiv.
+
+**Honest scope-note**: Cap-Config ist purpose-scoped, aber **Usage-Tracking bleibt purpose-agnostisch** (cumulative monthly usage via existing RPC). Per-purpose Usage-Isolation ist als v2-Enhancement nach Pilot deferred. Granulare Cap-Konfiguration (Purpose A: 1000 / Purpose B: 5000) wirkt auf gemeinsamem Token-Pool — d.h. eine purpose-spezifische Cap throttle die Purpose ab Schwellwert, isoliert aber nicht das Budget.
+
+### ε.γ — Router-Erweiterung
+
+Code-Änderungen:
+- `types.ts`: `AIPurpose` um `'coaching'` erweitert; neue Types `CoachingAutoContext` (5 Quellen Q1..Q5), `CoachingRecommendation`, `CoachingGenerationOutput`, `RouterCoachingResult`.
+- `classify.ts`: `classifyCoachingAutoContext` always returns 3 (Class-3 hard-lock parallel zu Sentiment).
+- `providers/types.ts`: `AIProvider.generateCoaching?` optional method.
+- `providers/stub.ts`: `generateCoaching` liefert **0 Recommendations** (kein neutraler Default; UI zeigt External-Blocked-Banner).
+- `cost-cap.ts`: `getCapConfig(supabase, tenantId, purpose?)` purpose-aware mit NULL-fallback; `checkCostCap({purpose})` extended.
+- `router.ts`: `applyCostCap(supabase, tenantId, choice, purpose)` purpose-Parameter Pflicht; 4 Call-Sites (risks/narrative/sentiment/coaching) passieren ihre Purpose. Neuer `invokeCoachingGeneration` Helper, der den γ.1-`invokeSentimentGeneration`-Pattern spiegelt: provider-selection → cost-cap → ki_runs-insert → call → stub-fallback bei error → status-update → return. Provider-Sanity-Check enforciert ≤ 1 Recommendation pro Kind.
+
+### ε.δ — API-Routen (3)
+
+| Route | Method | Zweck |
+|---|---|---|
+| `/api/projects/[id]/stakeholders/[sid]/coaching-recommendations` | GET | Liste mit optionalem `review_state`-Filter; nur non-soft-deleted Rows, ordered created_at desc, limit 200 |
+| `/api/projects/[id]/stakeholders/[sid]/coaching-trigger` | POST | Aggregiert Q1..Q5, ruft `invokeCoachingGeneration`, soft-deleted alte drafts, inserted neue. Returns `{ run, recommendations[] }`. external_blocked / 0-recommendations werden korrekt unterschieden. |
+| `/api/projects/[id]/stakeholders/[sid]/coaching-recommendations/review` | PATCH | Zod `discriminatedUnion` auf decision (accept/reject/modify mit `modified_text`); idempotent via WHERE `review_state='draft'`. Returns `{ updated[] }`. |
+
+Alle drei: Auth via `requireProjectAccess` (view für GET, edit für POST/PATCH); RLS auf der Bridge gibt zusätzliche Defense-in-Depth.
+
+PROJ-35 RPCs (`stakeholder_risk_snapshot`, `stakeholder_tonality_hint`) werden **fail-soft** aufgerufen — falls die RPCs in einem Environment nicht existieren, kommen `null`/leer-string zurück, der Coaching-Call läuft trotzdem.
+
+### Client-side helper
+
+`src/lib/stakeholder-coaching/api.ts` exportiert `listCoachingRecommendations`, `triggerCoachingGeneration`, `submitCoachingReviewBatch` plus Typen für die kommende UI-Slice.
+
+### Tests + Build
+
+- `npm test -- --run` — 1405/1405 grün (≈ +8 für ε; vor allem Cost-Cap-Tests musste das `.is()`-Chain-Mock-Pattern um die neue NULL-Purpose-Lookup-Stufe erweitert werden).
+- `npm run build` — clean, beide neuen Routen-Cluster als `ƒ` dynamic gelistet:
+  - `/api/projects/[id]/stakeholders/[sid]/coaching-recommendations` (GET)
+  - `/api/projects/[id]/stakeholders/[sid]/coaching-recommendations/review` (PATCH)
+  - `/api/projects/[id]/stakeholders/[sid]/coaching-trigger` (POST)
+
+### Bewusste Out-of-Scope (deferred)
+
+- **ε.ε UI** — Empfehlungen-Section + RecommendationCard (Tech-Design ε-A) folgt im /frontend-Pass.
+- **Per-Purpose Usage Isolation** — current Cap-Config-Purpose-Scoping ohne Usage-Isolation. v2-Enhancement nach Pilot.
+- **Tenant-Admin Purpose-Cap-CRUD-UI** — Risk-Score-Settings-Page-Erweiterung deferred bis Tenant-Admins die Caps tatsächlich konfigurieren wollen.
+- **Real Anthropic/OpenAI/Google `generateCoaching`-Implementationen** — Stub ist aktuell der kanonische Pfad bis Provider-Feature-Slice.
+
 
