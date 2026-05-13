@@ -38,12 +38,19 @@ import {
   deleteInteraction,
   listAwaitingInteractions,
   listInteractions,
+  triggerSentimentReview,
   updateInteraction,
   updateParticipantSignal,
+  type AIReviewRunMetadata,
   type AwaitingInteraction,
   type InteractionParticipant,
   type StakeholderInteraction,
 } from "@/lib/stakeholder-interactions/api"
+import { listStakeholders } from "@/lib/stakeholders/api"
+
+import { AIProposalPill } from "./ai-proposal-pill"
+import { AIReviewSheet } from "./ai-review-sheet"
+import { ParticipantPillsStrip } from "./participant-pills-strip"
 
 /**
  * PROJ-34-α — Kommunikations-Tab im Stakeholder-Detail-Drawer.
@@ -81,6 +88,11 @@ export function CommunicationTab({
     StakeholderInteraction[] | null
   >(null)
   const [reloadTick, setReloadTick] = React.useState(0)
+  // Stakeholder-name lookup so multi-participant rows can render names.
+  // Loaded once per project; refreshed only when projectId changes.
+  const [stakeholderLabels, setStakeholderLabels] = React.useState<
+    Map<string, string>
+  >(new Map())
   // `loading` derived from `interactions === null` (first load) avoids
   // the React Compiler warning about synchronous setState inside the
   // effect. Subsequent reloads keep stale data visible.
@@ -105,6 +117,23 @@ export function CommunicationTab({
       cancelled = true
     }
   }, [projectId, stakeholderId, reloadTick])
+
+  React.useEffect(() => {
+    let cancelled = false
+    listStakeholders(projectId)
+      .then((rows) => {
+        if (cancelled) return
+        setStakeholderLabels(
+          new Map(rows.map((s) => [s.id, s.name])),
+        )
+      })
+      .catch(() => {
+        // Fail-soft: name lookup is non-critical, fallback to "Stakeholder".
+      })
+    return () => {
+      cancelled = true
+    }
+  }, [projectId])
 
   const onCreated = React.useCallback(() => {
     setReloadTick((t) => t + 1)
@@ -158,6 +187,7 @@ export function CommunicationTab({
         projectId={projectId}
         stakeholderId={stakeholderId}
         interactions={interactions ?? []}
+        stakeholderLabels={stakeholderLabels}
         onDelete={onDelete}
         onSignalsChanged={onCreated}
       />
@@ -474,12 +504,14 @@ function InteractionList({
   projectId,
   stakeholderId,
   interactions,
+  stakeholderLabels,
   onDelete,
   onSignalsChanged,
 }: {
   projectId: string
   stakeholderId: string
   interactions: StakeholderInteraction[]
+  stakeholderLabels: Map<string, string>
   onDelete: (id: string) => void
   onSignalsChanged: () => void
 }) {
@@ -499,6 +531,7 @@ function InteractionList({
           projectId={projectId}
           stakeholderId={stakeholderId}
           interaction={it}
+          stakeholderLabels={stakeholderLabels}
           onDelete={onDelete}
           onSignalsChanged={onSignalsChanged}
         />
@@ -511,12 +544,14 @@ function InteractionItem({
   projectId,
   stakeholderId,
   interaction,
+  stakeholderLabels,
   onDelete,
   onSignalsChanged,
 }: {
   projectId: string
   stakeholderId: string
   interaction: StakeholderInteraction
+  stakeholderLabels: Map<string, string>
   onDelete: (id: string) => void
   onSignalsChanged: () => void
 }) {
@@ -531,6 +566,73 @@ function InteractionItem({
   const focusedParticipant = interaction.participants.find(
     (p) => p.stakeholder_id === stakeholderId,
   )
+  const isMultiParticipant = interaction.participants.length > 1
+
+  // PROJ-34-γ.2 — AI-Pill state. Transient request state ("loading"/
+  // "failed") layers on top of the derived variant; on every participant
+  // refresh the derived variant wins again.
+  const [reviewOpen, setReviewOpen] = React.useState(false)
+  const [requestState, setRequestState] = React.useState<
+    "idle" | "loading" | "failed"
+  >("idle")
+  const [runMetadata, setRunMetadata] = React.useState<
+    AIReviewRunMetadata | undefined
+  >(undefined)
+  const derivedVariant = React.useMemo(
+    () => derivePillVariant(interaction.participants),
+    [interaction.participants],
+  )
+  const pillVariant: "proposed" | "stub" | "loading" | "failed" | "hidden" =
+    requestState === "loading"
+      ? "loading"
+      : requestState === "failed"
+        ? "failed"
+        : derivedVariant
+
+  const pendingCount = React.useMemo(
+    () =>
+      interaction.participants.filter(
+        (p) =>
+          p.participant_sentiment_source === "ai_proposed" ||
+          p.participant_cooperation_signal_source === "ai_proposed",
+      ).length,
+    [interaction.participants],
+  )
+
+  const hasAnyAIRows = interaction.participants.some(
+    (p) =>
+      p.participant_sentiment_source?.startsWith("ai_") ||
+      p.participant_cooperation_signal_source?.startsWith("ai_"),
+  )
+
+  const onTrigger = async () => {
+    setRequestState("loading")
+    try {
+      const meta = await triggerSentimentReview(projectId, interaction.id)
+      setRunMetadata(meta)
+      if (meta.status === "external_blocked") {
+        toast.info("KI-Sentiment nicht verfügbar", {
+          description:
+            "Kein kompatibler AI-Provider hinterlegt. Werte können manuell gesetzt werden.",
+        })
+        setRequestState("idle")
+        return
+      }
+      setRequestState("idle")
+      onSignalsChanged()
+    } catch (err) {
+      toast.error("KI-Vorschlag fehlgeschlagen", {
+        description:
+          err instanceof Error
+            ? err.message
+            : "Werte können manuell gesetzt werden.",
+      })
+      setRequestState("failed")
+    }
+  }
+
+  const interactionLabel = `${CHANNEL_LABELS[interaction.channel]} · ${dateLabel} · ${interaction.participants.length} Teilnehmer`
+
   return (
     <Card>
       <CardContent className="space-y-2 p-3">
@@ -541,13 +643,33 @@ function InteractionItem({
               {DIRECTION_LABELS[interaction.direction]}
             </Badge>
             <span className="text-xs text-muted-foreground">{dateLabel}</span>
-            {interaction.participants.length > 1 ? (
+            {isMultiParticipant ? (
               <Badge variant="outline">
                 {interaction.participants.length} Teilnehmer
               </Badge>
             ) : null}
             {interaction.awaiting_response ? (
               <Badge variant="destructive">Antwort offen</Badge>
+            ) : null}
+            {pillVariant !== "hidden" ? (
+              <AIProposalPill
+                variant={pillVariant}
+                pendingCount={pendingCount}
+                onClick={() => setReviewOpen(true)}
+                onRetry={onTrigger}
+              />
+            ) : null}
+            {!hasAnyAIRows && pillVariant === "hidden" ? (
+              <Button
+                type="button"
+                size="sm"
+                variant="ghost"
+                className="h-6 px-2 text-[11px]"
+                onClick={onTrigger}
+                aria-label="KI-Sentiment-Analyse anfragen"
+              >
+                ✦ KI-Analyse anfragen
+              </Button>
             ) : null}
           </div>
           <Button
@@ -561,7 +683,13 @@ function InteractionItem({
           </Button>
         </div>
         <p className="text-sm whitespace-pre-wrap">{interaction.summary}</p>
-        {focusedParticipant ? (
+
+        {isMultiParticipant ? (
+          <ParticipantPillsStrip
+            participants={interaction.participants}
+            stakeholderLabels={stakeholderLabels}
+          />
+        ) : focusedParticipant ? (
           <ParticipantSignalRow
             projectId={projectId}
             interactionId={interaction.id}
@@ -570,8 +698,38 @@ function InteractionItem({
           />
         ) : null}
       </CardContent>
+
+      <AIReviewSheet
+        open={reviewOpen}
+        onOpenChange={setReviewOpen}
+        projectId={projectId}
+        interactionId={interaction.id}
+        interactionLabel={interactionLabel}
+        participants={interaction.participants}
+        stakeholderLabels={stakeholderLabels}
+        runMetadata={runMetadata}
+        onSaved={onSignalsChanged}
+      />
     </Card>
   )
+}
+
+/**
+ * Decides the AI-Pill variant from the participant rows. Returns "hidden" if
+ * no AI proposal is pending and no decision marker is on the rows.
+ */
+function derivePillVariant(
+  participants: readonly InteractionParticipant[],
+): "proposed" | "stub" | "loading" | "failed" | "hidden" {
+  const pendingRow = participants.find(
+    (p) =>
+      p.participant_sentiment_source === "ai_proposed" ||
+      p.participant_cooperation_signal_source === "ai_proposed",
+  )
+  if (!pendingRow) return "hidden"
+  const provider = pendingRow.participant_sentiment_provider ?? null
+  if (provider && provider.toLowerCase().includes("stub")) return "stub"
+  return "proposed"
 }
 
 // ---------------------------------------------------------------------------

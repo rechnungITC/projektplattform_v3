@@ -1,6 +1,6 @@
 # PROJ-34: Stakeholder Communication Tracking
 
-## Status: In Progress (34-α/β/γ.1/δ/ζ live on main; γ.2/ε open)
+## Status: Approved (34-α/β/γ.1/γ.2/δ/ζ ready for /deploy; ε open)
 **Created:** 2026-05-06
 **Last Updated:** 2026-05-13
 
@@ -440,3 +440,232 @@ Backend-only AI-Sentiment-Router-Erweiterung. Keine Migration, keine UI.
 **Next slice:** 34-γ.2 — AI-Vorschlag-Pill am Interaction-List-Item +
 Accept/Reject/Modify-Dialog gegen `invokeSentimentGeneration`. Designer-Pass
 für Inline-Edit + Drill-Down-Drawer nötig (siehe `.claude/rules/designer.md`).
+
+## Implementation Notes — 34-γ.2 Frontend (2026-05-13)
+
+Designer-Spec: `docs/design/proj-34-gamma2-ai-review.md` (12 FE-ACs).
+Frontend-only slice; Backend für Trigger- und Batch-Review-Routes folgt
+in `/backend`-Pass.
+
+**Neue Komponenten (`src/components/stakeholders/communication/`)**
+
+- `ai-proposal-pill.tsx` — `AIProposalPill` mit 4 Varianten
+  (`proposed | stub | loading | failed`) am `InteractionItem`-Header.
+  Counter `"✦ KI-Vorschlag · {n} offen"` schrumpft mit Decisions.
+- `participant-pills-strip.tsx` — `ParticipantPillsStrip` (N rows pro
+  Interaktion bei >1 Teilnehmern) mit Source-Halo (`ring-2 ring-primary/40`
+  für `ai_proposed`, ✓/✗ Suffix für accept/reject), dashed-border-
+  Confidence-Microbar (FE-7) markiert Stub-Confidence 0.3 sichtbar anders.
+- `participant-review-card.tsx` — `ParticipantReviewCard` (exported für
+  ε-Reuse) mit ToggleGroup-Slidern, DecisionChip und 3-State-Decision
+  (`accept/reject/modify`). Auto-Collapse via derived state (kein
+  useEffect — `react-hooks/set-state-in-effect`-lint-clean).
+- `ai-review-sheet.tsx` — `AIReviewSheet` mit rechtem Sheet
+  (`Sheet side="right" sm:max-w-2xl`, Mirror von PROJ-33
+  `profile-edit-sheet.tsx`). Local-State Decision-Map, Bulk-Accept-Confirm
+  bei N≥5, Discard-AlertDialog bei ungespeicherten Decisions, Stub- und
+  External-Blocked-Banner via shadcn `Alert`.
+
+**Neue Helper / API-Surface (`src/lib/stakeholder-interactions/`)**
+
+- `aggregate.ts` — `aggregateInteractionSignal(values[])` returns
+  `{ median, spread, count, hasSpread }`. Median-Wahl per Designer-D5
+  (Mean lügt auf bimodalen 2-koop+2-obstr-Meetings); `hasSpread` flag
+  bei `max - min ≥ 3` für Streuung-Badge.
+- `api.ts` — `InteractionParticipant`-Type um
+  `participant_sentiment_confidence`, `_model`, `_provider` erweitert
+  (Spalten existieren bereits in α-Migration). Neue Helpers
+  `triggerSentimentReview()` (POST `/sentiment-trigger`) und
+  `submitAIReviewBatch()` (PATCH `/ai-review`). Beide Endpunkte sind
+  **/backend-TODO**.
+
+**Modifizierte Komponente (`communication-tab.tsx`)**
+
+- `CommunicationTab` lädt jetzt einmal `listStakeholders(projectId)` für
+  Name-Lookup-Map (Fail-soft auf "Stakeholder" wenn nicht geladen).
+- `InteractionItem` zeigt `AIProposalPill` mit `derivePillVariant`
+  (proposed/stub/hidden) basierend auf `participant_sentiment_source` +
+  `_provider`. Transient `requestState` (idle/loading/failed) überlagert
+  derived variant ohne useEffect.
+- `>1`-Participants: `ParticipantSignalRow` (β, focused-stakeholder-edit)
+  wird durch `ParticipantPillsStrip` (alle Teilnehmer read-only) ersetzt
+  (FE-6); 1-Participant-Fall behält β unverändert (keine Regression).
+- "✦ KI-Analyse anfragen"-Button erscheint wenn keine AI-Rows existieren.
+
+**Tests**
+
+- `aggregate.test.ts` — 7 Cases (Empty, Null-Filter, Odd/Even-Median,
+  Bimodal-Spread, Edge `spread=2`-Schwelle).
+- `ai-proposal-pill.test.tsx` — 6 Cases (4 Varianten + Click + Compact).
+- `tests/PROJ-34-gamma2-ai-review.spec.ts` — Playwright Auth-Gate-Smoke
+  auf den zwei zukünftigen Routen. Erwartet aktuell 404/405 alongside
+  307/401 weil /backend noch fehlt.
+
+**Bewusste Out-of-Scope (deferred to /backend pass)**
+
+- `POST /api/projects/[id]/interactions/[iid]/sentiment-trigger` — ruft
+  `invokeSentimentGeneration` auf, schreibt `_source='ai_proposed'`-Rows.
+- `PATCH /api/projects/[id]/interactions/[iid]/ai-review` — Batch-
+  Transition `ai_proposed → ai_accepted/ai_rejected/manual`, idempotent,
+  field-level Audit via PROJ-10.
+- Mini-Queue-Mode des Sheets (mehrere Interaktionen pro Stakeholder
+  in einer Session reviewen) — Designer "Now"-Item für späteren Polish.
+- Projekt-weite Open-AI-Reviews-Inbox — bewusst **PROJ-65-Kandidat**
+  (Designer D4 "Next").
+
+**Build / Lint / Tests**
+
+- `npx tsc --noEmit` — clean
+- `npx eslint src/components/stakeholders/communication/ src/lib/stakeholder-interactions/` — clean
+- `npx vitest run` — 13/13 grün auf den neuen Specs
+- `npm run build` — production build successful
+
+## Implementation Notes — 34-γ.2 Backend (2026-05-13)
+
+Zwei neue API-Routen schließen den Frontend-Loop. Keine neue Migration —
+alle Bridge-Spalten existieren bereits in α-Migration (`participant_*`
+inklusive `_confidence numeric(4,3)`).
+
+**`POST /api/projects/[id]/interactions/[iid]/sentiment-trigger`**
+
+- Auth + `requireProjectAccess(..., "edit")` + tenant_id-Extraction aus
+  access.project (Pattern aus `preview-ki/route.ts`).
+- Lädt Interaction (404 wenn soft-deleted) + Participants (400 wenn 0).
+- Lädt Stakeholder-Namen für `SentimentAutoContext.participants[].label`
+  (Namen only, keine PII — gleicher Disclaimer wie in `types.ts`).
+- Ruft `invokeSentimentGeneration` aus γ.1 (Class-3 hard-lock + Stub-
+  Fallback bleiben im Router).
+- `external_blocked` → kein DB-Write, Response `{ run: { ..., status:
+  "external_blocked", confidence_avg: null } }`.
+- Sonst: pro Signal UPDATE auf `stakeholder_interaction_participants`
+  mit `_source = 'ai_proposed'`, `_model`, `_provider`, `_confidence`.
+- Response `{ run: { provider, model, status, confidence_avg } }`.
+
+**`PATCH /api/projects/[id]/interactions/[iid]/ai-review`**
+
+- Auth + `requireProjectAccess(..., "edit")`.
+- Body via Zod `discriminatedUnion` auf `decision`:
+  - `accept`/`reject`/`modify` (modify benötigt `overrides`).
+- Pro Decision ein UPDATE mit idempotenter WHERE-Clause
+  `participant_sentiment_source = 'ai_proposed'`. Bereits-decided Rows
+  bleiben unberührt (kein Re-transition, kein Audit-Noise).
+- Transitionen:
+  - `accept` → beide `_source` auf `ai_accepted`, Werte bleiben.
+  - `reject` → beide `_source` auf `ai_rejected`, alle Werte + AI-
+    Provenance null.
+  - `modify` → beide `_source` auf `manual`, Override-Werte gesetzt,
+    AI-Provenance null (User-Override löscht AI-Quelle).
+- Audit feuert automatisch via PROJ-10-Trigger auf Bridge.
+- Response: `{ updated_participants: InteractionParticipant[] }` (Frontend
+  ersetzt damit den lokalen Cache).
+
+**Tests**
+
+- `ai-review/route.test.ts` — 7 Cases (Auth 401 / 403 / Validation 400×2 /
+  accept / reject / modify mit korrekten Spalten-Updates).
+- `sentiment-trigger/route.test.ts` — 6 Cases (401 / 403 / 404-soft-
+  deleted / 400-no-participants / success-with-write / external_blocked
+  without write).
+- 13/13 grün via `npx vitest run …`.
+
+**Build**
+
+- `npm run build` listet beide Routen als `ƒ` (dynamic): `/api/projects/[id]/
+  interactions/[iid]/sentiment-trigger` und `…/ai-review`.
+
+**Bewusste Out-of-Scope (Designer "Next")**
+
+- Mini-Queue-Mode pro Stakeholder (Sheet iteriert mehrere Interaktionen
+  in einer Session).
+- Projektweite Open-AI-Reviews-Inbox (PROJ-65-Kandidat).
+- Realtime-Push beim AI-Complete (aktuell verlässt sich UI auf
+  `onSignalsChanged()`-Refresh nach dem Trigger).
+
+## QA Test Results — 34-γ.2 (2026-05-13)
+
+Tested against AC-8 + AC-9 with focus on Class-3-Defense-in-Depth, RLS
+auf `stakeholder_interaction_participants`, und der State-Maschine
+`ai_proposed → ai_accepted/ai_rejected/manual`.
+
+### Acceptance Criteria
+
+| AC | Slice | Status | Evidence |
+|---|---|---|---|
+| AC-1 | α | ✅ Pass | Live since 2026-05-12 PR #8 |
+| AC-2 | α | ✅ Pass | Live since 2026-05-12 PR #8 |
+| AC-3 | α | ✅ Pass | Live since 2026-05-12 PR #8 |
+| AC-4 | α | ✅ Pass | Live since 2026-05-12 PR #8 |
+| AC-5 | α | ✅ Pass | Live since 2026-05-12 PR #8 |
+| AC-6 | β | ✅ Pass | Live since 2026-05-12 PR #10 |
+| AC-7 | β | ✅ Pass | Live since 2026-05-12 PR #10 |
+| AC-8 | γ.2 | ✅ Pass | `AIProposalPill` (4 Varianten), `AIReviewSheet` mit Accept/Reject/Modify (ParticipantReviewCard pro Stakeholder), Routes `sentiment-trigger` + `ai-review` mit korrektem `_source`-Mapping. Per-Participant-Vektor: γ.1-Router schreibt 1 Row pro Participant, UI rendert `ParticipantPillsStrip` mit N Rows. 7/7 route-tests + 6/6 component-tests grün. |
+| AC-9 | γ.1+γ.2 | ✅ Pass | `classifySentimentAutoContext` lockt Class-3 unconditional (CIA-L1). Kein Platform-Key-Fallback — Router liefert `external_blocked` wenn kein Tenant-Provider. UI: `sentiment-trigger`-Route gibt `{ run: { status: "external_blocked" }}` zurück; `InteractionItem.onTrigger` zeigt Toast + behält Pill versteckt. Sheet zeigt zusätzlich `ExternalBlockedBanner` via shadcn `Alert` mit Link zu `/settings/tenant/ai-providers`. |
+| AC-10..AC-17 | δ/ε/ζ | ✅/⏳ | δ + ζ live; ε offen |
+
+### Edge-Case Coverage (Designer §D Matrix)
+
+| Edge | Status |
+|---|---|
+| AI-call läuft (loading pill) | ✅ Implemented via `requestState='loading'` |
+| AI-call abgeschlossen, pending review | ✅ Pill `proposed` + Strip mit Halo |
+| AI-call mit Stub | ✅ Pill `stub` (tertiary tone) + Confidence dashed-border bei 0.3 |
+| External_blocked | ⚠ Partial — Toast statt persistenter Tab-Level-Banner (F-2) |
+| AI-call failed | ✅ Pill `failed` + Retry-Handler |
+| Bereits reviewed | ✅ Pill verschwindet (derived state), Strip zeigt Final-Werte |
+| Mixed (some decided) | ✅ Counter dekrementiert, Per-Row-Halo |
+| Stakeholder deleted | ⚠ Silently filtered statt greyed-out (F-5) |
+| Permission denied (view-only) | ⚠ Backend 403 ✓, aber UI zeigt Pill als clickable (F-3) |
+| Offline / 403 mid-review | ✅ Toast + Sheet behält Local-State |
+| Empty (no AI yet) | ✅ "✦ KI-Analyse anfragen" Trigger-Button sichtbar |
+
+### Security Audit (Red-Team)
+
+| Vector | Status | Notes |
+|---|---|---|
+| Cross-tenant authorization | ✅ Safe | `requireProjectAccess(... 'edit')` + RLS via `is_project_member(project_id)` |
+| Cross-project participant write | ✅ Safe | α-Trigger `tg_sip_validate_same_project_fn` enforced |
+| Input validation | ✅ Safe | Zod `discriminatedUnion` auf `decision`, `min(-2).max(2)` auf overrides |
+| Class-3 defense-in-depth | ✅ Safe | γ.1: auto-classifier hart auf 3 (kein Tenant-Default-Override), Provider-Selection rejects external, Cost-Cap, Stub-Fallback deterministisch — **4 layers** |
+| SQL injection | ✅ Safe | Supabase parameterized |
+| Bridge-RLS | ✅ Safe | `is_project_member(project_id)` auf SELECT/INSERT/UPDATE/DELETE |
+| Sensitive data in responses | ✅ Safe | `provider`/`model`/`confidence_avg` sind Infrastructure-Metadaten, keine PII |
+| Decision-ID-Forgery | ✅ Safe | UUID-Validation + WHERE-Clause `_source = 'ai_proposed'` (idempotent) |
+| Audit trail completeness | ⚠ Partial | `_model`/`_provider`/`_confidence` nicht in `_tracked_audit_columns` für Bridge — aber `ki_runs` führt vollständigen Run-Audit (F-1) |
+
+### Regression
+
+- `npm test -- --run` — **1397/1397 ✓** (162 test files). Keine Regression auf bestehenden Features.
+- `npx playwright test tests/PROJ-34-gamma2-ai-review.spec.ts` — **4/4 ✓** (Chromium + Mobile Safari).
+- `npm run build` — production build clean, beide neue Routen als `ƒ` dynamic.
+
+### Bugs / Findings
+
+| # | Severity | Type | Description | Fix Path |
+|---|---|---|---|---|
+| F-1 | Low | Audit | `_tracked_audit_columns('stakeholder_interaction_participants')` umfasst nur 4 β-Spalten; γ.2 schreibt zusätzlich `_model`/`_provider`/`_confidence`, die nicht via PROJ-10-Trigger auditiert werden. Risiko gering: `ki_runs` führt den Run-Audit; Bridge-Spalten sind denormalisiert. | Folgemigration: Whitelist erweitern auf 7 Spalten. ~5 LOC. |
+| F-2 | Medium | UX | `external_blocked` zeigt nur transienten Toast statt persistenten Tab-Level-Banner (Designer §D verlangt `Alert` mit `ShieldAlert` + Link über AddInteractionForm, session-dismissable via localStorage). Funktional kein Verlust — Pill bleibt korrekt versteckt, manuelle β-Eingabe weiterhin möglich. | Tab-Banner-Komponente + localStorage-Hook. ~30 LOC. |
+| F-3 | Medium | UX | View-only-User sieht AI-Pill als clickable (Backend rejected mit 403, aber UI hat kein `cursor-not-allowed` + Tooltip). Kein Security-Issue. | Rolle-Check im Frontend + `disabled`-Prop weiterleiten. |
+| F-4 | Low | UX | Failed-State hat kein Retry-Limit. Designer spec: "Nach 2 Retries permanent muted state". Aktuell unbegrenzte Retry-Clicks möglich. | Retry-Counter in `requestState`. |
+| F-5 | Low | UX | CASCADE-deleted Stakeholders werden im Sheet silently gefiltert; Designer wollte greyed-out Row mit "(Stakeholder gelöscht)"-Label. | Sheet-Body um deleted-row branch ergänzen. |
+| F-6 | Low | UX | "KI-Analyse anfragen"-Button immer sichtbar; Designer wollte Hide wenn Tenant keinen Provider hat. Aktuell relies on Backend-Reject. | Tenant-Provider-Lookup in CommunicationTab + Conditional. |
+| F-7 | Low | UX | Während AI-Loading zeigt Pill den Spinner, aber `ParticipantPillsStrip` bleibt unverändert (kein Skeleton-Strip). | `Skeleton`-Branch in Strip. |
+| F-8 | Low | UX | Save-Failure zeigt nur Single-Toast; Designer wollte Per-Card-Error-Border bei partial Failure. Aktuell stays-open ist da, aber Per-Row-Highlight fehlt. | Per-Card error-state in Sheet. |
+
+### Production-Ready Decision
+
+**READY** — Keine Critical/High Bugs. AC-8 und AC-9 vollständig erfüllt;
+Core State-Maschine `ai_proposed → ai_accepted/ai_rejected/manual` + Per-
+Participant-Vektor + Class-3-Block + External-Blocked-Pfad funktionieren
+korrekt. Alle 8 Findings sind UX-Polish-Items oder denormalisierte
+Audit-Lücken, die in einem Folgeslice (z.B. γ.2-Polish oder ε-Begleit-
+Hardening) angegangen werden können.
+
+**Empfehlung Fix-Priorität:**
+1. F-1 (Audit) vor nächstem Production-Snapshot — 5 LOC, Compliance-relevant.
+2. F-2 + F-3 (UX-Klärung von Class-3-blockierten und view-only-Tenants) — beide Medium, beide auf Sicht prüfen ob Pilot-Tenants betroffen.
+3. F-4..F-8 — sammelbar in einer Polish-Slice nach ε.
+
+**Test-Suite:**
+- Unit tests: 6 (`ai-proposal-pill`) + 7 (`aggregate`) + 13 (route tests) = **26 new** tests, alle grün
+- E2E: 2 Playwright smoke tests (Auth-Gate), beide grün
+
