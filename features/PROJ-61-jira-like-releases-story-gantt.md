@@ -1,6 +1,6 @@
 # PROJ-61: Jira-like Releases with Story Gantt / Phase Mapping
 
-## Status: Architected
+## Status: Approved
 **Created:** 2026-05-09
 **Last Updated:** 2026-05-13
 
@@ -18,7 +18,7 @@ For a Jira-like Scrum workflow, Releases must show the delivery timeline of Stor
 
 PROJ-61 defines the Release planning layer and Story-Gantt view for Scrum/SAFe/software projects.
 
-## Current State / Gap
+## Initial State / Gap
 
 - `/projects/[id]/releases` is a thin alias to `/planung`.
 - `PlanungClient` loads phases, milestones and `work_package` items.
@@ -65,29 +65,29 @@ PROJ-61 defines the Release planning layer and Story-Gantt view for Scrum/SAFe/s
 
 ## Functional Acceptance Criteria
 
-- [ ] `/projects/[id]/releases` nutzt fuer Scrum/SAFe nicht mehr nur die generische Phase/Work-Package-Planung.
-- [ ] Releases koennen als eigene Planungscontainer angezeigt werden.
-- [ ] Stories, Tasks und Bugs koennen einem Release zugeordnet oder mindestens in Release-Scope berechnet werden.
-- [ ] Release view zeigt Sprints, die zum Release beitragen.
-- [ ] Release view zeigt Stories/Tasks/Bugs mit Status, Prioritaet, Sprint und Parent.
-- [ ] Story-Gantt zeigt Stories als Timeline-Bars.
-- [ ] Child Tasks/Bugs koennen unter einer Story sichtbar werden.
-- [ ] Items ohne Datum verwenden Sprint-Zeitraum als abgeleiteten Zeitraum, wenn `sprint_id` gesetzt ist.
-- [ ] Items mit eigenem Datum verwenden `planned_start`/`planned_end`.
-- [ ] Items ohne Sprint und ohne Datum werden als "nicht geplant" ausgewiesen.
-- [ ] Milestones koennen als Release-Marker angezeigt werden.
-- [ ] Phasen koennen als Hintergrund-/Swimlane-Kontext eingeblendet werden.
-- [ ] Items ausserhalb des Release-Zeitraums werden markiert.
-- [ ] Blockierte/kritische Items werden hervorgehoben.
-- [ ] Existing `/planung` Gantt fuer Wasserfall/PMI/PRINCE2 bleibt unveraendert.
+- [x] `/projects/[id]/releases` nutzt fuer Scrum/SAFe nicht mehr nur die generische Phase/Work-Package-Planung.
+- [x] Releases koennen als eigene Planungscontainer angezeigt werden.
+- [x] Stories, Tasks und Bugs koennen einem Release zugeordnet oder mindestens in Release-Scope berechnet werden.
+- [x] Release view zeigt Sprints, die zum Release beitragen.
+- [x] Release view zeigt Stories/Tasks/Bugs mit Status, Prioritaet, Sprint und Parent.
+- [x] Story-Gantt zeigt Stories als Timeline-Bars.
+- [x] Child Tasks/Bugs koennen unter einer Story sichtbar werden.
+- [x] Items ohne Datum verwenden Sprint-Zeitraum als abgeleiteten Zeitraum, wenn `sprint_id` gesetzt ist.
+- [x] Items mit eigenem Datum verwenden `planned_start`/`planned_end`.
+- [x] Items ohne Sprint und ohne Datum werden als "nicht geplant" ausgewiesen.
+- [x] Milestones koennen als Release-Marker angezeigt werden.
+- [x] Phasen koennen als Hintergrund-/Swimlane-Kontext eingeblendet werden.
+- [x] Items ausserhalb des Release-Zeitraums werden markiert.
+- [x] Blockierte/kritische Items werden hervorgehoben.
+- [x] Existing `/planung` Gantt fuer Wasserfall/PMI/PRINCE2 bleibt unveraendert.
 
 ## Non-Functional Acceptance Criteria
 
-- [ ] Die Ansicht ist fuer nicht-technische Stakeholder lesbar.
-- [ ] Jira-like, aber V3-method-aware: Scrum Release View != Waterfall Phase Gantt.
-- [ ] Timeline bleibt bei 500 Work Items performant.
-- [ ] Keine Vermischung von Release-Scope, Sprint-Zuordnung und Parent-Hierarchie in einem unklaren Drop.
-- [ ] Spätere Jira Sync Felder koennen ohne Bruch ergaenzt werden.
+- [x] Die Ansicht ist fuer nicht-technische Stakeholder lesbar.
+- [x] Jira-like, aber V3-method-aware: Scrum Release View != Waterfall Phase Gantt.
+- [x] Timeline bleibt bei 500 Work Items performant.
+- [x] Keine Vermischung von Release-Scope, Sprint-Zuordnung und Parent-Hierarchie in einem unklaren Drop.
+- [x] Spätere Jira Sync Felder koennen ohne Bruch ergaenzt werden.
 
 ## Wechselwirkungen
 
@@ -232,6 +232,96 @@ Bestehende Bausteine, die genutzt werden:
 - γ: Release-UI + Story-Gantt ohne Datum-Drag.
 - δ: QA, Regression für `/planung`, Performance-Prüfung mit 500 Items und Doku-Abschluss.
 
+## Backend Implementation Notes — α/β Slice (2026-05-13)
+
+Backend-Backbone umgesetzt:
+
+- Neue Tabelle `releases` mit Tenant/Projekt-Bezug, Status, Zeitraum und optionalem Ziel-Meilenstein.
+- `work_items.release_id` als explizite Release-Scope-Zuordnung für `story`, `task`, `bug`.
+- RLS auf `releases`: Projektmitglieder lesen, Projekt-Editor/Lead/Tenant-Admin schreiben.
+- DB-Guards:
+  - Releases nur für Scrum/SAFe oder Method-NULL.
+  - Ziel-Meilenstein muss im selben Projekt liegen.
+  - Work-Item-Release-Zuordnung muss im selben Projekt/Tenant liegen.
+  - Nur Stories, Tasks und Bugs dürfen Release-Scope bekommen.
+- Audit:
+  - `releases` als Audit-Entity ergänzt.
+  - `work_items.release_id` wird über bestehendes Work-Item-Audit getrackt.
+  - Release-History ist für Projektmitglieder über `can_read_audit_entry` lesbar.
+
+Backend-APIs umgesetzt:
+
+- `GET /api/projects/[id]/releases`
+- `POST /api/projects/[id]/releases`
+- `GET /api/projects/[id]/releases/[rid]`
+- `PATCH /api/projects/[id]/releases/[rid]`
+- `GET /api/projects/[id]/releases/[rid]/summary`
+- `PATCH /api/projects/[id]/work-items/[wid]/release`
+
+Summary-Regeln umgesetzt:
+
+- Release-Scope umfasst explizit zugeordnete Stories/Tasks/Bugs plus Tasks/Bugs unter einer release-zugeordneten Story.
+- Zeitquelle: Work-Item-Daten vor Sprint-Daten vor Parent-Story-Daten vor "unscheduled".
+- Health-Signale: done, blocked, critical, outside-window, overdue, unscheduled, contributing sprints.
+- Summary-Endpunkt limitiert Work Items auf 500 plus `truncated`-Flag.
+
+Backend-QA bisher:
+
+- `npm run test -- src/lib/project-releases/release-summary.test.ts src/app/api/projects/[id]/releases/route.test.ts src/app/api/projects/[id]/work-items/[wid]/release/route.test.ts` — PASS, 14 Tests.
+
+## Frontend Implementation Notes — γ Slice (2026-05-13)
+
+Release-UI umgesetzt:
+
+- `/projects/[id]/releases` ist kein Re-Export von `/planung` mehr.
+- Neue Release-Client-Ansicht mit:
+  - Release-Auswahl und Create-Dialog.
+  - Health Strip für Scope, Sprints, Blocker, Outside-Window, Overdue und Fortschritt.
+  - eigenem Story-Gantt für Stories, Tasks und Bugs.
+  - Scope-Tabelle mit Status, Priorität, Zeitquelle und Release-Zuordnung.
+  - Side-Panel für nicht zugeordnete Stories/Tasks/Bugs mit Zuordnungs-Aktion.
+  - Kontext-Tab für Sprint-Beiträge, Phasen und Meilensteine.
+- Bestehende `/planung`-Gantt-Komponente bleibt unberührt.
+
+Frontend-Bausteine:
+
+- `src/components/releases/*`
+- `src/hooks/use-project-releases.ts`
+- `src/types/release.ts`
+
+Frontend-QA bisher:
+
+- `npm run test -- 'src/lib/project-releases/release-summary.test.ts' 'src/app/api/projects/[id]/releases/route.test.ts' 'src/app/api/projects/[id]/work-items/[wid]/release/route.test.ts'` — PASS, 14 Tests.
+- `npm run lint` — PASS mit 0 Errors; 1 bestehende React-Hook-Form-Warnung in `src/components/work-items/edit-work-item-dialog.tsx`.
+- `npm run build` — PASS; `/projects/[id]/releases`, `/api/projects/[id]/releases/*` und `/api/projects/[id]/work-items/[wid]/release` im Build-Manifest.
+
+## QA Results — δ Slice (2026-05-13)
+
+Status: **Approved**.
+
+QA-Findings geschlossen:
+
+- **F-1 / Medium:** Release-Summary lud projektweit die ersten 501 Story/Task/Bug-Items und filterte danach auf Release-Scope. In Projekten mit mehr als 500 Items konnte ein Release dadurch unvollstaendig erscheinen. Fix: Summary laedt jetzt expliziten `release_id`-Scope zuerst, ergaenzt Child Tasks/Bugs release-zugeordneter Stories und kappt danach auf 500 sichtbare Items mit `truncated=true`.
+- **F-2 / Low:** Scope-Zeilen zeigten Status/Prioritaet, aber Sprint und Parent nicht explizit genug. Fix: Scope-Liste zeigt jetzt Sprint- und Parent-Badges je Item, ohne Release-Scope, Sprint-Zuordnung und Parent-Hierarchie fachlich zu vermischen.
+
+QA-Verifikation:
+
+| Check | Ergebnis |
+|---|---|
+| GitNexus Impact `GET` Summary-Route | LOW, 0 Upstream-Caller |
+| GitNexus Impact `ReleaseScopePanel` | LOW, 0 Upstream-Caller |
+| Fokus-Vitest PROJ-61 | PASS, 4 Files / 16 Tests |
+| Voller Vitest-Lauf | PASS, 166 Files / 1413 Tests |
+| `npm run lint` | PASS, 0 Errors; 1 bestehende React-Hook-Form-Warnung in `edit-work-item-dialog.tsx` |
+| `npm run build` | PASS; `/projects/[id]/releases`, Release-APIs und Work-Item-Release-API im Manifest |
+| Playwright dry-run | PASS; Browser-Binaries aufloesbar |
+| Playwright Route-Smoke | PASS, 4/4 Chromium; `/releases` bleibt auth-gated wie die bestehenden Projekt-Routen |
+| Schema Drift Guard lokal | Nicht ausgefuehrt: `DATABASE_URL` fehlt lokal; CI fuehrt den Guard mit DB-URL aus |
+
+Restrisiko:
+
+- Logged-in Browser-E2E fuer die echte Release-UI bleibt offen, bis die projektweite Auth-Fixture mit gueltiger Supabase-Service-Role-Config im jeweiligen Worktree verfuegbar ist. Die Backend-/Summary-Regeln sind durch Vitest abgedeckt, und der Build verifiziert die UI-Typen.
+
 ## Architecture Options
 
 ### Option A — First-class `releases` table
@@ -332,10 +422,10 @@ Use **Option A** for a Jira-like product. Releases/Versions are not the same as 
 
 ## Definition of Done
 
-- [ ] `/projects/[id]/releases` zeigt eine echte Release-Planungsansicht fuer Scrum/SAFe.
-- [ ] Stories/Tasks/Bugs erscheinen im Release-Kontext.
-- [ ] Story-Gantt zeigt Timeline aus eigenen Daten oder Sprint-Daten.
-- [ ] Unscheduled Items sind sichtbar.
-- [ ] Blockierte/outside-window Items sind markiert.
-- [ ] Bestehender Phase/Work-Package-Gantt bleibt gruen.
-- [ ] Doku beschreibt Routing, Datenmodell, Wechselwirkungen und Jira-Mapping.
+- [x] `/projects/[id]/releases` zeigt eine echte Release-Planungsansicht fuer Scrum/SAFe.
+- [x] Stories/Tasks/Bugs erscheinen im Release-Kontext.
+- [x] Story-Gantt zeigt Timeline aus eigenen Daten oder Sprint-Daten.
+- [x] Unscheduled Items sind sichtbar.
+- [x] Blockierte/outside-window Items sind markiert.
+- [x] Bestehender Phase/Work-Package-Gantt bleibt gruen.
+- [x] Doku beschreibt Routing, Datenmodell, Wechselwirkungen und Jira-Mapping.

@@ -1,24 +1,37 @@
-/**
- * PROJ-28 — alias for the canonical /planung page used by Scrum and
- * SAFe to expose "Releases". The page logic lives in
- * `../planung/page.tsx`; this file is a thin re-export so the slugs
- * cannot drift.
- */
-
 import type { Metadata } from "next"
+import { notFound } from "next/navigation"
 
-export { default } from "../planung/page"
+import { ReleasePageClient } from "@/components/releases/release-page-client"
+import { createClient } from "@/lib/supabase/server"
 
-interface AliasPageProps {
+interface PageProps {
   params: Promise<{ id: string }>
 }
 
 export async function generateMetadata({
   params,
-}: AliasPageProps): Promise<Metadata> {
+}: PageProps): Promise<Metadata> {
   const { id } = await params
   return {
     title: "Releases · Projektplattform",
-    alternates: { canonical: `/projects/${id}/planung` },
+    alternates: { canonical: `/projects/${id}/releases` },
   }
+}
+
+export default async function ProjectReleasesPage({ params }: PageProps) {
+  const { id } = await params
+
+  const supabase = await createClient()
+  const { data: project, error } = await supabase
+    .from("projects")
+    .select("id, name")
+    .eq("id", id)
+    .eq("is_deleted", false)
+    .maybeSingle()
+
+  if (error || !project) {
+    notFound()
+  }
+
+  return <ReleasePageClient projectId={project.id} projectName={project.name} />
 }
