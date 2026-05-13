@@ -1,6 +1,6 @@
 # PROJ-63: Organization CSV Import
 
-## Status: In Progress
+## Status: Approved
 **Created:** 2026-05-09
 **Last Updated:** 2026-05-13
 **Priority:** P1
@@ -185,6 +185,18 @@ V2-Lessons-Learned:
 - **Daten-Privacy**: Person-Assignment-CSV enthält Emails (Class-2). Nicht in Logs ausgeben; Preview-Page nur tenant-admin-sichtbar.
 - **Re-Import desselben Files**: zweiter Upload erzeugt zweiten `import_id`; bei dedup `update` werden Knoten mit gleichem Code aktualisiert; bei dedup `skip` ändert sich nichts. Optionale UX-Warnung "Diese Datei wurde bereits importiert" (Hash-Match auf `original_filename` + `row_count`).
 - **Cron-Cleanup**: täglich 02:00 Uhr UTC, löscht `organization_imports` mit `status='preview' AND uploaded_at < now() - interval '24 hours'`.
+
+## QA Test Results (2026-05-13)
+
+**Clean-worktree QA on `/tmp/proj63-clean` at commit `0a07faf`:**
+
+- `npm run test -- src/lib/organization/csv-parsers.test.ts src/lib/organization/import-validators.test.ts src/app/api/organization-units/route.test.ts src/lib/organization/tree-walk.test.ts` — PASS, 31 tests.
+- `npm run lint` — PASS with 0 errors; 1 existing React Hook Form compiler warning in `src/components/work-items/edit-work-item-dialog.tsx`.
+- `npm run build` — PASS; `/stammdaten/organisation/import` and all `/api/organization-imports/*` routes included in the production route manifest.
+
+**Local checkout note:** the primary checkout also contains unrelated in-flight PROJ-34/Claude files. Global lint/build fail there on those unrelated files only; the clean PROJ-63 worktree passes.
+
+**Not run locally:** `npm run check:schema-drift` requires `DATABASE_URL` for a freshly migrated Postgres; local command exits with `DATABASE_URL is not set`. CI runs this check with its configured database.
 
 ## Technical Requirements
 
