@@ -1,6 +1,6 @@
 # PROJ-34: Stakeholder Communication Tracking
 
-## Status: In Progress (34-α/β/γ.1/γ.2/δ/ζ live; ε.α/β/γ/δ ready for /frontend; ε.ε open)
+## Status: In Progress (alle Slices α/β/γ.1/γ.2/δ/ε/ζ implementiert; ε.ε auf Branch — /qa pending)
 **Created:** 2026-05-06
 **Last Updated:** 2026-05-13
 
@@ -931,5 +931,42 @@ PROJ-35 RPCs (`stakeholder_risk_snapshot`, `stakeholder_tonality_hint`) werden *
 - **Per-Purpose Usage Isolation** — current Cap-Config-Purpose-Scoping ohne Usage-Isolation. v2-Enhancement nach Pilot.
 - **Tenant-Admin Purpose-Cap-CRUD-UI** — Risk-Score-Settings-Page-Erweiterung deferred bis Tenant-Admins die Caps tatsächlich konfigurieren wollen.
 - **Real Anthropic/OpenAI/Google `generateCoaching`-Implementationen** — Stub ist aktuell der kanonische Pfad bis Provider-Feature-Slice.
+
+## Implementation Notes — 34-ε Frontend (ε.ε, 2026-05-13)
+
+UI-Slice für PROJ-34-ε, schließt die Backend-Slices α/β/γ/δ visuell ab.
+
+**Neue Komponenten** (`src/components/stakeholders/communication/coaching/`):
+
+- `recommendation-card.tsx` — `RecommendationCard` mit:
+  - `KindBadge` mit 4 Farbtönen (outreach=blue / tonality=amber / escalation=red / celebration=emerald)
+  - `DecisionChip` (offen / übernommen / abgelehnt / geändert) — visuelles Reuse-Pattern aus γ.2 `participant-review-card`
+  - Provider-Mini-Hint mit Confidence-%
+  - Citations-Section (Interaktion-Mini-Cards mit Datum+Channel-Preview, Profile-Field-Badges mit deutschen Labels)
+  - Tonality-Hint-Footer (aus `prompt_context_meta.tonality_hint`)
+  - ActionRow: Übernehmen / Ablehnen / Anders formulieren (toggle to inline-Textarea + Speichern/Abbrechen)
+  - Fallback "(Quelle nicht mehr verfügbar)" für CASCADE-gelöschte Interaktionen
+- `coaching-section.tsx` — `CoachingSection` als Tab-Section mit:
+  - Section-Header (Titel + Counter "{n} offen" + "✦ Coaching anfragen"-Button, gegated durch `canEdit`)
+  - Lade-Logic via `useEffect` (cancelled-Flag-Pattern wie InteractionList)
+  - Empty-State mit Hint für canEdit/non-canEdit
+  - Triggert `triggerCoachingGeneration`, toast bei external_blocked / 0-recommendations / success
+  - `submitCoachingReviewBatch` pro Card-Decision; `refresh()` nach jeder Entscheidung
+  - Profile-Field-Label-Map auf 17 deutsche Labels für Big5/Skills/qualitative-Felder
+
+**Integration**: `communication-tab.tsx` rendert `<CoachingSection>` nach `<InteractionList>`. Bekommt `canEdit` (aus `useProjectAccess(... 'edit_master')`) + `interactions` für die Citation-Label-Map.
+
+**Tests**: `recommendation-card.test.tsx` — 5 Cases (Render-Vollständigkeit / Accept-Click / canEdit=false / modified_text-Anzeige / Fallback-Label für fehlende Citation-ID); alle grün.
+
+**Playwright**: `tests/PROJ-34-epsilon-coaching.spec.ts` — 3 Auth-Gate-Smokes auf den 3 ε-Routen (GET / POST / PATCH).
+
+**Validation**: `tsc --noEmit` clean (modulo pre-existing PROJ-61 release-test issues); ESLint clean; `npm run build` clean.
+
+**Bewusste Out-of-Scope (Polish-Slice nach Pilot)**:
+- Inline-Navigate zu zitierter Interaktion via Anchor (aktuell nur Mini-Card-Preview).
+- Bulk-Akzept-aller-Drafts-Button (Designer-Wunsch ähnlich γ.2 Sheet — deferred).
+- Animation beim Trigger (kein motion library, nur Loader2-Spinner).
+- Kind-Filter / Sort (Section listet linear nach Created-Date).
+
 
 

@@ -54,6 +54,7 @@ import { listStakeholders } from "@/lib/stakeholders/api"
 
 import { AIProposalPill } from "./ai-proposal-pill"
 import { AIReviewSheet } from "./ai-review-sheet"
+import { CoachingSection } from "./coaching/coaching-section"
 import { ParticipantPillsStrip } from "./participant-pills-strip"
 
 /**
@@ -267,6 +268,12 @@ export function CommunicationTab({
         onDelete={onDelete}
         onSignalsChanged={onCreated}
         onExternalBlocked={onExternalBlocked}
+      />
+      <CoachingSection
+        projectId={projectId}
+        stakeholderId={stakeholderId}
+        interactions={interactions ?? []}
+        canEdit={canEdit}
       />
     </div>
   )
