@@ -67,7 +67,40 @@ Akzeptanzkriterien:
 - Liste **"Offene Antworten"** auf Stakeholder-Detail + Project-Room-Health-Signal (feeds PROJ-56 als zusätzliches Health-Input).
 - Response-Behavior darf **nur nach Review** in PROJ-35 Risk-Score einfließen (`tenant_settings.risk_score_overrides.communication_weight`).
 
-### ST-04 Coaching Context
+### ST-04 Coaching Context (ε — sharpened 2026-05-13)
+
+**As** the Projektleiter, **I want** AI-vorgeschlagene Coaching-Empfehlungen pro Stakeholder, **so dass** ich für outreach / tonality / escalation / celebration konkrete, belegbare Handlungsoptionen vorgeschlagen bekomme — ohne dass die KI hinter meinem Rücken Daten verändert.
+
+**Empfehlungs-Quellen** (locked durch User-Antwort 2026-05-13):
+
+| # | Quelle | Felder | Bemerkung |
+|---|---|---|---|
+| Q1 | **Stakeholder-Profil** (PROJ-33) | Big5 (5 Dim), Skill-Profile, `reasoning`, `attitude`, `management_level`, `decision_authority`, `communication_need`, `preferred_channel` | Statisch, Class-3 (personal data) |
+| Q2 | **Interaktions-Historie** | letzte **10 Interaktionen ODER letzte 30 Tage** (kleinerer der beiden), Felder: `summary`, `channel`, `direction`, `interaction_date`, per-participant `participant_sentiment`, `participant_cooperation_signal` | Class-3, da Summary verhaltensbasiert |
+| Q3 | **PROJ-35 Risk-Score + Eskalations-Indikatoren** | aktueller `risk_score`, aktives Eskalations-Pattern (1..4), `critical_path`-Flag | Read-only |
+| Q4 | **PROJ-35 Big5-Tonalitäts-Lookup** (32 Kombinationen) | Ergebnis als String-Hint (z.B. *"sachlich, datengetrieben"*) | **Read-only Eingabe** in den Coaching-Prompt — kein Auto-Promotion zur Recommendation |
+| Q5 | **Response-Verhalten** (PROJ-34-δ) | offene Antworten (count), Average Response Latency, Overdue-Flag | Verhaltensbasiert |
+
+**Recommendation-Output:**
+
+- `recommendation_kind` ∈ `outreach` / `tonality` / `escalation` / `celebration` (≤ 4 Kinds).
+- AI emittiert **0..n Recommendations pro Call** über alle 4 Kinds (kann auch 0 sein wenn keine Empfehlung sinnvoll); maximal **1 pro Kind pro Call** (insgesamt 0..4 pro Trigger).
+- `recommendation_text` ≤ 1000 Zeichen.
+- `cited_interaction_ids[]` (welche der Q2-Interaktionen wurden zitiert) + `cited_profile_fields[]` (welche der Q1-Profile-Schlüssel wurden zitiert).
+- AI-only generiert (PROJ-12 Purpose `coaching`); `review_state` ∈ `draft|accepted|rejected|modified`.
+- Tonality-Lookup-Hint (Q4) wird im `prompt_context_meta.tonality_hint` auditiert, **nicht** als separater Recommendation-Output gemappt.
+
+**Trigger-Modell (Pull):**
+
+- Manueller Button **"✦ Coaching-Empfehlungen anfragen"** in der Empfehlungen-Section am Stakeholder-Tab.
+- **Kein** Auto-Trigger nach Interaktion, **kein** Nightly-Cron, **kein** Risk-Threshold-Trigger (alle bewusst out-of-scope für MVP — siehe Out-of-Scope-Liste unten).
+- Wiederholbar; jeder Trigger ist ein eigener `ki_runs`-Eintrag.
+
+**Lifecycle / DSGVO (CIA-L6 confirmed):**
+
+- DSGVO-Hard-Delete eines Stakeholders **cascade-löscht** seine Coaching-Recommendations via FK.
+- Audit-Replacement-Marker `audit.kind='redacted_with_stakeholder'` dokumentiert nur den Redaktions-Akt — der redaktierte Inhalt erscheint nicht im Audit-Log (Art. 17 DSGVO).
+- Soft-Delete einer Recommendation (z.B. user-rejected) bleibt soft (keine FK-Kaskade).
 Als Projektleiter möchte ich Kommunikationsempfehlungen basierend auf Stakeholder-Profil und jüngsten Interaktionen, sodass Ansprache zielgerichteter wird.
 
 Akzeptanzkriterien:
@@ -94,9 +127,11 @@ Akzeptanzkriterien:
 | AC-10 | δ | `awaiting_response` + `response_due_date` + `replies_to_interaction_id` Spalten + Logik |
 | AC-11 | δ | "Offene Antworten"-Section auf Stakeholder + Overdue-Badge |
 | AC-12 | δ | Project-Health-Signal (PROJ-56-Integration) zählt Overdue als yellow/red |
-| AC-13 | ε | `stakeholder_coaching_recommendations` Tabelle + RLS + API |
-| AC-14 | ε | AI-Generation mit zitierten Interaktion-IDs + Profile-Feldern + `review_state` Workflow |
-| AC-15 | ε | DSGVO-Redaktion: Recommendation wird mit Stakeholder redacted (PROJ-10-Hook) |
+| AC-13 | ε | `stakeholder_coaching_recommendations` Tabelle + RLS + API (Pflicht-Spalten: `recommendation_kind`, `recommendation_text`, `cited_interaction_ids[]`, `cited_profile_fields[]`, `review_state`, `provider`, `model`, `tonality_hint`) |
+| AC-14 | ε | AI-Generation per manuellem Trigger; aggregiert Q1..Q5 Quellen; AI emittiert 0..n Recommendations (≤ 1 pro Kind pro Call); `review_state` lifecycle `draft → accepted/rejected/modified` |
+| AC-15 | ε | DSGVO-Redaktion: Cascade-Delete per FK + Audit-Marker `redacted_with_stakeholder` (kein Inhalt im Audit) |
+| AC-16 | ε | UI reuse: AIReviewShell aus γ.2 zeigt 1 Card pro Recommendation mit Kind-Badge + zitierten Interaktionen + zitierten Profile-Feldern + Accept/Reject/Modify |
+| AC-17 | ε | PROJ-35 Tonality-Lookup (32 Kombinationen) ist Read-only-Eingabe in den Coaching-Prompt; das Lookup-Ergebnis wird in `prompt_context_meta.tonality_hint` auditiert, niemals direkt zur Recommendation promoted |
 | AC-16 | ζ | `tenant_settings.risk_score_overrides.communication_weight` (0..1, default 0) |
 | AC-17 | ζ | PROJ-35 `compute_stakeholder_risk_score` liest optional Avg-Sentiment + Cooperation-Signal + Overdue-Count |
 
@@ -115,6 +150,9 @@ Akzeptanzkriterien:
 - ❌ **Automatische E-Mail-Inbox-Ingestion** → PROJ-44 Context Ingestion (write-path).
 - ❌ **Echter Teams/Slack-Adapter** für inbound → PROJ-49 / PROJ-14b.
 - ❌ **Autonomes Versenden** von AI-Coaching-Empfehlungen → PROJ-39 Assistant Action Packs.
+- ❌ **Auto-Trigger** für Coaching-Generierung (Nightly-Cron, Risk-Threshold, Post-Interaction-Hook) — alle drei bewusst out-of-scope für ε MVP. Trigger ist ausschließlich Pull (manueller Button am Stakeholder-Tab). Auto-Trigger erst bei expliziter Nachforderung evaluieren (separate Slice).
+- ❌ **Coaching-Mehrfach-Output je Kind** pro Call (z.B. 2 outreach-Empfehlungen gleichzeitig) — AI ist auf ≤ 1 Recommendation pro Kind pro Call beschränkt. Mehrere Iterationen ⇒ User triggert erneut.
+- ❌ **Direkte UI-Promotion des Tonality-Lookup-Ergebnisses** als eigene Recommendation (siehe AC-17 — Lookup ist Prompt-Input, kein Output-Pfad).
 - ❌ **Vollautomatische Akzeptanz von AI-Signalen** — Sentiment-/Cooperation-Werte bleiben Proposal- bzw. Review-gesteuert; kein Auto-Write ohne User-Entscheidung.
 - ❌ **Thread-View / Conversation-Reconstruction** — `replies_to_interaction_id` reicht für 1-Hop, kein Voll-Thread.
 - ❌ **Voice-Recordings / Transcripts** — PROJ-37/41 Assistant Speech.
@@ -269,6 +307,23 @@ Keine neuen npm-Pakete. Alle benötigten UI-Primitives (shadcn Slider, Dialog, T
 - Tenant-Setting `communication_weight` lesen / setzen (PROJ-35-Integration-Hook)
 
 Alle Routes folgen dem existierenden Pattern `src/app/api/projects/[id]/stakeholders/[sid]/...`.
+
+### F-ε) Datenfluss bei AI-Coaching-Empfehlung (ε)
+
+1. Projektleiter öffnet Stakeholder-Detail-Tab "Kommunikation" → Empfehlungen-Section.
+2. Klick auf "✦ Coaching-Empfehlungen anfragen" → Server-Action.
+3. Server aggregiert die 5 Quellen aus ST-04:
+   - Q1: Profile via Supabase JOIN auf `stakeholders` + zugehörige Big5/Skill-Tabellen.
+   - Q2: Letzte 10 Interaktionen ODER letzte 30 Tage (LIMIT, ORDER BY date DESC).
+   - Q3: PROJ-35 `risk_score` + Eskalations-Pattern + Critical-Path-Flag via existierender RPC.
+   - Q4: PROJ-35 Tonality-Lookup-RPC → `tonality_hint` String (z.B. "sachlich, datengetrieben").
+   - Q5: PROJ-34-δ Response-Stats (awaiting count, avg latency, overdue flag).
+4. PROJ-12-Router mit Purpose `coaching`, Class-3 (CIA-L1 hard-fixed via `classifyCoachingAutoContext`).
+5. Router prüft Tenant-Provider-Keys (PROJ-32). Wenn kein zulässiger Provider → lokaler neutraler Stub-Fallback (0 Recommendations, `ki_runs.status='external_blocked'`).
+6. AI-Provider liefert 0..n Recommendations (max. 1 pro Kind). Jede mit `recommendation_text`, `cited_interaction_ids[]`, `cited_profile_fields[]`.
+7. Server persistiert N Rows in `stakeholder_coaching_recommendations` mit `review_state='draft'`, `provider`, `model`, `tonality_hint` aus Q4.
+8. Frontend re-fetcht → AIReviewShell aus γ.2 rendert 1 Card pro Recommendation; UI zeigt Kind-Badge + Text + Citations.
+9. PL klickt Accept/Reject/Modify → existierender γ.2-Batch-Pattern (eigene Route für Coaching analog `ai-review`).
 
 ### F) Datenfluss bei AI-Sentiment-Vorschlag (γ.1 + γ.2)
 
