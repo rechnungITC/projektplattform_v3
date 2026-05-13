@@ -46,13 +46,14 @@ Akzeptanzkriterien:
 - Edit/Delete nur durch `created_by` oder Project-Manager-Rolle (PROJ-4 RBAC).
 
 ### ST-02 Sentiment & Cooperation Signals
-Als Projektleiter möchte ich Sentiment und Kooperationssignale auf Interaktions-Ebene haben, sodass beginnender Konflikt früh sichtbar wird.
+Als Projektleiter möchte ich Sentiment und Kooperationssignale pro beteiligtem Stakeholder einer Interaktion haben, sodass beginnender Konflikt früh sichtbar wird.
 
 Akzeptanzkriterien:
 - `sentiment` ∈ {−2, −1, 0, +1, +2} (`strongly_negative`..`strongly_positive`); nullable wenn nicht erfasst.
 - `cooperation_signal` ∈ {−2, −1, 0, +1, +2} (`obstructive`..`collaborative`); nullable.
+- Beide Felder leben **pro Participant** auf `stakeholder_interaction_participants`; ein Multi-Stakeholder-Meeting wird nicht auf einen einzelnen Interaktionswert reduziert.
 - Beide Felder können **manuell** gesetzt UND als **AI-Proposal** vorgeschlagen werden. Source-Tracking: `manual` | `ai_proposed` | `ai_accepted` | `ai_rejected`.
-- AI-Routing geht ausschließlich über den **PROJ-12 Router** mit neuem Purpose `sentiment` und Class-3-Hard-Block: Wenn der Tenant kein eigenes Provider-Key-Set hat (PROJ-32) und der Summary als Class-3 klassifiziert ist, fail-closed mit "Sentiment AI nicht verfügbar".
+- AI-Routing geht ausschließlich über den **PROJ-12 Router** mit neuem Purpose `sentiment` und Class-3-Hard-Block: keine Platform-Keys für Class-3; γ.1 nutzt bei extern geblocktem Pfad den lokalen Stub mit neutralen Signalen und `status='external_blocked'`.
 - AI-Vorschlag erscheint als Pill am Interaktions-Item; Accept/Reject/Modify-Dialog überschreibt Werte und setzt `_source` korrekt.
 - Provider/Model + `confidence` werden gespeichert (Source Traceability per V3-Prinzip 2).
 
@@ -87,9 +88,9 @@ Akzeptanzkriterien:
 | AC-4 | α | Multi-Stakeholder-Interaktion: 1 Meeting kann ≥ 1 Stakeholder zugeordnet werden |
 | AC-5 | β | Manuelle Sentiment-/Cooperation-Slider **pro Stakeholder-Participant** im Edit-Form (CIA-L3) persistieren mit `source='manual'` |
 | AC-6 | β | Pill-Anzeige der Werte in List-Item, eine Pill pro Participant (Farbschema: rot=−2, gelb=0, grün=+2) |
-| AC-7 | γ.1 | Neuer PROJ-12 Purpose `sentiment` (Class-3-fixed, Tenant-Provider-Pflicht) + Cost-Cap-Topf 500/Monat/Tenant (CIA-L7) |
+| AC-7 | γ.1 | Neuer PROJ-12 Purpose `sentiment` (Class-3-fixed, Tenant-Provider-Pflicht) + bestehender Tenant-AI-Cost-Cap; separater `sentiment`-Topf bleibt L7-Follow-up |
 | AC-8 | γ.2 | AI-Vorschlag-Pill am Interaktion-Item; Accept/Reject/Modify-Dialog setzt `_source` korrekt; Per-Participant-Vektor statt Skalar |
-| AC-9 | γ.1 | Class-3-Block fail-closed mit lesbarer Fehlermeldung (keine Default-Tenant-Bypass, kein Class-2-Fallback per CIA-L1) |
+| AC-9 | γ.1 | Class-3-Block ohne Platform-Key-Fallback; Router markiert `external_blocked`, γ.2 zeigt daraus die lesbare UI-Meldung |
 | AC-10 | δ | `awaiting_response` + `response_due_date` + `replies_to_interaction_id` Spalten + Logik |
 | AC-11 | δ | "Offene Antworten"-Section auf Stakeholder + Overdue-Badge |
 | AC-12 | δ | Project-Health-Signal (PROJ-56-Integration) zählt Overdue als yellow/red |
@@ -104,7 +105,7 @@ Akzeptanzkriterien:
 - **Stakeholder gelöscht (FK CASCADE)** — `stakeholder_interaction_participants` Cascade greift; wenn das die letzte Beteiligung der Interaktion war, bleibt die Interaktion bestehen aber ohne Participant → UI muss `(keine Stakeholder zugeordnet)` rendern.
 - **Multi-Tenant-Cross-Project** — eine Interaktion darf nie Stakeholder aus einem anderen Projekt referenzieren (Trigger: `enforce_interaction_stakeholder_same_project`).
 - **AI-Provider down während Sentiment-Routing** — Interaktion wird trotzdem gespeichert; Sentiment bleibt `null` + UI-Toast "AI-Vorschlag fehlgeschlagen, Werte können manuell gesetzt werden".
-- **Class-3-Hard-Block** — Tenant hat keine eigenen AI-Keys → AI-Pill verschwindet, Edit-Form nur manuell. Kein Fallback auf Platform-Keys.
+- **Class-3-Hard-Block** — Tenant hat keine eigenen AI-Keys → kein externer Provider, lokaler neutraler Stub-Fallback für γ.1, Edit-Form bleibt manuell bis γ.2 Review-UI. Kein Fallback auf Platform-Keys.
 - **Coaching-Recommendation zitiert gelöschte Interaktion** — `cited_interaction_ids[]` filtert ID raus, UI zeigt `(Quelle nicht mehr verfügbar)` Hinweis.
 - **Self-Interaction (Stakeholder kommuniziert mit sich selbst über uns)** — nicht erlaubt, Trigger blockt `direction=bidirectional` bei nur 1 Stakeholder.
 - **Replies-to-Chain länger als 1** — `replies_to_interaction_id` ist nicht-rekursiv für MVP; Thread-View deferred.
@@ -114,7 +115,7 @@ Akzeptanzkriterien:
 - ❌ **Automatische E-Mail-Inbox-Ingestion** → PROJ-44 Context Ingestion (write-path).
 - ❌ **Echter Teams/Slack-Adapter** für inbound → PROJ-49 / PROJ-14b.
 - ❌ **Autonomes Versenden** von AI-Coaching-Empfehlungen → PROJ-39 Assistant Action Packs.
-- ❌ **Sentiment-Per-Stakeholder bei Multi-Stakeholder-Meeting** — MVP: 1 Wert pro Interaktion; per-Participant-Signals deferred to PROJ-34-ν (zukünftig).
+- ❌ **Vollautomatische Akzeptanz von AI-Signalen** — Sentiment-/Cooperation-Werte bleiben Proposal- bzw. Review-gesteuert; kein Auto-Write ohne User-Entscheidung.
 - ❌ **Thread-View / Conversation-Reconstruction** — `replies_to_interaction_id` reicht für 1-Hop, kein Voll-Thread.
 - ❌ **Voice-Recordings / Transcripts** — PROJ-37/41 Assistant Speech.
 - ❌ **Materialized Sentiment-Aggregates** — alles compute-on-read solange < 500 Interactions/Stakeholder.
@@ -124,7 +125,7 @@ Akzeptanzkriterien:
 - Jede neue Tabelle MUSS `tenant_id UUID NOT NULL REFERENCES tenants(id) ON DELETE CASCADE` haben.
 - RLS-Policies MÜSSEN über `is_tenant_member(tenant_id)` + `has_project_access(project_id, 'view'|'manage')` gehen — keine direkten `auth.uid()`-Vergleiche.
 - AI-derived Felder MÜSSEN `_source` (`manual|ai_*`), `_model`, `_provider`, `confidence` tracken (V3-Prinzip 2: AI as proposal layer).
-- AI-Calls MÜSSEN über `invokeSentimentGeneration` / `invokeCoachingGeneration` gehen — kein direkter Provider-Call aus der API-Route. Hard-Block für Class-3 ohne Tenant-Keys.
+- AI-Calls MÜSSEN über `invokeSentimentGeneration` / `invokeCoachingGeneration` gehen — kein direkter Provider-Call aus der API-Route. Hard-Block für Class-3 ohne Platform-Key-Fallback; lokaler Stub ist nur neutraler Review-Queue-Fallback.
 - DSGVO-Export (PROJ-10/17): Interactions + Recommendations sind redaction-eligible.
 - Audit-Log: `_tracked_audit_columns`-Whitelist umfasst `sentiment`, `cooperation_signal`, `awaiting_response`, `response_due_date`, `review_state` (PROJ-10-Hook).
 - Schema-Drift-Guard (PROJ-42): Slice-Migration muss vor Frontend-`.from(...).select(...)` deployed werden.
@@ -135,7 +136,7 @@ Akzeptanzkriterien:
 |---|---|---|---|---|
 | **34-α** | ✅ Implemented 2026-05-12 — Interaction-Log (ST-01): Tabellen + RLS + API CRUD + Stakeholder-Detail Tab. Tabellen inkl. `deleted_at`-Soft-Delete + Field-Level-Audit-Trigger (CIA-L2) | 2 Tables (`stakeholder_interactions`, `stakeholder_interaction_participants` mit Per-Participant-Signal-Spalten per CIA-L3) + 1 Trigger (same-project) | "Kommunikation"-Tab + Inline-Add-Form + List | ~2 PT |
 | **34-β** | Manual Signals (ST-02 Teil 1): Sentiment/Cooperation als Slider **pro Participant** | 0 (Spalten in α) | Slider im Edit-Form pro Participant + Pill am List-Item | ~0.5 PT |
-| **34-γ.1** | AI-Sentiment Backend: PROJ-12-Router `sentiment`-Purpose + Class-3-Lock + PROJ-32d Cost-Cap-Topf + Per-Participant-Output-Vektor | 0 (Spalten in α) + Router-Erweiterung | — | ~1.5 PT |
+| **34-γ.1** | ✅ Deployed 2026-05-13 — AI-Sentiment Backend: PROJ-12-Router `sentiment`-Purpose + Class-3-Lock + Per-Participant-Output-Vektor. γ.1 nutzt den bestehenden Tenant-AI-Cost-Cap; separater Purpose-Cap bleibt deferred. | 0 (Spalten in α) + Router-Erweiterung | — | ~1.5 PT |
 | **34-γ.2** | AI-Sentiment UI: AI-Vorschlag-Pill + Review-Queue + Accept/Reject/Modify-Dialog | 0 | AI-Vorschlag-Pill + Modal | ~1 PT |
 | **34-δ** | Response-Behavior (ST-03): awaiting_response + Overdue **lazy-on-read via Generated Column** (CIA-L5) + Project-Health-Feed | 0 (Spalten in α) | "Offene Antworten"-Section + Overdue-Badge + PROJ-56-Hook | ~1 PT |
 | **34-ε** | Coaching Context (ST-04): Recommendations-Tabelle + AI-Generation + Review + Citing + DSGVO-Hard-Delete-Cascade (CIA-L6) | 1 Table (`stakeholder_coaching_recommendations`) | "Empfehlungen"-Section + Annotated Citations | ~2 PT |
@@ -147,7 +148,7 @@ Akzeptanzkriterien:
 
 - **Backend** (3 Migrations + 4 API-Surfaces + PROJ-12-Router-Erweiterung + RLS + Audit-Hook + Per-Participant-Aggregation-View): ~4 PT
 - **Frontend** (Stakeholder-Detail-Tab + Add/Edit-Form mit Per-Participant-Slidern + AI-Vorschlag-Workflow + Coaching-Section + Health-Signal-Card): ~4 PT
-- **AI/Integration** (PROJ-12 `sentiment` + `coaching` Purposes Class-3-fixed, PROJ-32d Cost-Cap-Topf 500/Monat): ~1 PT
+- **AI/Integration** (PROJ-12 `sentiment` + `coaching` Purposes Class-3-fixed, bestehender PROJ-32d-Cost-Cap; separater `sentiment`-Topf deferred): ~1 PT
 - **QA** (Unit-Tests pro Slice, Class-3-Red-Team-Suite analog PROJ-30, Edge-Cases-Coverage inkl. 2-koop/2-obstr-Meeting, Playwright-Smoke): ~1 PT
 - **Total:** ~9.5 PT (CIA-bestätigt).
 
@@ -170,6 +171,7 @@ Die ursprünglich offenen Architektur-Forks wurden vom Continuous Improvement Ag
   FK `ON DELETE CASCADE` von Interactions + Coaching-Recommendations auf Stakeholder. Zusätzlicher Audit-Replacement-Marker dokumentiert den Redaktions-Akt selbst, nicht den redaktierten Inhalt (DSGVO Art. 17 konform).
 - **L7 — Separater PROJ-32d Cost-Cap-Topf `sentiment` mit Default 500 Calls/Monat/Tenant.**
   Eigener Cap statt geteilter Topf mit `narrative`/`risk`; verhindert Cross-Purpose-Budget-Erosion. Tenant-Admin kann anpassen.
+  **Implementation note 2026-05-13:** γ.1 verwendet vorerst den bestehenden `tenant_ai_cost_caps`-Topf, weil ein purpose-scoped Schema-Change den Backend-Router-Slice deutlich vergrößert hätte. Der separate `sentiment`-Topf bleibt als eigenes Follow-up offen.
 - **L8 — 7 Slices statt 6: γ wird in γ.1 (Backend-Router + DB) und γ.2 (UI-Review-Queue) gesplittet.**
   Erlaubt feature-flag-gated Backend-Erprobung vor UI-Exposure. Neue Slice-Tabelle und PT-Schätzung oben aktualisiert (~9.5 PT).
 
@@ -272,8 +274,8 @@ Alle Routes folgen dem existierenden Pattern `src/app/api/projects/[id]/stakehol
 
 1. Projektleiter erfasst eine Interaktion (Summary, Stakeholder).
 2. Server-Action triggert PROJ-12-Router mit Purpose `sentiment`, Class-3.
-3. Router prüft Tenant-Provider-Keys (PROJ-32). Wenn keine → fail-closed, UI zeigt "AI nicht verfügbar".
-4. Wenn vorhanden → Sentiment-Vektor pro Teilnehmer wird angefragt.
+3. Router prüft Tenant-Provider-Keys (PROJ-32). Wenn kein zulässiger externer/tenant-lokaler Provider verfügbar ist → lokaler neutraler Stub-Fallback, `ki_runs.status='external_blocked'`, keine Platform-Key-Nutzung.
+4. Wenn ein zulässiger Provider vorhanden ist → Sentiment-Vektor pro Teilnehmer wird angefragt.
 5. Antwort landet in der Bridge-Tabelle als `_source='ai_proposed'`.
 6. Frontend rendert AI-Pill am Item, Projektleiter klickt Accept/Reject/Modify.
 7. State wechselt auf `ai_accepted` / `ai_rejected` / `manual` (bei Modify).
@@ -399,7 +401,7 @@ Backend-only AI-Sentiment-Router-Erweiterung. Keine Migration, keine UI.
 **Router (`src/lib/ai/`)**
 
 - `AIPurpose` um `'sentiment'` erweitert (`types.ts`).
-- Neue Types `SentimentAutoContext` (mit `participants: { stakeholder_id, name }[]`)
+- Neue Types `SentimentAutoContext` (mit `participants: { stakeholder_id, label }[]`)
   und `SentimentSignal` (per Participant: `sentiment ∈ [-2,+2]`, `cooperation_signal ∈ [-2,+2]`, `confidence ∈ [0,1]`).
 - `classifySentimentAutoContext()` (in `classify.ts`) gibt **immer** Klasse 3 zurück
   — Tenant-Default wird per CIA-L1 ignoriert, kein Class-2-Fallback.
@@ -407,8 +409,9 @@ Backend-only AI-Sentiment-Router-Erweiterung. Keine Migration, keine UI.
 - `invokeSentimentGeneration()` (`router.ts`) spiegelt `invokeNarrativeGeneration`:
   Class-3-Hard-Block → Tenant-Provider-Pflicht → `tenant_ai_cost_caps`-Check →
   `ki_runs`-Insert → Provider-Call → Stub-Fallback wenn `generateSentiment`
-  fehlt → Output normalisiert auf **eine** `SentimentSignal` pro übergebenem
-  Participant (auch wenn Provider weniger liefert).
+  fehlt → Rückgabe enthält die vom Provider gelieferten `SentimentSignal`s;
+  der Stub liefert deterministisch **eine** `SentimentSignal` pro übergebenem
+  Participant.
 - `StubProvider.generateSentiment()` emittiert neutrale `0/0`-Signals mit
   `confidence=0.3` pro Participant — γ.2 Review-Queue erfordert weiterhin
   expliziten Accept/Reject pro Stakeholder.
