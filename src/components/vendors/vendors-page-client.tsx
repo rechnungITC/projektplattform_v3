@@ -1,6 +1,6 @@
 "use client"
 
-import { Building2, Plus, Search } from "lucide-react"
+import { Building2, Plus, Receipt, Search } from "lucide-react"
 import * as React from "react"
 import { toast } from "sonner"
 
@@ -24,7 +24,9 @@ import {
   SheetTitle,
 } from "@/components/ui/sheet"
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs"
+import { useAuth } from "@/hooks/use-auth"
 import { useVendors } from "@/hooks/use-vendors"
+import { isModuleActive } from "@/lib/tenant-settings/modules"
 import type { VendorInput } from "@/lib/vendors/api"
 import {
   type Vendor,
@@ -34,6 +36,7 @@ import {
   VENDOR_STATUSES,
 } from "@/types/vendor"
 
+import { VendorInvoicesTab } from "../budget/vendor-invoices-tab"
 import { VendorDocumentsTab } from "./vendor-documents-tab"
 import { VendorEvaluationsTab } from "./vendor-evaluations-tab"
 import { VendorForm } from "./vendor-form"
@@ -64,6 +67,10 @@ export function VendorsPageClient() {
     }),
     [statusFilter, debouncedSearch]
   )
+
+  const { currentRole, tenantSettings } = useAuth()
+  const canEdit = currentRole !== "viewer"
+  const budgetActive = isModuleActive(tenantSettings, "budget")
 
   const { vendors, loading, error, create, update, remove } = useVendors(options)
   const [drawer, setDrawer] = React.useState<DrawerState>({ mode: "closed" })
@@ -253,6 +260,12 @@ export function VendorsPageClient() {
                     <TabsTrigger value="projects">
                       Projekte ({drawer.vendor.assignment_count})
                     </TabsTrigger>
+                    {budgetActive ? (
+                      <TabsTrigger value="invoices" className="gap-1">
+                        <Receipt className="h-3.5 w-3.5" aria-hidden />
+                        Rechnungen
+                      </TabsTrigger>
+                    ) : null}
                   </TabsList>
                   <TabsContent value="form" className="mt-4">
                     <VendorForm
@@ -286,6 +299,14 @@ export function VendorsPageClient() {
                       {drawer.vendor.assignment_count === 1 ? "" : "en"}.
                     </p>
                   </TabsContent>
+                  {budgetActive ? (
+                    <TabsContent value="invoices" className="mt-4">
+                      <VendorInvoicesTab
+                        vendorId={drawer.vendor.id}
+                        canEdit={canEdit}
+                      />
+                    </TabsContent>
+                  ) : null}
                 </Tabs>
               </div>
             </>
