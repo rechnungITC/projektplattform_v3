@@ -24,12 +24,17 @@ import { z } from "zod"
 
 import type {
   AIProvider,
+  CoachingGenerationRequest,
   NarrativeGenerationRequest,
   RiskGenerationRequest,
+  SentimentGenerationRequest,
 } from "./types"
 import type {
+  CoachingGenerationOutput,
+  CoachingKind,
   NarrativeGenerationOutput,
   RiskGenerationOutput,
+  SentimentGenerationOutput,
 } from "../types"
 
 // ---------------------------------------------------------------------------
@@ -239,6 +244,228 @@ function buildNarrativePrompt(request: NarrativeGenerationRequest): string {
 }
 
 // ---------------------------------------------------------------------------
+// PROJ-34-γ.1 — Sentiment schema + prompt
+//
+// Class-3 implication: this prompt DOES carry personenbezogene Daten
+// (Stakeholder-Namen + Verhaltensbewertung). It is sent only to a
+// tenant-supplied Ollama endpoint — the data stays in the tenant's
+// control domain by definition (CIA-L1). No "redact names" disclaimer
+// is added here, because the model needs the labels to attribute its
+// per-participant output.
+// ---------------------------------------------------------------------------
+
+const SentimentSignalSchema = z.object({
+  stakeholder_id: z
+    .string()
+    .uuid()
+    .describe("UUID des Teilnehmers (aus dem Prompt unverändert übernehmen)"),
+  sentiment: z
+    .number()
+    .int()
+    .min(-2)
+    .max(2)
+    .describe(
+      "Stimmungs-Wert auf -2..+2 Skala (−2 stark negativ, 0 neutral, +2 stark positiv).",
+    ),
+  cooperation_signal: z
+    .number()
+    .int()
+    .min(-2)
+    .max(2)
+    .describe(
+      "Kooperations-Wert auf -2..+2 Skala (−2 obstruktiv, 0 neutral, +2 sehr kooperativ).",
+    ),
+  confidence: z
+    .number()
+    .min(0)
+    .max(1)
+    .describe(
+      "Konfidenz 0..1; niedrige Werte bei Unsicherheit oder dünner Datenbasis.",
+    ),
+})
+
+const SentimentResponseSchema = z.object({
+  signals: z.array(SentimentSignalSchema).min(1),
+})
+
+const SENTIMENT_SYSTEM_PROMPT = `Du bist ein erfahrener Projektmanagement-Berater und beurteilst Stakeholder-Interaktionen.
+
+Du bekommst eine **Summary** einer Interaktion (vom Projektleiter redigiert, keine Roh-E-Mails) und eine Liste der Teilnehmer. Aufgabe: für **jeden** Teilnehmer einen eigenen Stimmungs- + Kooperations-Wert auf der −2..+2 Skala vergeben.
+
+Pflichtregeln:
+- Pro Teilnehmer **genau eine** Signal-Zeile mit der **unveränderten Stakeholder-UUID** aus dem Prompt.
+- Werte sind ganzzahlig in {-2, -1, 0, +1, +2}. Skala:
+  - sentiment: −2 stark negativ, −1 negativ, 0 neutral, +1 positiv, +2 stark positiv
+  - cooperation_signal: −2 obstruktiv (blockt aktiv), −1 skeptisch (zögert), 0 neutral, +1 kooperativ, +2 sehr kooperativ (treibt voran)
+- Konfidenz spiegelt deine Sicherheit wider: 0.3 bei dünner/uneindeutiger Summary; 0.7–0.9 bei klaren Hinweisen.
+- KEINE Spekulation außerhalb der Summary. Wenn ein Teilnehmer in der Summary nicht explizit auftaucht → konservativ 0/0 mit niedriger Konfidenz.
+- Sprache des Outputs ist nicht relevant — du gibst nur Zahlen + UUIDs zurück.`
+
+function buildSentimentPrompt(request: SentimentGenerationRequest): string {
+  const ctx = request.context
+  const lines: string[] = [
+    "Summary der Interaktion:",
+    ctx.summary,
+    "",
+    "Teilnehmer (UUID → Label):",
+  ]
+  for (const p of ctx.participants) {
+    lines.push(`  - ${p.stakeholder_id} → ${p.label}`)
+  }
+  lines.push(
+    "",
+    `Bitte gib für jeden der ${ctx.participants.length} Teilnehmer eine eigene Signal-Zeile zurück. UUIDs unverändert übernehmen.`,
+  )
+  return lines.join("\n")
+}
+
+// ---------------------------------------------------------------------------
+// PROJ-34-ε — Coaching schema + prompt
+//
+// Class-3 like sentiment: prompt aggregates qualitative profile fields
+// (Big5, skills, interaction history) plus risk-score + tonality hint.
+// All sent to tenant-supplied Ollama only.
+// ---------------------------------------------------------------------------
+
+const CoachingKindEnum = z.enum([
+  "outreach",
+  "tonality",
+  "escalation",
+  "celebration",
+])
+
+const CoachingRecommendationSchema = z.object({
+  kind: CoachingKindEnum.describe(
+    "outreach = aktive Kontaktaufnahme empfehlen; tonality = Tonalitäts-Adjustment; escalation = Eskalations-/Steering-Hinweis; celebration = positive Anerkennung.",
+  ),
+  text: z
+    .string()
+    .min(20)
+    .max(1000)
+    .describe(
+      "Empfehlungs-Text (deutsch), 2–4 Sätze, konkrete Handlungsanleitung für den Projektleiter.",
+    ),
+  confidence: z
+    .number()
+    .min(0)
+    .max(1)
+    .describe("Konfidenz 0..1; niedrige Werte bei dünner Datenbasis."),
+  cited_interaction_ids: z
+    .array(z.string().uuid())
+    .max(10)
+    .describe(
+      "UUIDs der zitierten Interaktionen aus dem Prompt. Nur tatsächlich referenzierte.",
+    ),
+  cited_profile_fields: z
+    .array(z.string())
+    .max(20)
+    .describe(
+      "Schlüssel der zitierten Profile-Felder, z.B. 'big5_neuroticism', 'skill_negotiation_skill', 'attitude'. Nur tatsächlich referenzierte.",
+    ),
+})
+
+const CoachingResponseSchema = z.object({
+  recommendations: z.array(CoachingRecommendationSchema).max(4),
+})
+
+const COACHING_SYSTEM_PROMPT = `Du bist ein erfahrener Stakeholder-Coach und berätst Projektleiter zur Kommunikation mit einem konkreten Stakeholder.
+
+Du bekommst:
+1. Stakeholder-Profil (Big5, Skills, qualitative Felder wie Haltung, Kommunikationsbedarf, bevorzugter Kanal)
+2. Die letzten Interaktionen mit Summary + Sentiment + Kooperations-Signalen
+3. Optionalen PROJ-35 Risiko-Score + Eskalations-Pattern + Tonalitäts-Hint
+4. Antwortverhaltens-Statistik (offene Antworten, durchschnittliche Latenz, Overdue-Flag)
+
+Aufgabe: gib **0 bis 4** Coaching-Empfehlungen aus, **maximal eine pro kind**.
+
+Pflichtregeln:
+- Empfehlung muss aus den Daten ableitbar sein. Wenn nichts vorliegt, was eine Empfehlung trägt → leeres Array.
+- "outreach" nur bei klarem Trigger (überfällige Antwort, lange Stille, Risiko-Eskalation).
+- "tonality" nur wenn Big5 / Tonalitäts-Hint einen konkreten Hinweis trägt.
+- "escalation" nur bei Risiko-Score-Threshold oder klar negativer Sentiment-Historie.
+- "celebration" nur bei dokumentiert positiver Kooperation in jüngsten Interaktionen.
+- Cited-Felder müssen **exakt** Schlüssel aus dem Prompt enthalten — keine erfundenen Keys.
+- Sprache: Deutsch, sachlich-professionell, du-Form für den Projektleiter.
+- KEINE Spekulation über Stakeholder-Gedanken/Motive; nur Verhaltens-basierte Hinweise.`
+
+function buildCoachingPrompt(request: CoachingGenerationRequest): string {
+  const ctx = request.context
+  const lines: string[] = [
+    `Stakeholder: ${ctx.stakeholder_name} (UUID: ${ctx.stakeholder_id})`,
+    "",
+    "Profil:",
+  ]
+  if (ctx.profile.big5) {
+    for (const [dim, val] of Object.entries(ctx.profile.big5)) {
+      lines.push(`  - big5_${dim}: ${val}`)
+    }
+  }
+  if (ctx.profile.skills) {
+    for (const [skill, val] of Object.entries(ctx.profile.skills)) {
+      lines.push(`  - skill_${skill}: ${val}`)
+    }
+  }
+  for (const k of [
+    "reasoning",
+    "attitude",
+    "management_level",
+    "decision_authority",
+    "communication_need",
+    "preferred_channel",
+  ] as const) {
+    const v = ctx.profile[k]
+    if (v) lines.push(`  - ${k}: ${v}`)
+  }
+  lines.push("")
+
+  lines.push(
+    `PROJ-35 Risk-Score: ${ctx.risk.score ?? "—"}; Eskalations-Pattern: ${ctx.risk.escalation_pattern ?? "—"}; Critical-Path: ${ctx.risk.critical_path ?? "—"}`,
+  )
+  if (ctx.tonality_hint) {
+    lines.push(`PROJ-35 Tonalitäts-Hint: "${ctx.tonality_hint}"`)
+  }
+  lines.push(
+    `Antwortverhalten: ${ctx.response_stats.awaiting_count} offene Antworten, Ø Latenz ${
+      ctx.response_stats.avg_response_latency_hours == null
+        ? "—"
+        : `${ctx.response_stats.avg_response_latency_hours.toFixed(1)} h`
+    }, Overdue=${ctx.response_stats.has_overdue}`,
+  )
+  lines.push("")
+
+  if (ctx.recent_interactions.length > 0) {
+    lines.push("Letzte Interaktionen (UUID, Datum, Channel, Sentiment/Coop, Summary):")
+    for (const i of ctx.recent_interactions) {
+      lines.push(
+        `  - ${i.interaction_id} | ${i.interaction_date} | ${i.channel}/${i.direction} | s=${i.participant_sentiment ?? "—"}, c=${i.participant_cooperation_signal ?? "—"} | ${i.summary.slice(0, 200)}`,
+      )
+    }
+  } else {
+    lines.push("Letzte Interaktionen: keine im 30-Tage-Fenster.")
+  }
+  lines.push(
+    "",
+    "Bitte 0..4 Empfehlungen ausgeben. Maximal eine pro kind. Cited-Felder müssen exakt aus dem Prompt stammen.",
+  )
+  return lines.join("\n")
+}
+
+// Helper used by both new methods — keeps the kind cardinality contract
+// enforced server-side even if the model emits duplicates.
+function dedupRecommendationsByKind(
+  recs: Array<{ kind: CoachingKind } & Record<string, unknown>>,
+): typeof recs {
+  const seen = new Set<string>()
+  const out: typeof recs = []
+  for (const r of recs) {
+    if (seen.has(r.kind)) continue
+    seen.add(r.kind)
+    out.push(r)
+  }
+  return out
+}
+
+// ---------------------------------------------------------------------------
 // OllamaProvider class
 // ---------------------------------------------------------------------------
 
@@ -320,6 +547,100 @@ export class OllamaProvider implements AIProvider {
 
     return {
       text: result.object.text,
+      usage: {
+        input_tokens: usage?.inputTokens ?? null,
+        output_tokens: usage?.outputTokens ?? null,
+        latency_ms: Date.now() - start,
+      },
+    }
+  }
+
+  async generateSentiment(
+    request: SentimentGenerationRequest,
+  ): Promise<SentimentGenerationOutput> {
+    const start = Date.now()
+    const result = await generateObject({
+      model: this.sdkProvider(this.modelId),
+      schema: SentimentResponseSchema,
+      system: SENTIMENT_SYSTEM_PROMPT,
+      prompt: buildSentimentPrompt(request),
+      temperature: 0.2,
+    })
+    const usage = result.usage as
+      | { inputTokens?: number; outputTokens?: number }
+      | undefined
+
+    // Ensure exactly one signal per requested participant — silently
+    // synthesize a neutral 0/0/0.3 row if the model misses one.
+    const byId = new Map(
+      result.object.signals.map((s) => [s.stakeholder_id, s]),
+    )
+    const signals = request.context.participants.map((p) => {
+      const found = byId.get(p.stakeholder_id)
+      if (found) {
+        return {
+          stakeholder_id: found.stakeholder_id,
+          sentiment: found.sentiment,
+          cooperation_signal: found.cooperation_signal,
+          confidence: found.confidence,
+        }
+      }
+      return {
+        stakeholder_id: p.stakeholder_id,
+        sentiment: 0,
+        cooperation_signal: 0,
+        confidence: 0.3,
+      }
+    })
+
+    return {
+      signals,
+      usage: {
+        input_tokens: usage?.inputTokens ?? null,
+        output_tokens: usage?.outputTokens ?? null,
+        latency_ms: Date.now() - start,
+      },
+    }
+  }
+
+  async generateCoaching(
+    request: CoachingGenerationRequest,
+  ): Promise<CoachingGenerationOutput> {
+    const start = Date.now()
+    const result = await generateObject({
+      model: this.sdkProvider(this.modelId),
+      schema: CoachingResponseSchema,
+      system: COACHING_SYSTEM_PROMPT,
+      prompt: buildCoachingPrompt(request),
+      temperature: 0.4,
+    })
+    const usage = result.usage as
+      | { inputTokens?: number; outputTokens?: number }
+      | undefined
+
+    // Filter cited fields against what was actually supplied to the
+    // prompt — model occasionally invents keys; the router also enforces
+    // ≤ 1 per kind but we dedup here too as defense-in-depth.
+    const validInteractionIds = new Set(
+      request.context.recent_interactions.map((i) => i.interaction_id),
+    )
+    const recommendations = dedupRecommendationsByKind(
+      result.object.recommendations,
+    ).map((r) => ({
+      kind: r.kind as CoachingKind,
+      text: r.text as string,
+      confidence: r.confidence as number,
+      cited_interaction_ids: ((r.cited_interaction_ids as string[]) ?? []).filter(
+        (id) => validInteractionIds.has(id),
+      ),
+      cited_profile_fields: ((r.cited_profile_fields as string[]) ?? []).slice(
+        0,
+        20,
+      ),
+    }))
+
+    return {
+      recommendations,
       usage: {
         input_tokens: usage?.inputTokens ?? null,
         output_tokens: usage?.outputTokens ?? null,
