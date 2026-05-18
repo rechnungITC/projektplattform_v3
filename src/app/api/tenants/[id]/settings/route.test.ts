@@ -38,6 +38,17 @@ const SETTINGS_ROW = {
   privacy_defaults: { default_class: 3 },
   ai_provider_config: { external_provider: "none" },
   retention_overrides: {},
+  budget_settings: { default_currency: "EUR" },
+  output_rendering_settings: { ki_narrative_enabled: false },
+  assistant_settings: {
+    transcript_retention_mode: "persist_metadata_only",
+    retention_days: 30,
+    stt_provider: "browser",
+    tts_provider: "browser",
+    wake_word_enabled: false,
+  },
+  cost_settings: { velocity_factor: 0.5, default_currency: "EUR" },
+  risk_score_overrides: {},
   created_at: "2026-04-29T00:00:00Z",
   updated_at: "2026-04-29T00:00:00Z",
 }
@@ -182,6 +193,13 @@ describe("PATCH /api/tenants/[id]/settings — schema/DB-payload drift", () => {
       privacy_defaults: { default_class: 2 },
       ai_provider_config: { external_provider: "anthropic", model_id: "x" },
       retention_overrides: { audit_log_days: 90 },
+      assistant_settings: {
+        transcript_retention_mode: "persist_redacted_transcript",
+        retention_days: 60,
+        stt_provider: "browser",
+        tts_provider: "browser",
+        wake_word_enabled: false,
+      },
       cost_settings: { velocity_factor: 1.0, default_currency: "EUR" },
     }
 

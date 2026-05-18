@@ -1,8 +1,8 @@
 # PROJ-38: Assistant Orchestrator & Intent Runtime
 
-## Status: Planned
+## Status: Approved (Assistant core MVP slice; QA ready 2026-05-18)
 **Created:** 2026-05-04
-**Last Updated:** 2026-05-04
+**Last Updated:** 2026-05-18
 
 ## Origin
 Diese Spec ist die technische Folge-Spec zu PROJ-37. Während PROJ-37 das User-erlebbare Sprachassistenten-Feature beschreibt, definiert PROJ-38 die interne Runtime-Schicht, die aus natürlicher Sprache sichere, auditierbare und plattformkonforme Aktionen macht.
@@ -113,3 +113,63 @@ Builds the governed assistant runtime behind the user-facing voice/text assistan
 - PROJ-38 beschreibt die technische Runtime, die diese Assistenz sicher macht.
 - PROJ-37 kann ohne PROJ-38 nicht sauber umgesetzt werden, wenn Aktionen über bloße Chat-Antworten hinausgehen.
 
+## Tech Design (Solution Architect)
+
+### Scope Decision
+
+PROJ-38 is the controlled core. It classifies a user turn into a small set of deterministic intents, applies tenant/module/privacy gates, executes only approved read or draft actions, and returns a structured result for the UI. It is not a general autonomous agent and does not get direct write access to production project data.
+
+### Runtime Structure
+
+Assistant Runtime
++-- Turn Intake
+    +-- user, tenant, optional project, modality, text
++-- Intent Classifier
+    +-- project status
+    +-- project open / lookup
+    +-- navigation
+    +-- report summary
+    +-- project draft creation
+    +-- clarification / unknown
++-- Policy Gate
+    +-- authenticated user
+    +-- active tenant
+    +-- assistant module active
+    +-- project access where needed
+    +-- privacy / transcript policy
++-- Execution Plan
+    +-- read project data
+    +-- return route target
+    +-- create wizard draft
+    +-- ask clarification
++-- Audit Writer
+    +-- session
+    +-- turn
+    +-- action event
+
+### Data Model
+
+Each turn produces a structured result with the recognized intent, whether confirmation is needed, executed tool steps, a user-facing response, optional route target, and optional wizard draft reference. Sessions and turns are tenant/user scoped.
+
+### Tech Decisions
+
+- Intent classification is deterministic for MVP so guard behavior is testable and not prompt-dependent.
+- The runtime prefers existing platform surfaces: project reads, report snapshots, Project Room routes, and project wizard drafts.
+- Read-only and navigation actions can execute immediately after access checks.
+- Final project creation remains in the Wizard review/finalize flow.
+
+### Dependencies
+
+No new runtime package is required. The backend uses existing Next.js route handlers, Supabase RLS, and Zod validation.
+
+## Implementation Notes (2026-05-18)
+
+- Added a deterministic Assistant runtime with structured results for `project_status_query`, `project_open`, `project_create_draft`, `navigate_to_area`, `report_summary_query`, `needs_clarification`, and `unknown`.
+- Runtime execution remains bounded: read/navigation actions can respond immediately after gates, while project creation writes only a `project_wizard_drafts` handoff and never creates a final project directly.
+- Added turn/session/action persistence through the `/api/assistant/turns` route so recognized intent, confirmation state, tool calls, route target, draft id, and result status are auditable.
+
+## QA Test Results (2026-05-18)
+
+- Covered by unit tests for runtime intent mapping, settings normalization, speech capabilities, and the API route.
+- Passed: full Vitest suite, lint, production build, diff check, and focused Chromium public-surface Playwright smoke.
+- Final pre-deploy pass on branch `assistant/proj37-41-deploy`: `npm test`, `npm run lint`, `npm run build`, focused Chromium Playwright, `npm audit` with 0 high/critical, and production schema-drift guard all passed. Production-ready decision: READY for the Assistant core MVP.

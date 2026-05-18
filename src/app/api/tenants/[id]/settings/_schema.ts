@@ -49,6 +49,24 @@ const retentionOverridesSchema = z
   })
   .strict()
 
+const assistantSettingsSchema = z
+  .object({
+    transcript_retention_mode: z.enum([
+      "no_persist",
+      "persist_metadata_only",
+      "persist_redacted_transcript",
+    ]),
+    retention_days: z
+      .number()
+      .int()
+      .min(1)
+      .max(3650, "Retention cannot exceed 10 years"),
+    stt_provider: z.enum(["browser", "external", "none"]),
+    tts_provider: z.enum(["browser", "external", "none"]),
+    wake_word_enabled: z.boolean(),
+  })
+  .strict()
+
 const costSettingsSchema = z
   .object({
     velocity_factor: z
@@ -67,6 +85,7 @@ export const tenantSettingsPatchSchema = z
     privacy_defaults: privacyDefaultsSchema.optional(),
     ai_provider_config: aiProviderConfigSchema.optional(),
     retention_overrides: retentionOverridesSchema.optional(),
+    assistant_settings: assistantSettingsSchema.optional(),
     cost_settings: costSettingsSchema.optional(),
   })
   .refine(
@@ -75,10 +94,11 @@ export const tenantSettingsPatchSchema = z
       val.privacy_defaults !== undefined ||
       val.ai_provider_config !== undefined ||
       val.retention_overrides !== undefined ||
+      val.assistant_settings !== undefined ||
       val.cost_settings !== undefined,
     {
       message:
-        "Provide at least one of: active_modules, privacy_defaults, ai_provider_config, retention_overrides, cost_settings.",
+        "Provide at least one of: active_modules, privacy_defaults, ai_provider_config, retention_overrides, assistant_settings, cost_settings.",
     }
   )
 

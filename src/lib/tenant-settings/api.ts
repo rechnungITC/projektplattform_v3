@@ -5,6 +5,7 @@
 
 import type {
   AiProviderConfig,
+  AssistantSettings,
   CostSettings,
   ModuleKey,
   PrivacyDefaults,
@@ -45,6 +46,7 @@ export interface TenantSettingsPatch {
   privacy_defaults?: PrivacyDefaults
   ai_provider_config?: AiProviderConfig
   retention_overrides?: RetentionOverrides
+  assistant_settings?: AssistantSettings
   cost_settings?: CostSettings
 }
 
