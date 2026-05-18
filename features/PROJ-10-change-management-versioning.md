@@ -462,3 +462,33 @@ No Critical or High bugs. M1 (restore across DSGVO redaction) is fixed in this i
 - **Vercel deploy status:** GitHub commit status on `6a35d3d` = `success` ("Deployment has completed").
 - **Pre-deploy checks:** `npm run build` ✅; `npm run lint` baseline unchanged (37 errors / 9 warnings, all pre-existing — same as the v0.3.0-PROJ-8 deploy); `npx vitest run` 155/155 ✅.
 - **Tag:** `v0.4.0-PROJ-10`.
+
+## Implementation Notes — PROJ-10-Δ `causation_id` Extension (2026-05-18)
+
+**Motivation (CIA-Review für PROJ-65, P1.3-blocking):**
+
+Live-Plan-Mutates aus dem Trajectory-Graph (PROJ-65 ε.3) schreiben typischerweise N audit-rows in einer User-Aktion (z.B. Stakeholder-Swap propagiert auf 7 Folge-Items = 7 audit-rows). Ohne Gruppierung sind diese Rows nicht als zusammengehörig erkennbar — Undo-Operationen können nicht atomar gruppiert werden, Audit-Anzeige listet jede Field-Änderung einzeln statt als gruppierten Plan-Mutate.
+
+CIA-Review hat eine eigene `plan_change_audit_log`-Tabelle ausdrücklich verworfen — PROJ-10 bleibt **kanonische Audit-Quelle**.
+
+**Migration `20260518200000_proj10_audit_log_causation_id.sql`** (live applied 2026-05-18):
+
+- Neue Spalte `audit_log_entries.causation_id UUID NULL` (kein Default, kein NOT-NULL)
+- Partial-Index `audit_log_causation_idx ON (causation_id, changed_at) WHERE causation_id IS NOT NULL`
+
+**Backwards-Compatibility**:
+
+- Bestehender `record_audit_changes()`-Trigger schreibt unverändert ohne `causation_id` → Bestand-Audit-Rows haben NULL
+- Existierende Indexe + Constraints unverändert
+- RLS-Policies unverändert (gleicher Gate `can_read_audit_entry`)
+
+**Usage-Pattern für PROJ-65 + zukünftige Multi-Field-Mutationen**:
+
+1. API-Route generiert eine `causation_id` (UUID) vor dem ersten UPDATE
+2. Setzt einen Postgres-GUC `audit.causation_id` vor den UPDATE-Statements
+3. Erweiterter `record_audit_changes()`-Trigger liest GUC und schreibt mit
+4. Undo-Endpoint sucht via `WHERE causation_id = $1` alle gehörenden Rows und schreibt Reverse-Entries mit gleicher `causation_id` + `change_reason = 'undo'`
+
+**Aufwand**: 0.5 PT (Migration + Index + Spec-Notes). Trigger-Erweiterung folgt in PROJ-65 ε.3-Implementation.
+
+**Reuse**: gleiches Pattern kann später für andere Multi-Field-Operationen genutzt werden (Bulk-Edit, Wizard-Save, Decision-Approval-Cascade etc.) — kein PROJ-65-spezifischer Code.
