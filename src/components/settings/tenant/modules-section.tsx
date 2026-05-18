@@ -12,19 +12,32 @@ import {
   CardHeader,
   CardTitle,
 } from "@/components/ui/card"
+import { Input } from "@/components/ui/input"
+import { Label } from "@/components/ui/label"
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from "@/components/ui/select"
 import { Switch } from "@/components/ui/switch"
 import { useAuth } from "@/hooks/use-auth"
+import { ASSISTANT_SETTINGS_DEFAULTS } from "@/lib/assistant/settings"
 import { updateTenantSettings } from "@/lib/tenant-settings/api"
 import {
   MODULE_LABELS,
   RESERVED_MODULES,
   TOGGLEABLE_MODULES,
+  type AssistantSettings,
   type ModuleKey,
 } from "@/types/tenant-settings"
 
 export function ModulesSection() {
   const { currentTenant, tenantSettings, refresh } = useAuth()
-  const [pending, setPending] = React.useState<ModuleKey | null>(null)
+  const [pending, setPending] = React.useState<
+    ModuleKey | "assistant_settings" | null
+  >(null)
 
   if (!currentTenant || !tenantSettings) {
     return (
@@ -41,6 +54,8 @@ export function ModulesSection() {
 
   const isActive = (key: ModuleKey) =>
     tenantSettings.active_modules.includes(key)
+  const assistantSettings =
+    tenantSettings.assistant_settings ?? ASSISTANT_SETTINGS_DEFAULTS
 
   const onToggle = async (key: ModuleKey, next: boolean) => {
     setPending(key)
@@ -57,6 +72,28 @@ export function ModulesSection() {
       await refresh()
     } catch (err) {
       toast.error("Modul-Toggle fehlgeschlagen", {
+        description: err instanceof Error ? err.message : "Unbekannter Fehler",
+      })
+    } finally {
+      setPending(null)
+    }
+  }
+
+  const onAssistantSettingsPatch = async (
+    patch: Partial<AssistantSettings>
+  ) => {
+    setPending("assistant_settings")
+    try {
+      await updateTenantSettings(currentTenant.id, {
+        assistant_settings: {
+          ...assistantSettings,
+          ...patch,
+        },
+      })
+      toast.success("Assistant-Governance aktualisiert")
+      await refresh()
+    } catch (err) {
+      toast.error("Assistant-Governance fehlgeschlagen", {
         description: err instanceof Error ? err.message : "Unbekannter Fehler",
       })
     } finally {
@@ -100,6 +137,112 @@ export function ModulesSection() {
               </li>
             ))}
           </ul>
+        </div>
+
+        <div className="space-y-3 border-t pt-4">
+          <p className="text-sm font-medium">Assistant-Governance</p>
+          <div className="grid gap-3 sm:grid-cols-2">
+            <div className="space-y-2">
+              <Label htmlFor="assistant-retention-mode">
+                Transcript-Persistenz
+              </Label>
+              <Select
+                value={assistantSettings.transcript_retention_mode}
+                disabled={pending !== null}
+                onValueChange={(value) =>
+                  void onAssistantSettingsPatch({
+                    transcript_retention_mode:
+                      value as AssistantSettings["transcript_retention_mode"],
+                  })
+                }
+              >
+                <SelectTrigger id="assistant-retention-mode">
+                  <SelectValue />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="no_persist">Keine Transkripte</SelectItem>
+                  <SelectItem value="persist_metadata_only">
+                    Nur Metadaten
+                  </SelectItem>
+                  <SelectItem value="persist_redacted_transcript">
+                    Redigiertes Transkript
+                  </SelectItem>
+                </SelectContent>
+              </Select>
+            </div>
+            <div className="space-y-2">
+              <Label htmlFor="assistant-retention-days">Retention-Tage</Label>
+              <Input
+                id="assistant-retention-days"
+                type="number"
+                min={1}
+                max={3650}
+                value={assistantSettings.retention_days}
+                disabled={pending !== null}
+                onChange={(event) => {
+                  const next = Number(event.target.value)
+                  if (Number.isInteger(next) && next >= 1 && next <= 3650) {
+                    void onAssistantSettingsPatch({ retention_days: next })
+                  }
+                }}
+              />
+            </div>
+            <div className="space-y-2">
+              <Label htmlFor="assistant-stt-provider">STT-Provider</Label>
+              <Select
+                value={assistantSettings.stt_provider}
+                disabled={pending !== null}
+                onValueChange={(value) =>
+                  void onAssistantSettingsPatch({
+                    stt_provider: value as AssistantSettings["stt_provider"],
+                  })
+                }
+              >
+                <SelectTrigger id="assistant-stt-provider">
+                  <SelectValue />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="browser">Browser</SelectItem>
+                  <SelectItem value="external">Extern</SelectItem>
+                  <SelectItem value="none">Aus</SelectItem>
+                </SelectContent>
+              </Select>
+            </div>
+            <div className="space-y-2">
+              <Label htmlFor="assistant-tts-provider">TTS-Provider</Label>
+              <Select
+                value={assistantSettings.tts_provider}
+                disabled={pending !== null}
+                onValueChange={(value) =>
+                  void onAssistantSettingsPatch({
+                    tts_provider: value as AssistantSettings["tts_provider"],
+                  })
+                }
+              >
+                <SelectTrigger id="assistant-tts-provider">
+                  <SelectValue />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="browser">Browser</SelectItem>
+                  <SelectItem value="external">Extern</SelectItem>
+                  <SelectItem value="none">Aus</SelectItem>
+                </SelectContent>
+              </Select>
+            </div>
+          </div>
+          <div className="flex items-center justify-between gap-4 rounded-md border px-4 py-3">
+            <Label htmlFor="assistant-wake-word" className="text-sm">
+              Wake-Word
+            </Label>
+            <Switch
+              id="assistant-wake-word"
+              checked={assistantSettings.wake_word_enabled}
+              disabled={pending !== null}
+              onCheckedChange={(checked) =>
+                void onAssistantSettingsPatch({ wake_word_enabled: checked })
+              }
+            />
+          </div>
         </div>
 
         <div>

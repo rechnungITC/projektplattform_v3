@@ -20,6 +20,7 @@ export type ModuleKey =
   | "decisions"
   | "ai_proposals"
   | "audit_reports"
+  | "assistant"
   | "connectors"
   | "vendor"
   | "communication"
@@ -34,6 +35,7 @@ export const TOGGLEABLE_MODULES: readonly ModuleKey[] = [
   "decisions",
   "ai_proposals",
   "audit_reports",
+  "assistant",
   "communication",
   "resources",
   "vendor",
@@ -53,6 +55,7 @@ export const MODULE_LABELS: Record<ModuleKey, string> = {
   decisions: "Entscheidungen",
   ai_proposals: "KI-Vorschläge",
   audit_reports: "Audit-Reports",
+  assistant: "Assistant",
   communication: "Kommunikation",
   resources: "Ressourcen",
   connectors: "Konnektoren",
@@ -101,6 +104,21 @@ export interface OutputRenderingSettings {
   ki_narrative_enabled: boolean
 }
 
+export type AssistantTranscriptRetentionMode =
+  | "no_persist"
+  | "persist_metadata_only"
+  | "persist_redacted_transcript"
+
+export type AssistantSpeechProvider = "browser" | "external" | "none"
+
+export interface AssistantSettings {
+  transcript_retention_mode: AssistantTranscriptRetentionMode
+  retention_days: number
+  stt_provider: AssistantSpeechProvider
+  tts_provider: AssistantSpeechProvider
+  wake_word_enabled: boolean
+}
+
 /**
  * PROJ-24 ST-02 — Cost-stack defaults at the tenant level.
  *
@@ -131,6 +149,7 @@ export interface TenantSettings {
   retention_overrides: RetentionOverrides
   budget_settings: BudgetSettings
   output_rendering_settings: OutputRenderingSettings
+  assistant_settings: AssistantSettings
   cost_settings: CostSettings
   /** PROJ-35 — tenant-specific Risk-Score multiplier overrides. Empty object
    *  means: use TS-defaults from `src/lib/risk-score/defaults.ts`. Optional

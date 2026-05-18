@@ -3,6 +3,7 @@
 import { usePathname } from "next/navigation"
 import * as React from "react"
 
+import { AssistantLauncher } from "@/components/assistant/assistant-launcher"
 import { GlobalSidebar } from "@/components/app/global-sidebar"
 import { ProjectSidebar } from "@/components/app/project-sidebar"
 import { SidebarInset, SidebarProvider } from "@/components/ui/sidebar"
@@ -53,6 +54,7 @@ export function AppShell({
           <div className="min-w-0 flex-1">{children}</div>
         </div>
       </SidebarInset>
+      <AssistantLauncher currentProjectId={projectId} />
     </SidebarProvider>
   )
 }

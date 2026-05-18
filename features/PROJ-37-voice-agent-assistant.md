@@ -1,8 +1,8 @@
 # PROJ-37: Voice Agent Assistant ("Hey Sven")
 
-## Status: Planned
+## Status: Approved (Assistant core MVP slice; QA ready 2026-05-18)
 **Created:** 2026-05-04
-**Last Updated:** 2026-05-04
+**Last Updated:** 2026-05-18
 
 ## Origin
 Diese Spec entstand aus der Anforderung, einen sprachgesteuerten Assistenten in die Plattform zu integrieren, der per Wake-Phrase (z. B. "Hey Sven") geöffnet wird, natürlichsprachlich antwortet und konkrete Projektaktionen ausführen kann, etwa Status abrufen oder neue Projekte anlegen.
@@ -171,3 +171,49 @@ Der empfohlene MVP für die erste produktive Auslieferung von PROJ-37 ist:
 - Speech-to-text-Fehler bei Projektnamen oder Domänenbegriffen können zu falschem Projektkontext führen; disambiguation ist Pflicht.
 - Voice-Feature kann teuer werden, wenn Audio, STT, LLM und TTS in einem Call-Stack kombiniert werden; Provider-/Cost-Control muss früh mitgedacht werden.
 
+## Tech Design (Solution Architect)
+
+### Scope Decision
+
+PROJ-37 starts as the shared Assistant entry point for the whole app shell, but the first build is deliberately text-first with browser push-to-talk as a convenience path. Wake-word stays behind tenant/user policy because browser support and false-trigger behavior are not reliable enough for the default path.
+
+### Component Structure
+
+Authenticated App Shell
++-- Global Sidebar
++-- Project Sidebar when inside a project
++-- Assistant Launcher
+    +-- Floating microphone/action button
+    +-- Assistant Overlay
+        +-- Session status strip: listening / thinking / responding
+        +-- Transcript and assistant response timeline
+        +-- Text input fallback
+        +-- Push-to-talk control
+        +-- Route/action result buttons
+
+### Data Model
+
+The UI does not own durable conversation history. It sends turns to the Assistant Runtime and receives structured results. The runtime decides whether a turn stores no transcript, metadata only, or a redacted transcript based on tenant governance settings from PROJ-40.
+
+### Tech Decisions
+
+- Push-to-talk is the default activation model; wake-word is modeled but disabled unless explicitly enabled later.
+- Text input is always available so the assistant remains usable when microphone access is denied.
+- All project actions are routed through the PROJ-38 runtime; the overlay never calls project mutations directly.
+- Project creation opens or creates a Wizard draft, not a final project row.
+
+### Dependencies
+
+No new UI package is required. The implementation uses existing shadcn/Radix primitives, `lucide-react`, and browser Web Speech APIs when available.
+
+## Implementation Notes (2026-05-18)
+
+- Implemented the first Assistant entry point in the authenticated App Shell with a floating launcher, overlay, text fallback, optional browser push-to-talk, optional browser TTS, session timeline, and route/draft action buttons.
+- Added the backend turn API at `/api/assistant/turns`, gated by auth, active tenant membership, and the new `assistant` tenant module.
+- The delivered cut is the Assistant core MVP. Wake-word is modeled in settings but remains off; always-listening, external speech providers, and full autonomous workflows remain deferred.
+
+## QA Test Results (2026-05-18)
+
+- Passed: `npm test`, `npm test -- assistant tenant-settings`, `npm run lint`, `npm run build`, `git diff --check`, and focused Chromium Playwright `tests/PROJ-37-assistant-core.spec.ts`.
+- Full Playwright suite is not clean in this local environment: Mobile Safari cannot launch because required system libraries are missing, and the tenant-settings visual baseline needs an intentional update because the Assistant governance controls changed that screen.
+- Final pre-deploy pass on branch `assistant/proj37-41-deploy`: `npm test`, `npm run lint`, `npm run build`, focused Chromium Playwright, `npm audit` with 0 high/critical, and production schema-drift guard all passed. Production-ready decision: READY for the Assistant core MVP.

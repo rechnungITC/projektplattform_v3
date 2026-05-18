@@ -1,8 +1,8 @@
 # PROJ-41: Assistant Speech, Provider & Wake-Word Infrastructure
 
-## Status: Planned
+## Status: Approved (Assistant core MVP slice; QA ready 2026-05-18)
 **Created:** 2026-05-04
-**Last Updated:** 2026-05-04
+**Last Updated:** 2026-05-18
 
 ## Origin
 Diese Spec schließt die technische Infrastrukturlücke des Assistant-Strangs. PROJ-37 bis PROJ-40 definieren Produktverhalten, Runtime, Action Packs und Governance. Es fehlt noch die explizite Infrastruktur-Spec für Speech-to-Text, Text-to-Speech, Wake-Word/Pushto-Talk-Betriebsarten, Providerwahl, Kostenkontrolle und Browser-/Deployment-Voraussetzungen.
@@ -92,3 +92,50 @@ Builds the speech and provider infrastructure behind the assistant: microphone a
 - **41-γ wake-word experiment behind feature flag**
 - **41-δ deployment/security-header integration**
 
+## Tech Design (Solution Architect)
+
+### Scope Decision
+
+PROJ-41 starts with browser-native STT/TTS adapters and a text-only fallback. External speech providers and wake-word engines are represented as policy/configuration options, but not activated by default.
+
+### Capability Structure
+
+Speech Infrastructure
++-- Speech-to-Text
+    +-- browser-native adapter
+    +-- unavailable fallback
+    +-- external provider slot for later
++-- Text-to-Speech
+    +-- browser-native adapter
+    +-- text-only fallback
+    +-- external/local provider slot for later
++-- Activation Modes
+    +-- push-to-talk default
+    +-- wake-word disabled by default
++-- Provider Policy
+    +-- tenant settings
+    +-- class-3 block/fallback
+    +-- capability reporting to UI
+
+### Tech Decisions
+
+- The UI never assumes speech support; it checks capability and keeps text input visible.
+- Browser TTS can be disabled by the user in the overlay without changing tenant settings.
+- Wake-word is modeled as a future feature flag and remains off in MVP.
+- Class-3-sensitive content must not be routed to an external speech provider without the same policy gates as other AI paths.
+
+### Dependencies
+
+No package is added for the first slice. Browser APIs are wrapped behind a small local abstraction so later provider work does not rewrite the Assistant overlay.
+
+## Implementation Notes (2026-05-18)
+
+- Added a local speech capability abstraction for browser STT/TTS availability and provider policy normalization.
+- The Assistant overlay uses browser `SpeechRecognition` / `webkitSpeechRecognition` when available, keeps text input visible at all times, and supports optional browser `speechSynthesis` output.
+- External speech providers, provider health surfaces, and wake-word runtime are represented by settings but intentionally remain inactive in this MVP slice.
+
+## QA Test Results (2026-05-18)
+
+- Speech abstraction tests cover browser support detection and fallback reporting.
+- The focused Chromium E2E verifies unauthenticated users do not see the authenticated Assistant launcher; full cross-browser voice validation remains deferred until browser/system speech capabilities are available in the test host.
+- Final pre-deploy pass on branch `assistant/proj37-41-deploy`: `npm test`, `npm run lint`, `npm run build`, focused Chromium Playwright, `npm audit` with 0 high/critical, and production schema-drift guard all passed. Production-ready decision: READY for the Assistant core MVP.

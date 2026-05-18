@@ -25,7 +25,7 @@ import {
 // `risk_score_overrides`, which led to undefined fields in client
 // code that destructured the returned row.
 const SELECT_COLUMNS =
-  "tenant_id, active_modules, privacy_defaults, ai_provider_config, retention_overrides, budget_settings, output_rendering_settings, cost_settings, risk_score_overrides, created_at, updated_at"
+  "tenant_id, active_modules, privacy_defaults, ai_provider_config, retention_overrides, budget_settings, output_rendering_settings, assistant_settings, cost_settings, risk_score_overrides, created_at, updated_at"
 
 interface Ctx {
   params: Promise<{ id: string }>

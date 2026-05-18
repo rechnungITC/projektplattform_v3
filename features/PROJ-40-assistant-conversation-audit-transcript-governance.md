@@ -1,8 +1,8 @@
 # PROJ-40: Assistant Conversation Audit & Transcript Governance
 
-## Status: Planned
+## Status: Approved (Assistant core MVP slice; QA ready 2026-05-18)
 **Created:** 2026-05-04
-**Last Updated:** 2026-05-04
+**Last Updated:** 2026-05-18
 
 ## Origin
 Diese Spec ist die Governance- und Datenschutz-Fortsetzung zu PROJ-37/38/39. Sobald der Assistant Spracheingaben, Transkripte, Intent-Entscheidungen und Aktionsausführungen verarbeitet, braucht die Plattform ein explizites Modell für Audit, Retention, Redaction und Export — statt diese Daten implizit in Logs oder freien Chat-Verläufen zu verlieren.
@@ -108,3 +108,61 @@ Builds the governance layer for the assistant: structured conversation/session r
 - **40-β transcript retention modes + redaction**
 - **40-γ tenant governance UI + export/offboarding integration**
 
+## Tech Design (Solution Architect)
+
+### Scope Decision
+
+PROJ-40 provides the minimum durable governance layer required for the first Assistant release. It stores structured sessions, turns, and action events, while transcript persistence is controlled by tenant policy. Raw audio is not stored.
+
+### Data Model
+
+Assistant Governance
++-- Assistant Session
+    +-- tenant
+    +-- user
+    +-- optional project context
+    +-- status and timestamps
++-- Assistant Turn
+    +-- modality
+    +-- recognized intent
+    +-- confirmation state
+    +-- result status
+    +-- optional redacted transcript
+    +-- route/draft result metadata
++-- Assistant Action Event
+    +-- executed action key
+    +-- executed tool/API steps
+    +-- result status
+
+### Tenant Policy
+
+Tenant settings receive an Assistant governance block with these first controls:
+- assistant module enabled through the existing module system
+- transcript retention mode
+- retention days
+- speech provider preference
+- TTS provider preference
+- wake-word flag, default off
+
+### Tech Decisions
+
+- `persist_metadata_only` is the conservative default: enough audit signal without storing full user text.
+- `persist_redacted_transcript` stores redacted/free-text-safe content only.
+- `no_persist` keeps only the minimal technical record needed for abuse/debug audit.
+- Assistant action audit complements PROJ-10 and does not replace domain audit triggers.
+
+### Dependencies
+
+Uses Supabase tables with tenant/user RLS and existing tenant settings/audit patterns.
+
+## Implementation Notes (2026-05-18)
+
+- Added the first governance schema for `assistant_sessions`, `assistant_turns`, and `assistant_action_events`, with tenant/user scoping, RLS policies, and indexes.
+- Extended `tenant_settings.assistant_settings` with transcript retention mode, retention days, STT/TTS provider preferences, and wake-word flag; the default remains `persist_metadata_only`.
+- Added Tenant Settings UI controls for Assistant governance and included `assistant_settings` in the tracked tenant-settings audit allowlist.
+
+## QA Test Results (2026-05-18)
+
+- Route tests cover transcript persistence behavior for metadata-only and redacted modes, plus auth/module/member gates.
+- Production migration `20260518193000_proj37_41_assistant_core.sql` was applied to the connected Supabase database on 2026-05-18 and verified with schema-drift.
+- Final pre-deploy pass on branch `assistant/proj37-41-deploy`: `npm test`, `npm run lint`, `npm run build`, focused Chromium Playwright, `npm audit` with 0 high/critical, and production schema-drift guard all passed. Production-ready decision: READY for the Assistant core MVP.

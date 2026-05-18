@@ -1,8 +1,8 @@
 # PROJ-39: Assistant Action Packs — Project Status, Navigation, Creation
 
-## Status: Planned
+## Status: Approved (Assistant core MVP slice; QA ready 2026-05-18)
 **Created:** 2026-05-04
-**Last Updated:** 2026-05-04
+**Last Updated:** 2026-05-18
 
 ## Origin
 Diese Spec konkretisiert die ersten produktiven Assistant-Fähigkeiten, die aus PROJ-37 und PROJ-38 hervorgehen. Sie trennt klar zwischen der Assistant-Oberfläche/Runtime und den tatsächlich unterstützten Aktionspaketen, damit der Assistent nicht als freier Agent ohne definierte Fachgrenzen startet.
@@ -105,3 +105,59 @@ Builds the first production-grade assistant command packs: project status retrie
 - **PROJ-41** Assistant Provider / Speech Infrastructure & Wake-Word Runtime
 - **PROJ-42** Assistant Domain Packs for Budget / Stakeholders / Approvals / Communication
 
+## Tech Design (Solution Architect)
+
+### Scope Decision
+
+PROJ-39 ships the first bounded action pack: project status, project lookup/open, in-app navigation, report summary routing, and project draft creation. The assistant does not expose budget/vendor/stakeholder coaching commands in this slice.
+
+### Action Pack Structure
+
+Assistant Action Packs
++-- Project Status
+    +-- project master data
+    +-- open/high risks
+    +-- active decisions
+    +-- upcoming milestones
+    +-- latest report snapshot when available
++-- Navigation
+    +-- overview
+    +-- backlog/work items
+    +-- risks
+    +-- decisions
+    +-- reports
+    +-- stakeholders
++-- Project Lookup
+    +-- tenant-scoped name/substring search
+    +-- clarification when multiple matches exist
++-- Project Draft Creation
+    +-- extract name/type/method/description when possible
+    +-- write Wizard draft
+    +-- send user to Wizard review path
+
+### Data Model
+
+No new domain objects are introduced for project actions. Status answers aggregate existing project, risks, decisions, milestones, and report snapshot data. Project creation uses existing `project_wizard_drafts`.
+
+### Tech Decisions
+
+- Module gates are enforced before route targets are returned.
+- Non-visible projects are treated as "not found" without existence leaks.
+- Navigation results include both text and route targets, allowing the UI to present a safe action button.
+- Draft creation is a reviewable handoff, not a direct `projects` insert.
+
+### Dependencies
+
+Uses existing Project Room routes, PROJ-5 wizard drafts, PROJ-20 governance tables, and PROJ-21 report snapshots.
+
+## Implementation Notes (2026-05-18)
+
+- Implemented first action packs for project status aggregation, project lookup/open, method-aware navigation, report-summary routing, and project draft creation.
+- Status answers use existing project, risk, decision, milestone, and latest report snapshot data; no answer path mutates business data.
+- Navigation returns route targets for the UI and respects module availability before sending the user into risks, decisions, reports, stakeholders, or work-item surfaces.
+
+## QA Test Results (2026-05-18)
+
+- Runtime tests cover the supported intent/action pack paths, including navigation precedence and project-draft creation.
+- The Assistant public API smoke verifies the route stays auth-gated; broader authenticated UX validation still needs refreshed visual baselines after the tenant-settings screen change.
+- Final pre-deploy pass on branch `assistant/proj37-41-deploy`: `npm test`, `npm run lint`, `npm run build`, focused Chromium Playwright, `npm audit` with 0 high/critical, and production schema-drift guard all passed. Production-ready decision: READY for the Assistant core MVP.
