@@ -265,6 +265,7 @@ export function CommunicationTab({
         interactions={interactions ?? []}
         stakeholderLabels={stakeholderLabels}
         canEdit={canEdit}
+        externalBlocked={externalBlocked}
         onDelete={onDelete}
         onSignalsChanged={onCreated}
         onExternalBlocked={onExternalBlocked}
@@ -590,6 +591,7 @@ function InteractionList({
   interactions,
   stakeholderLabels,
   canEdit,
+  externalBlocked,
   onDelete,
   onSignalsChanged,
   onExternalBlocked,
@@ -599,6 +601,7 @@ function InteractionList({
   interactions: StakeholderInteraction[]
   stakeholderLabels: Map<string, string>
   canEdit: boolean
+  externalBlocked: boolean
   onDelete: (id: string) => void
   onSignalsChanged: () => void
   onExternalBlocked: () => void
@@ -621,6 +624,7 @@ function InteractionList({
           interaction={it}
           stakeholderLabels={stakeholderLabels}
           canEdit={canEdit}
+          externalBlocked={externalBlocked}
           onDelete={onDelete}
           onSignalsChanged={onSignalsChanged}
           onExternalBlocked={onExternalBlocked}
@@ -636,6 +640,7 @@ function InteractionItem({
   interaction,
   stakeholderLabels,
   canEdit,
+  externalBlocked,
   onDelete,
   onSignalsChanged,
   onExternalBlocked,
@@ -645,6 +650,7 @@ function InteractionItem({
   interaction: StakeholderInteraction
   stakeholderLabels: Map<string, string>
   canEdit: boolean
+  externalBlocked: boolean
   onDelete: (id: string) => void
   onSignalsChanged: () => void
   onExternalBlocked: () => void
@@ -665,10 +671,18 @@ function InteractionItem({
   // PROJ-34-γ.2 — AI-Pill state. Transient request state ("loading"/
   // "failed") layers on top of the derived variant; on every participant
   // refresh the derived variant wins again.
+  //
+  // F-4: retry-counter. After MAX_RETRIES failed triggers, the pill stays
+  // in failed state but becomes non-clickable until something resets it
+  // (a successful run, manual edits, or a new interaction). The
+  // `retryCount` state increments on each onTrigger and resets to 0 on
+  // success.
+  const MAX_RETRIES = 2
   const [reviewOpen, setReviewOpen] = React.useState(false)
   const [requestState, setRequestState] = React.useState<
     "idle" | "loading" | "failed"
   >("idle")
+  const [retryCount, setRetryCount] = React.useState(0)
   const [runMetadata, setRunMetadata] = React.useState<
     AIReviewRunMetadata | undefined
   >(undefined)
@@ -682,6 +696,7 @@ function InteractionItem({
       : requestState === "failed"
         ? "failed"
         : derivedVariant
+  const retryExhausted = retryCount >= MAX_RETRIES && requestState === "failed"
 
   const pendingCount = React.useMemo(
     () =>
@@ -700,6 +715,7 @@ function InteractionItem({
   )
 
   const onTrigger = async () => {
+    if (retryExhausted) return // F-4 — guard against the rare double-click
     setRequestState("loading")
     try {
       const meta = await triggerSentimentReview(projectId, interaction.id)
@@ -713,9 +729,11 @@ function InteractionItem({
             "Kein kompatibler AI-Provider hinterlegt. Werte können manuell gesetzt werden.",
         })
         setRequestState("idle")
+        setRetryCount(0) // F-4 — reset counter on a clean response
         return
       }
       setRequestState("idle")
+      setRetryCount(0)
       onSignalsChanged()
     } catch (err) {
       toast.error("KI-Vorschlag fehlgeschlagen", {
@@ -725,6 +743,7 @@ function InteractionItem({
             : "Werte können manuell gesetzt werden.",
       })
       setRequestState("failed")
+      setRetryCount((n) => n + 1) // F-4 — increment retry counter
     }
   }
 
@@ -754,10 +773,16 @@ function InteractionItem({
                 pendingCount={pendingCount}
                 onClick={() => setReviewOpen(true)}
                 onRetry={onTrigger}
-                disabled={!canEdit}
+                disabled={!canEdit || retryExhausted}
+                disabledReason={
+                  retryExhausted && canEdit ? "retry-limit" : "view-only"
+                }
               />
             ) : null}
-            {!hasAnyAIRows && pillVariant === "hidden" && canEdit ? (
+            {!hasAnyAIRows &&
+            pillVariant === "hidden" &&
+            canEdit &&
+            !externalBlocked /* F-6: hide trigger if we already know no provider */ ? (
               <Button
                 type="button"
                 size="sm"
@@ -781,6 +806,21 @@ function InteractionItem({
           </Button>
         </div>
         <p className="text-sm whitespace-pre-wrap">{interaction.summary}</p>
+
+        {/* F-7 — Skeleton hint while the trigger is in flight and no AI
+            rows exist yet. Avoids hiding existing β-values during refresh. */}
+        {requestState === "loading" && !hasAnyAIRows ? (
+          <div
+            className="flex items-center gap-2 rounded-md border border-dashed border-primary/30 bg-primary/5 px-2 py-1"
+            data-testid="ai-loading-skeleton"
+          >
+            <Skeleton className="h-3 w-3 rounded-full" />
+            <span className="text-[11px] text-muted-foreground">
+              KI analysiert die Interaktion…
+            </span>
+            <Skeleton className="h-2 flex-1" />
+          </div>
+        ) : null}
 
         {isMultiParticipant ? (
           <ParticipantPillsStrip

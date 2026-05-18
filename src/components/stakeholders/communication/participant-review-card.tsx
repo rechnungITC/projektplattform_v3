@@ -37,6 +37,10 @@ interface ParticipantReviewCardProps {
   decision: CardDecision
   onChange: (next: CardDecision) => void
   collapsedByDefault?: boolean
+  /** F-5 — stakeholder was (soft-)deleted between proposal and review. */
+  stakeholderDeleted?: boolean
+  /** F-8 — last batch save failed for this card; show destructive border. */
+  cardError?: boolean
 }
 
 const SLIDER_STOPS = [-2, -1, 0, 1, 2] as const
@@ -88,6 +92,8 @@ export function ParticipantReviewCard({
   decision,
   onChange,
   collapsedByDefault = false,
+  stakeholderDeleted = false,
+  cardError = false,
 }: ParticipantReviewCardProps) {
   // Auto-collapse on decision unless the user explicitly toggled. `null`
   // means "follow the auto rule" (collapsedByDefault OR decision !== open).
@@ -128,13 +134,48 @@ export function ParticipantReviewCard({
       cooperation: v,
     })
 
+  // F-5 — deleted stakeholder: render greyed-out shell with no actions.
+  if (stakeholderDeleted) {
+    return (
+      <Card
+        data-testid="participant-review-card"
+        data-decision="deleted"
+        className="opacity-60"
+      >
+        <CardContent className="space-y-1 p-3">
+          <div className="flex items-center gap-2">
+            <span className="italic text-muted-foreground">
+              {stakeholderName}
+            </span>
+            <span className="rounded-full border border-dashed border-muted-foreground/40 px-2 py-0.5 text-[10px] text-muted-foreground">
+              verworfen
+            </span>
+          </div>
+          <p className="text-[11px] text-muted-foreground">
+            Stakeholder wurde nach dem KI-Vorschlag entfernt. Der Vorschlag
+            wird nicht übernommen.
+          </p>
+        </CardContent>
+      </Card>
+    )
+  }
+
   return (
-    <Card data-testid="participant-review-card" data-decision={decision.kind}>
+    <Card
+      data-testid="participant-review-card"
+      data-decision={decision.kind}
+      className={cardError ? "border-destructive ring-1 ring-destructive/40" : undefined}
+    >
       <CardContent className="space-y-3 p-3">
         <div className="flex flex-wrap items-center justify-between gap-2">
           <div className="flex items-center gap-2">
             <span className="font-medium">{stakeholderName}</span>
             <DecisionChip decision={decision} />
+            {cardError ? (
+              <span className="rounded-full border border-destructive/40 bg-destructive/10 px-2 py-0.5 text-[10px] text-destructive">
+                Speichern fehlgeschlagen
+              </span>
+            ) : null}
           </div>
           <Button
             type="button"
