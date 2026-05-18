@@ -105,6 +105,12 @@ function AIReviewSheetBody({
   const [submitting, setSubmitting] = React.useState(false)
   const [confirmDiscard, setConfirmDiscard] = React.useState(false)
   const [confirmBulkAccept, setConfirmBulkAccept] = React.useState(false)
+  // F-8 — per-card error border tracking. When the batch save fails, we
+  // mark the cards that had decisions in flight; user-edits clear the
+  // marker so the next attempt starts fresh.
+  const [saveErroredCards, setSaveErroredCards] = React.useState<
+    Set<string>
+  >(() => new Set())
 
   const total = aiParticipants.length
   const decided = React.useMemo(
@@ -120,6 +126,15 @@ function AIReviewSheetBody({
       setDecisions((prev) => {
         const out = new Map(prev)
         out.set(stakeholderId, next)
+        return out
+      })
+      // F-8 — clear the error border on this card the moment the user
+      // touches it again. Other cards keep their error state until they
+      // are re-touched too.
+      setSaveErroredCards((prev) => {
+        if (!prev.has(stakeholderId)) return prev
+        const out = new Set(prev)
+        out.delete(stakeholderId)
         return out
       })
     },
@@ -148,8 +163,9 @@ function AIReviewSheetBody({
 
   const onSave = async () => {
     setSubmitting(true)
+    // Lifted out of the try so the catch can reference it for F-8.
+    const batch: AIReviewDecision[] = []
     try {
-      const batch: AIReviewDecision[] = []
       for (const p of aiParticipants) {
         const d = decisions.get(p.stakeholder_id)
         if (!d || d.kind === "open") continue
@@ -176,12 +192,17 @@ function AIReviewSheetBody({
       toast.success(
         `${batch.length} KI-Vorschläge gespeichert.`,
       )
+      setSaveErroredCards(new Set()) // F-8 — clear all error borders on success
       onSaved()
       onOpenChange(false)
     } catch (err) {
       toast.error("Speichern fehlgeschlagen", {
         description: err instanceof Error ? err.message : "Unbekannter Fehler",
       })
+      // F-8 — mark every card that was in this batch as errored. The
+      // server-side batch is per-row UPDATE, so we can't tell which one
+      // actually failed; safer to flag all of them.
+      setSaveErroredCards(new Set(batch.map((b) => b.stakeholder_id)))
     } finally {
       setSubmitting(false)
     }
@@ -257,18 +278,24 @@ function AIReviewSheetBody({
             Keine offenen KI-Vorschläge auf dieser Interaktion.
           </p>
         ) : (
-          aiParticipants.map((p, idx) => (
-            <ParticipantReviewCard
-              key={p.stakeholder_id}
-              participant={p}
-              stakeholderName={
-                stakeholderLabels.get(p.stakeholder_id) ?? "Stakeholder"
-              }
-              decision={decisions.get(p.stakeholder_id) ?? { kind: "open" }}
-              onChange={(d) => updateDecision(p.stakeholder_id, d)}
-              collapsedByDefault={idx >= 3}
-            />
-          ))
+          aiParticipants.map((p, idx) => {
+            // F-5 — missing label = stakeholder was (soft-)deleted or
+            // deactivated between proposal and review. Render greyed-out.
+            const label = stakeholderLabels.get(p.stakeholder_id)
+            const deleted = label === undefined
+            return (
+              <ParticipantReviewCard
+                key={p.stakeholder_id}
+                participant={p}
+                stakeholderName={label ?? "(Stakeholder nicht mehr verfügbar)"}
+                stakeholderDeleted={deleted}
+                decision={decisions.get(p.stakeholder_id) ?? { kind: "open" }}
+                onChange={(d) => updateDecision(p.stakeholder_id, d)}
+                collapsedByDefault={idx >= 3 || deleted}
+                cardError={saveErroredCards.has(p.stakeholder_id)}
+              />
+            )
+          })
         )}
       </div>
 

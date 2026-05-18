@@ -27,12 +27,19 @@ export type AIProposalPillVariant =
   | "loading"
   | "failed"
 
+export type AIProposalPillDisabledReason = "view-only" | "retry-limit"
+
 interface AIProposalPillProps {
   variant: AIProposalPillVariant
   pendingCount: number
   onClick?: () => void
   onRetry?: () => void
   disabled?: boolean
+  /**
+   * Why the pill is disabled — drives tooltip text.
+   * Defaults to "view-only" (matches the original behavior).
+   */
+  disabledReason?: AIProposalPillDisabledReason
   /** Reduced label for mobile (icon + counter only). */
   compact?: boolean
 }
@@ -54,6 +61,7 @@ export function AIProposalPill({
   onClick,
   onRetry,
   disabled = false,
+  disabledReason = "view-only",
   compact = false,
 }: AIProposalPillProps) {
   const labelText = labelFor(variant, pendingCount, compact)
@@ -105,7 +113,9 @@ export function AIProposalPill({
       <Tooltip>
         <TooltipTrigger asChild>{pill}</TooltipTrigger>
         <TooltipContent>
-          Nur Projekt-Manager dürfen KI-Vorschläge prüfen.
+          {disabledReason === "retry-limit"
+            ? "Wiederholungs-Limit erreicht — Werte können manuell gesetzt werden."
+            : "Nur Projekt-Manager dürfen KI-Vorschläge prüfen."}
         </TooltipContent>
       </Tooltip>
     )
