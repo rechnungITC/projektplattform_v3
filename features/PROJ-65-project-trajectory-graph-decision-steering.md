@@ -614,5 +614,276 @@
 
 # 
 
+# Tech Design (Solution Architect, 2026-05-18)
 
+> PM-Sicht: was gebaut wird, wo es lebt, warum diese Wahl. Kein SQL, kein TS.
+
+## Architektur-Locks aus dem /architecture-Pass
+
+| Lock | Entscheidung | Begründung |
+|---|---|---|
+| **L1 — Dimensionalität** | 2D-Default + 3D-Toggle | UX-Konsistenz mit PROJ-58, Mobile-Fallback auf 2D. +1 PT akzeptiert. |
+| **L2 — Goal-Modell** | Neue Tabelle `project_goals` (1..n pro Projekt) MIT optionalen Source-Refs auf Phase/Milestone. Teilziele über Self-FK `parent_goal_id`. | Editierbare Goals + Teilziele; Source-Felder erlauben Auto-Suggest aus PROJ-19. Bricht PROJ-9-Semantik nicht. |
+| **L3 — Sidetracks** | Bridge `work_item_compliance_lanes` (n:m) | Work-Item kann mehreren Lanes (DSGVO + ISO27001) angehören. PROJ-18 `compliance_tags` bleibt orthogonal — Bridge ist Render-Kategorisierung. |
+| **L4 — AI-Class-Split** | Mixed: `trajectory_sequence` Class-2 (Cloud OK) + `resource_swap` Class-3 (only-Ollama) | Pfad-Reihenfolge funktioniert ohne Ollama; Resource-Empfehlungen bleiben Class-3. |
+
+## A) Komponenten-Struktur
+
+```
+/projects/[id]/graph                       (existing PROJ-58 surface)
+├── GraphModeToggle                        NEU — "Beziehungen" / "Trajektorie"
+│   └── persistiert pro (User, Project) in localStorage + tenant_settings.graph_mode_default
+├── RelationshipGraphView                  (existing PROJ-58 2D+3D)
+└── TrajectoryGraphView                    NEU (ε.1)
+    ├── DimensionToggle (2D/3D)
+    ├── TrajectoryGraph2D                  NEU — DAG-Layout SVG-Renderer
+    │   ├── ProjectStartNode (links/fixiert)
+    │   ├── MainLane (Hauptpfad-Container)
+    │   │   └── TrajectoryNode[]           NEU — work_items + phases + sub-goals
+    │   │       ├── StakeholderMarker      NEU (ε.2)
+    │   │       │   └── Avatar-Stack + "+N"-Counter + Hover-Detail-Panel
+    │   │       ├── CriticalPathOverlay   reuse PROJ-43 critical-flag
+    │   │       └── GoalAffinityGlow       NEU (ε.3) — grüner Akzent für "auf Ziel einzahlend"
+    │   ├── SidetrackLane[]                NEU (ε.1) — horizontale Bänder pro compliance_lane
+    │   │   └── TrajectoryNode[]
+    │   ├── GoalNode                       NEU (ε.3) — rechts/Pfadende, eigener Knotentyp
+    │   │   └── SubGoalNodes (optional, in Tiefen-Cluster)
+    │   └── PathEdges (depends_on + belongs_to + flow-to-goal)
+    └── TrajectoryGraph3D                  NEU — react-three-fiber Renderer
+        └── (gleiche Node-/Edge-Liste, andere Projektion: x=time, y=lane, z=depth)
+
+Seitliche Panels (NEU, slot-basiert)
+├── StakeholderDetailPanel                 (ε.2) — bei Marker-Click
+├── StakeholderSwapDialog                  (ε.2) — transient, kein Plan-Mutate
+├── GoalDetailPanel                        (ε.3) — Title/Desc/Success-Criteria + Source-Wizard
+├── LivePropagationToast                   (ε.3) — Δ-Anzeige + Undo-Link (30s)
+└── AIProposalDrawer                       (ε.4) — 3 Tabs für 3 Purposes
+```
+
+Reuse: PROJ-58 Node-Styling + Edge-Animations + 3D-Scene komplett übernommen. Trajectory-spezifisch sind nur **Layout-Engine** + **GoalNode** + **SidetrackLane** + **StakeholderMarker**.
+
+## B) Daten-Modell (Plain Language)
+
+### B.1 Neue Entität `project_goals` (L2)
+
+Pro Projekt 1..n Goals. Jedes Goal hat:
+
+- Wer (Projekt, Tenant)
+- Title (≤ 200 Zeichen)
+- Description (≤ 2000 Zeichen)
+- Success-Criteria (≤ 2000 Zeichen)
+- Target-Date (optional, fällt sonst auf `projects.planned_end_date` zurück)
+- Status (`draft`, `active`, `achieved`, `abandoned`)
+- Parent-Goal-ID (Self-FK für Teilzielen-Hierarchie, optional)
+- Source-Phase-ID (optional FK auf `phases`)
+- Source-Milestone-ID (optional FK auf `milestones`)
+- Sort-Order
+- Created-By / Created-At / Updated-At
+
+**Source-Felder-Semantik (locked 2026-05-18):**
+Goals können autonom existieren ODER sich aus einem Phase/Milestone ableiten. Bei Source-Ableitung werden Title/Description/Target-Date initial befüllt; Source bleibt referenziert auch nach manuellem Override. Manuelle Pflege gewinnt; Source ist Audit-Hinweis, kein Mirror.
+
+### B.2 Neue Entität `work_item_compliance_lanes` (L3)
+
+Bridge n:m für Sidetrack-Render:
+
+- Wer (Work-Item-ID, Tenant)
+- Lane-Key (`dsgvo`, `iso27001`, `vergabe`, custom)
+- Optional Display-Label
+
+PROJ-18 `compliance_tags` bleibt orthogonal.
+
+### B.3 Audit-Strategie für Live-Propagation
+
+Reuse **PROJ-10** `audit_log_entries` mit erweiterten `_tracked_audit_columns` für neue Felder. Plan-Mutates schreiben mit `causation_id` (UUID gruppiert Multi-Field-Changes wie "Stakeholder-Switch propagiert 7 Folge-Items").
+
+Undo schreibt Reverse-Audit-Entry mit gleichem `causation_id` + `change_kind='undo'`. TTL für UI-Undo-Toast: konfigurierbar pro Tenant (Default 30 s).
+
+### B.4 Schema-Erweiterungen
+
+- `tenant_settings.graph_mode_default` (default `'relationship'`)
+- `project_settings.cost_clear_view_permission` (default `'project_manager'`)
+- Audit-Whitelist um `project_goals`, `work_item_compliance_lanes`
+
+## C) Tech-Entscheidungen
+
+| Entscheidung | Warum |
+|---|---|
+| **2D-Layout: DAG-Sugiyama mit Lane-Tracking** | Klassisch für work-item-Dependencies; Lane-Zuordnung erweitert mit Sidetrack-Bridge. Library `d3-dag` (~6 KB) oder eigene Mini-Impl ~80 LOC. |
+| **3D-Layout: gleiche Topology, andere Projektion** | x=temporal, y=lane, z=depth. Reuse react-three-fiber aus PROJ-58. |
+| **GoalNode als eigenständige Entität (L2)** | Editierbar, Teilziele möglich, Audit-Trail. Source-Ableitung optional aus PROJ-19. |
+| **Sidetrack-Bridge separat von PROJ-18 (L3)** | Compliance-Tagging ≠ Render-Kategorisierung. Multi-Lane-fähig. |
+| **Live-Propagation persistent mit Undo** | Per Zielbild. PROJ-10-Audit-Trigger + Causation-ID. Undo schreibt Reverse-Entry. |
+| **Stakeholder-Swap-Simulation transient (ε.2-AC-7)** | System rechnet nur Deltas. Erst auf "Übernehmen" → Plan-Mutate. |
+| **AI Mixed-Class (L4)** | UI deaktiviert nur Resource-Tab wenn kein Ollama; sequence + cross-project funktionieren immer. |
+| **Modus-Toggle pro User+Project** | Default aus tenant_settings; User-Override in localStorage. Kein Server-State nötig. |
+| **Cost-Klartext via Project-Setting** | Default `project_manager`. Tenant-Setting nur Default für neue Projekte. |
+
+## D) Dependencies (Pakete)
+
+Neue Pakete:
+- **`d3-dag`** (~6 KB) — DAG-Layout. Alternative: eigener Sugiyama in ~80 LOC.
+
+Existing reuse (alles bereits deployed): three.js, react-three-fiber, framer-motion, shadcn-Primitives (PROJ-58), PROJ-12 AI-Router, PROJ-10 Audit-Trigger, PROJ-57 Participant-API, PROJ-43 Critical-Path, PROJ-21 Report-Snapshots.
+
+## E) Schnittstellen-Übersicht (API-Surface)
+
+**Modus + Layout (Phase 1):**
+- `GET /api/projects/[id]/graph` (existing PROJ-58) — gleicher Snapshot
+- `POST /api/projects/[id]/graph-mode` (optional, localStorage-only OK)
+
+**Goals (Phase 3):**
+- `GET /api/projects/[id]/goals`
+- `POST /api/projects/[id]/goals` (mit optionalen Source-Refs)
+- `PATCH /api/projects/[id]/goals/[gid]`
+- `DELETE /api/projects/[id]/goals/[gid]` (soft-delete)
+
+**Sidetrack-Lanes (Phase 1):**
+- `POST /api/projects/[id]/work-items/[wid]/lanes`
+- `DELETE /api/projects/[id]/work-items/[wid]/lanes/[laneKey]`
+- `GET /api/projects/[id]/work-items/[wid]/lanes`
+
+**Live-Propagation (Phase 3):**
+- `POST /api/projects/[id]/plan-mutate` (atomarer Change + causation_id)
+- `POST /api/projects/[id]/plan-mutate/undo`
+
+**Stakeholder-Swap-Simulation (Phase 2):**
+- `POST /api/projects/[id]/work-items/[wid]/stakeholder-swap-preview` (transient)
+- `POST /api/projects/[id]/work-items/[wid]/stakeholder-swap` (persistent)
+
+**AI (Phase 4):**
+- `POST /api/projects/[id]/ai/trajectory-sequence` (Class-2)
+- `POST /api/projects/[id]/ai/resource-swap` (Class-3, Ollama-only)
+- `POST /api/projects/[id]/ai/cross-project-links` (Class-2)
+
+## F) Datenfluss (gekürzt pro Phase)
+
+**ε.1 Pfad-Layout:**
+1. User klickt Trajektorie-Toggle
+2. Frontend nutzt existing Snapshot (kein Doppelfetch)
+3. Layout-Engine: topologische Sortierung mit Hauptpfad/Sidetrack-Trennung
+4. Render: 2D-SVG oder 3D-Scene je nach DimensionToggle
+
+**ε.3 Live-Propagation:**
+1. Drag-Drop → local Δ-Preview
+2. `POST /plan-mutate` mit causation_id
+3. Server: atomarer Update + Audit-Trigger + Risk-Score-Recompute
+4. Response: aktualisierter Snapshot + Δ-Summary
+5. UI: LivePropagationToast mit Undo-Link (30 s gültig)
+
+**ε.4 AI:**
+1. Drawer-Tab wählen
+2. Context-Builder pro Purpose (sequence: only Class-1/2 fields; resource_swap: full Class-3 mit Stakeholder + Skills + Rates)
+3. PROJ-12 Router mit passender Class-Klassifizierung
+4. AI emittiert Vorschläge mit zitierten Quellen
+5. UI rendert als Card-List analog PROJ-34 ε.ε Coaching-Pattern
+6. Accept/Reject/Modify → Plan-Mutate
+
+## G) Open Follow-Ups (vor Implementation)
+
+| # | Item | Wann fällig |
+|---|---|---|
+| F-PROJ-65-1 | `d3-dag` vs. eigener Sugiyama-Algo — Bundle-Size-Entscheidung | ε.1 Implementation |
+| F-PROJ-65-2 | DAG-Zyklus-Toleranz (PROJ-9 polymorphic deps können zyklisch sein) | ε.1 |
+| F-PROJ-65-3 | `project_settings.cost_clear_view_permission` — in PROJ-55 integrieren oder eigener Pfad? | ε.2 vor /backend |
+| F-PROJ-65-4 | Plan-Undo-TTL — 30 s default, Tenant-Override? | ε.3 |
+| F-PROJ-65-5 | Hybrid-Methode-Mix (Wasserfall + Scrum gleichzeitig) im Layout | ε.1 |
+| F-PROJ-65-6 | Multi-Goal-Display bei 3+ Teilzielen — Designer-Pass | ε.3 |
+| F-PROJ-65-7 | **CIA-Review auf dieses Tech-Design** — MANDATORY laut .claude/rules | vor ε.1-Start |
+
+## H) Aufwand (Indikativ)
+
+| Phase | Sub-Slices | PT |
+|---|---|---|
+| ε.1 Pfad-Layout (2D+3D, Sidetracks, Modus-Toggle) | 4-5 | ~6 PT |
+| ε.2 Stakeholder-Marker + Swap-Simulation | 3 | ~4 PT |
+| ε.3 Goal + Live-Propagation + Audit | 4 | ~5 PT |
+| ε.4 AI (3 Purposes) | 3 | ~4 PT |
+| **Total** | — | **~19 PT** |
+
+CIA-Review + Designer-Pass vor ε.3 sind extra.
+
+## I) Empfohlene Slice-Reihenfolge (revised per CIA-Review)
+
+1. **CIA-Review** ✅ abgeschlossen 2026-05-18 — siehe Section J
+2. **P1-Items** (vor ε.1-Start, blockierend laut CIA — siehe J)
+3. **ε.1 Foundation** — Modus-Toggle + 2D-Layout + Sidetrack-Bridge-Migration + UI
+4. **ε.1 3D-Toggle** — Reuse PROJ-58 3D-Scene mit neuer Projektion (dynamic-import)
+5. **Designer-Pass** ← vorgezogen von ε.3 nach ε.2 (P1.4) — vor Stakeholder-Marker
+6. **ε.2 Stakeholder-Marker** read-only → dann Swap-Simulation
+7. **ε.3 Goals + Live-Propagation + Audit** (setzt PROJ-10-`causation_id`-Vor-Story aus P1.3 voraus)
+8. **ε.4 AI** — `trajectory_sequence` zuerst (Class-2, sofort live), `resource_swap` zweitens (braucht Ollama)
+
+## J) CIA-Review (Continuous Improvement Agent, 2026-05-18)
+
+CIA hat das Tech Design vollständig reviewt (~1.480 Wörter). Output strukturiert nach Findings, Risks, Recommendations. **5 zusätzliche Locks identifiziert (L5-L9), 4 P1-Items als blockierend markiert vor ε.1-Start.**
+
+### Zusätzliche Locks (L5-L9)
+
+| Lock | Inhalt | Begründung CIA |
+|---|---|---|
+| **L5 — DAG-Cycle-Policy** | Tarjan-SCC in Layout-Engine; Cycle-Edges aus Trajectory-Render ausgeschlossen; UI-Banner *"N zyklische Abhängigkeiten ausgeblendet"*. Kein DB-Constraint auf PROJ-9-Dependencies. | PROJ-9-R2 erlaubt polymorphe Deps ohne DB-Cycle-Constraint. Render-Policy gehört in PROJ-65, nicht in PROJ-9. |
+| **L6 — Goal-Source-Lifecycle** | FK `ON DELETE SET NULL` auf `source_phase_id` + `source_milestone_id`. Detached-Goal trägt sichtbares Badge. Re-attach erlaubt, neuer Audit-Eintrag. | Spec ließ offen, was passiert wenn Source-Phase gelöscht wird. Drei-Zustände-Problem (synced / divergiert / orphaned) muss explizit geregelt sein. |
+| **L7 — Sidetrack-Lane als Read-Model** | `work_item_compliance_lanes` ist Trigger-gepflegt aus `compliance_tags`-Sets. Lane-Whitelist tenant-konfigurierbar in `tenant_settings.trajectory_lanes`. **Kein direkter User-Edit** auf der Bridge. | Eliminiert Drift zwischen PROJ-18-Tag-Pflege und PROJ-65-Lane-Pflege (R3). Single Source of Truth bleibt PROJ-18. |
+| **L8 — Audit-Reuse via PROJ-10 + `causation_id`** | PROJ-10 wird um `causation_id UUID NULL` Spalte erweitert (Vor-Story, 0.5 PT). Eigene `plan_change_audit_log`-Tabelle bleibt verworfen. | PROJ-10 ist kanonische Audit-Quelle. `causation_id` ermöglicht Multi-Field-Gruppierung ohne zweite Audit-Tabelle. |
+| **L9 — Bundle-Discipline** | `TrajectoryGraph3D` als dynamic-import; eigener Sugiyama (~80 LOC) statt `d3-dag`-Dependency; Bundle-Delta auf `/projects/[id]/graph` ≤ 30 KB gzipped als ε.1-AC. | `/projects/[id]/graph` lädt bereits PROJ-58-3D-Bundle eager. PROJ-65 darf TTI nicht verschlechtern, vor allem auf Mobile. |
+
+### Findings (~Auszug)
+
+- **F1** Goal-Source-Refs ohne Mirror erzeugen Drei-Zustände-Problem (synced/divergiert/orphaned) — durch L6 geregelt.
+- **F2** Sidetrack vs. PROJ-18 ist UX-Drift-Risiko, nicht technisch — durch L7 geregelt.
+- **F3** SaaS-Tenants ohne Ollama haben `resource_swap` dauerhaft deaktiviert → akzeptabel wenn dokumentiert, nicht show-stopper.
+- **F4** PROJ-10 fehlt `causation_id` → Vor-Story Pflicht.
+- **F5** DAG-Cycle-Behavior ist Render-Policy, nicht Implementation-Detail → muss L5 sein.
+- **F6** Bundle-Size machbar bei dynamic-import + eigenem Sugiyama — L9.
+- **F7** Stakeholder-Marker brauchen Designer-Pass vor ε.2, nicht erst ε.3 → P1.4.
+
+### Risks (Auszug, Mitigations in den Locks)
+
+| Risk | Severity | Mitigation |
+|---|---|---|
+| R1 PROJ-10 `causation_id` fehlt | **High** | L8 + Vor-Story PROJ-10-Δ |
+| R2 Goal-Source-Ref nach Source-Delete unspezifiziert | High | L6 |
+| R3 Sidetrack vs. compliance_tag Drift | Medium | L7 |
+| R4 DAG-Cycles → Render-Endlosschleife | High | L5 |
+| R5 SaaS ohne Ollama erlebt permanent gestutztes AI-Feature | Medium | dokumentieren + Tenant-Settings-Banner |
+| R6 Bundle-Size + Mobile-TTI | Medium | L9 |
+| R7 Plan-Mutate-Permission nicht in PROJ-4 modelliert | Medium | Reuse `project_editor` + Feature-Flag `tenant_settings.trajectory_plan_mutate_enabled` |
+| R8 Undo-TTL Session-State vs Multi-Tab-Konflikt | Low | Undo-Action optimistic-locked (Server prüft Zwischen-Mutate) |
+| R9 Class-3-Maskierung in Diff-Ansicht (Story 65-7 AC-8) | Low | Reuse PROJ-10-Redaction-Logik |
+
+### P1-Items (BLOCKIEREND vor ε.1)
+
+| P1 | Was | Aufwand |
+|---|---|---|
+| **P1.1** | Lock L5 dokumentieren + Tarjan-SCC-Branch in Layout-Engine-Spec | Lock-Doku |
+| **P1.2** | Lock L6 dokumentieren (FK `ON DELETE SET NULL` + Detached-Badge) | Lock-Doku |
+| **P1.3** | **Vor-Story PROJ-10-Δ erstellen** — Migration für `audit_log_entries.causation_id UUID NULL` + RPC-Erweiterung + PROJ-10-Doku-Update | ~0.5 PT |
+| **P1.4** | Designer-Pass vorziehen von ε.3 → vor ε.2 (Stakeholder-Marker + Detail-Panel + Mobile-Layout) | Reihenfolge, keine Mehrarbeit |
+
+### P2-Items (während ε.1)
+
+- **P2.1** L7 implementieren (Sidetrack als Trigger-gepflegtes Read-Model aus `compliance_tags`)
+- **P2.2** L9 als explizites ε.1-AC: Bundle-Delta ≤ 30 KB gzipped messen
+- **P2.3** Plan-Mutate-Permission reusen (`project_editor` + Feature-Flag), keine RBAC-Schema-Änderung
+
+### P3-Items (deferred OK)
+
+- **P3.1** SaaS-Resource-Swap-Alternative (Cloud-Modell mit Pseudonymisierung) — eigene PROJ-65b-Spec wenn Pilot-Demand zeigt
+- **P3.2** Trajectory-PDF-Export — via PROJ-21 Report-Snapshots-Erweiterung wenn relevant
+- **P3.3** Hybrid-Methode-Mix (FU-5) — eigene Mini-Story nach ε.1-Pilot
+
+### CIA-Aufwand-Update
+
+- Original Tech Design: ~19 PT
+- + P1.3 Vor-Story PROJ-10-Δ: +0.5 PT
+- + P1.1/P1.2 Lock-Doku: 0 PT (bereits eingearbeitet)
+- + P1.4 Designer-Pass-Reihenfolge: 0 PT (Zeitumlagerung)
+- **Total revised: ~20 PT**
+
+### Entscheidungsempfehlung CIA
+
+> "Weiter prüfen (P1.1–P1.4) vor ε.1-Start, dann Umsetzen. Das Tech Design ist im Kern solide — L1/L2/L3/L4 sind verteidigbar und PROJ-58-konsistent. Die vier P1-Items sind aber blockierend."
+
+— Akzeptiert. P1.1 + P1.2 sind durch diese Spec-Ergänzung erledigt. P1.3 + P1.4 als Vor-Story und Slice-Reihenfolge-Anpassung dokumentiert.
 
