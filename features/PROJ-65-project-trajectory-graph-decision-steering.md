@@ -803,13 +803,87 @@ Existing reuse (alles bereits deployed): three.js, react-three-fiber, framer-mot
 
 CIA-Review + Designer-Pass vor ε.3 sind extra.
 
-## I) Empfohlene Slice-Reihenfolge
+## I) Empfohlene Slice-Reihenfolge (revised per CIA-Review)
 
-1. **CIA-Review** auf dieses Tech Design (MANDATORY)
-2. **ε.1 Foundation** — Modus-Toggle + 2D-Layout + Sidetrack-Bridge-Migration + UI
-3. **ε.1 3D-Toggle** — Reuse PROJ-58 3D-Scene mit neuer Projektion
-4. **ε.2 Stakeholder-Marker** read-only → dann Swap-Simulation
-5. **Designer-Pass** für Goal-Display + Live-Propagation-Toast vor ε.3
-6. **ε.3 Goals + Live-Propagation + Audit**
-7. **ε.4 AI** — trajectory_sequence zuerst (Class-2, sofort live), resource_swap zweitens (braucht Ollama)
+1. **CIA-Review** ✅ abgeschlossen 2026-05-18 — siehe Section J
+2. **P1-Items** (vor ε.1-Start, blockierend laut CIA — siehe J)
+3. **ε.1 Foundation** — Modus-Toggle + 2D-Layout + Sidetrack-Bridge-Migration + UI
+4. **ε.1 3D-Toggle** — Reuse PROJ-58 3D-Scene mit neuer Projektion (dynamic-import)
+5. **Designer-Pass** ← vorgezogen von ε.3 nach ε.2 (P1.4) — vor Stakeholder-Marker
+6. **ε.2 Stakeholder-Marker** read-only → dann Swap-Simulation
+7. **ε.3 Goals + Live-Propagation + Audit** (setzt PROJ-10-`causation_id`-Vor-Story aus P1.3 voraus)
+8. **ε.4 AI** — `trajectory_sequence` zuerst (Class-2, sofort live), `resource_swap` zweitens (braucht Ollama)
+
+## J) CIA-Review (Continuous Improvement Agent, 2026-05-18)
+
+CIA hat das Tech Design vollständig reviewt (~1.480 Wörter). Output strukturiert nach Findings, Risks, Recommendations. **5 zusätzliche Locks identifiziert (L5-L9), 4 P1-Items als blockierend markiert vor ε.1-Start.**
+
+### Zusätzliche Locks (L5-L9)
+
+| Lock | Inhalt | Begründung CIA |
+|---|---|---|
+| **L5 — DAG-Cycle-Policy** | Tarjan-SCC in Layout-Engine; Cycle-Edges aus Trajectory-Render ausgeschlossen; UI-Banner *"N zyklische Abhängigkeiten ausgeblendet"*. Kein DB-Constraint auf PROJ-9-Dependencies. | PROJ-9-R2 erlaubt polymorphe Deps ohne DB-Cycle-Constraint. Render-Policy gehört in PROJ-65, nicht in PROJ-9. |
+| **L6 — Goal-Source-Lifecycle** | FK `ON DELETE SET NULL` auf `source_phase_id` + `source_milestone_id`. Detached-Goal trägt sichtbares Badge. Re-attach erlaubt, neuer Audit-Eintrag. | Spec ließ offen, was passiert wenn Source-Phase gelöscht wird. Drei-Zustände-Problem (synced / divergiert / orphaned) muss explizit geregelt sein. |
+| **L7 — Sidetrack-Lane als Read-Model** | `work_item_compliance_lanes` ist Trigger-gepflegt aus `compliance_tags`-Sets. Lane-Whitelist tenant-konfigurierbar in `tenant_settings.trajectory_lanes`. **Kein direkter User-Edit** auf der Bridge. | Eliminiert Drift zwischen PROJ-18-Tag-Pflege und PROJ-65-Lane-Pflege (R3). Single Source of Truth bleibt PROJ-18. |
+| **L8 — Audit-Reuse via PROJ-10 + `causation_id`** | PROJ-10 wird um `causation_id UUID NULL` Spalte erweitert (Vor-Story, 0.5 PT). Eigene `plan_change_audit_log`-Tabelle bleibt verworfen. | PROJ-10 ist kanonische Audit-Quelle. `causation_id` ermöglicht Multi-Field-Gruppierung ohne zweite Audit-Tabelle. |
+| **L9 — Bundle-Discipline** | `TrajectoryGraph3D` als dynamic-import; eigener Sugiyama (~80 LOC) statt `d3-dag`-Dependency; Bundle-Delta auf `/projects/[id]/graph` ≤ 30 KB gzipped als ε.1-AC. | `/projects/[id]/graph` lädt bereits PROJ-58-3D-Bundle eager. PROJ-65 darf TTI nicht verschlechtern, vor allem auf Mobile. |
+
+### Findings (~Auszug)
+
+- **F1** Goal-Source-Refs ohne Mirror erzeugen Drei-Zustände-Problem (synced/divergiert/orphaned) — durch L6 geregelt.
+- **F2** Sidetrack vs. PROJ-18 ist UX-Drift-Risiko, nicht technisch — durch L7 geregelt.
+- **F3** SaaS-Tenants ohne Ollama haben `resource_swap` dauerhaft deaktiviert → akzeptabel wenn dokumentiert, nicht show-stopper.
+- **F4** PROJ-10 fehlt `causation_id` → Vor-Story Pflicht.
+- **F5** DAG-Cycle-Behavior ist Render-Policy, nicht Implementation-Detail → muss L5 sein.
+- **F6** Bundle-Size machbar bei dynamic-import + eigenem Sugiyama — L9.
+- **F7** Stakeholder-Marker brauchen Designer-Pass vor ε.2, nicht erst ε.3 → P1.4.
+
+### Risks (Auszug, Mitigations in den Locks)
+
+| Risk | Severity | Mitigation |
+|---|---|---|
+| R1 PROJ-10 `causation_id` fehlt | **High** | L8 + Vor-Story PROJ-10-Δ |
+| R2 Goal-Source-Ref nach Source-Delete unspezifiziert | High | L6 |
+| R3 Sidetrack vs. compliance_tag Drift | Medium | L7 |
+| R4 DAG-Cycles → Render-Endlosschleife | High | L5 |
+| R5 SaaS ohne Ollama erlebt permanent gestutztes AI-Feature | Medium | dokumentieren + Tenant-Settings-Banner |
+| R6 Bundle-Size + Mobile-TTI | Medium | L9 |
+| R7 Plan-Mutate-Permission nicht in PROJ-4 modelliert | Medium | Reuse `project_editor` + Feature-Flag `tenant_settings.trajectory_plan_mutate_enabled` |
+| R8 Undo-TTL Session-State vs Multi-Tab-Konflikt | Low | Undo-Action optimistic-locked (Server prüft Zwischen-Mutate) |
+| R9 Class-3-Maskierung in Diff-Ansicht (Story 65-7 AC-8) | Low | Reuse PROJ-10-Redaction-Logik |
+
+### P1-Items (BLOCKIEREND vor ε.1)
+
+| P1 | Was | Aufwand |
+|---|---|---|
+| **P1.1** | Lock L5 dokumentieren + Tarjan-SCC-Branch in Layout-Engine-Spec | Lock-Doku |
+| **P1.2** | Lock L6 dokumentieren (FK `ON DELETE SET NULL` + Detached-Badge) | Lock-Doku |
+| **P1.3** | **Vor-Story PROJ-10-Δ erstellen** — Migration für `audit_log_entries.causation_id UUID NULL` + RPC-Erweiterung + PROJ-10-Doku-Update | ~0.5 PT |
+| **P1.4** | Designer-Pass vorziehen von ε.3 → vor ε.2 (Stakeholder-Marker + Detail-Panel + Mobile-Layout) | Reihenfolge, keine Mehrarbeit |
+
+### P2-Items (während ε.1)
+
+- **P2.1** L7 implementieren (Sidetrack als Trigger-gepflegtes Read-Model aus `compliance_tags`)
+- **P2.2** L9 als explizites ε.1-AC: Bundle-Delta ≤ 30 KB gzipped messen
+- **P2.3** Plan-Mutate-Permission reusen (`project_editor` + Feature-Flag), keine RBAC-Schema-Änderung
+
+### P3-Items (deferred OK)
+
+- **P3.1** SaaS-Resource-Swap-Alternative (Cloud-Modell mit Pseudonymisierung) — eigene PROJ-65b-Spec wenn Pilot-Demand zeigt
+- **P3.2** Trajectory-PDF-Export — via PROJ-21 Report-Snapshots-Erweiterung wenn relevant
+- **P3.3** Hybrid-Methode-Mix (FU-5) — eigene Mini-Story nach ε.1-Pilot
+
+### CIA-Aufwand-Update
+
+- Original Tech Design: ~19 PT
+- + P1.3 Vor-Story PROJ-10-Δ: +0.5 PT
+- + P1.1/P1.2 Lock-Doku: 0 PT (bereits eingearbeitet)
+- + P1.4 Designer-Pass-Reihenfolge: 0 PT (Zeitumlagerung)
+- **Total revised: ~20 PT**
+
+### Entscheidungsempfehlung CIA
+
+> "Weiter prüfen (P1.1–P1.4) vor ε.1-Start, dann Umsetzen. Das Tech Design ist im Kern solide — L1/L2/L3/L4 sind verteidigbar und PROJ-58-konsistent. Die vier P1-Items sind aber blockierend."
+
+— Akzeptiert. P1.1 + P1.2 sind durch diese Spec-Ergänzung erledigt. P1.3 + P1.4 als Vor-Story und Slice-Reihenfolge-Anpassung dokumentiert.
 
