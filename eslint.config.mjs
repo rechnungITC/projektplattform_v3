@@ -196,6 +196,13 @@ const config = [
       // PROJ-44-ε: context-sources master-data page uses the same
       // effect-driven initial-load pattern.
       "src/components/master-data/context-sources-page-client.tsx",
+      // PROJ-65 ε.1: trajectory view fetches `?include=trajectory`
+      // snapshot via the same effect-driven initial-load pattern
+      // and resolves WebGL/reduced-motion via the same pattern as
+      // project-graph-view.tsx. GraphShell resolves the persisted
+      // mode (URL → localStorage → tenant default) on hydration.
+      "src/components/projects/trajectory-graph-view.tsx",
+      "src/components/projects/graph-shell.tsx",
     ],
     rules: {
       "react-hooks/set-state-in-effect": "off",

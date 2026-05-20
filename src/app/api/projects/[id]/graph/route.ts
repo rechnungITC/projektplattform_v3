@@ -20,7 +20,7 @@ interface Ctx {
   params: Promise<{ id: string }>
 }
 
-export async function GET(_request: Request, ctx: Ctx) {
+export async function GET(request: Request, ctx: Ctx) {
   const { id: projectId } = await ctx.params
   const { userId, supabase } = await getAuthenticatedUserId()
   if (!userId) return apiError("unauthorized", "Not signed in.", 401)
@@ -29,6 +29,18 @@ export async function GET(_request: Request, ctx: Ctx) {
   if (access.error) return access.error
   const tenantId = (access.project as { tenant_id: string }).tenant_id
 
-  const graph = await resolveProjectGraph({ supabase, projectId, tenantId })
+  // PROJ-65 ε.1 (L13) — opt-in trajectory extension.
+  const includeParam = new URL(request.url).searchParams.get("include")
+  const includeTrajectory =
+    includeParam === "trajectory" ||
+    includeParam?.split(",").map((s) => s.trim()).includes("trajectory") ===
+      true
+
+  const graph = await resolveProjectGraph({
+    supabase,
+    projectId,
+    tenantId,
+    includeTrajectory,
+  })
   return NextResponse.json({ graph })
 }
