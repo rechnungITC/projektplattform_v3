@@ -626,6 +626,11 @@
 | **L2 — Goal-Modell** | Neue Tabelle `project_goals` (1..n pro Projekt) MIT optionalen Source-Refs auf Phase/Milestone. Teilziele über Self-FK `parent_goal_id`. | Editierbare Goals + Teilziele; Source-Felder erlauben Auto-Suggest aus PROJ-19. Bricht PROJ-9-Semantik nicht. |
 | **L3 — Sidetracks** | Bridge `work_item_compliance_lanes` (n:m) | Work-Item kann mehreren Lanes (DSGVO + ISO27001) angehören. PROJ-18 `compliance_tags` bleibt orthogonal — Bridge ist Render-Kategorisierung. |
 | **L4 — AI-Class-Split** | Mixed: `trajectory_sequence` Class-2 (Cloud OK) + `resource_swap` Class-3 (only-Ollama) | Pfad-Reihenfolge funktioniert ohne Ollama; Resource-Empfehlungen bleiben Class-3. |
+| **L10 — Module-Split GraphShell** | Bestehende `ProjectGraphView` (841 LOC) wird zu `GraphShell` extrahiert. `RelationshipGraphView` (umbenannter Body) und `TrajectoryGraphView` (NEU) sind zwei Slot-Komponenten. Shell hält Snapshot-Fetch, Mode-Toggle, Dimension-Toggle, Filter-/Error-/Loading-State. | Saubere Trennung, gemeinsame Toolbar, ein Snapshot. Vermeidet das 1200+-LOC-Monolith-Risiko bei In-File-Erweiterung. |
+| **L11 — Hybrid-Layout: zwei parallele Hauptpfade** | Wasserfall-Phase-Lane (oben) + Scrum-Sprint-Lane (unten), beide verankert an ProjectStartNode (links) und GoalNode (rechts). Sidetracks darunter. Wasserfall-only/Scrum-only Projekte zeigen nur die zutreffende Lane. | F-PROJ-65-5 geschlossen. Hybrid-Projekte sehen beide Tracks gleichzeitig; Methoden-Wahl bleibt Projekt-/PROJ-6-Decision, nicht Render-Toggle. |
+| **L12 — Render-Scope ε.1 erweitert** | Hauptknoten: phases + milestones + work_items + goals. Risk/Decision/AI-Recommendation als **Badge-Indikator am betroffenen Knoten** (nicht als separater Knoten). Budget als **eigene Cost-Sidetrack-Lane** (analog Compliance-Lanes). Stakeholder-Marker bleiben in ε.2. | User-Entscheidung 2026-05-19. Expansion ggü. ursprünglichem Spec (nur work_items+phases) — kompletteres Bild im ersten Slice, Aufwand-Impact in H. |
+| **L13 — Snapshot-Extension via Query-Param** | Bestehender `GET /api/projects/[id]/graph` bekommt optionalen Query-Param `?include=trajectory`. Default-Response unverändert (PROJ-58-Backwards-Compat). Bei include=trajectory liefert der Aggregator zusätzlich `goals[]`, `lanes[]` (compliance), `cost_lane_items[]`, `layout_hints` (method, hybrid-flag, phases_order, sprints_order). | Spec-Vorgabe "gleicher Snapshot, kein Doppelfetch" eingehalten. Opt-in vermeidet Bloat für PROJ-58-Clients. Aggregator-Erweiterung in PROJ-65 ε.1-Backend-Teil-Slice. |
+| **L14 — Layout-Engine: pure synchronous function** | `layoutTrajectory(snapshot, mode): TrajectoryLayout` als pure Function in `src/lib/project-graph/trajectory-layout.ts`. Sugiyama (~80 LOC) + Tarjan-SCC für L5-Cycles. Synchron im Main-Thread (N typisch <500). Web-Worker erst bei Pilot-Demand. | L9-Bundle-Budget hält Sugiyama klein, keine `d3-dag`-Dep. Pure Function ist testbar wie der bestehende `aggregate.ts`. |
 
 ## A) Komponenten-Struktur
 
@@ -661,6 +666,93 @@ Seitliche Panels (NEU, slot-basiert)
 ```
 
 Reuse: PROJ-58 Node-Styling + Edge-Animations + 3D-Scene komplett übernommen. Trajectory-spezifisch sind nur **Layout-Engine** + **GoalNode** + **SidetrackLane** + **StakeholderMarker**.
+
+## A.1) ε.1 Frontend Module Layout (locked 2026-05-19)
+
+Konkretes File-Layout für den Module-Split aus L10. Bestehende Datei `src/components/projects/project-graph-view.tsx` (841 LOC, PROJ-58-θ) wird refaktoriert.
+
+```
+src/components/projects/
+├── graph-shell.tsx                  NEU   — extrahiert aus project-graph-view.tsx
+│                                            hält Snapshot-Fetch, Mode-Toggle, DimensionToggle,
+│                                            Filter-/Error-/Loading-/WebGL-Detect-State,
+│                                            rendert <Slot> für aktive View
+├── relationship-graph-view.tsx      NEU   — Body von project-graph-view.tsx (SVG-Render)
+│                                            ohne Shell-Concerns
+├── trajectory-graph-view.tsx        NEU   — ε.1 — empfängt Snapshot + Layout-Hints aus Shell
+│   ├── trajectory-graph-2d.tsx      NEU   — SVG-Pfad-Renderer (synchron geladen)
+│   └── trajectory-graph-3d.tsx      NEU   — react-three-fiber (dynamic-import, L9)
+└── project-graph-view.tsx           DEPRECATED — wird zu Thin-Wrapper auf GraphShell
+                                                  + RelationshipGraphView (Backwards-Compat
+                                                  für test-imports), entfernen nach ε.1-Pilot
+
+src/lib/project-graph/
+├── aggregate.ts                     existing PROJ-58 — bekommt optionalen Branch für
+│                                                       ?include=trajectory (L13)
+├── trajectory-layout.ts             NEU — pure Function layoutTrajectory(snapshot, mode):
+│                                          Sugiyama ~80 LOC + Tarjan-SCC, keine Dep (L14)
+├── trajectory-layout.test.ts        NEU — pure-function Tests analog aggregate.test.ts
+└── types.ts                         existing — erweitert um ProjectGoal, ComplianceLane,
+                                                CostLaneItem, LayoutHints, TrajectoryLayout
+```
+
+### A.1.1 Hybrid-Layout (L11) — Lane-Anordnung im 2D-Renderer
+
+```
+                 ┌─────────────────────────────────────────────────────┐
+                 │  GraphShell-Toolbar:                                │
+                 │  [Beziehungen | Trajektorie]  [2D | 3D]  [Filter…]  │
+                 └─────────────────────────────────────────────────────┘
+
+  ProjectStart  ──── Phase-Lane    ──[Phase 1]──[Phase 2]──[Phase 3]── ►  Goal
+       (●)      ┐                                                      ┌  (◆)
+                ├── Sprint-Lane   ──[Sprint 1]─[Sprint 2]─[Sprint 3]──┤
+                │                                                      │
+                ├── Cost-Sidetrack ──[Budget-Item]──[Vendor-Invoice]──┤   (L12-Budget-Lane)
+                ├── Sidetrack DSGVO ──[wi]──[wi]──────────────────────┤
+                └── Sidetrack ISO27001 ──[wi]──[wi]───────────────────┘
+```
+
+**Lane-Sichtbarkeits-Regeln:**
+- Wasserfall-only Projekt (PROJ-6 method=`waterfall`): nur Phase-Lane sichtbar.
+- Scrum-only Projekt (`scrum`/`safe`): nur Sprint-Lane sichtbar.
+- Hybrid (`hybrid-*` Methoden aus PROJ-6 oder Mixed): beide Lanes sichtbar, Phase-Lane oben.
+- Sidetracks immer unter Hauptlanes; Cost-Lane vor Compliance-Lanes (Reihenfolge: Phase → Sprint → Cost → Compliance[]).
+- Layout-Engine entscheidet Lane-Sichtbarkeit anhand `layout_hints.method` + `layout_hints.hybrid_flag` aus Snapshot.
+
+### A.1.2 Render-Scope ε.1 (L12) — Knoten- und Badge-Mapping
+
+| Domänen-Entität | Render in ε.1 | Visual |
+|---|---|---|
+| `phase` | Knoten in Phase-Lane | Reuse PROJ-58 phase-styling |
+| `milestone` | Knoten in Phase-Lane (zwischen Phasen) | Diamant-Form analog PROJ-58 |
+| `work_item` (kind=story/task/bug) | Knoten in Sprint-Lane | Reuse PROJ-58 work-item-styling |
+| `work_item` (kind=epic) | Knoten in Phase-Lane oder eigenes Top-Cluster | Designer-Pass (F-PROJ-65-8) |
+| `goal` (ε.3) | Pfadende rechts, eigener Knotentyp | Placeholder in ε.1, vollwertig in ε.3 |
+| `risk` | **Badge am betroffenen Knoten** (nicht eigener Knoten) | rot/orange Punkt mit Severity-Counter |
+| `decision` | **Badge am betroffenen Knoten** | blaues Hex-Icon |
+| `budget`-Item | Knoten in Cost-Sidetrack-Lane | Reuse PROJ-58 budget-styling |
+| AI-Recommendation | **Badge am betroffenen Knoten** | violetter Stern-Indikator, klickt öffnet ε.4 Drawer |
+| `stakeholder` | **Deferred zu ε.2** | — |
+
+**Begründung der Badge-vs-Knoten-Entscheidung:** Risks, Decisions und AI-Recommendations haben fast immer einen Anker-Knoten (Work-Item, Phase, Goal). Als eigene Knoten würden sie den Pfad-Layout verzerren und Kanten-Clutter erzeugen. Als Badge bleiben sie scannbar und der Pfad bleibt lesbar. Budget ist die Ausnahme: Budget-Items haben oft keinen eindeutigen Work-Item-Anker (z.B. Vendor-Invoices auf Projekt-Ebene) → eigene Lane.
+
+### A.1.3 Mode-Toggle Persistenz-Strategie (Konkretisierung L13b)
+
+- **Initial state resolution** (in dieser Reihenfolge):
+  1. URL-Query-Param `?mode=trajectory|relationship` (deep-linkable, höchste Priorität)
+  2. `localStorage["pp-v3:graph-mode:<projectId>"]`
+  3. Server-rendered `tenant_settings.graph_mode_default` (default `'relationship'`)
+- **On toggle:** schreibt nur localStorage, kein Server-Roundtrip. URL bleibt unverändert (User kann manuell Link kopieren).
+- **Tenant-Default-Override** (Tenant-Admin) lebt in PROJ-17-Tenant-Settings-Page, eigener Folge-Slice — nicht in ε.1.
+
+### A.1.4 Empty / Loading / Error / Cycle States
+
+- **Loading:** Skeleton-Pfad-Layout (3 graue Lane-Bars, framer-motion-Puls); reuse GraphCanvasLoading-Pattern aus PROJ-58.
+- **Empty (Projekt ohne Phases/Sprints/Work-Items):** "Noch keine Trajektorie — füge Phasen, Sprints oder Work-Items hinzu, um den Pfad zu sehen." + CTAs zu `/phases`, `/backlog`, `/work-packages` (method-aware).
+- **Error:** Reuse PROJ-58 Error-Card-Pattern.
+- **Cycle-Detected-Banner (L5):** Sticky-Banner über dem Renderer "N zyklische Abhängigkeit(en) ausgeblendet — Details anzeigen". Click öffnet Drawer mit Cycle-Edges + Hint auf PROJ-9-Dependencies-Page zum Beheben.
+- **3D-Fallback:** WebGL-Detect aus PROJ-58 wiederverwendet; bei fehlendem WebGL2 oder `prefers-reduced-motion` automatischer Fallback auf 2D.
 
 ## B) Daten-Modell (Plain Language)
 
@@ -781,38 +873,51 @@ Existing reuse (alles bereits deployed): three.js, react-three-fiber, framer-mot
 
 ## G) Open Follow-Ups (vor Implementation)
 
-| # | Item | Wann fällig |
-|---|---|---|
-| F-PROJ-65-1 | `d3-dag` vs. eigener Sugiyama-Algo — Bundle-Size-Entscheidung | ε.1 Implementation |
-| F-PROJ-65-2 | DAG-Zyklus-Toleranz (PROJ-9 polymorphic deps können zyklisch sein) | ε.1 |
-| F-PROJ-65-3 | `project_settings.cost_clear_view_permission` — in PROJ-55 integrieren oder eigener Pfad? | ε.2 vor /backend |
-| F-PROJ-65-4 | Plan-Undo-TTL — 30 s default, Tenant-Override? | ε.3 |
-| F-PROJ-65-5 | Hybrid-Methode-Mix (Wasserfall + Scrum gleichzeitig) im Layout | ε.1 |
-| F-PROJ-65-6 | Multi-Goal-Display bei 3+ Teilzielen — Designer-Pass | ε.3 |
-| F-PROJ-65-7 | **CIA-Review auf dieses Tech-Design** — MANDATORY laut .claude/rules | vor ε.1-Start |
+| # | Item | Wann fällig | Status |
+|---|---|---|---|
+| F-PROJ-65-1 | `d3-dag` vs. eigener Sugiyama-Algo — Bundle-Size-Entscheidung | ε.1 Implementation | ✅ closed via L9 + L14 (eigener Sugiyama) |
+| F-PROJ-65-2 | DAG-Zyklus-Toleranz (PROJ-9 polymorphic deps können zyklisch sein) | ε.1 | ✅ closed via L5 (Tarjan-SCC + Banner) |
+| F-PROJ-65-3 | `project_settings.cost_clear_view_permission` — in PROJ-55 integrieren oder eigener Pfad? | ε.2 vor /backend | open |
+| F-PROJ-65-4 | Plan-Undo-TTL — 30 s default, Tenant-Override? | ε.3 | open |
+| F-PROJ-65-5 | Hybrid-Methode-Mix (Wasserfall + Scrum gleichzeitig) im Layout | ε.1 | ✅ closed via L11 (zwei parallele Hauptpfade) |
+| F-PROJ-65-6 | Multi-Goal-Display bei 3+ Teilzielen — Designer-Pass | ε.3 | open |
+| F-PROJ-65-7 | **CIA-Review auf dieses Tech-Design** — MANDATORY laut .claude/rules | vor ε.1-Start | ✅ closed 2026-05-18 (Section J) |
+| F-PROJ-65-8 | Epic-Knoten-Platzierung (Phase-Lane vs. eigenes Top-Cluster) | Designer-Pass ε.1 | open |
+| F-PROJ-65-9 | Risk/Decision-Badge-Visual + Position am Knoten (Severity-Counter-Treatment) | Designer-Pass ε.1 | open |
+| F-PROJ-65-10 | AI-Recommendation-Badge-Position + Hover-Behavior | Designer-Pass ε.1 | open |
+| F-PROJ-65-11 | Cost-Sidetrack-Lane Empty-State (Projekt ohne Budget-Modul-Aktivierung) | Designer-Pass ε.1 | open |
+| F-PROJ-65-12 | `project-graph-view.tsx` Thin-Wrapper vs. Hard-Remove — Test-Import-Migration | ε.1 Implementation | open |
 
 ## H) Aufwand (Indikativ)
 
-| Phase | Sub-Slices | PT |
-|---|---|---|
-| ε.1 Pfad-Layout (2D+3D, Sidetracks, Modus-Toggle) | 4-5 | ~6 PT |
-| ε.2 Stakeholder-Marker + Swap-Simulation | 3 | ~4 PT |
-| ε.3 Goal + Live-Propagation + Audit | 4 | ~5 PT |
-| ε.4 AI (3 Purposes) | 3 | ~4 PT |
-| **Total** | — | **~19 PT** |
+| Phase | Sub-Slices | PT | Notes |
+|---|---|---|---|
+| ε.1 Pfad-Layout (2D+3D, Sidetracks, Modus-Toggle) | 4-5 | ~6 PT | original spec |
+| ε.1 Δ: GraphShell-Refactor (L10) | — | +1 PT | extract 841-LOC monolith |
+| ε.1 Δ: Render-Scope-Expansion (L12: Risk/Decision/Budget/AI) | — | +1 PT | Badge-Komponente + Cost-Lane |
+| ε.1 Δ: Snapshot-Extension `?include=trajectory` (L13) | — | +0.5 PT | Aggregator-Erweiterung |
+| **ε.1 revised total** | — | **~8.5 PT** | locked 2026-05-19 |
+| ε.2 Stakeholder-Marker + Swap-Simulation | 3 | ~4 PT | |
+| ε.3 Goal + Live-Propagation + Audit | 4 | ~5 PT | + 0.5 PT P1.3 PROJ-10-Δ (shipped) |
+| ε.4 AI (3 Purposes) | 3 | ~4 PT | |
+| **Total revised** | — | **~22 PT** | original 19 + CIA-Δ 1 + ε.1-Frontend-Δ 2.5 |
 
-CIA-Review + Designer-Pass vor ε.3 sind extra.
+CIA-Review (done 2026-05-18) + Designer-Pass vor ε.2 (P1.4, vorgezogen) sind im Total enthalten. Designer-Pass für ε.1-Forks F-PROJ-65-8/9/10/11 ist neue Mini-Story, separat zu briefen vor /frontend ε.1.
 
-## I) Empfohlene Slice-Reihenfolge (revised per CIA-Review)
+## I) Empfohlene Slice-Reihenfolge (revised 2026-05-19)
 
 1. **CIA-Review** ✅ abgeschlossen 2026-05-18 — siehe Section J
-2. **P1-Items** (vor ε.1-Start, blockierend laut CIA — siehe J)
-3. **ε.1 Foundation** — Modus-Toggle + 2D-Layout + Sidetrack-Bridge-Migration + UI
-4. **ε.1 3D-Toggle** — Reuse PROJ-58 3D-Scene mit neuer Projektion (dynamic-import)
-5. **Designer-Pass** ← vorgezogen von ε.3 nach ε.2 (P1.4) — vor Stakeholder-Marker
-6. **ε.2 Stakeholder-Marker** read-only → dann Swap-Simulation
-7. **ε.3 Goals + Live-Propagation + Audit** (setzt PROJ-10-`causation_id`-Vor-Story aus P1.3 voraus)
-8. **ε.4 AI** — `trajectory_sequence` zuerst (Class-2, sofort live), `resource_swap` zweitens (braucht Ollama)
+2. **P1-Items** ✅ alle erledigt: P1.1+P1.2 in Spec, P1.3 PROJ-10-Δ gemerged (PR #40), P1.4 ε.2-Designer-Pass auf main (PR #42)
+3. **ε.1 Backend** ✅ gemerged via PR #43 — `project_goals` + `work_item_compliance_lanes` (L7-Trigger) + 3 API-Routen
+4. **ε.1 Frontend /architecture** ✅ abgeschlossen 2026-05-19 — Section A.1 + L10–L14
+5. **Designer-Pass ε.1 Frontend** ← NEU vorgeschaltet — Modus-Toggle-UX, 2D-Pfad-Renderer-Visuals, Lane-Header, Knoten-Badge-Treatment (F-PROJ-65-8/9/10/11)
+6. **ε.1 Foundation /frontend** — GraphShell-Refactor + RelationshipGraphView-Extract + TrajectoryGraphView 2D
+7. **ε.1 3D-Toggle** — TrajectoryGraph3D mit dynamic-import (L9-Bundle-Budget messen)
+8. **ε.1 Snapshot-Extension** — Aggregator-Branch `?include=trajectory` (Backend-Mini-Slice, kann parallel zu 6 laufen)
+9. **Designer-Pass ε.2** ✅ auf main (P1.4 fertig)
+10. **ε.2 Stakeholder-Marker** read-only → dann Swap-Simulation
+11. **ε.3 Goals + Live-Propagation + Audit** (nutzt PROJ-10-`causation_id` aus P1.3)
+12. **ε.4 AI** — `trajectory_sequence` zuerst (Class-2, sofort live), `resource_swap` zweitens (braucht Ollama)
 
 ## J) CIA-Review (Continuous Improvement Agent, 2026-05-18)
 
@@ -886,4 +991,67 @@ CIA hat das Tech Design vollständig reviewt (~1.480 Wörter). Output strukturie
 > "Weiter prüfen (P1.1–P1.4) vor ε.1-Start, dann Umsetzen. Das Tech Design ist im Kern solide — L1/L2/L3/L4 sind verteidigbar und PROJ-58-konsistent. Die vier P1-Items sind aber blockierend."
 
 — Akzeptiert. P1.1 + P1.2 sind durch diese Spec-Ergänzung erledigt. P1.3 + P1.4 als Vor-Story und Slice-Reihenfolge-Anpassung dokumentiert.
+
+## K) /architecture ε.1 Frontend Pass (2026-05-19)
+
+**Scope:** Schließen der offenen Forks für die Frontend-Layer von ε.1 (Modus-Toggle + 2D-Pfad-Renderer + Hybrid-Methode-Mix + Render-Scope). Section A hatte den Komponenten-Tree, dieser Pass legt File-Layout, Lane-Strategie, Snapshot-Erweiterung und Layout-Engine fest.
+
+### Entscheidungen (User-bestätigt 2026-05-19)
+
+1. **Module-Split (L10):** GraphShell aus `project-graph-view.tsx` extrahieren. `RelationshipGraphView` + `TrajectoryGraphView` als zwei Slots. Gemeinsame Toolbar, gemeinsamer Snapshot.
+2. **Hybrid-Layout (L11):** Zwei parallele Hauptpfade — Phase-Lane oben, Sprint-Lane unten, Sidetracks darunter. Schließt F-PROJ-65-5.
+3. **Render-Scope ε.1 (L12) — Expansion vs. Spec:** Phases + Milestones + Work-Items + Goals als Knoten. Risks + Decisions + AI-Recommendations als **Badges am Knoten**. Budget als eigene **Cost-Sidetrack-Lane**. Stakeholder bleibt ε.2.
+4. **Snapshot-Extension (L13):** `GET /api/projects/[id]/graph?include=trajectory` opt-in. Default-Response PROJ-58-kompatibel. Aggregator-Branch in PROJ-65 ε.1-Backend-Mini-Slice.
+5. **Layout-Engine (L14):** Pure synchrone Function in `src/lib/project-graph/trajectory-layout.ts`. Sugiyama ~80 LOC + Tarjan-SCC. Kein Web-Worker in ε.1.
+
+### Geschlossene Forks
+
+- F-PROJ-65-1 (d3-dag vs. Sugiyama) → via L9 + L14
+- F-PROJ-65-2 (Cycle-Toleranz) → via L5
+- F-PROJ-65-5 (Hybrid-Mix) → via L11
+
+### Neue Forks (Designer-Pass-relevant, BLOCKIEREND vor /frontend ε.1)
+
+- F-PROJ-65-8: Epic-Knoten-Platzierung
+- F-PROJ-65-9: Risk/Decision-Badge-Visual + Severity-Counter
+- F-PROJ-65-10: AI-Recommendation-Badge-Position + Hover
+- F-PROJ-65-11: Cost-Sidetrack-Lane Empty-State
+- F-PROJ-65-12: `project-graph-view.tsx` Thin-Wrapper vs. Hard-Remove (Test-Import-Migration)
+
+### Aufwand-Δ
+
+ε.1: 6 PT → 8.5 PT (+1 GraphShell-Refactor, +1 Render-Scope-Expansion, +0.5 Snapshot-Extension). Total PROJ-65: ~22 PT.
+
+### CIA-Trigger-Check
+
+Touches ≥ 5 Files (GraphShell-Refactor) und ist Architecture-Level-Pattern, **aber** keine neue Technologie, kein neuer External Service, kein neues npm-Package. Per `.claude/rules/continuous-improvement.md` ist CIA hier **optional, nicht mandatory**. Empfehlung: CIA-Spot-Check zu *L10+L13+L14* (Refactor-Strategie + Snapshot-Extension + Bundle-Budget) vor /frontend-Start, ~300-Worte-Brief — wenn Zeit, sonst skip.
+
+### Handoff
+
+Nächster Schritt: `/designer` für ε.1-Frontend-Brief (F-PROJ-65-8/9/10/11) → dann `/frontend` für GraphShell-Refactor + TrajectoryGraphView. Parallel kann das ε.1-Backend-Mini-Slice für `?include=trajectory` (L13) laufen.
+
+## L) /designer ε.1 Frontend Brief (2026-05-19)
+
+**Brief-Doc:** [`docs/design/PROJ-65-epsilon1-frontend-brief.md`](../docs/design/PROJ-65-epsilon1-frontend-brief.md)
+
+**Geschlossene Forks:**
+
+- ✅ **F-PROJ-65-8** Epic-Knoten-Platzierung — Span-Bar in Epic-Sub-Row über Sprint-Row (Jira-Roadmap-Pattern). Auto-hidden wenn keine Epics im Snapshot.
+- ✅ **F-PROJ-65-9** Risk/Decision-Badge — Top-Right-Corner am Knoten, runder Risk-Badge (severity-toned), Diamant-Decision-Badge (state-toned), Severity-Counter inside, Cluster max 2 + "+N". Bei zu kleinen Knoten → Badges rechts neben Knoten (8px offset).
+- ✅ **F-PROJ-65-10** AI-Recommendation-Badge — Bottom-Right-Corner (gegenüber Risk/Decision), 14px violet-Sparkle, 2s subtle Pulse (respektiert reduced-motion), Click → AIProposalDrawerPlaceholder (ε.1-Stub mit Recommendation-Title).
+- ✅ **F-PROJ-65-11** Cost-Sidetrack-Lane Empty-State — drei States locked: A=Items rendered, B=Inline-Empty mit CTA "+ Budget-Posten anlegen", C=Lane verborgen wenn `budget_module_enabled=false`. Permission-Variant ohne CTA für Non-Editors.
+
+**Designer-Empfehlungen zur PM-Entscheidung (F-Items im Brief):**
+
+- F1 AIProposalDrawer-Placeholder-Inhalt → Empfehlung: Recommendation-Title + Stub-Notice (statt purer Stub).
+- F2 Compliance-Lane-Order → Empfehlung: aus `tenant_settings.trajectory_lanes[]` Reihenfolge, Fallback alphabetisch.
+- F3 `graph_mode_default` Default für **neue** Tenants nach ε.1-Ship → Empfehlung: `'trajectory'` (statt `'relationship'`). Bestehende Tenants behalten Setting.
+
+**Frontend-Acceptance-Criteria:** 15 testbare Items im Brief, Sections "MVP acceptance criteria".
+
+**Bundle-Budget-AC (L9):** Brief schreibt Δ ≤ 30 KB gzipped als hartes AC fest.
+
+### Nächster Schritt
+
+`/frontend` für PROJ-65 ε.1 — GraphShell-Refactor + RelationshipGraphView-Extract + TrajectoryGraphView. Parallel-Slice für Backend-Aggregator-Branch `?include=trajectory` (L13) kann separat laufen.
 
