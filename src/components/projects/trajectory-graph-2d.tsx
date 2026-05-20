@@ -13,8 +13,10 @@
  */
 
 import { motion, useReducedMotion } from "framer-motion"
+import Link from "next/link"
 import * as React from "react"
 
+import { Button } from "@/components/ui/button"
 import type {
   PositionedNode,
   TrajectoryLane,
@@ -32,6 +34,11 @@ interface TrajectoryGraph2DProps {
   onFocusNode: (nodeId: string | null) => void
   onOpenRiskDecision: (nodeId: string, tab: "risks" | "decisions") => void
   onOpenAI: (nodeId: string) => void
+  /** Project id used by the cost-lane empty-state CTA link. */
+  projectId?: string
+  /** True when current user has project-editor permission — controls
+   *  whether the cost-lane empty-state shows the create CTA. */
+  canEdit?: boolean
 }
 
 const LANE_LABEL_WIDTH = 56
@@ -53,6 +60,8 @@ export function TrajectoryGraph2D({
   onFocusNode,
   onOpenRiskDecision,
   onOpenAI,
+  projectId,
+  canEdit = true,
 }: TrajectoryGraph2DProps) {
   const reducedMotion = useReducedMotion()
   const motionDuration = reducedMotion ? 0 : 0.2
@@ -129,14 +138,14 @@ export function TrajectoryGraph2D({
             />
           ))}
 
-          {/* Cost-lane empty-state hint */}
+          {/* Cost-lane empty-state — body text in SVG; CTA-Button overlay below */}
           {layout.lanes
             .filter((l) => l.cost_state === "empty")
             .map((lane) => (
               <text
                 key={`empty-${lane.id}`}
                 x={LANE_LABEL_WIDTH + 16}
-                y={lane.y + 4}
+                y={lane.y - 4}
                 className="fill-muted-foreground text-xs"
               >
                 Noch keine Budget-Posten im Pfad
@@ -333,6 +342,36 @@ export function TrajectoryGraph2D({
             </React.Fragment>
           )
         })}
+
+        {/* Cost-lane empty-state CTA (HTML overlay so it can be a real button) */}
+        {projectId &&
+          layout.lanes
+            .filter((l) => l.cost_state === "empty")
+            .map((lane) => (
+              <div
+                key={`empty-cta-${lane.id}`}
+                className="absolute"
+                style={{
+                  left: LANE_LABEL_WIDTH + 16,
+                  top: lane.y + 4,
+                }}
+                data-testid="cost-lane-empty-cta"
+              >
+                {canEdit ? (
+                  <Button asChild size="sm" variant="outline" className="h-7">
+                    <Link
+                      href={`/projects/${encodeURIComponent(projectId)}/budget`}
+                    >
+                      + Budget-Posten anlegen
+                    </Link>
+                  </Button>
+                ) : (
+                  <span className="text-[11px] text-muted-foreground">
+                    Frage Projektleitung nach Budget-Anlage.
+                  </span>
+                )}
+              </div>
+            ))}
       </div>
     </div>
   )
@@ -344,6 +383,10 @@ const LANE_ICON_BG: Record<TrajectoryLane["kind"], string> = {
   sprint: "bg-muted text-foreground",
   cost: "bg-emerald-500/10 text-emerald-600 dark:text-emerald-400",
   compliance: "bg-amber-500/10 text-amber-600 dark:text-amber-400",
+  // `goal` is a positioning hint on PositionedNode.lane_kind, not a
+  // rendered lane — value unused but the record completeness keeps
+  // typing safe.
+  goal: "",
 }
 
 function LaneHeader({ lane }: { lane: TrajectoryLane }) {

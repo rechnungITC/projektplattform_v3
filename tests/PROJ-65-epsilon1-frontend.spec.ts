@@ -32,4 +32,14 @@ test.describe("PROJ-65 ε.1 / trajectory frontend surface", () => {
     // Middleware bounces to /login.
     expect([200, 307, 302]).toContain(res.status())
   })
+
+  test("graph page also accepts include= without trajectory (PROJ-58 compat)", async ({
+    request,
+  }) => {
+    const res = await request.get(`/api/projects/${PROJECT_ID}/graph`, {
+      failOnStatusCode: false,
+      maxRedirects: 0,
+    })
+    expect([307, 401]).toContain(res.status())
+  })
 })

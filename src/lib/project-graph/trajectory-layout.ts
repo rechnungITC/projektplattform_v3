@@ -34,6 +34,13 @@ export type TrajectoryLaneKind =
   | "sprint"
   | "cost"
   | "compliance"
+  /**
+   * `"goal"` is a positioning hint, not an actual lane. Goal nodes are
+   * right-anchored outside the lane grid; this kind marks them so the
+   * renderer can pick a goal-specific visual treatment without a
+   * separate `kind` field on `PositionedNode.lane_kind`.
+   */
+  | "goal"
 
 export type TrajectoryNodeKind =
   | "project_start"
@@ -117,6 +124,9 @@ const LANE_HEIGHT: Record<TrajectoryLaneKind, number> = {
   sprint: 88,
   cost: 64,
   compliance: 56,
+  // `goal` is not an actual lane; height value is unused but the
+  // record completeness keeps `pushLane` type-safe.
+  goal: 0,
 }
 
 const COST_EMPTY_HEIGHT = 56
@@ -537,7 +547,7 @@ export function layoutTrajectory(
       width: NODE_SIZE.goal.w,
       height: NODE_SIZE.goal.h,
       lane_id: lanes[0]?.id ?? "lane:phase",
-      lane_kind: "goal" as unknown as TrajectoryLaneKind,
+      lane_kind: "goal",
       is_critical: goal.status === "active",
       risk_count: 0,
       decision_count: 0,

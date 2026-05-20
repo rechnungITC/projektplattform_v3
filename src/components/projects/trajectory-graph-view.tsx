@@ -71,9 +71,13 @@ export function TrajectoryGraphView({ projectId }: TrajectoryGraphViewProps) {
   const [error, setError] = React.useState<string | null>(null)
   const [dimension, setDimension] = React.useState<Dimension>("2d")
   const [focusedNodeId, setFocusedNodeId] = React.useState<string | null>(null)
-  const [aiDrawerNodeId, setAiDrawerNodeId] = React.useState<string | null>(
-    null,
-  )
+  const [focusedTab, setFocusedTab] = React.useState<
+    "risks" | "decisions" | null
+  >(null)
+  const [aiDrawer, setAiDrawer] = React.useState<{
+    nodeId: string
+    count: number
+  } | null>(null)
   const [webglAvailable, setWebglAvailable] = React.useState<boolean | null>(
     null,
   )
@@ -142,17 +146,13 @@ export function TrajectoryGraphView({ projectId }: TrajectoryGraphViewProps) {
     return layoutTrajectory(snapshot)
   }, [snapshot])
 
-  const aiDrawerNode = React.useMemo(() => {
-    if (!aiDrawerNodeId || !snapshot) return null
-    return snapshot.nodes.find((n) => n.id === aiDrawerNodeId) ?? null
-  }, [aiDrawerNodeId, snapshot])
   const aiDrawerRecommendation = React.useMemo(() => {
-    if (!aiDrawerNode || !snapshot) return null
+    if (!aiDrawer || !snapshot) return null
     // Best-effort: first `recommendation` source that influences the
     // anchor — gives the user immediate context (F1 from designer brief).
     const inboundRec = snapshot.edges.find(
       (e) =>
-        e.target_node_id === aiDrawerNode.id &&
+        e.target_node_id === aiDrawer.nodeId &&
         e.kind === "influences" &&
         snapshot.nodes.find((n) => n.id === e.source_node_id)?.kind ===
           "recommendation",
@@ -162,7 +162,12 @@ export function TrajectoryGraphView({ projectId }: TrajectoryGraphViewProps) {
       snapshot.nodes.find((n) => n.id === inboundRec.source_node_id)?.label ??
       null
     )
-  }, [aiDrawerNode, snapshot])
+  }, [aiDrawer, snapshot])
+
+  const focusedPositioned = React.useMemo(() => {
+    if (!focusedNodeId) return null
+    return layout.nodes.find((n) => n.id === focusedNodeId) ?? null
+  }, [focusedNodeId, layout])
 
   const canUse3D = webglAvailable !== false && !prefersReducedMotion
   const use3D = dimension === "3d" && canUse3D
@@ -245,11 +250,39 @@ export function TrajectoryGraphView({ projectId }: TrajectoryGraphViewProps) {
               <TrajectoryGraph2D
                 layout={layout}
                 focusedNodeId={focusedNodeId}
-                onFocusNode={setFocusedNodeId}
-                onOpenRiskDecision={(nodeId) => setFocusedNodeId(nodeId)}
-                onOpenAI={(nodeId) => setAiDrawerNodeId(nodeId)}
+                onFocusNode={(nodeId) => {
+                  setFocusedNodeId(nodeId)
+                  setFocusedTab(null)
+                }}
+                onOpenRiskDecision={(nodeId, tab) => {
+                  setFocusedNodeId(nodeId)
+                  setFocusedTab(tab)
+                }}
+                onOpenAI={(nodeId) => {
+                  const node = layout.nodes.find((n) => n.id === nodeId)
+                  setAiDrawer({
+                    nodeId,
+                    count: node?.ai_recommendation_count ?? 1,
+                  })
+                }}
+                projectId={projectId}
               />
             )}
+            {focusedPositioned &&
+              (focusedPositioned.risk_count > 0 ||
+                focusedPositioned.decision_count > 0 ||
+                focusedPositioned.ai_recommendation_count > 0) && (
+                <FocusSummary
+                  node={focusedPositioned}
+                  activeTab={focusedTab}
+                  onOpenAI={() =>
+                    setAiDrawer({
+                      nodeId: focusedPositioned.id,
+                      count: focusedPositioned.ai_recommendation_count,
+                    })
+                  }
+                />
+              )}
             {/* method/lanes summary footer */}
             <div className="flex flex-wrap items-center gap-2 text-[11px] text-muted-foreground">
               <span>
@@ -262,16 +295,12 @@ export function TrajectoryGraphView({ projectId }: TrajectoryGraphViewProps) {
         )}
       </CardContent>
       <AIProposalDrawerPlaceholder
-        open={aiDrawerNodeId != null}
+        open={aiDrawer != null}
         onOpenChange={(open) => {
-          if (!open) setAiDrawerNodeId(null)
+          if (!open) setAiDrawer(null)
         }}
         recommendationTitle={aiDrawerRecommendation}
-        recommendationCount={
-          aiDrawerNode
-            ? Number(aiDrawerNode.attributes.ai_recommendation_count ?? 0) || 1
-            : 0
-        }
+        recommendationCount={aiDrawer?.count ?? 0}
       />
     </Card>
   )
@@ -282,6 +311,79 @@ function CanvasLoading({ label }: { label: string }) {
     <div className="flex h-[420px] items-center justify-center rounded-md border bg-muted/20 text-sm text-muted-foreground md:h-[520px]">
       <Loader2 className="mr-2 h-4 w-4 animate-spin" aria-hidden />
       {label}
+    </div>
+  )
+}
+
+/**
+ * PROJ-65 ε.1 — minimal focus summary for a selected node.
+ * Shows risk/decision/AI counts inline with a tab-highlight when the
+ * user landed here via a badge click. Full NodeDetailPanel ships in
+ * ε.2 alongside Stakeholder-Marker.
+ */
+function FocusSummary({
+  node,
+  activeTab,
+  onOpenAI,
+}: {
+  node: import("@/lib/project-graph/trajectory-layout").PositionedNode
+  activeTab: "risks" | "decisions" | null
+  onOpenAI: () => void
+}) {
+  return (
+    <div
+      data-testid="trajectory-focus-summary"
+      className="rounded-md border bg-card px-3 py-2 text-sm"
+    >
+      <div className="flex items-center justify-between gap-2">
+        <div className="min-w-0">
+          <p className="text-[10px] uppercase tracking-wide text-muted-foreground">
+            Fokus
+          </p>
+          <p className="truncate font-medium">{node.label}</p>
+        </div>
+        <div className="flex shrink-0 flex-wrap gap-1.5">
+          {node.risk_count > 0 && (
+            <span
+              data-testid="focus-risk-pill"
+              className={`rounded-full border px-2 py-0.5 text-[11px] font-medium ${
+                activeTab === "risks"
+                  ? "border-red-400 bg-red-500/15 text-red-700 dark:text-red-300"
+                  : "border-border bg-muted text-muted-foreground"
+              }`}
+            >
+              {node.risk_count} Risiko{node.risk_count === 1 ? "" : "s"}
+            </span>
+          )}
+          {node.decision_count > 0 && (
+            <span
+              data-testid="focus-decision-pill"
+              className={`rounded-full border px-2 py-0.5 text-[11px] font-medium ${
+                activeTab === "decisions"
+                  ? "border-sky-400 bg-sky-500/15 text-sky-700 dark:text-sky-300"
+                  : "border-border bg-muted text-muted-foreground"
+              }`}
+            >
+              {node.decision_count} Entscheidung
+              {node.decision_count === 1 ? "" : "en"}
+            </span>
+          )}
+          {node.ai_recommendation_count > 0 && (
+            <button
+              type="button"
+              onClick={onOpenAI}
+              data-testid="focus-ai-pill"
+              className="rounded-full border border-violet-400 bg-violet-500/15 px-2 py-0.5 text-[11px] font-medium text-violet-700 hover:bg-violet-500/25 dark:text-violet-300"
+            >
+              {node.ai_recommendation_count} KI-Vorschlag
+              {node.ai_recommendation_count === 1 ? "" : "e"}
+            </button>
+          )}
+        </div>
+      </div>
+      <p className="mt-1 text-[11px] text-muted-foreground">
+        Detail-Panel mit Tabs und Aktionen folgt in ε.2.
+      </p>
     </div>
   )
 }
