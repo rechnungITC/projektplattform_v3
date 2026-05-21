@@ -1,8 +1,8 @@
 # PROJ-39: Assistant Action Packs — Project Status, Navigation, Creation
 
-## Status: Approved (Assistant core MVP slice; QA ready 2026-05-18)
+## Status: Deployed (Assistant core MVP slice live since 2026-05-18; mic policy fix 2026-05-21)
 **Created:** 2026-05-04
-**Last Updated:** 2026-05-18
+**Last Updated:** 2026-05-21
 
 ## Origin
 Diese Spec konkretisiert die ersten produktiven Assistant-Fähigkeiten, die aus PROJ-37 und PROJ-38 hervorgehen. Sie trennt klar zwischen der Assistant-Oberfläche/Runtime und den tatsächlich unterstützten Aktionspaketen, damit der Assistent nicht als freier Agent ohne definierte Fachgrenzen startet.

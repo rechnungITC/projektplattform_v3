@@ -344,25 +344,17 @@ export async function PUT(request: Request, ctx: Ctx) {
   const encryptionKey = process.env.SECRETS_ENCRYPTION_KEY
   if (!encryptionKey) throw new EncryptionUnavailableError()
 
-  const { error: gucErr } = await supabase.rpc("set_session_encryption_key", {
-    p_key: encryptionKey,
-  })
-  if (gucErr) {
-    return apiError(
-      "encryption_unavailable",
-      `set_session_encryption_key failed: ${gucErr.message}`,
-      500,
-    )
-  }
-
   const { data: encrypted, error: encErr } = await supabase.rpc(
-    "encrypt_tenant_secret",
-    { p_payload: configJsonb as never },
+    "encrypt_tenant_secret_with_key",
+    {
+      p_payload: configJsonb as never,
+      p_key: encryptionKey,
+    },
   )
   if (encErr || !encrypted) {
     return apiError(
       "encryption_failed",
-      `encrypt_tenant_secret failed: ${encErr?.message ?? "no payload"}`,
+      `encrypt_tenant_secret_with_key failed: ${encErr?.message ?? "no payload"}`,
       500,
     )
   }

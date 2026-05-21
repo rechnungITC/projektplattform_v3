@@ -1,8 +1,8 @@
 # PROJ-40: Assistant Conversation Audit & Transcript Governance
 
-## Status: Approved (Assistant core MVP slice; QA ready 2026-05-18)
+## Status: Deployed (Assistant core MVP slice live since 2026-05-18; mic policy fix 2026-05-21)
 **Created:** 2026-05-04
-**Last Updated:** 2026-05-18
+**Last Updated:** 2026-05-21
 
 ## Origin
 Diese Spec ist die Governance- und Datenschutz-Fortsetzung zu PROJ-37/38/39. Sobald der Assistant Spracheingaben, Transkripte, Intent-Entscheidungen und Aktionsausführungen verarbeitet, braucht die Plattform ein explizites Modell für Audit, Retention, Redaction und Export — statt diese Daten implizit in Logs oder freien Chat-Verläufen zu verlieren.

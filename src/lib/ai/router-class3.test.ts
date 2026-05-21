@@ -3,7 +3,7 @@
  *
  * After 32-c-β:
  *   * Resolver reads from `tenant_ai_providers` via the new RPC
- *     `decrypt_tenant_ai_provider` (returns provider-specific JSONB).
+ *     `decrypt_tenant_ai_provider_with_key` (returns provider-specific JSONB).
  *   * Class-3 routing accepts ONLY local providers (Ollama). Anthropic is
  *     never Class-3-eligible — even with a tenant key, because data still
  *     leaves the tenant control domain.
@@ -79,7 +79,7 @@ function buildSupabase(opts: {
       if (fn === "set_session_encryption_key") {
         return { data: null, error: null }
       }
-      if (fn === "decrypt_tenant_ai_provider") {
+      if (fn === "decrypt_tenant_ai_provider_with_key") {
         if (args?.p_provider === "anthropic") {
           return opts.anthropicDecrypt ?? { data: null, error: null }
         }

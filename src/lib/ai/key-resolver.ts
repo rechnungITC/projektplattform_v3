@@ -3,7 +3,7 @@
  *
  * 32-c-β refactor (Forks D + F + G locked):
  *   * Reads from the new `tenant_ai_providers` table (via the new
- *     SECURITY DEFINER RPC `decrypt_tenant_ai_provider`).
+ *     SECURITY DEFINER RPC `decrypt_tenant_ai_provider_with_key`).
  *   * Layered Cache: `getTenantProviders` and `getPriorityMatrix` are
  *     cached per-request via `React.cache()`. The pure `resolveProvider`
  *     combines them without a separate cache to avoid Cache-Slot-
@@ -121,20 +121,11 @@ const getTenantProviders = cache(
     // on the select for the "configured" check — instead, attempt
     // decryption for both known providers and treat null as
     // "not configured".
-    const { error: gucErr } = await supabase.rpc(
-      "set_session_encryption_key",
-      { p_key: encryptionKey },
-    )
-    if (gucErr) {
-      throw new Error(
-        `set_session_encryption_key failed: ${gucErr.message}`,
-      )
-    }
-
     // Try each provider individually via the member-callable RPC. We
     // could batch into one query if RPC supported tuple inputs, but
-    // 2-4 providers per tenant is small enough that the latency is
-    // dominated by the GUC + decrypt itself.
+    // 2-4 providers per tenant is small enough. The RPC binds the encryption
+    // key and decrypts in one DB transaction because separate Supabase REST RPC
+    // calls cannot share a local GUC.
     const providers: AIKeyProvider[] = [
       "anthropic",
       "ollama",
@@ -142,13 +133,17 @@ const getTenantProviders = cache(
       "google",
     ]
     for (const provider of providers) {
-      const { data, error } = await supabase.rpc("decrypt_tenant_ai_provider", {
-        p_tenant_id: tenantId,
-        p_provider: provider,
-      })
+      const { data, error } = await supabase.rpc(
+        "decrypt_tenant_ai_provider_with_key",
+        {
+          p_tenant_id: tenantId,
+          p_provider: provider,
+          p_key: encryptionKey,
+        },
+      )
       if (error) {
         throw new Error(
-          `decrypt_tenant_ai_provider(${provider}) failed: ${error.message}`,
+          `decrypt_tenant_ai_provider_with_key(${provider}) failed: ${error.message}`,
         )
       }
       if (data === null || data === undefined) continue

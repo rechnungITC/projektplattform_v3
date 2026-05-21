@@ -1,8 +1,8 @@
 # PROJ-41: Assistant Speech, Provider & Wake-Word Infrastructure
 
-## Status: Approved (Assistant core MVP slice; QA ready 2026-05-18)
+## Status: Deployed (Assistant core MVP slice live since 2026-05-18; mic policy fix 2026-05-21)
 **Created:** 2026-05-04
-**Last Updated:** 2026-05-18
+**Last Updated:** 2026-05-21
 
 ## Origin
 Diese Spec schließt die technische Infrastrukturlücke des Assistant-Strangs. PROJ-37 bis PROJ-40 definieren Produktverhalten, Runtime, Action Packs und Governance. Es fehlt noch die explizite Infrastruktur-Spec für Speech-to-Text, Text-to-Speech, Wake-Word/Pushto-Talk-Betriebsarten, Providerwahl, Kostenkontrolle und Browser-/Deployment-Voraussetzungen.
@@ -62,9 +62,9 @@ Builds the speech and provider infrastructure behind the assistant: microphone a
 - [ ] Kosten- oder Nutzungsgrenzen können später an PROJ-32 andocken; diese Slice definiert die notwendigen Anschlussstellen.
 
 ### E. Browser / Deployment Requirements
-- [ ] Deployment-Doku nennt explizit die benötigten Browser-/Permissions-Policy-Voraussetzungen für Mikrofon.
-- [ ] Security Headers erlauben Mikrofon nur so weit wie für den Assistant nötig; keine unnötige Sensorfreigabe.
-- [ ] Voice-Feature bleibt funktionsfähig im Textmodus, wenn restriktive Policies aktiv bleiben.
+- [x] Deployment-Doku nennt explizit die benötigten Browser-/Permissions-Policy-Voraussetzungen für Mikrofon.
+- [x] Security Headers erlauben Mikrofon nur so weit wie für den Assistant nötig; keine unnötige Sensorfreigabe.
+- [x] Voice-Feature bleibt funktionsfähig im Textmodus, wenn restriktive Policies aktiv bleiben.
 
 ## Edge Cases
 - **Mikrofonberechtigung verweigert** → sauberer Text-Fallback.
