@@ -1920,3 +1920,51 @@ Alle 4 QA-Bugs vor PR-Merge gefixt — User-Entscheidung "alle 4 fixen":
 
 **APPROVED** ✅ — 0 Critical · 0 High · 0 Medium · 0 Low offen. Production-ready für `/deploy`.
 
+## W) Deployment Log ε.3a (2026-05-21)
+
+**Status:** ✅ **DEPLOYED**
+
+### Production-Surface
+
+- **Production URL:** https://projektplattform-v3.vercel.app
+- **Graph route:** `https://projektplattform-v3.vercel.app/projects/[id]/graph?mode=trajectory` (auth-gated)
+- **Goals API:** `/api/projects/[id]/goals` (GET/POST/PATCH/DELETE) — bereits seit ε.1 live, ε.3a nutzt sie
+- **Aggregator-Branch** `?include=trajectory` liefert nun `is_on_green_path` Flag per Knoten
+
+### Merged PRs
+
+- **PR #54** `feat(PROJ-65): ε.3a — goals + green-path (frontend + backend)` — squash-merged 2026-05-21 19:41 UTC as `39d27a2`. Inkl. Schema-Drift-Fix-Commit (`work_items.story_points` aus Select entfernt) + 4 QA-Bug-Fixes (B-1..B-4 alle vor Merge geschlossen).
+
+### Tag
+
+`v1.67.0-PROJ-65-eps3a` — gepusht zu origin.
+
+### Post-Deploy-Smoke
+
+| URL | Erwartet | Tatsächlich |
+|---|---|---|
+| `GET /projects/[id]/graph` (unauth) | 307 redirect | 307 ✅ |
+| `GET /api/projects/[id]/graph?include=trajectory` (unauth) | 307 redirect | 307 ✅ |
+| `GET /api/projects/[id]/goals` (unauth) | 307 redirect | 307 ✅ |
+
+Alle Routes auth-gated, Middleware intakt, ε.3a-Aggregator-Branch live.
+
+### Verbleibende Polish-Items (deferred — nicht-blockierend)
+
+Wie nach V.10 + frühere Slices:
+
+- F-PROJ-65-13 Trajectory-3D-Projektion (ε.1)
+- F-PROJ-65-14 Globale Keyboard-Shortcuts (ε.1)
+- F-PROJ-65-15 Mobile-Lane-Header-Icon-Only (ε.1)
+- F-PROJ-65-16 Bundle-Δ-Gate als hartes CI-AC (ε.1)
+- F-PROJ-65-18 3D-Billboard für StakeholderMarker (ε.2)
+- F-PROJ-65-19 `is_cost_flagged` Detection via PROJ-54-Threshold (ε.2)
+- F-PROJ-65-20 Echter `cost_clear_view`-Permission-Check via L6 (ε.2)
+- **F-PROJ-65-27** Effort-Aggregation aus `attributes->>'story_points'` JSONB (ε.3a, GoalStatsCard estimatedEffortPt aktuell always null)
+- Cost-Lane `over_budget` Spent-vs-Planned via PROJ-22 (ε.1)
+
+### Nächste Slices
+
+- **ε.3b** Plan-Mutate + Diff + Undo (Story 65-7) — **CIA-Review mandatory** vor /backend; setzt L18 Optimistic-Lock + L19 PROJ-10 `causation_id`-Audit-Reuse + L17 Modal-Diff-Dialog um. Forks: F-PROJ-65-24/-25/-26.
+- **ε.4** AI (trajectory_sequence Class-2 + resource_swap Class-3 + cross-project-links)
+
