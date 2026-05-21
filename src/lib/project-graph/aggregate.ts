@@ -266,6 +266,10 @@ export async function resolveProjectGraph(
               ? "info"
               : "muted",
       href: href("backlog", method) + `?work_item=${w.id}`,
+      // story_points lives in attributes JSONB (not a top-level column);
+      // future polish slice can extract via attributes->>'story_points'
+      // and aggregate remaining-effort. For ε.3a we keep estimatedEffortPt
+      // null so the FE shows em-dash.
       attributes: { kind: w.kind, status: w.status },
     })
     const parentId = w.parent_id
@@ -516,9 +520,83 @@ export async function resolveProjectGraph(
       }>,
       budgetItemsCount,
     })
+
+    // PROJ-65 ε.3a (L16) — compute is_on_green_path per node via BFS
+    // rückwärts from each goal-anchor (source_phase_id / source_milestone_id)
+    // along `depends_on` + `belongs_to` incoming edges. Sidetracks
+    // (work_items in compliance lanes) are excluded.
+    markGreenPath(nodes, liveEdges, baseSnapshot.trajectory)
   }
 
   return baseSnapshot
+}
+
+/**
+ * PROJ-65 ε.3a — Reverse BFS from goal-anchors to mark `is_on_green_path`
+ * on every contributing node. Sidetrack work_items (lane-tagged via
+ * `compliance_lanes`) are excluded so they never appear on the green path
+ * even if they sit upstream of an anchor.
+ */
+function markGreenPath(
+  nodes: GraphNode[],
+  edges: GraphEdge[],
+  trajectory: TrajectoryExtension,
+): void {
+  for (const n of nodes) {
+    n.attributes.is_on_green_path = false
+  }
+  if (trajectory.goals.length === 0) return
+
+  // Anchor IDs from goals' source-refs. Goals without source contribute
+  // nothing (cannot be located in the graph). Falling back to "last phase
+  // by sequence_number" is deferred to a polish slice.
+  const anchorIds = new Set<string>()
+  for (const g of trajectory.goals) {
+    if (g.source_phase_id) anchorIds.add(`phase:${g.source_phase_id}`)
+    if (g.source_milestone_id)
+      anchorIds.add(`milestone:${g.source_milestone_id}`)
+  }
+  if (anchorIds.size === 0) return
+
+  // Sidetrack exclusion: work_items appearing in compliance_lanes
+  // are never on the green path even if reachable from an anchor.
+  const sidetrackWorkItemIds = new Set(
+    trajectory.compliance_lanes.map((l) => `work_item:${l.work_item_id}`),
+  )
+
+  // Build reverse-adjacency for the two relevant edge kinds. For each
+  // edge V -> W with kind `depends_on` or `belongs_to`, V precedes W.
+  // So to walk backwards from W, follow incoming edges to V.
+  const reverseAdj = new Map<string, string[]>()
+  for (const e of edges) {
+    if (e.kind !== "depends_on" && e.kind !== "belongs_to") continue
+    const list = reverseAdj.get(e.target_node_id) ?? []
+    list.push(e.source_node_id)
+    reverseAdj.set(e.target_node_id, list)
+  }
+
+  const visited = new Set<string>()
+  const queue: string[] = []
+  for (const a of anchorIds) {
+    if (!visited.has(a) && !sidetrackWorkItemIds.has(a)) {
+      visited.add(a)
+      queue.push(a)
+    }
+  }
+  while (queue.length > 0) {
+    const v = queue.shift()!
+    const preds = reverseAdj.get(v) ?? []
+    for (const p of preds) {
+      if (visited.has(p)) continue
+      if (sidetrackWorkItemIds.has(p)) continue
+      visited.add(p)
+      queue.push(p)
+    }
+  }
+
+  for (const n of nodes) {
+    if (visited.has(n.id)) n.attributes.is_on_green_path = true
+  }
 }
 
 interface TrajectoryAggregateArgs {
@@ -569,7 +647,9 @@ async function resolveTrajectoryExtension(
       .limit(NODE_CAP_PER_KIND * 4),
     args.supabase
       .from("project_goals")
-      .select("id, title, status")
+      .select(
+        "id, title, status, source_phase_id, source_milestone_id, parent_goal_id, target_date",
+      )
       .eq("project_id", args.projectId)
       .is("deleted_at", null)
       .order("sort_order", { ascending: true })
@@ -657,12 +737,33 @@ async function resolveTrajectoryExtension(
     }),
   )
 
+  // PROJ-65 ε.3a — surface goal source-refs + detached flag (L6).
+  const activePhaseIds = new Set(args.phasesData.map((p) => p.id))
   const goals: ProjectGoalPlaceholder[] = (goalsRes.data ?? []).map(
-    (g: { id: string; title: string; status: string }) => ({
-      id: g.id,
-      title: g.title,
-      status: g.status,
-    }),
+    (g: {
+      id: string
+      title: string
+      status: string
+      source_phase_id: string | null
+      source_milestone_id: string | null
+      parent_goal_id: string | null
+      target_date: string | null
+    }) => {
+      const phaseDetached =
+        g.source_phase_id != null && !activePhaseIds.has(g.source_phase_id)
+      // Milestone-detach detection requires milestone IDs; passed via args
+      // in a follow-up. For ε.3a we only verify phase-source freshness.
+      return {
+        id: g.id,
+        title: g.title,
+        status: g.status,
+        source_phase_id: g.source_phase_id,
+        source_milestone_id: g.source_milestone_id,
+        parent_goal_id: g.parent_goal_id,
+        target_date: g.target_date,
+        is_detached: phaseDetached,
+      }
+    },
   )
 
   const costLaneItems: CostLaneItem[] = (costRes.data ?? []).map(

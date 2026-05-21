@@ -193,17 +193,21 @@ export function TrajectoryGraph2D({
                 className={
                   edge.is_critical
                     ? "stroke-sky-500"
-                    : isFocused
-                      ? "stroke-foreground"
-                      : "stroke-border"
+                    : isOnGreenPath(a) && isOnGreenPath(b)
+                      ? "stroke-emerald-500"
+                      : isFocused
+                        ? "stroke-foreground"
+                        : "stroke-border"
                 }
                 initial={false}
                 animate={{
                   strokeWidth: edge.is_critical
                     ? 2.5
-                    : isFocused
-                      ? 2
-                      : 1,
+                    : isOnGreenPath(a) && isOnGreenPath(b)
+                      ? 1.5
+                      : isFocused
+                        ? 2
+                        : 1,
                   opacity: 1,
                 }}
                 transition={{ duration: motionDuration }}
@@ -266,11 +270,33 @@ export function TrajectoryGraph2D({
                     strokeWidth={isFocus ? 3 : 1.5}
                   />
                 ) : isGoal ? (
-                  <polygon
-                    points={`${x},${y} ${x + node.width - 12},${y} ${x + node.width},${node.y} ${x + node.width - 12},${y + node.height} ${x},${y + node.height}`}
-                    className={`${tone.fill} ${tone.border}`}
-                    strokeWidth={isFocus ? 3 : 2}
-                  />
+                  (() => {
+                    const status = goalStatusTone(node)
+                    const goalFill =
+                      status === "active"
+                        ? "fill-emerald-500/20"
+                        : status === "achieved"
+                          ? "fill-emerald-500/10"
+                          : status === "abandoned"
+                            ? "fill-muted"
+                            : "fill-muted/40"
+                    const goalStroke =
+                      status === "active"
+                        ? "stroke-emerald-500"
+                        : status === "achieved"
+                          ? "stroke-emerald-400"
+                          : "stroke-border"
+                    return (
+                      <polygon
+                        points={`${x},${y} ${x + node.width - 12},${y} ${x + node.width},${node.y} ${x + node.width - 12},${y + node.height} ${x},${y + node.height}`}
+                        className={`${goalFill} ${goalStroke}`}
+                        strokeWidth={isFocus ? 3 : 2}
+                        strokeDasharray={
+                          status === "abandoned" ? "4 3" : undefined
+                        }
+                      />
+                    )
+                  })()
                 ) : (
                   <rect
                     x={x}
@@ -281,6 +307,21 @@ export function TrajectoryGraph2D({
                     className={`${tone.fill} ${tone.border}`}
                     strokeWidth={isFocus ? 3 : 1.5}
                     strokeDasharray={node.kind === "epic" ? "4 3" : undefined}
+                  />
+                )}
+                {isOnGreenPath(node) && !isGoal && (
+                  <rect
+                    x={x - 3}
+                    y={y - 3}
+                    width={node.width + 6}
+                    height={node.height + 6}
+                    rx={8}
+                    className="fill-none stroke-emerald-400"
+                    strokeWidth={1.5}
+                    strokeOpacity={0.6}
+                    style={{
+                      filter: "drop-shadow(0 0 3px rgba(16, 185, 129, 0.45))",
+                    }}
                   />
                 )}
                 {node.is_critical && (
@@ -472,6 +513,18 @@ function LaneHeader({ lane }: { lane: TrajectoryLane }) {
       )}
     </div>
   )
+}
+
+function isOnGreenPath(node: PositionedNode): boolean {
+  return Boolean(
+    (node.attributes as { is_on_green_path?: boolean }).is_on_green_path,
+  )
+}
+
+function goalStatusTone(node: PositionedNode): "active" | "draft" | "achieved" | "abandoned" {
+  const status = (node.attributes as { status?: string }).status
+  if (status === "achieved" || status === "abandoned" || status === "active") return status
+  return "draft"
 }
 
 function truncate(s: string, max: number): string {

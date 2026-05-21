@@ -14,7 +14,7 @@
  */
 
 import dynamic from "next/dynamic"
-import { Box, Loader2, Network, Route as RouteIcon } from "lucide-react"
+import { Box, Loader2, Network, Route as RouteIcon, Target } from "lucide-react"
 import { useReducedMotion } from "framer-motion"
 import * as React from "react"
 
@@ -38,6 +38,13 @@ import type {
 import { toast } from "sonner"
 
 import { AIProposalDrawerPlaceholder } from "./ai-proposal-drawer-placeholder"
+import { GoalCreateDialog } from "./goals/goal-create-dialog"
+import {
+  GoalDetailPanel,
+  type GoalDetailPanelGoal,
+  type GoalStatNode,
+} from "./goals/goal-detail-panel"
+import type { SourceRefOption } from "./goals/source-ref-combobox"
 import { StakeholderDetailPanel } from "./stakeholder/stakeholder-detail-panel"
 import {
   StakeholderSwapDialog,
@@ -98,6 +105,16 @@ export function TrajectoryGraphView({ projectId }: TrajectoryGraphViewProps) {
   const [swapReceiptNodeId, setSwapReceiptNodeId] = React.useState<string | null>(
     null,
   )
+  const [goalPanelGoalId, setGoalPanelGoalId] = React.useState<string | null>(
+    null,
+  )
+  const [goalCreateOpen, setGoalCreateOpen] = React.useState(false)
+  const [goalCreateDefaultParent, setGoalCreateDefaultParent] =
+    React.useState<string | null>(null)
+  const [pendingGoalIdToOpen, setPendingGoalIdToOpen] = React.useState<
+    string | null
+  >(null)
+  const [reloadTick, setReloadTick] = React.useState(0)
   const [webglAvailable, setWebglAvailable] = React.useState<boolean | null>(
     null,
   )
@@ -149,7 +166,7 @@ export function TrajectoryGraphView({ projectId }: TrajectoryGraphViewProps) {
     return () => {
       cancelled = true
     }
-  }, [projectId])
+  }, [projectId, reloadTick])
 
   const layout: TrajectoryLayout = React.useMemo(() => {
     if (!snapshot) {
@@ -208,6 +225,105 @@ export function TrajectoryGraphView({ projectId }: TrajectoryGraphViewProps) {
         ?.label ?? "Knoten"
     : ""
 
+  // PROJ-65 ε.3a — Goal-related derived data.
+  const phaseOptions: SourceRefOption[] = React.useMemo(() => {
+    if (!snapshot) return []
+    return snapshot.nodes
+      .filter((n) => n.kind === "phase")
+      .map((n) => ({
+        id: n.id.replace(/^phase:/, ""),
+        label: n.label,
+        kind: "phase" as const,
+      }))
+  }, [snapshot])
+  const milestoneOptions: SourceRefOption[] = React.useMemo(() => {
+    if (!snapshot) return []
+    return snapshot.nodes
+      .filter((n) => n.kind === "milestone")
+      .map((n) => ({
+        id: n.id.replace(/^milestone:/, ""),
+        label: n.label,
+        kind: "milestone" as const,
+      }))
+  }, [snapshot])
+  const goalOptions = React.useMemo(() => {
+    return (snapshot?.trajectory?.goals ?? []).map((g) => ({
+      id: g.id,
+      title: g.title,
+    }))
+  }, [snapshot])
+  const allGoalsForTree = React.useMemo(() => {
+    return (snapshot?.trajectory?.goals ?? []).map((g) => ({
+      id: g.id,
+      title: g.title,
+      parent_goal_id: g.parent_goal_id ?? null,
+    }))
+  }, [snapshot])
+
+  // B-4 — open the detail panel as soon as the newly-created goal
+  // appears in the next refetched snapshot.
+  React.useEffect(() => {
+    if (!pendingGoalIdToOpen || !snapshot?.trajectory) return
+    const exists = snapshot.trajectory.goals.some(
+      (g) => g.id === pendingGoalIdToOpen,
+    )
+    if (exists) {
+      setGoalPanelGoalId(pendingGoalIdToOpen)
+      setPendingGoalIdToOpen(null)
+    }
+  }, [pendingGoalIdToOpen, snapshot])
+  const focusedGoal: GoalDetailPanelGoal | null = React.useMemo(() => {
+    if (!goalPanelGoalId || !snapshot?.trajectory) return null
+    const g = snapshot.trajectory.goals.find((x) => x.id === goalPanelGoalId)
+    if (!g) return null
+    return {
+      id: g.id,
+      title: g.title,
+      description: null,
+      success_criteria: null,
+      target_date: g.target_date ?? null,
+      status: (g.status as GoalDetailPanelGoal["status"]) ?? "draft",
+      parent_goal_id: g.parent_goal_id ?? null,
+      source_phase_id: g.source_phase_id ?? null,
+      source_milestone_id: g.source_milestone_id ?? null,
+      is_detached: Boolean(g.is_detached),
+    }
+  }, [goalPanelGoalId, snapshot])
+  const greenPathStats = React.useMemo(() => {
+    const openNodes: GoalStatNode[] = []
+    let totalPt = 0
+    let hasAnyPt = false
+    let critical = 0
+    for (const n of snapshot?.nodes ?? []) {
+      const attrs = n.attributes as {
+        is_on_green_path?: boolean
+        status?: string
+        story_points?: number | null
+        is_critical?: boolean
+      }
+      if (!attrs.is_on_green_path) continue
+      if (n.kind !== "work_item") continue
+      if (attrs.status === "done") continue
+      openNodes.push({
+        id: n.id,
+        label: n.label,
+        status: String(attrs.status ?? "open"),
+        is_critical: Boolean(attrs.is_critical),
+        href: n.href,
+      })
+      if (typeof attrs.story_points === "number") {
+        totalPt += attrs.story_points
+        hasAnyPt = true
+      }
+      if (attrs.is_critical) critical++
+    }
+    return {
+      openNodes,
+      estimatedEffortPt: hasAnyPt ? totalPt : null,
+      criticalOnGreenPath: critical,
+    }
+  }, [snapshot])
+
   const canUse3D = webglAvailable !== false && !prefersReducedMotion
   const use3D = dimension === "3d" && canUse3D
   const method = layout.lanes.length === 0 ? null : "active"
@@ -250,6 +366,23 @@ export function TrajectoryGraphView({ projectId }: TrajectoryGraphViewProps) {
               3D
             </ToggleGroupItem>
           </ToggleGroup>
+          <Button
+            type="button"
+            size="sm"
+            variant="outline"
+            onClick={() => {
+              setGoalCreateDefaultParent(null)
+              setGoalCreateOpen(true)
+            }}
+            data-testid="goal-create-trigger"
+            className="border-emerald-400/40 text-emerald-700 hover:bg-emerald-500/10 dark:text-emerald-300"
+          >
+            <Target
+              className="mr-1.5 h-3.5 w-3.5 text-emerald-500"
+              aria-hidden
+            />
+            + Ziel erstellen
+          </Button>
         </div>
       </CardHeader>
       <CardContent className="space-y-3">
@@ -290,6 +423,12 @@ export function TrajectoryGraphView({ projectId }: TrajectoryGraphViewProps) {
                 layout={layout}
                 focusedNodeId={focusedNodeId}
                 onFocusNode={(nodeId) => {
+                  // Intercept goal-node clicks to open GoalDetailPanel.
+                  if (nodeId && nodeId.startsWith("goal:")) {
+                    const goalId = nodeId.slice("goal:".length)
+                    setGoalPanelGoalId(goalId)
+                    return
+                  }
                   setFocusedNodeId(nodeId)
                   setFocusedTab(null)
                 }}
@@ -398,6 +537,54 @@ export function TrajectoryGraphView({ projectId }: TrajectoryGraphViewProps) {
           }}
         />
       )}
+
+      {/* PROJ-65 ε.3a — Goal detail panel + create dialog */}
+      <GoalDetailPanel
+        open={focusedGoal != null}
+        onOpenChange={(open) => {
+          if (!open) setGoalPanelGoalId(null)
+        }}
+        projectId={projectId}
+        goal={focusedGoal}
+        phases={phaseOptions}
+        milestones={milestoneOptions}
+        parentGoals={goalOptions}
+        allGoals={allGoalsForTree}
+        openGreenPathNodes={greenPathStats.openNodes}
+        estimatedEffortPt={greenPathStats.estimatedEffortPt}
+        criticalOnGreenPath={greenPathStats.criticalOnGreenPath}
+        costClearView={snapshot?.trajectory?.cost_clear_view ?? false}
+        onSaved={() => setReloadTick((t) => t + 1)}
+        onDeleted={() => {
+          setGoalPanelGoalId(null)
+          setReloadTick((t) => t + 1)
+        }}
+        onOpenNode={(nodeId) => {
+          setGoalPanelGoalId(null)
+          setFocusedNodeId(nodeId)
+        }}
+        onCreateSubGoal={() => {
+          if (!focusedGoal) return
+          setGoalCreateDefaultParent(focusedGoal.id)
+          setGoalCreateOpen(true)
+        }}
+        onOpenGoal={(goalId) => setGoalPanelGoalId(goalId)}
+      />
+      <GoalCreateDialog
+        open={goalCreateOpen}
+        onOpenChange={setGoalCreateOpen}
+        projectId={projectId}
+        phases={phaseOptions}
+        milestones={milestoneOptions}
+        parentGoals={goalOptions}
+        defaultParentGoalId={goalCreateDefaultParent}
+        onCreated={(goalId) => {
+          setReloadTick((t) => t + 1)
+          // B-4 — defer panel-open until the new goal appears in the
+          // refetched snapshot; an effect above watches pendingGoalIdToOpen.
+          if (goalId) setPendingGoalIdToOpen(goalId)
+        }}
+      />
     </Card>
   )
 }

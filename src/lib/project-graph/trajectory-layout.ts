@@ -531,10 +531,17 @@ export function layoutTrajectory(
     }
   }
 
-  // Goals (placeholder, right-fixed).
+  // Goals — F-PROJ-65-23 lock: max 3 top-level goals visible + `+N`
+  // counter pentagon. Sub-goals (parent_goal_id != null) never render
+  // as own pentagons — they live inside their parent's DetailPanel tree.
+  const topLevelGoals = extension.goals.filter(
+    (g) => g.parent_goal_id == null,
+  )
+  const visibleGoals = topLevelGoals.slice(0, 3)
+  const overflowCount = topLevelGoals.length - visibleGoals.length
   const rightX = totalRightX(positioned, COL_STEP) + RIGHT_PAD
-  for (let i = 0; i < extension.goals.length; i++) {
-    const goal = extension.goals[i]
+  for (let i = 0; i < visibleGoals.length; i++) {
+    const goal = visibleGoals[i]
     const yBase = (lanes[0]?.y ?? totalHeight / 2) + i * (NODE_SIZE.goal.h + 12)
     positioned.push({
       id: `goal:${goal.id}`,
@@ -553,6 +560,35 @@ export function layoutTrajectory(
       decision_count: 0,
       ai_recommendation_count: 0,
       attributes: { status: goal.status },
+      href: null,
+    })
+  }
+  // Overflow counter pentagon: synthetic node `goal-overflow` with a
+  // pseudo-id; FE renders it as a smaller dashed pentagon labelled "+N".
+  if (overflowCount > 0) {
+    const yBase =
+      (lanes[0]?.y ?? totalHeight / 2) +
+      visibleGoals.length * (NODE_SIZE.goal.h + 12)
+    positioned.push({
+      id: "goal-overflow",
+      source_id: "goal-overflow",
+      kind: "goal",
+      label: `+${overflowCount}`,
+      detail: `${overflowCount} weitere Ziele`,
+      x: rightX,
+      y: yBase,
+      width: NODE_SIZE.goal.w,
+      height: NODE_SIZE.goal.h - 8,
+      lane_id: lanes[0]?.id ?? "lane:phase",
+      lane_kind: "goal",
+      is_critical: false,
+      risk_count: 0,
+      decision_count: 0,
+      ai_recommendation_count: 0,
+      attributes: {
+        status: "overflow",
+        overflow_count: overflowCount,
+      },
       href: null,
     })
   }
