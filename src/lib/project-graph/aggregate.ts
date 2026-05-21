@@ -568,15 +568,15 @@ async function resolveTrajectoryExtension(
         .limit(NODE_CAP_PER_KIND),
       args.supabase
         .from("budget_items")
-        .select("id, name, amount_cents, currency, status")
+        .select("id, name, planned_amount, planned_currency")
         .eq("project_id", args.projectId)
         .eq("is_active", true)
         .order("name", { ascending: true })
         .limit(NODE_CAP_PER_KIND),
       args.supabase
-        .from("tenants")
-        .select("modules")
-        .eq("id", args.tenantId)
+        .from("tenant_settings")
+        .select("active_modules")
+        .eq("tenant_id", args.tenantId)
         .maybeSingle(),
       epicIds.length > 0
         ? args.supabase
@@ -648,26 +648,35 @@ async function resolveTrajectoryExtension(
     (b: {
       id: string
       name: string | null
-      amount_cents: number | null
-      currency: string | null
-      status: string | null
+      planned_amount: number | string | null
+      planned_currency: string | null
     }) => ({
       id: b.id,
       label: b.name ?? "Budget-Posten",
-      amount_cents: b.amount_cents,
-      currency: b.currency,
-      over_budget: b.status === "over_budget",
+      // budget_items.planned_amount is numeric (string in JSON); we
+      // present the planned amount as cents for `CostLaneItem.amount_cents`
+      // by multiplying by 100 once parsed. Actual spent vs. planned
+      // over-budget detection requires a join with budget_postings and
+      // is deferred to a follow-up slice (PROJ-22 integration).
+      amount_cents:
+        b.planned_amount == null
+          ? null
+          : Math.round(Number(b.planned_amount) * 100),
+      currency: b.planned_currency,
+      over_budget: false,
     }),
   )
 
-  const tenantModules = tenantRes.data?.modules as
-    | Record<string, unknown>
-    | null
-    | undefined
+  // PROJ-17 tenant_settings.active_modules is a JSONB array of module
+  // keys ("risks", "decisions", "ai_proposals", "budget", "output_rendering", …).
+  // Treat budget as enabled when the array contains "budget" OR when
+  // the tenant has at least one active budget item (legacy tenants
+  // without an explicit toggle).
+  const activeModules = tenantRes.data?.active_modules as string[] | null
   const budgetModuleEnabled =
-    tenantModules == null
+    activeModules == null
       ? args.budgetItemsCount > 0
-      : tenantModules.budget !== false
+      : Array.isArray(activeModules) && activeModules.includes("budget")
 
   const layout_hints: TrajectoryLayoutHints = {
     method: args.method,
