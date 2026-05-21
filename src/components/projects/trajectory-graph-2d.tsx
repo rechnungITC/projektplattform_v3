@@ -52,6 +52,12 @@ interface TrajectoryGraph2DProps {
     workItemId: string,
     focusAssigneeId: string | null,
   ) => void
+  /**
+   * PROJ-65 ε.2 (F-PROJ-65-17) — positioned-node id (`work_item:<id>`)
+   * receiving a transient dashed-amber receipt for ~3 s after a swap
+   * Vorschau-übernehmen. null when no receipt active.
+   */
+  swapReceiptNodeId?: string | null
 }
 
 const LANE_LABEL_WIDTH = 56
@@ -77,6 +83,7 @@ export function TrajectoryGraph2D({
   canEdit = true,
   assigneesByWorkItem,
   onOpenStakeholders,
+  swapReceiptNodeId = null,
 }: TrajectoryGraph2DProps) {
   const reducedMotion = useReducedMotion()
   const motionDuration = reducedMotion ? 0 : 0.2
@@ -387,6 +394,7 @@ export function TrajectoryGraph2D({
                     onClickOverflow={() =>
                       onOpenStakeholders?.(node.source_id, null)
                     }
+                    showReceipt={swapReceiptNodeId === node.id}
                   />
                 </div>
               )
