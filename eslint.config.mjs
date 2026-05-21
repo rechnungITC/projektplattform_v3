@@ -203,6 +203,9 @@ const config = [
       // mode (URL → localStorage → tenant default) on hydration.
       "src/components/projects/trajectory-graph-view.tsx",
       "src/components/projects/graph-shell.tsx",
+      // PROJ-65 ε.2: swap dialog fetches candidates on open via the
+      // same effect-driven initial-load + reset-on-close pattern.
+      "src/components/projects/stakeholder/stakeholder-swap-dialog.tsx",
     ],
     rules: {
       "react-hooks/set-state-in-effect": "off",

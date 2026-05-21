@@ -42,4 +42,17 @@ test.describe("PROJ-65 ε.1 / trajectory frontend surface", () => {
     })
     expect([307, 401]).toContain(res.status())
   })
+
+  // PROJ-65 ε.2 — swap-preview endpoint is auth-gated even though the
+  // backend handler is not yet implemented (will respond 401/307 via
+  // middleware before reaching the route).
+  test("POST /work-items/[wid]/stakeholder-swap-preview is auth-gated", async ({
+    request,
+  }) => {
+    const res = await request.post(
+      `/api/projects/${PROJECT_ID}/work-items/00000000-0000-0000-0000-000000000001/stakeholder-swap-preview`,
+      { failOnStatusCode: false, maxRedirects: 0 },
+    )
+    expect([307, 401, 404, 405]).toContain(res.status())
+  })
 })

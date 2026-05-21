@@ -31,9 +31,18 @@ import {
   layoutTrajectory,
   type TrajectoryLayout,
 } from "@/lib/project-graph/trajectory-layout"
-import type { ProjectGraphSnapshot } from "@/lib/project-graph/types"
+import type {
+  NodeAssignee,
+  ProjectGraphSnapshot,
+} from "@/lib/project-graph/types"
+import { toast } from "sonner"
 
 import { AIProposalDrawerPlaceholder } from "./ai-proposal-drawer-placeholder"
+import { StakeholderDetailPanel } from "./stakeholder/stakeholder-detail-panel"
+import {
+  StakeholderSwapDialog,
+  type SwapCandidate,
+} from "./stakeholder/stakeholder-swap-dialog"
 import { TrajectoryGraph2D } from "./trajectory-graph-2d"
 import { CycleBanner } from "./trajectory-cycle-banner"
 
@@ -78,6 +87,17 @@ export function TrajectoryGraphView({ projectId }: TrajectoryGraphViewProps) {
     nodeId: string
     count: number
   } | null>(null)
+  const [stakeholderPanel, setStakeholderPanel] = React.useState<{
+    workItemId: string
+    focusAssigneeId: string | null
+  } | null>(null)
+  const [stakeholderSwap, setStakeholderSwap] = React.useState<{
+    workItemId: string
+    currentAssignee: NodeAssignee | null
+  } | null>(null)
+  const [swapReceiptNodeId, setSwapReceiptNodeId] = React.useState<string | null>(
+    null,
+  )
   const [webglAvailable, setWebglAvailable] = React.useState<boolean | null>(
     null,
   )
@@ -168,6 +188,25 @@ export function TrajectoryGraphView({ projectId }: TrajectoryGraphViewProps) {
     if (!focusedNodeId) return null
     return layout.nodes.find((n) => n.id === focusedNodeId) ?? null
   }, [focusedNodeId, layout])
+
+  const assigneesByWorkItem = React.useMemo(() => {
+    const map = new Map<string, NodeAssignee[]>()
+    if (!snapshot?.trajectory) return map
+    for (const a of snapshot.trajectory.node_assignees) {
+      const list = map.get(a.work_item_id) ?? []
+      list.push(a)
+      map.set(a.work_item_id, list)
+    }
+    return map
+  }, [snapshot])
+
+  const panelAssignees = stakeholderPanel
+    ? assigneesByWorkItem.get(stakeholderPanel.workItemId) ?? []
+    : []
+  const panelNodeLabel = stakeholderPanel
+    ? layout.nodes.find((n) => n.source_id === stakeholderPanel.workItemId)
+        ?.label ?? "Knoten"
+    : ""
 
   const canUse3D = webglAvailable !== false && !prefersReducedMotion
   const use3D = dimension === "3d" && canUse3D
@@ -266,6 +305,10 @@ export function TrajectoryGraphView({ projectId }: TrajectoryGraphViewProps) {
                   })
                 }}
                 projectId={projectId}
+                assigneesByWorkItem={assigneesByWorkItem}
+                onOpenStakeholders={(workItemId, focusAssigneeId) =>
+                  setStakeholderPanel({ workItemId, focusAssigneeId })
+                }
               />
             )}
             {focusedPositioned &&
@@ -302,6 +345,58 @@ export function TrajectoryGraphView({ projectId }: TrajectoryGraphViewProps) {
         recommendationTitle={aiDrawerRecommendation}
         recommendationCount={aiDrawer?.count ?? 0}
       />
+
+      {/* PROJ-65 ε.2 — Stakeholder detail panel + swap dialog */}
+      <StakeholderDetailPanel
+        open={stakeholderPanel != null}
+        onOpenChange={(open) => {
+          if (!open) setStakeholderPanel(null)
+        }}
+        nodeLabel={panelNodeLabel}
+        nodeSubtitle={null}
+        assignees={panelAssignees}
+        costClearView={snapshot?.trajectory?.cost_clear_view ?? false}
+        projectId={projectId}
+        onRequestSwap={() => {
+          if (!stakeholderPanel) return
+          const current =
+            stakeholderPanel.focusAssigneeId != null
+              ? panelAssignees.find(
+                  (a) => a.resource_id === stakeholderPanel.focusAssigneeId,
+                ) ?? null
+              : panelAssignees[0] ?? null
+          setStakeholderSwap({
+            workItemId: stakeholderPanel.workItemId,
+            currentAssignee: current,
+          })
+        }}
+        focusAssigneeId={stakeholderPanel?.focusAssigneeId ?? null}
+      />
+      {stakeholderSwap && (
+        <StakeholderSwapDialog
+          open
+          onOpenChange={(open) => {
+            if (!open) setStakeholderSwap(null)
+          }}
+          projectId={projectId}
+          workItemId={stakeholderSwap.workItemId}
+          currentAssignee={stakeholderSwap.currentAssignee}
+          costClearView={snapshot?.trajectory?.cost_clear_view ?? false}
+          onConfirmTransient={(candidate: SwapCandidate) => {
+            toast.success(
+              "Stakeholder-Wechsel gespeichert (transient — Übernahme folgt in ε.3)",
+              {
+                description: `${candidate.name}${candidate.role ? ` · ${candidate.role}` : ""}`,
+              },
+            )
+            // 3-second visual receipt on the marker stack.
+            const nodeId = `work_item:${stakeholderSwap.workItemId}`
+            setSwapReceiptNodeId(nodeId)
+            window.setTimeout(() => setSwapReceiptNodeId(null), 3000)
+            setStakeholderSwap(null)
+          }}
+        />
+      )}
     </Card>
   )
 }

@@ -95,6 +95,43 @@ export interface TrajectoryExtension {
   compliance_lanes: ComplianceLane[]
   cost_lane_items: CostLaneItem[]
   goals: ProjectGoalPlaceholder[]
+  /**
+   * PROJ-65 ε.2 — assignees per work_item (via PROJ-11 work_item_resources
+   * → PROJ-11 resources → PROJ-8 stakeholders). One entry per
+   * (work_item, resource) tuple. Soft-deleted stakeholders are present
+   * with `deleted_at` set so the FE can render greyed-out (F-5 pattern).
+   */
+  node_assignees: NodeAssignee[]
+  /**
+   * PROJ-65 ε.2 — per-project Class-3 cost-clear-view permission.
+   * `true` when the current user may see plaintext rates / cost-Δ
+   * (per `project_settings.cost_clear_view_permission` from L6).
+   * UI uses this only as a render hint — masking is server-enforced.
+   */
+  cost_clear_view: boolean
+}
+
+export interface NodeAssignee {
+  work_item_id: string
+  resource_id: string
+  stakeholder_id: string | null
+  /** Display name (stakeholder.name OR resource.display_name fallback). */
+  name: string
+  /** Stakeholder role_key or resource role. */
+  role: string | null
+  /** Resource link kind: internal | external | … (PROJ-11). */
+  kind: string | null
+  /** True when PROJ-43 critical-path flag fires for this assignee. */
+  is_critical: boolean
+  /** True when sentiment / stakeholder coaching marks this assignee as
+   *  advocate / high-cooperation (PROJ-35 sentiment_score > 0.5). */
+  is_positive: boolean
+  /** True when resource rate exceeds the tenant cost-flag threshold. */
+  is_cost_flagged: boolean
+  /** Allocation percent on this work_item (0–100). */
+  allocation_pct: number | null
+  /** Stakeholder soft-delete timestamp; null when active. */
+  deleted_at: string | null
 }
 
 export interface TrajectoryLayoutHints {
