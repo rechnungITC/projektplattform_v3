@@ -1,8 +1,8 @@
 # PROJ-37: Voice Agent Assistant ("Hey Sven")
 
-## Status: Approved (Assistant core MVP slice; QA ready 2026-05-18)
+## Status: Deployed (Assistant core MVP slice live since 2026-05-18; mic policy fix 2026-05-21)
 **Created:** 2026-05-04
-**Last Updated:** 2026-05-18
+**Last Updated:** 2026-05-21
 
 ## Origin
 Diese Spec entstand aus der Anforderung, einen sprachgesteuerten Assistenten in die Plattform zu integrieren, der per Wake-Phrase (z. B. "Hey Sven") geöffnet wird, natürlichsprachlich antwortet und konkrete Projektaktionen ausführen kann, etwa Status abrufen oder neue Projekte anlegen.

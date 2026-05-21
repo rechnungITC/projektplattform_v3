@@ -13,10 +13,10 @@ const SECURITY_HEADERS = [
     key: "Strict-Transport-Security",
     value: "max-age=31536000; includeSubDomains",
   },
-  // Limit powerful APIs not used by the app
+  // Limit powerful APIs; microphone stays same-origin for Assistant push-to-talk.
   {
     key: "Permissions-Policy",
-    value: "camera=(), microphone=(), geolocation=(), interest-cohort=()",
+    value: "camera=(), microphone=(self), geolocation=(), interest-cohort=()",
   },
   // CSP in report-only mode: surfaces violations in the browser console without
   // blocking. After a clean observation window on prod traffic (see

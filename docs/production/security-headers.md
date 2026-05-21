@@ -31,6 +31,10 @@ const nextConfig: NextConfig = {
             key: 'Strict-Transport-Security',
             value: 'max-age=31536000; includeSubDomains',
           },
+          {
+            key: 'Permissions-Policy',
+            value: 'camera=(), microphone=(self), geolocation=(), interest-cohort=()',
+          },
         ],
       },
     ]
@@ -48,13 +52,14 @@ export default nextConfig
 | X-Content-Type-Options: nosniff | Prevents browsers from guessing content types (MIME sniffing) |
 | Referrer-Policy | Controls how much URL info is sent to other sites |
 | Strict-Transport-Security | Forces HTTPS connections |
+| Permissions-Policy | Disables unused browser sensors while allowing same-origin microphone access for Assistant push-to-talk |
 
 ## Verify After Deployment
 1. Open Chrome DevTools
 2. Go to Network tab
 3. Click on any request to your site
 4. Check Response Headers section
-5. Verify all 4 headers are present
+5. Verify all listed headers are present
 
 ## Advanced (Optional)
 **Content-Security-Policy (CSP)** - The most powerful header, but can break your app if misconfigured. Only add after thorough testing:

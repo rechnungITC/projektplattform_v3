@@ -1,8 +1,8 @@
 # PROJ-38: Assistant Orchestrator & Intent Runtime
 
-## Status: Approved (Assistant core MVP slice; QA ready 2026-05-18)
+## Status: Deployed (Assistant core MVP slice live since 2026-05-18; mic policy fix 2026-05-21)
 **Created:** 2026-05-04
-**Last Updated:** 2026-05-18
+**Last Updated:** 2026-05-21
 
 ## Origin
 Diese Spec ist die technische Folge-Spec zu PROJ-37. Während PROJ-37 das User-erlebbare Sprachassistenten-Feature beschreibt, definiert PROJ-38 die interne Runtime-Schicht, die aus natürlicher Sprache sichere, auditierbare und plattformkonforme Aktionen macht.
