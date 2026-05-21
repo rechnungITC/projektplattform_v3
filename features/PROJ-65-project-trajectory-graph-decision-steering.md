@@ -1269,3 +1269,55 @@ Alle 4 QA-Bugs vor PR-Merge gefixt:
 
 **APPROVED** — 0 Critical · 0 High · 0 Medium · 0 Low offen (alle gefixt).
 
+## O) Deployment Log (2026-05-21)
+
+**Status:** ✅ **DEPLOYED**
+
+### Production-Surface
+
+- **Production URL:** https://projektplattform-v3.vercel.app
+- **Graph route:** `https://projektplattform-v3.vercel.app/projects/[id]/graph` (auth-gated)
+- **API route:** `https://projektplattform-v3.vercel.app/api/projects/[id]/graph?include=trajectory` (auth-gated)
+- **Vercel Auto-Deploy:** main → preview → production (zero-touch on PR merge)
+
+### Merged PRs
+
+- **PR #43** `feat(PROJ-65): ε.1 backend — project_goals + compliance_lanes (Schema-First)` — squash-merged 2026-05-20 14:19 UTC as `fb20951`
+- **PR #44** `feat(PROJ-65): ε.1 frontend — GraphShell + TrajectoryGraphView + layout engine` — squash-merged 2026-05-21 12:09 UTC as `865cbc1`
+
+### Tag
+
+`v1.65.0-PROJ-65` — gepusht zu origin.
+
+### Pre-Deploy-Schema-Drift-Fix (PROJ-42 CI-Guard)
+
+Beim ersten CI-Lauf nach PR #43-Merge meldete der PROJ-42 Schema-Drift-Guard 2 echte Drifts in `src/lib/project-graph/aggregate.ts`:
+- `budget_items` SELECT `amount_cents, currency, status` → korrigiert auf `planned_amount, planned_currency`; `over_budget` Flag deferred zu PROJ-22-Integration (immer `false` in ε.1).
+- `tenants.modules` SELECT → korrigiert auf `tenant_settings.active_modules` (jsonb-Array per PROJ-17).
+
+Fix in Commit `ada690f` → reused by PR #44 squash → live.
+
+### Post-Deploy-Smoke
+
+| URL | Erwartet | Tatsächlich |
+|---|---|---|
+| `GET /projects/[id]/graph` (unauth) | 307 redirect auf login | 307 ✅ |
+| `GET /api/projects/[id]/graph?include=trajectory` (unauth) | 307 redirect | 307 ✅ |
+| `GET /login` | 200 | 200 ✅ |
+
+Auth-Gate + Routing live + Middleware intakt.
+
+### Bekannte Polish-Items (defered, nicht blockierend)
+
+- **F-PROJ-65-13** Trajectory-spezifische 3D-Projektion (x=time, y=lane, z=depth). ε.1 nutzt PROJ-58-3D-Scene mit "Beta"-Badge.
+- **F-PROJ-65-14** Globale Keyboard-Shortcuts M/D/R/Esc.
+- **F-PROJ-65-15** Mobile-Lane-Header Icon-Only-Mode (375px).
+- **F-PROJ-65-16** Bundle-Δ-Measurement-Gate als hartes CI-AC (vorerst Soft-Proxy).
+- **Cost-Lane `over_budget` Flag** — pending Spent-vs-Planned-Check via budget_postings (PROJ-22-Integration).
+
+### Nächste Slices
+
+- **ε.2** Stakeholder-Marker + Swap-Simulation (Designer-Spec bereits auf main via PR #42).
+- **ε.3** Goals + Live-Propagation + Audit (PROJ-10-`causation_id` bereits ready via PR #40).
+- **ε.4** AI (trajectory_sequence Class-2, resource_swap Class-3, cross-project-links).
+
