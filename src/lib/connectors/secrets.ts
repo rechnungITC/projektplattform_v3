@@ -1,9 +1,10 @@
 /**
  * PROJ-14 — tenant_secrets server-side helpers.
  *
- * The encryption key lives in the SECRETS_ENCRYPTION_KEY env var. Before
- * any encrypt/decrypt RPC, we set the GUC `app.settings.encryption_key`
- * with `set local` so the migration's pgcrypto helpers can pick it up.
+ * The encryption key lives in the SECRETS_ENCRYPTION_KEY env var. Encrypt and
+ * decrypt calls use atomic RPC wrappers that bind the GUC and run pgcrypto in
+ * one Postgres transaction; separate Supabase REST RPC calls cannot share a
+ * local GUC.
  *
  * NEVER expose decrypted credentials to the browser — every public method
  * here is server-only.
@@ -26,26 +27,10 @@ export function isEncryptionAvailable(): boolean {
   return Boolean(process.env.SECRETS_ENCRYPTION_KEY)
 }
 
-/**
- * Bind the encryption key to the current Postgres session so the
- * pgcrypto helpers can read it via `current_setting('app.settings.encryption_key')`.
- *
- * MUST be called in the same transaction as the encrypt/decrypt RPC and
- * must use `set_config(..., is_local=true)` so it disappears at COMMIT.
- */
-async function bindEncryptionKey(supabase: SupabaseClient): Promise<void> {
+function getEncryptionKey(): string {
   const key = process.env.SECRETS_ENCRYPTION_KEY
   if (!key) throw new EncryptionUnavailableError()
-  // supabase-js routes RPC to public.* — we wrap pg_catalog.set_config in
-  // public.set_session_encryption_key for that reason.
-  const { error } = await supabase.rpc("set_session_encryption_key", {
-    p_key: key,
-  })
-  if (error) {
-    throw new Error(
-      `set_session_encryption_key failed: ${error.message}`
-    )
-  }
+  return key
 }
 
 interface SecretRow {
@@ -98,13 +83,15 @@ export async function readTenantSecret<TPayload = unknown>(
   }
   if (!rows || rows.length === 0) return null
 
-  await bindEncryptionKey(supabase)
   const { data: payload, error: rpcErr } = await supabase.rpc(
-    "decrypt_tenant_secret",
-    { p_secret_id: rows[0].id as string }
+    "decrypt_tenant_secret_with_key",
+    {
+      p_secret_id: rows[0].id as string,
+      p_key: getEncryptionKey(),
+    }
   )
   if (rpcErr) {
-    throw new Error(`decrypt_tenant_secret failed: ${rpcErr.message}`)
+    throw new Error(`decrypt_tenant_secret_with_key failed: ${rpcErr.message}`)
   }
   return (payload as TPayload) ?? null
 }
@@ -112,8 +99,8 @@ export async function readTenantSecret<TPayload = unknown>(
 /**
  * Upsert an encrypted credential payload for a (tenant × connector).
  *
- * The plaintext is sent to the encrypt RPC inside the same transaction
- * that holds the GUC; it never reaches a column at rest.
+ * The plaintext is sent to the atomic encrypt RPC; it never reaches a column at
+ * rest.
  */
 export async function writeTenantSecret(
   supabase: SupabaseClient,
@@ -126,14 +113,15 @@ export async function writeTenantSecret(
 ): Promise<void> {
   if (!isEncryptionAvailable()) throw new EncryptionUnavailableError()
 
-  await bindEncryptionKey(supabase)
-
   const { data: encrypted, error: encErr } = await supabase.rpc(
-    "encrypt_tenant_secret",
-    { p_payload: args.payload as never }
+    "encrypt_tenant_secret_with_key",
+    {
+      p_payload: args.payload as never,
+      p_key: getEncryptionKey(),
+    }
   )
   if (encErr) {
-    throw new Error(`encrypt_tenant_secret failed: ${encErr.message}`)
+    throw new Error(`encrypt_tenant_secret_with_key failed: ${encErr.message}`)
   }
 
   const { error: upErr } = await supabase.from("tenant_secrets").upsert(

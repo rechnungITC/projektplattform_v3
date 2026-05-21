@@ -2,7 +2,7 @@
  * PROJ-32 — legacy `resolveAnthropicKey` wrapper unit tests.
  *
  * After 32-c-β the resolver reads from `tenant_ai_providers` (new
- * generic table) via the SECURITY DEFINER RPC `decrypt_tenant_ai_provider`.
+ * generic table) via the SECURITY DEFINER RPC `decrypt_tenant_ai_provider_with_key`.
  * The 32a-shape `resolveAnthropicKey` is preserved as a thin wrapper
  * for backward compatibility until 32-c-γ cleanup.
  *
@@ -32,7 +32,6 @@ interface RpcResult {
 }
 
 function buildSupabaseMock(opts: {
-  setKeyResult?: RpcResult
   /** Anthropic decrypt result. `null` → not configured. */
   anthropicDecrypt?: RpcResult
   /** Ollama decrypt result. `null` → not configured. Default: not configured. */
@@ -54,10 +53,7 @@ function buildSupabaseMock(opts: {
 
   return {
     rpc: vi.fn(async (fn: string, args?: { p_provider?: string }) => {
-      if (fn === "set_session_encryption_key") {
-        return opts.setKeyResult ?? { data: null, error: null }
-      }
-      if (fn === "decrypt_tenant_ai_provider") {
+      if (fn === "decrypt_tenant_ai_provider_with_key") {
         if (opts.decryptError) return opts.decryptError
         if (args?.p_provider === "anthropic") {
           return opts.anthropicDecrypt ?? { data: null, error: null }
@@ -76,7 +72,7 @@ function buildSupabaseMock(opts: {
   } as unknown as Parameters<typeof resolveAnthropicKey>[0]["supabase"]
 }
 
-/** Build the JSONB shape that decrypt_tenant_ai_provider returns. */
+/** Build the JSONB shape that decrypt_tenant_ai_provider_with_key returns. */
 function anthropicConfig(apiKey: string): { data: object; error: null } {
   return { data: { api_key: apiKey }, error: null }
 }
@@ -244,7 +240,7 @@ describe("resolveAnthropicKey", () => {
       const rpcCalls = (
         supabase as unknown as { rpc: ReturnType<typeof vi.fn> }
       ).rpc.mock.calls.map((c) => c[0])
-      expect(rpcCalls).not.toContain("decrypt_tenant_ai_provider")
+      expect(rpcCalls).not.toContain("decrypt_tenant_ai_provider_with_key")
       expect(rpcCalls).not.toContain("set_session_encryption_key")
     })
   })
@@ -314,14 +310,13 @@ describe("resolveAnthropicKey", () => {
     })
   })
 
-  describe("set_session_encryption_key error", () => {
+  describe("atomic decrypt RPC error", () => {
     it("propagates the error", async () => {
       const supabase = buildSupabaseMock({
-        setKeyResult: {
+        decryptError: {
           data: null,
           error: { message: "permission denied" },
         },
-        anthropicDecrypt: { data: null, error: null },
       })
       await expect(
         resolveAnthropicKey({
@@ -330,7 +325,7 @@ describe("resolveAnthropicKey", () => {
           provider: "anthropic",
           dataClass: 1,
         }),
-      ).rejects.toThrow(/set_session_encryption_key failed/)
+      ).rejects.toThrow(/decrypt_tenant_ai_provider_with_key/)
     })
   })
 })

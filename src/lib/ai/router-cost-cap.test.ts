@@ -108,7 +108,7 @@ function buildSupabase(opts: {
   return {
     rpc: vi.fn(async (fn: string, args?: { p_provider?: string }) => {
       if (fn === "set_session_encryption_key") return { data: null, error: null }
-      if (fn === "decrypt_tenant_ai_provider") {
+      if (fn === "decrypt_tenant_ai_provider_with_key") {
         if (args?.p_provider === "anthropic") return ANTHROPIC
         return { data: null, error: null }
       }
@@ -307,7 +307,7 @@ describe("PROJ-32-d router cost-cap gate", () => {
      
     ;(supabase as any).rpc = vi.fn(async (fn: string) => {
       if (fn === "set_session_encryption_key") return { data: null, error: null }
-      if (fn === "decrypt_tenant_ai_provider") return { data: null, error: null }
+      if (fn === "decrypt_tenant_ai_provider_with_key") return { data: null, error: null }
       if (fn === "tenant_ai_monthly_usage") {
         // This MUST NOT be called — the cost-cap gate is skipped for Stub.
         throw new Error("should-not-call-tenant_ai_monthly_usage")
