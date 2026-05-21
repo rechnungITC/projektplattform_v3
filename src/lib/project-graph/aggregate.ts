@@ -27,11 +27,18 @@ import type { ProjectMethod } from "@/types/project-method"
 import type { WorkItemKind, WorkItemStatus } from "@/types/work-item"
 
 import type {
+  ComplianceLane,
+  CostLaneItem,
   GraphEdge,
   GraphEdgeKind,
   GraphNode,
   GraphNodeKind,
+  ProjectGoalPlaceholder,
   ProjectGraphSnapshot,
+  TrajectoryEpic,
+  TrajectoryExtension,
+  TrajectoryLayoutHints,
+  TrajectorySprint,
 } from "./types"
 
 interface AggregateArgs {
@@ -39,6 +46,12 @@ interface AggregateArgs {
   projectId: string
   tenantId: string
   now?: Date
+  /**
+   * PROJ-65 ε.1 (L13) — when true, the snapshot is enriched with
+   * the `trajectory` field needed by `TrajectoryGraphView`. Default
+   * `false` keeps the PROJ-58 surface byte-for-byte compatible.
+   */
+  includeTrajectory?: boolean
 }
 
 const NODE_CAP_PER_KIND = 80 // bound the snapshot for the MVP
@@ -471,7 +484,7 @@ export async function resolveProjectGraph(
     byEdge[e.kind] = (byEdge[e.kind] ?? 0) + 1
   }
 
-  return {
+  const baseSnapshot: ProjectGraphSnapshot = {
     project_id: args.projectId,
     generated_at: now.toISOString(),
     nodes,
@@ -482,6 +495,212 @@ export async function resolveProjectGraph(
       by_node_kind: byNode,
       by_edge_kind: byEdge,
     },
+  }
+
+  if (args.includeTrajectory) {
+    baseSnapshot.trajectory = await resolveTrajectoryExtension({
+      supabase: args.supabase,
+      projectId: args.projectId,
+      tenantId: args.tenantId,
+      method,
+      phasesData: (phasesRes.data ?? []) as Array<{
+        id: string
+        sequence_number: number | null
+      }>,
+      workItemsData: (workItemsRes.data ?? []) as Array<{
+        id: string
+        kind: WorkItemKind
+        title: string
+        parent_id: string | null
+      }>,
+      budgetItemsCount,
+    })
+  }
+
+  return baseSnapshot
+}
+
+interface TrajectoryAggregateArgs {
+  supabase: SupabaseClient
+  projectId: string
+  tenantId: string
+  method: ProjectMethod | null
+  phasesData: Array<{ id: string; sequence_number: number | null }>
+  workItemsData: Array<{
+    id: string
+    kind: WorkItemKind
+    title: string
+    parent_id: string | null
+  }>
+  budgetItemsCount: number
+}
+
+async function resolveTrajectoryExtension(
+  args: TrajectoryAggregateArgs,
+): Promise<TrajectoryExtension> {
+  const epicIds = args.workItemsData
+    .filter((w) => w.kind === "epic")
+    .map((w) => w.id)
+
+  const [sprintsRes, lanesRes, goalsRes, costRes, tenantRes, sprintWorkRes] =
+    await Promise.all([
+      args.supabase
+        .from("sprints")
+        .select("id, name, start_date, end_date, state")
+        .eq("project_id", args.projectId)
+        .order("start_date", { ascending: true, nullsFirst: false })
+        .limit(NODE_CAP_PER_KIND),
+      args.supabase
+        .from("work_item_compliance_lanes")
+        .select("work_item_id, lane_key, display_label")
+        .eq("tenant_id", args.tenantId)
+        .in(
+          "work_item_id",
+          args.workItemsData.map((w) => w.id),
+        )
+        .limit(NODE_CAP_PER_KIND * 4),
+      args.supabase
+        .from("project_goals")
+        .select("id, title, status")
+        .eq("project_id", args.projectId)
+        .is("deleted_at", null)
+        .order("sort_order", { ascending: true })
+        .limit(NODE_CAP_PER_KIND),
+      args.supabase
+        .from("budget_items")
+        .select("id, name, planned_amount, planned_currency")
+        .eq("project_id", args.projectId)
+        .eq("is_active", true)
+        .order("name", { ascending: true })
+        .limit(NODE_CAP_PER_KIND),
+      args.supabase
+        .from("tenant_settings")
+        .select("active_modules")
+        .eq("tenant_id", args.tenantId)
+        .maybeSingle(),
+      epicIds.length > 0
+        ? args.supabase
+            .from("work_items")
+            .select("id, parent_id, sprint_id")
+            .eq("project_id", args.projectId)
+            .eq("is_deleted", false)
+            .in("parent_id", epicIds)
+            .not("sprint_id", "is", null)
+        : Promise.resolve({ data: [] }),
+    ])
+
+  const sprints: TrajectorySprint[] = (sprintsRes.data ?? []).map(
+    (s: {
+      id: string
+      name: string | null
+      start_date: string | null
+      end_date: string | null
+      state: string | null
+    }) => ({
+      id: s.id,
+      name: s.name ?? "Sprint",
+      start_date: s.start_date,
+      end_date: s.end_date,
+      state: s.state,
+    }),
+  )
+
+  const epicSprintMap = new Map<string, Set<string>>()
+  for (const row of (sprintWorkRes.data ?? []) as Array<{
+    parent_id: string | null
+    sprint_id: string | null
+  }>) {
+    if (!row.parent_id || !row.sprint_id) continue
+    const set = epicSprintMap.get(row.parent_id) ?? new Set<string>()
+    set.add(row.sprint_id)
+    epicSprintMap.set(row.parent_id, set)
+  }
+  const epics: TrajectoryEpic[] = args.workItemsData
+    .filter((w) => w.kind === "epic")
+    .map((w) => ({
+      id: w.id,
+      title: w.title,
+      status: null,
+      sprint_ids: Array.from(epicSprintMap.get(w.id) ?? []),
+    }))
+
+  const complianceLanes: ComplianceLane[] = (lanesRes.data ?? []).map(
+    (row: {
+      work_item_id: string
+      lane_key: string
+      display_label: string | null
+    }) => ({
+      work_item_id: row.work_item_id,
+      lane_key: row.lane_key,
+      display_label: row.display_label,
+    }),
+  )
+
+  const goals: ProjectGoalPlaceholder[] = (goalsRes.data ?? []).map(
+    (g: { id: string; title: string; status: string }) => ({
+      id: g.id,
+      title: g.title,
+      status: g.status,
+    }),
+  )
+
+  const costLaneItems: CostLaneItem[] = (costRes.data ?? []).map(
+    (b: {
+      id: string
+      name: string | null
+      planned_amount: number | string | null
+      planned_currency: string | null
+    }) => ({
+      id: b.id,
+      label: b.name ?? "Budget-Posten",
+      // budget_items.planned_amount is numeric (string in JSON); we
+      // present the planned amount as cents for `CostLaneItem.amount_cents`
+      // by multiplying by 100 once parsed. Actual spent vs. planned
+      // over-budget detection requires a join with budget_postings and
+      // is deferred to a follow-up slice (PROJ-22 integration).
+      amount_cents:
+        b.planned_amount == null
+          ? null
+          : Math.round(Number(b.planned_amount) * 100),
+      currency: b.planned_currency,
+      over_budget: false,
+    }),
+  )
+
+  // PROJ-17 tenant_settings.active_modules is a JSONB array of module
+  // keys ("risks", "decisions", "ai_proposals", "budget", "output_rendering", …).
+  // Treat budget as enabled when the array contains "budget" OR when
+  // the tenant has at least one active budget item (legacy tenants
+  // without an explicit toggle).
+  const activeModules = tenantRes.data?.active_modules as string[] | null
+  const budgetModuleEnabled =
+    activeModules == null
+      ? args.budgetItemsCount > 0
+      : Array.isArray(activeModules) && activeModules.includes("budget")
+
+  const layout_hints: TrajectoryLayoutHints = {
+    method: args.method,
+    hybrid:
+      sprints.length > 0 &&
+      args.phasesData.length > 0 &&
+      (args.method === null || args.method.startsWith("hybrid")),
+    phases_order: [...args.phasesData]
+      .sort(
+        (a, b) =>
+          (a.sequence_number ?? Infinity) - (b.sequence_number ?? Infinity),
+      )
+      .map((p) => p.id),
+    sprints_order: sprints.map((s) => s.id),
+    budget_module_enabled: budgetModuleEnabled,
+  }
+
+  return {
+    layout_hints,
+    sprints,
+    epics,
+    compliance_lanes: complianceLanes,
+    cost_lane_items: costLaneItems,
+    goals,
   }
 }
 

@@ -74,4 +74,74 @@ export interface ProjectGraphSnapshot {
     by_node_kind: Partial<Record<GraphNodeKind, number>>
     by_edge_kind: Partial<Record<GraphEdgeKind, number>>
   }
+  /**
+   * PROJ-65 ε.1 (L13) — opt-in trajectory extension. Present only when
+   * the API is called with `?include=trajectory`. Default-PROJ-58 clients
+   * never see this field.
+   */
+  trajectory?: TrajectoryExtension
+}
+
+/**
+ * PROJ-65 ε.1 — extension payload appended to ProjectGraphSnapshot.
+ * Holds method/hybrid hints, sprint + epic structure, compliance lanes,
+ * cost lane items, and (placeholder) project goals so the FE
+ * `layoutTrajectory` can render the path without a second fetch.
+ */
+export interface TrajectoryExtension {
+  layout_hints: TrajectoryLayoutHints
+  sprints: TrajectorySprint[]
+  epics: TrajectoryEpic[]
+  compliance_lanes: ComplianceLane[]
+  cost_lane_items: CostLaneItem[]
+  goals: ProjectGoalPlaceholder[]
+}
+
+export interface TrajectoryLayoutHints {
+  /** Project method from PROJ-6 catalog (waterfall / scrum / safe / hybrid-*). */
+  method: string | null
+  /** True when the project uses a mixed method (phases + sprints). */
+  hybrid: boolean
+  /** Phase ids in display order (sequence_number ascending). */
+  phases_order: string[]
+  /** Sprint ids in display order (start_date ascending). */
+  sprints_order: string[]
+  /** Tenant-level flag — controls whether the cost-sidetrack-lane renders at all. */
+  budget_module_enabled: boolean
+}
+
+export interface TrajectorySprint {
+  id: string
+  name: string
+  start_date: string | null
+  end_date: string | null
+  state: string | null
+}
+
+export interface TrajectoryEpic {
+  id: string
+  title: string
+  status: string | null
+  /** Sprint ids that contain at least one story under this epic. */
+  sprint_ids: string[]
+}
+
+export interface ComplianceLane {
+  work_item_id: string
+  lane_key: string
+  display_label: string | null
+}
+
+export interface CostLaneItem {
+  id: string
+  label: string
+  amount_cents: number | null
+  currency: string | null
+  over_budget: boolean
+}
+
+export interface ProjectGoalPlaceholder {
+  id: string
+  title: string
+  status: string
 }
