@@ -22,7 +22,9 @@ import type {
   TrajectoryLane,
   TrajectoryLayout,
 } from "@/lib/project-graph/trajectory-layout"
+import type { NodeAssignee } from "@/lib/project-graph/types"
 
+import { StakeholderMarker } from "./stakeholder/stakeholder-marker"
 import {
   AIRecommendationBadge,
   RiskDecisionBadgeGroup,
@@ -39,6 +41,17 @@ interface TrajectoryGraph2DProps {
   /** True when current user has project-editor permission — controls
    *  whether the cost-lane empty-state shows the create CTA. */
   canEdit?: boolean
+  /**
+   * PROJ-65 ε.2 — assignees per work_item node. Used to render
+   * stakeholder markers in the bottom-right slot of work-item nodes
+   * (FE-1). Map key is the snapshot source id (e.g. `wi-uuid`); the
+   * positioned node id is `work_item:wi-uuid`.
+   */
+  assigneesByWorkItem?: Map<string, NodeAssignee[]>
+  onOpenStakeholders?: (
+    workItemId: string,
+    focusAssigneeId: string | null,
+  ) => void
 }
 
 const LANE_LABEL_WIDTH = 56
@@ -62,6 +75,8 @@ export function TrajectoryGraph2D({
   onOpenAI,
   projectId,
   canEdit = true,
+  assigneesByWorkItem,
+  onOpenStakeholders,
 }: TrajectoryGraph2DProps) {
   const reducedMotion = useReducedMotion()
   const motionDuration = reducedMotion ? 0 : 0.2
@@ -342,6 +357,40 @@ export function TrajectoryGraph2D({
             </React.Fragment>
           )
         })}
+
+        {/* PROJ-65 ε.2 — StakeholderMarker overlay (bottom-right slot
+            of work_item nodes). Only renders when assignees are available
+            and the node is a work_item (not phase/sprint/goal). */}
+        {assigneesByWorkItem &&
+          layout.nodes
+            .filter((n) => n.kind === "work_item")
+            .map((node) => {
+              const assignees =
+                assigneesByWorkItem.get(node.source_id) ?? []
+              if (assignees.length === 0) return null
+              return (
+                <div
+                  key={`marker-${node.id}`}
+                  className="absolute"
+                  style={{
+                    left: node.x + node.width / 2 - 8,
+                    top: node.y + node.height / 2 - 10,
+                  }}
+                  data-testid="stakeholder-marker-anchor"
+                >
+                  <StakeholderMarker
+                    assignees={assignees}
+                    maxVisible={3}
+                    onClickAssignee={(a) =>
+                      onOpenStakeholders?.(node.source_id, a.resource_id)
+                    }
+                    onClickOverflow={() =>
+                      onOpenStakeholders?.(node.source_id, null)
+                    }
+                  />
+                </div>
+              )
+            })}
 
         {/* Cost-lane empty-state CTA (HTML overlay so it can be a real button) */}
         {projectId &&

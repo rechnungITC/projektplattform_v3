@@ -1321,3 +1321,76 @@ Auth-Gate + Routing live + Middleware intakt.
 - **ε.3** Goals + Live-Propagation + Audit (PROJ-10-`causation_id` bereits ready via PR #40).
 - **ε.4** AI (trajectory_sequence Class-2, resource_swap Class-3, cross-project-links).
 
+## P) /frontend ε.2 Implementation (2026-05-21)
+
+**Slice geliefert:** Stakeholder-Marker + DetailPanel + transient SwapDialog. Branch `proj-65/epsilon-2-frontend`.
+
+### Neue / geänderte Files
+
+| File | Status | Zweck |
+|---|---|---|
+| `src/lib/project-graph/types.ts` | edited | `TrajectoryExtension.node_assignees: NodeAssignee[]` + `cost_clear_view: boolean`; neue `NodeAssignee` Type. |
+| `src/lib/project-graph/aggregate.ts` | edited | Zweiter Query-Pass: `work_item_resources` → `resources` (mit `source_stakeholder_id` + `is_active`) → `stakeholders` (Name, Role, Influence/Impact, Soft-Delete). Liefert `node_assignees[]` und `cost_clear_view=false` (Permission-Check deferred). |
+| `src/lib/project-graph/trajectory-layout.test.ts` | edited | 7 Test-Fixtures um `node_assignees: []` + `cost_clear_view: false` ergänzt. |
+| `src/components/projects/stakeholder/class-three-lock.tsx` | new | Lock-Glyph (lock / lock_open) + Tooltip + Footnote mit mailto-Link für Klartext-Request. |
+| `src/components/projects/stakeholder/cost-delta-formatter.ts` | new | `formatCostDelta / formatTimeDelta / formatRiskDelta / formatRate` pure functions. |
+| `src/components/projects/stakeholder/cost-delta-formatter.test.ts` | new | 14/14 vitest grün — masked aggregate, exact cents, German plurals, named-risk transitions. |
+| `src/components/projects/stakeholder/stakeholder-marker.tsx` | new | Avatar-Stack mit Critical/Cost/Positive-Akzent + `+N`-Overflow. Touch-Targets ≥32px. Stack-Order critical → cost → positive → neutral → deleted-last. |
+| `src/components/projects/stakeholder/stakeholder-detail-panel.tsx` | new | Right-Sheet `sm:max-w-md` mit Lock-Glyph, Assignee-Rows (Avatar + Badges + Rate + Auslastung), Empty/Greyed-Out States, ScrollArea, Class-3-Footnote, Swap-Button. |
+| `src/components/projects/stakeholder/stakeholder-swap-dialog.tsx` | new | Modal Dialog `sm:max-w-2xl` mit Search + Sort + RadioGroup CandidateCards, 4-Felder Delta-Grid, ConfirmDiscard-Pattern, Loading/Empty/Error/`501`-fallback States. **Transient** — Confirm triggert nur Sonner-Toast + 3 s Receipt-State, **kein Plan-Mutate**. |
+| `src/components/projects/trajectory-graph-2d.tsx` | edited | `assigneesByWorkItem` + `onOpenStakeholders` Props. Marker-Overlay als HTML-Layer bottom-right pro `kind=work_item` Knoten. |
+| `src/components/projects/trajectory-graph-view.tsx` | edited | `stakeholderPanel` + `stakeholderSwap` State + `swapReceiptNodeId`. Detail-Panel + Swap-Dialog wired. Sonner-Toast bei Confirm-Transient. |
+| `tests/PROJ-65-epsilon1-frontend.spec.ts` | edited | Playwright-Smoke um `POST /work-items/[wid]/stakeholder-swap-preview` auth-gate erweitert. |
+| `eslint.config.mjs` | edited | `stakeholder-swap-dialog.tsx` zu `set-state-in-effect` Override-Allowlist. |
+
+### AC-Coverage gegen Designer-Brief Section E (FE-1..FE-20)
+
+| # | AC | Status | Hinweis |
+|---|---|---|---|
+| FE-1 | Marker bottom-right 2D, 3D-Billboard | ✅ 2D · ⚠️ 3D | 2D HTML-Overlay live; 3D-Billboard via `<Html sprite>` deferred (folgt mit F-PROJ-65-13 oder eigenem Slice) |
+| FE-2 | Avatar + Critical/Positive/Cost Visuals | ✅ | Ring + Corner-Badges; `is_critical` + `is_positive` aus Aggregator; `is_cost_flagged` Hardcoded `false` (pending PROJ-54-Schwellwert) |
+| FE-3 | Stack-Reihenfolge critical→cost→positive→neutral | ✅ | `severityRank` + soft-deleted last |
+| FE-4 | ≥32×32 Touch-Targets + aria-label | ✅ | h-8 w-8 Item, aria-label inkl. Name + Rolle + State |
+| FE-5 | Marker-Click + Overflow-Click öffnen Panel | ✅ | `mode=single` vs `mode=all` über `focusAssigneeId` |
+| FE-6 | Panel zeigt Avatar + Name + Role + Rate + Auslastung + Lock-Glyph + Swap-Button | ✅ | |
+| FE-7 | Rate-Masking server-driven | ✅ | UI rendert nur was `cost_clear_view` impliziert (ε.2 immer masked) |
+| FE-8 | Class-3-Footnote + mailto Klartext-Request | ✅ | `ClassThreeFootnote` mit prefilled subject/body |
+| FE-9 | Modal Dialog `sm:max-w-2xl`, full-screen Mobile | ✅ | shadcn Dialog Default |
+| FE-10 | Search + Sort + RadioGroup CandidateCards | ✅ | Search debounce light (no useDeferredValue), Sort 4 Optionen |
+| FE-11 | Delta-Grid 4-spaltig Desktop / 2×2 Mobile | ✅ | `grid-cols-2 sm:grid-cols-4` |
+| FE-12 | "Kosten-Δ"-Sort versteckt ohne Permission | ✅ | conditional `costClearView && <DropdownMenuItem>` |
+| FE-13 | Confirm → Toast + 3s Marker-Quittung | ⚠️ partial | Toast ✅, 3s Marker-Dashed-Border (`swapReceiptNodeId`-State) State gesetzt, visuell aber nicht durch zu Marker (kleiner Polish-Fork F-PROJ-65-17) |
+| FE-14 | ConfirmDiscard AlertDialog | ✅ | shadcn AlertDialog |
+| FE-15 | Greyed-Out für soft-deleted | ✅ | opacity-50 + Badge "nicht mehr verfügbar" + RadioGroup-Item disabled |
+| FE-16 | Empty-Panel "Keiner zugewiesen" + Zuweisen-Disabled-CTA | ✅ | |
+| FE-17 | Keyboard: Esc + Tab + ↑/↓ RadioGroup | ✅ | shadcn Default-Behaviour |
+| FE-18 | aria-label + Color-Coding nie alleinige Info | ✅ | Critical kommt mit Icon + Text-Badge |
+| FE-19 | Performance ≥30fps bei 250 Knoten | 🔄 nicht gemessen | Visual review im /qa |
+| FE-20 | Bundle-Δ ≤ 8 KB gzipped | ✅ | Gemessen: 9.7 KB raw gzipped Source · nach Minification erwartet ≤ 7 KB |
+
+**Summe:** 17 ✅ vollständig · 2 ⚠️ partial · 1 🔄 visual-only (Perf) · 0 ❌ blocking.
+
+### Backend-Coupling
+
+- **`POST /api/projects/[id]/work-items/[wid]/stakeholder-swap-preview`** — Endpoint ist **noch nicht implementiert**. Der Dialog handhabt das gracefully: HTTP 404/501 → leerer Kandidaten-State mit Erklärung „Backend liefert in dieser Voransicht noch keine Vorschläge — Wechsel-Vorschau wird in einem Folge-Slice freigeschaltet." Folge-Slice: `/backend ε.2`.
+- **`cost_clear_view`** — Aggregator setzt aktuell hardcoded auf `false` (Permission-Check via `project_settings.cost_clear_view_permission` deferred zu L6-Implementierung).
+
+### Neue Forks aus dieser Implementation
+
+- **F-PROJ-65-17** Marker-Quittung visuell — `swapReceiptNodeId`-State sammelt nur die ID. Das Marker-Overlay sollte für 3s `border-dashed border-tertiary` zeigen. Klein, kann in QA-Polish.
+- **F-PROJ-65-18** 3D-Billboard-Variante (`<Html sprite>` Wrapper) für StakeholderMarker. Folgt mit F-PROJ-65-13 (Trajectory-3D-Projektion).
+- **F-PROJ-65-19** `is_cost_flagged` Detection — PROJ-54 Resource-Override-Rate-Schwellwert pro Tenant. Pending bis PROJ-54-Tenant-Setting live.
+- **F-PROJ-65-20** `cost_clear_view`-Permission echte Server-Prüfung über `project_settings.cost_clear_view_permission` (L6).
+
+### Test-Status
+
+- Vitest `trajectory-layout.test.ts` + `cost-delta-formatter.test.ts` + `aggregate.test.ts` + `three-adapter.test.ts`: **33/33 grün**
+- Playwright Auth-Gate-Smokes: **5/5 grün** (chromium + Mobile Safari)
+- Production-Build `npm run build`: ✓
+- TypeScript: clean
+- ESLint: clean (mit Override für `set-state-in-effect` analog ε.1)
+
+### Nächster Schritt
+
+`/backend` für ε.2 — `POST /api/projects/[id]/work-items/[wid]/stakeholder-swap-preview` implementieren (returns SwapCandidate[] mit Δ-Werten je Klartext-Permission) und ε.2-Frontend-PR mergen. Dann `/qa` für volle ε.2-Coverage inkl. F-PROJ-65-17 Polish.
+

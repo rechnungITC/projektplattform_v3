@@ -33,6 +33,7 @@ import type {
   GraphEdgeKind,
   GraphNode,
   GraphNodeKind,
+  NodeAssignee,
   ProjectGoalPlaceholder,
   ProjectGraphSnapshot,
   TrajectoryEpic,
@@ -542,52 +543,72 @@ async function resolveTrajectoryExtension(
     .filter((w) => w.kind === "epic")
     .map((w) => w.id)
 
-  const [sprintsRes, lanesRes, goalsRes, costRes, tenantRes, sprintWorkRes] =
-    await Promise.all([
-      args.supabase
-        .from("sprints")
-        .select("id, name, start_date, end_date, state")
-        .eq("project_id", args.projectId)
-        .order("start_date", { ascending: true, nullsFirst: false })
-        .limit(NODE_CAP_PER_KIND),
-      args.supabase
-        .from("work_item_compliance_lanes")
-        .select("work_item_id, lane_key, display_label")
-        .eq("tenant_id", args.tenantId)
-        .in(
-          "work_item_id",
-          args.workItemsData.map((w) => w.id),
-        )
-        .limit(NODE_CAP_PER_KIND * 4),
-      args.supabase
-        .from("project_goals")
-        .select("id, title, status")
-        .eq("project_id", args.projectId)
-        .is("deleted_at", null)
-        .order("sort_order", { ascending: true })
-        .limit(NODE_CAP_PER_KIND),
-      args.supabase
-        .from("budget_items")
-        .select("id, name, planned_amount, planned_currency")
-        .eq("project_id", args.projectId)
-        .eq("is_active", true)
-        .order("name", { ascending: true })
-        .limit(NODE_CAP_PER_KIND),
-      args.supabase
-        .from("tenant_settings")
-        .select("active_modules")
-        .eq("tenant_id", args.tenantId)
-        .maybeSingle(),
-      epicIds.length > 0
-        ? args.supabase
-            .from("work_items")
-            .select("id, parent_id, sprint_id")
-            .eq("project_id", args.projectId)
-            .eq("is_deleted", false)
-            .in("parent_id", epicIds)
-            .not("sprint_id", "is", null)
-        : Promise.resolve({ data: [] }),
-    ])
+  const [
+    sprintsRes,
+    lanesRes,
+    goalsRes,
+    costRes,
+    tenantRes,
+    sprintWorkRes,
+    assigneesRes,
+  ] = await Promise.all([
+    args.supabase
+      .from("sprints")
+      .select("id, name, start_date, end_date, state")
+      .eq("project_id", args.projectId)
+      .order("start_date", { ascending: true, nullsFirst: false })
+      .limit(NODE_CAP_PER_KIND),
+    args.supabase
+      .from("work_item_compliance_lanes")
+      .select("work_item_id, lane_key, display_label")
+      .eq("tenant_id", args.tenantId)
+      .in(
+        "work_item_id",
+        args.workItemsData.map((w) => w.id),
+      )
+      .limit(NODE_CAP_PER_KIND * 4),
+    args.supabase
+      .from("project_goals")
+      .select("id, title, status")
+      .eq("project_id", args.projectId)
+      .is("deleted_at", null)
+      .order("sort_order", { ascending: true })
+      .limit(NODE_CAP_PER_KIND),
+    args.supabase
+      .from("budget_items")
+      .select("id, name, planned_amount, planned_currency")
+      .eq("project_id", args.projectId)
+      .eq("is_active", true)
+      .order("name", { ascending: true })
+      .limit(NODE_CAP_PER_KIND),
+    args.supabase
+      .from("tenant_settings")
+      .select("active_modules")
+      .eq("tenant_id", args.tenantId)
+      .maybeSingle(),
+    epicIds.length > 0
+      ? args.supabase
+          .from("work_items")
+          .select("id, parent_id, sprint_id")
+          .eq("project_id", args.projectId)
+          .eq("is_deleted", false)
+          .in("parent_id", epicIds)
+          .not("sprint_id", "is", null)
+      : Promise.resolve({ data: [] }),
+    // PROJ-65 ε.2 — assignees per work_item via PROJ-11 work_item_resources
+    // joined to resources (display_name, kind, source_stakeholder_id).
+    // Stakeholder details (name, role, is_active) are looked up in a
+    // second pass below to avoid Supabase nested-select restrictions.
+    args.supabase
+      .from("work_item_resources")
+      .select("work_item_id, resource_id, allocation_pct")
+      .eq("tenant_id", args.tenantId)
+      .in(
+        "work_item_id",
+        args.workItemsData.map((w) => w.id),
+      )
+      .limit(NODE_CAP_PER_KIND * 4),
+  ])
 
   const sprints: TrajectorySprint[] = (sprintsRes.data ?? []).map(
     (s: {
@@ -694,6 +715,106 @@ async function resolveTrajectoryExtension(
     budget_module_enabled: budgetModuleEnabled,
   }
 
+  // PROJ-65 ε.2 — enrich assignees with stakeholder / resource details.
+  const resourceIds = Array.from(
+    new Set(
+      (assigneesRes.data ?? []).map(
+        (r: { resource_id: string }) => r.resource_id,
+      ),
+    ),
+  )
+  let nodeAssignees: NodeAssignee[] = []
+  if (resourceIds.length > 0) {
+    const resourcesRes = await args.supabase
+      .from("resources")
+      .select(
+        "id, display_name, kind, source_stakeholder_id, linked_user_id, is_active",
+      )
+      .eq("tenant_id", args.tenantId)
+      .in("id", resourceIds)
+      .limit(NODE_CAP_PER_KIND * 4)
+
+    const resources = (resourcesRes.data ?? []) as Array<{
+      id: string
+      display_name: string
+      kind: string | null
+      source_stakeholder_id: string | null
+      linked_user_id: string | null
+      is_active: boolean
+    }>
+    const stakeholderIds = resources
+      .map((r) => r.source_stakeholder_id)
+      .filter((v): v is string => v != null)
+    const stakeholdersDetailRes =
+      stakeholderIds.length > 0
+        ? await args.supabase
+            .from("stakeholders")
+            .select("id, name, role_key, influence, impact, is_active")
+            .eq("tenant_id", args.tenantId)
+            .in("id", stakeholderIds)
+            .limit(NODE_CAP_PER_KIND * 4)
+        : { data: [] }
+
+    const stakeholdersById = new Map(
+      ((stakeholdersDetailRes.data ?? []) as Array<{
+        id: string
+        name: string
+        role_key: string | null
+        influence: string | null
+        impact: string | null
+        is_active: boolean
+      }>).map((s) => [s.id, s] as const),
+    )
+    const resourcesById = new Map(resources.map((r) => [r.id, r] as const))
+
+    nodeAssignees = (assigneesRes.data ?? []).map(
+      (row: {
+        work_item_id: string
+        resource_id: string
+        allocation_pct: number | string | null
+      }) => {
+        const resource = resourcesById.get(row.resource_id)
+        const stakeholder = resource?.source_stakeholder_id
+          ? stakeholdersById.get(resource.source_stakeholder_id) ?? null
+          : null
+        const critical =
+          stakeholder?.influence === "high" || stakeholder?.impact === "high"
+        const resourceInactive = resource != null && resource.is_active === false
+        const stakeholderInactive =
+          stakeholder != null && stakeholder.is_active === false
+        return {
+          work_item_id: row.work_item_id,
+          resource_id: row.resource_id,
+          stakeholder_id: stakeholder?.id ?? null,
+          name:
+            stakeholder?.name ?? resource?.display_name ?? "Unbekannt",
+          role: stakeholder?.role_key ?? resource?.kind ?? null,
+          kind: resource?.kind ?? null,
+          is_critical: Boolean(critical),
+          // ε.2 ships without sentiment-based positive flag; the field
+          // is present so ε.3 / PROJ-35 integration can fill it later.
+          is_positive: false,
+          // Cost-flag detection requires PROJ-54 resource override rates;
+          // hold at false in ε.2, raise in a follow-up slice once the
+          // tenant-cost-threshold is wired.
+          is_cost_flagged: false,
+          allocation_pct:
+            row.allocation_pct == null ? null : Number(row.allocation_pct),
+          deleted_at:
+            resourceInactive || stakeholderInactive
+              ? new Date().toISOString()
+              : null,
+        }
+      },
+    )
+  }
+
+  // PROJ-65 ε.2 — Class-3 cost-clear-view permission.
+  // Project-settings table is not yet provisioned (L6 deferred);
+  // fall back to "false" so the FE renders masked by default and
+  // only opens up when a real permission check lands in /backend.
+  const costClearView = false
+
   return {
     layout_hints,
     sprints,
@@ -701,6 +822,8 @@ async function resolveTrajectoryExtension(
     compliance_lanes: complianceLanes,
     cost_lane_items: costLaneItems,
     goals,
+    node_assignees: nodeAssignees,
+    cost_clear_view: costClearView,
   }
 }
 

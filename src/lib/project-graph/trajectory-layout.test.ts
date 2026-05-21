@@ -54,6 +54,8 @@ describe("layoutTrajectory", () => {
           compliance_lanes: [],
           cost_lane_items: [],
           goals: [],
+          node_assignees: [],
+          cost_clear_view: false,
         },
       }),
     )
@@ -99,6 +101,8 @@ describe("layoutTrajectory", () => {
           compliance_lanes: [],
           cost_lane_items: [],
           goals: [],
+          node_assignees: [],
+          cost_clear_view: false,
         },
       }),
     )
@@ -134,6 +138,8 @@ describe("layoutTrajectory", () => {
           compliance_lanes: [],
           cost_lane_items: [],
           goals: [],
+          node_assignees: [],
+          cost_clear_view: false,
         },
       }),
     )
@@ -167,6 +173,8 @@ describe("layoutTrajectory", () => {
           compliance_lanes: [],
           cost_lane_items: [],
           goals: [],
+          node_assignees: [],
+          cost_clear_view: false,
         },
       }),
     )
@@ -207,6 +215,8 @@ describe("layoutTrajectory", () => {
             },
           ],
           goals: [],
+          node_assignees: [],
+          cost_clear_view: false,
         },
       }),
     )
@@ -252,6 +262,8 @@ describe("layoutTrajectory", () => {
           ],
           cost_lane_items: [],
           goals: [],
+          node_assignees: [],
+          cost_clear_view: false,
         },
       }),
       { compliance_lane_order: ["dsgvo", "iso27001"] },
@@ -342,6 +354,8 @@ describe("layoutTrajectory", () => {
           compliance_lanes: [],
           cost_lane_items: [],
           goals: [],
+          node_assignees: [],
+          cost_clear_view: false,
         },
       }),
     )
@@ -403,6 +417,8 @@ describe("layoutTrajectory", () => {
           compliance_lanes: [],
           cost_lane_items: [],
           goals: [],
+          node_assignees: [],
+          cost_clear_view: false,
         },
       }),
     )
