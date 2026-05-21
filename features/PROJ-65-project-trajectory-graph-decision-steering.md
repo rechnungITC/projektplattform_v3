@@ -1613,3 +1613,125 @@ Wie nach R.10:
 - **ε.3** Goals + Live-Propagation + Audit (PROJ-10-`causation_id` ready via PR #40; `project_goals` Tabelle live aus ε.1)
 - **ε.4** AI (trajectory_sequence Class-2, resource_swap Class-3, cross-project-links)
 
+## T) /architecture ε.3 Pass (2026-05-21)
+
+**Scope:** Story 65-3 (Goal-Knoten + Zielnähe) + Story 65-7 (Live-Propagation + Diff + Undo + Audit). Cut in **zwei Sub-Slices**:
+
+- **ε.3a Goals + Green-Path** (~2 PT) — Story 65-3 alleinstehend, kein Plan-Mutate-Risiko
+- **ε.3b Plan-Mutate + Diff + Undo** (~3 PT) — Story 65-7, benötigt CIA-Review vor /backend
+
+### Neue Locks L15–L20 (User-bestätigt 2026-05-21)
+
+| Lock | Entscheidung | Begründung |
+|---|---|---|
+| **L15 — Slice-Cut ε.3a / ε.3b** | ε.3a (Goals + Green-Path) zuerst alleinstehend; ε.3b (Plan-Mutate) als separate Phase. | Goals + Green-Path haben kein Mutation-Risiko und können sofort live. Plan-Mutate ist irreversibler Domain-Eingriff und braucht CIA-Review + Pilot-Phase. Sub-Cut reduziert Blast-Radius. |
+| **L16 — Green-Path server-side im Aggregator** | `is_on_green_path` Flag pro `GraphNode.attributes`, berechnet im trajectory-extension Branch des Aggregators via BFS rückwärts vom Goal entlang `depends_on` + `belongs_to`. Sidetracks excluded (Story 65-3 AC-5). | Konsistent mit ε.1 Critical-Path-Pattern (`is_critical` ist auch server-side via PROJ-43). Bei N>100 Knoten + Hybrid-Hopping keine Client-CPU-Kosten, Cache-friendly über Snapshot-Caching. |
+| **L17 — Diff-Ansicht als Modal Dialog** | Focus-Trap + Backdrop-Dim (shadcn Dialog `sm:max-w-2xl`). Tabelle: vorher / Δ / nachher pro propagiertem Knoten. CTA "Übernehmen" (mit 30-s-Undo-Toast) / "Verwerfen". Class-3-maskierte Cells mit `*`-Indikator. Mobile full-screen. | Klar fokussierte Entscheidung; Class-3-Maskierung sichtbar und nicht im Graph versteckt. Konsistent mit ε.2 SwapDialog-Pattern. |
+| **L18 — Optimistic-Lock via `updated_at`** | Mutation-Request enthält `if_updated_at` pro betroffenem Knoten. Server prüft `WHERE updated_at = $if_updated_at` in einer Transaktion; bei 0 Rows → HTTP 409 Conflict mit aktuellem Snapshot-Hint. Reuse existing pattern aus PROJ-9 work-items + PROJ-19 phases. | Pro-Knoten-Lock erlaubt parallele Edits auf unkritischen Knoten (besser als Snapshot-Generation-Token). LWW akzeptiert nicht — Plan-Mutate ist Domain-kritisch. |
+| **L19 — Plan-Mutate-Audit via PROJ-10 + `causation_id`** | Eine atomare Mutation = eine `causation_id` (UUID) auf allen betroffenen `audit_log_entries`-Rows. Reverse-Audit-Entry für Undo mit gleichem `causation_id` + `change_kind='undo'`. Reuse PROJ-10 `record_audit_changes` Trigger (bereits via PR #40 ready). | Spec L8 + CIA P1.3 erledigt. Keine zweite Audit-Tabelle. Undo ist Reverse-Apply der gleichen Mutation in der Audit-Historie. |
+| **L20 — Goal-CRUD-UI inline im GoalDetailPanel** | Goal-Edit-Form als embedded shadcn Form im DetailPanel (nicht eigener Route/Modal). Create-Goal über separaten kleinen Dialog vom Sidetrack-Toolbar oder via Page-Header-Action. Source-Ref-Wizard (Phase/Milestone als Auto-Suggest) als Dropdown im Form. | Inline-Edit entspricht modernen PM-Tools (Jira Goal Inline-Editor, monday.com Item Inline-Form). Keine zusätzliche Route nötig — Goal-Detail-Surface ist die existierende `/projects/[id]/graph`-Page. |
+
+### ε.3a Komponenten-Struktur
+
+```
+TrajectoryGraphView (existing)
+├── TrajectoryGraph2D (existing)
+│   ├── GoalNode (existing pentagon ε.1, jetzt voll funktional)
+│   ├── PathEdges (existing, mit grüne-Pfad-Glow erweitert)
+│   └── GreenPathOverlay     NEU — Glow + Edge-Tinting für is_on_green_path-Knoten
+├── GoalDetailPanel          NEU — right-Sheet bei Goal-Klick
+│   ├── GoalEditForm (inline)
+│   │   ├── Title + Description + SuccessCriteria + TargetDate Inputs
+│   │   ├── SourceRefDropdown — wählt Phase/Milestone als Auto-Suggest-Quelle
+│   │   ├── StatusDropdown — draft / active / achieved / abandoned
+│   │   └── ParentGoalDropdown — für Teilziele
+│   ├── GoalStatsCard
+│   │   ├── Offene Pakete auf grünem Pfad (Count + Liste)
+│   │   ├── Geschätzter Restaufwand (PT-Summe, masked wenn Class-3)
+│   │   └── Kritische Knoten auf grünem Pfad (Count + Click-to-Focus)
+│   ├── DetachedGoalBadge — wenn Source-Phase/Milestone gelöscht (L6)
+│   └── DeleteGoalButton (Confirm-Dialog)
+└── GoalCreateDialog         NEU — Modal Dialog für neue Goals
+    └── (gleiches Form wie GoalEditForm, ohne Stats)
+```
+
+### ε.3a API-Surface
+
+Existing aus ε.1 Backend (kein neues Endpoint nötig):
+
+- `GET /api/projects/[id]/goals` (existing)
+- `POST /api/projects/[id]/goals`
+- `PATCH /api/projects/[id]/goals/[gid]`
+- `DELETE /api/projects/[id]/goals/[gid]`
+
+Snapshot-Erweiterung (ε.1 Aggregator) bekommt `is_on_green_path` Flag in `node.attributes` — keine neue Route, nur Aggregator-Branch-Erweiterung.
+
+### ε.3b Komponenten-Struktur (Vorausschau)
+
+```
+TrajectoryGraphView
+├── TrajectoryGraph2D
+│   ├── (existing nodes)
+│   └── PlanMutateDragHandle  NEU — Drag-Handle an Sprint-/Phase-Knoten
+├── PlanMutateDialog          NEU — Modal Dialog mit Diff-Tabelle
+│   ├── DiffTable (vorher | Δ | nachher pro Knoten)
+│   ├── MaskedValueIndicator (* Klartext anfordern)
+│   ├── CommitButton + UndoToast (30 s, optimistic)
+│   └── ConfirmDiscard AlertDialog
+└── LivePropagationToast      NEU — Sonner-Toast nach Commit, 30-s-Undo
+```
+
+### ε.3b API-Surface
+
+- `POST /api/projects/[id]/plan-mutate` — atomare Mutation-Liste, akzeptiert `if_updated_at` pro Knoten, returns Diff-Response oder 409 Conflict
+- `POST /api/projects/[id]/plan-mutate/undo` — Reverse-Apply via `causation_id`, returns Diff-Response
+
+### Daten-Modell-Erweiterungen
+
+**Keine Schema-Migration in ε.3a** — `project_goals` Tabelle aus ε.1 Backend reicht aus.
+
+**ε.3b braucht ggf. Migration für** (zu klären in eigener /architecture-Pass für ε.3b):
+
+- `audit_log_entries.causation_id` — bereits via PR #40 ready
+- Plan-Mutate-Permission auf Projekt-Setting oder Rollen-RBAC — wird in ε.3b-Lock entschieden
+
+### Geschlossene Open-Questions
+
+| Story | Open-Question | Lock |
+|---|---|---|
+| 65-3 | "Wie wird 'zahlt aufs Ziel ein' formal berechnet?" | L16 — BFS rückwärts vom Goal via `depends_on` + `belongs_to`; Sidetracks excluded |
+| 65-3 | "Ein Ziel pro Projekt oder mehrere?" | Mehrere via L2 + `parent_goal_id` (already locked in ε.1 backend); Multi-Goal-Display in F-PROJ-65-6 deferred |
+| 65-3 | "Goal aus Phase/Epic abgeleitet oder eigene Entität?" | L2 — eigene Entität mit optionaler Source-Ref auf Phase/Milestone |
+| 65-7 | "Frontend direkt → Domain-Tabellen oder Service-Layer?" | L17 + L18 + L19 — Service-Layer via `/plan-mutate`-Endpoint, Optimistic-Lock, PROJ-10-Audit |
+| 65-7 | "Konfliktbehandlung?" | L18 — pro-Knoten Optimistic-Lock via `updated_at` |
+| 65-7 | "Architekturkonflikt mit PROJ-58?" | Aufgelöst — PROJ-58 bleibt transient (kein Plan-Mutate); ε.3b führt expliziten Plan-Mutate-Service-Layer ein, der von PROJ-58 ungenutzt bleibt |
+
+### Aufwand (revised)
+
+| Phase | PT | Notes |
+|---|---|---|
+| ε.1 | ~8.5 PT | deployed |
+| ε.2 | ~4 PT | deployed |
+| **ε.3a** Goals + Green-Path | **~2 PT** | locked 2026-05-21 |
+| **ε.3b** Plan-Mutate + Diff + Undo | **~3 PT** | CIA-Review vor /backend |
+| ε.4 AI | ~4 PT | open |
+| **Total revised** | **~21.5 PT** | (vs. CIA original 20 PT) |
+
+### Neue Forks aus ε.3-Architecture
+
+- **F-PROJ-65-21** Goal-CRUD-Form-Validation — welche Felder sind required? Title fix, Description optional, SuccessCriteria optional? Designer-Pass für ε.3a vor /frontend.
+- **F-PROJ-65-22** Source-Ref-Wizard-UX — Dropdown vs. Auto-Suggest vs. radio. Designer-Pass für ε.3a.
+- **F-PROJ-65-23** Multi-Goal-Display bei ≥3 Teilzielen — F-PROJ-65-6 weiterhin offen, jetzt für ε.3a Designer-Pass priorisiert.
+- **F-PROJ-65-24** Plan-Mutate-Permission-Schema — projekt-setting oder rollen-rbac? CIA-Review für ε.3b.
+- **F-PROJ-65-25** Undo-Stack N-Schritte vs. Single-Step — ε.3b CIA-Review.
+- **F-PROJ-65-26** Progressive Propagation bei N>100 Knoten — ε.3b CIA-Review (AC-9 Story 65-7).
+
+### CIA-Trigger-Check
+
+- ε.3a: keine neue Technologie, kein architekturelles Pattern-Switch — CIA **optional**.
+- ε.3b: irreversibler Domain-Eingriff, Optimistic-Lock-Pattern auf neuer Surface, Multi-Knoten-Transaction — CIA **mandatory** vor /backend-Start.
+
+### Handoff
+
+Nächster Schritt: **`/designer` für ε.3a Frontend-Brief** — entscheidet F-PROJ-65-21/-22/-23 (Goal-Form-Layout, Source-Ref-Wizard, Multi-Goal-Display, Green-Path-Glow-Visuals, GoalStatsCard-Layout). Danach `/frontend` für ε.3a; parallel `/backend` für Aggregator-Branch `is_on_green_path`. ε.3b startet nach ε.3a-Pilot.
+
