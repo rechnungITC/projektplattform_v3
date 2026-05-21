@@ -98,7 +98,7 @@ export async function resolveProjectGraph(
     args.supabase
       .from("work_items")
       .select(
-        "id, kind, title, status, parent_id, phase_id, milestone_id, story_points, is_deleted",
+        "id, kind, title, status, parent_id, phase_id, milestone_id, is_deleted",
       )
       .eq("project_id", args.projectId)
       .eq("is_deleted", false)
@@ -250,7 +250,6 @@ export async function resolveProjectGraph(
     status: WorkItemStatus
     parent_id: string | null
     phase_id: string | null
-    story_points: number | null
   }>) {
     const wid = nodeId("work_item", w.id)
     nodes.push({
@@ -267,11 +266,11 @@ export async function resolveProjectGraph(
               ? "info"
               : "muted",
       href: href("backlog", method) + `?work_item=${w.id}`,
-      attributes: {
-        kind: w.kind,
-        status: w.status,
-        story_points: w.story_points,
-      },
+      // story_points lives in attributes JSONB (not a top-level column);
+      // future polish slice can extract via attributes->>'story_points'
+      // and aggregate remaining-effort. For ε.3a we keep estimatedEffortPt
+      // null so the FE shows em-dash.
+      attributes: { kind: w.kind, status: w.status },
     })
     const parentId = w.parent_id
       ? nodeId("work_item", w.parent_id)
