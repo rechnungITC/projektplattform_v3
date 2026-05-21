@@ -83,7 +83,7 @@ function buildSupabase(opts: {
     rpc: vi.fn(async (fn: string, args?: { p_provider?: string }) => {
       if (fn === "set_session_encryption_key")
         return { data: null, error: null }
-      if (fn === "decrypt_tenant_ai_provider") {
+      if (fn === "decrypt_tenant_ai_provider_with_key") {
         if (args?.p_provider === "anthropic")
           return opts.anthropicDecrypt ?? { data: null, error: null }
         if (args?.p_provider === "ollama")
@@ -304,7 +304,7 @@ describe("PROJ-32-c-γ priority-driven routing", () => {
       rpc: vi.fn(async (fn: string, args?: { p_provider?: string }) => {
         if (fn === "set_session_encryption_key")
           return { data: null, error: null }
-        if (fn === "decrypt_tenant_ai_provider") {
+        if (fn === "decrypt_tenant_ai_provider_with_key") {
           if (args?.p_provider === "anthropic") return ANTHROPIC
           if (args?.p_provider === "ollama") return OLLAMA
           return { data: null, error: null }
@@ -415,7 +415,7 @@ describe("PROJ-32-c-γ priority-driven routing", () => {
       rpc: vi.fn(async (fn: string, args?: { p_provider?: string }) => {
         if (fn === "set_session_encryption_key")
           return { data: null, error: null }
-        if (fn === "decrypt_tenant_ai_provider") {
+        if (fn === "decrypt_tenant_ai_provider_with_key") {
           if (args?.p_provider === "anthropic") return ANTHROPIC
           if (args?.p_provider === "ollama") return EMPTY
           return EMPTY

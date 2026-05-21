@@ -36,11 +36,11 @@ const providersChain = {
 
 const rpcMock = vi.fn(async (fn: string, _args?: unknown) => {
   if (fn === "set_session_encryption_key") return { data: null, error: null }
-  if (fn === "encrypt_tenant_secret")
+  if (fn === "encrypt_tenant_secret_with_key")
     return { data: "\\x" + "deadbeef".repeat(8), error: null }
   if (fn === "record_tenant_ai_provider_audit")
     return { data: null, error: null }
-  if (fn === "decrypt_tenant_ai_provider")
+  if (fn === "decrypt_tenant_ai_provider_with_key")
     return { data: { api_key: "sk-ant-decrypted-1234" }, error: null }
   throw new Error(`unexpected rpc ${fn}`)
 })
@@ -205,7 +205,7 @@ describe("PUT — Anthropic", () => {
     })
     expect(res.status).toBe(422)
     expect(rpcMock).not.toHaveBeenCalledWith(
-      "encrypt_tenant_secret",
+      "encrypt_tenant_secret_with_key",
       expect.anything(),
     )
   })
@@ -221,7 +221,7 @@ describe("PUT — Anthropic", () => {
     expect(body.fingerprint).toMatch(/^sk-ant-\.\.\..{4}$/)
 
     const rpcCalls = rpcMock.mock.calls.map((c) => c[0])
-    expect(rpcCalls).toContain("encrypt_tenant_secret")
+    expect(rpcCalls).toContain("encrypt_tenant_secret_with_key")
     expect(rpcCalls).toContain("record_tenant_ai_provider_audit")
     expect(providersChain.upsert).toHaveBeenCalledOnce()
 

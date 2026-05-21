@@ -67,7 +67,7 @@ export async function POST(_request: Request, ctx: Ctx) {
   if (!row)
     return apiError("not_found", "No AI provider configured.", 404)
 
-  // Bind GUC + decrypt the JSONB config.
+  // Bind GUC + decrypt the JSONB config inside one RPC transaction.
   const encryptionKey = process.env.SECRETS_ENCRYPTION_KEY
   if (!encryptionKey) {
     return apiError(
@@ -76,28 +76,19 @@ export async function POST(_request: Request, ctx: Ctx) {
       503,
     )
   }
-  const { error: gucErr } = await supabase.rpc("set_session_encryption_key", {
-    p_key: encryptionKey,
-  })
-  if (gucErr) {
-    return apiError(
-      "encryption_unavailable",
-      `set_session_encryption_key failed: ${gucErr.message}`,
-      500,
-    )
-  }
 
   const { data: configRaw, error: decErr } = await supabase.rpc(
-    "decrypt_tenant_ai_provider",
+    "decrypt_tenant_ai_provider_with_key",
     {
       p_tenant_id: tenantId,
       p_provider: provider,
+      p_key: encryptionKey,
     },
   )
   if (decErr || !configRaw) {
     return apiError(
       "decrypt_failed",
-      `decrypt_tenant_ai_provider failed: ${decErr?.message ?? "no config returned"}`,
+      `decrypt_tenant_ai_provider_with_key failed: ${decErr?.message ?? "no config returned"}`,
       500,
     )
   }
