@@ -83,7 +83,7 @@ Open the production URL and walk through:
    - `X-Content-Type-Options: nosniff` ✓
    - `Referrer-Policy: origin-when-cross-origin` ✓
    - `Strict-Transport-Security: max-age=31536000; includeSubDomains` ✓
-   - `Permissions-Policy: camera=(), microphone=(), geolocation=(), interest-cohort=()` ✓
+   - `Permissions-Policy: camera=(), microphone=(self), geolocation=(), interest-cohort=()` ✓
    - `Content-Security-Policy-Report-Only: …` ✓ (logs only, does not block)
 9. DevTools → Console: no red errors. CSP violations appear here as warnings —
    note them down. After a clean run on real traffic, flip the header name in
