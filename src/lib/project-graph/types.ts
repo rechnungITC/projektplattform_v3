@@ -181,4 +181,15 @@ export interface ProjectGoalPlaceholder {
   id: string
   title: string
   status: string
+  /** PROJ-65 ε.3a — source/parent refs from `project_goals`. */
+  source_phase_id?: string | null
+  source_milestone_id?: string | null
+  parent_goal_id?: string | null
+  target_date?: string | null
+  /**
+   * Detached flag — true when the goal's source-phase/milestone was
+   * deleted (FK ON DELETE SET NULL keeps the goal but strips the ref).
+   * Computed in the aggregator; FE renders DetachedGoalBadge.
+   */
+  is_detached?: boolean
 }

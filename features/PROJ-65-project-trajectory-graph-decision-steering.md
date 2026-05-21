@@ -1735,3 +1735,36 @@ TrajectoryGraphView
 
 Nächster Schritt: **`/designer` für ε.3a Frontend-Brief** — entscheidet F-PROJ-65-21/-22/-23 (Goal-Form-Layout, Source-Ref-Wizard, Multi-Goal-Display, Green-Path-Glow-Visuals, GoalStatsCard-Layout). Danach `/frontend` für ε.3a; parallel `/backend` für Aggregator-Branch `is_on_green_path`. ε.3b startet nach ε.3a-Pilot.
 
+## U) /designer ε.3a Frontend Brief (2026-05-21)
+
+**Brief-Doc:** [`docs/design/PROJ-65-epsilon3a-goals-greenpath-brief.md`](../docs/design/PROJ-65-epsilon3a-goals-greenpath-brief.md)
+
+### Geschlossene Forks
+
+- ✅ **F-PROJ-65-21** Goal-Form-Validation — Title required (3–200 chars), Description/SuccessCriteria optional (max 2000), Status enum mit Default `draft`, target_date Auto-Fallback auf `projects.planned_end_date`. Client-Zod + react-hook-form; Server-Constraints aus ε.1 Backend bleiben Source-of-Truth.
+- ✅ **F-PROJ-65-22** Source-Ref-Wizard — **Single Combobox** mit Section-Headern (`Command` + `CommandGroup`) statt zwei separaten Pickers. Sections: "Phasen", "Meilensteine", "Keine Quelle". Verhindert User-Confusion und folgt PROJ-57/PROJ-62 Combobox-Pattern.
+- ✅ **F-PROJ-65-23** Multi-Goal-Display — **Stack-vertikal max 3 sichtbar + `+N`-Counter** im Graph; Sub-Goals **nicht** als eigene Knoten (würde Pfad-Layout zerstören), stattdessen Counter-Badge am Parent + Inline-Tree im DetailPanel + additive Aggregation in StatsCard.
+
+### Design-Empfehlungen für PM
+
+- **F-1** Goal-Status-Auto-Flag `at_risk` als Read-Only-Compute-Flag im Aggregator (nicht in Schema persistiert) — bei `kritische Knoten > 0 AND target_date - 14d < today`.
+- **F-2** "+Teilziel"-Trigger im Parent-Panel: `parent_goal_id` vorbelegen aber editierbar lassen.
+- **F-3** Class-3-Cost-Klartext in StatsCard bleibt masked bis L20 ε.4 echt durchgeschaltet — bestätigt.
+
+### 17 MVP Acceptance Criteria im Brief
+
+Vollständig spezifiziert (siehe Brief Section "MVP acceptance criteria"). Bundle-Δ-AC: ≤ 7 KB gzipped auf `/projects/[id]/graph` (Subbudget aus L9-30 KB-Total).
+
+### Parallelisierungs-Plan
+
+| Track | Scope | Touches Files |
+|---|---|---|
+| **/backend ε.3a** | Aggregator-Erweiterung `is_on_green_path` BFS + `remaining_effort_pt` aggregation | `src/lib/project-graph/aggregate.ts` + tests |
+| **/frontend ε.3a** | GoalDetailPanel + GoalCreateDialog + SourceRefCombobox + GreenPathOverlay + Goal-Pentagon-Polish | `src/components/projects/goals/*.tsx` + `trajectory-graph-2d.tsx` |
+
+**Kein Merge-Konflikt-Risiko** — disjunkte File-Sets. Reihenfolge egal; Frontend kann mit Mock-Snapshot iterieren bis Backend mergt.
+
+### Nächster Schritt
+
+`/frontend` + `/backend` für ε.3a (parallel). Danach `/qa` für vollen ε.3a-Slice. ε.3b (Plan-Mutate) wartet auf ε.3a-Pilot + CIA-Review für L18/L19/L24/-25/-26.
+

@@ -206,6 +206,9 @@ const config = [
       // PROJ-65 ε.2: swap dialog fetches candidates on open via the
       // same effect-driven initial-load + reset-on-close pattern.
       "src/components/projects/stakeholder/stakeholder-swap-dialog.tsx",
+      // PROJ-65 ε.3a: goal-create dialog resets form/error on open-toggle
+      // via the same effect-driven pattern.
+      "src/components/projects/goals/goal-create-dialog.tsx",
     ],
     rules: {
       "react-hooks/set-state-in-effect": "off",

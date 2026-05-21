@@ -428,6 +428,47 @@ describe("layoutTrajectory", () => {
   })
 })
 
+describe("layoutTrajectory — green-path attribute pass-through", () => {
+  it("reads is_on_green_path from snapshot attributes onto positioned nodes", () => {
+    const layout = layoutTrajectory(
+      baseSnapshot({
+        nodes: [
+          {
+            id: "phase:p1",
+            kind: "phase",
+            label: "Init",
+            detail: null,
+            tone: "info",
+            href: null,
+            attributes: { sequence_number: 1, is_on_green_path: true },
+          },
+        ],
+        trajectory: {
+          layout_hints: {
+            method: "waterfall",
+            hybrid: false,
+            phases_order: ["p1"],
+            sprints_order: [],
+            budget_module_enabled: false,
+          },
+          sprints: [],
+          epics: [],
+          compliance_lanes: [],
+          cost_lane_items: [],
+          goals: [],
+          node_assignees: [],
+          cost_clear_view: false,
+        },
+      }),
+    )
+    const phase = layout.nodes.find((n) => n.kind === "phase")
+    expect(
+      (phase?.attributes as { is_on_green_path?: boolean })
+        ?.is_on_green_path,
+    ).toBe(true)
+  })
+})
+
 describe("findCycleEdges", () => {
   const edge = (
     id: string,
