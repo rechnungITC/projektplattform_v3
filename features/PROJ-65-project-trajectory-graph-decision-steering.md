@@ -1563,3 +1563,53 @@ Alle 20 FE-AC sind grün (18 vollständig + 1 deferred per Brief-Design + 1 nich
 
 **APPROVED** — 0 Critical · 0 High · 0 Medium · 0 Low offen. Production-ready für deploy.
 
+## S) Deployment Log ε.2 (2026-05-21)
+
+**Status:** ✅ **DEPLOYED**
+
+### Production-Surface
+
+- **Production URL:** https://projektplattform-v3.vercel.app
+- **Graph route:** `https://projektplattform-v3.vercel.app/projects/[id]/graph?mode=trajectory` (auth-gated)
+- **Swap-Preview API:** `https://projektplattform-v3.vercel.app/api/projects/[id]/work-items/[wid]/stakeholder-swap-preview` (auth-gated, POST)
+- **Vercel Auto-Deploy:** main → preview → production (zero-touch on PR merge)
+
+### Merged PRs
+
+- **PR #46** `feat(PROJ-65): ε.2 frontend — stakeholder markers + detail panel + swap dialog` — squash-merged 2026-05-21 → `f012fd7`
+- **PR #47** `feat(PROJ-65): ε.2 backend — POST stakeholder-swap-preview endpoint` — squash-merged 2026-05-21 → `d8f58aa`
+- **PR #48** `test(PROJ-65): ε.2 QA results + F-PROJ-65-17 marker-receipt polish` — squash-merged 2026-05-21 → `84921cb`
+
+### Tag
+
+`v1.66.0-PROJ-65-eps2` — gepusht zu origin.
+
+### Post-Deploy-Smoke
+
+| URL | Erwartet | Tatsächlich |
+|---|---|---|
+| `GET /projects/[id]/graph` (unauth) | 307 redirect | 307 ✅ |
+| `GET /api/projects/[id]/graph?include=trajectory` (unauth) | 307 redirect | 307 ✅ |
+| `POST /api/projects/[id]/work-items/[wid]/stakeholder-swap-preview` (unauth) | 307 redirect | 307 ✅ |
+| `GET /login` | 200 | 200 ✅ |
+
+Alle Routes auth-gated, Middleware intakt, ε.2-Endpoint live.
+
+### Verbleibende Polish-Items (deferred — nicht-blockierend)
+
+Wie nach R.10:
+
+- F-PROJ-65-13 Trajectory-3D-Projektion (ε.1)
+- F-PROJ-65-14 Globale Keyboard-Shortcuts (ε.1)
+- F-PROJ-65-15 Mobile-Lane-Header-Icon-Only (ε.1)
+- F-PROJ-65-16 Bundle-Δ-Gate als hartes CI-AC (ε.1)
+- F-PROJ-65-18 3D-Billboard für StakeholderMarker (folgt mit F-PROJ-65-13)
+- F-PROJ-65-19 `is_cost_flagged` Detection via PROJ-54-Threshold
+- F-PROJ-65-20 Echter `cost_clear_view`-Permission-Check via L6
+- Cost-Lane `over_budget` Spent-vs-Planned via PROJ-22 (ε.1)
+
+### Nächste Slices
+
+- **ε.3** Goals + Live-Propagation + Audit (PROJ-10-`causation_id` ready via PR #40; `project_goals` Tabelle live aus ε.1)
+- **ε.4** AI (trajectory_sequence Class-2, resource_swap Class-3, cross-project-links)
+
