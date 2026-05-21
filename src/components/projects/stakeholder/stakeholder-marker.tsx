@@ -30,6 +30,12 @@ interface StakeholderMarkerProps {
   maxVisible?: number
   onClickAssignee: (assignee: NodeAssignee) => void
   onClickOverflow: () => void
+  /**
+   * PROJ-65 ε.2 — when true, the marker stack pulses a dashed amber
+   * border for ~3 s as a visual receipt of the transient swap action
+   * (FE-13 / F-PROJ-65-17). Parent controls timing.
+   */
+  showReceipt?: boolean
 }
 
 function severityRank(a: NodeAssignee): number {
@@ -137,6 +143,7 @@ export function StakeholderMarker({
   maxVisible = 3,
   onClickAssignee,
   onClickOverflow,
+  showReceipt = false,
 }: StakeholderMarkerProps) {
   // FE-3 — sort: critical → cost-flagged → positive → neutral.
   // Soft-deleted last (greyed out, still tappable for context).
@@ -156,8 +163,13 @@ export function StakeholderMarker({
 
   return (
     <div
-      className="pointer-events-auto inline-flex items-center -space-x-2"
+      className={`pointer-events-auto inline-flex items-center -space-x-2 rounded-full p-0.5 transition-colors ${
+        showReceipt
+          ? "border-2 border-dashed border-amber-500 bg-amber-500/10 shadow-[0_0_0_2px_rgba(245,158,11,0.15)]"
+          : "border-2 border-transparent"
+      }`}
       data-testid="stakeholder-marker-stack"
+      data-receipt={showReceipt ? "true" : undefined}
     >
       {visible.map((a) => (
         <StakeholderMarkerItem

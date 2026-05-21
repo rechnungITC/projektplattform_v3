@@ -309,6 +309,7 @@ export function TrajectoryGraphView({ projectId }: TrajectoryGraphViewProps) {
                 onOpenStakeholders={(workItemId, focusAssigneeId) =>
                   setStakeholderPanel({ workItemId, focusAssigneeId })
                 }
+                swapReceiptNodeId={swapReceiptNodeId}
               />
             )}
             {focusedPositioned &&
