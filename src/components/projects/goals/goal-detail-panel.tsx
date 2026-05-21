@@ -90,6 +90,13 @@ export const GoalFormSchema = z.object({
     kind: z.enum(["phase", "milestone", "none"]),
     id: z.string().nullable(),
   }),
+  /**
+   * B-1 — auto-pull target_date from selected source. When true, the
+   * date input is read-only and shows "(auto aus Quelle)". The actual
+   * server-side fill happens via the source-ref fallback in PATCH; this
+   * toggle is currently a visual hint without separate persistence.
+   */
+  auto_pull_date: z.boolean(),
 })
 
 export type GoalFormValues = z.infer<typeof GoalFormSchema>
@@ -123,6 +130,8 @@ interface GoalDetailPanelProps {
   phases: SourceRefOption[]
   milestones: SourceRefOption[]
   parentGoals: Array<{ id: string; title: string }>
+  /** All goals with parent ref — used to render sub-goal tree (B-3). */
+  allGoals?: Array<{ id: string; title: string; parent_goal_id?: string | null }>
   /** Open work_items on the green path that anchor to this goal. */
   openGreenPathNodes: GoalStatNode[]
   /** Sum of `story_points` of open green-path work_items (null when not aggregatable). */
@@ -135,6 +144,8 @@ interface GoalDetailPanelProps {
   onDeleted: () => void
   onOpenNode?: (nodeId: string) => void
   onCreateSubGoal?: () => void
+  /** Navigate to another goal (used by sub-goal tree clicks). */
+  onOpenGoal?: (goalId: string) => void
 }
 
 export function GoalDetailPanel({
@@ -145,6 +156,7 @@ export function GoalDetailPanel({
   phases,
   milestones,
   parentGoals,
+  allGoals,
   openGreenPathNodes,
   estimatedEffortPt,
   criticalOnGreenPath,
@@ -154,6 +166,7 @@ export function GoalDetailPanel({
   onDeleted,
   onOpenNode,
   onCreateSubGoal,
+  onOpenGoal,
 }: GoalDetailPanelProps) {
   const [submitting, setSubmitting] = React.useState(false)
   const [deleting, setDeleting] = React.useState(false)
@@ -171,7 +184,7 @@ export function GoalDetailPanel({
       status: "draft",
       parent_goal_id: null,
       source_ref: { kind: "none", id: null },
-
+      auto_pull_date: false,
     },
   })
 
@@ -190,7 +203,7 @@ export function GoalDetailPanel({
       status: goal.status,
       parent_goal_id: goal.parent_goal_id,
       source_ref: sourceRef,
-
+      auto_pull_date: sourceRef.kind !== "none" && !goal.target_date,
     })
   }, [goal, form])
 
@@ -424,6 +437,30 @@ export function GoalDetailPanel({
 
               <FormField
                 control={form.control}
+                name="auto_pull_date"
+                render={({ field }) => (
+                  <FormItem className="flex flex-row items-center gap-2 space-y-0">
+                    <FormControl>
+                      <input
+                        type="checkbox"
+                        checked={Boolean(field.value)}
+                        onChange={(e) => field.onChange(e.target.checked)}
+                        disabled={
+                          !canEdit ||
+                          form.watch("source_ref.kind") === "none"
+                        }
+                        className="h-4 w-4 rounded border-border"
+                        data-testid="auto-pull-date-toggle"
+                      />
+                    </FormControl>
+                    <FormLabel className="text-xs font-normal">
+                      Termin aus Quelle übernehmen
+                    </FormLabel>
+                  </FormItem>
+                )}
+              />
+              <FormField
+                control={form.control}
                 name="target_date"
                 render={({ field }) => (
                   <FormItem>
@@ -433,7 +470,12 @@ export function GoalDetailPanel({
                         type="date"
                         value={field.value ?? ""}
                         onChange={field.onChange}
-                        disabled={!canEdit}
+                        disabled={!canEdit || form.watch("auto_pull_date")}
+                        placeholder={
+                          form.watch("auto_pull_date")
+                            ? "(auto aus Quelle)"
+                            : undefined
+                        }
                       />
                     </FormControl>
                     <FormMessage />
@@ -571,6 +613,42 @@ export function GoalDetailPanel({
                   )}
                 </CardContent>
               </Card>
+
+              {/* B-3 — Sub-goal tree (children of this goal). */}
+              {(() => {
+                const subGoals =
+                  allGoals?.filter((g) => g.parent_goal_id === goal.id) ?? []
+                if (subGoals.length === 0) return null
+                return (
+                  <Card data-testid="sub-goal-tree">
+                    <CardContent className="space-y-2 p-4">
+                      <Label className="text-xs uppercase tracking-wide text-muted-foreground">
+                        Teilziele ({subGoals.length})
+                      </Label>
+                      <ul className="space-y-1">
+                        {subGoals.map((sg) => (
+                          <li key={sg.id} className="pl-3">
+                            <button
+                              type="button"
+                              onClick={() => onOpenGoal?.(sg.id)}
+                              className="flex w-full items-center gap-2 rounded-md border border-border bg-background px-2 py-1 text-xs hover:bg-muted"
+                              data-testid="sub-goal-link"
+                            >
+                              <Target
+                                className="h-3 w-3 text-emerald-500"
+                                aria-hidden
+                              />
+                              <span className="truncate text-left">
+                                {sg.title}
+                              </span>
+                            </button>
+                          </li>
+                        ))}
+                      </ul>
+                    </CardContent>
+                  </Card>
+                )
+              })()}
 
               <ClassThreeFootnote
                 hasMaskedValue={hasMaskedEffort}

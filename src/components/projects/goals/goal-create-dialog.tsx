@@ -91,7 +91,7 @@ export function GoalCreateDialog({
       status: "draft",
       parent_goal_id: defaultParentGoalId ?? null,
       source_ref: { kind: "none", id: null },
-
+      auto_pull_date: false,
     },
   })
 
@@ -108,7 +108,7 @@ export function GoalCreateDialog({
         status: "draft",
         parent_goal_id: defaultParentGoalId ?? null,
         source_ref: { kind: "none", id: null },
-
+        auto_pull_date: false,
       })
     }
   }, [open, defaultParentGoalId, form])
