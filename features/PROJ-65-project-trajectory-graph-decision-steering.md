@@ -1394,3 +1394,81 @@ Auth-Gate + Routing live + Middleware intakt.
 
 `/backend` für ε.2 — `POST /api/projects/[id]/work-items/[wid]/stakeholder-swap-preview` implementieren (returns SwapCandidate[] mit Δ-Werten je Klartext-Permission) und ε.2-Frontend-PR mergen. Dann `/qa` für volle ε.2-Coverage inkl. F-PROJ-65-17 Polish.
 
+## Q) /backend ε.2 Implementation (2026-05-21)
+
+**Slice geliefert:** `POST /api/projects/[id]/work-items/[wid]/stakeholder-swap-preview` (transient, read-only). Branch `proj-65/epsilon-2-frontend` (Backend bundled mit ε.2 Frontend-PR #46).
+
+### Neue Files
+
+| File | Zweck |
+|---|---|
+| `src/app/api/projects/[id]/work-items/[wid]/stakeholder-swap-preview/route.ts` | POST-Handler mit Zod-validation (strict), UUID-Param-Guard, `requireProjectAccess("view")`, Cross-Project-WI-Guard, Δ-Heuristik, masked-aggregate Default. |
+| `src/app/api/projects/[id]/work-items/[wid]/stakeholder-swap-preview/route.test.ts` | 7 vitest cases — 401/400/404/200/strict-body-rejection. |
+
+### Endpoint-Verhalten
+
+**Request:** `POST` mit optional `{ current_stakeholder_id?, limit? }` (strict Zod schema, max limit 50, default 25).
+
+**Response (200):**
+```json
+{
+  "candidates": [
+    {
+      "stakeholder_id": "uuid",
+      "resource_id": "uuid|null",
+      "name": "string",
+      "role": "string|null",
+      "cost_delta": { "kind": "aggregate", "bucket": "less|even|more|much-more|much-less" },
+      "time_delta_days": 0,
+      "risk_delta": { "kind": "named|even|unknown", "from": "...", "to": "..." },
+      "followup_count": 0
+    }
+  ],
+  "cost_clear_view": false
+}
+```
+
+**Compute-Strategy:**
+1. Resolve current assignees: `work_item_resources` → `resources.source_stakeholder_id` → `stakeholders`. Höchste influence/impact tier des Incumbenten als Baseline.
+2. Alternative person-stakeholders (`kind='person'`, `is_active=true`) im selben Projekt, current excluded.
+3. Resource-Lookup pro Kandidat über `resources.source_stakeholder_id`.
+4. Followup-Count: zwei Queries gegen `dependencies` (`from_type='work_package'` + `from_type='todo'`), Set-Union der `to_id`-Werte als heuristischer Folgepakete-Indikator.
+5. Risk-Δ: Tier-Vergleich (low/medium/high) → `named` / `even` / `unknown`.
+6. Cost-Δ: `bucket` aus Tier-Differenz (`much-less` … `much-more`); **immer aggregate** in ε.2 (Class-3 default-masked bis L6).
+
+### Status-Codes
+
+| Status | Bedingung |
+|---|---|
+| 200 | OK, candidates returned (may be empty) |
+| 400 | Project/Work-Item id no UUID, body kein valid JSON, extra body field (strict) |
+| 401 | Not signed in |
+| 403 | Project access denied (via `requireProjectAccess`) |
+| 404 | Work item not found in this project (cross-project guard) |
+| 500 | Database error |
+
+### Tests
+
+| Suite | Result |
+|---|---|
+| Vitest `route.test.ts` (7 cases) | ✅ 7/7 |
+| Vitest gesamt (project-graph + stakeholder helpers + goals + swap-preview) | ✅ **45/45** |
+| Build (`npm run build`) | ✅ Route registered (`ƒ /api/projects/[id]/work-items/[wid]/stakeholder-swap-preview`) |
+| Lint + tsc | ✅ clean |
+| Playwright auth-gate smoke | ✅ Updated assertion now 307|401 (route exists) |
+
+### Deferred (out of ε.2 backend scope)
+
+- **L6 `cost_clear_view_permission`** — when `project_settings.cost_clear_view_permission` landed, the helper sets `cost_clear_view=true` and the response includes `kind: "exact"` cost-Δ values. Until then: always `false` + aggregate.
+- **Skill-Match-Score** — ranking deferred to ε.4 AI slice. Current order = `stakeholders.name ASC`.
+- **time_delta_days** — always 0; needs sprint/phase scheduling integration (PROJ-19) + AI.
+- **Multi-hop followup count** — single-hop only; deep traversal deferred.
+
+### Frontend-Coupling
+
+`StakeholderSwapDialog` consumes this endpoint via `fetch(POST)`. Existing graceful 404/501-fallback bleibt aktiv falls Endpoint später deaktiviert wird; 200-Response wird direkt in RadioGroup-Cards mit Δ-Grid + ConfirmDiscard + Transient-Toast genutzt.
+
+### Nächster Schritt
+
+`/qa` für vollen ε.2-Slice inkl. realer Kandidaten-Liste vom neuen Endpoint. Polish F-PROJ-65-17 (Marker-Quittung visual durchschalten) kann mit QA bundle laufen.
+
