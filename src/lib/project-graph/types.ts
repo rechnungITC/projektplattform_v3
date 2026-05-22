@@ -109,6 +109,26 @@ export interface TrajectoryExtension {
    * UI uses this only as a render hint — masking is server-enforced.
    */
   cost_clear_view: boolean
+  /**
+   * PROJ-65 ε.3b — UI permission flags derived server-side.
+   * Bundles `cost_clear_view` (duplicated for forward-compat) and the
+   * new `can_plan_mutate` flag (Story 65-7). UI uses these as render
+   * hints only — every mutation is re-checked server-side.
+   * Optional in the type to keep ε.1/ε.2 fixtures + tests compatible;
+   * components default to `false` when the field is missing.
+   */
+  permissions?: TrajectoryPermissions
+}
+
+export interface TrajectoryPermissions {
+  /** Mirrors `trajectory.cost_clear_view` — for forward-compat with
+   *  the canonical `snapshot.permissions.cost_clear_view` shape from
+   *  the ε.3b designer brief. */
+  cost_clear_view: boolean
+  /** PROJ-65 ε.3b (L22) — true when the current user may execute
+   *  Plan-Mutate (drag Sprint/Phase + atomic commit). Driven server-side
+   *  from RBAC + tenant feature-flag `trajectory_plan_mutate_enabled`. */
+  can_plan_mutate: boolean
 }
 
 export interface NodeAssignee {

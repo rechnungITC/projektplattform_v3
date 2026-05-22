@@ -29,6 +29,7 @@ import {
   AIRecommendationBadge,
   RiskDecisionBadgeGroup,
 } from "./trajectory-badges"
+import { PlanMutateDragHandle } from "./trajectory/plan-mutate-drag-handle"
 
 interface TrajectoryGraph2DProps {
   layout: TrajectoryLayout
@@ -58,6 +59,27 @@ interface TrajectoryGraph2DProps {
    * Vorschau-übernehmen. null when no receipt active.
    */
   swapReceiptNodeId?: string | null
+  /**
+   * PROJ-65 ε.3b — true when the server emits
+   * `snapshot.trajectory.permissions.can_plan_mutate === true`. Drives
+   * visibility of the per-node `<PlanMutateDragHandle />`.
+   */
+  canPlanMutate?: boolean
+  /**
+   * PROJ-65 ε.3b — fired when a Sprint/Phase drag-handle is dropped or
+   * the manual-date-input fallback submits. `days` is the snap-to-day
+   * delta (positive = future). Parent opens the PlanMutateDialog.
+   */
+  onPlanMutateDrop?: (
+    node: PositionedNode,
+    days: number,
+  ) => void
+  /**
+   * PROJ-65 ε.3b — day-axis scale (SVG px per day) used to convert
+   * pointer-delta into a snap-to-day count. Falls back to a heuristic
+   * derived from layout.width if not supplied.
+   */
+  pxPerDay?: number
 }
 
 const LANE_LABEL_WIDTH = 56
@@ -84,7 +106,15 @@ export function TrajectoryGraph2D({
   assigneesByWorkItem,
   onOpenStakeholders,
   swapReceiptNodeId = null,
+  canPlanMutate = false,
+  onPlanMutateDrop,
+  pxPerDay,
 }: TrajectoryGraph2DProps) {
+  // Best-effort px/day derivation when not supplied: spread across the
+  // visible content width assuming a 60-day window. Caller can pass an
+  // exact value once it has a calibrated time-axis.
+  const resolvedPxPerDay = pxPerDay ?? Math.max(2, (layout.width - 80) / 60)
+  const showDragHandles = canPlanMutate && canEdit && Boolean(onPlanMutateDrop)
   const reducedMotion = useReducedMotion()
   const motionDuration = reducedMotion ? 0 : 0.2
 
@@ -346,6 +376,19 @@ export function TrajectoryGraph2D({
                     {truncate(node.label, node.kind === "epic" ? 24 : 12)}
                   </text>
                 )}
+                {showDragHandles &&
+                  (node.kind === "sprint" || node.kind === "phase") && (
+                    <PlanMutateDragHandle
+                      anchorX={x + node.width}
+                      anchorY={y}
+                      pxPerDay={resolvedPxPerDay}
+                      nodeLabel={node.label}
+                      onDrop={(days) => onPlanMutateDrop?.(node, days)}
+                      onManualShift={(days) =>
+                        onPlanMutateDrop?.(node, days)
+                      }
+                    />
+                  )}
               </motion.g>
             )
           })}

@@ -52,6 +52,8 @@ import {
 } from "./stakeholder/stakeholder-swap-dialog"
 import { TrajectoryGraph2D } from "./trajectory-graph-2d"
 import { CycleBanner } from "./trajectory-cycle-banner"
+import { PlanMutateDialog } from "./trajectory/plan-mutate-dialog"
+import type { PositionedNode } from "@/lib/project-graph/trajectory-layout"
 
 const TrajectoryGraph3D = dynamic(
   () =>
@@ -114,6 +116,11 @@ export function TrajectoryGraphView({ projectId }: TrajectoryGraphViewProps) {
   const [pendingGoalIdToOpen, setPendingGoalIdToOpen] = React.useState<
     string | null
   >(null)
+  // PROJ-65 ε.3b — Plan-Mutate drag/drop dialog state.
+  const [planMutate, setPlanMutate] = React.useState<{
+    node: PositionedNode
+    days: number
+  } | null>(null)
   const [reloadTick, setReloadTick] = React.useState(0)
   const [webglAvailable, setWebglAvailable] = React.useState<boolean | null>(
     null,
@@ -449,6 +456,12 @@ export function TrajectoryGraphView({ projectId }: TrajectoryGraphViewProps) {
                   setStakeholderPanel({ workItemId, focusAssigneeId })
                 }
                 swapReceiptNodeId={swapReceiptNodeId}
+                canPlanMutate={
+                  snapshot?.trajectory?.permissions?.can_plan_mutate ?? false
+                }
+                onPlanMutateDrop={(node, days) =>
+                  setPlanMutate({ node, days })
+                }
               />
             )}
             {focusedPositioned &&
@@ -585,6 +598,40 @@ export function TrajectoryGraphView({ projectId }: TrajectoryGraphViewProps) {
           if (goalId) setPendingGoalIdToOpen(goalId)
         }}
       />
+
+      {/* PROJ-65 ε.3b — Plan-Mutate Dialog */}
+      {planMutate && (
+        <PlanMutateDialog
+          open
+          onOpenChange={(open) => {
+            if (!open) setPlanMutate(null)
+          }}
+          projectId={projectId}
+          sourceNodeId={planMutate.node.id}
+          sourceNodeKind={
+            planMutate.node.kind === "phase" ? "phase" : "sprint"
+          }
+          sourceNodeLabel={planMutate.node.label}
+          shiftDays={planMutate.days}
+          ifUpdatedAt={layout.nodes.map((n) => ({
+            node_id: n.id,
+            node_kind: n.kind,
+            updated_at:
+              (n.attributes as { updated_at?: string }).updated_at ??
+              snapshot?.generated_at ??
+              new Date().toISOString(),
+          }))}
+          costClearView={snapshot?.trajectory?.cost_clear_view ?? false}
+          nodeLabels={Object.fromEntries(
+            layout.nodes.map((n) => [n.id, n.label]),
+          )}
+          onCommitted={() => {
+            setPlanMutate(null)
+            setReloadTick((t) => t + 1)
+          }}
+          onReloadSnapshot={() => setReloadTick((t) => t + 1)}
+        />
+      )}
     </Card>
   )
 }

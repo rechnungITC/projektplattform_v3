@@ -661,9 +661,11 @@ async function resolveTrajectoryExtension(
       .eq("is_active", true)
       .order("name", { ascending: true })
       .limit(NODE_CAP_PER_KIND),
+    // PROJ-65 ε.3b — additionally read trajectory_plan_mutate_enabled
+    // to drive `permissions.can_plan_mutate`.
     args.supabase
       .from("tenant_settings")
-      .select("active_modules")
+      .select("active_modules, trajectory_plan_mutate_enabled")
       .eq("tenant_id", args.tenantId)
       .maybeSingle(),
     epicIds.length > 0
@@ -916,6 +918,45 @@ async function resolveTrajectoryExtension(
   // only opens up when a real permission check lands in /backend.
   const costClearView = false
 
+  // PROJ-65 ε.3b (L22) — derive can_plan_mutate server-side:
+  //   project_editor (= tenant_admin OR project lead OR project editor)
+  //   AND tenant_settings.trajectory_plan_mutate_enabled === true.
+  // The RPC re-enforces this on every mutation — this flag is a UI hint.
+  const tenantSettingsRow = tenantRes.data as
+    | {
+        active_modules: string[] | null
+        trajectory_plan_mutate_enabled?: boolean | null
+      }
+    | null
+  const planMutateEnabled =
+    tenantSettingsRow?.trajectory_plan_mutate_enabled === true
+
+  let canPlanMutate = false
+  if (planMutateEnabled) {
+    // Cheap RBAC probe — read tenant_memberships + project_memberships in
+    // parallel; either path grants editor rights for ε.3b. Errors collapse
+    // to `false` (closed by default) per security review.
+    const [tenantMemberRes, projectMemberRes] = await Promise.all([
+      args.supabase
+        .from("tenant_memberships")
+        .select("role")
+        .eq("tenant_id", args.tenantId)
+        .maybeSingle(),
+      args.supabase
+        .from("project_memberships")
+        .select("role")
+        .eq("project_id", args.projectId)
+        .maybeSingle(),
+    ])
+    const tenantRole = (tenantMemberRes.data as { role?: string } | null)?.role
+    const projectRole = (projectMemberRes.data as { role?: string } | null)
+      ?.role
+    canPlanMutate =
+      tenantRole === "admin" ||
+      projectRole === "lead" ||
+      projectRole === "editor"
+  }
+
   return {
     layout_hints,
     sprints,
@@ -925,6 +966,10 @@ async function resolveTrajectoryExtension(
     goals,
     node_assignees: nodeAssignees,
     cost_clear_view: costClearView,
+    permissions: {
+      cost_clear_view: costClearView,
+      can_plan_mutate: canPlanMutate,
+    },
   }
 }
 
