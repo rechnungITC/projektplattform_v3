@@ -228,4 +228,53 @@ describe("POST /api/projects/[id]/plan-mutate", () => {
     const res = await POST(makeRequest(validBody), ctx)
     expect(res.status).toBe(500)
   })
+
+  // ε.3c.α — F-PROJ-65-50 hardened: RPC rejects empty / missing-source `if_updated_at`.
+  it("maps RPC envelope status:422 (if_updated_at_required) to HTTP 422", async () => {
+    mocks.rpcMock.mockResolvedValue({
+      data: {
+        ok: false,
+        status: 422,
+        error: "if_updated_at_required",
+        hint: "Array must contain at minimum the source_node entry with current updated_at.",
+      },
+      error: null,
+    })
+    const res = await POST(
+      makeRequest({ ...validBody, if_updated_at: [] }),
+      ctx,
+    )
+    expect(res.status).toBe(422)
+    const body = await res.json()
+    expect(body.error).toBe("if_updated_at_required")
+  })
+
+  it("maps RPC envelope status:422 (source_node_lock_missing) to HTTP 422", async () => {
+    mocks.rpcMock.mockResolvedValue({
+      data: {
+        ok: false,
+        status: 422,
+        error: "source_node_lock_missing",
+        hint: "if_updated_at must include an entry for the source_node.",
+      },
+      error: null,
+    })
+    // Body has a lock entry but not for the source_node:
+    const res = await POST(
+      makeRequest({
+        ...validBody,
+        if_updated_at: [
+          {
+            node_id: "99999999-9999-4999-8999-999999999999",
+            node_kind: "phase",
+            updated_at: "2026-05-22T10:00:00Z",
+          },
+        ],
+      }),
+      ctx,
+    )
+    expect(res.status).toBe(422)
+    const body = await res.json()
+    expect(body.error).toBe("source_node_lock_missing")
+  })
 })

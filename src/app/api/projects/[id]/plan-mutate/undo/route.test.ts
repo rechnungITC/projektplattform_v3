@@ -153,4 +153,21 @@ describe("POST /api/projects/[id]/plan-mutate/undo", () => {
     const res = await POST(makeRequest({ causation_id: CAUSATION_ID }), ctx)
     expect(res.status).toBe(500)
   })
+
+  // ε.3c.α — F-PROJ-65-51: undo with causation_id from another project.
+  it("maps RPC envelope status:403 (cross_project_undo_forbidden) to HTTP 403", async () => {
+    mocks.rpcMock.mockResolvedValue({
+      data: {
+        ok: false,
+        status: 403,
+        error: "cross_project_undo_forbidden",
+        hint: "Causation_id contains audit rows for entities outside the given p_project_id.",
+      },
+      error: null,
+    })
+    const res = await POST(makeRequest({ causation_id: CAUSATION_ID }), ctx)
+    expect(res.status).toBe(403)
+    const body = await res.json()
+    expect(body.error).toBe("cross_project_undo_forbidden")
+  })
 })

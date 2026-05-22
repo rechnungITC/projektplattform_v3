@@ -2464,3 +2464,129 @@ Vor breiter Aktivierung empfohlen:
 - **ε.3c** Bundle aus F-50/-51 (Pre-Pilot-Mitigation) + F-33/-34/-35/-37/-38/-39/-43/-44 (Erweiterungen nach Pilot-Demand)
 - **ε.4** AI (trajectory_sequence Class-2 + resource_swap Class-3 + cross-project-links)
 
+## DD) /architecture ε.3c Pass (2026-05-22)
+
+**Scope:** 10 Forks aus QA-Section BB + Backend-Deferred-Items aus Section Z. Bundle umfasst Pre-Pilot-Critical-Fixes + Post-Pilot-Expansion. Per `.claude/rules/continuous-improvement.md` ist CIA **mandatory** vor /backend (≥ 5 Files, mehrere Architecture-Decisions, Security-Implications via F-51).
+
+### Slice-Cut-Vorschlag (4 Sub-Slices)
+
+| Slice | Forks | PT | Pre-Pilot-Gate? | CIA-Mandatory? |
+|---|---|---|---|---|
+| **ε.3c.α — Pre-Pilot Hotfix** | F-50 (empty `if_updated_at` lock-skip) + F-51 (causation-id project-bezug in undo) | **~0.5 PT** | ✅ **Gate für Multi-Editor-Aktivierung** | ⚠️ optional (security-fix, klein, einklare Pattern) |
+| **ε.3c.β — UX Expansion** | F-37 (Bulk-Drag) + F-38 (Cycle-Overlay) | ~3 PT | nein | ✅ mandatory (neue Surface, Component-Architektur) |
+| **ε.3c.γ — Undo + Performance** | F-33 (N-Step Undo) + F-34 (Streaming-BFS N>200) | ~3 PT | nein | ✅ mandatory (State-Persistenz-Entscheidung, Streaming-Pattern) |
+| **ε.3c.δ — Schedule + Misc** | F-35 (PROJ-58-Sim-Invalidation) + F-39 (Snap-to-Week-Setting) + F-43 (Sprint↔Phase-Deps polymorphic) + F-44 (Per-Phase Risk-MAX dependency-walk) | ~2.5 PT | nein | ⚠️ optional (F-43 polymorphic-CHECK-Erweiterung trigger CIA) |
+| **Total** | | **~9 PT** | | |
+
+### Wichtige offene Decision Points
+
+| ID | Frage | Auswirkung | CIA-Empfehlung holen? |
+|---|---|---|---|
+| **D1** | **F-50 Empty-Array-Behavior:** Soll `if_updated_at: []` als "explizit lock-skip" allowed sein (für Power-User), oder strict 422? Brief schlägt minimum source_node lock-prüfen vor. | Backwards-compat vs Defense-in-Depth | ✅ |
+| **D2** | **F-33 N-Step-Undo-Storage:** Frontend-only (localStorage, lost on reload) ODER Backend-Tabelle `plan_mutate_sessions` (überlebt Reload + Cross-Device)? | Komplexität, Daten-Retention, RLS-Surface | ✅ |
+| **D3** | **F-34 Streaming-BFS:** Server-Sent-Events (Edge-Runtime?) ODER Chunked-JSON-Stream ODER Pagination-Pattern? | Edge-Runtime-Limits, Client-Komplexität | ✅ |
+| **D4** | **F-37 Bulk-Mutate-RPC-Shape:** Array von Source-Nodes mit gleichem Intent ODER Array von {source, intent}-Tupeln? | API-Vertrag, RPC-Body-Größe | ✅ |
+| **D5** | **F-38 Cycle-Overlay-Persistenz:** Letzter 422-Cycle als FE-State (lost on reload) ODER Snapshot-Erweiterung (server-detected, persistent)? | UX vs Backend-Komplexität | ✅ |
+| **D6** | **F-43 Sprint↔Phase-Dependencies:** dependencies-Tabelle CHECK auf `'sprint'`-Discriminator erweitern? Welche Constraint-Types sind sinnvoll (FS/SS/FF/SF)? | Schema-Change, Backwards-Compat, Cycle-Detection-Erweiterung | ✅ mandatory |
+| **D7** | **F-44 Per-Phase Risk-MAX-Query:** Dependency-Walk-Subquery in `plan_mutate_atomic` ODER separater Read-RPC `get_phase_risk_rollup`? | Performance bei BFS-Cycle, Reuse aus FE | ✅ |
+| **D8** | **F-35 PROJ-58-Invalidation-Trigger:** `BroadcastChannel` API ODER Server-Sent-Events ODER Polling auf snapshot.generated_at? | Browser-Support, Realtime-Latenz | ⚠️ optional |
+| **D9** | **F-39 Snap-to-Week-Default:** Tenant-Setting Default `false` ODER auto-on bei "Wasserfall"-Methode? | UX-Friction, Method-Awareness | ⚠️ optional |
+| **D10** | **F-37 Bulk-Atomic-Semantik:** Alle Mutates atomar (all-or-nothing) ODER Partial-Success mit Diff pro Source? | Daten-Konsistenz, UX | ✅ |
+
+### Vorgeschlagene Locks (vorläufig — von CIA + User-Bestätigung abhängig)
+
+| Lock | Vorschlag | Begründung |
+|---|---|---|
+| **L27 — ε.3c.α isoliert + sofort shippen** | F-50/-51 als kleiner Hotfix-PR, getrennt von β/γ/δ-Bundle | Pre-Pilot-Gate; entkoppelt von größerer Slice-Diskussion; ermöglicht Pilot-Tenant-Aktivierung schnell |
+| **L28 — N-Step-Undo Frontend-only (F-33)** | localStorage-basierter Stack im Browser, lost on reload | MVP-Scope; vermeidet neue Table + Cron-Cleanup + RLS-Surface |
+| **L29 — Streaming-BFS via Pagination statt SSE (F-34)** | Server gibt N=50-Chunks; FE fragt rekursiv nach mit `?continuation_token=...` | Edge-Runtime-friendly; Client-Komplexität geringer als SSE |
+| **L30 — Bulk-Mutate Array<Source> mit Single-Intent (F-37)** | `POST /plan-mutate` Body: `{ sources: [{node_id, kind, if_updated_at}], intent }`; atomare Diff über alle Sources | API-Vertrag bleibt nah am Single-Source-Pattern; einfacher zu validieren |
+| **L31 — Cycle-Overlay als FE-State (F-38)** | Letztes 422-Result lebt im React-State; Reload löscht | Reine UX-Hilfe; keine Backend-Persistenz nötig |
+| **L32 — Sprint↔Phase-Deps polymorphic erweitern (F-43)** | dependencies-Tabelle CHECK um `'sprint'` ergänzen; nur FS-Constraint in MVP | Konsistent mit Bestand-Pattern; FF/SS/SF deferred |
+| **L33 — Per-Phase Risk-MAX inline in RPC (F-44)** | Subquery in `plan_mutate_atomic` Step 7; nicht eigene RPC | Vermeidet zusätzlichen Roundtrip; einfacher zu testen |
+
+### CIA-Trigger-Check
+
+- **ε.3c.α:** klein, klare Pattern → CIA optional. **Empfehlung: direkt shippen** wegen Pre-Pilot-Gate-Charakter.
+- **ε.3c.β/γ/δ:** mehrere Architecture-Decisions (D1–D10), neue Surfaces, polymorphic-Schema-Erweiterung → CIA **mandatory** vor /backend.
+
+### Aufwand (revised)
+
+| Phase | PT |
+|---|---|
+| ε.1 + ε.2 + ε.3a + ε.3b | deployed (~16 PT total) |
+| **ε.3c.α** Pre-Pilot Hotfix | ~0.5 PT |
+| **ε.3c.β** Bulk + Cycle-Overlay | ~3 PT |
+| **ε.3c.γ** Undo-Stack + Streaming | ~3 PT |
+| **ε.3c.δ** Schedule + Misc | ~2.5 PT |
+| ε.4 AI | ~4 PT |
+
+### Handoff
+
+`AskUserQuestion` zur Reihenfolge + Scope-Bestätigung. Nach User-Pick: ggf. `/continuous-improvement` für β/γ/δ-Locks, dann `/designer` + `/backend` + `/frontend` pro Sub-Slice.
+
+## EE) ε.3c.α Implementation + Deployment Log (2026-05-22)
+
+**Slice geliefert:** F-PROJ-65-50 (Empty `if_updated_at` lock-skip fix) + F-PROJ-65-51 (Causation-ID Project-Bezug in Undo-RPC). Pre-Pilot-Gate für Multi-Editor-Aktivierung.
+
+### User-bestätigte Scope-Entscheidungen (2026-05-22)
+
+- ✅ **Step 1:** ε.3c.α (F-50/-51) sofort shippen; CIA für β/γ/δ separat
+- ✅ **L28:** F-33 Undo-Stack Frontend-only via localStorage (verwendet erst in ε.3c.γ)
+- ✅ **L30:** F-37 Bulk-Mutate all-or-nothing Semantik (verwendet erst in ε.3c.β)
+
+### Migration
+
+| File | Status |
+|---|---|
+| `supabase/migrations/20260522180000_proj65_eps3c_alpha_lock_audit_hardening.sql` (~480 LOC) | ✅ applied to Production-DB 2026-05-22 — smoke verified F-50 + F-51 patches present in deployed RPC bodies |
+
+### Code-Änderungen
+
+**`plan_mutate_atomic` (RPC body replaced):**
+- Pre-BFS-Gate: `jsonb_typeof(p_if_updated_at) <> 'array' OR jsonb_array_length(p_if_updated_at) = 0` → HTTP 422 `if_updated_at_required`
+- Post-Pre-Gate: iterate p_if_updated_at; if no entry matches `(p_source_node_id, p_source_node_kind)` → HTTP 422 `source_node_lock_missing`
+- All other logic unchanged
+
+**`plan_mutate_undo_atomic` (RPC body replaced):**
+- New pre-pass-loop after RBAC: für jeden audit row, fetch `entity_id → project_id` aus `phases`/`sprints`; bei Mismatch zu `p_project_id` → array_append zu `v_cross_project_ids`
+- Nach Loop: wenn `v_cross_project_ids` nicht leer → HTTP 403 `cross_project_undo_forbidden` mit Hint
+- Rest unchanged
+
+**Route-Tests:** `+3 cases`
+- `plan-mutate/route.test.ts`: `+2 cases` (422 if_updated_at_required + 422 source_node_lock_missing)
+- `undo/route.test.ts`: `+1 case` (403 cross_project_undo_forbidden)
+- Suite-Result: **23/23 grün** (vorher 20/20)
+
+### CIA-Mitigations bestätigt
+
+| ID | Verification |
+|---|---|
+| L18 (Optimistic-Lock) | Pre-BFS-Gate erzwingt nun Source-Node-Lock-Entry; Defense-in-Depth gegen Empty-Array-Bypass |
+| L19 (Audit-Project-Filter) | Undo prüft jetzt project_id pro audit row; cross-project-causation_id wird mit 403 abgewiesen vor Mutation |
+| R-C1, R-C2, R-H1, R-H2, R-H3 | Alle aus ε.3b unverändert; keine Regression |
+
+### Production-Surface
+
+- **RPC bodies updated in production-DB** via migration 20260522180000
+- Bestehende Frontend-Code-Pfade nicht betroffen (Frontend schickt immer `if_updated_at` aus Snapshot, hat immer Source-Node-Entry; `undo` ruft immer mit korrektem `p_project_id` auf)
+- Hostile-Client-Surface (Curl, MCP, Postman) jetzt geschlossen
+
+### Tests
+
+- ✅ Vitest `src/app/api/projects/[id]/plan-mutate/` → 23/23 grün
+- ✅ Migration smoke: F-50 + F-51 strings in deployed function bodies present
+
+### Status
+
+ε.3c.α ist **production-ready für Deploy**. Pilot-Tenant kann nun ohne F-50/-51 Restrisiko aktiviert werden.
+
+### Next
+
+Nach ε.3c.α-Deploy:
+1. `/continuous-improvement` Review für ε.3c.β/γ/δ Bundle (Decisions D1–D10 aus Section DD)
+2. `/designer` Briefs pro Sub-Slice
+3. ε.3c.β Bulk + Cycle-Overlay (F-37/-38)
+4. ε.3c.γ Undo-N-Step + Streaming (F-33/-34)
+5. ε.3c.δ Schedule + Misc (F-35/-39/-43/-44)
+
