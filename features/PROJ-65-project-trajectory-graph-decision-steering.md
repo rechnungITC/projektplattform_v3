@@ -2382,3 +2382,85 @@ Vollständig spezifiziert (siehe Brief Section "MVP Acceptance Criteria"). Bundl
 
 `/deploy` ε.3b nach Production. Vor Pilot-Tenant-Aktivierung: B-1 + B-2 Mitigation einplanen.
 
+## CC) Deployment Log ε.3b (2026-05-22)
+
+**Status:** ✅ **DEPLOYED**
+
+### Production-Surface
+
+- **Production URL:** https://projektplattform-v3.vercel.app
+- **Trajectory route:** `/projects/[id]/graph?mode=trajectory` (auth-gated)
+- **Plan-Mutate API:** `POST /api/projects/[id]/plan-mutate` (auth-gated)
+- **Plan-Mutate Undo API:** `POST /api/projects/[id]/plan-mutate/undo` (auth-gated)
+- **Feature-Flag:** `tenant_settings.trajectory_plan_mutate_enabled` (default `false`) — Tenant-Admin opt-in pro Mandant
+
+### Merged PRs + Migrations
+
+- **PR #56** `feat(PROJ-65): ε.3b — plan-mutate + diff + undo (backend + frontend)` — squash-merged 2026-05-22 ~17:55 UTC as `4e2f8c8`. 23 Files, +4574 / -3 LOC.
+- **Migration 20260522170000_proj65_eps3b_plan_mutate_rpc** — applied to Production-DB 2026-05-22 (RPCs + audit-registry-Erweiterung + Tenant-Flag-Column)
+- **Migration 20260522170100_proj65_eps3b_revoke_anon** — applied to Production-DB 2026-05-22 (REVOKE EXECUTE FROM anon)
+
+### Tag
+
+`v1.68.0-PROJ-65-eps3b` — gepusht zu origin.
+
+### Post-Deploy-Smoke
+
+| URL | Erwartet | Tatsächlich |
+|---|---|---|
+| `POST /api/projects/[id]/plan-mutate` (unauth) | 307 redirect | ✅ 307 |
+| `POST /api/projects/[id]/plan-mutate/undo` (unauth) | 307 redirect | ✅ 307 |
+| `GET /projects/[id]/graph?mode=trajectory` (unauth) | 307 redirect | ✅ 307 |
+| `GET /api/projects/[id]/graph?include=trajectory` (unauth) | 307 redirect | ✅ 307 |
+| `GET /` (unauth) | 307 redirect | ✅ 307 |
+
+Alle Routes auth-gated, Middleware intakt, ε.3b-Surface live aber durch Feature-Flag deaktiviert.
+
+### Schema-Drift CI
+
+✅ Schema Drift Guard grün auf merge-commit (Required-Check).
+
+### Pilot-Aktivierung (separater Schritt nach Deploy)
+
+Tenant-Admin aktiviert Plan-Mutate für ihren Mandanten via:
+
+```sql
+update public.tenant_settings
+   set trajectory_plan_mutate_enabled = true
+ where tenant_id = '<pilot-tenant-id>';
+```
+
+Vor breiter Aktivierung empfohlen:
+- **F-PROJ-65-50** Empty `if_updated_at` Edge-Case-Fix
+- **F-PROJ-65-51** Causation-ID Project-Bezug-Validation in Undo-RPC
+
+### Verbleibende Polish-Items (deferred)
+
+| Fork | Severity | Notes |
+|---|---|---|
+| F-PROJ-65-32 | Medium | Compliance-Status-Column als Vor-Story (Compliance-Propagation aktuell aus AC-3 ausgeklammert) |
+| F-PROJ-65-33 | Medium | Undo-Stack N-Schritte session-basiert (aktuell Single-Step) |
+| F-PROJ-65-34 | Low | Streaming-BFS für N > 200 (aktuell blockierender Spinner ≤ 2s) |
+| F-PROJ-65-35 | Low | PROJ-58-Sim-Invalidation via BroadcastChannel |
+| F-PROJ-65-37 | Low | Multi-Node-Drag / Bulk-Plan-Mutate |
+| F-PROJ-65-38 | Low | Cycle-Visualization-Overlay im Graph |
+| F-PROJ-65-39 | Low | Snap-to-Week-Mode als Tenant-Setting |
+| F-PROJ-65-40 | Low | Plan-Mutate-Toggle in PROJ-17 Tenant-Administration-Page (heute SQL-only) |
+| F-PROJ-65-43 | Low | Sprint↔Phase-Dependencies erlauben (heute dependencies-Tabelle hat keinen `sprint`-Discriminator → Sprint-Source-BFS no-op) |
+| F-PROJ-65-44 | Low | Per-Phase Risk-MAX entlang Dependency-Walk (heute project-scoped Top-3 am Source-Node) |
+| F-PROJ-65-45 | Medium | Real Cost-Recompute via PROJ-24 Cost-Stack-Invalidation (heute Date-Shifts ändern keine Kosten) |
+| F-PROJ-65-46 | Low | `pxPerDay` Heuristic → exakte Day-Scale-Kalibrierung aus Layout |
+| F-PROJ-65-47 | Low | Ghost-Node SVG-Render statt Pointer-Capture-only |
+| F-PROJ-65-48 | Low | Per-Node `updated_at` in Snapshot-Aggregator populieren (heute Fallback auf `snapshot.generated_at`) |
+| F-PROJ-65-49 | Low | `permissions`-Field-Position konsolidieren (heute unter `trajectory.permissions`, mirror auf top-level deferred) |
+| F-PROJ-65-50 | **Medium** | Empty `if_updated_at` skipped Lock-Check → minimum source_node lock-prüfen |
+| F-PROJ-65-51 | **Medium** | Causation-ID Project-Bezug in Undo-RPC validieren |
+| F-PROJ-65-52 | Low | Pre-existing TSC-Baseline-Hygiene (12 Errors in unverwandten Test-Files) — separater Hygiene-Slice |
+| F-PROJ-65-53 | Low | Drag-Handle WCAG-Touch-Target ≥ 32×32 |
+| F-PROJ-65-54 | Low | Live-DB E2E-Integration-Test (Playwright + Test-Tenant + Full mutate→undo cycle + Latency-Bench unter N=20+) |
+
+### Nächste Slices
+
+- **ε.3c** Bundle aus F-50/-51 (Pre-Pilot-Mitigation) + F-33/-34/-35/-37/-38/-39/-43/-44 (Erweiterungen nach Pilot-Demand)
+- **ε.4** AI (trajectory_sequence Class-2 + resource_swap Class-3 + cross-project-links)
+
