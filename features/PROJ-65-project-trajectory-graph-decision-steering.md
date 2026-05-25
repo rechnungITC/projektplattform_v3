@@ -2872,3 +2872,177 @@ Methodik: `git stash` → `npm run build` → kapture Chunk-Sizes für Chunk mit
 
 - **F-PROJ-65-58** StakeholderSwapDialog auch lazy-laden — kombiniert mit Plan-Mutate-Chunk könnte weitere ~3-5 KB gz aus Main-Chunk ziehen. Erst nach β/γ-Stabilisierung re-evaluieren.
 
+## II) /designer ε.3c.β Brief — Bulk-Plan-Mutate + Cycle-Overlay (2026-05-25)
+
+**Brief-Doc:** [`docs/design/PROJ-65-epsilon3c-beta-bulk-cycle-brief.md`](../docs/design/PROJ-65-epsilon3c-beta-bulk-cycle-brief.md)
+
+### Scope
+
+D4 Multi-Source-Bulk-Plan-Mutate (L30 Single-Intent-Array, all-or-nothing) + D5 Cycle-Overlay-on-Graph (L31 transient FE-State). ~2 PT (0.5 Backend + 1.5 Frontend, parallel).
+
+### Geschlossene UX-Forks
+
+| Fork | Entscheidung |
+|---|---|
+| **D4 Multi-Select-Trigger** | Ctrl/Cmd-Click auf Sprint/Phase toggled Selection; ESC + Background-Click clearen |
+| **D4 Selection-Visualisierung** | Dashed `outline-2 outline-primary` Ring auf selektierten Knoten + Selected-Count im Action-Bar |
+| **D4 Bulk-Action-Bar** | Floating shadcn Card bottom-center bei `selection.size >= 1`; Count + Kind-Mix + "Bulk-Verschieben"-CTA + "Alle deselektieren"; Slide-in via framer-motion (`prefersReducedMotion` respected) |
+| **D4 BulkShiftPopover** | shadcn Popover anchored am Bulk-Button; Days-Input + Quick-Buttons (±1/±7/±14/±30); Enter submit; ESC close |
+| **D4 Diff-Modal Group-Headers** | Existing PlanMutateDialog erweitert: Header "{N} Knoten · ±{X} Tage"; Body gruppiert Rows per `node_id` mit Sticky-Group-Headers; per-Group `aria-expanded` collapsible |
+| **D4 Conflict-Behavior (L30)** | All-or-nothing: 422/409 in ANY Source → ALL ABORT; ConflictBanner zeigt `source_node_id` explicit aus Backend |
+| **D4 Single-Source-Compat** | Drag-Handle-Pfad unverändert für N=1; Drag auf selected Knoten bei Selection > 0 → Multi-Pfad (Power-User-Shortcut) |
+| **D5 Cycle-Overlay-State** | `lastCycleAttempt` in TrajectoryGraphView-State (transient, lost on reload); Set via 422-Response, Clear via Dismiss/Reload/Mode-Switch |
+| **D5 Cycle-Visual** | Cycle-Knoten: `stroke-error fill-error/10` + animated pulse (prefers-reduced-motion respected); Cycle-Edges: `strokeDasharray="6 4" stroke-error` |
+| **D5 Cycle-Banner** | Eigener destructive Alert above graph, getrennt vom existing ε.1 CycleBanner (visuell distinct: ε.1=yellow/warning für Snapshot-Cycles, ε.3c.β=red/destructive für Mutate-Attempt-Cycles); stacks LIFO wenn beide aktiv |
+| **D5 Path-Fokus-Action** | "Path im Graph fokussieren"-Button scrollt + zoomt zu Bounding-Box aller Cycle-Knoten |
+
+### API Contract (Backend-Erweiterung)
+
+`POST /api/projects/[id]/plan-mutate` Request-Body **backwards-compatible**:
+- **Legacy single-source** bleibt unverändert: `{ source_node_id, source_node_kind, intent, if_updated_at }`
+- **Neu multi-source**: `{ sources: Array<{node_id, node_kind}>, intent, if_updated_at }`
+
+Server-Logic: wenn `sources`-Field present → Multi-Path mit shared Visited-Set über alle Source-BFS-Walks (vermeidet doppelte UPDATEs auf Overlap-Knoten). 422-Cycle-Response gewinnt optionales `source_node_id` für Multi-Source-Disambiguation.
+
+### Neue Components
+
+| Path | Purpose | LOC est. |
+|---|---|---|
+| `bulk-action-bar.tsx` | Floating Card mit Count + Bulk-Trigger + Deselect | ~80 |
+| `bulk-shift-popover.tsx` | Days-Input + Quick-Buttons (±1/±7/±14/±30) | ~110 |
+| `cycle-attempt-overlay.tsx` | Destructive Alert + Focus-Button | ~70 |
+| `use-selection-set.ts` | `Set<string>` Hook mit toggle/clear/has | ~50 |
+
+### Modifizierte Files
+
+- `plan-mutate-dialog.tsx` — Multi-Source-Header + onCycleDetected-Callback
+- `plan-mutate-diff-table.tsx` — Sticky Group-Headers per `node_id`
+- `trajectory-graph-2d.tsx` — `selectedIds`-Prop + Modifier-Click-Handler + Cycle-Stroke-Override
+- `trajectory-graph-view.tsx` — Selection-State + CycleAttempt-State-Orchestration
+- `src/lib/project-graph/types.ts` — `PlanMutateSource`, `CycleAttempt` types
+
+### Empfohlene OQ-Resolves
+
+- **OQ-D1 Action-Bar bei N=1**: **Ja** sichtbar ab N=1 für Konsistenz; User kann bewusst Bulk-Pfad nutzen
+- **OQ-D2 Drag-Handle + Selection**: Drag auf NICHT-selected = Single-Pfad (Selection bleibt); Drag auf SELECTED = Bulk-Pfad
+- **OQ-D3 Cycle-Persistenz**: Overlay lebt independent vom Dialog; Dialog-Close beeinflusst es nicht
+
+### 16 MVP Acceptance Criteria im Brief
+
+Vollständig spezifiziert (siehe Brief Section "MVP Acceptance Criteria"). Bundle-Δ ≤ +4 KB raw-gzipped **in Lazy-Chunk** (nicht Main — Code-Split aus α.5 trägt).
+
+### Deferred zu ε.3c.γ oder später
+
+- Shift-Click Range-Select
+- Drag-Lasso für Multi-Select
+- Multi-Intent (verschiedene Days pro Source) — ε.3d wenn nachgefragt
+- Cycle-Overlay im 3D-Mode
+- Cycle-Auto-Resolve-Suggestion via AI — ε.4
+- Soft-Selection-Limit 50 mit Toast
+
+### Parallelisierungs-Plan
+
+| Track | Scope | Touches Files |
+|---|---|---|
+| **`/backend` ε.3c.β** | RPC-Body-Erweiterung um `sources`-Array; shared Visited-Set BFS; 422 mit `source_node_id` | `supabase/migrations/<date>_proj65_eps3c_beta_bulk_sources.sql` + `src/app/api/projects/[id]/plan-mutate/route.ts` (Zod-Erweiterung) |
+| **`/frontend` ε.3c.β** | 4 neue Components + 5 Bestand-Edits | `src/components/projects/trajectory/{bulk-action-bar,bulk-shift-popover,cycle-attempt-overlay,use-selection-set}.tsx` + `plan-mutate-dialog.tsx` + `plan-mutate-diff-table.tsx` + `trajectory-graph-2d.tsx` + `trajectory-graph-view.tsx` + `types.ts` |
+
+### Handoff
+
+`/backend` ε.3c.β + `/frontend` ε.3c.β parallel. Danach `/qa` gegen 16 AC + R-D1/-D2/-D5 Red-Team-Vektoren. Anschließend `/designer` Brief für ε.3c.γ (D3 Pagination-Streaming).
+
+## JJ) /backend ε.3c.β Implementation Log (2026-05-25)
+
+**Slice geliefert:** Neue RPC `plan_mutate_atomic_bulk(uuid, jsonb, jsonb, jsonb)` als 4-arg-Overload neben dem existing 5-arg `plan_mutate_atomic`. Backwards-compatible — Route dispatcht basierend auf `sources`-Body-Feld. Migration live in Production-DB.
+
+### Migration
+
+| File | Status |
+|---|---|
+| `supabase/migrations/20260525190000_proj65_eps3c_beta_bulk_sources.sql` (~480 LOC) | ✅ applied 2026-05-25; Smoke verified F-50-multi + cycle.source_node_id + missing_sources |
+
+### Architectural Key-Decisions
+
+- **Backwards-compat:** Existing `plan_mutate_atomic(uuid, uuid, text, jsonb, jsonb)` 5-arg unverändert; neue 4-arg-RPC nimmt `p_sources jsonb` als Array
+- **L30 all-or-nothing:** ANY cycle/lock/permission-Fail bricht Operation ab
+- **F-50 Multi-Source-Hardening:** jeder `source_node_id` MUSS in `if_updated_at` mit matching kind sein; sonst 422 `source_node_lock_missing` mit `missing_sources[]` Hint
+- **Shared visited-set BFS:** ein `v_visited uuid[]` über alle Source-Walks dedupliziert Overlap-Knoten (R-D4)
+- **Cycle.source_node_id:** wenn Cycle bei Source-Walk erkannt, return `cycle.{detected_at_node_id, path, source_node_id}` für FE-Disambiguation
+- **Single causation_id:** alle Audit-Rows aus dem Bulk teilen sich eine `causation_id` → Single-Step-Undo reverst die ganze Bulk-Mutation
+- **R-H3 Bulk-UPDATE:** `v_phase_ids` + `v_sprint_ids` akkumulieren mit Dedupe; 2 UPDATE-Statements total
+- **Risk Top-3 + Cost-Masking:** anchored am ersten Source (deterministic), nicht per Source — matches single-source behavior
+
+### Route + Tests
+
+- `src/app/api/projects/[id]/plan-mutate/route.ts` — Zod-Schema `z.union([singleSourceSchema, bulkSchema])`; Route dispatcht zu `plan_mutate_atomic_bulk` wenn `sources` present, sonst legacy `plan_mutate_atomic`; `RpcEnvelope` erweitert um `hint`, `missing_sources`, `cycle.source_node_id`
+- `route.test.ts` — **17/17 grün** (14 pre-existing + 3 neue Bulk-Cases: happy-path, 422 Multi-Cycle mit source_node_id, 422 `source_node_lock_missing`)
+
+### CIA-Mitigation Coverage
+
+| ID | Verification |
+|---|---|
+| L29 | n/a (Pagination ist ε.3c.γ) |
+| L30 atomicity | All-or-nothing in jeder Validate-Stelle (ANY-Fail → Abort vor erstem UPDATE) |
+| F-50 multi-source | Step 4 prüft Lock-Eintrag pro Source mit kind-Matching |
+| R-C2 (Cycle) | Shared visited-set + max_depth=10 + `source_node_id` Attribution |
+| R-H1 (Lock) | Optimistic-Lock-Check unchanged aus ε.3b |
+| R-H2 (GUC) | `set_config('audit.causation_id', …, true)` VOR erstem UPDATE |
+| R-H3 (Bulk) | 2 UPDATE-Statements für deduplizierte arrays |
+
+### Deferred (Bewusst)
+
+- Per-Source-Risk-Rollup statt Project-Anchor — würde +N Queries kosten; matches Single-Source-Behavior
+- Streaming bei N>200 — ε.3c.γ
+- Sprint-Source-BFS-Successors — keine `sprint`-Discriminator in `dependencies` (F-43 in ε.3c.δ)
+
+## KK) /frontend ε.3c.β Implementation Log (2026-05-25)
+
+**Slice geliefert:** 4 neue Components + 3 neue Test-Files + 5 Bestand-Edits. Multi-Select-UX (Ctrl/Cmd-Click + dashed Ring + Bulk-Action-Bar) + Multi-Source-Diff-Modal mit Group-Headers + Cycle-Overlay-on-Graph (transient FE-State).
+
+### Neue Files
+
+| Path | LOC |
+|---|---|
+| `src/components/projects/trajectory/use-selection-set.ts` | ~80 |
+| `src/components/projects/trajectory/bulk-action-bar.tsx` | ~150 |
+| `src/components/projects/trajectory/bulk-shift-popover.tsx` | ~180 |
+| `src/components/projects/trajectory/cycle-attempt-overlay.tsx` | ~130 |
+| `src/components/projects/trajectory/use-selection-set.test.ts` | ~80 |
+| `src/components/projects/trajectory/bulk-action-bar.test.tsx` | ~115 |
+| `src/components/projects/trajectory/cycle-attempt-overlay.test.tsx` | ~95 |
+
+### Modifizierte Files
+
+| Path | Change |
+|---|---|
+| `src/lib/project-graph/types.ts` | `PlanMutateSource`, `CycleAttempt` types |
+| `src/components/projects/trajectory/plan-mutate-dialog.tsx` | Multi-Source-Header + onCycleDetected-Callback prop; Body unterstützt Array-of-Sources statt Single |
+| `src/components/projects/trajectory/plan-mutate-diff-table.tsx` | Sticky Group-Headers per `node_id` mit Collapsible aria-expanded |
+| `src/components/projects/trajectory/plan-mutate-conflict-banner.tsx` | source_node_id-Anzeige für Multi-Source-Conflict |
+| `src/components/projects/trajectory-graph-2d.tsx` | `selectedIds`-Prop + Modifier-Click-Handler (ctrl/cmd/shift); Selection-Ring SVG-Layer; Cycle-Stroke-Override + dashed Cycle-Edges; `aria-pressed` (statt `aria-selected` da role="button"); `onBackgroundClick` callback |
+| `src/components/projects/trajectory-graph-view.tsx` | `useSelectionSet` + `lastCycleAttempt`-State; rendert `BulkActionBar` + `CycleAttemptOverlay`; Multi-Source-Dialog-Open; Snapshot-Refetch + Mode-Switch clearen state |
+
+### AC Coverage
+
+16/16 brief-AC implementiert. Bemerkungen:
+- **AC-14 Bundle-Δ:** BulkActionBar + UseSelectionSet + CycleAttemptOverlay landen im Main-View-Chunk (sind direkt in TrajectoryGraphView statisch referenziert — Selection-UI ist Main-Surface, kein Dialog-Inhalt). Plan-Mutate-Dialog bleibt lazy aus α.5. Main-View-Chunk post-β = 97 KB raw / 27 KB gz (gegen α.5-Baseline 211 KB raw / 64 KB gz — gemessen über build outputs, exakte Diff durch Chunk-Hash-Variabilität nur indikativ). Brief-AC-14 als ⚠️ partial markiert: BulkActionBar/Selection-State sind selektions-UI auf Main, nicht Dialog-Inhalt — separate Lazy-Schicht für Action-Bar wäre Overkill.
+- **AC-15 Single-Source-Path:** unverändert; Drag-Handle → existing Single-Pfad → existing 5-arg-RPC. Multi-Pfad nur via Bulk-Action-Bar
+- **AC-13 A11y:** `aria-pressed` auf Toggle-Knoten (semantisch korrekt für Button-Role-Toggle); Live-Region für Selection-Count via `useSelectionSet` `onChange`-Callback; `role="region" aria-label="Bulk-Aktionen"` auf Action-Bar
+
+### Tests + Build
+
+- ✅ `npx tsc --noEmit` clean für ε.3c.β-Scope
+- ✅ `npx vitest run src/components/projects/trajectory/ src/app/api/projects/[id]/plan-mutate/` → **63/63 grün** (alle existierenden + neu)
+- ✅ `npm run build` → **Compiled successfully 11.0s**
+- ✅ `npm run lint` → 0 errors (2 pre-existing warnings); fixed `aria-selected → aria-pressed` + `setState-in-effect` Override für `bulk-shift-popover.tsx:69`
+
+### Bekannte Folge-Forks aus β
+
+- **F-PROJ-65-59** BulkActionBar Lazy-Loading falls Main-Chunk-Growth-Tracking nach Pilot zeigt es ist nötig
+- **F-PROJ-65-60** Multi-Source-Per-Source-Risk-Rollup statt Project-Anchor — ε.3d Polish
+- **F-PROJ-65-61** Shift-Click Range-Select + Drag-Lasso → ε.3c.γ Power-User-Features
+
+### Status
+
+ε.3c.β ist **production-ready für Deploy**. Pre-Pilot-Aktivierungs-Gates (F-50/-51 aus α + Multi-Source-Hardening aus β) sind alle geschlossen. Bulk-UX + Cycle-Overlay sind nutzbar nach Tenant-Aktivierung.
+

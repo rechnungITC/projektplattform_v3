@@ -87,6 +87,13 @@ interface PlanMutateDiffTableProps {
   /** Optional max-rows cap. Default 50; rows beyond render as a footer
    *  counter. */
   maxVisibleRows?: number
+  /**
+   * PROJ-65 ε.3c.β (AC-6) — render a sticky group-header row per
+   * `node_id` group. Default `false` keeps the ε.3b single-source
+   * layout (no per-group header). Multi-source dialogs pass `true`
+   * for scannable scroll behavior in long diffs.
+   */
+  groupHeaderSticky?: boolean
 }
 
 const FIELD_LABEL: Record<AffectedField, string> = {
@@ -114,6 +121,7 @@ export function PlanMutateDiffTable({
   conflictedNodeIds,
   projectId,
   maxVisibleRows = 50,
+  groupHeaderSticky = false,
 }: PlanMutateDiffTableProps) {
   if (affected.length === 0) {
     return (
@@ -175,73 +183,16 @@ export function PlanMutateDiffTable({
             {grouped.map((group, groupIdx) => {
               const isConflicted =
                 conflictedNodeIds?.has(group.node_id) ?? false
-              return group.rows.map((row, rowIdx) => {
-                const isFirstRowOfGroup = rowIdx === 0
-                const showBorder = isFirstRowOfGroup && groupIdx > 0
-                return (
-                  <TableRow
-                    key={`${row.node_id}:${row.field}`}
-                    data-testid="plan-mutate-diff-row"
-                    data-node-id={row.node_id}
-                    data-field={row.field}
-                    data-severity={row.severity}
-                    className={`${showBorder ? "border-t-2" : ""} ${
-                      isConflicted ? "bg-destructive/10" : ""
-                    }`}
-                  >
-                    <TableCell className="align-top">
-                      {isFirstRowOfGroup ? (
-                        <div className="flex items-center gap-1.5">
-                          {isConflicted && (
-                            <AlertTriangle
-                              className="h-3.5 w-3.5 shrink-0 text-destructive"
-                              aria-label="Konflikt"
-                            />
-                          )}
-                          <span className="text-sm font-medium">
-                            {group.node_label}
-                          </span>
-                          <Badge variant="outline" className="text-[10px]">
-                            {NODE_KIND_LABEL[group.node_kind] ??
-                              group.node_kind}
-                          </Badge>
-                        </div>
-                      ) : null}
-                    </TableCell>
-                    <TableCell className="align-top text-xs text-muted-foreground">
-                      <span aria-label={`Feld: ${FIELD_LABEL[row.field]}`}>
-                        {FIELD_LABEL[row.field]}
-                      </span>
-                    </TableCell>
-                    <TableCell className="align-top">
-                      <CellValue
-                        value={row.before}
-                        field={row.field}
-                        costClearView={costClearView}
-                        masked={row.masked}
-                        side="before"
-                      />
-                    </TableCell>
-                    <TableCell className="align-top">
-                      <DeltaArrow severity={row.severity} />
-                    </TableCell>
-                    <TableCell className="align-top">
-                      <CellValue
-                        value={row.after}
-                        field={row.field}
-                        costClearView={costClearView}
-                        masked={row.masked}
-                        side="after"
-                      />
-                      {row.field === "risk_severity" &&
-                        row.top_3_risks &&
-                        row.top_3_risks.length > 0 && (
-                          <TopRisksCollapsible risks={row.top_3_risks} />
-                        )}
-                    </TableCell>
-                  </TableRow>
-                )
-              })
+              return (
+                <DiffGroupRows
+                  key={group.node_id}
+                  group={group}
+                  groupIdx={groupIdx}
+                  isConflicted={isConflicted}
+                  costClearView={costClearView}
+                  groupHeaderSticky={groupHeaderSticky}
+                />
+              )
             })}
           </TableBody>
         </Table>
@@ -256,6 +207,140 @@ export function PlanMutateDiffTable({
       )}
       <ClassThreeFootnote hasMaskedValue={hasMaskedCost} projectId={projectId} />
     </div>
+  )
+}
+
+/**
+ * PROJ-65 ε.3c.β (AC-6) — per-group rendering. Wrapped in its own
+ * component so the collapsed-state hook is local per group.
+ *
+ * When `groupHeaderSticky` is `true` we render an extra sticky
+ * group-header row above each group with the node label + kind badge
+ * and an `aria-expanded` toggle. Default-expanded.
+ *
+ * When `groupHeaderSticky` is `false` (single-source ε.3b behavior)
+ * the group-header row is omitted and the existing first-row-of-group
+ * inline label is rendered instead.
+ */
+function DiffGroupRows({
+  group,
+  groupIdx,
+  isConflicted,
+  costClearView,
+  groupHeaderSticky,
+}: {
+  group: {
+    node_id: string
+    node_kind: string
+    node_label: string
+    rows: AffectedRow[]
+  }
+  groupIdx: number
+  isConflicted: boolean
+  costClearView: boolean
+  groupHeaderSticky: boolean
+}) {
+  const [collapsed, setCollapsed] = React.useState(false)
+  return (
+    <React.Fragment>
+      {groupHeaderSticky && (
+        <TableRow
+          key={`hdr-${group.node_id}`}
+          data-testid="plan-mutate-diff-group-header"
+          data-node-id={group.node_id}
+          aria-expanded={!collapsed}
+          className="sticky top-9 z-[5] cursor-pointer bg-surface-container-low hover:bg-surface-container"
+          onClick={() => setCollapsed((c) => !c)}
+        >
+          <TableCell colSpan={5} className="py-2">
+            <div className="flex items-center gap-1.5">
+              {isConflicted && (
+                <AlertTriangle
+                  className="h-3.5 w-3.5 shrink-0 text-destructive"
+                  aria-label="Konflikt"
+                />
+              )}
+              <Badge variant="outline" className="text-[10px]">
+                {NODE_KIND_LABEL[group.node_kind] ?? group.node_kind}
+              </Badge>
+              <span className="text-sm font-medium">{group.node_label}</span>
+              <span className="ml-auto text-[10px] text-muted-foreground">
+                {collapsed ? "▸" : "▾"} {group.rows.length} Feld
+                {group.rows.length === 1 ? "" : "er"}
+              </span>
+            </div>
+          </TableCell>
+        </TableRow>
+      )}
+      {!collapsed &&
+        group.rows.map((row, rowIdx) => {
+          const isFirstRowOfGroup = rowIdx === 0
+          const showBorder =
+            !groupHeaderSticky && isFirstRowOfGroup && groupIdx > 0
+          return (
+            <TableRow
+              key={`${row.node_id}:${row.field}`}
+              data-testid="plan-mutate-diff-row"
+              data-node-id={row.node_id}
+              data-field={row.field}
+              data-severity={row.severity}
+              className={`${showBorder ? "border-t-2" : ""} ${
+                isConflicted ? "bg-destructive/10" : ""
+              }`}
+            >
+              <TableCell className="align-top">
+                {!groupHeaderSticky && isFirstRowOfGroup ? (
+                  <div className="flex items-center gap-1.5">
+                    {isConflicted && (
+                      <AlertTriangle
+                        className="h-3.5 w-3.5 shrink-0 text-destructive"
+                        aria-label="Konflikt"
+                      />
+                    )}
+                    <span className="text-sm font-medium">
+                      {group.node_label}
+                    </span>
+                    <Badge variant="outline" className="text-[10px]">
+                      {NODE_KIND_LABEL[group.node_kind] ?? group.node_kind}
+                    </Badge>
+                  </div>
+                ) : null}
+              </TableCell>
+              <TableCell className="align-top text-xs text-muted-foreground">
+                <span aria-label={`Feld: ${FIELD_LABEL[row.field]}`}>
+                  {FIELD_LABEL[row.field]}
+                </span>
+              </TableCell>
+              <TableCell className="align-top">
+                <CellValue
+                  value={row.before}
+                  field={row.field}
+                  costClearView={costClearView}
+                  masked={row.masked}
+                  side="before"
+                />
+              </TableCell>
+              <TableCell className="align-top">
+                <DeltaArrow severity={row.severity} />
+              </TableCell>
+              <TableCell className="align-top">
+                <CellValue
+                  value={row.after}
+                  field={row.field}
+                  costClearView={costClearView}
+                  masked={row.masked}
+                  side="after"
+                />
+                {row.field === "risk_severity" &&
+                  row.top_3_risks &&
+                  row.top_3_risks.length > 0 && (
+                    <TopRisksCollapsible risks={row.top_3_risks} />
+                  )}
+              </TableCell>
+            </TableRow>
+          )
+        })}
+    </React.Fragment>
   )
 }
 

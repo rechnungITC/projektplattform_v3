@@ -86,6 +86,32 @@ interface TrajectoryGraph2DProps {
    * (only when `showDragHandles` is true). Safe to no-op when unset.
    */
   onPreloadPlanMutateDialog?: () => void
+  /**
+   * PROJ-65 ε.3c.β (AC-1) — set of currently-selected sprint/phase
+   * node ids. Drives the dashed-primary selection-ring + `aria-pressed`.
+   */
+  selectedIds?: Set<string>
+  /**
+   * PROJ-65 ε.3c.β (AC-1) — fired on Ctrl/Cmd/Shift-Click on a
+   * sprint/phase node. `modifierKey` is true when at least one of the
+   * three modifier keys was held during the click (the parent only
+   * toggles selection when this is true; otherwise the normal focus
+   * path handles the click).
+   */
+  onNodeToggleSelect?: (nodeId: string, modifierKey: boolean) => void
+  /**
+   * PROJ-65 ε.3c.β (AC-8) — transient cycle-overlay from the last
+   * 422-cycle response. `path` is the cycle's node-id sequence. When
+   * non-null, all nodes in `path` are rendered with a destructive
+   * stroke + pulse; consecutive edges between them are dashed-red.
+   */
+  cycleOverlay?: { path: string[] } | null
+  /**
+   * PROJ-65 ε.3c.β (AC-2) — fired when the user clicks the empty
+   * canvas (svg root, not on any node). Parent should clear the
+   * selection set when appropriate.
+   */
+  onBackgroundClick?: () => void
 }
 
 const PRELOAD_HOVER_DELAY_MS = 300
@@ -118,7 +144,31 @@ export function TrajectoryGraph2D({
   onPlanMutateDrop,
   pxPerDay,
   onPreloadPlanMutateDialog,
+  selectedIds,
+  onNodeToggleSelect,
+  cycleOverlay,
+  onBackgroundClick,
 }: TrajectoryGraph2DProps) {
+  // PROJ-65 ε.3c.β — derive cycle-node set + adjacent-edge predicate.
+  const cycleNodeSet = React.useMemo(() => {
+    if (!cycleOverlay || cycleOverlay.path.length === 0) return null
+    return new Set(cycleOverlay.path)
+  }, [cycleOverlay])
+  const cyclePathPairs = React.useMemo(() => {
+    if (!cycleOverlay || cycleOverlay.path.length < 2) return null
+    const pairs = new Set<string>()
+    for (let i = 0; i < cycleOverlay.path.length - 1; i++) {
+      pairs.add(`${cycleOverlay.path[i]}->${cycleOverlay.path[i + 1]}`)
+    }
+    // Close the loop (last → first) for cycles where the server
+    // doesn't repeat the start node at the end.
+    if (cycleOverlay.path.length >= 2) {
+      pairs.add(
+        `${cycleOverlay.path[cycleOverlay.path.length - 1]}->${cycleOverlay.path[0]}`,
+      )
+    }
+    return pairs
+  }, [cycleOverlay])
   // Best-effort px/day derivation when not supplied: spread across the
   // visible content width assuming a 60-day window. Caller can pass an
   // exact value once it has a calibrated time-axis.
@@ -192,6 +242,14 @@ export function TrajectoryGraph2D({
           height={layout.height}
           viewBox={`0 0 ${layout.width} ${layout.height}`}
           className="absolute inset-0"
+          onClick={(e) => {
+            // PROJ-65 ε.3c.β (AC-2) — background-click on the bare SVG
+            // (i.e. not on any node `<motion.g>`) clears selection.
+            // Node onClick stops propagation via the modifier-branch.
+            if (e.target === e.currentTarget) {
+              onBackgroundClick?.()
+            }
+          }}
         >
           {/* Lane backgrounds */}
           {layout.lanes.map((lane) => (
@@ -282,6 +340,44 @@ export function TrajectoryGraph2D({
             )
           })}
 
+          {/* PROJ-65 ε.3c.β — Cycle-Edge overlay: dashed red lines
+              between consecutive cycle-path nodes. Rendered between
+              the normal edges and the nodes so they sit underneath the
+              destructive node-strokes. */}
+          {cyclePathPairs &&
+            cycleOverlay &&
+            cycleOverlay.path.length >= 2 &&
+            (() => {
+              const lines: React.ReactNode[] = []
+              const path = cycleOverlay.path
+              const cycleLoopLength = path.length
+              for (let i = 0; i < cycleLoopLength; i++) {
+                const fromId = path[i]
+                const toId = path[(i + 1) % cycleLoopLength]
+                // Skip the closing edge if it's identical to the
+                // first node id appearing again (some backends repeat
+                // the start to make the cycle explicit).
+                if (i === cycleLoopLength - 1 && fromId === path[0]) continue
+                const a = nodeById.get(fromId)
+                const b = nodeById.get(toId)
+                if (!a || !b) continue
+                lines.push(
+                  <line
+                    key={`cycle-edge-${fromId}-${toId}-${i}`}
+                    x1={a.x + a.width / 2}
+                    y1={a.y}
+                    x2={b.x - b.width / 2}
+                    y2={b.y}
+                    className="stroke-destructive"
+                    strokeWidth={2}
+                    strokeDasharray="6 4"
+                    data-testid="cycle-edge"
+                  />,
+                )
+              }
+              return <g data-testid="cycle-edges-overlay">{lines}</g>
+            })()}
+
           {/* Nodes */}
           {layout.nodes.map((node) => {
             const tone = NODE_TONE[node.kind] ?? NODE_TONE.work_item
@@ -294,6 +390,11 @@ export function TrajectoryGraph2D({
             const x = node.x - node.width / 2
             const y = node.y - node.height / 2
 
+            const isSelected = selectedIds?.has(node.id) ?? false
+            const isCycleNode = cycleNodeSet?.has(node.id) ?? false
+            const canToggleSelection =
+              (node.kind === "sprint" || node.kind === "phase") &&
+              Boolean(onNodeToggleSelect)
             return (
               <motion.g
                 key={node.id}
@@ -305,8 +406,28 @@ export function TrajectoryGraph2D({
                   node.decision_count > 0
                     ? ` · ${node.decision_count} Entscheidung(en)`
                     : ""
-                }`}
-                onClick={() => onFocusNode(node.id)}
+                }${isSelected ? " (ausgewählt)" : ""}`}
+                aria-pressed={
+                  canToggleSelection ? isSelected : undefined
+                }
+                data-selected={isSelected ? "true" : undefined}
+                data-cycle={isCycleNode ? "true" : undefined}
+                onClick={(e) => {
+                  // PROJ-65 ε.3c.β (AC-1) — Ctrl/Cmd/Shift-Click on a
+                  // sprint/phase node toggles selection instead of
+                  // focusing. Plain click falls through to focus.
+                  const modifier = e.metaKey || e.ctrlKey || e.shiftKey
+                  if (canToggleSelection && modifier) {
+                    e.preventDefault()
+                    e.stopPropagation()
+                    onNodeToggleSelect!(node.id, true)
+                    return
+                  }
+                  // Stop the click from bubbling to the svg root and
+                  // triggering onBackgroundClick.
+                  e.stopPropagation()
+                  onFocusNode(node.id)
+                }}
                 onFocus={() => onFocusNode(node.id)}
                 onPointerEnter={
                   node.kind === "sprint" || node.kind === "phase"
@@ -328,23 +449,39 @@ export function TrajectoryGraph2D({
                 initial={
                   reducedMotion ? false : { opacity: 0, scale: 0.85 }
                 }
-                animate={{ opacity: 1, scale: 1 }}
+                animate={
+                  isCycleNode && !reducedMotion
+                    ? { opacity: [1, 0.6, 1], scale: 1 }
+                    : { opacity: 1, scale: 1 }
+                }
                 whileHover={reducedMotion ? undefined : { scale: 1.04 }}
-                transition={{ duration: motionDuration }}
+                transition={
+                  isCycleNode && !reducedMotion
+                    ? { duration: 1.5, repeat: Infinity, ease: "easeInOut" }
+                    : { duration: motionDuration }
+                }
               >
                 {isCircle ? (
                   <circle
                     cx={node.x}
                     cy={node.y}
                     r={node.width / 2}
-                    className={`${tone.fill} ${tone.border}`}
-                    strokeWidth={isFocus ? 3 : 1.5}
+                    className={
+                      isCycleNode
+                        ? "fill-destructive/10 stroke-destructive"
+                        : `${tone.fill} ${tone.border}`
+                    }
+                    strokeWidth={isCycleNode ? 3 : isFocus ? 3 : 1.5}
                   />
                 ) : isDiamond ? (
                   <polygon
                     points={`${node.x},${y} ${x + node.width},${node.y} ${node.x},${y + node.height} ${x},${node.y}`}
-                    className={`${tone.fill} ${tone.border}`}
-                    strokeWidth={isFocus ? 3 : 1.5}
+                    className={
+                      isCycleNode
+                        ? "fill-destructive/10 stroke-destructive"
+                        : `${tone.fill} ${tone.border}`
+                    }
+                    strokeWidth={isCycleNode ? 3 : isFocus ? 3 : 1.5}
                   />
                 ) : isGoal ? (
                   (() => {
@@ -381,9 +518,27 @@ export function TrajectoryGraph2D({
                     width={node.width}
                     height={node.height}
                     rx={6}
-                    className={`${tone.fill} ${tone.border}`}
-                    strokeWidth={isFocus ? 3 : 1.5}
+                    className={
+                      isCycleNode
+                        ? "fill-destructive/10 stroke-destructive"
+                        : `${tone.fill} ${tone.border}`
+                    }
+                    strokeWidth={isCycleNode ? 3 : isFocus ? 3 : 1.5}
                     strokeDasharray={node.kind === "epic" ? "4 3" : undefined}
+                  />
+                )}
+                {isSelected && (
+                  <rect
+                    x={x - 5}
+                    y={y - 5}
+                    width={node.width + 10}
+                    height={node.height + 10}
+                    rx={10}
+                    className="fill-none stroke-primary"
+                    strokeWidth={2}
+                    strokeDasharray="5 3"
+                    data-testid="selection-ring"
+                    pointerEvents="none"
                   />
                 )}
                 {isOnGreenPath(node) && !isGoal && (

@@ -277,4 +277,115 @@ describe("POST /api/projects/[id]/plan-mutate", () => {
     const body = await res.json()
     expect(body.error).toBe("source_node_lock_missing")
   })
+
+  // ===========================================================================
+  // ε.3c.β — Multi-Source Bulk-Mutate
+  // ===========================================================================
+
+  const SOURCE_NODE_ID_2 = "66666666-6666-4666-8666-666666666666"
+
+  const validBulkBody = {
+    sources: [
+      { node_id: SOURCE_NODE_ID, node_kind: "phase" as const },
+      { node_id: SOURCE_NODE_ID_2, node_kind: "sprint" as const },
+    ],
+    intent: { kind: "shift_dates" as const, days: 5 },
+    if_updated_at: [
+      {
+        node_id: SOURCE_NODE_ID,
+        node_kind: "phase",
+        updated_at: "2026-05-25T10:00:00.000Z",
+      },
+      {
+        node_id: SOURCE_NODE_ID_2,
+        node_kind: "sprint",
+        updated_at: "2026-05-25T10:00:00.000Z",
+      },
+    ],
+  }
+
+  it("multi-source happy path: forwards args to plan_mutate_atomic_bulk RPC and returns 200", async () => {
+    mocks.rpcMock.mockResolvedValue({
+      data: {
+        ok: true,
+        causation_id: "77777777-7777-4777-8777-777777777777",
+        diff: { affected: [] },
+      },
+      error: null,
+    })
+
+    const res = await POST(makeRequest(validBulkBody), ctx)
+
+    expect(res.status).toBe(200)
+    const body = await res.json()
+    expect(body.ok).toBe(true)
+    expect(body.causation_id).toBe("77777777-7777-4777-8777-777777777777")
+    expect(mocks.rpcMock).toHaveBeenCalledWith("plan_mutate_atomic_bulk", {
+      p_project_id: PROJECT_ID,
+      p_sources: validBulkBody.sources,
+      p_intent: { kind: "shift_dates", days: 5 },
+      p_if_updated_at: validBulkBody.if_updated_at,
+    })
+  })
+
+  it("multi-source 422 cycle: forwards source_node_id in response body", async () => {
+    mocks.rpcMock.mockResolvedValue({
+      data: {
+        ok: false,
+        status: 422,
+        cycle: {
+          detected_at_node_id: SOURCE_NODE_ID,
+          path: [SOURCE_NODE_ID, SOURCE_NODE_ID_2],
+          source_node_id: SOURCE_NODE_ID_2,
+        },
+      },
+      error: null,
+    })
+    const res = await POST(makeRequest(validBulkBody), ctx)
+    expect(res.status).toBe(422)
+    const body = await res.json()
+    expect(body.cycle.source_node_id).toBe(SOURCE_NODE_ID_2)
+    expect(body.cycle.detected_at_node_id).toBe(SOURCE_NODE_ID)
+  })
+
+  it("multi-source 422 source_node_lock_missing: bulk RPC reports a source missing from if_updated_at", async () => {
+    mocks.rpcMock.mockResolvedValue({
+      data: {
+        ok: false,
+        status: 422,
+        error: "source_node_lock_missing",
+        hint: "if_updated_at must include an entry for every source_node.",
+        missing_sources: [
+          { node_id: SOURCE_NODE_ID_2, node_kind: "sprint" },
+        ],
+      },
+      error: null,
+    })
+    // Body has sources [phase, sprint] but if_updated_at only includes phase.
+    const bodyMissingLock = {
+      ...validBulkBody,
+      if_updated_at: [
+        {
+          node_id: SOURCE_NODE_ID,
+          node_kind: "phase",
+          updated_at: "2026-05-25T10:00:00.000Z",
+        },
+      ],
+    }
+    const res = await POST(makeRequest(bodyMissingLock), ctx)
+    expect(res.status).toBe(422)
+    const body = await res.json()
+    expect(body.error).toBe("source_node_lock_missing")
+    expect(body.missing_sources).toEqual([
+      { node_id: SOURCE_NODE_ID_2, node_kind: "sprint" },
+    ])
+    // Confirm dispatch went to the bulk RPC, not the legacy single-source one.
+    expect(mocks.rpcMock).toHaveBeenCalledWith(
+      "plan_mutate_atomic_bulk",
+      expect.objectContaining({
+        p_project_id: PROJECT_ID,
+        p_sources: validBulkBody.sources,
+      }),
+    )
+  })
 })

@@ -32,7 +32,9 @@ import {
   type TrajectoryLayout,
 } from "@/lib/project-graph/trajectory-layout"
 import type {
+  CycleAttempt,
   NodeAssignee,
+  PlanMutateSource,
   ProjectGraphSnapshot,
 } from "@/lib/project-graph/types"
 import { toast } from "sonner"
@@ -54,6 +56,7 @@ import { TrajectoryGraph2D } from "./trajectory-graph-2d"
 import { CycleBanner } from "./trajectory-cycle-banner"
 import { PlanMutateChunkLoading } from "./trajectory/plan-mutate-chunk-loading"
 import type { PositionedNode } from "@/lib/project-graph/trajectory-layout"
+import { useSelectionSet } from "./trajectory/use-selection-set"
 
 const TrajectoryGraph3D = dynamic(
   () =>
@@ -80,12 +83,34 @@ const PlanMutateDialog = dynamic(
   },
 )
 
+// PROJ-65 ε.3c.β — BulkActionBar + CycleAttemptOverlay piggy-back on the
+// same lazy chunk as PlanMutateDialog. They are only rendered after the
+// user explicitly enters the bulk-select or cycle-attempt path, both of
+// which presume `canPlanMutate=true`. Co-locating in this chunk keeps the
+// main view-chunk lean for the 95% read-only case.
+const BulkActionBar = dynamic(
+  () =>
+    import("@/components/projects/trajectory/bulk-action-bar").then(
+      (m) => m.BulkActionBar,
+    ),
+  { ssr: false },
+)
+const CycleAttemptOverlay = dynamic(
+  () =>
+    import("@/components/projects/trajectory/cycle-attempt-overlay").then(
+      (m) => m.CycleAttemptOverlay,
+    ),
+  { ssr: false },
+)
+
 /**
  * Idle-preload trigger fired from a 300ms-hover on a sprint/phase node.
  * Safe to call repeatedly — Webpack/Turbopack dedupes the import promise.
  */
 function preloadPlanMutateDialog(): void {
   void import("@/components/projects/trajectory/plan-mutate-dialog")
+  void import("@/components/projects/trajectory/bulk-action-bar")
+  void import("@/components/projects/trajectory/cycle-attempt-overlay")
 }
 
 interface TrajectoryGraphViewProps {
@@ -143,6 +168,26 @@ export function TrajectoryGraphView({ projectId }: TrajectoryGraphViewProps) {
     node: PositionedNode
     days: number
   } | null>(null)
+  // PROJ-65 ε.3c.β — Multi-source bulk dialog state.
+  const [bulkPlanMutate, setBulkPlanMutate] = React.useState<{
+    sources: PlanMutateSource[]
+    days: number
+  } | null>(null)
+  // PROJ-65 ε.3c.β — Selection set + last 422-cycle overlay state.
+  const [liveRegion, setLiveRegion] = React.useState<string>("")
+  const selectionSet = useSelectionSet({
+    onChange: (size) => {
+      // a11y live-region announcement (AC-13).
+      setLiveRegion(
+        size === 0
+          ? "Auswahl aufgehoben"
+          : `${size} Knoten ausgewählt`,
+      )
+    },
+  })
+  const [lastCycleAttempt, setLastCycleAttempt] =
+    React.useState<CycleAttempt | null>(null)
+  const graphContainerRef = React.useRef<HTMLDivElement | null>(null)
   const [reloadTick, setReloadTick] = React.useState(0)
   const [webglAvailable, setWebglAvailable] = React.useState<boolean | null>(
     null,
@@ -158,6 +203,29 @@ export function TrajectoryGraphView({ projectId }: TrajectoryGraphViewProps) {
       setDimension("2d")
     }
   }, [prefersReducedMotion, webglAvailable])
+
+  // PROJ-65 ε.3c.β (AC-3) — ESC clears selection if active.
+  React.useEffect(() => {
+    const handler = (e: KeyboardEvent) => {
+      if (e.key !== "Escape") return
+      if (selectionSet.size > 0) {
+        selectionSet.clear()
+      }
+    }
+    window.addEventListener("keydown", handler)
+    return () => window.removeEventListener("keydown", handler)
+  }, [selectionSet])
+
+  // PROJ-65 ε.3c.β (AC-16) — clear selection + cycle-overlay on
+  // mode-switch (2D ↔ 3D).
+  const previousDimensionRef = React.useRef(dimension)
+  React.useEffect(() => {
+    if (previousDimensionRef.current !== dimension) {
+      selectionSet.clear()
+      setLastCycleAttempt(null)
+      previousDimensionRef.current = dimension
+    }
+  }, [dimension, selectionSet])
 
   React.useEffect(() => {
     let cancelled = false
@@ -196,6 +264,23 @@ export function TrajectoryGraphView({ projectId }: TrajectoryGraphViewProps) {
       cancelled = true
     }
   }, [projectId, reloadTick])
+
+  // PROJ-65 ε.3c.β (AC-11) — clear lastCycleAttempt whenever the
+  // snapshot's `generated_at` changes (typically after Commit / Reload).
+  // The user has likely modified dependencies; the previously-detected
+  // cycle may no longer apply.
+  const snapshotGeneratedAt = snapshot?.generated_at ?? null
+  const previousGeneratedAtRef = React.useRef<string | null>(null)
+  React.useEffect(() => {
+    if (
+      previousGeneratedAtRef.current !== null &&
+      snapshotGeneratedAt !== null &&
+      snapshotGeneratedAt !== previousGeneratedAtRef.current
+    ) {
+      setLastCycleAttempt(null)
+    }
+    previousGeneratedAtRef.current = snapshotGeneratedAt
+  }, [snapshotGeneratedAt])
 
   const layout: TrajectoryLayout = React.useMemo(() => {
     if (!snapshot) {
@@ -358,6 +443,74 @@ export function TrajectoryGraphView({ projectId }: TrajectoryGraphViewProps) {
   const method = layout.lanes.length === 0 ? null : "active"
   const hasContent = layout.nodes.length > 1 // start node always present
 
+  // PROJ-65 ε.3c.β — derived helpers for selection-set + bulk-action-bar.
+  const sprintPhaseKindById = React.useMemo(() => {
+    const m = new Map<string, "phase" | "sprint">()
+    for (const n of layout.nodes) {
+      if (n.kind === "phase") m.set(n.id, "phase")
+      else if (n.kind === "sprint") m.set(n.id, "sprint")
+    }
+    return m
+  }, [layout.nodes])
+  const nodeLabelMap = React.useMemo(
+    () => Object.fromEntries(layout.nodes.map((n) => [n.id, n.label])),
+    [layout.nodes],
+  )
+  const kindMix = React.useMemo(() => {
+    let phases = 0
+    let sprints = 0
+    for (const id of selectionSet.selectedIds) {
+      const k = sprintPhaseKindById.get(id)
+      if (k === "phase") phases++
+      else if (k === "sprint") sprints++
+    }
+    const out: { label: string; count: number }[] = []
+    if (phases > 0) out.push({ label: phases === 1 ? "Phase" : "Phasen", count: phases })
+    if (sprints > 0)
+      out.push({ label: sprints === 1 ? "Sprint" : "Sprints", count: sprints })
+    return out
+  }, [selectionSet.selectedIds, sprintPhaseKindById])
+
+  // PROJ-65 ε.3c.β (AC-10) — focus the graph container on the cycle
+  // path's bounding-box. Best-effort scroll based on the positioned
+  // node coords; no zoom in MVP.
+  const handleCycleFocus = React.useCallback(
+    (path: string[]) => {
+      if (path.length === 0) return
+      const positionedById = new Map(
+        layout.nodes.map((n) => [n.id, n] as const),
+      )
+      let minX = Infinity
+      let minY = Infinity
+      let maxX = -Infinity
+      let maxY = -Infinity
+      for (const id of path) {
+        const n = positionedById.get(id)
+        if (!n) continue
+        minX = Math.min(minX, n.x - n.width / 2)
+        minY = Math.min(minY, n.y - n.height / 2)
+        maxX = Math.max(maxX, n.x + n.width / 2)
+        maxY = Math.max(maxY, n.y + n.height / 2)
+      }
+      if (!Number.isFinite(minX)) return
+      const container = graphContainerRef.current
+      if (!container) return
+      const centerX = (minX + maxX) / 2
+      const centerY = (minY + maxY) / 2
+      try {
+        container.scrollTo({
+          left: Math.max(0, centerX - container.clientWidth / 2),
+          top: Math.max(0, centerY - container.clientHeight / 2),
+          behavior: prefersReducedMotion ? "auto" : "smooth",
+        })
+      } catch {
+        container.scrollLeft = Math.max(0, centerX - container.clientWidth / 2)
+        container.scrollTop = Math.max(0, centerY - container.clientHeight / 2)
+      }
+    },
+    [layout.nodes, prefersReducedMotion],
+  )
+
   return (
     <Card data-testid="trajectory-graph-view">
       <CardHeader className="gap-4">
@@ -437,6 +590,16 @@ export function TrajectoryGraphView({ projectId }: TrajectoryGraphViewProps) {
         )}
         {!isLoading && !error && snapshot && hasContent && (
           <>
+            {/* PROJ-65 ε.3c.β — destructive overlay above the ε.1
+                yellow CycleBanner (LIFO-Stack visually). */}
+            {lastCycleAttempt && (
+              <CycleAttemptOverlay
+                cycle={lastCycleAttempt}
+                nodeLabels={nodeLabelMap}
+                onFocus={handleCycleFocus}
+                onDismiss={() => setLastCycleAttempt(null)}
+              />
+            )}
             <CycleBanner
               cycleCount={layout.cycle_count}
               projectId={projectId}
@@ -448,44 +611,52 @@ export function TrajectoryGraphView({ projectId }: TrajectoryGraphViewProps) {
                 onFocusNode={setFocusedNodeId}
               />
             ) : (
-              <TrajectoryGraph2D
-                layout={layout}
-                focusedNodeId={focusedNodeId}
-                onFocusNode={(nodeId) => {
-                  // Intercept goal-node clicks to open GoalDetailPanel.
-                  if (nodeId && nodeId.startsWith("goal:")) {
-                    const goalId = nodeId.slice("goal:".length)
-                    setGoalPanelGoalId(goalId)
-                    return
+              <div ref={graphContainerRef}>
+                <TrajectoryGraph2D
+                  layout={layout}
+                  focusedNodeId={focusedNodeId}
+                  onFocusNode={(nodeId) => {
+                    // Intercept goal-node clicks to open GoalDetailPanel.
+                    if (nodeId && nodeId.startsWith("goal:")) {
+                      const goalId = nodeId.slice("goal:".length)
+                      setGoalPanelGoalId(goalId)
+                      return
+                    }
+                    setFocusedNodeId(nodeId)
+                    setFocusedTab(null)
+                  }}
+                  onOpenRiskDecision={(nodeId, tab) => {
+                    setFocusedNodeId(nodeId)
+                    setFocusedTab(tab)
+                  }}
+                  onOpenAI={(nodeId) => {
+                    const node = layout.nodes.find((n) => n.id === nodeId)
+                    setAiDrawer({
+                      nodeId,
+                      count: node?.ai_recommendation_count ?? 1,
+                    })
+                  }}
+                  projectId={projectId}
+                  assigneesByWorkItem={assigneesByWorkItem}
+                  onOpenStakeholders={(workItemId, focusAssigneeId) =>
+                    setStakeholderPanel({ workItemId, focusAssigneeId })
                   }
-                  setFocusedNodeId(nodeId)
-                  setFocusedTab(null)
-                }}
-                onOpenRiskDecision={(nodeId, tab) => {
-                  setFocusedNodeId(nodeId)
-                  setFocusedTab(tab)
-                }}
-                onOpenAI={(nodeId) => {
-                  const node = layout.nodes.find((n) => n.id === nodeId)
-                  setAiDrawer({
-                    nodeId,
-                    count: node?.ai_recommendation_count ?? 1,
-                  })
-                }}
-                projectId={projectId}
-                assigneesByWorkItem={assigneesByWorkItem}
-                onOpenStakeholders={(workItemId, focusAssigneeId) =>
-                  setStakeholderPanel({ workItemId, focusAssigneeId })
-                }
-                swapReceiptNodeId={swapReceiptNodeId}
-                canPlanMutate={
-                  snapshot?.trajectory?.permissions?.can_plan_mutate ?? false
-                }
-                onPlanMutateDrop={(node, days) =>
-                  setPlanMutate({ node, days })
-                }
-                onPreloadPlanMutateDialog={preloadPlanMutateDialog}
-              />
+                  swapReceiptNodeId={swapReceiptNodeId}
+                  canPlanMutate={
+                    snapshot?.trajectory?.permissions?.can_plan_mutate ?? false
+                  }
+                  onPlanMutateDrop={(node, days) =>
+                    setPlanMutate({ node, days })
+                  }
+                  onPreloadPlanMutateDialog={preloadPlanMutateDialog}
+                  selectedIds={selectionSet.selectedIds}
+                  onNodeToggleSelect={(nodeId) =>
+                    selectionSet.toggle(nodeId)
+                  }
+                  cycleOverlay={lastCycleAttempt}
+                  onBackgroundClick={() => selectionSet.clear()}
+                />
+              </div>
             )}
             {focusedPositioned &&
               (focusedPositioned.risk_count > 0 ||
@@ -512,6 +683,17 @@ export function TrajectoryGraphView({ projectId }: TrajectoryGraphViewProps) {
             </div>
           </>
         )}
+
+        {/* PROJ-65 ε.3c.β (AC-13) — a11y live-region for selection-count. */}
+        <div
+          role="status"
+          aria-live="polite"
+          aria-atomic="true"
+          className="sr-only"
+          data-testid="bulk-selection-live-region"
+        >
+          {liveRegion}
+        </div>
       </CardContent>
       <AIProposalDrawerPlaceholder
         open={aiDrawer != null}
@@ -622,7 +804,7 @@ export function TrajectoryGraphView({ projectId }: TrajectoryGraphViewProps) {
         }}
       />
 
-      {/* PROJ-65 ε.3b — Plan-Mutate Dialog */}
+      {/* PROJ-65 ε.3b — Plan-Mutate Dialog (single-source) */}
       {planMutate && (
         <PlanMutateDialog
           open
@@ -645,16 +827,67 @@ export function TrajectoryGraphView({ projectId }: TrajectoryGraphViewProps) {
               new Date().toISOString(),
           }))}
           costClearView={snapshot?.trajectory?.cost_clear_view ?? false}
-          nodeLabels={Object.fromEntries(
-            layout.nodes.map((n) => [n.id, n.label]),
-          )}
+          nodeLabels={nodeLabelMap}
           onCommitted={() => {
             setPlanMutate(null)
             setReloadTick((t) => t + 1)
           }}
           onReloadSnapshot={() => setReloadTick((t) => t + 1)}
+          onCycleDetected={(cycle) => setLastCycleAttempt(cycle)}
         />
       )}
+
+      {/* PROJ-65 ε.3c.β — Plan-Mutate Dialog (multi-source bulk) */}
+      {bulkPlanMutate && (
+        <PlanMutateDialog
+          open
+          onOpenChange={(open) => {
+            if (!open) {
+              setBulkPlanMutate(null)
+            }
+          }}
+          projectId={projectId}
+          sources={bulkPlanMutate.sources}
+          shiftDays={bulkPlanMutate.days}
+          ifUpdatedAt={layout.nodes.map((n) => ({
+            node_id: n.id,
+            node_kind: n.kind,
+            updated_at:
+              (n.attributes as { updated_at?: string }).updated_at ??
+              snapshot?.generated_at ??
+              new Date().toISOString(),
+          }))}
+          costClearView={snapshot?.trajectory?.cost_clear_view ?? false}
+          nodeLabels={nodeLabelMap}
+          onCommitted={() => {
+            setBulkPlanMutate(null)
+            selectionSet.clear()
+            setReloadTick((t) => t + 1)
+          }}
+          onReloadSnapshot={() => setReloadTick((t) => t + 1)}
+          onCycleDetected={(cycle) => setLastCycleAttempt(cycle)}
+        />
+      )}
+
+      {/* PROJ-65 ε.3c.β — Floating bulk-action-bar */}
+      {snapshot?.trajectory?.permissions?.can_plan_mutate &&
+        selectionSet.size >= 1 && (
+          <BulkActionBar
+            selectedCount={selectionSet.size}
+            kindMix={kindMix}
+            onClear={() => selectionSet.clear()}
+            onBulkShift={(days) => {
+              const sources: PlanMutateSource[] = []
+              for (const id of selectionSet.selectedIds) {
+                const k = sprintPhaseKindById.get(id)
+                if (!k) continue
+                sources.push({ node_id: id, node_kind: k })
+              }
+              if (sources.length === 0) return
+              setBulkPlanMutate({ sources, days })
+            }}
+          />
+        )}
     </Card>
   )
 }
