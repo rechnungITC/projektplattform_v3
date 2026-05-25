@@ -81,6 +81,8 @@
 | PROJ-64 | Global Dashboard / My Work Inbox — ersetzt den Dashboard-Placeholder durch eine operative Arbeitszentrale mit My Work, Approvals, Portfolio-Health, Budget-/Risk-Alerts, Presets und Quick Actions. Designer-reviewed; moderne PM-UX nach Jira/ClickUp/monday adaptiert auf V3. | Deployed | [Spec](PROJ-64-global-dashboard-my-work-inbox.md) | 2026-05-10 |
 | PROJ-65 | Project Trajectory Graph & Decision Steering — methoden-adaptiver Trajektoriengraph (Wasserfall-Phasen / Scrum-Epics-Stories / Hybrid), Sidetrack-Lanes für Compliance, Stakeholder-am-Pfadknoten, Zielvektor mit Live-Propagation auf Zeit/Kosten/Risiko, KI-Vorschläge für Reihenfolge/Parallelisierung/Verknüpfungen. Ergänzt PROJ-58, nutzt selben Snapshot. 4 Phasen, 9 Stories. | Deployed (ε.1+ε.2+ε.3a+ε.3b+ε.3c.α+ε.3c.α.5+ε.3c.β; **ε.3c.γ tag v1.72.0-PROJ-65-eps3c-gamma live 2026-05-25 via PR #64 — D3 Client-side pagination via setTimeout(0); pure FE, kein Backend-Change; 14/14 AC; 37/37 vitest**; ε.3c.δ + ε.4 offen) | [Spec](PROJ-65-project-trajectory-graph-decision-steering.md) | 2026-05-13 |
 
+| PROJ-66 | Settings Navigation in der linken Main Sidebar vereinheitlichen — rechte Settings-Zusatznavigation entfernen und Project Trash als admin-only Unterpunkt von Einstellungen in die linke Main Sidebar verschieben. | Deployed | [Spec](PROJ-66-settings-navigation-main-sidebar.md) | 2026-05-23 |
+
 <!-- Add features above this line -->
 
-## Next Available ID: PROJ-66
+## Next Available ID: PROJ-67

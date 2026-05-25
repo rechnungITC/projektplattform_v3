@@ -13,6 +13,7 @@ import {
   KeyRound,
   Plug,
   Settings,
+  Trash2,
   User,
   Users,
 } from "lucide-react"
@@ -108,6 +109,12 @@ const SETTINGS_CHILDREN: readonly NavSubItem[] = [
     adminOnly: true,
   },
   { href: "/settings/members", label: "Mitglieder", icon: Users },
+  {
+    href: "/settings/projects-trash",
+    label: "Project Trash",
+    icon: Trash2,
+    adminOnly: true,
+  },
 ] as const
 
 const NAV_ITEMS: readonly NavItem[] = [
