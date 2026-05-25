@@ -22,6 +22,7 @@ import {
   CollapsibleContent,
   CollapsibleTrigger,
 } from "@/components/ui/collapsible"
+import { Skeleton } from "@/components/ui/skeleton"
 import {
   Table,
   TableBody,
@@ -73,6 +74,12 @@ export interface AffectedRow {
   masked: boolean
   /** Only present for `field === "risk_severity"`. */
   top_3_risks?: AffectedTopRisk[]
+  /**
+   * PROJ-65 ε.3c.γ — 0-based page index assigned when rows are sliced into
+   * client-side pagination chunks. Drives subtle page-separator borders in
+   * the diff table. Undefined when the diff was rendered single-shot.
+   */
+  page_index?: number
 }
 
 interface PlanMutateDiffTableProps {
@@ -94,6 +101,11 @@ interface PlanMutateDiffTableProps {
    * for scannable scroll behavior in long diffs.
    */
   groupHeaderSticky?: boolean
+  /**
+   * PROJ-65 ε.3c.γ — when true, a skeleton row is appended at the
+   * bottom while the next pagination chunk is being scheduled.
+   */
+  paginationLoading?: boolean
 }
 
 const FIELD_LABEL: Record<AffectedField, string> = {
@@ -122,6 +134,7 @@ export function PlanMutateDiffTable({
   projectId,
   maxVisibleRows = 50,
   groupHeaderSticky = false,
+  paginationLoading = false,
 }: PlanMutateDiffTableProps) {
   if (affected.length === 0) {
     return (
@@ -183,17 +196,46 @@ export function PlanMutateDiffTable({
             {grouped.map((group, groupIdx) => {
               const isConflicted =
                 conflictedNodeIds?.has(group.node_id) ?? false
+              // PROJ-65 ε.3c.γ — render subtle dashed page-separator above
+              // the first group of a new pagination page (page_index change).
+              const isPageBoundary =
+                groupIdx > 0 &&
+                group.rows[0]?.page_index !== undefined &&
+                grouped[groupIdx - 1]?.rows[0]?.page_index !==
+                  group.rows[0]?.page_index
               return (
-                <DiffGroupRows
-                  key={group.node_id}
-                  group={group}
-                  groupIdx={groupIdx}
-                  isConflicted={isConflicted}
-                  costClearView={costClearView}
-                  groupHeaderSticky={groupHeaderSticky}
-                />
+                <React.Fragment key={group.node_id}>
+                  {isPageBoundary && (
+                    <TableRow
+                      data-testid="plan-mutate-diff-page-separator"
+                      aria-hidden
+                    >
+                      <TableCell
+                        colSpan={5}
+                        className="border-t-2 border-dashed border-outline-variant p-0"
+                      />
+                    </TableRow>
+                  )}
+                  <DiffGroupRows
+                    group={group}
+                    groupIdx={groupIdx}
+                    isConflicted={isConflicted}
+                    costClearView={costClearView}
+                    groupHeaderSticky={groupHeaderSticky}
+                  />
+                </React.Fragment>
               )
             })}
+            {paginationLoading && (
+              <TableRow
+                data-testid="plan-mutate-diff-skeleton-row"
+                aria-busy="true"
+              >
+                <TableCell colSpan={5} className="py-2">
+                  <Skeleton className="h-8 w-full" />
+                </TableCell>
+              </TableRow>
+            )}
           </TableBody>
         </Table>
       </div>
