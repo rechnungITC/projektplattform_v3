@@ -80,7 +80,15 @@ interface TrajectoryGraph2DProps {
    * derived from layout.width if not supplied.
    */
   pxPerDay?: number
+  /**
+   * PROJ-65 ε.3c.α.5 — idle-warmup trigger for the lazy-loaded Plan-Mutate
+   * dialog chunk. Fired ~300ms after the pointer enters a sprint/phase node
+   * (only when `showDragHandles` is true). Safe to no-op when unset.
+   */
+  onPreloadPlanMutateDialog?: () => void
 }
+
+const PRELOAD_HOVER_DELAY_MS = 300
 
 const LANE_LABEL_WIDTH = 56
 
@@ -109,6 +117,7 @@ export function TrajectoryGraph2D({
   canPlanMutate = false,
   onPlanMutateDrop,
   pxPerDay,
+  onPreloadPlanMutateDialog,
 }: TrajectoryGraph2DProps) {
   // Best-effort px/day derivation when not supplied: spread across the
   // visible content width assuming a 60-day window. Caller can pass an
@@ -117,6 +126,34 @@ export function TrajectoryGraph2D({
   const showDragHandles = canPlanMutate && canEdit && Boolean(onPlanMutateDrop)
   const reducedMotion = useReducedMotion()
   const motionDuration = reducedMotion ? 0 : 0.2
+
+  // PROJ-65 ε.3c.α.5 — 300ms-hover preload trigger on Sprint/Phase nodes.
+  // Single timer at component scope; we always clear the previous timer
+  // before scheduling a new one so the user can sweep over many nodes
+  // without firing N imports (Webpack dedupes regardless, but clearing
+  // is cleaner). Preload is fire-and-forget; never blocks rendering.
+  const preloadTimerRef = React.useRef<ReturnType<typeof setTimeout> | null>(
+    null,
+  )
+  const schedulePlanMutatePreload = React.useCallback(() => {
+    if (!showDragHandles || !onPreloadPlanMutateDialog) return
+    if (preloadTimerRef.current) clearTimeout(preloadTimerRef.current)
+    preloadTimerRef.current = setTimeout(() => {
+      onPreloadPlanMutateDialog()
+      preloadTimerRef.current = null
+    }, PRELOAD_HOVER_DELAY_MS)
+  }, [showDragHandles, onPreloadPlanMutateDialog])
+  const cancelPlanMutatePreload = React.useCallback(() => {
+    if (preloadTimerRef.current) {
+      clearTimeout(preloadTimerRef.current)
+      preloadTimerRef.current = null
+    }
+  }, [])
+  React.useEffect(() => {
+    return () => {
+      if (preloadTimerRef.current) clearTimeout(preloadTimerRef.current)
+    }
+  }, [])
 
   // Build a node lookup once.
   const nodeById = React.useMemo(() => {
@@ -271,6 +308,16 @@ export function TrajectoryGraph2D({
                 }`}
                 onClick={() => onFocusNode(node.id)}
                 onFocus={() => onFocusNode(node.id)}
+                onPointerEnter={
+                  node.kind === "sprint" || node.kind === "phase"
+                    ? schedulePlanMutatePreload
+                    : undefined
+                }
+                onPointerLeave={
+                  node.kind === "sprint" || node.kind === "phase"
+                    ? cancelPlanMutatePreload
+                    : undefined
+                }
                 onKeyDown={(e) => {
                   if (e.key === "Enter" || e.key === " ") {
                     e.preventDefault()

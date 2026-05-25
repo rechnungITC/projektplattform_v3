@@ -256,7 +256,6 @@ export function PlanMutateDialog({
       return
     }
     const ctrl = new AbortController()
-    // eslint-disable-next-line react-hooks/set-state-in-effect -- transition to loading before fetch resolves
     setState({ kind: "loading" })
     fetchDiff(ctrl.signal)
       .then((res) => {
