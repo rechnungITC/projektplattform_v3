@@ -52,7 +52,7 @@ import {
 } from "./stakeholder/stakeholder-swap-dialog"
 import { TrajectoryGraph2D } from "./trajectory-graph-2d"
 import { CycleBanner } from "./trajectory-cycle-banner"
-import { PlanMutateDialog } from "./trajectory/plan-mutate-dialog"
+import { PlanMutateChunkLoading } from "./trajectory/plan-mutate-chunk-loading"
 import type { PositionedNode } from "@/lib/project-graph/trajectory-layout"
 
 const TrajectoryGraph3D = dynamic(
@@ -65,6 +65,28 @@ const TrajectoryGraph3D = dynamic(
     loading: () => <CanvasLoading label="3D-Trajektorie wird geladen ..." />,
   },
 )
+
+// PROJ-65 ε.3c.α.5 — Plan-Mutate dialog is loaded as a lazy chunk so users
+// without `canPlanMutate` (95% case) and users browsing without dropping
+// never pay its ~13 KB raw-gzipped weight on `/projects/[id]/graph`.
+const PlanMutateDialog = dynamic(
+  () =>
+    import("@/components/projects/trajectory/plan-mutate-dialog").then(
+      (m) => m.PlanMutateDialog,
+    ),
+  {
+    ssr: false,
+    loading: () => <PlanMutateChunkLoading />,
+  },
+)
+
+/**
+ * Idle-preload trigger fired from a 300ms-hover on a sprint/phase node.
+ * Safe to call repeatedly — Webpack/Turbopack dedupes the import promise.
+ */
+function preloadPlanMutateDialog(): void {
+  void import("@/components/projects/trajectory/plan-mutate-dialog")
+}
 
 interface TrajectoryGraphViewProps {
   projectId: string
@@ -462,6 +484,7 @@ export function TrajectoryGraphView({ projectId }: TrajectoryGraphViewProps) {
                 onPlanMutateDrop={(node, days) =>
                   setPlanMutate({ node, days })
                 }
+                onPreloadPlanMutateDialog={preloadPlanMutateDialog}
               />
             )}
             {focusedPositioned &&
