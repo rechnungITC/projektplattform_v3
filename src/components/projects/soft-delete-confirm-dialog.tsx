@@ -55,7 +55,7 @@ export function SoftDeleteConfirmDialog({
       }
 
       toast.success("Project moved to trash", {
-        description: `${projectName} can be restored from Settings → Projects Trash.`,
+        description: `${projectName} can be restored from Settings > Project Trash in the main sidebar.`,
       })
       await onDeleted()
       onOpenChange(false)

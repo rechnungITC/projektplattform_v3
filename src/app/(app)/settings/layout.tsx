@@ -1,7 +1,5 @@
 import type { Metadata } from "next"
 
-import { SettingsTabs } from "./settings-tabs"
-
 export const metadata: Metadata = {
   title: "Settings · Projektplattform",
 }
@@ -21,12 +19,7 @@ export default function SettingsLayout({
           Manage your profile, workspace, and team.
         </p>
       </div>
-      <div className="grid gap-6 md:grid-cols-[220px_1fr]">
-        <aside className="md:sticky md:top-20 md:self-start">
-          <SettingsTabs />
-        </aside>
-        <section>{children}</section>
-      </div>
+      <section>{children}</section>
     </div>
   )
 }
