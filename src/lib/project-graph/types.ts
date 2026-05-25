@@ -213,3 +213,28 @@ export interface ProjectGoalPlaceholder {
    */
   is_detached?: boolean
 }
+
+/**
+ * PROJ-65 ε.3c.β — multi-source Plan-Mutate request entry.
+ * Represents one selected sprint/phase node that participates in a
+ * bulk-shift operation. See `bulk-action-bar.tsx` + `plan-mutate-dialog.tsx`.
+ */
+export interface PlanMutateSource {
+  node_id: string
+  node_kind: "sprint" | "phase"
+}
+
+/**
+ * PROJ-65 ε.3c.β — transient FE-state for a 422-cycle response coming
+ * back from `/plan-mutate`. Holds the offending path so the graph can
+ * highlight the cycle visually until the user dismisses it, reloads
+ * the snapshot, or switches mode (2D ↔ 3D).
+ *
+ * `source_node_id` (optional) identifies which of the N selected
+ * sources triggered the cycle for multi-source operations.
+ */
+export interface CycleAttempt {
+  detected_at_node_id: string
+  path: string[]
+  source_node_id?: string
+}

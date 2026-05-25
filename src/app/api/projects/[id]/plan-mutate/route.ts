@@ -1,25 +1,19 @@
 /**
- * PROJ-65 ε.3b — POST /api/projects/[id]/plan-mutate
+ * PROJ-65 ε.3c.β — POST /api/projects/[id]/plan-mutate
  *
- * Atomic Plan-Mutate over the trajectory graph. Routes the
- * authenticated request to the SECURITY DEFINER PL/pgSQL function
- * `plan_mutate_atomic` which performs:
- *   - RBAC + feature-flag gate (L22)
- *   - Forward-BFS cycle detection (L24, R-C2)
- *   - Optimistic-lock check via `if_updated_at` (R-H1)
- *   - Bulk UPDATE via UNNEST (R-H3)
- *   - Class-3 cost masking (R-C1)
- *   - Audit causation_id grouping for Single-Step Undo (L23, R-H2)
+ * Atomic Plan-Mutate over the trajectory graph.
  *
- * The RPC returns a JSON envelope with a top-level `status` field
- * that this route maps to HTTP status codes:
- *   200 → { ok: true, causation_id, diff }
- *   401 → unauthenticated
- *   403 → forbidden / feature_disabled
- *   404 → project_not_found
- *   409 → conflict (concurrent edit detected)
- *   422 → cycle | unsupported_intent_kind | unsupported_source_node_kind
- *   5xx → unexpected RPC failure
+ * Backwards-compatible: accepts EITHER
+ *   (a) legacy single-source body { source_node_id, source_node_kind, intent, if_updated_at }
+ *       → dispatches to RPC `plan_mutate_atomic` (5-arg)
+ *   (b) new bulk body            { sources: [{node_id, node_kind}, ...], intent, if_updated_at }
+ *       → dispatches to RPC `plan_mutate_atomic_bulk` (4-arg)
+ *
+ * Both RPCs return the same envelope shape with a top-level `status` mapped
+ * to HTTP. New 422 error codes in bulk:
+ *   - source_node_lock_missing (with missing_sources payload)
+ *   - sources_required, invalid_source_entry, unsupported_source_node_kind
+ * Cycle responses may carry `cycle.source_node_id` (multi-source attribution).
  */
 
 import { NextResponse } from "next/server"
@@ -43,27 +37,59 @@ const lockEntrySchema = z.object({
   updated_at: z.string().min(1),
 })
 
-const bodySchema = z.object({
+const intentSchema = z.object({
+  kind: z.literal("shift_dates"),
+  days: z.number().int(),
+})
+
+const singleSourceSchema = z.object({
   source_node_id: z.string().uuid(),
   source_node_kind: z.enum(["sprint", "phase"]),
-  intent: z.object({
-    kind: z.literal("shift_dates"),
-    days: z.number().int(),
-  }),
+  intent: intentSchema,
   if_updated_at: z.array(lockEntrySchema).max(500),
 })
+
+const bulkSchema = z.object({
+  sources: z
+    .array(
+      z.object({
+        node_id: z.string().uuid(),
+        node_kind: z.enum(["sprint", "phase"]),
+      }),
+    )
+    .min(1)
+    .max(50),
+  intent: intentSchema,
+  if_updated_at: z.array(lockEntrySchema).max(500),
+})
+
+const bodySchema = z.union([bulkSchema, singleSourceSchema])
 
 interface RpcEnvelope {
   ok: boolean
   status?: number
   error?: string
+  hint?: string
   causation_id?: string
   diff?: { affected: unknown[] }
   conflict?: {
     conflicted_node_ids: string[]
     current_snapshot_hint: Record<string, unknown>
   }
-  cycle?: { detected_at_node_id: string; path: string[] }
+  cycle?: {
+    detected_at_node_id: string
+    path: string[]
+    source_node_id?: string
+  }
+  missing_sources?: Array<{ node_id: string; node_kind: string }>
+}
+
+function hasSourcesField(value: unknown): value is { sources: unknown } {
+  return (
+    typeof value === "object" &&
+    value !== null &&
+    "sources" in (value as Record<string, unknown>)
+  )
 }
 
 export async function POST(request: Request, context: RouteContext) {
@@ -106,16 +132,28 @@ export async function POST(request: Request, context: RouteContext) {
   )
   if (access.error) return access.error
 
-  // Use admin client for the RPC call so SECURITY DEFINER can resolve
-  // auth.uid() via the JWT we forward. The RPC re-checks tenant + role.
   const adminClient = createAdminClient()
-  const { data, error } = await adminClient.rpc("plan_mutate_atomic", {
-    p_project_id: projectId,
-    p_source_node_id: parsed.data.source_node_id,
-    p_source_node_kind: parsed.data.source_node_kind,
-    p_intent: parsed.data.intent,
-    p_if_updated_at: parsed.data.if_updated_at,
-  })
+
+  // Dispatch based on body shape. `bulkSchema` matches when `sources` is
+  // present; otherwise legacy single-source.
+  const isBulk = hasSourcesField(parsed.data)
+
+  const { data, error } = isBulk
+    ? await adminClient.rpc("plan_mutate_atomic_bulk", {
+        p_project_id: projectId,
+        p_sources: (parsed.data as z.infer<typeof bulkSchema>).sources,
+        p_intent: parsed.data.intent,
+        p_if_updated_at: parsed.data.if_updated_at,
+      })
+    : await adminClient.rpc("plan_mutate_atomic", {
+        p_project_id: projectId,
+        p_source_node_id: (parsed.data as z.infer<typeof singleSourceSchema>)
+          .source_node_id,
+        p_source_node_kind: (parsed.data as z.infer<typeof singleSourceSchema>)
+          .source_node_kind,
+        p_intent: parsed.data.intent,
+        p_if_updated_at: parsed.data.if_updated_at,
+      })
 
   if (error) {
     return apiError("rpc_failed", error.message, 500)

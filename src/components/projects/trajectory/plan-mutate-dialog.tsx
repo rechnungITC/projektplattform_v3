@@ -1,13 +1,18 @@
 "use client"
 
 /**
- * PROJ-65 ε.3b — PlanMutateDialog (AC-3, AC-7, AC-8, AC-9, AC-10, AC-11).
+ * PROJ-65 ε.3b / ε.3c.β — PlanMutateDialog.
  *
- * Orchestrator that opens on drop:
- *  1. POSTs to `/api/projects/[id]/plan-mutate` with `if_updated_at`
- *  2. Renders Skeleton / OK / 409 / 422 / 5xx states
- *  3. On Commit: fires `usePlanMutateUndo` with the causation_id
- *  4. Mobile 375px: rendered as bottom `Sheet` instead of `Dialog`
+ * Orchestrator that opens on drop OR on bulk-action-bar submit:
+ *  1. POSTs to `/api/projects/[id]/plan-mutate` with `if_updated_at`.
+ *     Single-source body when called from a drag-handle drop;
+ *     multi-source body (`sources: [...]`) when called from the
+ *     BulkActionBar (ε.3c.β AC-6).
+ *  2. Renders Skeleton / OK / 409 / 422 / 5xx states.
+ *  3. On Commit: fires `usePlanMutateUndo` with the causation_id.
+ *  4. On 422-cycle: fires `onCycleDetected(cycle)` so the parent can
+ *     persist a transient overlay on the graph (ε.3c.β AC-8).
+ *  5. Mobile 375px: rendered as bottom `Sheet` instead of `Dialog`.
  *
  * Mobile detection is media-query-driven so we don't have to
  * dynamic-import — `Sheet` and `Dialog` are both already in the
@@ -35,6 +40,7 @@ import {
   SheetTitle,
 } from "@/components/ui/sheet"
 import { Skeleton } from "@/components/ui/skeleton"
+import type { PlanMutateSource } from "@/lib/project-graph/types"
 
 import { ClassThreeLock } from "../stakeholder/class-three-lock"
 
@@ -52,12 +58,22 @@ interface IfUpdatedAtEntry {
   updated_at: string
 }
 
-export interface PlanMutateRequest {
+export interface PlanMutateRequestSingle {
   source_node_id: string
   source_node_kind: "sprint" | "phase"
   intent: { kind: "shift_dates"; days: number }
   if_updated_at: IfUpdatedAtEntry[]
 }
+
+export interface PlanMutateRequestMulti {
+  sources: PlanMutateSource[]
+  intent: { kind: "shift_dates"; days: number }
+  if_updated_at: IfUpdatedAtEntry[]
+}
+
+export type PlanMutateRequest =
+  | PlanMutateRequestSingle
+  | PlanMutateRequestMulti
 
 type PlanMutateConflict = {
   ok: false
@@ -65,6 +81,8 @@ type PlanMutateConflict = {
   status: 409
   conflict: {
     conflicted_node_ids: string[]
+    /** Optional — when set (multi-source), points to the offending source. */
+    source_node_id?: string
     current_snapshot_hint: unknown
   }
 }
@@ -73,7 +91,13 @@ type PlanMutateCycle = {
   ok: false
   kind: "cycle"
   status: 422
-  cycle: { detected_at_node_id: string; path: string[] }
+  cycle: {
+    detected_at_node_id: string
+    path: string[]
+    /** Optional — present in multi-source responses, identifies the
+     *  source that triggered the cycle. */
+    source_node_id?: string
+  }
 }
 
 type PlanMutateOk = {
@@ -96,15 +120,12 @@ type PlanMutateResponse =
   | PlanMutateCycle
   | PlanMutateError
 
-interface PlanMutateDialogProps {
+interface PlanMutateDialogPropsBase {
   open: boolean
   onOpenChange: (open: boolean) => void
   projectId: string
-  /** Source node id (canonical id like `sprint:<uuid>` or `phase:<uuid>`). */
-  sourceNodeId: string
-  sourceNodeKind: "sprint" | "phase"
-  sourceNodeLabel: string
-  /** Day-shift from the drag operation (positive = future). */
+  /** Day-shift from the drag operation or the bulk-popover input
+   *  (positive = future). */
   shiftDays: number
   /** Snapshot-derived list of (node_id, node_kind, updated_at) per node. */
   ifUpdatedAt: IfUpdatedAtEntry[]
@@ -117,13 +138,54 @@ interface PlanMutateDialogProps {
   onCommitted?: (causationId: string) => void
   /** Called when the user requests a snapshot reload (409 case). */
   onReloadSnapshot?: () => void
+  /**
+   * PROJ-65 ε.3c.β — fired when the server returns 422-cycle so the
+   * parent can persist a transient `lastCycleAttempt` overlay on the
+   * graph. Optional — defaults to no-op.
+   */
+  onCycleDetected?: (cycle: {
+    detected_at_node_id: string
+    path: string[]
+    source_node_id?: string
+  }) => void
 }
+
+interface PlanMutateDialogSingleProps extends PlanMutateDialogPropsBase {
+  /** Source node id (canonical id like `sprint:<uuid>` or `phase:<uuid>`). */
+  sourceNodeId: string
+  sourceNodeKind: "sprint" | "phase"
+  sourceNodeLabel: string
+  sources?: undefined
+}
+
+interface PlanMutateDialogMultiProps extends PlanMutateDialogPropsBase {
+  /** PROJ-65 ε.3c.β — multi-source request. When set, header text and
+   *  request body switch into multi-mode. */
+  sources: PlanMutateSource[]
+  sourceNodeId?: undefined
+  sourceNodeKind?: undefined
+  sourceNodeLabel?: undefined
+}
+
+type PlanMutateDialogProps =
+  | PlanMutateDialogSingleProps
+  | PlanMutateDialogMultiProps
 
 type DialogState =
   | { kind: "loading" }
   | { kind: "ok"; affected: AffectedRow[]; causationId: null }
-  | { kind: "conflict"; conflictedNodeIds: string[]; affected: AffectedRow[] }
-  | { kind: "cycle"; detectedAt: string; path: string[] }
+  | {
+      kind: "conflict"
+      conflictedNodeIds: string[]
+      sourceNodeId?: string
+      affected: AffectedRow[]
+    }
+  | {
+      kind: "cycle"
+      detectedAt: string
+      path: string[]
+      sourceNodeId?: string
+    }
   | { kind: "error"; message: string }
   | { kind: "applying" }
 
@@ -143,34 +205,60 @@ function useIsMobile(): boolean {
   return isMobile
 }
 
-export function PlanMutateDialog({
-  open,
-  onOpenChange,
-  projectId,
-  sourceNodeId,
-  sourceNodeKind,
-  sourceNodeLabel,
-  shiftDays,
-  ifUpdatedAt,
-  costClearView,
-  nodeLabels,
-  onCommitted,
-  onReloadSnapshot,
-}: PlanMutateDialogProps) {
+export function PlanMutateDialog(props: PlanMutateDialogProps) {
+  const {
+    open,
+    onOpenChange,
+    projectId,
+    shiftDays,
+    ifUpdatedAt,
+    costClearView,
+    nodeLabels,
+    onCommitted,
+    onReloadSnapshot,
+    onCycleDetected,
+  } = props
+
+  // Normalize single vs multi into a single canonical source-array.
+  const normalizedSources: PlanMutateSource[] = React.useMemo(() => {
+    if (props.sources && props.sources.length > 0) return props.sources
+    if (props.sourceNodeId && props.sourceNodeKind) {
+      return [
+        {
+          node_id: props.sourceNodeId,
+          node_kind: props.sourceNodeKind,
+        },
+      ]
+    }
+    return []
+  }, [props.sources, props.sourceNodeId, props.sourceNodeKind])
+
+  const isMultiSource = normalizedSources.length > 1
+  const sourceCount = normalizedSources.length
+
   const [state, setState] = React.useState<DialogState>({ kind: "loading" })
   const [reloadingConflict, setReloadingConflict] = React.useState(false)
   const { showUndoToast } = usePlanMutateUndo()
   const isMobile = useIsMobile()
 
-  const requestBody: PlanMutateRequest = React.useMemo(
-    () => ({
-      source_node_id: sourceNodeId,
-      source_node_kind: sourceNodeKind,
+  const requestBody: PlanMutateRequest = React.useMemo(() => {
+    if (isMultiSource) {
+      return {
+        sources: normalizedSources,
+        intent: { kind: "shift_dates", days: shiftDays },
+        if_updated_at: ifUpdatedAt,
+      }
+    }
+    const first = normalizedSources[0]
+    return {
+      source_node_id: first?.node_id ?? "",
+      source_node_kind: (first?.node_kind ?? "sprint") as "sprint" | "phase",
       intent: { kind: "shift_dates", days: shiftDays },
       if_updated_at: ifUpdatedAt,
-    }),
-    [sourceNodeId, sourceNodeKind, shiftDays, ifUpdatedAt],
-  )
+    }
+  }, [isMultiSource, normalizedSources, shiftDays, ifUpdatedAt])
+
+  const fallbackSourceId = normalizedSources[0]?.node_id ?? ""
 
   const fetchDiff = React.useCallback(
     async (signal?: AbortSignal): Promise<PlanMutateResponse> => {
@@ -196,6 +284,7 @@ export function PlanMutateDialog({
         const body = (await res.json().catch(() => ({}))) as {
           conflict?: {
             conflicted_node_ids?: string[]
+            source_node_id?: string
             current_snapshot_hint?: unknown
           }
         }
@@ -205,13 +294,18 @@ export function PlanMutateDialog({
           status: 409,
           conflict: {
             conflicted_node_ids: body.conflict?.conflicted_node_ids ?? [],
+            source_node_id: body.conflict?.source_node_id,
             current_snapshot_hint: body.conflict?.current_snapshot_hint,
           },
         }
       }
       if (res.status === 422) {
         const body = (await res.json().catch(() => ({}))) as {
-          cycle?: { detected_at_node_id?: string; path?: string[] }
+          cycle?: {
+            detected_at_node_id?: string
+            path?: string[]
+            source_node_id?: string
+          }
         }
         return {
           ok: false,
@@ -219,8 +313,9 @@ export function PlanMutateDialog({
           status: 422,
           cycle: {
             detected_at_node_id:
-              body.cycle?.detected_at_node_id ?? sourceNodeId,
+              body.cycle?.detected_at_node_id ?? fallbackSourceId,
             path: body.cycle?.path ?? [],
+            source_node_id: body.cycle?.source_node_id,
           },
         }
       }
@@ -245,7 +340,7 @@ export function PlanMutateDialog({
         diff: body.diff ?? { affected: [] },
       }
     },
-    [projectId, requestBody, sourceNodeId],
+    [projectId, requestBody, fallbackSourceId],
   )
 
   // Fetch diff on open.
@@ -272,6 +367,7 @@ export function PlanMutateDialog({
           setState({
             kind: "conflict",
             conflictedNodeIds: res.conflict.conflicted_node_ids,
+            sourceNodeId: res.conflict.source_node_id,
             affected: [],
           })
           return
@@ -281,6 +377,12 @@ export function PlanMutateDialog({
             kind: "cycle",
             detectedAt: res.cycle.detected_at_node_id,
             path: res.cycle.path,
+            sourceNodeId: res.cycle.source_node_id,
+          })
+          onCycleDetected?.({
+            detected_at_node_id: res.cycle.detected_at_node_id,
+            path: res.cycle.path,
+            source_node_id: res.cycle.source_node_id,
           })
           return
         }
@@ -294,7 +396,15 @@ export function PlanMutateDialog({
         })
       })
     return () => ctrl.abort()
-  }, [open, fetchDiff])
+  }, [open, fetchDiff, onCycleDetected])
+
+  // Build a short label for the toast / banner copy.
+  const headerLabel: string = React.useMemo(() => {
+    if (isMultiSource) {
+      return `${sourceCount} Knoten`
+    }
+    return props.sourceNodeLabel ?? "Knoten"
+  }, [isMultiSource, sourceCount, props.sourceNodeLabel])
 
   const handleApply = React.useCallback(async () => {
     if (state.kind !== "ok") return
@@ -306,7 +416,7 @@ export function PlanMutateDialog({
         showUndoToast({
           causationId: cid,
           affectedCount: res.diff.affected.length,
-          sourceNodeLabel,
+          sourceNodeLabel: headerLabel,
           shiftDays,
           onUndo: async () => {
             try {
@@ -349,6 +459,7 @@ export function PlanMutateDialog({
         setState({
           kind: "conflict",
           conflictedNodeIds: res.conflict.conflicted_node_ids,
+          sourceNodeId: res.conflict.source_node_id,
           affected: [],
         })
         return
@@ -358,6 +469,12 @@ export function PlanMutateDialog({
           kind: "cycle",
           detectedAt: res.cycle.detected_at_node_id,
           path: res.cycle.path,
+          sourceNodeId: res.cycle.source_node_id,
+        })
+        onCycleDetected?.({
+          detected_at_node_id: res.cycle.detected_at_node_id,
+          path: res.cycle.path,
+          source_node_id: res.cycle.source_node_id,
         })
         return
       }
@@ -372,11 +489,12 @@ export function PlanMutateDialog({
     state.kind,
     fetchDiff,
     showUndoToast,
-    sourceNodeLabel,
+    headerLabel,
     shiftDays,
     onCommitted,
     onOpenChange,
     projectId,
+    onCycleDetected,
   ])
 
   const handleReloadAfterConflict = React.useCallback(() => {
@@ -388,11 +506,13 @@ export function PlanMutateDialog({
   }, [onReloadSnapshot])
 
   // Compose title + description.
-  const directionLabel =
+  const directionSuffix =
     shiftDays === 0
-      ? sourceNodeLabel
-      : `${sourceNodeLabel} · ${shiftDays > 0 ? "+" : ""}${shiftDays} Tage`
-  const title = `Plan-Mutate-Vorschau · ${directionLabel}`
+      ? ""
+      : ` · ${shiftDays > 0 ? "+" : ""}${shiftDays} Tage`
+  const title = isMultiSource
+    ? `Plan-Mutate-Vorschau · ${sourceCount} Knoten${directionSuffix}`
+    : `Plan-Mutate-Vorschau · ${headerLabel}${directionSuffix}`
   const description =
     state.kind === "ok"
       ? `Die Verschiebung wirkt auf ${state.affected.length} Folge-Knoten.`
@@ -401,6 +521,10 @@ export function PlanMutateDialog({
         : state.kind === "applying"
           ? "Übernehmen…"
           : "Konflikt oder Fehler."
+
+  const applyButtonLabel = isMultiSource
+    ? `Übernehmen (${sourceCount} Knoten)`
+    : "Übernehmen"
 
   const body = (
     <div className="space-y-3">
@@ -437,6 +561,7 @@ export function PlanMutateDialog({
           affected={state.affected}
           costClearView={costClearView}
           projectId={projectId}
+          groupHeaderSticky={isMultiSource}
         />
       )}
       {state.kind === "conflict" && (
@@ -447,10 +572,12 @@ export function PlanMutateDialog({
               costClearView={costClearView}
               projectId={projectId}
               conflictedNodeIds={new Set(state.conflictedNodeIds)}
+              groupHeaderSticky={isMultiSource}
             />
           </div>
           <PlanMutateConflictBanner
             conflictedNodeIds={state.conflictedNodeIds}
+            offendingSourceNodeId={state.sourceNodeId}
             nodeLabels={nodeLabels}
             onReload={handleReloadAfterConflict}
             onCancel={() => onOpenChange(false)}
@@ -482,7 +609,7 @@ export function PlanMutateDialog({
             {state.kind === "applying" && (
               <Loader2 className="mr-1.5 h-3.5 w-3.5 animate-spin" aria-hidden />
             )}
-            {state.kind === "applying" ? "Übernehmen…" : "Übernehmen"}
+            {state.kind === "applying" ? "Übernehmen…" : applyButtonLabel}
           </Button>
         </div>
       )
