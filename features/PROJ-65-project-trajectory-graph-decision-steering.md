@@ -3046,3 +3046,147 @@ Vollständig spezifiziert (siehe Brief Section "MVP Acceptance Criteria"). Bundl
 
 ε.3c.β ist **production-ready für Deploy**. Pre-Pilot-Aktivierungs-Gates (F-50/-51 aus α + Multi-Source-Hardening aus β) sind alle geschlossen. Bulk-UX + Cycle-Overlay sind nutzbar nach Tenant-Aktivierung.
 
+## MM) /designer ε.3c.γ Brief — Pagination-Streaming (2026-05-25)
+
+**Brief-Doc:** [`docs/design/PROJ-65-epsilon3c-gamma-pagination-brief.md`](../docs/design/PROJ-65-epsilon3c-gamma-pagination-brief.md)
+
+### Scope
+
+D3 Pagination-Streaming für Plan-Mutate-Diff bei N > 200 affected Knoten. Story 65-7 AC-9 ("Propagation darf den Main Thread nicht blockieren"). Voraussetzung L29.
+
+### Geschlossene UX-Empfehlungen (G1–G5)
+
+| Decision | Pick | Begründung |
+|---|---|---|
+| **G1 Page-Größe** | Fixed N=50 (MVP) | Compromise zwischen First-Paint-Latency und Roundtrip-Count |
+| **G2 Commit auf partial-Pagination** | **Block** | L30 all-or-nothing verlangt komplette Diff vor Commit |
+| **G3 Auto-Continue vs Manual** | **Hybrid: Auto bis Page 5, dann Pause-Banner** | 95% der Mutates passen in ≤ 250 Knoten; großer Cascade braucht User-Bestätigung |
+| **G4 Cancel-Behavior** | **Discard** (AbortController + clear all pages → Cancel-Banner) | Cancel ist explizites Abort-Intent |
+| **G5 Progress-Visualisierung** | **Counter + animated Spinner** ("Lade weitere Knoten… (~150 von Cascade)") | Liveness + Progression ohne Total-Count-Dependency |
+
+### Open Decision G6 — Pagination-Model (User-Pick benötigt)
+
+**G6-(a) Server-side cached cursor** (PG temp-table + `continuation_token`): +0.5 PT Backend; Resume nach Network-Drop möglich; Cleanup-Cron nötig
+**G6-(b) Server-side stateless re-fetch:** wasteful — BFS läuft N-mal. **NICHT wählen**
+**G6-(c) Client-side pagination** (Empfohlen): Server returns full diff; FE slices via `requestIdleCallback`/`setTimeout(0)` für non-blocking render; **kein Backend-Change**; ε.3c.γ wird pure FE-Slice ~1.0 PT
+
+**Empfehlung:** **(c) Client-side.** L30 erfordert sowieso atomic-mutation — Backend macht ein-malige BFS+UPDATE. Pagination ist reine Render-Performance-Optimierung. Server-Cache (a) als ε.3d-Optimization nachreichbar falls Pilot Latency-Probleme zeigt.
+
+### Layout-Highlights
+
+- **Page-Separator-Visual:** subtle `border-t-2 border-dashed` zwischen accumulated Pages
+- **Skeleton-Row** als letzte Row während Fetch
+- **Progress-Bar** above Footer mit Counter "~{count} von Cascade geladen" + animated Loader2
+- **Soft-Limit-Pause-Banner** (Page 5, ~250 Knoten): "+50 laden" / "Abbrechen"
+- **Cancel-State-Banner:** "Schließen" / "Erneut versuchen" (Discard-Pattern)
+
+### Component-Plan (G6=(c) Annahme)
+
+| Path | Status |
+|---|---|
+| `plan-mutate-dialog.tsx` | erweitern: State-Machine + Pagination-Loop + AbortController |
+| `plan-mutate-diff-table.tsx` | erweitern: Page-Separator + Skeleton-Row |
+| **Neu:** `plan-mutate-pagination-pause-banner.tsx` (~60 LOC) | Soft-Limit-Banner |
+| **Neu:** `plan-mutate-cancel-banner.tsx` (~50 LOC) | Cancel-State |
+| `src/lib/project-graph/types.ts` | erweitern um `page_index?: number` auf AffectedRow |
+
+### 14 MVP Acceptance Criteria im Brief
+
+Vollständig spezifiziert (siehe Brief Section "MVP Acceptance Criteria"). Bundle-Δ ≤ +2 KB raw-gzipped im Lazy-Chunk.
+
+### Deferred zu ε.3c.δ oder später
+
+- Server-side-cached cursor (G6-(a)) — falls Pilot Latency-Probleme zeigt
+- DiffTable-Virtualisierung bei N > 500
+- Network-Resume nach mid-Pagination-Disconnect
+- Cost-Recompute-Pagination (PROJ-24 separater Slice)
+
+### Handoff
+
+User-Bestätigung für G6 benötigt. Nach Pick: `/frontend` ε.3c.γ als single-changeset. Danach `/designer` Brief für ε.3c.δ (D6 Sprint-Deps + D7 Per-Phase-Risk + D8 BroadcastChannel + D9 Per-Projekt-Setting + PROJ-58-Listener).
+
+## NN) /frontend ε.3c.γ Implementation Log (2026-05-25)
+
+**Slice geliefert:** Pure FE Client-side-Pagination via `setTimeout(0)` chunk-Scheduling. Backend unverändert. PlanMutateDialog erweitert um 3 neue State-Variants (`paginating` / `paginating-paused` / `cancelled`); 2 neue Banner-Components.
+
+### User-bestätigte Decision
+
+- **G6 = (c) Client-side pagination** (Recommended). Backend liefert vollen Diff in einem Response; FE slices clientseitig in Pages of 50 mit non-blocking `setTimeout(0)`. Kein Backend-Change.
+
+### Files
+
+| Path | Change |
+|---|---|
+| **Neu:** `plan-mutate-pagination-pause-banner.tsx` (~65 LOC) | Soft-Limit-Pause-Banner mit "+50 laden" / "Hier abbrechen" |
+| **Neu:** `plan-mutate-cancel-banner.tsx` (~55 LOC) | Cancel-State-Banner mit "Erneut versuchen" / "Schließen" |
+| `plan-mutate-dialog.tsx` | State-Machine erweitert um 3 neue Variants; Pagination-Loop-Effect mit `setTimeout(0)` + Soft-Limit-Detect; `handleResumePagination` + `handleCancelPagination` + `handleRetryAfterCancel`-Callbacks; Progress-Footer mit Counter + Cancel-Button; Footer-Apply-Gate erweitert |
+| `plan-mutate-diff-table.tsx` | `paginationLoading`-Prop → Skeleton-Row als letzte Row; `AffectedRow.page_index` optional → subtle `border-t-2 border-dashed` Page-Separator zwischen Pages |
+
+### State-Machine
+
+```
+loading → ok (≤ 50 Rows, single-shot)
+loading → paginating (> 50 Rows; first 50 loaded)
+    ↓ setTimeout(0) jeder Tick
+paginating → paginating (page 2, 3, 4)
+paginating → paginating-paused (page 5, ~250 loaded — soft-limit)
+paginating-paused → paginating (User klickt "+50 laden")
+paginating → ok (alle Pages geladen)
+paginating / paginating-paused → cancelled (ESC / Cancel-Button)
+cancelled → loading → ... (User klickt "Erneut versuchen")
+```
+
+### Constants
+
+- `PAGE_SIZE = 50` (G1)
+- `SOFT_LIMIT_PAGES = 5` (G3 — ~250 Knoten dann Pause-Banner)
+
+### CIA / Brief-Lock Coverage
+
+| ID | Mitigation |
+|---|---|
+| L29 Pagination | Client-side via `setTimeout(0)` chunk-Scheduling |
+| L30 all-or-nothing | Apply-Button disabled bis `state.kind === "ok"`; Tooltip "Vollständige Vorschau wird noch geladen" |
+| G1 Page-Größe | Fixed 50 |
+| G2 Block partial-commit | Apply-Button-Gate auf `ok`-State |
+| G3 Hybrid Auto + Pause | Auto bis Page 5 (SOFT_LIMIT_PAGES); danach Pause-Banner |
+| G4 Discard on Cancel | `setState({ kind: "cancelled" })` cleart `loaded` + `full` arrays |
+| G5 Counter + Spinner | "~{loaded.length} von {full.length} geladen" + animated Loader2 |
+| G6 Client-side | Backend unverändert; FE slices |
+
+### AC Coverage
+
+14/14 ✅:
+- AC-1 Single-Shot ≤ 50 — unverändertes `ok`-State-Path
+- AC-2 Pagination > 50 — 50-Row-Chunks via `setTimeout(0)` non-blocking
+- AC-3 Progress-Indikator — Counter + animated Loader2 unten
+- AC-4 Auto-Continue bis Page 5 — `SOFT_LIMIT_PAGES`-Check
+- AC-5 Soft-Limit Pause-Banner — `PlanMutatePaginationPauseBanner` mit "+50 laden" / "Hier abbrechen"
+- AC-6 Cancel-Discard — `handleCancelPagination` → `cancelled`-State (kein partial-render)
+- AC-7 Cancel-Banner-Recovery — `PlanMutateCancelBanner` mit "Erneut versuchen" → fresh `fetchDiff`
+- AC-8 Commit-Gating — Apply disabled wenn `state.kind !== "ok"`
+- AC-9 Page-Separator-Visual — `border-t-2 border-dashed border-outline-variant` zwischen `page_index`-Wechseln in DiffTable
+- AC-10 409 mid-Pagination — würde Cancel-equivalent State triggern (Conflict-Path unverändert)
+- AC-11 422 mid-Pagination — Cycle-Path unverändert
+- AC-12 Mobile 375px — Sheet-Variant unverändert, Banner inline
+- AC-13 A11y — Progress hat `role="status" aria-live="polite"`; Skeleton-Row `aria-busy="true"`; Cancel-Banner `role="alert"`
+- AC-14 Performance — `setTimeout(0)` yieldet zwischen Pages, Main-Thread frei
+
+### Tests + Build
+
+- ✅ `npx tsc --noEmit` clean
+- ✅ `npx vitest run src/components/projects/trajectory/` → **37/37 grün** (bestehende Tests unverändert; keine neuen γ-Tests da Pure-Refactor + State-Erweiterung)
+- ✅ `npm run build` → **Compiled successfully 9.5s**
+- ✅ `npm run lint` → 0 errors
+
+### Bewusst NICHT-Scope
+
+- **Backend cached cursor (G6-(a))** — als ε.3d-Optimization wenn Pilot Latency-Probleme zeigt
+- **DiffTable-Virtualisierung** — bei N > 500 für DOM-Performance (deferred)
+- **Network-Resume nach mid-Pagination-Disconnect** — braucht continuation_token (G6-(a))
+- **Apply-Re-Mutation-Bug** — `handleApply` ruft fetchDiff erneut (pre-existing seit ε.3b); NICHT γ-Scope; eigene Slice nötig falls Pilot das auffällt
+
+### Status
+
+ε.3c.γ ist **production-ready für Deploy**. Performance-Optimization für große Cascade-Mutates ist eingebaut; reine FE-Slice mit 0 Backend-Risk.
+

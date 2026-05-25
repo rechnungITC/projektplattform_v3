@@ -44,8 +44,10 @@ import type { PlanMutateSource } from "@/lib/project-graph/types"
 
 import { ClassThreeLock } from "../stakeholder/class-three-lock"
 
+import { PlanMutateCancelBanner } from "./plan-mutate-cancel-banner"
 import { PlanMutateConflictBanner } from "./plan-mutate-conflict-banner"
 import { PlanMutateCycleAlert } from "./plan-mutate-cycle-alert"
+import { PlanMutatePaginationPauseBanner } from "./plan-mutate-pagination-pause-banner"
 import {
   PlanMutateDiffTable,
   type AffectedRow,
@@ -188,8 +190,32 @@ type DialogState =
     }
   | { kind: "error"; message: string }
   | { kind: "applying" }
+  // PROJ-65 ε.3c.γ — client-side pagination states (G6-(c)).
+  | {
+      kind: "paginating"
+      /** Rows already pushed into the table. */
+      loaded: AffectedRow[]
+      /** Full diff response from the server; we slice it client-side. */
+      full: AffectedRow[]
+      /** Causation id from the (already-committed) mutation. */
+      causationId: string
+      /** 1-based page index of the page currently being rendered. */
+      pageIndex: number
+    }
+  | {
+      kind: "paginating-paused"
+      loaded: AffectedRow[]
+      full: AffectedRow[]
+      causationId: string
+      pageIndex: number
+    }
+  | { kind: "cancelled" }
 
 const MOBILE_MEDIA_QUERY = "(max-width: 480px)"
+
+// PROJ-65 ε.3c.γ — client-side pagination constants (G6-(c), G1, G3).
+const PAGE_SIZE = 50
+const SOFT_LIMIT_PAGES = 5
 
 function useIsMobile(): boolean {
   const [isMobile, setIsMobile] = React.useState(false)
@@ -356,9 +382,28 @@ export function PlanMutateDialog(props: PlanMutateDialogProps) {
       .then((res) => {
         if (ctrl.signal.aborted) return
         if (res.kind === "ok") {
+          const all = res.diff.affected
+          // PROJ-65 ε.3c.γ — when full diff exceeds PAGE_SIZE, slice
+          // client-side and switch to `paginating` state. A separate
+          // effect (below) advances pages via setTimeout(0). For
+          // ≤ PAGE_SIZE the legacy single-shot `ok` path is used.
+          if (all.length > PAGE_SIZE) {
+            const withPageIndex = all.map((row, idx) => ({
+              ...row,
+              page_index: Math.floor(idx / PAGE_SIZE),
+            }))
+            setState({
+              kind: "paginating",
+              loaded: withPageIndex.slice(0, PAGE_SIZE),
+              full: withPageIndex,
+              causationId: res.causation_id,
+              pageIndex: 1,
+            })
+            return
+          }
           setState({
             kind: "ok",
-            affected: res.diff.affected,
+            affected: all,
             causationId: null,
           })
           return
@@ -397,6 +442,129 @@ export function PlanMutateDialog(props: PlanMutateDialogProps) {
       })
     return () => ctrl.abort()
   }, [open, fetchDiff, onCycleDetected])
+
+  // PROJ-65 ε.3c.γ — pagination loop. While in `paginating`, schedule the
+  // next chunk via setTimeout(0) so the main thread stays responsive.
+  // Auto-pause at SOFT_LIMIT_PAGES; user-confirm resumes.
+  React.useEffect(() => {
+    if (state.kind !== "paginating") return
+    const handle = window.setTimeout(() => {
+      setState((prev) => {
+        if (prev.kind !== "paginating") return prev
+        const nextLoadedCount = (prev.pageIndex + 1) * PAGE_SIZE
+        const nextLoaded = prev.full.slice(0, nextLoadedCount)
+        const isComplete = nextLoaded.length >= prev.full.length
+        const reachedSoftLimit =
+          prev.pageIndex + 1 >= SOFT_LIMIT_PAGES && !isComplete
+        if (isComplete) {
+          return {
+            kind: "ok",
+            affected: prev.full,
+            causationId: null,
+          }
+        }
+        if (reachedSoftLimit) {
+          return {
+            kind: "paginating-paused",
+            loaded: nextLoaded,
+            full: prev.full,
+            causationId: prev.causationId,
+            pageIndex: prev.pageIndex + 1,
+          }
+        }
+        return {
+          kind: "paginating",
+          loaded: nextLoaded,
+          full: prev.full,
+          causationId: prev.causationId,
+          pageIndex: prev.pageIndex + 1,
+        }
+      })
+    }, 0)
+    return () => window.clearTimeout(handle)
+  }, [state])
+
+  const handleResumePagination = React.useCallback(() => {
+    setState((prev) => {
+      if (prev.kind !== "paginating-paused") return prev
+      return {
+        kind: "paginating",
+        loaded: prev.loaded,
+        full: prev.full,
+        causationId: prev.causationId,
+        pageIndex: prev.pageIndex,
+      }
+    })
+  }, [])
+
+  const handleCancelPagination = React.useCallback(() => {
+    setState({ kind: "cancelled" })
+  }, [])
+
+  const handleRetryAfterCancel = React.useCallback(() => {
+    setState({ kind: "loading" })
+    // The fetch-effect above re-fires whenever `open` flips, but here
+    // we want to retrigger without closing/reopening. We bump a local
+    // "retryTick" by toggling the cancelled→loading state — the
+    // surrounding effect re-runs because we depend on `open` only, so
+    // we cheat by closing+reopening from the caller's POV. Simpler:
+    // call fetchDiff manually here.
+    const ctrl = new AbortController()
+    fetchDiff(ctrl.signal)
+      .then((res) => {
+        if (ctrl.signal.aborted) return
+        if (res.kind === "ok") {
+          const all = res.diff.affected
+          if (all.length > PAGE_SIZE) {
+            const withPageIndex = all.map((row, idx) => ({
+              ...row,
+              page_index: Math.floor(idx / PAGE_SIZE),
+            }))
+            setState({
+              kind: "paginating",
+              loaded: withPageIndex.slice(0, PAGE_SIZE),
+              full: withPageIndex,
+              causationId: res.causation_id,
+              pageIndex: 1,
+            })
+            return
+          }
+          setState({ kind: "ok", affected: all, causationId: null })
+          return
+        }
+        if (res.kind === "conflict") {
+          setState({
+            kind: "conflict",
+            conflictedNodeIds: res.conflict.conflicted_node_ids,
+            sourceNodeId: res.conflict.source_node_id,
+            affected: [],
+          })
+          return
+        }
+        if (res.kind === "cycle") {
+          setState({
+            kind: "cycle",
+            detectedAt: res.cycle.detected_at_node_id,
+            path: res.cycle.path,
+            sourceNodeId: res.cycle.source_node_id,
+          })
+          onCycleDetected?.({
+            detected_at_node_id: res.cycle.detected_at_node_id,
+            path: res.cycle.path,
+            source_node_id: res.cycle.source_node_id,
+          })
+          return
+        }
+        setState({ kind: "error", message: res.error })
+      })
+      .catch((err) => {
+        if (ctrl.signal.aborted) return
+        setState({
+          kind: "error",
+          message: err instanceof Error ? err.message : String(err),
+        })
+      })
+  }, [fetchDiff, onCycleDetected])
 
   // Build a short label for the toast / banner copy.
   const headerLabel: string = React.useMemo(() => {
@@ -564,6 +732,54 @@ export function PlanMutateDialog(props: PlanMutateDialogProps) {
           groupHeaderSticky={isMultiSource}
         />
       )}
+      {(state.kind === "paginating" || state.kind === "paginating-paused") && (
+        <div className="space-y-2">
+          <PlanMutateDiffTable
+            affected={state.loaded}
+            costClearView={costClearView}
+            projectId={projectId}
+            groupHeaderSticky={isMultiSource}
+            maxVisibleRows={state.full.length}
+            paginationLoading={state.kind === "paginating"}
+          />
+          {state.kind === "paginating" && (
+            <div
+              className="flex items-center justify-between gap-2 rounded-md border border-outline-variant bg-muted/30 px-3 py-2 text-xs text-muted-foreground"
+              role="status"
+              aria-live="polite"
+              data-testid="plan-mutate-pagination-progress"
+            >
+              <span className="flex items-center gap-2">
+                <Loader2 className="h-3 w-3 animate-spin" aria-hidden />
+                Lade weitere Knoten… (~{state.loaded.length} von{" "}
+                {state.full.length} geladen)
+              </span>
+              <Button
+                size="sm"
+                variant="ghost"
+                onClick={handleCancelPagination}
+                data-testid="plan-mutate-pagination-cancel"
+              >
+                Abbrechen
+              </Button>
+            </div>
+          )}
+          {state.kind === "paginating-paused" && (
+            <PlanMutatePaginationPauseBanner
+              loadedCount={state.loaded.length}
+              totalCount={state.full.length}
+              onLoadMore={handleResumePagination}
+              onAbort={handleCancelPagination}
+            />
+          )}
+        </div>
+      )}
+      {state.kind === "cancelled" && (
+        <PlanMutateCancelBanner
+          onRetry={handleRetryAfterCancel}
+          onClose={() => onOpenChange(false)}
+        />
+      )}
       {state.kind === "conflict" && (
         <div className="space-y-3">
           <div className="opacity-60">
@@ -588,32 +804,42 @@ export function PlanMutateDialog(props: PlanMutateDialogProps) {
     </div>
   )
 
-  const footer =
-    state.kind === "ok" || state.kind === "applying" || state.kind === "loading"
-      ? (
-        <div className="flex flex-row items-center justify-between gap-2">
-          <Button
-            type="button"
-            variant="outline"
-            onClick={() => onOpenChange(false)}
-            disabled={state.kind === "applying"}
-          >
-            Verwerfen
-          </Button>
-          <Button
-            type="button"
-            onClick={handleApply}
-            disabled={state.kind !== "ok"}
-            data-testid="plan-mutate-apply"
-          >
-            {state.kind === "applying" && (
-              <Loader2 className="mr-1.5 h-3.5 w-3.5 animate-spin" aria-hidden />
-            )}
-            {state.kind === "applying" ? "Übernehmen…" : applyButtonLabel}
-          </Button>
-        </div>
-      )
-      : null
+  const showFooter =
+    state.kind === "ok" ||
+    state.kind === "applying" ||
+    state.kind === "loading" ||
+    state.kind === "paginating" ||
+    state.kind === "paginating-paused"
+  const applyDisabledReason =
+    state.kind === "paginating" || state.kind === "paginating-paused"
+      ? "Vollständige Vorschau wird noch geladen"
+      : undefined
+  const footer = showFooter
+    ? (
+      <div className="flex flex-row items-center justify-between gap-2">
+        <Button
+          type="button"
+          variant="outline"
+          onClick={() => onOpenChange(false)}
+          disabled={state.kind === "applying"}
+        >
+          Verwerfen
+        </Button>
+        <Button
+          type="button"
+          onClick={handleApply}
+          disabled={state.kind !== "ok"}
+          title={applyDisabledReason}
+          data-testid="plan-mutate-apply"
+        >
+          {state.kind === "applying" && (
+            <Loader2 className="mr-1.5 h-3.5 w-3.5 animate-spin" aria-hidden />
+          )}
+          {state.kind === "applying" ? "Übernehmen…" : applyButtonLabel}
+        </Button>
+      </div>
+    )
+    : null
 
   if (isMobile) {
     return (
