@@ -45,6 +45,9 @@ interface BulkActionBarProps {
   kindMix: BulkActionBarKindCount[]
   onClear: () => void
   onBulkShift: (days: number) => void
+  /** PROJ-65 ε.3c.δ (D9 / OQ-δ1) — forwarded to BulkShiftPopover so the
+   *  per-project setting consistently snaps day-counts to ISO-weeks. */
+  snapToWeek?: boolean
 }
 
 const slideVariants: Variants = {
@@ -57,6 +60,7 @@ export function BulkActionBar({
   kindMix,
   onClear,
   onBulkShift,
+  snapToWeek = false,
 }: BulkActionBarProps) {
   const reducedMotion = useReducedMotion()
   if (selectedCount === 0) return null
@@ -112,6 +116,7 @@ export function BulkActionBar({
           <BulkShiftPopover
             selectedCount={selectedCount}
             onSubmit={onBulkShift}
+            snapToWeek={snapToWeek}
           >
             <Button
               type="button"

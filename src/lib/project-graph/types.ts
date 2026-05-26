@@ -118,6 +118,21 @@ export interface TrajectoryExtension {
    * components default to `false` when the field is missing.
    */
   permissions?: TrajectoryPermissions
+  /**
+   * PROJ-65 ε.3c.δ (D9 / AC-D9.x) — per-project UI settings sourced
+   * from `projects.settings` JSONB. Optional + nested so the FE
+   * falls back to `false` defaults when keys are missing, and so
+   * existing ε.1/ε.2 fixtures stay valid without an update.
+   */
+  settings?: TrajectorySettings
+}
+
+export interface TrajectorySettings {
+  plan_mutate?: {
+    /** When true, Plan-Mutate drag-handles snap day-deltas to whole
+     *  ISO-weeks (multiples of 7). Default `false`. */
+    snap_to_week?: boolean
+  }
 }
 
 export interface TrajectoryPermissions {

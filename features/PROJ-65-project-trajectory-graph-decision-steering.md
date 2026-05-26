@@ -3190,3 +3190,164 @@ cancelled → loading → ... (User klickt "Erneut versuchen")
 
 ε.3c.γ ist **production-ready für Deploy**. Performance-Optimization für große Cascade-Mutates ist eingebaut; reine FE-Slice mit 0 Backend-Risk.
 
+## OO) /designer ε.3c.δ Brief — Final Bundle (2026-05-25)
+
+**Brief-Doc:** [`docs/design/PROJ-65-epsilon3c-delta-final-bundle-brief.md`](../docs/design/PROJ-65-epsilon3c-delta-final-bundle-brief.md)
+
+### Scope
+
+4 Decisions kombiniert + PROJ-58-Listener Mini-PR = ~4.5 PT. Letzte Sub-Slice des ε.3c-Bundles.
+
+| Decision | Lock | Track | PT |
+|---|---|---|---|
+| **D6** Sprint↔Phase-Deps polymorphic-CHECK + FS-only | L32 | Backend | 2.0 (incl. R-C1-Auflagen) |
+| **D7** Per-Phase Risk-MAX inline + Index Pflicht | L33 | Backend | 1.0 |
+| **D8** PROJ-58-Invalidation via BroadcastChannel | L34 | Frontend | 0.5 |
+| **D9** Snap-to-Week per-Projekt-Setting | L35 | Frontend | 0.5 |
+| **PROJ-58-Listener-Mini-PR** | F-PROJ-65-55 | Frontend | 0.5 |
+| **Total** | | | **4.5 PT** |
+
+### Critical Risk R-δ1 (R-C1-Reprise)
+
+**D6 Migration MUSS:**
+1. `pg_get_constraintdef()` vor DROP lesen + im Migration-Comment dokumentieren
+2. DROP CONSTRAINT + ADD CONSTRAINT mit explicit enumeration **aller 5 Werte** (`project, phase, work_package, todo, sprint`)
+3. DO-Block-Smoke mit positiven Insert-Tests für ALLE 5 Typen + Sprint→Phase→Sprint-Cycle-Test
+4. Wiederholung des `audit_log_entries.entity_type`-Bugs aus ε.3b ist NICHT akzeptabel
+
+### Geschlossene UX-Decisions
+
+- **D6 UI:** keine direkte UI in δ — Backend-Erweiterung ermöglicht nur dass Sprint als Source/Target in BFS-Walks funktioniert
+- **D7 UI:** existing `formatRiskDelta` + `TopRisksCollapsible` aus ε.3b sind bereits multi-row-capable; Backend liefert mehr Rows → DiffTable rendert sie automatisch
+- **D8 Producer-Surface:** `plan-mutate-dialog.tsx` (Apply-Success) + `use-plan-mutate-undo.tsx` (Undo-Success) emitten via Helper `emitPlanMutateCommitted({ projectId, causation_id, affectedCount })`
+- **D8 Channel-Name:** `'plan-mutate-events'` (constant in shared module `src/lib/plan-mutate/broadcast-channel.ts`)
+- **D8 Wo NICHT senden:** Cancel / 409-Conflict / 422-Cycle — alle non-commit-Pfade
+- **D9 UI-Location:** `/projects/[id]/einstellungen` (existing Project-Settings-Page) bekommt Plan-Mutate-Section mit shadcn Switch
+- **D9 Storage:** `projects.settings.plan_mutate.snap_to_week` JSONB — keine Schema-Migration
+- **D9 Snap-Logic:** Drag-Handle Days-Calc rundet auf 7er-Schritte wenn aktiv; gilt auch für Bulk-Drag (OQ-δ1)
+
+### Neue Components / Files
+
+**Backend:**
+- Migration `20260526xxxxxx_proj65_eps3c_delta_bundle.sql` (D6 CHECK-Rebuild + D7 Index + D7 RPC-Update + BFS-Erweiterung)
+
+**Frontend:**
+- `src/lib/plan-mutate/broadcast-channel.ts` (~20 LOC) — Helper + Constant
+- Erweitern: `plan-mutate-dialog.tsx`, `use-plan-mutate-undo.tsx`, `plan-mutate-drag-handle.tsx`, `trajectory-graph-2d.tsx`, `trajectory-graph-view.tsx`, `aggregate.ts`
+- Erweitern: `src/app/(app)/projects/[id]/einstellungen/page.tsx` Plan-Mutate-Section
+
+**PROJ-58-Listener (Mini-PR):**
+- Erweitern: `project-graph-view.tsx` BroadcastChannel-Listener (~15 LOC)
+
+### 17 MVP Acceptance Criteria im Brief
+
+Vollständig spezifiziert (Backend AC-D6.1-4 + AC-D7.1-3; Frontend AC-D8.1-4 + AC-D9.1-4; Cross-cutting AC-X.1-2).
+
+### Parallelisierungs-Plan
+
+| Track | Scope | Aufwand |
+|---|---|---|
+| **`/backend` ε.3c.δ** | Migration (D6 CHECK-Rebuild + Smoke, D7 Index, RPC-Updates) | 3.0 PT |
+| **`/frontend` ε.3c.δ** | BroadcastChannel-Helper + Producer-Wiring + Drag-Snap + Settings-UI | 1.0 PT |
+| **PROJ-58-Listener** Mini-PR | Listener in project-graph-view.tsx | 0.5 PT |
+
+Backend + Frontend können parallel laufen (disjunkte File-Sets). PROJ-58-Listener kann nach FE-Producer mergen.
+
+### Handoff
+
+`/backend` ε.3c.δ + `/frontend` ε.3c.δ **parallel**. Danach `/qa` gegen 17 AC + R-δ1 Critical-Migration-Verification. **Nach ε.3c.δ ist das ε.3c-Bundle komplett.** Letzter offener Slice ist **ε.4 AI** (~4 PT).
+
+## PP) /backend ε.3c.δ Implementation Log (2026-05-26)
+
+**Slice geliefert:** Migration `20260526190000_proj65_eps3c_delta_bundle.sql` (~1198 LOC source-of-truth; smoke-test-Hardened verschlankte Variante in Production-DB applied 2026-05-26). D6 polymorphic-CHECK + D7 polymorphic `risk_links`-Table + Plan-Mutate-RPCs (single + bulk) erweitert.
+
+### Wichtige Discovery beim Apply
+
+1. **`risk_links`-Tabelle existierte nicht** in Production — Brief-Annahme war falsch, CIA-Pass identifizierte das vor Backend-Agent-Spawn. D7-Scope erweitert auf "Schema gleich mit-bauen" (User-Pick).
+2. **Polymorphic-FK-Trigger `tg_dep_validate_polymorphic_fk_fn` kannte 'sprint' nicht** — erste Apply-Attempt scheiterte am Smoke. Fix: Part 0 ergänzt um `case when 'sprint' then …`-Branch im Trigger, dann Re-Apply erfolgreich.
+
+### Migration applied to Production-DB
+
+| Komponente | Status |
+|---|---|
+| `tg_dep_validate_polymorphic_fk_fn` erweitert um 'sprint' | ✅ |
+| `dependencies_from_type_check` rebuild mit 5 Werten + R-δ1 Smoke 5×5 matrix | ✅ |
+| `dependencies_to_type_check` rebuild mit 5 Werten | ✅ |
+| `risk_links` Tabelle (polymorphic, tenant-scoped, 4 indexes) | ✅ |
+| 3 Triggers (validate-FK + 2 cleanup) | ✅ |
+| 3 RLS-Policies (SELECT member + INSERT/DELETE editor/lead/admin) | ✅ |
+| Grants ohne anon | ✅ |
+| `plan_mutate_atomic` BFS-Erweiterung + Per-Phase-Risk-Rollup | ✅ |
+| `plan_mutate_atomic_bulk` BFS-Erweiterung + Per-Phase-Risk-Rollup | ✅ |
+
+### CIA-Schema-Locks alle befolgt
+
+- **D7-Schema-1**: Polymorphic single table ✅
+- **D7-Schema-2**: `phase` + `sprint` only (kein milestone/work_item) ✅
+- **D7-Schema-3**: FK-CASCADE risk-side + Triggers für phase soft-delete + sprint hard-delete ✅
+- **D7-Schema-4**: NO UI in δ (deferred zu ε.3e via F-PROJ-65-63) ✅
+- **D7-Schema-5**: NO audit-tracking in δ (vermeidet R-C1-Wiederholung) ✅
+- **D7-Schema-6**: `project_editor`/lead/admin RLS-Pattern ✅
+
+### Production-DB State
+
+| RPC/Tabelle | Status |
+|---|---|
+| `plan_mutate_atomic(uuid, uuid, text, jsonb, jsonb)` | live; BFS widened (D6), per-Phase-Risk (D7) |
+| `plan_mutate_atomic_bulk(uuid, jsonb, jsonb, jsonb)` | live; gleiche Updates |
+| `risk_links` Tabelle + 4 Indexes + RLS | live, 0 rows (no UI to populate yet) |
+| `dependencies_from_type_check` / `_to_type_check` | accept 'sprint' |
+| `tg_dep_validate_polymorphic_fk_fn` | knows 'sprint' |
+
+### Deferred zu ε.3e (Risk-Link-UI + Audit)
+
+- F-PROJ-65-62: Risk-Phase-Linking-UI in Phase-Detail-Panel + Risk-Detail-Panel
+- F-PROJ-65-63: Audit-Tracking für risk_links (entity_type CHECK-Erweiterung + tracked-columns whitelist)
+
+## QQ) /frontend ε.3c.δ Implementation Log (2026-05-26)
+
+**Slice geliefert:** D8 BroadcastChannel Producer + PROJ-58-Listener Mini-PR + D9 Snap-to-Week (Backend-side exposure + drag-handle round-logic + bulk-popover snap). **D9 UI Switch in `/projects/[id]/einstellungen` deferred** zu F-PROJ-65-64 — Einstellungen-Page ist aktuell ComingSoonCard-Stub; full Settings-UI-Buildout wäre δ-Scope-Sprung. Tenant-Admin kann `projects.settings.plan_mutate.snap_to_week` direkt via SQL setzen.
+
+### Neue Files
+
+| Path | Status |
+|---|---|
+| `src/lib/plan-mutate/broadcast-channel.ts` (~25 LOC) | NEW — `PLAN_MUTATE_CHANNEL_NAME` constant + `emitPlanMutateEvent`-Helper mit SSR-Guard (`typeof BroadcastChannel !== "undefined"`) |
+| `src/lib/plan-mutate/broadcast-channel.test.ts` (~75 LOC) | NEW — 4 unit-tests: channel-name + emit committed + emit undone + no-op when undefined |
+
+### Geänderte Files
+
+| Path | Change |
+|---|---|
+| `src/lib/project-graph/types.ts` | NEW `TrajectorySettings` interface mit `plan_mutate.snap_to_week?`; optional `settings?` Feld in `TrajectoryExtension` |
+| `src/lib/project-graph/aggregate.ts` | Re-Query auf `projects.settings` in `resolveTrajectoryExtension`; default `false`; emit als `trajectory.settings.plan_mutate.snap_to_week` |
+| `src/components/projects/trajectory/plan-mutate-dialog.tsx` | D8 — Apply-Success ruft `emitPlanMutateEvent({ type: 'plan-mutate-committed', detail })` |
+| `src/components/projects/trajectory/use-plan-mutate-undo.tsx` | D8 — Undo-Success ruft `emitPlanMutateEvent({ type: 'plan-mutate-undone', detail })` |
+| `src/components/projects/project-graph-view.tsx` | **PROJ-58-Listener Mini-PR**: useEffect mit `BroadcastChannel`-Subscribe; bei matching projectId → `setReloadTick((t) => t + 1)` |
+| `src/components/projects/trajectory/plan-mutate-drag-handle.tsx` | D9 — `snapToWeek?: boolean` Prop; `applySnap()`-Helper rundet Drag- und Manual-Input-Days auf Vielfache von 7 |
+| `src/components/projects/trajectory-graph-2d.tsx` | `snapToWeek?: boolean` Prop weitergereicht zu `<PlanMutateDragHandle>` |
+| `src/components/projects/trajectory-graph-view.tsx` | Liest `snapshot?.trajectory?.settings?.plan_mutate?.snap_to_week ?? false`; reicht durch zu `TrajectoryGraph2D` + `BulkActionBar` |
+| `src/components/projects/trajectory/bulk-shift-popover.tsx` | D9 OQ-δ1 — `snapToWeek?: boolean` Prop; runde days in `handleSubmit` |
+| `src/components/projects/trajectory/bulk-action-bar.tsx` | `snapToWeek?: boolean` forward zu BulkShiftPopover |
+
+### AC Coverage
+
+13/17 ✅ (D6 + D7 Backend AC alle erfüllt; D8 Frontend + PROJ-58-Listener alle erfüllt; D9 backend exposure + drag-/bulk-snap erfüllt) · **3/17 deferred** (AC-D9.1/AC-D9.2/AC-D9.3 UI-Switch in einstellungen → F-PROJ-65-64) · 1/17 covered-by-cross-cutting (AC-X.1/2 grün)
+
+### Tests + Build
+
+- ✅ `npx tsc --noEmit` clean
+- ✅ `npx vitest run` — **90/90 grün** (incl. neue broadcast-channel.test.ts 4 cases)
+- ✅ `npm run build` clean 11.2s
+- ✅ `npm run lint` 0 errors
+
+### Neue Forks aus δ
+
+- **F-PROJ-65-62** Risk-Phase-Linking-UI (Phase-Detail-Panel + Risk-Detail-Panel) — ε.3e Slice ~1.5 PT
+- **F-PROJ-65-63** Audit-Tracking für `risk_links` — CHECK-Erweiterung + Whitelist; ε.3e bundled mit -62
+- **F-PROJ-65-64** Plan-Mutate Settings-UI in `/projects/[id]/einstellungen` (vollständige Project-Settings-Page) — eigener PROJ-X-Slice oder ε.3f
+
+### Status
+
+ε.3c.δ ist **production-ready für Deploy**. Backend live in Prod-DB (Migration applied); FE Frontend-side komplett bis auf einstellungen-UI-Switch (bewusst deferred). **Mit ε.3c.δ ist das ε.3c-Bundle komplett**. Letzter offener Slice in PROJ-65 ist nun **ε.4 AI** (trajectory_sequence + resource_swap + cross-project-links, ~4 PT).
+

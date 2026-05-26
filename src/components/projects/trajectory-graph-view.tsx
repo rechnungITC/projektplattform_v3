@@ -645,6 +645,10 @@ export function TrajectoryGraphView({ projectId }: TrajectoryGraphViewProps) {
                   canPlanMutate={
                     snapshot?.trajectory?.permissions?.can_plan_mutate ?? false
                   }
+                  snapToWeek={
+                    snapshot?.trajectory?.settings?.plan_mutate
+                      ?.snap_to_week ?? false
+                  }
                   onPlanMutateDrop={(node, days) =>
                     setPlanMutate({ node, days })
                   }
@@ -875,6 +879,10 @@ export function TrajectoryGraphView({ projectId }: TrajectoryGraphViewProps) {
           <BulkActionBar
             selectedCount={selectionSet.size}
             kindMix={kindMix}
+            snapToWeek={
+              snapshot?.trajectory?.settings?.plan_mutate?.snap_to_week ??
+              false
+            }
             onClear={() => selectionSet.clear()}
             onBulkShift={(days) => {
               const sources: PlanMutateSource[] = []

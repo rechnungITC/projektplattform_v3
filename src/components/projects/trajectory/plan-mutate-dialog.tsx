@@ -40,6 +40,7 @@ import {
   SheetTitle,
 } from "@/components/ui/sheet"
 import { Skeleton } from "@/components/ui/skeleton"
+import { emitPlanMutateEvent } from "@/lib/plan-mutate/broadcast-channel"
 import type { PlanMutateSource } from "@/lib/project-graph/types"
 
 import { ClassThreeLock } from "../stakeholder/class-three-lock"
@@ -586,6 +587,7 @@ export function PlanMutateDialog(props: PlanMutateDialogProps) {
           affectedCount: res.diff.affected.length,
           sourceNodeLabel: headerLabel,
           shiftDays,
+          projectId,
           onUndo: async () => {
             try {
               const undoRes = await fetch(
@@ -617,6 +619,18 @@ export function PlanMutateDialog(props: PlanMutateDialogProps) {
             } catch {
               return { ok: false, status: 500 }
             }
+          },
+        })
+        // PROJ-65 ε.3c.δ (D8 / AC-D8.1) — broadcast commit so PROJ-58
+        // ProjectGraphView (and any other listener tab) can invalidate
+        // its snapshot. Only emits on the apply-success branch, never
+        // on conflict / cycle / cancel — those branches do not commit.
+        emitPlanMutateEvent({
+          type: "plan-mutate-committed",
+          detail: {
+            projectId,
+            causation_id: cid,
+            affectedCount: res.diff.affected.length,
           },
         })
         onCommitted?.(cid)
