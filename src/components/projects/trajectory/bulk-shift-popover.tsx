@@ -37,6 +37,12 @@ interface BulkShiftPopoverProps {
   onOpenChange?: (open: boolean) => void
   /** Render as a child element (used by Action-Bar for inline trigger). */
   children: React.ReactNode
+  /**
+   * PROJ-65 ε.3c.δ (D9 / OQ-δ1) — when true, the submitted day-count is
+   * rounded to whole ISO-weeks (multiples of 7). Mirrors the drag-handle
+   * snap-logic so bulk-edit respects the same per-project setting.
+   */
+  snapToWeek?: boolean
 }
 
 const QUICK_DAYS = [-30, -14, -7, -1, 1, 7, 14, 30] as const
@@ -49,6 +55,7 @@ export function BulkShiftPopover({
   open,
   onOpenChange,
   children,
+  snapToWeek = false,
 }: BulkShiftPopoverProps) {
   const [internalOpen, setInternalOpen] = React.useState(false)
   const isControlled = open !== undefined
@@ -74,9 +81,13 @@ export function BulkShiftPopover({
 
   const handleSubmit = React.useCallback(() => {
     if (!canSubmit) return
-    onSubmit(days)
+    // PROJ-65 ε.3c.δ D9 / OQ-δ1 — apply snap-to-week to the bulk submit
+    // when the per-project setting is on, mirroring the drag-handle logic.
+    const submitted = snapToWeek ? Math.round(days / 7) * 7 : days
+    if (submitted === 0) return
+    onSubmit(submitted)
     setIsOpen(false)
-  }, [canSubmit, days, onSubmit, setIsOpen])
+  }, [canSubmit, days, onSubmit, setIsOpen, snapToWeek])
 
   const handleKey = React.useCallback(
     (e: React.KeyboardEvent<HTMLDivElement>) => {

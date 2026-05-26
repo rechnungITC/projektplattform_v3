@@ -24,6 +24,8 @@
 import * as React from "react"
 import { toast } from "sonner"
 
+import { emitPlanMutateEvent } from "@/lib/plan-mutate/broadcast-channel"
+
 export type UndoVariant = "idle" | "loading" | "success" | "conflict" | "error"
 
 interface ShowUndoToastInput {
@@ -31,6 +33,13 @@ interface ShowUndoToastInput {
   affectedCount: number
   sourceNodeLabel: string
   shiftDays: number
+  /**
+   * PROJ-65 ε.3c.δ (D8 / AC-D8.2) — projectId is broadcast on the
+   * undo-success branch so PROJ-58 listeners can match by project.
+   * Optional to keep the hook backwards-compatible with any test that
+   * does not exercise the broadcast path; emit is skipped when absent.
+   */
+  projectId?: string
   /** Returns the next variant given the server response. */
   onUndo: () => Promise<{
     ok: boolean
@@ -71,6 +80,7 @@ export function usePlanMutateUndo() {
         affectedCount,
         sourceNodeLabel,
         shiftDays,
+        projectId,
         onUndo,
         onConflictDetails,
       } = input
@@ -155,6 +165,20 @@ export function usePlanMutateUndo() {
           if (result.ok) {
             toast(renderSuccess(), { id: causationId, duration: SUCCESS_TTL_MS })
             window.setTimeout(() => toast.dismiss(causationId), SUCCESS_TTL_MS)
+            // PROJ-65 ε.3c.δ (D8 / AC-D8.2) — broadcast undo so PROJ-58
+            // ProjectGraphView (and any other listener tab) can
+            // invalidate its snapshot. Only emits on undo-success;
+            // 409-conflict + 5xx-error branches stay silent.
+            if (projectId) {
+              emitPlanMutateEvent({
+                type: "plan-mutate-undone",
+                detail: {
+                  projectId,
+                  causation_id: causationId,
+                  affectedCount,
+                },
+              })
+            }
           } else if (result.status === 409) {
             toast(renderConflict(result.conflictedNodeIds ?? []), {
               id: causationId,

@@ -78,7 +78,9 @@ export async function resolveProjectGraph(
   ] = await Promise.all([
     args.supabase
       .from("projects")
-      .select("id, name, description, project_method, lifecycle_status")
+      .select(
+        "id, name, description, project_method, lifecycle_status, settings",
+      )
       .eq("id", args.projectId)
       .maybeSingle(),
     args.supabase
@@ -148,6 +150,7 @@ export async function resolveProjectGraph(
         description: string | null
         project_method: ProjectMethod | null
         lifecycle_status: string
+        settings: Record<string, unknown> | null
       }
     | null
   const nodes: GraphNode[] = []
@@ -957,6 +960,24 @@ async function resolveTrajectoryExtension(
       projectRole === "editor"
   }
 
+  // PROJ-65 ε.3c.δ (D9 / L35) — surface projects.settings.plan_mutate.snap_to_week
+  // to the FE so the drag-handle can round day-deltas to whole ISO-weeks. The
+  // JSONB column lives in `projects.settings`; re-read it here in the trajectory
+  // aggregator (cheap single-row fetch). Default `false` when absent or wrong shape.
+  const projectSettingsRes = await args.supabase
+    .from("projects")
+    .select("settings")
+    .eq("id", args.projectId)
+    .maybeSingle()
+  const projectSettings = (
+    projectSettingsRes.data as { settings?: Record<string, unknown> | null } | null
+  )?.settings as Record<string, unknown> | null | undefined
+  const planMutateSettings = (projectSettings?.plan_mutate ?? {}) as Record<
+    string,
+    unknown
+  >
+  const snapToWeek = planMutateSettings.snap_to_week === true
+
   return {
     layout_hints,
     sprints,
@@ -969,6 +990,11 @@ async function resolveTrajectoryExtension(
     permissions: {
       cost_clear_view: costClearView,
       can_plan_mutate: canPlanMutate,
+    },
+    settings: {
+      plan_mutate: {
+        snap_to_week: snapToWeek,
+      },
     },
   }
 }

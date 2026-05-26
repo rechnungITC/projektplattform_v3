@@ -45,6 +45,19 @@ interface PlanMutateDragHandleProps {
   onManualShift: (days: number) => void
   /** Optional class for the foreignObject container. */
   className?: string
+  /**
+   * PROJ-65 ε.3c.δ (D9 / L35) — when true, drag delta and manual-input
+   * day count are rounded to whole ISO-weeks (nearest multiple of 7).
+   * Reads from `snapshot.trajectory.settings.plan_mutate.snap_to_week`.
+   * Default `false` (snap-to-day, ε.3b behavior).
+   */
+  snapToWeek?: boolean
+}
+
+/** PROJ-65 ε.3c.δ — round day-delta to nearest multiple of 7 when snapToWeek. */
+function applySnap(days: number, snapToWeek: boolean): number {
+  if (!snapToWeek) return days
+  return Math.round(days / 7) * 7
 }
 
 const HANDLE_SIZE = 14
@@ -57,6 +70,7 @@ export function PlanMutateDragHandle({
   onDrop,
   onManualShift,
   className,
+  snapToWeek = false,
 }: PlanMutateDragHandleProps) {
   const [dragging, setDragging] = React.useState(false)
   const [popoverOpen, setPopoverOpen] = React.useState(false)
@@ -65,13 +79,17 @@ export function PlanMutateDragHandle({
   const cancelledRef = React.useRef(false)
   const longPressTimerRef = React.useRef<number | null>(null)
 
-  // Compute days from pointer-delta with snap-to-day.
+  // Compute days from pointer-delta with snap-to-day (ε.3b) and optional
+  // snap-to-week (ε.3c.δ D9). The ISO-week snap applies AFTER the day-snap,
+  // so the user sees integer days during drag and the final commit lands on
+  // a multiple of 7.
   const daysFromDelta = React.useCallback(
     (deltaX: number) => {
       if (pxPerDay <= 0) return 0
-      return Math.round(deltaX / pxPerDay)
+      const rawDays = Math.round(deltaX / pxPerDay)
+      return applySnap(rawDays, snapToWeek)
     },
-    [pxPerDay],
+    [pxPerDay, snapToWeek],
   )
 
   // Drag lifecycle — pointer events so it handles mouse + touch.
@@ -183,11 +201,13 @@ export function PlanMutateDragHandle({
   const submitManual = React.useCallback(() => {
     const parsed = Number.parseInt(manualDays, 10)
     if (Number.isFinite(parsed) && parsed !== 0) {
-      onManualShift(parsed)
+      // PROJ-65 ε.3c.δ D9 — Snap-to-Week also applies to the manual-input
+      // fallback so keyboard-only users get the same behavior as drag.
+      onManualShift(applySnap(parsed, snapToWeek))
     }
     setPopoverOpen(false)
     setManualDays("0")
-  }, [manualDays, onManualShift])
+  }, [manualDays, onManualShift, snapToWeek])
 
   return (
     <foreignObject

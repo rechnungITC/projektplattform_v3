@@ -348,6 +348,118 @@ describe("POST /api/projects/[id]/plan-mutate", () => {
     expect(body.cycle.detected_at_node_id).toBe(SOURCE_NODE_ID)
   })
 
+  // ===========================================================================
+  // ε.3c.δ — D7 per-affected-phase risk rollup driven by risk_links
+  // ===========================================================================
+
+  it("ε.3c.δ D7: forwards per-phase risk_severity rows from RPC diff when risk_links exist", async () => {
+    const PHASE_A = "aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa"
+    const PHASE_B = "bbbbbbbb-bbbb-4bbb-8bbb-bbbbbbbbbbbb"
+    const RISK_1 = "11111111-2222-4333-8444-555555555555"
+    const RISK_2 = "22222222-3333-4444-8555-666666666666"
+    mocks.rpcMock.mockResolvedValue({
+      data: {
+        ok: true,
+        causation_id: "88888888-8888-4888-8888-888888888888",
+        diff: {
+          affected: [
+            // date rows (one per phase) — abbreviated
+            {
+              node_id: PHASE_A,
+              node_kind: "phase",
+              field: "start_date",
+              before: { kind: "exact", value: "2026-06-01" },
+              after: { kind: "exact", value: "2026-06-04" },
+              severity: "delay",
+              masked: false,
+            },
+            {
+              node_id: PHASE_B,
+              node_kind: "phase",
+              field: "start_date",
+              before: { kind: "exact", value: "2026-07-01" },
+              after: { kind: "exact", value: "2026-07-04" },
+              severity: "delay",
+              masked: false,
+            },
+            // Per-affected-phase risk_severity rows (D7).
+            {
+              node_id: PHASE_A,
+              node_kind: "phase",
+              node_label: "Phase A",
+              field: "risk_severity",
+              before: { kind: "enum", value: "high" },
+              after: { kind: "enum", value: "high" },
+              severity: "delay",
+              masked: false,
+              top_3_risks: [
+                { risk_id: RISK_1, title: "Lieferantenausfall", severity: "high" },
+              ],
+            },
+            {
+              node_id: PHASE_B,
+              node_kind: "phase",
+              node_label: "Phase B",
+              field: "risk_severity",
+              before: { kind: "enum", value: "medium" },
+              after: { kind: "enum", value: "medium" },
+              severity: "delay",
+              masked: false,
+              top_3_risks: [
+                { risk_id: RISK_2, title: "Ressourcenkonflikt", severity: "medium" },
+              ],
+            },
+          ],
+        },
+      },
+      error: null,
+    })
+
+    const res = await POST(makeRequest(validBody), ctx)
+
+    expect(res.status).toBe(200)
+    const body = await res.json()
+    expect(body.ok).toBe(true)
+    const affected = body.diff.affected as Array<Record<string, unknown>>
+    const riskRows = affected.filter((r) => r.field === "risk_severity")
+    expect(riskRows).toHaveLength(2)
+    expect(riskRows.map((r) => r.node_id)).toEqual([PHASE_A, PHASE_B])
+    // Confirm top_3_risks payload survives the route untouched.
+    expect((riskRows[0] as { top_3_risks: unknown[] }).top_3_risks).toEqual([
+      { risk_id: RISK_1, title: "Lieferantenausfall", severity: "high" },
+    ])
+  })
+
+  it("ε.3c.δ D7: no risk_severity rows emitted when affected phases have no risk_links", async () => {
+    const PHASE_A = "aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa"
+    mocks.rpcMock.mockResolvedValue({
+      data: {
+        ok: true,
+        causation_id: "99999999-9999-4999-8999-999999999999",
+        diff: {
+          affected: [
+            {
+              node_id: PHASE_A,
+              node_kind: "phase",
+              field: "start_date",
+              before: { kind: "exact", value: "2026-06-01" },
+              after: { kind: "exact", value: "2026-06-04" },
+              severity: "delay",
+              masked: false,
+            },
+          ],
+        },
+      },
+      error: null,
+    })
+
+    const res = await POST(makeRequest(validBody), ctx)
+    expect(res.status).toBe(200)
+    const body = await res.json()
+    const affected = body.diff.affected as Array<Record<string, unknown>>
+    expect(affected.filter((r) => r.field === "risk_severity")).toEqual([])
+  })
+
   it("multi-source 422 source_node_lock_missing: bulk RPC reports a source missing from if_updated_at", async () => {
     mocks.rpcMock.mockResolvedValue({
       data: {

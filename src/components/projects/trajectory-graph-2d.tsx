@@ -81,6 +81,12 @@ interface TrajectoryGraph2DProps {
    */
   pxPerDay?: number
   /**
+   * PROJ-65 ε.3c.δ (D9 / L35) — when true, plan-mutate drag-handles and
+   * the manual-input fallback snap day-deltas to whole ISO-weeks (multiples
+   * of 7). Driven by `snapshot.trajectory.settings.plan_mutate.snap_to_week`.
+   */
+  snapToWeek?: boolean
+  /**
    * PROJ-65 ε.3c.α.5 — idle-warmup trigger for the lazy-loaded Plan-Mutate
    * dialog chunk. Fired ~300ms after the pointer enters a sprint/phase node
    * (only when `showDragHandles` is true). Safe to no-op when unset.
@@ -143,6 +149,7 @@ export function TrajectoryGraph2D({
   canPlanMutate = false,
   onPlanMutateDrop,
   pxPerDay,
+  snapToWeek = false,
   onPreloadPlanMutateDialog,
   selectedIds,
   onNodeToggleSelect,
@@ -584,6 +591,7 @@ export function TrajectoryGraph2D({
                       anchorX={x + node.width}
                       anchorY={y}
                       pxPerDay={resolvedPxPerDay}
+                      snapToWeek={snapToWeek}
                       nodeLabel={node.label}
                       onDrop={(days) => onPlanMutateDrop?.(node, days)}
                       onManualShift={(days) =>

@@ -30,6 +30,7 @@ import {
   SelectValue,
 } from "@/components/ui/select"
 import { ToggleGroup, ToggleGroupItem } from "@/components/ui/toggle-group"
+import { PLAN_MUTATE_CHANNEL_NAME } from "@/lib/plan-mutate/broadcast-channel"
 import {
   filterProjectGraphSnapshot,
   GRAPH_EDGE_KIND_LABEL,
@@ -97,6 +98,37 @@ export function ProjectGraphView({ projectId }: ProjectGraphViewProps) {
       setViewMode("2d")
     }
   }, [prefersReducedMotion, webglAvailable])
+
+  // PROJ-65 ε.3c.δ (D8 / AC-D8.4) — listen for cross-tab Plan-Mutate
+  // commit + undo events so the PROJ-58 graph snapshot refetches
+  // without a manual reload. Same-origin only by BroadcastChannel
+  // design; gracefully no-ops on Safari < 15.4 / SSR.
+  React.useEffect(() => {
+    if (typeof BroadcastChannel === "undefined") return
+    const channel = new BroadcastChannel(PLAN_MUTATE_CHANNEL_NAME)
+    const handler = (event: MessageEvent) => {
+      const data = event.data as
+        | {
+            type?: string
+            detail?: { projectId?: string }
+          }
+        | null
+      if (!data || typeof data.type !== "string") return
+      if (
+        data.type !== "plan-mutate-committed" &&
+        data.type !== "plan-mutate-undone"
+      ) {
+        return
+      }
+      if (data.detail?.projectId !== projectId) return
+      setReloadTick((t) => t + 1)
+    }
+    channel.addEventListener("message", handler)
+    return () => {
+      channel.removeEventListener("message", handler)
+      channel.close()
+    }
+  }, [projectId])
 
   React.useEffect(() => {
     let cancelled = false
