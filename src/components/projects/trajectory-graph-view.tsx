@@ -55,6 +55,10 @@ import {
 import { TrajectoryGraph2D } from "./trajectory-graph-2d"
 import { CycleBanner } from "./trajectory-cycle-banner"
 import { PlanMutateChunkLoading } from "./trajectory/plan-mutate-chunk-loading"
+import {
+  TrajectoryNodeDetailPanel,
+  type TrajectoryDetailNode,
+} from "./trajectory/trajectory-node-detail-panel"
 import type { PositionedNode } from "@/lib/project-graph/trajectory-layout"
 import { useSelectionSet } from "./trajectory/use-selection-set"
 
@@ -157,6 +161,9 @@ export function TrajectoryGraphView({ projectId }: TrajectoryGraphViewProps) {
   const [goalPanelGoalId, setGoalPanelGoalId] = React.useState<string | null>(
     null,
   )
+  // PROJ-65 ε.3e (F-62b) — node detail panel (linked risks for phase/sprint).
+  const [nodeDetail, setNodeDetail] =
+    React.useState<TrajectoryDetailNode | null>(null)
   const [goalCreateOpen, setGoalCreateOpen] = React.useState(false)
   const [goalCreateDefaultParent, setGoalCreateDefaultParent] =
     React.useState<string | null>(null)
@@ -663,7 +670,9 @@ export function TrajectoryGraphView({ projectId }: TrajectoryGraphViewProps) {
               </div>
             )}
             {focusedPositioned &&
-              (focusedPositioned.risk_count > 0 ||
+              (focusedPositioned.kind === "phase" ||
+                focusedPositioned.kind === "sprint" ||
+                focusedPositioned.risk_count > 0 ||
                 focusedPositioned.decision_count > 0 ||
                 focusedPositioned.ai_recommendation_count > 0) && (
                 <FocusSummary
@@ -674,6 +683,17 @@ export function TrajectoryGraphView({ projectId }: TrajectoryGraphViewProps) {
                       nodeId: focusedPositioned.id,
                       count: focusedPositioned.ai_recommendation_count,
                     })
+                  }
+                  onOpenDetail={
+                    focusedPositioned.kind === "phase" ||
+                    focusedPositioned.kind === "sprint"
+                      ? () =>
+                          setNodeDetail({
+                            id: focusedPositioned.id,
+                            kind: focusedPositioned.kind as "phase" | "sprint",
+                            label: focusedPositioned.label,
+                          })
+                      : undefined
                   }
                 />
               )}
@@ -808,6 +828,20 @@ export function TrajectoryGraphView({ projectId }: TrajectoryGraphViewProps) {
         }}
       />
 
+      {/* PROJ-65 ε.3e (F-62b) — Node detail panel (linked risks) */}
+      <TrajectoryNodeDetailPanel
+        open={nodeDetail != null}
+        onOpenChange={(open) => {
+          if (!open) setNodeDetail(null)
+        }}
+        projectId={projectId}
+        node={nodeDetail}
+        planMutateEnabled={
+          snapshot?.trajectory?.settings?.plan_mutate?.enabled ?? true
+        }
+        onChanged={() => setReloadTick((t) => t + 1)}
+      />
+
       {/* PROJ-65 ε.3b — Plan-Mutate Dialog (single-source) */}
       {planMutate && (
         <PlanMutateDialog
@@ -919,10 +953,13 @@ function FocusSummary({
   node,
   activeTab,
   onOpenAI,
+  onOpenDetail,
 }: {
   node: import("@/lib/project-graph/trajectory-layout").PositionedNode
   activeTab: "risks" | "decisions" | null
   onOpenAI: () => void
+  /** PROJ-65 ε.3e — opens the node detail panel for phase/sprint nodes. */
+  onOpenDetail?: () => void
 }) {
   return (
     <div
@@ -975,9 +1012,20 @@ function FocusSummary({
           )}
         </div>
       </div>
-      <p className="mt-1 text-[11px] text-muted-foreground">
-        Detail-Panel mit Tabs und Aktionen folgt in ε.2.
-      </p>
+      {onOpenDetail && (
+        <div className="mt-2">
+          <Button
+            type="button"
+            variant="outline"
+            size="sm"
+            className="h-7 text-xs"
+            onClick={onOpenDetail}
+            data-testid="focus-open-detail"
+          >
+            Risiken &amp; Details
+          </Button>
+        </div>
+      )}
     </div>
   )
 }

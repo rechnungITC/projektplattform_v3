@@ -978,6 +978,14 @@ async function resolveTrajectoryExtension(
   >
   const snapToWeek = planMutateSettings.snap_to_week === true
 
+  // PROJ-65 ε.3e (F-64) — per-project plan-mutate kill-switch. CIA-locked
+  // hard-AND precedence, default-ON: the project flag can only RESTRICT, never
+  // expand, the tenant master switch (`trajectory_plan_mutate_enabled`). Absent
+  // or any non-`false` value ⇒ enabled. Both plan_mutate RPCs re-enforce this
+  // server-side (`feature_disabled_project`) — this AND is the matching UI hint.
+  const planMutateProjectEnabled = planMutateSettings.enabled !== false
+  canPlanMutate = canPlanMutate && planMutateProjectEnabled
+
   return {
     layout_hints,
     sprints,
@@ -994,6 +1002,7 @@ async function resolveTrajectoryExtension(
     settings: {
       plan_mutate: {
         snap_to_week: snapToWeek,
+        enabled: planMutateProjectEnabled,
       },
     },
   }
