@@ -23,6 +23,10 @@ vi.mock("@ai-sdk/anthropic", () => ({
   anthropic: vi.fn(() => ({})),
   createAnthropic: vi.fn(() => vi.fn(() => ({}))),
 }))
+vi.mock("@ai-sdk/openai", () => ({
+  openai: vi.fn(() => ({})),
+  createOpenAI: vi.fn(() => vi.fn(() => ({}))),
+}))
 vi.mock("@ai-sdk/openai-compatible", () => ({
   createOpenAICompatible: vi.fn(() => vi.fn(() => ({}))),
 }))
@@ -45,6 +49,7 @@ function buildSupabase(opts: {
   tenantSettings: Record<string, unknown> | null
   anthropicDecrypt?: ChainResult
   ollamaDecrypt?: ChainResult
+  openaiDecrypt?: ChainResult
   priorityRows: PriorityRow[]
   insertRunResult: ChainResult
   insertSuggestionsResult?: ChainResult
@@ -88,6 +93,8 @@ function buildSupabase(opts: {
           return opts.anthropicDecrypt ?? { data: null, error: null }
         if (args?.p_provider === "ollama")
           return opts.ollamaDecrypt ?? { data: null, error: null }
+        if (args?.p_provider === "openai")
+          return opts.openaiDecrypt ?? { data: null, error: null }
         return { data: null, error: null }
       }
       throw new Error(`unexpected rpc ${fn}`)
@@ -149,6 +156,13 @@ const OLLAMA = {
   data: {
     endpoint_url: "https://ollama.example.com",
     model_id: "llama3.1:70b",
+  },
+  error: null,
+}
+const OPENAI = {
+  data: {
+    api_key: "sk-openai-test",
+    model_id: "gpt-4o",
   },
   error: null,
 }
@@ -274,6 +288,41 @@ describe("PROJ-32-c-γ priority-driven routing", () => {
       count: 1,
     })
     expect(result.provider).toBe("ollama")
+  })
+
+  it("falls back to stub when OpenAI quota is exhausted at generation time", async () => {
+    const supabase = buildSupabase({
+      tenantSettings: {
+        privacy_defaults: { default_class: 1 },
+        ai_provider_config: { external_provider: "anthropic" },
+      },
+      anthropicDecrypt: EMPTY,
+      openaiDecrypt: OPENAI,
+      ollamaDecrypt: EMPTY,
+      priorityRows: [],
+      insertRunResult: { data: { id: "run-openai-quota" }, error: null },
+      insertSuggestionsResult: { data: [{ id: "s-1" }], error: null },
+    })
+    generateObjectMock.mockRejectedValueOnce(
+      new Error(
+        "Failed after 3 attempts. Last error: You exceeded your current quota, please check your plan and billing details.",
+      ),
+    )
+
+    const result = await invokeRiskGeneration({
+      supabase: supabase as any,
+      ...COMMON,
+      context: class1Context(),
+      count: 1,
+    })
+
+    expect(result.provider).toBe("stub")
+    expect(result.status).toBe("external_blocked")
+    expect(result.external_blocked).toBe(true)
+    expect(result.error_message).toContain("Provider openai")
+    expect(result.error_message).toContain("Kontingent")
+    expect(result.suggestion_ids).toEqual(["s-1"])
+    expect(generateObjectMock).toHaveBeenCalledOnce()
   })
 
   it("first provider in priority skipped if invalid — falls to next entry", async () => {

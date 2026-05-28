@@ -274,18 +274,46 @@ async function updateKiRunStatus(
     outputTokens: number | null
     latencyMs: number | null
     errorMessage: string | null
+    provider?: AIProvider
   },
 ): Promise<void> {
-  await supabase
-    .from("ki_runs")
-    .update({
-      status: fields.status,
-      input_tokens: fields.inputTokens,
-      output_tokens: fields.outputTokens,
-      latency_ms: fields.latencyMs,
-      error_message: fields.errorMessage,
-    })
-    .eq("id", runId)
+  const updatePayload: {
+    status: "success" | "error" | "external_blocked"
+    input_tokens: number | null
+    output_tokens: number | null
+    latency_ms: number | null
+    error_message: string | null
+    provider?: string
+    model_id?: string | null
+  } = {
+    status: fields.status,
+    input_tokens: fields.inputTokens,
+    output_tokens: fields.outputTokens,
+    latency_ms: fields.latencyMs,
+    error_message: fields.errorMessage,
+  }
+  if (fields.provider) {
+    updatePayload.provider = fields.provider.name
+    updatePayload.model_id = fields.provider.modelId
+  }
+  await supabase.from("ki_runs").update(updatePayload).eq("id", runId)
+}
+
+function isProviderCapacityError(message: string): boolean {
+  const normalized = message.toLowerCase()
+  return [
+    "quota",
+    "billing",
+    "rate limit",
+    "rate_limit",
+    "rate-limited",
+    "insufficient_quota",
+    "429",
+  ].some((marker) => normalized.includes(marker))
+}
+
+function buildRiskFallbackMessage(provider: AIProvider, error: string): string {
+  return `Provider ${provider.name} ist wegen Kontingent, Billing oder Rate-Limit nicht verfügbar. Lokaler Stub-Fallback verwendet. Ursache: ${error}`
 }
 
 export async function invokeRiskGeneration({
@@ -314,6 +342,7 @@ export async function invokeRiskGeneration({
     choice,
     "risks",
   )
+  let activeProvider = provider
 
   const runId = await insertKiRun(supabase, {
     tenantId,
@@ -329,26 +358,47 @@ export async function invokeRiskGeneration({
   let outputTokens: number | null = null
   let latencyMs: number | null = null
   let providerError: string | null = null
+  let providerFallbackMessage: string | null = null
 
   try {
-    if (!provider.generateRiskSuggestions) {
+    if (!activeProvider.generateRiskSuggestions) {
       throw new Error(
-        `Provider ${provider.name} does not implement generateRiskSuggestions`,
+        `Provider ${activeProvider.name} does not implement generateRiskSuggestions`,
       )
     }
-    const result = await provider.generateRiskSuggestions({ context, count })
+    const result = await activeProvider.generateRiskSuggestions({ context, count })
     suggestions = result.suggestions
     inputTokens = result.usage.input_tokens
     outputTokens = result.usage.output_tokens
     latencyMs = result.usage.latency_ms
   } catch (err) {
     providerError = err instanceof Error ? err.message : String(err)
+    if (
+      activeProvider.name !== "stub" &&
+      isProviderCapacityError(providerError)
+    ) {
+      const fallbackProvider = new StubProvider()
+      const fallback = await fallbackProvider.generateRiskSuggestions({
+        context,
+        count,
+      })
+      providerFallbackMessage = buildRiskFallbackMessage(
+        activeProvider,
+        providerError,
+      )
+      activeProvider = fallbackProvider
+      suggestions = fallback.suggestions
+      inputTokens = fallback.usage.input_tokens
+      outputTokens = fallback.usage.output_tokens
+      latencyMs = fallback.usage.latency_ms
+      providerError = null
+    }
   }
 
   let finalStatus: "success" | "error" | "external_blocked"
   if (providerError) {
     finalStatus = "error"
-  } else if (externalBlocked) {
+  } else if (externalBlocked || providerFallbackMessage) {
     finalStatus = "external_blocked"
   } else {
     finalStatus = "success"
@@ -381,25 +431,25 @@ export async function invokeRiskGeneration({
     }
   }
 
-  // Prefer the cap-block detail over the (possibly-empty) provider error
-  // when the call was gated by the cost cap.
-  const finalErrorMessage = providerError ?? blockedReason ?? null
+  const finalErrorMessage =
+    providerError ?? providerFallbackMessage ?? blockedReason ?? null
   await updateKiRunStatus(supabase, runId, {
     status: finalStatus,
     inputTokens,
     outputTokens,
     latencyMs,
     errorMessage: finalErrorMessage,
+    provider: activeProvider,
   })
 
   return {
     run_id: runId,
     classification,
-    provider: provider.name as AIProviderName,
-    model_id: provider.modelId,
+    provider: activeProvider.name as AIProviderName,
+    model_id: activeProvider.modelId,
     status: finalStatus,
     suggestion_ids: suggestionIds,
-    external_blocked: externalBlocked,
+    external_blocked: externalBlocked || providerFallbackMessage !== null,
     error_message: finalErrorMessage ?? undefined,
   }
 }

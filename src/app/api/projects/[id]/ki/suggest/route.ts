@@ -105,5 +105,6 @@ export async function POST(request: Request, ctx: Ctx) {
     status: result.status,
     suggestion_ids: result.suggestion_ids,
     external_blocked: result.external_blocked,
+    error_message: result.error_message ?? null,
   })
 }
