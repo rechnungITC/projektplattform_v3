@@ -26,6 +26,7 @@ import type {
   AIProvider,
   CoachingGenerationRequest,
   NarrativeGenerationRequest,
+  ResourceSwapGenerationRequest,
   RiskGenerationRequest,
   SentimentGenerationRequest,
 } from "./types"
@@ -33,6 +34,7 @@ import type {
   CoachingGenerationOutput,
   CoachingKind,
   NarrativeGenerationOutput,
+  ResourceSwapGenerationOutput,
   RiskGenerationOutput,
   SentimentGenerationOutput,
 } from "../types"
@@ -478,6 +480,107 @@ export interface OllamaProviderConfig {
   bearerToken?: string
 }
 
+// ---------------------------------------------------------------------------
+// PROJ-65 ε.4.β — resource-swap schema + prompt (Class-3, Ollama-only)
+// ---------------------------------------------------------------------------
+
+const ResourceSwapSuggestionSchema = z.object({
+  title: z.string().min(8).max(160).describe("Kurzer deutscher Titel."),
+  rationale: z
+    .string()
+    .min(20)
+    .max(600)
+    .describe(
+      "1–3 Sätze (Deutsch). Zitiert Skills + Auslastung; KEINE €-Zahlen wenn Buckets vorliegen.",
+    ),
+  kind: z.enum([
+    "skill_mismatch",
+    "overallocation",
+    "cost_optimization",
+    "availability",
+  ]),
+  work_item_id: z.string().uuid(),
+  from_resource_id: z.string().uuid(),
+  to_resource_id: z.string().uuid(),
+  fit_score: z.number().int().min(0).max(100),
+  confidence: z.enum(["low", "medium", "high"]),
+})
+
+const ResourceSwapResponseSchema = z.object({
+  suggestions: z.array(ResourceSwapSuggestionSchema).min(0).max(5),
+})
+
+const RESOURCE_SWAP_SYSTEM_PROMPT = `Du bist ein erfahrener Ressourcen-Planer und schlägst gezielte Stakeholder-/Ressourcen-Wechsel vor.
+
+Pflichtregeln:
+- Antworte ausschließlich auf Deutsch.
+- Jede Empfehlung muss EINE konkrete from→to-Ersetzung sein. Wähle from_resource_id aus den current_assignees des Work-Items; wähle to_resource_id aus den candidate_resources oder aus current_assignees anderer Work-Items.
+- Die IDs (work_item_id, from_resource_id, to_resource_id) MÜSSEN exakt UUIDs aus dem Kontext sein. Erfinde nichts.
+- Schreibe NIE einen Tagessatz in €. Wenn der Kontext Rate-Buckets (low/mid/high) enthält, verwende NUR diese Bucket-Begriffe in der Begründung — nie €-Zahlen, auch nicht geschätzte.
+- Wenn der Kontext echte €-Werte enthält (cost_clear_view=true), darfst du diese referenzieren ("≈ 100€ günstiger") — bleib aber qualitativ; keine Hochrechnungen.
+- 0 Empfehlungen sind ein gültiges Ergebnis, wenn die aktuelle Zuordnung passt. Kein erzwungenes Padding.
+- \`kind\` wählst du gezielt: skill_mismatch (Skill-Profil passt nicht), overallocation (Person ist überlastet), cost_optimization (günstigere Person mit vergleichbarem Profil), availability (Verfügbarkeit besser).
+- \`confidence=high\` nur, wenn Skill- UND Auslastungs-Evidenz die Empfehlung tragen.
+- Schlage nicht denselben from→to-Swap mehrfach vor.
+- Schlage nicht eine Resource zum Tausch mit sich selbst vor.`
+
+function buildResourceSwapPrompt(
+  request: ResourceSwapGenerationRequest,
+): string {
+  const ctx = request.context
+  const lines: string[] = []
+  lines.push(
+    ctx.cost_clear_view
+      ? "Rate-Sichtbarkeit: KLARTEXT (€/Tag). Du darfst Werte qualitativ vergleichen, aber bleib zurückhaltend."
+      : "Rate-Sichtbarkeit: GEBUCKETED. Verwende NUR low/mid/high, NIE €-Zahlen.",
+  )
+  lines.push(`Kandidaten-Pool: top-${ctx.candidate_resources.length} von ${ctx.candidate_resources.length + ctx.candidate_pool_truncated_by} aktiven Ressourcen.`)
+  lines.push("")
+
+  if (ctx.work_items.length === 0) {
+    lines.push("Keine aktiven Work-Items mit Zuordnung — keine Empfehlung erforderlich.")
+  } else {
+    lines.push("Work-Items mit aktuellen Zuordnungen:")
+    for (const w of ctx.work_items) {
+      lines.push(
+        `  - work_item:${w.work_item_id} · "${w.title}" (${w.kind}, ${w.status})`,
+      )
+      for (const a of w.current_assignees) {
+        lines.push(
+          `      ↳ resource:${a.resource_id} ${formatResourceRef(a)}`,
+        )
+      }
+    }
+    lines.push("")
+  }
+
+  if (ctx.candidate_resources.length > 0) {
+    lines.push("Kandidaten (Swap-Ziele):")
+    for (const c of ctx.candidate_resources) {
+      lines.push(`  - resource:${c.resource_id} ${formatResourceRef(c)}`)
+    }
+    lines.push("")
+  }
+
+  lines.push(
+    `Liefere bis zu ${request.count} gezielte Wechsel-Empfehlungen. Wenn keine Empfehlung gerechtfertigt ist, liefere eine leere Liste.`,
+  )
+
+  return lines.join("\n")
+}
+
+function formatResourceRef(
+  r: import("../types").ResourceSwapResourceRef,
+): string {
+  const parts: string[] = []
+  parts.push(`"${r.stakeholder_name ?? r.display_name}"`)
+  if (r.role_key) parts.push(`Rolle=${r.role_key}`)
+  if (r.skills.length > 0) parts.push(`Skills=[${r.skills.join(", ")}]`)
+  if (r.rate_eur !== null) parts.push(`Rate=${r.rate_eur}€/Tag`)
+  else if (r.rate_bucket !== null) parts.push(`Rate-Bucket=${r.rate_bucket}`)
+  return parts.join(" · ")
+}
+
 export class OllamaProvider implements AIProvider {
   readonly name = "ollama" as const
   readonly modelId: string
@@ -595,6 +698,64 @@ export class OllamaProvider implements AIProvider {
 
     return {
       signals,
+      usage: {
+        input_tokens: usage?.inputTokens ?? null,
+        output_tokens: usage?.outputTokens ?? null,
+        latency_ms: Date.now() - start,
+      },
+    }
+  }
+
+  async generateResourceSwap(
+    request: ResourceSwapGenerationRequest,
+  ): Promise<ResourceSwapGenerationOutput> {
+    const start = Date.now()
+
+    // Build the id-validation sets so we can reject any work_item /
+    // from_resource / to_resource the model hallucinates outside the
+    // context. CIA-L1 defense-in-depth.
+    const validWorkItemIds = new Set(
+      request.context.work_items.map((w) => w.work_item_id),
+    )
+    const validResourceIds = new Set<string>([
+      ...request.context.candidate_resources.map((r) => r.resource_id),
+      ...request.context.work_items.flatMap((w) =>
+        w.current_assignees.map((a) => a.resource_id),
+      ),
+    ])
+
+    const result = await generateObject({
+      model: this.sdkProvider(this.modelId),
+      schema: ResourceSwapResponseSchema,
+      system: RESOURCE_SWAP_SYSTEM_PROMPT,
+      prompt: buildResourceSwapPrompt(request),
+      temperature: 0.3,
+    })
+    const usage = result.usage as
+      | { inputTokens?: number; outputTokens?: number }
+      | undefined
+
+    const suggestions = result.object.suggestions
+      .filter(
+        (s) =>
+          validWorkItemIds.has(s.work_item_id) &&
+          validResourceIds.has(s.from_resource_id) &&
+          validResourceIds.has(s.to_resource_id) &&
+          s.from_resource_id !== s.to_resource_id,
+      )
+      .map((s) => ({
+        title: s.title,
+        rationale: s.rationale,
+        kind: s.kind,
+        work_item_id: s.work_item_id,
+        from_resource_id: s.from_resource_id,
+        to_resource_id: s.to_resource_id,
+        fit_score: Math.max(0, Math.min(100, s.fit_score)),
+        confidence: s.confidence,
+      }))
+
+    return {
+      suggestions,
       usage: {
         input_tokens: usage?.inputTokens ?? null,
         output_tokens: usage?.outputTokens ?? null,

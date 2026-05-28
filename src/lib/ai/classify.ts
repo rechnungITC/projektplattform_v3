@@ -16,6 +16,7 @@ import type {
   CoachingAutoContext,
   DataClass,
   NarrativeAutoContext,
+  ResourceSwapAutoContext,
   RiskAutoContext,
   SentimentAutoContext,
   TrajectorySequenceAutoContext,
@@ -339,4 +340,31 @@ export function classifyTrajectorySequenceAutoContext(
     return max
   }
   return max
+}
+
+// ---------------------------------------------------------------------------
+// PROJ-65 ε.4.β — resource-swap classifier (Class-3 hard-fix, CIA-L1)
+// ---------------------------------------------------------------------------
+
+/**
+ * PROJ-65 ε.4.β — resource-swap classifier.
+ *
+ * Always Class-3, mirroring PROJ-34-γ.1 sentiment + PROJ-34-ε coaching.
+ * A resource-swap suggestion is structurally personal data — it names an
+ * incumbent A and a replacement B by display_name and ties them to skill
+ * profiles, allocations, and (bucketed) rates. There is no Class-2 path
+ * that produces a useful suggestion; the only safe route is local Ollama.
+ *
+ * Rate-bucketing in the auto-context handles the cost-clear-view RBAC
+ * surface, but does NOT change the privacy class — the rationale still
+ * references identifiable people and is therefore Class-3.
+ *
+ * `tenantDefault` is kept for symmetry but has no effect — Class-3 is a
+ * constant here per CIA Fork 1 (2026-05-28).
+ */
+export function classifyResourceSwapAutoContext(
+  _ctx: ResourceSwapAutoContext,
+  _tenantDefault: DataClass = 3,
+): DataClass {
+  return 3
 }

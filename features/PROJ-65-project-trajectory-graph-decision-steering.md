@@ -3468,3 +3468,61 @@ CIA empfahl ursprünglich Defer zu PROJ-67; User entschied bewusst „jetzt mit 
 ### Status
 
 ε.4.α ist **production-ready**. Backend live in Prod-DB; FE komplett. Awaiting `/deploy`-Tag. Verbleibend in PROJ-65: **ε.4.β** resource_swap (Class-3 Ollama-only) + **ε.4.γ** cross_project_links (Class-2). Drawer-Shell ist bereits 3-tab-fähig — β/γ adden je einen `<TabsContent>`.
+
+## TT) /backend + /frontend ε.4.β Implementation Log (2026-05-28)
+
+**Slice geliefert:** Second of three ε.4 AI sub-slices: `resource_swap` (Class-3 hard-fix, Ollama-only, advisory). CIA-reviewed 2026-05-28 mit 7 Locks — alle eingebaut. User-Pick: Editor darf triggern, mit Rate-Bucketing (low/mid/high für non-cost-clear-view-User).
+
+### CIA-Architektur-Locks (alle eingebaut)
+
+| Lock | Umsetzung |
+|---|---|
+| **L1 Class-3 Hard-Fix** | `classifyResourceSwapAutoContext` returns 3 konstant; cloud-Providers werden auf diesem Pfad NIE erreicht |
+| **L2 Strict Ollama-only** | Ollama-Provider-Error → `external_blocked` mit `error_message` (KEIN Stub-Fallback); Stub-Pfad bedeutet immer „kein lokaler Provider" |
+| **L3 Rate-Bucketing** | `collectResourceSwapContext({ costClearView })` → cost-clear-view-Lead/Admin sieht `rate_eur` Klartext, Non-Lead-Editor sieht `rate_bucket: 'low'/'mid'/'high'` relativ zu Tenant-Median (±15%); System-Prompt instruiert Ollama explizit: bei Buckets KEINE €-Zahlen in Begründung |
+| **L4 Advisory Accept** | `ki_suggestions.status='accepted'` ohne Entity-Link (CHECK relaxed); separater „Im Swap-Preview öffnen"-Button im UI öffnet `/projects/[id]/work-items/[wid]` (PROJ-65 ε.2-Surface) — getrennter Audit-Pfad |
+| **L5 Stub-empty + Banner** | StubProvider.generateResourceSwap emittiert `suggestions: []`; UI-Banner „Class-3 — Lauf nutzt ausschließlich tenant-konfigurierten Ollama-Provider. Bei fehlender Ollama-Verbindung bleibt die Liste leer" |
+| **L6 Deterministisches Pre-Ranking** | Work-Items: status ∈ {in_progress,review,todo} mit ≥1 Assignment, sortiert nach Status-Priorität + created_at desc, top-20. Resources: tenant-aktiv, top-10 nach display_name. `candidate_pool_truncated_by` Counter im UI als „Aus 10 von N Kandidaten"-Hinweis |
+| **L7 Audit-Gating** | Per User-Pick: Editor darf triggern + lesen via RLS-Project-Member (kein purpose-spezifisches Gate). Cost-Clear-View-Bypass-Risk wird durch L3-Bucketing eliminiert, nicht durch Read-Gating |
+
+### Migration
+
+`supabase/migrations/20260528200000_proj65_eps4b_resource_swap_purpose.sql` — applied to Prod-DB 2026-05-28.
+
+| Teil | Status |
+|---|---|
+| 1 `ki_runs_purpose_check` + `'resource_swap'` | ✅ |
+| 2 `ki_suggestions_purpose_check` + `'resource_swap'` | ✅ |
+| 3 `ki_suggestions_accepted_consistency` relax: `purpose IN ('trajectory_sequence','resource_swap')` ohne Entity-Link bei accepted | ✅ |
+| 4 `tenant_ai_cost_caps_purpose_check` + `'resource_swap'` | ✅ |
+| Smoke: 4 statische CHECK-Verifikationen | ✅ |
+
+### Neue / geänderte Files
+
+| Path | Status |
+|---|---|
+| `src/lib/ai/types.ts` | edited — `'resource_swap'` AIPurpose; `RateBucket`, `ResourceSwapResourceRef`, `ResourceSwapWorkItem`, `ResourceSwapAutoContext`, `ResourceSwapSuggestion`, `ResourceSwapGenerationOutput`, `RouterResourceSwapResult` |
+| `src/lib/ai/data-privacy-registry.ts` | edited — `stakeholder_skill_profiles.*` als Class-3 |
+| `src/lib/ai/classify.ts` | edited — `classifyResourceSwapAutoContext` (Class-3 konstant, CIA-L1) |
+| `src/lib/ai/auto-context.ts` | edited — `collectResourceSwapContext` mit Pre-Ranking + Rate-Bucketing (CIA-L3 + L6); Skills aus `stakeholder_skill_profiles` (top-3 nach fremd-Wert); Stakeholder-Name + role_key Join; Rate-Resolver (override → role → null), median-basiertes Bucketing |
+| `src/lib/ai/providers/types.ts` | edited — `ResourceSwapGenerationRequest`; optional `generateResourceSwap` auf `AIProvider` |
+| `src/lib/ai/providers/stub.ts` | edited — leere Implementation (CIA-L5) |
+| `src/lib/ai/providers/ollama.ts` | edited — Zod-Schema (`ResourceSwapResponseSchema`), System-Prompt (mit Bucket-vs-€-Regel), `buildResourceSwapPrompt`, `formatResourceRef`-Helper, `generateResourceSwap`-Methode mit ID-Validation (filtert halluzinierte IDs aus dem Output, Defense-in-Depth) |
+| `src/lib/ai/router.ts` | edited — `invokeResourceSwapGeneration`: Class-3 Hard-Fix-Pfad; CIA-L2-Strict (Ollama-Error → external_blocked, kein Stub-Fallback); Payload-Enrichment vor Insert (work_item_title + from/to resource names denormalisiert für FE-Display ohne Extra-Round-Trips) |
+| `src/app/api/projects/[id]/ai/resource-swap/route.ts` | NEW — POST (generate, resolveCostClearView) + GET (list, status-filter) |
+| `src/app/api/projects/[id]/ai/resource-swap/[sid]/accept/route.ts` | NEW — advisory accept (status flip, kein Entity-Create) |
+| `src/lib/ai-proposals/resource-swap-api.ts` | NEW — fetch wrappers (list/trigger/accept/reject) |
+| `src/components/projects/ai-proposals/resource-swap-tab.tsx` | NEW — Tab-Komponente mit Class-3-Banner, „Vorschläge generieren"-Button, SwapCard (Kind-Icon, Fit-Score, Confidence, „Im Swap-Preview öffnen"-Button, Accept/Reject) |
+| `src/components/projects/ai-proposal-drawer.tsx` | edited — Ressourcen-Tab aktiviert (ε.4.β-Badge entfernt); `<TabsContent value="resources">` rendert `<ResourceSwapTab>` |
+
+### Tests + Build
+
+- ✅ `npx tsc --noEmit` clean
+- ✅ `npm run lint` 0 errors (2 unrelated baseline `form.watch` warnings → F-PROJ-65-52)
+- ✅ `npx vitest run` — **1557/1557 grün** in 187 Files
+- ✅ `npm run build` clean in 11.6s
+- ✅ Migration smoke checks pass (alle 4 CHECK-Constraints akzeptieren `resource_swap`)
+
+### Status
+
+ε.4.β ist **production-ready**. Backend live in Prod-DB; FE komplett. Awaiting `/deploy`-Tag. Verbleibend in PROJ-65: nur noch **ε.4.γ** `cross_project_links` (Class-2). Drawer-Shell ist weiterhin 3-tab-fähig — γ aktiviert den letzten Tab.

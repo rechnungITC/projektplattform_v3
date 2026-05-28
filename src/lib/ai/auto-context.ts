@@ -412,3 +412,338 @@ export async function collectTrajectorySequenceContext(
     goals,
   }
 }
+
+// ---------------------------------------------------------------------------
+// PROJ-65 ε.4.β — resource-swap context collector (Class-3, rate-bucketed)
+// ---------------------------------------------------------------------------
+
+const RESOURCE_SWAP_WORK_ITEMS_LIMIT = 20
+const RESOURCE_SWAP_CANDIDATES_LIMIT = 10
+const RESOURCE_SWAP_RAW_CANDIDATE_FETCH_LIMIT = 100
+
+const SKILL_DIMENSION_LABEL: Record<string, string> = {
+  domain_knowledge_fremd: "Fachwissen",
+  method_competence_fremd: "Methodik",
+  it_affinity_fremd: "IT-Affinität",
+  negotiation_skill_fremd: "Verhandlung",
+  decision_power_fremd: "Entscheidungsstärke",
+}
+
+interface SkillProfileRow {
+  stakeholder_id: string
+  domain_knowledge_fremd: number | null
+  method_competence_fremd: number | null
+  it_affinity_fremd: number | null
+  negotiation_skill_fremd: number | null
+  decision_power_fremd: number | null
+}
+
+function topSkillsFor(profile: SkillProfileRow | undefined): string[] {
+  if (!profile) return []
+  const dims: Array<{ key: keyof SkillProfileRow; v: number }> = []
+  for (const k of [
+    "domain_knowledge_fremd",
+    "method_competence_fremd",
+    "it_affinity_fremd",
+    "negotiation_skill_fremd",
+    "decision_power_fremd",
+  ] as const) {
+    const v = profile[k]
+    if (typeof v === "number" && v > 0) dims.push({ key: k, v })
+  }
+  dims.sort((a, b) => b.v - a.v)
+  return dims.slice(0, 3).map((d) => `${SKILL_DIMENSION_LABEL[d.key as string]}=${d.v}`)
+}
+
+/** Resolve effective €/day rate for a single resource (override → role → null). */
+function resolveRate(
+  resource: { daily_rate_override: number | null; role_key?: string | null },
+  roleRateByKey: Map<string, number>,
+): number | null {
+  if (typeof resource.daily_rate_override === "number") {
+    return resource.daily_rate_override
+  }
+  if (resource.role_key) {
+    return roleRateByKey.get(resource.role_key) ?? null
+  }
+  return null
+}
+
+/** CIA-L3 — bucket €/day rate against a tenant-median into low|mid|high. */
+function bucketRate(
+  rateEur: number | null,
+  median: number | null,
+): import("./types").RateBucket | null {
+  if (rateEur === null || median === null || median === 0) return null
+  if (rateEur < median * 0.85) return "low"
+  if (rateEur > median * 1.15) return "high"
+  return "mid"
+}
+
+/** Median of a numeric array; null when empty. */
+function median(values: number[]): number | null {
+  if (values.length === 0) return null
+  const sorted = [...values].sort((a, b) => a - b)
+  const mid = Math.floor(sorted.length / 2)
+  return sorted.length % 2 === 0
+    ? (sorted[mid - 1]! + sorted[mid]!) / 2
+    : sorted[mid]!
+}
+
+/**
+ * Build the Class-3 auto-context for resource-swap suggestions.
+ *
+ * Pre-ranking (CIA-L6, deterministic):
+ *   - work_items: status ∈ {todo, in_progress, review} AND has ≥ 1
+ *     work_item_resources assignment; sort by status priority
+ *     (in_progress → review → todo), then created_at desc; take top-20.
+ *   - candidate_resources: `resources.is_active = true`, sort by
+ *     display_name (deterministic tiebreaker); take top-10. The
+ *     `candidate_pool_truncated_by` count surfaces in the UI banner
+ *     ("Aus 10 von 47 Kandidaten").
+ *
+ * Rate presentation (CIA-L3):
+ *   - `cost_clear_view=true`: `rate_eur` populated, `rate_bucket=null`.
+ *   - `cost_clear_view=false`: `rate_eur=null`, `rate_bucket=low|mid|high`
+ *     against the tenant-median of all visible rates. The prompt instructs
+ *     the model NOT to invent €-amounts when buckets are present.
+ *
+ * Tenant scoping: project's tenant_id resolves all sub-queries; resources
+ * and role_rates are tenant-wide (so a swap target may sit outside the
+ * project membership — by design, since the PM is reviewing org-wide
+ * fit). RLS additionally ensures the caller can read these rows.
+ */
+export async function collectResourceSwapContext(
+  supabase: SupabaseClient,
+  projectId: string,
+  args: { costClearView: boolean },
+): Promise<import("./types").ResourceSwapAutoContext> {
+  // 1. Tenant lookup.
+  const { data: projectRow, error: projectError } = await supabase
+    .from("projects")
+    .select("tenant_id")
+    .eq("id", projectId)
+    .maybeSingle()
+  if (projectError) throw new Error(`projects: ${projectError.message}`)
+  if (!projectRow) throw new Error("Project not found.")
+  const tenantId = (projectRow as { tenant_id: string }).tenant_id
+
+  // 2. Pre-rank work-items (status ∈ active set, with assignments).
+  const ACTIVE_STATUSES = ["in_progress", "review", "todo"] as const
+  const { data: workItemRows, error: workItemError } = await supabase
+    .from("work_items")
+    .select("id, title, kind, status, created_at")
+    .eq("project_id", projectId)
+    .in("status", [...ACTIVE_STATUSES])
+    .order("created_at", { ascending: false })
+    .limit(RESOURCE_SWAP_WORK_ITEMS_LIMIT * 2)
+  if (workItemError) throw new Error(`work_items: ${workItemError.message}`)
+  const workItems = (workItemRows ?? []) as Array<{
+    id: string
+    title: string
+    kind: string
+    status: string
+    created_at: string
+  }>
+
+  // 3. Fetch all work_item_resources for these work_items.
+  const workItemIds = workItems.map((w) => w.id)
+  const { data: assignmentRows } =
+    workItemIds.length === 0
+      ? { data: [] as Array<{ work_item_id: string; resource_id: string }> }
+      : await supabase
+          .from("work_item_resources")
+          .select("work_item_id, resource_id")
+          .in("work_item_id", workItemIds)
+  const assignmentsByWorkItem = new Map<string, string[]>()
+  for (const a of (assignmentRows ?? []) as Array<{
+    work_item_id: string
+    resource_id: string
+  }>) {
+    const list = assignmentsByWorkItem.get(a.work_item_id) ?? []
+    list.push(a.resource_id)
+    assignmentsByWorkItem.set(a.work_item_id, list)
+  }
+
+  // Drop work-items without assignments — nothing to swap.
+  const eligibleWorkItems = workItems
+    .filter((w) => (assignmentsByWorkItem.get(w.id)?.length ?? 0) > 0)
+    .sort((a, b) => {
+      // status priority: in_progress (0) → review (1) → todo (2).
+      const order = (s: string) =>
+        s === "in_progress" ? 0 : s === "review" ? 1 : 2
+      const d = order(a.status) - order(b.status)
+      if (d !== 0) return d
+      return a.created_at < b.created_at ? 1 : -1
+    })
+    .slice(0, RESOURCE_SWAP_WORK_ITEMS_LIMIT)
+
+  // 4. Resource pool — tenant-wide active resources.
+  const { data: resourceRows, error: resourceError } = await supabase
+    .from("resources")
+    .select(
+      "id, display_name, kind, is_active, daily_rate_override, source_stakeholder_id",
+    )
+    .eq("tenant_id", tenantId)
+    .eq("is_active", true)
+    .order("display_name", { ascending: true })
+    .limit(RESOURCE_SWAP_RAW_CANDIDATE_FETCH_LIMIT)
+  if (resourceError) throw new Error(`resources: ${resourceError.message}`)
+  const allResources = (resourceRows ?? []) as Array<{
+    id: string
+    display_name: string
+    kind: string
+    is_active: boolean
+    daily_rate_override: number | null
+    source_stakeholder_id: string | null
+  }>
+
+  // 5. role_rates for rate resolution. The `resources` row doesn't carry
+  //    `role_key` directly — it lives on the linked stakeholder. We fetch
+  //    stakeholders for the linked-stakeholder set.
+  const stakeholderIds = Array.from(
+    new Set(
+      allResources
+        .map((r) => r.source_stakeholder_id)
+        .filter((id): id is string => id !== null),
+    ),
+  )
+  const { data: stakeholderRows } =
+    stakeholderIds.length === 0
+      ? {
+          data: [] as Array<{
+            id: string
+            name: string
+            role_key: string | null
+          }>,
+        }
+      : await supabase
+          .from("stakeholders")
+          .select("id, name, role_key")
+          .in("id", stakeholderIds)
+  const stakeholderById = new Map(
+    ((stakeholderRows ?? []) as Array<{
+      id: string
+      name: string
+      role_key: string | null
+    }>).map((s) => [s.id, s]),
+  )
+
+  // 5b. Skill profiles for these stakeholders (PROJ-33-c).
+  const { data: skillRows } =
+    stakeholderIds.length === 0
+      ? { data: [] as SkillProfileRow[] }
+      : await supabase
+          .from("stakeholder_skill_profiles")
+          .select(
+            "stakeholder_id, domain_knowledge_fremd, method_competence_fremd, it_affinity_fremd, negotiation_skill_fremd, decision_power_fremd",
+          )
+          .in("stakeholder_id", stakeholderIds)
+  const skillByStakeholder = new Map(
+    (skillRows ?? []).map((s) => [s.stakeholder_id, s]),
+  )
+
+  // 6. role_rates for the union of role_keys we'll resolve.
+  const roleKeys = Array.from(
+    new Set(
+      Array.from(stakeholderById.values())
+        .map((s) => s.role_key)
+        .filter((k): k is string => k !== null && k !== ""),
+    ),
+  )
+  const { data: rateRows } =
+    roleKeys.length === 0
+      ? { data: [] as Array<{ role_key: string; daily_rate: number | null }> }
+      : await supabase
+          .from("role_rates")
+          .select("role_key, daily_rate, valid_from")
+          .eq("tenant_id", tenantId)
+          .in("role_key", roleKeys)
+          .order("valid_from", { ascending: false })
+  // Latest valid_from wins for each role_key.
+  const roleRateByKey = new Map<string, number>()
+  for (const r of (rateRows ?? []) as Array<{
+    role_key: string
+    daily_rate: number | null
+  }>) {
+    if (!roleRateByKey.has(r.role_key) && typeof r.daily_rate === "number") {
+      roleRateByKey.set(r.role_key, r.daily_rate)
+    }
+  }
+
+  // 7. Compute tenant-median (only relevant for non-cost-clear-view path).
+  const visibleRates: number[] = []
+  for (const r of allResources) {
+    const s = r.source_stakeholder_id
+      ? stakeholderById.get(r.source_stakeholder_id) ?? null
+      : null
+    const rate = resolveRate(
+      { daily_rate_override: r.daily_rate_override, role_key: s?.role_key ?? null },
+      roleRateByKey,
+    )
+    if (rate !== null) visibleRates.push(rate)
+  }
+  const tenantMedian = median(visibleRates)
+
+  // Helper to materialise a resource ref under either rate-presentation regime.
+  const toRef = (
+    r: (typeof allResources)[number],
+  ): import("./types").ResourceSwapResourceRef => {
+    const stakeholder = r.source_stakeholder_id
+      ? stakeholderById.get(r.source_stakeholder_id) ?? null
+      : null
+    const rate = resolveRate(
+      {
+        daily_rate_override: r.daily_rate_override,
+        role_key: stakeholder?.role_key ?? null,
+      },
+      roleRateByKey,
+    )
+    const skills = stakeholder
+      ? topSkillsFor(skillByStakeholder.get(stakeholder.id))
+      : []
+    return {
+      resource_id: r.id,
+      display_name: r.display_name,
+      role_key: stakeholder?.role_key ?? null,
+      is_active: r.is_active,
+      rate_eur: args.costClearView ? rate : null,
+      rate_bucket: args.costClearView ? null : bucketRate(rate, tenantMedian),
+      stakeholder_name: stakeholder?.name ?? null,
+      skills,
+    }
+  }
+
+  // 8. Candidate pool — top-10 of allResources.
+  const candidateResources = allResources
+    .slice(0, RESOURCE_SWAP_CANDIDATES_LIMIT)
+    .map(toRef)
+  const candidatePoolTruncatedBy = Math.max(
+    0,
+    allResources.length - candidateResources.length,
+  )
+
+  // 9. Materialise work-items with their assignees.
+  const resourceById = new Map(allResources.map((r) => [r.id, r]))
+  const contextWorkItems: import("./types").ResourceSwapWorkItem[] =
+    eligibleWorkItems.map((w) => ({
+      work_item_id: w.id,
+      title: w.title,
+      kind: w.kind,
+      status: w.status,
+      current_assignees: (assignmentsByWorkItem.get(w.id) ?? [])
+        .map((rid) => resourceById.get(rid))
+        .filter(
+          (r): r is (typeof allResources)[number] =>
+            r !== undefined && r.is_active,
+        )
+        .map(toRef),
+    }))
+
+  return {
+    cost_clear_view: args.costClearView,
+    work_items: contextWorkItems,
+    candidate_resources: candidateResources,
+    candidate_pool_truncated_by: candidatePoolTruncatedBy,
+  }
+}

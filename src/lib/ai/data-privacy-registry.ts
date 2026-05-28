@@ -232,6 +232,22 @@ const REGISTRY: Record<string, DataClass> = {
   "project_goals.title": 2,
   "project_goals.target_date": 2,
   "project_goals.status": 1,
+
+  // -------------------- stakeholder_skill_profiles (PROJ-33-c) ----------
+  // Skill assessments (0–100) per stakeholder across 5 dimensions, with
+  // PM-assessed (fremd) and self values. All entries are personal data —
+  // PROJ-65 ε.4.β resource-swap uses the fremd assessments to inform
+  // swap suggestions and routes Class-3-only to Ollama.
+  "stakeholder_skill_profiles.domain_knowledge_fremd": 3,
+  "stakeholder_skill_profiles.domain_knowledge_self": 3,
+  "stakeholder_skill_profiles.method_competence_fremd": 3,
+  "stakeholder_skill_profiles.method_competence_self": 3,
+  "stakeholder_skill_profiles.it_affinity_fremd": 3,
+  "stakeholder_skill_profiles.it_affinity_self": 3,
+  "stakeholder_skill_profiles.negotiation_skill_fremd": 3,
+  "stakeholder_skill_profiles.negotiation_skill_self": 3,
+  "stakeholder_skill_profiles.decision_power_fremd": 3,
+  "stakeholder_skill_profiles.decision_power_self": 3,
 }
 
 /**

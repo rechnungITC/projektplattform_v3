@@ -14,6 +14,8 @@ export type AIPurpose =
   | "coaching"
   // PROJ-65 ε.4.α — trajectory sequence suggestions (Class-2, advisory)
   | "trajectory_sequence"
+  // PROJ-65 ε.4.β — resource-swap suggestions (Class-3 hard-fix, Ollama-only, advisory)
+  | "resource_swap"
 
 export type DataClass = 1 | 2 | 3
 
@@ -413,6 +415,109 @@ export interface TrajectorySequenceGenerationOutput {
  * accept — trajectory-sequence is advisory; users apply via Plan-Mutate.
  */
 export interface RouterTrajectorySequenceResult {
+  run_id: string
+  classification: DataClass
+  provider: AIProviderName
+  model_id: string | null
+  status: "success" | "error" | "external_blocked"
+  suggestion_ids: string[]
+  external_blocked: boolean
+  error_message?: string
+}
+
+// ---------------------------------------------------------------------------
+// PROJ-65 ε.4.β — resource-swap purpose types
+// ---------------------------------------------------------------------------
+
+/**
+ * Auto-context for resource-swap suggestions. **Class-3 by design**:
+ * carries identifiable behavioural / role context for named resources
+ * (display_name) and stakeholders. `classifyResourceSwapAutoContext`
+ * hard-fixes to Class-3, so the router routes locally to Ollama only —
+ * external providers are never reached.
+ *
+ * Day rates are bucketed per the **caller's** `cost_clear_view` permission:
+ *   * `cost_clear_view = true` (lead/admin): `rate_eur` populated with the
+ *     resolved daily rate (override → role → null).
+ *   * `cost_clear_view = false` (editor): `rate_eur` is `null` and
+ *     `rate_bucket` ∈ `'low'|'mid'|'high'` is set instead. The prompt
+ *     instructs the model NOT to invent €-amounts in the rationale when
+ *     buckets are present. This mirrors the UI masking rule for non-lead
+ *     users and closes the cost-clear-view-bypass risk identified in CIA
+ *     Fork 3 (2026-05-28).
+ */
+export type RateBucket = "low" | "mid" | "high"
+
+export interface ResourceSwapResourceRef {
+  resource_id: string
+  display_name: string
+  role_key: string | null
+  is_active: boolean
+  rate_eur: number | null
+  rate_bucket: RateBucket | null
+  // Linked-stakeholder hints (Class-3) — flat strings, no nested PII blocks.
+  stakeholder_name: string | null
+  // Top skill labels from the linked stakeholder's qualitative profile.
+  skills: string[]
+}
+
+export interface ResourceSwapWorkItem {
+  work_item_id: string
+  title: string
+  kind: string
+  status: string
+  current_assignees: ResourceSwapResourceRef[]
+}
+
+export interface ResourceSwapAutoContext {
+  /** Whether the caller has cost-clear-view (lead/admin) — drives the rate
+   *  presentation in the prompt + the classifier defense-in-depth. */
+  cost_clear_view: boolean
+  /** Top-N work items eligible for a swap (in-progress or todo, with
+   *  current assignees). Pre-ranked deterministically by status priority
+   *  + recent activity. */
+  work_items: ResourceSwapWorkItem[]
+  /** Top-N candidate resources tenant-wide (active, with at least one
+   *  skill, ranked by activity). Used as the swap-target universe. */
+  candidate_resources: ResourceSwapResourceRef[]
+  /** Number of resources truncated from the candidate pool (for the UI
+   *  hint "Aus 10 von 47 …"). */
+  candidate_pool_truncated_by: number
+}
+
+export type ResourceSwapKind = "skill_mismatch" | "overallocation" | "cost_optimization" | "availability"
+
+export interface ResourceSwapSuggestion {
+  /** German one-line title, references the swap target by name. */
+  title: string
+  /** 1–3 sentence German rationale. When `cost_clear_view=false`, the
+   *  prompt instructs the model to use bucket terms (low/mid/high) and
+   *  NOT invent €-amounts. */
+  rationale: string
+  kind: ResourceSwapKind
+  /** Work-item the swap applies to. */
+  work_item_id: string
+  /** Currently assigned resource to be replaced. */
+  from_resource_id: string
+  /** Proposed replacement resource. */
+  to_resource_id: string
+  /** 0..100 model self-confidence in the match. */
+  fit_score: number
+  /** Provider's self-confidence on the suggestion. */
+  confidence: "low" | "medium" | "high"
+}
+
+export interface ResourceSwapGenerationOutput {
+  suggestions: ResourceSwapSuggestion[]
+  usage: ProviderUsage
+}
+
+/**
+ * Result of a resource-swap router invocation. Persisted as `ki_runs` +
+ * `ki_suggestions` rows (purpose='resource_swap'). Accept is advisory;
+ * the `accepted_entity_*` link stays NULL on accept.
+ */
+export interface RouterResourceSwapResult {
   run_id: string
   classification: DataClass
   provider: AIProviderName
