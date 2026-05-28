@@ -3411,3 +3411,60 @@ CIA empfahl ursprünglich Defer zu PROJ-67; User entschied bewusst „jetzt mit 
 ### Status
 
 ε.3e ist **production-ready**. Backend live in Prod-DB (Migration applied + Gate-Injection in beide RPCs verifiziert); FE komplett. Awaiting `/deploy`-Tag. Mit ε.3e sind F-PROJ-65-62/-63/-64 geschlossen. Letzter offener Slice ist **ε.4 AI** (~4 PT).
+
+## SS) /backend + /frontend ε.4.α Implementation Log (2026-05-28)
+
+**Slice geliefert:** First of three ε.4 AI sub-slices: `trajectory_sequence` (Class-2 advisory). User-Pick: Sub-Slices ε.4.α → β → γ statt einem großen Slice. Mirror-and-Extend des bestehenden Multi-Purpose-Routers (PROJ-12/30/34) — neue Purpose-Registration + neue Auto-Context-Allowlist + Stub/Anthropic-Impl. Kein CIA-Pass nötig, da rein additiv über etabliertes Pattern (vier bestehende Purposes — `risks`, `narrative`, `sentiment`, `coaching` — als Vorlage). PROJ-65 ε.3e + AI-Resilience-PR `f8417fc` (parallele Session) waren Vorbedingung.
+
+### Architektur-Entscheidungen
+
+| Entscheidung | Lock |
+|---|---|
+| **Class-2 Hard-Floor via Whitelist-Classifier** | `classifyTrajectorySequenceAutoContext` mit `TRAJECTORY_SEQUENCE_FIELD_WHITELIST` (defense-in-depth über `collectTrajectorySequenceContext`-Allowlist). Wenn künftig versehentlich Class-3-Felder (z.B. `responsible_user_id`) in den Kontext rutschen, fällt der Classifier auf Class-3 und der Router routet lokal — keine Cloud-Leakage. |
+| **Persistence in ki_suggestions** | Wiederverwendet PROJ-12 `ki_suggestions` mit `purpose='trajectory_sequence'`. `ki_suggestions_purpose_check` erweitert, `ki_suggestions_accepted_consistency` für advisory-Accept (kein Entity-Link nötig) relaxed. Keine neue Tabelle. |
+| **Advisory Accept** | Accept flippt `status='accepted'` ohne `accepted_entity_*`-Link. Mensch wendet via Plan-Mutate-Flow real an (entspricht Architecture-Principle "AI as proposal layer"). Reject reuses bestehende `/api/ki/suggestions/[id]/reject`. |
+| **Provider-Fallback** | Bei Provider-Error fällt der Router auf `StubProvider.generateTrajectorySequence` zurück (deterministische Heuristik: Datums-Überlappung → Parallelisierung, falsche Sprint-Reihenfolge → Reorder). UI sieht nie 5xx; `status='external_blocked'`. |
+| **Drawer-Shell vorbereitet für β/γ** | `AIProposalDrawer` hat 3 Tabs (Trajektorie aktiv, Ressourcen + Cross-Project disabled mit ε.4.β/γ-Badge). Anbau für β/γ = neuer `<TabsContent>`. |
+
+### Migration
+
+`supabase/migrations/20260528120000_proj65_eps4a_trajectory_sequence_purpose.sql` — applied to Prod-DB 2026-05-28.
+
+| Teil | Status |
+|---|---|
+| **1** `ki_runs_purpose_check` Rebuild + `'trajectory_sequence'` | ✅ |
+| **2** `ki_suggestions_purpose_check` Rebuild + `'trajectory_sequence'` | ✅ |
+| **3** `ki_suggestions_accepted_consistency` relax: für `trajectory_sequence` kein Entity-Link erforderlich bei accepted | ✅ |
+| **4** `tenant_ai_cost_caps_purpose_check` Rebuild + `'trajectory_sequence'` | ✅ |
+| **Smoke** 4 statische Checks auf alle vier Constraints | ✅ |
+
+### Neue / geänderte Files
+
+| Path | Status |
+|---|---|
+| `src/lib/ai/types.ts` | edited — `'trajectory_sequence'` zur `AIPurpose`-Union; `TrajectorySequenceAutoContext` + `TrajectorySequenceSuggestion` + `TrajectorySequenceGenerationOutput` + `RouterTrajectorySequenceResult` |
+| `src/lib/ai/data-privacy-registry.ts` | edited — `sprints.{name,state,goal,start_date,end_date}`, `dependencies.{from_type,from_id,to_type,to_id,constraint_type}`, `project_goals.{title,target_date,status}` als Class-1/2 |
+| `src/lib/ai/classify.ts` | edited — `classifyTrajectorySequenceAutoContext` (Whitelist-basiert) |
+| `src/lib/ai/auto-context.ts` | edited — `collectTrajectorySequenceContext` (Class-2-only Allowlist; Dependencies polymorph nach `inScopeIds`-Set gefiltert) |
+| `src/lib/ai/providers/types.ts` | edited — `TrajectorySequenceGenerationRequest`; optional `generateTrajectorySequence` auf `AIProvider` |
+| `src/lib/ai/providers/stub.ts` | edited — deterministische Heuristik (Datums-Überlappung → parallelize, Sprint-Reorder) |
+| `src/lib/ai/providers/anthropic.ts` | edited — Zod-Schema (`TrajectorySequenceResponseSchema`), System-Prompt, `buildTrajectorySequencePrompt`, `generateTrajectorySequence`-Methode (generateObject + Claude opus-4-7) |
+| `src/lib/ai/router.ts` | edited — `invokeTrajectorySequenceGeneration` (Mirror invokeRiskGeneration + Provider-Fallback auf Stub) |
+| `src/app/api/projects/[id]/ai/trajectory-sequence/route.ts` | NEW — POST (generate) + GET (list, status-filter) |
+| `src/app/api/projects/[id]/ai/trajectory-sequence/[sid]/accept/route.ts` | NEW — advisory accept (status flip, kein Entity-Create) |
+| `src/lib/ai-proposals/trajectory-sequence-api.ts` | NEW — fetch wrappers (list/trigger/accept/reject) |
+| `src/components/projects/ai-proposal-drawer.tsx` | NEW — echter project-wide Drawer mit Trajektorie-Tab, ε.4.β/γ-Tab-Placeholder, Suggestion-Card mit Accept/Reject |
+| `src/components/projects/ai-proposal-drawer-placeholder.tsx` | DELETED — durch echten Drawer ersetzt |
+| `src/components/projects/trajectory-graph-view.tsx` | edited — Import-Swap auf `AIProposalDrawer`; neuer `KI-Vorschläge`-Toolbar-Button (öffnet Drawer ohne Knoten-Fokus); `aiDrawerRecommendation` retired |
+
+### Tests + Build
+
+- ✅ `npx tsc --noEmit` clean
+- ✅ `npm run lint` 0 errors (2 unrelated baseline `form.watch` warnings → F-PROJ-65-52)
+- ✅ `npx vitest run` — **1557/1557 grün** in 187 Files
+- ✅ `npm run build` clean in 10.8s
+- ✅ Migration smoke checks pass (alle 4 CHECK-Constraints akzeptieren `trajectory_sequence`)
+
+### Status
+
+ε.4.α ist **production-ready**. Backend live in Prod-DB; FE komplett. Awaiting `/deploy`-Tag. Verbleibend in PROJ-65: **ε.4.β** resource_swap (Class-3 Ollama-only) + **ε.4.γ** cross_project_links (Class-2). Drawer-Shell ist bereits 3-tab-fähig — β/γ adden je einen `<TabsContent>`.

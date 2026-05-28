@@ -255,3 +255,160 @@ export async function buildNarrativeAutoContext(
     },
   }
 }
+
+// ---------------------------------------------------------------------------
+// PROJ-65 ε.4.α — trajectory-sequence context collector
+// ---------------------------------------------------------------------------
+
+const TRAJECTORY_PHASES_LIMIT = 100
+const TRAJECTORY_SPRINTS_LIMIT = 100
+const TRAJECTORY_MILESTONES_LIMIT = 100
+const TRAJECTORY_GOALS_LIMIT = 50
+const TRAJECTORY_DEPENDENCIES_LIMIT = 500
+
+/**
+ * Build the Class-2 auto-context for trajectory-sequence suggestions.
+ *
+ * Allowlist (Class-1/2 only; defense-in-depth at `classify.ts`):
+ *   projects:      name, project_type, project_method, lifecycle_status,
+ *                  planned_start_date, planned_end_date
+ *   phases:        id, name, status, planned_start, planned_end,
+ *                  sequence_number   (filtered to is_deleted=false)
+ *   sprints:       id, name, state, start_date, end_date
+ *   milestones:    id, name, status, target_date   (is_deleted=false)
+ *   project_goals: id, title, target_date, status  (deleted_at IS NULL)
+ *   dependencies:  from_type, from_id, to_type, to_id, constraint_type
+ *                  — scoped to from-ids that live in THIS project
+ *
+ * No stakeholders, no personal data, no descriptions or freetext that
+ * could carry Class-3 information. Dependencies are filtered to the
+ * project's phase/sprint/milestone ids so we don't leak cross-project
+ * graph structure into the prompt.
+ */
+export async function collectTrajectorySequenceContext(
+  supabase: SupabaseClient,
+  projectId: string,
+): Promise<import("./types").TrajectorySequenceAutoContext> {
+  const [projectRes, phasesRes, sprintsRes, milestonesRes, goalsRes] =
+    await Promise.all([
+      supabase
+        .from("projects")
+        .select(
+          "name, project_type, project_method, lifecycle_status, planned_start_date, planned_end_date",
+        )
+        .eq("id", projectId)
+        .maybeSingle(),
+      supabase
+        .from("phases")
+        .select(
+          "id, name, status, planned_start, planned_end, sequence_number",
+        )
+        .eq("project_id", projectId)
+        .eq("is_deleted", false)
+        .order("sequence_number", { ascending: true, nullsFirst: false })
+        .limit(TRAJECTORY_PHASES_LIMIT),
+      supabase
+        .from("sprints")
+        .select("id, name, state, start_date, end_date")
+        .eq("project_id", projectId)
+        .order("start_date", { ascending: true, nullsFirst: false })
+        .limit(TRAJECTORY_SPRINTS_LIMIT),
+      supabase
+        .from("milestones")
+        .select("id, name, status, target_date")
+        .eq("project_id", projectId)
+        .eq("is_deleted", false)
+        .order("target_date", { ascending: true, nullsFirst: false })
+        .limit(TRAJECTORY_MILESTONES_LIMIT),
+      supabase
+        .from("project_goals")
+        .select("id, title, target_date, status")
+        .eq("project_id", projectId)
+        .is("deleted_at", null)
+        .order("sort_order", { ascending: true, nullsFirst: false })
+        .limit(TRAJECTORY_GOALS_LIMIT),
+    ])
+
+  if (projectRes.error) throw new Error(`projects: ${projectRes.error.message}`)
+  if (phasesRes.error) throw new Error(`phases: ${phasesRes.error.message}`)
+  if (sprintsRes.error) throw new Error(`sprints: ${sprintsRes.error.message}`)
+  if (milestonesRes.error)
+    throw new Error(`milestones: ${milestonesRes.error.message}`)
+  if (goalsRes.error) throw new Error(`project_goals: ${goalsRes.error.message}`)
+  if (!projectRes.data) throw new Error("Project not found.")
+
+  const phases = (phasesRes.data ?? []) as Array<{
+    id: string
+    name: string
+    status: string
+    planned_start: string | null
+    planned_end: string | null
+    sequence_number: number | null
+  }>
+  const sprints = (sprintsRes.data ?? []) as Array<{
+    id: string
+    name: string
+    state: string
+    start_date: string | null
+    end_date: string | null
+  }>
+  const milestones = (milestonesRes.data ?? []) as Array<{
+    id: string
+    name: string
+    status: string
+    target_date: string | null
+  }>
+  const goals = (goalsRes.data ?? []) as Array<{
+    id: string
+    title: string
+    target_date: string | null
+    status: string | null
+  }>
+
+  // Dependencies are polymorphic and have no project_id. Scope them to
+  // ids that exist in THIS project so we don't leak cross-project graph.
+  const inScopeIds = new Set<string>([
+    ...phases.map((p) => p.id),
+    ...sprints.map((s) => s.id),
+    ...milestones.map((m) => m.id),
+  ])
+  let dependencies: Array<{
+    from_type: string
+    from_id: string
+    to_type: string
+    to_id: string
+    constraint_type: string
+  }> = []
+  if (inScopeIds.size > 0) {
+    const idsArr = Array.from(inScopeIds)
+    const depsRes = await supabase
+      .from("dependencies")
+      .select("from_type, from_id, to_type, to_id, constraint_type")
+      .in("from_id", idsArr)
+      .limit(TRAJECTORY_DEPENDENCIES_LIMIT)
+    if (depsRes.error)
+      throw new Error(`dependencies: ${depsRes.error.message}`)
+    // Defense-in-depth: drop any row whose to_id leaves the project scope.
+    dependencies = (depsRes.data ?? []).filter((d) =>
+      inScopeIds.has((d as { to_id: string }).to_id),
+    ) as typeof dependencies
+  }
+
+  const project = projectRes.data as {
+    name: string
+    project_type: string | null
+    project_method: string | null
+    lifecycle_status: string
+    planned_start_date: string | null
+    planned_end_date: string | null
+  }
+
+  return {
+    project,
+    phases,
+    sprints,
+    milestones,
+    dependencies,
+    goals,
+  }
+}

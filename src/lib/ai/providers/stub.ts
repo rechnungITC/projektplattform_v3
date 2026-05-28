@@ -22,12 +22,15 @@ import type {
   NarrativeGenerationRequest,
   RiskGenerationRequest,
   SentimentGenerationRequest,
+  TrajectorySequenceGenerationRequest,
 } from "./types"
 import type {
   CoachingGenerationOutput,
   NarrativeGenerationOutput,
   RiskGenerationOutput,
   RiskSuggestion,
+  TrajectorySequenceGenerationOutput,
+  TrajectorySequenceSuggestion,
   SentimentGenerationOutput,
 } from "../types"
 
@@ -201,6 +204,91 @@ export class StubProvider implements AIProvider {
     const start = Date.now()
     return {
       recommendations: [],
+      usage: {
+        input_tokens: 0,
+        output_tokens: 0,
+        latency_ms: Date.now() - start,
+      },
+    }
+  }
+
+  /**
+   * PROJ-65 ε.4.α — deterministic trajectory-sequence stub.
+   *
+   * Picks up to 3 suggestions from the context shape, using only the
+   * structural fields available. The output is intentionally conservative
+   * so it stays useful as a fallback when no LLM provider is wired:
+   *   - if ≥ 2 phases exist with overlapping date ranges → parallelize
+   *   - if there's a phase followed by a sprint with no dependency edge
+   *     → suggest "consider parallel" advisory
+   *   - if 2+ adjacent phases share zero dependencies between them
+   *     → suggest reorder by sequence_number
+   *
+   * Never emits more than `request.count` suggestions; emits at least 0
+   * when the context is too small to derive anything sensible.
+   */
+  async generateTrajectorySequence(
+    request: TrajectorySequenceGenerationRequest,
+  ): Promise<TrajectorySequenceGenerationOutput> {
+    const start = Date.now()
+    const { phases, sprints, dependencies } = request.context
+    const out: TrajectorySequenceSuggestion[] = []
+    const max = Math.max(1, Math.min(request.count, 5))
+
+    const depKey = (kind: string, id: string) => `${kind}:${id}`
+    const dependsOn = new Set(
+      dependencies.flatMap((d) => [
+        depKey(d.from_type, d.from_id),
+        depKey(d.to_type, d.to_id),
+      ]),
+    )
+
+    // 1) Parallelisierungs-Heuristik: zwei Phasen, deren Datumsbereiche
+    //    sich überlappen und die keine direkte Dependency teilen.
+    for (let i = 0; i < phases.length && out.length < max; i++) {
+      for (let j = i + 1; j < phases.length && out.length < max; j++) {
+        const a = phases[i]!
+        const b = phases[j]!
+        if (!a.planned_start || !a.planned_end || !b.planned_start || !b.planned_end)
+          continue
+        const overlap =
+          a.planned_start <= b.planned_end && b.planned_start <= a.planned_end
+        if (!overlap) continue
+        const aKey = depKey("phase", a.id)
+        const bKey = depKey("phase", b.id)
+        // Only suggest if neither side directly links to the other.
+        if (dependsOn.has(aKey) && dependsOn.has(bKey)) continue
+        out.push({
+          title: `${a.name} und ${b.name} parallel führen`,
+          rationale: `Die Phasen überlappen zeitlich (${a.planned_start}…${a.planned_end} vs. ${b.planned_start}…${b.planned_end}) und haben keine direkte Abhängigkeit. Parallele Ausführung kann das Gesamtende verkürzen.`,
+          kind: "parallelize",
+          affected_node_ids: [`phase:${a.id}`, `phase:${b.id}`],
+          estimated_savings_days: null,
+          confidence: "low",
+        })
+      }
+    }
+
+    // 2) Reorder-Heuristik: aufeinanderfolgende Sprints, deren Reihenfolge
+    //    nicht durch eine Dependency erzwungen ist.
+    for (let i = 0; i + 1 < sprints.length && out.length < max; i++) {
+      const a = sprints[i]!
+      const b = sprints[i + 1]!
+      if (!a.start_date || !b.start_date) continue
+      if (a.start_date <= b.start_date) continue
+      // a starts after b — unusual ordering; suggest review.
+      out.push({
+        title: `Reihenfolge ${a.name} ↔ ${b.name} prüfen`,
+        rationale: `Sprint "${a.name}" startet am ${a.start_date}, "${b.name}" bereits am ${b.start_date}. Diese Reihenfolge wirkt umkehrbar — Reorder kann den kritischen Pfad verkürzen.`,
+        kind: "reorder",
+        affected_node_ids: [`sprint:${a.id}`, `sprint:${b.id}`],
+        estimated_savings_days: null,
+        confidence: "low",
+      })
+    }
+
+    return {
+      suggestions: out,
       usage: {
         input_tokens: 0,
         output_tokens: 0,

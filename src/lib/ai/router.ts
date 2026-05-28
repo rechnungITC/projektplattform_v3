@@ -33,6 +33,7 @@ import {
   classifyNarrativeAutoContext,
   classifyRiskAutoContext,
   classifySentimentAutoContext,
+  classifyTrajectorySequenceAutoContext,
 } from "./classify"
 import { checkCostCap } from "./cost-cap"
 import { resolveProvider, type ResolvedProvider } from "./key-resolver"
@@ -55,8 +56,11 @@ import type {
   RouterNarrativeResult,
   RouterRiskResult,
   RouterSentimentResult,
+  RouterTrajectorySequenceResult,
   SentimentAutoContext,
   SentimentSignal,
+  TrajectorySequenceAutoContext,
+  TrajectorySequenceSuggestion,
 } from "./types"
 
 interface InvokeRiskGenerationArgs {
@@ -807,5 +811,172 @@ export async function invokeCoachingGeneration({
     external_blocked: externalBlocked,
     tonality_hint: context.tonality_hint,
     error_message: providerError ?? blockedReason ?? undefined,
+  }
+}
+
+// ---------------------------------------------------------------------------
+// PROJ-65 ε.4.α — trajectory-sequence router
+// ---------------------------------------------------------------------------
+
+interface InvokeTrajectorySequenceGenerationArgs {
+  supabase: SupabaseClient
+  tenantId: string
+  projectId: string
+  actorUserId: string
+  context: TrajectorySequenceAutoContext
+  /** Soft target count (1–5); the provider may emit fewer. */
+  count: number
+}
+
+/**
+ * PROJ-65 ε.4.α — generate trajectory-sequence advisory suggestions.
+ *
+ * Mirrors `invokeRiskGeneration` (persists each suggestion as a
+ * `ki_suggestions` row with `purpose='trajectory_sequence'`) but:
+ *   - context classifier is the whitelist-based
+ *     `classifyTrajectorySequenceAutoContext` (Class-2 by design)
+ *   - calls `provider.generateTrajectorySequence`; falls back to
+ *     `StubProvider.generateTrajectorySequence` if the chosen provider
+ *     does not implement it (e.g. Ollama / Google in their current state)
+ *   - cost-cap purpose is `'trajectory_sequence'`
+ *
+ * Class-3 hard-block is inherited from `selectProvider`: if a future
+ * shape change leaks a Class-3 field into the context, the classifier
+ * forces local routing automatically.
+ *
+ * Note: the suggestions are advisory — accept marks them so without
+ * triggering a downstream entity create (the relaxed
+ * `ki_suggestions_accepted_consistency` CHECK allows this).
+ */
+export async function invokeTrajectorySequenceGeneration({
+  supabase,
+  tenantId,
+  projectId,
+  actorUserId,
+  context,
+  count,
+}: InvokeTrajectorySequenceGenerationArgs): Promise<RouterTrajectorySequenceResult> {
+  const overrides = await loadTenantOverrides(supabase, tenantId)
+  const classification = classifyTrajectorySequenceAutoContext(
+    context,
+    overrides.privacyDefault as DataClass,
+  )
+  const choice = await selectProviderForPurpose(
+    supabase,
+    tenantId,
+    "trajectory_sequence",
+    classification,
+    overrides.providerConfig,
+  )
+  const { provider, externalBlocked, blockedReason } = await applyCostCap(
+    supabase,
+    tenantId,
+    choice,
+    "trajectory_sequence",
+  )
+
+  const runId = await insertKiRun(supabase, {
+    tenantId,
+    projectId,
+    actorUserId,
+    purpose: "trajectory_sequence",
+    classification,
+    provider,
+  })
+
+  let activeProvider: AIProvider = provider
+  let suggestions: TrajectorySequenceSuggestion[] = []
+  let inputTokens: number | null = null
+  let outputTokens: number | null = null
+  let latencyMs: number | null = null
+  let providerError: string | null = null
+  let providerFallbackMessage: string | null = null
+
+  try {
+    if (!provider.generateTrajectorySequence) {
+      throw new Error(
+        `Provider ${provider.name} does not implement generateTrajectorySequence`,
+      )
+    }
+    const result = await provider.generateTrajectorySequence({ context, count })
+    suggestions = result.suggestions
+    inputTokens = result.usage.input_tokens
+    outputTokens = result.usage.output_tokens
+    latencyMs = result.usage.latency_ms
+  } catch (err) {
+    providerError = err instanceof Error ? err.message : String(err)
+    if (provider.name !== "stub") {
+      // Fall back to Stub so the FE never sees a 5xx for this purpose.
+      const fallbackProvider = new StubProvider()
+      const fallback = await fallbackProvider.generateTrajectorySequence!({
+        context,
+        count,
+      })
+      providerFallbackMessage = `Provider ${provider.name} failed (${providerError}); fell back to Stub.`
+      activeProvider = fallbackProvider
+      suggestions = fallback.suggestions
+      inputTokens = fallback.usage.input_tokens
+      outputTokens = fallback.usage.output_tokens
+      latencyMs = fallback.usage.latency_ms
+      providerError = null
+    }
+  }
+
+  let finalStatus: "success" | "error" | "external_blocked"
+  if (providerError) {
+    finalStatus = "error"
+  } else if (externalBlocked || providerFallbackMessage) {
+    finalStatus = "external_blocked"
+  } else {
+    finalStatus = "success"
+  }
+
+  let suggestionIds: string[] = []
+  if (suggestions.length > 0) {
+    const { data: sugRows, error: sugErr } = await supabase
+      .from("ki_suggestions")
+      .insert(
+        suggestions.map((s) => ({
+          tenant_id: tenantId,
+          project_id: projectId,
+          ki_run_id: runId,
+          purpose: "trajectory_sequence",
+          payload: s,
+          original_payload: s,
+          status: "draft",
+          created_by: actorUserId,
+        })),
+      )
+      .select("id")
+    if (sugErr || !sugRows) {
+      providerError =
+        providerError ??
+        `ki_suggestions insert failed: ${sugErr?.message ?? "unknown"}`
+      finalStatus = "error"
+    } else {
+      suggestionIds = sugRows.map((r) => r.id as string)
+    }
+  }
+
+  const finalErrorMessage =
+    providerError ?? providerFallbackMessage ?? blockedReason ?? null
+  await updateKiRunStatus(supabase, runId, {
+    status: finalStatus,
+    inputTokens,
+    outputTokens,
+    latencyMs,
+    errorMessage: finalErrorMessage,
+    provider: activeProvider,
+  })
+
+  return {
+    run_id: runId,
+    classification,
+    provider: activeProvider.name as AIProviderName,
+    model_id: activeProvider.modelId,
+    status: finalStatus,
+    suggestion_ids: suggestionIds,
+    external_blocked: externalBlocked || providerFallbackMessage !== null,
+    error_message: finalErrorMessage ?? undefined,
   }
 }

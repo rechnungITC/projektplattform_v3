@@ -14,7 +14,7 @@
  */
 
 import dynamic from "next/dynamic"
-import { Box, Loader2, Network, Route as RouteIcon, Target } from "lucide-react"
+import { Box, Loader2, Network, Route as RouteIcon, Sparkles, Target } from "lucide-react"
 import { useReducedMotion } from "framer-motion"
 import * as React from "react"
 
@@ -39,7 +39,7 @@ import type {
 } from "@/lib/project-graph/types"
 import { toast } from "sonner"
 
-import { AIProposalDrawerPlaceholder } from "./ai-proposal-drawer-placeholder"
+import { AIProposalDrawer } from "./ai-proposal-drawer"
 import { GoalCreateDialog } from "./goals/goal-create-dialog"
 import {
   GoalDetailPanel,
@@ -304,23 +304,9 @@ export function TrajectoryGraphView({ projectId }: TrajectoryGraphViewProps) {
     return layoutTrajectory(snapshot)
   }, [snapshot])
 
-  const aiDrawerRecommendation = React.useMemo(() => {
-    if (!aiDrawer || !snapshot) return null
-    // Best-effort: first `recommendation` source that influences the
-    // anchor — gives the user immediate context (F1 from designer brief).
-    const inboundRec = snapshot.edges.find(
-      (e) =>
-        e.target_node_id === aiDrawer.nodeId &&
-        e.kind === "influences" &&
-        snapshot.nodes.find((n) => n.id === e.source_node_id)?.kind ===
-          "recommendation",
-    )
-    if (!inboundRec) return null
-    return (
-      snapshot.nodes.find((n) => n.id === inboundRec.source_node_id)?.label ??
-      null
-    )
-  }, [aiDrawer, snapshot])
+  // PROJ-65 ε.4.α — `aiDrawerRecommendation` retired with the placeholder
+  // drawer; the new project-wide AIProposalDrawer no longer needs an
+  // inbound-recommendation lookup.
 
   const focusedPositioned = React.useMemo(() => {
     if (!focusedNodeId) return null
@@ -572,6 +558,21 @@ export function TrajectoryGraphView({ projectId }: TrajectoryGraphViewProps) {
             />
             + Ziel erstellen
           </Button>
+          {/* PROJ-65 ε.4.α — project-wide AI proposals (trajectory_sequence) */}
+          <Button
+            type="button"
+            size="sm"
+            variant="outline"
+            onClick={() => setAiDrawer({ nodeId: "", count: 0 })}
+            data-testid="ai-proposals-trigger"
+            className="border-violet-400/40 text-violet-700 hover:bg-violet-500/10 dark:text-violet-300"
+          >
+            <Sparkles
+              className="mr-1.5 h-3.5 w-3.5 text-violet-500"
+              aria-hidden
+            />
+            KI-Vorschläge
+          </Button>
         </div>
       </CardHeader>
       <CardContent className="space-y-3">
@@ -719,13 +720,14 @@ export function TrajectoryGraphView({ projectId }: TrajectoryGraphViewProps) {
           {liveRegion}
         </div>
       </CardContent>
-      <AIProposalDrawerPlaceholder
+      <AIProposalDrawer
         open={aiDrawer != null}
         onOpenChange={(open) => {
           if (!open) setAiDrawer(null)
         }}
-        recommendationTitle={aiDrawerRecommendation}
-        recommendationCount={aiDrawer?.count ?? 0}
+        projectId={projectId}
+        focusedNodeId={aiDrawer?.nodeId ? aiDrawer.nodeId : null}
+        nodeLabels={nodeLabelMap}
       />
 
       {/* PROJ-65 ε.2 — Stakeholder detail panel + swap dialog */}

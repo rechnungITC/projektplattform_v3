@@ -18,6 +18,7 @@ import type {
   NarrativeAutoContext,
   RiskAutoContext,
   SentimentAutoContext,
+  TrajectorySequenceAutoContext,
 } from "./types"
 
 function bumpMax(current: DataClass, candidate: DataClass): DataClass {
@@ -223,4 +224,119 @@ export function classifyCoachingAutoContext(
   _tenantDefault: DataClass = 3,
 ): DataClass {
   return 3
+}
+
+// ---------------------------------------------------------------------------
+// PROJ-65 ε.4.α — trajectory-sequence classifier (whitelist-based)
+// ---------------------------------------------------------------------------
+
+/**
+ * Whitelist of field keys allowed in `TrajectorySequenceAutoContext`.
+ * Class-1/2 only: structural layout (project / phase / sprint / milestone /
+ * dependency / goal metadata). NO personal data keys (`responsible_user_id`,
+ * `stakeholder_*`, `created_by`, descriptions, etc.).
+ *
+ * Anything not on the list flips the classification to Class-3, mirroring
+ * the narrative classifier's "fail-safe" semantics. Extending the auto-
+ * context shape must update this list AND `data-privacy-registry`.
+ */
+const TRAJECTORY_SEQUENCE_FIELD_WHITELIST: ReadonlySet<string> = new Set([
+  // project block
+  "name",
+  "project_type",
+  "project_method",
+  "lifecycle_status",
+  "planned_start_date",
+  "planned_end_date",
+  // phases / sprints / milestones / goals items
+  "id",
+  "status",
+  "state",
+  "planned_start",
+  "planned_end",
+  "sequence_number",
+  "start_date",
+  "end_date",
+  "target_date",
+  "title",
+  // dependencies items
+  "from_type",
+  "from_id",
+  "to_type",
+  "to_id",
+  "constraint_type",
+])
+
+const TRAJECTORY_SEQUENCE_BLOCK_KEYS: ReadonlySet<string> = new Set([
+  "project",
+  "phases",
+  "sprints",
+  "milestones",
+  "dependencies",
+  "goals",
+])
+
+function classifyTrajectoryRecord(
+  record: Record<string, unknown>,
+): DataClass {
+  for (const [key, value] of Object.entries(record)) {
+    if (value === null || value === undefined || value === "") continue
+    if (!TRAJECTORY_SEQUENCE_FIELD_WHITELIST.has(key)) {
+      return 3
+    }
+  }
+  return 2
+}
+
+/**
+ * PROJ-65 ε.4.α — classify a `TrajectorySequenceAutoContext` payload.
+ *
+ * Returns the highest data class observed in the payload. Defense-in-depth
+ * over the allowlist already enforced by `collectTrajectorySequenceContext`.
+ * If a future shape change accidentally adds an un-whitelisted key (e.g.
+ * `responsible_user_id`), this classifier flips to Class-3 and the router
+ * forces local routing — preventing any silent personal-data leak into a
+ * cloud provider.
+ */
+export function classifyTrajectorySequenceAutoContext(
+  ctx: TrajectorySequenceAutoContext,
+  tenantDefault: DataClass = 3,
+): DataClass {
+  let max: DataClass = 1
+
+  for (const [topKey, topValue] of Object.entries(ctx)) {
+    if (topValue === null || topValue === undefined) continue
+    if (
+      !TRAJECTORY_SEQUENCE_FIELD_WHITELIST.has(topKey) &&
+      !TRAJECTORY_SEQUENCE_BLOCK_KEYS.has(topKey)
+    ) {
+      return 3
+    }
+    if (
+      typeof topValue === "object" &&
+      !Array.isArray(topValue) &&
+      topValue !== null
+    ) {
+      const blockClass = classifyTrajectoryRecord(
+        topValue as Record<string, unknown>,
+      )
+      max = bumpMax(max, blockClass)
+      if (max === 3) return 3
+    }
+    if (Array.isArray(topValue)) {
+      for (const item of topValue) {
+        if (item === null || typeof item !== "object") continue
+        const itemClass = classifyTrajectoryRecord(
+          item as Record<string, unknown>,
+        )
+        max = bumpMax(max, itemClass)
+        if (max === 3) return 3
+      }
+    }
+  }
+
+  if (tenantDefault === 3 && max < 2) {
+    return max
+  }
+  return max
 }
