@@ -39,6 +39,7 @@ import {
 } from "@/types/risk"
 
 import { RiskForm } from "./risk-form"
+import { RiskLinksTab } from "./risk-links-tab"
 import { RiskMatrix } from "./risk-matrix"
 import { RiskTable } from "./risk-table"
 
@@ -255,6 +256,7 @@ export function RiskTabClient({ projectId }: RiskTabClientProps) {
               <Tabs defaultValue="form">
                 <TabsList>
                   <TabsTrigger value="form">Stammdaten</TabsTrigger>
+                  <TabsTrigger value="links">Verknüpfungen</TabsTrigger>
                   <TabsTrigger value="history">Historie</TabsTrigger>
                 </TabsList>
                 <TabsContent value="form" className="mt-4">
@@ -273,6 +275,12 @@ export function RiskTabClient({ projectId }: RiskTabClientProps) {
                         Löschen
                       </Button>
                     }
+                  />
+                </TabsContent>
+                <TabsContent value="links" className="mt-4">
+                  <RiskLinksTab
+                    projectId={projectId}
+                    riskId={drawer.risk.id}
                   />
                 </TabsContent>
                 <TabsContent value="history" className="mt-4">

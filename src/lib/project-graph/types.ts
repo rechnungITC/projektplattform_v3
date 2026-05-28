@@ -132,6 +132,10 @@ export interface TrajectorySettings {
     /** When true, Plan-Mutate drag-handles snap day-deltas to whole
      *  ISO-weeks (multiples of 7). Default `false`. */
     snap_to_week?: boolean
+    /** PROJ-65 ε.3e (F-64) — per-project Plan-Mutate kill-switch. When
+     *  `false`, plan-mutate is disabled for this project regardless of the
+     *  tenant master switch. Absent ⇒ enabled (default-ON). */
+    enabled?: boolean
   }
 }
 

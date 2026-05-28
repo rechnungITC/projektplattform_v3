@@ -3351,3 +3351,63 @@ Backend + Frontend können parallel laufen (disjunkte File-Sets). PROJ-58-Listen
 
 ε.3c.δ ist **production-ready für Deploy**. Backend live in Prod-DB (Migration applied); FE Frontend-side komplett bis auf einstellungen-UI-Switch (bewusst deferred). **Mit ε.3c.δ ist das ε.3c-Bundle komplett**. Letzter offener Slice in PROJ-65 ist nun **ε.4 AI** (trajectory_sequence + resource_swap + cross-project-links, ~4 PT).
 
+
+## RR) /backend + /frontend ε.3e Implementation Log (2026-05-28)
+
+**Slice geliefert:** Risk-Link-UI (F-62 beidseitig) + risk_links Audit (F-63) + Project Settings-Page mit Plan-Mutate-Kill-Switch (F-64). Größerer ε.3e als ursprünglich gescoped — User wählte das größere F-62 (inkl. neues Phase/Sprint-Detail-Panel) und das größere F-64 (inkl. Per-Projekt Plan-Mutate-Enable, nicht nur Snap-to-Week). CIA-reviewed 2026-05-27.
+
+### CIA-Architektur-Locks (Per-Projekt Plan-Mutate-Kill-Switch)
+
+CIA empfahl ursprünglich Defer zu PROJ-67; User entschied bewusst „jetzt mit CIA-Architektur bauen". Folgende Locks befolgt:
+
+| Lock | Umsetzung |
+|---|---|
+| **UND-Precedence, Default-ON** | `effective = tenant.trajectory_plan_mutate_enabled AND coalesce(projects.settings->plan_mutate->>'enabled','true')` — Projekt-Flag kann nur RESTRIKTIEREN, nie expandieren; absente Projekt-Setting → enabled (backward-compat) |
+| **Speicherort** | `projects.settings.plan_mutate.enabled` (JSONB, konsistent mit `snap_to_week`) — kein Schema-Change |
+| **Gate-Erweiterung** | BEIDE RPCs (`plan_mutate_atomic` + `_bulk`) + Aggregator (`canPlanMutate`) prüfen den Projekt-Flag. RPCs sind die echte Grenze; Aggregator ist UI-Hint |
+| **Setter-RPC** | `set_project_plan_mutate_enabled(uuid, boolean)` SECURITY DEFINER, **lead/admin only** (NICHT editor, weil Kill-Switch = Governance) + expliziter Audit-Insert (`field_name='plan_mutate.enabled'`) |
+| **Snap-to-Week** | separater Setter `set_project_snap_to_week` (editor/lead/admin, kein Audit — pure UX) |
+| **RPC-Injection** | Via `pg_get_functiondef` + anchor-replace auf `v_can_edit := …`-Zeile — format-agnostisch (funktioniert in Repo-Build UND Prod-verschlankt), null Transkriptionsrisiko, idempotent |
+
+### Migration
+
+`supabase/migrations/20260527140000_proj65_eps3e_risklink_audit_and_planmutate_gate.sql` — applied to Prod-DB 2026-05-28.
+
+| Teil | Status |
+|---|---|
+| **A.1** `audit_log_entity_type_check` Rebuild (full 44-list + `risk_links`) | ✅ |
+| **A.2** `record_risk_link_insert_audit` + `_delete_audit` (synthetische `__row__`-Entries, Dependencies-Pattern aus 20260505300200) | ✅ |
+| **A.3** Trigger `audit_risk_links_insert/delete` wired | ✅ |
+| **B.1** Per-Projekt Gate injiziert in `plan_mutate_atomic` + `_bulk` (vor `v_can_edit`-Anker, nach Tenant-Gate) | ✅ |
+| **B.2** `set_project_plan_mutate_enabled(uuid, boolean)` — lead/admin + explizites Audit | ✅ |
+| **B.3** `set_project_snap_to_week(uuid, boolean)` — editor/lead/admin | ✅ |
+| **C** Static-Smoke-Checks (CHECK, Trigger, Gate-Präsenz, Setter-RPCs) | ✅ |
+
+### Geänderte / neue FE+API-Files
+
+| Path | Status |
+|---|---|
+| `src/lib/project-graph/aggregate.ts` | edited — `canPlanMutate &&= planMutateProjectEnabled` (Aggregator-UI-Hint mit Projekt-Flag) |
+| `src/lib/project-graph/types.ts` | edited — `TrajectorySettings.plan_mutate.enabled?: boolean` |
+| `src/app/api/projects/[id]/risk-links/route.ts` | NEW — GET (Filter risk_id ODER linked_kind+linked_id), POST (project-scope-Validierung beider Endpoints) |
+| `src/app/api/projects/[id]/risk-links/[lid]/route.ts` | NEW — DELETE (project-scope-Validierung via join) |
+| `src/app/api/projects/[id]/settings/route.ts` | NEW — GET (settings + tenant flag + capability hints), PATCH (routet snap/enabled durch Setter-RPCs) |
+| `src/lib/risk-links/api.ts` | NEW — `listRiskLinks` / `createRiskLink` / `deleteRiskLink` |
+| `src/lib/project-settings/api.ts` | NEW — `getProjectSettings` / `updateProjectSettings` |
+| `src/components/projects/risks/risk-links-tab.tsx` | NEW — dritter Tab im Risk-Edit-Sheet mit Phase/Sprint-Picker |
+| `src/components/projects/risks/risk-tab-client.tsx` | edited — Tab „Verknüpfungen" wired (nur Edit-Mode) |
+| `src/components/projects/trajectory/trajectory-node-detail-panel.tsx` | NEW — Sheet (right) für Phase/Sprint-Knoten: linked risks + link/unlink + plan-mutate-disabled Banner |
+| `src/components/projects/trajectory-graph-view.tsx` | edited — `nodeDetail`-State; `FocusSummary` rendert für Phase/Sprint immer + `onOpenDetail`-Button |
+| `src/components/projects/settings/project-settings-client.tsx` | NEW — echte Settings-Page mit Switches + Tenant-Flag-Hinweis |
+| `src/app/(app)/projects/[id]/einstellungen/page.tsx` | edited — `<ProjectSettingsClient projectId={id}/>` statt `ComingSoonCard` |
+
+### Tests + Build
+
+- ✅ `npx tsc --noEmit` clean
+- ✅ `npm run lint` 0 errors (2 unrelated baseline `form.watch` warnings → F-PROJ-65-52)
+- ✅ `npx vitest run` — **1557/1557 grün** in 187 Files
+- ✅ `npm run build` clean in 10.2s
+
+### Status
+
+ε.3e ist **production-ready**. Backend live in Prod-DB (Migration applied + Gate-Injection in beide RPCs verifiziert); FE komplett. Awaiting `/deploy`-Tag. Mit ε.3e sind F-PROJ-65-62/-63/-64 geschlossen. Letzter offener Slice ist **ε.4 AI** (~4 PT).
