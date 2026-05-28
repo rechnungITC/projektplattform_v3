@@ -20,6 +20,7 @@ import type {
   AIProvider,
   CoachingGenerationRequest,
   NarrativeGenerationRequest,
+  ResourceSwapGenerationRequest,
   RiskGenerationRequest,
   SentimentGenerationRequest,
   TrajectorySequenceGenerationRequest,
@@ -27,6 +28,7 @@ import type {
 import type {
   CoachingGenerationOutput,
   NarrativeGenerationOutput,
+  ResourceSwapGenerationOutput,
   RiskGenerationOutput,
   RiskSuggestion,
   TrajectorySequenceGenerationOutput,
@@ -289,6 +291,36 @@ export class StubProvider implements AIProvider {
 
     return {
       suggestions: out,
+      usage: {
+        input_tokens: 0,
+        output_tokens: 0,
+        latency_ms: Date.now() - start,
+      },
+    }
+  }
+
+  /**
+   * PROJ-65 ε.4.β — resource-swap stub (Class-3 hard-fix path).
+   *
+   * Emits zero suggestions, mirroring sentiment + coaching. Per CIA-L5
+   * (2026-05-28) the Stub deliberately does NOT apply a heuristic on
+   * Class-1/2 fields here:
+   *   - mixing heuristic and LLM output behind the same surface drifts
+   *     the product behaviour between tenants with/without Ollama;
+   *   - a heuristic implementation tends to grow toward reading Class-3
+   *     fields over time (skill scores, rates) — exactly what the
+   *     Class-3 hard-fix is meant to prevent.
+   *
+   * The router surfaces `status='external_blocked'` so the UI shows the
+   * "kein lokaler Provider — manuelle Swap-Entscheidung erforderlich"
+   * banner.
+   */
+  async generateResourceSwap(
+    _request: ResourceSwapGenerationRequest,
+  ): Promise<ResourceSwapGenerationOutput> {
+    const start = Date.now()
+    return {
+      suggestions: [],
       usage: {
         input_tokens: 0,
         output_tokens: 0,

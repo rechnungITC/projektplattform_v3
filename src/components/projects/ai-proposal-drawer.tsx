@@ -46,6 +46,8 @@ import {
   type TrajectorySequenceSuggestionRow,
 } from "@/lib/ai-proposals/trajectory-sequence-api"
 
+import { ResourceSwapTab } from "./ai-proposals/resource-swap-tab"
+
 interface AIProposalDrawerProps {
   open: boolean
   onOpenChange: (open: boolean) => void
@@ -188,12 +190,7 @@ export function AIProposalDrawer({
         <Tabs defaultValue="trajectory" className="mt-4">
           <TabsList>
             <TabsTrigger value="trajectory">Trajektorie</TabsTrigger>
-            <TabsTrigger value="resources" disabled>
-              Ressourcen
-              <Badge variant="outline" className="ml-1.5 text-[10px]">
-                ε.4.β
-              </Badge>
-            </TabsTrigger>
+            <TabsTrigger value="resources">Ressourcen</TabsTrigger>
             <TabsTrigger value="links" disabled>
               Cross-Project
               <Badge variant="outline" className="ml-1.5 text-[10px]">
@@ -275,6 +272,10 @@ export function AIProposalDrawer({
                 ))}
               </section>
             )}
+          </TabsContent>
+
+          <TabsContent value="resources" className="mt-4">
+            <ResourceSwapTab projectId={projectId} />
           </TabsContent>
         </Tabs>
       </SheetContent>

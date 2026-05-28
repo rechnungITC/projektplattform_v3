@@ -13,6 +13,8 @@ import type {
   CoachingGenerationOutput,
   NarrativeAutoContext,
   NarrativeGenerationOutput,
+  ResourceSwapAutoContext,
+  ResourceSwapGenerationOutput,
   RiskAutoContext,
   RiskGenerationOutput,
   SentimentAutoContext,
@@ -45,6 +47,12 @@ export interface TrajectorySequenceGenerationRequest {
   count: number
 }
 
+export interface ResourceSwapGenerationRequest {
+  context: ResourceSwapAutoContext
+  /** Soft target for how many suggestions to emit (provider may emit fewer). */
+  count: number
+}
+
 /**
  * PROJ-30 + PROJ-34-γ.1 — generic provider interface. Methods are optional
  * so a provider can support a subset of purposes (e.g. Ollama implements
@@ -73,6 +81,10 @@ export interface AIProvider {
   generateTrajectorySequence?(
     request: TrajectorySequenceGenerationRequest,
   ): Promise<TrajectorySequenceGenerationOutput>
+  // PROJ-65 ε.4.β — resource-swap suggestions (Class-3 hard-fix, Ollama-only)
+  generateResourceSwap?(
+    request: ResourceSwapGenerationRequest,
+  ): Promise<ResourceSwapGenerationOutput>
 }
 
 /**

@@ -31,6 +31,7 @@ import type {
 import {
   classifyCoachingAutoContext,
   classifyNarrativeAutoContext,
+  classifyResourceSwapAutoContext,
   classifyRiskAutoContext,
   classifySentimentAutoContext,
   classifyTrajectorySequenceAutoContext,
@@ -54,6 +55,9 @@ import type {
   RiskSuggestion,
   RouterCoachingResult,
   RouterNarrativeResult,
+  ResourceSwapAutoContext,
+  ResourceSwapSuggestion,
+  RouterResourceSwapResult,
   RouterRiskResult,
   RouterSentimentResult,
   RouterTrajectorySequenceResult,
@@ -977,6 +981,195 @@ export async function invokeTrajectorySequenceGeneration({
     status: finalStatus,
     suggestion_ids: suggestionIds,
     external_blocked: externalBlocked || providerFallbackMessage !== null,
+    error_message: finalErrorMessage ?? undefined,
+  }
+}
+
+// ---------------------------------------------------------------------------
+// PROJ-65 ε.4.β — resource-swap router (Class-3 hard-fix, Ollama-only)
+// ---------------------------------------------------------------------------
+
+interface InvokeResourceSwapGenerationArgs {
+  supabase: SupabaseClient
+  tenantId: string
+  projectId: string
+  actorUserId: string
+  context: ResourceSwapAutoContext
+  /** Soft target count (1–5); the provider may emit fewer. */
+  count: number
+}
+
+/**
+ * PROJ-65 ε.4.β — generate resource-swap suggestions.
+ *
+ * Class-3 hard-fixed via `classifyResourceSwapAutoContext`. The router
+ * therefore only ever picks a tenant-supplied Ollama (CIA-L1: tenant
+ * provider mandate) or the Stub. Anthropic / OpenAI / Google are never
+ * reached on this code path.
+ *
+ * Provider-error semantics (CIA-L2, **strict**, differs from coaching):
+ *   - If the chosen provider is Ollama and it throws, we do NOT fall back
+ *     to the Stub. Instead we surface `status='external_blocked'` with
+ *     the Ollama error message and emit zero suggestions. This makes the
+ *     local-provider failure mode visible to the user — they see "kein
+ *     lokaler Provider verfügbar" rather than silently getting an empty
+ *     Stub output that looks like "no recommendation".
+ *   - If the chosen provider is already the Stub (tenant has no Ollama
+ *     configured), the Stub emits zero suggestions deterministically and
+ *     status='external_blocked' to signal "no local provider available".
+ *
+ * No Anthropic / OpenAI / Google path. No Class-2 bypass.
+ */
+export async function invokeResourceSwapGeneration({
+  supabase,
+  tenantId,
+  projectId,
+  actorUserId,
+  context,
+  count,
+}: InvokeResourceSwapGenerationArgs): Promise<RouterResourceSwapResult> {
+  const overrides = await loadTenantOverrides(supabase, tenantId)
+  const classification = classifyResourceSwapAutoContext(
+    context,
+    overrides.privacyDefault as DataClass,
+  )
+  const choice = await selectProviderForPurpose(
+    supabase,
+    tenantId,
+    "resource_swap",
+    classification,
+    overrides.providerConfig,
+  )
+  const { provider, externalBlocked, blockedReason } = await applyCostCap(
+    supabase,
+    tenantId,
+    choice,
+    "resource_swap",
+  )
+
+  const runId = await insertKiRun(supabase, {
+    tenantId,
+    projectId,
+    actorUserId,
+    purpose: "resource_swap",
+    classification,
+    provider,
+  })
+
+  let suggestions: ResourceSwapSuggestion[] = []
+  let inputTokens: number | null = null
+  let outputTokens: number | null = null
+  let latencyMs: number | null = null
+  let providerError: string | null = null
+  // CIA-L2: capture Ollama error as the public "external_blocked" reason
+  // (do NOT fall back to Stub on Ollama failure — make it visible).
+  let ollamaError: string | null = null
+
+  try {
+    if (!provider.generateResourceSwap) {
+      throw new Error(
+        `Provider ${provider.name} does not implement generateResourceSwap`,
+      )
+    }
+    const result = await provider.generateResourceSwap({ context, count })
+    suggestions = result.suggestions
+    inputTokens = result.usage.input_tokens
+    outputTokens = result.usage.output_tokens
+    latencyMs = result.usage.latency_ms
+  } catch (err) {
+    const message = err instanceof Error ? err.message : String(err)
+    if (provider.name === "ollama") {
+      // CIA-L2: NO Stub fallback for Ollama errors. Surface as external_blocked.
+      ollamaError = message
+      suggestions = []
+    } else {
+      providerError = message
+    }
+  }
+
+  let finalStatus: "success" | "error" | "external_blocked"
+  if (providerError) {
+    finalStatus = "error"
+  } else if (externalBlocked || ollamaError || provider.name === "stub") {
+    // Stub-path always means "no local provider" for this purpose.
+    finalStatus = "external_blocked"
+  } else {
+    finalStatus = "success"
+  }
+
+  // Enrich the payload with display labels (resource names + work-item
+  // title) so the FE can render the card without extra round-trips. The
+  // raw IDs stay so the "Im Swap-Preview öffnen"-button keeps the route
+  // params it needs.
+  const workItemTitleById = new Map(
+    context.work_items.map((w) => [w.work_item_id, w.title]),
+  )
+  const resourceNameById = new Map<string, string>()
+  for (const c of context.candidate_resources) {
+    resourceNameById.set(c.resource_id, c.stakeholder_name ?? c.display_name)
+  }
+  for (const w of context.work_items) {
+    for (const a of w.current_assignees) {
+      if (!resourceNameById.has(a.resource_id)) {
+        resourceNameById.set(a.resource_id, a.stakeholder_name ?? a.display_name)
+      }
+    }
+  }
+  const enrichedSuggestions = suggestions.map((s) => ({
+    ...s,
+    display: {
+      work_item_title: workItemTitleById.get(s.work_item_id) ?? null,
+      from_resource_name: resourceNameById.get(s.from_resource_id) ?? null,
+      to_resource_name: resourceNameById.get(s.to_resource_id) ?? null,
+    },
+  }))
+
+  let suggestionIds: string[] = []
+  if (enrichedSuggestions.length > 0) {
+    const { data: sugRows, error: sugErr } = await supabase
+      .from("ki_suggestions")
+      .insert(
+        enrichedSuggestions.map((s) => ({
+          tenant_id: tenantId,
+          project_id: projectId,
+          ki_run_id: runId,
+          purpose: "resource_swap",
+          payload: s,
+          original_payload: s,
+          status: "draft",
+          created_by: actorUserId,
+        })),
+      )
+      .select("id")
+    if (sugErr || !sugRows) {
+      providerError =
+        providerError ??
+        `ki_suggestions insert failed: ${sugErr?.message ?? "unknown"}`
+      finalStatus = "error"
+    } else {
+      suggestionIds = sugRows.map((r) => r.id as string)
+    }
+  }
+
+  const finalErrorMessage =
+    providerError ?? ollamaError ?? blockedReason ?? null
+  await updateKiRunStatus(supabase, runId, {
+    status: finalStatus,
+    inputTokens,
+    outputTokens,
+    latencyMs,
+    errorMessage: finalErrorMessage,
+    provider,
+  })
+
+  return {
+    run_id: runId,
+    classification,
+    provider: provider.name as AIProviderName,
+    model_id: provider.modelId,
+    status: finalStatus,
+    suggestion_ids: suggestionIds,
+    external_blocked: externalBlocked || ollamaError !== null || provider.name === "stub",
     error_message: finalErrorMessage ?? undefined,
   }
 }
