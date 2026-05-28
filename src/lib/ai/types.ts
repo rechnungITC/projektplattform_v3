@@ -12,6 +12,8 @@ export type AIPurpose =
   | "narrative"
   | "sentiment"
   | "coaching"
+  // PROJ-65 ε.4.α — trajectory sequence suggestions (Class-2, advisory)
+  | "trajectory_sequence"
 
 export type DataClass = 1 | 2 | 3
 
@@ -314,5 +316,109 @@ export interface RouterCoachingResult {
   external_blocked: boolean
   /** Echoed back from the context so callers can persist it as audit. */
   tonality_hint: string | null
+  error_message?: string
+}
+
+// ---------------------------------------------------------------------------
+// PROJ-65 ε.4.α — trajectory-sequence purpose types
+// ---------------------------------------------------------------------------
+
+/**
+ * Auto-context for trajectory-sequence suggestions. Class-2: project /
+ * phases / sprints / milestones / dependencies / goals — strictly the
+ * structural layout of the project, NO personal data (`responsible_user_id`,
+ * stakeholders, profile fields, etc.). Every column listed here is in the
+ * Class-1/2 portion of `data-privacy-registry.ts`.
+ */
+export interface TrajectorySequenceAutoContext {
+  project: {
+    name: string
+    project_type: string | null
+    project_method: string | null
+    lifecycle_status: string
+    planned_start_date: string | null
+    planned_end_date: string | null
+  }
+  phases: Array<{
+    id: string
+    name: string
+    status: string
+    planned_start: string | null
+    planned_end: string | null
+    sequence_number: number | null
+  }>
+  sprints: Array<{
+    id: string
+    name: string
+    /** `sprints.state` column (planned/active/completed/canceled). */
+    state: string
+    start_date: string | null
+    end_date: string | null
+  }>
+  milestones: Array<{
+    id: string
+    name: string
+    status: string
+    target_date: string | null
+  }>
+  dependencies: Array<{
+    from_type: string
+    from_id: string
+    to_type: string
+    to_id: string
+    constraint_type: string
+  }>
+  goals: Array<{
+    id: string
+    title: string
+    target_date: string | null
+    status: string | null
+  }>
+}
+
+export type TrajectorySequenceSuggestionKind =
+  | "parallelize"
+  | "reorder"
+  | "serialize"
+  | "merge"
+
+export interface TrajectorySequenceSuggestion {
+  /** One-line German title shown in the drawer card. */
+  title: string
+  /** 1–3 sentence German rationale; cites node names. */
+  rationale: string
+  /** Action type. UI maps to an icon + colour. */
+  kind: TrajectorySequenceSuggestionKind
+  /**
+   * Snapshot-prefixed node ids the user should review.
+   *   `phase:<uuid>` or `sprint:<uuid>` — matches the trajectory layout
+   *   id format and the Plan-Mutate source-node contract.
+   */
+  affected_node_ids: string[]
+  /** Optional time-savings estimate (advisory). */
+  estimated_savings_days: number | null
+  /** Provider's self-confidence; the UI shows this as a small badge. */
+  confidence: "low" | "medium" | "high"
+}
+
+export interface TrajectorySequenceGenerationOutput {
+  suggestions: TrajectorySequenceSuggestion[]
+  usage: ProviderUsage
+}
+
+/**
+ * Result of a trajectory-sequence router invocation. Persisted as a
+ * `ki_runs` row + one `ki_suggestions` row per suggestion (purpose=
+ * 'trajectory_sequence'). The `accepted_entity_*` link stays NULL on
+ * accept — trajectory-sequence is advisory; users apply via Plan-Mutate.
+ */
+export interface RouterTrajectorySequenceResult {
+  run_id: string
+  classification: DataClass
+  provider: AIProviderName
+  model_id: string | null
+  status: "success" | "error" | "external_blocked"
+  suggestion_ids: string[]
+  external_blocked: boolean
   error_message?: string
 }

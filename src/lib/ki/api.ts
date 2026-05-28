@@ -37,6 +37,7 @@ export interface SuggestRunResponse {
   status: "success" | "error" | "external_blocked"
   suggestion_ids: string[]
   external_blocked: boolean
+  error_message: string | null
 }
 
 export async function generateRiskSuggestions(

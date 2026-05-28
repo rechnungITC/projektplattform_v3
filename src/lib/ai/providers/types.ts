@@ -17,6 +17,8 @@ import type {
   RiskGenerationOutput,
   SentimentAutoContext,
   SentimentGenerationOutput,
+  TrajectorySequenceAutoContext,
+  TrajectorySequenceGenerationOutput,
 } from "../types"
 
 export interface RiskGenerationRequest {
@@ -35,6 +37,12 @@ export interface SentimentGenerationRequest {
 
 export interface CoachingGenerationRequest {
   context: CoachingAutoContext
+}
+
+export interface TrajectorySequenceGenerationRequest {
+  context: TrajectorySequenceAutoContext
+  /** Soft target for how many suggestions to emit (provider may emit fewer). */
+  count: number
 }
 
 /**
@@ -61,6 +69,10 @@ export interface AIProvider {
   generateCoaching?(
     request: CoachingGenerationRequest,
   ): Promise<CoachingGenerationOutput>
+  // PROJ-65 ε.4.α — trajectory-sequence suggestions (Class-2, advisory)
+  generateTrajectorySequence?(
+    request: TrajectorySequenceGenerationRequest,
+  ): Promise<TrajectorySequenceGenerationOutput>
 }
 
 /**

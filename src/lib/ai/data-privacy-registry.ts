@@ -206,6 +206,32 @@ const REGISTRY: Record<string, DataClass> = {
   "work_item_cost_lines.source_type": 1,
   "work_item_cost_lines.source_metadata": 3,
   "work_item_cost_lines.occurred_on": 2,
+
+  // -------------------- sprints (PROJ-65 ε.4.α) -------------------------
+  // Sprint metadata mirrors phases: pure schedule layout, no personal data.
+  // NOTE: sprints uses `state` (not `status`) and `goal` for the user-set
+  //       sprint goal (Class-2 — short German freetext like phase descr).
+  "sprints.name": 1,
+  "sprints.state": 1,
+  "sprints.goal": 2,
+  "sprints.start_date": 2,
+  "sprints.end_date": 2,
+
+  // -------------------- dependencies (PROJ-65 ε.4.α) --------------------
+  // Polymorphic structural link rows. All fields are kind/id/enum — no
+  // personal data, no freetext.
+  "dependencies.from_type": 1,
+  "dependencies.from_id": 1,
+  "dependencies.to_type": 1,
+  "dependencies.to_id": 1,
+  "dependencies.constraint_type": 1,
+
+  // -------------------- project_goals (PROJ-65 ε.4.α) -------------------
+  // Goal metadata for trajectory-sequence context. `title` is a project
+  // artefact (Class 2 like `phases.description`).
+  "project_goals.title": 2,
+  "project_goals.target_date": 2,
+  "project_goals.status": 1,
 }
 
 /**

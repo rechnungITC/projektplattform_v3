@@ -32,6 +32,8 @@ const PROVIDER_LABELS: Record<string, string> = {
   anthropic: "Claude",
   stub: "Lokal (Stub)",
   ollama: "Ollama",
+  openai: "OpenAI",
+  google: "Google",
 }
 
 export function GeneratePanel({ projectId, onGenerated }: GeneratePanelProps) {
@@ -47,8 +49,10 @@ export function GeneratePanel({ projectId, onGenerated }: GeneratePanelProps) {
       onGenerated(result)
       const baseDescription = `${result.suggestion_ids.length} Vorschläge · ${PROVIDER_LABELS[result.provider] ?? result.provider}`
       if (result.external_blocked) {
-        toast.warning("Externes Modell wurde geblockt", {
-          description: `${baseDescription}. Vorschläge wurden lokal generiert (Datenklasse ${result.classification} oder externe Modelle deaktiviert).`,
+        toast.warning("Lokaler Fallback verwendet", {
+          description:
+            result.error_message ??
+            `${baseDescription}. Vorschläge wurden lokal generiert.`,
         })
       } else {
         toast.success("Vorschläge generiert", { description: baseDescription })
@@ -123,12 +127,10 @@ export function GeneratePanel({ projectId, onGenerated }: GeneratePanelProps) {
         {lastRun?.external_blocked ? (
           <Alert>
             <ShieldAlert className="h-4 w-4" aria-hidden />
-            <AlertTitle>Externes Modell wurde geblockt</AlertTitle>
+            <AlertTitle>Lokaler Fallback verwendet</AlertTitle>
             <AlertDescription>
-              Der Aufruf wurde lokal verarbeitet, weil das Payload Klasse 3
-              enthielt oder externe LLMs durch die Plattform-Konfiguration
-              deaktiviert sind. Die Vorschläge sind dadurch deterministisch
-              (Stub-Provider) statt KI-generiert.
+              {lastRun.error_message ??
+                "Der Aufruf wurde lokal verarbeitet, weil das externe Modell nicht verfügbar ist. Die Vorschläge sind dadurch deterministisch (Stub-Provider)."}
             </AlertDescription>
           </Alert>
         ) : null}

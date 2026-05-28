@@ -3,7 +3,7 @@
  */
 
 export type KiRunStatus = "success" | "error" | "external_blocked"
-export type KiProviderName = "anthropic" | "stub" | "ollama"
+export type KiProviderName = "anthropic" | "stub" | "ollama" | "openai" | "google"
 /**
  * PROJ-44-δ — `proposal_from_context` purpose. Takes a
  * `context_sources` row (document / email / meeting notes) and
