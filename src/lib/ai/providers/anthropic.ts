@@ -22,11 +22,13 @@ import { z } from "zod"
 
 import type {
   AIProvider,
+  CrossProjectLinksGenerationRequest,
   NarrativeGenerationRequest,
   RiskGenerationRequest,
   TrajectorySequenceGenerationRequest,
 } from "./types"
 import type {
+  CrossProjectLinksGenerationOutput,
   NarrativeGenerationOutput,
   RiskGenerationOutput,
   TrajectorySequenceGenerationOutput,
@@ -346,6 +348,153 @@ function buildTrajectorySequencePrompt(
   return lines.join("\n")
 }
 
+// PROJ-65 ε.4.γ — cross-project-links schema + prompt
+const CrossProjectLinkSuggestionSchema = z.object({
+  title: z
+    .string()
+    .min(8)
+    .max(160)
+    .describe(
+      "Short German title that references both work-item titles in plain language.",
+    ),
+  rationale: z
+    .string()
+    .min(20)
+    .max(600)
+    .describe(
+      "1–3 sentence German rationale citing the observation that motivates the link (shared topic, supplier-receiver relation, blocking dependency).",
+    ),
+  kind: z.enum([
+    "relates",
+    "blocks",
+    "requires",
+    "duplicates",
+    "delivers",
+    "precedes",
+    "includes",
+  ]),
+  from_work_item_id: z
+    .string()
+    .uuid()
+    .describe("Source work-item UUID — MUST appear in source_work_items."),
+  to_work_item_id: z
+    .string()
+    .uuid()
+    .nullable()
+    .describe(
+      "Target work-item UUID — MUST appear in related_work_items. May be null for whole-project delivers-links.",
+    ),
+  to_project_id: z
+    .string()
+    .uuid()
+    .describe(
+      "Target project UUID — MUST be the source_project or a related_project from the prompt.",
+    ),
+  lag_days: z.number().int().min(-2000).max(2000).nullable().optional(),
+  confidence: z.enum(["low", "medium", "high"]),
+})
+
+const CrossProjectLinksResponseSchema = z.object({
+  suggestions: z.array(CrossProjectLinkSuggestionSchema).min(0).max(5),
+})
+
+const CROSS_PROJECT_LINKS_SYSTEM_PROMPT = `Du bist ein erfahrener Programm-Manager.
+
+Aufgabe: Analysiere die Work-Item-Listen eines Source-Projekts und seiner verwandten Projekte (Parent / Children / Siblings) und schlage gezielt 0–5 sinnvolle Cross-Projekt-Links vor.
+
+Pflichtregeln:
+- Antworte ausschließlich auf Deutsch.
+- Jede Empfehlung muss konkret und nachprüfbar sein — sie nennt mindestens ein Work-Item beim Namen und beschreibt die fachliche Beobachtung (gleiche Funktion, Lieferbeziehung, blockierende Abhängigkeit, redundante Arbeit).
+- KEINE personenbezogenen Daten, KEINE Namen von Personen, KEINE Rollen — der Kontext liefert sie bewusst nicht.
+- Du bewegst dich strikt im Class-2-Universum: Work-Item-Titel, Kind, Status, Projektname/-typ/-methode/-lifecycle und vorhandene Links. NICHTS anderes.
+- Die \`from_work_item_id\` und \`to_work_item_id\` MÜSSEN exakt den UUIDs entsprechen, die im Kontext (source_work_items bzw. related_work_items) auftauchen. Erfinde keine IDs.
+- \`to_project_id\` MUSS aus dem source_project- oder related_projects-Set kommen. Erfinde keine Projekte.
+- Schlage KEINEN Link vor, der in existing_links bereits vorhanden ist (gleiche from/to-Endpoints, gleiche oder verwandte Art).
+- \`kind\` wählst du aus den 7 zugelassenen Tokens und mit folgender Semantik:
+  - relates: lose semantische Verbindung
+  - blocks: A blockiert B (B kann erst nach A fertig werden)
+  - requires: A benötigt B als Voraussetzung
+  - duplicates: A und B sind faktisch dieselbe Arbeit
+  - delivers: A liefert ein Ergebnis an B (typisch Child → Parent)
+  - precedes: A muss zeitlich vor B kommen
+  - includes: A enthält B als Teil
+- \`lag_days\` setzt du nur, wenn der Kind das hergibt (precedes/requires) — sonst null.
+- Liefere eine leere Liste, wenn die Projekte fachlich keine Berührung haben — kein erzwungenes Padding.
+- \`confidence\` reflektiert deine Sicherheit: high nur, wenn die Titel und Kontextlage die Empfehlung klar tragen.`
+
+function projectLine(
+  p: {
+    project_id: string
+    name: string
+    project_type: string | null
+    project_method: string | null
+    lifecycle_status: string
+    relation?: string
+  },
+): string {
+  const rel = p.relation ? `[${p.relation}]` : ""
+  return `  - project:${p.project_id} · ${p.name} ${rel} · type=${p.project_type ?? "—"} · method=${p.project_method ?? "—"} · lifecycle=${p.lifecycle_status}`
+}
+
+function buildCrossProjectLinksPrompt(
+  request: CrossProjectLinksGenerationRequest,
+): string {
+  const ctx = request.context
+  const lines: string[] = []
+
+  lines.push("Source-Projekt:")
+  lines.push(projectLine(ctx.source_project))
+  lines.push("")
+
+  if (ctx.related_projects.length > 0) {
+    lines.push("Verwandte Projekte (parent / children / siblings):")
+    for (const p of ctx.related_projects) lines.push(projectLine(p))
+    lines.push("")
+  } else {
+    lines.push(
+      "Verwandte Projekte: KEINE im RLS-Sichtbarkeitsbereich. Liefere wahrscheinlich eine leere Liste.",
+    )
+    lines.push("")
+  }
+
+  if (ctx.source_work_items.length > 0) {
+    lines.push("Work-Items des Source-Projekts (work_item_id · kind · status · titel):")
+    for (const w of ctx.source_work_items) {
+      lines.push(
+        `  - ${w.work_item_id} · ${w.kind} · ${w.status} · ${w.title}`,
+      )
+    }
+    lines.push("")
+  }
+
+  if (ctx.related_work_items.length > 0) {
+    lines.push("Work-Items der verwandten Projekte (project_id · work_item_id · kind · status · titel):")
+    for (const w of ctx.related_work_items) {
+      lines.push(
+        `  - ${w.project_id} · ${w.work_item_id} · ${w.kind} · ${w.status} · ${w.title}`,
+      )
+    }
+    lines.push("")
+  }
+
+  if (ctx.existing_links.length > 0) {
+    lines.push("Bereits vorhandene Links (NICHT duplizieren — gleiche from→to + ähnliche Art):")
+    for (const l of ctx.existing_links) {
+      const to = l.to_work_item_id ?? `project:${l.to_project_id}`
+      lines.push(
+        `  - ${l.from_work_item_id} —[${l.link_type}/${l.approval_state}]→ ${to}`,
+      )
+    }
+    lines.push("")
+  }
+
+  lines.push(
+    `Liefere bis zu ${request.count} prägnante Vorschläge. Wenn keine fachliche Verbindung erkennbar ist, liefere eine leere Liste.`,
+  )
+
+  return lines.join("\n")
+}
+
 export class AnthropicProvider implements AIProvider {
   readonly name = "anthropic" as const
   readonly modelId: string
@@ -441,6 +590,67 @@ export class AnthropicProvider implements AIProvider {
         kind: s.kind,
         affected_node_ids: s.affected_node_ids,
         estimated_savings_days: s.estimated_savings_days ?? null,
+        confidence: s.confidence,
+      })),
+      usage: {
+        input_tokens: usage?.inputTokens ?? null,
+        output_tokens: usage?.outputTokens ?? null,
+        latency_ms: Date.now() - start,
+      },
+    }
+  }
+
+  async generateCrossProjectLinks(
+    request: CrossProjectLinksGenerationRequest,
+  ): Promise<CrossProjectLinksGenerationOutput> {
+    const start = Date.now()
+    const result = await generateObject({
+      model: this.sdkProvider(this.modelId),
+      schema: CrossProjectLinksResponseSchema,
+      system: CROSS_PROJECT_LINKS_SYSTEM_PROMPT,
+      prompt: buildCrossProjectLinksPrompt(request),
+      temperature: 0.2,
+    })
+
+    const usage = result.usage as
+      | { inputTokens?: number; outputTokens?: number }
+      | undefined
+
+    // Defense-in-depth: filter out any suggestion whose ids are not in the
+    // prompt context. The Zod schema only validates UUID shape, not
+    // existence — the prompt instructs the model to stay inside the
+    // context set, but we trust-but-verify here.
+    const ctx = request.context
+    const sourceItemIds = new Set(
+      ctx.source_work_items.map((w) => w.work_item_id),
+    )
+    const relatedItemIds = new Set(
+      ctx.related_work_items.map((w) => w.work_item_id),
+    )
+    const inScopeProjectIds = new Set<string>([
+      ctx.source_project.project_id,
+      ...ctx.related_projects.map((p) => p.project_id),
+    ])
+
+    const validSuggestions = result.object.suggestions
+      .filter((s) => sourceItemIds.has(s.from_work_item_id))
+      .filter(
+        (s) =>
+          s.to_work_item_id === null ||
+          relatedItemIds.has(s.to_work_item_id) ||
+          sourceItemIds.has(s.to_work_item_id),
+      )
+      .filter((s) => inScopeProjectIds.has(s.to_project_id))
+
+    return {
+      suggestions: validSuggestions.map((s) => ({
+        title: s.title,
+        rationale: s.rationale,
+        kind: s.kind,
+        from_work_item_id: s.from_work_item_id,
+        to_work_item_id: s.to_work_item_id,
+        to_project_id: s.to_project_id,
+        lag_days: s.lag_days ?? null,
         confidence: s.confidence,
       })),
       usage: {

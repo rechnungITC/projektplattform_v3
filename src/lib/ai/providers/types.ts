@@ -11,6 +11,8 @@ import type {
   AIProviderName,
   CoachingAutoContext,
   CoachingGenerationOutput,
+  CrossProjectLinksAutoContext,
+  CrossProjectLinksGenerationOutput,
   NarrativeAutoContext,
   NarrativeGenerationOutput,
   ResourceSwapAutoContext,
@@ -53,6 +55,12 @@ export interface ResourceSwapGenerationRequest {
   count: number
 }
 
+export interface CrossProjectLinksGenerationRequest {
+  context: CrossProjectLinksAutoContext
+  /** Soft target for how many suggestions to emit (provider may emit fewer). */
+  count: number
+}
+
 /**
  * PROJ-30 + PROJ-34-γ.1 — generic provider interface. Methods are optional
  * so a provider can support a subset of purposes (e.g. Ollama implements
@@ -85,6 +93,10 @@ export interface AIProvider {
   generateResourceSwap?(
     request: ResourceSwapGenerationRequest,
   ): Promise<ResourceSwapGenerationOutput>
+  // PROJ-65 ε.4.γ — cross-project-link suggestions (Class-2, advisory)
+  generateCrossProjectLinks?(
+    request: CrossProjectLinksGenerationRequest,
+  ): Promise<CrossProjectLinksGenerationOutput>
 }
 
 /**

@@ -1,18 +1,16 @@
 "use client"
 
 /**
- * PROJ-65 ε.4.α — AI Proposal Drawer (project-wide, multi-purpose).
+ * PROJ-65 ε.4 — AI Proposal Drawer (project-wide, multi-purpose).
  *
- * First slice ships only the `trajectory_sequence` tab. Later ε.4 slices
- * add `resource_swap` (Class-3, Ollama-only) and `cross_project_links`
- * (Class-2). The tab shell is in place so adding a purpose is just a new
- * <TabsContent>.
+ * Three tabs:
+ *   - Trajektorie (ε.4.α `trajectory_sequence`, Class-2 advisory)
+ *   - Ressourcen  (ε.4.β `resource_swap`,        Class-3 Ollama-only)
+ *   - Cross-Project (ε.4.γ `cross_project_links`, Class-2 advisory)
  *
- * Suggestions render as cards with: title, rationale, kind icon, affected
- * node count, confidence, optional savings estimate, and accept/reject
- * controls when still in `draft`. Accept is advisory — it flips the
- * status without creating a downstream entity. The user then opens the
- * Plan-Mutate flow on the affected nodes to apply the change.
+ * All three accept advisory: status flips to `accepted` without creating
+ * a downstream entity. The user applies via the respective operational
+ * flow (Plan-Mutate, Swap-Preview, PROJ-27 create-link dialog).
  */
 
 import * as React from "react"
@@ -46,6 +44,7 @@ import {
   type TrajectorySequenceSuggestionRow,
 } from "@/lib/ai-proposals/trajectory-sequence-api"
 
+import { CrossProjectLinksTab } from "./ai-proposals/cross-project-links-tab"
 import { ResourceSwapTab } from "./ai-proposals/resource-swap-tab"
 
 interface AIProposalDrawerProps {
@@ -191,12 +190,7 @@ export function AIProposalDrawer({
           <TabsList>
             <TabsTrigger value="trajectory">Trajektorie</TabsTrigger>
             <TabsTrigger value="resources">Ressourcen</TabsTrigger>
-            <TabsTrigger value="links" disabled>
-              Cross-Project
-              <Badge variant="outline" className="ml-1.5 text-[10px]">
-                ε.4.γ
-              </Badge>
-            </TabsTrigger>
+            <TabsTrigger value="links">Cross-Project</TabsTrigger>
           </TabsList>
 
           <TabsContent value="trajectory" className="mt-4 space-y-3">
@@ -276,6 +270,10 @@ export function AIProposalDrawer({
 
           <TabsContent value="resources" className="mt-4">
             <ResourceSwapTab projectId={projectId} />
+          </TabsContent>
+
+          <TabsContent value="links" className="mt-4">
+            <CrossProjectLinksTab projectId={projectId} />
           </TabsContent>
         </Tabs>
       </SheetContent>
