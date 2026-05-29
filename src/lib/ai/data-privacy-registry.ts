@@ -248,6 +248,18 @@ const REGISTRY: Record<string, DataClass> = {
   "stakeholder_skill_profiles.negotiation_skill_self": 3,
   "stakeholder_skill_profiles.decision_power_fremd": 3,
   "stakeholder_skill_profiles.decision_power_self": 3,
+
+  // -------------------- work_item_links (PROJ-65 ε.4.γ) -----------------
+  // PROJ-27 semantic links between work items. Structural metadata only:
+  // endpoint ids + link/approval enums + lag — no freetext, no personal
+  // data. Used by `cross_project_links` auto-context as Class-2.
+  "work_item_links.from_work_item_id": 1,
+  "work_item_links.to_work_item_id": 1,
+  "work_item_links.from_project_id": 1,
+  "work_item_links.to_project_id": 1,
+  "work_item_links.link_type": 1,
+  "work_item_links.approval_state": 1,
+  "work_item_links.lag_days": 1,
 }
 
 /**

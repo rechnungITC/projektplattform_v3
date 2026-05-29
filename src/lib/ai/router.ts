@@ -30,6 +30,7 @@ import type {
 
 import {
   classifyCoachingAutoContext,
+  classifyCrossProjectLinksAutoContext,
   classifyNarrativeAutoContext,
   classifyResourceSwapAutoContext,
   classifyRiskAutoContext,
@@ -49,11 +50,15 @@ import type {
   AIPurpose,
   CoachingAutoContext,
   CoachingRecommendation,
+  CrossProjectLinkSuggestion,
+  CrossProjectLinkSuggestionPersisted,
+  CrossProjectLinksAutoContext,
   DataClass,
   NarrativeAutoContext,
   RiskAutoContext,
   RiskSuggestion,
   RouterCoachingResult,
+  RouterCrossProjectLinksResult,
   RouterNarrativeResult,
   ResourceSwapAutoContext,
   ResourceSwapSuggestion,
@@ -1170,6 +1175,201 @@ export async function invokeResourceSwapGeneration({
     status: finalStatus,
     suggestion_ids: suggestionIds,
     external_blocked: externalBlocked || ollamaError !== null || provider.name === "stub",
+    error_message: finalErrorMessage ?? undefined,
+  }
+}
+
+// ---------------------------------------------------------------------------
+// PROJ-65 ε.4.γ — cross-project-links router
+// ---------------------------------------------------------------------------
+
+interface InvokeCrossProjectLinksGenerationArgs {
+  supabase: SupabaseClient
+  tenantId: string
+  projectId: string
+  actorUserId: string
+  context: CrossProjectLinksAutoContext
+  /** Soft target count (1–5); the provider may emit fewer. */
+  count: number
+}
+
+/**
+ * PROJ-65 ε.4.γ — generate cross-project-link advisory suggestions.
+ *
+ * Mirrors `invokeTrajectorySequenceGeneration` (Class-2 advisory) but for
+ * cross-project link suggestions:
+ *   - context classifier is `classifyCrossProjectLinksAutoContext`
+ *     (whitelist-based, Class-2 by design)
+ *   - falls back to `StubProvider.generateCrossProjectLinks` on provider
+ *     error so the FE never sees a 5xx for this purpose
+ *   - cost-cap purpose is `'cross_project_links'`
+ *
+ * The router enriches each suggestion with denormalised titles + project
+ * name so the FE can render the drawer card without extra round-trips.
+ * Accept is advisory — the relaxed `ki_suggestions_accepted_consistency`
+ * CHECK (eps4c migration) admits `status='accepted'` without an entity
+ * link; the user creates the actual link via PROJ-27's existing dialog.
+ */
+export async function invokeCrossProjectLinksGeneration({
+  supabase,
+  tenantId,
+  projectId,
+  actorUserId,
+  context,
+  count,
+}: InvokeCrossProjectLinksGenerationArgs): Promise<RouterCrossProjectLinksResult> {
+  const overrides = await loadTenantOverrides(supabase, tenantId)
+  const classification = classifyCrossProjectLinksAutoContext(
+    context,
+    overrides.privacyDefault as DataClass,
+  )
+  const choice = await selectProviderForPurpose(
+    supabase,
+    tenantId,
+    "cross_project_links",
+    classification,
+    overrides.providerConfig,
+  )
+  const { provider, externalBlocked, blockedReason } = await applyCostCap(
+    supabase,
+    tenantId,
+    choice,
+    "cross_project_links",
+  )
+
+  const runId = await insertKiRun(supabase, {
+    tenantId,
+    projectId,
+    actorUserId,
+    purpose: "cross_project_links",
+    classification,
+    provider,
+  })
+
+  let activeProvider: AIProvider = provider
+  let suggestions: CrossProjectLinkSuggestion[] = []
+  let inputTokens: number | null = null
+  let outputTokens: number | null = null
+  let latencyMs: number | null = null
+  let providerError: string | null = null
+  let providerFallbackMessage: string | null = null
+
+  try {
+    if (!provider.generateCrossProjectLinks) {
+      throw new Error(
+        `Provider ${provider.name} does not implement generateCrossProjectLinks`,
+      )
+    }
+    const result = await provider.generateCrossProjectLinks({ context, count })
+    suggestions = result.suggestions
+    inputTokens = result.usage.input_tokens
+    outputTokens = result.usage.output_tokens
+    latencyMs = result.usage.latency_ms
+  } catch (err) {
+    providerError = err instanceof Error ? err.message : String(err)
+    if (provider.name !== "stub") {
+      // Fall back to Stub so the FE never sees a 5xx for this purpose.
+      const fallbackProvider = new StubProvider()
+      const fallback = await fallbackProvider.generateCrossProjectLinks!({
+        context,
+        count,
+      })
+      providerFallbackMessage = `Provider ${provider.name} failed (${providerError}); fell back to Stub.`
+      activeProvider = fallbackProvider
+      suggestions = fallback.suggestions
+      inputTokens = fallback.usage.input_tokens
+      outputTokens = fallback.usage.output_tokens
+      latencyMs = fallback.usage.latency_ms
+      providerError = null
+    }
+  }
+
+  let finalStatus: "success" | "error" | "external_blocked"
+  if (providerError) {
+    finalStatus = "error"
+  } else if (externalBlocked || providerFallbackMessage) {
+    finalStatus = "external_blocked"
+  } else {
+    finalStatus = "success"
+  }
+
+  // Enrich payload with denormalised display labels (work-item titles +
+  // project names) so the FE can render the drawer card without extra
+  // round-trips. The raw IDs stay so the "Im Link-Dialog öffnen"-button
+  // keeps the deeplink params it needs.
+  const workItemTitleById = new Map<string, string>()
+  for (const w of context.source_work_items) {
+    workItemTitleById.set(w.work_item_id, w.title)
+  }
+  for (const w of context.related_work_items) {
+    workItemTitleById.set(w.work_item_id, w.title)
+  }
+  const projectNameById = new Map<string, string>()
+  projectNameById.set(
+    context.source_project.project_id,
+    context.source_project.name,
+  )
+  for (const p of context.related_projects) {
+    projectNameById.set(p.project_id, p.name)
+  }
+  const enrichedSuggestions: CrossProjectLinkSuggestionPersisted[] = suggestions.map((s) => ({
+    ...s,
+    display: {
+      from_work_item_title: workItemTitleById.get(s.from_work_item_id) ?? null,
+      to_work_item_title: s.to_work_item_id
+        ? workItemTitleById.get(s.to_work_item_id) ?? null
+        : null,
+      to_project_name: projectNameById.get(s.to_project_id) ?? null,
+      source_project_name: context.source_project.name,
+    },
+  }))
+
+  let suggestionIds: string[] = []
+  if (enrichedSuggestions.length > 0) {
+    const { data: sugRows, error: sugErr } = await supabase
+      .from("ki_suggestions")
+      .insert(
+        enrichedSuggestions.map((s) => ({
+          tenant_id: tenantId,
+          project_id: projectId,
+          ki_run_id: runId,
+          purpose: "cross_project_links",
+          payload: s,
+          original_payload: s,
+          status: "draft",
+          created_by: actorUserId,
+        })),
+      )
+      .select("id")
+    if (sugErr || !sugRows) {
+      providerError =
+        providerError ??
+        `ki_suggestions insert failed: ${sugErr?.message ?? "unknown"}`
+      finalStatus = "error"
+    } else {
+      suggestionIds = sugRows.map((r) => r.id as string)
+    }
+  }
+
+  const finalErrorMessage =
+    providerError ?? providerFallbackMessage ?? blockedReason ?? null
+  await updateKiRunStatus(supabase, runId, {
+    status: finalStatus,
+    inputTokens,
+    outputTokens,
+    latencyMs,
+    errorMessage: finalErrorMessage,
+    provider: activeProvider,
+  })
+
+  return {
+    run_id: runId,
+    classification,
+    provider: activeProvider.name as AIProviderName,
+    model_id: activeProvider.modelId,
+    status: finalStatus,
+    suggestion_ids: suggestionIds,
+    external_blocked: externalBlocked || providerFallbackMessage !== null,
     error_message: finalErrorMessage ?? undefined,
   }
 }

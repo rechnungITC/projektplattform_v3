@@ -19,6 +19,7 @@
 import type {
   AIProvider,
   CoachingGenerationRequest,
+  CrossProjectLinksGenerationRequest,
   NarrativeGenerationRequest,
   ResourceSwapGenerationRequest,
   RiskGenerationRequest,
@@ -27,6 +28,8 @@ import type {
 } from "./types"
 import type {
   CoachingGenerationOutput,
+  CrossProjectLinkSuggestion,
+  CrossProjectLinksGenerationOutput,
   NarrativeGenerationOutput,
   ResourceSwapGenerationOutput,
   RiskGenerationOutput,
@@ -321,6 +324,137 @@ export class StubProvider implements AIProvider {
     const start = Date.now()
     return {
       suggestions: [],
+      usage: {
+        input_tokens: 0,
+        output_tokens: 0,
+        latency_ms: Date.now() - start,
+      },
+    }
+  }
+
+  /**
+   * PROJ-65 ε.4.γ — deterministic cross-project-link stub.
+   *
+   * Two conservative heuristics that emit only Class-1/2-safe suggestions:
+   *   1) Duplicate-title heuristic — pairs of work-items across projects
+   *      whose titles overlap on a token >=4 chars are flagged as
+   *      `duplicates` (low confidence). Cheap signal for "two teams
+   *      tracking the same thing".
+   *   2) Parent-child delivers — if the source project is a child of one
+   *      of the related projects, the first work-item of the source is
+   *      proposed as `delivers` toward the parent's first work-item.
+   *
+   * Always emits ≤ `request.count` suggestions; emits zero when nothing
+   * matches. Skips pairs that already have an existing (non-rejected)
+   * link in the context.
+   */
+  async generateCrossProjectLinks(
+    request: CrossProjectLinksGenerationRequest,
+  ): Promise<CrossProjectLinksGenerationOutput> {
+    const start = Date.now()
+    const {
+      source_project,
+      related_projects,
+      source_work_items,
+      related_work_items,
+      existing_links,
+    } = request.context
+    const out: CrossProjectLinkSuggestion[] = []
+    const max = Math.max(0, Math.min(request.count, 5))
+
+    if (max === 0 || source_work_items.length === 0) {
+      return {
+        suggestions: out,
+        usage: {
+          input_tokens: 0,
+          output_tokens: 0,
+          latency_ms: Date.now() - start,
+        },
+      }
+    }
+
+    // Lookup table of "we already have a link between these two ids" so
+    // we don't propose duplicates of existing links.
+    const existingPairs = new Set<string>(
+      existing_links.map(
+        (l) => `${l.from_work_item_id}::${l.to_work_item_id ?? l.to_project_id}`,
+      ),
+    )
+    const STOPWORDS = new Set([
+      "und",
+      "oder",
+      "der",
+      "die",
+      "das",
+      "ein",
+      "eine",
+      "the",
+      "and",
+      "for",
+      "with",
+      "von",
+      "fur",
+      "für",
+      "mit",
+    ])
+    const tokenize = (s: string) =>
+      s
+        .toLowerCase()
+        .split(/[^a-zäöüß0-9]+/i)
+        .filter((t) => t.length >= 4 && !STOPWORDS.has(t))
+
+    // 1) Duplicate-title heuristic.
+    for (const src of source_work_items) {
+      if (out.length >= max) break
+      const srcTokens = new Set(tokenize(src.title))
+      if (srcTokens.size === 0) continue
+      for (const rel of related_work_items) {
+        if (out.length >= max) break
+        const pairKey = `${src.work_item_id}::${rel.work_item_id}`
+        if (existingPairs.has(pairKey)) continue
+        const relTokens = tokenize(rel.title)
+        const overlap = relTokens.filter((t) => srcTokens.has(t))
+        if (overlap.length === 0) continue
+        out.push({
+          title: `Mögliches Duplikat: "${src.title}" ↔ "${rel.title}"`,
+          rationale: `Beide Work-Items teilen das Schlüsselwort "${overlap[0]}". Klingt nach derselben Sache, die in zwei Projekten parallel verfolgt wird — Duplikat-Link prüfen, ggf. konsolidieren.`,
+          kind: "duplicates",
+          from_work_item_id: src.work_item_id,
+          to_work_item_id: rel.work_item_id,
+          to_project_id: rel.project_id,
+          lag_days: null,
+          confidence: "low",
+        })
+      }
+    }
+
+    // 2) Parent-child delivers (only when source is a child of a parent
+    //    we can see in the related set).
+    const parent = related_projects.find((p) => p.relation === "parent")
+    if (parent && out.length < max) {
+      const firstSrc = source_work_items[0]
+      const firstParentItem = related_work_items.find(
+        (w) => w.project_id === parent.project_id,
+      )
+      if (firstSrc && firstParentItem) {
+        const pairKey = `${firstSrc.work_item_id}::${firstParentItem.work_item_id}`
+        if (!existingPairs.has(pairKey)) {
+          out.push({
+            title: `${source_project.name} liefert an ${parent.name}`,
+            rationale: `Das Projekt ist Teil-Projekt von "${parent.name}". Die erste konkrete Lieferung ("${firstSrc.title}") sollte an das Parent-Work-Item ("${firstParentItem.title}") verlinkt werden, damit die Bridge sichtbar wird.`,
+            kind: "delivers",
+            from_work_item_id: firstSrc.work_item_id,
+            to_work_item_id: firstParentItem.work_item_id,
+            to_project_id: parent.project_id,
+            lag_days: null,
+            confidence: "low",
+          })
+        }
+      }
+    }
+
+    return {
+      suggestions: out,
       usage: {
         input_tokens: 0,
         output_tokens: 0,

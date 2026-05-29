@@ -16,6 +16,8 @@ export type AIPurpose =
   | "trajectory_sequence"
   // PROJ-65 ε.4.β — resource-swap suggestions (Class-3 hard-fix, Ollama-only, advisory)
   | "resource_swap"
+  // PROJ-65 ε.4.γ — cross-project work-item link suggestions (Class-2, advisory)
+  | "cross_project_links"
 
 export type DataClass = 1 | 2 | 3
 
@@ -518,6 +520,139 @@ export interface ResourceSwapGenerationOutput {
  * the `accepted_entity_*` link stays NULL on accept.
  */
 export interface RouterResourceSwapResult {
+  run_id: string
+  classification: DataClass
+  provider: AIProviderName
+  model_id: string | null
+  status: "success" | "error" | "external_blocked"
+  suggestion_ids: string[]
+  external_blocked: boolean
+  error_message?: string
+}
+
+// ---------------------------------------------------------------------------
+// PROJ-65 ε.4.γ — cross-project work-item link purpose types
+// ---------------------------------------------------------------------------
+
+/**
+ * Auto-context for cross-project-link suggestions. Class-2: project +
+ * work-item metadata (title/kind/status) + parent_project_id-based
+ * hierarchy + existing `work_item_links` so the model doesn't propose
+ * duplicates. Strictly NO personal data — `responsible_user_id`,
+ * `description`, stakeholder joins, audit fields are all out of scope
+ * (defense-in-depth enforced by `classifyCrossProjectLinksAutoContext`).
+ *
+ * The "candidate universe" mirrors PROJ-27 cross-project-link surface:
+ * the source project + its parent + direct children + sibling projects
+ * sharing the same parent — exactly the set a project lead would see in
+ * the existing link-create combobox (`/api/work-items/search`).
+ */
+export interface CrossProjectLinkProjectRef {
+  project_id: string
+  name: string
+  project_type: string | null
+  project_method: string | null
+  lifecycle_status: string
+  /** `self` (the project the user opened the drawer in) | `parent` |
+   *  `child` | `sibling`. UX hint only; never used as auth signal. */
+  relation: "self" | "parent" | "child" | "sibling"
+}
+
+export interface CrossProjectLinkWorkItemRef {
+  work_item_id: string
+  project_id: string
+  title: string
+  kind: string
+  status: string
+}
+
+export interface CrossProjectLinkExistingLink {
+  from_work_item_id: string
+  to_work_item_id: string | null
+  to_project_id: string
+  link_type: string
+  approval_state: string
+}
+
+export interface CrossProjectLinksAutoContext {
+  source_project: CrossProjectLinkProjectRef
+  related_projects: CrossProjectLinkProjectRef[]
+  source_work_items: CrossProjectLinkWorkItemRef[]
+  related_work_items: CrossProjectLinkWorkItemRef[]
+  /** Existing semantic links between any of the in-scope work-items.
+   *  Used by the prompt to avoid duplicate suggestions. */
+  existing_links: CrossProjectLinkExistingLink[]
+}
+
+/**
+ * Curated subset of PROJ-27 canonical link types that the AI is allowed
+ * to propose. Reverse tokens (`follows`, `blocked`, …) are intentionally
+ * excluded — the storage layer canonicalises them anyway, and constraining
+ * the prompt to canonical-only avoids confusing round-trips.
+ *
+ * Tokens map 1:1 to `work_item_links.link_type` (PROJ-27 migration
+ * 20260511210000) so the suggestion can be applied as-is via the existing
+ * create-link dialog without remapping.
+ */
+export type CrossProjectLinkKind =
+  | "relates"
+  | "blocks"
+  | "requires"
+  | "duplicates"
+  | "delivers"
+  | "precedes"
+  | "includes"
+
+export interface CrossProjectLinkSuggestion {
+  /** German one-line title that references both work-item titles. */
+  title: string
+  /** 1–3 sentence German rationale citing the observation that motivates
+   *  the link (e.g. "Story X in Project A liefert auf Phase Y in B"). */
+  rationale: string
+  /** PROJ-27 canonical link type. */
+  kind: CrossProjectLinkKind
+  /** Source work-item id — MUST appear in `source_work_items`. */
+  from_work_item_id: string
+  /** Target work-item id — MUST appear in `related_work_items`. NULL only
+   *  for whole-project `delivers`-links (mirrors PROJ-27 ST-08). */
+  to_work_item_id: string | null
+  /** Target project id — always set so the FE can deeplink even for
+   *  whole-project `delivers` suggestions. */
+  to_project_id: string
+  /** Optional lag in days (for `precedes`/`requires`). Provider may emit
+   *  null when not applicable. */
+  lag_days: number | null
+  /** Provider's self-confidence; the UI shows this as a small badge. */
+  confidence: "low" | "medium" | "high"
+}
+
+/** Server-side display enrichment for the drawer card (titles + project
+ *  names denormalised so the FE renders without extra round-trips). */
+export interface CrossProjectLinkSuggestionDisplay {
+  from_work_item_title: string | null
+  to_work_item_title: string | null
+  to_project_name: string | null
+  source_project_name: string | null
+}
+
+export interface CrossProjectLinkSuggestionPersisted
+  extends CrossProjectLinkSuggestion {
+  display?: CrossProjectLinkSuggestionDisplay
+}
+
+export interface CrossProjectLinksGenerationOutput {
+  suggestions: CrossProjectLinkSuggestion[]
+  usage: ProviderUsage
+}
+
+/**
+ * Result of a cross-project-links router invocation. Persisted as a
+ * `ki_runs` row + one `ki_suggestions` row per suggestion (purpose=
+ * 'cross_project_links'). The `accepted_entity_*` link stays NULL on
+ * accept — this is advisory; the user applies via the existing PROJ-27
+ * create-link dialog with its own audit trail.
+ */
+export interface RouterCrossProjectLinksResult {
   run_id: string
   classification: DataClass
   provider: AIProviderName

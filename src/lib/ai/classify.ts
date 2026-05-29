@@ -14,6 +14,7 @@
 import { classifyField } from "./data-privacy-registry"
 import type {
   CoachingAutoContext,
+  CrossProjectLinksAutoContext,
   DataClass,
   NarrativeAutoContext,
   ResourceSwapAutoContext,
@@ -367,4 +368,113 @@ export function classifyResourceSwapAutoContext(
   _tenantDefault: DataClass = 3,
 ): DataClass {
   return 3
+}
+
+// ---------------------------------------------------------------------------
+// PROJ-65 ε.4.γ — cross-project-links classifier (whitelist-based)
+// ---------------------------------------------------------------------------
+
+/**
+ * Whitelist of field keys allowed in `CrossProjectLinksAutoContext`.
+ * Class-1/2 only: project metadata + work-item title/kind/status + link
+ * type/approval enums + UX relation hint. NO `responsible_user_id`,
+ * `description`, `created_by`, stakeholder joins, etc.
+ *
+ * Anything not on the list flips the classification to Class-3, mirroring
+ * the narrative + trajectory_sequence classifiers' "fail-safe" semantics.
+ * Extending the auto-context shape must update this list AND
+ * `data-privacy-registry`.
+ */
+const CROSS_PROJECT_LINKS_FIELD_WHITELIST: ReadonlySet<string> = new Set([
+  // source_project / related_projects items
+  "project_id",
+  "name",
+  "project_type",
+  "project_method",
+  "lifecycle_status",
+  "relation",
+  // source_work_items / related_work_items items
+  "work_item_id",
+  "title",
+  "kind",
+  "status",
+  // existing_links items
+  "from_work_item_id",
+  "to_work_item_id",
+  "to_project_id",
+  "link_type",
+  "approval_state",
+])
+
+const CROSS_PROJECT_LINKS_BLOCK_KEYS: ReadonlySet<string> = new Set([
+  "source_project",
+  "related_projects",
+  "source_work_items",
+  "related_work_items",
+  "existing_links",
+])
+
+function classifyCrossProjectLinksRecord(
+  record: Record<string, unknown>,
+): DataClass {
+  for (const [key, value] of Object.entries(record)) {
+    if (value === null || value === undefined || value === "") continue
+    if (!CROSS_PROJECT_LINKS_FIELD_WHITELIST.has(key)) {
+      return 3
+    }
+  }
+  return 2
+}
+
+/**
+ * PROJ-65 ε.4.γ — classify a `CrossProjectLinksAutoContext` payload.
+ *
+ * Returns the highest data class observed in the payload. Defense-in-depth
+ * over the allowlist already enforced by `collectCrossProjectLinksContext`.
+ * If a future shape change accidentally adds an un-whitelisted key (e.g.
+ * `responsible_user_id`, `description`), this classifier flips to Class-3
+ * and the router forces local routing — preventing any silent personal-
+ * data leak into a cloud provider.
+ */
+export function classifyCrossProjectLinksAutoContext(
+  ctx: CrossProjectLinksAutoContext,
+  tenantDefault: DataClass = 3,
+): DataClass {
+  let max: DataClass = 1
+
+  for (const [topKey, topValue] of Object.entries(ctx)) {
+    if (topValue === null || topValue === undefined) continue
+    if (
+      !CROSS_PROJECT_LINKS_FIELD_WHITELIST.has(topKey) &&
+      !CROSS_PROJECT_LINKS_BLOCK_KEYS.has(topKey)
+    ) {
+      return 3
+    }
+    if (
+      typeof topValue === "object" &&
+      !Array.isArray(topValue) &&
+      topValue !== null
+    ) {
+      const blockClass = classifyCrossProjectLinksRecord(
+        topValue as Record<string, unknown>,
+      )
+      max = bumpMax(max, blockClass)
+      if (max === 3) return 3
+    }
+    if (Array.isArray(topValue)) {
+      for (const item of topValue) {
+        if (item === null || typeof item !== "object") continue
+        const itemClass = classifyCrossProjectLinksRecord(
+          item as Record<string, unknown>,
+        )
+        max = bumpMax(max, itemClass)
+        if (max === 3) return 3
+      }
+    }
+  }
+
+  if (tenantDefault === 3 && max < 2) {
+    return max
+  }
+  return max
 }

@@ -22,7 +22,14 @@
 
 import type { SupabaseClient } from "@supabase/supabase-js"
 
-import type { NarrativeAutoContext, RiskAutoContext } from "./types"
+import type {
+  CrossProjectLinkExistingLink,
+  CrossProjectLinkProjectRef,
+  CrossProjectLinkWorkItemRef,
+  CrossProjectLinksAutoContext,
+  NarrativeAutoContext,
+  RiskAutoContext,
+} from "./types"
 
 const WORK_ITEMS_LIMIT = 30
 const RISKS_LIMIT = 50
@@ -745,5 +752,257 @@ export async function collectResourceSwapContext(
     work_items: contextWorkItems,
     candidate_resources: candidateResources,
     candidate_pool_truncated_by: candidatePoolTruncatedBy,
+  }
+}
+
+// ---------------------------------------------------------------------------
+// PROJ-65 ε.4.γ — cross-project-links context collector
+// ---------------------------------------------------------------------------
+
+const CROSS_PROJECT_LINKS_PER_PROJECT_LIMIT = 30
+const CROSS_PROJECT_LINKS_RELATED_PROJECTS_LIMIT = 12
+const CROSS_PROJECT_LINKS_EXISTING_LINKS_LIMIT = 200
+
+/**
+ * Build the Class-2 auto-context for cross-project-link suggestions.
+ *
+ * Candidate-universe scope:
+ *   - source project (the one the user opened the drawer in)
+ *   - parent project (via `projects.parent_project_id`) if any
+ *   - direct children (projects pointing at source via parent_project_id)
+ *   - siblings (projects that share the same parent — only when source has
+ *     a parent; otherwise omitted to avoid pulling the entire tenant
+ *     portfolio)
+ *
+ * Allowlist (Class-1/2 only; defense-in-depth at `classify.ts`):
+ *   projects:        project_id, name, project_type, project_method,
+ *                    lifecycle_status (+ derived `relation`)
+ *   work_items:      work_item_id, project_id, title, kind, status
+ *                    (is_deleted=false)
+ *   work_item_links: from_work_item_id, to_work_item_id, to_project_id,
+ *                    link_type, approval_state
+ *
+ * Stakeholders, descriptions, freetext, audit columns are NOT included.
+ *
+ * RLS does the heavy lifting: the caller only sees projects they're a
+ * member of. The set of `related_projects` we surface here is therefore
+ * an intersection of "structurally related via parent_project_id" and
+ * "RLS-visible to the caller" — we never leak project IDs the caller
+ * has no view-access to.
+ */
+export async function collectCrossProjectLinksContext(
+  supabase: SupabaseClient,
+  projectId: string,
+): Promise<CrossProjectLinksAutoContext> {
+  const sourceRes = await supabase
+    .from("projects")
+    .select(
+      "id, name, project_type, project_method, lifecycle_status, parent_project_id",
+    )
+    .eq("id", projectId)
+    .maybeSingle()
+  if (sourceRes.error)
+    throw new Error(`projects (source): ${sourceRes.error.message}`)
+  if (!sourceRes.data) throw new Error("Project not found.")
+
+  const source = sourceRes.data as {
+    id: string
+    name: string
+    project_type: string | null
+    project_method: string | null
+    lifecycle_status: string
+    parent_project_id: string | null
+  }
+
+  // Pull parent + children + siblings via parent_project_id. Two queries
+  // because Supabase doesn't compose OR over different equality columns
+  // cleanly when one side is null.
+  const [parentRes, childrenRes, siblingsRes] = await Promise.all([
+    source.parent_project_id
+      ? supabase
+          .from("projects")
+          .select("id, name, project_type, project_method, lifecycle_status")
+          .eq("id", source.parent_project_id)
+          .maybeSingle()
+      : Promise.resolve({ data: null, error: null }),
+    supabase
+      .from("projects")
+      .select("id, name, project_type, project_method, lifecycle_status")
+      .eq("parent_project_id", projectId)
+      .limit(CROSS_PROJECT_LINKS_RELATED_PROJECTS_LIMIT),
+    source.parent_project_id
+      ? supabase
+          .from("projects")
+          .select("id, name, project_type, project_method, lifecycle_status")
+          .eq("parent_project_id", source.parent_project_id)
+          .neq("id", projectId)
+          .limit(CROSS_PROJECT_LINKS_RELATED_PROJECTS_LIMIT)
+      : Promise.resolve({ data: [], error: null }),
+  ])
+
+  if (parentRes.error)
+    throw new Error(`projects (parent): ${parentRes.error.message}`)
+  if (childrenRes.error)
+    throw new Error(`projects (children): ${childrenRes.error.message}`)
+  if (siblingsRes.error)
+    throw new Error(`projects (siblings): ${siblingsRes.error.message}`)
+
+  type ProjectRow = {
+    id: string
+    name: string
+    project_type: string | null
+    project_method: string | null
+    lifecycle_status: string
+  }
+
+  const sourceRef: CrossProjectLinkProjectRef = {
+    project_id: source.id,
+    name: source.name,
+    project_type: source.project_type,
+    project_method: source.project_method,
+    lifecycle_status: source.lifecycle_status,
+    relation: "self",
+  }
+
+  const relatedRefs: CrossProjectLinkProjectRef[] = []
+  if (parentRes.data) {
+    const p = parentRes.data as ProjectRow
+    relatedRefs.push({
+      project_id: p.id,
+      name: p.name,
+      project_type: p.project_type,
+      project_method: p.project_method,
+      lifecycle_status: p.lifecycle_status,
+      relation: "parent",
+    })
+  }
+  for (const c of (childrenRes.data ?? []) as ProjectRow[]) {
+    relatedRefs.push({
+      project_id: c.id,
+      name: c.name,
+      project_type: c.project_type,
+      project_method: c.project_method,
+      lifecycle_status: c.lifecycle_status,
+      relation: "child",
+    })
+  }
+  for (const s of (siblingsRes.data ?? []) as ProjectRow[]) {
+    relatedRefs.push({
+      project_id: s.id,
+      name: s.name,
+      project_type: s.project_type,
+      project_method: s.project_method,
+      lifecycle_status: s.lifecycle_status,
+      relation: "sibling",
+    })
+  }
+
+  const relatedIds = relatedRefs.map((r) => r.project_id)
+
+  // Pull work-items for source + related projects in two queries (one
+  // each so the limits apply per-side rather than as one global cap).
+  const [sourceWorkItemsRes, relatedWorkItemsRes] = await Promise.all([
+    supabase
+      .from("work_items")
+      .select("id, project_id, title, kind, status")
+      .eq("project_id", projectId)
+      .eq("is_deleted", false)
+      .order("created_at", { ascending: false })
+      .limit(CROSS_PROJECT_LINKS_PER_PROJECT_LIMIT),
+    relatedIds.length > 0
+      ? supabase
+          .from("work_items")
+          .select("id, project_id, title, kind, status")
+          .in("project_id", relatedIds)
+          .eq("is_deleted", false)
+          .order("created_at", { ascending: false })
+          .limit(
+            CROSS_PROJECT_LINKS_PER_PROJECT_LIMIT * relatedIds.length,
+          )
+      : Promise.resolve({ data: [], error: null }),
+  ])
+
+  if (sourceWorkItemsRes.error)
+    throw new Error(
+      `work_items (source): ${sourceWorkItemsRes.error.message}`,
+    )
+  if (relatedWorkItemsRes.error)
+    throw new Error(
+      `work_items (related): ${relatedWorkItemsRes.error.message}`,
+    )
+
+  type WorkItemRow = {
+    id: string
+    project_id: string
+    title: string
+    kind: string
+    status: string
+  }
+
+  const sourceWorkItems: CrossProjectLinkWorkItemRef[] = (
+    (sourceWorkItemsRes.data ?? []) as WorkItemRow[]
+  ).map((w) => ({
+    work_item_id: w.id,
+    project_id: w.project_id,
+    title: w.title,
+    kind: w.kind,
+    status: w.status,
+  }))
+  const relatedWorkItems: CrossProjectLinkWorkItemRef[] = (
+    (relatedWorkItemsRes.data ?? []) as WorkItemRow[]
+  ).map((w) => ({
+    work_item_id: w.id,
+    project_id: w.project_id,
+    title: w.title,
+    kind: w.kind,
+    status: w.status,
+  }))
+
+  // Existing links between any of the in-scope work-items — prompt uses
+  // them to avoid duplicate suggestions. Scope-filter on the from-side
+  // because every link has a from_work_item_id; we keep rows whose to
+  // side lands inside the in-scope set OR points at an in-scope project
+  // (whole-project `delivers`-links).
+  let existingLinks: CrossProjectLinkExistingLink[] = []
+  const sourceItemIds = new Set(sourceWorkItems.map((w) => w.work_item_id))
+  const relatedItemIds = new Set(relatedWorkItems.map((w) => w.work_item_id))
+  const inScopeItemIds = new Set<string>([...sourceItemIds, ...relatedItemIds])
+  const inScopeProjectIds = new Set<string>([
+    projectId,
+    ...relatedIds,
+  ])
+
+  if (inScopeItemIds.size > 0) {
+    const idsArr = Array.from(inScopeItemIds)
+    const linksRes = await supabase
+      .from("work_item_links")
+      .select(
+        "from_work_item_id, to_work_item_id, to_project_id, link_type, approval_state",
+      )
+      .in("from_work_item_id", idsArr)
+      .neq("approval_state", "rejected")
+      .limit(CROSS_PROJECT_LINKS_EXISTING_LINKS_LIMIT)
+    if (linksRes.error)
+      throw new Error(`work_item_links: ${linksRes.error.message}`)
+    type LinkRow = {
+      from_work_item_id: string
+      to_work_item_id: string | null
+      to_project_id: string
+      link_type: string
+      approval_state: string
+    }
+    existingLinks = ((linksRes.data ?? []) as LinkRow[]).filter((l) => {
+      // Keep if to-side is inside the in-scope sets (item or whole-project).
+      if (l.to_work_item_id) return inScopeItemIds.has(l.to_work_item_id)
+      return inScopeProjectIds.has(l.to_project_id)
+    })
+  }
+
+  return {
+    source_project: sourceRef,
+    related_projects: relatedRefs,
+    source_work_items: sourceWorkItems,
+    related_work_items: relatedWorkItems,
+    existing_links: existingLinks,
   }
 }

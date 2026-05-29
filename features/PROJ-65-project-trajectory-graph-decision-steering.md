@@ -3526,3 +3526,62 @@ CIA empfahl ursprünglich Defer zu PROJ-67; User entschied bewusst „jetzt mit 
 ### Status
 
 ε.4.β ist **production-ready**. Backend live in Prod-DB; FE komplett. Awaiting `/deploy`-Tag. Verbleibend in PROJ-65: nur noch **ε.4.γ** `cross_project_links` (Class-2). Drawer-Shell ist weiterhin 3-tab-fähig — γ aktiviert den letzten Tab.
+
+## UU) /backend + /frontend ε.4.γ Implementation Log (2026-05-29)
+
+**Slice geliefert:** Third (and final) of three ε.4 AI sub-slices: `cross_project_links` (Class-2 advisory, cloud-OK). Schließt PROJ-65 komplett ab. Mirror-and-Extend des bestehenden Multi-Purpose-Routers über das in ε.4.α etablierte Pattern — neue Purpose-Registration + neue Auto-Context-Allowlist + Stub/Anthropic-Impl. Kein CIA-Pass nötig, da rein additiv über etabliertes Pattern (acht bestehende Purposes — `risks`, `narrative`, `sentiment`, `coaching`, `trajectory_sequence`, `resource_swap` — als Vorlage). PROJ-65 ε.4.β war Vorbedingung (Drawer-Shell + accepted_consistency-Relax-Liste bereits multi-purpose-fähig).
+
+### Architektur-Entscheidungen
+
+| Entscheidung | Lock |
+|---|---|
+| **Class-2 Hard-Floor via Whitelist-Classifier** | `classifyCrossProjectLinksAutoContext` mit `CROSS_PROJECT_LINKS_FIELD_WHITELIST` (defense-in-depth über `collectCrossProjectLinksContext`-Allowlist). Wenn künftig versehentlich Class-3-Felder (z.B. `responsible_user_id`, `description`) in den Kontext rutschen, fällt der Classifier auf Class-3 und der Router routet lokal — keine Cloud-Leakage. |
+| **Candidate-Universe = Parent/Children/Siblings** | Source-Projekt + parent_project_id-basierte Hierarchie (parent + direct children + siblings sharing parent). Mirror der bestehenden PROJ-27 cross-project-link surface (`/api/work-items/search`). KEIN tenant-wide-fan-out — bewahrt RLS-Boundary und vermeidet Prompt-Token-Explosion. |
+| **Persistence in ki_suggestions** | Wiederverwendet PROJ-12 `ki_suggestions` mit `purpose='cross_project_links'`. `ki_suggestions_purpose_check` erweitert, `ki_suggestions_accepted_consistency` für advisory-Accept relaxed (purpose-Set jetzt `('trajectory_sequence','resource_swap','cross_project_links')`). Keine neue Tabelle. |
+| **Advisory Accept** | Accept flippt `status='accepted'` ohne `accepted_entity_*`-Link. Mensch legt den eigentlichen `work_item_links`-Row via PROJ-27 Link-Create-Dialog an. Trennt AI-Approval vom operativen Link-Vertrag (lag_days, approval_state für cross-project bleiben in Lead-Hand). |
+| **Provider-Fallback** | Bei Provider-Error fällt der Router auf `StubProvider.generateCrossProjectLinks` zurück (deterministische Heuristik: Token-Overlap → duplicates, parent-child → delivers). UI sieht nie 5xx; `status='external_blocked'`. |
+| **ID-Validation defense-in-depth** | Anthropic-Provider filtert nach `generateObject`: jede Suggestion deren `from_work_item_id` / `to_work_item_id` / `to_project_id` nicht im Prompt-Kontext-Set steht wird verworfen. Schützt vor halluzinierten IDs auch wenn der System-Prompt sie verbietet. |
+| **Curated kind-Subset** | Nur 7 canonical PROJ-27 link types (`relates`, `blocks`, `requires`, `duplicates`, `delivers`, `precedes`, `includes`) — reverse-Tokens absichtlich ausgeschlossen. Storage canonicalisiert ohnehin; Beschränkung auf canonical-only spart Prompt-Tokens und vermeidet UX-confusing round-trips. |
+
+### Migration
+
+`supabase/migrations/20260529100000_proj65_eps4c_cross_project_links_purpose.sql` — applied to Prod-DB 2026-05-29.
+
+| Teil | Status |
+|---|---|
+| **1** `ki_runs_purpose_check` Rebuild + `'cross_project_links'` | ✅ |
+| **2** `ki_suggestions_purpose_check` Rebuild + `'cross_project_links'` | ✅ |
+| **3** `ki_suggestions_accepted_consistency` relax: `purpose IN ('trajectory_sequence','resource_swap','cross_project_links')` ohne Entity-Link bei accepted | ✅ |
+| **4** `tenant_ai_cost_caps_purpose_check` Rebuild + `'cross_project_links'` | ✅ |
+| **Smoke** 4 statische Checks auf alle vier Constraints | ✅ |
+
+### Neue / geänderte Files
+
+| Path | Status |
+|---|---|
+| `src/lib/ai/types.ts` | edited — `'cross_project_links'` zur `AIPurpose`-Union; `CrossProjectLinkProjectRef`, `CrossProjectLinkWorkItemRef`, `CrossProjectLinkExistingLink`, `CrossProjectLinksAutoContext`, `CrossProjectLinkKind`, `CrossProjectLinkSuggestion`, `CrossProjectLinkSuggestionDisplay`, `CrossProjectLinkSuggestionPersisted`, `CrossProjectLinksGenerationOutput`, `RouterCrossProjectLinksResult` |
+| `src/lib/ai/data-privacy-registry.ts` | edited — `work_item_links.{from_work_item_id,to_work_item_id,from_project_id,to_project_id,link_type,approval_state,lag_days}` als Class-1 |
+| `src/lib/ai/classify.ts` | edited — `classifyCrossProjectLinksAutoContext` (Whitelist-basiert, Class-2 default) |
+| `src/lib/ai/auto-context.ts` | edited — `collectCrossProjectLinksContext` (parent/children/siblings über `parent_project_id`; top-30 work-items per project; existing `work_item_links` zwischen in-scope items; rejected-links ausgefiltert) |
+| `src/lib/ai/providers/types.ts` | edited — `CrossProjectLinksGenerationRequest`; optional `generateCrossProjectLinks` auf `AIProvider` |
+| `src/lib/ai/providers/stub.ts` | edited — zwei deterministische Heuristiken (Token-Overlap >= 4 chars → duplicates; parent-child → delivers); existing-links dedup |
+| `src/lib/ai/providers/anthropic.ts` | edited — Zod-Schema (`CrossProjectLinksResponseSchema`), System-Prompt, `buildCrossProjectLinksPrompt`, `generateCrossProjectLinks`-Methode mit ID-Validation (filtert halluzinierte IDs aus dem Output) |
+| `src/lib/ai/router.ts` | edited — `invokeCrossProjectLinksGeneration` (Mirror invokeTrajectorySequenceGeneration + Payload-Enrichment via display-Block) |
+| `src/app/api/projects/[id]/ai/cross-project-links/route.ts` | NEW — POST (generate) + GET (list, status-filter) |
+| `src/app/api/projects/[id]/ai/cross-project-links/[sid]/accept/route.ts` | NEW — advisory accept (status flip, kein Entity-Create) |
+| `src/lib/ai-proposals/cross-project-links-api.ts` | NEW — fetch wrappers (list/trigger/accept/reject) |
+| `src/components/projects/ai-proposals/cross-project-links-tab.tsx` | NEW — Tab-Komponente mit Class-2-Banner, „Vorschläge generieren"-Button, LinkCard (Kind-Icon mit 7 Farben, source→target Badges, Lag-Hinweis, Confidence, „Im Link-Dialog öffnen"-Button, Accept/Reject) |
+| `src/components/projects/ai-proposal-drawer.tsx` | edited — Cross-Project-Tab aktiviert (ε.4.γ-Badge entfernt); `<TabsContent value="links">` rendert `<CrossProjectLinksTab>`; Header-Comment auf 3-Tab-Final-State aktualisiert |
+| `supabase/migrations/20260529100000_proj65_eps4c_cross_project_links_purpose.sql` | NEW — vier CHECK-Constraint-Erweiterungen + Smoke-DO-Block |
+
+### Tests + Build
+
+- ✅ `npx tsc --noEmit` clean (alle Fehler ausschließlich in vorhandenen Test-Fixtures unverändert von vorher)
+- ✅ `npm run lint` 0 errors (2 unrelated baseline `form.watch` warnings → F-PROJ-65-52)
+- ✅ `npx vitest run` — **1557/1557 grün** in 187 Files
+- ✅ `npm run build` clean in 9.6s — neue Routes registriert: `/api/projects/[id]/ai/cross-project-links` und `/api/projects/[id]/ai/cross-project-links/[sid]/accept`
+- ✅ Migration smoke checks pass (alle 4 CHECK-Constraints akzeptieren `cross_project_links`)
+
+### Status
+
+ε.4.γ ist **production-ready**. Backend live in Prod-DB; FE komplett. Awaiting `/deploy`-Tag. **PROJ-65 damit komplett abgeschlossen** — alle vier Slices ε.1 / ε.2 / ε.3 / ε.4 deployed; alle drei ε.4-Sub-Slices α/β/γ jeweils mit eigener Migration + Anthropic/Ollama-Provider + Stub-Fallback + Drawer-Tab + advisory-Accept-Pfad.
