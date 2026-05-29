@@ -1,8 +1,8 @@
 # PROJ-61: Jira-like Releases with Story Gantt / Phase Mapping
 
-## Status: Approved
+## Status: Deployed (included in production since v1.65.0-PROJ-65; reverified against v1.77.0-PROJ-65-eps4c mainline)
 **Created:** 2026-05-09
-**Last Updated:** 2026-05-13
+**Last Updated:** 2026-05-29
 
 ## Summary
 
@@ -321,6 +321,34 @@ QA-Verifikation:
 Restrisiko:
 
 - Logged-in Browser-E2E fuer die echte Release-UI bleibt offen, bis die projektweite Auth-Fixture mit gueltiger Supabase-Service-Role-Config im jeweiligen Worktree verfuegbar ist. Die Backend-/Summary-Regeln sind durch Vitest abgedeckt, und der Build verifiziert die UI-Typen.
+
+## Deploy / Status Closure — 2026-05-29
+
+Status: **Deployed**.
+
+Abschlussgrund:
+
+- PROJ-61 wurde ueber PR #27 (`cf00239`) in `main` gemerged.
+- Der Merge ist Vorfahr von `main` und von allen spaeteren Production-Tags ab `v1.65.0-PROJ-65`.
+- Damit ist PROJ-61 nicht nur approved, sondern produktiv enthalten. Ein eigener neuer PROJ-61-Deploy-Tag waere historisch irrefuehrend, weil heute kein neuer Runtime-Artefakt fuer PROJ-61 ausgeliefert wurde.
+
+Production-Evidence:
+
+- Erster Production-Deploy, der PROJ-61 enthaelt: `31bed00 deploy(PROJ-65): ε.1 to production via tag v1.65.0-PROJ-65 (#45)` am 2026-05-21.
+- Aktueller verifizierter Mainline-/Production-Stand: `a8d4df7 deploy(PROJ-65): ε.4.γ to production via tag v1.77.0-PROJ-65-eps4c (#76)` am 2026-05-29.
+- `git merge-base --is-ancestor cf00239 main` und `git merge-base --is-ancestor cf00239 HEAD` beide erfolgreich.
+
+Reverification 2026-05-29:
+
+| Check | Ergebnis |
+|---|---|
+| Fokus-Vitest PROJ-61 | PASS, 4 Files / 16 Tests |
+| `npm run lint` | PASS, 0 Errors; 2 bestehende React-Compiler-Warnungen ausserhalb PROJ-61 |
+
+Bookkeeping:
+
+- `features/INDEX.md` auf **Deployed** aktualisiert.
+- Keine Codeaenderung und kein neuer Deploy ausgefuehrt.
 
 ## Architecture Options
 
