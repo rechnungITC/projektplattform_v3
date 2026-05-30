@@ -14,7 +14,7 @@
 import { zodResolver } from "@hookform/resolvers/zod"
 import { AlertTriangle, ChevronDown, Loader2, Target, Trash2 } from "lucide-react"
 import * as React from "react"
-import { useForm } from "react-hook-form"
+import { useForm, useWatch } from "react-hook-form"
 import { toast } from "sonner"
 import { z } from "zod"
 
@@ -186,6 +186,17 @@ export function GoalDetailPanel({
       source_ref: { kind: "none", id: null },
       auto_pull_date: false,
     },
+  })
+
+  // PROJ-67 AC-4 — `useWatch` is memoisation-safe; `form.watch(...)` in
+  // JSX makes React Compiler skip optimisation for this component.
+  const watchedSourceRefKind = useWatch({
+    control: form.control,
+    name: "source_ref.kind",
+  })
+  const watchedAutoPullDate = useWatch({
+    control: form.control,
+    name: "auto_pull_date",
   })
 
   React.useEffect(() => {
@@ -447,7 +458,7 @@ export function GoalDetailPanel({
                         onChange={(e) => field.onChange(e.target.checked)}
                         disabled={
                           !canEdit ||
-                          form.watch("source_ref.kind") === "none"
+                          watchedSourceRefKind === "none"
                         }
                         className="h-4 w-4 rounded border-border"
                         data-testid="auto-pull-date-toggle"
@@ -470,9 +481,9 @@ export function GoalDetailPanel({
                         type="date"
                         value={field.value ?? ""}
                         onChange={field.onChange}
-                        disabled={!canEdit || form.watch("auto_pull_date")}
+                        disabled={!canEdit || watchedAutoPullDate}
                         placeholder={
-                          form.watch("auto_pull_date")
+                          watchedAutoPullDate
                             ? "(auto aus Quelle)"
                             : undefined
                         }
