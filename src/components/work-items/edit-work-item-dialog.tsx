@@ -3,7 +3,7 @@
 import { zodResolver } from "@hookform/resolvers/zod"
 import { AlertTriangle, Loader2 } from "lucide-react"
 import * as React from "react"
-import { useForm } from "react-hook-form"
+import { useForm, useWatch } from "react-hook-form"
 import { toast } from "sonner"
 import { z } from "zod"
 
@@ -126,6 +126,12 @@ export function EditWorkItemDialog({
       attributes_json: stringifyAttributes(item.attributes),
     },
   })
+
+  // PROJ-67 AC-4 — `useWatch` is memoisation-safe; `form.watch(...)` in
+  // JSX makes React Compiler skip optimisation for this component.
+  const watchedPhaseId = useWatch({ control: form.control, name: "phase_id" })
+  const watchedPlannedStart = useWatch({ control: form.control, name: "planned_start" })
+  const watchedPlannedEnd = useWatch({ control: form.control, name: "planned_end" })
 
   React.useEffect(() => {
     if (open) {
@@ -407,9 +413,9 @@ export function EditWorkItemDialog({
             </div>
 
             <PhaseDateRangeWarning
-              phaseId={form.watch("phase_id")}
-              wpStart={form.watch("planned_start")}
-              wpEnd={form.watch("planned_end")}
+              phaseId={watchedPhaseId}
+              wpStart={watchedPlannedStart}
+              wpEnd={watchedPlannedEnd}
               phases={phases}
             />
 

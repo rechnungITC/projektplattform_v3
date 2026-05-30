@@ -1,6 +1,6 @@
 # PROJ-67 - Codebase Review Quality Hardening
 
-## Status: Planned
+## Status: In Progress (AC-4 + AC-5 closed 2026-05-30; AC-1/2/3/6/7/8 pending)
 
 **Created:** 2026-05-28
 **Origin:** Codebase Review 2026-05-28
@@ -45,8 +45,8 @@ Dieses PROJ bündelt diese Review-Funde als Hardening-Slice. Ziel ist nicht, neu
 - [ ] AC-1: `npm run test:e2e -- --project=chromium` läuft grün oder die Tenant-Settings-Baseline wurde nach sichtbarer UI-Freigabe bewusst aktualisiert.
 - [ ] AC-2: `npm run test:e2e` ist lokal/CI reproduzierbar oder Mobile Safari wird in Umgebungen ohne WebKit-Systembibliotheken explizit und nachvollziehbar übersprungen.
 - [ ] AC-3: E2E-WebServer-Logs enthalten keine React-Hydration-Mismatch-Warnungen mehr für Settings/Profile/Resources/Signup.
-- [ ] AC-4: `npm run lint` läuft ohne React-Compiler-Warnungen; insbesondere keine `form.watch(...)`-Reads direkt im JSX/Renderpfad der zwei betroffenen Komponenten.
-- [ ] AC-5: `npm audit --json` ist triagiert; alle 7 moderate Findings sind entweder durch kontrollierte Upgrades behoben oder mit Exploitability/Owner/Follow-up dokumentiert.
+- [x] AC-4: `npm run lint` läuft ohne React-Compiler-Warnungen; insbesondere keine `form.watch(...)`-Reads direkt im JSX/Renderpfad der zwei betroffenen Komponenten. **Erledigt 2026-05-30** — `goal-detail-panel.tsx` (3 sites: source_ref.kind, auto_pull_date ×2) und `edit-work-item-dialog.tsx` (3 sites: phase_id, planned_start, planned_end) auf `useWatch({ control: form.control, name: ... })` umgestellt; `npm run lint` jetzt 0 errors + 0 warnings (vorher 0 errors + 2 warnings).
+- [x] AC-5: `npm audit --json` ist triagiert; alle 7 moderate Findings sind entweder durch kontrollierte Upgrades behoben oder mit Exploitability/Owner/Follow-up dokumentiert. **Erledigt 2026-05-29 via PR #77** — 5 von 7 moderate CVEs via `npm audit fix` non-breaking aufgelöst (ws < 8.20.1, uuid < 11.1.1, svix transitive, resend transitive). Verbleibende 2: transitives `postcss` über `next/node_modules/postcss` — `npm audit fix` würde nur via breaking Next-Downgrade auflösen; wartet auf upstream Next-Bump.
 - [ ] AC-6: `npm run check:schema-drift` hat einen dokumentierten lokalen Pfad mit frischer Shadow-DB oder ein klares Runbook mit `DATABASE_URL`-Setup.
 - [ ] AC-7: `gitnexus query` funktioniert ohne ReadOnly-FTS-Warnungen und liefert wieder Prozess-/Symboltreffer.
 - [ ] AC-8: Alle `eslint-disable`-Treffer in `src` sind entweder entfernt oder mit knapper Begründung und Owner-Entscheidung bestätigt.
