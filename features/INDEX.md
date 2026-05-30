@@ -84,7 +84,8 @@
 | PROJ-66 | Settings Navigation in der linken Main Sidebar vereinheitlichen — rechte Settings-Zusatznavigation entfernen und Project Trash als admin-only Unterpunkt von Einstellungen in die linke Main Sidebar verschieben. | Deployed | [Spec](PROJ-66-settings-navigation-main-sidebar.md) | 2026-05-23 |
 | PROJ-67 | Codebase Review Quality Hardening — Visual-Regression, E2E-Infra, React-Hydration, React-Compiler-Warnungen, Dependency-Audit und lokale Schema-Drift-Prüfbarkeit aus Review 2026-05-28. | Planned | [Spec](PROJ-67-codebase-review-quality-hardening.md) | 2026-05-28 |
 | PROJ-68 | DB-Hygiene-Slice (RLS-Initplan + Permissive-Policies + Trigger-EXECUTE-Revokes) — 12 RLS-Policies mit `(SELECT auth.uid())`-Wrap statt direktem `auth.uid()` (Performance: 1× pro Query statt pro Zeile), 5 Permissive-Policies-Cluster konsolidiert (4× `FOR ALL` → split nach INSERT/UPDATE/DELETE; 1× zwei SELECT-Policies konsolidiert), 3 Trigger-internal SECURITY-DEFINER-Functions EXECUTE revoked von anon+authenticated. **Deployed 2026-05-30 via 3 atomare Migrations 20260530{100000,110000,120000}; Supabase advisor performance 37 WARN → 0 WARN, security 38 → 24 WARN (alle 3 anon-SECURITY-DEFINER weg + 12 initplan + 25 multi-permissive weg); 1557/1557 vitest grün** | Deployed | [Spec](PROJ-68-db-rls-hygiene-slice.md) | 2026-05-29 |
+| PROJ-69 | DB Index Audit (102 unindexed FKs + 73 unused indexes) — Workload-driven cleanup statt mechanical fix: jede Finding klassifizieren (Add/Skip/Drop/Keep mit Evidence-Anker auf Route/RPC/Feature-Spec), dann 3 Migrationen (add-FK-indexes mit CONCURRENTLY, drop-unused, audit-notes als COMMENTs für künftige Linter-Läufe). Ziel: `get_advisors(performance)` ≤ 30 INFO (alle remaining sind dokumentierte Keep-Entscheidungen). ~1.5 PT in 3 Phasen. | Planned | [Spec](PROJ-69-db-index-audit.md) | 2026-05-29 |
 
 <!-- Add features above this line -->
 
-## Next Available ID: PROJ-69
+## Next Available ID: PROJ-70
