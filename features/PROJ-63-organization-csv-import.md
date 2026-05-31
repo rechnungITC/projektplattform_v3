@@ -1,8 +1,9 @@
 # PROJ-63: Organization CSV Import
 
-## Status: Approved
+## Status: Deployed
 **Created:** 2026-05-09
-**Last Updated:** 2026-05-13
+**Last Updated:** 2026-05-31
+**Deployed:** 2026-05-13 (code/migration); Status-Closure 2026-05-31 (Prod-Verify: `organization_imports` table present, `/api/organization-imports` + `/stammdaten/organisation/import` answer 307 auth-gate)
 **Priority:** P1
 **CIA-reviewed:** 2026-05-09 (papaparse als neue Dep freigegeben; 2 fixe Layouts statt offenes Schema)
 

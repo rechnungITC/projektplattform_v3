@@ -1,6 +1,6 @@
 # PROJ-34: Stakeholder Communication Tracking
 
-## Status: Approved (alle Slices α/β/γ.1/γ.2/δ/ε/ζ live + QA-Pass + F-9 audit-restore — ready for /deploy)
+## Status: Deployed (Status-Closure 2026-05-31; alle Slices α/β/γ.1/γ.2/δ/ε/ζ + QA-Pass + F-9 audit-restore live in production)
 **Created:** 2026-05-06
 **Last Updated:** 2026-05-13
 
