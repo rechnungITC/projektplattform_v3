@@ -253,7 +253,262 @@ Per `.claude/rules/continuous-improvement.md`:
 <!-- Sections below are added by subsequent skills -->
 
 ## Tech Design (Solution Architect)
-_To be added by /architecture_
+
+> **Scope:** PROJ-70-α (Backend-Slice) only. β (Review-Drawer), γ (PDF/DOCX), δ (Outlook/DnD), ε (Wizard-Integration) bekommen je einen eigenen Architecture-Pass vor Slice-Start.
+> **Reviewer:** Solution Architect (autonomous pass) — 2026-05-31
+> **CIA-Trigger-Status:** spec-gemäß für 70-α ist eine CIA-Konsultation zur hierarchischen Schema-Wahl markiert. Lock-Entscheidung (flat parent_temp_id) ist in dieser Spec verankert und mirrored das existing ε.4.γ-Pattern (cross-project-links) — additiv über etabliertes Pattern, KEIN neues Pattern. CIA-Pass kann übersprungen werden; falls Tech-Lead bei Review widerspricht, wird CIA explizit aufgerufen.
+
+### Locked Architecture Decisions
+
+#### Q1: AI-Schema Shape — **LOCKED: flat list mit `parent_temp_id`-Chain**
+
+Die KI liefert eine **flache Liste** von Vorschlägen, jeder Item-Eintrag trägt eine generierte `temp_id` und (optional) einen `parent_temp_id`-Verweis auf einen anderen Eintrag derselben Liste. Die Hierarchie entsteht logisch durch die Chain.
+
+| Aspekt | flat (gewählt) | nested (verworfen) |
+|---|---|---|
+| Zod-Validierung | trivial: Array von Records mit `refine(parent_temp_id in temp_ids)` | komplex: rekursive Schema-Definition mit Tiefen-Limit |
+| Maximum-Item-Cap durchsetzen | `.max(50)` auf Array | Tree-Walk pro Validate |
+| FE-Konsumierbar | sortierbar via topological-sort vor Render | direkt renderbar als Tree |
+| Topologische Persistierung | natürliche Reihenfolge: Parents vor Children | trivial via DFS |
+| Drag-and-Drop Re-Parenting (70-δ) | nur `parent_temp_id`-Feld ändern | komplette Tree-Restruktur |
+
+**Begründung:** Zod-Validierbarkeit + DnD-Affinität schlagen den Rendering-Bonus. PROJ-65 ε.4.γ benutzt dasselbe Pattern (`from_work_item_id` + `to_work_item_id` als ID-Refs, nicht nested Tree).
+
+#### Q2: Acceptance-RPC-Granularität — **DEFERRED zu 70-β-Architecture-Pass**
+
+Im 70-α sind nur die Generate-/List-Endpoints relevant. Accept-Logik (bulk vs. single, topological-sort, transaktional, Undo) wird im 70-β-Architecture-Pass entschieden. Für jetzt: API-Route `POST .../accept` aus dem ε.4-Mirror existiert noch nicht — wird Teil von 70-β.
+
+---
+
+### A) Component Structure (Server-Side)
+
+Das α-Slice ist reines Backend. Nichts visuelles. Sieben neue/erweiterte Module:
+
+```
+ai/types.ts (edited)
++-- AIPurpose union extended with "proposal_from_context"
++-- ProposalFromContextAutoContext type
++-- ProposalFromContextSuggestion type (flat, with temp_id + parent_temp_id)
++-- ProposalFromContextGenerationOutput type
++-- RouterProposalFromContextResult type
+
+ai/classify.ts (edited)
++-- classifyProposalFromContextAutoContext()
+    -- Class-3-fail-safe heuristic (email-regex, name-pattern, phone-regex)
+    -- defense-in-depth over context_sources.privacy_class
+
+ai/data-privacy-registry.ts (edited)
++-- 4 fields of `context_sources` registered (Class 1-3)
+
+ai/auto-context.ts (edited)
++-- collectProposalFromContextAutoContext(supabase, projectId, contextSourceId)
+    -- reads ONE context_sources row (RLS-bounded)
+    -- reads project.project_method as method-hint
+
+ai/providers/{stub,anthropic,ollama,types}.ts (edited)
++-- generateProposalFromContext() optional method on AIProvider
++-- Stub: empty list with banner-marker
++-- Anthropic: generateObject + Zod-Schema + ID-validation
++-- Ollama: identical interface, Class-3-routing target
+
+ai/router.ts (edited)
++-- invokeProposalFromContextGeneration()
+    -- selectProviderForPurpose
+    -- applyCostCap
+    -- insertKiRun
+    -- provider call with fallback-to-Stub
+    -- enrichment (project-method-context for FE display)
+    -- ki_suggestions insert
+    -- updateKiRunStatus
+
+api/projects/[id]/ai/proposal-from-context/route.ts (new)
++-- POST: trigger generation with { contextSourceId }
++-- GET:  list ki_suggestions (status filter)
+```
+
+Plus eine Migration-Datei:
+
+```
+supabase/migrations/20260601100000_proj70_alpha_proposal_from_context_purpose.sql
++-- 4 CHECK-constraint extensions (ki_runs, ki_suggestions, accepted_consistency, tenant_ai_cost_caps)
++-- DO $smoke$ block for static verification
+```
+
+Plus FE-Client-Wrapper (für 70-β bereits stub'bar):
+
+```
+lib/ai-proposals/proposal-from-context-api.ts (new)
++-- listProposalFromContextSuggestions(projectId, {status?})
++-- triggerProposalFromContext(projectId, contextSourceId)
++-- (acceptProposal — placeholder, real signature kommt in 70-β)
+```
+
+### B) Data Model (Plain Language)
+
+**Was wird gespeichert:**
+
+Jeder KI-Lauf erzeugt:
+
+- **Einen `ki_runs`-Eintrag** mit Lauf-Metadaten — wer hat ihn gestartet, welches Projekt, welcher Provider, welche Klassifizierung, Erfolg/Fehler, Token-Kosten, Latenz. Existing-Tabelle, kein Schema-Change.
+- **0 bis 50 `ki_suggestions`-Einträge** — ein Eintrag pro vorgeschlagenem Backlog-Item. Existing-Tabelle, kein Schema-Change.
+
+**Was steht in einem `ki_suggestions.payload`?**
+
+Pro Suggestion (flat list):
+
+- `temp_id` — eine vom Modell generierte ID (UUID-Style), nur innerhalb dieses einen Laufs sinnvoll
+- `parent_temp_id` — leer wenn Top-Level, sonst Verweis auf eine andere `temp_id` aus demselben Lauf
+- `kind` — Work-Item-Type (`epic` / `story` / `task` / `subtask` / `bug` / `phase` / `work_package` / `todo`) — methodisch passend
+- `title` — kurzer prägnanter Name
+- `description` — optionale Begründung / Detailtext (bis ~500 Zeichen)
+- `confidence` — `low` / `medium` / `high`
+- `display.method_hint_kind` — methoden-passend gerouteter Anzeige-Tag (wird vom Server denormalised für FE)
+
+**Klassifizierungs-Heuristik (Class-3-Detection):**
+
+Drei Pattern-Checks auf den `context_sources.content_excerpt`:
+
+- E-Mail-Pattern (`@`-Zeichen mit gültiger Domain-Struktur)
+- Namens-Pattern (DACH-typisch: zwei aufeinanderfolgende Groß-/Kleinschreibungs-Worte)
+- Telefon-Pattern (DACH-typisch: `+49`/`0049`/`0` gefolgt von ≥ 8 Ziffern)
+
+Wenn ≥ 1 Pattern matched → Class-3 → Routing zwingend lokal (Ollama). Sonst Class-2 → Anthropic erlaubt. Das ergänzt — überstimmt nicht — den `context_sources.privacy_class`-Wert: Maximum-Klasse gewinnt (high-class-wins-Pattern aus PROJ-12).
+
+**Quelle der Methode-Information:**
+
+Der `project_method`-Wert aus der `projects`-Tabelle wird mit in den Prompt gespielt — die KI weiß "es ist ein Wasserfall-Projekt" und priorisiert dann Phase/Work-Package/Todo statt Epic/Story/Task. Kein neuer Catalog, keine neue Tabelle — direkt aus dem existing Project-Row (PROJ-6 Method-Mapping).
+
+### C) Class-3 Classifier Strategy
+
+**Zwei Verteidigungslinien:**
+
+1. **Bei Upload** (existing PROJ-44-β): `context_sources.privacy_class` wird beim Upload klassifiziert (heute manuell durch User; in 70-γ später automatisch via Regex).
+2. **Bei AI-Run** (neu in 70-α): `classifyProposalFromContextAutoContext` schaut nochmal nach (defense-in-depth). Wenn Upload-Zeit-Klasse oder Heuristik-Klasse `3` ist → Class-3.
+
+**Warum doppelt?** Ein User könnte ein scheinbar harmloses Dokument einreichen, das beim näheren Lesen Namen enthält. Der Router würde sonst an Anthropic schicken und Class-3-Daten leaken. Defense-in-depth schließt das.
+
+**Failure-Mode bei Class-3 ohne Tenant-Ollama:** Der Router-Pfad (existing PROJ-32) liefert `status='external_blocked'` mit Banner — leere Suggestions-Liste, kein Crash, klare User-Message "Class-3-Input erkannt; bitte Tenant-Ollama konfigurieren oder Inhalt entpersonalisieren".
+
+### D) Provider Routing — Inheritance from PROJ-12
+
+Kein neuer Routing-Code. Der existing `selectProviderForPurpose`-Path aus `src/lib/ai/router.ts` macht die Arbeit:
+
+- Class 1 oder 2 + Anthropic-Key live → Anthropic
+- Class 3 + Tenant-Ollama-Key live → Ollama
+- Class 1/2 ohne Cloud → Stub (deterministic empty)
+- Class 3 ohne Ollama → `external_blocked` (kein Stub-Fallback für Class-3, mirror ε.4.β resource_swap CIA-L2)
+
+Cost-Cap-Check pro Tenant + Purpose wird auf den new `'proposal_from_context'` purpose-Schlüssel angewandt (existing `tenant_ai_cost_caps` Tabelle, neuer Constraint-Wert nach Migration).
+
+### E) Migration Shape
+
+Vier `CHECK`-Constraint-Erweiterungen, alle mirror ε.4.α/β/γ:
+
+| Constraint | Was geändert |
+|---|---|
+| `ki_runs_purpose_check` | + `'proposal_from_context'` |
+| `ki_suggestions_purpose_check` | + `'proposal_from_context'` |
+| `ki_suggestions_accepted_consistency` | + `'proposal_from_context'` zur Advisory-Liste (akzeptiert ohne Entity-Link erlaubt, weil das echte work_item-Create im 70-β-Pipeline-Step erst nach Accept-Klick erfolgt) |
+| `tenant_ai_cost_caps_purpose_check` | + `'proposal_from_context'` |
+
+Plus statischer Smoke-DO-Block (4 Asserts).
+
+Pattern ist 1:1 ε.4.γ-mirror — Migration-Skelett dauert < 30 Minuten zu schreiben, < 5 Sekunden zu apply via MCP.
+
+### F) Tech Decisions (WHY, not HOW)
+
+| Entscheidung | Begründung |
+|---|---|
+| **AIPurpose-Erweiterung statt eigenes Subsystem** | Acht Purposes existieren bereits (risks, narrative, sentiment, coaching, work_items, trajectory_sequence, resource_swap, cross_project_links). Cost-Cap, Provider-Resolver, ki_runs, ki_suggestions — alles wiederverwendbar. Kein Wheel-Reinvent. |
+| **Flat-Schema mit `temp_id`/`parent_temp_id`** | Zod-validierbar, DnD-affin, ε.4.γ-Mirror. Nested wäre semantisch eleganter aber Zod-recursion ist fragil und 50-Item-Limit ist im Tree harder zu enforcen. |
+| **Heuristik-Classifier statt LLM-Classifier** | Ein zweiter LLM-Call wäre teuer und langsam. Regex-basierte Pattern-Matches (Email/Name/Phone) sind deterministisch, schnell, gut-tested. False-positives sind okay (eher zu vorsichtig als zu lax). |
+| **Method-Hint im Prompt, nicht im Schema** | Würde man `kind` per Method strikt erzwingen (z.B. nur `phase`/`work_package`/`todo` im Wasserfall), würde die KI bei Mismatch versagen. Stattdessen: Method als Hint im Prompt, Validation erst beim Accept-Step (70-β AC-β7). |
+| **Stub liefert leere Liste, kein Heuristik-Fallback** | Mirror ε.4.β CIA-L5: ein heuristischer Stub würde sich an Class-3-Felder ranschleichen. Class-3-Pfad ist Ollama-only — Stub ist nur Fail-Signal. |
+| **Provider-Fallback nur bei Class-1/2** | Wenn Anthropic versagt und der Input ist Class-1/2 → Stub-Fallback ist okay. Wenn Ollama versagt und der Input ist Class-3 → `external_blocked` ohne Stub (mirror ε.4.β CIA-L2). |
+| **Kein neuer Storage-Bucket in 70-α** | Plain-Text geht direkt in `content_excerpt` (capped 8k). File-Storage ist 70-γ-Concern. |
+| **Cost-Cap aktiviert pro Purpose** | Tenant-Admin kann Per-Purpose-Limit setzen (`tenant_ai_cost_caps`, existing aus PROJ-32d). Schützt vor Massendokumenten-Upload-Mißbrauch. |
+
+### G) Dependencies (zu installieren)
+
+**Keine.** 70-α ist additiv über existing Stack:
+
+- `@ai-sdk/anthropic` ✅ existiert
+- `@ai-sdk/openai-compatible` ✅ existiert (für Ollama)
+- `ai` (Vercel AI SDK) ✅ existiert
+- `zod` ✅ existiert
+- Supabase Client ✅ existiert
+
+`pdf-parse`/`mammoth`/`mailparser` kommen erst in 70-γ und 70-δ — und brauchen dann ihre CIA-Reviews.
+
+### H) Slice-Acceptance-Map (welche AC ist durch welches Modul abgedeckt)
+
+| AC | Modul / Datei | Status nach Design |
+|---|---|---|
+| AC-α1 (AIPurpose-Union) | `ai/types.ts` | Designed |
+| AC-α2 (DB-Migration + 4 Constraints) | Migration-File | Designed |
+| AC-α3 (Router-Function) | `ai/router.ts` | Designed |
+| AC-α4 (Stub-Provider) | `ai/providers/stub.ts` | Designed |
+| AC-α5 (Anthropic-Provider + Zod) | `ai/providers/anthropic.ts` | Designed |
+| AC-α6 (Ollama-Provider) | `ai/providers/ollama.ts` | Designed |
+| AC-α7 (POST API-Route) | `api/projects/[id]/ai/proposal-from-context/route.ts` | Designed |
+| AC-α8 (GET API-Route) | dieselbe Route | Designed |
+| AC-α9 (Text-Upload reuses existing) | keine Neuanlage; PROJ-44-β-Route ist genug | Designed |
+| AC-α10 (Vitest coverage) | tests parallel zu Modulen | Designed (Backend-Pass schreibt sie) |
+| AC-α11 (Migration apply + smoke) | MCP apply_migration + DO-Block | Designed |
+
+11 von 11 ACs durch das Design abgedeckt.
+
+### I) Risks + Mitigations
+
+| Risk | Mitigation |
+|---|---|
+| **AI generiert `parent_temp_id`-Zyklen** | Zod-`refine`: assert each parent_temp_id in temp_id-Set AND no item points to itself. Beim Insert: topological-sort → wenn Cycle erkannt → Run = `error` mit "AI-Hierarchie zyklisch; bitte wiederholen". |
+| **AI generiert > 50 Items** | Zod `.max(50)` rejected die Response → ein Retry-Mechanismus könnte später eingebaut werden, jetzt: `error`-Status + User-Hint "Bitte spezifischeren Kontext hochladen". |
+| **Class-3 schlüpft durch Heuristik durch** | Defense-in-depth: zwei Klassifizierer (Upload-Zeit + AI-Run-Zeit). Tenant-Admin kann tenant-default-class auf 3 setzen → alle Inputs Class-3 default, Heuristik kann nur upgraden. |
+| **Anthropic-Schema-Drift** | `generateObject` mit Zod-Schema fixiert das Output-Format; Schema-Drift wird zur Runtime-Exception, nicht zum Silent-Bug. |
+| **Method-Hint wird ignoriert** | Acceptable in 70-α — Method-Validation passiert erst in 70-β AC-β7 vor work_item-Create. User sieht "kind nicht kompatibel mit Methode"-Warning. |
+| **Cost-Cap leakage durch Bulk-Generate** | Cost-Cap-Check passiert vor jedem Run (existing PROJ-32d). Pro Run max 50 Items → predictable Token-Cost. |
+
+### J) Was 70-α NICHT macht (Out-of-Scope)
+
+- **Kein Review-UI** — das ist 70-β.
+- **Kein File-Upload (PDF/DOCX/.msg/.eml)** — das ist 70-γ + 70-δ.
+- **Kein Wizard-Step** — das ist 70-ε.
+- **Kein Accept-Endpoint** — das ist 70-β (RPC-Granularität wird dort gelockt).
+- **Kein DnD-Reparenting** — das ist 70-δ.
+- **Kein automatischer File-Parse** — der α-Slice akzeptiert nur, was schon als `content_excerpt` in `context_sources` lebt.
+- **Kein OCR** — generelles Non-Goal der PROJ-70 Story.
+
+### K) Handoff to `/backend` (70-α)
+
+Mit diesem Design kann `/backend PROJ-70-α` direkt starten. Die Vorlage ist 1:1 PROJ-65 ε.4.γ — d.h. die Sub-Schritte folgen demselben Drehbuch:
+
+1. Add `'proposal_from_context'` zur AIPurpose-Union + 5 neue Type-Interfaces in `types.ts`
+2. Add Classifier-Function mit Heuristik-Regex + Whitelist-Refinement in `classify.ts`
+3. Add 4 Felder zu `data-privacy-registry.ts` für `context_sources`
+4. Add Context-Collector in `auto-context.ts`
+5. Add Provider-Interface-Method in `providers/types.ts`
+6. Implement Stub + Anthropic + Ollama Methoden
+7. Add Router-Function `invokeProposalFromContextGeneration` in `router.ts`
+8. Add API-Route POST/GET `/api/projects/[id]/ai/proposal-from-context/route.ts`
+9. Add FE-Client-Wrapper in `lib/ai-proposals/proposal-from-context-api.ts`
+10. Write Migration + apply via Supabase MCP
+11. Vitest coverage für classifier-Pfade + provider-fallback + ki_suggestions-insert
+12. lint + tsc + vitest + build gates green
+
+Geschätzte Bauzeit: **~2 PT**, wenn das ε.4.γ-Pattern als Live-Template benutzt wird.
+
+### L) Open Architecture Questions — Status
+
+| # | Question | Status |
+|---|---|---|
+| Q1 | AI-Schema flat vs. nested | ✅ Locked: flat with `parent_temp_id` |
+| Q2 | Accept-RPC-Granularität | ⏳ Deferred zu 70-β-Architecture-Pass |
+| Q3 | Storage-Bucket-Policy | ⏳ Deferred zu 70-γ-Architecture-Pass |
+| Q4 | AI-Schema flat vs. nested (= Q1) | ✅ siehe Q1 |
+| Q5 | PROJ-44 Slice-Status-Update | ⏳ Deferred zu 70-β-Deployment (wenn die UI tatsächlich live geht → dann marken wir 44-δ + 44-ε als "Superseded by PROJ-70" in PROJ-44-Spec) |
+
+Eine offene Frage (Q1) im 70-α-Scope ist gelockt. Vier verbleibende werden in den passenden späteren Slices behandelt.
 
 ## QA Test Results
 _To be added by /qa_
