@@ -53,7 +53,7 @@ export function EditWbsCodeDialog({
   React.useEffect(() => {
     if (open) {
       // Sync external prop into local draft when dialog re-opens.
-      // eslint-disable-next-line react-hooks/set-state-in-effect
+      // eslint-disable-next-line react-hooks/set-state-in-effect -- one-shot reset from incoming work item values when dialog opens
       setDraft(item.wbs_code ?? "")
       setConfirmingReset(false)
     }

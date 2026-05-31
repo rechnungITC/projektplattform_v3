@@ -1,6 +1,6 @@
 # PROJ-67 - Codebase Review Quality Hardening
 
-## Status: In Progress (AC-4 + AC-5 closed 2026-05-30; AC-1/2/3/6/7/8 pending)
+## Status: In Progress (AC-4 + AC-5 closed 2026-05-30; AC-8 closed 2026-05-31; AC-1/2/3/6/7 pending)
 
 **Created:** 2026-05-28
 **Origin:** Codebase Review 2026-05-28
@@ -38,7 +38,7 @@ Dieses PROJ bündelt diese Review-Funde als Hardening-Slice. Ziel ist nicht, neu
 | F5 | Medium | Security/Deps | `npm audit` meldet 7 moderate Findings, 0 high/critical. |
 | F6 | Low/Medium | Schema QA | `npm run check:schema-drift` lokal ohne `DATABASE_URL` nicht ausführbar. |
 | F7 | Low/Medium | Tooling | `gitnexus query` meldet FTS-Index-Writeversuch auf read-only DB und liefert keine belastbaren Query-Ergebnisse. |
-| F8 | Low | Hygiene | 20 `eslint-disable`-Treffer in `src`; Review/Reduktion sinnvoll. |
+| F8 | Low | Hygiene | 23 `eslint-disable`-Treffer in `src`; Review/Reduktion sinnvoll. |
 
 ## Acceptance Criteria
 
@@ -49,7 +49,7 @@ Dieses PROJ bündelt diese Review-Funde als Hardening-Slice. Ziel ist nicht, neu
 - [x] AC-5: `npm audit --json` ist triagiert; alle 7 moderate Findings sind entweder durch kontrollierte Upgrades behoben oder mit Exploitability/Owner/Follow-up dokumentiert. **Erledigt 2026-05-29 via PR #77** — 5 von 7 moderate CVEs via `npm audit fix` non-breaking aufgelöst (ws < 8.20.1, uuid < 11.1.1, svix transitive, resend transitive). Verbleibende 2: transitives `postcss` über `next/node_modules/postcss` — `npm audit fix` würde nur via breaking Next-Downgrade auflösen; wartet auf upstream Next-Bump.
 - [ ] AC-6: `npm run check:schema-drift` hat einen dokumentierten lokalen Pfad mit frischer Shadow-DB oder ein klares Runbook mit `DATABASE_URL`-Setup.
 - [ ] AC-7: `gitnexus query` funktioniert ohne ReadOnly-FTS-Warnungen und liefert wieder Prozess-/Symboltreffer.
-- [ ] AC-8: Alle `eslint-disable`-Treffer in `src` sind entweder entfernt oder mit knapper Begründung und Owner-Entscheidung bestätigt.
+- [x] AC-8: Alle `eslint-disable`-Treffer in `src` sind entweder entfernt oder mit knapper Begründung und Owner-Entscheidung bestätigt. **Erledigt 2026-05-31** — `rg -n "eslint-disable" src` zeigt 23 Treffer in 19 Files; vier fehlende Inline-Begründungen ergänzt (`EditWbsCodeDialog`, `BacklogClient`, `CreateWorkItemLinkDialog`, `BacklogTree`), die übrigen 19 Treffer hatten bereits knappe Owner-Entscheidungen.
 
 ## Non-Goals
 
