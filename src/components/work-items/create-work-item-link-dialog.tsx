@@ -179,7 +179,7 @@ export function CreateWorkItemLinkDialog({
     return () => {
       cancelled = true
     }
-    // eslint-disable-next-line react-hooks/exhaustive-deps
+    // eslint-disable-next-line react-hooks/exhaustive-deps -- reset must run only on open; search instance identity is intentionally ignored
   }, [open])
 
   const submit = async (e: React.FormEvent) => {

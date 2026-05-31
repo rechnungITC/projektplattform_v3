@@ -1,6 +1,6 @@
 # PROJ-69 — DB Index Audit (102 unindexed FKs · 73 unused indexes)
 
-## Status: Planned
+## Status: In Progress (Phase 1 triage completed 2026-05-31; alpha/beta/gamma migrations pending)
 
 **Created:** 2026-05-29
 **Origin:** Supabase advisor sweep 2026-05-29 post-PROJ-68 — 175 INFO-level performance findings (37 WARN-level all resolved by PROJ-68).
@@ -28,6 +28,8 @@ The mechanical PROJ-68 pattern (drop policy / wrap with SELECT / split FOR ALL) 
 The slice produces a **triaged list per finding**, then a small set of follow-up migrations — not one big "drop everything unused" sweep.
 
 ## Findings (snapshot 2026-05-30 post-PROJ-68)
+
+**Phase 1 update 2026-05-31:** read-only production catalog triage captured in [`docs/db-index-audit-2026-05-30.md`](../docs/db-index-audit-2026-05-30.md). Current catalog rows: 102 unindexed FKs, 72 non-unique zero-scan indexes, 18 zero-scan unique constraints kept out of the drop set. The original Supabase advisor snapshot reported 73 `unused_index` INFOs; Phase 2/3 must refresh `get_advisors(performance)` immediately before migration authoring.
 
 ### 102 unindexed FKs — top tables
 
@@ -61,11 +63,11 @@ The slice produces a **triaged list per finding**, then a small set of follow-up
 
 ## Acceptance Criteria
 
-- [ ] **AC-1: Workload classification** — every unindexed FK is classified as one of:
+- [x] **AC-1: Workload classification** — every unindexed FK is classified as one of:
   - **(a) Add index** — referenced via JOIN or used in a `WHERE fk_col = ?` filter found in ≥ 1 production route or RPC.
   - **(b) Skip — DELETE rare** — parent table has a `created_at`-only RLS pattern (deletes only happen via tenant offboarding); FK scan acceptable.
   - **(c) Skip — denormalized scan acceptable** — child table small (< 10k rows projected at pilot scale).
-- [ ] **AC-2: Index classification** — every unused index is classified as one of:
+- [x] **AC-2: Index classification** — every unused index is classified as one of:
   - **(α) Drop** — no route, no RPC, no test references the indexed column in a filter/JOIN; stats show zero scans across all envs.
   - **(β) Keep — feature-pending** — references a column used by a Planned/Architected feature in INDEX.md.
   - **(γ) Keep — admin/cron only** — used by audit-export / cron jobs that don't hit daily stats.
@@ -94,7 +96,7 @@ For each of 175 findings:
 3. Cross-reference with `features/INDEX.md` for Planned-feature dependencies
 4. Tag each finding with (a)/(b)/(c) or (α)/(β)/(γ) + 1-line evidence comment
 
-Output: a `docs/db-index-audit-2026-05-30.md` triage table.
+Output: a `docs/db-index-audit-2026-05-30.md` triage table. **Done 2026-05-31** — 102 FK rows classified (18 add-index, 84 skip/delete-rare); 72 current non-unique zero-scan indexes classified (7 drop, 58 feature-pending keep, 7 admin/cron keep); 18 zero-scan unique constraints excluded from drop candidates.
 
 ### Phase 2 — Apply add-index migration (0.5 PT)
 

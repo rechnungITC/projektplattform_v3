@@ -165,7 +165,7 @@ export function BacklogTree({
   // react-arborist exposes its node graph imperatively via treeRef; this
   // is the recommended consumption pattern (see react-arborist docs).
   const selectedNode = selectedId
-    // eslint-disable-next-line react-hooks/refs
+    // eslint-disable-next-line react-hooks/refs -- react-arborist exposes visible nodes via an imperative tree ref
     ? treeRef.current?.visibleNodes.find((n) => n.id === selectedId) ?? null
     : null
 

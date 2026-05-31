@@ -99,7 +99,7 @@ export function BacklogClient({ projectId, tenantId: _tenantId }: BacklogClientP
     if (stored === "list" || stored === "tree" || stored === "board") {
       // One-shot initial sync from localStorage; further changes flow via
       // handleViewModeChange. The setStates here run only once per mount.
-      // eslint-disable-next-line react-hooks/set-state-in-effect
+      // eslint-disable-next-line react-hooks/set-state-in-effect -- one-shot initial sync from localStorage before user-driven changes
       setViewMode(stored)
       setViewModeReady(true)
       return
