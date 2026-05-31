@@ -76,6 +76,7 @@ The product thesis: enterprise projects fail at the seams between execution, gov
 | PROJ-64 | P1 | Global Dashboard / My Work Inbox — operative Startseite mit My Work, Approvals, Portfolio-Health, Budget-/Risk-Alerts und Quick Actions statt Dashboard-Placeholder. | Architected |
 | _TBD_ | P2 | Governance workflows: approval gates, escalations, formal decisions | Planned |
 | _TBD_ | P2 | **Erweitertes Stakeholder-Management**: Skill-/Persönlichkeitsprofile (DISG, lizenz-geklärt), Kommunikations-Tracking (Sentiment/Kooperation/Reaktionszeit), KI-Coaching-Purpose, kritischer-Pfad-Indikator. Domain-Wissen: `docs/Stakeholderwissen/`. Promotion via `/requirements` (Single-Responsibility-Split in 3-4 Specs) + CIA-Review (überschneidet PROJ-8/13/12/30). | Domain-Knowledge |
+| PROJ-70 | P1 | Auto-Generated Backlog from Project Kickoff — User lädt Kickoff-Artefakt (PDF/DOCX/.msg/.eml/Text) hoch → KI generiert methodenadäquate Backlog-Hierarchie (Wasserfall/Scrum/Hybrid) → Review-Drawer mit single/bulk-accept + DnD-reparenting → akzeptierte Items werden zu `work_items` mit `ki_provenance`-Trace. Vereinigt PROJ-44-δ + PROJ-44-ε + PROJ-12 `work_items`-Purpose. 5 Sub-Slices α/β/γ/δ/ε. Class-3-Inputs → tenant-Ollama-only. Schließt PRD-Metriken "Time-to-structure < 1h" + "≥ 70% AI-Vorschläge ohne Rework akzeptiert". | Planned |
 
 ### Recommended Delivery Sequence — Assistant Track
 
