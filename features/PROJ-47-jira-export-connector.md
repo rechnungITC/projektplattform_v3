@@ -2,7 +2,7 @@
 
 ## Status
 
-Approved for deploy (backend alpha + frontend beta + QA gamma complete 2026-06-01; DB migration applied)
+Approved for deploy (backend alpha + frontend beta + QA gamma + status/assignee follow-up complete 2026-06-01; DB migration applied)
 
 ## Summary
 
@@ -292,11 +292,56 @@ Each external reference stores the outbound relationship from one V3 Work Item t
 
 ### QA Decision
 
-Production-ready recommendation: **READY for tenant-admin outbound MVP deploy**.
+Production-ready recommendation before follow-up: **READY for tenant-admin outbound MVP deploy**.
 
-Known deferred work:
+Follow-up targets:
 - Jira status transitions after create/update.
 - Jira assignee lookup/assignment.
+- Dedicated Playwright browser flow with mocked Jira APIs and authenticated fixture.
+
+## Implementation Notes - Status/Assignee Follow-up 2026-06-01
+
+### Delivered
+
+- Jira transition resolver added:
+  - resolves by transition id, transition name, target status id or target status name
+  - blocks ambiguous or unavailable transitions
+  - keeps status changes out of the core issue payload
+- Jira assignee resolver added:
+  - uses assignable-user search by responsible-user E-Mail
+  - assigns only a single active Jira `accountId`
+  - blocks ambiguous, inactive or invisible users
+- Jira REST client extended:
+  - `GET /rest/api/3/issue/{key}/transitions`
+  - `POST /rest/api/3/issue/{key}/transitions`
+  - `GET /rest/api/3/user/assignable/search`
+  - `PUT /rest/api/3/issue/{key}/assignee`
+- Export preview now reports status/assignee warnings before export where Jira can be checked safely.
+- Export job now applies optional enrichment after the core create/update:
+  - status transition only when resolution is unique
+  - assignee only when account resolution is unique
+  - non-fatal enrichment warnings are persisted in the per-item log
+- Jira export dialog now exposes `assignee_mode` and surfaces the first export-log warnings after a run.
+
+### QA Test Results
+
+- GitNexus impact before edits:
+  - `jiraRequest`: LOW, 3 direct Jira callers, 1 export process affected
+  - `buildJiraIssuePayload`: LOW, 1 direct caller, 1 export process affected
+  - `createJiraExportPreview`: LOW, preview route affected
+  - `runJiraExportJob`: LOW, export route affected
+  - `JiraExportDialog`: LOW, no indexed upstream callers
+- `npm run lint` passed.
+- Targeted Vitest passed: `src/lib/jira`, `src/lib/connectors/registry.test.ts` (6 files, 25 tests).
+- Full Vitest passed: 193 files, 1590 tests.
+- `npm run build` passed.
+- Production schema drift passed: 507 SELECT calls across 80 tables, 0 drift.
+
+### QA Decision
+
+Production-ready recommendation after follow-up: **READY for tenant-admin outbound MVP deploy**.
+
+Known deferred work:
 - Dedicated Playwright browser flow with mocked Jira APIs and authenticated fixture.
 
 ## V2 Reference Material

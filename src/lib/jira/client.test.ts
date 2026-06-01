@@ -1,11 +1,15 @@
 import { describe, expect, it, vi } from "vitest"
 
 import {
+  assignJiraIssue,
   buildJiraIssuePayload,
+  getJiraTransitions,
   JiraCredentialsSchema,
   jiraIssueUrl,
   sanitizeJiraError,
+  searchAssignableJiraUsers,
   testJiraConnection,
+  transitionJiraIssue,
 } from "./client"
 
 describe("Jira client", () => {
@@ -81,5 +85,95 @@ describe("Jira client", () => {
     expect(
       jiraIssueUrl({ base_url: "https://example.atlassian.net" }, "ABC-12")
     ).toBe("https://example.atlassian.net/browse/ABC-12")
+  })
+
+  it("loads and applies transitions through Jira v3 endpoints", async () => {
+    const credentials = {
+      base_url: "https://example.atlassian.net",
+      email: "admin@example.com",
+      api_token: "0123456789abcdef",
+      default_project_key: "ABC",
+    }
+    const fetchImpl = vi
+      .fn()
+      .mockResolvedValueOnce(
+        Response.json({
+          transitions: [{ id: "31", name: "Done", to: { name: "Done" } }],
+        })
+      )
+      .mockResolvedValueOnce(new Response(null, { status: 204 })) as unknown as typeof fetch
+
+    await expect(getJiraTransitions(credentials, "ABC-12", fetchImpl)).resolves.toEqual([
+      { id: "31", name: "Done", to: { name: "Done" } },
+    ])
+    await expect(
+      transitionJiraIssue(credentials, "ABC-12", "31", fetchImpl)
+    ).resolves.toBeUndefined()
+
+    expect(fetchImpl).toHaveBeenNthCalledWith(
+      1,
+      "https://example.atlassian.net/rest/api/3/issue/ABC-12/transitions",
+      expect.objectContaining({ method: "GET" })
+    )
+    expect(fetchImpl).toHaveBeenNthCalledWith(
+      2,
+      "https://example.atlassian.net/rest/api/3/issue/ABC-12/transitions",
+      expect.objectContaining({
+        method: "POST",
+        body: JSON.stringify({ transition: { id: "31" } }),
+      })
+    )
+  })
+
+  it("searches assignable users and assigns issues by accountId", async () => {
+    const credentials = {
+      base_url: "https://example.atlassian.net",
+      email: "admin@example.com",
+      api_token: "0123456789abcdef",
+      default_project_key: "ABC",
+    }
+    const fetchImpl = vi
+      .fn()
+      .mockResolvedValueOnce(
+        Response.json([
+          {
+            accountId: "acc-1",
+            emailAddress: "owner@example.com",
+            active: true,
+          },
+        ])
+      )
+      .mockResolvedValueOnce(new Response(null, { status: 204 })) as unknown as typeof fetch
+
+    await expect(
+      searchAssignableJiraUsers(
+        credentials,
+        { projectKey: "ABC", query: "owner@example.com" },
+        fetchImpl
+      )
+    ).resolves.toEqual([
+      {
+        accountId: "acc-1",
+        emailAddress: "owner@example.com",
+        active: true,
+      },
+    ])
+    await expect(
+      assignJiraIssue(credentials, "ABC-12", "acc-1", fetchImpl)
+    ).resolves.toBeUndefined()
+
+    expect(fetchImpl).toHaveBeenNthCalledWith(
+      1,
+      "https://example.atlassian.net/rest/api/3/user/assignable/search?project=ABC&query=owner%40example.com&maxResults=10",
+      expect.objectContaining({ method: "GET" })
+    )
+    expect(fetchImpl).toHaveBeenNthCalledWith(
+      2,
+      "https://example.atlassian.net/rest/api/3/issue/ABC-12/assignee",
+      expect.objectContaining({
+        method: "PUT",
+        body: JSON.stringify({ accountId: "acc-1" }),
+      })
+    )
   })
 })
