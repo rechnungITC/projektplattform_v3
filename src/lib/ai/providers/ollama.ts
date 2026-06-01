@@ -26,6 +26,7 @@ import type {
   AIProvider,
   CoachingGenerationRequest,
   NarrativeGenerationRequest,
+  ProposalFromContextGenerationRequest,
   ResourceSwapGenerationRequest,
   RiskGenerationRequest,
   SentimentGenerationRequest,
@@ -34,6 +35,7 @@ import type {
   CoachingGenerationOutput,
   CoachingKind,
   NarrativeGenerationOutput,
+  ProposalFromContextGenerationOutput,
   ResourceSwapGenerationOutput,
   RiskGenerationOutput,
   SentimentGenerationOutput,
@@ -809,6 +811,120 @@ export class OllamaProvider implements AIProvider {
       },
     }
   }
+
+  /**
+   * PROJ-70-α — proposal-from-context generation via local Ollama.
+   *
+   * Mirrors the Anthropic implementation: same Zod-schema, same prompt,
+   * same hierarchical output. The only difference is the underlying SDK
+   * client (createOpenAICompatible → Ollama's OpenAI-compatible endpoint).
+   *
+   * Defense-in-depth: after the model returns, walk every suggestion's
+   * `parent_temp_id` and verify it resolves to a sibling temp_id. If a
+   * hallucinated ref slipped past Zod (shouldn't happen, but trust nothing),
+   * we drop the offending item rather than persist a dangling chain.
+   */
+  async generateProposalFromContext(
+    request: ProposalFromContextGenerationRequest,
+  ): Promise<ProposalFromContextGenerationOutput> {
+    const start = Date.now()
+    const result = await generateObject({
+      model: this.sdkProvider(this.modelId),
+      schema: ProposalFromContextResponseSchemaOllama,
+      system: PROPOSAL_FROM_CONTEXT_SYSTEM_PROMPT_OLLAMA,
+      prompt: buildProposalFromContextPromptOllama(request),
+      temperature: 0.3,
+    })
+
+    const usage = result.usage as
+      | { inputTokens?: number; outputTokens?: number }
+      | undefined
+
+    // Trust-but-verify: filter hallucinated parent refs (Zod superRefine
+    // already runs, this is defense-in-depth).
+    const tempIds = new Set(result.object.suggestions.map((s) => s.temp_id))
+    const validSuggestions = result.object.suggestions.filter(
+      (s) => s.parent_temp_id == null || tempIds.has(s.parent_temp_id),
+    )
+
+    return {
+      suggestions: validSuggestions.map((s) => ({
+        temp_id: s.temp_id,
+        parent_temp_id: s.parent_temp_id,
+        kind: s.kind,
+        title: s.title,
+        description: s.description ?? null,
+        confidence: s.confidence,
+      })),
+      usage: {
+        input_tokens: usage?.inputTokens ?? null,
+        output_tokens: usage?.outputTokens ?? null,
+        latency_ms: Date.now() - start,
+      },
+    }
+  }
+}
+
+// ---------------------------------------------------------------------------
+// PROJ-70-α — local schema + prompt for Ollama
+// ---------------------------------------------------------------------------
+// Defined OUTSIDE the class so they're not re-allocated per instance. The
+// prompt is identical to the Anthropic one; we keep a copy here rather
+// than reach across providers, mirroring the pattern from ε.4.β resource_swap.
+
+const ProposalFromContextSuggestionSchemaOllama = z.object({
+  temp_id: z.string().min(1).max(64),
+  parent_temp_id: z.string().min(1).max(64).nullable(),
+  kind: z.enum([
+    "phase",
+    "work_package",
+    "todo",
+    "epic",
+    "story",
+    "task",
+    "subtask",
+    "bug",
+  ]),
+  title: z.string().min(3).max(200),
+  description: z.string().max(500).nullable(),
+  confidence: z.enum(["low", "medium", "high"]),
+})
+
+const ProposalFromContextResponseSchemaOllama = z.object({
+  suggestions: z.array(ProposalFromContextSuggestionSchemaOllama).min(0).max(50),
+})
+
+const PROPOSAL_FROM_CONTEXT_SYSTEM_PROMPT_OLLAMA = `Du bist ein erfahrener Programm-/Projektleiter und schlägst aus einem Kickoff-Artefakt eine konkrete Anfangs-Backlog-Struktur vor.
+
+Aufgabe: Analysiere den Inhalt eines Kickoff-Dokuments und schlage 0–50 hierarchische Backlog-Items vor.
+
+Pflichtregeln:
+- Antworte ausschließlich auf Deutsch.
+- Jedes Item bekommt eine eindeutige \`temp_id\` (z.B. "t_1", "t_2", …). Über \`parent_temp_id\` zeigst du auf das übergeordnete Item desselben Runs (null bei Top-Level-Items).
+- Wähle \`kind\` passend zur Projektmethode (Wasserfall: phase/work_package/todo; Scrum: epic/story/task; Hybrid: mische methodensauber).
+- Titel ist konkret und actionable, keine Boilerplate.
+- \`description\` ist optional, max 500 Zeichen.
+- KEINE Class-3-Daten in den Outputs: keine konkreten Personennamen, E-Mails, Telefonnummern. Generalisiere zu Rollen.
+- Hierarchie maximal 3 Ebenen tief.
+- Bei dünnem Kickoff: lieber leere Liste statt erzwungenes Padding.`
+
+function buildProposalFromContextPromptOllama(
+  request: ProposalFromContextGenerationRequest,
+): string {
+  const ctx = request.context
+  const lines: string[] = [
+    `Projekt: ${ctx.source_project.name}`,
+    `Methode: ${ctx.source_project.project_method ?? "—"} (normalised: ${ctx.method_hint})`,
+    "",
+    `Kickoff-Artefakt (${ctx.context_source.kind}): ${ctx.context_source.title}`,
+    `Privacy-Klasse: ${ctx.context_source.privacy_class}`,
+    "",
+    `Inhalt:`,
+    ctx.context_source.content_excerpt || "(leer)",
+    "",
+    `Liefere bis zu ${Math.min(request.count, 50)} hierarchisch verknüpfte Vorschläge.`,
+  ]
+  return lines.join("\n")
 }
 
 /**

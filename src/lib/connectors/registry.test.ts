@@ -88,18 +88,43 @@ describe("listConnectors", () => {
     const email = entries.find((e) => e.descriptor.key === "email")!
     expect(email.status.health.status).toBe("error")
     expect(email.status.health.detail).toMatch(/encryption_unavailable/)
-    // Non-editable connectors keep their original status
+    const jira = entries.find((e) => e.descriptor.key === "jira")!
+    expect(jira.status.health.status).toBe("error")
+    expect(jira.status.health.detail).toMatch(/encryption_unavailable/)
+    // Non-editable connectors keep their original status.
     const slack = entries.find((e) => e.descriptor.key === "slack")!
     expect(slack.status.health.status).toBe("adapter_missing")
   })
 
-  it("reports adapter_missing for jira/mcp/slack/teams in this slice", async () => {
+  it("reports jira as ready but unconfigured and mcp/slack/teams as missing", async () => {
     const supabase = makeSupabase({ meta: [] })
     const entries = await listConnectors(supabase, TENANT_ID)
-    for (const k of ["slack", "teams", "jira", "mcp"]) {
+    const jira = entries.find((e) => e.descriptor.key === "jira")!
+    expect(jira.status.health.status).toBe("adapter_ready_unconfigured")
+    expect(jira.status.credential_editable).toBe(true)
+    for (const k of ["slack", "teams", "mcp"]) {
       const e = entries.find((x) => x.descriptor.key === k)!
       expect(e.status.health.status).toBe("adapter_missing")
     }
+  })
+
+  it("reports jira as configured from tenant_secret without decrypting on list", async () => {
+    const supabase = makeSupabase({
+      meta: [
+        {
+          id: "1",
+          tenant_id: TENANT_ID,
+          connector_key: "jira",
+          created_by: "u",
+          created_at: "2026-06-01T00:00:00Z",
+          updated_at: "2026-06-01T00:00:00Z",
+        },
+      ],
+    })
+    const entries = await listConnectors(supabase, TENANT_ID)
+    const jira = entries.find((e) => e.descriptor.key === "jira")!
+    expect(jira.status.credential_source).toBe("tenant_secret")
+    expect(jira.status.health.status).toBe("adapter_ready_configured")
   })
 
   it("returns adapter_ready_unconfigured for anthropic without env key", async () => {

@@ -1,8 +1,9 @@
 # PROJ-70: Auto-Generated Backlog from Project Kickoff
 
-## Status: Planned
+## Status: In Progress (α-Slice backend implemented + deployed 2026-06-01; β/γ/δ/ε pending)
 **Created:** 2026-05-31
-**Last Updated:** 2026-05-31
+**Last Updated:** 2026-06-01
+**α-Slice deployed:** 2026-06-01 — migration applied to Prod-DB; lint 0 errors; tsc baseline-clean; vitest 1583/1583 (incl. 14 new classifier tests); build 13.7s clean; new API route registered: `/api/projects/[id]/ai/proposal-from-context`
 **Priority:** P1
 **Origin:** Session 2026-05-31 — Aufdecken eines 3-Spec-Drifts (PROJ-44-δ + PROJ-44-ε + PROJ-12 `work_items`-Purpose) ohne tatsächliche Implementierung. Single-Responsibility-Reunite in ein deploybares Slice.
 

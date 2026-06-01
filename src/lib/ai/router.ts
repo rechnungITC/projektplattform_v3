@@ -32,6 +32,7 @@ import {
   classifyCoachingAutoContext,
   classifyCrossProjectLinksAutoContext,
   classifyNarrativeAutoContext,
+  classifyProposalFromContextAutoContext,
   classifyResourceSwapAutoContext,
   classifyRiskAutoContext,
   classifySentimentAutoContext,
@@ -55,11 +56,14 @@ import type {
   CrossProjectLinksAutoContext,
   DataClass,
   NarrativeAutoContext,
+  ProposalFromContextAutoContext,
+  ProposalFromContextSuggestion,
   RiskAutoContext,
   RiskSuggestion,
   RouterCoachingResult,
   RouterCrossProjectLinksResult,
   RouterNarrativeResult,
+  RouterProposalFromContextResult,
   ResourceSwapAutoContext,
   ResourceSwapSuggestion,
   RouterResourceSwapResult,
@@ -1334,6 +1338,189 @@ export async function invokeCrossProjectLinksGeneration({
           project_id: projectId,
           ki_run_id: runId,
           purpose: "cross_project_links",
+          payload: s,
+          original_payload: s,
+          status: "draft",
+          created_by: actorUserId,
+        })),
+      )
+      .select("id")
+    if (sugErr || !sugRows) {
+      providerError =
+        providerError ??
+        `ki_suggestions insert failed: ${sugErr?.message ?? "unknown"}`
+      finalStatus = "error"
+    } else {
+      suggestionIds = sugRows.map((r) => r.id as string)
+    }
+  }
+
+  const finalErrorMessage =
+    providerError ?? providerFallbackMessage ?? blockedReason ?? null
+  await updateKiRunStatus(supabase, runId, {
+    status: finalStatus,
+    inputTokens,
+    outputTokens,
+    latencyMs,
+    errorMessage: finalErrorMessage,
+    provider: activeProvider,
+  })
+
+  return {
+    run_id: runId,
+    classification,
+    provider: activeProvider.name as AIProviderName,
+    model_id: activeProvider.modelId,
+    status: finalStatus,
+    suggestion_ids: suggestionIds,
+    external_blocked: externalBlocked || providerFallbackMessage !== null,
+    error_message: finalErrorMessage ?? undefined,
+  }
+}
+
+// ---------------------------------------------------------------------------
+// PROJ-70-α — proposal-from-context router
+// ---------------------------------------------------------------------------
+
+interface InvokeProposalFromContextGenerationArgs {
+  supabase: SupabaseClient
+  tenantId: string
+  projectId: string
+  actorUserId: string
+  context: ProposalFromContextAutoContext
+  /** Soft target count (1–50); the provider may emit fewer. */
+  count: number
+}
+
+/**
+ * PROJ-70-α — generate proposal-from-context advisory suggestions.
+ *
+ * Mirrors `invokeTrajectorySequenceGeneration` (Class-2-advisory with
+ * Stub-fallback) but with two distinguishing traits:
+ *
+ *   1. Classification is **dynamic**: depending on
+ *      `classifyProposalFromContextAutoContext`'s heuristic on the
+ *      uploaded `content_excerpt`, the same call site may route to
+ *      Anthropic (Class-1/2) or Ollama (Class-3) — the standard
+ *      `selectProviderForPurpose` machinery handles the choice.
+ *
+ *   2. Provider-fallback follows the trajectory pattern: if the chosen
+ *      provider throws, fall back to Stub so the FE never sees a 5xx.
+ *      Stub emits zero suggestions deliberately (mirror ε.4.β CIA-L5).
+ *      The user sees `status='external_blocked'` + a banner.
+ *
+ * The accepted_consistency relaxation (migration eps4d) allows
+ * `accepted_entity_*` to stay NULL on accept — the actual `work_items`
+ * row gets created by the 70-β accept-pipeline, not by this router.
+ */
+export async function invokeProposalFromContextGeneration({
+  supabase,
+  tenantId,
+  projectId,
+  actorUserId,
+  context,
+  count,
+}: InvokeProposalFromContextGenerationArgs): Promise<RouterProposalFromContextResult> {
+  const overrides = await loadTenantOverrides(supabase, tenantId)
+  const classification = classifyProposalFromContextAutoContext(
+    context,
+    overrides.privacyDefault as DataClass,
+  )
+  const choice = await selectProviderForPurpose(
+    supabase,
+    tenantId,
+    "proposal_from_context",
+    classification,
+    overrides.providerConfig,
+  )
+  const { provider, externalBlocked, blockedReason } = await applyCostCap(
+    supabase,
+    tenantId,
+    choice,
+    "proposal_from_context",
+  )
+
+  const runId = await insertKiRun(supabase, {
+    tenantId,
+    projectId,
+    actorUserId,
+    purpose: "proposal_from_context",
+    classification,
+    provider,
+  })
+
+  let activeProvider: AIProvider = provider
+  let suggestions: ProposalFromContextSuggestion[] = []
+  let inputTokens: number | null = null
+  let outputTokens: number | null = null
+  let latencyMs: number | null = null
+  let providerError: string | null = null
+  let providerFallbackMessage: string | null = null
+
+  try {
+    if (!provider.generateProposalFromContext) {
+      throw new Error(
+        `Provider ${provider.name} does not implement generateProposalFromContext`,
+      )
+    }
+    const result = await provider.generateProposalFromContext({ context, count })
+    suggestions = result.suggestions
+    inputTokens = result.usage.input_tokens
+    outputTokens = result.usage.output_tokens
+    latencyMs = result.usage.latency_ms
+  } catch (err) {
+    providerError = err instanceof Error ? err.message : String(err)
+    if (provider.name !== "stub") {
+      // Fall back to Stub so the FE never sees a 5xx for this purpose.
+      // Stub emits zero suggestions by design (mirror ε.4.β CIA-L5).
+      const fallbackProvider = new StubProvider()
+      const fallback = await fallbackProvider.generateProposalFromContext!({
+        context,
+        count,
+      })
+      providerFallbackMessage = `Provider ${provider.name} failed (${providerError}); fell back to Stub.`
+      activeProvider = fallbackProvider
+      suggestions = fallback.suggestions
+      inputTokens = fallback.usage.input_tokens
+      outputTokens = fallback.usage.output_tokens
+      latencyMs = fallback.usage.latency_ms
+      providerError = null
+    }
+  }
+
+  let finalStatus: "success" | "error" | "external_blocked"
+  if (providerError) {
+    finalStatus = "error"
+  } else if (externalBlocked || providerFallbackMessage) {
+    finalStatus = "external_blocked"
+  } else {
+    finalStatus = "success"
+  }
+
+  // Enrich each suggestion with display labels (project name + context
+  // source title + normalised method hint) so the 70-β review-drawer
+  // renders without extra round-trips. Raw temp_id chains stay intact.
+  const enrichedSuggestions: ProposalFromContextSuggestion[] = suggestions.map(
+    (s) => ({
+      ...s,
+      display: {
+        method_hint_kind: context.method_hint,
+        source_project_name: context.source_project.name,
+        context_source_title: context.context_source.title,
+      },
+    }),
+  )
+
+  let suggestionIds: string[] = []
+  if (enrichedSuggestions.length > 0) {
+    const { data: sugRows, error: sugErr } = await supabase
+      .from("ki_suggestions")
+      .insert(
+        enrichedSuggestions.map((s) => ({
+          tenant_id: tenantId,
+          project_id: projectId,
+          ki_run_id: runId,
+          purpose: "proposal_from_context",
           payload: s,
           original_payload: s,
           status: "draft",

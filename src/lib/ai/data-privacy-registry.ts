@@ -249,6 +249,20 @@ const REGISTRY: Record<string, DataClass> = {
   "stakeholder_skill_profiles.decision_power_fremd": 3,
   "stakeholder_skill_profiles.decision_power_self": 3,
 
+  // -------------------- context_sources (PROJ-70-α) ---------------------
+  // PROJ-44-β-Tabelle: speichert Kickoff-Artefakte (Dokumente, Emails,
+  // Meeting-Notes). Strukturelle Metadaten sind Class-1/2; das
+  // User-provided `content_excerpt` und `source_metadata` JSONB können
+  // personenbezogene Daten enthalten — Class-3 als sicherer Default.
+  "context_sources.kind": 1,
+  "context_sources.title": 2,
+  "context_sources.content_excerpt": 3,
+  "context_sources.content_full_url": 1,
+  "context_sources.source_metadata": 3,
+  "context_sources.language": 1,
+  "context_sources.privacy_class": 1,
+  "context_sources.processing_status": 1,
+
   // -------------------- work_item_links (PROJ-65 ε.4.γ) -----------------
   // PROJ-27 semantic links between work items. Structural metadata only:
   // endpoint ids + link/approval enums + lag — no freetext, no personal
