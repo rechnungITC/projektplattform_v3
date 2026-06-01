@@ -12,6 +12,12 @@
 import { z } from "zod"
 
 import {
+  JiraCredentialsSchema,
+  testJiraConnection,
+  type JiraCredentials,
+} from "@/lib/jira/client"
+
+import {
   type ConnectorDescriptor,
   type ConnectorHealth,
   type HealthInput,
@@ -131,27 +137,43 @@ const teamsDescriptor: ConnectorDescriptor = {
   },
 }
 
-// ─── jira (no adapter yet — full slice in PROJ-14b/e) ───────────────────
+// ─── jira (PROJ-47 outbound export adapter) ────────────────────────────
 
-const JiraCredentialSchema = z.object({
-  base_url: z.string().url(),
-  email: z.string().email(),
-  api_token: z.string().min(10),
-  default_project_key: z.string().min(1),
-})
-
-const jiraDescriptor: ConnectorDescriptor = {
+const jiraDescriptor: ConnectorDescriptor<JiraCredentials> = {
   key: "jira",
   label: "Jira",
   summary:
-    "Bidirektionaler Sync von Work Items zu Jira. Slice folgt als PROJ-14b (Export) bzw. PROJ-14e (bidirektional).",
+    "Outbound-Export von V3 Work Items nach Jira. Bidirektionaler Sync bleibt PROJ-50.",
   capability_tags: ["sync"],
-  credential_schema: JiraCredentialSchema,
-  credential_editable: false,
-  async health(): Promise<ConnectorHealth> {
+  credential_schema: JiraCredentialsSchema,
+  credential_editable: true,
+  async health({ tenant_credentials }: HealthInput): Promise<ConnectorHealth> {
+    if (tenant_credentials) {
+      const parsed = JiraCredentialsSchema.safeParse(tenant_credentials)
+      // The list endpoint intentionally passes `{}` as presence marker and
+      // must not perform a network probe for every registry render.
+      if (!parsed.success) {
+        const marker =
+          typeof tenant_credentials === "object" &&
+          tenant_credentials !== null &&
+          Object.keys(tenant_credentials).length === 0
+        if (marker) {
+          return {
+            status: "adapter_ready_configured",
+            detail:
+              "Tenant-Credentials konfiguriert. Test-Connection prueft Jira live.",
+          }
+        }
+        return {
+          status: "error",
+          detail: "jira_credentials_invalid",
+        }
+      }
+      return testJiraConnection(parsed.data)
+    }
     return {
-      status: "adapter_missing",
-      detail: "Adapter folgt mit PROJ-14b.",
+      status: "adapter_ready_unconfigured",
+      detail: "Jira-Adapter bereit. Bitte Tenant-Credentials konfigurieren.",
     }
   },
 }

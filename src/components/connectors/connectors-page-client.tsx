@@ -31,6 +31,14 @@ import type { ConnectorListEntry } from "@/lib/connectors/api"
 import type { ConnectorKey } from "@/lib/connectors/types"
 
 import { EmailCredentialForm } from "./email-credential-form"
+import {
+  JiraCredentialForm,
+  type JiraCredentialPayload,
+} from "./jira-credential-form"
+
+type CredentialPayload =
+  | { api_key: string; from_email: string }
+  | JiraCredentialPayload
 
 const ICON: Record<ConnectorKey, React.ComponentType<{ className?: string }>> = {
   email: Mail,
@@ -68,7 +76,7 @@ export function ConnectorsPageClient() {
 
   async function handleSave(
     key: ConnectorKey,
-    payload: { api_key: string; from_email: string }
+    payload: CredentialPayload
   ) {
     setSubmitting(true)
     try {
@@ -305,7 +313,7 @@ function ConnectorCard({ entry, onOpen, onTest, testing }: ConnectorCardProps) {
 interface CredentialPanelProps {
   entry: ConnectorListEntry
   submitting: boolean
-  onSave: (payload: { api_key: string; from_email: string }) => void
+  onSave: (payload: CredentialPayload) => void
   onDelete: () => void
 }
 
@@ -328,10 +336,20 @@ function CredentialPanel({
     )
   }
 
-  // Currently only `email` is editable in this slice.
   if (entry.descriptor.key === "email") {
     return (
       <EmailCredentialForm
+        alreadyConfigured={entry.status.credential_source === "tenant_secret"}
+        submitting={submitting}
+        onSave={onSave}
+        onDelete={onDelete}
+      />
+    )
+  }
+
+  if (entry.descriptor.key === "jira") {
+    return (
+      <JiraCredentialForm
         alreadyConfigured={entry.status.credential_source === "tenant_secret"}
         submitting={submitting}
         onSave={onSave}

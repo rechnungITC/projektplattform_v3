@@ -2,7 +2,7 @@
 
 ## Status
 
-Architected (CIA-reviewed 2026-05-31; ready for backend-first implementation)
+In Progress (backend alpha implemented 2026-06-01; DB apply + frontend beta pending)
 
 ## Summary
 
@@ -205,6 +205,53 @@ Each external reference stores the outbound relationship from one V3 Work Item t
 1. Backend alpha: data model, RLS, Jira adapter service, mocked route tests.
 2. Frontend beta: connector credential UI, mapping UI, preview and job status.
 3. QA gamma: idempotency, tenant isolation, rate-limit/partial-failure coverage, deploy runbook.
+
+## Implementation Notes - Backend Alpha 2026-06-01
+
+### Delivered
+
+- Jira descriptor is now a real PROJ-47 outbound connector:
+  - `credential_editable = true`
+  - credential schema uses `base_url`, `email`, `api_token`, `default_project_key`
+  - list health reports configured/unconfigured without decrypting
+  - test health calls Jira `/rest/api/3/myself` server-side
+- Minimal Jira credential UI added to `/konnektoren` so tenant admins can store Jira credentials in `tenant_secrets`.
+- Backend persistence migration added:
+  - `jira_field_mappings`
+  - `jira_export_jobs`
+  - `jira_export_log`
+  - `external_refs`
+- Backend API surfaces added:
+  - `GET/PUT /api/projects/[id]/jira/mapping`
+  - `POST /api/projects/[id]/jira/export/preview`
+  - `POST /api/projects/[id]/jira/export`
+  - `GET /api/projects/[id]/jira/export/jobs/[jobId]`
+- Jira REST client added with:
+  - sanitized Jira error handling
+  - Basic auth header redaction in persisted/user-visible errors
+  - Jira v3 issue payload builder
+  - create/update issue calls for idempotent re-export
+- Tests added:
+  - Jira credential normalization and health probe
+  - Jira error redaction
+  - Jira issue payload generation
+  - default field mapping
+  - export preview create/update/skip classification
+  - connector registry status update for Jira
+
+### Explicit Alpha Limits
+
+- Project Jira APIs are tenant-admin-only for alpha because `tenant_secrets` decrypt currently enforces tenant-admin. Project-lead export can be relaxed later with a dedicated server-side secret delegation path that still never exposes plaintext credentials.
+- Export execution is synchronous and bounded to 100 selected Work Items. Background queue/scheduler remains deferred.
+- No inbound Jira sync, webhooks, delete propagation, conflict handling, comments, attachments, sprint assignment or custom-field editor.
+- Migration file exists in-repo but has not been applied to production in this implementation pass.
+
+### Verification
+
+- `npm run lint` green.
+- Targeted Vitest green: `src/lib/jira/*`, `src/lib/connectors/registry.test.ts`.
+- `npm run build` green; Next.js route list includes the four new Jira API routes.
+- `npx tsc --noEmit` is not a usable gate yet because existing non-PROJ-47 test type errors remain in releases, assistant, method-template and release-summary tests.
 
 ## V2 Reference Material
 
