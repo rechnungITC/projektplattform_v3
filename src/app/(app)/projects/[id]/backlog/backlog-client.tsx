@@ -19,6 +19,7 @@ import { ChangeParentDialog } from "@/components/work-items/change-parent-dialog
 import { ChangeStatusDialog } from "@/components/work-items/change-status-dialog"
 import { DeleteWorkItemDialog } from "@/components/work-items/delete-work-item-dialog"
 import { EditWorkItemDialog } from "@/components/work-items/edit-work-item-dialog"
+import { JiraExportDialog } from "@/components/work-items/jira-export-dialog"
 import { NewWorkItemDialog } from "@/components/work-items/new-work-item-dialog"
 import { WorkItemDetailDrawer } from "@/components/work-items/work-item-detail-drawer"
 import { Button } from "@/components/ui/button"
@@ -182,6 +183,7 @@ export function BacklogClient({ projectId, tenantId: _tenantId }: BacklogClientP
   const selectedIds = selectedIdsState
   const setSelectedIds = setSelectedIdsState
   const [bulkAssignPhaseOpen, setBulkAssignPhaseOpen] = React.useState(false)
+  const [jiraExportOpen, setJiraExportOpen] = React.useState(false)
 
   // Derived: only ids that still exist in the current items list. Stale
   // ids (item deleted/filtered) silently drop out instead of being
@@ -278,6 +280,15 @@ export function BacklogClient({ projectId, tenantId: _tenantId }: BacklogClientP
                 onClick={() => setBulkAssignPhaseOpen(true)}
               >
                 Phase zuweisen
+              </Button>
+            ) : null}
+            {canEdit ? (
+              <Button
+                size="sm"
+                variant="outline"
+                onClick={() => setJiraExportOpen(true)}
+              >
+                Jira exportieren
               </Button>
             ) : null}
             <Button size="sm" variant="ghost" onClick={clearSelection}>
@@ -429,6 +440,14 @@ export function BacklogClient({ projectId, tenantId: _tenantId }: BacklogClientP
           await refreshItems()
           clearSelection()
         }}
+      />
+
+      <JiraExportDialog
+        open={jiraExportOpen}
+        onOpenChange={setJiraExportOpen}
+        projectId={projectId}
+        items={selectedItems}
+        onExported={refreshItems}
       />
     </div>
   )

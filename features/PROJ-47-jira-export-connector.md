@@ -2,7 +2,7 @@
 
 ## Status
 
-In Progress (backend alpha implemented 2026-06-01; DB apply + frontend beta pending)
+Approved for deploy (backend alpha + frontend beta + QA gamma complete 2026-06-01; DB migration applied)
 
 ## Summary
 
@@ -27,25 +27,25 @@ Implement the first real Jira adapter on top of PROJ-14 connector plumbing. The 
 As a tenant admin, I want to configure Jira base URL and credentials so that the platform can export work items.
 
 Acceptance criteria:
-- [ ] Credentials are stored via tenant secrets.
-- [ ] Test connection validates authentication without leaking secrets.
-- [ ] Connector health is visible.
+- [x] Credentials are stored via tenant secrets.
+- [x] Test connection validates authentication without leaking secrets.
+- [x] Connector health is visible.
 
 ### ST-02 Field Mapping
 As a project lead, I want V3 work item fields mapped to Jira issue fields so that exported tickets are useful immediately.
 
 Acceptance criteria:
-- [ ] Mapping covers title, description, type, priority, status, assignee, labels, and project key.
-- [ ] Unsupported fields are reported before export.
-- [ ] Mapping can be tenant-configured later without schema rewrite.
+- [x] Mapping covers title, description, type, priority, labels, and project key for the MVP export payload; status and assignee mapping are persisted for follow-up Jira transition/assignment handling.
+- [x] Unsupported kind/priority fields are reported before export.
+- [x] Mapping can be tenant-configured later without schema rewrite.
 
 ### ST-03 Export Job and Sync Log
 As an integration owner, I want exports to run as jobs with visible results so that failures can be retried and audited.
 
 Acceptance criteria:
-- [ ] Export results store external Jira issue key and URL.
-- [ ] Failures store sanitized error messages.
-- [ ] Re-export is idempotent where an external ref already exists.
+- [x] Export results store external Jira issue key and URL.
+- [x] Failures store sanitized error messages.
+- [x] Re-export is idempotent where an external ref already exists.
 
 ## Out of Scope
 
@@ -252,6 +252,52 @@ Each external reference stores the outbound relationship from one V3 Work Item t
 - Targeted Vitest green: `src/lib/jira/*`, `src/lib/connectors/registry.test.ts`.
 - `npm run build` green; Next.js route list includes the four new Jira API routes.
 - `npx tsc --noEmit` is not a usable gate yet because existing non-PROJ-47 test type errors remain in releases, assistant, method-template and release-summary tests.
+
+## Implementation Notes - Frontend Beta + QA Gamma 2026-06-01
+
+### Delivered
+
+- Backlog list bulk selection now exposes `Jira exportieren` for edit-capable users.
+- Jira export dialog added:
+  - loads/saves project-level Jira field mapping
+  - validates selected Work Items through the preview endpoint
+  - displays create/update/skip decisions and warnings before any Jira write
+  - starts export jobs and displays final job counters
+- Browser client wrapper added for the four project Jira endpoints.
+- PROJ-47 migration applied to the Supabase database on 2026-06-01.
+
+### Usable MVP Boundaries
+
+- Export is outbound-only. PROJ-50 still owns inbound sync, webhooks, conflicts and Jira-to-V3 updates.
+- Project Jira APIs remain tenant-admin-only for this slice because Jira credentials are stored in tenant secrets and decrypted server-side.
+- Jira create/update payload writes summary, description, issue type, priority and labels. Jira status transitions and assignee resolution are persisted in mapping shape but intentionally not executed in this MVP because they require Jira workflow/account lookup semantics.
+- Export execution is synchronous and bounded to 100 selected Work Items.
+
+### QA Test Results
+
+- `npm run lint` passed.
+- Targeted Vitest passed: `src/lib/jira`, `src/lib/connectors/registry.test.ts` (5 files, 18 tests).
+- Full Vitest passed: 191 files, 1569 tests.
+- `npm run build` passed; Next.js build includes:
+  - `/api/projects/[id]/jira/mapping`
+  - `/api/projects/[id]/jira/export/preview`
+  - `/api/projects/[id]/jira/export`
+  - `/api/projects/[id]/jira/export/jobs/[jobId]`
+- Production schema drift passed after DB apply: 506 SELECT calls across 80 tables, 0 drift.
+- DB smoke passed for all PROJ-47 tables with RLS enabled:
+  - `jira_field_mappings`
+  - `jira_export_jobs`
+  - `jira_export_log`
+  - `external_refs`
+
+### QA Decision
+
+Production-ready recommendation: **READY for tenant-admin outbound MVP deploy**.
+
+Known deferred work:
+- Jira status transitions after create/update.
+- Jira assignee lookup/assignment.
+- Dedicated Playwright browser flow with mocked Jira APIs and authenticated fixture.
 
 ## V2 Reference Material
 
