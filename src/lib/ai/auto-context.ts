@@ -28,6 +28,8 @@ import type {
   CrossProjectLinkWorkItemRef,
   CrossProjectLinksAutoContext,
   NarrativeAutoContext,
+  ProjectMethodHint,
+  ProposalFromContextAutoContext,
   RiskAutoContext,
 } from "./types"
 
@@ -1004,5 +1006,117 @@ export async function collectCrossProjectLinksContext(
     source_work_items: sourceWorkItems,
     related_work_items: relatedWorkItems,
     existing_links: existingLinks,
+  }
+}
+
+// ---------------------------------------------------------------------------
+// PROJ-70-α — proposal_from_context context collector
+// ---------------------------------------------------------------------------
+
+/**
+ * Normalise `projects.project_method` to one of the supported method-hint
+ * tokens. Unknown / NULL methods fall through to `"unspecified"` so the
+ * prompt gets a stable shape even when the project hasn't picked a method
+ * yet.
+ */
+function normaliseMethodHint(raw: string | null): ProjectMethodHint {
+  if (!raw) return "unspecified"
+  const m = raw.toLowerCase()
+  if (m.includes("wasserfall") || m.includes("waterfall")) return "waterfall"
+  if (m.includes("scrum") || m === "agile") return "scrum"
+  if (m.includes("kanban")) return "kanban"
+  if (m.includes("hybrid")) return "hybrid"
+  return "unspecified"
+}
+
+/**
+ * Build the auto-context for a proposal-from-context AI run.
+ *
+ * Reads ONE `context_sources` row (RLS-bounded; the caller's RLS context
+ * decides whether the row is visible) + the source project's `project_method`
+ * for method-hint passing.
+ *
+ * Allowlist (Class-1/2 by default; heuristic in `classify.ts` may upgrade
+ * the whole run to Class-3 when personal-data markers are detected in the
+ * content excerpt):
+ *   projects:        project_id, name, project_type, project_method,
+ *                    lifecycle_status
+ *   context_sources: context_source_id, kind, title, privacy_class,
+ *                    content_excerpt, language
+ *
+ * `source_metadata` is intentionally NOT included — it's a free-shape
+ * JSONB that often carries Class-3 markers (email addresses, attendee
+ * names) and the model doesn't need it for backlog generation.
+ */
+export async function collectProposalFromContextAutoContext(
+  supabase: SupabaseClient,
+  projectId: string,
+  contextSourceId: string,
+): Promise<ProposalFromContextAutoContext> {
+  const [projectRes, contextSourceRes] = await Promise.all([
+    supabase
+      .from("projects")
+      .select("id, name, project_type, project_method, lifecycle_status")
+      .eq("id", projectId)
+      .maybeSingle(),
+    supabase
+      .from("context_sources")
+      .select(
+        "id, kind, title, privacy_class, content_excerpt, language, project_id",
+      )
+      .eq("id", contextSourceId)
+      .maybeSingle(),
+  ])
+
+  if (projectRes.error)
+    throw new Error(`projects: ${projectRes.error.message}`)
+  if (contextSourceRes.error)
+    throw new Error(`context_sources: ${contextSourceRes.error.message}`)
+  if (!projectRes.data) throw new Error("Project not found.")
+  if (!contextSourceRes.data) throw new Error("Context source not found.")
+
+  const project = projectRes.data as {
+    id: string
+    name: string
+    project_type: string | null
+    project_method: string | null
+    lifecycle_status: string
+  }
+  const cs = contextSourceRes.data as {
+    id: string
+    kind: string
+    title: string
+    privacy_class: number
+    content_excerpt: string | null
+    language: string | null
+    project_id: string | null
+  }
+
+  // Scope-check: the context_source MUST belong to this project OR be
+  // tenant-wide (project_id IS NULL). Defense-in-depth over RLS; if RLS
+  // gave the caller a row from another project, we still reject here.
+  if (cs.project_id != null && cs.project_id !== projectId) {
+    throw new Error("Context source belongs to a different project.")
+  }
+
+  const privacyClass = (cs.privacy_class as 1 | 2 | 3) ?? 3
+
+  return {
+    source_project: {
+      project_id: project.id,
+      name: project.name,
+      project_type: project.project_type,
+      project_method: project.project_method,
+      lifecycle_status: project.lifecycle_status,
+    },
+    context_source: {
+      context_source_id: cs.id,
+      kind: cs.kind,
+      title: cs.title,
+      privacy_class: privacyClass,
+      content_excerpt: cs.content_excerpt ?? "",
+      language: cs.language,
+    },
+    method_hint: normaliseMethodHint(project.project_method),
   }
 }

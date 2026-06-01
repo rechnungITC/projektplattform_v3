@@ -24,12 +24,14 @@ import type {
   AIProvider,
   CrossProjectLinksGenerationRequest,
   NarrativeGenerationRequest,
+  ProposalFromContextGenerationRequest,
   RiskGenerationRequest,
   TrajectorySequenceGenerationRequest,
 } from "./types"
 import type {
   CrossProjectLinksGenerationOutput,
   NarrativeGenerationOutput,
+  ProposalFromContextGenerationOutput,
   RiskGenerationOutput,
   TrajectorySequenceGenerationOutput,
 } from "../types"
@@ -495,6 +497,160 @@ function buildCrossProjectLinksPrompt(
   return lines.join("\n")
 }
 
+// PROJ-70-α — proposal_from_context schema + prompt
+const ProposalFromContextSuggestionSchema = z.object({
+  temp_id: z
+    .string()
+    .min(1)
+    .max(64)
+    .describe(
+      "A stable id within THIS run only (e.g. 't_1', 't_2', or a UUID). Items reference each other via parent_temp_id.",
+    ),
+  parent_temp_id: z
+    .string()
+    .min(1)
+    .max(64)
+    .nullable()
+    .describe(
+      "Reference to another item's temp_id from the SAME run, or null for top-level items.",
+    ),
+  kind: z
+    .enum([
+      "phase",
+      "work_package",
+      "todo",
+      "epic",
+      "story",
+      "task",
+      "subtask",
+      "bug",
+    ])
+    .describe(
+      "Work-item kind matching the project_method (waterfall: phase/work_package/todo; scrum: epic/story/task; hybrid: mix).",
+    ),
+  title: z
+    .string()
+    .min(3)
+    .max(200)
+    .describe("Short German title — action-oriented, no boilerplate."),
+  description: z
+    .string()
+    .max(500)
+    .nullable()
+    .describe(
+      "Optional 1–3 sentence German rationale or detail. Null when nothing concrete to add.",
+    ),
+  confidence: z.enum(["low", "medium", "high"]),
+})
+
+const ProposalFromContextResponseSchema = z
+  .object({
+    suggestions: z.array(ProposalFromContextSuggestionSchema).min(0).max(50),
+  })
+  .superRefine((data, ctx) => {
+    // Defense-in-depth on top of the Zod-object-schema:
+    // 1. temp_ids must be unique within the run.
+    // 2. parent_temp_id (if set) must reference an existing temp_id.
+    // 3. no item may parent itself.
+    // 4. no cycles via simple reachability check.
+    const tempIds = new Set<string>()
+    for (let i = 0; i < data.suggestions.length; i++) {
+      const s = data.suggestions[i]!
+      if (tempIds.has(s.temp_id)) {
+        ctx.addIssue({
+          code: z.ZodIssueCode.custom,
+          path: ["suggestions", i, "temp_id"],
+          message: `Duplicate temp_id: ${s.temp_id}`,
+        })
+      }
+      tempIds.add(s.temp_id)
+    }
+    const byId = new Map(data.suggestions.map((s) => [s.temp_id, s] as const))
+    for (let i = 0; i < data.suggestions.length; i++) {
+      const s = data.suggestions[i]!
+      if (s.parent_temp_id == null) continue
+      if (s.parent_temp_id === s.temp_id) {
+        ctx.addIssue({
+          code: z.ZodIssueCode.custom,
+          path: ["suggestions", i, "parent_temp_id"],
+          message: "Item cannot parent itself.",
+        })
+        continue
+      }
+      if (!byId.has(s.parent_temp_id)) {
+        ctx.addIssue({
+          code: z.ZodIssueCode.custom,
+          path: ["suggestions", i, "parent_temp_id"],
+          message: `parent_temp_id "${s.parent_temp_id}" does not match any sibling temp_id.`,
+        })
+        continue
+      }
+      // Cycle check via reachability walk up the parent chain.
+      let cursor: string | null | undefined = s.parent_temp_id
+      const seen = new Set<string>([s.temp_id])
+      let steps = 0
+      while (cursor && steps < data.suggestions.length + 1) {
+        if (seen.has(cursor)) {
+          ctx.addIssue({
+            code: z.ZodIssueCode.custom,
+            path: ["suggestions", i, "parent_temp_id"],
+            message: `Cycle detected via "${cursor}".`,
+          })
+          break
+        }
+        seen.add(cursor)
+        cursor = byId.get(cursor)?.parent_temp_id ?? null
+        steps += 1
+      }
+    }
+  })
+
+const PROPOSAL_FROM_CONTEXT_SYSTEM_PROMPT = `Du bist ein erfahrener Programm-/Projektleiter und schlägst aus einem Kickoff-Artefakt eine konkrete Anfangs-Backlog-Struktur vor.
+
+Aufgabe: Analysiere den Inhalt eines Kickoff-Dokuments und schlage 0–50 hierarchische Backlog-Items vor, die der Projektleiter im Anschluss reviewen und gezielt akzeptieren kann.
+
+Pflichtregeln:
+- Antworte ausschließlich auf Deutsch.
+- Jedes Item bekommt eine eindeutige \`temp_id\` (z.B. "t_1", "t_2", …). Über \`parent_temp_id\` zeigst du auf das übergeordnete Item desselben Runs (null bei Top-Level-Items).
+- Wähle \`kind\` passend zur Projektmethode:
+  - Wasserfall → \`phase\` (Top-Level) > \`work_package\` (Mitte) > \`todo\` (Blatt)
+  - Scrum → \`epic\` (Top-Level) > \`story\` (Mitte) > \`task\` (Blatt); \`bug\`/\`subtask\` nur, wenn konkret im Text erwähnt
+  - Hybrid → mische beide methodensauber pro Subtree (kein \`phase\` als Kind eines \`epic\`)
+  - Unbestimmt → bevorzuge \`story\`/\`task\` als sichere Default-Granularität
+- Titel ist KEINE Boilerplate — sondern konkret und actionable (z.B. "Datenmigration aus Altsystem X" statt "Datenmigration vorbereiten").
+- \`description\` ist optional. Setze sie nur, wenn der Kontext echten Mehrwert über den Titel hinaus liefert. Sonst null.
+- KEINE personenbezogenen Daten in Titel oder Description — keine Namen, keine E-Mails, keine Telefonnummern, keine Stakeholder-spezifischen Aussagen. Wenn der Input solche enthält, generalisiere sie zu Rollen ("der Fachbereich" statt "Hr. Schmidt").
+- KEIN erzwungenes Padding: wenn das Kickoff dünn ist, liefere wenige hochwertige Items statt vieler Platzhalter.
+- Hierarchie maximal 3 Ebenen tief. Vermeide redundante Ein-Kind-Verschachtelungen.
+- \`confidence\` reflektiert deine Sicherheit pro Item: \`high\` nur, wenn das Item explizit im Kickoff steht oder klar herleitbar ist.`
+
+function buildProposalFromContextPrompt(
+  request: ProposalFromContextGenerationRequest,
+): string {
+  const ctx = request.context
+  const lines: string[] = [
+    `Projekt: ${ctx.source_project.name}`,
+    `Typ: ${ctx.source_project.project_type ?? "—"}`,
+    `Methode: ${ctx.source_project.project_method ?? "—"} (normalised: ${ctx.method_hint})`,
+    `Lifecycle: ${ctx.source_project.lifecycle_status}`,
+    "",
+    `Kickoff-Artefakt:`,
+    `  - Kind: ${ctx.context_source.kind}`,
+    `  - Titel: ${ctx.context_source.title}`,
+    ctx.context_source.language
+      ? `  - Sprache: ${ctx.context_source.language}`
+      : "",
+    `  - Privacy-Klasse: ${ctx.context_source.privacy_class}`,
+    "",
+    `Inhalt:`,
+    ctx.context_source.content_excerpt || "(leer)",
+    "",
+    `Liefere bis zu ${Math.min(request.count, 50)} hierarchisch verknüpfte Vorschläge. Wenn der Kickoff zu dünn für sinnvolle Vorschläge ist, liefere eine leere Liste.`,
+  ].filter(Boolean)
+
+  return lines.join("\n")
+}
+
 export class AnthropicProvider implements AIProvider {
   readonly name = "anthropic" as const
   readonly modelId: string
@@ -651,6 +807,39 @@ export class AnthropicProvider implements AIProvider {
         to_work_item_id: s.to_work_item_id,
         to_project_id: s.to_project_id,
         lag_days: s.lag_days ?? null,
+        confidence: s.confidence,
+      })),
+      usage: {
+        input_tokens: usage?.inputTokens ?? null,
+        output_tokens: usage?.outputTokens ?? null,
+        latency_ms: Date.now() - start,
+      },
+    }
+  }
+
+  async generateProposalFromContext(
+    request: ProposalFromContextGenerationRequest,
+  ): Promise<ProposalFromContextGenerationOutput> {
+    const start = Date.now()
+    const result = await generateObject({
+      model: this.sdkProvider(this.modelId),
+      schema: ProposalFromContextResponseSchema,
+      system: PROPOSAL_FROM_CONTEXT_SYSTEM_PROMPT,
+      prompt: buildProposalFromContextPrompt(request),
+      temperature: 0.3,
+    })
+
+    const usage = result.usage as
+      | { inputTokens?: number; outputTokens?: number }
+      | undefined
+
+    return {
+      suggestions: result.object.suggestions.map((s) => ({
+        temp_id: s.temp_id,
+        parent_temp_id: s.parent_temp_id,
+        kind: s.kind,
+        title: s.title,
+        description: s.description ?? null,
         confidence: s.confidence,
       })),
       usage: {

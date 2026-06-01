@@ -17,6 +17,7 @@ import type {
   CrossProjectLinksAutoContext,
   DataClass,
   NarrativeAutoContext,
+  ProposalFromContextAutoContext,
   ResourceSwapAutoContext,
   RiskAutoContext,
   SentimentAutoContext,
@@ -473,6 +474,117 @@ export function classifyCrossProjectLinksAutoContext(
     }
   }
 
+  if (tenantDefault === 3 && max < 2) {
+    return max
+  }
+  return max
+}
+
+// ---------------------------------------------------------------------------
+// PROJ-70-α — proposal_from_context classifier (heuristic + defense-in-depth)
+// ---------------------------------------------------------------------------
+
+/**
+ * Email-pattern: `local@domain.tld` — keeps it permissive enough to catch
+ * the common DACH-business forms (`name.lastname@firma.de`,
+ * `n.lastname@firma.com`) without false-positiving on plain URLs.
+ */
+const EMAIL_PATTERN = /\b[A-Z0-9._%+-]+@[A-Z0-9.-]+\.[A-Z]{2,}\b/i
+
+/**
+ * DACH-Telefon: `+49`, `0049`, or leading `0` followed by ≥ 8 digits, with
+ * optional separators (space, dash, slash, parenthesis). Catches
+ * `+49 (0)30 1234 5678`, `0030/12345678`, `0301234567` and friends.
+ */
+const PHONE_PATTERN = /(?:\+49|0049|\b0)[\s\-/().]*\d(?:[\s\-/().]*\d){7,}/
+
+/**
+ * DACH-Name-Pattern: two consecutive Capitalised-Word tokens, each ≥ 2
+ * chars, allowing `ä/ö/ü/ß` plus simple hyphens (e.g. "Anne-Marie").
+ * Whitelist-Filter unten siebt 50+ Common-False-Positives (Project-Phrase,
+ * Status-Report, etc.) raus.
+ */
+const NAME_PATTERN = /\b[A-ZÄÖÜ][a-zäöüß]{2,}(?:[\- ][A-ZÄÖÜ][a-zäöüß]{2,})+\b/
+
+/**
+ * Tokens that match `NAME_PATTERN` shape but are NOT personal names. A
+ * project-internal whitelist; conservative — adds, never removes.
+ *
+ * Note: matching is by `pattern.test(token)` against the full matched
+ * span, so multi-word tokens like "Status Report" land here as a unit.
+ */
+const NAME_FALSE_POSITIVES: ReadonlySet<string> = new Set([
+  "Status Report",
+  "Executive Summary",
+  "Project Manager",
+  "Project Owner",
+  "Project Lead",
+  "Steering Committee",
+  "Go Live",
+  "Use Case",
+  "Use Cases",
+  "User Story",
+  "User Stories",
+  "Work Package",
+  "Work Packages",
+  "Acceptance Criteria",
+  "Definition Of Done",
+  "Pull Request",
+  "Sub Project",
+  "Lessons Learned",
+])
+
+/**
+ * Heuristic Class-3 detector for free-text kickoff content.
+ *
+ * Returns `true` when the content carries email addresses, phone numbers,
+ * or capitalised name-shaped tokens that aren't on the false-positive
+ * whitelist. False-positives are acceptable (we'd rather route Class-3
+ * conservatively); false-negatives are mitigated by the upstream
+ * `context_sources.privacy_class` value (defense-in-depth).
+ */
+export function detectClass3Markers(text: string): boolean {
+  if (!text) return false
+  if (EMAIL_PATTERN.test(text)) return true
+  if (PHONE_PATTERN.test(text)) return true
+
+  // Walk all NAME_PATTERN matches and check the false-positive list.
+  // Use the global flag via `matchAll` to iterate every hit.
+  const globalNamePattern = new RegExp(NAME_PATTERN.source, "g")
+  for (const match of text.matchAll(globalNamePattern)) {
+    const span = match[0]
+    if (!NAME_FALSE_POSITIVES.has(span)) return true
+  }
+  return false
+}
+
+/**
+ * PROJ-70-α — classify a `ProposalFromContextAutoContext` payload.
+ *
+ * Two defense lines (high-class-wins):
+ *   1. `context_sources.privacy_class` from the upload-time classification
+ *      (PROJ-44-β). User or auto-classifier may set this to 3 deliberately.
+ *   2. Heuristic regex sweep over `content_excerpt` — catches Class-3
+ *      markers a Class-2-stamped row might still carry.
+ *
+ * `tenantDefault` follows the established Risk/Narrative semantics: a
+ * tenant configured with `default_class=3` will see proposal-from-context
+ * routed locally even on a clean Class-2 input.
+ */
+export function classifyProposalFromContextAutoContext(
+  ctx: ProposalFromContextAutoContext,
+  tenantDefault: DataClass = 3,
+): DataClass {
+  // Floor: the privacy_class stamped at upload time.
+  let max: DataClass = ctx.context_source.privacy_class
+
+  // Heuristic upgrade: even a Class-1/2-stamped row can leak personal
+  // markers in its excerpt; if so, force Class-3.
+  if (max < 3 && detectClass3Markers(ctx.context_source.content_excerpt)) {
+    max = 3
+  }
+
+  // Per-tenant floor — mirrors Narrative classifier semantics.
   if (tenantDefault === 3 && max < 2) {
     return max
   }

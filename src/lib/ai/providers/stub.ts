@@ -21,6 +21,7 @@ import type {
   CoachingGenerationRequest,
   CrossProjectLinksGenerationRequest,
   NarrativeGenerationRequest,
+  ProposalFromContextGenerationRequest,
   ResourceSwapGenerationRequest,
   RiskGenerationRequest,
   SentimentGenerationRequest,
@@ -31,6 +32,7 @@ import type {
   CrossProjectLinkSuggestion,
   CrossProjectLinksGenerationOutput,
   NarrativeGenerationOutput,
+  ProposalFromContextGenerationOutput,
   ResourceSwapGenerationOutput,
   RiskGenerationOutput,
   RiskSuggestion,
@@ -455,6 +457,32 @@ export class StubProvider implements AIProvider {
 
     return {
       suggestions: out,
+      usage: {
+        input_tokens: 0,
+        output_tokens: 0,
+        latency_ms: Date.now() - start,
+      },
+    }
+  }
+
+  /**
+   * PROJ-70-α — proposal-from-context stub.
+   *
+   * Emits zero suggestions. Mirror of ε.4.β CIA-L5: the Stub deliberately
+   * does NOT apply a heuristic on the kickoff content excerpt — a
+   * heuristic stub tends to grow toward reading Class-3 fields over
+   * time, which the privacy-classifier is explicitly designed to prevent.
+   *
+   * The router surfaces `status='external_blocked'` so the UI shows the
+   * "kein AI-Provider — bitte Tenant-Provider konfigurieren oder manuell
+   * strukturieren"-banner.
+   */
+  async generateProposalFromContext(
+    _request: ProposalFromContextGenerationRequest,
+  ): Promise<ProposalFromContextGenerationOutput> {
+    const start = Date.now()
+    return {
+      suggestions: [],
       usage: {
         input_tokens: 0,
         output_tokens: 0,

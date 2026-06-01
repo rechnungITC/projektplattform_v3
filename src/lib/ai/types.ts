@@ -18,6 +18,11 @@ export type AIPurpose =
   | "resource_swap"
   // PROJ-65 ε.4.γ — cross-project work-item link suggestions (Class-2, advisory)
   | "cross_project_links"
+  // PROJ-70-α — auto-backlog from a context_sources kickoff input (advisory).
+  // Hierarchical Item-Vorschläge mit `temp_id` + optional `parent_temp_id`
+  // — flach gespeichert, Hierarchie via Chain. Class-1/2 → Anthropic;
+  // Class-3 (via Heuristik oder PROJ-44-β privacy_class) → Ollama-only.
+  | "proposal_from_context"
 
 export type DataClass = 1 | 2 | 3
 
@@ -653,6 +658,115 @@ export interface CrossProjectLinksGenerationOutput {
  * create-link dialog with its own audit trail.
  */
 export interface RouterCrossProjectLinksResult {
+  run_id: string
+  classification: DataClass
+  provider: AIProviderName
+  model_id: string | null
+  status: "success" | "error" | "external_blocked"
+  suggestion_ids: string[]
+  external_blocked: boolean
+  error_message?: string
+}
+
+// ---------------------------------------------------------------------------
+// PROJ-70-α — proposal_from_context purpose types
+// ---------------------------------------------------------------------------
+
+/**
+ * Method-hint for the AI prompt. Maps roughly to `project.project_method`
+ * but normalised — Anthropic doesn't care about waterfall-de-DE vs.
+ * waterfall-en-US, just the methodological frame.
+ */
+export type ProjectMethodHint =
+  | "waterfall"
+  | "scrum"
+  | "kanban"
+  | "hybrid"
+  | "unspecified"
+
+/**
+ * Auto-context for proposal-from-context suggestions.
+ *
+ * Reads ONE `context_sources` row (the kickoff artefact) + the source
+ * project's `project_method`. Class-2 by default, but the heuristic
+ * Class-3-detector in `classify.ts` may upgrade the run to Class-3 when
+ * email / DACH-name / phone patterns are present in `content_excerpt`.
+ *
+ * Strict allowlist — fields NOT in this shape never reach the prompt.
+ */
+export interface ProposalFromContextAutoContext {
+  source_project: {
+    project_id: string
+    name: string
+    project_type: string | null
+    project_method: string | null
+    lifecycle_status: string
+  }
+  context_source: {
+    context_source_id: string
+    /** Document kind ("document" / "email" / "meeting_notes" / "transcript" / "other"). */
+    kind: string
+    title: string
+    /** Pre-classified privacy level from PROJ-44-β. Heuristik in classify.ts
+     *  can only raise it (high-class-wins) — never lower. */
+    privacy_class: 1 | 2 | 3
+    /** Capped 8k chars per PROJ-44-β; the only freetext that leaves the
+     *  RLS layer for AI processing. */
+    content_excerpt: string
+    /** Language hint, autodetected at ingestion time (de / en / null). */
+    language: string | null
+  }
+  /** Method-hint passed to the prompt so the model picks kinds aligned
+   *  with the project's project_method (waterfall → phase/work_package/todo;
+   *  scrum → epic/story/task; etc). */
+  method_hint: ProjectMethodHint
+}
+
+/**
+ * One AI-proposed backlog item. `temp_id` and `parent_temp_id` are
+ * model-generated; they only have meaning within ONE run. The actual
+ * `work_items.id` lives in a different namespace and is allocated at
+ * accept-time in slice 70-β.
+ *
+ * `kind` is suggested by the model but NOT validated against project_method
+ * here — strict method-compatibility check happens at accept-time
+ * (AC-β7) so the user can correct via inline-edit before persisting.
+ */
+export interface ProposalFromContextSuggestion {
+  /** Model-generated stable id within this run. */
+  temp_id: string
+  /** Parent reference within the same run; null at top-level. */
+  parent_temp_id: string | null
+  /** Suggested work_item kind (phase/work_package/todo/epic/story/task/
+   *  subtask/bug). Validation deferred to 70-β accept-time. */
+  kind: string
+  /** Short German title for the proposed work-item. */
+  title: string
+  /** Optional 1-3 sentence rationale; capped 500 chars by Zod-schema. */
+  description: string | null
+  /** Provider's self-confidence; the UI shows this as a small badge. */
+  confidence: "low" | "medium" | "high"
+  /** Server-side display enrichment so the FE renders without round-trips. */
+  display?: {
+    method_hint_kind: ProjectMethodHint | null
+    source_project_name: string | null
+    context_source_title: string | null
+  }
+}
+
+export interface ProposalFromContextGenerationOutput {
+  suggestions: ProposalFromContextSuggestion[]
+  usage: ProviderUsage
+}
+
+/**
+ * Result of a proposal-from-context router invocation. Persisted as a
+ * `ki_runs` row + one `ki_suggestions` row per suggestion
+ * (`purpose='proposal_from_context'`). The `accepted_entity_*` link
+ * stays NULL on accept — accept is advisory; the actual `work_items`
+ * row gets created by the 70-β accept-pipeline.
+ */
+export interface RouterProposalFromContextResult {
   run_id: string
   classification: DataClass
   provider: AIProviderName

@@ -15,6 +15,8 @@ import type {
   CrossProjectLinksGenerationOutput,
   NarrativeAutoContext,
   NarrativeGenerationOutput,
+  ProposalFromContextAutoContext,
+  ProposalFromContextGenerationOutput,
   ResourceSwapAutoContext,
   ResourceSwapGenerationOutput,
   RiskAutoContext,
@@ -61,6 +63,13 @@ export interface CrossProjectLinksGenerationRequest {
   count: number
 }
 
+export interface ProposalFromContextGenerationRequest {
+  context: ProposalFromContextAutoContext
+  /** Soft target for how many suggestions to emit (provider may emit fewer);
+   *  capped at 50 by the Zod schema regardless. */
+  count: number
+}
+
 /**
  * PROJ-30 + PROJ-34-γ.1 — generic provider interface. Methods are optional
  * so a provider can support a subset of purposes (e.g. Ollama implements
@@ -97,6 +106,10 @@ export interface AIProvider {
   generateCrossProjectLinks?(
     request: CrossProjectLinksGenerationRequest,
   ): Promise<CrossProjectLinksGenerationOutput>
+  // PROJ-70-α — auto-backlog from a kickoff context_source (advisory)
+  generateProposalFromContext?(
+    request: ProposalFromContextGenerationRequest,
+  ): Promise<ProposalFromContextGenerationOutput>
 }
 
 /**
