@@ -8,12 +8,16 @@ import {
 } from "../../../_lib/route-helpers"
 
 // PROJ-12 — PATCH /api/ki/suggestions/[id]
-// Body: { payload: { …risk-specific fields } }
+// Body: { payload: { …purpose-specific fields } }
 //
 // Inline-edit a draft suggestion before accepting it. We don't merge
 // arbitrary keys — the client sends the full new payload; we validate
-// it against the risk shape and store it. `is_modified` flips to true,
-// `original_payload` stays untouched so reviewers can diff.
+// it against the per-purpose shape and store it. `is_modified` flips to
+// true, `original_payload` stays untouched so reviewers can diff.
+//
+// PROJ-70-β added the `proposal_from_context` purpose-shape for the
+// auto-backlog drawer — the same route handles both risks + proposal
+// suggestions; dispatch happens after we read `sug.purpose`.
 
 const riskPayloadSchema = z.object({
   title: z.string().trim().min(1).max(255),
@@ -27,8 +31,46 @@ const riskPayloadSchema = z.object({
   mitigation: z.string().max(5000).nullable().optional(),
 })
 
+// PROJ-70-β — proposal_from_context inline-edit shape.
+// Locked AC-β6: only `title`, `kind`, `description` are editable.
+// Hierarchy edits (parent_temp_id) are reserved for 70-δ DnD-reparenting.
+// `temp_id` is run-internal and immutable; `confidence` is provider-
+// declared and not user-editable; `display` is server-enriched.
+const proposalFromContextPayloadSchema = z.object({
+  temp_id: z.string().min(1).max(64),
+  parent_temp_id: z.string().min(1).max(64).nullable(),
+  kind: z.enum([
+    "phase",
+    "work_package",
+    "todo",
+    "epic",
+    "story",
+    "task",
+    "subtask",
+    "bug",
+  ]),
+  title: z.string().trim().min(3).max(200),
+  description: z.string().max(500).nullable(),
+  confidence: z.enum(["low", "medium", "high"]),
+  display: z
+    .object({
+      method_hint_kind: z.string().nullable(),
+      source_project_name: z.string().nullable(),
+      context_source_title: z.string().nullable(),
+    })
+    .partial()
+    .optional(),
+})
+
+const PURPOSE_PAYLOAD_SCHEMAS = {
+  risks: riskPayloadSchema,
+  proposal_from_context: proposalFromContextPayloadSchema,
+} as const
+
+type SupportedPurpose = keyof typeof PURPOSE_PAYLOAD_SCHEMAS
+
 const bodySchema = z.object({
-  payload: riskPayloadSchema,
+  payload: z.unknown(),
 })
 
 interface Ctx {
@@ -81,11 +123,23 @@ export async function PATCH(request: Request, ctx: Ctx) {
       409
     )
   }
-  if (sug.purpose !== "risks") {
+  const purpose = sug.purpose as string
+  if (!(purpose in PURPOSE_PAYLOAD_SCHEMAS)) {
     return apiError(
       "validation_error",
-      "This route currently supports only risk suggestions.",
+      `This route does not support inline-edit for purpose '${purpose}'.`,
       422
+    )
+  }
+  const purposeSchema = PURPOSE_PAYLOAD_SCHEMAS[purpose as SupportedPurpose]
+  const payloadParsed = purposeSchema.safeParse(parsed.data.payload)
+  if (!payloadParsed.success) {
+    const first = payloadParsed.error.issues[0]
+    return apiError(
+      "validation_error",
+      first?.message ?? "Invalid payload shape for this purpose.",
+      400,
+      first?.path?.[0]?.toString()
     )
   }
 
@@ -100,7 +154,7 @@ export async function PATCH(request: Request, ctx: Ctx) {
   const { data: updated, error: updateErr } = await supabase
     .from("ki_suggestions")
     .update({
-      payload: parsed.data.payload,
+      payload: payloadParsed.data,
       is_modified: true,
     })
     .eq("id", id)
