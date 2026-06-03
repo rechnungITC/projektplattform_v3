@@ -45,12 +45,16 @@ import {
 } from "@/lib/ai-proposals/trajectory-sequence-api"
 
 import { CrossProjectLinksTab } from "./ai-proposals/cross-project-links-tab"
+import { BacklogProposalTab } from "./ai-proposals/backlog-proposal-tab"
 import { ResourceSwapTab } from "./ai-proposals/resource-swap-tab"
 
 interface AIProposalDrawerProps {
   open: boolean
   onOpenChange: (open: boolean) => void
   projectId: string
+  /** Project method drives 70-β Method-Validation badges. Optional —
+   *  when omitted, the Backlog tab considers all kinds compatible. */
+  projectMethod?: string | null
   /**
    * Optional node id (`phase:<uuid>` or `sprint:<uuid>`) that the user
    * focused before opening the drawer. Used to highlight suggestions
@@ -81,6 +85,7 @@ export function AIProposalDrawer({
   open,
   onOpenChange,
   projectId,
+  projectMethod = null,
   focusedNodeId,
   nodeLabels,
 }: AIProposalDrawerProps) {
@@ -191,6 +196,7 @@ export function AIProposalDrawer({
             <TabsTrigger value="trajectory">Trajektorie</TabsTrigger>
             <TabsTrigger value="resources">Ressourcen</TabsTrigger>
             <TabsTrigger value="links">Cross-Project</TabsTrigger>
+            <TabsTrigger value="backlog">Backlog</TabsTrigger>
           </TabsList>
 
           <TabsContent value="trajectory" className="mt-4 space-y-3">
@@ -274,6 +280,13 @@ export function AIProposalDrawer({
 
           <TabsContent value="links" className="mt-4">
             <CrossProjectLinksTab projectId={projectId} />
+          </TabsContent>
+
+          <TabsContent value="backlog" className="mt-4">
+            <BacklogProposalTab
+              projectId={projectId}
+              projectMethod={projectMethod}
+            />
           </TabsContent>
         </Tabs>
       </SheetContent>
