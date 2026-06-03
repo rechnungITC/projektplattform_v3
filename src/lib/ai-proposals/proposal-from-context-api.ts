@@ -130,3 +130,81 @@ export async function rejectProposalFromContextSuggestion(
   )
   if (!response.ok) throw new Error(await safeError(response))
 }
+
+// ---------------------------------------------------------------------------
+// PROJ-70-β — accept / undo / inline-edit
+// ---------------------------------------------------------------------------
+
+export interface AcceptProposalFromContextResult {
+  accepted_suggestion_ids: string[]
+  created_work_item_ids: string[]
+  accepted_at: string
+}
+
+export interface UndoProposalFromContextResult {
+  reverted_suggestion_ids: string[]
+  reverted_work_item_ids: string[]
+}
+
+/** Bulk-accept N suggestions (N≥1). Server runs topological-sort + atomic
+ *  transaction. Returns the `causation`-style ids needed for Undo. */
+export async function acceptProposalFromContext(
+  projectId: string,
+  suggestionIds: string[],
+  options: { methodValidationStrict?: boolean } = {},
+): Promise<AcceptProposalFromContextResult> {
+  if (suggestionIds.length === 0) {
+    throw new Error("suggestionIds must contain at least one id")
+  }
+  const response = await fetch(`${base(projectId)}/accept`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({
+      suggestionIds,
+      methodValidationStrict: options.methodValidationStrict ?? true,
+    }),
+  })
+  if (!response.ok) throw new Error(await safeError(response))
+  return (await response.json()) as AcceptProposalFromContextResult
+}
+
+/** Undo a bulk-accept within the 30-s window. Pass the
+ *  `accepted_suggestion_ids[]` returned from `acceptProposalFromContext`. */
+export async function undoProposalFromContextAccept(
+  projectId: string,
+  suggestionIds: string[],
+): Promise<UndoProposalFromContextResult> {
+  if (suggestionIds.length === 0) {
+    throw new Error("suggestionIds must contain at least one id")
+  }
+  const response = await fetch(`${base(projectId)}/undo`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ suggestionIds }),
+  })
+  if (!response.ok) throw new Error(await safeError(response))
+  return (await response.json()) as UndoProposalFromContextResult
+}
+
+/** Inline-edit a draft suggestion's title / kind / description. The full
+ *  payload (other fields unchanged) must be sent — the server replaces
+ *  `payload` entirely and flips `is_modified=true`. Keeps `original_payload`
+ *  intact for audit. */
+export async function editProposalFromContextSuggestion(
+  suggestionId: string,
+  payload: ProposalFromContextSuggestionPayload,
+): Promise<ProposalFromContextSuggestionRow> {
+  const response = await fetch(
+    `/api/ki/suggestions/${encodeURIComponent(suggestionId)}`,
+    {
+      method: "PATCH",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ payload }),
+    },
+  )
+  if (!response.ok) throw new Error(await safeError(response))
+  const body = (await response.json()) as {
+    suggestion: ProposalFromContextSuggestionRow
+  }
+  return body.suggestion
+}

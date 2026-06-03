@@ -1,6 +1,6 @@
 # PROJ-70: Auto-Generated Backlog from Project Kickoff
 
-## Status: Approved (α) — α-Slice deployed 2026-06-01 + formal QA-Pass 2026-06-03 (11/11 AC + 11 security probes); β/γ/δ/ε planned
+## Status: α Approved+Deployed · β backend live (RPCs + APIs + tests in main 2026-06-03; UI deferred to /frontend skill) · γ/δ/ε planned
 **Created:** 2026-05-31
 **Last Updated:** 2026-06-01
 **α-Slice deployed:** 2026-06-01 — migration applied to Prod-DB; lint 0 errors; tsc baseline-clean; vitest 1583/1583 (incl. 14 new classifier tests); build 13.7s clean; new API route registered: `/api/projects/[id]/ai/proposal-from-context`
