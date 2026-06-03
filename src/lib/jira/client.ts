@@ -1,6 +1,10 @@
 import { z } from "zod"
 
 import type { ConnectorHealth } from "@/lib/connectors/types"
+import type {
+  JiraAssignableUserCandidate,
+  JiraTransitionCandidate,
+} from "@/lib/jira/resolver"
 
 export const JiraCredentialsSchema = z.object({
   base_url: z
@@ -27,6 +31,10 @@ export interface JiraRequestOptions {
 export interface JiraIssueResult {
   key: string
   self?: string
+}
+
+interface JiraTransitionsResponse {
+  transitions?: JiraTransitionCandidate[]
 }
 
 interface JiraErrorPayload {
@@ -195,6 +203,74 @@ export async function updateJiraIssue(
     {
       method: "PUT",
       body: payload,
+      fetchImpl,
+    }
+  )
+}
+
+export async function getJiraTransitions(
+  credentials: JiraCredentials,
+  issueKey: string,
+  fetchImpl?: typeof fetch
+): Promise<JiraTransitionCandidate[]> {
+  const response = await jiraRequest<JiraTransitionsResponse>(
+    credentials,
+    `/rest/api/3/issue/${encodeURIComponent(issueKey)}/transitions`,
+    { fetchImpl }
+  )
+  return response.transitions ?? []
+}
+
+export async function transitionJiraIssue(
+  credentials: JiraCredentials,
+  issueKey: string,
+  transitionId: string,
+  fetchImpl?: typeof fetch
+): Promise<void> {
+  await jiraRequest<void>(
+    credentials,
+    `/rest/api/3/issue/${encodeURIComponent(issueKey)}/transitions`,
+    {
+      method: "POST",
+      body: { transition: { id: transitionId } },
+      fetchImpl,
+    }
+  )
+}
+
+export async function searchAssignableJiraUsers(
+  credentials: JiraCredentials,
+  args: {
+    projectKey: string
+    query: string
+    maxResults?: number
+  },
+  fetchImpl?: typeof fetch
+): Promise<JiraAssignableUserCandidate[]> {
+  const params = new URLSearchParams({
+    project: args.projectKey,
+    query: args.query,
+    maxResults: String(args.maxResults ?? 10),
+  })
+  return jiraRequest<JiraAssignableUserCandidate[]>(
+    credentials,
+    `/rest/api/3/user/assignable/search?${params.toString()}`,
+    { fetchImpl }
+  )
+}
+
+export async function assignJiraIssue(
+  credentials: JiraCredentials,
+  issueKey: string,
+  accountId: string,
+  fetchImpl?: typeof fetch
+): Promise<void> {
+  await jiraRequest<void>(
+    credentials,
+    `/rest/api/3/issue/${encodeURIComponent(issueKey)}/assignee`,
+    {
+      method: "PUT",
+      body: { accountId },
       fetchImpl,
     }
   )

@@ -29,6 +29,23 @@ Es gibt aber mehrere Review-Funde, die vor dem nächsten größeren Feature-Schu
 | `npm audit --json` | Fail | 7 moderate, 0 high, 0 critical. |
 | `npm run check:schema-drift` | Nicht ausführbar lokal | Exit 2: `DATABASE_URL is not set`. |
 
+## Nachtrag - 2026-06-03 PROJ-47 Deploy-Basis
+
+Der PROJ-47 Jira Export Connector wurde nach dem Follow-up-Slice erneut geprüft. Dieser Nachtrag ersetzt nicht die historische Review-Basis vom 2026-05-28, sondern dokumentiert den aktuellen Deploy-Stand fuer den Jira-Outbound-MVP.
+
+| Check | Ergebnis | Notiz |
+|---|---:|---|
+| `gitnexus analyze` | Pass | Index auf Commit `8c8758c` aktualisiert. |
+| `gitnexus status` | Pass | GitNexus up-to-date: 21.529 Nodes, 32.463 Edges, 492 Cluster, 300 Flows. |
+| `gitnexus detect-changes --scope staged` | Pass | PROJ-47 Follow-up: Medium Risk, 4 Jira Preview-/Export-Flows, kein HIGH/CRITICAL. |
+| `npm run lint` | Pass | 0 Errors. |
+| `npm run test -- src/lib/jira src/lib/connectors/registry.test.ts` | Pass | 6 Test Files, 25 Tests gruen. |
+| `npm run test` | Pass | 193 Test Files, 1590 Tests gruen. |
+| `npm run build` | Pass | Next.js Build gruen, Jira API-Routen im Route-Output enthalten. |
+| `npm run check:schema-drift` | Pass | 507 SELECT calls across 80 tables, 0 drift. |
+
+PROJ-47 ist damit fuer den tenant-admin Outbound-MVP deployfaehig. Weiterhin offen bleibt ein dedizierter Playwright-Mock-Flow mit authentifiziertem Fixture fuer den kompletten Jira-Dialog-Happy-Path ohne echte Jira-Credentials.
+
 ## Architekturbeobachtungen
 
 - Die App ist klar in Next.js App Router, `src/lib/*`-Domänenmodule, UI-Komponenten und Supabase-Migrationen gegliedert.

@@ -2,10 +2,14 @@ import type { SupabaseClient } from "@supabase/supabase-js"
 import { z } from "zod"
 
 import {
+  assignJiraIssue,
   buildJiraIssuePayload,
   createJiraIssue,
+  getJiraTransitions,
   jiraIssueUrl,
   sanitizeJiraError,
+  searchAssignableJiraUsers,
+  transitionJiraIssue,
   updateJiraIssue,
   type JiraCredentials,
 } from "@/lib/jira/client"
@@ -14,6 +18,10 @@ import {
   JiraFieldMappingSchema,
   type JiraFieldMapping,
 } from "@/lib/jira/mapping"
+import {
+  resolveJiraAssignee,
+  resolveJiraTransition,
+} from "@/lib/jira/resolver"
 
 export const JiraExportScopeSchema = z.object({
   work_item_ids: z.array(z.string().uuid()).min(1).max(100),
@@ -30,6 +38,11 @@ export interface JiraWorkItemRow {
   description: string | null
   status: string
   priority: string
+  responsible_user_id: string | null
+  responsible?:
+    | { id?: string; email?: string | null; display_name?: string | null }
+    | Array<{ id?: string; email?: string | null; display_name?: string | null }>
+    | null
   is_deleted?: boolean
 }
 
@@ -140,7 +153,7 @@ async function loadWorkItems(
   const { data, error } = await supabase
     .from("work_items")
     .select(
-      "id, tenant_id, project_id, kind, title, description, status, priority, is_deleted"
+      "id, tenant_id, project_id, kind, title, description, status, priority, responsible_user_id, is_deleted, responsible:profiles!work_items_responsible_user_id_fkey ( id, email, display_name )"
     )
     .eq("tenant_id", args.tenantId)
     .eq("project_id", args.projectId)
@@ -172,11 +185,17 @@ async function loadExternalRefs(
   )
 }
 
-function previewItem(
+function getResponsibleEmail(item: JiraWorkItemRow): string | null {
+  const responsible = Array.isArray(item.responsible)
+    ? item.responsible[0]
+    : item.responsible
+  return responsible?.email ?? null
+}
+
+function getFatalMappingWarnings(
   item: JiraWorkItemRow,
-  mapping: JiraFieldMapping,
-  externalRef: JiraExternalRefRow | undefined
-): JiraExportPreviewItem {
+  mapping: JiraFieldMapping
+): string[] {
   const warnings: string[] = []
   if (!mapping.issue_type_map[item.kind]) {
     warnings.push(`Kein Jira Issue-Type-Mapping fuer Work-Item-Art ${item.kind}`)
@@ -184,12 +203,100 @@ function previewItem(
   if (!mapping.priority_map[item.priority]) {
     warnings.push(`Kein Jira Priority-Mapping fuer Prioritaet ${item.priority}`)
   }
+  return warnings
+}
+
+async function getStatusPreviewWarnings(
+  credentials: JiraCredentials,
+  args: {
+    item: JiraWorkItemRow
+    mapping: JiraFieldMapping
+    externalRef?: JiraExternalRefRow
+    fetchImpl?: typeof fetch
+  }
+): Promise<string[]> {
+  const target = args.mapping.status_map[args.item.status]
+  if (!target) {
+    return [`Kein Jira Status-Mapping fuer Status ${args.item.status}`]
+  }
+
+  if (!args.externalRef) {
+    return [`Status-Transition "${target}" wird nach Jira-Create geprueft.`]
+  }
+
+  try {
+    const transitions = await getJiraTransitions(
+      credentials,
+      args.externalRef.external_key,
+      args.fetchImpl
+    )
+    const resolution = resolveJiraTransition(transitions, target)
+    return resolution.warning ? [resolution.warning] : []
+  } catch (err) {
+    return [`Status-Transition konnte nicht geprueft werden: ${sanitizeJiraError(err)}`]
+  }
+}
+
+async function getAssigneePreviewWarnings(
+  credentials: JiraCredentials,
+  args: {
+    item: JiraWorkItemRow
+    mapping: JiraFieldMapping
+    fetchImpl?: typeof fetch
+  }
+): Promise<string[]> {
+  if (args.mapping.assignee_mode === "none") return []
+
+  const email = getResponsibleEmail(args.item)
+  if (!email) return ["Kein Responsible User mit E-Mail fuer Jira-Assignee."]
+
+  try {
+    const users = await searchAssignableJiraUsers(
+      credentials,
+      {
+        projectKey: args.mapping.jira_project_key,
+        query: email,
+      },
+      args.fetchImpl
+    )
+    const resolution = resolveJiraAssignee(users, email)
+    return resolution.warning ? [resolution.warning] : []
+  } catch (err) {
+    return [`Jira-Assignee konnte nicht geprueft werden: ${sanitizeJiraError(err)}`]
+  }
+}
+
+async function previewItem(
+  credentials: JiraCredentials,
+  item: JiraWorkItemRow,
+  mapping: JiraFieldMapping,
+  externalRef: JiraExternalRefRow | undefined,
+  fetchImpl?: typeof fetch
+): Promise<JiraExportPreviewItem> {
+  const fatalWarnings = getFatalMappingWarnings(item, mapping)
+  const enrichmentWarnings =
+    fatalWarnings.length > 0
+      ? []
+      : [
+          ...(await getStatusPreviewWarnings(credentials, {
+            item,
+            mapping,
+            externalRef,
+            fetchImpl,
+          })),
+          ...(await getAssigneePreviewWarnings(credentials, {
+            item,
+            mapping,
+            fetchImpl,
+          })),
+        ]
+  const warnings = [...fatalWarnings, ...enrichmentWarnings]
 
   return {
     work_item_id: item.id,
     title: item.title,
     kind: item.kind,
-    action: warnings.length > 0 ? "skip" : externalRef ? "update" : "create",
+    action: fatalWarnings.length > 0 ? "skip" : externalRef ? "update" : "create",
     jira_issue_key: externalRef?.external_key ?? null,
     jira_issue_url: externalRef?.external_url ?? null,
     warnings,
@@ -203,6 +310,7 @@ export async function createJiraExportPreview(
     projectId: string
     credentials: JiraCredentials
     scope: JiraExportScope
+    fetchImpl?: typeof fetch
   }
 ): Promise<JiraExportPreview> {
   const mapping = await loadJiraFieldMapping(supabase, {
@@ -223,8 +331,16 @@ export async function createJiraExportPreview(
 
   const foundIds = new Set(items.map((item) => item.id))
   const missing = args.scope.work_item_ids.filter((id) => !foundIds.has(id))
-  const previewItems = items.map((item) =>
-    previewItem(item, mapping, refs.get(item.id))
+  const previewItems = await Promise.all(
+    items.map((item) =>
+      previewItem(
+        args.credentials,
+        item,
+        mapping,
+        refs.get(item.id),
+        args.fetchImpl
+      )
+    )
   )
   for (const id of missing) {
     previewItems.push({
@@ -243,15 +359,110 @@ export async function createJiraExportPreview(
 
 function issuePayload(item: JiraWorkItemRow, mapping: JiraFieldMapping) {
   const issueType = mapping.issue_type_map[item.kind]
-  if (!issueType) return null
+  const priority = mapping.priority_map[item.priority]
+  if (!issueType || !priority) return null
   return buildJiraIssuePayload({
     projectKey: mapping.jira_project_key,
     issueType,
     summary: item.title,
     description: item.description,
-    priority: mapping.priority_map[item.priority] ?? null,
+    priority,
     labels: mapping.labels,
   })
+}
+
+async function resolveAssignableAccountId(
+  credentials: JiraCredentials,
+  args: {
+    item: JiraWorkItemRow
+    mapping: JiraFieldMapping
+    fetchImpl?: typeof fetch
+  }
+): Promise<{ accountId: string | null; warnings: string[] }> {
+  if (args.mapping.assignee_mode === "none") {
+    return { accountId: null, warnings: [] }
+  }
+
+  const email = getResponsibleEmail(args.item)
+  if (!email) {
+    return {
+      accountId: null,
+      warnings: ["Kein Responsible User mit E-Mail fuer Jira-Assignee."],
+    }
+  }
+
+  try {
+    const users = await searchAssignableJiraUsers(
+      credentials,
+      {
+        projectKey: args.mapping.jira_project_key,
+        query: email,
+      },
+      args.fetchImpl
+    )
+    const resolution = resolveJiraAssignee(users, email)
+    return {
+      accountId: resolution.accountId,
+      warnings: resolution.warning ? [resolution.warning] : [],
+    }
+  } catch (err) {
+    return {
+      accountId: null,
+      warnings: [`Jira-Assignee konnte nicht geprueft werden: ${sanitizeJiraError(err)}`],
+    }
+  }
+}
+
+async function applyJiraStatusTransition(
+  credentials: JiraCredentials,
+  args: {
+    issueKey: string
+    item: JiraWorkItemRow
+    mapping: JiraFieldMapping
+    fetchImpl?: typeof fetch
+  }
+): Promise<string[]> {
+  const target = args.mapping.status_map[args.item.status]
+  if (!target) return [`Kein Jira Status-Mapping fuer Status ${args.item.status}`]
+
+  try {
+    const transitions = await getJiraTransitions(
+      credentials,
+      args.issueKey,
+      args.fetchImpl
+    )
+    const resolution = resolveJiraTransition(transitions, target)
+    if (resolution.warning) return [resolution.warning]
+    if (!resolution.transitionId) return []
+
+    await transitionJiraIssue(
+      credentials,
+      args.issueKey,
+      resolution.transitionId,
+      args.fetchImpl
+    )
+    return []
+  } catch (err) {
+    return [`Jira-Status-Transition fehlgeschlagen: ${sanitizeJiraError(err)}`]
+  }
+}
+
+async function applyJiraAssignee(
+  credentials: JiraCredentials,
+  args: {
+    issueKey: string
+    accountId: string | null
+    fetchImpl?: typeof fetch
+  }
+): Promise<string[]> {
+  if (!args.accountId) return []
+
+  try {
+    await assignJiraIssue(credentials, args.issueKey, args.accountId, args.fetchImpl)
+    return []
+  } catch (err) {
+    return [`Jira-Assignee konnte nicht gesetzt werden: ${sanitizeJiraError(err)}`]
+  }
 }
 
 export async function runJiraExportJob(
@@ -303,8 +514,9 @@ export async function runJiraExportJob(
   let failed = 0
 
   for (const item of items) {
+    const fatalWarnings = getFatalMappingWarnings(item, mapping)
     const payload = issuePayload(item, mapping)
-    if (!payload) {
+    if (!payload || fatalWarnings.length > 0) {
       skipped++
       await insertLog(supabase, {
         tenantId: args.tenantId,
@@ -313,19 +525,39 @@ export async function runJiraExportJob(
         workItemId: item.id,
         result: "skipped",
         attempt: 0,
-        sanitizedError: `Kein Jira Issue-Type-Mapping fuer ${item.kind}`,
+        sanitizedError: fatalWarnings.join("; "),
       })
       continue
     }
 
     const existingRef = refs.get(item.id)
     try {
+      const assignee = await resolveAssignableAccountId(args.credentials, {
+        item,
+        mapping,
+        fetchImpl: args.fetchImpl,
+      })
+      const enrichmentWarnings = [...assignee.warnings]
+
       if (existingRef) {
         await updateJiraIssue(
           args.credentials,
           existingRef.external_key,
           payload,
           args.fetchImpl
+        )
+        enrichmentWarnings.push(
+          ...(await applyJiraStatusTransition(args.credentials, {
+            issueKey: existingRef.external_key,
+            item,
+            mapping,
+            fetchImpl: args.fetchImpl,
+          })),
+          ...(await applyJiraAssignee(args.credentials, {
+            issueKey: existingRef.external_key,
+            accountId: assignee.accountId,
+            fetchImpl: args.fetchImpl,
+          }))
         )
         updated++
         await insertLog(supabase, {
@@ -337,6 +569,7 @@ export async function runJiraExportJob(
           issueKey: existingRef.external_key,
           issueUrl: existingRef.external_url,
           attempt: 1,
+          sanitizedError: enrichmentWarnings.join("; ") || null,
         })
       } else {
         const issue = await createJiraIssue(
@@ -345,6 +578,19 @@ export async function runJiraExportJob(
           args.fetchImpl
         )
         const url = jiraIssueUrl(args.credentials, issue.key)
+        enrichmentWarnings.push(
+          ...(await applyJiraStatusTransition(args.credentials, {
+            issueKey: issue.key,
+            item,
+            mapping,
+            fetchImpl: args.fetchImpl,
+          })),
+          ...(await applyJiraAssignee(args.credentials, {
+            issueKey: issue.key,
+            accountId: assignee.accountId,
+            fetchImpl: args.fetchImpl,
+          }))
+        )
         await upsertExternalRef(supabase, {
           tenantId: args.tenantId,
           projectId: args.projectId,
@@ -363,6 +609,7 @@ export async function runJiraExportJob(
           issueKey: issue.key,
           issueUrl: url,
           attempt: 1,
+          sanitizedError: enrichmentWarnings.join("; ") || null,
         })
       }
     } catch (err) {

@@ -18,6 +18,13 @@ import {
 import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
 import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from "@/components/ui/select"
+import {
   Table,
   TableBody,
   TableCell,
@@ -123,6 +130,11 @@ export function JiraExportDialog({
   const itemIds = React.useMemo(() => items.map((item) => item.id), [items])
   const actionableCount =
     preview?.items.filter((item) => item.action !== "skip").length ?? 0
+  const jobWarnings =
+    job?.log
+      .map((row) => row.sanitized_error)
+      .filter((value): value is string => typeof value === "string" && value.length > 0)
+      .slice(0, 3) ?? []
 
   const load = React.useCallback(async () => {
     if (!open || itemIds.length === 0) return
@@ -235,6 +247,35 @@ export function JiraExportDialog({
                     }
                     placeholder="v3-export, pilot"
                   />
+                </div>
+                <div className="space-y-2 sm:col-span-2">
+                  <Label htmlFor="jira-assignee-mode">Assignee</Label>
+                  <Select
+                    value={draft.assigneeMode}
+                    onValueChange={(value) =>
+                      setDraft((prev) =>
+                        prev
+                          ? {
+                              ...prev,
+                              assigneeMode:
+                                value === "responsible_user_email"
+                                  ? "responsible_user_email"
+                                  : "none",
+                            }
+                          : prev
+                      )
+                    }
+                  >
+                    <SelectTrigger id="jira-assignee-mode">
+                      <SelectValue />
+                    </SelectTrigger>
+                    <SelectContent>
+                      <SelectItem value="none">Nicht setzen</SelectItem>
+                      <SelectItem value="responsible_user_email">
+                        Responsible User per E-Mail
+                      </SelectItem>
+                    </SelectContent>
+                  </Select>
                 </div>
               </div>
 
@@ -374,6 +415,13 @@ export function JiraExportDialog({
                     {String(job.job.updated_count ?? 0)} · Failed:{" "}
                     {String(job.job.failed_count ?? 0)}
                   </p>
+                  {jobWarnings.length > 0 ? (
+                    <ul className="mt-2 list-disc space-y-1 pl-4 text-xs text-muted-foreground">
+                      {jobWarnings.map((warning) => (
+                        <li key={warning}>{warning}</li>
+                      ))}
+                    </ul>
+                  ) : null}
                 </div>
               ) : null}
             </section>
