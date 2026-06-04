@@ -114,4 +114,24 @@ test.describe("PROJ-70 / proposal-from-context API auth-gates", () => {
     )
     expect([307, 400, 401, 403]).toContain(res.status())
   })
+
+  test("γ — multipart POST /api/context-sources is auth-gated", async ({ request }) => {
+    // The multipart dispatcher in route.ts must run AUTH first, then
+    // content-type sniff. Anonymous requests should never reach the
+    // parser layer.
+    const res = await request.post("/api/context-sources", {
+      multipart: {
+        file: {
+          name: "kickoff.pdf",
+          mimeType: "application/pdf",
+          buffer: Buffer.from("%PDF-1.4\n%fake\n"),
+        },
+        kind: "document",
+        title: "Kickoff",
+      },
+      failOnStatusCode: false,
+      maxRedirects: 0,
+    })
+    expect([307, 401, 403]).toContain(res.status())
+  })
 })
