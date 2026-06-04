@@ -15,23 +15,47 @@
 -- ---------------------------------------------------------------------------
 -- 1. Bucket — private, 25 MB cap, MIME allowlist
 -- ---------------------------------------------------------------------------
-insert into storage.buckets (id, name, public, file_size_limit, allowed_mime_types)
-values (
-  'context-source-uploads',
-  'context-source-uploads',
-  false,
-  26214400,  -- 25 MB
-  array[
-    'application/pdf',
-    'application/vnd.openxmlformats-officedocument.wordprocessingml.document',
-    'text/plain',
-    'text/markdown'
-  ]
-)
-on conflict (id) do update set
-  public = excluded.public,
-  file_size_limit = excluded.file_size_limit,
-  allowed_mime_types = excluded.allowed_mime_types;
+-- Universal-columns INSERT (id/name/public) works on stripped-down
+-- postgres shadow-DBs (schema-drift CI). The optional Supabase Storage
+-- extension columns `file_size_limit` + `allowed_mime_types` are wired
+-- via a tolerant DO-block so the same migration applies cleanly both
+-- to real Supabase + plain postgres.
+insert into storage.buckets (id, name, public)
+values ('context-source-uploads', 'context-source-uploads', false)
+on conflict (id) do update set public = excluded.public;
+
+do $bucket_limits$
+begin
+  -- file_size_limit (25 MB) — only set if the column exists.
+  if exists (
+    select 1 from information_schema.columns
+    where table_schema = 'storage'
+      and table_name = 'buckets'
+      and column_name = 'file_size_limit'
+  ) then
+    update storage.buckets
+    set file_size_limit = 26214400
+    where id = 'context-source-uploads';
+  end if;
+
+  -- allowed_mime_types — only set if the column exists.
+  if exists (
+    select 1 from information_schema.columns
+    where table_schema = 'storage'
+      and table_name = 'buckets'
+      and column_name = 'allowed_mime_types'
+  ) then
+    update storage.buckets
+    set allowed_mime_types = array[
+      'application/pdf',
+      'application/vnd.openxmlformats-officedocument.wordprocessingml.document',
+      'text/plain',
+      'text/markdown'
+    ]
+    where id = 'context-source-uploads';
+  end if;
+end
+$bucket_limits$;
 
 -- ---------------------------------------------------------------------------
 -- 2. RLS on storage.objects — tenant-prefix-match
@@ -127,11 +151,12 @@ declare
   v_policy_count int;
   v_columns_count int;
 begin
-  -- 1. Bucket exists with the right config.
+  -- 1. Bucket exists with the right base config (only universal columns
+  --    checked here; the Storage-extension columns file_size_limit +
+  --    allowed_mime_types are set via the DO-block above and are not
+  --    available on the schema-drift shadow-DB).
   select count(*) into v_bucket_count from storage.buckets
-  where id = 'context-source-uploads'
-    and public = false
-    and file_size_limit = 26214400;
+  where id = 'context-source-uploads' and public = false;
   if v_bucket_count <> 1 then
     raise exception 'smoke-fail: bucket context-source-uploads missing or misconfigured';
   end if;
