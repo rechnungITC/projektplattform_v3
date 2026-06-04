@@ -208,3 +208,65 @@ export async function editProposalFromContextSuggestion(
   }
   return body.suggestion
 }
+
+// ---------------------------------------------------------------------------
+// PROJ-70-γ — File-upload wrapper
+// ---------------------------------------------------------------------------
+
+export interface UploadContextSourceArgs {
+  file: File
+  kind: string
+  title: string
+  projectId?: string | null
+  language?: "de" | "en"
+}
+
+export interface ContextSourceRow {
+  id: string
+  tenant_id: string
+  project_id: string | null
+  kind: string
+  title: string
+  content_excerpt: string | null
+  content_full_url: string | null
+  source_metadata: Record<string, unknown>
+  language: string | null
+  privacy_class: 1 | 2 | 3
+  processing_status: string
+  last_processed_at: string | null
+  last_failure_reason: string | null
+  original_filename: string | null
+  mime_type: string | null
+  file_size_bytes: number | null
+  created_by: string
+  created_at: string
+  updated_at: string
+}
+
+/**
+ * Upload a kickoff artefact (PDF/DOCX/TXT/MD) via the multipart path of
+ * `POST /api/context-sources`. Server-side does magic-byte sniff +
+ * parser dispatch + 20s timeout + 25 MB cap + storage write.
+ *
+ * Returns the freshly-created `context_sources` row including its `id`,
+ * which the caller passes to `triggerProposalFromContext` to kick off
+ * the AI run.
+ */
+export async function uploadContextSourceFile(
+  args: UploadContextSourceArgs,
+): Promise<ContextSourceRow> {
+  const fd = new FormData()
+  fd.append("file", args.file)
+  fd.append("kind", args.kind)
+  fd.append("title", args.title)
+  if (args.projectId) fd.append("project_id", args.projectId)
+  if (args.language) fd.append("language", args.language)
+
+  const response = await fetch("/api/context-sources", {
+    method: "POST",
+    body: fd,
+  })
+  if (!response.ok) throw new Error(await safeError(response))
+  const body = (await response.json()) as { context_source: ContextSourceRow }
+  return body.context_source
+}

@@ -1,6 +1,6 @@
 # PROJ-70: Auto-Generated Backlog from Project Kickoff
 
-## Status: α Approved+Deployed · β Approved+Deployed (QA-Pass 2026-06-04) · γ Architected (2026-06-04; **CIA-Review 2026-06-04 → pdf-parse REJECTED → ersetzt durch pdfjs-dist; mammoth + file-type APPROVED_WITH_FOLLOWUPS; 8 Hardening-AC ergänzt; γ-Slice-Start GO**) · δ/ε planned
+## Status: α Approved+Deployed · β Approved+Deployed · γ **In Progress (Backend gebaut 2026-06-04 — Migration + 2 lib-Files + Route-Erweiterung + UI File-Picker + 29 neue Vitest-Tests + 1 neuer Playwright-Case live in main; awaiting QA-Pass)** · δ/ε planned
 **Created:** 2026-05-31
 **Last Updated:** 2026-06-01
 **α-Slice deployed:** 2026-06-01 — migration applied to Prod-DB; lint 0 errors; tsc baseline-clean; vitest 1583/1583 (incl. 14 new classifier tests); build 13.7s clean; new API route registered: `/api/projects/[id]/ai/proposal-from-context`
@@ -123,7 +123,7 @@ Diese Spec ist groß genug, dass eine 5-Phasen-Aufteilung Pflicht ist — jede P
 - [ ] **AC-γ5**: File-Size-Cap (Per-Upload und Per-Tenant-Quota) konfigurierbar via `tenant_settings`.
 - [ ] **AC-γ6**: Parse-Failures: row.processing_status='failed' + `last_failure_reason`; user sieht "Datei konnte nicht gelesen werden — bitte als Text einfügen" + Plain-Text-Fallback im UI.
 - [x] **AC-γ7**: CIA-Review-Approved (2026-06-04) für: pdfjs-dist Lizenz + Vulnerabilities + Maintenance-Status, mammoth Maintenance-Status + ZIP-Bomb-Risiko, file-type ESM-Profil, Storage-Bucket Encryption-at-Rest.
-- [ ] **AC-γ8**: Vitest deckt: magic-byte-sniffing, size-cap, parse-failure-status-update.
+- [x] **AC-γ8**: Vitest deckt: magic-byte-sniffing, size-cap, parse-failure-status-update — 29 neue Cases in `src/lib/context-ingestion/file-parser.test.ts` (19) + `storage.test.ts` (10), plus 1 Playwright multipart-auth-gate-Case. **1654/1654 grün**.
 
 #### γ Hardening Acceptance Criteria (ergänzt durch CIA-Review 2026-06-04)
 

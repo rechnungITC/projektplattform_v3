@@ -40,7 +40,9 @@ import {
   editProposalFromContextSuggestion,
   listProposalFromContextSuggestions,
   rejectProposalFromContextSuggestion,
+  triggerProposalFromContext,
   undoProposalFromContextAccept,
+  uploadContextSourceFile,
   type ProposalFromContextSuggestionPayload,
   type ProposalFromContextSuggestionRow,
 } from "@/lib/ai-proposals/proposal-from-context-api"
@@ -117,7 +119,11 @@ export function BacklogProposalTab({
     ProposalFromContextSuggestionRow[]
   >([])
   const [busy, setBusy] = React.useState(false)
-  const [contextSourceInput, setContextSourceInput] = React.useState("")
+  // PROJ-70-γ: file-picker state. The picker accepts PDF/DOCX/TXT/MD;
+  // server-side magic-byte sniffing is the security boundary, the
+  // accept-attribute is just a UX hint.
+  const [pickedFile, setPickedFile] = React.useState<File | null>(null)
+  const [titleInput, setTitleInput] = React.useState("")
   const [editingTempId, setEditingTempId] = React.useState<string | null>(null)
 
   const reload = React.useCallback(async () => {
@@ -188,19 +194,39 @@ export function BacklogProposalTab({
   )
 
   const onGenerate = React.useCallback(async () => {
-    const sourceId = contextSourceInput.trim()
-    if (!sourceId) {
-      toast.error("Bitte zuerst eine Context-Source-ID eingeben")
+    if (!pickedFile) {
+      toast.error("Bitte zuerst eine Datei auswählen (PDF / DOCX / TXT / MD)")
       return
     }
+    const inferredTitle = titleInput.trim() || pickedFile.name
     setBusy(true)
     try {
-      const result = await (
-        await import("@/lib/ai-proposals/proposal-from-context-api")
-      ).triggerProposalFromContext(projectId, {
-        contextSourceId: sourceId,
+      // PROJ-70-γ: upload file (multipart) → context_sources row → trigger
+      // proposal_from_context with the returned id.
+      const inferredKind: string =
+        pickedFile.type === "application/pdf" ||
+        pickedFile.name.toLowerCase().endsWith(".pdf")
+          ? "document"
+          : pickedFile.type ===
+              "application/vnd.openxmlformats-officedocument.wordprocessingml.document" ||
+            pickedFile.name.toLowerCase().endsWith(".docx")
+            ? "document"
+            : pickedFile.name.toLowerCase().endsWith(".md")
+              ? "meeting_notes"
+              : "other"
+
+      const contextSource = await uploadContextSourceFile({
+        file: pickedFile,
+        kind: inferredKind,
+        title: inferredTitle,
+        projectId,
+      })
+
+      const result = await triggerProposalFromContext(projectId, {
+        contextSourceId: contextSource.id,
         count: 10,
       })
+
       if (result.status === "error") {
         toast.error("KI-Lauf fehlgeschlagen", {
           description: result.error_message ?? "Unbekannter Fehler",
@@ -217,16 +243,20 @@ export function BacklogProposalTab({
             ? "KI hat keine Vorschläge generiert — Kontext zu dünn."
             : `${result.suggestion_ids.length} neue${result.suggestion_ids.length === 1 ? "r" : ""} Vorschlag${result.suggestion_ids.length === 1 ? "" : "e"}`,
         )
+        // Reset the picker on a successful run so the user doesn't
+        // re-upload by accident.
+        setPickedFile(null)
+        setTitleInput("")
       }
       await reload()
     } catch (err) {
-      toast.error("Generierung fehlgeschlagen", {
+      toast.error("Upload oder Generierung fehlgeschlagen", {
         description: err instanceof Error ? err.message : "Unbekannter Fehler",
       })
     } finally {
       setBusy(false)
     }
-  }, [contextSourceInput, projectId, reload])
+  }, [pickedFile, titleInput, projectId, reload])
 
   const onAcceptOne = React.useCallback(
     async (suggestion: ProposalFromContextSuggestionRow) => {
@@ -344,28 +374,56 @@ export function BacklogProposalTab({
 
   return (
     <div className="space-y-3" data-testid="backlog-proposal-tab">
-      <div className="flex items-end gap-2">
-        <div className="flex flex-1 flex-col gap-1">
+      <div className="flex flex-col gap-2 rounded-md border border-dashed bg-muted/10 p-2">
+        <div className="flex flex-col gap-1">
           <label
-            htmlFor="context-source-input"
+            htmlFor="backlog-proposal-file-input"
             className="text-[11px] font-medium uppercase tracking-wide text-muted-foreground"
           >
-            Kickoff-Artefakt (context_source-ID)
+            Kickoff-Datei (PDF · DOCX · TXT · MD · max 25 MB)
           </label>
           <input
-            id="context-source-input"
-            type="text"
-            className="h-8 rounded-md border border-input bg-background px-2 text-sm"
-            placeholder="UUID einer Context-Source aus PROJ-44 …"
-            value={contextSourceInput}
-            onChange={(e) => setContextSourceInput(e.target.value)}
+            id="backlog-proposal-file-input"
+            type="file"
+            accept=".pdf,.docx,.txt,.md,application/pdf,application/vnd.openxmlformats-officedocument.wordprocessingml.document,text/plain,text/markdown"
+            className="h-8 w-full text-sm file:mr-2 file:rounded file:border file:border-input file:bg-background file:px-2 file:py-0.5 file:text-xs"
+            onChange={(e) => {
+              const file = e.target.files?.[0] ?? null
+              setPickedFile(file)
+              if (file && !titleInput) setTitleInput(file.name)
+            }}
             disabled={busy}
+            data-testid="backlog-proposal-file-input"
           />
         </div>
-        <Button size="sm" onClick={() => void onGenerate()} disabled={busy}>
-          <Sparkles className="mr-1.5 h-3.5 w-3.5" aria-hidden />
-          {busy ? "Lädt …" : "Generieren"}
-        </Button>
+        <div className="flex items-end gap-2">
+          <div className="flex flex-1 flex-col gap-1">
+            <label
+              htmlFor="backlog-proposal-title-input"
+              className="text-[11px] font-medium uppercase tracking-wide text-muted-foreground"
+            >
+              Titel (optional — Dateiname als Default)
+            </label>
+            <input
+              id="backlog-proposal-title-input"
+              type="text"
+              className="h-8 rounded-md border border-input bg-background px-2 text-sm"
+              placeholder="z.B. Kickoff-Protokoll 2026-06-04"
+              value={titleInput}
+              onChange={(e) => setTitleInput(e.target.value)}
+              disabled={busy}
+            />
+          </div>
+          <Button
+            size="sm"
+            onClick={() => void onGenerate()}
+            disabled={busy || !pickedFile}
+            data-testid="backlog-proposal-generate"
+          >
+            <Sparkles className="mr-1.5 h-3.5 w-3.5" aria-hidden />
+            {busy ? "Lädt …" : "Hochladen + Generieren"}
+          </Button>
+        </div>
       </div>
 
       <p className="rounded-md border border-sky-400/30 bg-sky-500/5 p-2 text-[11px] text-sky-700 dark:text-sky-300">
