@@ -1,6 +1,6 @@
 # PROJ-70: Auto-Generated Backlog from Project Kickoff
 
-## Status: α Approved+Deployed · β Approved+Deployed (QA-Pass 2026-06-04) · γ Architected (2026-06-04, pending CIA-Review für pdf-parse+mammoth) · δ/ε planned
+## Status: α Approved+Deployed · β Approved+Deployed (QA-Pass 2026-06-04) · γ Architected (2026-06-04; **CIA-Review 2026-06-04 → pdf-parse REJECTED → ersetzt durch pdfjs-dist; mammoth + file-type APPROVED_WITH_FOLLOWUPS; 8 Hardening-AC ergänzt; γ-Slice-Start GO**) · δ/ε planned
 **Created:** 2026-05-31
 **Last Updated:** 2026-06-01
 **α-Slice deployed:** 2026-06-01 — migration applied to Prod-DB; lint 0 errors; tsc baseline-clean; vitest 1583/1583 (incl. 14 new classifier tests); build 13.7s clean; new API route registered: `/api/projects/[id]/ai/proposal-from-context`
@@ -58,7 +58,7 @@ Diese Spec ist groß genug, dass eine 5-Phasen-Aufteilung Pflicht ist — jede P
 |---|---|---|---|
 | **70-α** | AIPurpose `proposal_from_context` Backend (Router-Function, Stub + Anthropic-Provider, API, AIPurpose-Union, DB-CHECK-Migration) + Text/Markdown-Upload-Path über existierende `context_sources`-Tabelle | — | 2 |
 | **70-β** | Review-Drawer-UI (Tab im AIProposalDrawer oder eigener BacklogProposalDrawer; Hierarchie-Tree read-only mit Inline-Title/Kind-Edit, Accept/Reject einzeln + Bulk-Accept-All, Edit-Inline) + Acceptance-Flow zu echten `work_items` mit `ki_provenance`-Link | 70-α | 2 |
-| **70-γ** | PDF + DOCX Server-Parse via `pdf-parse` + `mammoth` (neue Deps, CIA-Review nötig); Supabase Storage Upload für > 8k chars; sicheres File-Type-Sniffing (magic-bytes, nicht Content-Type-Trust) | 70-α | 2 |
+| **70-γ** | PDF + DOCX Server-Parse via `pdfjs-dist` (direkt; statt unmaintained `pdf-parse`-Wrapper, CIA-2026-06-04) + `mammoth` (DOCX) + `file-type` (magic-byte sniffing); Supabase Storage Upload für > 8k chars; 8 Hardening-AC (size-cap pre-parse, page-cap, ZIP-bomb-guard, parse-timeout, log-PII-block, lazy-import) | 70-α | 2 |
 | **70-δ** | Outlook .msg + .eml Parse (Lib-Pick im Architecture-Slice; Email-Header-Extraction für Stakeholder-Hint); DnD-Reparenting im Review-Drawer (wiederverwendet PROJ-59 Pattern) | 70-β + 70-γ | 2.5 |
 | **70-ε** | Wizard-Integration (PROJ-5 F2.1b-Pfad): "KI-Backlog generieren"-Step nach Methoden-Auswahl; übergibt method-context an Router; Skip-Möglichkeit erhalten | 70-β | 1.5 |
 
@@ -116,14 +116,39 @@ Diese Spec ist groß genug, dass eine 5-Phasen-Aufteilung Pflicht ist — jede P
 
 ### Slice 70-γ — PDF + DOCX + Storage
 
-- [ ] **AC-γ1**: Neue Deps via CIA-Review freigegeben: `pdf-parse` (PDF-Text-Extraction) + `mammoth` (DOCX-Text-Extraction). Lizenz-Check vor Merge.
+- [x] **AC-γ1**: Neue Deps via CIA-Review freigegeben (2026-06-04): `pdfjs-dist` (PDF-Text-Extraction; ersetzt unmaintained `pdf-parse`-Wrapper auf CIA-Empfehlung), `mammoth` (DOCX-Text-Extraction; APPROVED_WITH_FOLLOWUPS), `file-type` (magic-byte-Sniffing; APPROVED_WITH_FOLLOWUPS). Lizenzen alle MIT/BSD-2.
 - [ ] **AC-γ2**: Supabase Storage Bucket `context-source-uploads` mit RLS-Policies: nur Tenant-Member kann upload + download eigene tenant_id Objects.
 - [ ] **AC-γ3**: `POST /api/context-sources` erweitert um `multipart/form-data`-Path: file → tenant-scoped Storage-Path `{tenant_id}/{context_source_id}/{filename}` → server-side parse → `content_excerpt` capped 8 k chars + `content_full_url`-Pointer.
 - [ ] **AC-γ4**: File-Type-Sniffing via magic-bytes (nicht `Content-Type`-Header-Trust); reject non-allowlisted MIME-Types mit 400.
 - [ ] **AC-γ5**: File-Size-Cap (Per-Upload und Per-Tenant-Quota) konfigurierbar via `tenant_settings`.
 - [ ] **AC-γ6**: Parse-Failures: row.processing_status='failed' + `last_failure_reason`; user sieht "Datei konnte nicht gelesen werden — bitte als Text einfügen" + Plain-Text-Fallback im UI.
-- [ ] **AC-γ7**: CIA-Review-Approved für: pdf-parse Lizenz + Vulnerabilities, mammoth Maintenance-Status, Storage-Bucket Encryption-at-Rest.
+- [x] **AC-γ7**: CIA-Review-Approved (2026-06-04) für: pdfjs-dist Lizenz + Vulnerabilities + Maintenance-Status, mammoth Maintenance-Status + ZIP-Bomb-Risiko, file-type ESM-Profil, Storage-Bucket Encryption-at-Rest.
 - [ ] **AC-γ8**: Vitest deckt: magic-byte-sniffing, size-cap, parse-failure-status-update.
+
+#### γ Hardening Acceptance Criteria (ergänzt durch CIA-Review 2026-06-04)
+
+Diese 8 AC sind zusätzlich zu AC-γ1–8 verpflichtend für den `/backend PROJ-70-γ`-Slice. Sie schützen gegen DoS-Vektoren in PDF/DOCX-Parsing und gegen PII-Leakage in Log-Pfade.
+
+- [ ] **AC-γH-1 Hard size cap pre-parse**: Reject im multipart-Handler `Content-Length > 25 MB` bevor der Parser angesprochen wird (nicht erst im Parser-Pfad). Response 413 Payload Too Large.
+- [ ] **AC-γH-2 Hard page cap (PDF)**: max 200 Seiten via `pdfjs-dist` `pdfDocument.numPages` check vor Text-Extract; höhere PDFs → `processing_status='failed'` + `failure_reason='page_limit_exceeded'`.
+- [ ] **AC-γH-3 DOCX Plaintext-Output-Cap**: nach `mammoth.extractRawText` Buffer-Größe prüfen + Plaintext-Länge auf **2 MB raw text** kappen (vor dem `content_excerpt`-8000-char-cut). Schutz gegen ZIP-Decompression-Bomb-Amplifikation.
+- [ ] **AC-γH-4 Parse-Timeout-Wrapper**: `Promise.race` mit **20 s Timeout** pro Datei (PDF + DOCX). Bei Timeout → `failed/parse_timeout`. Verhindert Parser-CPU-DoS via malformed Files.
+- [ ] **AC-γH-5 Magic-byte VOR Parser**: `file-type.fileTypeFromBuffer(buf.slice(0, 4100))` muss `application/pdf` ODER `application/vnd.openxmlformats-officedocument.wordprocessingml.document` ergeben — andernfalls hard-reject vor Parser-Aufruf. Kein Content-Type-Header-Trust.
+- [ ] **AC-γH-6 Storage-Upload NACH erfolgreichem Parse**: nicht parallel; vermeidet Orphan-Files bei Parser-Crash. Reihenfolge: parse → INSERT context_sources → upload storage.objects → UPDATE content_full_url.
+- [ ] **AC-γH-7 PII in Logs blockieren**: Parser-Output darf nicht im Application-Log landen, auch nicht in Sentry-Breadcrumbs / `extra` / `contexts`. Sentry-`beforeSend`-Hook erweitern: drop `content_excerpt`, drop Raw-Parser-Output-Felder.
+- [ ] **AC-γH-8 Lazy / dynamic import**: `pdfjs-dist` und `file-type` als `await import(...)` innerhalb der Route, NICHT als Top-Level-Import. Hält Cold-Start klein und vermeidet ESM/CJS-Init-Probleme (file-type ist ESM-only ab v17).
+
+#### Follow-ups identified by γ-CIA-Review (PROJ-Y-Kandidaten)
+
+Diese 5 sind aus dem CIA-Review-Output. Sie sind **nicht-blockierend** für γ — sie werden als eigene Specs aufgenommen wenn Pilot-Feedback / Skalierung sie nötig macht.
+
+| Y-Slot | Titel | Trigger |
+|---|---|---|
+| **PROJ-Y-1** | OCR-Slice für Scan-PDFs | `pdfjs-dist` extrahiert nur eingebetteten Text; bildbasierte PDFs liefern leeres Excerpt → AI bekommt keinen Kontext. Optional Tesseract.js oder externer OCR-Provider. Pilot-Feedback-getrieben. |
+| **PROJ-Y-2** | Streaming-Parse bei Skalierung | > 50 parallele Uploads × 25 MB sprengen Vercel-Function-Memory (1 GB default). Streaming/Chunked Parse oder Background-Worker (Supabase Edge Function + Queue). Erst wenn Pilot reale Last zeigt. |
+| **PROJ-Y-3** | Mehr Formate (PPTX, XLSX, MD, EML) | PROJ-44 listet E-Mails und Meeting-Notes als Zielquellen; γ deckt nur PDF+DOCX. EML-Parsing (`mailparser`) und MD-Passthrough ist die δ/ε-Erweiterung. |
+| **PROJ-Y-4** | Supply-Chain-Audit-CI | `npm audit --omit=dev` + Snyk-CI als Required-Check analog PROJ-42 Schema-Drift-Guard. CIA-Rule 1+8 würde davon profitieren. |
+| **PROJ-Y-5** | Class-3-Re-Classification nach Parse | `detectClass3Markers` läuft auf 8000-char-Excerpt; Original-PDF kann mehr PII enthalten als das Excerpt zeigt. Re-Classification-Job über Volltext oder hard-rule "PDF mit Class-3-Markern im Excerpt → Storage-Datei gleichzeitig löschen". |
 
 ### Slice 70-δ — Outlook .msg + .eml + DnD-Reparenting
 
@@ -782,7 +807,15 @@ Beide 70-β-relevanten Fragen sind gelockt. Eine verbleibende (Q3) wartet auf 70
 
 > **Scope:** PROJ-70-γ (File-Upload-Slice). Adds PDF + DOCX file ingestion to the existing PROJ-44-β `context_sources` upload route. δ (Outlook + DnD) and ε (Wizard) get their own architecture passes.
 > **Reviewer:** Solution Architect — autonomous pass after β-QA closure.
-> **CIA-Trigger-Status:** Spec-flagged mandatory for γ (neue Top-Level-Deps `pdf-parse` + `mammoth`). **Will be invoked before the /backend slice** to validate licence + maintenance + vulnerability history of both libs. This Architecture-Pass locks the design assuming CIA approves the picks; a no-go from CIA forces a lib-swap (e.g. `pdf.js-extract` for `pdf-parse`) which would not change the architectural shape.
+> **CIA-Trigger-Status:** CIA-Review **erfolgt 2026-06-04** mit Verdict-Tabelle:
+>
+> | Lib | Verdict | Aktion |
+> |---|---|---|
+> | `pdf-parse` | 🟥 NEEDS_ALTERNATIVE | **ersetzt durch direkten `pdfjs-dist`-Aufruf** (Mozilla-maintained, MIT, ohnehin transitive Lib unter pdf-parse → eine Schicht weniger; eliminiert Test-Asset-Init-Bug + eingefrorenes pdfjs-Version + unmaintained Wrapper) |
+> | `mammoth` | 🟨 APPROVED_WITH_FOLLOWUPS | ZIP-Bomb-Guard zwingend (Hardening-AC-3) |
+> | `file-type` | 🟨 APPROVED_WITH_FOLLOWUPS | ESM-only ab v17 → dynamic-import-Pattern zwingend (Hardening-AC-8) |
+>
+> 8 zusätzliche Hardening-Acceptance-Criteria sind in die γ-AC-Liste übernommen (siehe Sektion "γ Hardening Acceptance Criteria" unten). 5 Pre-Implementation-Followups als PROJ-Y-Kandidaten in INDEX angelegt.
 
 #### Locked Architecture Decisions
 
@@ -829,9 +862,11 @@ Kein client-side Content-Type-Trust. Lib-Pick: `file-type` (npm package, ~30 KB,
 src/lib/context-ingestion/
 +-- file-parser.ts (NEW)
 |   +-- parseFile(file: Buffer, mime: string) → { excerpt: string, metadata: Record<...> }
-|   +-- parsePdf(buffer) — uses pdf-parse
+|   +-- parsePdf(buffer) — uses `pdfjs-dist` DIRECT (Mozilla-maintained, CIA-2026-06-04 pick;
+|   |     ~30 LoC: getDocument({ data: buffer }) → for-loop über pdfDocument.numPages →
+|   |     await page.getTextContent() → join items. Eigene Kontrolle über Timeout, Page-Limit, Memory-Cap.)
 |   +-- parseDocx(buffer) — uses mammoth.extractRawText
-|   +-- sniffMagic(buffer) — magic-byte check via file-type lib
+|   +-- sniffMagic(buffer) — magic-byte check via file-type lib (dynamic-import-Pattern: ESM-only)
 +-- storage.ts (NEW)
     +-- uploadContextSourceFile(supabase, tenantId, contextSourceId, file)
     +-- (download-helper deliberately NOT exposed in γ)
@@ -951,11 +986,11 @@ comment on column public.context_sources.original_filename is
 | Magic-byte sniffing zwingend | XSS/Injection-Schutz: Client-MIME-Header ist untrusted. file-type lib < 30 KB Cost. |
 | Allow `.txt`/`.md` im selben Pfad | Vereinfacht den FE: ein File-Picker, vier Formate; Plain-Text-Files lesen wir direkt als UTF-8. |
 
-#### F) Dependencies (zu installieren — pending CIA-OK)
+#### F) Dependencies (CIA-approved 2026-06-04)
 
-- `pdf-parse` (~600 KB server-only, MIT licence)
-- `mammoth` (~700 KB server-only, BSD-2 licence)
-- `file-type` (~30 KB, MIT licence) — only if not already transitively present
+- `pdfjs-dist` (~2 MB server-only, MIT licence, Mozilla-maintained) — ersetzt unmaintained `pdf-parse`-Wrapper. ~30 LoC eigener Extract-Loop mit Control über Timeout + Page-Limit + Memory-Cap.
+- `mammoth` (~700 KB server-only, BSD-2 licence, mwilliamson seit ~10 Jahren aktiv) — DOCX→Plaintext. Followups: ZIP-Bomb-Guard + Output-Length-Cap (AC-γH-3).
+- `file-type` (~30 KB, MIT licence, Sindre Sorhus active) — magic-byte sniffing. Followup: dynamic-import-Pattern (AC-γH-8, ESM-only ab v17).
 
 #### G) Slice-Acceptance-Map (von 70-γ ACs in Spec § "Slice 70-γ — PDF + DOCX + Storage")
 
@@ -997,25 +1032,23 @@ Alle 5 offenen Architecture-Fragen jetzt gelockt.
 
 #### J) Handoff to `/backend PROJ-70-γ`
 
-**Voraussetzungen vor Slice-Start:**
-1. **CIA-Review für pdf-parse + mammoth** (mandatory per spec)
-2. Optional: file-type lib check (kann übersprungen werden falls schon transitiv vorhanden)
+**Voraussetzungen vor Slice-Start: ✅ alle erfüllt 2026-06-04** — CIA-Review approved 3 Libs (pdfjs-dist statt pdf-parse, mammoth APPROVED_WITH_FOLLOWUPS, file-type APPROVED_WITH_FOLLOWUPS) + 8 Hardening-AC ergänzt.
 
-**12-Schritte-Plan:**
-1. CIA-Review erhalten + dokumentieren
-2. `npm install pdf-parse mammoth` (optional file-type) — CIA-approved versions
+**12-Schritte-Plan (post-CIA, locked 2026-06-04):**
+1. ✅ CIA-Review-Output dokumentiert in PR #89
+2. `npm install pdfjs-dist mammoth file-type` — CIA-approved versions
 3. Migration `20260610100000_proj70_gamma_storage_bucket.sql` schreiben + apply via Supabase MCP
-4. `src/lib/context-ingestion/file-parser.ts` mit parsePdf / parseDocx / sniffMagic
+4. `src/lib/context-ingestion/file-parser.ts` mit parsePdf (pdfjs-dist direct) / parseDocx (mammoth) / sniffMagic (file-type via dynamic-import, AC-γH-8)
 5. `src/lib/context-ingestion/storage.ts` mit uploadContextSourceFile-Helper
-6. `src/app/api/context-sources/route.ts` POST handler: multipart-detection + parse + upload + INSERT
+6. `src/app/api/context-sources/route.ts` POST handler: multipart-detection + magic-byte-check (AC-γH-5) + parse-with-timeout (AC-γH-4) + size/page-cap (AC-γH-1+2+3) + upload (AC-γH-6) + INSERT + Sentry-PII-Filter (AC-γH-7)
 7. Update FE-Client `proposal-from-context-api.ts` mit `uploadContextSourceFile`-Wrapper
 8. `backlog-proposal-tab.tsx`: ersetze text-input UUID picker mit File-Picker
-9. Vitest: file-parser tests (mock buffer + mock pdf-parse return) + storage helper tests + route multipart-detection test
+9. Vitest: file-parser tests (mock buffer + mock pdfjs-dist return) + storage helper tests + route multipart-detection test
 10. Playwright: extend `PROJ-70-proposal-from-context.spec.ts` mit multipart-auth-gate case
 11. lint + tsc + vitest + build gates green
 12. PR + tag + deploy
 
-**Geschätzte Bauzeit:** ~2 PT mit pdf-parse/mammoth als off-the-shelf Libs (sobald CIA approved).
+**Geschätzte Bauzeit:** ~2 PT mit pdfjs-dist/mammoth/file-type als off-the-shelf Libs + 8 Hardening-AC (CIA-required).
 
 ## QA Test Results
 
