@@ -1,6 +1,6 @@
 # PROJ-44: Context Ingestion Pipeline
 
-## Status: Deployed (α docs + β-foundation + γ classifier + δ proposal-stub + ε UI live)
+## Status: Deployed (α + β live; γ classifier deferred; **δ + ε superseded by PROJ-70 on 2026-06-04** — see [PROJ-70 spec](PROJ-70-auto-generated-backlog-from-kickoff.md))
 **Created:** 2026-05-06
 **Last Updated:** 2026-05-11
 
@@ -47,8 +47,8 @@ Felder (minimal):
 | **44-alpha** | Spec docs + privacy-class registry alignment | Nein | Live (2026-05-11) |
 | **44-beta** | `context_sources` table + RLS + POST/GET API | Ja, neue Tabelle | Live (2026-05-11) |
 | **44-gamma** | Auto-Privacy-Klassifikator (Regex/Wörterbuch) + tone metadata | Nein | Deferred |
-| **44-delta** | AI Proposal Queue (`proposal_from_context` purpose im Router) | Nein | Deferred |
-| **44-epsilon** | UI: Upload, Liste, Proposal-Review-Drawer | Nein | Deferred |
+| **44-delta** | AI Proposal Queue (`proposal_from_context` purpose im Router) | Nein | **Superseded by PROJ-70-α** (live 2026-06-01 via tag v1.78.0-PROJ-70-alpha; AIPurpose + Router + Provider-Impl + API komplett gebaut) |
+| **44-epsilon** | UI: Upload, Liste, Proposal-Review-Drawer | Nein | **Superseded by PROJ-70-β** (UI live 2026-06-03 via tag v1.80.0-PROJ-70-beta-ui; BacklogProposalTab + Tree-Node im AIProposalDrawer; Upload-Pfad für PDF/DOCX kommt in PROJ-70-γ) |
 
 ## Implementation Notes
 
