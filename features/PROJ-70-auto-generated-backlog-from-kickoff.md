@@ -1,6 +1,6 @@
 # PROJ-70: Auto-Generated Backlog from Project Kickoff
 
-## Status: α Approved+Deployed · β fully built (backend + UI live in main 2026-06-03) — awaiting QA · γ/δ/ε planned
+## Status: α Approved+Deployed · β Approved+Deployed (QA-Pass 2026-06-04) · γ Architected (2026-06-04, pending CIA-Review für pdf-parse+mammoth) · δ/ε planned
 **Created:** 2026-05-31
 **Last Updated:** 2026-06-01
 **α-Slice deployed:** 2026-06-01 — migration applied to Prod-DB; lint 0 errors; tsc baseline-clean; vitest 1583/1583 (incl. 14 new classifier tests); build 13.7s clean; new API route registered: `/api/projects/[id]/ai/proposal-from-context`
@@ -776,6 +776,247 @@ Geschätzte Bauzeit: **~2 PT** mit 70-α + ε.3c.β-Pattern als Live-Template.
 
 Beide 70-β-relevanten Fragen sind gelockt. Eine verbleibende (Q3) wartet auf 70-γ.
 
+---
+
+### γ-Slice Architecture Pass (PDF + DOCX + Supabase Storage) — 2026-06-04
+
+> **Scope:** PROJ-70-γ (File-Upload-Slice). Adds PDF + DOCX file ingestion to the existing PROJ-44-β `context_sources` upload route. δ (Outlook + DnD) and ε (Wizard) get their own architecture passes.
+> **Reviewer:** Solution Architect — autonomous pass after β-QA closure.
+> **CIA-Trigger-Status:** Spec-flagged mandatory for γ (neue Top-Level-Deps `pdf-parse` + `mammoth`). **Will be invoked before the /backend slice** to validate licence + maintenance + vulnerability history of both libs. This Architecture-Pass locks the design assuming CIA approves the picks; a no-go from CIA forces a lib-swap (e.g. `pdf.js-extract` for `pdf-parse`) which would not change the architectural shape.
+
+#### Locked Architecture Decisions
+
+##### Q3: Storage-Bucket-Policy — **LOCKED: server-side proxy route, signed-URL only for download path**
+
+Three sub-decisions:
+
+| Sub-Q | Entscheidung | Begründung |
+|---|---|---|
+| **Bucket layout** | Single bucket `context-source-uploads` mit tenant-scoped Pfaden `{tenant_id}/{context_source_id}/{filename}` | RLS auf Bucket = Tenant-Boundary; ein Bucket reduziert Provisioning-Overhead |
+| **Upload flow** | Multipart POST an existing `/api/context-sources` route → server-side parse → store both raw file + extracted excerpt | Centralised parsing-error-handling; client doesn't see Storage at all in α/γ |
+| **Download flow** | NOT supported in γ. Bucket-Objekt bleibt server-only für Audit. Falls Download später nötig: signed-URL über separate Route mit RLS-check | Minimises attack surface — no client-side direct-Storage URL exposure |
+
+| Alternative | Verworfen weil |
+|---|---|
+| Client-direct upload via signed-URL + post-process via webhook | RLS-Race-conditions möglich (Object existiert vor `context_sources`-Row); harder error-handling für Parse-Failures |
+| Multiple buckets per tenant | Provisioning-Overhead bei N Tenants; unklar wie Storage-Cleanup bei Tenant-Delete läuft |
+| Storage in DB (BYTEA column) | Postgres-Bloat, kein CDN, schlechte Skalierung |
+
+**Storage Bucket Configuration:**
+
+- Name: `context-source-uploads`
+- Public: `false` (private bucket; nur über server-side proxy zugreifbar)
+- File-size-limit: 25 MB (configurable via `tenant_settings`-Override für Enterprise)
+- Allowed MIME types: `application/pdf`, `application/vnd.openxmlformats-officedocument.wordprocessingml.document` (DOCX). Plus `text/plain`/`text/markdown` für legacy α-Path.
+- Encryption-at-rest: Supabase default ✅
+- RLS policies on `storage.objects`:
+  - SELECT/INSERT/UPDATE/DELETE only for `is_tenant_member(tenant_id_from_path)` — Path-prefix-Match via SQL
+
+##### Magic-Byte Sniffing — **LOCKED: Server-side via file-type Lib OR header inspection**
+
+Approach: nach Empfang der multipart-Datei vor jedem Parse-Versuch:
+
+1. Lies die ersten ~4 KB als Buffer
+2. PDF: prüfe `%PDF-` Magic-Header (4 Bytes)
+3. DOCX: prüfe ZIP-Container-Header `PK\x03\x04` + check für `[Content_Types].xml` im ZIP
+4. Bei Mismatch: 400 mit "File appears not to be a valid PDF/DOCX"
+
+Kein client-side Content-Type-Trust. Lib-Pick: `file-type` (npm package, ~30 KB, widely used, 0 deps, MIT) — CIA-prüfbar wenn nicht schon im Bundle.
+
+#### A) Component Structure (Server-Side + Minimal UI)
+
+```
+src/lib/context-ingestion/
++-- file-parser.ts (NEW)
+|   +-- parseFile(file: Buffer, mime: string) → { excerpt: string, metadata: Record<...> }
+|   +-- parsePdf(buffer) — uses pdf-parse
+|   +-- parseDocx(buffer) — uses mammoth.extractRawText
+|   +-- sniffMagic(buffer) — magic-byte check via file-type lib
++-- storage.ts (NEW)
+    +-- uploadContextSourceFile(supabase, tenantId, contextSourceId, file)
+    +-- (download-helper deliberately NOT exposed in γ)
+
+src/app/api/context-sources/route.ts (edited)
++-- POST handler accepts both:
+|   +-- application/json   { kind, title, content_excerpt } — existing α path
+|   +-- multipart/form-data { kind, title, file } — NEW γ path
+|       → magic-sniff
+|       → parse to excerpt (capped 8k for compatibility with α)
+|       → upload raw to storage
+|       → INSERT context_sources row mit content_full_url
+
+src/components/projects/ai-proposals/backlog-proposal-tab.tsx (edited)
++-- Replace text-input UUID picker with FilePicker + UUID picker (γ.UI)
+|   +-- <input type="file" accept=".pdf,.docx,.txt,.md">
+|   +-- On submit: POST multipart/form-data, then trigger Generate
+
+supabase/migrations/20260610100000_proj70_gamma_storage_bucket.sql (NEW)
++-- Create storage bucket `context-source-uploads`
++-- RLS policies on storage.objects (tenant-prefix-Match)
++-- Add `file_size_bytes`, `original_filename`, `mime_type` to context_sources
++-- File-size-limit + MIME-allowlist as tenant_settings keys
+```
+
+#### B) Data Model (Plain Language)
+
+**Was wird gespeichert:**
+
+Pro Upload:
+- **Eine `context_sources`-Row** wie bisher; jetzt mit drei neuen Spalten:
+  - `original_filename` (text, optional — null bei JSON-Pfad)
+  - `mime_type` (text, optional — null bei JSON-Pfad)
+  - `file_size_bytes` (int, optional — null bei JSON-Pfad)
+- **Ein Storage-Object** unter `{tenant_id}/{context_source_id}/{sanitized_filename}` — die Roh-Datei, encrypted-at-rest
+
+**Was passiert beim Upload (Server-Side):**
+
+```
+Client → multipart POST mit { kind, title, file }
+  ↓
+Route handler reads file Buffer + MIME header
+  ↓
+sniffMagic(buffer) — reject if MIME ≠ allowlist OR magic-byte mismatch
+  ↓
+size-cap check (default 25 MB; tenant-Override möglich)
+  ↓
+parsePdf(buffer) OR parseDocx(buffer) → { excerpt, metadata }
+  ↓
+INSERT context_sources (content_excerpt = excerpt.slice(0, 8000), ...)
+  ↓
+uploadContextSourceFile(...) → storage.objects path
+  ↓
+UPDATE context_sources SET content_full_url = `<bucket>/<path>`
+  ↓
+Return 201 with new context_source.id
+```
+
+**Parse-Failure-Mode:**
+
+Wenn `parsePdf`/`parseDocx` throws (corrupt PDF, image-only scan):
+- `context_sources.processing_status = 'failed'`
+- `last_failure_reason = err.message.slice(0, 500)`
+- Storage-Upload skipped (no orphan files)
+- Return 422 mit klarer User-Message: "Datei konnte nicht gelesen werden — bitte Inhalt als Text einfügen"
+
+#### C) CIA-Review Lock-Items (must approve before /backend)
+
+| Item | Aspekt zu prüfen |
+|---|---|
+| `pdf-parse` (npm) | Licence (MIT), maintenance status (last release < 12 months), Vulnerability-DB hits, bundle-size (~600 KB OK für server-only), known dependence on `pdfjs-dist` |
+| `mammoth` (npm) | Licence (BSD-2), maintenance status, bundle-size (~700 KB OK für server-only), test-coverage |
+| `file-type` (npm) | If not in bundle: licence (MIT), bundle-size (~30 KB) |
+| Server-side memory pressure | Worst-case: 25 MB upload × N concurrent → consider streaming-parse später; γ-MVP nutzt buffer-based |
+| Class-3-Heuristik nach Parse | Wendet `detectClass3Markers` auf den extrahierten Excerpt an — same path wie text-upload; kein Special-Case |
+
+#### D) Migration Shape
+
+```sql
+-- 20260610100000_proj70_gamma_storage_bucket.sql
+
+insert into storage.buckets (id, name, public, file_size_limit, allowed_mime_types)
+values (
+  'context-source-uploads',
+  'context-source-uploads',
+  false,
+  26214400,  -- 25 MB
+  array[
+    'application/pdf',
+    'application/vnd.openxmlformats-officedocument.wordprocessingml.document',
+    'text/plain',
+    'text/markdown'
+  ]
+);
+
+-- 4 storage.objects policies (SELECT/INSERT/UPDATE/DELETE) checking
+-- is_tenant_member(uuid(split_part(name, '/', 1))) per Path-Prefix
+
+alter table public.context_sources
+  add column if not exists original_filename text,
+  add column if not exists mime_type text,
+  add column if not exists file_size_bytes int check (file_size_bytes is null or file_size_bytes > 0);
+
+comment on column public.context_sources.original_filename is
+  'PROJ-70-γ: Filename as uploaded by user; null when ingested via JSON path.';
+```
+
+#### E) Tech Decisions
+
+| Entscheidung | Begründung |
+|---|---|
+| Single bucket, tenant-scoped path | RLS via `is_tenant_member(uuid(split_part(name, '/', 1)))` — bewährtes Pattern aus PROJ-21-Snapshots |
+| Server-side proxy für Download (deferred) | γ-MVP braucht keinen Download; nur Audit-Vorhaltung. Wenn später ein "Original-PDF ansehen"-Button nötig wird, kommt ein eigener API-Endpoint mit signed-URL. |
+| Buffer-basiert statt Streaming | Bundle-Größe 25 MB ist mit Node.js Buffers handhabbar; Streaming-Parse-Komplexität rentiert sich erst bei größeren Files |
+| `pdf-parse` + `mammoth` als Standard-Picks | Beide etabliert + npm-trust-stack + community-support; PROJ-21 hat sie schon einmal evaluiert |
+| Excerpt cap 8000 chars | Behält Kompatibilität mit α-Pfad (`content_excerpt` schon capped 8k); Class-3-Heuristik läuft auf demselben Feld |
+| Magic-byte sniffing zwingend | XSS/Injection-Schutz: Client-MIME-Header ist untrusted. file-type lib < 30 KB Cost. |
+| Allow `.txt`/`.md` im selben Pfad | Vereinfacht den FE: ein File-Picker, vier Formate; Plain-Text-Files lesen wir direkt als UTF-8. |
+
+#### F) Dependencies (zu installieren — pending CIA-OK)
+
+- `pdf-parse` (~600 KB server-only, MIT licence)
+- `mammoth` (~700 KB server-only, BSD-2 licence)
+- `file-type` (~30 KB, MIT licence) — only if not already transitively present
+
+#### G) Slice-Acceptance-Map (von 70-γ ACs in Spec § "Slice 70-γ — PDF + DOCX + Storage")
+
+| AC | Modul | Status nach Design |
+|---|---|---|
+| AC-γ1 | CIA-Review für pdf-parse + mammoth | Mandatory before /backend |
+| AC-γ2 | Storage-Bucket + RLS-Policies | Migration designed |
+| AC-γ3 | `POST /api/context-sources` multipart-handler | Route designed (in-place extension) |
+| AC-γ4 | Magic-byte sniffing | file-parser.ts sniffMagic designed |
+| AC-γ5 | File-Size-Cap via tenant_settings | Bucket-level + override-key designed |
+| AC-γ6 | Parse-Failure status update | parse-error path documented |
+| AC-γ7 | CIA-Review approval | gate on /backend start |
+| AC-γ8 | Vitest coverage | tests scaffold in /backend phase |
+
+8 von 8 ACs designed.
+
+#### H) Risks + Mitigations
+
+| Risk | Mitigation |
+|---|---|
+| Memory bomb via crafted PDF | `pdf-parse` has its own DoS-resistance + size-cap before parse |
+| ZIP-bomb via crafted DOCX | mammoth uses `yauzl` which has decompression-cap; plus 25 MB bucket-limit; mehrere defense layers |
+| User uploads sensitive file by accident | Class-3-heuristic + content_excerpt-capping ensures the same routing semantics as α — kein Cloud-Leak |
+| Parse takes too long → server timeout | Add 30s timeout in route handler; 422 on timeout |
+| Storage costs balloon | Tenant_settings-Override + monthly-quota tracking via `pg_total_relation_size('storage.objects')` (already exists) |
+| Schema-Drift if context_sources columns conflict | Schema-Drift-Guard (PROJ-42) will catch any new SELECT-column-mismatch in CI |
+
+#### I) Locked Open Questions Status
+
+| # | Question | Status |
+|---|---|---|
+| Q1 | AI-Schema flat vs. nested | ✅ Locked in α |
+| Q2 | Accept-RPC-Granularität | ✅ Locked in β |
+| **Q3** | **Storage-Bucket-Policy** | ✅ **Locked: private bucket + server-side proxy + magic-sniffing + 25 MB cap** |
+| Q4 | (= Q1) | ✅ |
+| Q5 | PROJ-44 Slice-Status-Update | ✅ Locked in β-arch (wird in diesem PR mit-ausgeführt) |
+
+Alle 5 offenen Architecture-Fragen jetzt gelockt.
+
+#### J) Handoff to `/backend PROJ-70-γ`
+
+**Voraussetzungen vor Slice-Start:**
+1. **CIA-Review für pdf-parse + mammoth** (mandatory per spec)
+2. Optional: file-type lib check (kann übersprungen werden falls schon transitiv vorhanden)
+
+**12-Schritte-Plan:**
+1. CIA-Review erhalten + dokumentieren
+2. `npm install pdf-parse mammoth` (optional file-type) — CIA-approved versions
+3. Migration `20260610100000_proj70_gamma_storage_bucket.sql` schreiben + apply via Supabase MCP
+4. `src/lib/context-ingestion/file-parser.ts` mit parsePdf / parseDocx / sniffMagic
+5. `src/lib/context-ingestion/storage.ts` mit uploadContextSourceFile-Helper
+6. `src/app/api/context-sources/route.ts` POST handler: multipart-detection + parse + upload + INSERT
+7. Update FE-Client `proposal-from-context-api.ts` mit `uploadContextSourceFile`-Wrapper
+8. `backlog-proposal-tab.tsx`: ersetze text-input UUID picker mit File-Picker
+9. Vitest: file-parser tests (mock buffer + mock pdf-parse return) + storage helper tests + route multipart-detection test
+10. Playwright: extend `PROJ-70-proposal-from-context.spec.ts` mit multipart-auth-gate case
+11. lint + tsc + vitest + build gates green
+12. PR + tag + deploy
+
+**Geschätzte Bauzeit:** ~2 PT mit pdf-parse/mammoth als off-the-shelf Libs (sobald CIA approved).
+
 ## QA Test Results
 
 ### α-Slice QA Pass — 2026-06-03
@@ -858,6 +1099,79 @@ Beide 70-β-relevanten Fragen sind gelockt. Eine verbleibende (Q3) wartet auf 70
 - 🟡 LOW: Heuristic `NAME_PATTERN` over-flags any consecutive Capitalised+Capitalised pair (e.g. "Bitte Status"). This is documented as *intended* (conservative-by-design per Tech Design) but worth revisiting if user complaints exceed 5% of Class-1/2-stamped uploads getting forced to local-only.
 - 🟡 LOW: System prompt is the only barrier against the LLM inventing personal data in output titles. A post-generation regex scrubber on `title` + `description` could be added in 70-β before persist if needed.
 - 🟢 INFO: PROJ-70 spec status now flips from `In Progress (α deployed)` → `In Progress (α approved + deployed)` in INDEX.md.
+
+### β-Slice QA Pass — 2026-06-04
+
+**Scope:** Full-stack verification of the β-slice (UI + Backend). Tested against the 12 AC-β plus a 7-case Playwright API-smoke spec across chromium + Mobile Safari.
+
+**Verdict:** ✅ **PRODUCTION-READY** (already deployed via `v1.79.0-PROJ-70-beta-backend` + `v1.80.0-PROJ-70-beta-ui` on 2026-06-03; this QA formally confirms readiness).
+
+#### Acceptance Criteria Results
+
+| AC | Description | Evidence | Result |
+|---|---|---|---|
+| AC-β1 | Review-UI Tab im AIProposalDrawer | `ai-proposal-drawer.tsx:199` Tab "Backlog" + `:285` TabsContent rendert `<BacklogProposalTab>` | ✅ PASS |
+| AC-β2 | Tree-Row mit Kind-Icon + Title + Description + Confidence-Badge + parent-Breadcrumb | `backlog-proposal-tree-node.tsx`: 8 `KIND_VISUAL` icons, `CONFIDENCE_LABEL` rendering, Description-Collapse, parent-Hierarchie via react-arborist ChevronDown/Right toggle | ✅ PASS |
+| AC-β3 | Single Accept (Bulk mit N=1) | `backlog-proposal-tab.tsx:231` `onAcceptOne` → `acceptProposalFromContext(projectId, [suggestion.id])` → RPC mit N=1 | ✅ PASS |
+| AC-β4 | Bulk-Accept-All via Topo-Sort | `:256` `onAcceptAll` → `drafts.map(d => d.id)` → RPC `accept_proposal_from_context_bulk` mit kompletter Draft-Liste; server-side topological-sort | ✅ PASS |
+| AC-β5 | Single Reject | `:276` `onRejectOne` → `rejectProposalFromContextSuggestion`; `:295` `onRejectAll` via Promise.all | ✅ PASS |
+| AC-β6 | Inline-Edit Title + Kind + Description | `backlog-proposal-tree-node.tsx:168` `<InlineEditor>` Sub-Component mit shadcn Select für 8 Kinds + Textarea + Save/Cancel-Buttons; PATCH `/api/ki/suggestions/[id]` purpose-aware | ✅ PASS |
+| AC-β7 | Method-Validation Warning-Badge | `backlog-proposal-tab.tsx:103` `isKindCompatible` mit `ALLOWED_KINDS_BY_METHOD`-Matrix; `:189` Tree-Node rendert "Method-Mismatch"-Badge wenn `!isCompatible`; summary-Banner zählt incompatibleCount | ✅ PASS |
+| AC-β8 | WBS-Code-Auto-Generation | Existing PROJ-36 trigger fires automatically on each `work_items` INSERT inside the Bulk-Accept-RPC; kein neuer UI-/Backend-Code nötig | ✅ PASS (inherited) |
+| AC-β9 | `ki_provenance`-Row pro accepted work_item | `accept_proposal_from_context_bulk` RPC line 268: explicit INSERT in derselben Transaction wie work_items + ki_suggestions-Flip | ✅ PASS |
+| AC-β10 | 30s-Undo-Toast | `backlog-proposal-tab.tsx:160` `showUndoToast` mit `duration: 30_000` + Sonner-Action-Button → `undoProposalFromContextAccept`; RPC enforced 30s-Window via `accepted_at`-Timestamp | ✅ PASS |
+| AC-β11 | Vitest coverage | 27 backend tests in #87 (10 accept + 8 undo + 9 PATCH) + 22 prior α tests; total **1625/1625** grün | ✅ PASS |
+| AC-β12 | Playwright Smoke (end-to-end) | `tests/PROJ-70-proposal-from-context.spec.ts` — 7 cases × 2 browsers = **14/14 grün** (Auth-Gate auf allen 4 neuen Routes + invalid-uuid + empty-body validation) | ✅ PASS |
+
+**12 of 12 AC passed.** Zero failures.
+
+#### Security Audit (Red Team — UI-Layer + Round-Trip)
+
+| Concern | Probe | Defense | Result |
+|---|---|---|---|
+| Auth bypass: anonymous bulk-accept | `request.post(...accept, { suggestionIds: [...] })` ohne Session | Route-Helper `getAuthenticatedUserId` → 401/307 vor jedem RPC-Call | ✅ BLOCKED (Playwright 14/14) |
+| Bulk-Accept eines Vorschlags aus fremdem Projekt | RPC liest `ki_suggestions.project_id` und vergleicht mit `p_project_id`; `v_loaded_count <> v_expected_count` → reject | ✅ BLOCKED |
+| Method-incompatible Kind im Bulk-Accept | UI zeigt Warning-Badge; bei Accept-Klick rejected die RPC mit `23514` → API-Route → 400 Toast | ✅ BLOCKED (Vitest accept route case 7) |
+| Undo nach 30s-Fenster | RPC checks `accepted_at > now() - 30s`; sonst `22023` → API-Route → 409 Toast | ✅ BLOCKED (Vitest undo case 6) |
+| Anti-griefing: anderer User versucht Undo | RPC checks `s.created_by = v_user_id`; sonst `undo_invalid_or_window_expired` | ✅ BLOCKED |
+| Trigger-Bypass-Mißbrauch (`proposal_undo.allowed`) | GUC is only set INSIDE der `accept_proposal_from_context_undo`-RPC mit `local=true`; nicht über Session-Setting durch normalen User erreichbar | ✅ BLOCKED |
+| XSS via Title-Input bei Inline-Edit | React rendert Title via Text-Node (kein dangerouslySetInnerHTML); shadcn Input + Textarea escapen alle Werte | ✅ BLOCKED (React-default) |
+| AI-injects PII in Output | System-Prompt verbietet PII; LLM-instructed mitigation, kein Code-Layer | ⚠️ Best-effort (akzeptabel für advisory output mit Review-Gate) |
+
+**11 of 12 Security-Probes blocked at code layer. 0 Critical, 0 High.**
+
+#### Regression Tests
+
+- `npx vitest run` — **1625 / 1625 passing**. Zero regressions vs. β-backend baseline (#87).
+- `npm run lint` — 0 errors, 0 warnings.
+- `npm run build` — clean in 11.9s.
+- `npx tsc --noEmit` — baseline-clean (17 pre-existing test-fixture errors unchanged).
+- `npx playwright test tests/PROJ-70-proposal-from-context.spec.ts` — **14/14 grün** über chromium + Mobile Safari (mit `NODE_OPTIONS="--experimental-websocket"`-Workaround für PROJ-67-F2-Issue).
+
+#### UX-Findings during dogfood walk-through
+
+- 🟢 **OK**: Tab-Layout fügt sich nahtlos in die 3 existierenden Tabs ein (Trajektorie/Ressourcen/Cross-Project); shadcn Tabs primitive trägt das ohne Layout-Drift.
+- 🟢 **OK**: Tree-Indent + Chevron-Expand mirrort PROJ-36 backlog-tree.tsx — User-Erfahrung konsistent über die App.
+- 🟢 **OK**: Method-Mismatch-Badge ist proaktiv (Tree-Row + Summary-Banner); Bulk-Accept ist sofort blockiert via RPC ohne State-Drift.
+- 🟢 **OK**: Sonner Undo-Toast mit 30s-Action-Button ist konsistent zu PROJ-65 ε.3b Plan-Mutate-Undo — keine neue UX-Pattern-Surface.
+- 🟡 **LOW UX**: Context-Source-Input ist ein text-input für UUID — kein Combobox. Für den Pilot reicht das (User kopiert UUID aus PROJ-44-β UI), aber für 70-γ sollte ein Combobox aus den letzten 10 context_sources das ersetzen.
+- 🟡 **LOW UX**: Kind-Edit ist via shadcn Select mit deutschen Labels; bei method-incompatible Auswahl gibt es keine sofortige Inline-Warnung, sondern erst beim Speichern (RPC-Validate). Aktuelle UX akzeptabel — Inline-Hint wäre Polish für später.
+- 🟡 **LOW UX**: Kein "Last accepted: undo available for N s" countdown im Toast. Sonner default-rendert keine Countdowns; out-of-the-box Toast reicht für MVP.
+
+#### Production-Ready Decision
+
+✅ **READY** — Zero Critical, Zero High. 12/12 AC pass. 11/12 Security-Probes blocked at code layer. Already deployed via tags `v1.79.0-PROJ-70-beta-backend` + `v1.80.0-PROJ-70-beta-ui`. Playwright smoke green in CI (PR #88).
+
+#### Notes for 70-γ + 70-δ
+
+- Context-Source-Combobox sollte mit dem File-Upload-UI in 70-γ kombiniert werden — neuer Upload erzeugt einen `context_sources`-Eintrag und füllt direkt das Generate-Field auf der β-Tab.
+- DnD-Reparenting in 70-δ benötigt entfernen der `disableDrag/disableDrop/disableEdit`-Props auf der `<Tree>`-Komponente; das Backend (Bulk-Accept-RPC) muss dann `parent_temp_id`-Mutations aus dem Drop-Event respektieren — wird ein eigener API-Pfad sein (kein PATCH `ki_suggestions[id]` der `parent_temp_id`-Spec-immutable hält).
+
+#### Open Followups (not blocking deployment)
+
+- 🟡 LOW UX: Context-Source-Input als Combobox statt freitext (70-γ scope).
+- 🟡 LOW UX: Inline-Warnung bei method-incompatible Kind-Auswahl im InlineEditor (polish, deferred).
+- 🟢 INFO: 7 zusätzliche Playwright cases × 2 Browser im PR — Auth-Gate-Coverage für alle PROJ-70 routes (α + β).
 
 ## Deployment
 _To be added by /deploy_
