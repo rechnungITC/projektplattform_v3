@@ -115,3 +115,23 @@ describe("useStorySelection — clear / set", () => {
     expect(result.current.isSelected(C)).toBe(true)
   })
 })
+
+describe("useStorySelection — PROJ-25b performance smoke", () => {
+  it("selects a 500-item Shift range within a stable CI smoke budget", () => {
+    const ids = Array.from(
+      { length: 500 },
+      (_, idx) => `00000000-0000-4000-8000-${String(idx).padStart(12, "0")}`,
+    )
+    const { result } = renderHook(() => useStorySelection())
+
+    act(() => result.current.toggle(ids[0]))
+    const start = performance.now()
+    act(() => result.current.range(ids[ids.length - 1], ids))
+    const durationMs = performance.now() - start
+
+    expect(result.current.selectedIds.size).toBe(ids.length)
+    // This is a unit-level guard against accidental quadratic work in the
+    // selection reducer. Full browser FPS remains covered by Playwright smoke.
+    expect(durationMs).toBeLessThan(50)
+  })
+})

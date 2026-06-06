@@ -106,6 +106,17 @@ Feature-Status wird direkt im Feature-Dokument getrackt:
 - 🟡 In Progress – Wird gerade gebaut
 - ✅ Deployed – Live in Production
 
+## Deferred- und Partial-Tracking
+
+Der Index zeigt nur den aktuellen Feature-Status. Bewusst offene Reste,
+MVP-Cuts, `PARTIAL`-QA-Coverage und Follow-up-Slices werden zusaetzlich in
+[OPEN-DEFERRED-STATUS.md](OPEN-DEFERRED-STATUS.md) gepflegt.
+
+Vor `/requirements`, `/architecture`, `/qa` und `/deploy` muss diese Datei
+mitgeprueft werden. Wenn ein Slice einen dort genannten Punkt schliesst,
+superseded oder weiter deferred, dann `features/INDEX.md` und
+`features/OPEN-DEFERRED-STATUS.md` gemeinsam aktualisieren.
+
 **Git als Single Source of Truth:**
 - Alle Implementierungs-Details sind in Git Commits
 - `git log --grep="PROJ-1"` zeigt alle Änderungen für dieses Feature

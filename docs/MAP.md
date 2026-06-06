@@ -56,6 +56,7 @@ Rules:
 | Path | Purpose |
 |---|---|
 | `features/INDEX.md` | Central tracking of all features (status, ID, spec link) |
+| `features/OPEN-DEFERRED-STATUS.md` | Cross-feature guardrail for open, deferred, partial, and superseded work that must be checked during planning, QA, and deployment |
 | `features/PROJ-X-*.md` | Per-feature specs — one feature, one file, status header, V2 reference material section |
 | `features/README.md` | How features are organized |
 

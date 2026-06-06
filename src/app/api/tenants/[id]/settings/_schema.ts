@@ -49,6 +49,12 @@ const retentionOverridesSchema = z
   })
   .strict()
 
+const featureFlagsSchema = z
+  .object({
+    method_aware_routes: z.boolean().optional(),
+  })
+  .strict()
+
 const assistantSettingsSchema = z
   .object({
     transcript_retention_mode: z.enum([
@@ -85,6 +91,7 @@ export const tenantSettingsPatchSchema = z
     privacy_defaults: privacyDefaultsSchema.optional(),
     ai_provider_config: aiProviderConfigSchema.optional(),
     retention_overrides: retentionOverridesSchema.optional(),
+    feature_flags: featureFlagsSchema.optional(),
     assistant_settings: assistantSettingsSchema.optional(),
     cost_settings: costSettingsSchema.optional(),
   })
@@ -94,11 +101,12 @@ export const tenantSettingsPatchSchema = z
       val.privacy_defaults !== undefined ||
       val.ai_provider_config !== undefined ||
       val.retention_overrides !== undefined ||
+      val.feature_flags !== undefined ||
       val.assistant_settings !== undefined ||
       val.cost_settings !== undefined,
     {
       message:
-        "Provide at least one of: active_modules, privacy_defaults, ai_provider_config, retention_overrides, assistant_settings, cost_settings.",
+        "Provide at least one of: active_modules, privacy_defaults, ai_provider_config, retention_overrides, feature_flags, assistant_settings, cost_settings.",
     }
   )
 

@@ -46,6 +46,9 @@ export interface TenantSettingsPatch {
   privacy_defaults?: PrivacyDefaults
   ai_provider_config?: AiProviderConfig
   retention_overrides?: RetentionOverrides
+  feature_flags?: {
+    method_aware_routes?: boolean
+  }
   assistant_settings?: AssistantSettings
   cost_settings?: CostSettings
 }

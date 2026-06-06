@@ -38,6 +38,7 @@ const SETTINGS_ROW = {
   privacy_defaults: { default_class: 3 },
   ai_provider_config: { external_provider: "none" },
   retention_overrides: {},
+  feature_flags: { method_aware_routes: true },
   budget_settings: { default_currency: "EUR" },
   output_rendering_settings: { ki_narrative_enabled: false },
   assistant_settings: {
@@ -138,6 +139,15 @@ describe("PATCH /api/tenants/[id]/settings", () => {
     expect(res.status).toBe(400)
   })
 
+  it("returns 400 on non-boolean feature flag values", async () => {
+    getUserMock.mockResolvedValue({ data: { user: { id: USER_ID } } })
+    const res = await PATCH(
+      makeReq({ feature_flags: { method_aware_routes: "false" } }),
+      { params: Promise.resolve({ id: TENANT_ID }) }
+    )
+    expect(res.status).toBe(400)
+  })
+
   it("updates active_modules on valid input", async () => {
     getUserMock.mockResolvedValue({ data: { user: { id: USER_ID } } })
     settingsChain.maybeSingle.mockResolvedValue({
@@ -193,6 +203,7 @@ describe("PATCH /api/tenants/[id]/settings — schema/DB-payload drift", () => {
       privacy_defaults: { default_class: 2 },
       ai_provider_config: { external_provider: "anthropic", model_id: "x" },
       retention_overrides: { audit_log_days: 90 },
+      feature_flags: { method_aware_routes: false },
       assistant_settings: {
         transcript_retention_mode: "persist_redacted_transcript",
         retention_days: 60,

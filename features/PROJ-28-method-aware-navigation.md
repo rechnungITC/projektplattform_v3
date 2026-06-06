@@ -2,7 +2,7 @@
 
 ## Status: Deployed
 **Created:** 2026-05-01
-**Last Updated:** 2026-05-01
+**Last Updated:** 2026-06-05
 
 ## Summary
 Schließt die deferred-frontend-Lücke aus PROJ-26 (L1-Finding) und macht die Project-Room-Navigation durchgängig methodenabhängig. Heute zeigen beide Sidebars (mobile horizontal in `project-room-shell.tsx` + desktop vertikal in `project-sidebar.tsx`) eine **statische Tab-Liste mit deutschen Labels** ("Backlog", "Planung" usw.) — unabhängig davon, ob das Projekt Wasserfall, Scrum, Kanban, SAFe, PMI, PRINCE2, VXT2 oder noch keine Methode gewählt ist. Die methodenspezifischen Labels und Sections existieren bereits vollständig in `src/lib/method-templates/{8 methods}.ts`, werden aber nicht gerendert. Zusätzlich sind im Backlog Sprints in jedem Projekt sichtbar — auch in Wasserfall.
@@ -56,7 +56,7 @@ Außerdem: Backlog-Sprints-Section + "Neuer Sprint"-Button hinter `MethodConfig.
 - [ ] `src/middleware.ts` (oder Erweiterung der bestehenden Middleware): bei Project-Sub-Route prüfen, ob der aktuelle Slug zur Methode des Projekts passt; bei Mismatch → **308 Permanent Redirect** auf den method-konformen Slug.
 - [ ] Canonical-Slugs (`backlog`, `planung`) bleiben **dauerhaft erreichbar** für Method=NULL und für Methoden ohne Alias — kein Sunset, keine 404.
 - [ ] `project_method` wird im Middleware-Pfad mit `cache()` (React 19 / Next 16) memoisiert, um DB-Roundtrip pro Request zu vermeiden.
-- [ ] Sentry-Breadcrumb bei jedem 308-Redirect: `from_slug`, `to_slug`, `method`, `project_id`. Niedriges Log-Level (`info`).
+- [x] Sentry-Breadcrumb bei jedem 308-Redirect: `from_slug`, `to_slug`, `method`, `project_id`. Niedriges Log-Level (`info`).
 
 ### ST-03 · Backlog-Sprints-Hide
 - [ ] `src/app/(app)/projects/[id]/backlog/backlog-client.tsx` (bzw. nach Refactor unter dem method-aware Pfad) liest `project_method` über `useCurrentProjectMethod(projectId)` (statt des Stub-Aufrufs).
@@ -96,11 +96,11 @@ Außerdem: Backlog-Sprints-Section + "Neuer Sprint"-Button hinter `MethodConfig.
 - [ ] **Kein Banner**, **kein 404** — Auto-Redirect bei nächster Nav reicht, weil PROJ-6 die Methode hard-locked sobald gesetzt (ein Wechsel passiert maximal einmal pro Projekt).
 
 ### ST-09 · Feature-Flag `method_aware_routes`
-- [ ] Reuse des PROJ-17-Pattern: ein Tenant-Setting-Bool `method_aware_routes` (default `false`).
-- [ ] Bei `false`: alle Sidebar-Sections fallen auf `tabPath` zurück (= heutiges Verhalten); Middleware redirected nicht.
-- [ ] Bei `true`: vollständiges PROJ-28-Verhalten (method-aware Labels + Slugs + 308-Redirects).
-- [ ] Pilot-Rollout: 1 Tenant manuell auf `true`, eine Woche Sentry-Beobachtung, dann globaler Rollout via Migration (Default-Flip auf `true`).
-- [ ] Setting wird in `src/lib/tenant-settings/feature-flags.ts` registriert (Pattern aus PROJ-17).
+- [x] Reuse des PROJ-17-Pattern: `tenant_settings.feature_flags.method_aware_routes` (retrofit default `true` seit 2026-06-05, damit das bereits deployte Verhalten erhalten bleibt).
+- [x] Bei `false`: Middleware redirected nicht.
+- [x] Bei `true`: vollständiges PROJ-28-Verhalten (method-aware Labels + Slugs + 308-Redirects).
+- [x] Pilot-/Retrofit-Rollout: bestehende Tenants werden auf `true` backfilled; Tenant-Admin/API kann pro Tenant explizit auf `false` schalten.
+- [x] Setting wird in `src/lib/tenant-settings/feature-flags.ts` registriert.
 
 ### ST-10 · E2E-Coverage (Playwright)
 - [ ] Eine E2E-Suite `tests/e2e/method-aware-navigation.spec.ts`:
@@ -256,7 +256,7 @@ PROJ-28
 
 ### 2. Data model in plain language
 
-**Keine neuen Tabellen. Keine neuen Spalten. Keine Migration.** PROJ-28 ist eine reine Frontend-Refactor-Story.
+**Ursprünglicher PROJ-28-Deploy:** keine neuen Tabellen, keine neuen Spalten, keine Migration. **Follow-up 2026-06-05:** additive Migration `20260605110000_proj28_method_aware_routes_feature_flags.sql` ergänzt `tenant_settings.feature_flags.method_aware_routes` als Kill-Switch.
 
 Die einzige Datenstruktur-Erweiterung ist im **TypeScript-Type-System** (`src/types/method-config.ts`):
 
@@ -281,7 +281,7 @@ Die **Method-Tabelle** in der Datenbank (`projects.project_method`) bleibt unver
 | `routeSlug` als Feld auf `SidebarSection` (statt separater Map) | **A. routeSlug? im SidebarSection-Type** | Eine Quelle pro Section, lokal in der Methode-Datei. Eine separate `methodRouteAliases.ts`-Map wäre eine zweite Drift-Quelle. Default `routeSlug = tabPath` macht den Refactor inkrementell — Methoden ohne Aliase brauchen keine Änderung. |
 | Re-Export-Pattern für Alias-Pages | **`export { default } from "../<canonical>/page"`** statt Page-Code-Duplikat | Stub-Datei (5 Zeilen). Alias und Canonical bleiben automatisch synchron, weil sie dieselbe Page-Komponente sind. Lint-Regel kann erzwingen, dass Alias-Folder keine Logik enthalten dürfen. |
 | `cache()` für `project_method` in Middleware | **A. Request-scoped `cache()`** statt `unstable_cache` | Eine DB-Query pro HTTP-Request (Index-Lookup auf PK, < 5 ms). `unstable_cache` mit Tag-Invalidierung wäre Tag-Setup + `revalidateTag` beim Method-Set + Cache-Konsistenz-Risiko — overkill für eine Spalte, die nach PROJ-6 hard-locked ist. Wenn DB-Last messbar wird, kann V1.5 auf `unstable_cache` upgraden. |
-| Feature-Flag-Pattern | **PROJ-17 Tenant-Modules-Pattern reuse** | `tenant_settings.feature_flags.method_aware_routes` als Bool. Kein DB-Schema-Delta nötig (JSONB-Column existiert), gleiches UI-Tooling für Tenant-Admin. Pilot → 1 Woche Sentry → globaler Default-Flip. |
+| Feature-Flag-Pattern | **PROJ-17 Tenant-Modules-Pattern reuse** | `tenant_settings.feature_flags.method_aware_routes` als Bool. Follow-up-Migration 2026-06-05 legt die JSONB-Column an und backfilled bestehende Tenants auf `true`; explizit `false` dient als Kill-Switch. |
 | Stub-Fix vs. Spec | **Stub-Fix als Pre-Patch ohne Spec** | `getCurrentMethod()` ist heute defekt (gibt immer null zurück); aktuell tote method-aware-Logik im Backlog. Risiko-armer Bugfix mit einem Aufrufer (`backlog-client.tsx`); separater commit als `fix(method-context): resolve broken getCurrentMethod stub`, blockiert PROJ-28 nicht, aber sollte zuerst raus. |
 | Method-Switch-Verhalten | **Auto-Redirect bei nächster Nav, kein Banner, kein 404** | Nach PROJ-6 ist Method-Set einmalig (NULL → method, dann hard-locked). Server-Action ruft `revalidatePath('/projects/[id]', 'layout')`, Sidebar lädt neu. User auf einer veralteten URL sieht weiterhin die Page; bei der nächsten Navigation greift der 308. Banner wäre Lärm für ein Edge-Case, das maximal einmal pro Projekt eintritt. |
 | Sentry-Breadcrumb-Logging | **Ja, info-Level** | Damit messbar wird, ob Aliase tatsächlich genutzt werden. Nach 90 Tagen Statistik prüfen — ggf. Aliase mit < 1% Traffic deferen oder droppen. |
@@ -341,7 +341,7 @@ PROJ-28 ist eine Code-Migration, **keine DB-Migration**. Reihenfolge:
 
 **Phase 5 (Middleware + Feature-Flag):**
 - `src/middleware.ts` (Top-Level) anlegen, wraps Supabase-Middleware. 308-Redirect-Logik nur wenn `method_aware_routes` für den Tenant aktiviert ist.
-- Feature-Flag in `src/lib/tenant-settings/feature-flags.ts` registrieren. Default `false`.
+- Feature-Flag in `src/lib/tenant-settings/feature-flags.ts` registrieren. Retrofit default `true`; explizit `false` deaktiviert Redirects.
 - Sentry-Breadcrumb-Hook im Middleware.
 
 **Phase 6 (Backlog-Sprints-Hide):**
@@ -409,7 +409,7 @@ PROJ-28 ist eine Code-Migration, **keine DB-Migration**. Reihenfolge:
 | Sidebar-Drift (zwei Sidebar-Komponenten) | — (durch Lösung beseitigt) | — | `MethodSidebar.tsx` wird gelöscht. Drift-Quelle ist weg. |
 | Module-Gating-Verlust beim Refactor | Mittel | Mittel | `requiresModule` direkt in SidebarSection definiert + Vitest 8×6-Matrix testet alle Kombinationen vor Merge. |
 | Stub-Bug-Folgekosten (`getCurrentMethod` immer null) | Hoch (besteht bereits) | Hoch | Pre-Patch (Phase 0) löst das vor PROJ-28-Hauptarbeit. |
-| Feature-Flag funktioniert nicht im Pilot-Tenant | Niedrig | Niedrig | Reuse PROJ-17-Pattern, das bereits in Produktion stabil ist. Flag default `false` — kein User merkt, wenn es bricht. |
+| Feature-Flag funktioniert nicht im Pilot-Tenant | Niedrig | Niedrig | Reuse PROJ-17-Pattern, das bereits in Produktion stabil ist. Retrofit default `true`; bei Lookup-Fehlern redirected der Proxy nicht. |
 | Middleware-DB-Roundtrip-Performance | Niedrig | Niedrig | `cache()` memoisiert pro Request; `projects.id`-PK-Lookup < 5 ms. Bei DB-Last-Anstieg V1.5 `unstable_cache`. |
 | Cross-Browser-Inkompatibilität bei 308-Redirects | Sehr niedrig | Niedrig | 308 ist seit 2014 standardisiert (RFC 7538); alle relevanten Browser unterstützen es. |
 
@@ -456,9 +456,10 @@ Shipped as 8 focused commits — Pre-Patch + Phases 1–7 — each independently
 
 **Phase 5 — Middleware (Routing Proxy) — 308 Redirects**
 - `src/proxy.ts` extended (Next.js 16 routing middleware): for every `/projects/[id]/<slug>` request, looks up `projects.project_method` (RLS-scoped via Supabase SSR session refreshed by `updateSession`), calls `resolveMethodAwareRedirect`, and on mismatch returns **308 Permanent Redirect** to the method-conformant slug. Query strings + sub-paths preserved through destination.
-- `console.info` breadcrumb (`[PROJ-28] method-aware redirect`) per redirect — picked up by Vercel runtime logs / Sentry transport. Full `Sentry.addBreadcrumb` integration deferred until rollout-monitoring needs structured events.
+- `tenant_settings.feature_flags.method_aware_routes` short-circuits redirects when explicitly `false`; missing/malformed flags preserve the already-deployed behavior (`true`).
+- Structured `Sentry.addBreadcrumb` plus `console.info` breadcrumb (`[PROJ-28] method-aware redirect`) per redirect. Breadcrumb data: `from_slug`, `to_slug`, `method`, `project_id`, `section_id`.
 - Auth-redirects from `updateSession` win without mutation; UUID guard + early return for non-project paths keeps the hot path lean.
-- **Deviation from spec § ST-09** (Feature-Flag): the `method_aware_routes` tenant-flag is **not implemented** in V1. Reason: V3 is a single-tenant pilot today (one tenant in production). Adding a per-tenant feature flag for staged rollout would be over-engineering without a clear payoff, and the spec's safety net (canonical URLs stay valid → no 404 risk) means the rollback story is "revert this commit" rather than "flip a flag". If multi-tenant rollout becomes a real concern, the flag can be added as a small follow-up (≤ 1 hour: extend `tenant_settings.feature_flags` JSONB + middleware short-circuit). Marked as a deviation here for QA visibility.
+- **Follow-up 2026-06-05:** spec § ST-09 is implemented via `tenant_settings.feature_flags.method_aware_routes`. Retrofit default is `true` to preserve the already-deployed single-tenant behavior; setting the flag explicitly to `false` disables method-aware 308 redirects.
 
 **Phase 6 — Backlog-Sprints-Hide**
 - `backlog-client.tsx` reads `MethodConfig.hasSprints` for the active method; conditionally renders the Sprints Collapsible section, the "Neuer Sprint" button, and the `NewSprintDialog`. Hidden in Waterfall/PMI/PRINCE2/VXT2/Kanban; shown in Scrum/SAFe; shown in `method = null` (Setup, every construct permitted).
@@ -476,9 +477,7 @@ Shipped as 8 focused commits — Pre-Patch + Phases 1–7 — each independently
 - `MethodSidebar.tsx` (M3-Chrome) deleted; drift source eliminated
 
 **Out of this story (deferred)**
-- Tenant-feature-flag `method_aware_routes` for staged rollout (deviation from spec § ST-09; documented above)
-- Logged-in Playwright fixture + deeper E2E (308 redirect, sidebar labels per method, mobile parity)
-- Sentry-Breadcrumb structured-event upgrade (currently `console.info`)
+- Full logged-in Playwright Method×Section matrix (308 redirect, sidebar labels per method, mobile parity)
 - i18n / English routes (`/work-packages` instead of `/arbeitspakete`)
 - Tenant-Override for section labels (PROJ-16 territory)
 - Method-aware Output-Rendering, DnD (PROJ-21 / PROJ-25 territory)
@@ -548,7 +547,7 @@ Edge probes: `/projects/totally-not-uuid/backlog` → 307 ✅. `/projects/<uuid>
 | Middleware 308-redirects on slug mismatch | ✅ | `src/proxy.ts` calls `resolveMethodAwareRedirect` and returns `NextResponse.redirect(url, 308)` on mismatch. Logic exhaustively unit-tested (7 redirect-test cases incl. canonical→alias, planung→releases, sub-paths, query-preservation). |
 | Canonical slugs stay valid → no Bookmark-404 | ✅ | Middleware short-circuits when slug matches `routeSlug`; canonical case lands on the alias via 308 but the canonical folder still serves the page when accessed by a method without alias. |
 | `cache()` for project_method in middleware | 🟡 **N/A in V1** | Per Tech Design § 3, `cache()` is for SSR-tree memoization. Middleware runs once per HTTP request — no benefit. Not implemented; acceptable. |
-| Sentry-Breadcrumb on redirect | 🟡 **Partial** | `console.info("[PROJ-28] method-aware redirect", JSON…)` — picked up by Vercel runtime logs / Sentry transport. Full structured `Sentry.addBreadcrumb` integration deferred (documented deviation, not a bug). |
+| Sentry-Breadcrumb on redirect | ✅ Fixed 2026-06-05 | Structured `Sentry.addBreadcrumb` plus `console.info("[PROJ-28] method-aware redirect", JSON…)`. |
 
 #### ST-03 — Backlog-Sprints-Hide
 | AC | Status | Notes |
@@ -597,11 +596,11 @@ Edge probes: `/projects/totally-not-uuid/backlog` → 307 ✅. `/projects/<uuid>
 #### ST-09 — Feature-Flag `method_aware_routes`
 | AC | Status | Notes |
 |---|---|---|
-| Tenant-Setting Bool (default false) | ❌ **Deferred** | Documented deviation in Implementation Notes § Phase 5. Reason: V3 is a single-tenant pilot; canonical URLs stay valid (no 404 risk) → rollback is "revert this commit" rather than "flip a flag". Re-introducible as a small follow-up if multi-tenant rollout becomes a real concern. |
-| Pilot-Rollout (1 tenant manual → 1 week sentry → global) | ❌ **N/A** | Same as above. |
-| Setting registered in feature-flags.ts | ❌ **N/A** | Same as above. |
+| Tenant-Setting Bool | ✅ Fixed 2026-06-05 | `tenant_settings.feature_flags.method_aware_routes`; retrofit default/backfill `true` to preserve deployed behavior. Explicit `false` disables middleware redirects. |
+| Pilot-Rollout / Kill-Switch | ✅ Fixed 2026-06-05 | Rollout is now a retrofit kill-switch: existing tenants stay enabled; tenant-level rollback is a settings flip instead of code revert. |
+| Setting registered in feature-flags.ts | ✅ Fixed 2026-06-05 | `src/lib/tenant-settings/feature-flags.ts` centralizes the default-preserving flag reader. |
 
-**Severity assessment for the deferred flag:** Low. The feature is bounded in blast radius (canonical URLs always work; only the URL-bar cosmetics differ), and the production tenant fleet is currently size 1. Acceptable deviation for QA approval.
+**Retrofit note:** The original first-rollout spec wanted default `false`; the 2026-06-05 implementation intentionally defaults to `true` because PROJ-28 has already been live since 2026-05-01.
 
 #### ST-10 — Playwright E2E
 | AC | Status | Notes |
@@ -650,33 +649,33 @@ Edge probes: `/projects/totally-not-uuid/backlog` → 307 ✅. `/projects/<uuid>
 
 | Severity | ID | Finding | Status |
 |---|---|---|---|
-| Medium | M1 | Feature-flag `method_aware_routes` (spec § ST-09) deferred — no per-tenant kill-switch for staged rollout. | **Documented deviation** in Implementation Notes § Phase 5. Mitigation: canonical URLs stay valid, rollback = `git revert <commit>`. Single-tenant pilot context makes this acceptable. Tracked as deferred. |
-| Low | L1 | Sentry breadcrumb on 308 is `console.info` only (no structured `Sentry.addBreadcrumb` event). | **Documented** as deferred in Phase 5. Vercel runtime logs + Sentry transport pick up the line. Upgrade path is straightforward (1-line change) when monitoring needs grow. |
+| Medium | M1 | Feature-flag `method_aware_routes` (spec § ST-09) deferred — no per-tenant kill-switch for staged rollout. | ✅ **Fixed 2026-06-05** via `tenant_settings.feature_flags.method_aware_routes` + proxy short-circuit. |
+| Low | L1 | Sentry breadcrumb on 308 is `console.info` only (no structured `Sentry.addBreadcrumb` event). | ✅ **Fixed 2026-06-05** via structured `Sentry.addBreadcrumb` plus existing `console.info`. |
 | Low | L2 | Logged-in Playwright fixture absent → live 308-redirect path not E2E-tested in browser; only via Vitest. | **Pre-existing limitation** of the project's E2E setup (matches PROJ-23 spec). Routing helper has 98 unit-test cases covering the redirect logic. Worth a separate "wire-up Playwright auth fixture" follow-up if E2E confidence is desired across all features. |
 | Info | I1 | Routes `abhaengigkeiten` and `governance` already existed before PROJ-28; spec implementation only added `arbeitspakete`, `phasen`, `releases`. | **Confirmed correct** — pre-existing routes from PROJ-7. The spec doc accidentally implied these would be added; reality is they were already in place. No defect. |
 | Info | I2 | All 33 pre-existing Supabase advisor warnings remain (function_search_path_mutable × 3, security_definer × 30, auth_leaked_password_protection). | **Pre-existing**, unrelated to PROJ-28. Tracked under their original specs. |
 
 ### Production-ready decision
 
-**READY** — no Critical or High bugs. The Medium finding (M1, deferred feature flag) is an explicitly documented deviation with a clear rollback story (`git revert` on the 8-commit chain). The Low findings (L1, L2) are pre-existing infrastructural limitations, not PROJ-28 defects.
+**READY** — no Critical or High bugs. M1 and L1 were closed on 2026-06-05; L2 remains the only coverage limitation for the full logged-in Method×Section browser matrix.
 
-All 10 acceptance-criterion blocks pass at the level appropriate for the deferred items (ST-09 explicitly deferred per V1 scope; ST-10 partial pending logged-in fixture). 530/530 vitest cases pass; 38/38 playwright cases pass; 17/17 live route probes pass; 0 new Supabase advisors; build green.
+All 10 acceptance-criterion blocks pass at the level appropriate for the remaining deferred items (ST-09 fixed 2026-06-05; ST-10 partial pending the full logged-in Method×Section matrix). 530/530 vitest cases pass; 38/38 playwright cases pass; 17/17 live route probes pass; 0 new Supabase advisors; build green.
 
 Suggested next:
 1. **`/deploy`** when ready — no blockers.
 2. Optional follow-up: wire a logged-in Playwright fixture to make ST-10 fully green for PROJ-28 + retroactive uplift of PROJ-23/PROJ-22/PROJ-18 specs (separate spec, ~1 day).
-3. Optional follow-up: re-introduce `method_aware_routes` tenant flag if/when multi-tenant rollout becomes real — small follow-up (≤ 1 hour: `tenant_settings.feature_flags` JSONB + middleware short-circuit).
+3. Optional follow-up: expand the logged-in Playwright matrix across real method/project combinations.
 
 ## Deployment
 
 - **Date deployed:** 2026-05-01
 - **Production URL:** https://projektplattform-v3.vercel.app
 - **Vercel auto-deploy:** triggered by push of 12 commits (`0fd792a..2056e0a`) to `main`
-- **DB migration applied to live Supabase:** ✅ none — PROJ-28 has zero DB schema delta
+- **DB migration applied to live Supabase:** original deploy had none; follow-up migration `20260605110000_proj28_method_aware_routes_feature_flags.sql` adds the tenant kill-switch.
 - **Git tag:** `v1.25.0-PROJ-28`
-- **Deviations:**
-  - Feature-Flag `method_aware_routes` (spec § ST-09) **deferred** — single-tenant pilot, canonical URLs stay valid → rollback = `git revert`. Documented in Implementation Notes § Phase 5 + QA M1.
-  - Sentry breadcrumb on 308 redirect uses `console.info` (picked up by Vercel/Sentry transport) instead of structured `Sentry.addBreadcrumb` — 1-line upgrade when monitoring needs grow.
+- **Follow-up corrections (2026-06-05):**
+  - Feature-Flag `method_aware_routes` implemented via `tenant_settings.feature_flags` with default-preserving backfill.
+  - Sentry breadcrumb on 308 redirect now uses structured `Sentry.addBreadcrumb` plus the existing `console.info` line.
 - **Post-deploy verification:**
   - 6 project sub-routes live (canonical: `backlog`, `planung`, `abhaengigkeiten`, `governance`; aliases: `arbeitspakete`, `phasen`, `releases`) — all 307-gate to `/login` for unauthenticated probes ✅
   - Vercel build green, no runtime errors

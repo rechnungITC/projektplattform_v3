@@ -3,9 +3,9 @@ import { z } from "zod"
 
 import { apiError, getAuthenticatedUserId } from "@/app/api/_lib/route-helpers"
 
-// PATCH master-data fields only — admins can rename, describe, or
-// (de)activate a tag. Cannot change `key`, `default_child_kinds`, or
-// `template_keys` from this surface; those are platform-level for v1.
+// PATCH master-data fields only. Tenant tags can be renamed; platform-default
+// tags can only be described or (de)activated from this surface. Cannot change
+// `key`, `default_child_kinds`, or `template_keys`; those are platform-level.
 const patchSchema = z
   .object({
     display_name: z.string().trim().min(1).max(200).optional(),
@@ -44,6 +44,28 @@ export async function PATCH(
 
   const { userId, supabase } = await getAuthenticatedUserId()
   if (!userId) return apiError("unauthorized", "Not signed in.", 401)
+
+  if (parsed.data.display_name !== undefined) {
+    const { data: existing, error: readError } = await supabase
+      .from("compliance_tags")
+      .select("id, is_platform_default")
+      .eq("id", tagId)
+      .maybeSingle()
+
+    if (readError) return apiError("read_failed", readError.message, 500)
+    if (!existing) return apiError("not_found", "Tag not found.", 404)
+    if (
+      (existing as { is_platform_default?: boolean }).is_platform_default ===
+      true
+    ) {
+      return apiError(
+        "platform_default_rename_forbidden",
+        "Platform default tags cannot be renamed.",
+        422,
+        "display_name"
+      )
+    }
+  }
 
   // RLS UPDATE policy is admin-only; rely on it for authz.
   const { data, error } = await supabase

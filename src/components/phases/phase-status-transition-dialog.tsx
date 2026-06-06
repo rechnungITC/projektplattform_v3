@@ -1,7 +1,7 @@
 "use client"
 
 import { zodResolver } from "@hookform/resolvers/zod"
-import { Info, Loader2 } from "lucide-react"
+import { AlertTriangle, Info, Loader2 } from "lucide-react"
 import * as React from "react"
 import { useForm } from "react-hook-form"
 import { toast } from "sonner"
@@ -33,6 +33,8 @@ import {
   SelectValue,
 } from "@/components/ui/select"
 import { Textarea } from "@/components/ui/textarea"
+import { listPhaseComplianceWarnings } from "@/lib/compliance/api"
+import type { ComplianceWarning } from "@/lib/compliance/types"
 import {
   ALLOWED_PHASE_TRANSITIONS,
   PHASE_STATUS_LABELS,
@@ -76,6 +78,10 @@ export function PhaseStatusTransitionDialog({
   const noTransitions = allowed.length === 0
 
   const [submitting, setSubmitting] = React.useState(false)
+  const [confirmOpen, setConfirmOpen] = React.useState(false)
+  const [pendingValues, setPendingValues] =
+    React.useState<TransitionValues | null>(null)
+  const [warnings, setWarnings] = React.useState<ComplianceWarning[]>([])
 
   const defaultTarget =
     initialToStatus && allowed.includes(initialToStatus)
@@ -96,12 +102,15 @@ export function PhaseStatusTransitionDialog({
         to_status: (defaultTarget ?? currentStatus) as PhaseStatus,
         comment: "",
       })
+      setConfirmOpen(false)
+      setPendingValues(null)
+      setWarnings([])
     }
   }, [open, form, defaultTarget, currentStatus])
 
   const watchedTarget = form.watch("to_status")
 
-  const onSubmit = async (values: TransitionValues) => {
+  const submitTransition = async (values: TransitionValues) => {
     setSubmitting(true)
     try {
       const response = await fetch(
@@ -141,6 +150,9 @@ export function PhaseStatusTransitionDialog({
         description: `${phaseName} → ${PHASE_STATUS_LABELS[values.to_status]}.`,
       })
       await onTransitioned()
+      setConfirmOpen(false)
+      setPendingValues(null)
+      setWarnings([])
       onOpenChange(false)
     } catch (err) {
       const message = err instanceof Error ? err.message : "Unerwarteter Fehler"
@@ -152,121 +164,214 @@ export function PhaseStatusTransitionDialog({
     }
   }
 
+  const onSubmit = async (values: TransitionValues) => {
+    if (values.to_status !== "completed") {
+      await submitTransition(values)
+      return
+    }
+
+    setSubmitting(true)
+    try {
+      const nextWarnings = await listPhaseComplianceWarnings(projectId, phaseId)
+      if (nextWarnings.length > 0) {
+        setWarnings(nextWarnings)
+        setPendingValues(values)
+        setConfirmOpen(true)
+        return
+      }
+    } catch (err) {
+      toast.error("Compliance-Warnungen konnten nicht geprüft werden", {
+        description:
+          err instanceof Error ? err.message : "Unerwarteter Fehler",
+      })
+      return
+    } finally {
+      setSubmitting(false)
+    }
+
+    await submitTransition(values)
+  }
+
+  const confirmTransition = async () => {
+    if (!pendingValues) return
+    await submitTransition(pendingValues)
+  }
+
   return (
-    <Dialog open={open} onOpenChange={onOpenChange}>
-      <DialogContent className="sm:max-w-md">
-        <DialogHeader>
-          <DialogTitle>Phasenstatus ändern</DialogTitle>
-          <DialogDescription>
-            Aktueller Status:{" "}
-            <strong>{PHASE_STATUS_LABELS[currentStatus]}</strong>
-          </DialogDescription>
-        </DialogHeader>
+    <>
+      <Dialog open={open} onOpenChange={onOpenChange}>
+        <DialogContent className="sm:max-w-md">
+          <DialogHeader>
+            <DialogTitle>Phasenstatus ändern</DialogTitle>
+            <DialogDescription>
+              Aktueller Status:{" "}
+              <strong>{PHASE_STATUS_LABELS[currentStatus]}</strong>
+            </DialogDescription>
+          </DialogHeader>
 
-        {noTransitions ? (
-          <div className="space-y-4">
-            <p className="text-sm text-muted-foreground">
-              Aus diesem Status sind aktuell keine Übergänge möglich.
-            </p>
-            <DialogFooter>
-              <Button
-                type="button"
-                variant="ghost"
-                onClick={() => onOpenChange(false)}
-              >
-                Schließen
-              </Button>
-            </DialogFooter>
-          </div>
-        ) : (
-          <Form {...form}>
-            <form
-              onSubmit={form.handleSubmit(onSubmit)}
-              className="space-y-4"
-              noValidate
-            >
-              <FormField
-                control={form.control}
-                name="to_status"
-                render={({ field }) => (
-                  <FormItem>
-                    <FormLabel>Neuer Status</FormLabel>
-                    <Select
-                      value={field.value}
-                      onValueChange={field.onChange}
-                      disabled={submitting}
-                    >
-                      <FormControl>
-                        <SelectTrigger>
-                          <SelectValue placeholder="Status wählen" />
-                        </SelectTrigger>
-                      </FormControl>
-                      <SelectContent>
-                        {allowed.map((status) => (
-                          <SelectItem key={status} value={status}>
-                            {PHASE_STATUS_LABELS[status]}
-                          </SelectItem>
-                        ))}
-                      </SelectContent>
-                    </Select>
-                    <FormMessage />
-                  </FormItem>
-                )}
-              />
-
-              {watchedTarget === "completed" ? (
-                <Alert>
-                  <Info className="h-4 w-4" aria-hidden />
-                  <AlertDescription>
-                    Compliance-Gate-Check wird ausgelöst (PROJ-18 — folgt).
-                  </AlertDescription>
-                </Alert>
-              ) : null}
-
-              <FormField
-                control={form.control}
-                name="comment"
-                render={({ field }) => (
-                  <FormItem>
-                    <FormLabel>Kommentar (optional)</FormLabel>
-                    <FormControl>
-                      <Textarea
-                        rows={3}
-                        maxLength={500}
-                        placeholder="Warum ändert sich der Status?"
-                        disabled={submitting}
-                        {...field}
-                      />
-                    </FormControl>
-                    <FormMessage />
-                  </FormItem>
-                )}
-              />
-
+          {noTransitions ? (
+            <div className="space-y-4">
+              <p className="text-sm text-muted-foreground">
+                Aus diesem Status sind aktuell keine Übergänge möglich.
+              </p>
               <DialogFooter>
                 <Button
                   type="button"
                   variant="ghost"
                   onClick={() => onOpenChange(false)}
-                  disabled={submitting}
                 >
-                  Abbrechen
-                </Button>
-                <Button type="submit" disabled={submitting}>
-                  {submitting && (
-                    <Loader2
-                      className="mr-2 h-4 w-4 animate-spin"
-                      aria-hidden
-                    />
-                  )}
-                  Status setzen
+                  Schließen
                 </Button>
               </DialogFooter>
-            </form>
-          </Form>
-        )}
-      </DialogContent>
-    </Dialog>
+            </div>
+          ) : (
+            <Form {...form}>
+              <form
+                onSubmit={form.handleSubmit(onSubmit)}
+                className="space-y-4"
+                noValidate
+              >
+                <FormField
+                  control={form.control}
+                  name="to_status"
+                  render={({ field }) => (
+                    <FormItem>
+                      <FormLabel>Neuer Status</FormLabel>
+                      <Select
+                        value={field.value}
+                        onValueChange={field.onChange}
+                        disabled={submitting}
+                      >
+                        <FormControl>
+                          <SelectTrigger>
+                            <SelectValue placeholder="Status wählen" />
+                          </SelectTrigger>
+                        </FormControl>
+                        <SelectContent>
+                          {allowed.map((status) => (
+                            <SelectItem key={status} value={status}>
+                              {PHASE_STATUS_LABELS[status]}
+                            </SelectItem>
+                          ))}
+                        </SelectContent>
+                      </Select>
+                      <FormMessage />
+                    </FormItem>
+                  )}
+                />
+
+                {watchedTarget === "completed" ? (
+                  <Alert>
+                    <Info className="h-4 w-4" aria-hidden />
+                    <AlertDescription>
+                      Vor dem Abschluss werden offene Compliance-Warnungen
+                      geprüft. Der Abschluss bleibt möglich, muss bei offenen
+                      Punkten aber bestätigt werden.
+                    </AlertDescription>
+                  </Alert>
+                ) : null}
+
+                <FormField
+                  control={form.control}
+                  name="comment"
+                  render={({ field }) => (
+                    <FormItem>
+                      <FormLabel>Kommentar (optional)</FormLabel>
+                      <FormControl>
+                        <Textarea
+                          rows={3}
+                          maxLength={500}
+                          placeholder="Warum ändert sich der Status?"
+                          disabled={submitting}
+                          {...field}
+                        />
+                      </FormControl>
+                      <FormMessage />
+                    </FormItem>
+                  )}
+                />
+
+                <DialogFooter>
+                  <Button
+                    type="button"
+                    variant="ghost"
+                    onClick={() => onOpenChange(false)}
+                    disabled={submitting}
+                  >
+                    Abbrechen
+                  </Button>
+                  <Button type="submit" disabled={submitting}>
+                    {submitting && (
+                      <Loader2
+                        className="mr-2 h-4 w-4 animate-spin"
+                        aria-hidden
+                      />
+                    )}
+                    Status setzen
+                  </Button>
+                </DialogFooter>
+              </form>
+            </Form>
+          )}
+        </DialogContent>
+      </Dialog>
+
+      <Dialog open={confirmOpen} onOpenChange={setConfirmOpen}>
+        <DialogContent className="sm:max-w-lg">
+          <DialogHeader>
+            <DialogTitle>Compliance-Warnungen bestätigen</DialogTitle>
+            <DialogDescription>
+              {phaseName} hat noch {warnings.length} offene{" "}
+              {warnings.length === 1 ? "Warnung" : "Warnungen"}. Der
+              Abschluss wird nicht blockiert, aber bewusst protokolliert.
+            </DialogDescription>
+          </DialogHeader>
+
+          <Alert variant="destructive">
+            <AlertTriangle className="h-4 w-4" aria-hidden />
+            <AlertDescription>
+              Prüfe die offenen Punkte, bevor die Phase abgeschlossen wird.
+            </AlertDescription>
+          </Alert>
+
+          <ul className="max-h-64 space-y-2 overflow-y-auto text-sm">
+            {warnings.map((warning, index) => (
+              <li key={`${warning.tagKey}:${index}`} className="rounded border p-3">
+                <div className="font-medium">{warning.tagKey}</div>
+                <div className="text-muted-foreground">{warning.message}</div>
+                {warning.suggestedTemplateKey ? (
+                  <div className="mt-1 text-xs text-muted-foreground">
+                    Template: {warning.suggestedTemplateKey}
+                  </div>
+                ) : null}
+              </li>
+            ))}
+          </ul>
+
+          <DialogFooter>
+            <Button
+              type="button"
+              variant="ghost"
+              onClick={() => setConfirmOpen(false)}
+              disabled={submitting}
+            >
+              Zurück
+            </Button>
+            <Button
+              type="button"
+              variant="destructive"
+              onClick={confirmTransition}
+              disabled={submitting || !pendingValues}
+            >
+              {submitting && (
+                <Loader2 className="mr-2 h-4 w-4 animate-spin" aria-hidden />
+              )}
+              Trotzdem abschließen
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+    </>
   )
 }
 

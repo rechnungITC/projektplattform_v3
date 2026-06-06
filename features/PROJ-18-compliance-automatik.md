@@ -2,7 +2,7 @@
 
 ## Status: Deployed
 **Created:** 2026-04-25
-**Last Updated:** 2026-04-25
+**Last Updated:** 2026-06-05
 
 ## Summary
 Compliance & process requirements (ISO 9001, ISO 27001, DSGVO, MS-365 rollout, vendor-evaluation, change-management, onboarding) become first-class project dependencies. Tags on work items, a `ComplianceTrigger` service that auto-creates follow-up work items + document slots, a Markdown template system with tenant-additive overrides, a phase-gate check that warns (does not block) on incomplete compliance, project-type default tag sets, and an admin UI for template maintenance. Inherits V2 EP-16.
@@ -496,7 +496,7 @@ Addressing the bugs from the first QA pass:
 |----|------|---------|
 | Table `compliance_tags` with required columns | ✅ | DDL applied; `template_keys text[]` matches AC's `template_ids` semantically; `default_child_kinds`, `is_active`, `is_platform_default` all present |
 | Platform-default tags shipped (7 keys) | ✅ | Live verify: `select count(*) from compliance_tags where is_platform_default → 7` for tenant `329f25e5-…` |
-| Admin can deactivate (cannot rename platform defaults structurally) | ⚠️ Partial | `is_active` PATCH supported; admins CAN rename `display_name` and edit `description` — there's no extra protection on platform-defaults beyond the registry restricting writes to `display_name/description/is_active`. Spec says "cannot rename" but implementation permits rename. **Bug LOW-1**. |
+| Admin can deactivate (cannot rename platform defaults structurally) | ✅ Fixed 2026-06-05 | `is_active`/`description` PATCH remains supported; `display_name` PATCH now reads `is_platform_default` first and rejects platform-default renames with `platform_default_rename_forbidden` (422). Covered by `src/app/api/compliance-tags/[tagId]/route.test.ts`. |
 | `GET /api/compliance-tags` (tenant scoped); `PATCH` admin-only | ✅ | RLS SELECT via `is_tenant_member`; UPDATE via `is_tenant_admin` (verified by `pg_policy` inspection) |
 | Audit on changes | ✅ | `record_audit_changes` AFTER UPDATE trigger attached; entity_type whitelisted; `_tracked_audit_columns('compliance_tags') → display_name, description, is_active` |
 
@@ -522,10 +522,10 @@ Addressing the bugs from the first QA pass:
 #### ST-04 Phase-gate check
 | AC | Pass | Evidence |
 |----|------|---------|
-| `PATCH phases/{id}` with `status=completed` includes `compliance_warnings` | ❌ | The transition route at `phases/[pid]/transition/route.ts` does NOT call the warning resolver. Warnings only available via separate GET endpoint. **Bug HIGH-1**. |
-| UI shows banner at phase close | ⚠️ Partial | Warnings render inline in `PhaseCard` (always visible), not as a modal banner at close. Acceptable as v1 alternative but doesn't strictly meet the AC. **Bug MEDIUM-1**. |
+| `PATCH phases/{id}` with `status=completed` includes `compliance_warnings` | ✅ Fixed | `phases/[pid]/transition/route.ts` resolves warnings before completed-transition and returns `compliance_warnings` in the response. |
+| UI shows banner at phase close | ✅ Fixed 2026-06-05 | `PhaseStatusTransitionDialog` now fetches phase warnings before completion and opens a confirmation modal when warnings exist. Covered by `phase-status-transition-dialog.test.tsx`. |
 | Closing not blocked | ✅ | No block exists |
-| Confirmation logged to audit ("Phase closed despite N open compliance increments") | ❌ | No audit row written. **Bug HIGH-2**. |
+| Confirmation logged to audit ("Phase closed despite N open compliance increments") | ✅ Fixed | Transition route writes best-effort `audit_log_entries.field_name = compliance_close_warning` when a phase closes despite warnings. |
 
 #### ST-05 Default tag sets per project type
 | AC | Pass | Evidence |
@@ -640,13 +640,11 @@ E2E tests deferred to post-fix run — they cannot exercise the compliance flow 
 - Updated `route.test.ts` for `POST /api/projects` to expect the new `applied_default_tags: []` field; no other tests required changes.
 
 **Remaining open items (Low / out-of-scope, do NOT block deploy):**
-- LOW-1 — admin can still rename platform-default tag `display_name`. Acceptable for v1; spec amendment recommended (tenants typically want to localize labels). 
 - LOW-2 — compliance-derived child work-items don't carry an `audit_log_entries` row with `change_reason='compliance_trigger'`. Provenance captured in `attributes.compliance_origin.template_key`. Audit pattern is field-level on UPDATE; INSERT-time provenance audit would be a future enhancement.
-- MEDIUM-1 — phase-gate UX is "always-on inline panel" rather than "modal banner at close". The new `compliance_warnings` field in the transition response gives the front-end everything needed to wire a modal in a follow-up `/frontend` slice. Acceptable for v1 deploy.
 - ST-06 (template-UI) deferred to PROJ-18b per locked scope decision.
 
 **Final acceptance summary:**
-- ST-01 ✅ — registry, RLS, audit, GET/PATCH wired (LOW-1 nit only).
+- ST-01 ✅ — registry, RLS, audit, GET/PATCH wired; platform-default rename guard added 2026-06-05.
 - ST-02 ✅ — trigger fires on tag-attach + status transitions; idempotent at DB level.
 - ST-03 minimal ✅ — TS templates + work_item_documents shipped; overrides deferred per scope decision.
 - ST-04 ✅ — warnings GET endpoint + transition-response embed + audit-on-close-despite-warnings, all wired.
@@ -676,7 +674,13 @@ Production-ready: **YES**. Recommended next step: `/deploy proj 18`.
   - `fix(PROJ-18): QA round 1 — slug rename + phase-close warnings + ST-05`
   - `test(PROJ-18): QA pass — 372/372 vitest, 8/8 e2e, RLS+trigger live-verified`
 - **Known carry-over (non-blocking)**:
-  - LOW-1 — admin can rename platform-default `display_name`. Spec amendment recommended.
   - LOW-2 — INSERT-time provenance is in `attributes.compliance_origin`, not in `audit_log_entries.change_reason`.
-  - MEDIUM-1 — phase-gate UX is inline panel, not modal-at-close. Backend now provides everything needed for a follow-up frontend slice.
   - ST-06 (template UI) deferred to PROJ-18b per locked scope decision.
+
+## Follow-up Correction — 2026-06-05
+
+- `PATCH /api/compliance-tags/[tagId]` blocks `display_name` updates for `is_platform_default = true` tags while still allowing `description` and `is_active`.
+- `PhaseStatusTransitionDialog` now runs the compliance-warning check before completing a phase and requires explicit confirmation when warnings exist.
+- Added regression coverage:
+  - `src/app/api/compliance-tags/[tagId]/route.test.ts`
+  - `src/components/phases/phase-status-transition-dialog.test.tsx`

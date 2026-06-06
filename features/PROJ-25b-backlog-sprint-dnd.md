@@ -2,7 +2,7 @@
 
 ## Status: Deployed
 **Created:** 2026-05-05
-**Last Updated:** 2026-05-08
+**Last Updated:** 2026-06-05
 **Deployed:** 2026-05-05 (commits 8b1f693 + 938d312 + 3e5219c on `main`); deployment bookkeeping completed 2026-05-08
 
 ## Summary
@@ -408,9 +408,11 @@ QA flagged that both PATCH endpoints relied on RLS alone for the edit check. The
 
 Tests updated to mock the `projects`, `tenant_memberships`, `project_memberships` chains accordingly. 20/20 still green.
 
-### Auflage B — deferred follow-up items (logged, **not blocking**)
-1. **Playwright E2E suite (6 cases)** — drag handle visibility per method · Ctrl-click toggle · Shift-click range · DnD between Backlog ↔ Sprint A ↔ Sprint B · closed-sprint reject · keyboard-only DnD path. To be picked up before PROJ-25c (Touch/Mobile polish).
-2. **Performance benchmark** — 30 sprints × 100 stories scenario; Single-drag ≥ 55fps, Multi-drag-50 ≥ 50fps, Initial render < 500ms (per ST-07 AC). Risk is judged low because `@dnd-kit` is a known 60fps stack, but the AC remains formally open. Recommended PROJ-25b-α follow-up slice.
+### Auflage B — coverage uplift (closed 2026-06-05 for PROJ-25b-α smoke)
+1. **Authenticated Playwright smoke** — `tests/PROJ-25b-backlog-sprint-dnd.spec.ts` renders the real Backlog page with controlled Supabase REST fixtures and covers DnD handle visibility, Escape-cancel announce, Ctrl/Cmd toggle, and Shift range selection via row-level DnD selection state.
+2. **Performance smoke** — `src/hooks/use-story-selection.test.ts` now includes a 500-item range-selection budget guard to catch obvious reducer regressions before they hit the Backlog UI.
+
+Remaining full-fidelity DnD/perf work stays with PROJ-25c/25d: real pointer drag across containers, closed-sprint reject via actual drop hover, touch polish, and large 30×100 browser FPS benchmark.
 
 ### Auflage C — micro-cleanups (logged, low priority)
 - `work_item_ids` de-duplication should run **before** the `.max(50)` Zod gate (today: 50 IDs accepted that may dedupe to 1 — no security impact, just spec-text drift).
@@ -418,9 +420,9 @@ Tests updated to mock the `projects`, `tenant_memberships`, `project_memberships
 - `apiError` helper should also carry the `failed_ids` field; current implementation inlines `NextResponse.json(...)` in two spots in the bulk route. Cosmetic.
 
 ### Top-3 residual risks
-1. Performance unbewiesen → Auflage B
+1. Full 30×100 browser FPS benchmark remains future work → PROJ-25c/25d
 2. Optimistic-Update sub-spec (D3 trade-off, drop appears after PATCH settles, not before) — UX-Detail, no data integrity issue
-3. No DnD-flow E2E coverage at all → Auflage B
+3. Real pointer-drag/drop E2E matrix remains future work, but authenticated smoke coverage now exists
 
 ### Recommendation
 **GO** — Auflage A umgesetzt. Auflagen B+C als Folge-Items dokumentiert, Deploy freigegeben.
@@ -448,7 +450,7 @@ All four commits were pushed to `origin/main` on 2026-05-05 and 2026-05-06; Verc
 
 **Auflage status:**
 - **A** (`requireProjectAccess` on both PATCH endpoints) — landed in `3e5219c` and live on production.
-- **B** (Playwright E2E suite + 30×100 perf benchmark) — deferred as **PROJ-25b-α** follow-up slice. Not blocking deployment (per QA "GO with conditions"). Risk judged low because `@dnd-kit/core` is a known 60fps stack.
+- **B** (Playwright E2E suite + perf benchmark) — **PROJ-25b-α smoke coverage landed 2026-06-05**: authenticated Backlog-DnD browser smoke + 500-item selection perf guard. Full pointer-drag/FPS matrix remains PROJ-25c/25d territory.
 - **C** (micro-cleanups: dedup-before-max-50, error-text wording, `apiError` carrying `failed_ids`) — logged as low-priority polish, not blocking deployment.
 
 **Git tag:** `v1.x.0-PROJ-25b` placed on commit `3e5219c` (PROJ-25b head).
