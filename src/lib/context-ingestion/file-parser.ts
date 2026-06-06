@@ -13,16 +13,26 @@
  *   - mammoth (BSD-2) — DOCX → plaintext
  *   - file-type (MIT, ESM-only >=17) — magic-byte sniffing via dynamic import
  *
- * AC-γH-8 (lazy/dynamic import): all three libs are loaded via `await import`
+ * PROJ-70-δ adds two email branches (CIA-approved 2026-06-06):
+ *   - mailparser (MIT, Nodemailer) — `.eml` via ./eml-parser
+ *   - @kenjiuno/msgreader (Apache-2.0) — `.msg` via ./msg-parser
+ * Both are dispatched through dynamic imports of the sibling modules so
+ * this file stays cycle-free at module-load time.
+ *
+ * AC-γH-8 (lazy/dynamic import): all libs are loaded via `await import`
  * inside the entry-point functions so cold-start of routes that don't parse
  * isn't penalised + ESM-only `file-type` doesn't break in CJS test contexts.
  */
+
+import type { EmailMetadata } from "./eml-parser"
 
 const ALLOWED_MIME_TYPES = new Set<string>([
   "application/pdf",
   "application/vnd.openxmlformats-officedocument.wordprocessingml.document",
   "text/plain",
   "text/markdown",
+  "message/rfc822",
+  "application/vnd.ms-outlook",
 ])
 
 const MAX_FILE_BYTES = 26_214_400 // 25 MB — AC-γH-1
@@ -36,6 +46,8 @@ export type SupportedMime =
   | "application/vnd.openxmlformats-officedocument.wordprocessingml.document"
   | "text/plain"
   | "text/markdown"
+  | "message/rfc822"
+  | "application/vnd.ms-outlook"
 
 export interface ParseResult {
   /** Plaintext excerpt capped at EXCERPT_MAX_CHARS for storage in
@@ -48,6 +60,9 @@ export interface ParseResult {
   page_count: number
   /** True when this run was source-truncated by AC-γH-2/H-3 caps. */
   truncated: boolean
+  /** PROJ-70-δ — email header extraction; present only for .eml/.msg
+   *  uploads. Persisted into `context_sources.source_metadata` (Lock-5). */
+  email?: EmailMetadata
 }
 
 export class FileParseError extends Error {
@@ -59,6 +74,8 @@ export class FileParseError extends Error {
     | "unsupported_mime"
     | "parse_timeout"
     | "parse_failed"
+    | "email_too_many_parts" // PROJ-70-δ AC-δH-2 — multipart bomb
+    | "msg_parse_failed" // PROJ-70-δ AC-δH-4 — malformed CFB
 
   constructor(
     code: FileParseError["code"],
@@ -79,17 +96,28 @@ export class FileParseError extends Error {
  *   * the detected MIME is not in our allowlist
  *   * the lib returns undefined (unknown format)
  *
- * For `text/plain` and `text/markdown` we accept the caller's MIME hint
- * directly since plain text files have no magic-byte signature — we
- * still verify the buffer parses as UTF-8 in `parseText`.
+ * For `text/plain`, `text/markdown` and `message/rfc822` we accept the
+ * caller's MIME hint directly since these text formats have no magic-byte
+ * signature — content is verified downstream (`parseText` UTF-8 check,
+ * `parseEml` RFC822 parse).
+ *
+ * PROJ-70-δ: Outlook `.msg` is a Compound File Binary (D0 CF 11 E0);
+ * `file-type` reports that container as `application/x-cfb`, which we
+ * map to `application/vnd.ms-outlook`. Non-Outlook CFB files (legacy
+ * .doc/.xls) pass the sniff but fail in parseMsg with
+ * `msg_parse_failed` (AC-δH-4) — acceptable, documented.
  */
 export async function sniffMagic(
   buffer: Buffer,
   callerMimeHint: string,
 ): Promise<SupportedMime> {
   // Plain-text formats have no magic header; trust the caller's MIME hint
-  // and verify content in parseText.
-  if (callerMimeHint === "text/plain" || callerMimeHint === "text/markdown") {
+  // and verify content in parseText / parseEml.
+  if (
+    callerMimeHint === "text/plain" ||
+    callerMimeHint === "text/markdown" ||
+    callerMimeHint === "message/rfc822"
+  ) {
     if (!ALLOWED_MIME_TYPES.has(callerMimeHint)) {
       throw new FileParseError(
         "unsupported_mime",
@@ -115,6 +143,11 @@ export async function sniffMagic(
       "magic_byte_mismatch",
       "Could not detect file type from magic bytes.",
     )
+  }
+  // PROJ-70-δ — CFB container → Outlook MSG candidate (validated by
+  // parseMsg's dataType check, AC-δH-4).
+  if (detected.mime === "application/x-cfb") {
+    return "application/vnd.ms-outlook"
   }
   if (!ALLOWED_MIME_TYPES.has(detected.mime)) {
     throw new FileParseError(
@@ -291,6 +324,16 @@ export async function parseFile(
       case "text/plain":
       case "text/markdown":
         return parseText(buffer)
+      // PROJ-70-δ — email branches. Dynamic sibling-module imports keep
+      // the module graph cycle-free (AC-δH-6 mirror of AC-γH-8).
+      case "message/rfc822": {
+        const { parseEml } = await import("./eml-parser")
+        return parseEml(buffer)
+      }
+      case "application/vnd.ms-outlook": {
+        const { parseMsg } = await import("./msg-parser")
+        return parseMsg(buffer)
+      }
     }
   })()
 

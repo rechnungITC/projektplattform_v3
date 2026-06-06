@@ -233,3 +233,62 @@ describe("parseFile orchestration", () => {
     ).rejects.toMatchObject({ code: "unsupported_mime" })
   })
 })
+
+// ---------------------------------------------------------------------------
+// PROJ-70-δ — email dispatch (.eml hint-trusted, .msg via CFB magic bytes)
+// ---------------------------------------------------------------------------
+
+describe("sniffMagic — PROJ-70-δ email formats", () => {
+  it("trusts message/rfc822 caller-hint without magic-byte check", async () => {
+    const result = await sniffMagic(Buffer.from("From: a@x\r\n"), "message/rfc822")
+    expect(result).toBe("message/rfc822")
+    expect(fileTypeMock).not.toHaveBeenCalled()
+  })
+
+  it("maps detected CFB container to application/vnd.ms-outlook", async () => {
+    fileTypeMock.mockResolvedValueOnce({ mime: "application/x-cfb", ext: "cfb" })
+    const result = await sniffMagic(Buffer.alloc(100), "")
+    expect(result).toBe("application/vnd.ms-outlook")
+  })
+})
+
+describe("parseFile — PROJ-70-δ email dispatch", () => {
+  it("dispatches .eml to parseEml and returns email metadata", async () => {
+    const eml = Buffer.from(
+      [
+        "Message-ID: <m1@example.com>",
+        "From: Alice <alice@example.com>",
+        "To: Bob <bob@example.com>",
+        "Subject: Kickoff",
+        "Content-Type: text/plain; charset=utf-8",
+        "",
+        "Hallo Kickoff-Team",
+      ].join("\r\n"),
+    )
+    const { result, mime } = await parseFile(eml, "message/rfc822")
+    expect(mime).toBe("message/rfc822")
+    expect(result.excerpt).toBe("Hallo Kickoff-Team")
+    expect(result.email?.email_format).toBe("eml")
+    expect(result.email?.email_subject).toBe("Kickoff")
+    expect(result.email?.email_from).toEqual({
+      name: "Alice",
+      address: "alice@example.com",
+    })
+    expect(result.email?.email_message_id).toBe("<m1@example.com>")
+    expect(fileTypeMock).not.toHaveBeenCalled()
+  })
+
+  it("dispatches CFB-detected buffers to parseMsg; non-Outlook CFB fails with msg_parse_failed (AC-δH-4)", async () => {
+    // Real msgreader runs here (not mocked in this file) — a garbage
+    // buffer is exactly the malformed-CFB case the AC covers.
+    fileTypeMock.mockResolvedValueOnce({ mime: "application/x-cfb", ext: "cfb" })
+    await expect(
+      parseFile(Buffer.from("garbage-that-is-not-cfb"), ""),
+    ).rejects.toMatchObject({ code: "msg_parse_failed" })
+  })
+
+  it("non-email formats carry no email metadata", async () => {
+    const { result } = await parseFile(Buffer.from("note"), "text/plain")
+    expect(result.email).toBeUndefined()
+  })
+})
