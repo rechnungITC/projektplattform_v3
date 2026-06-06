@@ -3,9 +3,20 @@
 /**
  * PROJ-70-β — Single row in the BacklogProposalTab tree.
  *
- * Read-only hierarchy in β; inline-edit reaches title + kind + description.
- * Confidence-Badge + Method-Compatibility-Warning rendered next to the
- * title. Accept/Reject buttons stay visible at the row's right edge.
+ * Inline-edit reaches title + kind + description. Confidence-Badge +
+ * Method-Compatibility-Warning rendered next to the title.
+ * Accept/Reject buttons stay visible at the row's right edge.
+ *
+ * PROJ-70-δ additions:
+ *   - `dropDisabled` (Lock Q4, analog PROJ-59): while a drag is active
+ *     and this row is NOT a valid drop-target it renders a red outline +
+ *     `aria-disabled` + `cursor-not-allowed`. No toast.
+ *   - Keyboard reparenting (AC-δ7): the row is focusable; `Tab` indents
+ *     (child of previous sibling), `Shift+Tab` outdents (sibling of the
+ *     current parent). Handlers come from the tab; validation lives in
+ *     `proposal-tree-rules.ts`.
+ *   - `data-temp-id` lets the tab's dragstart-capture resolve which
+ *     suggestion is being dragged (drives the cue).
  */
 
 import * as React from "react"
@@ -98,11 +109,18 @@ interface BacklogProposalTreeNodeProps {
   isEditing: boolean
   busy: boolean
   isCompatible: boolean
+  /** PROJ-70-δ Lock Q4 — true while a drag is active and this row is
+   *  NOT a valid drop-target for the dragged suggestion. */
+  dropDisabled: boolean
   onStartEdit: () => void
   onCancelEdit: () => void
   onSaveEdit: (patch: Partial<ProposalFromContextSuggestionPayload>) => void
   onAccept: () => void
   onReject: () => void
+  /** PROJ-70-δ AC-δ7 — Tab on the focused row. */
+  onIndent: () => void
+  /** PROJ-70-δ AC-δ7 — Shift+Tab on the focused row. */
+  onOutdent: () => void
 }
 
 export function BacklogProposalTreeNode({
@@ -111,11 +129,14 @@ export function BacklogProposalTreeNode({
   isEditing,
   busy,
   isCompatible,
+  dropDisabled,
   onStartEdit,
   onCancelEdit,
   onSaveEdit,
   onAccept,
   onReject,
+  onIndent,
+  onOutdent,
 }: BacklogProposalTreeNodeProps) {
   const suggestion = node.data.suggestion
   const payload = suggestion.payload
@@ -133,11 +154,33 @@ export function BacklogProposalTreeNode({
     else setDescExpanded((v) => !v)
   }
 
+  // AC-δ7 — keyboard reparenting on the focused row. Tab/Shift+Tab are
+  // captured ONLY when the row itself has focus (not its buttons/inputs)
+  // so normal focus-traversal inside the row keeps working.
+  const onKeyDownRow = (event: React.KeyboardEvent<HTMLDivElement>) => {
+    if (event.key !== "Tab") return
+    if (event.target !== event.currentTarget) return
+    if (isEditing || busy) return
+    event.preventDefault()
+    event.stopPropagation()
+    if (event.shiftKey) onOutdent()
+    else onIndent()
+  }
+
   return (
     <div
       style={style}
-      className="group flex items-start gap-2 border-b border-border/40 px-2 py-1.5 text-sm hover:bg-muted/30"
+      tabIndex={0}
+      onKeyDown={onKeyDownRow}
+      data-temp-id={payload.temp_id}
+      aria-disabled={dropDisabled || undefined}
+      className={`group flex items-start gap-2 border-b border-border/40 px-2 py-1.5 text-sm hover:bg-muted/30 focus-visible:outline focus-visible:outline-1 focus-visible:outline-ring ${
+        dropDisabled
+          ? "cursor-not-allowed opacity-60 outline outline-1 outline-destructive/70"
+          : ""
+      }`}
       data-testid="backlog-proposal-tree-node"
+      data-drop-disabled={dropDisabled || undefined}
     >
       <button
         type="button"
