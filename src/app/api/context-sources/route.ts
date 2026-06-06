@@ -7,10 +7,13 @@
  *                                            text/excerpt path
  *                                          - multipart/form-data:
  *                                            PROJ-70-γ file-upload path
+ *                                            (+ δ: .eml/.msg email parse)
  *
  * The γ-multipart path enforces 8 Hardening Acceptance Criteria
  * (AC-γH-1 through AC-γH-8) inside this handler before the parser
- * library is invoked. The Sentry beforeSend filter strips parser
+ * library is invoked. The δ email branches add AC-δH-1 through
+ * AC-δH-6 (multipart-bomb guard, attachments-ignored, CFB try/catch)
+ * inside `eml-parser.ts` / `msg-parser.ts`. The Sentry beforeSend filter strips parser
  * output from logs (AC-γH-7); see `src/lib/sentry-config.ts` for
  * the global hook.
  */
@@ -188,6 +191,22 @@ export async function POST(request: Request) {
 // loaded inside parseFile() — this route's static import surface stays
 // small.
 
+/**
+ * PROJ-70-δ — extension-based MIME fallback for files where browsers
+ * send an empty `File.type` (.eml/.msg are the common cases; .md on
+ * some platforms). Only a HINT — `sniffMagic` re-validates binary
+ * formats via magic bytes (AC-γH-5); text formats are verified by
+ * their parsers downstream.
+ */
+function inferMimeFromFilename(filename: string): string {
+  const lower = filename.toLowerCase()
+  if (lower.endsWith(".eml")) return "message/rfc822"
+  if (lower.endsWith(".msg")) return "application/vnd.ms-outlook"
+  if (lower.endsWith(".md")) return "text/markdown"
+  if (lower.endsWith(".txt")) return "text/plain"
+  return ""
+}
+
 const multipartFieldsSchema = z.object({
   kind: z.enum(
     CONTEXT_SOURCE_KINDS as unknown as readonly [string, ...string[]],
@@ -280,10 +299,16 @@ async function handleMultipartUpload(
 
   const buffer = Buffer.from(await fileEntry.arrayBuffer())
 
+  // PROJ-70-δ — browsers frequently send an empty `File.type` for .eml
+  // and .msg (no registered handler). Fall back to an extension-derived
+  // hint; the magic-byte sniff inside parseFile stays the authority for
+  // binary formats (AC-γH-5).
+  const mimeHint = fileEntry.type || inferMimeFromFilename(fileEntry.name)
+
   // AC-γH-2 to AC-γH-5 + AC-γH-4 (parse with magic-byte sniff + 20s timeout).
   let parseResult: Awaited<ReturnType<typeof parseFile>>
   try {
-    parseResult = await parseFile(buffer, fileEntry.type)
+    parseResult = await parseFile(buffer, mimeHint)
   } catch (err) {
     if (err instanceof FileParseError) {
       const statusByCode: Record<FileParseError["code"], number> = {
@@ -294,6 +319,8 @@ async function handleMultipartUpload(
         unsupported_mime: 415,
         parse_timeout: 504,
         parse_failed: 422,
+        email_too_many_parts: 422, // PROJ-70-δ AC-δH-2
+        msg_parse_failed: 422, // PROJ-70-δ AC-δH-4
       }
       return apiError(err.code, err.message, statusByCode[err.code] ?? 422)
     }
@@ -322,6 +349,12 @@ async function handleMultipartUpload(
       privacy_class: classification.privacy_class,
       matched_patterns: classification.matched_patterns,
     },
+  }
+  // PROJ-70-δ — email-header extraction (Lock-5: source_metadata JSON,
+  // no dedicated table). Threading headers are forward-compat for ε's
+  // Stakeholder-Hint matching; no δ consumer.
+  if (parseResult.result.email) {
+    mergedMetadata["proj70_delta_email"] = parseResult.result.email
   }
 
   // AC-γH-6 — INSERT FIRST. We need a context_source_id to build the

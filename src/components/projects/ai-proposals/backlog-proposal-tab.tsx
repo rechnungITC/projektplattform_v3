@@ -119,7 +119,7 @@ export function BacklogProposalTab({
     ProposalFromContextSuggestionRow[]
   >([])
   const [busy, setBusy] = React.useState(false)
-  // PROJ-70-γ: file-picker state. The picker accepts PDF/DOCX/TXT/MD;
+  // PROJ-70-γ+δ: file-picker state. The picker accepts PDF/DOCX/TXT/MD/EML/MSG;
   // server-side magic-byte sniffing is the security boundary, the
   // accept-attribute is just a UX hint.
   const [pickedFile, setPickedFile] = React.useState<File | null>(null)
@@ -195,7 +195,9 @@ export function BacklogProposalTab({
 
   const onGenerate = React.useCallback(async () => {
     if (!pickedFile) {
-      toast.error("Bitte zuerst eine Datei auswählen (PDF / DOCX / TXT / MD)")
+      toast.error(
+        "Bitte zuerst eine Datei auswählen (PDF / DOCX / TXT / MD / EML / MSG)",
+      )
       return
     }
     const inferredTitle = titleInput.trim() || pickedFile.name
@@ -203,17 +205,21 @@ export function BacklogProposalTab({
     try {
       // PROJ-70-γ: upload file (multipart) → context_sources row → trigger
       // proposal_from_context with the returned id.
+      const lowerName = pickedFile.name.toLowerCase()
       const inferredKind: string =
         pickedFile.type === "application/pdf" ||
-        pickedFile.name.toLowerCase().endsWith(".pdf")
+        lowerName.endsWith(".pdf")
           ? "document"
           : pickedFile.type ===
               "application/vnd.openxmlformats-officedocument.wordprocessingml.document" ||
-            pickedFile.name.toLowerCase().endsWith(".docx")
+            lowerName.endsWith(".docx")
             ? "document"
-            : pickedFile.name.toLowerCase().endsWith(".md")
-              ? "meeting_notes"
-              : "other"
+            : // PROJ-70-δ — kickoff emails land as kind "email".
+              lowerName.endsWith(".eml") || lowerName.endsWith(".msg")
+              ? "email"
+              : lowerName.endsWith(".md")
+                ? "meeting_notes"
+                : "other"
 
       const contextSource = await uploadContextSourceFile({
         file: pickedFile,
@@ -380,12 +386,12 @@ export function BacklogProposalTab({
             htmlFor="backlog-proposal-file-input"
             className="text-[11px] font-medium uppercase tracking-wide text-muted-foreground"
           >
-            Kickoff-Datei (PDF · DOCX · TXT · MD · max 25 MB)
+            Kickoff-Datei (PDF · DOCX · TXT · MD · EML · MSG · max 25 MB)
           </label>
           <input
             id="backlog-proposal-file-input"
             type="file"
-            accept=".pdf,.docx,.txt,.md,application/pdf,application/vnd.openxmlformats-officedocument.wordprocessingml.document,text/plain,text/markdown"
+            accept=".pdf,.docx,.txt,.md,.eml,.msg,application/pdf,application/vnd.openxmlformats-officedocument.wordprocessingml.document,text/plain,text/markdown,message/rfc822,application/vnd.ms-outlook"
             className="h-8 w-full text-sm file:mr-2 file:rounded file:border file:border-input file:bg-background file:px-2 file:py-0.5 file:text-xs"
             onChange={(e) => {
               const file = e.target.files?.[0] ?? null
