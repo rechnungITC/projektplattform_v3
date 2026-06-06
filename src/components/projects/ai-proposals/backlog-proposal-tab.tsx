@@ -12,8 +12,21 @@
  *   - Inline-edit title + kind (PATCH /api/ki/suggestions/[id])
  *   - Undo within 30 s after any bulk-accept (sonner Toast action)
  *
- * NO DnD-Reparenting in 70-β (that's 70-δ). Tree-View is read-only
- * w.r.t. hierarchy; only Title/Kind/Description are editable.
+ * PROJ-70-δ adds DnD-Reparenting (AC-δ4..δ7):
+ *   - react-arborist native DnD (Lock Q3 — no @dnd-kit for the tree):
+ *     `onMove` flips `parent_temp_id` in LOCAL state only; persistence
+ *     happens lazily via the β-PATCH route right before accept
+ *     ("flush-dirty-parents"), then the bulk-RPC topological-sort takes
+ *     over. Zero backend change.
+ *   - Validation gates per drop: `checkReparent` = structural
+ *     PROPOSAL_ALLOWED_PARENT_KINDS (AC-δ5) + method matrix (AC-δ6) +
+ *     self/descendant-cycle guards.
+ *   - Drop-disabled cue (Lock Q4, analog PROJ-59): invalid targets get
+ *     red outline + aria-disabled + cursor-not-allowed while dragging —
+ *     no toast.
+ *   - Keyboard: Tab indents (child of previous sibling), Shift+Tab
+ *     outdents (sibling of current parent) on the focused row (AC-δ7),
+ *     with aria-live announcements.
  *
  * Method-validation per AC-β7: when project_method imposes a kind
  * matrix (waterfall/scrum/kanban), rows with incompatible kind get a
@@ -46,6 +59,12 @@ import {
   type ProposalFromContextSuggestionPayload,
   type ProposalFromContextSuggestionRow,
 } from "@/lib/ai-proposals/proposal-from-context-api"
+import {
+  applyReparent,
+  checkReparent,
+  isProposalKindCompatibleWithMethod,
+  type ReparentRejection,
+} from "@/lib/ai-proposals/proposal-tree-rules"
 
 import {
   BacklogProposalTreeNode,
@@ -91,22 +110,21 @@ function buildTree(
   return roots
 }
 
-const ALLOWED_KINDS_BY_METHOD: Record<string, ReadonlySet<string>> = {
-  waterfall: new Set(["phase", "work_package", "todo"]),
-  Wasserfall: new Set(["phase", "work_package", "todo"]),
-  scrum: new Set(["epic", "story", "task", "subtask", "bug"]),
-  Scrum: new Set(["epic", "story", "task", "subtask", "bug"]),
-  agile: new Set(["epic", "story", "task", "subtask", "bug"]),
-  Agile: new Set(["epic", "story", "task", "subtask", "bug"]),
-  kanban: new Set(["epic", "story", "task", "subtask", "bug"]),
-}
+// Method-compatibility moved to `proposal-tree-rules.ts` in 70-δ so the
+// DnD gates and the badge share one matrix.
+const isKindCompatible = isProposalKindCompatibleWithMethod
 
-/** Returns true when the kind is compatible with the project method. */
-function isKindCompatible(kind: string, projectMethod: string | null): boolean {
-  if (!projectMethod) return true
-  const allowed = ALLOWED_KINDS_BY_METHOD[projectMethod]
-  if (!allowed) return true // hybrid + unknown methods accept all kinds
-  return allowed.has(kind)
+/** Human-readable aria-live feedback per rejection reason (AC-δ7 —
+ *  keyboard users get announcements instead of the visual drop-cue). */
+const REJECT_MESSAGE: Record<ReparentRejection, string> = {
+  self_drop: "Ein Element kann nicht sein eigenes Eltern-Element sein.",
+  descendant_cycle:
+    "Verschieben abgelehnt: Ziel liegt innerhalb des eigenen Teilbaums.",
+  kind_not_allowed:
+    "Verschieben abgelehnt: Diese Art darf dort nicht eingeordnet werden.",
+  method_incompatible:
+    "Verschieben abgelehnt: Kombination passt nicht zur Projekt-Methode.",
+  unknown_node: "Verschieben abgelehnt: Element nicht gefunden.",
 }
 
 export function BacklogProposalTab({
@@ -125,6 +143,14 @@ export function BacklogProposalTab({
   const [pickedFile, setPickedFile] = React.useState<File | null>(null)
   const [titleInput, setTitleInput] = React.useState("")
   const [editingTempId, setEditingTempId] = React.useState<string | null>(null)
+  // PROJ-70-δ — DnD state. `dirtyTempIds` tracks rows whose
+  // parent_temp_id changed locally but is not yet PATCHed (flushed right
+  // before accept). `dragTempId` drives the drop-disabled cue.
+  const [dirtyTempIds, setDirtyTempIds] = React.useState<ReadonlySet<string>>(
+    new Set(),
+  )
+  const [dragTempId, setDragTempId] = React.useState<string | null>(null)
+  const [liveMessage, setLiveMessage] = React.useState("")
 
   const reload = React.useCallback(async () => {
     try {
@@ -159,6 +185,99 @@ export function BacklogProposalTab({
       drafts.filter((s) => !isKindCompatible(s.payload.kind, projectMethod))
         .length,
     [drafts, projectMethod],
+  )
+
+  // ---- PROJ-70-δ: DnD-reparenting -----------------------------------
+  // (defined BEFORE the action handlers — they list flushDirtyParents
+  // in their dependency arrays.)
+
+  /** Shared by drag-drop AND keyboard indent/outdent: validate via
+   *  checkReparent, mutate local state via applyReparent, remember the
+   *  row as dirty for the pre-accept flush. */
+  const requestReparent = React.useCallback(
+    (tempId: string, newParentTempId: string | null) => {
+      setSuggestions((prev) => {
+        const result = applyReparent(prev, tempId, newParentTempId, projectMethod)
+        if (!result.check.allowed && result.check.reason) {
+          setLiveMessage(REJECT_MESSAGE[result.check.reason])
+          return prev
+        }
+        if (result.changed) {
+          setDirtyTempIds((d) => new Set(d).add(tempId))
+          const moved = result.rows.find((r) => r.payload.temp_id === tempId)
+          const parent = newParentTempId
+            ? result.rows.find((r) => r.payload.temp_id === newParentTempId)
+            : null
+          setLiveMessage(
+            parent
+              ? `„${moved?.payload.title}" ist jetzt unter „${parent.payload.title}" eingeordnet.`
+              : `„${moved?.payload.title}" ist jetzt auf oberster Ebene.`,
+          )
+        }
+        return result.rows
+      })
+    },
+    [projectMethod],
+  )
+
+  /** Persist locally-changed parent_temp_ids via the β-PATCH route.
+   *  Called right before accept (the bulk-RPC reads payloads from the
+   *  DB) and before reject/generate (which reload from the server and
+   *  would otherwise drop unsaved tree edits). */
+  const flushDirtyParents = React.useCallback(async () => {
+    if (dirtyTempIds.size === 0) return
+    const dirtyRows = suggestions.filter(
+      (s) => s.status === "draft" && dirtyTempIds.has(s.payload.temp_id),
+    )
+    await Promise.all(
+      dirtyRows.map((s) => editProposalFromContextSuggestion(s.id, s.payload)),
+    )
+    setDirtyTempIds(new Set())
+  }, [dirtyTempIds, suggestions])
+
+  /** AC-δ7 — Tab on a focused row: become child of the previous sibling. */
+  const onIndent = React.useCallback(
+    (node: NodeApi<BacklogProposalTreeNodeData>) => {
+      const prevSibling = node.parent?.children?.[node.childIndex - 1]
+      if (!prevSibling) {
+        setLiveMessage(
+          "Einrücken nicht möglich: kein vorheriges Geschwister-Element.",
+        )
+        return
+      }
+      requestReparent(
+        node.data.suggestion.payload.temp_id,
+        prevSibling.data.suggestion.payload.temp_id,
+      )
+    },
+    [requestReparent],
+  )
+
+  /** AC-δ7 — Shift+Tab: become sibling of the current parent. */
+  const onOutdent = React.useCallback(
+    (node: NodeApi<BacklogProposalTreeNodeData>) => {
+      const parent = node.parent
+      if (!parent || parent.isRoot) {
+        setLiveMessage("Ausrücken nicht möglich: bereits auf oberster Ebene.")
+        return
+      }
+      const grandparent = parent.parent
+      requestReparent(
+        node.data.suggestion.payload.temp_id,
+        grandparent && !grandparent.isRoot
+          ? grandparent.data.suggestion.payload.temp_id
+          : null,
+      )
+    },
+    [requestReparent],
+  )
+
+  /** Lock Q4 — drop-target validity for the cue + react-arborist's own
+   *  disableDrop gate. parentTempId null = top-level drop. */
+  const isValidDropTarget = React.useCallback(
+    (dragId: string, parentTempId: string | null) =>
+      checkReparent(suggestions, dragId, parentTempId, projectMethod).allowed,
+    [suggestions, projectMethod],
   )
 
   // ---- actions ------------------------------------------------------
@@ -203,6 +322,8 @@ export function BacklogProposalTab({
     const inferredTitle = titleInput.trim() || pickedFile.name
     setBusy(true)
     try {
+      // PROJ-70-δ — a new generation reloads; keep pending tree edits.
+      await flushDirtyParents()
       // PROJ-70-γ: upload file (multipart) → context_sources row → trigger
       // proposal_from_context with the returned id.
       const lowerName = pickedFile.name.toLowerCase()
@@ -262,12 +383,15 @@ export function BacklogProposalTab({
     } finally {
       setBusy(false)
     }
-  }, [pickedFile, titleInput, projectId, reload])
+  }, [pickedFile, titleInput, projectId, reload, flushDirtyParents])
 
   const onAcceptOne = React.useCallback(
     async (suggestion: ProposalFromContextSuggestionRow) => {
       setBusy(true)
       try {
+        // PROJ-70-δ — persist pending DnD parent-changes first; the RPC
+        // reads payloads from the DB, not from local state.
+        await flushDirtyParents()
         const result = await acceptProposalFromContext(
           projectId,
           [suggestion.id],
@@ -286,13 +410,15 @@ export function BacklogProposalTab({
         setBusy(false)
       }
     },
-    [projectId, reload, showUndoToast],
+    [projectId, reload, showUndoToast, flushDirtyParents],
   )
 
   const onAcceptAll = React.useCallback(async () => {
     if (drafts.length === 0) return
     setBusy(true)
     try {
+      // PROJ-70-δ — flush DnD parent-changes before the bulk-RPC.
+      await flushDirtyParents()
       const ids = drafts.map((d) => d.id)
       const result = await acceptProposalFromContext(projectId, ids)
       showUndoToast(
@@ -307,12 +433,14 @@ export function BacklogProposalTab({
     } finally {
       setBusy(false)
     }
-  }, [drafts, projectId, reload, showUndoToast])
+  }, [drafts, projectId, reload, showUndoToast, flushDirtyParents])
 
   const onRejectOne = React.useCallback(
     async (suggestion: ProposalFromContextSuggestionRow) => {
       setBusy(true)
       try {
+        // Reject reloads from the server — flush so tree edits survive.
+        await flushDirtyParents()
         await rejectProposalFromContextSuggestion(suggestion.id)
         toast.success("Vorschlag abgelehnt")
         await reload()
@@ -325,13 +453,14 @@ export function BacklogProposalTab({
         setBusy(false)
       }
     },
-    [reload],
+    [reload, flushDirtyParents],
   )
 
   const onRejectAll = React.useCallback(async () => {
     if (drafts.length === 0) return
     setBusy(true)
     try {
+      await flushDirtyParents()
       await Promise.all(
         drafts.map((s) => rejectProposalFromContextSuggestion(s.id)),
       )
@@ -348,7 +477,7 @@ export function BacklogProposalTab({
     } finally {
       setBusy(false)
     }
-  }, [drafts, reload])
+  }, [drafts, reload, flushDirtyParents])
 
   const onEdit = React.useCallback(
     async (
@@ -499,13 +628,31 @@ export function BacklogProposalTab({
 
       {!loading && !error && suggestions.length === 0 && (
         <div className="rounded-md border border-dashed bg-muted/10 p-6 text-center text-sm text-muted-foreground">
-          Noch keine Vorschläge. Gib oben eine Context-Source-ID ein und
-          klicke „Generieren&ldquo;.
+          Noch keine Vorschläge. Lade oben eine Kickoff-Datei hoch und
+          klicke „Hochladen + Generieren&ldquo;.
         </div>
       )}
 
+      {/* AC-δ7 a11y — announces reparent results + rejections for
+          keyboard users (the visual drop-cue is mouse-only). */}
+      <div aria-live="polite" role="status" className="sr-only">
+        {liveMessage}
+      </div>
+
       {treeData.length > 0 && (
-        <div className="overflow-hidden rounded-md border bg-card">
+        <div
+          className="overflow-hidden rounded-md border bg-card"
+          data-testid="backlog-proposal-tree"
+          // PROJ-70-δ — HTML5-DnD events bubble up from react-arborist's
+          // draggable rows; capture them here to drive the
+          // drop-disabled cue (Lock Q4) without forking the Tree.
+          onDragStartCapture={(e) => {
+            const row = (e.target as HTMLElement).closest("[data-temp-id]")
+            if (row) setDragTempId(row.getAttribute("data-temp-id"))
+          }}
+          onDragEndCapture={() => setDragTempId(null)}
+          onDropCapture={() => setDragTempId(null)}
+        >
           <Tree<BacklogProposalTreeNodeData>
             data={treeData}
             openByDefault
@@ -513,8 +660,27 @@ export function BacklogProposalTab({
             indent={20}
             width="100%"
             height={Math.min(480, Math.max(160, treeData.length * 80))}
-            disableDrag
-            disableDrop
+            // PROJ-70-δ — native react-arborist DnD (Lock Q3).
+            disableDrag={busy || editingTempId !== null}
+            disableDrop={({ parentNode, dragNodes }) => {
+              const parentTempId =
+                !parentNode || parentNode.isRoot
+                  ? null
+                  : parentNode.data.suggestion.payload.temp_id
+              return !dragNodes.every((dn) =>
+                isValidDropTarget(
+                  dn.data.suggestion.payload.temp_id,
+                  parentTempId,
+                ),
+              )
+            }}
+            onMove={({ dragIds, parentId }) => {
+              // parentId is the drop-target's node id (= temp_id);
+              // null = tree root. Multi-selection is disabled → 1 id.
+              for (const dragId of dragIds) {
+                requestReparent(dragId, parentId)
+              }
+            }}
             disableEdit
             disableMultiSelection
           >
@@ -541,6 +707,17 @@ export function BacklogProposalTab({
                     node.data.suggestion.payload.kind,
                     projectMethod,
                   )}
+                  // PROJ-70-δ — drop-disabled cue + keyboard reparenting.
+                  dropDisabled={
+                    dragTempId !== null &&
+                    dragTempId !== node.data.suggestion.payload.temp_id &&
+                    !isValidDropTarget(
+                      dragTempId,
+                      node.data.suggestion.payload.temp_id,
+                    )
+                  }
+                  onIndent={() => onIndent(node)}
+                  onOutdent={() => onOutdent(node)}
                 />
               )
             }}

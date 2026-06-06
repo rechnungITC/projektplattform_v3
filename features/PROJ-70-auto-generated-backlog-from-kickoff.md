@@ -1,6 +1,6 @@
 # PROJ-70: Auto-Generated Backlog from Project Kickoff
 
-## Status: α Approved+Deployed · β Approved+Deployed · γ Approved+Deployed (QA-Pass 2026-06-06: 14/16 AC fully PASS + 2 documented deviations F-1 Medium F-2 LOW; 11/12 security probes blocked; vitest 1654/1654; Playwright 16/16; 0 Critical/0 High → PRODUCTION-READY) · δ **In Progress (Backend gebaut 2026-06-06: .eml/.msg-Parser + AC-δH-1..6 + Bucket-Migration in Prod; vitest 1690/1690; DnD-Reparenting-FE offen → /frontend)** · ε planned
+## Status: α Approved+Deployed · β Approved+Deployed · γ Approved+Deployed (QA-Pass 2026-06-06: 14/16 AC fully PASS + 2 documented deviations F-1 Medium F-2 LOW; 11/12 security probes blocked; vitest 1654/1654; Playwright 16/16; 0 Critical/0 High → PRODUCTION-READY) · δ **In Progress (Backend deployed #95 + FE-DnD gebaut 2026-06-06: react-arborist onMove/disableDrop + Tab/Shift+Tab + drop-disabled cue + flush-dirty-parents; AC-δ4..δ8 ✅, AC-δ9 → /qa; vitest 1709/1709)** · ε planned
 **Created:** 2026-05-31
 **Last Updated:** 2026-06-01
 **α-Slice deployed:** 2026-06-01 — migration applied to Prod-DB; lint 0 errors; tsc baseline-clean; vitest 1583/1583 (incl. 14 new classifier tests); build 13.7s clean; new API route registered: `/api/projects/[id]/ai/proposal-from-context`
@@ -155,12 +155,12 @@ Diese 5 sind aus dem CIA-Review-Output. Sie sind **nicht-blockierend** für γ �
 - [x] **AC-δ1**: Lib für Outlook-Parse selektiert via Architecture-Slice (Kandidaten: `@kenjiuno/msgreader`, `mailparser`). CIA-Review-Approved. **(2026-06-06: beide APPROVED_WITH_FOLLOWUPS — `mailparser@3.9.9` + `@kenjiuno/msgreader@1.28.0`; siehe CIA-Verdikt-Sektion unten)**
 - [x] **AC-δ2**: `.eml`-Parser extrahiert Subject + From + To + Body; Body landet in `content_excerpt`; From/To als JSON-Hint im `source_metadata` für später-Stakeholder-Matching. *(δ-backend 2026-06-06: `src/lib/context-ingestion/eml-parser.ts`, Metadata-Key `proj70_delta_email`)*
 - [x] **AC-δ3**: `.msg`-Parser dieselbe Output-Form. *(δ-backend 2026-06-06: `src/lib/context-ingestion/msg-parser.ts`, identisches `EmailParseResult`-Shape)*
-- [ ] **AC-δ4**: DnD im Review-Drawer: User kann Suggestion-Row per Drag auf andere Suggestion-Row droppen → Parent-Beziehung ändert sich (analog PROJ-59 Scrum-DnD).
-- [ ] **AC-δ5**: DnD respektiert `ALLOWED_PARENT_KINDS` aus PROJ-9: Story darf nicht Kind von Task werden, etc.
-- [ ] **AC-δ6**: Method-Constraint: Drop wird verhindert, wenn er incompatible-method-kind erzeugen würde.
-- [ ] **AC-δ7**: Tree-Reorder per Indent/Outdent Keyboard-Shortcuts (Tab / Shift+Tab) zusätzlich zum Drag.
-- [ ] **AC-δ8**: Vitest deckt: parent-resolution-after-DnD, ALLOWED_PARENT_KINDS-rejection.
-- [ ] **AC-δ9**: Playwright Smoke: User dropt Story X auf anderes Epic Y → Topology-Update-OK → Bulk-Accept → korrekte Hierarchie in DB.
+- [x] **AC-δ4**: DnD im Review-Drawer: User kann Suggestion-Row per Drag auf andere Suggestion-Row droppen → Parent-Beziehung ändert sich (analog PROJ-59 Scrum-DnD). *(δ-FE 2026-06-06: react-arborist `onMove` → `requestReparent` → `applyReparent`; lokaler State only, Flush vor Accept)*
+- [x] **AC-δ5**: DnD respektiert `ALLOWED_PARENT_KINDS` aus PROJ-9: Story darf nicht Kind von Task werden, etc. *(δ-FE: `PROPOSAL_ALLOWED_PARENT_KINDS` in `proposal-tree-rules.ts` — PROJ-9-Mirror + WBS-Kinds phase/work_package/todo per ADR-004)*
+- [x] **AC-δ6**: Method-Constraint: Drop wird verhindert, wenn er incompatible-method-kind erzeugen würde. *(δ-FE: `checkReparent` Gate 2, Matrix-Mirror der β-RPC-strict-Validation)*
+- [x] **AC-δ7**: Tree-Reorder per Indent/Outdent Keyboard-Shortcuts (Tab / Shift+Tab) zusätzlich zum Drag. *(δ-FE: fokussierbare Rows, Tab=Indent zu prev-Sibling, Shift+Tab=Outdent zu Grandparent, aria-live-Announcements)*
+- [x] **AC-δ8**: Vitest deckt: parent-resolution-after-DnD, ALLOWED_PARENT_KINDS-rejection. *(δ-FE: `proposal-tree-rules.test.ts` 19 Cases — Matrix, Method-Gate, self-drop, descendant-cycle, Immutability, Subtree-Mitwandern)*
+- [ ] **AC-δ9**: Playwright Smoke: User dropt Story X auf anderes Epic Y → Topology-Update-OK → Bulk-Accept → korrekte Hierarchie in DB. *(→ /qa-Pass: braucht authenticated fixture + geseedete ki_suggestions — analog β, wo Playwright-Coverage im QA-Pass entstand)*
 
 #### δ-Hardening-ACs aus CIA-Review 2026-06-06 (Pflicht, zusätzlich zu den 8 γ-Hardening-ACs)
 
@@ -1249,6 +1249,23 @@ Fallback if CIA rejects msgreader: ~~drop `.msg` from δ-MVP, ship EML-only~~ �
 - **Quality-Gates:** lint 0/0 · tsc 0 neue Errors (12 vs. Baseline 16, keiner in δ-Files) · vitest **1690/1690** · build clean 10.7s.
 
 **Abweichungen vom Architecture-Pass:** keine. CFB-Magic-Byte-Check läuft via `file-type`-Sniff (γ-Infra) statt manuellem `D0CF11E0`-Vergleich — funktional identisch, ein Code-Pfad weniger.
+
+---
+
+#### δ-Frontend Implementation Notes (DnD-Reparenting) — 2026-06-06
+
+**Gebaut (Branch `proj-70/delta-frontend`):**
+
+- **`src/lib/ai-proposals/proposal-tree-rules.ts`** (neu, pure/DOM-frei) — `PROPOSAL_ALLOWED_PARENT_KINDS` (8 Proposal-Kinds: PROJ-9-Mirror für epic/story/task/subtask/bug + WBS-Erweiterung phase→work_package→todo per ADR-004; work_package self-nestable per PROJ-36); `checkReparent` mit 2 Gates (strukturell AC-δ5 → method AC-δ6) + self-drop- und descendant-cycle-Guards (Cycle-Guard feuert VOR dem Kind-Gate); `applyReparent` als immutable parent-resolution (Subtree wandert implizit mit — Kinder behalten ihre Pointer). Methoden-Matrix konsolidiert: die β-lokale `ALLOWED_KINDS_BY_METHOD` aus dem Tab ist hierher umgezogen (eine Quelle für Badge + DnD-Gate + β-RPC-Mirror).
+- **`backlog-proposal-tab.tsx`** — `disableDrag`/`disableDrop`-Flags ersetzt durch echte Handler: `onMove` → `requestReparent` (shared mit Keyboard-Pfad), `disableDrop`-Callback validiert per `checkReparent` (Root-Drop = top-level/null). **Flush-dirty-parents-Pattern:** Drops mutieren NUR lokalen State (`dirtyTempIds`-Set trackt offene Änderungen); vor Accept/Reject/Generate werden dirty rows via β-PATCH-Route persistiert — dann übernimmt die Bulk-RPC (architecture-konform "pure UI-mutation slice", zero backend change). Drag-Tracking via `onDragStartCapture`/`onDragEndCapture` am Tree-Container (HTML5-Events bubblen aus react-arborist-Rows; `data-temp-id`-Attribut identifiziert die gezogene Row). `aria-live`-Region (polite) announct Reparents + Rejections.
+- **`backlog-proposal-tree-node.tsx`** — neue Props `dropDisabled`/`onIndent`/`onOutdent`; Drop-disabled-Cue per Lock Q4 (rote Outline `outline-destructive/70` + `aria-disabled` + `cursor-not-allowed` + opacity, analog PROJ-59, kein Toast); Rows fokussierbar (`tabIndex=0`), `Tab`=Indent (Kind des prev-Siblings), `Shift+Tab`=Outdent (Sibling des Parents) — nur wenn die Row selbst fokussiert ist (Buttons/Inputs in der Row behalten normale Focus-Traversal), nicht während Edit/busy.
+- **Tests: +19 Vitest-Cases** in `proposal-tree-rules.test.ts` (AC-δ8): Matrix-Coverage beide Methoden-Äste, Spec-Beispiel "Story darf nicht Kind von Task werden", subtask-braucht-task-Parent (kein Top-Level-Outdent), descendant-cycle vor kind-gate, method_incompatible (task→story in waterfall blocked / in scrum allowed), Immutability + No-op-Erkennung (drop auf aktuellen Parent → nichts zu flushen).
+- **Quality-Gates:** lint 0/0 · tsc clean (δ-Files) · vitest **1709/1709** · build clean 13.7s.
+
+**Bewusste Scope-Punkte:**
+- **AC-δ9 (Playwright-Smoke) → /qa-Pass.** Braucht authenticated fixture (PROJ-29, vorhanden + skip-fähig) **plus** geseedete `ki_suggestions` — analog β-Flow, wo die Playwright-Coverage im QA-Pass entstand.
+- Kein `@dnd-kit` (Lock Q3 bestätigt — react-arborist `onMove`/`disableDrop` reichten exakt aus, null neue FE-Deps).
+- Empty-State-Copy des Tabs von β-Stand ("Context-Source-ID eingeben") auf γ-Realität ("Kickoff-Datei hochladen") korrigiert — Drive-by-Fix.
 
 ---
 
