@@ -1,6 +1,6 @@
 # PROJ-70: Auto-Generated Backlog from Project Kickoff
 
-## Status: α Approved+Deployed · β Approved+Deployed · γ Approved+Deployed (QA-Pass 2026-06-06: 14/16 AC fully PASS + 2 documented deviations F-1 Medium F-2 LOW; 11/12 security probes blocked; vitest 1654/1654; Playwright 16/16; 0 Critical/0 High → PRODUCTION-READY) · δ **Architected (2026-06-06: 5 Q's locked, react-arborist native DnD, mailparser + @kenjiuno/msgreader pending CIA-Review)** · ε planned
+## Status: α Approved+Deployed · β Approved+Deployed · γ Approved+Deployed (QA-Pass 2026-06-06: 14/16 AC fully PASS + 2 documented deviations F-1 Medium F-2 LOW; 11/12 security probes blocked; vitest 1654/1654; Playwright 16/16; 0 Critical/0 High → PRODUCTION-READY) · δ **Architected + CIA-approved (2026-06-06: 5 Q's locked, react-arborist native DnD; CIA-Verdikt: mailparser@3.9.9 + @kenjiuno/msgreader@1.28.0 beide APPROVED_WITH_FOLLOWUPS, 6 neue AC-δH Hardening-ACs, GO für /backend)** · ε planned
 **Created:** 2026-05-31
 **Last Updated:** 2026-06-01
 **α-Slice deployed:** 2026-06-01 — migration applied to Prod-DB; lint 0 errors; tsc baseline-clean; vitest 1583/1583 (incl. 14 new classifier tests); build 13.7s clean; new API route registered: `/api/projects/[id]/ai/proposal-from-context`
@@ -152,7 +152,7 @@ Diese 5 sind aus dem CIA-Review-Output. Sie sind **nicht-blockierend** für γ �
 
 ### Slice 70-δ — Outlook .msg + .eml + DnD-Reparenting
 
-- [ ] **AC-δ1**: Lib für Outlook-Parse selektiert via Architecture-Slice (Kandidaten: `@kenjiuno/msgreader`, `mailparser`). CIA-Review-Approved.
+- [x] **AC-δ1**: Lib für Outlook-Parse selektiert via Architecture-Slice (Kandidaten: `@kenjiuno/msgreader`, `mailparser`). CIA-Review-Approved. **(2026-06-06: beide APPROVED_WITH_FOLLOWUPS — `mailparser@3.9.9` + `@kenjiuno/msgreader@1.28.0`; siehe CIA-Verdikt-Sektion unten)**
 - [ ] **AC-δ2**: `.eml`-Parser extrahiert Subject + From + To + Body; Body landet in `content_excerpt`; From/To als JSON-Hint im `source_metadata` für später-Stakeholder-Matching.
 - [ ] **AC-δ3**: `.msg`-Parser dieselbe Output-Form.
 - [ ] **AC-δ4**: DnD im Review-Drawer: User kann Suggestion-Row per Drag auf andere Suggestion-Row droppen → Parent-Beziehung ändert sich (analog PROJ-59 Scrum-DnD).
@@ -161,6 +161,15 @@ Diese 5 sind aus dem CIA-Review-Output. Sie sind **nicht-blockierend** für γ �
 - [ ] **AC-δ7**: Tree-Reorder per Indent/Outdent Keyboard-Shortcuts (Tab / Shift+Tab) zusätzlich zum Drag.
 - [ ] **AC-δ8**: Vitest deckt: parent-resolution-after-DnD, ALLOWED_PARENT_KINDS-rejection.
 - [ ] **AC-δ9**: Playwright Smoke: User dropt Story X auf anderes Epic Y → Topology-Update-OK → Bulk-Accept → korrekte Hierarchie in DB.
+
+#### δ-Hardening-ACs aus CIA-Review 2026-06-06 (Pflicht, zusätzlich zu den 8 γ-Hardening-ACs)
+
+- [ ] **AC-δH-1** (MEDIUM, gegen Multipart-DoS): `simpleParser` mit `{ maxHtmlLengthToParse: 2_000_000, skipImageLinks: true }` aufrufen — 2-MB-Cap spiegelt den γ-raw-text-cap und deckelt die teuerste Operation.
+- [ ] **AC-δH-2** (MEDIUM, gegen Multipart-DoS / mailparser Issue #202): Multipart-Bomben-Guard — nach Parse Gesamt-Part-/Attachment-Count gegen Limit **max. 50 Parts** prüfen; bei Überschreitung `FileParseError('email_too_many_parts')`. 20s-Timeout bleibt Backstop.
+- [ ] **AC-δH-3** (MEDIUM, gegen Attachment-Buffering): **Attachments werden ignoriert, nicht extrahiert.** mailparser: `parsed.attachments` nie persistiert. msgreader: `getAttachment()` wird **nie** aufgerufen. Explizit als Code-Kommentar + Test dokumentiert (schließt `.msg`-in-`.msg`-Rekursion aus).
+- [ ] **AC-δH-4** (LOW, gegen CFB-Malformed-Input): msgreader-Aufruf in try/catch → `FileParseError('msg_parse_failed')`; CFB-Magic-Byte-Check (`D0 CF 11 E0`) VOR Parser-Aufruf (γ-AC); `.eml` analog via Content-Type-Allowlist.
+- [ ] **AC-δH-5** (LOW): Excerpt-Extraktion priorisiert `parsed.text` (Plaintext) vor `parsed.html`; HTML→Text nur falls Plaintext leer.
+- [ ] **AC-δH-6** (LOW): Beide Parser via dynamic-import (γ-AC-8) innerhalb des bestehenden `Promise.race`-20s-Timeouts. Keine Änderung am γ-Orchestrator.
 
 ### Slice 70-ε — Wizard-Integration (PROJ-5 F2.1b)
 
@@ -1173,14 +1182,23 @@ This keeps δ a **pure UI-mutation slice** — zero backend schema change, zero 
 
 #### E) Dependencies (CIA-Review BLOCKING /backend)
 
-| Package | Purpose | Risk | Verdict-Required |
+| Package | Purpose | Risk | Verdict |
 |---|---|---|---|
-| `mailparser` | RFC822 `.eml` decode + MIME multipart + HTML→text + threading-headers | OpenJS-maintained, dual-licence MIT/LGPL — verify LGPL trigger conditions | CIA |
-| `@kenjiuno/msgreader` | Outlook `.msg` (CFB) reader | small-author lib, npm-stat low — verify maintenance + licence + transitive deps | CIA |
+| `mailparser@3.9.9` | RFC822 `.eml` decode + MIME multipart + HTML→text + threading-headers | Multipart-DoS (Issue #202) → AC-δH-1/2 | ✅ **APPROVED_WITH_FOLLOWUPS** (CIA 2026-06-06) |
+| `@kenjiuno/msgreader@1.28.0` | Outlook `.msg` (CFB) reader | Single-Author-Bus-Faktor; CFB-Malformed-Input → AC-δH-4 | ✅ **APPROVED_WITH_FOLLOWUPS** (CIA 2026-06-06) |
 
-Fallback if CIA rejects msgreader: drop `.msg` from δ-MVP, ship EML-only, log `.msg` as a planned PROJ-Y followup (Outlook-MSG-deferred).
+Fallback if CIA rejects msgreader: ~~drop `.msg` from δ-MVP, ship EML-only~~ — nicht nötig, beide approved.
 
 **No new FE dep** — react-arborist DnD is built in. No new BE dep beyond the two parsers above.
+
+##### CIA-Review-Verdikt 2026-06-06 (Zusammenfassung)
+
+- **`mailparser@3.9.9`:** MIT — die im Architecture-Pass vermutete LGPL/dual-licence-Sorge ist **widerlegt**: kein einziges (L)GPL-Paket im 28-Paket-Tree (`@zone-eu/mailsplit` ist `MIT OR EUPL-1.1+` mit freier MIT-Wahl). Nodemailer-Ökosystem aktiv (Release 2026-05-29). CVE-2026-3455 (XSS in `textToHtml()` < 3.9.3) in 3.9.9 gefixt; `npm audit` 0 Vulns. Bekanntes Risiko: MIME-Multipart-DoS (Issue #202) → AC-δH-1 + AC-δH-2.
+- **`@kenjiuno/msgreader@1.28.0`:** Apache-2.0, einziger gepflegter pure-JS `.msg`-Reader auf npm (bestätigt), nur 2 transitive Deps (`@kenjiuno/decompressrtf`, `iconv-lite`). Attachment-Decode ist Opt-in (`getAttachment()` separater Call → wird nie aufgerufen, AC-δH-3). Bus-Faktor-Risiko folgenlos: bei Abandonment degradiert `.msg` auf PROJ-Y-Followup, `.eml` bleibt voll funktional.
+- **Risiken:** R-1 MEDIUM Multipart-DoS · R-2 MEDIUM Attachment-Buffering · R-3 LOW CFB-Malformed-Input · R-4 LOW Bus-Faktor · R-5 LOW XSS (kein Render-Pfad).
+- **Auflagen:** AC-δH-1 bis AC-δH-6 (siehe Slice-70-δ-AC-Liste) sind Pflicht für den δ-Backend-Slice.
+- **Followups:** **Y-δ-1** — `npm audit --omit=dev` für mailparser-CVE-Erkennung in **PROJ-74** (Supply-Chain-CI) bündeln, kein eigener Slice. **Y-δ-2** — Attachment-Extraktion aus E-Mails als eigene Context-Sources (heute bewusst geblockt via AC-δH-3) — nur bei Pilot-Bedarf, PROJ-71/73-Familie.
+- **Entscheidung: GO für δ-Backend-Start.**
 
 ---
 
@@ -1188,8 +1206,8 @@ Fallback if CIA rejects msgreader: drop `.msg` from δ-MVP, ship EML-only, log `
 
 | # | Question | Lock |
 |---|---|---|
-| **Q1** | `.eml` parser choice | **`mailparser` pending CIA confirmation; `letterparser` micro-lib rejected (EML-only, weak charset support)** |
-| **Q2** | `.msg` parser choice | **`@kenjiuno/msgreader` pending CIA confirmation; no real alternative in Node ecosystem** |
+| **Q1** | `.eml` parser choice | **`mailparser@3.9.9` ✅ CIA-APPROVED_WITH_FOLLOWUPS 2026-06-06; `letterparser` micro-lib rejected (EML-only, weak charset support)** |
+| **Q2** | `.msg` parser choice | **`@kenjiuno/msgreader@1.28.0` ✅ CIA-APPROVED_WITH_FOLLOWUPS 2026-06-06; no real alternative in Node ecosystem** |
 | **Q3** | DnD library | **react-arborist native (no @dnd-kit/core for tree)** |
 | **Q4** | Drop-feedback UX | **drop-disabled cue (red outline + aria-disabled + cursor:not-allowed), no toast — analog PROJ-59** |
 | **Q5** | Email-Header storage | **`source_metadata` JSON, no new table in δ** |
