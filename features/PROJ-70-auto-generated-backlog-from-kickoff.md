@@ -1,6 +1,6 @@
 # PROJ-70: Auto-Generated Backlog from Project Kickoff
 
-## Status: α Approved+Deployed · β Approved+Deployed · γ **Approved (QA-Pass 2026-06-06: 14/16 AC fully PASS + 2 documented deviations F-1 Medium F-2 LOW; 11/12 security probes blocked; vitest 1654/1654; Playwright 16/16; 0 Critical/0 High → PRODUCTION-READY)** · δ/ε planned
+## Status: α Approved+Deployed · β Approved+Deployed · γ Approved+Deployed (QA-Pass 2026-06-06: 14/16 AC fully PASS + 2 documented deviations F-1 Medium F-2 LOW; 11/12 security probes blocked; vitest 1654/1654; Playwright 16/16; 0 Critical/0 High → PRODUCTION-READY) · δ **Architected (2026-06-06: 5 Q's locked, react-arborist native DnD, mailparser + @kenjiuno/msgreader pending CIA-Review)** · ε planned
 **Created:** 2026-05-31
 **Last Updated:** 2026-06-01
 **α-Slice deployed:** 2026-06-01 — migration applied to Prod-DB; lint 0 errors; tsc baseline-clean; vitest 1583/1583 (incl. 14 new classifier tests); build 13.7s clean; new API route registered: `/api/projects/[id]/ai/proposal-from-context`
@@ -1049,6 +1049,172 @@ Alle 5 offenen Architecture-Fragen jetzt gelockt.
 12. PR + tag + deploy
 
 **Geschätzte Bauzeit:** ~2 PT mit pdfjs-dist/mammoth/file-type als off-the-shelf Libs + 8 Hardening-AC (CIA-required).
+
+---
+
+### δ-Slice Architecture Pass (Outlook `.msg` + `.eml` + DnD-Reparenting) — 2026-06-06
+
+> **Scope:** PROJ-70-δ. Two parallel concerns: (1) extend the γ-multipart upload path with Outlook `.msg` + RFC822 `.eml` parsers so kickoff emails (the dominant Enterprise-Kickoff-Format) become valid context sources, (2) flip the β-Tree from read-only to drag-and-drop reparenting so reviewers can fix AI structural mistakes before persisting. ε (Wizard-Integration) gets its own architecture pass.
+> **Reviewer:** Solution Architect — autonomous pass after γ-QA closure.
+> **CIA-Trigger-Status:** **MANDATORY** — two new top-level npm deps (`mailparser` for `.eml`, `@kenjiuno/msgreader` for `.msg`). CIA-Review required BEFORE `/backend` starts. The architecture decisions below lock the candidate set; CIA confirms or substitutes.
+
+---
+
+#### A) Component Structure
+
+```
+PROJ-70-γ pipeline (unchanged)
++-- /api/context-sources (multipart dispatcher)
+|   +-- magic-byte sniff (file-type)
+|   +-- parser dispatch
+|       +-- PDF   -> pdfjs-dist          (γ, live)
+|       +-- DOCX  -> mammoth             (γ, live)
+|       +-- TXT/MD -> identity           (γ, live)
+|       +-- EML   -> mailparser          [NEW in δ]
+|       +-- MSG   -> @kenjiuno/msgreader [NEW in δ]
++-- Storage write -> tenant-scoped path  (γ, live)
+
+PROJ-70-β review-drawer Tree (extended)
++-- AIProposalDrawer (existing)
+    +-- Tab "Backlog" (existing, β)
+        +-- BulkActionBar (existing, β)
+        +-- BacklogProposalTab (existing, β)
+            +-- Generate-/Upload-Panel  (γ, live)
+            +-- react-arborist <Tree>   (β; flips disableDrag/disableDrop -> false)
+                +-- onMove handler      [NEW in δ]
+                |   -- parent-resolution rule
+                |   -- isAllowedParent gate
+                |   -- isKindVisibleInMethod gate
+                +-- onCanDrop hint      [NEW in δ — drop-disabled cue]
+                +-- Keyboard Indent/Outdent (Tab / Shift+Tab)
+```
+
+**Key insight — no new DnD library.** The β-Tree already uses `react-arborist`, which ships native HTML5-DnD with `onMove`, `onCanDrop`, and a built-in drop-disabled visual. PROJ-25b + PROJ-59 use `@dnd-kit/core` for flat-list backlog + Kanban-board drags, but the AI-proposal tree is a tree-shaped surface and the two libraries don't need to be unified. Adopting react-arborist's native DnD here keeps the dep footprint at zero new packages on the FE side.
+
+---
+
+#### B) Data Model — what gets stored
+
+`context_sources` already has `source_metadata jsonb NOT NULL DEFAULT '{}'::jsonb` (PROJ-44-β migration). **No schema change in δ.** The two new parser paths write structured fields into `source_metadata`:
+
+```
+For .eml uploads, source_metadata holds:
+- email_subject        (string)
+- email_from           ({ name?: string, address: string })
+- email_to             (array of { name?: string, address: string })
+- email_cc             (array, optional)
+- email_date           (ISO timestamp from RFC822 "Date" header)
+- email_message_id     (string, optional — for thread linking)
+- email_in_reply_to    (string, optional — for thread linking)
+- email_references     (array of message-ids, optional)
+- email_format         ("eml" | "msg")
+
+For .msg uploads, source_metadata holds the same shape produced from
+the MSG-properties (PR_SENDER_EMAIL_ADDRESS, PR_DISPLAY_TO, etc.).
+```
+
+`content_excerpt` is populated from the **plain-text body** of the email (HTML body is stripped before excerpt extraction). `original_filename`, `mime_type`, `file_size_bytes` are filled like in γ.
+
+**Why JSON, not dedicated columns?** Email-headers are open-shape and only ε (Wizard) will start using them for Stakeholder-Hint matching. Keeping them in `source_metadata` JSON until the consumer is concrete avoids speculative column-bloat (consistent with V3's "Stakeholder ≠ User" deferral pattern).
+
+**Class-3 path unchanged.** The existing `detectClass3Markers` runs on `content_excerpt`. An email body with PII triggers the Ollama-only route exactly like a PDF with PII. Email-headers themselves (From-name, To-list) are NOT classified separately in δ — they're metadata, not content.
+
+---
+
+#### C) DnD-Reparenting Semantics
+
+**What the user can do in the Backlog tab:**
+
+1. **Drag a suggestion row** onto another suggestion row → the dragged row becomes a child of the drop-target.
+2. **Drag a suggestion row** onto the empty tree-root area → the row becomes top-level (its `parent_temp_id` becomes `null`).
+3. **Keyboard:** focus a row → `Tab` indents (becomes a child of the previous sibling), `Shift+Tab` outdents (becomes a sibling of its current parent).
+4. **Drop-disabled cue:** while dragging, every row that's not a valid drop-target shows a red outline + `aria-disabled="true"` + `cursor: not-allowed` — analog to PROJ-59 Scrum-DnD.
+
+**Validation gates (both required, evaluated in this order):**
+
+1. **`isAllowedParent(childKind, parentKind)`** — the existing PROJ-9 ALLOWED_PARENT_KINDS table from `src/types/work-item.ts`. Story can't be a child of Task; Subtask can't be top-level; etc. Already battle-tested.
+2. **`isKindVisibleInMethod(childKind, project.method)`** — the existing PROJ-6 method-visibility table. Prevents a Waterfall-project drop that would produce an Epic (Scrum-only kind) under a Phase.
+
+**Why these two together and not just (1)?** AI sometimes proposes a mixed hierarchy that the user might try to "fix" by reparenting across method boundaries. (1) alone permits structurally-legal trees that are method-illegal. (2) catches that.
+
+**No persistence on drop.** The drop only mutates `parent_temp_id` in the **local suggestion state**. The persisted `ki_suggestions.payload.parent_temp_id` stays untouched until either:
+- the user clicks "Accept-All" (then the bulk-accept RPC reads the current local tree state and writes it via topological-sort), or
+- the user clicks an individual "Accept" on a single row (then the row's edited `parent_temp_id` lands via the existing β-PATCH route on `/api/ki/suggestions/[id]`).
+
+This keeps δ a **pure UI-mutation slice** — zero backend schema change, zero RPC change. The β-Accept-Pipeline already handles arbitrary `parent_temp_id` graphs.
+
+---
+
+#### D) Tech Decisions (WHY)
+
+**Lock-1 — Use `react-arborist` native DnD, NOT `@dnd-kit/core`.**
+*Why:* β already imports react-arborist's `<Tree>`. Its native DnD has `onMove`, `onCanDrop`, and a drop-disabled visual hook out of the box. Adding `@dnd-kit/core` (PROJ-25b dep) would mean re-implementing the tree's flat-list rendering on top of `dnd-kit/sortable` + replicating react-arborist's nesting math — pure rebuild for no functional gain. The two libs already coexist (Kanban uses `@dnd-kit`, AI tree uses react-arborist) — locking δ on the existing tool keeps the surface honest.
+
+**Lock-2 — `mailparser` for `.eml`, `@kenjiuno/msgreader` for `.msg` (both subject to CIA-Review).**
+*Why mailparser:* RFC822 is non-trivial (MIME multipart, quoted-printable, base64, charset detection, HTML→text). `mailparser` is the de-facto Node.js choice — MIT, dual-licenced, ~2 MB unpacked, maintained by Nodemailer (active maintainer, OpenJS Foundation). The micro-lib alternative `letterparser` (~30 KB) is EML-only and doesn't decode multipart/charsets robustly. CIA decides between them.
+*Why msgreader:* Outlook `.msg` is the Microsoft Compound File Binary Format (CFB). `@kenjiuno/msgreader` is essentially the only maintained pure-JS reader on npm. No real alternative in the Node ecosystem — CIA confirms maintenance + licence; if rejected, `.msg` support drops out of δ-MVP and the spec falls back to ".eml only".
+
+**Lock-3 — Threading headers (`Message-ID`, `In-Reply-To`, `References`) ARE extracted into `source_metadata`.**
+*Why:* a kickoff email is rarely alone — it's part of a thread. ε's Wizard-Integration will want to link multiple emails into one project's context sources. Capturing the threading headers now is free (mailparser exposes them) and saves a re-parse later. **Not consumed in δ** — pure forward-compatibility.
+
+**Lock-4 — Drop-disabled cue, NOT toast-error.**
+*Why:* PROJ-59 Scrum-DnD locked this same question with the same answer. Reasons: (a) toast-after-drop punishes the user only after the action, while a drop-disabled cue prevents the action — better UX; (b) toast-stacks during rapid drags are noisy; (c) `aria-disabled` is keyboard-discoverable, toasts are not. Reuse PROJ-59 pattern verbatim.
+
+**Lock-5 — Stakeholder-Hint goes into `source_metadata` JSON for δ, NOT a new table.**
+*Why:* the From/To email-addresses are useful only when ε's Wizard reads them to propose Stakeholder-Links. Until ε is built, they sit in the existing JSON column. A dedicated `context_source_email_participants` table would be speculative migration debt. ε's architecture pass re-evaluates whether the table is justified by then.
+
+**Lock-6 — `.html` parts are stripped to plain text BEFORE `content_excerpt` is taken.**
+*Why:* the Class-3 detector runs on `content_excerpt`. HTML bodies wrap names and emails in tags that the regex-based heuristic might miss. `mailparser`'s `text` field already does this stripping. **Defense-in-depth — γ-Hardening-AC-5 logic still applies: magic-byte sniff guards the upload, then mailparser parses, then HTML is stripped, then excerpt is computed, then Class-3 is checked.**
+
+**Lock-7 — Reuse all 8 γ-Hardening-ACs for EML/MSG.**
+*Why:* the parser is just another branch in the same multipart-dispatcher in `/api/context-sources/route.ts`. Size-cap, page-equivalent-cap (bytes for EML), raw-text-cap, 20s `Promise.race`, magic-byte-VOR-parser, storage-AFTER-parse, PII-log-block, dynamic-import — all eight remain in force. CIA-Review will reconfirm.
+
+---
+
+#### E) Dependencies (CIA-Review BLOCKING /backend)
+
+| Package | Purpose | Risk | Verdict-Required |
+|---|---|---|---|
+| `mailparser` | RFC822 `.eml` decode + MIME multipart + HTML→text + threading-headers | OpenJS-maintained, dual-licence MIT/LGPL — verify LGPL trigger conditions | CIA |
+| `@kenjiuno/msgreader` | Outlook `.msg` (CFB) reader | small-author lib, npm-stat low — verify maintenance + licence + transitive deps | CIA |
+
+Fallback if CIA rejects msgreader: drop `.msg` from δ-MVP, ship EML-only, log `.msg` as a planned PROJ-Y followup (Outlook-MSG-deferred).
+
+**No new FE dep** — react-arborist DnD is built in. No new BE dep beyond the two parsers above.
+
+---
+
+#### F) 5 Open Architecture Questions — All LOCKED
+
+| # | Question | Lock |
+|---|---|---|
+| **Q1** | `.eml` parser choice | **`mailparser` pending CIA confirmation; `letterparser` micro-lib rejected (EML-only, weak charset support)** |
+| **Q2** | `.msg` parser choice | **`@kenjiuno/msgreader` pending CIA confirmation; no real alternative in Node ecosystem** |
+| **Q3** | DnD library | **react-arborist native (no @dnd-kit/core for tree)** |
+| **Q4** | Drop-feedback UX | **drop-disabled cue (red outline + aria-disabled + cursor:not-allowed), no toast — analog PROJ-59** |
+| **Q5** | Email-Header storage | **`source_metadata` JSON, no new table in δ** |
+
+---
+
+#### G) 12-Step Handoff Plan to `/continuous-improvement` → `/backend`
+
+1. Run `/continuous-improvement` with the two-lib evaluation brief (mailparser + msgreader)
+2. Block on CIA verdict — if both APPROVED, proceed; if msgreader REJECTED, ship EML-only and register PROJ-Y-msg-followup
+3. `/backend` extends `/api/context-sources/route.ts` multipart-dispatcher with two new parser branches
+4. New helper files `src/lib/context-ingestion/eml-parser.ts` + `msg-parser.ts` mirror `file-parser.ts` shape (dynamic imports, 20s timeout, raw-text cap)
+5. Magic-byte sniff via `file-type` (γ infra) — `.eml` is text-detected, `.msg` is CFB-detected (D0CF11E0)
+6. `content_excerpt` populated from `parser.text` (plain-text body)
+7. `source_metadata` filled with the 8 email fields documented above
+8. `/frontend` flips `disableDrag`/`disableDrop` off, adds `onMove` + `onCanDrop` handlers using existing `isAllowedParent` + `isKindVisibleInMethod`
+9. Keyboard Indent/Outdent (Tab/Shift+Tab) wired on the focused tree-row
+10. Drop-disabled cue (red outline + aria-disabled) via the same kind-validation helpers
+11. Vitest: parser-tests (eml + msg + threading-header extraction + HTML-stripping) + dnd-rule tests (isAllowedParent + isKindVisibleInMethod called per drop)
+12. Playwright: 2 cases — (a) upload `.eml` → suggestions appear, (b) drag Story onto Epic in tree → bulk-accept → DB hierarchy correct
+13. lint + tsc + vitest + build gates + PR + tag + deploy
+
+**Estimated build:** ~2.5 PT total (CIA review ½, backend parsers + tests 1, frontend DnD + a11y + tests 1).
+
+---
 
 ## QA Test Results
 
