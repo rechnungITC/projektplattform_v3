@@ -29,7 +29,7 @@ Diese Spec **ersetzt** die folgenden bisherigen Deferred-Slices durch eine einze
 | PRD-Aussage | Erfüllt durch |
 |---|---|
 | _"AI proposals must be **traceable** (link back to source context)"_ | `ki_provenance` → `context_source_id` |
-| _"AI proposals must be **reviewable** (human accepts/rejects)"_ | Review-Drawer mit Single + Bulk + Edit |
+| _"AI proposals must be **reviewable** (human accepts/rejects)"_ | Review-Drawer mi<br/>t Single + Bulk + Edit |
 | _"Time-to-structure: initial project setup ... < 1 hour"_ | Erfolgs-Metrik (siehe Success Metrics) |
 | _"AI quality: ≥ 70% of AI-derived proposals accepted"_ | Erfolgs-Metrik (siehe Success Metrics) |
 | _"Class-3 hard block — personal data never leaves local LLM path"_ | Class-3-Inputs → Tenant-Ollama-only Routing |
@@ -1716,6 +1716,14 @@ Projekt-Raum Graph (/projects/{id}/graph?aiDrawer=backlog&contextSource={id})
 #### Production-Ready Decision
 
 ✅ **READY** — 15/15 AC PASS (9 δ + 6 δH), 1 dokumentierte Deviation (D-1). H-1/H-2/H-3 gefixt + live re-verifiziert; verbleibende Findings LOW/Infra. **Der Accept-Flow der PROJ-70-Familie funktioniert hiermit zum ersten Mal nachweislich end-to-end in Production.**
+
+## Hotfix 2026-06-08 — Cross-Provider-Parität für `proposal_from_context`
+
+**Symptom (Prod):** KI-Backlog-Generierung lieferte beim Tenant mit aktivem **OpenAI**-Provider keine Vorschläge — `ki_runs` zeigte `status='external_blocked'` + Stub-Fallback. Gleiche Ursache wie bei den Graph-Purposes (siehe PROJ-65-Hotfix).
+
+**Root-Cause:** `generateProposalFromContext` war nur auf dem Anthropic-Provider + Stub implementiert, nicht auf OpenAI/Google. Bei aktivem OpenAI-Provider rief der Router eine nicht existierende Methode auf → Throw → Stub-Fallback (`Provider openai does not implement generateProposalFromContext`). Class-3-Inputs bleiben unverändert auf Ollama geklemmt (Resolver-Clamp).
+
+**Fix:** Schema + System-Prompt + Prompt-Builder + Map-Helper nach `src/lib/ai/providers/graph-purpose-prompts.ts` extrahiert (Single Source of Truth, vorher inline nur in `anthropic.ts` → genau diese Drift). `generateProposalFromContext` jetzt auf OpenAI + Google verdrahtet. Anthropic-Verhalten byte-identisch (nur Import statt Inline). Neuer Parität-Regressionstest `graph-purpose-prompts.test.ts` (8 Tests) failt zur Test-Zeit, falls ein Cloud-Provider eine Graph-Methode wieder verliert. Gates: tsc clean (src/lib/ai), lint 0, `vitest src/lib/ai` 161 grün, build clean.
 
 ## Deployment
 _To be added by /deploy_
