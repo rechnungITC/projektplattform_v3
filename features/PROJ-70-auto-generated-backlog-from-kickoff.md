@@ -1,6 +1,6 @@
 # PROJ-70: Auto-Generated Backlog from Project Kickoff
 
-## Status: α Approved+Deployed · β Approved+Deployed · γ Approved+Deployed (QA-Pass 2026-06-06: 14/16 AC fully PASS + 2 documented deviations F-1 Medium F-2 LOW; 11/12 security probes blocked; vitest 1654/1654; Playwright 16/16; 0 Critical/0 High → PRODUCTION-READY) · δ **In Progress (Backend deployed #95 + FE-DnD gebaut 2026-06-06: react-arborist onMove/disableDrop + Tab/Shift+Tab + drop-disabled cue + flush-dirty-parents; AC-δ4..δ8 ✅, AC-δ9 → /qa; vitest 1709/1709)** · ε planned
+## Status: α Approved+Deployed · β Approved+Deployed · γ Approved+Deployed (QA-Pass 2026-06-06: 14/16 AC fully PASS + 2 documented deviations F-1 Medium F-2 LOW; 11/12 security probes blocked; vitest 1654/1654; Playwright 16/16; 0 Critical/0 High → PRODUCTION-READY) · δ **Approved (QA-Pass 2026-06-07: 15/15 AC PASS + 1 documented deviation D-1; H-1/H-2/H-3 in-QA gefixt — β-Accept-RPC war in Prod doppelt kaputt (provenance-CHECK + unkorrelierter Toposort-Subquery), erster echter E2E-Accept überhaupt; vitest 1712/1712; Playwright 22 passed/2 skipped; 0 offene Critical/High → PRODUCTION-READY)** · ε planned
 **Created:** 2026-05-31
 **Last Updated:** 2026-06-01
 **α-Slice deployed:** 2026-06-01 — migration applied to Prod-DB; lint 0 errors; tsc baseline-clean; vitest 1583/1583 (incl. 14 new classifier tests); build 13.7s clean; new API route registered: `/api/projects/[id]/ai/proposal-from-context`
@@ -160,7 +160,7 @@ Diese 5 sind aus dem CIA-Review-Output. Sie sind **nicht-blockierend** für γ �
 - [x] **AC-δ6**: Method-Constraint: Drop wird verhindert, wenn er incompatible-method-kind erzeugen würde. *(δ-FE: `checkReparent` Gate 2, Matrix-Mirror der β-RPC-strict-Validation)*
 - [x] **AC-δ7**: Tree-Reorder per Indent/Outdent Keyboard-Shortcuts (Tab / Shift+Tab) zusätzlich zum Drag. *(δ-FE: fokussierbare Rows, Tab=Indent zu prev-Sibling, Shift+Tab=Outdent zu Grandparent, aria-live-Announcements)*
 - [x] **AC-δ8**: Vitest deckt: parent-resolution-after-DnD, ALLOWED_PARENT_KINDS-rejection. *(δ-FE: `proposal-tree-rules.test.ts` 19 Cases — Matrix, Method-Gate, self-drop, descendant-cycle, Immutability, Subtree-Mitwandern)*
-- [ ] **AC-δ9**: Playwright Smoke: User dropt Story X auf anderes Epic Y → Topology-Update-OK → Bulk-Accept → korrekte Hierarchie in DB. *(→ /qa-Pass: braucht authenticated fixture + geseedete ki_suggestions — analog β, wo Playwright-Coverage im QA-Pass entstand)*
+- [x] **AC-δ9**: Playwright Smoke: User dropt Story X auf anderes Epic Y → Topology-Update-OK → Bulk-Accept → korrekte Hierarchie in DB. *(δ-QA 2026-06-07: `tests/PROJ-70-delta-dnd.spec.ts` — Service-Role-Seed + Reparent + Accept-All + DB-Hierarchie-Poll; deckte H-1/H-3 auf)*
 
 #### δ-Hardening-ACs aus CIA-Review 2026-06-06 (Pflicht, zusätzlich zu den 8 γ-Hardening-ACs)
 
@@ -1525,6 +1525,67 @@ Fallback if CIA rejects msgreader: ~~drop `.msg` from δ-MVP, ship EML-only~~ �
 - **Combobox UX:** 70-γ's text-input UUID picker was replaced with a File-Picker. 70-ε (Wizard) should reuse the File-Picker pattern verbatim — `<input type=file>` + auto-title-from-filename + same multipart route.
 - **Method-Validation hand-off:** The Wizard-step in 70-ε will need to pass `method_hint` to the existing trigger-call (today defaulted from `projects.project_method`). The architecture is unchanged.
 - **F-1 Sentry-Hook before 70-δ:** strongly recommend landing the beforeSend filter BEFORE 70-δ (Outlook email content is high-PII-risk).
+
+### δ-Slice QA Pass — 2026-06-07
+
+**Scope:** Backend (.eml/.msg-Parser, #95 merged) + Frontend (DnD-Reparenting, #96 merged). Getestet: AC-δ1…δ9 + AC-δH-1…6 + Security-Audit + Regression. **Erster QA-Pass der PROJ-70-Familie mit echtem End-to-End-Accept gegen die Prod-DB** — und genau das hat zwei deployt-kaputte β-Bugs aufgedeckt (H-1, H-3) plus einen latenten (H-2), alle drei im QA-Pass gefixt und re-verifiziert.
+
+#### Acceptance Criteria Results
+
+| AC | Beschreibung | Evidenz | Ergebnis |
+|---|---|---|---|
+| AC-δ1 | Lib-Auswahl CIA-approved | CIA-Verdikt 2026-06-06 (#94), Deps pinned in package.json | ✅ PASS |
+| AC-δ2 | `.eml` → Subject/From/To/Body → excerpt + metadata | **Live-E2E:** echter multipart-Upload → mailparser → `content_excerpt` + `source_metadata.proj70_delta_email` (Subject/From/To/Message-ID) assertiert (`tests/PROJ-70-delta-dnd.spec.ts` Layer 2) + 18 Vitest-Cases | ✅ PASS |
+| AC-δ3 | `.msg` gleiche Output-Form | 15 Vitest-Cases (msgreader gemockt — kein echtes CFB-Fixture beschaffbar); CFB-Garbage-Pfad live via `parseFile`-Dispatch-Test mit echtem msgreader → `msg_parse_failed` | ✅ PASS (mock-basiert + Dispatch-Integration) |
+| AC-δ4 | Drag Row→Row ändert Parent | E2E: `dragTo` + Keyboard-Fallback (s. Deviation D-1) → aria-live „Story 1 ist jetzt unter Epic B eingeordnet" | ✅ PASS |
+| AC-δ5 | ALLOWED_PARENT_KINDS respektiert | 19 Vitest-Cases `proposal-tree-rules.test.ts` (inkl. Spec-Beispiel Story↛Task, subtask-braucht-task) | ✅ PASS |
+| AC-δ6 | Method-Constraint blockt | Vitest: task→story in waterfall blocked / scrum allowed | ✅ PASS |
+| AC-δ7 | Tab/Shift+Tab Indent/Outdent | E2E nutzt den Keyboard-Pfad live (Fallback-Zweig); aria-live-Announcements verifiziert | ✅ PASS |
+| AC-δ8 | Vitest parent-resolution + rejection | 19/19 grün | ✅ PASS |
+| AC-δ9 | Playwright: Drop → Bulk-Accept → DB-Hierarchie | **`tests/PROJ-70-delta-dnd.spec.ts` Layer 3:** Service-Role-Seed (Projekt + ki_run + 3 Drafts) → Drawer → Reparent → Accept-All → `expect.poll` gegen Prod-DB: `work_items.parent_id` der Story = Epic-B-Work-Item ✅ | ✅ PASS |
+| AC-δH-1…6 | 6 CIA-Hardening-ACs | Source-Verifikation mit file:line (eml-parser.ts:112/124, msg-parser.ts:130/143, file-parser.ts:330/334) + Tests (51-Parts-Bombe, getAttachment-NEVER-Spy, CFB-Doppel-Signal) | ✅ 6/6 PASS |
+
+#### Bugs Found & Fixed (im QA-Pass, mit User-Freigabe)
+
+| # | Severity | Befund | Fix |
+|---|---|---|---|
+| **H-1** | **HIGH** | β-RPC `accept_proposal_from_context_bulk` inserted `ki_provenance.entity_type='work_item'` (Singular) — PROJ-12-CHECK erlaubt nur Plural → **jeder Live-Accept seit β-Deploy (2026-06-03) gab 400**. Nie aufgefallen: β-Vitest mockt die DB, β-Playwright war auth-gate-only. | Migration `20260612100000_…provenance.sql` (in Prod applied): `'work_items'`; `ki_suggestions.accepted_entity_type` bleibt Singular (kein Enum-Check, Undo/FE referenzieren es) |
+| **H-2** | MEDIUM | Undo-RPC löschte die `ki_provenance`-Row nicht → `UNIQUE(ki_suggestion_id)` blockt Re-Accept nach Undo | Gleiche Migration: provenance-DELETE im Undo |
+| **H-3** | **HIGH** | Topo-Sort-Ready-Check mit unkorreliertem Subquery (`where temp_id = parent_temp_id` bindet beide Spalten an die Subquery-Row) → Kinder nie „ready" → **jede verschachtelte Hierarchie schlug mit `topological_sort_failed` fehl** (von H-1 maskiert) | Migration `20260612110000_…toposort.sql` (in Prod applied): Alias-korrelierter EXISTS + Parent-outside-batch-Lookup gegen bereits akzeptierte Suggestions (`parent_not_accepted` statt irreführendem Toposort-Fehler) — macht auch Single-Accept eines Kinds nach Parent-Accept funktionsfähig |
+
+**Re-Verifikation nach Fixes:** AC-δ9-E2E 4/4 grün inkl. DB-Hierarchie-Check; beide PROJ-70-Specs 22 passed / 2 skipped (Mobile-Safari-Auth by design).
+
+#### Open Findings (nicht blockierend)
+
+| # | Severity | Befund | Empfehlung |
+|---|---|---|---|
+| F-1 | HIGH (Infra, **pre-existing auf main**) | Playwright-GlobalSetup crasht auf Node 20: `realtime-js` braucht expliziten `ws`-Transport → **gesamte E2E-Suite auf main blockiert**. Fix existiert bereits auf Branch `fix/proj18-25b-28-36-deferred-qa` (global-setup +5 Zeilen, `tests/types/ws.d.ts`) — **identische 2 Dateien in diesen QA-Branch übernommen** (Attribution im Commit). | Fix-Branch zeitnah mergen (Doppel-Inhalt merged konfliktfrei) |
+| F-2 | LOW | `LIST_SELECT` in `/api/context-sources` gibt die γ-File-Spalten (`mime_type`, `original_filename`, `file_size_bytes`) nicht in der Response zurück (persistiert korrekt — per DB-Assert verifiziert) | 3 Spalten in LIST_SELECT aufnehmen (δ/ε-Polish) |
+| F-3 | LOW | API-Routen validieren Projekt-IDs RFC-4122-strikt — die synthetische E2E-Projekt-ID `…000e21` (Version-Nibble 0) fällt durch, obwohl Postgres sie akzeptiert. Reale v4-IDs nicht betroffen. | E2E-Konvention: für API-Tests v4-Projekte seeden (im δ-Spec dokumentiert + umgesetzt) |
+| F-4 | INFO | 15 pre-existing Failures im Gesamt-Playwright-Lauf — ausschließlich δ-fremde Specs (PROJ-51 Visual-Baselines env-drift + Mobile-Safari-Flakes PROJ-29/37/58) — bekannter PROJ-67-Scope | In PROJ-67 weiterverfolgen |
+
+#### Documented Deviation
+
+- **D-1 (AC-δ4/δ9):** Playwright-synthetisierte HTML5-Drags greifen bei `react-dnd-html5-backend` (react-arborist-intern) nicht zuverlässig. Der E2E versucht `dragTo` zuerst und fällt deterministisch auf den Keyboard-Pfad (Tab/Shift+Tab) zurück — **identischer `requestReparent`→`applyReparent`-Code-Pfad**, Topologie- und Validierungs-Coverage gleichwertig. Maus-Drag→onMove-Wiring ist react-arborist-Bibliotheksverhalten.
+
+#### Security Audit (Red-Team)
+
+- 4 Live-Auth-Gates (unauth `.eml`/`.msg` multipart × chromium + Mobile Safari) → 307 ✅
+- Multipart-Bombe (51 Parts) → `email_too_many_parts` (Vitest, beide Parser) ✅
+- CFB-Garbage → `msg_parse_failed`, kein Crash/Hang (echter msgreader) ✅
+- Attachment-Exfiltration: `getAttachment()`-NEVER-Spy + Excerpt-Leak-Check ✅
+- RPC-Grants: `anon` EXECUTE revoked (Migration-Smoke verifiziert beide Funktionen) ✅
+- Storage-RLS (tenant-prefix) unverändert aus γ; E2E-Upload landet im korrekten Tenant-Pfad + Cleanup ✅
+
+#### Test Suites
+
+- Vitest **1712/1712**
+- Playwright PROJ-70 (beide Specs, beide Projekte): **22 passed / 2 skipped** / 0 failed
+- Neuer permanenter Regressions-Spec: `tests/PROJ-70-delta-dnd.spec.ts` (Auth-Gates + Live-`.eml`-Pipeline + AC-δ9-Smoke mit Seed/Cleanup)
+
+#### Production-Ready Decision
+
+✅ **READY** — 15/15 AC PASS (9 δ + 6 δH), 1 dokumentierte Deviation (D-1). H-1/H-2/H-3 gefixt + live re-verifiziert; verbleibende Findings LOW/Infra. **Der Accept-Flow der PROJ-70-Familie funktioniert hiermit zum ersten Mal nachweislich end-to-end in Production.**
 
 ## Deployment
 _To be added by /deploy_
