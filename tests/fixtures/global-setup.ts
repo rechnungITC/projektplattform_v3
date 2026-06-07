@@ -131,8 +131,13 @@ async function globalSetup(_config: FullConfig): Promise<void> {
     return
   }
 
+  const { default: WebSocketImpl } = (await import("ws")) as {
+    default: typeof WebSocket
+  }
+
   const admin = createSupabaseClient(url, serviceKey, {
     auth: { persistSession: false, autoRefreshToken: false },
+    realtime: { transport: WebSocketImpl },
   })
 
   // 1) Idempotent test user: try create; if already exists, accept.
