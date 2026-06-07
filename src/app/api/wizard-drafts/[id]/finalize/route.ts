@@ -136,6 +136,38 @@ export async function POST(_request: Request, ctx: Ctx) {
     }
   }
 
+  // 4.5) PROJ-70-ε — attach an uploaded kickoff context-source to the new
+  // project (Post-Finalize-Handoff). The wizard's ki_backlog step uploaded
+  // the file WITHOUT a project_id; now that the project exists we wire it up
+  // so the Backlog drawer (deep-linked next) generates against this project.
+  //
+  // Best-effort: the project already exists, so a failed attach must not
+  // fail finalize. Guarded by tenant_id + project_id IS NULL so a stale/
+  // foreign source id can't be hijacked onto the new project.
+  if (project) {
+    const kiBacklog = (data.ki_backlog ?? null) as {
+      enabled?: unknown
+      context_source_id?: unknown
+    } | null
+    const contextSourceId =
+      kiBacklog &&
+      kiBacklog.enabled === true &&
+      typeof kiBacklog.context_source_id === "string" &&
+      kiBacklog.context_source_id.length > 0
+        ? kiBacklog.context_source_id
+        : null
+    if (contextSourceId) {
+      // RLS already scopes to tenant-membership; the explicit tenant_id +
+      // project_id IS NULL predicates are defense-in-depth.
+      await supabase
+        .from("context_sources")
+        .update({ project_id: project.id })
+        .eq("id", contextSourceId)
+        .eq("tenant_id", draft.tenant_id)
+        .is("project_id", null)
+    }
+  }
+
   // 5) Delete the draft (best-effort; orphan drafts are recoverable).
   await supabase.from("project_wizard_drafts").delete().eq("id", id)
 

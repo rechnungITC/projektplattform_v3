@@ -1,6 +1,6 @@
 # PROJ-70: Auto-Generated Backlog from Project Kickoff
 
-## Status: α Approved+Deployed · β Approved+Deployed · γ Approved+Deployed (QA-Pass 2026-06-06: 14/16 AC fully PASS + 2 documented deviations F-1 Medium F-2 LOW; 11/12 security probes blocked; vitest 1654/1654; Playwright 16/16; 0 Critical/0 High → PRODUCTION-READY) · δ **Approved (QA-Pass 2026-06-07: 15/15 AC PASS + 1 documented deviation D-1; H-1/H-2/H-3 in-QA gefixt — β-Accept-RPC war in Prod doppelt kaputt (provenance-CHECK + unkorrelierter Toposort-Subquery), erster echter E2E-Accept überhaupt; vitest 1712/1712; Playwright 22 passed/2 skipped; 0 offene Critical/High → PRODUCTION-READY)** · ε **In Progress (FE gebaut 2026-06-08: konditionaler ki_backlog-Step + Basics-Toggle + Upload-im-Step mit Retry + Post-Finalize-Deep-Link-Handoff zum Backlog-Drawer mit Auto-Generierung; AC-ε1/ε3/ε5/ε6 ✅, ε2/ε4 FE-Teil ✅; vitest 1722/1722, lint 0, build clean; Backend-Teil ε4-attach + AC-ε8 LIST_SELECT → /backend; AC-ε7 Live-E2E → /qa)**
+## Status: α Approved+Deployed · β Approved+Deployed · γ Approved+Deployed (QA-Pass 2026-06-06: 14/16 AC fully PASS + 2 documented deviations F-1 Medium F-2 LOW; 11/12 security probes blocked; vitest 1654/1654; Playwright 16/16; 0 Critical/0 High → PRODUCTION-READY) · δ **Approved (QA-Pass 2026-06-07: 15/15 AC PASS + 1 documented deviation D-1; H-1/H-2/H-3 in-QA gefixt — β-Accept-RPC war in Prod doppelt kaputt (provenance-CHECK + unkorrelierter Toposort-Subquery), erster echter E2E-Accept überhaupt; vitest 1712/1712; Playwright 22 passed/2 skipped; 0 offene Critical/High → PRODUCTION-READY)** · ε **In Progress (FE + Backend gebaut 2026-06-08: konditionaler ki_backlog-Step + Deep-Link-Handoff + Finalize-context_source-attach + AC-ε8 LIST_SELECT-File-Spalten; AC-ε1/ε3/ε4/ε5/ε6/ε8 ✅ — Finalize-attach + LIST_SELECT live gegen Prod verifiziert; vitest 1728/1728, lint 0, build clean; nur AC-ε7 Live-E2E → /qa offen)**
 **Created:** 2026-05-31
 **Last Updated:** 2026-06-01
 **α-Slice deployed:** 2026-06-01 — migration applied to Prod-DB; lint 0 errors; tsc baseline-clean; vitest 1583/1583 (incl. 14 new classifier tests); build 13.7s clean; new API route registered: `/api/projects/[id]/ai/proposal-from-context`
@@ -177,7 +177,7 @@ Diese 5 sind aus dem CIA-Review-Output. Sie sind **nicht-blockierend** für γ �
 - [x] **AC-ε1**: Wizard erhält neuen optionalen Step "KI-Backlog generieren" nach "Methode" + vor "Review".
 - [~] **AC-ε2** (Deviation, Post-Finalize-Handoff): Step zeigt Upload-Drop-Zone + Skip-Button. Bei Upload: zeigt KI-Lauf-Progress + nach Completion routet zu Review-Drawer (mit `wizard-return`-Context, sodass Cancel oder Done zurück zum Wizard-Review-Step gehen).
 - [x] **AC-ε3** (by-design — Generierung nach Projekt-Erzeugung): Method-Hint wird an Router weitergegeben (Wasserfall → bevorzugte Kinds: phase/work_package/todo; Scrum → epic/story/task).
-- [~] **AC-ε4** (FE: Upload-Fehler im Step mit Retry ✅; project-attach beim Finalize → /backend): Wizard speichert Draft-State vor KI-Lauf (analog `project_wizard_drafts`); falls KI-Lauf fehlschlägt, kehrt Wizard zur Draft zurück.
+- [x] **AC-ε4** (FE: Upload-Fehler im Step mit Retry ✅; Finalize attacht context_source ans neue Projekt ✅ — live-verifiziert): Wizard speichert Draft-State vor KI-Lauf (analog `project_wizard_drafts`); falls KI-Lauf fehlschlägt, kehrt Wizard zur Draft zurück.
 - [x] **AC-ε5**: Toggle "KI-Backlog generieren" im Wizard-Entry-Step (analog F2.1b-Anforderung in PROJ-5).
 - [x] **AC-ε6**: Vitest deckt: wizard-draft-roundtrip, method-hint-passing.
 - [ ] **AC-ε7** (→ /qa Live-E2E): Playwright Smoke: User durchläuft Wizard mit Upload → akzeptiert 5 Vorschläge → Projekt wird angelegt mit 5 work_items + project_method gesetzt.
@@ -1350,7 +1350,7 @@ Projekt-Raum Graph (/projects/{id}/graph?aiDrawer=backlog&contextSource={id})
 - **AC-ε2 (Deviation, User-approved):** "routet zu Review-Drawer mit wizard-return-Context" → "Finalize routet in den Projekt-Graph mit auto-geöffnetem Backlog-Tab + Auto-Generierung". Wizard-Return entfällt (Q1).
 - **AC-ε3:** erfüllt by-design (Generierung nach Projekt-Erzeugung → `project_method` liegt vor).
 - **AC-ε4:** Upload-Fehler werden bereits IM Step behandelt (früher als gefordert); Generierungs-Fehler nach Finalize lassen das Projekt intakt (kein Draft-Rollback nötig — es gibt keinen Wizard mehr).
-- **NEU AC-ε8 (aus δ-QA F-2):** Context-Sources-API gibt `mime_type` + `original_filename` + `file_size_bytes` in Listen-/Detail-Responses zurück.
+- **AC-ε8 (aus δ-QA F-2) ✅:** Context-Sources-API gibt `mime_type` + `original_filename` + `file_size_bytes` in Listen-/Detail-Responses zurück (LIST_SELECT erweitert; live-verifiziert auf der UPLOAD-Response).
 
 #### G) Handoff-Plan
 
@@ -1382,6 +1382,20 @@ Projekt-Raum Graph (/projects/{id}/graph?aiDrawer=backlog&contextSource={id})
 **Offen (bewusst nächste Slices):**
 - **`/backend`:** Finalize-Route attacht `context_sources.project_id` ans neue Projekt (AC-ε4-Backend-Teil) + **AC-ε8** (F-2): 3 γ-File-Spalten in `LIST_SELECT` der Context-Sources-Route. *Live-RPC-Smoke-Pflicht beachten (Memory `live-rpc-smoke-required`) — Finalize-Attach mit echtem Call verifizieren.*
 - **`/qa`:** AC-ε7 Live-E2E (voller Wizard→Upload→Finalize→Accept→DB-Flow), Pattern `tests/PROJ-70-delta-dnd.spec.ts`.
+
+---
+
+#### ε-Backend Implementation Notes — 2026-06-08
+
+**Gebaut (Branch `proj-70/epsilon-backend`) — kein Schema-Change, keine neue Migration, keine neuen Deps:**
+
+- **AC-ε4-Backend — Finalize attacht context_source ans neue Projekt** (`/api/wizard-drafts/[id]/finalize/route.ts`): nach erfolgreichem Project-Insert + Lead-Bootstrap liest die Route `draft.data.ki_backlog`; bei `enabled === true` + vorhandener `context_source_id` wird `context_sources.project_id` auf das neue Projekt gesetzt. **Best-effort** (Projekt existiert bereits → Attach-Fehler darf Finalize nicht kippen) + **defense-in-depth-Predicates** `.eq("tenant_id", draft.tenant_id).is("project_id", null)`, sodass eine fremde/bereits-zugeordnete Source-ID nicht aufs neue Projekt umgebogen werden kann (RLS scoped ohnehin auf Tenant-Membership).
+- **AC-ε8 (δ-QA-F-2) — LIST_SELECT erweitert** (`/api/context-sources/route.ts`): `original_filename` + `mime_type` + `file_size_bytes` ergänzt. Die Spalten wurden seit γ persistiert, aber nicht zurückgegeben — jetzt in jeder Listen-/Upload-/Detail-Response sichtbar.
+- **Tests:** `finalize/route.test.ts` neu (+6 Cases: auth-gate, invalid-uuid, attach-happy-path mit `update({project_id})`+`eq(id)`+`eq(tenant_id)`+`is(project_id,null)`, kein-attach-bei-disabled, kein-attach-bei-fehlendem-Block, **best-effort 201 trotz Attach-Fehler**).
+- **Live-Smoke gegen Prod** (Memory `live-rpc-smoke-required`): echter `.eml`-Upload → UPLOAD-Response trägt die 3 File-Spalten (AC-ε8 ✓); service-role-geseedeter Draft mit `ki_backlog` → echter Finalize-Route-Call → `context_sources.project_id == neues Projekt` (AC-ε4 ✓). *Anmerkung:* Der reguläre Draft-**Create**-Pfad lehnt die synthetische E2E-Tenant-ID `…0e20` ab (Zod-4 strict-UUID, Version-Nibble 0 — dieselbe RFC-4122-Lage wie δ-QA-F-3); für den Smoke wurde der Draft daher per service-role geseedet, der zu testende Finalize-Pfad lief real.
+- **Quality-Gates:** lint **0/0**, tsc clean (δ-/ε-Files), vitest **1728/1728**, build clean 20.0s.
+
+**Offen:** nur noch **AC-ε7** (Live-E2E voller Wizard→Upload→Finalize→Accept→DB) im `/qa`-Pass — Pattern `tests/PROJ-70-delta-dnd.spec.ts` (v4-UUID-Projekt seeden wegen RFC-4122-strikter ID-Validierung). Danach ist PROJ-70 über alle 5 Slices komplett.
 
 ---
 

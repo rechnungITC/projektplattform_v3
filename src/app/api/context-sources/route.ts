@@ -59,6 +59,9 @@ const LIST_SELECT =
   "id, tenant_id, project_id, kind, title, content_excerpt, content_full_url, " +
   "source_metadata, language, privacy_class, processing_status, " +
   "last_processed_at, last_failure_reason, " +
+  // PROJ-70-ε (AC-ε8 / δ-QA F-2) — the γ file-metadata columns belong in
+  // every list/detail response; they were persisted but not selected.
+  "original_filename, mime_type, file_size_bytes, " +
   "created_by, created_at, updated_at"
 
 export async function GET(request: Request) {
