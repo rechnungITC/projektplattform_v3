@@ -1,6 +1,6 @@
 # PROJ-70: Auto-Generated Backlog from Project Kickoff
 
-## Status: α Approved+Deployed · β Approved+Deployed · γ Approved+Deployed (QA-Pass 2026-06-06: 14/16 AC fully PASS + 2 documented deviations F-1 Medium F-2 LOW; 11/12 security probes blocked; vitest 1654/1654; Playwright 16/16; 0 Critical/0 High → PRODUCTION-READY) · δ **Approved (QA-Pass 2026-06-07: 15/15 AC PASS + 1 documented deviation D-1; H-1/H-2/H-3 in-QA gefixt — β-Accept-RPC war in Prod doppelt kaputt (provenance-CHECK + unkorrelierter Toposort-Subquery), erster echter E2E-Accept überhaupt; vitest 1712/1712; Playwright 22 passed/2 skipped; 0 offene Critical/High → PRODUCTION-READY)** · ε planned
+## Status: α Approved+Deployed · β Approved+Deployed · γ Approved+Deployed (QA-Pass 2026-06-06: 14/16 AC fully PASS + 2 documented deviations F-1 Medium F-2 LOW; 11/12 security probes blocked; vitest 1654/1654; Playwright 16/16; 0 Critical/0 High → PRODUCTION-READY) · δ **Approved (QA-Pass 2026-06-07: 15/15 AC PASS + 1 documented deviation D-1; H-1/H-2/H-3 in-QA gefixt — β-Accept-RPC war in Prod doppelt kaputt (provenance-CHECK + unkorrelierter Toposort-Subquery), erster echter E2E-Accept überhaupt; vitest 1712/1712; Playwright 22 passed/2 skipped; 0 offene Critical/High → PRODUCTION-READY)** · ε **Architected (2026-06-07: Q1 Post-Finalize-Handoff User-locked, 6 Locks, AC-ε2-Deviation dokumentiert, +AC-ε8 aus δ-QA-F-2, kein Schema-Change, keine neuen Deps)**
 **Created:** 2026-05-31
 **Last Updated:** 2026-06-01
 **α-Slice deployed:** 2026-06-01 — migration applied to Prod-DB; lint 0 errors; tsc baseline-clean; vitest 1583/1583 (incl. 14 new classifier tests); build 13.7s clean; new API route registered: `/api/projects/[id]/ai/proposal-from-context`
@@ -22,6 +22,7 @@ Diese Spec **ersetzt** die folgenden bisherigen Deferred-Slices durch eine einze
 - PROJ-44-ε (Upload + Review-UI)
 - PROJ-12 `work_items` AIPurpose-Implementierung (Router/Provider/API)
 - PROJ-5 F2.1b (KI-Dialog statt Wizard)
+
 
 ## PRD-Mapping
 
@@ -1266,6 +1267,99 @@ Fallback if CIA rejects msgreader: ~~drop `.msg` from δ-MVP, ship EML-only~~ �
 - **AC-δ9 (Playwright-Smoke) → /qa-Pass.** Braucht authenticated fixture (PROJ-29, vorhanden + skip-fähig) **plus** geseedete `ki_suggestions` — analog β-Flow, wo die Playwright-Coverage im QA-Pass entstand.
 - Kein `@dnd-kit` (Lock Q3 bestätigt — react-arborist `onMove`/`disableDrop` reichten exakt aus, null neue FE-Deps).
 - Empty-State-Copy des Tabs von β-Stand ("Context-Source-ID eingeben") auf γ-Realität ("Kickoff-Datei hochladen") korrigiert — Drive-by-Fix.
+
+---
+
+### ε-Slice Architecture Pass (Wizard-Integration, PROJ-5 F2.1b) — 2026-06-07
+
+> **Scope:** PROJ-70-ε — der letzte Slice. Der Projekt-Anlage-Wizard bekommt einen optionalen Schritt "KI-Backlog generieren": Kickoff-Datei hochladen (alle δ-Formate), nach der Projekt-Erzeugung wird die Generierung automatisch gestartet und der User landet direkt im Review-Drawer des neuen Projekts.
+> **Reviewer:** Solution Architect; Henne-Ei-Frage (Q1) vom User gelockt 2026-06-07.
+> **CIA-Trigger-Status:** NICHT nötig — keine neue Dependency, kein neues Persistenz-Pattern, kein RPC-Umbau. Reine Komposition existierender Bausteine (PROJ-5-Wizard + PROJ-56-δ-Handoff + PROJ-70-β/γ/δ-Stack).
+
+---
+
+#### A) Komponenten-Struktur
+
+```
+Wizard (/projects/new/wizard)                       [PROJ-5, erweitert]
++-- Step "Stammdaten" (basics)
+|   +-- Toggle "KI-Backlog aus Kickoff-Datei generieren"  [NEU — AC-ε5]
++-- Step "Projekttyp" (type)
++-- Step "Methode" (method)
++-- Step "Folgefragen" (followups)
++-- Step "KI-Backlog" (ki_backlog)                  [NEU — nur wenn Toggle an]
+|   +-- Upload-Drop-Zone (gleiche Formate wie δ: PDF/DOCX/TXT/MD/EML/MSG)
+|   +-- "Überspringen"-Button
+|   +-- Upload-Status (Datei geparst / Fehler mit Retry)
++-- Step "Review" (review)
+|   +-- Zeile "KI-Backlog: kickoff.eml hochgeladen"  [NEU — Sichtbarkeit]
++-- Finalize → Projekt entsteht
+        |
+        v
+Projekt-Raum Graph (/projects/{id}/graph?aiDrawer=backlog&contextSource={id})
++-- AIProposalDrawer öffnet automatisch auf Tab "Backlog"   [Deep-Link NEU]
+    +-- Generierung startet automatisch für die hochgeladene Quelle
+    +-- Review + Inline-Edit + DnD-Reparenting + Bulk-Accept + 30s-Undo
+        (komplett vorhandener β/γ/δ-Stack — null Änderung)
+```
+
+#### B) Datenmodell — **kein Schema-Change**
+
+- **Wizard-Draft (`project_wizard_drafts.data`):** das Payload-Schema ist bereits `.passthrough()`. ε ergänzt einen optionalen Block `ki_backlog` mit: aktiviert ja/nein, `context_source_id` der hochgeladenen Datei, Original-Dateiname (für die Review-Zeile). Überlebt Browser-Reload wie alle anderen Draft-Felder (AC-ε4).
+- **Context-Source ohne Projekt:** `context_sources.project_id` ist seit PROJ-44-β nullable — der Upload im Wizard nutzt exakt die bestehende γ/δ-Multipart-Route ohne `project_id`. Beim Finalize wird die Quelle dem neuen Projekt zugeordnet (ein UPDATE im Finalize-Flow).
+- **Method-Hint (AC-ε3):** löst sich von selbst — die Generierung läuft NACH der Projekt-Erzeugung, der Router liest `projects.project_method` wie immer. Kein separater Hint-Transport nötig.
+
+#### C) Tech Decisions (WHY)
+
+**Lock-Q1 — Post-Finalize-Handoff statt In-Wizard-Review (User-Entscheidung 2026-06-07).**
+*Warum:* Drawer + Accept-RPC + Provenance brauchen eine echte `project_id`. Ein Draft-Projekt-Lifecycle (Early-Create) hätte Finalize-Umbau, Orphan-Purge und Drawer-Embedding gekostet. Der Handoff komponiert stattdessen drei existierende Muster: nullable `context_sources.project_id` (44-β), PROJ-56-δ-Wizard-Handoff (`?from_wizard=1`), δ-Drawer. **Dokumentierte Abweichung von AC-ε2:** Review findet nicht IM Wizard statt, sondern unmittelbar nach Finalize im echten Projekt-Raum; "Cancel/Done → zurück zum Wizard" entfällt (es gibt nichts mehr, wohin man zurück müsste — das Projekt existiert bereits).
+
+**Lock-Q2 — Step-Position: nach "Folgefragen", direkt vor "Review".**
+*Warum:* AC-ε1 verlangt nur "nach Methode + vor Review". Direkt vor Review ist der Draft maximal vollständig und die Review-Seite kann die Upload-Zeile anzeigen.
+
+**Lock-Q3 — Draft-Persistenz im bestehenden JSON-Payload, Upload sofort beim Dateiwählen.**
+*Warum:* Die Datei wird im Step sofort über die Multipart-Route hochgeladen (Parse-Fehler erscheinen SOFORT im Wizard, nicht erst nach Finalize — bessere Fehlernähe als AC-ε4 fordert). Schlägt der Upload fehl, bleibt der Wizard im Step mit Retry; der Draft bleibt intakt.
+
+**Lock-Q4 — Generierung clientseitig nach dem Redirect, nicht im Finalize-Request.**
+*Warum:* Ein KI-Lauf dauert Sekunden — synchron im Finalize würde die Projekt-Anlage blockieren und bei Timeout das Henne-Ei nur verschieben. Der Graph-Deep-Link (`?aiDrawer=backlog&contextSource=…`) öffnet den Drawer, der die Generierung selbst triggert und seinen vorhandenen Progress-/Fehler-Zustand nutzt. Schlägt die Generierung fehl: Projekt existiert trotzdem, Toast + manueller Retry im Tab (vorhandenes Verhalten).
+
+**Lock-Q5 — Keine Stakeholder-Hint-Tabelle in ε (Lock-5-Re-Evaluation aus δ).**
+*Warum:* ε konsumiert die Email-From/To-Hints noch nicht — kein Consumer, keine Tabelle. Die Hints bleiben in `source_metadata` JSON. Kandidat für die spätere Stakeholder-Matching-Erweiterung (PROJ-33/35-Familie).
+
+**Lock-Q6 — QA-Learnings aus δ fließen ein.**
+*(a)* AC-ε7-Playwright wird als **Live-E2E gegen die echte DB** gebaut (Pattern `tests/PROJ-70-delta-dnd.spec.ts`: Service-Role-Seed/Cleanup, v4-UUIDs wegen RFC-4122-strikter ID-Validierung — Memory `live-rpc-smoke-required`). *(b)* **F-2-Polish landet in ε:** die drei γ-File-Spalten (`mime_type`, `original_filename`, `file_size_bytes`) werden in `LIST_SELECT` der Context-Sources-Route aufgenommen.
+
+#### D) Dependencies
+
+**Keine neuen Packages.** FE wie BE komponieren ausschließlich Vorhandenes.
+
+#### E) Betroffene Bausteine (Übersicht für /frontend + /backend)
+
+| Baustein | Änderung |
+|---|---|
+| `src/types/wizard.ts` + Step-Komponenten | neuer Step `ki_backlog` (konditional via Toggle), Stepper-Label |
+| `src/components/projects/wizard/wizard-client.tsx` | Step-Rendering + Finalize-Redirect auf Graph-Deep-Link statt `?from_wizard=1`, wenn `ki_backlog` aktiv |
+| Wizard-Draft-Zod (`_schema.ts`) | optionales `ki_backlog`-Objekt im `data`-Payload |
+| Finalize-Route (`/api/wizard-drafts/[id]/finalize`) | nach Projekt-Insert: `context_sources.project_id` der Quelle setzen (tenant-gegated) |
+| Graph-Page + `AIProposalDrawer`/`BacklogProposalTab` | Deep-Link-Support (`aiDrawer=backlog&contextSource=…`) + Auto-Trigger für übergebene Quelle |
+| Context-Sources-Route | F-2: 3 Spalten in `LIST_SELECT` |
+| Tests | Vitest: draft-roundtrip + finalize-attach + deep-link-param; Playwright: voller Wizard→Upload→Finalize→Accept→DB-Flow (AC-ε7, live) |
+
+#### F) AC-Anpassungen aus diesem Pass
+
+- **AC-ε2 (Deviation, User-approved):** "routet zu Review-Drawer mit wizard-return-Context" → "Finalize routet in den Projekt-Graph mit auto-geöffnetem Backlog-Tab + Auto-Generierung". Wizard-Return entfällt (Q1).
+- **AC-ε3:** erfüllt by-design (Generierung nach Projekt-Erzeugung → `project_method` liegt vor).
+- **AC-ε4:** Upload-Fehler werden bereits IM Step behandelt (früher als gefordert); Generierungs-Fehler nach Finalize lassen das Projekt intakt (kein Draft-Rollback nötig — es gibt keinen Wizard mehr).
+- **NEU AC-ε8 (aus δ-QA F-2):** Context-Sources-API gibt `mime_type` + `original_filename` + `file_size_bytes` in Listen-/Detail-Responses zurück.
+
+#### G) Handoff-Plan
+
+1. `/frontend` — Wizard-Step + Toggle + Deep-Link-Drawer (größter Teil; ~1 PT)
+2. `/backend` — Finalize-Attach + LIST_SELECT-Polish (klein; ~0.5 PT)
+3. `/qa` — AC-ε1–ε8 inkl. Live-E2E-Smoke (~0.5 PT)
+4. Danach: PROJ-70 Status-Closure (alle 5 Slices) + `/deploy`-Bookkeeping
+
+> **Nummern-Hinweis:** Der in der δ-Session identifizierte Provider-Capability-Gap (OpenAI/Google ohne trajectory/cross-links/proposal-Purposes) wird bei Registrierung **PROJ-85** — 76–84 sind durch die parallel angelegten Skill-/DMS-/RAG-Specs belegt.
 
 ---
 
