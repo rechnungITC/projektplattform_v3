@@ -16,6 +16,7 @@
 import dynamic from "next/dynamic"
 import { Box, Loader2, Network, Route as RouteIcon, Sparkles, Target } from "lucide-react"
 import { useReducedMotion } from "framer-motion"
+import { useSearchParams } from "next/navigation"
 import * as React from "react"
 
 import { Badge } from "@/components/ui/badge"
@@ -147,6 +148,12 @@ export function TrajectoryGraphView({ projectId }: TrajectoryGraphViewProps) {
     nodeId: string
     count: number
   } | null>(null)
+  // PROJ-70-ε — deep-link from the wizard handoff opens the drawer on the
+  // Backlog tab and auto-generates for the uploaded context source.
+  const [drawerTab, setDrawerTab] = React.useState<
+    "trajectory" | "resources" | "links" | "backlog"
+  >("trajectory")
+  const [autoGenSource, setAutoGenSource] = React.useState<string | null>(null)
   const [stakeholderPanel, setStakeholderPanel] = React.useState<{
     workItemId: string
     focusAssigneeId: string | null
@@ -204,6 +211,20 @@ export function TrajectoryGraphView({ projectId }: TrajectoryGraphViewProps) {
   React.useEffect(() => {
     setWebglAvailable(hasWebGL2())
   }, [])
+
+  // PROJ-70-ε — wizard Post-Finalize-Handoff. `?aiDrawer=backlog` opens
+  // the drawer on the Backlog tab; `?contextSource=<id>` auto-triggers a
+  // generation run there. One-shot on mount.
+  const searchParams = useSearchParams()
+  const deepLinkHandledRef = React.useRef(false)
+  React.useEffect(() => {
+    if (deepLinkHandledRef.current) return
+    if (searchParams.get("aiDrawer") !== "backlog") return
+    deepLinkHandledRef.current = true
+    setDrawerTab("backlog")
+    setAutoGenSource(searchParams.get("contextSource"))
+    setAiDrawer({ nodeId: "", count: 0 })
+  }, [searchParams])
 
   React.useEffect(() => {
     if (prefersReducedMotion || webglAvailable === false) {
@@ -723,11 +744,20 @@ export function TrajectoryGraphView({ projectId }: TrajectoryGraphViewProps) {
       <AIProposalDrawer
         open={aiDrawer != null}
         onOpenChange={(open) => {
-          if (!open) setAiDrawer(null)
+          if (!open) {
+            setAiDrawer(null)
+            // Reset the deep-link state so re-opening the drawer manually
+            // lands on the default Trajektorie tab without re-generating.
+            setDrawerTab("trajectory")
+            setAutoGenSource(null)
+          }
         }}
         projectId={projectId}
+        projectMethod={snapshot?.trajectory?.layout_hints.method ?? null}
         focusedNodeId={aiDrawer?.nodeId ? aiDrawer.nodeId : null}
         nodeLabels={nodeLabelMap}
+        defaultTab={drawerTab}
+        autoGenerateContextSourceId={autoGenSource}
       />
 
       {/* PROJ-65 ε.2 — Stakeholder detail panel + swap dialog */}

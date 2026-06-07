@@ -243,6 +243,12 @@ describe("PATCH /api/wizard-drafts/[id] — schema/DB-payload drift", () => {
       project_type: "construction" as const,
       project_method: "waterfall" as const,
       type_specific_data: { trade: "Electrical" },
+      // PROJ-70-ε — optional KI-Backlog block.
+      ki_backlog: {
+        enabled: true,
+        context_source_id: "88888888-8888-4888-8888-888888888888",
+        filename: "kickoff.msg",
+      },
     }
 
     const dataKeys = Object.keys(wizardDataSchema.shape)

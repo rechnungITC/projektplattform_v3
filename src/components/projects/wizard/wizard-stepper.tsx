@@ -13,6 +13,9 @@ interface WizardStepperProps {
   currentStep: WizardStep
   furthestStep: WizardStep
   onStepClick: (step: WizardStep) => void
+  /** PROJ-70-ε — active step flow (may omit the optional `ki_backlog`
+   *  step). Defaults to the full catalog for callers that don't gate. */
+  steps?: readonly WizardStep[]
 }
 
 /**
@@ -23,16 +26,17 @@ export function WizardStepper({
   currentStep,
   furthestStep,
   onStepClick,
+  steps = WIZARD_STEPS,
 }: WizardStepperProps) {
-  const currentIndex = WIZARD_STEPS.indexOf(currentStep)
-  const furthestIndex = WIZARD_STEPS.indexOf(furthestStep)
+  const currentIndex = steps.indexOf(currentStep)
+  const furthestIndex = steps.indexOf(furthestStep)
 
   return (
     <ol
       className="flex flex-wrap items-center gap-2 sm:gap-4"
       aria-label="Wizard-Schritte"
     >
-      {WIZARD_STEPS.map((step, idx) => {
+      {steps.map((step, idx) => {
         const isCurrent = step === currentStep
         const isVisited = idx <= furthestIndex
         const isCompleted = idx < currentIndex
@@ -74,7 +78,7 @@ export function WizardStepper({
                 {WIZARD_STEP_LABELS[step]}
               </span>
             </button>
-            {idx < WIZARD_STEPS.length - 1 ? (
+            {idx < steps.length - 1 ? (
               <span
                 aria-hidden
                 className={cn(

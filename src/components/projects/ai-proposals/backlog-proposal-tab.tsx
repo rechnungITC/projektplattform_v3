@@ -76,6 +76,11 @@ interface BacklogProposalTabProps {
   /** Project method drives the kind-validation badge.
    *  Pass null when unknown — all kinds will then be considered valid. */
   projectMethod: string | null
+  /** PROJ-70-ε — when set, the tab auto-triggers a generation run for
+   *  this already-uploaded context_source once on mount (the wizard
+   *  Post-Finalize-Handoff uploads the file before the project exists,
+   *  then deep-links here). */
+  autoGenerateContextSourceId?: string | null
 }
 
 /** Helper: build a flat tree-node array suitable for react-arborist from a
@@ -130,6 +135,7 @@ const REJECT_MESSAGE: Record<ReparentRejection, string> = {
 export function BacklogProposalTab({
   projectId,
   projectMethod,
+  autoGenerateContextSourceId = null,
 }: BacklogProposalTabProps) {
   const [loading, setLoading] = React.useState(true)
   const [error, setError] = React.useState<string | null>(null)
@@ -169,6 +175,50 @@ export function BacklogProposalTab({
     // eslint-disable-next-line react-hooks/set-state-in-effect -- one-shot fetch when the tab opens
     void reload()
   }, [reload])
+
+  // PROJ-70-ε — one-shot auto-generation for the wizard handoff. When the
+  // drawer is deep-linked with a context_source that was uploaded during
+  // project creation, kick off a generation run exactly once.
+  const autoGenRef = React.useRef<string | null>(null)
+  React.useEffect(() => {
+    const sourceId = autoGenerateContextSourceId
+    if (!sourceId) return
+    if (autoGenRef.current === sourceId) return
+    autoGenRef.current = sourceId
+    void (async () => {
+      setBusy(true)
+      try {
+        const result = await triggerProposalFromContext(projectId, {
+          contextSourceId: sourceId,
+          count: 10,
+        })
+        if (result.status === "error") {
+          toast.error("KI-Lauf fehlgeschlagen", {
+            description: result.error_message ?? "Unbekannter Fehler",
+          })
+        } else if (result.external_blocked) {
+          toast.info("Lokal ausgeführt", {
+            description:
+              result.error_message ??
+              "Cloud-Routing nicht möglich; lokales Fallback genutzt.",
+          })
+        } else {
+          toast.success(
+            result.suggestion_ids.length === 0
+              ? "KI hat keine Vorschläge generiert — Kontext zu dünn."
+              : `${result.suggestion_ids.length} Backlog-Vorschlag${result.suggestion_ids.length === 1 ? "" : "e"} aus deiner Kickoff-Datei`,
+          )
+        }
+        await reload()
+      } catch (err) {
+        toast.error("Generierung fehlgeschlagen", {
+          description: err instanceof Error ? err.message : "Unbekannter Fehler",
+        })
+      } finally {
+        setBusy(false)
+      }
+    })()
+  }, [autoGenerateContextSourceId, projectId, reload])
 
   const drafts = React.useMemo(
     () => suggestions.filter((s) => s.status === "draft"),
