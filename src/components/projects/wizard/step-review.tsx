@@ -101,6 +101,30 @@ export function StepReview({ projectTypeOverride }: StepReviewProps = {}) {
           </CardContent>
         </Card>
       ) : null}
+
+      {/* PROJ-70-ε (AC-ε2) — surface the uploaded kickoff artefact so the
+          user knows a KI-Backlog run will start after the project is
+          created. */}
+      {data.ki_backlog?.enabled ? (
+        <Card>
+          <CardHeader>
+            <CardTitle className="text-base">KI-Backlog</CardTitle>
+          </CardHeader>
+          <CardContent className="space-y-2 text-sm">
+            {data.ki_backlog.context_source_id ? (
+              <Row
+                label="Kickoff-Datei"
+                value={`${data.ki_backlog.filename ?? "hochgeladen"} — KI-Backlog wird nach dem Anlegen generiert`}
+              />
+            ) : (
+              <Row
+                label="Kickoff-Datei"
+                value="Keine Datei hochgeladen — Schritt wird übersprungen"
+              />
+            )}
+          </CardContent>
+        </Card>
+      ) : null}
     </div>
   )
 }

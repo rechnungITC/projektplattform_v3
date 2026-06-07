@@ -13,8 +13,10 @@ import {
   FormMessage,
 } from "@/components/ui/form"
 import { Input } from "@/components/ui/input"
+import { Switch } from "@/components/ui/switch"
 import { Textarea } from "@/components/ui/textarea"
 import { dateToIsoDate, parseLocalDate } from "@/lib/dates/iso-date"
+import { Sparkles } from "lucide-react"
 
 import type { WizardData } from "@/types/wizard"
 
@@ -138,6 +140,38 @@ export function StepBasics({ tenantId }: StepBasicsProps) {
               Wer trägt operativ Verantwortung. Lässt sich später ändern.
             </FormDescription>
             <FormMessage />
+          </FormItem>
+        )}
+      />
+
+      {/* PROJ-70-ε (AC-ε5) — opt into the KI-Backlog step. Adds a step
+          after the detail questions where a kickoff file is uploaded. */}
+      <FormField
+        control={form.control}
+        name="ki_backlog.enabled"
+        render={({ field }) => (
+          <FormItem className="flex items-start justify-between gap-4 rounded-md border border-dashed bg-muted/10 p-3">
+            <div className="space-y-0.5">
+              <FormLabel className="flex items-center gap-1.5">
+                <Sparkles
+                  className="h-3.5 w-3.5 text-violet-500"
+                  aria-hidden
+                />
+                KI-Backlog aus Kickoff-Datei generieren
+              </FormLabel>
+              <FormDescription>
+                Optional: Lade später im Wizard ein Kickoff-Dokument hoch
+                (PDF · DOCX · TXT · MD · EML · MSG). Nach dem Anlegen
+                schlägt die KI eine Backlog-Struktur vor.
+              </FormDescription>
+            </div>
+            <FormControl>
+              <Switch
+                checked={field.value ?? false}
+                onCheckedChange={field.onChange}
+                aria-label="KI-Backlog-Schritt aktivieren"
+              />
+            </FormControl>
           </FormItem>
         )}
       />

@@ -4,7 +4,7 @@ import { zodResolver } from "@hookform/resolvers/zod"
 import { AlertTriangle, Loader2, Save } from "lucide-react"
 import { useRouter } from "next/navigation"
 import * as React from "react"
-import { useForm, FormProvider } from "react-hook-form"
+import { useForm, useWatch, FormProvider } from "react-hook-form"
 import { toast } from "sonner"
 import { z } from "zod"
 
@@ -42,15 +42,16 @@ import {
 } from "@/types/project-method"
 import { PROJECT_TYPES, type ProjectType } from "@/types/project"
 import {
-  WIZARD_STEPS,
   WIZARD_STEP_LABELS,
   emptyWizardData,
+  visibleWizardSteps,
   type WizardData,
   type WizardStep,
 } from "@/types/wizard"
 
 import { StepBasics } from "./step-basics"
 import { StepFollowups } from "./step-followups"
+import { StepKiBacklog } from "./step-ki-backlog"
 import { StepMethod } from "./step-method"
 import { StepReview } from "./step-review"
 import { StepType } from "./step-type"
@@ -78,6 +79,12 @@ const wizardSchema = z.object({
     .enum(PROJECT_METHODS as unknown as [ProjectMethod, ...ProjectMethod[]])
     .nullable(),
   type_specific_data: z.record(z.string(), z.string()),
+  // PROJ-70-ε — optional KI-Backlog block (lives in draft JSON payload).
+  ki_backlog: z.object({
+    enabled: z.boolean(),
+    context_source_id: z.string().uuid().nullable(),
+    filename: z.string().nullable(),
+  }),
 })
 
 interface WizardClientProps {
@@ -124,6 +131,18 @@ export function WizardClient({ draftId }: WizardClientProps) {
     defaultValues: emptyWizardData(user.id),
     mode: "onChange",
   })
+
+  // PROJ-70-ε — the optional `ki_backlog` step is part of the flow only
+  // when the basics-step toggle is on. `steps` is the ACTIVE navigation
+  // order; the stepper renders against it too.
+  // PROJ-67 AC-4 — `useWatch` is memoisation-safe; `form.watch(...)` makes
+  // the React Compiler skip memoizing the whole component.
+  const kiBacklogEnabled =
+    useWatch({ control: form.control, name: "ki_backlog.enabled" }) ?? false
+  const steps = React.useMemo(
+    () => visibleWizardSteps(kiBacklogEnabled),
+    [kiBacklogEnabled],
+  )
 
   // Hydrate from existing draft if present.
   React.useEffect(() => {
@@ -280,6 +299,10 @@ export function WizardClient({ draftId }: WizardClientProps) {
           }
           return ok
         }
+        case "ki_backlog":
+          // Optional step — upload is not required (user may skip). The
+          // upload itself is validated inline in the step component.
+          return true
         case "review":
           return true
       }
@@ -289,8 +312,9 @@ export function WizardClient({ draftId }: WizardClientProps) {
 
   const goToStep = React.useCallback(
     async (target: WizardStep) => {
-      const targetIndex = WIZARD_STEPS.indexOf(target)
-      const currentIndex = WIZARD_STEPS.indexOf(step)
+      const targetIndex = steps.indexOf(target)
+      const currentIndex = steps.indexOf(step)
+      if (targetIndex < 0) return // step not in the active flow
       if (targetIndex < currentIndex) {
         // backward — no validation, no save
         setStep(target)
@@ -298,9 +322,9 @@ export function WizardClient({ draftId }: WizardClientProps) {
       }
       // forward — validate every step from current up to target-1
       for (let i = currentIndex; i < targetIndex; i++) {
-        const ok = await validateStep(WIZARD_STEPS[i])
+        const ok = await validateStep(steps[i])
         if (!ok) {
-          setStep(WIZARD_STEPS[i])
+          setStep(steps[i])
           return
         }
       }
@@ -308,12 +332,12 @@ export function WizardClient({ draftId }: WizardClientProps) {
       await persistDraft(form.getValues(), { silent: true })
       setStep(target)
       const newFurthestIndex = Math.max(
-        WIZARD_STEPS.indexOf(furthestStep),
+        steps.indexOf(furthestStep),
         targetIndex
       )
-      setFurthestStep(WIZARD_STEPS[newFurthestIndex])
+      setFurthestStep(steps[newFurthestIndex] ?? target)
     },
-    [step, validateStep, form, furthestStep, persistDraft]
+    [step, steps, validateStep, form, furthestStep, persistDraft]
   )
 
   const onCreate = React.useCallback(async () => {
@@ -339,7 +363,21 @@ export function WizardClient({ draftId }: WizardClientProps) {
         return
       }
       const project = await finalizeDraft(draft.id)
-      // PROJ-56-δ — handoff into the project-room with the
+      // PROJ-70-ε — when a kickoff file was uploaded, hand off into the
+      // project graph with the Backlog tab auto-opened + auto-generating
+      // for that source (Post-Finalize-Handoff, Lock-Q1). The finalize
+      // route attaches the context_source to the new project.
+      const ki = data.ki_backlog
+      if (project?.id && ki?.enabled && ki.context_source_id) {
+        toast.success("Projekt angelegt", {
+          description: "KI generiert jetzt Backlog-Vorschläge aus deiner Datei.",
+        })
+        router.replace(
+          `/projects/${project.id}/graph?mode=trajectory&aiDrawer=backlog&contextSource=${encodeURIComponent(ki.context_source_id)}`,
+        )
+        return
+      }
+      // PROJ-56-δ — default handoff into the project-room with the
       // wizard-source flag so the Readiness-Checklist surfaces
       // its onboarding banner.
       toast.success("Projekt angelegt", {
@@ -406,24 +444,28 @@ export function WizardClient({ draftId }: WizardClientProps) {
     )
   }
 
-  const currentIndex = WIZARD_STEPS.indexOf(step)
+  const currentIndex = steps.indexOf(step)
   const isLast = step === "review"
   const data = form.getValues()
+  // Clamp furthestStep into the active flow (toggling ki_backlog off can
+  // leave a stale furthestStep that no longer exists in `steps`).
+  const clampedFurthest = steps.includes(furthestStep) ? furthestStep : step
 
   return (
     <FormProvider {...form}>
       <Card>
         <CardHeader className="space-y-4">
           <CardTitle>
-            Neues Projekt — Schritt {currentIndex + 1} von {WIZARD_STEPS.length}
+            Neues Projekt — Schritt {currentIndex + 1} von {steps.length}
             {": "}
             <span className="text-muted-foreground font-normal">
               {WIZARD_STEP_LABELS[step]}
             </span>
           </CardTitle>
           <WizardStepper
+            steps={steps}
             currentStep={step}
-            furthestStep={furthestStep}
+            furthestStep={clampedFurthest}
             onStepClick={(target) => void goToStep(target)}
           />
         </CardHeader>
@@ -490,6 +532,8 @@ export function WizardClient({ draftId }: WizardClientProps) {
                   : null
               }
             />
+          ) : step === "ki_backlog" ? (
+            <StepKiBacklog tenantId={tenantId} />
           ) : (
             <StepReview
               projectTypeOverride={
@@ -530,7 +574,7 @@ export function WizardClient({ draftId }: WizardClientProps) {
                 type="button"
                 variant="outline"
                 onClick={() => {
-                  const prev = WIZARD_STEPS[currentIndex - 1]
+                  const prev = steps[currentIndex - 1]
                   if (prev) void goToStep(prev)
                 }}
                 disabled={currentIndex === 0 || submitting}
@@ -552,7 +596,7 @@ export function WizardClient({ draftId }: WizardClientProps) {
                 <Button
                   type="button"
                   onClick={() => {
-                    const next = WIZARD_STEPS[currentIndex + 1]
+                    const next = steps[currentIndex + 1]
                     if (next) void goToStep(next)
                   }}
                   disabled={submitting}

@@ -15,6 +15,7 @@ export const WIZARD_STEPS = [
   "type",
   "method",
   "followups",
+  "ki_backlog",
   "review",
 ] as const
 
@@ -25,7 +26,20 @@ export const WIZARD_STEP_LABELS: Record<WizardStep, string> = {
   type: "Projekttyp",
   method: "Methode",
   followups: "Detail-Fragen",
+  ki_backlog: "KI-Backlog",
   review: "Review",
+}
+
+/**
+ * PROJ-70-ε — `ki_backlog` is an OPTIONAL step. It only appears in the
+ * wizard flow when the user enabled the toggle on the basics step. Use
+ * `visibleWizardSteps()` to get the active flow; the full `WIZARD_STEPS`
+ * catalog still drives the stepper/labels for both cases.
+ */
+export function visibleWizardSteps(kiBacklogEnabled: boolean): WizardStep[] {
+  return WIZARD_STEPS.filter(
+    (s) => s !== "ki_backlog" || kiBacklogEnabled,
+  )
 }
 
 /**
@@ -50,6 +64,23 @@ export interface WizardData {
 
   // Step 4 — keyed by RequiredInfo.key, value = user answer text
   type_specific_data: Record<string, string>
+
+  // PROJ-70-ε — optional KI-Backlog generation from a kickoff artefact.
+  // `enabled` toggles the `ki_backlog` step; `context_source_id` +
+  // `filename` are filled once the user uploads a file in that step.
+  // The whole block lives in the draft's `.passthrough()` JSON payload —
+  // no DB schema change.
+  ki_backlog: KiBacklogData
+}
+
+export interface KiBacklogData {
+  enabled: boolean
+  context_source_id: string | null
+  filename: string | null
+}
+
+export function emptyKiBacklogData(): KiBacklogData {
+  return { enabled: false, context_source_id: null, filename: null }
 }
 
 export function emptyWizardData(responsibleUserId: string): WizardData {
@@ -63,6 +94,7 @@ export function emptyWizardData(responsibleUserId: string): WizardData {
     project_type: null,
     project_method: null,
     type_specific_data: {},
+    ki_backlog: emptyKiBacklogData(),
   }
 }
 

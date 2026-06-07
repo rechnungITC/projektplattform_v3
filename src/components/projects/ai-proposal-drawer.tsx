@@ -63,6 +63,12 @@ interface AIProposalDrawerProps {
   focusedNodeId?: string | null
   /** Looked-up labels for node ids — used to render affected node names. */
   nodeLabels?: Record<string, string>
+  /** PROJ-70-ε — open the drawer on a specific tab (deep-link from the
+   *  wizard handoff opens "backlog"). Defaults to "trajectory". */
+  defaultTab?: "trajectory" | "resources" | "links" | "backlog"
+  /** PROJ-70-ε — when set, the Backlog tab auto-triggers a generation run
+   *  for this context_source on mount (wizard Post-Finalize-Handoff). */
+  autoGenerateContextSourceId?: string | null
 }
 
 const KIND_VISUAL: Record<
@@ -88,6 +94,8 @@ export function AIProposalDrawer({
   projectMethod = null,
   focusedNodeId,
   nodeLabels,
+  defaultTab = "trajectory",
+  autoGenerateContextSourceId = null,
 }: AIProposalDrawerProps) {
   const [loading, setLoading] = React.useState(true)
   const [error, setError] = React.useState<string | null>(null)
@@ -191,7 +199,7 @@ export function AIProposalDrawer({
           </SheetDescription>
         </SheetHeader>
 
-        <Tabs defaultValue="trajectory" className="mt-4">
+        <Tabs defaultValue={defaultTab} className="mt-4">
           <TabsList>
             <TabsTrigger value="trajectory">Trajektorie</TabsTrigger>
             <TabsTrigger value="resources">Ressourcen</TabsTrigger>
@@ -286,6 +294,7 @@ export function AIProposalDrawer({
             <BacklogProposalTab
               projectId={projectId}
               projectMethod={projectMethod}
+              autoGenerateContextSourceId={autoGenerateContextSourceId}
             />
           </TabsContent>
         </Tabs>

@@ -33,7 +33,11 @@ const STORAGE_PREFIX = "pp-v3:graph-mode:"
 
 function readUrlMode(): GraphMode | null {
   if (typeof window === "undefined") return null
-  const value = new URLSearchParams(window.location.search).get("mode")
+  const params = new URLSearchParams(window.location.search)
+  // PROJ-70-ε — the AI Backlog drawer lives in the Trajektorie view, so a
+  // `?aiDrawer=…` deep-link (from the wizard handoff) forces that mode.
+  if (params.get("aiDrawer")) return "trajectory"
+  const value = params.get("mode")
   if (value === "relationship" || value === "trajectory") return value
   return null
 }

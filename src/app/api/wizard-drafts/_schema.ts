@@ -41,6 +41,16 @@ export const wizardDataSchema = z
       .record(z.string(), z.string())
       .optional()
       .default({}),
+    // PROJ-70-ε — optional KI-Backlog block. `.passthrough()` would carry
+    // it anyway; declaring it explicitly validates the shape the finalize
+    // route reads (`context_source_id` to attach to the new project).
+    ki_backlog: z
+      .object({
+        enabled: z.boolean().optional().default(false),
+        context_source_id: z.string().uuid().nullable().optional().default(null),
+        filename: z.string().nullable().optional().default(null),
+      })
+      .optional(),
   })
   .passthrough()
 
