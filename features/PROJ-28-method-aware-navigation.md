@@ -2,7 +2,7 @@
 
 ## Status: Deployed
 **Created:** 2026-05-01
-**Last Updated:** 2026-05-01
+**Last Updated:** 2026-06-07 (hardening follow-up: global kill-switch + structured Sentry breadcrumb)
 
 ## Summary
 Schließt die deferred-frontend-Lücke aus PROJ-26 (L1-Finding) und macht die Project-Room-Navigation durchgängig methodenabhängig. Heute zeigen beide Sidebars (mobile horizontal in `project-room-shell.tsx` + desktop vertikal in `project-sidebar.tsx`) eine **statische Tab-Liste mit deutschen Labels** ("Backlog", "Planung" usw.) — unabhängig davon, ob das Projekt Wasserfall, Scrum, Kanban, SAFe, PMI, PRINCE2, VXT2 oder noch keine Methode gewählt ist. Die methodenspezifischen Labels und Sections existieren bereits vollständig in `src/lib/method-templates/{8 methods}.ts`, werden aber nicht gerendert. Zusätzlich sind im Backlog Sprints in jedem Projekt sichtbar — auch in Wasserfall.
@@ -456,9 +456,9 @@ Shipped as 8 focused commits — Pre-Patch + Phases 1–7 — each independently
 
 **Phase 5 — Middleware (Routing Proxy) — 308 Redirects**
 - `src/proxy.ts` extended (Next.js 16 routing middleware): for every `/projects/[id]/<slug>` request, looks up `projects.project_method` (RLS-scoped via Supabase SSR session refreshed by `updateSession`), calls `resolveMethodAwareRedirect`, and on mismatch returns **308 Permanent Redirect** to the method-conformant slug. Query strings + sub-paths preserved through destination.
-- `console.info` breadcrumb (`[PROJ-28] method-aware redirect`) per redirect — picked up by Vercel runtime logs / Sentry transport. Full `Sentry.addBreadcrumb` integration deferred until rollout-monitoring needs structured events.
+- **2026-06-07 hardening:** redirects now emit a structured `Sentry.addBreadcrumb` with `from_slug`, `to_slug`, `method`, `project_id`, and `section_id`; the existing `console.info` line remains as runtime-log fallback.
 - Auth-redirects from `updateSession` win without mutation; UUID guard + early return for non-project paths keeps the hot path lean.
-- **Deviation from spec § ST-09** (Feature-Flag): the `method_aware_routes` tenant-flag is **not implemented** in V1. Reason: V3 is a single-tenant pilot today (one tenant in production). Adding a per-tenant feature flag for staged rollout would be over-engineering without a clear payoff, and the spec's safety net (canonical URLs stay valid → no 404 risk) means the rollback story is "revert this commit" rather than "flip a flag". If multi-tenant rollout becomes a real concern, the flag can be added as a small follow-up (≤ 1 hour: extend `tenant_settings.feature_flags` JSONB + middleware short-circuit). Marked as a deviation here for QA visibility.
+- **Deviation from spec § ST-09** (per-tenant Feature-Flag): the `method_aware_routes` tenant flag is **not implemented** in V1. Instead, the 2026-06-07 hardening added a global env kill-switch `METHOD_AWARE_ROUTES_DISABLED=true`, default off, so production can disable only the proxy redirect layer without a code revert. If multi-tenant staged rollout becomes a real concern, the tenant flag can still be added as a separate follow-up.
 
 **Phase 6 — Backlog-Sprints-Hide**
 - `backlog-client.tsx` reads `MethodConfig.hasSprints` for the active method; conditionally renders the Sprints Collapsible section, the "Neuer Sprint" button, and the `NewSprintDialog`. Hidden in Waterfall/PMI/PRINCE2/VXT2/Kanban; shown in Scrum/SAFe; shown in `method = null` (Setup, every construct permitted).
@@ -476,9 +476,8 @@ Shipped as 8 focused commits — Pre-Patch + Phases 1–7 — each independently
 - `MethodSidebar.tsx` (M3-Chrome) deleted; drift source eliminated
 
 **Out of this story (deferred)**
-- Tenant-feature-flag `method_aware_routes` for staged rollout (deviation from spec § ST-09; documented above)
+- Tenant-scoped feature flag `method_aware_routes` for staged rollout (deviation from spec § ST-09; global kill-switch shipped 2026-06-07)
 - Logged-in Playwright fixture + deeper E2E (308 redirect, sidebar labels per method, mobile parity)
-- Sentry-Breadcrumb structured-event upgrade (currently `console.info`)
 - i18n / English routes (`/work-packages` instead of `/arbeitspakete`)
 - Tenant-Override for section labels (PROJ-16 territory)
 - Method-aware Output-Rendering, DnD (PROJ-21 / PROJ-25 territory)
@@ -548,7 +547,7 @@ Edge probes: `/projects/totally-not-uuid/backlog` → 307 ✅. `/projects/<uuid>
 | Middleware 308-redirects on slug mismatch | ✅ | `src/proxy.ts` calls `resolveMethodAwareRedirect` and returns `NextResponse.redirect(url, 308)` on mismatch. Logic exhaustively unit-tested (7 redirect-test cases incl. canonical→alias, planung→releases, sub-paths, query-preservation). |
 | Canonical slugs stay valid → no Bookmark-404 | ✅ | Middleware short-circuits when slug matches `routeSlug`; canonical case lands on the alias via 308 but the canonical folder still serves the page when accessed by a method without alias. |
 | `cache()` for project_method in middleware | 🟡 **N/A in V1** | Per Tech Design § 3, `cache()` is for SSR-tree memoization. Middleware runs once per HTTP request — no benefit. Not implemented; acceptable. |
-| Sentry-Breadcrumb on redirect | 🟡 **Partial** | `console.info("[PROJ-28] method-aware redirect", JSON…)` — picked up by Vercel runtime logs / Sentry transport. Full structured `Sentry.addBreadcrumb` integration deferred (documented deviation, not a bug). |
+| Sentry-Breadcrumb on redirect | ✅ | 2026-06-07 hardening: `Sentry.addBreadcrumb({ category: "navigation.method_aware_redirect", level: "info", data })` plus existing runtime-log fallback. |
 
 #### ST-03 — Backlog-Sprints-Hide
 | AC | Status | Notes |
@@ -597,11 +596,11 @@ Edge probes: `/projects/totally-not-uuid/backlog` → 307 ✅. `/projects/<uuid>
 #### ST-09 — Feature-Flag `method_aware_routes`
 | AC | Status | Notes |
 |---|---|---|
-| Tenant-Setting Bool (default false) | ❌ **Deferred** | Documented deviation in Implementation Notes § Phase 5. Reason: V3 is a single-tenant pilot; canonical URLs stay valid (no 404 risk) → rollback is "revert this commit" rather than "flip a flag". Re-introducible as a small follow-up if multi-tenant rollout becomes a real concern. |
-| Pilot-Rollout (1 tenant manual → 1 week sentry → global) | ❌ **N/A** | Same as above. |
+| Tenant-Setting Bool (default false) | ❌ **Deferred** | Per-tenant staged rollout remains deferred. 2026-06-07 hardening added global `METHOD_AWARE_ROUTES_DISABLED=true` as an operational kill-switch for the redirect layer. |
+| Pilot-Rollout (1 tenant manual → 1 week sentry → global) | ❌ **N/A** | Still not applicable until the tenant-scoped flag exists. The global switch covers rollback, not tenant-by-tenant rollout. |
 | Setting registered in feature-flags.ts | ❌ **N/A** | Same as above. |
 
-**Severity assessment for the deferred flag:** Low. The feature is bounded in blast radius (canonical URLs always work; only the URL-bar cosmetics differ), and the production tenant fleet is currently size 1. Acceptable deviation for QA approval.
+**Severity assessment for the deferred tenant flag:** Low. The feature is bounded in blast radius (canonical URLs always work; only the URL-bar cosmetics differ), the production tenant fleet is currently size 1, and the global kill-switch can disable redirects without a code revert.
 
 #### ST-10 — Playwright E2E
 | AC | Status | Notes |
@@ -650,22 +649,22 @@ Edge probes: `/projects/totally-not-uuid/backlog` → 307 ✅. `/projects/<uuid>
 
 | Severity | ID | Finding | Status |
 |---|---|---|---|
-| Medium | M1 | Feature-flag `method_aware_routes` (spec § ST-09) deferred — no per-tenant kill-switch for staged rollout. | **Documented deviation** in Implementation Notes § Phase 5. Mitigation: canonical URLs stay valid, rollback = `git revert <commit>`. Single-tenant pilot context makes this acceptable. Tracked as deferred. |
-| Low | L1 | Sentry breadcrumb on 308 is `console.info` only (no structured `Sentry.addBreadcrumb` event). | **Documented** as deferred in Phase 5. Vercel runtime logs + Sentry transport pick up the line. Upgrade path is straightforward (1-line change) when monitoring needs grow. |
+| Low | M1 | Tenant feature-flag `method_aware_routes` (spec § ST-09) deferred — no per-tenant staged rollout. | **Documented deviation** in Implementation Notes § Phase 5. Mitigation improved on 2026-06-07: global `METHOD_AWARE_ROUTES_DISABLED=true` kill-switch disables the redirect layer; canonical URLs stay valid. |
+| Low | L1 | Sentry breadcrumb on 308 was `console.info` only. | **Closed 2026-06-07** with structured `Sentry.addBreadcrumb`; console log remains only as fallback. |
 | Low | L2 | Logged-in Playwright fixture absent → live 308-redirect path not E2E-tested in browser; only via Vitest. | **Pre-existing limitation** of the project's E2E setup (matches PROJ-23 spec). Routing helper has 98 unit-test cases covering the redirect logic. Worth a separate "wire-up Playwright auth fixture" follow-up if E2E confidence is desired across all features. |
 | Info | I1 | Routes `abhaengigkeiten` and `governance` already existed before PROJ-28; spec implementation only added `arbeitspakete`, `phasen`, `releases`. | **Confirmed correct** — pre-existing routes from PROJ-7. The spec doc accidentally implied these would be added; reality is they were already in place. No defect. |
 | Info | I2 | All 33 pre-existing Supabase advisor warnings remain (function_search_path_mutable × 3, security_definer × 30, auth_leaked_password_protection). | **Pre-existing**, unrelated to PROJ-28. Tracked under their original specs. |
 
 ### Production-ready decision
 
-**READY** — no Critical or High bugs. The Medium finding (M1, deferred feature flag) is an explicitly documented deviation with a clear rollback story (`git revert` on the 8-commit chain). The Low findings (L1, L2) are pre-existing infrastructural limitations, not PROJ-28 defects.
+**READY** — no Critical or High bugs. The remaining tenant-scoped feature flag gap is an explicitly documented low-severity deviation with a global kill-switch fallback. Logged-in E2E remains the only meaningful deferred validation gap.
 
 All 10 acceptance-criterion blocks pass at the level appropriate for the deferred items (ST-09 explicitly deferred per V1 scope; ST-10 partial pending logged-in fixture). 530/530 vitest cases pass; 38/38 playwright cases pass; 17/17 live route probes pass; 0 new Supabase advisors; build green.
 
 Suggested next:
 1. **`/deploy`** when ready — no blockers.
 2. Optional follow-up: wire a logged-in Playwright fixture to make ST-10 fully green for PROJ-28 + retroactive uplift of PROJ-23/PROJ-22/PROJ-18 specs (separate spec, ~1 day).
-3. Optional follow-up: re-introduce `method_aware_routes` tenant flag if/when multi-tenant rollout becomes real — small follow-up (≤ 1 hour: `tenant_settings.feature_flags` JSONB + middleware short-circuit).
+3. Optional follow-up: introduce a tenant-scoped `method_aware_routes` flag if/when multi-tenant rollout becomes real; the global kill-switch already covers emergency rollback.
 
 ## Deployment
 
@@ -675,8 +674,8 @@ Suggested next:
 - **DB migration applied to live Supabase:** ✅ none — PROJ-28 has zero DB schema delta
 - **Git tag:** `v1.25.0-PROJ-28`
 - **Deviations:**
-  - Feature-Flag `method_aware_routes` (spec § ST-09) **deferred** — single-tenant pilot, canonical URLs stay valid → rollback = `git revert`. Documented in Implementation Notes § Phase 5 + QA M1.
-  - Sentry breadcrumb on 308 redirect uses `console.info` (picked up by Vercel/Sentry transport) instead of structured `Sentry.addBreadcrumb` — 1-line upgrade when monitoring needs grow.
+  - Tenant-scoped Feature-Flag `method_aware_routes` (spec § ST-09) **deferred** — single-tenant pilot, canonical URLs stay valid. 2026-06-07 hardening added global `METHOD_AWARE_ROUTES_DISABLED=true` for emergency rollback of the proxy redirect layer.
+  - Sentry breadcrumb deviation closed 2026-06-07 via structured `Sentry.addBreadcrumb`; runtime `console.info` remains as fallback.
 - **Post-deploy verification:**
   - 6 project sub-routes live (canonical: `backlog`, `planung`, `abhaengigkeiten`, `governance`; aliases: `arbeitspakete`, `phasen`, `releases`) — all 307-gate to `/login` for unauthenticated probes ✅
   - Vercel build green, no runtime errors
