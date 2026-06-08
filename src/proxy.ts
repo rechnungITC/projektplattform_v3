@@ -1,6 +1,8 @@
 import { createServerClient } from "@supabase/ssr"
+import * as Sentry from "@sentry/nextjs"
 import { type NextRequest, NextResponse } from "next/server"
 
+import { areMethodAwareRoutesDisabled } from "@/lib/operation-mode"
 import { resolveMethodAwareRedirect } from "@/lib/method-templates/routing"
 import { updateSession } from "@/lib/supabase/middleware"
 import { PROJECT_METHODS, type ProjectMethod } from "@/types/project-method"
@@ -49,6 +51,27 @@ async function fetchProjectMethod(
   }
 }
 
+interface MethodAwareRedirectBreadcrumbData {
+  from_slug: string
+  to_slug: string
+  method: ProjectMethod | null
+  project_id: string
+  section_id: string
+}
+
+function recordMethodAwareRedirectBreadcrumb(
+  data: MethodAwareRedirectBreadcrumbData,
+) {
+  Sentry.addBreadcrumb({
+    category: "navigation.method_aware_redirect",
+    message: "PROJ-28 method-aware redirect",
+    level: "info",
+    data,
+  })
+
+  console.info("[PROJ-28] method-aware redirect", JSON.stringify(data))
+}
+
 /**
  * Routing middleware (Next.js 16 Proxy).
  *
@@ -75,6 +98,7 @@ export async function proxy(request: NextRequest) {
 
   const projectId = match[1]
   if (!UUID_RE.test(projectId)) return sessionResponse
+  if (areMethodAwareRoutesDisabled()) return sessionResponse
 
   const method = await fetchProjectMethod(request, projectId)
   if (method === undefined) return sessionResponse
@@ -87,16 +111,13 @@ export async function proxy(request: NextRequest) {
   )
   if (!redirect) return sessionResponse
 
-  console.info(
-    "[PROJ-28] method-aware redirect",
-    JSON.stringify({
-      from_slug: redirect.fromSlug,
-      to_slug: redirect.toSlug,
-      method,
-      project_id: projectId,
-      section_id: redirect.sectionId,
-    }),
-  )
+  recordMethodAwareRedirectBreadcrumb({
+    from_slug: redirect.fromSlug,
+    to_slug: redirect.toSlug,
+    method,
+    project_id: projectId,
+    section_id: redirect.sectionId,
+  })
 
   return NextResponse.redirect(
     new URL(redirect.destination, request.url),

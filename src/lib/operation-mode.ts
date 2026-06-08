@@ -1,10 +1,11 @@
 /**
  * PROJ-3 — operation-mode and AI-block configuration.
  *
- * Two server-side env switches that shape deployment topology:
+ * Server-side env switches that shape deployment topology:
  *
- *   OPERATION_MODE         "shared" | "standalone"   (default: "shared")
- *   EXTERNAL_AI_DISABLED   "true"   | anything else  (default: false)
+ *   OPERATION_MODE                  "shared" | "standalone"   (default: "shared")
+ *   EXTERNAL_AI_DISABLED            "true"   | anything else  (default: false)
+ *   METHOD_AWARE_ROUTES_DISABLED    "true"   | anything else  (default: false)
  *
  * Read at boot in server components / route handlers; the resolved value is
  * passed down to client components as plain props (we don't expose either
@@ -45,6 +46,18 @@ export function isStandalone(): boolean {
  */
 export function isExternalAIBlocked(): boolean {
   return process.env.EXTERNAL_AI_DISABLED?.trim().toLowerCase() === "true"
+}
+
+/**
+ * PROJ-28 global kill-switch for method-aware project-room redirects.
+ * Defaults to the deployed behaviour (redirects enabled); setting the env
+ * var to the literal string "true" disables only the proxy redirect layer,
+ * while canonical and alias route folders remain reachable.
+ */
+export function areMethodAwareRoutesDisabled(): boolean {
+  return (
+    process.env.METHOD_AWARE_ROUTES_DISABLED?.trim().toLowerCase() === "true"
+  )
 }
 
 /**

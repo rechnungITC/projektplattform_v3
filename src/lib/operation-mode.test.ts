@@ -1,6 +1,7 @@
 import { afterEach, beforeEach, describe, expect, it } from "vitest"
 
 import {
+  areMethodAwareRoutesDisabled,
   getOperationMode,
   getOperationModeSnapshot,
   isExternalAIBlocked,
@@ -10,18 +11,28 @@ import {
 describe("operation-mode", () => {
   let originalMode: string | undefined
   let originalAi: string | undefined
+  let originalMethodAwareRoutesDisabled: string | undefined
 
   beforeEach(() => {
     originalMode = process.env.OPERATION_MODE
     originalAi = process.env.EXTERNAL_AI_DISABLED
+    originalMethodAwareRoutesDisabled =
+      process.env.METHOD_AWARE_ROUTES_DISABLED
     delete process.env.OPERATION_MODE
     delete process.env.EXTERNAL_AI_DISABLED
+    delete process.env.METHOD_AWARE_ROUTES_DISABLED
   })
   afterEach(() => {
     if (originalMode === undefined) delete process.env.OPERATION_MODE
     else process.env.OPERATION_MODE = originalMode
     if (originalAi === undefined) delete process.env.EXTERNAL_AI_DISABLED
     else process.env.EXTERNAL_AI_DISABLED = originalAi
+    if (originalMethodAwareRoutesDisabled === undefined) {
+      delete process.env.METHOD_AWARE_ROUTES_DISABLED
+    } else {
+      process.env.METHOD_AWARE_ROUTES_DISABLED =
+        originalMethodAwareRoutesDisabled
+    }
   })
 
   describe("getOperationMode", () => {
@@ -82,6 +93,26 @@ describe("operation-mode", () => {
       expect(isExternalAIBlocked()).toBe(false)
       process.env.EXTERNAL_AI_DISABLED = "true"
       expect(isExternalAIBlocked()).toBe(true)
+    })
+  })
+
+  describe("areMethodAwareRoutesDisabled", () => {
+    it("defaults to false so deployed routing stays enabled", () => {
+      expect(areMethodAwareRoutesDisabled()).toBe(false)
+    })
+
+    it("disables redirects only on the literal string 'true'", () => {
+      process.env.METHOD_AWARE_ROUTES_DISABLED = "true"
+      expect(areMethodAwareRoutesDisabled()).toBe(true)
+      for (const value of ["", "1", "yes", "false", "tru"]) {
+        process.env.METHOD_AWARE_ROUTES_DISABLED = value
+        expect(areMethodAwareRoutesDisabled()).toBe(false)
+      }
+    })
+
+    it("is case-insensitive and trimmed", () => {
+      process.env.METHOD_AWARE_ROUTES_DISABLED = " TRUE "
+      expect(areMethodAwareRoutesDisabled()).toBe(true)
     })
   })
 

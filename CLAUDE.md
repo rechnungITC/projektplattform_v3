@@ -149,7 +149,7 @@ Strukturierte Ergebnisse (kein loser Brainstorm): Findings, Requirements, User S
 <!-- gitnexus:start -->
 # GitNexus — Code Intelligence
 
-This project is indexed by GitNexus as **projektplattform_v3** (21529 symbols, 32464 relationships, 300 execution flows). Use the GitNexus MCP tools to understand code, assess impact, and navigate safely.
+This project is indexed by GitNexus as **projektplattform_v3** (22217 symbols, 33320 relationships, 300 execution flows). Use the GitNexus MCP tools to understand code, assess impact, and navigate safely.
 
 > If any GitNexus tool warns the index is stale, run `npx gitnexus analyze` in terminal first.
 
