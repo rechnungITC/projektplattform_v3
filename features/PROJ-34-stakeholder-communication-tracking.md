@@ -1071,6 +1071,8 @@ UI-Slice für PROJ-34-ε, schließt die Backend-Slices α/β/γ/δ visuell ab.
 
 ## QA Test Results — 34-ε (2026-05-13)
 
+**Bookkeeping note (2026-06-07):** This QA block is historical and predates the 2026-05-31 status closure. F-9 audit-restore is live in production per the spec header and `features/INDEX.md`; the PARTIAL/F-9 rows below are retained as original QA evidence, not as current open defects.
+
 Geprüft gegen AC-13/14/15/16/17 mit Fokus auf Class-3-Defense-in-Depth, RLS, DSGVO-Cascade und der State-Maschine `draft → accepted/rejected/modified`.
 
 ### Acceptance Criteria (ε)
@@ -1135,7 +1137,6 @@ Alle 5 AC funktional erfüllt; Core State-Maschine `draft → accepted/rejected/
 **Empfehlung Fix-Priorität:**
 1. **F-9** (5 LOC Migration) vor nächstem Production-Snapshot — Compliance-Hygiene
 2. F-10 (PROJ-61 test cleanup) ist PROJ-61-Scope, kein ε-blocker
-
 
 
 

@@ -2,10 +2,14 @@
 
 ## Status: Deployed (36-Pre + 36-α + 36-γ live; 36-β absorbed by PROJ-9-R2)
 **Created:** 2026-05-03
-**Last Updated:** 2026-05-04 (36-γ Frontend Tree-View + WBS-Code-Edit-Dialog + View-Toggle + Indent/Outdent shipped; 820 vitest tests green; lint clean; build green)
+**Last Updated:** 2026-06-07 (bookkeeping cleanup: legacy 36-β references are historical only; 36-β was absorbed by PROJ-9-R2 and is not an open PROJ-36 follow-up)
 
 ## Origin
 Diese Spec entstand aus einem CIA-Review (2026-05-03) zur User-Anfrage „Wasserfall-Modell wie MS Project". Die Architektur-Grundlage liegt in **ADR-004** ([`docs/decisions/project-phase-workpackage-todo-hierarchy.md`](../docs/decisions/project-phase-workpackage-todo-hierarchy.md)). Single-Responsibility: nur **WBS-/Tree-/Roll-up-Schicht** auf dem von PROJ-9-Round-2 gelieferten Hierarchie- und Dependency-Backbone. Gantt-Interaktion und Critical-Path sind explizit Out-of-Scope (PROJ-25).
+
+## Bookkeeping Status
+
+Legacy design sections below still describe the originally planned 36-β dependency migration and 36c virtualization follow-up. They are historical context, not current open scope: the dependency backbone shipped through PROJ-9-R2, and 36-γ shipped the Tree-View with `react-arborist`. `features/INDEX.md` is the authoritative closure row for PROJ-36.
 
 ## Dependencies
 - Requires: **PROJ-9 Round 2** (Work Item Metamodel) — liefert `outline_path`, `sequence_in_parent`, erweiterte `ALLOWED_PARENT_KINDS` und die polymorphe `dependencies`-Tabelle als Schema-Backbone.
@@ -581,16 +585,14 @@ Begründung Reihenfolge: 36-α ist additiv und niedrig-Risiko, etabliert die ltr
   - 0 neue PROJ-36-α-class warnings nach Lockdown
   - `extension_in_public` für ltree wird als bekannt-akzeptierter WARN dokumentiert (Tooling-Konvention; ltree-Operatoren `@>`/`<@` würden bei Schema-Move zusätzlichen `search_path`-Aufwand bedeuten — Out-of-Scope)
 
-**Open für Phase 36-β:**
-- Polymorphe `dependencies`-Tabelle (alte droppen, neue anlegen, Daten-Migration mit `kind→type`-Mapping).
-- 3 ON-DELETE-Cascade-Trigger auf `projects`/`phases`/`work_items`.
-- Composite-CASE-Trigger für FK-Validation + Cycle-Detection-CTE.
+**Historisch — Phase 36-β:**
+- Nicht mehr offen in PROJ-36. Die polymorphe `dependencies`-Tabelle, ON-DELETE-Cleanup und FK-/Cycle-Backbone wurden durch PROJ-9-R2 absorbiert.
 
-**Open für Phase 36-γ:**
+**Closed durch Phase 36-γ:**
 - Tree-View + View-Toggle in `/projects/[id]/arbeitspakete`.
 - Indent/Outdent UI.
-- WBS-Code-Inline-Edit + Regenerate-Confirm-Dialog.
-- Drawer-Anzeige für `outline_path`-Tiefe + WBS-Code.
+- WBS-Code-Edit-Dialog + Reset-to-auto.
+- Anzeige von WBS-/Roll-up-Werten in der Work-Item-Oberfläche.
 
 ### Phase 36-α RE-DEPLOY (`/backend` + Hotfix, 2026-05-04)
 
@@ -630,7 +632,7 @@ Begründung Reihenfolge: 36-α ist additiv und niedrig-Risiko, etabliert die ltr
 **Frontend-Re-Aktivierung:**
 - `src/hooks/use-work-items.ts` — SELECT erweitert um die 6 α-Spalten. Errorhandling-Differenzierung (42P01 schlucken, alles andere `setError`) bleibt bestehen als dauerhafte Drift-Defense.
 - `src/app/api/projects/[id]/work-items/[wid]/route.ts` — 503 `wbs_unavailable`-Mapper entfernt; ein 42703 ist ab jetzt ein echter Fehler, der gemeldet werden soll.
-- `features/INDEX.md` PROJ-36-Status korrigiert auf „Deployed (α re-deployed 2026-05-04 + γ live, β deferred)".
+- `features/INDEX.md` PROJ-36-Status später finalisiert auf „Deployed (36-Pre + 36-α + 36-γ live; 36-β absorbed by PROJ-9-R2)".
 
 **Folge-Story (CIA-Empfehlung E1, neue PROJ-42):** Schema-Drift-CI-Guard — Pre-Merge-Job, der jeden `.from(...).select(...)` gegen `information_schema.columns` der Shadow-DB checkt. Verhindert die nächste Inkarnation dieses Drift-Bugs.
 

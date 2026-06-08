@@ -1,6 +1,6 @@
 # PROJ-67 - Codebase Review Quality Hardening
 
-## Status: In Progress (AC-4 + AC-5 closed 2026-05-30; AC-8 closed 2026-05-31; AC-1/2/3/6/7 pending)
+## Status: In Progress (AC-4 + AC-5 closed 2026-05-30; AC-8 closed 2026-05-31; AC-1/2/3/6/7/9 pending — F9/AC-9 added 2026-06-08 from PROJ-70-ε QA F-4 INFO)
 
 **Created:** 2026-05-28
 **Origin:** Codebase Review 2026-05-28
@@ -39,6 +39,7 @@ Dieses PROJ bündelt diese Review-Funde als Hardening-Slice. Ziel ist nicht, neu
 | F6 | Low/Medium | Schema QA | `npm run check:schema-drift` lokal ohne `DATABASE_URL` nicht ausführbar. |
 | F7 | Low/Medium | Tooling | `gitnexus query` meldet FTS-Index-Writeversuch auf read-only DB und liefert keine belastbaren Query-Ergebnisse. |
 | F8 | Low | Hygiene | 23 `eslint-disable`-Treffer in `src`; Review/Reduktion sinnvoll. |
+| F9 | Info | E2E Infra | Graph-Deep-Link-Specs (Herkunft: PROJ-70-ε QA-Finding "F-4 INFO", 2026-06-08) müssen aktuell seriell laufen: bei parallelen Playwright-Workern erzeugt der webServer-First-Compile Contention und sporadische Timeouts. Mit `--workers=1` ergibt sich 25 passed / 5 skipped / 0 failed. Kandidat fürs CI-Hardening — **nicht** blind die Playwright-Config global auf `workers: 1` setzen (würde die gesamte Suite verlangsamen); Ziel ist eine gezielte Lösung (z. B. nur die betroffenen Deep-Link-Specs serialisieren oder den Dev-Server vor der Suite warm kompilieren). |
 
 ## Acceptance Criteria
 
@@ -50,6 +51,7 @@ Dieses PROJ bündelt diese Review-Funde als Hardening-Slice. Ziel ist nicht, neu
 - [ ] AC-6: `npm run check:schema-drift` hat einen dokumentierten lokalen Pfad mit frischer Shadow-DB oder ein klares Runbook mit `DATABASE_URL`-Setup.
 - [ ] AC-7: `gitnexus query` funktioniert ohne ReadOnly-FTS-Warnungen und liefert wieder Prozess-/Symboltreffer.
 - [x] AC-8: Alle `eslint-disable`-Treffer in `src` sind entweder entfernt oder mit knapper Begründung und Owner-Entscheidung bestätigt. **Erledigt 2026-05-31** — `rg -n "eslint-disable" src` zeigt 23 Treffer in 19 Files; vier fehlende Inline-Begründungen ergänzt (`EditWbsCodeDialog`, `BacklogClient`, `CreateWorkItemLinkDialog`, `BacklogTree`), die übrigen 19 Treffer hatten bereits knappe Owner-Entscheidungen.
+- [ ] AC-9 (F9): Die Graph-Deep-Link-E2E-Specs laufen ohne globalen `workers: 1`-Zwang zuverlässig — entweder durch gezielte Serialisierung nur der betroffenen Specs oder durch Warm-Compile des Dev-Servers vor der Suite. Dokumentierter Kandidat aus PROJ-70-ε QA-Finding F-4 INFO (2026-06-08); noch nicht umgesetzt.
 
 ## Non-Goals
 
@@ -76,6 +78,10 @@ Dieses PROJ bündelt diese Review-Funde als Hardening-Slice. Ziel ist nicht, neu
    - `next`, `postcss`, `resend`, `svix`, `uuid`, `ws`, `brace-expansion` kontrolliert aktualisieren.
 6. Schema-Drift-Local-Runbook ergänzen.
 7. GitNexus Query-ReadOnly-Problem beheben oder upstream/workaround dokumentieren.
+8. Graph-Deep-Link-E2E-Serialisierung (F9) gezielt lösen:
+   - Reproduktion: `npm run test:e2e -- tests/PROJ-70-epsilon-wizard.spec.ts` parallel vs. `--workers=1`.
+   - Bevorzugt: nur die betroffenen Specs serialisieren (`test.describe.configure({ mode: 'serial' })` bzw. Projekt-spezifisches `workers`-Setting) oder den Dev-Server vor der Suite warm kompilieren.
+   - **Nicht** die globale Playwright-Config blind auf `workers: 1` setzen.
 
 ## QA Plan
 
