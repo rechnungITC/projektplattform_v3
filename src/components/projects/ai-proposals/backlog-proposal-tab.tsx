@@ -709,7 +709,11 @@ export function BacklogProposalTab({
             rowHeight={56}
             indent={20}
             width="100%"
-            height={Math.min(480, Math.max(160, treeData.length * 80))}
+            // PROJ-85 F-ε1 — size the viewport to the TOTAL node count
+            // (all draft rows incl. nested children), not just the root
+            // count. A single-root backlog (1 epic + nested stories/tasks)
+            // previously got a 160px viewport that clipped most rows.
+            height={Math.min(480, Math.max(160, drafts.length * 56))}
             // PROJ-70-δ — native react-arborist DnD (Lock Q3).
             disableDrag={busy || editingTempId !== null}
             disableDrop={({ parentNode, dragNodes }) => {

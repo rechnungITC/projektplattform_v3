@@ -25,21 +25,41 @@ import { z } from "zod"
 import type {
   AIProvider,
   CoachingGenerationRequest,
+  CrossProjectLinksGenerationRequest,
   NarrativeGenerationRequest,
   ProposalFromContextGenerationRequest,
   ResourceSwapGenerationRequest,
   RiskGenerationRequest,
   SentimentGenerationRequest,
+  TrajectorySequenceGenerationRequest,
 } from "./types"
 import type {
   CoachingGenerationOutput,
   CoachingKind,
+  CrossProjectLinksGenerationOutput,
   NarrativeGenerationOutput,
   ProposalFromContextGenerationOutput,
   ResourceSwapGenerationOutput,
   RiskGenerationOutput,
   SentimentGenerationOutput,
+  TrajectorySequenceGenerationOutput,
 } from "../types"
+// PROJ-85 — Class-2 advisory graph purposes for tenant-local Ollama. We
+// reuse the SHARED schemas/prompts/mappers (battle-tested by the
+// AnthropicProvider) rather than Ollama-local variants: trajectory +
+// cross-links are structured-reasoning purposes where the shared prompt
+// already produces compatible output, and reusing it keeps the matrix
+// honest (no drift between cloud + local output shapes).
+import {
+  buildCrossProjectLinksPrompt,
+  buildTrajectorySequencePrompt,
+  CROSS_PROJECT_LINKS_SYSTEM_PROMPT,
+  CrossProjectLinksResponseSchema,
+  mapCrossProjectLinksSuggestions,
+  mapTrajectorySequenceSuggestions,
+  TRAJECTORY_SEQUENCE_SYSTEM_PROMPT,
+  TrajectorySequenceResponseSchema,
+} from "./graph-purpose-prompts"
 
 // ---------------------------------------------------------------------------
 // Risk-suggestion schema + prompt (identical to AnthropicProvider so that
@@ -856,6 +876,75 @@ export class OllamaProvider implements AIProvider {
         description: s.description ?? null,
         confidence: s.confidence,
       })),
+      usage: {
+        input_tokens: usage?.inputTokens ?? null,
+        output_tokens: usage?.outputTokens ?? null,
+        latency_ms: Date.now() - start,
+      },
+    }
+  }
+
+  /**
+   * PROJ-85 — trajectory-sequence generation via tenant-local Ollama.
+   *
+   * Closes the capability gap where a tenant using Ollama for Class-1/2
+   * data requested trajectory suggestions and the router silently fell
+   * back to the StubProvider. Reuses the shared schema/prompt/mapper so
+   * the local output shape matches the cloud providers'.
+   */
+  async generateTrajectorySequence(
+    request: TrajectorySequenceGenerationRequest,
+  ): Promise<TrajectorySequenceGenerationOutput> {
+    const start = Date.now()
+    const result = await generateObject({
+      model: this.sdkProvider(this.modelId),
+      schema: TrajectorySequenceResponseSchema,
+      system: TRAJECTORY_SEQUENCE_SYSTEM_PROMPT,
+      prompt: buildTrajectorySequencePrompt(request),
+      temperature: 0.2,
+    })
+
+    const usage = result.usage as
+      | { inputTokens?: number; outputTokens?: number }
+      | undefined
+
+    return {
+      suggestions: mapTrajectorySequenceSuggestions(result.object.suggestions),
+      usage: {
+        input_tokens: usage?.inputTokens ?? null,
+        output_tokens: usage?.outputTokens ?? null,
+        latency_ms: Date.now() - start,
+      },
+    }
+  }
+
+  /**
+   * PROJ-85 — cross-project-links generation via tenant-local Ollama.
+   * Same gap-close + shared-schema rationale as
+   * `generateTrajectorySequence`. The mapper filters hallucinated work-item
+   * ids against the request's known ids (defense-in-depth).
+   */
+  async generateCrossProjectLinks(
+    request: CrossProjectLinksGenerationRequest,
+  ): Promise<CrossProjectLinksGenerationOutput> {
+    const start = Date.now()
+    const result = await generateObject({
+      model: this.sdkProvider(this.modelId),
+      schema: CrossProjectLinksResponseSchema,
+      system: CROSS_PROJECT_LINKS_SYSTEM_PROMPT,
+      prompt: buildCrossProjectLinksPrompt(request),
+      temperature: 0.2,
+    })
+
+    const usage = result.usage as
+      | { inputTokens?: number; outputTokens?: number }
+      | undefined
+
+    return {
+      suggestions: mapCrossProjectLinksSuggestions(
+        result.object.suggestions,
+        request,
+      ),
       usage: {
         input_tokens: usage?.inputTokens ?? null,
         output_tokens: usage?.outputTokens ?? null,
