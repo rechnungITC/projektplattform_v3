@@ -82,6 +82,11 @@ The product thesis: enterprise projects fail at the seams between execution, gov
 | PROJ-73 | P2 | Mehr Context-Source-Formate (PPTX, XLSX, MD, EML) — PROJ-44 listet diese als Zielquellen; γ deckt nur PDF+DOCX. CIA-Followup. | Planned (Followup) |
 | PROJ-74 | P1 | Supply-Chain-Audit-CI — `npm audit --omit=dev` + Snyk-CI als Required-Check analog PROJ-42 Schema-Drift-Guard. CIA-Followup; Hygiene-Slice analog PROJ-29. | Planned (Followup) |
 | PROJ-75 | P1 | Class-3-Re-Classification nach Parse — `detectClass3Markers` läuft auf 8000-char-Excerpt; Original-PDF kann mehr PII enthalten. CIA-Followup mit DSGVO-Implikation. | Planned (Followup) |
+| PROJ-86 | P1 | Class-3-Klassifizierer DE-False-Positive-Fix — `NAME_PATTERN` matcht jedes deutsche Großschreib-Bigramm → jedes DE-Dokument fälschlich Class-3 → Cloud gesperrt → Stub → 0 Vorschläge (live belegt: 9/9 Prod-Läufe). Fix: anrede-/label-gebundene Namenserkennung, Email/Phone behalten, Defense-in-depth bleibt. Entsperrt PROJ-70. Sicherheitsrelevant/DSGVO. | Planned |
+| PROJ-87 | P1 | AIProposalDrawer Surfacing in Backlog + Gantt — KI-Backlog-Einstieg dort, wo PMs arbeiten, statt nur im Trajektorien-Graphen. Reuse PROJ-70-Routen, kein neuer Backend-Code. | Planned |
+| PROJ-88 | P1 | KI-Stakeholder-Vorschläge aus Kontext — `proposal_stakeholders_from_context`: Stakeholder aus Kickoff → Resource/Project-Member + Rolle (PROJ-57-Brücke). Class-3 → Ollama-only by design. Geschwister von PROJ-70. | Planned |
+| PROJ-89 | P1 | KI-Risiko-Vorschläge aus Kontext — `proposal_risks_from_context`: Risiken AUS dem Kickoff-Dokument (Abgrenzung zu PROJ-12 `risks`). Class-2-fähig → Cloud. Persistiert in PROJ-20. Geschwister von PROJ-70. | Planned |
+| PROJ-90 | P1 | Orchestrierter „Projekt befüllen" — Multi-Tab Generate-All + Accept-All über Backlog/Stakeholder/Risiken nach Wizard-Finalize; methoden-adäquat in bestehende Strukturen, 30s-Undo, auditierbar. Implementiert „Generate-All + Accept-All" (kein stilles Mutieren). Epic-Klammer über PROJ-87/88/89. | Planned |
 
 ### Recommended Delivery Sequence — Assistant Track
 
