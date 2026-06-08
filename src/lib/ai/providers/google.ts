@@ -25,13 +25,33 @@ import { z } from "zod"
 
 import type {
   AIProvider,
+  CrossProjectLinksGenerationRequest,
   NarrativeGenerationRequest,
+  ProposalFromContextGenerationRequest,
   RiskGenerationRequest,
+  TrajectorySequenceGenerationRequest,
 } from "./types"
 import type {
+  CrossProjectLinksGenerationOutput,
   NarrativeGenerationOutput,
+  ProposalFromContextGenerationOutput,
   RiskGenerationOutput,
+  TrajectorySequenceGenerationOutput,
 } from "../types"
+import {
+  buildCrossProjectLinksPrompt,
+  buildProposalFromContextPrompt,
+  buildTrajectorySequencePrompt,
+  CROSS_PROJECT_LINKS_SYSTEM_PROMPT,
+  CrossProjectLinksResponseSchema,
+  mapCrossProjectLinksSuggestions,
+  mapProposalFromContextSuggestions,
+  mapTrajectorySequenceSuggestions,
+  PROPOSAL_FROM_CONTEXT_SYSTEM_PROMPT,
+  ProposalFromContextResponseSchema,
+  TRAJECTORY_SEQUENCE_SYSTEM_PROMPT,
+  TrajectorySequenceResponseSchema,
+} from "./graph-purpose-prompts"
 
 const DEFAULT_GOOGLE_MODEL = "gemini-2.0-flash-exp"
 
@@ -196,6 +216,84 @@ export class GoogleProvider implements AIProvider {
       | undefined
     return {
       text: result.object.text,
+      usage: {
+        input_tokens: usage?.inputTokens ?? null,
+        output_tokens: usage?.outputTokens ?? null,
+        latency_ms: Date.now() - start,
+      },
+    }
+  }
+
+  // PROJ-65 ε.4.α — trajectory-sequence (shared schema + prompt).
+  async generateTrajectorySequence(
+    request: TrajectorySequenceGenerationRequest,
+  ): Promise<TrajectorySequenceGenerationOutput> {
+    const start = Date.now()
+    const result = await generateObject({
+      model: this.sdkProvider(this.modelId),
+      schema: TrajectorySequenceResponseSchema,
+      system: TRAJECTORY_SEQUENCE_SYSTEM_PROMPT,
+      prompt: buildTrajectorySequencePrompt(request),
+      temperature: 0.2,
+    })
+    const usage = result.usage as
+      | { inputTokens?: number; outputTokens?: number }
+      | undefined
+    return {
+      suggestions: mapTrajectorySequenceSuggestions(result.object.suggestions),
+      usage: {
+        input_tokens: usage?.inputTokens ?? null,
+        output_tokens: usage?.outputTokens ?? null,
+        latency_ms: Date.now() - start,
+      },
+    }
+  }
+
+  // PROJ-65 ε.4.γ — cross-project-links (shared schema + prompt + filter).
+  async generateCrossProjectLinks(
+    request: CrossProjectLinksGenerationRequest,
+  ): Promise<CrossProjectLinksGenerationOutput> {
+    const start = Date.now()
+    const result = await generateObject({
+      model: this.sdkProvider(this.modelId),
+      schema: CrossProjectLinksResponseSchema,
+      system: CROSS_PROJECT_LINKS_SYSTEM_PROMPT,
+      prompt: buildCrossProjectLinksPrompt(request),
+      temperature: 0.2,
+    })
+    const usage = result.usage as
+      | { inputTokens?: number; outputTokens?: number }
+      | undefined
+    return {
+      suggestions: mapCrossProjectLinksSuggestions(
+        result.object.suggestions,
+        request,
+      ),
+      usage: {
+        input_tokens: usage?.inputTokens ?? null,
+        output_tokens: usage?.outputTokens ?? null,
+        latency_ms: Date.now() - start,
+      },
+    }
+  }
+
+  // PROJ-70-α — proposal-from-context (shared schema + prompt).
+  async generateProposalFromContext(
+    request: ProposalFromContextGenerationRequest,
+  ): Promise<ProposalFromContextGenerationOutput> {
+    const start = Date.now()
+    const result = await generateObject({
+      model: this.sdkProvider(this.modelId),
+      schema: ProposalFromContextResponseSchema,
+      system: PROPOSAL_FROM_CONTEXT_SYSTEM_PROMPT,
+      prompt: buildProposalFromContextPrompt(request),
+      temperature: 0.3,
+    })
+    const usage = result.usage as
+      | { inputTokens?: number; outputTokens?: number }
+      | undefined
+    return {
+      suggestions: mapProposalFromContextSuggestions(result.object.suggestions),
       usage: {
         input_tokens: usage?.inputTokens ?? null,
         output_tokens: usage?.outputTokens ?? null,

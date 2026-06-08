@@ -3585,3 +3585,11 @@ CIA empfahl ursprünglich Defer zu PROJ-67; User entschied bewusst „jetzt mit 
 ### Status
 
 ε.4.γ ist **production-ready**. Backend live in Prod-DB; FE komplett. Awaiting `/deploy`-Tag. **PROJ-65 damit komplett abgeschlossen** — alle vier Slices ε.1 / ε.2 / ε.3 / ε.4 deployed; alle drei ε.4-Sub-Slices α/β/γ jeweils mit eigener Migration + Anthropic/Ollama-Provider + Stub-Fallback + Drawer-Tab + advisory-Accept-Pfad.
+
+## Hotfix 2026-06-08 — Cross-Provider-Parität für `trajectory_sequence` + `cross_project_links`
+
+**Symptom (Prod):** Graph-KI-Vorschläge lieferten beim Tenant mit aktivem **OpenAI**-Provider nichts — nur Fehlermeldung + Stub-Fallback. `ki_runs.error_message`: `Provider openai failed (Provider openai does not implement generateTrajectorySequence); fell back to Stub.`
+
+**Root-Cause:** Die Graph-Methoden (`generateTrajectorySequence`, `generateCrossProjectLinks`) waren nur auf dem Anthropic-Provider + Stub implementiert. Sie lebten als Schema/Prompt/Builder **inline in `anthropic.ts`** — OpenAI/Google hatten nie eine Implementierung. Bei aktivem OpenAI-Provider (Class-1/2) rief `selectProviderForPurpose` korrekt OpenAI, aber die Methode existierte nicht → Throw → Stub-Fallback. API-Key + Guthaben waren intakt (`risks` lief erfolgreich auf `gpt-4o`).
+
+**Fix:** Schemas + System-Prompts + Prompt-Builder + Map-/Filter-Helper nach `src/lib/ai/providers/graph-purpose-prompts.ts` extrahiert (Single Source of Truth gegen genau diese Drift); `generateTrajectorySequence` + `generateCrossProjectLinks` auf OpenAI + Google verdrahtet. Anthropic byte-identisch (nur Import). Cross-Project-Defense-in-Depth-Filter (Trust-but-verify gegen halluzinierte IDs) in `mapCrossProjectLinksSuggestions` geteilt → identische Garantie über alle Provider. Parität-Regressionstest `graph-purpose-prompts.test.ts` (8 Tests). Gates: tsc clean (src/lib/ai), lint 0, `vitest src/lib/ai` 161 grün, build clean.

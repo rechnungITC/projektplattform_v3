@@ -1,6 +1,6 @@
 # PROJ-70: Auto-Generated Backlog from Project Kickoff
 
-## Status: α Approved+Deployed · β Approved+Deployed · γ Approved+Deployed (QA-Pass 2026-06-06: 14/16 AC fully PASS + 2 documented deviations F-1 Medium F-2 LOW; 11/12 security probes blocked; vitest 1654/1654; Playwright 16/16; 0 Critical/0 High → PRODUCTION-READY) · δ **Approved (QA-Pass 2026-06-07: 15/15 AC PASS + 1 documented deviation D-1; H-1/H-2/H-3 in-QA gefixt — β-Accept-RPC war in Prod doppelt kaputt (provenance-CHECK + unkorrelierter Toposort-Subquery), erster echter E2E-Accept überhaupt; vitest 1712/1712; Playwright 22 passed/2 skipped; 0 offene Critical/High → PRODUCTION-READY)** · ε **In Progress (FE + Backend gebaut 2026-06-08: konditionaler ki_backlog-Step + Deep-Link-Handoff + Finalize-context_source-attach + AC-ε8 LIST_SELECT-File-Spalten; AC-ε1/ε3/ε4/ε5/ε6/ε8 ✅ — Finalize-attach + LIST_SELECT live gegen Prod verifiziert; vitest 1728/1728, lint 0, build clean; nur AC-ε7 Live-E2E → /qa offen)**
+## Status: α Approved+Deployed · β Approved+Deployed · γ Approved+Deployed (QA-Pass 2026-06-06: 14/16 AC fully PASS + 2 documented deviations F-1 Medium F-2 LOW; 11/12 security probes blocked; vitest 1654/1654; Playwright 16/16; 0 Critical/0 High → PRODUCTION-READY) · δ **Approved (QA-Pass 2026-06-07: 15/15 AC PASS + 1 documented deviation D-1; H-1/H-2/H-3 in-QA gefixt — β-Accept-RPC war in Prod doppelt kaputt (provenance-CHECK + unkorrelierter Toposort-Subquery), erster echter E2E-Accept überhaupt; vitest 1712/1712; Playwright 22 passed/2 skipped; 0 offene Critical/High → PRODUCTION-READY)** · ε **Approved (QA-Pass 2026-06-08: 8/8 AC PASS inkl. AC-ε7 Live-E2E + AC-ε2-Deviation; 1 LOW-Finding F-ε1 single-root-Tree-Viewport; vitest 1736/1736; PROJ-70 Playwright 25 passed/5 skipped serial; 0 Critical/0 High → PRODUCTION-READY)** — **PROJ-70 KOMPLETT über alle 5 Slices**
 **Created:** 2026-05-31
 **Last Updated:** 2026-06-01
 **α-Slice deployed:** 2026-06-01 — migration applied to Prod-DB; lint 0 errors; tsc baseline-clean; vitest 1583/1583 (incl. 14 new classifier tests); build 13.7s clean; new API route registered: `/api/projects/[id]/ai/proposal-from-context`
@@ -29,7 +29,7 @@ Diese Spec **ersetzt** die folgenden bisherigen Deferred-Slices durch eine einze
 | PRD-Aussage | Erfüllt durch |
 |---|---|
 | _"AI proposals must be **traceable** (link back to source context)"_ | `ki_provenance` → `context_source_id` |
-| _"AI proposals must be **reviewable** (human accepts/rejects)"_ | Review-Drawer mit Single + Bulk + Edit |
+| _"AI proposals must be **reviewable** (human accepts/rejects)"_ | Review-Drawer mi<br/>t Single + Bulk + Edit |
 | _"Time-to-structure: initial project setup ... < 1 hour"_ | Erfolgs-Metrik (siehe Success Metrics) |
 | _"AI quality: ≥ 70% of AI-derived proposals accepted"_ | Erfolgs-Metrik (siehe Success Metrics) |
 | _"Class-3 hard block — personal data never leaves local LLM path"_ | Class-3-Inputs → Tenant-Ollama-only Routing |
@@ -180,7 +180,7 @@ Diese 5 sind aus dem CIA-Review-Output. Sie sind **nicht-blockierend** für γ �
 - [x] **AC-ε4** (FE: Upload-Fehler im Step mit Retry ✅; Finalize attacht context_source ans neue Projekt ✅ — live-verifiziert): Wizard speichert Draft-State vor KI-Lauf (analog `project_wizard_drafts`); falls KI-Lauf fehlschlägt, kehrt Wizard zur Draft zurück.
 - [x] **AC-ε5**: Toggle "KI-Backlog generieren" im Wizard-Entry-Step (analog F2.1b-Anforderung in PROJ-5).
 - [x] **AC-ε6**: Vitest deckt: wizard-draft-roundtrip, method-hint-passing.
-- [ ] **AC-ε7** (→ /qa Live-E2E): Playwright Smoke: User durchläuft Wizard mit Upload → akzeptiert 5 Vorschläge → Projekt wird angelegt mit 5 work_items + project_method gesetzt.
+- [x] **AC-ε7** (Live-E2E 2026-06-08): Playwright Smoke: User durchläuft Wizard mit Upload → akzeptiert 5 Vorschläge → Projekt wird angelegt mit 5 work_items + project_method gesetzt. *(`tests/PROJ-70-epsilon-wizard.spec.ts` — 3 Layer: UI-Toggle-Gating, Live-Finalize-Attach+Deep-Link-Auto-Gen, Accept-All→5 work_items mit Hierarchie+Methode)*
 
 ## Edge Cases
 
@@ -1716,6 +1716,59 @@ Projekt-Raum Graph (/projects/{id}/graph?aiDrawer=backlog&contextSource={id})
 #### Production-Ready Decision
 
 ✅ **READY** — 15/15 AC PASS (9 δ + 6 δH), 1 dokumentierte Deviation (D-1). H-1/H-2/H-3 gefixt + live re-verifiziert; verbleibende Findings LOW/Infra. **Der Accept-Flow der PROJ-70-Familie funktioniert hiermit zum ersten Mal nachweislich end-to-end in Production.**
+
+## Hotfix 2026-06-08 — Cross-Provider-Parität für `proposal_from_context`
+
+**Symptom (Prod):** KI-Backlog-Generierung lieferte beim Tenant mit aktivem **OpenAI**-Provider keine Vorschläge — `ki_runs` zeigte `status='external_blocked'` + Stub-Fallback. Gleiche Ursache wie bei den Graph-Purposes (siehe PROJ-65-Hotfix).
+
+**Root-Cause:** `generateProposalFromContext` war nur auf dem Anthropic-Provider + Stub implementiert, nicht auf OpenAI/Google. Bei aktivem OpenAI-Provider rief der Router eine nicht existierende Methode auf → Throw → Stub-Fallback (`Provider openai does not implement generateProposalFromContext`). Class-3-Inputs bleiben unverändert auf Ollama geklemmt (Resolver-Clamp).
+
+**Fix:** Schema + System-Prompt + Prompt-Builder + Map-Helper nach `src/lib/ai/providers/graph-purpose-prompts.ts` extrahiert (Single Source of Truth, vorher inline nur in `anthropic.ts` → genau diese Drift). `generateProposalFromContext` jetzt auf OpenAI + Google verdrahtet. Anthropic-Verhalten byte-identisch (nur Import statt Inline). Neuer Parität-Regressionstest `graph-purpose-prompts.test.ts` (8 Tests) failt zur Test-Zeit, falls ein Cloud-Provider eine Graph-Methode wieder verliert. Gates: tsc clean (src/lib/ai), lint 0, `vitest src/lib/ai` 161 grün, build clean.
+
+### ε-Slice QA Pass — 2026-06-08
+
+**Scope:** Wizard-Integration FE (#99) + Backend (#100). Getestet: AC-ε1–ε8 + Security + Regression. Schwerpunkt AC-ε7 Live-E2E (voller Wizard→Upload→Finalize→Deep-Link→Accept→DB-Flow). **Schließt PROJ-70 über alle 5 Slices ab.**
+
+#### Acceptance Criteria Results
+
+| AC | Beschreibung | Evidenz | Ergebnis |
+|---|---|---|---|
+| AC-ε1 | Optionaler ki_backlog-Step nach Methode, vor Review | E2E Layer-1: Toggle aus → 5 Steps; an → 6 Steps, „KI-Backlog" an Position 5 vor Review | ✅ PASS |
+| AC-ε2 | Upload-Zone + Skip; Routing zum Review nach Completion | **Deviation (Q1 Post-Finalize-Handoff, dokumentiert):** Review nach Finalize im echten Projekt-Raum statt im Wizard. Upload-Zone + Skip im Step vorhanden; Deep-Link öffnet Backlog-Drawer + Auto-Gen | ✅ PASS (Deviation) |
+| AC-ε3 | Method-Hint an Router | by-design: Generierung nach Projekt-Erzeugung → Router liest `projects.project_method`; E2E verifiziert scrum-Methode am Projekt + scrum-Kinds akzeptiert | ✅ PASS |
+| AC-ε4 | Draft-State vor KI-Lauf; Fehlerresilienz | FE: Upload-Fehler im Step mit Retry (vitest); BE: Finalize attacht context_source (best-effort + tenant-guard, +6 vitest + Live-Prod-Smoke); E2E: echter Finalize-Call → `context_sources.project_id == neues Projekt` | ✅ PASS |
+| AC-ε5 | Toggle im Entry-Step | E2E: `role=switch name=/KI-Backlog/` schaltet den Step frei | ✅ PASS |
+| AC-ε6 | Vitest: draft-roundtrip + method-hint | `src/types/wizard.test.ts` (7 Cases) + 2 Drift-Tests | ✅ PASS |
+| AC-ε7 | Playwright: Wizard+Upload → 5 akzeptiert → 5 work_items + method | **`tests/PROJ-70-epsilon-wizard.spec.ts`** Layer-3: 5 geseedete proposal_from_context-Drafts → Deep-Link-Drawer → Accept-All („Alle akzeptieren (5)") → DB: 5 work_items, Hierarchie story→epic + task→story intakt, `project_method='scrum'` | ✅ PASS |
+| AC-ε8 | Context-Sources-API gibt File-Spalten zurück | LIST_SELECT erweitert; E2E Layer-2: echte UPLOAD-Response trägt `mime_type`/`original_filename`/`file_size_bytes` | ✅ PASS |
+
+#### Live-E2E Architektur (3 Layer, `tests/PROJ-70-epsilon-wizard.spec.ts`, chromium)
+
+1. **UI-Gating** — Wizard-Toggle fügt den 6. Step ein, Upload-Zone sichtbar (AC-ε1/ε5).
+2. **Live-Handoff** — echter `.eml`-Upload ohne project_id (project_id=null assertiert) → service-role-geseedeter Draft mit `ki_backlog` (Draft-CREATE-Pfad lehnt synthetische E2E-Tenant-ID unter Zod-4-strict-UUID ab, F-3 — der zu testende FINALIZE-Pfad läuft real) → echter Finalize-Call → Projekt mit Methode + `context_sources.project_id` attached → Deep-Link `?aiDrawer=backlog&contextSource=…` öffnet Backlog-Tab + feuert Auto-Generierung (`ki_runs`-Row für proposal_from_context erscheint; Stub-Provider → 0 Vorschläge im Test-Tenant, environment-korrekt).
+3. **Accept** — 5 geseedete Drafts → Deep-Link-Drawer (ohne contextSource, kein Auto-Gen-Interferenz) → Accept-All → 5 work_items mit Hierarchie + Methode.
+
+#### Open Findings (nicht blockierend)
+
+| # | Severity | Befund | Empfehlung |
+|---|---|---|---|
+| F-ε1 | LOW (UX) | Tree-Viewport-Höhe wird aus der **Root**-Knotenzahl abgeleitet; ein Single-Root-Backlog (1 Epic + verschachtelte Kinder) rendert eine kurze, virtualisierte Liste (~4 von 5 Zeilen ohne Scroll im DOM). Accept-All arbeitet auf ALLEN Draft-IDs unabhängig vom Scroll → kein Funktionsverlust. | Viewport-Höhe aus Gesamt-Knotenzahl statt Root-Zahl ableiten — δ/ε-Polish-Kandidat |
+| F-4 | INFO (pre-existing) | Parallele Playwright-Worker auf dem einen Dev-webServer lassen die zwei graph-Deep-Link-Accept-Tests (δ-AC-δ9 + ε-AC-ε7) beim First-Compile von `/graph` timeouten. **Serial (`--workers=1`) = 25 passed/5 skipped/0 failed.** | Kein Produkt-Bug; CI sollte die graph-Specs seriell oder mit webServer-Warmup fahren |
+
+#### Security Audit (Red-Team)
+
+- Upload ohne project_id: Auth-Gate (307/401/403) — durch δ-Spec-Gates abgedeckt, gleiche Route ✅
+- Finalize-Attach Tenant-Scoping: UPDATE mit `.eq("tenant_id", draft.tenant_id).is("project_id", null)` + RLS-Tenant-Membership auf `context_sources` — eine fremde/bereits-zugeordnete Source-ID matcht 0 Zeilen (kein Hijack), Finalize bleibt best-effort 201; Predicates per vitest verifiziert ✅
+- Draft-RLS: Finalize liest Draft nur bei Owner-Match (404 sonst) — bestehende PROJ-5-RLS ✅
+- Project-Insert: RLS gated Tenant-Membership (403 bei Fremd-Tenant) ✅
+
+#### Test Suites
+- vitest **1736/1736**
+- Playwright PROJ-70 (3 Specs, serial): **25 passed / 5 skipped** (Mobile-Safari-Auth by design) / 0 failed
+- Neuer permanenter Regressions-Spec: `tests/PROJ-70-epsilon-wizard.spec.ts`
+
+#### Production-Ready Decision
+✅ **READY** — 8/8 AC PASS (inkl. AC-ε7 Live-E2E), 1 dokumentierte Deviation (AC-ε2 Post-Finalize-Handoff), 0 Critical/0 High. Einziges offenes Finding F-ε1 ist LOW-UX (δ/ε-Polish). **Mit ε ist PROJ-70 über alle 5 Slices α/β/γ/δ/ε komplett — Auto-Generated Backlog from Project Kickoff ist end-to-end produktiv: Upload (PDF/DOCX/TXT/MD/EML/MSG) → KI-Hierarchie → Review mit DnD → Accept zu work_items, auch direkt aus dem Anlage-Wizard.**
 
 ## Deployment
 _To be added by /deploy_
