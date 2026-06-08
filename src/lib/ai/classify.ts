@@ -499,19 +499,35 @@ const EMAIL_PATTERN = /\b[A-Z0-9._%+-]+@[A-Z0-9.-]+\.[A-Z]{2,}\b/i
 const PHONE_PATTERN = /(?:\+49|0049|\b0)[\s\-/().]*\d(?:[\s\-/().]*\d){7,}/
 
 /**
- * DACH-Name-Pattern: two consecutive Capitalised-Word tokens, each ≥ 2
- * chars, allowing `ä/ö/ü/ß` plus simple hyphens (e.g. "Anne-Marie").
- * Whitelist-Filter unten siebt 50+ Common-False-Positives (Project-Phrase,
- * Status-Report, etc.) raus.
+ * PROJ-86 — DACH-Name detection, context-bound instead of shape-bound.
+ *
+ * The previous `NAME_PATTERN` matched ANY two consecutive capitalised words.
+ * Because German capitalises every noun, that fired on ordinary prose
+ * ("Generisches Kickoff-Protokoll", "Google Analytics", "Best Practices"),
+ * so every German document was wrongly upgraded to Class-3 and blocked from
+ * cloud routing. We now require a personal-context trigger immediately
+ * before the capitalised name, which is how real people appear in kickoff
+ * documents:
+ *
+ *   • Salutations / titles — followed by whitespace + a capitalised word:
+ *       Herr Müller · Frau Schmidt · Dr. Weber · Hr./Fr. <Name>
+ *   • Role / contact labels — followed by a COLON + a capitalised word:
+ *       Ansprechpartner: Anne Schmidt · Kontakt: Jörg Müller · Name: …
+ *
+ * The colon is deliberately REQUIRED for label triggers: without it,
+ * "Lead Scoring" / "Name Service" / "Owner Module" would re-introduce the
+ * false positives the salutation form avoids. Capture group 1 is the name
+ * span (1–3 words, umlauts + simple hyphens), checked against the residual
+ * whitelist below.
  */
-const NAME_PATTERN = /\b[A-ZÄÖÜ][a-zäöüß]{2,}(?:[\- ][A-ZÄÖÜ][a-zäöüß]{2,})+\b/
+const NAME_TRIGGER_PATTERN =
+  /(?:\b(?:Herr|Frau|Hr\.|Fr\.|Dr\.)\s+|\b(?:Ansprechpartner|Kontakt|Lead|Owner|Name|Verantwortlich)\s*:\s*)([A-ZÄÖÜ][a-zäöüß]+(?:[- ][A-ZÄÖÜ][a-zäöüß]+){0,2})/
 
 /**
- * Tokens that match `NAME_PATTERN` shape but are NOT personal names. A
- * project-internal whitelist; conservative — adds, never removes.
- *
- * Note: matching is by `pattern.test(token)` against the full matched
- * span, so multi-word tokens like "Status Report" land here as a unit.
+ * Residual whitelist: capitalised spans that follow a trigger but are NOT
+ * personal names (e.g. "Owner: Project Manager"). With the context-bound
+ * `NAME_TRIGGER_PATTERN` this is now rarely hit, but kept as a conservative
+ * second filter on the captured name span; adds, never removes.
  */
 const NAME_FALSE_POSITIVES: ReadonlySet<string> = new Set([
   "Status Report",
@@ -535,25 +551,34 @@ const NAME_FALSE_POSITIVES: ReadonlySet<string> = new Set([
 ])
 
 /**
- * Heuristic Class-3 detector for free-text kickoff content.
+ * Heuristic Class-3 detector for free-text kickoff content (PROJ-70/86).
  *
- * Returns `true` when the content carries email addresses, phone numbers,
- * or capitalised name-shaped tokens that aren't on the false-positive
- * whitelist. False-positives are acceptable (we'd rather route Class-3
- * conservatively); false-negatives are mitigated by the upstream
- * `context_sources.privacy_class` value (defense-in-depth).
+ * Returns `true` when the content carries real personal-data markers:
+ * email addresses, DACH phone numbers, or a capitalised name that follows
+ * a personal-context trigger (salutation/title or role/contact label —
+ * see `NAME_TRIGGER_PATTERN`). Ordinary German noun phrases no longer fire.
+ *
+ * Defense-in-depth (PROJ-86 rationale): relaxing name detection from
+ * shape-based to context-bound is acceptable because two independent lines
+ * remain in force — (1) the upload-time `context_sources.privacy_class`
+ * floor (a source already stamped Class-3 stays Class-3 regardless of this
+ * detector), and (2) the user/admin can manually stamp any source Class-3.
+ * The residual false-negative (a bare, unlabelled name in free text with no
+ * email/phone) is bounded by those lines and by PROJ-75 (full-text
+ * re-classification). We prefer a credible classifier over one that flags
+ * 100% of German documents and renders the feature unusable.
  */
 export function detectClass3Markers(text: string): boolean {
   if (!text) return false
   if (EMAIL_PATTERN.test(text)) return true
   if (PHONE_PATTERN.test(text)) return true
 
-  // Walk all NAME_PATTERN matches and check the false-positive list.
-  // Use the global flag via `matchAll` to iterate every hit.
-  const globalNamePattern = new RegExp(NAME_PATTERN.source, "g")
-  for (const match of text.matchAll(globalNamePattern)) {
-    const span = match[0]
-    if (!NAME_FALSE_POSITIVES.has(span)) return true
+  // Walk every trigger-bound name match; capture group 1 is the name span.
+  // A span on the residual whitelist (e.g. "Project Manager") is skipped.
+  const globalNameTrigger = new RegExp(NAME_TRIGGER_PATTERN.source, "g")
+  for (const match of text.matchAll(globalNameTrigger)) {
+    const name = match[1]
+    if (name && !NAME_FALSE_POSITIVES.has(name)) return true
   }
   return false
 }

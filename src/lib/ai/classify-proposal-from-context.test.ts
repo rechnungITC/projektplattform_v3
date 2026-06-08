@@ -70,30 +70,67 @@ describe("detectClass3Markers", () => {
     expect(detectClass3Markers("Direktnummer: 0301234567.")).toBe(true)
   })
 
-  it("detects a capitalised two-word name as Class-3 marker", () => {
-    expect(detectClass3Markers("Anne Schmidt übernimmt die Migration.")).toBe(
+  it("detects a name that follows a salutation/title trigger", () => {
+    expect(detectClass3Markers("Ansprechen: Herr Müller koordiniert das.")).toBe(
+      true,
+    )
+    expect(detectClass3Markers("Das Review macht Frau Schmidt.")).toBe(true)
+    expect(detectClass3Markers("Rückfragen an Dr. Weber.")).toBe(true)
+  })
+
+  it("detects a name that follows a role/contact label with a colon", () => {
+    expect(detectClass3Markers("Ansprechpartner: Anne Schmidt")).toBe(true)
+    expect(detectClass3Markers("Kontakt: Jörg Müller (Einkauf)")).toBe(true)
+    expect(detectClass3Markers("Name: Maria Becker, Verantwortlich: Tom Klein")).toBe(
       true,
     )
   })
 
-  it("does NOT flag whitelisted compound tokens when they appear in isolation", () => {
-    // Whitelisted tokens that don't accidentally form additional name pairs
-    // with neighbouring words (lowercase contexts on both sides).
+  it("PROJ-86: does NOT flag a bare, unlabelled name (accepted trade-off)", () => {
+    // Context-bound detection: a name with no salutation/label trigger and
+    // no email/phone is treated as Class-2. This residual false-negative is
+    // bounded by the privacy_class floor + manual stamp + PROJ-75.
+    expect(detectClass3Markers("Anne Schmidt übernimmt die Migration.")).toBe(
+      false,
+    )
+  })
+
+  it("PROJ-86: does NOT flag ordinary capitalised German noun phrases", () => {
+    // The original NAME_PATTERN matched any two capitalised words, so every
+    // German document was upgraded to Class-3. These are the real phrases
+    // from the production "Generisches Kickoff.docx" excerpt — all must be
+    // false now.
+    const corpus = [
+      "Generisches Kickoff-Protokoll",
+      "Google Analytics und Meta Pixel werden geprüft.",
+      "Das System erfasst Webseiten-Verstöße.",
+      "Best Practices für Consent-Banner.",
+      "Compliance-Verstöße werden dokumentiert.",
+      "Die Plattform nutzt ein Lead-Modul mit Lead-Scoring.",
+      "Use Case 1: Vollständiger Deep Crawl. Scoring Engine prüft Tracking-Skripte.",
+      "Technisches Zielbild und Grobe Architektur.",
+    ]
+    for (const phrase of corpus) {
+      expect(detectClass3Markers(phrase), phrase).toBe(false)
+    }
+  })
+
+  it("still does NOT flag whitelisted / unlabelled compound tokens", () => {
     expect(detectClass3Markers("hier ist ein Use Case zu prüfen.")).toBe(false)
     expect(detectClass3Markers("das Steering Committee tagt am Freitag.")).toBe(false)
     expect(
       detectClass3Markers("die Acceptance Criteria sind noch offen."),
     ).toBe(false)
     expect(detectClass3Markers("der Project Manager schreibt das.")).toBe(false)
+    // "Lead Scoring" / "Name Service" must NOT trigger — label triggers
+    // require a colon, which is why these stay Class-2.
+    expect(detectClass3Markers("Lead Scoring und Name Service.")).toBe(false)
   })
 
-  it("flags as Class-3 even when a whitelisted token is present BUT another genuine name pair exists", () => {
-    // This documents the deliberate over-eager behaviour from the Tech
-    // Design: when ANY non-whitelisted name-shaped pair fires, the
-    // run upgrades to Class-3. Two-Caps-Worte-pairs at sentence start
-    // ("Bitte Status") count as false-positive pairs we deliberately
-    // accept — conservatism beats leakage.
-    expect(detectClass3Markers("Bitte Status Report erstellen.")).toBe(true)
+  it("PROJ-86: applies the residual whitelist to a trigger-captured span", () => {
+    // "Owner: Project Manager" — the captured span is a whitelisted role
+    // phrase, not a name, so it does not upgrade.
+    expect(detectClass3Markers("Owner: Project Manager bis KW20.")).toBe(false)
   })
 
   it("returns false on empty / null-equivalent text", () => {
@@ -128,12 +165,24 @@ describe("classifyProposalFromContextAutoContext", () => {
     expect(classifyProposalFromContextAutoContext(ctx)).toBe(3)
   })
 
-  it("upgrades when the excerpt carries a name-shaped token", () => {
+  it("upgrades when the excerpt carries a labelled personal name", () => {
     const ctx = baseContext({
       privacy_class: 2,
-      content_excerpt: "Lead-User: Anne Schmidt aus dem Einkauf.",
+      content_excerpt: "Ansprechpartner: Anne Schmidt aus dem Einkauf.",
     })
     expect(classifyProposalFromContextAutoContext(ctx)).toBe(3)
+  })
+
+  it("PROJ-86: does NOT upgrade a Class-2 excerpt of plain German noun phrases", () => {
+    // The real production kickoff excerpt shape — no labelled names, no
+    // email/phone — must stay Class-2 so it routes to the cloud provider.
+    const ctx = baseContext({
+      privacy_class: 2,
+      content_excerpt:
+        "Generisches Kickoff-Protokoll. Das System erfasst Webseiten-Verstöße. " +
+        "Best Practices für Consent-Banner. Die Plattform nutzt ein Lead-Modul.",
+    })
+    expect(classifyProposalFromContextAutoContext(ctx)).toBe(2)
   })
 
   it("does NOT upgrade on whitelisted compound tokens", () => {
