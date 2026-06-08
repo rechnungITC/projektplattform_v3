@@ -384,15 +384,13 @@ test.describe.serial("PROJ-70-ε / accept seeded backlog via deep-linked drawer"
       { timeout: 120_000 },
     )
 
-    // The tree rendered (root epic visible). NOTE: the tree viewport
-    // height is derived from the ROOT-node count, so a single-root tree
-    // (1 epic + nested children) renders a short, virtualized list —
-    // only ~4 of 5 rows are in the DOM without scrolling (F-ε1, LOW).
-    // Accept-All operates on ALL draft ids regardless of scroll, so the
-    // authoritative check is the work_items count in the DB below.
+    // The tree rendered (root epic visible). PROJ-85 F-ε1 fix: the
+    // viewport is now sized to the TOTAL node count, so all 5 rows
+    // (1 epic + 2 stories + 2 tasks) render without scrolling.
     await expect(page.locator('[data-temp-id="ep1"]')).toBeVisible({
       timeout: 60_000,
     })
+    await expect(page.locator("[data-temp-id]")).toHaveCount(5)
     const acceptAll = page.getByTestId("backlog-proposal-accept-all")
     await expect(acceptAll).toContainText("(5)")
 
