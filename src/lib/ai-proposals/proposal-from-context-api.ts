@@ -23,6 +23,11 @@ export type ProposalFromContextKind =
 
 export type ProposalFromContextConfidence = "low" | "medium" | "high"
 
+/** PROJ-91 — relevance of an item to the project goal (the wizard
+ *  "Vorhaben"), distinct from `confidence`. Older suggestions persisted
+ *  before PROJ-91 may not carry it, so the field is optional on read. */
+export type ProposalFromContextRelevance = "on_goal" | "off_goal"
+
 export interface ProposalFromContextSuggestionPayload {
   temp_id: string
   parent_temp_id: string | null
@@ -30,6 +35,9 @@ export interface ProposalFromContextSuggestionPayload {
   title: string
   description: string | null
   confidence: ProposalFromContextConfidence
+  /** PROJ-91 — `off_goal` items get a "≠ Ziel" badge. Optional for
+   *  backward compatibility with pre-PROJ-91 suggestions. */
+  relevance?: ProposalFromContextRelevance
   /** Server-side enrichment so the FE renders without extra round-trips. */
   display?: {
     method_hint_kind: string | null

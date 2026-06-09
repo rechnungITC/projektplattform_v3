@@ -1,9 +1,10 @@
 # PROJ-86: Class-3 Classifier — German False-Positive Fix
 
-## Status: In Progress
+## Status: Deployed
 **Created:** 2026-06-08
-**Last Updated:** 2026-06-08
+**Last Updated:** 2026-06-09
 **Origin:** CIA portfolio review + live prod diagnosis 2026-06-08
+**Deployed:** 2026-06-09 (PR #106 → main → Vercel prod). AC-86.5 fully green — live `ki_run` 21:42 UTC: `classification=2 / provider=openai / status=success / 2727→507 tokens`.
 **Priority:** P1 — Must-have (unblocks the deployed PROJ-70 pipeline)
 
 ## Summary
@@ -41,7 +42,7 @@ The `NAME_FALSE_POSITIVES` whitelist (≈18 entries) cannot scale against the un
 - [x] **AC-86.2**: Returns `true` for `"Ansprechpartner: Anne Schmidt"`, `"Kontakt: Jörg Müller"` (umlaut), salutation forms ("Herr Müller", "Dr. Weber"), any email address, and DACH phone numbers (`+49…`, `0049…`, `0…`). ✅
 - [x] **AC-86.3**: The bug-cementing assertions (incl. "Bitte Status Report" and the bare-name case) are inverted to `false`; a new corpus test feeds the real kickoff phrases (all `false`) plus the AC-86.2 positives. ✅ 18/18 in `classify-proposal-from-context.test.ts`.
 - [x] **AC-86.4**: Defense-in-depth rationale (privacy_class floor + manual Class-3 stamp remain) documented in the Tech Design **and** in the `detectClass3Markers` code comment. ✅
-- [~] **AC-86.5**: Live re-test — **classification half proven against the real prod excerpt** (full 8000-char "Generisches Kickoff.docx": `has_email=false, has_phone=false, has_trigger_bound_name=false` → would now classify Class-2 → cloud). **Generation half (`provider=openai → > 0 proposals` via a fresh `ki_runs` row) is pending deploy** — runs after merge.
+- [x] **AC-86.5**: Live re-test ✅ — post-deploy `ki_run` 2026-06-09 21:42 UTC: `classification=2 → provider=openai → status=success → 2727 in / 507 out tokens` (real OpenAI call, > 0 proposals). Pre-deploy runs were still `3/stub/external_blocked`. Both halves green.
 - [x] **AC-86.6**: No regression in the actual-PII path — a labelled name ("Ansprechpartner: …", "Herr …") still triggers Class-3; verified by the positive-guard tests. ✅
 
 ## Non-Goals / Out of Scope

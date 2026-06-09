@@ -605,7 +605,14 @@ export function classifyProposalFromContextAutoContext(
 
   // Heuristic upgrade: even a Class-1/2-stamped row can leak personal
   // markers in its excerpt; if so, force Class-3.
-  if (max < 3 && detectClass3Markers(ctx.context_source.content_excerpt)) {
+  // PROJ-91 defense-in-depth: the project description (Vorhaben) is now sent
+  // to the provider as grounding, so it is classified alongside the excerpt —
+  // a description carrying personal markers must also force local routing.
+  if (
+    max < 3 &&
+    (detectClass3Markers(ctx.context_source.content_excerpt) ||
+      detectClass3Markers(ctx.source_project.description ?? ""))
+  ) {
     max = 3
   }
 

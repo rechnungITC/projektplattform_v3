@@ -3,12 +3,16 @@ import { describe, expect, it } from "vitest"
 import { AnthropicProvider } from "./anthropic"
 import { GoogleProvider } from "./google"
 import {
+  buildProposalFromContextPrompt,
   mapCrossProjectLinksSuggestions,
   mapProposalFromContextSuggestions,
   mapTrajectorySequenceSuggestions,
 } from "./graph-purpose-prompts"
 import { OpenAIProvider } from "./openai"
-import type { CrossProjectLinksGenerationRequest } from "./types"
+import type {
+  CrossProjectLinksGenerationRequest,
+  ProposalFromContextGenerationRequest,
+} from "./types"
 
 /**
  * Regression guard for the 2026-06-08 incident: OpenAI/Google silently fell
@@ -155,6 +159,7 @@ describe("mapProposalFromContextSuggestions", () => {
         title: "Datenmigration aus Altsystem X",
         description: null,
         confidence: "high",
+        relevance: "on_goal",
       },
       {
         temp_id: "t_2",
@@ -163,10 +168,59 @@ describe("mapProposalFromContextSuggestions", () => {
         title: "Mapping-Tabelle erstellen",
         description: "Feldzuordnung Alt → Neu.",
         confidence: "medium",
+        relevance: "off_goal",
       },
     ])
     expect(out).toHaveLength(2)
     expect(out[0]!.description).toBeNull()
+    expect(out[0]!.relevance).toBe("on_goal")
     expect(out[1]!.parent_temp_id).toBe("t_1")
+    expect(out[1]!.relevance).toBe("off_goal")
+  })
+})
+
+describe("buildProposalFromContextPrompt — PROJ-91 grounding", () => {
+  function req(
+    description: string | null,
+  ): ProposalFromContextGenerationRequest {
+    return {
+      count: 10,
+      context: {
+        source_project: {
+          project_id: "p1",
+          name: "ERP Implementierung",
+          description,
+          project_type: "erp",
+          project_method: "scrum",
+          lifecycle_status: "active",
+        },
+        context_source: {
+          context_source_id: "c1",
+          kind: "document",
+          title: "Kickoff.docx",
+          privacy_class: 2,
+          content_excerpt: "Inhalt des Kickoffs.",
+          language: "de",
+        },
+        method_hint: "scrum",
+      },
+    }
+  }
+
+  it("renders the Vorhaben block when description is present", () => {
+    const prompt = buildProposalFromContextPrompt(
+      req("ERP-System auf Basis von MS Dynamics einführen."),
+    )
+    expect(prompt).toContain("Vorhaben (Projektziel")
+    expect(prompt).toContain("MS Dynamics")
+  })
+
+  it("emits the no-Vorhaben note when description is null/empty", () => {
+    expect(buildProposalFromContextPrompt(req(null))).toContain(
+      "Kein Vorhaben hinterlegt",
+    )
+    expect(buildProposalFromContextPrompt(req("   "))).toContain(
+      "Kein Vorhaben hinterlegt",
+    )
   })
 })
