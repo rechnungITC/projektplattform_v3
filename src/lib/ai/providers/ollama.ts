@@ -875,6 +875,7 @@ export class OllamaProvider implements AIProvider {
         title: s.title,
         description: s.description ?? null,
         confidence: s.confidence,
+        relevance: s.relevance,
       })),
       usage: {
         input_tokens: usage?.inputTokens ?? null,
@@ -977,6 +978,8 @@ const ProposalFromContextSuggestionSchemaOllama = z.object({
   title: z.string().min(3).max(200),
   description: z.string().max(500).nullable(),
   confidence: z.enum(["low", "medium", "high"]),
+  // PROJ-91 — relevance to the project goal (Vorhaben); see shared schema.
+  relevance: z.enum(["on_goal", "off_goal"]),
 })
 
 const ProposalFromContextResponseSchemaOllama = z.object({
@@ -995,15 +998,21 @@ Pflichtregeln:
 - \`description\` ist optional, max 500 Zeichen.
 - KEINE Class-3-Daten in den Outputs: keine konkreten Personennamen, E-Mails, Telefonnummern. Generalisiere zu Rollen.
 - Hierarchie maximal 3 Ebenen tief.
-- Bei dünnem Kickoff: lieber leere Liste statt erzwungenes Padding.`
+- Bei dünnem Kickoff: lieber leere Liste statt erzwungenes Padding.
+- \`relevance\` bewertet den Bezug zum Vorhaben/Projektziel (separate Achse zur \`confidence\`): \`on_goal\`, wenn das Item dem Vorhaben dient; \`off_goal\`, wenn es aus dem Kickoff stammt, aber nicht zum Vorhaben passt. Unterdrücke \`off_goal\`-Items NICHT. Ohne angegebenes Vorhaben: \`on_goal\`.`
 
 function buildProposalFromContextPromptOllama(
   request: ProposalFromContextGenerationRequest,
 ): string {
   const ctx = request.context
+  const vorhaben = ctx.source_project.description?.trim()
   const lines: string[] = [
     `Projekt: ${ctx.source_project.name}`,
     `Methode: ${ctx.source_project.project_method ?? "—"} (normalised: ${ctx.method_hint})`,
+    // PROJ-91 — Vorhaben grounds relevance (on_goal / off_goal).
+    vorhaben
+      ? `\nVorhaben (Projektziel — richte die Vorschläge hieran aus, bewerte Relevanz):\n${vorhaben}`
+      : `\n(Kein Vorhaben hinterlegt — relevance=on_goal.)`,
     "",
     `Kickoff-Artefakt (${ctx.context_source.kind}): ${ctx.context_source.title}`,
     `Privacy-Klasse: ${ctx.context_source.privacy_class}`,

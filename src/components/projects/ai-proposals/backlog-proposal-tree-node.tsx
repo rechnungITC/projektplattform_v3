@@ -238,6 +238,16 @@ export function BacklogProposalTreeNode({
                   Method-Mismatch
                 </Badge>
               )}
+              {payload.relevance === "off_goal" && (
+                <Badge
+                  variant="outline"
+                  className="border-rose-400/40 text-[10px] text-rose-700 dark:text-rose-300"
+                  title="Stammt aus dem Dokument, passt aber nicht zum Projektziel (Vorhaben)."
+                >
+                  <AlertTriangle className="mr-0.5 h-3 w-3" aria-hidden />
+                  ≠ Ziel
+                </Badge>
+              )}
             </div>
             {payload.description && (
               <p

@@ -29,6 +29,7 @@ function baseContext(
     source_project: {
       project_id: "00000000-0000-0000-0000-000000000001",
       name: "ERP Rollout",
+      description: "ERP-System auf Basis von MS Dynamics einführen.",
       project_type: "erp_implementation",
       project_method: "scrum",
       lifecycle_status: "active",

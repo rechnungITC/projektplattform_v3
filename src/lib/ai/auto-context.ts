@@ -1056,7 +1056,9 @@ export async function collectProposalFromContextAutoContext(
   const [projectRes, contextSourceRes] = await Promise.all([
     supabase
       .from("projects")
-      .select("id, name, project_type, project_method, lifecycle_status")
+      .select(
+        "id, name, description, project_type, project_method, lifecycle_status",
+      )
       .eq("id", projectId)
       .maybeSingle(),
     supabase
@@ -1078,6 +1080,7 @@ export async function collectProposalFromContextAutoContext(
   const project = projectRes.data as {
     id: string
     name: string
+    description: string | null
     project_type: string | null
     project_method: string | null
     lifecycle_status: string
@@ -1105,6 +1108,9 @@ export async function collectProposalFromContextAutoContext(
     source_project: {
       project_id: project.id,
       name: project.name,
+      // PROJ-91 — the wizard "Vorhaben"; grounds the backlog generation so
+      // the model can judge each item's relevance to the project goal.
+      description: project.description,
       project_type: project.project_type,
       project_method: project.project_method,
       lifecycle_status: project.lifecycle_status,

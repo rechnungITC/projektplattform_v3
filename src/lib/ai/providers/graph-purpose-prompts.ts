@@ -409,6 +409,11 @@ const ProposalFromContextSuggestionSchema = z.object({
       "Optional 1–3 sentence German rationale or detail. Null when nothing concrete to add.",
     ),
   confidence: z.enum(["low", "medium", "high"]),
+  relevance: z
+    .enum(["on_goal", "off_goal"])
+    .describe(
+      "PROJ-91 — relevance to the project goal (Vorhaben): 'on_goal' if the item serves the stated project intent, 'off_goal' if it comes from the kickoff but does not. Never drop off_goal items. Default to 'on_goal' when no project goal is given.",
+    ),
 })
 
 export const ProposalFromContextResponseSchema = z
@@ -490,17 +495,29 @@ Pflichtregeln:
 - KEINE personenbezogenen Daten in Titel oder Description — keine Namen, keine E-Mails, keine Telefonnummern, keine Stakeholder-spezifischen Aussagen. Wenn der Input solche enthält, generalisiere sie zu Rollen ("der Fachbereich" statt "Hr. Schmidt").
 - KEIN erzwungenes Padding: wenn das Kickoff dünn ist, liefere wenige hochwertige Items statt vieler Platzhalter.
 - Hierarchie maximal 3 Ebenen tief. Vermeide redundante Ein-Kind-Verschachtelungen.
-- \`confidence\` reflektiert deine Sicherheit pro Item: \`high\` nur, wenn das Item explizit im Kickoff steht oder klar herleitbar ist.`
+- \`confidence\` reflektiert deine Sicherheit pro Item: \`high\` nur, wenn das Item explizit im Kickoff steht oder klar herleitbar ist.
+- \`relevance\` bewertet den Bezug zum **Vorhaben/Projektziel** (separate Achse zur \`confidence\`):
+  - \`on_goal\`: das Item dient dem im "Vorhaben" beschriebenen Projektziel.
+  - \`off_goal\`: das Item stammt zwar aus dem Kickoff, passt aber NICHT zum Vorhaben (z.B. wenn das Dokument ein anderes Projekt beschreibt).
+  - Unterdrücke \`off_goal\`-Items NICHT — kennzeichne sie, der Mensch entscheidet.
+  - Wenn KEIN Vorhaben angegeben ist, beurteile nur aus dem Dokument und setze \`on_goal\`.
+  - Grounding-Regel: richte deine Vorschläge primär am Vorhaben aus; wenn Kickoff und Vorhaben stark divergieren, liefere lieber wenige zielnahe Items und markiere abweichende klar als \`off_goal\`.`
 
 export function buildProposalFromContextPrompt(
   request: ProposalFromContextGenerationRequest,
 ): string {
   const ctx = request.context
+  const vorhaben = ctx.source_project.description?.trim()
   const lines: string[] = [
     `Projekt: ${ctx.source_project.name}`,
     `Typ: ${ctx.source_project.project_type ?? "—"}`,
     `Methode: ${ctx.source_project.project_method ?? "—"} (normalised: ${ctx.method_hint})`,
     `Lifecycle: ${ctx.source_project.lifecycle_status}`,
+    // PROJ-91 — the wizard "Vorhaben". Grounds the backlog and is the
+    // reference point for each item's relevance (on_goal / off_goal).
+    vorhaben
+      ? `\nVorhaben (Projektziel — richte die Vorschläge hieran aus und bewerte ihre Relevanz):\n${vorhaben}`
+      : `\n(Kein Vorhaben hinterlegt — beurteile Relevanz nur aus dem Dokument, setze relevance=on_goal.)`,
     "",
     `Kickoff-Artefakt:`,
     `  - Kind: ${ctx.context_source.kind}`,
@@ -533,5 +550,6 @@ export function mapProposalFromContextSuggestions(
     title: s.title,
     description: s.description ?? null,
     confidence: s.confidence,
+    relevance: s.relevance,
   }))
 }

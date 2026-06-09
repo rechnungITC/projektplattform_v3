@@ -698,6 +698,10 @@ export interface ProposalFromContextAutoContext {
   source_project: {
     project_id: string
     name: string
+    /** PROJ-91 — the wizard "Vorhaben" (project goal). Grounds the
+     *  backlog generation so each item's relevance to the goal can be
+     *  judged. May be null when the project has no description. */
+    description: string | null
     project_type: string | null
     project_method: string | null
     lifecycle_status: string
@@ -744,8 +748,14 @@ export interface ProposalFromContextSuggestion {
   title: string
   /** Optional 1-3 sentence rationale; capped 500 chars by Zod-schema. */
   description: string | null
-  /** Provider's self-confidence; the UI shows this as a small badge. */
+  /** Provider's self-confidence; the UI shows this as a small badge.
+   *  Axis 1: how clearly the item is grounded in the DOCUMENT. */
   confidence: "low" | "medium" | "high"
+  /** PROJ-91 — relevance to the project goal (the wizard "Vorhaben").
+   *  Axis 2 (distinct from confidence): `off_goal` items come from the
+   *  kickoff but don't serve the project intent — surfaced with a badge,
+   *  never suppressed. Defaults to `on_goal` when no goal is provided. */
+  relevance: "on_goal" | "off_goal"
   /** Server-side display enrichment so the FE renders without round-trips. */
   display?: {
     method_hint_kind: ProjectMethodHint | null

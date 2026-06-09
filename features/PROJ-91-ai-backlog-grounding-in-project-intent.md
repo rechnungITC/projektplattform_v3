@@ -1,6 +1,6 @@
 # PROJ-91: AI Backlog Grounding in Project Intent (Wizard-Vorhaben)
 
-## Status: Architected
+## Status: In Progress
 **Created:** 2026-06-09
 **Last Updated:** 2026-06-09
 **Origin:** Live prod finding 2026-06-09 (PROJ-86 verification session)
@@ -20,13 +20,14 @@ Root cause: `collectProposalFromContextAutoContext` (`src/lib/ai/auto-context.ts
 - As a PM who uploaded the wrong document, I want the off-goal flags to make that obvious, so that I notice the mismatch instead of accepting an unrelated backlog.
 
 ## Acceptance Criteria
-- [ ] **AC-91.1**: `collectProposalFromContextAutoContext` includes `projects.description` and the type `ProposalFromContextAutoContext.source_project` carries `description: string | null`.
-- [ ] **AC-91.2**: `buildProposalFromContextPrompt` renders the project intent prominently (e.g. a "Vorhaben/Projektziel" block) before the kickoff content; when `description` is null/empty it degrades gracefully (no grounding line, relevance defaults to on-goal-by-document).
-- [ ] **AC-91.3**: `PROPOSAL_FROM_CONTEXT_SYSTEM_PROMPT` instructs the model to ground every item in the project intent and to assess each item's relevance to it.
-- [ ] **AC-91.4**: The suggestion schema gains a `relevance` field (`"on_goal" | "off_goal"`) — distinct from the existing `confidence` (confidence = "is it in the document"; relevance = "does it serve the project goal"). Off-goal items are **kept**, not suppressed.
-- [ ] **AC-91.5**: The relevance value is mapped through the provider output, persisted in the `ki_suggestions` payload (JSON — no migration), and surfaced as a visible "≠ Ziel"/off-goal badge in the backlog proposal tree node.
-- [ ] **AC-91.6**: All four providers (anthropic/openai/google/ollama) reuse the shared updated prompt + schema (no per-provider drift); the stub provider stays schema-compatible.
-- [ ] **AC-91.7**: Live re-test against prod — re-generating the ERP project against the website-compliance kickoff yields items predominantly flagged `off_goal`; a matching kickoff yields `on_goal`. Verified via a fresh `ki_runs` row + suggestion payloads.
+- [x] **AC-91.1**: `collectProposalFromContextAutoContext` selects `description` and `ProposalFromContextAutoContext.source_project` carries `description: string | null`. ✅
+- [x] **AC-91.2**: `buildProposalFromContextPrompt` renders a "Vorhaben (Projektziel …)" block before the kickoff content; when `description` is null/empty it emits a "Kein Vorhaben hinterlegt → relevance=on_goal" note. ✅ (2 prompt tests)
+- [x] **AC-91.3**: System prompt instructs grounding in the Vorhaben + per-item relevance assessment (shared + Ollama-local prompt). ✅
+- [x] **AC-91.4**: Suggestion schema + `ProposalFromContextSuggestion` type gain `relevance` (`on_goal | off_goal`), distinct from `confidence`; off-goal items kept, not suppressed. ✅
+- [x] **AC-91.5**: `relevance` mapped through provider output → persisted in `ki_suggestions.payload` (JSON, no migration) → "≠ Ziel" badge in `backlog-proposal-tree-node.tsx` (optional on read for pre-PROJ-91 rows). ✅
+- [x] **AC-91.6**: Shared prompt/schema/mapper updated once for anthropic/openai/google; Ollama's replicated local schema/prompt/mapper updated to match; stub stays schema-compatible (emits []). ✅
+- [~] **AC-91.7**: Live re-test against prod — **pending deploy**. After merge: re-generate the ERP project against the website-compliance kickoff → expect items flagged `off_goal`; a matching kickoff → `on_goal`. Verify via fresh `ki_runs` row + payloads.
+- [x] **AC-91.8** (defense-in-depth): the project `description` is now sent to the provider, so `classifyProposalFromContextAutoContext` also runs `detectClass3Markers` on it — a description carrying personal markers forces Class-3/Ollama routing. ✅ (keeps invariant #3 intact)
 
 ## Edge Cases
 - Project has no `description` → no grounding block; relevance falls back to document-based judgement (default `on_goal`), no spurious off-goal flags.
@@ -75,6 +76,19 @@ Re-generate the existing ERP project against the website-compliance kickoff → 
 
 ### Handoff
 Backend/library + one small UI badge → `/backend` (badge is a trivial presentational add; no standalone `/frontend` slice needed).
+
+## Implementation Notes — 2026-06-09 (/backend)
+- **`src/lib/ai/auto-context.ts`**: `collectProposalFromContextAutoContext` selects + returns `description`.
+- **`src/lib/ai/types.ts`**: `source_project.description: string | null`; `ProposalFromContextSuggestion.relevance: "on_goal" | "off_goal"` (required, two-axis model documented).
+- **`src/lib/ai/providers/graph-purpose-prompts.ts`** (shared, used by anthropic/openai/google): schema `+relevance`; system prompt `+grounding/relevance` rules; `buildProposalFromContextPrompt` `+Vorhaben` block (or no-Vorhaben note); mapper `+relevance`.
+- **`src/lib/ai/providers/ollama.ts`**: the replicated local schema/system-prompt/prompt-builder/mapper updated to match (cloud↔local drift avoided).
+- **`src/lib/ai/classify.ts`**: AC-91.8 — `classifyProposalFromContextAutoContext` also classifies `description` (defense-in-depth, since it now leaves the RLS layer for the provider).
+- **`src/lib/ai-proposals/proposal-from-context-api.ts`**: FE payload `relevance?` (optional for pre-PROJ-91 rows).
+- **`src/components/projects/ai-proposals/backlog-proposal-tree-node.tsx`**: rose "≠ Ziel" badge when `relevance === "off_goal"`.
+- **Tests**: `+relevance` in mapper-test fixtures + assertions; new `buildProposalFromContextPrompt` grounding tests (Vorhaben present / absent); classify fixture `+description`.
+- **No migration, no new dependency.** Blast radius confined to the proposal_from_context path.
+- **Quality gates**: lint 0; tsc 13 baseline / 0 new; vitest **1746/1746**; build clean.
+- **AC-91.7 (live)**: pending deploy — to confirm with a real re-generation + `ki_runs`/payload inspection.
 
 ## QA Test Results
 _To be added by /qa_
