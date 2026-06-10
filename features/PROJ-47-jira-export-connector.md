@@ -2,7 +2,18 @@
 
 ## Status
 
-Approved for deploy (backend alpha + frontend beta + QA gamma + status/assignee follow-up complete 2026-06-01; DB migration applied)
+Deployed (2026-06-10; code live on main since PR #85 / 2026-06-01, tag `v1.86.0-PROJ-47`)
+
+## Deployment
+
+- **Date:** 2026-06-10 (formal deploy closure; feature code merged to `main` via PR #85 on 2026-06-01 and live via Vercel auto-deploy since then)
+- **Production URL:** https://projektplattform-v3.vercel.app
+- **Tag:** `v1.86.0-PROJ-47` → commit `0014a6c` (PR #85, status/assignee resolver follow-up — last PROJ-47 feature commit)
+- **Verification 2026-06-10:**
+  - Prod-DB: all 4 tables present (`jira_field_mappings`, `jira_export_jobs`, `jira_export_log`, `external_refs`)
+  - Prod smoke: `/konnektoren` and `/api/connectors` return 307 auth-gate to `/login` (RBAC intact)
+  - `npm run lint` clean, `npm run build` clean on current main (4390f31)
+- **Deferred (unchanged from QA):** Playwright Jira mock-flow E2E; bidirectional sync is PROJ-50.
 
 ## Summary
 
