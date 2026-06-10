@@ -20,6 +20,7 @@ import { ChangeStatusDialog } from "@/components/work-items/change-status-dialog
 import { DeleteWorkItemDialog } from "@/components/work-items/delete-work-item-dialog"
 import { EditWorkItemDialog } from "@/components/work-items/edit-work-item-dialog"
 import { JiraExportDialog } from "@/components/work-items/jira-export-dialog"
+import { BacklogAiProposalLauncher } from "@/components/projects/ai-proposals/backlog-ai-proposal-launcher"
 import { NewWorkItemDialog } from "@/components/work-items/new-work-item-dialog"
 import { WorkItemDetailDrawer } from "@/components/work-items/work-item-detail-drawer"
 import { Button } from "@/components/ui/button"
@@ -256,6 +257,14 @@ export function BacklogClient({ projectId, tenantId: _tenantId }: BacklogClientP
 
   const toolbarAndBulk = (
     <>
+      {canEdit && (
+        <div className="mb-3 flex justify-end">
+          <BacklogAiProposalLauncher
+            projectId={projectId}
+            projectMethod={method}
+          />
+        </div>
+      )}
       <BacklogToolbar
         projectId={projectId}
         method={method}

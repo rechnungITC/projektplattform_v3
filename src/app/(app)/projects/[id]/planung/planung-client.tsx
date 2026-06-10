@@ -15,6 +15,7 @@ import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs"
 import { EditWorkItemDialog } from "@/components/work-items/edit-work-item-dialog"
 import { useMilestones } from "@/hooks/use-milestones"
 import { usePhases } from "@/hooks/use-phases"
+import { BacklogAiProposalLauncher } from "@/components/projects/ai-proposals/backlog-ai-proposal-launcher"
 import { useProjectAccess } from "@/hooks/use-project-access"
 import { useWorkItems } from "@/hooks/use-work-items"
 import type { WorkItemWithProfile } from "@/types/work-item"
@@ -70,11 +71,14 @@ export function PlanungClient({ projectId }: PlanungClientProps) {
 
   return (
     <div className="mx-auto w-full max-w-5xl space-y-6 px-4 py-6 sm:px-6">
-      <header className="space-y-1">
-        <h1 className="text-2xl font-semibold tracking-tight">Planung</h1>
-        <p className="text-sm text-muted-foreground">
-          Phasen, Meilensteine und der zeitliche Rahmen des Projekts.
-        </p>
+      <header className="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
+        <div className="space-y-1">
+          <h1 className="text-2xl font-semibold tracking-tight">Planung</h1>
+          <p className="text-sm text-muted-foreground">
+            Phasen, Meilensteine und der zeitliche Rahmen des Projekts.
+          </p>
+        </div>
+        {canEdit && <BacklogAiProposalLauncher projectId={projectId} />}
       </header>
 
       <PhasesTimeline phases={phases} onPhaseSelect={scrollToPhase} />

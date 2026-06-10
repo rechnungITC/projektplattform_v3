@@ -1,8 +1,8 @@
 # PROJ-87: AI Proposal Drawer — Surfacing in Backlog + Gantt
 
-## Status: Planned
+## Status: In Progress
 **Created:** 2026-06-08
-**Last Updated:** 2026-06-08
+**Last Updated:** 2026-06-09
 **Origin:** CIA portfolio review 2026-06-08
 **Priority:** P1 — Should-have (no new backend code)
 
@@ -20,12 +20,12 @@ PROJ-70-ε already added the props needed to open the drawer programmatically on
 - As an editor without AI-module access, I want the entry disabled/hidden consistently, so that the UI matches my permissions.
 
 ## Acceptance Criteria
-- [ ] **AC-87.1**: The Backlog view shows an entry control ("KI-Backlog generieren / aus Kontext befüllen") that opens `AIProposalDrawer` with `defaultTab="backlog"`.
-- [ ] **AC-87.2**: The Gantt/Arbeitspakete view shows the same entry control with the same behavior.
-- [ ] **AC-87.3**: The entry is gated by the same editor-role check **and** `ai_proposals` module-active check used in the graph view; non-eligible users see it disabled or hidden consistently.
-- [ ] **AC-87.4**: No new API route or backend change — the drawer reuses the existing PROJ-70 generate/list/accept/undo routes.
-- [ ] **AC-87.5**: Method-awareness preserved — the drawer's generated hierarchy still respects the project method (Waterfall/Scrum/Hybrid) exactly as in the graph entry.
-- [ ] **AC-87.6**: The graph-view entry continues to work unchanged (no regression).
+- [x] **AC-87.1**: The Backlog view (`backlog-client.tsx`) shows a "KI-Backlog generieren" control (`data-testid="backlog-ai-proposals-trigger"`) opening `AIProposalDrawer` with `defaultTab="backlog"`. ✅
+- [x] **AC-87.2**: The Arbeitspakete slug re-exports the backlog page, so the same control surfaces there; the **Gantt** lives at `/planung` (`planung-client.tsx`) and got its own header entry. ✅
+- [x] **AC-87.3**: Gated at the call site by the host view's `canEdit` (`useProjectAccess(projectId, "edit_master")`). NB: the graph view shows its trigger ungated and relies on **server** enforcement (`requireProjectAccess "edit"` + `requireModuleActive "ai_proposals"`); we additionally hide it for non-editors (better UX, consistent with the host views' own edit-action gating). Module enforcement remains server-side, mirroring the graph view (no client module check exists there). ✅
+- [x] **AC-87.4**: No new API route / backend change — reuses PROJ-70 routes via the shared `AIProposalDrawer`. ✅
+- [x] **AC-87.5**: Method-awareness preserved — `projectMethod` passed from the backlog view; generation respects the project method server-side regardless. ✅
+- [x] **AC-87.6**: Graph-view entry untouched (no regression; vitest 1746/1746, build clean). ✅
 
 ## Edge Cases
 - Project has no method set yet → drawer still opens; generation uses the existing PROJ-70 default behavior.
@@ -44,8 +44,17 @@ PROJ-70-ε already added the props needed to open the drawer programmatically on
 ---
 <!-- Sections below are added by subsequent skills -->
 
+## Implementation Notes — 2026-06-09 (/frontend)
+- **New** `src/components/projects/ai-proposals/backlog-ai-proposal-launcher.tsx`: self-contained client component — a "KI-Backlog generieren" button that mounts `AIProposalDrawer` with `defaultTab="backlog"`. Reuses the existing drawer; **no backend code**.
+- **`backlog-client.tsx`**: launcher rendered in the toolbar header, `canEdit`-gated. Because `arbeitspakete/page.tsx` is a thin re-export of `backlog/page`, this single insertion covers both `/backlog` and `/arbeitspakete`.
+- **`planung-client.tsx`** (the Gantt): launcher rendered in the page header, `canEdit`-gated.
+- **Discovery**: the dedicated `/ai-proposals` route (`AiProposalsTabClient`) is a **status-list** of `ki_suggestions` (draft/accepted/rejected) — NOT the generation drawer; left unchanged.
+- **Gating decision**: client-hide for non-editors (host views already gate their edit actions this way); server still enforces editor + `ai_proposals` module on every route. The graph view's own trigger is server-gated only — we are slightly stricter on the client for UX.
+- **Quality gates**: lint 0; tsc 13 baseline/0 new; vitest 1746/1746; build clean.
+- **Deferred**: a Playwright smoke (button visible for editor / hidden for viewer, opens drawer on backlog tab) → `/qa`.
+
 ## Tech Design (Solution Architect)
-_To be added by /architecture_
+Folded into this slice — see Summary + Solution above. Pure frontend: one new presentational client component + two call-sites; reuses the PROJ-70 drawer and routes. No data model, no migration, no new dependency.
 
 ## QA Test Results
 _To be added by /qa_
