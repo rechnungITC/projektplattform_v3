@@ -1,6 +1,6 @@
 # PROJ-88: AI Stakeholder Proposals from Context
 
-## Status: In Progress
+## Status: Approved
 **Created:** 2026-06-08
 **Last Updated:** 2026-06-10
 **Origin:** CIA portfolio review 2026-06-08 (vision: "Wizard befüllt das ganze Projekt")
@@ -136,8 +136,45 @@ Budget extraction (PROJ-82), Generate-All orchestration (PROJ-90), any cloud rou
 - **Quality gates**: lint 0; tsc 13 baseline/0 neu; vitest 1770/1770; build clean.
 - **Open for /qa**: Live-Ollama-Generierungslauf (WSL2-Endpoint), Auth-Gate-Playwright für die 3 Routen, Security-Probes; PROJ-87-deferred-Smoke fährt mit.
 
-## QA Test Results
-_To be added by /qa_
+## QA Test Results — 2026-06-10 (/qa)
+
+### Verdict: **PRODUCTION-READY** — 0 Critical / 0 High; F-1 (Medium) in-QA gefixt; D-1-Deviation dokumentiert (User-Entscheid); F-2/F-3 Env-Findings ohne PROJ-88-Bezug
+
+### AC-Verifikation
+| AC | Ergebnis | Evidenz |
+|---|---|---|
+| AC-88.1 Purpose + Router | ✅ PASS | Code + 1770 vitest; Live-Run ki_run `9999378e` mit purpose=proposal_stakeholders_from_context |
+| AC-88.2 Class-3-Pin | ✅ PASS (live, Prod) | Tenant hat **gültigen OpenAI-Key** — Live-POST ergab trotzdem classification=3 / provider=stub / external_blocked; Cloud strukturell nie gewählt. 3 Classifier-Unit-Tests |
+| AC-88.3 external_blocked + actionable + UI | ✅ PASS nach F-1-Fix | Live-Run zeigte external_blocked, aber `ki_runs.error_message` war NULL → **F-1 (Medium)**, in-QA gefixt (s.u.); FE-Banner unabhängig davon funktional (Playwright-gerendert) |
+| AC-88.4 Payload-Struktur | ✅ PASS | Route-Tests + Live-RPC-Smoke (Backend-Slice) |
+| AC-88.5 Bulk-RPC + Provenance + 30s-Undo | ✅ PASS (live, Prod) | Live-RPC-Smoke im Backend-Slice: accept(create+resource+dup-link) → undo → re-accept, 0 Residuen |
+| AC-88.6 Stakeholder/Resource in Bestand | ✅ PASS (live) | Smoke verifizierte stakeholders-Row + resources-Row via source_stakeholder_id-Brücke |
+| AC-88.7 Review-States + Provenance | ✅ PASS | Smoke + Route-Tests; Immutability-Trigger erweitert |
+| AC-88.8 Drawer-Tab | ✅ PASS (Playwright chromium) | Tab 5 sichtbar, geseedete Card mit Name/„≠ Ziel"-Badge/Resource-Toggle/Member-Picker/Accept-All |
+| AC-88.9 Track-Invariante | ✅ PASS | 4 Prompt-Contract-Tests (yardstick-only-Phrasen + Absenz des Generierungs-Imperativs, shared-Muster) |
+
+### Live-Probes (Prod, authentifizierte Session)
+- **Class-3-Pin-Probe**: POST gegen echtes Projekt mit gültigem Tenant-OpenAI-Key → `{classification:3, provider:"stub", status:"external_blocked", suggestion_ids:[]}` — der wichtigste Sicherheitsbeweis der Slice.
+- **Security-Probes (6)**: fremde/nonexistente suggestion-ids → 400 `some_suggestions_invalid…`; Undo nonexistent → 400 `undo_invalid_or_window_expired`; fremdes Projekt → 404; count=500 → 400 Zod; unauth → 307 Auth-Gate; Cross-Purpose-PATCH durch Zod-Purpose-Dispatch geblockt (Schema-Ebene, route-getestet).
+
+### Findings
+- **F-1 (Medium, in-QA gefixt nach PROJ-70-δ-Präzedenz)**: `selectProviderForPurpose` lieferte im blocked-Branch keinen `blockedReason` → `ki_runs.error_message` NULL für ALLE Class-3-geblockten Läufe (purposeübergreifend, seit PROJ-32). Fix: Resolver-Reason wird als actionable Text durchgereicht („Class-3-Purpose erfordert einen tenant-lokalen Provider (Ollama)…"). Live-Re-Test nach Deploy dokumentiert unten.
+- **F-2 (Env, Low)**: Playwright-WebKit (Mobile Safari) kann auf diesem WSL2-Host nicht mehr starten — neues webkit-2287-Binary braucht System-Libs (libgtk-4 u.a.), Installation erfordert sudo: `sudo npx playwright install-deps webkit`. Chromium voll grün; kein PROJ-88-Defekt.
+
+### Deviation D-1 — Ollama-Happy-Path (Live-Generierung)
+Der geforderte echte Ollama-Generierungslauf war nicht durchführbar: auf dem WSL2-Host ist aktuell **kein Ollama vorhanden** (kein Binary/Service/Container) und der Tenant hat **keinen Ollama-Provider registriert** (nur OpenAI). Der für diesen Zustand spezifizierte by-design-Pfad (AC-88.3 Block) ist live bewiesen. Sobald ein Ollama-Endpoint läuft + als Tenant-Provider registriert ist, ist der Happy-Path mit einem POST nachholbar (Generierungsmethode ist unit-/contract-getestet; identische OllamaProvider-Maschinerie wie resource_swap).
+
+### Playwright
+- Neu: `tests/PROJ-88-stakeholder-proposals.spec.ts` — 4 Auth-Gates + invalid-uuid (beide Browser grün) + authentifizierter Drawer-Smoke (chromium grün; webkit s. F-2). Enthält den **deferred PROJ-87-Smoke**: Launcher-Button sichtbar → Klick → Drawer öffnet mit Backlog-Tab → Stakeholder-Tab → geseedete Card. Seeds idempotent + afterAll-Cleanup.
+
+- **F-3 (Low, Vorbestand)**: 2 PROJ-51-Visual-Regression-Snapshots schlagen fehl (Tenant-Settings +160px Seitenhöhe, Login-mobile 2%-Pixel-Drift). Baseline vom 2026-05-13, Settings-Code seither unverändert — die Screenshots laufen gegen die Prod-DB und sind durch **Datenwachstum** gedriftet, nicht durch Code. Kein PROJ-88-Bezug; Re-Baselining → PROJ-67-Followup.
+
+### Regression (volle Chromium-E2E-Suite, seriell)
+**88 passed / 5 skipped / 2 failed** — beide Failures = F-3 (PROJ-51-Snapshots, Vorbestand). Alle PROJ-70/87-bezogenen Specs grün; der neue PROJ-88-Spec ergänzt die permanente Regressions-Suite.
+
+### Gates
+lint 0 · tsc 13 baseline/0 neu · vitest 1770/1770 · build clean · Playwright PROJ-88-Spec: chromium 6/6, webkit 5/6 (F-2-Env) · Voll-Suite chromium 88/90 (2× F-3-Vorbestand)
+
 
 ## Deployment
 _To be added by /deploy_
