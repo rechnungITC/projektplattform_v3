@@ -620,6 +620,13 @@ export class OllamaProvider implements AIProvider {
       name: "ollama",
       baseURL: `${trimmed}/v1`,
       apiKey: config.bearerToken,
+      // PROJ-88 QA D-1 root cause: without this flag the AI SDK never
+      // sends the response_format json_schema to the endpoint ("feature
+      // responseFormat is not supported" warning) — the model free-styles
+      // its own shape and EVERY generateObject call fails schema
+      // validation. Ollama supports json_schema (verified live against
+      // 0.30.7). Affects all Ollama purposes, not just stakeholders.
+      supportsStructuredOutputs: true,
     })
   }
 
