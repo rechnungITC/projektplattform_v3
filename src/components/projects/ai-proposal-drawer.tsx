@@ -47,6 +47,7 @@ import {
 import { CrossProjectLinksTab } from "./ai-proposals/cross-project-links-tab"
 import { BacklogProposalTab } from "./ai-proposals/backlog-proposal-tab"
 import { ResourceSwapTab } from "./ai-proposals/resource-swap-tab"
+import { StakeholderProposalTab } from "./ai-proposals/stakeholder-proposal-tab"
 
 interface AIProposalDrawerProps {
   open: boolean
@@ -64,8 +65,9 @@ interface AIProposalDrawerProps {
   /** Looked-up labels for node ids — used to render affected node names. */
   nodeLabels?: Record<string, string>
   /** PROJ-70-ε — open the drawer on a specific tab (deep-link from the
-   *  wizard handoff opens "backlog"). Defaults to "trajectory". */
-  defaultTab?: "trajectory" | "resources" | "links" | "backlog"
+   *  wizard handoff opens "backlog"). PROJ-88 adds "stakeholders".
+   *  Defaults to "trajectory". */
+  defaultTab?: "trajectory" | "resources" | "links" | "backlog" | "stakeholders"
   /** PROJ-70-ε — when set, the Backlog tab auto-triggers a generation run
    *  for this context_source on mount (wizard Post-Finalize-Handoff). */
   autoGenerateContextSourceId?: string | null
@@ -205,6 +207,7 @@ export function AIProposalDrawer({
             <TabsTrigger value="resources">Ressourcen</TabsTrigger>
             <TabsTrigger value="links">Cross-Project</TabsTrigger>
             <TabsTrigger value="backlog">Backlog</TabsTrigger>
+            <TabsTrigger value="stakeholders">Stakeholder</TabsTrigger>
           </TabsList>
 
           <TabsContent value="trajectory" className="mt-4 space-y-3">
@@ -296,6 +299,10 @@ export function AIProposalDrawer({
               projectMethod={projectMethod}
               autoGenerateContextSourceId={autoGenerateContextSourceId}
             />
+          </TabsContent>
+
+          <TabsContent value="stakeholders" className="mt-4">
+            <StakeholderProposalTab projectId={projectId} />
           </TabsContent>
         </Tabs>
       </SheetContent>

@@ -21,15 +21,15 @@ Stakeholder data is personal data by definition (names, often emails/phones). Th
 - As a tenant admin without Ollama, I want a clear message that stakeholder extraction needs a local provider, so that I understand why nothing is generated.
 
 ## Acceptance Criteria
-- [ ] **AC-88.1**: A new `AIPurpose` value `proposal_stakeholders_from_context` is added to `src/lib/ai/types.ts` and wired through the router with a dedicated `invoke…` helper (mirrors `invokeProposalFromContextGeneration`).
-- [ ] **AC-88.2**: The purpose is **Class-3-pinned**: the classifier/route returns classification 3 regardless of content, so the router clamps to Ollama-only; cloud providers are never selected.
-- [ ] **AC-88.3**: When no Ollama provider is configured, the run records `external_blocked` with an actionable reason and the UI shows a clear "local provider required" message (no silent empty list).
-- [ ] **AC-88.4**: Each suggestion carries: stakeholder name + inferred role + optional resource/member link target, structured to map onto the PROJ-57 linking model on accept.
-- [ ] **AC-88.5**: A bulk-accept RPC persists accepted stakeholders (+ links) with `ki_provenance` trace and a 30s-undo window, mirroring the PROJ-70-β accept/undo pattern.
-- [ ] **AC-88.6**: Accepted items appear as Stakeholders (PROJ-8) and, where a link target was chosen, as Resource/Project-Member with role (PROJ-57) — entered into the existing structures, not a parallel store.
-- [ ] **AC-88.7**: Every AI-derived stakeholder carries a review state (draft/accepted/rejected/modified) and provenance — no silent mutation (invariant #2).
-- [ ] **AC-88.8**: A drawer tab surfaces these proposals (consumed by PROJ-90's orchestration; standalone tab acceptable in this slice).
-- [ ] **AC-88.9** (track invariant, CIA-locked 2026-06-10 from PROJ-91): Stakeholders are extracted **exclusively from the kickoff document**; the Vorhaben (`projects.description`) is **only the relevance yardstick** (`on_goal`/`off_goal` per suggestion), never a generation source. The prompt uses the PROJ-91 yardstick-only wording and is guarded by contract tests (assert the invariant phrases, assert the absence of any "richte … am Vorhaben aus" generation imperative).
+- [x] **AC-88.1**: ✅ (backend 2026-06-10) A new `AIPurpose` value `proposal_stakeholders_from_context` is added to `src/lib/ai/types.ts` and wired through the router with a dedicated `invoke…` helper (mirrors `invokeProposalFromContextGeneration`).
+- [x] **AC-88.2**: ✅ (unconditional classifier, 3 tests) The purpose is **Class-3-pinned**: the classifier/route returns classification 3 regardless of content, so the router clamps to Ollama-only; cloud providers are never selected.
+- [x] **AC-88.3**: ✅ (router `external_blocked` + persistent banner „Lokaler KI-Provider (Ollama) erforderlich" mit Link zu /settings/tenant/ai-providers) When no Ollama provider is configured, the run records `external_blocked` with an actionable reason and the UI shows a clear "local provider required" message (no silent empty list).
+- [x] **AC-88.4**: ✅ (payload incl. role_key/org_unit/contacts/duplicate_of/source_quote + reviewer-set create_resource/linked_user_id) Each suggestion carries: stakeholder name + inferred role + optional resource/member link target, structured to map onto the PROJ-57 linking model on accept.
+- [x] **AC-88.5**: ✅ (RPC pair, live-smoked against prod incl. undo + re-accept) A bulk-accept RPC persists accepted stakeholders (+ links) with `ki_provenance` trace and a 30s-undo window, mirroring the PROJ-70-β accept/undo pattern.
+- [x] **AC-88.6**: ✅ (stakeholders + resources via source_stakeholder_id bridge; member-link only to existing tenant members — live-smoked) Accepted items appear as Stakeholders (PROJ-8) and, where a link target was chosen, as Resource/Project-Member with role (PROJ-57) — entered into the existing structures, not a parallel store.
+- [x] **AC-88.7**: ✅ (ki_suggestions states + is_modified + ki_provenance) Every AI-derived stakeholder carries a review state (draft/accepted/rejected/modified) and provenance — no silent mutation (invariant #2).
+- [x] **AC-88.8**: ✅ (drawer tab 5 „Stakeholder", defaultTab="stakeholders" für PROJ-90) A drawer tab surfaces these proposals (consumed by PROJ-90's orchestration; standalone tab acceptable in this slice).
+- [x] **AC-88.9**: ✅ (4 prompt contract tests) (track invariant, CIA-locked 2026-06-10 from PROJ-91): Stakeholders are extracted **exclusively from the kickoff document**; the Vorhaben (`projects.description`) is **only the relevance yardstick** (`on_goal`/`off_goal` per suggestion), never a generation source. The prompt uses the PROJ-91 yardstick-only wording and is guarded by contract tests (assert the invariant phrases, assert the absence of any "richte … am Vorhaben aus" generation imperative).
 
 ## Edge Cases
 - Duplicate stakeholder already exists in the project → propose a link/merge rather than a duplicate create.
@@ -128,6 +128,13 @@ Budget extraction (PROJ-82), Generate-All orchestration (PROJ-90), any cloud rou
 - **Quality gates**: lint 0; tsc 13 baseline / 0 new; vitest **1770/1770** (+22: 3 classifier + 4 prompt contract + 15 route); build clean.
 - **Hygiene**: removed stale `.claude/worktrees/deploy-proj47-proj74` worktree (clean, identical to main) that doubled vitest counts and broke the lint baseline.
 - **Open for /frontend**: drawer tab 5 ("Stakeholder", flat cards + inline-edit + create_resource toggle + member picker + 30s-undo toast), AC-88.3 UI message ("Lokaler KI-Provider erforderlich"), AC-88.8. **Open for /qa**: live Ollama generation run (WSL2 endpoint), Playwright auth-gates, security probes; PROJ-87 deferred smoke rides along.
+
+## Implementation Notes — 2026-06-10 (/frontend)
+- **New** `src/components/projects/ai-proposals/stakeholder-proposal-tab.tsx`: flat suggestion cards (L6) — kind icon (Person/Organisation) + origin badge + „≠ Ziel"-relevance badge + role/unit/contacts + italic `source_quote` (traceability) + duplicate hint („Accept verknüpft statt neu anzulegen"); inline editor as sub-component (name/kind/origin/role_key — no set-state-in-effect); per-card accept options „auch als Resource anlegen"-Switch + Member-Picker (nur existierende Tenant-Member aus `/api/projects/[id]/participant-links`), beide sofort via purpose-aware PATCH persistiert (Bulk-RPC liest DB-Payloads); BulkActionBar (Alle akzeptieren/ablehnen); 30s-Undo-Toast (sonner action, Mirror PROJ-70-β) mit „X neu angelegt · Y mit Bestand verknüpft"; Quellen-Wahl: Dropdown vorhandener `context_sources` ODER frischer Upload (Reuse `uploadContextSourceFile`).
+- **AC-88.3 banner**: `external_blocked` setzt einen persistenten amber-Banner (kein Toast — by-design-Block, keine Fehlermeldung) mit Link zu Einstellungen → KI-Provider.
+- **Drawer**: Tab 5 „Stakeholder" + `defaultTab`-Union um `"stakeholders"` erweitert (PROJ-90-Orchestrierung kann den Tab direkt öffnen).
+- **Quality gates**: lint 0; tsc 13 baseline/0 neu; vitest 1770/1770; build clean.
+- **Open for /qa**: Live-Ollama-Generierungslauf (WSL2-Endpoint), Auth-Gate-Playwright für die 3 Routen, Security-Probes; PROJ-87-deferred-Smoke fährt mit.
 
 ## QA Test Results
 _To be added by /qa_
