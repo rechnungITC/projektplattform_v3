@@ -1,8 +1,19 @@
 # PROJ-85: AI Provider Capability Completeness
 
-## Status: Approved
+## Status: Deployed
 **Created:** 2026-06-08
-**Last Updated:** 2026-06-08
+**Last Updated:** 2026-06-10
+
+## Deployment
+
+- **Date:** 2026-06-10 (formal deploy closure; code live on main via PR #102 since 2026-06-08, Vercel auto-deployed)
+- **Production URL:** https://projektplattform-v3.vercel.app
+- **Tag:** `v1.88.0-PROJ-85` → commit `b7ce69a` (PR #102)
+- **Verification 2026-06-10:**
+  - `capability-matrix.test.ts` 4/4 grün auf aktuellem main
+  - Lint clean; Build clean
+  - Prod smoke: `/api/projects/test/ai/trajectory-sequence` + `/api/projects/test/ai/cross-project-links` → 307 auth-gate
+- **Deferred (unchanged):** Observable router-fallback log/metric (Out of Scope)
 
 ## Summary
 Closes the silent-stub-fallback gap in the multi-provider AI router. Each AI purpose is dispatched to the tenant's selected provider; when the provider doesn't implement that purpose's method, the router silently falls back to the `StubProvider` (empty/placeholder output). This hid a real capability gap: the PROJ-65/70 graph purposes (`trajectory_sequence`, `cross_project_links`, `proposal_from_context`) were only implemented on Anthropic, so tenants on OpenAI/Google/Ollama got stub output without any visible signal.
