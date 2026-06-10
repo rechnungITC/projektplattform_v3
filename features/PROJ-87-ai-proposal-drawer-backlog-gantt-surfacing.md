@@ -1,8 +1,8 @@
 # PROJ-87: AI Proposal Drawer — Surfacing in Backlog + Gantt
 
-## Status: In Progress
+## Status: Deployed
 **Created:** 2026-06-08
-**Last Updated:** 2026-06-09
+**Last Updated:** 2026-06-10
 **Origin:** CIA portfolio review 2026-06-08
 **Priority:** P1 — Should-have (no new backend code)
 
@@ -59,5 +59,8 @@ Folded into this slice — see Summary + Solution above. Pure frontend: one new 
 ## QA Test Results
 _To be added by /qa_
 
-## Deployment
-_To be added by /deploy_
+## Deployment — 2026-06-10
+- PR #108 squash-merged to `main` (3f5404b), tag `v1.82.0-PROJ-87`.
+- Vercel production deployment `dpl_CPF6co1kECoJHeXVgNXFNBA1zPiE` READY on `projektplattform-v3.vercel.app` (aliases incl. git-main).
+- Post-deploy prod smoke: `/` and `/projects/{id}/backlog` both 307 → `/login?next=…` — auth-gate intact.
+- Open: deferred Playwright smoke (launcher visible for editor / hidden for viewer, opens drawer on backlog tab) still pending `/qa`; frontend-only slice, server enforcement unchanged.
