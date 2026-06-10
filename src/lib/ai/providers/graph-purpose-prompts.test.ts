@@ -7,7 +7,12 @@ import {
   mapCrossProjectLinksSuggestions,
   mapProposalFromContextSuggestions,
   mapTrajectorySequenceSuggestions,
+  PROPOSAL_FROM_CONTEXT_SYSTEM_PROMPT,
 } from "./graph-purpose-prompts"
+import {
+  buildProposalFromContextPromptOllama,
+  PROPOSAL_FROM_CONTEXT_SYSTEM_PROMPT_OLLAMA,
+} from "./ollama"
 import { OpenAIProvider } from "./openai"
 import type {
   CrossProjectLinksGenerationRequest,
@@ -222,5 +227,53 @@ describe("buildProposalFromContextPrompt — PROJ-91 grounding", () => {
     expect(buildProposalFromContextPrompt(req("   "))).toContain(
       "Kein Vorhaben hinterlegt",
     )
+  })
+
+  /**
+   * Contract guard for the 2026-06-10 grounding incident (AC-91.7 live A/B):
+   * the original wording "richte die Vorschläge am Vorhaben aus" made the
+   * Vorhaben a GENERATION source — the model discarded the kickoff content
+   * and invented an on-goal backlog, so `off_goal` never fired and items
+   * lost source traceability (architecture principle #2). The Vorhaben must
+   * be the relevance YARDSTICK only; items come exclusively from the kickoff.
+   * Asserted on both the shared prompt and the Ollama replicate so neither
+   * can silently regress to the generation-imperative wording.
+   */
+  it("keeps the Vorhaben a relevance yardstick, never an item source (shared)", () => {
+    expect(PROPOSAL_FROM_CONTEXT_SYSTEM_PROMPT).toContain(
+      "AUSSCHLIESSLICH aus dem Kickoff-Dokument",
+    )
+    expect(PROPOSAL_FROM_CONTEXT_SYSTEM_PROMPT).toContain(
+      "Erfinde KEINE Items aus dem Vorhaben",
+    )
+    expect(PROPOSAL_FROM_CONTEXT_SYSTEM_PROMPT).not.toContain(
+      "richte deine Vorschläge primär am Vorhaben aus",
+    )
+
+    const prompt = buildProposalFromContextPrompt(
+      req("ERP-System auf Basis von MS Dynamics einführen."),
+    )
+    expect(prompt).toContain("NUR Bewertungsmaßstab für relevance")
+    expect(prompt).toContain("KEINE Quelle für Items")
+    expect(prompt).not.toContain("richte die Vorschläge hieran aus")
+  })
+
+  it("keeps the Vorhaben a relevance yardstick, never an item source (Ollama replicate)", () => {
+    expect(PROPOSAL_FROM_CONTEXT_SYSTEM_PROMPT_OLLAMA).toContain(
+      "AUSSCHLIESSLICH aus dem Kickoff-Dokument",
+    )
+    expect(PROPOSAL_FROM_CONTEXT_SYSTEM_PROMPT_OLLAMA).toContain(
+      "Erfinde KEINE Items aus dem Vorhaben",
+    )
+    expect(PROPOSAL_FROM_CONTEXT_SYSTEM_PROMPT_OLLAMA).not.toContain(
+      "richte deine Vorschläge primär am Vorhaben aus",
+    )
+
+    const prompt = buildProposalFromContextPromptOllama(
+      req("ERP-System auf Basis von MS Dynamics einführen."),
+    )
+    expect(prompt).toContain("NUR Bewertungsmaßstab für relevance")
+    expect(prompt).toContain("KEINE Quelle für Items")
+    expect(prompt).not.toContain("richte die Vorschläge hieran aus")
   })
 })

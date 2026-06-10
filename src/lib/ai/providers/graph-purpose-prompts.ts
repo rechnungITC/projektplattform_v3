@@ -501,7 +501,7 @@ Pflichtregeln:
   - \`off_goal\`: das Item stammt zwar aus dem Kickoff, passt aber NICHT zum Vorhaben (z.B. wenn das Dokument ein anderes Projekt beschreibt).
   - Unterdrücke \`off_goal\`-Items NICHT — kennzeichne sie, der Mensch entscheidet.
   - Wenn KEIN Vorhaben angegeben ist, beurteile nur aus dem Dokument und setze \`on_goal\`.
-  - Grounding-Regel: richte deine Vorschläge primär am Vorhaben aus; wenn Kickoff und Vorhaben stark divergieren, liefere lieber wenige zielnahe Items und markiere abweichende klar als \`off_goal\`.`
+  - Grounding-Regel: Extrahiere Items AUSSCHLIESSLICH aus dem Kickoff-Dokument. Erfinde KEINE Items aus dem Vorhaben — das Vorhaben ist NUR der Bewertungsmaßstab für \`relevance\`, NIE eine Quelle für Items. Wenn Kickoff und Vorhaben stark divergieren, liefere trotzdem die im Kickoff belegten Items und markiere sie als \`off_goal\` — der Mensch entscheidet.`
 
 export function buildProposalFromContextPrompt(
   request: ProposalFromContextGenerationRequest,
@@ -513,10 +513,10 @@ export function buildProposalFromContextPrompt(
     `Typ: ${ctx.source_project.project_type ?? "—"}`,
     `Methode: ${ctx.source_project.project_method ?? "—"} (normalised: ${ctx.method_hint})`,
     `Lifecycle: ${ctx.source_project.lifecycle_status}`,
-    // PROJ-91 — the wizard "Vorhaben". Grounds the backlog and is the
-    // reference point for each item's relevance (on_goal / off_goal).
+    // PROJ-91 — the wizard "Vorhaben" is ONLY the relevance yardstick;
+    // items must come from the kickoff document (source traceability).
     vorhaben
-      ? `\nVorhaben (Projektziel — richte die Vorschläge hieran aus und bewerte ihre Relevanz):\n${vorhaben}`
+      ? `\nVorhaben (Projektziel — NUR Bewertungsmaßstab für relevance, KEINE Quelle für Items):\n${vorhaben}`
       : `\n(Kein Vorhaben hinterlegt — beurteile Relevanz nur aus dem Dokument, setze relevance=on_goal.)`,
     "",
     `Kickoff-Artefakt:`,
