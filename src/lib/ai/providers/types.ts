@@ -17,6 +17,8 @@ import type {
   NarrativeGenerationOutput,
   ProposalFromContextAutoContext,
   ProposalFromContextGenerationOutput,
+  StakeholderProposalsAutoContext,
+  StakeholderProposalsGenerationOutput,
   ResourceSwapAutoContext,
   ResourceSwapGenerationOutput,
   RiskAutoContext,
@@ -70,6 +72,13 @@ export interface ProposalFromContextGenerationRequest {
   count: number
 }
 
+export interface StakeholderProposalsGenerationRequest {
+  context: StakeholderProposalsAutoContext
+  /** Soft target for how many suggestions to emit (provider may emit fewer);
+   *  capped at 30 by the Zod schema regardless. */
+  count: number
+}
+
 /**
  * PROJ-30 + PROJ-34-γ.1 — generic provider interface. Methods are optional
  * so a provider can support a subset of purposes (e.g. Ollama implements
@@ -110,6 +119,10 @@ export interface AIProvider {
   generateProposalFromContext?(
     request: ProposalFromContextGenerationRequest,
   ): Promise<ProposalFromContextGenerationOutput>
+  // PROJ-88 — stakeholder extraction from a kickoff (Class-3 pin, local-only)
+  generateStakeholderProposals?(
+    request: StakeholderProposalsGenerationRequest,
+  ): Promise<StakeholderProposalsGenerationOutput>
 }
 
 /**

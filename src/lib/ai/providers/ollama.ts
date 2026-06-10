@@ -31,6 +31,7 @@ import type {
   ResourceSwapGenerationRequest,
   RiskGenerationRequest,
   SentimentGenerationRequest,
+  StakeholderProposalsGenerationRequest,
   TrajectorySequenceGenerationRequest,
 } from "./types"
 import type {
@@ -42,6 +43,7 @@ import type {
   ResourceSwapGenerationOutput,
   RiskGenerationOutput,
   SentimentGenerationOutput,
+  StakeholderProposalsGenerationOutput,
   TrajectorySequenceGenerationOutput,
 } from "../types"
 // PROJ-85 — Class-2 advisory graph purposes for tenant-local Ollama. We
@@ -953,6 +955,62 @@ export class OllamaProvider implements AIProvider {
       },
     }
   }
+
+  /**
+   * PROJ-88 — stakeholder extraction from a kickoff via local Ollama.
+   *
+   * Class-3-pinned purpose: this method only ever runs on the tenant-local
+   * endpoint, so personal names in the excerpt/output never leave the
+   * tenant boundary. Defense-in-depth after the model returns:
+   *   - `duplicate_of_stakeholder_id` must reference an id that was in the
+   *     supplied `existing_stakeholders` list (hallucinated ids → null).
+   *   - empty-string contacts normalise to null.
+   */
+  async generateStakeholderProposals(
+    request: StakeholderProposalsGenerationRequest,
+  ): Promise<StakeholderProposalsGenerationOutput> {
+    const start = Date.now()
+    const result = await generateObject({
+      model: this.sdkProvider(this.modelId),
+      schema: StakeholderProposalsResponseSchemaOllama,
+      system: STAKEHOLDER_PROPOSALS_SYSTEM_PROMPT_OLLAMA,
+      prompt: buildStakeholderProposalsPromptOllama(request),
+      temperature: 0.2,
+    })
+
+    const usage = result.usage as
+      | { inputTokens?: number; outputTokens?: number }
+      | undefined
+
+    const validStakeholderIds = new Set(
+      request.context.existing_stakeholders.map((s) => s.stakeholder_id),
+    )
+
+    return {
+      suggestions: result.object.suggestions.map((s) => ({
+        name: s.name,
+        kind: s.kind,
+        origin: s.origin,
+        role_key: emptyToNull(s.role_key),
+        org_unit: emptyToNull(s.org_unit),
+        contact_email: emptyToNull(s.contact_email),
+        contact_phone: emptyToNull(s.contact_phone),
+        duplicate_of_stakeholder_id:
+          s.duplicate_of_stakeholder_id != null &&
+          validStakeholderIds.has(s.duplicate_of_stakeholder_id)
+            ? s.duplicate_of_stakeholder_id
+            : null,
+        source_quote: emptyToNull(s.source_quote),
+        confidence: s.confidence,
+        relevance: s.relevance,
+      })),
+      usage: {
+        input_tokens: usage?.inputTokens ?? null,
+        output_tokens: usage?.outputTokens ?? null,
+        latency_ms: Date.now() - start,
+      },
+    }
+  }
 }
 
 // ---------------------------------------------------------------------------
@@ -1024,6 +1082,94 @@ export function buildProposalFromContextPromptOllama(
     ctx.context_source.content_excerpt || "(leer)",
     "",
     `Liefere bis zu ${Math.min(request.count, 50)} hierarchisch verknüpfte Vorschläge.`,
+  ]
+  return lines.join("\n")
+}
+
+
+// ---------------------------------------------------------------------------
+// PROJ-88 — local schema + prompt for stakeholder proposals (Ollama-only)
+// ---------------------------------------------------------------------------
+
+function emptyToNull(v: string | null | undefined): string | null {
+  const trimmed = v?.trim()
+  return trimmed ? trimmed : null
+}
+
+const StakeholderProposalSuggestionSchemaOllama = z.object({
+  name: z.string().min(1).max(255),
+  kind: z.enum(["person", "organization"]),
+  origin: z.enum(["internal", "external"]),
+  role_key: z.string().max(100).nullable(),
+  org_unit: z.string().max(200).nullable(),
+  contact_email: z.string().max(320).nullable(),
+  contact_phone: z.string().max(50).nullable(),
+  // Validated post-hoc against the supplied existing_stakeholders list.
+  duplicate_of_stakeholder_id: z.string().nullable(),
+  source_quote: z.string().max(300).nullable(),
+  confidence: z.enum(["low", "medium", "high"]),
+  // PROJ-91 track invariant (AC-88.9) — relevance to the Vorhaben.
+  relevance: z.enum(["on_goal", "off_goal"]),
+})
+
+const StakeholderProposalsResponseSchemaOllama = z.object({
+  suggestions: z.array(StakeholderProposalSuggestionSchemaOllama).min(0).max(30),
+})
+
+// Exported for the PROJ-88 grounding contract test (AC-88.9).
+export const STAKEHOLDER_PROPOSALS_SYSTEM_PROMPT_OLLAMA = `Du bist ein erfahrener Programm-/Projektleiter und extrahierst die im Kickoff-Dokument GENANNTEN Stakeholder als strukturierte Vorschläge.
+
+Aufgabe: Analysiere den Inhalt eines Kickoff-Dokuments und schlage 0-30 Stakeholder vor (Personen oder Organisationen), die der Projektleiter anschließend reviewt und gezielt akzeptiert.
+
+Pflichtregeln:
+- Antworte ausschließlich auf Deutsch.
+- Extrahiere Stakeholder AUSSCHLIESSLICH aus dem Kickoff-Dokument. ERFINDE NIEMALS Namen. Erfinde KEINE Stakeholder aus dem Vorhaben — das Vorhaben ist NUR der Bewertungsmaßstab für \`relevance\`, NIE eine Quelle für Vorschläge.
+- \`kind\`: \`person\` für natürliche Personen, \`organization\` für Firmen/Abteilungen/Gremien.
+- \`origin\`: \`internal\`, wenn die Person/Organisation erkennbar zur eigenen Organisation gehört, sonst \`external\`.
+- \`role_key\`: die im Dokument genannte Projektrolle (z.B. "Projektleiter Fachbereich"), max. 100 Zeichen. Wenn eine Rolle ohne klaren Namen genannt wird, KEINEN Namen erfinden — lasse die Erwähnung weg.
+- \`contact_email\` / \`contact_phone\`: NUR übernehmen, wenn sie wörtlich im Dokument stehen. Niemals ableiten oder erraten.
+- Dedup: Wenn eine Erwähnung einer der unter "Vorhandene Stakeholder" gelisteten Einträge ist (gleiche Person/Organisation), setze \`duplicate_of_stakeholder_id\` auf dessen ID statt einen neuen Vorschlag zu formulieren. Bei Unsicherheit: null lassen und \`confidence\` senken.
+- \`source_quote\`: kurzes wörtliches Zitat (max. 300 Zeichen), das die Erwähnung im Dokument belegt — Pflicht für Nachvollziehbarkeit, wenn irgend möglich.
+- \`confidence\`: \`low\`, wenn der Name mehrdeutig ist (könnte ein Produkt/System sein, z.B. "Microsoft Dynamics" ist KEIN Stakeholder); \`high\` nur bei eindeutiger Personen-/Organisationsnennung.
+- \`relevance\` bewertet den Bezug zum Vorhaben/Projektziel: \`on_goal\`, wenn der Stakeholder für das beschriebene Vorhaben relevant ist; \`off_goal\`, wenn er aus dem Kickoff stammt, aber nicht zum Vorhaben passt. Unterdrücke \`off_goal\`-Einträge NICHT. Ohne angegebenes Vorhaben: \`on_goal\`.
+- Produkte, Systeme, Tools und Methoden sind KEINE Stakeholder.
+- KEIN erzwungenes Padding: lieber wenige belegte Vorschläge als viele vage.`
+
+// Exported for the PROJ-88 grounding contract test (AC-88.9).
+export function buildStakeholderProposalsPromptOllama(
+  request: StakeholderProposalsGenerationRequest,
+): string {
+  const ctx = request.context
+  const vorhaben = ctx.source_project.description?.trim()
+  const existing =
+    ctx.existing_stakeholders.length > 0
+      ? ctx.existing_stakeholders
+          .map(
+            (s) =>
+              `  - id=${s.stakeholder_id} | ${s.name} (${s.kind}${s.role_key ? `, ${s.role_key}` : ""})`,
+          )
+          .join("\n")
+      : "  (keine)"
+
+  const lines: string[] = [
+    `Projekt: ${ctx.source_project.name}`,
+    `Typ: ${ctx.source_project.project_type ?? "—"}`,
+    `Methode: ${ctx.source_project.project_method ?? "—"}`,
+    // PROJ-91 track invariant (AC-88.9): yardstick only, never a source.
+    vorhaben
+      ? `\nVorhaben (Projektziel — NUR Bewertungsmaßstab für relevance, KEINE Quelle für Vorschläge):\n${vorhaben}`
+      : `\n(Kein Vorhaben hinterlegt — relevance=on_goal.)`,
+    "",
+    `Vorhandene Stakeholder (für Dedup via duplicate_of_stakeholder_id):`,
+    existing,
+    "",
+    `Kickoff-Artefakt (${ctx.context_source.kind}): ${ctx.context_source.title}`,
+    `Privacy-Klasse: ${ctx.context_source.privacy_class}`,
+    "",
+    `Inhalt:`,
+    ctx.context_source.content_excerpt || "(leer)",
+    "",
+    `Liefere bis zu ${Math.min(request.count, 30)} Stakeholder-Vorschläge. Wenn das Dokument keine Stakeholder nennt, liefere eine leere Liste.`,
   ]
   return lines.join("\n")
 }

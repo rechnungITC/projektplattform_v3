@@ -25,6 +25,7 @@ import type {
   ResourceSwapGenerationRequest,
   RiskGenerationRequest,
   SentimentGenerationRequest,
+  StakeholderProposalsGenerationRequest,
   TrajectorySequenceGenerationRequest,
 } from "./types"
 import type {
@@ -36,6 +37,7 @@ import type {
   ResourceSwapGenerationOutput,
   RiskGenerationOutput,
   RiskSuggestion,
+  StakeholderProposalsGenerationOutput,
   TrajectorySequenceGenerationOutput,
   TrajectorySequenceSuggestion,
   SentimentGenerationOutput,
@@ -480,6 +482,26 @@ export class StubProvider implements AIProvider {
   async generateProposalFromContext(
     _request: ProposalFromContextGenerationRequest,
   ): Promise<ProposalFromContextGenerationOutput> {
+    const start = Date.now()
+    return {
+      suggestions: [],
+      usage: {
+        input_tokens: 0,
+        output_tokens: 0,
+        latency_ms: Date.now() - start,
+      },
+    }
+  }
+
+  /**
+   * PROJ-88 — stub stakeholder proposals. Empty by design (mirror of
+   * generateProposalFromContext): the purpose is Class-3-pinned, so the
+   * stub only ever runs as the external_blocked fallback — fabricated
+   * placeholder stakeholders would be worse than none.
+   */
+  async generateStakeholderProposals(
+    _request: StakeholderProposalsGenerationRequest,
+  ): Promise<StakeholderProposalsGenerationOutput> {
     const start = Date.now()
     return {
       suggestions: [],

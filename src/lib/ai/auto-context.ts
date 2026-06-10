@@ -31,6 +31,7 @@ import type {
   ProjectMethodHint,
   ProposalFromContextAutoContext,
   RiskAutoContext,
+  StakeholderProposalsAutoContext,
 } from "./types"
 
 const WORK_ITEMS_LIMIT = 30
@@ -1124,5 +1125,111 @@ export async function collectProposalFromContextAutoContext(
       language: cs.language,
     },
     method_hint: normaliseMethodHint(project.project_method),
+  }
+}
+
+/**
+ * PROJ-88 — auto-context for stakeholder proposals from a kickoff source.
+ *
+ * Mirrors `collectProposalFromContextAutoContext` (same project + context
+ * source reads + project-scope guard) and additionally loads the project's
+ * existing stakeholders (id, name, kind, role_key) so the model can propose
+ * `duplicate_of_stakeholder_id` instead of duplicate creates (L4).
+ *
+ * The classification of this purpose does NOT depend on this shape —
+ * `classifyStakeholderProposalsAutoContext` pins Class-3 unconditionally.
+ */
+export async function collectStakeholderProposalsAutoContext(
+  supabase: SupabaseClient,
+  projectId: string,
+  contextSourceId: string,
+): Promise<StakeholderProposalsAutoContext> {
+  const [projectRes, contextSourceRes, stakeholdersRes] = await Promise.all([
+    supabase
+      .from("projects")
+      .select(
+        "id, name, description, project_type, project_method, lifecycle_status",
+      )
+      .eq("id", projectId)
+      .maybeSingle(),
+    supabase
+      .from("context_sources")
+      .select(
+        "id, kind, title, privacy_class, content_excerpt, language, project_id",
+      )
+      .eq("id", contextSourceId)
+      .maybeSingle(),
+    supabase
+      .from("stakeholders")
+      .select("id, name, kind, role_key")
+      .eq("project_id", projectId)
+      .eq("is_active", true)
+      .order("created_at", { ascending: true })
+      .limit(100),
+  ])
+
+  if (projectRes.error) throw new Error(`projects: ${projectRes.error.message}`)
+  if (contextSourceRes.error)
+    throw new Error(`context_sources: ${contextSourceRes.error.message}`)
+  if (stakeholdersRes.error)
+    throw new Error(`stakeholders: ${stakeholdersRes.error.message}`)
+  if (!projectRes.data) throw new Error("Project not found.")
+  if (!contextSourceRes.data) throw new Error("Context source not found.")
+
+  const project = projectRes.data as {
+    id: string
+    name: string
+    description: string | null
+    project_type: string | null
+    project_method: string | null
+    lifecycle_status: string
+  }
+  const cs = contextSourceRes.data as {
+    id: string
+    kind: string
+    title: string
+    privacy_class: number
+    content_excerpt: string | null
+    language: string | null
+    project_id: string | null
+  }
+
+  // Scope-check mirror of collectProposalFromContextAutoContext: the
+  // context_source MUST belong to this project OR be tenant-wide.
+  if (cs.project_id != null && cs.project_id !== projectId) {
+    throw new Error("Context source belongs to a different project.")
+  }
+
+  return {
+    source_project: {
+      project_id: project.id,
+      name: project.name,
+      // PROJ-91 track invariant (AC-88.9): relevance yardstick only.
+      description: project.description,
+      project_type: project.project_type,
+      project_method: project.project_method,
+      lifecycle_status: project.lifecycle_status,
+    },
+    context_source: {
+      context_source_id: cs.id,
+      kind: cs.kind,
+      title: cs.title,
+      privacy_class: (cs.privacy_class as 1 | 2 | 3) ?? 3,
+      content_excerpt: cs.content_excerpt ?? "",
+      language: cs.language,
+    },
+    existing_stakeholders: (
+      (stakeholdersRes.data ?? []) as Array<{
+        id: string
+        name: string
+        kind: "person" | "organization"
+        role_key: string | null
+      }>
+    ).map((s) => ({
+      stakeholder_id: s.id,
+      name: s.name,
+      kind: s.kind,
+      role_key: s.role_key,
+    })),
   }
 }
