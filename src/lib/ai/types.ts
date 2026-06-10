@@ -23,6 +23,9 @@ export type AIPurpose =
   // — flach gespeichert, Hierarchie via Chain. Class-1/2 → Anthropic;
   // Class-3 (via Heuristik oder PROJ-44-β privacy_class) → Ollama-only.
   | "proposal_from_context"
+  // PROJ-88 — stakeholder extraction from a kickoff context source.
+  // Class-3-pinned (names by definition) → local providers only.
+  | "proposal_stakeholders_from_context"
 
 export type DataClass = 1 | 2 | 3
 
@@ -777,6 +780,106 @@ export interface ProposalFromContextGenerationOutput {
  * row gets created by the 70-β accept-pipeline.
  */
 export interface RouterProposalFromContextResult {
+  run_id: string
+  classification: DataClass
+  provider: AIProviderName
+  model_id: string | null
+  status: "success" | "error" | "external_blocked"
+  suggestion_ids: string[]
+  external_blocked: boolean
+  error_message?: string
+}
+
+// ---------------------------------------------------------------------------
+// PROJ-88 — proposal_stakeholders_from_context purpose types
+// ---------------------------------------------------------------------------
+
+/**
+ * Auto-context for stakeholder proposals from a kickoff context source.
+ *
+ * Class-3 BY DESIGN (stakeholder extraction surfaces personal names) —
+ * `classifyStakeholderProposalsAutoContext` returns 3 unconditionally,
+ * so the router can only ever pick a local/eligible provider. The full
+ * excerpt may flow here because it never leaves the tenant boundary.
+ *
+ * `existing_stakeholders` enables dedup: the model proposes
+ * `duplicate_of_stakeholder_id` instead of a duplicate create.
+ */
+export interface StakeholderProposalsAutoContext {
+  source_project: {
+    project_id: string
+    name: string
+    /** PROJ-91 track invariant: the Vorhaben is ONLY the relevance
+     *  yardstick — NEVER a generation source (AC-88.9). */
+    description: string | null
+    project_type: string | null
+    project_method: string | null
+    lifecycle_status: string
+  }
+  context_source: {
+    context_source_id: string
+    kind: string
+    title: string
+    privacy_class: 1 | 2 | 3
+    content_excerpt: string
+    language: string | null
+  }
+  existing_stakeholders: Array<{
+    stakeholder_id: string
+    name: string
+    kind: "person" | "organization"
+    role_key: string | null
+  }>
+}
+
+/**
+ * One AI-proposed stakeholder. Flat (no hierarchy). Reviewer-set accept
+ * options (`create_resource`, `linked_user_id`) are added via the
+ * purpose-aware PATCH before bulk-accept — the model never sets them.
+ */
+export interface StakeholderProposalSuggestion {
+  /** Extracted display name (person or organization). Never fabricated —
+   *  must be grounded in the kickoff document (AC-88.9). */
+  name: string
+  kind: "person" | "organization"
+  /** Model's best guess whether the party belongs to the own org. */
+  origin: "internal" | "external"
+  /** Suggested project role, free text from the document (≤ 100 chars). */
+  role_key: string | null
+  /** Organization/department hint from the document. */
+  org_unit: string | null
+  /** Contact details if (and only if) the document states them. Stays in
+   *  the tenant DB — the generation itself runs on a local provider. */
+  contact_email: string | null
+  contact_phone: string | null
+  /** Dedup: id of an existing project stakeholder this mention refers to.
+   *  Accept then links instead of creating (L4). */
+  duplicate_of_stakeholder_id: string | null
+  /** Short verbatim quote locating the mention in the document (review aid,
+   *  source traceability). */
+  source_quote: string | null
+  /** Axis 1 — how clearly the document supports this stakeholder. Low for
+   *  ambiguous names (could be a product). */
+  confidence: "low" | "medium" | "high"
+  /** Axis 2 (PROJ-91 invariant) — relevance to the Vorhaben. */
+  relevance: "on_goal" | "off_goal"
+  /** Reviewer-set accept options (via PATCH, not model output). */
+  create_resource?: boolean
+  linked_user_id?: string | null
+  /** Server-side display enrichment. */
+  display?: {
+    source_project_name: string | null
+    context_source_title: string | null
+  }
+}
+
+export interface StakeholderProposalsGenerationOutput {
+  suggestions: StakeholderProposalSuggestion[]
+  usage: ProviderUsage
+}
+
+/** Router result for a stakeholder-proposals invocation. */
+export interface RouterStakeholderProposalsResult {
   run_id: string
   classification: DataClass
   provider: AIProviderName

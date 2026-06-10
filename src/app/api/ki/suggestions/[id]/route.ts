@@ -52,6 +52,10 @@ const proposalFromContextPayloadSchema = z.object({
   title: z.string().trim().min(3).max(200),
   description: z.string().max(500).nullable(),
   confidence: z.enum(["low", "medium", "high"]),
+  // PROJ-91 — relevance axis. Optional for pre-PROJ-91 rows; without it
+  // here Zod's strip-parse would silently drop the flag (and the "≠ Ziel"
+  // badge) on every inline-edit.
+  relevance: z.enum(["on_goal", "off_goal"]).optional(),
   display: z
     .object({
       method_hint_kind: z.string().nullable(),
@@ -62,9 +66,40 @@ const proposalFromContextPayloadSchema = z.object({
     .optional(),
 })
 
+// PROJ-88 — proposal_stakeholders_from_context inline-edit shape.
+// Reviewer-editable: name/kind/origin/role_key/org_unit/contacts +
+// the accept options `create_resource` (L2 toggle) and `linked_user_id`
+// (existing tenant member, re-validated in the accept RPC) +
+// `duplicate_of_stakeholder_id` (clearable). `source_quote` is the
+// provider's traceability evidence and `confidence`/`relevance` are
+// provider-declared — echoed through, not meaningfully editable.
+const stakeholderProposalPayloadSchema = z.object({
+  name: z.string().trim().min(1).max(255),
+  kind: z.enum(["person", "organization"]),
+  origin: z.enum(["internal", "external"]),
+  role_key: z.string().max(100).nullable(),
+  org_unit: z.string().max(200).nullable(),
+  contact_email: z.string().max(320).nullable(),
+  contact_phone: z.string().max(50).nullable(),
+  duplicate_of_stakeholder_id: z.string().uuid().nullable(),
+  source_quote: z.string().max(300).nullable(),
+  confidence: z.enum(["low", "medium", "high"]),
+  relevance: z.enum(["on_goal", "off_goal"]),
+  create_resource: z.boolean().optional(),
+  linked_user_id: z.string().uuid().nullable().optional(),
+  display: z
+    .object({
+      source_project_name: z.string().nullable(),
+      context_source_title: z.string().nullable(),
+    })
+    .partial()
+    .optional(),
+})
+
 const PURPOSE_PAYLOAD_SCHEMAS = {
   risks: riskPayloadSchema,
   proposal_from_context: proposalFromContextPayloadSchema,
+  proposal_stakeholders_from_context: stakeholderProposalPayloadSchema,
 } as const
 
 type SupportedPurpose = keyof typeof PURPOSE_PAYLOAD_SCHEMAS

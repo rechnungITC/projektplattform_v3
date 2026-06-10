@@ -1,6 +1,6 @@
 # PROJ-88: AI Stakeholder Proposals from Context
 
-## Status: Architected
+## Status: In Progress
 **Created:** 2026-06-08
 **Last Updated:** 2026-06-10
 **Origin:** CIA portfolio review 2026-06-08 (vision: "Wizard befüllt das ganze Projekt")
@@ -114,6 +114,20 @@ Budget extraction (PROJ-82), Generate-All orchestration (PROJ-90), any cloud rou
 1. `/backend` — purpose + classifier + collector + Ollama prompt/method + routes + migration/RPCs (~2 PT)
 2. `/frontend` — drawer tab + cards + toggles + undo toast (~1 PT)
 3. `/qa` — live Ollama run (WSL2 endpoint exists since PROJ-86 setup), RPC live smoke, security probes (~0.5 PT); PROJ-87 deferred Playwright smoke rides along here.
+
+## Implementation Notes — 2026-06-10 (/backend)
+- **Purpose + types** (`src/lib/ai/types.ts`): `proposal_stakeholders_from_context` + `StakeholderProposalsAutoContext` (project incl. Vorhaben, context source, `existing_stakeholders` for dedup) + flat `StakeholderProposalSuggestion` (name/kind/origin/role_key/org_unit/contacts/duplicate_of/source_quote/confidence/relevance + reviewer-set `create_resource`/`linked_user_id`).
+- **Classifier** (`classify.ts`): `classifyStakeholderProposalsAutoContext` — unconditional Class-3 pin (L1, resource_swap mirror). 3 tests.
+- **Collector** (`auto-context.ts`): `collectStakeholderProposalsAutoContext` — project + source (same scope-guard as PROJ-70) + active stakeholders (id/name/kind/role_key, limit 100).
+- **Ollama provider**: local Zod schema (≤30), system prompt with AC-88.9 yardstick-only grounding + no-fabricated-names + dedup + product-ambiguity rules; builder renders Vorhaben block ("NUR Bewertungsmaßstab…"), existing-stakeholder list with ids, kickoff content. Post-hoc defense: hallucinated `duplicate_of_stakeholder_id` → null. **Stub**: empty by design. 4 prompt contract tests (`ollama-stakeholder-prompts.test.ts`) assert the invariant phrases AND absence of the generation imperative.
+- **Router** (`router.ts`): `invokeStakeholderProposalsGeneration` — standard resolver path (NO Ollama hard-pin → PROJ-93 forward-compat AC-93.9), cost-cap, ki_runs, Stub-fallback (`external_blocked`), display enrichment, ki_suggestions insert.
+- **Migration** `20260613100000` (applied to prod): purpose CHECKs (ki_runs/ki_suggestions/cost_caps), `ki_provenance` entity CHECK + `stakeholders`/`resources` (plural, H-1 lesson), immutability-trigger bypass extended to the new purpose, RPC pair `accept_stakeholder_proposals_bulk`/`_undo` (SECURITY DEFINER, 30s window, same-actor, H-2 provenance cleanup). Accept semantics: dedup → `stakeholder_link` (no create, never deleted on undo); create → stakeholder (+resource per toggle, bridged via `source_stakeholder_id`); `linked_user_id` must be an existing tenant member (invariant #4).
+- **Routes**: `…/ai/stakeholder-proposals` (POST editor+ / GET member), `accept`, `undo`; purpose-aware PATCH in `/api/ki/suggestions/[id]` (+ drive-by fix: `relevance` was being stripped from `proposal_from_context` payloads on inline-edit since PROJ-91 — now preserved).
+- **FE wrapper**: `src/lib/ai-proposals/stakeholder-proposals-api.ts` (list/trigger/reject/accept/undo/edit).
+- **Live RPC smoke (Pflicht) 2026-06-10, prod DB, DO-block + rollback-marker, 0 residue**: 3-suggestion accept (create + create_resource+linked_user + dedup-link), undo (deletes only created, pre-existing stakeholder survives, provenance cleaned), re-accept after undo. **Found + fixed live: `resources_tenant_user_unique` collision** — when the linked user already owns a resource, the RPC now creates the resource without the user-link (stakeholder bridge intact) instead of failing the accept; prod function patched via anchor-replace, migration file updated.
+- **Quality gates**: lint 0; tsc 13 baseline / 0 new; vitest **1770/1770** (+22: 3 classifier + 4 prompt contract + 15 route); build clean.
+- **Hygiene**: removed stale `.claude/worktrees/deploy-proj47-proj74` worktree (clean, identical to main) that doubled vitest counts and broke the lint baseline.
+- **Open for /frontend**: drawer tab 5 ("Stakeholder", flat cards + inline-edit + create_resource toggle + member picker + 30s-undo toast), AC-88.3 UI message ("Lokaler KI-Provider erforderlich"), AC-88.8. **Open for /qa**: live Ollama generation run (WSL2 endpoint), Playwright auth-gates, security probes; PROJ-87 deferred smoke rides along.
 
 ## QA Test Results
 _To be added by /qa_

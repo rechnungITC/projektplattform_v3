@@ -21,6 +21,7 @@ import type {
   ResourceSwapAutoContext,
   RiskAutoContext,
   SentimentAutoContext,
+  StakeholderProposalsAutoContext,
   TrajectorySequenceAutoContext,
 } from "./types"
 
@@ -366,6 +367,29 @@ export function classifyTrajectorySequenceAutoContext(
  */
 export function classifyResourceSwapAutoContext(
   _ctx: ResourceSwapAutoContext,
+  _tenantDefault: DataClass = 3,
+): DataClass {
+  return 3
+}
+
+// ---------------------------------------------------------------------------
+// PROJ-88 — stakeholder-proposals classifier (unconditional Class-3 pin)
+// ---------------------------------------------------------------------------
+
+/**
+ * PROJ-88 — classify a `StakeholderProposalsAutoContext` payload.
+ *
+ * Constant Class-3 BY DESIGN (Tech-Design L1, mirror of resource_swap):
+ * stakeholder extraction surfaces personal names per definition, so the
+ * classification never depends on content heuristics. The router's
+ * standard Class-3 clamp then restricts the provider set to local/
+ * eligible providers (today Ollama; PROJ-93 may add attested
+ * Trusted-EU-Processors via the resolver — no change needed here).
+ *
+ * `tenantDefault` is kept for signature symmetry but has no effect.
+ */
+export function classifyStakeholderProposalsAutoContext(
+  _ctx: StakeholderProposalsAutoContext,
   _tenantDefault: DataClass = 3,
 ): DataClass {
   return 3
