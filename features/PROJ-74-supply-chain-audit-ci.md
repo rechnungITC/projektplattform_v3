@@ -44,9 +44,10 @@ Supply-chain hardening follow-up from PROJ-70 gamma/delta. Adds a production-dep
 - `npm run audit:prod` — PASS as a high/critical gate. Current audit output still reports the pre-existing 2 moderate Next/PostCSS findings, but the PROJ-74 gate intentionally fails only at high/critical severity.
 - `npm run build` — PASS, Next.js production build and TypeScript successful.
 
-### Remaining Handoff
+### Open Items
 
-- ⏳ **Add `SNYK_TOKEN` as a repository secret** — still open as of 2026-06-10 (`gh secret list` empty). Until the token exists, the Snyk job passes with a GitHub Actions warning (by design, AC-4); the required check is therefore a no-op pass, not a real scan.
+- ⏳ **Snyk zurückgestellt (2026-06-10)** — `SNYK_TOKEN` wird vorerst nicht konfiguriert. Der Snyk-Job ist im Workflow vorhanden und als Required-Check eingetragen, fällt aber im Normalfall durch (`SNYK_TOKEN` leer → GitHub Actions warning → no-op pass). Entscheidung: Snyk als externen Drittanbieter **nicht weiter verfolgen**, stattdessen **Evaluierung GitHub-native Alternative** (Dependabot Alerts + GitHub Dependency Review Action) als Folgeticket. Bis dahin übernimmt `npm audit production dependencies` die high/critical-Absicherung.
+  - Folgeticket: PROJ-94 oder Scope in PROJ-67 einbauen (Dependency-Review-Action als ernsthafter Snyk-Ersatz ohne externen Account-Zwang)
 - [x] Mark both workflow jobs as required checks in GitHub branch protection — done 2026-06-10 (see Deployment).
 
 ## Deployment
@@ -58,4 +59,4 @@ Supply-chain hardening follow-up from PROJ-70 gamma/delta. Adds a production-dep
   - `npm audit production dependencies` (new)
   - `Snyk production dependency scan` (new — passes as warning-only until `SNYK_TOKEN` is configured)
 - **Verification 2026-06-10:** workflow green on the last 3 main pushes (runs 27278989142, 27276095744, 27266265650); `npm run lint` + `npm run build` clean on current main (4390f31).
-- **Open user handoff:** create a Snyk account token and add it as repository secret `SNYK_TOKEN` — only then does the Snyk required check actually scan.
+- **Offene Entscheidung (2026-06-10):** Snyk zurückgestellt — kein `SNYK_TOKEN` nötig. Evaluierung GitHub-native Dependency-Review-Action als Ersatz (kein externer Account). Bis dahin ist der Snyk-Required-Check warning-only-Pass; `npm audit` bleibt die aktive Schranke. Siehe Open Items oben.
