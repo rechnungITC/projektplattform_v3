@@ -46,6 +46,7 @@ Stakeholder data is personal data by definition (names, often emails/phones). Th
 ## Dependencies
 - Requires: PROJ-86 (classifier correctness for the surrounding flow), PROJ-57 (participant-resource-linking model), PROJ-8 (stakeholders), PROJ-70 (sibling mechanics: router/drawer/accept/undo/provenance), PROJ-32 (Ollama provider config).
 - Unblocks: PROJ-90 (orchestration).
+- Forward-compat (PROJ-93, CIA 2026-06-10): the implementation must route Class-3 through the **standard key-resolver path** (classifier returns 3 → resolver picks the eligible provider set), NOT hard-pin Ollama in the purpose code. When PROJ-93 ships, attested Trusted-EU-Processor endpoints join the eligible set automatically — no PROJ-88 change needed.
 
 ---
 <!-- Sections below are added by subsequent skills -->

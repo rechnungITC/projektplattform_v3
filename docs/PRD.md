@@ -88,6 +88,8 @@ The product thesis: enterprise projects fail at the seams between execution, gov
 | PROJ-88 | P1 | KI-Stakeholder-Vorschläge aus Kontext — `proposal_stakeholders_from_context`: Stakeholder aus Kickoff → Resource/Project-Member + Rolle (PROJ-57-Brücke). Class-3 → Ollama-only by design. Geschwister von PROJ-70. | Planned |
 | PROJ-89 | P1 | KI-Risiko-Vorschläge aus Kontext — `proposal_risks_from_context`: Risiken AUS dem Kickoff-Dokument (Abgrenzung zu PROJ-12 `risks`). Class-2-fähig → Cloud. Persistiert in PROJ-20. Geschwister von PROJ-70. | Planned |
 | PROJ-90 | P1 | Orchestrierter „Projekt befüllen" — Multi-Tab Generate-All + Accept-All über Backlog/Stakeholder/Risiken nach Wizard-Finalize; methoden-adäquat in bestehende Strukturen, 30s-Undo, auditierbar. Implementiert „Generate-All + Accept-All" (kein stilles Mutieren). Epic-Klammer über PROJ-87/88/89. | Planned |
+| PROJ-92 | P1 | Azure OpenAI Provider (Class-1/2) — fünfter Provider-Typ (tenant-eigene Azure-Ressource, EU-Region-Allowlist, openai-compatible Factory ohne neues Dep). Invariante #3 unberührt. | Planned |
+| PROJ-93 | P1 | Trusted-EU-Processor — kontrollierte, opt-in Class-3-Freigabe NUR für DPA-attestiertes Azure OpenAI im EU-Kunden-Tenant; DPA-konditionaler DB-CHECK, ADR + Invariante-#3-Präzisierung. Ohne Attest: Ollama-only unverändert. | Planned |
 
 ### Recommended Delivery Sequence — Assistant Track
 

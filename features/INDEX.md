@@ -111,4 +111,7 @@
 
 <!-- Add features above this line -->
 
-## Next Available ID: PROJ-92
+| PROJ-92 | Azure OpenAI Provider (Class-1/2) — fünfter Provider-Typ der PROJ-32-Architektur: tenant-eigene Azure-OpenAI-Ressource (Endpoint/Deployment/Key/api-version/EU-Region-Allowlist), alle 5 Cloud-Purposes via vorhandener openai-compatible Factory (CIA: KEIN `@ai-sdk/azure`-Dep), Cost-Cap- + Priority-Matrix-Integration. Invariante #3 unberührt: Class-3-Clamp bleibt `["ollama"]` (Test). CIA-reviewed 2026-06-10 (GO, Split 92/93). Requires PROJ-32/85/42. | Planned | [Spec](PROJ-92-azure-openai-provider.md) | 2026-06-10 |
+| PROJ-93 | Trusted-EU-Processor — kontrollierte Class-3-Freigabe für attestiertes Azure OpenAI (PO-Entscheidung 2026-06-10): DPA-Attest (Datum/Referenz/Admin, append-only Audit, KEIN Upload im MVP), zentrale `class3_eligible`-Ableitung, Resolver-Parametrisierung (`LOCAL_ONLY` → `CLASS3_ELIGIBLE`), DB-CHECK wird DPA-konditional (`class3_trusted_only`, NIE pauschal erweitert — CIA R1), ki_runs-Trusted-Kennzeichnung, ADR + CLAUDE.md-Invariante-#3-Präzisierung. Opt-in pro Tenant, ohne Attest ändert sich nichts. PROJ-88 erbt via Resolver (kein Hard-Pin). Requires PROJ-92. | Planned | [Spec](PROJ-93-trusted-eu-processor-class3.md) | 2026-06-10 |
+
+## Next Available ID: PROJ-94
