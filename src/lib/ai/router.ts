@@ -158,11 +158,21 @@ async function selectProviderForPurpose(
   })
 
   if (resolved.source === "blocked") {
+    // PROJ-88 QA F-1: surface the resolver's block reason so
+    // ki_runs.error_message carries an actionable explanation (AC-88.3 —
+    // previously NULL for every Class-3-blocked run across all purposes).
+    const reasonText =
+      resolved.reason === "class3_no_local_provider"
+        ? "Class-3-Purpose erfordert einen tenant-lokalen Provider (Ollama) — keiner ist konfiguriert. Einstellungen → KI-Provider."
+        : resolved.reason === "external_ai_disabled"
+          ? "Externe KI ist deaktiviert (EXTERNAL_AI_DISABLED)."
+          : `Provider-Auswahl blockiert: ${resolved.reason}`
     return {
       provider: new StubProvider(),
       externalBlocked:
         resolved.reason === "external_ai_disabled" ||
         resolved.reason === "class3_no_local_provider",
+      blockedReason: reasonText,
     }
   }
 
