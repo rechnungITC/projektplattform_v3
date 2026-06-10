@@ -1,6 +1,6 @@
 # PROJ-91: AI Backlog Grounding in Project Intent (Wizard-Vorhaben)
 
-## Status: In Progress
+## Status: Deployed
 **Created:** 2026-06-09
 **Last Updated:** 2026-06-10
 **Origin:** Live prod finding 2026-06-09 (PROJ-86 verification session)
@@ -26,7 +26,7 @@ Root cause: `collectProposalFromContextAutoContext` (`src/lib/ai/auto-context.ts
 - [x] **AC-91.4**: Suggestion schema + `ProposalFromContextSuggestion` type gain `relevance` (`on_goal | off_goal`), distinct from `confidence`; off-goal items kept, not suppressed. ✅
 - [x] **AC-91.5**: `relevance` mapped through provider output → persisted in `ki_suggestions.payload` (JSON, no migration) → "≠ Ziel" badge in `backlog-proposal-tree-node.tsx` (optional on read for pre-PROJ-91 rows). ✅
 - [x] **AC-91.6**: Shared prompt/schema/mapper updated once for anthropic/openai/google; Ollama's replicated local schema/prompt/mapper updated to match; stub stays schema-compatible (emits []). ✅
-- [~] **AC-91.7**: Live re-test against prod — **first re-test 2026-06-10 FAILED the intent** (see Implementation Notes iteration 2): grounding over-steered, model invented an on-goal ERP backlog from the Vorhaben instead of extracting kickoff items and flagging them `off_goal` (8/8 `on_goal`, ki_run e0f6f257 vs pre-fix ebd7e151, identical kickoff excerpt MD5). Prompt re-fix applied; re-test pending deploy: expect kickoff-derived items flagged `off_goal`.
+- [x] **AC-91.7**: Live re-test against prod ✅ (2026-06-10, after iteration-2 prompt fix, v1.83.0). **Both directions proven on prod (openai/gpt-4o, classification 2):** (a) divergent website-compliance kickoff (excerpt MD5 `fa98338e…`) → ki_run `8ae0ba6a`: 15/15 items kickoff-derived (Crawler, Cookie-/Consent-Prüfung, Lead-Scoring, CRM-Export …) and **all flagged `off_goal`**; (b) counter-probe with a matching ERP kickoff (`[TEST PROJ-91]` source, cleaned up after) → ki_run `688141ff`: 7/7 verbatim-extracted items **all `on_goal`** — no inverse over-flagging. Note: the first re-test (pre-fix run e0f6f257, 2026-06-09) had FAILED the intent — grounding over-steered, model invented an on-goal ERP backlog (8/8 on_goal, off_goal never fired); fixed by iteration 2.
 - [x] **AC-91.8** (defense-in-depth): the project `description` is now sent to the provider, so `classifyProposalFromContextAutoContext` also runs `detectClass3Markers` on it — a description carrying personal markers forces Class-3/Ollama routing. ✅ (keeps invariant #3 intact)
 
 ## Edge Cases
@@ -101,5 +101,8 @@ Backend/library + one small UI badge → `/backend` (badge is a trivial presenta
 ## QA Test Results
 _To be added by /qa_
 
-## Deployment
-_To be added by /deploy_
+## Deployment — 2026-06-10
+- Iteration 1 (grounding + relevance plumbing): PR #107 → main (665fa36), live since 2026-06-09.
+- Iteration 2 (over-steer fix + contract tests, CIA-reviewed): PR #110 → main (298b0b5), tag `v1.83.0-PROJ-91-grounding-fix`, Vercel production deployment `dpl_AaDwD6LFNC8rxwT74yo3ChghwSuG` READY.
+- AC-91.7 live-verified post-deploy via two real prod generation runs (see AC list): divergent kickoff → 15/15 `off_goal`; matching kickoff → 7/7 `on_goal`. Synthetic counter-probe artifacts (`[TEST PROJ-91]` context source + its draft suggestions) cleaned up; ki_runs kept as audit records. The 15 real `off_goal` drafts remain reviewable in the drawer (with "≠ Ziel" badge) for the PM.
+- Track invariant for PROJ-88/89 (CIA): "Vorhaben/Projektziel ist IMMER nur Bewertungs-Achse, NIE Generierungsquelle" — must become a mandatory AC in both specs. Deferred: live-eval harness (PROJ-92 candidate).
