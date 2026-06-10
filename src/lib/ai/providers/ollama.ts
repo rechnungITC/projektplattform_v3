@@ -987,22 +987,24 @@ export class OllamaProvider implements AIProvider {
     )
 
     return {
+      // Clamp free-text lengths here (DB CHECK limits) — the schema is
+      // deliberately cap-free so an over-long quote can't sink the run.
       suggestions: result.object.suggestions.map((s) => ({
-        name: s.name,
-        kind: s.kind,
-        origin: s.origin,
-        role_key: emptyToNull(s.role_key),
-        org_unit: emptyToNull(s.org_unit),
-        contact_email: emptyToNull(s.contact_email),
-        contact_phone: emptyToNull(s.contact_phone),
+        name: s.name.trim().slice(0, 255),
+        kind: s.kind as "person" | "organization",
+        origin: s.origin as "internal" | "external",
+        role_key: clampOrNull(s.role_key, 100),
+        org_unit: clampOrNull(s.org_unit, 200),
+        contact_email: clampOrNull(s.contact_email, 320),
+        contact_phone: clampOrNull(s.contact_phone, 50),
         duplicate_of_stakeholder_id:
           s.duplicate_of_stakeholder_id != null &&
           validStakeholderIds.has(s.duplicate_of_stakeholder_id)
             ? s.duplicate_of_stakeholder_id
             : null,
-        source_quote: emptyToNull(s.source_quote),
-        confidence: s.confidence,
-        relevance: s.relevance,
+        source_quote: clampOrNull(s.source_quote, 300),
+        confidence: s.confidence as "low" | "medium" | "high",
+        relevance: s.relevance as "on_goal" | "off_goal",
       })),
       usage: {
         input_tokens: usage?.inputTokens ?? null,
@@ -1096,20 +1098,36 @@ function emptyToNull(v: string | null | undefined): string | null {
   return trimmed ? trimmed : null
 }
 
+function clampOrNull(v: string | null | undefined, max: number): string | null {
+  const trimmed = emptyToNull(v)
+  return trimmed ? trimmed.slice(0, max) : null
+}
+
+// Lowercase/trim enum tolerance for small local models ("Person" → "person").
+const looseEnum = <T extends readonly [string, ...string[]]>(values: T) =>
+  z.preprocess(
+    (v) => (typeof v === "string" ? v.trim().toLowerCase() : v),
+    z.enum(values),
+  )
+
+// QA D-1 lesson (2026-06-10, qwen2.5:7b live run): hard `.max()` caps in
+// the schema make `generateObject` reject the WHOLE response when the
+// model writes e.g. a long verbatim source_quote. Validate LOOSE here,
+// clamp lengths in the mapper instead (validate-loose, clamp-after).
 const StakeholderProposalSuggestionSchemaOllama = z.object({
-  name: z.string().min(1).max(255),
-  kind: z.enum(["person", "organization"]),
-  origin: z.enum(["internal", "external"]),
-  role_key: z.string().max(100).nullable(),
-  org_unit: z.string().max(200).nullable(),
-  contact_email: z.string().max(320).nullable(),
-  contact_phone: z.string().max(50).nullable(),
+  name: z.string().min(1),
+  kind: looseEnum(["person", "organization"]),
+  origin: looseEnum(["internal", "external"]),
+  role_key: z.string().nullish(),
+  org_unit: z.string().nullish(),
+  contact_email: z.string().nullish(),
+  contact_phone: z.string().nullish(),
   // Validated post-hoc against the supplied existing_stakeholders list.
-  duplicate_of_stakeholder_id: z.string().nullable(),
-  source_quote: z.string().max(300).nullable(),
-  confidence: z.enum(["low", "medium", "high"]),
+  duplicate_of_stakeholder_id: z.string().nullish(),
+  source_quote: z.string().nullish(),
+  confidence: looseEnum(["low", "medium", "high"]),
   // PROJ-91 track invariant (AC-88.9) — relevance to the Vorhaben.
-  relevance: z.enum(["on_goal", "off_goal"]),
+  relevance: looseEnum(["on_goal", "off_goal"]),
 })
 
 const StakeholderProposalsResponseSchemaOllama = z.object({
