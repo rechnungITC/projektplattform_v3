@@ -986,7 +986,8 @@ const ProposalFromContextResponseSchemaOllama = z.object({
   suggestions: z.array(ProposalFromContextSuggestionSchemaOllama).min(0).max(50),
 })
 
-const PROPOSAL_FROM_CONTEXT_SYSTEM_PROMPT_OLLAMA = `Du bist ein erfahrener Programm-/Projektleiter und schlägst aus einem Kickoff-Artefakt eine konkrete Anfangs-Backlog-Struktur vor.
+// Exported for the PROJ-91 grounding contract test (mirror of the shared prompt).
+export const PROPOSAL_FROM_CONTEXT_SYSTEM_PROMPT_OLLAMA = `Du bist ein erfahrener Programm-/Projektleiter und schlägst aus einem Kickoff-Artefakt eine konkrete Anfangs-Backlog-Struktur vor.
 
 Aufgabe: Analysiere den Inhalt eines Kickoff-Dokuments und schlage 0–50 hierarchische Backlog-Items vor.
 
@@ -999,9 +1000,11 @@ Pflichtregeln:
 - KEINE Class-3-Daten in den Outputs: keine konkreten Personennamen, E-Mails, Telefonnummern. Generalisiere zu Rollen.
 - Hierarchie maximal 3 Ebenen tief.
 - Bei dünnem Kickoff: lieber leere Liste statt erzwungenes Padding.
-- \`relevance\` bewertet den Bezug zum Vorhaben/Projektziel (separate Achse zur \`confidence\`): \`on_goal\`, wenn das Item dem Vorhaben dient; \`off_goal\`, wenn es aus dem Kickoff stammt, aber nicht zum Vorhaben passt. Unterdrücke \`off_goal\`-Items NICHT. Ohne angegebenes Vorhaben: \`on_goal\`.`
+- \`relevance\` bewertet den Bezug zum Vorhaben/Projektziel (separate Achse zur \`confidence\`): \`on_goal\`, wenn das Item dem Vorhaben dient; \`off_goal\`, wenn es aus dem Kickoff stammt, aber nicht zum Vorhaben passt. Unterdrücke \`off_goal\`-Items NICHT.
+- Grounding-Regel: Extrahiere Items AUSSCHLIESSLICH aus dem Kickoff-Dokument. Erfinde KEINE Items aus dem Vorhaben — das Vorhaben ist NUR der Bewertungsmaßstab für \`relevance\`, NIE eine Quelle für Items. Ohne angegebenes Vorhaben: \`on_goal\`.`
 
-function buildProposalFromContextPromptOllama(
+// Exported for the PROJ-91 grounding contract test (mirror of the shared builder).
+export function buildProposalFromContextPromptOllama(
   request: ProposalFromContextGenerationRequest,
 ): string {
   const ctx = request.context
@@ -1009,9 +1012,9 @@ function buildProposalFromContextPromptOllama(
   const lines: string[] = [
     `Projekt: ${ctx.source_project.name}`,
     `Methode: ${ctx.source_project.project_method ?? "—"} (normalised: ${ctx.method_hint})`,
-    // PROJ-91 — Vorhaben grounds relevance (on_goal / off_goal).
+    // PROJ-91 — Vorhaben is ONLY the relevance yardstick, never an item source.
     vorhaben
-      ? `\nVorhaben (Projektziel — richte die Vorschläge hieran aus, bewerte Relevanz):\n${vorhaben}`
+      ? `\nVorhaben (Projektziel — NUR Bewertungsmaßstab für relevance, KEINE Quelle für Items):\n${vorhaben}`
       : `\n(Kein Vorhaben hinterlegt — relevance=on_goal.)`,
     "",
     `Kickoff-Artefakt (${ctx.context_source.kind}): ${ctx.context_source.title}`,

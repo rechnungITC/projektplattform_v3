@@ -2,7 +2,7 @@
 
 ## Status: In Progress
 **Created:** 2026-06-09
-**Last Updated:** 2026-06-09
+**Last Updated:** 2026-06-10
 **Origin:** Live prod finding 2026-06-09 (PROJ-86 verification session)
 **Priority:** P1 — generation-quality fix for PROJ-70
 
@@ -26,7 +26,7 @@ Root cause: `collectProposalFromContextAutoContext` (`src/lib/ai/auto-context.ts
 - [x] **AC-91.4**: Suggestion schema + `ProposalFromContextSuggestion` type gain `relevance` (`on_goal | off_goal`), distinct from `confidence`; off-goal items kept, not suppressed. ✅
 - [x] **AC-91.5**: `relevance` mapped through provider output → persisted in `ki_suggestions.payload` (JSON, no migration) → "≠ Ziel" badge in `backlog-proposal-tree-node.tsx` (optional on read for pre-PROJ-91 rows). ✅
 - [x] **AC-91.6**: Shared prompt/schema/mapper updated once for anthropic/openai/google; Ollama's replicated local schema/prompt/mapper updated to match; stub stays schema-compatible (emits []). ✅
-- [~] **AC-91.7**: Live re-test against prod — **pending deploy**. After merge: re-generate the ERP project against the website-compliance kickoff → expect items flagged `off_goal`; a matching kickoff → `on_goal`. Verify via fresh `ki_runs` row + payloads.
+- [~] **AC-91.7**: Live re-test against prod — **first re-test 2026-06-10 FAILED the intent** (see Implementation Notes iteration 2): grounding over-steered, model invented an on-goal ERP backlog from the Vorhaben instead of extracting kickoff items and flagging them `off_goal` (8/8 `on_goal`, ki_run e0f6f257 vs pre-fix ebd7e151, identical kickoff excerpt MD5). Prompt re-fix applied; re-test pending deploy: expect kickoff-derived items flagged `off_goal`.
 - [x] **AC-91.8** (defense-in-depth): the project `description` is now sent to the provider, so `classifyProposalFromContextAutoContext` also runs `detectClass3Markers` on it — a description carrying personal markers forces Class-3/Ollama routing. ✅ (keeps invariant #3 intact)
 
 ## Edge Cases
@@ -89,6 +89,14 @@ Backend/library + one small UI badge → `/backend` (badge is a trivial presenta
 - **No migration, no new dependency.** Blast radius confined to the proposal_from_context path.
 - **Quality gates**: lint 0; tsc 13 baseline / 0 new; vitest **1746/1746**; build clean.
 - **AC-91.7 (live)**: pending deploy — to confirm with a real re-generation + `ki_runs`/payload inspection.
+
+## Implementation Notes — 2026-06-10 (iteration 2: grounding over-steer fix, CIA-reviewed)
+- **Live A/B finding (AC-91.7 re-test)**: identical kickoff (excerpt MD5 `fa98338e…`, content = website-compliance platform) on the ERP project. Pre-PROJ-91 run ebd7e151 (2026-06-08 21:42): website backlog, no relevance. Post-PROJ-91 run e0f6f257 (2026-06-09 13:09): **generic ERP backlog, 8/8 `on_goal` — `off_goal` never fired**. The model discarded the kickoff and invented items from the Vorhaben → mirror-image of the original bug, violating source traceability (architecture principle #2).
+- **Root cause**: prompt wording made the Vorhaben a *generation source* ("richte deine Vorschläge primär am Vorhaben aus" in the shared system prompt; "richte die Vorschläge hieran aus" in the user-prompt label).
+- **Fix (prompt-only, CIA do-now #1)**: shared system prompt grounding rule replaced with "Extrahiere Items AUSSCHLIESSLICH aus dem Kickoff-Dokument. Erfinde KEINE Items aus dem Vorhaben — das Vorhaben ist NUR der Bewertungsmaßstab für `relevance`, NIE eine Quelle für Items."; user-prompt label → "NUR Bewertungsmaßstab für relevance, KEINE Quelle für Items". Ollama replicate mirrored (`ollama.ts`). No schema/mapper/API change.
+- **Regression guard (CIA do-now #2, PROJ-86 pattern "invert the bug-cementing test")**: 2 new contract tests in `graph-purpose-prompts.test.ts` assert the yardstick-only invariant phrases AND the absence of the generation-imperative wording — on the shared prompt **and** the Ollama replicate (both exported for this). The old string-contains tests alone had cemented the faulty wording.
+- **Track invariant (CIA)**: "Vorhaben/Projektziel ist IMMER nur Bewertungs-Achse, NIE Generierungsquelle" — to be carried as a mandatory AC into PROJ-88/89. Deferred: live-eval harness against a stored divergent kickoff fixture → PROJ-92 candidate.
+- **Quality gates (iteration 2)**: lint 0; tsc 13 baseline / 0 new; vitest **1748/1748** (+2 contract tests); build clean.
 
 ## QA Test Results
 _To be added by /qa_
