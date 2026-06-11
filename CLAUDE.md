@@ -108,6 +108,33 @@ Each `features/PROJ-X-*.md` carries a **V2 Reference Material** section that lis
 
 Engineers and architects can use these as prior-art reading before redesigning for V3's Supabase + Next.js stack.
 
+## Parallel Sessions (MANDATORY — git worktree per session)
+
+Only ONE Claude/agent session may use the primary checkout at a time. Every
+additional concurrent session MUST create its own git worktree before doing
+anything else:
+
+```bash
+git worktree add ../projektplattform_v3-<topic> -b <branch> origin/main
+# work there; when done:
+git worktree remove ../projektplattform_v3-<topic>
+```
+
+Why (incident 2026-06-10): two sessions shared this checkout — branches were
+switched mid-command, one session's commit landed on another session's branch,
+and `npm run lint` / `vitest` picked up a foreign in-repo worktree
+(`.claude/worktrees/...`), doubling test counts and breaking the lint baseline.
+
+Rules:
+- Before starting work, check `git worktree list`. If another session is
+  active in the primary checkout, create your own worktree — never switch
+  branches in a checkout you did not set up this session.
+- Place worktrees OUTSIDE the repo (e.g. sibling directory or /tmp), not
+  under `.claude/worktrees/`, so lint/test globs in the primary checkout
+  don't pick them up.
+- Never touch another session's worktree, untracked files, or branches.
+- Cleanup after merge: `git worktree remove <path>` + delete the branch.
+
 ## Continuous Improvement Agent
 
 Dieses Projekt verwendet einen spezialisierten **Continuous Improvement & Technology Scout Agent**.

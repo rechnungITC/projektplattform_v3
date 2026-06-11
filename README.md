@@ -325,3 +325,14 @@ Created by **Alex Sprogis** – AI Product Engineer & Content Creator.
 ## License
 
 MIT License - feel free to use for your projects!
+
+## Working with Multiple Claude Sessions
+
+If you run more than one Claude Code session on this repository at the same
+time, every additional session must work in its own git worktree (see the
+"Parallel Sessions" section in `CLAUDE.md`). Sharing one checkout between
+sessions causes branch races and corrupted lint/test baselines.
+
+```bash
+git worktree add ../my-second-session -b my-topic origin/main
+```
