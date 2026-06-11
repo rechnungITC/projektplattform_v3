@@ -1,0 +1,13 @@
+/*
+ * PROJ-67 F3: caret stabilization for toHaveScreenshot via stylesheet.
+ * Playwright's default caret hiding (caret: "hide") writes inline styles onto
+ * elements; the browser re-serializes their style attributes (shorthands
+ * expand to longhands, caret-color lingers). When React hydration finishes
+ * AFTER the screenshot (slow dev-server compile), it diffs against the
+ * mutated DOM and logs hydration-mismatch warnings on Settings/Profile/
+ * Resources/Signup inputs. A stylesheet hides the caret without touching
+ * any element's style attribute, so hydration stays clean.
+ */
+* {
+  caret-color: transparent !important;
+}
