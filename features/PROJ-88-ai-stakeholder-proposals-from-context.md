@@ -1,8 +1,8 @@
 # PROJ-88: AI Stakeholder Proposals from Context
 
-## Status: Approved
+## Status: Deployed
 **Created:** 2026-06-08
-**Last Updated:** 2026-06-10
+**Last Updated:** 2026-06-11
 **Origin:** CIA portfolio review 2026-06-08 (vision: "Wizard befüllt das ganze Projekt")
 **Priority:** P1 — Should-have
 
@@ -181,4 +181,21 @@ lint 0 · tsc 13 baseline/0 neu · vitest 1770/1770 · build clean · Playwright
 
 
 ## Deployment
-_To be added by /deploy_
+
+**Status:** ✅ Deployed
+**Deployed:** 2026-06-11 (Bookkeeping-Closure; Code live in Prod seit 2026-06-10)
+**Production URL:** https://projektplattform-v3.vercel.app
+**Git Tag:** v1.89.0-PROJ-88
+
+### Was ist live (alles auf `main`, Vercel auto-deploy)
+- **Backend-Slice** (PR #114, e8d05d1): Purpose + Class-3-Pin-Classifier + Collector + Ollama-Methode + Router + Migration `20260613100000` (Purpose-CHECKs, RPC-Paar accept/undo) + 3 Routen + purpose-aware PATCH. Tag `v1.84.0-PROJ-88-backend`.
+- **Frontend-Slice** (PR #115): Drawer-Tab 5 „Stakeholder". Tag `v1.85.0-PROJ-88-frontend`.
+- **QA-Slice** (PR #116, e34077d): Live-Class-3-Pin-Beweis, F-1 blockedReason-Fix, Playwright-Spec inkl. PROJ-87-Smoke. Tag `v1.86.0-PROJ-88-qa`.
+- **Ollama-Robustness** (PR #118 + #119): validate-loose/clamp-after + `supportsStructuredOutputs: true` (Root-Cause-Fix für alle 8 Ollama-Purposes).
+- **D-1-Closure** (PR #122): Happy-Path live bewiesen — ki_run `da0e0c6e`: classification=3 / provider=ollama / qwen2.5:7b / success / 7 suggestions.
+- **Purpose-Check-Fix** (PR #120, Migration `20260614100000`): `sentiment` + `coaching` in `ki_runs_purpose_check` restauriert (fehlte seit PROJ-34 — Coaching-/Sentiment-Generierung 5xx'te in Prod). Migration bereits am 2026-06-10 direkt in Prod angewendet + Live-Insert-Smoke grün.
+
+### Prod-Verify
+- Migrationen `20260613100000` + `20260614100000` in Prod-DB (CHECK-Defs verifiziert).
+- Tenant-Ollama-Provider registriert (`ollama:187.124.190.116:32768/qwen2.5:7b`, status=valid); Live-Generierung end-to-end erfolgreich (s. D-1-Closure).
+- Class-3-Pin live bewiesen: Tenant mit gültigem OpenAI-Key → trotzdem classification=3, Cloud strukturell unerreichbar.
