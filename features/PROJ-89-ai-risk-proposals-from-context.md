@@ -1,8 +1,8 @@
 # PROJ-89: AI Risk Proposals from Context
 
-## Status: Planned
+## Status: Architected
 **Created:** 2026-06-08
-**Last Updated:** 2026-06-08
+**Last Updated:** 2026-06-11
 **Origin:** CIA portfolio review 2026-06-08 (vision: "Wizard befüllt das ganze Projekt")
 **Priority:** P1 — Should-have
 
@@ -46,7 +46,73 @@ The platform can already generate risks (PROJ-12 `risks` purpose → `invokeRisk
 <!-- Sections below are added by subsequent skills -->
 
 ## Tech Design (Solution Architect)
-_To be added by /architecture_
+**Added:** 2026-06-11 · Sibling of PROJ-70/PROJ-88 — same router/drawer/accept/undo/provenance mechanics. **No new dependency.** One migration (purpose value + accept/undo RPC pair). **Class-2-capable → cloud allowed** (post-PROJ-86); content-based classification, NOT Class-3-pinned.
+
+### Mandatory track invariant (inherited from PROJ-91 deploy, Pflicht-AC)
+> **Das Vorhaben (`projects.description`) ist IMMER nur Bewertungs-Achse (`relevance`), NIE Generierungsquelle.** Risiken werden AUSSCHLIESSLICH aus dem Kickoff-Dokument abgeleitet; niemals aus dem Vorhaben erfunden. Jede Suggestion trägt `relevance` (`on_goal`/`off_goal`); der Prompt übernimmt die PROJ-91-yardstick-only-Formulierung und wird durch Contract-Tests abgesichert (Invariant-Phrasen vorhanden + Generierungs-Imperativ abwesend — Muster aus PROJ-88). → **AC-89.9 (neu, Pflicht)**:
+> - [ ] **AC-89.9**: Risks are derived **exclusively from the kickoff document**; the Vorhaben is **only the relevance yardstick** (`on_goal`/`off_goal` per suggestion), never a generation source. Guarded by prompt contract tests.
+
+### What gets built (PM view)
+
+**1. New AI purpose with standard (content-based) classification**
+- `proposal_risks_from_context` joins the purpose list. Unlike PROJ-88 (Class-3-pinned), the classifier follows the **standard whitelist path** (PROJ-70-α pattern): the kickoff excerpt + Vorhaben are scanned with the post-PROJ-86 marker detection. Clean business documents → Class 2 → tenant cloud provider (OpenAI/Anthropic/Google). Real PII in the document → Class 3 → Ollama-only via the standard resolver (no hard-pin — PROJ-93 forward-compat, same as PROJ-88).
+- Defense-in-depth: the `privacy_class` floor of the `context_source` is respected — a manually Class-3-stamped source never goes to cloud, regardless of marker detection (mirror PROJ-70).
+- No eligible provider for the resulting class → `external_blocked` with actionable reason + UI banner (consistent with PROJ-88, F-1 fix already ships the reason text).
+
+**2. What the AI reads (auto-context)**
+- Project frame: name, type, method, lifecycle + the **Vorhaben** (yardstick only, see invariant).
+- The kickoff document: title, kind, content excerpt (same excerpt that PROJ-70/88 use).
+- **Existing risks of the project** (title, probability, impact, status) — so the model proposes `duplicate_of_risk_id` instead of duplicate creates, and does not re-propose what the register already has (AC edge case 1).
+
+**3. What a suggestion looks like (payload)**
+Mapped onto the PROJ-20 risk shape (AC-89.3): title (≤255), description (≤5000), probability 1–5, impact 1–5, mitigation (≤5000, actionable next step), plus review aids: `duplicate_of_risk_id` (validated post-hoc against the supplied list — hallucinated ids → null, PROJ-88 pattern), `source_quote` (verbatim locator from the document), `confidence` (low/medium/high), `relevance` (on_goal/off_goal). Validate-loose, clamp-after in the Ollama provider (PROJ-88 D-1a lesson); cloud providers keep strict schemas.
+
+**4. Accept = real risks in the PROJ-20 register (AC-89.4/89.5)**
+- Bulk-accept RPC + 30s-undo RPC pair (SECURITY DEFINER, PROJ-70-β/PROJ-88 pattern: editor/lead/admin check, atomic TX, GUC-bypass for the immutability trigger, undo only within 30s by same actor).
+- Accepted suggestions insert into `public.risks` with **status `open`** + `ki_provenance` rows (`entity_type='risks'` — plural, H-1 lesson). **Design clarification to AC-89.3:** the risks table has no `draft` status (CHECK: open/mitigated/accepted/closed) and the existing PROJ-12 accept inserts `open`; the "draft" review semantics live in `ki_suggestions` (draft → accepted/rejected/modified) + provenance, which satisfies AC-89.5/89.7 ("distinguishable as AI-derived via provenance/review state") without touching the PROJ-20 status model. Extending the risks status CHECK is explicitly out of scope (would ripple through PROJ-20 UI/filters/reports).
+- Duplicate-marked suggestions (`duplicate_of_risk_id` set, reviewer-confirmed) create **no** new risk on accept; they record provenance against the existing risk (PROJ-88 L4 pattern: link instead of create).
+- Undo deletes the created risks + provenance rows (and restores suggestion state), mirror `accept_stakeholder_proposals_undo` incl. H-2 lesson (provenance cleanup so re-accept works).
+
+**5. Surfacing: Drawer-Tab 6 „Risiken" (AC-89.8)**
+- New tab in the existing `AIProposalDrawer` (6 tabs then), `defaultTab="risks"` prop for PROJ-90. Flat cards (no hierarchy): title, P×I badge with score, mitigation preview, `source_quote`, „≠ Ziel"-badge (off_goal), duplicate hint, confidence badge. Inline edit: title/description/probability/impact/mitigation via the purpose-aware PATCH (extend the existing dispatch). BulkActionBar (Accept-All/Reject-All) + 30s-undo toast (sonner) — all reused components/patterns from PROJ-70-β/88.
+- Source picker + upload fallback identical to the stakeholder tab (shared sub-component where practical).
+
+**6. Delineation from PROJ-12 `risks` purpose (AC-89.6)**
+| | PROJ-12 `risks` | PROJ-89 `proposal_risks_from_context` |
+|---|---|---|
+| Source | project auto-context (phases, milestones, work items, existing risks) | uploaded kickoff document (`context_source`) |
+| Trigger | risks module ("KI-Vorschläge" button) | AIProposalDrawer tab „Risiken" (and PROJ-90 orchestration) |
+| Accept | single-accept RPC `accept_ki_suggestion_risk` | bulk-accept + 30s-undo RPC pair |
+| Purpose value in `ki_runs`/`ki_suggestions` | `risks` | `proposal_risks_from_context` |
+Both persist into `public.risks`; the dedup context (existing risks) prevents collisions. The PROJ-12 path is untouched.
+
+### Provider coverage (PROJ-85 lesson — no silent stub fallback)
+All five providers implement the new purpose from day 1: **Anthropic, OpenAI, Google** (shared strict schema + shared system prompt module, mirror `graph-purpose-prompts` approach), **Ollama** (loose-schema replica + clamp-after), **Stub** (empty list by design, CIA-L5). The capability-matrix regression test is extended with the new purpose so a missing implementation fails CI instead of silently stubbing.
+
+### Migration (one file, lockstep pattern)
+1. Purpose CHECKs: `ki_runs`, `ki_suggestions`, `tenant_ai_cost_caps` re-enumerated **including `sentiment` + `coaching`** (⚠️ the 20260614100000 restore — the lockstep-copy bug that dropped them must not repeat; smoke check asserts both).
+2. `ki_suggestions` accepted-consistency + immutability-trigger bypass extended for the new purpose (mirror 20260613100000).
+3. RPC pair `accept_risk_proposals_bulk` + `accept_risk_proposals_undo` (SECURITY DEFINER, search_path-hardened, EXECUTE revoked from anon).
+4. DO-block smoke checks (constraint defs + RPC existence + trigger mentions), no data mutation.
+
+### Routes (3 new + 1 extension, mirror PROJ-88)
+- POST/GET `/api/projects/[id]/ai/risk-proposals` (generate / list)
+- POST `…/risk-proposals/accept` + `…/risk-proposals/undo`
+- PATCH `/api/ki/suggestions/[id]` purpose-aware dispatch extended (risk-proposal payload fields)
+
+### Tech decisions (why)
+- **Content-based classification instead of Class-3-pin:** risk text is business language, not personal data; pinning would force every tenant to run Ollama for a Class-2 use case and contradict the spec (AC-89.2). The PROJ-86-fixed classifier + privacy-class floor + Class-3 resolver clamp give three defense layers.
+- **Status `open` instead of new `draft` risk status:** review semantics already live in `ki_suggestions` + provenance; extending the PROJ-20 status CHECK would ripple through deployed UI/filters/reports for marginal gain.
+- **Shared prompt/schema module for cloud providers:** prevents the OpenAI/Google drift that PROJ-85 had to repair; one place to apply the AC-89.9 yardstick wording.
+- **No CIA review needed:** spec-following sibling implementation, no new technology/dependency, no architecture-level pattern change, no deployed-feature rewrite (checked against `.claude/rules/continuous-improvement.md` triggers).
+
+### Dependencies (packages)
+None — everything reuses the existing AI SDK, Zod, shadcn/sonner stack.
+
+### Slice plan (handoff)
+1. `/backend` — purpose + classifier + collector + shared prompts + 5 provider methods + router + migration/RPCs + routes + PATCH extension (~2 PT). **Live-RPC-Smoke gegen Prod ist Pflicht** (accept → undo → re-accept, 0 Residuen).
+2. `/frontend` — Drawer-Tab 6 + cards + inline edit + bulk bar + undo toast (~1 PT).
+3. `/qa` — live cloud generation run (Class-2 → OpenAI) + live Ollama run (Class-3 path), security probes, Playwright auth-gates + drawer smoke (~0.5 PT).
 
 ## QA Test Results
 _To be added by /qa_
