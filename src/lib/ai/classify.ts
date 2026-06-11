@@ -20,6 +20,7 @@ import type {
   ProposalFromContextAutoContext,
   ResourceSwapAutoContext,
   RiskAutoContext,
+  RiskProposalsAutoContext,
   SentimentAutoContext,
   StakeholderProposalsAutoContext,
   TrajectorySequenceAutoContext,
@@ -632,6 +633,41 @@ export function classifyProposalFromContextAutoContext(
   // PROJ-91 defense-in-depth: the project description (Vorhaben) is now sent
   // to the provider as grounding, so it is classified alongside the excerpt —
   // a description carrying personal markers must also force local routing.
+  if (
+    max < 3 &&
+    (detectClass3Markers(ctx.context_source.content_excerpt) ||
+      detectClass3Markers(ctx.source_project.description ?? ""))
+  ) {
+    max = 3
+  }
+
+  // Per-tenant floor — mirrors Narrative classifier semantics.
+  if (tenantDefault === 3 && max < 2) {
+    return max
+  }
+  return max
+}
+
+/**
+ * PROJ-89 — classifier for risk proposals from a kickoff context source.
+ *
+ * Mirrors `classifyProposalFromContextAutoContext` (PROJ-70-α): risk text
+ * is business language, so this purpose is Class-2-capable — clean
+ * documents route to the tenant's cloud provider (AC-89.2). Three defense
+ * layers keep PII local:
+ *   1. Floor: the `privacy_class` stamped on the context_source at upload.
+ *   2. Heuristic upgrade: post-PROJ-86 marker detection on the excerpt AND
+ *      the Vorhaben (PROJ-91 defense-in-depth — both are sent to the
+ *      provider).
+ *   3. The resolver clamps Class 3 to local providers (router layer).
+ */
+export function classifyRiskProposalsAutoContext(
+  ctx: RiskProposalsAutoContext,
+  tenantDefault: DataClass = 3,
+): DataClass {
+  // Floor: the privacy_class stamped at upload time.
+  let max: DataClass = ctx.context_source.privacy_class
+
   if (
     max < 3 &&
     (detectClass3Markers(ctx.context_source.content_excerpt) ||

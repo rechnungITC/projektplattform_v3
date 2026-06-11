@@ -36,6 +36,7 @@ import {
   classifyStakeholderProposalsAutoContext,
   classifyResourceSwapAutoContext,
   classifyRiskAutoContext,
+  classifyRiskProposalsAutoContext,
   classifySentimentAutoContext,
   classifyTrajectorySequenceAutoContext,
 } from "./classify"
@@ -60,11 +61,14 @@ import type {
   ProposalFromContextAutoContext,
   ProposalFromContextSuggestion,
   RiskAutoContext,
+  RiskProposalsAutoContext,
+  RiskProposalSuggestion,
   RiskSuggestion,
   RouterCoachingResult,
   RouterCrossProjectLinksResult,
   RouterNarrativeResult,
   RouterProposalFromContextResult,
+  RouterRiskProposalsResult,
   RouterStakeholderProposalsResult,
   StakeholderProposalsAutoContext,
   StakeholderProposalSuggestion,
@@ -1712,6 +1716,181 @@ export async function invokeStakeholderProposalsGeneration({
           project_id: projectId,
           ki_run_id: runId,
           purpose: "proposal_stakeholders_from_context",
+          payload: s,
+          original_payload: s,
+          status: "draft",
+          created_by: actorUserId,
+        })),
+      )
+      .select("id")
+    if (sugErr || !sugRows) {
+      providerError =
+        providerError ??
+        `ki_suggestions insert failed: ${sugErr?.message ?? "unknown"}`
+      finalStatus = "error"
+    } else {
+      suggestionIds = sugRows.map((r) => r.id as string)
+    }
+  }
+
+  const finalErrorMessage =
+    providerError ?? providerFallbackMessage ?? blockedReason ?? null
+  await updateKiRunStatus(supabase, runId, {
+    status: finalStatus,
+    inputTokens,
+    outputTokens,
+    latencyMs,
+    errorMessage: finalErrorMessage,
+    provider: activeProvider,
+  })
+
+  return {
+    run_id: runId,
+    classification,
+    provider: activeProvider.name as AIProviderName,
+    model_id: activeProvider.modelId,
+    status: finalStatus,
+    suggestion_ids: suggestionIds,
+    external_blocked: externalBlocked || providerFallbackMessage !== null,
+    error_message: finalErrorMessage ?? undefined,
+  }
+}
+
+// ---------------------------------------------------------------------------
+// PROJ-89 — risk-proposals router
+// ---------------------------------------------------------------------------
+
+interface InvokeRiskProposalsGenerationArgs {
+  supabase: SupabaseClient
+  tenantId: string
+  projectId: string
+  actorUserId: string
+  context: RiskProposalsAutoContext
+  /** Soft target count (1-30); the provider may emit fewer. */
+  count: number
+}
+
+/**
+ * PROJ-89 — generate risk proposals from a kickoff context source.
+ *
+ * Mirrors `invokeStakeholderProposalsGeneration` with ONE distinguishing
+ * trait: classification is CONTENT-BASED (AC-89.2, PROJ-70-α pattern) —
+ * clean Class-2 documents route to the tenant's cloud provider; PII
+ * markers in the excerpt/Vorhaben or a stamped Class-3 source clamp to
+ * the local provider set via the standard resolver.
+ *
+ * Class-3 without an eligible local provider → the standard machinery
+ * yields the Stub + `external_blocked` with an actionable reason
+ * (consistent with PROJ-88 F-1). The Stub emits zero suggestions by
+ * design — fabricated risks would be worse than none.
+ */
+export async function invokeRiskProposalsGeneration({
+  supabase,
+  tenantId,
+  projectId,
+  actorUserId,
+  context,
+  count,
+}: InvokeRiskProposalsGenerationArgs): Promise<RouterRiskProposalsResult> {
+  const overrides = await loadTenantOverrides(supabase, tenantId)
+  const classification = classifyRiskProposalsAutoContext(
+    context,
+    overrides.privacyDefault as DataClass,
+  )
+  const choice = await selectProviderForPurpose(
+    supabase,
+    tenantId,
+    "proposal_risks_from_context",
+    classification,
+    overrides.providerConfig,
+  )
+  const { provider, externalBlocked, blockedReason } = await applyCostCap(
+    supabase,
+    tenantId,
+    choice,
+    "proposal_risks_from_context",
+  )
+
+  const runId = await insertKiRun(supabase, {
+    tenantId,
+    projectId,
+    actorUserId,
+    purpose: "proposal_risks_from_context",
+    classification,
+    provider,
+  })
+
+  let activeProvider: AIProvider = provider
+  let suggestions: RiskProposalSuggestion[] = []
+  let inputTokens: number | null = null
+  let outputTokens: number | null = null
+  let latencyMs: number | null = null
+  let providerError: string | null = null
+  let providerFallbackMessage: string | null = null
+
+  try {
+    if (!provider.generateRiskProposals) {
+      throw new Error(
+        `Provider ${provider.name} does not implement generateRiskProposals`,
+      )
+    }
+    const result = await provider.generateRiskProposals({
+      context,
+      count,
+    })
+    suggestions = result.suggestions
+    inputTokens = result.usage.input_tokens
+    outputTokens = result.usage.output_tokens
+    latencyMs = result.usage.latency_ms
+  } catch (err) {
+    providerError = err instanceof Error ? err.message : String(err)
+    if (provider.name !== "stub") {
+      // Fall back to Stub so the FE never sees a 5xx for this purpose.
+      const fallbackProvider = new StubProvider()
+      const fallback = await fallbackProvider.generateRiskProposals!({
+        context,
+        count,
+      })
+      providerFallbackMessage = `Provider ${provider.name} failed (${providerError}); fell back to Stub.`
+      activeProvider = fallbackProvider
+      suggestions = fallback.suggestions
+      inputTokens = fallback.usage.input_tokens
+      outputTokens = fallback.usage.output_tokens
+      latencyMs = fallback.usage.latency_ms
+      providerError = null
+    }
+  }
+
+  let finalStatus: "success" | "error" | "external_blocked"
+  if (providerError) {
+    finalStatus = "error"
+  } else if (externalBlocked || providerFallbackMessage) {
+    finalStatus = "external_blocked"
+  } else {
+    finalStatus = "success"
+  }
+
+  // Display enrichment so the drawer tab renders without round-trips.
+  const enrichedSuggestions: RiskProposalSuggestion[] = suggestions.map(
+    (s) => ({
+      ...s,
+      display: {
+        source_project_name: context.source_project.name,
+        context_source_title: context.context_source.title,
+      },
+    }),
+  )
+
+  let suggestionIds: string[] = []
+  if (enrichedSuggestions.length > 0) {
+    const { data: sugRows, error: sugErr } = await supabase
+      .from("ki_suggestions")
+      .insert(
+        enrichedSuggestions.map((s) => ({
+          tenant_id: tenantId,
+          project_id: projectId,
+          ki_run_id: runId,
+          purpose: "proposal_risks_from_context",
           payload: s,
           original_payload: s,
           status: "draft",

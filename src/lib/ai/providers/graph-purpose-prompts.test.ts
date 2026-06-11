@@ -4,10 +4,13 @@ import { AnthropicProvider } from "./anthropic"
 import { GoogleProvider } from "./google"
 import {
   buildProposalFromContextPrompt,
+  buildRiskProposalsPrompt,
   mapCrossProjectLinksSuggestions,
   mapProposalFromContextSuggestions,
+  mapRiskProposalsSuggestions,
   mapTrajectorySequenceSuggestions,
   PROPOSAL_FROM_CONTEXT_SYSTEM_PROMPT,
+  RISK_PROPOSALS_SYSTEM_PROMPT,
 } from "./graph-purpose-prompts"
 import {
   buildProposalFromContextPromptOllama,
@@ -17,6 +20,7 @@ import { OpenAIProvider } from "./openai"
 import type {
   CrossProjectLinksGenerationRequest,
   ProposalFromContextGenerationRequest,
+  RiskProposalsGenerationRequest,
 } from "./types"
 
 /**
@@ -275,5 +279,156 @@ describe("buildProposalFromContextPrompt — PROJ-91 grounding", () => {
     expect(prompt).toContain("NUR Bewertungsmaßstab für relevance")
     expect(prompt).toContain("KEINE Quelle für Items")
     expect(prompt).not.toContain("richte die Vorschläge hieran aus")
+  })
+})
+
+// ---------------------------------------------------------------------------
+// PROJ-89 — risk proposals: AC-89.9 grounding contract + mapper guards
+// ---------------------------------------------------------------------------
+
+function riskReq(description: string | null): RiskProposalsGenerationRequest {
+  return {
+    count: 10,
+    context: {
+      source_project: {
+        project_id: "p1",
+        name: "ERP Implementierung",
+        description,
+        project_type: "erp",
+        project_method: "waterfall",
+        lifecycle_status: "active",
+      },
+      context_source: {
+        context_source_id: "c1",
+        kind: "document",
+        title: "Kickoff.docx",
+        privacy_class: 2,
+        content_excerpt: "Inhalt des Kickoffs.",
+        language: "de",
+      },
+      existing_risks: [
+        {
+          risk_id: "r1",
+          title: "Datenmigration verzögert sich",
+          probability: 3,
+          impact: 4,
+          status: "open",
+        },
+      ],
+    },
+  }
+}
+
+describe("buildRiskProposalsPrompt — AC-89.9 grounding (PROJ-91 track invariant)", () => {
+  it("renders the Vorhaben block when description is present", () => {
+    const prompt = buildRiskProposalsPrompt(
+      riskReq("ERP-System auf Basis von MS Dynamics einführen."),
+    )
+    expect(prompt).toContain("Vorhaben (Projektziel")
+    expect(prompt).toContain("MS Dynamics")
+  })
+
+  it("emits the no-Vorhaben note when description is null/empty", () => {
+    expect(buildRiskProposalsPrompt(riskReq(null))).toContain(
+      "Kein Vorhaben hinterlegt",
+    )
+    expect(buildRiskProposalsPrompt(riskReq("   "))).toContain(
+      "Kein Vorhaben hinterlegt",
+    )
+  })
+
+  it("lists existing risks with ids for dedup", () => {
+    const prompt = buildRiskProposalsPrompt(riskReq(null))
+    expect(prompt).toContain("id=r1")
+    expect(prompt).toContain("Datenmigration verzögert sich")
+    expect(prompt).toContain("duplicate_of_risk_id")
+  })
+
+  /**
+   * AC-89.9 contract guard (mirror of the PROJ-91/PROJ-88 incident guard):
+   * the Vorhaben must be the relevance YARDSTICK only; risks come
+   * exclusively from the kickoff document. The generation-imperative
+   * wording that caused the AC-91.7 over-steer must never appear.
+   */
+  it("keeps the Vorhaben a relevance yardstick, never a risk source", () => {
+    expect(RISK_PROPOSALS_SYSTEM_PROMPT).toContain(
+      "AUSSCHLIESSLICH aus dem Kickoff-Dokument",
+    )
+    expect(RISK_PROPOSALS_SYSTEM_PROMPT).toContain(
+      "Erfinde KEINE Risiken aus dem Vorhaben",
+    )
+    expect(RISK_PROPOSALS_SYSTEM_PROMPT).not.toContain(
+      "richte deine Vorschläge primär am Vorhaben aus",
+    )
+
+    const prompt = buildRiskProposalsPrompt(
+      riskReq("ERP-System auf Basis von MS Dynamics einführen."),
+    )
+    expect(prompt).toContain("NUR Bewertungsmaßstab für relevance")
+    expect(prompt).toContain("KEINE Quelle für Vorschläge")
+    expect(prompt).not.toContain("richte die Vorschläge hieran aus")
+  })
+})
+
+describe("mapRiskProposalsSuggestions", () => {
+  const valid = new Set(["r1"])
+
+  it("maps fields, clamps lengths, rounds + clamps probability/impact", () => {
+    const out = mapRiskProposalsSuggestions(
+      [
+        {
+          title: `  ${"T".repeat(300)}  `,
+          description: "D".repeat(6000),
+          probability: 7.4,
+          impact: 0,
+          mitigation: "   ",
+          duplicate_of_risk_id: null,
+          source_quote: "Q".repeat(400),
+          confidence: "high",
+          relevance: "on_goal",
+        },
+      ],
+      valid,
+    )
+    expect(out).toHaveLength(1)
+    expect(out[0]!.title).toHaveLength(255)
+    expect(out[0]!.description).toHaveLength(5000)
+    expect(out[0]!.probability).toBe(5)
+    expect(out[0]!.impact).toBe(1)
+    expect(out[0]!.mitigation).toBeNull()
+    expect(out[0]!.source_quote).toHaveLength(300)
+  })
+
+  it("keeps a valid duplicate_of_risk_id and nulls hallucinated ids", () => {
+    const out = mapRiskProposalsSuggestions(
+      [
+        {
+          title: "Bekanntes Risiko",
+          description: null,
+          probability: 3,
+          impact: 3,
+          mitigation: null,
+          duplicate_of_risk_id: "r1",
+          source_quote: null,
+          confidence: "medium",
+          relevance: "on_goal",
+        },
+        {
+          title: "Halluziniertes Duplikat",
+          description: null,
+          probability: 2,
+          impact: 2,
+          mitigation: null,
+          duplicate_of_risk_id: "r-does-not-exist",
+          source_quote: null,
+          confidence: "low",
+          relevance: "off_goal",
+        },
+      ],
+      valid,
+    )
+    expect(out[0]!.duplicate_of_risk_id).toBe("r1")
+    expect(out[1]!.duplicate_of_risk_id).toBeNull()
+    expect(out[1]!.relevance).toBe("off_goal")
   })
 })

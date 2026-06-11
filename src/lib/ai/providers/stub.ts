@@ -24,6 +24,7 @@ import type {
   ProposalFromContextGenerationRequest,
   ResourceSwapGenerationRequest,
   RiskGenerationRequest,
+  RiskProposalsGenerationRequest,
   SentimentGenerationRequest,
   StakeholderProposalsGenerationRequest,
   TrajectorySequenceGenerationRequest,
@@ -36,6 +37,7 @@ import type {
   ProposalFromContextGenerationOutput,
   ResourceSwapGenerationOutput,
   RiskGenerationOutput,
+  RiskProposalsGenerationOutput,
   RiskSuggestion,
   StakeholderProposalsGenerationOutput,
   TrajectorySequenceGenerationOutput,
@@ -502,6 +504,26 @@ export class StubProvider implements AIProvider {
   async generateStakeholderProposals(
     _request: StakeholderProposalsGenerationRequest,
   ): Promise<StakeholderProposalsGenerationOutput> {
+    const start = Date.now()
+    return {
+      suggestions: [],
+      usage: {
+        input_tokens: 0,
+        output_tokens: 0,
+        latency_ms: Date.now() - start,
+      },
+    }
+  }
+
+  /**
+   * PROJ-89 — stub risk proposals. Empty by design (CIA-L5 mirror of
+   * generateStakeholderProposals): the stub only runs as the
+   * blocked/error fallback — fabricated placeholder risks would be
+   * worse than none; the UI communicates the blocked state instead.
+   */
+  async generateRiskProposals(
+    _request: RiskProposalsGenerationRequest,
+  ): Promise<RiskProposalsGenerationOutput> {
     const start = Date.now()
     return {
       suggestions: [],

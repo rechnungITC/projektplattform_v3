@@ -30,6 +30,7 @@ import type {
   ProposalFromContextGenerationRequest,
   ResourceSwapGenerationRequest,
   RiskGenerationRequest,
+  RiskProposalsGenerationRequest,
   SentimentGenerationRequest,
   StakeholderProposalsGenerationRequest,
   TrajectorySequenceGenerationRequest,
@@ -42,6 +43,7 @@ import type {
   ProposalFromContextGenerationOutput,
   ResourceSwapGenerationOutput,
   RiskGenerationOutput,
+  RiskProposalsGenerationOutput,
   SentimentGenerationOutput,
   StakeholderProposalsGenerationOutput,
   TrajectorySequenceGenerationOutput,
@@ -54,11 +56,14 @@ import type {
 // honest (no drift between cloud + local output shapes).
 import {
   buildCrossProjectLinksPrompt,
+  buildRiskProposalsPrompt,
   buildTrajectorySequencePrompt,
   CROSS_PROJECT_LINKS_SYSTEM_PROMPT,
   CrossProjectLinksResponseSchema,
   mapCrossProjectLinksSuggestions,
+  mapRiskProposalsSuggestions,
   mapTrajectorySequenceSuggestions,
+  RISK_PROPOSALS_SYSTEM_PROMPT,
   TRAJECTORY_SEQUENCE_SYSTEM_PROMPT,
   TrajectorySequenceResponseSchema,
 } from "./graph-purpose-prompts"
@@ -1020,6 +1025,46 @@ export class OllamaProvider implements AIProvider {
       },
     }
   }
+
+  /**
+   * PROJ-89 — risk proposals from a kickoff via local Ollama.
+   *
+   * This purpose is content-classified (cloud-capable); Ollama handles the
+   * Class-3 branch (PII in the document) and tenants who prefer local.
+   * Schema is the deliberately LOOSE replica of the shared strict schema
+   * (validate-loose, clamp-after — PROJ-88 D-1a lesson for small local
+   * models); the shared mapper clamps lengths + nulls hallucinated
+   * `duplicate_of_risk_id`s either way. System prompt + builder are the
+   * SHARED ones (no drift between cloud and local output shapes).
+   */
+  async generateRiskProposals(
+    request: RiskProposalsGenerationRequest,
+  ): Promise<RiskProposalsGenerationOutput> {
+    const start = Date.now()
+    const result = await generateObject({
+      model: this.sdkProvider(this.modelId),
+      schema: RiskProposalsResponseSchemaOllama,
+      system: RISK_PROPOSALS_SYSTEM_PROMPT,
+      prompt: buildRiskProposalsPrompt(request),
+      temperature: 0.2,
+    })
+
+    const usage = result.usage as
+      | { inputTokens?: number; outputTokens?: number }
+      | undefined
+
+    return {
+      suggestions: mapRiskProposalsSuggestions(
+        result.object.suggestions,
+        new Set(request.context.existing_risks.map((r) => r.risk_id)),
+      ),
+      usage: {
+        input_tokens: usage?.inputTokens ?? null,
+        output_tokens: usage?.outputTokens ?? null,
+        latency_ms: Date.now() - start,
+      },
+    }
+  }
 }
 
 // ---------------------------------------------------------------------------
@@ -1139,6 +1184,27 @@ const StakeholderProposalSuggestionSchemaOllama = z.object({
 
 const StakeholderProposalsResponseSchemaOllama = z.object({
   suggestions: z.array(StakeholderProposalSuggestionSchemaOllama).min(0).max(30),
+})
+
+// PROJ-89 — loose replica of the shared RiskProposalsResponseSchema
+// (validate-loose, clamp-after; see PROJ-88 D-1a note above). Numbers are
+// coerced + clamped in the shared mapper; enums tolerate case/whitespace.
+const RiskProposalSuggestionSchemaOllama = z.object({
+  title: z.string().min(1),
+  description: z.string().nullish(),
+  probability: z.coerce.number(),
+  impact: z.coerce.number(),
+  mitigation: z.string().nullish(),
+  // Validated post-hoc against the supplied existing_risks list.
+  duplicate_of_risk_id: z.string().nullish(),
+  source_quote: z.string().nullish(),
+  confidence: looseEnum(["low", "medium", "high"]),
+  // PROJ-91 track invariant (AC-89.9) — relevance to the Vorhaben.
+  relevance: looseEnum(["on_goal", "off_goal"]),
+})
+
+const RiskProposalsResponseSchemaOllama = z.object({
+  suggestions: z.array(RiskProposalSuggestionSchemaOllama).min(0).max(30),
 })
 
 // Exported for the PROJ-88 grounding contract test (AC-88.9).

@@ -1,6 +1,6 @@
 # PROJ-89: AI Risk Proposals from Context
 
-## Status: Architected
+## Status: In Progress
 **Created:** 2026-06-08
 **Last Updated:** 2026-06-11
 **Origin:** CIA portfolio review 2026-06-08 (vision: "Wizard befüllt das ganze Projekt")
@@ -113,6 +113,23 @@ None — everything reuses the existing AI SDK, Zod, shadcn/sonner stack.
 1. `/backend` — purpose + classifier + collector + shared prompts + 5 provider methods + router + migration/RPCs + routes + PATCH extension (~2 PT). **Live-RPC-Smoke gegen Prod ist Pflicht** (accept → undo → re-accept, 0 Residuen).
 2. `/frontend` — Drawer-Tab 6 + cards + inline edit + bulk bar + undo toast (~1 PT).
 3. `/qa` — live cloud generation run (Class-2 → OpenAI) + live Ollama run (Class-3 path), security probes, Playwright auth-gates + drawer smoke (~0.5 PT).
+
+## Implementation Notes — Backend-Slice (2026-06-11, /backend)
+
+**Status: Backend komplett, gebaut exakt nach Tech Design (PROJ-88-Spiegel mit Cloud-Erweiterung).**
+
+- **Typen + Classifier + Collector**: `proposal_risks_from_context` in `AIPurpose`; `RiskProposalsAutoContext`/`RiskProposalSuggestion`/`RouterRiskProposalsResult` (`types.ts`); `classifyRiskProposalsAutoContext` content-based (PROJ-70-Muster: privacy_class-Floor + Marker-Detection auf Excerpt UND Vorhaben, 5 Tests inkl. PROJ-86-Regression-Guard); `collectRiskProposalsAutoContext` mit `existing_risks` (top-100) für Dedup + Projekt-Scope-Guard.
+- **Shared Prompt/Schema-Modul** (`graph-purpose-prompts.ts`, PROJ-85-Lektion): strict `RiskProposalsResponseSchema` (cloud), `RISK_PROPOSALS_SYSTEM_PROMPT` (AC-89.9 yardstick-only-Wording), `buildRiskProposalsPrompt`, `mapRiskProposalsSuggestions` (clamps + halluzinierte `duplicate_of_risk_id` → null) — EIN Mapper für alle Provider.
+- **Alle 5 Provider ab Tag 1**: Anthropic/OpenAI/Google via shared strict schema; Ollama mit loose Replica (`looseEnum` + `z.coerce.number`, validate-loose/clamp-after per PROJ-88-D-1a) + shared Prompt; Stub empty-by-design. Capability-Matrix-Test erweitert (`generateRiskProposals` Pflicht auf allen 5).
+- **AC-89.9 Contract-Tests**: 4 neue Cases in `graph-purpose-prompts.test.ts` (Vorhaben-Block, no-Vorhaben-Note, existing-risks-Dedup-Liste, yardstick-only + Absenz des Generierungs-Imperativs) + 2 Mapper-Tests.
+- **Router**: `invokeRiskProposalsGeneration` — Standard-Resolver (kein Pin, PROJ-93-forward-compat), Cost-Cap, ki_runs, Stub-Fallback mit `external_blocked` + blockedReason (PROJ-88-F-1-Muster), Display-Enrichment, ki_suggestions-Insert.
+- **Migration `20260615100000`** (in Prod angewendet, 5 Smoke-CHECKs grün): Purpose-CHECKs ki_runs/ki_suggestions/cost_caps **inkl. sentiment+coaching-Guard** (CHECK 1 schlägt fehl, wenn die 20260614100000-Restore je wieder wegkopiert wird); accepted-consistency verbatim (neuer Purpose = strict branch via `risk`/`risk_link`); Immutability-Bypass erweitert; RPC-Paar `accept_risk_proposals_bulk`/`accept_risk_proposals_undo` (SECURITY DEFINER, EXECUTE revoked von anon, 30s-Window, same-actor, H-2-Provenance-Cleanup; Dedup-Branch = Provenance auf Bestand, Undo löscht NIE `risk_link`-Ziele).
+- **Routen**: POST/GET `/api/projects/[id]/ai/risk-proposals` (+ `/accept` + `/undo`), Editor-Gate + `ai_proposals`-Modul-Check; purpose-aware PATCH um `riskProposalPayloadSchema` erweitert (relevance bleibt erhalten — PROJ-91-Lektion, testgesichert). FE-Wrapper `risk-proposals-api.ts` (list/trigger/reject/accept/undo/edit).
+- **Live-RPC-Smoke (Pflicht) gegen Prod GRÜN, 0 Residuen**: DO-Block mit `request.jwt.claims`-Simulation des Tenant-Admins → echtes Projekt, 2 Drafts (Create + Duplikat auf geseedetes Bestands-Risiko) → `accept_risk_proposals_bulk` (1 created/status=open + 1 risk_link, 2 Provenance-Rows) → `accept_risk_proposals_undo` (created Risk weg, **Bestands-Risiko überlebt**, Provenance weg, Drafts restored) → Re-Accept (H-2 bewiesen) → ROLLBACK_MARKER. Nachzählung: 0 smoke_risks / 0 suggestions / 0 runs.
+
+**Gates:** lint 0 · tsc 13 Baseline/0 neu · vitest **1799/1799** (+29 neue Tests: 5 Classifier + 6 Prompt/Mapper + 1 Capability + 8 Accept + 6 Undo + 2 PATCH + 1 Matrix-Erweiterung) · build clean.
+
+**Offen:** Drawer-Tab 6 „Risiken" → `/frontend`; Live-Cloud-Generierungslauf (Class-2 → OpenAI) + Live-Ollama-Lauf + Security-Probes + Playwright → `/qa`.
 
 ## QA Test Results
 _To be added by /qa_
