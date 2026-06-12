@@ -96,10 +96,37 @@ const stakeholderProposalPayloadSchema = z.object({
     .optional(),
 })
 
+// PROJ-89 — proposal_risks_from_context inline-edit shape.
+// Reviewer-editable: title/description/probability/impact/mitigation +
+// `duplicate_of_risk_id` (clearable, re-validated in the accept RPC).
+// `source_quote` is the provider's traceability evidence and
+// `confidence`/`relevance` are provider-declared — echoed through, not
+// meaningfully editable (PROJ-91 lesson: omitting them here would strip
+// the flags on every inline-edit).
+const riskProposalPayloadSchema = z.object({
+  title: z.string().trim().min(1).max(255),
+  description: z.string().max(5000).nullable(),
+  probability: z.number().int().min(1).max(5),
+  impact: z.number().int().min(1).max(5),
+  mitigation: z.string().max(5000).nullable(),
+  duplicate_of_risk_id: z.string().uuid().nullable(),
+  source_quote: z.string().max(300).nullable(),
+  confidence: z.enum(["low", "medium", "high"]),
+  relevance: z.enum(["on_goal", "off_goal"]),
+  display: z
+    .object({
+      source_project_name: z.string().nullable(),
+      context_source_title: z.string().nullable(),
+    })
+    .partial()
+    .optional(),
+})
+
 const PURPOSE_PAYLOAD_SCHEMAS = {
   risks: riskPayloadSchema,
   proposal_from_context: proposalFromContextPayloadSchema,
   proposal_stakeholders_from_context: stakeholderProposalPayloadSchema,
+  proposal_risks_from_context: riskProposalPayloadSchema,
 } as const
 
 type SupportedPurpose = keyof typeof PURPOSE_PAYLOAD_SCHEMAS

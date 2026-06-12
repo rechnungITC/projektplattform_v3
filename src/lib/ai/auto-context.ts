@@ -31,6 +31,7 @@ import type {
   ProjectMethodHint,
   ProposalFromContextAutoContext,
   RiskAutoContext,
+  RiskProposalsAutoContext,
   StakeholderProposalsAutoContext,
 } from "./types"
 
@@ -1230,6 +1231,114 @@ export async function collectStakeholderProposalsAutoContext(
       name: s.name,
       kind: s.kind,
       role_key: s.role_key,
+    })),
+  }
+}
+
+/**
+ * PROJ-89 — auto-context for risk proposals from a kickoff source.
+ *
+ * Mirrors `collectStakeholderProposalsAutoContext` (same project + context
+ * source reads + project-scope guard) and additionally loads the project's
+ * existing risks (id, title, probability, impact, status) so the model can
+ * propose `duplicate_of_risk_id` instead of duplicate creates and does not
+ * re-propose what the register already has.
+ *
+ * Classification IS content-based for this purpose (PROJ-70-α pattern) —
+ * `classifyRiskProposalsAutoContext` reads the excerpt + Vorhaben + the
+ * privacy_class floor from this shape.
+ */
+export async function collectRiskProposalsAutoContext(
+  supabase: SupabaseClient,
+  projectId: string,
+  contextSourceId: string,
+): Promise<RiskProposalsAutoContext> {
+  const [projectRes, contextSourceRes, risksRes] = await Promise.all([
+    supabase
+      .from("projects")
+      .select(
+        "id, name, description, project_type, project_method, lifecycle_status",
+      )
+      .eq("id", projectId)
+      .maybeSingle(),
+    supabase
+      .from("context_sources")
+      .select(
+        "id, kind, title, privacy_class, content_excerpt, language, project_id",
+      )
+      .eq("id", contextSourceId)
+      .maybeSingle(),
+    supabase
+      .from("risks")
+      .select("id, title, probability, impact, status")
+      .eq("project_id", projectId)
+      .order("created_at", { ascending: true })
+      .limit(100),
+  ])
+
+  if (projectRes.error) throw new Error(`projects: ${projectRes.error.message}`)
+  if (contextSourceRes.error)
+    throw new Error(`context_sources: ${contextSourceRes.error.message}`)
+  if (risksRes.error) throw new Error(`risks: ${risksRes.error.message}`)
+  if (!projectRes.data) throw new Error("Project not found.")
+  if (!contextSourceRes.data) throw new Error("Context source not found.")
+
+  const project = projectRes.data as {
+    id: string
+    name: string
+    description: string | null
+    project_type: string | null
+    project_method: string | null
+    lifecycle_status: string
+  }
+  const cs = contextSourceRes.data as {
+    id: string
+    kind: string
+    title: string
+    privacy_class: number
+    content_excerpt: string | null
+    language: string | null
+    project_id: string | null
+  }
+
+  // Scope-check mirror of collectProposalFromContextAutoContext: the
+  // context_source MUST belong to this project OR be tenant-wide.
+  if (cs.project_id != null && cs.project_id !== projectId) {
+    throw new Error("Context source belongs to a different project.")
+  }
+
+  return {
+    source_project: {
+      project_id: project.id,
+      name: project.name,
+      // PROJ-91 track invariant (AC-89.9): relevance yardstick only.
+      description: project.description,
+      project_type: project.project_type,
+      project_method: project.project_method,
+      lifecycle_status: project.lifecycle_status,
+    },
+    context_source: {
+      context_source_id: cs.id,
+      kind: cs.kind,
+      title: cs.title,
+      privacy_class: (cs.privacy_class as 1 | 2 | 3) ?? 3,
+      content_excerpt: cs.content_excerpt ?? "",
+      language: cs.language,
+    },
+    existing_risks: (
+      (risksRes.data ?? []) as Array<{
+        id: string
+        title: string
+        probability: number
+        impact: number
+        status: string
+      }>
+    ).map((r) => ({
+      risk_id: r.id,
+      title: r.title,
+      probability: r.probability,
+      impact: r.impact,
+      status: r.status,
     })),
   }
 }

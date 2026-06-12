@@ -19,6 +19,8 @@ import type {
   ProposalFromContextGenerationOutput,
   StakeholderProposalsAutoContext,
   StakeholderProposalsGenerationOutput,
+  RiskProposalsAutoContext,
+  RiskProposalsGenerationOutput,
   ResourceSwapAutoContext,
   ResourceSwapGenerationOutput,
   RiskAutoContext,
@@ -79,6 +81,13 @@ export interface StakeholderProposalsGenerationRequest {
   count: number
 }
 
+export interface RiskProposalsGenerationRequest {
+  context: RiskProposalsAutoContext
+  /** Soft target for how many suggestions to emit (provider may emit fewer);
+   *  capped at 30 by the Zod schema regardless. */
+  count: number
+}
+
 /**
  * PROJ-30 + PROJ-34-γ.1 — generic provider interface. Methods are optional
  * so a provider can support a subset of purposes (e.g. Ollama implements
@@ -123,6 +132,10 @@ export interface AIProvider {
   generateStakeholderProposals?(
     request: StakeholderProposalsGenerationRequest,
   ): Promise<StakeholderProposalsGenerationOutput>
+  // PROJ-89 — risk proposals from a kickoff (content-based class, cloud-capable)
+  generateRiskProposals?(
+    request: RiskProposalsGenerationRequest,
+  ): Promise<RiskProposalsGenerationOutput>
 }
 
 /**

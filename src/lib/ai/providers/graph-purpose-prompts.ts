@@ -24,11 +24,13 @@ import { z } from "zod"
 import type {
   CrossProjectLinksGenerationRequest,
   ProposalFromContextGenerationRequest,
+  RiskProposalsGenerationRequest,
   TrajectorySequenceGenerationRequest,
 } from "./types"
 import type {
   CrossProjectLinksGenerationOutput,
   ProposalFromContextGenerationOutput,
+  RiskProposalsGenerationOutput,
   TrajectorySequenceGenerationOutput,
 } from "../types"
 
@@ -551,5 +553,138 @@ export function mapProposalFromContextSuggestions(
     description: s.description ?? null,
     confidence: s.confidence,
     relevance: s.relevance,
+  }))
+}
+
+// ---------------------------------------------------------------------------
+// PROJ-89 — proposal_risks_from_context (shared across Anthropic/OpenAI/Google)
+// ---------------------------------------------------------------------------
+
+/**
+ * Strict response schema for cloud providers. The Ollama provider keeps a
+ * deliberately loose replica (validate-loose, clamp-after — PROJ-88 D-1a
+ * lesson) in `ollama.ts`; length clamps happen in the shared mapper either
+ * way, so an over-long quote can never sink a cloud run after validation.
+ *
+ * `duplicate_of_risk_id` is validated post-hoc against the supplied
+ * existing-risks list in `mapRiskProposalsSuggestions` — hallucinated ids
+ * are nulled rather than failing the whole response.
+ */
+export const RiskProposalSuggestionSchema = z.object({
+  title: z.string().min(1).max(255),
+  description: z.string().max(5000).nullable(),
+  probability: z.number().int().min(1).max(5),
+  impact: z.number().int().min(1).max(5),
+  mitigation: z.string().max(5000).nullable(),
+  duplicate_of_risk_id: z.string().nullable(),
+  source_quote: z.string().max(300).nullable(),
+  confidence: z.enum(["low", "medium", "high"]),
+  // PROJ-91 track invariant (AC-89.9) — relevance to the Vorhaben.
+  relevance: z.enum(["on_goal", "off_goal"]),
+})
+
+export const RiskProposalsResponseSchema = z.object({
+  suggestions: z.array(RiskProposalSuggestionSchema).min(0).max(30),
+})
+
+export const RISK_PROPOSALS_SYSTEM_PROMPT = `Du bist ein erfahrener Programm-/Projektleiter und leitest aus einem Kickoff-Dokument konkrete Projektrisiken als strukturierte Vorschläge ab.
+
+Aufgabe: Analysiere den Inhalt eines Kickoff-Dokuments und schlage 0-30 Risiken vor, die der Projektleiter anschließend reviewt und gezielt akzeptiert.
+
+Pflichtregeln:
+- Antworte ausschließlich auf Deutsch.
+- Leite Risiken AUSSCHLIESSLICH aus dem Kickoff-Dokument ab. Erfinde KEINE Risiken aus dem Vorhaben — das Vorhaben ist NUR der Bewertungsmaßstab für \`relevance\`, NIE eine Quelle für Vorschläge.
+- Titel ist KEINE Boilerplate ("Projekt könnte scheitern", "Scope Creep") — sondern konkret und auf das Dokument bezogen (z.B. "Abhängigkeit vom Alt-ERP-Dienstleister während der Datenmigration").
+- \`description\`: Was im Dokument auf das Risiko hindeutet und warum es eines ist. Null, wenn der Titel alles sagt.
+- \`probability\` und \`impact\` auf einer 1-5-Skala (5 = höchste). Schätze konservativ aus dem Dokumentinhalt; bei dünner Faktenlage mittlere Werte plus \`confidence\` senken.
+- \`mitigation\`: eine konkrete, umsetzbare nächste Maßnahme für den Projektleiter — kein vager Rat. Null, wenn das Dokument keine Grundlage für eine Maßnahme liefert.
+- KEINE personenbezogenen Daten in Titel/Description/Mitigation — keine Namen, E-Mails, Telefonnummern. Generalisiere zu Rollen ("der Fachbereich" statt konkreter Personen).
+- Dedup: Wenn ein gefundenes Risiko einem der unter "Vorhandene Risiken" gelisteten Einträge entspricht, setze \`duplicate_of_risk_id\` auf dessen ID statt einen neuen Vorschlag zu formulieren. Bei Unsicherheit: null lassen und \`confidence\` senken. Schlage KEINE Risiken vor, die das Register bereits abdeckt.
+- \`source_quote\`: kurzes wörtliches Zitat (max. 300 Zeichen), das den Befund im Dokument belegt — Pflicht für Nachvollziehbarkeit, wenn irgend möglich.
+- \`confidence\`: \`high\` nur, wenn das Risiko explizit im Dokument steht oder klar herleitbar ist; \`low\` bei vager Andeutung.
+- \`relevance\` bewertet den Bezug zum Vorhaben/Projektziel: \`on_goal\`, wenn das Risiko das beschriebene Vorhaben betrifft; \`off_goal\`, wenn es aus dem Kickoff stammt, aber nicht zum Vorhaben passt. Unterdrücke \`off_goal\`-Einträge NICHT — kennzeichne sie, der Mensch entscheidet. Ohne angegebenes Vorhaben: \`on_goal\`.
+- KEIN erzwungenes Padding: Wenn das Dokument wenig Risikosignale enthält, liefere wenige belegte Vorschläge oder eine leere Liste — null Risiken sind ein gültiges Ergebnis.`
+
+export function buildRiskProposalsPrompt(
+  request: RiskProposalsGenerationRequest,
+): string {
+  const ctx = request.context
+  const vorhaben = ctx.source_project.description?.trim()
+  const existing =
+    ctx.existing_risks.length > 0
+      ? ctx.existing_risks
+          .map(
+            (r) =>
+              `  - id=${r.risk_id} | ${r.title} (P=${r.probability}, A=${r.impact}, ${r.status})`,
+          )
+          .join("\n")
+      : "  (keine)"
+
+  const lines: string[] = [
+    `Projekt: ${ctx.source_project.name}`,
+    `Typ: ${ctx.source_project.project_type ?? "—"}`,
+    `Methode: ${ctx.source_project.project_method ?? "—"}`,
+    `Lifecycle: ${ctx.source_project.lifecycle_status}`,
+    // PROJ-91 track invariant (AC-89.9): yardstick only, never a source.
+    vorhaben
+      ? `\nVorhaben (Projektziel — NUR Bewertungsmaßstab für relevance, KEINE Quelle für Vorschläge):\n${vorhaben}`
+      : `\n(Kein Vorhaben hinterlegt — relevance=on_goal.)`,
+    "",
+    `Vorhandene Risiken (für Dedup via duplicate_of_risk_id — NICHT erneut vorschlagen):`,
+    existing,
+    "",
+    `Kickoff-Artefakt:`,
+    `  - Kind: ${ctx.context_source.kind}`,
+    `  - Titel: ${ctx.context_source.title}`,
+    ctx.context_source.language
+      ? `  - Sprache: ${ctx.context_source.language}`
+      : "",
+    "",
+    `Inhalt:`,
+    ctx.context_source.content_excerpt || "(leer)",
+    "",
+    `Liefere bis zu ${Math.min(request.count, 30)} Risiko-Vorschläge. Wenn das Dokument zu dünn ist, liefere eine leere Liste.`,
+  ].filter(Boolean)
+
+  return lines.join("\n")
+}
+
+/**
+ * Map a (loosely or strictly) validated risk-proposals response to the
+ * provider output contract. Identical across providers. Performs the
+ * post-hoc dedup-id validation (hallucinated `duplicate_of_risk_id` →
+ * null) and clamps free-text lengths to the DB CHECK limits.
+ */
+export function mapRiskProposalsSuggestions(
+  suggestions: Array<{
+    title: string
+    description?: string | null
+    probability: number
+    impact: number
+    mitigation?: string | null
+    duplicate_of_risk_id?: string | null
+    source_quote?: string | null
+    confidence: string
+    relevance: string
+  }>,
+  validRiskIds: ReadonlySet<string>,
+): RiskProposalsGenerationOutput["suggestions"] {
+  const clampOrNull = (v: string | null | undefined, max: number) => {
+    const trimmed = v?.trim()
+    return trimmed ? trimmed.slice(0, max) : null
+  }
+  return suggestions.map((s) => ({
+    title: s.title.trim().slice(0, 255),
+    description: clampOrNull(s.description, 5000),
+    probability: Math.min(5, Math.max(1, Math.round(s.probability))),
+    impact: Math.min(5, Math.max(1, Math.round(s.impact))),
+    mitigation: clampOrNull(s.mitigation, 5000),
+    duplicate_of_risk_id:
+      s.duplicate_of_risk_id != null && validRiskIds.has(s.duplicate_of_risk_id)
+        ? s.duplicate_of_risk_id
+        : null,
+    source_quote: clampOrNull(s.source_quote, 300),
+    confidence: s.confidence as "low" | "medium" | "high",
+    relevance: s.relevance as "on_goal" | "off_goal",
   }))
 }
