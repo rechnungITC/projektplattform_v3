@@ -1,6 +1,6 @@
 # PROJ-67 - Codebase Review Quality Hardening
 
-## Status: In Progress — **alle 9 ACs erledigt** (AC-9 closed 2026-06-12; AC-1/2/3/6 2026-06-11; AC-7 2026-06-12; AC-4/5 2026-05-30; AC-8 2026-05-31). Schluss-QA via `/qa` offen.
+## Status: Approved — Schluss-QA 2026-06-12 bestanden: 9/9 ACs PASS, vitest 1799/1799, chromium-E2E 90/0 parallel, 0 Critical/High (1 Low L-1 + 2 Info dokumentiert). Siehe „QA Test Results — Schlussabnahme".
 
 ## Implementation Notes — AC-9/F9 (2026-06-12)
 
@@ -123,3 +123,48 @@ npx gitnexus@latest query "auth tenant ai provider"
 - Chromium E2E: 68 passed, 5 skipped, 1 failed.
 - Full E2E: 122 passed, 12 skipped, 14 failed.
 - Audit: 7 moderate, 0 high, 0 critical.
+
+## QA Test Results — Schlussabnahme 2026-06-12
+
+**Scope:** Gesamtabnahme aller 9 ACs auf aktuellem main (36c6936, inkl. AC-9-Merge #135), frischer Worktree, frisches `npm ci`.
+
+### Acceptance Criteria: 9/9 PASS
+
+| AC | Verifikation | Ergebnis |
+|---|---|---|
+| AC-1 Visual chromium | Volle chromium-Suite inkl. 16 Visual-Tests (settings-tenant auf PROJ-66-Baseline) | ✅ PASS |
+| AC-2 WebKit-Gating | Ohne Flag: 0 Mobile-Safari-Tests + laute Warning; `PW_FORCE_WEBKIT=1`: 95 Tests gelistet | ✅ PASS |
+| AC-3 Hydration | Volles E2E-WebServer-Log: **0** `tree hydrated`-Warnungen | ✅ PASS |
+| AC-4 React-Compiler | `npm run lint`: 0 errors, 0 warnings | ✅ PASS |
+| AC-5 Dependency-Audit | `npm audit`: 2 moderate (bekannte transitive postcss via next, dokumentiert), 0 high/critical; `audit:prod`-Gate pass | ✅ PASS |
+| AC-6 Schema-Drift lokal | Runbook + Skript vorhanden, `bash -n` OK, Fehlerpfad (kein Docker) liefert klare Anleitung; Happy-Path = dokumentierter WSL-Integration-Handoff | ✅ PASS |
+| AC-7 GitNexus Query | `npx gitnexus@latest query`: 0 ReadOnly-FTS-Warnungen, 30 Treffer-Zeilen | ✅ PASS |
+| AC-8 eslint-disable | 26 Treffer (23 bei Erstabnahme + 3 neue aus PROJ-88/89) — **alle 26** mit ` -- `-Inline-Begründung | ✅ PASS |
+| AC-9 Parallel-E2E | Volle chromium-Suite **90 passed / 5 skipped / 0 failed** (45s) mit Default-Workern; Warm-Compile aktiv (Log-Nachweis) | ✅ PASS |
+
+### Suiten (Regression)
+
+- vitest: **1799/1799** grün (Suite seit Review-Baseline 1557 → 1799 gewachsen)
+- chromium-E2E: **90 passed / 5 skipped / 0 failed** (5 Skips = dokumentierte `@setup-only`/Gating-Fälle)
+- Mobile Safari: AC-2-konform übersprungen (WebKit-Host-Libs-Handoff offen); Firefox ist nicht Teil der Projekt-Suite-Definition (out of scope)
+
+### Security-Audit (Red-Team auf Slice-Änderungen)
+
+- `playwright.config.ts` (`execFileSync('ldd', …)`): statischer Befehl, Pfade aus `homedir()`-Discovery, kein User-Input → keine Injection-Fläche; reine devDependency-Logik, kein Prod-Pfad.
+- `global-setup.ts` Warm-Compile: sendet E2E-Test-Cookies nur an `PLAYWRIGHT_BASE_URL` — identische Vertrauensannahme wie das bestehende storageState-Design, kein neues Risiko-Delta.
+- `screenshot-stabilize.css`, Baseline-PNG: keine Angriffsfläche.
+- **L-1 (Low):** `local-shadow.sh` published den Wegwerf-Postgres mit `-p "$PORT:5432"` → bindet 0.0.0.0; während des Laufs ist eine DB mit Trivial-Passwort `test` im LAN erreichbar. Empfehlung: `-p "127.0.0.1:$PORT:5432"`. Kurzlebig + reines Dev-Tooling → Low.
+
+### Findings
+
+| ID | Severity | Befund |
+|---|---|---|
+| L-1 | Low | Shadow-DB-Port bindet 0.0.0.0 statt 127.0.0.1 (siehe Security-Audit) |
+| I-1 | Info | gitnexus@1.6.7 verlangt `engines.node >= 22`, Host läuft Node 20 — funktioniert, aber EBADENGINE-Warning; bei Node-Upgrade-Planung berücksichtigen |
+| I-2 | Info | eslint-disable-Zähler 23 → 26 seit Erstabnahme; Hygiene hält (alle begründet), Konvention wird von neuen Features eingehalten |
+
+### Neue Tests
+
+Keine neuen Tests erforderlich: alle ACs sind durch bestehende automatisierte Suiten abgedeckt (Visual-Specs = AC-1, volle parallele Suite = AC-3/9 als permanente Regression; AC-2/6/7 sind Tooling-/Config-Verhalten, das bei jedem Suite-Lauf implizit mitgeprüft wird).
+
+### Production-Ready: **READY** (0 Critical / 0 High; 1 Low + 2 Info dokumentiert)
