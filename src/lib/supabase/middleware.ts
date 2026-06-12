@@ -27,6 +27,12 @@ const PUBLIC_ROUTES = [
   // Account.
   "/self-assessment",
   "/api/self-assessment",
+  // PROJ-50 — Jira inbound webhook receiver. Jira Cloud calls it without a
+  // Supabase session; the route authenticates by hashing the URL token
+  // against jira_webhook_tokens. NOTE: only the /webhook/ sub-path is public —
+  // the admin /webhook-token management route is NOT matched (no trailing
+  // slash after "webhook"), so it stays session-gated.
+  "/api/connectors/jira/webhook",
 ]
 
 function isPublicRoute(pathname: string): boolean {
