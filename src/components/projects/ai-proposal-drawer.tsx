@@ -47,6 +47,7 @@ import {
 import { CrossProjectLinksTab } from "./ai-proposals/cross-project-links-tab"
 import { BacklogProposalTab } from "./ai-proposals/backlog-proposal-tab"
 import { ResourceSwapTab } from "./ai-proposals/resource-swap-tab"
+import { RiskProposalTab } from "./ai-proposals/risk-proposal-tab"
 import { StakeholderProposalTab } from "./ai-proposals/stakeholder-proposal-tab"
 
 interface AIProposalDrawerProps {
@@ -65,9 +66,16 @@ interface AIProposalDrawerProps {
   /** Looked-up labels for node ids — used to render affected node names. */
   nodeLabels?: Record<string, string>
   /** PROJ-70-ε — open the drawer on a specific tab (deep-link from the
-   *  wizard handoff opens "backlog"). PROJ-88 adds "stakeholders".
+   *  wizard handoff opens "backlog"). PROJ-88 adds "stakeholders",
+   *  PROJ-89 adds "risks" (consumed by PROJ-90's orchestration).
    *  Defaults to "trajectory". */
-  defaultTab?: "trajectory" | "resources" | "links" | "backlog" | "stakeholders"
+  defaultTab?:
+    | "trajectory"
+    | "resources"
+    | "links"
+    | "backlog"
+    | "stakeholders"
+    | "risks"
   /** PROJ-70-ε — when set, the Backlog tab auto-triggers a generation run
    *  for this context_source on mount (wizard Post-Finalize-Handoff). */
   autoGenerateContextSourceId?: string | null
@@ -208,6 +216,7 @@ export function AIProposalDrawer({
             <TabsTrigger value="links">Cross-Project</TabsTrigger>
             <TabsTrigger value="backlog">Backlog</TabsTrigger>
             <TabsTrigger value="stakeholders">Stakeholder</TabsTrigger>
+            <TabsTrigger value="risks">Risiken</TabsTrigger>
           </TabsList>
 
           <TabsContent value="trajectory" className="mt-4 space-y-3">
@@ -303,6 +312,10 @@ export function AIProposalDrawer({
 
           <TabsContent value="stakeholders" className="mt-4">
             <StakeholderProposalTab projectId={projectId} />
+          </TabsContent>
+
+          <TabsContent value="risks" className="mt-4">
+            <RiskProposalTab projectId={projectId} />
           </TabsContent>
         </Tabs>
       </SheetContent>
