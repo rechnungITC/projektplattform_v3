@@ -131,6 +131,21 @@ None — everything reuses the existing AI SDK, Zod, shadcn/sonner stack.
 
 **Offen:** Drawer-Tab 6 „Risiken" → `/frontend`; Live-Cloud-Generierungslauf (Class-2 → OpenAI) + Live-Ollama-Lauf + Security-Probes + Playwright → `/qa`.
 
+## Implementation Notes — Frontend-Slice (2026-06-12, /frontend)
+
+**Drawer-Tab 6 „Risiken" komplett (AC-89.8), gebaut als Spiegel des PROJ-88-Stakeholder-Tabs.**
+
+- **Neu `risk-proposal-tab.tsx`** (`RiskProposalTab`): Quellen-Dropdown (`/api/context-sources`) + Datei-Upload-Fallback (PDF/DOCX/TXT/MD/EML/MSG, PROJ-70-γ-Picker-Reuse) → „Risiken ableiten" (count 10). Flache Cards mit ShieldAlert-Icon, **P×I-Score-Badge** mit Severity-Tint (≥15 rot / ≥8 amber / sonst grün, PROJ-20-Schwellen), Description- + Maßnahmen-Preview, Konfidenz-Label, wörtlichem `source_quote`-Zitat, **„≠ Ziel"-Badge** (off_goal, PROJ-91-Achse) und **Duplicate-Hinweis** („Bereits im Risikoregister — Accept verknüpft statt neu anzulegen").
+- **Inline-Editor** (Sub-Component, kein set-state-in-effect — PROJ-67-AC-4-Muster): Titel, Beschreibung (textarea), Wahrscheinlichkeit/Auswirkung (1–5-Selects), Maßnahme (textarea). Flush sofort via purpose-aware PATCH (Bulk-RPC liest Payloads aus der DB); `relevance` bleibt serverseitig erhalten.
+- **BulkActionBar** (Accept-All/Reject-All) + **30s-Undo-Toast** (sonner, Undo ruft `accept_risk_proposals_undo`); „Bearbeitet"-Liste mit `risk_link`-Badge für verknüpfte Duplikate.
+- **Blocked-Banner** (content-based Purpose): bei `external_blocked` persistenter Banner mit der actionable Router-Reason (PROJ-88-F-1) + Link zu Einstellungen → KI-Provider — kein silent empty state.
+- **Drawer-Wiring**: Import + `TabsTrigger`/`TabsContent` „risks" in `ai-proposal-drawer.tsx`; `defaultTab`-Union um `"risks"` erweitert (PROJ-90-ready). Kein weiterer Consumer-Change nötig (engere Unions bleiben zuweisbar).
+- **Worktree-Hinweis:** Slice in eigener Git-Worktree gebaut (`proj-89/frontend` ab main), da der Primary-Checkout von einer Parallel-Session belegt war (CLAUDE.md-Regel 2026-06-10).
+
+**Gates:** lint 0 · tsc 13 Baseline/0 neu · vitest 1799/1799 · build clean. Keine neuen Deps, keine neuen shadcn-Primitives (Badge/Button/Input/Tabs/Switch-frei wiederverwendet).
+
+**Offen für `/qa`:** Live-Cloud-Generierungslauf (Class-2 → OpenAI) + Live-Ollama-Lauf (Class-3-Pfad), Security-Probes, Playwright Auth-Gates + Drawer-Smoke (Tab 6).
+
 ## QA Test Results
 _To be added by /qa_
 
