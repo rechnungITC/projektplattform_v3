@@ -304,6 +304,69 @@ async function globalSetup(_config: FullConfig): Promise<void> {
   console.info(
     `[PROJ-29 globalSetup] ready — storage state at ${storagePath}`
   )
+
+  await warmCompileDeepLinkRoutes(baseURL, supabaseCookies)
+}
+
+/**
+ * PROJ-67 AC-9 (F9, from PROJ-70-ε QA F-4): warm-compile the heavy
+ * deep-link routes once before parallel workers start. The Next.js dev
+ * server compiles routes on first hit; when several workers hit
+ * uncompiled graph/wizard routes simultaneously, the first-compile
+ * contention causes sporadic navigation timeouts. One sequential
+ * authenticated pass removes that failure mode without forcing the
+ * whole suite to `workers: 1`.
+ *
+ * The webServer is already running when globalSetup executes. If it is
+ * not reachable (config variants without webServer), skip silently —
+ * warming is an optimization, never a gate.
+ */
+async function warmCompileDeepLinkRoutes(
+  baseURL: string,
+  authCookies: PlaywrightStorageCookie[],
+): Promise<void> {
+  try {
+    await fetch(baseURL, { signal: AbortSignal.timeout(3_000) })
+  } catch {
+    console.info(
+      "[PROJ-67 warm-compile] dev server not reachable yet — skipping",
+    )
+    return
+  }
+
+  const cookieHeader = authCookies
+    .map(({ name, value }) => `${name}=${value}`)
+    .join("; ")
+  const routes = [
+    "/login",
+    "/projects",
+    "/projects/new/wizard",
+    `/projects/${E2E_PROJECT_ID}`,
+    `/projects/${E2E_PROJECT_ID}/graph`,
+    `/projects/${E2E_PROJECT_ID}/backlog`,
+  ]
+
+  const startedAt = Date.now()
+  for (const route of routes) {
+    const routeStart = Date.now()
+    try {
+      const res = await fetch(`${baseURL}${route}`, {
+        headers: { cookie: cookieHeader },
+        redirect: "manual",
+        signal: AbortSignal.timeout(120_000),
+      })
+      console.info(
+        `[PROJ-67 warm-compile] ${route} → ${res.status} in ${Date.now() - routeStart}ms`,
+      )
+    } catch (err) {
+      console.warn(
+        `[PROJ-67 warm-compile] ${route} failed after ${Date.now() - routeStart}ms: ${String(err)} — continuing`,
+      )
+    }
+  }
+  console.info(
+    `[PROJ-67 warm-compile] done in ${Date.now() - startedAt}ms (${routes.length} routes)`,
+  )
 }
 
 export default globalSetup

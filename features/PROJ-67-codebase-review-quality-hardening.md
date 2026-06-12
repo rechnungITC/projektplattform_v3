@@ -1,6 +1,11 @@
 # PROJ-67 - Codebase Review Quality Hardening
 
-## Status: In Progress (AC-1/2/3/6 closed 2026-06-11; AC-7 voll erfüllt 2026-06-12 via gitnexus-1.6.7-Upgrade; AC-4 + AC-5 closed 2026-05-30; AC-8 closed 2026-05-31; nur AC-9 pending)
+## Status: In Progress — **alle 9 ACs erledigt** (AC-9 closed 2026-06-12; AC-1/2/3/6 2026-06-11; AC-7 2026-06-12; AC-4/5 2026-05-30; AC-8 2026-05-31). Schluss-QA via `/qa` offen.
+
+## Implementation Notes — AC-9/F9 (2026-06-12)
+
+- **F9/AC-9 — Graph-Deep-Link-Spec-Stabilität:** Umgesetzt über die im Plan bevorzugte Variante **Warm-Compile** (kein `test.describe.configure({mode:'serial'})` — das hätte die Test-Semantik geändert: Folge-Tests würden bei einem Fail geskippt). Neue Funktion `warmCompileDeepLinkRoutes` in `tests/fixtures/global-setup.ts`: nach dem Auth-Setup werden 6 schwere Routen (`/login`, `/projects`, `/projects/new/wizard`, Project-Room, `/graph`, `/backlog`) einmal **sequenziell authentifiziert** angefordert, bevor parallele Worker starten — der Next-Dev-Server kompiliert on-first-hit, die First-Compile-Contention entfällt strukturell. Empirisch bestätigt: webServer läuft bereits, wenn globalSetup ausgeführt wird (Warm-up ~8,8s, alle Routen 200/307). Fail-open: Server nicht erreichbar → Skip mit Log, nie ein Gate.
+- **Verifiziert:** 5 Deep-Link-Specs (PROJ-58-graph, PROJ-58-graph-3d, PROJ-65-epsilon1, PROJ-70-epsilon-wizard, PROJ-70-delta-dnd) mit Default-Parallel-Workern 14/14 grün; volle chromium-Suite **90 passed / 5 skipped / 0 failed** in 24s — ohne globalen `workers: 1`-Zwang.
 
 ## Implementation Notes — F7 final (2026-06-12, ersetzt die Deviation vom selben Tag)
 
@@ -66,7 +71,7 @@ Dieses PROJ bündelt diese Review-Funde als Hardening-Slice. Ziel ist nicht, neu
 - [x] AC-6: `npm run check:schema-drift` hat einen dokumentierten lokalen Pfad mit frischer Shadow-DB oder ein klares Runbook mit `DATABASE_URL`-Setup. **Erledigt 2026-06-11** — `scripts/check-schema-drift/local-shadow.sh` + `docs/production/schema-drift-local.md`; Docker-Happy-Path pending WSL-Integration (User-Handoff).
 - [x] AC-7: `gitnexus query` funktioniert ohne ReadOnly-FTS-Warnungen und liefert wieder Prozess-/Symboltreffer. **Voll erfüllt 2026-06-12** — Root-Cause war upstream in gitnexus v1.6.4 gefixt, Umgebung hing auf npx-Cache-Pin 1.6.3; Upgrade auf 1.6.7 + einmaliges `--repair-fts` → 0 Warnungen, 27 Prozess-Treffer, FTS persistiert über `analyze`. Details in Implementation Notes F7 final.
 - [x] AC-8: Alle `eslint-disable`-Treffer in `src` sind entweder entfernt oder mit knapper Begründung und Owner-Entscheidung bestätigt. **Erledigt 2026-05-31** — `rg -n "eslint-disable" src` zeigt 23 Treffer in 19 Files; vier fehlende Inline-Begründungen ergänzt (`EditWbsCodeDialog`, `BacklogClient`, `CreateWorkItemLinkDialog`, `BacklogTree`), die übrigen 19 Treffer hatten bereits knappe Owner-Entscheidungen.
-- [ ] AC-9 (F9): Die Graph-Deep-Link-E2E-Specs laufen ohne globalen `workers: 1`-Zwang zuverlässig — entweder durch gezielte Serialisierung nur der betroffenen Specs oder durch Warm-Compile des Dev-Servers vor der Suite. Dokumentierter Kandidat aus PROJ-70-ε QA-Finding F-4 INFO (2026-06-08); noch nicht umgesetzt.
+- [x] AC-9 (F9): Die Graph-Deep-Link-E2E-Specs laufen ohne globalen `workers: 1`-Zwang zuverlässig — entweder durch gezielte Serialisierung nur der betroffenen Specs oder durch Warm-Compile des Dev-Servers vor der Suite. **Erledigt 2026-06-12** — Warm-Compile-Variante in `global-setup.ts` (`warmCompileDeepLinkRoutes`, 6 Routen sequenziell-authentifiziert vor Worker-Start); volle chromium-Suite 90/0 parallel grün. Details in Implementation Notes AC-9/F9.
 
 ## Non-Goals
 
