@@ -1,8 +1,8 @@
 # PROJ-88: AI Stakeholder Proposals from Context
 
-## Status: Approved
+## Status: Deployed
 **Created:** 2026-06-08
-**Last Updated:** 2026-06-10
+**Last Updated:** 2026-06-11
 **Origin:** CIA portfolio review 2026-06-08 (vision: "Wizard befüllt das ganze Projekt")
 **Priority:** P1 — Should-have
 
@@ -138,7 +138,7 @@ Budget extraction (PROJ-82), Generate-All orchestration (PROJ-90), any cloud rou
 
 ## QA Test Results — 2026-06-10 (/qa)
 
-### Verdict: **PRODUCTION-READY** — 0 Critical / 0 High; F-1 (Medium) in-QA gefixt; D-1-Deviation dokumentiert (User-Entscheid); F-2/F-3 Env-Findings ohne PROJ-88-Bezug
+### Verdict: **PRODUCTION-READY** — 0 Critical / 0 High; F-1 (Medium) in-QA gefixt + live verifiziert; **D-1 geschlossen** (Ollama-Happy-Path live in Prod, 2 dabei gefundene Bugs gefixt: PR #118/#119); F-2/F-3 Env-Findings ohne PROJ-88-Bezug
 
 ### AC-Verifikation
 | AC | Ergebnis | Evidenz |
@@ -161,8 +161,12 @@ Budget extraction (PROJ-82), Generate-All orchestration (PROJ-90), any cloud rou
 - **F-1 (Medium, in-QA gefixt nach PROJ-70-δ-Präzedenz)**: `selectProviderForPurpose` lieferte im blocked-Branch keinen `blockedReason` → `ki_runs.error_message` NULL für ALLE Class-3-geblockten Läufe (purposeübergreifend, seit PROJ-32). Fix: Resolver-Reason wird als actionable Text durchgereicht („Class-3-Purpose erfordert einen tenant-lokalen Provider (Ollama)…"). Live-Re-Test nach Deploy dokumentiert unten.
 - **F-2 (Env, Low)**: Playwright-WebKit (Mobile Safari) kann auf diesem WSL2-Host nicht mehr starten — neues webkit-2287-Binary braucht System-Libs (libgtk-4 u.a.), Installation erfordert sudo: `sudo npx playwright install-deps webkit`. Chromium voll grün; kein PROJ-88-Defekt.
 
-### Deviation D-1 — Ollama-Happy-Path (Live-Generierung)
-Der geforderte echte Ollama-Generierungslauf war nicht durchführbar: auf dem WSL2-Host ist aktuell **kein Ollama vorhanden** (kein Binary/Service/Container) und der Tenant hat **keinen Ollama-Provider registriert** (nur OpenAI). Der für diesen Zustand spezifizierte by-design-Pfad (AC-88.3 Block) ist live bewiesen. Sobald ein Ollama-Endpoint läuft + als Tenant-Provider registriert ist, ist der Happy-Path mit einem POST nachholbar (Generierungsmethode ist unit-/contract-getestet; identische OllamaProvider-Maschinerie wie resource_swap).
+### Deviation D-1 — Ollama-Happy-Path: **GESCHLOSSEN 2026-06-10 (nachgeholt, live in Prod)**
+User stellte einen Remote-Ollama-Endpoint bereit (Hostinger, Ollama 0.30.7). Ablauf: `qwen2.5:7b` remote gepullt → Tenant-Provider via `PUT /api/tenants/{id}/ai-providers/ollama` registriert (`status: valid`) → Live-Lauf. Dabei **zwei echte Bugs gefunden + gefixt**, die NUR ein echter Endpoint zeigen konnte:
+- **D-1a (PR #118)**: harte Zod-`.max()`-Caps ließen `generateObject` die GESAMTE Response verwerfen, wenn das Modell z.B. lange wörtliche `source_quote`s schreibt → validate-loose, clamp-after (Längen-Clamps im Mapper) + lowercase-Enum-Preprocess.
+- **D-1b (PR #119, Root-Cause)**: `createOpenAICompatible` sendete das `response_format json_schema` NIE an den Endpoint (AI-SDK-Warnung „responseFormat … only supported with structuredOutputs") — das Modell sah das Schema nicht und erfand eigene Strukturen. `supportsStructuredOutputs: true` behebt das für **alle 8 Ollama-Purposes** (war latent seit PROJ-32-c-β, nie gegen echten Endpoint exercised).
+- **Finaler Prod-Lauf** ki_run `da0e0c6e` (2026-06-10): `classification=3 / provider=ollama / model=qwen2.5:7b / status=success / 7 suggestions` — Drafts mit validen kinds/origins/relevance in `ki_suggestions`. AC-88.1/88.2/88.3 damit auch im Happy-Path live bewiesen.
+- **Modell-Qualitäts-Nits (7B, dokumentiert, kein Blocker — Mensch reviewt jede Karte)**: Bei einem Kickoff OHNE Personennamen extrahiert das Modell Rollen-/Org-Erwähnungen statt Personen (korrekt: keine Namen erfunden, AC-88.9 hält); `source_quote` blieb leer (Prompt sagt „wenn möglich"); `relevance` großzügig on_goal trotz Ziel-Divergenz; „CRM-Systeme" grenzwertig (System vs. Anbieter). Für Pilot ggf. größeres Modell (z.B. qwen2.5:14b+) empfehlen.
 
 ### Playwright
 - Neu: `tests/PROJ-88-stakeholder-proposals.spec.ts` — 4 Auth-Gates + invalid-uuid (beide Browser grün) + authentifizierter Drawer-Smoke (chromium grün; webkit s. F-2). Enthält den **deferred PROJ-87-Smoke**: Launcher-Button sichtbar → Klick → Drawer öffnet mit Backlog-Tab → Stakeholder-Tab → geseedete Card. Seeds idempotent + afterAll-Cleanup.
@@ -177,4 +181,21 @@ lint 0 · tsc 13 baseline/0 neu · vitest 1770/1770 · build clean · Playwright
 
 
 ## Deployment
-_To be added by /deploy_
+
+**Status:** ✅ Deployed
+**Deployed:** 2026-06-11 (Bookkeeping-Closure; Code live in Prod seit 2026-06-10)
+**Production URL:** https://projektplattform-v3.vercel.app
+**Git Tag:** v1.89.0-PROJ-88
+
+### Was ist live (alles auf `main`, Vercel auto-deploy)
+- **Backend-Slice** (PR #114, e8d05d1): Purpose + Class-3-Pin-Classifier + Collector + Ollama-Methode + Router + Migration `20260613100000` (Purpose-CHECKs, RPC-Paar accept/undo) + 3 Routen + purpose-aware PATCH. Tag `v1.84.0-PROJ-88-backend`.
+- **Frontend-Slice** (PR #115): Drawer-Tab 5 „Stakeholder". Tag `v1.85.0-PROJ-88-frontend`.
+- **QA-Slice** (PR #116, e34077d): Live-Class-3-Pin-Beweis, F-1 blockedReason-Fix, Playwright-Spec inkl. PROJ-87-Smoke. Tag `v1.86.0-PROJ-88-qa`.
+- **Ollama-Robustness** (PR #118 + #119): validate-loose/clamp-after + `supportsStructuredOutputs: true` (Root-Cause-Fix für alle 8 Ollama-Purposes).
+- **D-1-Closure** (PR #122): Happy-Path live bewiesen — ki_run `da0e0c6e`: classification=3 / provider=ollama / qwen2.5:7b / success / 7 suggestions.
+- **Purpose-Check-Fix** (PR #120, Migration `20260614100000`): `sentiment` + `coaching` in `ki_runs_purpose_check` restauriert (fehlte seit PROJ-34 — Coaching-/Sentiment-Generierung 5xx'te in Prod). Migration bereits am 2026-06-10 direkt in Prod angewendet + Live-Insert-Smoke grün.
+
+### Prod-Verify
+- Migrationen `20260613100000` + `20260614100000` in Prod-DB (CHECK-Defs verifiziert).
+- Tenant-Ollama-Provider registriert (`ollama:187.124.190.116:32768/qwen2.5:7b`, status=valid); Live-Generierung end-to-end erfolgreich (s. D-1-Closure).
+- Class-3-Pin live bewiesen: Tenant mit gültigem OpenAI-Key → trotzdem classification=3, Cloud strukturell unerreichbar.
