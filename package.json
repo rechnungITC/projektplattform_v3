@@ -15,8 +15,7 @@
     "test:e2e:setup": "rm -rf tests/fixtures/.auth && playwright test --grep @setup-only --reporter=line || true",
     "test:all": "vitest run && playwright test",
     "audit:prod": "npm audit --omit=dev --audit-level=high",
-    "check:schema-drift": "tsx scripts/check-schema-drift/index.ts",
-    "gitnexus:fix-fts": "node scripts/gitnexus-build-fts.mjs"
+    "check:schema-drift": "tsx scripts/check-schema-drift/index.ts"
   },
   "dependencies": {
     "@ai-sdk/anthropic": "^3.0.72",
