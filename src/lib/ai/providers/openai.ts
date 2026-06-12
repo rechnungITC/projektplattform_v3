@@ -26,6 +26,7 @@ import type {
   NarrativeGenerationRequest,
   ProposalFromContextGenerationRequest,
   RiskGenerationRequest,
+  RiskProposalsGenerationRequest,
   TrajectorySequenceGenerationRequest,
 } from "./types"
 import type {
@@ -33,19 +34,24 @@ import type {
   NarrativeGenerationOutput,
   ProposalFromContextGenerationOutput,
   RiskGenerationOutput,
+  RiskProposalsGenerationOutput,
   TrajectorySequenceGenerationOutput,
 } from "../types"
 import {
   buildCrossProjectLinksPrompt,
   buildProposalFromContextPrompt,
+  buildRiskProposalsPrompt,
   buildTrajectorySequencePrompt,
   CROSS_PROJECT_LINKS_SYSTEM_PROMPT,
   CrossProjectLinksResponseSchema,
   mapCrossProjectLinksSuggestions,
   mapProposalFromContextSuggestions,
+  mapRiskProposalsSuggestions,
   mapTrajectorySequenceSuggestions,
   PROPOSAL_FROM_CONTEXT_SYSTEM_PROMPT,
   ProposalFromContextResponseSchema,
+  RISK_PROPOSALS_SYSTEM_PROMPT,
+  RiskProposalsResponseSchema,
   TRAJECTORY_SEQUENCE_SYSTEM_PROMPT,
   TrajectorySequenceResponseSchema,
 } from "./graph-purpose-prompts"
@@ -307,6 +313,34 @@ export class OpenAIProvider implements AIProvider {
       | undefined
     return {
       suggestions: mapProposalFromContextSuggestions(result.object.suggestions),
+      usage: {
+        input_tokens: usage?.inputTokens ?? null,
+        output_tokens: usage?.outputTokens ?? null,
+        latency_ms: Date.now() - start,
+      },
+    }
+  }
+
+  // PROJ-89 — risk proposals from a kickoff (shared schema + prompt).
+  async generateRiskProposals(
+    request: RiskProposalsGenerationRequest,
+  ): Promise<RiskProposalsGenerationOutput> {
+    const start = Date.now()
+    const result = await generateObject({
+      model: this.sdkProvider(this.modelId),
+      schema: RiskProposalsResponseSchema,
+      system: RISK_PROPOSALS_SYSTEM_PROMPT,
+      prompt: buildRiskProposalsPrompt(request),
+      temperature: 0.3,
+    })
+    const usage = result.usage as
+      | { inputTokens?: number; outputTokens?: number }
+      | undefined
+    return {
+      suggestions: mapRiskProposalsSuggestions(
+        result.object.suggestions,
+        new Set(request.context.existing_risks.map((r) => r.risk_id)),
+      ),
       usage: {
         input_tokens: usage?.inputTokens ?? null,
         output_tokens: usage?.outputTokens ?? null,

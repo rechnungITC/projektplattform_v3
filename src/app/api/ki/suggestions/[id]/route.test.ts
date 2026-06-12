@@ -322,4 +322,70 @@ describe("PATCH /api/ki/suggestions/[id] — purpose-aware payload validation", 
     )
     expect(res.status).toBe(200)
   })
+
+  // PROJ-89 — proposal_risks_from_context inline-edit dispatch.
+  it("accepts a valid proposal_risks_from_context payload incl. relevance", async () => {
+    setupAccess()
+    nextSuggestionLookup = {
+      id: SID,
+      project_id: PROJECT_ID,
+      status: "draft",
+      purpose: "proposal_risks_from_context",
+    }
+    const payload = {
+      title: "Abhängigkeit vom Alt-ERP-Dienstleister",
+      description: "Kickoff nennt exklusive Wartungsverträge.",
+      probability: 3,
+      impact: 4,
+      mitigation: "Exit-Klauseln vor Migrationsstart verhandeln.",
+      duplicate_of_risk_id: null,
+      source_quote: "Wartung liegt vollständig beim Altanbieter.",
+      confidence: "high",
+      relevance: "off_goal",
+    }
+    nextSuggestionUpdate = {
+      id: SID,
+      payload,
+      original_payload: { ...payload, title: "Original" },
+      is_modified: true,
+      status: "draft",
+      updated_at: "2026-06-11T12:00:00Z",
+    }
+    const res = await PATCH(makePatch({ payload }), {
+      params: Promise.resolve({ id: SID }),
+    })
+    expect(res.status).toBe(200)
+    const body = (await res.json()) as {
+      suggestion: { payload: { relevance: string } }
+    }
+    // PROJ-91 lesson: the relevance flag must survive the inline-edit.
+    expect(body.suggestion.payload.relevance).toBe("off_goal")
+  })
+
+  it("rejects proposal_risks_from_context payload with out-of-range impact", async () => {
+    setupAccess()
+    nextSuggestionLookup = {
+      id: SID,
+      project_id: PROJECT_ID,
+      status: "draft",
+      purpose: "proposal_risks_from_context",
+    }
+    const res = await PATCH(
+      makePatch({
+        payload: {
+          title: "Risiko",
+          description: null,
+          probability: 3,
+          impact: 9,
+          mitigation: null,
+          duplicate_of_risk_id: null,
+          source_quote: null,
+          confidence: "low",
+          relevance: "on_goal",
+        },
+      }),
+      { params: Promise.resolve({ id: SID }) },
+    )
+    expect(res.status).toBe(400)
+  })
 })

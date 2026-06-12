@@ -26,6 +26,11 @@ export type AIPurpose =
   // PROJ-88 — stakeholder extraction from a kickoff context source.
   // Class-3-pinned (names by definition) → local providers only.
   | "proposal_stakeholders_from_context"
+  // PROJ-89 — risk proposals from a kickoff context source. Standard
+  // content-based classification (NOT pinned): clean business documents
+  // are Class 2 → cloud allowed; real PII → Class 3 → local-only via
+  // the standard resolver clamp.
+  | "proposal_risks_from_context"
 
 export type DataClass = 1 | 2 | 3
 
@@ -880,6 +885,107 @@ export interface StakeholderProposalsGenerationOutput {
 
 /** Router result for a stakeholder-proposals invocation. */
 export interface RouterStakeholderProposalsResult {
+  run_id: string
+  classification: DataClass
+  provider: AIProviderName
+  model_id: string | null
+  status: "success" | "error" | "external_blocked"
+  suggestion_ids: string[]
+  external_blocked: boolean
+  error_message?: string
+}
+
+// ---------------------------------------------------------------------------
+// PROJ-89 — proposal_risks_from_context purpose types
+// ---------------------------------------------------------------------------
+
+/**
+ * Auto-context for risk proposals from a kickoff context source.
+ *
+ * Classification is CONTENT-BASED (PROJ-70-α pattern, post-PROJ-86
+ * marker detection) — risk text is business language, so clean documents
+ * route to the tenant's cloud provider. Defense-in-depth: the
+ * `context_source.privacy_class` acts as a floor (a manually stamped
+ * Class-3 source never goes to cloud), and the resolver clamps Class 3
+ * to local providers.
+ *
+ * `existing_risks` enables dedup: the model proposes
+ * `duplicate_of_risk_id` instead of a duplicate create, and does not
+ * re-propose what the register already has.
+ */
+export interface RiskProposalsAutoContext {
+  source_project: {
+    project_id: string
+    name: string
+    /** PROJ-91 track invariant: the Vorhaben is ONLY the relevance
+     *  yardstick — NEVER a generation source (AC-89.9). */
+    description: string | null
+    project_type: string | null
+    project_method: string | null
+    lifecycle_status: string
+  }
+  context_source: {
+    context_source_id: string
+    kind: string
+    title: string
+    privacy_class: 1 | 2 | 3
+    content_excerpt: string
+    language: string | null
+  }
+  existing_risks: Array<{
+    risk_id: string
+    title: string
+    probability: number
+    impact: number
+    status: string
+  }>
+}
+
+/**
+ * One AI-proposed risk, mapped onto the PROJ-20 risk shape (AC-89.3).
+ * Flat (no hierarchy). On accept, rows insert into `public.risks` with
+ * status 'open' — review semantics live in ki_suggestions + provenance
+ * (AC-89.3 design clarification: the risks table has no draft status).
+ */
+export interface RiskProposalSuggestion {
+  /** Risk title (≤ 255 per risks_title_length). Derived exclusively from
+   *  the kickoff document (AC-89.9). */
+  title: string
+  /** What the document implies, why this is a risk (≤ 5000). */
+  description: string | null
+  /** Probability of occurrence, 1 (rare) … 5 (almost certain). */
+  probability: number
+  /** Impact severity, 1 (negligible) … 5 (critical). */
+  impact: number
+  /** Actionable mitigation next step (≤ 5000); null when the document
+   *  gives no basis for one (no fabricated advice). */
+  mitigation: string | null
+  /** Dedup: id of an existing project risk this finding refers to.
+   *  Accept then records provenance on the existing risk instead of
+   *  creating (PROJ-88 L4 pattern). Validated post-hoc against the
+   *  supplied list — hallucinated ids → null. */
+  duplicate_of_risk_id: string | null
+  /** Short verbatim quote locating the finding in the document (review
+   *  aid, source traceability). */
+  source_quote: string | null
+  /** Axis 1 — how clearly the document supports this risk. */
+  confidence: "low" | "medium" | "high"
+  /** Axis 2 (PROJ-91 invariant) — relevance to the Vorhaben. */
+  relevance: "on_goal" | "off_goal"
+  /** Server-side display enrichment. */
+  display?: {
+    source_project_name: string | null
+    context_source_title: string | null
+  }
+}
+
+export interface RiskProposalsGenerationOutput {
+  suggestions: RiskProposalSuggestion[]
+  usage: ProviderUsage
+}
+
+/** Router result for a risk-proposals invocation. */
+export interface RouterRiskProposalsResult {
   run_id: string
   classification: DataClass
   provider: AIProviderName
