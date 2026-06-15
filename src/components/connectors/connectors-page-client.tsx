@@ -35,6 +35,7 @@ import {
   JiraCredentialForm,
   type JiraCredentialPayload,
 } from "./jira-credential-form"
+import { JiraWebhookTokens } from "./jira-webhook-tokens"
 import { TeamsCredentialForm } from "./teams-credential-form"
 
 type CredentialPayload =
@@ -245,6 +246,10 @@ export function ConnectorsPageClient() {
                   }
                   onDelete={() => void handleDelete(drawer.entry.descriptor.key)}
                 />
+
+                {drawer.entry.descriptor.key === "jira" ? (
+                  <JiraWebhookTokens />
+                ) : null}
               </div>
             </>
           ) : null}

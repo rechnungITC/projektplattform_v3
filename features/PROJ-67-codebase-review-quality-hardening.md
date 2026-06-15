@@ -1,6 +1,15 @@
 # PROJ-67 - Codebase Review Quality Hardening
 
-## Status: Approved — Schluss-QA 2026-06-12 bestanden: 9/9 ACs PASS, vitest 1799/1799, chromium-E2E 90/0 parallel, 0 Critical/High (1 Low L-1 + 2 Info dokumentiert). Siehe „QA Test Results — Schlussabnahme".
+## Status: Deployed — 2026-06-15 (Tag `v1.91.0-PROJ-67`). 9/9 ACs PASS, L-1 behoben. Slice-Code war bereits via PRs #128/#131/#133/#135 live; Deploy = Closure + L-1-Fix + Tag.
+
+## Deployment
+
+- **Date:** 2026-06-15 (Closure; Hardening-Code lief seit den Einzel-PRs #128/#131/#133/#135 live, da reine Test-/Tooling-/Config-Ebene ohne separaten Runtime-Deploy)
+- **Tag:** `v1.91.0-PROJ-67`
+- **Enthält:** L-1-Fix (Shadow-DB Loopback-Bind) + die kumulierten F1–F9-Closures
+- **Kein Runtime-Deploy nötig:** PROJ-67 ändert ausschließlich Test-Infrastruktur (`playwright.config.ts`, `global-setup.ts`, Visual-Baseline), Dev-Tooling (`scripts/check-schema-drift/local-shadow.sh`) und Doku — kein `src/`-Prod-Pfad, keine Migration. Vercel-Prod ist unberührt.
+- **Offene User-Handoffs (kein Bug, dokumentiert):** `sudo npx playwright install-deps webkit` (F2, Mobile-Safari-E2E); Docker-Desktop-WSL-Integration (F6, Schema-Drift-Happy-Path).
+- **Schluss-QA 2026-06-12:** 9/9 ACs PASS, vitest 1799/1799, chromium-E2E 90/0 parallel, 0 Critical/High. Siehe „QA Test Results — Schlussabnahme".
 
 ## Implementation Notes — AC-9/F9 (2026-06-12)
 
@@ -159,7 +168,7 @@ npx gitnexus@latest query "auth tenant ai provider"
 
 | ID | Severity | Befund |
 |---|---|---|
-| L-1 | Low | Shadow-DB-Port bindet 0.0.0.0 statt 127.0.0.1 (siehe Security-Audit) |
+| L-1 | Low | ✅ **Behoben 2026-06-15**: Shadow-DB-Port bindet jetzt `127.0.0.1:$PORT:5432` (war 0.0.0.0); `localhost`-DATABASE_URL bleibt kompatibel. |
 | I-1 | Info | gitnexus@1.6.7 verlangt `engines.node >= 22`, Host läuft Node 20 — funktioniert, aber EBADENGINE-Warning; bei Node-Upgrade-Planung berücksichtigen |
 | I-2 | Info | eslint-disable-Zähler 23 → 26 seit Erstabnahme; Hygiene hält (alle begründet), Konvention wird von neuen Features eingehalten |
 
