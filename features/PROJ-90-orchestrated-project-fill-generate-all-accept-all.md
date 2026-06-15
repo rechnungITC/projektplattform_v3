@@ -1,6 +1,6 @@
 # PROJ-90: Orchestrated "Fill the Project" — Multi-Tab Generate-All + Accept-All
 
-## Status: Architected
+## Status: In Progress
 **Created:** 2026-06-08
 **Last Updated:** 2026-06-15
 **Origin:** CIA portfolio review 2026-06-08 (vision: "Wizard befüllt das ganze Projekt")
@@ -125,6 +125,23 @@ None — reuses the existing React / shadcn / sonner stack and the three deploye
 ### Open / deferred
 - **Cross-module atomic accept/undo RPC** — only if QA shows the fan-out's partial states confuse users (fork option B).
 - **Dialogic wizard clarifying questions** (from spec "Next/Later") — stays out; promote to its own spec if pursued.
+
+## Implementation Notes — Frontend-Slice (2026-06-15, /frontend)
+
+**Conductor-Tab „Projekt befüllen" komplett (AC-90.1/90.3/90.4/90.5/90.6/90.7 frontend-seitig). Reine Frontend-Komposition — kein Backend-Change.**
+
+- **Neu `orchestration-tab.tsx`** (`OrchestrationTab`): EINE gemeinsame Kickoff-Quelle (Dropdown `/api/context-sources` + Upload-Fallback via `uploadContextSourceFile`, PROJ-70-γ-Picker-Reuse) → speist alle drei Module. Uniforme API-Surface der drei deployten Wrapper (`API[key].{list,trigger,accept,undo}`) macht die Orchestrierung generisch.
+- **Sequenzielles Generate-All (AC-90.1, AC-90.7)**: Schleife Backlog → Stakeholder → Risiken; jedes Modul in eigenem try/catch → blocked/error setzt nur die eigene Progress-Zeile, die Schleife läuft weiter. Cost-Cap serverseitig (nur Ergebnis gespiegelt). 3 Progress-Zeilen mit Status-Icon (idle/running/done N/blocked/error) + Per-Modul-„Annehmen".
+- **Class-3-Isolation (AC-90.6)**: Stakeholder-Trigger liefert bei fehlendem Ollama `external_blocked` → Zeile „blockiert"; Backlog + Risiken laufen trotzdem.
+- **Accept-All (AC-90.3, user-locked Fork: Client-Fan-out)**: globaler Button + Per-Modul; vor jedem Accept werden die Draft-IDs frisch gelistet (`refreshDrafts`) → nie stale IDs an die Bulk-RPCs. EIN 30s-Undo-Toast (sonner) fächert via `Promise.allSettled` über die drei Undo-RPCs auf — best-effort, meldet Teil-Undo wenn ein Fenster abgelaufen ist.
+- **Re-Entrancy (Edge-Case „triggered twice")**: `generating`/`accepting`-Guards deaktivieren die Buttons; Deep-Link-Auto-Run via `autoRanRef` einmalig.
+- **Wizard-Handoff verallgemeinert (AC-90.2)**: `wizard-client` Finalize-URL `?aiDrawer=backlog` → `?aiDrawer=fill`; `trajectory-graph-view` Deep-Link-Parser akzeptiert `backlog` (back-compat) UND `fill`; Drawer routet `autoGenerateContextSourceId` konditional (fill→Conductor, backlog→Backlog-Tab) → keine Doppel-Generierung. `graph-shell` erzwingt bereits trajectory-mode für jeden `aiDrawer`-Wert.
+- **Drawer**: 7. Tab „Projekt befüllen" als erster Tab; `defaultTab`-Union um `"fill"` erweitert. Die drei bestehenden Tabs bleiben für Detail-Review/Edit unverändert.
+- **State rein ephemer** (React) — nichts Neues persistiert; jede Karte bleibt eine reviewbare `ki_suggestions`-Row (Invariante #2).
+
+**Gates:** lint 0 · tsc 13 Baseline/0 neu · vitest 1799/1799 · build clean. Keine neuen Deps. Gebaut in eigener Worktree (`/tmp/pv3-proj90-fe`, Primary-Checkout durch Parallel-Session belegt).
+
+**Offen für `/qa`:** Live-orchestrierter Lauf (Backlog+Risiken Cloud, Stakeholder blocked-or-Ollama), Partial-Failure-Isolation, Double-Trigger-Debounce, globaler Accept-All → ein Undo über Module, Wizard→fill-Deep-Link-E2E, Playwright-Conductor-Smoke.
 
 ## QA Test Results
 _To be added by /qa_
