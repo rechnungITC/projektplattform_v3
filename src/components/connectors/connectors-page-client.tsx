@@ -36,10 +36,12 @@ import {
   type JiraCredentialPayload,
 } from "./jira-credential-form"
 import { JiraWebhookTokens } from "./jira-webhook-tokens"
+import { TeamsCredentialForm } from "./teams-credential-form"
 
 type CredentialPayload =
   | { api_key: string; from_email: string }
   | JiraCredentialPayload
+  | { webhook_url: string }
 
 const ICON: Record<ConnectorKey, React.ComponentType<{ className?: string }>> = {
   email: Mail,
@@ -355,6 +357,17 @@ function CredentialPanel({
   if (entry.descriptor.key === "jira") {
     return (
       <JiraCredentialForm
+        alreadyConfigured={entry.status.credential_source === "tenant_secret"}
+        submitting={submitting}
+        onSave={onSave}
+        onDelete={onDelete}
+      />
+    )
+  }
+
+  if (entry.descriptor.key === "teams") {
+    return (
+      <TeamsCredentialForm
         alreadyConfigured={entry.status.credential_source === "tenant_secret"}
         submitting={submitting}
         onSave={onSave}
