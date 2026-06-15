@@ -151,7 +151,7 @@ export function TrajectoryGraphView({ projectId }: TrajectoryGraphViewProps) {
   // PROJ-70-ε — deep-link from the wizard handoff opens the drawer on the
   // Backlog tab and auto-generates for the uploaded context source.
   const [drawerTab, setDrawerTab] = React.useState<
-    "trajectory" | "resources" | "links" | "backlog"
+    "trajectory" | "resources" | "links" | "backlog" | "fill"
   >("trajectory")
   const [autoGenSource, setAutoGenSource] = React.useState<string | null>(null)
   const [stakeholderPanel, setStakeholderPanel] = React.useState<{
@@ -212,16 +212,18 @@ export function TrajectoryGraphView({ projectId }: TrajectoryGraphViewProps) {
     setWebglAvailable(hasWebGL2())
   }, [])
 
-  // PROJ-70-ε — wizard Post-Finalize-Handoff. `?aiDrawer=backlog` opens
-  // the drawer on the Backlog tab; `?contextSource=<id>` auto-triggers a
-  // generation run there. One-shot on mount.
+  // Wizard Post-Finalize-Handoff. `?aiDrawer=backlog` (PROJ-70-ε) opens the
+  // Backlog tab; `?aiDrawer=fill` (PROJ-90) opens the orchestrated conductor.
+  // `?contextSource=<id>` auto-triggers a generation run on that tab.
+  // One-shot on mount.
   const searchParams = useSearchParams()
   const deepLinkHandledRef = React.useRef(false)
   React.useEffect(() => {
     if (deepLinkHandledRef.current) return
-    if (searchParams.get("aiDrawer") !== "backlog") return
+    const target = searchParams.get("aiDrawer")
+    if (target !== "backlog" && target !== "fill") return
     deepLinkHandledRef.current = true
-    setDrawerTab("backlog")
+    setDrawerTab(target)
     setAutoGenSource(searchParams.get("contextSource"))
     setAiDrawer({ nodeId: "", count: 0 })
   }, [searchParams])

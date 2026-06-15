@@ -363,17 +363,19 @@ export function WizardClient({ draftId }: WizardClientProps) {
         return
       }
       const project = await finalizeDraft(draft.id)
-      // PROJ-70-ε — when a kickoff file was uploaded, hand off into the
-      // project graph with the Backlog tab auto-opened + auto-generating
-      // for that source (Post-Finalize-Handoff, Lock-Q1). The finalize
-      // route attaches the context_source to the new project.
+      // PROJ-70-ε / PROJ-90 — when a kickoff file was uploaded, hand off into
+      // the project graph with the orchestrated "Projekt befüllen" conductor
+      // auto-opened + auto-generating Backlog + Stakeholder + Risiken from
+      // that one source (Post-Finalize-Handoff). The finalize route attaches
+      // the context_source to the new project.
       const ki = data.ki_backlog
       if (project?.id && ki?.enabled && ki.context_source_id) {
         toast.success("Projekt angelegt", {
-          description: "KI generiert jetzt Backlog-Vorschläge aus deiner Datei.",
+          description:
+            "KI generiert jetzt Backlog, Stakeholder und Risiken aus deiner Datei.",
         })
         router.replace(
-          `/projects/${project.id}/graph?mode=trajectory&aiDrawer=backlog&contextSource=${encodeURIComponent(ki.context_source_id)}`,
+          `/projects/${project.id}/graph?mode=trajectory&aiDrawer=fill&contextSource=${encodeURIComponent(ki.context_source_id)}`,
         )
         return
       }
