@@ -19,6 +19,8 @@ summary_for_jira: "[H2] Kommunikationsmatrix für interne und externe Zielgruppe
 **Origin:** M&A-Platform Backlog (Epic H — Kommunikation, Gremien & Stakeholder)
 **Priority:** P1
 
+> **V3 Core Reuse (CIA 2026-06-15 · [ma-domain-architecture ADR](../docs/decisions/ma-domain-architecture.md) · [Sequencing](../docs/ma-epic-sequencing-2026-06-15.md)):** Klasse **EXTEND** · Andockpunkt: PROJ-13 + Klassifikation. Nicht neu bauen, was der Core schon hat — diese Spec MUSS die ADR + Reuse-Matrix respektieren.
+
 > **Epic:** H — Kommunikation, Gremien & Stakeholder  
 > **Priorität (Jira):** Medium · **Quell-Priorität:** Should  
 > **Labels:** `ma-platform` · `epic-h` · `should-have`  

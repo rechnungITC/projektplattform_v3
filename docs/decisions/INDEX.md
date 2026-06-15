@@ -40,6 +40,7 @@
 | [v3-master-data-and-global-catalogs.md](v3-master-data-and-global-catalogs.md) | Three-tier model: code-registries (project_types, methods), tenant master data (stakeholders, vendors), project junction tables (project_stakeholders, etc.) with cross-tenant guard. |
 | [v3-project-memberships-schema.md](v3-project-memberships-schema.md) | Concrete Supabase schema for the `project_memberships` table required by `role-model.md` (lead/editor/viewer); cross-tenant guard, last-lead invariant, auto-lead-on-create. |
 | [project-phase-workpackage-todo-hierarchy.md](project-phase-workpackage-todo-hierarchy.md) | Explizite 4-Ebenen-Hierarchie `projects → phases → work_packages → todos` mit einer einzigen typ-gesteuerten polymorphen `dependencies`-Tabelle (`from_type`, `to_type`, `constraint_type`); ersetzt heutige work-item-only-`dependencies` und macht PROJ-25 `phase_dependencies` überflüssig. |
+| [ma-domain-architecture.md](ma-domain-architecture.md) | **V3-original.** M&A-Domäne (PROJ-94–132): M&A als `project_type` (kein Modul), Need-to-Know als RLS-Sublayer (kein Tenant-RLS-Ersatz), Class-3 ⊥ M&A-Confidentiality, VDR = nur Verlinkung, Templates = Rule-Engine-Preset. Reuse-Matrix: ~½ der 39 Specs sind Core-Reuse, kein Neubau. |
 
 ## Pflege-Regel (unchanged from V2)
 

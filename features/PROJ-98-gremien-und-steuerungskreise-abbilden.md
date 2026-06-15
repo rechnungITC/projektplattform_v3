@@ -19,6 +19,8 @@ summary_for_jira: "[B2] Gremien und Steuerungskreise abbilden"
 **Origin:** M&A-Platform Backlog (Epic B — Rollen, Gremien & Governance)
 **Priority:** P1
 
+> **V3 Core Reuse (CIA 2026-06-15 · [ma-domain-architecture ADR](../docs/decisions/ma-domain-architecture.md) · [Sequencing](../docs/ma-epic-sequencing-2026-06-15.md)):** Klasse **EXTEND** · Andockpunkt: neue `committees`-Tabelle (M&A-Lücke). Nicht neu bauen, was der Core schon hat — diese Spec MUSS die ADR + Reuse-Matrix respektieren.
+
 > **Epic:** B — Rollen, Gremien & Governance  
 > **Priorität (Jira):** Medium · **Quell-Priorität:** Should (für SteerCo-fähigen Betrieb wichtig)  
 > **Labels:** `ma-platform` · `epic-b` · `should-have`  

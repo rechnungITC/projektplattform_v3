@@ -19,6 +19,8 @@ summary_for_jira: "[L2] Vertraulichkeits-Klassifikation und Need-to-know-Steueru
 **Origin:** M&A-Platform Backlog (Epic L — Vertraulichkeit, NDA & Audit)
 **Priority:** P1
 
+> **V3 Core Reuse (CIA 2026-06-15 · [ma-domain-architecture ADR](../docs/decisions/ma-domain-architecture.md) · [Sequencing](../docs/ma-epic-sequencing-2026-06-15.md)):** Klasse **EXTEND-Foundation** · Andockpunkt: erweitert Class-3-Modell (ADR Fork 2/3). Nicht neu bauen, was der Core schon hat — diese Spec MUSS die ADR + Reuse-Matrix respektieren.
+
 > **Epic:** L — Vertraulichkeit, NDA & Audit  
 > **Priorität (Jira):** Highest · **Quell-Priorität:** Must (MVP)  
 > **Labels:** `ma-platform` · `epic-l` · `mvp`  

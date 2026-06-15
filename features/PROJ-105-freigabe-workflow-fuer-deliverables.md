@@ -19,6 +19,8 @@ summary_for_jira: "[D2] Freigabe-Workflow für Deliverables"
 **Origin:** M&A-Platform Backlog (Epic D — Deliverables & Artefakte)
 **Priority:** P1
 
+> **V3 Core Reuse (CIA 2026-06-15 · [ma-domain-architecture ADR](../docs/decisions/ma-domain-architecture.md) · [Sequencing](../docs/ma-epic-sequencing-2026-06-15.md)):** Klasse **DUP→REUSE** · Andockpunkt: PROJ-31 Approval-Gates. Nicht neu bauen, was der Core schon hat — diese Spec MUSS die ADR + Reuse-Matrix respektieren.
+
 > **Epic:** D — Deliverables & Artefakte  
 > **Priorität (Jira):** Medium · **Quell-Priorität:** Should  
 > **Labels:** `ma-platform` · `epic-d` · `should-have`  

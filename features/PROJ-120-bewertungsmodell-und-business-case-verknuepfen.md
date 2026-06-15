@@ -19,6 +19,8 @@ summary_for_jira: "[I1] Bewertungsmodell und Business Case verknüpfen"
 **Origin:** M&A-Platform Backlog (Epic I — Bewertung & Kaufpreislogik)
 **Priority:** P1
 
+> **V3 Core Reuse (CIA 2026-06-15 · [ma-domain-architecture ADR](../docs/decisions/ma-domain-architecture.md) · [Sequencing](../docs/ma-epic-sequencing-2026-06-15.md)):** Klasse **EXTEND** · Andockpunkt: neu (an PROJ-22 Budget). Nicht neu bauen, was der Core schon hat — diese Spec MUSS die ADR + Reuse-Matrix respektieren.
+
 > **Epic:** I — Bewertung & Kaufpreislogik  
 > **Priorität (Jira):** Highest · **Quell-Priorität:** Must (MVP)  
 > **Labels:** `ma-platform` · `epic-i` · `mvp`  

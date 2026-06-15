@@ -19,6 +19,8 @@ summary_for_jira: "[I2] Kaufpreis-Bridge und Kaufpreisbestandteile abbilden"
 **Origin:** M&A-Platform Backlog (Epic I — Bewertung & Kaufpreislogik)
 **Priority:** P1
 
+> **V3 Core Reuse (CIA 2026-06-15 · [ma-domain-architecture ADR](../docs/decisions/ma-domain-architecture.md) · [Sequencing](../docs/ma-epic-sequencing-2026-06-15.md)):** Klasse **EXTEND** · Andockpunkt: neu (M&A-spezifisch). Nicht neu bauen, was der Core schon hat — diese Spec MUSS die ADR + Reuse-Matrix respektieren.
+
 > **Epic:** I — Bewertung & Kaufpreislogik  
 > **Priorität (Jira):** Medium · **Quell-Priorität:** Should  
 > **Labels:** `ma-platform` · `epic-i` · `should-have`  

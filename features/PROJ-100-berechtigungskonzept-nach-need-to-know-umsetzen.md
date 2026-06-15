@@ -19,6 +19,8 @@ summary_for_jira: "[B4] Berechtigungskonzept nach Need-to-know umsetzen"
 **Origin:** M&A-Platform Backlog (Epic B — Rollen, Gremien & Governance)
 **Priority:** P1
 
+> **V3 Core Reuse (CIA 2026-06-15 · [ma-domain-architecture ADR](../docs/decisions/ma-domain-architecture.md) · [Sequencing](../docs/ma-epic-sequencing-2026-06-15.md)):** Klasse **EXTEND-Foundation** · Andockpunkt: Need-to-Know RLS-Sublayer (ADR Fork 2) — split 100a/100b; Pentest-Pflicht. Nicht neu bauen, was der Core schon hat — diese Spec MUSS die ADR + Reuse-Matrix respektieren.
+
 > **Epic:** B — Rollen, Gremien & Governance  
 > **Priorität (Jira):** Highest · **Quell-Priorität:** Must (MVP – ohne dieses Konzept ist die Plattform für reale M&A-Arbeit nicht einsetzbar)  
 > **Labels:** `ma-platform` · `epic-b` · `mvp`  

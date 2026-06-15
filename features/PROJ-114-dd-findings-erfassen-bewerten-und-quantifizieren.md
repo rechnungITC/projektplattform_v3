@@ -19,6 +19,8 @@ summary_for_jira: "[G3] DD-Findings erfassen, bewerten und quantifizieren"
 **Origin:** M&A-Platform Backlog (Epic G — Due Diligence)
 **Priority:** P1
 
+> **V3 Core Reuse (CIA 2026-06-15 · [ma-domain-architecture ADR](../docs/decisions/ma-domain-architecture.md) · [Sequencing](../docs/ma-epic-sequencing-2026-06-15.md)):** Klasse **EXTEND** · Andockpunkt: neue `dd_findings` (quantifiziert, ≠ risk). Nicht neu bauen, was der Core schon hat — diese Spec MUSS die ADR + Reuse-Matrix respektieren.
+
 > **Epic:** G — Due Diligence  
 > **Priorität (Jira):** Highest · **Quell-Priorität:** Must (MVP)  
 > **Labels:** `ma-platform` · `epic-g` · `mvp`  

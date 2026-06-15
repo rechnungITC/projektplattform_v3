@@ -19,6 +19,8 @@ summary_for_jira: "[A3] Projekt-Templates für Standardphasen bereitstellen"
 **Origin:** M&A-Platform Backlog (Epic A — Projektgrundlagen & Phasenmodell)
 **Priority:** P1
 
+> **V3 Core Reuse (CIA 2026-06-15 · [ma-domain-architecture ADR](../docs/decisions/ma-domain-architecture.md) · [Sequencing](../docs/ma-epic-sequencing-2026-06-15.md)):** Klasse **EXTEND** · Andockpunkt: PROJ-6 Rule-Engine-Preset + Copy-on-create (echte Lücke: Core hat kein Template-System). Nicht neu bauen, was der Core schon hat — diese Spec MUSS die ADR + Reuse-Matrix respektieren.
+
 > **Epic:** A — Projektgrundlagen & Phasenmodell  
 > **Priorität (Jira):** Medium · **Quell-Priorität:** Should (MVP-nahe; nicht zwingend Tag 1, aber für Skalierung wichtig)  
 > **Labels:** `ma-platform` · `epic-a` · `should-have`  
