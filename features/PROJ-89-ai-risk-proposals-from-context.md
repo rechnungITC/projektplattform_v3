@@ -1,6 +1,6 @@
 # PROJ-89: AI Risk Proposals from Context
 
-## Status: Approved
+## Status: Deployed
 **Created:** 2026-06-08
 **Last Updated:** 2026-06-12
 **Origin:** CIA portfolio review 2026-06-08 (vision: "Wizard befüllt das ganze Projekt")
@@ -184,7 +184,23 @@ Volle Chromium-E2E-Suite seriell: **96 passed / 5 skipped / 0 failed** (101 Test
 vitest 1799/1799 · lint 0 · tsc 13 Baseline/0 neu · build clean · Playwright PROJ-89-Spec chromium 6/6 · Voll-Suite chromium 96/96 (5 skips, 0 fail)
 
 ## Deployment
-_To be added by /deploy_
 
-## Deployment
-_To be added by /deploy_
+**Status:** ✅ Deployed
+**Deployed:** 2026-06-12
+**Production URL:** https://projektplattform-v3.vercel.app
+**Git Tag:** v1.90.0-PROJ-89
+
+### Was ist live (alles auf `main`, Vercel auto-deploy)
+- **Backend-Slice** (PR #130, `0f705c1`): Purpose + content-based Classifier + Collector + shared Prompt/Schema-Modul + 5 Provider + Router + Migration `20260615100000` (am 2026-06-11 in Prod angewendet, 5 Smoke-CHECKs) + 3 Routen + purpose-aware PATCH + FE-Wrapper.
+- **Frontend-Slice** (PR #132, `3eab423`): Drawer-Tab 6 „Risiken" mit Cards/Inline-Edit/Bulk-Accept/30s-Undo/Blocked-Banner; `defaultTab="risks"` für PROJ-90.
+- **QA-Slice** (PR #134, `ecf262b`): Live-Beweise + permanenter Playwright-Spec `tests/PROJ-89-risk-proposals.spec.ts`.
+
+### Prod-Verify (2026-06-12)
+- Vercel-Prod-Deployment `dpl_5cicYBWCUEWNrnyonzXBm5CR2tKg` für Merge-Commit `ecf262b` **READY** (target=production).
+- Post-Deploy-Smoke: `/` 307, `/projects` 307, `/api/projects/{id}/ai/risk-proposals` 307 — Auth-Gates intakt.
+- Prod-DB: `ki_runs_purpose_check` enthält `proposal_risks_from_context`, RPC-Paar `accept_risk_proposals_bulk`/`_undo` existiert, 0 QA-Residuen (`ki_runs`/`ki_suggestions` mit dem Purpose leer).
+- Live-Funktionsbeweis bereits im QA-Pass erbracht (Cloud-Generierung classification=2/openai/success mit 6 geerdeten Vorschlägen; HTTP-Accept/Undo-E2E).
+
+### Offen (kein Blocker)
+- **D-1**: Class-3→Ollama-Happy-Path nachholen, sobald der Hostinger-Ollama-Endpoint wieder erreichbar ist (aktuell extern down — Vercel: 404, vermutlich Docker-Port-Remap; danach ggf. Provider-URL in Einstellungen → KI-Provider aktualisieren). Code-identisch zur PROJ-88-Maschinerie, dort am 2026-06-10 live bewiesen.
+- PROJ-90 (Orchestrierung) konsumiert `defaultTab="risks"` — alle drei Geschwister (PROJ-87/88/89) sind jetzt deployed; PROJ-90 ist entsperrt.
