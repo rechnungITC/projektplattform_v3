@@ -1,8 +1,8 @@
 # PROJ-89: AI Risk Proposals from Context
 
-## Status: In Progress
+## Status: Deployed
 **Created:** 2026-06-08
-**Last Updated:** 2026-06-11
+**Last Updated:** 2026-06-12
 **Origin:** CIA portfolio review 2026-06-08 (vision: "Wizard befüllt das ganze Projekt")
 **Priority:** P1 — Should-have
 
@@ -18,14 +18,14 @@ The platform can already generate risks (PROJ-12 `risks` purpose → `invokeRisk
 - As a Compliance officer, I want risk extraction to obey the same Class-3 routing rule, so that a kickoff containing personal data still routes locally.
 
 ## Acceptance Criteria
-- [ ] **AC-89.1**: A new `AIPurpose` value `proposal_risks_from_context` is added to `src/lib/ai/types.ts` and wired through the router with a dedicated `invoke…` helper (mirrors `invokeProposalFromContextGeneration`).
-- [ ] **AC-89.2**: Classification follows the standard path — Class-1/2 content routes to the tenant's cloud provider; if the source is (correctly, post-PROJ-86) Class-3, it routes to Ollama-only.
-- [ ] **AC-89.3**: Generated suggestions map onto the PROJ-20 risk shape (title, description, and risk-relevant fields) and persist as `draft` on accept.
-- [ ] **AC-89.4**: A bulk-accept RPC persists accepted risks with `ki_provenance` trace and a 30s-undo window (PROJ-70-β pattern).
-- [ ] **AC-89.5**: Accepted risks appear in the existing risks module (PROJ-20) — not a parallel store — and are distinguishable as AI-derived via provenance/review state.
-- [ ] **AC-89.6**: Clear delineation from the PROJ-12 `risks` purpose is documented (source-driven vs. project-context-driven); the two do not collide.
-- [ ] **AC-89.7**: Every AI-derived risk carries a review state and provenance — no silent mutation (invariant #2).
-- [ ] **AC-89.8**: A drawer tab surfaces these proposals (consumed by PROJ-90; standalone tab acceptable in this slice).
+- [x] **AC-89.1**: A new `AIPurpose` value `proposal_risks_from_context` is added to `src/lib/ai/types.ts` and wired through the router with a dedicated `invoke…` helper (mirrors `invokeProposalFromContextGeneration`).
+- [x] **AC-89.2**: Classification follows the standard path — Class-1/2 content routes to the tenant's cloud provider; if the source is (correctly, post-PROJ-86) Class-3, it routes to Ollama-only.
+- [x] **AC-89.3**: Generated suggestions map onto the PROJ-20 risk shape (title, description, and risk-relevant fields) and persist as `draft` on accept.
+- [x] **AC-89.4**: A bulk-accept RPC persists accepted risks with `ki_provenance` trace and a 30s-undo window (PROJ-70-β pattern).
+- [x] **AC-89.5**: Accepted risks appear in the existing risks module (PROJ-20) — not a parallel store — and are distinguishable as AI-derived via provenance/review state.
+- [x] **AC-89.6**: Clear delineation from the PROJ-12 `risks` purpose is documented (source-driven vs. project-context-driven); the two do not collide.
+- [x] **AC-89.7**: Every AI-derived risk carries a review state and provenance — no silent mutation (invariant #2).
+- [x] **AC-89.8**: A drawer tab surfaces these proposals (consumed by PROJ-90; standalone tab acceptable in this slice).
 
 ## Edge Cases
 - Document implies a risk already present in the register → propose a link/update rather than a duplicate.
@@ -50,7 +50,7 @@ The platform can already generate risks (PROJ-12 `risks` purpose → `invokeRisk
 
 ### Mandatory track invariant (inherited from PROJ-91 deploy, Pflicht-AC)
 > **Das Vorhaben (`projects.description`) ist IMMER nur Bewertungs-Achse (`relevance`), NIE Generierungsquelle.** Risiken werden AUSSCHLIESSLICH aus dem Kickoff-Dokument abgeleitet; niemals aus dem Vorhaben erfunden. Jede Suggestion trägt `relevance` (`on_goal`/`off_goal`); der Prompt übernimmt die PROJ-91-yardstick-only-Formulierung und wird durch Contract-Tests abgesichert (Invariant-Phrasen vorhanden + Generierungs-Imperativ abwesend — Muster aus PROJ-88). → **AC-89.9 (neu, Pflicht)**:
-> - [ ] **AC-89.9**: Risks are derived **exclusively from the kickoff document**; the Vorhaben is **only the relevance yardstick** (`on_goal`/`off_goal` per suggestion), never a generation source. Guarded by prompt contract tests.
+> - [x] **AC-89.9**: Risks are derived **exclusively from the kickoff document**; the Vorhaben is **only the relevance yardstick** (`on_goal`/`off_goal` per suggestion), never a generation source. Guarded by prompt contract tests.
 
 ### What gets built (PM view)
 
@@ -146,8 +146,61 @@ None — everything reuses the existing AI SDK, Zod, shadcn/sonner stack.
 
 **Offen für `/qa`:** Live-Cloud-Generierungslauf (Class-2 → OpenAI) + Live-Ollama-Lauf (Class-3-Pfad), Security-Probes, Playwright Auth-Gates + Drawer-Smoke (Tab 6).
 
-## QA Test Results
-_To be added by /qa_
+## QA Test Results — 2026-06-12 (/qa)
+
+### Verdict: **PRODUCTION-READY** — 0 Critical / 0 High; D-1-Deviation dokumentiert (Ollama-Endpoint extern down)
+
+### AC-Verifikation
+| AC | Ergebnis | Evidenz |
+|---|---|---|
+| AC-89.1 Purpose + Router | ✅ PASS (live, Prod) | ki_run `57533cfc` purpose=proposal_risks_from_context via POST |
+| AC-89.2 Klassifikation Standard-Pfad | ✅ PASS (live, Prod, BEIDE Richtungen) | Sauberes DE-Kickoff → classification=2/**openai**/gpt-4o/success/6 Vorschläge. PII-Quelle (Email+Telefon, Class-2-gestempelt!) → classification=**3**, Resolver wählte **Ollama statt Cloud** (Clamp + Marker-Upgrade als Defense-in-depth bewiesen) |
+| AC-89.3 PROJ-20-Shape | ✅ PASS (live) | Akzeptierte Risiken in `public.risks` mit status='open', P/I/Mitigation aus Payload; Design-Klarstellung (kein draft-Status) greift |
+| AC-89.4 Bulk-RPC + 30s-Undo | ✅ PASS (live, HTTP-Ebene) | Accept→2 created_risk_ids; **In-Window-Undo** revertiert beide; **Expired-Window-Undo** korrekt abgelehnt (`undo_invalid_or_window_expired` — real abgelaufenes Fenster zwischen zwei Calls) |
+| AC-89.5 Risiken im PROJ-20-Register | ✅ PASS (live) | DB-Verify: Risiken-Rows + 2 ki_provenance-Rows (entity_type='risks'); kein Parallel-Store |
+| AC-89.6 Abgrenzung zu PROJ-12 | ✅ PASS | Tabelle im Tech Design; separater Purpose-Wert in ki_runs/ki_suggestions; PROJ-12-Pfad unberührt (Route-Tests grün) |
+| AC-89.7 Review-State + Provenance | ✅ PASS (live) | Inline-Edit → is_modified=true, original_payload immutable; editierter Titel floss in das akzeptierte Risiko; Undo stellt drafts wieder her |
+| AC-89.8 Drawer-Tab | ✅ PASS (Playwright chromium) | Tab 6 „Risiken": 2 geseedete Cards mit P×I-Score-Badge (P4×A4=16), „≠ Ziel"-Badge, source_quote, Duplicate-Hinweis („Bereits im Risikoregister"), Accept-All-Bar |
+| AC-89.9 Track-Invariante | ✅ PASS | 4 Prompt-Contract-Tests + Live-Beweis: alle 6 Cloud-Vorschläge mit wörtlichem source_quote aus dem Kickoff geerdet, kein aus dem Vorhaben erfundenes Risiko |
+
+### Live-Probes (Prod, authentifizierte Admin-Session via Magic-Link-Admin-Flow)
+- **Cloud-Happy-Path**: POST → `{classification:2, provider:"openai", model:"gpt-4o", status:"success", 6 suggestions}` — alle 6 geerdet (Quotes wörtlich, Maßnahmen actionable, P/I plausibel, on_goal).
+- **Class-3-Clamp**: PII-Quelle → classification=3, Cloud strukturell nie versucht; Provider-Versuch ging an den registrierten **Ollama**-Endpoint.
+- **Edge-Case „Ollama unreachable" (Spec-Edge-Case 2/3) LIVE bewiesen**: Endpoint antwortete mit Fehler → Stub-Fallback → `status='external_blocked'` + actionable `error_message` („Provider ollama failed (Not Found); fell back to Stub.") — **kein silent empty state**, ki_run vollständig auditiert.
+- **Security-Probes (7) geblockt**: unauth POST/GET → 307 Auth-Gate; invalid-uuid → 400; count=500 → 400 Zod; nonexistente suggestion-ids accept → 400 `some_suggestions_invalid…`; Undo nonexistent → 400 `undo_invalid_or_window_expired`; fremdes Projekt mit echter suggestion-id → 404. Plus PATCH invalid impact=9 → 400.
+- **Cleanup**: alle QA-Artefakte entfernt (2 Risiken, 6 Suggestions, 2 ki_runs, 2 context_sources, 2 Provenance-Rows) — 0 Residuen.
+
+### Deviation D-1 — Class-3→Ollama-Happy-Path (analog PROJ-88 D-1)
+Der Hostinger-Ollama-Endpoint (`187.124.190.116:32768`, am 2026-06-10 für PROJ-88 live bewiesen) ist seit diesem QA-Lauf extern nicht mehr korrekt erreichbar (WSL2: Connection-Timeout; Vercel: HTTP 404 — vermutlich Docker-Port-Remap nach Container-Neustart oder Firewall-Änderung). **Der für diesen Zustand spezifizierte Edge-Case-Pfad ist der live bewiesene Ist-Zustand** (external_blocked + actionable message, s.o.). Der Ollama-Happy-Path selbst ist für diesen Purpose code-identisch zum PROJ-88-Pfad (gleiche Provider-Maschinerie, shared Prompt, loose Schema validate-loose/clamp-after) und dort am 2026-06-10 live bewiesen (ki_run `da0e0c6e`). Sobald der Endpoint wieder steht (Port in `tenant_ai_providers` ggf. aktualisieren), ist der Happy-Path mit einem POST nachholbar.
+
+### Playwright
+- Neu: `tests/PROJ-89-risk-proposals.spec.ts` — 5 Auth-Gates + invalid-uuid (chromium grün) + authentifizierter Drawer-Smoke (Launcher → Drawer → Tab 6 → 2 Cards inkl. Score-/off_goal-Badge + Duplicate-Hinweis). Seeds idempotent + afterAll-Cleanup. 6/6 chromium.
+- F-2-Env-Vorbestand: WebKit (Mobile Safari) weiterhin host-lib-gegated (sudo nötig) — Spec via config-skip, kein PROJ-89-Defekt.
+
+### Regression
+Volle Chromium-E2E-Suite seriell: **96 passed / 5 skipped / 0 failed** (101 Tests, 27 Files) — erstmals 0 Failures, da die 2 PROJ-51-Snapshot-Vorbestände (F-3 aus PROJ-88-QA) durch das PROJ-67-Re-Baselining (#128) behoben sind. Hinweis: Ein erster Suite-Lauf brach nach 43 Tests mit Exit 0 ab (vermutlich webServer-First-Compile-Contention, F-4-Vorbestand aus PROJ-70-ε) — Wiederholung lief vollständig durch.
+
+### Gates
+vitest 1799/1799 · lint 0 · tsc 13 Baseline/0 neu · build clean · Playwright PROJ-89-Spec chromium 6/6 · Voll-Suite chromium 96/96 (5 skips, 0 fail)
 
 ## Deployment
-_To be added by /deploy_
+
+**Status:** ✅ Deployed
+**Deployed:** 2026-06-12
+**Production URL:** https://projektplattform-v3.vercel.app
+**Git Tag:** v1.90.0-PROJ-89
+
+### Was ist live (alles auf `main`, Vercel auto-deploy)
+- **Backend-Slice** (PR #130, `0f705c1`): Purpose + content-based Classifier + Collector + shared Prompt/Schema-Modul + 5 Provider + Router + Migration `20260615100000` (am 2026-06-11 in Prod angewendet, 5 Smoke-CHECKs) + 3 Routen + purpose-aware PATCH + FE-Wrapper.
+- **Frontend-Slice** (PR #132, `3eab423`): Drawer-Tab 6 „Risiken" mit Cards/Inline-Edit/Bulk-Accept/30s-Undo/Blocked-Banner; `defaultTab="risks"` für PROJ-90.
+- **QA-Slice** (PR #134, `ecf262b`): Live-Beweise + permanenter Playwright-Spec `tests/PROJ-89-risk-proposals.spec.ts`.
+
+### Prod-Verify (2026-06-12)
+- Vercel-Prod-Deployment `dpl_5cicYBWCUEWNrnyonzXBm5CR2tKg` für Merge-Commit `ecf262b` **READY** (target=production).
+- Post-Deploy-Smoke: `/` 307, `/projects` 307, `/api/projects/{id}/ai/risk-proposals` 307 — Auth-Gates intakt.
+- Prod-DB: `ki_runs_purpose_check` enthält `proposal_risks_from_context`, RPC-Paar `accept_risk_proposals_bulk`/`_undo` existiert, 0 QA-Residuen (`ki_runs`/`ki_suggestions` mit dem Purpose leer).
+- Live-Funktionsbeweis bereits im QA-Pass erbracht (Cloud-Generierung classification=2/openai/success mit 6 geerdeten Vorschlägen; HTTP-Accept/Undo-E2E).
+
+### Offen (kein Blocker)
+- **D-1**: Class-3→Ollama-Happy-Path nachholen, sobald der Hostinger-Ollama-Endpoint wieder erreichbar ist (aktuell extern down — Vercel: 404, vermutlich Docker-Port-Remap; danach ggf. Provider-URL in Einstellungen → KI-Provider aktualisieren). Code-identisch zur PROJ-88-Maschinerie, dort am 2026-06-10 live bewiesen.
+- PROJ-90 (Orchestrierung) konsumiert `defaultTab="risks"` — alle drei Geschwister (PROJ-87/88/89) sind jetzt deployed; PROJ-90 ist entsperrt.

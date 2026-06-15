@@ -1,6 +1,20 @@
 # PROJ-67 - Codebase Review Quality Hardening
 
-## Status: In Progress (AC-1/2/3/6 closed 2026-06-11; AC-7 voll erfüllt 2026-06-12 via gitnexus-1.6.7-Upgrade; AC-4 + AC-5 closed 2026-05-30; AC-8 closed 2026-05-31; nur AC-9 pending)
+## Status: Deployed — 2026-06-15 (Tag `v1.91.0-PROJ-67`). 9/9 ACs PASS, L-1 behoben. Slice-Code war bereits via PRs #128/#131/#133/#135 live; Deploy = Closure + L-1-Fix + Tag.
+
+## Deployment
+
+- **Date:** 2026-06-15 (Closure; Hardening-Code lief seit den Einzel-PRs #128/#131/#133/#135 live, da reine Test-/Tooling-/Config-Ebene ohne separaten Runtime-Deploy)
+- **Tag:** `v1.91.0-PROJ-67`
+- **Enthält:** L-1-Fix (Shadow-DB Loopback-Bind) + die kumulierten F1–F9-Closures
+- **Kein Runtime-Deploy nötig:** PROJ-67 ändert ausschließlich Test-Infrastruktur (`playwright.config.ts`, `global-setup.ts`, Visual-Baseline), Dev-Tooling (`scripts/check-schema-drift/local-shadow.sh`) und Doku — kein `src/`-Prod-Pfad, keine Migration. Vercel-Prod ist unberührt.
+- **Offene User-Handoffs (kein Bug, dokumentiert):** `sudo npx playwright install-deps webkit` (F2, Mobile-Safari-E2E); Docker-Desktop-WSL-Integration (F6, Schema-Drift-Happy-Path).
+- **Schluss-QA 2026-06-12:** 9/9 ACs PASS, vitest 1799/1799, chromium-E2E 90/0 parallel, 0 Critical/High. Siehe „QA Test Results — Schlussabnahme".
+
+## Implementation Notes — AC-9/F9 (2026-06-12)
+
+- **F9/AC-9 — Graph-Deep-Link-Spec-Stabilität:** Umgesetzt über die im Plan bevorzugte Variante **Warm-Compile** (kein `test.describe.configure({mode:'serial'})` — das hätte die Test-Semantik geändert: Folge-Tests würden bei einem Fail geskippt). Neue Funktion `warmCompileDeepLinkRoutes` in `tests/fixtures/global-setup.ts`: nach dem Auth-Setup werden 6 schwere Routen (`/login`, `/projects`, `/projects/new/wizard`, Project-Room, `/graph`, `/backlog`) einmal **sequenziell authentifiziert** angefordert, bevor parallele Worker starten — der Next-Dev-Server kompiliert on-first-hit, die First-Compile-Contention entfällt strukturell. Empirisch bestätigt: webServer läuft bereits, wenn globalSetup ausgeführt wird (Warm-up ~8,8s, alle Routen 200/307). Fail-open: Server nicht erreichbar → Skip mit Log, nie ein Gate.
+- **Verifiziert:** 5 Deep-Link-Specs (PROJ-58-graph, PROJ-58-graph-3d, PROJ-65-epsilon1, PROJ-70-epsilon-wizard, PROJ-70-delta-dnd) mit Default-Parallel-Workern 14/14 grün; volle chromium-Suite **90 passed / 5 skipped / 0 failed** in 24s — ohne globalen `workers: 1`-Zwang.
 
 ## Implementation Notes — F7 final (2026-06-12, ersetzt die Deviation vom selben Tag)
 
@@ -66,7 +80,7 @@ Dieses PROJ bündelt diese Review-Funde als Hardening-Slice. Ziel ist nicht, neu
 - [x] AC-6: `npm run check:schema-drift` hat einen dokumentierten lokalen Pfad mit frischer Shadow-DB oder ein klares Runbook mit `DATABASE_URL`-Setup. **Erledigt 2026-06-11** — `scripts/check-schema-drift/local-shadow.sh` + `docs/production/schema-drift-local.md`; Docker-Happy-Path pending WSL-Integration (User-Handoff).
 - [x] AC-7: `gitnexus query` funktioniert ohne ReadOnly-FTS-Warnungen und liefert wieder Prozess-/Symboltreffer. **Voll erfüllt 2026-06-12** — Root-Cause war upstream in gitnexus v1.6.4 gefixt, Umgebung hing auf npx-Cache-Pin 1.6.3; Upgrade auf 1.6.7 + einmaliges `--repair-fts` → 0 Warnungen, 27 Prozess-Treffer, FTS persistiert über `analyze`. Details in Implementation Notes F7 final.
 - [x] AC-8: Alle `eslint-disable`-Treffer in `src` sind entweder entfernt oder mit knapper Begründung und Owner-Entscheidung bestätigt. **Erledigt 2026-05-31** — `rg -n "eslint-disable" src` zeigt 23 Treffer in 19 Files; vier fehlende Inline-Begründungen ergänzt (`EditWbsCodeDialog`, `BacklogClient`, `CreateWorkItemLinkDialog`, `BacklogTree`), die übrigen 19 Treffer hatten bereits knappe Owner-Entscheidungen.
-- [ ] AC-9 (F9): Die Graph-Deep-Link-E2E-Specs laufen ohne globalen `workers: 1`-Zwang zuverlässig — entweder durch gezielte Serialisierung nur der betroffenen Specs oder durch Warm-Compile des Dev-Servers vor der Suite. Dokumentierter Kandidat aus PROJ-70-ε QA-Finding F-4 INFO (2026-06-08); noch nicht umgesetzt.
+- [x] AC-9 (F9): Die Graph-Deep-Link-E2E-Specs laufen ohne globalen `workers: 1`-Zwang zuverlässig — entweder durch gezielte Serialisierung nur der betroffenen Specs oder durch Warm-Compile des Dev-Servers vor der Suite. **Erledigt 2026-06-12** — Warm-Compile-Variante in `global-setup.ts` (`warmCompileDeepLinkRoutes`, 6 Routen sequenziell-authentifiziert vor Worker-Start); volle chromium-Suite 90/0 parallel grün. Details in Implementation Notes AC-9/F9.
 
 ## Non-Goals
 
@@ -118,3 +132,48 @@ npx gitnexus@latest query "auth tenant ai provider"
 - Chromium E2E: 68 passed, 5 skipped, 1 failed.
 - Full E2E: 122 passed, 12 skipped, 14 failed.
 - Audit: 7 moderate, 0 high, 0 critical.
+
+## QA Test Results — Schlussabnahme 2026-06-12
+
+**Scope:** Gesamtabnahme aller 9 ACs auf aktuellem main (36c6936, inkl. AC-9-Merge #135), frischer Worktree, frisches `npm ci`.
+
+### Acceptance Criteria: 9/9 PASS
+
+| AC | Verifikation | Ergebnis |
+|---|---|---|
+| AC-1 Visual chromium | Volle chromium-Suite inkl. 16 Visual-Tests (settings-tenant auf PROJ-66-Baseline) | ✅ PASS |
+| AC-2 WebKit-Gating | Ohne Flag: 0 Mobile-Safari-Tests + laute Warning; `PW_FORCE_WEBKIT=1`: 95 Tests gelistet | ✅ PASS |
+| AC-3 Hydration | Volles E2E-WebServer-Log: **0** `tree hydrated`-Warnungen | ✅ PASS |
+| AC-4 React-Compiler | `npm run lint`: 0 errors, 0 warnings | ✅ PASS |
+| AC-5 Dependency-Audit | `npm audit`: 2 moderate (bekannte transitive postcss via next, dokumentiert), 0 high/critical; `audit:prod`-Gate pass | ✅ PASS |
+| AC-6 Schema-Drift lokal | Runbook + Skript vorhanden, `bash -n` OK, Fehlerpfad (kein Docker) liefert klare Anleitung; Happy-Path = dokumentierter WSL-Integration-Handoff | ✅ PASS |
+| AC-7 GitNexus Query | `npx gitnexus@latest query`: 0 ReadOnly-FTS-Warnungen, 30 Treffer-Zeilen | ✅ PASS |
+| AC-8 eslint-disable | 26 Treffer (23 bei Erstabnahme + 3 neue aus PROJ-88/89) — **alle 26** mit ` -- `-Inline-Begründung | ✅ PASS |
+| AC-9 Parallel-E2E | Volle chromium-Suite **90 passed / 5 skipped / 0 failed** (45s) mit Default-Workern; Warm-Compile aktiv (Log-Nachweis) | ✅ PASS |
+
+### Suiten (Regression)
+
+- vitest: **1799/1799** grün (Suite seit Review-Baseline 1557 → 1799 gewachsen)
+- chromium-E2E: **90 passed / 5 skipped / 0 failed** (5 Skips = dokumentierte `@setup-only`/Gating-Fälle)
+- Mobile Safari: AC-2-konform übersprungen (WebKit-Host-Libs-Handoff offen); Firefox ist nicht Teil der Projekt-Suite-Definition (out of scope)
+
+### Security-Audit (Red-Team auf Slice-Änderungen)
+
+- `playwright.config.ts` (`execFileSync('ldd', …)`): statischer Befehl, Pfade aus `homedir()`-Discovery, kein User-Input → keine Injection-Fläche; reine devDependency-Logik, kein Prod-Pfad.
+- `global-setup.ts` Warm-Compile: sendet E2E-Test-Cookies nur an `PLAYWRIGHT_BASE_URL` — identische Vertrauensannahme wie das bestehende storageState-Design, kein neues Risiko-Delta.
+- `screenshot-stabilize.css`, Baseline-PNG: keine Angriffsfläche.
+- **L-1 (Low):** `local-shadow.sh` published den Wegwerf-Postgres mit `-p "$PORT:5432"` → bindet 0.0.0.0; während des Laufs ist eine DB mit Trivial-Passwort `test` im LAN erreichbar. Empfehlung: `-p "127.0.0.1:$PORT:5432"`. Kurzlebig + reines Dev-Tooling → Low.
+
+### Findings
+
+| ID | Severity | Befund |
+|---|---|---|
+| L-1 | Low | ✅ **Behoben 2026-06-15**: Shadow-DB-Port bindet jetzt `127.0.0.1:$PORT:5432` (war 0.0.0.0); `localhost`-DATABASE_URL bleibt kompatibel. |
+| I-1 | Info | gitnexus@1.6.7 verlangt `engines.node >= 22`, Host läuft Node 20 — funktioniert, aber EBADENGINE-Warning; bei Node-Upgrade-Planung berücksichtigen |
+| I-2 | Info | eslint-disable-Zähler 23 → 26 seit Erstabnahme; Hygiene hält (alle begründet), Konvention wird von neuen Features eingehalten |
+
+### Neue Tests
+
+Keine neuen Tests erforderlich: alle ACs sind durch bestehende automatisierte Suiten abgedeckt (Visual-Specs = AC-1, volle parallele Suite = AC-3/9 als permanente Regression; AC-2/6/7 sind Tooling-/Config-Verhalten, das bei jedem Suite-Lauf implizit mitgeprüft wird).
+
+### Production-Ready: **READY** (0 Critical / 0 High; 1 Low + 2 Info dokumentiert)
