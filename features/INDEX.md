@@ -153,5 +153,6 @@
 | PROJ-130 | [M&A] Lückenloser Audit-Trail (Cross-Cutting) — Epic L: Lückenloser, cross-cutting Audit-Trail. | Planned | [Spec](PROJ-130-lueckenloser-audit-trail-cross-cutting.md) | 2026-06-10 |
 | PROJ-131 | [M&A] Management-Reporting und Steering-Dashboard — Epic M: Management-Reporting und Steering-Dashboard. | Planned | [Spec](PROJ-131-management-reporting-und-steering-dashboard.md) | 2026-06-10 |
 | PROJ-132 | [M&A] Operatives Reporting für PMO, Deal Lead und Workstreams — Epic M: Operatives Reporting für PMO, Deal Lead und Workstreams. | Planned | [Spec](PROJ-132-operatives-reporting-fuer-pmo-deal-lead-und-workstreams.md) | 2026-06-10 |
+| PROJ-133 | Graph-delegated Teams Sender (named user/bot) — split-out of PROJ-49 per CIA 2026-06-15: Graph app-only channel-post is structurally unavailable (Teamwork.Migrate-only), so a real named-user/bot Teams message needs delegated OAuth + per-tenant refresh-token store + admin consent. Heavier than the PROJ-49 Workflows-Webhook adapter; build only on pilot demand. | Planned (Followup) | [Spec](PROJ-133-graph-delegated-teams-sender.md) | 2026-06-15 |
 
-## Next Available ID: PROJ-133
+## Next Available ID: PROJ-134
