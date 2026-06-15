@@ -19,6 +19,8 @@ summary_for_jira: "[A2] M&A-Phasenmodell abbilden und visualisieren"
 **Origin:** M&A-Platform Backlog (Epic A — Projektgrundlagen & Phasenmodell)
 **Priority:** P1
 
+> **V3 Core Reuse (CIA 2026-06-15 · [ma-domain-architecture ADR](../docs/decisions/ma-domain-architecture.md) · [Sequencing](../docs/ma-epic-sequencing-2026-06-15.md)):** Klasse **DUP→REUSE** · Andockpunkt: PROJ-19 Phasen/Milestones + PROJ-6 Method-Catalog (M&A-Phasen als Methode, kein neues Phasen-Schema). Nicht neu bauen, was der Core schon hat — diese Spec MUSS die ADR + Reuse-Matrix respektieren.
+
 > **Epic:** A — Projektgrundlagen & Phasenmodell  
 > **Priorität (Jira):** Highest · **Quell-Priorität:** Must (MVP)  
 > **Labels:** `ma-platform` · `epic-a` · `mvp`  

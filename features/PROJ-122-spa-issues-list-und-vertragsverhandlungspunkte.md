@@ -19,6 +19,8 @@ summary_for_jira: "[J1] SPA Issues List und Vertragsverhandlungspunkte"
 **Origin:** M&A-Platform Backlog (Epic J — Vertrag, Signing & Closing)
 **Priority:** P1
 
+> **V3 Core Reuse (CIA 2026-06-15 · [ma-domain-architecture ADR](../docs/decisions/ma-domain-architecture.md) · [Sequencing](../docs/ma-epic-sequencing-2026-06-15.md)):** Klasse **EXTEND** · Andockpunkt: neu (an PROJ-20 Open-Items denkbar). Nicht neu bauen, was der Core schon hat — diese Spec MUSS die ADR + Reuse-Matrix respektieren.
+
 > **Epic:** J — Vertrag, Signing & Closing  
 > **Priorität (Jira):** Highest · **Quell-Priorität:** Must (MVP)  
 > **Labels:** `ma-platform` · `epic-j` · `mvp`  

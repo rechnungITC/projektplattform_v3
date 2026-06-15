@@ -19,6 +19,8 @@ summary_for_jira: "[E1] Risikoregister je Projekt führen"
 **Origin:** M&A-Platform Backlog (Epic E — Risiken & Red Flags)
 **Priority:** P1
 
+> **V3 Core Reuse (CIA 2026-06-15 · [ma-domain-architecture ADR](../docs/decisions/ma-domain-architecture.md) · [Sequencing](../docs/ma-epic-sequencing-2026-06-15.md)):** Klasse **DUP→REUSE** · Andockpunkt: PROJ-20 Risks (Score/Heatmap teils neu). Nicht neu bauen, was der Core schon hat — diese Spec MUSS die ADR + Reuse-Matrix respektieren.
+
 > **Epic:** E — Risiken & Red Flags  
 > **Priorität (Jira):** Highest · **Quell-Priorität:** Must (MVP)  
 > **Labels:** `ma-platform` · `epic-e` · `mvp`  

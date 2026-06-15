@@ -19,6 +19,8 @@ summary_for_jira: "[G4] Anbindung an externe Datenräume (Verlinkung, nicht Ersa
 **Origin:** M&A-Platform Backlog (Epic G — Due Diligence)
 **Priority:** P1
 
+> **V3 Core Reuse (CIA 2026-06-15 · [ma-domain-architecture ADR](../docs/decisions/ma-domain-architecture.md) · [Sequencing](../docs/ma-epic-sequencing-2026-06-15.md)):** Klasse **REUSE** · Andockpunkt: PROJ-79 DMS + PROJ-14 Connector (nur Links, ADR Fork 4). Nicht neu bauen, was der Core schon hat — diese Spec MUSS die ADR + Reuse-Matrix respektieren.
+
 > **Epic:** G — Due Diligence  
 > **Priorität (Jira):** Highest · **Quell-Priorität:** Must (MVP) – manuelle Verlinkung; VDR-Schnittstelle: Could  
 > **Labels:** `ma-platform` · `epic-g` · `mvp`  

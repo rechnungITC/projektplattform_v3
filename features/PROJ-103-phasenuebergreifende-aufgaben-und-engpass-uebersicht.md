@@ -19,6 +19,8 @@ summary_for_jira: "[C3] Phasenübergreifende Aufgaben- und Engpass-Übersicht"
 **Origin:** M&A-Platform Backlog (Epic C — Aufgaben & Workstreams)
 **Priority:** P1
 
+> **V3 Core Reuse (CIA 2026-06-15 · [ma-domain-architecture ADR](../docs/decisions/ma-domain-architecture.md) · [Sequencing](../docs/ma-epic-sequencing-2026-06-15.md)):** Klasse **VIEW** · Andockpunkt: Aggregation auf PROJ-9/19. Nicht neu bauen, was der Core schon hat — diese Spec MUSS die ADR + Reuse-Matrix respektieren.
+
 > **Epic:** C — Aufgaben & Workstreams  
 > **Priorität (Jira):** Medium · **Quell-Priorität:** Should  
 > **Labels:** `ma-platform` · `epic-c` · `should-have`  

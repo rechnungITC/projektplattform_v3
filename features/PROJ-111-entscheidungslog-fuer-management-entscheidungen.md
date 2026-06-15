@@ -19,6 +19,8 @@ summary_for_jira: "[F2] Entscheidungslog für Management-Entscheidungen"
 **Origin:** M&A-Platform Backlog (Epic F — Entscheidungen & Stage-Gates)
 **Priority:** P1
 
+> **V3 Core Reuse (CIA 2026-06-15 · [ma-domain-architecture ADR](../docs/decisions/ma-domain-architecture.md) · [Sequencing](../docs/ma-epic-sequencing-2026-06-15.md)):** Klasse **DUP→REUSE** · Andockpunkt: PROJ-20 Decisions (immutable+supersedes bereits exakt vorhanden). Nicht neu bauen, was der Core schon hat — diese Spec MUSS die ADR + Reuse-Matrix respektieren.
+
 > **Epic:** F — Entscheidungen & Stage-Gates  
 > **Priorität (Jira):** Highest · **Quell-Priorität:** Must (MVP)  
 > **Labels:** `ma-platform` · `epic-f` · `mvp`  

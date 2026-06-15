@@ -19,6 +19,8 @@ summary_for_jira: "[E2] Red-Flag-Log für die Due Diligence"
 **Origin:** M&A-Platform Backlog (Epic E — Risiken & Red Flags)
 **Priority:** P1
 
+> **V3 Core Reuse (CIA 2026-06-15 · [ma-domain-architecture ADR](../docs/decisions/ma-domain-architecture.md) · [Sequencing](../docs/ma-epic-sequencing-2026-06-15.md)):** Klasse **EXTEND** · Andockpunkt: DD-spezifisch auf PROJ-20 risks. Nicht neu bauen, was der Core schon hat — diese Spec MUSS die ADR + Reuse-Matrix respektieren.
+
 > **Epic:** E — Risiken & Red Flags  
 > **Priorität (Jira):** Highest · **Quell-Priorität:** Must (MVP für die DD-Phase)  
 > **Labels:** `ma-platform` · `epic-e` · `mvp`  

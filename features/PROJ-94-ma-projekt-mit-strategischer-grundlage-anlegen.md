@@ -19,6 +19,8 @@ summary_for_jira: "[A1] M&A-Projekt mit strategischer Grundlage anlegen"
 **Origin:** M&A-Platform Backlog (Epic A — Projektgrundlagen & Phasenmodell)
 **Priority:** P1
 
+> **V3 Core Reuse (CIA 2026-06-15 · [ma-domain-architecture ADR](../docs/decisions/ma-domain-architecture.md) · [Sequencing](../docs/ma-epic-sequencing-2026-06-15.md)):** Klasse **REUSE** · Andockpunkt: PROJ-2 CRUD + PROJ-5 Wizard + PROJ-6 `project_type='m&a'`. Nicht neu bauen, was der Core schon hat — diese Spec MUSS die ADR + Reuse-Matrix respektieren.
+
 > **Epic:** A — Projektgrundlagen & Phasenmodell  
 > **Priorität (Jira):** Highest · **Quell-Priorität:** Must (MVP – ohne diese Story funktioniert keine weitere)  
 > **Labels:** `ma-platform` · `epic-a` · `mvp`  

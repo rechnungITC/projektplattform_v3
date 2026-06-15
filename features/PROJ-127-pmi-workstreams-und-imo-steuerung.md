@@ -19,6 +19,8 @@ summary_for_jira: "[K3] PMI-Workstreams und IMO-Steuerung"
 **Origin:** M&A-Platform Backlog (Epic K — Post-Merger-Integration)
 **Priority:** P1
 
+> **V3 Core Reuse (CIA 2026-06-15 · [ma-domain-architecture ADR](../docs/decisions/ma-domain-architecture.md) · [Sequencing](../docs/ma-epic-sequencing-2026-06-15.md)):** Klasse **REUSE** · Andockpunkt: = PROJ-102 Workstreams im PMI-Kontext (merge). Nicht neu bauen, was der Core schon hat — diese Spec MUSS die ADR + Reuse-Matrix respektieren.
+
 > **Epic:** K — Post-Merger-Integration  
 > **Priorität (Jira):** Medium · **Quell-Priorität:** Should  
 > **Labels:** `ma-platform` · `epic-k` · `should-have`  
