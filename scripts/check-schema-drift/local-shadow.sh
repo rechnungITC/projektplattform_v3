@@ -38,7 +38,9 @@ trap cleanup EXIT
 
 echo "==> Starting fresh postgres:17 shadow DB on port $PORT"
 docker rm -f "$CONTAINER" >/dev/null 2>&1 || true
-docker run -d --name "$CONTAINER" -e POSTGRES_PASSWORD=test -p "$PORT:5432" postgres:17 >/dev/null
+# Bind to loopback only — this throwaway DB uses a trivial password; never
+# expose it on 0.0.0.0 where it would be reachable from the LAN during the run.
+docker run -d --name "$CONTAINER" -e POSTGRES_PASSWORD=test -p "127.0.0.1:$PORT:5432" postgres:17 >/dev/null
 
 echo "==> Waiting for postgres to accept connections"
 for _ in $(seq 1 30); do
