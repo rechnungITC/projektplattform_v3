@@ -11,7 +11,7 @@ import type { Channel } from "@/types/communication"
 import { EmailChannel } from "./email-resend"
 import { InternalChannel } from "./internal"
 import { SlackChannel } from "./stub-slack"
-import { TeamsChannel } from "./stub-teams"
+import { TeamsChannel } from "./teams"
 import type { ChannelAdapter } from "./types"
 
 const ADAPTERS: Record<Channel, ChannelAdapter> = {

@@ -19,6 +19,7 @@ import { ChangeParentDialog } from "@/components/work-items/change-parent-dialog
 import { ChangeStatusDialog } from "@/components/work-items/change-status-dialog"
 import { DeleteWorkItemDialog } from "@/components/work-items/delete-work-item-dialog"
 import { EditWorkItemDialog } from "@/components/work-items/edit-work-item-dialog"
+import { JiraConflictsDialog } from "@/components/work-items/jira-conflicts-dialog"
 import { JiraExportDialog } from "@/components/work-items/jira-export-dialog"
 import { BacklogAiProposalLauncher } from "@/components/projects/ai-proposals/backlog-ai-proposal-launcher"
 import { NewWorkItemDialog } from "@/components/work-items/new-work-item-dialog"
@@ -258,7 +259,8 @@ export function BacklogClient({ projectId, tenantId: _tenantId }: BacklogClientP
   const toolbarAndBulk = (
     <>
       {canEdit && (
-        <div className="mb-3 flex justify-end">
+        <div className="mb-3 flex justify-end gap-2">
+          <JiraConflictsDialog projectId={projectId} />
           <BacklogAiProposalLauncher
             projectId={projectId}
             projectMethod={method}

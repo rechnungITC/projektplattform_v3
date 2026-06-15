@@ -114,9 +114,12 @@ const slackDescriptor: ConnectorDescriptor = {
   },
 }
 
-// ─── teams (PROJ-13 stub, real adapter follows) ────────────────────────
+// ─── teams (PROJ-49 — real Workflows-Webhook adapter) ──────────────────
 
 const TeamsCredentialSchema = z.object({
+  // PROJ-49: a Microsoft Teams "Workflows" (Power Automate) incoming webhook
+  // URL. Classic O365 connectors retired 2026-05; Graph app-only channel-post
+  // is migration-only (CIA 2026-06-15) → the Workflows webhook is the path.
   webhook_url: z.string().url(),
 })
 
@@ -124,15 +127,21 @@ const teamsDescriptor: ConnectorDescriptor = {
   key: "teams",
   label: "Microsoft Teams",
   summary:
-    "Teams-Webhook oder Microsoft Graph für ausgehende Nachrichten. Echter Adapter folgt mit PROJ-14d.",
+    "Teams-Versand über einen Workflows-Webhook (Power Automate). Tenant-Admin hinterlegt die Webhook-URL; Nachrichten gehen aus dem Outbox raus.",
   capability_tags: ["communication"],
   credential_schema: TeamsCredentialSchema,
-  credential_editable: false,
-  async health(): Promise<ConnectorHealth> {
+  credential_editable: true,
+  async health({ tenant_credentials }: HealthInput): Promise<ConnectorHealth> {
+    if (tenant_credentials) {
+      return {
+        status: "adapter_ready_configured",
+        detail: "Workflows-Webhook-URL konfiguriert — produktiver Versand aktiv.",
+      }
+    }
     return {
-      status: "adapter_missing",
+      status: "adapter_ready_unconfigured",
       detail:
-        "Stub aktiv — Versand schlägt absichtlich mit „no-adapter-yet“ fehl. Echter Adapter folgt.",
+        "Kein Webhook hinterlegt — lege in Teams einen Workflow „Beim Empfang einer Webhook-Anforderung posten“ an und trage die URL hier ein.",
     }
   },
 }
