@@ -35,6 +35,7 @@ import {
   JiraCredentialForm,
   type JiraCredentialPayload,
 } from "./jira-credential-form"
+import { JiraWebhookTokens } from "./jira-webhook-tokens"
 
 type CredentialPayload =
   | { api_key: string; from_email: string }
@@ -243,6 +244,10 @@ export function ConnectorsPageClient() {
                   }
                   onDelete={() => void handleDelete(drawer.entry.descriptor.key)}
                 />
+
+                {drawer.entry.descriptor.key === "jira" ? (
+                  <JiraWebhookTokens />
+                ) : null}
               </div>
             </>
           ) : null}
