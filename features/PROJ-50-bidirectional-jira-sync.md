@@ -2,7 +2,17 @@
 
 ## Status
 
-Approved (α backend + β frontend + γ QA; 0 Critical/0 High — PRODUCTION-READY; not yet deployed/committed)
+Deployed — 2026-06-15 (Tag `v1.93.0-PROJ-50`). α backend + β frontend + γ QA; 0 Critical/0 High. Code live via PR #136; QA-Closure 2026-06-15 (Prod-State + Routen live re-verifiziert, Migration-Versions-Drift bereinigt).
+
+## Deployment
+
+- **Date:** 2026-06-15 (Closure; Code seit PR #136 / `b468d84` auf main + Vercel-Auto-Deploy, 2 Migrations seit 2026-06-11/12 via MCP in Prod).
+- **Tag:** `v1.93.0-PROJ-50`
+- **Prod-Verify 2026-06-15 (live):**
+  - DB: 3/3 Tabellen (`jira_inbound_events`, `jira_sync_conflicts`, `jira_webhook_tokens`), Idempotenz-Index `jira_inbound_events_delivery_unique` + `jira_sync_conflicts_resolved_shape_check` vorhanden; beide Migrations in `schema_migrations` registriert.
+  - Routen: `POST /api/connectors/jira/webhook/<bad>` → **401** generic (kein Tenant-Leak), `GET` → 405 (POST-only); `/api/connectors/jira/webhook-token` → 307 (admin-gated); `/api/cron/jira-inbound-process` → 401 (CRON_SECRET).
+- **Migration-Versions-Drift bereinigt:** MCP registrierte die Migrations unter `20260611202524` / `20260612063017`, die Repo-Dateien hießen aber `20260616100000` / `20260616110000`. Da die Migrations **nicht idempotent** sind (`create table` ohne `if not exists`), hätte der Drift `supabase db push` gebrochen (Tooling matcht per Versions-String → hätte Re-Apply versucht → `create table` auf existierende Tabelle). Repo-Dateien auf die prod-registrierten Versionen umbenannt (reproduziert echte Apply-Reihenfolge, keine Kollision mit Nachbarn). Analog zum PROJ-69-Fund.
+- **Abgrenzung unverändert:** status conflict-only in α (kind/parent inbound deferred); kein Jira-Outbound-Write im Inbound-Pfad (read + local apply only).
 
 > **α backend built 2026-06-12** (branch `proj-48-49-50/connector-architecture`, off `origin/main`; NOT yet committed). Two migrations live in Prod (`20260616100000` jira_inbound_events + jira_sync_conflicts; `20260616110000` jira_webhook_tokens) — DB smoke ✓. Public webhook receiver `/api/connectors/jira/webhook/[token]` (token-hash→tenant via `jira_webhook_tokens`, idempotent upsert on `(tenant_id, delivery_id)`, fast 200, no token logging) + admin token issue/list/revoke `/api/connectors/jira/webhook-token` + added to `PUBLIC_ROUTES` (only `/webhook/` sub-path; admin route stays gated). Drain cron `/api/cron/jira-inbound-process` (Bearer CRON_SECRET + service-role) + `src/lib/jira/inbound.ts` conflict engine: clean fast-forward auto-apply on title/description (V3 unchanged since last sync), else reviewable `jira_sync_conflicts` row (no silent overwrite — ST-03 + invariant #2); status conflict-only in α; kind/parent inbound deferred. Conflict API GET list + POST resolve (v3_wins/jira_wins/manual; jira_wins applies title/description through RLS+CHECK). **Gates:** lint 0, tsc 13 baseline/0 new, vitest 1798/1798 (+58 PROJ-50), build clean. **Live DB smoke vs Prod** (DO-block + rollback marker, 0 residue): idempotent replay, conflict-CHECK both directions, baseline round-trip. **γ /qa** still open.
 
