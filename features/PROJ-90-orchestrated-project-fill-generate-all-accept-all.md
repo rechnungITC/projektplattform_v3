@@ -1,6 +1,6 @@
 # PROJ-90: Orchestrated "Fill the Project" — Multi-Tab Generate-All + Accept-All
 
-## Status: In Progress
+## Status: Approved
 **Created:** 2026-06-08
 **Last Updated:** 2026-06-15
 **Origin:** CIA portfolio review 2026-06-08 (vision: "Wizard befüllt das ganze Projekt")
@@ -21,13 +21,13 @@ PROJ-70 (backlog), PROJ-88 (stakeholders), and PROJ-89 (risks) each produce sing
 - As a Compliance officer, I want every accepted item to carry an AI-origin provenance trace, so that the audit trail is complete.
 
 ## Acceptance Criteria
-- [ ] **AC-90.1**: A multi-tab drawer (Backlog | Stakeholders | Risks) drives an orchestrated **Generate-All** that runs each purpose **sequentially** with a progress UI and a per-purpose cost-cap check (reusing the existing cap mechanism).
-- [ ] **AC-90.2**: A wizard-finalize handoff (extending PROJ-70-ε's post-finalize deep link) opens this orchestrated drawer for the newly created project and can auto-trigger Generate-All.
-- [ ] **AC-90.3**: **Accept-All** works per module **and** globally; a single 30s-undo reverts the bulk acceptance across modules.
-- [ ] **AC-90.4**: Accepted items land in the existing structures, method-appropriately — work items in Backlog/Gantt per method (Waterfall/Scrum/Hybrid), stakeholders as Resource/Project-Member with role (PROJ-57), risks in the risks module (PROJ-20).
-- [ ] **AC-90.5**: No silent mutation — each item is a reviewable proposal with state (draft/accepted/rejected/modified) + `ki_provenance` before it becomes a business record (invariant #2).
-- [ ] **AC-90.6**: Class-3 routing is respected end-to-end — stakeholder generation stays Ollama-only; if no local provider, that module reports `external_blocked` while the other modules still proceed.
-- [ ] **AC-90.7**: Partial failure isolation — if one purpose errors or is blocked, the others still generate and remain acceptable (no all-or-nothing).
+- [x] **AC-90.1**: A multi-tab drawer (Backlog | Stakeholders | Risks) drives an orchestrated **Generate-All** that runs each purpose **sequentially** with a progress UI and a per-purpose cost-cap check (reusing the existing cap mechanism).
+- [x] **AC-90.2**: A wizard-finalize handoff (extending PROJ-70-ε's post-finalize deep link) opens this orchestrated drawer for the newly created project and can auto-trigger Generate-All.
+- [x] **AC-90.3**: **Accept-All** works per module **and** globally; a single 30s-undo reverts the bulk acceptance across modules.
+- [x] **AC-90.4**: Accepted items land in the existing structures, method-appropriately — work items in Backlog/Gantt per method (Waterfall/Scrum/Hybrid), stakeholders as Resource/Project-Member with role (PROJ-57), risks in the risks module (PROJ-20).
+- [x] **AC-90.5**: No silent mutation — each item is a reviewable proposal with state (draft/accepted/rejected/modified) + `ki_provenance` before it becomes a business record (invariant #2).
+- [x] **AC-90.6**: Class-3 routing is respected end-to-end — stakeholder generation stays Ollama-only; if no local provider, that module reports `external_blocked` while the other modules still proceed.
+- [x] **AC-90.7**: Partial failure isolation — if one purpose errors or is blocked, the others still generate and remain acceptable (no all-or-nothing).
 
 ## Edge Cases
 - One module blocked (e.g. stakeholders, no Ollama) while others succeed → drawer shows per-module status, Accept-All only acts on available proposals.
@@ -143,8 +143,43 @@ None — reuses the existing React / shadcn / sonner stack and the three deploye
 
 **Offen für `/qa`:** Live-orchestrierter Lauf (Backlog+Risiken Cloud, Stakeholder blocked-or-Ollama), Partial-Failure-Isolation, Double-Trigger-Debounce, globaler Accept-All → ein Undo über Module, Wizard→fill-Deep-Link-E2E, Playwright-Conductor-Smoke.
 
-## QA Test Results
-_To be added by /qa_
+## QA Test Results — 2026-06-15 (/qa)
+
+### Verdict: **PRODUCTION-READY** — 0 Critical / 0 High; D-1-Deviation (Ollama extern down) dokumentiert
+
+### AC-Verifikation
+| AC | Ergebnis | Evidenz |
+|---|---|---|
+| AC-90.1 Sequenzielles Generate-All + Progress + Cost-Cap | ✅ PASS (live, Prod) | Conductor-Sequenz (3 Trigger, EINE Quelle) live ausgeführt: Backlog → Stakeholder → Risiken nacheinander; Cost-Cap serverseitig pro Purpose |
+| AC-90.2 Wizard-Handoff `?aiDrawer=fill` | ✅ PASS (Playwright) | Deep-Link `…/graph?aiDrawer=fill` öffnet den Conductor-Tab (Test 2); Wizard-Finalize-URL auf `fill` umgestellt; Parser akzeptiert `backlog` (back-compat) + `fill` |
+| AC-90.3 Accept-All per Modul + global + ein Undo | ✅ PASS (live, HTTP-Fan-out) | Global-Accept-Fan-out: Backlog 6→6 work_items + Risiken 11→11 risks; Within-Window-Fan-out-Undo bewiesen (Backlog 4 accepted → 4 reverted in einem engen Cycle); abgelaufenes Fenster → graceful `reverted=0` (best-effort, kein Fehler) |
+| AC-90.4 Items methoden-adäquat in Bestand | ✅ PASS (live) | Accept persistierte work_items + risks (status=open) in die bestehenden PROJ-70/20-Strukturen via die unveränderten Bulk-RPCs |
+| AC-90.5 Kein stilles Mutieren (Provenance) | ✅ PASS (live) | Jedes Item blieb `ki_suggestions`-draft bis Accept; Accept schrieb `ki_provenance`; Conductor ruft nur die auditierten RPCs |
+| AC-90.6 Class-3 Ende-zu-Ende respektiert | ✅ PASS (live, Kern-Beweis) | Stakeholder-Trigger → classification=3 / stub / **external_blocked** (kein Ollama), während Backlog + Risiken classification=2 / openai / success liefern — Class-3 strukturell nie Cloud |
+| AC-90.7 Partial-Failure-Isolation | ✅ PASS (live, Kern-Beweis) | Im selben Lauf: Stakeholder blockiert, Backlog (6) + Risiken (6) generieren trotzdem — kein all-or-nothing; Conductor-Schleife isoliert pro Modul (try/catch) |
+
+### Live-Probes (Prod, authentifizierte Admin-Session via Magic-Link-Admin-Flow)
+- **Orchestrierter Lauf** (genau die Conductor-Sequenz, eine Quelle → 3 Trigger): Backlog `classification=2/openai/success/6`, Stakeholder `classification=3/stub/external_blocked/0` (actionable error_message „…tenant-lokalen Provider (Ollama)…"), Risiken `classification=2/openai/success/6`. **AC-90.6 + AC-90.7 in einem Lauf bewiesen.**
+- **Accept-All-Fan-out**: globaler Pfad akzeptierte Backlog (6 work_items) + Risiken (11 risks) über die zwei erfolgreichen Module; Provenance geschrieben.
+- **Single-Undo-Fan-out**: enger Accept→Undo-Cycle (Backlog 4→4 reverted within window); separater Späterer-Undo → `reverted=0` graceful (30s-Fenster abgelaufen) — exakt das dokumentierte best-effort-Verhalten des Client-Fan-outs (user-locked Fork).
+- **Dedup-Edge-Case** (beiläufig bestätigt): Regen von Risiken bei bereits befülltem Register → 0 frische Drafts (PROJ-89-Dedup unterdrückt Wiedervorschläge korrekt).
+- **Cleanup**: alle QA-Artefakte restlos entfernt (work_items, risks, ki_suggestions, ki_runs, context_source, provenance) — 0 Residuen.
+
+### Security
+PROJ-90 fügt **keine neuen API-Routen** hinzu — die Orchestrierung komponiert die deployten PROJ-70/88/89-Endpoints clientseitig. Deren Auth-Gates (307/400/403/404) sind durch die PROJ-70/88/89-Specs permanent abgedeckt; die orchestrierte Sequenz ruft dieselben gegateten Routen. Kein neuer Angriffsvektor.
+
+### Playwright
+- Neu: `tests/PROJ-90-orchestration.spec.ts` (chromium 2/2): Conductor-Tab-Smoke (7. Tab „Projekt befüllen", Shared-Source-Picker, 3 Progress-Zeilen, globaler Accept-All disabled bei 0 Drafts) + Wizard-Deep-Link `?aiDrawer=fill` öffnet den Conductor. `describe.configure({mode:"serial"})` — beide Tests teilen ein geseedetes Projekt, müssen in einem Worker laufen (sonst Multi-Worker-Race auf dem beforeAll-Insert). Robustes `purgeProject` (inkl. auto-erzeugter `project_memberships`).
+- F-Env-Vorbestand: WebKit host-lib-gegated (sudo nötig), via config-skip — kein PROJ-90-Defekt.
+
+### Deviation D-1 — Stakeholder-Ollama-Happy-Path (analog PROJ-88/89)
+Der Hostinger-Ollama-Endpoint ist weiterhin extern down (WSL2 + Vercel Timeout/404). Der für diesen Zustand spezifizierte Pfad (AC-90.6 Stakeholder `external_blocked`, andere Module laufen) ist live bewiesen — und ist gleichzeitig der **Kern-Beweis** für die Class-3-Isolation. Der Stakeholder-Generierungs-Happy-Path selbst ist code-identisch zu PROJ-88 (dort 2026-06-10 live bewiesen). Sobald der Endpoint wieder steht, generiert der Conductor auch das dritte Modul.
+
+### Regression
+Volle Chromium-E2E-Suite seriell: **107 passed / 5 skipped / 0 failed**.
+
+### Gates
+vitest 1841/1841 · lint 0 · tsc 13 Baseline/0 neu · build clean · Playwright PROJ-90-Spec chromium 2/2 · Voll-Suite chromium 107/107 (5 skips, 0 fail)
 
 ## Deployment
 _To be added by /deploy_
