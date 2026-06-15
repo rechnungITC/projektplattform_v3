@@ -1,12 +1,23 @@
 # PROJ-69 — DB Index Audit (102 unindexed FKs · 73 unused indexes)
 
-## Status: In Review (Phase 1 triage 2026-05-31; α/β/γ migrations applied to prod 2026-06-11)
+## Status: Deployed — 2026-06-15 (Tag `v1.92.0-PROJ-69`). α/β/γ-Migrations seit 2026-06-11 in Prod, QA-Closure 2026-06-15 (Prod-State re-verifiziert, vitest grün, Migration-Versions-Drift bereinigt).
+
+## Deployment
+
+- **Date:** 2026-06-15 (Closure; Migrations seit 2026-06-11 via MCP `apply_migration` in Prod — kein separater Runtime-Deploy, reine DB-DDL-Slice).
+- **Tag:** `v1.92.0-PROJ-69`
+- **Prod-Verify 2026-06-15 (live gegen Prod-DB):**
+  - 19/19 α-Indexe vorhanden · 0/7 β-Drops noch vorhanden (alle weg) · 65 Index-Keep-Kommentare · 90 Constraint-Skip-Kommentare — exakt wie spezifiziert.
+  - Alle 3 Migrations in `supabase_migrations.schema_migrations` registriert.
+  - vitest unverändert grün (kein Verhaltens-Regress — DDL-only).
+- **Migration-Versions-Drift bereinigt:** MCP `apply_migration` registrierte die Migrations am 2026-06-11 unter `20260611075659/075714/075931`, während die Repo-Dateien zunächst `20260615100000/110000/120000` hießen — Letzteres **kollidierte** mit PROJ-89s `20260615100000`-Datei und hätte `supabase db push` gebrochen. Repo-Dateien auf die tatsächlich in Prod registrierten Versionen umbenannt (reproduziert die echte Apply-Reihenfolge, idempotent: `create index if not exists`/`drop index if exists`/`comment on`). Kollision damit aufgelöst.
+- **Bekannte Fremd-Notiz (nicht PROJ-69-Scope):** PROJ-89 ist in Prod doppelt registriert (`20260611195100` „20260615100000_proj89…" + `20260611195532` „proj89…") und seine Repo-Datei `20260615100000_proj89…` matcht keine der beiden — Bookkeeping der PROJ-89-Session, hier nur dokumentiert.
 
 ## Implementation Notes — Phase 2/3 (2026-06-11)
 
 **Advisor-Refresh vor Authoring (Guardrail erfüllt):** frischer `get_advisors(performance)` 2026-06-10 → 169 INFO (109 unindexed FKs, 60 unused). Diff gegen Triage: 7 neue FK-Findings, alle aus PROJ-47-Tabellen (post-Triage deployed) → nachtriagiert nach denselben Regeln: 1× add (`jira_export_log.project_id`, project-FK wie alle anderen), 6× skip (audit-/tenant-FKs). Alle 7 Drop-Kandidaten im frischen Snapshot weiterhin zero-scan; Guardrail-Grep bestätigt keine neuen Route-/RPC-Abhängigkeiten (`created_by` nirgends gefiltert, `ki_provenance`-Queries laufen über die UNIQUE-Zwillinge, `projects.tenant_id` durch Composite-Index gedeckt).
 
-**3 Migrations applied to prod 2026-06-11** (Repo: `supabase/migrations/20260615{100000,110000,120000}_proj69_{alpha,beta,gamma}_*.sql`):
+**3 Migrations applied to prod 2026-06-11** (Repo: `supabase/migrations/20260611{075659,075714,075931}_proj69_{alpha,beta,gamma}_*.sql` — Dateinamen = prod-registrierte Versionen, siehe Deployment-Section):
 - **α `add_missing_fk_indexes`**: 19 Indexe (18 Triage-class-a + 1 PROJ-47-Nachtriage). Plain `CREATE INDEX` ohne `CONCURRENTLY` — alle Tabellen pilot-scale << 100k rows (AC-3-Bedingung nicht ausgelöst).
 - **β `drop_unused_indexes`**: 7 Drops (class α).
 - **γ `index_audit_notes`**: 65 `COMMENT ON INDEX` (58 β-keeps + 7 γ-keeps) + 90 `COMMENT ON CONSTRAINT` (84 b-skips + 6 PROJ-47-Nachtriage-skips).
