@@ -96,13 +96,18 @@ describe("listConnectors", () => {
     expect(slack.status.health.status).toBe("adapter_missing")
   })
 
-  it("reports jira as ready but unconfigured and mcp/slack/teams as missing", async () => {
+  it("reports jira + teams as ready-but-unconfigured and mcp/slack as missing", async () => {
     const supabase = makeSupabase({ meta: [] })
     const entries = await listConnectors(supabase, TENANT_ID)
     const jira = entries.find((e) => e.descriptor.key === "jira")!
     expect(jira.status.health.status).toBe("adapter_ready_unconfigured")
     expect(jira.status.credential_editable).toBe(true)
-    for (const k of ["slack", "teams", "mcp"]) {
+    // PROJ-49 — Teams is now a real (Workflows-webhook) adapter: ready but
+    // unconfigured until the tenant stores a webhook URL.
+    const teams = entries.find((e) => e.descriptor.key === "teams")!
+    expect(teams.status.health.status).toBe("adapter_ready_unconfigured")
+    expect(teams.status.credential_editable).toBe(true)
+    for (const k of ["slack", "mcp"]) {
       const e = entries.find((x) => x.descriptor.key === k)!
       expect(e.status.health.status).toBe("adapter_missing")
     }

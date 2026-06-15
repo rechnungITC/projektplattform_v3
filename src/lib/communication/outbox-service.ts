@@ -27,6 +27,8 @@ import type {
   OutboxMetadata,
 } from "@/types/communication"
 
+import { readTenantSecret } from "@/lib/connectors/secrets"
+
 import { getChannelAdapter } from "./channels/selector"
 import type { DispatchOutcome } from "./channels/types"
 
@@ -111,11 +113,31 @@ export async function dispatchOutboxRow({
     }
   } else {
     const adapter = getChannelAdapter(outbox.channel)
+    // PROJ-49 — resolve the per-tenant transport credential the adapter needs.
+    // Currently only Teams (Workflows-webhook URL from tenant_secrets); other
+    // channels read their config elsewhere (email = RESEND_API_KEY env).
+    let webhookUrl: string | undefined
+    if (outbox.channel === "teams") {
+      try {
+        const secret = await readTenantSecret<{ webhook_url?: string }>(
+          supabase,
+          outbox.tenant_id,
+          "teams"
+        )
+        webhookUrl = secret?.webhook_url
+      } catch {
+        // Decrypt/availability failure → leave undefined; the adapter returns
+        // an actionable "not configured" outcome (never throws, never logs).
+        webhookUrl = undefined
+      }
+    }
     outcome = await adapter.dispatch({
       recipient: outbox.recipient,
       subject: outbox.subject,
       body: outbox.body,
       metadata: outbox.metadata,
+      webhookUrl,
+      correlationId: outbox.id,
     })
   }
 

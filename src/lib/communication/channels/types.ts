@@ -16,6 +16,18 @@ export interface DispatchInput {
   body: string
   /** Open bag — PROJ-12 ki_run_id, future provider hints, etc. */
   metadata: Record<string, unknown>
+  /**
+   * PROJ-49 — per-tenant transport credential the outbox-service resolved
+   * from `tenant_secrets` before dispatch (currently the Teams Workflows
+   * webhook URL). Undefined for channels that read their config elsewhere
+   * (e.g. email via RESEND_API_KEY env). Adapters stay DB-free.
+   */
+  webhookUrl?: string
+  /**
+   * PROJ-49 — stable correlation marker (the outbox row id) so an
+   * at-least-once retry is traceable and never spawns a new outbox row.
+   */
+  correlationId?: string
 }
 
 export type DispatchOutcome =
