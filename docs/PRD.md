@@ -90,6 +90,7 @@ The product thesis: enterprise projects fail at the seams between execution, gov
 | PROJ-90 | P1 | Orchestrierter „Projekt befüllen" — Multi-Tab Generate-All + Accept-All über Backlog/Stakeholder/Risiken nach Wizard-Finalize; methoden-adäquat in bestehende Strukturen, 30s-Undo, auditierbar. Implementiert „Generate-All + Accept-All" (kein stilles Mutieren). Epic-Klammer über PROJ-87/88/89. | Planned |
 | PROJ-92 | P1 | Azure OpenAI Provider (Class-1/2) — fünfter Provider-Typ (tenant-eigene Azure-Ressource, EU-Region-Allowlist, openai-compatible Factory ohne neues Dep). Invariante #3 unberührt. | Planned |
 | PROJ-93 | P1 | Trusted-EU-Processor — kontrollierte, opt-in Class-3-Freigabe NUR für DPA-attestiertes Azure OpenAI im EU-Kunden-Tenant; DPA-konditionaler DB-CHECK, ADR + Invariante-#3-Präzisierung. Ohne Attest: Ollama-only unverändert. | Planned |
+| PROJ-134 | P1 | Migration-Versions-Drift-Guard & Naming-Konvention — MCP `apply_migration` vergibt eigene Timestamps ≠ Repo-Dateiname → `supabase db push`-Bruch + Präfix-Kollisionen (3× belegt: PROJ-69/89/50). Prozessregel + Repo-lokaler Required-Check (Kollision/Format hard-fail, Idempotenz/Sekunden-Timestamp warn) + Bestands-Verifikation. CIA-reviewed; Hygiene-Slice analog PROJ-42; kein neuer Dep. | Planned |
 
 ### Recommended Delivery Sequence — Assistant Track
 
