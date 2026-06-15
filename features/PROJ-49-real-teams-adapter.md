@@ -2,7 +2,7 @@
 
 ## Status
 
-Planned
+Approved (α backend + β frontend + γ QA — Workflows-Webhook transport; 0 Critical/0 High. Code merged to main via #136 + #140. Live-send is a documented user-handoff; not yet `/deploy`-tagged.)
 
 ## Summary
 
@@ -129,4 +129,35 @@ The Teams channel that today returns `no-adapter-yet` becomes a **real delivery 
 - **α /backend**: Teams connector descriptor (`credential_schema` = webhook URL + `health()`), real `TeamsChannel` adapter (raw `fetch` POST, MessageCard minimal payload) replacing `stub-teams.ts`, wired through the existing dispatch + Class-3 block; `sanitizeTeamsError`; retry/backoff + correlation-marker idempotency (AC-H1..H6). Live send-smoke against a real test Workflows webhook (or documented deviation). (~1.5 PT)
 - **β /frontend**: Teams webhook-URL field + test-connection in `/konnektoren` (reuses the existing connector form pattern). (~0.5 PT)
 - **γ /qa**: happy-path send, misconfig error, Class-3 suppression, retry, no-token-logging audit. (~0.5 PT)
+
+## Implementation Notes
+- **α backend** (PR #140): `src/lib/communication/channels/teams.ts` real `TeamsChannel` (raw `fetch` → Workflows webhook, minimal text payload, bounded 429/5xx retry+backoff, `sanitizeTeamsError` URL/bearer redaction, outbox-row correlation marker) replacing `stub-teams.ts`. `outbox-service.ts` resolves the per-tenant webhook URL from `tenant_secrets` (`connector_key='teams'`) via `readTenantSecret` and passes it as `DispatchInput.webhookUrl` (adapters stay DB-free). Teams connector descriptor made real (`credential_editable: true` + `health()`). **No migration, no new dependency.**
+- **β frontend** (PR #140): `TeamsCredentialForm` (single https `webhook_url` field, mirror `EmailCredentialForm`) + `CredentialPanel` Teams branch in `connectors-page-client.tsx`; Test-Connection reuses the drawer health probe.
+- **Transport correction** (PR #136): Tech Design revised Graph → Workflows-Webhook per CIA (see § CIA Review Outcome); delegated-Graph split to PROJ-133.
+
+## QA Test Results
+**Tested:** 2026-06-15 · focused QA (no new routes/migrations — outbox-adapter + connector descriptor only).
+
+### Acceptance Criteria
+| AC | Result | Evidence |
+|---|---|---|
+| ST-01 credential setup + test-connection + actionable errors | ✅ PASS | `TeamsCredentialForm` (https-validated) + drawer Test-Connection health probe + descriptor `health()`; 4xx → sanitized actionable message. |
+| ST-02 outbox delivery + status + retry + sanitized errors | ✅ PASS | adapter → outbox status flip; bounded 429/5xx retry+backoff then `failed`; `sanitizeTeamsError`. Unit-tested. |
+| ST-03 audit/tracking (PROJ-34-consumable) | ✅ PASS | delivery rides the existing audited outbox status machine + `metadata`. |
+| AC-H1 URL never logged / sanitized | ✅ PASS | no `console.*` in adapter/service; `sanitizeTeamsError` redacts URL + bearer (tested). |
+| AC-H2 Class-3 block before send | ✅ PASS | unchanged `isClass3Blocked` path; outbox-service test green. |
+| AC-H3 retry/backoff on 429/5xx, max-attempts | ✅ PASS | 429×3 → fail; 503→retry→200. Tested. |
+| AC-H4 correlation marker, no new outbox row | ✅ PASS | `correlationId` (outbox id) in payload; retry reuses the row. |
+| AC-H5 no Adaptive Cards | ✅ PASS | minimal text payload only. |
+| AC-H6 test-connection sanitized + actionable | ✅ PASS | 4xx → "URL ungültig/Workflow gelöscht", no raw body. |
+
+### Tests & Gates
+- vitest: Teams adapter **8** + outbox-service **6** + registry **7** green; full suite **1806/1806**. lint 0 · tsc 13 baseline/0 new · build clean.
+- Security code-review: no secret logging, hash-free (webhook URL encrypted in `tenant_secrets`), redaction verified.
+
+### Deviation
+- **D-1** Live end-to-end send against a real Teams **Workflows webhook** is a **user handoff** (requires creating a Teams "post to channel" Workflow + storing its URL). No real webhook in the environment; the send path is unit-tested (success / 4xx / 429-retry / redaction) and secret-resolution reuses deployed PROJ-14 infra.
+
+### Verdict
+**0 Critical / 0 High → PRODUCTION-READY** for the Workflows-Webhook scope. Real-named-user/bot Graph posting remains PROJ-133.
 
