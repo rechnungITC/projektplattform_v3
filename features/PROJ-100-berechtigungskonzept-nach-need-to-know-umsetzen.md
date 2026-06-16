@@ -14,8 +14,27 @@ summary_for_jira: "[B4] Berechtigungskonzept nach Need-to-know umsetzen"
 
 # PROJ-100: Berechtigungskonzept nach Need-to-know umsetzen
 
-## Status: Architected (100a; 2026-06-16) — Tech Design für den 100a-Foundation-Slice gelockt; 100b deferred. Nächster Schritt: `/backend` für 100a.
+## Status: In Progress (100a backend gebaut 2026-06-16; live-smoke grün; QA offen). 100b deferred.
 **Created:** 2026-06-10
+
+## Implementation Notes — 100a backend (2026-06-16)
+
+**Migration `20260616100000_proj100a_need_to_know_rls.sql` in Prod-DB angewendet** (via MCP, name = Repo-Dateiname-Stamm → kein Versions-Drift):
+- **Geordneter enum** `ma_confidentiality_level` (`standard` < `confidential` < `strict`).
+- **`confidentiality_level`-Spalte** (NOT NULL DEFAULT `standard`) auf `projects`/`phases`/`work_items` — Bestandsdaten bleiben unverändert sichtbar (Gate ist no-op bei `standard`).
+- **`ma_confidentiality_clearances`** (Inner-Circle-Freischaltung, multi-tenant-invariant: `tenant_id NOT NULL REFERENCES tenants ON DELETE CASCADE`, unique `(tenant_id,project_id,user_id)`, optionales `valid_until`). RLS-SELECT nur für tenant-admin/project-lead (Inner-Circle-Komposition nicht für alle sichtbar); **kein** direktes INSERT/UPDATE/DELETE für `authenticated` → blockiert Selbst-Freischaltung strukturell.
+- **`can_access_classified(project_id, level)`** SECURITY DEFINER STABLE (Muster wie `is_tenant_member`): `standard`→true, tenant-admin→true (Bootstrap + Admin), sonst nicht-abgelaufene Freischaltung ≥ level. Liest Freischaltung als Owner → keine RLS-Rekursion.
+- **9 RESTRICTIVE Policies** (SELECT/UPDATE/DELETE × projects/phases/work_items): UND-verknüpft mit den bestehenden permissiven Tenant-Policies — **kein Umschreiben**, kann nur einschränken; default-deny oberhalb `standard`. INSERT ungated (Default `standard`); Hochklassifizieren ist UPDATE und braucht Clearance für die neue Stufe.
+- **`grant_/revoke_confidentiality_clearance`-RPCs** (SECURITY DEFINER): Autorität tenant-admin OR project-lead, Cross-Tenant-Grant blockiert, Audit-Zeile in `audit_log_entries` (PROJ-10) je Grant/Revoke (der UPDATE-only `record_audit_changes`-Trigger kann INSERT/DELETE nicht erfassen → RPC schreibt in dasselbe eine Audit-System).
+- **`confidentiality_level`** zu `_tracked_audit_columns` für projects/phases/work_items hinzugefügt → Reklassifizierung ist field-level auditiert (AC3, Wiederverwendung PROJ-10).
+
+**API (thin wrappers über die RPCs, `manage_members`-Gate für saubere 403):** `POST /api/projects/[id]/clearances` (grant) + `GET` (list, managers) + `DELETE …/[userId]` (revoke).
+
+**Live-Smoke gegen Prod (read-only / RPC-raise-vor-write, 0 Residue):** standard-open ✓, default-deny confidential+strict für non-member ✓, unknown-project→deny ✓, tenant-admin-bypass ✓, Self-Grant via RPC → 42501 blockiert ✓, Class-3-Orthogonalität strukturell bestätigt (kein `privacy_class` auf den Gate-Tabellen) ✓.
+
+**Quality-Gates:** lint 0; tsc 13 baseline/0 neu; vitest **1852/1852** (+11 clearance-Route-Tests); build clean.
+
+**Offen für /qa (AC-100a-SEC Pentest):** der non-admin-MIT-Clearance-Positiv-Pfad (Clearance-Lookup-Zweig) ist live nicht geprüft, weil im E2E-Seed nur ein tenant-admin existiert (der via Bypass nie den Lookup-Zweig erreicht) — QA muss einen non-admin User + Clearance seeden und alle 6 AC-100a-SEC-Vektoren rollenbasiert (SET ROLE authenticated) verifizieren.
 **Origin:** M&A-Platform Backlog (Epic B — Rollen, Gremien & Governance)
 **Priority:** P1
 
