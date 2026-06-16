@@ -91,6 +91,7 @@ The product thesis: enterprise projects fail at the seams between execution, gov
 | PROJ-92 | P1 | Azure OpenAI Provider (Class-1/2) — fünfter Provider-Typ (tenant-eigene Azure-Ressource, EU-Region-Allowlist, openai-compatible Factory ohne neues Dep). Invariante #3 unberührt. | Planned |
 | PROJ-93 | P1 | Trusted-EU-Processor — kontrollierte, opt-in Class-3-Freigabe NUR für DPA-attestiertes Azure OpenAI im EU-Kunden-Tenant; DPA-konditionaler DB-CHECK, ADR + Invariante-#3-Präzisierung. Ohne Attest: Ollama-only unverändert. | Planned |
 | PROJ-134 | P1 | Migration-Versions-Drift-Guard & Naming-Konvention — MCP `apply_migration` vergibt eigene Timestamps ≠ Repo-Dateiname → `supabase db push`-Bruch + Präfix-Kollisionen (3× belegt: PROJ-69/89/50). Prozessregel + Repo-lokaler Required-Check (Kollision/Format hard-fail, Idempotenz/Sekunden-Timestamp warn) + Bestands-Verifikation. CIA-reviewed; Hygiene-Slice analog PROJ-42; kein neuer Dep. | Planned |
+| PROJ-135 | P1 | Dialogische Wizard-Rückfragen — aus PROJ-90 „Next/Later" promotet. Neuer AIPurpose `clarifying_questions_from_context`: KI stellt nach Kickoff-Upload VOR Finalize EINE Runde 3–6 überspringbarer Rückfragen zu Dokument-Lücken; Antworten als Q&A-Addendum am `context_source` (Vorhaben unberührt → PROJ-91-Invariante), von PROJ-70/88/89-Generierung mitgelesen. Standard-Routing (Class-3 Ollama-only, ohne Ollama graceful skip), Cost-Cap, kein stilles Mutieren. CIA-Review bei /architecture. | Planned |
 
 ### Recommended Delivery Sequence — Assistant Track
 

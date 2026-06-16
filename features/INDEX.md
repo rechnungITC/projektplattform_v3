@@ -158,4 +158,6 @@
 
 > **M&A-Epic PROJ-94–132 — Sequenzierung vor `/architecture`:** CIA-Analyse 2026-06-15 in [`docs/ma-epic-sequencing-2026-06-15.md`](../docs/ma-epic-sequencing-2026-06-15.md). Kernbefund: die 39 Specs sind core-blind formuliert; ~½ ist Reuse/Config bestehender Core-Features (PROJ-9/19/20/10/31/1), nicht Neubau. Vor `/architecture` zwingend: Domänen-ADR (5 Architektur-Forks, v.a. M&A als `project_type` + Need-to-Know-RLS-Sublayer) + Reuse-Annotation je Spec. Empfohlene P0-Kette: 94→100→97→95→101→112→113→114→108→110→111→116 (DD-zentrierter Pilot).
 
-## Next Available ID: PROJ-135
+| PROJ-135 | Dialogische Wizard-Rückfragen (AI Clarifying Questions) — aus PROJ-90 „Next/Later" promotet. Neuer AIPurpose `clarifying_questions_from_context`: nach Kickoff-Upload stellt die KI VOR Finalize EINE Runde 3–6 gezielter, einzeln überspringbarer Rückfragen zu Lücken im Dokument; Antworten werden als strukturiertes Q&A-Addendum am `context_source` gespeichert (Vorhaben `projects.description` UNBERÜHRT → PROJ-91-Invariante gewahrt) und von PROJ-70/88/89-Generierung mitgelesen. Standard-Routing (Class-1/2 Cloud, Class-3 Ollama-only, ohne Ollama graceful skip), Cost-Cap, ki_runs-Audit, kein stilles Mutieren (Invariante #2). User-locked: Wizard-vor-Finalize · Addendum-nicht-Vorhaben · eine Runde überspringbar · Standard-Routing-mit-Skip. Requires PROJ-86/70/5/12/91. CIA-Review bei `/architecture` (neuer AI-Purpose + neues Wizard-Interaktionsmuster). | Planned | [Spec](PROJ-135-dialogic-wizard-clarifying-questions.md) | 2026-06-16 |
+
+## Next Available ID: PROJ-136
