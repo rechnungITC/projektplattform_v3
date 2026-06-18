@@ -2,7 +2,7 @@
 
 ## Status
 
-In Progress (α /backend live — migration + RPC + route + 4 tools + redaction + rate-limit + audit + tests; β /frontend token panel + γ /qa pending)
+In Progress (α /backend + β /frontend live — migration + RPC + route + 4 tools + redaction + rate-limit + audit + token-mgmt/audit panel in /konnektoren; γ /qa pending)
 
 ## Summary
 
@@ -145,4 +145,14 @@ A **read-only, tenant-scoped MCP endpoint** that lets an approved external agent
 **Deferred to β/γ:** token-management + audit panel UI in `/konnektoren` (β); cross-tenant isolation / redaction-coverage / rate-limit / revoked-token / real MCP-client Playwright smoke (γ).
 
 **Followup noted:** `mcp_access_tokens.created_by` FK is unindexed (admin-rare lookups; consistent with the PROJ-69 FK-index triage policy of skipping rare-access FKs).
+
+## Implementation Notes — β /frontend (2026-06-18)
+
+Token-management + audit panel surfaced in the existing `/konnektoren` connector drawer (mounted when `descriptor.key === "mcp"`, mirroring the PROJ-50 `JiraWebhookTokens` pattern):
+- `src/components/connectors/mcp-access-tokens.tsx` — `McpAccessTokens`: issue form (optional label + optional 1–365-day expiry) → reveal-once callout (raw bearer token + `mcp_url`, copy buttons, never shown again); token list with active / **expired** / revoked badge + created/last-used/expires + revoke; recent-tool-call audit section (tool, status-tinted, redaction count, latency, time). shadcn primitives only (Card/Input/Label/Button/Badge) + sonner toasts.
+- `src/lib/mcp/tokens-api.ts` — FE client wrappers (`issueMcpToken`/`listMcpTokens`/`revokeMcpToken`/`listMcpToolCalls`), fetch + safeError mirror of `jira/inbound-api.ts`.
+- **New read route** `GET /api/connectors/mcp/audit` (tenant-admin, RLS-gated) → 50 most recent `mcp_tool_calls` (no raw args — only the hashed digest is stored anyway). The token-mgmt routes already existed from α.
+- `connectors-page-client.tsx` mounts the panel; no other connector behavior changed.
+
+**Quality gates:** vitest **1866/1866** (+3 audit-route tests: 401/403/happy); lint 0; tsc 13 baseline/0 new; build clean (audit route registered). No new RPC → no live-RPC smoke required (read-only RLS select; auth gate test-covered). γ /qa (cross-tenant isolation, redaction coverage, rate-limit, revoked/expired-token, real MCP-client smoke, Playwright auth-gates) remains.
 
