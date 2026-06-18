@@ -1,6 +1,6 @@
 # PROJ-135: Dialogic Wizard Clarifying Questions (AI-Rückfragen vor der Generierung)
 
-## Status: Planned
+## Status: Architected
 **Created:** 2026-06-16
 **Last Updated:** 2026-06-18
 **Origin:** PROJ-90 "Next/Later" — promoted to its own spec (user-requested 2026-06-16)
@@ -40,6 +40,7 @@ The AI-bootstrap track (PROJ-86–91) can now generate a whole project from a ki
 - [ ] **AC-135.8**: **Cost-cap respected** — the clarifying purpose is gated by the existing per-purpose cost-cap mechanism (its own purpose row, NULL-purpose fallback), like the other AI purposes.
 - [ ] **AC-135.9** _(migration lockstep — CIA-mandated)_: The new purpose (`clarifying_questions_from_context`) is added to the `ki_runs.purpose` CHECK constraint **and** the `tenant_ai_cost_caps` purpose CHECK constraint **in the same migration**, re-enumerating the full set (including `sentiment` + `coaching`, which have repeatedly regressed out of these CHECKs — PROJ-34/PROJ-88). A missing enum value causes a live 5xx on the first call, so a regression-guard test asserts the purpose is accepted by both constraints.
 - [ ] **AC-135.10** _(finalize independence — CIA-mandated)_: `finalizeDraft` **never `await`s** the clarifying-question generation. The clarifying call is fired with a ~15–20s timeout (analog PROJ-70-γ) and fails open on provider error / no-Ollama / cost-cap; finalize completes regardless. The wizard step is the only place the user waits on the call, and that wait is bounded and skippable.
+- [ ] **AC-135.11** _(audit re-linking — CIA Q1, from Tech Design §3.1)_: Because the clarifying run is recorded **before** the project exists (`ki_runs.project_id` is null at generation time, bounded-nullable per Option 1), the run carries a `wizard_draft_id`; at finalize the run is **best-effort re-linked** to the new `project_id`. A project-less `ki_runs` row is readable only via the tenant-scoped audit policy and never leaks across tenants (`tenant_id` anchor + red-team smoke).
 
 ## Edge Cases
 - No kickoff uploaded → the clarifying step is not shown at all (manual wizard path unchanged).
@@ -88,7 +89,86 @@ The AI-bootstrap track (PROJ-86–91) can now generate a whole project from a ki
 <!-- Sections below are added by subsequent skills -->
 
 ## Tech Design (Solution Architect)
-_To be added by /architecture_
+**Designed:** 2026-06-18 · **Backend + Frontend** (no new npm dependency) · **CIA-reviewed** (the central audit fork — see §3.1)
+
+### Overview — what gets built
+A new AI "purpose" (`clarifying_questions_from_context`) that, inside the project-creation wizard, reads the uploaded kickoff document and proposes a short round of clarifying questions; the PM answers what they want; the answers are attached to the kickoff source so the later backlog/stakeholder/risk generation (PROJ-70/88/89) reads sharper input. It reuses the existing AI-router, classifier, cost-cap, and audit machinery — it adds **no** new proposal/review surface, **no** new business records, and **no** autonomous loop.
+
+This purpose is deliberately **unlike** the PROJ-70/88/89 "proposal" purposes. Those write reviewable `ki_suggestions` rows with an accept/undo workflow. This one writes its output as **text appended to the kickoff source** — behaving like the existing `narrative`/`sentiment`/`coaching` purposes (which also record an audit run but write to a non-suggestion sink). Consequence: **no `ki_suggestions` rows, no accept/undo RPC pair, no `ki_provenance`, no immutability-bypass** are needed. This is a much smaller backend than its siblings.
+
+### 1) Component structure (what the user sees)
+```
+Project-Creation Wizard
++-- basics            (existing — kickoff upload toggle lives here, PROJ-70-ε)
++-- type / method / followups   (existing — rule-based PROJ-6 questions, unchanged)
++-- ki_backlog        (existing optional step — kickoff upload, PROJ-70-ε)
++-- clarifying        (NEW optional step — appears only when a kickoff was uploaded)
+|   +-- "Generate questions" trigger (auto-fires on entering the step)
+|   +-- 0–6 question cards, each with:
+|   |     +-- the AI's question text (+ optional gap-tag / rationale)
+|   |     +-- a free-text answer field
+|   |     +-- a per-question "überspringen" affordance
+|   +-- step-level "Schritt überspringen" affordance
+|   +-- bounded wait (~15–20s) + fail-open states:
+|         "keine Rückfragen nötig" / "lokaler Provider erforderlich – übersprungen" / error
++-- review            (existing — finalize)
+```
+The step's **visibility** reuses the exact `ki_backlog` condition (a kickoff `context_source` was uploaded). Question text + the PM's answers live in the **wizard draft** (resumable, like every other wizard field). Nothing is generated unless the PM reaches/triggers the step.
+
+### 2) Data model (plain language — no business tables added)
+- **`context_sources` (existing, reused as the answer sink):** on finalize, a structured Q&A block is **appended to `content_excerpt`** with a stable delimiter, and the **full Q&A is mirrored into `source_metadata` for audit only**. `content_excerpt` has a hard **8000-character cap** — the append must always fit (see truncation rule, §3.2). The source's `privacy_class` is **re-stamped** at the same time (§3.3). `projects.description` (the Vorhaben) is never touched.
+- **`ki_runs` (existing audit table — one bounded change):** every clarifying generation is recorded as a `ki_run` (purpose, classification, provider, tokens, status) like every other AI call. Because generation happens in the wizard **before the project exists**, the run has no project to point at. We make `ki_runs.project_id` **nullable in a bounded way** — see §3.1. A new optional `wizard_draft_id` correlation column lets a project-less run be tied back to its draft (and best-effort back-filled to the real project at finalize).
+- **Purpose CHECK constraints:** `clarifying_questions_from_context` is added to **`ki_runs.purpose`** and **`tenant_ai_cost_caps.purpose`** — re-enumerating the *full current* list (incl. `sentiment` + `coaching`, which regressed out before — PROJ-88 incident). It is **deliberately NOT added to `ki_suggestions.purpose`** (no suggestions written); the migration's smoke-test asserts its *absence* there to prevent copy-paste drift from the PROJ-70 template.
+
+### 3) Tech decisions (the WHY)
+
+#### 3.1 The audit fork → **Option 1: bounded-nullable `ki_runs.project_id`** (CIA-recommended, GO-mit-Auflagen)
+The clarifying call fires in the wizard step *before* finalize, so no `projects` row exists yet — but AC-135.6 requires every AI call to be audited as a `ki_run`, and `ki_runs.project_id` is currently `NOT NULL`. CIA evaluated three options and recommended **Option 1**, because it is the only one that keeps **both** the audit-completeness invariant **and** the locked "wizard, before finalize" placement:
+- *Rejected — defer the run to finalize:* an abandoned wizard would leave a real provider call (tokens spent, Class-3 decision made) **unaudited** → breaks the "100% traceable" governance metric **and** opens a cost-cap-bypass / cost-DoS vector (caps are tenant+purpose-scoped and only count recorded runs).
+- *Rejected — generate after finalize:* contradicts the locked scope and the product premise (answers must sharpen the *subsequent* generation).
+
+**Mandatory Auflagen folded into this design (all six):**
+1. **Bounded CHECK, not a blanket drop:** `project_id` may be null **only** for `purpose = 'clarifying_questions_from_context'`; `NOT NULL` stays effectively enforced for all 8 other purposes.
+2. **Additive RLS, never replace:** the existing project-scoped read/insert policies on `ki_runs` are left untouched; **one additional** SELECT and INSERT policy each, gated on `project_id IS NULL AND is_tenant_member(tenant_id)` (the `tenant_id` anchor prevents cross-tenant leakage). A red-team smoke proves a project-less run from Tenant A is invisible to Tenant B.
+3. **Correlation anchor:** new optional `ki_runs.wizard_draft_id` (FK → `project_wizard_drafts`, `ON DELETE SET NULL`), set on the clarifying insert; best-effort back-filled to the real `project_id` at finalize (added as **AC-135.11** below, per CIA Q1).
+4. **Partial index** `(tenant_id, created_at) WHERE project_id IS NULL` for the tenant-level audit view.
+5. **Truncation rule** for the excerpt append (§3.2).
+6. **Class-3 re-stamp** after the append (§3.3).
+
+#### 3.2 Persistence = Option B-modified, with a deterministic truncation rule
+Answers are appended to `content_excerpt` (not parked in `source_metadata`-only) because the PROJ-70/88/89 collectors and the Class-3 classifier read **only** `content_excerpt` — `source_metadata` is invisible to both (intentional, to keep PII out of prompts). To respect the 8000-char cap: render the Q&A block first; if `excerpt + block` would exceed 8000, **head-truncate the original excerpt** (with a visible `[…excerpt gekürzt…]` marker) and **always keep the full Q&A block** — the PM's clarifications are the high-value signal and the original kickoff is redundant with the stored file.
+
+#### 3.3 Privacy: re-stamp on persist (DSGVO defense-in-depth)
+The Q&A block is free user text and may introduce personal data. On persist, `detectClass3Markers` (post-PROJ-86) runs over the **combined** excerpt and raises `privacy_class` to its floor via "greatest" (never downgrades). A Class-2 kickoff whose answers add PII becomes Class-3 **before** any downstream cloud generation reads it — closing the exact bypass the rejected `source_metadata`-only approach would have opened.
+
+#### 3.4 Classification & routing = standard path (not pinned)
+Mirrors PROJ-70/89 (`classify…AutoContext` with `context_source.privacy_class` as floor + marker-upgrade), **not** PROJ-88's hard Class-3 pin: a clean Class-1/2 kickoff may use the tenant's cloud provider; Class-3 clamps to Ollama-only via the resolver (no hard-pin — PROJ-93 forward-compat). If the source is Class-3 and the tenant has no local provider, the step shows "lokaler Provider erforderlich – übersprungen" and the wizard proceeds (fail-open).
+
+#### 3.5 Generation in the step, persistence at finalize (finalize never awaits AI)
+Generation is a new tenant-scoped endpoint the wizard calls **on entering the clarifying step**, taking the kickoff `context_source_id` (its `project_id` is still null) + the draft's Vorhaben text — bounded ~15–20s timeout, fail-open. **Finalize never calls the AI**; it only does cheap DB writes: attach `context_source.project_id` (existing PROJ-70-ε step), append the answered Q&A + re-stamp, and back-fill the run's `wizard_draft_id → project_id`.
+
+### 4) Dependencies
+None. Reuses the AI SDK + router + classifier + cost-cap stack already in `package.json`.
+
+### 5) Acceptance-criteria mapping
+- **AC-135.1** → new purpose + `invoke…` helper returning 0–6 questions to the caller (no `ki_suggestions` written).
+- **AC-135.2 / 3.4** → standard classifier + resolver clamp.
+- **AC-135.3 / §1** → new optional `clarifying` wizard step, per-question + step skip.
+- **AC-135.4 / §3.2** → append to `content_excerpt` + audit mirror + truncation rule.
+- **AC-135.4b / §3.3** → re-stamp `privacy_class` on persist.
+- **AC-135.6 / §3.1** → bounded-nullable `ki_runs` audit (Option 1) — every run recorded, even pre-project.
+- **AC-135.7 / §3.5** → fail-open, non-blocking step.
+- **AC-135.8** → cost-cap row for the new purpose (tenant+purpose-scoped; works for project-less runs).
+- **AC-135.9 / §2** → CHECK lockstep on `ki_runs` + `tenant_ai_cost_caps` (keep `sentiment`+`coaching`); assert absence on `ki_suggestions`.
+- **AC-135.10 / §3.5** → finalize never awaits the AI call.
+- **AC-135.11 (new, CIA Q1):** at finalize, the clarifying run's `wizard_draft_id` is best-effort resolved to the new `project_id` so project-less audit rows are re-linked.
+
+### 6) CIA review outcome (audit fork, 2026-06-18)
+**Verdict: GO — Option 1 with Auflagen 1–6** (all folded into §3.1–§3.3 above). Blast radius bounded to the `ki_runs` audit table + two *additive* RLS policies + one optional column + one partial index; no new dependency; multi-tenant invariant preserved via the `tenant_id` anchor. Follow-ups: **Q2** — retention/cleanup cron for project-less `clarifying` runs whose draft was abandoned (low prio, post-pilot → **PROJ-Y candidate**); **Q3** — full-text (not 8000-excerpt) Class-3 re-classification overlaps **PROJ-75** (kept as that slice; MVP re-stamps the combined excerpt only, consistent with PROJ-70-γ).
+
+### 7) Suggested build slices
+- **α (backend ~2 PT):** purpose + types + `classify…`/`collect…` + `invoke…` helper + generation endpoint + migration (bounded-nullable + CHECK lockstep + additive RLS + `wizard_draft_id` + partial index) + finalize persist (append/truncate/re-stamp/back-fill). Live-RPC/endpoint smoke required (per project convention).
+- **β (frontend ~1.5 PT):** the optional `clarifying` wizard step, question cards, per-question + step skip, bounded-wait + fail-open states, draft persistence.
 
 ## QA Test Results
 _To be added by /qa_
