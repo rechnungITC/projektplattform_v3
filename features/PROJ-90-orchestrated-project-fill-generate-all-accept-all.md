@@ -1,6 +1,6 @@
 # PROJ-90: Orchestrated "Fill the Project" — Multi-Tab Generate-All + Accept-All
 
-## Status: Approved
+## Status: Deployed
 **Created:** 2026-06-08
 **Last Updated:** 2026-06-15
 **Origin:** CIA portfolio review 2026-06-08 (vision: "Wizard befüllt das ganze Projekt")
@@ -182,4 +182,26 @@ Volle Chromium-E2E-Suite seriell: **107 passed / 5 skipped / 0 failed**.
 vitest 1841/1841 · lint 0 · tsc 13 Baseline/0 neu · build clean · Playwright PROJ-90-Spec chromium 2/2 · Voll-Suite chromium 107/107 (5 skips, 0 fail)
 
 ## Deployment
-_To be added by /deploy_
+
+**Status:** ✅ Deployed
+**Deployed:** 2026-06-15
+**Production URL:** https://projektplattform-v3.vercel.app
+**Git Tag:** v1.94.0-PROJ-90
+
+### Was ist live (alles auf `main`, Vercel auto-deploy)
+- **Architecture** (PR #141, `30eed30`): Tech Design (Conductor-Tab-Fork + Client-Fan-out-Fork).
+- **Frontend** (PR #143, `894b1e0`): `orchestration-tab.tsx` Conductor + 7. Drawer-Tab „Projekt befüllen" + `defaultTab="fill"` + Deep-Link-Parser `fill` + Wizard-Finalize-URL `backlog→fill`. Reine Frontend-Komposition.
+- **QA** (PR #147, `0645ca1`): Live-Beweise + `tests/PROJ-90-orchestration.spec.ts`.
+
+### Prod-Verify (2026-06-15)
+- Vercel-Prod-Deployment `dpl_8gBEKvAmnoB3LCVYNcmnuCsca8nz` für Merge-Commit `0645ca1` **READY** (target=production); nachfolgender Docs-Deploy `d4c8bb7` (READY) enthält den Conductor ebenfalls.
+- Post-Deploy-Smoke: `/` 307, `/projects` 307, `/api/projects/{id}/ai/risk-proposals` 307 — Auth-Gates intakt.
+- **Kein DB-Change** — PROJ-90 fügt keine Migration/RPC/Tabelle hinzu (komponiert die deployten PROJ-70/88/89-Endpoints clientseitig). Funktionsbeweis bereits im QA-Pass erbracht (orchestrierte Sequenz live: Backlog+Risiken Cloud-success, Stakeholder external_blocked; Accept-All- + Single-Undo-Fan-out).
+
+### Track-Closure
+PROJ-90 schließt den **„Wizard befüllt das ganze Projekt"-Vision-Track (PROJ-86–91)** ab: Class-3-Klassifizierer-Fix (86), Drawer-Surfacing (87), Stakeholder- (88), Risiko- (89), Grounding (91) und nun die orchestrierte Generate-All/Accept-All-Klammer (90) sind alle deployed.
+
+### Offen (kein Blocker)
+- **D-1** (analog PROJ-88/89): Stakeholder-Ollama-Happy-Path nachholen, sobald der Hostinger-Endpoint wieder erreichbar ist; der `external_blocked`-Pfad ist live als Class-3-Isolations-Beweis dokumentiert.
+- **Cross-Modul-Atomic-Accept/Undo-RPC** (Fork-Option B) — nur falls Pilot-Feedback die Best-Effort-Teil-Undo-Semantik als verwirrend zeigt.
+- **Dialogische Wizard-Rückfragen** (Spec „Next/Later") — eigener Spec falls verfolgt.
