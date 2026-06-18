@@ -17,6 +17,7 @@ import type { DataClass } from "./types"
 
 const REGISTRY: Record<string, DataClass> = {
   // -------------------- projects ----------------------------------------
+  "projects.id": 1, // structural id — emitted by PROJ-48 MCP project.lookup/status
   "projects.name": 2,
   "projects.description": 2,
   "projects.project_number": 1,
@@ -29,6 +30,7 @@ const REGISTRY: Record<string, DataClass> = {
   "projects.type_specific_data": 2,
 
   // -------------------- phases ------------------------------------------
+  "phases.id": 1, // structural id — emitted by PROJ-48 MCP project.status
   "phases.name": 1,
   "phases.description": 2,
   "phases.planned_start": 2,
@@ -37,6 +39,7 @@ const REGISTRY: Record<string, DataClass> = {
   "phases.sequence_number": 1,
 
   // -------------------- milestones --------------------------------------
+  "milestones.id": 1, // structural id — emitted by PROJ-48 MCP project.status
   "milestones.name": 1,
   "milestones.description": 2,
   "milestones.target_date": 2,
@@ -44,6 +47,9 @@ const REGISTRY: Record<string, DataClass> = {
   "milestones.status": 1,
 
   // -------------------- work_items --------------------------------------
+  "work_items.id": 1, // structural id — emitted by PROJ-48 MCP work_item.lookup
+  "work_items.parent_id": 1, // structural parent ref — hierarchy, non-personal
+  "work_items.wbs_code": 1, // structural WBS code — non-personal
   "work_items.title": 2,
   "work_items.description": 2,
   "work_items.status": 1,
@@ -51,6 +57,19 @@ const REGISTRY: Record<string, DataClass> = {
   "work_items.kind": 1,
   "work_items.story_points": 1,
   "work_items.responsible_user_id": 3,
+
+  // -------------------- report_snapshots (PROJ-21; PROJ-48 metadata) ----
+  // Only non-personal snapshot metadata is registered. `content` (jsonb body),
+  // `generated_by` (user id) and `pdf_storage_key` are intentionally omitted
+  // → default class 3 → never emitted by the MCP report.snapshot tool.
+  "report_snapshots.id": 1,
+  "report_snapshots.project_id": 1,
+  "report_snapshots.kind": 1,
+  "report_snapshots.version": 1,
+  "report_snapshots.generated_at": 1,
+  "report_snapshots.pdf_status": 1,
+  "report_snapshots.ki_provider": 1,
+  "report_snapshots.ki_summary_classification": 1,
 
   // -------------------- risks (no personal data by design) --------------
   "risks.title": 2,
