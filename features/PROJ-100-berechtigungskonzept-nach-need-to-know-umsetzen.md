@@ -14,7 +14,7 @@ summary_for_jira: "[B4] Berechtigungskonzept nach Need-to-know umsetzen"
 
 # PROJ-100: Berechtigungskonzept nach Need-to-know umsetzen
 
-## Status: In Review (100a backend gebaut 2026-06-16; QA-Pentest 2026-06-18: alle 6 SEC-Vektoren PASS, ABER 1 HIGH-Bug H-1 blockiert Approval — grant/revoke-RPC scheitert in Prod am Audit-Constraint). 100b deferred.
+## Status: Approved (100a backend gebaut 2026-06-16; QA-Pentest 2026-06-18: alle 6 SEC-Vektoren PASS; H-1 HIGH 2026-06-18 gefixt via Migration 20260618100000 + live re-verify grant/revoke/AC3-Audit → production-ready). 100b deferred.
 **Created:** 2026-06-10
 
 ## Implementation Notes — 100a backend (2026-06-16)
@@ -203,7 +203,7 @@ Für künftige Slices liefert 100a ein **dokumentiertes Rezept** „So macht man
 
 ### Bugs
 
-#### 🔴 H-1 (HIGH) — grant/revoke-RPC in Prod funktionsunfähig: Audit-Entity-Type nicht im CHECK-Constraint
+#### ✅ H-1 (HIGH) — GEFIXT 2026-06-18 — grant/revoke-RPC war in Prod funktionsunfähig: Audit-Entity-Type nicht im CHECK-Constraint
 
 - **Reproduktion:** Als befugter Admin/Lead `select grant_confidentiality_clearance(<project>, <user>, 'confidential');`
 - **Ist:** `ERROR 23514: new row for relation "audit_log_entries" violates check constraint "audit_log_entity_type_check"` — der RPC bricht beim Audit-INSERT (`entity_type = 'ma_confidentiality_clearances'`) ab und rollt die komplette Vergabe zurück.
@@ -211,12 +211,13 @@ Für künftige Slices liefert 100a ein **dokumentiertes Rezept** „So macht man
 - **Impact:** Über die unterstützte API/RPC kann **keine** Clearance vergeben oder entzogen werden. Folge: die Inner-Circle-Tabelle bleibt leer → **nur Tenant-Admins** (via Bypass) sehen je klassifizierte Objekte; **kein non-admin kann je freigeschaltet werden**. Das Kern-Feature (Need-to-Know-Freischaltung) ist in Prod nicht nutzbar. AC3 (Audit jeder Vergabe/Entzug) ist damit ebenfalls nicht erfüllt.
 - **Sicherheits-Einordnung:** Kein Leak — das System **fail-closed** (über-restriktiv). Daher HIGH (Funktion + DoD-AC3 gebrochen), nicht Critical.
 - **Warum vom Backend-Live-Smoke verfehlt:** der Smoke testete nur den **Block**-Pfad (self-grant → `42501`, geworfen in Zeile 13 **vor** dem Audit-INSERT in Zeile 33) und Read-/default-deny-Pfade. Ein **autorisierter erfolgreicher Grant** — der einzige Pfad, der den Audit-INSERT erreicht — wurde nie ausgeführt. Die geseedete Clearance dieses Pentests umging die RPC (direkter INSERT als `postgres`) und traf den Constraint daher ebenfalls nicht.
-- **Fix (→ `/backend`):** `audit_log_entity_type_check` um `'ma_confidentiality_clearances'` erweitern (eigene Mini-Migration; `ALTER TABLE audit_log_entries DROP CONSTRAINT … ; ADD CONSTRAINT … CHECK (entity_type = ANY(ARRAY[… , 'ma_confidentiality_clearances']))`). Danach grant/revoke + AC3-Audit live re-verifizieren (autorisierter Grant → Audit-Zeile vorhanden; Revoke → zweite Audit-Zeile).
-- **Folge-AC:** AC3 (Audit) bleibt **unbewiesen**, bis H-1 gefixt ist — der Audit-INSERT konnte nie erfolgreich laufen.
+- **Fix (`/backend`, 2026-06-18):** Migration `20260618100000_proj100a_fix_audit_entity_type.sql` — `audit_log_entity_type_check` gedroppt und mit `'ma_confidentiality_clearances'` (44 → 45 Werte) neu angelegt; in Prod-DB angewendet.
+- **Live-Re-Verify (Pflicht-RPC-Smoke gegen Prod, 0 Residue):** autorisierter `grant` (Admin) → Clearance angelegt + **1 Audit-Zeile** (`max_level`: null→confidential, mit `change_reason`); `revoke` → Clearance gelöscht + **2. Audit-Zeile** (revoked→null). Constraint enthält den neuen Typ verifiziert. ✅
+- **Folge-AC:** AC3 (Audit jeder Vergabe/Entzug) ist mit dem Fix **erfüllt** — beide Events landen field-level in `audit_log_entries`.
 
-### Produktionsreife-Empfehlung: ❌ NOT READY
+### Produktionsreife-Empfehlung: ✅ READY (nach H-1-Fix)
 
-Die RLS-Durchsetzung (das eigentliche „Tor") ist **wasserdicht** — alle 6 Angriffsvektoren + Edges bestanden. Aber **H-1 (HIGH)** macht den Vergabe-/Entzugs-Mechanismus in Prod unbenutzbar und lässt AC3 (Audit) unbewiesen. **Status bleibt In Review.** Nach dem `/backend`-Fix für H-1 (+ Live-Re-Verify grant/revoke/Audit) ist 100a production-ready.
+Die RLS-Durchsetzung (das eigentliche „Tor") ist **wasserdicht** — alle 6 Angriffsvektoren + Edges bestanden. Der einzige Blocker **H-1 (HIGH)** wurde am 2026-06-18 gefixt (Migration `20260618100000`) und live re-verifiziert: grant/revoke + AC3-Audit funktionieren. **Keine Critical/High offen → Status Approved.** (AC2/4/5 bleiben planmäßig auf 100b verschoben.)
 
 ### Reproduzierbares Pentest-Skript
 
