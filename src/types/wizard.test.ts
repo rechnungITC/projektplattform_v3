@@ -28,12 +28,35 @@ describe("visibleWizardSteps — AC-ε1 conditional step", () => {
 
   it("preserves the canonical order of the other steps in both modes", () => {
     for (const enabled of [true, false]) {
-      const steps = visibleWizardSteps(enabled)
+      // kickoffUploaded=true so the clarifying step is present and order is
+      // checked against the full catalog minus the ki_backlog toggle.
+      const steps = visibleWizardSteps(enabled, true)
       const withoutKi = steps.filter((s) => s !== "ki_backlog")
       expect(withoutKi).toEqual(
         WIZARD_STEPS.filter((s) => s !== "ki_backlog"),
       )
     }
+  })
+})
+
+describe("visibleWizardSteps — PROJ-135 clarifying step (AC-135.3)", () => {
+  it("omits clarifying when no kickoff was uploaded", () => {
+    expect(visibleWizardSteps(true, false)).not.toContain("clarifying")
+    expect(visibleWizardSteps(false, false)).not.toContain("clarifying")
+  })
+
+  it("includes clarifying (after ki_backlog, before review) once a kickoff is uploaded", () => {
+    const steps = visibleWizardSteps(true, true)
+    expect(steps).toContain("clarifying")
+    expect(steps.indexOf("clarifying")).toBe(steps.indexOf("ki_backlog") + 1)
+    expect(steps.indexOf("clarifying")).toBe(steps.indexOf("review") - 1)
+  })
+
+  it("can show clarifying even if the ki_backlog toggle filter is off but a source exists", () => {
+    // Defensive: kickoffUploaded drives clarifying independently of the toggle.
+    const steps = visibleWizardSteps(false, true)
+    expect(steps).toContain("clarifying")
+    expect(steps).not.toContain("ki_backlog")
   })
 })
 

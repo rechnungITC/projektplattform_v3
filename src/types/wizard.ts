@@ -16,6 +16,7 @@ export const WIZARD_STEPS = [
   "method",
   "followups",
   "ki_backlog",
+  "clarifying",
   "review",
 ] as const
 
@@ -27,19 +28,26 @@ export const WIZARD_STEP_LABELS: Record<WizardStep, string> = {
   method: "Methode",
   followups: "Detail-Fragen",
   ki_backlog: "KI-Backlog",
+  clarifying: "Rückfragen",
   review: "Review",
 }
 
 /**
- * PROJ-70-ε — `ki_backlog` is an OPTIONAL step. It only appears in the
- * wizard flow when the user enabled the toggle on the basics step. Use
- * `visibleWizardSteps()` to get the active flow; the full `WIZARD_STEPS`
- * catalog still drives the stepper/labels for both cases.
+ * PROJ-70-ε — `ki_backlog` is an OPTIONAL step (toggle on the basics step).
+ * PROJ-135 — `clarifying` is an OPTIONAL step that only appears once a kickoff
+ * artefact has actually been UPLOADED (a `context_source_id` exists). Both are
+ * filtered out of the active flow otherwise; the full `WIZARD_STEPS` catalog
+ * still drives the stepper/labels.
  */
-export function visibleWizardSteps(kiBacklogEnabled: boolean): WizardStep[] {
-  return WIZARD_STEPS.filter(
-    (s) => s !== "ki_backlog" || kiBacklogEnabled,
-  )
+export function visibleWizardSteps(
+  kiBacklogEnabled: boolean,
+  kickoffUploaded = false,
+): WizardStep[] {
+  return WIZARD_STEPS.filter((s) => {
+    if (s === "ki_backlog") return kiBacklogEnabled
+    if (s === "clarifying") return kickoffUploaded
+    return true
+  })
 }
 
 /**
@@ -93,8 +101,28 @@ export interface ClarifyingAnswer {
   gap_tag?: string | null
 }
 
+/** PROJ-135 — a generated clarifying question (persisted for render/resume). */
+export interface ClarifyingQuestionItem {
+  question: string
+  rationale: string | null
+  gap_tag: string | null
+}
+
+/** Last generation outcome — drives the step's fail-open render states. */
+export type ClarifyingStatus =
+  | "idle"
+  | "ready"
+  | "empty"
+  | "blocked"
+  | "error"
+
 export interface ClarifyingData {
+  /** Generated questions (persisted so navigating back doesn't re-generate). */
+  questions?: ClarifyingQuestionItem[]
+  /** Answered (non-skipped, non-empty) Q&A — the ONLY field finalize reads. */
   answers: ClarifyingAnswer[]
+  /** Last generation outcome for render (not read by finalize). */
+  status?: ClarifyingStatus
 }
 
 export function emptyKiBacklogData(): KiBacklogData {

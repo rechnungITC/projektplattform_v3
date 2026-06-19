@@ -193,6 +193,23 @@ Built per the approved Tech Design. **No `ki_suggestions`, no accept/undo RPC, n
 
 **Deferred to β (frontend):** the optional `clarifying` wizard step (question cards, per-question + step skip, bounded-wait + fail-open states, draft persistence) and AC-135.3/5/7-UI. AC-135.10/11 live-E2E → /qa.
 
+### Slice β — frontend (2026-06-19, In Progress)
+The optional `clarifying` wizard step, wired to the slice-α endpoint + the `clarifying` draft block.
+
+> Note: an initial β build was lost when the `/tmp` worktree was removed during a parallel-session collision (uncommitted). It was re-created verbatim from context on the `proj-135/requirements` branch (which carries backend α); no behavioural change.
+
+**Files:**
+- `src/types/wizard.ts` — added `clarifying` to `WIZARD_STEPS` (after `ki_backlog`, before `review`) + label "Rückfragen"; `visibleWizardSteps(kiBacklogEnabled, kickoffUploaded)` now gates the step on a kickoff actually being **uploaded** (`context_source_id` present — AC-135.3); extended `ClarifyingData` with `questions` + `status` (persisted for resume) alongside the finalize-read `answers`; new `ClarifyingQuestionItem`/`ClarifyingStatus` types.
+- `src/lib/ai-proposals/clarifying-questions-api.ts` — `generateClarifyingQuestions(draftId, count)` with a **~20s `AbortController` bounded wait** (AC-135.10); maps abort → an actionable "Zeitüberschreitung" message; callers fail open.
+- `src/components/projects/wizard/step-clarifying.tsx` — the step: auto-generates once on entering (one-shot effect, PROJ-70-ε `eslint-disable` pattern), renders question cards (gap-tag badge + question + rationale + answer `Textarea` + per-question **Überspringen/Einbeziehen** toggle), a step-level **"Alle überspringen"** + **"Neu generieren"**, and the four fail-open render states (loading / empty "keine Rückfragen nötig" / blocked "lokaler Provider erforderlich – übersprungen" / error + retry). Answers + generated questions sync into the draft `clarifying` block (resume-safe; finalize reads `answers`).
+- `src/components/projects/wizard/wizard-client.tsx` — `clarifying` schema block (optional passthrough), `kickoffUploaded` watch → `visibleWizardSteps`, `validateStep` case (always-skippable), render branch passing the live `draftIdState`.
+
+**AC coverage:** AC-135.3 (conditional step + per-question/step skip), AC-135.5 (answers persisted to the draft → finalize → downstream context), AC-135.7 (fail-open states, never blocks Weiter), AC-135.10 (client 20s bounded wait). AC-135.1/2/6/8/9/4/4b/11 are backend (slice α).
+
+**Quality gates:** lint 0; tsc 13 baseline / **0 new**; vitest **1860/1860** (+3 PROJ-135 step-visibility tests in `wizard.test.ts`); build clean (11.3s, step + route registered).
+
+**Deferred to /qa:** live-E2E Playwright (step appears only after upload; auto-generate; answer → finalize → Q&A appended to `content_excerpt`; AC-135.10/11 live).
+
 ## QA Test Results
 _To be added by /qa_
 
