@@ -13,6 +13,7 @@
 
 import { classifyField } from "./data-privacy-registry"
 import type {
+  ClarifyingQuestionsAutoContext,
   CoachingAutoContext,
   CrossProjectLinksAutoContext,
   DataClass,
@@ -663,6 +664,40 @@ export function classifyProposalFromContextAutoContext(
  */
 export function classifyRiskProposalsAutoContext(
   ctx: RiskProposalsAutoContext,
+  tenantDefault: DataClass = 3,
+): DataClass {
+  // Floor: the privacy_class stamped at upload time.
+  let max: DataClass = ctx.context_source.privacy_class
+
+  if (
+    max < 3 &&
+    (detectClass3Markers(ctx.context_source.content_excerpt) ||
+      detectClass3Markers(ctx.source_project.description ?? ""))
+  ) {
+    max = 3
+  }
+
+  // Per-tenant floor — mirrors Narrative classifier semantics.
+  if (tenantDefault === 3 && max < 2) {
+    return max
+  }
+  return max
+}
+
+/**
+ * PROJ-135 — classifier for the dialogic wizard clarifying-questions
+ * purpose.
+ *
+ * Identical content-based logic to `classifyRiskProposalsAutoContext`
+ * (PROJ-70/89 pattern), NOT a Class-3 pin: a clean business kickoff stays
+ * Class-2 and may use the tenant's cloud provider; PII markers in the
+ * excerpt OR the Vorhaben — or an upload-stamped Class-3 source — force
+ * Class-3, which the resolver clamps to local providers. The Vorhaben is
+ * classified alongside the excerpt because it is sent to the provider as
+ * grounding (PROJ-91 defense-in-depth).
+ */
+export function classifyClarifyingQuestionsAutoContext(
+  ctx: ClarifyingQuestionsAutoContext,
   tenantDefault: DataClass = 3,
 ): DataClass {
   // Floor: the privacy_class stamped at upload time.

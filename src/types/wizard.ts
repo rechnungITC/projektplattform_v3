@@ -71,12 +71,30 @@ export interface WizardData {
   // The whole block lives in the draft's `.passthrough()` JSON payload —
   // no DB schema change.
   ki_backlog: KiBacklogData
+
+  // PROJ-135 — optional dialogic clarifying-questions answers. Populated by
+  // the (β) `clarifying` wizard step; on finalize the answered Q&A is appended
+  // to the kickoff context_source's content_excerpt. Lives in the draft's
+  // passthrough JSON — no DB schema change. Optional: absent for the manual
+  // (no-kickoff) path and for pre-PROJ-135 drafts.
+  clarifying?: ClarifyingData
 }
 
 export interface KiBacklogData {
   enabled: boolean
   context_source_id: string | null
   filename: string | null
+}
+
+/** PROJ-135 — one answered clarifying question. Skipped questions are omitted. */
+export interface ClarifyingAnswer {
+  question: string
+  answer: string
+  gap_tag?: string | null
+}
+
+export interface ClarifyingData {
+  answers: ClarifyingAnswer[]
 }
 
 export function emptyKiBacklogData(): KiBacklogData {

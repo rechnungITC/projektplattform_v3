@@ -23,6 +23,7 @@
 import type { SupabaseClient } from "@supabase/supabase-js"
 
 import type {
+  ClarifyingQuestionsAutoContext,
   CrossProjectLinkExistingLink,
   CrossProjectLinkProjectRef,
   CrossProjectLinkWorkItemRef,
@@ -1340,5 +1341,68 @@ export async function collectRiskProposalsAutoContext(
       impact: r.impact,
       status: r.status,
     })),
+  }
+}
+
+/**
+ * PROJ-135 — auto-context for the dialogic wizard clarifying-questions
+ * purpose.
+ *
+ * UNLIKE the sibling collectors this runs PRE-finalize, when no `projects`
+ * row exists yet. It therefore:
+ *   - reads ONLY the kickoff `context_sources` row (by id; RLS scopes it to
+ *     the tenant — the row's `project_id` is still null during the wizard),
+ *   - takes the project frame from the wizard DRAFT (`draftFrame`), not a
+ *     `projects` row. The Vorhaben (`description`) is passed through as
+ *     grounding + relevance yardstick, never modified (PROJ-91).
+ *
+ * Same Class-1/2 allowlist as the other context collectors —
+ * `source_metadata` is never read (it can carry Class-3 markers the model
+ * doesn't need).
+ */
+export async function collectClarifyingQuestionsAutoContext(
+  supabase: SupabaseClient,
+  contextSourceId: string,
+  draftFrame: {
+    name: string
+    description: string | null
+    project_type: string | null
+    project_method: string | null
+  },
+): Promise<ClarifyingQuestionsAutoContext> {
+  const { data, error } = await supabase
+    .from("context_sources")
+    .select("id, kind, title, privacy_class, content_excerpt, language, project_id")
+    .eq("id", contextSourceId)
+    .maybeSingle()
+
+  if (error) throw new Error(`context_sources: ${error.message}`)
+  if (!data) throw new Error("Context source not found.")
+
+  const cs = data as {
+    id: string
+    kind: string
+    title: string
+    privacy_class: number
+    content_excerpt: string | null
+    language: string | null
+    project_id: string | null
+  }
+
+  return {
+    source_project: {
+      name: draftFrame.name,
+      description: draftFrame.description,
+      project_type: draftFrame.project_type,
+      project_method: draftFrame.project_method,
+    },
+    context_source: {
+      context_source_id: cs.id,
+      kind: cs.kind,
+      title: cs.title,
+      privacy_class: (cs.privacy_class as 1 | 2 | 3) ?? 3,
+      content_excerpt: cs.content_excerpt ?? "",
+      language: cs.language,
+    },
   }
 }

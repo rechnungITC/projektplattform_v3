@@ -29,6 +29,7 @@ import type {
 } from "@/types/tenant-settings"
 
 import {
+  classifyClarifyingQuestionsAutoContext,
   classifyCoachingAutoContext,
   classifyCrossProjectLinksAutoContext,
   classifyNarrativeAutoContext,
@@ -51,6 +52,8 @@ import type { AIProvider } from "./providers/types"
 import type {
   AIProviderName,
   AIPurpose,
+  ClarifyingQuestion,
+  ClarifyingQuestionsAutoContext,
   CoachingAutoContext,
   CoachingRecommendation,
   CrossProjectLinkSuggestion,
@@ -64,6 +67,7 @@ import type {
   RiskProposalsAutoContext,
   RiskProposalSuggestion,
   RiskSuggestion,
+  RouterClarifyingQuestionsResult,
   RouterCoachingResult,
   RouterCrossProjectLinksResult,
   RouterNarrativeResult,
@@ -265,16 +269,24 @@ async function applyCostCap(
   }
 }
 
-/** Shared helper: insert a `ki_runs` row up-front (PROJ-12 + PROJ-30). */
+/**
+ * Shared helper: insert a `ki_runs` row up-front (PROJ-12 + PROJ-30).
+ *
+ * PROJ-135: `projectId` may be null for the `clarifying_questions_from_context`
+ * purpose, which runs in the wizard before the project exists. The DB enforces
+ * (bounded CHECK) that null is only accepted for that purpose; `wizardDraftId`
+ * carries the correlation so finalize can re-link the run to the new project.
+ */
 async function insertKiRun(
   supabase: SupabaseClient,
   args: {
     tenantId: string
-    projectId: string
+    projectId: string | null
     actorUserId: string
     purpose: AIPurpose
     classification: DataClass
     provider: AIProvider
+    wizardDraftId?: string | null
   },
 ): Promise<string> {
   const { data, error } = await supabase
@@ -288,6 +300,7 @@ async function insertKiRun(
       provider: args.provider.name,
       model_id: args.provider.modelId,
       status: "success", // optimistic; updated on error path
+      wizard_draft_id: args.wizardDraftId ?? null,
     })
     .select("id")
     .single()
@@ -1926,6 +1939,144 @@ export async function invokeRiskProposalsGeneration({
     model_id: activeProvider.modelId,
     status: finalStatus,
     suggestion_ids: suggestionIds,
+    external_blocked: externalBlocked || providerFallbackMessage !== null,
+    error_message: finalErrorMessage ?? undefined,
+  }
+}
+
+// ---------------------------------------------------------------------------
+// PROJ-135 — clarifying-questions router
+// ---------------------------------------------------------------------------
+
+interface InvokeClarifyingQuestionsGenerationArgs {
+  supabase: SupabaseClient
+  tenantId: string
+  /** The wizard draft id — used as the ki_runs correlation anchor; there is
+   *  NO project yet (the run is recorded with project_id = null). */
+  wizardDraftId: string
+  actorUserId: string
+  context: ClarifyingQuestionsAutoContext
+  /** Soft target count (1-6); the provider may emit fewer. */
+  count: number
+}
+
+/**
+ * PROJ-135 — generate clarifying questions for the wizard, BEFORE finalize.
+ *
+ * Mirrors `invokeNarrativeGeneration`:
+ *   - calls `provider.generateClarifyingQuestions`
+ *   - NEVER writes to `ki_suggestions` (the questions are transient; the
+ *     answered Q&A is appended to the kickoff's content_excerpt at finalize)
+ *   - on provider error: falls back to the Stub's empty list so the wizard
+ *     step is fail-open (never a 5xx, never blocks finalize — AC-135.7/10)
+ *
+ * Classification is CONTENT-BASED (AC-135.2): a clean Class-2 kickoff uses
+ * the tenant cloud provider; PII markers or a stamped Class-3 source clamp
+ * to local providers via the resolver. The run is recorded with a null
+ * `project_id` (bounded to this purpose) + `wizard_draft_id` correlation.
+ */
+export async function invokeClarifyingQuestionsGeneration({
+  supabase,
+  tenantId,
+  wizardDraftId,
+  actorUserId,
+  context,
+  count,
+}: InvokeClarifyingQuestionsGenerationArgs): Promise<RouterClarifyingQuestionsResult> {
+  const overrides = await loadTenantOverrides(supabase, tenantId)
+  const classification = classifyClarifyingQuestionsAutoContext(
+    context,
+    overrides.privacyDefault as DataClass,
+  )
+  const choice = await selectProviderForPurpose(
+    supabase,
+    tenantId,
+    "clarifying_questions_from_context",
+    classification,
+    overrides.providerConfig,
+  )
+  const { provider, externalBlocked, blockedReason } = await applyCostCap(
+    supabase,
+    tenantId,
+    choice,
+    "clarifying_questions_from_context",
+  )
+
+  const runId = await insertKiRun(supabase, {
+    tenantId,
+    projectId: null,
+    actorUserId,
+    purpose: "clarifying_questions_from_context",
+    classification,
+    provider,
+    wizardDraftId,
+  })
+
+  let activeProvider: AIProvider = provider
+  let questions: ClarifyingQuestion[] = []
+  let inputTokens: number | null = null
+  let outputTokens: number | null = null
+  let latencyMs: number | null = null
+  let providerError: string | null = null
+  let providerFallbackMessage: string | null = null
+
+  try {
+    if (!provider.generateClarifyingQuestions) {
+      throw new Error(
+        `Provider ${provider.name} does not implement generateClarifyingQuestions`,
+      )
+    }
+    const result = await provider.generateClarifyingQuestions({ context, count })
+    questions = result.questions
+    inputTokens = result.usage.input_tokens
+    outputTokens = result.usage.output_tokens
+    latencyMs = result.usage.latency_ms
+  } catch (err) {
+    providerError = err instanceof Error ? err.message : String(err)
+    if (provider.name !== "stub") {
+      // Fall back to the Stub's empty list so the wizard step never 5xx's.
+      const fallbackProvider = new StubProvider()
+      const fallback = await fallbackProvider.generateClarifyingQuestions!({
+        context,
+        count,
+      })
+      providerFallbackMessage = `Provider ${provider.name} failed (${providerError}); fell back to Stub.`
+      activeProvider = fallbackProvider
+      questions = fallback.questions
+      inputTokens = fallback.usage.input_tokens
+      outputTokens = fallback.usage.output_tokens
+      latencyMs = fallback.usage.latency_ms
+      providerError = null
+    }
+  }
+
+  let finalStatus: "success" | "error" | "external_blocked"
+  if (providerError) {
+    finalStatus = "error"
+  } else if (externalBlocked || providerFallbackMessage) {
+    finalStatus = "external_blocked"
+  } else {
+    finalStatus = "success"
+  }
+
+  const finalErrorMessage =
+    providerError ?? providerFallbackMessage ?? blockedReason ?? null
+  await updateKiRunStatus(supabase, runId, {
+    status: finalStatus,
+    inputTokens,
+    outputTokens,
+    latencyMs,
+    errorMessage: finalErrorMessage,
+    provider: activeProvider,
+  })
+
+  return {
+    run_id: runId,
+    classification,
+    provider: activeProvider.name as AIProviderName,
+    model_id: activeProvider.modelId,
+    status: finalStatus,
+    questions,
     external_blocked: externalBlocked || providerFallbackMessage !== null,
     error_message: finalErrorMessage ?? undefined,
   }

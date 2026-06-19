@@ -1,8 +1,8 @@
 # PROJ-135: Dialogic Wizard Clarifying Questions (AI-Rückfragen vor der Generierung)
 
-## Status: Architected
+## Status: In Progress
 **Created:** 2026-06-16
-**Last Updated:** 2026-06-18
+**Last Updated:** 2026-06-19
 **Origin:** PROJ-90 "Next/Later" — promoted to its own spec (user-requested 2026-06-16)
 **Priority:** P1 — sharpens the PROJ-86–91 AI-bootstrap output
 **CIA review:** GO-mit-Auflagen (2026-06-16, obs 8167) — persistence approach **Option B-modified** locked (see CIA Architecture Review section)
@@ -169,6 +169,29 @@ None. Reuses the AI SDK + router + classifier + cost-cap stack already in `packa
 ### 7) Suggested build slices
 - **α (backend ~2 PT):** purpose + types + `classify…`/`collect…` + `invoke…` helper + generation endpoint + migration (bounded-nullable + CHECK lockstep + additive RLS + `wizard_draft_id` + partial index) + finalize persist (append/truncate/re-stamp/back-fill). Live-RPC/endpoint smoke required (per project convention).
 - **β (frontend ~1.5 PT):** the optional `clarifying` wizard step, question cards, per-question + step skip, bounded-wait + fail-open states, draft persistence.
+
+## Implementation Notes
+
+### Slice α — backend (2026-06-19, In Progress)
+Built per the approved Tech Design. **No `ki_suggestions`, no accept/undo RPC, no provenance** — this purpose writes its output to `content_excerpt`, like `narrative`/`sentiment`/`coaching`.
+
+**Files:**
+- `src/lib/ai/types.ts` — new `AIPurpose` `clarifying_questions_from_context`; `ClarifyingQuestionsAutoContext` (pre-project shape: frame from the draft, not a `projects` row), `ClarifyingQuestion` (`question`/`rationale`/`gap_tag`), `ClarifyingQuestionsGenerationOutput`, `RouterClarifyingQuestionsResult`.
+- `src/lib/ai/classify.ts` — `classifyClarifyingQuestionsAutoContext` (content-based, mirror of PROJ-89: `privacy_class` floor + marker upgrade on excerpt **and** Vorhaben; PROJ-86 regression-guarded by the existing `detectClass3Markers`).
+- `src/lib/ai/auto-context.ts` — `collectClarifyingQuestionsAutoContext(supabase, contextSourceId, draftFrame)`: reads ONLY the kickoff `context_source` (pre-project, `project_id` still null); the Vorhaben/type/method come from the draft. `source_metadata` never read.
+- `src/lib/ai/providers/graph-purpose-prompts.ts` — shared `ClarifyingQuestionsResponseSchema` + `CLARIFYING_QUESTIONS_SYSTEM_PROMPT` + `buildClarifyingQuestionsPrompt` + `mapClarifyingQuestions` (clamps lengths).
+- All 5 providers implement `generateClarifyingQuestions` (Anthropic/OpenAI/Google strict via the shared schema; Ollama loose-replica `ClarifyingQuestionsResponseSchemaOllama` + shared prompt/mapper; Stub returns `[]`).
+- `src/lib/ai/router.ts` — `insertKiRun` widened to `projectId: string | null` + `wizardDraftId?`; `invokeClarifyingQuestionsGeneration` (mirror of `invokeNarrativeGeneration`: single `ki_run`, no suggestions, Stub fail-open).
+- `src/app/api/wizard-drafts/[id]/clarifying-questions/route.ts` — **draft-scoped** POST (no project yet); the `contextSourceId` is read from the draft (not the body); fail-open empty list when no kickoff/blocked.
+- `src/app/api/wizard-drafts/[id]/finalize/route.ts` — appends answered Q&A to `content_excerpt` within the 8000 cap, re-stamps `privacy_class` (AC-135.4b), mirrors full Q&A to `source_metadata`, and best-effort re-links the project-less clarifying `ki_run` → new project (AC-135.11). Helpers extracted to `src/lib/context-ingestion/clarifying-qa.ts`.
+- Migration `20260619100000_proj135_clarifying_questions_purpose.sql` — Option 1 audit fork: `ki_runs.project_id` bounded-nullable (partial CHECK → NULL only for this purpose) + `wizard_draft_id` FK + partial index + purpose CHECK lockstep on `ki_runs` **and** `tenant_ai_cost_caps` (keeps `sentiment`+`coaching`) + **3 additive tenant-scoped RLS policies** + 7 embedded smoke checks (incl. asserting `ki_suggestions_purpose_check` does NOT contain the purpose).
+- `src/types/wizard.ts` — optional `clarifying` draft block (`ClarifyingData`) as the β contract.
+
+**Quality gates:** lint 0 errors; tsc 13 baseline / **0 new**; vitest **1857/1857** (+27: classifier 6, qa-helper 9, finalize-persist 3, capability-matrix 2, plus existing); build clean (10.2s, new route registered).
+
+**Live smoke (mandatory, prod `iqerihohwabyjzkpcujq`):** migration applied — all 7 embedded smoke checks passed. Behavioural smoke (rollback, 0 residue): a project-less `clarifying_questions_from_context` `ki_run` inserts cleanly; the bounded CHECK **rejects** a project-less `risks` row — proving the bound only relaxes for this one purpose.
+
+**Deferred to β (frontend):** the optional `clarifying` wizard step (question cards, per-question + step skip, bounded-wait + fail-open states, draft persistence) and AC-135.3/5/7-UI. AC-135.10/11 live-E2E → /qa.
 
 ## QA Test Results
 _To be added by /qa_
