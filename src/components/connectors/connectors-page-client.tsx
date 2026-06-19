@@ -36,6 +36,7 @@ import {
   type JiraCredentialPayload,
 } from "./jira-credential-form"
 import { JiraWebhookTokens } from "./jira-webhook-tokens"
+import { McpAccessTokens } from "./mcp-access-tokens"
 import { TeamsCredentialForm } from "./teams-credential-form"
 
 type CredentialPayload =
@@ -249,6 +250,10 @@ export function ConnectorsPageClient() {
 
                 {drawer.entry.descriptor.key === "jira" ? (
                   <JiraWebhookTokens />
+                ) : null}
+
+                {drawer.entry.descriptor.key === "mcp" ? (
+                  <McpAccessTokens />
                 ) : null}
               </div>
             </>

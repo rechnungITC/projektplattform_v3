@@ -96,7 +96,7 @@ describe("listConnectors", () => {
     expect(slack.status.health.status).toBe("adapter_missing")
   })
 
-  it("reports jira + teams as ready-but-unconfigured and mcp/slack as missing", async () => {
+  it("reports jira + teams + mcp as ready-unconfigured and slack as missing", async () => {
     const supabase = makeSupabase({ meta: [] })
     const entries = await listConnectors(supabase, TENANT_ID)
     const jira = entries.find((e) => e.descriptor.key === "jira")!
@@ -107,10 +107,13 @@ describe("listConnectors", () => {
     const teams = entries.find((e) => e.descriptor.key === "teams")!
     expect(teams.status.health.status).toBe("adapter_ready_unconfigured")
     expect(teams.status.credential_editable).toBe(true)
-    for (const k of ["slack", "mcp"]) {
-      const e = entries.find((x) => x.descriptor.key === k)!
-      expect(e.status.health.status).toBe("adapter_missing")
-    }
+    // PROJ-48 — MCP bridge runtime is live (read-only); access is via issued
+    // tokens, so the connector card stays non-editable but health is ready.
+    const mcp = entries.find((e) => e.descriptor.key === "mcp")!
+    expect(mcp.status.health.status).toBe("adapter_ready_unconfigured")
+    expect(mcp.status.credential_editable).toBe(false)
+    const slack = entries.find((e) => e.descriptor.key === "slack")!
+    expect(slack.status.health.status).toBe("adapter_missing")
   })
 
   it("reports jira as configured from tenant_secret without decrypting on list", async () => {

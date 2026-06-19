@@ -187,7 +187,7 @@ const jiraDescriptor: ConnectorDescriptor<JiraCredentials> = {
   },
 }
 
-// ─── mcp (no adapter yet — full slice in PROJ-14c) ──────────────────────
+// ─── mcp (PROJ-48: read-only MCP bridge live at /api/mcp) ────────────────
 
 const McpCredentialSchema = z.object({
   service_token: z.string().min(20),
@@ -197,14 +197,17 @@ const mcpDescriptor: ConnectorDescriptor = {
   key: "mcp",
   label: "MCP-Bridge",
   summary:
-    "Model Context Protocol Endpoint, der KI-Agents projekt-aware Tools anbietet. Slice folgt als PROJ-14c.",
+    "Model-Context-Protocol-Endpoint (/api/mcp), der approved KI-Agents 4 read-only, tenant-scoped Tools (project.lookup/status, work_item.lookup, report.snapshot) mit Class-3-Redaction anbietet. Zugriff via admin-issued Bearer-Token.",
   capability_tags: ["ai"],
   credential_schema: McpCredentialSchema,
+  // Access is via per-token issuance (separate admin panel), not a
+  // tenant_secrets credential form — so the connector card stays read-only.
   credential_editable: false,
   async health(): Promise<ConnectorHealth> {
     return {
-      status: "adapter_missing",
-      detail: "Edge-Function folgt mit PROJ-14c.",
+      status: "adapter_ready_unconfigured",
+      detail:
+        "MCP-Runtime live. Bitte ein Access-Token unter Konnektoren → MCP-Token ausstellen.",
     }
   },
 }
