@@ -126,3 +126,23 @@ describe("project.status", () => {
     expect(payload.error).toBe("not_found")
   })
 })
+
+describe("need-to-know gate (confidential/missing project)", () => {
+  // loadStandardProject returns null when the project is missing OR not
+  // confidentiality_level='standard'; status/work_item/report all gate on it.
+  it.each(["work_item.lookup", "report.snapshot"])(
+    "%s returns not_found when the project is not standard/visible",
+    async (tool) => {
+      const eqCalls: Array<[string, unknown]> = []
+      const supabase = {
+        from: vi.fn(() => makeChain({ data: null, error: null }, eqCalls)),
+      } as unknown as SupabaseClient
+      const { payload, stats } = await callTool(supabase, tool, {
+        project_id: "00000000-0000-4000-8000-000000000000",
+      })
+      expect(payload.error).toBe("not_found")
+      // gated before any rows are counted
+      expect(stats.rowCount).toBe(0)
+    },
+  )
+})
