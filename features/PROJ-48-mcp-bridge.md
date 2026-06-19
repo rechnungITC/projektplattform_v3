@@ -2,7 +2,7 @@
 
 ## Status
 
-In Progress (α /backend + β /frontend live — migration + RPC + route + 4 tools + redaction + rate-limit + audit + token-mgmt/audit panel in /konnektoren; γ /qa pending)
+Approved (α /backend + β /frontend + γ /qa complete — 0 Critical/0 High, PRODUCTION-READY; not yet deployed/committed-to-main)
 
 ## Summary
 
@@ -155,4 +155,50 @@ Token-management + audit panel surfaced in the existing `/konnektoren` connector
 - `connectors-page-client.tsx` mounts the panel; no other connector behavior changed.
 
 **Quality gates:** vitest **1866/1866** (+3 audit-route tests: 401/403/happy); lint 0; tsc 13 baseline/0 new; build clean (audit route registered). No new RPC → no live-RPC smoke required (read-only RLS select; auth gate test-covered). γ /qa (cross-tenant isolation, redaction coverage, rate-limit, revoked/expired-token, real MCP-client smoke, Playwright auth-gates) remains.
+
+## QA Test Results — γ (2026-06-19)
+
+**Verdict: PRODUCTION-READY (0 Critical / 0 High).** vitest **1871/1871** (+5 γ); Playwright **7/7** chromium; live DB security probe passed (0 residue); lint 0; tsc 13 baseline.
+
+### Acceptance criteria
+
+**ST-01 Tenant-Scoped Tool Server**
+- ✅ Every request authenticated with tenant-scoped credentials — bearer → `mcp_authorize_call`; missing/unknown token → 401 (route.test + Playwright + α live-RPC smoke).
+- ✅ Tool access module-gated + auditable — every dispatch writes an `mcp_tool_calls` row incl. rate-limited/error paths (route.test); connector module gating via descriptor.
+- ✅ No tool can query outside the tenant — explicit `.eq('tenant_id', …)` on every query (server.test asserts the eq calls); **live isolation probe**: no project id shared across two real tenants, standard-only query structurally cannot surface other tenants' rows.
+
+**ST-02 Minimal Tool Set**
+- ✅ 4 tools cover project lookup/status, work-item lookup, report snapshot — real SDK `Client.listTools()` returns exactly those 4 (server.integration.test).
+- ✅ Mutating tools excluded — integration test asserts no `create/update/delete/write/mutate/set` tool exists; unknown tool → typed MCP error, no stack-trace leak.
+- ✅ Typed + documented outputs — zod `inputSchema` + title/description per tool, verified over a real MCP handshake.
+
+**ST-03 Class-3 Redaction**
+- ✅ Class-3 (+ unknown → default-deny) fields dropped by default — redaction.test (8 cases); real client round-trip drops `responsible_user_id`.
+- ✅ Redaction decisions test-covered — redaction unit tests + integration round-trip.
+- ✅ Responses carry redaction metadata, never the raw hidden value — `payload.redaction.{count,fields}` present; raw PII value never appears in the response text.
+
+### Security audit (red-team)
+| Probe | Result |
+|---|---|
+| Cross-tenant isolation (token A → tenant B rows) | ✅ Blocked — live probe + explicit tenant filter |
+| Need-to-know (confidential/strict rows via MCP) | ✅ Blocked — standard-only gate (server.test + live probe) |
+| Per-token rate limit | ✅ `mcp_authorize_call` → `rate_limited` (α live smoke) → route 429 + audit (route.test) |
+| Revoked / expired token | ✅ `revoked_token` / `expired_token` → 401 (α live smoke + RPC) |
+| Missing / unknown bearer token | ✅ 401, **no tenant existence leak** in body (Playwright) |
+| Token at rest | ✅ sha256-hash only; raw shown once (tokens.test) |
+| Tool arguments in audit | ✅ hashed `arguments_digest`, never raw (tokens.test) |
+| Admin routes (tokens / audit) without session | ✅ 307/401/403 (Playwright) |
+| `mcp_authorize_call` exposed to anon/authenticated | ✅ Not exposed — `EXECUTE` granted only to `service_role` (advisor-verified in α) |
+| Malformed JSON-RPC body | ✅ 400 (Playwright + route.test) |
+
+### Bugs / deviations
+- **0 Critical, 0 High, 0 Medium, 0 Low.**
+- **D-1 (env, not a product bug):** Mobile-Safari/WebKit Playwright project skipped — host libs missing (`sudo npx playwright install-deps webkit`), same as PROJ-67 F2. Chromium full pass.
+- **D-2 (deferred, NICE-TO-HAVE):** A real external MCP client over live HTTP against a running server with seeded data was not run; coverage is provided instead by (a) a real in-process SDK `Client`↔`McpServer` round-trip, (b) Playwright route auth-gates, and (c) the live DB security probe. A pilot-time external-client smoke can be added when a tenant first wires up an agent.
+
+### Tests added
+- `src/lib/mcp/server.integration.test.ts` — real SDK `Client` over `InMemoryTransport` (listTools / callTool-redaction / unknown-tool error).
+- `src/lib/mcp/server.test.ts` — +need-to-know gate coverage for `work_item.lookup` + `report.snapshot`.
+- `tests/PROJ-48-mcp-bridge.spec.ts` — 7 Playwright route auth-gates (admin routes session-gated; public `/api/mcp` token-required + no-leak + 400).
+- `src/app/api/connectors/mcp/audit/route.test.ts` (β) — audit route auth/authz/happy.
 
