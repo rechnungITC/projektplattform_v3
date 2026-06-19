@@ -33,6 +33,11 @@ const PUBLIC_ROUTES = [
   // the admin /webhook-token management route is NOT matched (no trailing
   // slash after "webhook"), so it stays session-gated.
   "/api/connectors/jira/webhook",
+  // PROJ-48 — MCP bridge. Approved external agents call /api/mcp with a
+  // tenant-scoped bearer token (no Supabase session); the route authenticates
+  // by hashing the token against mcp_access_tokens. The admin token-management
+  // route lives under /api/connectors/mcp/tokens and stays session-gated.
+  "/api/mcp",
 ]
 
 function isPublicRoute(pathname: string): boolean {
