@@ -18,6 +18,7 @@
 
 import type {
   AIProvider,
+  ClarifyingQuestionsGenerationRequest,
   CoachingGenerationRequest,
   CrossProjectLinksGenerationRequest,
   NarrativeGenerationRequest,
@@ -30,6 +31,7 @@ import type {
   TrajectorySequenceGenerationRequest,
 } from "./types"
 import type {
+  ClarifyingQuestionsGenerationOutput,
   CoachingGenerationOutput,
   CrossProjectLinkSuggestion,
   CrossProjectLinksGenerationOutput,
@@ -527,6 +529,25 @@ export class StubProvider implements AIProvider {
     const start = Date.now()
     return {
       suggestions: [],
+      usage: {
+        input_tokens: 0,
+        output_tokens: 0,
+        latency_ms: Date.now() - start,
+      },
+    }
+  }
+
+  /**
+   * PROJ-135 — the Stub never fabricates clarifying questions. It runs as
+   * the external-blocked / no-local-provider fallback, where an empty list
+   * is the correct fail-open result ("keine Rückfragen nötig").
+   */
+  async generateClarifyingQuestions(
+    _request: ClarifyingQuestionsGenerationRequest,
+  ): Promise<ClarifyingQuestionsGenerationOutput> {
+    const start = Date.now()
+    return {
+      questions: [],
       usage: {
         input_tokens: 0,
         output_tokens: 0,
