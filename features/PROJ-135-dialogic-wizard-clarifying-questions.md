@@ -66,7 +66,85 @@ The AI-bootstrap track (PROJ-86–91) can now generate a whole project from a ki
 <!-- Sections below are added by subsequent skills -->
 
 ## Tech Design (Solution Architect)
-_To be added by /architecture_
+
+**Designed:** 2026-06-18 · **Status of this design:** ready for review
+**CIA pre-architecture review:** GO-mit-Auflagen (2026-06-16, obs 8167). The verdict below is fully incorporated — see "Persistence decision" and the new hardening criteria AC-A1…A5.
+
+### The one decision that shapes everything: where the answers live
+
+This feature only produces one piece of output — the question/answer text the PM types in the wizard. Everything else is plumbing we already own. So the whole design hinges on a single choice: **where do those answers get stored so the downstream generation actually sees them, and so our privacy guard still inspects them?**
+
+We looked at two options:
+
+- **Option A — store the Q&A only in the source's metadata field (`context_sources.source_metadata`).** Rejected. Two existing safety/quality mechanisms read the source's *excerpt* field, not the metadata field:
+  1. The backlog/stakeholder/risk generators (PROJ-70/88/89) build their AI context from a fixed list of columns that includes `content_excerpt` but **deliberately excludes `source_metadata`** (it's free-shape JSON that often hides emails/attendee names). So Q&A in metadata would be *invisible to the generation* — the feature wouldn't actually improve the output.
+  2. The Class-3 privacy classifier scans `content_excerpt` for personal-data markers. Q&A in metadata would *skip the scan* — a kickoff stamped "Class-2 / cloud-OK" could ship PII-laden answers (e.g. "the budget owner is Frau Müller, mueller@kunde.de") to a cloud provider. A direct violation of Invariant #3.
+
+- **Option B-modified — append the Q&A to the source's excerpt field (`content_excerpt`) with a stable delimiter, and additionally mirror it into `source_metadata` for audit/replay.** **Chosen** (CIA recommendation). Because the generators already read `content_excerpt`, the enriched context flows downstream with **zero change to the three collectors**. Because the classifier already scans `content_excerpt`, the answers are **automatically PII-scanned** at persist time. The metadata mirror is audit-only (who asked what, when, which questions were skipped) and is never the generation source.
+
+This is why the design is small: we are not building a new context-delivery path, we are feeding the *existing* one a richer excerpt.
+
+### Component Structure (what the user sees)
+
+```
+Project Creation Wizard (existing)
++-- Type → Basics → Method → Follow-ups (existing, PROJ-5/6)
++-- "KI-Backlog" step (existing, optional, PROJ-70-ε)
+|     +-- Kickoff upload  → creates a context_source, stores its id
++-- "KI-Rückfragen" step  ← NEW, optional
+|     +-- shown ONLY when a kickoff context_source exists (mirrors KI-Backlog visibility)
+|     +-- on enter: ONE AI call → 0–6 clarifying questions
+|     +-- per question:  prompt text · optional gap-tag · free-text answer field · "überspringen"
+|     +-- whole-step "überspringen" affordance
+|     +-- non-blocking status line for the skip/empty/blocked/cost-cap cases
++-- Review → Finalize (existing)
+      +-- on finalize: answered Q&A appended to the kickoff source's excerpt + privacy re-stamp + audit mirror
+```
+
+The step is a sibling of the existing optional `KI-Backlog` step. It reuses the wizard's step-visibility helper (`visibleWizardSteps`), the draft persistence, and the same "this step is optional and skippable" interaction language. No new navigation, no new page.
+
+### Data Model (plain language)
+
+Nothing new is created as a table or business record. We touch one existing row and add one new "kind of AI call":
+
+- **The kickoff `context_sources` row** (created during the KI-Backlog upload) gets two writes at finalize:
+  - its **excerpt** field gains an appended, clearly-delimited block: `--- Rückfragen & Antworten (KI) ---` followed by each *answered* question and its answer. Skipped/unanswered questions are omitted. This block is what the downstream generators now read as additional kickoff-derived material.
+  - its **metadata** field gains an audit mirror of the same Q&A plus run bookkeeping (timestamp, which questions were generated, which were skipped). Audit-only.
+  - its **privacy class** is re-evaluated against the new excerpt content and **raised (never lowered)** if the appended answers introduce personal-data markers — so a previously Class-2 source correctly becomes Class-3 before any downstream cloud call.
+- **A `ki_runs` audit row** records the clarifying call itself (purpose, classification, provider, token usage, status) — exactly like every other AI call in the system. The Q&A is reviewable text, not a business record; **no** work-items / stakeholders / risks are created by this step (Invariant #2).
+- **The Vorhaben (`projects.description`) is never written by this feature** — preserving the PROJ-91 track invariant (the Vorhaben is the relevance yardstick, never a generation source). Clarifying answers are kickoff-derived source material only.
+
+A **new AI purpose** is introduced: `clarifying_questions_from_context`. It joins the existing purpose family (`proposal_from_context`, `…_stakeholders_…`, `…_risks_…`). Adding a purpose requires re-enumerating two database CHECK constraints **in lockstep** (`ki_runs.purpose` and `tenant_ai_cost_caps.purpose`) — and, per the standing ⚠️ note in the PROJ-89 migration, that re-enumeration **must keep `sentiment` + `coaching`** in the list (they were silently dropped once and 5xx'd in production). One migration, mirroring the PROJ-89 purpose migration's structure (constraint re-enum + cost-cap row support + a self-check smoke block).
+
+### Tech Decisions (WHY, for a PM)
+
+1. **Append-to-excerpt over metadata-only** — the only choice that makes the answers *both* improve generation *and* stay inside the privacy guard. Picking the convenient metadata-only path would have quietly defeated the feature's purpose and opened a Class-3 leak. (CIA, AC-A1/AC-A2.)
+2. **Re-classify on persist** — because the PM's free-text answers can contain names/emails the original document didn't, we re-run the same personal-data detector used everywhere else and raise the source's privacy class if needed. This keeps the downstream Class-3→local-only routing correct without any special-casing. (AC-A2.)
+3. **One controlled round, one AI call** — deterministic, testable, cheap; no autonomous multi-turn agent (explicit non-goal). This matches every other AI purpose in the platform and keeps the cost-cap meaningful.
+4. **Standard routing, graceful skip** — the clarifying purpose goes through the normal resolver (Class-1/2 → tenant cloud provider; Class-3 → Ollama-only). If a Class-3 source has no local provider, or the call errors, returns nothing, or hits the cost cap, the step shows a calm "übersprungen" message and the user finalizes anyway. The wizard never stalls on this step. (AC-A4/AC-135.7.)
+5. **Finalize never waits on the AI** — question *generation* happens when the user enters the step (interactive). The *persist* of answers at finalize is a fast local write (append + re-stamp), not an AI call, so finalize stays snappy and is never blocked by provider latency. (AC-A4.)
+6. **No new npm dependency** — reuses the AI SDK, the router, the classifier, the wizard framework, and the `context_sources` table already in production.
+
+### Slicing
+
+- **α — Backend (~2 PT):** new purpose + router `invoke…` helper + classifier wiring; the append-to-excerpt + privacy re-stamp + audit-mirror persist path; the purpose/cost-cap migration (lockstep, keeps sentiment+coaching) with a live-RPC smoke (per the project's "live-RPC-smoke required" rule). No change to the PROJ-70/88/89 collectors — they inherit the richer excerpt for free.
+- **β — Frontend (~1.5 PT):** the optional `KI-Rückfragen` wizard step (visibility via `visibleWizardSteps`, per-question + whole-step skip, non-blocking status states), draft persistence of answers, finalize hook to trigger the persist.
+
+Total ≈ 3.5 PT. CIA review at `/architecture` is satisfied by this document; a further CIA pass is **not** required for `/backend` since the slice introduces no new dependency and follows the established purpose/router/classifier pattern.
+
+### Hardening Acceptance Criteria (from CIA, obs 8167)
+
+These sharpen the spec's AC-135.* with the persistence-and-privacy specifics the CIA review locked:
+
+- [ ] **AC-A1 — Append + audit mirror:** answered Q&A is appended to `context_sources.content_excerpt` with a stable, parseable delimiter, AND mirrored into `source_metadata` for audit. The downstream PROJ-70/88/89 collectors read the enriched excerpt **without any code change** (verified by a generation run that demonstrably reflects an answer).
+- [ ] **AC-A2 — Re-classify on persist:** the personal-data detector runs over the appended Q&A at persist time; `context_sources.privacy_class` is raised via a never-lower (`GREATEST`) rule when markers are found. A Class-2 kickoff whose answers introduce an email/name becomes Class-3 **before** any downstream cloud call.
+- [ ] **AC-A3 — Vorhaben untouched:** `projects.description` is never modified by this feature; the PROJ-91 invariant holds (Vorhaben = relevance yardstick, Q&A = kickoff-derived source).
+- [ ] **AC-A4 — Finalize independence / fail-open:** finalize never awaits the AI question-generation call; the persist step is a local write. On provider error / zero questions / `external_blocked` (Class-3 without Ollama) / cost-cap, the step is skipped with a non-blocking message and finalize proceeds; downstream generation is unaffected.
+- [ ] **AC-A5 — New purpose, migration lockstep:** `clarifying_questions_from_context` is added to the `ki_runs.purpose` AND `tenant_ai_cost_caps.purpose` CHECK constraints in one migration that **retains `sentiment` + `coaching`**, supports a per-purpose cost-cap row (NULL-purpose fallback), and includes a self-check smoke block. Verified by a live-RPC smoke against the database.
+
+### Open question for review
+
+- **Step placement & re-trigger:** the design places `KI-Rückfragen` immediately after `KI-Backlog` (so the upload exists) and before Review. On wizard resume, answered questions survive in the draft and are **not** auto-regenerated unless the user re-triggers. Confirm this ordering and the "no silent re-generation on resume" behaviour, or state a preference.
 
 ## QA Test Results
 _To be added by /qa_
