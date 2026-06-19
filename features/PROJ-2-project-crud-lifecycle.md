@@ -2,7 +2,7 @@
 
 ## Status: Deployed
 **Created:** 2026-04-25
-**Last Updated:** 2026-04-25
+**Last Updated:** 2026-06-12
 
 ## Summary
 The foundational `Project` entity for the platform. Supports create, read, update, soft-delete, and a state machine over lifecycle status (Draft → Active → Paused → Completed/Canceled) with a full audit trail. Every other domain feature (phases, milestones, tasks, risks, stakeholders) hangs off the Project. Reuses V2's validated field shape from migrations `0001_users_projects.py` and `0002_lifecycle_events.py`, adapted to Supabase + multi-tenant + RLS.
@@ -449,7 +449,7 @@ Read paths use Supabase client directly with RLS — list and detail bypass any 
 | **Validation** (Zod at API boundary, end-date >= start-date) | ✅ PASS | Vitest covers; live test deferred until UI exercises the date pickers |
 | **Cross-tenant guard** (responsible_user_id must be tenant member) | ✅ PASS | Test B |
 | **Soft-delete behavior** (default delete sets is_deleted; lists exclude unless include_deleted=true; transitions blocked on deleted) | ✅ PASS | Test E + vitest |
-| **Hard-delete (admin only)** | ⚠ PARTIAL | Vitest verifies the admin-pre-check path. Live not testable yet — `SUPABASE_SERVICE_ROLE_KEY` in local `.env.local` is currently the anon JWT, not the service_role JWT. Hard-delete returns 500 with `server_misconfigured` until corrected. |
+| **Hard-delete (admin only)** | ✅ PASS | Vitest verifies the admin-pre-check path; live hard-delete route smoke added 2026-06-12 in `tests/PROJ-1-2-live-closure.spec.ts` with a temporary soft-deleted project and DB cleanup. |
 | **Lifecycle history (last 20 events on detail)** | ✅ PASS | API returns `{ project, events }`; sorted DESC by `changed_at`, indexed |
 
 ### Edge Cases verified
@@ -472,23 +472,22 @@ Read paths use Supabase client directly with RLS — list and detail bypass any 
 
 Pre-existing items that surfaced during QA setup (all already documented or non-blockers):
 - `pg_trigger` is not visible to the MCP service-role connection in some queries (a Supabase pooler quirk). `information_schema.triggers` is reliable. Not a code defect.
-- The `SUPABASE_SERVICE_ROLE_KEY` in local `.env.local` is the anon JWT — same caveat as PROJ-1's QA. Hard-delete + invite paths return 500 until corrected.
+- Historical only: the initial QA pass could not live-test hard-delete because the local `SUPABASE_SERVICE_ROLE_KEY` was not usable. Closed 2026-06-12 by the live hard-delete smoke in `tests/PROJ-1-2-live-closure.spec.ts`, which builds its own service-role client with an explicit `ws` transport (Node-20 realtime workaround, same per-spec pattern as the PROJ-70/88/89/90 specs) — no production `createAdminClient()` change required.
 
 ### Not tested in this round
 
-- **Playwright E2E** — same as PROJ-1; deferred to a future combined sweep.
+- **Full Playwright matrix** — focused Chromium live smoke exists for hard-delete; broad cross-browser coverage remains a separate platform QA concern.
 - **Cross-browser** — UI is shadcn + Tailwind, responsive by default; no automated matrix yet.
-- **Live hard-delete** — gated on real `SUPABASE_SERVICE_ROLE_KEY` (user action).
 - **Concurrent-write conflict scenarios** — explicitly deferred (last-write-wins for MVP).
 
 ### Recommendation
 
-**Status → Approved.** No Critical or High issues. The single PARTIAL item (live hard-delete) is gated on the user supplying the correct `SUPABASE_SERVICE_ROLE_KEY` and is not a code defect. Feature is ready to advance.
+**Status → Approved.** No Critical or High issues. The prior partial item (live hard-delete) was closed on 2026-06-12.
 
 Suggested follow-ups (not blockers):
-1. User replaces local `SUPABASE_SERVICE_ROLE_KEY` with the real service_role JWT, then re-runs hard-delete + invite manually.
-2. Add Playwright E2E covering both PROJ-1 and PROJ-2 in a combined sweep after the next 1–2 features ship.
-3. Seed multi-user fixtures (admin + member + viewer in same tenant) for cross-role regression tests.
+1. Add the explicitly deferred optimistic-concurrency P1 slice when simultaneous project editing becomes a product requirement.
+2. Expand the focused PROJ-1/2 Chromium smoke to the full Playwright browser matrix when logged-in E2E becomes a CI requirement.
+3. Seed multi-user fixtures (admin + member + viewer in same tenant) for broader cross-role regression tests.
 _To be added by /qa_
 
 ## Deployment
