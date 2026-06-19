@@ -2,7 +2,7 @@
 
 ## Status
 
-Approved (α /backend + β /frontend + γ /qa complete — 0 Critical/0 High, PRODUCTION-READY; PR to main open, cherry-picked onto current main)
+Deployed (α + β + γ live — 0 Critical/0 High; merged to main via PR #157, tag `v1.95.0-PROJ-48`, 2026-06-19; prod-verified: POST /api/mcp no-token→401, bad-token→401 no-leak, admin token route→307)
 
 ## Summary
 
