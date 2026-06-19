@@ -1,6 +1,6 @@
 # PROJ-137: AI-Failure-Transparency — sichtbarer Grund statt stiller Stub-0-Vorschläge
 
-## Status: Planned
+## Status: Architected (Tech-Design 2026-06-19: vereinheitlichtes `AiRunReasonCode`-Enum + additive nullable `ki_runs.reason_code`-Spalte; Reason zentral im Router-Finalize über alle Purposes; datengetriebener Regressionstest + FE-Banner-Mapping. Kein neuer Dep, CIA n/a.)
 **Created:** 2026-06-19
 **Last Updated:** 2026-06-19
 
@@ -50,8 +50,55 @@ Der `stub`-Provider ist als Fallback gedacht, aber er ist **ununterscheidbar** v
 ---
 <!-- Sections below are added by subsequent skills -->
 
-## Tech Design (Solution Architect)
-_To be added by /architecture_
+## Tech Design (Solution Architect) — 2026-06-19 (kurzer Pass)
+
+> **Auftrag dieses Passes (aus dem Spec):** klären, ob ein strukturiertes Status-Feld / eine Migration nötig ist, und die Reason-Taxonomie festlegen. **Kein neuer Dep. CIA nicht erforderlich** (eine additive, nullable Spalte + Wiederverwendung eines bereits existierenden typisierten Enums; kein Architektur-Fork, der ≥3 künftige Skills betrifft; Class-3-Hardblock unberührt).
+
+### Grundidee in einem Satz
+Der „Warum kam nichts?"-Grund existiert bereits **typisiert am Resolver** (`BlockedReason`), wird heute aber beim `ki_runs`-Insert auf **Freitext** plattgedrückt. Wir heben einen **einzigen, persistierten, maschinenlesbaren Reason-Code** auf die `ki_runs`-Ebene und mappen ihn deterministisch ins UI — `error_message` bleibt der menschenlesbare Detailtext daneben.
+
+### Ist-Zustand (verifiziert im Code)
+- `ki_runs.status` ∈ {`success`, `error`, `external_blocked`} — existiert.
+- `ki_runs.error_message` (nullable Freitext) — existiert; PROJ-88 (AC-88.3) setzt ihn beim **Block**-Pfad bereits.
+- `key-resolver.ts` liefert ein **typisiertes** `BlockedReason`: `external_ai_disabled`, `class3_no_local_provider`, `no_provider_available` (+ legacy `class3_no_tenant_key`, `no_key_available`).
+- **Lücken:** (a) der typisierte Grund wird nicht maschinenlesbar persistiert (nur als Freitext); (b) der **Provider-Fehler**-Pfad (Timeout/Failure NACH Provider-Wahl) und der **Cost-Cap**-Pfad erzeugen eigenen Freitext, nicht ins Enum vereinheitlicht; (c) keine Garantie/Verifikation über alle Purposes; (d) kein UI-Mapping.
+
+### Entscheidung A — Reason-Taxonomie (ein vereinheitlichtes Enum)
+Ein einziges TS-Enum `AiRunReasonCode`, das die Resolver-Reasons + die übrigen Stub-Auslöser zusammenführt:
+| reason_code | Auslöser | UI-Handlung |
+|---|---|---|
+| `no_provider` | kein/ungültiger Key, kein Provider in der Priority-Reihe (`no_provider_available`/`no_key_available`) | „KI-Provider konfigurieren" → Settings |
+| `class3_blocked` | Class-3-Daten, kein lokaler Provider (`class3_no_local_provider`/`class3_no_tenant_key`) | „Personenbezogene Daten brauchen einen lokalen Provider (Ollama) — bitte hinterlegen" → Settings |
+| `provider_error` | Provider gewählt, aber Timeout/Fehler/kaputte Response | „KI-Dienst aktuell nicht erreichbar — später erneut versuchen" |
+| `cost_cap_exceeded` | Monats-Token-Cap erreicht (PROJ-32d) | „Monatliches KI-Budget erreicht" → Settings/Billing |
+| `external_ai_disabled` | Env-Kill-Switch `EXTERNAL_AI_DISABLED` | „KI-Funktionen sind deaktiviert" (Admin-Hinweis) |
+| `null` | Provider lief, legitim leeres Ergebnis | normale Leer-Ansicht (kein Fehler-Banner) — erfüllt AC-6 |
+
+`reason_code = null` bei `status='success'` bleibt der „legitim leer"-Fall und ist damit sauber vom Block/Fehler unterscheidbar.
+
+### Entscheidung B — Persistenz: additive Spalte statt Freitext-Parsing
+**Empfehlung: kleine additive Migration** `alter table ki_runs add column reason_code text` (nullable, `CHECK` gegen das Enum). Begründung:
+- **Maschinenlesbar + queryable** für Support/Abrechnung/Eval (AC-2) — ohne fragiles `error_message`-String-Parsing.
+- **Deterministisches UI-Mapping** (AC-4) statt Heuristik auf Freitext.
+- `status` bleibt unverändert (success/error/external_blocked); `reason_code` verfeinert nur das **Warum** innerhalb error/blocked.
+- **Kein Backfill** (AC-3/Non-Goal): nur ab jetzt garantiert; alte Zeilen bleiben `reason_code = null`.
+- Additive nullable Spalte → null Risiko für bestehende Pfade; Migrationsname = Repo-Dateiname-Stamm (PROJ-134-Konvention).
+
+> Verworfene Alternative: typisierter **Prefix in `error_message`** (`"[class3_blocked] …"`, kein Migration) — billiger, aber String-Parsing im UI ist fragil und vermischt Code+Detail; bei einem ohnehin trivialen additiven Spalten-Change nicht gerechtfertigt.
+
+### Entscheidung C — Durchsetzung über ALLE Purposes
+Der Reason wird **an einer Stelle** gesetzt: im zentralen `ki_runs`-Finalize-Helper des Routers (nicht pro Purpose) — der Router ist der einzige Eintrittspunkt (`invoke…Generation`). Damit erbt jeder bestehende und künftige Purpose den Reason automatisch. Der **datengetriebene Regressionstest** iteriert über den `AIPurpose`-Typ (nicht über eine hartkodierte Liste) und prüft pro Stub-Auslöser, dass `status≠success ⇒ reason_code ≠ null`. So kann ein neuer Purpose die Lücke nicht wieder einführen (Schutz gegen die PROJ-32-Regression).
+
+### Entscheidung D — UI-Mapping
+Eine kleine reine Mapping-Funktion `reasonCode → {Banner-Text, Handlungslink}` (FE-seitig, ein Ort), konsumiert von den Drawer-Tabs (Backlog/Stakeholder/Risiken) und perspektivisch den übrigen KI-Oberflächen. Leeres Ergebnis MIT `reason_code` → actionable Banner; leeres Ergebnis OHNE (`null`) → normale Leer-Ansicht.
+
+### Betroffene Artefakte (Schätzung)
+- `src/lib/ai/types.ts` (`AiRunReasonCode`-Enum), `src/lib/ai/router.ts` (Finalize-Helper setzt `reason_code`; Provider-Error- + Cost-Cap-Pfad ins Enum mappen), `key-resolver.ts` (Reason→Code-Mapping), 1 additive Migration, FE-Mapping-Util + Drawer-Tabs.
+- Regressionstest `router.*.test.ts` (datengetrieben über `AIPurpose`).
+- **Kein neues Dependency. Eine additive nullable Spalte. Class-3-Hardblock + Multi-Tenant-Invariante unberührt.**
+
+### Handoff
+`/backend` (Enum + Migration + Router-Finalize + Resolver-Mapping + datengetriebener Test) → `/frontend` (UI-Mapping + Banner in den Drawer-Tabs) → `/qa` (Verify+Fix-Nachweis über alle 13 Purposes, inkl. live gegen den gehosteten Ollama für den `class3_blocked`-vs-`provider_error`-Unterschied).
 
 ## QA Test Results
 _To be added by /qa_
