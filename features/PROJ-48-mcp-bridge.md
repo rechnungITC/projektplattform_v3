@@ -2,7 +2,7 @@
 
 ## Status
 
-Approved (α /backend + β /frontend + γ /qa complete — 0 Critical/0 High, PRODUCTION-READY; not yet deployed/committed-to-main)
+Approved (α /backend + β /frontend + γ /qa complete — 0 Critical/0 High, PRODUCTION-READY; PR to main open, cherry-picked onto current main)
 
 ## Summary
 
@@ -122,7 +122,7 @@ A **read-only, tenant-scoped MCP endpoint** that lets an approved external agent
 
 **CIA-gated questions resolved (S480 GO):** (1) dependency → `@modelcontextprotocol/sdk@1.29.0` adopted; (2) runtime → Next.js route handler on the Node runtime (`/api/mcp`, `runtime = "nodejs"`), not an edge function; (3) rate-limit → in-table sliding-window count over `mcp_tool_calls` inside the authorize RPC (no new primitive).
 
-**Migration** `supabase/migrations/20260618100000_proj48_mcp_bridge.sql` (live in Prod-DB):
+**Migration** `supabase/migrations/20260618165722_proj48_mcp_bridge.sql` (live in Prod-DB; repo filename matches the prod-registered version `20260618165722` so `supabase db push` skips the non-idempotent `create table`s — same drift-avoidance as PROJ-50):
 - `mcp_access_tokens` (sha256-hash only, never raw; `label`, `created_by`, `last_used_at`, `revoked_at`, `expires_at`) — admin-only RLS, hash-unique index, mirrors PROJ-50 `jira_webhook_tokens`.
 - `mcp_tool_calls` (append-only audit: `tool_name`, hashed `arguments_digest`, `result_row_count`, `redaction_count`, `status`, `latency_ms`) — admin-read RLS, no insert policy (service-role writes only).
 - RPC `mcp_authorize_call(p_token_hash, p_window_seconds, p_max_calls)` `SECURITY DEFINER` → validates token (invalid/revoked/expired), enforces per-token sliding-window rate limit by counting recent `mcp_tool_calls`, bumps `last_used_at`. `EXECUTE` revoked from `public/anon/authenticated`, granted only to `service_role` (verified: it does NOT appear in the Supabase security-advisor anon/authenticated-executable lists).
