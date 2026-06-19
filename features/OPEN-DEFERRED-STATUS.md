@@ -1,6 +1,6 @@
 # Open, Deferred, and Partial Feature Status
 
-**Last Updated:** 2026-06-07
+**Last Updated:** 2026-06-12
 
 This file is the cross-feature status register referenced by `features/INDEX.md`. It keeps follow-ups, MVP partials, and bookkeeping conflicts visible without overloading individual feature rows.
 
@@ -34,8 +34,6 @@ The new Skill/DMS/RAG feature specs originally collided with reserved PROJ-71..7
 
 | PROJ | Status note |
 |---|---|
-| PROJ-1 | Deployed, partial: Domain-Claim UI not browser-tested; invite/role management depends on live service-role/multi-user verification. |
-| PROJ-2 | Deployed, partial: live hard-delete was previously untestable; optimistic concurrency remains deferred. |
 | PROJ-7 | Deployed MVP slice: WIP limits, velocity/burndown, resource swimlanes, phase gates, and tenant health thresholds remain deferred or assigned elsewhere. |
 | PROJ-14 | Deployed plumbing slice: real adapters are separate followups PROJ-47/48/49/50. |
 | PROJ-18 | Deployed: template UI, platform-default tag rename, insert provenance shape, and phase-close UX refinements remain deferred. |
@@ -54,6 +52,8 @@ The new Skill/DMS/RAG feature specs originally collided with reserved PROJ-71..7
 
 | PROJ | Resolution |
 |---|---|
+| PROJ-1 | Do not count as open: domain-claim browser smoke plus invite/role/revoke live service-role and multi-user smokes added in `tests/PROJ-1-2-live-closure.spec.ts`; the spec builds its own service-role client with an explicit `ws` transport (Node-20 realtime workaround, same pattern as the PROJ-70/88/89/90 specs) — no production admin-client change required. |
+| PROJ-2 | Do not count as open: hard-delete live route smoke added in `tests/PROJ-1-2-live-closure.spec.ts`; optimistic concurrency remains an explicit P1 follow-up in the PROJ-2 spec, not a partial deployment blocker. |
 | PROJ-36 | Do not count as open: Index/spec header say β was absorbed by PROJ-9-R2; spec bookkeeping cleanup added 2026-06-07. |
 | PROJ-34 | Do not count as open: old QA partial blocks are historical; Index/spec header say status closure including F-9 audit-restore is live; spec bookkeeping note added 2026-06-07. |
 | PROJ-64/65 | Do not count as open: old partial blocks were later closed. |
