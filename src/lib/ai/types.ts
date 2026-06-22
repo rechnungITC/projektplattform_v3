@@ -31,6 +31,14 @@ export type AIPurpose =
   // are Class 2 → cloud allowed; real PII → Class 3 → local-only via
   // the standard resolver clamp.
   | "proposal_risks_from_context"
+  // PROJ-135 — dialogic wizard clarifying questions. Runs in the wizard
+  // BEFORE finalize (no project yet), reads ONE kickoff context_source +
+  // the draft "Vorhaben" and returns 0–6 clarifying questions. Like
+  // narrative/sentiment/coaching it writes NO ki_suggestions — its output
+  // is reviewed in the wizard and persisted (on finalize) by appending the
+  // answered Q&A to the kickoff's content_excerpt. Standard content-based
+  // classification (Class-1/2 → cloud, Class-3 → local via resolver clamp).
+  | "clarifying_questions_from_context"
 
 export type DataClass = 1 | 2 | 3
 
@@ -992,6 +1000,85 @@ export interface RouterRiskProposalsResult {
   model_id: string | null
   status: "success" | "error" | "external_blocked"
   suggestion_ids: string[]
+  external_blocked: boolean
+  error_message?: string
+}
+
+// ---------------------------------------------------------------------------
+// PROJ-135 — clarifying_questions_from_context purpose types
+// ---------------------------------------------------------------------------
+
+/**
+ * Auto-context for the dialogic wizard clarifying-questions purpose.
+ *
+ * Reads ONE `context_sources` row (the uploaded kickoff) + the wizard
+ * draft's frame (name / Vorhaben / type / method). There is NO project yet
+ * — generation runs inside the wizard before finalize — so this shape is
+ * built from the DRAFT, not from a `projects` row.
+ *
+ * Classification is CONTENT-BASED (PROJ-70/89 pattern): the
+ * `context_source.privacy_class` floor + a heuristic marker sweep over the
+ * excerpt AND the Vorhaben decide the class; Class 3 clamps to local
+ * providers via the resolver. PROJ-91 invariant: the Vorhaben is context +
+ * the relevance yardstick — it is NEVER modified and NEVER a question source.
+ */
+export interface ClarifyingQuestionsAutoContext {
+  source_project: {
+    name: string
+    /** The wizard "Vorhaben" (project goal). Grounds the questions so the
+     *  model asks about gaps relative to the goal. May be null. */
+    description: string | null
+    project_type: string | null
+    project_method: string | null
+  }
+  context_source: {
+    context_source_id: string
+    kind: string
+    title: string
+    /** Upload-time privacy floor; the classifier can only raise it. */
+    privacy_class: 1 | 2 | 3
+    /** Capped 8k chars; the only freetext that leaves the RLS layer. */
+    content_excerpt: string
+    language: string | null
+  }
+}
+
+/**
+ * One AI-proposed clarifying question. Transient: it lives in the wizard
+ * draft until the user answers it; answered Q&A is appended to the kickoff
+ * `content_excerpt` on finalize. The model never sees/sets the answer.
+ */
+export interface ClarifyingQuestion {
+  /** The question text shown to the PM (German, ≤ 300 chars). Grounded in a
+   *  gap the model found in the kickoff — never generic boilerplate. */
+  question: string
+  /** Short rationale / what is missing (≤ 300 chars). Null when the
+   *  question is self-explanatory. */
+  rationale: string | null
+  /** Optional gap category hint (e.g. "schedule", "budget", "scope",
+   *  "stakeholders", "risks", "scope_boundaries"). Free text ≤ 40 chars. */
+  gap_tag: string | null
+}
+
+export interface ClarifyingQuestionsGenerationOutput {
+  questions: ClarifyingQuestion[]
+  usage: ProviderUsage
+}
+
+/**
+ * Result of a clarifying-questions router invocation. Persisted as a single
+ * `ki_runs` row (NO `ki_suggestions`, like narrative). Because the run fires
+ * before the project exists, the `ki_runs.project_id` is null (bounded by a
+ * partial CHECK to this purpose) and `wizard_draft_id` carries the link;
+ * finalize best-effort re-links it to the new project (AC-135.11).
+ */
+export interface RouterClarifyingQuestionsResult {
+  run_id: string
+  classification: DataClass
+  provider: AIProviderName
+  model_id: string | null
+  status: "success" | "error" | "external_blocked"
+  questions: ClarifyingQuestion[]
   external_blocked: boolean
   error_message?: string
 }

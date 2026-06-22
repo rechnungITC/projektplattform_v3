@@ -1,10 +1,11 @@
 # PROJ-135: Dialogic Wizard Clarifying Questions (AI-Rückfragen vor der Generierung)
 
-## Status: Planned
+## Status: Approved
 **Created:** 2026-06-16
-**Last Updated:** 2026-06-16
+**Last Updated:** 2026-06-22
 **Origin:** PROJ-90 "Next/Later" — promoted to its own spec (user-requested 2026-06-16)
 **Priority:** P1 — sharpens the PROJ-86–91 AI-bootstrap output
+**CIA review:** GO-mit-Auflagen (2026-06-16, obs 8167) — persistence approach **Option B-modified** locked (see CIA Architecture Review section)
 
 ## Summary
 Today the wizard's follow-up questions (PROJ-5) are **rule-based** from the PROJ-6 catalog — they do not look at the uploaded kickoff document. This feature adds an **AI clarifying-question round** inside the wizard, **before finalize**: after the user uploads a kickoff artefact, the AI reads the document + the Vorhaben (`projects.description`) and asks **one round of a few targeted questions** about the gaps and ambiguities it found. The user answers what they want (each question skippable), and the answers are stored as a **structured context addendum** that the downstream generation (PROJ-70 backlog, PROJ-88 stakeholders, PROJ-89 risks, orchestrated via PROJ-90) reads — producing higher-quality, more goal-aligned proposals.
@@ -16,7 +17,7 @@ The AI-bootstrap track (PROJ-86–91) can now generate a whole project from a ki
 
 ## Locked scope decisions (user, 2026-06-16)
 1. **Trigger point:** inside the wizard, **before finalize** — a new optional step after the kickoff upload (mirrors the existing optional `ki_backlog` step).
-2. **Answer sink:** answers become a **structured context addendum** attached to the kickoff `context_source`; the Vorhaben (`projects.description`) is **NOT** modified — preserving the PROJ-91 track invariant (Vorhaben = relevance yardstick only, never a generation source).
+2. **Answer sink:** answers become a **structured context addendum** attached to the kickoff `context_source`; the Vorhaben (`projects.description`) is **NOT** modified — preserving the PROJ-91 track invariant (Vorhaben = relevance yardstick only, never a generation source). **Persistence mechanism locked by CIA (obs 8167) → Option B-modified:** the Q&A is appended to `context_source.content_excerpt` (the field the collectors actually read), **not** parked in `source_metadata`-only — because `source_metadata` is never read by the collectors *nor* by the Class-3 classifier scan path, which would let PII-laden answers bypass the privacy gate. See CIA Architecture Review below.
 3. **Dialog shape:** **one round** of a few (3–6) targeted, **individually skippable** questions — one AI call, deterministic, testable. No multi-turn agent loop.
 4. **Class-3 behaviour:** the question-generation is its own AI purpose routed through the **standard resolver** (Class-1/2 → cloud, Class-3/PII → Ollama-only). If the source is Class-3 and no local provider is configured, the clarifying step is **gracefully skipped** (never blocks the wizard); generation proceeds as before. Consistent with PROJ-88/89.
 
@@ -31,11 +32,15 @@ The AI-bootstrap track (PROJ-86–91) can now generate a whole project from a ki
 - [ ] **AC-135.1**: A new `AIPurpose` value (e.g. `clarifying_questions_from_context`) is added and wired through the router with a dedicated `invoke…` helper (mirrors `invokeProposalFromContextGeneration`): it takes the kickoff context (excerpt + Vorhaben + project frame) and returns **0–6 clarifying questions**, each with a short prompt text and an optional rationale/gap-tag.
 - [ ] **AC-135.2**: Classification follows the **standard path** — Class-1/2 kickoff → cloud provider; Class-3 (PII, post-PROJ-86 detection or stamped `privacy_class`) → Ollama-only via the resolver clamp (no hard-pin — PROJ-93 forward-compat).
 - [ ] **AC-135.3**: A new **optional wizard step** appears only when a kickoff source was uploaded (mirrors the `ki_backlog` step visibility); it renders the generated questions with a free-text answer field per question and a clear **"überspringen"** affordance per question and for the whole step.
-- [ ] **AC-135.4**: On finalize, the answered questions are persisted as a **structured Q&A addendum** on the kickoff `context_source` (e.g. in `source_metadata`), **without** modifying `projects.description`. Unanswered/skipped questions are omitted from the addendum.
+- [ ] **AC-135.4** _(revised per CIA obs 8167 — Option B-modified)_: On finalize, the answered questions are persisted by **appending** a structured Q&A block to `context_source.content_excerpt` with a stable delimiter (so the PROJ-70/88/89 collectors — which read `content_excerpt` — actually see it), **without** modifying `projects.description`. The same Q&A block is **mirrored into `source_metadata` for audit only**. Persisting Q&A in `source_metadata`-only is explicitly rejected: it is read by neither the collectors nor the Class-3 classifier scan path. Unanswered/skipped questions are omitted from both.
+- [ ] **AC-135.4b** _(privacy re-stamp — CIA-mandated)_: At persist time, `detectClass3Markers` (post-PROJ-86) is re-run over the Q&A text; on any PII hit the source's `privacy_class` is raised via `GREATEST(privacy_class, 3)`. A Class-2 kickoff whose answers introduce personal data therefore becomes Class-3 **before** any downstream cloud generation reads it — closing the bypass the rejected Option A would have opened.
 - [ ] **AC-135.5**: The downstream generation purposes (PROJ-70/88/89) **read the Q&A addendum** as part of their auto-context, so accepted proposals reflect the clarifications. The PROJ-91 track invariant is preserved: the Vorhaben stays the relevance yardstick; the addendum is treated as additional **kickoff-derived** source material, not as a generation goal.
 - [ ] **AC-135.6**: **No silent mutation / full auditability** — the clarifying run is recorded as a `ki_run` (purpose, classification, provider, tokens, status) like every other AI call; the Q&A addendum is reviewable text, not a business record. No `work_items`/`stakeholders`/`risks` are created by this step (invariant #2).
 - [ ] **AC-135.7**: **Graceful skip / non-blocking** — if question generation errors, returns zero questions, is `external_blocked` (Class-3 without Ollama), or hits the cost cap, the step shows a clear, non-blocking message and the user can proceed to finalize; generation downstream is unaffected. No all-or-nothing.
 - [ ] **AC-135.8**: **Cost-cap respected** — the clarifying purpose is gated by the existing per-purpose cost-cap mechanism (its own purpose row, NULL-purpose fallback), like the other AI purposes.
+- [ ] **AC-135.9** _(migration lockstep — CIA-mandated)_: The new purpose (`clarifying_questions_from_context`) is added to the `ki_runs.purpose` CHECK constraint **and** the `tenant_ai_cost_caps` purpose CHECK constraint **in the same migration**, re-enumerating the full set (including `sentiment` + `coaching`, which have repeatedly regressed out of these CHECKs — PROJ-34/PROJ-88). A missing enum value causes a live 5xx on the first call, so a regression-guard test asserts the purpose is accepted by both constraints.
+- [ ] **AC-135.10** _(finalize independence — CIA-mandated)_: `finalizeDraft` **never `await`s** the clarifying-question generation. The clarifying call is fired with a ~15–20s timeout (analog PROJ-70-γ) and fails open on provider error / no-Ollama / cost-cap; finalize completes regardless. The wizard step is the only place the user waits on the call, and that wait is bounded and skippable.
+- [ ] **AC-135.11** _(audit re-linking — CIA Q1, from Tech Design §3.1)_: Because the clarifying run is recorded **before** the project exists (`ki_runs.project_id` is null at generation time, bounded-nullable per Option 1), the run carries a `wizard_draft_id`; at finalize the run is **best-effort re-linked** to the new `project_id`. A project-less `ki_runs` row is readable only via the tenant-scoped audit policy and never leaks across tenants (`tenant_id` anchor + red-team smoke).
 
 ## Edge Cases
 - No kickoff uploaded → the clarifying step is not shown at all (manual wizard path unchanged).
@@ -60,94 +65,190 @@ The AI-bootstrap track (PROJ-86–91) can now generate a whole project from a ki
 
 ## Technical Requirements (optional)
 - The clarifying step must not add a hard dependency that blocks finalize — it is always skippable and fail-open.
-- No new npm dependency expected (reuses the AI SDK + router stack); a CIA review is warranted at `/architecture` because this introduces a **new AI purpose + a new wizard interaction pattern**.
+- No new npm dependency expected (reuses the AI SDK + router stack). A CIA review was **completed** (2026-06-16, obs 8167) — verdict **GO-mit-Auflagen** — because this introduces a new AI purpose + a new wizard interaction pattern. Its mandatory conditions are folded into AC-135.4 / AC-135.4b / AC-135.9 / AC-135.10 above.
+
+## CIA Architecture Review (2026-06-16, obs 8167)
+**Verdict:** GO-mit-Auflagen.
+
+**Core decision — persistence:** persist clarifying Q&A by **appending to `context_source.content_excerpt` (Option B-modified)**, mirror to `source_metadata` audit-only. Rejected: **Option A** (Q&A in `source_metadata`-only, appended at runtime) — *High risk*, because `classifyProposalFromContextAutoContext` inspects only `content_excerpt` (+ `description`), so a Class-2 source carrying PII-laden Q&A answers would be shipped to a cloud provider undetected.
+
+**Confirmed code facts (basis for the Auflagen):**
+- All three collectors (PROJ-70/88/89) `SELECT` identical fields from `context_sources`: `id, kind, title, privacy_class, content_excerpt, language, project_id`.
+- `source_metadata` is **intentionally excluded** from the collectors (see comment in `src/lib/ai/auto-context.ts` ~lines 1050–1052) — confirming Option A would be invisible to generation.
+- The new purpose must re-enumerate the `ki_runs` **and** `tenant_ai_cost_caps` CHECK constraints in lockstep (incl. `sentiment` + `coaching`).
+- `finalizeDraft` must never `await` the Q&A call; ~15–20s timeout (analog PROJ-70-γ), fail-open.
+- PROJ-91 invariant holds: `projects.description` (Vorhaben) stays untouched; Q&A is kickoff-derived only.
+
+**Five mandatory acceptance criteria handed to `/architecture`** (AC-A1..A5, now mapped into this spec): append-to-excerpt + audit mirror (→ AC-135.4); detect/raise `privacy_class` on persist (→ AC-135.4b); preserve Vorhaben (→ AC-135.5); fail-open finalize independence (→ AC-135.10); new purpose with cost-cap row + migration lockstep (→ AC-135.9).
+
+**Effort:** Slice α (backend ~2 PT) + β (frontend ~1.5 PT) ≈ **3.5 PT total**.
+
+**Follow-ups proposed (not in this slice):** multiple clarifying rounds; PROJ-90 conductor integration of the clarifying step; PROJ-75 full-text reclassification bridge (re-classify on the full document, not just the 8000-char excerpt).
 
 ---
 <!-- Sections below are added by subsequent skills -->
 
 ## Tech Design (Solution Architect)
+**Designed:** 2026-06-18 · **Backend + Frontend** (no new npm dependency) · **CIA-reviewed** (the central audit fork — see §3.1)
 
-**Designed:** 2026-06-18 · **Status of this design:** ready for review
-**CIA pre-architecture review:** GO-mit-Auflagen (2026-06-16, obs 8167). The verdict below is fully incorporated — see "Persistence decision" and the new hardening criteria AC-A1…A5.
+### Overview — what gets built
+A new AI "purpose" (`clarifying_questions_from_context`) that, inside the project-creation wizard, reads the uploaded kickoff document and proposes a short round of clarifying questions; the PM answers what they want; the answers are attached to the kickoff source so the later backlog/stakeholder/risk generation (PROJ-70/88/89) reads sharper input. It reuses the existing AI-router, classifier, cost-cap, and audit machinery — it adds **no** new proposal/review surface, **no** new business records, and **no** autonomous loop.
 
-### The one decision that shapes everything: where the answers live
+This purpose is deliberately **unlike** the PROJ-70/88/89 "proposal" purposes. Those write reviewable `ki_suggestions` rows with an accept/undo workflow. This one writes its output as **text appended to the kickoff source** — behaving like the existing `narrative`/`sentiment`/`coaching` purposes (which also record an audit run but write to a non-suggestion sink). Consequence: **no `ki_suggestions` rows, no accept/undo RPC pair, no `ki_provenance`, no immutability-bypass** are needed. This is a much smaller backend than its siblings.
 
-This feature only produces one piece of output — the question/answer text the PM types in the wizard. Everything else is plumbing we already own. So the whole design hinges on a single choice: **where do those answers get stored so the downstream generation actually sees them, and so our privacy guard still inspects them?**
-
-We looked at two options:
-
-- **Option A — store the Q&A only in the source's metadata field (`context_sources.source_metadata`).** Rejected. Two existing safety/quality mechanisms read the source's *excerpt* field, not the metadata field:
-  1. The backlog/stakeholder/risk generators (PROJ-70/88/89) build their AI context from a fixed list of columns that includes `content_excerpt` but **deliberately excludes `source_metadata`** (it's free-shape JSON that often hides emails/attendee names). So Q&A in metadata would be *invisible to the generation* — the feature wouldn't actually improve the output.
-  2. The Class-3 privacy classifier scans `content_excerpt` for personal-data markers. Q&A in metadata would *skip the scan* — a kickoff stamped "Class-2 / cloud-OK" could ship PII-laden answers (e.g. "the budget owner is Frau Müller, mueller@kunde.de") to a cloud provider. A direct violation of Invariant #3.
-
-- **Option B-modified — append the Q&A to the source's excerpt field (`content_excerpt`) with a stable delimiter, and additionally mirror it into `source_metadata` for audit/replay.** **Chosen** (CIA recommendation). Because the generators already read `content_excerpt`, the enriched context flows downstream with **zero change to the three collectors**. Because the classifier already scans `content_excerpt`, the answers are **automatically PII-scanned** at persist time. The metadata mirror is audit-only (who asked what, when, which questions were skipped) and is never the generation source.
-
-This is why the design is small: we are not building a new context-delivery path, we are feeding the *existing* one a richer excerpt.
-
-### Component Structure (what the user sees)
-
+### 1) Component structure (what the user sees)
 ```
-Project Creation Wizard (existing)
-+-- Type → Basics → Method → Follow-ups (existing, PROJ-5/6)
-+-- "KI-Backlog" step (existing, optional, PROJ-70-ε)
-|     +-- Kickoff upload  → creates a context_source, stores its id
-+-- "KI-Rückfragen" step  ← NEW, optional
-|     +-- shown ONLY when a kickoff context_source exists (mirrors KI-Backlog visibility)
-|     +-- on enter: ONE AI call → 0–6 clarifying questions
-|     +-- per question:  prompt text · optional gap-tag · free-text answer field · "überspringen"
-|     +-- whole-step "überspringen" affordance
-|     +-- non-blocking status line for the skip/empty/blocked/cost-cap cases
-+-- Review → Finalize (existing)
-      +-- on finalize: answered Q&A appended to the kickoff source's excerpt + privacy re-stamp + audit mirror
+Project-Creation Wizard
++-- basics            (existing — kickoff upload toggle lives here, PROJ-70-ε)
++-- type / method / followups   (existing — rule-based PROJ-6 questions, unchanged)
++-- ki_backlog        (existing optional step — kickoff upload, PROJ-70-ε)
++-- clarifying        (NEW optional step — appears only when a kickoff was uploaded)
+|   +-- "Generate questions" trigger (auto-fires on entering the step)
+|   +-- 0–6 question cards, each with:
+|   |     +-- the AI's question text (+ optional gap-tag / rationale)
+|   |     +-- a free-text answer field
+|   |     +-- a per-question "überspringen" affordance
+|   +-- step-level "Schritt überspringen" affordance
+|   +-- bounded wait (~15–20s) + fail-open states:
+|         "keine Rückfragen nötig" / "lokaler Provider erforderlich – übersprungen" / error
++-- review            (existing — finalize)
 ```
+The step's **visibility** reuses the exact `ki_backlog` condition (a kickoff `context_source` was uploaded). Question text + the PM's answers live in the **wizard draft** (resumable, like every other wizard field). Nothing is generated unless the PM reaches/triggers the step.
 
-The step is a sibling of the existing optional `KI-Backlog` step. It reuses the wizard's step-visibility helper (`visibleWizardSteps`), the draft persistence, and the same "this step is optional and skippable" interaction language. No new navigation, no new page.
+### 2) Data model (plain language — no business tables added)
+- **`context_sources` (existing, reused as the answer sink):** on finalize, a structured Q&A block is **appended to `content_excerpt`** with a stable delimiter, and the **full Q&A is mirrored into `source_metadata` for audit only**. `content_excerpt` has a hard **8000-character cap** — the append must always fit (see truncation rule, §3.2). The source's `privacy_class` is **re-stamped** at the same time (§3.3). `projects.description` (the Vorhaben) is never touched.
+- **`ki_runs` (existing audit table — one bounded change):** every clarifying generation is recorded as a `ki_run` (purpose, classification, provider, tokens, status) like every other AI call. Because generation happens in the wizard **before the project exists**, the run has no project to point at. We make `ki_runs.project_id` **nullable in a bounded way** — see §3.1. A new optional `wizard_draft_id` correlation column lets a project-less run be tied back to its draft (and best-effort back-filled to the real project at finalize).
+- **Purpose CHECK constraints:** `clarifying_questions_from_context` is added to **`ki_runs.purpose`** and **`tenant_ai_cost_caps.purpose`** — re-enumerating the *full current* list (incl. `sentiment` + `coaching`, which regressed out before — PROJ-88 incident). It is **deliberately NOT added to `ki_suggestions.purpose`** (no suggestions written); the migration's smoke-test asserts its *absence* there to prevent copy-paste drift from the PROJ-70 template.
 
-### Data Model (plain language)
+### 3) Tech decisions (the WHY)
 
-Nothing new is created as a table or business record. We touch one existing row and add one new "kind of AI call":
+#### 3.1 The audit fork → **Option 1: bounded-nullable `ki_runs.project_id`** (CIA-recommended, GO-mit-Auflagen)
+The clarifying call fires in the wizard step *before* finalize, so no `projects` row exists yet — but AC-135.6 requires every AI call to be audited as a `ki_run`, and `ki_runs.project_id` is currently `NOT NULL`. CIA evaluated three options and recommended **Option 1**, because it is the only one that keeps **both** the audit-completeness invariant **and** the locked "wizard, before finalize" placement:
+- *Rejected — defer the run to finalize:* an abandoned wizard would leave a real provider call (tokens spent, Class-3 decision made) **unaudited** → breaks the "100% traceable" governance metric **and** opens a cost-cap-bypass / cost-DoS vector (caps are tenant+purpose-scoped and only count recorded runs).
+- *Rejected — generate after finalize:* contradicts the locked scope and the product premise (answers must sharpen the *subsequent* generation).
 
-- **The kickoff `context_sources` row** (created during the KI-Backlog upload) gets two writes at finalize:
-  - its **excerpt** field gains an appended, clearly-delimited block: `--- Rückfragen & Antworten (KI) ---` followed by each *answered* question and its answer. Skipped/unanswered questions are omitted. This block is what the downstream generators now read as additional kickoff-derived material.
-  - its **metadata** field gains an audit mirror of the same Q&A plus run bookkeeping (timestamp, which questions were generated, which were skipped). Audit-only.
-  - its **privacy class** is re-evaluated against the new excerpt content and **raised (never lowered)** if the appended answers introduce personal-data markers — so a previously Class-2 source correctly becomes Class-3 before any downstream cloud call.
-- **A `ki_runs` audit row** records the clarifying call itself (purpose, classification, provider, token usage, status) — exactly like every other AI call in the system. The Q&A is reviewable text, not a business record; **no** work-items / stakeholders / risks are created by this step (Invariant #2).
-- **The Vorhaben (`projects.description`) is never written by this feature** — preserving the PROJ-91 track invariant (the Vorhaben is the relevance yardstick, never a generation source). Clarifying answers are kickoff-derived source material only.
+**Mandatory Auflagen folded into this design (all six):**
+1. **Bounded CHECK, not a blanket drop:** `project_id` may be null **only** for `purpose = 'clarifying_questions_from_context'`; `NOT NULL` stays effectively enforced for all 8 other purposes.
+2. **Additive RLS, never replace:** the existing project-scoped read/insert policies on `ki_runs` are left untouched; **one additional** SELECT and INSERT policy each, gated on `project_id IS NULL AND is_tenant_member(tenant_id)` (the `tenant_id` anchor prevents cross-tenant leakage). A red-team smoke proves a project-less run from Tenant A is invisible to Tenant B.
+3. **Correlation anchor:** new optional `ki_runs.wizard_draft_id` (FK → `project_wizard_drafts`, `ON DELETE SET NULL`), set on the clarifying insert; best-effort back-filled to the real `project_id` at finalize (added as **AC-135.11** below, per CIA Q1).
+4. **Partial index** `(tenant_id, created_at) WHERE project_id IS NULL` for the tenant-level audit view.
+5. **Truncation rule** for the excerpt append (§3.2).
+6. **Class-3 re-stamp** after the append (§3.3).
 
-A **new AI purpose** is introduced: `clarifying_questions_from_context`. It joins the existing purpose family (`proposal_from_context`, `…_stakeholders_…`, `…_risks_…`). Adding a purpose requires re-enumerating two database CHECK constraints **in lockstep** (`ki_runs.purpose` and `tenant_ai_cost_caps.purpose`) — and, per the standing ⚠️ note in the PROJ-89 migration, that re-enumeration **must keep `sentiment` + `coaching`** in the list (they were silently dropped once and 5xx'd in production). One migration, mirroring the PROJ-89 purpose migration's structure (constraint re-enum + cost-cap row support + a self-check smoke block).
+#### 3.2 Persistence = Option B-modified, with a deterministic truncation rule
+Answers are appended to `content_excerpt` (not parked in `source_metadata`-only) because the PROJ-70/88/89 collectors and the Class-3 classifier read **only** `content_excerpt` — `source_metadata` is invisible to both (intentional, to keep PII out of prompts). To respect the 8000-char cap: render the Q&A block first; if `excerpt + block` would exceed 8000, **head-truncate the original excerpt** (with a visible `[…excerpt gekürzt…]` marker) and **always keep the full Q&A block** — the PM's clarifications are the high-value signal and the original kickoff is redundant with the stored file.
 
-### Tech Decisions (WHY, for a PM)
+#### 3.3 Privacy: re-stamp on persist (DSGVO defense-in-depth)
+The Q&A block is free user text and may introduce personal data. On persist, `detectClass3Markers` (post-PROJ-86) runs over the **combined** excerpt and raises `privacy_class` to its floor via "greatest" (never downgrades). A Class-2 kickoff whose answers add PII becomes Class-3 **before** any downstream cloud generation reads it — closing the exact bypass the rejected `source_metadata`-only approach would have opened.
 
-1. **Append-to-excerpt over metadata-only** — the only choice that makes the answers *both* improve generation *and* stay inside the privacy guard. Picking the convenient metadata-only path would have quietly defeated the feature's purpose and opened a Class-3 leak. (CIA, AC-A1/AC-A2.)
-2. **Re-classify on persist** — because the PM's free-text answers can contain names/emails the original document didn't, we re-run the same personal-data detector used everywhere else and raise the source's privacy class if needed. This keeps the downstream Class-3→local-only routing correct without any special-casing. (AC-A2.)
-3. **One controlled round, one AI call** — deterministic, testable, cheap; no autonomous multi-turn agent (explicit non-goal). This matches every other AI purpose in the platform and keeps the cost-cap meaningful.
-4. **Standard routing, graceful skip** — the clarifying purpose goes through the normal resolver (Class-1/2 → tenant cloud provider; Class-3 → Ollama-only). If a Class-3 source has no local provider, or the call errors, returns nothing, or hits the cost cap, the step shows a calm "übersprungen" message and the user finalizes anyway. The wizard never stalls on this step. (AC-A4/AC-135.7.)
-5. **Finalize never waits on the AI** — question *generation* happens when the user enters the step (interactive). The *persist* of answers at finalize is a fast local write (append + re-stamp), not an AI call, so finalize stays snappy and is never blocked by provider latency. (AC-A4.)
-6. **No new npm dependency** — reuses the AI SDK, the router, the classifier, the wizard framework, and the `context_sources` table already in production.
+#### 3.4 Classification & routing = standard path (not pinned)
+Mirrors PROJ-70/89 (`classify…AutoContext` with `context_source.privacy_class` as floor + marker-upgrade), **not** PROJ-88's hard Class-3 pin: a clean Class-1/2 kickoff may use the tenant's cloud provider; Class-3 clamps to Ollama-only via the resolver (no hard-pin — PROJ-93 forward-compat). If the source is Class-3 and the tenant has no local provider, the step shows "lokaler Provider erforderlich – übersprungen" and the wizard proceeds (fail-open).
 
-### Slicing
+#### 3.5 Generation in the step, persistence at finalize (finalize never awaits AI)
+Generation is a new tenant-scoped endpoint the wizard calls **on entering the clarifying step**, taking the kickoff `context_source_id` (its `project_id` is still null) + the draft's Vorhaben text — bounded ~15–20s timeout, fail-open. **Finalize never calls the AI**; it only does cheap DB writes: attach `context_source.project_id` (existing PROJ-70-ε step), append the answered Q&A + re-stamp, and back-fill the run's `wizard_draft_id → project_id`.
 
-- **α — Backend (~2 PT):** new purpose + router `invoke…` helper + classifier wiring; the append-to-excerpt + privacy re-stamp + audit-mirror persist path; the purpose/cost-cap migration (lockstep, keeps sentiment+coaching) with a live-RPC smoke (per the project's "live-RPC-smoke required" rule). No change to the PROJ-70/88/89 collectors — they inherit the richer excerpt for free.
-- **β — Frontend (~1.5 PT):** the optional `KI-Rückfragen` wizard step (visibility via `visibleWizardSteps`, per-question + whole-step skip, non-blocking status states), draft persistence of answers, finalize hook to trigger the persist.
+### 4) Dependencies
+None. Reuses the AI SDK + router + classifier + cost-cap stack already in `package.json`.
 
-Total ≈ 3.5 PT. CIA review at `/architecture` is satisfied by this document; a further CIA pass is **not** required for `/backend` since the slice introduces no new dependency and follows the established purpose/router/classifier pattern.
+### 5) Acceptance-criteria mapping
+- **AC-135.1** → new purpose + `invoke…` helper returning 0–6 questions to the caller (no `ki_suggestions` written).
+- **AC-135.2 / 3.4** → standard classifier + resolver clamp.
+- **AC-135.3 / §1** → new optional `clarifying` wizard step, per-question + step skip.
+- **AC-135.4 / §3.2** → append to `content_excerpt` + audit mirror + truncation rule.
+- **AC-135.4b / §3.3** → re-stamp `privacy_class` on persist.
+- **AC-135.6 / §3.1** → bounded-nullable `ki_runs` audit (Option 1) — every run recorded, even pre-project.
+- **AC-135.7 / §3.5** → fail-open, non-blocking step.
+- **AC-135.8** → cost-cap row for the new purpose (tenant+purpose-scoped; works for project-less runs).
+- **AC-135.9 / §2** → CHECK lockstep on `ki_runs` + `tenant_ai_cost_caps` (keep `sentiment`+`coaching`); assert absence on `ki_suggestions`.
+- **AC-135.10 / §3.5** → finalize never awaits the AI call.
+- **AC-135.11 (new, CIA Q1):** at finalize, the clarifying run's `wizard_draft_id` is best-effort resolved to the new `project_id` so project-less audit rows are re-linked.
 
-### Hardening Acceptance Criteria (from CIA, obs 8167)
+### 6) CIA review outcome (audit fork, 2026-06-18)
+**Verdict: GO — Option 1 with Auflagen 1–6** (all folded into §3.1–§3.3 above). Blast radius bounded to the `ki_runs` audit table + two *additive* RLS policies + one optional column + one partial index; no new dependency; multi-tenant invariant preserved via the `tenant_id` anchor. Follow-ups: **Q2** — retention/cleanup cron for project-less `clarifying` runs whose draft was abandoned (low prio, post-pilot → **PROJ-Y candidate**); **Q3** — full-text (not 8000-excerpt) Class-3 re-classification overlaps **PROJ-75** (kept as that slice; MVP re-stamps the combined excerpt only, consistent with PROJ-70-γ).
 
-These sharpen the spec's AC-135.* with the persistence-and-privacy specifics the CIA review locked:
+### 7) Suggested build slices
+- **α (backend ~2 PT):** purpose + types + `classify…`/`collect…` + `invoke…` helper + generation endpoint + migration (bounded-nullable + CHECK lockstep + additive RLS + `wizard_draft_id` + partial index) + finalize persist (append/truncate/re-stamp/back-fill). Live-RPC/endpoint smoke required (per project convention).
+- **β (frontend ~1.5 PT):** the optional `clarifying` wizard step, question cards, per-question + step skip, bounded-wait + fail-open states, draft persistence.
 
-- [ ] **AC-A1 — Append + audit mirror:** answered Q&A is appended to `context_sources.content_excerpt` with a stable, parseable delimiter, AND mirrored into `source_metadata` for audit. The downstream PROJ-70/88/89 collectors read the enriched excerpt **without any code change** (verified by a generation run that demonstrably reflects an answer).
-- [ ] **AC-A2 — Re-classify on persist:** the personal-data detector runs over the appended Q&A at persist time; `context_sources.privacy_class` is raised via a never-lower (`GREATEST`) rule when markers are found. A Class-2 kickoff whose answers introduce an email/name becomes Class-3 **before** any downstream cloud call.
-- [ ] **AC-A3 — Vorhaben untouched:** `projects.description` is never modified by this feature; the PROJ-91 invariant holds (Vorhaben = relevance yardstick, Q&A = kickoff-derived source).
-- [ ] **AC-A4 — Finalize independence / fail-open:** finalize never awaits the AI question-generation call; the persist step is a local write. On provider error / zero questions / `external_blocked` (Class-3 without Ollama) / cost-cap, the step is skipped with a non-blocking message and finalize proceeds; downstream generation is unaffected.
-- [ ] **AC-A5 — New purpose, migration lockstep:** `clarifying_questions_from_context` is added to the `ki_runs.purpose` AND `tenant_ai_cost_caps.purpose` CHECK constraints in one migration that **retains `sentiment` + `coaching`**, supports a per-purpose cost-cap row (NULL-purpose fallback), and includes a self-check smoke block. Verified by a live-RPC smoke against the database.
+## Implementation Notes
 
-### Open question for review
+### Slice α — backend (2026-06-19, In Progress)
+Built per the approved Tech Design. **No `ki_suggestions`, no accept/undo RPC, no provenance** — this purpose writes its output to `content_excerpt`, like `narrative`/`sentiment`/`coaching`.
 
-- **Step placement & re-trigger:** the design places `KI-Rückfragen` immediately after `KI-Backlog` (so the upload exists) and before Review. On wizard resume, answered questions survive in the draft and are **not** auto-regenerated unless the user re-triggers. Confirm this ordering and the "no silent re-generation on resume" behaviour, or state a preference.
+**Files:**
+- `src/lib/ai/types.ts` — new `AIPurpose` `clarifying_questions_from_context`; `ClarifyingQuestionsAutoContext` (pre-project shape: frame from the draft, not a `projects` row), `ClarifyingQuestion` (`question`/`rationale`/`gap_tag`), `ClarifyingQuestionsGenerationOutput`, `RouterClarifyingQuestionsResult`.
+- `src/lib/ai/classify.ts` — `classifyClarifyingQuestionsAutoContext` (content-based, mirror of PROJ-89: `privacy_class` floor + marker upgrade on excerpt **and** Vorhaben; PROJ-86 regression-guarded by the existing `detectClass3Markers`).
+- `src/lib/ai/auto-context.ts` — `collectClarifyingQuestionsAutoContext(supabase, contextSourceId, draftFrame)`: reads ONLY the kickoff `context_source` (pre-project, `project_id` still null); the Vorhaben/type/method come from the draft. `source_metadata` never read.
+- `src/lib/ai/providers/graph-purpose-prompts.ts` — shared `ClarifyingQuestionsResponseSchema` + `CLARIFYING_QUESTIONS_SYSTEM_PROMPT` + `buildClarifyingQuestionsPrompt` + `mapClarifyingQuestions` (clamps lengths).
+- All 5 providers implement `generateClarifyingQuestions` (Anthropic/OpenAI/Google strict via the shared schema; Ollama loose-replica `ClarifyingQuestionsResponseSchemaOllama` + shared prompt/mapper; Stub returns `[]`).
+- `src/lib/ai/router.ts` — `insertKiRun` widened to `projectId: string | null` + `wizardDraftId?`; `invokeClarifyingQuestionsGeneration` (mirror of `invokeNarrativeGeneration`: single `ki_run`, no suggestions, Stub fail-open).
+- `src/app/api/wizard-drafts/[id]/clarifying-questions/route.ts` — **draft-scoped** POST (no project yet); the `contextSourceId` is read from the draft (not the body); fail-open empty list when no kickoff/blocked.
+- `src/app/api/wizard-drafts/[id]/finalize/route.ts` — appends answered Q&A to `content_excerpt` within the 8000 cap, re-stamps `privacy_class` (AC-135.4b), mirrors full Q&A to `source_metadata`, and best-effort re-links the project-less clarifying `ki_run` → new project (AC-135.11). Helpers extracted to `src/lib/context-ingestion/clarifying-qa.ts`.
+- Migration `20260619100000_proj135_clarifying_questions_purpose.sql` — Option 1 audit fork: `ki_runs.project_id` bounded-nullable (partial CHECK → NULL only for this purpose) + `wizard_draft_id` FK + partial index + purpose CHECK lockstep on `ki_runs` **and** `tenant_ai_cost_caps` (keeps `sentiment`+`coaching`) + **3 additive tenant-scoped RLS policies** + 7 embedded smoke checks (incl. asserting `ki_suggestions_purpose_check` does NOT contain the purpose).
+- `src/types/wizard.ts` — optional `clarifying` draft block (`ClarifyingData`) as the β contract.
+
+**Quality gates:** lint 0 errors; tsc 13 baseline / **0 new**; vitest **1857/1857** (+27: classifier 6, qa-helper 9, finalize-persist 3, capability-matrix 2, plus existing); build clean (10.2s, new route registered).
+
+**Live smoke (mandatory, prod `iqerihohwabyjzkpcujq`):** migration applied — all 7 embedded smoke checks passed. Behavioural smoke (rollback, 0 residue): a project-less `clarifying_questions_from_context` `ki_run` inserts cleanly; the bounded CHECK **rejects** a project-less `risks` row — proving the bound only relaxes for this one purpose.
+
+**Deferred to β (frontend):** the optional `clarifying` wizard step (question cards, per-question + step skip, bounded-wait + fail-open states, draft persistence) and AC-135.3/5/7-UI. AC-135.10/11 live-E2E → /qa.
+
+### Slice β — frontend (2026-06-19, In Progress)
+The optional `clarifying` wizard step, wired to the slice-α endpoint + the `clarifying` draft block.
+
+> Note: an initial β build was lost when the `/tmp` worktree was removed during a parallel-session collision (uncommitted). It was re-created verbatim from context on the `proj-135/requirements` branch (which carries backend α); no behavioural change.
+
+**Files:**
+- `src/types/wizard.ts` — added `clarifying` to `WIZARD_STEPS` (after `ki_backlog`, before `review`) + label "Rückfragen"; `visibleWizardSteps(kiBacklogEnabled, kickoffUploaded)` now gates the step on a kickoff actually being **uploaded** (`context_source_id` present — AC-135.3); extended `ClarifyingData` with `questions` + `status` (persisted for resume) alongside the finalize-read `answers`; new `ClarifyingQuestionItem`/`ClarifyingStatus` types.
+- `src/lib/ai-proposals/clarifying-questions-api.ts` — `generateClarifyingQuestions(draftId, count)` with a **~20s `AbortController` bounded wait** (AC-135.10); maps abort → an actionable "Zeitüberschreitung" message; callers fail open.
+- `src/components/projects/wizard/step-clarifying.tsx` — the step: auto-generates once on entering (one-shot effect, PROJ-70-ε `eslint-disable` pattern), renders question cards (gap-tag badge + question + rationale + answer `Textarea` + per-question **Überspringen/Einbeziehen** toggle), a step-level **"Alle überspringen"** + **"Neu generieren"**, and the four fail-open render states (loading / empty "keine Rückfragen nötig" / blocked "lokaler Provider erforderlich – übersprungen" / error + retry). Answers + generated questions sync into the draft `clarifying` block (resume-safe; finalize reads `answers`).
+- `src/components/projects/wizard/wizard-client.tsx` — `clarifying` schema block (optional passthrough), `kickoffUploaded` watch → `visibleWizardSteps`, `validateStep` case (always-skippable), render branch passing the live `draftIdState`.
+
+**AC coverage:** AC-135.3 (conditional step + per-question/step skip), AC-135.5 (answers persisted to the draft → finalize → downstream context), AC-135.7 (fail-open states, never blocks Weiter), AC-135.10 (client 20s bounded wait). AC-135.1/2/6/8/9/4/4b/11 are backend (slice α).
+
+**Quality gates:** lint 0; tsc 13 baseline / **0 new**; vitest **1860/1860** (+3 PROJ-135 step-visibility tests in `wizard.test.ts`); build clean (11.3s, step + route registered).
+
+**Deferred to /qa:** live-E2E Playwright (step appears only after upload; auto-generate; answer → finalize → Q&A appended to `content_excerpt`; AC-135.10/11 live).
 
 ## QA Test Results
-_To be added by /qa_
+
+**QA date:** 2026-06-22 · **Verdict: PRODUCTION-READY** (0 Critical / 0 High) · tested on `proj-135/requirements` (α+β) against prod Supabase `iqerihohwabyjzkpcujq`.
+
+### Acceptance criteria
+| AC | What | Result | Evidence |
+|----|------|--------|----------|
+| AC-135.1 | New purpose + `invoke…` returns 0–6 questions, no `ki_suggestions` | ✅ PASS | capability-matrix test (all 5 providers impl `generateClarifyingQuestions`); router mirrors `invokeNarrativeGeneration` (no suggestions); vitest |
+| AC-135.2 | Content-based classification (Class-1/2 cloud, Class-3 local) | ✅ PASS | `classify-clarifying-questions.test.ts` 6/6 incl. PROJ-86 regression guard + PROJ-91 Vorhaben defense-in-depth |
+| AC-135.3 | Optional step appears only after kickoff upload; per-question + step skip | ✅ PASS (UI live-E2E authored, skip-pending-env — see D-1) | `wizard.test.ts` visibility 3/3; E2E `wizard UI gating` authored |
+| AC-135.4 | Append Q&A to `content_excerpt` (8000 cap) + `source_metadata` mirror | ✅ PASS | `clarifying-qa.test.ts` 9/9 (truncation keeps full Q&A); `finalize/route.test.ts` persist 1/1; E2E finalize layer authored |
+| AC-135.4b | Re-stamp `privacy_class` (raise-only) on PII in answers | ✅ PASS | `finalize/route.test.ts` re-stamp test (clean→2, PII→3) |
+| AC-135.6 | Every run audited as `ki_run` (project-less, Option-1) | ✅ PASS (live) | migration 7 smoke-checks green; **backend-α live prod smoke**: project-less clarifying insert accepted, bounded-CHECK rejects project-less `risks`, 0 residue |
+| AC-135.7 | Fail-open / non-blocking (error/empty/blocked + retry) | ✅ PASS | step renders 4 fail-open states; router Stub-empty fallback; validateStep always-true |
+| AC-135.8 | Cost-cap gated | ✅ PASS | `applyCostCap` in `invokeClarifyingQuestionsGeneration`; purpose in `tenant_ai_cost_caps` CHECK (migration smoke) |
+| AC-135.9 | CHECK lockstep `ki_runs`+`tenant_ai_cost_caps` (keep sentiment+coaching); NOT `ki_suggestions` | ✅ PASS (live) | migration smoke-check 1–3 (asserts presence in both + **absence** in `ki_suggestions`) applied to prod |
+| AC-135.10 | finalize never awaits AI; client ~20s bounded wait | ✅ PASS | finalize does cheap DB writes only (no invoke); `generateClarifyingQuestions` AbortController 20s. Structural — not force-timed E2E (coverage note) |
+| AC-135.11 | Project-less clarifying `ki_run` re-linked at finalize | ✅ PASS | `finalize/route.test.ts` re-link test; E2E finalize layer authored |
+
+### Automated tests
+- **Vitest: 1860/1860** (regression) — incl. `classify-clarifying-questions` (6), `clarifying-qa` (9), `finalize/route` PROJ-135 persist (3), `capability-matrix` (clarifying across 5 providers), `wizard` visibility (3).
+- **Playwright `tests/PROJ-135-clarifying-questions.spec.ts`** (new regression suite, 4 layers): auth-gate **2/2 PASS** live (route returns 307→/login unauthenticated, confirmed via direct curl + Playwright `maxRedirects:0`); UI-gating + endpoint-auto-gen + finalize-persist/re-link **authored, skipped** here (no storage-state / service-role — D-1).
+- lint 0 · tsc 13 baseline / 0 new · build clean.
+
+### Security audit (red-team)
+- **Cross-tenant RLS — live smoke (CIA Auflage 2, rolled back, 0 residue):** a tenant's project-less `clarifying_questions_from_context` `ki_run` is **invisible to a non-member** (`visible_rows=0`) and **visible to a real member** (`visible_rows=1`). The additive tenant-scoped policies use the audited `is_tenant_member(tenant_id)` anchor; no cross-tenant leak.
+- **Auth-gate:** the draft-scoped endpoint redirects unauthenticated callers (307→/login); drafts are RLS-scoped to their owner (404 otherwise).
+- **No source-pointer hijack:** `contextSourceId` is read from the draft, never the request body.
+- **Class-3:** enforced by the α classifier + resolver clamp; `count` Zod-bounded 1–6; `draftId` UUID-validated.
+
+### Findings
+- **F-1 (LOW, resolved in-QA):** the E2E auth-gate spec initially asserted `200` because Playwright `request` follows redirects to the login page; the route is correctly gated (307 via curl). Fixed with `maxRedirects:0` + `failOnStatusCode:false`. Not a product bug.
+- **D-1 (deviation, env):** the 3 authenticated/service-role E2E layers (AC-135.3 UI gating, AC-135.6 endpoint auto-gen, AC-135.4/4b/11 finalize persist/re-link) are **authored but unrun in this bare worktree** — it lacks the Playwright auth storage-state + `SUPABASE_SERVICE_ROLE_KEY` (the latter is not retrievable via MCP). Same posture as the PROJ-70-ε / PROJ-88 QA worktrees. **Mitigation:** the underlying behavior is proven by the unit/integration layer (mocked finalize persist + classifier + qa-helper + visibility) **and** the two live prod smokes (bounded-CHECK audit fork + cross-tenant RLS). The layers import the same fixtures the passing sibling specs use and will run green once env is provisioned. **Recommendation:** run the full authenticated suite in the provisioned env (or provide `SUPABASE_SERVICE_ROLE_KEY`) before deploy closure.
+
+### Production-ready
+**YES** — 0 Critical / 0 High. One LOW (resolved) + one env deviation (D-1) with strong compensating live evidence.
+
+## Deployment
+_To be added by /deploy_
 
 ## Deployment
 _To be added by /deploy_

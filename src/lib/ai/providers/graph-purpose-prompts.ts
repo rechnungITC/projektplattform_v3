@@ -22,12 +22,14 @@
 import { z } from "zod"
 
 import type {
+  ClarifyingQuestionsGenerationRequest,
   CrossProjectLinksGenerationRequest,
   ProposalFromContextGenerationRequest,
   RiskProposalsGenerationRequest,
   TrajectorySequenceGenerationRequest,
 } from "./types"
 import type {
+  ClarifyingQuestionsGenerationOutput,
   CrossProjectLinksGenerationOutput,
   ProposalFromContextGenerationOutput,
   RiskProposalsGenerationOutput,
@@ -685,4 +687,92 @@ export function mapRiskProposalsSuggestions(
     confidence: s.confidence as "low" | "medium" | "high",
     relevance: s.relevance as "on_goal" | "off_goal",
   }))
+}
+
+// ---------------------------------------------------------------------------
+// PROJ-135 — clarifying_questions_from_context (shared across Anthropic/OpenAI/Google)
+// ---------------------------------------------------------------------------
+
+/**
+ * Strict response schema for cloud providers. The Ollama provider keeps a
+ * loose replica (validate-loose, clamp-after — PROJ-88 D-1a lesson) in
+ * `ollama.ts`; length clamps happen in the shared mapper either way.
+ */
+export const ClarifyingQuestionSchema = z.object({
+  question: z.string().min(1).max(300),
+  rationale: z.string().max(300).nullable(),
+  gap_tag: z.string().max(40).nullable(),
+})
+
+export const ClarifyingQuestionsResponseSchema = z.object({
+  questions: z.array(ClarifyingQuestionSchema).min(0).max(6),
+})
+
+export const CLARIFYING_QUESTIONS_SYSTEM_PROMPT = `Du bist ein erfahrener Projektleiter und stellst VOR dem Projektstart gezielte Rückfragen zu einem hochgeladenen Kickoff-Dokument.
+
+Aufgabe: Analysiere das Kickoff-Dokument im Licht des Vorhabens (Projektziel) und stelle 0-6 präzise Rückfragen zu LÜCKEN und UNKLARHEITEN, die der Projektleiter beantworten soll, bevor die KI anschließend Backlog/Stakeholder/Risiken generiert.
+
+Pflichtregeln:
+- Antworte ausschließlich auf Deutsch.
+- Frage NUR nach echten Lücken im Kickoff: fehlender Go-Live-Termin, unklares Budget/Budgetverantwortung, nicht genanntes Zielsystem, unscharfer Scope, fehlende Stakeholder/Entscheider, ungenannte Abhängigkeiten/Risiken. KEINE rhetorischen oder generischen Fragen ("Was ist das Ziel?", wenn das Vorhaben es schon sagt).
+- Jede Frage ist konkret und auf das Dokument bezogen — sie nennt, WAS fehlt, nicht nur, DASS etwas fehlt.
+- Das Vorhaben ist NUR Kontext + Bewertungsmaßstab dafür, welche Lücken relevant sind — generiere KEINE Fragen, deren Antwort bereits im Vorhaben oder im Kickoff steht.
+- \`rationale\`: kurz, warum die Antwort die spätere Generierung schärft (oder null, wenn die Frage selbsterklärend ist).
+- \`gap_tag\`: optionales kurzes Kategoriewort (z.B. "schedule", "budget", "scope", "stakeholders", "risks", "dependencies"), sonst null.
+- KEINE personenbezogenen Daten in den Fragen erfinden — keine Namen, E-Mails, Telefonnummern. Generalisiere zu Rollen.
+- KEIN erzwungenes Padding: Wenn das Kickoff vollständig und klar ist, liefere wenige oder NULL Fragen — eine leere Liste ist ein gültiges Ergebnis ("keine Rückfragen nötig").`
+
+export function buildClarifyingQuestionsPrompt(
+  request: ClarifyingQuestionsGenerationRequest,
+): string {
+  const ctx = request.context
+  const vorhaben = ctx.source_project.description?.trim()
+
+  const lines: string[] = [
+    `Projekt: ${ctx.source_project.name}`,
+    `Typ: ${ctx.source_project.project_type ?? "—"}`,
+    `Methode: ${ctx.source_project.project_method ?? "—"}`,
+    vorhaben
+      ? `\nVorhaben (Projektziel — Kontext + Maßstab, welche Lücken zählen; KEINE Quelle für Fragen, deren Antwort hier schon steht):\n${vorhaben}`
+      : `\n(Kein Vorhaben hinterlegt — bewerte Lücken allein anhand des Kickoffs.)`,
+    "",
+    `Kickoff-Artefakt:`,
+    `  - Kind: ${ctx.context_source.kind}`,
+    `  - Titel: ${ctx.context_source.title}`,
+    ctx.context_source.language
+      ? `  - Sprache: ${ctx.context_source.language}`
+      : "",
+    "",
+    `Inhalt:`,
+    ctx.context_source.content_excerpt || "(leer)",
+    "",
+    `Stelle bis zu ${Math.min(request.count, 6)} Rückfragen. Wenn das Kickoff klar und vollständig ist, liefere eine leere Liste.`,
+  ].filter(Boolean)
+
+  return lines.join("\n")
+}
+
+/**
+ * Map a (loosely or strictly) validated clarifying-questions response to the
+ * provider output contract. Identical across providers; clamps free-text
+ * lengths to the schema limits.
+ */
+export function mapClarifyingQuestions(
+  questions: Array<{
+    question: string
+    rationale?: string | null
+    gap_tag?: string | null
+  }>,
+): ClarifyingQuestionsGenerationOutput["questions"] {
+  const clampOrNull = (v: string | null | undefined, max: number) => {
+    const trimmed = v?.trim()
+    return trimmed ? trimmed.slice(0, max) : null
+  }
+  return questions
+    .filter((q) => q.question && q.question.trim().length > 0)
+    .map((q) => ({
+      question: q.question.trim().slice(0, 300),
+      rationale: clampOrNull(q.rationale, 300),
+      gap_tag: clampOrNull(q.gap_tag, 40),
+    }))
 }

@@ -24,6 +24,7 @@ import { z } from "zod"
 
 import type {
   AIProvider,
+  ClarifyingQuestionsGenerationRequest,
   CoachingGenerationRequest,
   CrossProjectLinksGenerationRequest,
   NarrativeGenerationRequest,
@@ -36,6 +37,7 @@ import type {
   TrajectorySequenceGenerationRequest,
 } from "./types"
 import type {
+  ClarifyingQuestionsGenerationOutput,
   CoachingGenerationOutput,
   CoachingKind,
   CrossProjectLinksGenerationOutput,
@@ -55,11 +57,14 @@ import type {
 // already produces compatible output, and reusing it keeps the matrix
 // honest (no drift between cloud + local output shapes).
 import {
+  buildClarifyingQuestionsPrompt,
   buildCrossProjectLinksPrompt,
   buildRiskProposalsPrompt,
   buildTrajectorySequencePrompt,
+  CLARIFYING_QUESTIONS_SYSTEM_PROMPT,
   CROSS_PROJECT_LINKS_SYSTEM_PROMPT,
   CrossProjectLinksResponseSchema,
+  mapClarifyingQuestions,
   mapCrossProjectLinksSuggestions,
   mapRiskProposalsSuggestions,
   mapTrajectorySequenceSuggestions,
@@ -1065,6 +1070,37 @@ export class OllamaProvider implements AIProvider {
       },
     }
   }
+
+  /**
+   * PROJ-135 — dialogic wizard clarifying questions on tenant-local Ollama.
+   * Loose schema (validate-loose, clamp-after — PROJ-88 D-1a); the SHARED
+   * system prompt + builder + mapper keep output shape identical to cloud.
+   */
+  async generateClarifyingQuestions(
+    request: ClarifyingQuestionsGenerationRequest,
+  ): Promise<ClarifyingQuestionsGenerationOutput> {
+    const start = Date.now()
+    const result = await generateObject({
+      model: this.sdkProvider(this.modelId),
+      schema: ClarifyingQuestionsResponseSchemaOllama,
+      system: CLARIFYING_QUESTIONS_SYSTEM_PROMPT,
+      prompt: buildClarifyingQuestionsPrompt(request),
+      temperature: 0.2,
+    })
+
+    const usage = result.usage as
+      | { inputTokens?: number; outputTokens?: number }
+      | undefined
+
+    return {
+      questions: mapClarifyingQuestions(result.object.questions),
+      usage: {
+        input_tokens: usage?.inputTokens ?? null,
+        output_tokens: usage?.outputTokens ?? null,
+        latency_ms: Date.now() - start,
+      },
+    }
+  }
 }
 
 // ---------------------------------------------------------------------------
@@ -1203,6 +1239,19 @@ const RiskProposalSuggestionSchemaOllama = z.object({
 
 const RiskProposalsResponseSchemaOllama = z.object({
   suggestions: z.array(RiskProposalSuggestionSchemaOllama).min(0).max(30),
+})
+
+// PROJ-135 — loose replica of the shared ClarifyingQuestionsResponseSchema
+// (validate-loose, clamp-after; see PROJ-88 D-1a note above). Lengths are
+// clamped in the shared mapper.
+const ClarifyingQuestionSchemaOllama = z.object({
+  question: z.string().min(1),
+  rationale: z.string().nullish(),
+  gap_tag: z.string().nullish(),
+})
+
+const ClarifyingQuestionsResponseSchemaOllama = z.object({
+  questions: z.array(ClarifyingQuestionSchemaOllama).min(0).max(6),
 })
 
 // Exported for the PROJ-88 grounding contract test (AC-88.9).

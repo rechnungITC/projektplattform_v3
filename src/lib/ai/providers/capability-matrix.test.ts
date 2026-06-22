@@ -39,6 +39,7 @@ type Method =
   | "generateProposalFromContext"
   | "generateResourceSwap"
   | "generateRiskProposals"
+  | "generateClarifyingQuestions"
 
 function has(provider: AIProvider, method: Method): boolean {
   return typeof (provider as unknown as Record<string, unknown>)[method] ===
@@ -55,6 +56,7 @@ describe("PROJ-85 — provider capability matrix", () => {
       "generateProposalFromContext",
       "generateResourceSwap",
       "generateRiskProposals",
+      "generateClarifyingQuestions",
     ] as Method[]) {
       expect(has(stub, m), `stub.${m}`).toBe(true)
     }
@@ -70,6 +72,8 @@ describe("PROJ-85 — provider capability matrix", () => {
         "generateProposalFromContext",
         // PROJ-89 — content-classified, cloud-capable from day 1.
         "generateRiskProposals",
+        // PROJ-135 — content-classified, cloud-capable from day 1.
+        "generateClarifyingQuestions",
       ] as Method[]) {
         expect(has(p, m), `${p.name}.${m}`).toBe(true)
       }
@@ -78,6 +82,10 @@ describe("PROJ-85 — provider capability matrix", () => {
 
   it("Ollama implements risk proposals (PROJ-89 Class-3 branch + local-preference tenants)", () => {
     expect(has(ollama, "generateRiskProposals")).toBe(true)
+  })
+
+  it("Ollama implements clarifying questions (PROJ-135 Class-3 branch + local-preference tenants)", () => {
+    expect(has(ollama, "generateClarifyingQuestions")).toBe(true)
   })
 
   it("resource_swap is Ollama-only (Class-3, by design)", () => {
