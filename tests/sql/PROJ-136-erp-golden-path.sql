@@ -125,3 +125,47 @@ set session_replication_role = origin;
 select 'residue' as check,
   (select count(*) from tenants where name='GP136-PILOT') as tenants,
   (select count(*) from projects where id='13600000-0000-4000-8000-0000000000b0') as projects;  -- EXPECT 0,0
+
+-- =============================================================================
+-- Section 8: AC-6 — NEGATIVE ASSERTION (a broken/invalid link must fail LOUD)
+-- =============================================================================
+-- Guards the PROJ-70 waterfall-kind-taxonomy fix: a waterfall backlog item with
+-- kind='phase' (no longer valid post-fix) MUST be rejected by the accept RPC,
+-- not silently accepted. This is the automated negative proof for AC-6 — and a
+-- regression guard so the fixed taxonomy cannot silently drift back.
+--
+-- QA-verified live vs prod 2026-06-22: the accept below raises
+--   ERROR 23514 method_kind_incompatible
+--   DETAIL: Project method waterfall requires kind in (work_package, task, bug).
+-- A green run = this section ERRORS exactly here (the error IS the pass). If the
+-- accept ever SUCCEEDS, the taxonomy gate has regressed -> investigate PROJ-70.
+
+-- seed a waterfall project + one kind='phase' suggestion
+insert into auth.users (id) values ('13600000-0000-4000-8000-0000000000c1') on conflict do nothing;
+insert into public.profiles (id, email, display_name) values ('13600000-0000-4000-8000-0000000000c1','gp136qa@pilot.local','GP136QA Admin') on conflict do nothing;
+insert into public.tenants (id, name) values ('13600000-0000-4000-8000-0000000000c0','GP136-QA') on conflict do nothing;
+insert into public.tenant_memberships (tenant_id, user_id, role) values ('13600000-0000-4000-8000-0000000000c0','13600000-0000-4000-8000-0000000000c1','admin') on conflict do nothing;
+insert into public.projects (id, tenant_id, name, responsible_user_id, created_by, project_type, project_method, lifecycle_status) values
+  ('13600000-0000-4000-8000-0000000000c2','13600000-0000-4000-8000-0000000000c0','GP136QA WF','13600000-0000-4000-8000-0000000000c1','13600000-0000-4000-8000-0000000000c1','erp','waterfall','active') on conflict do nothing;
+insert into public.ki_runs (id, tenant_id, project_id, purpose, classification, provider, status) values
+  ('13600000-0000-4000-8000-0000000000c3','13600000-0000-4000-8000-0000000000c0','13600000-0000-4000-8000-0000000000c2','proposal_from_context',2,'stub','success') on conflict do nothing;
+insert into public.ki_suggestions (id, tenant_id, project_id, ki_run_id, purpose, payload, original_payload, status, created_by) values
+  ('13600000-0000-4000-8000-0000000000ca','13600000-0000-4000-8000-0000000000c0','13600000-0000-4000-8000-0000000000c2','13600000-0000-4000-8000-0000000000c3','proposal_from_context','{"temp_id":"px","kind":"phase","title":"NEG phase"}','{"temp_id":"px","kind":"phase","title":"NEG phase"}','draft','13600000-0000-4000-8000-0000000000c1') on conflict do nothing;
+
+set role authenticated;
+set request.jwt.claims = '{"sub":"13600000-0000-4000-8000-0000000000c1","role":"authenticated"}';
+-- >>> THIS MUST RAISE 23514 method_kind_incompatible <<<
+select public.accept_proposal_from_context_bulk('13600000-0000-4000-8000-0000000000c2',
+  array['13600000-0000-4000-8000-0000000000ca']::uuid[], true);
+reset role;
+
+-- Teardown of the negative-assertion fixture (run after observing the expected error):
+set session_replication_role = replica;
+delete from public.ki_suggestions where project_id='13600000-0000-4000-8000-0000000000c2';
+delete from public.ki_runs where project_id='13600000-0000-4000-8000-0000000000c2';
+delete from public.projects where id='13600000-0000-4000-8000-0000000000c2';
+delete from public.tenant_memberships where tenant_id='13600000-0000-4000-8000-0000000000c0';
+delete from public.tenants where id='13600000-0000-4000-8000-0000000000c0';
+delete from public.profiles where id='13600000-0000-4000-8000-0000000000c1';
+delete from auth.users where id='13600000-0000-4000-8000-0000000000c1';
+set session_replication_role = origin;
