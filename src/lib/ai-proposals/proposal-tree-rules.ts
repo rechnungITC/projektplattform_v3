@@ -4,10 +4,12 @@
  *
  * Two gates, evaluated in order (δ-architecture § C):
  *   1. `isAllowedProposalParent` — structural parent matrix. Mirrors
- *      PROJ-9 `ALLOWED_PARENT_KINDS` for the work-item kinds and extends
- *      it with the waterfall-WBS kinds (`phase`, `work_package`, `todo`
- *      per ADR-004 hierarchy) that exist only in the proposal payload
- *      union (`ProposalFromContextKind`), not in `WorkItemKind`.
+ *      PROJ-9 `ALLOWED_PARENT_KINDS`. Every proposal kind is a real
+ *      `work_items` kind (PROJ-70 waterfall-kind-taxonomy-fix 2026-06-22:
+ *      `phase`/`todo` were dropped from the proposal path — `phase`
+ *      belongs in the separate `phases` table (PROJ-19), `todo` maps to
+ *      `task`). Waterfall AI-backlog uses `work_package` > `task` >
+ *      `subtask`/`bug` per the method-template `allowedAiKinds`.
  *   2. `isProposalKindCompatibleWithMethod` — PROJ-6 method-visibility.
  *      Same matrix the β-Accept-RPC enforces server-side (strict mode);
  *      checking client-side prevents drops that would make the whole
@@ -31,8 +33,8 @@ import type {
  * Allowed parent kinds per child kind for proposal trees.
  * `null` = may be top-level.
  *
- * Waterfall branch (ADR-004 WBS): phase → work_package → todo;
- * work_packages nest (PROJ-36 multi-level WBS).
+ * Waterfall branch (method-template `allowedAiKinds`): work_package (top,
+ * self-nesting per PROJ-36 multi-level WBS) → task → subtask/bug.
  * Scrum branch (PROJ-9): epic → story → task → subtask; bug attaches
  * almost anywhere (PROJ-9 rule, minus `feature` which is not a proposal
  * kind).
@@ -41,9 +43,7 @@ export const PROPOSAL_ALLOWED_PARENT_KINDS: Record<
   ProposalFromContextKind,
   ReadonlyArray<ProposalFromContextKind | null>
 > = {
-  phase: [null],
-  work_package: ["phase", "work_package", null],
-  todo: ["work_package", null],
+  work_package: ["work_package", null],
   epic: [null],
   story: ["epic", null],
   task: ["story", "work_package", null],
@@ -68,8 +68,8 @@ export const PROPOSAL_ALLOWED_KINDS_BY_METHOD: Record<
   string,
   ReadonlySet<ProposalFromContextKind>
 > = {
-  waterfall: new Set(["phase", "work_package", "todo"]),
-  Wasserfall: new Set(["phase", "work_package", "todo"]),
+  waterfall: new Set(["work_package", "task", "bug"]),
+  Wasserfall: new Set(["work_package", "task", "bug"]),
   scrum: new Set(["epic", "story", "task", "subtask", "bug"]),
   Scrum: new Set(["epic", "story", "task", "subtask", "bug"]),
   agile: new Set(["epic", "story", "task", "subtask", "bug"]),

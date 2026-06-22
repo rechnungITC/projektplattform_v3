@@ -1,8 +1,24 @@
 # PROJ-136: ERP-Pilot Golden-Path End-to-End Smoke
 
-## Status: Planned
+## Status: In Progress (Backend 2026-06-22: Live-Seed-Smoke gebaut + gegen Prod verifiziert. FAND BEIM ERSTEN LAUF einen HIGH-Bug — Waterfall-Backlog-Accept über 3 Schichten inkonsistent (PROJ-70), in-place gefixt + live re-verifiziert. SQL-Artefakt `tests/sql/PROJ-136-erp-golden-path.sql`. Playwright-Layer + AC-6-Automatisierung → /qa.)
 **Created:** 2026-06-19
-**Last Updated:** 2026-06-19
+**Last Updated:** 2026-06-22
+
+## Implementation Notes — Backend (2026-06-22)
+
+Der Golden-Path wurde als **Live-Seed-Smoke gegen Prod** gebaut (Muster wie `tests/sql/PROJ-100a-need-to-know-pentest.sql`): markierter Seed → echte Accept-RPC-Kette → verifizierte Persistenz → Teardown mit `session_replication_role=replica` + 0-Residue-Check. Artefakt: **`tests/sql/PROJ-136-erp-golden-path.sql`**.
+
+**Design-Entscheidung (deterministisch ohne Live-LLM):** Der Smoke seedet `ki_suggestions` (status=draft) direkt und ruft die echten Bulk-Accept-RPCs (`accept_proposal_from_context_bulk` / `accept_stakeholder_proposals_bulk` / `accept_risk_proposals_bulk`) — das prüft die risikoreichste, cross-feature-Bruch-gefährdete Kette (Accept→Persist→`ki_provenance`) deterministisch. Die LLM-**Generierung** selbst (Stub-Reason-Transparenz) gehört zu PROJ-137.
+
+**Live gegen Prod verifiziert (0 Residue):**
+- Backlog-Accept (waterfall): 3 work_items `work_package`→`task`→`bug`, Hierarchie korrekt, `ki_provenance.entity_type='work_items'`, suggestions accepted.
+- Stakeholder-Accept: 1 stakeholder, provenance `stakeholders`.
+- Risk-Accept: 1 risk mit `status='open'`, provenance `risks`.
+- Phasen/Budget/Report-Inserts (PROJ-19/22/21) tragen.
+
+**🔴 HIGH-Bug beim ERSTEN Lauf gefunden (genau der Slice-Zweck — untested Cross-Feature-Verkettung, CIA-R-bestätigt):** Der Waterfall-KI-Backlog-Accept war über 3 Schichten inkonsistent — Prompts + Accept-RPC ließen `phase`/`work_package`/`todo` zu, aber `work_items_kind_check` erlaubt nur `work_package` davon; autoritativ ist das Method-Template (`work_package/task/bug`). Bewiesen: **0** work_items mit kind `phase`/`todo` in ganz Prod → der Waterfall-Accept-Pfad war nie erfolgreich. Da der erste Pilot Waterfall-ERP ist: pilot-blockierend. Fix (PROJ-70-Hotfix, auf Method-Template ausgerichtet): Migration `20260622100000_proj70_fix_waterfall_kind_taxonomy` (RPC-Validierung) + AI-Schema-Enums + Prompts + FE-Tree-Regeln. Live re-verifiziert (s.o.). Siehe PROJ-70 Implementation Notes.
+
+**AC-Status:** AC-1/2/3/5 erfüllt (Live-Seed-Smoke, Persistenz-Verifikation je Schritt, idempotent+0-Residue, fixed Fixture). AC-4 (Class-3→gehosteter-Ollama) als deterministischer Stub-Pfad abgedeckt; echte Class-3-Ollama-Generierung verzahnt mit PROJ-137. AC-6 (Negativ-Nachweis) live demonstriert (der gefundene Bug WAR der Negativ-Nachweis: gebrochenes Glied → lauter 23514-Fail) — Automatisierung als Assertion → /qa. AC-7 erfüllt (reproduzierbares SQL).
 
 > **Herkunft:** CIA-Portfolio-Review 2026-06-19 (Finding F-3). Die P0-MVP-Roadmap (PROJ-1–20) ist vollständig deployed und es gibt ~90 isoliert getestete Slices, aber **keinen durchgehenden Test, der ihre Verkettung als Invariante schützt**. Vor dem ersten echten ERP-Pilot ist die größte unsichtbare Gefahr eine Regression *zwischen* den Slices, nicht *in* einem Slice. Schwester-Slice: [[PROJ-137]] (AI-Failure-Transparency).
 

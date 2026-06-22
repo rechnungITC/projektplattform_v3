@@ -388,9 +388,7 @@ const ProposalFromContextSuggestionSchema = z.object({
     ),
   kind: z
     .enum([
-      "phase",
       "work_package",
-      "todo",
       "epic",
       "story",
       "task",
@@ -398,7 +396,7 @@ const ProposalFromContextSuggestionSchema = z.object({
       "bug",
     ])
     .describe(
-      "Work-item kind matching the project_method (waterfall: phase/work_package/todo; scrum: epic/story/task; hybrid: mix).",
+      "Work-item kind matching the project_method (waterfall: work_package/task/bug; scrum: epic/story/task; hybrid: mix).",
     ),
   title: z
     .string()
@@ -490,9 +488,9 @@ Pflichtregeln:
 - Antworte ausschließlich auf Deutsch.
 - Jedes Item bekommt eine eindeutige \`temp_id\` (z.B. "t_1", "t_2", …). Über \`parent_temp_id\` zeigst du auf das übergeordnete Item desselben Runs (null bei Top-Level-Items).
 - Wähle \`kind\` passend zur Projektmethode:
-  - Wasserfall → \`phase\` (Top-Level) > \`work_package\` (Mitte) > \`todo\` (Blatt)
+  - Wasserfall → \`work_package\` (Top-Level) > \`task\` (Mitte) > \`bug\` (Blatt, nur wenn konkret erwähnt); Phasen gehören NICHT ins Backlog, sondern in die separate Phasen-Planung
   - Scrum → \`epic\` (Top-Level) > \`story\` (Mitte) > \`task\` (Blatt); \`bug\`/\`subtask\` nur, wenn konkret im Text erwähnt
-  - Hybrid → mische beide methodensauber pro Subtree (kein \`phase\` als Kind eines \`epic\`)
+  - Hybrid → mische beide methodensauber pro Subtree (kein \`epic\` als Kind eines \`work_package\`)
   - Unbestimmt → bevorzuge \`story\`/\`task\` als sichere Default-Granularität
 - Titel ist KEINE Boilerplate — sondern konkret und actionable (z.B. "Datenmigration aus Altsystem X" statt "Datenmigration vorbereiten").
 - \`description\` ist optional. Setze sie nur, wenn der Kontext echten Mehrwert über den Titel hinaus liefert. Sonst null.

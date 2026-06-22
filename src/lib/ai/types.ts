@@ -737,7 +737,7 @@ export interface ProposalFromContextAutoContext {
     language: string | null
   }
   /** Method-hint passed to the prompt so the model picks kinds aligned
-   *  with the project's project_method (waterfall → phase/work_package/todo;
+   *  with the project's project_method (waterfall → work_package/task/bug;
    *  scrum → epic/story/task; etc). */
   method_hint: ProjectMethodHint
 }
@@ -757,8 +757,8 @@ export interface ProposalFromContextSuggestion {
   temp_id: string
   /** Parent reference within the same run; null at top-level. */
   parent_temp_id: string | null
-  /** Suggested work_item kind (phase/work_package/todo/epic/story/task/
-   *  subtask/bug). Validation deferred to 70-β accept-time. */
+  /** Suggested work_item kind (work_package/epic/story/task/subtask/bug).
+   *  Validation deferred to 70-β accept-time. */
   kind: string
   /** Short German title for the proposed work-item. */
   title: string
