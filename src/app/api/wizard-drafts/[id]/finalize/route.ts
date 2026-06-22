@@ -70,6 +70,32 @@ export async function POST(_request: Request, ctx: Ctx) {
     )
   }
 
+  // PROJ-94 — M&A projects require a strategic foundation (sponsor + objective).
+  // Validate up front so we never create a half-built M&A project.
+  const maFoundation =
+    projectType === "ma"
+      ? ((data.ma_foundation ?? {}) as Record<string, unknown>)
+      : null
+  if (maFoundation) {
+    if (!trimToNull(data.description)) {
+      return apiError(
+        "validation_error",
+        "Objective (description) is required for M&A projects.",
+        422,
+        "description"
+      )
+    }
+    const sponsorId = maFoundation.sponsor_user_id
+    if (typeof sponsorId !== "string" || sponsorId.length === 0) {
+      return apiError(
+        "validation_error",
+        "Sponsor is required for M&A projects.",
+        422,
+        "sponsor_user_id"
+      )
+    }
+  }
+
   const responsibleUserId =
     typeof data.responsible_user_id === "string" && data.responsible_user_id.length > 0
       ? data.responsible_user_id
@@ -131,6 +157,65 @@ export async function POST(_request: Request, ctx: Ctx) {
       return apiError(
         "bootstrap_failed",
         `Project created (${project.id}) but auto-lead bootstrap failed: ${bootstrapErr.message}`,
+        500
+      )
+    }
+  }
+
+  // 4.25) PROJ-94 — create the M&A strategic-foundation profile via the
+  // SECURITY DEFINER RPC (the table has no INSERT policy; creation funnels here).
+  // Runs in user context so auth.uid() authorizes the call. If this fails the
+  // project exists but has no profile — surface a 500 so the gap is visible and
+  // retriable (mirrors the bootstrap-failure contract above).
+  if (project && maFoundation) {
+    const amountRaw = maFoundation.investment_frame_amount
+    const amountParsed =
+      typeof amountRaw === "string" && amountRaw.trim().length > 0
+        ? Number(amountRaw)
+        : typeof amountRaw === "number"
+          ? amountRaw
+          : null
+    const investmentAmount =
+      amountParsed !== null && Number.isFinite(amountParsed) && amountParsed >= 0
+        ? amountParsed
+        : null
+    const dealSide =
+      typeof maFoundation.deal_side === "string" &&
+      ["buy", "sell", "jv", "carve_out"].includes(maFoundation.deal_side)
+        ? maFoundation.deal_side
+        : null
+    const confLevel =
+      typeof maFoundation.confidentiality_level === "string" &&
+      ["standard", "confidential", "strict"].includes(
+        maFoundation.confidentiality_level
+      )
+        ? maFoundation.confidentiality_level
+        : "standard"
+
+    const { error: profileErr } = await supabase.rpc(
+      "create_ma_project_profile",
+      {
+        p_project_id: project.id,
+        p_sponsor_user_id: maFoundation.sponsor_user_id as string,
+        p_deal_side: dealSide,
+        p_deal_rationale: trimToNull(maFoundation.deal_rationale),
+        p_search_profile: trimToNull(maFoundation.search_profile),
+        p_exclusion_criteria: trimToNull(maFoundation.exclusion_criteria),
+        p_investment_frame_amount: investmentAmount,
+        p_investment_frame_currency: trimToNull(
+          maFoundation.investment_frame_currency
+        ),
+        p_investment_frame_note: trimToNull(maFoundation.investment_frame_note),
+        p_strategic_document_link: trimToNull(
+          maFoundation.strategic_document_link
+        ),
+        p_confidentiality_level: confLevel,
+      }
+    )
+    if (profileErr) {
+      return apiError(
+        "ma_profile_failed",
+        `Project created (${project.id}) but M&A profile creation failed: ${profileErr.message}`,
         500
       )
     }

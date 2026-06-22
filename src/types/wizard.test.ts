@@ -23,17 +23,45 @@ describe("visibleWizardSteps — AC-ε1 conditional step", () => {
     const steps = visibleWizardSteps(true)
     expect(steps).toContain("ki_backlog")
     expect(steps.indexOf("ki_backlog")).toBe(steps.indexOf("followups") + 1)
-    expect(steps.indexOf("ki_backlog")).toBe(steps.indexOf("review") - 1)
   })
 
   it("preserves the canonical order of the other steps in both modes", () => {
     for (const enabled of [true, false]) {
       const steps = visibleWizardSteps(enabled)
-      const withoutKi = steps.filter((s) => s !== "ki_backlog")
-      expect(withoutKi).toEqual(
-        WIZARD_STEPS.filter((s) => s !== "ki_backlog"),
+      const stable = steps.filter(
+        (s) => s !== "ki_backlog" && s !== "ma_foundation",
+      )
+      expect(stable).toEqual(
+        WIZARD_STEPS.filter(
+          (s) => s !== "ki_backlog" && s !== "ma_foundation",
+        ),
       )
     }
+  })
+})
+
+describe("visibleWizardSteps — PROJ-94 M&A conditional step", () => {
+  it("omits ma_foundation for non-M&A types", () => {
+    expect(visibleWizardSteps(false, "erp")).not.toContain("ma_foundation")
+    expect(visibleWizardSteps(false, null)).not.toContain("ma_foundation")
+    // Back-compat: callers passing only the ki flag never see ma_foundation.
+    expect(visibleWizardSteps(false)).not.toContain("ma_foundation")
+  })
+
+  it("includes ma_foundation (after followups) for project_type 'ma'", () => {
+    const steps = visibleWizardSteps(false, "ma")
+    expect(steps).toContain("ma_foundation")
+    expect(steps.indexOf("ma_foundation")).toBe(steps.indexOf("followups") + 1)
+    expect(steps.indexOf("ma_foundation")).toBe(steps.indexOf("review") - 1)
+  })
+
+  it("places ma_foundation before ki_backlog when both are active", () => {
+    const steps = visibleWizardSteps(true, "ma")
+    expect(steps).toContain("ma_foundation")
+    expect(steps).toContain("ki_backlog")
+    expect(steps.indexOf("ma_foundation")).toBeLessThan(
+      steps.indexOf("ki_backlog"),
+    )
   })
 })
 

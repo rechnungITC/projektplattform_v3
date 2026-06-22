@@ -1,4 +1,4 @@
-import { Briefcase, Building2, Code2, Layers } from "lucide-react"
+import { Briefcase, Building2, Code2, Handshake, Layers } from "lucide-react"
 import type { LucideIcon } from "lucide-react"
 
 import { Badge } from "@/components/ui/badge"
@@ -15,6 +15,7 @@ const TYPE_ICONS: Record<ProjectType, LucideIcon> = {
   construction: Building2,
   software: Code2,
   general: Layers,
+  ma: Handshake,
 }
 
 export function ProjectTypeBadge({ type, className }: ProjectTypeBadgeProps) {

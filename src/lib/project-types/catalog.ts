@@ -184,11 +184,41 @@ const CONSTRUCTION_PROFILE: ProjectTypeProfile = {
   is_placeholder: true,
 }
 
+// PROJ-94 — M&A is ONE project_type (ma-domain-architecture ADR Fork 1). The
+// stored slug is 'ma' (URL-safe); the deal variant (buy/sell/jv/carve-out) is
+// the `deal_side` FIELD on ma_project_profiles, not a separate type. The
+// strategic foundation (rationale, search profile, …) lives in that extension
+// table, so the catalog's required_info stays light — the dedicated wizard
+// "M&A-Grundlage" step collects the rich fields.
+const MA_PROFILE: ProjectTypeProfile = {
+  key: "ma",
+  label_de: "M&A-Projekt",
+  summary_de:
+    "Mergers & Acquisitions / Deal-Lifecycle. Strategische Grundlage, Mandat, Need-to-Know-Vertraulichkeit.",
+  standard_roles: [
+    { key: "deal_lead", label_de: "Deal Lead (Corporate Development)" },
+    ROLE_SPONSOR,
+    { key: "pmo_lead", label_de: "PMO-Lead" },
+    { key: "legal_counsel", label_de: "Legal Counsel" },
+  ],
+  standard_modules: [
+    "backlog",
+    "planning",
+    "members",
+    "history",
+    "stakeholders",
+    "governance",
+  ],
+  required_info: [],
+  default_tag_keys: ["dsgvo"],
+}
+
 const CATALOG_BY_KEY: Record<ProjectType, ProjectTypeProfile> = {
   general: GENERAL_PROFILE,
   erp: ERP_PROFILE,
   software: SOFTWARE_PROFILE,
   construction: CONSTRUCTION_PROFILE,
+  ma: MA_PROFILE,
 }
 
 export const PROJECT_TYPE_CATALOG: readonly ProjectTypeProfile[] =

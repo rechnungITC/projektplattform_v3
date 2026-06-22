@@ -85,6 +85,21 @@ const wizardSchema = z.object({
     context_source_id: z.string().uuid().nullable(),
     filename: z.string().nullable(),
   }),
+  // PROJ-94 — M&A strategic-foundation block (only relevant for project_type
+  // 'ma'; lives in draft JSON payload). The conditional "M&A-Grundlage" step UI
+  // and its per-field validation land in /frontend.
+  ma_foundation: z.object({
+    deal_side: z.enum(["buy", "sell", "jv", "carve_out"]).nullable(),
+    sponsor_user_id: z.string().uuid().nullable(),
+    deal_rationale: z.string().max(20000),
+    search_profile: z.string().max(20000),
+    exclusion_criteria: z.string().max(20000),
+    investment_frame_amount: z.string().max(40),
+    investment_frame_currency: z.string().max(3),
+    investment_frame_note: z.string().max(4000),
+    strategic_document_link: z.string().max(2048),
+    confidentiality_level: z.enum(["standard", "confidential", "strict"]),
+  }),
 })
 
 interface WizardClientProps {
@@ -139,9 +154,12 @@ export function WizardClient({ draftId }: WizardClientProps) {
   // the React Compiler skip memoizing the whole component.
   const kiBacklogEnabled =
     useWatch({ control: form.control, name: "ki_backlog.enabled" }) ?? false
+  // PROJ-94 — the conditional "M&A-Grundlage" step appears only for type 'ma'.
+  const projectType =
+    useWatch({ control: form.control, name: "project_type" }) ?? null
   const steps = React.useMemo(
-    () => visibleWizardSteps(kiBacklogEnabled),
-    [kiBacklogEnabled],
+    () => visibleWizardSteps(kiBacklogEnabled, projectType),
+    [kiBacklogEnabled, projectType],
   )
 
   // Hydrate from existing draft if present.
@@ -299,6 +317,10 @@ export function WizardClient({ draftId }: WizardClientProps) {
           }
           return ok
         }
+        case "ma_foundation":
+          // PROJ-94 — per-field validation (sponsor/objective required) lands
+          // with the step UI in /frontend; finalize enforces the must-haves.
+          return true
         case "ki_backlog":
           // Optional step — upload is not required (user may skip). The
           // upload itself is validated inline in the step component.
