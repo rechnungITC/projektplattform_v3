@@ -2,7 +2,7 @@
 
 ## Status: Deployed
 **Created:** 2026-04-25
-**Last Updated:** 2026-04-25
+**Last Updated:** 2026-06-12
 
 ## Summary
 The foundational identity, tenancy, and authorization layer for the platform. Every other feature (projects, phases, tasks, etc.) depends on tenant scoping and role-based access control built here.
@@ -369,9 +369,9 @@ Backend implementation complete and applied to Supabase project `iqerihohwabyjzk
 
 **Tests:** 27 vitest tests passing across 3 route test files (mocked Supabase client; covers happy/validation/auth/authz paths).
 
-**⚠️ Action required to test full flow:**
-1. **Service-role key in `.env.local`:** Get from Supabase Dashboard → Project Settings → API → `service_role` (the JWT-format one), and set `SUPABASE_SERVICE_ROLE_KEY=...`. Without it, `/api/tenants/*` routes throw at request time.
-2. **Vercel/production deploy:** the same env var must be set as a Vercel secret. **Never** commit it.
+**Live closure update (2026-06-12):**
+- `tests/PROJ-1-2-live-closure.spec.ts` browser-smokes the domain-claim form and live-verifies invite, role change, and revoke flows against the E2E tenant with cleanup.
+- The spec builds its own service-role client with an explicit `ws` transport (Node-20 realtime workaround, the same per-spec pattern used by the PROJ-70/88/89/90 specs) — no production `createAdminClient()` change is required.
 
 **Deviations from design (accepted):**
 - `tenants.created_by` uses `ON DELETE SET NULL` (founder departure shouldn't delete the tenant).
@@ -411,10 +411,10 @@ Backend implementation complete and applied to Supabase project `iqerihohwabyjzk
 | **Authentication** (signup, login, logout, password reset) | ✅ PASS | Forms wired to `supabase.auth.*`; live signup verified |
 | **Tenancy data model** (`profiles`, `tenants`, `tenant_memberships` with required columns + RLS) | ✅ PASS | Schema verified via `pg_class` + `pg_policies` + `pg_proc` queries |
 | **Tenant assignment on signup** (domain match → member; no match → admin + new tenant) | ✅ PASS | Live verified end-to-end |
-| **Domain claim (admin only, DB-level uniqueness)** | ⚠ PARTIAL | Backend verified (Test D + RLS policy `tenants_update_admin`). UI-level dashboard claim flow not yet exercised in browser. |
-| **Invite flow (`POST /api/tenants/[id]/invite`)** | ⚠ PARTIAL | 7 vitest tests pass with mocked Supabase admin client. Live not testable yet — `SUPABASE_SERVICE_ROLE_KEY` in local `.env.local` is currently the anon JWT, not service_role; invite route will return 500 until corrected (UI handles gracefully via `toast.warning`). |
+| **Domain claim (admin only, DB-level uniqueness)** | ✅ PASS | Backend verified (Test D + RLS policy `tenants_update_admin`); browser smoke added 2026-06-12 in `tests/PROJ-1-2-live-closure.spec.ts`. |
+| **Invite flow (`POST /api/tenants/[id]/invite`)** | ✅ PASS | Vitest mocked route coverage plus live service-role route smoke added 2026-06-12; invited auth user metadata is verified and cleaned up. |
 | **Role enforcement via RLS (3 helper functions, 9 policies)** | ✅ PASS | Test A verified tenant isolation; helpers `is_tenant_member`, `has_tenant_role`, `is_tenant_admin` confirmed `SECURITY DEFINER` with hardened `search_path` |
-| **Role management (change role / revoke)** | ⚠ PARTIAL | Vitest mocks pass; DB trigger verified (Tests B, C). Multi-user live test deferred until ≥2 real members exist in a tenant. |
+| **Role management (change role / revoke)** | ✅ PASS | Vitest mocks pass; DB trigger verified (Tests B, C); live two-user PATCH/DELETE route smoke added 2026-06-12 with temporary member cleanup. |
 | **Last-admin invariant** | ✅ PASS | DB trigger verified (Tests B, C); API pre-check covered by route tests |
 
 ### Edge Cases verified
@@ -440,19 +440,17 @@ For reference, one bug was found and fixed mid-implementation (before this QA):
 
 ### Not tested in this round
 
-- **Playwright E2E** — deferred. Browser binaries (~300MB) need install; can be added in a follow-up `/qa` pass once core feature roadmap stabilizes.
+- **Full Playwright matrix** — focused Chromium live smoke exists for the previously partial flows; broad cross-browser coverage remains a separate platform QA concern.
 - **Cross-browser** (Chrome/Firefox/Safari) — manual verification only on the developer's primary browser; no Playwright matrix yet.
 - **Responsive viewport sweep** (375px / 768px / 1440px) — UI is shadcn/Tailwind-based which is responsive by default; no visual regression suite yet.
-- **Live service-role-key flows** — invite, role change via API route. Will be tested as soon as the user provides the real `service_role` JWT in `.env.local` (currently has the anon JWT in that variable).
 
 ### Recommendation
 
-**Status → Approved.** No Critical or High issues. Two PARTIAL items (Invite/Role-mgmt live testing) are gated on the user adding the correct `SUPABASE_SERVICE_ROLE_KEY` and not on code defects. Feature is ready to advance.
+**Status → Approved.** No Critical or High issues. The prior partial items (Domain-Claim UI browser smoke, invite live route, role-management live multi-user route) were closed on 2026-06-12.
 
 Suggested follow-ups (not blockers):
-1. Replace anon JWT in local `.env.local`'s `SUPABASE_SERVICE_ROLE_KEY` with the real service_role JWT, then re-run invite + role-change manually.
-2. Add Playwright E2E coverage in a later sprint (after PROJ-2/PROJ-4 ship; smaller marginal cost when there's more UI to cover).
-3. Seed a realistic 2-tenant + 3-user fixture for cross-tenant RLS regression tests.
+1. Expand the Chromium smoke to the full Playwright browser matrix when logged-in E2E becomes a CI requirement.
+2. Seed a realistic 2-tenant + 3-user fixture for broader cross-tenant RLS regression tests.
 
 ## Deployment
 

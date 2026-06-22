@@ -14,8 +14,27 @@ summary_for_jira: "[B4] Berechtigungskonzept nach Need-to-know umsetzen"
 
 # PROJ-100: Berechtigungskonzept nach Need-to-know umsetzen
 
-## Status: Architected (100a; 2026-06-16) — Tech Design für den 100a-Foundation-Slice gelockt; 100b deferred. Nächster Schritt: `/backend` für 100a.
+## Status: Approved (100a backend gebaut 2026-06-16; QA-Pentest 2026-06-18: alle 6 SEC-Vektoren PASS; H-1 HIGH 2026-06-18 gefixt via Migration 20260618100000 + live re-verify grant/revoke/AC3-Audit → production-ready). 100b deferred.
 **Created:** 2026-06-10
+
+## Implementation Notes — 100a backend (2026-06-16)
+
+**Migration `20260616100000_proj100a_need_to_know_rls.sql` in Prod-DB angewendet** (via MCP, name = Repo-Dateiname-Stamm → kein Versions-Drift):
+- **Geordneter enum** `ma_confidentiality_level` (`standard` < `confidential` < `strict`).
+- **`confidentiality_level`-Spalte** (NOT NULL DEFAULT `standard`) auf `projects`/`phases`/`work_items` — Bestandsdaten bleiben unverändert sichtbar (Gate ist no-op bei `standard`).
+- **`ma_confidentiality_clearances`** (Inner-Circle-Freischaltung, multi-tenant-invariant: `tenant_id NOT NULL REFERENCES tenants ON DELETE CASCADE`, unique `(tenant_id,project_id,user_id)`, optionales `valid_until`). RLS-SELECT nur für tenant-admin/project-lead (Inner-Circle-Komposition nicht für alle sichtbar); **kein** direktes INSERT/UPDATE/DELETE für `authenticated` → blockiert Selbst-Freischaltung strukturell.
+- **`can_access_classified(project_id, level)`** SECURITY DEFINER STABLE (Muster wie `is_tenant_member`): `standard`→true, tenant-admin→true (Bootstrap + Admin), sonst nicht-abgelaufene Freischaltung ≥ level. Liest Freischaltung als Owner → keine RLS-Rekursion.
+- **9 RESTRICTIVE Policies** (SELECT/UPDATE/DELETE × projects/phases/work_items): UND-verknüpft mit den bestehenden permissiven Tenant-Policies — **kein Umschreiben**, kann nur einschränken; default-deny oberhalb `standard`. INSERT ungated (Default `standard`); Hochklassifizieren ist UPDATE und braucht Clearance für die neue Stufe.
+- **`grant_/revoke_confidentiality_clearance`-RPCs** (SECURITY DEFINER): Autorität tenant-admin OR project-lead, Cross-Tenant-Grant blockiert, Audit-Zeile in `audit_log_entries` (PROJ-10) je Grant/Revoke (der UPDATE-only `record_audit_changes`-Trigger kann INSERT/DELETE nicht erfassen → RPC schreibt in dasselbe eine Audit-System).
+- **`confidentiality_level`** zu `_tracked_audit_columns` für projects/phases/work_items hinzugefügt → Reklassifizierung ist field-level auditiert (AC3, Wiederverwendung PROJ-10).
+
+**API (thin wrappers über die RPCs, `manage_members`-Gate für saubere 403):** `POST /api/projects/[id]/clearances` (grant) + `GET` (list, managers) + `DELETE …/[userId]` (revoke).
+
+**Live-Smoke gegen Prod (read-only / RPC-raise-vor-write, 0 Residue):** standard-open ✓, default-deny confidential+strict für non-member ✓, unknown-project→deny ✓, tenant-admin-bypass ✓, Self-Grant via RPC → 42501 blockiert ✓, Class-3-Orthogonalität strukturell bestätigt (kein `privacy_class` auf den Gate-Tabellen) ✓.
+
+**Quality-Gates:** lint 0; tsc 13 baseline/0 neu; vitest **1852/1852** (+11 clearance-Route-Tests); build clean.
+
+**Offen für /qa (AC-100a-SEC Pentest):** der non-admin-MIT-Clearance-Positiv-Pfad (Clearance-Lookup-Zweig) ist live nicht geprüft, weil im E2E-Seed nur ein tenant-admin existiert (der via Bypass nie den Lookup-Zweig erreicht) — QA muss einen non-admin User + Clearance seeden und alle 6 AC-100a-SEC-Vektoren rollenbasiert (SET ROLE authenticated) verifizieren.
 **Origin:** M&A-Platform Backlog (Epic B — Rollen, Gremien & Governance)
 **Priority:** P1
 
@@ -151,6 +170,58 @@ Für künftige Slices liefert 100a ein **dokumentiertes Rezept** „So macht man
 - *Verbindliche Compliance-Profile* → 100b (Profile-Slice), nicht 100a.
 - *Automatische Verknüpfung mit DMS-Geheimhaltungsvermerken* → später, wenn DMS-Klassifikation (PROJ-79/129) steht; 100a stellt nur den Mechanismus bereit.
 - *Temporäre Berechtigung* → als Befristungs-Feld in der Freischaltung vorgesehen; einfache Durchsetzung in 100a, ausgefeilte Ablauf-Automatik optional später.
+
+---
+
+## QA Test Results — 100a Need-to-Know-RLS-Pentest (2026-06-18)
+
+**Tester:** QA Engineer / Red-Team · **Methode:** Live, rollenbasiert gegen Prod-DB (`iqerihohwabyjzkpcujq`) via `SET ROLE authenticated` + `request.jwt.claims.sub`. Markierte Testdaten geseedet (Tenant `P100A-PENTEST-*`), getestet, restlos entfernt — **0 Residue verifiziert** (alle Residual-Counts = 0; `session_replication_role` nur für den Teardown auf `replica`, danach `origin`).
+
+**Test-Topologie:** 2 Tenants (T1, T2), 3 User — UA (T1-Admin), UN (T1-`member` + Projekt-`editor`, cleared **confidential** auf P_conf), UX (T2-Admin). 4 Projekte (P_conf=`confidential`, P_strict=`strict`, P_std=`standard` in T1; P_t2=`confidential` in T2), Phase (`strict`) + 2 Work-Items (`confidential`/`strict`) in P_conf.
+
+> Diese Topologie schließt genau die vom Backend dokumentierte Lücke: der **non-admin-MIT-Clearance-Positiv-Pfad** (Clearance-Lookup-Zweig in `can_access_classified`), den der Backend-Live-Smoke nicht erreichte, weil dort nur ein Tenant-Admin existierte (Bypass-Zweig).
+
+### AC-100a-SEC — Penetrationstest: 6/6 Vektoren PASS
+
+| # | Vektor | Probe | Ergebnis |
+|---|--------|-------|----------|
+| 1 | Cross-Clearance-Leak | UN (cleared `confidential`) listet P100A-Objekte | ✅ sieht nur `P100A Conf` + `P100A Std` + `WI Conf`; **kein** `strict`-Objekt (P_strict / WI Strict / Phase Strict) |
+| 2 | Selbst-Freischaltung / Eskalation | UN ruft `grant_confidentiality_clearance(self, strict)` | ✅ `42501 not authorized` |
+| 2b | " | UN: direkter `INSERT` in `ma_confidentiality_clearances` | ✅ `42501 RLS policy violation` (keine INSERT-Policy) |
+| 2c | " | UN: `UPDATE project_memberships SET role='lead'` (self-promote → würde `is_project_lead` freischalten) | ✅ **0 Zeilen** |
+| 3 | Cross-Tenant | UX (T2-Admin) listet P100A-Objekte | ✅ sieht nur `P100A T2 Conf`; **nichts** aus T1; `can_access_classified(T1-Projekt,*)`=false → Gate prüft **Projekt**-Tenant, nicht Aufrufer-Tenant |
+| 4 | default-deny | strict-Objekte ohne ausreichende Clearance | ✅ unsichtbar (Teil von Vektor 1) |
+| 5 | RLS-Bypass | UN: `UPDATE projects SET confidentiality_level='standard'` auf P_strict (Gate-Escape via Downgrade) | ✅ **0 Zeilen** — UPDATE-`USING` prüft die **aktuelle** (strict) Stufe |
+| 5b | " | UN: `UPDATE` auf strict-WI / strict-Phase | ✅ **0 / 0 Zeilen** |
+| 5c | " | UN liest `ma_confidentiality_clearances` (managers-only SELECT) | ✅ **0 Zeilen**, auch nicht die eigene → Inner-Circle-Komposition verborgen |
+| 6 | Class-3-Orthogonalität | Struktur-Check Gate-Tabellen + Gate-Funktion | ✅ keine `privacy_class`-Spalte auf projects/phases/work_items; `can_access_classified` referenziert `privacy_class` nicht → zwei unabhängige Achsen |
+
+**Zusätzliche Positiv-/Edge-Pfade verifiziert:**
+- **Non-admin-Clearance-Lookup (vorher ungetestet):** UN sieht exakt seine freigegebene Stufe — `can_access_classified(P_conf,'confidential')`=true, `(P_conf,'strict')`=false. ✅
+- **Admin-Bypass:** UA (T1-Admin) sieht alle T1-Stufen inkl. `strict`, aber **nicht** T2. ✅
+- **Befristung (`valid_until`):** abgelaufene strict-Clearance → `can_access_classified`=false, P_strict unsichtbar. ✅ (greift die Spec-Offene-Frage „temporäre Berechtigung" auf)
+
+### Bugs
+
+#### ✅ H-1 (HIGH) — GEFIXT 2026-06-18 — grant/revoke-RPC war in Prod funktionsunfähig: Audit-Entity-Type nicht im CHECK-Constraint
+
+- **Reproduktion:** Als befugter Admin/Lead `select grant_confidentiality_clearance(<project>, <user>, 'confidential');`
+- **Ist:** `ERROR 23514: new row for relation "audit_log_entries" violates check constraint "audit_log_entity_type_check"` — der RPC bricht beim Audit-INSERT (`entity_type = 'ma_confidentiality_clearances'`) ab und rollt die komplette Vergabe zurück.
+- **Ursache:** Die Migration `20260616100000` schreibt in `audit_log_entries` mit `entity_type='ma_confidentiality_clearances'`, **erweiterte aber den `audit_log_entity_type_check`-Constraint nicht** (44 erlaubte Typen, dieser fehlt). Betrifft **grant UND revoke** (beide schreiben Audit) → der gesamte Schreibpfad ist tot.
+- **Impact:** Über die unterstützte API/RPC kann **keine** Clearance vergeben oder entzogen werden. Folge: die Inner-Circle-Tabelle bleibt leer → **nur Tenant-Admins** (via Bypass) sehen je klassifizierte Objekte; **kein non-admin kann je freigeschaltet werden**. Das Kern-Feature (Need-to-Know-Freischaltung) ist in Prod nicht nutzbar. AC3 (Audit jeder Vergabe/Entzug) ist damit ebenfalls nicht erfüllt.
+- **Sicherheits-Einordnung:** Kein Leak — das System **fail-closed** (über-restriktiv). Daher HIGH (Funktion + DoD-AC3 gebrochen), nicht Critical.
+- **Warum vom Backend-Live-Smoke verfehlt:** der Smoke testete nur den **Block**-Pfad (self-grant → `42501`, geworfen in Zeile 13 **vor** dem Audit-INSERT in Zeile 33) und Read-/default-deny-Pfade. Ein **autorisierter erfolgreicher Grant** — der einzige Pfad, der den Audit-INSERT erreicht — wurde nie ausgeführt. Die geseedete Clearance dieses Pentests umging die RPC (direkter INSERT als `postgres`) und traf den Constraint daher ebenfalls nicht.
+- **Fix (`/backend`, 2026-06-18):** Migration `20260618100000_proj100a_fix_audit_entity_type.sql` — `audit_log_entity_type_check` gedroppt und mit `'ma_confidentiality_clearances'` (44 → 45 Werte) neu angelegt; in Prod-DB angewendet.
+- **Live-Re-Verify (Pflicht-RPC-Smoke gegen Prod, 0 Residue):** autorisierter `grant` (Admin) → Clearance angelegt + **1 Audit-Zeile** (`max_level`: null→confidential, mit `change_reason`); `revoke` → Clearance gelöscht + **2. Audit-Zeile** (revoked→null). Constraint enthält den neuen Typ verifiziert. ✅
+- **Folge-AC:** AC3 (Audit jeder Vergabe/Entzug) ist mit dem Fix **erfüllt** — beide Events landen field-level in `audit_log_entries`.
+
+### Produktionsreife-Empfehlung: ✅ READY (nach H-1-Fix)
+
+Die RLS-Durchsetzung (das eigentliche „Tor") ist **wasserdicht** — alle 6 Angriffsvektoren + Edges bestanden. Der einzige Blocker **H-1 (HIGH)** wurde am 2026-06-18 gefixt (Migration `20260618100000`) und live re-verifiziert: grant/revoke + AC3-Audit funktionieren. **Keine Critical/High offen → Status Approved.** (AC2/4/5 bleiben planmäßig auf 100b verschoben.)
+
+### Reproduzierbares Pentest-Skript
+
+Der vollständige rollenbasierte Pentest (Seed → 6 Vektoren + Edges → Teardown mit 0-Residue-Check) ist als wiederverwendbares SQL in `tests/sql/PROJ-100a-need-to-know-pentest.sql` abgelegt — re-runbar gegen Prod oder eine Shadow-DB nach jedem Touch der Gate-Migration.
 
 ---
 _Quelle: Backlog-Entwurf M&A-Projektplattform · B — Rollen, Gremien & Governance_
