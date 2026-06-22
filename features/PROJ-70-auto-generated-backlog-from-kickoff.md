@@ -2,7 +2,25 @@
 
 ## Status: α Approved+Deployed · β Approved+Deployed · γ Approved+Deployed (QA-Pass 2026-06-06: 14/16 AC fully PASS + 2 documented deviations F-1 Medium F-2 LOW; 11/12 security probes blocked; vitest 1654/1654; Playwright 16/16; 0 Critical/0 High → PRODUCTION-READY) · δ **Approved (QA-Pass 2026-06-07: 15/15 AC PASS + 1 documented deviation D-1; H-1/H-2/H-3 in-QA gefixt — β-Accept-RPC war in Prod doppelt kaputt (provenance-CHECK + unkorrelierter Toposort-Subquery), erster echter E2E-Accept überhaupt; vitest 1712/1712; Playwright 22 passed/2 skipped; 0 offene Critical/High → PRODUCTION-READY)** · ε **Approved (QA-Pass 2026-06-08: 8/8 AC PASS inkl. AC-ε7 Live-E2E + AC-ε2-Deviation; 1 LOW-Finding F-ε1 single-root-Tree-Viewport; vitest 1736/1736; PROJ-70 Playwright 25 passed/5 skipped serial; 0 Critical/0 High → PRODUCTION-READY)** — **PROJ-70 KOMPLETT über alle 5 Slices**
 **Created:** 2026-05-31
-**Last Updated:** 2026-06-01
+**Last Updated:** 2026-06-22
+
+## Implementation Note — Waterfall-Kind-Taxonomie-Fix (2026-06-22, von PROJ-136 gefunden)
+
+Der **PROJ-136-Golden-Path-Smoke fand beim ersten Lauf** eine HIGH-Inkonsistenz im Waterfall-`proposal_from_context`-Pfad über 3 Schichten:
+- **Prompts** (`ollama.ts`, `graph-purpose-prompts.ts`) wiesen das Modell an, für `waterfall` `phase`/`work_package`/`todo` zu erzeugen, und die **Zod-Schema-Enums** ließen `phase`/`todo` zu.
+- Die **Accept-RPC** `accept_proposal_from_context_bulk` validierte waterfall = `('phase','work_package','todo')` und inserted den kind direkt in `work_items`.
+- **`work_items_kind_check`** erlaubt aber nur `epic/feature/story/task/subtask/bug/work_package` — also **weder `phase` noch `todo`**.
+- Autoritativ: `src/lib/method-templates/waterfall.ts` → `allowedAiKinds = work_package/task/bug`.
+
+**Netto:** jeder Waterfall-KI-Backlog mit Phase/Todo schlug beim Accept hart fehl (23514). Bewiesen: **0** work_items mit kind `phase`/`todo` in ganz Prod (alle 43 akzeptierten Backlogs scrum/hybrid) → der Waterfall-Accept-Pfad war **nie** erfolgreich. Der erste ERP-Pilot ist Waterfall → pilot-blockierend.
+
+**Fix (User-Entscheidung: auf Method-Template ausrichten):** Waterfall-Taxonomie überall = `work_package`/`task`/`bug`; `phase`/`todo` aus dem Backlog-Pfad entfernt (Phasen leben in der separaten `phases`-Tabelle PROJ-19, `todo`→`task`).
+- Migration `20260622100000_proj70_fix_waterfall_kind_taxonomy` (RPC-Waterfall-Validierung `→ ('work_package','task','bug')`, self-verifizierender In-Place-Patch; Scrum-Zweig unberührt) — in Prod-DB angewendet.
+- Zod-Schema-Enums (`ollama.ts` + `graph-purpose-prompts.ts`): `phase`/`todo` entfernt.
+- Prompts (3 Stellen) auf `work_package/task/bug` + Klarstellung „Phasen gehören NICHT ins Backlog".
+- FE-Tree-Reparenting-Regeln (`proposal-tree-rules.ts`) + Doc-Comments (`types.ts`) ausgerichtet.
+
+**Live re-verifiziert (0 Residue):** Waterfall-Backlog-Accept `work_package`→`task`→`bug` läuft jetzt end-to-end durch (3 work_items, Hierarchie korrekt, provenance `work_items`). Gates: lint 0, build clean, vitest 1889, 0 neue tsc-Fehler. Reproduzierbar via `tests/sql/PROJ-136-erp-golden-path.sql`.
 **α-Slice deployed:** 2026-06-01 — migration applied to Prod-DB; lint 0 errors; tsc baseline-clean; vitest 1583/1583 (incl. 14 new classifier tests); build 13.7s clean; new API route registered: `/api/projects/[id]/ai/proposal-from-context`
 **Priority:** P1
 **Origin:** Session 2026-05-31 — Aufdecken eines 3-Spec-Drifts (PROJ-44-δ + PROJ-44-ε + PROJ-12 `work_items`-Purpose) ohne tatsächliche Implementierung. Single-Responsibility-Reunite in ein deploybares Slice.

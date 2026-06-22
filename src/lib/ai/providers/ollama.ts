@@ -1078,9 +1078,7 @@ const ProposalFromContextSuggestionSchemaOllama = z.object({
   temp_id: z.string().min(1).max(64),
   parent_temp_id: z.string().min(1).max(64).nullable(),
   kind: z.enum([
-    "phase",
     "work_package",
-    "todo",
     "epic",
     "story",
     "task",
@@ -1106,7 +1104,7 @@ Aufgabe: Analysiere den Inhalt eines Kickoff-Dokuments und schlage 0–50 hierar
 Pflichtregeln:
 - Antworte ausschließlich auf Deutsch.
 - Jedes Item bekommt eine eindeutige \`temp_id\` (z.B. "t_1", "t_2", …). Über \`parent_temp_id\` zeigst du auf das übergeordnete Item desselben Runs (null bei Top-Level-Items).
-- Wähle \`kind\` passend zur Projektmethode (Wasserfall: phase/work_package/todo; Scrum: epic/story/task; Hybrid: mische methodensauber).
+- Wähle \`kind\` passend zur Projektmethode (Wasserfall: work_package/task/bug; Scrum: epic/story/task; Hybrid: mische methodensauber).
 - Titel ist konkret und actionable, keine Boilerplate.
 - \`description\` ist optional, max 500 Zeichen.
 - KEINE Class-3-Daten in den Outputs: keine konkreten Personennamen, E-Mails, Telefonnummern. Generalisiere zu Rollen.
