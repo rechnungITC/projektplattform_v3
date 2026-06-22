@@ -1,6 +1,6 @@
 # PROJ-135: Dialogic Wizard Clarifying Questions (AI-Rückfragen vor der Generierung)
 
-## Status: Approved
+## Status: Deployed
 **Created:** 2026-06-16
 **Last Updated:** 2026-06-22
 **Origin:** PROJ-90 "Next/Later" — promoted to its own spec (user-requested 2026-06-16)
@@ -248,7 +248,11 @@ The optional `clarifying` wizard step, wired to the slice-α endpoint + the `cla
 **YES** — 0 Critical / 0 High. One LOW (resolved) + one env deviation (D-1) with strong compensating live evidence.
 
 ## Deployment
-_To be added by /deploy_
 
-## Deployment
-_To be added by /deploy_
+**Deployed 2026-06-22** — PR **#160** squash-merged to `main` (`96fb5a3`); tag **`v1.96.0-PROJ-135`**; Vercel prod auto-deploy verified live (new route `POST /api/wizard-drafts/[id]/clarifying-questions` returns **307 auth-gate** on `projektplattform-v3.vercel.app`). Migration `20260619100000` was already applied to prod (`iqerihohwabyjzkpcujq`) during slice α.
+
+**Consolidation:** built on `proj-135/requirements` (CIA-spec → Tech Design → backend α → frontend β → QA). A parallel session's `proj-135/architecture` (its Tech Design landed via #154) + `proj-135/backend-alpha` branches were abandoned per user decision; the docs-only conflicts with the fast-moving `main` (PROJ-136/137 + a PROJ-70 waterfall-kind fix in #163) were resolved across several merge cycles (PROJ-135 row kept canonical; main's PROJ-136/137 rows preserved). Code merged conflict-free.
+
+**Open follow-up (carried from QA D-1):** the 3 *authenticated/service-role* E2E layers in `tests/PROJ-135-clarifying-questions.spec.ts` (UI gating, endpoint auto-gen, finalize persist/re-link) were **not run in CI** — the deploy was gated on the standard required checks (schema-drift, npm-audit, Snyk, Vercel build) which passed, plus the auth-gate E2E (2/2 live), two live prod smokes (Option-1 bounded-CHECK + cross-tenant RLS), and the full unit/integration suite (finalize-persist 3, classifier 6, qa-helper 9, visibility 3). Recommended: run the authenticated suite in an env with `SUPABASE_SERVICE_ROLE_KEY` + Playwright storage-state for full end-to-end confidence.
+
+**Deferred PROJ-Y candidates (from architecture):** Q2 retention cron for project-less `clarifying` runs (abandoned drafts); Q3 full-text Class-3 re-classification → folds into PROJ-75.
