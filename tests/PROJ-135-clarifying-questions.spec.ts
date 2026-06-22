@@ -164,7 +164,7 @@ test.describe.serial("PROJ-135 / endpoint + finalize persist", () => {
 
   test.afterAll(async () => {
     if (!admin) return
-    const safe = async (p: Promise<unknown>) => p.then(() => undefined, () => undefined)
+    const safe = (p: PromiseLike<unknown>) => p.then(() => undefined, () => undefined)
     if (storagePath) {
       await safe(admin.storage.from("context-source-uploads").remove([storagePath]))
     }
