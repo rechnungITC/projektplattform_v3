@@ -52,6 +52,7 @@ import {
 import { StepBasics } from "./step-basics"
 import { StepFollowups } from "./step-followups"
 import { StepKiBacklog } from "./step-ki-backlog"
+import { StepMaFoundation } from "./step-ma-foundation"
 import { StepMethod } from "./step-method"
 import { StepReview } from "./step-review"
 import { StepType } from "./step-type"
@@ -317,10 +318,26 @@ export function WizardClient({ draftId }: WizardClientProps) {
           }
           return ok
         }
-        case "ma_foundation":
-          // PROJ-94 — per-field validation (sponsor/objective required) lands
-          // with the step UI in /frontend; finalize enforces the must-haves.
-          return true
+        case "ma_foundation": {
+          // PROJ-94 — sponsor + objective (Step-1 description) are mandatory
+          // for M&A projects; finalize enforces them server-side too.
+          let ok = true
+          if (!data.ma_foundation?.sponsor_user_id) {
+            form.setError("ma_foundation.sponsor_user_id", {
+              type: "manual",
+              message: "Sponsor ist für M&A-Projekte erforderlich",
+            })
+            ok = false
+          }
+          if (!data.description?.trim()) {
+            form.setError("description", {
+              type: "manual",
+              message: "Zielsetzung (Beschreibung in Schritt 1) ist erforderlich",
+            })
+            ok = false
+          }
+          return ok
+        }
         case "ki_backlog":
           // Optional step — upload is not required (user may skip). The
           // upload itself is validated inline in the step component.
@@ -556,6 +573,8 @@ export function WizardClient({ draftId }: WizardClientProps) {
                   : null
               }
             />
+          ) : step === "ma_foundation" ? (
+            <StepMaFoundation tenantId={tenantId} />
           ) : step === "ki_backlog" ? (
             <StepKiBacklog tenantId={tenantId} />
           ) : (

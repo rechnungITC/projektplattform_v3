@@ -14,7 +14,7 @@ summary_for_jira: "[A1] M&A-Projekt mit strategischer Grundlage anlegen"
 
 # PROJ-94: M&A-Projekt mit strategischer Grundlage anlegen
 
-## Status: In Progress (backend built 2026-06-22; frontend pending)
+## Status: In Progress (backend + frontend built 2026-06-22; QA pending)
 **Created:** 2026-06-10
 **Origin:** M&A-Platform Backlog (Epic A — Projektgrundlagen & Phasenmodell)
 **Priority:** P1
@@ -222,6 +222,24 @@ Smoke-Endstand (rollback, 0 Residuen): Profil-Create via auth.uid(), draft→sub
 **Vorbestand-Followup (nicht PROJ-94-Scope):** 3 PROJ-100a-RPCs (`can_access_classified`/`grant`/`revoke_confidentiality_clearance`) sind weiterhin anon-executable (fail-closed/Hygiene). Kandidat für PROJ-100b-Hardening (`revoke … from anon`).
 
 **Offen → /frontend:** Step-UI „M&A-Grundlage" (Felder + Sponsor-Picker + Vertraulichkeit), Projekt-Raum-Karte „Strategische Grundlage" (+ „Mandat freigeben"-Button + PROJ-10-Historien-Ansicht). Danach /qa.
+
+## Implementation Notes — Frontend (2026-06-22)
+
+**Branch:** `proj-94/backend` (frontend on same branch). Kein neues Dep, keine Migration.
+
+**Gebaut:**
+- **Wizard-Step „M&A-Grundlage"** (`step-ma-foundation.tsx`) — konditional nur bei `project_type==='ma'` (analog `ki_backlog`): Deal-Variante (Select), Vertraulichkeit (Select), Sponsor (reuse `ResponsibleUserPicker`), Deal-Rationale/Suchprofil/Ausschlusskriterien (Textareas), Investitionsrahmen (Betrag+Währung+Notiz), Strategie-Doku-Link. Verdrahtet in `wizard-client.tsx` (Render-Branch + `validateStep`-Case: Sponsor + Zielsetzung Pflicht, spiegelt Finalize-Server-Check).
+- **Projekt-Raum-Karte „Strategische Grundlage"** (`ma-foundation-card.tsx`) — Tabs „Grundlage"/„Historie":
+  - View + Inline-Edit (gated via `useProjectAccess(projectId, "edit_master")`), PATCH über `updateMaProfile`, Toast + Refresh; Draft beim „Bearbeiten"-Klick frisch geseedet (kein set-state-in-effect, React-Compiler-konform).
+  - **Mandats-Aktionen (AC-4):** `MandateActions` rendert die erlaubten Übergänge aus `ALLOWED_MANDATE_TRANSITIONS` („Einreichen"/„Mandat freigeben"/„Zurück zu Entwurf") → `transitionMandate`-RPC-Route, Editor-gated.
+  - **PROJ-10-Historie:** reuse `HistoryTab` mit `entityType="ma_project_profiles"` + `formatValue` (Sponsor→Name, deal_side/mandate_status→Label). `AuditEntityType` um `ma_project_profiles` erweitert (Union + Array + Label).
+- **Daten-Layer:** `useMaProfile`-Hook (use-project-Shape, `notFound` für Nicht-M&A) + `src/lib/ma-project/api.ts` (fetch/update/transition-Wrapper, safeError-Muster).
+- **Navigation (type-gated):** neuer optionaler `requiresProjectType` auf `SidebarSection` + `filterSectionsByProjectType` (routing.ts). Die M&A-Sektion wird **zentral einmal** in `getMethodConfig` in ALLE Method-Configs nach „Übersicht" injiziert (statt 8 Templates zu duplizieren) und in beiden Renderern (`project-sidebar` + `project-room-shell`) per `project_type` gefiltert → erscheint method-unabhängig nur für M&A. Routing-Helper (`getMethodSlug`/`parseSectionFromPathname`) lösen den Slug `strategische-grundlage` in jeder Methode auf.
+- **Route:** `src/app/(app)/projects/[id]/strategische-grundlage/page.tsx`.
+
+**Quality-Gates:** vitest 1915/1915 (+ neue routing-Tests für `filterSectionsByProjectType` + Section-Injektion); lint 0; tsc 0 neu (Baseline-Testfehler unverändert); build clean — 3 neue Routen kompiliert (`/projects/[id]/strategische-grundlage` + 2 API).
+
+**Offen → /qa:** Playwright-Smoke (Wizard-M&A-Pfad bis Finalize + Karte-Edit + Mandat-Transition + Need-to-Know-Sichtbarkeit), AC-End-to-End gegen die ACs, Security-Review der neuen Routen.
 
 ---
 _Quelle: Backlog-Entwurf M&A-Projektplattform · A — Projektgrundlagen & Phasenmodell_

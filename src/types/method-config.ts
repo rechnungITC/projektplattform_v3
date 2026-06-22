@@ -11,6 +11,7 @@
 import type { LucideIcon } from "lucide-react"
 
 import type { ProjectMethod } from "@/types/project-method"
+import type { ProjectType } from "@/types/project"
 import type { ModuleKey } from "@/types/tenant-settings"
 import type { WorkItemKind } from "@/types/work-item"
 
@@ -51,6 +52,13 @@ export interface SidebarSection {
    * filtered out when the module is inactive for the tenant.
    */
   requiresModule?: ModuleKey
+  /**
+   * Optional project-type gate (PROJ-94). When set, the section is shown
+   * only for projects of this `project_type` (e.g. the M&A "Strategische
+   * Grundlage" section appears only for `project_type='ma'`, regardless of
+   * method). Filtered by `filterSectionsByProjectType` before rendering.
+   */
+  requiresProjectType?: ProjectType
   /** Optional pill text rendered to the right of the label. */
   badge?: string
 }
