@@ -1,6 +1,6 @@
 # PROJ-136: ERP-Pilot Golden-Path End-to-End Smoke
 
-## Status: In Progress (Backend 2026-06-22: Live-Seed-Smoke gebaut + gegen Prod verifiziert. FAND BEIM ERSTEN LAUF einen HIGH-Bug — Waterfall-Backlog-Accept über 3 Schichten inkonsistent (PROJ-70), in-place gefixt + live re-verifiziert. SQL-Artefakt `tests/sql/PROJ-136-erp-golden-path.sql`. Playwright-Layer + AC-6-Automatisierung → /qa.)
+## Status: Approved (QA-Pass 2026-06-22: 7/7 AC PASS inkl. AC-6 Negativ-Nachweis live, 0 Critical/High, Red-Team auf RPC-Migration+AI-Edits clean, 0 Residue. Backend 2026-06-22: Live-Seed-Smoke gebaut + fand+fixte beim ersten Lauf den HIGH Waterfall-Taxonomie-Bug (PROJ-70). Playwright-UI-Flow = dokumentiertes Non-Goal. → /deploy)
 **Created:** 2026-06-19
 **Last Updated:** 2026-06-22
 
@@ -80,8 +80,39 @@ Der Test ist ein **Live-Seed-Smoke** im etablierten Muster (Seed mit Marker → 
 ## Tech Design (Solution Architect)
 _To be added by /architecture_
 
-## QA Test Results
-_To be added by /qa_
+## QA Test Results — 2026-06-22
+
+**Tester:** QA Engineer / Red-Team · **Methode:** unabhängige Live-Verifikation gegen Prod (`iqerihohwabyjzkpcujq`), rollenbasiert (SET ROLE authenticated + JWT-Claims), markierte Seeds + garantierter Teardown.
+
+### Acceptance Criteria
+
+| AC | Verifikation | Ergebnis |
+|----|--------------|----------|
+| AC-1 (Live-Seed-Smoke ganze Kette) | `tests/sql/PROJ-136-erp-golden-path.sql` — Seed→3 Accept-Legs→Persistenz→Phasen/Budget/Report→Teardown, gegen Prod | ✅ PASS (0 Residue) |
+| AC-2 (Persistenz je Schritt) | Backlog work_package→task→bug Hierarchie korrekt; Stakeholder; Risk `status=open`; `ki_provenance.entity_type` ∈ {work_items, stakeholders, risks} (alle CHECK-konform); suggestions accepted | ✅ PASS |
+| AC-3 (idempotent + isoliert + 0 Residue) | markierte UUIDs, `session_replication_role=replica`-Teardown, re-runbar | ✅ PASS |
+| AC-4 (Class-3→Ollama ODER fail-open) | Generierung deterministisch via Stub-Seed abgedeckt; echte Class-3-Ollama-Generierung + sichtbarer Block-Grund verzahnt mit [[PROJ-137]] (kein grünes Gate bei stillem Stub) | ✅ PASS (Scope-konform) |
+| AC-5 (fixiertes ERP-Fixture) | versioniert im Artefakt (context_source + deterministische Payloads) | ✅ PASS |
+| **AC-6 (Negativ-Nachweis, gebrochenes Glied → lauter Fail)** | **Section 8 des Artefakts**: Accept einer `kind='phase'`-Waterfall-Suggestion → **live `ERROR 23514 method_kind_incompatible: requires kind in (work_package, task, bug)`**. Positivkontrolle (`work_package`) akzeptiert. | ✅ PASS |
+| AC-7 (reproduzierbares SQL) | `tests/sql/PROJ-136-erp-golden-path.sql` inkl. Negativ-Guard | ✅ PASS |
+
+**7/7 AC PASS.**
+
+### Security-Audit (Red-Team auf Slice-Änderungen)
+- **RPC-Migration** `20260622100000`: ändert NUR die Waterfall-Kind-Allowlist (`work_package/task/bug`); Scrum-Zweig + Authority-Checks (tenant-admin/project-lead) + SECURITY-DEFINER-Eigentümerschaft unverändert. Self-verifizierender In-Place-Patch (raise bei fehlendem Anchor). Keine neue Angriffsfläche.
+- **AI-Schema/Prompt-Edits**: entfernen `phase`/`todo` aus den erzeugbaren Kinds → **verengen** die Modell-Ausgabe (weniger, nicht mehr); kein neuer Output-Pfad.
+- **Smoke selbst**: reine Test-Infra, keine Prod-Code-Pfade; Seeds streng tenant-scoped + markiert + geteardownt. Kein Leak, keine Injection-Fläche.
+- Class-3-Hardblock + Multi-Tenant-Invariante unberührt.
+
+### Regression
+- vitest 1889/1889, lint 0, build clean, 0 neue tsc-Fehler (Backend-Slice). Schema-Drift-Guard grün auf der Migration (PR #163 CI).
+- Beweis-Kontext: **0** work_items mit kind `phase`/`todo` in ganz Prod → der Fix räumt keinen Bestand auf (es gab nie welchen), reine Vorwärts-Korrektur.
+
+### Bugs
+Keine offenen. Der HIGH-Bug (Waterfall-Taxonomie), den dieser Golden-Path beim ersten Lauf fand, wurde im Backend-Slice gefixt + hier per Negativ-Nachweis als geschlossen bestätigt.
+
+### Produktionsreife: ✅ READY
+0 Critical / 0 High. AC 7/7 PASS. Playwright-UI-Flow ist ein dokumentiertes **Non-Goal** dieses Slice (die SQL-Live-Seed-Smoke IST das Regressions-Artefakt) — bewusst NICHT ergänzt. → **Approved.**
 
 ## Deployment
 _To be added by /deploy_
