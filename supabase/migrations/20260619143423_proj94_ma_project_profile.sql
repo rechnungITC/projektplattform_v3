@@ -417,6 +417,8 @@ grant execute on function public.create_ma_project_profile(uuid, uuid, text, tex
 -- the sponsor OR the deal lead (projects.responsible_user_id). The UPDATE fires
 -- the AFTER UPDATE audit trigger (mandate_status is in the whitelist) so every
 -- transition is field-level audited automatically.
+-- SECURITY DEFINER bypasses table RLS, so this RPC explicitly mirrors the
+-- ma_project_profiles need-to-know gate before mutating mandate_status.
 -- NO p_actor_user_id param (impersonation-safe): caller is always auth.uid().
 create or replace function public.transition_mandate_status(
   p_project_id uuid,
@@ -433,6 +435,7 @@ declare
   v_responsible uuid;
   v_from_status text;
   v_sponsor uuid;
+  v_confidentiality_level public.ma_confidentiality_level;
   v_authorized boolean;
 begin
   if v_caller is null then
@@ -443,8 +446,18 @@ begin
     raise exception 'unknown mandate_status: %', p_to_status using errcode = '23514';
   end if;
 
-  select p.tenant_id, p.responsible_user_id, mp.mandate_status, mp.sponsor_user_id
-    into v_tenant, v_responsible, v_from_status, v_sponsor
+  select
+      p.tenant_id,
+      p.responsible_user_id,
+      mp.mandate_status,
+      mp.sponsor_user_id,
+      mp.confidentiality_level
+    into
+      v_tenant,
+      v_responsible,
+      v_from_status,
+      v_sponsor,
+      v_confidentiality_level
     from public.projects p
     join public.ma_project_profiles mp on mp.project_id = p.id
     where p.id = p_project_id;
@@ -465,6 +478,10 @@ begin
     or v_caller = v_sponsor;
   if not v_authorized then
     raise exception 'insufficient role to change mandate status' using errcode = '42501';
+  end if;
+
+  if not public.can_access_classified(p_project_id, v_confidentiality_level) then
+    raise exception 'insufficient clearance to change mandate status' using errcode = '42501';
   end if;
 
   case v_from_status

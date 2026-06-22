@@ -13,8 +13,9 @@ import { patchMaProfileSchema } from "./_schema"
 //
 // GET   /api/projects/[id]/ma-profile  — read the profile (project members;
 //       RLS + need-to-know gate already restrict the row).
-// PATCH /api/projects/[id]/ma-profile  — update strategic fields (editor/lead;
-//       RLS UPDATE policy + need-to-know gate enforce at the DB layer too).
+// PATCH /api/projects/[id]/ma-profile  — update strategic fields (tenant-admin
+//       or project-lead; RLS UPDATE policy + need-to-know gate enforce at the
+//       DB layer too).
 //       mandate_status is excluded — it transitions via .../mandate.
 
 const PROFILE_COLUMNS =
@@ -22,6 +23,58 @@ const PROFILE_COLUMNS =
   "deal_rationale, search_profile, exclusion_criteria, " +
   "investment_frame_amount, investment_frame_currency, investment_frame_note, " +
   "strategic_document_link, confidentiality_level, created_by, created_at, updated_at"
+
+type RouteSupabase = Awaited<
+  ReturnType<typeof getAuthenticatedUserId>
+>["supabase"]
+
+async function requireMaProfileGovernanceAccess(
+  supabase: RouteSupabase,
+  projectId: string,
+  userId: string
+) {
+  const access = await requireProjectAccess(supabase, projectId, userId, "view")
+  if (access.error) return access.error
+
+  const [tenantRes, projectMembershipRes] = await Promise.all([
+    supabase
+      .from("tenant_memberships")
+      .select("role")
+      .eq("tenant_id", access.project.tenant_id)
+      .eq("user_id", userId)
+      .maybeSingle(),
+    supabase
+      .from("project_memberships")
+      .select("role")
+      .eq("project_id", projectId)
+      .eq("user_id", userId)
+      .maybeSingle(),
+  ])
+
+  if (tenantRes.error) {
+    return apiError("internal_error", tenantRes.error.message, 500)
+  }
+  if (projectMembershipRes.error) {
+    return apiError(
+      "internal_error",
+      projectMembershipRes.error.message,
+      500
+    )
+  }
+
+  if (
+    tenantRes.data?.role !== "admin" &&
+    projectMembershipRes.data?.role !== "lead"
+  ) {
+    return apiError(
+      "forbidden",
+      "Only project leads or tenant admins can edit this M&A profile.",
+      403
+    )
+  }
+
+  return null
+}
 
 export async function GET(
   _request: Request,
@@ -79,9 +132,14 @@ export async function PATCH(
   const { userId, supabase } = await getAuthenticatedUserId()
   if (!userId) return apiError("unauthorized", "Not signed in.", 401)
 
-  // Clean 403 before the write (RLS enforces it at the DB layer too).
-  const access = await requireProjectAccess(supabase, projectId, userId, "edit")
-  if (access.error) return access.error
+  // Clean 403 before the write, matching the DB policy exactly
+  // (tenant-admin or project-lead; no project-editor writes).
+  const accessError = await requireMaProfileGovernanceAccess(
+    supabase,
+    projectId,
+    userId
+  )
+  if (accessError) return accessError
 
   const { data, error } = await supabase
     .from("ma_project_profiles")

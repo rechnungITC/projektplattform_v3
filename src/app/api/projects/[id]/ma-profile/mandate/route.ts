@@ -15,7 +15,8 @@ import { transitionMandateSchema } from "../_schema"
 // The transition_mandate_status RPC owns the state machine
 // (draft → submitted → approved, terminal) and authority (tenant-admin /
 // project-lead / sponsor / deal-lead) and is audited via the AFTER UPDATE
-// trigger. requireProjectAccess("edit") gives a clean 403 before the RPC.
+// trigger. The route only verifies project visibility; the RPC owns the final
+// role + need-to-know decision.
 // 'approved' is the gate PROJ-95 consumes to unlock Phase 2 (Target-Screening).
 
 export async function POST(
@@ -48,7 +49,7 @@ export async function POST(
   const { userId, supabase } = await getAuthenticatedUserId()
   if (!userId) return apiError("unauthorized", "Not signed in.", 401)
 
-  const access = await requireProjectAccess(supabase, projectId, userId, "edit")
+  const access = await requireProjectAccess(supabase, projectId, userId, "view")
   if (access.error) return access.error
 
   const { data, error } = await supabase.rpc("transition_mandate_status", {

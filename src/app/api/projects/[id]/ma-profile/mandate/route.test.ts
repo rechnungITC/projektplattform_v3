@@ -49,25 +49,13 @@ function ctx() {
   return { params: Promise.resolve({ id: PROJECT }) }
 }
 
-function queueEditAccess(role: { tenantRole?: string; projectRole?: string }) {
+function queueViewAccess() {
   const proj = newQueryChain()
   proj.maybeSingle.mockResolvedValue({
     data: { id: PROJECT, tenant_id: "t1" },
     error: null,
   })
   enqueue("projects", proj)
-  const tm = newQueryChain()
-  tm.maybeSingle.mockResolvedValue({
-    data: role.tenantRole ? { role: role.tenantRole } : null,
-    error: null,
-  })
-  enqueue("tenant_memberships", tm)
-  const pm = newQueryChain()
-  pm.maybeSingle.mockResolvedValue({
-    data: role.projectRole ? { role: role.projectRole } : null,
-    error: null,
-  })
-  enqueue("project_memberships", pm)
 }
 
 beforeEach(() => {
@@ -102,9 +90,13 @@ describe("POST /api/projects/[id]/ma-profile/mandate", () => {
     expect(res.status).toBe(400)
   })
 
-  it("403 when caller lacks edit role", async () => {
+  it("403 maps RPC authority or clearance denial after project visibility check", async () => {
     getUserMock.mockResolvedValue({ data: { user: { id: ME } } })
-    queueEditAccess({ tenantRole: "member", projectRole: "viewer" })
+    queueViewAccess()
+    rpcMock.mockResolvedValue({
+      data: null,
+      error: { code: "42501", message: "insufficient role" },
+    })
     const res = await POST(
       new Request("http://t/", {
         method: "POST",
@@ -113,12 +105,15 @@ describe("POST /api/projects/[id]/ma-profile/mandate", () => {
       ctx()
     )
     expect(res.status).toBe(403)
-    expect(rpcMock).not.toHaveBeenCalled()
+    expect(rpcMock).toHaveBeenCalledWith("transition_mandate_status", {
+      p_project_id: PROJECT,
+      p_to_status: "approved",
+    })
   })
 
-  it("200 transitions via RPC for a project lead", async () => {
+  it("200 returns the RPC transition result for an authorized caller", async () => {
     getUserMock.mockResolvedValue({ data: { user: { id: ME } } })
-    queueEditAccess({ tenantRole: "member", projectRole: "lead" })
+    queueViewAccess()
     rpcMock.mockResolvedValue({
       data: { project_id: PROJECT, mandate_status: "submitted", from_status: "draft" },
       error: null,
@@ -139,7 +134,7 @@ describe("POST /api/projects/[id]/ma-profile/mandate", () => {
 
   it("422 maps an invalid transition (RPC 23514)", async () => {
     getUserMock.mockResolvedValue({ data: { user: { id: ME } } })
-    queueEditAccess({ tenantRole: "admin", projectRole: undefined })
+    queueViewAccess()
     rpcMock.mockResolvedValue({
       data: null,
       error: { code: "23514", message: "mandate already approved (terminal)" },
@@ -156,7 +151,7 @@ describe("POST /api/projects/[id]/ma-profile/mandate", () => {
 
   it("403 maps a DB-layer authority denial (RPC 42501)", async () => {
     getUserMock.mockResolvedValue({ data: { user: { id: ME } } })
-    queueEditAccess({ tenantRole: "admin", projectRole: undefined })
+    queueViewAccess()
     rpcMock.mockResolvedValue({
       data: null,
       error: { code: "42501", message: "insufficient role" },

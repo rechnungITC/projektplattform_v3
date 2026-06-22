@@ -168,9 +168,9 @@ describe("PATCH /api/projects/[id]/ma-profile", () => {
     expect(res.status).toBe(400)
   })
 
-  it("403 when caller lacks edit role", async () => {
+  it("403 when caller is only a project editor", async () => {
     getUserMock.mockResolvedValue({ data: { user: { id: ME } } })
-    queueAccess({ tenantRole: "member", projectRole: "viewer" })
+    queueAccess({ tenantRole: "member", projectRole: "editor" })
     const res = await PATCH(
       new Request("http://t/", {
         method: "PATCH",
@@ -181,9 +181,9 @@ describe("PATCH /api/projects/[id]/ma-profile", () => {
     expect(res.status).toBe(403)
   })
 
-  it("200 updates strategic fields for an editor", async () => {
+  it("200 updates strategic fields for a project lead", async () => {
     getUserMock.mockResolvedValue({ data: { user: { id: ME } } })
-    queueAccess({ tenantRole: "member", projectRole: "editor" })
+    queueAccess({ tenantRole: "member", projectRole: "lead" })
     const upd = newQueryChain()
     upd.maybeSingle.mockResolvedValue({
       data: { id: "p1", project_id: PROJECT, deal_rationale: "Konsolidierung" },

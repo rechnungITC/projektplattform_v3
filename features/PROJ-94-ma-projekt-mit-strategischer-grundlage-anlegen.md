@@ -219,6 +219,16 @@ Smoke-Endstand (rollback, 0 Residuen): Profil-Create via auth.uid(), draft→sub
 
 **Quality-Gates:** vitest 1909/1909 (231 Files; +26 neue Tests: ma-profile 8, mandate 6, wizard +3, catalog +1, sonstige Anpassungen); lint 0; tsc 14 Baseline-Fehler (alle Vorbestand in Testdateien, 0 neu); build clean.
 
+### Security Hardening — 2026-06-22 (`fix/proj94-ma-security`)
+
+Behebt drei Review-Findings aus dem Backend-Slice:
+
+1. `transition_mandate_status` läuft weiter als SECURITY DEFINER, spiegelt jetzt aber vor dem UPDATE explizit die Need-to-Know-Gate-Policy über `can_access_classified(project_id, confidentiality_level)`. Damit können Sponsor/Deal-Lead/Lead/Admin `mandate_status` nicht mehr an der Tabellen-RLS vorbei ändern, wenn ihnen die Clearance für das Profil-Level fehlt.
+2. `POST /api/projects/[id]/ma-profile/mandate` prüft nur noch Projektsichtbarkeit (`requireProjectAccess(..., "view")`). Die finale Autorisierung für Tenant-Admin, Project-Lead, Sponsor oder Deal-Lead liegt beim RPC; Sponsor/Deal-Lead werden nicht mehr durch die Route vorab blockiert.
+3. `PATCH /api/projects/[id]/ma-profile` nutzt einen lokalen Governance-Check, der zur DB-Policy passt: nur Tenant-Admin oder Project-Lead. Project-Editoren erhalten vor dem UPDATE einen sauberen 403 statt eines widersprüchlichen API-/RLS-Vertrags.
+
+Validierung im Fix-Worktree: GitNexus `impact` für beide Route-Symbole = LOW (jeweils nur direkte Route-Testdatei, 0 Prozesse); `detect-changes` = LOW, 5 Dateien, 0 betroffene Prozesse; `npm run test -- 'src/app/api/projects/[id]/ma-profile/route.test.ts' 'src/app/api/projects/[id]/ma-profile/mandate/route.test.ts'` grün (16/16); `npm run lint` grün; `npm run audit:prod` grün.
+
 **Vorbestand-Followup (nicht PROJ-94-Scope):** 3 PROJ-100a-RPCs (`can_access_classified`/`grant`/`revoke_confidentiality_clearance`) sind weiterhin anon-executable (fail-closed/Hygiene). Kandidat für PROJ-100b-Hardening (`revoke … from anon`).
 
 **Offen → /frontend:** Step-UI „M&A-Grundlage" (Felder + Sponsor-Picker + Vertraulichkeit), Projekt-Raum-Karte „Strategische Grundlage" (+ „Mandat freigeben"-Button + PROJ-10-Historien-Ansicht). Danach /qa.
