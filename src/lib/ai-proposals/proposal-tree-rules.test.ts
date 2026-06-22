@@ -52,12 +52,13 @@ const SCRUM_ROWS = [
   row("task-2", "task", null),
 ]
 
-/** Waterfall tree: phase-1 → wp-1 → todo-1; phase-2 sibling. */
+/** Waterfall tree (PROJ-70 kind-taxonomy-fix 2026-06-22): wp-1 → task-1;
+ *  wp-2 sibling. Phases live in the separate `phases` table, not the
+ *  proposal backlog. */
 const WF_ROWS = [
-  row("phase-1", "phase", null),
-  row("wp-1", "work_package", "phase-1"),
-  row("todo-1", "todo", "wp-1"),
-  row("phase-2", "phase", null),
+  row("wp-1", "work_package", null),
+  row("task-1", "task", "wp-1"),
+  row("wp-2", "work_package", null),
 ]
 
 describe("isAllowedProposalParent — AC-δ5 structural matrix", () => {
@@ -73,14 +74,16 @@ describe("isAllowedProposalParent — AC-δ5 structural matrix", () => {
     expect(isAllowedProposalParent("subtask", "story")).toBe(false)
   })
 
-  it("covers the waterfall WBS kinds (ADR-004)", () => {
-    expect(isAllowedProposalParent("work_package", "phase")).toBe(true)
+  it("covers the waterfall AI kinds (method-template work_package/task/bug)", () => {
+    // PROJ-70 kind-taxonomy-fix 2026-06-22: waterfall AI-backlog uses
+    // work_package (top, self-nesting per PROJ-36) > task > bug. `phase`
+    // and `todo` are no longer proposal kinds (phase → `phases` table,
+    // todo → task).
+    expect(isAllowedProposalParent("work_package", null)).toBe(true)
     expect(isAllowedProposalParent("work_package", "work_package")).toBe(true)
-    expect(isAllowedProposalParent("todo", "work_package")).toBe(true)
-    expect(isAllowedProposalParent("phase", null)).toBe(true)
-    // Phases never nest; todos never sit under phases directly.
-    expect(isAllowedProposalParent("phase", "phase")).toBe(false)
-    expect(isAllowedProposalParent("todo", "phase")).toBe(false)
+    expect(isAllowedProposalParent("task", "work_package")).toBe(true)
+    expect(isAllowedProposalParent("bug", "work_package")).toBe(true)
+    expect(isAllowedProposalParent("subtask", "task")).toBe(true)
   })
 
   it("lets bug attach broadly but not under bug (PROJ-9 mirror)", () => {
@@ -88,7 +91,6 @@ describe("isAllowedProposalParent — AC-δ5 structural matrix", () => {
     expect(isAllowedProposalParent("bug", "work_package")).toBe(true)
     expect(isAllowedProposalParent("bug", null)).toBe(true)
     expect(isAllowedProposalParent("bug", "bug")).toBe(false)
-    expect(isAllowedProposalParent("bug", "phase")).toBe(false)
   })
 
   it("task may sit under story OR work_package (PROJ-36 hybrid rule)", () => {
@@ -99,15 +101,24 @@ describe("isAllowedProposalParent — AC-δ5 structural matrix", () => {
 
 describe("isProposalKindCompatibleWithMethod — AC-δ6", () => {
   it("blocks scrum kinds in waterfall and vice versa", () => {
+    // PROJ-70 kind-taxonomy-fix 2026-06-22: waterfall kinds are now
+    // work_package/task/bug (was phase/work_package/todo).
     expect(isProposalKindCompatibleWithMethod("epic", "waterfall")).toBe(false)
-    expect(isProposalKindCompatibleWithMethod("phase", "scrum")).toBe(false)
-    expect(isProposalKindCompatibleWithMethod("phase", "waterfall")).toBe(true)
+    expect(isProposalKindCompatibleWithMethod("story", "waterfall")).toBe(false)
+    expect(isProposalKindCompatibleWithMethod("work_package", "waterfall")).toBe(
+      true,
+    )
+    expect(isProposalKindCompatibleWithMethod("work_package", "scrum")).toBe(
+      false,
+    )
     expect(isProposalKindCompatibleWithMethod("story", "scrum")).toBe(true)
   })
 
   it("passes everything for hybrid/unknown/null methods", () => {
     expect(isProposalKindCompatibleWithMethod("epic", null)).toBe(true)
-    expect(isProposalKindCompatibleWithMethod("phase", "hybrid")).toBe(true)
+    expect(isProposalKindCompatibleWithMethod("work_package", "hybrid")).toBe(
+      true,
+    )
   })
 })
 
@@ -154,15 +165,13 @@ describe("checkReparent — combined gates + guards", () => {
   })
 
   it("rejects method-incompatible drops (AC-δ6)", () => {
-    // Mixed AI output: an epic in a waterfall project. Moving the todo
-    // under the epic is structurally fine for bug-like kinds but todo
-    // only allows work_package/null → use task under story in waterfall:
+    // Mixed AI output: scrum kinds in a waterfall project.
     const mixed = [
       row("story-x", "story", null),
       row("task-x", "task", null),
     ]
-    // task → story is structurally allowed, but story+task are not
-    // waterfall kinds → method gate fires.
+    // task → story is structurally allowed; `task` is a waterfall kind
+    // now, but the parent `story` is NOT → parent-kind method gate fires.
     expect(checkReparent(mixed, "task-x", "story-x", "waterfall").reason).toBe(
       "method_incompatible",
     )
@@ -224,12 +233,13 @@ describe("applyReparent — AC-δ4/δ8 parent-resolution-after-DnD", () => {
     expect(result.check.allowed).toBe(true)
   })
 
-  it("moves a waterfall todo to another work_package", () => {
-    const rows = [...WF_ROWS, row("wp-2", "work_package", "phase-2")]
-    const result = applyReparent(rows, "todo-1", "wp-2", "waterfall")
+  it("moves a waterfall task to another work_package", () => {
+    // PROJ-70 kind-taxonomy-fix 2026-06-22: was a `todo` move; the
+    // waterfall leaf is now `task` (todo → task) under a work_package.
+    const result = applyReparent(WF_ROWS, "task-1", "wp-2", "waterfall")
     expect(result.changed).toBe(true)
     expect(
-      result.rows.find((r) => r.payload.temp_id === "todo-1")?.payload
+      result.rows.find((r) => r.payload.temp_id === "task-1")?.payload
         .parent_temp_id,
     ).toBe("wp-2")
   })
