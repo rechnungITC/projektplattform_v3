@@ -12,9 +12,7 @@
  */
 
 export type ProposalFromContextKind =
-  | "phase"
   | "work_package"
-  | "todo"
   | "epic"
   | "story"
   | "task"

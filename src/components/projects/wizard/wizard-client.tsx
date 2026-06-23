@@ -50,6 +50,7 @@ import {
 } from "@/types/wizard"
 
 import { StepBasics } from "./step-basics"
+import { StepClarifying } from "./step-clarifying"
 import { StepFollowups } from "./step-followups"
 import { StepKiBacklog } from "./step-ki-backlog"
 import { StepMaFoundation } from "./step-ma-foundation"
@@ -101,6 +102,28 @@ const wizardSchema = z.object({
     strategic_document_link: z.string().max(2048),
     confidentiality_level: z.enum(["standard", "confidential", "strict"]),
   }),
+  // PROJ-135 — optional clarifying-questions block (draft JSON passthrough).
+  clarifying: z
+    .object({
+      questions: z
+        .array(
+          z.object({
+            question: z.string(),
+            rationale: z.string().nullable(),
+            gap_tag: z.string().nullable(),
+          }),
+        )
+        .optional(),
+      answers: z.array(
+        z.object({
+          question: z.string(),
+          answer: z.string(),
+          gap_tag: z.string().nullable().optional(),
+        }),
+      ),
+      status: z.enum(["idle", "ready", "empty", "blocked", "error"]).optional(),
+    })
+    .optional(),
 })
 
 interface WizardClientProps {
@@ -158,9 +181,16 @@ export function WizardClient({ draftId }: WizardClientProps) {
   // PROJ-94 — the conditional "M&A-Grundlage" step appears only for type 'ma'.
   const projectType =
     useWatch({ control: form.control, name: "project_type" }) ?? null
+  // PROJ-135 — the clarifying step only appears once a kickoff was UPLOADED
+  // (a context_source_id exists), mirroring the AC-135.3 visibility rule.
+  const kickoffSourceId = useWatch({
+    control: form.control,
+    name: "ki_backlog.context_source_id",
+  })
+  const kickoffUploaded = Boolean(kickoffSourceId)
   const steps = React.useMemo(
-    () => visibleWizardSteps(kiBacklogEnabled, projectType),
-    [kiBacklogEnabled, projectType],
+    () => visibleWizardSteps(kiBacklogEnabled, projectType, kickoffUploaded),
+    [kiBacklogEnabled, projectType, kickoffUploaded],
   )
 
   // Hydrate from existing draft if present.
@@ -341,6 +371,9 @@ export function WizardClient({ draftId }: WizardClientProps) {
         case "ki_backlog":
           // Optional step — upload is not required (user may skip). The
           // upload itself is validated inline in the step component.
+          return true
+        case "clarifying":
+          // PROJ-135 — optional, always skippable; never blocks "Weiter".
           return true
         case "review":
           return true
@@ -577,6 +610,8 @@ export function WizardClient({ draftId }: WizardClientProps) {
             <StepMaFoundation tenantId={tenantId} />
           ) : step === "ki_backlog" ? (
             <StepKiBacklog tenantId={tenantId} />
+          ) : step === "clarifying" ? (
+            <StepClarifying draftId={draftIdState} />
           ) : (
             <StepReview
               projectTypeOverride={

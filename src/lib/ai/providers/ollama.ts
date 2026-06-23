@@ -24,6 +24,7 @@ import { z } from "zod"
 
 import type {
   AIProvider,
+  ClarifyingQuestionsGenerationRequest,
   CoachingGenerationRequest,
   CrossProjectLinksGenerationRequest,
   NarrativeGenerationRequest,
@@ -36,6 +37,7 @@ import type {
   TrajectorySequenceGenerationRequest,
 } from "./types"
 import type {
+  ClarifyingQuestionsGenerationOutput,
   CoachingGenerationOutput,
   CoachingKind,
   CrossProjectLinksGenerationOutput,
@@ -55,11 +57,14 @@ import type {
 // already produces compatible output, and reusing it keeps the matrix
 // honest (no drift between cloud + local output shapes).
 import {
+  buildClarifyingQuestionsPrompt,
   buildCrossProjectLinksPrompt,
   buildRiskProposalsPrompt,
   buildTrajectorySequencePrompt,
+  CLARIFYING_QUESTIONS_SYSTEM_PROMPT,
   CROSS_PROJECT_LINKS_SYSTEM_PROMPT,
   CrossProjectLinksResponseSchema,
+  mapClarifyingQuestions,
   mapCrossProjectLinksSuggestions,
   mapRiskProposalsSuggestions,
   mapTrajectorySequenceSuggestions,
@@ -1065,6 +1070,37 @@ export class OllamaProvider implements AIProvider {
       },
     }
   }
+
+  /**
+   * PROJ-135 — dialogic wizard clarifying questions on tenant-local Ollama.
+   * Loose schema (validate-loose, clamp-after — PROJ-88 D-1a); the SHARED
+   * system prompt + builder + mapper keep output shape identical to cloud.
+   */
+  async generateClarifyingQuestions(
+    request: ClarifyingQuestionsGenerationRequest,
+  ): Promise<ClarifyingQuestionsGenerationOutput> {
+    const start = Date.now()
+    const result = await generateObject({
+      model: this.sdkProvider(this.modelId),
+      schema: ClarifyingQuestionsResponseSchemaOllama,
+      system: CLARIFYING_QUESTIONS_SYSTEM_PROMPT,
+      prompt: buildClarifyingQuestionsPrompt(request),
+      temperature: 0.2,
+    })
+
+    const usage = result.usage as
+      | { inputTokens?: number; outputTokens?: number }
+      | undefined
+
+    return {
+      questions: mapClarifyingQuestions(result.object.questions),
+      usage: {
+        input_tokens: usage?.inputTokens ?? null,
+        output_tokens: usage?.outputTokens ?? null,
+        latency_ms: Date.now() - start,
+      },
+    }
+  }
 }
 
 // ---------------------------------------------------------------------------
@@ -1078,9 +1114,7 @@ const ProposalFromContextSuggestionSchemaOllama = z.object({
   temp_id: z.string().min(1).max(64),
   parent_temp_id: z.string().min(1).max(64).nullable(),
   kind: z.enum([
-    "phase",
     "work_package",
-    "todo",
     "epic",
     "story",
     "task",
@@ -1106,7 +1140,7 @@ Aufgabe: Analysiere den Inhalt eines Kickoff-Dokuments und schlage 0–50 hierar
 Pflichtregeln:
 - Antworte ausschließlich auf Deutsch.
 - Jedes Item bekommt eine eindeutige \`temp_id\` (z.B. "t_1", "t_2", …). Über \`parent_temp_id\` zeigst du auf das übergeordnete Item desselben Runs (null bei Top-Level-Items).
-- Wähle \`kind\` passend zur Projektmethode (Wasserfall: phase/work_package/todo; Scrum: epic/story/task; Hybrid: mische methodensauber).
+- Wähle \`kind\` passend zur Projektmethode (Wasserfall: work_package/task/bug; Scrum: epic/story/task; Hybrid: mische methodensauber).
 - Titel ist konkret und actionable, keine Boilerplate.
 - \`description\` ist optional, max 500 Zeichen.
 - KEINE Class-3-Daten in den Outputs: keine konkreten Personennamen, E-Mails, Telefonnummern. Generalisiere zu Rollen.
@@ -1205,6 +1239,19 @@ const RiskProposalSuggestionSchemaOllama = z.object({
 
 const RiskProposalsResponseSchemaOllama = z.object({
   suggestions: z.array(RiskProposalSuggestionSchemaOllama).min(0).max(30),
+})
+
+// PROJ-135 — loose replica of the shared ClarifyingQuestionsResponseSchema
+// (validate-loose, clamp-after; see PROJ-88 D-1a note above). Lengths are
+// clamped in the shared mapper.
+const ClarifyingQuestionSchemaOllama = z.object({
+  question: z.string().min(1),
+  rationale: z.string().nullish(),
+  gap_tag: z.string().nullish(),
+})
+
+const ClarifyingQuestionsResponseSchemaOllama = z.object({
+  questions: z.array(ClarifyingQuestionSchemaOllama).min(0).max(6),
 })
 
 // Exported for the PROJ-88 grounding contract test (AC-88.9).

@@ -9,6 +9,8 @@
 
 import type {
   AIProviderName,
+  ClarifyingQuestionsAutoContext,
+  ClarifyingQuestionsGenerationOutput,
   CoachingAutoContext,
   CoachingGenerationOutput,
   CrossProjectLinksAutoContext,
@@ -88,6 +90,13 @@ export interface RiskProposalsGenerationRequest {
   count: number
 }
 
+export interface ClarifyingQuestionsGenerationRequest {
+  context: ClarifyingQuestionsAutoContext
+  /** Soft target for how many questions to emit (provider may emit fewer);
+   *  capped at 6 by the Zod schema regardless. */
+  count: number
+}
+
 /**
  * PROJ-30 + PROJ-34-γ.1 — generic provider interface. Methods are optional
  * so a provider can support a subset of purposes (e.g. Ollama implements
@@ -136,6 +145,11 @@ export interface AIProvider {
   generateRiskProposals?(
     request: RiskProposalsGenerationRequest,
   ): Promise<RiskProposalsGenerationOutput>
+  // PROJ-135 — dialogic wizard clarifying questions (content-based class,
+  // cloud-capable). Returns 0–6 questions; writes no ki_suggestions.
+  generateClarifyingQuestions?(
+    request: ClarifyingQuestionsGenerationRequest,
+  ): Promise<ClarifyingQuestionsGenerationOutput>
 }
 
 /**

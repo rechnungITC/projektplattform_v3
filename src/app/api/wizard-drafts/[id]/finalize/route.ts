@@ -1,6 +1,13 @@
 import { NextResponse } from "next/server"
 import { z } from "zod"
 
+import { detectClass3Markers } from "@/lib/ai/classify"
+import {
+  appendWithinCap,
+  readClarifyingAnswers,
+  renderQaBlock,
+} from "@/lib/context-ingestion/clarifying-qa"
+
 import { apiError, getAuthenticatedUserId } from "../../../_lib/route-helpers"
 
 // PROJ-5 — finalize a wizard draft into a real project.
@@ -242,13 +249,70 @@ export async function POST(_request: Request, ctx: Ctx) {
         ? kiBacklog.context_source_id
         : null
     if (contextSourceId) {
+      // PROJ-135 — persist the answered clarifying Q&A onto the kickoff source
+      // (Option B-modified): append to content_excerpt (collector- AND
+      // classifier-visible), mirror to source_metadata for audit, and re-stamp
+      // privacy_class. The Vorhaben (projects.description) is untouched.
+      const answers = readClarifyingAnswers(data)
+      const update: {
+        project_id: string
+        content_excerpt?: string
+        privacy_class?: number
+        source_metadata?: Record<string, unknown>
+      } = { project_id: project.id }
+
+      if (answers.length > 0) {
+        const { data: cs } = await supabase
+          .from("context_sources")
+          .select("content_excerpt, privacy_class, source_metadata")
+          .eq("id", contextSourceId)
+          .eq("tenant_id", draft.tenant_id)
+          .is("project_id", null)
+          .maybeSingle()
+        if (cs) {
+          const qaBlock = renderQaBlock(answers)
+          const currentExcerpt = (cs.content_excerpt as string | null) ?? ""
+          update.content_excerpt = appendWithinCap(currentExcerpt, qaBlock)
+
+          // AC-135.4b — re-stamp on persist: the Q&A is free user text and may
+          // introduce PII. Raise (never lower) privacy_class on a marker hit so
+          // a Class-2 source carrying PII answers becomes Class-3 BEFORE any
+          // downstream cloud generation reads it.
+          const currentClass = (cs.privacy_class as number | null) ?? 3
+          update.privacy_class = detectClass3Markers(qaBlock)
+            ? Math.max(currentClass, 3)
+            : currentClass
+
+          // Audit mirror (full Q&A) — source_metadata is never fed to the AI.
+          const meta = (cs.source_metadata as Record<string, unknown> | null) ?? {}
+          update.source_metadata = {
+            ...meta,
+            proj135_clarifying_qa: {
+              answered_at: new Date().toISOString(),
+              wizard_draft_id: id,
+              answers,
+            },
+          }
+        }
+      }
+
       // RLS already scopes to tenant-membership; the explicit tenant_id +
       // project_id IS NULL predicates are defense-in-depth.
       await supabase
         .from("context_sources")
-        .update({ project_id: project.id })
+        .update(update)
         .eq("id", contextSourceId)
         .eq("tenant_id", draft.tenant_id)
+        .is("project_id", null)
+
+      // AC-135.11 — best-effort re-link the project-less clarifying ki_run(s)
+      // recorded during the wizard to the now-created project.
+      await supabase
+        .from("ki_runs")
+        .update({ project_id: project.id })
+        .eq("wizard_draft_id", id)
+        .eq("tenant_id", draft.tenant_id)
+        .eq("purpose", "clarifying_questions_from_context")
         .is("project_id", null)
     }
   }

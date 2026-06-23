@@ -22,6 +22,7 @@ import { z } from "zod"
 
 import type {
   AIProvider,
+  ClarifyingQuestionsGenerationRequest,
   CrossProjectLinksGenerationRequest,
   NarrativeGenerationRequest,
   ProposalFromContextGenerationRequest,
@@ -30,6 +31,7 @@ import type {
   TrajectorySequenceGenerationRequest,
 } from "./types"
 import type {
+  ClarifyingQuestionsGenerationOutput,
   CrossProjectLinksGenerationOutput,
   NarrativeGenerationOutput,
   ProposalFromContextGenerationOutput,
@@ -38,12 +40,16 @@ import type {
   TrajectorySequenceGenerationOutput,
 } from "../types"
 import {
+  buildClarifyingQuestionsPrompt,
   buildCrossProjectLinksPrompt,
   buildProposalFromContextPrompt,
   buildRiskProposalsPrompt,
   buildTrajectorySequencePrompt,
+  CLARIFYING_QUESTIONS_SYSTEM_PROMPT,
+  ClarifyingQuestionsResponseSchema,
   CROSS_PROJECT_LINKS_SYSTEM_PROMPT,
   CrossProjectLinksResponseSchema,
+  mapClarifyingQuestions,
   mapCrossProjectLinksSuggestions,
   mapProposalFromContextSuggestions,
   mapRiskProposalsSuggestions,
@@ -341,6 +347,31 @@ export class OpenAIProvider implements AIProvider {
         result.object.suggestions,
         new Set(request.context.existing_risks.map((r) => r.risk_id)),
       ),
+      usage: {
+        input_tokens: usage?.inputTokens ?? null,
+        output_tokens: usage?.outputTokens ?? null,
+        latency_ms: Date.now() - start,
+      },
+    }
+  }
+
+  // PROJ-135 — dialogic wizard clarifying questions (content-based class).
+  async generateClarifyingQuestions(
+    request: ClarifyingQuestionsGenerationRequest,
+  ): Promise<ClarifyingQuestionsGenerationOutput> {
+    const start = Date.now()
+    const result = await generateObject({
+      model: this.sdkProvider(this.modelId),
+      schema: ClarifyingQuestionsResponseSchema,
+      system: CLARIFYING_QUESTIONS_SYSTEM_PROMPT,
+      prompt: buildClarifyingQuestionsPrompt(request),
+      temperature: 0.3,
+    })
+    const usage = result.usage as
+      | { inputTokens?: number; outputTokens?: number }
+      | undefined
+    return {
+      questions: mapClarifyingQuestions(result.object.questions),
       usage: {
         input_tokens: usage?.inputTokens ?? null,
         output_tokens: usage?.outputTokens ?? null,

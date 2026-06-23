@@ -30,8 +30,6 @@ import {
   Component,
   FileText,
   GitBranch,
-  Layers,
-  ListChecks,
   Package,
   Pencil,
   Target,
@@ -66,13 +64,11 @@ const KIND_VISUAL: Record<
   ProposalFromContextKind,
   { label: string; icon: React.ComponentType<{ className?: string }>; cls: string }
 > = {
-  phase: { label: "Phase", icon: Layers, cls: "text-indigo-600 dark:text-indigo-300" },
   work_package: {
     label: "Work-Package",
     icon: Package,
     cls: "text-sky-600 dark:text-sky-300",
   },
-  todo: { label: "Todo", icon: ListChecks, cls: "text-slate-600 dark:text-slate-300" },
   epic: { label: "Epic", icon: Target, cls: "text-violet-600 dark:text-violet-300" },
   story: { label: "Story", icon: GitBranch, cls: "text-emerald-600 dark:text-emerald-300" },
   task: { label: "Task", icon: Component, cls: "text-cyan-600 dark:text-cyan-300" },
@@ -81,9 +77,7 @@ const KIND_VISUAL: Record<
 }
 
 const KIND_OPTIONS: ProposalFromContextKind[] = [
-  "phase",
   "work_package",
-  "todo",
   "epic",
   "story",
   "task",
