@@ -13,7 +13,7 @@ summary_for_jira: "[B5b] Berechtigungsprofile + Wer-darf-was-Übersicht + anon-R
 
 # PROJ-100b: Berechtigungsprofile & Wer-darf-was-Sichtbarkeit
 
-## Status: Approved (QA PASS 2026-06-24 — 11/11 AC, 0 Critical/High; Pentest 8/8 + Gate-Regression 4/4 + E2E 9/9; PR #178, backend on main via #174)
+## Status: Deployed (2026-06-24 — frontend PR #178 squash-merged 3d7a4ea, backend via #174; tag v1.99.0-PROJ-100b; 2 Migrations in Prod; prod auth-gate smoke 5/5 307)
 **Created:** 2026-06-23
 **Last Updated:** 2026-06-24
 
@@ -238,5 +238,9 @@ Projekt-Raum (bestehend) — NEU: Karte/Reiter "Vertraulichkeit & Zugriff"
 - **Phase/Work-Item-Picker in der Wer-darf-was-View** zeigt nur Objekte, die der aufrufende Manager selbst sehen darf (Gate-konsistent — ein nicht für `strict` freigeschalteter Lead sieht klassifizierte Objekte nicht im Picker; Tenant-Admins sehen alles). Erwartetes Verhalten, kein Bug.
 
 
-## Deployment
-_To be added by /deploy_
+## Deployment — 2026-06-24
+
+- **Backend** auf main via **#174** (gebündelt mit PROJ-99/128/129-Docs durch eine Parallel-Session); 2 Migrationen in Prod (`20260623222615_proj100b_clearance_profiles` + `20260623222622_proj100b_revoke_anon_execute`).
+- **Frontend** PR **#178** squash-merged → `3d7a4ea`; Tag **`v1.99.0-PROJ-100b`**.
+- **Prod-Verify:** Auth-Gate-Smoke 5/5 = 307 auf `/api/clearance-profiles`, `/stammdaten/berechtigungsprofile`, `/api/projects/[id]/access-overview`, `/api/projects/[id]/clearances/apply-profile`, `/projects/[id]/vertraulichkeit` (Katalog-Page 307 statt 404 ⇒ neues Deployment live + geschützt). Migrationen waren bereits beim /backend-Slice live-verifiziert (Pentest 8/8 + Gate-Regression 4/4 gegen Prod).
+- **Offen:** PROJ-100c (AC5 4-Augen) als nächster Slice der Familie.
