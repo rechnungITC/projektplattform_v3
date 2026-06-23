@@ -85,8 +85,80 @@ summary_for_jira: "[B5b] Berechtigungsprofile + Wer-darf-was-Übersicht + anon-R
 ---
 <!-- Sections below are added by subsequent skills -->
 
-## Tech Design (Solution Architect)
-_To be added by /architecture — CIA-Review-relevant (Profil-Datenmodell + Profil-Anwendungspfad als dünner Wrapper über grant-RPC; Wer-darf-was-View ohne Zweit-Gate)._
+## Tech Design (Solution Architect) — 2026-06-24
+
+> **ADR-Bindung:** Reine **EXTEND** auf [ma-domain-architecture.md](../docs/decisions/ma-domain-architecture.md) Fork 2 (Need-to-Know = additiver RLS-Sublayer). Das in 100a gebaute „Vertraulichkeits-Tor" (`can_access_classified`) und die `ma_confidentiality_clearances`-Tabelle werden **wiederverwendet, nicht ersetzt**. Keine neue Architektur-Grundsatzfrage → kein neuer CIA-Pflicht-Pass; CIA bleibt optional als Security-Sanity-Check verfügbar.
+
+### Grundidee in einem Satz
+
+100b legt **zwei Komfort-/Transparenz-Schichten** auf das fertige 100a-Tor: (1) **Berechtigungsprofile** — benannte Vorlagen, die eine Freischaltung in einem Klick vergeben, statt jede Stufe manuell zu wählen; (2) **„Wer darf was sehen?"-Übersicht** — eine read-only Ansicht, die pro Objekt genau die Personen auflistet, die das Tor durchlässt. Beide Schichten **erzeugen oder umgehen kein eigenes Recht** — sie bedienen bzw. spiegeln ausschließlich den bestehenden Freischaltungs-/Tor-Mechanismus.
+
+### A) Komponenten-Struktur (was die UI bekommt)
+
+100a war backend-only — 100b bringt die **erste Oberfläche** für Need-to-know. Zwei Orte:
+
+```
+Stammdaten (tenant-weit, bestehende /stammdaten-Sektion)
++-- NEU: "Berechtigungsprofile"  (spiegelt das bestehende „Stakeholder-Typen"-Katalog-Muster)
+|   +-- Liste der Profile (Name · Stufe · aktiv/inaktiv)
+|   +-- Anlegen / Bearbeiten (Name, Beschreibung, Vertraulichkeitsstufe)
+|   +-- Deaktivieren (kein Hard-Delete — bestehende Freischaltungen bleiben)
+|   +-- nur Tenant-Admin
+
+Projekt-Raum (bestehend) — NEU: Karte/Reiter "Vertraulichkeit & Zugriff"
++-- Freischaltungen (erste UI über die 100a-clearances-API)
+|   +-- "Profil anwenden": Nutzer wählen + aktives Profil wählen -> vergibt Freischaltung
+|   |   (über den BESTEHENDEN grant-Pfad; zeigt vorab die Stufe, die das Profil vergibt)
+|   +-- bestehende Freischaltungen (Liste, mit "über Profil X freigeschaltet"-Hinweis)
+|   +-- nur Tenant-Admin / Project-Lead (manage_members-Gate)
++-- "Wer darf was sehen?" (AC4)
+    +-- Objektauswahl (Projekt / Phase / Work-Item)
+    +-- Personenliste: wer das Objekt sehen darf
+    |   (Admin-Bypass vs. konkrete Freischaltungsstufe, ggf. Befristung)
+    +-- read-only; Personennamen folgen den Class-3-Masking-Regeln (PROJ-57)
+```
+
+### B) Datenmodell (Klartext, kein Code)
+
+**Neue tenant-weite Tabelle „Berechtigungsprofil"** (mirror des bestehenden Katalog-Musters):
+- Eindeutige ID, Tenant-Zugehörigkeit, **Name** (eindeutig je Tenant), optionale **Beschreibung**, vergebene **Vertraulichkeitsstufe** (`confidential` oder `strict` — `standard` wird nie vergeben, exakt wie der bestehende grant-Eingang), **Aktiv-Flag**, Audit-Spalten (wer/wann angelegt/geändert).
+- Streng tenant-isoliert (RLS): Tenant-Admins verwalten; Projekt-Verwalter dürfen die **aktiven** Profile lesen, um sie anzuwenden.
+
+**Bestehende Freischaltungs-Tabelle (`ma_confidentiality_clearances`)** — minimale Ergänzung:
+- Ein **optionaler Verweis** „über welches Profil vergeben". Nur Nachvollziehbarkeit; ändert die Tor-Logik nicht. Direkte (profillose) Freischaltungen bleiben unverändert möglich.
+
+**Keine** neue Berechtigungs-Engine, **keine** frei zusammensetzbaren Einzelrechte, **kein** Zweit-Tor.
+
+### C) Wie die zwei Schichten technisch andocken (WARUM so)
+
+1. **Profil anwenden = bestehender grant-Pfad.** Das Anwenden eines Profils ruft denselben Freischaltungs-Mechanismus wie heute auf (Autorität admin|lead, Tenant-Check, Audit-Zeile) — das Profil liefert nur die Stufe + den Profil-Verweis. **Warum:** ein einziger Autoritäts- und Audit-Pfad; ein Profil kann die RLS oder die 100a-Invarianten (Selbst-Freischaltung, Cross-Tenant, Class-3-Orthogonalität) prinzipiell nicht umgehen. (AC-100b-3/4/11)
+2. **„Wer darf was sehen?" wird aus DEMSELBEN Prädikat abgeleitet wie das Tor**, nicht zweitimplementiert. Die View fragt: „welche Tenant-Mitglieder würde `can_access_classified` für dieses Objekt durchlassen?" → Admins (Bypass) + Nutzer mit gültiger Freischaltung ≥ Objektstufe. **Warum:** eine zweite, eigenständige Sichtbarkeitslogik würde mit der Zeit vom echten Tor abdriften und genau die Lücke öffnen, die 100a schließt. Die View ist read-only und darf nie zur Vergabe-Schnittstelle werden. (AC-100b-6/8)
+3. **Downgrade-Schutz:** Ein Profil, das eine niedrigere Stufe vergibt als die bestehende Freischaltung des Nutzers, stuft nicht stillschweigend herab — Herabstufung bleibt der explizite `revoke`-Pfad. (Edge Case)
+4. **anon-Härtung:** `execute` auf den drei Need-to-know-RPCs (`can_access_classified`, `grant_/revoke_confidentiality_clearance`) wird `anon`/`public` entzogen, `authenticated` behält es. Eine kleine, idempotente Migration; der 100a-Pentest muss danach unverändert grün bleiben. (AC-100b-10)
+
+### D) Gelockte Entscheidungen (Default-Empfehlungen zu den Open Questions)
+
+1. **Profil setzt NUR die Vertraulichkeitsstufe**, keine Projekt-Rolle. Rollen bleiben separat (PROJ-1/PROJ-97) — hält den Slice fokussiert und vermeidet zwei Wahrheiten über „Rolle". (Bei Bedarf später erweiterbar.)
+2. **Wer-darf-was als Per-Objekt-Ansicht** für den Pilot (wie AC4 formuliert); eine objekt-übergreifende Matrix (Nutzer × Stufe pro Projekt) ist **Later**.
+3. **Keine fix verdrahtete Compliance-Profilliste** — der Mechanismus ist katalog-getrieben; optionale Beispiel-Seeds möglich, aber die verbindliche Liste ist eine Tenant-/Compliance-Konfiguration.
+
+### E) Abdeckung der Akzeptanzkriterien
+
+| AC | Wie abgedeckt |
+|----|---------------|
+| AC-100b-1/2/5 | Neue tenant-weite Profil-Katalogtabelle + Admin-CRUD (Stakeholder-Typen-Muster), Aktiv-Flag statt Delete |
+| AC-100b-3/4/11 | Profil-Anwendung über den bestehenden grant-Pfad (+ Profil-Verweis); 100a-Invarianten & PROJ-10-Audit unverändert |
+| AC-100b-6/7/8/9 | Read-only Wer-darf-was-View, abgeleitet aus dem `can_access_classified`-Prädikat, manager-gated, Class-3-Masking, `standard`=Baseline |
+| AC-100b-10 | Idempotente Migration: `revoke execute … from anon, public` auf den 3 RPCs + Live-Smoke |
+
+### F) Dependencies (Pakete)
+
+**Keine neuen Pakete.** Reuse: shadcn/ui-Primitives, das bestehende `/stammdaten`-Katalog-Muster (Stakeholder-Typen), die 100a-clearances-API, die PROJ-57-Class-3-Masking-Logik, der PROJ-10-Audit-Trigger/RPC-Audit-Pfad.
+
+### G) Migration-/Test-Disziplin
+
+- 1 Migration (Profil-Tabelle + RLS + optionaler clearance→profil-Verweis), 1 kleine Härtungs-Migration (anon-revoke) — PROJ-134-Konvention (`apply_migration` name = Repo-Dateiname-Stamm), Pflicht-Live-RPC-Smoke für neue/erweiterte RPCs.
+- **Regressionspflicht:** `tests/sql/PROJ-100a-need-to-know-pentest.sql` muss nach 100b unverändert grün laufen; zusätzlich ein Profil-/View-Smoke (Profil-Anwendung erzeugt genau eine Freischaltung über den grant-Pfad; View == Tor-Semantik).
 
 ## QA Test Results
 _To be added by /qa_
