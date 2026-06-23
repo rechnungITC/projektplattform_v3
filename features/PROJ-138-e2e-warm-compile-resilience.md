@@ -1,6 +1,6 @@
 # PROJ-138: E2E Warm-Compile Resilience & Dev-Server-Wedge Guard (Hygiene-Slice)
 
-## Status: Approved
+## Status: Deployed
 **Created:** 2026-06-23
 **Last Updated:** 2026-06-23
 
@@ -203,3 +203,10 @@ Bewusst gebündelt als **eine** Hygiene-Slice analog PROJ-29/PROJ-67: beide Blö
 **READY** — 0 Critical / 0 High. Every AC is verified, each failure branch (skip / budget-cap / preflight-wedge / fresh-restart) deterministically reproduced and green (fail-open). Lint 0, vitest 1908/1908, build clean, tsc adds no new errors. One Low (commit granularity) and three Info findings, all documented and acceptable.
 
 Suggested next: **`/deploy`** — this is a test-infra/tooling-only change (no `src/**`, no DB), so the Vercel runtime deploy is a no-op; "deploy" here means merge PR #170 into `main` so the resilient setup is the default for all future E2E runs.
+## Deployment
+
+- **Date:** 2026-06-24
+- **Merged:** PR #170 → `main` (squash `a65b769`); branch auto-deleted.
+- **Runtime:** **no Vercel runtime deploy / no git tag** — test-infra/tooling only (no `src/**`, no DB, no dependency). "Deploy" for this slice = the resilient `global-setup` + `test:e2e:fresh` are now the default on `main` for every future E2E run.
+- **Required checks at merge:** Snyk, npm audit (prod), schema-drift SELECT-guard, Vercel — all green.
+- **Rollback:** single `git revert a65b769` (self-contained; restores the prior `global-setup` warm-compile + removes the script).
