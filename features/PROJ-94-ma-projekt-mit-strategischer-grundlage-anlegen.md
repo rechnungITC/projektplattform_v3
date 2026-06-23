@@ -19,7 +19,7 @@ summary_for_jira: "[A1] M&A-Projekt mit strategischer Grundlage anlegen"
 **Origin:** M&A-Platform Backlog (Epic A — Projektgrundlagen & Phasenmodell)
 **Priority:** P1
 
-> **V3 Core Reuse (CIA 2026-06-15 · [ma-domain-architecture ADR](../docs/decisions/ma-domain-architecture.md) · [Sequencing](../docs/ma-epic-sequencing-2026-06-15.md)):** Klasse **REUSE** · Andockpunkt: PROJ-2 CRUD + PROJ-5 Wizard + PROJ-6 `project_type='m&a'`. Nicht neu bauen, was der Core schon hat — diese Spec MUSS die ADR + Reuse-Matrix respektieren.
+> **V3 Core Reuse (CIA 2026-06-15 · [ma-domain-architecture ADR](../docs/decisions/ma-domain-architecture.md) · [Sequencing](../docs/ma-epic-sequencing-2026-06-15.md) · [Readiness](../docs/ma-project-execution-readiness.md)):** Klasse **REUSE** · Andockpunkt: PROJ-2 CRUD + PROJ-5 Wizard + PROJ-6 `project_type='ma'` (Label "M&A-Projekt"). Nicht neu bauen, was der Core schon hat — diese Spec MUSS die ADR + Reuse-Matrix respektieren.
 
 > **Epic:** A — Projektgrundlagen & Phasenmodell  
 > **Priorität (Jira):** Highest · **Quell-Priorität:** Must (MVP – ohne diese Story funktioniert keine weitere)  
@@ -91,11 +91,11 @@ Phase 1 des M&A-Modells verlangt eine eindeutige strategische Ausgangslage. Die 
 
 ### Grundidee in einem Satz
 
-M&A wird ein neuer `project_type='m&a'` im bestehenden Projekttyp-Katalog; die strategische Grundlage (Deal-Rationale, Suchprofil, Ausschlusskriterien, Investitionsrahmen, Mandatsstand) lebt in **einer schlanken 1:1-Erweiterungstabelle neben `projects`** — mit feldgenauer Audit-Historie (PROJ-10) und Need-to-Know-Schutz (PROJ-100a) — angelegt über den vorhandenen Wizard. Phasenmodell, Rollen-RACI und DD sind ausdrücklich **nicht** Teil dieser Story (PROJ-95 / PROJ-97 / PROJ-112ff).
+M&A wird ein neuer `project_type='ma'` mit Label "M&A-Projekt" im bestehenden Projekttyp-Katalog; die strategische Grundlage (Deal-Rationale, Suchprofil, Ausschlusskriterien, Investitionsrahmen, Mandatsstand) lebt in **einer schlanken 1:1-Erweiterungstabelle neben `projects`** — mit feldgenauer Audit-Historie (PROJ-10) und Need-to-Know-Schutz (PROJ-100a) — angelegt über den vorhandenen Wizard. Phasenmodell, Rollen-RACI und DD sind ausdrücklich **nicht** Teil dieser Story (PROJ-95 / PROJ-97 / PROJ-112ff).
 
 ### Gelockte Entscheidungen (User 2026-06-19)
 
-1. **Deal-Variante** → **ein** `project_type='m&a'` + strukturiertes Feld `deal_side` (`buy` / `sell` / `jv` / `carve_out`). Keine separaten Typen. Varianten steuern später (PROJ-95) unterschiedliche Phasen-Presets.
+1. **Deal-Variante** → **ein** `project_type='ma'` + strukturiertes Feld `deal_side` (`buy` / `sell` / `jv` / `carve_out`). Keine separaten Typen. Varianten steuern später (PROJ-95) unterschiedliche Phasen-Presets.
 2. **Strategische Grunddaten** → **dedizierte Erweiterungstabelle** (1:1 zu `projects`), nicht das `type_specific_data`-JSONB. Begründung: AC-5 verlangt feldgenaue Änderungshistorie (Wer/Wann/**Was**), die der PROJ-10-Audit nur auf echten Spalten liefert; folgt dem ADR-Extension-Pattern; setzt das Muster für die späteren DD-/Bewertungs-Extensions.
 3. **Projektnummer** → bestehendes `projects.project_number`, manuelles Freitextfeld. ERP-/Controlling-Übernahme ist **Later** (PROJ-14-Connector).
 
@@ -131,7 +131,7 @@ Projekt-Raum (bestehend) — nach Anlage:
 ### B) Datenmodell (Klartext, kein Code)
 
 **Bestehende `projects`-Tabelle** — minimale Erweiterung:
-- `project_type` bekommt den zusätzlichen erlaubten Wert `m&a` (Erweiterung der CHECK-Liste).
+- `project_type` bekommt den zusätzlichen erlaubten Wert `ma` (Erweiterung der CHECK-Liste; Anzeige-Label "M&A-Projekt").
 - Sonst **keine** neuen Spalten. Zielsetzung = bestehendes `description` (zugleich KI-Grounding-Feld aus PROJ-91), Deal Lead = bestehendes `responsible_user_id`, Projektnummer = bestehendes `project_number`, Vertraulichkeit auf Projektebene = bestehendes `confidentiality_level` (PROJ-100a).
 
 **Neue Erweiterungstabelle „M&A-Projektprofil"** (genau eine Zeile pro M&A-Projekt):
@@ -233,7 +233,7 @@ Validierung im Fix-Worktree: GitNexus `impact` für beide Route-Symbole = LOW (j
 
 **Vorbestand-Followup (nicht PROJ-94-Scope):** 3 PROJ-100a-RPCs (`can_access_classified`/`grant`/`revoke_confidentiality_clearance`) sind weiterhin anon-executable (fail-closed/Hygiene). Kandidat für PROJ-100b-Hardening (`revoke … from anon`).
 
-**Offen → /frontend:** Step-UI „M&A-Grundlage" (Felder + Sponsor-Picker + Vertraulichkeit), Projekt-Raum-Karte „Strategische Grundlage" (+ „Mandat freigeben"-Button + PROJ-10-Historien-Ansicht). Danach /qa.
+**Historischer Handoff → /frontend:** Step-UI „M&A-Grundlage" (Felder + Sponsor-Picker + Vertraulichkeit), Projekt-Raum-Karte „Strategische Grundlage" (+ „Mandat freigeben"-Button + PROJ-10-Historien-Ansicht). **Erledigt im Frontend-Slice 2026-06-22; siehe nächster Abschnitt.**
 
 ## Implementation Notes — Frontend (2026-06-22)
 
@@ -251,7 +251,7 @@ Validierung im Fix-Worktree: GitNexus `impact` für beide Route-Symbole = LOW (j
 
 **Quality-Gates:** vitest 1915/1915 (+ neue routing-Tests für `filterSectionsByProjectType` + Section-Injektion); lint 0; tsc 0 neu (Baseline-Testfehler unverändert); build clean — 3 neue Routen kompiliert (`/projects/[id]/strategische-grundlage` + 2 API).
 
-**Offen → /qa:** Playwright-Smoke (Wizard-M&A-Pfad bis Finalize + Karte-Edit + Mandat-Transition + Need-to-Know-Sichtbarkeit), AC-End-to-End gegen die ACs, Security-Review der neuen Routen.
+**Historischer Handoff → /qa:** Playwright-Smoke (Wizard-M&A-Pfad bis Finalize + Karte-Edit + Mandat-Transition + Need-to-Know-Sichtbarkeit), AC-End-to-End gegen die ACs, Security-Review der neuen Routen. **Erledigt im QA-Pass 2026-06-23; siehe nächster Abschnitt.**
 
 ## QA Test Results — 2026-06-23 (PR #168, HEAD 77dd3c2)
 
@@ -283,6 +283,22 @@ Validierung im Fix-Worktree: GitNexus `impact` für beide Route-Symbole = LOW (j
 ### Findings
 - **F-1 (Info, Deploy-Handoff, kein Feature-Bug):** Die GitHub-Actions Required-Checks (Schema Drift Guard / Supply Chain Audit) wurden vom PR-`opened`-Event nicht angestoßen (am Head-SHA lief nur Vercel). Der QA-Results-Push feuert einen `synchronize`-Event → Nachtrigger erwartet; vor Merge müssen beide grün sein.
 - **Vorbestand (out-of-scope, → PROJ-100b):** 3 PROJ-100a-RPCs (`can_access_classified`/`grant`/`revoke_confidentiality_clearance`) weiterhin anon-executable (fail-closed/Hygiene).
+
+## M&A Execution Handoff — was nach PROJ-94 noch fehlt
+
+PROJ-94 macht den M&A-Deal-Raum anlegbar und auditierbar, aber es macht M&A-Projekte noch nicht vollständig durchführbar. Das ist bewusst Scope-Disziplin: Phasenmodell, RACI, externe Berater, DD, Findings, Gate-Entscheidungen und Reports bleiben eigene Slices.
+
+**Nächste Pflichtkette zum DD-zentrierten Pilot:**
+
+```
+PROJ-100b -> PROJ-95 -> PROJ-97 -> PROJ-99/128/129
+  -> PROJ-112 -> PROJ-113 -> PROJ-114 -> PROJ-108
+  -> PROJ-110/111 -> PROJ-116
+```
+
+**Warum diese Reihenfolge:** PROJ-100b macht Need-to-Know bedienbar und schließt Governance-Hygiene; PROJ-95 konsumiert `mandate_status='approved'` und initialisiert das M&A-Phasenmodell; PROJ-97/99/128/129 schaffen Rollen, externe Advisor, NDA und Klassifikation; PROJ-112-116 liefern den eigentlichen DD-Kern mit Streams, Q&A, Findings, Red-Flags und Report.
+
+Vollständige Readiness-Sicht: [`docs/ma-project-execution-readiness.md`](../docs/ma-project-execution-readiness.md).
 
 ---
 _Quelle: Backlog-Entwurf M&A-Projektplattform · A — Projektgrundlagen & Phasenmodell_
