@@ -13,7 +13,7 @@ summary_for_jira: "[B5b] Berechtigungsprofile + Wer-darf-was-Übersicht + anon-R
 
 # PROJ-100b: Berechtigungsprofile & Wer-darf-was-Sichtbarkeit
 
-## Status: In Progress (backend gebaut 2026-06-24 — 2 Migrations in Prod, 4 APIs, Live-RPC-Smoke 7/7 + Gate-Regression 5/5; → /frontend)
+## Status: In Progress (backend + frontend gebaut 2026-06-24 — 2 Migrations in Prod, 4 APIs, Stammdaten-Katalog + Projekt-Raum-Karte; Live-RPC-Smoke 7/7 + Gate-Regression 5/5; → /qa)
 **Created:** 2026-06-23
 **Last Updated:** 2026-06-24
 
@@ -175,6 +175,26 @@ Projekt-Raum (bestehend) — NEU: Karte/Reiter "Vertraulichkeit & Zugriff"
 **Quality-Gates:** vitest 1965/1965 (+24 neue Route-Tests); lint 0; tsc 13 baseline/0 neu; build clean.
 
 **Offen → /frontend:** Stammdaten-Katalog „Berechtigungsprofile" (admin CRUD) + Projekt-Raum-Karte „Vertraulichkeit & Zugriff" (Profil-Anwenden + erste clearances-UI + Wer-darf-was-View mit Class-3-Masking). Danach /qa (Pentest-Regression + Security-Review der 4 Routen).
+
+## Implementation Notes — Frontend (2026-06-24)
+
+100a war backend-only → 100b bringt die **erste** Need-to-know-UI. Zwei Oberflächen, beide shadcn/ui-first, Loading/Empty/Error-States:
+
+**(1) Stammdaten-Katalog „Berechtigungsprofile"** (`/stammdaten/berechtigungsprofile`, tenant-admin) — gespiegelt vom Stakeholder-Typen-Katalog-Muster: `ClearanceProfilesPageClient` (Tabelle Name/Beschreibung/Stufe/Status + Anlegen/Bearbeiten/Deaktivieren/Reaktivieren/Hard-Delete, alles admin-gated via `useAuth().currentRole`) + `ClearanceProfileFormDialog` (Name/Beschreibung/Stufe confidential|strict via shadcn-Select + Aktiv-Switch im Edit-Mode). Neue Kachel in der `/stammdaten`-Index-SECTIONS (adminOnly, ShieldCheck).
+
+**(2) Projekt-Raum-Karte „Vertraulichkeit & Zugriff"** (`/projects/[id]/vertraulichkeit`) — `ConfidentialityAccessCard`, manager-gated via `useProjectAccess(id, "manage_members")` (Nicht-Manager sehen einen Hinweis statt der Daten). Zwei Panels:
+- *Freischaltungen + Profil anwenden*: Liste der bestehenden Clearances (GET `/api/projects/[id]/clearances`, Namen aus `useTenantMembers`, „über Profil X"-Spalte) + Nutzer-Picker (Tenant-Member) × aktives-Profil-Dropdown → `applyClearanceProfile` (= bestehender grant-Pfad).
+- *Wer darf das sehen?*: Objekt-Typ-Auswahl Projekt/Phase/Work-Item (Phase/Work-Item-Picker via `usePhases`/`useWorkItems`; Level wird serverseitig resolved) → `fetchAccessOverview` → read-only Tabelle (Nutzer · Zugriffsgrund baseline/admin/clearance · Stufe · Befristung).
+
+**Nav-Integration:** neue `MA_CONFIDENTIALITY_SECTION` (tabPath `vertraulichkeit`, `requiresProjectType: 'ma'`) per `withMaFoundation`-Injektion neben der Strategische-Grundlage-Sektion — erscheint nur für M&A-Projekte (generischer Need-to-know-Layer, aber im M&A-Track verortet; Erweiterung auf andere Typen wäre ein Einzeiler).
+
+**Class-3-Klärung:** PROJ-57-Masking betrifft Class-3-*Beträge* (Tagessätze), nicht interne Mitglieder-Namen. Die Wer-darf-was-View ist manager-only + rein intern (kein externes Modell) → Mitglieder-Namen werden regulär angezeigt (kein Masking erforderlich; dokumentiert statt fälschlich erzwungen).
+
+**Client-Wrapper:** `src/lib/ma-project/clearance-profiles-api.ts` (list/create/update/delete/apply/fetchAccessOverview). **Kein neuer Backend-Call** — alle Routen aus dem Backend-Slice.
+
+**Quality-Gates:** vitest 1974/1974 (+9 — routing.test.ts enumeriert die neue Nav-Sektion pro Methode); lint 0; tsc 13 baseline/0 neu; build clean (2 neue Routen `/stammdaten/berechtigungsprofile` + `/projects/[id]/vertraulichkeit`).
+
+**Offen → /qa:** Pentest-Regression (`tests/sql/PROJ-100a-need-to-know-pentest.sql` + 100b-RPC-Smoke), Security-Review der 4 Routen, E2E-Auth-Gates + Katalog-CRUD-/apply-/who-can-see-Smoke, AC-End-to-End (AC-100b-1..11).
 
 ## QA Test Results
 _To be added by /qa_
