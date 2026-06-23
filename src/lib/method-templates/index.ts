@@ -13,7 +13,7 @@
  * Tenant-level overrides land with PROJ-16.
  */
 
-import { Handshake } from "lucide-react"
+import { Handshake, ShieldCheck } from "lucide-react"
 
 import type { MethodConfig, SidebarSection } from "@/types/method-config"
 import type { ProjectMethod } from "@/types/project-method"
@@ -44,6 +44,17 @@ const MA_FOUNDATION_SECTION: SidebarSection = {
   requiresProjectType: "ma",
 }
 
+// PROJ-100b — the "Vertraulichkeit & Zugriff" section (clearance management +
+// who-can-see overview) is also project-TYPE driven (M&A need-to-know) and is
+// injected right after the foundation section, gated the same way.
+const MA_CONFIDENTIALITY_SECTION: SidebarSection = {
+  id: "ma-confidentiality",
+  label: "Vertraulichkeit & Zugriff",
+  icon: ShieldCheck,
+  tabPath: "vertraulichkeit",
+  requiresProjectType: "ma",
+}
+
 function withMaFoundation(config: MethodConfig): MethodConfig {
   const sections = config.sidebarSections
   // Insert right after the leading "overview" section (index 0) when present.
@@ -53,6 +64,7 @@ function withMaFoundation(config: MethodConfig): MethodConfig {
     sidebarSections: [
       ...sections.slice(0, insertAt),
       MA_FOUNDATION_SECTION,
+      MA_CONFIDENTIALITY_SECTION,
       ...sections.slice(insertAt),
     ],
   }

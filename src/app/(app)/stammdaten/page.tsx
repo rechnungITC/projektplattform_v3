@@ -5,6 +5,7 @@ import {
   FolderTree,
   ListChecks,
   Network,
+  ShieldCheck,
   Tags,
   Users,
   Users2,
@@ -79,6 +80,14 @@ const SECTIONS: Section[] = [
     title: "Lieferanten",
     description:
       "Mandantenweiter Vendor-Pool mit Bewertungen, Dokumenten-Slots und Projekt-Zuordnungen.",
+  },
+  {
+    href: "/stammdaten/berechtigungsprofile",
+    icon: ShieldCheck,
+    title: "Berechtigungsprofile",
+    description:
+      "Vorgefertigte Need-to-know-Vorlagen (z. B. „DD-Stream Legal voll“). Vergeben beim Anwenden eine Vertraulichkeitsstufe an einen Nutzer im Projekt.",
+    adminOnly: true,
   },
   {
     href: "/stammdaten/organisation",
