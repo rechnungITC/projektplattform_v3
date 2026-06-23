@@ -4,13 +4,14 @@
 
 A modular, web-based, AI-supported **project orchestration platform** that turns fragmented project information into structured, actionable project logic.
 
-This is **not** a generic to-do tool, ticket board, or execution-only tracker. It is built to support real enterprise projects — across **ERP implementations**, **construction**, and **software projects** — on a shared foundation that handles the full lifecycle: from project initiation, through structured planning and decision-making, into operational delivery and management steering.
+This is **not** a generic to-do tool, ticket board, or execution-only tracker. It is built to support real enterprise projects — across **ERP implementations**, **construction**, **software projects**, and **M&A / deal-lifecycle projects** — on a shared foundation that handles the full lifecycle: from project initiation, through structured planning and decision-making, into operational delivery and management steering.
 
 The product thesis: enterprise projects fail at the seams between execution, governance, and communication — not at task tracking. The platform's job is to bridge those seams using a shared project core plus type-specific extensions, with AI that pre-analyzes and proposes structure from emails, meeting notes, and documents — always reviewable, never opaque.
 
 ## Target Users
 
 - **Project leads and project managers** running enterprise projects (ERP rollouts, construction projects, software delivery)
+- **Deal leads, corporate development, M&A PMO, legal and finance roles** running confidential M&A / DD / PMI work
 - **Project sponsors and steering committee members** who need decision-ready summaries, not raw task lists
 - **Key users and business stakeholders** who provide requirements, sign off on milestones, and depend on clear governance
 - **Functional roles around the project**: IT, purchasing, works council / staff council, external partners
@@ -90,6 +91,7 @@ The product thesis: enterprise projects fail at the seams between execution, gov
 | PROJ-90 | P1 | Orchestrierter „Projekt befüllen" — Multi-Tab Generate-All + Accept-All über Backlog/Stakeholder/Risiken nach Wizard-Finalize; methoden-adäquat in bestehende Strukturen, 30s-Undo, auditierbar. Implementiert „Generate-All + Accept-All" (kein stilles Mutieren). Epic-Klammer über PROJ-87/88/89. | Deployed |
 | PROJ-92 | P1 | Azure OpenAI Provider (Class-1/2) — fünfter Provider-Typ (tenant-eigene Azure-Ressource, EU-Region-Allowlist, openai-compatible Factory ohne neues Dep). Invariante #3 unberührt. | Planned |
 | PROJ-93 | P1 | Trusted-EU-Processor — kontrollierte, opt-in Class-3-Freigabe NUR für DPA-attestiertes Azure OpenAI im EU-Kunden-Tenant; DPA-konditionaler DB-CHECK, ADR + Invariante-#3-Präzisierung. Ohne Attest: Ollama-only unverändert. | Planned |
+| PROJ-94–132 | P1 | M&A / Deal-Lifecycle Extension: Projektanlage, strategische Grundlage, Need-to-Know, M&A-Phasen, Rollen/RACI, Due Diligence, Findings, Stage-Gates, Reports, Transaktion und PMI. Umsetzung strikt als Core-Reuse + Extensions, nicht als Parallelmodul. Operativer Readiness-Guide: [`docs/ma-project-execution-readiness.md`](ma-project-execution-readiness.md). | In Progress (PROJ-94 QA PASS, PR #168 offen; PROJ-100a Approved; DD-Pilot-Kette offen) |
 | PROJ-134 | P1 | Migration-Versions-Drift-Guard & Naming-Konvention — MCP `apply_migration` vergibt eigene Timestamps ≠ Repo-Dateiname → `supabase db push`-Bruch + Präfix-Kollisionen (3× belegt: PROJ-69/89/50). Prozessregel + Repo-lokaler Required-Check (Kollision/Format hard-fail, Idempotenz/Sekunden-Timestamp warn) + Bestands-Verifikation. CIA-reviewed; Hygiene-Slice analog PROJ-42; kein neuer Dep. | Planned |
 | PROJ-135 | P1 | Dialogische Wizard-Rückfragen — aus PROJ-90 „Next/Later" promotet. Neuer AIPurpose `clarifying_questions_from_context`: KI stellt nach Kickoff-Upload VOR Finalize EINE Runde 3–6 überspringbarer Rückfragen zu Dokument-Lücken; Antworten als Q&A-Addendum am `context_source` (Vorhaben unberührt → PROJ-91-Invariante), von PROJ-70/88/89-Generierung mitgelesen. Standard-Routing (Class-3 Ollama-only, ohne Ollama graceful skip), Cost-Cap, kein stilles Mutieren. CIA-Review bei /architecture. | Planned |
 | PROJ-136 | P1 | ERP-Pilot Golden-Path End-to-End Smoke — durchgehender Live-Seed-Smoke (Tenant→ERP-Wizard→Kickoff-Upload→Generate-All→Accept-All→verifizierte Persistenz→Phasen/Budget→Report→Jira-Export-Preview→Teardown 0-Residue), der die ~90 isoliert getesteten Slices als Verkettung absichert. Aus CIA-Portfolio-Review 2026-06-19. Schützt PRD-Metrik „≥1 ERP-Projekt end-to-end". Kein neues Dep. | Planned |

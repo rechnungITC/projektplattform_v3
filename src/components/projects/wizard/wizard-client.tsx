@@ -53,6 +53,7 @@ import { StepBasics } from "./step-basics"
 import { StepClarifying } from "./step-clarifying"
 import { StepFollowups } from "./step-followups"
 import { StepKiBacklog } from "./step-ki-backlog"
+import { StepMaFoundation } from "./step-ma-foundation"
 import { StepMethod } from "./step-method"
 import { StepReview } from "./step-review"
 import { StepType } from "./step-type"
@@ -85,6 +86,21 @@ const wizardSchema = z.object({
     enabled: z.boolean(),
     context_source_id: z.string().uuid().nullable(),
     filename: z.string().nullable(),
+  }),
+  // PROJ-94 — M&A strategic-foundation block (only relevant for project_type
+  // 'ma'; lives in draft JSON payload). The conditional "M&A-Grundlage" step UI
+  // and its per-field validation land in /frontend.
+  ma_foundation: z.object({
+    deal_side: z.enum(["buy", "sell", "jv", "carve_out"]).nullable(),
+    sponsor_user_id: z.string().uuid().nullable(),
+    deal_rationale: z.string().max(20000),
+    search_profile: z.string().max(20000),
+    exclusion_criteria: z.string().max(20000),
+    investment_frame_amount: z.string().max(40),
+    investment_frame_currency: z.string().max(3),
+    investment_frame_note: z.string().max(4000),
+    strategic_document_link: z.string().max(2048),
+    confidentiality_level: z.enum(["standard", "confidential", "strict"]),
   }),
   // PROJ-135 — optional clarifying-questions block (draft JSON passthrough).
   clarifying: z
@@ -162,6 +178,9 @@ export function WizardClient({ draftId }: WizardClientProps) {
   // the React Compiler skip memoizing the whole component.
   const kiBacklogEnabled =
     useWatch({ control: form.control, name: "ki_backlog.enabled" }) ?? false
+  // PROJ-94 — the conditional "M&A-Grundlage" step appears only for type 'ma'.
+  const projectType =
+    useWatch({ control: form.control, name: "project_type" }) ?? null
   // PROJ-135 — the clarifying step only appears once a kickoff was UPLOADED
   // (a context_source_id exists), mirroring the AC-135.3 visibility rule.
   const kickoffSourceId = useWatch({
@@ -170,8 +189,8 @@ export function WizardClient({ draftId }: WizardClientProps) {
   })
   const kickoffUploaded = Boolean(kickoffSourceId)
   const steps = React.useMemo(
-    () => visibleWizardSteps(kiBacklogEnabled, kickoffUploaded),
-    [kiBacklogEnabled, kickoffUploaded],
+    () => visibleWizardSteps(kiBacklogEnabled, projectType, kickoffUploaded),
+    [kiBacklogEnabled, projectType, kickoffUploaded],
   )
 
   // Hydrate from existing draft if present.
@@ -326,6 +345,26 @@ export function WizardClient({ draftId }: WizardClientProps) {
                 `type_specific_data.${info.key}` as const
               )
             }
+          }
+          return ok
+        }
+        case "ma_foundation": {
+          // PROJ-94 — sponsor + objective (Step-1 description) are mandatory
+          // for M&A projects; finalize enforces them server-side too.
+          let ok = true
+          if (!data.ma_foundation?.sponsor_user_id) {
+            form.setError("ma_foundation.sponsor_user_id", {
+              type: "manual",
+              message: "Sponsor ist für M&A-Projekte erforderlich",
+            })
+            ok = false
+          }
+          if (!data.description?.trim()) {
+            form.setError("description", {
+              type: "manual",
+              message: "Zielsetzung (Beschreibung in Schritt 1) ist erforderlich",
+            })
+            ok = false
           }
           return ok
         }
@@ -567,6 +606,8 @@ export function WizardClient({ draftId }: WizardClientProps) {
                   : null
               }
             />
+          ) : step === "ma_foundation" ? (
+            <StepMaFoundation tenantId={tenantId} />
           ) : step === "ki_backlog" ? (
             <StepKiBacklog tenantId={tenantId} />
           ) : step === "clarifying" ? (
