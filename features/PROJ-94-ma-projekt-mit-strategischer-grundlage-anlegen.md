@@ -14,7 +14,7 @@ summary_for_jira: "[A1] M&A-Projekt mit strategischer Grundlage anlegen"
 
 # PROJ-94: M&A-Projekt mit strategischer Grundlage anlegen
 
-## Status: In Review (QA started 2026-06-22)
+## Status: Approved (QA PASS 2026-06-23 — 5/5 AC, 0 Critical/High, PR #168)
 **Created:** 2026-06-10
 **Origin:** M&A-Platform Backlog (Epic A — Projektgrundlagen & Phasenmodell)
 **Priority:** P1
@@ -252,6 +252,37 @@ Validierung im Fix-Worktree: GitNexus `impact` für beide Route-Symbole = LOW (j
 **Quality-Gates:** vitest 1915/1915 (+ neue routing-Tests für `filterSectionsByProjectType` + Section-Injektion); lint 0; tsc 0 neu (Baseline-Testfehler unverändert); build clean — 3 neue Routen kompiliert (`/projects/[id]/strategische-grundlage` + 2 API).
 
 **Offen → /qa:** Playwright-Smoke (Wizard-M&A-Pfad bis Finalize + Karte-Edit + Mandat-Transition + Need-to-Know-Sichtbarkeit), AC-End-to-End gegen die ACs, Security-Review der neuen Routen.
+
+## QA Test Results — 2026-06-23 (PR #168, HEAD 77dd3c2)
+
+**Verdikt: PRODUCTION-READY** — 5/5 Akzeptanzkriterien verifiziert, 0 Critical / 0 High.
+
+### Acceptance Criteria
+| AC | Ergebnis | Nachweis |
+|----|----------|----------|
+| AC-1 Pflichtfelder (Name, Sponsor, Deal Lead, Zielsetzung, Mandatsstand) | ✅ PASS | Wizard-Step validiert Sponsor + Zielsetzung als Pflicht; E2E rendert die Card mit Mandats-Badge „Entwurf". |
+| AC-2 Strukturierte Felder UND verlinkbares Dokument | ✅ PASS | `ma_project_profiles` trägt deal_rationale/search_profile/exclusion_criteria/investment_frame + `strategic_document_link`. |
+| AC-3 Eindeutige Projekt-ID, in Folgeartefakten referenziert | ✅ PASS | Profil ist 1:1 auf `project_id` (FK), Audit/Clearances/Mandat hängen daran. |
+| AC-4 Mandatsstand 'freigegeben' setzbar (schaltet Phase-2-Flag) | ✅ PASS | `transition_mandate_status` State-Machine draft→submitted→approved (terminal); Live-Smoke B transitionierte erfolgreich; PROJ-95 konsumiert das Flag. |
+| AC-5 Automatische Änderungshistorie (Wer/Wann/Was) | ✅ PASS | Feldgenauer PROJ-10-Audit via `_tracked_audit_columns` + `record_audit_changes`-Trigger; Backend-Smoke wies 2 mandate_status-Audit-Feldzeilen nach; UI-`HistoryTab`. |
+
+### Automatisierte Tests
+- **Vitest:** 1915/1915 grün (inkl. 16 ma-profile-Route-Tests: Editor→403, Lead→200, DB-42501→403, Mandate-Authority/Clearance→403).
+- **Playwright E2E** (`tests/PROJ-94-ma-foundation.spec.ts`, chromium): **7/7 passed** (10.2m) — 5 Auth-Gates auf GET/PATCH/POST-mandate + Projekt-Raum-Page; M&A-Card rendert; Non-M&A → Empty-State (kein Foundation-Leak auf andere Projekttypen). warm-compile-Timeouts = PROJ-67-global-setup-Warnungen (fail-open), keine Testfehler.
+- tsc 0 src-Fehler · lint 0 · build clean.
+
+### Security Audit (Red Team)
+| Vektor | Ergebnis |
+|--------|----------|
+| Auth-Gate auf allen 3 Routen + Page (kein Session) | ✅ blockiert (307/401/403) — E2E 5/5 |
+| Need-to-Know Tabellen-RLS (SELECT/UPDATE) + Tenant-Isolation | ✅ `tests/sql/PROJ-94-need-to-know-pentest.sql` Block 1 — 7/7 PASS |
+| **Mandate-RPC Need-to-Know-Gate (gepatchtes Live-Loch)** | ✅ Block 2 A/B/C PASS — uncleared Sponsor auf confidential **blockiert** (42501), cleared → durch, standard → kein Over-Block |
+| Route-Governance (Editor ≠ Lead/Admin) | ✅ 403 vor dem Write, passend zur DB-Policy (Unit-Test) |
+| Impersonation (actor-param) | ✅ entfällt — RPCs ohne `p_actor_user_id`, Caller = `auth.uid()`; `anon` execute revoked (verifiziert) |
+
+### Findings
+- **F-1 (Info, Deploy-Handoff, kein Feature-Bug):** Die GitHub-Actions Required-Checks (Schema Drift Guard / Supply Chain Audit) wurden vom PR-`opened`-Event nicht angestoßen (am Head-SHA lief nur Vercel). Der QA-Results-Push feuert einen `synchronize`-Event → Nachtrigger erwartet; vor Merge müssen beide grün sein.
+- **Vorbestand (out-of-scope, → PROJ-100b):** 3 PROJ-100a-RPCs (`can_access_classified`/`grant`/`revoke_confidentiality_clearance`) weiterhin anon-executable (fail-closed/Hygiene).
 
 ---
 _Quelle: Backlog-Entwurf M&A-Projektplattform · A — Projektgrundlagen & Phasenmodell_
