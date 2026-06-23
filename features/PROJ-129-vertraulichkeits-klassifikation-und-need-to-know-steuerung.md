@@ -14,7 +14,7 @@ summary_for_jira: "[L2] Vertraulichkeits-Klassifikation und Need-to-know-Steueru
 
 # PROJ-129: Vertraulichkeits-Klassifikation und Need-to-know-Steuerung
 
-## Status: Planned
+## Status: Architected (Tech-Design 2026-06-23: Klassifikations-UX und Wer-darf-was-sehen-Schicht auf PROJ-100a; keine neue Rechte-Engine, keine Erweiterung der Foundation-Stufen im MVP. Teil des PROJ-99/128/129-Bundles.)
 **Created:** 2026-06-10
 **Origin:** M&A-Platform Backlog (Epic L — Vertraulichkeit, NDA & Audit)
 **Priority:** P1
@@ -77,6 +77,113 @@ Das Modell betont Vertraulichkeit als kritischen Erfolgsfaktor. Die Plattform br
 - Executive Sponsor
 - IT-Sicherheit
 - PMO-Lead
+
+---
+
+## Tech Design (Solution Architect) — 2026-06-23
+
+> **Bundle-Bindung:** PROJ-129 liefert die sichtbare Klassifikations- und Kontrollschicht fuer das gemeinsame PROJ-99/128/129-Bundle. PROJ-100a ist die technische Foundation; PROJ-129 macht sie fuer M&A-Objekte bedienbar, pruefbar und mit NDA/Mandat kombinierbar.
+
+### Grundidee in einem Satz
+
+PROJ-129 baut **keine zweite Need-to-Know-Engine**. Es nutzt die in PROJ-100a gebauten Stufen und Clearances und ergaenzt die M&A-spezifische Bedienoberflaeche: Objekte einstufen, Personen freischalten, NDA-/Mandatsstatus sehen und jederzeit beantworten koennen: "Wer darf was sehen?"
+
+### A) Komponenten-Struktur
+
+```
+M&A-Projektraum > Governance & Zugriff
++-- Tab "Klassifikation"
+    +-- Objektliste
+    |   +-- Projektgrundlage
+    |   +-- Phasen
+    |   +-- Work-Items / DD-Aufgaben
+    |   +-- spaetere M&A-Objekte: DD-Streams, Findings, Reports, SPA-Issues
+    +-- Stufensteuerung
+    |   +-- Standard
+    |   +-- Vertraulich
+    |   +-- Streng vertraulich / Inner Circle
+    +-- Wer-darf-was-sehen Matrix
+    |   +-- Person / Rolle / Organisation
+    |   +-- Projektrolle
+    |   +-- Advisor-Status
+    |   +-- NDA-Status
+    |   +-- Mandatsstatus
+    |   +-- Clearance-Stufe
+    +-- Aenderungshistorie
+```
+
+Die Matrix ist bewusst eine Governance-Sicht, keine neue Berechtigungstabelle. Sie liest Projektrollen, Advisor-Profile, NDA-Status und PROJ-100a-Clearances zusammen und zeigt, warum Zugriff erlaubt oder blockiert ist.
+
+### B) Datenmodell in Klartext
+
+**Vertraulichkeitsstufe**
+
+MVP nutzt die bereits eingefuehrten PROJ-100a-Stufen:
+
+- `standard`
+- `confidential`
+- `strict`
+
+Die urspruengliche Fachsprache "Public / Internal / Confidential / Strictly Confidential" wird fuer den MVP so eingeordnet:
+
+- "Internal" entspricht `standard` innerhalb eines authentifizierten Tenants.
+- "Confidential" entspricht `confidential`.
+- "Strictly Confidential / Inner Circle" entspricht `strict`.
+- "Public" ist keine technische In-App-Sichtbarkeitsstufe fuer M&A-Deal-Arbeit, sondern ein Export-/Publikationsfall und bleibt spaeteren Report-/DMS-Regeln vorbehalten.
+
+Diese Entscheidung vermeidet eine riskante Aenderung an der bereits approved PROJ-100a-Foundation.
+
+**Klassifizierbare Objekte**
+
+PROJ-129 wendet das PROJ-100a-Rezept zuerst auf vorhandene oder unmittelbar geplante M&A-Objekte an:
+
+- Projekt und M&A-Profil
+- Phasen und Work-Items
+- Advisor-Profile und NDA-Objekte
+- spaeter DD-Streams, DD-Fragen, DD-Findings, Red-Flags und Reports
+
+Jedes neue M&A-Objekt muss seine Klassifikationsstufe sichtbar tragen und im Audit zeigen, wer sie geaendert hat.
+
+**Zugriffsentscheidung**
+
+Zugriff auf ein Objekt oberhalb `standard` braucht:
+
+- vorhandene Tenant-/Projektberechtigung
+- ausreichende PROJ-100a-Clearance
+- bei externen Beratern: gueltige NDA
+- bei externen Beratern: aktives Mandat
+
+Wenn einer dieser Punkte fehlt, zeigt die UI den Grund: keine Projektrolle, keine Clearance, NDA fehlt/abgelaufen oder Mandat abgelaufen.
+
+### C) Tech-Entscheidungen
+
+- **PROJ-100a bleibt fuehrend:** Die Foundation ist gebaut und pentest-geprueft. PROJ-129 erweitert Bedienbarkeit und Objektabdeckung, nicht die Kernlogik.
+- **Keine vierte technische Stufe im MVP:** Eine Erweiterung des Stufenmodells wuerde alle Policies, Tests und bisherigen M&A-Adopter anfassen. Fuer den DD-Pilot reichen die drei geordneten Stufen; "Public" wird spaeter als Export-/DMS-Label behandelt.
+- **Wer-darf-was-sehen als Erklaer-View:** Die Matrix beantwortet Governance-Fragen, aber sie vergibt keine Rechte heimlich. Rechte entstehen nur ueber Projektrolle, Advisor/NDA/Mandat und PROJ-100a-Clearance.
+- **Default sichtbar, vertraulich explizit:** `standard` bleibt der Startpunkt. Hoehere Stufen brauchen bewusste Klassifizierung und Audit.
+- **Class-3 bleibt getrennt:** Datenschutz-Class-3 ist weiterhin eine eigene AI-/Privacy-Achse. Eine `strict`-Clearance erlaubt nie automatisch externe KI-Verarbeitung personenbezogener Daten.
+- **Audit ueber PROJ-10:** Jede Klassifikationsaenderung ist feldgenau nachvollziehbar.
+
+### D) Abhaengigkeiten
+
+- **Muss vorhanden sein:** PROJ-100a und PROJ-94.
+- **Im Bundle:** PROJ-99 fuer externe Advisor und PROJ-128 fuer NDA-Gate.
+- **Soll folgen:** PROJ-112-116, damit DD-Streams, Findings und Reports dieselbe Klassifikation tragen.
+- **Neue npm-Pakete:** keine.
+
+### E) Akzeptanzkriterien-Zuordnung
+
+| AC | Erfuellt durch |
+|---|---|
+| Klassifikation pro Inhaltsobjekt | PROJ-100a-Stufe auf existierenden und neuen M&A-Objekten; Objektliste im Governance-Tab |
+| Vier Stufen konfigurierbar | MVP-Entscheidung: drei technische PROJ-100a-Stufen; "Public" wird als Export-/Publikationslabel deferred, um Foundation-Risiko zu vermeiden |
+| Sichtbarkeit folgt Klassifikation, NDA und Rolle | kombiniertes Gate aus Projektrolle, Clearance, NDA und Mandat |
+| Klassifikation aenderbar und auditiert | berechtigte Rollen + PROJ-10-Historie |
+| Exporte tragen Sichtbarkeitsstufen | Label-/Wasserzeichen-Regel als Handoff an PROJ-116/131/132, sobald Reports generiert werden |
+
+### F) QA-/Security-Handoff
+
+QA muss fuer jede neue M&A-Tabelle pruefen: Standard sichtbar, Confidential ohne Clearance blockiert, Strict mit zu niedriger Clearance blockiert, Externer ohne gueltige NDA blockiert, abgelaufenes Mandat blockiert, Cross-Tenant bleibt blockiert, Class-3-Routing bleibt unveraendert.
 
 ---
 _Quelle: Backlog-Entwurf M&A-Projektplattform · L — Vertraulichkeit, NDA & Audit_

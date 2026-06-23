@@ -14,7 +14,7 @@ summary_for_jira: "[L1] NDA-Verwaltung und Vertraulichkeitsverpflichtungen"
 
 # PROJ-128: NDA-Verwaltung und Vertraulichkeitsverpflichtungen
 
-## Status: Planned
+## Status: Architected (Tech-Design 2026-06-23: NDA-Register als Governance-Objekt im gemeinsamen PROJ-99/128/129-Bundle; gueltige NDA wird fuer externe Berater zum harten Gate vor vertraulichem Zugriff. Keine Vertragsanalyse, keine E-Signatur, kein neuer Dep.)
 **Created:** 2026-06-10
 **Origin:** M&A-Platform Backlog (Epic L — Vertraulichkeit, NDA & Audit)
 **Priority:** P1
@@ -75,6 +75,93 @@ Phase 3 fordert NDAs als Pflichtartefakt und das Modell betont die laufende Vert
 - Deal Lead
 - PMO-Lead
 - Externe Berater
+
+---
+
+## Tech Design (Solution Architect) — 2026-06-23
+
+> **Bundle-Bindung:** Dieses Design ist Teil des gemeinsamen Advisor-/NDA-/Klassifikations-Bundles mit PROJ-99 und PROJ-129. NDA-Verwaltung ist kein isoliertes Legal-Archiv: Sie entscheidet im M&A-Pilot mit darueber, ob externe Berater Zugriff auf vertrauliche Inhalte bekommen.
+
+### Grundidee in einem Satz
+
+Eine NDA ist ein **Governance-Objekt** im M&A-Projekt: Legal erfasst Vertragspartner, Laufzeit, Geltungsbereich, Personen und Dokument-Link; die Plattform nutzt den gueltigen NDA-Status als Voraussetzung, bevor externe Berater auf vertrauliche oder streng vertrauliche Inhalte freigeschaltet werden.
+
+### A) Komponenten-Struktur
+
+```
+M&A-Projektraum > Governance & Zugriff
++-- Tab "NDAs"
+    +-- NDA-Liste
+    |   +-- Vertragspartner
+    |   +-- Status: Entwurf / in Pruefung / gueltig / abgelaufen / widerrufen
+    |   +-- Gueltig von / bis
+    |   +-- Scope: Projekt, Phase, DD-Stream oder Beratergruppe
+    |   +-- Ampel fuer Ablauf/Wiedervorlage
+    +-- NDA-Detail
+    |   +-- Stammdaten
+    |   +-- Zugeordnete Personen und Organisationen
+    |   +-- Abgedeckte Vertraulichkeitsstufen
+    |   +-- Dokument-Link
+    |   +-- Historie
+    +-- Aktion "NDA erfassen"
+    +-- Aktion "Personen zuordnen"
+```
+
+Die NDA-UI wird im selben Governance-Bereich sichtbar wie Berater und Klassifikation. Ein Deal Lead sieht, ob Zugriff blockiert ist; Legal sieht, welche NDA fehlt oder ablaeuft.
+
+### B) Datenmodell in Klartext
+
+**NDA**
+
+Jede NDA speichert:
+
+- Projektbezug
+- Vertragspartner oder Organisation
+- verantwortliche interne Person
+- Status: Entwurf, in Pruefung, gueltig, abgelaufen, widerrufen
+- Unterzeichnungsdatum, Startdatum, Ablaufdatum
+- Geltungsbereich: gesamtes Projekt, bestimmte Phase, DD-Stream, Beratergruppe oder Einzelpersonen
+- abgedeckte Vertraulichkeitsstufe: `standard`, `confidential`, `strict`
+- Dokument-Link
+- Wiedervorlage-Datum
+
+**NDA-Zuordnung**
+
+Eine NDA kann mehreren Personen und Organisationen zugeordnet sein. Fuer echte Plattform-Zugriffe zaehlt die Zuordnung zu einem Nutzerkonto; reine Kontakt-/Signatory-Eintraege sind dokumentarisch sichtbar, erhalten aber keinen technischen Zugriff.
+
+**NDA-Status als Gate**
+
+Fuer externe Berater gilt: Nur eine gueltige, nicht abgelaufene und zum Scope passende NDA erlaubt eine Clearance oberhalb `standard`. Eine abgelaufene oder widerrufene NDA sperrt vertraulichen Zugriff wieder.
+
+### C) Tech-Entscheidungen
+
+- **NDA-Register statt Vertragsmanagement:** Die Plattform verwaltet Status, Laufzeit, Scope und Link. Sie prueft keine Klauseln und ersetzt keinen Contract-Lifecycle-Manager.
+- **Dokument-Link zuerst:** Das bestehende Produkt hat noch kein M&A-DMS als Pflichtanker. Deshalb ist der Link MVP-faehig; PROJ-79 kann spaeter echte Dokumentablage und Download-Audit liefern.
+- **Hartes Gate fuer externe Berater:** Die offene Frage wird fuer den Pilot entschieden. Ohne gueltige NDA kein vertraulicher Zugriff fuer Externe. Das reduziert Rechts-/Compliance-Risiko.
+- **Scope-basiert, aber nicht ueberfein:** MVP-Scope reicht fuer Projekt, Phase, DD-Stream, Beratergruppe und Person. Feld-/Dokument-Feingranularitaet folgt erst, wenn die jeweiligen Objekte existieren.
+- **Wiedervorlage plus Zugriffsgate:** Ablaufmeldungen sind UX. Die eigentliche Sicherheit entsteht dadurch, dass ein abgelaufener NDA-Status bei Zugriff und Clearance beruecksichtigt wird.
+- **Audit ueber PROJ-10:** NDA-Anlage, Statuswechsel, Zuordnungen und Ablaufrelevante Aenderungen werden im vorhandenen Audit-Trail sichtbar.
+
+### D) Abhaengigkeiten
+
+- **Muss vorhanden sein:** PROJ-94, PROJ-100a.
+- **Im Bundle:** PROJ-99 liefert Advisor-Profile; PROJ-129 liefert Klassifikations-/Clearance-UX.
+- **Spaeter:** PROJ-79 fuer interne Dokumentablage; E-Signatur-Connector bleibt ein separates Integrationsprojekt.
+- **Neue npm-Pakete:** keine.
+
+### E) Akzeptanzkriterien-Zuordnung
+
+| AC | Erfuellt durch |
+|---|---|
+| NDAs mit Vertragspartner, Scope, Unterzeichner, Laufzeit, Link | NDA-Stammdaten + NDA-Zuordnungen + Dokument-Link |
+| Ablaufmeldung 30 Tage vorher | Wiedervorlage-Datum und Ablaufstatus in der NDA-Liste |
+| Personen einer NDA zuordnen, Zugriff nur mit gueltiger NDA | NDA-Zuordnung + hartes Gate fuer externe Berater oberhalb `standard` |
+| Uebersicht je Deal und Person | NDA-Liste im Projekt + Personenbezug im Detail |
+| Audit-Trail | PROJ-10-Historie fuer Anlage, Status, Zuordnung und Ablaufrelevante Felder |
+
+### F) Handoff
+
+Backend zuerst: NDA-Register, Personen-/Organisation-Zuordnung, Status-/Ablaufmodell und Gate-Verknuepfung zu Advisor/Clearance. Frontend danach: NDA-Liste, Detail, Zuordnung und Ablaufhinweise im Governance-Bereich. QA muss fehlende/abgelaufene/widerrufene NDA als Negativpfad gegen externen Zugriff pruefen.
 
 ---
 _Quelle: Backlog-Entwurf M&A-Projektplattform · L — Vertraulichkeit, NDA & Audit_
