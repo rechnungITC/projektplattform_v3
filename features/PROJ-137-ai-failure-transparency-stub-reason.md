@@ -1,6 +1,6 @@
 # PROJ-137: AI-Failure-Transparency — sichtbarer Grund statt stiller Stub-0-Vorschläge
 
-## Status: Approved (QA-Pass 2026-06-24 — 7/7 AC verifiziert live, 0 Critical/0 High)
+## Status: Deployed (2026-06-24 — Tag `v1.98.0-PROJ-137`; Code via #169/#172 live seit Backend-/Frontend-Merge, #176 QA-Pass 7/7 AC, 0 Critical/0 High)
 **Created:** 2026-06-19
 **Last Updated:** 2026-06-24
 
@@ -179,5 +179,10 @@ Final prod SELECT-count after cleanup: `context_sources(E2E)=0`, `ki_runs(test p
 
 **Final verdict: Approved — 0 Critical / 0 High. Ready to deploy.**
 
-## Deployment
-_To be added by /deploy_
+## Deployment (2026-06-24)
+- **Code bereits live in Prod** über die zwei Feature-PRs (kein separater Runtime-Deploy nötig): Backend **#169** (`9c5a85d`, `AiRunReasonCode` + zentraler Router-Finalize über 13 Purposes) + Frontend **#172** (`9770e79`, `reasonCodeToBanner` + `<ReasonBanner>` in 3 Drawer-Tabs). Vercel auto-deployt `main`.
+- **Migration** `20260622144141_proj137_ki_runs_reason_code` war bereits in Prod (von der verlorenen Worktree-Session am 2026-06-22 angewendet); Repo-Datei auf prod-registrierte Version umbenannt (PROJ-134). Prod-CHECK == Code-Enum verbatim verifiziert.
+- **QA #176** (`521e0f8`): 7/7 AC live verifiziert (class3_blocked über alle 3 Drawer-Purposes Response==DB, success→null, Banner+Settings-Link, CHECK-Enforcement, Tenant-Isolation), 0 Residue (MCP-gegengeprüft), 0 Critical/0 High.
+- **Tag:** `v1.98.0-PROJ-137` auf der Deploy-Closure (diese Bookkeeping-Änderung).
+- **Post-Deploy-Smoke:** Prod `/` + `/settings/tenant/ai-providers` (Banner-Link-Ziel) → 307 Auth-Gate intakt.
+- **Offene Follow-ups (kein Blocker):** F-1 (Low) — bei `external_provider='none'`+Class-3 bleibt `error_message` NULL (AC-2 via `reason_code` erfüllt; UI nutzt `reason_code`) → PROJ-Y-Kandidat. Live-`provider_error`-Pfad gegen gehosteten Ollama als PROJ-88/89-D-1-Muster nachzuholen, wenn Endpoint steht; `no_provider`/`cost_cap_exceeded`/`external_ai_disabled` strukturell unit-getestet.
