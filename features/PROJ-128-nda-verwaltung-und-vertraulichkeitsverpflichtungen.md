@@ -14,7 +14,7 @@ summary_for_jira: "[L1] NDA-Verwaltung und Vertraulichkeitsverpflichtungen"
 
 # PROJ-128: NDA-Verwaltung und Vertraulichkeitsverpflichtungen
 
-## Status: Architected (Tech-Design 2026-06-23: NDA-Register als Governance-Objekt im gemeinsamen PROJ-99/128/129-Bundle; gueltige NDA wird fuer externe Berater zum harten Gate vor vertraulichem Zugriff. Keine Vertragsanalyse, keine E-Signatur, kein neuer Dep.)
+## Status: In Progress (Backend gebaut 2026-06-24 — NDA-Register + Zuordnungen + hartes Gate; → /frontend NDA-Tab, dann /qa)
 **Created:** 2026-06-10
 **Origin:** M&A-Platform Backlog (Epic L — Vertraulichkeit, NDA & Audit)
 **Priority:** P1
@@ -162,6 +162,20 @@ Fuer externe Berater gilt: Nur eine gueltige, nicht abgelaufene und zum Scope pa
 ### F) Handoff
 
 Backend zuerst: NDA-Register, Personen-/Organisation-Zuordnung, Status-/Ablaufmodell und Gate-Verknuepfung zu Advisor/Clearance. Frontend danach: NDA-Liste, Detail, Zuordnung und Ablaufhinweise im Governance-Bereich. QA muss fehlende/abgelaufene/widerrufene NDA als Negativpfad gegen externen Zugriff pruefen.
+
+## Implementation Notes — Backend (2026-06-24)
+
+Teil der gemeinsamen Bundle-Migration `20260623230548_proj99_128_129_advisor_nda_classification.sql` (siehe [[PROJ-99]]). **Kein neuer Dep, kein Contract-Lifecycle-Manager, keine E-Signatur — Dokument-Link zuerst.**
+
+- **`ma_ndas`** — NDA-Register je Projekt: `counterparty`, `responsible_user_id`, `status` (draft/in_review/valid/expired/revoked), `signed_date`, `valid_from`, `valid_until`, `scope_kind` (project/phase/dd_stream/advisor_group/person), `scope_ref`, `covered_level` (`ma_confidentiality_level`, max. abgedeckte Stufe), `document_link`, `reminder_date`, `notes`. Tenant-RLS (Member SELECT, Manager Write), PROJ-10 UPDATE-Audit-Trigger (Statuswechsel/Ablaufdaten = sicherheitsrelevant).
+- **`ma_nda_assignments`** — NDA ↔ Person/Org: `user_id` (nullable; nur ein echtes Konto verschafft Zugriff), `contact_name`/`contact_org` (rein dokumentarische Signatory-Einträge). CHECK „mindestens eine Identität", partielles Unique `(nda_id, user_id)`. Tenant-RLS Member SELECT / Manager INSERT/DELETE.
+- **Hartes Gate** über `has_valid_nda(project, user, level)`: nur eine `valid`-NDA mit nicht überschrittenem `valid_until` und `covered_level >= level` und Zuordnung zum Nutzerkonto zählt. Greift in `can_access_classified` für externe Advisor (siehe [[PROJ-99]]) — fehlende/abgelaufene/widerrufene NDA sperrt vertraulichen Zugriff wieder.
+
+**APIs:** `GET/POST /api/projects/[id]/ndas` + `PATCH/DELETE /api/projects/[id]/ndas/[ndaId]` + `GET/POST /api/projects/[id]/ndas/[ndaId]/assignments` + `DELETE …/assignments/[assignmentId]` (Manager-gated, RLS-defense-in-depth). Client-Wrapper `src/lib/ma-project/advisor-nda-api.ts`.
+
+**Live-Smoke (Teil der Bundle-10/10):** NDA `expired` → Advisor verliert vertraulichen Zugriff; `has_valid_nda(strict)` bei nur `confidential`-Deckung → false. Quality-Gates wie [[PROJ-99]].
+
+**Offen:** AC „Wiedervorlage 30 Tage vor Ablauf" — `reminder_date` ist als Feld vorhanden; ein Reminder-Cron-Job ist /frontend-/Followup-Sache (das Zugriffs-Gate hängt bewusst NICHT vom Reminder ab, sondern prüft `status`/`valid_until` direkt). NDA-Liste/Detail-UI + Zuordnungs-UI → /frontend; Negativpfade → /qa.
 
 ---
 _Quelle: Backlog-Entwurf M&A-Projektplattform · L — Vertraulichkeit, NDA & Audit_
