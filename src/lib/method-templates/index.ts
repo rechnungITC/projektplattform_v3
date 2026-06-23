@@ -13,7 +13,9 @@
  * Tenant-level overrides land with PROJ-16.
  */
 
-import type { MethodConfig } from "@/types/method-config"
+import { Handshake } from "lucide-react"
+
+import type { MethodConfig, SidebarSection } from "@/types/method-config"
 import type { ProjectMethod } from "@/types/project-method"
 
 import { kanbanConfig } from "./kanban"
@@ -25,15 +27,49 @@ import { scrumConfig } from "./scrum"
 import { vxt2Config } from "./vxt2"
 import { waterfallConfig } from "./waterfall"
 
-export const METHOD_TEMPLATES: Record<ProjectMethod, MethodConfig> = {
-  scrum: scrumConfig,
-  kanban: kanbanConfig,
-  safe: safeConfig,
-  waterfall: waterfallConfig,
-  pmi: pmiConfig,
-  prince2: prince2Config,
-  vxt2: vxt2Config,
+/**
+ * PROJ-94 — the "Strategische Grundlage" section is project-TYPE driven, not
+ * method driven: it must appear for every M&A project regardless of method.
+ * Rather than duplicating it into all 8 method templates, it is injected once
+ * here (after Übersicht) into every config and gated by `requiresProjectType`.
+ * The renderers (project-sidebar, project-room-shell) drop it for non-M&A
+ * projects via `filterSectionsByProjectType`. Routing helpers resolve it
+ * through `getMethodConfig`, so the slug + active-state work in every method.
+ */
+const MA_FOUNDATION_SECTION: SidebarSection = {
+  id: "ma-foundation",
+  label: "Strategische Grundlage",
+  icon: Handshake,
+  tabPath: "strategische-grundlage",
+  requiresProjectType: "ma",
 }
+
+function withMaFoundation(config: MethodConfig): MethodConfig {
+  const sections = config.sidebarSections
+  // Insert right after the leading "overview" section (index 0) when present.
+  const insertAt = sections[0]?.id === "overview" ? 1 : 0
+  return {
+    ...config,
+    sidebarSections: [
+      ...sections.slice(0, insertAt),
+      MA_FOUNDATION_SECTION,
+      ...sections.slice(insertAt),
+    ],
+  }
+}
+
+export const METHOD_TEMPLATES: Record<ProjectMethod, MethodConfig> = {
+  scrum: withMaFoundation(scrumConfig),
+  kanban: withMaFoundation(kanbanConfig),
+  safe: withMaFoundation(safeConfig),
+  waterfall: withMaFoundation(waterfallConfig),
+  pmi: withMaFoundation(pmiConfig),
+  prince2: withMaFoundation(prince2Config),
+  vxt2: withMaFoundation(vxt2Config),
+}
+
+const neutralWithMaFoundation: MethodConfig =
+  withMaFoundation(neutralFallbackConfig)
 
 /**
  * Resolves a method to its `MethodConfig`. Returns the neutral fallback
@@ -44,8 +80,8 @@ export const METHOD_TEMPLATES: Record<ProjectMethod, MethodConfig> = {
 export function getMethodConfig(
   method: ProjectMethod | null | undefined
 ): MethodConfig {
-  if (!method) return neutralFallbackConfig
-  return METHOD_TEMPLATES[method] ?? neutralFallbackConfig
+  if (!method) return neutralWithMaFoundation
+  return METHOD_TEMPLATES[method] ?? neutralWithMaFoundation
 }
 
 export {

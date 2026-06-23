@@ -12,6 +12,7 @@ import { useProject } from "@/hooks/use-project"
 import { getMethodConfig } from "@/lib/method-templates"
 import {
   filterSectionsByModules,
+  filterSectionsByProjectType,
   getProjectSectionHref,
   isSectionActive,
 } from "@/lib/method-templates/routing"
@@ -81,9 +82,14 @@ export function ProjectSidebar({
   }, [toggle])
 
   const config = getMethodConfig(method)
+  const projectType = project?.project_type ?? null
   const visibleSections = React.useMemo(
-    () => filterSectionsByModules(config.sidebarSections, tenantSettings),
-    [config.sidebarSections, tenantSettings]
+    () =>
+      filterSectionsByProjectType(
+        filterSectionsByModules(config.sidebarSections, tenantSettings),
+        projectType
+      ),
+    [config.sidebarSections, tenantSettings, projectType]
   )
 
   const isCollapsed = mode === "collapsed"

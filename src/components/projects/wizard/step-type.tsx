@@ -1,6 +1,6 @@
 "use client"
 
-import { Briefcase, Building2, Code2, Sparkles } from "lucide-react"
+import { Briefcase, Building2, Code2, Handshake, Sparkles } from "lucide-react"
 import type { ComponentType } from "react"
 import { useFormContext } from "react-hook-form"
 
@@ -22,6 +22,7 @@ const TYPE_DESCRIPTIONS: Record<ProjectType, string> = {
   construction: "Bauprojekte mit Gewerken und Bauphasen. Tiefe Domänen-Unterstützung folgt.",
   software: "Software-Entwicklung mit Backlog, Sprints oder Phasen.",
   general: "Allgemeines Projekt — wähle Methode und Module nach Bedarf.",
+  ma: "M&A / Deal-Lifecycle — strategische Grundlage, Mandat, Need-to-Know-Vertraulichkeit.",
 }
 
 const TYPE_LABELS: Record<ProjectType, string> = {
@@ -29,6 +30,7 @@ const TYPE_LABELS: Record<ProjectType, string> = {
   construction: "Bauprojekt",
   software: "Software-Projekt",
   general: "Allgemeines Projekt",
+  ma: "M&A-Projekt",
 }
 
 const TYPE_ICONS: Record<ProjectType, ComponentType<{ className?: string }>> = {
@@ -36,6 +38,7 @@ const TYPE_ICONS: Record<ProjectType, ComponentType<{ className?: string }>> = {
   construction: Building2,
   software: Code2,
   general: Sparkles,
+  ma: Handshake,
 }
 
 export function StepType() {

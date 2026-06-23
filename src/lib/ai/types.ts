@@ -40,6 +40,18 @@ export type AIPurpose =
   // classification (Class-1/2 → cloud, Class-3 → local via resolver clamp).
   | "clarifying_questions_from_context"
 
+/**
+ * PROJ-137 — machine-readable reason a ki_run produced no/blocked output.
+ * `null` (not in this union) = provider ran and returned a legitimate result
+ * (incl. legitimately-empty) — that stays distinguishable (AC-6).
+ */
+export type AiRunReasonCode =
+  | "no_provider"          // no/invalid key, no provider in priority chain
+  | "class3_blocked"       // Class-3 data, no tenant-local provider
+  | "provider_error"       // provider chosen but timeout/error/broken response (incl. capacity-fallback)
+  | "cost_cap_exceeded"    // monthly token cap reached (PROJ-32d)
+  | "external_ai_disabled" // env kill-switch EXTERNAL_AI_DISABLED
+
 export type DataClass = 1 | 2 | 3
 
 export type AIProviderName =
@@ -124,6 +136,9 @@ export interface RouterRiskResult {
   suggestion_ids: string[]
   external_blocked: boolean
   error_message?: string
+  /** PROJ-137 — machine-readable reason for empty/blocked output; null when
+   *  a provider ran and returned a legit result. */
+  reason_code?: AiRunReasonCode | null
 }
 
 // ---------------------------------------------------------------------------
@@ -194,6 +209,9 @@ export interface RouterNarrativeResult {
   text: string
   external_blocked: boolean
   error_message?: string
+  /** PROJ-137 — machine-readable reason for empty/blocked output; null when
+   *  a provider ran and returned a legit result. */
+  reason_code?: AiRunReasonCode | null
 }
 
 // ---------------------------------------------------------------------------
@@ -247,6 +265,9 @@ export interface RouterSentimentResult {
   signals: SentimentSignal[]
   external_blocked: boolean
   error_message?: string
+  /** PROJ-137 — machine-readable reason for empty/blocked output; null when
+   *  a provider ran and returned a legit result. */
+  reason_code?: AiRunReasonCode | null
 }
 
 // ---------------------------------------------------------------------------
@@ -342,6 +363,9 @@ export interface RouterCoachingResult {
   /** Echoed back from the context so callers can persist it as audit. */
   tonality_hint: string | null
   error_message?: string
+  /** PROJ-137 — machine-readable reason for empty/blocked output; null when
+   *  a provider ran and returned a legit result. */
+  reason_code?: AiRunReasonCode | null
 }
 
 // ---------------------------------------------------------------------------
@@ -446,6 +470,9 @@ export interface RouterTrajectorySequenceResult {
   suggestion_ids: string[]
   external_blocked: boolean
   error_message?: string
+  /** PROJ-137 — machine-readable reason for empty/blocked output; null when
+   *  a provider ran and returned a legit result. */
+  reason_code?: AiRunReasonCode | null
 }
 
 // ---------------------------------------------------------------------------
@@ -549,6 +576,9 @@ export interface RouterResourceSwapResult {
   suggestion_ids: string[]
   external_blocked: boolean
   error_message?: string
+  /** PROJ-137 — machine-readable reason for empty/blocked output; null when
+   *  a provider ran and returned a legit result. */
+  reason_code?: AiRunReasonCode | null
 }
 
 // ---------------------------------------------------------------------------
@@ -682,6 +712,9 @@ export interface RouterCrossProjectLinksResult {
   suggestion_ids: string[]
   external_blocked: boolean
   error_message?: string
+  /** PROJ-137 — machine-readable reason for empty/blocked output; null when
+   *  a provider ran and returned a legit result. */
+  reason_code?: AiRunReasonCode | null
 }
 
 // ---------------------------------------------------------------------------
@@ -801,6 +834,9 @@ export interface RouterProposalFromContextResult {
   suggestion_ids: string[]
   external_blocked: boolean
   error_message?: string
+  /** PROJ-137 — machine-readable reason for empty/blocked output; null when
+   *  a provider ran and returned a legit result. */
+  reason_code?: AiRunReasonCode | null
 }
 
 // ---------------------------------------------------------------------------
@@ -901,6 +937,9 @@ export interface RouterStakeholderProposalsResult {
   suggestion_ids: string[]
   external_blocked: boolean
   error_message?: string
+  /** PROJ-137 — machine-readable reason for empty/blocked output; null when
+   *  a provider ran and returned a legit result. */
+  reason_code?: AiRunReasonCode | null
 }
 
 // ---------------------------------------------------------------------------
@@ -1002,6 +1041,9 @@ export interface RouterRiskProposalsResult {
   suggestion_ids: string[]
   external_blocked: boolean
   error_message?: string
+  /** PROJ-137 — machine-readable reason for empty/blocked output; null when
+   *  a provider ran and returned a legit result. */
+  reason_code?: AiRunReasonCode | null
 }
 
 // ---------------------------------------------------------------------------
@@ -1081,4 +1123,7 @@ export interface RouterClarifyingQuestionsResult {
   questions: ClarifyingQuestion[]
   external_blocked: boolean
   error_message?: string
+  /** PROJ-137 — machine-readable reason for empty/blocked output; null when
+   *  a provider ran and returned a legit result. */
+  reason_code?: AiRunReasonCode | null
 }

@@ -6,9 +6,11 @@ import * as React from "react"
 
 import { ParentProjectBanner } from "@/components/projects/parent-project-banner"
 import { useAuth } from "@/hooks/use-auth"
+import { useProject } from "@/hooks/use-project"
 import { getMethodConfig } from "@/lib/method-templates"
 import {
   filterSectionsByModules,
+  filterSectionsByProjectType,
   getProjectSectionHref,
   isSectionActive,
 } from "@/lib/method-templates/routing"
@@ -38,10 +40,16 @@ export function ProjectRoomShell({
   const pathname = usePathname() ?? ""
   const { tenantSettings } = useAuth()
   const method = useCurrentProjectMethod(projectId)
+  const { project } = useProject(projectId)
   const config = getMethodConfig(method)
+  const projectType = project?.project_type ?? null
   const visibleSections = React.useMemo(
-    () => filterSectionsByModules(config.sidebarSections, tenantSettings),
-    [config.sidebarSections, tenantSettings]
+    () =>
+      filterSectionsByProjectType(
+        filterSectionsByModules(config.sidebarSections, tenantSettings),
+        projectType
+      ),
+    [config.sidebarSections, tenantSettings, projectType]
   )
 
   return (

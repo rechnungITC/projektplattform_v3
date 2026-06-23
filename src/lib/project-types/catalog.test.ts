@@ -6,9 +6,18 @@ import {
 } from "./catalog"
 
 describe("project type catalog", () => {
-  it("has 4 entries: general / erp / software / construction", () => {
+  it("has 5 entries: general / erp / software / construction / ma", () => {
     const keys = PROJECT_TYPE_CATALOG.map((p) => p.key).sort()
-    expect(keys).toEqual(["construction", "erp", "general", "software"])
+    expect(keys).toEqual(["construction", "erp", "general", "ma", "software"])
+  })
+
+  it("M&A profile (PROJ-94) is registered with deal-lead/sponsor roles", () => {
+    const p = getProjectTypeProfile("ma")
+    expect(p.key).toBe("ma")
+    expect(p.label_de).toBe("M&A-Projekt")
+    expect(p.standard_roles.map((r) => r.key)).toEqual(
+      expect.arrayContaining(["deal_lead", "sponsor"])
+    )
   })
 
   it("ERP profile carries the canonical AC fields", () => {

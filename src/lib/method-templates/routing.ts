@@ -19,6 +19,7 @@
 
 import type { MethodConfig, SidebarSection } from "@/types/method-config"
 import type { ProjectMethod } from "@/types/project-method"
+import type { ProjectType } from "@/types/project"
 import type { ModuleKey, TenantSettings } from "@/types/tenant-settings"
 import { isModuleActive } from "@/lib/tenant-settings/modules"
 
@@ -161,6 +162,22 @@ export function filterSectionsByModules(
 ): SidebarSection[] {
   return sections.filter(
     (s) => !s.requiresModule || isModuleActive(settings, s.requiresModule)
+  )
+}
+
+/**
+ * PROJ-94 — filters sections by the project's type. Sections without a
+ * `requiresProjectType` always pass through; a gated section is kept only
+ * when it matches the given `project_type` (e.g. the M&A "Strategische
+ * Grundlage" section appears only for `project_type='ma'`). `null`/unknown
+ * type drops all type-gated sections (fail-closed for the gate).
+ */
+export function filterSectionsByProjectType(
+  sections: readonly SidebarSection[],
+  projectType: ProjectType | null | undefined
+): SidebarSection[] {
+  return sections.filter(
+    (s) => !s.requiresProjectType || s.requiresProjectType === projectType
   )
 }
 
