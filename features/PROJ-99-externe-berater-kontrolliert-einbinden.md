@@ -14,7 +14,7 @@ summary_for_jira: "[B3] Externe Berater kontrolliert einbinden"
 
 # PROJ-99: Externe Berater kontrolliert einbinden
 
-## Status: Architected (Tech-Design 2026-06-23: gemeinsames Advisor-/NDA-/Klassifikations-Bundle mit PROJ-128/129; externe Berater bleiben Tenant-/Projektmitglieder mit M&A-Advisor-Profil, NDA ist hartes Gate vor vertraulichem Zugriff, Need-to-Know reused PROJ-100a. Kein neues Auth-System, kein neuer Dep.)
+## Status: In Progress (Backend gebaut 2026-06-24 — `ma_advisor_profiles` + Gate-Erweiterung + APIs; → /frontend Governance-&-Zugriff-Seite, dann /qa)
 **Created:** 2026-06-10
 **Origin:** M&A-Platform Backlog (Epic B — Rollen, Gremien & Governance)
 **Priority:** P1
@@ -177,6 +177,24 @@ Die eigentliche Sichtbarkeit laeuft ueber PROJ-100a: `standard`, `confidential`,
 ### F) Handoff
 
 Empfohlener Build-Schnitt: zuerst `/backend` fuer Advisor-Profil, NDA-Objekt, Gates und Audit; danach `/frontend` fuer Governance-&-Zugriff-Seite; danach `/qa` mit Negativtests fuer fehlende NDA, abgelaufenes Mandat, zu niedrige Clearance und Cross-Tenant-Isolation.
+
+## Implementation Notes — Backend (2026-06-24)
+
+Gebaut als gemeinsame Backend-Slice mit PROJ-128/129 (ein Bundle, eine Migration), auf PROJ-100a/100b aufsetzend. **Kein neuer Dep, kein separates Auth-System.**
+
+**Migration** `20260623230548_proj99_128_129_advisor_nda_classification.sql` (in Prod; Repo-Dateiname = prod-registrierte Version per PROJ-134-Konvention):
+
+- **`ma_advisor_profiles`** — ein externes Advisor-Profil pro `(project, user)`: `organization`, `advisor_type` (legal/tax/financial/commercial/it/hr/other), `mandate_start/end`, `mandate_status` (planned/active/expired/blocked), `responsible_user_id`, `scope`, `notes`. Tenant-RLS (Member SELECT, Manager INSERT/UPDATE/DELETE), Unique `(project_id, user_id)`, PROJ-10 UPDATE-Audit-Trigger (Mandats-/Statuswechsel = die sicherheitsrelevanten Events; Anlage via `created_by/created_at`).
+- **Gate-Helper** (SECURITY DEFINER STABLE, explizit-user): `is_external_advisor(project, user)`, `has_active_mandate(project, user)` (true für Nicht-Advisor = Mandat n/a, sonst active + nicht abgelaufen), `has_valid_nda(project, user, level)` (siehe PROJ-128).
+- **Gate-Erweiterung** `can_access_classified(project, level)` — **additiv** (User-locked Option 1): nach dem Admin-Bypass wird für Advisor-User zusätzlich `has_active_mandate` UND `has_valid_nda` verlangt, bevor eine Clearance oberhalb `standard` greift. Verengt NUR externe Advisor; Admins/interne Member unverändert → jede RESTRICTIVE-Policy (projects/phases/work_items + künftige DD-Tabellen) erbt das Gate automatisch. 100a-Pentest bleibt grün.
+
+**APIs:** `GET/POST /api/projects/[id]/advisors` (Liste / Anlage Manager) + `PATCH/DELETE /api/projects/[id]/advisors/[advisorId]` (inkl. Mandats-Status-Transition, manager-gated). Client-Wrapper `src/lib/ma-project/advisor-nda-api.ts`.
+
+**Pflicht-Live-Smoke gegen Prod (10/10, 0 Residue) via Impersonation:** Advisor mit aktivem Mandat + gültiger NDA + Clearance → Zugriff; Mandat geblockt → kein Zugriff; NDA abgelaufen → kein Zugriff; interner cleared Non-Advisor → Zugriff (Gate unverändert); Admin → Bypass. **100a-Regression 5/5 grün** (Gate-Verhalten für Non-Advisor byte-identisch). Security-Advisor: 0 ERROR, 0 rls_disabled.
+
+**Quality-Gates:** lint 0, tsc 0 neu (Baseline), vitest 2009/2009 (+ Route-Tests), build clean (7 neue Routen).
+
+**Offen:** AC „Externe Aktivitäten (Logins/Downloads) auditierbar" — Advisor-/NDA-/Clearance-Events laufen über PROJ-10; Login-/DMS-Event-Marker folgen, sobald Auth-/DMS-Events verfügbar sind. /frontend (Governance-&-Zugriff-Seite) + /qa (Negativtests: fehlende NDA, abgelaufenes Mandat, zu niedrige Clearance, Cross-Tenant) offen.
 
 ---
 _Quelle: Backlog-Entwurf M&A-Projektplattform · B — Rollen, Gremien & Governance_
