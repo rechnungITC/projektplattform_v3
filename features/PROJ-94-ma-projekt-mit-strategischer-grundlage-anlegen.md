@@ -14,7 +14,7 @@ summary_for_jira: "[A1] M&A-Projekt mit strategischer Grundlage anlegen"
 
 # PROJ-94: M&A-Projekt mit strategischer Grundlage anlegen
 
-## Status: Approved (QA PASS 2026-06-23 — 5/5 AC, 0 Critical/High, PR #168)
+## Status: Deployed (2026-06-23 — PR #168 squash-merged 7024daf, tag v1.97.0-PROJ-94; prod auth-gate smoke 3/3 307; mandate-RPC need-to-know hardening live)
 **Created:** 2026-06-10
 **Origin:** M&A-Platform Backlog (Epic A — Projektgrundlagen & Phasenmodell)
 **Priority:** P1
