@@ -14,7 +14,7 @@ summary_for_jira: "[B3] Externe Berater kontrolliert einbinden"
 
 # PROJ-99: Externe Berater kontrolliert einbinden
 
-## Status: Planned
+## Status: Architected (Tech-Design 2026-06-23: gemeinsames Advisor-/NDA-/Klassifikations-Bundle mit PROJ-128/129; externe Berater bleiben Tenant-/Projektmitglieder mit M&A-Advisor-Profil, NDA ist hartes Gate vor vertraulichem Zugriff, Need-to-Know reused PROJ-100a. Kein neues Auth-System, kein neuer Dep.)
 **Created:** 2026-06-10
 **Origin:** M&A-Platform Backlog (Epic B — Rollen, Gremien & Governance)
 **Priority:** P1
@@ -79,6 +79,104 @@ M&A-Projekte sind ohne externe Berater nicht denkbar. Die Plattform muss externe
 - Legal Counsel
 - IT-Sicherheitsverantwortlicher
 - Externer Berater (Nutzer-Sicht)
+
+---
+
+## Tech Design (Solution Architect) — 2026-06-23
+
+> **Bundle-Scope:** PROJ-99, PROJ-128 und PROJ-129 werden als ein fachliches Vertraulichkeits-Bundle architected. Grund: Externe Berater, NDA-Status und Need-to-Know-Klassifikation sind im M&A-Kontext ein einziger Zugriffspfad. Separate Implementierungen wuerden widerspruechliche Gates erzeugen. Dieses Design respektiert die M&A-Domain-ADR und baut auf PROJ-100a auf.
+
+### Grundidee in einem Satz
+
+Externe Berater werden **nicht** als separates Auth-System gebaut. Sie bleiben normale Tenant-/Projektmitglieder, bekommen aber ein M&A-spezifisches **Advisor-Profil** mit Mandat, Organisation, Advisor-Typ, NDA-Abdeckung und Ablaufdatum. Zugriff auf vertrauliche Deal-Inhalte entsteht erst, wenn drei Dinge gleichzeitig passen: Projektrolle, gueltiges Mandat/NDA und ausreichende PROJ-100a-Clearance.
+
+### A) Komponenten-Struktur
+
+```
+M&A-Projektraum
++-- Navigationseintrag "Governance & Zugriff" (nur project_type = ma)
+    +-- Tab "Berater"
+    |   +-- Beraterliste
+    |   |   +-- Person / Organisation / Rolle / Advisor-Typ
+    |   |   +-- Mandatsstatus: geplant / aktiv / abgelaufen / gesperrt
+    |   |   +-- NDA-Status: fehlt / in Pruefung / gueltig / abgelaufen
+    |   |   +-- Clearance-Stufe aus PROJ-100a
+    |   +-- Aktion "Berater einbinden"
+    |   |   +-- bestehendes Tenant-Mitglied auswaehlen oder Tenant-Einladung starten
+    |   |   +-- Projektrolle setzen
+    |   |   +-- Advisor-Profil ausfuellen
+    |   |   +-- NDA zuordnen
+    |   +-- Aktion "Mandat beenden"
+    +-- Tab "NDAs" (PROJ-128)
+    |   +-- NDA-Uebersicht
+    |   +-- NDA-Detail mit Personen, Laufzeit, Scope und Dokument-Link
+    +-- Tab "Klassifikation" (PROJ-129)
+    |   +-- Objekt-/Bereichsuebersicht
+    |   +-- Vertraulichkeitsstufe
+    |   +-- Wer-darf-was-sehen Matrix
+    +-- Tab "Historie"
+        +-- bestehender PROJ-10 HistoryTab fuer Advisor-/NDA-/Clearance-Aenderungen
+```
+
+Die UI haengt sich bewusst an den bestehenden Projektraum und die vorhandenen Patterns an: Projektmitglieder-Dialog, Tenant-Member-Picker, PROJ-100a-Clearance-Verwaltung, M&A-Grundlagenkarte und HistoryTab.
+
+### B) Datenmodell in Klartext
+
+**Advisor-Profil pro Projekt und Person**
+
+Jeder externe Berater hat in einem M&A-Projekt ein Profil mit:
+
+- Projekt und Nutzerbezug
+- externe Organisation, z. B. Kanzlei, M&A-Advisor, Wirtschaftspruefer
+- Advisor-Typ, z. B. Legal, Tax, Financial, Commercial, IT, HR
+- Mandatsbeginn und Mandatsende
+- Mandatsstatus: geplant, aktiv, abgelaufen, gesperrt
+- verantwortliche interne Person, z. B. Deal Lead oder Legal Counsel
+- verknuepfte NDA(s)
+- erlaubter fachlicher Scope, z. B. Legal-DD oder Tax-DD
+
+**NDA-Gate**
+
+Ein Berater kann als Person vorbereitet oder eingeladen werden, sieht aber vertrauliche Inhalte erst, wenn eine gueltige NDA mit passendem Scope hinterlegt ist. Fuer externe Berater ist das NDA-Gate hart: ohne gueltige NDA keine Freischaltung auf `confidential` oder `strict`.
+
+**Mandats-Gate**
+
+Das Mandatsende ist kein reiner Reminder. Abgelaufene oder gesperrte Mandate blockieren weiteren Zugriff auf M&A-Inhalte. Eine Wiedervorlage erinnert vorher, aber die Zugriffskontrolle darf nicht davon abhaengen, dass ein Reminder-Job rechtzeitig laeuft.
+
+**Klassifikations-Gate**
+
+Die eigentliche Sichtbarkeit laeuft ueber PROJ-100a: `standard`, `confidential`, `strict`. PROJ-99 nutzt diese Stufen, statt eigene Berechtigungslisten zu bauen. Das Advisor-Profil sagt, wer extern ist und ob NDA/Mandat gelten; die Clearance sagt, bis zu welcher Stufe der Nutzer sehen darf.
+
+### C) Tech-Entscheidungen
+
+- **Kein separates Externen-IAM:** Externe Berater nutzen den bestehenden Tenant-/Projektmitgliedschaftspfad. Das haelt Login, Session, Tenant-RLS und Audit in einem System.
+- **Advisor-Profil statt Rollenmissbrauch:** "Extern / Kanzlei XYZ / Tax Advisor" gehoert nicht in die generischen Rollen `lead/editor/viewer`. Die Projektrolle steuert Bearbeitungsrechte; das Advisor-Profil steuert M&A-Kontext, Mandat und NDA.
+- **NDA als hartes Gate fuer Externe:** Die offene Frage aus PROJ-128 wird fuer den M&A-Pilot entschieden: Fuer externe Berater blockiert eine fehlende oder abgelaufene NDA vertraulichen Zugriff. Fuer interne Rollen kann Legal spaeter Warn-/Policy-Varianten definieren.
+- **Mandatsablauf bei jedem Zugriff pruefen:** Ablauf darf nicht nur durch eine naechtliche Bereinigung wirken. Die UI zeigt Reminder, aber das Gate muss abgelaufene Mandate direkt respektieren.
+- **PROJ-100a wiederverwenden:** Keine zweite Need-to-Know-Engine. PROJ-99 fuegt Externen-/NDA-/Mandatsbedingungen hinzu, nutzt aber das vorhandene Clearance-Tor.
+- **Audit ueber PROJ-10:** Advisor-Anlage, Mandatsstatus, NDA-Zuordnung, Clearance-Vergabe und Entzug werden ueber den bestehenden Audit-Trail sichtbar. Login-/Download-Audit wird als markierter Event-Strom angebunden, sobald Auth-/DMS-Events im jeweiligen Modul verfuegbar sind.
+
+### D) Abhaengigkeiten
+
+- **Muss vorhanden sein:** PROJ-94 (M&A-Projekt), PROJ-100a (Need-to-Know Foundation).
+- **Soll davor oder parallel laufen:** PROJ-97 (RACI/Rollen), weil Advisor-Typen und Verantwortlichkeiten sonst nur grob abbildbar sind.
+- **Im Bundle:** PROJ-128 (NDA-Objekt) und PROJ-129 (Klassifikations-/Clearance-UX).
+- **Spaeter:** PROJ-79 fuer echte DMS-Dokumente statt Dokument-Link; E-Signatur bleibt out-of-scope.
+- **Neue npm-Pakete:** keine.
+
+### E) Akzeptanzkriterien-Zuordnung
+
+| AC | Erfuellt durch |
+|---|---|
+| Externe Personen gesondert markieren | Advisor-Profil mit Organisation, Advisor-Typ und externem Status |
+| Standardmaessig nichts sichtbar | Kombination aus Projektmitgliedschaft, NDA-Gate, Mandats-Gate und PROJ-100a-Clearance; ohne Freischaltung nur Standard-Sicht |
+| Mandatsbeginn/-ende, automatischer Entzug | Mandatsstatus + Ablauf-Gate; Reminder nur als Zusatz |
+| Externe Aktivitaeten auditierbar | PROJ-10-Historie + externer Marker auf Advisor-/NDA-/Clearance-Events; Auth/DMS-Events werden markiert, sobald diese Events verfuegbar sind |
+| NDA vor Zugriff | harte Voraussetzung fuer externe Clearance oberhalb `standard` |
+
+### F) Handoff
+
+Empfohlener Build-Schnitt: zuerst `/backend` fuer Advisor-Profil, NDA-Objekt, Gates und Audit; danach `/frontend` fuer Governance-&-Zugriff-Seite; danach `/qa` mit Negativtests fuer fehlende NDA, abgelaufenes Mandat, zu niedrige Clearance und Cross-Tenant-Isolation.
 
 ---
 _Quelle: Backlog-Entwurf M&A-Projektplattform · B — Rollen, Gremien & Governance_
