@@ -64,6 +64,10 @@ export interface RouterStakeholderProposalsResult {
   suggestion_ids: string[]
   external_blocked: boolean
   error_message?: string
+  // PROJ-137 — machine-readable reason a run produced no/blocked output.
+  // The route returns the router result verbatim, so this is present at
+  // runtime; `null`/absent = provider ran (incl. legitimately-empty).
+  reason_code?: import("@/lib/ai/types").AiRunReasonCode | null
 }
 
 export interface AcceptStakeholderProposalsResult {
