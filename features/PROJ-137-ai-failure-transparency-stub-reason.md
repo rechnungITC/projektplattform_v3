@@ -1,8 +1,19 @@
 # PROJ-137: AI-Failure-Transparency — sichtbarer Grund statt stiller Stub-0-Vorschläge
 
-## Status: Architected (Tech-Design 2026-06-19: vereinheitlichtes `AiRunReasonCode`-Enum + additive nullable `ki_runs.reason_code`-Spalte; Reason zentral im Router-Finalize über alle Purposes; datengetriebener Regressionstest + FE-Banner-Mapping. Kein neuer Dep, CIA n/a.)
+## Status: In Progress (Backend re-implementiert 2026-06-23 — FE-Banner AC-4 offen → /frontend, dann /qa)
 **Created:** 2026-06-19
-**Last Updated:** 2026-06-19
+**Last Updated:** 2026-06-23
+
+> **Hinweis 2026-06-23 (Rebuild):** Die ursprüngliche Backend-Implementierung lag uncommittet/ungestaged im inzwischen gelöschten Worktree `/tmp/pv3-137be` und ging verloren (verifiziert: kein `reason_code` in Commits / überlebendem Worktree-Index / dangling commits). **Die Migration war jedoch bereits in Prod angewendet** (registrierte Version `20260622144141`; prod-CHECK == Code-Enum, verbatim verifiziert). Re-Implementierung 1:1 nach dem unten stehenden Tech-Design; die Repo-Migrationsdatei wurde auf die prod-registrierte Version umbenannt (PROJ-134-Drift-Konvention, keine erneute Anwendung).
+
+## Implementation Notes — Backend (2026-06-23)
+- **`src/lib/ai/types.ts`:** neues `AiRunReasonCode`-Enum (5 Werte: `no_provider` / `class3_blocked` / `provider_error` / `cost_cap_exceeded` / `external_ai_disabled`; `null` = Provider lief, legitim-leer). `reason_code?: AiRunReasonCode | null` an allen 11 `RouterXResult`-Interfaces (snake_case am Boundary — FE-Wrapper-Read).
+- **`src/lib/ai/router.ts`:** `blockedReasonCode?` auf `ProviderChoice`; gesetzt in beiden Block-Zweigen von `selectProviderForPurpose` (env→`external_ai_disabled`, Class-3→`class3_blocked`, Resolver-Block→gemappt, bewusst-kein-extern→undefined) und im Cost-Cap-Hardblock (`cost_cap_exceeded`; WARN-Pfad codelos). Zentraler **`deriveReasonCode`**-Helfer (exportiert): `success`→`null` (AC-6); sonst `providerError||providerFallbackMessage`→`provider_error` (überschreibt Block-Code → Edge-Case „Class-3 geblockt aber Ollama down"); sonst `blockedReasonCode`-Passthrough; sonst `null`. `updateKiRunStatus` schreibt `reason_code`. Über **alle 11 invoke-Funktionen** durchgereicht (13 Purposes) — `error_message` bleibt der menschenlesbare Detailtext daneben.
+- **Migration `20260622144141_proj137_ki_runs_reason_code.sql`:** additive nullable `ki_runs.reason_code` + CHECK (5 Werte|null) — bereits in Prod (s.o.), idempotent, kein Backfill.
+- **Test `src/lib/ai/router.reason-code.test.ts`:** AC-3 datengetrieben — compile-time-erschöpfendes `ALL_AI_PURPOSES satisfies readonly AIPurpose[]` + `Record<AIPurpose,true>`-Guard (neuer Purpose ohne Eintrag → Compile-Fehler) plus Unit-Tests aller `deriveReasonCode`-Zweige. Strukturelle Garantie: Reason wird im geteilten Finalize-Pfad gesetzt → jeder Purpose erbt ihn.
+- **Gates:** eslint 0 · tsc 14→14 (keine neuen; alle 14 vorbestehende Test-Mock-Typing-Fehler, 0 in PROJ-137-Dateien) · vitest 1915/1915.
+- **Class-3-Hardblock + Multi-Tenant-Invariante unberührt** (AC-7): der Slice macht den Block nur sichtbar.
+- **Offen → /frontend:** AC-4 (actionable Banner-Mapping `reasonCode → {Text, Handlungslink}` in den Drawer-Tabs). **→ /qa:** AC-2/AC-5 Live-Nachweis über alle Purposes inkl. `class3_blocked`-vs-`provider_error` gegen gehosteten Ollama.
 
 > **Herkunft:** CIA-Portfolio-Review 2026-06-19 (Risk R-1, HOCH). Der Multi-Provider-AI-Router fällt bei Provider-Fehler ODER Class-3-Block auf den `stub`-Provider zurück, der leere/CIA-L5-Antworten liefert. Live belegt: in PROJ-88-QA war `blockedReason` nicht gesetzt → `ki_runs.error_message` war NULL für **alle** Class-3-Blocks purposeübergreifend seit PROJ-32 (in-QA gefixt für 1–2 Purposes). Folge ungefixt: ein Pilot-PM sieht „0 Vorschläge" ohne Erklärung und schließt „die KI kann nichts" → killt die PRD-Adoption-Metrik direkt. Schwester-Slice: [[PROJ-136]] (Golden-Path-Smoke). Pilot-Kontext in [[project_first_erp_pilot_constraints]].
 

@@ -50,6 +50,7 @@ import { OpenAIProvider } from "./providers/openai"
 import { StubProvider } from "./providers/stub"
 import type { AIProvider } from "./providers/types"
 import type {
+  AiRunReasonCode,
   AIProviderName,
   AIPurpose,
   ClarifyingQuestion,
@@ -102,6 +103,8 @@ interface ProviderChoice {
   externalBlocked: boolean
   /** When set, the call was blocked for a non-routing reason (e.g. cost cap). */
   blockedReason?: string
+  /** PROJ-137: typed machine-readable reason when this choice is a block. */
+  blockedReasonCode?: AiRunReasonCode
 }
 
 interface TenantOverrides {
@@ -152,9 +155,17 @@ async function selectProviderForPurpose(
   if (tenantConfig.external_provider === "none") {
     const externalDisabledByEnv = isExternalAIBlocked()
     const externalDisabledByClass = classification === 3
+    // PROJ-137: a deliberate `external_provider='none'` config that is NOT
+    // forced by env/class is not a block — leave blockedReasonCode undefined.
+    const blockedReasonCode: AiRunReasonCode | undefined = externalDisabledByEnv
+      ? "external_ai_disabled"
+      : externalDisabledByClass
+        ? "class3_blocked"
+        : undefined
     return {
       provider: new StubProvider(),
       externalBlocked: externalDisabledByEnv || externalDisabledByClass,
+      blockedReasonCode,
     }
   }
 
@@ -175,12 +186,22 @@ async function selectProviderForPurpose(
         : resolved.reason === "external_ai_disabled"
           ? "Externe KI ist deaktiviert (EXTERNAL_AI_DISABLED)."
           : `Provider-Auswahl blockiert: ${resolved.reason}`
+    // PROJ-137: map the resolver's typed reason → the unified AiRunReasonCode.
+    // (Legacy variants class3_no_tenant_key / no_key_available are handled
+    // for completeness even though resolveProvider returns the new union.)
+    const blockedReasonCode: AiRunReasonCode =
+      resolved.reason === "class3_no_local_provider"
+        ? "class3_blocked"
+        : resolved.reason === "external_ai_disabled"
+          ? "external_ai_disabled"
+          : "no_provider"
     return {
       provider: new StubProvider(),
       externalBlocked:
         resolved.reason === "external_ai_disabled" ||
         resolved.reason === "class3_no_local_provider",
       blockedReason: reasonText,
+      blockedReasonCode,
     }
   }
 
@@ -266,6 +287,8 @@ async function applyCostCap(
     provider: new StubProvider(),
     externalBlocked: true,
     blockedReason: cap.detail ?? "Monthly token cap exceeded.",
+    // PROJ-137: cost-cap hard block gets its own dedicated reason.
+    blockedReasonCode: "cost_cap_exceeded",
   }
 }
 
@@ -323,6 +346,8 @@ async function updateKiRunStatus(
     latencyMs: number | null
     errorMessage: string | null
     provider?: AIProvider
+    /** PROJ-137: machine-readable reason persisted alongside error_message. */
+    reasonCode?: AiRunReasonCode | null
   },
 ): Promise<void> {
   const updatePayload: {
@@ -331,6 +356,7 @@ async function updateKiRunStatus(
     output_tokens: number | null
     latency_ms: number | null
     error_message: string | null
+    reason_code: AiRunReasonCode | null
     provider?: string
     model_id?: string | null
   } = {
@@ -339,12 +365,29 @@ async function updateKiRunStatus(
     output_tokens: fields.outputTokens,
     latency_ms: fields.latencyMs,
     error_message: fields.errorMessage,
+    reason_code: fields.reasonCode ?? null,
   }
   if (fields.provider) {
     updatePayload.provider = fields.provider.name
     updatePayload.model_id = fields.provider.modelId
   }
   await supabase.from("ki_runs").update(updatePayload).eq("id", runId)
+}
+
+/** PROJ-137: derive the persisted machine-readable reason for a finalized run.
+ *  Exported for the data-driven regression test (router.reason-code.test.ts). */
+export function deriveReasonCode(args: {
+  finalStatus: "success" | "error" | "external_blocked"
+  blockedReasonCode?: AiRunReasonCode
+  providerError?: string | null
+  providerFallbackMessage?: string | null
+}): AiRunReasonCode | null {
+  if (args.finalStatus === "success") return null // AC-6: legit success/empty
+  // Provider was chosen then failed/timed-out (incl. capacity fallback to stub).
+  // Spec edge case: Class-3 block but tenant Ollama down → provider_error, not class3_blocked.
+  if (args.providerError || args.providerFallbackMessage) return "provider_error"
+  if (args.blockedReasonCode) return args.blockedReasonCode
+  return null
 }
 
 function isProviderCapacityError(message: string): boolean {
@@ -384,7 +427,7 @@ export async function invokeRiskGeneration({
     classification,
     overrides.providerConfig,
   )
-  const { provider, externalBlocked, blockedReason } = await applyCostCap(
+  const { provider, externalBlocked, blockedReason, blockedReasonCode } = await applyCostCap(
     supabase,
     tenantId,
     choice,
@@ -481,6 +524,12 @@ export async function invokeRiskGeneration({
 
   const finalErrorMessage =
     providerError ?? providerFallbackMessage ?? blockedReason ?? null
+  const finalReasonCode = deriveReasonCode({
+    finalStatus,
+    blockedReasonCode,
+    providerError,
+    providerFallbackMessage,
+  })
   await updateKiRunStatus(supabase, runId, {
     status: finalStatus,
     inputTokens,
@@ -488,6 +537,7 @@ export async function invokeRiskGeneration({
     latencyMs,
     errorMessage: finalErrorMessage,
     provider: activeProvider,
+    reasonCode: finalReasonCode,
   })
 
   return {
@@ -499,6 +549,7 @@ export async function invokeRiskGeneration({
     suggestion_ids: suggestionIds,
     external_blocked: externalBlocked || providerFallbackMessage !== null,
     error_message: finalErrorMessage ?? undefined,
+    reason_code: finalReasonCode,
   }
 }
 
@@ -547,7 +598,7 @@ export async function invokeNarrativeGeneration({
     classification,
     overrides.providerConfig,
   )
-  const { provider, externalBlocked, blockedReason } = await applyCostCap(
+  const { provider, externalBlocked, blockedReason, blockedReasonCode } = await applyCostCap(
     supabase,
     tenantId,
     choice,
@@ -599,12 +650,18 @@ export async function invokeNarrativeGeneration({
     finalStatus = "success"
   }
 
+  const finalReasonCode = deriveReasonCode({
+    finalStatus,
+    blockedReasonCode,
+    providerError,
+  })
   await updateKiRunStatus(supabase, runId, {
     status: finalStatus,
     inputTokens,
     outputTokens,
     latencyMs,
     errorMessage: providerError ?? blockedReason ?? null,
+    reasonCode: finalReasonCode,
   })
 
   return {
@@ -616,6 +673,7 @@ export async function invokeNarrativeGeneration({
     text,
     external_blocked: externalBlocked,
     error_message: providerError ?? blockedReason ?? undefined,
+    reason_code: finalReasonCode,
   }
 }
 
@@ -667,7 +725,7 @@ export async function invokeSentimentGeneration({
     classification,
     overrides.providerConfig,
   )
-  const { provider, externalBlocked, blockedReason } = await applyCostCap(
+  const { provider, externalBlocked, blockedReason, blockedReasonCode } = await applyCostCap(
     supabase,
     tenantId,
     choice,
@@ -717,12 +775,18 @@ export async function invokeSentimentGeneration({
     finalStatus = "success"
   }
 
+  const finalReasonCode = deriveReasonCode({
+    finalStatus,
+    blockedReasonCode,
+    providerError,
+  })
   await updateKiRunStatus(supabase, runId, {
     status: finalStatus,
     inputTokens,
     outputTokens,
     latencyMs,
     errorMessage: providerError ?? blockedReason ?? null,
+    reasonCode: finalReasonCode,
   })
 
   return {
@@ -734,6 +798,7 @@ export async function invokeSentimentGeneration({
     signals,
     external_blocked: externalBlocked,
     error_message: providerError ?? blockedReason ?? undefined,
+    reason_code: finalReasonCode,
   }
 }
 
@@ -781,7 +846,7 @@ export async function invokeCoachingGeneration({
     classification,
     overrides.providerConfig,
   )
-  const { provider, externalBlocked, blockedReason } = await applyCostCap(
+  const { provider, externalBlocked, blockedReason, blockedReasonCode } = await applyCostCap(
     supabase,
     tenantId,
     choice,
@@ -837,12 +902,18 @@ export async function invokeCoachingGeneration({
     finalStatus = "success"
   }
 
+  const finalReasonCode = deriveReasonCode({
+    finalStatus,
+    blockedReasonCode,
+    providerError,
+  })
   await updateKiRunStatus(supabase, runId, {
     status: finalStatus,
     inputTokens,
     outputTokens,
     latencyMs,
     errorMessage: providerError ?? blockedReason ?? null,
+    reasonCode: finalReasonCode,
   })
 
   return {
@@ -855,6 +926,7 @@ export async function invokeCoachingGeneration({
     external_blocked: externalBlocked,
     tonality_hint: context.tonality_hint,
     error_message: providerError ?? blockedReason ?? undefined,
+    reason_code: finalReasonCode,
   }
 }
 
@@ -912,7 +984,7 @@ export async function invokeTrajectorySequenceGeneration({
     classification,
     overrides.providerConfig,
   )
-  const { provider, externalBlocked, blockedReason } = await applyCostCap(
+  const { provider, externalBlocked, blockedReason, blockedReasonCode } = await applyCostCap(
     supabase,
     tenantId,
     choice,
@@ -1004,6 +1076,12 @@ export async function invokeTrajectorySequenceGeneration({
 
   const finalErrorMessage =
     providerError ?? providerFallbackMessage ?? blockedReason ?? null
+  const finalReasonCode = deriveReasonCode({
+    finalStatus,
+    blockedReasonCode,
+    providerError,
+    providerFallbackMessage,
+  })
   await updateKiRunStatus(supabase, runId, {
     status: finalStatus,
     inputTokens,
@@ -1011,6 +1089,7 @@ export async function invokeTrajectorySequenceGeneration({
     latencyMs,
     errorMessage: finalErrorMessage,
     provider: activeProvider,
+    reasonCode: finalReasonCode,
   })
 
   return {
@@ -1022,6 +1101,7 @@ export async function invokeTrajectorySequenceGeneration({
     suggestion_ids: suggestionIds,
     external_blocked: externalBlocked || providerFallbackMessage !== null,
     error_message: finalErrorMessage ?? undefined,
+    reason_code: finalReasonCode,
   }
 }
 
@@ -1080,7 +1160,7 @@ export async function invokeResourceSwapGeneration({
     classification,
     overrides.providerConfig,
   )
-  const { provider, externalBlocked, blockedReason } = await applyCostCap(
+  const { provider, externalBlocked, blockedReason, blockedReasonCode } = await applyCostCap(
     supabase,
     tenantId,
     choice,
@@ -1193,6 +1273,16 @@ export async function invokeResourceSwapGeneration({
 
   const finalErrorMessage =
     providerError ?? ollamaError ?? blockedReason ?? null
+  // PROJ-137: an Ollama failure after the provider was chosen is a
+  // provider_error (spec edge case: Class-3 block but tenant Ollama down).
+  // Map it through the providerFallbackMessage slot so deriveReasonCode
+  // prefers provider_error over the block code.
+  const finalReasonCode = deriveReasonCode({
+    finalStatus,
+    blockedReasonCode,
+    providerError,
+    providerFallbackMessage: ollamaError,
+  })
   await updateKiRunStatus(supabase, runId, {
     status: finalStatus,
     inputTokens,
@@ -1200,6 +1290,7 @@ export async function invokeResourceSwapGeneration({
     latencyMs,
     errorMessage: finalErrorMessage,
     provider,
+    reasonCode: finalReasonCode,
   })
 
   return {
@@ -1211,6 +1302,7 @@ export async function invokeResourceSwapGeneration({
     suggestion_ids: suggestionIds,
     external_blocked: externalBlocked || ollamaError !== null || provider.name === "stub",
     error_message: finalErrorMessage ?? undefined,
+    reason_code: finalReasonCode,
   }
 }
 
@@ -1265,7 +1357,7 @@ export async function invokeCrossProjectLinksGeneration({
     classification,
     overrides.providerConfig,
   )
-  const { provider, externalBlocked, blockedReason } = await applyCostCap(
+  const { provider, externalBlocked, blockedReason, blockedReasonCode } = await applyCostCap(
     supabase,
     tenantId,
     choice,
@@ -1388,6 +1480,12 @@ export async function invokeCrossProjectLinksGeneration({
 
   const finalErrorMessage =
     providerError ?? providerFallbackMessage ?? blockedReason ?? null
+  const finalReasonCode = deriveReasonCode({
+    finalStatus,
+    blockedReasonCode,
+    providerError,
+    providerFallbackMessage,
+  })
   await updateKiRunStatus(supabase, runId, {
     status: finalStatus,
     inputTokens,
@@ -1395,6 +1493,7 @@ export async function invokeCrossProjectLinksGeneration({
     latencyMs,
     errorMessage: finalErrorMessage,
     provider: activeProvider,
+    reasonCode: finalReasonCode,
   })
 
   return {
@@ -1406,6 +1505,7 @@ export async function invokeCrossProjectLinksGeneration({
     suggestion_ids: suggestionIds,
     external_blocked: externalBlocked || providerFallbackMessage !== null,
     error_message: finalErrorMessage ?? undefined,
+    reason_code: finalReasonCode,
   }
 }
 
@@ -1464,7 +1564,7 @@ export async function invokeProposalFromContextGeneration({
     classification,
     overrides.providerConfig,
   )
-  const { provider, externalBlocked, blockedReason } = await applyCostCap(
+  const { provider, externalBlocked, blockedReason, blockedReasonCode } = await applyCostCap(
     supabase,
     tenantId,
     choice,
@@ -1571,6 +1671,12 @@ export async function invokeProposalFromContextGeneration({
 
   const finalErrorMessage =
     providerError ?? providerFallbackMessage ?? blockedReason ?? null
+  const finalReasonCode = deriveReasonCode({
+    finalStatus,
+    blockedReasonCode,
+    providerError,
+    providerFallbackMessage,
+  })
   await updateKiRunStatus(supabase, runId, {
     status: finalStatus,
     inputTokens,
@@ -1578,6 +1684,7 @@ export async function invokeProposalFromContextGeneration({
     latencyMs,
     errorMessage: finalErrorMessage,
     provider: activeProvider,
+    reasonCode: finalReasonCode,
   })
 
   return {
@@ -1589,6 +1696,7 @@ export async function invokeProposalFromContextGeneration({
     suggestion_ids: suggestionIds,
     external_blocked: externalBlocked || providerFallbackMessage !== null,
     error_message: finalErrorMessage ?? undefined,
+    reason_code: finalReasonCode,
   }
 }
 
@@ -1642,7 +1750,7 @@ export async function invokeStakeholderProposalsGeneration({
     classification,
     overrides.providerConfig,
   )
-  const { provider, externalBlocked, blockedReason } = await applyCostCap(
+  const { provider, externalBlocked, blockedReason, blockedReasonCode } = await applyCostCap(
     supabase,
     tenantId,
     choice,
@@ -1748,6 +1856,12 @@ export async function invokeStakeholderProposalsGeneration({
 
   const finalErrorMessage =
     providerError ?? providerFallbackMessage ?? blockedReason ?? null
+  const finalReasonCode = deriveReasonCode({
+    finalStatus,
+    blockedReasonCode,
+    providerError,
+    providerFallbackMessage,
+  })
   await updateKiRunStatus(supabase, runId, {
     status: finalStatus,
     inputTokens,
@@ -1755,6 +1869,7 @@ export async function invokeStakeholderProposalsGeneration({
     latencyMs,
     errorMessage: finalErrorMessage,
     provider: activeProvider,
+    reasonCode: finalReasonCode,
   })
 
   return {
@@ -1766,6 +1881,7 @@ export async function invokeStakeholderProposalsGeneration({
     suggestion_ids: suggestionIds,
     external_blocked: externalBlocked || providerFallbackMessage !== null,
     error_message: finalErrorMessage ?? undefined,
+    reason_code: finalReasonCode,
   }
 }
 
@@ -1817,7 +1933,7 @@ export async function invokeRiskProposalsGeneration({
     classification,
     overrides.providerConfig,
   )
-  const { provider, externalBlocked, blockedReason } = await applyCostCap(
+  const { provider, externalBlocked, blockedReason, blockedReasonCode } = await applyCostCap(
     supabase,
     tenantId,
     choice,
@@ -1923,6 +2039,12 @@ export async function invokeRiskProposalsGeneration({
 
   const finalErrorMessage =
     providerError ?? providerFallbackMessage ?? blockedReason ?? null
+  const finalReasonCode = deriveReasonCode({
+    finalStatus,
+    blockedReasonCode,
+    providerError,
+    providerFallbackMessage,
+  })
   await updateKiRunStatus(supabase, runId, {
     status: finalStatus,
     inputTokens,
@@ -1930,6 +2052,7 @@ export async function invokeRiskProposalsGeneration({
     latencyMs,
     errorMessage: finalErrorMessage,
     provider: activeProvider,
+    reasonCode: finalReasonCode,
   })
 
   return {
@@ -1941,6 +2064,7 @@ export async function invokeRiskProposalsGeneration({
     suggestion_ids: suggestionIds,
     external_blocked: externalBlocked || providerFallbackMessage !== null,
     error_message: finalErrorMessage ?? undefined,
+    reason_code: finalReasonCode,
   }
 }
 
@@ -1995,7 +2119,7 @@ export async function invokeClarifyingQuestionsGeneration({
     classification,
     overrides.providerConfig,
   )
-  const { provider, externalBlocked, blockedReason } = await applyCostCap(
+  const { provider, externalBlocked, blockedReason, blockedReasonCode } = await applyCostCap(
     supabase,
     tenantId,
     choice,
@@ -2061,6 +2185,12 @@ export async function invokeClarifyingQuestionsGeneration({
 
   const finalErrorMessage =
     providerError ?? providerFallbackMessage ?? blockedReason ?? null
+  const finalReasonCode = deriveReasonCode({
+    finalStatus,
+    blockedReasonCode,
+    providerError,
+    providerFallbackMessage,
+  })
   await updateKiRunStatus(supabase, runId, {
     status: finalStatus,
     inputTokens,
@@ -2068,6 +2198,7 @@ export async function invokeClarifyingQuestionsGeneration({
     latencyMs,
     errorMessage: finalErrorMessage,
     provider: activeProvider,
+    reasonCode: finalReasonCode,
   })
 
   return {
@@ -2079,5 +2210,6 @@ export async function invokeClarifyingQuestionsGeneration({
     questions,
     external_blocked: externalBlocked || providerFallbackMessage !== null,
     error_message: finalErrorMessage ?? undefined,
+    reason_code: finalReasonCode,
   }
 }
