@@ -13,7 +13,7 @@ summary_for_jira: "[B5b] Berechtigungsprofile + Wer-darf-was-Übersicht + anon-R
 
 # PROJ-100b: Berechtigungsprofile & Wer-darf-was-Sichtbarkeit
 
-## Status: In Progress (backend + frontend gebaut 2026-06-24 — 2 Migrations in Prod, 4 APIs, Stammdaten-Katalog + Projekt-Raum-Karte; Live-RPC-Smoke 7/7 + Gate-Regression 5/5; → /qa)
+## Status: Approved (QA PASS 2026-06-24 — 11/11 AC, 0 Critical/High; Pentest 8/8 + Gate-Regression 4/4 + E2E 9/9; PR #178, backend on main via #174)
 **Created:** 2026-06-23
 **Last Updated:** 2026-06-24
 
@@ -196,8 +196,47 @@ Projekt-Raum (bestehend) — NEU: Karte/Reiter "Vertraulichkeit & Zugriff"
 
 **Offen → /qa:** Pentest-Regression (`tests/sql/PROJ-100a-need-to-know-pentest.sql` + 100b-RPC-Smoke), Security-Review der 4 Routen, E2E-Auth-Gates + Katalog-CRUD-/apply-/who-can-see-Smoke, AC-End-to-End (AC-100b-1..11).
 
-## QA Test Results
-_To be added by /qa_
+## QA Test Results — 2026-06-24 (PR #178; backend live on main via #174)
+
+**Verdikt: PRODUCTION-READY** — 11/11 Akzeptanzkriterien erfüllt, 0 Critical / 0 High.
+
+### Acceptance Criteria
+| AC | Ergebnis | Nachweis |
+|----|----------|----------|
+| AC-100b-1 Profilkatalog (Name/Beschr./Stufe/aktiv, tenant-isoliert) | ✅ | `ma_clearance_profiles` + RLS; Pentest **H** (t1-Member sieht 0 t2-Profile) |
+| AC-100b-2 Admin-CRUD, Deaktivieren lässt Clearances unberührt | ✅ | admin-gated Routen + UI; Deaktivieren = PATCH `is_active`, Clearances strukturell getrennt |
+| AC-100b-3 Aktives Profil anwenden via grant-Pfad + Provenance | ✅ | Pentest **A** (confidential + `applied_profile_id`) |
+| AC-100b-4 100a-Invarianten (cross-tenant/self-grant/Class-3) | ✅ | Pentest **F** (cross-tenant reject); grant-Pfad erzwingt self-grant-Block (100a); Class-3 orthogonal (Gate-Regression) |
+| AC-100b-5 Optionale Standard-Profile, mechanismus-nicht-listengebunden | ✅ | Katalog ist Tenant-Config, keine hartcodierte Liste |
+| AC-100b-6 Wer-darf-was = Gate-Semantik | ✅ | Pentest **C** (={ua,um,uc} ohne un) + **D** (standard=alle) |
+| AC-100b-7 Einträge: Nutzer/Grund/Stufe/Befristung | ✅ | `who_can_access`-Felder + UI-Tabelle |
+| AC-100b-8 tenant/projekt-isoliert, manager-gated, read-only | ✅ | Pentest **G** (non-manager 42501); View hat keine Mutation |
+| AC-100b-9 standard = Baseline | ✅ | Pentest **D** |
+| AC-100b-10 anon-execute-Revoke auf 3 NtK-RPCs | ✅ | alle 5 NtK-Funktionen `anon=f, auth=t` (DB verifiziert) |
+| AC-100b-11 Audit bei Anwendung wie grant + Profil-Ref | ✅ | grant schreibt Audit-Zeile (Gate-Regression V-grant-audit); `applied_profile_id` gesetzt (Pentest A) |
+
+### Automatisierte Tests
+- **Vitest:** 1974/1974 grün (inkl. 24 neue 100b-Route-Tests: Auth/Validation/403-Governance/RPC-Error-Mapping).
+- **Live-Pentest** `tests/sql/PROJ-100b-clearance-profiles-pentest.sql` (self-rolling-back, 0 Residue): **A–H 8/8 PASS**.
+- **100a-Gate-Regression** (re-verifiziert, Gate byte-identisch): **V-admin/cleared/uncleared/crosstenant 4/4 PASS** → `tests/sql/PROJ-100a-need-to-know-pentest.sql` bleibt grün.
+- **Playwright E2E** `tests/PROJ-100b-clearance-profiles.spec.ts` (chromium): **9/9 PASS** — Auth-Gates auf 4 Routen + 2 Pages + invalid-uuid.
+- lint 0 · tsc 13 baseline/0 neu · build clean.
+
+### Security Audit (Red Team)
+| Vektor | Ergebnis |
+|--------|----------|
+| Auth-Gate (kein Session) auf 4 Routen + 2 Pages | ✅ E2E 9/9 (307/401/403) |
+| Katalog-Tenant-Isolation (RLS) | ✅ Pentest H |
+| apply-profile Autorität (non-manager) + cross-tenant + inaktiv | ✅ Pentest F/E + Route 42501→403 / P0002→404 (Route-Tests) |
+| who-can-see manager-gated (kein Inner-Circle-Leak) | ✅ Pentest G |
+| Kein Zweit-Gate (View aus `can_access_classified`-Prädikat) | ✅ by design + Pentest C |
+| anon-execute auf NtK-RPCs | ✅ revoked, verifiziert |
+| Advisor (security) | ✅ keine neuen Findings (etabliertes SECURITY-DEFINER-Muster) |
+
+### Findings
+- Keine Critical/High/Medium. **F-1 (Low/Info, Deploy-Handoff, kein Feature-Bug):** Shared-Checkout-Kollision — der `/backend`-Commit wurde via #174 nach main gemergt (mit PROJ-99/128/129-Docs gebündelt durch eine Parallel-Session); das Frontend liegt sauber auf `proj-100b/frontend` (PR #178). Mein versehentlicher Commit auf `proj-99-128-129/backend` wurde auf User-Wunsch nicht angefasst (Parallel-Session bereinigt).
+- **Phase/Work-Item-Picker in der Wer-darf-was-View** zeigt nur Objekte, die der aufrufende Manager selbst sehen darf (Gate-konsistent — ein nicht für `strict` freigeschalteter Lead sieht klassifizierte Objekte nicht im Picker; Tenant-Admins sehen alles). Erwartetes Verhalten, kein Bug.
+
 
 ## Deployment
 _To be added by /deploy_
