@@ -116,7 +116,7 @@ function buildSupabaseAuthCookies(
   }))
 }
 
-async function globalSetup(_config: FullConfig): Promise<void> {
+async function globalSetup(config: FullConfig): Promise<void> {
   await loadEnvLocal()
 
   const url = process.env.NEXT_PUBLIC_SUPABASE_URL
@@ -305,7 +305,42 @@ async function globalSetup(_config: FullConfig): Promise<void> {
     `[PROJ-29 globalSetup] ready — storage state at ${storagePath}`
   )
 
-  await warmCompileDeepLinkRoutes(baseURL, supabaseCookies)
+  await maybeWarmCompileDeepLinkRoutes(config, baseURL, supabaseCookies)
+}
+
+/**
+ * PROJ-138 Block A — decide whether the warm-compile pass should run at all.
+ * Returns a human-readable skip reason, or null when warming should proceed.
+ *
+ * Warm-compile (PROJ-67 AC-9) exists ONLY to avoid parallel first-compile
+ * contention between workers. Two cases make it pointless or unwanted:
+ *   - `PW_SKIP_WARM_COMPILE=1`: explicit developer override (wins everywhere,
+ *     including CI).
+ *   - serial runs (`workers === 1`): there is no parallel contention to warm
+ *     against, so the up-front cost buys nothing. CI keeps the historical
+ *     full path unless the env override above is set.
+ */
+function warmCompileSkipReason(config: FullConfig): string | null {
+  if (process.env.PW_SKIP_WARM_COMPILE === "1") {
+    return "PW_SKIP_WARM_COMPILE=1"
+  }
+  if (!process.env.CI && config.workers === 1) {
+    return "workers=1 (serial run — no parallel contention to warm against)"
+  }
+  return null
+}
+
+async function maybeWarmCompileDeepLinkRoutes(
+  config: FullConfig,
+  baseURL: string,
+  authCookies: PlaywrightStorageCookie[],
+): Promise<void> {
+  const skip = warmCompileSkipReason(config)
+  if (skip) {
+    console.info(`[PROJ-138 warm-compile] skipped — ${skip}`)
+    return
+  }
+  await warmCompileDeepLinkRoutes(baseURL, authCookies)
 }
 
 /**
@@ -313,13 +348,19 @@ async function globalSetup(_config: FullConfig): Promise<void> {
  * deep-link routes once before parallel workers start. The Next.js dev
  * server compiles routes on first hit; when several workers hit
  * uncompiled graph/wizard routes simultaneously, the first-compile
- * contention causes sporadic navigation timeouts. One sequential
- * authenticated pass removes that failure mode without forcing the
- * whole suite to `workers: 1`.
+ * contention causes sporadic navigation timeouts.
  *
- * The webServer is already running when globalSetup executes. If it is
- * not reachable (config variants without webServer), skip silently —
- * warming is an optimization, never a gate.
+ * PROJ-138 hardens this against two failure modes that otherwise kill the
+ * whole run before a single test executes:
+ *   - Block B preflight wedge-probe: a hard-killed Playwright webServer can
+ *     leave a deadlocked Turbopack compile worker (route hangs forever at
+ *     ~0% CPU). Probe one heavy route first; if it times out, warn with the
+ *     remedy and skip the rest.
+ *   - Per-route timeout (default 30s, was 120s) + a total wall-clock budget
+ *     (default 90s) + fail-fast after 2 consecutive timeouts. Skipped routes
+ *     are named in the log (no silent cap). All env-overridable.
+ *
+ * Warming is always fail-open — never a test gate.
  */
 async function warmCompileDeepLinkRoutes(
   baseURL: string,
@@ -329,7 +370,7 @@ async function warmCompileDeepLinkRoutes(
     await fetch(baseURL, { signal: AbortSignal.timeout(3_000) })
   } catch {
     console.info(
-      "[PROJ-67 warm-compile] dev server not reachable yet — skipping",
+      "[PROJ-138 warm-compile] dev server not reachable yet — skipping",
     )
     return
   }
@@ -337,6 +378,10 @@ async function warmCompileDeepLinkRoutes(
   const cookieHeader = authCookies
     .map(({ name, value }) => `${name}=${value}`)
     .join("; ")
+  const routeTimeoutMs =
+    Number(process.env.PW_WARM_COMPILE_ROUTE_TIMEOUT_MS) || 30_000
+  const budgetMs = Number(process.env.PW_WARM_COMPILE_BUDGET_MS) || 90_000
+
   const routes = [
     "/login",
     "/projects",
@@ -346,26 +391,83 @@ async function warmCompileDeepLinkRoutes(
     `/projects/${E2E_PROJECT_ID}/backlog`,
   ]
 
-  const startedAt = Date.now()
-  for (const route of routes) {
-    const routeStart = Date.now()
+  const warmOne = async (
+    route: string,
+  ): Promise<{ ok: boolean; ms: number; status?: number }> => {
+    const start = Date.now()
     try {
       const res = await fetch(`${baseURL}${route}`, {
         headers: { cookie: cookieHeader },
         redirect: "manual",
-        signal: AbortSignal.timeout(120_000),
+        signal: AbortSignal.timeout(routeTimeoutMs),
       })
-      console.info(
-        `[PROJ-67 warm-compile] ${route} → ${res.status} in ${Date.now() - routeStart}ms`,
-      )
-    } catch (err) {
-      console.warn(
-        `[PROJ-67 warm-compile] ${route} failed after ${Date.now() - routeStart}ms: ${String(err)} — continuing`,
-      )
+      return { ok: true, ms: Date.now() - start, status: res.status }
+    } catch {
+      return { ok: false, ms: Date.now() - start }
     }
   }
+
+  // Block B — preflight wedge probe on one heavy route.
+  const probeRoute = "/projects"
+  const probe = await warmOne(probeRoute)
+  if (!probe.ok) {
+    console.warn(
+      `[PROJ-138 warm-compile] preflight ${probeRoute} timed out after ${probe.ms}ms. ` +
+        "The dev server looks WEDGED — a deadlocked Turbopack compile worker " +
+        "(symptom: '○ Compiling ...' never completes, CPU idle, route hangs forever). " +
+        "Remedy: stop the run, then `npm run test:e2e:fresh` (or manually " +
+        "`pkill -9 -f next-server && rm -rf .next/dev && npm run dev`). " +
+        "Skipping the rest of warm-compile (fail-open).",
+    )
+    return
+  }
   console.info(
-    `[PROJ-67 warm-compile] done in ${Date.now() - startedAt}ms (${routes.length} routes)`,
+    `[PROJ-138 warm-compile] ${probeRoute} → ${probe.status} in ${probe.ms}ms`,
+  )
+
+  const startedAt = Date.now()
+  const remaining = routes.filter((r) => r !== probeRoute)
+  const skipped: string[] = []
+  let consecutiveTimeouts = 0
+
+  for (let i = 0; i < remaining.length; i++) {
+    if (Date.now() - startedAt > budgetMs) {
+      skipped.push(...remaining.slice(i))
+      break
+    }
+    const route = remaining[i]
+    const r = await warmOne(route)
+    if (r.ok) {
+      consecutiveTimeouts = 0
+      console.info(
+        `[PROJ-138 warm-compile] ${route} → ${r.status} in ${r.ms}ms`,
+      )
+    } else {
+      consecutiveTimeouts++
+      console.warn(
+        `[PROJ-138 warm-compile] ${route} timed out after ${r.ms}ms — continuing`,
+      )
+      if (consecutiveTimeouts >= 2) {
+        skipped.push(...remaining.slice(i + 1))
+        console.warn(
+          "[PROJ-138 warm-compile] 2 consecutive route timeouts — assuming a " +
+            "wedged/overloaded dev server; skipping the rest (fail-open).",
+        )
+        break
+      }
+    }
+  }
+
+  if (skipped.length > 0) {
+    console.warn(
+      `[PROJ-138 warm-compile] skipped ${skipped.length} route(s) to stay within ` +
+        `the ${budgetMs}ms budget: ${skipped.join(", ")}. Downstream navigations ` +
+        "to these routes may hit a cold first-compile.",
+    )
+  }
+  console.info(
+    `[PROJ-138 warm-compile] done in ${Date.now() - startedAt}ms ` +
+      `(${remaining.length - skipped.length}/${remaining.length} routes warmed after probe)`,
   )
 }
 
