@@ -21,13 +21,11 @@
  */
 
 import * as React from "react"
-import Link from "next/link"
 import {
   Building2,
   CheckCircle2,
   Link2,
   Pencil,
-  ServerOff,
   Sparkles,
   User,
   X,
@@ -50,6 +48,9 @@ import {
   type StakeholderProposalSuggestionRow,
 } from "@/lib/ai-proposals/stakeholder-proposals-api"
 import { uploadContextSourceFile } from "@/lib/ai-proposals/proposal-from-context-api"
+import type { AiRunReasonCode } from "@/lib/ai/types"
+import { reasonCodeToBanner } from "@/lib/ai-proposals/reason-code-banner"
+import { ReasonBanner } from "./reason-banner"
 
 interface StakeholderProposalTabProps {
   projectId: string
@@ -82,7 +83,13 @@ export function StakeholderProposalTab({
     StakeholderProposalSuggestionRow[]
   >([])
   const [busy, setBusy] = React.useState(false)
-  const [localProviderMissing, setLocalProviderMissing] = React.useState(false)
+  // PROJ-137 AC-4 — machine-readable run reason + the router's human-
+  // readable detail string. Drives the actionable banner. (Replaces the
+  // old boolean `localProviderMissing` — `class3_blocked` covers it but
+  // now we also surface no_provider / cost-cap / provider-error / etc.)
+  const [reasonCode, setReasonCode] =
+    React.useState<AiRunReasonCode | null>(null)
+  const [reasonDetail, setReasonDetail] = React.useState<string | null>(null)
 
   // Source selection: existing context_source (dropdown) or fresh upload.
   const [sources, setSources] = React.useState<ContextSourceOption[]>([])
@@ -105,6 +112,13 @@ export function StakeholderProposalTab({
     } finally {
       setLoading(false)
     }
+  }, [projectId])
+
+  // PROJ-137 — reset the run-reason banner when the tab (re)mounts.
+  React.useEffect(() => {
+    // eslint-disable-next-line react-hooks/set-state-in-effect -- one-shot reset when the project changes
+    setReasonCode(null)
+    setReasonDetail(null)
   }, [projectId])
 
   React.useEffect(() => {
@@ -235,16 +249,26 @@ export function StakeholderProposalTab({
         count: 10,
       })
 
+      // PROJ-137 AC-4 — whenever the run produced no items (blocked,
+      // errored or empty), capture the router's machine-readable reason
+      // so the banner can explain it. A non-empty success resets it.
+      if (result.suggestion_ids.length === 0) {
+        setReasonCode(result.reason_code ?? null)
+        setReasonDetail(result.error_message ?? null)
+      } else {
+        setReasonCode(null)
+        setReasonDetail(null)
+      }
+
       if (result.status === "error") {
         toast.error("KI-Lauf fehlgeschlagen", {
           description: result.error_message ?? "Unbekannter Fehler",
         })
       } else if (result.external_blocked) {
-        // AC-88.3 — Class-3-pinned purpose without a local provider is a
-        // hard, by-design block. Persistent banner instead of a toast.
-        setLocalProviderMissing(true)
+        // AC-88.3 / PROJ-137 — Class-3-pinned purpose without a local
+        // provider is a hard, by-design block; the persistent banner
+        // below surfaces the actionable reason instead of a toast.
       } else {
-        setLocalProviderMissing(false)
         toast.success(
           result.suggestion_ids.length === 0
             ? "KI hat keine Stakeholder im Dokument gefunden."
@@ -429,29 +453,35 @@ export function StakeholderProposalTab({
         Undo nach jedem Accept.
       </p>
 
-      {/* AC-88.3 — local provider required (by design, not an error) */}
-      {localProviderMissing && (
-        <div
-          role="alert"
-          className="flex items-start gap-2 rounded-md border border-amber-400/40 bg-amber-500/10 p-3 text-xs text-amber-800 dark:text-amber-200"
-          data-testid="stakeholder-proposal-local-provider-banner"
-        >
-          <ServerOff className="mt-0.5 h-4 w-4 shrink-0" aria-hidden />
-          <span>
-            <strong>Lokaler KI-Provider (Ollama) erforderlich.</strong>{" "}
-            Stakeholder-Extraktion verarbeitet personenbezogene Daten
-            (Class-3) und läuft deshalb nie über Cloud-Provider. Ein
-            Tenant-Admin kann unter{" "}
-            <Link
-              href="/settings/tenant/ai-providers"
-              className="underline underline-offset-2"
-            >
-              Einstellungen → KI-Provider
-            </Link>{" "}
-            einen Ollama-Endpoint hinterlegen.
-          </span>
-        </div>
-      )}
+      {/* PROJ-137 AC-4 / AC-88.3 — actionable run-reason banner. For this
+          Class-3-pinned purpose the dominant case is `class3_blocked`
+          (no local provider), but no_provider / cost-cap / provider-error
+          are now surfaced too. Falls back to the router's freetext when
+          no code maps. The stakeholder testid is kept verbatim. */}
+      {(() => {
+        const banner = reasonCodeToBanner(reasonCode)
+        if (banner) {
+          return (
+            <ReasonBanner
+              banner={banner}
+              errorMessage={reasonDetail}
+              testId="stakeholder-proposal-local-provider-banner"
+            />
+          )
+        }
+        if (reasonDetail) {
+          return (
+            <ReasonBanner
+              banner={{
+                title: "KI-Lauf ohne Ergebnis",
+                body: reasonDetail,
+              }}
+              testId="stakeholder-proposal-local-provider-banner"
+            />
+          )
+        }
+        return null
+      })()}
 
       {/* BulkActionBar */}
       {drafts.length > 0 && (

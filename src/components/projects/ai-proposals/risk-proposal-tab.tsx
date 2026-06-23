@@ -22,12 +22,10 @@
  */
 
 import * as React from "react"
-import Link from "next/link"
 import {
   CheckCircle2,
   Link2,
   Pencil,
-  ServerOff,
   ShieldAlert,
   Sparkles,
   X,
@@ -49,6 +47,9 @@ import {
   type RiskProposalSuggestionRow,
 } from "@/lib/ai-proposals/risk-proposals-api"
 import { uploadContextSourceFile } from "@/lib/ai-proposals/proposal-from-context-api"
+import type { AiRunReasonCode } from "@/lib/ai/types"
+import { reasonCodeToBanner } from "@/lib/ai-proposals/reason-code-banner"
+import { ReasonBanner } from "./reason-banner"
 
 interface RiskProposalTabProps {
   projectId: string
@@ -84,7 +85,11 @@ export function RiskProposalTab({ projectId }: RiskProposalTabProps) {
     RiskProposalSuggestionRow[]
   >([])
   const [busy, setBusy] = React.useState(false)
-  const [blockedReason, setBlockedReason] = React.useState<string | null>(null)
+  // PROJ-137 AC-4 — machine-readable run reason + the router's human-
+  // readable detail string. Drives the actionable banner.
+  const [reasonCode, setReasonCode] =
+    React.useState<AiRunReasonCode | null>(null)
+  const [reasonDetail, setReasonDetail] = React.useState<string | null>(null)
 
   // Source selection: existing context_source (dropdown) or fresh upload.
   const [sources, setSources] = React.useState<ContextSourceOption[]>([])
@@ -104,6 +109,13 @@ export function RiskProposalTab({ projectId }: RiskProposalTabProps) {
     } finally {
       setLoading(false)
     }
+  }, [projectId])
+
+  // PROJ-137 — reset the run-reason banner when the tab (re)mounts.
+  React.useEffect(() => {
+    // eslint-disable-next-line react-hooks/set-state-in-effect -- one-shot reset when the project changes
+    setReasonCode(null)
+    setReasonDetail(null)
   }, [projectId])
 
   React.useEffect(() => {
@@ -208,20 +220,26 @@ export function RiskProposalTab({ projectId }: RiskProposalTabProps) {
         count: 10,
       })
 
+      // PROJ-137 AC-4 — whenever the run produced no items (blocked,
+      // errored or empty), capture the router's machine-readable reason
+      // so the banner can explain it. A non-empty success resets it.
+      if (result.suggestion_ids.length === 0) {
+        setReasonCode(result.reason_code ?? null)
+        setReasonDetail(result.error_message ?? null)
+      } else {
+        setReasonCode(null)
+        setReasonDetail(null)
+      }
+
       if (result.status === "error") {
         toast.error("KI-Lauf fehlgeschlagen", {
           description: result.error_message ?? "Unbekannter Fehler",
         })
       } else if (result.external_blocked) {
         // Content-based purpose: blocked means Class-3 detected without an
-        // eligible local provider (or cost-cap). Persistent banner with the
-        // router's actionable reason (PROJ-88 F-1).
-        setBlockedReason(
-          result.error_message ??
-            "KI-Lauf blockiert — kein geeigneter Provider für die Datenklasse.",
-        )
+        // eligible local provider (or cost-cap). The persistent banner
+        // below surfaces the actionable reason (PROJ-88 F-1 / PROJ-137).
       } else {
-        setBlockedReason(null)
         toast.success(
           result.suggestion_ids.length === 0
             ? "KI hat keine Risikosignale im Dokument gefunden."
@@ -402,27 +420,34 @@ export function RiskProposalTab({ projectId }: RiskProposalTabProps) {
         (PROJ-20). 30&nbsp;s Undo nach jedem Accept.
       </p>
 
-      {/* Blocked banner (Class-3 without local provider / cost-cap) */}
-      {blockedReason && (
-        <div
-          role="alert"
-          className="flex items-start gap-2 rounded-md border border-amber-400/40 bg-amber-500/10 p-3 text-xs text-amber-800 dark:text-amber-200"
-          data-testid="risk-proposal-blocked-banner"
-        >
-          <ServerOff className="mt-0.5 h-4 w-4 shrink-0" aria-hidden />
-          <span>
-            <strong>KI-Lauf blockiert.</strong> {blockedReason} Ein
-            Tenant-Admin kann unter{" "}
-            <Link
-              href="/settings/tenant/ai-providers"
-              className="underline underline-offset-2"
-            >
-              Einstellungen → KI-Provider
-            </Link>{" "}
-            die Provider-Konfiguration anpassen.
-          </span>
-        </div>
-      )}
+      {/* PROJ-137 AC-4 — actionable run-reason banner (Class-3 without
+          local provider / no provider / cost-cap / provider error /
+          disabled). Falls back to the router's freetext when no code
+          maps (don't regress PROJ-88/89 behaviour). */}
+      {(() => {
+        const banner = reasonCodeToBanner(reasonCode)
+        if (banner) {
+          return (
+            <ReasonBanner
+              banner={banner}
+              errorMessage={reasonDetail}
+              testId="risk-proposal-blocked-banner"
+            />
+          )
+        }
+        if (reasonDetail) {
+          return (
+            <ReasonBanner
+              banner={{
+                title: "KI-Lauf ohne Ergebnis",
+                body: reasonDetail,
+              }}
+              testId="risk-proposal-blocked-banner"
+            />
+          )
+        }
+        return null
+      })()}
 
       {/* BulkActionBar */}
       {drafts.length > 0 && (

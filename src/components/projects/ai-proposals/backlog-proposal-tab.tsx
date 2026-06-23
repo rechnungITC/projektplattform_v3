@@ -65,11 +65,14 @@ import {
   isProposalKindCompatibleWithMethod,
   type ReparentRejection,
 } from "@/lib/ai-proposals/proposal-tree-rules"
+import type { AiRunReasonCode } from "@/lib/ai/types"
+import { reasonCodeToBanner } from "@/lib/ai-proposals/reason-code-banner"
 
 import {
   BacklogProposalTreeNode,
   type BacklogProposalTreeNodeData,
 } from "./backlog-proposal-tree-node"
+import { ReasonBanner } from "./reason-banner"
 
 interface BacklogProposalTabProps {
   projectId: string
@@ -143,6 +146,12 @@ export function BacklogProposalTab({
     ProposalFromContextSuggestionRow[]
   >([])
   const [busy, setBusy] = React.useState(false)
+  // PROJ-137 AC-4 — machine-readable run reason + the router's human-
+  // readable detail string. Drives the actionable persistent banner
+  // (the backlog tab previously only showed a transient toast).
+  const [reasonCode, setReasonCode] =
+    React.useState<AiRunReasonCode | null>(null)
+  const [reasonDetail, setReasonDetail] = React.useState<string | null>(null)
   // PROJ-70-γ+δ: file-picker state. The picker accepts PDF/DOCX/TXT/MD/EML/MSG;
   // server-side magic-byte sniffing is the security boundary, the
   // accept-attribute is just a UX hint.
@@ -176,6 +185,13 @@ export function BacklogProposalTab({
     void reload()
   }, [reload])
 
+  // PROJ-137 — reset the run-reason banner when the tab (re)mounts.
+  React.useEffect(() => {
+    // eslint-disable-next-line react-hooks/set-state-in-effect -- one-shot reset when the project changes
+    setReasonCode(null)
+    setReasonDetail(null)
+  }, [projectId])
+
   // PROJ-70-ε — one-shot auto-generation for the wizard handoff. When the
   // drawer is deep-linked with a context_source that was uploaded during
   // project creation, kick off a generation run exactly once.
@@ -192,6 +208,14 @@ export function BacklogProposalTab({
           contextSourceId: sourceId,
           count: 10,
         })
+        // PROJ-137 AC-4 — capture the reason whenever no items came back.
+        if (result.suggestion_ids.length === 0) {
+          setReasonCode(result.reason_code ?? null)
+          setReasonDetail(result.error_message ?? null)
+        } else {
+          setReasonCode(null)
+          setReasonDetail(null)
+        }
         if (result.status === "error") {
           toast.error("KI-Lauf fehlgeschlagen", {
             description: result.error_message ?? "Unbekannter Fehler",
@@ -403,6 +427,15 @@ export function BacklogProposalTab({
         contextSourceId: contextSource.id,
         count: 10,
       })
+
+      // PROJ-137 AC-4 — capture the reason whenever no items came back.
+      if (result.suggestion_ids.length === 0) {
+        setReasonCode(result.reason_code ?? null)
+        setReasonDetail(result.error_message ?? null)
+      } else {
+        setReasonCode(null)
+        setReasonDetail(null)
+      }
 
       if (result.status === "error") {
         toast.error("KI-Lauf fehlgeschlagen", {
@@ -617,6 +650,37 @@ export function BacklogProposalTab({
         einzeln oder bulk. Innerhalb von 30&nbsp;s kannst du die Akzeptanz
         wieder rückgängig machen.
       </p>
+
+      {/* PROJ-137 AC-4 — persistent actionable run-reason banner. The
+          backlog purpose is content-classified (Class-1/2 → cloud,
+          Class-3 → local), so the common codes are no_provider /
+          provider_error / cost_cap_exceeded; class3_blocked appears when
+          PII is present without a local provider. Falls back to the
+          router's freetext when no code maps. */}
+      {(() => {
+        const banner = reasonCodeToBanner(reasonCode)
+        if (banner) {
+          return (
+            <ReasonBanner
+              banner={banner}
+              errorMessage={reasonDetail}
+              testId="backlog-proposal-blocked-banner"
+            />
+          )
+        }
+        if (reasonDetail) {
+          return (
+            <ReasonBanner
+              banner={{
+                title: "KI-Lauf ohne Ergebnis",
+                body: reasonDetail,
+              }}
+              testId="backlog-proposal-blocked-banner"
+            />
+          )
+        }
+        return null
+      })()}
 
       {incompatibleCount > 0 && (
         <p
