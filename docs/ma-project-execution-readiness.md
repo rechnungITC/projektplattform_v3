@@ -16,7 +16,7 @@ Die Plattform kann mit PROJ-94 ein M&A-Projekt als eigenen Projekttyp anlegen, d
 | M&A-Projektanlage / strategische Grundlage | PROJ-94 QA PASS, PR #168 offen | Deal-Raum kann angelegt und mit Mandat, Sponsor, Deal Lead, Deal-Rationale, Suchprofil, Ausschlusskriterien und Investitionsrahmen gefuellt werden. Merge/Deploy von PR #168 bleibt der Produktiv-Handoff. |
 | Need-to-Know Foundation | PROJ-100a Approved | Klassifizierte Objekte koennen tenant-intern zusaetzlich eingeschraenkt werden; PROJ-94 nutzt dieses Rezept bereits auf `ma_project_profiles`. PROJ-100b bleibt fuer Clearance-UX, 4-Augen und Hygiene. |
 | M&A-Phasenmodell / Target-Screening | offen, PROJ-95 | Mandatsfreigabe erzeugt heute nur das Gate-Flag. Die fachliche Phase 2 entsteht erst mit dem M&A-Method-Catalog. |
-| Rollen / RACI / externe Berater | offen, PROJ-97/99/128/129 | Sponsor und Deal Lead sind vorhanden; vollstaendige M&A-Rollen, Advisor-Zugaenge, NDA und Inner-Circle-Profile fehlen noch. |
+| Rollen / RACI / externe Berater | PROJ-99/128/129 Architected; PROJ-97 offen | Sponsor und Deal Lead sind vorhanden; externe Advisor, NDA-Gate und Klassifikations-UX sind architekturell geschnitten, aber noch nicht gebaut. Vollstaendige M&A-Rollen/RACI fehlen weiterhin. |
 | Due Diligence | offen, PROJ-112-116 | DD-Streams, Fragenkatalog, Q&A, Findings, Red-Flags und DD-Report sind der naechste echte Pilot-Wert. |
 | Transaktion / Closing / PMI | geplant, PROJ-120-127 | Bewertungsmodell, Kaufpreis-Bridge, SPA, Closing Conditions, Day-1/100-Tage-Plan und Synergie-Tracking sind spaetere Ausbauwellen. |
 
@@ -45,7 +45,7 @@ Diese Reihenfolge ist der kuerzeste Pfad von "M&A-Projekt anlegbar" zu "DD fachl
 | 2 | PROJ-100b | Clearance-UX, 4-Augen/Delegation, "wer darf was sehen", RPC-Hygiene | Ohne bedienbare Vertraulichkeit ist reale M&A-Arbeit zu riskant. |
 | 3 | PROJ-95 | M&A-Method-Catalog mit 10 Phasen und Gate-Triggern; Mandat approved -> Target-Screening | Ohne Phasenmodell bleibt das Projekt ein Container ohne Ablauf. |
 | 4 | PROJ-97 | Rollen/RACI auf Projekt, Phase, Stream und Deliverable | Ohne klare Verantwortlichkeit keine DD-Steuerung. |
-| 5 | PROJ-99 + 128/129 | Externe Berater, NDA-Status, Inner-Circle/Klassifikation | DD braucht externe Advisor und streng kontrollierte Sichtbarkeit. |
+| 5 | PROJ-99 + 128/129 | Externe Berater, NDA-Status, Inner-Circle/Klassifikation | DD braucht externe Advisor und streng kontrollierte Sichtbarkeit. Tech-Design steht seit 2026-06-23; Build offen. |
 | 6 | PROJ-101 + 102/127 | Aufgaben und Workstreams als Reuse/Extension auf PROJ-9 | Operative Steuerung der DD-Arbeit. |
 | 7 | PROJ-112 | DD-Streams als Backbone | Struktur fuer Commercial/Financial/Tax/Legal/HR/IT/Operations-DD. |
 | 8 | PROJ-113 | Fragenkatalog und Q&A | Standardisierter Informationsbedarf und Nachverfolgung. |
@@ -79,7 +79,7 @@ Die M&A-Domaene bleibt eine Spezialisierung des Plattform-Cores:
 
 **Release B - DD-Pilot**
 
-- PROJ-99/128/129 fuer externe Berater und NDA/Klassifikation.
+- PROJ-99/128/129 fuer externe Berater und NDA/Klassifikation. Architektur steht; Backend/Frontend/QA offen.
 - PROJ-101/102/112 fuer Workstreams, Aufgaben und DD-Struktur.
 - PROJ-113/114/108/109 fuer Q&A, Findings, Red-Flags und Massnahmen.
 - PROJ-110/111/116 fuer Gate-Entscheidung und DD-Report.
