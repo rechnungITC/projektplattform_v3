@@ -13,9 +13,9 @@ summary_for_jira: "[B5b] Berechtigungsprofile + Wer-darf-was-Übersicht + anon-R
 
 # PROJ-100b: Berechtigungsprofile & Wer-darf-was-Sichtbarkeit
 
-## Status: Planned
+## Status: In Progress (backend gebaut 2026-06-24 — 2 Migrations in Prod, 4 APIs, Live-RPC-Smoke 7/7 + Gate-Regression 5/5; → /frontend)
 **Created:** 2026-06-23
-**Last Updated:** 2026-06-23
+**Last Updated:** 2026-06-24
 
 > **Herkunft:** Folge-Slice von [PROJ-100](PROJ-100-berechtigungskonzept-nach-need-to-know-umsetzen.md). 100a (Vertraulichkeits-RLS-Sublayer + `can_access_classified`-Tor + `grant_/revoke_confidentiality_clearance`-RPCs + `clearances`-API + Pentest) ist **deployed**. Dieser Slice deckt die in 100a bewusst zurückgestellten ACs **AC2 (Profile)** und **AC4 (Wer-darf-was-View)** ab plus einen Security-Hygiene-Befund aus dem 100a-QA. **AC5 (4-Augen-Workflow) ist NICHT Teil dieses Slices → PROJ-100c.**
 
@@ -159,6 +159,22 @@ Projekt-Raum (bestehend) — NEU: Karte/Reiter "Vertraulichkeit & Zugriff"
 
 - 1 Migration (Profil-Tabelle + RLS + optionaler clearance→profil-Verweis), 1 kleine Härtungs-Migration (anon-revoke) — PROJ-134-Konvention (`apply_migration` name = Repo-Dateiname-Stamm), Pflicht-Live-RPC-Smoke für neue/erweiterte RPCs.
 - **Regressionspflicht:** `tests/sql/PROJ-100a-need-to-know-pentest.sql` muss nach 100b unverändert grün laufen; zusätzlich ein Profil-/View-Smoke (Profil-Anwendung erzeugt genau eine Freischaltung über den grant-Pfad; View == Tor-Semantik).
+
+## Implementation Notes — Backend (2026-06-24)
+
+**Migrationen (PROJ-134-Konvention, name = Repo-Dateiname-Stamm; beide in Prod-DB):**
+- `20260624120000_proj100b_clearance_profiles` — neue tenant-weite `ma_clearance_profiles` (name unique je Tenant case-insensitiv via `lower(name)`-Index, `granted_level` CHECK confidential/strict, `is_active`, Audit-Spalten) + Tenant-RLS (member-SELECT, admin INSERT/UPDATE/DELETE als separate Policies, PROJ-68-Hygiene); `audit_log_entity_type_check` 45→46 (`ma_clearance_profiles` VORHER eingetragen — PROJ-100a-H-1-Lehre) + `_tracked_audit_columns` erweitert + `record_audit_changes`-UPDATE-Trigger angehängt; `applied_profile_id`-Provenance-Spalte (ON DELETE SET NULL) auf `ma_confidentiality_clearances`; **grant-RPC recreated** (4→5 Arg mit optionalem `p_applied_profile_id` default null — bestehende PostgREST-4-Arg-Caller lösen via Default auf; `revoke from public,anon` da neues Objekt sonst PUBLIC-executable wäre); `apply_clearance_profile`-Wrapper (resolved aktives Profil same-tenant → `greatest(existing, profile_level)` Downgrade-Schutz → delegiert an grant = EIN Autoritäts-/Audit-Pfad); `who_can_access`-Read-RPC (manager-gated, aus dem `can_access_classified`-Prädikat abgeleitet: standard=alle Member, sonst Admins ∪ gültige Clearances ≥ Level — KEIN Zweit-Gate).
+- `20260624120100_proj100b_revoke_anon_execute` — `revoke execute … from public,anon` auf `can_access_classified` + `grant_` + `revoke_confidentiality_clearance` (AC-100b-10); `authenticated` behält execute. Verifiziert: alle 5 NtK-Funktionen `anon=f, auth=t`.
+
+**APIs:** `GET/POST /api/clearance-profiles` (Katalog-Liste member / Create admin) + `PATCH/DELETE /api/clearance-profiles/[id]` (Edit/Deactivate/Hard-Delete, admin) + `POST /api/projects/[id]/clearances/apply-profile` (manager, RPC 42501→403 / P0002→404) + `GET /api/projects/[id]/access-overview?objectType=&objectId=` (resolved Objekt-Level → `who_can_access`, manager). Client-Wrapper `src/lib/ma-project/clearance-profiles-api.ts`.
+
+**Pflicht-Live-RPC-Smoke gegen Prod (DO-block, rollback, 0 Residue) — 7/7 PASS:** A profile→confidential+provenance · B Downgrade-Schutz hält strict · C who_can_access(confidential)={admin,strict,conf-cleared} ohne uncleared · D standard=alle Member · E inaktiv rejected · F cross-tenant rejected · G non-manager geblockt (42501).
+**100a-Gate-Regression (rolling-back, 5/5 PASS):** admin-bypass · cleared conf-yes/strict-no · uncleared conf-no/standard-yes · cross-tenant denied · recreated-grant schreibt Clearance+Audit. `can_access_classified` + RESTRICTIVE-Policies byte-identisch (nur revoke/grant berührt) → 100a-Pentest bleibt grün.
+**Advisor:** keine neuen Findings — `apply_clearance_profile`/`who_can_access` teilen das etablierte SECURITY-DEFINER-authenticated-callable-Muster (Autorität intern, anon revoked), wie alle bestehenden RPCs.
+
+**Quality-Gates:** vitest 1965/1965 (+24 neue Route-Tests); lint 0; tsc 13 baseline/0 neu; build clean.
+
+**Offen → /frontend:** Stammdaten-Katalog „Berechtigungsprofile" (admin CRUD) + Projekt-Raum-Karte „Vertraulichkeit & Zugriff" (Profil-Anwenden + erste clearances-UI + Wer-darf-was-View mit Class-3-Masking). Danach /qa (Pentest-Regression + Security-Review der 4 Routen).
 
 ## QA Test Results
 _To be added by /qa_
