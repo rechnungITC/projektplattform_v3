@@ -14,7 +14,7 @@ summary_for_jira: "[A1] M&A-Projekt mit strategischer Grundlage anlegen"
 
 # PROJ-94: M&A-Projekt mit strategischer Grundlage anlegen
 
-## Status: In Progress (backend + frontend built 2026-06-22; QA pending)
+## Status: In Review (QA started 2026-06-22)
 **Created:** 2026-06-10
 **Origin:** M&A-Platform Backlog (Epic A — Projektgrundlagen & Phasenmodell)
 **Priority:** P1
@@ -228,6 +228,8 @@ Behebt drei Review-Findings aus dem Backend-Slice:
 3. `PATCH /api/projects/[id]/ma-profile` nutzt einen lokalen Governance-Check, der zur DB-Policy passt: nur Tenant-Admin oder Project-Lead. Project-Editoren erhalten vor dem UPDATE einen sauberen 403 statt eines widersprüchlichen API-/RLS-Vertrags.
 
 Validierung im Fix-Worktree: GitNexus `impact` für beide Route-Symbole = LOW (jeweils nur direkte Route-Testdatei, 0 Prozesse); `detect-changes` = LOW, 5 Dateien, 0 betroffene Prozesse; `npm run test -- 'src/app/api/projects/[id]/ma-profile/route.test.ts' 'src/app/api/projects/[id]/ma-profile/mandate/route.test.ts'` grün (16/16); `npm run lint` grün; `npm run audit:prod` grün.
+
+**Konsolidierung + Prod-Patch — 2026-06-23 (Backend-Branch):** Das Hardening (`fix/proj94-ma-security`, Commit `3b25f62`) war von `7c3811e` abgezweigt und fehlte komplett im `proj-94/backend`-Branch (der Frontend + Redirect-Commits trug) → per Cherry-Pick konsolidiert. **Sicherheitsrelevant:** Der Cherry-Pick editiert nur die *Migrationsdatei* `20260619143423` — die war aber bereits in Prod angewendet, d. h. die korrigierte RPC erreichte die Live-DB nicht. Live-Prüfung bestätigte: `transition_mandate_status` lief in Prod **ohne** den `can_access_classified`-Check (`has_classified_check=0`) → ein Sponsor/Deal-Lead ohne Vertraulichkeits-Clearance konnte den Mandatsstand eines klassifizierten Profils ändern (Need-to-Know-Bypass über die SECURITY-DEFINER-RPC). Fix: neue idempotente Patch-Migration `20260623173744_proj94_harden_mandate_rpc_clearance` (signatur-identisches `create or replace`) in Prod angewendet → `has_classified_check=true`, `anon` nicht executable, `authenticated` executable. **Pflicht-Live-RPC-Smoke** (`tests/sql/PROJ-94-need-to-know-pentest.sql`, 2. Block, self-rolling-back, 0 Residue): A uncleared Sponsor auf confidential → blockiert (42501 `insufficient clearance`); B nach Clearance-Grant → transition durch; C standard-Profil ohne Clearance → kein Over-Block. A/B/C PASS. Gates: vitest 1915/1915, tsc 0 src-Fehler, lint 0, build clean.
 
 **Vorbestand-Followup (nicht PROJ-94-Scope):** 3 PROJ-100a-RPCs (`can_access_classified`/`grant`/`revoke_confidentiality_clearance`) sind weiterhin anon-executable (fail-closed/Hygiene). Kandidat für PROJ-100b-Hardening (`revoke … from anon`).
 
