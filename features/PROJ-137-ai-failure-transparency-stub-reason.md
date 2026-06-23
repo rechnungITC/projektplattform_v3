@@ -1,6 +1,6 @@
 # PROJ-137: AI-Failure-Transparency — sichtbarer Grund statt stiller Stub-0-Vorschläge
 
-## Status: In Progress (Backend re-implementiert 2026-06-23 — FE-Banner AC-4 offen → /frontend, dann /qa)
+## Status: In Progress (Backend + Frontend gebaut 2026-06-23 — AC-4 Banner live; AC-2/AC-5 Live-Nachweis offen → /qa)
 **Created:** 2026-06-19
 **Last Updated:** 2026-06-23
 
@@ -14,6 +14,16 @@
 - **Gates:** eslint 0 · tsc 14→14 (keine neuen; alle 14 vorbestehende Test-Mock-Typing-Fehler, 0 in PROJ-137-Dateien) · vitest 1915/1915.
 - **Class-3-Hardblock + Multi-Tenant-Invariante unberührt** (AC-7): der Slice macht den Block nur sichtbar.
 - **Offen → /frontend:** AC-4 (actionable Banner-Mapping `reasonCode → {Text, Handlungslink}` in den Drawer-Tabs). **→ /qa:** AC-2/AC-5 Live-Nachweis über alle Purposes inkl. `class3_blocked`-vs-`provider_error` gegen gehosteten Ollama.
+
+## Implementation Notes — Frontend (2026-06-23) — AC-4 erledigt
+- **`src/lib/ai-proposals/reason-code-banner.ts` (neu):** Decision-D Single-Source-Mapping `reasonCodeToBanner(code) → {title, body, action?}`. `null`/`undefined` → `null` (normale Leer-Ansicht, AC-6). **Kein** `action` für `provider_error` (transient — „später erneut versuchen", kein Settings-Link) und `external_ai_disabled` (Env-Kill-Switch, Admin-Sache). `no_provider` / `class3_blocked` / `cost_cap_exceeded` → Link `/settings/tenant/ai-providers`.
+- **`src/components/projects/ai-proposals/reason-banner.tsx` (neu):** eine geteilte präsentationale `<ReasonBanner banner errorMessage testId />` — EIN Render-Pfad für alle 3 Tabs (amber `ServerOff`-Markup, gematcht an die bestehenden PROJ-88/89-Banner; Titel fett + body + optionaler Config-`<Link>` + gemutete `error_message`-Detailzeile).
+- **`reason_code?: AiRunReasonCode | null`** in den 3 FE-Wrapper-Result-Typen (`risk-proposals-api` / `stakeholder-proposals-api` / `proposal-from-context-api`) — die Routes geben das Router-Result verbatim zurück, daher reicht das Typing.
+- **3 Tabs** (`backlog` / `stakeholder` / `risk-proposal-tab`): `reasonCode`+`reasonDetail`-State wird gesetzt wann immer `suggestion_ids.length === 0` (blocked/error/empty), zurückgesetzt bei nicht-leerem Erfolg + bei Projektwechsel; Freitext-Fallback erhalten (kein PROJ-88/89-Regress). Backlog hatte bisher nur einen Toast → persistentes Banner ergänzt (Toast bleibt). data-testids: `risk-proposal-blocked-banner` (behalten), `stakeholder-proposal-local-provider-banner` (behalten verbatim), `backlog-proposal-blocked-banner` (neu).
+- **Unit-Test** `reason-code-banner.test.ts`: 9 Fälle (jeder Code → Titel + action-Präsenz; `null`/`undefined`→null; `provider_error`/`external_ai_disabled` ohne action; 3 Config-Codes → `/settings/tenant/ai-providers`).
+- **Gates:** eslint 0 · tsc 14→14 (0 neu) · vitest 1924/1924 (+9) · build clean (70/70 static pages). Kein neuer Dep, keine Route-/Migration-Änderung.
+- **Deviation:** Banner-Markup nutzt `ServerOff`+amber (das real existierende Block-Banner-Muster der Tabs), nicht `ShieldAlert` — bewusst für visuelle Konsistenz (Brief-Direktive „match existing markup" hat Vorrang).
+- **Offen → /qa:** AC-2/AC-5 Live-Nachweis über alle Purposes inkl. `class3_blocked`-vs-`provider_error` gegen gehosteten Ollama; visuelle Banner-Verifikation je Reason-Pfad.
 
 > **Herkunft:** CIA-Portfolio-Review 2026-06-19 (Risk R-1, HOCH). Der Multi-Provider-AI-Router fällt bei Provider-Fehler ODER Class-3-Block auf den `stub`-Provider zurück, der leere/CIA-L5-Antworten liefert. Live belegt: in PROJ-88-QA war `blockedReason` nicht gesetzt → `ki_runs.error_message` war NULL für **alle** Class-3-Blocks purposeübergreifend seit PROJ-32 (in-QA gefixt für 1–2 Purposes). Folge ungefixt: ein Pilot-PM sieht „0 Vorschläge" ohne Erklärung und schließt „die KI kann nichts" → killt die PRD-Adoption-Metrik direkt. Schwester-Slice: [[PROJ-136]] (Golden-Path-Smoke). Pilot-Kontext in [[project_first_erp_pilot_constraints]].
 
