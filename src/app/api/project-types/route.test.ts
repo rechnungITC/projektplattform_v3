@@ -14,6 +14,7 @@ describe("GET /api/project-types", () => {
       "construction",
       "erp",
       "general",
+      "ma",
       "software",
     ])
     expect(body.methods.map((m) => m.key).sort()).toEqual([

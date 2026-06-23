@@ -7,6 +7,7 @@ import type { TenantSettings } from "@/types/tenant-settings"
 import { getMethodConfig } from "./index"
 import {
   filterSectionsByModules,
+  filterSectionsByProjectType,
   getCanonicalSlug,
   getMethodSlug,
   getProjectSectionHref,
@@ -285,6 +286,73 @@ describe("filterSectionsByModules", () => {
   it("keeps everything when settings is undefined (fail-open)", () => {
     const result = filterSectionsByModules(sections, undefined)
     expect(result).toHaveLength(3)
+  })
+})
+
+describe("filterSectionsByProjectType (PROJ-94)", () => {
+  const overview: SidebarSection = {
+    id: "overview",
+    label: "Übersicht",
+    icon: LayoutDashboard,
+    tabPath: "",
+  }
+  const maFoundation: SidebarSection = {
+    id: "ma-foundation",
+    label: "Strategische Grundlage",
+    icon: LayoutDashboard,
+    tabPath: "strategische-grundlage",
+    requiresProjectType: "ma",
+  }
+  const sections = [overview, maFoundation]
+
+  it("keeps a type-gated section for the matching project type", () => {
+    const result = filterSectionsByProjectType(sections, "ma")
+    expect(result.map((s) => s.id)).toEqual(["overview", "ma-foundation"])
+  })
+
+  it("drops a type-gated section for a non-matching type", () => {
+    const result = filterSectionsByProjectType(sections, "erp")
+    expect(result.map((s) => s.id)).toEqual(["overview"])
+  })
+
+  it("drops type-gated sections when project type is null (fail-closed)", () => {
+    expect(filterSectionsByProjectType(sections, null).map((s) => s.id)).toEqual(
+      ["overview"],
+    )
+  })
+
+  it("always keeps ungated sections", () => {
+    expect(filterSectionsByProjectType([overview], "ma")).toHaveLength(1)
+    expect(filterSectionsByProjectType([overview], "erp")).toHaveLength(1)
+  })
+})
+
+describe("ma-foundation injection into method configs (PROJ-94)", () => {
+  it("injects the M&A section right after overview in every method", () => {
+    for (const method of [
+      "scrum",
+      "waterfall",
+      "kanban",
+      "safe",
+      "pmi",
+      "prince2",
+      "vxt2",
+      null,
+    ] as const) {
+      const cfg = getMethodConfig(method)
+      const ids = cfg.sidebarSections.map((s) => s.id)
+      expect(ids).toContain("ma-foundation")
+      // appears immediately after the leading overview entry
+      expect(ids.indexOf("ma-foundation")).toBe(ids.indexOf("overview") + 1)
+    }
+  })
+
+  it("resolves the M&A section slug in every method (routing works)", () => {
+    expect(getMethodSlug("ma-foundation", "scrum")).toBe("strategische-grundlage")
+    expect(getMethodSlug("ma-foundation", "waterfall")).toBe(
+      "strategische-grundlage",
+    )
+    expect(getMethodSlug("ma-foundation", null)).toBe("strategische-grundlage")
   })
 })
 

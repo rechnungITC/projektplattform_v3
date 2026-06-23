@@ -9,12 +9,14 @@
 
 import type { ProjectMethod } from "@/types/project-method"
 import type { ProjectType } from "@/types/project"
+import { type MaFoundationData, emptyMaFoundationData } from "@/types/ma-project"
 
 export const WIZARD_STEPS = [
   "basics",
   "type",
   "method",
   "followups",
+  "ma_foundation",
   "ki_backlog",
   "clarifying",
   "review",
@@ -27,24 +29,29 @@ export const WIZARD_STEP_LABELS: Record<WizardStep, string> = {
   type: "Projekttyp",
   method: "Methode",
   followups: "Detail-Fragen",
+  ma_foundation: "M&A-Grundlage",
   ki_backlog: "KI-Backlog",
   clarifying: "Rückfragen",
   review: "Review",
 }
 
 /**
- * PROJ-70-ε — `ki_backlog` is an OPTIONAL step (toggle on the basics step).
- * PROJ-135 — `clarifying` is an OPTIONAL step that only appears once a kickoff
- * artefact has actually been UPLOADED (a `context_source_id` exists). Both are
- * filtered out of the active flow otherwise; the full `WIZARD_STEPS` catalog
- * still drives the stepper/labels.
+ * PROJ-70-ε / PROJ-94 / PROJ-135 — three CONDITIONAL steps:
+ * - `ki_backlog` appears only when the user enabled the toggle.
+ * - `ma_foundation` appears only for `project_type === 'ma'`.
+ * - `clarifying` appears only once a kickoff artefact has actually been
+ *   UPLOADED (a `context_source_id` exists).
+ * Everything else is always in the flow; the full `WIZARD_STEPS` catalog drives
+ * the stepper/labels.
  */
 export function visibleWizardSteps(
   kiBacklogEnabled: boolean,
+  projectType?: ProjectType | null,
   kickoffUploaded = false,
 ): WizardStep[] {
   return WIZARD_STEPS.filter((s) => {
     if (s === "ki_backlog") return kiBacklogEnabled
+    if (s === "ma_foundation") return projectType === "ma"
     if (s === "clarifying") return kickoffUploaded
     return true
   })
@@ -79,6 +86,11 @@ export interface WizardData {
   // The whole block lives in the draft's `.passthrough()` JSON payload —
   // no DB schema change.
   ki_backlog: KiBacklogData
+
+  // PROJ-94 — strategic foundation for the conditional `ma_foundation` step.
+  // Only meaningful when `project_type === 'ma'`. Lives in the passthrough
+  // JSON payload; finalize reads it and calls `create_ma_project_profile`.
+  ma_foundation: MaFoundationData
 
   // PROJ-135 — optional dialogic clarifying-questions answers. Populated by
   // the (β) `clarifying` wizard step; on finalize the answered Q&A is appended
@@ -141,6 +153,7 @@ export function emptyWizardData(responsibleUserId: string): WizardData {
     project_method: null,
     type_specific_data: {},
     ki_backlog: emptyKiBacklogData(),
+    ma_foundation: emptyMaFoundationData(),
   }
 }
 

@@ -1,9 +1,11 @@
 # Decision Record — M&A-Domäne: Architektur & Core-Reuse
 
-**V3-original (kein V2-Erbe)** · Stand: 2026-06-15 · Betrifft: PROJ-94–132 (M&A-/Deal-Lifecycle-Epic, 39 Specs)
+**V3-original (kein V2-Erbe)** · Stand: 2026-06-23 · Betrifft: PROJ-94–132 (M&A-/Deal-Lifecycle-Epic, 39 Specs)
 
 **Input:** CIA-Sequenzierungs-Analyse [`docs/ma-epic-sequencing-2026-06-15.md`](../ma-epic-sequencing-2026-06-15.md) (2026-06-15).
 **Status:** Accepted (Forks 1–5 gelockt als CIA-empfohlene Defaults; revidierbar pro Fork, solange noch kein abhängiger Slice gebaut ist).
+
+**Operativer Readiness-Guide:** [`docs/ma-project-execution-readiness.md`](../ma-project-execution-readiness.md) ist die laufende Sicht darauf, was noch gebaut werden muss, damit M&A-Projekte nicht nur angelegt, sondern fachlich durchgeführt werden können.
 
 ---
 
@@ -19,7 +21,7 @@ Diese ADR lockt die domänenübergreifenden Architektur-Entscheidungen **einmali
 
 ### Fork 1 — M&A als `project_type`, nicht eigenes Modul
 
-**Entscheidung:** M&A wird ein **`project_type='m&a'`** über die bestehende Rule-Engine ([project-rule-engine.md](project-rule-engine.md)) + den Project-Type-Katalog ([project-type-catalog.md](project-type-catalog.md)). Die 10 M&A-Phasen und 9 Stage-Gates werden als **Methode** im Method-Catalog ([method-catalog.md](method-catalog.md)) modelliert. M&A-spezifische Objekte (DD-Streams, DD-Findings, Bewertung, SPA, Synergie, Gremien) sind **Extensions** nach dem `v3-code-extension-pattern` — niemals Ersatz des Core.
+**Entscheidung:** M&A wird ein **`project_type='ma'`** mit Anzeige-Label **"M&A-Projekt"** über die bestehende Rule-Engine ([project-rule-engine.md](project-rule-engine.md)) + den Project-Type-Katalog ([project-type-catalog.md](project-type-catalog.md)). Der Slug ist bewusst `ma` statt `m&a`, weil er URL- und API-sicher ist. Die 10 M&A-Phasen und 9 Stage-Gates werden als **Methode** im Method-Catalog ([method-catalog.md](method-catalog.md)) modelliert. M&A-spezifische Objekte (DD-Streams, DD-Findings, Bewertung, SPA, Synergie, Gremien) sind **Extensions** nach dem `v3-code-extension-pattern` — niemals Ersatz des Core.
 
 **Begründung:** ERP/Bau/Software laufen bereits exakt so. Ein eigenes M&A-Modul wäre ein Daten-Silo, der die geteilten Querschnitte (Audit, Approval, Stakeholder, Reporting) abkoppelt — direkter Widerspruch zur Produktvision (PRD: „shared project core plus type-specific extensions").
 
@@ -57,7 +59,7 @@ Legende: **REUSE** = Feld/Config-Erweiterung eines deployed Core-Features · **E
 
 | Spec | Klasse | Andockpunkt |
 |---|---|---|
-| 94 M&A-Projekt anlegen | REUSE | PROJ-2 CRUD + PROJ-5 Wizard + PROJ-6 `project_type='m&a'` |
+| 94 M&A-Projekt anlegen | REUSE | PROJ-2 CRUD + PROJ-5 Wizard + PROJ-6 `project_type='ma'` |
 | 95 Phasenmodell | DUP→REUSE | PROJ-19 + PROJ-6 Method-Catalog |
 | 96 Projekt-Templates | EXTEND | PROJ-6 Rule-Engine-Preset + Copy-on-create (echte Lücke) |
 | 97 Projektrollen/RACI | DUP→REUSE | PROJ-4 RBAC + PROJ-57; RACI-Feld neu |
@@ -105,9 +107,19 @@ Legende: **REUSE** = Feld/Config-Erweiterung eines deployed Core-Features · **E
 - **Downgrade auf Config-Erweiterung** (kein eigener Build): 130→PROJ-10 · 111→PROJ-20 Decisions · 106→PROJ-10 · 105→PROJ-31.
 - **Split:** 100 → 100a (RLS-Helper + Ebenen) / 100b (Inner-Circle-Profile + 4-Augen + View).
 
+## Execution Readiness
+
+PROJ-94 macht den Deal-Raum anlegbar, aber noch nicht vollständig durchführbar. Der minimale Pfad zum DD-Pilot ist:
+
+```
+PROJ-100b -> PROJ-95 -> PROJ-97 -> PROJ-99/128/129 -> PROJ-112 -> PROJ-113 -> PROJ-114 -> PROJ-108 -> PROJ-110/111 -> PROJ-116
+```
+
+Die Kriterien und Gates stehen im Readiness-Guide [`docs/ma-project-execution-readiness.md`](../ma-project-execution-readiness.md). Dieser Guide ist operativ führend für "was muss als Nächstes sichtbar gebaut werden"; diese ADR bleibt führend für "wie wird es architektonisch geschnitten".
+
 ## Release-Sequenz (siehe Sequencing-Doc für Details)
 
-- **Release 0 (Foundation-Lock):** diese ADR + PROJ-6 `project_type='m&a'` + M&A-Method-Catalog + PROJ-100 Need-to-Know-RLS.
+- **Release 0 (Foundation-Lock):** diese ADR + PROJ-6 `project_type='ma'` + M&A-Method-Catalog + PROJ-100 Need-to-Know-RLS.
 - **Release 1 (Deal-Setup & Governance):** 94 · 95 · 97 · 99 · 130/10-Config.
 - **Release 2 (DD-Kern, frühester Pilot-Wert):** 112 · 113 · 114 · 108 · 115 · 110 · 111 · 116.
 - **Release 3 (Risiko/Deliverables/Aufgaben):** 101 · 102+127 · 104 · 105/106 · 107/109 · 98/117.
@@ -116,7 +128,7 @@ Legende: **REUSE** = Feld/Config-Erweiterung eines deployed Core-Features · **E
 
 ## Offene Fragen (an Produkt/User, nicht blockierend für Release 0)
 
-- Buy-Side / Sell-Side / Carve-out / JV als separate `project_type`-Varianten oder Template-Varianten von `m&a`?
+- Buy-Side / Sell-Side / Carve-out / JV als separate `project_type`-Varianten oder Template-Varianten von `ma`?
 - Externe Berater (PROJ-99): Gast-Pool im Tenant vs. IdP-Federation — betrifft PROJ-1 Auth.
 - Interne Jira-Codes A1–M2 in den Specs durch PROJ-X-Cross-Refs ersetzen? (Empfehlung: ja, sonst Pflege-Drift.)
 

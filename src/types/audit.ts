@@ -14,6 +14,7 @@ export type AuditEntityType =
   | "risks"
   | "decisions"
   | "open_items"
+  | "ma_project_profiles"
 
 export const AUDIT_ENTITY_TYPES: readonly AuditEntityType[] = [
   "stakeholders",
@@ -24,6 +25,7 @@ export const AUDIT_ENTITY_TYPES: readonly AuditEntityType[] = [
   "risks",
   "decisions",
   "open_items",
+  "ma_project_profiles",
 ] as const
 
 export const AUDIT_ENTITY_LABELS: Record<AuditEntityType, string> = {
@@ -35,6 +37,7 @@ export const AUDIT_ENTITY_LABELS: Record<AuditEntityType, string> = {
   risks: "Risiko",
   decisions: "Entscheidung",
   open_items: "Offener Punkt",
+  ma_project_profiles: "M&A-Grundlage",
 }
 
 export interface AuditLogEntry {

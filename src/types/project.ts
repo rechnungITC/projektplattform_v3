@@ -7,7 +7,7 @@ export type LifecycleStatus =
   | "completed"
   | "canceled"
 
-export type ProjectType = "erp" | "construction" | "software" | "general"
+export type ProjectType = "erp" | "construction" | "software" | "general" | "ma"
 
 export const LIFECYCLE_STATUSES: readonly LifecycleStatus[] = [
   "draft",
@@ -22,6 +22,7 @@ export const PROJECT_TYPES: readonly ProjectType[] = [
   "construction",
   "software",
   "general",
+  "ma",
 ] as const
 
 export const LIFECYCLE_STATUS_LABELS: Record<LifecycleStatus, string> = {
@@ -37,6 +38,7 @@ export const PROJECT_TYPE_LABELS: Record<ProjectType, string> = {
   construction: "Construction",
   software: "Software",
   general: "General",
+  ma: "M&A",
 }
 
 /**
