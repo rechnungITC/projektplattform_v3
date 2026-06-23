@@ -1,6 +1,6 @@
 # PROJ-138: E2E Warm-Compile Resilience & Dev-Server-Wedge Guard (Hygiene-Slice)
 
-## Status: Planned
+## Status: In Progress
 **Created:** 2026-06-23
 **Last Updated:** 2026-06-23
 
@@ -110,3 +110,34 @@ Bewusst gebündelt als **eine** Hygiene-Slice analog PROJ-29/PROJ-67: beide Blö
 
 ---
 <!-- Sections below are added by subsequent skills -->
+
+## Implementation Notes
+
+**Built 2026-06-23** (test-infra only — no `src/**`, no new npm package, no migration). Shipped as 2 commits: spec (`f6a611f`) + implementation.
+
+### Block A — Warm-Compile resilient & übersteuerbar (`tests/fixtures/global-setup.ts`)
+
+- `globalSetup(config)` now passes the resolved Playwright `FullConfig` into a new gate `maybeWarmCompileDeepLinkRoutes(config, …)`. Decision helper `warmCompileSkipReason(config)`:
+  - `PW_SKIP_WARM_COMPILE === "1"` → skip (wins on CI too).
+  - `!process.env.CI && config.workers === 1` → skip (serial run has no parallel contention to warm against; CI keeps the historical full path).
+- `warmCompileDeepLinkRoutes` rewritten:
+  - per-route timeout **120s → 30s** default (`PW_WARM_COMPILE_ROUTE_TIMEOUT_MS`),
+  - total wall-clock budget **90s** default (`PW_WARM_COMPILE_BUDGET_MS`); remaining routes are skipped and **named** in the log,
+  - fail-fast after **2 consecutive** route timeouts (wedged/overloaded signature),
+  - all paths fail-open (warming is never a gate). Log prefix changed `[PROJ-67 …]` → `[PROJ-138 …]`.
+
+### Block B — Dev-Server-Wedge-Guard
+
+- **Preflight probe** folded into `warmCompileDeepLinkRoutes`: one authed request to `/projects` with the per-route timeout. On timeout → loud, actionable warning (wedge signature + remedy `npm run test:e2e:fresh` / manual `pkill -9 -f next-server && rm -rf .next/dev && npm run dev`) and the rest is skipped.
+- **`scripts/e2e-fresh.mjs`** (new helper, consistent with the existing `scripts/check-schema-drift` pattern): kills only the port-3000 listener (worktree-safe — never another session's server, per CLAUDE.md), clears `.next/dev`, then runs `npx playwright test` forwarding args. Wired as `npm run test:e2e:fresh`.
+- **`tests/fixtures/README.md`** new section documents the wedge symptoms (`○ Compiling …` never completes, ~0% CPU, infinite hang; fresh server = ~2s), the three remedies, and the env tunables.
+
+### Verification
+
+- `npx tsc --noEmit` — 0 errors in changed files.
+- `npx eslint tests/fixtures/global-setup.ts scripts/e2e-fresh.mjs` — clean.
+- **Auto-skip path (`--workers=1`)**: real authed test `tests/PROJ-29-auth-fixture-smoke.spec.ts` → log `[PROJ-138 warm-compile] skipped — workers=1`, `1 passed (10.0s)`, **global-setup no longer hangs** (the failure this slice fixes). Separately, in the primary checkout the full `tests/PROJ-94-ma-foundation.spec.ts` ran **7/7** with warm-compile skipped — the identical code path.
+- **Warm path (`--workers=2`, healthy server)**: preflight `/projects → 200 in 1164ms`, all 5 remaining routes warmed, `done in 6182ms (5/5 routes warmed after probe)`, `1 passed`.
+- Root-cause evidence (2026-06-23 PROJ-94-QA): authed `/projects` hung 200s at ~0.4% CPU on a wedged server; `kill -9` + `rm -rf .next/dev` + restart → same route 200 in 2.0s. Confirms wedge is transient dev-server state, not a product bug.
+
+**Note:** the worktree was provisioned with `npm ci` (deps unchanged — only a script was added) because Turbopack rejects a symlinked `node_modules` (`Symlink … points out of the filesystem root`). A separate `/qa` pass against a fully provisioned env (service-role key) can re-run the full logged-in suite end-to-end; the two paths above already exercise both branches.
