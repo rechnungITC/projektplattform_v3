@@ -14,7 +14,7 @@ summary_for_jira: "[B3] Externe Berater kontrolliert einbinden"
 
 # PROJ-99: Externe Berater kontrolliert einbinden
 
-## Status: Approved (QA PASS 2026-06-24, PR #182 — 0 Critical/High/Medium; Auth-Gates 15/15 + 7/7 Prod-curl, Reason-Enum + Matrix gate-faithful verifiziert, 5 Low/Info-Followups; backend live via #181 → /deploy)
+## Status: Deployed (2026-06-24 — PR #182 squash-merged `0135ce3`, Tag `v2.0.0-PROJ-99-128-129`; Vercel prod READY; post-deploy auth-gate smoke 4/4 = 307. QA PASS 0 Critical/High/Medium. Backend live via #181.)
 **Created:** 2026-06-10
 **Origin:** M&A-Platform Backlog (Epic B — Rollen, Gremien & Governance)
 **Priority:** P1
@@ -243,6 +243,14 @@ Gemeinsame Frontend-Slice mit PROJ-128/129 (ein Bundle, eine Governance-Seite). 
 
 ### Empfohlene Followups (nicht-blockierend)
 F-1 `document_link`-Scheme-Validierung (security-hygiene, vor Link-Render) · F-2 `cancelled`-Guards · D-FE-1 `can_read_audit_entry`-Erweiterung + Historie-Tab (eigener Backend-Slice).
+
+## Deployment — 2026-06-24
+
+- **PR #182** (Bundle-Frontend PROJ-99/128/129 + PROJ-100b projektweite Matrix) squash-merged → main `0135ce3`; Branch gelöscht.
+- **Tag** `v2.0.0-PROJ-99-128-129` gepusht.
+- **Vercel prod** Deploy für `0135ce3` = READY (commit-status `Vercel=success`); kein DB-Change (Backend-Migration `20260623230548` war seit #181 live).
+- **Post-Deploy-Smoke:** 4/4 = 307 Auth-Gate auf `/api/projects/[id]/advisors`, `…/ndas`, `…/access-explain?level=confidential`, `/projects/[id]/vertraulichkeit` (Deployment live + geschützt).
+- **Offene Followups (nicht-blockierend):** F-1 `document_link`-Scheme-Validierung (vor jedem Link-Render); F-2 `cancelled`-Guards in advisors-/ndas-tab; **D-FE-1** Historie-Tab braucht `can_read_audit_entry`-Erweiterung für `ma_advisor_profiles`/`ma_ndas` (eigener security-relevanter Backend-Slice, deckt zugleich offenen AC „Externe Aktivitäten auditierbar").
 
 ---
 _Quelle: Backlog-Entwurf M&A-Projektplattform · B — Rollen, Gremien & Governance_
