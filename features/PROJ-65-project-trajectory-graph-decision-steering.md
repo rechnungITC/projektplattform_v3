@@ -3593,3 +3593,28 @@ CIA empfahl ursprünglich Defer zu PROJ-67; User entschied bewusst „jetzt mit 
 **Root-Cause:** Die Graph-Methoden (`generateTrajectorySequence`, `generateCrossProjectLinks`) waren nur auf dem Anthropic-Provider + Stub implementiert. Sie lebten als Schema/Prompt/Builder **inline in `anthropic.ts`** — OpenAI/Google hatten nie eine Implementierung. Bei aktivem OpenAI-Provider (Class-1/2) rief `selectProviderForPurpose` korrekt OpenAI, aber die Methode existierte nicht → Throw → Stub-Fallback. API-Key + Guthaben waren intakt (`risks` lief erfolgreich auf `gpt-4o`).
 
 **Fix:** Schemas + System-Prompts + Prompt-Builder + Map-/Filter-Helper nach `src/lib/ai/providers/graph-purpose-prompts.ts` extrahiert (Single Source of Truth gegen genau diese Drift); `generateTrajectorySequence` + `generateCrossProjectLinks` auf OpenAI + Google verdrahtet. Anthropic byte-identisch (nur Import). Cross-Project-Defense-in-Depth-Filter (Trust-but-verify gegen halluzinierte IDs) in `mapCrossProjectLinksSuggestions` geteilt → identische Garantie über alle Provider. Parität-Regressionstest `graph-purpose-prompts.test.ts` (8 Tests). Gates: tsc clean (src/lib/ai), lint 0, `vitest src/lib/ai` 161 grün, build clean.
+
+## Hotfix 2026-06-11 — Zielsetzung Create-Flow (ε.3a UX-Bug)
+
+**Symptom (User-Report, Prod):** Beim Anlegen eines Ziels im Trajektorien-Graphen (1) öffnete sich nach „Anlegen" zwangsweise ein zweites Panel rechts, in dem dieselben Daten erneut einzugeben schienen, und (2) der „Speichern"-Button in diesem rechten Panel rutschte unten rechts aus dem Bild und war nicht erreichbar.
+
+**Root-Cause:**
+1. `GoalCreateDialog` persistiert das Ziel bereits beim „Anlegen" (POST erfolgreich). Danach öffnete `trajectory-graph-view.tsx` per B-4-Logik (`pendingGoalIdToOpen` + Effekt) absichtlich das `GoalDetailPanel` mit dem soeben gespeicherten Ziel → wirkte wie ein zweiter Pflicht-Eingabeschritt.
+2. `GoalDetailPanel` `SheetContent` hatte kein `overflow-y-auto`. Bei vollem Inhalt (Formular + Statistik-Karte + Teilziel-Baum) überschritt die Höhe den Viewport → `SheetFooter` mit „Speichern" nicht scrollbar/erreichbar.
+
+**Fix:**
+1. Auto-Open des Detail-Panels nach dem Anlegen entfernt (toter State `pendingGoalIdToOpen` + Effekt gelöscht). Der Create-Dialog speichert und schließt; das rechte Panel öffnet sich nur noch beim **Bearbeiten** (Klick auf einen Ziel-Knoten).
+2. `overflow-y-auto` am `SheetContent` ergänzt (bewährtes `open-items-panel.tsx`-Muster) → „Speichern" beim Bearbeiten immer erreichbar.
+
+**QA — Smoke (2026-06-11):**
+
+| AC | Prüfung | Ergebnis |
+|----|---------|----------|
+| ε.3a Create speichert im ersten Dialog | Code-Review: `GoalCreateDialog.onSubmit` POST → `onCreated` → `toast.success("Ziel angelegt")` + Dialog schließt | ✅ PASS |
+| Kein zweites Pflicht-Panel nach Create | Code-Review: einziger Panel-Open-nach-Create-Pfad (`pendingGoalIdToOpen`) entfernt; `setGoalPanelGoalId` nur noch bei Node-Klick/`onOpenGoal` | ✅ PASS |
+| Detail-Panel nur beim Bearbeiten | Code-Review: Panel-Open ausschließlich via Node-Klick + `onOpenGoal` | ✅ PASS |
+| „Speichern" im Edit-Panel erreichbar | `overflow-y-auto` gesetzt; Sheet scrollt vollständig bis `SheetFooter` | ✅ PASS |
+| AC-3 Ziel editierbar (Titel/Desc/Erfolgskriterien) | Unverändert — keine Feld-/Form-Logik berührt | ✅ kein Regress |
+| AC-8 Detail-Panel-Stats | Unverändert | ✅ kein Regress |
+
+**Gates:** ESLint 0 errors (beide Dateien) · `tsc --noEmit` Baseline 13 / 0 neu · `vitest run src/components/projects/trajectory` 37/37 · `npm run build` ✓ Compiled successfully 11.5s, Exit 0. Keine API-/Route-/Migration-Änderung → bestehende Auth-Gate-E2E-Specs (ε.1 goals-lanes, ε.3b) unberührt. UX-Ebene wird projektkonform via Vitest abgedeckt (vgl. ε.3b-Spec-Kommentar). **0 Critical / 0 High → PRODUCTION-READY.** Empfehlung: kurze manuelle In-Browser-Bestätigung im Pilot-Tenant nach Merge.

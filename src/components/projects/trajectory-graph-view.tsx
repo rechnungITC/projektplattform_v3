@@ -174,9 +174,6 @@ export function TrajectoryGraphView({ projectId }: TrajectoryGraphViewProps) {
   const [goalCreateOpen, setGoalCreateOpen] = React.useState(false)
   const [goalCreateDefaultParent, setGoalCreateDefaultParent] =
     React.useState<string | null>(null)
-  const [pendingGoalIdToOpen, setPendingGoalIdToOpen] = React.useState<
-    string | null
-  >(null)
   // PROJ-65 ε.3b — Plan-Mutate drag/drop dialog state.
   const [planMutate, setPlanMutate] = React.useState<{
     node: PositionedNode
@@ -390,18 +387,6 @@ export function TrajectoryGraphView({ projectId }: TrajectoryGraphViewProps) {
     }))
   }, [snapshot])
 
-  // B-4 — open the detail panel as soon as the newly-created goal
-  // appears in the next refetched snapshot.
-  React.useEffect(() => {
-    if (!pendingGoalIdToOpen || !snapshot?.trajectory) return
-    const exists = snapshot.trajectory.goals.some(
-      (g) => g.id === pendingGoalIdToOpen,
-    )
-    if (exists) {
-      setGoalPanelGoalId(pendingGoalIdToOpen)
-      setPendingGoalIdToOpen(null)
-    }
-  }, [pendingGoalIdToOpen, snapshot])
   const focusedGoal: GoalDetailPanelGoal | null = React.useMemo(() => {
     if (!goalPanelGoalId || !snapshot?.trajectory) return null
     const g = snapshot.trajectory.goals.find((x) => x.id === goalPanelGoalId)
@@ -854,11 +839,12 @@ export function TrajectoryGraphView({ projectId }: TrajectoryGraphViewProps) {
         milestones={milestoneOptions}
         parentGoals={goalOptions}
         defaultParentGoalId={goalCreateDefaultParent}
-        onCreated={(goalId) => {
+        onCreated={() => {
+          // The create dialog already persisted the goal; just refetch the
+          // snapshot. We intentionally do NOT auto-open the detail panel —
+          // the right-side panel is for *editing* an existing goal (opened by
+          // clicking a goal node), not a second mandatory data-entry step.
           setReloadTick((t) => t + 1)
-          // B-4 — defer panel-open until the new goal appears in the
-          // refetched snapshot; an effect above watches pendingGoalIdToOpen.
-          if (goalId) setPendingGoalIdToOpen(goalId)
         }}
       />
 
