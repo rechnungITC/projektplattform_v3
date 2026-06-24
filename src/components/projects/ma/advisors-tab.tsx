@@ -93,10 +93,29 @@ export function AdvisorsTab({
     }
   }, [projectId])
 
+  // F-2 (QA followup): guarded mount fetch — don't set state if the component
+  // unmounted / projectId changed while the request was in flight. reload()
+  // stays for user-initiated post-mutation refetches (component is mounted).
   React.useEffect(() => {
-    // eslint-disable-next-line react-hooks/set-state-in-effect -- one-shot fetch on mount
-    void reload()
-  }, [reload])
+    let cancelled = false
+    void (async () => {
+      setLoading(true)
+      try {
+        const list = await listAdvisors(projectId)
+        if (!cancelled) setAdvisors(list)
+      } catch (err) {
+        if (!cancelled)
+          toast.error("Berater konnten nicht geladen werden", {
+            description: err instanceof Error ? err.message : "Unbekannter Fehler",
+          })
+      } finally {
+        if (!cancelled) setLoading(false)
+      }
+    })()
+    return () => {
+      cancelled = true
+    }
+  }, [projectId])
 
   const openCreate = () => {
     setEditing(null)

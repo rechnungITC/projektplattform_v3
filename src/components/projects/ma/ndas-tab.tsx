@@ -107,10 +107,28 @@ export function NdasTab({
     }
   }, [projectId])
 
+  // F-2 (QA followup): guarded mount fetch — see advisors-tab. reload() stays
+  // for user-initiated post-mutation refetches.
   React.useEffect(() => {
-    // eslint-disable-next-line react-hooks/set-state-in-effect -- one-shot fetch on mount
-    void reload()
-  }, [reload])
+    let cancelled = false
+    void (async () => {
+      setLoading(true)
+      try {
+        const list = await listNdas(projectId)
+        if (!cancelled) setNdas(list)
+      } catch (err) {
+        if (!cancelled)
+          toast.error("NDAs konnten nicht geladen werden", {
+            description: err instanceof Error ? err.message : "Unbekannter Fehler",
+          })
+      } finally {
+        if (!cancelled) setLoading(false)
+      }
+    })()
+    return () => {
+      cancelled = true
+    }
+  }, [projectId])
 
   const handleDelete = async (nda: Nda) => {
     if (!window.confirm(`NDA „${nda.counterparty}“ löschen?`)) return
@@ -609,10 +627,39 @@ function NdaAssignmentsSheet({
     }
   }, [projectId, ndaId])
 
+  // F-2 (QA followup): reset the add-form + (re)fetch assignments when the sheet
+  // target changes, guarded so a fast NDA-switch / close doesn't write stale
+  // assignments. All state-sets live inside the async IIFE (set-state-in-effect
+  // rule stays satisfied). reload() stays for the post-add refetch.
   React.useEffect(() => {
-    // eslint-disable-next-line react-hooks/set-state-in-effect -- one-shot reset + fetch when the sheet target changes
-    void reload()
-  }, [reload])
+    let cancelled = false
+    void (async () => {
+      if (cancelled) return
+      setUserId("")
+      setContactName("")
+      setContactOrg("")
+      setMode("user")
+      if (!ndaId) {
+        if (!cancelled) setAssignments([])
+        return
+      }
+      setLoading(true)
+      try {
+        const list = await listNdaAssignments(projectId, ndaId)
+        if (!cancelled) setAssignments(list)
+      } catch (err) {
+        if (!cancelled)
+          toast.error("Zuordnungen konnten nicht geladen werden", {
+            description: err instanceof Error ? err.message : "Unbekannter Fehler",
+          })
+      } finally {
+        if (!cancelled) setLoading(false)
+      }
+    })()
+    return () => {
+      cancelled = true
+    }
+  }, [projectId, ndaId])
 
   const handleAdd = async () => {
     if (!ndaId) return

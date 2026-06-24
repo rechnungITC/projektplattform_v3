@@ -73,6 +73,32 @@ describe("POST /api/projects/[id]/ndas", () => {
     ).toBe(400)
   })
 
+  it("400 on non-http document_link scheme (F-1 — XSS hardening)", async () => {
+    getAuthMock.mockResolvedValue({ userId: ME, supabase: supa({ data: null, error: null }) })
+    accessMock.mockResolvedValue({ project: { id: PROJECT, tenant_id: "t1" } })
+    expect(
+      (
+        await POST(
+          postReq({ counterparty: "X", document_link: "javascript:alert(1)" }),
+          ctx()
+        )
+      ).status
+    ).toBe(400)
+  })
+
+  it("accepts an https document_link (F-1)", async () => {
+    getAuthMock.mockResolvedValue({
+      userId: ME,
+      supabase: supa({ data: { id: "n2", counterparty: "Bank" }, error: null }),
+    })
+    accessMock.mockResolvedValue({ project: { id: PROJECT, tenant_id: "t1" } })
+    const res = await POST(
+      postReq({ counterparty: "Bank", document_link: "https://dms.example.com/nda/42" }),
+      ctx()
+    )
+    expect(res.status).toBe(201)
+  })
+
   it("creates an NDA (201)", async () => {
     getAuthMock.mockResolvedValue({
       userId: ME,

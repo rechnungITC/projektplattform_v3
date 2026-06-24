@@ -17,6 +17,7 @@ import { useTenantMembers } from "@/hooks/use-tenant-members"
 
 import { AdvisorsTab } from "./advisors-tab"
 import { ClassificationMatrixTab } from "./classification-matrix-tab"
+import { GovernanceHistoryTab } from "./governance-history-tab"
 import { NdasTab } from "./ndas-tab"
 
 // PROJ-99 / 128 / 129 — "Governance & Zugriff" surface for M&A projects.
@@ -73,6 +74,7 @@ export function GovernanceAccessPage({ projectId }: { projectId: string }) {
           <TabsTrigger value="ndas">NDAs</TabsTrigger>
           <TabsTrigger value="classification">Klassifikation</TabsTrigger>
           <TabsTrigger value="clearances">Freischaltungen</TabsTrigger>
+          <TabsTrigger value="history">Historie</TabsTrigger>
         </TabsList>
 
         <TabsContent value="advisors" className="mt-4">
@@ -94,6 +96,11 @@ export function GovernanceAccessPage({ projectId }: { projectId: string }) {
         <TabsContent value="clearances" className="mt-4">
           {/* PROJ-100b — reused as-is: clearance grants + who-can-see overview. */}
           <ConfidentialityAccessCard projectId={projectId} />
+        </TabsContent>
+
+        <TabsContent value="history" className="mt-4">
+          {/* PROJ-99/128/129 D-FE-1 — PROJ-10 audit trail for advisors + NDAs. */}
+          <GovernanceHistoryTab projectId={projectId} nameFor={nameFor} />
         </TabsContent>
       </Tabs>
     </div>
