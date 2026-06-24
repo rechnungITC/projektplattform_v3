@@ -102,3 +102,31 @@ export async function transitionMandate(
   const body = (await response.json()) as { mandate: MandateResult }
   return body.mandate
 }
+
+// --- PROJ-95: M&A phase model -------------------------------------------
+
+export interface ActivatePhaseModelResult {
+  /** Number of preset phases newly inserted on this call (idempotent). */
+  seeded: number
+  /** True while Phase 2 ("Target-Screening") is gated by an unapproved mandate. */
+  phase2_locked: boolean
+  mandate_status: MandateStatus
+}
+
+/**
+ * Seeds the M&A standard phase model (PROJ-95). Idempotent — safe to call
+ * repeatedly. Phase 2 is only seeded once the mandate is approved.
+ */
+export async function activateMaPhaseModel(
+  projectId: string
+): Promise<ActivatePhaseModelResult> {
+  const response = await fetch(
+    `/api/projects/${encodeURIComponent(projectId)}/phase-model/activate`,
+    { method: "POST" }
+  )
+  if (!response.ok) {
+    const err = await safeError(response)
+    throw new Error(err.message)
+  }
+  return (await response.json()) as ActivatePhaseModelResult
+}
