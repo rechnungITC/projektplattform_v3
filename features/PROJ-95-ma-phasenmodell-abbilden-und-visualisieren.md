@@ -14,7 +14,7 @@ summary_for_jira: "[A2] M&A-Phasenmodell abbilden und visualisieren"
 
 # PROJ-95: M&A-Phasenmodell abbilden und visualisieren
 
-## Status: Planned
+## Status: Architected
 **Created:** 2026-06-10
 **Origin:** M&A-Platform Backlog (Epic A — Projektgrundlagen & Phasenmodell)
 **Priority:** P1
@@ -79,3 +79,106 @@ Das Modell unterscheidet zehn Phasen von Strategie bis Post-Merger-Integration. 
 
 ---
 _Quelle: Backlog-Entwurf M&A-Projektplattform · A — Projektgrundlagen & Phasenmodell_
+
+---
+<!-- Sections below are added by subsequent skills -->
+
+## Tech Design (Solution Architect)
+
+> **Authored:** 2026-06-24 · **Author:** /architecture skill (CIA-reviewed)
+> **Audience:** PM + dev team. Keine Code-/SQL-Snippets; nur strukturelle Referenzen.
+> **Reuse-Klasse (ADR `ma-domain-architecture`, Fork 1+5):** **DUP→REUSE** — Andockpunkt **PROJ-19 Phasen/Milestones + PROJ-6 Method-Catalog**. **Es wird KEINE zweite Phasentabelle gebaut.**
+
+### 0. Worum es geht (Scope in einem Absatz)
+
+PROJ-95 macht aus einem M&A-Projektcontainer (PROJ-94) einen **ablauffähigen Deal** mit den zehn M&A-Standardphasen. Es liefert (a) ein **M&A-Phasen-Preset** (10 Phasen), das beim Aktivieren in die **bestehende** `phases`-Tabelle kopiert wird, (b) ein **Phasen-Cockpit** (Roadmap), das die **bereits existierende** Gantt-/Timeline-UI wiederverwendet, und (c) die **Konsumption des Mandate-Gates** aus PROJ-94 (`mandate_status='approved'` → Phase 2 „Target-Screening" wird freischaltbar). Alles andere (editierbare Template-Bibliothek, generischer Stage-Gate-Zwang, Deliverable-Verknüpfung, der Status „ausgesetzt") wird **forward-kompatibel** an benannte Slices deferiert.
+
+### 1. Was gebaut wird (Komponenten-Sicht)
+
+```
+PROJ-95 M&A-Phasenmodell
+├── Backend
+│   ├── M&A-Phasen-Preset (Code-Konstante, 10 Phasen)        ← NEU, in src/lib/project-types/ (neben MA_PROFILE)
+│   │     Phase 1 Strategie … Phase 10 Post-Merger-Integration; je: Name, Reihenfolge, deal_side-Sichtbarkeit
+│   ├── RPC „M&A-Phasenmodell aktivieren" (seed, idempotent)  ← NEU; kopiert Preset → bestehende `phases`-Zeilen
+│   ├── Mandate-Gate-Check für Phase-2-Aktivierung           ← NEU; konsumiert ma_project_profiles.mandate_status
+│   └── REUSE: `phases`-Tabelle, `transition_phase_status`-RPC, `milestones`, PROJ-100a confidentiality_level
+├── Frontend
+│   ├── Phasen-Cockpit (Route /projects/[id]/phasenmodell)    ← NEU dünne Seite, M&A-nav-gated (requiresProjectType)
+│   │     ├── REUSE components/phases/gantt-view + phases-timeline   (Roadmap, AC-95-3)
+│   │     ├── Stage-Gate-Status-Spalte/Badge je Phase               ← NEU (zeigt Mandate-/Gate-Stand)
+│   │     ├── „Phasenmodell aktivieren"-Aktion (ruft seed-RPC)      ← NEU
+│   │     └── Phase aktiv/inaktiv-Toggle (AC-95-1)                  ← REUSE phase create / cancel
+│   └── REUSE: use-phases, phase-card, phase-status-badge, new/edit/delete-phase-dialog, reorder-phases
+└── Abhängigkeit (Vorbedingung): PROJ-139 (Core-Status „suspended") für AC-95-2 „ausgesetzt"
+```
+
+### 2. Datenmodell in Klartext
+
+**Keine neue Tabelle.** Die zehn M&A-Phasen leben als **gewöhnliche Zeilen in der bestehenden `phases`-Tabelle** (eine Zeile pro aktivierter Phase, mit `project_id`, Name, `sequence_number`, `planned_start/end`, Verantwortliche(r), `status`, `confidentiality_level`). Das M&A-Preset selbst (welche 10 Phasen es gibt, in welcher Reihenfolge, welche je `deal_side` sichtbar sind) ist eine **deklarative Code-Konstante** — keine DB-Tabelle, weil die editierbare Template-**Bibliothek** bewusst Fork 5 / PROJ-96 gehört.
+
+- **Aktivieren einer Phase (AC-95-1)** = die Preset-Phase wird als `phases`-Zeile angelegt (über die seed-RPC en bloc oder einzeln über den bestehenden Phase-Dialog). **Deaktivieren** = Phase wird nicht geseedet bzw. auf `cancelled` gesetzt (kein Hard-Delete → Audit bleibt).
+- **Phasenfelder (AC-95-2)**: vollständig durch bestehende `phases`-Spalten gedeckt — Start/Soll-Ende, Verantwortliche(r), Status. **Der Status „ausgesetzt" fehlt im Core-CHECK** und wird durch die Vor-Slice **PROJ-139** ergänzt (siehe §7). Bis PROJ-139 landet, nutzt 95 die vier Bestandswerte.
+- **Mandate-Gate-Flag**: gelesen aus `ma_project_profiles.mandate_status` (PROJ-94). Wird nicht dupliziert.
+- **Stage-Gate-Stand je Phase (AC-95-3-Anzeige)**: im MVP abgeleitet (Phase 2 „freischaltbar/gesperrt" aus dem Mandate-Flag); der generische Gate-Zustand kommt aus PROJ-110.
+- **Phasen-Notizen/Risiken/Deliverables (AC-95-5)**: Risiken via **PROJ-20**-Cross-Link (Risiko ↔ Phase, existiert); Notizen via `phases.description` bzw. bestehende Felder; **Deliverable-Verknüpfung deferiert an PROJ-104** (Tabelle existiert noch nicht).
+
+### 3. Tech-Entscheidungen (das Warum) — CIA-gelockt (E5/E7)
+
+| Entscheidung | Wahl | Warum / Trade-off |
+|---|---|---|
+| **E5 Phasen-Preset** | PROJ-6-„Methode" + **Copy-on-Create** der 10 Phasen in `phases`; Preset als Code-Konstante; `deal_side` nur minimale Sicht-/Label-Variation | Exakt das ADR-Reuse-Muster; **keine zweite Phasentabelle**. Trade-off: 95 liefert **einen** Default-Satz — die editierbare Template-Bibliothek + deal_side-Matrix ist **PROJ-96**. Forward-kompatibel: 96 ersetzt später die Konstante durch einen Template-Tabellen-Lookup, ohne 95-Schnittstellen zu brechen. |
+| **E7 Mandate-Gate** | `mandate_status='approved'` **hart konsumieren** → Phase 2 „Target-Screening" erst dann aktivierbar | Das Flag existiert auditiert (PROJ-94). Konkreter, sofort baubarer 95-Scope. |
+| **E7 Stage-Gate (generisch)** | **Non-blocking Hook** — ein prüfbarer Gate-Check-Erweiterungspunkt im Phasenübergang, der heute (außer dem Mandate-Fall) immer „erlaubt" zurückgibt | Harte Stage-Gate-Pflicht bei *jedem* Übergang würde 95 am nicht-gebauten **PROJ-110** blockieren. 110 füllt den Hook später mit echter Quorum-/Gate-Logik (PROJ-31). |
+| **Phasenrücksprung-Genehmigung** | **Nicht in 95 entscheiden** → an PROJ-110 deferiert | Offene Spec-Frage; gehört zur Gate-/Approval-Logik (PROJ-31/110), nicht ins Phasen-Preset. |
+| **Visualisierung** | **REUSE** `gantt-view` + `phases-timeline` statt Neubau | AC-95-3 „Gantt-ähnliche Roadmap" existiert bereits; 95 ergänzt nur eine Stage-Gate-Statusspalte/Badge. |
+| **Need-to-Know** | `phases.confidentiality_level` (PROJ-100a) unverändert nutzen | Phasen sind bereits need-to-know-fähig; kein Eingriff. |
+
+### 4. Öffentliche API (Routen — konzeptionell)
+
+- **NEU** `POST /api/projects/[id]/phase-model/activate` — seedet das M&A-Phasen-Preset (idempotent) in `phases`.
+- **NEU** Mandate-Gate-Prüfung im Pfad der Phase-2-Aktivierung (entweder im Aktivierungs-/Transition-Aufruf serverseitig) — verweigert Phase-2-Start, solange `mandate_status≠approved`, mit klarer Fehlermeldung.
+- **REUSE** alle bestehenden `…/phases`-Routen (create/edit/transition/reorder), `…/milestones`, `…/risks`-Cross-Link.
+
+### 5. Was sich außerhalb von PROJ-95 ändert
+
+- `src/lib/project-types/` — neue Preset-Konstante (neben `MA_PROFILE`).
+- Method-Nav: ein M&A-Cockpit-Eintrag über das bestehende `requiresProjectType`/`filterSectionsByProjectType`-Muster (PROJ-94) — **keine** neue Nav-Mechanik.
+- **Vorbedingung PROJ-139** (Core): `phases.status`-Wert `suspended` + State-Machine-Regel. PROJ-95 baut darauf auf; ohne PROJ-139 bleibt AC-95-2-„ausgesetzt" offen.
+
+### 6. Tests
+
+- Unit: Preset-Konstante (10 Phasen, Reihenfolge, deal_side-Sichtbarkeit), Mandate-Gate-Logik (approved→Phase-2 erlaubt, sonst gesperrt).
+- Integration/Live-RPC-Smoke (Pflicht, siehe Projekt-Konvention): `phase-model/activate` idempotent gegen Prod; Phase-2-Aktivierung vor/nach `mandate_status='approved'`.
+- E2E: M&A-Projekt anlegen → Phasenmodell aktivieren → Cockpit-Roadmap rendert 10 Phasen → Phase-2-Gate sichtbar gesperrt/frei.
+- Regression: bestehende PROJ-19-Phasen-Specs + PROJ-26-Method-Gating unverändert grün.
+
+### 7. Out of Scope (explizit deferiert — benannt)
+
+- **PROJ-139** (Core-Vor-Slice): `phases.status='suspended'` + State-Machine — Vorbedingung für AC-95-2-„ausgesetzt".
+- **PROJ-96** (Fork 5): editierbare Phasen-Template-Bibliothek, deal_side-Preset-Matrix, zentrale vs. projekt-lokale Template-Pflege (offene Spec-Frage „Template-Ownership").
+- **PROJ-110** (F1): generischer Stage-Gate-Zwang bei jedem Übergang + genehmigungspflichtiger Phasenrücksprung (PROJ-31-Quorum).
+- **PROJ-104**: Deliverable↔Phase-Verknüpfung (AC-95-5-Teil) — Tabelle existiert noch nicht.
+- Alternative Phasenmodelle (Carve-out/Distressed/JV als eigene Modelle): im MVP nur minimale `deal_side`-Variation; volle Modell-Varianten → PROJ-96.
+
+### 8. Dependencies (Pakete)
+
+**Keine neuen npm-Pakete.** Reuse von PROJ-19-Phasen-Stack, PROJ-6-Catalog, PROJ-94-Mandate, PROJ-100a-Confidentiality, PROJ-20-Risks.
+
+### 9. Risiko + Trade-off
+
+| Risiko | Sev | Mitigation |
+|---|---|---|
+| Scope-Bleed 95↔96 (deal_side-Preset-Bibliothek vorweggenommen) | MITTEL | 95 liefert **einen** Default-Satz als Code-Konstante; Bibliothek strikt PROJ-96. |
+| Harte Kopplung an nicht-gebautes PROJ-110 blockiert Auslieferung | MITTEL | Stage-Gate als non-blocking Hook; nur Mandate-Gate hart. |
+| Abhängigkeit von PROJ-139 verzögert AC-95-2 | NIEDRIG | 139 ist eine kleine Core-Slice; 95 ist ansonsten unabhängig baubar (vier Status-Werte reichen bis dahin). |
+| Copy-on-Create dupliziert Phasen bei Doppelklick | NIEDRIG | seed-RPC idempotent (pro project_id nur einmal). |
+
+### Locked design decisions (für /frontend + /backend)
+
+1. **Keine neue Phasentabelle** — M&A-Phasen sind `phases`-Zeilen; Preset ist Code-Konstante (PROJ-96 ersetzt sie später).
+2. **Mandate-Gate hart**, genereller Stage-Gate als non-blocking Hook (PROJ-110).
+3. **Visualisierung reuse** (gantt-view/phases-timeline) + Stage-Gate-Badge.
+4. **„Ausgesetzt" via PROJ-139** (Core), nicht M&A-lokal.
+5. **Deliverable-Link an PROJ-104**, Risiken-Link via PROJ-20, Notizen via Bestandsfelder.
+6. Phasenrücksprung-Genehmigung **an PROJ-110 deferiert** (nicht in 95 entscheiden).

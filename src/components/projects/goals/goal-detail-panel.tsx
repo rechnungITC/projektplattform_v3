@@ -312,7 +312,7 @@ export function GoalDetailPanel({
       <Sheet open={open} onOpenChange={handleClose}>
         <SheetContent
           side="right"
-          className="w-full sm:max-w-md"
+          className="w-full overflow-y-auto sm:max-w-md"
           data-testid="goal-detail-panel"
         >
           <SheetHeader>
