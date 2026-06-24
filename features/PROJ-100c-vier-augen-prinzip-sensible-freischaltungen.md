@@ -82,8 +82,90 @@ Diese vier Forks wurden vor `/architecture` entschieden:
 ---
 <!-- Sections below are added by subsequent skills -->
 
-## Tech Design (Solution Architect)
-_To be added by /architecture (CIA-Pflicht-Review)_
+## Tech Design (Solution Architect) — 2026-06-24 (CIA-reviewed)
+
+> **CIA-Pflicht-Review erfolgt** (eigene Genehmigungs-State-Machine, security-relevant, Verzahnung PROJ-31 + PROJ-100a/b). Verdikt: **Fork B**. Reuse-Klasse **EXTEND** auf PROJ-100a/b-Foundation + **Primitiven-Sharing** mit PROJ-31. Keine Code-/SQL-Snippets.
+
+### 0. Worum es geht (ein Absatz)
+PROJ-100c schiebt einen **optionalen, tenant-aktivierten Genehmigungs-Gate VOR** den bereits deployten Freischaltungs-Pfad. Vergibt jemand eine Freischaltung auf/oberhalb der konfigurierten Schwelle, entsteht zunächst **keine** Freischaltung, sondern eine **Genehmigungs-Anfrage**; die Freischaltung wird erst wirksam, wenn die konfigurierte Anzahl zweiter Personen zugestimmt hat. Ist der Gate (pro Mandant) nicht aktiviert, verhält sich alles **exakt wie heute**.
+
+### 1. Architektur-Grundsatzentscheidung (CIA-gelockt): **Fork B**
+- **Fork A (verworfen):** die deployte PROJ-31-Approval-Engine (`decision_*`-Tabellen + `record_approval_response`) polymorph machen. **Abgelehnt** — hoher Blast-Radius auf drei live, pentest-/audit-kritische, an `decisions` FK-gebundene Tabellen; das Subjekt divergiert fachlich (Decision-Quorum vs. schwellen-getriggerte Clearance mit SoD).
+- **Fork B (gewählt):** **parallele, muster-spiegelnde** Genehmigungs-Tabellen für Clearance-Anfragen. „Keine zweite Engine" wird über **Primitiven-Sharing** erfüllt (Magic-Link-Token-Mechanik, Immutability-Trigger-Muster, Quorum-Zähllogik), **nicht** über Tabellen-Sharing. Isoliert, **null PROJ-31-Regressionsrisiko**.
+
+### 2. Komponenten-Struktur
+```
+PROJ-100c 4-Augen-Gate
+├── Backend
+│   ├── Policy-Tabelle „Genehmigungs-Richtlinie" (pro Tenant × Stufe)        ← NEU
+│   │     {aktiviert (default AUS), erforderliche Personenzahl, Approver-Bezug}
+│   ├── Genehmigungs-Anfrage „sensible Freischaltung"                         ← NEU
+│   │     (Projekt, Ziel-Nutzer, beantragte Stufe, Antragsteller, Status, Quorum)
+│   ├── Approver-Zuordnung je Anfrage + append-only Ereignis-Log (immutable)  ← NEU (PROJ-31-Muster)
+│   ├── Gate-Einbau am KOPF des bestehenden grant-Pfads                       ← ERWEITERUNG
+│   │     (Policy aus? → unveränderter Pfad; Policy an & ≥ Schwelle? → Anfrage statt Freischaltung)
+│   ├── System-Grant-Helper (definer-intern) bei Quorum-Erfüllung            ← NEU
+│   │     (schreibt Freischaltung + Audit identisch zum Bestandspfad — NICHT über die öffentliche grant-RPC)
+│   └── REUSE: grant_confidentiality_clearance, can_access_classified (UNVERÄNDERT), approval-token, PROJ-10-Audit
+└── Frontend
+    ├── Anfrage-Liste „Wartet auf Genehmigung" + Genehmigen/Ablehnen (manager-gated)   ← NEU
+    ├── Magic-Link-Genehmigungsseite für externe Approver (PROJ-31-Muster)             ← REUSE/ERWEITERUNG
+    ├── Policy-Verwaltung (Tenant-Admin): Gate an/aus, Schwelle, Personenzahl, Approver ← NEU
+    └── REUSE: Projekt-Raum-Karte „Vertraulichkeit & Zugriff" (PROJ-100b) — Freischaltung zeigt „pending"-Zustand
+```
+
+### 3. Datenmodell in Klartext (keine neue Tor-Logik)
+- **Genehmigungs-Richtlinie:** eine Zeile pro `(Tenant, Stufe)` mit `{aktiviert (Default AUS), erforderliche Personenzahl, Approver-Bezug}`. **Leere Tabelle ⇒ keine Policy ⇒ unveränderter Freischaltungs-Pfad** → Default-off ist **strukturell** garantiert (nicht nur konfiguratorisch).
+- **Genehmigungs-Anfrage:** Tenant, Projekt, Ziel-Nutzer, beantragte Stufe (+ ggf. angewandtes Profil), Antragsteller, Status (`pending`/`approved`/`rejected`/`cancelled`), erforderliches Quorum, geplante Befristung.
+- **Approver-Zuordnung + Ereignis-Log:** wer darf abstimmen; jede Stimme append-only + unveränderbar (gleiches Immutability-Muster wie PROJ-31).
+- **Keine** Änderung an `ma_confidentiality_clearances` oder `can_access_classified` → die 100a/100b-Pentests bleiben byte-identisch grün.
+
+### 4. Gate-Wiring (das Warum) — CIA-präzisiert
+- Der Gate sitzt **am Kopf der bestehenden `grant_confidentiality_clearance`-RPC**, NACH der Autoritätsprüfung. `apply_clearance_profile` (PROJ-100b) delegiert in genau diese RPC → **erbt den Gate automatisch, keine Doppelverdrahtung** (das ist der einzige Schreibpfad auf Clearances).
+- **Policy aus/fehlt → früher Rücksprung in den unveränderten Insert-Pfad** (kein neuer Code-Pfad berührt). **Policy an & beantragte Stufe ≥ Schwelle → Anfrage anlegen statt Freischaltung**; Rückgabe ohne Clearance.
+- **Quorum erreicht →** eine dedizierte Antwort-RPC ruft den **System-Grant-Helper definer-intern** (NICHT die öffentliche grant-RPC), damit die Freischaltung auch dann entsteht, wenn der letzte Approver weder Admin noch Lead ist (vermeidet eine Re-Authority-Falle). Erst dann lässt das Tor den Nutzer durch.
+
+### 5. Aufgelöste Open Questions (CIA)
+- **Approver-Listen-Storage:** **tenant-weite Approver-Liste pro Stufe** (MVP) — Approver sind eine **Governance-Rolle**, kein Projekt-Stakeholder (Invariante #4 „Stakeholder ≠ User"); kein Reuse der Stakeholder-/Member-Tabellen als Approver-Quelle. Pro-Projekt-Override → Followup.
+- **Verhältnis zu PROJ-110:** **getrennt halten**, nur PROJ-31-Primitive teilen (Token/Immutability/Quorum-Zählung). PROJ-110 ist eine Phasen-State-Machine (anderes Subjekt) — jetzt zu antizipieren wäre Über-Engineering.
+- **Per-Stufe-Policy-Datenmodell:** eine Policy-Zeile pro `(Tenant, Stufe)` (s. §3).
+
+### 6. Hardening-Akzeptanzkriterien (CIA-Pflicht, zusätzlich zu AC-100c-1..11)
+- **AC-C1 (Regression):** Bei deaktivierter/fehlender Policy ist der grant-Pfad byte-identisch; `tests/sql/PROJ-100a-need-to-know-pentest.sql` + `PROJ-100b-clearance-profiles-pentest.sql` bleiben unverändert grün (Gate vor Approved).
+- **AC-C2 (SoD):** `Antragsteller ≠ Approver` als CHECK **und** RPC-Guard; Pentest-Vektor „Selbst-Genehmigung → reject".
+- **AC-C3 (Default-off):** Live-Smoke — frischer Tenant ohne Policy-Zeile → grant erzeugt sofort Clearance (kein pending).
+- **AC-C4 (Tenant-Isolation):** Cross-Tenant-Anfrage-Sicht/-Genehmigung → 0 rows / reject (Pentest-Vektor).
+- **AC-C5 (Class-3-Orthogonalität):** Gate triggert NUR auf `ma_confidentiality_level ≥ Schwelle`, nie auf `privacy_class`; Class-3-Block-Pfad unberührt.
+- **AC-C6 (Immutability):** Ereignis-Log append-only; UPDATE/DELETE → reject (Trigger-Smoke).
+- **AC-C7 (System-Grant-Pfad):** Quorum-Erfüllung erzeugt Clearance auch wenn finaler Approver weder Admin noch Lead ist.
+- **AC-C8 (Pending = keine Clearance):** Während `pending` liefert `can_access_classified` für den Ziel-Nutzer `false`.
+- **AC-C9 (Live-RPC-Smoke Pflicht):** Antwort-RPC + System-Grant gegen Prod mit Rollback-Marker, 0 Residue.
+
+### 7. Dependencies (Pakete)
+**Keine neuen npm-Pakete.** Reuse: PROJ-100a/b-Foundation, PROJ-31-Approval-Primitive (Token/Immutability/Quorum-Muster), PROJ-10-Audit, PROJ-1-RBAC.
+
+### 8. Risiko + Trade-off (CIA)
+| Risiko | Sev | Mitigation |
+|---|---|---|
+| Gate-Einbau ändert deployte grant-RPC → 100a/100b-Pentest-Regression | Hoch | AC-C1: Policy-Absence = früher Return; Pentests als Pflicht-Regression-Gate |
+| Quorum-Grant scheitert, wenn finaler Approver ≠ admin/lead | Mittel | AC-C7: System-Grant-Helper definer-intern (GUC-Bypass-Muster wie PROJ-70-β) |
+| SoD-Lücke (Selbst-Genehmigung) | Hoch | AC-C2: CHECK + RPC-Guard + Pentest-Vektor |
+| Class-3-Achse versehentlich gekoppelt | Mittel | AC-C5: Gate nur auf `ma_confidentiality_level` |
+| Tenant-Isolation in neuen Tabellen | Hoch | `tenant_id NOT NULL` + RLS-Helper + Pentest-Vektor (AC-C4) |
+
+### 9. PROJ-Y Followups (CIA, nicht-blockierend)
+- **PROJ-Y-1:** Pro-Objekt-„sensibel"-Markierung (in 100c als „Later" gelockt).
+- **PROJ-Y-2:** Pro-Projekt-Approver-Override (MVP = tenant-weit).
+- **PROJ-Y-3:** Extraktion der geteilten Approval-Primitive (Token/Immutability/Quorum) in ein gemeinsames Modul — **nur falls PROJ-110 dieselben Bausteine braucht**, als Refactor mit CIA-Review, nicht spekulativ jetzt.
+
+### Locked design decisions (für /backend + /frontend)
+1. **Fork B** — parallele Tabellen, Primitiven-Sharing; PROJ-31-`decision_*` unangetastet.
+2. **Gate am Kopf von `grant_confidentiality_clearance`**; `apply_clearance_profile` erbt automatisch; Policy-aus = byte-identisch.
+3. **System-Grant-Helper definer-intern** bei Quorum-Erfüllung (nicht öffentliche grant-RPC).
+4. **Policy pro (Tenant, Stufe)**, Default AUS (strukturell garantiert durch leere Tabelle).
+5. **Tenant-weite Approver-Liste pro Stufe**; Governance-Rolle, kein Stakeholder-Reuse.
+6. **Getrennt von PROJ-110**; nur Primitive teilen.
+7. **9 Hardening-ACs (C1–C9)** + 100a/100b-Pentest-Regression sind Pflicht vor Approved.
 
 ## QA Test Results
 _To be added by /qa_
