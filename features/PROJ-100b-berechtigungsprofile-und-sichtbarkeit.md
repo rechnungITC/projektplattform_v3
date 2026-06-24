@@ -244,3 +244,14 @@ Projekt-Raum (bestehend) — NEU: Karte/Reiter "Vertraulichkeit & Zugriff"
 - **Frontend** PR **#178** squash-merged → `3d7a4ea`; Tag **`v1.99.0-PROJ-100b`**.
 - **Prod-Verify:** Auth-Gate-Smoke 5/5 = 307 auf `/api/clearance-profiles`, `/stammdaten/berechtigungsprofile`, `/api/projects/[id]/access-overview`, `/api/projects/[id]/clearances/apply-profile`, `/projects/[id]/vertraulichkeit` (Katalog-Page 307 statt 404 ⇒ neues Deployment live + geschützt). Migrationen waren bereits beim /backend-Slice live-verifiziert (Pentest 8/8 + Gate-Regression 4/4 gegen Prod).
 - **Offen:** PROJ-100c (AC5 4-Augen) als nächster Slice der Familie.
+
+## Follow-up — Projektweite Zugriffs-Matrix (Open Question 3 / „Later", 2026-06-24)
+
+Der in Locked-Decision 2 / Open Question 3 bewusst zurückgestellte **objektübergreifende** „Wer darf was sehen?"-Blick (Nutzer × Stufe pro Projekt) wurde nachgezogen — als **reine Frontend-Erweiterung, kein neues Backend, keine Migration**.
+
+- **Neue pure Lib** `src/lib/ma-project/access-matrix.ts` — `buildAccessMatrix()` pivotiert die drei per-Level-Antworten von `ma_access_explain` (standard/confidential/strict) in ein Nutzer×Stufe-Gitter. **Gate-treu by construction:** jede Zelle ist der serverseitige `can_access_classified`-Verdikt (via dem in Prod liegenden PROJ-129-RPC `ma_access_explain`, #181) — **kein clientseitiges Zweit-Gate** (das Modul formt nur die Server-Antworten um, es entscheidet keinen Zugriff selbst). +6 Unit-Tests (`access-matrix.test.ts`): monotone Stufen-Ableitung, Admin-Vollzugriff, Advisor-mit-NDA-Block, Block-Reason-Fallback, Sortierung (privilegiert zuerst), User-Union über Teilantworten.
+- **UI** `AccessMatrixPanel` in `confidentiality-access-card.tsx` (drittes Panel, manager-gated wie die Karte) — Nutzer × {Standard/Vertraulich/Streng vertraulich} mit ✓/–-Zellen, „Extern"-Badge für externe Advisor und Grund-Spalte (richere PROJ-129-Reasons: baseline/admin/cleared/no_clearance/mandate_inactive/nda_missing). Surfaced auf `/projects/[id]/vertraulichkeit`.
+- **Reuse statt Neubau:** lehnt sich an den bereits deployten PROJ-129-Bundle-RPC an (keine zweite Need-to-know-Engine), erfüllt damit Open Question 3 ohne Foundation-Risiko.
+- **Quality-Gates:** lint 0; tsc 0 neu (14 baseline); vitest **2015/2015** (+6); build clean.
+- **Bookkeeping-Hinweis:** Diese Änderung landete durch eine Shared-Checkout-Kollision gebündelt im PROJ-99/128/129-Frontend-Commit `9fb907f` (PR **#182**), nicht als eigenständiger 100b-Commit. Inhaltlich unverändert (committete `access-matrix.ts` == verfasste Version, verifiziert).
+- **QA (2026-06-24, mit PR #182):** PASS. `access-matrix.test.ts` 6/6 (Pivot je Reason); Auth-Gate auf `/vertraulichkeit` deckt das Panel ab (`tests/PROJ-99-128-129-confidentiality-bundle.spec.ts` 15/15 chromium); gate-faithful gegen Deployed-`ma_access_explain` (Reason-Enum-Match verifiziert). 0 Critical/High. Details siehe PROJ-99 „QA Test Results".

@@ -14,7 +14,7 @@ summary_for_jira: "[L2] Vertraulichkeits-Klassifikation und Need-to-know-Steueru
 
 # PROJ-129: Vertraulichkeits-Klassifikation und Need-to-know-Steuerung
 
-## Status: In Progress (Backend gebaut 2026-06-24 — `ma_access_explain` Wer-darf-was-und-warum-RPC; → /frontend Klassifikations-Tab + Matrix, dann /qa)
+## Status: Deployed (2026-06-24 — Bundle PR #182 → main `0135ce3`, Tag `v2.0.0-PROJ-99-128-129`. QA PASS. Klassifikations-Tab + projektweite Matrix gate-faithful. Details siehe PROJ-99.)
 **Created:** 2026-06-10
 **Origin:** M&A-Platform Backlog (Epic L — Vertraulichkeit, NDA & Audit)
 **Priority:** P1

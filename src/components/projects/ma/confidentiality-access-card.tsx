@@ -1,6 +1,6 @@
 "use client"
 
-import { Loader2, ShieldCheck } from "lucide-react"
+import { Check, Loader2, Minus, ShieldCheck } from "lucide-react"
 import * as React from "react"
 import { toast } from "sonner"
 
@@ -35,12 +35,21 @@ import { useProjectAccess } from "@/hooks/use-project-access"
 import { useTenantMembers } from "@/hooks/use-tenant-members"
 import { useWorkItems } from "@/hooks/use-work-items"
 import {
+  type AccessExplainEntry,
+  fetchAccessExplain,
+} from "@/lib/ma-project/advisor-nda-api"
+import {
+  buildAccessMatrix,
+  MATRIX_LEVELS,
+} from "@/lib/ma-project/access-matrix"
+import {
   type AccessOverview,
   applyClearanceProfile,
   type ClearanceProfile,
   fetchAccessOverview,
   listClearanceProfiles,
 } from "@/lib/ma-project/clearance-profiles-api"
+import type { MaConfidentialityLevel } from "@/types/confidentiality"
 
 type ObjectType = "project" | "phase" | "work_item"
 
@@ -53,6 +62,15 @@ const REASON_LABEL: Record<string, string> = {
   baseline: "Baseline (alle Mitglieder)",
   admin: "Admin (Vollzugriff)",
   clearance: "Freischaltung",
+}
+// PROJ-129 ma_access_explain reasons (richer than the 100b who_can_access set).
+const EXPLAIN_REASON_LABEL: Record<string, string> = {
+  baseline: "Baseline (Mitglied)",
+  admin: "Admin (Vollzugriff)",
+  cleared: "Freischaltung",
+  no_clearance: "Keine Freischaltung",
+  mandate_inactive: "Mandat inaktiv",
+  nda_missing: "NDA fehlt / abgelaufen",
 }
 
 interface ClearanceRow {
@@ -97,6 +115,7 @@ export function ConfidentialityAccessCard({ projectId }: { projectId: string }) 
     <div className="space-y-6">
       <ApplyProfilePanel projectId={projectId} nameFor={nameFor} members={members} />
       <WhoCanSeePanel projectId={projectId} nameFor={nameFor} />
+      <AccessMatrixPanel projectId={projectId} nameFor={nameFor} />
     </div>
   )
 }
@@ -431,6 +450,129 @@ function WhoCanSeePanel({
                       {e.valid_until
                         ? new Date(e.valid_until).toLocaleDateString("de-DE")
                         : "—"}
+                    </TableCell>
+                  </TableRow>
+                ))}
+              </TableBody>
+            </Table>
+          </div>
+        )}
+      </CardContent>
+    </Card>
+  )
+}
+
+// --- Project-wide access matrix (Nutzer × Stufe) -------------------------
+// PROJ-100b Open Question 3 / "Later": the object-spanning complement to the
+// per-object WhoCanSeePanel. Calls ma_access_explain once per level
+// (standard/confidential/strict) and pivots into one grid. Gate-faithful —
+// every cell is the server-side can_access_classified verdict, no second gate.
+function AccessMatrixPanel({
+  projectId,
+  nameFor,
+}: {
+  projectId: string
+  nameFor: (userId: string) => string
+}) {
+  const [rows, setRows] = React.useState<
+    ReturnType<typeof buildAccessMatrix>
+  >([])
+  const [loading, setLoading] = React.useState(true)
+  const [error, setError] = React.useState<string | null>(null)
+
+  React.useEffect(() => {
+    let cancelled = false
+    void (async () => {
+      if (!cancelled) {
+        setLoading(true)
+        setError(null)
+      }
+      try {
+        const results = await Promise.all(
+          MATRIX_LEVELS.map((level) => fetchAccessExplain(projectId, { level }))
+        )
+        const perLevel: Partial<
+          Record<MaConfidentialityLevel, AccessExplainEntry[]>
+        > = {}
+        MATRIX_LEVELS.forEach((level, i) => {
+          perLevel[level] = results[i].entries
+        })
+        if (!cancelled) setRows(buildAccessMatrix(perLevel))
+      } catch (err) {
+        if (!cancelled)
+          setError(err instanceof Error ? err.message : "Fehler beim Laden")
+      } finally {
+        if (!cancelled) setLoading(false)
+      }
+    })()
+    return () => {
+      cancelled = true
+    }
+  }, [projectId])
+
+  return (
+    <Card>
+      <CardHeader>
+        <CardTitle className="text-base">Zugriffs-Matrix (projektweit)</CardTitle>
+        <CardDescription>
+          Wer welche Vertraulichkeitsstufe in diesem Projekt sehen darf — über
+          alle Objekte hinweg. Read-only; spiegelt das Need-to-know-Tor
+          (inkl. Mandat &amp; NDA für externe Berater).
+        </CardDescription>
+      </CardHeader>
+      <CardContent className="space-y-4">
+        {error ? (
+          <p className="text-sm text-destructive">{error}</p>
+        ) : loading ? (
+          <Skeleton className="h-24 w-full" />
+        ) : rows.length === 0 ? (
+          <div className="rounded-md border border-dashed py-8 text-center text-sm text-muted-foreground">
+            Niemand hat aktuell Zugriff.
+          </div>
+        ) : (
+          <div className="overflow-x-auto rounded-md border">
+            <Table>
+              <TableHeader>
+                <TableRow>
+                  <TableHead>Nutzer</TableHead>
+                  {MATRIX_LEVELS.map((level) => (
+                    <TableHead key={level} className="text-center">
+                      {LEVEL_LABEL[level]}
+                    </TableHead>
+                  ))}
+                  <TableHead className="hidden sm:table-cell">Grund</TableHead>
+                </TableRow>
+              </TableHeader>
+              <TableBody>
+                {rows.map((row) => (
+                  <TableRow key={row.user_id}>
+                    <TableCell className="font-medium">
+                      <span className="flex items-center gap-2">
+                        {nameFor(row.user_id)}
+                        {row.is_external_advisor && (
+                          <Badge variant="outline" className="text-xs">
+                            Extern
+                          </Badge>
+                        )}
+                      </span>
+                    </TableCell>
+                    {MATRIX_LEVELS.map((level) => (
+                      <TableCell key={level} className="text-center">
+                        {row.access[level] ? (
+                          <Check
+                            className="mx-auto h-4 w-4 text-emerald-600 dark:text-emerald-400"
+                            aria-label="Zugriff"
+                          />
+                        ) : (
+                          <Minus
+                            className="mx-auto h-4 w-4 text-muted-foreground/40"
+                            aria-label="kein Zugriff"
+                          />
+                        )}
+                      </TableCell>
+                    ))}
+                    <TableCell className="hidden sm:table-cell text-muted-foreground">
+                      {EXPLAIN_REASON_LABEL[row.reason] ?? row.reason}
                     </TableCell>
                   </TableRow>
                 ))}
