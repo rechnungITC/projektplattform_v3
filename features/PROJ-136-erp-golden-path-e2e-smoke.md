@@ -1,6 +1,6 @@
 # PROJ-136: ERP-Pilot Golden-Path End-to-End Smoke
 
-## Status: Approved (QA-Pass 2026-06-22: 7/7 AC PASS inkl. AC-6 Negativ-Nachweis live, 0 Critical/High, Red-Team auf RPC-Migration+AI-Edits clean, 0 Residue. Backend 2026-06-22: Live-Seed-Smoke gebaut + fand+fixte beim ersten Lauf den HIGH Waterfall-Taxonomie-Bug (PROJ-70). Playwright-UI-Flow = dokumentiertes Non-Goal. → /deploy)
+## Status: Deployed (2026-06-22, Tag `v1.96.0-PROJ-136`, Closure — kein Runtime-Deploy, Test-Infra + PROJ-70-Fix bereits via #163 live). QA-Pass: 7/7 AC inkl. AC-6 Negativ-Nachweis live, 0 Critical/High. Fand+fixte beim ersten Lauf den HIGH Waterfall-Taxonomie-Bug (PROJ-70). Playwright-UI-Flow = dokumentiertes Non-Goal.
 **Created:** 2026-06-19
 **Last Updated:** 2026-06-22
 
@@ -114,5 +114,10 @@ Keine offenen. Der HIGH-Bug (Waterfall-Taxonomie), den dieser Golden-Path beim e
 ### Produktionsreife: ✅ READY
 0 Critical / 0 High. AC 7/7 PASS. Playwright-UI-Flow ist ein dokumentiertes **Non-Goal** dieses Slice (die SQL-Live-Seed-Smoke IST das Regressions-Artefakt) — bewusst NICHT ergänzt. → **Approved.**
 
-## Deployment
-_To be added by /deploy_
+## Deployment — 2026-06-22 (Closure)
+
+- **Tag:** `v1.96.0-PROJ-136`
+- **Kein Runtime-Deploy nötig:** PROJ-136 ist reine Test-Infra (`tests/sql/PROJ-136-erp-golden-path.sql`) + Doku — kein `src/`-Prod-Pfad. Der einzige Runtime-Anteil (der PROJ-70-Waterfall-Taxonomie-Fix: Migration `20260622100000` + AI-Schema/Prompt/FE-Edits) ist bereits via PR #163 auf `main` und Prod-DB live + Vercel-auto-deployed.
+- **Enthält:** Golden-Path-Live-Seed-Smoke (3 Accept-Legs + Phasen/Budget/Report + 0-Residue-Teardown) + AC-6-Negativ-Guard (Section 8). QA 7/7 AC PASS, 0 Critical/High.
+- **Offen (bewusst, dokumentiert):** Playwright-UI-Flow = Non-Goal dieses Slice; CI-Verdrahtung der SQL-Smoke (heute manuell/MCP-runbar) ist ein optionaler späterer Schritt.
+- **Bleibender Wert:** schützt die ~90 isoliert getesteten Slices als Verkettung + den Waterfall-Backlog-Accept-Pfad gegen Taxonomie-Regression (genau die Bug-Klasse, die er beim ersten Lauf fand).
