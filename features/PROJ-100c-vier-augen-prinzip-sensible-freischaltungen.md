@@ -25,12 +25,13 @@
 
 ### Konfiguration (optional, tenant-gesteuert)
 - [ ] **AC-100c-1:** Das 4-Augen-Prinzip ist eine **tenant-weite, standardmäßig deaktivierte** Einstellung. Ist es deaktiviert, verhält sich der grant-/apply-profile-Pfad **exakt wie heute** (PROJ-100a/b unverändert — keine Verhaltensänderung, kein Regressionsrisiko).
-- [ ] **AC-100c-2:** Ist es aktiviert, ist die **Auslöse-Schwelle** konfigurierbar — MVP: „ab `strict`" (jede Freischaltung, die `strict` vergibt) ODER „ab `confidential`". Freischaltungen unterhalb der Schwelle laufen weiterhin direkt (kein Gate).
+- [ ] **AC-100c-2:** Ist es aktiviert, ist die **Auslöse-Schwelle tenant-konfigurierbar** (Default `≥ strict`; wählbar auch `≥ confidential`). Freischaltungen unterhalb der eingestellten Schwelle laufen weiterhin direkt (kein Gate). _(Requirements-Lock 2026-06-24: „einstellbar".)_
 
 ### Antrag & Genehmigung (State-Machine)
 - [ ] **AC-100c-3:** Vergibt ein berechtigter Verwalter (tenant-admin/project-lead) eine Freischaltung **auf/oberhalb der Schwelle**, wird statt einer sofortigen Freischaltung eine **Freischaltungs-Anfrage** im Zustand `pending` erzeugt; der Zugriff ist **noch nicht** wirksam (`can_access_classified` lässt den Nutzer NICHT durch, solange die Anfrage nicht genehmigt ist).
 - [ ] **AC-100c-4:** Eine Anfrage trägt mindestens: Projekt, Ziel-Nutzer, beantragte Stufe (+ ggf. angewandtes Profil), Antragsteller, Begründung/Notiz, Status (`pending`/`approved`/`rejected`/`cancelled`), Zeitstempel.
-- [ ] **AC-100c-5:** **Separation of Duty:** Der Antragsteller kann seine eigene Anfrage **nicht** selbst genehmigen. Mindestens **eine** zweite, distinct berechtigte Person muss zustimmen (Quorum = 2 Personen insgesamt, M-von-N konfigurierbar analog PROJ-31; MVP-Default: 1 zusätzlicher Approver).
+- [ ] **AC-100c-5:** **Separation of Duty:** Der Antragsteller kann seine eigene Anfrage **nicht** selbst genehmigen. Die **erforderliche Personenzahl ist pro Stufe konfigurierbar** (M-von-N, analog PROJ-31): Default **4-Augen = 1 zusätzlicher Approver** (2 Personen), optional **6-Augen = 2 zusätzliche Approver** (3 Personen) für die höchste Stufe. _(Requirements-Lock 2026-06-24: konfigurierbare Augenzahl/M-von-N pro Stufe.)_
+- [ ] **AC-100c-5b:** Die genehmigungsberechtigten Approver werden aus einer **explizit benannten Approver-Liste** pro Projekt/Tenant aufgelöst (PROJ-31-`approver_stakeholder_ids`-Muster); externe Approver auf der Liste genehmigen via Magic-Link. _(Requirements-Lock 2026-06-24: benannte Liste, nicht „jeder Admin/Lead".)_
 - [ ] **AC-100c-6:** Wird das Quorum erreicht (`approved`), wird die Freischaltung **über den bestehenden `grant_confidentiality_clearance`-Pfad** wirksam (kein Parallel-Insert an der RLS vorbei; Provenance „über 4-Augen-Anfrage" festgehalten). Erst dann lässt das Tor den Nutzer durch.
 - [ ] **AC-100c-7:** Wird die Anfrage abgelehnt (`rejected`) oder abgebrochen (`cancelled`), entsteht **keine** Freischaltung; bestehende Freischaltungen des Nutzers bleiben unberührt.
 - [ ] **AC-100c-8:** Externe Approver (Stakeholder ohne Plattform-Konto) können per **Magic-Link** (PROJ-31-Muster, zeitlich begrenzt, single-purpose) genehmigen/ablehnen, ohne vollen App-Zugang.
@@ -58,12 +59,17 @@
 - **Eigene IAM-/Login-Mechanik** — Authentifizierung über den bestehenden IdP; Externe nur via Magic-Link.
 - Änderung des Stufenmodells (`standard`/`confidential`/`strict`) — bleibt PROJ-100a.
 
-## Open Questions
-- **Auslöse-Modell:** Reicht die Stufen-Schwelle (`≥ strict`) als alleiniger Trigger, oder braucht der Pilot zusätzlich eine **per-Objekt-„sensibel"-Markierung** (z. B. einzelne DD-Findings/Reports unabhängig von der Objektstufe)? (MVP-Vorschlag: nur Stufen-Schwelle; Per-Objekt → Folge-Slice.)
-- **Quorum-Größe:** Default „1 zusätzlicher Approver" (4-Augen i. e. S.) — soll M-von-N (z. B. 2-von-3 für `strict`) pro Tenant/Stufe konfigurierbar sein, oder genügt fix „+1" im MVP?
-- **Approver-Kreis:** Jeder tenant-admin/project-lead ≠ Antragsteller, ODER eine explizit benannte Approver-Liste pro Projekt/Tenant (analog PROJ-31 `approver_stakeholder_ids`)? (CIA-Frage: Reuse vs. eigene Kandidatenauflösung.)
-- **Wirksamkeits-Semantik bei `pending`:** Anfrage erzeugt **gar keine** Clearance bis Genehmigung (bevorzugt, einfachstes Tor-Verhalten) — bestätigen vs. „pending-Clearance mit Effektiv-Flag".
-- **Verhältnis zu PROJ-110** (M&A Stage-Gate-Workflow): Soll 100c seine State-Machine mit dem generischen Stage-Gate aus PROJ-110 teilen, oder bewusst getrennt bleiben (Vertraulichkeits-Freischaltung ≠ Phasen-Gate)?
+## Requirements-Locks (2026-06-24, User-bestätigt)
+Diese vier Forks wurden vor `/architecture` entschieden:
+1. **Auslöse-Modell → tenant-konfigurierbare Stufen-Schwelle** (Default `≥ strict`, wählbar `≥ confidential`). Per-Objekt-„sensibel"-Markierung bleibt **Out of Scope / Later**. (AC-100c-2)
+2. **Quorum → konfigurierbare Personenzahl (M-von-N) pro Stufe**: Default 4-Augen (1 zusätzlicher Approver), optional 6-Augen (2 zusätzliche) für die höchste Stufe. (AC-100c-5)
+3. **Approver-Kreis → explizit benannte Approver-Liste** pro Projekt/Tenant (PROJ-31-`approver_stakeholder_ids`-Muster), externe via Magic-Link. (AC-100c-5b)
+4. **Pending-Semantik → keine Clearance bis Genehmigung** (Anfrage erzeugt gar keine Clearance-Zeile; Tor `can_access_classified` bleibt unverändert → kein Regressionsrisiko). (AC-100c-3/6)
+
+## Open Questions (für /architecture + CIA)
+- **Verhältnis zu PROJ-110** (M&A Stage-Gate-Workflow): Soll 100c seine Genehmigungs-State-Machine mit dem generischen Stage-Gate aus PROJ-110 teilen, oder bewusst getrennt bleiben (Vertraulichkeits-Freischaltung ≠ Phasen-Gate)? _(CIA-Frage; Vorschlag: getrennt — eigene Semantik, aber PROJ-31-Primitive teilen.)_
+- **Approver-Listen-Verwaltung:** Wo wird die benannte Approver-Liste gepflegt (pro Projekt vs. tenant-weit; eigene Tabelle vs. Reuse einer bestehenden Stakeholder-/Member-Struktur)? _(CIA-Frage bei /architecture.)_
+- **Per-Stufe-Konfiguration (Schwelle + Quorum + Liste):** Datenmodell der Tenant-/Stufen-Konfiguration (eine Policy-Zeile pro Stufe?) — Detail für /architecture.
 
 ## Technical Requirements
 - **Security:** Anfrage/Genehmigung tenant-admin/project-lead-gated; SoD (Antragsteller ≠ Approver) hart erzwungen; alle 100a/100b-Invarianten (Tenant-Isolation, Self-Grant-Block, Class-3-Orthogonalität, Tor = einzige Sichtbarkeitslogik) bleiben in Kraft. Wirksamwerden NUR über den bestehenden `grant_confidentiality_clearance`-Pfad.
