@@ -14,7 +14,7 @@ summary_for_jira: "[L2] Vertraulichkeits-Klassifikation und Need-to-know-Steueru
 
 # PROJ-129: Vertraulichkeits-Klassifikation und Need-to-know-Steuerung
 
-## Status: Architected (Tech-Design 2026-06-23: Klassifikations-UX und Wer-darf-was-sehen-Schicht auf PROJ-100a; keine neue Rechte-Engine, keine Erweiterung der Foundation-Stufen im MVP. Teil des PROJ-99/128/129-Bundles.)
+## Status: Deployed (2026-06-24 — Bundle PR #182 → main `0135ce3`, Tag `v2.0.0-PROJ-99-128-129`. QA PASS. Klassifikations-Tab + projektweite Matrix gate-faithful. Details siehe PROJ-99.)
 **Created:** 2026-06-10
 **Origin:** M&A-Platform Backlog (Epic L — Vertraulichkeit, NDA & Audit)
 **Priority:** P1
@@ -184,6 +184,19 @@ Wenn einer dieser Punkte fehlt, zeigt die UI den Grund: keine Projektrolle, kein
 ### F) QA-/Security-Handoff
 
 QA muss fuer jede neue M&A-Tabelle pruefen: Standard sichtbar, Confidential ohne Clearance blockiert, Strict mit zu niedriger Clearance blockiert, Externer ohne gueltige NDA blockiert, abgelaufenes Mandat blockiert, Cross-Tenant bleibt blockiert, Class-3-Routing bleibt unveraendert.
+
+## Implementation Notes — Backend (2026-06-24)
+
+Teil der gemeinsamen Bundle-Migration `20260623230548_proj99_128_129_advisor_nda_classification.sql` (siehe [[PROJ-99]]). **Keine zweite Need-to-Know-Engine, keine vierte technische Stufe** — MVP nutzt die drei PROJ-100a-Stufen `standard`/`confidential`/`strict` unverändert; „Public" bleibt späteres Export-/DMS-Label.
+
+- **`ma_access_explain(project, level)`** — manager-gated (admin/lead), read-only „Wer darf was sehen, und warum?". Spiegelt die `can_access_classified`-Regel für jeden relevanten Nutzer (Projektmitglieder ∪ Advisor ∪ Clearance-Holder ∪ Tenant-Admins) und liefert pro Nutzer `is_member`, `is_external_advisor`, `mandate_ok`, `nda_ok`, `cleared_level`, `has_access` + `reason` (`baseline`/`admin`/`cleared`/`no_clearance`/`mandate_inactive`/`nda_missing`). **Erklär-View, niemals ein zweites Gate** — selbe Logik wie 100b `who_can_access`, nur reicher um Advisor/NDA/Mandat-Gründe.
+- **Class-3 bleibt getrennt:** das Gate erwähnt `privacy_class` nicht (100a-Pentest-Vektor 6 weiter grün); eine `strict`-Clearance erlaubt nie automatisch externe KI-Verarbeitung.
+
+**API:** `GET /api/projects/[id]/access-explain?level=…` oder `?objectType=&objectId=` (löst die Objekt-Stufe auf, mirror 100b `access-overview`). Client-Wrapper `fetchAccessExplain` in `src/lib/ma-project/advisor-nda-api.ts`.
+
+**Live-Smoke (Teil der Bundle-10/10):** `ma_access_explain` liefert für Admin `reason=admin`, für internen cleared Member `cleared`, für Advisor mit Mandat+NDA `cleared`; Negativ-Reasons (`mandate_inactive`/`nda_missing`) durch die Gate-Probes mitbewiesen. Quality-Gates wie [[PROJ-99]].
+
+**Offen:** AC „Klassifikation pro Inhaltsobjekt" für künftige M&A-Objekte (DD-Streams/Findings/Reports) — das PROJ-100a-Rezept (`confidentiality_level` + RESTRICTIVE-Gate) wird angewandt, sobald diese Tabellen existieren (PROJ-112–116). AC „Exporte tragen Sichtbarkeitsstufen" → Handoff an PROJ-116/131/132. Klassifikations-Tab + Wer-darf-was-Matrix-UI → /frontend; Negativtests pro M&A-Tabelle → /qa.
 
 ---
 _Quelle: Backlog-Entwurf M&A-Projektplattform · L — Vertraulichkeit, NDA & Audit_
