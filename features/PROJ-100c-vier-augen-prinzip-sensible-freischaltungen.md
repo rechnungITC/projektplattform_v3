@@ -1,6 +1,6 @@
 # PROJ-100c: 4-Augen-Prinzip für besonders sensible Vertraulichkeits-Freischaltungen
 
-## Status: Planned
+## Status: In Progress (Backend gebaut 2026-06-24 — Fork B: Policy/Approver/Request/Event-Tabellen + Gate am grant-RPC-Kopf + record/cancel-RPCs + 6 APIs; Migration `20260624125208` in Prod; Live-Smoke 7/7 + 100b-Pentest-Regression 8/8, 0 Residue. → /frontend, dann /qa)
 **Created:** 2026-06-24
 **Last Updated:** 2026-06-24
 **Origin:** AC5 aus [PROJ-100](PROJ-100-berechtigungskonzept-nach-need-to-know-umsetzen.md); aus [PROJ-100b](PROJ-100b-berechtigungsprofile-und-sichtbarkeit.md) ausgegliedert (eigene Genehmigungs-State-Machine, CIA-schwer).
@@ -166,6 +166,34 @@ PROJ-100c 4-Augen-Gate
 5. **Tenant-weite Approver-Liste pro Stufe**; Governance-Rolle, kein Stakeholder-Reuse.
 6. **Getrennt von PROJ-110**; nur Primitive teilen.
 7. **9 Hardening-ACs (C1–C9)** + 100a/100b-Pentest-Regression sind Pflicht vor Approved.
+
+## Implementation Notes — Backend (2026-06-24)
+
+Fork B umgesetzt. **Kein neuer Dep.** Migration `20260624125208_proj100c_four_eyes_clearance_approval.sql` (PROJ-134-Konvention, name = Repo-Dateiname-Stamm; in Prod).
+
+**Schema (5 neue Tabellen, alle tenant-scoped + RLS):**
+- `ma_clearance_approval_policies` — Policy pro `(tenant, level)`: `enabled` (Default false), `persons_required` (1–10). **Leere Tabelle ⇒ Gate aus** (strukturelle Default-off-Garantie, AC-C3). Member SELECT / Admin Write.
+- `ma_clearance_approvers` — tenant-weiter Approver-Pool, optional pro Stufe (null = alle gated levels). Member SELECT / Admin Write.
+- `ma_clearance_grant_requests` — pending-Workflow (target, requested_level, requested_by, quorum_required, status, granted_clearance_id). Partial-Unique: max. 1 `pending` pro `(project,user,level)`. Project-Member SELECT; Writes nur via RPC.
+- `ma_clearance_request_approvers` — Snapshot der berechtigten Approver pro Request (SoD: Antragsteller ausgeschlossen).
+- `ma_clearance_request_events` — append-only Vote-Log (1 Stimme/Approver), Immutability-Trigger `enforce_clearance_event_immutability` (PROJ-31-Muster).
+- Audit-Entity-Types `ma_clearance_grant_requests` + `ma_clearance_approval_policies` zum CHECK ergänzt (robuste apply-time-Injektion, übersteht parallele `dd_streams`-Änderung; PROJ-100a-H-1-Lehre: BEVOR Audit-Rows geschrieben werden).
+
+**Gate + RPCs (alle SECURITY DEFINER):**
+- **Gate am Kopf von `grant_confidentiality_clearance`** (5-arg recreated): nach Autoritäts-/Membership-Check → `exists(enabled policy für tenant+level)`? → `_create_clearance_grant_request` + `return null` (pending). **Kein enabled-Policy ⇒ Zweig übersprungen, Pfad byte-identisch** (AC-C1). `apply_clearance_profile` delegiert hinein → erbt Gate automatisch (single write path).
+- `_create_clearance_grant_request` (internal, execute revoked) — idempotent (reuse offener Request), Quorum aus Policy, Approver-Snapshot **exklusive Antragsteller** (SoD), Audit `four_eyes_requested`.
+- `_system_grant_clearance` (internal, execute revoked) — schreibt Clearance + Audit **ohne** Autoritäts-Check (System vollendet approved Request; finaler Approver muss nicht admin/lead sein, AC-C7).
+- `record_clearance_approval_response(request, action)` (authenticated) — Pending-Check, **SoD-Double-Guard** (`v_actor = requested_by` → 42501, AC-C2), Approver-Eligibility-Check, append-only Vote; reject → `rejected`; approve → Quorum-Count → bei Erreichen `_system_grant_clearance` + `approved`.
+- `cancel_clearance_grant_request(request)` (authenticated) — Requester ODER admin/lead.
+
+**APIs:** `GET/PUT /api/clearance-approval-policies` (admin) · `GET/POST /api/clearance-approvers` + `DELETE …/[approverId]` (admin) · `GET /api/projects/[id]/clearance-requests` (member) · `POST …/[reqId]/respond` (approver) · `POST …/[reqId]/cancel`. **Grant- + apply-profile-Routen erweitert:** RPC-`null` → **202 `{pending:true}`** (gated). Client-Wrapper `src/lib/ma-project/four-eyes-api.ts`.
+
+**Pflicht-Live-RPC-Smoke gegen Prod (rolled back, 0 Residue) — 7/7:** gated→1 pending/0 clearance · pending.target_access=false (AC-C8) · SoD self-approve→42501 (AC-C2) · non-admin approver approves→Quorum→clearance (AC-C7) · approved.target_access=true · events immutable (AC-C6) · default-off: confidential (keine Policy)→sofortige Clearance/0 pending (AC-C3).
+**Regression (AC-C1):** `tests/sql/PROJ-100b-clearance-profiles-pentest.sql` **A–H 8/8 grün** (exerziert grant via apply_profile byte-identisch); `can_access_classified` + RESTRICTIVE-Policies **unverändert** (rein additiver Gate-Zweig) → 100a-Pentest bleibt grün.
+
+**Quality-Gates:** lint 0 · tsc 14 baseline/0 neu · vitest 2041/2041 (+24 Route-Tests inkl. 202-pending) · build clean.
+
+**Offen → /frontend:** Policy-Verwaltung (Admin: Gate an/aus + Schwelle + Personenzahl + Approver-Pool), „Wartet auf Genehmigung"-Liste + Approve/Reject im Projektraum, pending-Zustand in der Vertraulichkeits-Karte. **AC-100c-8 (Magic-Link für externe Approver)** → /frontend (reuse PROJ-31 `approval-token.ts` + Token-Respond-Route). Danach /qa.
 
 ## QA Test Results
 _To be added by /qa_
