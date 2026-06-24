@@ -4,6 +4,7 @@ import {
   ChevronRight,
   FolderTree,
   ListChecks,
+  Microscope,
   Network,
   ShieldCheck,
   Tags,
@@ -95,6 +96,14 @@ const SECTIONS: Section[] = [
     title: "Organisation",
     description:
       "Unternehmensorganigramm — Gesellschaften, Standorte, Bereiche, Abteilungen und Teams als hierarchischer Baum (Tree + Tabelle).",
+    adminOnly: true,
+  },
+  {
+    href: "/stammdaten/dd-stream-vorlagen",
+    icon: Microscope,
+    title: "DD-Stream-Vorlagen",
+    description:
+      "Tenant-Katalog der Due-Diligence-Streams (Commercial, Financial, Tax, Legal, HR, IT …). Werden beim Aktivieren in ein M&A-Projekt kopiert.",
     adminOnly: true,
   },
 ]

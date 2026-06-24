@@ -14,7 +14,7 @@ summary_for_jira: "[G1] Due-Diligence-Streams konfigurieren und steuern"
 
 # PROJ-112: Due-Diligence-Streams konfigurieren und steuern
 
-## Status: In Progress (Backend gebaut + Live-Smoke 10/10 2026-06-24 — Migration `20260624105317` in Prod, APIs + Client-Wrapper; → /frontend DD-Übersicht + Stammdaten-Katalog, dann /qa)
+## Status: In Progress (Backend + Frontend gebaut 2026-06-24 — DD-Übersicht/Detail/Status im Projektraum + Stammdaten-Katalog; → /qa Negativtests)
 **Created:** 2026-06-10
 **Origin:** M&A-Platform Backlog (Epic G — Due Diligence)
 **Priority:** P1
@@ -208,6 +208,17 @@ Nach Approval: `/backend` (Migration: 2 Tabellen + Status-RPC + Confidentiality-
 **Quality-Gates:** ESLint 0, vitest +22 (dd-streams 9 / status 7 / templates 6), tsc 0 neue Errors (14 Baseline-Test-File-Errors), `next build` clean.
 
 **Offen → /frontend:** DD-Übersicht (Status/Lead/Restzeit + `—`-Counts) + Stream-Detail/Status-UI im M&A-Projektraum (neuer Nav-Eintrag „Due Diligence", `requiresProjectType='ma'`) + Stammdaten-Katalog „DD-Stream-Vorlagen". → /qa Negativtests (Confidentiality-Gate je Stream, Status-Maschine, Cross-Tenant, Audit-Sichtbarkeit).
+
+## Implementation Notes — Frontend (2026-06-24)
+
+**Kein neuer Dep, shadcn/ui-first.** Reine UI auf den live-APIs + `dd-streams-api.ts`.
+
+- **Nav:** neuer `MA_DUE_DILIGENCE_SECTION` („Due Diligence", `tabPath='due-diligence'`, `requiresProjectType='ma'`) in `method-templates/index.ts`, injiziert via `withMaFoundation` direkt nach „Governance & Zugriff" — erscheint nur in M&A-Projekten (type-gefiltert in beiden Renderern).
+- **Projektraum-Seite** `/projects/[id]/due-diligence` → `due-diligence-streams-page.tsx`: Übersichtstabelle (Stream · Status · Lead · Zeitfenster + **Restzeit** · Vertraulichkeits-Badge · Findings · Q&A · Aktionen). **Sichtbar für Projekt-Mitglieder** (GET view-gegatet); Aktivieren/Bearbeiten/Status/Löschen nur bei `useProjectAccess(…, "manage_members")`. **Findings/Q&A-Spalten zeigen `—`** (API liefert `null`, nicht `0` — CIA-ADJUST, Tooltip „verfügbar mit PROJ-113/114"). Status-Wechsel via inline-`Select` mit genau den erlaubten Folgezuständen (`allowedDdTransitions` spiegelt die Server-State-Maschine). „Stream aktivieren"-Dialog lädt den Vorlagen-Katalog (nur aktive, noch nicht aktivierte) → Copy-on-create. Edit-Dialog: Lead (Projekt-Member-Picker), Zeitfenster, Vertraulichkeit, optionale Phase (PROJ-19), Scope, Notizen.
+- **Stammdaten-Katalog** `/stammdaten/dd-stream-vorlagen` → `dd-stream-templates-page-client.tsx` + `dd-stream-template-form-dialog.tsx` (Muster: Berechtigungsprofile): Admin-CRUD, GET lazy-seedet die 6 Standards, `stream_key` nach Anlage fest, Deaktivieren/Reaktivieren/Löschen. Neue Kachel im Stammdaten-Index (`adminOnly`).
+- **Labels-Helper** `dd-stream-labels.ts`: DE-Status-/Level-Labels, Badge-Varianten, `allowedDdTransitions` (Mirror der RPC-Maschine), `remainingTime` (Restzeit aus `planned_end`, deterministisches `today` via `useMemo`).
+
+**Quality-Gates:** ESLint 0, tsc 0 neue Errors (14 Baseline), `next build` clean (2 neue Routen: `/projects/[id]/due-diligence` + `/stammdaten/dd-stream-vorlagen`). vitest unverändert (Backend-Route-Tests decken die kritischen Pfade; reine UI-Slice). Playwright-Auth-Gate-Smoke + Live-Negativtests → /qa.
 
 ---
 _Quelle: Backlog-Entwurf M&A-Projektplattform · G — Due Diligence_
