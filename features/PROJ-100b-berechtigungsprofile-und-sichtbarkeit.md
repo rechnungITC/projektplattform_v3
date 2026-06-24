@@ -254,4 +254,4 @@ Der in Locked-Decision 2 / Open Question 3 bewusst zurückgestellte **objektübe
 - **Reuse statt Neubau:** lehnt sich an den bereits deployten PROJ-129-Bundle-RPC an (keine zweite Need-to-know-Engine), erfüllt damit Open Question 3 ohne Foundation-Risiko.
 - **Quality-Gates:** lint 0; tsc 0 neu (14 baseline); vitest **2015/2015** (+6); build clean.
 - **Bookkeeping-Hinweis:** Diese Änderung landete durch eine Shared-Checkout-Kollision gebündelt im PROJ-99/128/129-Frontend-Commit `9fb907f` (PR **#182**), nicht als eigenständiger 100b-Commit. Inhaltlich unverändert (committete `access-matrix.ts` == verfasste Version, verifiziert).
-- **Offen:** /qa (E2E-Auth-Gate auf `/vertraulichkeit` deckt das Panel mit ab; Matrix-Render-Smoke optional) — fährt mit der PR-#182-QA mit.
+- **QA (2026-06-24, mit PR #182):** PASS. `access-matrix.test.ts` 6/6 (Pivot je Reason); Auth-Gate auf `/vertraulichkeit` deckt das Panel ab (`tests/PROJ-99-128-129-confidentiality-bundle.spec.ts` 15/15 chromium); gate-faithful gegen Deployed-`ma_access_explain` (Reason-Enum-Match verifiziert). 0 Critical/High. Details siehe PROJ-99 „QA Test Results".

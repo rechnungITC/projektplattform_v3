@@ -14,7 +14,7 @@ summary_for_jira: "[L2] Vertraulichkeits-Klassifikation und Need-to-know-Steueru
 
 # PROJ-129: Vertraulichkeits-Klassifikation und Need-to-know-Steuerung
 
-## Status: In Progress (Backend + Frontend gebaut 2026-06-24 — Klassifikations-Tab `classification-matrix-tab.tsx` (per-Objekt Wer-darf-was-und-warum) + projektweite Zugriffs-Matrix in der „Governance & Zugriff"-Seite; → /qa. Frontend-Details siehe PROJ-99 „Implementation Notes — Frontend".)
+## Status: Approved (QA PASS 2026-06-24, PR #182 — Teil des Bundle-QA, 0 Critical/High/Medium; Klassifikations-Tab + projektweite Matrix gate-faithful: Deployed-`ma_access_explain`-Reason-Enum (baseline/admin/mandate_inactive/nda_missing/cleared/no_clearance) == FE-Mapping, manager-gated (42501→403), Class-3 strukturell getrennt. QA-Details siehe PROJ-99 „QA Test Results". → /deploy)
 **Created:** 2026-06-10
 **Origin:** M&A-Platform Backlog (Epic L — Vertraulichkeit, NDA & Audit)
 **Priority:** P1
