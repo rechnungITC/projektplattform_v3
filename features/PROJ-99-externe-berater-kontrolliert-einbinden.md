@@ -14,7 +14,7 @@ summary_for_jira: "[B3] Externe Berater kontrolliert einbinden"
 
 # PROJ-99: Externe Berater kontrolliert einbinden
 
-## Status: In Progress (Backend gebaut 2026-06-24 — `ma_advisor_profiles` + Gate-Erweiterung + APIs; → /frontend Governance-&-Zugriff-Seite, dann /qa)
+## Status: In Progress (Backend + Frontend gebaut 2026-06-24 — Governance-&-Zugriff-Seite mit 4 Tabs live im Code; → /qa Negativtests)
 **Created:** 2026-06-10
 **Origin:** M&A-Platform Backlog (Epic B — Rollen, Gremien & Governance)
 **Priority:** P1
@@ -195,6 +195,24 @@ Gebaut als gemeinsame Backend-Slice mit PROJ-128/129 (ein Bundle, eine Migration
 **Quality-Gates:** lint 0, tsc 0 neu (Baseline), vitest 2009/2009 (+ Route-Tests), build clean (7 neue Routen).
 
 **Offen:** AC „Externe Aktivitäten (Logins/Downloads) auditierbar" — Advisor-/NDA-/Clearance-Events laufen über PROJ-10; Login-/DMS-Event-Marker folgen, sobald Auth-/DMS-Events verfügbar sind. /frontend (Governance-&-Zugriff-Seite) + /qa (Negativtests: fehlende NDA, abgelaufenes Mandat, zu niedrige Clearance, Cross-Tenant) offen.
+
+## Implementation Notes — Frontend (2026-06-24)
+
+Gemeinsame Frontend-Slice mit PROJ-128/129 (ein Bundle, eine Governance-Seite). **Kein neues Dep, keine Migration, kein neuer Backend-Code** — reine UI auf den bereits live gemergten APIs (#181) + Client-Wrapper `src/lib/ma-project/advisor-nda-api.ts`.
+
+**Nav-/Routing-Entscheidung:** Statt einer zweiten Nav-Sektion neben dem PROJ-100b-Eintrag „Vertraulichkeit & Zugriff" wurde der **bestehende `vertraulichkeit`-Eintrag** auf **„Governance & Zugriff"** umbenannt und zur Tab-Seite ausgebaut (`MA_CONFIDENTIALITY_SECTION` in `method-templates/index.ts`, weiterhin `requiresProjectType: "ma"`-gegatet). Route bleibt `/projects/[id]/vertraulichkeit` (Back-Compat, keine Middleware-Änderung). Vermeidet zwei überlappende „Wer-darf-was"-Einträge.
+
+**Komponenten (alle manager-gegatet wie die PROJ-100b-Karte):**
+- `governance-access-page.tsx` — Tab-Shell (`useProjectAccess(…, "manage_members")`-Gate, sonst Hinweis-Card). 4 Tabs: **Berater · NDAs · Klassifikation · Freischaltungen**.
+- `advisors-tab.tsx` (PROJ-99) — Berater-Liste + Einbinden/Bearbeiten-Dialog (Tenant-Member-Picker für Neuanlage, Organisation, Advisor-Typ, Mandatsbeginn/-ende, Mandatsstatus, Verantwortlich intern, Scope, Notizen) + Mandats-/Profil-Entfernen. „Mandat beenden" = Status auf `expired`/`blocked` via Bearbeiten.
+- `ndas-tab.tsx` (PROJ-128) — NDA-Register-Tabelle + Erfassen/Bearbeiten-Dialog (Vertragspartner, Status, gedeckte Stufe, Scope-Kind/-Ref, Laufzeit, Wiedervorlage, Dokument-Link) + Personen-Zuordnungs-Sheet (Nutzerkonto = Zugriff vs. dokumentarischer Kontakt).
+- `classification-matrix-tab.tsx` (PROJ-129) — Read-only „Wer darf was sehen — und warum?" pro Objekt (Projekt/Phase/Work-Item) via `ma_access_explain`; Spalten Zugriff/Grund/Extern/Mandat/NDA/Clearance. Nie zweites Gate.
+- `confidentiality-access-card.tsx` (PROJ-100b reuse, Tab „Freischaltungen") — um eine **projektweite Zugriffs-Matrix** (`AccessMatrixPanel`, Nutzer × Stufe) ergänzt; `access-matrix.ts` pivotet die drei per-Level-`ma_access_explain`-Antworten (gate-treu, +6 Unit-Tests).
+- `governance-labels.ts` — geteilte DE-Labels + `GovernanceMember`-Shape + Badge-Varianten.
+
+**Deviation D-FE-1 (Tab „Freischaltungen" statt „Historie"):** Tech-Design §A listet als 4. Tab „Historie" (PROJ-10 `HistoryTab` für Advisor-/NDA-/Clearance-Events). Stattdessen wurde der operativ wichtigere **Freischaltungen-Tab** (PROJ-100b Clearance-Vergabe + Wer-darf-was) eingesetzt. Grund: (1) Clearance-Vergabe ist der eigentliche Zugriffs-Mechanismus für Berater; (2) ein funktionierender Historie-Tab braucht eine **Backend-Erweiterung von `can_read_audit_entry`** — die Funktion mappt aktuell nur `ma_project_profiles` (PROJ-94), NICHT `ma_advisor_profiles`/`ma_ndas` → Audit-Reads dieser Entities laufen in den `else return false`-Default-Deny. Das deckt sich mit dem bereits offenen Backend-AC „Externe Aktivitäten auditierbar". **Follow-up:** additive `can_read_audit_entry`-Erweiterung (map → Projekt, `is_project_member`-gegatet, Muster wie `ma_project_profiles`) + per-Entity `HistoryTab` → eigener kleiner Backend-Slice (security-relevant, separat freizugeben). `ma_advisor_profiles`/`ma_ndas` sind in `AuditEntityType` (FE) daher bewusst NICHT ergänzt, solange der Read-Gate sie nicht durchlässt.
+
+**Quality-Gates:** ESLint 0, tsc 0 neue Errors (14 pre-existing test-file-Errors, alle unverändert), vitest method-templates + ma-project 130/130 (inkl. 6 neue access-matrix-Tests), `next build` clean. Playwright-Auth-Gate-Smoke + Live-Negativtests → /qa.
 
 ---
 _Quelle: Backlog-Entwurf M&A-Projektplattform · B — Rollen, Gremien & Governance_

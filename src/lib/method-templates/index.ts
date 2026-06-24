@@ -13,7 +13,7 @@
  * Tenant-level overrides land with PROJ-16.
  */
 
-import { Handshake, ShieldCheck } from "lucide-react"
+import { Handshake, ShieldCheck, UserCog } from "lucide-react"
 
 import type { MethodConfig, SidebarSection } from "@/types/method-config"
 import type { ProjectMethod } from "@/types/project-method"
@@ -44,12 +44,15 @@ const MA_FOUNDATION_SECTION: SidebarSection = {
   requiresProjectType: "ma",
 }
 
-// PROJ-100b — the "Vertraulichkeit & Zugriff" section (clearance management +
-// who-can-see overview) is also project-TYPE driven (M&A need-to-know) and is
-// injected right after the foundation section, gated the same way.
+// PROJ-99/128/129 — the "Governance & Zugriff" section (external advisors, NDA
+// register, need-to-know classification matrix + PROJ-100b clearance management)
+// is project-TYPE driven (M&A need-to-know) and is injected right after the
+// foundation section, gated the same way. The route stays `vertraulichkeit` for
+// back-compat; the section grew from the PROJ-100b clearance-only surface into
+// the full governance bundle.
 const MA_CONFIDENTIALITY_SECTION: SidebarSection = {
   id: "ma-confidentiality",
-  label: "Vertraulichkeit & Zugriff",
+  label: "Governance & Zugriff",
   icon: ShieldCheck,
   tabPath: "vertraulichkeit",
   requiresProjectType: "ma",

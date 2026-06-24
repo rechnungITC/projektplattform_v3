@@ -14,7 +14,7 @@ summary_for_jira: "[L1] NDA-Verwaltung und Vertraulichkeitsverpflichtungen"
 
 # PROJ-128: NDA-Verwaltung und Vertraulichkeitsverpflichtungen
 
-## Status: In Progress (Backend gebaut 2026-06-24 — NDA-Register + Zuordnungen + hartes Gate; → /frontend NDA-Tab, dann /qa)
+## Status: In Progress (Backend + Frontend gebaut 2026-06-24 — NDA-Tab `ndas-tab.tsx` in der „Governance & Zugriff"-Seite: Register + Erfassen/Bearbeiten-Dialog + Personen-Zuordnungs-Sheet; → /qa. Frontend-Details siehe PROJ-99 „Implementation Notes — Frontend".)
 **Created:** 2026-06-10
 **Origin:** M&A-Platform Backlog (Epic L — Vertraulichkeit, NDA & Audit)
 **Priority:** P1
