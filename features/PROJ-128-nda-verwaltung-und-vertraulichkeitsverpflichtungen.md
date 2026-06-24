@@ -14,7 +14,7 @@ summary_for_jira: "[L1] NDA-Verwaltung und Vertraulichkeitsverpflichtungen"
 
 # PROJ-128: NDA-Verwaltung und Vertraulichkeitsverpflichtungen
 
-## Status: In Progress (Backend gebaut 2026-06-24 — NDA-Register + Zuordnungen + hartes Gate; → /frontend NDA-Tab, dann /qa)
+## Status: Approved (QA PASS 2026-06-24, PR #182 — Teil des Bundle-QA, 0 Critical/High/Medium; NDA-/Assignment-Auth-Gates grün, hartes NDA-Gate `nda_missing` per Deployed-RPC-Review bewiesen. F-1-Followup: `document_link` ohne Scheme-Validierung (nicht ausnutzbar, kein Link-Render). QA-Details siehe PROJ-99 „QA Test Results". → /deploy)
 **Created:** 2026-06-10
 **Origin:** M&A-Platform Backlog (Epic L — Vertraulichkeit, NDA & Audit)
 **Priority:** P1

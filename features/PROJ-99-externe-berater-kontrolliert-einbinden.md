@@ -14,7 +14,7 @@ summary_for_jira: "[B3] Externe Berater kontrolliert einbinden"
 
 # PROJ-99: Externe Berater kontrolliert einbinden
 
-## Status: In Progress (Backend gebaut 2026-06-24 — `ma_advisor_profiles` + Gate-Erweiterung + APIs; → /frontend Governance-&-Zugriff-Seite, dann /qa)
+## Status: Approved (QA PASS 2026-06-24, PR #182 — 0 Critical/High/Medium; Auth-Gates 15/15 + 7/7 Prod-curl, Reason-Enum + Matrix gate-faithful verifiziert, 5 Low/Info-Followups; backend live via #181 → /deploy)
 **Created:** 2026-06-10
 **Origin:** M&A-Platform Backlog (Epic B — Rollen, Gremien & Governance)
 **Priority:** P1
@@ -195,6 +195,54 @@ Gebaut als gemeinsame Backend-Slice mit PROJ-128/129 (ein Bundle, eine Migration
 **Quality-Gates:** lint 0, tsc 0 neu (Baseline), vitest 2009/2009 (+ Route-Tests), build clean (7 neue Routen).
 
 **Offen:** AC „Externe Aktivitäten (Logins/Downloads) auditierbar" — Advisor-/NDA-/Clearance-Events laufen über PROJ-10; Login-/DMS-Event-Marker folgen, sobald Auth-/DMS-Events verfügbar sind. /frontend (Governance-&-Zugriff-Seite) + /qa (Negativtests: fehlende NDA, abgelaufenes Mandat, zu niedrige Clearance, Cross-Tenant) offen.
+
+## Implementation Notes — Frontend (2026-06-24)
+
+Gemeinsame Frontend-Slice mit PROJ-128/129 (ein Bundle, eine Governance-Seite). **Kein neues Dep, keine Migration, kein neuer Backend-Code** — reine UI auf den bereits live gemergten APIs (#181) + Client-Wrapper `src/lib/ma-project/advisor-nda-api.ts`.
+
+**Nav-/Routing-Entscheidung:** Statt einer zweiten Nav-Sektion neben dem PROJ-100b-Eintrag „Vertraulichkeit & Zugriff" wurde der **bestehende `vertraulichkeit`-Eintrag** auf **„Governance & Zugriff"** umbenannt und zur Tab-Seite ausgebaut (`MA_CONFIDENTIALITY_SECTION` in `method-templates/index.ts`, weiterhin `requiresProjectType: "ma"`-gegatet). Route bleibt `/projects/[id]/vertraulichkeit` (Back-Compat, keine Middleware-Änderung). Vermeidet zwei überlappende „Wer-darf-was"-Einträge.
+
+**Komponenten (alle manager-gegatet wie die PROJ-100b-Karte):**
+- `governance-access-page.tsx` — Tab-Shell (`useProjectAccess(…, "manage_members")`-Gate, sonst Hinweis-Card). 4 Tabs: **Berater · NDAs · Klassifikation · Freischaltungen**.
+- `advisors-tab.tsx` (PROJ-99) — Berater-Liste + Einbinden/Bearbeiten-Dialog (Tenant-Member-Picker für Neuanlage, Organisation, Advisor-Typ, Mandatsbeginn/-ende, Mandatsstatus, Verantwortlich intern, Scope, Notizen) + Mandats-/Profil-Entfernen. „Mandat beenden" = Status auf `expired`/`blocked` via Bearbeiten.
+- `ndas-tab.tsx` (PROJ-128) — NDA-Register-Tabelle + Erfassen/Bearbeiten-Dialog (Vertragspartner, Status, gedeckte Stufe, Scope-Kind/-Ref, Laufzeit, Wiedervorlage, Dokument-Link) + Personen-Zuordnungs-Sheet (Nutzerkonto = Zugriff vs. dokumentarischer Kontakt).
+- `classification-matrix-tab.tsx` (PROJ-129) — Read-only „Wer darf was sehen — und warum?" pro Objekt (Projekt/Phase/Work-Item) via `ma_access_explain`; Spalten Zugriff/Grund/Extern/Mandat/NDA/Clearance. Nie zweites Gate.
+- `confidentiality-access-card.tsx` (PROJ-100b reuse, Tab „Freischaltungen") — um eine **projektweite Zugriffs-Matrix** (`AccessMatrixPanel`, Nutzer × Stufe) ergänzt; `access-matrix.ts` pivotet die drei per-Level-`ma_access_explain`-Antworten (gate-treu, +6 Unit-Tests).
+- `governance-labels.ts` — geteilte DE-Labels + `GovernanceMember`-Shape + Badge-Varianten.
+
+**Deviation D-FE-1 (Tab „Freischaltungen" statt „Historie"):** Tech-Design §A listet als 4. Tab „Historie" (PROJ-10 `HistoryTab` für Advisor-/NDA-/Clearance-Events). Stattdessen wurde der operativ wichtigere **Freischaltungen-Tab** (PROJ-100b Clearance-Vergabe + Wer-darf-was) eingesetzt. Grund: (1) Clearance-Vergabe ist der eigentliche Zugriffs-Mechanismus für Berater; (2) ein funktionierender Historie-Tab braucht eine **Backend-Erweiterung von `can_read_audit_entry`** — die Funktion mappt aktuell nur `ma_project_profiles` (PROJ-94), NICHT `ma_advisor_profiles`/`ma_ndas` → Audit-Reads dieser Entities laufen in den `else return false`-Default-Deny. Das deckt sich mit dem bereits offenen Backend-AC „Externe Aktivitäten auditierbar". **Follow-up:** additive `can_read_audit_entry`-Erweiterung (map → Projekt, `is_project_member`-gegatet, Muster wie `ma_project_profiles`) + per-Entity `HistoryTab` → eigener kleiner Backend-Slice (security-relevant, separat freizugeben). `ma_advisor_profiles`/`ma_ndas` sind in `AuditEntityType` (FE) daher bewusst NICHT ergänzt, solange der Read-Gate sie nicht durchlässt.
+
+**Quality-Gates:** ESLint 0, tsc 0 neue Errors (14 pre-existing test-file-Errors, alle unverändert), vitest method-templates + ma-project 130/130 (inkl. 6 neue access-matrix-Tests), `next build` clean. Playwright-Auth-Gate-Smoke + Live-Negativtests → /qa.
+
+## QA Test Results — 2026-06-24 (PR #182; backend live on main via #181)
+
+**Verdikt: PRODUCTION-READY** — Bundle-Frontend (PROJ-99/128/129) + PROJ-100b projektweite Matrix; **0 Critical / 0 High / 0 Medium**. Frontend-only auf bereits live-bewiesenem Gate (Backend-Slice 10/10 + 100a-Pentest), daher QA-Fokus: HTTP-Auth-Surface, Reason-Enum-Treue, Gate-Faithfulness der Matrix, Komponenten-Bug-Hunt, Regression.
+
+### Was geprüft wurde
+| Bereich | Ergebnis | Nachweis |
+|---|---|---|
+| Auth-Gates (15 Routen/Page, kein Session) | ✅ | `tests/PROJ-99-128-129-confidentiality-bundle.spec.ts` **15/15 chromium** (307/401/403) — advisors/ndas/assignments/access-explain CRUD + `/vertraulichkeit` |
+| Auth-Gate live gegen Prod | ✅ | 7/7 curl `--max-redirs 0` → **307** (advisors, advisors/[id], ndas, ndas/[id], ndas/[id]/assignments, access-explain?level, /vertraulichkeit) |
+| Negativ-Gate (fehlende NDA / abgelaufenes Mandat / zu niedrige Clearance / Cross-Tenant) | ✅ | (1) Backend-Slice **Live-Smoke 10/10 gegen Prod** (Mandat blocked→kein Zugriff, NDA expired→kein Zugriff, intern cleared→Zugriff, Admin-Bypass) + 100a-Regression 5/5; (2) **Deployed-RPC-Source-Review** `ma_access_explain` (`pg_get_functiondef`): `has_access`-CASE = `can_access_classified` (Advisor braucht `has_active_mandate` UND `has_valid_nda`, sonst false; sonst Clearance≥Level; Admin-Bypass; standard=baseline) — Gate unverändert, kein Zweit-Gate |
+| Reason-Enum-Treue (FE rendert RPC-Gründe) | ✅ | Deployed-RPC emittiert exakt `baseline·admin·mandate_inactive·nda_missing·cleared·no_clearance` == `AccessReason`-Typ == `EXPLAIN_REASON_LABEL`-Keys (vollständige Abdeckung, kein unmapped reason) |
+| Matrix gate-faithful (Nutzer×Stufe) | ✅ | `access-matrix.test.ts` **6/6** (monotone Stufen, Admin-Voll, Advisor-NDA-Block, Block-Reason-Fallback, Sortierung, User-Union); Zellen = serverseitiger `has_access`-Verdikt je Level |
+| Manager-Gating (access-explain) | ✅ | RPC `raise … errcode=42501` für Nicht-Admin/Nicht-Lead → Route mappt 403; Page/Tabs `useProjectAccess(…, "manage_members")`-gegatet |
+| Regression (Gesamtsuite) | ✅ | vitest **2015/2015**, lint **0**, tsc **0 neu** (14 baseline), `next build` clean |
+
+### Komponenten-Bug-Hunt (advisors/ndas/classification/labels) — alle Findings Low/Info, kein Blocker
+- **F-1 (Low, Followup):** `ma_ndas.document_link` ohne Schema-Validierung (`z.string().max(2000)`). **Nicht ausnutzbar** — Link wird nirgends als `<a href>` gerendert (kein `href`/`<a` in `ndas-tab.tsx`). Empfehlung: Backend-`refine(/^https?:\/\//)` bevor je ein Link-Render entsteht (auch DMS-Followup PROJ-79).
+- **F-2 (Low):** `advisors-tab`/`ndas-tab` async-Reload-Effekte ohne `cancelled`-Guard (das `classification-matrix-tab` macht es korrekt vor). React 19 toleriert es (kein Crash); Konsistenz-Nit, bei schnellem Projektwechsel theoretisch State-on-stale.
+- **F-3 (Low, kosmetisch):** Org-only NDA-Kontakt rendert mit führendem „—" (`— · ACME`); Organisation bleibt sichtbar.
+- **F-4 (Low, kosmetisch):** Advisor-„Verantwortlich"-Select-Placeholder „Optional" wird nie gezeigt (Wert immer `__none`).
+- **F-5 (Info):** `governance-labels.fmtDate` coerct ungültige Datums-Strings still (Backend validiert Datumsfelder; Defense-in-depth-Hinweis).
+
+### Deviations / Env
+- **D-FE-1** (aus Frontend-Notes): 4. Tab = „Freischaltungen" statt „Historie" — funktionierender Historie-Tab braucht `can_read_audit_entry`-Erweiterung für `ma_advisor_profiles`/`ma_ndas` (security-relevanter Backend-Followup, deckt zugleich offenen Audit-AC „Externe Aktivitäten auditierbar").
+- **D-QA-1 (Env):** Mobile-Safari/WebKit-E2E übersprungen (Host-Libs fehlen — `sudo npx playwright install-deps webkit`), wie in PROJ-67/88/135. Chromium grün.
+- **Negativ-Gate nicht erneut prod-geseedet:** bewusste QA-Entscheidung — das Gate ändert sich in dieser Frontend-PR nicht; es ist bereits live (10/10 Backend-Smoke) + per Source-Review verifiziert. Re-Seed gegen Prod = redundant + Mutations-Risiko. Optionaler Followup: committeter Impersonation-SQL-Smoke als wiederverwendbares Artefakt.
+
+### Empfohlene Followups (nicht-blockierend)
+F-1 `document_link`-Scheme-Validierung (security-hygiene, vor Link-Render) · F-2 `cancelled`-Guards · D-FE-1 `can_read_audit_entry`-Erweiterung + Historie-Tab (eigener Backend-Slice).
 
 ---
 _Quelle: Backlog-Entwurf M&A-Projektplattform · B — Rollen, Gremien & Governance_
