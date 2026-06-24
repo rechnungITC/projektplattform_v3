@@ -14,7 +14,7 @@ summary_for_jira: "[G1] Due-Diligence-Streams konfigurieren und steuern"
 
 # PROJ-112: Due-Diligence-Streams konfigurieren und steuern
 
-## Status: Architected (Tech-Design 2026-06-24, CIA GO mit ADJUST eingearbeitet — DD-Backbone: `dd_streams` + `dd_stream_templates`, Confidentiality-Rezept, Status-RPC, voll-verdrahtetes Audit; standalone, keine Abhängigkeit auf ungebaute 95/102/104/110/113/114. → /backend)
+## Status: In Progress (Backend gebaut + Live-Smoke 10/10 2026-06-24 — Migration `20260624105317` in Prod, APIs + Client-Wrapper; → /frontend DD-Übersicht + Stammdaten-Katalog, dann /qa)
 **Created:** 2026-06-10
 **Origin:** M&A-Platform Backlog (Epic G — Due Diligence)
 **Priority:** P1
@@ -190,6 +190,24 @@ CIA-Verdikt: **GO** für den Backbone-Schnitt + Fork 1/2/5; **ADJUST** für Fork
 ### G) Handoff
 
 Nach Approval: `/backend` (Migration: 2 Tabellen + Status-RPC + Confidentiality-Policies + Audit-Wiring + Seed; APIs + Client-Wrapper) → `/frontend` (Stammdaten-Katalog + DD-Übersicht/Detail im Projektraum) → `/qa` (Negativtests: Confidentiality-Gate je Stream, Status-Maschine, Cross-Tenant, Audit-Sichtbarkeit).
+
+## Implementation Notes — Backend (2026-06-24)
+
+**Kein neuer Dep.** Migration `20260624105317_proj112_dd_streams_backbone.sql` (Repo-Dateiname == prod-registrierte Version per PROJ-134; idempotent) **live in Prod**:
+
+- **`dd_streams`** (per-Projekt-Backbone): `stream_key`/`label`/`stream_lead_user_id`(FK profiles, ON DELETE SET NULL)/`status`(5-Status-CHECK)/`planned_start`-`end`/`scope`/`notes`/`confidentiality_level`(100a)/`phase_id`(nullable FK phases, ON DELETE SET NULL)/`sort_order`. Unique `(project_id, stream_key)`. Permissive RLS (SELECT=`is_project_member`, INSERT/UPDATE/DELETE=`is_tenant_admin OR is_project_lead`) + **3 RESTRICTIVE Need-to-know-Gate-Policies** (`can_access_classified`) → Advisor-/NDA-Gate (PROJ-99/128) wrappt automatisch. `moddatetime`-`updated_at` + PROJ-10-UPDATE-Audit-Trigger.
+- **`dd_stream_templates`** (Tenant-Katalog): `stream_key`/`label`/`description`/`sort_order`/`is_active`. Unique `(tenant_id, stream_key)`. RLS SELECT=Tenant-Member, Write=Tenant-Admin. **Kein Audit-Trigger** (Tenant-Config ohne Projekt-Anker — CIA-resolved).
+- **`transition_dd_stream_status(p_stream_id, p_to_status, p_comment)`** RPC (SECURITY DEFINER, **kein actor-param** — PROJ-94-Impersonation-Lektion; `auth.uid()` only, execute von public/anon revoked): Authority `is_tenant_admin OR is_project_lead` (sonst 42501), 5-Status-Maschine (linear vorwärts + 1-Schritt-Revert + Reopen, illegale → 23514).
+- **`ensure_default_dd_stream_templates(p_tenant_id)`** RPC (SECURITY DEFINER, `is_tenant_member`-gegatet): race-safe Lazy-Seed der 6 Standards via `ON CONFLICT DO NOTHING`.
+- **Audit-Verdrahtung (CIA-Pflicht-Auflagen):** `audit_log_entity_type_check` VOR den Tabellen um `dd_streams` erweitert (verbatim-Liste + 1; Templates NICHT); `_tracked_audit_columns` + `can_read_audit_entry` aus den **Live-Definitionen** rekonstruiert + `dd_streams`-Zweig (bewahrt die advisor/nda-Zweige des parallelen PROJ-99-Followups).
+
+**APIs** (mirror advisors-Pattern): `GET/POST /api/projects/[id]/dd-streams`, `PATCH/DELETE …/[streamId]`, `POST …/[streamId]/status` (RPC, 42501→403 / 23514·22023→400 / P0002→404); Tenant-Katalog `GET/POST /api/dd-stream-templates` (GET lazy-seedet) + `PATCH/DELETE …/[templateId]` (admin). Client-Wrapper `src/lib/ma-project/dd-streams-api.ts`. **Forward-compatible (CIA-ADJUST):** Stream-Liste liefert `open_findings`/`open_questions` = **`null`** (nicht 0) bis PROJ-113/114 → FE rendert `—`.
+
+**Pflicht-Live-Smoke gegen Prod (10/10, 0 Residue, transaktional zurückgerollt):** Seed (6 + idempotent), Aktivierung, valide Transition `not_started→started`, illegale `started→completed` geblockt (23514), **Nicht-Member-Transition geblockt (42501)**, Audit-Trigger feuert auf Label-UPDATE, `can_read_audit_entry('dd_streams')`=true, Confidentiality-Gate (Admin-Bypass strict=true / Nicht-Member confidential=false).
+
+**Quality-Gates:** ESLint 0, vitest +22 (dd-streams 9 / status 7 / templates 6), tsc 0 neue Errors (14 Baseline-Test-File-Errors), `next build` clean.
+
+**Offen → /frontend:** DD-Übersicht (Status/Lead/Restzeit + `—`-Counts) + Stream-Detail/Status-UI im M&A-Projektraum (neuer Nav-Eintrag „Due Diligence", `requiresProjectType='ma'`) + Stammdaten-Katalog „DD-Stream-Vorlagen". → /qa Negativtests (Confidentiality-Gate je Stream, Status-Maschine, Cross-Tenant, Audit-Sichtbarkeit).
 
 ---
 _Quelle: Backlog-Entwurf M&A-Projektplattform · G — Due Diligence_
