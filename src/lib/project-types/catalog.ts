@@ -184,6 +184,35 @@ const CONSTRUCTION_PROFILE: ProjectTypeProfile = {
   is_placeholder: true,
 }
 
+// PROJ-97a — M&A standard professional roles ("Fachrollen"). Single source of
+// truth: the project-type catalog (PROJ-6). The role is carried by a
+// `stakeholders.role_key` slot, NOT by RBAC (`project_memberships.role` stays
+// the technical identity — CLAUDE.md Invariante #4). "extern" is the existing
+// `stakeholders.origin='external'`, not a role. The editable-list / template
+// pre-fill (A3) is deferred to PROJ-96; this stays a code constant.
+export const MA_STANDARD_ROLES: readonly StandardRole[] = [
+  { key: "executive_sponsor", label_de: "Executive Sponsor" },
+  { key: "deal_lead", label_de: "Deal Lead (Corporate Development)" },
+  { key: "pmo_lead", label_de: "PMO-Lead" },
+  { key: "cfo_finance", label_de: "CFO / Finance" },
+  { key: "legal_counsel", label_de: "Legal Counsel" },
+  { key: "tax_advisor", label_de: "Tax" },
+  { key: "hr_lead", label_de: "HR" },
+  { key: "it_lead", label_de: "IT" },
+  { key: "communications", label_de: "Communications" },
+  { key: "external_advisor", label_de: "Externer Berater" },
+  { key: "target_management", label_de: "Target Management" },
+]
+
+const MA_ROLE_KEY_SET: ReadonlySet<string> = new Set(
+  MA_STANDARD_ROLES.map((r) => r.key)
+)
+
+/** PROJ-97a — validates a stakeholder role_key against the M&A role list. */
+export function isValidMaRoleKey(key: string): boolean {
+  return MA_ROLE_KEY_SET.has(key)
+}
+
 // PROJ-94 — M&A is ONE project_type (ma-domain-architecture ADR Fork 1). The
 // stored slug is 'ma' (URL-safe); the deal variant (buy/sell/jv/carve-out) is
 // the `deal_side` FIELD on ma_project_profiles, not a separate type. The
@@ -195,12 +224,8 @@ const MA_PROFILE: ProjectTypeProfile = {
   label_de: "M&A-Projekt",
   summary_de:
     "Mergers & Acquisitions / Deal-Lifecycle. Strategische Grundlage, Mandat, Need-to-Know-Vertraulichkeit.",
-  standard_roles: [
-    { key: "deal_lead", label_de: "Deal Lead (Corporate Development)" },
-    ROLE_SPONSOR,
-    { key: "pmo_lead", label_de: "PMO-Lead" },
-    { key: "legal_counsel", label_de: "Legal Counsel" },
-  ],
+  // PROJ-97a — extended 4 → 11 M&A professional roles.
+  standard_roles: MA_STANDARD_ROLES,
   standard_modules: [
     "backlog",
     "planning",

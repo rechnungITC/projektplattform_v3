@@ -14,9 +14,21 @@ summary_for_jira: "[B1] Projektrollen und Verantwortlichkeiten verwalten"
 
 # PROJ-97: Projektrollen und Verantwortlichkeiten verwalten
 
-## Status: Architected
+## Status: In Progress (97a Backend gebaut 2026-06-24 — Fachrollen-Werteliste + Verantwortungs-Ansicht; 97a-Frontend + 97b RACI-Engine + /qa offen)
 **Created:** 2026-06-10
 **Origin:** M&A-Platform Backlog (Epic B — Rollen, Gremien & Governance)
+
+## Implementation Notes — 97a Backend (2026-06-24)
+
+Slice **97a** (Rollen & Zuordnung, niedriges Risiko) gebaut; **97b** (RACI-Engine, HOCH-Risiko, polymorphe `raci_assignments`) bewusst noch offen. **Reiner Reuse, keine neue Tabelle, kein neuer Dep, keine Migration.**
+
+- **Fachrollen-Werteliste** (E1): `MA_STANDARD_ROLES` in `src/lib/project-types/catalog.ts` — 4 → **11** M&A-Fachrollen (Executive Sponsor, Deal Lead, PMO-Lead, CFO/Finance, Legal, Tax, HR, IT, Communications, Externer Berater, Target Management). Einzige Quelle; `MA_PROFILE.standard_roles` referenziert sie. RBAC (`project_memberships.role`) bleibt strikt getrennt (Invariante #4). `sponsor` → `executive_sponsor` umbenannt (PROJ-94-Test angepasst).
+- **Validierung** `isValidMaRoleKey(key)` — App-Layer-Lookup gegen die Liste (kein neuer FK-Zwang), für künftige Stakeholder-role_key-Validierung.
+- **Verantwortungs-Ansicht** (AC-97-1/2/4/5): `GET /api/projects/[id]/roles` — read-only Aggregation über bestehende `stakeholders` (role_key-Slot), gruppiert je Fachrolle + „extern"-Marker (`origin='external'`), „Sonstige"-Bucket für nicht-katalogisierte role_keys. Mehrfachrollen via mehrere Stakeholder-Einträge.
+
+**Quality-Gates:** lint 0, tsc 14 baseline/0 neu, vitest +9 (4 catalog/helper + 5 route), build clean (Route registriert).
+
+**Offen:** 97a-Frontend (Rollenliste + Verantwortungs-Ansicht-UI, „extern"-Badge → reuse Stakeholder-/PROJ-57-Linking-UI); **97b** RACI-Engine (polymorphe `raci_assignments`, „A=genau-einer"-Constraint, Integritäts-Guard, set/clear-RPCs) als eigenständige Slice; Rollenlisten-Vorbefüllung → PROJ-96; durchgesetzte Externe-Sichtbarkeit → PROJ-99. Historisierung via PROJ-10-Audit (keine eigenen Zeitspalten).
 **Priority:** P1
 
 > **V3 Core Reuse (CIA 2026-06-15 · [ma-domain-architecture ADR](../docs/decisions/ma-domain-architecture.md) · [Sequencing](../docs/ma-epic-sequencing-2026-06-15.md)):** Klasse **DUP→REUSE** · Andockpunkt: PROJ-4 RBAC + PROJ-57 Linking; RACI-Feld neu. Nicht neu bauen, was der Core schon hat — diese Spec MUSS die ADR + Reuse-Matrix respektieren.
