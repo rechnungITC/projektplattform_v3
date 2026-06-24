@@ -1,9 +1,29 @@
 # PROJ-139: Core — Phasen-Status „ausgesetzt" (suspended) + State-Machine
 
-## Status: Architected
+## Status: In Progress (Backend gebaut 2026-06-24 — CHECK 4→5 + RPC-Übergänge live, UI + Impact-Analyse + Live-Smoke; → /qa)
 **Created:** 2026-06-24
 **Origin:** CIA-Review zu PROJ-95 (M&A-Phasenmodell) 2026-06-24 — E6 als eigene Core-Vor-Slice herausgelöst (User-bestätigt)
 **Priority:** P1 (Vorbedingung für PROJ-95 AC-95-2)
+
+## Implementation Notes — Backend + UI (2026-06-24)
+
+Gebaut als isolierte Core-Slice (kein M&A-Sonderweg), genau nach Tech-Design. **Kein neuer Dep.**
+
+**Migration** `20260624105817_proj139_phase_suspended_status.sql` (in Prod; Repo-Dateiname == prod-registrierte Version per PROJ-134):
+- `phases_status_check` idempotent 4→5 (`+ suspended`); Bestandszeilen unberührt (Default unverändert).
+- `transition_phase_status` (CREATE OR REPLACE, Body verbatim aus Live-Prod via `pg_get_functiondef`, nur Übergangskette geändert; ACL/SECURITY DEFINER/search_path erhalten): neue Übergänge `in_progress→suspended`, `suspended→in_progress`, `suspended→cancelled`. Alle übrigen unverändert.
+
+**Pflicht-Impact-Analyse** (AC-139-3): `docs/proj139-phase-suspended-impact-analysis.md` — alle `phases.status`-Leser inventarisiert + auf Verträglichkeit geprüft. Befund: Blast-Radius TypeScript-erzwungen (zwei `Record<PhaseStatus>`-Maps → Compile-Fehler bis behandelt), `switch`-Leser (Gantt/Timeline) fail-safe via `default`, Method-Gating + Reports lesen den Wert nicht erschöpfend, Audit bereits aktiv. **Kein stiller Bruch.**
+
+**UI** (AC-139-4): `src/types/phase.ts` (`PhaseStatus` + `PHASE_STATUSES` + Label „Ausgesetzt" + `ALLOWED_PHASE_TRANSITIONS`), `phase-status-badge` (amber, kein Strike-through), `gantt-view.barClasses` + `phases-timeline.pillClasses` (amber, distinkt von cancelled). `phase-status-transition-dialog` propagiert „Aussetzen/Fortsetzen" automatisch über `ALLOWED_PHASE_TRANSITIONS`.
+
+**Audit** (AC-139-5): `_tracked_audit_columns('phases')` enthält `status` bereits → Übergänge auf/aus `suspended` werden automatisch auditiert (verifiziert, kein Neubau).
+
+**Live-RPC-Smoke** (AC-139-6, Pflicht, gegen Prod, 0 Residue via ROLLBACK_MARKER): `in_progress→suspended` ✓, `suspended→in_progress` ✓, `suspended→cancelled` ✓, Negativfall `suspended→completed` = REJECTED(23514). Phase nach Smoke unverändert `planned`.
+
+**Quality-Gates:** lint 0, tsc 14 baseline/0 neu (die 2 routing.test.ts-`assistant_settings`-Fehler sind Bestand), vitest grün (143 Regression + 4 neue `phase.test.ts`), build clean.
+
+**Offen:** /qa (Regression PROJ-19/26 + E2E suspended-Darstellung).
 
 > **Reuse-Klasse:** Core-Hygiene/Erweiterung (analog PROJ-29/PROJ-68). **Kein M&A-Sonderweg** — `phases.status` ist eine Querschnitts-Kerntabelle; „ausgesetzt" ist auch für Nicht-M&A-Projekte sinnvoll und gehört deshalb in den Core, nicht in eine M&A-Feature-Slice.
 
