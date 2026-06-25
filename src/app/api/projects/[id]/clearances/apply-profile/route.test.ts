@@ -123,4 +123,14 @@ describe("POST /api/projects/[id]/clearances/apply-profile", () => {
     })
     expect((await post({ user_id: TARGET, profile_id: PROFILE })).status).toBe(404)
   })
+
+  it("202 pending when a 4-eyes policy gated the level (PROJ-100c)", async () => {
+    getUserMock.mockResolvedValue({ data: { user: { id: ME } } })
+    queueProjectView()
+    // RPC returns null (no error) → a pending approval request was created.
+    rpcMock.mockResolvedValue({ data: null, error: null })
+    const res = await post({ user_id: TARGET, profile_id: PROFILE })
+    expect(res.status).toBe(202)
+    expect((await res.json()) as { pending: boolean }).toMatchObject({ pending: true })
+  })
 })

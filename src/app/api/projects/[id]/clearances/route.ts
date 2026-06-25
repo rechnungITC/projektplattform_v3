@@ -104,5 +104,11 @@ export async function POST(
     return apiError("grant_failed", error.message, 500)
   }
 
+  // PROJ-100c: the grant RPC returns null when a 4-eyes approval policy gated
+  // this level — a pending approval request was created instead of a clearance.
+  if (data === null) {
+    return NextResponse.json({ pending: true, clearance: null }, { status: 202 })
+  }
+
   return NextResponse.json({ clearance: data }, { status: 201 })
 }
