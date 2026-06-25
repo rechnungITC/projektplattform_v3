@@ -14,7 +14,7 @@ summary_for_jira: "[G2] DD-Fragenkatalog und Q&A-Prozess"
 
 # PROJ-113: DD-Fragenkatalog und Q&A-Prozess
 
-## Status: Architected (Tech-Design 2026-06-25 — `dd_questions` auf dem PROJ-112 DD-Backbone; per-Frage Confidentiality + Status-RPC + Audit + CSV-Export; Eskalation→Finding forward-compatible an PROJ-114. → CIA → /backend)
+## Status: In Progress (Backend gebaut + Live-Smoke 11/11 2026-06-25 — Migration `20260625124849` in Prod, APIs + Client-Wrapper; Live-Smoke fand+fixte RPC-Clearance-Lücke. → /frontend Q&A-Tab, dann /qa)
 **Created:** 2026-06-10
 **Origin:** M&A-Platform Backlog (Epic G — Due Diligence)
 **Priority:** P1
@@ -170,6 +170,24 @@ Damit PROJ-112s `open_questions`-Spalte (heute `null`) und der PROJ-116-DD-Repor
 ### G) Handoff
 
 `/backend` (Migration: `dd_questions` + Floor-Trigger + Status-RPC + 3 RESTRICTIVE Confidentiality-Policies + Audit-Wiring; APIs CRUD + Status + CSV-Export; Client-Wrapper; Pflicht-Live-RPC-Smoke + Floor-Probe) → `/frontend` (Q&A-Tab im Stream-Detail + Liste/Filter/Antwort/Status/Export + disabled Eskalations-Platzhalter) → `/qa` (Pentest-Vektoren: Floor-Constraint, Confidentiality-Gate je Frage auf allen Achsen, Status-Maschine, Cross-Tenant, Export-RLS-Vollständigkeit, Audit-Sichtbarkeit).
+
+## Implementation Notes — Backend (2026-06-25)
+
+**Kein neuer Dep.** Migration `20260625124849_proj113_dd_questions.sql` (Repo-Dateiname == prod-registrierte Version, PROJ-134; idempotent) **live in Prod**:
+
+- **`dd_questions`** — `dd_stream_id`-FK (CASCADE) ans 112-Backbone + `project_id`/`tenant_id`, `title`/`detail`/`addressee`/`priority`(low/medium/high)/`due_date`/`responsible_user_id`, 5-Status-CHECK (`open/in_answering/answered/followup/closed`), `answer_text`/`answer_link`/`answered_at`/`answered_by`/`answer_round`, `confidentiality_level`(100a). Indizes inkl. `(dd_stream_id, status)` für die 116/112a-Counts.
+- **FLOOR-Trigger** `enforce_dd_question_confidentiality_floor` (BEFORE INSERT/UPDATE, R-1): `confidentiality_level := GREATEST(NEW, Stream-Stufe)` (Default `standard` ⇒ erbt Stream-Stufe; nie darunter) + Tenant/Projekt-Konsistenz mit dem Stream (sonst 23514).
+- **RLS:** permissive SELECT=`is_project_member`, INSERT/UPDATE/DELETE=`edit` (`is_tenant_admin OR is_project_lead OR has_project_role(…,'editor')`) **+ 3 RESTRICTIVE `can_access_classified`-Policies auf SELECT+INSERT+UPDATE+DELETE** (R-3). `moddatetime`-`updated_at` + PROJ-10-UPDATE-Audit-Trigger.
+- **`transition_dd_question_status`**-RPC (SECURITY DEFINER, kein actor-param): edit-Authority **UND `can_access_classified`-Re-Check** (siehe Live-Smoke-Fund unten) + 5-Status-Maschine (vorwärts + 1-Schritt-Revert + Reopen). revoke public/anon.
+- **Audit-Verdrahtung:** `audit_log_entity_type_check` (+`dd_questions`, verbatim aus Live), `_tracked_audit_columns` + `can_read_audit_entry` aus **Live-Definitionen** rekonstruiert + `dd_questions`-Zweig (bewahrt dd_streams/advisor/nda/raci/clearance-Zweige des parallelen Tracks).
+
+**APIs** (mirror dd-streams): `GET/POST /api/projects/[id]/dd-questions` (GET-Filter streamId/status/ownerId), `PATCH/DELETE …/[questionId]` (PATCH stempelt answered_at/by + bumpt `answer_round` bei Re-Antwort), `POST …/[questionId]/status` (RPC, 42501→403 / 23514·22023→400 / P0002→404), `GET …/dd-questions/export` (CSV, RLS-gefiltert, Sicht-Ebene im Dateinamen + `X-Export-Scope`-Header, Formel-Injection-neutralisiert). `answer_link` https-validiert. Client-Wrapper `src/lib/ma-project/dd-questions-api.ts`.
+
+**Pflicht-Live-Smoke gegen Prod (11/11, 0 Residue, transaktional zurückgerollt):** FLOOR (standard-in-confidential → confidential geklemmt; raise-to-strict bleibt), 5-Status-Maschine (valide + illegale 23514), Confidentiality-Gate (uncleared editor sieht/updatet confidential Frage NICHT, cleared editor sieht sie), Audit-Trigger + `can_read_audit_entry`. **Sicherheits-Fund + Fix in-Smoke:** der Status-RPC ist SECURITY DEFINER und umging die RESTRICTIVE-Gate-Policy → ein **uncleared Editor konnte den Status einer confidential Frage blind transitionieren**. Fix: RPC re-checkt `can_access_classified` (admin/cleared passieren, uncleared → 42501); re-verifiziert (blocked + cleared-ok). *(Latente Schwester-Lücke in PROJ-112 `transition_dd_stream_status` notiert → [[PROJ-Y-112c]].)*
+
+**Quality-Gates:** ESLint 0, vitest +17 (route 9 / status 6? — dd-questions 5 / status 6 / export 3, gesamt 17), tsc 0 neue Errors (14 Baseline), `next build` clean (4 neue Routen).
+
+**Offen → /frontend:** Q&A-Tab im DD-Stream-Detail (Liste/Filter/Frage erfassen/Antwort/Status/CSV-Export + disabled „Zu Finding eskalieren"-Platzhalter). → /qa Pentest (Floor, Gate je Achse, Status-RPC-Clearance, Cross-Tenant, Export-RLS, Audit).
 
 ---
 _Quelle: Backlog-Entwurf M&A-Projektplattform · G — Due Diligence_
