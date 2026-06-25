@@ -1,6 +1,6 @@
 # PROJ-100c: 4-Augen-Prinzip für besonders sensible Vertraulichkeits-Freischaltungen
 
-## Status: Approved (QA PASS 2026-06-25 — 11/11 AC + 9/9 Hardening-ACs, 0 Critical/High/Medium; Live-Pentest A–K 10/10 + 100b-Regression 8/8 + Playwright 10/10, 0 Residue. Backend #187 + Frontend #188 auf main. AC-100c-8 Magic-Link = Out-of-Scope-Followup. → /deploy)
+## Status: Deployed (2026-06-25 — Tag `v2.1.0-PROJ-100c` auf `72555d1`; Vercel prod READY; Post-Deploy-Auth-Gate-Smoke 5/5 = 307. QA PASS 11/11 AC + 9/9 Hardening, 0 Critical/High/Medium. Migration `20260624125208` in Prod. AC-100c-8 Magic-Link = Out-of-Scope-Followup.)
 **Created:** 2026-06-24
 **Last Updated:** 2026-06-24
 **Origin:** AC5 aus [PROJ-100](PROJ-100-berechtigungskonzept-nach-need-to-know-umsetzen.md); aus [PROJ-100b](PROJ-100b-berechtigungsprofile-und-sichtbarkeit.md) ausgegliedert (eigene Genehmigungs-State-Machine, CIA-schwer).
@@ -258,5 +258,11 @@ Reine UI auf den Backend-APIs (#187) + Client-Wrapper `four-eyes-api.ts`. **Kein
 
 **0 Critical / 0 High → PRODUCTION-READY.**
 
-## Deployment
-_To be added by /deploy_
+## Deployment — 2026-06-25
+
+- **Code auf main:** Backend **#187** + Frontend **#188** + QA **#191** (squash-merged → `72555d1`).
+- **Tag** `v2.1.0-PROJ-100c` gepusht.
+- **Migration** `20260624125208_proj100c_four_eyes_clearance_approval.sql` war bereits seit dem /backend-Slice in Prod (live-smoked + pentested); kein separater DDL-Deploy nötig.
+- **Vercel prod** für `72555d1` = READY (commit-status `Vercel=success`).
+- **Post-Deploy-Smoke:** 5/5 = 307 Auth-Gate auf `/api/clearance-approval-policies`, `/api/clearance-approvers`, `/api/projects/[id]/clearance-requests`, `…/respond` und Admin-Page `/stammdaten/vier-augen-genehmigung` (Deployment live + geschützt).
+- **Offener Followup (nicht-blockierend):** AC-100c-8 Magic-Link für externe Approver (konto-basierter Pool im MVP; braucht Backend-Token-Respond-Route, reuse PROJ-31 `approval-token`) → PROJ-Y-Kandidat.
