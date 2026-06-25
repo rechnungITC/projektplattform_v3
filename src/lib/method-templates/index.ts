@@ -13,7 +13,7 @@
  * Tenant-level overrides land with PROJ-16.
  */
 
-import { Handshake, ShieldCheck } from "lucide-react"
+import { Handshake, Microscope, ShieldCheck } from "lucide-react"
 
 import type { MethodConfig, SidebarSection } from "@/types/method-config"
 import type { ProjectMethod } from "@/types/project-method"
@@ -58,6 +58,17 @@ const MA_CONFIDENTIALITY_SECTION: SidebarSection = {
   requiresProjectType: "ma",
 }
 
+// PROJ-112 — the "Due Diligence" section (DD-stream backbone: per-stream status,
+// lead, time window, confidentiality). Also project-TYPE driven (M&A) and
+// injected right after Governance, gated the same way.
+const MA_DUE_DILIGENCE_SECTION: SidebarSection = {
+  id: "ma-due-diligence",
+  label: "Due Diligence",
+  icon: Microscope,
+  tabPath: "due-diligence",
+  requiresProjectType: "ma",
+}
+
 function withMaFoundation(config: MethodConfig): MethodConfig {
   const sections = config.sidebarSections
   // Insert right after the leading "overview" section (index 0) when present.
@@ -68,6 +79,7 @@ function withMaFoundation(config: MethodConfig): MethodConfig {
       ...sections.slice(0, insertAt),
       MA_FOUNDATION_SECTION,
       MA_CONFIDENTIALITY_SECTION,
+      MA_DUE_DILIGENCE_SECTION,
       ...sections.slice(insertAt),
     ],
   }
