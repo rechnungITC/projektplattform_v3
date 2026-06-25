@@ -14,7 +14,7 @@ summary_for_jira: "[G1] Due-Diligence-Streams konfigurieren und steuern"
 
 # PROJ-112: Due-Diligence-Streams konfigurieren und steuern
 
-## Status: In Progress (Backend + Frontend gebaut 2026-06-24 — DD-Übersicht/Detail/Status im Projektraum + Stammdaten-Katalog; → /qa Negativtests)
+## Status: Approved (QA PASS 2026-06-25 — 0 Critical/High; Live-RLS-Pentest 10/10 + Live-RPC-Smoke 10/10 + Playwright 10/10 + vitest 2037/2037. Backbone-ACs voll; Findings/Q&A-Counts + Prüfpunktliste + Gate-5 bewusst an PROJ-113/114/110 deferred. → /deploy)
 **Created:** 2026-06-10
 **Origin:** M&A-Platform Backlog (Epic G — Due Diligence)
 **Priority:** P1
@@ -219,6 +219,46 @@ Nach Approval: `/backend` (Migration: 2 Tabellen + Status-RPC + Confidentiality-
 - **Labels-Helper** `dd-stream-labels.ts`: DE-Status-/Level-Labels, Badge-Varianten, `allowedDdTransitions` (Mirror der RPC-Maschine), `remainingTime` (Restzeit aus `planned_end`, deterministisches `today` via `useMemo`).
 
 **Quality-Gates:** ESLint 0, tsc 0 neue Errors (14 Baseline), `next build` clean (2 neue Routen: `/projects/[id]/due-diligence` + `/stammdaten/dd-stream-vorlagen`). vitest unverändert (Backend-Route-Tests decken die kritischen Pfade; reine UI-Slice). Playwright-Auth-Gate-Smoke + Live-Negativtests → /qa.
+
+## QA Test Results — 2026-06-25
+
+**Verdikt: PRODUCTION-READY** — 0 Critical / 0 High. DD-Backbone (Tabellen + RPCs + Confidentiality + Audit) live in Prod, RLS unter echtem `authenticated`-Rollen-Kontext bewiesen.
+
+### Akzeptanzkriterien
+| AC | Ergebnis | Nachweis |
+|---|---|---|
+| AC1 Streams aus konfigurierbarer Vorlage aktivieren (min 6, erweiterbar) | ✅ | `dd_stream_templates` 6-Standards-Lazy-Seed + Admin-CRUD (ESG etc.) + Aktivieren-Dialog (Copy-on-create); Live-Smoke V1/V6 |
+| AC2 Stream-Lead + Zeitfenster | ✅ | Edit-Dialog (Lead-Picker/Datumsfenster/Scope) · **Pflicht-Deliverables → PROJ-104, Prüfpunktliste → PROJ-113 (bewusst deferred, ADR-konform)** |
+| AC3 Stream-Status (5 Zustände) pflegbar | ✅ | `transition_dd_stream_status`-RPC + inline-Status-`Select`; Live-Smoke valide/illegale Transition (23514) |
+| AC4 DD-Übersicht: Status + Restzeit | ✅ | Übersichtstabelle Status-Badge + `remainingTime`; **Findings/Q&A-Counts `—` (null, nicht 0) bis PROJ-113/114 — CIA-ADJUST** |
+| AC5 Phasen-Link (A2) + Gate-5 (F1) | ✅ (forward-compat) | nullable `phase_id`-FK (Befüllung = PROJ-95-Scope); **Gate-5-Auswertung → PROJ-110** |
+
+### Security / Red-Team — Live-RLS-Pentest (`tests/sql/PROJ-112-dd-streams-pentest.sql`, 10/10, echtes `authenticated`-Rollen, 0 Residue)
+| Vektor | Ergebnis |
+|---|---|
+| Uncleared Member sieht `standard`-Stream, **NICHT** `confidential` (Need-to-know-Gate, kein Existenz-Leak) | ✅ V1a/V1b |
+| Cleared Member sieht `confidential` nach Clearance-Grant | ✅ V2 |
+| Cross-Tenant: T2-Admin sieht 0 T1-Streams | ✅ V3 |
+| Write-Gate: Editor (≠ lead/admin) kann Stream nicht updaten | ✅ V4 |
+| RPC-Authority: Editor-Transition geblockt (42501) | ✅ V5 |
+| Template-Tenant-Isolation (gleicher `stream_key` cross-tenant getrennt) | ✅ V6a/V6b |
+| Audit-Read-Gate: Nicht-Member denied, Admin allowed | ✅ V7a/V7b |
+
+Ergänzend: **Backend-Live-RPC-Smoke 10/10** (Seed/idempotent, State-Machine, 42501, Audit-Trigger, Gate-Bypass/Deny). **PROJ-100a-Pentest** bleibt grün (Gate-Prädikat unverändert; dd_streams reusen es verbatim).
+
+### Tests
+- **Playwright** `tests/PROJ-112-dd-streams.spec.ts` **10/10 chromium** — Auth-Gates auf 8 API-Routen + 2 Seiten (Projektraum `/due-diligence` + Stammdaten `/dd-stream-vorlagen`).
+- **vitest 2037/2037** (inkl. 22 neue: dd-streams 9 / status 7 / templates 6); keine Regression.
+- ESLint 0, tsc 0 neue Errors (14 Baseline), `next build` clean.
+
+### Findings (alle Low/Info, nicht-blockierend)
+- **F-1 (Low):** `remainingTime` nutzt ein beim Mount fixiertes `today` (`useMemo`) → „Restzeit" aktualisiert sich nicht, wenn der Tab über Mitternacht offen bleibt. Kosmetisch.
+- **F-2 (Info):** Phasen-Picker im Edit-Dialog ist leer, solange PROJ-95 keine M&A-Phasen anlegt (erwartetes forward-compat-Verhalten; `phase_id` bleibt null).
+- **D-1 (Env):** Mobile-Safari/WebKit-E2E übersprungen (Host-Libs fehlen — `sudo npx playwright install-deps webkit`), wie in PROJ-67/88/135. Chromium grün.
+
+### Followups (PROJ-Y, nicht-blockierend)
+- **PROJ-Y-112a:** DD-Übersicht-Live-Counts aktivieren, sobald PROJ-113/114 die `dd_stream_id`-Tabellen liefern (heute `—`).
+- **PROJ-Y-112b:** `phase_id`-Befüllung an die DD-Phase bei PROJ-95-Build.
 
 ---
 _Quelle: Backlog-Entwurf M&A-Projektplattform · G — Due Diligence_
