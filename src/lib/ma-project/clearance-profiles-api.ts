@@ -112,7 +112,7 @@ export async function applyClearanceProfile(
   projectId: string,
   userId: string,
   profileId: string
-): Promise<void> {
+): Promise<{ pending: boolean }> {
   const response = await fetch(
     `/api/projects/${encodeURIComponent(projectId)}/clearances/apply-profile`,
     {
@@ -122,6 +122,9 @@ export async function applyClearanceProfile(
     }
   )
   if (!response.ok) throw new Error((await safeError(response)).message)
+  // PROJ-100c: 202 means a 4-eyes approval policy gated the level — a pending
+  // approval request was created instead of an immediate clearance.
+  return { pending: response.status === 202 }
 }
 
 /** Read-only "who can see this object?" overview (manager-gated server-side). */

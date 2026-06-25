@@ -1,6 +1,6 @@
 # PROJ-100c: 4-Augen-Prinzip für besonders sensible Vertraulichkeits-Freischaltungen
 
-## Status: In Progress (Backend gebaut 2026-06-24 — Fork B: Policy/Approver/Request/Event-Tabellen + Gate am grant-RPC-Kopf + record/cancel-RPCs + 6 APIs; Migration `20260624125208` in Prod; Live-Smoke 7/7 + 100b-Pentest-Regression 8/8, 0 Residue. → /frontend, dann /qa)
+## Status: In Progress (Backend #187 live + Frontend gebaut 2026-06-25 — Admin-Policy/Approver-Pool-Seite `/stammdaten/vier-augen-genehmigung` + „Wartet auf Genehmigung“-Panel in der Vertraulichkeits-Karte + 202-pending-Wiring. Migration `20260624125208` in Prod; BE-Live-Smoke 7/7 + 100b-Pentest 8/8. AC-100c-8 Magic-Link → Followup. → /qa)
 **Created:** 2026-06-24
 **Last Updated:** 2026-06-24
 **Origin:** AC5 aus [PROJ-100](PROJ-100-berechtigungskonzept-nach-need-to-know-umsetzen.md); aus [PROJ-100b](PROJ-100b-berechtigungsprofile-und-sichtbarkeit.md) ausgegliedert (eigene Genehmigungs-State-Machine, CIA-schwer).
@@ -194,6 +194,22 @@ Fork B umgesetzt. **Kein neuer Dep.** Migration `20260624125208_proj100c_four_ey
 **Quality-Gates:** lint 0 · tsc 14 baseline/0 neu · vitest 2041/2041 (+24 Route-Tests inkl. 202-pending) · build clean.
 
 **Offen → /frontend:** Policy-Verwaltung (Admin: Gate an/aus + Schwelle + Personenzahl + Approver-Pool), „Wartet auf Genehmigung"-Liste + Approve/Reject im Projektraum, pending-Zustand in der Vertraulichkeits-Karte. **AC-100c-8 (Magic-Link für externe Approver)** → /frontend (reuse PROJ-31 `approval-token.ts` + Token-Respond-Route). Danach /qa.
+
+## Implementation Notes — Frontend (2026-06-25)
+
+Reine UI auf den Backend-APIs (#187) + Client-Wrapper `four-eyes-api.ts`. **Kein neuer Dep, kein Backend-/DB-Change.**
+
+**(1) Tenant-Admin-Konfiguration** `/stammdaten/vier-augen-genehmigung` (admin-gated via `useAuth().currentRole`) — `FourEyesPolicyPageClient`, zwei Panels:
+- *Genehmigungs-Richtlinie pro Stufe*: Tabelle Vertraulich/Streng-vertraulich mit Aktiv-`Switch` + Personenzahl-`Select` (1=4-Augen / 2=6-Augen / 3); jede Änderung `upsertApprovalPolicy` (PUT). Default-off: ohne aktivierte Policy keine Gate.
+- *Approver-Pool*: Tenant-Member-Picker × Stufe (oder „Alle Stufen“) → `addApprover`; Liste mit Entfernen. Hinweis auf Funktionstrennung. Neue Stammdaten-Index-Kachel (adminOnly, ShieldCheck).
+
+**(2) Projekt-Raum** (in der bestehenden „Freischaltungen“-Tab-Karte `ConfidentialityAccessCard`, manager-gated):
+- Neues Panel *„Wartet auf Genehmigung (4-Augen)“* (`PendingApprovalsPanel`) — listet `status=pending`-Requests (Nutzer / Stufe-Badge / beantragt-von / Quorum) mit **Genehmigen / Ablehnen / Zurückziehen**. Server erzwingt Approver-Eligibility + SoD; UI surfaced Fehler via Toast.
+- *202-pending-Wiring*: `applyClearanceProfile` gibt jetzt `{pending}` zurück (202 → pending); die Apply-Aktion zeigt „wartet auf Genehmigung“ statt „vergeben“, wenn ein Gate griff.
+
+**Offen (Followup):** AC-100c-8 **Magic-Link für externe Approver** — der Approver-Pool ist im MVP konto-basiert (`approver_user_id`); externe Genehmigung via Magic-Link braucht eine Backend-Token-Respond-Route (reuse PROJ-31 `approval-token.ts`) → eigener kleiner Slice. In-App-Approver-Flow (benannte Plattform-Nutzer) ist vollständig.
+
+**Quality-Gates:** lint 0 · tsc 14 baseline/0 neu · vitest 2041/2041 · build clean (neue Route `/stammdaten/vier-augen-genehmigung`). Live-E2E + Pentest-Regression → /qa.
 
 ## QA Test Results
 _To be added by /qa_
