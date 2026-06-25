@@ -14,7 +14,7 @@ summary_for_jira: "[B1] Projektrollen und Verantwortlichkeiten verwalten"
 
 # PROJ-97: Projektrollen und Verantwortlichkeiten verwalten
 
-## Status: In Progress (97a Backend gebaut 2026-06-24 — Fachrollen-Werteliste + Verantwortungs-Ansicht; 97a-Frontend + 97b RACI-Engine + /qa offen)
+## Status: In Progress (97a + 97b Backend gebaut 2026-06-24/25 — Fachrollen + Verantwortungs-Ansicht + RACI-Engine live; Frontend + /qa offen)
 **Created:** 2026-06-10
 **Origin:** M&A-Platform Backlog (Epic B — Rollen, Gremien & Governance)
 
@@ -28,7 +28,25 @@ Slice **97a** (Rollen & Zuordnung, niedriges Risiko) gebaut; **97b** (RACI-Engin
 
 **Quality-Gates:** lint 0, tsc 14 baseline/0 neu, vitest +9 (4 catalog/helper + 5 route), build clean (Route registriert).
 
-**Offen:** 97a-Frontend (Rollenliste + Verantwortungs-Ansicht-UI, „extern"-Badge → reuse Stakeholder-/PROJ-57-Linking-UI); **97b** RACI-Engine (polymorphe `raci_assignments`, „A=genau-einer"-Constraint, Integritäts-Guard, set/clear-RPCs) als eigenständige Slice; Rollenlisten-Vorbefüllung → PROJ-96; durchgesetzte Externe-Sichtbarkeit → PROJ-99. Historisierung via PROJ-10-Audit (keine eigenen Zeitspalten).
+**Offen (97a):** 97a-Frontend (Rollenliste + Verantwortungs-Ansicht-UI, „extern"-Badge → reuse Stakeholder-/PROJ-57-Linking-UI); Rollenlisten-Vorbefüllung → PROJ-96; durchgesetzte Externe-Sichtbarkeit → PROJ-99. Historisierung via PROJ-10-Audit (keine eigenen Zeitspalten).
+
+## Implementation Notes — 97b RACI-Engine Backend (2026-06-25)
+
+Slice **97b** (RACI-Engine, HOCH-Risiko/Schema-Lock-in) gebaut — genau nach Tech-Design E2. **Eine neue Tabelle, kein neuer Dep.**
+
+- **Tabelle** `raci_assignments` (Migration `20260624154503`, in Prod; Repo == prod-Version per PROJ-134): **polymorph** (`target_type` CHECK heute nur `'work_item'` — `'deliverable'` wird von PROJ-104 freigeschaltet), `target_id`, **Träger = Fachrolle** (`role_key`, NICHT die Person → Rollenwechsel bleiben konsistent, Invariante #4), `raci_letter` (R/A/C/I). Multi-Tenant-Invariante (`tenant_id`/`project_id` NOT NULL + FK CASCADE).
+- **Zentrale Geschäftsregel als DB-Constraint** (nicht UI): „**Accountable = genau einer pro Ziel**" via partiellem Unique-Index `raci_one_accountable (target_type, target_id) WHERE raci_letter='A'`; zusätzlich Unique `(target_type, target_id, role_key)` (eine Letter pro Rolle/Ziel).
+- **Polymorpher Integritäts-Guard:** die set/clear-RPCs lösen `tenant_id`/`project_id` aus dem `work_items`-Ziel auf (existiert nicht → 02000), kein direkter Polymorph-FK (PROJ-9-Muster).
+- **RLS:** SELECT project-member/admin; INSERT/UPDATE/DELETE lead/editor/admin (defense-in-depth, Writes laufen über RPCs).
+- **RPCs** `set_work_item_raci` (upsert, A-Konflikt → 23505) + `clear_work_item_raci`; SECURITY DEFINER, `auth.uid()`-only, anon revoked.
+- **Audit (PROJ-10):** `audit_log_entity_type_check` + `_tracked_audit_columns` + `can_read_audit_entry` um `raci_assignments` erweitert (vermeidet den PROJ-100a-H-1-entity_type-Bug); AFTER-UPDATE-Trigger auditiert `raci_letter`-Wechsel.
+- **API** `GET/POST/DELETE /api/projects/[id]/work-items/[wid]/raci` (role_key app-layer via `isValidMaRoleKey`; 409/403/404/400-Mapping). Client-Wrapper `src/lib/ma-project/raci-api.ts`.
+
+**Pflicht-Live-RPC-Smoke gegen Prod (0 Residue via ROLLBACK_MARKER):** set R/A/C ✓; zweiter Accountable → REJECTED(23505) ✓; Reassign A (A→R, dann neue A) ✓; nicht-existentes Work-Item → REJECTED(02000) ✓ (Guard); Nicht-Member → REJECTED(42501) ✓ (Authority); clear=1 ✓; Audit-Trigger 1 Zeile ✓. Security-Advisor: 0 ERROR, 0 rls_disabled auf `raci_assignments`.
+
+**Quality-Gates:** lint 0, tsc 14 baseline/0 neu, vitest +9 (Route), build clean (Route registriert).
+
+**Offen (97b):** RACI-Matrix-Editor-UI je Aufgabe → /frontend; `target_type='deliverable'` → PROJ-104; /qa Negativtests (A=genau-einer, Guard, RLS/Tenant-Isolation).
 **Priority:** P1
 
 > **V3 Core Reuse (CIA 2026-06-15 · [ma-domain-architecture ADR](../docs/decisions/ma-domain-architecture.md) · [Sequencing](../docs/ma-epic-sequencing-2026-06-15.md)):** Klasse **DUP→REUSE** · Andockpunkt: PROJ-4 RBAC + PROJ-57 Linking; RACI-Feld neu. Nicht neu bauen, was der Core schon hat — diese Spec MUSS die ADR + Reuse-Matrix respektieren.
