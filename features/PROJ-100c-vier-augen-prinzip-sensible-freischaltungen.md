@@ -1,6 +1,6 @@
 # PROJ-100c: 4-Augen-Prinzip für besonders sensible Vertraulichkeits-Freischaltungen
 
-## Status: In Progress (Backend #187 live + Frontend gebaut 2026-06-25 — Admin-Policy/Approver-Pool-Seite `/stammdaten/vier-augen-genehmigung` + „Wartet auf Genehmigung“-Panel in der Vertraulichkeits-Karte + 202-pending-Wiring. Migration `20260624125208` in Prod; BE-Live-Smoke 7/7 + 100b-Pentest 8/8. AC-100c-8 Magic-Link → Followup. → /qa)
+## Status: Approved (QA PASS 2026-06-25 — 11/11 AC + 9/9 Hardening-ACs, 0 Critical/High/Medium; Live-Pentest A–K 10/10 + 100b-Regression 8/8 + Playwright 10/10, 0 Residue. Backend #187 + Frontend #188 auf main. AC-100c-8 Magic-Link = Out-of-Scope-Followup. → /deploy)
 **Created:** 2026-06-24
 **Last Updated:** 2026-06-24
 **Origin:** AC5 aus [PROJ-100](PROJ-100-berechtigungskonzept-nach-need-to-know-umsetzen.md); aus [PROJ-100b](PROJ-100b-berechtigungsprofile-und-sichtbarkeit.md) ausgegliedert (eigene Genehmigungs-State-Machine, CIA-schwer).
@@ -211,8 +211,52 @@ Reine UI auf den Backend-APIs (#187) + Client-Wrapper `four-eyes-api.ts`. **Kein
 
 **Quality-Gates:** lint 0 · tsc 14 baseline/0 neu · vitest 2041/2041 · build clean (neue Route `/stammdaten/vier-augen-genehmigung`). Live-E2E + Pentest-Regression → /qa.
 
-## QA Test Results
-_To be added by /qa_
+## QA Test Results — 2026-06-25 (backend #187 + frontend #188, beide auf main)
+
+**Verdikt: PRODUCTION-READY** — 11/11 AC + 9/9 Hardening-ACs (C1–C9) erfüllt; **0 Critical / 0 High / 0 Medium**. AC-100c-8 (Magic-Link) ist ein dokumentierter Out-of-Scope-Followup.
+
+### Live-Pentest (Pflicht) — `tests/sql/PROJ-100c-four-eyes-pentest.sql`, self-rolling-back, **0 Residue**, **A–K 10/10 PASS**
+| Vektor | Ergebnis | AC |
+|---|---|---|
+| A enabled policy → grant erzeugt pending Request (keine Clearance) | ✅ | AC-100c-3 |
+| B pending → Ziel hat KEINEN Zugriff | ✅ | AC-100c-3 · **C8** |
+| C Antragsteller kann eigene Anfrage nicht genehmigen | ✅ | AC-100c-5 · **C2** (SoD) |
+| D Nutzer außerhalb des Approver-Pools blockiert | ✅ | AC-100c-5b · AC-100c-11 |
+| E 1 von 2 Genehmigungen → bleibt pending (M-von-N) | ✅ | AC-100c-5 |
+| F Approver kann nicht doppelt abstimmen | ✅ | AC-100c-10 |
+| G Quorum erreicht → approved + Clearance via System-Grant; finaler **non-admin** Approver genügt; Ziel hat Zugriff | ✅ | AC-100c-6 · **C7** |
+| H Event-Log append-only (UPDATE → 42501) | ✅ | AC-100c-10 · **C6** |
+| I Cross-Tenant sieht 0 Requests + kein Zugriff | ✅ | AC-100c-9 · **C4** |
+| K Cancel → cancelled, keine Clearance | ✅ | AC-100c-7 |
+
+### Regression (AC-C1) + weitere
+- **`PROJ-100b-clearance-profiles-pentest.sql` A–H 8/8 PASS** (re-run post-100c) → grant byte-identisch via apply_profile; `can_access_classified` + RESTRICTIVE-Policies unverändert (rein additiver Gate-Zweig) → 100a-Pentest bleibt grün. **AC-C1 ✅**
+- **C3 (default-off)** + reject-Pfad: im /backend-Live-Smoke 7/7 nachgewiesen (confidential ohne Policy → sofortige Clearance/0 pending).
+- **C5 (Class-3-Orthogonalität)**: das Gate triggert ausschließlich auf `ma_confidentiality_level` (Policy-Lookup pro Stufe), nie auf `privacy_class` — strukturell getrennt; 100a-Pentest-Vektor 6 unberührt. **C5 ✅**
+- **C9 (Live-RPC-Smoke)**: 100c-Pentest + /backend-Smoke gegen Prod, 0 Residue. ✅
+
+### Automatisierte Tests
+- **Playwright** `tests/PROJ-100c-four-eyes.spec.ts` (chromium): **10/10 PASS** — Auth-Gates auf allen 6 neuen Routen (policies GET/PUT, approvers GET/POST/DELETE, requests GET, respond, cancel) + invalid-UUID + Admin-Page `/stammdaten/vier-augen-genehmigung`.
+- **Vitest** 2041/2041 (inkl. 24 100c-Route-Tests aus /backend: Auth/Validation/403-Governance/RPC-Error-Mapping + 202-pending).
+- lint 0 · tsc 14 baseline/0 neu · build clean.
+
+### Security-Audit (Red Team)
+| Vektor | Ergebnis |
+|---|---|
+| Auth-Gate (kein Session) auf 6 Routen + Admin-Page | ✅ E2E 10/10 (307/401/403) |
+| SoD (Antragsteller ≠ Approver) | ✅ Pentest C |
+| Approver-Eligibility (nur benannte Approver) | ✅ Pentest D |
+| Tenant-Isolation (Requests/Policies/Approver) | ✅ Pentest I + RLS |
+| Append-only Audit (Manipulation) | ✅ Pentest H (Trigger 42501) |
+| Default-off byte-identisch (keine 100a/100b-Regression) | ✅ 100b-Pentest 8/8 + C1 |
+| Class-3 nicht versehentlich gekoppelt | ✅ Gate nur auf `ma_confidentiality_level` |
+| System-Grant-Pfad nicht öffentlich aufrufbar | ✅ `_system_grant_clearance`/`_create_…` execute von anon+authenticated revoked |
+
+### Findings
+- Keine Critical/High/Medium. **F-1 (Info, Out-of-Scope-Followup):** AC-100c-8 Magic-Link für externe Approver — Approver-Pool ist im MVP konto-basiert; externe Genehmigung braucht eine Backend-Token-Respond-Route (reuse PROJ-31 `approval-token`). In-App-Approver-Flow vollständig. → PROJ-Y-Followup.
+- **D-1 (Env):** Mobile-Safari/WebKit-E2E übersprungen (Host-Libs fehlen — `sudo npx playwright install-deps webkit`), wie in PROJ-67/88/99/135. Chromium grün.
+
+**0 Critical / 0 High → PRODUCTION-READY.**
 
 ## Deployment
 _To be added by /deploy_
