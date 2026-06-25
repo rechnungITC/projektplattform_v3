@@ -14,7 +14,7 @@ summary_for_jira: "[G1] Due-Diligence-Streams konfigurieren und steuern"
 
 # PROJ-112: Due-Diligence-Streams konfigurieren und steuern
 
-## Status: Approved (QA PASS 2026-06-25 — 0 Critical/High; Live-RLS-Pentest 10/10 + Live-RPC-Smoke 10/10 + Playwright 10/10 + vitest 2037/2037. Backbone-ACs voll; Findings/Q&A-Counts + Prüfpunktliste + Gate-5 bewusst an PROJ-113/114/110 deferred. → /deploy)
+## Status: Deployed (2026-06-25 — Tag `v2.1.0-PROJ-112`, PR #190 merged → main `5643735`; Vercel-Prod deploy success + Post-Deploy-Auth-Gate-Smoke 5/5 = 307; Migration `20260624105317` seit /backend in Prod. 0 Critical/High.)
 **Created:** 2026-06-10
 **Origin:** M&A-Platform Backlog (Epic G — Due Diligence)
 **Priority:** P1
@@ -259,6 +259,16 @@ Ergänzend: **Backend-Live-RPC-Smoke 10/10** (Seed/idempotent, State-Machine, 42
 ### Followups (PROJ-Y, nicht-blockierend)
 - **PROJ-Y-112a:** DD-Übersicht-Live-Counts aktivieren, sobald PROJ-113/114 die `dd_stream_id`-Tabellen liefern (heute `—`).
 - **PROJ-Y-112b:** `phase_id`-Befüllung an die DD-Phase bei PROJ-95-Build.
+
+## Deployment — 2026-06-25
+
+- **Tag:** `v2.1.0-PROJ-112` auf dem Feature-Merge-Commit `5643735` (PR #190 squash → main).
+- **Required-Checks grün:** schema-drift (`Verify SELECT columns`), `npm audit production`, Snyk.
+- **Migration:** `20260624105317_proj112_dd_streams_backbone` bereits seit dem /backend-Slice in Prod (via MCP, Dateiname == registrierte Version, PROJ-134-konform) — kein separater DB-Schritt beim Deploy.
+- **Vercel-Prod:** Deployment für `5643735` `state=success` (GitHub-Deployment-Status); kein Runtime-Risiko (additive Routen).
+- **Post-Deploy-Smoke:** 5/5 = 307 Auth-Gate (`/api/projects/[id]/dd-streams`, `/api/dd-stream-templates`, `/projects/[id]/due-diligence`, `/stammdaten/dd-stream-vorlagen`, `/`).
+- **Worktree-Setup (einmalig, gitignored):** `npm ci` + `.env.local` aus dem Primary-Checkout kopiert (Turbopack akzeptiert keine out-of-tree-symlinked `node_modules`).
+- **Offene Followups (nicht-blockierend):** PROJ-Y-112a (Live-Counts via PROJ-113/114), PROJ-Y-112b (`phase_id`-Befüllung via PROJ-95).
 
 ---
 _Quelle: Backlog-Entwurf M&A-Projektplattform · G — Due Diligence_
