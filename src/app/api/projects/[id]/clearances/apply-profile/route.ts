@@ -75,5 +75,11 @@ export async function POST(
     return apiError("apply_failed", error.message, 500)
   }
 
+  // PROJ-100c: null = a 4-eyes approval policy gated this level; the profile
+  // application created a pending approval request instead of a clearance.
+  if (data === null) {
+    return NextResponse.json({ pending: true, clearance: null }, { status: 202 })
+  }
+
   return NextResponse.json({ clearance: data }, { status: 201 })
 }

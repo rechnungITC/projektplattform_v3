@@ -252,5 +252,17 @@ F-1 `document_link`-Scheme-Validierung (security-hygiene, vor Link-Render) · F-
 - **Post-Deploy-Smoke:** 4/4 = 307 Auth-Gate auf `/api/projects/[id]/advisors`, `…/ndas`, `…/access-explain?level=confidential`, `/projects/[id]/vertraulichkeit` (Deployment live + geschützt).
 - **Offene Followups (nicht-blockierend):** F-1 `document_link`-Scheme-Validierung (vor jedem Link-Render); F-2 `cancelled`-Guards in advisors-/ndas-tab; **D-FE-1** Historie-Tab braucht `can_read_audit_entry`-Erweiterung für `ma_advisor_profiles`/`ma_ndas` (eigener security-relevanter Backend-Slice, deckt zugleich offenen AC „Externe Aktivitäten auditierbar").
 
+## Followups umgesetzt — 2026-06-24 (F-1 + F-2 + D-FE-1)
+
+Alle drei QA-Followups gebaut (eigener Branch `proj-99-128-129/followups`). **1 Migration, kein neuer Dep.**
+
+- **F-1 (Security-Hygiene):** `document_link` in `ndas/_schema.ts` validiert jetzt das Schema (`https?://` oder leer) — `javascript:`/`data:`/`vbscript:`/`file:` werden mit 400 abgewiesen, bevor der Link je als `<a href>` gerendert werden könnte. +2 Route-Tests (reject `javascript:`, accept `https://`).
+- **F-2 (Robustheit):** Mount-/Target-Reload-Effekte in `advisors-tab.tsx` + `ndas-tab.tsx` (inkl. `NdaAssignmentsSheet`) auf das `cancelled`-Guard-Muster umgestellt (analog `classification-matrix-tab`); `reload()` bleibt für user-initiierte Post-Mutation-Refetches. Kein State-Write mehr auf stale/unmounted.
+- **D-FE-1 (Historie-Tab + Audit-Read-Gate):**
+  - **Backend** Migration `20260624095758_proj99_followup_audit_read_advisor_nda.sql` (in Prod): `can_read_audit_entry` mappt `ma_advisor_profiles` + `ma_ndas` → `is_project_member` (Spiegel des `ma_project_profiles`-Case). **Keine neue Sichtbarkeit** — beide Tabellen-SELECT-Policies sind bereits exakt `is_project_member(project_id)` (verifiziert); der Branch hebt sie nur aus dem `else return false`-default-deny. **Pflicht-Live-RPC-Smoke gegen Prod (rolled back, 0 Residue): 5/5** — `member.advisor=true · member.nda=true · nonmember.advisor=false · nonmember.nda=false · admin.advisor=true`.
+  - **Frontend** `AuditEntityType` + Labels um `ma_advisor_profiles`/`ma_ndas` erweitert; neuer 5. Tab **„Historie"** (`governance-history-tab.tsx`) in der Governance-Seite: Objekt-Typ (Berater/NDA) + Objekt-Picker → `HistoryTab` mit enum-/datums-/namensgerechtem `formatValue`. Damit ist der ursprünglich als D-FE-1 zurückgestellte Historie-Tab geliefert (deckt zugleich den AC „Externe Aktivitäten auditierbar" für Advisor-/NDA-/Mandats-/Clearance-Änderungen).
+- **Quality-Gates:** lint 0 · tsc 14 baseline/0 neu · vitest 2017/2017 (+2) · build clean.
+- **Deployed 2026-06-24:** PR **#184** squash-merged → main `ceb78e0`, Tag `v2.0.1-PROJ-99-128-129-followups`; Migration `20260624095758` in Prod; Vercel prod READY; Post-Deploy-Auth-Gate-Smoke 3/3 = 307. Damit sind alle drei QA-Followups (F-1/F-2/D-FE-1) erledigt; der AC „Externe Aktivitäten auditierbar" ist über den Historie-Tab (Advisor-/NDA-Audit) abgedeckt.
+
 ---
 _Quelle: Backlog-Entwurf M&A-Projektplattform · B — Rollen, Gremien & Governance_

@@ -1,6 +1,6 @@
 "use client"
 
-import { Check, Loader2, Minus, ShieldCheck } from "lucide-react"
+import { Ban, Check, Clock, Loader2, Minus, ShieldCheck, X } from "lucide-react"
 import * as React from "react"
 import { toast } from "sonner"
 
@@ -42,6 +42,12 @@ import {
   buildAccessMatrix,
   MATRIX_LEVELS,
 } from "@/lib/ma-project/access-matrix"
+import {
+  cancelClearanceRequest,
+  type ClearanceGrantRequest,
+  listClearanceRequests,
+  respondToClearanceRequest,
+} from "@/lib/ma-project/four-eyes-api"
 import {
   type AccessOverview,
   applyClearanceProfile,
@@ -114,6 +120,7 @@ export function ConfidentialityAccessCard({ projectId }: { projectId: string }) 
   return (
     <div className="space-y-6">
       <ApplyProfilePanel projectId={projectId} nameFor={nameFor} members={members} />
+      <PendingApprovalsPanel projectId={projectId} nameFor={nameFor} />
       <WhoCanSeePanel projectId={projectId} nameFor={nameFor} />
       <AccessMatrixPanel projectId={projectId} nameFor={nameFor} />
     </div>
@@ -177,8 +184,15 @@ function ApplyProfilePanel({
     if (!userId || !profileId) return
     setApplying(true)
     try {
-      await applyClearanceProfile(projectId, userId, profileId)
-      toast.success("Profil angewendet — Freischaltung vergeben")
+      const { pending } = await applyClearanceProfile(projectId, userId, profileId)
+      if (pending) {
+        toast.success("Profil angewendet — wartet auf Genehmigung (4-Augen)", {
+          description:
+            "Die Freischaltung wird erst nach Zustimmung der benannten Approver wirksam.",
+        })
+      } else {
+        toast.success("Profil angewendet — Freischaltung vergeben")
+      }
       setUserId("")
       setProfileId("")
       await reload()
@@ -576,6 +590,195 @@ function AccessMatrixPanel({
                     </TableCell>
                   </TableRow>
                 ))}
+              </TableBody>
+            </Table>
+          </div>
+        )}
+      </CardContent>
+    </Card>
+  )
+}
+
+// --- Pending 4-eyes approval requests (PROJ-100c) ------------------------
+// Lists clearance grants that a 4-eyes policy routed to approval. Named
+// approvers approve/reject; the requester or a manager can cancel. The server
+// enforces eligibility + separation-of-duty; the UI surfaces errors via toast.
+function PendingApprovalsPanel({
+  projectId,
+  nameFor,
+}: {
+  projectId: string
+  nameFor: (userId: string) => string
+}) {
+  const [requests, setRequests] = React.useState<ClearanceGrantRequest[]>([])
+  const [loading, setLoading] = React.useState(true)
+  const [pendingId, setPendingId] = React.useState<string | null>(null)
+
+  const reload = React.useCallback(async () => {
+    try {
+      setRequests(await listClearanceRequests(projectId, "pending"))
+    } catch (err) {
+      toast.error("Genehmigungs-Anfragen konnten nicht geladen werden", {
+        description: err instanceof Error ? err.message : "Unbekannter Fehler",
+      })
+    }
+  }, [projectId])
+
+  React.useEffect(() => {
+    let cancelled = false
+    void (async () => {
+      setLoading(true)
+      try {
+        const list = await listClearanceRequests(projectId, "pending")
+        if (!cancelled) setRequests(list)
+      } catch (err) {
+        if (!cancelled)
+          toast.error("Genehmigungs-Anfragen konnten nicht geladen werden", {
+            description: err instanceof Error ? err.message : "Unbekannter Fehler",
+          })
+      } finally {
+        if (!cancelled) setLoading(false)
+      }
+    })()
+    return () => {
+      cancelled = true
+    }
+  }, [projectId])
+
+  const act = async (
+    reqId: string,
+    fn: () => Promise<unknown>,
+    okMsg: string
+  ) => {
+    setPendingId(reqId)
+    try {
+      await fn()
+      toast.success(okMsg)
+      await reload()
+    } catch (err) {
+      toast.error("Aktion fehlgeschlagen", {
+        description: err instanceof Error ? err.message : "Unbekannter Fehler",
+      })
+    } finally {
+      setPendingId(null)
+    }
+  }
+
+  return (
+    <Card>
+      <CardHeader>
+        <CardTitle className="flex items-center gap-2 text-base">
+          <Clock className="h-5 w-5" aria-hidden /> Wartet auf Genehmigung (4-Augen)
+        </CardTitle>
+        <CardDescription>
+          Sensible Freischaltungen, die ein 4-Augen-Gate ausgelöst haben. Benannte
+          Approver genehmigen oder lehnen ab; der Antragsteller oder die
+          Projektleitung kann zurückziehen. Funktionstrennung wird serverseitig
+          erzwungen.
+        </CardDescription>
+      </CardHeader>
+      <CardContent>
+        {loading ? (
+          <Skeleton className="h-20 w-full" />
+        ) : requests.length === 0 ? (
+          <div className="rounded-md border border-dashed py-8 text-center text-sm text-muted-foreground">
+            Keine offenen Genehmigungs-Anfragen.
+          </div>
+        ) : (
+          <div className="overflow-x-auto rounded-md border">
+            <Table>
+              <TableHeader>
+                <TableRow>
+                  <TableHead>Nutzer</TableHead>
+                  <TableHead>Stufe</TableHead>
+                  <TableHead className="hidden sm:table-cell">Beantragt von</TableHead>
+                  <TableHead className="hidden sm:table-cell">Quorum</TableHead>
+                  <TableHead className="text-right">Aktion</TableHead>
+                </TableRow>
+              </TableHeader>
+              <TableBody>
+                {requests.map((req) => {
+                  const busy = pendingId === req.id
+                  return (
+                    <TableRow key={req.id}>
+                      <TableCell className="font-medium">
+                        {nameFor(req.user_id)}
+                      </TableCell>
+                      <TableCell>
+                        <Badge
+                          variant={
+                            req.requested_level === "strict"
+                              ? "destructive"
+                              : "secondary"
+                          }
+                        >
+                          {LEVEL_LABEL[req.requested_level] ?? req.requested_level}
+                        </Badge>
+                      </TableCell>
+                      <TableCell className="hidden sm:table-cell text-muted-foreground">
+                        {nameFor(req.requested_by)}
+                      </TableCell>
+                      <TableCell className="hidden sm:table-cell text-muted-foreground">
+                        {req.quorum_required}
+                      </TableCell>
+                      <TableCell className="text-right">
+                        <div className="flex justify-end gap-1">
+                          <Button
+                            size="sm"
+                            variant="outline"
+                            disabled={busy}
+                            onClick={() =>
+                              act(
+                                req.id,
+                                () =>
+                                  respondToClearanceRequest(projectId, req.id, "approve"),
+                                "Genehmigt"
+                              )
+                            }
+                          >
+                            {busy ? (
+                              <Loader2 className="h-4 w-4 animate-spin" aria-hidden />
+                            ) : (
+                              <Check className="h-4 w-4" aria-hidden />
+                            )}
+                            <span className="ml-1 hidden sm:inline">Genehmigen</span>
+                          </Button>
+                          <Button
+                            size="sm"
+                            variant="outline"
+                            disabled={busy}
+                            onClick={() =>
+                              act(
+                                req.id,
+                                () =>
+                                  respondToClearanceRequest(projectId, req.id, "reject"),
+                                "Abgelehnt"
+                              )
+                            }
+                          >
+                            <X className="h-4 w-4" aria-hidden />
+                            <span className="ml-1 hidden sm:inline">Ablehnen</span>
+                          </Button>
+                          <Button
+                            size="icon"
+                            variant="ghost"
+                            aria-label="Anfrage zurückziehen"
+                            disabled={busy}
+                            onClick={() =>
+                              act(
+                                req.id,
+                                () => cancelClearanceRequest(projectId, req.id),
+                                "Anfrage zurückgezogen"
+                              )
+                            }
+                          >
+                            <Ban className="h-4 w-4" aria-hidden />
+                          </Button>
+                        </div>
+                      </TableCell>
+                    </TableRow>
+                  )
+                })}
               </TableBody>
             </Table>
           </div>

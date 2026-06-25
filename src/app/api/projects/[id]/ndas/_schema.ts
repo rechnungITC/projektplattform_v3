@@ -28,6 +28,19 @@ const dateString = z
   .string()
   .regex(/^\d{4}-\d{2}-\d{2}$/, "Expected YYYY-MM-DD")
 
+// PROJ-128 F-1 (QA followup): the document link is a free-text URL that may one
+// day be rendered as an <a href>. Reject any non-http(s) scheme up front
+// (javascript:, data:, vbscript:, file:, …) so a stored link can never become a
+// click-to-XSS / unsafe-navigation vector. Empty is allowed; the route maps
+// empty → null.
+const documentLink = z
+  .string()
+  .trim()
+  .max(2000)
+  .refine((v) => v.length === 0 || /^https?:\/\/\S/i.test(v), {
+    message: "document_link must start with http:// or https://",
+  })
+
 export const createNdaSchema = z.object({
   counterparty: z.string().trim().min(1).max(200),
   responsible_user_id: z.string().uuid().nullish(),
@@ -38,7 +51,7 @@ export const createNdaSchema = z.object({
   scope_kind: z.enum(NDA_SCOPE_KINDS).optional(),
   scope_ref: z.string().uuid().nullish(),
   covered_level: z.enum(CONFIDENTIALITY_LEVELS).optional(),
-  document_link: z.string().trim().max(2000).nullish(),
+  document_link: documentLink.nullish(),
   reminder_date: dateString.nullish(),
   notes: z.string().trim().max(4000).nullish(),
 })
@@ -54,7 +67,7 @@ export const updateNdaSchema = z
     scope_kind: z.enum(NDA_SCOPE_KINDS),
     scope_ref: z.string().uuid().nullable(),
     covered_level: z.enum(CONFIDENTIALITY_LEVELS),
-    document_link: z.string().trim().max(2000).nullable(),
+    document_link: documentLink.nullable(),
     reminder_date: dateString.nullable(),
     notes: z.string().trim().max(4000).nullable(),
   })

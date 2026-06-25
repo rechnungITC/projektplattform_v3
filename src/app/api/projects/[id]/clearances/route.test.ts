@@ -173,6 +173,22 @@ describe("POST /api/projects/[id]/clearances (grant)", () => {
     )
     expect(res.status).toBe(403)
   })
+
+  it("202 pending when a 4-eyes policy gated the level (PROJ-100c)", async () => {
+    getUserMock.mockResolvedValue({ data: { user: { id: ME } } })
+    queueAccess({ tenantRole: "admin", projectRole: null })
+    // RPC returns null (no error) → a pending approval request was created.
+    rpcMock.mockResolvedValue({ data: null, error: null })
+    const res = await POST(
+      new Request("http://t/", {
+        method: "POST",
+        body: JSON.stringify({ user_id: TARGET, max_level: "strict" }),
+      }),
+      ctx()
+    )
+    expect(res.status).toBe(202)
+    expect((await res.json()) as { pending: boolean }).toMatchObject({ pending: true })
+  })
 })
 
 describe("GET /api/projects/[id]/clearances (list)", () => {
