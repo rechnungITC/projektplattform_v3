@@ -90,6 +90,14 @@ const SECTIONS: Section[] = [
     adminOnly: true,
   },
   {
+    href: "/stammdaten/vier-augen-genehmigung",
+    icon: ShieldCheck,
+    title: "4-Augen-Genehmigung",
+    description:
+      "Optionaler Genehmigungs-Gate für sensible Vertraulichkeits-Freischaltungen: Stufen aktivieren, erforderliche Personenzahl und Approver-Pool festlegen.",
+    adminOnly: true,
+  },
+  {
     href: "/stammdaten/organisation",
     icon: Network,
     title: "Organisation",
