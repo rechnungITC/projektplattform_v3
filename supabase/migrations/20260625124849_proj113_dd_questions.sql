@@ -397,3 +397,9 @@ begin
   return public.is_project_member(v_project);
 end;
 $$;
+
+-- Re-grant after the recreate: `create or replace` can drop the `authenticated`
+-- EXECUTE grant on can_read_audit_entry, silently breaking the PROJ-10 HistoryTab
+-- read path. Re-assert it (idempotent) so a fresh `supabase db push` replay
+-- never leaves the function ungranted.
+grant execute on function public.can_read_audit_entry(text, uuid, uuid) to authenticated;
