@@ -1,5 +1,6 @@
 import type { Metadata } from "next"
 
+import { DdFindingsPanel } from "@/components/projects/ma/dd-findings-panel"
 import { DueDiligenceStreamsPage } from "@/components/projects/ma/due-diligence-streams-page"
 
 export const metadata: Metadata = {
@@ -19,6 +20,9 @@ export default async function ProjectDueDiligencePage({ params }: PageProps) {
   return (
     <div className="mx-auto w-full max-w-5xl px-4 py-8 sm:px-6 sm:py-10">
       <DueDiligenceStreamsPage projectId={id} />
+      {/* PROJ-114 — DD-Findings register per stream (severity / EUR / treatment),
+          deal-breaker escalations, and the per-stream/severity summary. */}
+      <DdFindingsPanel projectId={id} />
     </div>
   )
 }
