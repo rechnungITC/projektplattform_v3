@@ -1799,6 +1799,9 @@ function barClasses(status: Phase["status"]): string {
       return "fill-emerald-600 stroke-emerald-600"
     case "cancelled":
       return "fill-muted stroke-muted-foreground/40"
+    case "suspended":
+      // PROJ-139 — paused: amber, distinct from cancelled.
+      return "fill-amber-500/60 stroke-amber-600"
     case "planned":
     default:
       return "fill-blue-500/70 stroke-blue-700"

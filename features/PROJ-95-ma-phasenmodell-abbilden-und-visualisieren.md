@@ -14,9 +14,45 @@ summary_for_jira: "[A2] M&A-Phasenmodell abbilden und visualisieren"
 
 # PROJ-95: M&A-Phasenmodell abbilden und visualisieren
 
-## Status: Architected
+## Status: Approved (QA PASS 2026-06-26 — Mandate-Gate + Idempotenz live, 0 Critical/High; vitest 2046/2046)
+
+## Implementation Notes — Frontend Cockpit (2026-06-25)
+
+- **Nav** `MA_PHASE_MODEL_SECTION` („Phasenmodell", Icon `Workflow`, `requiresProjectType: 'ma'`) in `method-templates/index.ts`, injiziert nach Strategische Grundlage. Route `/projects/[id]/phasenmodell`.
+- **`ma-phase-cockpit.tsx`** (`MaPhaseCockpit`): „Phasenmodell aktivieren"/„Phasen ergänzen"-Button (canEdit `edit_master`) → `activateMaPhaseModel` + Toast (seeded N / Phase-2-gesperrt-Hinweis) + `usePhases().refresh`. **Roadmap** via Reuse `PhasesTimeline` (AC-95-3). **Standardphasen-Overlay**: alle 10 Preset-Phasen mit Status — aktiviert (`PhaseStatusBadge`, inkl. „Ausgesetzt" aus [[PROJ-139]]), „Nicht aktiviert", oder **„Gesperrt — Mandat ausstehend"** (Phase 2 wenn `mandate_status≠approved`, AC-95-4-Anzeige). Match seeded↔preset über `name`.
+- **Gates:** lint 0, tsc 14 baseline/0 neu, vitest 2046/2046, build clean (Route registriert).
+- **Offen:** /qa (E2E activate→Roadmap→Phase-2-Gate sichtbar; Negativtests). Stage-Gate-Zwang generell → PROJ-110; Deliverable-Link → PROJ-104; Template-Bibliothek → PROJ-96.
+
+## QA Test Results — 2026-06-26 (PASS, 0 Critical / 0 High)
+
+**AC-Abdeckung** — unabhängig live gegen Prod re-verifiziert (ephemeres M&A-Projekt, JWT-Impersonation, rolled back, 0 Residue; Live-QA-Smoke `ROLLBACK_QA_95`):
+- AC-95-1 zehn Standardphasen aktivierbar: `activate` mandate=draft → **9 geseedet, phase2_locked=true**; mandate=approved → **+1 (Phase 2), phase2_locked=false**; Re-Run → **0 (idempotent)**; total **10** ✓.
+- AC-95-2 Status inkl. „ausgesetzt" via [[PROJ-139]] (Cockpit zeigt `PhaseStatusBadge`) ✓.
+- AC-95-3 Roadmap via Reuse `PhasesTimeline` + 10-Phasen-Overlay (build clean) ✓.
+- AC-95-4 Mandate-Gate: Phase 2 erst nach `mandate_status='approved'` aktivierbar; Cockpit zeigt „Gesperrt — Mandat ausstehend" ✓.
+- AC-95-5 (teilweise): Notizen via `phases.description`, Risiken-Link via PROJ-20; Deliverable-Link → PROJ-104 (deferiert).
+
+**Security/Red-Team:** Authority tenant-admin/project-lead (Non-Member REJECTED 42501, im Backend-Smoke bewiesen); Nicht-M&A-Projekt → **REJECTED(22023)** ✓; `auth.uid()`-only (anon revoked); Core `transition_phase_status` unberührt.
+
+**E2E:** Auth-Gates für `phase-model/activate` + `/phasenmodell`-Seite **grün (chromium, live)**; vitest **2046/2046** (5 Preset- + 6 Route-Tests).
+
+**Findings:** keine Critical/High/Medium/Low. **D-1 (Env)** wie [[PROJ-139]]: authentifizierte Cockpit-UI-E2E nicht im bare Worktree — kompensiert durch Live-Prod-Smokes + Auth-Gate-E2E + vitest. → **PRODUCTION-READY.**
 **Created:** 2026-06-10
 **Origin:** M&A-Platform Backlog (Epic A — Projektgrundlagen & Phasenmodell)
+
+## Implementation Notes — Backend (2026-06-24)
+
+Genau nach Tech-Design gebaut. **Keine neue Phasentabelle, kein neuer Dep.** Vorbedingung [[PROJ-139]] (Status `suspended`) ist in derselben Branch gebaut.
+
+- **Preset** `src/lib/project-types/ma-phase-preset.ts` — `MA_PHASE_PRESET` (10 Phasen Strategie→PMI, Code-Konstante, `deal_side`-Feld forward-kompatibel für PROJ-96). Phase 2 trägt `mandateGated: true`.
+- **Seed-RPC** `activate_ma_phase_model(p_project_id)` (Migration `20260624120635`, in Prod; Repo-Dateiname == prod-Version per PROJ-134): idempotent (Dedupe `project_id`+`name`), kopiert Preset → bestehende `phases`-Zeilen (`status='planned'`). **Mandate-Gate hart:** Phase 2 „Target-Screening" wird NUR geseedet wenn `ma_project_profiles.mandate_status='approved'` (PROJ-94-Gate) — „freischaltbar" wörtlich umgesetzt. Authority: tenant-admin ODER project-lead. project_type='ma'-Check. **Impersonation-safe:** `auth.uid()`-only (kein actor-param), `execute` von anon revoked, grant authenticated (PROJ-94-Lektion). Core `transition_phase_status` UNBERÜHRT — das Gate lebt vollständig in der M&A-RPC.
+- **API** `POST /api/projects/[id]/phase-model/activate` (mirror mandate-Route: view-Access-Check + RPC-Dispatch; 403/404/422-Mapping). Client-Wrapper `activateMaPhaseModel` in `src/lib/ma-project/api.ts`.
+
+**Pflicht-Live-RPC-Smoke gegen Prod (ephemeres M&A-Projekt, JWT-Impersonation, 0 Residue via ROLLBACK_MARKER):** mandate=draft → 9 geseedet, `phase2_locked=true`; mandate=approved → +1 (Phase 2), `phase2_locked=false`; Re-Run → 0 geseedet (idempotent); total=10 Phasen.
+
+**Quality-Gates:** lint 0, tsc 14 baseline/0 neu, vitest +11 (5 Preset + 6 Route), build clean (neue Route registriert).
+
+**Offen / deferiert lt. Tech-Design:** Cockpit-UI (Route `/projects/[id]/phasenmodell`, reuse gantt-view/phases-timeline + Stage-Gate-Badge) → /frontend; AC-95-2 „ausgesetzt" nutzt [[PROJ-139]]; AC-95-5 Deliverable-Link → PROJ-104; genereller Stage-Gate-Zwang → PROJ-110; editierbare Template-Bibliothek + deal_side-Matrix → PROJ-96. /qa: Negativtests Mandate-Gate + Idempotenz + E2E Roadmap.
 **Priority:** P1
 
 > **V3 Core Reuse (CIA 2026-06-15 · [ma-domain-architecture ADR](../docs/decisions/ma-domain-architecture.md) · [Sequencing](../docs/ma-epic-sequencing-2026-06-15.md)):** Klasse **DUP→REUSE** · Andockpunkt: PROJ-19 Phasen/Milestones + PROJ-6 Method-Catalog (M&A-Phasen als Methode, kein neues Phasen-Schema). Nicht neu bauen, was der Core schon hat — diese Spec MUSS die ADR + Reuse-Matrix respektieren.

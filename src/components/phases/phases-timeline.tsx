@@ -95,6 +95,9 @@ function pillClasses(phase: Phase): string {
       return "border-success bg-success/15 text-success hover:bg-success/25"
     case "cancelled":
       return "border-muted bg-muted text-muted-foreground hover:bg-muted/80"
+    case "suspended":
+      // PROJ-139 — paused: amber, distinct from cancelled.
+      return "border-amber-500/40 bg-amber-500/15 text-amber-700 dark:text-amber-400 hover:bg-amber-500/25"
     case "planned":
     default:
       return "border-border bg-background text-foreground hover:bg-accent"

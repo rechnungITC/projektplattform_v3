@@ -13,7 +13,7 @@
  * Tenant-level overrides land with PROJ-16.
  */
 
-import { Handshake, Microscope, ShieldCheck } from "lucide-react"
+import { Handshake, Microscope, Network, ShieldCheck, Workflow } from "lucide-react"
 
 import type { MethodConfig, SidebarSection } from "@/types/method-config"
 import type { ProjectMethod } from "@/types/project-method"
@@ -58,6 +58,26 @@ const MA_CONFIDENTIALITY_SECTION: SidebarSection = {
   requiresProjectType: "ma",
 }
 
+// PROJ-95 — the M&A "Phasenmodell" cockpit (10-phase roadmap, activation,
+// mandate/stage-gate status). Project-TYPE driven, same injection pattern.
+const MA_PHASE_MODEL_SECTION: SidebarSection = {
+  id: "ma-phase-model",
+  label: "Phasenmodell",
+  icon: Workflow,
+  tabPath: "phasenmodell",
+  requiresProjectType: "ma",
+}
+
+// PROJ-97 — "Rollen & RACI": M&A professional roles responsibility view (97a)
+// + RACI matrix editor per work item (97b). Project-TYPE driven.
+const MA_ROLES_SECTION: SidebarSection = {
+  id: "ma-roles",
+  label: "Rollen & RACI",
+  icon: Network,
+  tabPath: "rollen",
+  requiresProjectType: "ma",
+}
+
 // PROJ-112 — the "Due Diligence" section (DD-stream backbone: per-stream status,
 // lead, time window, confidentiality). Also project-TYPE driven (M&A) and
 // injected right after Governance, gated the same way.
@@ -78,6 +98,8 @@ function withMaFoundation(config: MethodConfig): MethodConfig {
     sidebarSections: [
       ...sections.slice(0, insertAt),
       MA_FOUNDATION_SECTION,
+      MA_PHASE_MODEL_SECTION,
+      MA_ROLES_SECTION,
       MA_CONFIDENTIALITY_SECTION,
       MA_DUE_DILIGENCE_SECTION,
       ...sections.slice(insertAt),
