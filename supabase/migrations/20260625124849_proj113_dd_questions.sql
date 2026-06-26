@@ -118,7 +118,10 @@ begin
 end;
 $$;
 
-revoke execute on function public.enforce_dd_question_confidentiality_floor() from public;
+-- Trigger-only function: revoke from public AND the Supabase anon/authenticated
+-- roles (which receive EXECUTE via default privileges), matching the posture of
+-- record_audit_changes / enforce_project_responsible_user_in_tenant.
+revoke execute on function public.enforce_dd_question_confidentiality_floor() from public, anon, authenticated;
 
 drop trigger if exists dd_questions_confidentiality_floor on public.dd_questions;
 create trigger dd_questions_confidentiality_floor

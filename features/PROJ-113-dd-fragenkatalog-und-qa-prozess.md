@@ -14,7 +14,7 @@ summary_for_jira: "[G2] DD-Fragenkatalog und Q&A-Prozess"
 
 # PROJ-113: DD-Fragenkatalog und Q&A-Prozess
 
-## Status: In Progress (Backend + Frontend gebaut 2026-06-25 — Q&A-Sheet je DD-Stream: Liste/Filter/Frage/Antwort/Status/CSV-Export; Live-Smoke 11/11. → /qa)
+## Status: Approved (QA PASS 2026-06-26 — 0 Critical/High; Live-RLS-Pentest 13/13 + Live-RPC-Smoke 11/11 + Playwright 6/6 + vitest 2080/2080 + Advisor 0 ERROR. Backbone-ACs voll; Eskalation→Finding deferred an PROJ-114. → /deploy)
 **Created:** 2026-06-10
 **Origin:** M&A-Platform Backlog (Epic G — Due Diligence)
 **Priority:** P1
@@ -198,6 +198,51 @@ Damit PROJ-112s `open_questions`-Spalte (heute `null`) und der PROJ-116-DD-Repor
 - **`dd-question-labels.ts`**: DE-Status-/Prioritäts-Labels, Badge-Varianten, `allowedDdQuestionTransitions`. Reuse `DD_LEVEL_LABEL`/`fmtDate`/`remainingTime` aus `dd-stream-labels`.
 
 **Quality-Gates:** ESLint 0, tsc 0 neue Errors (14 Baseline), `next build` clean. vitest unverändert (Backend-Route-Tests + Live-Smoke decken die kritischen Pfade; reine UI-Slice). Playwright-Auth-Gate-Smoke + Live-Pentest → /qa.
+
+## QA Test Results — 2026-06-26
+
+**Verdikt: PRODUCTION-READY** — 0 Critical / 0 High. DD-Q&A live in Prod, RLS unter echtem `authenticated`-Rollen-Kontext bewiesen.
+
+### Akzeptanzkriterien
+| AC | Ergebnis | Nachweis |
+|---|---|---|
+| AC1 Fragen je Stream (Titel/Detail/Frist/Priorität/Adressat) | ✅ | POST + Create-Dialog; Pentest-Seed |
+| AC2 5-Status (offen/in Beantwortung/beantwortet/nachgefragt/geschlossen) | ✅ | `transition_dd_question_status`-RPC + inline-Select; Pentest valide/illegal(23514) |
+| AC3 Antwort inkl. Anlagen/Verlinkungen | ✅ | `answer_text` + https-validierter `answer_link` + `answer_round`; **Datei-Upload → PROJ-79 (Link-MVP)** |
+| AC4 Frage → Finding eskalieren | ⏳ **deferred PROJ-114** | downstream-FK `dd_findings.source_dd_question_id`; UI-Platzhalter disabled+Tooltip (ADR-konform) |
+| AC5 Filter (Stream/Status/Frist/Owner) + Export | ✅ | GET-Filter + CSV-Export (RLS-gefiltert, Sicht-Ebene im Dateinamen + `X-Export-Scope`) |
+| AC6 Need-to-know-Sichtbarkeit (L2) | ✅ | per-Frage Confidentiality + FLOOR + RESTRICTIVE-Gate (Pentest, s.u.) |
+
+### Security / Red-Team — Live-RLS-Pentest (`tests/sql/PROJ-113-dd-questions-pentest.sql`, 13/13, echtes `authenticated`-Rollen, 0 Residue)
+| Vektor | Ergebnis |
+|---|---|
+| FLOOR: `standard`-Frage in `confidential`-Stream → auf `confidential` geklemmt; explizit `strict` bleibt | ✅ |
+| Gate SELECT: uncleared Editor sieht confidential Frage nicht | ✅ |
+| Gate INSERT: uncleared Editor kann nicht in confidential Stream einfügen (42501) | ✅ |
+| Gate UPDATE/DELETE: uncleared Editor 0 rows | ✅ |
+| Status-RPC: uncleared Editor blockiert (42501) — RPC re-checkt `can_access_classified` | ✅ |
+| Cleared Editor: sieht + transitioniert | ✅ |
+| Cross-Tenant: T2-Admin sieht 0 T1-Fragen | ✅ |
+| Export-RLS-Vollständigkeit: uncleared sichtbare Menge (= Export-Inhalt) = 0 | ✅ |
+| Audit: Trigger feuert + `can_read_audit_entry` admin=true | ✅ |
+
+Ergänzend: **Backend-Live-RPC-Smoke 11/11** (fand+fixte die Status-RPC-Clearance-Lücke). **PROJ-Y-112c-Fix** (Schwester-Lücke in `transition_dd_stream_status`) live-verifiziert. **Supabase-Security-Advisor: 0 ERROR** (56 WARN = Projekt-Baseline; `transition_dd_question_status` mit explizitem `search_path` in derselben Klasse wie alle Core-RPCs).
+
+### Tests
+- **Playwright** `tests/PROJ-113-dd-questions.spec.ts` **6/6 chromium** — Auth-Gates auf alle 6 API-Routen (CRUD + Status + Export).
+- **vitest 2080/2080** (inkl. 17 neue: dd-questions 5 / status 6 / export 3 + …); keine Regression.
+- ESLint 0, tsc 0 neue Errors (14 Baseline), `next build` clean (4 neue Routen).
+
+### Findings (alle Low/Info, nicht-blockierend)
+- **F-1 (Low, in-QA gefixt):** Floor-Trigger-Funktion `enforce_dd_question_confidentiality_floor` behielt `anon`/`authenticated` EXECUTE (Supabase-Default-Privileges; `revoke from public` allein reicht nicht) → auf `revoke from public, anon, authenticated` gehärtet (Posture wie `record_audit_changes`). Nicht ausnutzbar (Trigger-Funktion, Direktaufruf erroriert), aber Hardening-konform. Migration-Datei nachgezogen.
+- **F-2 (in-/backend gefixt, dokumentiert):** Status-RPC-Clearance-Lücke (uncleared Editor) — Fix `can_access_classified`-Re-Check.
+- **D-1 (Env):** Mobile-Safari/WebKit-E2E übersprungen (Host-Libs fehlen), wie PROJ-67/88/112/135. Chromium grün.
+- **Info:** `answer_round`-Bump nutzt einen Read-then-Write im PATCH (nicht atomar) — bei gleichzeitigen Re-Antworten theoretisch eine verpasste Runde; reines UX-Feld, kein Sicherheits-/Datenintegritätsrisiko.
+
+### Followups (PROJ-Y, nicht-blockierend)
+- **PROJ-Y-113a:** echtes Multi-Turn-`dd_question_answers`-Thread (bei Pilot-Bedarf).
+- **PROJ-Y-113b:** Export-Audit-Eintrag.
+- **PROJ-Y-113c (an PROJ-114):** Eskalations-Aktion + `source_dd_question_id`-FK.
 
 ---
 _Quelle: Backlog-Entwurf M&A-Projektplattform · G — Due Diligence_
