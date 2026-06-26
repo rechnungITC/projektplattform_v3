@@ -14,7 +14,14 @@ summary_for_jira: "[A2] M&A-Phasenmodell abbilden und visualisieren"
 
 # PROJ-95: M&A-Phasenmodell abbilden und visualisieren
 
-## Status: In Progress (Backend gebaut 2026-06-24 — Preset + activate-RPC + Mandate-Gate live; Cockpit-UI + /qa offen)
+## Status: In Progress (Backend + Cockpit-UI gebaut 2026-06-24/25 — Preset + activate-RPC + Mandate-Gate + Phasen-Cockpit; /qa offen)
+
+## Implementation Notes — Frontend Cockpit (2026-06-25)
+
+- **Nav** `MA_PHASE_MODEL_SECTION` („Phasenmodell", Icon `Workflow`, `requiresProjectType: 'ma'`) in `method-templates/index.ts`, injiziert nach Strategische Grundlage. Route `/projects/[id]/phasenmodell`.
+- **`ma-phase-cockpit.tsx`** (`MaPhaseCockpit`): „Phasenmodell aktivieren"/„Phasen ergänzen"-Button (canEdit `edit_master`) → `activateMaPhaseModel` + Toast (seeded N / Phase-2-gesperrt-Hinweis) + `usePhases().refresh`. **Roadmap** via Reuse `PhasesTimeline` (AC-95-3). **Standardphasen-Overlay**: alle 10 Preset-Phasen mit Status — aktiviert (`PhaseStatusBadge`, inkl. „Ausgesetzt" aus [[PROJ-139]]), „Nicht aktiviert", oder **„Gesperrt — Mandat ausstehend"** (Phase 2 wenn `mandate_status≠approved`, AC-95-4-Anzeige). Match seeded↔preset über `name`.
+- **Gates:** lint 0, tsc 14 baseline/0 neu, vitest 2046/2046, build clean (Route registriert).
+- **Offen:** /qa (E2E activate→Roadmap→Phase-2-Gate sichtbar; Negativtests). Stage-Gate-Zwang generell → PROJ-110; Deliverable-Link → PROJ-104; Template-Bibliothek → PROJ-96.
 **Created:** 2026-06-10
 **Origin:** M&A-Platform Backlog (Epic A — Projektgrundlagen & Phasenmodell)
 

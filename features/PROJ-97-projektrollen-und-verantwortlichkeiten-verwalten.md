@@ -14,7 +14,16 @@ summary_for_jira: "[B1] Projektrollen und Verantwortlichkeiten verwalten"
 
 # PROJ-97: Projektrollen und Verantwortlichkeiten verwalten
 
-## Status: In Progress (97a + 97b Backend gebaut 2026-06-24/25 — Fachrollen + Verantwortungs-Ansicht + RACI-Engine live; Frontend + /qa offen)
+## Status: In Progress (97a + 97b Backend + Frontend gebaut 2026-06-24/25 — Fachrollen + Verantwortungs-Ansicht + RACI-Engine + UI; /qa offen)
+
+## Implementation Notes — Frontend (2026-06-25)
+
+- **Nav** `MA_ROLES_SECTION` („Rollen & RACI", Icon `Network`, `requiresProjectType: 'ma'`) in `method-templates/index.ts`. Route `/projects/[id]/rollen`.
+- **`ma-roles-raci-page.tsx`**: zwei Karten.
+  - **97a Verantwortungs-Ansicht** (`ResponsibilityCard`): liest `GET /api/projects/[id]/roles` (Client-Wrapper `roles-api.ts`), Tabelle Fachrolle → zugeordnete Stakeholder mit **„extern"-Badge** (`origin='external'`); Mehrfachrollen sichtbar.
+  - **97b RACI-Matrix** (`RaciMatrixCard`): Work-Item-Picker (`useWorkItems`) × Fachrollen (`MA_STANDARD_ROLES`) × R/A/C/I als Toggle-Buttons. Set/clear via `raci-api.ts` (`setWorkItemRaci`/`clearWorkItemRaci`); aktiver Buchstabe erneut klicken = entfernen. **„A=genau-einer"**-Konflikt (409) → Toast + Reload (zeigt den serverseitig durchgesetzten Ist-Zustand). Editieren gated auf `edit_master` (sonst read-only mit Hinweis).
+- **Gates:** lint 0, tsc 14 baseline/0 neu, vitest 2046/2046, build clean (Route registriert).
+- **Offen:** /qa (E2E Verantwortungs-Ansicht + RACI set/A-Konflikt/clear; Negativtests). `target_type='deliverable'` → PROJ-104.
 **Created:** 2026-06-10
 **Origin:** M&A-Platform Backlog (Epic B — Rollen, Gremien & Governance)
 

@@ -13,7 +13,7 @@
  * Tenant-level overrides land with PROJ-16.
  */
 
-import { Handshake, ShieldCheck } from "lucide-react"
+import { Handshake, Network, ShieldCheck, Workflow } from "lucide-react"
 
 import type { MethodConfig, SidebarSection } from "@/types/method-config"
 import type { ProjectMethod } from "@/types/project-method"
@@ -58,6 +58,26 @@ const MA_CONFIDENTIALITY_SECTION: SidebarSection = {
   requiresProjectType: "ma",
 }
 
+// PROJ-95 — the M&A "Phasenmodell" cockpit (10-phase roadmap, activation,
+// mandate/stage-gate status). Project-TYPE driven, same injection pattern.
+const MA_PHASE_MODEL_SECTION: SidebarSection = {
+  id: "ma-phase-model",
+  label: "Phasenmodell",
+  icon: Workflow,
+  tabPath: "phasenmodell",
+  requiresProjectType: "ma",
+}
+
+// PROJ-97 — "Rollen & RACI": M&A professional roles responsibility view (97a)
+// + RACI matrix editor per work item (97b). Project-TYPE driven.
+const MA_ROLES_SECTION: SidebarSection = {
+  id: "ma-roles",
+  label: "Rollen & RACI",
+  icon: Network,
+  tabPath: "rollen",
+  requiresProjectType: "ma",
+}
+
 function withMaFoundation(config: MethodConfig): MethodConfig {
   const sections = config.sidebarSections
   // Insert right after the leading "overview" section (index 0) when present.
@@ -67,6 +87,8 @@ function withMaFoundation(config: MethodConfig): MethodConfig {
     sidebarSections: [
       ...sections.slice(0, insertAt),
       MA_FOUNDATION_SECTION,
+      MA_PHASE_MODEL_SECTION,
+      MA_ROLES_SECTION,
       MA_CONFIDENTIALITY_SECTION,
       ...sections.slice(insertAt),
     ],
