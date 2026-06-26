@@ -14,7 +14,7 @@ summary_for_jira: "[B1] Projektrollen und Verantwortlichkeiten verwalten"
 
 # PROJ-97: Projektrollen und Verantwortlichkeiten verwalten
 
-## Status: Approved (QA PASS 2026-06-26 — 97a+97b, A=genau-einer + RLS-Isolation live, 0 Critical/High; vitest 2046/2046)
+## Status: Deployed (2026-06-26 — 97a+97b, Tag v2.3.0-PROJ-139-95-97, PR #189; /rollen + RACI prod auth-gate 307; migration 20260624154503 live)
 
 ## Implementation Notes — Frontend (2026-06-25)
 
