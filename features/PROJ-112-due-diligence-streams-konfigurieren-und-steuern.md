@@ -207,6 +207,8 @@ Nach Approval: `/backend` (Migration: 2 Tabellen + Status-RPC + Confidentiality-
 
 **Quality-Gates:** ESLint 0, vitest +22 (dd-streams 9 / status 7 / templates 6), tsc 0 neue Errors (14 Baseline-Test-File-Errors), `next build` clean.
 
+**Followup-Fix PROJ-Y-112c (2026-06-25, mit PROJ-113 ausgeliefert):** `transition_dd_stream_status` ist SECURITY DEFINER und umging die RESTRICTIVE-Gate-Policy → ein Projekt-Lead OHNE Clearance für einen `strict`/`confidential`-Stream konnte dessen Status blind transitionieren. Gefunden via PROJ-113-Schwester-Analyse. Fix-Migration `20260626072731_proj112c_fix_stream_status_rpc_clearance.sql` (in Prod): RPC re-checkt `can_access_classified` (admin/cleared passieren; `standard` für alle). Live-verifiziert (uncleared lead 42501, cleared ok), 0 Residue.
+
 **Offen → /frontend:** DD-Übersicht (Status/Lead/Restzeit + `—`-Counts) + Stream-Detail/Status-UI im M&A-Projektraum (neuer Nav-Eintrag „Due Diligence", `requiresProjectType='ma'`) + Stammdaten-Katalog „DD-Stream-Vorlagen". → /qa Negativtests (Confidentiality-Gate je Stream, Status-Maschine, Cross-Tenant, Audit-Sichtbarkeit).
 
 ## Implementation Notes — Frontend (2026-06-24)

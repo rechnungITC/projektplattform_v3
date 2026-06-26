@@ -1,6 +1,6 @@
 "use client"
 
-import { Loader2, Microscope, Pencil, Plus, Trash2 } from "lucide-react"
+import { Loader2, MessageSquare, Microscope, Pencil, Plus, Trash2 } from "lucide-react"
 import * as React from "react"
 import { toast } from "sonner"
 
@@ -55,6 +55,7 @@ import {
 } from "@/lib/ma-project/dd-streams-api"
 import type { MaConfidentialityLevel } from "@/types/confidentiality"
 
+import { DdQuestionsSheet } from "./dd-questions-sheet"
 import {
   allowedDdTransitions,
   DD_LEVEL_LABEL,
@@ -73,6 +74,9 @@ const LEVELS: MaConfidentialityLevel[] = ["standard", "confidential", "strict"]
 // until PROJ-113/114 land, so we render "—" (never a misleading 0).
 export function DueDiligenceStreamsPage({ projectId }: { projectId: string }) {
   const canManage = useProjectAccess(projectId, "manage_members")
+  // `edit_master` mirrors the server `edit` gate (admin / lead / editor) — Q&A
+  // is operational, so editors (not just managers) may create/answer/transition.
+  const canEditQa = useProjectAccess(projectId, "edit_master")
   const { members } = useProjectMembers(projectId)
   const today = React.useMemo(() => new Date(), [])
 
@@ -80,6 +84,7 @@ export function DueDiligenceStreamsPage({ projectId }: { projectId: string }) {
   const [loading, setLoading] = React.useState(true)
   const [activateOpen, setActivateOpen] = React.useState(false)
   const [editing, setEditing] = React.useState<DdStream | null>(null)
+  const [questionsFor, setQuestionsFor] = React.useState<DdStream | null>(null)
 
   const nameFor = React.useCallback(
     (userId: string | null) => {
@@ -183,7 +188,20 @@ export function DueDiligenceStreamsPage({ projectId }: { projectId: string }) {
                   const rt = remainingTime(s.planned_end, today)
                   return (
                     <TableRow key={s.id}>
-                      <TableCell className="font-medium">{s.label}</TableCell>
+                      <TableCell className="font-medium">
+                        <button
+                          type="button"
+                          className="inline-flex items-center gap-1.5 text-left hover:underline"
+                          onClick={() => setQuestionsFor(s)}
+                          title="Fragen & Antworten öffnen"
+                        >
+                          {s.label}
+                          <MessageSquare
+                            className="h-3.5 w-3.5 text-muted-foreground"
+                            aria-hidden
+                          />
+                        </button>
+                      </TableCell>
                       <TableCell>
                         {canManage ? (
                           <StatusControl stream={s} onTransition={handleStatus} />
@@ -281,6 +299,15 @@ export function DueDiligenceStreamsPage({ projectId }: { projectId: string }) {
         onSaved={() => {
           setEditing(null)
           void reload()
+        }}
+      />
+
+      <DdQuestionsSheet
+        stream={questionsFor}
+        projectId={projectId}
+        canEdit={canEditQa}
+        onOpenChange={(open) => {
+          if (!open) setQuestionsFor(null)
         }}
       />
     </Card>
