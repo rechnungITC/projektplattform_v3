@@ -14,7 +14,7 @@ summary_for_jira: "[A2] M&A-Phasenmodell abbilden und visualisieren"
 
 # PROJ-95: M&A-Phasenmodell abbilden und visualisieren
 
-## Status: Approved (QA PASS 2026-06-26 — Mandate-Gate + Idempotenz live, 0 Critical/High; vitest 2046/2046)
+## Status: Deployed (2026-06-26 — Tag v2.3.0-PROJ-139-95-97, PR #189; /phasenmodell prod auth-gate 307; migration 20260624120635 live)
 
 ## Implementation Notes — Frontend Cockpit (2026-06-25)
 
