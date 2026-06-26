@@ -73,7 +73,7 @@ Legende: **REUSE** = Feld/Config-Erweiterung eines deployed Core-Features · **E
 | 105 Freigabe-Workflow Deliverables | DUP→REUSE | PROJ-31 Approval-Gates |
 | 106 Versionierung Deliverables | DUP→REUSE | PROJ-10 Field-Level-Versioning |
 | 107 Risikoregister | DUP→REUSE | PROJ-20 Risks (Score/Heatmap teils neu) |
-| 108 Red-Flag-Log DD | EXTEND | DD-spezifisch auf PROJ-20 |
+| 108 Red-Flag-Log DD | ~~EXTEND~~ **Superseded by 114** | Durch PROJ-114 `dd_findings` absorbiert (CIA 2026-06-26): „Red Flag" = hochsevere(s) Finding, kein eigenes Datenkonzept. Rest → 116 (Report) / 120-122 (Übernahme) / PROJ-Y-1 (source_ref) / PROJ-Y-2 (Lens). |
 | 109 Maßnahmen-Tracking | DUP→REUSE | PROJ-20 Open-Items + PROJ-9 |
 | 110 Stage-Gate-Workflow | DUP→REUSE | PROJ-31 + PROJ-19 Phasen-Transition |
 | 111 Entscheidungslog | DUP→REUSE | PROJ-20 Decisions (immutable+supersedes vorhanden) |
@@ -112,8 +112,10 @@ Legende: **REUSE** = Feld/Config-Erweiterung eines deployed Core-Features · **E
 PROJ-94 macht den Deal-Raum anlegbar, aber noch nicht vollständig durchführbar. Der minimale Pfad zum DD-Pilot ist:
 
 ```
-PROJ-100b -> PROJ-95 -> PROJ-97 -> PROJ-99/128/129 -> PROJ-112 -> PROJ-113 -> PROJ-114 -> PROJ-108 -> PROJ-110/111 -> PROJ-116
+PROJ-100b -> PROJ-95 -> PROJ-97 -> PROJ-99/128/129 -> PROJ-112 -> PROJ-113 -> PROJ-114 -> PROJ-110/111 -> PROJ-116
 ```
+
+> **Update 2026-06-26:** PROJ-108 (Red-Flag-Log) ist aus der Kette entfernt — durch das deployte PROJ-114 (`dd_findings`) absorbiert (Superseded; CIA-Review). Der Red-Flag-Report bleibt Teil von PROJ-116; die Bewertungs-/SPA-Übernahme wandert nach PROJ-120/121/122. Stand der Kette: 100b/95/97/99/128/129/112/113 deployed, 114 in QA, offen 110/111 + 116.
 
 Die Kriterien und Gates stehen im Readiness-Guide [`docs/ma-project-execution-readiness.md`](../ma-project-execution-readiness.md). Dieser Guide ist operativ führend für "was muss als Nächstes sichtbar gebaut werden"; diese ADR bleibt führend für "wie wird es architektonisch geschnitten".
 
