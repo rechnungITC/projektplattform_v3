@@ -14,7 +14,7 @@ summary_for_jira: "[G3] DD-Findings erfassen, bewerten und quantifizieren"
 
 # PROJ-114: DD-Findings erfassen, bewerten und quantifizieren
 
-## Status: Architected (CIA-reviewed 2026-06-25 — EXTEND auf PROJ-112/20/10/100a; dd_findings + dd_finding_escalations, Need-to-know geerbt vom Stream, Deal-Breaker→Escalation-Zeilen+PROJ-64-Inbox, Risk-Link via direkter FK, Aggregat via SECURITY-INVOKER-RPC, 6 Hardening-ACs. Forward-compat zu 113/116/I1/J1. Kein neues Dep. → /backend)
+## Status: In Progress (Backend gebaut 2026-06-25 — `dd_findings` + `dd_finding_escalations` + 5 RPCs + Need-to-know-Gate; Migration `20260625152915` in Prod; Live-Smoke 9/9 + 0 Residue. Cross-cutting-Fix: `can_read_audit_entry`-authenticated-Grant restauriert (Migration `20260625153238`). → /frontend, dann /qa)
 **Created:** 2026-06-10
 **Origin:** M&A-Platform Backlog (Epic G — Due Diligence)
 **Priority:** P1
@@ -157,6 +157,20 @@ PROJ-114 DD-Findings
 4. EUR optional; Aggregat = SECURITY-INVOKER-RPC mit null_eur_count.
 5. 4-Augen-Deal-Breaker + Q&A/SPA/Bewertung/Report-Links = deferred (Owner-an-neuer-Tabelle).
 6. 6 Hardening-ACs (H1–H6) Pflicht vor Approved.
+
+## Implementation Notes — Backend (2026-06-25)
+
+CIA-Fork umgesetzt. **Kein neues Dep.** 2 Migrations in Prod (PROJ-134-Konvention):
+- `20260625152915_proj114_dd_findings` — `dd_findings` (severity niedrig/mittel/hoch/deal_breaker, `economic_impact_eur` numeric **nullable**, probability, `recommended_treatment`-Enum, status open/in_review/resolved/dismissed, **direkte FK `linked_risk_id`→risks**, `confidentiality_level` ≥ Stream-Level) + `dd_finding_escalations` (deal_lead/sponsor, unique pro (finding,role)). 2 RESTRICTIVE Need-to-know-Policies via `can_access_classified` (dd_streams-Rezept) auf beiden Tabellen; **keine** permissive Write-Policy → Writes nur via RPC (garantiert Deal-Breaker-Eskalation). PROJ-10-Audit-Trigger + `dd_findings` in `audit_log_entity_type_check`/`_tracked_audit_columns`/`can_read_audit_entry` (collision-safe apply-time-Injektion auf die live Definitionen — Parallel-Sessions hatten dd_questions/raci_assignments ergänzt). RPCs: `create_dd_finding`/`update_dd_finding` (manager + need-to-know, actor-los `auth.uid()`, anon-execute revoked; →deal_breaker schreibt 2 Escalation-Zeilen atomar via `_escalate_dd_finding`), `acknowledge_dd_finding_escalation` (nur escalated-to-User), `dd_findings_summary` (**SECURITY INVOKER** → kein Tor-Bypass, count+EUR-Summe+null_eur_count).
+- `20260625153238_proj114_restore_audit_read_grant` — **Cross-cutting-Fix:** `can_read_audit_entry` hatte beim jüngsten recreate-via-pg_get_functiondef-Chain (PROJ-112/113/97) den `authenticated`-EXECUTE-Grant verloren → PROJ-10-HistoryTab-Reads waren für normale Nutzer still gebrochen. Idempotent restauriert (während des 114-Live-Smoke entdeckt). **Empfehlung:** künftige Audit-Funktions-Recreates müssen den Grant mit-setzen (PROJ-Y-Hygiene-Kandidat).
+
+**APIs:** `GET/POST /api/projects/[id]/dd-findings` · `PATCH …/[findingId]` · `GET …/dd-findings/summary` · `GET …/dd-finding-escalations[?open=1]` · `POST …/dd-finding-escalations/[escId]/acknowledge`. Client-Wrapper `src/lib/ma-project/dd-findings-api.ts`.
+
+**Pflicht-Live-RPC-Smoke gegen Prod (rolled back, 0 Residue) — 9/9:** A create(mittel,0 Eskalationen) · B Finding<Stream-Level→reject (H4) · C non-manager-create→42501 · D →deal_breaker→2 Escalation-Zeilen (Deal Lead `responsible_user_id` + Sponsor `ma_project_profiles.sponsor_user_id`) · E re-update idempotent (weiterhin 2) · F Need-to-know versteckt confidential-Finding vor non-cleared Member · G ack nur durch escalated-User (sonst 42501) · H Audit-Zeile bei Update (entity `dd_findings`) · I Summary liefert Zeilen.
+
+**Quality-Gates:** lint 0 · tsc 14 baseline/0 neu · vitest 2081/2081 (+18 Route-Tests) · build clean.
+
+**Offen → /frontend:** DD-Findings-Tab je Stream (Liste + Erfassen/Bearbeiten-Dialog + Severity/Treatment/EUR + Status), Deal-Breaker-Banner + Eskalations-Surface (PROJ-64-Inbox), Übersicht je Stream/Schwere + EUR-Summe (Summary-RPC) + Export. Danach /qa (Pentest-Vektoren H2 + Aggregat-Leak-Probe). **PROJ-Y-1** (E-Mail/Teams-Eskalation) + **PROJ-Y-2** (4-Augen-Deal-Breaker) bleiben Followups.
 
 ---
 _Quelle: Backlog-Entwurf M&A-Projektplattform · G — Due Diligence_
