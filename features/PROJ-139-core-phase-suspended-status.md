@@ -1,6 +1,6 @@
 # PROJ-139: Core — Phasen-Status „ausgesetzt" (suspended) + State-Machine
 
-## Status: Approved (QA PASS 2026-06-26 — 7/7 AC, 0 Critical/High; Auth-Gate-E2E 7/7 chromium; vitest 2046/2046)
+## Status: Deployed (2026-06-26 — Tag v2.3.0-PROJ-139-95-97, PR #189; prod auth-gate 307 on new routes; migration 20260624105817 live since /backend)
 **Created:** 2026-06-24
 **Origin:** CIA-Review zu PROJ-95 (M&A-Phasenmodell) 2026-06-24 — E6 als eigene Core-Vor-Slice herausgelöst (User-bestätigt)
 **Priority:** P1 (Vorbedingung für PROJ-95 AC-95-2)
