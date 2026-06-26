@@ -14,7 +14,7 @@ summary_for_jira: "[G3] DD-Findings erfassen, bewerten und quantifizieren"
 
 # PROJ-114: DD-Findings erfassen, bewerten und quantifizieren
 
-## Status: In Progress (Backend gebaut 2026-06-25 — `dd_findings` + `dd_finding_escalations` + 5 RPCs + Need-to-know-Gate; Migration `20260625152915` in Prod; Live-Smoke 9/9 + 0 Residue. Cross-cutting-Fix: `can_read_audit_entry`-authenticated-Grant restauriert (Migration `20260625153238`). → /frontend, dann /qa)
+## Status: In Progress (Backend #195 live + Frontend gebaut 2026-06-26 — DD-Findings-Panel auf der Due-Diligence-Seite: Liste je Stream + Erfassen/Bearbeiten-Dialog + Deal-Breaker-Eskalations-Banner + EUR-Summe. Migrations `20260625152915`/`20260625153238` in Prod; BE-Live-Smoke 9/9. → /qa)
 **Created:** 2026-06-10
 **Origin:** M&A-Platform Backlog (Epic G — Due Diligence)
 **Priority:** P1
@@ -171,6 +171,17 @@ CIA-Fork umgesetzt. **Kein neues Dep.** 2 Migrations in Prod (PROJ-134-Konventio
 **Quality-Gates:** lint 0 · tsc 14 baseline/0 neu · vitest 2081/2081 (+18 Route-Tests) · build clean.
 
 **Offen → /frontend:** DD-Findings-Tab je Stream (Liste + Erfassen/Bearbeiten-Dialog + Severity/Treatment/EUR + Status), Deal-Breaker-Banner + Eskalations-Surface (PROJ-64-Inbox), Übersicht je Stream/Schwere + EUR-Summe (Summary-RPC) + Export. Danach /qa (Pentest-Vektoren H2 + Aggregat-Leak-Probe). **PROJ-Y-1** (E-Mail/Teams-Eskalation) + **PROJ-Y-2** (4-Augen-Deal-Breaker) bleiben Followups.
+
+## Implementation Notes — Frontend (2026-06-26)
+
+Reine UI auf den Backend-APIs (#195) + Client-Wrapper `dd-findings-api.ts`. **Kein neues Dep, kein Backend-/DB-Change.** Integriert in die bestehende Due-Diligence-Seite (`/projects/[id]/due-diligence`) als eigenes **`DdFindingsPanel`** unter der DD-Streams-Tabelle (kein neuer Nav-Eintrag — Findings sind per-Stream).
+
+- **Deal-Breaker-Eskalations-Banner** (oben, nur wenn offene Eskalationen): listet offene Hinweise an Deal Lead / Sponsor mit „Bestätigen" (→ `acknowledge`).
+- **Findings-Tabelle**: Titel / Stream / Schwere-Badge (Deal Breaker = destructive) / EUR / empfohlene Behandlung / Status; Kopf zeigt **Kaufpreis-Risiko-Summe (EUR)** aus der Summary-RPC + Deal-Breaker-Zähler.
+- **Erfassen/Bearbeiten-Dialog** (manager-gated via `useProjectAccess(…, "manage_members")`): Stream-Picker (nur bei Neuanlage), Titel, Sachverhalt, Schwere, EUR (optional), Behandlung, Status (nur Edit). Setzen auf **Deal Breaker** zeigt den Hinweis „eskaliert an Deal Lead & Sponsor" (Eskalation passiert serverseitig in der RPC).
+- Loading/Empty/Error-States; `cancelled`-Guard im Mount-Fetch.
+
+**Quality-Gates:** lint 0 · tsc 14 baseline/0 neu · vitest 2081/2081 · build clean. Live-E2E + Pentest-Vektoren → /qa.
 
 ---
 _Quelle: Backlog-Entwurf M&A-Projektplattform · G — Due Diligence_
