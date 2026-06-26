@@ -184,6 +184,11 @@ begin
 end;
 $function$;
 
+-- Recreating can_read_audit_entry can drop its authenticated EXECUTE grant
+-- (breaks the PROJ-10 HistoryTab silently); re-grant explicitly so a fresh
+-- `supabase db push` replay always keeps it.
+grant execute on function public.can_read_audit_entry(text, uuid, uuid) to authenticated;
+
 create trigger raci_assignments_audit
   after update on public.raci_assignments
   for each row execute function public.record_audit_changes();
