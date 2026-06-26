@@ -14,7 +14,7 @@ summary_for_jira: "[B1] Projektrollen und Verantwortlichkeiten verwalten"
 
 # PROJ-97: Projektrollen und Verantwortlichkeiten verwalten
 
-## Status: In Progress (97a + 97b Backend + Frontend gebaut 2026-06-24/25 — Fachrollen + Verantwortungs-Ansicht + RACI-Engine + UI; /qa offen)
+## Status: Approved (QA PASS 2026-06-26 — 97a+97b, A=genau-einer + RLS-Isolation live, 0 Critical/High; vitest 2046/2046)
 
 ## Implementation Notes — Frontend (2026-06-25)
 
@@ -24,6 +24,23 @@ summary_for_jira: "[B1] Projektrollen und Verantwortlichkeiten verwalten"
   - **97b RACI-Matrix** (`RaciMatrixCard`): Work-Item-Picker (`useWorkItems`) × Fachrollen (`MA_STANDARD_ROLES`) × R/A/C/I als Toggle-Buttons. Set/clear via `raci-api.ts` (`setWorkItemRaci`/`clearWorkItemRaci`); aktiver Buchstabe erneut klicken = entfernen. **„A=genau-einer"**-Konflikt (409) → Toast + Reload (zeigt den serverseitig durchgesetzten Ist-Zustand). Editieren gated auf `edit_master` (sonst read-only mit Hinweis).
 - **Gates:** lint 0, tsc 14 baseline/0 neu, vitest 2046/2046, build clean (Route registriert).
 - **Offen:** /qa (E2E Verantwortungs-Ansicht + RACI set/A-Konflikt/clear; Negativtests). `target_type='deliverable'` → PROJ-104.
+
+## QA Test Results — 2026-06-26 (PASS, 0 Critical / 0 High)
+
+**97a (Rollen & Verantwortung):**
+- AC-97-1 11 Fachrollen-Werteliste (`MA_STANDARD_ROLES`) + AC-97-2 Mehrfachrollen + AC-97-5 „extern"-Marker (`origin='external'`) — via Catalog-Unit-Tests + Route-Test (`/roles` Gruppierung + extern-Flag + „Sonstige"-Bucket) ✓.
+- `isValidMaRoleKey` akzeptiert Katalog-Keys, lehnt unbekannte ab ✓. RBAC strikt getrennt (Invariante #4).
+
+**97b (RACI-Engine)** — Red-Team live gegen Prod (rolled back, 0 Residue; Live-QA-Smoke `ROLLBACK_QA_97B`):
+- AC-97-3 RACI je Aufgabe set/clear ✓ (Backend-Smoke + Route-Test).
+- AC-97-4 „Accountable = genau einer": zweite A am selben Ziel → **REJECTED(23505)** ✓.
+- **RLS-Isolation:** Member sieht RACI-Zeile (1), **Nicht-Member/Cross-Tenant sieht 0** ✓.
+- **Polymorpher Guard:** `target_type='deliverable'` → **REJECTED(check)** (PROJ-104-Gate) ✓; nicht-existentes Work-Item → REJECTED(02000) (Backend-Smoke) ✓.
+- **Authority:** Non-Member → REJECTED(42501) ✓. Security-Advisor: 0 ERROR auf `raci_assignments`. Audit-Trigger feuert bei `raci_letter`-Wechsel ✓.
+
+**E2E:** Auth-Gates für `/roles`, `/work-items/[wid]/raci` (GET/POST/DELETE), `/rollen`-Seite **grün (chromium, live)**; vitest **2046/2046** (Route 9 + Catalog 4).
+
+**Findings:** keine Critical/High/Medium/Low. **D-1 (Env)** wie [[PROJ-139]]: authentifizierte RACI-Editor-UI-E2E nicht im bare Worktree — kompensiert durch Live-Prod-Smokes (A-Konflikt/Guard/Authority/RLS) + Auth-Gate-E2E + vitest. → **PRODUCTION-READY (97a + 97b).**
 **Created:** 2026-06-10
 **Origin:** M&A-Platform Backlog (Epic B — Rollen, Gremien & Governance)
 
