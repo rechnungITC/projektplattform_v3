@@ -14,7 +14,7 @@ summary_for_jira: "[G2] DD-Fragenkatalog und Q&A-Prozess"
 
 # PROJ-113: DD-Fragenkatalog und Q&A-Prozess
 
-## Status: In Progress (Backend gebaut + Live-Smoke 11/11 2026-06-25 — Migration `20260625124849` in Prod, APIs + Client-Wrapper; Live-Smoke fand+fixte RPC-Clearance-Lücke. → /frontend Q&A-Tab, dann /qa)
+## Status: In Progress (Backend + Frontend gebaut 2026-06-25 — Q&A-Sheet je DD-Stream: Liste/Filter/Frage/Antwort/Status/CSV-Export; Live-Smoke 11/11. → /qa)
 **Created:** 2026-06-10
 **Origin:** M&A-Platform Backlog (Epic G — Due Diligence)
 **Priority:** P1
@@ -188,6 +188,16 @@ Damit PROJ-112s `open_questions`-Spalte (heute `null`) und der PROJ-116-DD-Repor
 **Quality-Gates:** ESLint 0, vitest +17 (route 9 / status 6? — dd-questions 5 / status 6 / export 3, gesamt 17), tsc 0 neue Errors (14 Baseline), `next build` clean (4 neue Routen).
 
 **Offen → /frontend:** Q&A-Tab im DD-Stream-Detail (Liste/Filter/Frage erfassen/Antwort/Status/CSV-Export + disabled „Zu Finding eskalieren"-Platzhalter). → /qa Pentest (Floor, Gate je Achse, Status-RPC-Clearance, Cross-Tenant, Export-RLS, Audit).
+
+## Implementation Notes — Frontend (2026-06-25)
+
+**Kein neuer Dep, shadcn/ui-first.** Reine UI auf den live-APIs + `dd-questions-api.ts`.
+
+- **Einstieg:** in der DD-Übersicht (`due-diligence-streams-page.tsx`) öffnet ein Klick auf das Stream-Label (mit `MessageSquare`-Icon) das Q&A-Sheet — **für alle Projekt-Mitglieder sichtbar** (Lesen); Schreiben/Antworten/Status/Löschen via `useProjectAccess(…, "edit_master")` (= Server-`edit`-Gate: admin/lead/editor).
+- **`dd-questions-sheet.tsx`** (`Sheet`): Status-Filter + CSV-Export-Button (download-Link auf `ddQuestionsExportUrl`, cookie-authentifiziert, RLS-gefiltert) + „Frage erfassen". Fragen-Liste mit Titel (klickbar → Detail), Prioritäts-/Vertraulichkeits-Badge, inline Status-`Select` (nur `edit`; erlaubte Folgezustände aus `allowedDdQuestionTransitions`, Mirror der RPC-Maschine), Owner/Adressat/Frist+Restzeit, Löschen. **Create-Dialog** (Titel/Detail/Adressat/Priorität/Frist/Owner/Vertraulichkeit — Hinweis auf Need-to-know-Floor). **Detail-Dialog**: Antwort (Text + https-Datenraum-Link, `edit`-gated), `answer_round`-Hinweis bei Mehrrunden, **disabled „Zu Finding eskalieren"-Platzhalter** (Tooltip „Verfügbar mit DD-Findings (PROJ-114)") — analog 112-`—`-Counts, kein FK-Stub.
+- **`dd-question-labels.ts`**: DE-Status-/Prioritäts-Labels, Badge-Varianten, `allowedDdQuestionTransitions`. Reuse `DD_LEVEL_LABEL`/`fmtDate`/`remainingTime` aus `dd-stream-labels`.
+
+**Quality-Gates:** ESLint 0, tsc 0 neue Errors (14 Baseline), `next build` clean. vitest unverändert (Backend-Route-Tests + Live-Smoke decken die kritischen Pfade; reine UI-Slice). Playwright-Auth-Gate-Smoke + Live-Pentest → /qa.
 
 ---
 _Quelle: Backlog-Entwurf M&A-Projektplattform · G — Due Diligence_
