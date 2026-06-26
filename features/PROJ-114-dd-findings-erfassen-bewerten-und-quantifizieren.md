@@ -14,7 +14,7 @@ summary_for_jira: "[G3] DD-Findings erfassen, bewerten und quantifizieren"
 
 # PROJ-114: DD-Findings erfassen, bewerten und quantifizieren
 
-## Status: In Progress (Backend #195 live + Frontend gebaut 2026-06-26 — DD-Findings-Panel auf der Due-Diligence-Seite: Liste je Stream + Erfassen/Bearbeiten-Dialog + Deal-Breaker-Eskalations-Banner + EUR-Summe. Migrations `20260625152915`/`20260625153238` in Prod; BE-Live-Smoke 9/9. → /qa)
+## Status: Approved (QA PASS 2026-06-26 — 5/5 AC [2 Forward-compat-Deferrals] + 6/6 Hardening-ACs, 0 Critical/High/Medium; Live-Pentest A–J 10/10 inkl. Aggregat-Leak-Probe + 100b-Regression 4/4 + Playwright 7/7, 0 Residue. Backend #195 + Frontend #196 auf main. → /deploy)
 **Created:** 2026-06-10
 **Origin:** M&A-Platform Backlog (Epic G — Due Diligence)
 **Priority:** P1
@@ -182,6 +182,47 @@ Reine UI auf den Backend-APIs (#195) + Client-Wrapper `dd-findings-api.ts`. **Ke
 - Loading/Empty/Error-States; `cancelled`-Guard im Mount-Fetch.
 
 **Quality-Gates:** lint 0 · tsc 14 baseline/0 neu · vitest 2081/2081 · build clean. Live-E2E + Pentest-Vektoren → /qa.
+
+## QA Test Results — 2026-06-26 (backend #195 + frontend #196, beide auf main)
+
+**Verdikt: PRODUCTION-READY** — 5/5 AC (mit 2 dokumentierten Forward-compat-Deferrals) + 6/6 Hardening-ACs (H1–H6); **0 Critical / 0 High / 0 Medium**.
+
+### Live-Pentest (Pflicht) — `tests/sql/PROJ-114-dd-findings-pentest.sql`, self-rolling-back, **0 Residue**, **A–J 10/10 PASS**
+| Vektor | Ergebnis | AC/H |
+|---|---|---|
+| A create (mittel) → 0 Eskalationen | ✅ | AC1 |
+| B Finding-Level < Stream-Level → reject | ✅ | **H4** |
+| C non-manager create → 42501 | ✅ | AC1-Security |
+| D →deal_breaker → 2 Escalation-Zeilen (Deal Lead + Sponsor) | ✅ | **AC3** |
+| E re-update idempotent (weiterhin 2) | ✅ | AC3 |
+| F Need-to-know versteckt confidential-Finding vor non-cleared Member | ✅ | **H2** |
+| G Eskalations-Ack nur durch escalated-User (sonst 42501) | ✅ | AC3 |
+| H Audit-Zeile bei Update (entity `dd_findings`) | ✅ | **DoD L3** |
+| I Summary liefert Zeilen (Admin) | ✅ | AC4 |
+| **J Aggregat-Leak-Probe: non-cleared Member-Summary schließt confidential-Findings aus, inkludiert standard** | ✅ | **H5** (INVOKER) |
+
+### Regression
+- **100b-Regression 4/4 PASS** (apply-profile→grant / Downgrade-Guard / who_can_access-Gate / **D: `can_read_audit_entry` durch authenticated ausführbar** — bestätigt den Cross-cutting-Audit-Grant-Fix). Kein Gate-Drift.
+
+### Automatisierte Tests
+- **Playwright** `tests/PROJ-114-dd-findings.spec.ts` (chromium): **7/7 PASS** — Auth-Gates auf allen 5 neuen Routen (findings GET/POST, PATCH, summary, escalations GET, acknowledge) + invalid-UUID.
+- **Vitest** 2081/2081 (inkl. 18 PROJ-114-Route-Tests aus /backend).
+- lint 0 · tsc 14 baseline/0 neu · build clean.
+
+### AC-Abdeckung
+| AC | Status |
+|---|---|
+| AC1 Findings je Stream mit allen Feldern (Schwere/EUR/Wahrscheinlichkeit/Behandlung) | ✅ Schema + UI + Pentest A |
+| AC2 Verknüpfung mit Risiken (E1) / Q&A (G2) / SPA (J1) / Bewertung (I1) | ⚠️ **Teil**: Risiko-Link `linked_risk_id` ✅; Q&A/SPA/Bewertung **forward-compat deferred** (Tabellen 113/J1/I1 ungebaut — Owner-an-neuer-Tabelle) |
+| AC3 Deal-Breaker → automatische Eskalation | ✅ Pentest D + UI-Banner |
+| AC4 Übersicht je Stream/Schwere + EUR-Summe | ✅ Summary-RPC (INVOKER) + UI |
+| AC5 Exportierbar + DD-Bericht-Aggregation | ⚠️ **Teil**: Liste/Summe in der UI sichtbar; Datei-Export + DD-Bericht-Aggregation → **PROJ-116** (G5, ungebaut) |
+
+### Findings
+- Keine Critical/High/Medium. **F-1 / F-2 (Info, Forward-compat):** AC2-Links zu Q&A/SPA/Bewertung + AC5 Datei-Export/DD-Bericht hängen an ungebauten Tabellen (PROJ-113/116/I1/J1) — per Architektur-Entscheidung „Owner-an-neuer-Tabelle" deferiert; das `recommended_treatment`-Enum trägt die fachliche Brücke bereits. **PROJ-Y-1** (E-Mail/Teams-Eskalation) + **PROJ-Y-2** (4-Augen-Deal-Breaker) bleiben Followups.
+- **D-1 (Env):** Mobile-Safari-E2E übersprungen (WebKit-Host-Libs), wie etabliert. Chromium grün.
+
+**0 Critical / 0 High → PRODUCTION-READY.**
 
 ---
 _Quelle: Backlog-Entwurf M&A-Projektplattform · G — Due Diligence_
