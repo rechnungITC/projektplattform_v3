@@ -13,6 +13,9 @@ This file is the cross-feature status register referenced by `features/INDEX.md`
 | PROJ-73 | Planned (Followup, reduced) | More parser formats. MD/TXT and EML/MSG are now covered by PROJ-70 γ/δ for kickoff ingestion; remaining practical gap is PPTX/XLSX and later DMS/RAG formats. |
 | PROJ-74 | Approved | Supply-chain audit CI slice selected as the independent item: workflow + `npm run audit:prod` + Sentry parser-output scrubber implemented and locally verified; remaining handoff is `SNYK_TOKEN` + branch-protection required-check setup after merge. |
 | PROJ-75 | Planned (Followup) | Class-3 re-classification after parse/full text. Still open; PROJ-84 audit tagging does not replace this privacy guard. |
+| PROJ-Y-1 | Planned (Followup, 114) | DD-Findings `source_ref`/`document_link` field (closes PROJ-108 AC1 gap "Quelle/Dokumentenverweis"). Small EXTEND on deployed `dd_findings`: 1 migration + `create_dd_finding`/`update_dd_finding` RPC param + FE field; later real DMS via PROJ-79/104. Should-have. From CIA 2026-06-26 PROJ-108-supersede. |
+| PROJ-Y-2 | Planned (Followup, FE-only) | Red-Flag-Lens on the DD-Findings panel: filter/tab for `severity ∈ {hoch, deal_breaker}` + EUR sum (SteerCo quick-view). No backend/migration/dep; pilot-driven. The only genuine net-new of the superseded PROJ-108. From CIA 2026-06-26. |
+| PROJ-108 | Superseded by PROJ-114 | Red-Flag-Log absorbed by deployed `dd_findings`. AC4 report→PROJ-116; AC3 valuation/SPA→PROJ-120/121/122; AC1-gap→PROJ-Y-1; lens→PROJ-Y-2; PMI-handover→PROJ-125/127. No own build. |
 
 ## New Feature Series
 

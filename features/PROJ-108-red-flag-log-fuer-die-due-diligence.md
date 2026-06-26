@@ -14,10 +14,36 @@ summary_for_jira: "[E2] Red-Flag-Log für die Due Diligence"
 
 # PROJ-108: Red-Flag-Log für die Due Diligence
 
-## Status: Planned
+## Status: Superseded by PROJ-114 (Bookkeeping-Closure 2026-06-26, CIA-reviewed)
 **Created:** 2026-06-10
 **Origin:** M&A-Platform Backlog (Epic E — Risiken & Red Flags)
 **Priority:** P1
+
+> ## ⚠️ Superseded by PROJ-114 (DD-Findings) — 2026-06-26
+>
+> CIA-Review 2026-06-26 (analog PROJ-44-δ/ε → PROJ-70): Der fachliche Kern dieses
+> Specs ist durch das **deployte** PROJ-114 (`dd_findings`) bereits live und
+> QA-gehärtet abgedeckt. Ein „Red Flag" ist in diesem Datenmodell **kein
+> eigenständiges Konzept**, sondern ein hochsevere(s) `dd_finding`
+> (`severity ∈ {hoch, deal_breaker}`). Eine separate `dd_red_flags`-Tabelle wäre
+> Duplikat-Anti-Pattern (Verletzung der Shared-Core-Invariante: zweiter
+> Eskalations-/Audit-/Need-to-know-Pfad). **Kein eigener 108-Build.**
+>
+> **Rest-Transfer (kein Scope-Verlust):**
+>
+> | 108-AC | Disposition | Ziel |
+> |---|---|---|
+> | AC1 Felder (Stream/Beschreibung/Schweregrad/Empfehlung/Owner) | ✅ erfüllt | PROJ-114 `dd_findings` (severity inkl. `deal_breaker` + `recommended_treatment`) |
+> | AC1-Gap „Quelle/Dokumentenverweis" | offen → kleiner 114-Followup | **PROJ-Y-1** (`source_ref`/`document_link`-Feld an `dd_findings`) |
+> | AC2 zwingend DD-Stream-zugeordnet | ✅ erfüllt | PROJ-114 (`dd_stream_id NOT NULL`) |
+> | AC3 Übernahme in Bewertung (I2) + SPA-Issues (J1) | transferiert (Zielobjekte nicht gebaut) | **PROJ-120/121** (Bewertung/Kaufpreis-Bridge) + **PROJ-122** (SPA Issues) — als AC „akzeptiert ein `dd_finding` als Quelle" beim jeweiligen `/requirements` ergänzen |
+> | AC4 dedizierter Red-Flag-Report (PDF/Excel, SteerCo) | transferiert | **PROJ-116** (DD-Berichte/Red-Flag-Report; bereits Owner laut Reuse-Matrix) |
+> | AC5 Deal-Breaker → Pflicht-Info Deal Lead + Sponsor | ✅ erfüllt | PROJ-114 (`dd_finding_escalations` via RPC) |
+> | Red-Flag-Lens (Filter-Sicht `severity ≥ hoch` + EUR-Summe) | optionaler FE-only-Followup | **PROJ-Y-2** |
+> | Offene Frage „Red Flag nach Closing → PMI-Risikoregister" | transferiert | **PROJ-125/127** (PMI) |
+>
+> Followups in [`OPEN-DEFERRED-STATUS.md`](OPEN-DEFERRED-STATUS.md) gelistet. Der
+> ursprüngliche Spec-Text bleibt unten als historischer Kontext erhalten.
 
 > **V3 Core Reuse (CIA 2026-06-15 · [ma-domain-architecture ADR](../docs/decisions/ma-domain-architecture.md) · [Sequencing](../docs/ma-epic-sequencing-2026-06-15.md)):** Klasse **EXTEND** · Andockpunkt: DD-spezifisch auf PROJ-20 risks. Nicht neu bauen, was der Core schon hat — diese Spec MUSS die ADR + Reuse-Matrix respektieren.
 
