@@ -14,7 +14,7 @@ summary_for_jira: "[G2] DD-Fragenkatalog und Q&A-Prozess"
 
 # PROJ-113: DD-Fragenkatalog und Q&A-Prozess
 
-## Status: Approved (QA PASS 2026-06-26 — 0 Critical/High; Live-RLS-Pentest 13/13 + Live-RPC-Smoke 11/11 + Playwright 6/6 + vitest 2080/2080 + Advisor 0 ERROR. Backbone-ACs voll; Eskalation→Finding deferred an PROJ-114. → /deploy)
+## Status: Deployed (2026-06-26 — Tag `v2.2.0-PROJ-113`, PR #197 merged → main `9a9c15a`; Vercel-Prod deploy success + Post-Deploy-Auth-Gate-Smoke 4/4 = 307; Migrationen `20260625124849` (dd_questions) + `20260626072731` (PROJ-112c) seit /backend in Prod. 0 Critical/High.)
 **Created:** 2026-06-10
 **Origin:** M&A-Platform Backlog (Epic G — Due Diligence)
 **Priority:** P1
@@ -243,6 +243,16 @@ Ergänzend: **Backend-Live-RPC-Smoke 11/11** (fand+fixte die Status-RPC-Clearanc
 - **PROJ-Y-113a:** echtes Multi-Turn-`dd_question_answers`-Thread (bei Pilot-Bedarf).
 - **PROJ-Y-113b:** Export-Audit-Eintrag.
 - **PROJ-Y-113c (an PROJ-114):** Eskalations-Aktion + `source_dd_question_id`-FK.
+
+## Deployment — 2026-06-26
+
+- **Tag:** `v2.2.0-PROJ-113` auf dem Feature-Merge-Commit `9a9c15a` (PR #197 squash → main). Enthält zusätzlich den **PROJ-Y-112c**-Fix (`transition_dd_stream_status` Clearance-Re-Check).
+- **Required-Checks grün:** schema-drift (`Verify SELECT columns`), `npm audit production`, Snyk.
+- **Migrationen:** `20260625124849_proj113_dd_questions` + `20260626072731_proj112c_fix_stream_status_rpc_clearance` bereits seit dem /backend-Slice in Prod (via MCP, Dateinamen == registrierte Versionen, PROJ-134). Repo-Datei enthält zusätzlich ein idempotentes `grant execute … can_read_audit_entry … to authenticated` (Replay-Sicherheit nach Recreate — Lektion aus dem 112/113/97/114-Recreate-Chain).
+- **Vercel-Prod:** Deployment für `9a9c15a` `state=success` (GitHub-Deployment-Status); kein Runtime-Risiko (additive Routen/Komponenten).
+- **Post-Deploy-Smoke:** 4/4 = 307 Auth-Gate (`/api/projects/[id]/dd-questions`, `…/dd-questions/export`, `/projects/[id]/due-diligence`, `/`).
+- **Merge-Hinweis:** zwei INDEX-Konflikte mit fast-moving main (paralleler PROJ-114-Build) sauber aufgelöst (PROJ-113-Zeile behalten, PROJ-114-Zeile von main übernommen); Code conflict-free.
+- **Offene Followups (nicht-blockierend):** PROJ-Y-113a (Multi-Turn-Thread), PROJ-Y-113b (Export-Audit), PROJ-Y-113c (Eskalation→Finding, an PROJ-114).
 
 ---
 _Quelle: Backlog-Entwurf M&A-Projektplattform · G — Due Diligence_
