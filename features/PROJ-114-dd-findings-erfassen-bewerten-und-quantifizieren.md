@@ -14,7 +14,7 @@ summary_for_jira: "[G3] DD-Findings erfassen, bewerten und quantifizieren"
 
 # PROJ-114: DD-Findings erfassen, bewerten und quantifizieren
 
-## Status: Approved (QA PASS 2026-06-26 — 5/5 AC [2 Forward-compat-Deferrals] + 6/6 Hardening-ACs, 0 Critical/High/Medium; Live-Pentest A–J 10/10 inkl. Aggregat-Leak-Probe + 100b-Regression 4/4 + Playwright 7/7, 0 Residue. Backend #195 + Frontend #196 auf main. → /deploy)
+## Status: Deployed (2026-06-26 — Tag `v2.2.0-PROJ-114` auf `d348901`; Vercel prod READY; Post-Deploy-Auth-Gate-Smoke 4/4 = 307. QA PASS 5/5 AC + 6/6 Hardening, 0 Critical/High/Medium; Pentest A–J 10/10 + 100b-Regression 4/4. Migrations `20260625152915`/`20260625153238` in Prod.)
 **Created:** 2026-06-10
 **Origin:** M&A-Platform Backlog (Epic G — Due Diligence)
 **Priority:** P1
@@ -223,6 +223,15 @@ Reine UI auf den Backend-APIs (#195) + Client-Wrapper `dd-findings-api.ts`. **Ke
 - **D-1 (Env):** Mobile-Safari-E2E übersprungen (WebKit-Host-Libs), wie etabliert. Chromium grün.
 
 **0 Critical / 0 High → PRODUCTION-READY.**
+
+## Deployment — 2026-06-26
+
+- **Code auf main:** Backend **#195** + Frontend **#196** + QA **#198** (squash-merged → `d348901`; QA-Branch nach Rebase auf main wegen schnellem INDEX-Drift durch parallel gemergtes #189).
+- **Tag** `v2.2.0-PROJ-114`.
+- **Migrationen** `20260625152915_proj114_dd_findings` + `20260625153238_proj114_restore_audit_read_grant` waren bereits seit dem /backend-Slice in Prod (live-smoked + pentested); kein separater DDL-Deploy.
+- **Vercel prod** für `d348901` = READY.
+- **Post-Deploy-Smoke:** 4/4 = 307 Auth-Gate auf `/api/projects/[id]/dd-findings`, `…/dd-findings/summary`, `…/dd-finding-escalations`, `…/dd-finding-escalations/[escId]/acknowledge`.
+- **Offene Followups (nicht-blockierend):** AC2-Links (Q&A/SPA/Bewertung) + AC5 (Datei-Export/DD-Bericht) forward-compat an PROJ-113/116/I1/J1; **PROJ-Y-1** (E-Mail/Teams-Eskalation), **PROJ-Y-2** (4-Augen-Deal-Breaker). Cross-cutting-Hygiene: künftige Audit-Funktions-Recreates müssen den `authenticated`-Grant mit-setzen (Memory-Gotcha dokumentiert).
 
 ---
 _Quelle: Backlog-Entwurf M&A-Projektplattform · G — Due Diligence_
