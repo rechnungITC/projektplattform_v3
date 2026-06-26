@@ -9,12 +9,14 @@ export type PhaseStatus =
   | "in_progress"
   | "completed"
   | "cancelled"
+  | "suspended"
 
 export const PHASE_STATUSES: readonly PhaseStatus[] = [
   "planned",
   "in_progress",
   "completed",
   "cancelled",
+  "suspended",
 ] as const
 
 export const PHASE_STATUS_LABELS: Record<PhaseStatus, string> = {
@@ -22,18 +24,22 @@ export const PHASE_STATUS_LABELS: Record<PhaseStatus, string> = {
   in_progress: "In Arbeit",
   completed: "Abgeschlossen",
   cancelled: "Abgebrochen",
+  suspended: "Ausgesetzt",
 }
 
 /**
- * Allowed phase status transitions per Tech Design § D.
+ * Allowed phase status transitions per Tech Design § D + PROJ-139.
  * `completed → in_progress` is intentionally allowed for re-opens (audit
  * note required, enforced at API/DB layer); `cancelled → planned` revives.
+ * PROJ-139: `in_progress ↔ suspended` (pause/resume), `suspended → cancelled`
+ * (final stop). Must mirror the `transition_phase_status` DB function.
  */
 export const ALLOWED_PHASE_TRANSITIONS: Record<PhaseStatus, PhaseStatus[]> = {
   planned: ["in_progress", "cancelled"],
-  in_progress: ["completed", "cancelled"],
+  in_progress: ["completed", "cancelled", "suspended"],
   completed: ["in_progress"],
   cancelled: ["planned"],
+  suspended: ["in_progress", "cancelled"],
 }
 
 export interface Phase {

@@ -16,6 +16,9 @@ const STATUS_CLASSES: Record<PhaseStatus, string> = {
   completed: "bg-success/15 text-success border-success/30 hover:bg-success/20",
   cancelled:
     "bg-muted text-muted-foreground hover:bg-muted/80 border-transparent line-through",
+  // PROJ-139 — paused, not cancelled: amber, no strike-through.
+  suspended:
+    "bg-amber-500/15 text-amber-700 dark:text-amber-400 border-amber-500/30 hover:bg-amber-500/20",
 }
 
 export function PhaseStatusBadge({ status, className }: PhaseStatusBadgeProps) {
