@@ -40,6 +40,13 @@ interface PresetRow {
   state: PresetState
 }
 
+ /** de-DE short date, em dash for null. */
+function fmtDate(value: string | null): string {
+  if (!value) return "—"
+  const d = new Date(value)
+  return Number.isNaN(d.getTime()) ? "—" : d.toLocaleDateString("de-DE")
+}
+
 export function MaPhaseCockpit({ projectId }: { projectId: string }) {
   const canEdit = useProjectAccess(projectId, "edit_master")
   const { profile, isLoading: profileLoading } = useMaProfile(projectId)
@@ -178,6 +185,16 @@ export function MaPhaseCockpit({ projectId }: { projectId: string }) {
                     <p className="mt-0.5 text-sm text-muted-foreground">
                       {preset.description_de}
                     </p>
+                    {state === "active" &&
+                      phase &&
+                      (phase.planned_start || phase.planned_end) && (
+                        <p className="mt-1 text-xs text-muted-foreground">
+                          <span className="font-medium text-foreground/70">
+                            Soll-Zeitraum:
+                          </span>{" "}
+                          {fmtDate(phase.planned_start)} – {fmtDate(phase.planned_end)}
+                        </p>
+                      )}
                   </div>
                   <span className="mt-0.5 shrink-0 text-muted-foreground">
                     {state === "active" ? (
