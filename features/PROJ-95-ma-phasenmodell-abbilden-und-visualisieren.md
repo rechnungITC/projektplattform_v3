@@ -23,6 +23,10 @@ summary_for_jira: "[A2] M&A-Phasenmodell abbilden und visualisieren"
 - **Gates:** lint 0, tsc 14 baseline/0 neu, vitest 2046/2046, build clean (Route registriert).
 - **Offen:** /qa (E2E activate→Roadmap→Phase-2-Gate sichtbar; Negativtests). Stage-Gate-Zwang generell → PROJ-110; Deliverable-Link → PROJ-104; Template-Bibliothek → PROJ-96.
 
+## Post-Deploy FE-Polish — 2026-06-29
+
+Reine Frontend-Ergänzung am Cockpit (kein Backend/API/Migration): die Cockpit-Zeilen aktivierter Phasen zeigen jetzt den **Soll-Zeitraum** (`planned_start – planned_end`, de-DE, em-dash bei null) unter der Beschreibung — macht die AC-95-3-Achse „Soll-Termin" sichtbar (vorher nur Ist-Status). Liest die bereits geladenen `phases`-Zeilen. lint 0, tsc 14 baseline/0 neu, build clean. PROJ-95 bleibt Deployed.
+
 ## QA Test Results — 2026-06-26 (PASS, 0 Critical / 0 High)
 
 **AC-Abdeckung** — unabhängig live gegen Prod re-verifiziert (ephemeres M&A-Projekt, JWT-Impersonation, rolled back, 0 Residue; Live-QA-Smoke `ROLLBACK_QA_95`):
