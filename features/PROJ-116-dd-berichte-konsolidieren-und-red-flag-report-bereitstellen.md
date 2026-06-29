@@ -14,7 +14,17 @@ summary_for_jira: "[G5] DD-Berichte konsolidieren und Red-Flag-Report bereitstel
 
 # PROJ-116: DD-Berichte konsolidieren und Red-Flag-Report bereitstellen
 
-## Status: Architected (CIA-reviewed 2026-06-29 — VIEW-Slice: neue SECURITY-INVOKER-RPC `dd_report_consolidated` über deployte 112/113/114, need-to-know gratis; Export via PROJ-21-Print-to-PDF; Live-Sicht; Word/Snapshot/Deliverables deferred; 6 Hardening-ACs. Kein neues Dep, keine neue Tabelle. → /backend)
+## Status: In Progress (Backend live)
+
+**Architected (CIA-reviewed 2026-06-29)** — VIEW-Slice: neue SECURITY-INVOKER-RPC `dd_report_consolidated` über deployte 112/113/114, need-to-know gratis; Export via PROJ-21-Print-to-PDF; Live-Sicht; Word/Snapshot/Deliverables deferred; 6 Hardening-ACs. Kein neues Dep, keine neue Tabelle.
+
+**Backend gebaut 2026-06-29:** Migration `20260629084539_proj116_dd_report_consolidated` in Prod (eine `dd_report_consolidated(p_project_id uuid)`-RPC: `language sql`, `stable`, **security invoker**, `set search_path=public,pg_temp`, kein actor-Param, `revoke execute from public,anon` / `grant authenticated` — H1 verifiziert: `is_definer=false`, `auth_exec=true`, `anon_exec=false`). JSON `{streams[], red_flags[]}`: pro Stream Status + Severity-Counts (niedrig/mittel/hoch/deal_breaker) + EUR-Summe + null_eur_count + Q&A offen/beantwortet; `red_flags` direkt aus `dd_findings` (`severity in ('hoch','deal_breaker')`, row-wise RESTRICTIVE-Gate, NICHT aus einer vor-aggregierten Definer-Quelle — H3), deal_breaker zuerst sortiert. GET `/api/projects/[id]/dd-report` ruft die RPC mit dem **session-gebundenen User-Client** auf (`getAuthenticatedUserId`, nie service-role — H2) + `requireProjectAccess(view)` + Zod-UUID-Guard. FE-Client `fetchDdReport` + Typen in `dd-findings-api.ts`.
+
+**Quality-Gates:** route.test.ts 5/5; eslint 0; tsc 14 baseline/0 neu; build clean.
+
+**H6 Pflicht-Live-RPC-Smoke** gegen Prod (`tests/sql/PROJ-116-dd-report-pentest.sql`, self-rolling-back, **0 Residue verifiziert**): gemischter Need-to-know-Kontext, A–F **6/6 PASS** — Admin sieht beide Streams + 2 Red-Flags (deal_breaker zuerst); nicht-freigeschaltetes Member sieht NUR den `standard`-Stream (vertraulicher Stream gefiltert, H4), **0** Red-Flag-Zeilen aus dem vertraulichen Stream (H2/H3, Aggregat-Leak-Probe), korrekte Aggregate für den sichtbaren Stream; nach `grant_confidentiality_clearance` kippt die Sichtbarkeit auf beide Streams (Gate ist echt, nicht hardcoded).
+
+→ `/frontend` (DD-Bericht-Ansicht + `/print`), dann `/qa` (H2/H3-Pentest im gemischten Need-to-know-Kontext).
 **Created:** 2026-06-10
 **Origin:** M&A-Platform Backlog (Epic G — Due Diligence)
 **Priority:** P1

@@ -167,3 +167,42 @@ export async function acknowledgeFindingEscalation(
   if (!res.ok) throw new Error(await safeError(res))
   return ((await res.json()) as { escalation: DdFindingEscalation }).escalation
 }
+
+// --- PROJ-116: consolidated DD report -------------------------------------
+
+export interface DdReportStreamRow {
+  dd_stream_id: string
+  label: string
+  status: string
+  findings_total: number
+  sev_niedrig: number
+  sev_mittel: number
+  sev_hoch: number
+  sev_deal_breaker: number
+  eur_sum: number
+  null_eur_count: number
+  qa_open: number
+  qa_answered: number
+}
+
+export interface DdReportRedFlag {
+  id: string
+  dd_stream_id: string
+  title: string
+  severity: FindingSeverity
+  economic_impact_eur: number | null
+  status: FindingStatus
+}
+
+export interface DdReport {
+  streams: DdReportStreamRow[]
+  red_flags: DdReportRedFlag[]
+}
+
+/** Consolidated, live DD report (need-to-know-scoped server-side via INVOKER RPC). */
+export async function fetchDdReport(projectId: string): Promise<DdReport> {
+  const res = await fetch(`${p(projectId)}/dd-report`, { cache: "no-store" })
+  if (!res.ok) throw new Error(await safeError(res))
+  const json = (await res.json()) as Partial<DdReport>
+  return { streams: json.streams ?? [], red_flags: json.red_flags ?? [] }
+}
