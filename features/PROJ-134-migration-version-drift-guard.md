@@ -1,6 +1,7 @@
 # PROJ-134 — Migration-Versions-Drift-Guard & Naming-Konvention
 
-## Status: Planned (CIA-reviewed 2026-06-15)
+## Status: In Progress (α gebaut 2026-06-30 — `check:migration-naming`-Guard + Required-Check-Workflow + Backend-Regel + Runbook; AC-134.5 fand + fixte 3 reale Repo≠Prod-Drift-Kollisionen. → /qa)
+<!-- prior: Planned (CIA-reviewed 2026-06-15) -->
 
 **Created:** 2026-06-15
 **Origin:** Systematischer Befund aus den Deploy-Closures PROJ-69 / PROJ-89 / PROJ-50 (3× derselbe Migration-Versions-Drift in Folge, 2026-06-11..15).
@@ -54,3 +55,27 @@ Sehr gut — reines Node/tsx-Script + GitHub-Actions-Workflow, **kein neuer npm-
 ## CIA-Review
 
 CIA-reviewed 2026-06-15 (Continuous Improvement Agent). Verdict: **Umsetzen** als schlanker α-Slice. Volle Findings/Risiken/Empfehlungen siehe Review-Output dieser Session; Kernpunkte in Problem Statement + Lösungsansatz oben übernommen.
+
+## Implementation Notes — α (2026-06-30)
+
+Reine DevEx/Tooling-Slice. **Kein neuer npm-Dependency**, kein `src/`-Change, keine DB-Migration (nur Datei-Renames, s.u.). Spiegelt das PROJ-42-Pattern.
+
+- **`scripts/check-migration-naming/analyze.ts`** — pure, unit-testbare Analyse (kein fs/DB): Format-Fehler (`^\d{14}_[a-z0-9_]+\.sql$`), **Versions-Präfix-Kollision** (hard-fail, AC-134.2), Sekunden-genau-Warnung (AC-134.3), nicht-monoton-Warnung (AC-134.3), `create table`-ohne-`if not exists`-Warnung (AC-134.4). **`index.ts`** liest `supabase/migrations/*.sql`, gibt `::error`/`::warning`-Annotations aus, Exit 1 nur bei Errors. **+10 Vitest-Cases** (`analyze.test.ts`), inkl. Regression gegen einen Regex-Backtracking-Bug (`create table  if not exists` mit Doppel-Space).
+- **`npm run check:migration-naming`** (package.json) — läuft ohne DB/Docker. **`.github/workflows/migration-naming.yml`** — Required-Check auf `main`-PRs+push, kein Postgres-Service (reine Datei-Analyse), keine Secrets.
+- **`.claude/rules/backend.md`** — Prozessregel (AC-134.1): erst Datei `YYYYMMDDHHMMSS_proj<N>_<slug>.sql` anlegen, dann `apply_migration(name=Dateiname-Stamm)`; nie Präfix doppelt; minute-rastern + idempotent bevorzugen; bei Drift Repo-Datei auf Prod-Version umbenennen.
+- **`docs/production/migration-naming.md`** — Runbook (AC-134.6).
+
+**AC-134.5 Bestands-Verifikation (Live gegen Prod) — der Guard fand sofort 3 reale Repo≠Prod-Drift-Kollisionen:**
+
+| Repo-Datei (vorher, kollidierend, ungültige Stunde 40/50) | Prod-registrierte Version | Fix (Rename auf Prod-Version) |
+|---|---|---|
+| `20260504400000_proj32c_alpha_tenant_ai_providers` | `20260504120908` | ✅ umbenannt |
+| `20260504400000_proj36a_wbs_hierarchy_rollup_redeploy` | `20260504105243` | ✅ umbenannt |
+| `20260504500000_proj32c_gamma_priority_and_cleanup` | `20260504144753` | ✅ umbenannt |
+| `20260504500000_security_internal_functions_lockdown` | `20260504144601` | ✅ umbenannt |
+| `20260506160000_proj53b_tenant_holiday_region` | `20260506132938` | ✅ umbenannt |
+| `20260506160000_security_revoke_anon_and_trigger_only_rpcs` | `20260506154304` | ✅ umbenannt |
+
+Diese 3 Präfix-Kollisionen (`…400000`/`…500000`/`…160000`) hätten `supabase db push` gebrochen (genau die PROJ-69/89-Klasse). Per AC-134.5 wurde die Repo-Datei auf die prod-registrierte Version umbenannt (Inhalt unverändert) → Kollision + Drift behoben. Danach: `check:migration-naming` **0 errors / 65 warnings (Exit 0)** auf 151 Migrationen.
+
+**Quality-Gates:** `check:migration-naming` grün (0 errors), Vitest `analyze.test.ts` 10/10, lint 0, tsc 0 neu. **Offen:** AC-134.7 (read-only Prod-Audit-Script) deferred-β. → /qa.
