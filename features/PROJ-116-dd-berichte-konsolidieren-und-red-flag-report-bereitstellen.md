@@ -14,7 +14,7 @@ summary_for_jira: "[G5] DD-Berichte konsolidieren und Red-Flag-Report bereitstel
 
 # PROJ-116: DD-Berichte konsolidieren und Red-Flag-Report bereitstellen
 
-## Status: In Progress (Backend live)
+## Status: Approved (QA PASS — 0 Critical/High)
 
 **Architected (CIA-reviewed 2026-06-29)** — VIEW-Slice: neue SECURITY-INVOKER-RPC `dd_report_consolidated` über deployte 112/113/114, need-to-know gratis; Export via PROJ-21-Print-to-PDF; Live-Sicht; Word/Snapshot/Deliverables deferred; 6 Hardening-ACs. Kein neues Dep, keine neue Tabelle.
 
@@ -30,7 +30,16 @@ summary_for_jira: "[G5] DD-Berichte konsolidieren und Red-Flag-Report bereitstel
 
 > **Cross-Session-Hinweis 2026-06-30:** Frontend-Slice wurde wegen einer Branch-Kollision im geteilten Primär-Checkout (parallele PROJ-101-Session schaltete den Checkout um + `git clean` entfernte die untracked FE-Files; nur der `index.ts`-Nav-Commit `5dc347d` überlebte) in einer dedizierten Worktree `projektplattform_v3-proj116fe` neu aufgebaut. Inhalt verbatim aus Kontext rekonstruiert; Gates dort grün.
 
-→ `/qa` (H2/H3-Pentest im gemischten Need-to-know-Kontext + Print-Sicht).
+**QA PASS 2026-06-30 (0 Critical/0 High → PRODUCTION-READY):**
+
+- **Funktionale ACs:** AC2 (konsolidierter Red-Flag-Report hoch/deal_breaker, deal_breaker zuerst) ✅; AC3 (Export) ✅ via PDF/Print-Sicht (Word deferred PROJ-Y-1); AC4 (need-to-know-beschränkt) ✅. **AC1** teilweise — Findings (G3) + Q&A (G2) live; **Pflicht-Deliverables (D1) forward-compat deferred** → PROJ-Y-3 (dokumentierte Deviation, da PROJ-104 ungebaut).
+- **6 Hardening-ACs (H1–H6) alle ✅** belegt durch Live-Pentest (s.u.) + Code-Review: H1 (invoker/revoke anon+public/grant authenticated/kein actor-Param — verifiziert is_definer=false + Vektor G), H2 (Route + Print-Seite rufen RPC mit session-gebundenem Client; Auth-Gates 4/4), H3 (red_flags direkt aus dd_findings — Vektor D), H4 (höher-klassifizierte Streams gefiltert — Vektoren C/F), H5 (`null_eur_count`-Disclosure im Body), H6 (Live-Smoke).
+- **Live-Pentest** `tests/sql/PROJ-116-dd-report-pentest.sql` (3 Streams standard/confidential/strict + Fremd-Tenant, self-rolling-back, **0 Residue**): **A–H 8/8 PASS** — A admin sieht alle 3 Streams · B 3 Red-Flags deal_breaker-first · C Member nur standard-Stream (H4) · D Member 0 conf/strict Red-Flags (H2/H3 Aggregat-Leak-Probe) · E Member-Aggregat korrekt · F confidential-cleared sieht std+conf NICHT strict (Stufen-Ordnung) · G anon execute revoked (H1) · H Cross-Tenant 0/0 (kein Leak).
+- **Playwright** `tests/PROJ-116-dd-report.spec.ts` 4/4 chromium: Auth-Gates auf GET `/api/projects/[id]/dd-report` + malformed-id + In-App-Seite `/dd-bericht` + Print-Seite `/dd-report/print` (alle 307/401/403 unauth). Route-Unit-Test 5/5 (inkl. 400-uuid-Validierung).
+- **Gates:** vitest route 5/5, routing 114/114; eslint 0; tsc 14 baseline/0 neu; build clean.
+- **F-1 (Info, in-QA korrigiert):** initiale E2E-Erwartung „400 vor Auth" war falsch — die Middleware gated `/api/projects/*` unauth per Redirect *vor* dem Route-Handler; der 400-Pfad ist via Route-Unit-Test abgedeckt. Test-Erwartung auf Auth-Gate korrigiert. **D-1 (Env):** Mobile-Safari-Projekt skipped (WebKit-Host-Libs fehlen — bekanntes Env-Issue PROJ-67/F2; chromium deckt ab).
+
+→ `/deploy`.
 **Created:** 2026-06-10
 **Origin:** M&A-Platform Backlog (Epic G — Due Diligence)
 **Priority:** P1
