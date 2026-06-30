@@ -60,6 +60,20 @@ Then `git mv 2026…_<slug>.sql <prod_version>_<slug>.sql` and re-run the check.
 > would re-introduce repo↔prod drift. Seconds-precise existing migrations are a
 > warning only.
 
+> **Caveat for the early synthetic-versioned batch (verified during PROJ-134-α):**
+> the prod-version rename only works when it does **not** change the
+> filename-sorted fresh-apply order. The early migrations (round prefixes with
+> an invalid hour, e.g. `…400000`/`…500000`/`…160000`) use *synthetic ordering
+> versions*, not prod-matching timestamps, and the PROJ-42 schema-drift guard
+> replays migrations in filename-sorted order. Renaming one of these to its
+> earlier prod timestamp reorders the fresh-apply and breaks a dependency
+> (observed: `relation "public.tenant_ai_keys" does not exist`). For a **prefix
+> collision** in this batch, resolve it **order-preservingly** instead: keep the
+> first file's prefix and bump the second by `+1` (`…500000` → `…500001`) so it
+> sorts immediately after — distinct prefix, identical apply order. The residual
+> filename↔prod-version drift for these long-applied files belongs to the
+> deferred prod-audit (AC-134.7), not a reorder-risky rename.
+
 ## Deferred (β, PROJ-134 AC-134.7)
 
 A read-only prod-audit script (`schema_migrations.version` vs all repo filenames,

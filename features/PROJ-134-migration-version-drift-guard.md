@@ -65,17 +65,18 @@ Reine DevEx/Tooling-Slice. **Kein neuer npm-Dependency**, kein `src/`-Change, ke
 - **`.claude/rules/backend.md`** — Prozessregel (AC-134.1): erst Datei `YYYYMMDDHHMMSS_proj<N>_<slug>.sql` anlegen, dann `apply_migration(name=Dateiname-Stamm)`; nie Präfix doppelt; minute-rastern + idempotent bevorzugen; bei Drift Repo-Datei auf Prod-Version umbenennen.
 - **`docs/production/migration-naming.md`** — Runbook (AC-134.6).
 
-**AC-134.5 Bestands-Verifikation (Live gegen Prod) — der Guard fand sofort 3 reale Repo≠Prod-Drift-Kollisionen:**
+**AC-134.5 Bestands-Verifikation — der Guard fand sofort 3 reale Präfix-Kollisionen (alle aus dem frühen, synthetisch-versionierten Migrations-Batch mit ungültiger Stunde 40/50):**
 
-| Repo-Datei (vorher, kollidierend, ungültige Stunde 40/50) | Prod-registrierte Version | Fix (Rename auf Prod-Version) |
+| Kollidierender Präfix | Beteiligte Dateien | Fix |
 |---|---|---|
-| `20260504400000_proj32c_alpha_tenant_ai_providers` | `20260504120908` | ✅ umbenannt |
-| `20260504400000_proj36a_wbs_hierarchy_rollup_redeploy` | `20260504105243` | ✅ umbenannt |
-| `20260504500000_proj32c_gamma_priority_and_cleanup` | `20260504144753` | ✅ umbenannt |
-| `20260504500000_security_internal_functions_lockdown` | `20260504144601` | ✅ umbenannt |
-| `20260506160000_proj53b_tenant_holiday_region` | `20260506132938` | ✅ umbenannt |
-| `20260506160000_security_revoke_anon_and_trigger_only_rpcs` | `20260506154304` | ✅ umbenannt |
+| `20260504400000` | `proj32c_alpha_tenant_ai_providers` + `proj36a_wbs_hierarchy_rollup_redeploy` | → `…400000` / `…400001` |
+| `20260504500000` | `proj32c_gamma_priority_and_cleanup` + `security_internal_functions_lockdown` | → `…500000` / `…500001` |
+| `20260506160000` | `proj53b_tenant_holiday_region` + `security_revoke_anon_and_trigger_only_rpcs` | → `…160000` / `…160001` |
 
-Diese 3 Präfix-Kollisionen (`…400000`/`…500000`/`…160000`) hätten `supabase db push` gebrochen (genau die PROJ-69/89-Klasse). Per AC-134.5 wurde die Repo-Datei auf die prod-registrierte Version umbenannt (Inhalt unverändert) → Kollision + Drift behoben. Danach: `check:migration-naming` **0 errors / 65 warnings (Exit 0)** auf 151 Migrationen.
+Diese 3 Präfix-Kollisionen hätten `supabase db push` gebrochen (genau die PROJ-69/89-Klasse — AC-134.2-Hard-Fail-Fall). Behoben durch **ordnungs-erhaltende Disambiguierung**: die erste Datei jedes Paares behält ihren Original-Präfix, die zweite bekommt `+1` (sortiert unmittelbar danach → identische Apply-Reihenfolge, aber eindeutiger Präfix). Inhalt unverändert.
 
-**Quality-Gates:** `check:migration-naming` grün (0 errors), Vitest `analyze.test.ts` 10/10, lint 0, tsc 0 neu. **Offen:** AC-134.7 (read-only Prod-Audit-Script) deferred-β. → /qa.
+**Deviation von AC-134.5 (begründet, QA-belegt):** AC-134.5 schreibt *„Rename auf prod-registrierte Version"* vor. Ein erster Versuch tat genau das (z.B. `…400000` → `20260504120908`). Das **brach den PROJ-42-Schema-Drift-Required-Check** (`relation "public.tenant_ai_keys" does not exist` in `proj32c_gamma`): der frühe Batch nutzt **synthetische Ordnungs-Versionen** (keine prod-matchenden Timestamps), und die Repo-Fresh-Apply-Reihenfolge (die der Schema-Drift-Guard datei-sortiert nachspielt) **hängt von diesen synthetischen Positionen ab** — ein Rename auf die früheren Prod-Timestamps schiebt diese Migrationen vor die Migrationen, die ihre Abhängigkeiten anlegen. Für diesen frühen Batch ist prod-Version-Rename also **nicht** anwendbar; die Kollision (der akute `db push`-Brecher) wird stattdessen ordnungs-erhaltend aufgelöst. Der verbleibende Dateiname↔Prod-Version-Drift dieser frühen Dateien ist Vorbestand (geteilt mit dem gesamten synthetischen Früh-Batch) und gehört in den deferred AC-134.7-Prod-Audit, **nicht** in eine reorder-riskante α-Korrektur. Der Runbook-Abschnitt „Fixing drift" trägt diese Einschränkung jetzt.
+
+Danach: `check:migration-naming` **0 errors / 62 warnings (Exit 0)** auf 151 Migrationen; der Schema-Drift-Required-Check bleibt grün (Apply-Reihenfolge unverändert).
+
+**Quality-Gates:** `check:migration-naming` grün (0 errors), Vitest `analyze.test.ts` 10/10, lint 0, tsc 0 neu, Schema-Drift-Guard grün. **Offen:** AC-134.7 (read-only Prod-Audit-Script) deferred-β. → /qa.
