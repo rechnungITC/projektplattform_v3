@@ -15,9 +15,23 @@ const insertChain = {
   single: vi.fn(),
 }
 
+// PROJ-101 — GET list query builder (separate from POST insert chain).
+// Thenable so `await query` resolves the list result.
+const listChain = {
+  select: vi.fn().mockReturnThis(),
+  eq: vi.fn().mockReturnThis(),
+  order: vi.fn().mockReturnThis(),
+  gte: vi.fn().mockReturnThis(),
+  lte: vi.fn().mockReturnThis(),
+  then: (resolve: (v: { data: unknown[]; error: null }) => unknown) =>
+    resolve({ data: [], error: null }),
+}
+let workItemsMode: "insert" | "list" = "insert"
+
 const fromMock = vi.fn((table: string) => {
   if (table === "projects") return projectChain
-  if (table === "work_items") return insertChain
+  if (table === "work_items")
+    return workItemsMode === "list" ? listChain : insertChain
   throw new Error(`unexpected table ${table}`)
 })
 
@@ -28,7 +42,7 @@ vi.mock("@/lib/supabase/server", () => ({
   })),
 }))
 
-import { POST } from "./route"
+import { GET, POST } from "./route"
 
 const TENANT_ID = "11111111-1111-4111-8111-111111111111"
 const PROJECT_ID = "22222222-2222-4222-8222-222222222222"
@@ -47,10 +61,16 @@ function makePost(body: unknown): Request {
 
 beforeEach(() => {
   vi.clearAllMocks()
+  workItemsMode = "insert"
   projectChain.select.mockReturnValue(projectChain)
   projectChain.eq.mockReturnValue(projectChain)
   insertChain.insert.mockReturnValue(insertChain)
   insertChain.select.mockReturnValue(insertChain)
+  listChain.select.mockReturnValue(listChain)
+  listChain.eq.mockReturnValue(listChain)
+  listChain.order.mockReturnValue(listChain)
+  listChain.gte.mockReturnValue(listChain)
+  listChain.lte.mockReturnValue(listChain)
 
   // Default: project exists with no method (work_package allowed there).
   projectChain.maybeSingle.mockResolvedValue({
@@ -83,6 +103,7 @@ describe("POST /api/projects/[id]/work-items — schema/DB-payload drift", () =>
       status: "todo",
       priority: "high",
       responsible_user_id: USER_ID,
+      due_date: "2026-07-15",
       attributes: { story_points: 5 },
       position: 100,
       created_from_proposal_id: PROPOSAL_ID,
@@ -133,5 +154,63 @@ describe("POST /api/projects/[id]/work-items — schema/DB-payload drift", () =>
     expect(arg.tenant_id).toBe(TENANT_ID)
     expect(arg.project_id).toBe(PROJECT_ID)
     expect(arg.created_by).toBe(USER_ID)
+  })
+})
+
+// ---------------------------------------------------------------------------
+// PROJ-101 — GET list filters (responsible / phase / due-window)
+// ---------------------------------------------------------------------------
+describe("GET /api/projects/[id]/work-items — PROJ-101 filters", () => {
+  function makeGet(qs: string): Request {
+    return new Request(
+      `http://localhost/api/projects/${PROJECT_ID}/work-items${qs}`,
+      { method: "GET" }
+    )
+  }
+  const ctx = { params: Promise.resolve({ id: PROJECT_ID }) }
+
+  beforeEach(() => {
+    workItemsMode = "list"
+    getUserMock.mockResolvedValue({ data: { user: { id: USER_ID } } })
+  })
+
+  it("rejects a non-uuid responsible_user_id with 400", async () => {
+    const res = await GET(makeGet("?responsible_user_id=not-a-uuid"), ctx)
+    expect(res.status).toBe(400)
+    expect((await res.json()).error.field).toBe("responsible_user_id")
+  })
+
+  it("rejects a non-uuid phase_id with 400", async () => {
+    const res = await GET(makeGet("?phase_id=nope"), ctx)
+    expect(res.status).toBe(400)
+    expect((await res.json()).error.field).toBe("phase_id")
+  })
+
+  it("rejects a malformed due_after with 400", async () => {
+    const res = await GET(makeGet("?due_after=2026-13-99x"), ctx)
+    expect(res.status).toBe(400)
+    expect((await res.json()).error.field).toBe("due_after")
+  })
+
+  it("rejects a malformed due_before with 400", async () => {
+    const res = await GET(makeGet("?due_before=15.07.2026"), ctx)
+    expect(res.status).toBe(400)
+    expect((await res.json()).error.field).toBe("due_before")
+  })
+
+  it("applies all valid filters to the query and returns 200", async () => {
+    const res = await GET(
+      makeGet(
+        `?responsible_user_id=${USER_ID}&phase_id=${PROJECT_ID}` +
+          `&due_after=2026-07-01&due_before=2026-07-31&status=in_progress`
+      ),
+      ctx
+    )
+    expect(res.status).toBe(200)
+    expect(listChain.eq).toHaveBeenCalledWith("responsible_user_id", USER_ID)
+    expect(listChain.eq).toHaveBeenCalledWith("phase_id", PROJECT_ID)
+    expect(listChain.eq).toHaveBeenCalledWith("status", "in_progress")
+    expect(listChain.gte).toHaveBeenCalledWith("due_date", "2026-07-01")
+    expect(listChain.lte).toHaveBeenCalledWith("due_date", "2026-07-31")
   })
 })

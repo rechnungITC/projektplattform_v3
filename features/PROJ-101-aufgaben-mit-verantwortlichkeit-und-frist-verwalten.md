@@ -14,7 +14,7 @@ summary_for_jira: "[C1] Aufgaben mit Verantwortlichkeit und Frist verwalten"
 
 # PROJ-101: Aufgaben mit Verantwortlichkeit und Frist verwalten
 
-## Status: Architected
+## Status: In Progress (Backend live)
 **Created:** 2026-06-10
 **Origin:** M&A-Platform Backlog (Epic C — Aufgaben & Workstreams)
 **Priority:** P1
@@ -160,6 +160,23 @@ Keine neuen npm-Pakete. Eine Supabase-Migration (1 Spalte).
 - **PROJ-Y-101a → PROJ-102:** `attributes.ma_workstream`-Tag auf echte `workstreams`-FK migrieren + Pflicht hochziehen.
 - **PROJ-Y-101b → PROJ-104/107:** Cross-Entity-Governance-Assoziation (generisch vs. pro-Paar) entscheiden + task↔Risk/Decision/Deliverable nachrüsten.
 - **PROJ-Y-101c:** Aktive Eskalation bei wiederholter Fristüberschreitung (über My-Work-Inbox-Surface bevorzugt, kein neuer Cron).
+
+---
+
+## Backend Implementation Notes (2026-06-30)
+
+**Reuse-Schnitt umgesetzt — kein neues Tabellenmodell.**
+
+- **Migration `20260630094550_proj101_work_item_due_date`** (live in Prod-DB + Repo-Datei versionsgleich, PROJ-134-konform): `work_items.due_date date` nullable (core-weit), Kommentar, partieller Index `work_items_project_due_date_idx (project_id, due_date) WHERE is_deleted=false` für den Fristfenster-Filter. **Bewusst kein CHECK** gegen `planned_start/planned_end` (F3). Idempotent (`add column if not exists` / `create index if not exists`).
+- **`due_date` in beiden Zod-Schemas** (`work-items/_schema.ts`, create + patch) als `YYYY-MM-DD`-Regex nullable optional — fließt via Spread-Pattern in INSERT/UPDATE (Drift-Test deckt ab).
+- **Workstream-Tag** (`attributes.ma_workstream`) braucht **keine** Schema-Änderung — `attributes` ist bereits `z.record` in beiden Schemas (F1).
+- **GET-List-Filter erweitert** (`work-items/route.ts`): `responsible_user_id`, `phase_id` (UUID-validiert), `due_after`/`due_before` (`due_date >=`/`<=`, YYYY-MM-DD-validiert). Deckt AC5.
+- **My-Work-Inbox** (`lib/dashboard/summary.ts`): `due_date` zum Select ergänzt; effektive Fälligkeit = `due_date ?? planned_end` → echte Frist treibt jetzt `is_overdue` (AC4-Surface).
+- **Frontend-Typ + Hooks** (`types/work-item.ts`, `use-work-items.ts`, `use-work-item.ts`): `due_date` zu Interface + Select-String + explizitem Row-Mapping ergänzt (obs-202-Footgun + Hook-Mapping-Drift-Test).
+
+**Quality-Gates:** vitest **2137/2137** (inkl. +5 neue GET-Filter-Tests + 2 Drift-Kitchensinks erweitert); ESLint 0; `tsc` 0 neue Errors (Baseline unverändert); `npm run build` clean. **Advisors:** keine neue Security-Lint; Performance zeigt den neuen Index als „unused index"-INFO (erwartet bei frischem Index, 0 Scans — PROJ-69-Muster).
+
+**Noch offen → /qa:** Live-Verifikation gegen Prod (Task mit Frist anlegen → Filter → My-Work-Overdue-Surface), Frontend „Aufgaben"-Tab (→ /frontend), Performance ≥10k Tasks (DoD).
 
 ---
 _Quelle: Backlog-Entwurf M&A-Projektplattform · C — Aufgaben & Workstreams_

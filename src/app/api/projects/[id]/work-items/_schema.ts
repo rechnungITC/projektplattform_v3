@@ -38,6 +38,12 @@ export const workItemCreateSchema = z.object({
   status: z.enum(WORK_ITEM_STATUSES).optional(),
   priority: z.enum(WORK_ITEM_PRIORITIES).optional(),
   responsible_user_id: z.string().uuid().nullable().optional(),
+  // PROJ-101 — Frist (deadline), distinct from planned_start/planned_end.
+  due_date: z
+    .string()
+    .regex(/^\d{4}-\d{2}-\d{2}$/, "YYYY-MM-DD erwartet")
+    .nullable()
+    .optional(),
   attributes: z.record(z.string(), z.unknown()).optional(),
   position: z.number().optional(),
   created_from_proposal_id: z.string().uuid().nullable().optional(),
@@ -74,6 +80,12 @@ export const workItemPatchSchema = z
       .nullable()
       .optional(),
     planned_end: z
+      .string()
+      .regex(/^\d{4}-\d{2}-\d{2}$/, "YYYY-MM-DD erwartet")
+      .nullable()
+      .optional(),
+    // PROJ-101 — Frist (deadline), distinct from planned_start/planned_end.
+    due_date: z
       .string()
       .regex(/^\d{4}-\d{2}-\d{2}$/, "YYYY-MM-DD erwartet")
       .nullable()
