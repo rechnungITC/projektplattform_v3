@@ -1,0 +1,37 @@
+name: Migration Naming Guard
+
+on:
+  pull_request:
+    branches: [main]
+  push:
+    branches: [main]
+
+# Auto-cancel duplicate runs on the same ref.
+concurrency:
+  group: migration-naming-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  check:
+    name: Verify migration filename naming + version-prefix uniqueness
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: "20"
+          cache: "npm"
+
+      - name: Install dependencies
+        run: npm ci
+
+      # Pure file analysis — no database / Docker. Hard-fails on duplicate
+      # 14-digit version prefixes (the PROJ-69/PROJ-89 collision that breaks
+      # `supabase db push`) and malformed filenames; warns on seconds-precise
+      # timestamps + non-idempotent `create table`. PROJ-134.
+      - name: Run migration-naming check
+        run: npm run check:migration-naming

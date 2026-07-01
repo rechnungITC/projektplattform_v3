@@ -14,6 +14,7 @@
  */
 
 import {
+  FileText,
   Handshake,
   ListChecks,
   Microscope,
@@ -107,6 +108,17 @@ const MA_DUE_DILIGENCE_SECTION: SidebarSection = {
   requiresProjectType: "ma",
 }
 
+// PROJ-116 — the "DD-Bericht" section: consolidated, live DD report (per-stream
+// summary + cross-stream red-flag list) with print-to-PDF export. Read-only and
+// need-to-know-scoped server-side; injected right after Due Diligence.
+const MA_DD_REPORT_SECTION: SidebarSection = {
+  id: "ma-dd-report",
+  label: "DD-Bericht",
+  icon: FileText,
+  tabPath: "dd-bericht",
+  requiresProjectType: "ma",
+}
+
 function withMaFoundation(config: MethodConfig): MethodConfig {
   const sections = config.sidebarSections
   // Insert right after the leading "overview" section (index 0) when present.
@@ -121,6 +133,7 @@ function withMaFoundation(config: MethodConfig): MethodConfig {
       MA_TASKS_SECTION,
       MA_CONFIDENTIALITY_SECTION,
       MA_DUE_DILIGENCE_SECTION,
+      MA_DD_REPORT_SECTION,
       ...sections.slice(insertAt),
     ],
   }
