@@ -1,7 +1,7 @@
 # PROJ-134 — Migration-Versions-Drift-Guard & Naming-Konvention
 
-## Status: Approved (α QA-PASS 2026-07-01 — 6/6 α-ACs verifiziert, Guard live in CI grün + red-team hard-fail bewiesen, 0 Critical/High. Offen: Ruleset-Enrollment als /deploy-Handoff, AC-134.7 deferred-β)
-<!-- prior: In Progress (α gebaut 2026-06-30); Planned (CIA-reviewed 2026-06-15) -->
+## Status: Deployed (α — Tag `v2.5.0-PROJ-134` 2026-07-01; Guard + Workflow + Regel + Runbook live auf main, 3 Drift-Kollisionen behoben. Kein Runtime-Deploy [reine Tooling/Docs/Rename-Ebene]. Offen: Ruleset-Enrollment als User-Handoff, AC-134.7 deferred-β)
+<!-- prior: Approved (α QA-PASS 2026-07-01); In Progress (α gebaut 2026-06-30); Planned (CIA-reviewed 2026-06-15) -->
 
 **Created:** 2026-06-15
 **Origin:** Systematischer Befund aus den Deploy-Closures PROJ-69 / PROJ-89 / PROJ-50 (3× derselbe Migration-Versions-Drift in Folge, 2026-06-11..15).
@@ -108,3 +108,13 @@ Danach: `check:migration-naming` **0 errors / 62 warnings (Exit 0)** auf 151 Mig
 - **F-2 (Info):** 62 Bestands-Warnungen (Sekunden-genaue Timestamps + ~20 nicht-idempotente `create table`) — bewusst warn, kein Fail (AC-134.4-Design); Aufräumen ist kein α-Ziel.
 
 `analyze.test.ts` 10/10 grün auf merged main. **0 Critical / 0 High → Approved.**
+
+## Deployment — α (2026-07-01)
+
+**Tag `v2.5.0-PROJ-134`.** Kein Vercel-Runtime-Deploy: die Slice berührt keine `src/`-Datei, keine DB-Migration (nur ordnungs-erhaltende Datei-Renames) — sie lebt auf der Tooling-/CI-/Docs-Ebene. Der Code (Guard-Script, Workflow, Backend-Regel, Runbook) + die 3 Kollisions-Auflösungen sind über PR #207 (α) und #210 (QA-Bookkeeping) auf `main`.
+
+**Pre-Deploy-Gates (via CI auf #207/#210):** Schema-Drift, `npm audit`, Snyk, migration-naming — alle grün beim Merge. `analyze.test` 10/10.
+
+**Offener User-Handoff (F-1) — Ruleset-Enrollment (analog PROJ-42/74):** Der Check läuft auf jedem `main`-PR, ist aber noch **nicht** als *Required* im Branch-Ruleset hinterlegt (bewusst nicht in-flight gemutet). Zum Aktivieren den Context in das `main protection`-Ruleset aufnehmen (GitHub UI: Settings → Rules → *main protection* → Require status checks → Add `Verify migration filename naming + version-prefix uniqueness`). Bis dahin ist der Guard advisory. Danach ist AC-134.2 vollständig „Required".
+
+**Offen (deferred-β):** AC-134.7 read-only Prod-Audit-Script.
