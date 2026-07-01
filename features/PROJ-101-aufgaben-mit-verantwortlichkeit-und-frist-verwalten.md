@@ -14,7 +14,7 @@ summary_for_jira: "[C1] Aufgaben mit Verantwortlichkeit und Frist verwalten"
 
 # PROJ-101: Aufgaben mit Verantwortlichkeit und Frist verwalten
 
-## Status: In Progress (Backend live)
+## Status: Approved (QA PASS 2026-07-01 — 0 Critical/0 High)
 **Created:** 2026-06-10
 **Origin:** M&A-Platform Backlog (Epic C — Aufgaben & Workstreams)
 **Priority:** P1
@@ -194,6 +194,38 @@ Keine neuen npm-Pakete. Eine Supabase-Migration (1 Spalte).
 **Quality-Gates:** vitest **2137/2137** (keine Regression durch Nav-Section/Hook-Change); ESLint 0; `tsc` 14 Baseline/0 neu; `npm run build` clean (`/projects/[id]/aufgaben` registriert).
 
 **Noch offen → /qa:** Live-E2E gegen Prod (Aufgabe anlegen mit Frist → Filter greifen → Inline-Statuswechsel → Overdue-Rot + My-Work-Surface → Edit/Delete → 0 Residue), Playwright-Auth-Gate für die neue Route, Perf ≥10k (DoD).
+
+---
+
+## QA Test Results (2026-07-01) — PASS, PRODUCTION-READY
+
+**Verdikt: 0 Critical / 0 High.** 5/5 ACs abgedeckt (2 CIA-gelockte Deviations dokumentiert). Empfehlung: **Approved → /deploy.**
+
+### Acceptance Criteria
+| AC | Ergebnis | Nachweis |
+|---|---|---|
+| AC1 — anlegen mit Titel/Verantwortlicher/Frist/Workstream | ✅ PASS (Workstream optional, D-1) | Create-Dialog → POST persistiert `due_date` + `attributes.ma_workstream`; Live-Smoke **A** (due_date persisted 3/3) |
+| AC2 — Phase + optional Deliverable/Risiko/Entscheidung | ✅ Phase PASS · Links **deferred** (D-2) | Phase-Link Live-Smoke **E** (2/2); Risiko/Entscheidung/Deliverable-Links CIA-zurückgestellt (Owner PROJ-104/107) |
+| AC3 — Status offen/in Arbeit/blockiert/erledigt/verworfen | ✅ PASS | Enum 1:1 (todo/in_progress/blocked/done/cancelled); Inline-Status-Select → `/status`-Route; Live-Smoke **F** (status=done 1/1) |
+| AC4 — Fristüberschreitung farblich + Benachrichtigung | ✅ PASS | FE Overdue-Rot (`due_date < today` ∧ Status ∉ {done,cancelled}); Notify via PROJ-64 My-Work-Inbox (`due_date ?? planned_end`); Live-Smoke **D** (My-Work-Overdue = t1 only, 1/1) |
+| AC5 — Filter Verantwortlicher/Phase/Workstream/Fristfenster/Status | ✅ PASS | Live-Smoke **B** (Fristfenster 2/2) · **C** (Workstream 1/1) · **E** (Phase 2/2) · **F** (Status 1/1) · **G** (Verantwortlicher 4/4); +5 vitest GET-Filter-Tests; FE-Filterbar |
+
+### Live-Verifikation (Supabase Prod `iqerihohwabyjzkpcujq`, 0 Residue)
+- **DB-Smoke** (DO-Block + RAISE-Rollback): 4 Tasks (overdue/future/done-past/no-due) → alle 7 Assertions grün (A–G). Residue-Check: **0**.
+- **Red-Team RLS**: Projekt mit 33 work_items → Nicht-Member sieht via neuem `due_date`/`workstream`-Filterpfad **0** Zeilen. Kein Cross-Tenant-Leak (Feature ändert RLS nicht; Filter verengen nur innerhalb RLS-sichtbarer Zeilen).
+- **Injection**: Datums-Filter regex-validiert (400), UUID-Filter validiert (400), Workstream-Wert parameterisiert (`.eq`), Spaltenpfad `attributes->>ma_workstream` hartkodiert → kein Injection-Vektor.
+
+### Automatisierte Tests
+- **Playwright** `tests/PROJ-101-aufgaben.spec.ts`: **4/4 chromium** (Page-Route `/projects/[id]/aufgaben` + GET-mit-Filtern + POST-create + PATCH-status alle auth-gated). Mobile Safari übersprungen (WebKit-Host-Libs fehlen, Umgebungs-Limit, PROJ-67).
+- **vitest 2137/2137** (inkl. +5 GET-Filter-Tests + erweiterte Drift-Kitchensinks); ESLint 0; tsc 14 Baseline/0 neu; build clean.
+
+### Findings & Deviations
+- **F-1 (Low) — ≥10k-Perf-DoD nicht voll erfüllt:** `useWorkItems` lädt alle passenden Zeilen ohne Pagination (vorbestehendes Plattform-Muster — der Backlog nutzt denselben Hook). Mitigation: neue Filter sind **server-side** + partieller Index `(project_id, due_date)` verkleinert das Set. Empfehlung: Pagination als Followup (PROJ-Y-101d), **kein PROJ-101-Blocker**.
+- **D-1 (Deviation, CIA-gelockt):** AC1 „Workstream Pflichtfeld" → optionaler `attributes.ma_workstream`-Tag (PROJ-102 hebt Pflicht später hoch).
+- **D-2 (Deviation, CIA-gelockt):** AC2 task↔Risiko/Entscheidung/Deliverable-Links zurückgestellt (Muster bei PROJ-104/107).
+- **Info:** DoD „exportiert" via bestehenden Work-Item-Jira-Export (PROJ-47, kind=task exportierbar) — geerbt, nicht separat neu getestet. Keine M&A-Projekte in Prod → Live-Test lief auf Core-Projekt (Feature ist core-weit; M&A-Gating ist rein Nav-Ebene).
+
+**Followups:** PROJ-Y-101a/b/c (aus Architektur) + **PROJ-Y-101d** (Task-Listen-Pagination für ≥10k).
 
 ---
 _Quelle: Backlog-Entwurf M&A-Projektplattform · C — Aufgaben & Workstreams_
