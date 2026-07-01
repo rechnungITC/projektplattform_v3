@@ -13,7 +13,14 @@
  * Tenant-level overrides land with PROJ-16.
  */
 
-import { Handshake, Microscope, Network, ShieldCheck, Workflow } from "lucide-react"
+import {
+  Handshake,
+  ListChecks,
+  Microscope,
+  Network,
+  ShieldCheck,
+  Workflow,
+} from "lucide-react"
 
 import type { MethodConfig, SidebarSection } from "@/types/method-config"
 import type { ProjectMethod } from "@/types/project-method"
@@ -78,6 +85,17 @@ const MA_ROLES_SECTION: SidebarSection = {
   requiresProjectType: "ma",
 }
 
+// PROJ-101 — the "Aufgaben" section (operative M&A tasks = work_items kind='task'
+// with Verantwortlicher, Frist, Phase, Status + Workstream-Tag). Project-TYPE
+// driven (M&A), injected after Rollen & RACI (tasks carry RACI).
+const MA_TASKS_SECTION: SidebarSection = {
+  id: "ma-tasks",
+  label: "Aufgaben",
+  icon: ListChecks,
+  tabPath: "aufgaben",
+  requiresProjectType: "ma",
+}
+
 // PROJ-112 — the "Due Diligence" section (DD-stream backbone: per-stream status,
 // lead, time window, confidentiality). Also project-TYPE driven (M&A) and
 // injected right after Governance, gated the same way.
@@ -100,6 +118,7 @@ function withMaFoundation(config: MethodConfig): MethodConfig {
       MA_FOUNDATION_SECTION,
       MA_PHASE_MODEL_SECTION,
       MA_ROLES_SECTION,
+      MA_TASKS_SECTION,
       MA_CONFIDENTIALITY_SECTION,
       MA_DUE_DILIGENCE_SECTION,
       ...sections.slice(insertAt),

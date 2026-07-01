@@ -20,6 +20,14 @@ interface UseWorkItemsOptions {
   /** Filter to bug kind only — convenience for the cross-method bug filter. */
   bugsOnly?: boolean
   includeDeleted?: boolean
+  /** PROJ-101 — filter by phase (M&A Aufgaben grouping). */
+  phaseId?: string | null
+  /** PROJ-101 — Fristfenster lower bound (due_date >=, YYYY-MM-DD). */
+  dueAfter?: string
+  /** PROJ-101 — Fristfenster upper bound (due_date <=, YYYY-MM-DD). */
+  dueBefore?: string
+  /** PROJ-101 — workstream free-text tag (attributes.ma_workstream). */
+  workstream?: string
 }
 
 interface UseWorkItemsResult {
@@ -120,6 +128,25 @@ export function useWorkItems(
           } else {
             query = query.eq("parent_id", opts.parentId)
           }
+        }
+
+        // PROJ-101 — Aufgaben filters: phase, due-window (Fristfenster),
+        // workstream tag. All server-side so the list scales.
+        if (opts.phaseId !== undefined) {
+          if (opts.phaseId === null) {
+            query = query.is("phase_id", null)
+          } else {
+            query = query.eq("phase_id", opts.phaseId)
+          }
+        }
+        if (opts.dueAfter) {
+          query = query.gte("due_date", opts.dueAfter)
+        }
+        if (opts.dueBefore) {
+          query = query.lte("due_date", opts.dueBefore)
+        }
+        if (opts.workstream) {
+          query = query.eq("attributes->>ma_workstream", opts.workstream)
         }
 
         const { data, error: queryError } = await query

@@ -179,4 +179,21 @@ Keine neuen npm-Pakete. Eine Supabase-Migration (1 Spalte).
 **Noch offen → /qa:** Live-Verifikation gegen Prod (Task mit Frist anlegen → Filter → My-Work-Overdue-Surface), Frontend „Aufgaben"-Tab (→ /frontend), Performance ≥10k Tasks (DoD).
 
 ---
+
+## Frontend Implementation Notes (2026-07-01)
+
+**Neuer „Aufgaben"-Tab im M&A-Projektraum — Komposition aus shadcn-Primitiven + Reuse.**
+
+- **Nav** (`lib/method-templates/index.ts`): `MA_TASKS_SECTION` (`tabPath: "aufgaben"`, Icon `ListChecks`, `requiresProjectType: "ma"`) via `withMaFoundation` nach „Rollen & RACI" injiziert (Reihenfolge: Grundlage → Phasenmodell → Rollen → **Aufgaben** → Governance → Due Diligence).
+- **Route** `src/app/(app)/projects/[id]/aufgaben/page.tsx` — async-Params-Scaffold analog Due-Diligence-Seite.
+- **`ma-tasks-page.tsx`** (Liste + Filterleiste): `useWorkItems(projectId, { kinds:['task'], … })`; Filter Verantwortlicher (ResponsibleUserPicker, includeAllOption) · Phase (Select, inkl. „Ohne Phase") · Status · Fristfenster (2× Date) · Workstream (debounced 300ms). Tabelle: Titel (+Workstream-Badge), Verantwortlich, **Frist rot wenn überfällig** (`due_date < today` UND Status ∉ {done,cancelled}), Status als Inline-Select → `/status`-Route, Phase, Priorität, Edit/Delete. Loading/Empty/Error-States. Create/Edit/Delete nur bei `useProjectAccess(edit_master)`.
+- **`ma-task-dialog.tsx`** (Create+Edit, react-hook-form+zod): Titel, Verantwortlicher (ResponsibleUserPicker), Phase (usePhases), **Frist** (`Input type=date` → `due_date`), Priorität, **Workstream** (`attributes.ma_workstream`, Merge-preserving bei Edit), Beschreibung. POST → `/work-items` (kind=task, status=todo), PATCH → `/work-items/[wid]`. Bewusst **eigener** M&A-Task-Dialog statt Erweiterung des generischen Backlog-Dialogs (Workstream ist M&A-spezifisch; kein Kind/Parent/Sprint/WBS-Ballast).
+- **`useWorkItems` erweitert** (additive, backward-compat): `phaseId` · `dueAfter` · `dueBefore` · `workstream` (= `attributes->>ma_workstream`) — alle server-side via Supabase (skaliert; ergänzt die bereits gebauten GET-API-Filter). Bestehender Backlog-Aufrufer unberührt (neue Opts undefined).
+- **Reuse:** ResponsibleUserPicker, usePhases, useAuth, DeleteWorkItemDialog, WorkItemPriorityBadge, WORK_ITEM_STATUS_LABELS. Kein neues Dep, kein neues shadcn-Primitive.
+
+**Quality-Gates:** vitest **2137/2137** (keine Regression durch Nav-Section/Hook-Change); ESLint 0; `tsc` 14 Baseline/0 neu; `npm run build` clean (`/projects/[id]/aufgaben` registriert).
+
+**Noch offen → /qa:** Live-E2E gegen Prod (Aufgabe anlegen mit Frist → Filter greifen → Inline-Statuswechsel → Overdue-Rot + My-Work-Surface → Edit/Delete → 0 Residue), Playwright-Auth-Gate für die neue Route, Perf ≥10k (DoD).
+
+---
 _Quelle: Backlog-Entwurf M&A-Projektplattform · C — Aufgaben & Workstreams_
