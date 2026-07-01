@@ -14,7 +14,9 @@ summary_for_jira: "[G5] DD-Berichte konsolidieren und Red-Flag-Report bereitstel
 
 # PROJ-116: DD-Berichte konsolidieren und Red-Flag-Report bereitstellen
 
-## Status: Approved (QA PASS — 0 Critical/High)
+## Status: Deployed (2026-06-30 — tag v2.4.0-PROJ-116)
+
+**Deployed 2026-06-30:** Code live auf main via #205 (backend) + #206 (frontend) + #208 (QA); Migration `20260629084539_proj116_dd_report_consolidated` seit /backend in Prod. Vercel-Prod-Deploy von `f4bb369` (#208) **READY** (dpl_56nMDPEUkQFVhVUoehVgChYu4puv, target=production). Kein neues Dep, keine separate Runtime-Migration im Closure (DDL war bereits in Prod). Post-Deploy-Smoke: 307-Auth-Gates auf `/api/projects/[id]/dd-report` + `/projects/[id]/dd-bericht` + `/projects/[id]/dd-report/print`. Tag `v2.4.0-PROJ-116`. PROJ-Y-1 (Word-Export) / PROJ-Y-2 (Snapshot-Freeze) / PROJ-Y-3 (D1-Deliverables) bleiben offene Followups.
 
 **Architected (CIA-reviewed 2026-06-29)** — VIEW-Slice: neue SECURITY-INVOKER-RPC `dd_report_consolidated` über deployte 112/113/114, need-to-know gratis; Export via PROJ-21-Print-to-PDF; Live-Sicht; Word/Snapshot/Deliverables deferred; 6 Hardening-ACs. Kein neues Dep, keine neue Tabelle.
 
