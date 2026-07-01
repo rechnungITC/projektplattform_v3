@@ -14,7 +14,7 @@ summary_for_jira: "[C1] Aufgaben mit Verantwortlichkeit und Frist verwalten"
 
 # PROJ-101: Aufgaben mit Verantwortlichkeit und Frist verwalten
 
-## Status: Approved (QA PASS 2026-07-01 — 0 Critical/0 High)
+## Status: Deployed (2026-07-01 — tag v2.6.0-PROJ-101)
 **Created:** 2026-06-10
 **Origin:** M&A-Platform Backlog (Epic C — Aufgaben & Workstreams)
 **Priority:** P1
@@ -226,6 +226,16 @@ Keine neuen npm-Pakete. Eine Supabase-Migration (1 Spalte).
 - **Info:** DoD „exportiert" via bestehenden Work-Item-Jira-Export (PROJ-47, kind=task exportierbar) — geerbt, nicht separat neu getestet. Keine M&A-Projekte in Prod → Live-Test lief auf Core-Projekt (Feature ist core-weit; M&A-Gating ist rein Nav-Ebene).
 
 **Followups:** PROJ-Y-101a/b/c (aus Architektur) + **PROJ-Y-101d** (Task-Listen-Pagination für ≥10k).
+
+---
+
+## Deployment (2026-07-01)
+
+- **Merged:** PR #212 (squash) → `main` (`add36c4`). Konflikt-Merge gegen zwischenzeitlich gemergte PROJ-116/134 sauber aufgelöst (method-templates lucide-Import: FileText + ListChecks; MA_TASKS_SECTION + MA_DD_REPORT_SECTION koexistieren).
+- **Migration:** `20260630094550_proj101_work_item_due_date` seit /backend in Prod-DB; Repo-Dateiname = prod-Version (PROJ-134-konform). Kein separater Runtime-Migration-Schritt im Deploy.
+- **Vercel:** Prod-Deploy `add36c4` READY; Post-Deploy-Smoke: 307-Auth-Gates auf `/`, `/projects/[id]/aufgaben` und `/api/projects/[id]/work-items?…` (Filter) ohne Datenleck.
+- **Tag:** `v2.6.0-PROJ-101`. Kein neues Dep, keine neuen Env-Vars.
+- **Merged-Tree-Gates:** vitest 2147/2147, ESLint 0, build clean, migration-naming-Guard 0 Errors.
 
 ---
 _Quelle: Backlog-Entwurf M&A-Projektplattform · C — Aufgaben & Workstreams_
