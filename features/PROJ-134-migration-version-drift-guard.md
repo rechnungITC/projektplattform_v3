@@ -1,7 +1,7 @@
 # PROJ-134 — Migration-Versions-Drift-Guard & Naming-Konvention
 
-## Status: In Progress (α gebaut 2026-06-30 — `check:migration-naming`-Guard + Required-Check-Workflow + Backend-Regel + Runbook; AC-134.5 fand + fixte 3 reale Repo≠Prod-Drift-Kollisionen. → /qa)
-<!-- prior: Planned (CIA-reviewed 2026-06-15) -->
+## Status: Approved (α QA-PASS 2026-07-01 — 6/6 α-ACs verifiziert, Guard live in CI grün + red-team hard-fail bewiesen, 0 Critical/High. Offen: Ruleset-Enrollment als /deploy-Handoff, AC-134.7 deferred-β)
+<!-- prior: In Progress (α gebaut 2026-06-30); Planned (CIA-reviewed 2026-06-15) -->
 
 **Created:** 2026-06-15
 **Origin:** Systematischer Befund aus den Deploy-Closures PROJ-69 / PROJ-89 / PROJ-50 (3× derselbe Migration-Versions-Drift in Folge, 2026-06-11..15).
@@ -80,3 +80,31 @@ Diese 3 Präfix-Kollisionen hätten `supabase db push` gebrochen (genau die PROJ
 Danach: `check:migration-naming` **0 errors / 62 warnings (Exit 0)** auf 151 Migrationen; der Schema-Drift-Required-Check bleibt grün (Apply-Reihenfolge unverändert).
 
 **Quality-Gates:** `check:migration-naming` grün (0 errors), Vitest `analyze.test.ts` 10/10, lint 0, tsc 0 neu, Schema-Drift-Guard grün. **Offen:** AC-134.7 (read-only Prod-Audit-Script) deferred-β. → /qa.
+
+## QA Test Results — α (2026-07-01)
+
+**Verdict: PRODUCTION-READY (0 Critical / 0 High).** Reine DevEx/CI-Slice — kein UI, keine Routen, keine DB-Migration (nur ordnungs-erhaltende Datei-Renames), daher kein Playwright/Pentest. QA = AC-Verifikation + adversariales End-to-End-Verhalten des Guards + Live-CI-Beleg.
+
+| AC | Ergebnis | Beleg |
+|---|---|---|
+| AC-134.1 (backend.md-Regel) | ✅ | `.claude/rules/backend.md` „Migration naming (MANDATORY — PROJ-134)" auf main. |
+| AC-134.2 (Kollision hard-fail) | ✅ | Unit (analyze.test) **+ Live**: der Guard fand die 3 realen Bestands-Kollisionen; red-team-Injektion einer Dublette → **exit 1** + `::error Version-prefix collision`. |
+| AC-134.3 (Format hard-fail; Sekunden/Order warn) | ✅ | red-team-Injektion `proj134_rt_badname.sql` → **exit 1** + `::error filename must match`; 62 Sekunden-/Order-Warnungen non-blocking. |
+| AC-134.4 (`create table` ohne `if not exists` warn) | ✅ | Unit-Cases + Live-Warnungen (z.B. `proj50_jira_webhook_tokens`), kein Fail. |
+| AC-134.5 (Bestands-Verifikation) | ✅ | 3 Kollisionen ordnungs-erhaltend aufgelöst (`…400001`/`…500001`/`…160001`); Schema-Drift-Guard bleibt grün. Deviation (kein prod-Version-Rename) dokumentiert + begründet. |
+| AC-134.6 (Runbook + no-DB-Lauf grün) | ✅ | `docs/production/migration-naming.md`; `npm run check:migration-naming` scannt 152 Migrationen ohne DB/Docker → exit 0. |
+| AC-134.7 (Prod-Audit-Script) | ⏸ deferred-β | wie spezifiziert Out-of-scope für α. |
+
+**Red-Team / End-to-End (detached-main-Worktree, Tree danach sauber):**
+- A) Dublette `20260504400000_*` injiziert → **exit 1**, korrektes Kollisions-`::error`, dann entfernt.
+- B) Malformed `proj134_rt_badname.sql` injiziert → **exit 1**, korrektes Format-`::error`, dann entfernt.
+- C) Sauberes `20270101120000_*` (mit `if not exists`) injiziert → **exit 0**, keine `::error` — kein False-Positive.
+- Regex-Backtracking-Regression (`create table  if not exists`, Doppel-Space) durch dedizierten Unit-Case abgedeckt.
+
+**Live-CI-Beleg:** Auf PR #207 lief der Check als `Verify migration filename naming + version-prefix uniqueness` = **SUCCESS**; der PROJ-42-Schema-Drift-Check blieb nach der ordnungs-erhaltenden Auflösung **grün** (der erste, prod-versions-basierte Rename-Versuch hatte ihn rot gefärbt — von QA gefangen + korrigiert, siehe Deviation oben).
+
+**Findings:**
+- **F-1 (Low, Handoff):** Der Check ist noch **nicht** im `main`-Ruleset als Required-Status-Check hinterlegt (aktuell required: schema-drift, npm audit, Snyk, Vercel-Preview). Enrollment (Context `Verify migration filename naming + version-prefix uniqueness`) ist ein /deploy-Handoff analog PROJ-42/74; bewusst nicht mid-flight gemutet, da Parallel-Sessions gerade mergen. Bis dahin läuft der Check advisory (grün-nötig für Auto-Merge nur, wenn required).
+- **F-2 (Info):** 62 Bestands-Warnungen (Sekunden-genaue Timestamps + ~20 nicht-idempotente `create table`) — bewusst warn, kein Fail (AC-134.4-Design); Aufräumen ist kein α-Ziel.
+
+`analyze.test.ts` 10/10 grün auf merged main. **0 Critical / 0 High → Approved.**
