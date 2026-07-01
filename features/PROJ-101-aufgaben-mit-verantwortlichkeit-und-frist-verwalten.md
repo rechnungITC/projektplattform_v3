@@ -14,7 +14,7 @@ summary_for_jira: "[C1] Aufgaben mit Verantwortlichkeit und Frist verwalten"
 
 # PROJ-101: Aufgaben mit Verantwortlichkeit und Frist verwalten
 
-## Status: Planned
+## Status: Approved (QA PASS 2026-07-01 — 0 Critical/0 High)
 **Created:** 2026-06-10
 **Origin:** M&A-Platform Backlog (Epic C — Aufgaben & Workstreams)
 **Priority:** P1
@@ -76,6 +76,156 @@ Aufgaben sind die kleinste Steuerungseinheit. Sie entstehen entlang aller Phasen
 - Deal Lead
 - PMO-Lead
 - Aufgabenverantwortliche (alle Workstreams)
+
+---
+
+## Tech Design (Solution Architect)
+
+**Architektur-Datum:** 2026-06-30 · **Reuse-Klasse:** DUP→REUSE auf PROJ-9 Work-Items (`kind='task'`) · **CIA-reviewed:** 2026-06-30 (3 Forks gelockt)
+
+### Leitprinzip
+Wir bauen **kein** neues `tasks`-Modell. Eine M&A-„Aufgabe" **ist** ein bestehendes Work-Item mit `kind='task'`. Der gesamte deployed Core wird wiederverwendet: Status-Maschine, Verantwortlicher, Phase-Bezug, RACI-Rollen, Audit, Soft-Delete, Jira-Export. Die einzige neue Schema-Fläche ist eine Frist-Spalte, die dem **gesamten Core** zugutekommt.
+
+### Was schon da ist (1:1-Reuse, kein Neubau)
+- **Aufgabe = `work_items` mit `kind='task'`** — Tabelle, RLS, Soft-Delete, Audit (PROJ-10) existieren.
+- **Statusmodell deckt sich exakt** mit der Spec:
+  | Spec (AC3) | Core-Wert |
+  |---|---|
+  | offen | `todo` |
+  | in Arbeit | `in_progress` |
+  | blockiert | `blocked` |
+  | erledigt | `done` |
+  | verworfen | `cancelled` |
+  → Keine Enum-Änderung nötig. Statuswechsel läuft über die bestehende Status-Route.
+- **Verantwortlicher** = `responsible_user_id` (existiert).
+- **Phase-Bezug** = `phase_id` (existiert, nullable).
+- **RACI** (Workstream-Lead/Deal-Lead/PMO als R/A/C/I) = `raci_assignments` aus PROJ-97 (greift bereits auf `target_type='work_item'`).
+- **Overdue-Benachrichtigung an den Verantwortlichen** = das **deployed PROJ-64 „My Work"-Inbox** listet bereits alle dem User zugewiesenen aktiven Work-Items, berechnet `is_overdue` und hat einen „Überfällig"-Filter + Hervorhebung. Damit ist AC4 („Benachrichtigung an den Verantwortlichen") durch Reuse abgedeckt — **kein neuer Cron**.
+
+### Was neu gebaut wird (minimal)
+1. **Eine neue Spalte** `due_date` (Frist) auf `work_items` — nullable, gilt core-weit.
+   - *Warum nicht `planned_end` wiederverwenden?* `planned_start/planned_end` tragen Gantt-/Critical-Path-Semantik (Balkenlänge, FS/SS/FF/SF-Dependencies). Eine **Frist** (ein Stichtag) ist etwas anderes als ein **geplantes Arbeitsende**. `planned_end` zu überladen würde Gantt und Critical-Path mit Deadline-Daten verschmutzen. Eine separate Frist-Spalte ist eine triviale additive Migration und schließt eine echte Core-Lücke (heute hat der Core keine Deadline-Semantik).
+2. **List-API-Filter erweitern** — der bestehende Work-Item-List-Endpoint kann heute nach `kind`/`status`/`sprint` filtern. Ergänzt werden: Verantwortlicher, Phase und **Fristfenster** (`due_date` von–bis) — deckt AC5.
+3. **My-Work-Inbox auf die echte Frist umstellen** — die Inbox nimmt heute `planned_end` als Fälligkeit; sie wird auf `due_date ?? planned_end` umgestellt, damit die echte Deadline (und damit „überfällig") korrekt erscheint. Kleiner Reuse-Gewinn, der gleichzeitig AC4 schärft.
+
+### Gelockte Architektur-Entscheidungen (CIA 2026-06-30)
+- **F1 — „Workstream"-Pflichtfeld (AC1):** PROJ-102 (Workstreams) ist nicht gebaut und laut ADR eine spätere Gruppierungs-EXTEND. Ein Workstream-Stub jetzt wäre verfrühtes Generikum. **Entscheidung:** Pflichtfeld in PROJ-101 ist **Phase**; „Workstream" wird als **optionaler Freitext-Tag** (`attributes.ma_workstream`, kein FK, kein Constraint) geführt und ist filterbar. Wenn PROJ-102 die echte `workstreams`-Entität baut, migriert es den Tag auf eine FK und kann die Pflicht hochziehen. **Deviation zu AC1 (Workstream optional statt pflicht) — dokumentiert.**
+- **F2 — Verknüpfung mit Risiko/Entscheidung/Deliverable (AC2/DoD):** Deliverables (PROJ-104) existieren nicht; eine generische Governance-Link-Tabelle jetzt würde das Assoziations-Muster für ~10 spätere M&A-Specs (104/107/109/111/114) festschreiben, bevor deren reale Anforderungen bekannt sind. **Entscheidung:** Cross-Entity-Linking wird **zurückgestellt**; PROJ-101 nutzt nur den nativen `phase_id`-Bezug + RACI. Das Muster (generisch-polymorph vs. pro-Paar) wird beim **zweiten realen Konsumenten** (PROJ-104 oder 107) entschieden. **Deviation zu AC2 (Risiko/Entscheidung/Deliverable-Links forward-compat deferriert) — dokumentiert, Owner = PROJ-104/107.**
+- **F3 — Frist:** neue `due_date`-Spalte (siehe oben), bewusst **ohne** CHECK gegen `planned_start/planned_end` (eine Deadline darf legitim vor dem geplanten Ende liegen).
+
+### Offene Fragen der Spec — beantwortet
+- **Jira-Sync?** Aufgaben erben den bestehenden Jira-Export (PROJ-47/50, `jira-export-dialog` greift auf Work-Items). Kein M&A-spezifischer Sync — kein Neubau.
+- **Eskalationsregeln bei wiederholter Fristüberschreitung?** MVP: Überfälligkeit erscheint farblich + in der My-Work-Inbox des Verantwortlichen. Aktive Eskalation an den Lead bei *wiederholter* Überschreitung → Followup (PROJ-Y-101c).
+- **Wiederkehrende Aufgaben?** Out of Scope (Spec schließt schweres PM bereits aus) → Followup (PROJ-Y).
+
+### Komponenten-Struktur (UI)
+```
+M&A-Projektraum
+└── Tab „Aufgaben" (neu, kind=task gefiltert)
+    ├── Filterleiste:  Verantwortlicher · Phase · Fristfenster · Status · Workstream(-Tag)
+    ├── Aufgabenliste  (reuse vorhandener Work-Item-Listen-Komponente)
+    │   └── Zeile:  Titel · Verantwortlicher · Frist (rot, wenn überfällig) · Status-Badge · Phase
+    ├── „Neue Aufgabe" / „Bearbeiten"-Dialog  (reuse vorhandener Work-Item-Dialoge,
+    │                                            + Feld Frist, + optional Workstream-Tag)
+    └── Status-Wechsel  (reuse vorhandene Status-Route)
+
+Querschnitt (kein neuer Code in PROJ-101):
+- My-Work-Inbox (PROJ-64) zeigt überfällige Aufgaben dem Verantwortlichen
+- RACI-Tab am Work-Item (PROJ-97) für R/A/C/I-Rollen
+```
+
+### Datenmodell (Klartext)
+```
+Eine Aufgabe = ein Work-Item mit kind='task'. Es speichert:
+- Titel (Pflicht)
+- Verantwortlicher  (responsible_user_id, Pflicht laut AC1)
+- Frist             (due_date — NEU, nullable core-weit; in der Aufgaben-UI Pflicht)
+- Phase             (phase_id, Pflicht-Gruppierung in PROJ-101)
+- Status            (todo|in_progress|blocked|done|cancelled)
+- Workstream-Tag    (attributes.ma_workstream — optionaler Freitext, bis PROJ-102)
+- (geerbt: Priorität, Beschreibung, Audit, Soft-Delete, RACI-Rollen)
+
+Keine neue Tabelle. Eine neue Spalte (due_date). Kein neues Link-Schema.
+```
+
+### Tech-Entscheidungen (für PM)
+- **Reuse statt Neubau** spart ~80% des Aufwands und hält die Invariante „shared core before specialization": eine M&A-Aufgabe ist im selben Datentopf wie jede andere Projektaufgabe → Audit, Reporting, Jira-Export, My-Work-Inbox funktionieren sofort mit.
+- **`due_date` als Core-Feld** (nicht M&A-Sonderweg) ist ein Gewinn für die ganze Plattform und macht die My-Work-Inbox-Fälligkeit korrekt.
+- **Workstream & Verknüpfungen bewusst offen gelassen**, bis die Stories existieren, die sie tragen — vermeidet wegzuwerfende Vorab-Infrastruktur.
+
+### Abhängigkeiten (Pakete)
+Keine neuen npm-Pakete. Eine Supabase-Migration (1 Spalte).
+
+### Followups (PROJ-Y-Kandidaten)
+- **PROJ-Y-101a → PROJ-102:** `attributes.ma_workstream`-Tag auf echte `workstreams`-FK migrieren + Pflicht hochziehen.
+- **PROJ-Y-101b → PROJ-104/107:** Cross-Entity-Governance-Assoziation (generisch vs. pro-Paar) entscheiden + task↔Risk/Decision/Deliverable nachrüsten.
+- **PROJ-Y-101c:** Aktive Eskalation bei wiederholter Fristüberschreitung (über My-Work-Inbox-Surface bevorzugt, kein neuer Cron).
+
+---
+
+## Backend Implementation Notes (2026-06-30)
+
+**Reuse-Schnitt umgesetzt — kein neues Tabellenmodell.**
+
+- **Migration `20260630094550_proj101_work_item_due_date`** (live in Prod-DB + Repo-Datei versionsgleich, PROJ-134-konform): `work_items.due_date date` nullable (core-weit), Kommentar, partieller Index `work_items_project_due_date_idx (project_id, due_date) WHERE is_deleted=false` für den Fristfenster-Filter. **Bewusst kein CHECK** gegen `planned_start/planned_end` (F3). Idempotent (`add column if not exists` / `create index if not exists`).
+- **`due_date` in beiden Zod-Schemas** (`work-items/_schema.ts`, create + patch) als `YYYY-MM-DD`-Regex nullable optional — fließt via Spread-Pattern in INSERT/UPDATE (Drift-Test deckt ab).
+- **Workstream-Tag** (`attributes.ma_workstream`) braucht **keine** Schema-Änderung — `attributes` ist bereits `z.record` in beiden Schemas (F1).
+- **GET-List-Filter erweitert** (`work-items/route.ts`): `responsible_user_id`, `phase_id` (UUID-validiert), `due_after`/`due_before` (`due_date >=`/`<=`, YYYY-MM-DD-validiert). Deckt AC5.
+- **My-Work-Inbox** (`lib/dashboard/summary.ts`): `due_date` zum Select ergänzt; effektive Fälligkeit = `due_date ?? planned_end` → echte Frist treibt jetzt `is_overdue` (AC4-Surface).
+- **Frontend-Typ + Hooks** (`types/work-item.ts`, `use-work-items.ts`, `use-work-item.ts`): `due_date` zu Interface + Select-String + explizitem Row-Mapping ergänzt (obs-202-Footgun + Hook-Mapping-Drift-Test).
+
+**Quality-Gates:** vitest **2137/2137** (inkl. +5 neue GET-Filter-Tests + 2 Drift-Kitchensinks erweitert); ESLint 0; `tsc` 0 neue Errors (Baseline unverändert); `npm run build` clean. **Advisors:** keine neue Security-Lint; Performance zeigt den neuen Index als „unused index"-INFO (erwartet bei frischem Index, 0 Scans — PROJ-69-Muster).
+
+**Noch offen → /qa:** Live-Verifikation gegen Prod (Task mit Frist anlegen → Filter → My-Work-Overdue-Surface), Frontend „Aufgaben"-Tab (→ /frontend), Performance ≥10k Tasks (DoD).
+
+---
+
+## Frontend Implementation Notes (2026-07-01)
+
+**Neuer „Aufgaben"-Tab im M&A-Projektraum — Komposition aus shadcn-Primitiven + Reuse.**
+
+- **Nav** (`lib/method-templates/index.ts`): `MA_TASKS_SECTION` (`tabPath: "aufgaben"`, Icon `ListChecks`, `requiresProjectType: "ma"`) via `withMaFoundation` nach „Rollen & RACI" injiziert (Reihenfolge: Grundlage → Phasenmodell → Rollen → **Aufgaben** → Governance → Due Diligence).
+- **Route** `src/app/(app)/projects/[id]/aufgaben/page.tsx` — async-Params-Scaffold analog Due-Diligence-Seite.
+- **`ma-tasks-page.tsx`** (Liste + Filterleiste): `useWorkItems(projectId, { kinds:['task'], … })`; Filter Verantwortlicher (ResponsibleUserPicker, includeAllOption) · Phase (Select, inkl. „Ohne Phase") · Status · Fristfenster (2× Date) · Workstream (debounced 300ms). Tabelle: Titel (+Workstream-Badge), Verantwortlich, **Frist rot wenn überfällig** (`due_date < today` UND Status ∉ {done,cancelled}), Status als Inline-Select → `/status`-Route, Phase, Priorität, Edit/Delete. Loading/Empty/Error-States. Create/Edit/Delete nur bei `useProjectAccess(edit_master)`.
+- **`ma-task-dialog.tsx`** (Create+Edit, react-hook-form+zod): Titel, Verantwortlicher (ResponsibleUserPicker), Phase (usePhases), **Frist** (`Input type=date` → `due_date`), Priorität, **Workstream** (`attributes.ma_workstream`, Merge-preserving bei Edit), Beschreibung. POST → `/work-items` (kind=task, status=todo), PATCH → `/work-items/[wid]`. Bewusst **eigener** M&A-Task-Dialog statt Erweiterung des generischen Backlog-Dialogs (Workstream ist M&A-spezifisch; kein Kind/Parent/Sprint/WBS-Ballast).
+- **`useWorkItems` erweitert** (additive, backward-compat): `phaseId` · `dueAfter` · `dueBefore` · `workstream` (= `attributes->>ma_workstream`) — alle server-side via Supabase (skaliert; ergänzt die bereits gebauten GET-API-Filter). Bestehender Backlog-Aufrufer unberührt (neue Opts undefined).
+- **Reuse:** ResponsibleUserPicker, usePhases, useAuth, DeleteWorkItemDialog, WorkItemPriorityBadge, WORK_ITEM_STATUS_LABELS. Kein neues Dep, kein neues shadcn-Primitive.
+
+**Quality-Gates:** vitest **2137/2137** (keine Regression durch Nav-Section/Hook-Change); ESLint 0; `tsc` 14 Baseline/0 neu; `npm run build` clean (`/projects/[id]/aufgaben` registriert).
+
+**Noch offen → /qa:** Live-E2E gegen Prod (Aufgabe anlegen mit Frist → Filter greifen → Inline-Statuswechsel → Overdue-Rot + My-Work-Surface → Edit/Delete → 0 Residue), Playwright-Auth-Gate für die neue Route, Perf ≥10k (DoD).
+
+---
+
+## QA Test Results (2026-07-01) — PASS, PRODUCTION-READY
+
+**Verdikt: 0 Critical / 0 High.** 5/5 ACs abgedeckt (2 CIA-gelockte Deviations dokumentiert). Empfehlung: **Approved → /deploy.**
+
+### Acceptance Criteria
+| AC | Ergebnis | Nachweis |
+|---|---|---|
+| AC1 — anlegen mit Titel/Verantwortlicher/Frist/Workstream | ✅ PASS (Workstream optional, D-1) | Create-Dialog → POST persistiert `due_date` + `attributes.ma_workstream`; Live-Smoke **A** (due_date persisted 3/3) |
+| AC2 — Phase + optional Deliverable/Risiko/Entscheidung | ✅ Phase PASS · Links **deferred** (D-2) | Phase-Link Live-Smoke **E** (2/2); Risiko/Entscheidung/Deliverable-Links CIA-zurückgestellt (Owner PROJ-104/107) |
+| AC3 — Status offen/in Arbeit/blockiert/erledigt/verworfen | ✅ PASS | Enum 1:1 (todo/in_progress/blocked/done/cancelled); Inline-Status-Select → `/status`-Route; Live-Smoke **F** (status=done 1/1) |
+| AC4 — Fristüberschreitung farblich + Benachrichtigung | ✅ PASS | FE Overdue-Rot (`due_date < today` ∧ Status ∉ {done,cancelled}); Notify via PROJ-64 My-Work-Inbox (`due_date ?? planned_end`); Live-Smoke **D** (My-Work-Overdue = t1 only, 1/1) |
+| AC5 — Filter Verantwortlicher/Phase/Workstream/Fristfenster/Status | ✅ PASS | Live-Smoke **B** (Fristfenster 2/2) · **C** (Workstream 1/1) · **E** (Phase 2/2) · **F** (Status 1/1) · **G** (Verantwortlicher 4/4); +5 vitest GET-Filter-Tests; FE-Filterbar |
+
+### Live-Verifikation (Supabase Prod `iqerihohwabyjzkpcujq`, 0 Residue)
+- **DB-Smoke** (DO-Block + RAISE-Rollback): 4 Tasks (overdue/future/done-past/no-due) → alle 7 Assertions grün (A–G). Residue-Check: **0**.
+- **Red-Team RLS**: Projekt mit 33 work_items → Nicht-Member sieht via neuem `due_date`/`workstream`-Filterpfad **0** Zeilen. Kein Cross-Tenant-Leak (Feature ändert RLS nicht; Filter verengen nur innerhalb RLS-sichtbarer Zeilen).
+- **Injection**: Datums-Filter regex-validiert (400), UUID-Filter validiert (400), Workstream-Wert parameterisiert (`.eq`), Spaltenpfad `attributes->>ma_workstream` hartkodiert → kein Injection-Vektor.
+
+### Automatisierte Tests
+- **Playwright** `tests/PROJ-101-aufgaben.spec.ts`: **4/4 chromium** (Page-Route `/projects/[id]/aufgaben` + GET-mit-Filtern + POST-create + PATCH-status alle auth-gated). Mobile Safari übersprungen (WebKit-Host-Libs fehlen, Umgebungs-Limit, PROJ-67).
+- **vitest 2137/2137** (inkl. +5 GET-Filter-Tests + erweiterte Drift-Kitchensinks); ESLint 0; tsc 14 Baseline/0 neu; build clean.
+
+### Findings & Deviations
+- **F-1 (Low) — ≥10k-Perf-DoD nicht voll erfüllt:** `useWorkItems` lädt alle passenden Zeilen ohne Pagination (vorbestehendes Plattform-Muster — der Backlog nutzt denselben Hook). Mitigation: neue Filter sind **server-side** + partieller Index `(project_id, due_date)` verkleinert das Set. Empfehlung: Pagination als Followup (PROJ-Y-101d), **kein PROJ-101-Blocker**.
+- **D-1 (Deviation, CIA-gelockt):** AC1 „Workstream Pflichtfeld" → optionaler `attributes.ma_workstream`-Tag (PROJ-102 hebt Pflicht später hoch).
+- **D-2 (Deviation, CIA-gelockt):** AC2 task↔Risiko/Entscheidung/Deliverable-Links zurückgestellt (Muster bei PROJ-104/107).
+- **Info:** DoD „exportiert" via bestehenden Work-Item-Jira-Export (PROJ-47, kind=task exportierbar) — geerbt, nicht separat neu getestet. Keine M&A-Projekte in Prod → Live-Test lief auf Core-Projekt (Feature ist core-weit; M&A-Gating ist rein Nav-Ebene).
+
+**Followups:** PROJ-Y-101a/b/c (aus Architektur) + **PROJ-Y-101d** (Task-Listen-Pagination für ≥10k).
 
 ---
 _Quelle: Backlog-Entwurf M&A-Projektplattform · C — Aufgaben & Workstreams_
