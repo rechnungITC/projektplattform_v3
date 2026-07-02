@@ -14,7 +14,7 @@ summary_for_jira: "[C2] Workstreams strukturieren und steuern"
 
 # PROJ-102: Workstreams strukturieren und steuern
 
-## Status: In Progress (Backend live)
+## Status: Approved (QA PASS 2026-07-02 — 0 Critical/0 High)
 **Created:** 2026-06-10
 **Origin:** M&A-Platform Backlog (Epic C — Aufgaben & Workstreams)
 **Priority:** P1
@@ -195,6 +195,40 @@ Keine neuen npm-Pakete. Eine Supabase-Migration (2 Tabellen + 2 additive FKs + 1
 **Quality-Gates:** vitest **2171/2171**; ESLint 0 (0 warnings — `useWatch` statt `watch`); tsc 14 Baseline/0 neu; build clean (`/projects/[id]/workstreams` + 4 API-Routen registriert).
 
 **Noch offen → /qa:** Need-to-know-Pentest (RESTRICTIVE-Policies via Impersonation), Live-E2E (WS anlegen → Phasen → Task/Risk-Zuordnung → Dashboard → RAG → Delete, 0 Residue), Playwright-Auth-Gate für Route + APIs.
+
+---
+
+## QA Test Results (2026-07-02) — PASS, PRODUCTION-READY
+
+**Verdikt: 0 Critical / 0 High.** 5/5 ACs abgedeckt (3 CIA-gelockte Deferrals). Empfehlung: **Approved → /deploy.**
+
+### Acceptance Criteria
+| AC | Ergebnis | Nachweis |
+|---|---|---|
+| AC1 — WS je Projekt, einer ODER mehreren Phasen zuordenbar | ✅ PASS | Live-Smoke M:N 2 Phasen; Pentest strict-WS mit Phase; `workstream_phases`-PK M:N |
+| AC2 — pro WS Ziel/Verantwortlicher/RAG/Aufgabenliste/Deliverable-Liste | ✅ Ziel/Lead/RAG/Aufgaben PASS · Deliverables **deferred** (D-1) | Dialog-Felder + work_items.workstream_id-Liste; Deliverable-Liste → PROJ-104 |
+| AC3 — Dashboard %-Tasks + offene Risiken + Deliverables | ✅ PASS (Deliverables „—") | `workstream_dashboard` Live-Smoke tasks_total/tasks_done/open_risks; deliverables_total=null → „—" |
+| AC4 — WS-Status ins Reporting (L1/L3) | ⏸ **deferred** (D-3) | PROJ-131/132 ungebaut; `rag_status`+Aggregate read-ready |
+| AC5 — WS aus Templates (A3) | ⏸ **deferred** (D-2) | PROJ-96 ungebaut |
+
+### Security / Need-to-know Pentest (Live gegen Prod, Impersonation, 0 Residue)
+`tests/sql`-Muster, RAISE-Rollback. Nicht-Admin-Member (geliehenes Profil, temporär als Tenant-/Projekt-Viewer): **A** sieht standard-WS (1) · **B** sieht strict-WS NICHT (0, RESTRICTIVE-Gate) · **C** sieht strict-`workstream_phases` NICHT (0, Join erbt Gate) · nach Clearance-Grant **D** sieht strict (1) · **E** sieht strict-Phasen (1) · **F** Nicht-Member sieht nichts (0). 6/6 PASS. Audit-CHECK-Regressionsguard: enthält weiter `committees` UND `workstreams`. `can_access_classified` byte-identisch aus dd_streams-Rezept (PROJ-100a/112/114-erprobt).
+
+### Live E2E DB-Smoke (Prod, 0 Residue)
+Backend-Smoke 8/8 (RAG-default · M:N · work_item+risk-Link · dashboard · committees-Erhalt · Audit-Row) + **Delete→SET-NULL** verifiziert (WS gelöscht → work_item.workstream_id NULL). Injection: workstream_key regex-, UUID/Datum-, rag_status/level-Enum-validiert (Route-Tests).
+
+### Automatisierte Tests
+- **Playwright** `tests/PROJ-102-workstreams.spec.ts`: **6/6 chromium** (Page-Route + 4 API-Routen [list/create · detail-PATCH · phases-PUT · dashboard] alle auth-gated). Mobile Safari übersprungen (WebKit-Host-Libs, PROJ-67-Umgebungslimit).
+- **vitest 2171/2171** (+24 Route-Tests, Drift grün); ESLint 0; tsc 14 Baseline/0 neu; build clean.
+
+### Deviations (alle CIA-gelockt)
+- **D-1** Deliverable-Liste/-Count → PROJ-104 (`deliverables.workstream_id`, pro-Paar-Muster).
+- **D-2** Template-Vorbelegung (AC5) → PROJ-96.
+- **D-3** tiefe Reporting-Integration (AC4) → PROJ-131/132.
+- **D-4** RAG manuell (Auto-Regel → PROJ-Y-102d); `workstream_id` weich-pflicht (UI, kein DB-NOT-NULL).
+- **Info:** kein M&A-Projekt in Prod → Pentest/Smoke auf Core-PMI-Projekt (Feature ist projekt-typ-neutral bis auf Nav-Gating).
+
+**Followups:** PROJ-Y-102a (PMI-`type`), 102b (Deliverable-Count), 102c (Template-Katalog), 102d (Auto-RAG + Report-Presets), 102e (`attributes.ma_workstream`-Tag-Cleanup).
 
 ---
 _Quelle: Backlog-Entwurf M&A-Projektplattform · C — Aufgaben & Workstreams_
