@@ -44,6 +44,8 @@ export const workItemCreateSchema = z.object({
     .regex(/^\d{4}-\d{2}-\d{2}$/, "YYYY-MM-DD erwartet")
     .nullable()
     .optional(),
+  // PROJ-102 — workstream FK (M&A grouping; replaces the attributes.ma_workstream tag).
+  workstream_id: z.string().uuid().nullable().optional(),
   attributes: z.record(z.string(), z.unknown()).optional(),
   position: z.number().optional(),
   created_from_proposal_id: z.string().uuid().nullable().optional(),
@@ -90,6 +92,8 @@ export const workItemPatchSchema = z
       .regex(/^\d{4}-\d{2}-\d{2}$/, "YYYY-MM-DD erwartet")
       .nullable()
       .optional(),
+    // PROJ-102 — workstream FK (M&A grouping).
+    workstream_id: z.string().uuid().nullable().optional(),
   })
   .refine((v) => Object.keys(v).length > 0, {
     message: "At least one field required.",

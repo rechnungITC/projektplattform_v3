@@ -65,7 +65,7 @@ export function useWorkItem(
         const { data, error: queryError } = await supabase
           .from("work_items")
           .select(
-            "id, tenant_id, project_id, kind, parent_id, phase_id, milestone_id, sprint_id, title, description, status, priority, responsible_user_id, attributes, position, created_from_proposal_id, created_by, created_at, updated_at, is_deleted, outline_path, wbs_code, wbs_code_is_custom, planned_start, planned_end, derived_planned_start, derived_planned_end, derived_estimate_hours, due_date, responsible:profiles!work_items_responsible_user_id_fkey ( id, display_name, email )"
+            "id, tenant_id, project_id, kind, parent_id, phase_id, milestone_id, sprint_id, title, description, status, priority, responsible_user_id, attributes, position, created_from_proposal_id, created_by, created_at, updated_at, is_deleted, outline_path, wbs_code, wbs_code_is_custom, planned_start, planned_end, derived_planned_start, derived_planned_end, derived_estimate_hours, due_date, workstream_id, responsible:profiles!work_items_responsible_user_id_fkey ( id, display_name, email )"
           )
           .eq("project_id", projectId)
           .eq("id", workItemId)
@@ -139,6 +139,9 @@ export function useWorkItem(
             (row as { planned_end?: string | null }).planned_end ?? null,
           // PROJ-101 — Frist (deadline); explicit mapping (see obs 202).
           due_date: (row as { due_date?: string | null }).due_date ?? null,
+          // PROJ-102 — workstream FK; explicit mapping.
+          workstream_id:
+            (row as { workstream_id?: string | null }).workstream_id ?? null,
           derived_planned_start:
             (row as { derived_planned_start?: string | null })
               .derived_planned_start ?? null,
