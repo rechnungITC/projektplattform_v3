@@ -14,7 +14,7 @@ summary_for_jira: "[D1] Deliverable-Katalog je Phase und Workstream führen"
 
 # PROJ-104: Deliverable-Katalog je Phase und Workstream führen
 
-## Status: Architected
+## Status: In Progress (Backend live)
 **Created:** 2026-06-10
 **Origin:** M&A-Platform Backlog (Epic D — Deliverables & Artefakte)
 **Priority:** P1
@@ -158,6 +158,26 @@ Keine neuen npm-Pakete. Eine Supabase-Migration.
 - **PROJ-Y-104a → PROJ-96:** Deliverable-Template-Vorbelegung (Copy-on-create).
 - **PROJ-Y-104b → PROJ-95:** Phasen-Sicht der Deliverable-Ampel im Cockpit.
 - **PROJ-Y-104c → PROJ-79:** echter Datei-Upload (Bucket-Quelle an `deliverable_documents`).
+
+---
+
+## Backend Implementation Notes (2026-07-02)
+
+**Migration `20260702121538_proj104_deliverables`** (live in Prod-DB + Repo versionsgleich, PROJ-134):
+- `deliverables` (name/description/phase_id nullable SET-NULL/workstream_id nullable CASCADE + `CHECK(phase_id IS NOT NULL OR workstream_id IS NOT NULL)`/responsible_user_id/due_date/status planned-in_progress-in_review-approved-suspended/confidentiality_level/sort_order) — RLS tenant/project + 3 RESTRICTIVE Need-to-know + moddatetime + `record_audit_changes`-Trigger.
+- `deliverable_documents` (title/url/tag_keys, externe Links; RLS faltet Need-to-know via EXISTS auf Eltern-`deliverables`; kein Audit-Trigger).
+- `raci_target_type_check` recreate → `('work_item','deliverable')` (F4-Unlock).
+- RPCs: `transition_deliverable_status` (State-Machine, **`approved` nicht setzbar → 42501**, PROJ-105-reserviert), `set_deliverable_raci`/`clear_deliverable_raci` (mirror set_work_item_raci, deliverables-Lookup). Alle SECURITY DEFINER, kein actor-param, revoke anon/public, grant authenticated.
+- Audit-Trio (`_tracked_audit_columns` + `can_read_audit_entry`) recreate aus LIVE-Defs + `deliverables`/`deliverable_documents`-Zweige (committees/workstreams erhalten) + `authenticated`-Grant re-granted (R-2).
+- `workstream_dashboard` **drop+recreate** (Signatur-Änderung): SECURITY-INVOKER bewahrt, `deliverables_total` echte Zählung + neu `deliverables_overdue`; Deliverable-Counts als Subqueries (kein LEFT-JOIN-Multiplikations-Bug).
+
+**API:** `GET/POST /deliverables`, `GET/PATCH/DELETE /deliverables/[did]`, `PATCH /deliverables/[did]/status` (→ RPC), `GET/POST/DELETE /deliverables/[did]/documents`, `GET/POST/DELETE /deliverables/[did]/raci`. Client-Wrapper `deliverables-api.ts`, Hook `use-deliverables`, Typen `types/deliverable`. `WorkstreamDashboardRow` um `deliverables_overdue` erweitert.
+
+**Live-Smoke gegen Prod (Pflicht, 0 Residue):** 9/9 — orphan-CHECK enforced · transition→in_progress · **approved rejected (PROJ-105-reserviert)** · RACI-deliverable-Row · Doc-Link · dashboard deliverables_total=3/overdue=1 · Audit-Row · **Aggregat-Leak-Pentest: Admin sieht 3, nicht-cleared Member sieht 2 (strict ausgeschlossen, R-3)** · committees/workstreams im Audit-CHECK erhalten.
+
+**Quality-Gates:** vitest **2214/2214** (+20 Route-Tests); ESLint 0; tsc 14 Baseline/0 neu; build clean (5 API-Routen registriert).
+
+**Noch offen → /frontend:** „Deliverables"-Tab (Nav-Section + Katalog-Liste + Create/Edit-Dialog mit Doc-Links + RACI + Status-Inline, approved ausgegraut) + Workstream-Dashboard-Ampel (deliverables_total/overdue statt „—"). **→ /qa:** Need-to-know/Aggregat-Leak-Pentest (re-verify) + Live-E2E + Playwright-Auth-Gate.
 
 ---
 _Quelle: Backlog-Entwurf M&A-Projektplattform · D — Deliverables & Artefakte_
