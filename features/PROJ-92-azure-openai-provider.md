@@ -1,6 +1,6 @@
 # PROJ-92: Azure OpenAI Provider (Class-1/2) — fünfter Provider-Typ
 
-## Status: In Progress (Backend + Frontend gebaut 2026-07-01 — Provider/Validator/Migration live + Azure-Admin-Formular in Settings→KI-Provider; all-gates green. → /qa für AC-92.7 Live-Resource-Smoke)
+## Status: Approved (QA-PASS 2026-07-01 — 7/7 AC, 0 Critical/High; Class-3-no-bypass live red-team + auth-gates 5/5 + vitest 2194/2194. AC-92.7 real-Azure-Call = dokumentierte Stub-Deviation. → /deploy)
 **Created:** 2026-06-10
 **Last Updated:** 2026-07-01
 **Origin:** PO-Entscheidung 2026-06-10 (Pilotkunden ohne Ollama-Betrieb) · CIA-Review 2026-06-10 (GO, Split 92a/92b)
@@ -171,8 +171,37 @@ Built in worktree `projektplattform_v3-proj92` (branch `proj-92/frontend`). No n
 
 **Open:** AC-92.7 live smoke against a *real* Azure resource → `/qa` (documented stub path acceptable if no test resource). → `/qa`.
 
-## QA Test Results
-_To be added by /qa_
+## QA Test Results — 2026-07-01
+
+**Verdict: PRODUCTION-READY (0 Critical / 0 High).** Independent QA in worktree `proj-92/qa` against merged main + prod DB.
+
+| AC | Ergebnis | Beleg |
+|---|---|---|
+| AC-92.1 (enum + 4 whitelists lockstep) | ✅ | Live prod: `tenant_ai_providers`/`priority known_providers`/`ki_runs` CHECKs + `record_tenant_ai_provider_audit` validator **all contain `azure`**. |
+| AC-92.2 (config fields + EU-region allowlist) | ✅ | 5-field config (endpoint/deployment/key/api_version/azure_region); `azure-region-allowlist.test.ts` 8/8 pins the exact EU set; allowlist imported **only** by the server route — client does not hold it (red-team below). |
+| AC-92.3 (5 cloud purposes + capability-matrix) | ✅ | `capability-matrix.test.ts`: azure implements all cloud purposes, **not** `resource_swap`; shared `graph-purpose-prompts` reused. |
+| AC-92.4 (Class-3 clamp structural) | ✅ **strong** | Code: `defaultProviderOrder(3)`→`["ollama"]` + `clampForClass3`/`LOCAL_ONLY_PROVIDERS=["ollama"]` untouched; `class3_local_only` CHECK unchanged. Router: `router-azure.test.ts` (class-3 azure → stub/blocked, no cloud call). **Live red-team (below): azure rejected for class-3 in every ordering.** |
+| AC-92.5 (cost-cap + priority-matrix accept azure) | ✅ | Live: class-1 `['azure']` **accepted**. `router-cost-cap` + `router-priority` + `key-resolver` suites green — the `getPriorityMatrix` filter widening (AC-92.5 fix) broke nothing. |
+| AC-92.6 (admin UI form) | ✅ | `AzureCard` built; build clean; auth-gate spec 5/5. |
+| AC-92.7 (`ki_runs` provider='azure' / live-smoke) | ⚠️ **PASS w/ documented deviation** | `ki_runs` CHECK accepts `provider='azure'` (verified live). Real-Azure end-to-end generation **not executed — no Azure test resource available** (spec-permitted stub path). Every layer *except the Azure API round-trip* is live-proven (whitelist → router builds `AzureOpenAIProvider` → ki_runs accepts azure). |
+
+**Live red-team prod smoke (self-rolling-back, 0 residue — independently re-run by QA):**
+- Class-1 `['azure','anthropic']` → **accepted** (AC-92.5).
+- Class-3 no-bypass — **all three** azure-containing orders **rejected** by `class3_local_only`: `['azure']`, `['ollama','azure']`, `['azure','ollama']` (the `<@ ARRAY['ollama']` subset check fails on any azure element — mixing with ollama does not sneak azure in). Invariant #3 intact.
+- Definitional: 4 whitelists gained `azure`; `class3_local_only` still `((data_class<>3) OR (provider_order <@ ['ollama']))`.
+- Post-check: **0 azure rows** in `tenant_ai_provider_priority` / `tenant_ai_providers` / `ki_runs`.
+
+**Red-team — EU-region gate:** the allowlist is enforced **server-side only** (`isEuAzureRegion` imported solely by the route; a non-EU region returns 400 and never persists). The client `AzureCard` carries no enforcement list — only placeholder/hint text — so the gate cannot be bypassed by patching the client bundle.
+
+**Security probes:** Playwright `tests/PROJ-92-azure-provider.spec.ts` — 5/5 chromium: GET/PUT/validate/DELETE on `…/ai-providers/azure` are auth-gated (307/401/403 without a session), incl. a PUT with a non-EU region (gate fires before the region check → no leak).
+
+**Regression:** full vitest **2194/2194** (275 files; +30 azure); targeted AI suites (router-azure/class3/priority/cost-cap, key-resolver, capability-matrix, region+validator, provider route 27) all green; build clean.
+
+**Findings:**
+- **F-1 (Info / documented deviation, AC-92.7):** no real Azure resource available → the live Azure generation round-trip was not exercised. Mitigation: the routing/DB/validator path is proven at every other layer; a pilot with an Azure resource should run one real `proposal_from_context`/`narrative` call and confirm `ki_runs.provider='azure'` + non-null tokens. Spec explicitly permits this stub-path deviation.
+- **F-2 (Info, env):** WebKit/Mobile Safari Playwright project skipped (host libs missing — the standing PROJ-67 F2 handoff `sudo npx playwright install-deps webkit`); chromium ran. The bare worktree needed a copied `.env.local` for the webServer (PROJ-135 D-1 class) — not a product issue.
+
+**0 Critical / 0 High → Approved.**
 
 ## Deployment
 _To be added by /deploy_
