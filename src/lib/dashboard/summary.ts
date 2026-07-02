@@ -264,7 +264,7 @@ async function loadMyWork(
   const { data, error, count } = await args.supabase
     .from("work_items")
     .select(
-      "id, project_id, kind, title, status, priority, planned_start, planned_end, milestone_id, sprint_id",
+      "id, project_id, kind, title, status, priority, planned_start, planned_end, due_date, milestone_id, sprint_id",
       { count: "exact" },
     )
     .eq("tenant_id", args.tenantId)
@@ -282,7 +282,10 @@ async function loadMyWork(
     .map((r) => {
       const project = projectMap.get(r.project_id as string)
       if (!project) return null
-      const dueDate = (r.planned_end as string | null) ?? null
+      // PROJ-101 — the real deadline (due_date) wins; planned_end is the
+      // legacy Gantt-end fallback for items without an explicit Frist.
+      const dueDate =
+        ((r.due_date as string | null) ?? (r.planned_end as string | null)) ?? null
       const isOverdue = computeOverdue(dueDate, r.status as WorkItemStatus, todayMs)
       const isBlocked = r.status === "blocked"
       const href = `/projects/${project.id}/backlog?work_item=${r.id}`

@@ -161,7 +161,14 @@ export async function GET(
   const kindParam = url.searchParams.get("kind")
   const statusParam = url.searchParams.get("status")
   const sprintParam = url.searchParams.get("sprint_id")
+  // PROJ-101 — task filters: responsible person, phase, and due-window (Fristfenster).
+  const responsibleParam = url.searchParams.get("responsible_user_id")
+  const phaseParam = url.searchParams.get("phase_id")
+  const dueAfterParam = url.searchParams.get("due_after")
+  const dueBeforeParam = url.searchParams.get("due_before")
   const includeDeleted = url.searchParams.get("include_deleted") === "true"
+
+  const DATE_RE = /^\d{4}-\d{2}-\d{2}$/
 
   let query = supabase
     .from("work_items")
@@ -188,6 +195,35 @@ export async function GET(
       return apiError("validation_error", "Invalid sprint_id.", 400, "sprint_id")
     }
     query = query.eq("sprint_id", sprintParam)
+  }
+  if (responsibleParam) {
+    if (!z.string().uuid().safeParse(responsibleParam).success) {
+      return apiError(
+        "validation_error",
+        "Invalid responsible_user_id.",
+        400,
+        "responsible_user_id"
+      )
+    }
+    query = query.eq("responsible_user_id", responsibleParam)
+  }
+  if (phaseParam) {
+    if (!z.string().uuid().safeParse(phaseParam).success) {
+      return apiError("validation_error", "Invalid phase_id.", 400, "phase_id")
+    }
+    query = query.eq("phase_id", phaseParam)
+  }
+  if (dueAfterParam) {
+    if (!DATE_RE.test(dueAfterParam)) {
+      return apiError("validation_error", "Invalid due_after (YYYY-MM-DD).", 400, "due_after")
+    }
+    query = query.gte("due_date", dueAfterParam)
+  }
+  if (dueBeforeParam) {
+    if (!DATE_RE.test(dueBeforeParam)) {
+      return apiError("validation_error", "Invalid due_before (YYYY-MM-DD).", 400, "due_before")
+    }
+    query = query.lte("due_date", dueBeforeParam)
   }
 
   const { data, error } = await query

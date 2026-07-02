@@ -173,6 +173,9 @@ export interface WorkItem {
   planned_start?: string | null
   /** PROJ-25 Stage 5 — own end date (used by Gantt). */
   planned_end?: string | null
+  /** PROJ-101 — Frist (deadline). Distinct from planned_end (Gantt scheduling);
+   *  a deadline may legitimately precede the planned work end. Nullable, core-wide. */
+  due_date?: string | null
 }
 
 /**
