@@ -44,6 +44,7 @@ import {
 import { checkCostCap } from "./cost-cap"
 import { resolveProvider, type ResolvedProvider } from "./key-resolver"
 import { AnthropicProvider } from "./providers/anthropic"
+import { AzureOpenAIProvider } from "./providers/azure"
 import { GoogleProvider } from "./providers/google"
 import { OllamaProvider } from "./providers/ollama"
 import { OpenAIProvider } from "./providers/openai"
@@ -250,6 +251,18 @@ async function selectProviderForPurpose(
         apiKey: resolved.config.api_key,
         modelId: resolved.config.model_id,
       }),
+      externalBlocked: false,
+    }
+  }
+  if (resolved.config.kind === "azure") {
+    return {
+      provider: new AzureOpenAIProvider({
+        endpoint: resolved.config.endpoint_url,
+        deployment: resolved.config.deployment_name,
+        apiKey: resolved.config.api_key,
+        apiVersion: resolved.config.api_version,
+      }),
+      // Azure is a cloud provider (Class-1/2 only); Class-3 never reaches here.
       externalBlocked: false,
     }
   }

@@ -39,6 +39,15 @@ import {
   validateOpenAIKey,
 } from "@/lib/ai/openai-key-validator"
 import {
+  buildAzureFingerprint,
+  sanitizeAzureEndpoint,
+  validateAzureConfig,
+} from "@/lib/ai/azure-key-validator"
+import {
+  isEuAzureRegion,
+  normalizeAzureRegion,
+} from "@/lib/ai/azure-region-allowlist"
+import {
   EncryptionUnavailableError,
   isEncryptionAvailable,
 } from "@/lib/connectors/secrets"
@@ -52,6 +61,7 @@ const ALLOWED_PROVIDERS = [
   "ollama",
   "openai",
   "google",
+  "azure",
 ] as const
 type Provider = (typeof ALLOWED_PROVIDERS)[number]
 
@@ -112,6 +122,38 @@ const ollamaPutSchema = z.object({
     .min(8, "bearer_token must be at least 8 characters.")
     .max(500, "bearer_token is implausibly long.")
     .optional(),
+})
+
+const azurePutSchema = z.object({
+  endpoint_url: z
+    .string()
+    .min(1, "endpoint_url is required.")
+    .max(500, "endpoint_url is implausibly long."),
+  deployment_name: z
+    .string()
+    .min(1, "deployment_name is required.")
+    .max(120, "deployment_name is implausibly long.")
+    .refine(
+      (v) => v === v.trim(),
+      "deployment_name must not have leading/trailing whitespace.",
+    ),
+  api_key: z
+    .string()
+    .min(20, "api_key must be at least 20 characters.")
+    .max(500, "api_key is implausibly long."),
+  api_version: z
+    .string()
+    .min(6, "api_version is required (e.g. 2024-10-21).")
+    .max(40, "api_version is implausibly long.")
+    // Azure api-versions look like 2024-10-21 or 2024-10-01-preview.
+    .regex(
+      /^\d{4}-\d{2}-\d{2}(-preview)?$/,
+      "api_version must look like 2024-10-21 or 2024-10-01-preview.",
+    ),
+  azure_region: z
+    .string()
+    .min(1, "azure_region is required.")
+    .max(60, "azure_region is implausibly long."),
 })
 
 // ---------------------------------------------------------------------------
@@ -292,6 +334,61 @@ export async function PUT(request: Request, ctx: Ctx) {
       ? { api_key: parsed.data.key, model_id: parsed.data.model_id }
       : { api_key: parsed.data.key }
     fingerprint = buildGoogleFingerprint(parsed.data.key)
+    validationStatus = validation.status
+    validationDetail = validation.detail
+  } else if (provider === "azure") {
+    const parsed = azurePutSchema.safeParse(body)
+    if (!parsed.success) {
+      const first = parsed.error.issues[0]
+      return apiError(
+        "validation_error",
+        first?.message ?? "Invalid request body.",
+        400,
+        first?.path?.[0]?.toString(),
+      )
+    }
+    // EU-region allowlist gate (AC-92.2) — refuse + never persist non-EU.
+    if (!isEuAzureRegion(parsed.data.azure_region)) {
+      return apiError(
+        "validation_error",
+        `azure_region '${parsed.data.azure_region}' is not an allowed EU region.`,
+        400,
+        "azure_region",
+      )
+    }
+    const sanitized = sanitizeAzureEndpoint(parsed.data.endpoint_url)
+    if (!sanitized.ok) {
+      return apiError("validation_error", sanitized.reason, 400, "endpoint_url")
+    }
+    const region = normalizeAzureRegion(parsed.data.azure_region)
+    const validation = await validateAzureConfig({
+      endpoint: sanitized.normalized,
+      deployment: parsed.data.deployment_name,
+      apiKey: parsed.data.api_key,
+      apiVersion: parsed.data.api_version,
+    })
+    // A rejected key / missing deployment is a hard error (no silent stub).
+    if (validation.status === "invalid" || validation.status === "model_missing") {
+      return apiError(
+        "validation_error",
+        validation.detail ?? "Azure rejected the configuration.",
+        422,
+        validation.status === "model_missing" ? "deployment_name" : "api_key",
+      )
+    }
+    // Persist for valid / unreachable / rate_limited / unknown — the UI
+    // surfaces a warning for non-valid so the admin can re-test later.
+    configJsonb = {
+      endpoint_url: sanitized.normalized,
+      deployment_name: parsed.data.deployment_name,
+      api_key: parsed.data.api_key,
+      api_version: parsed.data.api_version,
+      azure_region: region,
+    }
+    fingerprint = buildAzureFingerprint(
+      sanitized.normalized,
+      parsed.data.deployment_name,
+    )
     validationStatus = validation.status
     validationDetail = validation.detail
   } else {

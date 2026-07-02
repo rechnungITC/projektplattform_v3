@@ -1,6 +1,6 @@
 # PROJ-92: Azure OpenAI Provider (Class-1/2) — fünfter Provider-Typ
 
-## Status: Architected (Tech Design 2026-07-01 — fifth provider via existing OpenAI-compatible factory, no new dep, no new fork; CIA-locks intact. → /backend)
+## Status: In Progress (Backend gebaut 2026-07-01 — Provider + Validator + EU-Region-Allowlist + Lockstep-Migration in Prod + Live-Smoke grün; all-gates green. Admin-UI-Formular → /frontend)
 **Created:** 2026-06-10
 **Last Updated:** 2026-07-01
 **Origin:** PO-Entscheidung 2026-06-10 (Pilotkunden ohne Ollama-Betrieb) · CIA-Review 2026-06-10 (GO, Split 92a/92b)
@@ -136,6 +136,28 @@ Both. **Backend:** the enum, the lockstep migration, the Azure provider (connect
 
 ### Open Forks
 **None.** The CIA review (2026-06-10) locked all five decisions (factory-not-SDK, 92/93 split keeping the invariant out of scope, EU-allowlist as server constant, cost-cap mandatory, api-version validated). This architecture pass surfaced **no new fork** — every AC maps to an existing, deployed pattern. No fresh CIA pass required (spec-following extension of a reviewed architecture). If `/backend` discovers that Azure's OpenAI-compatible surface needs a request-shape quirk the factory can't express (e.g. the `api-version` must ride as a query parameter the factory doesn't forward), that is a backend implementation detail — flag it then, but it does not reopen an architecture fork.
+
+## Implementation Notes — Backend (2026-07-01)
+
+Built in worktree `projektplattform_v3-proj92` (branch `proj-92/backend`). **No new npm dependency** (reused `@ai-sdk/openai-compatible`). The architecture-flagged quirk (Azure needs `api-version` as a query param + `api-key` header, not Bearer) is expressible by the factory — verified `createOpenAICompatible` supports `baseURL` + `headers` + `queryParams`, so **no architecture fork reopened**.
+
+**Files:**
+- `supabase/migrations/20260702100000_proj92_azure_provider.sql` — lockstep: adds `azure` to the 4 whitelists (`tenant_ai_providers` CHECK, priority `known_providers` CHECK, `ki_runs` provider CHECK, `record_tenant_ai_provider_audit` validator). `class3_local_only` CHECK **untouched**. Applied to prod under the exact filename stem (PROJ-134 rule).
+- `src/lib/ai/azure-region-allowlist.ts` (+test) — EU-region server constant (`westeurope`/`germanywestcentral`/`northeurope`/`swedencentral`) + `isEuAzureRegion` + documented update path.
+- `src/lib/ai/azure-key-validator.ts` (+test) — one-round-trip deployment probe (endpoint+deployment+api-version+key), status mapping incl. `model_missing` (404) + `unreachable`; `sanitizeAzureEndpoint` (https-only) + `buildAzureFingerprint` (host/deployment, never key).
+- `src/lib/ai/providers/azure.ts` — `AzureOpenAIProvider` mirroring `OpenAIProvider`, all cloud purposes via **shared** `graph-purpose-prompts`; base URL `{endpoint}/openai/deployments/{deployment}` + `api-version` query + `api-key` header.
+- Wiring: `AIProviderName` (types.ts) + `AIKeyProvider`/`ProviderConfig`/parse-arm/`defaultProviderOrder`/provider-enumeration (key-resolver.ts) + router dispatch arm; API `[provider]/route.ts` (PUT: azure schema + EU-gate + validate-or-422) + `validate/route.ts` (re-validate branch); `ALLOWED_PROVIDERS` +azure in both routes.
+- Tests: `router-azure.test.ts` (Class-1 azure selected + cloud call; Class-3 azure **clamped out** → stub/blocked), capability-matrix (+azure cloud peer, `resource_swap` NOT implemented), region + validator suites.
+
+**Deviation (in-scope AC-92.5 fix, surfaced for QA/CIA):** the priority-matrix known-providers **code** filter in `getPriorityMatrix` (`key-resolver.ts`) hardcoded `anthropic || ollama`, silently dropping *all* cloud providers from explicit matrix rules — a latent bug since PROJ-32b (openai/google were also being dropped). Widened it to match the DB `known_providers` whitelist so azure (and, incidentally, openai/google) are honored in Class-1/2 matrix rules. **Class-3 safety is unaffected**: the `class3_local_only` DB CHECK still forbids any non-ollama value in a `data_class=3` row (proven live below), so a class-3 order can only ever contain ollama regardless of this filter. Single-line change, directly required by AC-92.5.
+
+**Live smoke against prod (mandatory, self-rolling-back, 0 residue):**
+- Definitional: all 4 whitelists + audit validator now contain `azure`; `class3_local_only` still `((data_class<>3) OR (provider_order <@ ['ollama']))` — unchanged.
+- Functional (`tenant_ai_provider_priority`, real tenant, rolled back): class-1 order `['azure','anthropic']` → **accepted**; class-3 order `['azure']` → **rejected** by `class3_local_only` (SQLSTATE 23514). Post-check: 0 azure rows anywhere.
+
+**Quality gates:** vitest **2164/2164** (270 files); eslint 0 on changed files; tsc 14 total = **0 new** (the 1 AI-file error is the pre-existing `graph-purpose-prompts.test.ts` baseline); build clean; `check:migration-naming` 0 errors (new migration minute-rastered, no collision); Supabase security advisors 0 ERROR (the 1 WARN on the recreated audit fn is the pre-existing `authenticated_security_definer_function_executable`, not new).
+
+**Open:** AC-92.6 admin-UI Azure form → `/frontend`; AC-92.7 live-smoke against a *real* Azure resource → `/qa` (documented stub path acceptable if no test resource). → `/frontend`.
 
 ## QA Test Results
 _To be added by /qa_

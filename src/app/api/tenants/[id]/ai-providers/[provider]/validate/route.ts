@@ -15,6 +15,7 @@ import {
   requireTenantAdmin,
 } from "../../../../../_lib/route-helpers"
 import { validateAnthropicKey } from "@/lib/ai/anthropic-key-validator"
+import { validateAzureConfig } from "@/lib/ai/azure-key-validator"
 import { validateGoogleKey } from "@/lib/ai/google-key-validator"
 import { validateOllamaConfig } from "@/lib/ai/ollama-config-validator"
 import { validateOpenAIKey } from "@/lib/ai/openai-key-validator"
@@ -29,6 +30,7 @@ const ALLOWED_PROVIDERS = [
   "ollama",
   "openai",
   "google",
+  "azure",
 ] as const
 
 export async function POST(_request: Request, ctx: Ctx) {
@@ -132,6 +134,31 @@ export async function POST(_request: Request, ctx: Ctx) {
       )
     }
     const validation = await validateGoogleKey(apiKey)
+    validationStatus = validation.status
+    validationDetail = validation.detail
+  } else if (provider === "azure") {
+    const endpoint = config.endpoint_url
+    const deployment = config.deployment_name
+    const apiKey = config.api_key
+    const apiVersion = config.api_version
+    if (
+      typeof endpoint !== "string" ||
+      typeof deployment !== "string" ||
+      typeof apiKey !== "string" ||
+      typeof apiVersion !== "string"
+    ) {
+      return apiError(
+        "decrypt_failed",
+        "Decrypted Azure config is missing endpoint_url, deployment_name, api_key or api_version.",
+        500,
+      )
+    }
+    const validation = await validateAzureConfig({
+      endpoint,
+      deployment,
+      apiKey,
+      apiVersion,
+    })
     validationStatus = validation.status
     validationDetail = validation.detail
   } else {

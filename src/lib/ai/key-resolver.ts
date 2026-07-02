@@ -31,7 +31,12 @@ import { isExternalAIBlocked } from "@/lib/operation-mode"
 
 import type { AIPurpose, DataClass } from "./types"
 
-export type AIKeyProvider = "anthropic" | "ollama" | "openai" | "google"
+export type AIKeyProvider =
+  | "anthropic"
+  | "ollama"
+  | "openai"
+  | "google"
+  | "azure"
 
 /** Provider configs after decryption — provider-specific JSONB shapes. */
 export type ProviderConfig =
@@ -44,6 +49,14 @@ export type ProviderConfig =
     }
   | { kind: "openai"; api_key: string; model_id?: string }
   | { kind: "google"; api_key: string; model_id?: string }
+  | {
+      kind: "azure"
+      endpoint_url: string
+      deployment_name: string
+      api_key: string
+      api_version: string
+      azure_region: string
+    }
 
 export interface ProviderRecord {
   provider: AIKeyProvider
@@ -131,6 +144,7 @@ const getTenantProviders = cache(
       "ollama",
       "openai",
       "google",
+      "azure",
     ]
     for (const provider of providers) {
       const { data, error } = await supabase.rpc(
@@ -210,9 +224,20 @@ const getPriorityMatrix = cache(
       if (!purpose || dataClass == null || !Array.isArray(order)) continue
       const key = `${purpose}:${dataClass}`
       // Filter to known providers; the DB CHECK already enforces this
-      // but defense-in-depth at the boundary doesn't hurt.
+      // but defense-in-depth at the boundary doesn't hurt. This set MUST
+      // match the tenant_ai_provider_priority_known_providers DB CHECK —
+      // it previously hardcoded only anthropic|ollama, which silently
+      // dropped openai/google (32b) and would drop azure (PROJ-92) from
+      // explicit matrix rules. Class-3 safety is NOT affected: the
+      // class3_local_only DB CHECK still forbids any non-ollama value in a
+      // data_class=3 row, so a class-3 order can only ever contain ollama.
       const filtered = order.filter(
-        (p): p is AIKeyProvider => p === "anthropic" || p === "ollama",
+        (p): p is AIKeyProvider =>
+          p === "anthropic" ||
+          p === "ollama" ||
+          p === "openai" ||
+          p === "google" ||
+          p === "azure",
       )
       if (filtered.length > 0) result.set(key, filtered)
     }
@@ -235,15 +260,17 @@ function defaultProviderOrder(
   available: Map<AIKeyProvider, ProviderRecord>,
 ): AIKeyProvider[] {
   if (dataClass === 3) {
+    // Invariant #3: Class-3 stays local-only. Azure is cloud → never here.
     return available.has("ollama") ? ["ollama"] : []
   }
-  // Class-1/2 default: Anthropic preferred, then OpenAI, Google, Ollama as
-  // fallbacks. The order encodes our quality bias for risk + narrative
+  // Class-1/2 default: Anthropic preferred, then OpenAI, Google, Azure, Ollama
+  // as fallbacks. The order encodes our quality bias for risk + narrative
   // generation; tenants override per-purpose via the priority matrix.
   const order: AIKeyProvider[] = []
   if (available.has("anthropic")) order.push("anthropic")
   if (available.has("openai")) order.push("openai")
   if (available.has("google")) order.push("google")
+  if (available.has("azure")) order.push("azure")
   if (available.has("ollama")) order.push("ollama")
   return order
 }
@@ -374,6 +401,27 @@ function parseProviderConfig(
       kind: "google",
       api_key: apiKey,
       model_id: typeof model === "string" && model.length > 0 ? model : undefined,
+    }
+  }
+
+  if (provider === "azure") {
+    const endpoint = obj.endpoint_url
+    const deployment = obj.deployment_name
+    const apiKey = obj.api_key
+    const apiVersion = obj.api_version
+    const region = obj.azure_region
+    if (typeof endpoint !== "string" || endpoint.length === 0) return null
+    if (typeof deployment !== "string" || deployment.length === 0) return null
+    if (typeof apiKey !== "string" || apiKey.length === 0) return null
+    if (typeof apiVersion !== "string" || apiVersion.length === 0) return null
+    if (typeof region !== "string" || region.length === 0) return null
+    return {
+      kind: "azure",
+      endpoint_url: endpoint,
+      deployment_name: deployment,
+      api_key: apiKey,
+      api_version: apiVersion,
+      azure_region: region,
     }
   }
 
