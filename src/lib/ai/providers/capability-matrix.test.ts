@@ -16,6 +16,7 @@
 import { describe, expect, it } from "vitest"
 
 import { AnthropicProvider } from "./anthropic"
+import { AzureOpenAIProvider } from "./azure"
 import { GoogleProvider } from "./google"
 import { OllamaProvider } from "./ollama"
 import { OpenAIProvider } from "./openai"
@@ -25,6 +26,14 @@ import type { AIProvider } from "./types"
 const anthropic = new AnthropicProvider("claude-test", "sk-test")
 const openai = new OpenAIProvider({ apiKey: "sk-test", modelId: "gpt-test" })
 const google = new GoogleProvider({ apiKey: "g-test", modelId: "gemini-test" })
+// PROJ-92 — Azure is a cloud peer (Class-1/2 only), same purpose surface as
+// the other cloud providers.
+const azure = new AzureOpenAIProvider({
+  endpoint: "https://res.openai.azure.com",
+  deployment: "gpt-test",
+  apiKey: "az-test",
+  apiVersion: "2024-10-21",
+})
 const ollama = new OllamaProvider({
   endpointUrl: "https://ollama.test",
   modelId: "llama-test",
@@ -63,7 +72,7 @@ describe("PROJ-85 — provider capability matrix", () => {
   })
 
   it("cloud providers implement all non-Class-3 purposes", () => {
-    for (const p of [anthropic, openai, google]) {
+    for (const p of [anthropic, openai, google, azure]) {
       for (const m of [
         "generateRiskSuggestions",
         "generateNarrative",
@@ -93,6 +102,8 @@ describe("PROJ-85 — provider capability matrix", () => {
     expect(has(anthropic, "generateResourceSwap")).toBe(false)
     expect(has(openai, "generateResourceSwap")).toBe(false)
     expect(has(google, "generateResourceSwap")).toBe(false)
+    // PROJ-92 — Azure is cloud → must NOT implement the Class-3-only purpose.
+    expect(has(azure, "generateResourceSwap")).toBe(false)
   })
 
   it("Ollama implements the Class-2 graph purposes (PROJ-85 fix)", () => {

@@ -60,6 +60,7 @@ export type AIProviderName =
   | "ollama"
   | "openai"
   | "google"
+  | "azure"
 
 /**
  * Auto-context for risk-suggestion generation. The shape mirrors the
