@@ -14,7 +14,7 @@ summary_for_jira: "[C2] Workstreams strukturieren und steuern"
 
 # PROJ-102: Workstreams strukturieren und steuern
 
-## Status: Approved (QA PASS 2026-07-02 — 0 Critical/0 High)
+## Status: Deployed (2026-07-02 — tag v2.7.0-PROJ-102)
 **Created:** 2026-06-10
 **Origin:** M&A-Platform Backlog (Epic C — Aufgaben & Workstreams)
 **Priority:** P1
@@ -229,6 +229,15 @@ Backend-Smoke 8/8 (RAG-default · M:N · work_item+risk-Link · dashboard · com
 - **Info:** kein M&A-Projekt in Prod → Pentest/Smoke auf Core-PMI-Projekt (Feature ist projekt-typ-neutral bis auf Nav-Gating).
 
 **Followups:** PROJ-Y-102a (PMI-`type`), 102b (Deliverable-Count), 102c (Template-Katalog), 102d (Auto-RAG + Report-Presets), 102e (`attributes.ma_workstream`-Tag-Cleanup).
+
+---
+
+## Deployment (2026-07-02)
+
+- **Merged:** PR #218 (squash) → `main` (`5d04ade`). Kein method-templates-Konflikt (main-Vorlauf war PROJ-92/98-Backend, keine überlappende Nav-Änderung); update-branch sauber.
+- **Migration:** `20260702074148_proj102_workstreams` seit /backend in Prod-DB; Repo-Datei versionsgleich (PROJ-134). Kein separater Runtime-Migration-Schritt.
+- **Vercel:** Prod-Deploy `5d04ade` (`dpl_7udMiBvD…`) READY; Post-Deploy-Smoke: 307-Auth-Gates auf `/projects/[id]/workstreams` + alle 4 API-Routen (list/create · phases-PUT · dashboard), kein Datenleck.
+- **Tag:** `v2.7.0-PROJ-102`. Kein neues Dep, keine neuen Env-Vars.
 
 ---
 _Quelle: Backlog-Entwurf M&A-Projektplattform · C — Aufgaben & Workstreams_
