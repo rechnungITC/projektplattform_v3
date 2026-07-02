@@ -14,7 +14,7 @@ summary_for_jira: "[C2] Workstreams strukturieren und steuern"
 
 # PROJ-102: Workstreams strukturieren und steuern
 
-## Status: Architected
+## Status: In Progress (Backend live)
 **Created:** 2026-06-10
 **Origin:** M&A-Platform Backlog (Epic C — Aufgaben & Workstreams)
 **Priority:** P1
@@ -158,6 +158,27 @@ Keine neuen npm-Pakete. Eine Supabase-Migration (2 Tabellen + 2 additive FKs + 1
 - **PROJ-Y-102c → PROJ-96:** Workstream-Template-Katalog + AC5-Vorbelegung.
 - **PROJ-Y-102d → PROJ-131/132:** Auto-RAG-Regel + WS-Status in Report-Presets.
 - **PROJ-Y-102e (Hygiene):** stehen-gebliebene `attributes.ma_workstream`-Tags nach Deploy auditieren/aufräumen.
+
+---
+
+## Backend Implementation Notes (2026-07-02)
+
+**Migration `20260702074148_proj102_workstreams`** (live in Prod-DB + Repo versionsgleich, PROJ-134-konform; recreates auf LIVE-Defs aufgesetzt inkl. committees/dd_*):
+- `workstreams` (workstream_key unique/Projekt, label, goal, lead_user_id, `rag_status` green/amber/red default green, scope, notes, `confidentiality_level`, sort_order) — RLS tenant/project (PROJ-4) + 3 RESTRICTIVE Need-to-know-Policies (`can_access_classified`), moddatetime + `record_audit_changes`-Trigger.
+- `workstream_phases` M:N (PK (workstream_id, phase_id)) — RLS faltet Membership + Need-to-know über die Eltern-`workstreams` ein; kein Audit-Trigger (Join, insert/delete-only).
+- Additive nullable FKs `work_items.workstream_id` + `risks.workstream_id` (beide ON DELETE SET NULL, partieller Index) — work_items additiv (HOCH-Blast sicher, kein NOT NULL).
+- `audit_log_entity_type_check` um `workstreams`+`workstream_phases` erweitert **aus der Live-Liste** (committees etc. erhalten). `_tracked_audit_columns` + `can_read_audit_entry` aus Live-Defs recreated + `workstreams`-Zweig + **authenticated-EXECUTE re-granted** (Recreate-drop-Lektion).
+- SECURITY-**INVOKER**-RPC `workstream_dashboard(project)` → je WS `{tasks_total, tasks_done, open_risks, deliverables_total:null}`; Need-to-know via Caller-Kontext.
+
+**API:** `GET/POST /workstreams`, `GET/PATCH/DELETE /workstreams/[wsid]` (rag_status via PATCH — kein State-Machine-RPC), `PUT /workstreams/[wsid]/phases` (M:N-Diff: add-missing/remove-extra, kein Wholesale-Wipe), `GET /workstreams/dashboard`. Auth via `requireProjectAccess` (view/manage_members). Client-Wrapper `lib/ma-project/workstreams-api.ts`, Typen `types/workstream.ts`, Hook `use-workstreams`.
+
+**F3 (additiv, Build-grün):** `work_items.workstream_id` in create+patch-Zod-Schema (Spread→INSERT/UPDATE), `WorkItem`-Typ + beide Hooks (Select+Mapping), `useWorkItems.workstreamId`-Filter ergänzt. Der alte `attributes.ma_workstream`-Pfad bleibt vorerst; **UI-Umstellung auf WS-Dropdown (ma-task-dialog/ma-tasks-page) → /frontend** (PROJ-Y-102e für Tag-Cleanup).
+
+**Live-Smoke gegen Prod (Pflicht, 0 Residue):** DO-Block auf PMI-Projekt — 8/8 Assertions: RAG default green · M:N 2 Phasen · work_item-Link · risk-Link open · dashboard open_risks=1/tasks_total=1 · **committees noch im CHECK (kein Regressions-Verlust)** · Audit-Row für workstreams-UPDATE (CHECK+tracked+Trigger). Residue-Recheck 0.
+
+**Quality-Gates:** vitest **2171/2171** (+24 Route-Tests + Drift-Kitchensinks um workstream_id erweitert); ESLint 0; tsc 14 Baseline/0 neu; build clean (4 Routen registriert).
+
+**Noch offen → /frontend:** „Workstreams"-Tab (Nav-Section + Dashboard-Kacheln + Create/Edit-Dialog mit Phasen-Multiselect + RAG-Control + Detail mit Aufgaben/Risiken-Liste) + PROJ-101-Aufgaben-Dropdown-Umstellung. **→ /qa:** Need-to-know-Pentest (RESTRICTIVE-Policies), Live-E2E, Playwright-Auth-Gate.
 
 ---
 _Quelle: Backlog-Entwurf M&A-Projektplattform · C — Aufgaben & Workstreams_
