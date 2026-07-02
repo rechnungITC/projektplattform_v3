@@ -181,4 +181,20 @@ Keine neuen npm-Pakete. Eine Supabase-Migration (2 Tabellen + 2 additive FKs + 1
 **Noch offen → /frontend:** „Workstreams"-Tab (Nav-Section + Dashboard-Kacheln + Create/Edit-Dialog mit Phasen-Multiselect + RAG-Control + Detail mit Aufgaben/Risiken-Liste) + PROJ-101-Aufgaben-Dropdown-Umstellung. **→ /qa:** Need-to-know-Pentest (RESTRICTIVE-Policies), Live-E2E, Playwright-Auth-Gate.
 
 ---
+
+## Frontend Implementation Notes (2026-07-02)
+
+**Neuer „Workstreams"-Tab im M&A-Projektraum + F3-UI-Umstellung.**
+- **Nav** (`method-templates/index.ts`): `MA_WORKSTREAMS_SECTION` (`tabPath: "workstreams"`, Icon `Layers`, `requiresProjectType: "ma"`) via `withMaFoundation` nach Aufgaben injiziert (…Rollen → Aufgaben → **Workstreams** → Governance → Due Diligence → DD-Bericht).
+- **Route** `src/app/(app)/projects/[id]/workstreams/page.tsx`.
+- **`workstreams-page.tsx`** (Dashboard-Kacheln): pro WS Card mit Label · RAG-Badge (grün/gelb/rot) · Ziel · Lead (via `useTenantMembers`) · Fortschrittsbalken (`tasks_done/tasks_total` aus `workstream_dashboard`) · offene Risiken · Deliverables „—" · Inline-RAG-Select (PATCH `rag_status`) · Edit/Delete (`edit_master`-gated, AlertDialog-Confirm). Dashboard-Fetch als `let cancelled`-IIFE (react-compiler-safe).
+- **`workstream-dialog.tsx`** (Create/Edit, react-hook-form + `useWatch`): Label · Ziel · Lead (ResponsibleUserPicker) · RAG-Select · Vertraulichkeit-Select · Phasen-Checkbox-Liste (`usePhases`); create leitet `workstream_key` per `slugifyKey(label)` ab; Phasen via `setWorkstreamPhases` (Diff-PUT); Edit lädt Bestands-Phasen via `getWorkstream`.
+- **F3 UI-Switch (PROJ-Y-101a eingelöst):** `ma-task-dialog` Workstream-Feld Freitext → **WS-Dropdown** (`useWorkstreams`, schreibt `workstream_id`; `attributes.ma_workstream`-Manipulation entfernt); `ma-tasks-page` Filter Freitext → WS-Dropdown (`workstreamId`), Zeilen-Badge zeigt WS-Label aus `workstream_id`-Map. `useWorkItems.workstreamId` genutzt.
+- Reuse Card/Progress/Badge/Select/Dialog/AlertDialog/Checkbox + ResponsibleUserPicker/usePhases/useTenantMembers. Kein neues Dep/shadcn.
+
+**Quality-Gates:** vitest **2171/2171**; ESLint 0 (0 warnings — `useWatch` statt `watch`); tsc 14 Baseline/0 neu; build clean (`/projects/[id]/workstreams` + 4 API-Routen registriert).
+
+**Noch offen → /qa:** Need-to-know-Pentest (RESTRICTIVE-Policies via Impersonation), Live-E2E (WS anlegen → Phasen → Task/Risk-Zuordnung → Dashboard → RAG → Delete, 0 Residue), Playwright-Auth-Gate für Route + APIs.
+
+---
 _Quelle: Backlog-Entwurf M&A-Projektplattform · C — Aufgaben & Workstreams_
