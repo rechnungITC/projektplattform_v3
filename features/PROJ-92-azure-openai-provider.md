@@ -1,6 +1,6 @@
 # PROJ-92: Azure OpenAI Provider (Class-1/2) — fünfter Provider-Typ
 
-## Status: In Progress (Backend gebaut 2026-07-01 — Provider + Validator + EU-Region-Allowlist + Lockstep-Migration in Prod + Live-Smoke grün; all-gates green. Admin-UI-Formular → /frontend)
+## Status: In Progress (Backend + Frontend gebaut 2026-07-01 — Provider/Validator/Migration live + Azure-Admin-Formular in Settings→KI-Provider; all-gates green. → /qa für AC-92.7 Live-Resource-Smoke)
 **Created:** 2026-06-10
 **Last Updated:** 2026-07-01
 **Origin:** PO-Entscheidung 2026-06-10 (Pilotkunden ohne Ollama-Betrieb) · CIA-Review 2026-06-10 (GO, Split 92a/92b)
@@ -158,6 +158,18 @@ Built in worktree `projektplattform_v3-proj92` (branch `proj-92/backend`). **No 
 **Quality gates:** vitest **2164/2164** (270 files); eslint 0 on changed files; tsc 14 total = **0 new** (the 1 AI-file error is the pre-existing `graph-purpose-prompts.test.ts` baseline); build clean; `check:migration-naming` 0 errors (new migration minute-rastered, no collision); Supabase security advisors 0 ERROR (the 1 WARN on the recreated audit fn is the pre-existing `authenticated_security_definer_function_executable`, not new).
 
 **Open:** AC-92.6 admin-UI Azure form → `/frontend`; AC-92.7 live-smoke against a *real* Azure resource → `/qa` (documented stub path acceptable if no test resource). → `/frontend`.
+
+## Implementation Notes — Frontend (2026-07-01)
+
+Built in worktree `projektplattform_v3-proj92` (branch `proj-92/frontend`). No new dependency, shadcn/ui primitives only.
+
+- **`AzureCard`** in `src/components/settings/tenant/ai-providers/ai-providers-page-client.tsx` (AC-92.6) — mirrors `OllamaCard` (multi-field): endpoint_url, deployment_name, api_key, api_version, azure_region. PUTs the exact body `{endpoint_url, deployment_name, api_key, api_version, azure_region}` to `…/ai-providers/azure`; reuses the generic status-badge / fingerprint display / Re-Test (`…/azure/validate`) / delete flows. Client shape-check mirrors the backend Zod (https endpoint, `api_version` regex `^\d{4}-\d{2}-\d{2}(-preview)?$`, non-empty key/deployment/region); the **EU-region allowlist is NOT duplicated client-side** — a non-EU region surfaces the server 400 message verbatim (per lock). Status handling incl. `model_missing` (deployment not found) + `unreachable`. Wired into the page: `ProviderName`/`LoadState`/parallel load all include `azure`.
+- **`PriorityMatrixSection`** — `azure` added to `ProviderName`, `PROVIDER_LABELS` ("Azure OpenAI"), `CLOUD_PROVIDERS`, `AvailMap`, `availableCloud`, and a new `azureAvailable` prop (passed from the page). So azure now appears in the Class-1/2 cloud order presets. (Local/Class-3 presets unchanged — azure never enters them.)
+- **`CostCapSection`** — `azure` label added to the per-provider usage display.
+
+**Quality gates:** eslint 0 (changed files); tsc 14 total = **0 new**; build clean; targeted vitest 278/278 (AI lib + provider routes — no regressions; the settings page area has no unit tests, consistent with the existing OpenAI/Ollama cards).
+
+**Open:** AC-92.7 live smoke against a *real* Azure resource → `/qa` (documented stub path acceptable if no test resource). → `/qa`.
 
 ## QA Test Results
 _To be added by /qa_

@@ -68,6 +68,7 @@ const PROVIDER_LABELS: Record<string, string> = {
   anthropic: "Anthropic",
   openai: "OpenAI",
   google: "Google",
+  azure: "Azure OpenAI",
   ollama: "Ollama (lokal)",
   stub: "Stub / blocked",
   unknown: "Unbekannt",

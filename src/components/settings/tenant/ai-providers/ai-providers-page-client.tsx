@@ -3,6 +3,7 @@
 import {
   AlertCircle,
   CheckCircle2,
+  Cloud,
   HelpCircle,
   KeyRound,
   Loader2,
@@ -41,7 +42,7 @@ import { toast } from "sonner"
 import { CostCapSection } from "./cost-cap-section"
 import { PriorityMatrixSection } from "./priority-matrix-section"
 
-type ProviderName = "anthropic" | "ollama" | "openai" | "google"
+type ProviderName = "anthropic" | "ollama" | "openai" | "google" | "azure"
 
 type ProviderStatus =
   | "not_set"
@@ -70,6 +71,7 @@ type LoadState =
       openai: ProviderState
       google: ProviderState
       ollama: ProviderState
+      azure: ProviderState
     }
   | { kind: "error"; message: string }
 
@@ -115,10 +117,11 @@ export function AiProvidersPageClient() {
       loadProvider("openai"),
       loadProvider("google"),
       loadProvider("ollama"),
+      loadProvider("azure"),
     ])
-      .then(([anthropic, openai, google, ollama]) => {
+      .then(([anthropic, openai, google, ollama, azure]) => {
         if (!cancelled) {
-          setState({ kind: "ready", anthropic, openai, google, ollama })
+          setState({ kind: "ready", anthropic, openai, google, ollama, azure })
         }
       })
       .catch((err: unknown) => {
@@ -226,6 +229,8 @@ export function AiProvidersPageClient() {
         onChanged={reload}
       />
 
+      <AzureCard state={state.azure} tenantId={tenantId!} onChanged={reload} />
+
       <OllamaCard state={state.ollama} tenantId={tenantId!} onChanged={reload} />
 
       <PriorityMatrixSection
@@ -234,6 +239,7 @@ export function AiProvidersPageClient() {
         openaiAvailable={state.openai.status !== "not_set"}
         googleAvailable={state.google.status !== "not_set"}
         ollamaAvailable={state.ollama.status !== "not_set"}
+        azureAvailable={state.azure.status !== "not_set"}
       />
 
       <CostCapSection tenantId={tenantId!} />
@@ -783,6 +789,379 @@ function OllamaCard({
               Class-3-Anfragen werden anschließend blockiert (kein lokaler
               Provider mehr). Class-1/Class-2 fallen auf Anthropic /
               Plattform-Key zurück. Audit-Log behält den Vorgang.
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogCancel disabled={submitting}>Abbrechen</AlertDialogCancel>
+            <AlertDialogAction
+              onClick={handleDelete}
+              disabled={submitting}
+              className="bg-destructive text-destructive-foreground hover:bg-destructive/90"
+            >
+              {submitting && (
+                <Loader2 className="mr-2 h-4 w-4 animate-spin" aria-hidden />
+              )}
+              Endgültig löschen
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
+    </Card>
+  )
+}
+
+// ---------------------------------------------------------------------------
+// Azure OpenAI Card (PROJ-92) — multi-field like Ollama (endpoint + deployment
+// + key + api-version + region). Class-1/2 only; not Class-3-eligible.
+// ---------------------------------------------------------------------------
+
+interface AzureInputs {
+  endpoint_url: string
+  deployment_name: string
+  api_key: string
+  api_version: string
+  azure_region: string
+}
+
+const AZURE_API_VERSION_RE = /^\d{4}-\d{2}-\d{2}(-preview)?$/
+
+function AzureCard({
+  state,
+  tenantId,
+  onChanged,
+}: {
+  state: ProviderState
+  tenantId: string
+  onChanged: () => void
+}) {
+  const [editing, setEditing] = React.useState(false)
+  const [inputs, setInputs] = React.useState<AzureInputs>({
+    endpoint_url: "",
+    deployment_name: "",
+    api_key: "",
+    api_version: "",
+    azure_region: "",
+  })
+  const [submitting, setSubmitting] = React.useState(false)
+  const [validating, setValidating] = React.useState(false)
+  const [deleteOpen, setDeleteOpen] = React.useState(false)
+
+  const isSet = state.status !== "not_set"
+
+  const trimmed = {
+    endpoint_url: inputs.endpoint_url.trim(),
+    deployment_name: inputs.deployment_name.trim(),
+    api_key: inputs.api_key.trim(),
+    api_version: inputs.api_version.trim(),
+    azure_region: inputs.azure_region.trim(),
+  }
+  const apiVersionOk = AZURE_API_VERSION_RE.test(trimmed.api_version)
+  const shapeOk =
+    /^https:\/\/[^\s]{3,}/i.test(trimmed.endpoint_url) &&
+    trimmed.deployment_name.length > 0 &&
+    trimmed.api_key.length >= 20 &&
+    apiVersionOk &&
+    trimmed.azure_region.length > 0
+
+  async function handleSave() {
+    if (!shapeOk) return
+    setSubmitting(true)
+    try {
+      const r = await fetch(`/api/tenants/${tenantId}/ai-providers/azure`, {
+        method: "PUT",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify({
+          endpoint_url: trimmed.endpoint_url,
+          deployment_name: trimmed.deployment_name,
+          api_key: trimmed.api_key,
+          api_version: trimmed.api_version,
+          azure_region: trimmed.azure_region,
+        }),
+      })
+      if (!r.ok) {
+        const respBody = await r.json().catch(() => ({}))
+        // Surface the server-driven EU-region rejection (400 on azure_region)
+        // and deployment/api-version errors (422) as actionable messages.
+        throw new Error(respBody?.error?.message ?? `HTTP ${r.status}`)
+      }
+      const result = (await r.json()) as ProviderState
+      if (result.status === "valid")
+        toast.success("Azure-OpenAI-Konfiguration gespeichert und validiert.")
+      else if (result.status === "unreachable")
+        toast.warning(
+          "Endpoint nicht erreichbar — Konfig gespeichert. Re-Test wenn online.",
+        )
+      else toast.warning("Konfiguration gespeichert mit unklarem Status.")
+      setInputs({
+        endpoint_url: "",
+        deployment_name: "",
+        api_key: "",
+        api_version: "",
+        azure_region: "",
+      })
+      setEditing(false)
+      onChanged()
+    } catch (err) {
+      toast.error(err instanceof Error ? err.message : "Speichern fehlgeschlagen")
+    } finally {
+      setSubmitting(false)
+    }
+  }
+
+  async function handleValidate() {
+    setValidating(true)
+    try {
+      const r = await fetch(
+        `/api/tenants/${tenantId}/ai-providers/azure/validate`,
+        { method: "POST" },
+      )
+      if (!r.ok) {
+        const body = await r.json().catch(() => ({}))
+        throw new Error(body?.error?.message ?? `HTTP ${r.status}`)
+      }
+      const result = (await r.json()) as ProviderState
+      if (result.status === "valid") toast.success("Azure-Deployment ist valide.")
+      else if (result.status === "invalid")
+        toast.error("Azure lehnt den Key oder die api-version ab.")
+      else if (result.status === "model_missing")
+        toast.warning("Deployment nicht gefunden — Namen prüfen.")
+      else if (result.status === "unreachable")
+        toast.warning("Endpoint nicht erreichbar.")
+      else toast.warning("Validierung unvollständig.")
+      onChanged()
+    } catch (err) {
+      toast.error(err instanceof Error ? err.message : "Re-Test fehlgeschlagen")
+    } finally {
+      setValidating(false)
+    }
+  }
+
+  async function handleDelete() {
+    setSubmitting(true)
+    try {
+      const r = await fetch(`/api/tenants/${tenantId}/ai-providers/azure`, {
+        method: "DELETE",
+      })
+      if (!r.ok) {
+        const body = await r.json().catch(() => ({}))
+        throw new Error(body?.error?.message ?? `HTTP ${r.status}`)
+      }
+      toast.success("Azure-OpenAI-Konfiguration gelöscht.")
+      setDeleteOpen(false)
+      setEditing(false)
+      setInputs({
+        endpoint_url: "",
+        deployment_name: "",
+        api_key: "",
+        api_version: "",
+        azure_region: "",
+      })
+      onChanged()
+    } catch (err) {
+      toast.error(err instanceof Error ? err.message : "Löschen fehlgeschlagen")
+    } finally {
+      setSubmitting(false)
+    }
+  }
+
+  return (
+    <Card>
+      <CardHeader>
+        <CardTitle className="flex items-center gap-2">
+          <Cloud className="h-5 w-5" aria-hidden />
+          Azure OpenAI <StatusBadge status={state.status} />
+        </CardTitle>
+        <CardDescription>
+          Eigene Azure-OpenAI-Ressource (EU-Region) für Class-1 / Class-2-Daten.
+          Cloud-Provider — nicht für Class-3 erlaubt.
+        </CardDescription>
+      </CardHeader>
+      <CardContent className="space-y-4">
+        {isSet && state.fingerprint && (
+          <dl className="grid grid-cols-1 gap-2 text-sm sm:grid-cols-3">
+            <div>
+              <dt className="text-muted-foreground">Ressource / Deployment</dt>
+              <dd className="font-mono break-all">{state.fingerprint}</dd>
+            </div>
+            <div>
+              <dt className="text-muted-foreground">Letzte Validierung</dt>
+              <dd>{formatTimestamp(state.last_validated_at)}</dd>
+            </div>
+            <div>
+              <dt className="text-muted-foreground">Status</dt>
+              <dd>{state.last_validation_status ?? "—"}</dd>
+            </div>
+          </dl>
+        )}
+
+        {state.status === "model_missing" && (
+          <Alert>
+            <PlugZap className="h-4 w-4" aria-hidden />
+            <AlertTitle>Deployment nicht gefunden</AlertTitle>
+            <AlertDescription>
+              Die Ressource ist erreichbar, aber der Deployment-Name existiert
+              nicht. Deployment-Namen in der Azure-Ressource prüfen.
+            </AlertDescription>
+          </Alert>
+        )}
+
+        {state.status === "unreachable" && (
+          <Alert>
+            <WifiOff className="h-4 w-4" aria-hidden />
+            <AlertTitle>Endpoint nicht erreichbar</AlertTitle>
+            <AlertDescription>
+              Konfiguration ist gespeichert, aber der Endpoint antwortet nicht.
+              Re-Test ausführen, wenn die Ressource erreichbar ist.
+            </AlertDescription>
+          </Alert>
+        )}
+
+        {state.status === "invalid" && (
+          <Alert variant="destructive">
+            <AlertCircle className="h-4 w-4" aria-hidden />
+            <AlertTitle>Konfiguration ungültig</AlertTitle>
+            <AlertDescription>
+              Azure hat den Key oder die api-version abgelehnt. Bitte prüfen.
+            </AlertDescription>
+          </Alert>
+        )}
+
+        {(editing || !isSet) && (
+          <div className="space-y-3">
+            <div className="space-y-2">
+              <Label htmlFor="azure-endpoint">Endpoint-URL</Label>
+              <Input
+                id="azure-endpoint"
+                placeholder="https://my-res.openai.azure.com"
+                value={inputs.endpoint_url}
+                onChange={(e) =>
+                  setInputs((s) => ({ ...s, endpoint_url: e.target.value }))
+                }
+                disabled={submitting}
+              />
+            </div>
+
+            <div className="space-y-2">
+              <Label htmlFor="azure-deployment">Deployment-Name</Label>
+              <Input
+                id="azure-deployment"
+                placeholder="gpt-4o"
+                value={inputs.deployment_name}
+                onChange={(e) =>
+                  setInputs((s) => ({ ...s, deployment_name: e.target.value }))
+                }
+                disabled={submitting}
+              />
+            </div>
+
+            <div className="space-y-2">
+              <Label htmlFor="azure-key">API-Key</Label>
+              <Input
+                id="azure-key"
+                type="password"
+                autoComplete="off"
+                spellCheck={false}
+                placeholder="Azure-Ressourcen-Key"
+                value={inputs.api_key}
+                onChange={(e) =>
+                  setInputs((s) => ({ ...s, api_key: e.target.value }))
+                }
+                disabled={submitting}
+              />
+            </div>
+
+            <div className="space-y-2">
+              <Label htmlFor="azure-api-version">api-version</Label>
+              <Input
+                id="azure-api-version"
+                placeholder="2024-10-21"
+                value={inputs.api_version}
+                onChange={(e) =>
+                  setInputs((s) => ({ ...s, api_version: e.target.value }))
+                }
+                disabled={submitting}
+              />
+              {trimmed.api_version.length > 0 && !apiVersionOk && (
+                <p className="text-xs text-destructive">
+                  Format: 2024-10-21 oder 2024-10-01-preview.
+                </p>
+              )}
+            </div>
+
+            <div className="space-y-2">
+              <Label htmlFor="azure-region">Azure-Region (EU)</Label>
+              <Input
+                id="azure-region"
+                placeholder="westeurope"
+                value={inputs.azure_region}
+                onChange={(e) =>
+                  setInputs((s) => ({ ...s, azure_region: e.target.value }))
+                }
+                disabled={submitting}
+              />
+              <p className="text-xs text-muted-foreground">
+                Nur EU-Regionen sind erlaubt (z.B. westeurope,
+                germanywestcentral). Nicht-EU-Regionen werden serverseitig
+                abgelehnt.
+              </p>
+            </div>
+
+            <div className="flex flex-wrap gap-2">
+              <Button onClick={handleSave} disabled={!shapeOk || submitting}>
+                {submitting && (
+                  <Loader2 className="mr-2 h-4 w-4 animate-spin" aria-hidden />
+                )}
+                Speichern + Validieren
+              </Button>
+              {editing && (
+                <Button
+                  variant="ghost"
+                  onClick={() => {
+                    setEditing(false)
+                    setInputs({
+                      endpoint_url: "",
+                      deployment_name: "",
+                      api_key: "",
+                      api_version: "",
+                      azure_region: "",
+                    })
+                  }}
+                  disabled={submitting}
+                >
+                  Abbrechen
+                </Button>
+              )}
+            </div>
+          </div>
+        )}
+
+        {isSet && !editing && (
+          <div className="flex flex-wrap gap-2">
+            <Button variant="outline" onClick={handleValidate} disabled={validating}>
+              {validating && (
+                <Loader2 className="mr-2 h-4 w-4 animate-spin" aria-hidden />
+              )}
+              Re-Test
+            </Button>
+            <Button variant="outline" onClick={() => setEditing(true)}>
+              Bearbeiten
+            </Button>
+            <Button variant="destructive" onClick={() => setDeleteOpen(true)}>
+              <Trash2 className="mr-2 h-4 w-4" aria-hidden /> Löschen
+            </Button>
+          </div>
+        )}
+      </CardContent>
+
+      <AlertDialog open={deleteOpen} onOpenChange={setDeleteOpen}>
+        <AlertDialogContent>
+          <AlertDialogHeader>
+            <AlertDialogTitle>Azure-OpenAI-Konfiguration löschen?</AlertDialogTitle>
+            <AlertDialogDescription>
+              Class-1/Class-2-Anfragen routen anschließend zum nächsten
+              Cloud-Provider in der Priority-Matrix oder zum Plattform-Fallback.
+              Diese Aktion ist nicht rückgängig — der Audit-Log behält den
+              Vorgang.
             </AlertDialogDescription>
           </AlertDialogHeader>
           <AlertDialogFooter>
