@@ -14,7 +14,7 @@ summary_for_jira: "[C2] Workstreams strukturieren und steuern"
 
 # PROJ-102: Workstreams strukturieren und steuern
 
-## Status: Planned
+## Status: Architected
 **Created:** 2026-06-10
 **Origin:** M&A-Platform Backlog (Epic C — Aufgaben & Workstreams)
 **Priority:** P1
@@ -74,6 +74,90 @@ Das Modell nennt 12 typische Workstreams (Strategy, Commercial, Finance, Tax, Le
 - Deal Lead
 - PMO-Lead
 - SteerCo (lesend)
+
+---
+
+## Tech Design (Solution Architect)
+
+**Architektur-Datum:** 2026-07-02 · **Reuse-Klasse:** EXTEND (PROJ-112-Rezept, nicht dd_streams generalisieren) · **CIA-reviewed:** 2026-07-02 (5 Forks gelockt, GO)
+
+### Leitprinzip
+Ein Workstream ist eine **neue Steuerungseinheit je M&A-Projekt** (Strategy, Commercial, Legal, IT, PMI, …). Wir bauen sie nach dem **bewährten PROJ-112 (`dd_streams`)-Rezept** (Struktur + Need-to-know + Audit), aber als **eigene Tabelle** — ein DD-Stream ist ein Geschwister, kein Spezialfall (ADR: 102 merge mit 127 PMI, nicht mit 112). Aufgaben (PROJ-101) und Risiken (PROJ-20) werden per **additiver pro-Paar-FK** an Workstreams gehängt — kein neues Link-Generikum.
+
+### Neue Datenobjekte
+```
+workstreams (je Projekt)
+- id, tenant_id, project_id
+- workstream_key   (slug-regex, unique je Projekt — wie dd_streams.stream_key)
+- label            (Anzeigename, z. B. "Legal DD")
+- goal             (Ziel, Freitext — AC2)
+- lead_user_id     (Verantwortlicher, FK profiles, nullable)
+- rag_status       (Enum green|amber|red, manuell — AC2/F5, default 'green')
+- scope, notes     (optional)
+- confidentiality_level  (ma_confidentiality_level, 100a — Need-to-know von Tag 1)
+- sort_order
+- (PROJ-10 Field-Audit)
+
+workstream_phases (M:N — AC1 "einer ODER mehreren Phasen", F2)
+- workstream_id, phase_id, tenant_id  (unique(workstream_id, phase_id))
+
+work_items.workstream_id   (NEU, nullable FK → workstreams, F3 / PROJ-Y-101a)
+risks.workstream_id        (NEU, nullable FK → workstreams, F4 — analog risks.context_phase_id)
+```
+
+### Gelockte Architektur-Entscheidungen (CIA 2026-07-02)
+- **F1 — Neue `workstreams`-Tabelle, KEINE dd_streams-Generalisierung.** dd_streams trägt DD-Semantik (findings_consolidated, Q&A/Findings-FK-Ketten, eigener RPC) und ist deployed + per-FK belastet. Generalisieren = hoher Blast-Radius, null MVP-Nutzen. Wir reusen das **Rezept** (Struktur/RLS/Audit/`audit_entity_type`-CHECK/`can_read_audit_entry`-Zweig), nicht die Tabelle → kein DUP.
+- **F2 — M:N `workstream_phases`.** AC1 fordert Multi-Phase explizit; Workstreams laufen fachlich phasenübergreifend (IT-Integration: DD→Signing→PMI). Single→M:N später nachrüsten wäre ein Datenmodell-Bruch. Kein verfrühtes Generikum — minimal-korrekte Kardinalität für ein explizites AC.
+- **F3 — `work_items.workstream_id` FK (löst PROJ-Y-101a ein).** Additive nullable FK auf der Kern-Tabelle (Pflicht-`gitnexus_impact` vor Migration; nullable + kein CHECK bricht Bestand nicht). PROJ-101-Konsumenten (`ma-task-dialog` Freitext→WS-Dropdown, `ma-tasks-page`-Filter, `useWorkItems.workstream`) von `attributes->>ma_workstream` auf `.eq('workstream_id', …)` umstellen. **Pflicht bleibt WEICH** (UI-seitig für M&A-Tasks, KEIN DB-NOT-NULL — generische Non-M&A-work_items haben nie einen Workstream) → verlängert PROJ-101-D-1. Bestehende Freitext-Tags werden **nicht gelöscht** (Datenverlust-Schutz; realistisch 0 Zeilen in Prod, da PROJ-101 gestern kam + keine M&A-Projekte); Rest-Aufräumung → PROJ-Y-102e.
+- **F4 — `risks.workstream_id` FK (pro-Paar, kein Polymorph).** PROJ-102 ist der in PROJ-101-F2 erwartete „zweite Konsument". Präzedenz: `risks.context_phase_id` ist bereits eine nullable pro-Paar-FK zu phases — `risks.workstream_id` ist exakt konsistent. Dashboard-Query: `count(risks WHERE workstream_id=X AND status='open')`. Polymorphe Governance-Link-Tabelle wäre das verfrühte Generikum, vor dem F2 warnte.
+- **F5 — Manueller RAG-Status.** green/amber/red, gesetzt vom WS-Lead. Regelbasierte Auto-RAG (x% überfällige Tasks → rot) braucht unabgestimmte Schwellwerte + macht Governance-Status streitbar → deferred (PROJ-Y-102d), später additiv als berechnetes Feld neben manuellem Override.
+
+### Was neu gebaut wird
+1. **Migration** (PROJ-112-Rezept, idempotent, Section-0-CHECK zuerst): `workstreams` + `workstream_phases` (RLS: tenant + 3 RESTRICTIVE Need-to-know-Policies via `can_access_classified`); additive `work_items.workstream_id` + `risks.workstream_id`; `audit_log_entity_type_check` um `'workstreams'`+`'workstream_phases'` erweitern **vor** erstem Audit-Write (PROJ-100a-H-1-Lektion); `can_read_audit_entry` authenticated-EXECUTE-Grant nach Recreate re-granten (Memory-Lektion); PROJ-10-Audit-Wiring (`_tracked_audit_columns`).
+2. **Dashboard-Aggregat** = SECURITY-**INVOKER**-RPC `workstream_dashboard(project)` (mirror PROJ-116 `dd_report_consolidated`): pro WS `{ tasks_total, tasks_done, open_risks, deliverables_total:null }` — Need-to-know **gratis** über INVOKER + Caller-Kontext. Deliverable-Count = `null`/„—" bis PROJ-104.
+3. **API-Routen:** `GET/POST /workstreams`, `GET/PATCH/DELETE /workstreams/[wsid]` (rag_status via PATCH — RAG ist kein Lifecycle-State-Machine, freie Übergänge, plain PATCH durch Audit-Trigger), `PUT /workstreams/[wsid]/phases` (M:N setzen), `GET /workstreams/dashboard` (INVOKER-RPC).
+4. **PROJ-101-Umstellung (F3):** Aufgaben-Dialog + Filter auf WS-Dropdown/FK.
+
+### Komponenten-Struktur (UI)
+```
+M&A-Projektraum
+└── Tab „Workstreams" (neu, requiresProjectType ma)
+    ├── Dashboard-Kacheln je WS: Label · Lead · RAG-Badge · Fortschritt (% Tasks) · offene Risiken · Deliverables (—)
+    ├── „Neuer Workstream" / „Bearbeiten"-Dialog (Label · Ziel · Lead · RAG · Phasen-Multiselect · Vertraulichkeit)
+    ├── WS-Detail: Ziel + RAG + Aufgabenliste (work_items WHERE workstream_id, reuse) + Risiken (reuse) + Deliverables (—)
+    └── RAG-Inline-Control (green/amber/red)
+
+Querschnitt: PROJ-101 „Aufgaben"-Tab → Workstream-Feld wird FK-Dropdown statt Freitext.
+```
+
+### Offene Spec-Fragen — beantwortet
+- **RAG manuell vs. regelbasiert?** Manuell (F5); Auto-Regel → PROJ-Y-102d.
+- **Workstream-übergreifende Dependency-Map?** Out of Scope MVP → Followup (nutzt später die deployte polymorphe `dependencies`-Tabelle aus PROJ-9-R2).
+
+### Deviations (dokumentiert)
+- **AC2/AC3 Deliverable-Liste/-Count** → forward-compat deferred (PROJ-104 fehlt), Dashboard zeigt „—". Owner **PROJ-104** (`deliverables.workstream_id`, gleiches pro-Paar-Muster).
+- **AC5 Template-Vorbelegung** → deferred (PROJ-96 fehlt). Owner **PROJ-96** (PROJ-Y-102c).
+- **AC4 tiefe Reporting-Integration (L1/L3)** → deferred (PROJ-131/132 fehlt); `rag_status` + Aggregate sind read-ready. Owner **PROJ-131/132** (PROJ-Y-102d).
+- **AC1 „mehrere Phasen"** voll erfüllt (M:N, KEINE Deviation).
+
+### Tech-Entscheidungen (für PM)
+- **Rezept-Reuse statt Neubau/Refactor:** Workstreams erben Need-to-know, Audit und das erprobte Struktur-Muster der DD-Streams, ohne die Live-DD-Kette anzufassen.
+- **Pro-Paar-FK statt Link-Generikum:** Aufgaben/Risiken hängen direkt und indexierbar am Workstream — konsistent mit dem bestehenden `risks.context_phase_id`.
+- **Manueller RAG:** transparenter, unstrittiger Governance-Status; das Dashboard liefert die Datenbasis.
+
+### Abhängigkeiten (Pakete)
+Keine neuen npm-Pakete. Eine Supabase-Migration (2 Tabellen + 2 additive FKs + 1 INVOKER-RPC).
+
+### Risiken (CIA)
+- **HOCH-Blast `work_items` (F3):** Pflicht-`gitnexus_impact` + idempotente/reversible Migration + Live-Migration-Smoke gegen Prod.
+- `audit_entity_type`-CHECK vor erstem Audit-Write erweitern; `can_read_audit_entry`-Grant re-granten; Need-to-know 3 RESTRICTIVE-Policies + Pentest-AC von Tag 1; nicht-gematchte `ma_workstream`-Tags nicht löschen.
+
+### Followups (PROJ-Y)
+- **PROJ-Y-102a → PROJ-127:** Workstream-`type`/IMO-Config beim PMI-Merge.
+- **PROJ-Y-102b → PROJ-104:** `deliverables.workstream_id` + Deliverable-Count aktivieren.
+- **PROJ-Y-102c → PROJ-96:** Workstream-Template-Katalog + AC5-Vorbelegung.
+- **PROJ-Y-102d → PROJ-131/132:** Auto-RAG-Regel + WS-Status in Report-Presets.
+- **PROJ-Y-102e (Hygiene):** stehen-gebliebene `attributes.ma_workstream`-Tags nach Deploy auditieren/aufräumen.
 
 ---
 _Quelle: Backlog-Entwurf M&A-Projektplattform · C — Aufgaben & Workstreams_
