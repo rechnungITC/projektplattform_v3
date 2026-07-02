@@ -176,6 +176,9 @@ export interface WorkItem {
   /** PROJ-101 — Frist (deadline). Distinct from planned_end (Gantt scheduling);
    *  a deadline may legitimately precede the planned work end. Nullable, core-wide. */
   due_date?: string | null
+  /** PROJ-102 — workstream FK (M&A grouping). Nullable; replaces the
+   *  attributes.ma_workstream free-text tag from PROJ-101. */
+  workstream_id?: string | null
 }
 
 /**

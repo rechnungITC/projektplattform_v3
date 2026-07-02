@@ -30,6 +30,7 @@ import { useAuth } from "@/hooks/use-auth"
 import { usePhases } from "@/hooks/use-phases"
 import { useProjectAccess } from "@/hooks/use-project-access"
 import { useWorkItems } from "@/hooks/use-work-items"
+import { useWorkstreams } from "@/hooks/use-workstreams"
 import {
   WORK_ITEM_STATUS_LABELS,
   WORK_ITEM_STATUSES,
@@ -49,19 +50,13 @@ function isOverdue(item: WorkItemWithProfile, todayIso: string): boolean {
   return item.due_date < todayIso
 }
 
-function workstreamOf(item: WorkItemWithProfile): string | null {
-  const attrs = (item.attributes ?? {}) as Record<string, unknown>
-  const ws = attrs.ma_workstream
-  return typeof ws === "string" && ws.length > 0 ? ws : null
-}
-
 interface Filters {
   responsibleUserId: string | null
   phaseId: string | null
   status: WorkItemStatus | null
   dueAfter: string
   dueBefore: string
-  workstream: string
+  workstreamId: string | null
 }
 
 const EMPTY_FILTERS: Filters = {
@@ -70,21 +65,16 @@ const EMPTY_FILTERS: Filters = {
   status: null,
   dueAfter: "",
   dueBefore: "",
-  workstream: "",
+  workstreamId: null,
 }
 
 export function MaTasksPage({ projectId }: { projectId: string }) {
   const { currentTenant } = useAuth()
   const canEdit = useProjectAccess(projectId, "edit_master")
   const { phases } = usePhases(projectId)
+  const { workstreams } = useWorkstreams(projectId)
 
   const [filters, setFilters] = React.useState<Filters>(EMPTY_FILTERS)
-  // The workstream free-text is debounced into the query to avoid a fetch per keystroke.
-  const [workstreamQuery, setWorkstreamQuery] = React.useState("")
-  React.useEffect(() => {
-    const t = setTimeout(() => setWorkstreamQuery(filters.workstream.trim()), 300)
-    return () => clearTimeout(t)
-  }, [filters.workstream])
 
   const { items, loading, error, refresh } = useWorkItems(projectId, {
     kinds: ["task"],
@@ -93,8 +83,14 @@ export function MaTasksPage({ projectId }: { projectId: string }) {
     phaseId: filters.phaseId ?? undefined,
     dueAfter: filters.dueAfter || undefined,
     dueBefore: filters.dueBefore || undefined,
-    workstream: workstreamQuery || undefined,
+    workstreamId: filters.workstreamId ?? undefined,
   })
+
+  const workstreamName = React.useMemo(() => {
+    const m = new Map<string, string>()
+    for (const w of workstreams) m.set(w.id, w.label)
+    return m
+  }, [workstreams])
 
   const [createOpen, setCreateOpen] = React.useState(false)
   const [editItem, setEditItem] = React.useState<WorkItemWithProfile | null>(null)
@@ -120,7 +116,7 @@ export function MaTasksPage({ projectId }: { projectId: string }) {
     filters.status !== null ||
     filters.dueAfter !== "" ||
     filters.dueBefore !== "" ||
-    filters.workstream !== ""
+    filters.workstreamId !== null
 
   async function changeStatus(item: WorkItemWithProfile, status: WorkItemStatus) {
     if (status === item.status) return
@@ -258,13 +254,24 @@ export function MaTasksPage({ projectId }: { projectId: string }) {
 
         <div className="space-y-1.5">
           <Label className="text-xs">Workstream</Label>
-          <Input
-            value={filters.workstream}
-            onChange={(e) =>
-              setFilters((f) => ({ ...f, workstream: e.target.value }))
+          <Select
+            value={filters.workstreamId ?? ALL}
+            onValueChange={(v) =>
+              setFilters((f) => ({ ...f, workstreamId: v === ALL ? null : v }))
             }
-            placeholder="z. B. Financial DD"
-          />
+          >
+            <SelectTrigger>
+              <SelectValue placeholder="Alle" />
+            </SelectTrigger>
+            <SelectContent>
+              <SelectItem value={ALL}>Alle Workstreams</SelectItem>
+              {workstreams.map((w) => (
+                <SelectItem key={w.id} value={w.id}>
+                  {w.label}
+                </SelectItem>
+              ))}
+            </SelectContent>
+          </Select>
         </div>
 
         {filtersActive && (
@@ -312,7 +319,9 @@ export function MaTasksPage({ projectId }: { projectId: string }) {
             <TableBody>
               {items.map((item) => {
                 const overdue = isOverdue(item, todayIso)
-                const ws = workstreamOf(item)
+                const ws = item.workstream_id
+                  ? workstreamName.get(item.workstream_id) ?? null
+                  : null
                 return (
                   <TableRow key={item.id}>
                     <TableCell>

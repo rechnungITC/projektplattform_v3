@@ -16,10 +16,12 @@
 import {
   FileText,
   Handshake,
+  Layers,
   ListChecks,
   Microscope,
   Network,
   ShieldCheck,
+  Users,
   Workflow,
 } from "lucide-react"
 
@@ -97,6 +99,17 @@ const MA_TASKS_SECTION: SidebarSection = {
   requiresProjectType: "ma",
 }
 
+// PROJ-102 — the "Workstreams" section (per-project steering units grouping tasks
+// + risks, with RAG status + phase spans + dashboard). Project-TYPE driven (M&A),
+// injected right after Aufgaben (both Epic C).
+const MA_WORKSTREAMS_SECTION: SidebarSection = {
+  id: "ma-workstreams",
+  label: "Workstreams",
+  icon: Layers,
+  tabPath: "workstreams",
+  requiresProjectType: "ma",
+}
+
 // PROJ-112 — the "Due Diligence" section (DD-stream backbone: per-stream status,
 // lead, time window, confidentiality). Also project-TYPE driven (M&A) and
 // injected right after Governance, gated the same way.
@@ -119,6 +132,17 @@ const MA_DD_REPORT_SECTION: SidebarSection = {
   requiresProjectType: "ma",
 }
 
+// PROJ-98 — the "Gremien" section: governance bodies (SteerCo / Core Team / IMO)
+// per project with stakeholder-centric membership + decision competence.
+// Project-TYPE driven (M&A); need-to-know-scoped server-side.
+const MA_GREMIEN_SECTION: SidebarSection = {
+  id: "ma-gremien",
+  label: "Gremien",
+  icon: Users,
+  tabPath: "gremien",
+  requiresProjectType: "ma",
+}
+
 function withMaFoundation(config: MethodConfig): MethodConfig {
   const sections = config.sidebarSections
   // Insert right after the leading "overview" section (index 0) when present.
@@ -130,7 +154,9 @@ function withMaFoundation(config: MethodConfig): MethodConfig {
       MA_FOUNDATION_SECTION,
       MA_PHASE_MODEL_SECTION,
       MA_ROLES_SECTION,
+      MA_GREMIEN_SECTION,
       MA_TASKS_SECTION,
+      MA_WORKSTREAMS_SECTION,
       MA_CONFIDENTIALITY_SECTION,
       MA_DUE_DILIGENCE_SECTION,
       MA_DD_REPORT_SECTION,

@@ -24,7 +24,9 @@ summary_for_jira: "[B2] Gremien und Steuerungskreise abbilden"
 
 **H6 Pflicht-Live-RPC-Smoke** gegen Prod (`tests/sql/PROJ-98-committees-pentest.sql`, self-rolling-back, **0 Residue**): **A–J 10/10 PASS** — create (standard+strict) · add-member · **H5 cross-project-reject (23514)** · **H2 need-to-know** (non-cleared Member sieht standard NICHT strict) · **H4** non-manager-create-block (42501) · anon-execute-revoked · **H1** cross-tenant-0-committees · **H3** Audit-Zeilen für beide Tabellen · remove-member.
 
-→ `/frontend` (Projektraum-Sektion „Gremien" + Liste/Dialog + Besetzungs-Sheet + Übersicht), dann `/qa` (H1–H3-Pentest im gemischten Need-to-know-/Tenant-Kontext).
+**Frontend gebaut 2026-07-02:** Projektraum-Sektion „Gremien" (`MA_GREMIEN_SECTION`, `tabPath: gremien`, `requiresProjectType: 'ma'`, nach Rollen&RACI injiziert) + Route `(app)/projects/[id]/gremien/page.tsx` + `committees-page.tsx`: Gremien-Liste als Cards (Name + Vertraulichkeits-Badge + Frequenz + Zweck + Entscheidungskompetenz/Wert-Schwelle + Eskalationen + Besetzungs-Tabelle); Anlegen/Bearbeiten-Dialog + Löschen (manager-gated via `useProjectAccess('manage_members')`); **Besetzungs-Sheet** (Mitglieder mit Inline-Rolle/Stimmrecht-Edit + Entfernen; „Mitglied hinzufügen" via Stakeholder-Picker desselben Projekts, ausblenden bereits verknüpfter, Rolle chair/member/observer + Stimmrecht-Switch); Lade-/Leer-/Fehler-States; Reuse `committees-api`, `listStakeholders`, `MA_CONFIDENTIALITY_LEVEL_LABELS`, shadcn Card/Dialog/Sheet/Table/Badge/Select/Switch. Kein neues Dep, kein Backend-Change. **Gates:** eslint 0, tsc 14 baseline/0 neu, build clean (Route `/projects/[id]/gremien`). Cross-Session-Hinweis: in Worktree `projektplattform_v3-proj98` gebaut (Primär-Checkout durch PROJ-102-Session belegt); `method-templates/index.ts` nur additiv erweitert (`MA_GREMIEN_SECTION` + `Users`-Icon).
+
+→ `/qa` (H1–H3-Pentest im gemischten Need-to-know-/Tenant-Kontext + Auth-Gates der neuen Routen).
 **Created:** 2026-06-10
 **Origin:** M&A-Platform Backlog (Epic B — Rollen, Gremien & Governance)
 **Priority:** P1
