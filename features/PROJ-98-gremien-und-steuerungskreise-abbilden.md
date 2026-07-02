@@ -14,7 +14,17 @@ summary_for_jira: "[B2] Gremien und Steuerungskreise abbilden"
 
 # PROJ-98: Gremien und Steuerungskreise abbilden
 
-## Status: Architected (CIA-reviewed 2026-07-01 — GO mit ADJUST — EXTEND auf PROJ-112-Backbone-Rezept; `committees` + `committee_members` (stakeholder-zentriert, Invariante #4); Need-to-know via PROJ-100a-Tor (kein eigenes ACL); forward-compat-Defer für Stage-Gate/Meeting/Template-Links (110/117/96); 6 Hardening-ACs H1–H6. Kein neues Dep. → /backend)
+## Status: In Progress (Backend live — → /frontend)
+
+**Architected (CIA-reviewed 2026-07-01 — GO mit ADJUST):** EXTEND auf PROJ-112-Backbone-Rezept; `committees` + `committee_members` (stakeholder-zentriert, Invariante #4); Need-to-know via PROJ-100a-Tor (kein eigenes ACL); forward-compat-Defer für Stage-Gate/Meeting/Template-Links (110/117/96); 6 Hardening-ACs H1–H6. Kein neues Dep.
+
+**Backend gebaut 2026-07-02:** Migration `20260702120000_proj98_committees` in Prod — 2 Tabellen: `committees` (Name/Zweck/Frequenz + `decision_scope` + nullable `value_threshold_eur`/Währung + `escalation_scope` + `confidentiality_level`; permissive Projekt-Policies + **3 RESTRICTIVE `can_access_classified`-Gates** + moddatetime + `record_audit_changes`-Trigger) und `committee_members` (`stakeholder_id NOT NULL` → User-Link erbt via `stakeholders.linked_user_id`; `role_in_committee` chair/member/observer + `is_voting`; Sichtbarkeit erbt via EXISTS auf committees, Vertraulichkeit transitiv; Audit-Trigger). **Audit-CHECK + `_tracked_audit_columns` + `can_read_audit_entry` für BEIDE Tabellen in derselben Migration** (verbatim vom Live-Stand + 2 Branches; PROJ-114-H-1-Lektion). 6 impersonation-sichere SECURITY-DEFINER-RPCs (`create/update/delete_committee`, `add/update/remove_committee_member`; kein actor-Param, `auth.uid()` intern, `revoke anon`; H5 stakeholder↔project/tenant-Konsistenz in `add_committee_member`). 4 API-Routen (collection GET/POST, item PATCH/DELETE, members POST, member PATCH/DELETE) + Client-Wrapper `committees-api.ts`.
+
+**Quality-Gates:** route.test 6/6; eslint 0; tsc 14 baseline/0 neu; build clean (4 neue Routen). Supabase-Advisors: 0 ERROR, 0 rls_disabled (nur die erwarteten SECURITY-DEFINER-executable-Hinweise wie bei allen RPCs).
+
+**H6 Pflicht-Live-RPC-Smoke** gegen Prod (`tests/sql/PROJ-98-committees-pentest.sql`, self-rolling-back, **0 Residue**): **A–J 10/10 PASS** — create (standard+strict) · add-member · **H5 cross-project-reject (23514)** · **H2 need-to-know** (non-cleared Member sieht standard NICHT strict) · **H4** non-manager-create-block (42501) · anon-execute-revoked · **H1** cross-tenant-0-committees · **H3** Audit-Zeilen für beide Tabellen · remove-member.
+
+→ `/frontend` (Projektraum-Sektion „Gremien" + Liste/Dialog + Besetzungs-Sheet + Übersicht), dann `/qa` (H1–H3-Pentest im gemischten Need-to-know-/Tenant-Kontext).
 **Created:** 2026-06-10
 **Origin:** M&A-Platform Backlog (Epic B — Rollen, Gremien & Governance)
 **Priority:** P1
