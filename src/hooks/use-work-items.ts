@@ -26,8 +26,11 @@ interface UseWorkItemsOptions {
   dueAfter?: string
   /** PROJ-101 — Fristfenster upper bound (due_date <=, YYYY-MM-DD). */
   dueBefore?: string
-  /** PROJ-101 — workstream free-text tag (attributes.ma_workstream). */
+  /** PROJ-101 — workstream free-text tag (attributes.ma_workstream). Legacy;
+   *  superseded by workstreamId (PROJ-102). Kept until the tag is retired. */
   workstream?: string
+  /** PROJ-102 — workstream FK filter. null = unassigned; string = that workstream. */
+  workstreamId?: string | null
 }
 
 interface UseWorkItemsResult {
@@ -86,7 +89,7 @@ export function useWorkItems(
             // PROJ-36 Phase 36-α — WBS hierarchy + roll-up fields. Re-deploy
             // 2026-05-04 (commit f6089f8 was reverted before reaching prod;
             // re-applied via 20260504400000_proj36a_wbs_hierarchy_rollup_redeploy).
-            "id, tenant_id, project_id, kind, parent_id, phase_id, milestone_id, sprint_id, title, description, status, priority, responsible_user_id, attributes, position, created_from_proposal_id, created_by, created_at, updated_at, is_deleted, outline_path, wbs_code, wbs_code_is_custom, planned_start, planned_end, derived_planned_start, derived_planned_end, derived_estimate_hours, due_date, responsible:profiles!work_items_responsible_user_id_fkey ( id, display_name, email )"
+            "id, tenant_id, project_id, kind, parent_id, phase_id, milestone_id, sprint_id, title, description, status, priority, responsible_user_id, attributes, position, created_from_proposal_id, created_by, created_at, updated_at, is_deleted, outline_path, wbs_code, wbs_code_is_custom, planned_start, planned_end, derived_planned_start, derived_planned_end, derived_estimate_hours, due_date, workstream_id, responsible:profiles!work_items_responsible_user_id_fkey ( id, display_name, email )"
           )
           .eq("project_id", projectId)
           .order("position", { ascending: true, nullsFirst: false })
@@ -147,6 +150,13 @@ export function useWorkItems(
         }
         if (opts.workstream) {
           query = query.eq("attributes->>ma_workstream", opts.workstream)
+        }
+        if (opts.workstreamId !== undefined) {
+          if (opts.workstreamId === null) {
+            query = query.is("workstream_id", null)
+          } else {
+            query = query.eq("workstream_id", opts.workstreamId)
+          }
         }
 
         const { data, error: queryError } = await query
@@ -213,6 +223,9 @@ export function useWorkItems(
               // dropped here exactly like planned_end once was (see obs 202).
               due_date:
                 (row as { due_date?: string | null }).due_date ?? null,
+              // PROJ-102 — workstream FK; explicit mapping (obs 202).
+              workstream_id:
+                (row as { workstream_id?: string | null }).workstream_id ?? null,
               derived_planned_start:
                 (row as { derived_planned_start?: string | null })
                   .derived_planned_start ?? null,

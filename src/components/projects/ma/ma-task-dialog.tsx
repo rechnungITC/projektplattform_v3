@@ -37,6 +37,7 @@ import {
 import { Textarea } from "@/components/ui/textarea"
 import { useAuth } from "@/hooks/use-auth"
 import { usePhases } from "@/hooks/use-phases"
+import { useWorkstreams } from "@/hooks/use-workstreams"
 import {
   WORK_ITEM_PRIORITIES,
   WORK_ITEM_PRIORITY_LABELS,
@@ -44,6 +45,7 @@ import {
 } from "@/types/work-item"
 
 const NO_PHASE_VALUE = "__none__"
+const NO_WORKSTREAM_VALUE = "__none__"
 
 const taskSchema = z.object({
   title: z
@@ -60,11 +62,8 @@ const taskSchema = z.object({
   phase_id: z.string().nullable(),
   due_date: z.string().nullable(),
   priority: z.enum(WORK_ITEM_PRIORITIES),
-  workstream: z
-    .string()
-    .max(80, "Workstream darf höchstens 80 Zeichen lang sein")
-    .optional()
-    .or(z.literal("")),
+  // PROJ-102 — workstream FK (replaces the PROJ-101 attributes.ma_workstream tag).
+  workstream_id: z.string().nullable(),
 })
 
 type TaskFormValues = z.infer<typeof taskSchema>
@@ -78,12 +77,6 @@ interface MaTaskDialogProps {
   onSaved: () => void | Promise<void>
 }
 
-function readWorkstream(item: WorkItemWithProfile | null | undefined): string {
-  const attrs = (item?.attributes ?? {}) as Record<string, unknown>
-  const ws = attrs.ma_workstream
-  return typeof ws === "string" ? ws : ""
-}
-
 export function MaTaskDialog({
   open,
   onOpenChange,
@@ -93,6 +86,7 @@ export function MaTaskDialog({
 }: MaTaskDialogProps) {
   const { currentTenant } = useAuth()
   const { phases } = usePhases(projectId)
+  const { workstreams } = useWorkstreams(projectId)
   const [submitting, setSubmitting] = React.useState(false)
   const isEdit = Boolean(item)
 
@@ -105,7 +99,7 @@ export function MaTaskDialog({
       phase_id: null,
       due_date: null,
       priority: "medium",
-      workstream: "",
+      workstream_id: null,
     },
   })
 
@@ -120,20 +114,13 @@ export function MaTaskDialog({
       phase_id: item?.phase_id ?? null,
       due_date: item?.due_date ?? null,
       priority: item?.priority ?? "medium",
-      workstream: readWorkstream(item),
+      workstream_id: item?.workstream_id ?? null,
     })
   }, [open, item, reset])
 
   async function onSubmit(values: TaskFormValues) {
     setSubmitting(true)
     try {
-      const workstream = values.workstream?.trim() ?? ""
-      // Preserve existing attributes on edit; only touch the ma_workstream tag.
-      const baseAttrs = (item?.attributes ?? {}) as Record<string, unknown>
-      const attributes: Record<string, unknown> = { ...baseAttrs }
-      if (workstream) attributes.ma_workstream = workstream
-      else delete attributes.ma_workstream
-
       const commonPayload = {
         title: values.title.trim(),
         description:
@@ -144,7 +131,7 @@ export function MaTaskDialog({
         phase_id: values.phase_id,
         due_date: values.due_date,
         priority: values.priority,
-        attributes,
+        workstream_id: values.workstream_id,
       }
 
       let response: Response
@@ -341,19 +328,39 @@ export function MaTaskDialog({
 
               <FormField
                 control={form.control}
-                name="workstream"
+                name="workstream_id"
                 render={({ field }) => (
                   <FormItem>
                     <FormLabel>Workstream</FormLabel>
-                    <FormControl>
-                      <Input
-                        {...field}
-                        value={field.value ?? ""}
-                        placeholder="z. B. Financial DD"
-                        disabled={submitting}
-                      />
-                    </FormControl>
-                    <FormDescription>Optionaler Freitext-Tag.</FormDescription>
+                    <Select
+                      value={field.value ?? NO_WORKSTREAM_VALUE}
+                      onValueChange={(v) =>
+                        field.onChange(v === NO_WORKSTREAM_VALUE ? null : v)
+                      }
+                      disabled={submitting || workstreams.length === 0}
+                    >
+                      <FormControl>
+                        <SelectTrigger>
+                          <SelectValue
+                            placeholder={
+                              workstreams.length === 0
+                                ? "Keine Workstreams"
+                                : "Workstream wählen"
+                            }
+                          />
+                        </SelectTrigger>
+                      </FormControl>
+                      <SelectContent>
+                        <SelectItem value={NO_WORKSTREAM_VALUE}>
+                          Kein Workstream
+                        </SelectItem>
+                        {workstreams.map((w) => (
+                          <SelectItem key={w.id} value={w.id}>
+                            {w.label}
+                          </SelectItem>
+                        ))}
+                      </SelectContent>
+                    </Select>
                     <FormMessage />
                   </FormItem>
                 )}
