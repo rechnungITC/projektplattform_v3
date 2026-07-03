@@ -1,6 +1,6 @@
 # PROJ-93: Trusted-EU-Processor — kontrollierte Class-3-Freigabe für attestiertes Azure OpenAI
 
-## Status: Approved
+## Status: Deployed
 **Created:** 2026-06-10
 **Last Updated:** 2026-07-03
 **Origin:** PO-Entscheidung 2026-06-10 (kontrollierte Lockerung der Invariante #3) · CIA-Review 2026-06-10 (GO mit Pflicht-Guardrails)
@@ -215,5 +215,16 @@ None (0 Critical / 0 High / 0 Medium / 0 Low).
 ### Deviation
 - **D-1 (AC-93.8):** a real `ki_runs.provider='azure'` Class-3 generation needs an actually-attested Azure resource — no current pilot has one (same pattern as PROJ-88/89 Ollama). The DB gate, eligibility derivation, and resolver routing are fully proven (A–J + K/L + resolver units); the real run is a pilot/deploy follow-up.
 
-## Deployment
-_To be added by /deploy_
+## Deployment (2026-07-03)
+
+**Tag:** `v2.10.0-PROJ-93`. Deployed via Vercel auto-deploy from `main` (frontend). Migration `20260703135428_proj93_trusted_eu_processor` has been in Prod since the `/backend` slice (applied via MCP). No new env var / secret.
+
+**Shipped across 4 PRs → main:** #228 (architecture) · #229 (backend — migration + resolver + attest/revoke RPCs) · #230 (frontend — DPA attest card + ADR + CLAUDE.md Invariant #3) · #231 (QA).
+
+**Pre-deploy:** QA PASS 0 Critical/0 High; lint 0; tsc 14 baseline/0 new; vitest 2234/2234; build clean; migration-naming 0 errors; Supabase advisor 0 ERROR.
+
+**Post-deploy smoke (Prod):** `POST`/`DELETE /api/tenants/{id}/ai-providers/azure/dpa` + `/settings/tenant/ai-providers` return 307 auth-gates unauthenticated (no leak). DB gate live: `class3_local_only` replaced by floor-CHECK + DPA trigger, helper + attest/revoke RPCs present, `ki_runs.provider_region` present (all verified during `/backend` + re-verified in the QA A–J smoke against merged main).
+
+**Open follow-up — D-1 (AC-93.8):** a real end-to-end `ki_runs.provider='azure'` Class-3 generation is nachzuholen once a pilot attests an actual EU Azure resource (no pilot has one today; same pattern as PROJ-88/89 Ollama). The DPA gate, single-authority eligibility (attest + EU-region), member-callable helper, revoke effect, and anti-scope are all fully proven live (A–J + K/L + resolver units) — only a live LLM round-trip against attested Azure remains.
+
+**Behaviour without attest is byte-identical to pre-PROJ-93:** Class-3 stays Ollama-only. The loosening is opt-in per tenant, DPA-attested, EU-region-only, and auditable/reversible.
