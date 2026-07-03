@@ -1,6 +1,6 @@
 # PROJ-93: Trusted-EU-Processor — kontrollierte Class-3-Freigabe für attestiertes Azure OpenAI
 
-## Status: In Progress
+## Status: Approved
 **Created:** 2026-06-10
 **Last Updated:** 2026-07-03
 **Origin:** PO-Entscheidung 2026-06-10 (kontrollierte Lockerung der Invariante #3) · CIA-Review 2026-06-10 (GO mit Pflicht-Guardrails)
@@ -175,8 +175,45 @@ Kein generischer „Cloud-für-Class-3"-Pfad; OpenAI-direkt/Anthropic/Google fü
 
 **Handoff:** `/qa` — verify the attest/revoke UI flow (Playwright auth-gate + attest card render), re-run the live DB smoke, and (D-1) a real Class-3 Azure run once a pilot attests an Azure resource.
 
-## QA Test Results
-_To be added by /qa_
+## QA Test Results (2026-07-03) — PRODUCTION-READY (0 Critical / 0 High)
+
+**Verdict:** All acceptance criteria pass except AC-93.8 (real end-to-end Azure run), which is a documented environment deviation (**D-1** — no pilot has an attested Azure resource yet; the full gate + resolver logic is otherwise proven live). 0 Critical / 0 High → **Approved**.
+
+### Acceptance Criteria
+| AC | Result | Evidence |
+|----|--------|----------|
+| 93.1 DPA attest (columns + audit action) | ✅ | migration verified; smoke **F** dpa_attest audit row written |
+| 93.2 `class3_eligible` single logical authority | ✅ | `isClass3TrustedEligible` (resolver unit tests); DB helper is attest-floor only |
+| 93.3 Resolver parametrisation (no attest → `['ollama']`) | ✅ | `key-resolver.class3-trusted.test.ts` (no-attest→ollama/blocked; attest+EU→azure) |
+| 93.4 DB-CHECK DPA-conditional (never blanket azure) | ✅ | smoke **B** (trigger blocks azure w/o attest) + **C** (floor-CHECK blocks openai) |
+| 93.5 ki_runs region labelling | ✅ | `ki_runs.provider_region` column + router writes it (backend) |
+| 93.6 ADR + CLAUDE.md Invariant #3 | ✅ | `docs/decisions/trusted-processor-provider-class.md` + INDEX + CLAUDE.md edit |
+| 93.7 Anti-scope (never OpenAI/Anthropic/Google for Class-3) | ✅ | smoke **C** (floor 23514) + resolver anti-scope test |
+| 93.8 Live end-to-end Azure Class-3 run | ⚠️ **D-1** | needs attested Azure resource; gate + eligibility fully proven via smoke + units |
+| 93.9 PROJ-88 inherits via resolver (no hard pin) | ✅ | purpose-agnostic clamp (resolver test D5: `resource_swap` + `proposal_stakeholders_from_context` identical) |
+| 93.10 Resolve-time authority / revoke effect (R-1) | ✅ | smoke **J** (revoke → helper false + trigger blocks re-write) + fail-closed unit test |
+| 93.11 Member-callable helper + fail-closed (R-2) | ✅ | smoke **G** (member gets true via DEFINER, provider row RLS-hidden) + fail-closed unit test |
+| 93.12 Kill-switch first | ✅ | resolver unit test (kill-switch overrides attested azure, helper RPC not called) |
+
+### Live DB smoke — `tests/sql/PROJ-93-trusted-processor-pentest.sql` (prod, self-rolling-back, 0 residue)
+Re-run against **current merged main**: **A–J 10/10 PASS**. A helper-false pre-attest · B trigger blocks azure class-3 w/o attest (P0001) · C floor-CHECK blocks openai class-3 (23514, anti-scope) · D attest→helper true · E azure class-3 row inserts post-attest · F dpa_attest audit written · G R-2 member-visibility via DEFINER helper w/ RLS-hidden row · H cross-tenant admin false · I anon revoked (42501) · J R-1 revoke→helper false + trigger blocks re-write.
+
+### Red-team supplement (QA, prod, rolled back, 0 residue)
+- **K PASS** — authenticated **non-admin member** calling `attest_tenant_ai_provider_dpa` → forbidden (P0003). Admin gate holds for authenticated non-admins, not just anon.
+- **L PASS** — admin **direct `UPDATE`** planting a DPA on a non-azure (anthropic) row → blocked by the `tenant_ai_providers_dpa_coherent` CHECK (23514). The azure-only constraint holds even bypassing the RPC.
+
+### Automated tests
+- **Playwright** `tests/PROJ-93-trusted-processor.spec.ts` — **5/5 PASS** (chromium): POST attest / DELETE revoke / invalid-body / non-azure-provider all auth-gated (307/401/403), settings page redirects to `/login` unauth. Mobile Safari skipped (WebKit host libs — known PROJ-67/F2 env deviation).
+- **Vitest** merged main **2234/2234 PASS** (incl. resolver class-3 regression + DPA route + updated class-3/azure mocks).
+
+### Security audit (red-team)
+No Critical/High. The Class-3 boundary is defense-in-depth and every layer was probed live: DB floor-CHECK (anti-scope), DPA trigger (attest gate), coherence CHECK (azure-only, L), resolver clamp (authoritative, fail-closed), admin-gate on attest/revoke (anon I + non-admin K), member-visibility without row exposure (G), cross-tenant isolation (H), revoke effectiveness (J). anon `execute` revoked on all 3 new functions; new SECURITY DEFINER functions carry `set search_path` and appear only in the accepted `authenticated_security_definer_function_executable` advisor category (0 ERROR).
+
+### Bugs
+None (0 Critical / 0 High / 0 Medium / 0 Low).
+
+### Deviation
+- **D-1 (AC-93.8):** a real `ki_runs.provider='azure'` Class-3 generation needs an actually-attested Azure resource — no current pilot has one (same pattern as PROJ-88/89 Ollama). The DB gate, eligibility derivation, and resolver routing are fully proven (A–J + K/L + resolver units); the real run is a pilot/deploy follow-up.
 
 ## Deployment
 _To be added by /deploy_
