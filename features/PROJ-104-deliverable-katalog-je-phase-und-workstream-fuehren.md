@@ -14,7 +14,7 @@ summary_for_jira: "[D1] Deliverable-Katalog je Phase und Workstream führen"
 
 # PROJ-104: Deliverable-Katalog je Phase und Workstream führen
 
-## Status: Planned
+## Status: Approved (QA PASS 2026-07-03 — 0 Critical/0 High)
 **Created:** 2026-06-10
 **Origin:** M&A-Platform Backlog (Epic D — Deliverables & Artefakte)
 **Priority:** P1
@@ -75,6 +75,158 @@ Das Modell listet pro Phase Deliverables (LOI, DD-Reports, SPA, Closing Memorand
 - PMO-Lead
 - Workstream Leads
 - Deal Lead
+
+---
+
+## Tech Design (Solution Architect)
+
+**Architektur-Datum:** 2026-07-02 · **Reuse-Klasse:** EXTEND (dd_streams/PROJ-102-Rezept) · **CIA-reviewed:** 2026-07-02 (5 Forks gelockt, GO)
+
+### Leitprinzip
+Deliverables sind eine **neue M&A-Steuerungstabelle** je Projekt, gebaut nach dem bewährten dd_streams/workstreams-Rezept (Need-to-know + Audit + State-Machine-RPC). Sie hängen per **pro-Paar-FK** an Phase und/oder Workstream, lösen die in PROJ-102 zurückgestellte **Deliverable-Ampel** ein und **unlocken RACI** für Deliverables (wie im PROJ-97b-Migrations-Kommentar vorgesehen). Der formale Freigabe-Workflow (PROJ-105), echte Datei-Uploads (PROJ-79) und Templates (PROJ-96) bleiben bewusst außen vor.
+
+### Neue Datenobjekte
+```
+deliverables (je Projekt)
+- id, tenant_id, project_id
+- name, description
+- phase_id       (nullable FK phases, ON DELETE SET NULL)
+- workstream_id  (nullable FK workstreams, ON DELETE CASCADE)
+- CHECK (phase_id IS NOT NULL OR workstream_id IS NOT NULL)   -- kein Orphan (F1/R-1)
+- responsible_user_id (FK profiles, "Verantwortlicher" — AC1)
+- due_date       (Solltermin — AC1)
+- status         (Enum planned/in_progress/in_review/approved/suspended — AC2)
+- confidentiality_level (ma_confidentiality_level, 100a)
+- sort_order
+- (PROJ-10 Field-Audit)
+
+deliverable_documents (Doc-Links, AC4 — externe URL, kein echter Upload)
+- id, tenant_id, deliverable_id (FK CASCADE)
+- title, url, tag_keys
+- (Need-to-know erbt via EXISTS auf Eltern-deliverable)
+```
+
+### Gelockte Architektur-Entscheidungen (CIA 2026-07-02)
+- **F1 — Anker:** `phase_id` + `workstream_id` beide nullable, aber `CHECK (phase_id IS NOT NULL OR workstream_id IS NOT NULL)` (ein Deliverable ohne Anker ist bedeutungslos + unzählbar für die Ampel). **`phase_id ON DELETE SET NULL`, `workstream_id ON DELETE CASCADE`** — verhindert, dass paralleles Löschen beider FKs den CHECK verletzt (R-1). Kein `deliverable_key`-Slug (kein URL-Bedarf; `sort_order` reicht).
+- **F2 — Status-Lifecycle, `approved` PROJ-105-reserviert:** `transition_deliverable_status`-RPC nach `transition_dd_stream_status`-Muster (kein direktes Status-UPDATE, kein actor-param, revoke anon/public). Whitelist: `planned ↔ in_progress ↔ in_review`, alle → `suspended`, `suspended → planned`. **Der Übergang `in_review → approved` ist NICHT in PROJ-104 erlaubt** — `approved` ist reservierter Terminal-Status, den erst PROJ-105 via PROJ-31-Gate/Quorum vergibt (kein informeller Freigabe-Pfad, keine DUP mit 105). Im RPC-Kommentar dokumentiert.
+- **F3 — Doc-Verknüpfung:** leichte `deliverable_documents`-Link-Tabelle (URL + Titel + tag_keys, `work_item_documents`-Muster), **externer Link only**; echter Datei-Upload deferred an PROJ-79 (dockt später als weitere Zeilenquelle an dieselbe Tabelle, kein Rebuild). Kein Storage-Bucket in PROJ-104. RESTRICTIVE-Gate erbt via EXISTS auf `deliverables` (analog `workstream_phases`).
+- **F4 — RACI:** BEIDES — `responsible_user_id`-Feld (AC1 „Verantwortlicher", direkt editierbar wie `dd_streams.stream_lead_user_id`) **UND** `raci_assignments.target_type`-CHECK auf `('work_item','deliverable')` erweitern (recreate) + `set_deliverable_raci`/`clear_deliverable_raci`-RPC-Paar (analog `set_work_item_raci`, mit `deliverables`-Lookup). RACI-Audit löst über `raci_assignments.project_id` auf → kein neuer RACI-Zweig nötig; nur `deliverables` + `deliverable_documents` in `can_read_audit_entry` + `_tracked_audit_columns` ergänzen.
+- **F5 — Deliverable-Ampel (löst PROJ-Y-102b):** deployten `workstream_dashboard`-RPC per `create or replace` (RPC-body-patch via `pg_get_functiondef`-Anchor) umstellen — `deliverables_total` = echte Zählung, neu `deliverables_overdue` (`due_date < today AND status NOT IN (approved, suspended)`). **SECURITY-INVOKER bleibt** → Need-to-know + Aggregat-Leak-Schutz via Caller-Kontext (LEFT JOIN respektiert RESTRICTIVE-Policies; PROJ-114/116-Lektion). „Kritisch" mappt das FE (overdue ∨ in_review-überfällig), kein DB-Feld. Phasen-Sicht deferred (PROJ-Y-104b).
+
+### Was neu gebaut wird
+1. **1 Migration:** `deliverables` + `deliverable_documents` (RLS tenant/project + 3 RESTRICTIVE Need-to-know; Audit-Trigger nur auf `deliverables`); `raci_target_type_check` recreate (+`deliverable`); `transition_deliverable_status` + `set/clear_deliverable_raci` RPCs; **Audit-Trio recreate aus LIVE-Defs** (+`deliverables`/`deliverable_documents`-Zweige, committees/workstreams erhalten, `authenticated`-Grant re-granten — R-2); `workstream_dashboard` create-or-replace (F5). Idempotent, Minute-Timestamp = Repo-Dateiname (PROJ-134).
+2. **API-Routen:** `GET/POST /deliverables`, `GET/PATCH/DELETE /deliverables/[did]` (Status via `.../status`-RPC-Route), `GET/POST/DELETE /deliverables/[did]/documents`, `GET/POST/DELETE /deliverables/[did]/raci` (analog work-items/raci).
+3. **Frontend:** „Deliverables"-Tab im M&A-Raum (Liste/Katalog je Phase+Workstream, Filter, Status-Inline, Create/Edit-Dialog mit Doc-Links + RACI) + **Ampel-Integration** ins Workstream-Dashboard (deliverables_total/overdue-Anzeige, „—" ersetzt).
+
+### Komponenten-Struktur (UI)
+```
+M&A-Projektraum
+└── Tab „Deliverables" (neu, requiresProjectType ma)
+    ├── Filter: Phase · Workstream · Status · Verantwortlicher
+    ├── Katalog-Liste: Name · Phase · Workstream · Verantwortlich · Solltermin (rot=überfällig) · Status-Badge/Inline · Doc-Count
+    ├── Create/Edit-Dialog: Name/Beschreibung · Phase · Workstream · Verantwortlicher · Solltermin · Status · Vertraulichkeit · Doc-Links · RACI-Matrix
+    └── Status-Transition (RPC; approved ausgegraut → „via Freigabe (PROJ-105)")
+
+Querschnitt: Workstream-Dashboard-Kachel (PROJ-102) zeigt jetzt Deliverables total/überfällig statt „—".
+```
+
+### Offene Spec-Fragen — beantwortet
+- **Welches DMS?** PROJ-79 (später); PROJ-104 = externer Link + PROJ-115-Datenraum-Link.
+- **Deliverables versioniert?** Field-Level-Audit (PROJ-10) deckt Historie ab; explizite Versionsstände → PROJ-106.
+- **Fehlende Standard-Deliverables?** Manuell anlegbar; Template-Katalog → PROJ-96.
+
+### Deviations (dokumentiert, alle forward-compat)
+- **AC3 Template-Vorbelegung** → PROJ-96 (PROJ-Y-104a).
+- **Echter Datei-Upload** → PROJ-79 (PROJ-Y-104c); PROJ-104 liefert Link-Tabelle.
+- **`approved`-Gate/Freigabe-Workflow** → PROJ-105 (`approved` reserviert, nicht in 104 setzbar).
+- **Versionierung** → PROJ-106.
+
+### Tech-Entscheidungen (für PM)
+- **Rezept-Reuse:** Deliverables erben Need-to-know, Audit, State-Machine und Ampel-Integration ohne Neubau.
+- **`approved` bewusst gesperrt:** verhindert einen informellen Freigabe-Pfad, den PROJ-105 später aufbrechen müsste.
+- **Doc-Links statt Upload:** erfüllt AC4 heute, ohne ein verfrühtes Storage-Feature vor dem DMS zu bauen.
+
+### Abhängigkeiten (Pakete)
+Keine neuen npm-Pakete. Eine Supabase-Migration.
+
+### Risiken (CIA)
+- **R-1** phase SET NULL / workstream CASCADE gegen den NOT-NULL-CHECK (bei /backend testen).
+- **R-2** Audit-Trio-Recreate droppt `authenticated`-Grant → verbatim aus LIVE + re-grant (Pflicht-Live-Smoke).
+- **R-3** Aggregat-Leak im geänderten RPC → SECURITY-INVOKER + Pentest (nicht-cleared Member zählt vertrauliche Deliverables NICHT).
+
+### Followups (PROJ-Y)
+- **PROJ-Y-104a → PROJ-96:** Deliverable-Template-Vorbelegung (Copy-on-create).
+- **PROJ-Y-104b → PROJ-95:** Phasen-Sicht der Deliverable-Ampel im Cockpit.
+- **PROJ-Y-104c → PROJ-79:** echter Datei-Upload (Bucket-Quelle an `deliverable_documents`).
+
+---
+
+## Backend Implementation Notes (2026-07-02)
+
+**Migration `20260702121538_proj104_deliverables`** (live in Prod-DB + Repo versionsgleich, PROJ-134):
+- `deliverables` (name/description/phase_id nullable SET-NULL/workstream_id nullable CASCADE + `CHECK(phase_id IS NOT NULL OR workstream_id IS NOT NULL)`/responsible_user_id/due_date/status planned-in_progress-in_review-approved-suspended/confidentiality_level/sort_order) — RLS tenant/project + 3 RESTRICTIVE Need-to-know + moddatetime + `record_audit_changes`-Trigger.
+- `deliverable_documents` (title/url/tag_keys, externe Links; RLS faltet Need-to-know via EXISTS auf Eltern-`deliverables`; kein Audit-Trigger).
+- `raci_target_type_check` recreate → `('work_item','deliverable')` (F4-Unlock).
+- RPCs: `transition_deliverable_status` (State-Machine, **`approved` nicht setzbar → 42501**, PROJ-105-reserviert), `set_deliverable_raci`/`clear_deliverable_raci` (mirror set_work_item_raci, deliverables-Lookup). Alle SECURITY DEFINER, kein actor-param, revoke anon/public, grant authenticated.
+- Audit-Trio (`_tracked_audit_columns` + `can_read_audit_entry`) recreate aus LIVE-Defs + `deliverables`/`deliverable_documents`-Zweige (committees/workstreams erhalten) + `authenticated`-Grant re-granted (R-2).
+- `workstream_dashboard` **drop+recreate** (Signatur-Änderung): SECURITY-INVOKER bewahrt, `deliverables_total` echte Zählung + neu `deliverables_overdue`; Deliverable-Counts als Subqueries (kein LEFT-JOIN-Multiplikations-Bug).
+
+**API:** `GET/POST /deliverables`, `GET/PATCH/DELETE /deliverables/[did]`, `PATCH /deliverables/[did]/status` (→ RPC), `GET/POST/DELETE /deliverables/[did]/documents`, `GET/POST/DELETE /deliverables/[did]/raci`. Client-Wrapper `deliverables-api.ts`, Hook `use-deliverables`, Typen `types/deliverable`. `WorkstreamDashboardRow` um `deliverables_overdue` erweitert.
+
+**Live-Smoke gegen Prod (Pflicht, 0 Residue):** 9/9 — orphan-CHECK enforced · transition→in_progress · **approved rejected (PROJ-105-reserviert)** · RACI-deliverable-Row · Doc-Link · dashboard deliverables_total=3/overdue=1 · Audit-Row · **Aggregat-Leak-Pentest: Admin sieht 3, nicht-cleared Member sieht 2 (strict ausgeschlossen, R-3)** · committees/workstreams im Audit-CHECK erhalten.
+
+**Quality-Gates:** vitest **2214/2214** (+20 Route-Tests); ESLint 0; tsc 14 Baseline/0 neu; build clean (5 API-Routen registriert).
+
+**Noch offen → /frontend:** „Deliverables"-Tab (Nav-Section + Katalog-Liste + Create/Edit-Dialog mit Doc-Links + RACI + Status-Inline, approved ausgegraut) + Workstream-Dashboard-Ampel (deliverables_total/overdue statt „—"). **→ /qa:** Need-to-know/Aggregat-Leak-Pentest (re-verify) + Live-E2E + Playwright-Auth-Gate.
+
+---
+
+## Frontend Implementation Notes (2026-07-03)
+
+**Neuer „Deliverables"-Tab + F5-Ampel-Integration.**
+- **Nav** (`method-templates/index.ts`): `MA_DELIVERABLES_SECTION` (`tabPath: "deliverables"`, Icon `ClipboardCheck`) nach Workstreams (…Workstreams → **Deliverables** → Governance → Due Diligence → DD-Bericht).
+- **Route** `src/app/(app)/projects/[id]/deliverables/page.tsx`.
+- **`deliverables-page.tsx`** (Katalog): Tabelle Name/Phase/Workstream/Verantwortlich/Solltermin(rot bei überfällig)/Status + Filterbar (Phase/Workstream/Status, client-seitig). **Inline-Status-Transition** via Select mit `DELIVERABLE_ALLOWED_TRANSITIONS`; **„Freigegeben" disabled** mit Hinweis „(via Freigabe)" → PROJ-105-reserviert; approved-Deliverables zeigen Badge statt Select. Create/Edit/Delete `edit_master`-gated (AlertDialog-Confirm).
+- **`deliverable-dialog.tsx`** (Create/Edit, RHF): Name/Beschreibung/Phase(usePhases)/Workstream(useWorkstreams)/Verantwortlicher(ResponsibleUserPicker)/Solltermin/Vertraulichkeit + Mind.-ein-Anker-Check. Im Edit-Modus zusätzlich **Dokumente-Sektion** (Link add/remove via addDeliverableDocument/deleteDeliverableDocument) + **RACI-Sektion** (MA-Rollen-Select + R/A/C/I via set/clearDeliverableRaci). Laden via async-IIFE (react-compiler-safe).
+- **F5 Ampel** (`workstreams-page.tsx`): Deliverables-Zelle zeigt jetzt `deliverables_total` + „(N überfällig)" rot statt „—" (WorkstreamDashboardRow +deliverables_overdue).
+- Client-Wrapper um RACI-Funktionen erweitert. Reuse Card/Table/Select/Dialog/AlertDialog + ResponsibleUserPicker/usePhases/useWorkstreams/useTenantMembers. Kein neues Dep/shadcn.
+
+**Quality-Gates:** vitest **2214/2214**; ESLint 0; tsc 14 Baseline/0 neu; build clean (Route + 5 API-Routen registriert).
+
+**Noch offen → /qa:** Need-to-know/Aggregat-Leak-Pentest (re-verify), Live-E2E, Playwright-Auth-Gate für Route + APIs.
+
+---
+
+## QA Test Results (2026-07-03) — PASS, PRODUCTION-READY
+
+**Verdikt: 0 Critical / 0 High.** 5/5 ACs abgedeckt (2 CIA-Deferrals). 1 LOW-Finding (F-1). Empfehlung: **Approved → /deploy.**
+
+### Acceptance Criteria
+| AC | Ergebnis | Nachweis |
+|---|---|---|
+| AC1 — anlegen mit Name/Beschr./Phase/Workstream/Verantwortlicher(RACI)/Solltermin/Status | ✅ PASS | Create-Dialog; `responsible_user_id` + RACI-Matrix (target_type='deliverable'); Live-Smoke set_deliverable_raci = 1 Row |
+| AC2 — Status geplant/in Arbeit/in Review/freigegeben/ausgesetzt | ✅ PASS (`approved` PROJ-105-reserviert) | Live-Smoke: transition→in_progress ok, **approved rejected (42501)**; UI zeigt „Freigegeben" disabled |
+| AC3 — aus Template vorbelegbar | ⏸ **deferred** (D-1) | PROJ-96 ungebaut |
+| AC4 — mit Dokumenten verknüpfbar | ✅ PASS (externer Link; Upload deferred D-2) | `deliverable_documents` add/remove; Live-Smoke doc-link=1 |
+| AC5 — Deliverable-Ampel im Workstream-Dashboard | ✅ PASS | `workstream_dashboard` deliverables_total + deliverables_overdue; FE-Kachel zeigt „N überfällig" |
+
+### Security / Need-to-know Pentest (Live gegen Prod, Impersonation, 0 Residue)
+Nicht-Admin-Member (geliehenes Profil, Viewer): **A** sieht strict-Deliverable NICHT (0) · **B** sieht strict-`deliverable_documents` NICHT (0, erbt Gate) · **C** sieht 2 nicht-strict (2) · Aggregat-Leak (Backend-Smoke): Admin-Dashboard deliverables_total=3, nicht-cleared Member=2 (strict ausgeschlossen). Audit-CHECK enthält weiter committees+workstreams+deliverables. `can_access_classified` byte-identisch aus dd_streams-Rezept.
+
+### Live Functional Smoke (Prod, 0 Residue)
+Backend-Smoke 9/9 (orphan-CHECK · transition · approved-rejected · RACI · Doc-Link · dashboard 3/1 · Audit-Row · Aggregat-Leak · CHECK-Erhalt) + QA-Cascade: **D** workstream-delete → Deliverables CASCADE (0) · **E** siehe F-1.
+
+### Automatisierte Tests
+- **Playwright** `tests/PROJ-104-deliverables.spec.ts`: **6/6 chromium** (Page + 5 API-Routen [list/create · status · documents · raci] auth-gated). Mobile Safari übersprungen (WebKit-Host-Libs, PROJ-67).
+- **vitest 2214/2214** (+20 Route-Tests); ESLint 0; tsc 14 Baseline/0 neu; build clean.
+
+### Findings
+- **F-1 (LOW) — Phase-Hard-Delete blockiert bei Phase-only-Deliverable:** `phase_id ON DELETE SET NULL` + Anchor-CHECK → das Löschen einer Phase, an der ein *ausschließlich* phasengebundenes Deliverable hängt, wird durch die CHECK-Verletzung geblockt (raw `check_violation`). **Kein Datenverlust/Orphan (das ist der Schutz, CIA-R-1 by design).** Workaround: Deliverable vorher löschen/umhängen. Empfehlung → **PROJ-Y-104d** (App-Level-Guard mit freundlicher Meldung ODER Phase-CASCADE für phase-only). Kein Blocker (Phase-Hard-Delete selten; meist Soft-Delete).
+
+### Deviations (CIA-gelockt)
+- **D-1** Template-Vorbelegung (AC3) → PROJ-96. **D-2** echter Datei-Upload → PROJ-79. **D-3** `approved`-Gate/Freigabe-Workflow → PROJ-105 (`approved` reserviert). **D-4** Versionierung → PROJ-106. **Info:** kein M&A-Projekt in Prod → Pentest/Smoke auf Core-PMI-Projekt.
+
+**Followups:** PROJ-Y-104a (Templates), 104b (Phasen-Ampel-Sicht), 104c (Upload), **104d (Phase-Delete-Guard, F-1)**.
 
 ---
 _Quelle: Backlog-Entwurf M&A-Projektplattform · D — Deliverables & Artefakte_

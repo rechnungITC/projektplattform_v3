@@ -212,7 +212,15 @@ export function WorkstreamsPage({ projectId }: { projectId: string }) {
                       <span className="text-foreground">{row?.open_risks ?? "—"}</span>
                     </span>
                     <span className="text-muted-foreground">
-                      Deliverables: <span className="text-foreground">—</span>
+                      Deliverables:{" "}
+                      <span className="text-foreground">
+                        {row?.deliverables_total ?? "—"}
+                      </span>
+                      {row && (row.deliverables_overdue ?? 0) > 0 && (
+                        <span className="ml-1 font-medium text-destructive">
+                          ({row.deliverables_overdue} überfällig)
+                        </span>
+                      )}
                     </span>
                   </div>
 

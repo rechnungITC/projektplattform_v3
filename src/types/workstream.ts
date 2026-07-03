@@ -36,6 +36,8 @@ export interface WorkstreamDashboardRow {
   tasks_total: number
   tasks_done: number
   open_risks: number
-  /** null until PROJ-104 (deliverables) lands — UI renders "—". */
+  /** PROJ-104 — real deliverable count (was null placeholder pre-PROJ-104). */
   deliverables_total: number | null
+  /** PROJ-104 — deliverables past due & not approved/suspended (Deliverable-Ampel). */
+  deliverables_overdue?: number | null
 }
