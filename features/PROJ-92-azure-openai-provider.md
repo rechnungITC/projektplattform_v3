@@ -1,6 +1,6 @@
 # PROJ-92: Azure OpenAI Provider (Class-1/2) — fünfter Provider-Typ
 
-## Status: Approved (QA-PASS 2026-07-01 — 7/7 AC, 0 Critical/High; Class-3-no-bypass live red-team + auth-gates 5/5 + vitest 2194/2194. AC-92.7 real-Azure-Call = dokumentierte Stub-Deviation. → /deploy)
+## Status: Deployed (Tag `v2.8.0-PROJ-92` 2026-07-03 — Provider/Validator/Admin-Form + Migration live in Prod; Post-Deploy-Smoke 307 auth-gated. AC-92.7 real-Azure-Call = dokumentierte Stub-Deviation für Pilot)
 **Created:** 2026-06-10
 **Last Updated:** 2026-07-01
 **Origin:** PO-Entscheidung 2026-06-10 (Pilotkunden ohne Ollama-Betrieb) · CIA-Review 2026-06-10 (GO, Split 92a/92b)
@@ -203,5 +203,12 @@ Built in worktree `projektplattform_v3-proj92` (branch `proj-92/frontend`). No n
 
 **0 Critical / 0 High → Approved.**
 
-## Deployment
-_To be added by /deploy_
+## Deployment — 2026-07-03
+
+**Tag `v2.8.0-PROJ-92`.** Runtime deploy via Vercel auto-deploy from `main` (new frontend `AzureCard` + backend azure provider/routes). Migration `20260702100000_proj92_azure_provider` was already applied to prod during `/backend`.
+
+- **Pre-deploy gates** (via CI on #217/#219/#222): schema-drift, migration-naming, npm-audit, Snyk, build — all green at merge. Full vitest 2194/2194.
+- **Post-deploy prod smoke (2026-07-03):** `GET`/`POST validate`/`DELETE` on `/api/tenants/{id}/ai-providers/azure` + `/settings/tenant/ai-providers` all return **307** (auth-gated) — routes live (a missing route would 404), gate intact.
+- **No new env var / secret** — Azure config is per-tenant, stored encrypted like every provider key.
+
+**Open follow-up (F-1, AC-92.7):** a pilot with a real Azure OpenAI resource should register it in Settings → KI-Provider, run one `narrative`/`proposal_from_context` generation, and confirm `ki_runs.provider='azure'` with non-null token counts. The routing/DB/validator path is otherwise fully live-proven; PROJ-93 (Trusted-EU-Processor) builds on this for the Class-3 path.
