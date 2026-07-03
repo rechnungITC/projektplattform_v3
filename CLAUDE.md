@@ -86,7 +86,7 @@ Every new table created from PROJ-3 onward MUST include `tenant_id UUID NOT NULL
 ### Architecture principles inherited from V2
 1. **Shared core before specialization** — anything universal (Project, Phase, Milestone, Task, Risk, Stakeholder, Decision) lives in core; ERP/Construction/Software specifics are extensions.
 2. **AI as proposal layer** — AI never silently mutates business data. Every AI-derived item carries source traceability, model identity, and a review state (draft/accepted/rejected/modified).
-3. **Class-3 hard block** — personal data (per `docs/decisions/data-privacy-classification.md`) is technically blocked from external models — no bypass, even for tenant admins. PROJ-12 enforces this.
+3. **Class-3 hard block** — personal data (per `docs/decisions/data-privacy-classification.md`) is technically blocked from external models — no bypass, even for tenant admins — **except** an attested EU-resident Trusted-Processor endpoint in the tenant's own Azure tenant (PROJ-93), opt-in per tenant-admin with a documented DPA. Never OpenAI-direct/Anthropic/Google, never global; the TS resolver re-checks attest + EU-region on every call (see `docs/decisions/trusted-processor-provider-class.md`). PROJ-12 enforces the block; PROJ-93 the narrow, audited exception.
 4. **Stakeholder ≠ User** — fachliche Projektrolle ≠ technische RBAC-Identität (see `docs/decisions/stakeholder-vs-user.md`). Always model these as separate entities.
 5. **Decisions are immutable** — revisions create a new decision with `supersedes_decision_id`. PROJ-20 owns the model.
 6. **Compliance as dependency** — ISO/DSGVO/process artifacts are first-class via tags + `ComplianceTrigger` (PROJ-18), not afterthoughts.

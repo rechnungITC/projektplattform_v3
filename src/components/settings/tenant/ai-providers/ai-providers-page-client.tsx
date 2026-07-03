@@ -9,6 +9,8 @@ import {
   Loader2,
   PlugZap,
   ServerCog,
+  ShieldAlert,
+  ShieldCheck,
   Trash2,
   WifiOff,
 } from "lucide-react"
@@ -61,6 +63,9 @@ interface ProviderState {
   created_at?: string | null
   updated_at?: string | null
   validation_warning?: string | null
+  // PROJ-93: DPA attest status (azure only; null otherwise).
+  dpa_confirmed_at?: string | null
+  dpa_reference?: string | null
 }
 
 type LoadState =
@@ -845,8 +850,13 @@ function AzureCard({
   const [submitting, setSubmitting] = React.useState(false)
   const [validating, setValidating] = React.useState(false)
   const [deleteOpen, setDeleteOpen] = React.useState(false)
+  // PROJ-93 — DPA attest state.
+  const [revokeDpaOpen, setRevokeDpaOpen] = React.useState(false)
+  const [dpaReference, setDpaReference] = React.useState("")
+  const [dpaSubmitting, setDpaSubmitting] = React.useState(false)
 
   const isSet = state.status !== "not_set"
+  const dpaAttested = Boolean(state.dpa_confirmed_at)
 
   const trimmed = {
     endpoint_url: inputs.endpoint_url.trim(),
@@ -964,6 +974,56 @@ function AzureCard({
     }
   }
 
+  async function handleAttest() {
+    const ref = dpaReference.trim()
+    if (ref.length < 3) return
+    setDpaSubmitting(true)
+    try {
+      const r = await fetch(`/api/tenants/${tenantId}/ai-providers/azure/dpa`, {
+        method: "POST",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify({ reference: ref }),
+      })
+      if (!r.ok) {
+        const body = await r.json().catch(() => ({}))
+        throw new Error(body?.error?.message ?? `HTTP ${r.status}`)
+      }
+      toast.success(
+        "DPA-Attest hinterlegt — Class-3 darf jetzt über diese EU-Azure-Ressource laufen.",
+      )
+      setDpaReference("")
+      onChanged()
+    } catch (err) {
+      toast.error(
+        err instanceof Error ? err.message : "Attestierung fehlgeschlagen",
+      )
+    } finally {
+      setDpaSubmitting(false)
+    }
+  }
+
+  async function handleRevokeDpa() {
+    setDpaSubmitting(true)
+    try {
+      const r = await fetch(`/api/tenants/${tenantId}/ai-providers/azure/dpa`, {
+        method: "DELETE",
+      })
+      if (!r.ok) {
+        const body = await r.json().catch(() => ({}))
+        throw new Error(body?.error?.message ?? `HTTP ${r.status}`)
+      }
+      toast.success(
+        "DPA-Attest widerrufen — Class-3 fällt ab dem nächsten KI-Lauf auf Ollama-only zurück.",
+      )
+      setRevokeDpaOpen(false)
+      onChanged()
+    } catch (err) {
+      toast.error(err instanceof Error ? err.message : "Widerruf fehlgeschlagen")
+    } finally {
+      setDpaSubmitting(false)
+    }
+  }
+
   return (
     <Card>
       <CardHeader>
@@ -972,8 +1032,9 @@ function AzureCard({
           Azure OpenAI <StatusBadge status={state.status} />
         </CardTitle>
         <CardDescription>
-          Eigene Azure-OpenAI-Ressource (EU-Region) für Class-1 / Class-2-Daten.
-          Cloud-Provider — nicht für Class-3 erlaubt.
+          Eigene Azure-OpenAI-Ressource (EU-Region) für Class-1 / Class-2-Daten —
+          und mit hinterlegtem DPA-Attest zusätzlich als Trusted-Processor für
+          Class-3 (opt-in, PROJ-93). Ohne Attest bleibt Class-3 Ollama-only.
         </CardDescription>
       </CardHeader>
       <CardContent className="space-y-4">
@@ -1136,6 +1197,90 @@ function AzureCard({
         )}
 
         {isSet && !editing && (
+          <div className="space-y-3 rounded-lg border p-4">
+            <div className="flex items-center gap-2 text-sm font-medium">
+              {dpaAttested ? (
+                <ShieldCheck
+                  className="h-4 w-4 text-emerald-600 dark:text-emerald-400"
+                  aria-hidden
+                />
+              ) : (
+                <ShieldAlert
+                  className="h-4 w-4 text-amber-600 dark:text-amber-400"
+                  aria-hidden
+                />
+              )}
+              Class-3 Trusted-Processor (DPA)
+              {dpaAttested ? (
+                <Badge variant="outline" className="ml-1">
+                  attestiert
+                </Badge>
+              ) : (
+                <Badge variant="secondary" className="ml-1">
+                  nicht attestiert
+                </Badge>
+              )}
+            </div>
+
+            {dpaAttested ? (
+              <>
+                <dl className="grid grid-cols-1 gap-2 text-sm sm:grid-cols-2">
+                  <div>
+                    <dt className="text-muted-foreground">Attestiert am</dt>
+                    <dd>{formatTimestamp(state.dpa_confirmed_at)}</dd>
+                  </div>
+                  <div>
+                    <dt className="text-muted-foreground">DPA-Referenz</dt>
+                    <dd className="font-mono break-all">
+                      {state.dpa_reference ?? "—"}
+                    </dd>
+                  </div>
+                </dl>
+                <p className="text-xs text-muted-foreground">
+                  Class-3-Daten (personenbezogen) dürfen über diese EU-Azure-Ressource
+                  verarbeitet werden. Der Widerruf wirkt ab dem nächsten KI-Lauf.
+                </p>
+                <Button
+                  variant="outline"
+                  onClick={() => setRevokeDpaOpen(true)}
+                  disabled={dpaSubmitting}
+                >
+                  DPA-Attest widerrufen
+                </Button>
+              </>
+            ) : (
+              <>
+                <p className="text-xs text-muted-foreground">
+                  Ohne Attest bleiben Class-3-Purposes Ollama-only. Mit hinterlegtem
+                  DPA (Referenz + bestätigender Admin, auditiert) darf diese
+                  EU-Azure-Ressource zusätzlich Class-3 verarbeiten — opt-in, jederzeit
+                  widerrufbar.
+                </p>
+                <div className="space-y-2">
+                  <Label htmlFor="azure-dpa-ref">DPA-Referenz (Vertragsnummer)</Label>
+                  <Input
+                    id="azure-dpa-ref"
+                    placeholder="z.B. MSFT-DPA-2026-0042"
+                    value={dpaReference}
+                    onChange={(e) => setDpaReference(e.target.value)}
+                    disabled={dpaSubmitting}
+                  />
+                </div>
+                <Button
+                  onClick={handleAttest}
+                  disabled={dpaReference.trim().length < 3 || dpaSubmitting}
+                >
+                  {dpaSubmitting && (
+                    <Loader2 className="mr-2 h-4 w-4 animate-spin" aria-hidden />
+                  )}
+                  DPA-Attest bestätigen
+                </Button>
+              </>
+            )}
+          </div>
+        )}
+
+        {isSet && !editing && (
           <div className="flex flex-wrap gap-2">
             <Button variant="outline" onClick={handleValidate} disabled={validating}>
               {validating && (
@@ -1152,6 +1297,29 @@ function AzureCard({
           </div>
         )}
       </CardContent>
+
+      <AlertDialog open={revokeDpaOpen} onOpenChange={setRevokeDpaOpen}>
+        <AlertDialogContent>
+          <AlertDialogHeader>
+            <AlertDialogTitle>DPA-Attest widerrufen?</AlertDialogTitle>
+            <AlertDialogDescription>
+              Class-3-Purposes fallen ab dem nächsten KI-Lauf wieder auf Ollama-only
+              zurück. Läuft gerade keine Ollama-Instanz, werden Class-3-Vorschläge
+              blockiert. Der Widerruf wird auditiert und ist jederzeit erneut
+              attestierbar.
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogCancel disabled={dpaSubmitting}>Abbrechen</AlertDialogCancel>
+            <AlertDialogAction onClick={handleRevokeDpa} disabled={dpaSubmitting}>
+              {dpaSubmitting && (
+                <Loader2 className="mr-2 h-4 w-4 animate-spin" aria-hidden />
+              )}
+              Attest widerrufen
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
 
       <AlertDialog open={deleteOpen} onOpenChange={setDeleteOpen}>
         <AlertDialogContent>
