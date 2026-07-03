@@ -1,8 +1,8 @@
 # PROJ-93: Trusted-EU-Processor — kontrollierte Class-3-Freigabe für attestiertes Azure OpenAI
 
-## Status: Planned
+## Status: Architected
 **Created:** 2026-06-10
-**Last Updated:** 2026-06-10
+**Last Updated:** 2026-07-03
 **Origin:** PO-Entscheidung 2026-06-10 (kontrollierte Lockerung der Invariante #3) · CIA-Review 2026-06-10 (GO mit Pflicht-Guardrails)
 **Priority:** P1 — Should-have (sicherheitskritisch, isolierte Slice)
 
@@ -34,6 +34,11 @@ Heutige Verankerung des Blocks (alle drei müssen konsistent konditionalisiert w
 - [ ] **AC-93.8 (Live-RPC-Smoke)**: Vor Approved: echter Class-3-Lauf gegen attestiertes Azure (oder dokumentierte Deviation) + Negativ-Probe (ohne Attest → Ollama-only/`external_blocked`). Memory-Konvention „Live-RPC-Smoke Pflicht".
 - [ ] **AC-93.9 (PROJ-88-Vererbung)**: PROJ-88 (`proposal_stakeholders_from_context`) erbt die erweiterte Provider-Menge automatisch über den Resolver — die PROJ-88-Spec/Implementierung pinnt NICHT hart auf Ollama, sondern nutzt den Class-3-Resolver-Pfad (Hinweis in PROJ-88-Spec ergänzt).
 
+### Architektur-abgeleitete ACs (architecture-CIA 2026-07-03, blocking)
+- [ ] **AC-93.10 (Resolve-Zeit als autoritativer Gate — R-1)**: Der maßgebliche Class-3-Gate ist der TS-Resolver (`clampForClass3` / `isClass3TrustedEligible`) zur **Laufzeit jeder Anfrage** — NICHT der Write-Time-Trigger. Beweis-AC: Attest wird widerrufen, OHNE eine `tenant_ai_provider_priority`-Zeile anzufassen → der nächste Class-3-Resolve klemmt Azure sofort heraus (Ollama/`external_blocked`). Die DB-Konstrukte (Floor-CHECK + Trigger) sind explizit als notwendige-aber-nicht-hinreichende Vorschicht dokumentiert.
+- [ ] **AC-93.11 (Member-callable Attest-Status + Fail-Closed — R-2)**: Der Attest-Status wird dem Routing-Pfad (Tenant-*Member*, nicht Admin) über EINEN `SECURITY DEFINER STABLE`-Helper `tenant_has_class3_trusted_processor(tenant_id)` sichtbar gemacht (member-callable, analog `decrypt_tenant_ai_provider_with_key`) — NICHT über einen admin-only Meta-Select auf `tenant_ai_providers` (der für Member 0 Zeilen liefert). Genau EIN Helper, zwei Aufrufer (Write-Trigger + Resolver-RPC). Fehlender `SECRETS_ENCRYPTION_KEY` oder Helper-RPC-Fehler ⇒ Azure nicht eligible ⇒ Ollama/blocked (**fail-closed**, mit Test + Smoke).
+- [ ] **AC-93.12 (Kill-Switch-Ordnung)**: `isExternalAIBlocked()` bleibt der erste Guard in `resolveProvider` — vor jeglicher Trusted-Processor-Logik. Als Test festgeschrieben: globaler Kill-Switch überstimmt auch attestiertes Azure.
+
 ## Edge Cases
 - Attest vorhanden, aber Region nachträglich auf Nicht-EU geändert → class3_eligible kippt auf false; nächster Lauf fällt auf Ollama zurück (bzw. `external_blocked`).
 - Attest widerrufen während ein Lauf läuft → laufender Lauf endet normal; nächster Lauf respektiert den Widerruf.
@@ -57,7 +62,75 @@ GO mit Pflicht-Guardrails: EU-Region-Allowlist, DPA-gebundener CHECK (nie pausch
 <!-- Sections below are added by subsequent skills -->
 
 ## Tech Design (Solution Architect)
-_To be added by /architecture_
+
+**Architektur-CIA:** 2026-07-03 (`Continuous Improvement Agent`), GO mit blocking Locks. Gründet auf **live verifiziertem** Ist-Zustand (Resolver-Code + Prod-DB `iqerihohwabyjzkpcujq`), nicht auf Spec-Prosa. Requirements-CIA-GO (2026-06-10) bleibt gültig; diese Pass löst die dorthin delegierten Forks + zwei neu entdeckte, sicherheitskritische Blocker (R-1 Stale-Rule, R-2 Member-Fail-Open).
+
+### Verifizierter Ist-Zustand (Grundlage aller Locks)
+1. **`src/lib/ai/key-resolver.ts`** — Class-3-Block liegt in ZWEI TS-Punkten: `defaultProviderOrder(3)` → nur `["ollama"]` (Z.262–265); `clampForClass3()` filtert gegen `const LOCAL_ONLY_PROVIDERS = ["ollama"]` (Z.284–292). `clampForClass3` klemmt nach **`dataClass`, nicht nach Purpose** → der Gate ist purpose-agnostisch. `isExternalAIBlocked()` ist der erste Guard in `resolveProvider` (Z.310).
+2. **`tenant_ai_providers`** (Prod) — Spalten: id, tenant_id, provider, **`encrypted_config` (bytea)**, key_fingerprint, last_validated_at, last_validation_status, created_by, created_at, updated_at. **Keine DPA-Spalten.** Azure-Key UND `azure_region` liegen INNERHALB `encrypted_config` → **für DB-Trigger/CHECK unlesbar**. Der Resolver sieht `azure_region` nur NACH Dekryption via member-callable RPC `decrypt_tenant_ai_provider_with_key`.
+3. **Live-CHECK** `tenant_ai_provider_priority_class3_local_only`: `CHECK ((data_class <> 3) OR (provider_order <@ ARRAY['ollama']))` — Tabellen-CHECK, **kann keine andere Tabelle referenzieren** (Postgres: keine Subquery im CHECK) → DPA-Konditionalität nur per TRIGGER.
+4. **`ki_runs`** — hat `provider` (CHECK erlaubt bereits `azure`), `model_id`, `reason_code`, aber **keine region-Spalte**.
+5. **Bereits vorhanden aus PROJ-92/32 (Reuse, kein Neubau):** `src/lib/ai/azure-region-allowlist.ts` (Server-Konstante `AZURE_EU_REGIONS` + `isEuAzureRegion()`; Save-Route weist Nicht-EU-Azure vor Persistenz ab); Audit-RPC `record_tenant_ai_provider_audit(p_tenant_id, p_provider, p_action, p_old_fp, p_new_fp)` (SECURITY DEFINER, admin-gated, In-Body-Action-Enum `('create','rotate','delete','validate')` → `audit_log_entries`).
+
+### Kernentscheidungen (D1–D5 gelockt)
+
+**D1 — DPA-Metadaten als plaintext-Spalten; `azure_region` bleibt verschlüsselt.**
+- Neue Spalten auf `tenant_ai_providers` (additiv-nullable): `dpa_confirmed_at timestamptz`, `dpa_confirmed_by uuid` (→ auth.users/profiles), `dpa_reference text`. DPA-Metadaten sind Governance-Daten, kein Secret → plaintext ist korrekt und für den Trigger/Helper zwingend.
+- CHECK-Kohärenz: all-or-nothing (`(dpa_confirmed_at IS NULL) = (dpa_confirmed_by IS NULL)` und `= (dpa_reference IS NULL)`) UND DPA nur für Azure (`provider = 'azure' OR dpa_confirmed_at IS NULL`).
+- `azure_region` wird **NICHT** in die DB promoted. Einzige Regionsquelle bleibt `AZURE_EU_REGIONS` (Code-Konstante) → schützt vor Region-Drift (R-3) und wahrt die PROJ-92-Intention „Allowlist nicht datengetrieben".
+
+**D2 — Zweiteilige DB-Vorschicht; autoritativer Gate = Resolve-Zeit (adressiert R-1).**
+- (a) `class3_local_only`-CHECK ersetzen durch **strukturellen Anti-Scope-Floor**: `data_class <> 3 OR provider_order <@ ARRAY['ollama','azure']`. Selbst bei Trigger-Ausfall bleiben openai/anthropic/google in Class-3-Zeilen DB-seitig unmöglich (erfüllt AC-93.7 auf DB-Ebene, adressiert R-4).
+- (b) **BEFORE INSERT/UPDATE-Trigger** auf `tenant_ai_provider_priority`: `azure` in einer `data_class = 3`-Zeile nur zulässig, wenn `tenant_has_class3_trusted_processor(NEW.tenant_id)`.
+- (c) **Der maßgebliche Gate ist der TS-Resolver zur Laufzeit** (AC-93.10). Grund: Write-Trigger feuert nicht bei Attest-Widerruf (Priority-Tabelle unberührt) → sonst stale Rule + Leak. DB-Konstrukte sind dokumentiert als notwendige-aber-nicht-hinreichende Vorschicht.
+
+**D2b — Attest-Status über member-callable Helper-RPC, NICHT über RLS-Meta-Select (adressiert R-2, blocking).**
+- Neuer Helper `tenant_has_class3_trusted_processor(p_tenant_id uuid) RETURNS boolean` — `SECURITY DEFINER`, `STABLE`, `SET search_path = public`; prüft `dpa_confirmed_at IS NOT NULL` auf der `provider='azure'`-Zeile des Tenants. Member-callable (`GRANT EXECUTE ... authenticated`), exakt wie `decrypt_tenant_ai_provider_with_key`. **Ein** Helper, zwei Aufrufer: der Write-Trigger (b) und der Resolver.
+- Der Routing-Pfad läuft als Tenant-*Member*; ein admin-only Meta-Select auf `tenant_ai_providers` liefert für Member 0 Zeilen → ein plaintext-Feld allein wäre entweder fail-open (Leak) oder feature-broken. `ProviderRecord` bekommt daher **kein** DPA-Feld aus dem admin-only Select — die Eligibility kommt aus dem Helper-RPC.
+
+**D3 — bewusste DB↔TS-Divergenz; genau EINE logische Autorität (erfüllt AC-93.2/R2).**
+- Neue reine TS-Funktion `isClass3TrustedEligible(record, trustedFlag): boolean = trustedFlag && record.config.kind === 'azure' && isEuAzureRegion(record.config.azure_region)`. Sie ist die **einzige** Eligibility-Autorität. `clampForClass3` (bzw. eine `class3EligibleProviders`-Ableitung, die `LOCAL_ONLY_PROVIDERS` ersetzt) lässt Azure in Class-3 nur bei `true` zu; Ollama immer.
+- DB-Trigger prüft bewusst nur die Attest-Teilmenge (Region unlesbar) → dokumentierte, korrekte Divergenz: **DB = Attest-Floor, TS = Attest + EU-Region-Vollgate.** Region-Recheck zur Resolve-Zeit fängt „Region nachträglich geändert" kostenlos ab (theoretisch, da Write-Path EU erzwingt). AC-93.2 gilt als eine *logische* (nicht physische) Ableitung erfüllt.
+
+**D4 — `ki_runs.provider_region text` (nullable), erfüllt AC-93.5.**
+- Bei Azure-Läufen aus der dekryptierten Config befüllt, sonst NULL. Kein separater `class3_trusted`-Boolean (redundant: `provider='azure' AND classification=3` identifiziert den Trusted-Pfad; `provider_region` liefert die DSGVO-belastbare Region-Provenienz). Additiv-nullable → PROJ-42/PROJ-134-Guards unkritisch.
+
+**D5 — Test-Scope: datengetrieben über `dataClass=3`.**
+- AC-93.3-Regressionstest generisch über `dataClass=3`: ohne Attest → `['ollama']`/blocked; mit Attest+EU → Azure eligible; mit Attest+non-EU → Azure geklemmt. Mindestens `resource_swap` (strukturell Class-3) UND `proposal_stakeholders_from_context` müssen identisches Gate-Verhalten zeigen (verhindert Purpose-Special-Casing). Negativtest: Class-1/2-Anfrage von DPA unbeeinflusst (Azure normal wählbar). Live-Smoke (AC-93.8) via PROJ-88.
+
+### Zusätzliche Pflicht-Guardrails (in ACs gefaltet)
+- **G-Audit (AC-93.1):** DPA-Confirm/Revoke NUR über dedizierte admin-gated `SECURITY DEFINER`-RPC (`attest_tenant_ai_provider_dpa` / `revoke_tenant_ai_provider_dpa`) — kein direkter `UPDATE` (State-Machine-Konvention). Append-only-Audit via `record_tenant_ai_provider_audit`; In-Body-Action-Enum um `'dpa_confirm'`/`'dpa_revoke'` erweitern (Lockstep-Migration; `ki_runs`- und `tenant_ai_cost_caps`-Purpose-CHECKs bleiben unberührt).
+- **G-KillSwitch (AC-93.12):** `isExternalAIBlocked()` bleibt erster Guard.
+- **G-FailClosed (AC-93.11):** fehlender `SECRETS_ENCRYPTION_KEY`/Helper-RPC-Fehler → Azure nicht eligible.
+- **G-Live-Smoke (AC-93.8/AC-93.10):** Pflicht gegen Prod: attest → Class-3-Resolve wählt Azure → **revoke → nächster Resolve klemmt Azure sofort raus** (R-1-Beweis) → Rollback, 0 Residue.
+- **G-ADR + Invariante #3 (AC-93.6):** ADR `docs/decisions/ma-…`/`trusted-processor-provider-class.md` + CLAUDE.md-Invariante-#3-Präzisierung.
+
+### Migrationsplan (lockstep, additiv, PROJ-134-Naming, PROJ-42-drift-safe)
+1. `tenant_ai_providers`: +3 DPA-Spalten + Kohärenz-CHECK + Azure-only-CHECK.
+2. `tenant_ai_provider_priority`: `class3_local_only`-CHECK droppen → Floor-CHECK `<@ ['ollama','azure']` + `tenant_has_class3_trusted_processor`-Helper + BEFORE-INSERT/UPDATE-Trigger.
+3. `ki_runs`: +`provider_region text` nullable.
+4. `record_tenant_ai_provider_audit`: Action-Enum-Erweiterung (In-Body).
+5. Neue RPCs `attest_tenant_ai_provider_dpa` / `revoke_tenant_ai_provider_dpa` (admin-gated, SECURITY DEFINER, Audit).
+> Migration-`name` muss dem Repo-Dateinamen-Stamm entsprechen (PROJ-134). Kein neues npm-Dep (Azure via bestehender `createOpenAICompatible`-Factory aus PROJ-92).
+
+### Resolver-Änderungen (`key-resolver.ts`)
+- Neuer per-Request-gecachter Lookup `getClass3TrustedFlag(supabase, tenantId)` → RPC `tenant_has_class3_trusted_processor` (parallel zu `getTenantProviders`/`getPriorityMatrix`).
+- `LOCAL_ONLY_PROVIDERS`-Konstante + `defaultProviderOrder(3)` + `clampForClass3` → ersetzt durch `class3EligibleProviders(providers, trustedFlag)` = `['ollama' (falls vorhanden)] (+ 'azure' falls isClass3TrustedEligible)`.
+- Fail-closed bei Helper-Fehler/fehlendem Encryption-Key.
+
+### Frontend-Slice (Handoff-Notiz)
+- Azure-Card in Settings→KI-Provider (PROJ-92): DPA-Attest-Block (Referenz-Eingabe + „Attest bestätigen"/„Widerrufen"), ruft die zwei neuen RPCs; Attest-Status + Datum sichtbar; Historie via bestehendem Audit.
+
+### Anti-Scope (bekräftigt)
+Kein generischer „Cloud-für-Class-3"-Pfad; OpenAI-direkt/Anthropic/Google für Class-3 auf DB- UND TS-Ebene unmöglich; opt-in pro Tenant, nie global; alle 3 Defense-Layer bleiben, nur DPA-konditional.
+
+### Offene Followups (PROJ-Y-Kandidaten)
+- DPA-Dokument-Upload (MVP out-of-scope; DSGVO-Retention/RLS-Fläche).
+- Tenant-Policy-basierte Region-Allowlist (MVP: statische Code-Konstante).
+- Mehrere Azure-Configs pro Tenant (Attest gilt dann pro Config).
+
+### Handoff
+`/backend` → Migration + Resolver + RPCs; danach `/frontend` (Attest-Card); dann `/qa` (datengetriebene Class-3-Regression + Live-Smoke inkl. Revoke-Beweis).
 
 ## QA Test Results
 _To be added by /qa_
