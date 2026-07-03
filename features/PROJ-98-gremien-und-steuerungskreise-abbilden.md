@@ -14,7 +14,9 @@ summary_for_jira: "[B2] Gremien und Steuerungskreise abbilden"
 
 # PROJ-98: Gremien und Steuerungskreise abbilden
 
-## Status: Approved (QA PASS — 0 Critical/High)
+## Status: Deployed (2026-07-03 — tag v2.8.0-PROJ-98)
+
+**Deployed 2026-07-03:** Code live auf main via #216 (backend) + #221 (frontend) + #223 (QA); Migration `20260702120000_proj98_committees` seit /backend in Prod. Vercel-Prod-Deploy von `c09e164` (#223) **READY** (dpl_47x7i4uXovUYD6tarBSq59LrH38A, target=production). Kein neues Dep, keine separate Runtime-Migration im Closure. Post-Deploy-Smoke: 307-Auth-Gates auf `/projects/[id]/gremien` + `/api/projects/[id]/committees`. Tag `v2.8.0-PROJ-98`. Forward-compat-Followups offen: PROJ-Y-1 (Stage-Gate-Link/110), PROJ-Y-2 (Meeting-Link+nächste-Termine/117), PROJ-Y-3 (Template-Prefill/96), PROJ-Y-4 (strukturierter Eskalations-Link/111).
 
 **Architected (CIA-reviewed 2026-07-01 — GO mit ADJUST):** EXTEND auf PROJ-112-Backbone-Rezept; `committees` + `committee_members` (stakeholder-zentriert, Invariante #4); Need-to-know via PROJ-100a-Tor (kein eigenes ACL); forward-compat-Defer für Stage-Gate/Meeting/Template-Links (110/117/96); 6 Hardening-ACs H1–H6. Kein neues Dep.
 
