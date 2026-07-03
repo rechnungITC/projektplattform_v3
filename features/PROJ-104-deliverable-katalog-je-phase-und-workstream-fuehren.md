@@ -180,4 +180,20 @@ Keine neuen npm-Pakete. Eine Supabase-Migration.
 **Noch offen → /frontend:** „Deliverables"-Tab (Nav-Section + Katalog-Liste + Create/Edit-Dialog mit Doc-Links + RACI + Status-Inline, approved ausgegraut) + Workstream-Dashboard-Ampel (deliverables_total/overdue statt „—"). **→ /qa:** Need-to-know/Aggregat-Leak-Pentest (re-verify) + Live-E2E + Playwright-Auth-Gate.
 
 ---
+
+## Frontend Implementation Notes (2026-07-03)
+
+**Neuer „Deliverables"-Tab + F5-Ampel-Integration.**
+- **Nav** (`method-templates/index.ts`): `MA_DELIVERABLES_SECTION` (`tabPath: "deliverables"`, Icon `ClipboardCheck`) nach Workstreams (…Workstreams → **Deliverables** → Governance → Due Diligence → DD-Bericht).
+- **Route** `src/app/(app)/projects/[id]/deliverables/page.tsx`.
+- **`deliverables-page.tsx`** (Katalog): Tabelle Name/Phase/Workstream/Verantwortlich/Solltermin(rot bei überfällig)/Status + Filterbar (Phase/Workstream/Status, client-seitig). **Inline-Status-Transition** via Select mit `DELIVERABLE_ALLOWED_TRANSITIONS`; **„Freigegeben" disabled** mit Hinweis „(via Freigabe)" → PROJ-105-reserviert; approved-Deliverables zeigen Badge statt Select. Create/Edit/Delete `edit_master`-gated (AlertDialog-Confirm).
+- **`deliverable-dialog.tsx`** (Create/Edit, RHF): Name/Beschreibung/Phase(usePhases)/Workstream(useWorkstreams)/Verantwortlicher(ResponsibleUserPicker)/Solltermin/Vertraulichkeit + Mind.-ein-Anker-Check. Im Edit-Modus zusätzlich **Dokumente-Sektion** (Link add/remove via addDeliverableDocument/deleteDeliverableDocument) + **RACI-Sektion** (MA-Rollen-Select + R/A/C/I via set/clearDeliverableRaci). Laden via async-IIFE (react-compiler-safe).
+- **F5 Ampel** (`workstreams-page.tsx`): Deliverables-Zelle zeigt jetzt `deliverables_total` + „(N überfällig)" rot statt „—" (WorkstreamDashboardRow +deliverables_overdue).
+- Client-Wrapper um RACI-Funktionen erweitert. Reuse Card/Table/Select/Dialog/AlertDialog + ResponsibleUserPicker/usePhases/useWorkstreams/useTenantMembers. Kein neues Dep/shadcn.
+
+**Quality-Gates:** vitest **2214/2214**; ESLint 0; tsc 14 Baseline/0 neu; build clean (Route + 5 API-Routen registriert).
+
+**Noch offen → /qa:** Need-to-know/Aggregat-Leak-Pentest (re-verify), Live-E2E, Playwright-Auth-Gate für Route + APIs.
+
+---
 _Quelle: Backlog-Entwurf M&A-Projektplattform · D — Deliverables & Artefakte_

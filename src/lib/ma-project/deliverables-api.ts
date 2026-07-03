@@ -153,3 +153,56 @@ export async function deleteDeliverableDocument(
   )
   if (!res.ok) throw new Error(await safeError(res))
 }
+
+// --- RACI (target_type 'deliverable') --------------------------------------
+
+export interface DeliverableRaciRow {
+  id: string
+  role_key: string
+  raci_letter: "R" | "A" | "C" | "I"
+}
+
+export async function listDeliverableRaci(
+  projectId: string,
+  did: string
+): Promise<DeliverableRaciRow[]> {
+  const res = await fetch(
+    `${p(projectId)}/deliverables/${encodeURIComponent(did)}/raci`,
+    { method: "GET", cache: "no-store" }
+  )
+  if (!res.ok) throw new Error(await safeError(res))
+  return ((await res.json()) as { assignments: DeliverableRaciRow[] }).assignments
+}
+
+export async function setDeliverableRaci(
+  projectId: string,
+  did: string,
+  roleKey: string,
+  raciLetter: "R" | "A" | "C" | "I"
+): Promise<void> {
+  const res = await fetch(
+    `${p(projectId)}/deliverables/${encodeURIComponent(did)}/raci`,
+    {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ role_key: roleKey, raci_letter: raciLetter }),
+    }
+  )
+  if (!res.ok) throw new Error(await safeError(res))
+}
+
+export async function clearDeliverableRaci(
+  projectId: string,
+  did: string,
+  roleKey: string
+): Promise<void> {
+  const res = await fetch(
+    `${p(projectId)}/deliverables/${encodeURIComponent(did)}/raci`,
+    {
+      method: "DELETE",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ role_key: roleKey }),
+    }
+  )
+  if (!res.ok) throw new Error(await safeError(res))
+}
