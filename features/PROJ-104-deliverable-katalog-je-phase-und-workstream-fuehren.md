@@ -14,7 +14,7 @@ summary_for_jira: "[D1] Deliverable-Katalog je Phase und Workstream führen"
 
 # PROJ-104: Deliverable-Katalog je Phase und Workstream führen
 
-## Status: In Progress (Backend live)
+## Status: Approved (QA PASS 2026-07-03 — 0 Critical/0 High)
 **Created:** 2026-06-10
 **Origin:** M&A-Platform Backlog (Epic D — Deliverables & Artefakte)
 **Priority:** P1
@@ -194,6 +194,39 @@ Keine neuen npm-Pakete. Eine Supabase-Migration.
 **Quality-Gates:** vitest **2214/2214**; ESLint 0; tsc 14 Baseline/0 neu; build clean (Route + 5 API-Routen registriert).
 
 **Noch offen → /qa:** Need-to-know/Aggregat-Leak-Pentest (re-verify), Live-E2E, Playwright-Auth-Gate für Route + APIs.
+
+---
+
+## QA Test Results (2026-07-03) — PASS, PRODUCTION-READY
+
+**Verdikt: 0 Critical / 0 High.** 5/5 ACs abgedeckt (2 CIA-Deferrals). 1 LOW-Finding (F-1). Empfehlung: **Approved → /deploy.**
+
+### Acceptance Criteria
+| AC | Ergebnis | Nachweis |
+|---|---|---|
+| AC1 — anlegen mit Name/Beschr./Phase/Workstream/Verantwortlicher(RACI)/Solltermin/Status | ✅ PASS | Create-Dialog; `responsible_user_id` + RACI-Matrix (target_type='deliverable'); Live-Smoke set_deliverable_raci = 1 Row |
+| AC2 — Status geplant/in Arbeit/in Review/freigegeben/ausgesetzt | ✅ PASS (`approved` PROJ-105-reserviert) | Live-Smoke: transition→in_progress ok, **approved rejected (42501)**; UI zeigt „Freigegeben" disabled |
+| AC3 — aus Template vorbelegbar | ⏸ **deferred** (D-1) | PROJ-96 ungebaut |
+| AC4 — mit Dokumenten verknüpfbar | ✅ PASS (externer Link; Upload deferred D-2) | `deliverable_documents` add/remove; Live-Smoke doc-link=1 |
+| AC5 — Deliverable-Ampel im Workstream-Dashboard | ✅ PASS | `workstream_dashboard` deliverables_total + deliverables_overdue; FE-Kachel zeigt „N überfällig" |
+
+### Security / Need-to-know Pentest (Live gegen Prod, Impersonation, 0 Residue)
+Nicht-Admin-Member (geliehenes Profil, Viewer): **A** sieht strict-Deliverable NICHT (0) · **B** sieht strict-`deliverable_documents` NICHT (0, erbt Gate) · **C** sieht 2 nicht-strict (2) · Aggregat-Leak (Backend-Smoke): Admin-Dashboard deliverables_total=3, nicht-cleared Member=2 (strict ausgeschlossen). Audit-CHECK enthält weiter committees+workstreams+deliverables. `can_access_classified` byte-identisch aus dd_streams-Rezept.
+
+### Live Functional Smoke (Prod, 0 Residue)
+Backend-Smoke 9/9 (orphan-CHECK · transition · approved-rejected · RACI · Doc-Link · dashboard 3/1 · Audit-Row · Aggregat-Leak · CHECK-Erhalt) + QA-Cascade: **D** workstream-delete → Deliverables CASCADE (0) · **E** siehe F-1.
+
+### Automatisierte Tests
+- **Playwright** `tests/PROJ-104-deliverables.spec.ts`: **6/6 chromium** (Page + 5 API-Routen [list/create · status · documents · raci] auth-gated). Mobile Safari übersprungen (WebKit-Host-Libs, PROJ-67).
+- **vitest 2214/2214** (+20 Route-Tests); ESLint 0; tsc 14 Baseline/0 neu; build clean.
+
+### Findings
+- **F-1 (LOW) — Phase-Hard-Delete blockiert bei Phase-only-Deliverable:** `phase_id ON DELETE SET NULL` + Anchor-CHECK → das Löschen einer Phase, an der ein *ausschließlich* phasengebundenes Deliverable hängt, wird durch die CHECK-Verletzung geblockt (raw `check_violation`). **Kein Datenverlust/Orphan (das ist der Schutz, CIA-R-1 by design).** Workaround: Deliverable vorher löschen/umhängen. Empfehlung → **PROJ-Y-104d** (App-Level-Guard mit freundlicher Meldung ODER Phase-CASCADE für phase-only). Kein Blocker (Phase-Hard-Delete selten; meist Soft-Delete).
+
+### Deviations (CIA-gelockt)
+- **D-1** Template-Vorbelegung (AC3) → PROJ-96. **D-2** echter Datei-Upload → PROJ-79. **D-3** `approved`-Gate/Freigabe-Workflow → PROJ-105 (`approved` reserviert). **D-4** Versionierung → PROJ-106. **Info:** kein M&A-Projekt in Prod → Pentest/Smoke auf Core-PMI-Projekt.
+
+**Followups:** PROJ-Y-104a (Templates), 104b (Phasen-Ampel-Sicht), 104c (Upload), **104d (Phase-Delete-Guard, F-1)**.
 
 ---
 _Quelle: Backlog-Entwurf M&A-Projektplattform · D — Deliverables & Artefakte_
