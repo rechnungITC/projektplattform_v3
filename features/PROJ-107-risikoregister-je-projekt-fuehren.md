@@ -14,7 +14,7 @@ summary_for_jira: "[E1] Risikoregister je Projekt führen"
 
 # PROJ-107: Risikoregister je Projekt führen
 
-## Status: Planned
+## Status: Architected
 **Created:** 2026-06-10
 **Origin:** M&A-Platform Backlog (Epic E — Risiken & Red Flags)
 **Priority:** P1
@@ -77,3 +77,90 @@ Das Modell verlangt ein durchgängiges Risikoregister. Risiken entstehen in alle
 
 ---
 _Quelle: Backlog-Entwurf M&A-Projektplattform · E — Risiken & Red Flags_
+
+---
+
+## Tech Design (Solution Architect)
+
+**Architected:** 2026-07-03 · **Klasse:** DUP→REUSE auf PROJ-20 `risks` · **CIA-reviewed** (2 Forks + 1 Zusatz, beide Empfehlungen vom User bestätigt) · **Kein neues Dependency** · **1 Migration**
+
+### Leitgedanke
+
+PROJ-107 baut **kein neues Risiko-Modell**. Der geteilte Plattform-Core (PROJ-20 `risks`) liefert schon fast alles, was die Akzeptanzkriterien verlangen. Diese Slice ergänzt nur die vier echten Lücken und zieht zwei Hygiene-Punkte nach. Die Regel aus dem Readiness-Guide gilt: „PROJ-107 erweitern und konfigurieren, nicht neu bauen."
+
+### Was der Core heute schon kann (Reuse ohne Neubau)
+
+| AC | Bereits im Core vorhanden |
+|---|---|
+| Bewertung 1–5 × 1–5 | `probability`/`impact` sind 1–5 (mit Wertebereichs-Prüfung), plattformweit fix — die offene Spec-Frage „1–5 oder 1–10" ist damit **beantwortet: 1–5**. |
+| AC-2 Score automatisch | `score` ist eine **automatisch berechnete Spalte** (Wahrscheinlichkeit × Auswirkung, 1–25) — keine App-Logik nötig. |
+| AC-2 Heatmap-Quadrant | Eine **5×5-Heatmap** existiert bereits im Risiko-Tab (`risk-matrix.tsx`), plus Listen- und Matrix-Ansicht. |
+| AC-3 Workstream-Zuordnung | `risks.workstream_id` existiert (PROJ-102). |
+| AC-3 Phasen-Zuordnung | Über die vorhandene polymorphe Verknüpfungstabelle `risk_links` (`phase`). |
+| AC-1 Status/Owner/Titel/Beschreibung | Alle vorhanden. Status-Werte: offen/gemindert/akzeptiert/geschlossen. |
+| Audit | Feldgenaue Historie (PROJ-10) ist für Risiken voll verdrahtet. |
+| KI-Vorschläge | PROJ-89 („Risiken aus Kontext") schreibt bereits in dieselbe Tabelle. |
+
+### Die vier echten Lücken (das ist der Slice)
+
+**1. Risiko-Kategorie (AC-1 Pflichtfeld) — Fork A → Tenant-Katalog „A2-lite" (bestätigt)**
+- Neue tenant-eigene **Katalogtabelle** für Risiko-Kategorien (Schlüssel, Anzeige-Label, optionaler Projekttyp-Bezug, Sortierung, aktiv-Flag) — analog dem bewährten Muster von DD-Stream-Vorlagen und Berechtigungsprofilen.
+- Beim ersten Gebrauch in einem M&A-Projekt wird ein **M&A-DD-Standardsatz** einmalig vorbefüllt (Copy-on-first-use), Vorschlag: *Financial · Tax · Legal · Commercial/Market · Operational · HR/Organizational · IT/Technology · Compliance/Regulatory · Environmental/ESG · Integration/PMI*. (Liste vom Produkt bestätigbar.)
+- `risks` bekommt eine **optionale** Kategorie-Referenz (kein Pflichtfeld auf DB-Ebene). Konsequenz: **kein Backfill** der Bestands-Risiken, der KI-Insert-Pfad (PROJ-89) bleibt gültig, andere Projekttypen bleiben unberührt.
+- **Pflicht nur im M&A-Risiko-Formular** (Formular-Validierung), nicht global. So bleibt „Kategorie ist Pflicht" fachlich erfüllt, ohne den geteilten Core zu verhärten.
+- Nutzen fürs Reporting: eine **stabile, gruppierbare Achse** für „Top-Risiken je Kategorie" (PROJ-116/131/132).
+
+**2. Need-to-know-Vertraulichkeit auf `risks` — Fork B → jetzt mitziehen (bestätigt)**
+- **Warum jetzt und nicht später:** Es gibt eine **reale Vertraulichkeitsnaht**. DD-Findings (PROJ-114) verweisen direkt auf Risiken; ein streng vertrauliches Finding kann heute auf ein Risiko zeigen, dessen Titel das Deal-Problem verrät und das **für jedes Projektmitglied sichtbar** ist. Das Risikoregister ist die einzige ungegattete Tabelle in der DD-Kette.
+- **Umsetzung als geboundete Erweiterung, exakt nach dem PROJ-100a-Rezept**, das bereits auf den ebenso geteilten Core-Tabellen `phases` und `work_items` läuft:
+  - neue Vertraulichkeitsstufe pro Risiko, **Standardwert „standard"**;
+  - ein zusätzlicher, additiver „Vertraulichkeits-Riegel" (das etablierte `can_access_classified`-Gate) **oberhalb** der bestehenden Zugriffsregeln;
+  - Standardstufe = für jedes Projektmitglied sichtbar → **für alle Nicht-M&A-Projekte ein No-op** (keine Verhaltensänderung).
+- **Regressionsflächen (im Bau + QA zu prüfen):** die vier bestehenden Zugriffsregeln müssen für Standard-Risiken byte-identisch bleiben; der KI-Insert-Pfad erbt den Standardwert (kein Code-Change, nur verifizieren); alle Aggregat-/Report-Abfragen über Risiken müssen im **Aufrufer-Rechtekontext** laufen, damit kein Aggregat-Leak entsteht (Lehre aus `dd_findings_summary`); Vertraulichkeitsstufe kommt in die Audit-Whitelist.
+- **Neuer Hardening-/Pentest-AC** (siehe unten) — nicht still, sondern als dokumentierte Erweiterung der core-blinden Spec.
+
+**3. Maßnahmen als Aufgaben verknüpfbar (AC-4) + Deliverable-Zuordnung (AC-3) — Fork C → `risk_links` additiv (bestätigt)**
+- Die vorhandene Verknüpfungstabelle `risk_links` wird additiv um zwei Ziel-Arten erweitert: **`work_item`** (eine Maßnahme = eine Aufgabe, PROJ-9) und **`deliverable`** (PROJ-104, deployed → Referenzintegrität gegeben).
+- Kein neuer Fremdschlüssel, keine neue Tabelle. Der bestehende Validierungs-Mechanismus (prüft Existenz + gleiche Projekt-/Tenant-Zugehörigkeit) wird um die zwei neuen Ziel-Arten ergänzt. Die Verknüpfungs-Prüfung emuliert **kein** Vertraulichkeits-Gate — Sichtbarkeit regelt weiterhin die RLS.
+- Das Freitext-Feld `mitigation` bleibt für Kurz-Notizen; die echte Nachverfolgung läuft über verknüpfte Aufgaben.
+
+**4. Reporting-Oberfläche (AC-5) — Heatmap vorhanden, Top-Risiken-Liste ergänzen**
+- Die Heatmap existiert bereits im Projekt-Raum. Ergänzt wird eine **Top-Risiken-Sicht** (nach Score absteigend, gruppierbar nach Kategorie/Workstream/Phase) und deren Einbindung in die Reporting-Ausgabe (PROJ-21/PROJ-64). Alle Aggregationen laufen im Aufrufer-Rechtekontext (Need-to-know-konform).
+
+### Hygiene (im selben Slice)
+
+- **`workstream_id` nachziehen:** in die Audit-Whitelist, in die API-Feldauswahl und in den TypeScript-Typ — sonst bleibt eine Workstream-Neuzuordnung unauditiert.
+- **Severity-Schwellen vereinheitlichen:** Heute existieren **drei** divergierende Schwellen-Schemata (DB-Funktion 6/12/19 4-stufig; Tabelle 16/9/4; KI-Tab 15). Kanonisch wird die **DB-Funktion `_risk_severity_bucket`** (low/medium/high/critical). Die UI **mappt den Bucket auf einen Farbton**, statt den Score neu zu klassifizieren. Begründung: bereits von geteilten Auswertungen konsumiert, das Reporting braucht **eine** Skala, und der distinkte `critical`-Bucket ist fürs Deal-Breaker-Framing wertvoll.
+
+### Datenmodell (in Worten, kein Code)
+
+- **`risk_categories`** (neu, tenant-eigen): Katalog der wählbaren Kategorien. Tenant-isoliert, admin-pflegbar.
+- **`risks`** (bestehend, erweitert): + optionale Kategorie-Referenz, + Vertraulichkeitsstufe (Default „standard"). Alles Übrige unverändert.
+- **`risk_links`** (bestehend, erweitert): zwei zusätzliche erlaubte Ziel-Arten (`work_item`, `deliverable`).
+
+### Migrations-Oberfläche (eine Migration)
+
+Katalogtabelle + Tenant-RLS + Audit-Verdrahtung; optionale Kategorie-Referenz auf `risks`; Vertraulichkeitsstufe auf `risks` + drei RESTRICTIVE-Zugriffsregeln (SELECT/UPDATE/DELETE) nach 100a-Muster; Audit-Whitelist um `workstream_id` + Vertraulichkeitsstufe erweitert; `risk_links`-Prüfregel + Validierungs-Trigger um `work_item`/`deliverable` erweitert. Audit-CHECK/`can_read_audit_entry` aus den **Live-Definitionen** neu bauen (Geschwister-Einträge erhalten, `authenticated`-Grant re-setzen — bekannte Fallen aus PROJ-114).
+
+### Neue/geänderte Akzeptanzkriterien (Ergänzung zur core-blinden Ursprungs-Spec)
+
+- [ ] **AC-107-6 (Vertraulichkeit):** Risiken tragen eine Need-to-know-Stufe (Default „standard"); das additive Gate schränkt Sicht/Änderung/Löschung analog PROJ-100a ein. Nicht-M&A-Projekte (alle „standard") verhalten sich unverändert.
+- [ ] **AC-107-7 (Pflicht-Pentest, live):** Live-RPC-Smoke gegen Prod (mit Rollback, 0 Residue) beweist: default-deny für nicht-cleared Mitglieder auf vertraulichen Risiken; `standard` bleibt für Projektmitglieder transparent; kein Cross-Clearance-/Cross-Tenant-Leak; **kein Aggregat-Leak über `dd_findings.linked_risk_id`** und über die Top-Risiken/Heatmap-Aggregation. Plus Non-M&A-Regressionstest (byte-identisches Verhalten der 4 Bestands-Policies).
+- [ ] **AC-107-8 (Kein Backfill/Kein Bruch):** Bestands-Risiken und der PROJ-89-KI-Insert-Pfad funktionieren nach der Migration unverändert (Kategorie optional, Vertraulichkeit „standard").
+
+### Nicht in dieser Slice (bewusst)
+
+- Quantitative EUR-Schadensberechnung (Spec: optional) — kommt über PROJ-114/120/121.
+- KI-Auto-Kategorisierung der Risiken — Followup (PROJ-89 liefert vorerst ohne Kategorie).
+- Stage-Gate-Pflicht-Review von Risiken (offene Spec-Frage) — gehört zu PROJ-110, hier nur verknüpfbar.
+- Verschieben der Severity-Logik in eine berechnete Spalte — die DB-Funktion bleibt kanonisch.
+
+### Abhängigkeiten
+
+Keine neuen npm-Pakete. Nutzt: PROJ-20 (risks/risk_links), PROJ-100a (`can_access_classified`), PROJ-102 (workstream_id), PROJ-104 (deliverables, deployed), PROJ-9 (work_items), PROJ-10 (Audit), PROJ-89 (KI-Insert).
+
+### Handoff
+
+- **Backend zuerst** (Migration + API + RPC/Policies + Live-Pentest-Smoke): Kern dieser Slice ist datenmodell-nah. → `/backend`
+- Danach **Frontend** (Kategorie-Auswahl + Pflicht im M&A-Formular, Vertraulichkeits-Picker, Verknüpfung von Aufgaben/Deliverables, Top-Risiken-Sicht, Severity-Bucket→Farbton). → `/frontend`
+- Dann **QA** (AC-107-7 Pentest ist Pflicht-Gate). → `/qa`
