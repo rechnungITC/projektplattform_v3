@@ -34,7 +34,7 @@ const PURPOSES = [
 type Purpose = (typeof PURPOSES)[number]
 
 type DataClass = 1 | 2 | 3
-type ProviderName = "anthropic" | "ollama" | "openai" | "google"
+type ProviderName = "anthropic" | "ollama" | "openai" | "google" | "azure"
 
 const PURPOSE_LABELS: Record<Purpose, string> = {
   risks: "Risiken",
@@ -48,11 +48,12 @@ const PROVIDER_LABELS: Record<ProviderName, string> = {
   anthropic: "Anthropic",
   openai: "OpenAI",
   google: "Google",
+  azure: "Azure OpenAI",
   ollama: "Ollama (lokal)",
 }
 
 const LOCAL_PROVIDERS: ProviderName[] = ["ollama"]
-const CLOUD_PROVIDERS: ProviderName[] = ["anthropic", "openai", "google"]
+const CLOUD_PROVIDERS: ProviderName[] = ["anthropic", "openai", "google", "azure"]
 
 interface PriorityRule {
   purpose: Purpose
@@ -134,6 +135,7 @@ interface AvailMap {
   openai: boolean
   google: boolean
   ollama: boolean
+  azure: boolean
 }
 
 function availableCloud(avail: AvailMap): ProviderName[] {
@@ -141,6 +143,7 @@ function availableCloud(avail: AvailMap): ProviderName[] {
   if (avail.anthropic) order.push("anthropic")
   if (avail.openai) order.push("openai")
   if (avail.google) order.push("google")
+  if (avail.azure) order.push("azure")
   return order
 }
 
@@ -192,12 +195,14 @@ export function PriorityMatrixSection({
   openaiAvailable,
   googleAvailable,
   ollamaAvailable,
+  azureAvailable,
 }: {
   tenantId: string
   anthropicAvailable: boolean
   openaiAvailable: boolean
   googleAvailable: boolean
   ollamaAvailable: boolean
+  azureAvailable: boolean
 }) {
   const avail = React.useMemo<AvailMap>(
     () => ({
@@ -205,8 +210,15 @@ export function PriorityMatrixSection({
       openai: openaiAvailable,
       google: googleAvailable,
       ollama: ollamaAvailable,
+      azure: azureAvailable,
     }),
-    [anthropicAvailable, openaiAvailable, googleAvailable, ollamaAvailable],
+    [
+      anthropicAvailable,
+      openaiAvailable,
+      googleAvailable,
+      ollamaAvailable,
+      azureAvailable,
+    ],
   )
 
   const [loading, setLoading] = React.useState(true)

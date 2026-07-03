@@ -1,6 +1,6 @@
 # PROJ-92: Azure OpenAI Provider (Class-1/2) — fünfter Provider-Typ
 
-## Status: In Progress (Backend gebaut 2026-07-01 — Provider + Validator + EU-Region-Allowlist + Lockstep-Migration in Prod + Live-Smoke grün; all-gates green. Admin-UI-Formular → /frontend)
+## Status: Deployed (Tag `v2.8.0-PROJ-92` 2026-07-03 — Provider/Validator/Admin-Form + Migration live in Prod; Post-Deploy-Smoke 307 auth-gated. AC-92.7 real-Azure-Call = dokumentierte Stub-Deviation für Pilot)
 **Created:** 2026-06-10
 **Last Updated:** 2026-07-01
 **Origin:** PO-Entscheidung 2026-06-10 (Pilotkunden ohne Ollama-Betrieb) · CIA-Review 2026-06-10 (GO, Split 92a/92b)
@@ -159,8 +159,56 @@ Built in worktree `projektplattform_v3-proj92` (branch `proj-92/backend`). **No 
 
 **Open:** AC-92.6 admin-UI Azure form → `/frontend`; AC-92.7 live-smoke against a *real* Azure resource → `/qa` (documented stub path acceptable if no test resource). → `/frontend`.
 
-## QA Test Results
-_To be added by /qa_
+## Implementation Notes — Frontend (2026-07-01)
 
-## Deployment
-_To be added by /deploy_
+Built in worktree `projektplattform_v3-proj92` (branch `proj-92/frontend`). No new dependency, shadcn/ui primitives only.
+
+- **`AzureCard`** in `src/components/settings/tenant/ai-providers/ai-providers-page-client.tsx` (AC-92.6) — mirrors `OllamaCard` (multi-field): endpoint_url, deployment_name, api_key, api_version, azure_region. PUTs the exact body `{endpoint_url, deployment_name, api_key, api_version, azure_region}` to `…/ai-providers/azure`; reuses the generic status-badge / fingerprint display / Re-Test (`…/azure/validate`) / delete flows. Client shape-check mirrors the backend Zod (https endpoint, `api_version` regex `^\d{4}-\d{2}-\d{2}(-preview)?$`, non-empty key/deployment/region); the **EU-region allowlist is NOT duplicated client-side** — a non-EU region surfaces the server 400 message verbatim (per lock). Status handling incl. `model_missing` (deployment not found) + `unreachable`. Wired into the page: `ProviderName`/`LoadState`/parallel load all include `azure`.
+- **`PriorityMatrixSection`** — `azure` added to `ProviderName`, `PROVIDER_LABELS` ("Azure OpenAI"), `CLOUD_PROVIDERS`, `AvailMap`, `availableCloud`, and a new `azureAvailable` prop (passed from the page). So azure now appears in the Class-1/2 cloud order presets. (Local/Class-3 presets unchanged — azure never enters them.)
+- **`CostCapSection`** — `azure` label added to the per-provider usage display.
+
+**Quality gates:** eslint 0 (changed files); tsc 14 total = **0 new**; build clean; targeted vitest 278/278 (AI lib + provider routes — no regressions; the settings page area has no unit tests, consistent with the existing OpenAI/Ollama cards).
+
+**Open:** AC-92.7 live smoke against a *real* Azure resource → `/qa` (documented stub path acceptable if no test resource). → `/qa`.
+
+## QA Test Results — 2026-07-01
+
+**Verdict: PRODUCTION-READY (0 Critical / 0 High).** Independent QA in worktree `proj-92/qa` against merged main + prod DB.
+
+| AC | Ergebnis | Beleg |
+|---|---|---|
+| AC-92.1 (enum + 4 whitelists lockstep) | ✅ | Live prod: `tenant_ai_providers`/`priority known_providers`/`ki_runs` CHECKs + `record_tenant_ai_provider_audit` validator **all contain `azure`**. |
+| AC-92.2 (config fields + EU-region allowlist) | ✅ | 5-field config (endpoint/deployment/key/api_version/azure_region); `azure-region-allowlist.test.ts` 8/8 pins the exact EU set; allowlist imported **only** by the server route — client does not hold it (red-team below). |
+| AC-92.3 (5 cloud purposes + capability-matrix) | ✅ | `capability-matrix.test.ts`: azure implements all cloud purposes, **not** `resource_swap`; shared `graph-purpose-prompts` reused. |
+| AC-92.4 (Class-3 clamp structural) | ✅ **strong** | Code: `defaultProviderOrder(3)`→`["ollama"]` + `clampForClass3`/`LOCAL_ONLY_PROVIDERS=["ollama"]` untouched; `class3_local_only` CHECK unchanged. Router: `router-azure.test.ts` (class-3 azure → stub/blocked, no cloud call). **Live red-team (below): azure rejected for class-3 in every ordering.** |
+| AC-92.5 (cost-cap + priority-matrix accept azure) | ✅ | Live: class-1 `['azure']` **accepted**. `router-cost-cap` + `router-priority` + `key-resolver` suites green — the `getPriorityMatrix` filter widening (AC-92.5 fix) broke nothing. |
+| AC-92.6 (admin UI form) | ✅ | `AzureCard` built; build clean; auth-gate spec 5/5. |
+| AC-92.7 (`ki_runs` provider='azure' / live-smoke) | ⚠️ **PASS w/ documented deviation** | `ki_runs` CHECK accepts `provider='azure'` (verified live). Real-Azure end-to-end generation **not executed — no Azure test resource available** (spec-permitted stub path). Every layer *except the Azure API round-trip* is live-proven (whitelist → router builds `AzureOpenAIProvider` → ki_runs accepts azure). |
+
+**Live red-team prod smoke (self-rolling-back, 0 residue — independently re-run by QA):**
+- Class-1 `['azure','anthropic']` → **accepted** (AC-92.5).
+- Class-3 no-bypass — **all three** azure-containing orders **rejected** by `class3_local_only`: `['azure']`, `['ollama','azure']`, `['azure','ollama']` (the `<@ ARRAY['ollama']` subset check fails on any azure element — mixing with ollama does not sneak azure in). Invariant #3 intact.
+- Definitional: 4 whitelists gained `azure`; `class3_local_only` still `((data_class<>3) OR (provider_order <@ ['ollama']))`.
+- Post-check: **0 azure rows** in `tenant_ai_provider_priority` / `tenant_ai_providers` / `ki_runs`.
+
+**Red-team — EU-region gate:** the allowlist is enforced **server-side only** (`isEuAzureRegion` imported solely by the route; a non-EU region returns 400 and never persists). The client `AzureCard` carries no enforcement list — only placeholder/hint text — so the gate cannot be bypassed by patching the client bundle.
+
+**Security probes:** Playwright `tests/PROJ-92-azure-provider.spec.ts` — 5/5 chromium: GET/PUT/validate/DELETE on `…/ai-providers/azure` are auth-gated (307/401/403 without a session), incl. a PUT with a non-EU region (gate fires before the region check → no leak).
+
+**Regression:** full vitest **2194/2194** (275 files; +30 azure); targeted AI suites (router-azure/class3/priority/cost-cap, key-resolver, capability-matrix, region+validator, provider route 27) all green; build clean.
+
+**Findings:**
+- **F-1 (Info / documented deviation, AC-92.7):** no real Azure resource available → the live Azure generation round-trip was not exercised. Mitigation: the routing/DB/validator path is proven at every other layer; a pilot with an Azure resource should run one real `proposal_from_context`/`narrative` call and confirm `ki_runs.provider='azure'` + non-null tokens. Spec explicitly permits this stub-path deviation.
+- **F-2 (Info, env):** WebKit/Mobile Safari Playwright project skipped (host libs missing — the standing PROJ-67 F2 handoff `sudo npx playwright install-deps webkit`); chromium ran. The bare worktree needed a copied `.env.local` for the webServer (PROJ-135 D-1 class) — not a product issue.
+
+**0 Critical / 0 High → Approved.**
+
+## Deployment — 2026-07-03
+
+**Tag `v2.8.0-PROJ-92`.** Runtime deploy via Vercel auto-deploy from `main` (new frontend `AzureCard` + backend azure provider/routes). Migration `20260702100000_proj92_azure_provider` was already applied to prod during `/backend`.
+
+- **Pre-deploy gates** (via CI on #217/#219/#222): schema-drift, migration-naming, npm-audit, Snyk, build — all green at merge. Full vitest 2194/2194.
+- **Post-deploy prod smoke (2026-07-03):** `GET`/`POST validate`/`DELETE` on `/api/tenants/{id}/ai-providers/azure` + `/settings/tenant/ai-providers` all return **307** (auth-gated) — routes live (a missing route would 404), gate intact.
+- **No new env var / secret** — Azure config is per-tenant, stored encrypted like every provider key.
+
+**Open follow-up (F-1, AC-92.7):** a pilot with a real Azure OpenAI resource should register it in Settings → KI-Provider, run one `narrative`/`proposal_from_context` generation, and confirm `ki_runs.provider='azure'` with non-null token counts. The routing/DB/validator path is otherwise fully live-proven; PROJ-93 (Trusted-EU-Processor) builds on this for the Class-3 path.
