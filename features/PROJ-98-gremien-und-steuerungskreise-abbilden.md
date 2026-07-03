@@ -14,7 +14,7 @@ summary_for_jira: "[B2] Gremien und Steuerungskreise abbilden"
 
 # PROJ-98: Gremien und Steuerungskreise abbilden
 
-## Status: In Progress (Backend live — → /frontend)
+## Status: Approved (QA PASS — 0 Critical/High)
 
 **Architected (CIA-reviewed 2026-07-01 — GO mit ADJUST):** EXTEND auf PROJ-112-Backbone-Rezept; `committees` + `committee_members` (stakeholder-zentriert, Invariante #4); Need-to-know via PROJ-100a-Tor (kein eigenes ACL); forward-compat-Defer für Stage-Gate/Meeting/Template-Links (110/117/96); 6 Hardening-ACs H1–H6. Kein neues Dep.
 
@@ -26,7 +26,16 @@ summary_for_jira: "[B2] Gremien und Steuerungskreise abbilden"
 
 **Frontend gebaut 2026-07-02:** Projektraum-Sektion „Gremien" (`MA_GREMIEN_SECTION`, `tabPath: gremien`, `requiresProjectType: 'ma'`, nach Rollen&RACI injiziert) + Route `(app)/projects/[id]/gremien/page.tsx` + `committees-page.tsx`: Gremien-Liste als Cards (Name + Vertraulichkeits-Badge + Frequenz + Zweck + Entscheidungskompetenz/Wert-Schwelle + Eskalationen + Besetzungs-Tabelle); Anlegen/Bearbeiten-Dialog + Löschen (manager-gated via `useProjectAccess('manage_members')`); **Besetzungs-Sheet** (Mitglieder mit Inline-Rolle/Stimmrecht-Edit + Entfernen; „Mitglied hinzufügen" via Stakeholder-Picker desselben Projekts, ausblenden bereits verknüpfter, Rolle chair/member/observer + Stimmrecht-Switch); Lade-/Leer-/Fehler-States; Reuse `committees-api`, `listStakeholders`, `MA_CONFIDENTIALITY_LEVEL_LABELS`, shadcn Card/Dialog/Sheet/Table/Badge/Select/Switch. Kein neues Dep, kein Backend-Change. **Gates:** eslint 0, tsc 14 baseline/0 neu, build clean (Route `/projects/[id]/gremien`). Cross-Session-Hinweis: in Worktree `projektplattform_v3-proj98` gebaut (Primär-Checkout durch PROJ-102-Session belegt); `method-templates/index.ts` nur additiv erweitert (`MA_GREMIEN_SECTION` + `Users`-Icon).
 
-→ `/qa` (H1–H3-Pentest im gemischten Need-to-know-/Tenant-Kontext + Auth-Gates der neuen Routen).
+**QA PASS 2026-07-02 (0 Critical/0 High → PRODUCTION-READY):**
+
+- **Funktionale ACs:** AC1 (Gremien anlegbar: Name/Zweck/Frequenz/Mitglieder/Entscheidungskompetenz) ✅. **AC2** teilweise — `decision_scope`/`escalation_scope` als Freitext live; strukturierter Stage-Gate-/Eskalations-Link **forward-compat deferred** (PROJ-110/111 ungebaut → PROJ-Y-1/PROJ-Y-4). **AC3** (Meeting-Protokoll-Verknüpfung) deferred → PROJ-Y-2 (PROJ-117 ungebaut). **AC4** (Standard-Gremien aus Template) deferred → PROJ-Y-3 (PROJ-96 ungebaut). **AC5** Gremienübersicht: Besetzung ✅; „nächste Termine" deferred → PROJ-Y-2. DoD „Berechtigungen je Gremium technisch wirksam" ✅ (PROJ-100a-Tor). Alle Deferrals waren im Tech-Design gelockt (forward-compat), keine neuen Funde.
+- **6 Hardening-ACs (H1–H6) alle ✅** via Live-Pentest + Code-Review.
+- **Live-Pentest** `tests/sql/PROJ-98-committees-pentest.sql` (self-rolling-back, **0 Residue**, gegen aktuellen Prod re-verifiziert): **A–J 10/10 PASS** — create std+strict · add-member · **H5 cross-project-reject (23514)** · **H2 need-to-know** (non-cleared Member sieht standard NICHT strict) · **H4 non-manager-block (42501)** · anon-execute-revoked · **H1 cross-tenant 0 committees** · **H3 Audit-Zeilen für beide Tabellen** · remove.
+- **Playwright** `tests/PROJ-98-committees.spec.ts` 8/8 chromium: Auth-Gates auf allen 4 Route-Flächen (committees collection GET/POST · item PATCH/DELETE · members POST · member PATCH/DELETE) + Gremien-Seite. Route-Unit 6/6.
+- **Gates:** eslint 0; tsc 14 baseline/0 neu; build clean; Supabase-Advisors 0 ERROR / 0 rls_disabled.
+- **D-1 (Env):** Mobile-Safari-Playwright skipped (WebKit-Host-Libs fehlen — bekanntes Env-Issue PROJ-67/F2; chromium deckt ab).
+
+→ `/deploy`.
 **Created:** 2026-06-10
 **Origin:** M&A-Platform Backlog (Epic B — Rollen, Gremien & Governance)
 **Priority:** P1
