@@ -109,6 +109,11 @@ export interface ClarifyingQuestionsGenerationRequest {
 export interface AIProvider {
   readonly name: AIProviderName
   readonly modelId: string | null
+  /**
+   * PROJ-93: provider region for ki_runs provenance. Set for Azure
+   * trusted-processor runs (EU region); undefined/null for all others.
+   */
+  readonly region?: string | null
   generateRiskSuggestions?(
     request: RiskGenerationRequest,
   ): Promise<RiskGenerationOutput>
