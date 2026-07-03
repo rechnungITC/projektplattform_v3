@@ -217,7 +217,15 @@ Kein neuer Nav-Eintrag nötig — die Freigabe hängt an der bestehenden Deliver
 
 **H6 Live-RPC-Smoke (Pflicht) gegen Prod — `tests/sql/PROJ-105-deliverable-approvals-pentest.sql`, 11/11 PASS, 0 Residue:** submit(2 Stufen pending) · A mehrstufiger Happy-Path → **Deliverable `approved` in Prod** (events=4) · B SoD-Block · C1 Nicht-aktive-Stufe-Block · C2 Nicht-Approver-Block · D Pending-Freeze · E 1/2 pending + Deliverable bleibt in_review · F Need-to-know (nicht-cleared Member sieht strict-Approval nicht) · G anon-Execute-Revoke · H Event-Immutability · I Cross-Tenant-Isolation.
 
-**Offen:** `/frontend` (Freigabe-Abschnitt an der Deliverables-Fläche + My-Work-Panel-Rendering) → `/qa` (Playwright-Auth-Gates + Pentest-Re-Run). β Magic-Link als eigene Sub-Slice danach.
+### α /frontend gebaut 2026-07-03 (gleiche Worktree/Branch `proj-105/backend`)
+
+- **Freigabe-Sheet** `src/components/projects/ma/deliverable-approval-sheet.tsx` (shadcn `Sheet`): laufende Freigabe (Stufenliste mit Status-Badge je Stufe, aktive Stufe hervorgehoben), Reagier-Block (Freigeben/Zurückweisen + Kommentar) **nur** für den aktiven Freigeber (`stakeholder.linked_user_id === currentUser`), Zurückziehen (Einreicher/Lead/Admin), Einreichen-Formular (sequenzielle Freigeber-Picker aus Stakeholdern mit `linked_user_id`, „+ Stufe", nur bei `in_review` + `canManage`), und **Freigabehistorie** (alle Vorgänge + Events, AC5).
+- **Deliverables-Seite** `deliverables-page.tsx`: neue „Freigabe"-Aktion (ShieldCheck) je Zeile (für alle Mitglieder sichtbar — Approver brauchen sie), Sheet-Verdrahtung, Stakeholder-Fetch, `canManage = useProjectAccess(manage_members)`, Deep-Link-Auto-Open via `?freigabe=<deliverable_id>` (ref-guarded, `window.location`, kein `useSearchParams`/Suspense).
+- **My-Work-Surface (AC2):** Hook `use-my-deliverable-approvals.ts` + Panel `deliverable-approval-inbox-panel.tsx` (Card „Deliverable-Freigaben", nur aktive-Stufe-Zeilen des aktuellen Users), in `dashboard-client.tsx` in alle 3 Presets neben dem Decision-Approvals-Panel eingehängt; Klick → `/projects/{id}/deliverables?freigabe=…`.
+- shadcn-first (Sheet/Select/Button/Badge/Textarea/Label/Card), kein neues Dep. Deep-Link/one-shot-Effekte über die etablierte `eslint-disable react-hooks/set-state-in-effect`-„one-shot"-Konvention (Präzedenz: `clearance-profile-form-dialog`, `stakeholder-proposal-tab`).
+- **Gates:** ESLint 0; tsc 14 baseline/**0 neu**; vitest **2235/2235** (unverändert — UI-Pfade werden in `/qa` per Playwright abgedeckt, konsistent mit den Geschwister-Slices); build clean (12.3s, alle Routen registriert).
+
+**Offen:** `/qa` (Playwright-Auth-Gates auf den 4 Routen + Freigabe-Sheet-Smoke + Live-Pentest-Re-Run `tests/sql/PROJ-105-deliverable-approvals-pentest.sql`). β Magic-Link als eigene Sub-Slice danach.
 
 ---
 _Quelle: Backlog-Entwurf M&A-Projektplattform · D — Deliverables & Artefakte_

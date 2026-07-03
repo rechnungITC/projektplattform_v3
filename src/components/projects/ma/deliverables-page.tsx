@@ -1,6 +1,6 @@
 "use client"
 
-import { Loader2, Pencil, Plus, Trash2, X } from "lucide-react"
+import { Loader2, Pencil, Plus, ShieldCheck, Trash2, X } from "lucide-react"
 import * as React from "react"
 import { toast } from "sonner"
 
@@ -38,6 +38,7 @@ import { usePhases } from "@/hooks/use-phases"
 import { useProjectAccess } from "@/hooks/use-project-access"
 import { useTenantMembers } from "@/hooks/use-tenant-members"
 import { useWorkstreams } from "@/hooks/use-workstreams"
+import { listStakeholders } from "@/lib/stakeholders/api"
 import {
   deleteDeliverable,
   transitionDeliverableStatus,
@@ -49,7 +50,9 @@ import {
   type Deliverable,
   type DeliverableStatus,
 } from "@/types/deliverable"
+import type { Stakeholder } from "@/types/stakeholder"
 
+import { DeliverableApprovalSheet } from "./deliverable-approval-sheet"
 import { DeliverableDialog } from "./deliverable-dialog"
 
 const ALL = "__all__"
@@ -69,8 +72,9 @@ function isOverdue(d: Deliverable, todayIso: string): boolean {
 }
 
 export function DeliverablesPage({ projectId }: { projectId: string }) {
-  const { currentTenant } = useAuth()
+  const { currentTenant, user } = useAuth()
   const canEdit = useProjectAccess(projectId, "edit_master")
+  const canManage = useProjectAccess(projectId, "manage_members")
   const { deliverables, loading, error, refresh } = useDeliverables(projectId)
   const { phases } = usePhases(projectId)
   const { workstreams } = useWorkstreams(projectId)
@@ -83,6 +87,36 @@ export function DeliverablesPage({ projectId }: { projectId: string }) {
   const [editItem, setEditItem] = React.useState<Deliverable | null>(null)
   const [deleteTarget, setDeleteTarget] = React.useState<Deliverable | null>(null)
   const [busyId, setBusyId] = React.useState<string | null>(null)
+  const [approvalTarget, setApprovalTarget] = React.useState<Deliverable | null>(null)
+  const [stakeholders, setStakeholders] = React.useState<Stakeholder[]>([])
+  const autoOpenedRef = React.useRef(false)
+
+  React.useEffect(() => {
+    let cancelled = false
+    void listStakeholders(projectId)
+      .then((s) => {
+        if (!cancelled) setStakeholders(s)
+      })
+      .catch(() => {})
+    return () => {
+      cancelled = true
+    }
+  }, [projectId])
+
+  // Deep-link from the dashboard My-Work panel: ?freigabe=<deliverable_id>
+  // opens the Freigabe sheet once the deliverables have loaded.
+  React.useEffect(() => {
+    if (autoOpenedRef.current || deliverables.length === 0) return
+    const params = new URLSearchParams(window.location.search)
+    const target = params.get("freigabe")
+    if (!target) return
+    const match = deliverables.find((d) => d.id === target)
+    if (match) {
+      autoOpenedRef.current = true
+      // eslint-disable-next-line react-hooks/set-state-in-effect -- one-shot deep-link open once deliverables load
+      setApprovalTarget(match)
+    }
+  }, [deliverables])
 
   const todayIso = React.useMemo(() => new Date().toISOString().slice(0, 10), [])
   const phaseName = React.useMemo(() => {
@@ -270,16 +304,21 @@ export function DeliverablesPage({ projectId }: { projectId: string }) {
                       )}
                     </TableCell>
                     <TableCell className="text-right">
-                      {canEdit && (
-                        <div className="flex justify-end gap-1">
-                          <Button variant="ghost" size="icon" className="h-8 w-8" onClick={() => setEditItem(d)} aria-label="Deliverable bearbeiten">
-                            <Pencil className="h-4 w-4" />
-                          </Button>
-                          <Button variant="ghost" size="icon" className="h-8 w-8 text-destructive" onClick={() => setDeleteTarget(d)} aria-label="Deliverable löschen">
-                            <Trash2 className="h-4 w-4" />
-                          </Button>
-                        </div>
-                      )}
+                      <div className="flex justify-end gap-1">
+                        <Button variant="ghost" size="icon" className="h-8 w-8" onClick={() => setApprovalTarget(d)} aria-label="Freigabe">
+                          <ShieldCheck className="h-4 w-4" />
+                        </Button>
+                        {canEdit && (
+                          <>
+                            <Button variant="ghost" size="icon" className="h-8 w-8" onClick={() => setEditItem(d)} aria-label="Deliverable bearbeiten">
+                              <Pencil className="h-4 w-4" />
+                            </Button>
+                            <Button variant="ghost" size="icon" className="h-8 w-8 text-destructive" onClick={() => setDeleteTarget(d)} aria-label="Deliverable löschen">
+                              <Trash2 className="h-4 w-4" />
+                            </Button>
+                          </>
+                        )}
+                      </div>
                     </TableCell>
                   </TableRow>
                 )
@@ -301,6 +340,18 @@ export function DeliverablesPage({ projectId }: { projectId: string }) {
         projectId={projectId}
         item={editItem}
         onSaved={refresh}
+      />
+
+      <DeliverableApprovalSheet
+        open={approvalTarget !== null}
+        onOpenChange={(o) => { if (!o) setApprovalTarget(null) }}
+        projectId={projectId}
+        deliverable={approvalTarget}
+        canManage={canManage}
+        currentUserId={user?.id ?? null}
+        stakeholders={stakeholders}
+        memberName={memberName}
+        onChanged={refresh}
       />
 
       <AlertDialog open={deleteTarget !== null} onOpenChange={(o) => { if (!o) setDeleteTarget(null) }}>

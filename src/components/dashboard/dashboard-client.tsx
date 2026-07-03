@@ -3,6 +3,7 @@
 import * as React from "react"
 
 import { useDashboard } from "@/hooks/use-dashboard"
+import { useMyDeliverableApprovals } from "@/hooks/use-my-deliverable-approvals"
 import { usePendingApprovals } from "@/hooks/use-pending-approvals"
 import {
   emptyEnvelope,
@@ -14,6 +15,7 @@ import type { PendingApprovalSummary } from "@/types/decision-approval"
 
 import { ApprovalInboxPanel } from "./approval-inbox-panel"
 import { BudgetRiskAlertsPanel } from "./budget-risk-alerts-panel"
+import { DeliverableApprovalInboxPanel } from "./deliverable-approval-inbox-panel"
 import { DashboardHeader } from "./dashboard-header"
 import { DashboardKpiStrip } from "./dashboard-kpi-strip"
 import { DashboardPresetTabs } from "./dashboard-preset-tabs"
@@ -190,6 +192,7 @@ function DashboardGrid({
   isLoading,
   onSectionRetry,
 }: DashboardGridProps) {
+  const deliverableApprovals = useMyDeliverableApprovals()
   const myWork = (
     <MyWorkPanel
       envelope={myWorkEnv}
@@ -203,6 +206,14 @@ function DashboardGrid({
       isLoading={approvalsLoading}
       error={approvalsError}
       onRetry={() => onSectionRetry("approvals")}
+    />
+  )
+  const deliverableApprovalsPanel = (
+    <DeliverableApprovalInboxPanel
+      approvals={deliverableApprovals.approvals}
+      isLoading={deliverableApprovals.isLoading}
+      error={deliverableApprovals.error}
+      onRetry={() => deliverableApprovals.refresh()}
     />
   )
   const health = (
@@ -232,6 +243,7 @@ function DashboardGrid({
       <div className="grid grid-cols-1 gap-4 lg:grid-cols-12">
         <div className="space-y-4 lg:col-span-8">
           {approvalsPanel}
+          {deliverableApprovalsPanel}
           {alerts}
         </div>
         <div className="space-y-4 lg:col-span-4">
@@ -251,6 +263,7 @@ function DashboardGrid({
         </div>
         <div className="space-y-4 lg:col-span-4">
           {approvalsPanel}
+          {deliverableApprovalsPanel}
           {reports}
         </div>
       </div>
@@ -266,6 +279,7 @@ function DashboardGrid({
       </div>
       <div className="space-y-4 lg:col-span-4">
         {approvalsPanel}
+        {deliverableApprovalsPanel}
         {health}
         {reports}
       </div>
