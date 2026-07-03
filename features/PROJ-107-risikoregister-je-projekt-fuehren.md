@@ -14,7 +14,7 @@ summary_for_jira: "[E1] Risikoregister je Projekt führen"
 
 # PROJ-107: Risikoregister je Projekt führen
 
-## Status: Architected
+## Status: In Progress
 **Created:** 2026-06-10
 **Origin:** M&A-Platform Backlog (Epic E — Risiken & Red Flags)
 **Priority:** P1
@@ -164,3 +164,25 @@ Keine neuen npm-Pakete. Nutzt: PROJ-20 (risks/risk_links), PROJ-100a (`can_acces
 - **Backend zuerst** (Migration + API + RPC/Policies + Live-Pentest-Smoke): Kern dieser Slice ist datenmodell-nah. → `/backend`
 - Danach **Frontend** (Kategorie-Auswahl + Pflicht im M&A-Formular, Vertraulichkeits-Picker, Verknüpfung von Aufgaben/Deliverables, Top-Risiken-Sicht, Severity-Bucket→Farbton). → `/frontend`
 - Dann **QA** (AC-107-7 Pentest ist Pflicht-Gate). → `/qa`
+
+---
+
+## Implementation Notes — Backend (2026-07-03)
+
+**Migration:** `supabase/migrations/20260703135741_proj107_risk_register.sql` (applied to prod, PROJ-134-konform: Repo-Dateiname == registrierte Version). Audit-Tabelle ist `public.audit_log_entries` (nicht `audit_log`).
+
+**Was gebaut wurde (DUP→REUSE, kein neues Risiko-Modell):**
+- **(A) Kategorie:** neue tenant-eigene `risk_categories` (key/label/`applies_to_project_type` [null=alle]/sort_order/is_active), Tenant-RLS (read=member, write=admin), moddatetime + Field-Audit-Trigger. `risks.category_id` **nullable FK ON DELETE SET NULL** → kein Backfill. Lazy-Seed via `seed_risk_categories_if_empty(tenant)` (SECURITY DEFINER, member-gated, idempotent, M&A-DD-Standardsatz 10 Kategorien).
+- **(B) Need-to-know:** `risks.confidentiality_level` (`ma_confidentiality_level`, Default `'standard'`) + 3 RESTRICTIVE `can_access_classified`-Policies (SELECT/UPDATE/DELETE, USING-only, **kein** INSERT-Gate — spiegelt `work_items` byte-genau). Non-M&A (alle 'standard') = No-op.
+- **(C) risk_links:** CHECK additiv `+ 'work_item' + 'deliverable'`; `tg_risk_links_validate_fn` CASE um beide Zweige erweitert (Existenz + Tenant-Grenze; kein Vertraulichkeits-Emulat). Kein neuer FK.
+- **Hygiene:** `_tracked_audit_columns('risks')` += `category_id`/`confidentiality_level`/`workstream_id`; `risk_categories` als neuer Audit-Entity-Type in CHECK + `_tracked_audit_columns` + `can_read_audit_entry` (is_tenant_member). `can_read_audit_entry` nach Recreate **`authenticated`-EXECUTE re-granted** (PROJ-114-Lektion). Audit-CHECK aus Live-Def rebuilt (alle Geschwister-Entities erhalten).
+
+**API/Code:** `risks` GET/POST/[rid] SELECT + Zod (create/patch) + `Risk`-Type + `RiskInput` um `category_id`/`confidentiality_level`/`workstream_id` erweitert (Spread-Pattern → Drift-Tests grün). Neue Routen: `GET/POST /api/risk-categories`, `PATCH/DELETE /api/risk-categories/[id]` (tenant-admin CRUD), `GET /api/projects/[id]/risk-categories` (form-Quelle + M&A-Lazy-Seed + Typ-Filter). Client-Wrapper `src/lib/risk-categories/api.ts`.
+
+**Gates:** ESLint 0; tsc 0 neu (nur Baseline-Fehler in fremden Test-Files); vitest **2225/2225** (+ neue risk-categories-Route-Tests + erweiterte Drift-Kitchensinks); build clean (3 Routen registriert); migration-naming guard OK.
+
+**AC-107-7 Live-Pentest** (`tests/sql/PROJ-107-risk-register-pentest.sql`, gegen Prod, Self-Rollback, **0 Residue**): **A–J 10/10 PASS** — A create+generated-score, B standard-transparent (non-M&A-Regression), C default-deny, D ordered-clearance, E cross-tenant, F write-gate, G **Aggregat-Leak über `dd_findings.linked_risk_id` geschlossen**, H work_item+deliverable-Links + cross-tenant-reject, I seed idempotent+member-gated, J Audit risks+risk_categories.
+
+**Offen für /frontend:** Kategorie-Picker + Pflicht im M&A-Risiko-Formular, Vertraulichkeits-Picker, Aufgaben-/Deliverable-Verknüpfung (risk_links neue Kinds), Top-Risiken-Sicht, Severity-Bucket→Farbton-Vereinheitlichung, Admin-Katalog-Seite (Stammdaten). **CIA-Review nach /frontend, vor /qa** (User-Vorgabe).
+
+**Followup-Kandidaten:** KI-Auto-Kategorisierung der PROJ-89-Risiko-Vorschläge (heute ohne Kategorie); Top-Risiken-Integration in PROJ-116/131/132-Reporting.

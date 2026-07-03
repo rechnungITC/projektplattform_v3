@@ -2,6 +2,7 @@
  * PROJ-20 — fetch wrappers around the /api/projects/[id]/risks surface.
  */
 
+import type { MaConfidentialityLevel } from "@/types/confidentiality"
 import type { Risk, RiskStatus } from "@/types/risk"
 
 interface ApiErrorBody {
@@ -41,6 +42,10 @@ export interface RiskInput {
   status?: RiskStatus
   mitigation?: string | null
   responsible_user_id?: string | null
+  // PROJ-107 — M&A risk register.
+  category_id?: string | null
+  confidentiality_level?: MaConfidentialityLevel
+  workstream_id?: string | null
 }
 
 export async function createRisk(

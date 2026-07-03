@@ -193,6 +193,10 @@ describe("POST /api/projects/[id]/risks — schema/DB-payload drift", () => {
       status: "open",
       mitigation: "Mitigation plan.",
       responsible_user_id: USER_ID,
+      // PROJ-107 — M&A risk register fields.
+      category_id: "44444444-4444-4444-8444-444444444444",
+      confidentiality_level: "strict",
+      workstream_id: "55555555-5555-4555-8555-555555555555",
     }
 
     const schemaKeys = Object.keys(riskCreateSchema.shape)

@@ -8,7 +8,14 @@
 
 import { z } from "zod"
 
+import { MA_CONFIDENTIALITY_LEVELS } from "@/types/confidentiality"
 import { RISK_STATUSES } from "@/types/risk"
+
+// PROJ-107 — need-to-know levels (mirrors public.ma_confidentiality_level).
+const CONFIDENTIALITY_LEVELS = MA_CONFIDENTIALITY_LEVELS as unknown as [
+  string,
+  ...string[],
+]
 
 export const riskCreateSchema = z.object({
   title: z.string().trim().min(1).max(255),
@@ -20,6 +27,10 @@ export const riskCreateSchema = z.object({
     .default("open"),
   mitigation: z.string().max(5000).optional().nullable(),
   responsible_user_id: z.string().uuid().optional().nullable(),
+  // PROJ-107 — M&A risk register.
+  category_id: z.string().uuid().optional().nullable(),
+  confidentiality_level: z.enum(CONFIDENTIALITY_LEVELS).default("standard"),
+  workstream_id: z.string().uuid().optional().nullable(),
 })
 
 export const riskPatchSchema = z
@@ -33,6 +44,10 @@ export const riskPatchSchema = z
       .optional(),
     mitigation: z.string().max(5000).optional().nullable(),
     responsible_user_id: z.string().uuid().optional().nullable(),
+    // PROJ-107 — M&A risk register.
+    category_id: z.string().uuid().optional().nullable(),
+    confidentiality_level: z.enum(CONFIDENTIALITY_LEVELS).optional(),
+    workstream_id: z.string().uuid().optional().nullable(),
   })
   .refine((val) => Object.keys(val).length > 0, {
     message: "At least one field must be provided.",
