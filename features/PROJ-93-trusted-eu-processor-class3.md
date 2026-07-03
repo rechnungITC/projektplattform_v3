@@ -160,9 +160,20 @@ Kein generischer „Cloud-für-Class-3"-Pfad; OpenAI-direkt/Anthropic/Google fü
 - **D-1 (AC-93.8 real Azure run):** the end-to-end resolver-against-attested-Azure Class-3 generation needs an actual attested Azure resource, which the current pilots don't have (same D-1 pattern as PROJ-88/89 Ollama). The DB gate + eligibility + resolver logic are fully proven (live smoke + unit tests); a real `ki_runs.provider='azure'` Class-3 run is nachzuholen once a pilot attests an Azure resource. → verify at `/qa`.
 - Naming note: prod-registered version `20260703135428` (drifted from the `140000` `name` arg); repo file renamed to the prod version per PROJ-134.
 
-**AC status after backend:** AC-93.1/93.2/93.3/93.4/93.5/93.7/93.9(resolver-inheritance)/93.10/93.11/93.12 implemented + proven; AC-93.6 (ADR + CLAUDE.md invariant) and the `/frontend` attest card pending; AC-93.8 real-Azure run = D-1.
+## Implementation Notes (Frontend — 2026-07-03)
 
-**Handoff:** `/frontend` (Azure DPA attest card in Settings→KI-Provider) → `/qa`. AC-93.6 ADR/CLAUDE.md edit can land in `/frontend` or `/deploy`.
+**Azure DPA attest card** (`AzureCard` in `src/components/settings/tenant/ai-providers/ai-providers-page-client.tsx`): a new "Class-3 Trusted-Processor (DPA)" section, shown only when the Azure provider is configured (`isSet && !editing`).
+- **Not attested:** amber `ShieldAlert` + "nicht attestiert" badge, explanatory copy ("ohne Attest bleibt Class-3 Ollama-only"), DPA-reference input (min 3 chars) + "DPA-Attest bestätigen" → `POST /api/tenants/[id]/ai-providers/azure/dpa`.
+- **Attested:** emerald `ShieldCheck` + "attestiert" badge, attested-date + reference (`dpa_confirmed_at`/`dpa_reference` from the extended provider `GET`), "DPA-Attest widerrufen" → confirm dialog → `DELETE …/dpa`.
+- Card description updated (Class-3 now conditionally allowed via attest). Reuses shadcn `Card`/`Badge`/`Button`/`Input`/`Label`/`AlertDialog` + sonner toasts; `reload()` refreshes status after attest/revoke. No new dep, no new route (backend routes from the /backend slice).
+
+**AC-93.6 done in this slice:** new ADR [`docs/decisions/trusted-processor-provider-class.md`](../docs/decisions/trusted-processor-provider-class.md) + `docs/decisions/INDEX.md` entry; CLAUDE.md Invariant #3 precised (Class-3 local-only **except** attested EU Azure trusted processor, opt-in, documented DPA; TS resolver re-checks each call).
+
+**Gates:** lint 0, tsc 14 baseline/0 new, vitest 2234/2234 (UI-only, no new unit tests — Playwright at `/qa`), build clean (`/settings/tenant/ai-providers` compiles).
+
+**AC status after frontend:** AC-93.1/93.2/93.3/93.4/93.5/93.6/93.7/93.9/93.10/93.11/93.12 implemented + proven; AC-93.8 real-Azure end-to-end run = D-1 (needs an attested Azure resource; DB gate + resolver logic fully proven).
+
+**Handoff:** `/qa` — verify the attest/revoke UI flow (Playwright auth-gate + attest card render), re-run the live DB smoke, and (D-1) a real Class-3 Azure run once a pilot attests an Azure resource.
 
 ## QA Test Results
 _To be added by /qa_
