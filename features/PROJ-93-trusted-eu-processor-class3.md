@@ -1,6 +1,6 @@
 # PROJ-93: Trusted-EU-Processor — kontrollierte Class-3-Freigabe für attestiertes Azure OpenAI
 
-## Status: Architected
+## Status: In Progress
 **Created:** 2026-06-10
 **Last Updated:** 2026-07-03
 **Origin:** PO-Entscheidung 2026-06-10 (kontrollierte Lockerung der Invariante #3) · CIA-Review 2026-06-10 (GO mit Pflicht-Guardrails)
@@ -131,6 +131,38 @@ Kein generischer „Cloud-für-Class-3"-Pfad; OpenAI-direkt/Anthropic/Google fü
 
 ### Handoff
 `/backend` → Migration + Resolver + RPCs; danach `/frontend` (Attest-Card); dann `/qa` (datengetriebene Class-3-Regression + Live-Smoke inkl. Revoke-Beweis).
+
+## Implementation Notes (Backend — 2026-07-03)
+
+**Migration `20260703135428_proj93_trusted_eu_processor` (in Prod, idempotent):**
+- `tenant_ai_providers` +`dpa_confirmed_at`/`dpa_confirmed_by`/`dpa_reference` (plaintext governance metadata) + coherence CHECK (all-or-nothing AND azure-only). Azure key + `azure_region` stay inside `encrypted_config` (unreadable by triggers — the whole reason DPA fields are plaintext).
+- `tenant_has_class3_trusted_processor(uuid)` — `SECURITY DEFINER STABLE`, member-scoped (`is_tenant_member` AND attest exists). **One helper, two callers** (write-trigger + resolver RPC). Member-callable (R-2 fix); anon revoked.
+- `tenant_ai_provider_priority`: `class3_local_only` CHECK dropped → replaced by structural anti-scope floor `class3_trusted_floor` (`data_class<>3 OR provider_order <@ ['ollama','azure']`) + BEFORE INS/UPD trigger `enforce_class3_trusted_processor` (azure in a class-3 row only if attested).
+- `ki_runs` +`provider_region text` (AC-93.5 provenance).
+- `record_tenant_ai_provider_audit` action enum +`dpa_attest`/`dpa_revoke`.
+- `attest_tenant_ai_provider_dpa(uuid,text)` / `revoke_tenant_ai_provider_dpa(uuid)` — admin-gated `SECURITY DEFINER`, append-only audit, no direct UPDATE from route (state-machine convention); anon revoked, authenticated granted.
+
+**Resolver (`src/lib/ai/key-resolver.ts`) — authoritative gate at request time (R-1):**
+- New per-request cached `getClass3TrustedFlag` → helper RPC (fail-closed on error).
+- New `isClass3TrustedEligible(record, trustedFlag)` = the SINGLE logical eligibility authority (`azure` + attest + `isEuAzureRegion`). Replaces `LOCAL_ONLY_PROVIDERS`.
+- `defaultProviderOrder(3)` + `clampForClass3` now eligibility-aware; Class-1/2 skip the helper RPC entirely (perf + independence). Kill-switch stays first (AC-93.12).
+- Deliberate DB↔TS divergence documented: DB trigger = attest-floor only (can't read encrypted region); TS = attest + EU-region full gate.
+
+**Router / provider:** `AzureOpenAIProvider` carries `region`; `AIProvider.region?` optional; `insertKiRun` writes `provider_region` (zero threading through the 11 purpose call-sites).
+
+**API:** `POST`/`DELETE /api/tenants/[id]/ai-providers/azure/dpa` (attest/revoke, azure-only guard, admin-gated, RPC-error mapping incl. 409 no_azure_provider). Provider `GET` extended with `dpa_confirmed_at`/`dpa_reference` for the `/frontend` attest card.
+
+**Quality gates:** lint 0 (PROJ-93 files), tsc 14 baseline/0 new, **vitest 2234/2234** (+20: 10 resolver class-3 regression `key-resolver.class3-trusted.test.ts` covering AC-93.3/93.7/93.11/93.12 + D5; 10 DPA route tests), build clean (DPA route registered). Supabase security advisor 0 ERROR (3 new fns in the expected `authenticated_security_definer_function_executable` category shared by 69 existing RPCs; search_path set; anon revoked). Migration-naming guard 0 errors.
+
+**Live-RPC-Smoke (`tests/sql/PROJ-93-trusted-processor-pentest.sql`, Prod, self-rolling-back, 0 residue): A–J 10/10 PASS** — gate closed without attest (trigger P0001 + floor 23514 anti-scope), attest opens azure class-3, audit written, R-2 member-visibility via DEFINER helper while provider row RLS-hidden, cross-tenant isolation, anon revoked, **R-1 revoke proven** (helper flips false + trigger blocks re-write on next write).
+
+**Deviations / follow-ups:**
+- **D-1 (AC-93.8 real Azure run):** the end-to-end resolver-against-attested-Azure Class-3 generation needs an actual attested Azure resource, which the current pilots don't have (same D-1 pattern as PROJ-88/89 Ollama). The DB gate + eligibility + resolver logic are fully proven (live smoke + unit tests); a real `ki_runs.provider='azure'` Class-3 run is nachzuholen once a pilot attests an Azure resource. → verify at `/qa`.
+- Naming note: prod-registered version `20260703135428` (drifted from the `140000` `name` arg); repo file renamed to the prod version per PROJ-134.
+
+**AC status after backend:** AC-93.1/93.2/93.3/93.4/93.5/93.7/93.9(resolver-inheritance)/93.10/93.11/93.12 implemented + proven; AC-93.6 (ADR + CLAUDE.md invariant) and the `/frontend` attest card pending; AC-93.8 real-Azure run = D-1.
+
+**Handoff:** `/frontend` (Azure DPA attest card in Settings→KI-Provider) → `/qa`. AC-93.6 ADR/CLAUDE.md edit can land in `/frontend` or `/deploy`.
 
 ## QA Test Results
 _To be added by /qa_

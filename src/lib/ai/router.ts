@@ -261,8 +261,10 @@ async function selectProviderForPurpose(
         deployment: resolved.config.deployment_name,
         apiKey: resolved.config.api_key,
         apiVersion: resolved.config.api_version,
+        // PROJ-93: carry the EU region so ki_runs records provenance for
+        // trusted-processor Class-3 runs (and Class-1/2 azure runs too).
+        region: resolved.config.azure_region,
       }),
-      // Azure is a cloud provider (Class-1/2 only); Class-3 never reaches here.
       externalBlocked: false,
     }
   }
@@ -335,6 +337,8 @@ async function insertKiRun(
       classification: args.classification,
       provider: args.provider.name,
       model_id: args.provider.modelId,
+      // PROJ-93: Azure trusted-processor runs record their EU region; null else.
+      provider_region: args.provider.region ?? null,
       status: "success", // optimistic; updated on error path
       wizard_draft_id: args.wizardDraftId ?? null,
     })

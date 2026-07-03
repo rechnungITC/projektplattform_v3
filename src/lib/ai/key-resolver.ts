@@ -29,6 +29,7 @@ import type { SupabaseClient } from "@supabase/supabase-js"
 
 import { isExternalAIBlocked } from "@/lib/operation-mode"
 
+import { isEuAzureRegion } from "./azure-region-allowlist"
 import type { AIPurpose, DataClass } from "./types"
 
 export type AIKeyProvider =
@@ -223,6 +224,8 @@ const getPriorityMatrix = cache(
       const order = row.provider_order as string[] | null
       if (!purpose || dataClass == null || !Array.isArray(order)) continue
       const key = `${purpose}:${dataClass}`
+      // NB: the class3-eligibility filter (Ollama always; Azure only when
+      // DPA-attested + EU) is applied later in clampForClass3, not here.
       // Filter to known providers; the DB CHECK already enforces this
       // but defense-in-depth at the boundary doesn't hurt. This set MUST
       // match the tenant_ai_provider_priority_known_providers DB CHECK —
@@ -245,6 +248,30 @@ const getPriorityMatrix = cache(
   },
 )
 
+/**
+ * PROJ-93: whether the tenant has an attested Azure trusted processor, via the
+ * member-callable SECURITY DEFINER helper `tenant_has_class3_trusted_processor`.
+ * The routing path runs as a tenant *member*, and `tenant_ai_providers` is
+ * admin-only RLS — so the attest bit can ONLY be read through this helper, not
+ * via a direct select (architecture-CIA R-2). Fail-closed: any error → false →
+ * Azure is not Class-3-eligible.
+ */
+const getClass3TrustedFlag = cache(
+  async (supabase: SupabaseClient, tenantId: string): Promise<boolean> => {
+    const { data, error } = await supabase.rpc(
+      "tenant_has_class3_trusted_processor",
+      { p_tenant_id: tenantId },
+    )
+    if (error) {
+      console.error(
+        `[key-resolver] tenant_has_class3_trusted_processor failed for ${tenantId}: ${error.message}. Failing closed (Azure not Class-3-eligible).`,
+      )
+      return false
+    }
+    return data === true
+  },
+)
+
 // ---------------------------------------------------------------------------
 // Pure resolver logic — combines the two cached lookups.
 // ---------------------------------------------------------------------------
@@ -258,10 +285,17 @@ const getPriorityMatrix = cache(
 function defaultProviderOrder(
   dataClass: DataClass,
   available: Map<AIKeyProvider, ProviderRecord>,
+  class3TrustedFlag: boolean,
 ): AIKeyProvider[] {
   if (dataClass === 3) {
-    // Invariant #3: Class-3 stays local-only. Azure is cloud → never here.
-    return available.has("ollama") ? ["ollama"] : []
+    // Invariant #3: Class-3 stays local-only (Ollama) — EXCEPT a DPA-attested
+    // EU Azure trusted processor (PROJ-93), added only when trusted-eligible.
+    const order: AIKeyProvider[] = []
+    if (available.has("ollama")) order.push("ollama")
+    if (isClass3TrustedEligible(available.get("azure"), class3TrustedFlag)) {
+      order.push("azure")
+    }
+    return order
   }
   // Class-1/2 default: Anthropic preferred, then OpenAI, Google, Azure, Ollama
   // as fallbacks. The order encodes our quality bias for risk + narrative
@@ -276,19 +310,48 @@ function defaultProviderOrder(
 }
 
 /**
- * Class-3 defense-in-depth: even when a priority matrix names an
- * external provider for Class-3, the resolver removes it. The matrix
- * save-route also rejects this configuration at write time, but we
- * must not trust write-time validation alone (CIA HIGH risk).
+ * PROJ-93: THE single logical authority for Class-3 provider eligibility.
+ * Ollama is always eligible (local). Azure is eligible ONLY when the tenant has
+ * a DPA attest (`class3TrustedFlag`, from the DB helper RPC) AND the resource's
+ * region is in the EU allowlist. The DB trigger enforces only the attest half
+ * (it cannot read the encrypted `azure_region`); this resolver enforces attest
+ * + region and re-evaluates on every request, so a revoked attest takes effect
+ * immediately without touching the priority table (architecture-CIA R-1).
  */
-const LOCAL_ONLY_PROVIDERS: AIKeyProvider[] = ["ollama"]
+function isClass3TrustedEligible(
+  azure: ProviderRecord | undefined,
+  class3TrustedFlag: boolean,
+): boolean {
+  return (
+    !!azure &&
+    azure.config.kind === "azure" &&
+    class3TrustedFlag &&
+    isEuAzureRegion(azure.config.azure_region)
+  )
+}
 
+/**
+ * Class-3 defense-in-depth clamp (Layer 2). Even when a priority matrix or the
+ * default order names a provider for Class-3, only Class-3-eligible providers
+ * survive: Ollama always; Azure only when trusted-eligible. Anthropic / OpenAI
+ * / Google can NEVER be Class-3-eligible (anti-scope, AC-93.7). The matrix
+ * save-route + DB floor-CHECK are additional layers, but we must not trust
+ * write-time validation alone (CIA HIGH risk).
+ */
 function clampForClass3(
   order: AIKeyProvider[],
   dataClass: DataClass,
+  available: Map<AIKeyProvider, ProviderRecord>,
+  class3TrustedFlag: boolean,
 ): AIKeyProvider[] {
   if (dataClass !== 3) return order
-  return order.filter((p) => LOCAL_ONLY_PROVIDERS.includes(p))
+  return order.filter((p) => {
+    if (p === "ollama") return true
+    if (p === "azure") {
+      return isClass3TrustedEligible(available.get("azure"), class3TrustedFlag)
+    }
+    return false
+  })
 }
 
 /**
@@ -316,13 +379,19 @@ export async function resolveProvider({
     getPriorityMatrix(supabase, tenantId),
   ])
 
+  // PROJ-93: the trusted-processor flag matters only for Class-3 routing.
+  // Skip the helper RPC entirely for Class-1/2 (Azure there follows the normal
+  // cloud path, unaffected by DPA). The helper fails closed on any error.
+  const class3TrustedFlag =
+    dataClass === 3 ? await getClass3TrustedFlag(supabase, tenantId) : false
+
   const matrixKey = `${purpose}:${dataClass}`
   const ruleOrder = matrix.get(matrixKey)
   let order: AIKeyProvider[] =
     ruleOrder && ruleOrder.length > 0
       ? ruleOrder
-      : defaultProviderOrder(dataClass, providers)
-  order = clampForClass3(order, dataClass)
+      : defaultProviderOrder(dataClass, providers, class3TrustedFlag)
+  order = clampForClass3(order, dataClass, providers, class3TrustedFlag)
 
   for (const provider of order) {
     const record = providers.get(provider)
