@@ -201,3 +201,24 @@ Reine DUP→REUSE-Erweiterung der bestehenden Risiko-UI (kein Neubau, kein neues
 **Gates:** ESLint 0; tsc 0 neu; vitest **2227/2227** (+2 severity); build clean (`/stammdaten/risikokategorien` + risk-categories-Routen registriert). shadcn-only, `useMemo`-Schema statt `form.watch` für Neu-Logik.
 
 **Nächster Schritt:** CIA-Review (User-Vorgabe) vor `/qa`.
+
+## CIA Pre-QA-Review (2026-07-03) — KEIN Blocker, /qa freigegeben
+
+CIA-Verdikt: Build sauber, spec-treu, 100a-Rezept korrekt gespiegelt, Pentest substanziell → **Umsetzen / → /qa** mit gezieltem Fokus. Findings:
+
+**Dokumentierte Deviations (bewusst, kein Neu-Bau):**
+- **D-CIA-1 (Kategorie-Pflicht UI-only):** Die M&A-Kategorie-Pflicht wird nur clientseitig (konditionales Zod in `risk-form.tsx`) durchgesetzt; DB-`category_id` ist nullable ohne CHECK und `riskCreateSchema.category_id` ist optional → ein direkter M&A-Risk-POST ohne Kategorie gelingt server-seitig. Konsistent mit dem spec-gelockten „nullable FK, kein Backfill". Server-Durchsetzung → PROJ-Y-107a.
+- **D-CIA-2 (INSERT über eigener Clearance):** Legt ein Nicht-cleared-Editor ein Risiko mit höherer `confidentiality_level` an, committet der INSERT, aber die `RETURNING`-Klausel läuft gegen die SELECT-RESTRICTIVE-Policy → 0 Zeilen → API meldet 500/`create_failed`, Zeile bleibt als „Phantom" persistiert. Kein Sicherheitsloch (INSERT schreibt, liest nicht; Downgrade-Lesepfad ist per UPDATE-USING blockiert), **byte-identisch zu work_items** → lokale Härtung bewusst NICHT vorgenommen (Konsistenz). Produktweite WITH-CHECK-Härtung → PROJ-Y-107c.
+
+**QA-Pflicht-Fokus (über Pentest-SQL hinaus):**
+1. INSERT oberhalb eigener Clearance → API-Fehlerverhalten + Phantom-Row (D-CIA-2).
+2. Server-Bypass der Kategorie-Pflicht (direkter POST ohne category_id) → dokumentiert akzeptiert (D-CIA-1).
+3. `isMaProject`-Loading-Fenster: Create-Drawer vor Projekt-Load → greift Pflicht/Vertraulichkeits-UI? (ggf. Button gaten bis `project` geladen).
+4. `risk_links`-Ziel-Inferenz: Trigger prüft nur Tenant+Existenz, NICHT `confidentiality_level` des Ziels → Blind-Link-by-ID an nicht-sichtbares work_item/deliverable möglich? Picker zeigt RLS-gefilterte Targets? (→ PROJ-Y-107b).
+5. **Audit-Regression (Inzident-Klasse, Pflicht vor Approved):** Prod-Verifikation dass (a) `can_read_audit_entry` `authenticated`-EXECUTE nach Apply vorhanden ist und (b) kein bestehender entity_type-Zweig verloren ging — Spot-Check eines Fremd-Entity-HistoryTab (z. B. `dd_findings`/`committees`).
+
+**Followups (PROJ-Y-Kandidaten):**
+- PROJ-Y-107a (should): server-seitige M&A-Kategorie-Pflicht via project_type-Lookup im risks-POST.
+- PROJ-Y-107b (should, security-nice): confidentiality-aware `risk_links`-Validierung (Trigger um `can_access_classified`-Ziel-Prüfung erweitern).
+- PROJ-Y-107c (could, produktweit): WITH-CHECK-Härtung für confidentiality auf `risks`+`work_items` (INSERT-Level ≤ Clearance, Downgrade-Schutz) — nur bei Pilot-Bedarf.
+- Bestätigt: KI-Auto-Kategorisierung → PROJ-89-Familie; Top-Risiken-Reporting → PROJ-116/131/132.
