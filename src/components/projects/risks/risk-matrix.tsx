@@ -3,6 +3,7 @@
 import { Sparkles } from "lucide-react"
 import * as React from "react"
 
+import { riskSeverityCellTone } from "@/lib/risks/severity"
 import { cn } from "@/lib/utils"
 import type { Risk } from "@/types/risk"
 
@@ -16,11 +17,7 @@ interface RiskMatrixProps {
 const SCALE = [1, 2, 3, 4, 5] as const
 
 function cellTone(probability: number, impact: number): string {
-  const score = probability * impact
-  if (score >= 16) return "bg-destructive/10"
-  if (score >= 9) return "bg-warning/10"
-  if (score >= 4) return "bg-info/10"
-  return "bg-muted/40"
+  return riskSeverityCellTone(probability * impact)
 }
 
 /**

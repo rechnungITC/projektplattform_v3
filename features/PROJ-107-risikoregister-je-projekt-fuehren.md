@@ -186,3 +186,18 @@ Keine neuen npm-Pakete. Nutzt: PROJ-20 (risks/risk_links), PROJ-100a (`can_acces
 **Offen für /frontend:** Kategorie-Picker + Pflicht im M&A-Risiko-Formular, Vertraulichkeits-Picker, Aufgaben-/Deliverable-Verknüpfung (risk_links neue Kinds), Top-Risiken-Sicht, Severity-Bucket→Farbton-Vereinheitlichung, Admin-Katalog-Seite (Stammdaten). **CIA-Review nach /frontend, vor /qa** (User-Vorgabe).
 
 **Followup-Kandidaten:** KI-Auto-Kategorisierung der PROJ-89-Risiko-Vorschläge (heute ohne Kategorie); Top-Risiken-Integration in PROJ-116/131/132-Reporting.
+
+## Implementation Notes — Frontend (2026-07-03)
+
+Reine DUP→REUSE-Erweiterung der bestehenden Risiko-UI (kein Neubau, kein neues Dep, kein Schema-/Backend-Change).
+
+- **Severity vereinheitlicht (AC-2/Hygiene):** neue Single-Source `src/lib/risks/severity.ts` (`riskSeverityBucket` = DB-`_risk_severity_bucket` 6/12/19 4-Tier low/medium/high/critical + `riskSeverityBadgeTone`/`riskSeverityCellTone`). `risk-table.tsx`, `risk-matrix.tsx` und `ai-proposals/risk-proposal-tab.tsx` mappen jetzt Score→Bucket→Tint statt drei divergenter Ad-hoc-Schwellen (16/9/4 · 16/9/4 · 15). +Unit-Test `severity.test.ts`.
+- **Risk-Form (AC-1):** M&A-only Block mit Kategorie-Picker (Pflicht via konditionalem Zod-Schema `buildSchema(isMaProject)`, Optionen aus `listProjectRiskCategories`) + Vertraulichkeits-Picker (`MA_CONFIDENTIALITY_LEVELS`, Default 'standard'). Für Nicht-M&A-Projekte unsichtbar/optional. Wiring über `RiskInput.category_id`/`confidentiality_level`.
+- **Risk-Tab-Client:** `useProject` → `isMaProject`; lädt Kategorien nur für M&A (Server-Lazy-Seed), reicht `categories`/`categoryLabels`/`isMaProject` an Form + Tabelle. Tabelle zeigt für M&A zwei Spalten (Kategorie-Badge + Vertraulichkeits-Badge mit Lock-Icon).
+- **Risk-Links-Tab (AC-3/AC-4):** `RiskLinkKind` += `work_item`/`deliverable`; Picker lädt zusätzlich Work-Items (Aufgaben/Maßnahmen) + Deliverables und bietet sie in eigenen Command-Gruppen mit Icons/Badges an (Phase/Sprint-Verhalten unverändert).
+- **Top-Risiken (AC-5):** die Liste ist bereits `score desc` sortiert (API) = Top-Risiken-first; Heatmap-Matrix existiert. Dedizierte gruppierte Reporting-Sicht bewusst zu PROJ-116/131/132 verschoben (Followup).
+- **Admin-Katalog:** `Stammdaten → Risikokategorien` (`/stammdaten/risikokategorien`) — `risk-categories-page-client.tsx` + `risk-category-form-dialog.tsx` (tenant-admin CRUD via `listRiskCategories`/create/update/delete), Karte im Stammdaten-Index registriert.
+
+**Gates:** ESLint 0; tsc 0 neu; vitest **2227/2227** (+2 severity); build clean (`/stammdaten/risikokategorien` + risk-categories-Routen registriert). shadcn-only, `useMemo`-Schema statt `form.watch` für Neu-Logik.
+
+**Nächster Schritt:** CIA-Review (User-Vorgabe) vor `/qa`.
