@@ -14,7 +14,7 @@ summary_for_jira: "[D1] Deliverable-Katalog je Phase und Workstream führen"
 
 # PROJ-104: Deliverable-Katalog je Phase und Workstream führen
 
-## Status: Approved (QA PASS 2026-07-03 — 0 Critical/0 High)
+## Status: Deployed (2026-07-03 — tag v2.9.0-PROJ-104)
 **Created:** 2026-06-10
 **Origin:** M&A-Platform Backlog (Epic D — Deliverables & Artefakte)
 **Priority:** P1
@@ -227,6 +227,15 @@ Backend-Smoke 9/9 (orphan-CHECK · transition · approved-rejected · RACI · Do
 - **D-1** Template-Vorbelegung (AC3) → PROJ-96. **D-2** echter Datei-Upload → PROJ-79. **D-3** `approved`-Gate/Freigabe-Workflow → PROJ-105 (`approved` reserviert). **D-4** Versionierung → PROJ-106. **Info:** kein M&A-Projekt in Prod → Pentest/Smoke auf Core-PMI-Projekt.
 
 **Followups:** PROJ-Y-104a (Templates), 104b (Phasen-Ampel-Sicht), 104c (Upload), **104d (Phase-Delete-Guard, F-1)**.
+
+---
+
+## Deployment (2026-07-03)
+
+- **Merged:** PR #226 (squash) → `main` (`67e82c5`). Auto-update-branch merge zog PROJ-98-Committees-Frontend (Gremien-Nav) sauber neben die Deliverables-Section — beide koexistieren, kein manueller Konflikt.
+- **Migration:** `20260702121538_proj104_deliverables` seit /backend in Prod-DB; Repo versionsgleich (PROJ-134).
+- **Vercel:** Prod-Deploy `67e82c5` READY; Post-Deploy-Smoke: 307-Auth-Gates auf `/projects/[id]/deliverables` + 5 API-Routen (list/create · status · documents · raci), kein Leck.
+- **Tag:** `v2.9.0-PROJ-104`. Kein neues Dep/Env. Löst PROJ-Y-102b (Deliverable-Ampel).
 
 ---
 _Quelle: Backlog-Entwurf M&A-Projektplattform · D — Deliverables & Artefakte_
