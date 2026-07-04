@@ -14,7 +14,7 @@ summary_for_jira: "[D2] Freigabe-Workflow für Deliverables"
 
 # PROJ-105: Freigabe-Workflow für Deliverables
 
-## Status: Architected
+## Status: Approved
 **Created:** 2026-06-10
 **Origin:** M&A-Platform Backlog (Epic D — Deliverables & Artefakte)
 **Priority:** P1
@@ -226,6 +226,38 @@ Kein neuer Nav-Eintrag nötig — die Freigabe hängt an der bestehenden Deliver
 - **Gates:** ESLint 0; tsc 14 baseline/**0 neu**; vitest **2235/2235** (unverändert — UI-Pfade werden in `/qa` per Playwright abgedeckt, konsistent mit den Geschwister-Slices); build clean (12.3s, alle Routen registriert).
 
 **Offen:** `/qa` (Playwright-Auth-Gates auf den 4 Routen + Freigabe-Sheet-Smoke + Live-Pentest-Re-Run `tests/sql/PROJ-105-deliverable-approvals-pentest.sql`). β Magic-Link als eigene Sub-Slice danach.
+
+---
+
+## QA Test Results — 2026-07-03 (α)
+
+**Verdikt: PRODUCTION-READY — 0 Critical / 0 High.**
+
+### Akzeptanzkriterien (Spec)
+- **AC1 (1-/mehrstufiger Workflow konfigurierbar):** ✅ sequenzielle Stufen bei Einreichung, 1 Freigeber/Stufe; Live-Pentest `submit` (2 Stufen pending) + mehrstufiger Durchlauf.
+- **AC2 (Reviewer werden benachrichtigt):** ✅ My-Work-Panel „Deliverable-Freigaben" (nur aktive-Stufe-Zeilen des Users, RLS-vertraulichkeitsgefiltert) + Deep-Link ins Freigabe-Sheet. (β: E-Mail-Magic-Link separat.)
+- **AC3 (kommentieren / freigeben / zurückweisen):** ✅ Reagier-Block im Sheet (nur aktiver Freigeber) + Kommentar; Live-Pentest E (1/2 pending) + A (final → approved) + reject-Pfad.
+- **AC4 (finaler Freigabestatus + Datum + Person):** ✅ `deliverable_approvals.status/decided_at` + Deliverable `status='approved'` via `_system`-Helfer (Live: `deliv=approved`); Event `approved` mit `actor_user_id`.
+- **AC5 (Freigabehistorie je Deliverable, auch Audit-Trail):** ✅ append-only `deliverable_approval_events` (Sheet-Historie) + Deliverable-`status→approved` über bestehenden PROJ-10-Audit-Trigger (`audit.change_reason=proj105_approved`).
+
+### Hardening-ACs
+- **H1** kein Audit-CHECK/Trio angefasst (Historie eigene Tabelle) ✅ · **H2** `record_response` ohne actor-Param, `auth.uid()` ✅ (Live C1/C2) · **H3** kein `can_read_audit_entry`-Recreate → kein Re-Grant-Risiko ✅ · **H4** Schreib-RPCs revoke public/anon; `_system` all-roles-revoked ✅ (Live G + Red-Team J) · **H5** Event-Immutability ✅ (Live H) · **H6** Live-RPC-Smoke ✅ · **H7** Pending-Freeze byte-identisch sonst ✅ (Live D).
+
+### Live-RPC-Pentest gegen Prod — `tests/sql/PROJ-105-deliverable-approvals-pentest.sql`, **11/11 PASS, 0 Residue**
+submit · A mehrstufiger Happy-Path → **Deliverable `approved` in Prod** (events=4) · B SoD-Block · C1 Nicht-aktive-Stufe · C2 Nicht-Approver · D Pending-Freeze · E 1/2 pending + in_review · F Need-to-know (nicht-cleared Member sieht strict nicht) · G anon-Revoke · H Event-Immutability · I Cross-Tenant.
+
+### Red-Team-Zusatz (Bypass-Vektoren) gegen Prod — **J–M 4/4 PASS, 0 Residue**
+- **J** Auch ein **Admin** kann `_system_set_deliverable_status(…,'approved')` NICHT direkt aufrufen (Deliverable bleibt `in_review`) — der reservierte `approved`-Bypass ist geschlossen.
+- **K** Direkter INSERT in `deliverable_approvals` (gefälschte Freigabe) durch `authenticated` → RLS-deny.
+- **L** Direkter UPDATE einer Stage-`response` (Vote-Fälschung) durch `authenticated` → RLS-deny (0 Zeilen).
+- **M** Nicht-autorisiertes Mitglied kann laufende Freigabe nicht zurückziehen (42501, bleibt pending).
+
+### E2E / Regression
+- Playwright `tests/PROJ-105-deliverable-approval.spec.ts` **6/6 chromium** (Auth-Gates auf allen 4 neuen Routen + My-Work-Route + `?freigabe=`-Deep-Link-Seite). **D-1:** Mobile-Safari skipped (WebKit-Host-Libs fehlen — bekanntes Env-Issue PROJ-67/F2, kein Produkt-Bug).
+- vitest **2235/2235**; ESLint 0; tsc 14 baseline/0 neu; build clean.
+- Supabase-Advisors: 0 ERROR / 0 rls_disabled. **Info (akzeptiert, PROJ-100c-präzedenziert):** `0029` (SECURITY-DEFINER executable-by-authenticated — by design, RPCs gaten intern) auf submit/record/withdraw; `0011` (search_path) auf der pure-`raise`-Immutability-Trigger-Funktion (identisch zu `enforce_clearance_event_immutability`).
+
+**Bugs:** keine (0 Critical / 0 High / 0 Medium / 0 Low). **Empfehlung:** Approved → `/deploy`. β Magic-Link (externe Freigeber) als eigene Sub-Slice mit separatem Pentest.
 
 ---
 _Quelle: Backlog-Entwurf M&A-Projektplattform · D — Deliverables & Artefakte_
