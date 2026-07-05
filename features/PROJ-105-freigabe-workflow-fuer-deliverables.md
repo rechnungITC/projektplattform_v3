@@ -14,7 +14,7 @@ summary_for_jira: "[D2] Freigabe-Workflow für Deliverables"
 
 # PROJ-105: Freigabe-Workflow für Deliverables
 
-## Status: Approved
+## Status: Deployed
 **Created:** 2026-06-10
 **Origin:** M&A-Platform Backlog (Epic D — Deliverables & Artefakte)
 **Priority:** P1
@@ -258,6 +258,10 @@ submit · A mehrstufiger Happy-Path → **Deliverable `approved` in Prod** (even
 - Supabase-Advisors: 0 ERROR / 0 rls_disabled. **Info (akzeptiert, PROJ-100c-präzedenziert):** `0029` (SECURITY-DEFINER executable-by-authenticated — by design, RPCs gaten intern) auf submit/record/withdraw; `0011` (search_path) auf der pure-`raise`-Immutability-Trigger-Funktion (identisch zu `enforce_clearance_event_immutability`).
 
 **Bugs:** keine (0 Critical / 0 High / 0 Medium / 0 Low). **Empfehlung:** Approved → `/deploy`. β Magic-Link (externe Freigeber) als eigene Sub-Slice mit separatem Pentest.
+
+### Deploy — 2026-07-05
+
+**Deployed: Tag `v2.10.0-PROJ-105`** auf `b583f9a` (PR #234 squash-merge → main). Migration `20260703130000` seit `/backend` in Prod. Merge-Tree-Gates grün (vitest 2255/2255, ESLint 0, build clean); Required-Checks (Schema-Drift, Migration-Naming, SELECT-Columns, npm-audit, Snyk) grün. Vercel-Prod-Deploy von b583f9a READY. **Post-Deploy-Smoke: 6/6 = 307 Auth-Gate** (approval GET/POST · respond · withdraw · dashboard/deliverable-approvals · `?freigabe=`-Deep-Link-Seite). Kein neues Dep/Env. β Magic-Link (externe Freigeber) offen — vor dem Pilot einplanen, falls Freigeber ohne Plattform-Account.
 
 ---
 _Quelle: Backlog-Entwurf M&A-Projektplattform · D — Deliverables & Artefakte_
