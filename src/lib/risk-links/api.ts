@@ -2,7 +2,9 @@
  * PROJ-65 ε.3e (F-62) — fetch wrappers around /api/projects/[id]/risk-links.
  */
 
-export type RiskLinkKind = "phase" | "sprint"
+// PROJ-107 — risk_links CHECK now also accepts work_item (Maßnahmen/AC-4) and
+// deliverable (AC-3), in addition to phase/sprint.
+export type RiskLinkKind = "phase" | "sprint" | "work_item" | "deliverable"
 
 export interface RiskLink {
   id: string

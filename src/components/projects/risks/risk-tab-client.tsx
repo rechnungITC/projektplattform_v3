@@ -23,7 +23,9 @@ import {
 import { Switch } from "@/components/ui/switch"
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs"
 import { useAuth } from "@/hooks/use-auth"
+import { useProject } from "@/hooks/use-project"
 import { listSuggestions } from "@/lib/ki/api"
+import { listProjectRiskCategories } from "@/lib/risk-categories/api"
 import {
   createRisk,
   deleteRisk,
@@ -35,6 +37,7 @@ import {
   RISK_STATUSES,
   RISK_STATUS_LABELS,
   type Risk,
+  type RiskCategory,
   type RiskStatus,
 } from "@/types/risk"
 
@@ -58,7 +61,10 @@ interface RiskTabClientProps {
 export function RiskTabClient({ projectId }: RiskTabClientProps) {
   const { currentTenant } = useAuth()
   const tenantId = currentTenant?.id ?? null
+  const { project } = useProject(projectId)
+  const isMaProject = project?.project_type === "ma"
 
+  const [categories, setCategories] = React.useState<RiskCategory[]>([])
   const [risks, setRisks] = React.useState<Risk[]>([])
   const [kiDerivedRiskIds, setKiDerivedRiskIds] = React.useState<Set<string>>(
     new Set()
@@ -109,6 +115,30 @@ export function RiskTabClient({ projectId }: RiskTabClientProps) {
   React.useEffect(() => {
     void reload()
   }, [reload])
+
+  // PROJ-107 — load the project's risk categories (M&A lazy-seeds server-side).
+  React.useEffect(() => {
+    if (!isMaProject) {
+      setCategories([])
+      return
+    }
+    let cancelled = false
+    void listProjectRiskCategories(projectId)
+      .then((cats) => {
+        if (!cancelled) setCategories(cats)
+      })
+      .catch(() => {
+        if (!cancelled) setCategories([])
+      })
+    return () => {
+      cancelled = true
+    }
+  }, [projectId, isMaProject])
+
+  const categoryLabels = React.useMemo(
+    () => Object.fromEntries(categories.map((c) => [c.id, c.label])),
+    [categories]
+  )
 
   const onCreate = async (input: RiskInput) => {
     setSubmitting(true)
@@ -219,6 +249,8 @@ export function RiskTabClient({ projectId }: RiskTabClientProps) {
             risks={visibleRisks}
             kiDerivedIds={kiDerivedRiskIds}
             onRowClick={(r) => setDrawer({ mode: "edit", risk: r })}
+            showMaColumns={isMaProject}
+            categoryLabels={categoryLabels}
           />
         ) : (
           <RiskMatrix
@@ -263,6 +295,8 @@ export function RiskTabClient({ projectId }: RiskTabClientProps) {
                   <RiskForm
                     tenantId={tenantId}
                     initial={drawer.risk}
+                    isMaProject={isMaProject}
+                    categories={categories}
                     onCancel={() => setDrawer({ mode: "closed" })}
                     onSubmit={(input) => onUpdate(drawer.risk.id, input)}
                     submitting={submitting}
@@ -294,6 +328,8 @@ export function RiskTabClient({ projectId }: RiskTabClientProps) {
             ) : drawer.mode === "create" ? (
               <RiskForm
                 tenantId={tenantId}
+                isMaProject={isMaProject}
+                categories={categories}
                 onCancel={() => setDrawer({ mode: "closed" })}
                 onSubmit={onCreate}
                 submitting={submitting}

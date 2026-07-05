@@ -208,6 +208,10 @@ describe("PATCH /api/projects/[id]/risks/[rid] — schema/DB-payload drift", () 
       status: "mitigated",
       mitigation: "Updated mitigation plan.",
       responsible_user_id: USER_ID,
+      // PROJ-107 — M&A risk register fields.
+      category_id: "44444444-4444-4444-8444-444444444444",
+      confidentiality_level: "confidential",
+      workstream_id: "55555555-5555-4555-8555-555555555555",
     }
 
     for (const key of schemaKeys) {

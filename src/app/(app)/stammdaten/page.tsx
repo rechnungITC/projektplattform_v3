@@ -6,6 +6,7 @@ import {
   ListChecks,
   Microscope,
   Network,
+  ShieldAlert,
   ShieldCheck,
   Tags,
   Users,
@@ -112,6 +113,14 @@ const SECTIONS: Section[] = [
     title: "DD-Stream-Vorlagen",
     description:
       "Tenant-Katalog der Due-Diligence-Streams (Commercial, Financial, Tax, Legal, HR, IT …). Werden beim Aktivieren in ein M&A-Projekt kopiert.",
+    adminOnly: true,
+  },
+  {
+    href: "/stammdaten/risikokategorien",
+    icon: ShieldAlert,
+    title: "Risikokategorien",
+    description:
+      "Tenant-Katalog der Risiko-Kategorien (Financial, Legal, Tax …). Pflichtfeld im M&A-Risiko-Register; der DD-Standardsatz wird bei Erstnutzung automatisch angelegt.",
     adminOnly: true,
   },
 ]

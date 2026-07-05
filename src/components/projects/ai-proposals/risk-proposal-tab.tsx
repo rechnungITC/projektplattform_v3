@@ -47,6 +47,7 @@ import {
   type RiskProposalSuggestionRow,
 } from "@/lib/ai-proposals/risk-proposals-api"
 import { uploadContextSourceFile } from "@/lib/ai-proposals/proposal-from-context-api"
+import { riskSeverityBucket } from "@/lib/risks/severity"
 import type { AiRunReasonCode } from "@/lib/ai/types"
 import { reasonCodeToBanner } from "@/lib/ai-proposals/reason-code-banner"
 import { ReasonBanner } from "./reason-banner"
@@ -68,14 +69,19 @@ const CONFIDENCE_LABEL: Record<"low" | "medium" | "high", string> = {
   high: "Hohe Konfidenz",
 }
 
-/** P×I score → severity bucket for the badge tint (mirrors the PROJ-20
- *  risks module thresholds: ≥15 critical, ≥8 elevated, else low). */
+/** P×I score → severity bucket for the badge tint. PROJ-107: unified onto the
+ *  canonical DB bucket (riskSeverityBucket, 6/12/19) — no ad-hoc thresholds. */
 function scoreClass(score: number): string {
-  if (score >= 15)
-    return "border-rose-400/50 text-rose-700 dark:text-rose-300"
-  if (score >= 8)
-    return "border-amber-400/50 text-amber-700 dark:text-amber-300"
-  return "border-emerald-400/50 text-emerald-700 dark:text-emerald-300"
+  switch (riskSeverityBucket(score)) {
+    case "critical":
+      return "border-rose-400/50 text-rose-700 dark:text-rose-300"
+    case "high":
+      return "border-amber-400/50 text-amber-700 dark:text-amber-300"
+    case "medium":
+      return "border-sky-400/50 text-sky-700 dark:text-sky-300"
+    default:
+      return "border-emerald-400/50 text-emerald-700 dark:text-emerald-300"
+  }
 }
 
 export function RiskProposalTab({ projectId }: RiskProposalTabProps) {

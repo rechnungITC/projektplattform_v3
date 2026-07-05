@@ -1,6 +1,6 @@
 "use client"
 
-import { Sparkles } from "lucide-react"
+import { Lock, Sparkles } from "lucide-react"
 
 import { Badge } from "@/components/ui/badge"
 import {
@@ -11,27 +11,31 @@ import {
   TableHeader,
   TableRow,
 } from "@/components/ui/table"
+import { riskSeverityBadgeTone } from "@/lib/risks/severity"
 import { cn } from "@/lib/utils"
+import {
+  MA_CONFIDENTIALITY_LEVEL_LABELS,
+  type MaConfidentialityLevel,
+} from "@/types/confidentiality"
 import { RISK_STATUS_LABELS, type Risk } from "@/types/risk"
-
-function scoreTone(score: number): string {
-  if (score >= 16) return "bg-destructive/15 text-destructive"
-  if (score >= 9) return "bg-warning/15 text-warning"
-  if (score >= 4) return "bg-info/15 text-info"
-  return "bg-muted text-muted-foreground"
-}
 
 interface RiskTableProps {
   risks: Risk[]
   /** Set of risk IDs that originated from a KI-Vorschlag (PROJ-12). */
   kiDerivedIds?: Set<string>
   onRowClick: (r: Risk) => void
+  /** PROJ-107 — show M&A category + confidentiality columns (M&A projects). */
+  showMaColumns?: boolean
+  /** PROJ-107 — category id → label for the Kategorie column. */
+  categoryLabels?: Record<string, string>
 }
 
 export function RiskTable({
   risks,
   kiDerivedIds,
   onRowClick,
+  showMaColumns = false,
+  categoryLabels,
 }: RiskTableProps) {
   if (risks.length === 0) {
     return (
@@ -48,6 +52,12 @@ export function RiskTable({
         <TableHeader>
           <TableRow>
             <TableHead>Titel</TableHead>
+            {showMaColumns ? (
+              <>
+                <TableHead className="w-36">Kategorie</TableHead>
+                <TableHead className="w-32">Vertraulichkeit</TableHead>
+              </>
+            ) : null}
             <TableHead className="w-20 text-center">Wahrsch.</TableHead>
             <TableHead className="w-20 text-center">Auswirk.</TableHead>
             <TableHead className="w-20 text-center">Score</TableHead>
@@ -81,13 +91,42 @@ export function RiskTable({
                   </p>
                 ) : null}
               </TableCell>
+              {showMaColumns ? (
+                <>
+                  <TableCell>
+                    {r.category_id ? (
+                      <Badge variant="secondary" className="font-normal">
+                        {categoryLabels?.[r.category_id] ?? "—"}
+                      </Badge>
+                    ) : (
+                      <span className="text-xs text-muted-foreground">—</span>
+                    )}
+                  </TableCell>
+                  <TableCell>
+                    {r.confidentiality_level !== "standard" ? (
+                      <Badge variant="outline" className="gap-1 font-normal">
+                        <Lock className="h-3 w-3" aria-hidden />
+                        {
+                          MA_CONFIDENTIALITY_LEVEL_LABELS[
+                            r.confidentiality_level as MaConfidentialityLevel
+                          ]
+                        }
+                      </Badge>
+                    ) : (
+                      <span className="text-xs text-muted-foreground">
+                        {MA_CONFIDENTIALITY_LEVEL_LABELS.standard}
+                      </span>
+                    )}
+                  </TableCell>
+                </>
+              ) : null}
               <TableCell className="text-center">{r.probability}</TableCell>
               <TableCell className="text-center">{r.impact}</TableCell>
               <TableCell className="text-center">
                 <span
                   className={cn(
                     "inline-flex h-7 min-w-[2rem] items-center justify-center rounded-md px-2 text-sm font-mono",
-                    scoreTone(r.score)
+                    riskSeverityBadgeTone(r.score)
                   )}
                 >
                   {r.score}

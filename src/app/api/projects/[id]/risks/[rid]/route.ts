@@ -20,7 +20,7 @@ import {
 // Schema lives in `../_schema.ts` so the drift-test can introspect it.
 
 const SELECT_COLUMNS =
-  "id, tenant_id, project_id, title, description, probability, impact, score, status, mitigation, responsible_user_id, created_by, created_at, updated_at"
+  "id, tenant_id, project_id, title, description, probability, impact, score, status, mitigation, responsible_user_id, category_id, confidentiality_level, workstream_id, created_by, created_at, updated_at"
 
 interface Ctx {
   params: Promise<{ id: string; rid: string }>

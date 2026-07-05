@@ -12,9 +12,11 @@
 import {
   Check,
   ChevronsUpDown,
+  ListChecks,
   Link2,
   Loader2,
   Map as MapIcon,
+  Package,
   X,
   Zap,
 } from "lucide-react"
@@ -63,18 +65,31 @@ interface SprintRow {
   id: string
   name: string
 }
+interface WorkItemRow {
+  id: string
+  title: string
+}
+interface DeliverableRow {
+  id: string
+  name: string
+}
 
-async function fetchTargets(
-  projectId: string,
-): Promise<{ phases: TargetOption[]; sprints: TargetOption[] }> {
-  const [phasesRes, sprintsRes] = await Promise.all([
-    fetch(`/api/projects/${encodeURIComponent(projectId)}/phases`, {
-      cache: "no-store",
-    }),
-    fetch(`/api/projects/${encodeURIComponent(projectId)}/sprints`, {
-      cache: "no-store",
-    }),
-  ])
+interface FetchedTargets {
+  phases: TargetOption[]
+  sprints: TargetOption[]
+  work_items: TargetOption[]
+  deliverables: TargetOption[]
+}
+
+async function fetchTargets(projectId: string): Promise<FetchedTargets> {
+  const p = encodeURIComponent(projectId)
+  const [phasesRes, sprintsRes, workItemsRes, deliverablesRes] =
+    await Promise.all([
+      fetch(`/api/projects/${p}/phases`, { cache: "no-store" }),
+      fetch(`/api/projects/${p}/sprints`, { cache: "no-store" }),
+      fetch(`/api/projects/${p}/work-items`, { cache: "no-store" }),
+      fetch(`/api/projects/${p}/deliverables`, { cache: "no-store" }),
+    ])
   const phases: TargetOption[] = phasesRes.ok
     ? ((await phasesRes.json()) as { phases: PhaseRow[] }).phases.map((p) => ({
         id: p.id,
@@ -86,7 +101,17 @@ async function fetchTargets(
         (s) => ({ id: s.id, name: s.name }),
       )
     : []
-  return { phases, sprints }
+  const work_items: TargetOption[] = workItemsRes.ok
+    ? ((await workItemsRes.json()) as { work_items: WorkItemRow[] }).work_items.map(
+        (w) => ({ id: w.id, name: w.title }),
+      )
+    : []
+  const deliverables: TargetOption[] = deliverablesRes.ok
+    ? ((await deliverablesRes.json()) as { deliverables: DeliverableRow[] }).deliverables.map(
+        (d) => ({ id: d.id, name: d.name }),
+      )
+    : []
+  return { phases, sprints, work_items, deliverables }
 }
 
 export function RiskLinksTab({ projectId, riskId }: RiskLinksTabProps) {
@@ -95,6 +120,8 @@ export function RiskLinksTab({ projectId, riskId }: RiskLinksTabProps) {
   const [links, setLinks] = React.useState<RiskLink[]>([])
   const [phases, setPhases] = React.useState<TargetOption[]>([])
   const [sprints, setSprints] = React.useState<TargetOption[]>([])
+  const [workItems, setWorkItems] = React.useState<TargetOption[]>([])
+  const [deliverables, setDeliverables] = React.useState<TargetOption[]>([])
   const [pickerOpen, setPickerOpen] = React.useState(false)
   const [removingId, setRemovingId] = React.useState<string | null>(null)
   const [adding, setAdding] = React.useState(false)
@@ -116,6 +143,8 @@ export function RiskLinksTab({ projectId, riskId }: RiskLinksTabProps) {
         setLinks(linkList)
         setPhases(targets.phases)
         setSprints(targets.sprints)
+        setWorkItems(targets.work_items)
+        setDeliverables(targets.deliverables)
       })
       .catch((err: unknown) => {
         if (!cancelled)
@@ -142,10 +171,37 @@ export function RiskLinksTab({ projectId, riskId }: RiskLinksTabProps) {
     () => sprints.filter((s) => !linkedKeys.has(`sprint:${s.id}`)),
     [sprints, linkedKeys],
   )
+  const availableWorkItems = React.useMemo(
+    () => workItems.filter((w) => !linkedKeys.has(`work_item:${w.id}`)),
+    [workItems, linkedKeys],
+  )
+  const availableDeliverables = React.useMemo(
+    () => deliverables.filter((d) => !linkedKeys.has(`deliverable:${d.id}`)),
+    [deliverables, linkedKeys],
+  )
+
+  const KIND_LABELS: Record<RiskLinkKind, string> = {
+    phase: "Phase",
+    sprint: "Sprint",
+    work_item: "Aufgabe",
+    deliverable: "Deliverable",
+  }
+
+  function poolFor(kind: RiskLinkKind): TargetOption[] {
+    switch (kind) {
+      case "phase":
+        return phases
+      case "sprint":
+        return sprints
+      case "work_item":
+        return workItems
+      default:
+        return deliverables
+    }
+  }
 
   function targetName(kind: RiskLinkKind, id: string): string {
-    const pool = kind === "phase" ? phases : sprints
-    return pool.find((t) => t.id === id)?.name ?? "(gelöscht)"
+    return poolFor(kind).find((t) => t.id === id)?.name ?? "(gelöscht)"
   }
 
   async function onAdd(kind: RiskLinkKind, id: string) {
@@ -157,9 +213,7 @@ export function RiskLinksTab({ projectId, riskId }: RiskLinksTabProps) {
         linked_kind: kind,
         linked_id: id,
       })
-      toast.success(
-        kind === "phase" ? "Phase verknüpft" : "Sprint verknüpft",
-      )
+      toast.success(`${KIND_LABELS[kind]} verknüpft`)
       reload()
     } catch (err) {
       const msg = err instanceof Error ? err.message : "Unbekannter Fehler"
@@ -211,13 +265,31 @@ export function RiskLinksTab({ projectId, riskId }: RiskLinksTabProps) {
     )
   }
 
-  const hasAvailable = availablePhases.length > 0 || availableSprints.length > 0
+  const hasAvailable =
+    availablePhases.length > 0 ||
+    availableSprints.length > 0 ||
+    availableWorkItems.length > 0 ||
+    availableDeliverables.length > 0
+
+  function kindIcon(kind: RiskLinkKind) {
+    switch (kind) {
+      case "phase":
+        return <MapIcon className="h-3 w-3" aria-hidden />
+      case "sprint":
+        return <Zap className="h-3 w-3" aria-hidden />
+      case "work_item":
+        return <ListChecks className="h-3 w-3" aria-hidden />
+      default:
+        return <Package className="h-3 w-3" aria-hidden />
+    }
+  }
 
   return (
     <div className="space-y-4" data-testid="risk-links-tab">
       <p className="text-sm text-muted-foreground">
-        Verknüpfe dieses Risiko mit Phasen oder Sprints. Verknüpfungen treiben
-        die phasenweise Risiko-Aufrollung im Trajektorien-Plan-Mutate-Diff.
+        Verknüpfe dieses Risiko mit Phasen, Sprints, Aufgaben (Maßnahmen) oder
+        Deliverables. Phasen-/Sprint-Verknüpfungen treiben zusätzlich die
+        Risiko-Aufrollung im Trajektorien-Plan-Mutate-Diff.
       </p>
 
       {links.length === 0 ? (
@@ -236,12 +308,8 @@ export function RiskLinksTab({ projectId, riskId }: RiskLinksTabProps) {
                   variant="outline"
                   className="shrink-0 gap-1 text-[11px]"
                 >
-                  {link.linked_kind === "phase" ? (
-                    <MapIcon className="h-3 w-3" aria-hidden />
-                  ) : (
-                    <Zap className="h-3 w-3" aria-hidden />
-                  )}
-                  {link.linked_kind === "phase" ? "Phase" : "Sprint"}
+                  {kindIcon(link.linked_kind)}
+                  {KIND_LABELS[link.linked_kind]}
                 </Badge>
                 <span className="truncate text-sm">
                   {targetName(link.linked_kind, link.linked_id)}
@@ -285,7 +353,7 @@ export function RiskLinksTab({ projectId, riskId }: RiskLinksTabProps) {
                 <Link2 className="h-4 w-4" aria-hidden />
               )}
               {hasAvailable
-                ? "Phase oder Sprint verknüpfen …"
+                ? "Objekt verknüpfen …"
                 : "Alle Ziele bereits verknüpft"}
             </span>
             <ChevronsUpDown className="ml-2 h-4 w-4 shrink-0 opacity-50" aria-hidden />
@@ -296,7 +364,7 @@ export function RiskLinksTab({ projectId, riskId }: RiskLinksTabProps) {
           align="start"
         >
           <Command>
-            <CommandInput placeholder="Suche Phase oder Sprint …" />
+            <CommandInput placeholder="Suche Phase, Sprint, Aufgabe oder Deliverable …" />
             <CommandList>
               <CommandEmpty>Keine Treffer.</CommandEmpty>
               {availablePhases.length > 0 && (
@@ -326,6 +394,42 @@ export function RiskLinksTab({ projectId, riskId }: RiskLinksTabProps) {
                       onSelect={() => void onAdd("sprint", opt.id)}
                     >
                       <Zap
+                        className="mr-2 h-3.5 w-3.5 text-muted-foreground"
+                        aria-hidden
+                      />
+                      <span className="truncate">{opt.name}</span>
+                      <Check className={cn("ml-auto h-4 w-4 opacity-0")} aria-hidden />
+                    </CommandItem>
+                  ))}
+                </CommandGroup>
+              )}
+              {availableWorkItems.length > 0 && (
+                <CommandGroup heading="Aufgaben (Maßnahmen)">
+                  {availableWorkItems.map((opt) => (
+                    <CommandItem
+                      key={`work_item:${opt.id}`}
+                      value={`aufgabe ${opt.name}`}
+                      onSelect={() => void onAdd("work_item", opt.id)}
+                    >
+                      <ListChecks
+                        className="mr-2 h-3.5 w-3.5 text-muted-foreground"
+                        aria-hidden
+                      />
+                      <span className="truncate">{opt.name}</span>
+                      <Check className={cn("ml-auto h-4 w-4 opacity-0")} aria-hidden />
+                    </CommandItem>
+                  ))}
+                </CommandGroup>
+              )}
+              {availableDeliverables.length > 0 && (
+                <CommandGroup heading="Deliverables">
+                  {availableDeliverables.map((opt) => (
+                    <CommandItem
+                      key={`deliverable:${opt.id}`}
+                      value={`deliverable ${opt.name}`}
+                      onSelect={() => void onAdd("deliverable", opt.id)}
+                    >
+                      <Package
                         className="mr-2 h-3.5 w-3.5 text-muted-foreground"
                         aria-hidden
                       />

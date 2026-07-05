@@ -28,23 +28,46 @@ import {
 import { Textarea } from "@/components/ui/textarea"
 import type { RiskInput } from "@/lib/risks/api"
 import {
+  MA_CONFIDENTIALITY_LEVELS,
+  MA_CONFIDENTIALITY_LEVEL_LABELS,
+  type MaConfidentialityLevel,
+} from "@/types/confidentiality"
+import type { RiskCategory } from "@/types/risk"
+import {
   RISK_STATUSES,
   RISK_STATUS_LABELS,
   type Risk,
   type RiskStatus,
 } from "@/types/risk"
 
-const formSchema = z.object({
-  title: z.string().trim().min(1, "Titel ist erforderlich").max(255),
-  description: z.string().max(5000).optional(),
-  probability: z.number().int().min(1).max(5),
-  impact: z.number().int().min(1).max(5),
-  status: z.enum(RISK_STATUSES as unknown as [RiskStatus, ...RiskStatus[]]),
-  mitigation: z.string().max(5000).optional(),
-  responsible_user_id: z.string().optional(),
-})
+const NO_CATEGORY = "__none__"
 
-type FormValues = z.infer<typeof formSchema>
+function buildSchema(isMaProject: boolean) {
+  return z.object({
+    title: z.string().trim().min(1, "Titel ist erforderlich").max(255),
+    description: z.string().max(5000).optional(),
+    probability: z.number().int().min(1).max(5),
+    impact: z.number().int().min(1).max(5),
+    status: z.enum(RISK_STATUSES as unknown as [RiskStatus, ...RiskStatus[]]),
+    mitigation: z.string().max(5000).optional(),
+    responsible_user_id: z.string().optional(),
+    // PROJ-107 — M&A risk register. Category is required only for M&A projects.
+    category_id: isMaProject
+      ? z
+          .string()
+          .min(1, "Kategorie ist erforderlich")
+          .refine((v) => v !== NO_CATEGORY, "Kategorie ist erforderlich")
+      : z.string().optional(),
+    confidentiality_level: z.enum(
+      MA_CONFIDENTIALITY_LEVELS as unknown as [
+        MaConfidentialityLevel,
+        ...MaConfidentialityLevel[],
+      ]
+    ),
+  })
+}
+
+type FormValues = z.infer<ReturnType<typeof buildSchema>>
 
 interface RiskFormProps {
   tenantId: string | null
@@ -53,6 +76,10 @@ interface RiskFormProps {
   onCancel: () => void
   submitting: boolean
   secondaryAction?: React.ReactNode
+  /** PROJ-107 — M&A projects show + require category and expose confidentiality. */
+  isMaProject?: boolean
+  /** PROJ-107 — active categories applicable to the project (form picker). */
+  categories?: RiskCategory[]
 }
 
 const SCALE = [1, 2, 3, 4, 5] as const
@@ -64,7 +91,10 @@ export function RiskForm({
   onCancel,
   submitting,
   secondaryAction,
+  isMaProject = false,
+  categories = [],
 }: RiskFormProps) {
+  const formSchema = React.useMemo(() => buildSchema(isMaProject), [isMaProject])
   const form = useForm<FormValues>({
     resolver: zodResolver(formSchema),
     defaultValues: {
@@ -75,6 +105,8 @@ export function RiskForm({
       status: initial?.status ?? "open",
       mitigation: initial?.mitigation ?? "",
       responsible_user_id: initial?.responsible_user_id ?? "",
+      category_id: initial?.category_id ?? "",
+      confidentiality_level: initial?.confidentiality_level ?? "standard",
     },
   })
 
@@ -91,6 +123,12 @@ export function RiskForm({
       status: values.status,
       mitigation: values.mitigation?.trim() || null,
       responsible_user_id: values.responsible_user_id?.trim() || null,
+      // PROJ-107 — category (null when unset/NO_CATEGORY) + confidentiality.
+      category_id:
+        values.category_id && values.category_id !== NO_CATEGORY
+          ? values.category_id
+          : null,
+      confidentiality_level: values.confidentiality_level,
     }
     await onSubmit(input)
   }
@@ -189,6 +227,77 @@ export function RiskForm({
           Score = Wahrscheinlichkeit × Auswirkung ={" "}
           <span className="font-mono">{score}</span>
         </p>
+
+        {isMaProject ? (
+          <div className="grid grid-cols-1 gap-3 rounded-md border bg-muted/10 p-3 sm:grid-cols-2">
+            <FormField
+              control={form.control}
+              name="category_id"
+              render={({ field }) => (
+                <FormItem>
+                  <FormLabel>Kategorie</FormLabel>
+                  <Select
+                    value={field.value || ""}
+                    onValueChange={field.onChange}
+                    disabled={categories.length === 0}
+                  >
+                    <FormControl>
+                      <SelectTrigger>
+                        <SelectValue
+                          placeholder={
+                            categories.length === 0
+                              ? "Keine Kategorien angelegt"
+                              : "Kategorie wählen …"
+                          }
+                        />
+                      </SelectTrigger>
+                    </FormControl>
+                    <SelectContent>
+                      {categories.map((c) => (
+                        <SelectItem key={c.id} value={c.id}>
+                          {c.label}
+                        </SelectItem>
+                      ))}
+                    </SelectContent>
+                  </Select>
+                  <FormDescription>
+                    Pflichtfeld für M&amp;A-Risiken. Pflege im Katalog unter
+                    Stammdaten → Risikokategorien.
+                  </FormDescription>
+                  <FormMessage />
+                </FormItem>
+              )}
+            />
+            <FormField
+              control={form.control}
+              name="confidentiality_level"
+              render={({ field }) => (
+                <FormItem>
+                  <FormLabel>Vertraulichkeit</FormLabel>
+                  <Select value={field.value} onValueChange={field.onChange}>
+                    <FormControl>
+                      <SelectTrigger>
+                        <SelectValue />
+                      </SelectTrigger>
+                    </FormControl>
+                    <SelectContent>
+                      {MA_CONFIDENTIALITY_LEVELS.map((lvl) => (
+                        <SelectItem key={lvl} value={lvl}>
+                          {MA_CONFIDENTIALITY_LEVEL_LABELS[lvl]}
+                        </SelectItem>
+                      ))}
+                    </SelectContent>
+                  </Select>
+                  <FormDescription>
+                    Need-to-know: höhere Stufen sind nur für freigeschaltete
+                    Deal-Team-Mitglieder sichtbar.
+                  </FormDescription>
+                  <FormMessage />
+                </FormItem>
+              )}
+            />
+          </div>
+        ) : null}
 
         <FormField
           control={form.control}
