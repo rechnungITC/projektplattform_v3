@@ -27,6 +27,7 @@
 | [sprint-1-product-open-points.md](sprint-1-product-open-points.md) | D-P1 archive=closed, D-P2 all projects visible to authenticated users (Wave 1), D-P3 project number is optional free text. |
 | [stakeholder-data-model.md](stakeholder-data-model.md) | Stakeholder table per project with kind, origin, role, influence, impact; conservative class-3 classification for `name`. |
 | [stakeholder-vs-user.md](stakeholder-vs-user.md) | Stakeholder is a business entity, separate from technical user/RBAC; optional `linked_user_id` link. |
+| [trusted-processor-provider-class.md](trusted-processor-provider-class.md) | PROJ-93: Class-3 may use a DPA-attested EU Azure resource (opt-in per tenant); precises Invariant #3 without weakening it. Never OpenAI-direct/Anthropic/Google, never global; TS resolver is the authoritative gate. |
 | [work-item-metamodel.md](work-item-metamodel.md) | `work_items` STI table with kinds (epic/feature/story/task/subtask/bug/work_package); phases & milestones stay separate; method-aware visibility. |
 
 ## V3-Original Decisions
