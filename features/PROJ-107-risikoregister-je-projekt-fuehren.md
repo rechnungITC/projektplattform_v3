@@ -14,7 +14,7 @@ summary_for_jira: "[E1] Risikoregister je Projekt führen"
 
 # PROJ-107: Risikoregister je Projekt führen
 
-## Status: In Progress
+## Status: Approved
 **Created:** 2026-06-10
 **Origin:** M&A-Platform Backlog (Epic E — Risiken & Red Flags)
 **Priority:** P1
@@ -222,3 +222,28 @@ CIA-Verdikt: Build sauber, spec-treu, 100a-Rezept korrekt gespiegelt, Pentest su
 - PROJ-Y-107b (should, security-nice): confidentiality-aware `risk_links`-Validierung (Trigger um `can_access_classified`-Ziel-Prüfung erweitern).
 - PROJ-Y-107c (could, produktweit): WITH-CHECK-Härtung für confidentiality auf `risks`+`work_items` (INSERT-Level ≤ Clearance, Downgrade-Schutz) — nur bei Pilot-Bedarf.
 - Bestätigt: KI-Auto-Kategorisierung → PROJ-89-Familie; Top-Risiken-Reporting → PROJ-116/131/132.
+
+## QA Test Results (2026-07-04) — PASS, PRODUCTION-READY (0 Critical / 0 High)
+
+**Gates:** ESLint 0 · vitest 2227/2227 · build clean · Playwright `tests/PROJ-107-risk-register.spec.ts` 7/7 (chromium; Mobile Safari skipped — WebKit-Host-Libs, PROJ-67/F2) · migration-naming OK.
+
+**AC-Abdeckung:** AC-1 (Pflichtfelder inkl. Kategorie — M&A-Formular) ✅; AC-2 (Score/Heatmap: generated column + 5×5-Matrix + kanonische Buckets) ✅; AC-3 (Phase/Workstream/Deliverable-Link) ✅; AC-4 (Maßnahmen als Aufgaben via risk_links work_item) ✅; AC-5 (Heatmap + score-desc-Liste; dedizierte Reporting-Sicht → PROJ-116/131/132) ✅ mit Deviation; AC-107-6 (Vertraulichkeit) ✅; AC-107-7 (Pentest) ✅; AC-107-8 (kein Backfill/Bruch) ✅.
+
+**AC-107-7 Live-Pentest** (`tests/sql/PROJ-107-risk-register-pentest.sql`, Prod, self-rollback, **0 Residue**): **A–J 10/10 PASS** (re-verifiziert in QA).
+
+**CIA-Q5-Fokus live gegen Prod verifiziert (self-rollback, 0 Residue):**
+- **Q5-1 (INSERT über eigener Clearance):** Non-cleared-Editor-INSERT eines strict-Risikos wird durch die `RETURNING`-Klausel (SELECT-RESTRICTIVE-Gate) **atomar mit 42501 abgewiesen; 0 Zeilen persistiert** → API mappt 42501→403. **KEIN Phantom-Row, kein Leak.** → D-CIA-2 damit als benign aufgelöst (besser als hypothetisiert), kein Finding.
+- **Q5-2 (Kategorie-Server-Bypass):** direkter M&A-Risk-INSERT ohne category_id gelingt (category_id null) → bestätigt **D-CIA-1 (UI-only-Pflicht)**, dokumentierte Deviation. **F-1 (LOW).**
+- **Q5-4 (risk_links Ziel-Inferenz):** Editor-Link auf **sichtbares** work_item persistiert (AC-4-Kern intakt); Link auf **unsichtbares** strict-work_item persistiert ebenfalls (mem sieht das WI direkt=0) → **F-2 (LOW)** Existenz-Inferenz-/Blind-Link, kein Content-Leak (Picker zeigt nur RLS-sichtbare Targets; `targetName` maskiert Unbekannte). → PROJ-Y-107b.
+- **Q5-5 (Audit-Regression, Inzident-Klasse):** Prod-Verifikation: `can_read_audit_entry` hat `authenticated`-EXECUTE ✅; alle Geschwister-entity_type-Zweige (stakeholders/dd_findings/committees/deliverables/risk_categories) intakt ✅. **PASS.**
+
+**Regression non-M&A:** Pentest B (standard-transparent) + Q5-2-Pfad zeigen: Nicht-M&A-Risiken verhalten sich byte-identisch (SELECT/INSERT unverändert, confidentiality default 'standard' transparent). ✅
+
+**Findings:**
+| # | Sev | Finding | Status |
+|---|---|---|---|
+| F-1 | LOW | Kategorie-Pflicht nur UI-seitig (Server akzeptiert null) | Dokumentierte Deviation D-CIA-1 → PROJ-Y-107a |
+| F-2 | LOW | risk_links Blind-Link auf unsichtbares Ziel (Existenz-Inferenz, kein Content-Leak) | → PROJ-Y-107b |
+| F-3 | LOW | `isMaProject`-Loading-Fenster: Create-Drawer öffnet erst per User-Klick nach Projekt-Load; Worst-Case kurzzeitig Kategorie-Feld unsichtbar (kosmetisch) | Empfehlung: Button gaten bis `project` geladen → PROJ-Y-107a-Bundle |
+
+**0 Critical, 0 High → PRODUCTION-READY.** Deviations dokumentiert, Followups PROJ-Y-107a/b/c registriert.
