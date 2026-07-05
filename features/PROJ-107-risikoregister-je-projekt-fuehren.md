@@ -14,8 +14,9 @@ summary_for_jira: "[E1] Risikoregister je Projekt führen"
 
 # PROJ-107: Risikoregister je Projekt führen
 
-## Status: Approved
+## Status: Deployed
 **Created:** 2026-06-10
+**Deployed:** 2026-07-05 · PR #236 → main (`b6400cf`) · Tag `v2.11.0-PROJ-107` · kein Runtime-DB-Change (Migration `20260703135741` seit /backend in Prod) · Post-Deploy-Smoke 307-Auth-Gate auf allen 3 neuen Routen + DB-Objekte live re-verifiziert · Followups PROJ-Y-107a/b/c offen.
 **Origin:** M&A-Platform Backlog (Epic E — Risiken & Red Flags)
 **Priority:** P1
 
