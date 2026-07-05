@@ -180,7 +180,7 @@ export async function GET(_request: Request, ctx: Ctx) {
   const { data, error } = await supabase
     .from("tenant_ai_providers")
     .select(
-      "key_fingerprint, last_validated_at, last_validation_status, created_at, updated_at",
+      "key_fingerprint, last_validated_at, last_validation_status, created_at, updated_at, dpa_confirmed_at, dpa_confirmed_by, dpa_reference",
     )
     .eq("tenant_id", tenantId)
     .eq("provider", provider)
@@ -215,6 +215,9 @@ export async function GET(_request: Request, ctx: Ctx) {
     last_validation_status: data.last_validation_status,
     created_at: data.created_at,
     updated_at: data.updated_at,
+    // PROJ-93: DPA attest status (only meaningful for azure; null otherwise).
+    dpa_confirmed_at: data.dpa_confirmed_at ?? null,
+    dpa_reference: data.dpa_reference ?? null,
   })
 }
 

@@ -188,17 +188,22 @@ export interface AzureOpenAIProviderConfig {
   apiKey: string
   /** Required Azure api-version, e.g. 2024-10-21. */
   apiVersion: string
+  /** PROJ-93: EU region of the Azure resource, recorded on ki_runs for
+   *  trusted-processor Class-3 provenance. Optional (Class-1/2 don't need it). */
+  region?: string | null
 }
 
 export class AzureOpenAIProvider implements AIProvider {
   readonly name = "azure" as const
   readonly modelId: string
+  readonly region: string | null
   private readonly sdkProvider: ReturnType<typeof createOpenAICompatible>
 
   constructor(config: AzureOpenAIProviderConfig) {
     // Azure addresses the model by deployment name in the URL path; the body
     // `model` field mirrors the deployment.
     this.modelId = config.deployment
+    this.region = config.region ?? null
     const base = config.endpoint.replace(/\/+$/, "")
     this.sdkProvider = createOpenAICompatible({
       name: "azure",

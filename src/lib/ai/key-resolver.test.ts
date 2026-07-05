@@ -63,6 +63,10 @@ function buildSupabaseMock(opts: {
         }
         return { data: null, error: null }
       }
+      if (fn === "tenant_has_class3_trusted_processor") {
+        // PROJ-93: legacy wrapper scenarios have no DPA attest → false.
+        return { data: false, error: null }
+      }
       throw new Error(`unexpected rpc ${fn}`)
     }),
     from: vi.fn((table: string) => {
