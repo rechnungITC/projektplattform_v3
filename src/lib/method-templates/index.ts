@@ -22,6 +22,7 @@ import {
   ListChecks,
   Microscope,
   Network,
+  ShieldAlert,
   ShieldCheck,
   Users,
   Workflow,
@@ -123,6 +124,18 @@ const MA_DELIVERABLES_SECTION: SidebarSection = {
   requiresProjectType: "ma",
 }
 
+// PROJ-109 — the "Maßnahmen" section: read-only measures overview per risk /
+// risk-owner / workstream (measure = work_item linked to a risk via risk_links),
+// with a soft coverage hint for active-but-uncovered risks. Project-TYPE driven
+// (M&A), injected after Deliverables (Epic E, risk-adjacent).
+const MA_MEASURES_SECTION: SidebarSection = {
+  id: "ma-measures",
+  label: "Maßnahmen",
+  icon: ShieldAlert,
+  tabPath: "massnahmen",
+  requiresProjectType: "ma",
+}
+
 // PROJ-112 — the "Due Diligence" section (DD-stream backbone: per-stream status,
 // lead, time window, confidentiality). Also project-TYPE driven (M&A) and
 // injected right after Governance, gated the same way.
@@ -185,6 +198,7 @@ function withMaFoundation(config: MethodConfig): MethodConfig {
       MA_TASKS_SECTION,
       MA_WORKSTREAMS_SECTION,
       MA_DELIVERABLES_SECTION,
+      MA_MEASURES_SECTION,
       MA_CONFIDENTIALITY_SECTION,
       MA_DUE_DILIGENCE_SECTION,
       MA_DD_REPORT_SECTION,
