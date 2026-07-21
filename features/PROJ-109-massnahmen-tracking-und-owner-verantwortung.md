@@ -186,6 +186,24 @@ Pro Risiko des Projekts:
 
 **Offen → /frontend:** „Maßnahmen"-Sektion (Tab, gruppierbar Risiko/Owner/Workstream) + weiches Abdeckungs-Badge am Risiko. → /qa: rollenbasierter Need-to-know-Pentest (INVOKER-Aggregat kein Leak) + Playwright-Auth-Gate.
 
+### Implementierungs-Notizen — Frontend (2026-07-21)
+
+**Neuer M&A-Projektraum-Tab „Maßnahmen"** (`massnahmen`, `requiresProjectType='ma'`, injiziert nach Deliverables via `MA_MEASURES_SECTION` in `method-templates/index.ts`, Icon `ShieldAlert`). Route `src/app/(app)/projects/[id]/massnahmen/page.tsx` → `MaMeasuresPage`.
+
+**`MaMeasuresPage`** (`src/components/projects/ma/ma-measures-page.tsx`) — read-only:
+- **Gruppierungs-Umschalter** (shadcn Select): nach Risiko / nach Risiko-Owner / nach Workstream (AC4). Bei Owner/Workstream-Gruppierung: Gruppen mit ungedeckten Risiken zuerst, `N ungedeckt`-Badge je Gruppe.
+- **Abdeckungs-Banner** (AC3): rot „X von Y aktiven Risiken ohne Maßnahme/begründete Akzeptanz" bzw. grün „alle aktiven Risiken abgedeckt" — aus `summary.active_uncovered/active_total`.
+- **Pro Risiko eine Card**: Titel + Severity-Badge (PROJ-107 `riskSeverityBadgeTone`) + Risiko-Status-Badge + **`CoverageBadge`** (rot „Aktiv – keine Maßnahme/Akzeptanz" bei `active_uncovered`, „Akzeptiert (begründet)" bei `accepted_with_rationale`, sonst „Abgedeckt"). Meta: Owner + Workstream + Maßnahmen-Zahl. Darunter Maßnahmen-Liste (Titel · Status-Badge · Verantwortlicher · Workstream · Frist rot bei überfällig) ODER die Akzeptanz-Begründung ODER „Keine Maßnahme verknüpft".
+- Loading/Error(+Retry)/Empty-States. Namen via `useTenantMembers`, Workstream-Labels via `useWorkstreams`.
+
+**Neuer Hook** `useRiskMeasureOverview` (`{overview, loading, error, refresh}`, `let cancelled`-Pattern).
+
+**Label-Entscheidung (DUP→REUSE):** Maßnahmen-Status nutzt die plattformweiten `WORK_ITEM_STATUS_LABELS` (Offen/In Arbeit/Blockiert/Erledigt/Abgebrochen) statt einer M&A-Sonderbeschriftung — Konsistenz vor der Spec-Klammer-Wortwahl „geplant/in Umsetzung/umgesetzt/verworfen". Falls der Pilot die M&A-Wortwahl explizit will → Followup PROJ-Y-109b.
+
+**Scope-Entscheidung:** AC3 wird in der Maßnahmen-Übersicht (Banner + per-Risiko-Badge, ungedeckte zuerst) geliefert; ein zusätzliches Badge in der geteilten Risiko-Tabelle (PROJ-20/107) wurde bewusst NICHT ergänzt (Shared-Component-Churn vermeiden, kein AC verlangt es dort). Harte Stage-Gate-Durchsetzung bleibt PROJ-110.
+
+**Kein neues Dep, kein Backend-/Schema-Change.** Gates (Worktree `proj-109/architecture`): ESLint 0/0, tsc 14 baseline/0 neu, vitest 2273/2273, build clean (Route `/projects/[id]/massnahmen` registriert), method-templates/routing 124/124. → /qa (Need-to-know-Pentest INVOKER-Aggregat + Playwright Auth-Gate + Grouping-Smoke).
+
 ### CIA-Einordnung
 
 Diese Slice ist **spec-folgend + prior-art-geklärt**: kein neues Paket, keine neue Tabelle, kein ≥5-Datei-Refactor, kein genuin offener Fork (Maßnahmen-Modell durch PROJ-107 gesetzt; Gate-Härte durch Spec-„Out of Scope" gesetzt; Auswertungs-RPC ist etabliertes Muster aus PROJ-116/102/104). Damit **keine CIA-Pflicht** nach `.claude/rules/continuous-improvement.md`. Der Nutzer kann dennoch eine CIA-Zweitmeinung anfordern, bevor `/backend` startet.
