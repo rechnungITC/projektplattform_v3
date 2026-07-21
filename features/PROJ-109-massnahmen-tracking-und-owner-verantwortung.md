@@ -14,7 +14,7 @@ summary_for_jira: "[E3] Maßnahmen-Tracking und Owner-Verantwortung"
 
 # PROJ-109: Maßnahmen-Tracking und Owner-Verantwortung
 
-## Status: In Progress (backend done)
+## Status: Approved (QA PASS 2026-07-21)
 **Created:** 2026-06-10
 **Origin:** M&A-Platform Backlog (Epic E — Risiken & Red Flags)
 **Priority:** P1
@@ -207,6 +207,48 @@ Pro Risiko des Projekts:
 ### CIA-Einordnung
 
 Diese Slice ist **spec-folgend + prior-art-geklärt**: kein neues Paket, keine neue Tabelle, kein ≥5-Datei-Refactor, kein genuin offener Fork (Maßnahmen-Modell durch PROJ-107 gesetzt; Gate-Härte durch Spec-„Out of Scope" gesetzt; Auswertungs-RPC ist etabliertes Muster aus PROJ-116/102/104). Damit **keine CIA-Pflicht** nach `.claude/rules/continuous-improvement.md`. Der Nutzer kann dennoch eine CIA-Zweitmeinung anfordern, bevor `/backend` startet.
+
+---
+
+## QA Test Results — 2026-07-21 (PASS · Production-Ready)
+
+**Ergebnis: 0 Critical / 0 High.** 4/4 Akzeptanzkriterien erfüllt (2 dokumentierte Low/Info-Deviations). Getestet gegen Prod (Live-RPC-Pentest, rolled back) + Playwright (chromium).
+
+### Akzeptanzkriterien
+
+| AC | Verdikt | Nachweis |
+|---|---|---|
+| AC1 — Maßnahme je Risiko/Red-Flag, als Aufgabe referenziert | **PASS** | Maßnahme = `work_item` via `risk_links(work_item)` (live seit PROJ-107, UI „Aufgaben (Maßnahmen)"); Übersicht rendert sie je Risiko. Red-Flag: `dd_finding.linked_risk_id` → Risiko → dessen Maßnahmen (navigational, kein Parallelweg). |
+| AC2 — Status + Frist | **PASS** (Deviation D-1) | `work_items.status` + `due_date`; angezeigt via `WORK_ITEM_STATUS_LABELS` (Offen/In Arbeit/Blockiert/Erledigt/Abgebrochen) + Frist rot bei Überfälligkeit. |
+| AC3 — Hinweis bei aktivem Risiko ohne Maßnahme/Akzeptanz | **PASS** (weich) | `active_uncovered`-Signal + rotes Abdeckungs-Banner (`X von Y`) + per-Risiko `CoverageBadge`; ungedeckte Risiken zuerst. Read-only Vertrag für PROJ-110 Stage-Gate (harte Durchsetzung out-of-scope). |
+| AC4 — Übersicht je Risiko / Risiko-Owner / Workstream | **PASS** | Gruppierungs-Umschalter; bei Owner/Workstream Gruppen mit ungedeckten Risiken zuerst + `N ungedeckt`-Badge. |
+
+### Security / Need-to-know-Pentest (Pflicht, live gegen Prod, rolled back)
+
+`tests/sql/PROJ-109-risk-measure-overview-pentest.sql` — **A–H 8/8 PASS, 0 Residue** (auf der SECURITY-INVOKER-RPC, rollenbasiert via `request.jwt.claims`-Impersonation):
+- **A/B** Admin-Bypass: 3 Risiken, `R_std.measure_count=2`, `active_total=2/active_uncovered=1`.
+- **C** Nicht-cleared Member sieht NUR `R_std` (höher klassifizierte Risiken komplett abwesend).
+- **D (Kern-Leak-Probe)** die als `strict` klassifizierte „secret"-Maßnahme wird aus dem sichtbaren `R_std` gefiltert (`measure_count=1`, per-Maßnahme-Gate), und das versteckte `R_conf` fließt NICHT in `active_uncovered` ein.
+- **E** confidential-cleared: `R_std`+`R_conf`, NICHT `R_strict`, secret weiterhin gefiltert (geordnete Stufen).
+- **F** strict-cleared: alle 3, secret sichtbar, `R_strict` `accepted_with_rationale`+`covered`.
+- **G** `anon` kann die Funktion nicht ausführen (revoke). **H** Cross-Tenant → 0 Risiken (kein Leak).
+
+Funktion ist `security invoker` + fixed `search_path`; Supabase security-Advisor 0 ERROR (Funktion nicht gelistet).
+
+### Playwright (chromium)
+
+`tests/PROJ-109-risk-measure-overview.spec.ts` — **3/3 grün**: GET `…/risk-measure-overview` (+ malformed id) und `/projects/[id]/massnahmen` sind auth-gated (307). Autorisierungs-Tiefe deckt der Live-Pentest ab. Route-Unit `route.test.ts` 5/5.
+
+### Befunde
+
+- **D-1 (Low/Info):** Maßnahmen-Status nutzt die plattformweiten Labels (Offen/In Arbeit/…) statt der Spec-Klammer-Wortwahl „geplant/in Umsetzung/umgesetzt/verworfen" — bewusste DUP→REUSE-Konsistenzentscheidung. Followup **PROJ-Y-109b** falls Pilot die M&A-Wortwahl explizit will.
+- **D-2 (Info/Env):** Mobile-Safari-E2E übersprungen (WebKit-Host-Libs fehlen, bekannter PROJ-67/F2-Umgebungsstand).
+
+### Regression
+
+vitest **2273/2273**; method-templates/routing 124/124; build clean (Route registriert); ESLint 0/0; tsc 14 baseline/0 neu. Kein neues Dep, kein Schema-Change über die (bereits live) `risk_measure_overview`-Migration hinaus.
+
+**Production-Ready: JA.** → `/deploy`.
 
 ---
 _Quelle: Backlog-Entwurf M&A-Projektplattform · E — Risiken & Red Flags_
