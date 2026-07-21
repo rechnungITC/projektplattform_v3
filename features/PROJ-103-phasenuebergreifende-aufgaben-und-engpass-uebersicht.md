@@ -145,5 +145,36 @@ Nicht CIA-pflichtig: spec-following VIEW-Slice, kein neues Dep, keine neue Tabel
 
 → `/qa` (Need-to-know-Pentest gegen `project_task_bottlenecks` + Playwright Auth-Gates auf beiden Routen + Seite).
 
+## QA Test Results — 2026-07-21 (PASS · Production-Ready)
+
+**0 Critical / 0 High.** VIEW-Slice, DUP→REUSE, kein neues Dep/Tabelle.
+
+### Akzeptanzkriterien
+- **AC1** Cross-Workstream-Tabelle (Titel/Workstream/Phase/Verantwortlich/Frist/Status/Tage über Frist) — ✅ RPC-Zeilen + shadcn-Table; `days_overdue` server-berechnet.
+- **AC2** Schnellfilter (Überfällig/Heute/Diese Woche/Blockiert + Gruppierung Verantwortlich/Workstream) — ✅ client-seitig über die RPC-Menge, Count-Badges aus Summary.
+- **AC3** Top-3-Engpässe — ✅ Top-3-Kachel oben (älteste überfällige). *Deviation: auf der Engpässe-Seite (= projektweites Engpass-Dashboard); Cockpit-Embed → Follow-up PROJ-Y-103a.*
+- **AC4** Export — ✅ CSV (öffnet in Excel), RLS-scoped, Formula-Injection-safe. *`.xlsx` out of scope.*
+
+### Security / Need-to-know-Pentest (Pflicht, live gegen Prod, rolled back, 0 Residue)
+`tests/sql/PROJ-103-task-bottlenecks-pentest.sql` **A–G 7/7 PASS** gegen `project_task_bottlenecks` (SECURITY INVOKER):
+- A/B Admin-Bypass: 4 offene (W_done ausgeschlossen), open=4/overdue=2/today=1/blocked=1; Top-3 = [W_conf(8), W_std(5)].
+- C/D **nicht-cleared Member sieht nur die 2 standard-Aufgaben** (W_conf confidential + W_strict strict absent) — **Aggregat-Leak-Probe: `blocked_total=0`**, obwohl es eine blockierte (strict) Aufgabe gibt → Summary/Top-3 werden über gegatete Zeilen berechnet, kein Leak über Counts.
+- E confidential-cleared: 3 offen (std+conf), NICHT strict, blocked=0.
+- F **anon kann die Funktion nicht ausführen** (revoke).
+- G **cross-tenant Member: 0 Aufgaben** (kein Leak).
+- Grants verifiziert: `prosecdef=false`, authenticated-exec ✅, anon-exec ✗. CSV-Export teilt dieselbe INVOKER-RPC → gleiche Sicht (keine zweite Angriffsfläche); `profiles`-Namensauflösung unter Caller-RLS.
+
+### Playwright (chromium)
+`tests/PROJ-103-task-bottlenecks.spec.ts` — **4/4 grün**: GET `…/task-bottlenecks`, GET `…/task-bottlenecks/export`, malformed-id, `/projects/[id]/engpaesse` alle auth-gated (307). Autorisierungs-Tiefe deckt der Live-Pentest ab. Route-Unit 10/10 + Lib-Unit 4/4.
+
+### Befunde
+- Keine Critical/High/Medium. Deviations: AC3-Cockpit-Embed → PROJ-Y-103a; `.xlsx` → out of scope (CSV). Beide im Tech-Design gelockt.
+- **D-1 (Env):** Mobile-Safari-Projekt skipped (WebKit-Host-Libs fehlen — bekanntes PROJ-67/F2 `sudo npx playwright install-deps webkit`).
+
+### Regression
+vitest **+14** (10 Route + 4 Lib) + method-templates 124/124 grün; build clean (Routen registriert); ESLint 0; tsc 0 neu. Nav-Change (neuer M&A-Eintrag) berührt keine anderen Methoden (method-templates-Tests grün).
+
+**Production-Ready: JA.** → `/deploy`.
+
 ---
 _Quelle: Backlog-Entwurf M&A-Projektplattform · C — Aufgaben & Workstreams_
