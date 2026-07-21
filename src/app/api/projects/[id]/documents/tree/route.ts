@@ -1,11 +1,14 @@
 /**
  * PROJ-79-α — GET /api/projects/[id]/documents/tree
  *
- * List non-deleted document-tree nodes for a project. Optional
- * `?parent_id=<uuid>` filters to a folder's direct children; omitted (or
- * `root`) lists the project root (parent_id IS NULL). Document nodes carry
- * their linked `documents` metadata (id, mime_type, size_bytes,
- * original_filename). Folders first, then alphabetical.
+ * List non-deleted document-tree nodes for a project.
+ *   - `?all=true`            → every node in the project (client builds the
+ *                              forest; used by the DMS tree UI, mirrors the
+ *                              org-tree "flat list → forest" pattern).
+ *   - `?parent_id=<uuid>`    → a folder's direct children (lazy expansion).
+ *   - omitted / `root`       → the project root (parent_id IS NULL).
+ * Document nodes carry their linked `documents` metadata (id, mime_type,
+ * size_bytes, original_filename). Folders first, then alphabetical.
  *
  * Access: project member ("view"). RLS additionally scopes every row.
  */
@@ -46,6 +49,7 @@ export async function GET(
   if (access.error) return access.error
 
   const url = new URL(request.url)
+  const all = url.searchParams.get("all") === "true"
   const parentParam = url.searchParams.get("parent_id")
 
   let query = supabase
@@ -57,7 +61,9 @@ export async function GET(
     .order("name", { ascending: true })
     .limit(1000)
 
-  if (parentParam && parentParam !== "root") {
+  if (all) {
+    // Whole-tree load — no parent filter. Client assembles the forest.
+  } else if (parentParam && parentParam !== "root") {
     if (!z.string().uuid().safeParse(parentParam).success) {
       return apiError("validation_error", "Invalid parent_id.", 400, "parent_id")
     }

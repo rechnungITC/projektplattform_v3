@@ -98,4 +98,15 @@ describe("GET /api/projects/[id]/documents/tree", () => {
     const res = await GET(new Request("http://t/x?parent_id=bad"), ctx())
     expect(res.status).toBe(400)
   })
+
+  it("200 with ?all=true returns the whole tree (no parent filter error)", async () => {
+    getAuthMock.mockResolvedValue({
+      userId: ME,
+      supabase: supa({ data: [{ id: "f1", node_type: "folder", name: "A", documents: [] }], error: null }),
+    })
+    accessMock.mockResolvedValue({ project: { id: PROJECT, tenant_id: "t1" } })
+    const res = await GET(new Request("http://t/x?all=true"), ctx())
+    expect(res.status).toBe(200)
+    expect((await res.json()).nodes).toHaveLength(1)
+  })
 })

@@ -58,6 +58,14 @@ export interface TreeNodeWithDocument extends DocumentTreeNode {
   document: TreeNodeDocumentMeta | null
 }
 
+/**
+ * A tree node arranged into a forest for react-arborist. `children` is
+ * `null` for document leaves (not expandable) and an array for folders.
+ */
+export interface TreeForestNode extends TreeNodeWithDocument {
+  children: TreeForestNode[] | null
+}
+
 /** Raw shape returned by the `dms_quota_status(project)` RPC row. */
 export interface QuotaStatusRow {
   max_bytes: number

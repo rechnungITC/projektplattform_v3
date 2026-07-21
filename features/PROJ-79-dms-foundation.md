@@ -1,6 +1,6 @@
 # PROJ-79: DMS Foundation
 
-## Status: In Progress (α backend done — interner DMS-Kern; β externe Konnektoren deferred)
+## Status: In Progress (α backend + frontend done — interner DMS-Kern; β externe Konnektoren deferred; → /qa)
 **Created:** 2026-06-06
 **Last Updated:** 2026-07-21
 
@@ -201,7 +201,18 @@ DB + API layer for the internal DMS core. **Two migrations applied to prod** (`i
 
 **Deferred → β (not built):** external SharePoint/GDrive OAuth + Vault + on-demand fetch + `external_link` nodes + nightly quota truth-sweep cron.
 
-_Frontend (tree UI + upload dialog + quota bar) → /frontend._
+### Frontend — α (2026-07-21)
+"Dokumente" tab (core, all project types — no M&A gate). New `SidebarSection` `dms-documents` (tabPath `dokumente`, `FolderTree` icon) injected once in `method-templates/index.ts` right after Übersicht for every method (mirrors the M&A-section injection but **without** `requiresProjectType`, so it shows for all project types). Route `src/app/(app)/projects/[id]/dokumente/page.tsx`.
+
+- **Components** `src/components/projects/dms/`: `dms-page.tsx` (orchestrator — tree + detail panel + quota header + New-folder/Upload buttons + folder-create/rename Dialog + delete AlertDialog + upload Dialog with file picker/size/error states; all writes `useProjectAccess("edit_master")`-gated), `dms-tree.tsx` (react-arborist — folders/documents, MIME icons, per-row dropdown rename/delete/new-folder/download, inline DnD move via `onMove`→`moveNode`, `disableDrop` onto document leaves; backend RPC stays the cycle authority → 409 toast), `dms-quota-bar.tsx` (Progress bar, amber ≥ soft-warning / red ≥ 100%).
+- **Hooks** `use-document-tree.ts` (loads whole tree, builds forest), `use-storage-quota.ts`. **API client** `src/lib/dms/api.ts`. **Pure libs** `src/lib/dms/tree.ts` (`buildForest`) + `format.ts` (`formatBytes`), both unit-tested.
+- **Backend touch (additive):** `GET …/documents/tree?all=true` returns the whole project tree flat (client builds the forest — org-tree pattern) alongside the existing lazy per-parent mode. +1 route test.
+
+**Deviation (documented):** α loads the **whole tree in one fetch** (`?all=true`) instead of lazy per-parent expansion the tech design mentioned — simpler, matches the org-tree/backlog-tree "flat→forest" pattern already in the codebase, `.limit(1000)` cap. Lazy expansion can layer on later if project trees grow past that. **No new dependency** (react-arborist + shadcn already present).
+
+**Gates:** lint 0 · tsc 14 baseline / **0 new** · vitest **2349/2349** (298 files, +8 DMS FE: tree-forest 4, formatBytes 3, tree `?all` route 1; PROJ-94 nav-injection test updated for the new core section) · build clean (`/projects/[id]/dokumente` registered).
+
+_→ /qa: cross-tenant-404, MIME-spoof-415 (upload a real docx/xlsx/pptx per backend note), cycle-move-409, quota-413, soft-delete cascade, viewer read-only (no New-folder/Upload/row-actions)._
 
 ## QA Test Results
 _To be added by /qa._
