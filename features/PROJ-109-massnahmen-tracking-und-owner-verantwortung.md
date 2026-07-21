@@ -14,7 +14,7 @@ summary_for_jira: "[E3] Maßnahmen-Tracking und Owner-Verantwortung"
 
 # PROJ-109: Maßnahmen-Tracking und Owner-Verantwortung
 
-## Status: Architected
+## Status: In Progress (backend done)
 **Created:** 2026-06-10
 **Origin:** M&A-Platform Backlog (Epic E — Risiken & Red Flags)
 **Priority:** P1
@@ -169,6 +169,22 @@ Pro Risiko des Projekts:
 - **Wirtschaftlichkeitsbewertung von Maßnahmen** → Out of Scope laut Spec.
 - **Link-Rollen-Diskriminator auf `risk_links`** (Maßnahme vs. betroffene Aufgabe) → **PROJ-Y-109a**, nur bei echtem Bedarf.
 - **Direkter Finding→Maßnahme-Link** → nicht nötig; über verknüpftes Risiko abgedeckt.
+
+### Implementierungs-Notizen — Backend (2026-07-21)
+
+**Live in Prod (Migration `20260721111000_proj109_risk_measure_overview`):** eine read-only Funktion `public.risk_measure_overview(p_project_id uuid) → jsonb`, **SECURITY INVOKER** + `set search_path=public,pg_temp`, `revoke execute … from public, anon` + `grant … to authenticated`. Kein neues Schema/Feld/Tabelle, kein Dep. Sie liefert `{ risks: [...], summary: {...} }`:
+- pro Risiko: `id/title/status/responsible_user_id/workstream_id/confidentiality_level/mitigation/probability/impact/score`, plus abgeleitet `measure_count`, `has_measure`, `accepted_with_rationale`, `covered`, `active_uncovered`, und `measures[]` (= per `risk_links(work_item)` verknüpfte, nicht-gelöschte `work_items` mit `id/title/kind/status/due_date/responsible_user_id/workstream_id`);
+- `summary`: `risk_total / active_total (status=open) / active_uncovered / measure_total`.
+- **Abdeckungs-Logik:** `covered = has_measure OR (status='accepted' AND mitigation nicht leer) OR status∈{mitigated,closed}`. `active_uncovered = status='open' AND kein Measure AND keine begründete Akzeptanz` → **AC3-Signal (weich)**.
+- **Need-to-know erbt gratis:** INVOKER + Join über `risks`/`work_items` → deren RESTRICTIVE `can_access_classified`-Gates (PROJ-100a/107) filtern zeilenweise vor der Aggregation. Kein zweites Rechtemodell.
+
+**API:** `GET /api/projects/[id]/risk-measure-overview` (`src/app/api/projects/[id]/risk-measure-overview/route.ts`) — session-gebundener User-Client (nie service-role), `requireProjectAccess(view)`, UUID-Validierung, RPC-Delegation, Null→leere-Übersicht-Normalisierung. **Client-Wrapper:** `fetchRiskMeasureOverview` + Typen in `src/lib/risks/measure-overview.ts`.
+
+**Pflicht-Live-RPC-Smoke gegen Prod (rolled back, 0 Residue):** Eigenschaften `is_definer=false / auth_exec=true / anon_exec=false`. Funktional (atomarer DO-Block mit Rollback-Marker): (A) offenes Risiko ohne Measure → `active_uncovered=true, has_measure=false, covered=false`; akzeptiert+Begründung ohne Measure → `accepted_with_rationale=true, covered=true, active_uncovered=false`; (B) nach Anhängen einer verknüpften Aufgabe → `has_measure=true, active_uncovered=false, covered=true, measure_count=1`, Measure-Titel korrekt; `summary={risk_total:2, active_total:1, measure_total:1, active_uncovered:0}`. Residue-Check 0/0.
+
+**Quality-Gates:** route.test 5/5, ESLint 0, tsc 14 baseline/0 neu, vitest **2273/2273** (+5), build clean (Route `/api/projects/[id]/risk-measure-overview` registriert), Supabase security-Advisor 0 ERROR (Funktion nicht gelistet — INVOKER + fixed search_path).
+
+**Offen → /frontend:** „Maßnahmen"-Sektion (Tab, gruppierbar Risiko/Owner/Workstream) + weiches Abdeckungs-Badge am Risiko. → /qa: rollenbasierter Need-to-know-Pentest (INVOKER-Aggregat kein Leak) + Playwright-Auth-Gate.
 
 ### CIA-Einordnung
 
