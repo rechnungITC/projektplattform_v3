@@ -60,7 +60,7 @@ create trigger committee_meetings_confidentiality_floor
 drop trigger if exists committee_meetings_set_updated_at on public.committee_meetings;
 create trigger committee_meetings_set_updated_at
   before update on public.committee_meetings
-  for each row execute function moddatetime('updated_at');
+  for each row execute function extensions.moddatetime('updated_at');
 
 drop trigger if exists audit_changes_committee_meetings on public.committee_meetings;
 create trigger audit_changes_committee_meetings
@@ -166,7 +166,7 @@ create table if not exists public.committee_templates (
 drop trigger if exists committee_templates_set_updated_at on public.committee_templates;
 create trigger committee_templates_set_updated_at
   before update on public.committee_templates
-  for each row execute function moddatetime('updated_at');
+  for each row execute function extensions.moddatetime('updated_at');
 
 alter table public.committee_templates enable row level security;
 drop policy if exists committee_templates_select on public.committee_templates;
