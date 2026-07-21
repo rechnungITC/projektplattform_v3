@@ -212,7 +212,97 @@ bereits vollständig geprüft.
 <!-- Sections below are added by subsequent skills -->
 
 ## Tech Design (Solution Architect)
-_To be added by /architecture_
+
+**Architected 2026-07-21.** Backend-only Slice — **keine UI**. Kein neuer
+Dependency. Additive Migration (2 Spalten), keine RLS-/RPC-Umschreibung. CIA
+nicht zwingend (spec-following + eine gebundene Backend-Entscheidung, ~3 Dateien,
+kein neues Pattern) — bewusst ohne CIA-Pass.
+
+### Kernidee
+„Was wir **speichern**" (das 8000-Zeichen-Excerpt) wird von „was wir
+**screenen**" (der vollständige geparste Text) getrennt. Der Parser hält den
+Volltext bereits im Speicher; er reicht ihn an die Klassifikation weiter, statt
+nur das gekappte Excerpt zu prüfen. Ergänzt um die Fail-closed-Regel „fully
+screened or rejected", entsteht daraus **kein Restrisiko auf dem Ingestion-Pfad**.
+
+### Ablauf A — Ingestion (neue Uploads)
+```
+Upload (Multipart)
+ └─ Parser (PDF/DOCX/TXT/EML/MSG)
+     ├─ extrahiert vollständigen Text (im Speicher)
+     ├─ FAIL-CLOSED: Text überschreitet 2-MB-Screen-Grenze
+     │    → Reject 422 (kein partieller Text mehr, kein „break")   [AC-75.13/14]
+     ├─ gibt zurück: (a) Excerpt 8000-gekappt  → wird gespeichert  [AC-75.3]
+     │               (b) vollständiger Text     → nur zum Screenen
+     └─ Route
+         ├─ klassifiziert über Titel + VOLLTEXT (regex-only, kein LLM) [AC-75.1/11]
+         ├─ privacy_class = max(Volltext, DB-Floor 3, manueller Stempel) [AC-75.4]
+         ├─ setzt full_text_classified_at = jetzt                    [verifiziert]
+         └─ INSERT + Storage-Upload (unveränderte Reihenfolge)
+```
+
+### Ablauf B — Backfill (Bestands-Korrektur, einmaliger re-runnbarer Sweep)
+```
+Wartungslauf (service-role, tenant-scoped, bounded batches)   [User-locked]
+ └─ für jede context_sources-Row mit truncated=true UND full_text_classified_at IS NULL:
+     ├─ lädt Storage-Datei → Re-Parse → Volltext
+     ├─ Erfolg: klassifiziert über Volltext
+     │    ├─ Class-3 gefunden → privacy_class hochstufen (monoton)   [AC-75.7]
+     │    │                     Datei BEHALTEN, Ollama-only (kein Delete)
+     │    └─ full_text_classified_at = jetzt   (→ Idempotenz-Skip)   [AC-75.9]
+     └─ Fehlschlag (Datei fehlt / Re-Parse-Fehler):
+          ├─ privacy_class UNVERÄNDERT
+          ├─ classification_unverified = true                        [AC-75.8]
+          └─ protokollieren (kein PII im Log)
+ └─ Abschluss: Zähler geprüft / hochgestuft / unverifiziert          [AC-75.10]
+```
+Der Sweep ist **idempotent** (Skip über `full_text_classified_at IS NULL`),
+**re-runnbar** und braucht **keinen wiederkehrenden Cron** — es ist eine endliche
+Korrektur des vorhandenen Backlogs.
+
+### Datenmodell — 2 neue Spalten auf `context_sources` (additiv)
+- **`full_text_classified_at`** (Zeitstempel, nullable): gesetzt, sobald der
+  **vollständige** Text erfolgreich gescreent wurde — bei neuen Uploads immer,
+  beim Backfill bei Erfolg. `null` = noch nicht volltext-gescreent. Treibt die
+  Backfill-Idempotenz und trennt „vollständig geprüft" von „noch offen".
+- **`classification_unverified`** (Ja/Nein, Standard: Nein): wird beim Backfill
+  auf Ja gesetzt, wenn der Volltext nicht ableitbar war. Macht das **einzige
+  verbleibende Bestands-Residual sichtbar und abfragbar** (DSGVO-Prüfliste).
+
+Beide Spalten sind additiv/defaultet → gefahrlose Migration, keine Datenmigration
+der Spalten selbst nötig.
+
+### Tech-Entscheidungen (begründet)
+- **Volltext statt Excerpt als Screening-Eingabe** — schließt die eigentliche
+  Lücke (PII jenseits Zeichen 8000). Der Klassifizierer selbst bleibt unverändert
+  (regex-only); nur seine Eingabe verbreitert sich. Kein LLM-Kontakt, Class-3-
+  Hardblock unberührt.
+- **Fail-closed Reject statt stiller Truncation** — garantiert „fully screened or
+  rejected" und vereinheitlicht das PDF-Verhalten mit dem bereits bestehenden
+  DOCX/TXT-Reject. Preis: sehr große PDFs (≤200 S., >2 MB Text) werden abgewiesen;
+  Reject-freier Large-Doc-Support ist als **PROJ-72** ausgelagert.
+- **Datei behalten + Ollama-only** statt Hard-Delete — kompatibel mit DMS/RAG
+  (PROJ-79/80), die das Original brauchen; Schutz kommt aus dem Routing, nicht aus
+  Löschung.
+- **Einmaliger Sweep statt Cron/Lazy** — die Bestands-Korrektur ist endlich; ein
+  wiederkehrender Cron fände nach dem ersten Lauf nichts, Lazy ließe nie-berührte
+  Alt-Rows unbegrenzt ungescreent (schwächere DSGVO-Posture).
+- **`full_text_classified_at` als Marker statt JSON-Feld** — abfragbar und
+  idempotenz-tauglich; ein reiner `source_metadata`-Eintrag wäre schwerer zu
+  filtern.
+
+### Betroffene Bausteine
+- `src/lib/context-ingestion/file-parser.ts` — Volltext ausgeben; PDF-`break` →
+  Reject; (DOCX/TXT rejecten bereits korrekt).
+- `src/app/api/context-sources/route.ts` — Klassifikation über Volltext,
+  `full_text_classified_at` setzen.
+- `src/lib/context-sources/classify-privacy.ts` — **unverändert** (nur andere
+  Eingabe).
+- Neu: Backfill-Wartungsroutine (service-role, tenant-batched, idempotent).
+- Neu: additive Migration (2 Spalten).
+
+### Dependencies (Pakete)
+- **Keine.** Reine Lib-/Route-/Migrations-Änderung.
 
 ## QA Test Results
 _To be added by /qa_
