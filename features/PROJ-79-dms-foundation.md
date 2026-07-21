@@ -1,6 +1,6 @@
 # PROJ-79: DMS Foundation
 
-## Status: Architected (α — interner DMS-Kern; β externe Konnektoren deferred)
+## Status: In Progress (α backend done — interner DMS-Kern; β externe Konnektoren deferred)
 **Created:** 2026-06-06
 **Last Updated:** 2026-07-21
 
@@ -181,7 +181,27 @@ Drei neue Tabellen (Feld-Details in den Akzeptanzkriterien oben). Multi-Tenant-I
 Diese Slice hat sowohl Datenmodell/Storage/API (Backend) als auch Baum-/Upload-UI (Frontend). Empfehlung: **`/frontend` zuerst** (Tree + Upload-Dialog + Quota-Balken gegen gemockte/echte API), dann **`/backend`** (Migration + Bucket + RLS + RPCs + Audit + Quota-Trigger) — oder Backend-first, falls die UI reale Routen braucht. Danach `/qa` mit Pflicht-Vektoren: cross-tenant-404, MIME-Spoof-415, Zyklus-Move-409, Quota-413, soft-delete-Kaskade, RLS-Rollen (viewer read-only).
 
 ## Implementation Notes
-_To be added by /frontend and /backend._
+
+### Backend — α (2026-07-21)
+DB + API layer for the internal DMS core. **Two migrations applied to prod** (`iqerihohwabyjzkpcujq`):
+- `20260721120000_proj79_dms_foundation_alpha` — 3 tables (`document_tree_nodes`, `documents`, `tenant_storage_quotas`) + private Storage bucket `documents` (50 MB cap + 9-MIME allowlist, tenant/project-prefixed) + 4 `storage.objects` RLS policies (seg1 tenant-member, seg2 project-member) + quota-increment trigger `_dms_bump_storage_usage` (locked to postgres/service_role) + RPCs `dms_move_node` (cycle guard) & `dms_soft_delete_subtree` (cascade). Audit trio (`audit_log_entity_type_check` + `_tracked_audit_columns` + `can_read_audit_entry`) recreated **non-destructively from live prod defs** (+authenticated re-grant, siblings preserved).
+- `20260721120500_proj79_dms_quota_status` — `dms_quota_status(project_id)` SECURITY DEFINER, member-readable (upload pre-flight + UI quota bar without widening the admin-only base-table SELECT).
+
+**Live-RPC-smoke (mandatory) ALL PASS**, rollback-marker → 0 residue: quota +1000 · move · cycle-guard · cascade (3 nodes + doc) · audit-trio intact. **0 ERROR-level advisors.**
+
+**API routes** (`src/app/api/projects/[id]/…`): `documents/tree` GET (list, `?parent_id`), `tree/nodes` POST (create folder + slug dedup), `tree/nodes/[nodeId]` PATCH (rename | move→`dms_move_node`, 42501→403/P0002→404/23514→409) + DELETE (`dms_soft_delete_subtree`), `documents` POST (multipart upload: Content-Length + 50 MB → 413, magic-byte sniff → 415, quota pre-flight → 413, dedup, orphan-safe insert→upload→insert + sha256), `documents/[docId]/download` GET (signed URL), `storage-quota` GET. **Lib** `src/lib/dms/` (mime, slug, schema, storage). **Types** `src/types/dms.ts`.
+
+**Deviations / notes:**
+- **α allowlist == RAG-supported set** (9 formats: pdf/docx/xlsx/pptx/txt/md/csv/png/jpg); anything else is a hard 415. `mime_unsupported_for_rag` stays `false` in α (reserved for PROJ-80/β when the allowlist widens).
+- **Fix during review:** MIME sniff now passes the **full buffer** to `file-type` (was a 4 KB head slice) so ZIP-based OOXML (docx/xlsx/pptx) subtypes are detected reliably instead of wrongly 415-ing. → **QA must upload a real docx/xlsx/pptx.**
+- **Quota on soft-delete:** bytes are **not** freed in α (30-day retention window); freeing is the β nightly truth-sweep. Conservative over-count favours quota safety.
+- Storage-object RLS is tenant+project defense-in-depth; the fine-grained lead/editor gate lives at the API layer (`requireProjectAccess("edit")`).
+
+**Gates:** lint 0 · tsc 14 baseline / **0 new** · vitest **2341/2341** (296 files, +73 DMS) · build clean (6 DMS routes registered).
+
+**Deferred → β (not built):** external SharePoint/GDrive OAuth + Vault + on-demand fetch + `external_link` nodes + nightly quota truth-sweep cron.
+
+_Frontend (tree UI + upload dialog + quota bar) → /frontend._
 
 ## QA Test Results
 _To be added by /qa._
