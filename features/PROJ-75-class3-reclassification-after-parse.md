@@ -1,6 +1,6 @@
 # PROJ-75: Class-3-Re-Classification nach Parse
 
-## Status: In Progress
+## Status: Approved (QA PASS 2026-07-21 — 0 Critical/0 High)
 **Created:** 2026-07-21
 **Last Updated:** 2026-07-21
 
@@ -343,7 +343,55 @@ der Spalten selbst nötig.
   (seed→run→verify→rollback); (c) PDF->2 MB → 422.
 
 ## QA Test Results
-_To be added by /qa_
+
+**QA PASS 2026-07-21 — 0 Critical / 0 High → PRODUCTION-READY.** 1 High-Finding
+(H-1) in-QA gefunden und gefixt; 14/14 ACs belegt.
+
+### AC-Abdeckung (14/14 ✅)
+| AC | Beweis |
+|----|--------|
+| 75.1 Volltext-Klassifikation vor Persist/AI | Route klassifiziert `parseResult.result.full_text` (Code) + unit (full_text-Separation) |
+| 75.2 PII jenseits 8000 → Class-3 | unit `file-parser.test` (E-Mail bei ~9000 nur in full_text) + backfill-route-test (Klassifizierer auf full_text mit E-Mail@8100 → class 3) |
+| 75.3 Excerpt bleibt 8000-gekappt | unit `file-parser.test` (excerpt.length==8000, full_text komplett) |
+| 75.4 Monotone Hochstufung, nie Downgrade | unit backfill „no-downgrade" + **Live-Smoke A3** (`GREATEST(3,1)=3`) |
+| 75.5 <8000-Doc unverändert, nicht geflaggt | unit (kurzer Text → truncated=false); Backfill markiert non-truncated als screened, nie unverified |
+| 75.6 Re-runnbarer, tenant-sicherer Backfill | Route + **Live-Smoke A1/A5** (Pending-Query) + row-by-row-Isolation |
+| 75.7 Class-3 → hochstufen, Datei behalten | backfill-route-test (Upgrade, kein Delete-Call) + **Live-Smoke A2** |
+| 75.8 Fail-safe: Klasse belassen + `classification_unverified` | backfill-route-test (fail-safe/FileParseError) + **Live-Smoke A4/A6** |
+| 75.9 Idempotent (skip re-klassifiziert) | Query `.is(full_text_classified_at,null)` + **Live-Smoke A5** (marker-set ausgeschlossen) |
+| 75.10 Ergebniszähler | Route-Response checked/upgraded/unverified/screened_unchanged/remaining + unit-Asserts |
+| 75.11 Regex-only, kein LLM | Klassifizierer unverändert regex-only; kein LLM-Import im Pfad (Code-Review) |
+| 75.12 Class-3-Hardblock + DB-Default 3 unberührt | additive Migration; `privacy_class` default 3 (Schema-Query); kein Routing-Change |
+| 75.13 Fail-closed Reject bei unvollständigem Screening | unit `file-parser.test` (PDF >2 MB → `raw_text_cap_exceeded`) |
+| 75.14 „Fully screened or rejected" | PDF-Reject + bestehende DOCX/TXT-Rejects + full_text=komplett → jede akzeptierte Row voll gescreent |
+
+### Live-DB-Smoke gegen Prod (Pflicht, 0 Residue)
+DO-Block mit Rollback-Sentinel, tenant `329f25e5…`: **A1–A6 alle PASS** —
+A1 3 truncated-Rows pending; A2 Upgrade `GREATEST(1,3)=3` + marker + unverified=false;
+A3 no-downgrade `GREATEST(3,1)=3`; A4 fail-safe (Klasse unverändert, marker NULL, unverified=true, retrybar);
+A5 Idempotenz (marker-set aus Pending ausgeschlossen); A6 `classification_unverified` abfragbar.
+Rollback → 0 Residue (`smoke_residue=0` verifiziert). Zusätzlich read-only Exposure-Query:
+**13/15 Prod-context_sources sind `truncated` UND < Class-3** (der reale Backlog).
+
+### Security-Audit (Red-Team)
+- **Bearer-Guard:** POST ohne/mit falschem `CRON_SECRET` → 401 (unit + Playwright). Nie ok:true/200 ohne Secret.
+- **Kein LLM / keine Exfiltration:** regex-only; Logs enthalten nur IDs + grobe Reason-Codes, nie Dokumentinhalt.
+- **Tenant-Isolation:** Backfill arbeitet row-by-row per id; jede Row trägt eigene `tenant_id`; kein Cross-Tenant-Mix (service-role by design, wie Crons).
+- **Invariante #3:** Class-3 → Ollama-only-Routing unberührt; nur Klassifikations-*Eingabe* verbreitert.
+- **Input:** Backfill-`limit` auf [1,500] geklammert.
+
+### Playwright (chromium) — `tests/PROJ-75-reclassify-backfill.spec.ts` 3/3 ✅
+Auth-Gate: POST ohne Auth / falsches Bearer / GET → erreicht Handler (kein 307), nie 200/ok:true. Beweist H-1-Fix.
+
+### Findings
+- **H-1 (High, in-QA GEFIXT):** Backfill-Route wird per `CRON_SECRET`-Bearer (keine Session) aufgerufen, stand aber **nicht** in `PUBLIC_ROUTES` → Middleware hätte Bearer-only-Aufrufe zu `/login` (307) umgeleitet, bevor der Guard greift → Route über ihren Auth-Pfad unerreichbar. **Fix:** exakter Pfad `/api/context-sources/reclassify-backfill` zu `PUBLIC_ROUTES` ergänzt (Präzedenz `/api/mcp`). Verifiziert via Playwright 3/3 (kein 307). Kein weiterer Pfad public gemacht.
+
+### Deviations / Env-Limitierungen
+- **D-1 (Env):** Der Ingestion-Live-Test (echter Upload mit PII jenseits 8000 → Class-3) und der echte End-to-End-Backfill-Route-Lauf gegen die 13 realen Rows laufen erst **post-deploy** (Code noch nicht deployed; kein prod-`CRON_SECRET` im Worktree). Kompensiert durch: identische Klassifizierer-Logik in Ingestion & Backfill (unit-getestet), Live-DB-Smoke A1–A6 der DB-Semantik, vitest-Route-Wiring. **Als Deploy-Verify nachzuholen.**
+- **D-2 (Env):** Mobile-Safari-E2E übersprungen (WebKit-Host-Libs, PROJ-67/F2).
+
+### Gates
+ESLint 0 · tsc 14 baseline/0 neu · vitest **2302/2302** (+10) · build clean · Playwright 3/3 chromium · Advisor: keine neuen (additive Spalten + Index).
 
 ## Deployment
 _To be added by /deploy_
