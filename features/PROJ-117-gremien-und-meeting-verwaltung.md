@@ -127,7 +127,7 @@ SECURITY DEFINER, `auth.uid()`-only, **atomar** (eine TX): validiert Autorität 
 | 4 Vertraulichkeits-Floor | **GO** — `≥ committee`-Write-Trigger + can_access_classified, transitive Vererbung |
 | 5 Agenda/Protokoll/Pre-Read | **GO** — Text + Link-Tabelle; Upload deferred (PROJ-79) |
 | 6 AC1 „aus Vorlage" | **GO jetzt** — `committee_templates` lazy-seed 6 Typen, copy-on-create (billig, sonst AC1 offen) |
-| 7 AC5 Kalender-Sync | **DEFERRED** → PROJ-Y-117a (M365/Graph-Schwere wie PROJ-49/133). Optional früh: dep-freier read-only **ICS-Export** je Gremium (RFC 5545, Bordmittel) — siehe offene Entscheidung |
+| 7 AC5 Kalender | **PO-Entscheidung 2026-07-21: ICS-Export JETZT (read-only, dep-frei).** Authentifizierter, RLS/need-to-know-gescoped **ICS-Download** je Gremium (`text/calendar`, RFC 5545, Bordmittel — nur sichtbare Meetings). Ein *öffentlich abonnierbarer* tokenisierter Feed würde den Need-to-know-Gate umgehen → **bleibt deferred** (PROJ-Y-117a) zusammen mit dem vollen M365/Graph+Google-Zwei-Wege-Sync (Schwere wie PROJ-49/133). |
 | 8 work_items-Blast | **ADJUST** — RPC prüft Autorität + setzt alle Invarianten selbst (H5) + gitnexus_impact |
 
 ### E) Pflicht-Hardening-ACs
@@ -147,7 +147,7 @@ SECURITY DEFINER, `auth.uid()`-only, **atomar** (eine TX): validiert Autorität 
 
 ### G) Bewusste Deferrals (PROJ-Y-Kandidaten)
 
-- **PROJ-Y-117a** — voller M365/Graph + Google Zwei-Wege-Kalender-Sync (AC5). *(Optional früh: read-only ICS-Export als schlanke Zusatz-AC — offene Entscheidung an den PO.)*
+- **PROJ-Y-117a** — voller M365/Graph + Google Zwei-Wege-Kalender-Sync + *öffentlich abonnierbarer tokenisierter ICS-Feed* (AC5). Der schlanke authentifizierte ICS-**Download** ist in DIESER Slice (PO-Entscheidung 2026-07-21); die abonnierbare Variante bleibt deferred (Need-to-know-Gate-Bypass).
 - **PROJ-Y-117b** — Datei-Upload für Pre-Reads/Protokolle über PROJ-79 DMS.
 - **PROJ-Y-117c** — Recurrence/Terminserien für Regelgremien.
 - **PROJ-Y-117d** — Meeting → Kommunikations-Versand (PROJ-13 Einladung/Protokoll-Verteilung), Brücke zu PROJ-118/119.
