@@ -1,6 +1,6 @@
 "use client"
 
-import { Plus } from "lucide-react"
+import { Download, Plus } from "lucide-react"
 import { useSearchParams } from "next/navigation"
 import * as React from "react"
 import { toast } from "sonner"
@@ -16,6 +16,7 @@ import {
 } from "@/components/ui/sheet"
 import {
   createDecision,
+  decisionsExportUrl,
   type DecisionInput,
   listDecisions,
 } from "@/lib/decisions/api"
@@ -117,9 +118,21 @@ export function DecisionsTabClient({ projectId }: DecisionsTabClientProps) {
               Vorgänger als überholt markiert. Der Verlauf bleibt erhalten.
             </p>
           </div>
-          <Button onClick={() => setDrawer({ mode: "create" })}>
-            <Plus className="mr-2 h-4 w-4" aria-hidden /> Entscheidung
-          </Button>
+          <div className="flex items-center gap-2">
+            {/* PROJ-111 — RLS + need-to-know scoped CSV export of the log
+                (gate decisions the caller can't access are filtered server-side). */}
+            <Button asChild variant="outline">
+              <a
+                href={decisionsExportUrl(projectId, { includeRevised: true })}
+                download
+              >
+                <Download className="mr-2 h-4 w-4" aria-hidden /> CSV-Export
+              </a>
+            </Button>
+            <Button onClick={() => setDrawer({ mode: "create" })}>
+              <Plus className="mr-2 h-4 w-4" aria-hidden /> Entscheidung
+            </Button>
+          </div>
         </header>
 
         <div className="grid gap-6 lg:grid-cols-[1fr_320px]">
