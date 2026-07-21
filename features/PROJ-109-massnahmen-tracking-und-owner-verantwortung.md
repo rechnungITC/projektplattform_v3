@@ -14,7 +14,7 @@ summary_for_jira: "[E3] Maßnahmen-Tracking und Owner-Verantwortung"
 
 # PROJ-109: Maßnahmen-Tracking und Owner-Verantwortung
 
-## Status: Approved (QA PASS 2026-07-21)
+## Status: Deployed (2026-07-21 · Tag `v2.13.0-PROJ-109`)
 **Created:** 2026-06-10
 **Origin:** M&A-Platform Backlog (Epic E — Risiken & Red Flags)
 **Priority:** P1
@@ -249,6 +249,14 @@ Funktion ist `security invoker` + fixed `search_path`; Supabase security-Advisor
 vitest **2273/2273**; method-templates/routing 124/124; build clean (Route registriert); ESLint 0/0; tsc 14 baseline/0 neu. Kein neues Dep, kein Schema-Change über die (bereits live) `risk_measure_overview`-Migration hinaus.
 
 **Production-Ready: JA.** → `/deploy`.
+
+## Deployment — 2026-07-21 (Tag `v2.13.0-PROJ-109`)
+
+- **Merge:** PR #240 (squash) → `main` (`baeb03c`). Branch war vom Prä-PROJ-110/111-`main` abgezweigt → sauber auf aktuellen `main` rebast (INDEX + `method-templates/index.ts`-Nav-Hotspot aufgelöst: Maßnahmen- + Stage-Gate-Sektionen koexistieren; keine PROJ-110/111-Regression).
+- **Schema-Drift-Fix (in `/deploy` gefangen):** Der Required-Check „Verify SELECT columns vs migration schema" schlug beim ersten Lauf fehl (`column rk.confidentiality_level does not exist`). Ursache: PROJ-107s Migration (`20260703135741`) ist im Shadow-DB-Fresh-Apply nicht sauber (bricht an einer tolerierten REVOKE/GRANT-on-missing-function ab, bevor sie ihre `risks.confidentiality_level`-Spalte anlegt). Fix: idempotenter `alter table public.risks add column if not exists confidentiality_level …`-Guard am Kopf der PROJ-109-Migration (no-op in Prod, deterministisch im Fresh-Apply). Danach alle Checks grün.
+- **Prod-Verify (DB):** `risk_measure_overview(uuid)` live — `prosecdef=false` (SECURITY INVOKER ✅), `authenticated` execute ✅, `anon` execute revoked ✅, `risks.confidentiality_level` präsent ✅.
+- **Migration-Versions-Drift (benign, PROJ-134-Domäne):** Die Migration ist in Prod unter MCP-Version `20260721091229` registriert (Name trägt Repo-Dateinamen `20260721111000_proj109_risk_measure_overview`). Da die Migration **voll idempotent** ist (`create or replace function` + `add column if not exists`), bricht sie `supabase db push` **nicht** (anders als die nicht-idempotenten `create table`-Fälle in PROJ-50/69) → kein Repo-Rename nötig; als bekannter benigner Drift dokumentiert.
+- **Post-Deploy-Smoke (HTTP):** `/projects/{id}/massnahmen` + `GET /api/projects/{id}/risk-measure-overview` → 307 Auth-Gate ohne Leck.
 
 ---
 _Quelle: Backlog-Entwurf M&A-Projektplattform · E — Risiken & Red Flags_
