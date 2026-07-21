@@ -198,6 +198,7 @@ export async function parseMsg(buffer: Buffer): Promise<EmailParseResult> {
 
   return {
     excerpt,
+    full_text: raw, // PROJ-75 — full screening input; raw already capped/rejected at 2 MB above.
     raw_length: raw.length,
     page_count: 1,
     truncated: raw.length > PARSER_CONSTANTS.EXCERPT_MAX_CHARS,

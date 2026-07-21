@@ -38,6 +38,11 @@ const PUBLIC_ROUTES = [
   // by hashing the token against mcp_access_tokens. The admin token-management
   // route lives under /api/connectors/mcp/tokens and stays session-gated.
   "/api/mcp",
+  // PROJ-75 — one-shot Class-3 re-classification backfill. Triggered manually
+  // with the CRON_SECRET Bearer token (no Supabase session), same auth model
+  // as the /api/cron endpoints; the route validates the secret itself. Exact
+  // path only — no other /api/context-sources route is made public.
+  "/api/context-sources/reclassify-backfill",
 ]
 
 function isPublicRoute(pathname: string): boolean {

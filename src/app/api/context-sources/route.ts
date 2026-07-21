@@ -154,6 +154,10 @@ export async function POST(request: Request) {
       source_metadata: mergedMetadata,
       language: body.language ?? null,
       privacy_class: resolvedPrivacyClass,
+      // PROJ-75 — the JSON path has no larger source than the client-provided
+      // excerpt (no file to truncate), so the complete available text was
+      // screened. Marking it screened keeps the backfill from re-touching it.
+      full_text_classified_at: new Date().toISOString(),
       created_by: userId,
     })
     .select(LIST_SELECT)
@@ -337,10 +341,15 @@ async function handleMultipartUpload(
   const excerpt = parseResult.result.excerpt
   const detectedMime = parseResult.mime
 
-  // PROJ-44-γ classifier on the parsed excerpt.
+  // PROJ-75 — classify over the COMPLETE parsed text, not the 8000-char
+  // excerpt, so PII beyond the excerpt cut still forces Class-3. The parser is
+  // fail-closed (AC-75.13): a document whose text could not be fully extracted
+  // was already rejected above, so `full_text` here is the complete document.
+  // The stored `content_excerpt` stays capped (AC-75.3) — only the screening
+  // input widens. Classifier stays regex-only, no LLM (AC-75.11).
   const classification = classifyContextSourcePrivacy({
     title: fields.title,
-    content_excerpt: excerpt,
+    content_excerpt: parseResult.result.full_text,
   })
   const mergedMetadata: Record<string, unknown> = {
     proj70_gamma_parse: {
@@ -375,6 +384,9 @@ async function handleMultipartUpload(
       source_metadata: mergedMetadata,
       language: fields.language ?? null,
       privacy_class: classification.privacy_class,
+      // PROJ-75 — the full parsed text was screened (fail-closed guarantees
+      // completeness), so this row needs no backfill.
+      full_text_classified_at: new Date().toISOString(),
       original_filename: fileEntry.name,
       mime_type: detectedMime,
       file_size_bytes: fileEntry.size,
