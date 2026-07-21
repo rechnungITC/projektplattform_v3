@@ -1,0 +1,221 @@
+# PROJ-75: Class-3-Re-Classification nach Parse
+
+## Status: Planned
+**Created:** 2026-07-21
+**Last Updated:** 2026-07-21
+
+> CIA-Followup **Y-5** aus PROJ-70-γ (2026-06-04). DSGVO-relevant. Schließt die
+> Lücke, dass die Privacy-Klassifikation von Context-Sources nur auf einem
+> gekappten Ausschnitt läuft und personenbezogene Daten im restlichen Dokument
+> übersieht.
+
+## Problem (live belegt im Code)
+
+Beim Upload einer Context-Source (`POST /api/context-sources`, Multipart-Pfad)
+läuft die Kette:
+
+1. `parseFile(buffer, mimeHint)` liefert ein **auf 8000 Zeichen gekapptes**
+   `content_excerpt` (`EXCERPT_MAX_CHARS = 8_000` in
+   `src/lib/context-ingestion/file-parser.ts`) plus `raw_length` und ein
+   `truncated`-Flag.
+2. `classifyContextSourcePrivacy({ title, content_excerpt: excerpt })`
+   (`src/lib/context-sources/classify-privacy.ts`) prüft die Class-3-/Class-2-
+   Regex **ausschließlich auf diesem 8000-Zeichen-Excerpt** (+ Titel).
+3. Die Zeile wird mit `privacy_class` aus dieser Klassifikation persistiert; die
+   **vollständige Originaldatei** landet im Storage-Bucket `context-source-uploads`.
+
+**Folge:** Enthält ein Dokument personenbezogene Daten (E-Mail, Telefonnummer,
+IBAN, SSN) **erst jenseits von Zeichen 8000** — z. B. eine Unterschriftszeile,
+ein Verteiler oder ein Anhang auf einer späteren Seite — sieht der Klassifizierer
+diese PII nicht. Das Dokument wird fälschlich als Class-1/2 eingestuft und darf
+damit an ein **externes Cloud-Modell** geschickt werden (Invariante #3 greift
+nur für Class-3). Das ist ein DSGVO-Verstoß-Risiko. Betroffen sind
+**ausschließlich `truncated`-Dokumente**; Dokumente unter 8000 Zeichen werden
+bereits vollständig geprüft.
+
+## Ziel / Lösungsrichtung (User-locked)
+
+- Die Privacy-Klassifikation muss den **Volltext** des geparsten Dokuments
+  widerspiegeln, nicht nur das gekappte Excerpt — **bevor** `privacy_class`
+  persistiert wird und **bevor** irgendein externer KI-Aufruf möglich ist.
+- **Fail-closed, kein Restrisiko:** Ein Dokument, das **nicht vollständig**
+  gescreent werden kann (z. B. PDF ≤ 200 Seiten, dessen Text die 2-MB-Extraktion
+  überschreitet und heute still abgeschnitten wird), wird **abgewiesen** — nie mit
+  teilweise geprüftem Inhalt akzeptiert. „Fully screened or rejected."
+- **Datei behalten, kein Hard-Delete:** Wird Class-3 erkannt, bleibt die Datei
+  im Bucket; das KI-Routing erzwingt Ollama-only (Invariante #3). Kompatibel mit
+  DMS/RAG (PROJ-79/80), die das Original brauchen.
+- **Backfill:** Bereits ingestierte Rows, die auf dem Excerpt klassifiziert
+  wurden und `truncated` sind, werden über den Volltext nachgeprüft.
+- **Fail-safe = Bestand belassen + markieren:** Kann der Volltext für eine
+  Bestands-Zeile nicht sicher abgeleitet werden (Re-Parse-Fehler, fehlende
+  Datei), bleibt die bestehende Klasse unverändert und die Zeile wird als
+  **`classification_unverified`** markiert für spätere manuelle Prüfung — kein
+  stiller Fehler, keine Massen-Falsch-Positive.
+
+## Dependencies
+- Requires: **PROJ-70** (Context-Ingestion-Pipeline: `file-parser`, Storage,
+  Upload-Route) — der Pfad, der nachgebessert wird.
+- Requires: **PROJ-44** (`classify-privacy.ts` — der regex-basierte Klassifizierer).
+- Requires: **PROJ-12** (KI-Privacy-Pfade / Class-3-Hardblock, Invariante #3) —
+  bleibt unverändert; diese Slice erweitert nur die Klassifikations-*Eingabe*.
+- Related: **PROJ-71** (OCR für Scan-PDFs) und **PROJ-72** (Streaming-Parse) —
+  behandeln die verbleibenden Grenzen (bildbasierte PII, sehr große Dateien),
+  die hier bewusst *out of scope* bleiben.
+
+## User Stories
+- Als **Datenschutzbeauftragte:r / Tenant-Admin** möchte ich, dass ein Dokument
+  mit personenbezogenen Daten irgendwo im Text als Class-3 erkannt wird — nicht
+  nur wenn die PII in den ersten 8000 Zeichen steht —, damit keine
+  personenbezogenen Daten versehentlich an ein externes Cloud-Modell gelangen.
+- Als **Projektleiter:in**, die ein Kickoff-Dokument hochlädt, möchte ich, dass
+  die Privacy-Einstufung dem gesamten Dokument entspricht, damit ich mich auf das
+  „Class-3 → Ollama-only"-Verhalten verlassen kann, ohne das Dokument selbst zu
+  prüfen.
+- Als **Datenschutzbeauftragte:r** möchte ich, dass bereits hochgeladene
+  Dokumente rückwirkend über ihren Volltext nachgeprüft werden, damit die im
+  Bestand bereits entstandene Fehlklassifikation korrigiert und sichtbar wird.
+- Als **Security-Reviewer** möchte ich, dass die Re-Klassifikation selbst
+  regex-basiert und ohne LLM läuft, damit der Vorgang keine neue Class-3-
+  Exfiltration einführt.
+- Als **Betreiber** möchte ich nach dem Backfill eine Kennzahl sehen, wie viele
+  Zeilen hochgestuft bzw. als unverifiziert markiert wurden, damit die
+  DSGVO-Exposure quantifiziert ist.
+
+## Acceptance Criteria
+
+### Ingestion-Zeit (neue Uploads)
+- [ ] **AC-75.1** Beim Multipart-Upload läuft `classifyContextSourcePrivacy`
+      über den **vollständig geparsten Text** des Dokuments (bis zu den bereits
+      bestehenden Parse-Grenzen), nicht nur über das 8000-Zeichen-Excerpt. Die
+      Klassifikation ist abgeschlossen und persistiert, **bevor** die Zeile für
+      irgendeinen externen KI-Aufruf verfügbar ist.
+- [ ] **AC-75.2** Ein Dokument, dessen einziger PII-Marker (z. B. eine E-Mail)
+      **jenseits von Zeichen 8000** liegt, wird als `privacy_class = 3`
+      eingestuft. (Regressions-Fixture: ~8000 Zeichen unbedenklicher Text +
+      E-Mail bei ~Zeichen 9000.)
+- [ ] **AC-75.3** `content_excerpt` bleibt unverändert auf 8000 Zeichen gekappt —
+      was gespeichert und angezeigt wird, ändert sich nicht; **nur die
+      Klassifikations-Eingabe** wird auf den Volltext erweitert.
+- [ ] **AC-75.4** `privacy_class` wird **nur monoton hochgestuft** (defense-in-
+      depth): Die Volltext-Klassifikation darf die Klasse gegenüber dem
+      Excerpt-Ergebnis, dem DB-Default (3) und einem manuellen Stempel **nur
+      erhöhen, nie senken** (`GREATEST`-Semantik).
+- [ ] **AC-75.5** Ein Dokument **unter 8000 Zeichen** (`truncated = false`)
+      liefert ein identisches Ergebnis wie bisher (Volltext == Excerpt) und wird
+      **nicht** als unverifiziert markiert.
+
+### Backfill (Bestands-Rows)
+- [ ] **AC-75.6** Ein re-runnbarer, tenant-sicherer Backfill prüft bestehende
+      `context_sources`-Zeilen, die als `truncated` markiert sind, über ihren
+      Volltext (aus der Storage-Datei) nach.
+- [ ] **AC-75.7** Zeilen, deren Volltext Class-3-Marker enthält, werden auf
+      `privacy_class = 3` hochgestuft; die **Storage-Datei bleibt erhalten**
+      (kein Hard-Delete), und das KI-Routing erzwingt fortan Ollama-only.
+- [ ] **AC-75.8** Kann der Volltext einer **Bestands-Zeile** nicht sicher
+      abgeleitet werden (Re-Parse-Fehler, fehlende/gelöschte Storage-Datei),
+      bleibt die bestehende `privacy_class` **unverändert** und die Zeile wird als
+      **`classification_unverified`** markiert; der Fehlschlag wird protokolliert
+      (nicht still verschluckt). **Dies ist ein bewusst sichtbar gemachtes,
+      manuell zu prüfendes Residual im Bestand** — kein *stilles* Restrisiko: die
+      markierten Zeilen müssen für die DSGV-Prüfung (AC-75.10) abfragbar sein.
+      (Der **Ingestion-Pfad** ist durch AC-75.13/14 fail-closed und trägt kein
+      Residual.)
+- [ ] **AC-75.9** Der Backfill ist **idempotent**: bereits erfolgreich
+      re-klassifizierte Zeilen werden bei erneutem Lauf übersprungen; ein zweiter
+      Lauf erzeugt keine abweichenden Ergebnisse.
+- [ ] **AC-75.10** Nach dem Backfill wird eine Kennzahl ausgegeben:
+      Anzahl geprüfter / hochgestufter / als unverifiziert markierter Zeilen.
+
+### Fail-closed: kein unvollständig gescreentes Dokument (KEIN Restrisiko)
+- [ ] **AC-75.13** Ein Dokument, dessen Inhalt **nicht vollständig** auf PII
+      gescreent werden konnte, wird **abgewiesen** (HTTP 422) — es wird **nie mit
+      teilweise geprüftem Inhalt ingestiert**. Insbesondere: der bisherige stille
+      `break` in der PDF-Textextraktion bei Überschreiten von
+      `MAX_PLAINTEXT_RAW_BYTES` (2 MB) — der aktuell partiellen Text mit
+      `truncated: true` zurückgibt und die Zeile trotzdem anlegt — wird zu einem
+      harten Reject (`raw_text_cap_exceeded`), **einheitlich** mit dem bestehenden
+      Verhalten für DOCX/TXT > 2 MB und PDF > 200 Seiten.
+- [ ] **AC-75.14** „Fully screened or rejected": Nach Abschluss von AC-75.13 gilt
+      für **jede** erfolgreich ingestierte Zeile, dass ihr **vollständiger**
+      geparster Text (nicht nur ein Präfix) den Klassifizierer durchlaufen hat.
+      Es gibt auf dem Ingestion-Pfad **kein** akzeptiertes Dokument mit
+      ungescreentem Textanteil. (Regressions-Fixture: PDF ≤ 200 Seiten mit > 2 MB
+      extrahierbarem Text → 422, keine `context_sources`-Zeile, keine Storage-Datei.)
+
+### Sicherheit / Invarianten
+- [ ] **AC-75.11** Die Re-Klassifikation (Ingestion **und** Backfill) läuft
+      **regex-only, ohne jeden LLM-Aufruf** — konsistent mit `classify-privacy.ts`.
+      Es wird kein Dokumentinhalt an ein externes Modell gesendet.
+- [ ] **AC-75.12** Der Class-3-Hardblock (Invariante #3) und der `privacy_class`-
+      DB-Default (3) bleiben unverändert; diese Slice **schwächt keine** bestehende
+      Schutzschicht ab, sie verbreitert nur die Prüf-Eingabe.
+
+## Edge Cases
+- **Grenzfall genau 8000 Zeichen:** Dokument mit Länge == Cap → `truncated`
+  false → Volltext == Excerpt → keine Änderung, keine Unverifiziert-Markierung.
+- **Volltext über bestehende Parse-Grenzen** (DOCX/TXT-Rohtext-Cap 2 MB, PDF
+  Seiten-Cap 200, PDF-Extraktion > 2 MB): Solche Dokumente werden **abgewiesen**
+  (422, AC-75.13) statt mit partiellem Text akzeptiert → **kein ungescreenter
+  Textanteil gelangt je in die Persistenz**. Damit ist die frühere „PII jenseits
+  der Parse-Caps"-Grenze **kein Restrisiko mehr** auf dem Ingestion-Pfad. Der
+  Support für sehr große Dokumente (ohne Reject, via Streaming/Chunked-Parse) ist
+  ein separater Ausbau → PROJ-72.
+- **Manuell gestempelte `privacy_class`:** Volltext-Ergebnis darf nur erhöhen,
+  nie senken — ein manuell auf 3 gesetztes Dokument bleibt 3, auch wenn der
+  Volltext „nur" Class-1 ergäbe.
+- **Class-2-Fund im Volltext, Excerpt war Class-1:** Hochstufung auf 2
+  (business-confidential) nach derselben monotonen Regel.
+- **Scan-PDF / bildbasiertes Dokument** (leerer geparster Text): Der
+  Klassifizierer kann PII in Bildern nicht sehen → bekannte Grenze, verweist auf
+  PROJ-71 (OCR). Ein leeres Parse-Ergebnis bei einem **neuen** Upload gilt nicht
+  als „Fehlschlag" im Sinne von AC-75.8.
+- **Bestands-Zeile ohne Storage-Datei** (Orphan, `content_full_url` null oder
+  Datei entfernt): Fail-safe → `classification_unverified`, Klasse unverändert.
+- **Race:** Backfill läuft, während dieselbe Zeile parallel gelesen/genutzt wird
+  → Hochstufung ist ein reines UPDATE der `privacy_class`; nachfolgende
+  KI-Aufrufe lesen den neuen Wert (fail-closed Richtung Ollama-only).
+
+## Technical Requirements
+- **Regex-only:** kein neuer Dep, kein LLM. Wiederverwendung von
+  `classifyContextSourcePrivacy`; erweitert wird nur die *Eingabe* (Volltext statt
+  Excerpt) und der Ort, an dem der Volltext verfügbar ist.
+- **Monotone Hochstufung** (`GREATEST(bestehend, neu, default 3-Floor)`) — nie
+  Downgrade.
+- **Tenant-Sicherheit:** Backfill respektiert RLS / Tenant-Grenzen; kein
+  Cross-Tenant-Zugriff, keine Content-Exfiltration in Logs (PII-Log-Block wie
+  PROJ-70-γ AC-γH-7-Linie).
+- **Performance:** Regex über bis zu ~2 MB Volltext ist günstig; der
+  Ingestion-Latenz-Zuwachs ist vernachlässigbar. Backfill als bounded,
+  wiederaufnehmbarer Batch (Mechanismus — Inline-bei-Ingestion vs.
+  Hintergrund-Job für den Bestand — ist eine `/architecture`-Entscheidung).
+- **Beobachtbarkeit:** Backfill-Ergebniszähler (geprüft / hochgestuft /
+  unverifiziert).
+
+## Out of Scope
+- **OCR für bildbasierte Scan-PDFs** → PROJ-71. (Kein PII-Leak-Residual auf dem
+  KI-Text-Pfad: ein Scan-PDF liefert leeren geparsten Text → es wird kein Inhalt
+  an ein Modell gesendet; es ist eine Extraktions-Qualitätslücke, kein Leak.)
+- **Streaming/Chunked-Parse zur Aufnahme sehr großer Dokumente OHNE Reject**
+  → PROJ-72. (Bis dahin gilt AC-75.13: nicht-vollständig-screenbar ⇒ Reject.)
+- **Zusätzliche Parser-Formate (PPTX/XLSX)** → PROJ-73.
+- **Hard-Delete von Storage-Dateien bei Class-3** — bewusst verworfen (Datei
+  behalten, Ollama-only).
+
+> **Kein Restrisiko auf dem Ingestion-Pfad:** Jede akzeptierte Zeile ist
+> vollständig gescreent (AC-75.14) oder wurde abgewiesen (AC-75.13). Das einzige
+> verbleibende Bestands-Residual (unverifizierbare Alt-Zeilen, AC-75.8) ist
+> **explizit markiert und abfragbar**, also sichtbar und manuell steuerbar —
+> nicht still.
+
+---
+<!-- Sections below are added by subsequent skills -->
+
+## Tech Design (Solution Architect)
+_To be added by /architecture_
+
+## QA Test Results
+_To be added by /qa_
+
+## Deployment
+_To be added by /deploy_
