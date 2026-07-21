@@ -15,6 +15,12 @@ export interface Decision {
   decider_stakeholder_id: string | null
   context_phase_id: string | null
   context_risk_id: string | null
+  // PROJ-111 thin M&A extension (INSERT-only). `context_finding_id` links a
+  // decision to a DD finding; `decision_body`/`options` capture committee /
+  // decision options as free text.
+  context_finding_id: string | null
+  decision_body: string | null
+  options: string | null
   supersedes_decision_id: string | null
   is_revised: boolean
   created_by: string

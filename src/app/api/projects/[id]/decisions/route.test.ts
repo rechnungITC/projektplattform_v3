@@ -211,6 +211,7 @@ describe("POST /api/projects/[id]/decisions — schema/DB-payload drift", () => 
     const STAKEHOLDER_ID = "66666666-6666-4666-8666-666666666666"
     const PHASE_ID = "77777777-7777-4777-8777-777777777777"
     const RISK_ID = "88888888-8888-4888-8888-888888888888"
+    const FINDING_ID = "aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa"
 
     const kitchenSink = {
       title: "Drift-Test Decision",
@@ -220,6 +221,10 @@ describe("POST /api/projects/[id]/decisions — schema/DB-payload drift", () => 
       decider_stakeholder_id: STAKEHOLDER_ID,
       context_phase_id: PHASE_ID,
       context_risk_id: RISK_ID,
+      // PROJ-111 INSERT-only extension fields.
+      context_finding_id: FINDING_ID,
+      decision_body: "Steering Committee",
+      options: "Option A; Option B; Option C",
       // supersedes_decision_id intentionally omitted — we don't want to
       // exercise the supersedes-validation path here.
       supersedes_decision_id: null,

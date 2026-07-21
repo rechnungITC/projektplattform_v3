@@ -27,6 +27,11 @@ export const decisionCreateSchema = z.object({
   decider_stakeholder_id: z.string().uuid().optional().nullable(),
   context_phase_id: z.string().uuid().optional().nullable(),
   context_risk_id: z.string().uuid().optional().nullable(),
+  // PROJ-111: thin M&A-oriented extension. All INSERT-only — the decisions
+  // immutability trigger blocks mutating them after creation (HIGH-1).
+  context_finding_id: z.string().uuid().optional().nullable(),
+  decision_body: z.string().max(10000).optional().nullable(),
+  options: z.string().max(10000).optional().nullable(),
   supersedes_decision_id: z.string().uuid().optional().nullable(),
 })
 
@@ -34,7 +39,13 @@ export const decisionCreateSchema = z.object({
  * Trimmable text fields where empty string should become NULL. Other
  * fields (UUIDs, timestamps) pass through unchanged via spread.
  */
-const TRIM_FIELDS = ["title", "decision_text", "rationale"] as const
+const TRIM_FIELDS = [
+  "title",
+  "decision_text",
+  "rationale",
+  "decision_body",
+  "options",
+] as const
 
 type TrimField = (typeof TRIM_FIELDS)[number]
 

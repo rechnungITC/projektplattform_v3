@@ -16,6 +16,7 @@
 import {
   ClipboardCheck,
   FileText,
+  Flag,
   Handshake,
   Layers,
   ListChecks,
@@ -144,6 +145,19 @@ const MA_DD_REPORT_SECTION: SidebarSection = {
   requiresProjectType: "ma",
 }
 
+// PROJ-110 — the "Stage-Gates" section: the 9 M&A stage gates that authorize
+// phase transitions. Each gate has a pre-read (open tasks / risks-without-
+// measure / open red-flags) and a 3-way decision (Freigabe / Auflage / Abbruch)
+// that writes an immutable PROJ-20 decision and drives the phase/project state
+// machine. Project-TYPE driven (M&A); need-to-know-scoped server-side.
+const MA_STAGE_GATES_SECTION: SidebarSection = {
+  id: "ma-stage-gates",
+  label: "Stage-Gates",
+  icon: Flag,
+  tabPath: "stage-gates",
+  requiresProjectType: "ma",
+}
+
 // PROJ-98 — the "Gremien" section: governance bodies (SteerCo / Core Team / IMO)
 // per project with stakeholder-centric membership + decision competence.
 // Project-TYPE driven (M&A); need-to-know-scoped server-side.
@@ -165,6 +179,7 @@ function withMaFoundation(config: MethodConfig): MethodConfig {
       ...sections.slice(0, insertAt),
       MA_FOUNDATION_SECTION,
       MA_PHASE_MODEL_SECTION,
+      MA_STAGE_GATES_SECTION,
       MA_ROLES_SECTION,
       MA_GREMIEN_SECTION,
       MA_TASKS_SECTION,
