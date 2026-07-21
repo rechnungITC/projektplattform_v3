@@ -14,7 +14,9 @@ summary_for_jira: "[H1] Gremien- und Meeting-Verwaltung"
 
 # PROJ-117: Gremien- und Meeting-Verwaltung
 
-## Status: Approved (QA PASS 2026-07-21 — 0 Critical/0 High → /deploy)
+## Status: Deployed (2026-07-21, Tag `v2.14.0-PROJ-117`)
+
+> **Deployed 2026-07-21:** Tag `v2.14.0-PROJ-117`; Code live via PR #242 (squash → main `d5a0180`); Migration `20260721155102` seit /backend in Prod; Vercel auto-deploy from main. Post-Deploy-Smoke: meetings-list/commit/`meetings/ics` + committee-templates/seed + committees/from-template → alle 307 Auth-Gate ohne Leck. Kein neuer Env/Secret. Deploy-Fix: `moddatetime` → `extensions.moddatetime` schema-qualifiziert (bare Form bestand Prod, brach aber den Schema-Drift-Shadow-DB-Build; Prod-Trigger idempotent nachgezogen). Kein Nav-Konflikt mit PROJ-109 (Meetings hängen an der bestehenden Gremien-Fläche). Offene Followups: PROJ-Y-117a (Kalender-Sync), 117b (Datei-Upload/PROJ-79), 117c (Terminserien), 117d (Meeting→PROJ-13-Versand).
 
 > **QA PASS 2026-07-21 (0 Critical/0 High → PRODUCTION-READY).** Live-Pentest `tests/sql/PROJ-117-committee-meetings-pentest.sql` **A–I 9/9 PASS** gegen aktuellen Prod re-verifiziert, 0 Residue (create+Floor-Lift, attendee+cross-project-reject, document, commit→2 neutrale decisions+1 task+3 outcomes ohne Minutes-Leak, non-manager-deny, **need-to-know hide→grant**, cross-tenant-iso, templates seed+idempotent+apply, audit). Playwright `tests/PROJ-117-committee-meetings.spec.ts` **13/13 chromium** (Auth-Gates: meetings list/create/detail/PATCH/DELETE + attendees + documents + commit + `meetings/ics` + committee-templates GET/POST/seed + committees/from-template). Advisors 0 ERROR/0 rls_disabled. vitest 2299/2299, lint 0, tsc 14 baseline/0 neu, build clean.
 >
