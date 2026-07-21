@@ -132,5 +132,18 @@ Nicht CIA-pflichtig: spec-following VIEW-Slice, kein neues Dep, keine neue Tabel
 
 → `/frontend` (Engpässe-Seite `/projects/[id]/engpaesse` + M&A-Nav-Eintrag).
 
+## Implementierungs-Notizen — Frontend (2026-07-21)
+
+- **Nav:** neuer M&A-Nav-Eintrag `MA_BOTTLENECKS_SECTION` (id `ma-bottlenecks`, Label „Engpässe", Icon `Gauge`, tabPath `engpaesse`, `requiresProjectType: 'ma'`) — in `withMaFoundation` direkt nach Workstreams eingehängt (Epic C, cross-workstream). method-templates 124/124 grün.
+- **Route** `src/app/(app)/projects/[id]/engpaesse/page.tsx` → **`MaBottlenecksPage`** (`src/components/projects/ma/ma-bottlenecks-page.tsx`):
+  - **AC3 Top-3-Kachel** oben (`top_bottlenecks` aus der RPC, älteste überfällige, „N Tage über").
+  - **AC2 Schnellfilter-Chips** (single-select, rein client-seitig über die RPC-Menge): Alle / Überfällig / Heute fällig / Diese Woche / Blockiert — mit Count-Badges aus der Summary; plus **Gruppierung** (keine / nach Verantwortlichem / nach Workstream).
+  - **AC4 CSV-Export-Button** → `taskBottlenecksExportUrl` (`<a download>`, disabled bei 0 Aufgaben).
+  - **AC1 Cross-Workstream-Tabelle** (shadcn `Table`, `overflow-x-auto`): Aufgabe · Workstream · Phase · Verantwortlich · Frist · Status · Tage über Frist. Überfällige Frist rot, „Tage über Frist" als destructive-Badge, blockierte Status-Badge destructive.
+  - Verantwortliche-Namen via `useTenantMembers`; Workstream/Phase-Label kommen fertig aus der RPC. Loading/Error/Empty (grüner „keine offenen Aufgaben") + „kein Treffer für Filter"-State.
+- **Gates:** ESLint 0, tsc 0 neu, method-templates 124/124, build clean (Route `/projects/[id]/engpaesse` registriert). Kein neues shadcn-Primitive nötig (Card/Table/Badge/Button/Select vorhanden), kein neues Dep.
+
+→ `/qa` (Need-to-know-Pentest gegen `project_task_bottlenecks` + Playwright Auth-Gates auf beiden Routen + Seite).
+
 ---
 _Quelle: Backlog-Entwurf M&A-Projektplattform · C — Aufgaben & Workstreams_
