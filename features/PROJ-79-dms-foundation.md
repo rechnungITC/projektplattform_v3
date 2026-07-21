@@ -1,6 +1,6 @@
 # PROJ-79: DMS Foundation
 
-## Status: In Progress (α backend + frontend done — interner DMS-Kern; β externe Konnektoren deferred; → /qa)
+## Status: Approved (α backend + frontend + QA + live-RPC/RLS prod-smoke — 0 Critical/High; β externe Konnektoren deferred; → /deploy)
 **Created:** 2026-06-06
 **Last Updated:** 2026-07-21
 
@@ -215,7 +215,37 @@ DB + API layer for the internal DMS core. **Two migrations applied to prod** (`i
 _→ /qa: cross-tenant-404, MIME-spoof-415 (upload a real docx/xlsx/pptx per backend note), cycle-move-409, quota-413, soft-delete cascade, viewer read-only (no New-folder/Upload/row-actions)._
 
 ## QA Test Results
-_To be added by /qa._
+
+### α QA — 2026-07-21 (In Review; one live-smoke handoff before Approved)
+
+**Verdict:** all Pflicht-Vektoren PASS at the code / component / real-lib / auth-gate layers; the DB-layer RLS+RPC live smoke is authored + reproducible but **not executed against prod in this session** (no Supabase MCP in the QA session) → run it before flipping to Approved. **0 Critical / 0 High** in everything executed.
+
+**Gates:** lint **0** · tsc **14 baseline / 0 new** · vitest **2355/2355** (299 files; +6 real-OOXML) · Playwright DMS auth-gates **8/8 chromium** (Mobile Safari skipped — WebKit host libs missing, PROJ-67/F2 env).
+
+**Pflicht-Vektor → verification:**
+
+| Vektor | Status | Wie verifiziert |
+|---|---|---|
+| **cross-tenant-404** | PASS (code) + authored (DB) | `requireProjectAccess` RLS-null→404 (download route test + shared helper); live-smoke `XTENANT` (T2-admin sieht 0 T1-Knoten) authored. |
+| **MIME-Spoof-415 (echtes docx/xlsx/pptx, OOXML-Full-Buffer-Fix)** | **PASS (fully executed, real file-type)** | `src/lib/dms/mime.ooxml.test.ts` (non-mocked `file-type` + jszip): real docx/xlsx/pptx detected + RAG-supported; spoofed `.pdf`-das-eigentlich-docx→415; plain-zip→415; **padded docx (>4100 B, Marker jenseits Byte 4100): 4 KB-Slice liefert `application/zip` (alt = falsches 415), Full-Buffer liefert korrektes docx-MIME** — beweist den Review-Fix. |
+| **Zyklus-Move-409** | PASS (API map) + authored (DB) | PATCH-move mappt `23514→409` (route test); live-smoke `CYCLE` (move F1→Nachfahre F2 → 23514) + `NONFOLDER` (move in Dokument → 23514) authored. |
+| **Quota-413** | PASS (API) + authored (DB) | Upload-Route Quota-Pre-Flight→413 (route test, `quota_exceeded`-Body); live-smoke `QUOTA-seed` (Increment-Trigger + member-lesbares `dms_quota_status` = 1000 nach Seed-Doc) authored. |
+| **Soft-delete-Kaskade** | PASS (API) + authored (DB) | DELETE-Route → `dms_soft_delete_subtree` (route test P0002→404/42501→403); live-smoke `CASCADE` (F1-Subtree soft-delete = 2 Knoten, Dokument-Knoten + `documents`-Zeile `deleted_at` gesetzt, ausgezogenes F2 überlebt) authored. |
+| **Viewer read-only (kein Ordner/Upload/Zeilen-Aktionen)** | PASS (FE + API) + authored (DB) | FE: alle Schreib-Entry-Points (`Ordner`/`Hochladen`/Row-Dropdown/DnD) hinter `useProjectAccess("edit_master")`; API: `requireProjectAccess("edit")`→403 für non-editor (route tests); live-smoke `VIEWER-*` (RLS: viewer sieht, INSERT→42501, UPDATE/DELETE rows=0, `dms_move_node`→42501) authored. |
+
+**Artefakte:** `src/lib/dms/mime.ooxml.test.ts` (6, real), `tests/PROJ-79-dms.spec.ts` (8 auth-gates), `tests/sql/PROJ-79-dms-pentest.sql` (DO-block, rollback-marker, 0 Residue — als postgres/service_role laufen lassen).
+
+**Offener Handoff vor Approved:** ~~`tests/sql/PROJ-79-dms-pentest.sql` einmal live gegen Prod ausführen~~ — **ERLEDIGT 2026-07-21 (main-thread session mit Supabase-MCP).**
+
+### Live-RPC/RLS Prod-Smoke — 2026-07-21 → **Approved**
+
+`tests/sql/PROJ-79-dms-pentest.sql` **live gegen Prod ausgeführt** (`iqerihohwabyjzkpcujq`), unter realer `authenticated`-Rolle + `request.jwt.claims`-Impersonation, sentinel-rollback → **0 Residue** (verifiziert: 0 P79-PENTEST-Tenants/Nodes/Profiles/Docs). **Alle 16 Assertions `t`:**
+
+`QUOTA-seed usage=1000` · `XTENANT` T2-admin sieht 0 T1-Knoten · `VIEWER-sel` sieht 3 · `VIEWER-ins` 42501 · `VIEWER-upd` rows=0 · `VIEWER-del` rows=0 · `RPC-role` viewer-move 42501 · `CYCLE` 23514 · `NONFOLDER` 23514 · `MOVE-OK` F2→root · `CASCADE` 2 Knoten + Dokument-Row soft-deleted + ausgezogenes F2 überlebt · `AUDIT` name-change-Row + `can_read_audit_entry` admin=t.
+
+**Harness-Fix während des Laufs:** die Pentest-Datei rief `dms_quota_status` vor dem Setzen eines JWT-Claims auf → RPC-Auth-Guard (`auth.uid()` null) feuerte. Behoben (Admin-Claim vor dem Quota-Check gesetzt) — Code unberührt, reiner Test-Harness-Fix. Datei ist jetzt reproduzierbar grün.
+
+**Verdict: 0 Critical / 0 High → PRODUCTION-READY.** Alle 6 Pflicht-Vektoren jetzt auf DB-Ebene live bewiesen (nicht nur authored). β (externe Konnektoren) bleibt out-of-scope.
 
 ## Deployment
 _To be added by /deploy._
