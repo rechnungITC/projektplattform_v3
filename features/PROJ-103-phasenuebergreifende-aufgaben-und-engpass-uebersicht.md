@@ -121,5 +121,16 @@ Nicht CIA-pflichtig: spec-following VIEW-Slice, kein neues Dep, keine neue Tabel
 ### Handoff
 `/backend` (Migration `project_task_bottlenecks` INVOKER-RPC + Export-Route + Pflicht-Live-RPC-Smoke) → `/frontend` (Engpässe-Seite + Nav) → `/qa` (Need-to-know-Pentest + Playwright Auth-Gates).
 
+## Implementierungs-Notizen — Backend (2026-07-21)
+
+- **Migration `20260721184740_proj103_task_bottlenecks`** in Prod (MCP-Version = Repo-Dateiname; Datei zur Prod-Version umbenannt per PROJ-134). Eine Funktion `project_task_bottlenecks(uuid)→jsonb`, **`language sql` / `stable` / `security invoker`** / `search_path=public,pg_temp`, `revoke public,anon` + `grant authenticated`. Verifiziert: `prosecdef=false`, authenticated-exec ✅, anon-exec ✗.
+- **Rückgabe** `{ tasks, top_bottlenecks, summary }`: offene Aufgaben (Status `todo/in_progress/blocked`, `done/cancelled` ausgeschlossen) mit Workstream-/Phasen-Label (LEFT JOIN), `days_overdue`, disjunkten Datums-Buckets (`is_overdue`/`is_due_today`/`is_due_this_week`, „diese Woche" = bis inkl. kommenden Sonntag via `isodow`) + orthogonalem `is_blocked`; Top-3 = älteste überfällige (`days_overdue desc`); Summary-Counts. Need-to-know erbt via `work_items`-RESTRICTIVE-Gate (INVOKER, kein zweites Rechtemodell).
+- **Routen:** `GET /api/projects/[id]/task-bottlenecks` (RPC-Delegation, session-client, `requireProjectAccess(view)`) + `GET …/task-bottlenecks/export` (CSV — ruft **dieselbe RPC** = eine Wahrheitsquelle, löst Verantwortliche-Namen via `profiles` unter Caller-RLS auf, Formula-Injection-Escaping + `X-Export-Scope`-Header, Muster PROJ-111). Client-Wrapper `src/lib/work-items/task-bottlenecks.ts` (+ `normaliseRow` coerct NULL-Booleans→false) + Hook `use-task-bottlenecks.ts`.
+- **Pflicht-Live-RPC-Smoke gegen Prod (rollback, 0 Residue):** M&A-Projekt + Phase + Workstream + 7 Aufgaben geseedet → RPC-Ausgabe verifiziert: 6 offen (done ausgeschlossen), T1 overdue/10d + T2 overdue/3d, T3 due_today, T4 due_this_week, T7 kein Bucket, T5 blocked/nicht-overdue; Labels korrekt; summary open 6/overdue 2/today 1/this_week 1/blocked 1; top_bottlenecks T1(10),T2(3). 0 Residue bestätigt.
+- **Gates:** ESLint 0, tsc 0 neu (baseline unberührt), vitest **+14** (10 Route + 4 Lib) grün, build clean (beide Routen registriert). Kein neues Dep, keine neue Tabelle/Feld.
+- Kein Fresh-Apply-Guard nötig: PROJ-103 referenziert nur `work_items`/`phases`/`workstreams` (kein PROJ-107-`risks`-Bezug); `work_items.confidentiality_level` stammt aus PROJ-100a (fresh-apply-sauber).
+
+→ `/frontend` (Engpässe-Seite `/projects/[id]/engpaesse` + M&A-Nav-Eintrag).
+
 ---
 _Quelle: Backlog-Entwurf M&A-Projektplattform · C — Aufgaben & Workstreams_
