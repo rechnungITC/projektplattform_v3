@@ -14,7 +14,11 @@ summary_for_jira: "[H1] Gremien- und Meeting-Verwaltung"
 
 # PROJ-117: Gremien- und Meeting-Verwaltung
 
-## Status: Architected (Tech-Design 2026-07-21, CIA GO-mit-ADJUST — EXTEND auf PROJ-98 committees; Meetings + confirm-gated Minutes-Commit → PROJ-20/PROJ-101. → /backend)
+## Status: In Progress (Backend-DB gebaut + Live-Smoke 2026-07-21; TS-API-Layer + /frontend offen)
+
+> **Backend-DB gebaut 2026-07-21:** Migration `20260721155102_proj117_committee_meetings` in Prod. 5 Tabellen (`committee_meetings` mit Floor-Trigger ≥ committee + can_access_classified-Gate; `committee_meeting_attendees`/`_documents`/`_outcomes` erben den Gate transitiv via bare EXISTS(committee_meetings); `committee_templates` tenant-scoped). 11 RPCs (create/update/delete_committee_meeting, set/remove_meeting_attendee, add/remove_meeting_document, `commit_meeting_minutes` [atomar → neutrale PROJ-20-decisions + PROJ-101-tasks + outcome-Reverse-Links, H5 RLS-Bypass-Kontrakt], seed_committee_templates, create_committee_template, create_committee_from_template) — alle SECURITY DEFINER, auth.uid()-only, anon-revoked; Floor-Trigger-Fn trigger-only-revoked. Audit-Trio aus LIVE-Defs neu gebaut (inkl. PROJ-79 document_tree_nodes/documents erhalten) + entity_type-CHECK in derselben Migration + authenticated-Grant re-granted. **Pflicht-Live-RPC-Smoke `tests/sql/PROJ-117-committee-meetings-pentest.sql` A–I 9/9 PASS gegen Prod, 0 Residue** (create+floor-lift, attendee+cross-project-reject, document, commit→2 neutrale decisions+1 task+3 outcomes ohne Minutes-Leak, non-manager-deny, need-to-know hide→grant, cross-tenant-iso, templates seed+idempotent+apply, audit). Advisors 0 ERROR/0 rls_disabled. **Offen:** TS-API-Routen (Meetings-CRUD/Attendees/Documents/Commit/ICS-Export) + Client-Wrapper + Route-Tests → dann /frontend → /qa.
+
+## Status (vorher): Architected (Tech-Design 2026-07-21, CIA GO-mit-ADJUST — EXTEND auf PROJ-98 committees; Meetings + confirm-gated Minutes-Commit → PROJ-20/PROJ-101. → /backend)
 **Created:** 2026-06-10
 **Origin:** M&A-Platform Backlog (Epic H — Kommunikation, Gremien & Stakeholder)
 **Priority:** P1
