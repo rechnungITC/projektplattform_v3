@@ -1,6 +1,6 @@
 # PROJ-75: Class-3-Re-Classification nach Parse
 
-## Status: Approved (QA PASS 2026-07-21 — 0 Critical/0 High)
+## Status: Deployed (2026-07-21, Tag `v2.15.0-PROJ-75`)
 **Created:** 2026-07-21
 **Last Updated:** 2026-07-21
 
@@ -394,4 +394,14 @@ Auth-Gate: POST ohne Auth / falsches Bearer / GET → erreicht Handler (kein 307
 ESLint 0 · tsc 14 baseline/0 neu · vitest **2302/2302** (+10) · build clean · Playwright 3/3 chromium · Advisor: keine neuen (additive Spalten + Index).
 
 ## Deployment
-_To be added by /deploy_
+
+**Deployed 2026-07-21 — Tag `v2.15.0-PROJ-75`** (PR #244 → main `f843dbb`; Vercel auto-deploy from main).
+Migration `20260721162717` seit /backend in Prod (DDL-only, kein Runtime-Migrationsschritt). Kein neuer Env/Secret.
+
+**Post-Deploy-Smoke (live gegen Prod):** Backfill-Route `POST /api/context-sources/reclassify-backfill` → 401 ohne Auth **und** mit falschem Bearer (kein 307 → H-1-Fix live bestätigt, kein Secret-Leak); `GET` → 405 (POST-only); Home → 307 (Session-Gate intakt). Required-Checks alle grün (schema-drift, migration-naming, npm-audit, Snyk).
+
+**Offener Post-Deploy-Handoff (D-1) — braucht Prod-`CRON_SECRET`:**
+1. Backfill einmal gegen die **13 realen `truncated` & < Class-3**-Rows laufen:
+   `curl -X POST https://projektplattform-v3.vercel.app/api/context-sources/reclassify-backfill -H "Authorization: Bearer $CRON_SECRET" -H "content-type: application/json" -d '{"limit":500}'`
+   → Response-Zähler prüfen (upgraded/unverified/remaining); schließt die reale DSGVO-Exposure.
+2. Optional-Gegenprobe: neuen Upload mit PII jenseits Zeichen 8000 → `privacy_class=3` verifizieren.
