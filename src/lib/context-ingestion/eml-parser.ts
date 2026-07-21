@@ -55,6 +55,10 @@ export interface EmailParseResult {
   /** Plaintext excerpt capped at EXCERPT_MAX_CHARS (HTML already
    *  stripped by mailparser — Lock-6). */
   excerpt: string
+  /** PROJ-75 — complete parsed body text (not excerpt-truncated) used as the
+   *  privacy-classification input. Complete by construction: a body exceeding
+   *  MAX_PLAINTEXT_RAW_BYTES is rejected above (fail-closed). */
+  full_text: string
   raw_length: number
   page_count: number
   truncated: boolean
@@ -171,6 +175,7 @@ export async function parseEml(buffer: Buffer): Promise<EmailParseResult> {
 
   return {
     excerpt,
+    full_text: raw, // PROJ-75 — full screening input; raw already capped/rejected at 2 MB above.
     raw_length: raw.length,
     page_count: 1,
     truncated: raw.length > PARSER_CONSTANTS.EXCERPT_MAX_CHARS,

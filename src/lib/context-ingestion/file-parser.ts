@@ -53,6 +53,12 @@ export interface ParseResult {
   /** Plaintext excerpt capped at EXCERPT_MAX_CHARS for storage in
    *  `context_sources.content_excerpt`. */
   excerpt: string
+  /** PROJ-75 — the COMPLETE parsed plaintext (NOT truncated to
+   *  EXCERPT_MAX_CHARS). Used solely as the privacy-classification input so
+   *  PII beyond the excerpt cut is still detected. Always complete: a document
+   *  whose text would exceed MAX_PLAINTEXT_RAW_BYTES is rejected upstream
+   *  (fail-closed, "fully screened or rejected"), never returned partial. */
+  full_text: string
   /** Raw-text length BEFORE the excerpt cut, useful for "truncated to N chars"
    *  UX hints. */
   raw_length: number
@@ -210,8 +216,16 @@ export async function parsePdf(buffer: Buffer): Promise<ParseResult> {
     chunks.push(text)
     rawLength += text.length
     if (rawLength > MAX_PLAINTEXT_RAW_BYTES) {
-      // Defensive: a 200-page text-bomb is unlikely but possible.
-      break
+      // PROJ-75 (AC-75.13) — FAIL-CLOSED. Previously this `break` returned
+      // partial text with `truncated: true` and the row was ingested anyway,
+      // leaving PII on the un-extracted pages unscreened. We now reject —
+      // uniform with the DOCX/TXT >2 MB and PDF >200-page rejects — so no
+      // document is ever accepted with an unscreened text remainder
+      // ("fully screened or rejected").
+      throw new FileParseError(
+        "raw_text_cap_exceeded",
+        `PDF raw-text exceeds the ${MAX_PLAINTEXT_RAW_BYTES}-byte cap; cannot be fully screened.`,
+      )
     }
   }
   const raw = chunks.join("\n\n")
@@ -219,9 +233,12 @@ export async function parsePdf(buffer: Buffer): Promise<ParseResult> {
 
   return {
     excerpt,
+    full_text: raw,
     raw_length: rawLength,
     page_count: doc.numPages,
-    truncated: rawLength > EXCERPT_MAX_CHARS || rawLength >= MAX_PLAINTEXT_RAW_BYTES,
+    // After AC-75.13 the loop either extracted the full text or threw, so
+    // `truncated` now only reflects the excerpt cut, never a source cut-off.
+    truncated: raw.length > EXCERPT_MAX_CHARS,
   }
 }
 
@@ -258,6 +275,7 @@ export async function parseDocx(buffer: Buffer): Promise<ParseResult> {
   const excerpt = raw.length > EXCERPT_MAX_CHARS ? raw.slice(0, EXCERPT_MAX_CHARS) : raw
   return {
     excerpt,
+    full_text: raw, // PROJ-75 — full screening input; raw already capped/rejected at 2 MB above.
     raw_length: raw.length,
     page_count: 1, // DOCX has no native page count without rendering
     truncated: raw.length > EXCERPT_MAX_CHARS,
@@ -285,6 +303,7 @@ export function parseText(buffer: Buffer): ParseResult {
   const excerpt = raw.length > EXCERPT_MAX_CHARS ? raw.slice(0, EXCERPT_MAX_CHARS) : raw
   return {
     excerpt,
+    full_text: raw, // PROJ-75 — full screening input; raw already capped/rejected at 2 MB above.
     raw_length: raw.length,
     page_count: 1,
     truncated: raw.length > EXCERPT_MAX_CHARS,

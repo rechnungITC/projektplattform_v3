@@ -1,6 +1,6 @@
 # PROJ-75: Class-3-Re-Classification nach Parse
 
-## Status: Planned
+## Status: In Progress
 **Created:** 2026-07-21
 **Last Updated:** 2026-07-21
 
@@ -303,6 +303,44 @@ der Spalten selbst nötig.
 
 ### Dependencies (Pakete)
 - **Keine.** Reine Lib-/Route-/Migrations-Änderung.
+
+### Implementation Notes — Backend (2026-07-21)
+**Gebaut auf `proj-75/requirements` im Worktree; kein neuer Dep.**
+
+- **Migration `20260721162717_proj75_class3_reclassification`** in Prod (Repo-Dateiname == Prod-Version, PROJ-134-konform): additive Spalten
+  `context_sources.full_text_classified_at` (timestamptz null) +
+  `classification_unverified` (bool default false) + partieller Index
+  `idx_context_sources_fulltext_pending (tenant_id) WHERE full_text_classified_at IS NULL`.
+- **Parser** (`file-parser.ts`): `ParseResult.full_text` (kompletter Rohtext,
+  getrennt vom 8000-Excerpt); alle 5 Parser (pdf/docx/text/eml/msg) füllen es.
+  **PDF-`break` bei >2 MB → `throw raw_text_cap_exceeded`** (AC-75.13, fail-closed,
+  einheitlich mit DOCX/TXT); `truncated` reflektiert danach nur noch den
+  Excerpt-Cut, nie eine Quell-Abschneidung.
+- **Ingestion-Route** (`context-sources/route.ts`): klassifiziert über
+  `full_text` statt Excerpt (AC-75.1/2); `content_excerpt` bleibt 8000-gekappt
+  (AC-75.3); `full_text_classified_at` auf BEIDEN Insert-Pfaden (Multipart +
+  JSON) gesetzt → neue Rows brauchen keinen Backfill.
+- **Backfill** `POST /api/context-sources/reclassify-backfill` (Bearer
+  `CRON_SECRET`, service-role, **kein** vercel.json-Cron → manuell/one-shot):
+  bounded Batch über `full_text_classified_at IS NULL`; re-parst Storage-Datei
+  (neuer `downloadContextSourceFile`/`parseStoragePointer` in `storage.ts`),
+  klassifiziert Volltext, **monotone** Hochstufung (`Math.max`, nie Downgrade,
+  AC-75.4), Datei behalten (AC-75.7); Fail-safe → `classification_unverified=true`,
+  Klasse unverändert, nicht als screened markiert → Retry auf Folgelauf (AC-75.8);
+  non-truncated/JSON-Rows ohne Datei → als screened markiert ohne Re-Parse;
+  Response-Zähler checked/upgraded/unverified/screened_unchanged/remaining (AC-75.10).
+  Regex-only, kein LLM (AC-75.11); Invariante #3 + DB-Default 3 unberührt (AC-75.12).
+- **Tests:** +2 `file-parser.test` (full_text-Separation, PDF->2MB-Reject) + 6
+  `reclassify-backfill/route.test` (auth 500/401×2, Upgrade→Class-3, No-Downgrade,
+  Fail-safe-Flag, non-truncated-mark, FileParseError→unverified).
+- **Quality-Gates:** ESLint 0, tsc 14 baseline/**0 neu**, vitest **2302/2302**,
+  build clean (Route registriert).
+- **Live-DB-Smoke (read-only, 0 Residue):** neue Spalte+Index+JSON-Filter-Query
+  läuft live gegen Prod; quantifiziert Exposure: **13/15** context_sources sind
+  `truncated` UND < Class-3 → genau der Bestand, den der Sweep re-screent.
+- **Offen für /qa:** echter End-to-End-Live-Smoke — (a) Ingestion mit PII jenseits
+  Zeichen 8000 → Class-3; (b) Backfill-Route gegen die 13 realen truncated-Rows
+  (seed→run→verify→rollback); (c) PDF->2 MB → 422.
 
 ## QA Test Results
 _To be added by /qa_
