@@ -19,6 +19,18 @@
 --
 -- No new dep, no new policy. Idempotent (create or replace).
 
+-- Fresh-apply guard: risks.confidentiality_level is added by PROJ-107
+-- (20260703135741), but that migration is not fresh-apply-clean in the
+-- schema-drift shadow DB — it aborts on a tolerated REVOKE/GRANT-on-missing-
+-- function before reaching its own `add column`, so the column is absent when
+-- migrations are replayed from files (production has it, applied statement-wise
+-- via MCP). This idempotent guard makes THIS migration deterministic regardless
+-- of PROJ-107's replay quirk: a no-op in production and in any correct apply
+-- order, it only ensures the column exists so the SECURITY INVOKER function body
+-- below validates. The need-to-know RESTRICTIVE policies still live in PROJ-107.
+alter table public.risks
+  add column if not exists confidentiality_level public.ma_confidentiality_level not null default 'standard';
+
 create or replace function public.risk_measure_overview(p_project_id uuid)
 returns jsonb
 language sql
