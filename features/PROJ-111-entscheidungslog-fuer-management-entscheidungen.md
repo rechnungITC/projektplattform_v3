@@ -14,7 +14,9 @@ summary_for_jira: "[F2] Entscheidungslog für Management-Entscheidungen"
 
 # PROJ-111: Entscheidungslog für Management-Entscheidungen
 
-## Status: Approved (QA PASS 2026-07-21, gebündelt mit PROJ-110 — 0 Critical/0 High → /deploy)
+## Status: Deployed (2026-07-21, Tag `v2.12.0-PROJ-110`, gebündelt mit PROJ-110)
+
+> **Deployed 2026-07-21:** Code live via PR #238 (squash → main `a72e3ae`, Tag `v2.12.0-PROJ-110`); Migration `20260721094301` (3 INSERT-only decisions-Felder) seit /backend in Prod. Post-Deploy-Smoke: decisions/export-Route 307 Auth-Gate. Kein neuer Env/Secret. Backend + CSV-Export live; FE-Followups PROJ-Y-111a (committee/options-Eingabe im DecisionForm + Timeline-Filter Phase/Entscheider/Quelle) + Deliverable-Link (PROJ-104).
 
 > **QA PASS 2026-07-21 (bundled run mit PROJ-110, 0 Critical/0 High → PRODUCTION-READY).** Playwright `tests/PROJ-110-stage-gates.spec.ts` deckt die `decisions/export`-Route auth-gated ab (307/401/403). Der HIGH-2-Need-to-know-Filter (`hidden_stage_gate_decision_ids`) ist im PROJ-110-Live-Pentest Case H bewiesen (strict-Gate-Decision für Nicht-Cleared versteckt). Drift-Test (decisions POST kitchen-sink) grün → die 3 neuen INSERT-only-Felder erreichen den DB-Payload. vitest 2287/2287, lint 0, tsc 0 neu, build clean.
 >
