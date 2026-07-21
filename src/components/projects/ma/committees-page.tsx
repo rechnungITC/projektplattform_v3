@@ -1,6 +1,6 @@
 "use client"
 
-import { Loader2, Pencil, Plus, Trash2, Users } from "lucide-react"
+import { CalendarDays, Loader2, Pencil, Plus, Sparkles, Trash2, Users } from "lucide-react"
 import * as React from "react"
 import { toast } from "sonner"
 
@@ -49,6 +49,8 @@ import {
 import { Switch } from "@/components/ui/switch"
 import { Textarea } from "@/components/ui/textarea"
 import { useProjectAccess } from "@/hooks/use-project-access"
+import { CommitteeMeetingsSheet } from "./committee-meetings-sheet"
+import { CommitteeTemplatesDialog } from "./committee-templates-dialog"
 import {
   addCommitteeMember,
   type Committee,
@@ -107,6 +109,8 @@ export function CommitteesPage({ projectId }: { projectId: string }) {
     { mode: "closed" } | { mode: "create" } | { mode: "edit"; committee: Committee }
   >({ mode: "closed" })
   const [memberSheetFor, setMemberSheetFor] = React.useState<Committee | null>(null)
+  const [meetingsFor, setMeetingsFor] = React.useState<Committee | null>(null)
+  const [templatesOpen, setTemplatesOpen] = React.useState(false)
 
   const reload = React.useCallback(async () => {
     const [c, s] = await Promise.all([
@@ -173,9 +177,14 @@ export function CommitteesPage({ projectId }: { projectId: string }) {
           </p>
         </div>
         {canManage && (
-          <Button size="sm" onClick={() => setDialog({ mode: "create" })}>
-            <Plus className="mr-2 h-4 w-4" aria-hidden /> Gremium
-          </Button>
+          <div className="flex shrink-0 gap-2">
+            <Button size="sm" variant="outline" onClick={() => setTemplatesOpen(true)}>
+              <Sparkles className="mr-2 h-4 w-4" aria-hidden /> Aus Vorlage
+            </Button>
+            <Button size="sm" onClick={() => setDialog({ mode: "create" })}>
+              <Plus className="mr-2 h-4 w-4" aria-hidden /> Gremium
+            </Button>
+          </div>
         )}
       </div>
 
@@ -250,15 +259,20 @@ export function CommitteesPage({ projectId }: { projectId: string }) {
                     </dl>
                   )}
 
-                  <div className="flex items-center justify-between">
+                  <div className="flex flex-wrap items-center justify-between gap-2">
                     <span className="text-sm font-medium">
                       Besetzung ({c.members.length})
                     </span>
-                    {canManage && (
-                      <Button size="sm" variant="outline" onClick={() => setMemberSheetFor(c)}>
-                        <Users className="mr-2 h-4 w-4" aria-hidden /> Besetzung verwalten
+                    <div className="flex gap-2">
+                      <Button size="sm" variant="outline" onClick={() => setMeetingsFor(c)}>
+                        <CalendarDays className="mr-2 h-4 w-4" aria-hidden /> Termine
                       </Button>
-                    )}
+                      {canManage && (
+                        <Button size="sm" variant="outline" onClick={() => setMemberSheetFor(c)}>
+                          <Users className="mr-2 h-4 w-4" aria-hidden /> Besetzung verwalten
+                        </Button>
+                      )}
+                    </div>
                   </div>
                   {c.members.length === 0 ? (
                     <p className="text-sm text-muted-foreground">Keine Mitglieder.</p>
@@ -317,6 +331,28 @@ export function CommitteesPage({ projectId }: { projectId: string }) {
           canManage={canManage}
           onClose={() => setMemberSheetFor(null)}
           onChanged={reload}
+        />
+      )}
+
+      {meetingsFor && (
+        <CommitteeMeetingsSheet
+          projectId={projectId}
+          committee={meetingsFor}
+          stakeholders={stakeholders}
+          canManage={canManage}
+          onClose={() => setMeetingsFor(null)}
+        />
+      )}
+
+      {templatesOpen && (
+        <CommitteeTemplatesDialog
+          projectId={projectId}
+          canManage={canManage}
+          onClose={() => setTemplatesOpen(false)}
+          onApplied={async () => {
+            setTemplatesOpen(false)
+            await reload()
+          }}
         />
       )}
     </div>
