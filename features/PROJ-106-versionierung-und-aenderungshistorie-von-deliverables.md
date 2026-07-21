@@ -76,3 +76,24 @@ Insbesondere SPA, LOI, Bewertungsmodelle und DD-Berichte durchlaufen mehrere Ver
 
 ---
 _Quelle: Backlog-Entwurf M&A-Projektplattform · D — Deliverables & Artefakte_
+
+---
+
+## Architecture Note — Deferred pending PROJ-79 (CIA 2026-07-21)
+
+`/architecture` gestartet, dann **bewusst zurückgestellt**: PROJ-106 wartet auf echten Datei-Storage aus **PROJ-79 (DMS Foundation)**. User-Entscheidung 2026-07-21 — erst PROJ-79 bauen. Die CIA-Analyse ist hier konserviert, damit sie bei Wiederaufnahme nicht verloren geht.
+
+**CIA-Kernkorrektur:** Die Spec-Klassifikation *„DUP→REUSE, Andockpunkt PROJ-10"* ist teilweise falsch. PROJ-10-Audit protokolliert nur Feld-Diffs und kennt **kein** nummeriertes Versions-Objekt mit `is_current`-Marker + Approval-Bezug → AC1/AC4/AC5 nicht abgedeckt (Option C scheidet aus). Ein Deliverable-Record-Snapshot (Option B) wäre redundant zum bereits aktiven `deliverables`-Audit → Shared-Core-Verstoß.
+
+**Empfohlener Weg bei Wiederaufnahme (Option A im „D-Framing"):** Versionskette pro Dokument-Slot über das Core-Immutable-Supersede-Muster (Invariante #5, analog `decisions.supersedes_*`). `deliverable_documents` additiv erweitern: `version_no`, `supersedes_document_id`, `is_current`, `version_comment`, `approved_in_event_id` (nullable FK → PROJ-105 `deliverable_approval_events`, = AC5). „Neue Version" = INSERT neue Row + `is_current`-Flip der alten (ein sauberer Audit-Eintrag → DoD „Audit erfasst Versionswechsel" gratis). Immutability-Guard-Trigger für AC2. Audit-Trio non-destruktiv in derselben Migration erweitern (M&A-EXTEND-Rezept). FK-Richtung: Version kennt ihr Approval-Event, nicht umgekehrt (immutable events-Tabelle nicht anfassen).
+
+**Scope-Schnitt (bei Wiederaufnahme):**
+- **MVP (nach PROJ-79):** Link-/Metadaten-Versionskette + INSERT-Version-RPC (`auth.uid()`) + nullable Approval-Link + Immutability-Guard + UI-Versionsliste (Current-Badge/Uploader/Datum/Kommentar).
+- **Deferred → PROJ-79/DMS:** echter Binär-Upload + Storage-Bucket, Binär-Retention/Archiv.
+- **Out-of-Scope (Spec):** Diff-Anzeige.
+
+**DoR-Defaults (kein Hard-Blocker):** (1) DMS-Strategie = bestehende Out-of-Scope-Klausel (DMS wird Store-of-Record sobald PROJ-79 landet, Plattform spiegelt). (2) Retention = folgt Projekt-Lifecycle bis Tenant-Offboarding (PROJ-17); per-Typ-Fristen warten mit Binär-Storage.
+
+**Followup-Kandidaten:** PROJ-Y-106a (Auto-Stempel der aktuellen Version beim finalen PROJ-105-Approve), PROJ-Y-106b (Binär-Versionierung + Retention, mit PROJ-79-DMS), PROJ-Y-106c (Versions-Diff-Ansicht).
+
+> **Hinweis:** PROJ-79s eigene Out-of-Scope-Liste stellt „Document version history (for now overwrite-with-rename)" ebenfalls zurück — PROJ-106 bleibt also auch nach PROJ-79 die dedizierte Versionierungs-Slice, die auf dem dann existierenden Storage aufsetzt.

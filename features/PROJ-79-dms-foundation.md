@@ -1,8 +1,8 @@
 # PROJ-79: DMS Foundation
 
-## Status: Planned
+## Status: Architected (α — interner DMS-Kern; β externe Konnektoren deferred)
 **Created:** 2026-06-06
-**Last Updated:** 2026-06-07
+**Last Updated:** 2026-07-21
 
 ## Summary
 The platform needs a project-scoped Document Management System: a navigation tree per project under which documents can be uploaded, browsed, moved, renamed, and downloaded. External sources (SharePoint, Google Drive) can be connected per tenant; their content is mirrored as read-only references in the same tree. Tenant storage is enforced against a license-bound quota. This story builds the storage layer + tree + external-source connectors, **not** the RAG indexing or summarization, which is PROJ-80.
@@ -99,7 +99,86 @@ The platform needs a project-scoped Document Management System: a navigation tre
 <!-- Sections below are added by subsequent skills -->
 
 ## Tech Design (Solution Architect)
-_To be filled by /architecture._
+
+> **CIA-reviewed 2026-07-21 (Portfolio + Fork).** Verdikt: PROJ-79 wird in **α (interner DMS-Kern, jetzt)** und **β (externe Konnektoren, deferred, CIA-pflichtig)** geteilt. α ist der klare pilot-kritische Gewinner — schließt die härteste ERP-Pilot-Lücke (durablearer Dokument-Speicher → PRD-Metrik „≥80% Artefakte auf der Plattform") mit etablierten Mustern und niedrigem Risiko. Dieses Design deckt **nur α** ab.
+
+### Scope-Grenze α / β
+
+| In α (dieser Slice) | Deferred → β (eigene Spec-Zeile, CIA-pflichtig) |
+|---|---|
+| Interner Dokument-Baum + Datei-Upload (Supabase Storage) | Externe SharePoint/GDrive-Konnektoren (`external_source_connectors`) |
+| Tree-CRUD: Ordner anlegen, umbenennen, verschieben, soft-delete | OAuth-Flow + Supabase **Vault** (bisher nirgends genutzt) |
+| Quota **inkrementell** (Zähler + Pre-Flight-Block bei Upload/Delete) | `external_link`-Knoten + On-Demand-Fetch externer Dokumente |
+| RLS, PROJ-10-Audit, Admin-Storage-Übersicht | **Nächtlicher Quota-Truth-Sweep-Cron** (α zählt nur inkrementell) |
+
+Die DB-Enums bleiben forward-kompatibel: `node_type` behält `external_link`, `documents.storage_backend` behält `sharepoint`/`gdrive` — α **erzeugt** aber ausschließlich `folder`/`document` bzw. `internal`. β schaltet die restlichen Werte frei, ohne Migration der α-Daten.
+
+### A) Komponenten-Struktur (UI)
+
+```
+Projekt-Raum  →  neue Sektion "Dokumente"  (Core, ALLE Projekt-Typen — kein M&A-Gate)
++-- DMS-Seite  /projects/[id]/dokumente
+|   +-- Linke Spalte: Dokument-Baum (react-arborist, lazy pro Parent geladen)
+|   |   +-- Ordner-Knoten (aufklappbar)
+|   |   +-- Dokument-Knoten (Icon nach MIME)
+|   |   +-- Kontextmenü: Umbenennen · Verschieben · Löschen · Neuer Ordner
+|   +-- Rechte Spalte: Detail des gewählten Knotens
+|   |   +-- Ordner gewählt → Liste der Kinder + "Hochladen"- + "Ordner"-Button
+|   |   +-- Dokument gewählt → Metadaten (Name, Größe, Typ, Uploader, Datum) + Download
+|   +-- Upload-Dialog (Datei-Picker; Ziel = aktueller Ordner; Fortschritt + Fehler-States)
+|   +-- Ordner-anlegen-Dialog · Umbenennen-Dialog · Verschieben (DnD im Baum) · Löschen-Confirm
+|   +-- Kleiner Quota-Hinweis (gelb ≥ Soft-Warnung, rot bei 100%) im Seitenkopf
+|
++-- Admin-Bereich: Storage-Übersicht  (Einstellungen → Speicher, tenant-admin-only)
+    +-- Nutzungsbalken tenant-weit (aktuelle Bytes / Lizenz-Limit) mit Soft-Warnung
+    +-- Read-only Liste der größten Projekte/Ordner (optional, aus vorhandenen Zählern)
+```
+
+**Reuse:** `react-arborist` ist bereits Dependency (org-tree, backlog-tree) → **kein neues Frontend-Dep**. shadcn `Dialog`/`Progress`/`Alert`/`Button` vorhanden.
+
+### B) Datenmodell (Klartext)
+
+Drei neue Tabellen (Feld-Details in den Akzeptanzkriterien oben). Multi-Tenant-Invariante: `tenant_id NOT NULL` + Cascade auf allen dreien.
+
+- **`document_tree_nodes`** — der Baum je Projekt. Jeder Knoten ist ein *Ordner*, ein *Dokument* oder (β) ein *externer Link*. Wurzel je Projekt hat `parent_id = NULL`. Eindeutigkeit `(parent_id, slug)` verhindert Namensdopplung im selben Ordner. Verschieben = `parent_id` ändern **mit Zyklus-Prüfung** (ein Ordner darf nicht in seinen eigenen Nachfahren wandern → 409). Löschen = **soft-delete** (`deleted_at`), Kinder werden mit-soft-gelöscht.
+- **`documents`** — Metadaten einer abgelegten Datei, hängt an genau einem `document`-Knoten. Zeigt via `storage_path` auf ein Objekt im Supabase-Storage-Bucket. Hält `mime_type`, `size_bytes`, `checksum`, `original_filename`. `ai_generated`-Flag + `ai_generated_metadata` für spätere PROJ-83-Artefakte (in α immer `false`).
+- **`tenant_storage_quotas`** — ein Datensatz pro Tenant: `max_bytes` (aus Lizenz-Tier), `current_usage_bytes` (inkrementell gepflegt), `soft_warning_pct`. Quota ist **pro Tenant, nicht pro Projekt**.
+
+**Storage-Backend (intern):** Supabase-Storage-Bucket **`documents`** — **privat**, Pfad immer `tenant_id/project_id/…`. Übernimmt 1:1 das gehärtete Muster aus PROJ-70 (`context-source-uploads`): Magic-Byte-Sniffing gegen MIME-Spoofing, MIME-Allowlist, Größen-Cap. Bucket-RLS-Policy tenant/project-prefixed — **nicht neu erfinden** (R-2).
+
+**Versionierung ist NICHT Teil von α** (eigene Out-of-Scope-Liste: „overwrite-with-rename"). PROJ-106 legt die dokumentierte Versionskette später auf `documents` auf.
+
+### C) Server-Verhalten (Regeln, keine Implementierung)
+
+- **Upload** `POST /api/projects/:id/documents` (multipart): Pre-Flight `size + current_usage_bytes ≤ max_bytes` sonst **413** mit Nutzungs-/Limit-Angabe. MIME per Magic-Byte geprüft (Mismatch → **415**). Formate V1: PDF/DOCX/XLSX/PPTX/MD/TXT/CSV/PNG/JPG; andere gespeichert + `mime_unsupported_for_rag`-Flag (PROJ-80 überspringt). Max 50 MB. Doppelter Dateiname im Ordner → Server hängt ` (2)`/` (3)` an. Reihenfolge: **erst parsen/prüfen, dann Storage-Upload, dann DB-Insert** (PROJ-70-Lektion: Orphan-Cleanup bei Fehlschlag).
+- **Tree-Ops:** `POST …/tree/nodes` (Ordner), `PATCH …/tree/nodes/:nodeId` (Rename/Move + Zyklus-Guard 409), `DELETE …/tree/nodes/:nodeId` (soft-delete, kaskadiert auf Kinder).
+- **Quota inkrementell:** `current_usage_bytes` += bei Upload, −= bei Soft-Delete. **Aber:** gelöschte Bytes bleiben 30 Tage „charged" (Restore-Fenster, Edge-Case der Spec) — Finalisierung/Truth-Sweep erst in β. Zähler-Drift bewusst akzeptiert bis β-Sweep (R-3).
+- **RLS:** `document_tree_nodes`/`documents` read = `is_project_member(project_id)`; write = `is_project_lead` **oder** editor-Rolle; viewer read-only; cross-tenant → **404**. `tenant_storage_quotas` read = tenant-admin; write = **system-only via Trigger/RPC** (kein direktes UPDATE).
+- **Audit (PROJ-10):** Ereignisse `document.uploaded/renamed/moved/deleted`, `tree_node.created/deleted`, `storage_quota.exceeded`. (Konnektor-Events erst β.)
+
+### D) Tech-Entscheidungen (WARUM)
+
+1. **Interner Storage über das PROJ-70-Muster wiederverwenden** statt Neuentwurf → bewährte Bucket-RLS + Anti-Spoofing, niedriges Risiko (R-2-Mitigation).
+2. **`react-arborist`** als Baum (schon im Einsatz) mit **lazy expansion pro Parent** → keine Massen-Query, kein neues Dep, konsistente UX mit org-tree.
+3. **Quota bleibt in α, aber nur inkrementell** → Enforcement (Zähler + Pre-Flight) ist billig und gehört zur SaaS-Lizenz-Story; der teurere nächtliche Truth-Sweep-Cron wandert nach β (CIA-Präzisierung).
+4. **Externe Konnektoren strikt in β** → Vault + OAuth + Provider-SDKs sind Greenfield mit ganz anderem Risiko-Profil; sie dürfen den musterbasierten α-Kern nicht ausbremsen (R-1).
+5. **Soft-delete + 30-Tage-Charge** → Restore-Fähigkeit ohne sofortige Byte-Freigabe, wie im Edge-Case gefordert.
+
+### E) Forward-Compat-Notiz — Dokument-Referenzen (CIA F-5 / PROJ-Y-doc-refs)
+
+`documents` ist ab jetzt der **kanonische Binär-Store** der Plattform. Die bestehenden Link-Tabellen (`deliverable_documents.url`, `vendor_documents`, `work_item_documents`) bleiben **bewusst getrennt** (eigene Konzerne/Lebenszyklen) — **keine Konsolidierung in α**. Später (PROJ-Y-doc-refs) dürfen sie optional auf einen `document_tree_nodes`-Knoten via `node_id` zeigen statt auf eine Roh-URL. α baut dafür keine Kopplung, hält den Store aber referenzierbar (stabile Knoten-IDs).
+
+### F) Dependencies
+
+**Keine neuen Packages.** react-arborist (vorhanden), Supabase Storage (built-in), file-type/Magic-Byte-Härtung (aus PROJ-70 vorhanden). β wird Microsoft-Graph-/Google-Drive-SDK + Vault einführen (dann CIA).
+
+### G) Deferred → β (als eigene Spec-Zeile / PROJ-Y-79β zu formalisieren)
+
+`external_source_connectors` + SharePoint/GDrive-OAuth + Supabase Vault + Token-Refresh + On-Demand-Fetch + read-only `external_link`-Knoten + **nächtlicher Quota-Truth-Sweep-Cron**. **Offene Input-Frage Q1:** Will der M365-Pilotkunde SharePoint-Inhalte *referenzieren* oder *direkt hochladen*? Bei „referenzieren" rückt β vor die Skill-Familie (76–84), sonst dahinter.
+
+### H) Handoff-Reihenfolge
+
+Diese Slice hat sowohl Datenmodell/Storage/API (Backend) als auch Baum-/Upload-UI (Frontend). Empfehlung: **`/frontend` zuerst** (Tree + Upload-Dialog + Quota-Balken gegen gemockte/echte API), dann **`/backend`** (Migration + Bucket + RLS + RPCs + Audit + Quota-Trigger) — oder Backend-first, falls die UI reale Routen braucht. Danach `/qa` mit Pflicht-Vektoren: cross-tenant-404, MIME-Spoof-415, Zyklus-Move-409, Quota-413, soft-delete-Kaskade, RLS-Rollen (viewer read-only).
 
 ## Implementation Notes
 _To be added by /frontend and /backend._
