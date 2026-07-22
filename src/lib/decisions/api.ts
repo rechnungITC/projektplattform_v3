@@ -43,7 +43,32 @@ export interface DecisionInput {
   decider_stakeholder_id?: string | null
   context_phase_id?: string | null
   context_risk_id?: string | null
+  // PROJ-111 thin M&A extension (INSERT-only).
+  context_finding_id?: string | null
+  decision_body?: string | null
+  options?: string | null
   supersedes_decision_id?: string | null
+}
+
+/**
+ * PROJ-111 — RLS-scoped CSV export of the decision log. Returns the raw CSV
+ * text (caller triggers the download). Gate decisions the caller may not
+ * access are filtered out server-side (need-to-know).
+ */
+export function decisionsExportUrl(
+  projectId: string,
+  options: {
+    includeRevised?: boolean
+    phaseId?: string
+    deciderId?: string
+  } = {}
+): string {
+  const params = new URLSearchParams()
+  if (options.includeRevised) params.set("include_revised", "true")
+  if (options.phaseId) params.set("phaseId", options.phaseId)
+  if (options.deciderId) params.set("deciderId", options.deciderId)
+  const qs = params.toString()
+  return `${base(projectId)}/export${qs ? `?${qs}` : ""}`
 }
 
 export async function createDecision(

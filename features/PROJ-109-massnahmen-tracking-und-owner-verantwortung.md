@@ -14,7 +14,7 @@ summary_for_jira: "[E3] Maßnahmen-Tracking und Owner-Verantwortung"
 
 # PROJ-109: Maßnahmen-Tracking und Owner-Verantwortung
 
-## Status: Architected
+## Status: Deployed (2026-07-21 · Tag `v2.13.0-PROJ-109`)
 **Created:** 2026-06-10
 **Origin:** M&A-Platform Backlog (Epic E — Risiken & Red Flags)
 **Priority:** P1
@@ -170,9 +170,93 @@ Pro Risiko des Projekts:
 - **Link-Rollen-Diskriminator auf `risk_links`** (Maßnahme vs. betroffene Aufgabe) → **PROJ-Y-109a**, nur bei echtem Bedarf.
 - **Direkter Finding→Maßnahme-Link** → nicht nötig; über verknüpftes Risiko abgedeckt.
 
+### Implementierungs-Notizen — Backend (2026-07-21)
+
+**Live in Prod (Migration `20260721111000_proj109_risk_measure_overview`):** eine read-only Funktion `public.risk_measure_overview(p_project_id uuid) → jsonb`, **SECURITY INVOKER** + `set search_path=public,pg_temp`, `revoke execute … from public, anon` + `grant … to authenticated`. Kein neues Schema/Feld/Tabelle, kein Dep. Sie liefert `{ risks: [...], summary: {...} }`:
+- pro Risiko: `id/title/status/responsible_user_id/workstream_id/confidentiality_level/mitigation/probability/impact/score`, plus abgeleitet `measure_count`, `has_measure`, `accepted_with_rationale`, `covered`, `active_uncovered`, und `measures[]` (= per `risk_links(work_item)` verknüpfte, nicht-gelöschte `work_items` mit `id/title/kind/status/due_date/responsible_user_id/workstream_id`);
+- `summary`: `risk_total / active_total (status=open) / active_uncovered / measure_total`.
+- **Abdeckungs-Logik:** `covered = has_measure OR (status='accepted' AND mitigation nicht leer) OR status∈{mitigated,closed}`. `active_uncovered = status='open' AND kein Measure AND keine begründete Akzeptanz` → **AC3-Signal (weich)**.
+- **Need-to-know erbt gratis:** INVOKER + Join über `risks`/`work_items` → deren RESTRICTIVE `can_access_classified`-Gates (PROJ-100a/107) filtern zeilenweise vor der Aggregation. Kein zweites Rechtemodell.
+
+**API:** `GET /api/projects/[id]/risk-measure-overview` (`src/app/api/projects/[id]/risk-measure-overview/route.ts`) — session-gebundener User-Client (nie service-role), `requireProjectAccess(view)`, UUID-Validierung, RPC-Delegation, Null→leere-Übersicht-Normalisierung. **Client-Wrapper:** `fetchRiskMeasureOverview` + Typen in `src/lib/risks/measure-overview.ts`.
+
+**Pflicht-Live-RPC-Smoke gegen Prod (rolled back, 0 Residue):** Eigenschaften `is_definer=false / auth_exec=true / anon_exec=false`. Funktional (atomarer DO-Block mit Rollback-Marker): (A) offenes Risiko ohne Measure → `active_uncovered=true, has_measure=false, covered=false`; akzeptiert+Begründung ohne Measure → `accepted_with_rationale=true, covered=true, active_uncovered=false`; (B) nach Anhängen einer verknüpften Aufgabe → `has_measure=true, active_uncovered=false, covered=true, measure_count=1`, Measure-Titel korrekt; `summary={risk_total:2, active_total:1, measure_total:1, active_uncovered:0}`. Residue-Check 0/0.
+
+**Quality-Gates:** route.test 5/5, ESLint 0, tsc 14 baseline/0 neu, vitest **2273/2273** (+5), build clean (Route `/api/projects/[id]/risk-measure-overview` registriert), Supabase security-Advisor 0 ERROR (Funktion nicht gelistet — INVOKER + fixed search_path).
+
+**Offen → /frontend:** „Maßnahmen"-Sektion (Tab, gruppierbar Risiko/Owner/Workstream) + weiches Abdeckungs-Badge am Risiko. → /qa: rollenbasierter Need-to-know-Pentest (INVOKER-Aggregat kein Leak) + Playwright-Auth-Gate.
+
+### Implementierungs-Notizen — Frontend (2026-07-21)
+
+**Neuer M&A-Projektraum-Tab „Maßnahmen"** (`massnahmen`, `requiresProjectType='ma'`, injiziert nach Deliverables via `MA_MEASURES_SECTION` in `method-templates/index.ts`, Icon `ShieldAlert`). Route `src/app/(app)/projects/[id]/massnahmen/page.tsx` → `MaMeasuresPage`.
+
+**`MaMeasuresPage`** (`src/components/projects/ma/ma-measures-page.tsx`) — read-only:
+- **Gruppierungs-Umschalter** (shadcn Select): nach Risiko / nach Risiko-Owner / nach Workstream (AC4). Bei Owner/Workstream-Gruppierung: Gruppen mit ungedeckten Risiken zuerst, `N ungedeckt`-Badge je Gruppe.
+- **Abdeckungs-Banner** (AC3): rot „X von Y aktiven Risiken ohne Maßnahme/begründete Akzeptanz" bzw. grün „alle aktiven Risiken abgedeckt" — aus `summary.active_uncovered/active_total`.
+- **Pro Risiko eine Card**: Titel + Severity-Badge (PROJ-107 `riskSeverityBadgeTone`) + Risiko-Status-Badge + **`CoverageBadge`** (rot „Aktiv – keine Maßnahme/Akzeptanz" bei `active_uncovered`, „Akzeptiert (begründet)" bei `accepted_with_rationale`, sonst „Abgedeckt"). Meta: Owner + Workstream + Maßnahmen-Zahl. Darunter Maßnahmen-Liste (Titel · Status-Badge · Verantwortlicher · Workstream · Frist rot bei überfällig) ODER die Akzeptanz-Begründung ODER „Keine Maßnahme verknüpft".
+- Loading/Error(+Retry)/Empty-States. Namen via `useTenantMembers`, Workstream-Labels via `useWorkstreams`.
+
+**Neuer Hook** `useRiskMeasureOverview` (`{overview, loading, error, refresh}`, `let cancelled`-Pattern).
+
+**Label-Entscheidung (DUP→REUSE):** Maßnahmen-Status nutzt die plattformweiten `WORK_ITEM_STATUS_LABELS` (Offen/In Arbeit/Blockiert/Erledigt/Abgebrochen) statt einer M&A-Sonderbeschriftung — Konsistenz vor der Spec-Klammer-Wortwahl „geplant/in Umsetzung/umgesetzt/verworfen". Falls der Pilot die M&A-Wortwahl explizit will → Followup PROJ-Y-109b.
+
+**Scope-Entscheidung:** AC3 wird in der Maßnahmen-Übersicht (Banner + per-Risiko-Badge, ungedeckte zuerst) geliefert; ein zusätzliches Badge in der geteilten Risiko-Tabelle (PROJ-20/107) wurde bewusst NICHT ergänzt (Shared-Component-Churn vermeiden, kein AC verlangt es dort). Harte Stage-Gate-Durchsetzung bleibt PROJ-110.
+
+**Kein neues Dep, kein Backend-/Schema-Change.** Gates (Worktree `proj-109/architecture`): ESLint 0/0, tsc 14 baseline/0 neu, vitest 2273/2273, build clean (Route `/projects/[id]/massnahmen` registriert), method-templates/routing 124/124. → /qa (Need-to-know-Pentest INVOKER-Aggregat + Playwright Auth-Gate + Grouping-Smoke).
+
 ### CIA-Einordnung
 
 Diese Slice ist **spec-folgend + prior-art-geklärt**: kein neues Paket, keine neue Tabelle, kein ≥5-Datei-Refactor, kein genuin offener Fork (Maßnahmen-Modell durch PROJ-107 gesetzt; Gate-Härte durch Spec-„Out of Scope" gesetzt; Auswertungs-RPC ist etabliertes Muster aus PROJ-116/102/104). Damit **keine CIA-Pflicht** nach `.claude/rules/continuous-improvement.md`. Der Nutzer kann dennoch eine CIA-Zweitmeinung anfordern, bevor `/backend` startet.
+
+---
+
+## QA Test Results — 2026-07-21 (PASS · Production-Ready)
+
+**Ergebnis: 0 Critical / 0 High.** 4/4 Akzeptanzkriterien erfüllt (2 dokumentierte Low/Info-Deviations). Getestet gegen Prod (Live-RPC-Pentest, rolled back) + Playwright (chromium).
+
+### Akzeptanzkriterien
+
+| AC | Verdikt | Nachweis |
+|---|---|---|
+| AC1 — Maßnahme je Risiko/Red-Flag, als Aufgabe referenziert | **PASS** | Maßnahme = `work_item` via `risk_links(work_item)` (live seit PROJ-107, UI „Aufgaben (Maßnahmen)"); Übersicht rendert sie je Risiko. Red-Flag: `dd_finding.linked_risk_id` → Risiko → dessen Maßnahmen (navigational, kein Parallelweg). |
+| AC2 — Status + Frist | **PASS** (Deviation D-1) | `work_items.status` + `due_date`; angezeigt via `WORK_ITEM_STATUS_LABELS` (Offen/In Arbeit/Blockiert/Erledigt/Abgebrochen) + Frist rot bei Überfälligkeit. |
+| AC3 — Hinweis bei aktivem Risiko ohne Maßnahme/Akzeptanz | **PASS** (weich) | `active_uncovered`-Signal + rotes Abdeckungs-Banner (`X von Y`) + per-Risiko `CoverageBadge`; ungedeckte Risiken zuerst. Read-only Vertrag für PROJ-110 Stage-Gate (harte Durchsetzung out-of-scope). |
+| AC4 — Übersicht je Risiko / Risiko-Owner / Workstream | **PASS** | Gruppierungs-Umschalter; bei Owner/Workstream Gruppen mit ungedeckten Risiken zuerst + `N ungedeckt`-Badge. |
+
+### Security / Need-to-know-Pentest (Pflicht, live gegen Prod, rolled back)
+
+`tests/sql/PROJ-109-risk-measure-overview-pentest.sql` — **A–H 8/8 PASS, 0 Residue** (auf der SECURITY-INVOKER-RPC, rollenbasiert via `request.jwt.claims`-Impersonation):
+- **A/B** Admin-Bypass: 3 Risiken, `R_std.measure_count=2`, `active_total=2/active_uncovered=1`.
+- **C** Nicht-cleared Member sieht NUR `R_std` (höher klassifizierte Risiken komplett abwesend).
+- **D (Kern-Leak-Probe)** die als `strict` klassifizierte „secret"-Maßnahme wird aus dem sichtbaren `R_std` gefiltert (`measure_count=1`, per-Maßnahme-Gate), und das versteckte `R_conf` fließt NICHT in `active_uncovered` ein.
+- **E** confidential-cleared: `R_std`+`R_conf`, NICHT `R_strict`, secret weiterhin gefiltert (geordnete Stufen).
+- **F** strict-cleared: alle 3, secret sichtbar, `R_strict` `accepted_with_rationale`+`covered`.
+- **G** `anon` kann die Funktion nicht ausführen (revoke). **H** Cross-Tenant → 0 Risiken (kein Leak).
+
+Funktion ist `security invoker` + fixed `search_path`; Supabase security-Advisor 0 ERROR (Funktion nicht gelistet).
+
+### Playwright (chromium)
+
+`tests/PROJ-109-risk-measure-overview.spec.ts` — **3/3 grün**: GET `…/risk-measure-overview` (+ malformed id) und `/projects/[id]/massnahmen` sind auth-gated (307). Autorisierungs-Tiefe deckt der Live-Pentest ab. Route-Unit `route.test.ts` 5/5.
+
+### Befunde
+
+- **D-1 (Low/Info):** Maßnahmen-Status nutzt die plattformweiten Labels (Offen/In Arbeit/…) statt der Spec-Klammer-Wortwahl „geplant/in Umsetzung/umgesetzt/verworfen" — bewusste DUP→REUSE-Konsistenzentscheidung. Followup **PROJ-Y-109b** falls Pilot die M&A-Wortwahl explizit will.
+- **D-2 (Info/Env):** Mobile-Safari-E2E übersprungen (WebKit-Host-Libs fehlen, bekannter PROJ-67/F2-Umgebungsstand).
+
+### Regression
+
+vitest **2273/2273**; method-templates/routing 124/124; build clean (Route registriert); ESLint 0/0; tsc 14 baseline/0 neu. Kein neues Dep, kein Schema-Change über die (bereits live) `risk_measure_overview`-Migration hinaus.
+
+**Production-Ready: JA.** → `/deploy`.
+
+## Deployment — 2026-07-21 (Tag `v2.13.0-PROJ-109`)
+
+- **Merge:** PR #240 (squash) → `main` (`baeb03c`). Branch war vom Prä-PROJ-110/111-`main` abgezweigt → sauber auf aktuellen `main` rebast (INDEX + `method-templates/index.ts`-Nav-Hotspot aufgelöst: Maßnahmen- + Stage-Gate-Sektionen koexistieren; keine PROJ-110/111-Regression).
+- **Schema-Drift-Fix (in `/deploy` gefangen):** Der Required-Check „Verify SELECT columns vs migration schema" schlug beim ersten Lauf fehl (`column rk.confidentiality_level does not exist`). Ursache: PROJ-107s Migration (`20260703135741`) ist im Shadow-DB-Fresh-Apply nicht sauber (bricht an einer tolerierten REVOKE/GRANT-on-missing-function ab, bevor sie ihre `risks.confidentiality_level`-Spalte anlegt). Fix: idempotenter `alter table public.risks add column if not exists confidentiality_level …`-Guard am Kopf der PROJ-109-Migration (no-op in Prod, deterministisch im Fresh-Apply). Danach alle Checks grün.
+- **Prod-Verify (DB):** `risk_measure_overview(uuid)` live — `prosecdef=false` (SECURITY INVOKER ✅), `authenticated` execute ✅, `anon` execute revoked ✅, `risks.confidentiality_level` präsent ✅.
+- **Migration-Versions-Drift (benign, PROJ-134-Domäne):** Die Migration ist in Prod unter MCP-Version `20260721091229` registriert (Name trägt Repo-Dateinamen `20260721111000_proj109_risk_measure_overview`). Da die Migration **voll idempotent** ist (`create or replace function` + `add column if not exists`), bricht sie `supabase db push` **nicht** (anders als die nicht-idempotenten `create table`-Fälle in PROJ-50/69) → kein Repo-Rename nötig; als bekannter benigner Drift dokumentiert.
+- **Post-Deploy-Smoke (HTTP):** `/projects/{id}/massnahmen` + `GET /api/projects/{id}/risk-measure-overview` → 307 Auth-Gate ohne Leck.
 
 ---
 _Quelle: Backlog-Entwurf M&A-Projektplattform · E — Risiken & Red Flags_

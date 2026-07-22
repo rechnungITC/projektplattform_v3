@@ -121,6 +121,19 @@ describe("parseText", () => {
     expect(r.truncated).toBe(true)
   })
 
+  it("PROJ-75: full_text carries the COMPLETE text even when the excerpt is truncated", () => {
+    // AC-75.3 — screening input (full_text) is separate from what we store
+    // (excerpt). PII placed beyond the 8000-char cut must survive in full_text.
+    const clean = "x".repeat(8_100)
+    const long = `${clean} kontakt: person@example.com`
+    const r = parseText(Buffer.from(long, "utf8"))
+    expect(r.excerpt.length).toBe(PARSER_CONSTANTS.EXCERPT_MAX_CHARS)
+    expect(r.excerpt).not.toContain("person@example.com")
+    // full_text is complete and still contains the out-of-excerpt PII.
+    expect(r.full_text).toBe(long)
+    expect(r.full_text).toContain("person@example.com")
+  })
+
   it("rejects files exceeding the 25 MB cap", () => {
     const huge = Buffer.alloc(PARSER_CONSTANTS.MAX_FILE_BYTES + 1)
     try {
@@ -192,6 +205,27 @@ describe("parseFile orchestration", () => {
     await expect(
       parseFile(Buffer.alloc(200), "application/pdf"),
     ).rejects.toMatchObject({ code: "page_limit_exceeded" })
+  })
+
+  it("PROJ-75 (AC-75.13): rejects a ≤200-page PDF whose extracted text exceeds 2 MB (fail-closed)", async () => {
+    // Previously this path did a silent `break` and returned partial text with
+    // truncated:true, ingesting the row anyway → PII on un-extracted pages
+    // escaped screening. Now it must throw raw_text_cap_exceeded, uniform with
+    // the DOCX/TXT >2 MB rejects ("fully screened or rejected").
+    const bigPage = "a".repeat(1_100_000) // 2 pages → >2 MB combined
+    fileTypeMock.mockResolvedValueOnce({ mime: PDF_MIME, ext: "pdf" })
+    pdfjsMock.mockReturnValueOnce({
+      promise: Promise.resolve({
+        numPages: 3,
+        getPage: async () => ({
+          getTextContent: async () => ({ items: [{ str: bigPage }] }),
+        }),
+      }),
+    } as unknown as ReturnType<typeof pdfjsMod.getDocument>)
+
+    await expect(
+      parseFile(Buffer.alloc(200), "application/pdf"),
+    ).rejects.toMatchObject({ code: "raw_text_cap_exceeded" })
   })
 
   it("dispatches to parseDocx when magic-byte says DOCX", async () => {

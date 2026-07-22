@@ -16,12 +16,14 @@
 import {
   ClipboardCheck,
   FileText,
+  Flag,
   FolderTree,
   Handshake,
   Layers,
   ListChecks,
   Microscope,
   Network,
+  ShieldAlert,
   ShieldCheck,
   Users,
   Workflow,
@@ -123,6 +125,18 @@ const MA_DELIVERABLES_SECTION: SidebarSection = {
   requiresProjectType: "ma",
 }
 
+// PROJ-109 — the "Maßnahmen" section: read-only measures overview per risk /
+// risk-owner / workstream (measure = work_item linked to a risk via risk_links),
+// with a soft coverage hint for active-but-uncovered risks. Project-TYPE driven
+// (M&A), injected after Deliverables (Epic E, risk-adjacent).
+const MA_MEASURES_SECTION: SidebarSection = {
+  id: "ma-measures",
+  label: "Maßnahmen",
+  icon: ShieldAlert,
+  tabPath: "massnahmen",
+  requiresProjectType: "ma",
+}
+
 // PROJ-112 — the "Due Diligence" section (DD-stream backbone: per-stream status,
 // lead, time window, confidentiality). Also project-TYPE driven (M&A) and
 // injected right after Governance, gated the same way.
@@ -142,6 +156,19 @@ const MA_DD_REPORT_SECTION: SidebarSection = {
   label: "DD-Bericht",
   icon: FileText,
   tabPath: "dd-bericht",
+  requiresProjectType: "ma",
+}
+
+// PROJ-110 — the "Stage-Gates" section: the 9 M&A stage gates that authorize
+// phase transitions. Each gate has a pre-read (open tasks / risks-without-
+// measure / open red-flags) and a 3-way decision (Freigabe / Auflage / Abbruch)
+// that writes an immutable PROJ-20 decision and drives the phase/project state
+// machine. Project-TYPE driven (M&A); need-to-know-scoped server-side.
+const MA_STAGE_GATES_SECTION: SidebarSection = {
+  id: "ma-stage-gates",
+  label: "Stage-Gates",
+  icon: Flag,
+  tabPath: "stage-gates",
   requiresProjectType: "ma",
 }
 
@@ -178,11 +205,13 @@ function withMaFoundation(config: MethodConfig): MethodConfig {
       DMS_DOCUMENTS_SECTION,
       MA_FOUNDATION_SECTION,
       MA_PHASE_MODEL_SECTION,
+      MA_STAGE_GATES_SECTION,
       MA_ROLES_SECTION,
       MA_GREMIEN_SECTION,
       MA_TASKS_SECTION,
       MA_WORKSTREAMS_SECTION,
       MA_DELIVERABLES_SECTION,
+      MA_MEASURES_SECTION,
       MA_CONFIDENTIALITY_SECTION,
       MA_DUE_DILIGENCE_SECTION,
       MA_DD_REPORT_SECTION,
