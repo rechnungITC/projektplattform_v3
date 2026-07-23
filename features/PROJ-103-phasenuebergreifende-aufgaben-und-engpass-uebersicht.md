@@ -14,9 +14,9 @@ summary_for_jira: "[C3] Phasenübergreifende Aufgaben- und Engpass-Übersicht"
 
 # PROJ-103: Phasenübergreifende Aufgaben- und Engpass-Übersicht
 
-## Status: Deployed (2026-07-22)
+## Status: Deployed (2026-07-23)
 **Created:** 2026-06-10
-**Deployed:** 2026-07-22 — Tag `v2.16.0-PROJ-103`. Migration `20260721184740_proj103_task_bottlenecks` (INVOKER-RPC `project_task_bottlenecks`) seit /backend in Prod; kein Runtime-DB-Change (reine VIEW/RPC-Lesesicht). Rebase auf aktuellen main konfliktfrei; Post-Deploy-Smoke: 307-Auth-Gate auf `/projects/[id]/engpaesse` + `/api/projects/[id]/task-bottlenecks` (+ Export). Followup offen: PROJ-Y-103a (AC3-Cockpit-Embed), .xlsx out-of-scope.
+**Deployed:** 2026-07-23 — Tag `v2.17.0-PROJ-103` (v2.16.0 belegt PROJ-140, das zuerst mergte). Migration `20260721184740_proj103_task_bottlenecks` (INVOKER-RPC `project_task_bottlenecks`) seit /backend in Prod; kein Runtime-DB-Change (reine VIEW/RPC-Lesesicht). Rebase auf aktuellen main konfliktfrei; Post-Deploy-Smoke: 307-Auth-Gate auf `/projects/[id]/engpaesse` + `/api/projects/[id]/task-bottlenecks` (+ Export). Followup offen: PROJ-Y-103a (AC3-Cockpit-Embed), .xlsx out-of-scope.
 **Origin:** M&A-Platform Backlog (Epic C — Aufgaben & Workstreams)
 **Priority:** P1
 
