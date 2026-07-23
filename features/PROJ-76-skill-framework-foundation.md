@@ -1,6 +1,6 @@
 # PROJ-76: Skill-Framework Foundation
 
-## Status: Architected
+## Status: In Progress
 **Created:** 2026-06-06
 **Last Updated:** 2026-07-23
 
@@ -225,7 +225,25 @@ Both `skills` and `skill_versions` opt into field-level audit:
 - **Design approved** by the user on 2026-07-23 → status flipped to Architected. Next: `/frontend` (admin list/detail + PM catalog), then `/backend` (tables, RLS, RPCs, audit wiring, API routes).
 
 ## Implementation Notes
-_To be added by /frontend and /backend._
+
+### Backend slice (2026-07-23)
+
+**Migration** `20260723120849_proj76_skill_framework` (in Prod-DB; repo file version-matched per PROJ-134):
+- `skills` (tenant catalog): slug unique per tenant, category CHECK, `method_tags`/`project_type_tags` (`text[]`, empty = all), `is_active` (default false), `current_version_id` pointer, `created_by → profiles`. 4-policy RLS (PROJ-107 template) with a nuanced SELECT: `is_tenant_admin OR (is_tenant_member AND is_active)`.
+- `skill_versions` (immutable snapshots): `version_number` unique per skill, `markdown_content` (body, ≤50k), `frontmatter jsonb` (behaviour keys only), `status` (draft/active/archived). **Single active version** via partial-unique index `where status='active'`. SELECT inherits parent-skill visibility; write = admin.
+- **Content immutability** via `enforce_skill_version_immutability` BEFORE-UPDATE trigger (mirrors PROJ-20 decisions): only `status` may change, and only when the transaction-local GUC `skills.allow_status_change` is set by the RPCs. `set search_path to ''` (advisor hygiene). Direct content/status updates are hard-blocked (23514).
+- **State-machine RPCs** (SECURITY DEFINER, `auth.uid()` admin re-check, no actor param): `activate_skill_version` (demote current active → archive, promote target, repoint pointer, atomic; idempotent no-op if already active) and `rollback_skill_version` (copy target content into a NEW draft v = max+1, then activate; never mutates history). `authenticated` EXECUTE; `anon`/`public` revoked.
+- **PROJ-10 audit**: both tables opted in (AFTER UPDATE — `record_audit_changes` is UPDATE-diff, so version *creation* is captured by the row itself; *activation* logged via tracked `status` + `skills.current_version_id`). Audit helper fns (`entity_type` CHECK, `_tracked_audit_columns`, `can_read_audit_entry`) patched from **live defs via anchor-replace + hard-fail assertions**; `authenticated` EXECUTE re-granted (footgun avoided). Verified: both fns + CHECK contain `skill_versions`, grants intact.
+
+**Application layer:** `src/types/skill.ts`; `src/lib/skills/serialize.ts` (js-yaml `dump()`-only serialiser, generation-only); Zod `_schema.ts` (tags validated against real `PROJECT_METHODS`/`PROJECT_TYPES` constants); 6 route files under `src/app/api/skills/` (list/create · get/patch · versions list/create · activate · rollback · toggle-active); client wrappers `src/lib/skills/api.ts`.
+
+**Dependency:** `js-yaml` promoted from the existing `overrides` pin (`^4.2.0`) to a declared direct dep + `@types/js-yaml` devDep. **Zero new transitive surface** (already resolved by supply-chain hardening).
+
+**Deviations from spec (per CIA + ADRs):** (1) form-first authoring, no `gray-matter`/YAML parse, no 422-frontmatter-error → Zod field validation; (2) no Markdown editor/renderer dep; (3) tag vocab = code-true (empty = all); (4) routes `/stammdaten/skills` + `/skills`; (5) `slug` immutable after create; (6) `markdown_content` stores the body, the canonical `.md` is generated on demand (name/description merged from the mutable skill → never stale).
+
+**Quality gates:** vitest **23/23** new (serialize round-trip proves parseable YAML frontmatter — AC line 45; route auth/validation/authz/409); tsc **0 new** errors (14 pre-existing baseline in unrelated files); ESLint 0 on new files; production build clean. **Live-RPC-Smoke 8/8 PASS** against Prod (activate · single-active-demote · content-immutability blocked · status-immutability blocked · rollback content-copy · idempotent re-activate · admin-gate stranger 42501 · audit rows) with **0 residue** (rollback-marker). Advisors: **0 ERROR**; the 2 `authenticated_security_definer_function_executable` WARNs on the RPCs are the by-design pattern shared by every state-machine RPC.
+
+**Remaining:** `/frontend` — admin list `/stammdaten/skills`, admin detail `/stammdaten/skills/[id]` (version timeline + edit/raw-preview tabs), PM read-only catalog `/skills`.
 
 ## QA Test Results
 _To be added by /qa._
