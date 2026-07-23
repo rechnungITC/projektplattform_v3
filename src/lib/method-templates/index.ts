@@ -18,6 +18,7 @@ import {
   FileText,
   Flag,
   FolderTree,
+  Gauge,
   Handshake,
   Layers,
   ListChecks,
@@ -137,6 +138,18 @@ const MA_MEASURES_SECTION: SidebarSection = {
   requiresProjectType: "ma",
 }
 
+// PROJ-103 — the "Engpässe" section: project-wide, cross-workstream view of all
+// open tasks with days-overdue + Top-3 bottlenecks + quick filters + CSV export.
+// Read-only aggregation (INVOKER RPC); need-to-know inherits via work_items.
+// Project-TYPE driven (M&A); injected right after Workstreams (Epic C).
+const MA_BOTTLENECKS_SECTION: SidebarSection = {
+  id: "ma-bottlenecks",
+  label: "Engpässe",
+  icon: Gauge,
+  tabPath: "engpaesse",
+  requiresProjectType: "ma",
+}
+
 // PROJ-112 — the "Due Diligence" section (DD-stream backbone: per-stream status,
 // lead, time window, confidentiality). Also project-TYPE driven (M&A) and
 // injected right after Governance, gated the same way.
@@ -210,6 +223,7 @@ function withMaFoundation(config: MethodConfig): MethodConfig {
       MA_GREMIEN_SECTION,
       MA_TASKS_SECTION,
       MA_WORKSTREAMS_SECTION,
+      MA_BOTTLENECKS_SECTION,
       MA_DELIVERABLES_SECTION,
       MA_MEASURES_SECTION,
       MA_CONFIDENTIALITY_SECTION,
