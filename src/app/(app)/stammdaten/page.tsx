@@ -8,6 +8,7 @@ import {
   Network,
   ShieldAlert,
   ShieldCheck,
+  Sparkles,
   Tags,
   Users,
   Users2,
@@ -121,6 +122,14 @@ const SECTIONS: Section[] = [
     title: "Risikokategorien",
     description:
       "Tenant-Katalog der Risiko-Kategorien (Financial, Legal, Tax …). Pflichtfeld im M&A-Risiko-Register; der DD-Standardsatz wird bei Erstnutzung automatisch angelegt.",
+    adminOnly: true,
+  },
+  {
+    href: "/stammdaten/skills",
+    icon: Sparkles,
+    title: "Skills",
+    description:
+      "Tenant-Katalog wiederverwendbarer KI-Skill-Definitionen (Markdown + Metadaten), versioniert mit genau einer aktiven Version. Admin-Pflege; PMs sehen den Katalog read-only.",
     adminOnly: true,
   },
 ]

@@ -243,7 +243,21 @@ Both `skills` and `skill_versions` opt into field-level audit:
 
 **Quality gates:** vitest **23/23** new (serialize round-trip proves parseable YAML frontmatter — AC line 45; route auth/validation/authz/409); tsc **0 new** errors (14 pre-existing baseline in unrelated files); ESLint 0 on new files; production build clean. **Live-RPC-Smoke 8/8 PASS** against Prod (activate · single-active-demote · content-immutability blocked · status-immutability blocked · rollback content-copy · idempotent re-activate · admin-gate stranger 42501 · audit rows) with **0 residue** (rollback-marker). Advisors: **0 ERROR**; the 2 `authenticated_security_definer_function_executable` WARNs on the RPCs are the by-design pattern shared by every state-machine RPC.
 
-**Remaining:** `/frontend` — admin list `/stammdaten/skills`, admin detail `/stammdaten/skills/[id]` (version timeline + edit/raw-preview tabs), PM read-only catalog `/skills`.
+### Frontend slice (2026-07-23)
+
+**Routes + components** (all in the worktree; shadcn-first, German UI, responsive, loading/empty/error states, a11y):
+- **Admin list** `/stammdaten/skills` → `skills-page-client.tsx`: table (name/slug, category badge, method/type tag badges, version indicator, updated_at), per-row active `Switch` with optimistic toggle + revert-on-error (drops deactivated rows when "Inaktive anzeigen" is off), "Neuer Skill" + "Inaktive anzeigen" toggle, rows link to detail. Edit affordances gated by `useAuth().currentRole === "admin"` (UI hint; API enforces).
+- **Create dialog** `skill-form-dialog.tsx`: name/slug (`^[a-z0-9-]+$`)/description/category + tag pickers; on success `router.push` to detail; 409 slug-conflict surfaced as inline field error + toast.
+- **Admin detail** `/stammdaten/skills/[id]` → `skill-detail-client.tsx`: left version timeline (v-number, status badge, created_at, change_summary, active highlighted; Aktivieren / Zurückrollen[archived-only] buttons, busy-disabled); right `Tabs` — "Bearbeiten" (metadata form with read-only slug + "Neue Version" sub-form: body textarea 50k + temperature/tone/allowed_kinds/model_overrides/change_summary) and "Vorschau (Rohtext)" (`<pre>` of `serializeSkillMarkdown` reflecting live form input).
+- **PM catalog** `/skills` → `skills-catalog-client.tsx`: read-only cards of active skills, category filter, click opens a read-only `Sheet` with the active version's serialized `.md`. No edit affordances anywhere.
+- **Shared** `skill-tag-picker.tsx`: accessible toggle-badge multi-select (`aria-pressed`, `role=group`), empty = "gilt für alle".
+- **Nav**: Skills card added to `/stammdaten` `SECTIONS` (adminOnly); top-level "Skills" (Sparkles) added to `global-sidebar` `NAV_ITEMS` (all members).
+
+**Deviations:** (1) audit "Verlauf" tab omitted — `AuditEntityType` in `src/types/audit.ts` doesn't include `skills`/`skill_versions`; adding it (client-type widening + a `HistoryTab` prop path) is a small **PROJ-Y follow-up**, not worth touching shared audit types in this slice (the DB audit rows exist and are gated — verified in the backend smoke). (2) `model_overrides` UI = simple `key=value`-per-line textarea. (3) one narrow, commented `eslint-disable react-hooks/set-state-in-effect` for the dialog-open one-shot form reset (data-fetching effects use the `let cancelled` async-only pattern, no disable).
+
+**Quality gates (independently re-verified):** ESLint **0** on all 10 new/changed files; tsc **0** skill-related errors (14 pre-existing baseline unchanged); vitest 23/23 (backend, untouched); production build clean (routes `/skills`, `/stammdaten/skills`, `/stammdaten/skills/[id]` registered).
+
+**Remaining:** `/qa` — test against acceptance criteria + security (RLS/admin-gate/tenant-isolation) audit.
 
 ## QA Test Results
 _To be added by /qa._

@@ -13,6 +13,7 @@ import {
   KeyRound,
   Plug,
   Settings,
+  Sparkles,
   Trash2,
   User,
   Users,
@@ -131,6 +132,7 @@ const NAV_ITEMS: readonly NavItem[] = [
   { href: "/stammdaten", label: "Stammdaten", icon: Database },
   { href: "/konnektoren", label: "Konnektoren", icon: Plug, adminOnly: true },
   { href: "/reports", label: "Reports", icon: BarChart3 },
+  { href: "/skills", label: "Skills", icon: Sparkles },
   {
     href: "/settings/profile",
     label: "Einstellungen",
