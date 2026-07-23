@@ -1,8 +1,8 @@
 # PROJ-79: DMS Foundation
 
-## Status: Planned
+## Status: Approved (α backend + frontend + QA + live-RPC/RLS prod-smoke — 0 Critical/High; β externe Konnektoren deferred; → /deploy)
 **Created:** 2026-06-06
-**Last Updated:** 2026-06-07
+**Last Updated:** 2026-07-21
 
 ## Summary
 The platform needs a project-scoped Document Management System: a navigation tree per project under which documents can be uploaded, browsed, moved, renamed, and downloaded. External sources (SharePoint, Google Drive) can be connected per tenant; their content is mirrored as read-only references in the same tree. Tenant storage is enforced against a license-bound quota. This story builds the storage layer + tree + external-source connectors, **not** the RAG indexing or summarization, which is PROJ-80.
@@ -99,13 +99,153 @@ The platform needs a project-scoped Document Management System: a navigation tre
 <!-- Sections below are added by subsequent skills -->
 
 ## Tech Design (Solution Architect)
-_To be filled by /architecture._
+
+> **CIA-reviewed 2026-07-21 (Portfolio + Fork).** Verdikt: PROJ-79 wird in **α (interner DMS-Kern, jetzt)** und **β (externe Konnektoren, deferred, CIA-pflichtig)** geteilt. α ist der klare pilot-kritische Gewinner — schließt die härteste ERP-Pilot-Lücke (durablearer Dokument-Speicher → PRD-Metrik „≥80% Artefakte auf der Plattform") mit etablierten Mustern und niedrigem Risiko. Dieses Design deckt **nur α** ab.
+
+### Scope-Grenze α / β
+
+| In α (dieser Slice) | Deferred → β (eigene Spec-Zeile, CIA-pflichtig) |
+|---|---|
+| Interner Dokument-Baum + Datei-Upload (Supabase Storage) | Externe SharePoint/GDrive-Konnektoren (`external_source_connectors`) |
+| Tree-CRUD: Ordner anlegen, umbenennen, verschieben, soft-delete | OAuth-Flow + Supabase **Vault** (bisher nirgends genutzt) |
+| Quota **inkrementell** (Zähler + Pre-Flight-Block bei Upload/Delete) | `external_link`-Knoten + On-Demand-Fetch externer Dokumente |
+| RLS, PROJ-10-Audit, Admin-Storage-Übersicht | **Nächtlicher Quota-Truth-Sweep-Cron** (α zählt nur inkrementell) |
+
+Die DB-Enums bleiben forward-kompatibel: `node_type` behält `external_link`, `documents.storage_backend` behält `sharepoint`/`gdrive` — α **erzeugt** aber ausschließlich `folder`/`document` bzw. `internal`. β schaltet die restlichen Werte frei, ohne Migration der α-Daten.
+
+### A) Komponenten-Struktur (UI)
+
+```
+Projekt-Raum  →  neue Sektion "Dokumente"  (Core, ALLE Projekt-Typen — kein M&A-Gate)
++-- DMS-Seite  /projects/[id]/dokumente
+|   +-- Linke Spalte: Dokument-Baum (react-arborist, lazy pro Parent geladen)
+|   |   +-- Ordner-Knoten (aufklappbar)
+|   |   +-- Dokument-Knoten (Icon nach MIME)
+|   |   +-- Kontextmenü: Umbenennen · Verschieben · Löschen · Neuer Ordner
+|   +-- Rechte Spalte: Detail des gewählten Knotens
+|   |   +-- Ordner gewählt → Liste der Kinder + "Hochladen"- + "Ordner"-Button
+|   |   +-- Dokument gewählt → Metadaten (Name, Größe, Typ, Uploader, Datum) + Download
+|   +-- Upload-Dialog (Datei-Picker; Ziel = aktueller Ordner; Fortschritt + Fehler-States)
+|   +-- Ordner-anlegen-Dialog · Umbenennen-Dialog · Verschieben (DnD im Baum) · Löschen-Confirm
+|   +-- Kleiner Quota-Hinweis (gelb ≥ Soft-Warnung, rot bei 100%) im Seitenkopf
+|
++-- Admin-Bereich: Storage-Übersicht  (Einstellungen → Speicher, tenant-admin-only)
+    +-- Nutzungsbalken tenant-weit (aktuelle Bytes / Lizenz-Limit) mit Soft-Warnung
+    +-- Read-only Liste der größten Projekte/Ordner (optional, aus vorhandenen Zählern)
+```
+
+**Reuse:** `react-arborist` ist bereits Dependency (org-tree, backlog-tree) → **kein neues Frontend-Dep**. shadcn `Dialog`/`Progress`/`Alert`/`Button` vorhanden.
+
+### B) Datenmodell (Klartext)
+
+Drei neue Tabellen (Feld-Details in den Akzeptanzkriterien oben). Multi-Tenant-Invariante: `tenant_id NOT NULL` + Cascade auf allen dreien.
+
+- **`document_tree_nodes`** — der Baum je Projekt. Jeder Knoten ist ein *Ordner*, ein *Dokument* oder (β) ein *externer Link*. Wurzel je Projekt hat `parent_id = NULL`. Eindeutigkeit `(parent_id, slug)` verhindert Namensdopplung im selben Ordner. Verschieben = `parent_id` ändern **mit Zyklus-Prüfung** (ein Ordner darf nicht in seinen eigenen Nachfahren wandern → 409). Löschen = **soft-delete** (`deleted_at`), Kinder werden mit-soft-gelöscht.
+- **`documents`** — Metadaten einer abgelegten Datei, hängt an genau einem `document`-Knoten. Zeigt via `storage_path` auf ein Objekt im Supabase-Storage-Bucket. Hält `mime_type`, `size_bytes`, `checksum`, `original_filename`. `ai_generated`-Flag + `ai_generated_metadata` für spätere PROJ-83-Artefakte (in α immer `false`).
+- **`tenant_storage_quotas`** — ein Datensatz pro Tenant: `max_bytes` (aus Lizenz-Tier), `current_usage_bytes` (inkrementell gepflegt), `soft_warning_pct`. Quota ist **pro Tenant, nicht pro Projekt**.
+
+**Storage-Backend (intern):** Supabase-Storage-Bucket **`documents`** — **privat**, Pfad immer `tenant_id/project_id/…`. Übernimmt 1:1 das gehärtete Muster aus PROJ-70 (`context-source-uploads`): Magic-Byte-Sniffing gegen MIME-Spoofing, MIME-Allowlist, Größen-Cap. Bucket-RLS-Policy tenant/project-prefixed — **nicht neu erfinden** (R-2).
+
+**Versionierung ist NICHT Teil von α** (eigene Out-of-Scope-Liste: „overwrite-with-rename"). PROJ-106 legt die dokumentierte Versionskette später auf `documents` auf.
+
+### C) Server-Verhalten (Regeln, keine Implementierung)
+
+- **Upload** `POST /api/projects/:id/documents` (multipart): Pre-Flight `size + current_usage_bytes ≤ max_bytes` sonst **413** mit Nutzungs-/Limit-Angabe. MIME per Magic-Byte geprüft (Mismatch → **415**). Formate V1: PDF/DOCX/XLSX/PPTX/MD/TXT/CSV/PNG/JPG; andere gespeichert + `mime_unsupported_for_rag`-Flag (PROJ-80 überspringt). Max 50 MB. Doppelter Dateiname im Ordner → Server hängt ` (2)`/` (3)` an. Reihenfolge: **erst parsen/prüfen, dann Storage-Upload, dann DB-Insert** (PROJ-70-Lektion: Orphan-Cleanup bei Fehlschlag).
+- **Tree-Ops:** `POST …/tree/nodes` (Ordner), `PATCH …/tree/nodes/:nodeId` (Rename/Move + Zyklus-Guard 409), `DELETE …/tree/nodes/:nodeId` (soft-delete, kaskadiert auf Kinder).
+- **Quota inkrementell:** `current_usage_bytes` += bei Upload, −= bei Soft-Delete. **Aber:** gelöschte Bytes bleiben 30 Tage „charged" (Restore-Fenster, Edge-Case der Spec) — Finalisierung/Truth-Sweep erst in β. Zähler-Drift bewusst akzeptiert bis β-Sweep (R-3).
+- **RLS:** `document_tree_nodes`/`documents` read = `is_project_member(project_id)`; write = `is_project_lead` **oder** editor-Rolle; viewer read-only; cross-tenant → **404**. `tenant_storage_quotas` read = tenant-admin; write = **system-only via Trigger/RPC** (kein direktes UPDATE).
+- **Audit (PROJ-10):** Ereignisse `document.uploaded/renamed/moved/deleted`, `tree_node.created/deleted`, `storage_quota.exceeded`. (Konnektor-Events erst β.)
+
+### D) Tech-Entscheidungen (WARUM)
+
+1. **Interner Storage über das PROJ-70-Muster wiederverwenden** statt Neuentwurf → bewährte Bucket-RLS + Anti-Spoofing, niedriges Risiko (R-2-Mitigation).
+2. **`react-arborist`** als Baum (schon im Einsatz) mit **lazy expansion pro Parent** → keine Massen-Query, kein neues Dep, konsistente UX mit org-tree.
+3. **Quota bleibt in α, aber nur inkrementell** → Enforcement (Zähler + Pre-Flight) ist billig und gehört zur SaaS-Lizenz-Story; der teurere nächtliche Truth-Sweep-Cron wandert nach β (CIA-Präzisierung).
+4. **Externe Konnektoren strikt in β** → Vault + OAuth + Provider-SDKs sind Greenfield mit ganz anderem Risiko-Profil; sie dürfen den musterbasierten α-Kern nicht ausbremsen (R-1).
+5. **Soft-delete + 30-Tage-Charge** → Restore-Fähigkeit ohne sofortige Byte-Freigabe, wie im Edge-Case gefordert.
+
+### E) Forward-Compat-Notiz — Dokument-Referenzen (CIA F-5 / PROJ-Y-doc-refs)
+
+`documents` ist ab jetzt der **kanonische Binär-Store** der Plattform. Die bestehenden Link-Tabellen (`deliverable_documents.url`, `vendor_documents`, `work_item_documents`) bleiben **bewusst getrennt** (eigene Konzerne/Lebenszyklen) — **keine Konsolidierung in α**. Später (PROJ-Y-doc-refs) dürfen sie optional auf einen `document_tree_nodes`-Knoten via `node_id` zeigen statt auf eine Roh-URL. α baut dafür keine Kopplung, hält den Store aber referenzierbar (stabile Knoten-IDs).
+
+### F) Dependencies
+
+**Keine neuen Packages.** react-arborist (vorhanden), Supabase Storage (built-in), file-type/Magic-Byte-Härtung (aus PROJ-70 vorhanden). β wird Microsoft-Graph-/Google-Drive-SDK + Vault einführen (dann CIA).
+
+### G) Deferred → β (als eigene Spec-Zeile / PROJ-Y-79β zu formalisieren)
+
+`external_source_connectors` + SharePoint/GDrive-OAuth + Supabase Vault + Token-Refresh + On-Demand-Fetch + read-only `external_link`-Knoten + **nächtlicher Quota-Truth-Sweep-Cron**. **Offene Input-Frage Q1:** Will der M365-Pilotkunde SharePoint-Inhalte *referenzieren* oder *direkt hochladen*? Bei „referenzieren" rückt β vor die Skill-Familie (76–84), sonst dahinter.
+
+### H) Handoff-Reihenfolge
+
+Diese Slice hat sowohl Datenmodell/Storage/API (Backend) als auch Baum-/Upload-UI (Frontend). Empfehlung: **`/frontend` zuerst** (Tree + Upload-Dialog + Quota-Balken gegen gemockte/echte API), dann **`/backend`** (Migration + Bucket + RLS + RPCs + Audit + Quota-Trigger) — oder Backend-first, falls die UI reale Routen braucht. Danach `/qa` mit Pflicht-Vektoren: cross-tenant-404, MIME-Spoof-415, Zyklus-Move-409, Quota-413, soft-delete-Kaskade, RLS-Rollen (viewer read-only).
 
 ## Implementation Notes
-_To be added by /frontend and /backend._
+
+### Backend — α (2026-07-21)
+DB + API layer for the internal DMS core. **Two migrations applied to prod** (`iqerihohwabyjzkpcujq`):
+- `20260721120000_proj79_dms_foundation_alpha` — 3 tables (`document_tree_nodes`, `documents`, `tenant_storage_quotas`) + private Storage bucket `documents` (50 MB cap + 9-MIME allowlist, tenant/project-prefixed) + 4 `storage.objects` RLS policies (seg1 tenant-member, seg2 project-member) + quota-increment trigger `_dms_bump_storage_usage` (locked to postgres/service_role) + RPCs `dms_move_node` (cycle guard) & `dms_soft_delete_subtree` (cascade). Audit trio (`audit_log_entity_type_check` + `_tracked_audit_columns` + `can_read_audit_entry`) recreated **non-destructively from live prod defs** (+authenticated re-grant, siblings preserved).
+- `20260721120500_proj79_dms_quota_status` — `dms_quota_status(project_id)` SECURITY DEFINER, member-readable (upload pre-flight + UI quota bar without widening the admin-only base-table SELECT).
+
+**Live-RPC-smoke (mandatory) ALL PASS**, rollback-marker → 0 residue: quota +1000 · move · cycle-guard · cascade (3 nodes + doc) · audit-trio intact. **0 ERROR-level advisors.**
+
+**API routes** (`src/app/api/projects/[id]/…`): `documents/tree` GET (list, `?parent_id`), `tree/nodes` POST (create folder + slug dedup), `tree/nodes/[nodeId]` PATCH (rename | move→`dms_move_node`, 42501→403/P0002→404/23514→409) + DELETE (`dms_soft_delete_subtree`), `documents` POST (multipart upload: Content-Length + 50 MB → 413, magic-byte sniff → 415, quota pre-flight → 413, dedup, orphan-safe insert→upload→insert + sha256), `documents/[docId]/download` GET (signed URL), `storage-quota` GET. **Lib** `src/lib/dms/` (mime, slug, schema, storage). **Types** `src/types/dms.ts`.
+
+**Deviations / notes:**
+- **α allowlist == RAG-supported set** (9 formats: pdf/docx/xlsx/pptx/txt/md/csv/png/jpg); anything else is a hard 415. `mime_unsupported_for_rag` stays `false` in α (reserved for PROJ-80/β when the allowlist widens).
+- **Fix during review:** MIME sniff now passes the **full buffer** to `file-type` (was a 4 KB head slice) so ZIP-based OOXML (docx/xlsx/pptx) subtypes are detected reliably instead of wrongly 415-ing. → **QA must upload a real docx/xlsx/pptx.**
+- **Quota on soft-delete:** bytes are **not** freed in α (30-day retention window); freeing is the β nightly truth-sweep. Conservative over-count favours quota safety.
+- Storage-object RLS is tenant+project defense-in-depth; the fine-grained lead/editor gate lives at the API layer (`requireProjectAccess("edit")`).
+
+**Gates:** lint 0 · tsc 14 baseline / **0 new** · vitest **2341/2341** (296 files, +73 DMS) · build clean (6 DMS routes registered).
+
+**Deferred → β (not built):** external SharePoint/GDrive OAuth + Vault + on-demand fetch + `external_link` nodes + nightly quota truth-sweep cron.
+
+### Frontend — α (2026-07-21)
+"Dokumente" tab (core, all project types — no M&A gate). New `SidebarSection` `dms-documents` (tabPath `dokumente`, `FolderTree` icon) injected once in `method-templates/index.ts` right after Übersicht for every method (mirrors the M&A-section injection but **without** `requiresProjectType`, so it shows for all project types). Route `src/app/(app)/projects/[id]/dokumente/page.tsx`.
+
+- **Components** `src/components/projects/dms/`: `dms-page.tsx` (orchestrator — tree + detail panel + quota header + New-folder/Upload buttons + folder-create/rename Dialog + delete AlertDialog + upload Dialog with file picker/size/error states; all writes `useProjectAccess("edit_master")`-gated), `dms-tree.tsx` (react-arborist — folders/documents, MIME icons, per-row dropdown rename/delete/new-folder/download, inline DnD move via `onMove`→`moveNode`, `disableDrop` onto document leaves; backend RPC stays the cycle authority → 409 toast), `dms-quota-bar.tsx` (Progress bar, amber ≥ soft-warning / red ≥ 100%).
+- **Hooks** `use-document-tree.ts` (loads whole tree, builds forest), `use-storage-quota.ts`. **API client** `src/lib/dms/api.ts`. **Pure libs** `src/lib/dms/tree.ts` (`buildForest`) + `format.ts` (`formatBytes`), both unit-tested.
+- **Backend touch (additive):** `GET …/documents/tree?all=true` returns the whole project tree flat (client builds the forest — org-tree pattern) alongside the existing lazy per-parent mode. +1 route test.
+
+**Deviation (documented):** α loads the **whole tree in one fetch** (`?all=true`) instead of lazy per-parent expansion the tech design mentioned — simpler, matches the org-tree/backlog-tree "flat→forest" pattern already in the codebase, `.limit(1000)` cap. Lazy expansion can layer on later if project trees grow past that. **No new dependency** (react-arborist + shadcn already present).
+
+**Gates:** lint 0 · tsc 14 baseline / **0 new** · vitest **2349/2349** (298 files, +8 DMS FE: tree-forest 4, formatBytes 3, tree `?all` route 1; PROJ-94 nav-injection test updated for the new core section) · build clean (`/projects/[id]/dokumente` registered).
+
+_→ /qa: cross-tenant-404, MIME-spoof-415 (upload a real docx/xlsx/pptx per backend note), cycle-move-409, quota-413, soft-delete cascade, viewer read-only (no New-folder/Upload/row-actions)._
 
 ## QA Test Results
-_To be added by /qa._
+
+### α QA — 2026-07-21 (In Review; one live-smoke handoff before Approved)
+
+**Verdict:** all Pflicht-Vektoren PASS at the code / component / real-lib / auth-gate layers; the DB-layer RLS+RPC live smoke is authored + reproducible but **not executed against prod in this session** (no Supabase MCP in the QA session) → run it before flipping to Approved. **0 Critical / 0 High** in everything executed.
+
+**Gates:** lint **0** · tsc **14 baseline / 0 new** · vitest **2355/2355** (299 files; +6 real-OOXML) · Playwright DMS auth-gates **8/8 chromium** (Mobile Safari skipped — WebKit host libs missing, PROJ-67/F2 env).
+
+**Pflicht-Vektor → verification:**
+
+| Vektor | Status | Wie verifiziert |
+|---|---|---|
+| **cross-tenant-404** | PASS (code) + authored (DB) | `requireProjectAccess` RLS-null→404 (download route test + shared helper); live-smoke `XTENANT` (T2-admin sieht 0 T1-Knoten) authored. |
+| **MIME-Spoof-415 (echtes docx/xlsx/pptx, OOXML-Full-Buffer-Fix)** | **PASS (fully executed, real file-type)** | `src/lib/dms/mime.ooxml.test.ts` (non-mocked `file-type` + jszip): real docx/xlsx/pptx detected + RAG-supported; spoofed `.pdf`-das-eigentlich-docx→415; plain-zip→415; **padded docx (>4100 B, Marker jenseits Byte 4100): 4 KB-Slice liefert `application/zip` (alt = falsches 415), Full-Buffer liefert korrektes docx-MIME** — beweist den Review-Fix. |
+| **Zyklus-Move-409** | PASS (API map) + authored (DB) | PATCH-move mappt `23514→409` (route test); live-smoke `CYCLE` (move F1→Nachfahre F2 → 23514) + `NONFOLDER` (move in Dokument → 23514) authored. |
+| **Quota-413** | PASS (API) + authored (DB) | Upload-Route Quota-Pre-Flight→413 (route test, `quota_exceeded`-Body); live-smoke `QUOTA-seed` (Increment-Trigger + member-lesbares `dms_quota_status` = 1000 nach Seed-Doc) authored. |
+| **Soft-delete-Kaskade** | PASS (API) + authored (DB) | DELETE-Route → `dms_soft_delete_subtree` (route test P0002→404/42501→403); live-smoke `CASCADE` (F1-Subtree soft-delete = 2 Knoten, Dokument-Knoten + `documents`-Zeile `deleted_at` gesetzt, ausgezogenes F2 überlebt) authored. |
+| **Viewer read-only (kein Ordner/Upload/Zeilen-Aktionen)** | PASS (FE + API) + authored (DB) | FE: alle Schreib-Entry-Points (`Ordner`/`Hochladen`/Row-Dropdown/DnD) hinter `useProjectAccess("edit_master")`; API: `requireProjectAccess("edit")`→403 für non-editor (route tests); live-smoke `VIEWER-*` (RLS: viewer sieht, INSERT→42501, UPDATE/DELETE rows=0, `dms_move_node`→42501) authored. |
+
+**Artefakte:** `src/lib/dms/mime.ooxml.test.ts` (6, real), `tests/PROJ-79-dms.spec.ts` (8 auth-gates), `tests/sql/PROJ-79-dms-pentest.sql` (DO-block, rollback-marker, 0 Residue — als postgres/service_role laufen lassen).
+
+**Offener Handoff vor Approved:** ~~`tests/sql/PROJ-79-dms-pentest.sql` einmal live gegen Prod ausführen~~ — **ERLEDIGT 2026-07-21 (main-thread session mit Supabase-MCP).**
+
+### Live-RPC/RLS Prod-Smoke — 2026-07-21 → **Approved**
+
+`tests/sql/PROJ-79-dms-pentest.sql` **live gegen Prod ausgeführt** (`iqerihohwabyjzkpcujq`), unter realer `authenticated`-Rolle + `request.jwt.claims`-Impersonation, sentinel-rollback → **0 Residue** (verifiziert: 0 P79-PENTEST-Tenants/Nodes/Profiles/Docs). **Alle 16 Assertions `t`:**
+
+`QUOTA-seed usage=1000` · `XTENANT` T2-admin sieht 0 T1-Knoten · `VIEWER-sel` sieht 3 · `VIEWER-ins` 42501 · `VIEWER-upd` rows=0 · `VIEWER-del` rows=0 · `RPC-role` viewer-move 42501 · `CYCLE` 23514 · `NONFOLDER` 23514 · `MOVE-OK` F2→root · `CASCADE` 2 Knoten + Dokument-Row soft-deleted + ausgezogenes F2 überlebt · `AUDIT` name-change-Row + `can_read_audit_entry` admin=t.
+
+**Harness-Fix während des Laufs:** die Pentest-Datei rief `dms_quota_status` vor dem Setzen eines JWT-Claims auf → RPC-Auth-Guard (`auth.uid()` null) feuerte. Behoben (Admin-Claim vor dem Quota-Check gesetzt) — Code unberührt, reiner Test-Harness-Fix. Datei ist jetzt reproduzierbar grün.
+
+**Verdict: 0 Critical / 0 High → PRODUCTION-READY.** Alle 6 Pflicht-Vektoren jetzt auf DB-Ebene live bewiesen (nicht nur authored). β (externe Konnektoren) bleibt out-of-scope.
 
 ## Deployment
 _To be added by /deploy._

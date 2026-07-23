@@ -258,6 +258,13 @@ describe("filterSectionsByModules", () => {
       retention_overrides: {},
       budget_settings: { default_currency: "EUR" },
       output_rendering_settings: { ki_narrative_enabled: false },
+      assistant_settings: {
+        transcript_retention_mode: "persist_metadata_only",
+        retention_days: 30,
+        stt_provider: "browser",
+        tts_provider: "browser",
+        wake_word_enabled: false,
+      },
       cost_settings: { velocity_factor: 0.5, default_currency: "EUR" },
       created_at: "",
       updated_at: "",
@@ -342,8 +349,10 @@ describe("ma-foundation injection into method configs (PROJ-94)", () => {
       const cfg = getMethodConfig(method)
       const ids = cfg.sidebarSections.map((s) => s.id)
       expect(ids).toContain("ma-foundation")
-      // appears immediately after the leading overview entry
-      expect(ids.indexOf("ma-foundation")).toBe(ids.indexOf("overview") + 1)
+      // PROJ-79-α injected the core "Dokumente" section right after overview
+      // (shown for all project types); the M&A foundation follows immediately.
+      expect(ids.indexOf("dms-documents")).toBe(ids.indexOf("overview") + 1)
+      expect(ids.indexOf("ma-foundation")).toBe(ids.indexOf("dms-documents") + 1)
     }
   })
 
@@ -528,6 +537,13 @@ describe("module-gating matrix (8 methods × 6 modules)", () => {
       retention_overrides: {},
       budget_settings: { default_currency: "EUR" },
       output_rendering_settings: { ki_narrative_enabled: false },
+      assistant_settings: {
+        transcript_retention_mode: "persist_metadata_only",
+        retention_days: 30,
+        stt_provider: "browser",
+        tts_provider: "browser",
+        wake_word_enabled: false,
+      },
       cost_settings: { velocity_factor: 0.5, default_currency: "EUR" },
       created_at: "",
       updated_at: "",

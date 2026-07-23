@@ -17,6 +17,7 @@ import {
   ClipboardCheck,
   FileText,
   Flag,
+  FolderTree,
   Gauge,
   Handshake,
   Layers,
@@ -195,6 +196,17 @@ const MA_GREMIEN_SECTION: SidebarSection = {
   requiresProjectType: "ma",
 }
 
+// PROJ-79-α — the "Dokumente" section: project document tree (folders +
+// uploads + quota). CORE for ALL project types (no `requiresProjectType`
+// gate), so it is injected here once (like the M&A sections) rather than in
+// each of the 8 method templates. Placed right after Übersicht.
+const DMS_DOCUMENTS_SECTION: SidebarSection = {
+  id: "dms-documents",
+  label: "Dokumente",
+  icon: FolderTree,
+  tabPath: "dokumente",
+}
+
 function withMaFoundation(config: MethodConfig): MethodConfig {
   const sections = config.sidebarSections
   // Insert right after the leading "overview" section (index 0) when present.
@@ -203,6 +215,7 @@ function withMaFoundation(config: MethodConfig): MethodConfig {
     ...config,
     sidebarSections: [
       ...sections.slice(0, insertAt),
+      DMS_DOCUMENTS_SECTION,
       MA_FOUNDATION_SECTION,
       MA_PHASE_MODEL_SECTION,
       MA_STAGE_GATES_SECTION,
