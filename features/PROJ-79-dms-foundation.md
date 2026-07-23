@@ -1,6 +1,6 @@
 # PROJ-79: DMS Foundation
 
-## Status: Approved (α backend + frontend + QA + live-RPC/RLS prod-smoke — 0 Critical/High; β externe Konnektoren deferred; → /deploy)
+## Status: Deployed (α backend + frontend + QA + live-RPC/RLS prod-smoke — 0 Critical/High; PR #247 → main, Tag v2.18.0-PROJ-79, 2026-07-23; β externe Konnektoren deferred)
 **Created:** 2026-06-06
 **Last Updated:** 2026-07-21
 
