@@ -1,6 +1,6 @@
 # PROJ-77: Skill-Customizing
 
-## Status: Planned
+## Status: Architected
 **Created:** 2026-06-06
 **Last Updated:** 2026-07-24
 
@@ -108,7 +108,71 @@ Extends the deployed PROJ-76 Skill-Framework with the three customizing dimensio
 <!-- Sections below are added by subsequent skills -->
 
 ## Tech Design (Solution Architect)
-_To be filled by /architecture._
+
+> Authored 2026-07-24. **CIA-reviewed** (mandatory: re-architects the deployed PROJ-76 immutability trigger + a new dependency). CIA verdict: Q1 GO · Q2 GO · Q3 ADJUST → **user-locked to option (b) app-layer guard** · Q4 dep-free. Grounded against the live PROJ-76 migration + both regression smokes. ADRs: `docs/decisions/skill-allowed-actions.md` (new) + a relaxation note in `docs/decisions/skill-versioning.md`.
+
+### What we're building (α)
+Turn PROJ-76's write-once versions into an **editable-draft** authoring loop, and give a skill a **declared action mandate**. A `draft` version becomes editable in place until the admin **publishes** it (which freezes it and makes it the live version); `active`/`archived` versions stay exactly as immutable as PROJ-76 shipped them. Plus `allowed_actions` — a validated allow-list stored with each version, whose enforcement lands later in PROJ-82/83.
+
+### The one decision that touches deployed code — draft-editability (CIA-locked, safe)
+PROJ-76's version-immutability trigger today blocks **every** content change unless a controlled internal flag (set only by the activate/rollback operations) is present, and even then only the `status` may change. α adds **one new allowed path**: a content change is permitted, without that flag, **only when the row is a draft both before and after the change** (i.e. it stays `draft`) and none of its identity fields (which skill, which tenant, version number, author, creation time) change. Everything else — editing an `active` or `archived` version, or flipping a draft to active by a plain write — remains hard-blocked exactly as before. This "draft-in / draft-out on both sides" double-check is the security core and is stated as a firm invariant. Status transitions (publish, rollback) keep going only through the existing controlled operations.
+- **Publish** reuses the deployed `activate` operation unchanged (previous active → archived, draft → active, pointer moved, atomic; the now-active content freezes).
+- **Rollback** stays exactly as deployed (creates a copied version and activates it) — **no change to that operation** (Q3-b decision), so its proven behaviour and smoke are untouched.
+
+### Concurrency & "one open draft" (Q3 → option b, app-layer)
+- A new `updated_at` timestamp on versions (auto-maintained) powers optimistic concurrency: editing a draft requires the caller to send the `updated_at` it last saw (`If-Match`); if it no longer matches, the edit is rejected with **409** ("draft changed underneath you", SK-11). The immutability trigger is deliberately blind to `updated_at` (it may always bump) — verified by CIA, no interaction.
+- **At most one open draft per skill** is enforced in the create-draft endpoint (if an open draft already exists → 409), **not** by a database constraint — because a DB "one draft" rule would break the deployed rollback operation (which briefly creates a draft). Accepted residual: two simultaneous admin create-draft requests could momentarily yield two drafts; this is benign (self-heals on publish) and documented.
+
+### Allowed-actions (store + validate here; enforce in PROJ-82/83)
+- `allowed_actions` becomes an optional key in a version's structured behaviour metadata (PROJ-76's metadata schema is extended to accept it). Values are checked against a **fixed V1 list** kept in one place in code: `propose_work_item`, `propose_risk`, `propose_budget_item`, `propose_phase`, `propose_milestone`, `generate_document`, `summarize_document`, `read_only`. Unknown value → rejected (422). Because it lives in the version's (immutable-once-published) content, a skill's mandate is versioned and auditable.
+- **Enforcement contract (documented, not built here):** PROJ-82 (proposals) and PROJ-83 (doc-generation) read the active version's `allowed_actions` and refuse out-of-mandate actions with **403 + an audit `skill.action_denied` entry**. Empty/absent list ⇒ **fail-closed** (no mutating action allowed). This default is locked now so downstream can't accidentally choose fail-open.
+
+### Rollback diff view (Q4 → dependency-free)
+The rollback confirmation shows a **line-level text diff** (added / removed / unchanged) between the current active content and the target archived version. Implemented as a ~40-line in-repo helper — **no `diff-match-patch` dependency** (a read-only panel doesn't justify an unmaintained package right after the PROJ-140 supply-chain hardening). Character-level diffing is a demand-gated later nicety.
+
+### β — Skill-Examples (standard EXTEND recipe)
+A new `skill_examples` table (per skill: title, input, expected output, tags, display order), tenant-scoped, admin-writable, PROJ-10 audit-wired. Admin CRUD (add / edit / reorder / remove) on the skill detail page. Empty input or expected-output → 422. Examples are authoring aids — admin-only, not PM-facing in V1. No forks; follows the PROJ-107 catalog pattern.
+
+### γ — Knowledge-Links (standard EXTEND recipe, references deployed PROJ-79 DMS)
+A new `skill_knowledge_links` table linking a skill to a PROJ-79 document-tree node, with an `include_subtree` flag and a `link_mode` (`reference` = optional weighting / `required` = must be in retrieval context). Unique per (skill, node); the linked node must be in the **same tenant** as the skill (cross-tenant link rejected — consistency check + RLS). Admin UI reuses the PROJ-79 tree as a node picker. Deleting the node cascades the link away; a lost `required` link surfaces a warning (consumed later by PROJ-80/82). PROJ-10 audit-wired.
+
+### Data model (plain language)
+- **A skill version** (existing) gains: `updated_at` (concurrency) and an optional `allowed_actions` list inside its behaviour metadata. Draft versions become editable; active/archived stay frozen.
+- **A skill example** (new): belongs to one skill + tenant; title, input text, expected-output text, tags, ordering.
+- **A skill knowledge link** (new): belongs to one skill + tenant; points at one DMS node; subtree flag; reference/required mode.
+All new tables carry `tenant_id` (cascade-delete with the tenant) and go through the established RLS helpers + the PROJ-76 audit-opt-in recipe (recreate audit helper functions from their live definitions, re-grant the authenticated execute, add the new tables to the audit allow-list / tracked-columns / read-gate).
+
+### Component structure (UI — all on the existing skill detail page)
+```
+/stammdaten/skills/[id]  (admin, extends PROJ-76 detail)
++-- Version timeline (existing) — now with:
+|   +-- "Entwurf bearbeiten" on the open draft (inline edit, If-Match)
+|   +-- "Veröffentlichen" (publish = activate) on the draft
+|   +-- "Neuer Entwurf" (guarded: 409 if a draft is open)
+|   +-- "Zurückrollen" on archived rows → diff-confirm dialog (dep-free diff)
++-- "Bearbeiten" tab (existing) + new "Erlaubte Aktionen" multi-select (allowed_actions)
++-- "Beispiele" section (β) — add/edit/reorder/remove
++-- "Wissensquellen" section (γ) — DMS node picker + include_subtree + link_mode + list
+```
+
+### Backend need
+Yes — 1 migration (α: `updated_at` + moddatetime + trigger relaxation + frontmatter-schema extension for `allowed_actions`; β/γ: two new tables + RLS + audit wiring), a new draft-PATCH endpoint (α) + endpoints for examples (β) and knowledge-links (γ), and the dep-free diff helper (frontend). No new external service. Publish/rollback reuse deployed operations.
+
+### Dependencies (packages)
+- **None.** Explicitly no `diff-match-patch` — a dependency-free in-repo line-diff is used instead (CIA NO-GO on the package).
+
+### Mandatory verification (locked by CIA)
+- Re-run **both** deployed PROJ-76 smokes + the RLS pentest → must stay green.
+- Add **new draft-immutability smoke cases**: (H) draft content-edit without the internal flag → succeeds; (I) archived content-edit → still blocked; (J) draft→active by a plain write → still blocked (promotion only via the controlled operation).
+- `If-Match` guard proven (stale value → 409); "one open draft" guard proven (second create → 409).
+- Trigger function recreated → re-verify its execute grant stays revoked from public/anon/authenticated.
+- Live-RPC/RLS smoke Pflicht before Approved, 0 residue.
+
+### Slice / handoff order
+`/backend` α → `/frontend` α → `/qa` α (deploy), then β, then γ (γ after confirming the PROJ-79 tree component is reusable as a picker). Each sub-slice is independently deployable.
+
+### Deviations from the original (pre-refinement) spec
+- Draft editing is **in-place with a status-gated trigger relaxation** (not "edit = always a new version"); rollback RPC is **not** modified (Q3-b); the "one open draft" rule is **app-layer, not a DB constraint**; the diff is **dependency-free**. All CIA-reviewed + user-locked 2026-07-24.
 
 ## Implementation Notes
 _To be added by /frontend and /backend._
