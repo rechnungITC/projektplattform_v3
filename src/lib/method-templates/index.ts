@@ -14,6 +14,7 @@
  */
 
 import {
+  BarChart3,
   ClipboardCheck,
   FileText,
   Flag,
@@ -207,6 +208,18 @@ const DMS_DOCUMENTS_SECTION: SidebarSection = {
   tabPath: "dokumente",
 }
 
+// PROJ-132 — the "Operatives Reporting" section: weekly-steering operative
+// bundle (overdue tasks / open findings by severity / Q&A status / deliverable
+// status) with filters + CSV/PDF export. Project-TYPE driven (M&A); read-only
+// and need-to-know-scoped server-side. Injected right after DD-Bericht (Epic M).
+const MA_OPERATIVE_REPORT_SECTION: SidebarSection = {
+  id: "ma-operative-report",
+  label: "Operatives Reporting",
+  icon: BarChart3,
+  tabPath: "operatives-reporting",
+  requiresProjectType: "ma",
+}
+
 function withMaFoundation(config: MethodConfig): MethodConfig {
   const sections = config.sidebarSections
   // Insert right after the leading "overview" section (index 0) when present.
@@ -229,6 +242,7 @@ function withMaFoundation(config: MethodConfig): MethodConfig {
       MA_CONFIDENTIALITY_SECTION,
       MA_DUE_DILIGENCE_SECTION,
       MA_DD_REPORT_SECTION,
+      MA_OPERATIVE_REPORT_SECTION,
       ...sections.slice(insertAt),
     ],
   }

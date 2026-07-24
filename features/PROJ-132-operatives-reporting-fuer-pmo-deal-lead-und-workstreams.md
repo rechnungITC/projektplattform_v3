@@ -14,7 +14,7 @@ summary_for_jira: "[M2] Operatives Reporting für PMO, Deal Lead und Workstreams
 
 # PROJ-132: Operatives Reporting für PMO, Deal Lead und Workstreams
 
-## Status: In Progress (backend live — RPC + data/export routes + 13 tests; /frontend next)
+## Status: In Progress (backend + frontend built — RPC + routes + tab/filters/print; /qa next)
 **Created:** 2026-06-10
 **Origin:** M&A-Platform Backlog (Epic M — Reporting & Dashboards)
 **Priority:** P1
@@ -154,6 +154,18 @@ Projektraum (M&A) → Tab „Operatives Reporting"
 **Pflicht-Live-RPC-Smoke gegen Prod (bestanden):** Funktion ist `is_definer=false` (INVOKER), `authenticated`=exec, `anon`≠exec; echter Aufruf liefert alle 5 Top-Keys + vollständigen `pre_read`/`summary`-Shape; C1-Aggregation exakt 32/32 offene Work-Items (kein stiller Drop), Summary korrekt (blocked=2). Kein M&A-Projekt mit DD-/Deliverable-Daten in Prod → Findings/Q&A/Deliverables-Aggregation + Need-to-know-Filterung werden im `/qa`-Pentest mit geseedeten Daten + echter Non-Admin-Session geprüft (execute_sql läuft als Superuser, umgeht RLS).
 
 **Gates:** vitest +13 (2 neue Route-Tests: 5 Daten + 8 Export inkl. Formel-Injektion + Owner-Auflösung), lint 0, tsc 0 neu, build clean (beide Routen registriert). Kein neues Dep. FE (Tab + Filter + Print-Seite) → `/frontend`.
+
+### Implementation Notes — /frontend (2026-07-24)
+Neuer M&A-Projektraum-Tab **„Operatives Reporting"** (`MA_OPERATIVE_REPORT_SECTION`, tabPath `operatives-reporting`, `requiresProjectType: "ma"`, Icon `BarChart3`, injiziert nach „DD-Bericht" in `method-templates/index.ts`). Neue Dateien:
+- `src/types/operative-report.ts` — Report-Typen (mirror RPC-Shape) + `EMPTY_OPERATIVE_REPORT` + `OperativeExportSection`.
+- `src/lib/ma-project/operative-report-api.ts` — `fetchOperativeReport` + `operativeReportExportUrl(section)`.
+- `src/hooks/use-operative-report.ts` — Fetch-Hook (mirror `use-task-bottlenecks`, `let cancelled`-Pattern).
+- `src/components/projects/ma/operative-report-body.tsx` — **reine** presentational Body (Pre-Read-Kachelzeile + 4 Sektions-Tabellen), von View **und** Print-Seite geteilt; reuse `dd-finding-labels`/`DELIVERABLE_STATUS_LABELS`/`WORK_ITEM_STATUS_LABELS`/`LEVEL_LABEL`.
+- `src/components/projects/ma/operative-report-view.tsx` — Client: Hook-Fetch + 4 Filter-Selects (Workstream/Owner/Phase/Klassifikation, clientseitig, Optionen aus den Daten abgeleitet) + 4 CSV-Buttons (je Sektion) + „Drucken/PDF"-Link. Filter greifen auf Task-/Deliverable-Zeilen (alle 4 Dimensionen); Klassifikations-Filter **re-aggregiert** zusätzlich die Findings-Streams aus den gefilterten Findings-Rows; Q&A (Stream-Aggregat ohne Row-Klassifikation) bleibt unverändert.
+- `src/app/(app)/projects/[id]/operatives-reporting/page.tsx` — Tab-Seite.
+- `src/app/projects/[id]/operative-report/print/page.tsx` — chrome-lose Print-Seite (außerhalb `(app)`, Session-Client-RLS, Owner-Namensauflösung via profiles, PROJ-116-Muster).
+
+**Gates:** lint 0, tsc 0 neu (12 total), method-templates 124/124, build clean (`/operatives-reporting` + `/operative-report/print` registriert). Kein neues Dep. Live-Läufe + Need-to-know-Pentest + Playwright-Auth-Gates → `/qa`.
 
 ---
 _Quelle: Backlog-Entwurf M&A-Projektplattform · M — Reporting & Dashboards_
