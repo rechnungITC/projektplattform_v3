@@ -1,6 +1,6 @@
 # PROJ-76: Skill-Framework Foundation
 
-## Status: Approved
+## Status: Deployed
 **Created:** 2026-06-06
 **Last Updated:** 2026-07-24
 
@@ -298,4 +298,13 @@ Duplicate slug → 409 (route test); rollback creates a new version, history unt
 The prod DB has a minimal seed (2 users / 2 tenants, both memberships `admin`). The non-admin-member and tenant-isolation vectors were exercised by synthesising a `member` row inside the rolled-back pentest transaction and by a non-member "stranger" JWT — 0 residue confirmed after every run.
 
 ## Deployment
-_To be added by /deploy._
+
+**Deployed 2026-07-24 — Tag `v2.22.0-PROJ-76`** (squash-merge PR #255 → `main` `98ac44e`).
+
+- Migration `20260723120849_proj76_skill_framework` was already applied to prod during `/backend`; this deploy is code-merge + bookkeeping (no new DB change at deploy time).
+- Branch `proj-76/architecture` merged origin/main conflict-free (auto-merge across INDEX/nav/stammdaten hotspots); merged-tree gates re-verified: vitest **2438/2438**, build clean, tsc 0 skill errors, eslint 0 on new files.
+- Required checks all green on #255: Schema-Drift-Guard, Migration-Naming-Guard, npm-audit (prod), Snyk. Vercel prod deploy completed.
+- Post-deploy prod smoke: `/skills`, `/stammdaten/skills`, `/api/skills` → **307** (auth-gate intact; new routes live).
+- Env: no new secret/variable; `js-yaml` was already resolved via the `overrides` pin (now a declared direct dep) → prod audit surface unchanged.
+
+**Open follow-up (PROJ-Y candidate):** audit "Verlauf" tab in the skill-detail UI — widen `AuditEntityType` with `skills`/`skill_versions` + wire `HistoryTab` (DB audit rows already exist and are RLS-gated).
