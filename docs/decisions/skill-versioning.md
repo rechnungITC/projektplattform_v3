@@ -29,4 +29,14 @@ Admins must iterate on a skill without losing prior content (SK-02), roll back q
 - **Negative / accepted:** rollback grows the version count (new row per rollback) rather than re-pointing — accepted for a clean immutable chain.
 - **Deferred:** hard-delete of a skill (V1 = deactivate only); referential integrity with PROJ-78 assignments must be designed before delete is added.
 
-See also: [skills-data-model.md](skills-data-model.md).
+## Amendment — PROJ-77-α: editable drafts (2026-07-24, CIA-reviewed)
+
+PROJ-76 shipped **every** version content-immutable (drafts included). PROJ-77-α relaxes this **for drafts only**, so admins can iterate a draft in place before publishing:
+
+- The immutability trigger gains **one** new allowed path: a content change with **no** internal status-flag is permitted **only when the row stays `draft` on both sides** (`OLD.status='draft' AND NEW.status='draft'`) and no identity field changes. This "draft-in / draft-out" double-check is the security core.
+- `active` and `archived` versions remain exactly as immutable as before; flipping a draft to active by a plain write stays blocked (promotion only via the controlled `activate` operation). The existing status-flag path (activate/rollback) is unchanged; **rollback is not modified**.
+- A new `updated_at` column (auto-maintained) drives `If-Match` optimistic concurrency (409 on stale). The trigger is intentionally blind to `updated_at`.
+- "At most one open draft per skill" is enforced **app-layer** (create-draft returns 409 if a draft is open), **not** by a DB constraint — a DB "one draft" rule would break the deployed rollback operation (which transiently creates a draft). Accepted benign residual: a create-draft race can momentarily yield two drafts (self-heals on publish).
+- Regression guard: both PROJ-76 live smokes + the RLS pentest must stay green, plus new draft-immutability cases (draft-edit succeeds; archived-edit blocked; draft→active-by-plain-write blocked).
+
+See also: [skills-data-model.md](skills-data-model.md), [skill-allowed-actions.md](skill-allowed-actions.md).
