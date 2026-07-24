@@ -101,6 +101,8 @@ const wizardSchema = z.object({
     investment_frame_note: z.string().max(4000),
     strategic_document_link: z.string().max(2048),
     confidentiality_level: z.enum(["standard", "confidential", "strict"]),
+    // PROJ-96 — optional project template applied on finalize (copy-on-create).
+    template_id: z.string().uuid().nullable(),
   }),
   // PROJ-135 — optional clarifying-questions block (draft JSON passthrough).
   clarifying: z

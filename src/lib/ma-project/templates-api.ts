@@ -9,6 +9,14 @@ import type { MaConfidentialityLevel } from "@/types/confidentiality"
 
 export type DealSide = "buy" | "sell" | "carve_out" | "jv" | "minority"
 
+export const DEAL_SIDE_LABELS: Record<DealSide, string> = {
+  buy: "Buy-Side",
+  sell: "Sell-Side",
+  carve_out: "Carve-out",
+  jv: "Joint Venture",
+  minority: "Minderheitsbeteiligung",
+}
+
 export interface MaTemplateWorkstream {
   id: string
   template_id: string

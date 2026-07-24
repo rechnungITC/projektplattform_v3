@@ -186,4 +186,11 @@ Keine. Reine EXTEND auf bestehendem Stack + deployten Bausteinen (PROJ-94/95/97/
 
 **Gates:** lint 0 · tsc 12 baseline/0 neu · Route-Tests 12/12 · Finalize-Regression 28/28 · Build clean (beide Routen registriert) · Security-Advisors 0 ERROR (nur Standard-INFO `authenticated_security_definer_function_executable`).
 
-**Offen:** /frontend (Wizard-Template-Picker im ma_foundation-Step + Admin-Katalog-Liste/Seed unter Stammdaten) → /qa (Live-E2E Wizard-mit-Template + Need-to-know/Authority-Pentest auf apply-RPC).
+**Offen:** /qa (Live-E2E Wizard-mit-Template + Need-to-know/Authority-Pentest auf apply-RPC).
+
+## Implementation Notes — /frontend (2026-07-24)
+
+- **Wizard-Template-Picker** im `ma_foundation`-Step (`step-ma-foundation.tsx`): neues optionales Feld `ma_foundation.template_id` (Typ + `emptyMaFoundationData` + Wizard-Zod-Schema erweitert). Select lädt aktive Templates on-mount via `listMaProjectTemplates` (`let cancelled`-Cleanup-Pattern), „Kein Template (leer starten)"-Default (Sentinel `__none__`→null), Inhalts-Vorschau (Phasen + N Workstreams + M Deliverables) in der FormDescription. Finalize-Hook (Backend) liest den Wert.
+- **Admin-Katalog** `Stammdaten → Projekt-Vorlagen (M&A)`: read-only Liste (`ma-project-templates-page-client.tsx` + Route `/stammdaten/projekt-vorlagen`) mit Deal-Side-/Version-/Aktiv-Badges + genesteter Workstream→Deliverable-Vorschau; GET lazy-seedet den Buy-Side-Default (AC1). Nav-Karte unter Stammdaten (admin-only). `DEAL_SIDE_LABELS` (5 Werte) im templates-api ergänzt.
+- **Deviation (CIA-Scope):** kein Deep-Editor/CRUD (Create/Reorder/Feld-Edit) im MVP → PROJ-Y-96d. Katalog ist read-only; der Default entsteht automatisch, Custom-Templates + Editor sind deferiert.
+- **Gates:** lint 0 · tsc 12 baseline/0 neu · Tests 177/177 (Wizard + method-templates + PROJ-96-Routen) · Build clean (`/stammdaten/projekt-vorlagen` registriert). Kein neuer Dep.
