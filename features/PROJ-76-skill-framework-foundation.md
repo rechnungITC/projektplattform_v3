@@ -1,8 +1,8 @@
 # PROJ-76: Skill-Framework Foundation
 
-## Status: In Progress
+## Status: Approved
 **Created:** 2026-06-06
-**Last Updated:** 2026-07-23
+**Last Updated:** 2026-07-24
 
 ## Summary
 Foundation for a platform-wide Skills capability. A "Skill" is a Markdown-based instruction file (Anthropic-Skill schema: YAML frontmatter + body) that defines an agent's behavior, allowed scope, and context bindings. Tenant-managed, admin-only edit, PM read-only. This story ships the data model, CRUD endpoints, versioning, activation toggle, and method/project-type tagging — but NOT the customizing surface (knowledge links, examples, actions) which lives in PROJ-77.
@@ -260,7 +260,42 @@ Both `skills` and `skill_versions` opt into field-level audit:
 **Remaining:** `/qa` — test against acceptance criteria + security (RLS/admin-gate/tenant-isolation) audit.
 
 ## QA Test Results
-_To be added by /qa._
+
+**Date:** 2026-07-24 · **Verdict: PRODUCTION-READY** (0 Critical / 0 High) · Status → **Approved**
+
+### Acceptance criteria — all covered
+| Area | Evidence |
+|---|---|
+| `skills` + `skill_versions` schema, unique `(tenant,slug)`, `(skill,version_number)` | Migration `20260723120849` live + verified; 409-on-dup-slug in route tests |
+| method/project-type tag vocab | App-layer Zod against real `PROJECT_METHODS`/`ProjectType` (documented deviation); route tests reject `itil`/`sap` (400) |
+| `current_version_id` + exactly-one-active | Partial-unique index + RPC; **RPC smoke B/E** (single active after activate/rollback) |
+| Markdown rules (body ≤50k, parseable frontmatter) | CHECK + `serialize.test.ts` round-trip proves parseable YAML (AC line 45); form-first (no `gray-matter` — documented deviation, no 422-frontmatter path) |
+| RLS skills/versions (member active-only, admin all) | **RLS pentest P1–P4, P11** |
+| API endpoints (create/list/get/patch/versions/activate/rollback/toggle) | 6 route files + 23 vitest + **Playwright 12/12 auth-gates** |
+| Admin list/detail + PM catalog UI | Built (`/stammdaten/skills`, `/stammdaten/skills/[id]`, `/skills`); build clean |
+| Audit events | DB audit wired (`status` + `current_version_id` tracked) — **RPC smoke G**; UI "Verlauf" tab deferred → PROJ-Y (deviation) |
+
+### Edge cases
+Duplicate slug → 409 (route test); rollback creates a new version, history untouched (RPC smoke E); activate-on-inactive-skill = version active but skill still hidden from PMs (staging semantics, RLS P1/P2); cross-tenant / non-member → 404/0 rows (pentest P9/P10); non-admin write → blocked (pentest P5–P8); empty body allowed (default `''`). Frontmatter-parse-fail edge case is N/A by design (form-first).
+
+### Security audit (red-team, live against prod, 0 residue)
+- **RLS role pentest 11/11 PASS** (`tests/sql/PROJ-76-skill-framework-rls-pentest.sql`): member sees active-only (P1/P2), versions of active only (P3/P4), non-admin INSERT skill blocked 42501 (P5), non-admin UPDATE = 0 rows (P6), non-admin INSERT version blocked (P7), non-admin `activate` RPC blocked 42501 (P8, admin-gate), non-member (stranger) sees 0 skills+versions across ALL tenants → **tenant isolation** (P9/P10), admin sees all incl. inactive (P11).
+- **RPC state-machine + immutability smoke 8/8 PASS** (`tests/sql/PROJ-76-skill-framework-rpc-smoke.sql`): activate, single-active-demote + pointer move, content-immutability blocked (23514), status-immutability blocked (23514), rollback content-copy, idempotent re-activate, admin-gate (stranger 42501), audit rows.
+- Advisors: **0 ERROR** (the 2 `authenticated_security_definer_function_executable` WARNs on the RPCs are the by-design state-machine pattern shared across the codebase).
+- Input validation: Zod at every boundary; UUID-checked route params; slug regex; tag-vocab whitelist. No injection surface (parameterised, no dynamic SQL in app code).
+
+### Automated tests
+- **Full vitest regression: 2337/2337 passed** (300 files) — no regressions.
+- PROJ-76 unit/route: 23/23 (serialize round-trip + skills/[id] routes).
+- **Playwright `tests/PROJ-76-skill-framework.spec.ts`: 12/12 chromium** — all 3 pages + all API endpoints (collection/single/versions/activate/rollback/toggle) return 307/401/403 unauthenticated.
+
+### Findings
+- **0 Critical, 0 High, 0 Medium.**
+- **Info/deviation (not a bug):** audit "Verlauf" tab omitted from the detail UI — `AuditEntityType` doesn't yet include `skills`/`skill_versions`; the DB audit rows exist and are RLS-gated (verified). Widening the client audit type + adding a `HistoryTab` prop path = **PROJ-Y follow-up**.
+- **Env deviation:** Mobile-Safari Playwright project skipped (WebKit host libs missing — repo-wide, PROJ-67/F2). Chromium fully green.
+
+### QA fixture note
+The prod DB has a minimal seed (2 users / 2 tenants, both memberships `admin`). The non-admin-member and tenant-isolation vectors were exercised by synthesising a `member` row inside the rolled-back pentest transaction and by a non-member "stranger" JWT — 0 residue confirmed after every run.
 
 ## Deployment
 _To be added by /deploy._
