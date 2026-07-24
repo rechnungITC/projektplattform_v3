@@ -33,6 +33,9 @@ export function serializeSkillMarkdown(
     fm.allowed_kinds = b.allowed_kinds
   }
   if (b.tone != null && b.tone !== "") fm.tone = b.tone
+  if (b.allowed_actions != null && b.allowed_actions.length > 0) {
+    fm.allowed_actions = b.allowed_actions
+  }
 
   const frontmatter = yaml
     .dump(fm, { lineWidth: -1, noRefs: true, sortKeys: false })

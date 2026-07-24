@@ -1,6 +1,6 @@
 # PROJ-77: Skill-Customizing
 
-## Status: Architected
+## Status: In Progress
 **Created:** 2026-06-06
 **Last Updated:** 2026-07-24
 
@@ -175,7 +175,29 @@ Yes — 1 migration (α: `updated_at` + moddatetime + trigger relaxation + front
 - Draft editing is **in-place with a status-gated trigger relaxation** (not "edit = always a new version"); rollback RPC is **not** modified (Q3-b); the "one open draft" rule is **app-layer, not a DB constraint**; the diff is **dependency-free**. All CIA-reviewed + user-locked 2026-07-24.
 
 ## Implementation Notes
-_To be added by /frontend and /backend._
+
+### α backend (2026-07-24)
+
+**Migration** `20260724144648_proj77_alpha_editable_drafts` (in Prod; repo version-matched):
+- `skill_versions.updated_at` (auto via `extensions.moddatetime`, trigger `skill_versions_set_updated_at`) — powers `If-Match`.
+- **`enforce_skill_version_immutability` recreated from the live def** with a second allowed branch: content/frontmatter/summary edits pass **only when `OLD.status='draft' AND NEW.status='draft'`** and identity fields (skill_id/tenant_id/version_number/created_by/created_at) are unchanged. GUC-branch (activate/rollback) unchanged; hard-block last. `updated_at` deliberately not compared (moddatetime bumps it). `search_path=''` + execute revoked from public/anon/authenticated preserved.
+- **Rollback + activate RPCs untouched** (Q3-b).
+
+**App layer:**
+- `src/lib/skills/allowed-actions.ts` — fixed V1 enum (single source of truth); frontmatter Zod schema (`_schema.ts`, still `.strict()`) extended with `allowed_actions` (enum-validated, unknown → 422). `serialize.ts` + `SkillFrontmatter` + `SkillVersion.updated_at` + `SKILL_VERSION_SELECT` updated.
+- **PATCH `/api/skills/[id]/versions/[vid]`** (new) — edit a draft in place, admin-only; 409 if not a draft; `If-Match: <updated_at>` → 409 on stale; write guarded by `updated_at` + `status='draft'` (race-safe). Trigger allows (stays draft); active/archived stay blocked.
+- **One-open-draft guard** in POST `/versions` (409 if a draft exists) — app-layer, deployed rollback RPC untouched (benign race → max 2 drafts, documented).
+- `patchSkillVersion` client wrapper (If-Match header).
+- `src/lib/skills/diff.ts` — **dependency-free** LCS line-diff for the rollback confirm panel (no `diff-match-patch`).
+
+**Verification (live vs Prod, 0 residue — CIA-locked):**
+- **α draft-immutability smoke 4/4** (`tests/sql/PROJ-77-alpha-draft-immutability-smoke.sql`): H draft in-place edit allowed · I archived edit blocked (23514) · J draft→active plain-write blocked (23514) · K draft identity mutation blocked.
+- **Regression:** PROJ-76 `rpc-smoke` **8/8** + `rls-pentest` **11/11** re-run **green under the α trigger**.
+- Advisors **0 ERROR** (only the by-design activate/rollback SECURITY-DEFINER WARNs, unchanged).
+
+**Quality gates:** vitest **40/40** skills (serialize + diff [6 cases] + skills routes + versions POST one-draft + versions/[vid] PATCH [9 cases]); tsc **0** skill errors; ESLint 0 on new/changed; build clean.
+
+**Remaining:** `/frontend` α — draft edit-in-place UI + "Veröffentlichen" (publish) + "Erlaubte Aktionen" multi-select + rollback diff-confirm dialog (using `lineDiff`); then `/qa` α (Playwright auth-gates on the new PATCH route + If-Match/one-draft E2E). β/γ are separate later slices.
 
 ## QA Test Results
 _To be added by /qa._

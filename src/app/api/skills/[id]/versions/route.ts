@@ -93,6 +93,26 @@ export async function POST(
   if (skillError) return apiError("fetch_failed", skillError.message, 500)
   if (!skill) return apiError("not_found", "Skill not found.", 404)
 
+  // PROJ-77-α: at most one open draft per skill (app-layer guard — a DB
+  // constraint would break the deployed rollback RPC, which transiently
+  // creates a draft). Benign race: two concurrent creates → max 2 drafts.
+  const { data: openDraft, error: draftErr } = await supabase
+    .from("skill_versions")
+    .select("id")
+    .eq("skill_id", id)
+    .eq("status", "draft")
+    .limit(1)
+    .maybeSingle()
+  if (draftErr) return apiError("fetch_failed", draftErr.message, 500)
+  if (openDraft) {
+    return apiError(
+      "conflict",
+      "This skill already has an open draft — edit or publish it before creating another.",
+      409,
+      "status"
+    )
+  }
+
   const { data: last } = await supabase
     .from("skill_versions")
     .select("version_number")
