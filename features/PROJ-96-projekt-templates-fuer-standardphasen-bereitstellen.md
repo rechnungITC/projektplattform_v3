@@ -14,7 +14,7 @@ summary_for_jira: "[A3] Projekt-Templates für Standardphasen bereitstellen"
 
 # PROJ-96: Projekt-Templates für Standardphasen bereitstellen
 
-## Status: Architected (2026-07-24)
+## Status: In Progress (Backend live 2026-07-24; /frontend + /qa offen)
 **Created:** 2026-06-10
 **Origin:** M&A-Platform Backlog (Epic A — Projektgrundlagen & Phasenmodell)
 **Priority:** P1
@@ -164,3 +164,26 @@ workstreams, deliverables — jeweils mit Herkunfts-Stempel (Template-ID + Versi
 
 ### Dependencies (Packages)
 Keine. Reine EXTEND auf bestehendem Stack + deployten Bausteinen (PROJ-94/95/97/101/102/104/117).
+
+---
+
+## Implementation Notes — /backend (2026-07-24)
+
+**Migration `20260724120055_proj96_ma_project_templates` (in Prod + Repo, PROJ-134-konform):**
+- 3 Katalog-Tabellen `ma_project_templates` (Kopf: template_key/name/deal_side/version/is_active) + `ma_template_workstreams` + `ma_template_deliverables` (alle mit `tenant_id NOT NULL` per Multi-Tenant-Invariante; Kind-Tabellen FK `template_id` ON DELETE CASCADE). RLS: read=`is_tenant_member`, write=`is_tenant_admin` (committee/dd_stream-Muster).
+- **Provenance-Spalten** additiv nullable auf `workstreams` + `deliverables`: `source_template_id` (FK ON DELETE SET NULL) + `source_template_version`.
+- `ensure_default_ma_project_templates(tenant)` — lazy-seed des Buy-Side-Defaults (7 Workstreams + 9 Deliverables), idempotent, `is_tenant_member`-gated, SECURITY DEFINER.
+- `apply_ma_project_template(project, template)` — atomarer Copy-RPC: `is_tenant_admin OR is_project_lead`, ma-only, harter Re-Apply-Block, **reuse `activate_ma_phase_model`** für Phasen + Copy Workstreams/Deliverables mit `workstream_key→id`-Remap + Provenance-Stempel. Beide RPCs: anon revoked, authenticated granted.
+- **Audit-Deviation (dokumentiert):** kein `record_audit_changes`-Trigger auf den Katalog-Tabellen (nur `extensions.moddatetime`) — folgt dem `dd_stream_templates`-Präzedenzfall (Template = Tenant-Config). Damit werden die giant Audit-Funktionen NICHT rekreiert → kein Grant-Drop-Risiko, kein Clobbering paralleler Sessions. Ehrt die CIA-AC-1-Intention (nichts bricht) besser als das committee-Muster.
+
+**API + Wiring:**
+- `GET /api/ma-project-templates` (tenant-scoped: lazy-seed + Liste mit genesteten Workstreams/Deliverables, 3 flache Selects → schema-drift-guard-safe) — für Wizard-Picker (vor Projektexistenz) + Admin-Katalog.
+- `POST /api/projects/[id]/apply-template` `{templateId}` (spiegelt phase-model/activate; 403/404/409-Mapping).
+- Wizard-**Finalize-Hook** (Step 4.3, nach Profil-Anlage, best-effort): liest `ma_foundation.template_id`, ruft `apply_ma_project_template` — Fehler blockt Finalize NICHT (Projekt bleibt nutzbar, Admin kann später via Route anwenden).
+- FE-Client `src/lib/ma-project/templates-api.ts` (Typen + `listMaProjectTemplates` + `applyMaProjectTemplate`).
+
+**Pflicht-Live-RPC-Smoke gegen Prod (0 Residue, via RAISE-Rollback):** Seed → Apply → Verify → Re-Apply-Block. Ergebnis: `seeded=1 · ws_created=7 · del_created=9 · ws_with_provenance=7 · reapply_blocked=true · phase_model={seeded:9, phase2_locked:true, mandate_status:draft}`. 0 Residue verifiziert (smoke_projects=0).
+
+**Gates:** lint 0 · tsc 12 baseline/0 neu · Route-Tests 12/12 · Finalize-Regression 28/28 · Build clean (beide Routen registriert) · Security-Advisors 0 ERROR (nur Standard-INFO `authenticated_security_definer_function_executable`).
+
+**Offen:** /frontend (Wizard-Template-Picker im ma_foundation-Step + Admin-Katalog-Liste/Seed unter Stammdaten) → /qa (Live-E2E Wizard-mit-Template + Need-to-know/Authority-Pentest auf apply-RPC).
