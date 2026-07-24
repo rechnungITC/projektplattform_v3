@@ -14,7 +14,7 @@ summary_for_jira: "[M2] Operatives Reporting für PMO, Deal Lead und Workstreams
 
 # PROJ-132: Operatives Reporting für PMO, Deal Lead und Workstreams
 
-## Status: Architected (VIEW-class, DUP→REUSE; standalone per CIA — merge-with-131 as documented deviation)
+## Status: In Progress (backend live — RPC + data/export routes + 13 tests; /frontend next)
 **Created:** 2026-06-10
 **Origin:** M&A-Platform Backlog (Epic M — Reporting & Dashboards)
 **Priority:** P1
@@ -140,6 +140,20 @@ Projektraum (M&A) → Tab „Operatives Reporting"
 
 ### Slice-Größe & Handoff
 ~2–3 PT. Reine Reuse-/VIEW-Slice, kein neuer CIA-Pass nötig (spec-following, Template PROJ-116). Handoff: `/backend` (Funktion + Daten-/Export-Routen + Live-Pentest) → `/frontend` (Tab + Filter + Print-Seite) → `/qa` (Need-to-know-Pentest + Playwright-Auth-Gates) → `/deploy`.
+
+### Implementation Notes — /backend (2026-07-24)
+**Migration `20260724120000_proj132_operative_report.sql` in Prod-DB** (MCP-registrierte Version driftet ggf. zum Repo-Dateinamen — benign, da idempotentes `create or replace function`, PROJ-134-Domäne). Eine SECURITY-INVOKER-Funktion `operative_report(p_project_id uuid) → jsonb`, `stable`, `set search_path = public, pg_temp`, `revoke public/anon` + `grant authenticated` (mirror PROJ-116). Bündelt:
+- `tasks_overdue` (C1) — verbatim PROJ-103-`project_task_bottlenecks`-Logik (offen = todo/in_progress/blocked, `days_overdue`, disjunkte Buckets, `is_blocked`) + Summary.
+- `findings_by_severity` (G3) — **offene** dd_findings (status open/in_review) je Stream × Schwere (niedrig/mittel/hoch/deal_breaker, eur_sum, null_eur_count) + Einzel-Rows für Drill-down/Export.
+- `qa_by_stream` (G2) — dd_questions offen/beantwortet je Stream, exakter PROJ-116-„offen"-Kontrakt (status ∉ answered/closed).
+- `deliverables_status` (D1) — deliverables je Workstream/Phase mit Status + `is_overdue` (due<heute ∧ status≠approved) + Status-Count-Summary.
+- `pre_read` (H1) — Wochen-Headline: überfällige Aufgaben · offene Deal-Breaker-Findings · offene Q&A · nicht-freigegebene Deliverables.
+
+**Routen:** `GET /api/projects/[id]/operative-report` (Session-Client, `requireProjectAccess "view"`, RPC-Call, null→EMPTY_REPORT) + `GET …/operative-report/export?section=tasks|findings|qa|deliverables` (CSV, dieselbe RPC = Single-Source-of-Truth, `csvCell`-Formel-Injektion-Escaping, Owner-Namensauflösung via profiles, `X-Export-Scope`-Header). Beide **nie** service-role.
+
+**Pflicht-Live-RPC-Smoke gegen Prod (bestanden):** Funktion ist `is_definer=false` (INVOKER), `authenticated`=exec, `anon`≠exec; echter Aufruf liefert alle 5 Top-Keys + vollständigen `pre_read`/`summary`-Shape; C1-Aggregation exakt 32/32 offene Work-Items (kein stiller Drop), Summary korrekt (blocked=2). Kein M&A-Projekt mit DD-/Deliverable-Daten in Prod → Findings/Q&A/Deliverables-Aggregation + Need-to-know-Filterung werden im `/qa`-Pentest mit geseedeten Daten + echter Non-Admin-Session geprüft (execute_sql läuft als Superuser, umgeht RLS).
+
+**Gates:** vitest +13 (2 neue Route-Tests: 5 Daten + 8 Export inkl. Formel-Injektion + Owner-Auflösung), lint 0, tsc 0 neu, build clean (beide Routen registriert). Kein neues Dep. FE (Tab + Filter + Print-Seite) → `/frontend`.
 
 ---
 _Quelle: Backlog-Entwurf M&A-Projektplattform · M — Reporting & Dashboards_
