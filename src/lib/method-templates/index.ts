@@ -17,6 +17,8 @@ import {
   ClipboardCheck,
   FileText,
   Flag,
+  FolderTree,
+  Gauge,
   Handshake,
   Layers,
   ListChecks,
@@ -136,6 +138,18 @@ const MA_MEASURES_SECTION: SidebarSection = {
   requiresProjectType: "ma",
 }
 
+// PROJ-103 — the "Engpässe" section: project-wide, cross-workstream view of all
+// open tasks with days-overdue + Top-3 bottlenecks + quick filters + CSV export.
+// Read-only aggregation (INVOKER RPC); need-to-know inherits via work_items.
+// Project-TYPE driven (M&A); injected right after Workstreams (Epic C).
+const MA_BOTTLENECKS_SECTION: SidebarSection = {
+  id: "ma-bottlenecks",
+  label: "Engpässe",
+  icon: Gauge,
+  tabPath: "engpaesse",
+  requiresProjectType: "ma",
+}
+
 // PROJ-112 — the "Due Diligence" section (DD-stream backbone: per-stream status,
 // lead, time window, confidentiality). Also project-TYPE driven (M&A) and
 // injected right after Governance, gated the same way.
@@ -182,6 +196,17 @@ const MA_GREMIEN_SECTION: SidebarSection = {
   requiresProjectType: "ma",
 }
 
+// PROJ-79-α — the "Dokumente" section: project document tree (folders +
+// uploads + quota). CORE for ALL project types (no `requiresProjectType`
+// gate), so it is injected here once (like the M&A sections) rather than in
+// each of the 8 method templates. Placed right after Übersicht.
+const DMS_DOCUMENTS_SECTION: SidebarSection = {
+  id: "dms-documents",
+  label: "Dokumente",
+  icon: FolderTree,
+  tabPath: "dokumente",
+}
+
 function withMaFoundation(config: MethodConfig): MethodConfig {
   const sections = config.sidebarSections
   // Insert right after the leading "overview" section (index 0) when present.
@@ -190,6 +215,7 @@ function withMaFoundation(config: MethodConfig): MethodConfig {
     ...config,
     sidebarSections: [
       ...sections.slice(0, insertAt),
+      DMS_DOCUMENTS_SECTION,
       MA_FOUNDATION_SECTION,
       MA_PHASE_MODEL_SECTION,
       MA_STAGE_GATES_SECTION,
@@ -197,6 +223,7 @@ function withMaFoundation(config: MethodConfig): MethodConfig {
       MA_GREMIEN_SECTION,
       MA_TASKS_SECTION,
       MA_WORKSTREAMS_SECTION,
+      MA_BOTTLENECKS_SECTION,
       MA_DELIVERABLES_SECTION,
       MA_MEASURES_SECTION,
       MA_CONFIDENTIALITY_SECTION,

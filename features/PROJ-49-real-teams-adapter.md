@@ -2,7 +2,7 @@
 
 ## Status
 
-Approved (α backend + β frontend + γ QA — Workflows-Webhook transport; 0 Critical/0 High. Code merged to main via #136 + #140. Live-send is a documented user-handoff; not yet `/deploy`-tagged.)
+Deployed (2026-07-23 Closure — Tag `v2.19.0-PROJ-49`). α backend + β frontend + γ QA — Workflows-Webhook transport; 0 Critical/0 High. Code merged to main via #136 + #140 and live in prod (Prod-Smoke POST /api/connectors → 307 auth-gate). Reine Status-Closure, kein neuer Runtime-Deploy. Offener User-Handoff: echter Teams-Workflows-Webhook-Live-Send (Konfiguration durch Tenant-Admin). PROJ-133 (Graph-delegated named-user/bot sender) bleibt separater Pilot-Followup.
 
 ## Summary
 
