@@ -14,7 +14,7 @@ summary_for_jira: "[H2] Kommunikationsmatrix für interne und externe Zielgruppe
 
 # PROJ-118: Kommunikationsmatrix für interne und externe Zielgruppen
 
-## Status: Approved (QA PASS 2026-07-24, 0 Critical/0 High — Backend + Frontend + Live-Pentest A–I 9/9 + Playwright 11/11. → /deploy)
+## Status: Deployed (2026-07-24 — PR #258 → main `a6c535c`, Tag `v2.23.0-PROJ-118`; QA PASS 0 Critical/0 High; Live-Pentest A–I 9/9 + Playwright 11/11)
 **Created:** 2026-06-10
 **Origin:** M&A-Platform Backlog (Epic H — Kommunikation, Gremien & Stakeholder)
 **Priority:** P1
