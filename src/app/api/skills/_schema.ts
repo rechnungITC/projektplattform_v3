@@ -1,5 +1,6 @@
 import { z } from "zod"
 
+import { SKILL_ALLOWED_ACTIONS } from "@/lib/skills/allowed-actions"
 import { PROJECT_TYPES } from "@/types/project"
 import { PROJECT_METHODS } from "@/types/project-method"
 import { SKILL_CATEGORIES } from "@/types/skill"
@@ -36,6 +37,16 @@ export const frontmatterSchema = z
     temperature: z.number().min(0).max(2).nullish(),
     allowed_kinds: z.array(z.string().trim().min(1).max(40)).max(20).nullish(),
     tone: z.string().trim().max(200).nullish(),
+    // PROJ-77-α — declared action mandate; each value must be in the fixed enum.
+    // Stored + validated here; enforcement is fail-closed in PROJ-82/83.
+    allowed_actions: z
+      .array(
+        z.enum(SKILL_ALLOWED_ACTIONS as unknown as [string, ...string[]], {
+          message: "Unbekannte Aktion.",
+        })
+      )
+      .max(SKILL_ALLOWED_ACTIONS.length)
+      .nullish(),
   })
   .strict()
 
@@ -79,6 +90,18 @@ export const createVersionSchema = z.object({
   frontmatter: frontmatterSchema.optional().default({}),
   change_summary: z.string().trim().max(500).nullish(),
 })
+
+// PROJ-77-α — in-place edit of a DRAFT version's content. At least one field.
+// Applied only when the version is a draft (enforced in the route + DB trigger).
+export const patchVersionSchema = z
+  .object({
+    markdown_body: z.string().max(50000).optional(),
+    frontmatter: frontmatterSchema.optional(),
+    change_summary: z.string().trim().max(500).nullish(),
+  })
+  .refine((v) => Object.keys(v).length > 0, {
+    message: "Mindestens ein Feld muss angegeben werden.",
+  })
 
 export const toggleActiveSchema = z.object({ is_active: z.boolean() })
 

@@ -143,6 +143,27 @@ export async function createSkillVersion(
   return body.version
 }
 
+/**
+ * PROJ-77-α — edit a draft version in place. Pass `ifMatch` (the version's
+ * last-seen `updated_at`) for optimistic concurrency; a stale value → 409.
+ */
+export async function patchSkillVersion(
+  id: string,
+  versionId: string,
+  input: CreateVersionInput,
+  ifMatch?: string
+): Promise<SkillVersion> {
+  const headers: Record<string, string> = { "Content-Type": "application/json" }
+  if (ifMatch) headers["If-Match"] = ifMatch
+  const response = await fetch(
+    `/api/skills/${encodeURIComponent(id)}/versions/${encodeURIComponent(versionId)}`,
+    { method: "PATCH", headers, body: JSON.stringify(input) }
+  )
+  if (!response.ok) throw new Error(await safeError(response))
+  const body = (await response.json()) as { version: SkillVersion }
+  return body.version
+}
+
 export async function activateSkillVersion(
   id: string,
   versionId: string

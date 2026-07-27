@@ -35,6 +35,8 @@ export interface SkillFrontmatter {
   temperature?: number | null
   allowed_kinds?: string[] | null
   tone?: string | null
+  /** PROJ-77-α — declared action mandate (fixed enum). Enforced in PROJ-82/83, fail-closed. */
+  allowed_actions?: string[] | null
 }
 
 export interface Skill {
@@ -64,10 +66,12 @@ export interface SkillVersion {
   status: SkillVersionStatus
   created_by: string | null
   created_at: string
+  /** PROJ-77-α — auto-maintained; powers If-Match optimistic concurrency on draft edits. */
+  updated_at: string
 }
 
 export const SKILL_SELECT =
   "id, tenant_id, name, slug, description, category, method_tags, project_type_tags, is_active, current_version_id, created_by, created_at, updated_at"
 
 export const SKILL_VERSION_SELECT =
-  "id, skill_id, tenant_id, version_number, markdown_content, frontmatter, change_summary, status, created_by, created_at"
+  "id, skill_id, tenant_id, version_number, markdown_content, frontmatter, change_summary, status, created_by, created_at, updated_at"

@@ -1,8 +1,8 @@
 # PROJ-77: Skill-Customizing
 
-## Status: Architected
+## Status: Approved (α)
 **Created:** 2026-06-06
-**Last Updated:** 2026-07-24
+**Last Updated:** 2026-07-27
 
 ## Summary
 Extends the deployed PROJ-76 Skill-Framework with the three customizing dimensions plus a real draft→publish workflow. Admin-only. Refined 2026-07-24 (`/requirements`) and reconciled against **as-built PROJ-76 + PROJ-79 (both now Deployed)**. Three user-locked decisions shape this slice:
@@ -175,10 +175,72 @@ Yes — 1 migration (α: `updated_at` + moddatetime + trigger relaxation + front
 - Draft editing is **in-place with a status-gated trigger relaxation** (not "edit = always a new version"); rollback RPC is **not** modified (Q3-b); the "one open draft" rule is **app-layer, not a DB constraint**; the diff is **dependency-free**. All CIA-reviewed + user-locked 2026-07-24.
 
 ## Implementation Notes
-_To be added by /frontend and /backend._
+
+### α backend (2026-07-24)
+
+**Migration** `20260724144648_proj77_alpha_editable_drafts` (in Prod; repo version-matched):
+- `skill_versions.updated_at` (auto via `extensions.moddatetime`, trigger `skill_versions_set_updated_at`) — powers `If-Match`.
+- **`enforce_skill_version_immutability` recreated from the live def** with a second allowed branch: content/frontmatter/summary edits pass **only when `OLD.status='draft' AND NEW.status='draft'`** and identity fields (skill_id/tenant_id/version_number/created_by/created_at) are unchanged. GUC-branch (activate/rollback) unchanged; hard-block last. `updated_at` deliberately not compared (moddatetime bumps it). `search_path=''` + execute revoked from public/anon/authenticated preserved.
+- **Rollback + activate RPCs untouched** (Q3-b).
+
+**App layer:**
+- `src/lib/skills/allowed-actions.ts` — fixed V1 enum (single source of truth); frontmatter Zod schema (`_schema.ts`, still `.strict()`) extended with `allowed_actions` (enum-validated, unknown → 422). `serialize.ts` + `SkillFrontmatter` + `SkillVersion.updated_at` + `SKILL_VERSION_SELECT` updated.
+- **PATCH `/api/skills/[id]/versions/[vid]`** (new) — edit a draft in place, admin-only; 409 if not a draft; `If-Match: <updated_at>` → 409 on stale; write guarded by `updated_at` + `status='draft'` (race-safe). Trigger allows (stays draft); active/archived stay blocked.
+- **One-open-draft guard** in POST `/versions` (409 if a draft exists) — app-layer, deployed rollback RPC untouched (benign race → max 2 drafts, documented).
+- `patchSkillVersion` client wrapper (If-Match header).
+- `src/lib/skills/diff.ts` — **dependency-free** LCS line-diff for the rollback confirm panel (no `diff-match-patch`).
+
+**Verification (live vs Prod, 0 residue — CIA-locked):**
+- **α draft-immutability smoke 4/4** (`tests/sql/PROJ-77-alpha-draft-immutability-smoke.sql`): H draft in-place edit allowed · I archived edit blocked (23514) · J draft→active plain-write blocked (23514) · K draft identity mutation blocked.
+- **Regression:** PROJ-76 `rpc-smoke` **8/8** + `rls-pentest` **11/11** re-run **green under the α trigger**.
+- Advisors **0 ERROR** (only the by-design activate/rollback SECURITY-DEFINER WARNs, unchanged).
+
+**Quality gates:** vitest **40/40** skills (serialize + diff [6 cases] + skills routes + versions POST one-draft + versions/[vid] PATCH [9 cases]); tsc **0** skill errors; ESLint 0 on new/changed; build clean.
+
+### α frontend (2026-07-24)
+
+Reworked the existing `skill-detail-client.tsx` into a draft-centric authoring loop + one new dialog `skill-rollback-diff-dialog.tsx`:
+- **Draft edit-in-place:** `openDraft` = the `status='draft'` version. When one exists → editable "Entwurf bearbeiten (vN)" card (body + behaviour fields + **allowed-actions multi-select** via reused `SkillTagPicker` + change_summary) with **"Entwurf speichern"** (`patchSkillVersion` with `If-Match = openDraft.updated_at`) and **"Veröffentlichen"** (confirm → `activateSkillVersion`). When none → **"Neuer Entwurf"** card (`createSkillVersion` seeded from the active version).
+- **Optimistic concurrency:** save splices the returned version (fresh `updated_at`) back into state → the next save's `If-Match` is current (no skeleton flash). Stale/conflict → toast + `refresh()`.
+- **Timeline:** the draft row's primary action is **"Veröffentlichen"**; archived rows open the **rollback diff-confirm dialog** (`lineDiff` + `diffStats`, +N/−M header, green/red/muted lines, empty-diff copy) → `rollbackSkillVersion`.
+- **allowed-actions** bound to `frontmatter.allowed_actions` with a fail-closed helper note; German labels for the 8 enum values.
+
+**Deviations (accepted):** (1) save = soft local update, not full `refresh()` (keeps editing context; create/publish/rollback still full-refresh); (2) archived rows expose only "Zurückrollen" (the α restore path via diff-confirm), removing PROJ-76's direct "Aktivieren" on archived — end-state equivalent, cleaner immutable history; (3) **409 detection by server-message fragment** because the shared `skills/api.ts` wrapper discards HTTP status — robust for the current stable English messages; exposing `err.status` in the wrapper is a small hardening follow-up (flag at `/qa`).
+
+**Gates (independently re-verified):** ESLint 0 on both files; tsc 0 skill errors; vitest 40/40 skills (unchanged); production build clean.
+
+**Remaining:** `/qa` α — Playwright auth-gates on the new PATCH route + If-Match/one-draft/publish/rollback E2E; re-confirm the live smokes. β/γ are separate later slices.
 
 ## QA Test Results
-_To be added by /qa._
+
+### α (2026-07-27) — **PRODUCTION-READY** (0 Critical / 0 High) · Status → Approved
+
+**Security audit (red-team, live vs Prod, 0 residue) — the α trigger relaxation is the risk surface:**
+- **α security pentest 4/4** (`tests/sql/PROJ-77-alpha-security-pentest.sql`) — the critical proof: **a non-admin member CANNOT edit a draft (0 rows, RLS admin-gate)** even though the relaxed trigger structurally allows draft edits; **admin can** (1 row applied); admin editing an **archived** version → blocked (23514); admin flipping **draft→active by plain write** → blocked (23514, promotion only via the activate RPC). The relaxation did not weaken the admin-gate or active/archived immutability.
+- **α draft-immutability smoke 4/4** (`tests/sql/PROJ-77-alpha-draft-immutability-smoke.sql`): H draft-edit allowed · I archived blocked · J promotion blocked · K identity frozen.
+- **Regression under the α trigger:** PROJ-76 `rpc-smoke` **8/8** + `rls-pentest` **11/11** re-run green.
+- Advisors **0 ERROR** (only the by-design activate/rollback SECURITY-DEFINER WARNs).
+
+**AC coverage (α):**
+| AC | Evidence |
+|---|---|
+| allowed_actions stored + enum-validated (422 on unknown) | frontmatter Zod extension; route test "400 on unknown allowed_action"; serialize includes it |
+| allowed_actions fail-closed enforcement | contract documented + ADR; deferred to PROJ-82/83 (not built here) |
+| draft editable in place; active/archived frozen | trigger draft-branch; α smoke H/I + security A1/A2 |
+| `updated_at` + If-Match 409 on stale | migration + PATCH route; route test "409 on stale If-Match" |
+| one open draft per skill (409) | POST /versions guard; route test "409 when an open draft exists" |
+| publish = activate; rollback unchanged | reuses deployed RPCs; rpc-smoke 8/8 green |
+| rollback diff-confirm | `lineDiff`/`diffStats` + `skill-rollback-diff-dialog`; diff unit tests 6/6 |
+
+**Automated tests:** full vitest regression **2463/2463**; PROJ-77 unit/route **40/40** skills (serialize, dep-free diff [6], skills routes, versions POST one-draft [2], versions/[vid] PATCH [9]); **Playwright `tests/PROJ-77-skill-customizing.spec.ts` 2/2 chromium** (PATCH route auth-gated, incl. with If-Match).
+
+**Findings:**
+- **0 Critical, 0 High, 0 Medium.**
+- **Low / follow-up:** the client detects 409 by server-message fragment because the shared `skills/api.ts` wrapper discards the HTTP status (frontend deviation 3). Robust for the current stable English messages; exposing `err.status` in the wrapper is a small hardening follow-up (PROJ-Y candidate) — no functional impact (worst case a 409 falls to a generic error toast; data stays safe).
+- **Info / deviations (accepted):** save = soft local update (keeps editing context); archived rows expose only "Zurückrollen" (α restore path via diff-confirm), removing PROJ-76's direct "Aktivieren" on archived (end-state equivalent, cleaner immutable history).
+- **Env:** Mobile-Safari Playwright skipped (WebKit host libs, PROJ-67/F2). Chromium green.
+
+**Note:** authenticated E2E of the full edit→publish→rollback flow is covered at the DB/route layer (live pentests + 40 unit/route tests) rather than a browser fixture, per the project's established skill-framework QA pattern (auth-gate E2E + live smokes). β/γ remain separate later slices.
 
 ## Deployment
 _To be added by /deploy._
