@@ -23,6 +23,7 @@ import {
   Handshake,
   Layers,
   ListChecks,
+  MessagesSquare,
   Microscope,
   Network,
   ShieldAlert,
@@ -197,6 +198,22 @@ const MA_GREMIEN_SECTION: SidebarSection = {
   requiresProjectType: "ma",
 }
 
+// PROJ-118 — the "Kommunikationsmatrix" section: the M&A communication planning
+// matrix (target groups × messages × channels × dates) with a single-approver
+// workflow (submit → approve/reject → mark sent) and need-to-know
+// confidentiality. Project-TYPE driven (M&A); injected after Gremien (Epic H).
+// NOTE: label + route are deliberately "Kommunikationsmatrix" / route
+// `kommunikationsmatrix` — the plain `kommunikation` slug + "Kommunikation"
+// label are already taken by the PROJ-13 Communication Center (outbox/chat),
+// which is module-gated and orthogonal to this M&A governance planning layer.
+const MA_KOMMUNIKATION_SECTION: SidebarSection = {
+  id: "ma-kommunikation",
+  label: "Kommunikationsmatrix",
+  icon: MessagesSquare,
+  tabPath: "kommunikationsmatrix",
+  requiresProjectType: "ma",
+}
+
 // PROJ-79-α — the "Dokumente" section: project document tree (folders +
 // uploads + quota). CORE for ALL project types (no `requiresProjectType`
 // gate), so it is injected here once (like the M&A sections) rather than in
@@ -234,6 +251,7 @@ function withMaFoundation(config: MethodConfig): MethodConfig {
       MA_STAGE_GATES_SECTION,
       MA_ROLES_SECTION,
       MA_GREMIEN_SECTION,
+      MA_KOMMUNIKATION_SECTION,
       MA_TASKS_SECTION,
       MA_WORKSTREAMS_SECTION,
       MA_BOTTLENECKS_SECTION,
