@@ -5,7 +5,18 @@ import Link from "next/link"
 import * as React from "react"
 import { toast } from "sonner"
 
+import { SkillRollbackDiffDialog } from "@/components/master-data/skill-rollback-diff-dialog"
 import { SkillTagPicker } from "@/components/master-data/skill-tag-picker"
+import {
+  AlertDialog,
+  AlertDialogAction,
+  AlertDialogCancel,
+  AlertDialogContent,
+  AlertDialogDescription,
+  AlertDialogFooter,
+  AlertDialogHeader,
+  AlertDialogTitle,
+} from "@/components/ui/alert-dialog"
 import { Badge } from "@/components/ui/badge"
 import { Button } from "@/components/ui/button"
 import {
@@ -33,9 +44,14 @@ import {
   createSkillVersion,
   getSkill,
   listSkillVersions,
+  patchSkillVersion,
   rollbackSkillVersion,
   updateSkillMetadata,
 } from "@/lib/skills/api"
+import {
+  SKILL_ALLOWED_ACTIONS,
+  type SkillAllowedAction,
+} from "@/lib/skills/allowed-actions"
 import { serializeSkillMarkdown } from "@/lib/skills/serialize"
 import { PROJECT_TYPE_LABELS, PROJECT_TYPES } from "@/types/project"
 import {
@@ -61,6 +77,21 @@ const TYPE_OPTIONS = PROJECT_TYPES.map((t) => ({
   label: PROJECT_TYPE_LABELS[t],
 }))
 
+const ACTION_LABELS: Record<SkillAllowedAction, string> = {
+  propose_work_item: "Work-Item vorschlagen",
+  propose_risk: "Risiko vorschlagen",
+  propose_budget_item: "Budgetposten vorschlagen",
+  propose_phase: "Phase vorschlagen",
+  propose_milestone: "Meilenstein vorschlagen",
+  generate_document: "Dokument erzeugen",
+  summarize_document: "Dokument zusammenfassen",
+  read_only: "Nur lesen",
+}
+const ACTION_OPTIONS = SKILL_ALLOWED_ACTIONS.map((a) => ({
+  value: a,
+  label: ACTION_LABELS[a],
+}))
+
 const VERSION_STATUS_LABEL: Record<SkillVersionStatus, string> = {
   draft: "Entwurf",
   active: "Aktiv",
@@ -80,6 +111,28 @@ function fmtDateTime(iso: string): string {
     dateStyle: "medium",
     timeStyle: "short",
   })
+}
+
+function errMsg(err: unknown): string {
+  return err instanceof Error ? err.message : "Unbekannter Fehler"
+}
+
+/**
+ * The API wrapper (`src/lib/skills/api.ts`, off-limits here) surfaces the
+ * server's error *message* but not the HTTP status. Conflicts (409) carry a
+ * distinctive message, so we detect them by their known fragments to drive the
+ * "reload underneath you" UX. Any non-conflict failure falls through to a
+ * generic error toast.
+ */
+function isConflictError(err: unknown): boolean {
+  if (!(err instanceof Error)) return false
+  const m = err.message.toLowerCase()
+  return (
+    m.includes("changed since you loaded") ||
+    m.includes("open draft") ||
+    m.includes("only draft versions") ||
+    m.includes("concurrent")
+  )
 }
 
 /** Parse `key=value` lines into a record; empty result = no overrides. */
@@ -129,17 +182,31 @@ export function SkillDetailClient({ skillId }: Props) {
   const [typeTags, setTypeTags] = React.useState<string[]>([])
   const [savingMeta, setSavingMeta] = React.useState(false)
 
-  // new-version form
+  // draft edit form (bound to the open draft, if any)
   const [body, setBody] = React.useState("")
   const [temperature, setTemperature] = React.useState("")
   const [tone, setTone] = React.useState("")
   const [allowedKinds, setAllowedKinds] = React.useState("")
+  const [allowedActions, setAllowedActions] = React.useState<string[]>([])
   const [modelOverrides, setModelOverrides] = React.useState("")
   const [changeSummary, setChangeSummary] = React.useState("")
-  const [savingVersion, setSavingVersion] = React.useState(false)
+  const [savingDraft, setSavingDraft] = React.useState(false)
+  const [creatingDraft, setCreatingDraft] = React.useState(false)
+  const [publishing, setPublishing] = React.useState(false)
+  const [publishOpen, setPublishOpen] = React.useState(false)
 
-  // per-version action busy id
+  // rollback confirm dialog
+  const [rollbackTarget, setRollbackTarget] =
+    React.useState<SkillVersion | null>(null)
+  const [rollingBack, setRollingBack] = React.useState(false)
+
+  // per-version action busy id (timeline)
   const [versionBusyId, setVersionBusyId] = React.useState<string | null>(null)
+
+  const openDraft = React.useMemo(
+    () => versions.find((v) => v.status === "draft") ?? null,
+    [versions]
+  )
 
   React.useEffect(() => {
     let cancelled = false
@@ -157,19 +224,23 @@ export function SkillDetailClient({ skillId }: Props) {
         setCategory(s.category)
         setMethodTags(s.method_tags)
         setTypeTags(s.project_type_tags)
-        // seed new-version form from the active version as a starting point
-        const seed = version
+        // hydrate the draft edit form from the open draft if there is one,
+        // otherwise from the active version (used for the preview + as the
+        // visual base when there is no draft).
+        const draft = vs.find((v) => v.status === "draft") ?? null
+        const seed = draft ?? version
         setBody(seed?.markdown_content ?? "")
         const fm: SkillFrontmatter = seed?.frontmatter ?? {}
         setTemperature(fm.temperature != null ? String(fm.temperature) : "")
         setTone(fm.tone ?? "")
         setAllowedKinds((fm.allowed_kinds ?? []).join(", "))
+        setAllowedActions(fm.allowed_actions ?? [])
         setModelOverrides(overridesToText(fm.model_overrides))
-        setChangeSummary("")
+        setChangeSummary(draft?.change_summary ?? "")
       })
       .catch((err: unknown) => {
         if (cancelled) return
-        setError(err instanceof Error ? err.message : "Unbekannter Fehler")
+        setError(errMsg(err))
       })
       .finally(() => {
         if (!cancelled) setLoading(false)
@@ -179,10 +250,10 @@ export function SkillDetailClient({ skillId }: Props) {
     }
   }, [skillId, reloadTick])
 
-  const refresh = () => {
+  const refresh = React.useCallback(() => {
     setLoading(true)
     setReloadTick((t) => t + 1)
-  }
+  }, [])
 
   const buildFrontmatter = React.useCallback((): SkillFrontmatter => {
     const fm: SkillFrontmatter = {}
@@ -197,10 +268,11 @@ export function SkillDetailClient({ skillId }: Props) {
       .map((k) => k.trim())
       .filter(Boolean)
     if (kinds.length > 0) fm.allowed_kinds = kinds
+    if (allowedActions.length > 0) fm.allowed_actions = allowedActions
     const overrides = parseModelOverrides(modelOverrides)
     if (Object.keys(overrides).length > 0) fm.model_overrides = overrides
     return fm
-  }, [temperature, tone, allowedKinds, modelOverrides])
+  }, [temperature, tone, allowedKinds, allowedActions, modelOverrides])
 
   const handleSaveMetadata = async (e: React.FormEvent) => {
     e.preventDefault()
@@ -220,60 +292,113 @@ export function SkillDetailClient({ skillId }: Props) {
       setSkill(updated)
       toast.success("Metadaten gespeichert")
     } catch (err) {
-      toast.error("Speichern fehlgeschlagen", {
-        description: err instanceof Error ? err.message : "Unbekannter Fehler",
-      })
+      toast.error("Speichern fehlgeschlagen", { description: errMsg(err) })
     } finally {
       setSavingMeta(false)
     }
   }
 
-  const handleCreateVersion = async () => {
-    setSavingVersion(true)
+  // "Neuer Entwurf" — create a fresh draft seeded from the active version.
+  const handleCreateDraft = async () => {
+    setCreatingDraft(true)
     try {
       await createSkillVersion(skillId, {
-        markdown_body: body,
-        frontmatter: buildFrontmatter(),
-        change_summary: changeSummary.trim() || null,
+        markdown_body: activeVersion?.markdown_content ?? "",
+        frontmatter: activeVersion?.frontmatter ?? {},
+        change_summary: null,
       })
-      toast.success("Neue Version als Entwurf gespeichert")
+      toast.success("Neuer Entwurf erstellt")
       refresh()
     } catch (err) {
-      toast.error("Version konnte nicht gespeichert werden", {
-        description: err instanceof Error ? err.message : "Unbekannter Fehler",
-      })
+      if (isConflictError(err)) {
+        toast.info("Es existiert bereits ein offener Entwurf — neu laden.")
+        refresh()
+      } else {
+        toast.error("Entwurf konnte nicht erstellt werden", {
+          description: errMsg(err),
+        })
+      }
     } finally {
-      setSavingVersion(false)
+      setCreatingDraft(false)
     }
   }
 
-  const handleActivate = async (version: SkillVersion) => {
-    setVersionBusyId(version.id)
+  // Save the open draft in place (If-Match optimistic concurrency).
+  const handleSaveDraft = async () => {
+    if (!openDraft) return
+    setSavingDraft(true)
     try {
-      await activateSkillVersion(skillId, version.id)
-      toast.success(`Version v${version.version_number} aktiviert`)
-      refresh()
-    } catch (err) {
-      toast.error("Aktivieren fehlgeschlagen", {
-        description: err instanceof Error ? err.message : "Unbekannter Fehler",
-      })
-      setVersionBusyId(null)
-    }
-  }
-
-  const handleRollback = async (version: SkillVersion) => {
-    setVersionBusyId(version.id)
-    try {
-      await rollbackSkillVersion(skillId, version.id)
-      toast.success(
-        `Zurückgerollt auf Inhalt von v${version.version_number} (neue aktive Version)`
+      const updated = await patchSkillVersion(
+        skillId,
+        openDraft.id,
+        {
+          markdown_body: body,
+          frontmatter: buildFrontmatter(),
+          change_summary: changeSummary.trim() || null,
+        },
+        openDraft.updated_at
       )
+      // Soft update: keep the admin editing (no skeleton flash); the returned
+      // version carries a fresh `updated_at` for the next If-Match save.
+      setVersions((prev) =>
+        prev.map((v) => (v.id === updated.id ? updated : v))
+      )
+      toast.success("Entwurf gespeichert")
+    } catch (err) {
+      if (isConflictError(err)) {
+        toast.error("Entwurf wurde zwischenzeitlich geändert — neu laden")
+        refresh()
+      } else {
+        toast.error("Entwurf konnte nicht gespeichert werden", {
+          description: errMsg(err),
+        })
+      }
+    } finally {
+      setSavingDraft(false)
+    }
+  }
+
+  // Publish = activate the open draft (previous active → archived).
+  const handlePublish = async () => {
+    if (!openDraft) return
+    setPublishing(true)
+    setVersionBusyId(openDraft.id)
+    try {
+      await activateSkillVersion(skillId, openDraft.id)
+      toast.success(`Version v${openDraft.version_number} veröffentlicht`)
+      setPublishOpen(false)
       refresh()
     } catch (err) {
-      toast.error("Zurückrollen fehlgeschlagen", {
-        description: err instanceof Error ? err.message : "Unbekannter Fehler",
-      })
+      if (isConflictError(err)) {
+        toast.error("Entwurf wurde zwischenzeitlich geändert — neu laden")
+        setPublishOpen(false)
+        refresh()
+      } else {
+        toast.error("Veröffentlichen fehlgeschlagen", {
+          description: errMsg(err),
+        })
+      }
       setVersionBusyId(null)
+      setPublishing(false)
+    }
+  }
+
+  const handleRollbackConfirm = async () => {
+    if (!rollbackTarget) return
+    setRollingBack(true)
+    setVersionBusyId(rollbackTarget.id)
+    try {
+      await rollbackSkillVersion(skillId, rollbackTarget.id)
+      toast.success(
+        `Zurückgerollt auf Inhalt von v${rollbackTarget.version_number} (neue aktive Version)`
+      )
+      setRollbackTarget(null)
+      refresh()
+    } catch (err) {
+      toast.error("Zurückrollen fehlgeschlagen", { description: errMsg(err) })
+      setVersionBusyId(null)
+    } finally {
+      setRollingBack(false)
     }
   }
 
@@ -352,6 +477,8 @@ export function SkillDetailClient({ skillId }: Props) {
                 .sort((a, b) => b.version_number - a.version_number)
                 .map((v) => {
                   const isActive = v.status === "active"
+                  const isDraft = v.status === "draft"
+                  const isArchived = v.status === "archived"
                   const busy = versionBusyId === v.id
                   return (
                     <div
@@ -376,32 +503,34 @@ export function SkillDetailClient({ skillId }: Props) {
                       {v.change_summary && (
                         <p className="mt-1 text-sm">{v.change_summary}</p>
                       )}
-                      {isAdmin && !isActive && (
+                      {isAdmin && isDraft && (
                         <div className="mt-2 flex flex-wrap gap-2">
                           <Button
                             size="sm"
                             variant="outline"
-                            disabled={busy}
-                            onClick={() => void handleActivate(v)}
+                            disabled={busy || publishing}
+                            onClick={() => setPublishOpen(true)}
                           >
-                            {busy && (
+                            {busy && publishing && (
                               <Loader2
                                 className="mr-1.5 h-3.5 w-3.5 animate-spin"
                                 aria-hidden
                               />
                             )}
-                            Aktivieren
+                            Veröffentlichen
                           </Button>
-                          {v.status === "archived" && (
-                            <Button
-                              size="sm"
-                              variant="ghost"
-                              disabled={busy}
-                              onClick={() => void handleRollback(v)}
-                            >
-                              Zurückrollen
-                            </Button>
-                          )}
+                        </div>
+                      )}
+                      {isAdmin && isArchived && (
+                        <div className="mt-2 flex flex-wrap gap-2">
+                          <Button
+                            size="sm"
+                            variant="ghost"
+                            disabled={busy}
+                            onClick={() => setRollbackTarget(v)}
+                          >
+                            Zurückrollen
+                          </Button>
                         </div>
                       )}
                     </div>
@@ -516,112 +645,173 @@ export function SkillDetailClient({ skillId }: Props) {
                 </CardContent>
               </Card>
 
-              {/* New version form */}
-              {isAdmin && (
-                <Card>
-                  <CardHeader>
-                    <CardTitle className="text-base">Neue Version</CardTitle>
-                  </CardHeader>
-                  <CardContent className="space-y-4">
-                    <div className="space-y-2">
-                      <Label htmlFor="ver-body">Markdown-Inhalt</Label>
-                      <Textarea
-                        id="ver-body"
-                        value={body}
-                        onChange={(e) => setBody(e.target.value)}
-                        maxLength={50000}
-                        rows={12}
-                        className="font-mono text-xs"
-                        placeholder="Freier Markdown-Body des Skills …"
-                      />
+              {/* Draft workflow */}
+              {isAdmin &&
+                (openDraft ? (
+                  <Card>
+                    <CardHeader>
+                      <CardTitle className="text-base">
+                        Entwurf bearbeiten (v{openDraft.version_number})
+                      </CardTitle>
+                    </CardHeader>
+                    <CardContent className="space-y-4">
                       <p className="text-xs text-muted-foreground">
-                        {body.length.toLocaleString("de-DE")} / 50.000 Zeichen
+                        Dieser Entwurf ist noch nicht veröffentlicht und für
+                        andere Nutzer unsichtbar. Speichere beliebig oft und
+                        veröffentliche ihn, wenn er fertig ist.
                       </p>
-                    </div>
 
-                    <Separator />
-
-                    <div className="grid gap-4 sm:grid-cols-2">
                       <div className="space-y-2">
-                        <Label htmlFor="ver-temp">Temperatur</Label>
+                        <Label htmlFor="ver-body">Markdown-Inhalt</Label>
+                        <Textarea
+                          id="ver-body"
+                          value={body}
+                          onChange={(e) => setBody(e.target.value)}
+                          maxLength={50000}
+                          rows={12}
+                          className="font-mono text-xs"
+                          placeholder="Freier Markdown-Body des Skills …"
+                        />
+                        <p className="text-xs text-muted-foreground">
+                          {body.length.toLocaleString("de-DE")} / 50.000 Zeichen
+                        </p>
+                      </div>
+
+                      <Separator />
+
+                      <div className="grid gap-4 sm:grid-cols-2">
+                        <div className="space-y-2">
+                          <Label htmlFor="ver-temp">Temperatur</Label>
+                          <Input
+                            id="ver-temp"
+                            type="number"
+                            min={0}
+                            max={2}
+                            step={0.1}
+                            value={temperature}
+                            onChange={(e) => setTemperature(e.target.value)}
+                            placeholder="z. B. 0.7"
+                          />
+                        </div>
+                        <div className="space-y-2">
+                          <Label htmlFor="ver-tone">Tonalität</Label>
+                          <Input
+                            id="ver-tone"
+                            value={tone}
+                            onChange={(e) => setTone(e.target.value)}
+                            maxLength={200}
+                            placeholder="z. B. sachlich, knapp"
+                          />
+                        </div>
+                      </div>
+
+                      <div className="space-y-2">
+                        <Label htmlFor="ver-kinds">Erlaubte Kinds</Label>
                         <Input
-                          id="ver-temp"
-                          type="number"
-                          min={0}
-                          max={2}
-                          step={0.1}
-                          value={temperature}
-                          onChange={(e) => setTemperature(e.target.value)}
-                          placeholder="z. B. 0.7"
+                          id="ver-kinds"
+                          value={allowedKinds}
+                          onChange={(e) => setAllowedKinds(e.target.value)}
+                          placeholder="Komma-getrennt, z. B. story, task, bug"
                         />
                       </div>
+
+                      <SkillTagPicker
+                        id="ver-allowed-actions"
+                        label="Erlaubte Aktionen"
+                        options={ACTION_OPTIONS}
+                        value={allowedActions}
+                        onChange={setAllowedActions}
+                        disabled={savingDraft}
+                      />
+                      <p className="-mt-1 text-xs text-muted-foreground">
+                        Leer = keine mutierende Aktion erlaubt (fail-closed).
+                        Durchgesetzt in späteren KI-Funktionen.
+                      </p>
+
                       <div className="space-y-2">
-                        <Label htmlFor="ver-tone">Tonalität</Label>
-                        <Input
-                          id="ver-tone"
-                          value={tone}
-                          onChange={(e) => setTone(e.target.value)}
-                          maxLength={200}
-                          placeholder="z. B. sachlich, knapp"
+                        <Label htmlFor="ver-overrides">
+                          Modell-Overrides (optional)
+                        </Label>
+                        <Textarea
+                          id="ver-overrides"
+                          value={modelOverrides}
+                          onChange={(e) => setModelOverrides(e.target.value)}
+                          rows={2}
+                          className="font-mono text-xs"
+                          placeholder={"Eine Zuordnung pro Zeile, z. B.\ndefault=claude-sonnet"}
                         />
                       </div>
-                    </div>
 
-                    <div className="space-y-2">
-                      <Label htmlFor="ver-kinds">Erlaubte Kinds</Label>
-                      <Input
-                        id="ver-kinds"
-                        value={allowedKinds}
-                        onChange={(e) => setAllowedKinds(e.target.value)}
-                        placeholder="Komma-getrennt, z. B. story, task, bug"
-                      />
-                    </div>
-
-                    <div className="space-y-2">
-                      <Label htmlFor="ver-overrides">
-                        Modell-Overrides (optional)
-                      </Label>
-                      <Textarea
-                        id="ver-overrides"
-                        value={modelOverrides}
-                        onChange={(e) => setModelOverrides(e.target.value)}
-                        rows={2}
-                        className="font-mono text-xs"
-                        placeholder={"Eine Zuordnung pro Zeile, z. B.\ndefault=claude-sonnet"}
-                      />
-                    </div>
-
-                    <div className="space-y-2">
-                      <Label htmlFor="ver-summary">Änderungsnotiz</Label>
-                      <Input
-                        id="ver-summary"
-                        value={changeSummary}
-                        onChange={(e) => setChangeSummary(e.target.value)}
-                        maxLength={500}
-                        placeholder="Was ändert sich in dieser Version?"
-                      />
-                    </div>
-
-                    <Button
-                      type="button"
-                      disabled={savingVersion}
-                      onClick={() => void handleCreateVersion()}
-                    >
-                      {savingVersion && (
-                        <Loader2
-                          className="mr-2 h-4 w-4 animate-spin"
-                          aria-hidden
+                      <div className="space-y-2">
+                        <Label htmlFor="ver-summary">Änderungsnotiz</Label>
+                        <Input
+                          id="ver-summary"
+                          value={changeSummary}
+                          onChange={(e) => setChangeSummary(e.target.value)}
+                          maxLength={500}
+                          placeholder="Was ändert sich in dieser Version?"
                         />
-                      )}
-                      Als neue Version speichern
-                    </Button>
-                    <p className="text-xs text-muted-foreground">
-                      Neue Versionen entstehen als Entwurf und werden erst über
-                      „Aktivieren“ in der Zeitleiste live.
-                    </p>
-                  </CardContent>
-                </Card>
-              )}
+                      </div>
+
+                      <div className="flex flex-wrap gap-2">
+                        <Button
+                          type="button"
+                          variant="outline"
+                          disabled={savingDraft || publishing}
+                          onClick={() => void handleSaveDraft()}
+                        >
+                          {savingDraft && (
+                            <Loader2
+                              className="mr-2 h-4 w-4 animate-spin"
+                              aria-hidden
+                            />
+                          )}
+                          Entwurf speichern
+                        </Button>
+                        <Button
+                          type="button"
+                          disabled={savingDraft || publishing}
+                          onClick={() => setPublishOpen(true)}
+                        >
+                          {publishing && (
+                            <Loader2
+                              className="mr-2 h-4 w-4 animate-spin"
+                              aria-hidden
+                            />
+                          )}
+                          Veröffentlichen
+                        </Button>
+                      </div>
+                    </CardContent>
+                  </Card>
+                ) : (
+                  <Card>
+                    <CardHeader>
+                      <CardTitle className="text-base">Neuer Entwurf</CardTitle>
+                    </CardHeader>
+                    <CardContent className="space-y-4">
+                      <p className="text-sm text-muted-foreground">
+                        Es gibt derzeit keinen offenen Entwurf. Lege einen neuen
+                        Entwurf an, um den Inhalt zu bearbeiten – er wird auf
+                        Basis der aktiven Version vorbefüllt und erst mit
+                        „Veröffentlichen“ live.
+                      </p>
+                      <Button
+                        type="button"
+                        disabled={creatingDraft}
+                        onClick={() => void handleCreateDraft()}
+                      >
+                        {creatingDraft && (
+                          <Loader2
+                            className="mr-2 h-4 w-4 animate-spin"
+                            aria-hidden
+                          />
+                        )}
+                        Neuer Entwurf
+                      </Button>
+                    </CardContent>
+                  </Card>
+                ))}
             </TabsContent>
 
             <TabsContent value="preview">
@@ -649,10 +839,59 @@ export function SkillDetailClient({ skillId }: Props) {
 
       {activeVersion == null && (
         <p className="text-sm text-muted-foreground">
-          Dieser Skill hat noch keine aktive Version. Speichere eine Version und
-          aktiviere sie in der Zeitleiste.
+          Dieser Skill hat noch keine aktive Version. Erstelle einen Entwurf und
+          veröffentliche ihn in der Zeitleiste.
         </p>
       )}
+
+      {/* Publish confirmation */}
+      <AlertDialog open={publishOpen} onOpenChange={setPublishOpen}>
+        <AlertDialogContent>
+          <AlertDialogHeader>
+            <AlertDialogTitle>
+              {openDraft
+                ? `Version v${openDraft.version_number} veröffentlichen?`
+                : "Veröffentlichen?"}
+            </AlertDialogTitle>
+            <AlertDialogDescription>
+              Der Entwurf wird zur neuen aktiven Version und ist damit für alle
+              Nutzer sichtbar. Die bisher aktive Version wird archiviert und der
+              Inhalt eingefroren. Diese Aktion kann nur per Zurückrollen
+              rückgängig gemacht werden.
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogCancel disabled={publishing}>
+              Abbrechen
+            </AlertDialogCancel>
+            <AlertDialogAction
+              disabled={publishing}
+              onClick={(e) => {
+                e.preventDefault()
+                void handlePublish()
+              }}
+            >
+              {publishing && (
+                <Loader2 className="mr-2 h-4 w-4 animate-spin" aria-hidden />
+              )}
+              Veröffentlichen
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
+
+      {/* Rollback diff confirmation */}
+      <SkillRollbackDiffDialog
+        open={rollbackTarget != null}
+        onOpenChange={(open) => {
+          if (!open) setRollbackTarget(null)
+        }}
+        targetVersionNumber={rollbackTarget?.version_number ?? null}
+        activeContent={activeVersion?.markdown_content ?? ""}
+        targetContent={rollbackTarget?.markdown_content ?? ""}
+        onConfirm={() => void handleRollbackConfirm()}
+        busy={rollingBack}
+      />
     </div>
   )
 }
