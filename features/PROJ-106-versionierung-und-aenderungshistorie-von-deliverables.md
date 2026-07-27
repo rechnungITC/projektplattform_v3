@@ -14,7 +14,7 @@ summary_for_jira: "[D3] Versionierung und Änderungshistorie von Deliverables"
 
 # PROJ-106: Versionierung und Änderungshistorie von Deliverables
 
-## Status: Planned
+## Status: Architected (Option A resumed 2026-07-27 — PROJ-79 blocker cleared; CIA-locked design promoted, no new CIA pass)
 **Created:** 2026-06-10
 **Origin:** M&A-Platform Backlog (Epic D — Deliverables & Artefakte)
 **Priority:** P1
@@ -95,5 +95,37 @@ _Quelle: Backlog-Entwurf M&A-Projektplattform · D — Deliverables & Artefakte_
 **DoR-Defaults (kein Hard-Blocker):** (1) DMS-Strategie = bestehende Out-of-Scope-Klausel (DMS wird Store-of-Record sobald PROJ-79 landet, Plattform spiegelt). (2) Retention = folgt Projekt-Lifecycle bis Tenant-Offboarding (PROJ-17); per-Typ-Fristen warten mit Binär-Storage.
 
 **Followup-Kandidaten:** PROJ-Y-106a (Auto-Stempel der aktuellen Version beim finalen PROJ-105-Approve), PROJ-Y-106b (Binär-Versionierung + Retention, mit PROJ-79-DMS), PROJ-Y-106c (Versions-Diff-Ansicht).
+
+---
+
+## Tech Design (Solution Architect) — Option A promoted, resumed 2026-07-27
+
+> **Wiederaufnahme:** Der PROJ-79-Blocker ist diese Session gefallen (DMS Foundation α Deployed `v2.18.0`). Die CIA-gelockte Option A (2026-07-21) wird hier zum aktiven Tech-Design promotet — **kein neuer CIA-Pass** (spec-following, Muster = Core-Immutable-Supersede + M&A-EXTEND-Rezept). Live-Schema gegen PROJ-104/105 verifiziert: `deliverable_documents(id, tenant_id, deliverable_id, title, url, tag_keys, created_by, created_at)` + `deliverable_approval_events(id pk, …)` existieren.
+
+### Was gebaut wird (WAS, nicht WIE)
+**Versionskette pro Dokument-Slot auf `deliverable_documents`** (additive Erweiterung, keine neue Tabelle — Shared-Core, Invariante #5 analog `decisions.supersedes_*`):
+- `version_no` — fortlaufende Nummer je Kette (Start 1). **AC1.**
+- `supersedes_document_id` (nullable FK → `deliverable_documents`) — Zeiger auf die vorige Version; eine Kette = „derselbe" Dokument-Slot.
+- `is_current` — genau eine Version je Kette ist die aktuelle. **AC4.**
+- `version_comment` — Kommentar je Version. **AC3** (Datum = `created_at`, Uploader = `created_by`, bereits vorhanden).
+- `approved_in_event_id` (nullable FK → PROJ-105 `deliverable_approval_events`) — verknüpft eine Version mit der Freigabeentscheidung. **AC5.** FK-Richtung: Version kennt ihr Event, die immutable Events-Tabelle wird **nicht** angefasst.
+
+**„Neue Version" = ein atomarer RPC** (`auth.uid()`, edit-gated, mirror M&A-RPC-Muster): INSERT neue Row (`version_no` = Vorgänger+1, `supersedes_document_id` = Vorgänger, `is_current=true`) **+** Flip des alten `is_current=false` in einer TX → **ein sauberer Audit-Eintrag** (DoD „Audit erfasst Versionswechsel" gratis).
+
+**Unveränderlichkeit früherer Versionen (AC2):** Immutability-Guard-Trigger blockt UPDATE der Inhaltsspalten (`title/url/version_no/version_comment/created_by/supersedes_document_id`); erlaubt bleibt nur der kontrollierte `is_current`-Flip + das `approved_in_event_id`-Stempeln.
+
+### Datenmodell / Security
+Keine neue Tabelle, kein neuer Dep. **Need-to-know erbt** über die bestehende RESTRICTIVE-Policy von `deliverable_documents` (an der Parent-`deliverables`-Vertraulichkeit) — die Versionsspalten sind additiv auf derselben Tabelle → gleicher Gate. Audit-Trio (`audit_log_entity_type_check` + `_tracked_audit_columns` + `can_read_audit_entry`) **non-destruktiv in derselben Migration** aus den Live-Defs neu gebaut (M&A-EXTEND-Rezept: alle Sibling-Entities erhalten, `authenticated`-Grant re-granted). Pflicht-Live-RPC-Smoke + Need-to-know-Pentest.
+
+### Scope-Schnitt
+- **MVP (jetzt):** Link-/Metadaten-Versionskette + `add_deliverable_document_version`-RPC + nullable Approval-Link + Immutability-Guard + UI-Versionsliste (Current-Badge, Uploader, Datum, Kommentar, Approval-Bezug).
+- **Deferred → PROJ-Y-106b:** echter Binär-Upload/Storage-Bucket + Binär-Retention/Archiv (setzt auf PROJ-79-Storage auf).
+- **Out-of-Scope (Spec):** Diff-Anzeige (PROJ-Y-106c); DMS-als-Store-of-Record (bestehende Klausel).
+
+### Abhängigkeiten (verifiziert Deployed)
+D1 = PROJ-104 (deliverables + deliverable_documents) ✅ · D2 = PROJ-105 (deliverable_approval_events) ✅ · L3 = PROJ-10/Core-Audit ✅. Kein neues npm-Paket, 1 Migration.
+
+### Handoff
+`/backend` (Migration: 5 Spalten + Immutability-Trigger + `add_deliverable_document_version`-RPC + Audit-Trio-Extend + Live-Smoke) → `/frontend` (Versionsliste je Dokument-Slot + „Neue Version"-Dialog) → `/qa` (Need-to-know-Pentest + Immutability-Probe + Playwright) → `/deploy`. ~2–3 PT.
 
 > **Hinweis:** PROJ-79s eigene Out-of-Scope-Liste stellt „Document version history (for now overwrite-with-rename)" ebenfalls zurück — PROJ-106 bleibt also auch nach PROJ-79 die dedizierte Versionierungs-Slice, die auf dem dann existierenden Storage aufsetzt.
