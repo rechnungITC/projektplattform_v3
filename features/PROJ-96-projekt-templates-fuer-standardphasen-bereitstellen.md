@@ -14,8 +14,9 @@ summary_for_jira: "[A3] Projekt-Templates für Standardphasen bereitstellen"
 
 # PROJ-96: Projekt-Templates für Standardphasen bereitstellen
 
-## Status: Approved (QA PASS 2026-07-24; 0 Critical/0 High)
+## Status: Deployed (2026-07-27 — Tag `v2.24.0-PROJ-96`)
 **Created:** 2026-06-10
+**Deployed:** 2026-07-27 — Tag `v2.24.0-PROJ-96`. Migration `20260724120055_proj96_ma_project_templates` seit /backend in Prod; Runtime-Deploy der neuen Routen (`/api/ma-project-templates`, `/api/projects/[id]/apply-template`), des Wizard-Template-Pickers + des Admin-Katalogs (`/stammdaten/projekt-vorlagen`). Rebase auf aktuellen main konfliktfrei (Skills-/Kommunikationsmatrix-Parallelarbeit koexistiert; `@types/js-yaml`-Dep via `npm install` gesynct). Post-Deploy-Smoke: 307-Auth-Gate auf beiden APIs + Admin-Page. Followups: PROJ-Y-96a (Deal-Typen + template-eigene Phasen) / 96b (RACI-Templates) / 96c (Freigabesperre + Versionshistorie) / 96d (Deep-Editor).
 **Origin:** M&A-Platform Backlog (Epic A — Projektgrundlagen & Phasenmodell)
 **Priority:** P1
 
