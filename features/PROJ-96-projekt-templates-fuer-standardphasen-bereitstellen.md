@@ -14,7 +14,7 @@ summary_for_jira: "[A3] Projekt-Templates für Standardphasen bereitstellen"
 
 # PROJ-96: Projekt-Templates für Standardphasen bereitstellen
 
-## Status: In Progress (Backend live 2026-07-24; /frontend + /qa offen)
+## Status: Approved (QA PASS 2026-07-24; 0 Critical/0 High)
 **Created:** 2026-06-10
 **Origin:** M&A-Platform Backlog (Epic A — Projektgrundlagen & Phasenmodell)
 **Priority:** P1
@@ -194,3 +194,27 @@ Keine. Reine EXTEND auf bestehendem Stack + deployten Bausteinen (PROJ-94/95/97/
 - **Admin-Katalog** `Stammdaten → Projekt-Vorlagen (M&A)`: read-only Liste (`ma-project-templates-page-client.tsx` + Route `/stammdaten/projekt-vorlagen`) mit Deal-Side-/Version-/Aktiv-Badges + genesteter Workstream→Deliverable-Vorschau; GET lazy-seedet den Buy-Side-Default (AC1). Nav-Karte unter Stammdaten (admin-only). `DEAL_SIDE_LABELS` (5 Werte) im templates-api ergänzt.
 - **Deviation (CIA-Scope):** kein Deep-Editor/CRUD (Create/Reorder/Feld-Edit) im MVP → PROJ-Y-96d. Katalog ist read-only; der Default entsteht automatisch, Custom-Templates + Editor sind deferiert.
 - **Gates:** lint 0 · tsc 12 baseline/0 neu · Tests 177/177 (Wizard + method-templates + PROJ-96-Routen) · Build clean (`/stammdaten/projekt-vorlagen` registriert). Kein neuer Dep.
+
+## QA Test Results — /qa (2026-07-24) · PRODUCTION-READY
+
+**Acceptance Criteria (5):**
+- **AC1 (Buy-Side-Default verfügbar)** ✅ — lazy-seed via `ensure_default_ma_project_templates` liefert 7 Workstreams + 9 Deliverables; im Pentest-Positivkontroll-Vektor bewiesen (admin_ok: apply ergibt ws=7/del=9). GET `/api/ma-project-templates` seedet bei Erstzugriff.
+- **AC2 (Templates anlegen/kopieren/versionieren durch Template-Admin)** ⚠️ **PARTIAL/Deviation** — Default-Template existiert + Katalog admin-gated (`is_tenant_admin`). Custom-Create/Copy/Deep-Version-Edit **deferiert → PROJ-Y-96d** (CIA-Scope: „kein Deep-Editor im MVP"). Versionsfeld + Provenance-Stempel vorhanden; manuelles Version-Bump-UI folgt in 96d. Dokumentierte Deviation.
+- **AC3 (Template bei Projektanlage wählbar → Inhalte übernommen)** ✅ — Wizard-Picker (`ma_foundation.template_id`) + Finalize-Hook rufen `apply_ma_project_template`. End-to-End DB-seitig live bewiesen (Seed→Apply→7 WS/9 Del + Phasen via activate_ma_phase_model). D-1: voll-eingeloggter Wizard-UI-E2E deferiert (Auth-Fixture/Seed, analog Vorgänger-Slices) — Mechanik über Route-Unit-Tests + Live-RPC abgedeckt.
+- **AC4 (nach Übernahme projektindividuell editierbar ohne Template zu ändern)** ✅ — entkoppelte Kopie (kein Rück-FK auf Template-Inhalt); nur `source_template_id/_version`-Provenance (ON DELETE SET NULL). Strukturelle Garantie.
+- **AC5 (Template-Änderung wirkt nicht rückwirkend)** ✅ — folgt aus AC4 (entkoppelte Kopie). Versionsstand über Provenance-Stempel festgehalten.
+
+**Security / Red-Team — Live-Pentest gegen Prod (`tests/sql/PROJ-96-project-templates-pentest.sql`, via RAISE-Rollback, 0 Residue):**
+- **6/6 Vektoren PASS:** V1 admin-happy-path (positive control) · V2 single-use re-apply-block (P0001) · V3 non-member-seed-block (42501) · V4 non-admin/non-lead-member-apply-block (42501) · V5 cross-tenant-template-not-resolvable (P0002) · V6 non-M&A-project-reject (P0001).
+- **anon EXECUTE revoked** auf beiden RPCs (Grants = service_role/authenticated/postgres) ✅.
+- **0 Residue** verifiziert (pentest_projects=0, templates_total=0, leaked_membership=0).
+- Security-Advisors: 0 ERROR (nur Standard-INFO `authenticated_security_definer_function_executable`).
+
+**Automatisierte Tests:**
+- Playwright `tests/PROJ-96-project-templates.spec.ts` **4/4 chromium** (Auth-Gate: GET catalog · POST apply · malformed-id · Admin-Page). Mobile-Safari skipped (WebKit-Host-Libs — PROJ-67/F2).
+- Vitest: Route-Unit 12/12 + Wizard/method-templates-Regression 177/177.
+- Gates: lint 0 · tsc 12 baseline/0 neu · Build clean.
+
+**Findings:** 0 Critical, 0 High. F-1 (Low/Deviation): AC2 Deep-Editor deferiert → PROJ-Y-96d. D-1 (Env): voll-eingeloggter Wizard-UI-E2E nicht in CI (Auth-Fixture), kompensiert durch Live-RPC + Route-Unit + Auth-Gate-E2E.
+
+**→ PRODUCTION-READY.** Nächster Schritt: `/deploy`.
