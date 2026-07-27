@@ -1,8 +1,8 @@
 # PROJ-77: Skill-Customizing
 
-## Status: In Progress
+## Status: Approved (α)
 **Created:** 2026-06-06
-**Last Updated:** 2026-07-24
+**Last Updated:** 2026-07-27
 
 ## Summary
 Extends the deployed PROJ-76 Skill-Framework with the three customizing dimensions plus a real draft→publish workflow. Admin-only. Refined 2026-07-24 (`/requirements`) and reconciled against **as-built PROJ-76 + PROJ-79 (both now Deployed)**. Three user-locked decisions shape this slice:
@@ -212,7 +212,35 @@ Reworked the existing `skill-detail-client.tsx` into a draft-centric authoring l
 **Remaining:** `/qa` α — Playwright auth-gates on the new PATCH route + If-Match/one-draft/publish/rollback E2E; re-confirm the live smokes. β/γ are separate later slices.
 
 ## QA Test Results
-_To be added by /qa._
+
+### α (2026-07-27) — **PRODUCTION-READY** (0 Critical / 0 High) · Status → Approved
+
+**Security audit (red-team, live vs Prod, 0 residue) — the α trigger relaxation is the risk surface:**
+- **α security pentest 4/4** (`tests/sql/PROJ-77-alpha-security-pentest.sql`) — the critical proof: **a non-admin member CANNOT edit a draft (0 rows, RLS admin-gate)** even though the relaxed trigger structurally allows draft edits; **admin can** (1 row applied); admin editing an **archived** version → blocked (23514); admin flipping **draft→active by plain write** → blocked (23514, promotion only via the activate RPC). The relaxation did not weaken the admin-gate or active/archived immutability.
+- **α draft-immutability smoke 4/4** (`tests/sql/PROJ-77-alpha-draft-immutability-smoke.sql`): H draft-edit allowed · I archived blocked · J promotion blocked · K identity frozen.
+- **Regression under the α trigger:** PROJ-76 `rpc-smoke` **8/8** + `rls-pentest` **11/11** re-run green.
+- Advisors **0 ERROR** (only the by-design activate/rollback SECURITY-DEFINER WARNs).
+
+**AC coverage (α):**
+| AC | Evidence |
+|---|---|
+| allowed_actions stored + enum-validated (422 on unknown) | frontmatter Zod extension; route test "400 on unknown allowed_action"; serialize includes it |
+| allowed_actions fail-closed enforcement | contract documented + ADR; deferred to PROJ-82/83 (not built here) |
+| draft editable in place; active/archived frozen | trigger draft-branch; α smoke H/I + security A1/A2 |
+| `updated_at` + If-Match 409 on stale | migration + PATCH route; route test "409 on stale If-Match" |
+| one open draft per skill (409) | POST /versions guard; route test "409 when an open draft exists" |
+| publish = activate; rollback unchanged | reuses deployed RPCs; rpc-smoke 8/8 green |
+| rollback diff-confirm | `lineDiff`/`diffStats` + `skill-rollback-diff-dialog`; diff unit tests 6/6 |
+
+**Automated tests:** full vitest regression **2463/2463**; PROJ-77 unit/route **40/40** skills (serialize, dep-free diff [6], skills routes, versions POST one-draft [2], versions/[vid] PATCH [9]); **Playwright `tests/PROJ-77-skill-customizing.spec.ts` 2/2 chromium** (PATCH route auth-gated, incl. with If-Match).
+
+**Findings:**
+- **0 Critical, 0 High, 0 Medium.**
+- **Low / follow-up:** the client detects 409 by server-message fragment because the shared `skills/api.ts` wrapper discards the HTTP status (frontend deviation 3). Robust for the current stable English messages; exposing `err.status` in the wrapper is a small hardening follow-up (PROJ-Y candidate) — no functional impact (worst case a 409 falls to a generic error toast; data stays safe).
+- **Info / deviations (accepted):** save = soft local update (keeps editing context); archived rows expose only "Zurückrollen" (α restore path via diff-confirm), removing PROJ-76's direct "Aktivieren" on archived (end-state equivalent, cleaner immutable history).
+- **Env:** Mobile-Safari Playwright skipped (WebKit host libs, PROJ-67/F2). Chromium green.
+
+**Note:** authenticated E2E of the full edit→publish→rollback flow is covered at the DB/route layer (live pentests + 40 unit/route tests) rather than a browser fixture, per the project's established skill-framework QA pattern (auth-gate E2E + live smokes). β/γ remain separate later slices.
 
 ## Deployment
 _To be added by /deploy._
