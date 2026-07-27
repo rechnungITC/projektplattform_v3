@@ -14,7 +14,7 @@ summary_for_jira: "[M2] Operatives Reporting für PMO, Deal Lead und Workstreams
 
 # PROJ-132: Operatives Reporting für PMO, Deal Lead und Workstreams
 
-## Status: In Progress (backend + frontend built — RPC + routes + tab/filters/print; /qa next)
+## Status: Approved (QA PASS 2026-07-24 — need-to-know-Pentest A–G 7/7, 0 Critical/High; → /deploy)
 **Created:** 2026-06-10
 **Origin:** M&A-Platform Backlog (Epic M — Reporting & Dashboards)
 **Priority:** P1
@@ -166,6 +166,43 @@ Neuer M&A-Projektraum-Tab **„Operatives Reporting"** (`MA_OPERATIVE_REPORT_SEC
 - `src/app/projects/[id]/operative-report/print/page.tsx` — chrome-lose Print-Seite (außerhalb `(app)`, Session-Client-RLS, Owner-Namensauflösung via profiles, PROJ-116-Muster).
 
 **Gates:** lint 0, tsc 0 neu (12 total), method-templates 124/124, build clean (`/operatives-reporting` + `/operative-report/print` registriert). Kein neues Dep. Live-Läufe + Need-to-know-Pentest + Playwright-Auth-Gates → `/qa`.
+
+---
+
+## QA Test Results (2026-07-24)
+
+**Ergebnis: PRODUCTION-READY — 0 Critical / 0 High.**
+
+### Acceptance Criteria
+| AC | Status | Nachweis |
+|----|--------|----------|
+| AC1 — ≥4 operative Sichten je Deal (überfällige Aufgaben C1 · Findings n. Schwere G3 · Q&A-Stand G2 · Deliverables-Status D1) | ✅ PASS | `operative_report`-RPC liefert alle 4 Abschnitte; als 4 Sektions-Tabellen gerendert; Pentest A (admin) sieht alle 4 gefüllt |
+| AC2 — filterbar nach Workstream/Owner/Phase/Klassifikation (L2) | ✅ PASS | 4 Filter-Selects in der View; Optionen aus Daten abgeleitet; Klassifikation re-aggregiert Findings |
+| AC3 — Wochen-Steuerungs-Pre-Read (H1) | ✅ PASS | `pre_read`-Kachelzeile (4 Kernzahlen); Pentest verifiziert Werte je Rolle |
+| AC4 — Export PDF/Excel | ✅ PASS (Deviation D-1) | CSV je Sektion (`?section=`, Single-Source, Formel-Injektion-Escaping) + Print-to-PDF-Seite; „Excel"=CSV (kein neues Dep, Repo-Konvention) |
+| AC5 — Berechtigungskonzept (B4); externe Berater nur ihr Stream | ✅ PASS | Need-to-know-Pentest A–G 7/7; Advisor-Scoping erbt via `can_access_classified` (gleiches Tor, in PROJ-99/116 bewiesen) |
+
+### Security — Need-to-know-Pentest (live gegen Prod, `tests/sql/PROJ-132-operative-report-pentest.sql`, Impersonation, self-rollback)
+**A–G 7/7 PASS, 0 Residue.** Seed: 1 M&A-Projekt, 3 Vertraulichkeitsstufen (standard/confidential/strict) über work_items, dd_findings, dd_questions, deliverables, dd_streams.
+- **A** Admin volle Sicht (alle 4 Sektionen + pre_read: overdue=2, deal_breaker=1, not_approved=2, qa=2).
+- **B** Nicht-cleared Member sieht NUR Standard-Zeilen (tasks=1, deliverables=1, finding-streams=1, qa-streams=1).
+- **C — Aggregat-Leak-Probe:** `pre_read` des Members schließt Verborgenes aus — **`open_deal_breaker_findings=0`** (der strict Deal-Breaker leakt NICHT in die Headline), overdue=1, not_approved=1, qa=1.
+- **D** Member-`findings[]` enthält den strict Deal-Breaker nicht.
+- **E** Nach `confidential`-Clearance: Q&A-Streams=2 (s2 sichtbar), strict s3 weiterhin verborgen (findings/tasks/deliverables=1).
+- **F** `anon` kann die Funktion nicht ausführen (42501, revoke).
+- **G** Cross-Tenant-Member: 0 in jeder Sektion (kein Leak).
+
+Injection: RPC ist reine Aggregation über parametrisierte `project_id` (uuid-validiert); Export nutzt `csvCell`-Formel-Injektion-Escaping (Unit-getestet).
+
+### Tests
+- **Route-Unit** (vitest): `operative-report/route.test.ts` 5/5 (401/400/happy/null-normalise/500) + `.../export/route.test.ts` 8/8 (401/400-id/400-section/tasks-CSV+Owner+Formel-Escape/findings/qa/deliverables/500).
+- **Playwright** `tests/PROJ-132-operative-report.spec.ts` 5/5 chromium (Auth-Gates: Daten-Route, malformed-id, Export, Tab-Seite, Print-Seite).
+- **Regression:** volle vitest-Suite 2451/2451, lint 0, tsc 0 neu, build clean.
+
+### Deviations / Findings
+- **D-1 (dokumentiert):** „Excel"-Export = CSV (öffnet in Excel); echtes `.xlsx` = out-of-scope-Followup (kein neues Dep).
+- **D-2 (Env):** Mobile-Safari-Projekt übersprungen (WebKit-Host-Libs fehlen — PROJ-67/F2, `sudo npx playwright install-deps webkit`). Chromium deckt die Auth-Gates ab.
+- **Filter-Semantik:** Workstream/Owner/Phase/Klassifikation greifen auf Task-/Deliverable-Zeilen; Klassifikations-Filter re-aggregiert Findings-Streams; Q&A (Stream-Aggregat ohne Row-Klassifikation) bleibt unverändert — konsistent mit dem PROJ-103-Filtermuster.
 
 ---
 _Quelle: Backlog-Entwurf M&A-Projektplattform · M — Reporting & Dashboards_
