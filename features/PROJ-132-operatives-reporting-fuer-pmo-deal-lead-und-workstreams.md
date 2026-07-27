@@ -14,7 +14,7 @@ summary_for_jira: "[M2] Operatives Reporting für PMO, Deal Lead und Workstreams
 
 # PROJ-132: Operatives Reporting für PMO, Deal Lead und Workstreams
 
-## Status: Approved (QA PASS 2026-07-24 — need-to-know-Pentest A–G 7/7, 0 Critical/High; → /deploy)
+## Status: Deployed (2026-07-27 — PR #263 → main, Tag v2.25.0-PROJ-132; QA PASS need-to-know-Pentest A–G 7/7, 0 Critical/High)
 **Created:** 2026-06-10
 **Origin:** M&A-Platform Backlog (Epic M — Reporting & Dashboards)
 **Priority:** P1
