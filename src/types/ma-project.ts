@@ -90,6 +90,8 @@ export interface MaFoundationData {
   investment_frame_note: string
   strategic_document_link: string
   confidentiality_level: MaConfidentialityLevel
+  // PROJ-96 — optional project template applied on finalize (copy-on-create).
+  template_id: string | null
 }
 
 export function emptyMaFoundationData(): MaFoundationData {
@@ -104,5 +106,6 @@ export function emptyMaFoundationData(): MaFoundationData {
     investment_frame_note: "",
     strategic_document_link: "",
     confidentiality_level: "standard",
+    template_id: null,
   }
 }

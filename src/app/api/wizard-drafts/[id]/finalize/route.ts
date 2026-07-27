@@ -228,6 +228,26 @@ export async function POST(_request: Request, ctx: Ctx) {
     }
   }
 
+  // 4.3) PROJ-96 — apply the selected M&A project template (copy-on-create).
+  // The template_id rides in the ma_foundation step. Best-effort: the project
+  // is already usable without it, and an admin can apply a template later via
+  // /api/projects/[id]/apply-template — so a failure here must NOT roll back
+  // the project or block finalize (mirrors the optional context-source step).
+  if (project && maFoundation) {
+    const templateId = maFoundation.template_id
+    const isUuid =
+      typeof templateId === "string" &&
+      /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(
+        templateId
+      )
+    if (isUuid) {
+      await supabase.rpc("apply_ma_project_template", {
+        p_project_id: project.id,
+        p_template_id: templateId,
+      })
+    }
+  }
+
   // 4.5) PROJ-70-ε — attach an uploaded kickoff context-source to the new
   // project (Post-Finalize-Handoff). The wizard's ki_backlog step uploaded
   // the file WITHOUT a project_id; now that the project exists we wire it up
