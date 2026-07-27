@@ -197,7 +197,19 @@ Yes — 1 migration (α: `updated_at` + moddatetime + trigger relaxation + front
 
 **Quality gates:** vitest **40/40** skills (serialize + diff [6 cases] + skills routes + versions POST one-draft + versions/[vid] PATCH [9 cases]); tsc **0** skill errors; ESLint 0 on new/changed; build clean.
 
-**Remaining:** `/frontend` α — draft edit-in-place UI + "Veröffentlichen" (publish) + "Erlaubte Aktionen" multi-select + rollback diff-confirm dialog (using `lineDiff`); then `/qa` α (Playwright auth-gates on the new PATCH route + If-Match/one-draft E2E). β/γ are separate later slices.
+### α frontend (2026-07-24)
+
+Reworked the existing `skill-detail-client.tsx` into a draft-centric authoring loop + one new dialog `skill-rollback-diff-dialog.tsx`:
+- **Draft edit-in-place:** `openDraft` = the `status='draft'` version. When one exists → editable "Entwurf bearbeiten (vN)" card (body + behaviour fields + **allowed-actions multi-select** via reused `SkillTagPicker` + change_summary) with **"Entwurf speichern"** (`patchSkillVersion` with `If-Match = openDraft.updated_at`) and **"Veröffentlichen"** (confirm → `activateSkillVersion`). When none → **"Neuer Entwurf"** card (`createSkillVersion` seeded from the active version).
+- **Optimistic concurrency:** save splices the returned version (fresh `updated_at`) back into state → the next save's `If-Match` is current (no skeleton flash). Stale/conflict → toast + `refresh()`.
+- **Timeline:** the draft row's primary action is **"Veröffentlichen"**; archived rows open the **rollback diff-confirm dialog** (`lineDiff` + `diffStats`, +N/−M header, green/red/muted lines, empty-diff copy) → `rollbackSkillVersion`.
+- **allowed-actions** bound to `frontmatter.allowed_actions` with a fail-closed helper note; German labels for the 8 enum values.
+
+**Deviations (accepted):** (1) save = soft local update, not full `refresh()` (keeps editing context; create/publish/rollback still full-refresh); (2) archived rows expose only "Zurückrollen" (the α restore path via diff-confirm), removing PROJ-76's direct "Aktivieren" on archived — end-state equivalent, cleaner immutable history; (3) **409 detection by server-message fragment** because the shared `skills/api.ts` wrapper discards HTTP status — robust for the current stable English messages; exposing `err.status` in the wrapper is a small hardening follow-up (flag at `/qa`).
+
+**Gates (independently re-verified):** ESLint 0 on both files; tsc 0 skill errors; vitest 40/40 skills (unchanged); production build clean.
+
+**Remaining:** `/qa` α — Playwright auth-gates on the new PATCH route + If-Match/one-draft/publish/rollback E2E; re-confirm the live smokes. β/γ are separate later slices.
 
 ## QA Test Results
 _To be added by /qa._
