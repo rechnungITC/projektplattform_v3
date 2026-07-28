@@ -41,6 +41,7 @@ import { usePhases } from "@/hooks/use-phases"
 import { useTenantMembers } from "@/hooks/use-tenant-members"
 import { useWorkstreams } from "@/hooks/use-workstreams"
 import { MA_STANDARD_ROLES } from "@/lib/project-types/catalog"
+import { listDeliverableApprovals } from "@/lib/ma-project/deliverable-approvals-api"
 import {
   addDeliverableDocument,
   addDeliverableDocumentVersion,
@@ -50,11 +51,13 @@ import {
   getDeliverable,
   listDeliverableRaci,
   setDeliverableRaci,
+  stampDeliverableDocumentVersion,
   updateDeliverable,
   type DeliverableRaciRow,
 } from "@/lib/ma-project/deliverables-api"
 import type { MaConfidentialityLevel } from "@/types/confidentiality"
 import type { Deliverable, DeliverableDocument } from "@/types/deliverable"
+import type { DeliverableApprovalEvent } from "@/types/deliverable-approval-workflow"
 
 const NONE = "__none__"
 const LEVELS: { value: MaConfidentialityLevel; label: string }[] = [
@@ -105,6 +108,10 @@ export function DeliverableDialog({
   const [verTitle, setVerTitle] = React.useState("")
   const [verUrl, setVerUrl] = React.useState("")
   const [verComment, setVerComment] = React.useState("")
+  // PROJ-106 AC5 — link a version to a completed approval decision (stamp).
+  const [approvalEvents, setApprovalEvents] = React.useState<DeliverableApprovalEvent[]>([])
+  const [stampHeadId, setStampHeadId] = React.useState<string | null>(null)
+  const [stampEventId, setStampEventId] = React.useState("")
   const { members } = useTenantMembers(currentTenant?.id)
   const [newRaciRole, setNewRaciRole] = React.useState("")
   const [newRaciLetter, setNewRaciLetter] = React.useState<"R" | "A" | "C" | "I">("R")
@@ -138,6 +145,12 @@ export function DeliverableDialog({
       .sort((a, b) => a.head.title.localeCompare(b.head.title))
   }, [docs])
 
+  // PROJ-106 AC5 — resolve a linked approval event for display.
+  const eventById = React.useMemo(
+    () => new Map(approvalEvents.map((ev) => [ev.id, ev])),
+    [approvalEvents]
+  )
+
   const form = useForm<FormValues>({
     resolver: zodResolver(formSchema),
     defaultValues: {
@@ -169,22 +182,32 @@ export function DeliverableDialog({
         if (!cancelled) {
           setDocs([])
           setRaci([])
+          setApprovalEvents([])
         }
         return
       }
       try {
-        const [detail, raciRows] = await Promise.all([
+        const [detail, raciRows, approvals] = await Promise.all([
           getDeliverable(projectId, item.id),
           listDeliverableRaci(projectId, item.id),
+          // AC5: completed approval decisions of this deliverable, available to link a version to.
+          listDeliverableApprovals(projectId, item.id).catch(() => []),
         ])
         if (!cancelled) {
           setDocs(detail.documents)
           setRaci(raciRows)
+          setApprovalEvents(
+            approvals
+              .flatMap((a) => a.events ?? [])
+              .filter((ev) => ev.event_type === "approved")
+              .sort((x, y) => y.created_at.localeCompare(x.created_at))
+          )
         }
       } catch {
         if (!cancelled) {
           setDocs([])
           setRaci([])
+          setApprovalEvents([])
         }
       }
     })()
@@ -266,6 +289,27 @@ export function DeliverableDialog({
     } catch (err) {
       toast.error(err instanceof Error ? err.message : "Neue Version fehlgeschlagen.")
     }
+  }
+
+  // PROJ-106 AC5 — link the current version to a completed approval decision (set-once).
+  async function stampVersion(headId: string) {
+    if (!item || !stampEventId) return
+    try {
+      const updated = await stampDeliverableDocumentVersion(projectId, item.id, {
+        document_id: headId,
+        event_id: stampEventId,
+      })
+      setDocs((d) => d.map((x) => (x.id === headId ? updated : x)))
+      setStampHeadId(null)
+      setStampEventId("")
+      toast.success("Version mit Freigabe verknüpft.")
+    } catch (err) {
+      toast.error(err instanceof Error ? err.message : "Verknüpfen fehlgeschlagen.")
+    }
+  }
+
+  function eventLabel(ev: DeliverableApprovalEvent): string {
+    return `Freigabe · ${new Date(ev.created_at).toLocaleDateString("de-DE")}`
   }
 
   async function addRaci() {
@@ -419,6 +463,15 @@ export function DeliverableDialog({
                             }}>
                             Neue Version
                           </Button>
+                          {!head.approved_in_event_id && approvalEvents.length > 0 && (
+                            <Button type="button" variant="ghost" size="sm" className="h-7 text-xs"
+                              onClick={() => {
+                                setStampHeadId(stampHeadId === head.id ? null : head.id)
+                                setStampEventId("")
+                              }}>
+                              Freigabe
+                            </Button>
+                          )}
                           <Button type="button" variant="ghost" size="icon" className="h-7 w-7 text-destructive"
                             onClick={() => removeDoc(head.id)} aria-label="Dokument entfernen">
                             <Trash2 className="h-4 w-4" />
@@ -428,7 +481,10 @@ export function DeliverableDialog({
                       <p className="text-[11px] text-muted-foreground">
                         {new Date(head.created_at).toLocaleDateString("de-DE")}
                         {head.created_by && ` · ${userName.get(head.created_by) ?? "—"}`}
-                        {head.approved_in_event_id && " · mit Freigabe verknüpft"}
+                        {head.approved_in_event_id &&
+                          (eventById.has(head.approved_in_event_id)
+                            ? ` · ${eventLabel(eventById.get(head.approved_in_event_id)!)}`
+                            : " · mit Freigabe verknüpft")}
                         {head.version_comment && ` · „${head.version_comment}“`}
                       </p>
                       {chain.length > 1 && (
@@ -450,6 +506,24 @@ export function DeliverableDialog({
                           <Input value={verComment} onChange={(e) => setVerComment(e.target.value)} placeholder="Kommentar" className="h-8 flex-1" />
                           <Button type="button" variant="outline" size="sm" className="h-8" onClick={() => addVersion(head.id)}>
                             Speichern
+                          </Button>
+                        </div>
+                      )}
+                      {stampHeadId === head.id && (
+                        <div className="flex flex-wrap items-center gap-2 pt-1">
+                          <Select value={stampEventId} onValueChange={setStampEventId}>
+                            <SelectTrigger className="h-8 flex-1">
+                              <SelectValue placeholder="Freigabeentscheidung wählen…" />
+                            </SelectTrigger>
+                            <SelectContent>
+                              {approvalEvents.map((ev) => (
+                                <SelectItem key={ev.id} value={ev.id}>{eventLabel(ev)}</SelectItem>
+                              ))}
+                            </SelectContent>
+                          </Select>
+                          <Button type="button" variant="outline" size="sm" className="h-8"
+                            disabled={!stampEventId} onClick={() => stampVersion(head.id)}>
+                            Verknüpfen
                           </Button>
                         </div>
                       )}

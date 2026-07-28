@@ -152,3 +152,14 @@ Versionsketten-UI in den bestehenden `deliverable-dialog.tsx` (Dokument-Sektion)
 **Gates:** lint 0, tsc 0 neu, build clean. Kein neues Dep. Live-E2E + Immutability-Probe + Need-to-know-Pentest → `/qa`.
 
 > **Hinweis:** PROJ-79s eigene Out-of-Scope-Liste stellt „Document version history (for now overwrite-with-rename)" ebenfalls zurück — PROJ-106 bleibt also auch nach PROJ-79 die dedizierte Versionierungs-Slice, die auf dem dann existierenden Storage aufsetzt.
+
+### Implementation Notes — /frontend (2026-07-27 / 2026-07-28)
+
+Versionsketten-UI vollständig im bestehenden `deliverable-dialog.tsx` (kein neuer Nav-Eintrag/Route — Versionen leben am Deliverable-Slot; edit-gated wie die übrige Dokument-Verwaltung). Kein neues Dep, kein neuer shadcn-Import.
+
+- **Slot-Gruppierung (AC1/AC2):** `docs` werden client-seitig zu Ketten gruppiert — Head = `is_current`, die Kette läuft `supersedes_document_id` rückwärts (Zyklen-Guard via `seen`-Set). Head-Badge `v{version_no} · aktuell` mit grünem `CheckCircle2` (**AC4**). Frühere Versionen erscheinen durchgestrichen unter dem Head (einsehbar, read-only — **AC2**; Unveränderlichkeit erzwingt der Backend-Immutability-Trigger).
+- **Metadaten je Version (AC3):** Datum (`created_at`), Uploader (`created_by` → Tenant-Member-Name), Kommentar (`version_comment`).
+- **„Neue Version" (AC1):** Inline-Mini-Formular pro Head → `addDeliverableDocumentVersion` (Backend vergibt `version_no+1`, setzt `is_current`, flippt den Vorgänger atomar). Lokaler State-Update ohne Reload.
+- **AC5 — Version ↔ Freigabeentscheidung verknüpfen (Stamp-UI, ergänzt 2026-07-28):** Der Dialog lädt beim Öffnen zusätzlich `listDeliverableApprovals` (best-effort, `.catch(() => [])`) und extrahiert die `approved`-Events. Pro aktueller, **noch nicht** verknüpfter Version erscheint (nur wenn `approved`-Events existieren) ein „Freigabe"-Button → Picker der Freigabe-Events + „Verknüpfen" → `stampDeliverableDocumentVersion` (set-once; Backend validiert Event↔Deliverable, sonst 23514). Eine bereits verknüpfte Version zeigt statt des generischen Hinweises das aufgelöste Freigabe-Datum (`eventById`-Lookup, Fallback „mit Freigabe verknüpft" falls Event außerhalb der geladenen Liste).
+
+**Gates:** ESLint 0 (geänderte Datei), tsc 0 neu (14 vorbestehende Baseline-Fehler in fremden Test-Dateien), vitest Deliverables-Suite 50/50, `npm run build` clean. Handoff: `/qa` (Need-to-know-Pentest + Immutability-Probe + Playwright, siehe `tests/sql/PROJ-106-deliverable-versioning-pentest.sql`).
