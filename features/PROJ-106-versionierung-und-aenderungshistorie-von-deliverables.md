@@ -14,7 +14,7 @@ summary_for_jira: "[D3] Versionierung und Änderungshistorie von Deliverables"
 
 # PROJ-106: Versionierung und Änderungshistorie von Deliverables
 
-## Status: Architected (Option A resumed 2026-07-27 — PROJ-79 blocker cleared; CIA-locked design promoted, no new CIA pass)
+## Status: In Progress (backend live — migration + 2 RPCs + immutability/audit triggers + routes + 12 tests; /frontend next)
 **Created:** 2026-06-10
 **Origin:** M&A-Platform Backlog (Epic D — Deliverables & Artefakte)
 **Priority:** P1
@@ -127,5 +127,19 @@ D1 = PROJ-104 (deliverables + deliverable_documents) ✅ · D2 = PROJ-105 (deliv
 
 ### Handoff
 `/backend` (Migration: 5 Spalten + Immutability-Trigger + `add_deliverable_document_version`-RPC + Audit-Trio-Extend + Live-Smoke) → `/frontend` (Versionsliste je Dokument-Slot + „Neue Version"-Dialog) → `/qa` (Need-to-know-Pentest + Immutability-Probe + Playwright) → `/deploy`. ~2–3 PT.
+
+### Implementation Notes — /backend (2026-07-27)
+**Migration `20260727120000_proj106_deliverable_document_versioning.sql` in Prod-DB** (MCP-registrierte Version driftet ggf. zum Repo-Dateinamen — benign, da vollständig idempotent: `add column if not exists` + `create or replace function` + `drop trigger if exists`; PROJ-134-Domäne). Additive Erweiterung von `deliverable_documents` (keine neue Tabelle):
+- 5 Spalten: `version_no` (default 1) · `supersedes_document_id` (FK→self, SET NULL) · `is_current` (default true) · `version_comment` · `approved_in_event_id` (FK→PROJ-105 `deliverable_approval_events`, SET NULL) + 2 Indizes.
+- **Immutability-Guard** `_guard_deliverable_document_immutable()` (BEFORE UPDATE) blockt Inhaltsspalten; erlaubt nur `is_current`-Flip + set-once `approved_in_event_id` (AC2). Trigger-only (revoke von public/anon/authenticated).
+- **Audit-Trigger attached:** `deliverable_documents` hatte KEINEN Trigger (PROJ-104 hatte es nur in die Audit-Trio-Metadaten aufgenommen). `audit_changes_deliverable_documents` (AFTER UPDATE → `record_audit_changes`) + `_tracked_audit_columns` verbatim-from-live um die 5 Versionsspalten erweitert (nur die deliverable_documents-Zeile; alle Sibling-Entities erhalten). entity_type-CHECK + can_read_audit_entry decken deliverable_documents bereits ab → nicht recreated (kein authenticated-Grant-Risiko).
+- **`add_deliverable_document_version`-RPC** (SECURITY DEFINER, `auth.uid()`, edit-gated + `can_access_classified`-Re-Check): atomar INSERT (version_no+1, is_current=true) + Flip der Vorversion; setzt `audit.change_reason`-GUC. supersedes=null → v1 neuer Slot; supersedes muss current head sein (sonst 23514).
+- **`stamp_deliverable_document_version_approval`-RPC** (AC5): set-once Link auf ein Approval-Event, validiert dass das Event zu einer Approval **dieses** Deliverables gehört (sonst 23514).
+
+**Routen:** `POST …/deliverables/[did]/documents/versions` (RPC) + `POST …/documents/stamp` (RPC), beide session-client + `requireProjectAccess "view"` (RPC re-checkt Rolle/Need-to-know). `DeliverableDocument`-Typ + beide DOC_SELECTs (documents-Route + Detail-Loader) um die 5 Spalten erweitert (GET liefert Versionsketten-Daten). Client-Wrapper `addDeliverableDocumentVersion` + `stampDeliverableDocumentVersion`.
+
+**Pflicht-Live-RPC-Smoke gegen Prod (`tests/sql/PROJ-106-deliverable-versioning-pentest.sql`) A–I 9/9 PASS, 0 Residue:** v1→v2-Supersede + version_no · is_current-Flip (AC4) · Audit-Eintrag des Flips (DoD) · non-current-Supersede-Reject · Immutability-Guard-Block (AC2) · Stamp (AC5) · Foreign-Event-Reject · Need-to-know-Block für nicht-cleared Member.
+
+**Gates:** vitest +12 (7 versions + 5 stamp), deliverables-Suite 50/50, lint 0, tsc 0 neu, migration-naming 0 errors, build clean (beide Routen registriert). Kein neues Dep. FE (Versionsliste + „Neue Version"-Dialog) → `/frontend`.
 
 > **Hinweis:** PROJ-79s eigene Out-of-Scope-Liste stellt „Document version history (for now overwrite-with-rename)" ebenfalls zurück — PROJ-106 bleibt also auch nach PROJ-79 die dedizierte Versionierungs-Slice, die auf dem dann existierenden Storage aufsetzt.

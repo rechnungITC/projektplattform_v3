@@ -64,4 +64,10 @@ export interface DeliverableDocument {
   tag_keys: string[]
   created_by: string | null
   created_at: string
+  // PROJ-106 — version chain (core immutable-supersede)
+  version_no: number
+  supersedes_document_id: string | null
+  is_current: boolean
+  version_comment: string | null
+  approved_in_event_id: string | null
 }

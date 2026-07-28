@@ -14,7 +14,7 @@ import { createDeliverableDocumentSchema } from "../../_schema"
 // via the parent deliverable.
 
 const DOC_SELECT =
-  "id, deliverable_id, title, url, tag_keys, created_by, created_at"
+  "id, tenant_id, deliverable_id, title, url, tag_keys, created_by, created_at, version_no, supersedes_document_id, is_current, version_comment, approved_in_event_id"
 
 async function resolveDeliverable(
   supabase: Awaited<ReturnType<typeof getAuthenticatedUserId>>["supabase"],

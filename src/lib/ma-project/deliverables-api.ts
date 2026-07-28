@@ -154,6 +154,48 @@ export async function deleteDeliverableDocument(
   if (!res.ok) throw new Error(await safeError(res))
 }
 
+// PROJ-106 — create a new document version (atomic supersede + is_current flip).
+export async function addDeliverableDocumentVersion(
+  projectId: string,
+  did: string,
+  payload: {
+    title: string
+    url: string
+    supersedes_document_id?: string | null
+    version_comment?: string | null
+    tag_keys?: string[]
+  }
+): Promise<DeliverableDocument> {
+  const res = await fetch(
+    `${p(projectId)}/deliverables/${encodeURIComponent(did)}/documents/versions`,
+    {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(payload),
+    }
+  )
+  if (!res.ok) throw new Error(await safeError(res))
+  return ((await res.json()) as { document: DeliverableDocument }).document
+}
+
+// PROJ-106 — link a document version to a PROJ-105 approval event (AC5).
+export async function stampDeliverableDocumentVersion(
+  projectId: string,
+  did: string,
+  payload: { document_id: string; event_id: string }
+): Promise<DeliverableDocument> {
+  const res = await fetch(
+    `${p(projectId)}/deliverables/${encodeURIComponent(did)}/documents/stamp`,
+    {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(payload),
+    }
+  )
+  if (!res.ok) throw new Error(await safeError(res))
+  return ((await res.json()) as { document: DeliverableDocument }).document
+}
+
 // --- RACI (target_type 'deliverable') --------------------------------------
 
 export interface DeliverableRaciRow {
