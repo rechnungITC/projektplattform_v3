@@ -75,3 +75,24 @@ export const SKILL_SELECT =
 
 export const SKILL_VERSION_SELECT =
   "id, skill_id, tenant_id, version_number, markdown_content, frontmatter, change_summary, status, created_by, created_at, updated_at"
+
+/**
+ * PROJ-77-β — reusable input/output example pair attached to a skill.
+ * Admin-only authoring aid (not PM-facing in V1).
+ */
+export interface SkillExample {
+  id: string
+  skill_id: string
+  tenant_id: string
+  title: string
+  input: string
+  expected_output: string
+  tags: string[]
+  display_order: number
+  created_by: string | null
+  created_at: string
+  updated_at: string
+}
+
+export const SKILL_EXAMPLE_SELECT =
+  "id, skill_id, tenant_id, title, input, expected_output, tags, display_order, created_by, created_at, updated_at"
