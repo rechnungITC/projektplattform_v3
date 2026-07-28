@@ -14,7 +14,7 @@ summary_for_jira: "[G4] Anbindung an externe Datenräume (Verlinkung, nicht Ersa
 
 # PROJ-115: Anbindung an externe Datenräume (Verlinkung, nicht Ersatz)
 
-## Status: Planned
+## Status: Architected (CIA-reviewed 2026-07-28 — polymorphe Link-Tabelle + SSRF-sichere Statik-Validierung; aktiver Check + VDR-Connector deferred)
 **Created:** 2026-06-10
 **Origin:** M&A-Platform Backlog (Epic G — Due Diligence)
 **Priority:** P1
@@ -77,6 +77,49 @@ Annahme A1 legt fest: Die Plattform ist kein VDR-Ersatz. Sie soll aber die Brüc
 - PMO-Lead
 - IT-Administration
 - Externe Berater
+
+---
+
+## Tech Design (Solution Architect · CIA-reviewed 2026-07-28)
+
+> **Klasse: REUSE + eine polymorphe Extension.** Zwei Forks CIA-geklärt (Architektur + SSRF-Security). Kein neues Dep, 1 Migration.
+
+### Fork 1 — Linkmodell: **Option A (polymorphe `external_document_links`)** [CIA #1]
+Die 4 Zielobjekte haben heterogene Link-Flächen (`deliverable_documents.url` ✓ · `work_item_documents.file_url` ✓ · `dd_questions.answer_link` Einzelfeld · `dd_findings` nichts). Statt 4 divergente Mechanismen zu erweitern → **eine neue polymorphe Tabelle** (EIN Vertrag, EINE Sichtbarkeitsregel, EIN Link-Check, EIN UI-Muster). Precedent: `raci_assignments.target_type`, `risk_links`, Audit-`entity_type`-Dispatch.
+
+```
+external_document_links(
+  id, tenant_id NOT NULL,
+  entity_type text CHECK IN (dd_question, dd_finding, work_item, deliverable),
+  entity_id uuid,            -- polymorph, kein FK → Validierungs- + Delete-Cleanup-Trigger (risk_links-Muster)
+  url text NOT NULL, label text,
+  added_by, created_at)
+```
+- **Kein `confidentiality_level` an der Link-Zeile** — immer vom Parent geerbt (single source, kein Drift).
+- **Need-to-know (AC4/B4/L2):** SECURITY-DEFINER-STABLE-Resolver `external_link_parent_ctx(entity_type, entity_id) → (project_id, level)` (CASE je Typ; alle 4 Parents tragen `project_id` + `confidentiality_level` direkt). Policies: permissive `is_project_member(ctx.project_id)` + Tenant-Anker; **RESTRICTIVE `can_access_classified(ctx.project_id, ctx.level)` auf allen 4 Achsen** (SELECT/INSERT-with-check/UPDATE/DELETE — dd_questions-Vollgate-Muster spiegeln, NICHT deliverables' SELECT-only-Lücke).
+- **Umgeht bewusst** die Bestands-Need-to-know-Lücke von `work_item_documents` (F4, s.u.) — frische Tabelle = korrektes Gate von Tag 1.
+- Audit: `external_document_links → [url,label]` in `_tracked_audit_columns` + `can_read_audit_entry`-Zweig **in derselben Migration** (M&A-EXTEND-Rezept, Grant-Drift vermeiden).
+- Koexistenz mit `deliverable_documents`/`work_item_documents` bewusst (generischer Anhang vs. externe VDR-Referenz) — als UX-Hinweis dokumentiert (CIA-R3).
+
+### Fork 2 — Link-Check / SSRF: **Option (a) im MVP, aktiver Check deferred** [CIA, SECURITY]
+AC2-Hälfte „prüft beim Aufruf, ob erreichbar" = server-seitiger Outbound auf user-URL = **SSRF-Vektor** (169.254.169.254 Metadata, RFC1918, DNS-Rebinding). MVP baut **nur Statik-Validierung, keinen aktiven Server-Fetch** (der reale Erreichbarkeits-Nutzen entsteht beim User-Klick im eigenen Browser). Client-seitiger Check verworfen (CORS → False-Negatives).
+- **AC-115-SEC-1:** URL muss parsen, **`https`-only** (kein http/file/ftp/gopher), keine Credentials-in-URL → 422.
+- **AC-115-SEC-2:** Host als IP-Literal in reservierten Bereichen ablehnen: RFC1918, `127/8`, `169.254/16`, `::1`, `fc00::/7`, `fe80::/10`, `0.0.0.0`, `100.64/10`, IPv4-mapped IPv6 → 422 (Statik-Guard, kein Outbound).
+- **AC-115-SEC-3:** persistierte URL wird nie server-seitig gefetcht; UI rendert `target=_blank rel="noopener noreferrer"`.
+
+### Scope-Schnitt
+| MVP (PROJ-115) | Deferred |
+|---|---|
+| Polymorphe `external_document_links`, alle 4 Typen, ≥1 URL + Label (AC1) | Aktiver Reachability-HEAD-Check (gehärtet, DNS-Pin/no-redirect/timeout) → **PROJ-Y-115a** |
+| Need-to-know via Resolver + RESTRICTIVE-Gates (AC4) | VDR-Anbieter-Connector (AC3 „Could", PROJ-14) → **PROJ-Y-115b** |
+| Statik-/https-/IP-Validierung (AC2-Format-Hälfte) | `work_item_documents`-Need-to-know-Gate-Fix (CIA-F4, Bestands-Leck, sicherheitsrelevant) → **PROJ-Y-115c** |
+| Audit (`url,label` + read-grant in selber Migration) | Konvergenz Bestandstabellen (nicht nötig, Koexistenz) |
+
+### Abhängigkeiten (verifiziert Deployed)
+G2=PROJ-113 ✅ · G3=PROJ-114 ✅ · C1=PROJ-101/9 ✅ · D1=PROJ-104 ✅ · B4=PROJ-100 ✅ · L2=PROJ-129/100a ✅. Kein neues npm-Paket, 1 Migration.
+
+### Pflicht bei /backend
+Live-RPC/RLS-Pentest der Vererbung über **alle 4 `entity_type`** inkl. Aggregat-Leak-Probe (nicht-cleared Member sieht 0 Links aus strict-Parent) + Cross-Tenant-0 + `INSERT with check`-Gate + polymorphe Integrität (Validierungs-/Cleanup-Trigger). Handoff: `/backend` (Tabelle + Resolver + Policies + Trigger + CRUD-Routen + Statik-Validierung + Pentest) → `/frontend` (Link-Sektion je DD-Objekt) → `/qa` → `/deploy`. ~3 PT.
 
 ---
 _Quelle: Backlog-Entwurf M&A-Projektplattform · G — Due Diligence_
