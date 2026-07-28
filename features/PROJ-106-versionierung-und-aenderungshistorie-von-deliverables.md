@@ -14,7 +14,7 @@ summary_for_jira: "[D3] Versionierung und Änderungshistorie von Deliverables"
 
 # PROJ-106: Versionierung und Änderungshistorie von Deliverables
 
-## Status: In Progress (backend live — migration + 2 RPCs + immutability/audit triggers + routes + 12 tests; /frontend next)
+## Status: In Progress (backend + frontend built — version chain UI in deliverable-dialog; /qa next)
 **Created:** 2026-06-10
 **Origin:** M&A-Platform Backlog (Epic D — Deliverables & Artefakte)
 **Priority:** P1
@@ -141,5 +141,14 @@ D1 = PROJ-104 (deliverables + deliverable_documents) ✅ · D2 = PROJ-105 (deliv
 **Pflicht-Live-RPC-Smoke gegen Prod (`tests/sql/PROJ-106-deliverable-versioning-pentest.sql`) A–I 9/9 PASS, 0 Residue:** v1→v2-Supersede + version_no · is_current-Flip (AC4) · Audit-Eintrag des Flips (DoD) · non-current-Supersede-Reject · Immutability-Guard-Block (AC2) · Stamp (AC5) · Foreign-Event-Reject · Need-to-know-Block für nicht-cleared Member.
 
 **Gates:** vitest +12 (7 versions + 5 stamp), deliverables-Suite 50/50, lint 0, tsc 0 neu, migration-naming 0 errors, build clean (beide Routen registriert). Kein neues Dep. FE (Versionsliste + „Neue Version"-Dialog) → `/frontend`.
+
+### Implementation Notes — /frontend (2026-07-27)
+Versionsketten-UI in den bestehenden `deliverable-dialog.tsx` (Dokument-Sektion) integriert — kein neues Routing/Dep, reuse shadcn Badge/Button/Input.
+- **Slot-Gruppierung:** `docs` (alle Versionen, inkl. Versionsspalten aus erweitertem GET) werden clientseitig zu Slots gruppiert — Head = `is_current`-Row, Kette folgt `supersedes_document_id` newest→oldest.
+- **Pro Slot:** Current-Badge „v{N} · aktuell" (AC4) + Titel-Link; Meta-Zeile Datum + Uploader (via `useTenantMembers`) + Kommentar + „mit Freigabe verknüpft"-Hinweis (AC3/AC5); durchgestrichene Historie der superseded Versionen (AC1/AC2 visuell).
+- **„Neue Version"-Button** je Head öffnet Inline-Form (Titel/URL/Kommentar) → `addDeliverableDocumentVersion` mit `supersedes_document_id=head.id`; optimistisches State-Update (alter Head → is_current=false, neuer Head angehängt).
+- **„Neues Dokument"** (v1 neuer Slot) via bestehendem `addDeliverableDocument` unverändert.
+
+**Gates:** lint 0, tsc 0 neu, build clean. Kein neues Dep. Live-E2E + Immutability-Probe + Need-to-know-Pentest → `/qa`.
 
 > **Hinweis:** PROJ-79s eigene Out-of-Scope-Liste stellt „Document version history (for now overwrite-with-rename)" ebenfalls zurück — PROJ-106 bleibt also auch nach PROJ-79 die dedizierte Versionierungs-Slice, die auf dem dann existierenden Storage aufsetzt.
