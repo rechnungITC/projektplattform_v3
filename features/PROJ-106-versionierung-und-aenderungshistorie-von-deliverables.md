@@ -14,7 +14,7 @@ summary_for_jira: "[D3] Versionierung und Änderungshistorie von Deliverables"
 
 # PROJ-106: Versionierung und Änderungshistorie von Deliverables
 
-## Status: In Progress (backend + frontend built — version chain UI in deliverable-dialog; /qa next)
+## Status: Approved (QA PASS 2026-07-28 — live pentest A–I 9/9, 0 Critical/High; → /deploy)
 **Created:** 2026-06-10
 **Origin:** M&A-Platform Backlog (Epic D — Deliverables & Artefakte)
 **Priority:** P1
@@ -150,6 +150,36 @@ Versionsketten-UI in den bestehenden `deliverable-dialog.tsx` (Dokument-Sektion)
 - **„Neues Dokument"** (v1 neuer Slot) via bestehendem `addDeliverableDocument` unverändert.
 
 **Gates:** lint 0, tsc 0 neu, build clean. Kein neues Dep. Live-E2E + Immutability-Probe + Need-to-know-Pentest → `/qa`.
+
+**AC5-Stamp-UI-Nachtrag:** aktive „Freigabe"-Verknüpfung ergänzt (nicht nur passiver Hinweis) — lädt abgeschlossene `approved`-Approval-Events (`listDeliverableApprovals`), „Freigabe"-Button je Head (nur wenn noch nicht verknüpft + Events vorhanden) → Select + „Verknüpfen" → `stampDeliverableDocumentVersion`-RPC; verknüpftes Event wird mit Datum angezeigt.
+
+## QA Test Results (2026-07-28)
+
+**Ergebnis: PRODUCTION-READY — 0 Critical / 0 High.**
+
+### Acceptance Criteria
+| AC | Status | Nachweis |
+|----|--------|----------|
+| AC1 — neue Version → automatische Versionsnummer | ✅ PASS | Pentest A/B: v1 no.=1, v2 no.=2 via `add_deliverable_document_version` |
+| AC2 — frühere Versionen unveränderlich | ✅ PASS | Pentest F: Immutability-Guard-Trigger blockt Content-UPDATE (42501) selbst als superuser; FE zeigt Historie durchgestrichen |
+| AC3 — Datum, Uploader, Kommentar je Version | ✅ PASS | FE Meta-Zeile (created_at + `useTenantMembers`-Name + version_comment); Spalten in DOC_SELECT |
+| AC4 — aktuelle Version klar gekennzeichnet | ✅ PASS | Pentest C: is_current-Flip; FE „v{N} · aktuell"-Badge |
+| AC5 — Versionen mit Freigabeentscheidungen verknüpfbar | ✅ PASS | Pentest G/H: `stamp_…_approval`-RPC + Foreign-Event-Reject; FE „Freigabe"-Select→Verknüpfen |
+| DoD — Audit erfasst Versionswechsel | ✅ PASS | Pentest D: `audit_log_entries`-Eintrag für den is_current-Flip (field_name is_current true→false) |
+
+### Security — Live-Pentest (`tests/sql/PROJ-106-deliverable-versioning-pentest.sql`, Impersonation, self-rollback)
+**A–I 9/9 PASS, 0 Residue**, re-verifiziert gegen aktuellen Prod: v1/v2-Supersede + version_no · is_current-Flip · Audit-Eintrag · non-current-Supersede-Reject (23514) · Immutability-Guard (42501) · Stamp (AC5) · Foreign-Deliverable-Event-Reject (23514) · **Need-to-know:** nicht-cleared Member auf strict-Deliverable geblockt (42501). RPCs re-checken Rolle (`is_tenant_admin`/`is_project_lead`) + `can_access_classified`; Writes nur via RPC (deliverable_documents hat kein UPDATE-RLS-Policy).
+
+### Tests
+- **Route-Unit** (vitest): `documents/versions/route.test.ts` 7/7 + `documents/stamp/route.test.ts` 5/5 (401/400-body/400-uuid/201/403/404/23514) — deliverables-Suite 50/50.
+- **Playwright** `tests/PROJ-106-deliverable-versioning.spec.ts` 3/3 chromium (Auth-Gates versions + stamp + malformed-id).
+- **Regression:** volle vitest-Suite **2488/2488**, lint 0, tsc 0 neu, build clean.
+
+### Deviations / Followups
+- **Binär-Upload** deferred → PROJ-Y-106b (auf PROJ-79-DMS-Storage); MVP = Link-/Metadaten-Versionskette.
+- **Diff-Ansicht** out-of-scope (Spec) → PROJ-Y-106c.
+- **Mobile-Safari-E2E** env-skipped (WebKit-Host-Libs, PROJ-67/F2); Chromium deckt Auth-Gates ab.
+- **Versions-Drift** Repo-Dateiname `…120000` vs Prod-registrierte Version — benign (idempotentes `create or replace function`), am /deploy dokumentiert.
 
 > **Hinweis:** PROJ-79s eigene Out-of-Scope-Liste stellt „Document version history (for now overwrite-with-rename)" ebenfalls zurück — PROJ-106 bleibt also auch nach PROJ-79 die dedizierte Versionierungs-Slice, die auf dem dann existierenden Storage aufsetzt.
 
