@@ -1,13 +1,14 @@
 "use client"
 
 import { zodResolver } from "@hookform/resolvers/zod"
-import { Loader2, Plus, Trash2 } from "lucide-react"
+import { CheckCircle2, Loader2, Plus, Trash2 } from "lucide-react"
 import * as React from "react"
 import { useForm } from "react-hook-form"
 import { toast } from "sonner"
 import { z } from "zod"
 
 import { ResponsibleUserPicker } from "@/components/projects/responsible-user-picker"
+import { Badge } from "@/components/ui/badge"
 import { Button } from "@/components/ui/button"
 import {
   Dialog,
@@ -37,21 +38,26 @@ import {
 import { Textarea } from "@/components/ui/textarea"
 import { useAuth } from "@/hooks/use-auth"
 import { usePhases } from "@/hooks/use-phases"
+import { useTenantMembers } from "@/hooks/use-tenant-members"
 import { useWorkstreams } from "@/hooks/use-workstreams"
 import { MA_STANDARD_ROLES } from "@/lib/project-types/catalog"
+import { listDeliverableApprovals } from "@/lib/ma-project/deliverable-approvals-api"
 import {
   addDeliverableDocument,
+  addDeliverableDocumentVersion,
   clearDeliverableRaci,
   createDeliverable,
   deleteDeliverableDocument,
   getDeliverable,
   listDeliverableRaci,
   setDeliverableRaci,
+  stampDeliverableDocumentVersion,
   updateDeliverable,
   type DeliverableRaciRow,
 } from "@/lib/ma-project/deliverables-api"
 import type { MaConfidentialityLevel } from "@/types/confidentiality"
 import type { Deliverable, DeliverableDocument } from "@/types/deliverable"
+import type { DeliverableApprovalEvent } from "@/types/deliverable-approval-workflow"
 
 const NONE = "__none__"
 const LEVELS: { value: MaConfidentialityLevel; label: string }[] = [
@@ -97,8 +103,53 @@ export function DeliverableDialog({
   const [raci, setRaci] = React.useState<DeliverableRaciRow[]>([])
   const [newDocTitle, setNewDocTitle] = React.useState("")
   const [newDocUrl, setNewDocUrl] = React.useState("")
+  // PROJ-106 — per-slot "new version" mini-form (verHeadId = the current head being versioned)
+  const [verHeadId, setVerHeadId] = React.useState<string | null>(null)
+  const [verTitle, setVerTitle] = React.useState("")
+  const [verUrl, setVerUrl] = React.useState("")
+  const [verComment, setVerComment] = React.useState("")
+  // PROJ-106 AC5 — link a version to a completed approval decision (stamp).
+  const [approvalEvents, setApprovalEvents] = React.useState<DeliverableApprovalEvent[]>([])
+  const [stampHeadId, setStampHeadId] = React.useState<string | null>(null)
+  const [stampEventId, setStampEventId] = React.useState("")
+  const { members } = useTenantMembers(currentTenant?.id)
   const [newRaciRole, setNewRaciRole] = React.useState("")
   const [newRaciLetter, setNewRaciLetter] = React.useState<"R" | "A" | "C" | "I">("R")
+
+  const userName = React.useMemo(() => {
+    const m = new Map<string, string>()
+    for (const mem of members)
+      m.set(mem.user_id, mem.display_name ?? mem.email.split("@")[0] ?? "—")
+    return m
+  }, [members])
+
+  // PROJ-106 — group document versions into slots (chains). Each slot head is
+  // the current version; the chain walks supersedes_document_id newest→oldest.
+  const slots = React.useMemo(() => {
+    const byId = new Map(docs.map((d) => [d.id, d]))
+    return docs
+      .filter((d) => d.is_current)
+      .map((head) => {
+        const chain: DeliverableDocument[] = []
+        const seen = new Set<string>()
+        let cur: DeliverableDocument | undefined = head
+        while (cur && !seen.has(cur.id)) {
+          seen.add(cur.id)
+          chain.push(cur)
+          cur = cur.supersedes_document_id
+            ? byId.get(cur.supersedes_document_id)
+            : undefined
+        }
+        return { head, chain }
+      })
+      .sort((a, b) => a.head.title.localeCompare(b.head.title))
+  }, [docs])
+
+  // PROJ-106 AC5 — resolve a linked approval event for display.
+  const eventById = React.useMemo(
+    () => new Map(approvalEvents.map((ev) => [ev.id, ev])),
+    [approvalEvents]
+  )
 
   const form = useForm<FormValues>({
     resolver: zodResolver(formSchema),
@@ -131,22 +182,32 @@ export function DeliverableDialog({
         if (!cancelled) {
           setDocs([])
           setRaci([])
+          setApprovalEvents([])
         }
         return
       }
       try {
-        const [detail, raciRows] = await Promise.all([
+        const [detail, raciRows, approvals] = await Promise.all([
           getDeliverable(projectId, item.id),
           listDeliverableRaci(projectId, item.id),
+          // AC5: completed approval decisions of this deliverable, available to link a version to.
+          listDeliverableApprovals(projectId, item.id).catch(() => []),
         ])
         if (!cancelled) {
           setDocs(detail.documents)
           setRaci(raciRows)
+          setApprovalEvents(
+            approvals
+              .flatMap((a) => a.events ?? [])
+              .filter((ev) => ev.event_type === "approved")
+              .sort((x, y) => y.created_at.localeCompare(x.created_at))
+          )
         }
       } catch {
         if (!cancelled) {
           setDocs([])
           setRaci([])
+          setApprovalEvents([])
         }
       }
     })()
@@ -206,6 +267,51 @@ export function DeliverableDialog({
       toast.error(err instanceof Error ? err.message : "Link konnte nicht entfernt werden.")
     }
   }
+  // PROJ-106 — create a new version superseding the given current head.
+  async function addVersion(headId: string) {
+    if (!item || verTitle.trim().length === 0 || verUrl.trim().length === 0) return
+    try {
+      const created = await addDeliverableDocumentVersion(projectId, item.id, {
+        title: verTitle.trim(),
+        url: verUrl.trim(),
+        supersedes_document_id: headId,
+        version_comment: verComment.trim() || null,
+      })
+      // the superseded head is no longer current; append the new head
+      setDocs((d) => [
+        ...d.map((x) => (x.id === headId ? { ...x, is_current: false } : x)),
+        created,
+      ])
+      setVerHeadId(null)
+      setVerTitle("")
+      setVerUrl("")
+      setVerComment("")
+    } catch (err) {
+      toast.error(err instanceof Error ? err.message : "Neue Version fehlgeschlagen.")
+    }
+  }
+
+  // PROJ-106 AC5 — link the current version to a completed approval decision (set-once).
+  async function stampVersion(headId: string) {
+    if (!item || !stampEventId) return
+    try {
+      const updated = await stampDeliverableDocumentVersion(projectId, item.id, {
+        document_id: headId,
+        event_id: stampEventId,
+      })
+      setDocs((d) => d.map((x) => (x.id === headId ? updated : x)))
+      setStampHeadId(null)
+      setStampEventId("")
+      toast.success("Version mit Freigabe verknüpft.")
+    } catch (err) {
+      toast.error(err instanceof Error ? err.message : "Verknüpfen fehlgeschlagen.")
+    }
+  }
+
+  function eventLabel(ev: DeliverableApprovalEvent): string {
+    return `Freigabe · ${new Date(ev.created_at).toLocaleDateString("de-DE")}`
+  }
+
   async function addRaci() {
     if (!item || !newRaciRole) return
     try {
@@ -333,24 +439,100 @@ export function DeliverableDialog({
 
             {isEdit && (
               <>
-                <div className="space-y-2 rounded-md border p-3">
-                  <Label className="text-xs font-semibold">Dokumente (Links)</Label>
-                  {docs.length === 0 && <p className="text-xs text-muted-foreground">Keine Links.</p>}
-                  {docs.map((d) => (
-                    <div key={d.id} className="flex items-center justify-between gap-2 text-sm">
-                      <a href={d.url} target="_blank" rel="noreferrer" className="truncate text-primary underline">
-                        {d.title}
-                      </a>
-                      <Button type="button" variant="ghost" size="icon" className="h-7 w-7 text-destructive"
-                        onClick={() => removeDoc(d.id)} aria-label="Link entfernen">
-                        <Trash2 className="h-4 w-4" />
-                      </Button>
+                <div className="space-y-3 rounded-md border p-3">
+                  <Label className="text-xs font-semibold">Dokumente &amp; Versionen</Label>
+                  {slots.length === 0 && <p className="text-xs text-muted-foreground">Keine Dokumente.</p>}
+                  {slots.map(({ head, chain }) => (
+                    <div key={head.id} className="space-y-1.5 rounded-md border bg-muted/20 p-2">
+                      <div className="flex items-center justify-between gap-2 text-sm">
+                        <div className="flex min-w-0 items-center gap-2">
+                          <Badge variant="outline" className="shrink-0 gap-1 text-[11px]">
+                            <CheckCircle2 className="h-3 w-3 text-emerald-600" aria-hidden /> v{head.version_no} · aktuell
+                          </Badge>
+                          <a href={head.url} target="_blank" rel="noreferrer" className="truncate text-primary underline">
+                            {head.title}
+                          </a>
+                        </div>
+                        <div className="flex shrink-0 items-center gap-1">
+                          <Button type="button" variant="ghost" size="sm" className="h-7 text-xs"
+                            onClick={() => {
+                              setVerHeadId(verHeadId === head.id ? null : head.id)
+                              setVerTitle(head.title)
+                              setVerUrl("")
+                              setVerComment("")
+                            }}>
+                            Neue Version
+                          </Button>
+                          {!head.approved_in_event_id && approvalEvents.length > 0 && (
+                            <Button type="button" variant="ghost" size="sm" className="h-7 text-xs"
+                              onClick={() => {
+                                setStampHeadId(stampHeadId === head.id ? null : head.id)
+                                setStampEventId("")
+                              }}>
+                              Freigabe
+                            </Button>
+                          )}
+                          <Button type="button" variant="ghost" size="icon" className="h-7 w-7 text-destructive"
+                            onClick={() => removeDoc(head.id)} aria-label="Dokument entfernen">
+                            <Trash2 className="h-4 w-4" />
+                          </Button>
+                        </div>
+                      </div>
+                      <p className="text-[11px] text-muted-foreground">
+                        {new Date(head.created_at).toLocaleDateString("de-DE")}
+                        {head.created_by && ` · ${userName.get(head.created_by) ?? "—"}`}
+                        {head.approved_in_event_id &&
+                          (eventById.has(head.approved_in_event_id)
+                            ? ` · ${eventLabel(eventById.get(head.approved_in_event_id)!)}`
+                            : " · mit Freigabe verknüpft")}
+                        {head.version_comment && ` · „${head.version_comment}“`}
+                      </p>
+                      {chain.length > 1 && (
+                        <div className="space-y-0.5 border-l pl-2">
+                          {chain.slice(1).map((v) => (
+                            <p key={v.id} className="text-[11px] text-muted-foreground">
+                              <span className="line-through">v{v.version_no} {v.title}</span>
+                              {" · "}{new Date(v.created_at).toLocaleDateString("de-DE")}
+                              {v.created_by && ` · ${userName.get(v.created_by) ?? "—"}`}
+                              {v.version_comment && ` · „${v.version_comment}“`}
+                            </p>
+                          ))}
+                        </div>
+                      )}
+                      {verHeadId === head.id && (
+                        <div className="flex flex-wrap gap-2 pt-1">
+                          <Input value={verTitle} onChange={(e) => setVerTitle(e.target.value)} placeholder="Titel" className="h-8 flex-1" />
+                          <Input value={verUrl} onChange={(e) => setVerUrl(e.target.value)} placeholder="https://… (neue Version)" className="h-8 flex-1" />
+                          <Input value={verComment} onChange={(e) => setVerComment(e.target.value)} placeholder="Kommentar" className="h-8 flex-1" />
+                          <Button type="button" variant="outline" size="sm" className="h-8" onClick={() => addVersion(head.id)}>
+                            Speichern
+                          </Button>
+                        </div>
+                      )}
+                      {stampHeadId === head.id && (
+                        <div className="flex flex-wrap items-center gap-2 pt-1">
+                          <Select value={stampEventId} onValueChange={setStampEventId}>
+                            <SelectTrigger className="h-8 flex-1">
+                              <SelectValue placeholder="Freigabeentscheidung wählen…" />
+                            </SelectTrigger>
+                            <SelectContent>
+                              {approvalEvents.map((ev) => (
+                                <SelectItem key={ev.id} value={ev.id}>{eventLabel(ev)}</SelectItem>
+                              ))}
+                            </SelectContent>
+                          </Select>
+                          <Button type="button" variant="outline" size="sm" className="h-8"
+                            disabled={!stampEventId} onClick={() => stampVersion(head.id)}>
+                            Verknüpfen
+                          </Button>
+                        </div>
+                      )}
                     </div>
                   ))}
-                  <div className="flex gap-2">
-                    <Input value={newDocTitle} onChange={(e) => setNewDocTitle(e.target.value)} placeholder="Titel" className="h-8" />
+                  <div className="flex gap-2 pt-1">
+                    <Input value={newDocTitle} onChange={(e) => setNewDocTitle(e.target.value)} placeholder="Neues Dokument – Titel" className="h-8" />
                     <Input value={newDocUrl} onChange={(e) => setNewDocUrl(e.target.value)} placeholder="https://…" className="h-8" />
-                    <Button type="button" variant="outline" size="icon" className="h-8 w-8" onClick={addDoc} aria-label="Link hinzufügen">
+                    <Button type="button" variant="outline" size="icon" className="h-8 w-8" onClick={addDoc} aria-label="Dokument hinzufügen">
                       <Plus className="h-4 w-4" />
                     </Button>
                   </div>

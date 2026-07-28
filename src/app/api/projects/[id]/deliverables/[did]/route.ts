@@ -45,8 +45,9 @@ export async function GET(
 
   const { data: docs } = await supabase
     .from("deliverable_documents")
-    .select("id, deliverable_id, title, url, tag_keys, created_by, created_at")
+    .select("id, tenant_id, deliverable_id, title, url, tag_keys, created_by, created_at, version_no, supersedes_document_id, is_current, version_comment, approved_in_event_id")
     .eq("deliverable_id", did)
+    .order("version_no", { ascending: true })
     .order("created_at", { ascending: true })
 
   return NextResponse.json({ deliverable: data, documents: docs ?? [] })
