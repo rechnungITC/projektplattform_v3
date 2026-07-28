@@ -64,5 +64,21 @@ export const createDeliverableDocumentSchema = z.object({
   tag_keys: z.array(z.string().trim().min(1).max(60)).max(20).optional(),
 })
 
+// PROJ-106 — new document version (atomic supersede via RPC). supersedes_document_id
+// null = first version of a new slot; set = new version superseding the current head.
+export const createDeliverableDocumentVersionSchema = z.object({
+  title: z.string().trim().min(1).max(200),
+  url: z.string().trim().url().max(2000),
+  supersedes_document_id: z.string().uuid().nullable().optional(),
+  version_comment: z.string().trim().max(1000).nullable().optional(),
+  tag_keys: z.array(z.string().trim().min(1).max(60)).max(20).optional(),
+})
+
+// PROJ-106 — link a document version to a PROJ-105 approval event (AC5).
+export const stampDeliverableDocumentVersionSchema = z.object({
+  document_id: z.string().uuid(),
+  event_id: z.string().uuid(),
+})
+
 export const DELIVERABLE_SELECT =
   "id, tenant_id, project_id, name, description, phase_id, workstream_id, responsible_user_id, due_date, status, confidentiality_level, sort_order, created_by, created_at, updated_at"
