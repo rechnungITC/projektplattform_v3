@@ -1,6 +1,6 @@
 # Open, Deferred, and Partial Feature Status
 
-**Last Updated:** 2026-06-12
+**Last Updated:** 2026-07-28
 
 This file is the cross-feature status register referenced by `features/INDEX.md`. It keeps follow-ups, MVP partials, and bookkeeping conflicts visible without overloading individual feature rows.
 
@@ -15,6 +15,7 @@ This file is the cross-feature status register referenced by `features/INDEX.md`
 | PROJ-75 | Planned (Followup) | Class-3 re-classification after parse/full text. Still open; PROJ-84 audit tagging does not replace this privacy guard. |
 | PROJ-Y-1 | Planned (Followup, 114) | DD-Findings `source_ref`/`document_link` field (closes PROJ-108 AC1 gap "Quelle/Dokumentenverweis"). Small EXTEND on deployed `dd_findings`: 1 migration + `create_dd_finding`/`update_dd_finding` RPC param + FE field; later real DMS via PROJ-79/104. Should-have. From CIA 2026-06-26 PROJ-108-supersede. |
 | PROJ-Y-2 | Planned (Followup, FE-only) | Red-Flag-Lens on the DD-Findings panel: filter/tab for `severity ∈ {hoch, deal_breaker}` + EUR sum (SteerCo quick-view). No backend/migration/dep; pilot-driven. The only genuine net-new of the superseded PROJ-108. From CIA 2026-06-26. |
+| PROJ-Y-3 | Planned (Followup, wizard) | Wizard step navigation continues on failed silent autosave. `persistDraft()` (src/components/projects/wizard/wizard-client.tsx:227–267) catches every error, toasts, and returns `null`; the transition caller at line ~406 does `await persistDraft(...); setStep(target)` regardless of the return value, and in the `{ silent: true }` branch the error toast is suppressed too — the user progresses to the next step while the draft on the server is stale/failed. Small fix: check the return value (or move to typed `{ ok, error }`) and hold navigation + surface a non-silent error on the transition path. Uncovered by the same PROJ-94 investigation that found the M&A step render crash (2026-07-28). No dep/migration; FE-only. |
 | PROJ-108 | Superseded by PROJ-114 | Red-Flag-Log absorbed by deployed `dd_findings`. AC4 report→PROJ-116; AC3 valuation/SPA→PROJ-120/121/122; AC1-gap→PROJ-Y-1; lens→PROJ-Y-2; PMI-handover→PROJ-125/127. No own build. |
 
 ## New Feature Series

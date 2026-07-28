@@ -268,8 +268,10 @@ export function StepMaFoundation({ tenantId }: StepMaFoundationProps) {
         )}
       />
 
-      <div className="space-y-2 rounded-md border bg-muted/10 p-3">
-        <FormLabel>Investitionsrahmen</FormLabel>
+      <fieldset className="space-y-2 rounded-md border bg-muted/10 p-3">
+        <legend className="px-1 text-sm font-medium leading-none">
+          Investitionsrahmen
+        </legend>
         <div className="grid gap-3 sm:grid-cols-[1fr_7rem]">
           <FormField
             control={form.control}
@@ -327,7 +329,7 @@ export function StepMaFoundation({ tenantId }: StepMaFoundationProps) {
             </FormItem>
           )}
         />
-      </div>
+      </fieldset>
 
       <FormField
         control={form.control}
