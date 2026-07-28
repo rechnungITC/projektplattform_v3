@@ -5,6 +5,7 @@
 import type {
   Skill,
   SkillCategory,
+  SkillExample,
   SkillFrontmatter,
   SkillVersion,
 } from "@/types/skill"
@@ -186,4 +187,69 @@ export async function rollbackSkillVersion(
   )
   if (!response.ok) throw new Error(await safeError(response))
   return (await response.json()) as { skill: Skill; version: SkillVersion }
+}
+
+// PROJ-77-β — skill examples (admin authoring aids).
+export interface SkillExampleInput {
+  title: string
+  input: string
+  expected_output: string
+  tags?: string[]
+  display_order?: number
+}
+
+export async function listSkillExamples(id: string): Promise<SkillExample[]> {
+  const response = await fetch(
+    `/api/skills/${encodeURIComponent(id)}/examples`,
+    { method: "GET", cache: "no-store" }
+  )
+  if (!response.ok) throw new Error(await safeError(response))
+  const body = (await response.json()) as { examples: SkillExample[] }
+  return body.examples ?? []
+}
+
+export async function createSkillExample(
+  id: string,
+  input: SkillExampleInput
+): Promise<SkillExample> {
+  const response = await fetch(
+    `/api/skills/${encodeURIComponent(id)}/examples`,
+    {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(input),
+    }
+  )
+  if (!response.ok) throw new Error(await safeError(response))
+  const body = (await response.json()) as { example: SkillExample }
+  return body.example
+}
+
+export async function updateSkillExample(
+  id: string,
+  exampleId: string,
+  input: Partial<SkillExampleInput>
+): Promise<SkillExample> {
+  const response = await fetch(
+    `/api/skills/${encodeURIComponent(id)}/examples/${encodeURIComponent(exampleId)}`,
+    {
+      method: "PATCH",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(input),
+    }
+  )
+  if (!response.ok) throw new Error(await safeError(response))
+  const body = (await response.json()) as { example: SkillExample }
+  return body.example
+}
+
+export async function deleteSkillExample(
+  id: string,
+  exampleId: string
+): Promise<void> {
+  const response = await fetch(
+    `/api/skills/${encodeURIComponent(id)}/examples/${encodeURIComponent(exampleId)}`,
+    { method: "DELETE" }
+  )
+  if (!response.ok) throw new Error(await safeError(response))
 }
