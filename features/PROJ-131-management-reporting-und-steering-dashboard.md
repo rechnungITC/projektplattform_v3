@@ -126,4 +126,66 @@ Der ursprüngliche Backlog-Stub wurde gegen den **tatsächlich deployten** Platt
 - BI-Tool-Schnittstelle (Power BI/Tableau): bleibt **Out of Scope** (kein BI-Ersatz); ggf. späterer eigener Slice.
 
 ---
+
+## Tech Design (Solution Architect) — 2026-07-28
+
+> **Klasse: VIEW (DUP→REUSE), standalone.** Direkte Anwendung des **deployten PROJ-132-Musters** (`operative_report`) und des PROJ-116-Musters (`dd_report_consolidated`): **eine** lesende Auswertungsfunktion, die bereits existierende Kern-/M&A-Objekte zu einer verdichteten Sicht bündelt und als eigener M&A-Tab (Steering-Ebene) mit Print/CSV-Export surft. **Kein neues npm-Paket, keine neue Tabelle, keine Migration an Bestandstabellen, kein Audit-Trio-Touch.** Einzige DB-Änderung: die neue Lese-Funktion.
+
+### A) Was gebaut wird — Bausteine (WAS, nicht WIE)
+
+```
+M&A-Projektraum
+└── Neuer Tab „Steering-Dashboard"  (project_type='ma', view-Zugriff)
+    ├── Pre-Read-Kachelzeile (Ampel-Headline für Steering)
+    │   ├── aktuelle Phase + Projekt-Status
+    │   ├── nächstes offenes Stage-Gate (+ Status/Termin)
+    │   ├── offene Deal-Breaker-/High-Red-Flags (Zahl)
+    │   └── kritische offene Aufgaben (überfällig/blockiert, Zahl)
+    ├── Abschnitt „Stage-Gate-Status"      → Drill-down /stage-gates
+    ├── Abschnitt „Top-5 Red Flags"        → Drill-down DD-Findings / Risiko
+    ├── Abschnitt „Kritische offene Aufgaben" → Drill-down /aufgaben · /engpaesse
+    ├── Platzhalter-Kachel „Kaufpreisbandbreite — noch nicht verfügbar" (AC-131-5)
+    ├── Platzhalter-Kachel „Synergie-Stand — noch nicht verfügbar"      (AC-131-5)
+    └── Aktionen: „Drucken/PDF" (eigene /print-Seite) · „CSV" je Abschnitt
+```
+
+Dazu (mirror PROJ-132-Dateisatz): eine Lese-Route (GET, ruft die Funktion mit Session-Client), eine Export-Route (CSV, ruft dieselbe Funktion serverseitig erneut → Single-Source), eine chrome-lose `/print`-Seite außerhalb der `(app)`-Gruppe (Browser-Print-to-PDF, `robots: noindex`), ein geteilter read-only Body + View-Wrapper, ein Hook, ein Client-Wrapper, ein Typ.
+
+### B) Datenmodell (Klartext)
+
+**Keine neue Tabelle, kein neues Feld.** Eine neue lesende Funktion `steering_report(projekt)` (analog `operative_report`) bündelt aus **bereits deployten** Quellen:
+
+- **Phase + Status** — aus Phasen/Projekt (PROJ-95/19/2).
+- **Nächstes offenes Stage-Gate** — aus dem Stage-Gate-Bestand (PROJ-110): das früheste noch offene Gate + Status/Zieltermin.
+- **Top-5 Red Flags** — offene DD-Findings der Schwere `hoch`/`deal_breaker` (G3 = PROJ-114) als kanonische Red-Flag-Liste; begleitend die offenen High-Risiken aus dem Risikoregister (E2 = PROJ-107). Headline zeigt Top-5, Export/Drill-down die volle Liste.
+- **Kritische offene Aufgaben** — **dieselbe Logik wie PROJ-103** `project_task_bottlenecks` (überfällig/heute/diese Woche/blockiert), damit die Zahlen nie zu 132/103 divergieren.
+- **Kaufpreis (I1/I2) + Synergie (K2)** — **nicht** in der Funktion; die UI rendert feste „noch nicht verfügbar"-Platzhalter, bis PROJ-120/121/126 deployed sind (AC-131-5 → PROJ-Y-131a).
+
+**Sicherheit / Need-to-know (AC-131-2, L2) — gratis:** Die Funktion läuft als **Aufrufer** (security invoker). Dadurch greifen die bestehenden RESTRICTIVE Need-to-know-Gates auf `work_items`/`dd_findings`/`risks`/`ma_stage_gates` (PROJ-100a) **vor** der Aggregation — eine für den Aufrufer unsichtbare Zeile taucht weder in Listen noch in Summen/Headline-Zahlen noch im Export auf. Der additive Externen-Berater-Scope (PROJ-99) gilt automatisch mit. Kein zweites Rechtemodell. Container-Joins (Phase/Workstream/Stream) sind LEFT JOINs → ein unsichtbarer Container blankt nur sein Label, die Zeile bleibt durch ihr eigenes Gate geschützt. **Aufruf zwingend mit Session-gebundenem User-Client, nie service-role** (Pflicht-Kontrakt wie PROJ-132/116). **Aggregat-Leak-Pentest ist Pflicht** (mirror PROJ-132 A–G: nicht-cleared Member sieht in Pre-Read/Summen 0 aus vertraulichen Objekten).
+
+### C) Tech-Entscheidungen (begründet) + gelöste offene Fragen
+
+1. **Standalone statt Merge mit PROJ-132** — PROJ-132 ist als eigenständiges operatives Reporting deployed; ein nachträglicher Merge brächte keinen Nutzen und Kollisionsrisiko. PROJ-131 ist die **Steering-Ebene** (Sponsor/SteerCo) mit eigener, verdichteter Sicht.
+2. **„Kritische offene Aufgabe" = PROJ-103-Logik wiederverwenden** — identische Bucket-Definition (überfällig/blockiert), damit Steering- und operatives Reporting konsistent bleiben. (Löst offene Frage 1.)
+3. **„Top-5 Red Flags"-Sortierung** — Schwere (`deal_breaker` > `hoch`) → wirtschaftlicher Impact (EUR) absteigend → Datum; DD-Findings sind die kanonische Red-Flag-Quelle (G3), High-Risiken (E2) begleitend. (Löst offene Frage 2.)
+4. **Tab-Sichtbarkeit** — Tab ist für **alle M&A-Projektmitglieder mit view-Zugriff** sichtbar; der Inhalt wird durch Need-to-know automatisch gefiltert (mirror PROJ-132, das den Tab nicht rollen-gated). Eine strengere Rollenbeschränkung (nur Sponsor/SteerCo) ist bewusst **kein** MVP-Scope → optionaler Followup, falls Pilot es verlangt. (Löst offene Frage 3.)
+5. **Export** — Print-to-PDF über eigene `/print`-Seite (PROJ-21-Muster) + CSV je Abschnitt mit Formel-Injektion-Escaping (`csvCell`, vorhanden). Word + persistiertes Snapshot-Freeze bewusst ausgelagert (PROJ-Y-131b), um die VIEW-class rein zu halten.
+
+### D) Dependencies (zu installieren)
+
+**Keine.** Kein neues npm-Paket (`papaparse`/Print-Muster vorhanden). Eine neue Lese-Funktion, keine Migration an Bestandstabellen.
+
+### CIA-Einordnung
+
+**Kein CIA-Pflicht-Pass** (per `.claude/rules/continuous-improvement.md`): keine neue Technologie, kein neues Dep, keine neue Tabelle, kein Refactoring ≥5 Dateien, kein von der Spec offengelassener Architektur-Fork mit Wirkung auf ≥3 Folge-Skills — der Scope wurde in `/requirements` gelockt, das Muster ist das deployte PROJ-132 (spec-following VIEW-class). Die 3 verbliebenen Detailfragen sind oben regelkonform entschieden.
+
+### Abhängigkeiten (verifiziert Deployed)
+
+A2 = PROJ-94/95 ✅ · F1 = PROJ-110 ✅ · E2 = PROJ-107 ✅ · G3 = PROJ-114 ✅ · L2 = PROJ-100a/129 ✅ · Aufgaben = PROJ-101/103 ✅. Deferred-Quellen: I1/I2 = PROJ-120/121 ⛔ · K2 = PROJ-126 ⛔ (→ Platzhalter/PROJ-Y-131a).
+
+### Handoff
+
+`/backend` (neue Lese-Funktion `steering_report` + GET-Route + CSV-Export-Route + Pflicht-Live-RPC-Smoke inkl. **Aggregat-Leak-Pentest**) → `/frontend` (Steering-Tab + Pre-Read-Kacheln + 3 Abschnitte + 2 Platzhalter-Kacheln + `/print`-Seite + Drill-down-Links) → `/qa` (Need-to-know-Pentest A–G-Muster + Playwright Auth-Gates). ~1,5–2 PT.
+
+---
 _Quelle: Backlog-Entwurf M&A-Projektplattform · M — Reporting & Dashboards_
