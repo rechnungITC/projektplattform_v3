@@ -1,6 +1,7 @@
 "use client"
 
-import { ShieldAlert } from "lucide-react"
+import { LayoutTemplate, ShieldAlert } from "lucide-react"
+import * as React from "react"
 import { useFormContext } from "react-hook-form"
 
 import { ResponsibleUserPicker } from "@/components/projects/responsible-user-picker"
@@ -25,12 +26,18 @@ import {
   MA_CONFIDENTIALITY_LEVELS,
   MA_CONFIDENTIALITY_LEVEL_LABELS,
 } from "@/types/confidentiality"
+import {
+  listMaProjectTemplates,
+  type MaProjectTemplate,
+} from "@/lib/ma-project/templates-api"
 import { DEAL_SIDES, DEAL_SIDE_LABELS } from "@/types/ma-project"
 import type { WizardData } from "@/types/wizard"
 
 interface StepMaFoundationProps {
   tenantId: string
 }
+
+const NO_TEMPLATE = "__none__"
 
 /**
  * PROJ-94 — conditional "M&A-Grundlage" step (only for project_type 'ma').
@@ -40,6 +47,25 @@ interface StepMaFoundationProps {
  */
 export function StepMaFoundation({ tenantId }: StepMaFoundationProps) {
   const form = useFormContext<WizardData>()
+  const [templates, setTemplates] = React.useState<MaProjectTemplate[]>([])
+  const [templatesLoaded, setTemplatesLoaded] = React.useState(false)
+
+  React.useEffect(() => {
+    let cancelled = false
+    void listMaProjectTemplates()
+      .then((rows) => {
+        if (!cancelled) setTemplates(rows.filter((t) => t.is_active))
+      })
+      .catch(() => {
+        // Non-fatal: the picker just stays empty; a project can start without a template.
+      })
+      .finally(() => {
+        if (!cancelled) setTemplatesLoaded(true)
+      })
+    return () => {
+      cancelled = true
+    }
+  }, [])
 
   return (
     <div className="space-y-4">
@@ -48,6 +74,59 @@ export function StepMaFoundation({ tenantId }: StepMaFoundationProps) {
         können je nach Vertraulichkeit auf den engeren Deal-Kreis beschränkt
         werden. Die Zielsetzung kommt aus der Beschreibung in Schritt 1.
       </p>
+
+      <FormField
+        control={form.control}
+        name="ma_foundation.template_id"
+        render={({ field }) => {
+          const selected = templates.find((t) => t.id === field.value)
+          return (
+            <FormItem className="rounded-md border bg-muted/10 p-3">
+              <FormLabel className="flex items-center gap-1.5">
+                <LayoutTemplate
+                  className="h-3.5 w-3.5 text-muted-foreground"
+                  aria-hidden
+                />
+                Projekt-Template
+              </FormLabel>
+              <Select
+                value={field.value ?? NO_TEMPLATE}
+                onValueChange={(v) =>
+                  field.onChange(v === NO_TEMPLATE ? null : v)
+                }
+              >
+                <FormControl>
+                  <SelectTrigger>
+                    <SelectValue
+                      placeholder={
+                        templatesLoaded
+                          ? "Kein Template (leer starten)"
+                          : "Templates werden geladen …"
+                      }
+                    />
+                  </SelectTrigger>
+                </FormControl>
+                <SelectContent>
+                  <SelectItem value={NO_TEMPLATE}>
+                    Kein Template (leer starten)
+                  </SelectItem>
+                  {templates.map((t) => (
+                    <SelectItem key={t.id} value={t.id}>
+                      {t.name}
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+              <FormDescription>
+                {selected
+                  ? `Beim Anlegen werden Phasen, ${selected.workstreams.length} Workstreams und ${selected.deliverables.length} Deliverables übernommen (danach frei anpassbar).`
+                  : "Optional: Standardstruktur (Phasen, Workstreams, Deliverables) aus einem Template übernehmen. Vorlagen pflegt der Admin unter Stammdaten."}
+              </FormDescription>
+              <FormMessage />
+            </FormItem>
+          )
+        }}
+      />
 
       <div className="grid gap-4 sm:grid-cols-2">
         <FormField

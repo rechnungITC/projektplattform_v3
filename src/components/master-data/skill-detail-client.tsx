@@ -5,6 +5,7 @@ import Link from "next/link"
 import * as React from "react"
 import { toast } from "sonner"
 
+import { SkillExamplesSection } from "@/components/master-data/skill-examples-section"
 import { SkillRollbackDiffDialog } from "@/components/master-data/skill-rollback-diff-dialog"
 import { SkillTagPicker } from "@/components/master-data/skill-tag-picker"
 import {
@@ -843,6 +844,9 @@ export function SkillDetailClient({ skillId }: Props) {
           veröffentliche ihn in der Zeitleiste.
         </p>
       )}
+
+      {/* PROJ-77-β — admin-only reusable example pairs (additive) */}
+      <SkillExamplesSection skillId={skillId} canEdit={isAdmin} />
 
       {/* Publish confirmation */}
       <AlertDialog open={publishOpen} onOpenChange={setPublishOpen}>

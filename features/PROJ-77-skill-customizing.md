@@ -1,8 +1,8 @@
 # PROJ-77: Skill-Customizing
 
-## Status: Approved (α)
+## Status: Deployed (α) · β Approved · γ Planned
 **Created:** 2026-06-06
-**Last Updated:** 2026-07-27
+**Last Updated:** 2026-07-28
 
 ## Summary
 Extends the deployed PROJ-76 Skill-Framework with the three customizing dimensions plus a real draft→publish workflow. Admin-only. Refined 2026-07-24 (`/requirements`) and reconciled against **as-built PROJ-76 + PROJ-79 (both now Deployed)**. Three user-locked decisions shape this slice:
@@ -242,5 +242,24 @@ Reworked the existing `skill-detail-client.tsx` into a draft-centric authoring l
 
 **Note:** authenticated E2E of the full edit→publish→rollback flow is covered at the DB/route layer (live pentests + 40 unit/route tests) rather than a browser fixture, per the project's established skill-framework QA pattern (auth-gate E2E + live smokes). β/γ remain separate later slices.
 
+### β (2026-07-27/28) — `skill_examples` — **PRODUCTION-READY** (0 Critical / 0 High)
+
+**Backend:** migration `20260727160552_proj77_beta_skill_examples` (in prod) — `skill_examples` table (title/input/expected_output/tags/display_order + updated_at), **4 admin-only RLS policies** (authoring aids, not PM-facing in V1), moddatetime, PROJ-10 audit-wired (trio patched from live defs via anchor-replace + `authenticated` EXECUTE re-granted). GET/POST `/api/skills/[id]/examples` + PATCH/DELETE `.../[eid]`; empty title/input/expected_output → 400 (Zod `min(1)`; repo convention vs the spec's 422 — documented deviation). Client wrappers + `SkillExample` type.
+
+**Frontend:** admin-only "Beispiele" CRUD section (`skill-examples-section.tsx`) mounted on the skill detail page (list sorted by display_order; add/edit shared Dialog with client non-empty validation; delete AlertDialog; all states + a11y; renders null for non-admins).
+
+**QA — security (live vs prod, 0 residue):** β smoke **6/6** (`tests/sql/PROJ-77-beta-skill-examples-smoke.sql`): non-admin member cannot SELECT (0, admin-only) / INSERT (42501) / UPDATE (0 rows); non-member stranger sees 0 (isolation); admin reads (1) + edits (1 row) with a field-level **audit** row written. Advisors: RLS enabled + 4 policies (0 new ERROR). **Automated:** full vitest regression **2505/2505**; PROJ-77 skills unit/route **57/57** (incl. 15 new example route tests); **Playwright `tests/PROJ-77-beta-skill-examples.spec.ts` 4/4 chromium** (all 4 example routes auth-gated). Findings: **0 Critical/High/Medium**; deviation: empty→400 not 422 (codebase convention). γ remains a separate later slice.
+
 ## Deployment
-_To be added by /deploy._
+
+**Slice α — Deployed 2026-07-27 · Tag `v2.24.0-PROJ-77-alpha`** (squash-merge PR #261 → `main` `b65a239`).
+
+- Migration `20260724144648_proj77_alpha_editable_drafts` was applied to prod during `/backend`; this deploy is code-merge + bookkeeping.
+- **Supply-chain blocker resolved first:** the `npm audit --omit=dev --audit-level=high` Required-Check was failing repo-wide on two newly-published HIGH CVEs in existing deps (postcss `8.5.15`, brace-expansion) — unrelated to α. Fixed in a separate CIA-reviewed PR #264 (`chore/supply-chain-audit`: postcss → `^8.5.23`, brace-expansion → `5.0.8` via non-breaking `npm audit fix`; `@hono/node-server` moderate deferred → PROJ-Y). α branch then updated with main → all Required-Checks green.
+- Post-deploy prod smoke: `PATCH /api/skills/[id]/versions/[vid]` + `/stammdaten/skills` + `/skills` → **307** (auth-gate intact; new draft-edit route live).
+- No new dependency (α); no new env/secret.
+
+**Open follow-ups (PROJ-Y candidates):**
+- Expose HTTP status in `src/lib/skills/api.ts` so the client stops detecting 409 by server-message fragment (QA Low finding).
+- `@hono/node-server` moderate advisory (needs a breaking MCP-SDK bump).
+- **β (skill_examples) and γ (skill_knowledge_links → PROJ-79 DMS)** remain to be built as separate slices.

@@ -105,6 +105,27 @@ export const patchVersionSchema = z
 
 export const toggleActiveSchema = z.object({ is_active: z.boolean() })
 
+// PROJ-77-β — skill_examples (admin authoring aids). Empty input/output → 422.
+const exampleTags = z.array(z.string().trim().min(1).max(40)).max(20)
+export const createExampleSchema = z.object({
+  title: z.string().trim().min(1).max(200),
+  input: z.string().trim().min(1).max(20000),
+  expected_output: z.string().trim().min(1).max(20000),
+  tags: exampleTags.optional().default([]),
+  display_order: z.number().int().min(0).max(9999).optional().default(0),
+})
+export const updateExampleSchema = z
+  .object({
+    title: z.string().trim().min(1).max(200).optional(),
+    input: z.string().trim().min(1).max(20000).optional(),
+    expected_output: z.string().trim().min(1).max(20000).optional(),
+    tags: exampleTags.optional(),
+    display_order: z.number().int().min(0).max(9999).optional(),
+  })
+  .refine((v) => Object.keys(v).length > 0, {
+    message: "Mindestens ein Feld muss angegeben werden.",
+  })
+
 export type CreateSkillInput = z.infer<typeof createSkillSchema>
 export type UpdateSkillMetadataInput = z.infer<typeof updateSkillMetadataSchema>
 export type CreateVersionInput = z.infer<typeof createVersionSchema>

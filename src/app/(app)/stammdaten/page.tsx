@@ -3,6 +3,7 @@ import {
   Building2,
   ChevronRight,
   FolderTree,
+  LayoutTemplate,
   ListChecks,
   Microscope,
   Network,
@@ -114,6 +115,14 @@ const SECTIONS: Section[] = [
     title: "DD-Stream-Vorlagen",
     description:
       "Tenant-Katalog der Due-Diligence-Streams (Commercial, Financial, Tax, Legal, HR, IT …). Werden beim Aktivieren in ein M&A-Projekt kopiert.",
+    adminOnly: true,
+  },
+  {
+    href: "/stammdaten/projekt-vorlagen",
+    icon: LayoutTemplate,
+    title: "Projekt-Vorlagen (M&A)",
+    description:
+      "Tenant-Katalog wiederverwendbarer M&A-Projektstrukturen (Phasen, Workstreams, Deliverables). Bei der Projektanlage wählbar; werden ins neue Projekt kopiert (Copy-on-create).",
     adminOnly: true,
   },
   {
