@@ -6,6 +6,7 @@ import * as React from "react"
 import { toast } from "sonner"
 
 import { SkillExamplesSection } from "@/components/master-data/skill-examples-section"
+import { SkillKnowledgeLinksSection } from "@/components/master-data/skill-knowledge-links-section"
 import { SkillRollbackDiffDialog } from "@/components/master-data/skill-rollback-diff-dialog"
 import { SkillTagPicker } from "@/components/master-data/skill-tag-picker"
 import {
@@ -847,6 +848,9 @@ export function SkillDetailClient({ skillId }: Props) {
 
       {/* PROJ-77-β — admin-only reusable example pairs (additive) */}
       <SkillExamplesSection skillId={skillId} canEdit={isAdmin} />
+
+      {/* PROJ-77-γ — admin-only DMS knowledge-source links (additive) */}
+      <SkillKnowledgeLinksSection skillId={skillId} canEdit={isAdmin} />
 
       {/* Publish confirmation */}
       <AlertDialog open={publishOpen} onOpenChange={setPublishOpen}>

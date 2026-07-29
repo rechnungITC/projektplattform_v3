@@ -1,10 +1,10 @@
 # PROJ-77: Skill-Customizing
 
-## Status: Deployed (α, β) · γ Planned
+## Status: Deployed (α, β) · γ Approved
 
 > **Post-Deploy-Audit 2026-07-28 → [PROJ-141](PROJ-141-cross-cutting-audit-remediation-77-96-132.md) — α-Slice komplett in Prod 2026-07-28/29 (H-1 RLS + M-9 If-Match + M-10 activate-Guard + M-11 audit-events+discard + L-3 422). β (M-7/M-8/L-5) und γ (PROJ-96/132-Konsistenz) bleiben in PROJ-141 Planned. Details siehe dortige Implementation Notes.**
 **Created:** 2026-06-06
-**Last Updated:** 2026-07-28
+**Last Updated:** 2026-07-29
 
 ## Summary
 Extends the deployed PROJ-76 Skill-Framework with the three customizing dimensions plus a real draft→publish workflow. Admin-only. Refined 2026-07-24 (`/requirements`) and reconciled against **as-built PROJ-76 + PROJ-79 (both now Deployed)**. Three user-locked decisions shape this slice:
@@ -251,6 +251,14 @@ Reworked the existing `skill-detail-client.tsx` into a draft-centric authoring l
 **Frontend:** admin-only "Beispiele" CRUD section (`skill-examples-section.tsx`) mounted on the skill detail page (list sorted by display_order; add/edit shared Dialog with client non-empty validation; delete AlertDialog; all states + a11y; renders null for non-admins).
 
 **QA — security (live vs prod, 0 residue):** β smoke **6/6** (`tests/sql/PROJ-77-beta-skill-examples-smoke.sql`): non-admin member cannot SELECT (0, admin-only) / INSERT (42501) / UPDATE (0 rows); non-member stranger sees 0 (isolation); admin reads (1) + edits (1 row) with a field-level **audit** row written. Advisors: RLS enabled + 4 policies (0 new ERROR). **Automated:** full vitest regression **2505/2505**; PROJ-77 skills unit/route **57/57** (incl. 15 new example route tests); **Playwright `tests/PROJ-77-beta-skill-examples.spec.ts` 4/4 chromium** (all 4 example routes auth-gated). Findings: **0 Critical/High/Medium**; deviation: empty→400 not 422 (codebase convention). γ remains a separate later slice.
+
+### γ (2026-07-28/29) — `skill_knowledge_links` → PROJ-79 DMS — **PRODUCTION-READY** (0 Critical / 0 High)
+
+**Backend:** migration `20260728150536_proj77_gamma_skill_knowledge_links` (in prod) — `skill_knowledge_links` (skill ↔ DMS `document_tree_nodes`, `include_subtree`, `link_mode` reference/required) + `unique(skill_id, document_node_id)` + **4 admin-only RLS policies** + a **SECURITY DEFINER tenant-consistency trigger** (skill + node + tenant must all match; a cross-tenant node is rejected regardless of RLS visibility) + moddatetime + PROJ-10 audit (trio patched from live defs + re-grant). GET/POST + PATCH/DELETE routes; duplicate → 409, cross-tenant/invalid node → 422, skill-not-found → 404. Client wrappers + `SkillKnowledgeLink` type.
+
+**Frontend:** admin-only "Wissensquellen" section on the skill detail page. Node picker reuses PROJ-79 DMS (`useProjects` + `fetchDocumentTree(projectId)`): project → node path-label Select + `include_subtree` + `link_mode`. Existing links resolve node names via an RLS-scoped `document_tree_nodes` read (no cross-project get-node-by-id API exists — documented deviation; columns exist → schema-drift clean). Inline edit + remove-confirm; 409/422 friendly toasts.
+
+**QA — security (live vs prod, 0 residue):** γ smoke **7/7** (`tests/sql/PROJ-77-gamma-skill-knowledge-links-smoke.sql`): same-tenant link ok; **cross-tenant node rejected (23514 trigger)**; duplicate rejected (23505); admin update + field-level audit; non-admin member cannot read/write; non-member sees 0. **Regression finding caught in QA:** a concurrent session's migration had recreated `_tracked_audit_columns` from a pre-γ live def and dropped the `skill_knowledge_links` branch (only that branch; `can_read_audit_entry` + `entity_type` CHECK + trigger survived) → `include_subtree`/`link_mode` edits stopped being audited. Fixed by an idempotent reconcile migration `20260729110215_proj77_gamma_reconcile_tracked_audit_columns` (anchor-replace re-add, no-op if present; sorts last so fresh-replay ends correct). Post-fix smoke 7/7 (G6 audit restored). **Automated:** full vitest **2538/2538**; skills unit/route **75/75** (incl. 18 new knowledge-link route tests); **Playwright `tests/PROJ-77-gamma-skill-knowledge-links.spec.ts` 4/4 chromium** (all 4 routes auth-gated). Findings: **0 Critical/High/Medium**. No new dependency.
 
 ## Deployment
 
