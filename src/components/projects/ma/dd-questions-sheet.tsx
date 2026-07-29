@@ -5,6 +5,7 @@ import * as React from "react"
 import { toast } from "sonner"
 
 import { Badge } from "@/components/ui/badge"
+import { ExternalLinksSection } from "@/components/projects/ma/external-links-section"
 import { Button } from "@/components/ui/button"
 import {
   Dialog,
@@ -578,6 +579,16 @@ function QuestionDetailDialog({
           </Button>
 
           {error && <p className="text-sm text-destructive">{error}</p>}
+
+          {question && (
+            <ExternalLinksSection
+              projectId={projectId}
+              entityType="dd_question"
+              entityId={question.id}
+              canEdit={canEdit}
+              compact
+            />
+          )}
         </div>
 
         <DialogFooter>

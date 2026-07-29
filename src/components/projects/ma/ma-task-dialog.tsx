@@ -7,6 +7,7 @@ import { useForm } from "react-hook-form"
 import { toast } from "sonner"
 import { z } from "zod"
 
+import { ExternalLinksSection } from "@/components/projects/ma/external-links-section"
 import { ResponsibleUserPicker } from "@/components/projects/responsible-user-picker"
 import { Button } from "@/components/ui/button"
 import {
@@ -386,6 +387,15 @@ export function MaTaskDialog({
                 </FormItem>
               )}
             />
+
+            {isEdit && item && (
+              <ExternalLinksSection
+                projectId={projectId}
+                entityType="work_item"
+                entityId={item.id}
+                canEdit
+              />
+            )}
 
             <DialogFooter>
               <Button
