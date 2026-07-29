@@ -53,6 +53,15 @@ export async function POST(
       return apiError("forbidden", "Admin role required.", 403)
     if (error.code === "P0002")
       return apiError("not_found", "Version not found.", 404)
+    // PROJ-141-α3 (M-10) — archived versions cannot be re-activated directly;
+    // the caller must go through rollback which materialises a new draft.
+    if (error.code === "P0001")
+      return apiError(
+        "conflict",
+        "Archived versions cannot be re-activated — use rollback to create a new draft.",
+        409,
+        "status"
+      )
     return apiError("activate_failed", error.message, 500)
   }
 
