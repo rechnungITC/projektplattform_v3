@@ -211,4 +211,40 @@ Steering-Tab im M&A-Projektraum, gespiegelt vom PROJ-132-FE-Dateisatz. Kein neue
 - **Gates:** method-templates 124/124, ESLint 0, tsc 0 neu (Baseline jetzt 12 — die 2 `js-yaml`-Fehler weg nach `npm install`), `npm run build` clean (4 Routen registriert: GET + Export + Page + Print). AC-131-1/3/4/5 FE-seitig erfüllt; AC-131-2 (Need-to-know) server-seitig bereits im /backend live-bewiesen. → `/qa` (Need-to-know-Pentest A–G re-verify + Playwright Auth-Gates + Tab-Smoke).
 
 ---
+
+## QA Test Results — 2026-07-29 (PASS, 0 Critical / 0 High → Approved)
+
+Getestet gegen den `/frontend`-Stand (`64dd883`) im Worktree `proj-131/requirements`. Fokus laut Auftrag: Need-to-know-Pentest A–G re-verify gegen Prod + Playwright Auth-Gates + Tab-Smoke.
+
+### Akzeptanzkriterien
+
+| AC | Ergebnis | Nachweis |
+|----|----------|----------|
+| **131-1** Pro-Deal Steering-Dashboard (Phase/Status · nächstes Stage-Gate · Top-5 Red Flags · kritische Aufgaben) | ✅ PASS | Live-Pentest A (admin full): current_phase in_progress · next gate seq=1 · red-flag findings=2/risks=2/summary.total=4 · critical_tasks=2 · pre_read korrekt. FE-Body rendert alle 4 Sektionen + Pre-Read. |
+| **131-2** Klassifikations-gated Sichtbarkeit (L2), kein Aggregat-Leak | ✅ PASS | **Live-Pentest B/C/D**: nicht-cleared Member sieht nur standard (findings=1/risks=1/tasks=1); **Pre-Read schließt strict deal_breaker + critical risk + strict task aus** (open_red_flag_findings=1/open_high_risks=1/critical_tasks=1); Listen ohne deal_breaker/critical. Gate = SECURITY-INVOKER Caller-Kontext. |
+| **131-3** Drill-down zum Detailobjekt | ✅ PASS | Body-Drill-Links (projectId gesetzt in View) → `/stage-gates`, `/due-diligence`, `/risiken`, `/engpaesse`; Print-Seite ohne Links. |
+| **131-4** Export (Print-to-PDF + CSV) | ✅ PASS | 3 CSV-Buttons (findings/risks/tasks) + chrome-lose `/steering-report/print`-Seite (Session-Client, robots noindex). Route-Unit deckt CSV-Shape + Formel-Escaping. |
+| **131-5** Vorwärts-kompatible Platzhalter (Kaufpreis/Synergie) | ✅ PASS | 2 „n/a — noch nicht verfügbar"-Kacheln im Pre-Read (muted, gestrichelt). Nicht in der RPC → sauber nachrüstbar (PROJ-Y-131a). |
+
+### Security / Red-Team (Live gegen Prod, self-rolling-back, 0 Residue)
+
+`tests/sql/PROJ-131-steering-report-pentest.sql` **A–G 7/7 PASS** (re-verifiziert in /qa gegen aktuellen Prod): A admin full · B member standard-only · **C Aggregat-Leak-Probe (Pre-Read)** · D Listen-Ausschluss strict · E Gate/Phase-Sichtbarkeit · F anon-execute revoked (42501) · G cross-tenant leer. Zusätzlich (im /backend verifiziert): `prosecdef=false` (INVOKER), authenticated-exec ✓, anon-exec ✗, 0 Residue.
+
+### Automatisierte Tests
+
+- **Playwright** `tests/PROJ-131-steering-report.spec.ts` **5/5 chromium** — Auth-Gates auf allen 4 Routen (GET · Export · Tab-Seite · Print) + malformed-id (Middleware-Gate vor Zod).
+- **Route-Unit (vitest)** 12/12 (5 GET + 7 Export).
+- **method-templates** 124/124 (Nav-Injektion ohne Regression).
+- **Volle Vitest-Regression 2532/2532** — keine Regression durch die Slice.
+
+### Deviations / Deferrals (dokumentiert, kein Blocker)
+
+- **Portfolio-/Multi-Deal-Sicht** → PROJ-131-β (bewusst aus MVP geschnitten in /requirements).
+- **Kaufpreis I1/I2 + Synergie K2 KPIs** → PROJ-Y-131a (Module PROJ-120/121/126 noch Planned; MVP zeigt Platzhalter).
+- **Word-Export + persistiertes Snapshot-Freeze** → PROJ-Y-131b.
+- **D-1 (Env):** Mobile-Safari-Projekt skipped (WebKit-Host-Libs fehlen, PROJ-67/F2) — nur Chromium exekutiert.
+
+**Verdikt: PRODUCTION-READY.** 0 Critical / 0 High. Status → Approved. → `/deploy`.
+
+---
 _Quelle: Backlog-Entwurf M&A-Projektplattform · M — Reporting & Dashboards_
