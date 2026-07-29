@@ -14,7 +14,7 @@ summary_for_jira: "[G4] Anbindung an externe Datenräume (Verlinkung, nicht Ersa
 
 # PROJ-115: Anbindung an externe Datenräume (Verlinkung, nicht Ersatz)
 
-## Status: In Progress (backend live — polymorphe Tabelle + Resolver + Gates + SSRF-Validierung + Route + Live-Pentest A–I 9/9; /frontend next)
+## Status: In Progress (backend + frontend built — shared ExternalLinksSection in allen 4 DD-Surfaces; /qa next)
 **Created:** 2026-06-10
 **Origin:** M&A-Platform Backlog (Epic G — Due Diligence)
 **Priority:** P1
@@ -134,6 +134,16 @@ Live-RPC/RLS-Pentest der Vererbung über **alle 4 `entity_type`** inkl. Aggregat
 **Pflicht-Live-RLS-Pentest gegen Prod (`tests/sql/PROJ-115-external-links-pentest.sql`) A–I 9/9 PASS, 0 Residue:** Need-to-know-Vererbung über alle 4 entity_types (Admin 8 / nicht-cleared Member 4 standard / 0 strict = aggregat-leak-frei) · RESTRICTIVE-Insert-Gate (42501) · Guard (23503) · https-CHECK (23514) · Cross-Tenant 0 · Parent-Delete-Cleanup.
 
 **Gates:** vitest +17 (8 Validierung + 9 Route), lint 0, tsc 0 neu, migration-naming 0 errors, build clean (Route registriert). Kein neues Dep. FE (Link-Sektion je DD-Objekt) → `/frontend`.
+
+### Implementation Notes — /frontend (2026-07-29)
+Wiederverwendbare `<ExternalLinksSection projectId entityType entityId canEdit compact?>` (`src/components/projects/ma/external-links-section.tsx`) — lädt Links via `listExternalLinks`, Liste (URL/Label als `target=_blank rel="noopener noreferrer"`-Link + Löschen), Add-Form (URL + optional Label) mit **client-seitiger `validateExternalUrl`-Vorprüfung** (spiegelt den Server-SSRF-Check). Ein Component, **vier Einbaustellen**:
+- `deliverable-dialog.tsx` (entity_type `deliverable`, Edit-Modus, nach Dokumente-Sektion).
+- `ma-task-dialog.tsx` (`work_item`, Edit-Modus, vor Footer).
+- `dd-questions-sheet.tsx` → `QuestionDetailDialog` (`dd_question`, `canEdit`-Prop durchgereicht, compact).
+- `dd-findings-panel.tsx` → Finding-Edit-Dialog (`dd_finding`, manager-gated, compact).
+Need-to-know + Autorisierung serverseitig (RLS); `canEdit` steuert nur die Affordanzen. Reuse shadcn Input/Button/Label + lucide; kein neues Dep/Route/Migration.
+
+**Gates:** lint 0, tsc 0 neu, build clean. Live-E2E (Auth-Gates) + Need-to-know-Pentest (bereits A–I 9/9) → `/qa`.
 
 ---
 _Quelle: Backlog-Entwurf M&A-Projektplattform · G — Due Diligence_
