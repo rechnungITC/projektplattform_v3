@@ -14,7 +14,7 @@ summary_for_jira: "[G4] Anbindung an externe Datenräume (Verlinkung, nicht Ersa
 
 # PROJ-115: Anbindung an externe Datenräume (Verlinkung, nicht Ersatz)
 
-## Status: In Progress (backend + frontend built — shared ExternalLinksSection in allen 4 DD-Surfaces; /qa next)
+## Status: Approved (QA PASS 2026-07-29 — live pentest A–I 9/9 über alle 4 Typen, 0 Critical/High; → /deploy)
 **Created:** 2026-06-10
 **Origin:** M&A-Platform Backlog (Epic G — Due Diligence)
 **Priority:** P1
@@ -144,6 +144,32 @@ Wiederverwendbare `<ExternalLinksSection projectId entityType entityId canEdit c
 Need-to-know + Autorisierung serverseitig (RLS); `canEdit` steuert nur die Affordanzen. Reuse shadcn Input/Button/Label + lucide; kein neues Dep/Route/Migration.
 
 **Gates:** lint 0, tsc 0 neu, build clean. Live-E2E (Auth-Gates) + Need-to-know-Pentest (bereits A–I 9/9) → `/qa`.
+
+## QA Test Results (2026-07-29)
+
+**Ergebnis: PRODUCTION-READY — 0 Critical / 0 High.**
+
+### Acceptance Criteria
+| AC | Status | Nachweis |
+|----|--------|----------|
+| AC1 — ≥1 URL/Referenz pro Q&A/Finding/Aufgabe/Deliverable | ✅ PASS | polymorphe `external_document_links` (4 entity_types) + `<ExternalLinksSection>` in allen 4 Surfaces; Pentest A: Links auf allen 4 Typen |
+| AC2 — Linkformat-Validierung + (Erreichbarkeits-Check) | ✅ PASS (Split, CIA) | Statik-Validierung `validateExternalUrl` (https-only, keine Creds, reservierte IPs; Server + Client) + https-CHECK (Pentest G); aktiver Reachability-Check bewusst deferred → PROJ-Y-115a (SSRF-sicher, kein Server-Fetch) |
+| AC3 — optionale VDR-Anbieter-Schnittstelle | ⏸ deferred | „Could" → PROJ-Y-115b (Pilot-Bedarf) |
+| AC4 — Sichtbarkeit folgt B4 + L2 | ✅ PASS | Need-to-know via Resolver + RESTRICTIVE-Gates; Pentest B/C/D/H |
+
+### Security — Live-RLS-Pentest (`tests/sql/PROJ-115-external-links-pentest.sql`, Impersonation, self-rollback)
+**A–I 9/9 PASS, 0 Residue**, re-verifiziert gegen aktuellen Prod. Kern: **Need-to-know-Vererbung über ALLE 4 entity_types** — Admin sieht 8 Links, nicht-cleared Member sieht 4 (standard-Parent) / **0 strict-Parent** = aggregat-leak-frei (B/C); RESTRICTIVE-Insert-Gate blockt Member-INSERT auf strict-Parent (D, 42501); Parent-Existenz-Guard (F, 23503); https-CHECK (G, 23514); Cross-Tenant 0 (H); Parent-Delete-Cleanup (I). **SSRF:** URLs werden nie server-seitig gefetcht; Statik-Validierung lehnt http/Creds/reservierte IPs ab (Unit 8/8 inkl. 169.254.169.254, RFC1918, IPv6-loopback/ULA/mapped).
+
+### Tests
+- **Unit** (vitest): `external-link-validation.test.ts` 8/8 (SSRF-Statik) + `external-links/route.test.ts` 9/9 (401/400-entity/400-url-SSRF/201/403/404/GET/DELETE).
+- **Playwright** `tests/PROJ-115-external-links.spec.ts` 4/4 chromium (Auth-Gates GET/POST/DELETE + malformed-id).
+- **Regression:** volle vitest-Suite **2537/2537**, lint 0, tsc 0 neu, build clean.
+
+### Deviations / Followups
+- **PROJ-Y-115a** — gehärteter aktiver Reachability-HEAD-Check (SSRF-Slice, DNS-Pin/no-redirect/timeout, eigener Pentest).
+- **PROJ-Y-115b** — VDR-Anbieter-Connector (AC3 „Could", Pilot-Bedarf).
+- **PROJ-Y-115c** — CIA-F4: `work_item_documents` ohne Need-to-know-Gate (Bestands-Leck, sicherheitsrelevant, priorisieren).
+- **Mobile-Safari-E2E** env-skipped (WebKit-Host-Libs, PROJ-67/F2); Chromium deckt Auth-Gates ab.
 
 ---
 _Quelle: Backlog-Entwurf M&A-Projektplattform · G — Due Diligence_
