@@ -15,6 +15,17 @@ summary_for_jira: "[A3] Projekt-Templates für Standardphasen bereitstellen"
 # PROJ-96: Projekt-Templates für Standardphasen bereitstellen
 
 ## Status: Deployed (2026-07-27 — Tag `v2.26.0-PROJ-96`)
+
+> **Post-Deploy-Audit 2026-07-28 — offene Remediation → [PROJ-141](PROJ-141-cross-cutting-audit-remediation-77-96-132.md):**
+> Querschnittsprüfung fand eine **Statusinkonsistenz**: die Spec verlangt in Original-AC1/AC2/AC3 Phasen · **Aufgaben** · Deliverables · **Rollen (RACI)** sowie **Anlegen/Kopieren/Versionieren eigener Templates**; in Prod live sind nur Phasenaktivierung + Workstreams + Deliverables + Default-Seed + read-only Katalog. Aufgaben-Templates, RACI-Templates, Custom-CRUD, Copy, echte Versionierung + Änderungsverlauf, Template-Editor fehlen. Die Story ist trotzdem als "PRODUCTION-READY" markiert.
+> - **M-1** Statuslüge — AC1/AC2/AC3/DoD werden in PROJ-141-γ1 explizit auf den tatsächlich deployten Scope umformuliert (deferred → PROJ-Y-96b/c/d).
+> - **M-2** `apply_ma_project_template`-Aufruf in `finalize/route.ts:244` wertet `error` **nicht** aus → lautloser Fehler: Projekt + Profil werden erstellt, Template-Anwendung schlägt atomar fehl, API antwortet 201, Wizard zeigt Erfolg. Bricht AC-3 direkt.
+> - **M-3** `source_template_id ON DELETE SET NULL` + manuell gepflegter `template.version` ohne Trigger-Zwang → Provenance verliert Identität bei Template-Löschung, Version wird nicht bei Kind-Änderungen inkrementiert.
+> - **L-1** `ensure_default_ma_project_templates`-Seed-Fehler in `/api/ma-project-templates/route.ts:29` unausgewertet → Seed-Ausfall erscheint als legitim leerer Katalog.
+> Wechselwirkung: **PROJ-96 → PROJ-132** — wenn M-2 lautlos scheitert, fehlen genau die Strukturen, aus denen PROJ-132 sein Reporting speist → tarnt sich als "legitim leeres Reporting".
+> Beweise + ACs in PROJ-141.
+
+
 **Created:** 2026-06-10
 **Deployed:** 2026-07-27 — Tag `v2.26.0-PROJ-96`. Migration `20260724120055_proj96_ma_project_templates` seit /backend in Prod; Runtime-Deploy der neuen Routen (`/api/ma-project-templates`, `/api/projects/[id]/apply-template`), des Wizard-Template-Pickers + des Admin-Katalogs (`/stammdaten/projekt-vorlagen`). Rebase auf aktuellen main konfliktfrei (Skills-/Kommunikationsmatrix-Parallelarbeit koexistiert; `@types/js-yaml`-Dep via `npm install` gesynct). Post-Deploy-Smoke: 307-Auth-Gate auf beiden APIs + Admin-Page. **Gefaltete Dep-Hygiene (User-locked):** 2 neue portfolioweite HIGH-Advisories (postcss GHSA-r28c-9q8g-f849 + brace-expansion GHSA-mh99-v99m-4gvg, seit PROJ-140 neu) blockierten den npm-audit-Required-Check → Fix in diese PR gefaltet: `overrides.postcss` 8.5.15→^8.5.23 + non-breaking `audit fix` (brace-expansion in-range); `audit:prod` exit 0 (nur die 2 dokumentierten moderate @hono/node-server-Risk-Accepts bleiben). Patch-level, kein Major, CIA-nicht-pflichtig (PROJ-140-Muster). Followups: PROJ-Y-96a (Deal-Typen + template-eigene Phasen) / 96b (RACI-Templates) / 96c (Freigabesperre + Versionshistorie) / 96d (Deep-Editor).
 **Origin:** M&A-Platform Backlog (Epic A — Projektgrundlagen & Phasenmodell)

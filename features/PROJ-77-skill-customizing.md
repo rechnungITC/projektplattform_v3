@@ -1,6 +1,8 @@
 # PROJ-77: Skill-Customizing
 
 ## Status: Deployed (α, β) · γ Planned
+
+> **Post-Deploy-Audit 2026-07-28 → [PROJ-141](PROJ-141-cross-cutting-audit-remediation-77-96-132.md) — α-Slice komplett in Prod 2026-07-28/29 (H-1 RLS + M-9 If-Match + M-10 activate-Guard + M-11 audit-events+discard + L-3 422). β (M-7/M-8/L-5) und γ (PROJ-96/132-Konsistenz) bleiben in PROJ-141 Planned. Details siehe dortige Implementation Notes.**
 **Created:** 2026-06-06
 **Last Updated:** 2026-07-28
 

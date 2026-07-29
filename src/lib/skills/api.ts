@@ -177,6 +177,22 @@ export async function activateSkillVersion(
   return (await response.json()) as { skill: Skill; version: SkillVersion }
 }
 
+/**
+ * PROJ-141-α4 — discard an open draft (admin-only). Server calls the
+ * `discard_skill_draft` RPC which hard-deletes the draft row and writes
+ * a `skill_versions.discarded` audit event. Non-draft versions return 409.
+ */
+export async function discardSkillDraft(
+  id: string,
+  versionId: string
+): Promise<void> {
+  const response = await fetch(
+    `/api/skills/${encodeURIComponent(id)}/versions/${encodeURIComponent(versionId)}`,
+    { method: "DELETE" }
+  )
+  if (!response.ok) throw new Error(await safeError(response))
+}
+
 export async function rollbackSkillVersion(
   id: string,
   versionId: string

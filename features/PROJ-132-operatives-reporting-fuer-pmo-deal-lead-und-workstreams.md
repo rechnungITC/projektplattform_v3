@@ -15,6 +15,17 @@ summary_for_jira: "[M2] Operatives Reporting für PMO, Deal Lead und Workstreams
 # PROJ-132: Operatives Reporting für PMO, Deal Lead und Workstreams
 
 ## Status: Deployed (2026-07-27 — PR #263 → main, Tag v2.25.0-PROJ-132; QA PASS need-to-know-Pentest A–G 7/7, 0 Critical/High)
+
+> **Post-Deploy-Audit 2026-07-28 — offene Remediation → [PROJ-141](PROJ-141-cross-cutting-audit-remediation-77-96-132.md):**
+> Querschnittsprüfung fand 3 MEDIUM Filter-/Konsistenzbefunde + 1 LOW-Pentest-Lücke, die AC2 + DoD in der Praxis brechen (QA-Vektoren A–G haben die Wechselwirkung nicht getroffen).
+> - **M-4** Filter greifen nur auf Aufgaben + Deliverables voll (`operative-report-view.tsx:142`). Findings werden nur nach Klassifikation gefiltert, Q&A gar nicht — obwohl beide `dd_stream_id`/`stream_label` tragen. Workstreams, die ausschließlich in Findings/Q&A vorkommen, tauchen nicht in der Filterliste auf.
+> - **M-5** Pre-Read-Kacheln + Summen bleiben ungefiltert während Tabellen gefiltert sind → Kachel widerspricht Tabelle. Filter propagieren weder zur CSV-Route noch zur Print-Seite → Nutzer exportiert ungefiltert, was er gefiltert sieht.
+> - **M-6** `hasRows` (`operative-report-view.tsx:167`) wird nur aus überfälligen Aufgaben berechnet, steuert aber alle vier Export-Buttons (Tasks/Findings/Q&A/Deliverables). Zusätzlich wird `disabled` über `Button asChild` an `<a>` weitergegeben, das keinen echten Disabled-Zustand kennt.
+> - **L-2** PROJ-132-Pentest hat keinen echten Advisor mit aktivem Mandat + NDA + Stream-Zuordnung getestet; die Advisor-Beschränkung wird aus PROJ-99/116 abgeleitet, aber für diese Funktion nicht eigenständig bewiesen.
+> Wechselwirkung: **PROJ-96 → PROJ-132** — lautlose Template-Fehler tarnen sich als legitim leeres Reporting. **PROJ-131 → PROJ-132** — offener Vertrag welche Teile von `operative_report` PROJ-131 wiederverwendet.
+> Beweise + ACs in PROJ-141.
+
+
 **Created:** 2026-06-10
 **Origin:** M&A-Platform Backlog (Epic M — Reporting & Dashboards)
 **Priority:** P1

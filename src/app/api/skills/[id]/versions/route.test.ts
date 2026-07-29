@@ -78,6 +78,18 @@ describe("POST /api/skills/[id]/versions (one-open-draft guard)", () => {
     expect(chain.insert).not.toHaveBeenCalled()
   })
 
+  // PROJ-141-α5 (L-3) — unknown allowed_actions → 422 (not 400).
+  it("422 on unknown allowed_action", async () => {
+    getUserMock.mockResolvedValue({ data: { user: { id: ME } } })
+    resolveTenantMock.mockResolvedValue("t1")
+    requireAdminMock.mockResolvedValue(null)
+    const res = await post({
+      markdown_body: "x",
+      frontmatter: { allowed_actions: ["delete_everything"] },
+    })
+    expect(res.status).toBe(422)
+  })
+
   it("201 creates a draft when none is open", async () => {
     getUserMock.mockResolvedValue({ data: { user: { id: ME } } })
     resolveTenantMock.mockResolvedValue("t1")
