@@ -1,7 +1,7 @@
 import { NextResponse } from "next/server"
 import { z } from "zod"
 
-import { SKILL_VERSION_SELECT } from "@/types/skill"
+import { SKILL_KNOWLEDGE_LINK_SELECT } from "@/types/skill"
 
 import { resolveActiveTenantId } from "../../../_lib/active-tenant"
 import {
@@ -10,13 +10,12 @@ import {
   requireTenantAdmin,
 } from "../../../_lib/route-helpers"
 
-import { createVersionSchema, validationStatusFor } from "../../_schema"
+import { createKnowledgeLinkSchema } from "../../_schema"
 
-// PROJ-76 — skill versions (admin only).
+// PROJ-77-γ — skill knowledge links (admin only; link a skill to a DMS node).
 //
-// GET  /api/skills/[id]/versions  — list all versions (draft/active/archived).
-// POST /api/skills/[id]/versions  — create a new draft version
-//      (version_number = max + 1). Content is immutable once written.
+// GET  /api/skills/[id]/knowledge-links  — list links.
+// POST /api/skills/[id]/knowledge-links  — link a document node.
 
 export async function GET(
   _request: Request,
@@ -37,15 +36,15 @@ export async function GET(
   if (adminDenial) return adminDenial
 
   const { data, error } = await supabase
-    .from("skill_versions")
-    .select(SKILL_VERSION_SELECT)
+    .from("skill_knowledge_links")
+    .select(SKILL_KNOWLEDGE_LINK_SELECT)
     .eq("skill_id", id)
     .eq("tenant_id", tenantId)
-    .order("version_number", { ascending: false })
+    .order("created_at", { ascending: true })
     .limit(500)
 
   if (error) return apiError("list_failed", error.message, 500)
-  return NextResponse.json({ versions: data ?? [] })
+  return NextResponse.json({ links: data ?? [] })
 }
 
 export async function POST(
@@ -72,19 +71,18 @@ export async function POST(
   } catch {
     return apiError("validation_error", "Invalid JSON body.", 400)
   }
-  const parsed = createVersionSchema.safeParse(body)
+  const parsed = createKnowledgeLinkSchema.safeParse(body)
   if (!parsed.success) {
     const first = parsed.error.issues[0]
-    // PROJ-141-α5 (L-3) — unknown allowed_actions → 422 (semantic), not 400.
     return apiError(
       "validation_error",
       first?.message ?? "Invalid request body.",
-      validationStatusFor(parsed.error.issues),
+      400,
       first?.path?.[0]?.toString()
     )
   }
 
-  // Confirm the skill exists in this tenant (RLS-scoped) before adding.
+  // Confirm the skill is in this tenant (RLS-scoped) before linking.
   const { data: skill, error: skillError } = await supabase
     .from("skills")
     .select("id")
@@ -94,64 +92,40 @@ export async function POST(
   if (skillError) return apiError("fetch_failed", skillError.message, 500)
   if (!skill) return apiError("not_found", "Skill not found.", 404)
 
-  // PROJ-77-α: at most one open draft per skill (app-layer guard — a DB
-  // constraint would break the deployed rollback RPC, which transiently
-  // creates a draft). Benign race: two concurrent creates → max 2 drafts.
-  const { data: openDraft, error: draftErr } = await supabase
-    .from("skill_versions")
-    .select("id")
-    .eq("skill_id", id)
-    .eq("status", "draft")
-    .limit(1)
-    .maybeSingle()
-  if (draftErr) return apiError("fetch_failed", draftErr.message, 500)
-  if (openDraft) {
-    return apiError(
-      "conflict",
-      "This skill already has an open draft — edit or publish it before creating another.",
-      409,
-      "status"
-    )
-  }
-
-  const { data: last } = await supabase
-    .from("skill_versions")
-    .select("version_number")
-    .eq("skill_id", id)
-    .order("version_number", { ascending: false })
-    .limit(1)
-    .maybeSingle()
-  const nextNumber =
-    ((last as unknown as { version_number: number } | null)?.version_number ??
-      0) + 1
-
   const { data, error } = await supabase
-    .from("skill_versions")
+    .from("skill_knowledge_links")
     .insert({
       skill_id: id,
+      document_node_id: parsed.data.document_node_id,
       tenant_id: tenantId,
-      version_number: nextNumber,
-      markdown_content: parsed.data.markdown_body ?? "",
-      frontmatter: parsed.data.frontmatter ?? {},
-      change_summary: parsed.data.change_summary ?? null,
-      status: "draft",
+      include_subtree: parsed.data.include_subtree ?? false,
+      link_mode: parsed.data.link_mode ?? "reference",
       created_by: userId,
     })
-    .select(SKILL_VERSION_SELECT)
+    .select(SKILL_KNOWLEDGE_LINK_SELECT)
     .single()
 
   if (error) {
-    // Concurrent create raced us for the same version_number.
     if (error.code === "23505") {
       return apiError(
         "conflict",
-        "A concurrent update created a version — please retry.",
+        "This document is already linked to the skill.",
         409,
-        "version_number"
+        "document_node_id"
+      )
+    }
+    // Tenant-consistency trigger (23514) or FK (23503): the node must be a
+    // DMS node in this tenant.
+    if (error.code === "23514" || error.code === "23503") {
+      return apiError(
+        "invalid_node",
+        "The document node must belong to the same tenant.",
+        422,
+        "document_node_id"
       )
     }
     return apiError("create_failed", error.message, 500)
   }
 
-  return NextResponse.json({ version: data }, { status: 201 })
+  return NextResponse.json({ link: data }, { status: 201 })
 }
