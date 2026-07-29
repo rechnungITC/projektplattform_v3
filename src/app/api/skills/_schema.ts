@@ -147,3 +147,14 @@ export const updateKnowledgeLinkSchema = z
 export type CreateSkillInput = z.infer<typeof createSkillSchema>
 export type UpdateSkillMetadataInput = z.infer<typeof updateSkillMetadataSchema>
 export type CreateVersionInput = z.infer<typeof createVersionSchema>
+
+// PROJ-141-α5 (L-3) — Zod-Issue-Mapping für allowed_actions.
+// Ein unbekannter `allowed_actions`-Wert ist semantisch keine Format-Verletzung
+// (400), sondern eine nicht-verarbeitbare, aber wohlgeformte Aktion (422).
+// PROJ-77-AC „unknown allowed_action → 422". Alle anderen Zod-Issues bleiben 400.
+export function isUnknownAllowedActionIssue(issue: z.core.$ZodIssue): boolean {
+  return issue.code === "invalid_value" && issue.path.includes("allowed_actions")
+}
+export function validationStatusFor(issues: readonly z.core.$ZodIssue[]): 400 | 422 {
+  return issues.some(isUnknownAllowedActionIssue) ? 422 : 400
+}

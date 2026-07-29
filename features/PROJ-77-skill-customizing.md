@@ -1,6 +1,8 @@
 # PROJ-77: Skill-Customizing
 
 ## Status: Deployed (α, β) · γ Approved
+
+> **Post-Deploy-Audit 2026-07-28 → [PROJ-141](PROJ-141-cross-cutting-audit-remediation-77-96-132.md) — α-Slice komplett in Prod 2026-07-28/29 (H-1 RLS + M-9 If-Match + M-10 activate-Guard + M-11 audit-events+discard + L-3 422). β (M-7/M-8/L-5) und γ (PROJ-96/132-Konsistenz) bleiben in PROJ-141 Planned. Details siehe dortige Implementation Notes.**
 **Created:** 2026-06-06
 **Last Updated:** 2026-07-29
 
@@ -259,6 +261,8 @@ Reworked the existing `skill-detail-client.tsx` into a draft-centric authoring l
 **QA — security (live vs prod, 0 residue):** γ smoke **7/7** (`tests/sql/PROJ-77-gamma-skill-knowledge-links-smoke.sql`): same-tenant link ok; **cross-tenant node rejected (23514 trigger)**; duplicate rejected (23505); admin update + field-level audit; non-admin member cannot read/write; non-member sees 0. **Regression finding caught in QA:** a concurrent session's migration had recreated `_tracked_audit_columns` from a pre-γ live def and dropped the `skill_knowledge_links` branch (only that branch; `can_read_audit_entry` + `entity_type` CHECK + trigger survived) → `include_subtree`/`link_mode` edits stopped being audited. Fixed by an idempotent reconcile migration `20260729110215_proj77_gamma_reconcile_tracked_audit_columns` (anchor-replace re-add, no-op if present; sorts last so fresh-replay ends correct). Post-fix smoke 7/7 (G6 audit restored). **Automated:** full vitest **2538/2538**; skills unit/route **75/75** (incl. 18 new knowledge-link route tests); **Playwright `tests/PROJ-77-gamma-skill-knowledge-links.spec.ts` 4/4 chromium** (all 4 routes auth-gated). Findings: **0 Critical/High/Medium**. No new dependency.
 
 ## Deployment
+
+**Slice β — Deployed 2026-07-28 · Tag `v2.27.0-PROJ-77-beta`** (squash-merge PR #269 → `main` `abbe613`). Migration `20260727160552` in prod since `/backend`; deploy = code-merge + bookkeeping. Post-deploy prod smoke: GET `/api/skills/[id]/examples` + `.../[eid]` → 307 (auth-gate live). No new dependency/env. γ (`skill_knowledge_links` → PROJ-79 DMS) remains the last slice.
 
 **Slice α — Deployed 2026-07-27 · Tag `v2.24.0-PROJ-77-alpha`** (squash-merge PR #261 → `main` `b65a239`).
 
