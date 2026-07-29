@@ -1,6 +1,6 @@
 # PROJ-141 — Cross-cutting Audit-Remediation (PROJ-77 · PROJ-96 · PROJ-132)
 
-## Status: Deployed (α) — 2026-07-29 · Tag `v2.29.0-PROJ-141-alpha` (α-Merge `a8b67b4`, PR #276). β (PROJ-77-UX + Discard-UI) und γ (PROJ-96/132-Konsistenz) Planned.
+## Status: In Progress (β) — 2026-07-29 · α Deployed via Tag `v2.29.0-PROJ-141-alpha` (α-Merge `a8b67b4`, PR #276). β (PROJ-77-UX: M-7 Publish-Busy + M-8 Rollback-Frontmatter-Diff + L-5 UI-Text + β4 Discard-UI) in Umsetzung auf Branch `proj-141/beta-ux`. γ (PROJ-96/132-Konsistenz) bleibt Planned.
 
 **Created:** 2026-07-28
 **Origin:** Querschnittsprüfung 2026-07-28 gegen die deployten Slices PROJ-77-α/β, PROJ-96 und PROJ-132. Verifiziert gegen `supabase/migrations/20260723120849_proj76_skill_framework.sql`, `src/app/api/skills/[id]/versions/[vid]/route.ts`, `src/app/api/wizard-drafts/[id]/finalize/route.ts`, `src/components/master-data/skill-detail-client.tsx`, `src/components/projects/ma/operative-report-view.tsx`, `src/app/api/skills/_schema.ts`.
