@@ -187,5 +187,18 @@ A2 = PROJ-94/95 ✅ · F1 = PROJ-110 ✅ · E2 = PROJ-107 ✅ · G3 = PROJ-114 �
 
 `/backend` (neue Lese-Funktion `steering_report` + GET-Route + CSV-Export-Route + Pflicht-Live-RPC-Smoke inkl. **Aggregat-Leak-Pentest**) → `/frontend` (Steering-Tab + Pre-Read-Kacheln + 3 Abschnitte + 2 Platzhalter-Kacheln + `/print`-Seite + Drill-down-Links) → `/qa` (Need-to-know-Pentest A–G-Muster + Playwright Auth-Gates). ~1,5–2 PT.
 
+### Implementation Notes — /backend (2026-07-28)
+
+VIEW-class, exakt gespiegelt vom deployten PROJ-132 (`operative_report`). **Keine neue Tabelle, kein neues Dep, kein Audit-Trio-Touch** — nur eine neue Lese-Funktion.
+
+- **Migration `20260728120000_proj131_steering_report.sql` in Prod-DB.** Eine `SECURITY INVOKER`, `stable` Funktion `steering_report(p_project_id uuid) → jsonb` mit `search_path = public, pg_temp`, `revoke execute … from public, anon` + `grant execute … to authenticated`. Bündelt: `deal_status` (lifecycle_status + current phase [in_progress zuerst, sonst früheste aktive] + phase_summary) · `next_stage_gate` (frühestes `pending`-Gate + `stage_gate_summary`) · `red_flags` (offene DD-Findings `hoch`/`deal_breaker` [G3] + offene/mitigated Risiken score≥13 [E2] via `_risk_severity_bucket`, + kombinierte summary) · `critical_tasks` (offene Aufgaben overdue **oder** blocked, verbatim PROJ-103-Bucket-Logik, + volle open-task summary) · `pre_read` (Steering-Headline). Container-Joins (Phase/Workstream/Stream) sind LEFT JOINs. Kaufpreis/Synergie bewusst NICHT in der Funktion (UI-Platzhalter, PROJ-Y-131a).
+- **Need-to-know (AC-131-2) gratis** via Caller-Kontext: die RESTRICTIVE-Gates auf `phases`/`ma_stage_gates`/`dd_findings`/`risks`/`work_items` (PROJ-100a) filtern vor der Aggregation → kein Leak in Listen, Summen oder Pre-Read.
+- **Routen:** `GET …/steering-report` (Session-Client + `requireProjectAccess "view"` + RPC, null→`EMPTY_STEERING_REPORT`) · `GET …/steering-report/export?section=findings|risks|tasks` (dieselbe RPC serverseitig = Single-Source, `csvCell`-Formel-Escaping, Owner-Namensauflösung nur für `tasks`, `X-Export-Scope`-Header). Beide **nie service-role**. + Typ `steering-report.ts` + Client-Wrapper `steering-report-api.ts`.
+- **Pflicht-Live-RPC-Smoke gegen Prod (`tests/sql/PROJ-131-steering-report-pentest.sql`) A–G 7/7 PASS, 0 Residue:** admin full · member standard-only · **Aggregat-Leak-Probe (pre_read schließt strict deal_breaker + critical risk + strict task aus)** · Listen-Ausschluss · Gate/Phase-Sichtbarkeit · anon-execute-revoked (42501) · cross-tenant leer. Zusätzlich verifiziert: `prosecdef=false` (INVOKER), authenticated-exec ✓, anon-exec ✗.
+- **MCP-Versions-Drift (PROJ-134):** MCP `apply_migration` registrierte `20260729082438`, Repo-Datei `…120000` — **benign**, da vollständig idempotent (`create or replace function`, kein `create table`) → bricht `supabase db push` nicht (Muster wie PROJ-132/109).
+- **Gates:** vitest steering-report 12/12 (5 GET + 7 Export), ESLint 0, tsc 0 neu (14 vorbestehende Baseline, inkl. 2 pre-existing `js-yaml`-Fehler aus PROJ-76/77 — nicht PROJ-131), migration-naming 0 Errors, `npm run build` clean (beide Routen registriert). Kein neues Dep. FE (Steering-Tab + Pre-Read-Kacheln + 3 Abschnitte + 2 Platzhalter + `/print` + Drill-down) → `/frontend`.
+
+> **Env-Hinweis (nicht PROJ-131):** `next build` scheiterte zunächst an fehlendem `@types/js-yaml` — das steht bereits in `package.json` (devDep `^4.0.9`, via PROJ-76/77), war aber im Checkout-node_modules nicht installiert (stale). `npm install` synct es (package.json/lock unverändert); danach Build clean. Wird auf dem PROJ-77-Track ohnehin auf main gebracht.
+
 ---
 _Quelle: Backlog-Entwurf M&A-Projektplattform · M — Reporting & Dashboards_
