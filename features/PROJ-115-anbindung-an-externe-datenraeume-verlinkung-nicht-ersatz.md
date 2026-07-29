@@ -14,7 +14,7 @@ summary_for_jira: "[G4] Anbindung an externe Datenräume (Verlinkung, nicht Ersa
 
 # PROJ-115: Anbindung an externe Datenräume (Verlinkung, nicht Ersatz)
 
-## Status: Architected (CIA-reviewed 2026-07-28 — polymorphe Link-Tabelle + SSRF-sichere Statik-Validierung; aktiver Check + VDR-Connector deferred)
+## Status: In Progress (backend live — polymorphe Tabelle + Resolver + Gates + SSRF-Validierung + Route + Live-Pentest A–I 9/9; /frontend next)
 **Created:** 2026-06-10
 **Origin:** M&A-Platform Backlog (Epic G — Due Diligence)
 **Priority:** P1
@@ -120,6 +120,20 @@ G2=PROJ-113 ✅ · G3=PROJ-114 ✅ · C1=PROJ-101/9 ✅ · D1=PROJ-104 ✅ · B4
 
 ### Pflicht bei /backend
 Live-RPC/RLS-Pentest der Vererbung über **alle 4 `entity_type`** inkl. Aggregat-Leak-Probe (nicht-cleared Member sieht 0 Links aus strict-Parent) + Cross-Tenant-0 + `INSERT with check`-Gate + polymorphe Integrität (Validierungs-/Cleanup-Trigger). Handoff: `/backend` (Tabelle + Resolver + Policies + Trigger + CRUD-Routen + Statik-Validierung + Pentest) → `/frontend` (Link-Sektion je DD-Objekt) → `/qa` → `/deploy`. ~3 PT.
+
+### Implementation Notes — /backend (2026-07-29)
+**Migration `20260728120000_proj115_external_document_links.sql` in Prod-DB** (MCP-Version driftet ggf. zum Repo-Dateinamen — benign, idempotent). Umgesetzt:
+- **`external_document_links`** (polymorph: entity_type dd_question/dd_finding/work_item/deliverable + entity_id + url + label + added_by; `url`-CHECK `https://%` als Defense-in-depth; RLS enabled).
+- **Resolver** `external_link_parent_ctx(entity_type, entity_id) → (project_id, level)` (SECURITY DEFINER STABLE, CASE je Typ) — single source für Need-to-know.
+- **Policies:** permissive SELECT/INSERT/DELETE (`is_project_member` via Resolver + Tenant-Anker) + **RESTRICTIVE `can_access_classified` auf allen 4 Achsen** (SELECT/INSERT-with-check/UPDATE/DELETE).
+- **Integrität:** `_guard_external_document_link` (BEFORE INS/UPD: Parent existiert via Resolver → 23503; Tenant-Match → 23514) + `_cleanup_external_document_links` (AFTER DELETE-Trigger auf allen 4 Parents, entfernt verwaiste Links).
+- **Audit:** entity_type-CHECK + `_tracked_audit_columns` (`[url,label]`) + `can_read_audit_entry`-Zweig (via Resolver) + `authenticated`-Grant re-granted (feedback_audit_fn_recreate_drops_grant) + AFTER-UPDATE-Trigger — alles in derselben Migration, Sibling-Entities erhalten.
+- **SSRF (Fork 2 / Option a):** `src/lib/ma-project/external-link-validation.ts` (`validateExternalUrl`) — https-only, keine Creds-in-URL, reservierte IPv4/IPv6-Literale abgelehnt (RFC1918/loopback/link-local incl. 169.254.169.254/ULA/CGNAT/IPv4-mapped); **kein server-seitiger Fetch**. In POST erzwungen.
+- **Route** `GET/POST/DELETE /api/projects/[id]/external-links` (session-client, `requireProjectAccess "view"`, RLS erzwingt Need-to-know; POST validiert URL + setzt tenant_id aus Projekt) + Client-Wrapper + Typen.
+
+**Pflicht-Live-RLS-Pentest gegen Prod (`tests/sql/PROJ-115-external-links-pentest.sql`) A–I 9/9 PASS, 0 Residue:** Need-to-know-Vererbung über alle 4 entity_types (Admin 8 / nicht-cleared Member 4 standard / 0 strict = aggregat-leak-frei) · RESTRICTIVE-Insert-Gate (42501) · Guard (23503) · https-CHECK (23514) · Cross-Tenant 0 · Parent-Delete-Cleanup.
+
+**Gates:** vitest +17 (8 Validierung + 9 Route), lint 0, tsc 0 neu, migration-naming 0 errors, build clean (Route registriert). Kein neues Dep. FE (Link-Sektion je DD-Objekt) → `/frontend`.
 
 ---
 _Quelle: Backlog-Entwurf M&A-Projektplattform · G — Due Diligence_
