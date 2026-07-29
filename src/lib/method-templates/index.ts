@@ -22,6 +22,7 @@ import {
   Gauge,
   Handshake,
   Layers,
+  LineChart,
   ListChecks,
   MessagesSquare,
   Microscope,
@@ -237,6 +238,20 @@ const MA_OPERATIVE_REPORT_SECTION: SidebarSection = {
   requiresProjectType: "ma",
 }
 
+// PROJ-131 — the "Steering-Dashboard" section: management/steering-level bundle
+// (deal status + next stage gate + top red flags [DD-findings + high risks] +
+// critical open tasks + steering pre-read) with CSV/PDF export + drill-down.
+// Project-TYPE driven (M&A); read-only and need-to-know-scoped server-side.
+// Injected right after Operatives Reporting (Epic M). Kaufpreis/Synergie are
+// shown as "not-yet-available" placeholders until PROJ-120/121/126 (PROJ-Y-131a).
+const MA_STEERING_REPORT_SECTION: SidebarSection = {
+  id: "ma-steering-report",
+  label: "Steering-Dashboard",
+  icon: LineChart,
+  tabPath: "management-reporting",
+  requiresProjectType: "ma",
+}
+
 function withMaFoundation(config: MethodConfig): MethodConfig {
   const sections = config.sidebarSections
   // Insert right after the leading "overview" section (index 0) when present.
@@ -261,6 +276,7 @@ function withMaFoundation(config: MethodConfig): MethodConfig {
       MA_DUE_DILIGENCE_SECTION,
       MA_DD_REPORT_SECTION,
       MA_OPERATIVE_REPORT_SECTION,
+      MA_STEERING_REPORT_SECTION,
       ...sections.slice(insertAt),
     ],
   }
