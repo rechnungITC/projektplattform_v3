@@ -1,6 +1,6 @@
 # PROJ-77: Skill-Customizing
 
-## Status: Deployed (α) · β Approved · γ Planned
+## Status: Deployed (α, β) · γ Planned
 **Created:** 2026-06-06
 **Last Updated:** 2026-07-28
 
@@ -251,6 +251,8 @@ Reworked the existing `skill-detail-client.tsx` into a draft-centric authoring l
 **QA — security (live vs prod, 0 residue):** β smoke **6/6** (`tests/sql/PROJ-77-beta-skill-examples-smoke.sql`): non-admin member cannot SELECT (0, admin-only) / INSERT (42501) / UPDATE (0 rows); non-member stranger sees 0 (isolation); admin reads (1) + edits (1 row) with a field-level **audit** row written. Advisors: RLS enabled + 4 policies (0 new ERROR). **Automated:** full vitest regression **2505/2505**; PROJ-77 skills unit/route **57/57** (incl. 15 new example route tests); **Playwright `tests/PROJ-77-beta-skill-examples.spec.ts` 4/4 chromium** (all 4 example routes auth-gated). Findings: **0 Critical/High/Medium**; deviation: empty→400 not 422 (codebase convention). γ remains a separate later slice.
 
 ## Deployment
+
+**Slice β — Deployed 2026-07-28 · Tag `v2.27.0-PROJ-77-beta`** (squash-merge PR #269 → `main` `abbe613`). Migration `20260727160552` in prod since `/backend`; deploy = code-merge + bookkeeping. Post-deploy prod smoke: GET `/api/skills/[id]/examples` + `.../[eid]` → 307 (auth-gate live). No new dependency/env. γ (`skill_knowledge_links` → PROJ-79 DMS) remains the last slice.
 
 **Slice α — Deployed 2026-07-27 · Tag `v2.24.0-PROJ-77-alpha`** (squash-merge PR #261 → `main` `b65a239`).
 
