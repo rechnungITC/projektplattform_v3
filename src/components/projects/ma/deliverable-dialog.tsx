@@ -41,6 +41,7 @@ import { usePhases } from "@/hooks/use-phases"
 import { useTenantMembers } from "@/hooks/use-tenant-members"
 import { useWorkstreams } from "@/hooks/use-workstreams"
 import { MA_STANDARD_ROLES } from "@/lib/project-types/catalog"
+import { ExternalLinksSection } from "@/components/projects/ma/external-links-section"
 import { listDeliverableApprovals } from "@/lib/ma-project/deliverable-approvals-api"
 import {
   addDeliverableDocument,
@@ -537,6 +538,15 @@ export function DeliverableDialog({
                     </Button>
                   </div>
                 </div>
+
+                {item && (
+                  <ExternalLinksSection
+                    projectId={projectId}
+                    entityType="deliverable"
+                    entityId={item.id}
+                    canEdit
+                  />
+                )}
 
                 <div className="space-y-2 rounded-md border p-3">
                   <Label className="text-xs font-semibold">RACI</Label>
