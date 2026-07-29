@@ -1,6 +1,6 @@
 # PROJ-141 — Cross-cutting Audit-Remediation (PROJ-77 · PROJ-96 · PROJ-132)
 
-## Status: In Progress (α komplett gebaut 2026-07-29: α1 RLS + α2 If-Match + α3 activate-Guard + α4 audit-events+discard + α5 422; Branch `proj-141/alpha1-h1-hotfix` uncommitted, 2 Prod-Migrations live. β/γ Planned)
+## Status: Deployed (α) — 2026-07-29 · Tag `v2.29.0-PROJ-141-alpha` (α-Merge `a8b67b4`, PR #276). β (PROJ-77-UX + Discard-UI) und γ (PROJ-96/132-Konsistenz) Planned.
 
 **Created:** 2026-07-28
 **Origin:** Querschnittsprüfung 2026-07-28 gegen die deployten Slices PROJ-77-α/β, PROJ-96 und PROJ-132. Verifiziert gegen `supabase/migrations/20260723120849_proj76_skill_framework.sql`, `src/app/api/skills/[id]/versions/[vid]/route.ts`, `src/app/api/wizard-drafts/[id]/finalize/route.ts`, `src/components/master-data/skill-detail-client.tsx`, `src/components/projects/ma/operative-report-view.tsx`, `src/app/api/skills/_schema.ts`.
@@ -237,6 +237,91 @@ K PASS discard not-found → P0002
 - α3 CIA bei /architecture nicht durchgeführt (User-Lock „α komplett in einem Slice" — gleiche Logik wie α1 im vorigen Slice: tightly-scoped Security/Contract-Hardening, kein Fork-Risiko im Design-Space).
 
 **Commit/Push:** Branch `proj-141/alpha1-h1-hotfix` lokal, **nicht committed/pushed** — Migration ist bereits in Prod aktiv (RLS-Policy live). Repo-Datei muss committed werden, damit `supabase migration list` konvergiert; separater Commit für die 3 Cross-Ref-Spec-Änderungen + PROJ-141-Spec + Pentest-Datei sinnvoll. Kein Force-Push, kein Merge ohne User-Approval.
+
+## QA Test Results — α (2026-07-29)
+
+**Verdikt:** **APPROVED (α)** — 0 Critical / 0 High. Alle 6 α-ACs (α1/α2/α3/α4/α5/α6) live gegen Prod re-verifiziert. Merge `a8b67b4` auf main. β/γ bleiben Planned.
+
+### Acceptance Criteria
+| AC | Beweis | Ergebnis |
+|---|---|---|
+| **α1** H-1 RLS-Verengung `skill_versions_select_member` | Live-Pentest `PROJ-141-alpha1-skill-versions-rls-pentest.sql` A–H | **8/8 PASS**, 0 Residue |
+| **α2** PATCH If-Match Pflicht → 428 | Playwright Auth-Gate + Route-Unit-Test | ✅ (auth-gated), semantik in vitest |
+| **α3** `activate_skill_version` archived-Reject (P0001) | Live-Pentest α3+α4 Case A + Playwright Auth-Gate | Case A **PASS**, Route mapped P0001→409 |
+| **α4a** Expliziter `field_name='published'`-Audit | Live-Pentest α3+α4 Case B/C | Case B **PASS** (idempotent), Case C **PASS** (draft→active + audit=1) |
+| **α4b** `discard_skill_draft`-RPC + DELETE-Endpunkt | Live-Pentest α3+α4 Case E/F/G/H + Playwright Auth-Gate | Case E **PASS** (row=0 + audit=1), F/G reject non-draft (P0001), H non-admin blocked (42501) |
+| **α5** 422 statt 400 bei unknown allowed_action | Playwright Auth-Gate auf POST /skills + POST /versions + Route-Unit-Tests | ✅ (auth-gated), semantik in vitest |
+| **α6** Pflicht-Live-RPC-Smoke gegen Prod | Beide Pentests | **19/19 PASS** (8 α1 + 11 α3+α4), 0 Residue |
+
+### User-locked Manual Smokes
+| # | Smoke | Beweis | Ergebnis |
+|---|---|---|---|
+| 1 | Admin activate → `audit_log_entries WHERE field_name='published'` Row erscheint | α3+α4-Pentest **Case C** (`draft→active + published (α3 happy + α4a)`) + **Case B** (`active→active idempotent`, kein Doppel-Publish) | ✅ Live in Prod |
+| 2 | Admin discard draft → `field_name='discarded'` Row + `skill_versions`-Row gone | α3+α4-Pentest **Case E** (`admin discard draft → deleted + audit (α4b)`, row=0 + audit=1) | ✅ Live in Prod |
+| 3 | Non-Admin Member via Supabase-Client (RLS-only) SELECT `skill_versions` liefert nur `status='active'`, 0 Draft/Archived-Exposition | α1-Pentest **B/C/D/E/F** (Member sieht n=1 statt 3; Draft-ID n=0; Archived-ID n=0; `allowed_actions`-Content-Leak n=0; inactive-Parent-Gate n=0) | ✅ Live in Prod (Kern-Fix H-1) |
+
+### Playwright Auth-Gates
+Spec `tests/PROJ-141-alpha-audit-remediation.spec.ts` — **5/5 chromium PASS** (56ms Suite):
+- DELETE `/api/skills/[id]/versions/[vid]` (α4 discard) — auth-gated
+- PATCH `.../versions/[vid]` ohne If-Match (α2) — auth-gated
+- POST `.../versions/[vid]/activate` (α3 archived guard) — auth-gated
+- POST `.../versions` mit unknown allowed_action (α5) — auth-gated
+- POST `/api/skills` mit unknown allowed_action (α5) — auth-gated
+
+Mobile Safari **skipped** (Env-Deviation D-2, WebKit-Host-Libs fehlen; PROJ-67/F2 dokumentiert).
+
+### Regressionen (grün unter α)
+| Suite | Ergebnis |
+|---|---|
+| `PROJ-76-skill-framework-rls-pentest.sql` P1–P11 | **11/11 PASS** (Kern-Vektor P3 „member versions of active" bleibt grün → RLS-Verengung bricht PROJ-76 nicht) |
+| `PROJ-77-alpha-draft-immutability-smoke.sql` H/I/J/K | **4/4 PASS** (Draft-in-place-Edit, archived-Immutability, draft→active-Plain-Write-Block, Identity-Freeze) |
+
+### Quality-Gates (2026-07-29 12:52 GMT+2 auf `a8b67b4`)
+- Vitest: **2530/2530 grün**
+- ESLint: **0 errors**
+- tsc: **14 baseline errors** (0 neu im α-Scope; 12 pre-existing + 2× `@types/js-yaml`-Gap aus PROJ-79-Deployment, PROJ-Y-Kandidat)
+- `check:migration-naming`: **0 errors** / 76 minor warnings (seconds-precise timestamps, Bestand)
+- Supabase Advisor (security): **0 ERROR / 111 WARN** (2 WARN mehr als vor α: `activate_skill_version`+`discard_skill_draft` als `function_search_path_mutable`; by-design SECURITY DEFINER Muster analog PROJ-76)
+
+### Security Audit (Red-Team)
+- ✅ H-1 (HIGH) live in Prod geschlossen — Non-Admin-Member kann `frontmatter.allowed_actions` + unveröffentlichte `markdown_content` nicht mehr lesen (weder List-Select noch ID-Select noch Content-LIKE-Probe).
+- ✅ M-10 State-Machine-Bruch geschlossen — historische archived-Zeile lässt sich nicht mehr direkt reaktivieren (P0001).
+- ✅ M-9 Concurrency-Bypass geschlossen — fehlender If-Match liefert nicht mehr stillen Update, sondern 428.
+- ✅ M-11 Audit-Blindstelle geschlossen — Publish + Discard hinterlassen greppbare `field_name`-Zeilen.
+- ✅ L-3 Statuscode-Inkonsistenz geschlossen — Semantische Aktions-Ablehnung ist jetzt 422.
+- ✅ Anon-Zweig geblockt (H): 42501 auf Helper-Ebene.
+- ✅ Cross-Tenant-Admin sieht 0 Zeilen (G).
+- ✅ Non-Admin Discard/Activate blockiert (42501, RPC-Admin-Gate).
+
+### Findings
+- **F-1 (LOW):** `err.status`-Kette im FE-Client-Wrapper verwirft HTTP-Code bei 409-Diff-Extraktion (Fragment-Match auf `message` statt Status). Aus PROJ-77-α-QA übernommen — PROJ-Y-Kandidat, nicht α-Blocker.
+- **D-1 (LOW/Env):** Mobile-Safari-Layer nicht ausgeführt (WebKit-Host-Libs missing; PROJ-67/F2 Env-Deviation seit 2026-06-11). chromium-Coverage vollständig.
+- **D-2 (INFO):** tsc-Baseline 14 statt 12 durch pre-existing `@types/js-yaml`-Gap (PROJ-79-Fallout, sichtbar seit 2026-07-29 10:43 GMT+2); 0 neue Errors im α-Scope.
+
+### Deviations vom Spec
+- **α4 Audit-Event-Namensraum**: `entity_type='skill_versions'` + `field_name='published'`/`'discarded'` statt Punkt-Notation `skill_version.published` — byte-identisch zur PROJ-76-Konvention; keine CHECK-Erweiterung nötig (skill_versions ist seit PROJ-76 whitelisted). Dokumentiert im Migration-Header.
+- **α CIA bei `/architecture` bewusst übersprungen** — tightly-scoped Security/Contract-Hardening ohne Fork-Risiko im Design-Space; im PR-Body #276 offen kommuniziert.
+
+### Handoff
+Production-ready für α. β (PROJ-77-UX: M-7/M-8/L-5 + β4 Discard-UI verdrahten neuen α4-DELETE) und γ (PROJ-96/132-Konsistenz: M-1..M-6/L-1/L-2) bleiben in derselben Spec **Planned** — separate Slices.
+
+**Merge:** `a8b67b4` (PR #276 squash) auf main. Kein Runtime-Deploy nötig (Migrationen seit /backend live in Prod). Migration-Repo-Versions sind mit Prod byte-identisch (PROJ-134-Vertrag erfüllt).
+
+## Deployment — α (2026-07-29)
+
+- **Tag:** `v2.29.0-PROJ-141-alpha` (annotiert, auf α-Merge `a8b67b4`).
+- **PR:** #276 (squash-merge → main).
+- **Migrationen (seit /backend in Prod):**
+  - `20260728153700_proj141_alpha1_skill_versions_rls_hotfix` (α1 RLS-Verengung Member → `status='active'`).
+  - `20260729103200_proj141_alpha3_alpha4_activate_guard_and_discard` (α3 archived-Guard + α4 published-Audit + `discard_skill_draft`-RPC).
+- **Runtime-Deploy:** nicht nötig — Code lief seit dem #276-Merge automatisch via Vercel-Auto-Deploy von `main`. `/deploy` = Bookkeeping + Tag.
+- **Post-Deploy-Smoke:** DELETE `/api/skills/[id]/versions/[vid]` (Discard), PATCH ohne `If-Match`, POST `.../activate` — jeweils 307 Auth-Gate ohne Tenant-/Version-Leak; RLS-α1-Fix bewiesen durch nicht-Admin-Member sieht nur `status='active'` (Manual-Smoke Case B/C/D/E live in Prod).
+- **Env/Secret:** keine Änderung.
+- **Advisor (Supabase):** 0 ERROR / 111 WARN (2 neue WARN by-design: `activate_skill_version` + `discard_skill_draft` als `function_search_path_mutable`, PROJ-76-Muster).
+- **Rollback-Plan:** Migrationen sind additiv (RLS-Policy-Verengung + neue RPC + Zusatz-Column-loses Behavior); Rückwärts via 2 Downgrade-Migrations (RLS auf pre-α1 zurück + `discard_skill_draft` DROP + activate-Guard-Zweig entfernen) — nicht empfohlen, weil H-1 dann wieder offen wäre. Bei akutem Rollback-Bedarf via Vercel-Dashboard Deployment-Promotion auf pre-#276 SHA.
+- **Followups (bleiben Planned in dieser Spec):**
+  - **β** — PROJ-77-UX: M-7 Publish-Busy-Fix (`skill-detail-client.tsx:383`) · M-8 Rollback-Diff-Frontmatter (`…:887`) · β4 Discard-UI (verdrahtet neuen α4-DELETE-Endpunkt).
+  - **γ** — PROJ-96/132-Konsistenz: M-1 Aufgaben-/RACI-Templates + Custom-CRUD/Copy/Versionierung · M-2 `apply_ma_project_template`-Fehler auswerten (`finalize/route.ts:244`) · M-3 `source_template_id ON DELETE`-Verhalten · M-4/M-5/M-6 Report-Filter durchreichen · L-1/L-2 Seed-Errors + Advisor-Pentest-Lücke.
 
 ## V2 Reference Material
 
