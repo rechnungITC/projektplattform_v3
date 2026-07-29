@@ -200,5 +200,15 @@ VIEW-class, exakt gespiegelt vom deployten PROJ-132 (`operative_report`). **Kein
 
 > **Env-Hinweis (nicht PROJ-131):** `next build` scheiterte zunächst an fehlendem `@types/js-yaml` — das steht bereits in `package.json` (devDep `^4.0.9`, via PROJ-76/77), war aber im Checkout-node_modules nicht installiert (stale). `npm install` synct es (package.json/lock unverändert); danach Build clean. Wird auf dem PROJ-77-Track ohnehin auf main gebracht.
 
+### Implementation Notes — /frontend (2026-07-29)
+
+Steering-Tab im M&A-Projektraum, gespiegelt vom PROJ-132-FE-Dateisatz. Kein neues Dep, shadcn-first (Card/Table/Badge/Button/Select vorhanden).
+
+- **Nav:** `MA_STEERING_REPORT_SECTION` (`id ma-steering-report`, Label „Steering-Dashboard", Icon `LineChart`, `tabPath management-reporting`, `requiresProjectType: "ma"`) in `method-templates/index.ts` nach `MA_OPERATIVE_REPORT_SECTION` injiziert (view-gated über den bestehenden project-type-Filter, nicht rollen-gated — Tech-Design-Entscheidung 4). method-templates-Tests 124/124 unverändert grün.
+- **Seite:** `(app)/projects/[id]/management-reporting/page.tsx` → `SteeringReportView` (fetch via `useSteeringReport`, Loading/Error/Retry, CSV-Buttons findings/risks/tasks + „Drucken/PDF"-Link). Owner-Namensauflösung via `useTenantMembers`.
+- **Body (pure, geteilt View + Print):** `steering-report-body.tsx` — Pre-Read-Kachelzeile (aktuelle Phase · nächstes Stage-Gate · offene Red Flags · offene High-Risiken · kritische Aufgaben · **2 „n/a — noch nicht verfügbar"-Platzhalter Kaufpreis/Synergie**, AC-131-5) + 3 Abschnitte: Stage-Gate-Status (nächstes Gate + Summary), Top Red Flags (DD-Findings Top-5 mit Kaufpreis-Risiko-Summe + High-Risiken Top-5, „+N weitere"-Hinweis), Kritische offene Aufgaben (Tabelle). **Drill-down** über optionales `projectId`-Prop → Links zu `/stage-gates`, `/due-diligence`, `/risiken`, `/engpaesse` (AC-131-3); Print-Seite ohne `projectId` → keine Links.
+- **Print:** `projects/[id]/steering-report/print/page.tsx` außerhalb `(app)` (chrome-los, PROJ-21-`theme-print`, `robots: noindex`), RPC via cookie-Session-Client (Need-to-know gilt für den Anfragenden), Projekt-RLS → `notFound`.
+- **Gates:** method-templates 124/124, ESLint 0, tsc 0 neu (Baseline jetzt 12 — die 2 `js-yaml`-Fehler weg nach `npm install`), `npm run build` clean (4 Routen registriert: GET + Export + Page + Print). AC-131-1/3/4/5 FE-seitig erfüllt; AC-131-2 (Need-to-know) server-seitig bereits im /backend live-bewiesen. → `/qa` (Need-to-know-Pentest A–G re-verify + Playwright Auth-Gates + Tab-Smoke).
+
 ---
 _Quelle: Backlog-Entwurf M&A-Projektplattform · M — Reporting & Dashboards_
