@@ -5,6 +5,7 @@ import * as React from "react"
 import { toast } from "sonner"
 
 import { Badge } from "@/components/ui/badge"
+import { ExternalLinksSection } from "@/components/projects/ma/external-links-section"
 import { Button } from "@/components/ui/button"
 import {
   Card,
@@ -497,6 +498,16 @@ function FindingDialog({
               )}
             </div>
             {error && <p className="text-sm text-destructive">{error}</p>}
+
+            {isEdit && finding && (
+              <ExternalLinksSection
+                projectId={projectId}
+                entityType="dd_finding"
+                entityId={finding.id}
+                canEdit
+                compact
+              />
+            )}
           </div>
           <DialogFooter>
             <Button type="button" variant="outline" onClick={onClose} disabled={submitting}>
