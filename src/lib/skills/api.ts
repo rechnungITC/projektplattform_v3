@@ -7,6 +7,8 @@ import type {
   SkillCategory,
   SkillExample,
   SkillFrontmatter,
+  SkillKnowledgeLink,
+  SkillLinkMode,
   SkillVersion,
 } from "@/types/skill"
 
@@ -249,6 +251,71 @@ export async function deleteSkillExample(
 ): Promise<void> {
   const response = await fetch(
     `/api/skills/${encodeURIComponent(id)}/examples/${encodeURIComponent(exampleId)}`,
+    { method: "DELETE" }
+  )
+  if (!response.ok) throw new Error(await safeError(response))
+}
+
+// PROJ-77-γ — skill knowledge links (admin; link a skill to a DMS node).
+export interface SkillKnowledgeLinkInput {
+  document_node_id: string
+  include_subtree?: boolean
+  link_mode?: SkillLinkMode
+}
+
+export async function listSkillKnowledgeLinks(
+  id: string
+): Promise<SkillKnowledgeLink[]> {
+  const response = await fetch(
+    `/api/skills/${encodeURIComponent(id)}/knowledge-links`,
+    { method: "GET", cache: "no-store" }
+  )
+  if (!response.ok) throw new Error(await safeError(response))
+  const body = (await response.json()) as { links: SkillKnowledgeLink[] }
+  return body.links ?? []
+}
+
+export async function createSkillKnowledgeLink(
+  id: string,
+  input: SkillKnowledgeLinkInput
+): Promise<SkillKnowledgeLink> {
+  const response = await fetch(
+    `/api/skills/${encodeURIComponent(id)}/knowledge-links`,
+    {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(input),
+    }
+  )
+  if (!response.ok) throw new Error(await safeError(response))
+  const body = (await response.json()) as { link: SkillKnowledgeLink }
+  return body.link
+}
+
+export async function updateSkillKnowledgeLink(
+  id: string,
+  linkId: string,
+  input: { include_subtree?: boolean; link_mode?: SkillLinkMode }
+): Promise<SkillKnowledgeLink> {
+  const response = await fetch(
+    `/api/skills/${encodeURIComponent(id)}/knowledge-links/${encodeURIComponent(linkId)}`,
+    {
+      method: "PATCH",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(input),
+    }
+  )
+  if (!response.ok) throw new Error(await safeError(response))
+  const body = (await response.json()) as { link: SkillKnowledgeLink }
+  return body.link
+}
+
+export async function deleteSkillKnowledgeLink(
+  id: string,
+  linkId: string
+): Promise<void> {
+  const response = await fetch(
+    `/api/skills/${encodeURIComponent(id)}/knowledge-links/${encodeURIComponent(linkId)}`,
     { method: "DELETE" }
   )
   if (!response.ok) throw new Error(await safeError(response))
