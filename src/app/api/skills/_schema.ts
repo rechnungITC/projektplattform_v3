@@ -126,6 +126,35 @@ export const updateExampleSchema = z
     message: "Mindestens ein Feld muss angegeben werden.",
   })
 
+// PROJ-77-γ — skill_knowledge_links (admin; link a skill to a DMS node).
+const linkModeSchema = z.enum(["reference", "required"], {
+  message: "link_mode muss 'reference' oder 'required' sein.",
+})
+export const createKnowledgeLinkSchema = z.object({
+  document_node_id: z.string().uuid(),
+  include_subtree: z.boolean().optional().default(false),
+  link_mode: linkModeSchema.optional().default("reference"),
+})
+export const updateKnowledgeLinkSchema = z
+  .object({
+    include_subtree: z.boolean().optional(),
+    link_mode: linkModeSchema.optional(),
+  })
+  .refine((v) => Object.keys(v).length > 0, {
+    message: "Mindestens ein Feld muss angegeben werden.",
+  })
+
 export type CreateSkillInput = z.infer<typeof createSkillSchema>
 export type UpdateSkillMetadataInput = z.infer<typeof updateSkillMetadataSchema>
 export type CreateVersionInput = z.infer<typeof createVersionSchema>
+
+// PROJ-141-α5 (L-3) — Zod-Issue-Mapping für allowed_actions.
+// Ein unbekannter `allowed_actions`-Wert ist semantisch keine Format-Verletzung
+// (400), sondern eine nicht-verarbeitbare, aber wohlgeformte Aktion (422).
+// PROJ-77-AC „unknown allowed_action → 422". Alle anderen Zod-Issues bleiben 400.
+export function isUnknownAllowedActionIssue(issue: z.core.$ZodIssue): boolean {
+  return issue.code === "invalid_value" && issue.path.includes("allowed_actions")
+}
+export function validationStatusFor(issues: readonly z.core.$ZodIssue[]): 400 | 422 {
+  return issues.some(isUnknownAllowedActionIssue) ? 422 : 400
+}
