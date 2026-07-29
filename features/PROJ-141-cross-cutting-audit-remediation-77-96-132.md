@@ -1,6 +1,6 @@
 # PROJ-141 — Cross-cutting Audit-Remediation (PROJ-77 · PROJ-96 · PROJ-132)
 
-## Status: In Progress (β) — 2026-07-29 · α Deployed via Tag `v2.29.0-PROJ-141-alpha` (α-Merge `a8b67b4`, PR #276). β (PROJ-77-UX: M-7 Publish-Busy + M-8 Rollback-Frontmatter-Diff + L-5 UI-Text + β4 Discard-UI) in Umsetzung auf Branch `proj-141/beta-ux`. γ (PROJ-96/132-Konsistenz) bleibt Planned.
+## Status: Deployed (α + β) — 2026-07-29 · α Tag `v2.29.0-PROJ-141-alpha` (α-Merge `a8b67b4`, PR #276) · β Tag `v2.30.0-PROJ-141-beta` (β-Merge `c9360da`, PR #282). γ (PROJ-96/132-Konsistenz) bleibt Planned.
 
 **Created:** 2026-07-28
 **Origin:** Querschnittsprüfung 2026-07-28 gegen die deployten Slices PROJ-77-α/β, PROJ-96 und PROJ-132. Verifiziert gegen `supabase/migrations/20260723120849_proj76_skill_framework.sql`, `src/app/api/skills/[id]/versions/[vid]/route.ts`, `src/app/api/wizard-drafts/[id]/finalize/route.ts`, `src/components/master-data/skill-detail-client.tsx`, `src/components/projects/ma/operative-report-view.tsx`, `src/app/api/skills/_schema.ts`.
@@ -322,6 +322,22 @@ Production-ready für α. β (PROJ-77-UX: M-7/M-8/L-5 + β4 Discard-UI verdrahte
 - **Followups (bleiben Planned in dieser Spec):**
   - **β** — PROJ-77-UX: M-7 Publish-Busy-Fix (`skill-detail-client.tsx:383`) · M-8 Rollback-Diff-Frontmatter (`…:887`) · β4 Discard-UI (verdrahtet neuen α4-DELETE-Endpunkt).
   - **γ** — PROJ-96/132-Konsistenz: M-1 Aufgaben-/RACI-Templates + Custom-CRUD/Copy/Versionierung · M-2 `apply_ma_project_template`-Fehler auswerten (`finalize/route.ts:244`) · M-3 `source_template_id ON DELETE`-Verhalten · M-4/M-5/M-6 Report-Filter durchreichen · L-1/L-2 Seed-Errors + Advisor-Pentest-Lücke.
+
+## Deployment — β (2026-07-29)
+
+- **Tag:** `v2.30.0-PROJ-141-beta` (annotiert, auf β-Merge `c9360da`).
+- **PR:** #282 (squash-merge → main).
+- **Migrationen:** keine — β ist reine Frontend-Polish, kein Schema-/RPC-Change.
+- **Runtime-Deploy:** Vercel-Auto-Deploy vom Merge (`main` → prod). `/deploy` = Bookkeeping + Tag; nichts, was einen expliziten Runtime-Deploy braucht.
+- **Post-Deploy-Smoke:** `/skills`, `/stammdaten/skills` und `DELETE /api/skills/[id]/versions/[vid]` → alle 307 Auth-Gate ohne Leck (Redirect zu `/login?next=…`). β4-Endpunkt ist derselbe wie α4 — Auth-Gate + verhaltensidentisch zum α-Smoke.
+- **Verhaltensänderungen sichtbar in Prod (admin-Session-abhängig, nicht live getestet):**
+  - Publish auf Draft ⇒ Save/Publish-Buttons reagieren sofort wieder (β1).
+  - Rollback-Dialog zeigt zwei Sektionen (Body / Frontmatter) + amber „Aktionsmandat wird geändert"-Warnung bei geänderten `allowed_actions` (β2). „Keine Änderungen" nur bei Body+Frontmatter identisch.
+  - Rohtext-Vorschau trägt die korrigierte Beschreibung: „Vorschau des serialisierten Markdown (Body + YAML-Frontmatter) — die Datenbank speichert Body und Frontmatter getrennt." (β3)
+  - Draft-Card zeigt zweiten Button „Draft verwerfen" (admin-only), mit Bestätigungs-Dialog; schreibt `skill_versions.draft_discarded`-Audit-Row via α4-DEFINER-RPC (β4).
+- **Env/Secret:** keine Änderung.
+- **Rollback-Plan:** reine FE-Änderung — Vercel-Deployment-Promotion auf pre-#282 SHA (`c7e5f27`) rollt die UI zurück, α-Backend/Migrationen bleiben unangetastet. Kein Migration-Rollback nötig.
+- **Followups:** γ (PROJ-96/132 Konsistenz) bleibt in dieser Spec Planned.
 
 ## V2 Reference Material
 
