@@ -14,7 +14,7 @@ summary_for_jira: "[G4] Anbindung an externe Datenräume (Verlinkung, nicht Ersa
 
 # PROJ-115: Anbindung an externe Datenräume (Verlinkung, nicht Ersatz)
 
-## Status: Approved (QA PASS 2026-07-29 — live pentest A–I 9/9 über alle 4 Typen, 0 Critical/High; → /deploy)
+## Status: Deployed (2026-07-29 — PR #280 → main, Tag v2.29.0-PROJ-115; QA PASS live pentest A–I 9/9, 0 Critical/High)
 **Created:** 2026-06-10
 **Origin:** M&A-Platform Backlog (Epic G — Due Diligence)
 **Priority:** P1
