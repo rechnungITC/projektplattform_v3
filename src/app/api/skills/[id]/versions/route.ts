@@ -10,7 +10,7 @@ import {
   requireTenantAdmin,
 } from "../../../_lib/route-helpers"
 
-import { createVersionSchema } from "../../_schema"
+import { createVersionSchema, validationStatusFor } from "../../_schema"
 
 // PROJ-76 — skill versions (admin only).
 //
@@ -75,10 +75,11 @@ export async function POST(
   const parsed = createVersionSchema.safeParse(body)
   if (!parsed.success) {
     const first = parsed.error.issues[0]
+    // PROJ-141-α5 (L-3) — unknown allowed_actions → 422 (semantic), not 400.
     return apiError(
       "validation_error",
       first?.message ?? "Invalid request body.",
-      400,
+      validationStatusFor(parsed.error.issues),
       first?.path?.[0]?.toString()
     )
   }

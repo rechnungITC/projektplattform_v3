@@ -96,3 +96,25 @@ export interface SkillExample {
 
 export const SKILL_EXAMPLE_SELECT =
   "id, skill_id, tenant_id, title, input, expected_output, tags, display_order, created_by, created_at, updated_at"
+
+export type SkillLinkMode = "reference" | "required"
+
+/**
+ * PROJ-77-γ — link a skill to a PROJ-79 DMS document node (admin-only).
+ * `link_mode='required'` = must be in retrieval context (PROJ-80); `reference`
+ * = optional weighting. `include_subtree` scopes the node + descendants.
+ */
+export interface SkillKnowledgeLink {
+  id: string
+  skill_id: string
+  document_node_id: string
+  tenant_id: string
+  include_subtree: boolean
+  link_mode: SkillLinkMode
+  created_by: string | null
+  created_at: string
+  updated_at: string
+}
+
+export const SKILL_KNOWLEDGE_LINK_SELECT =
+  "id, skill_id, document_node_id, tenant_id, include_subtree, link_mode, created_by, created_at, updated_at"

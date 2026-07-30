@@ -7,6 +7,8 @@ import type {
   SkillCategory,
   SkillExample,
   SkillFrontmatter,
+  SkillKnowledgeLink,
+  SkillLinkMode,
   SkillVersion,
 } from "@/types/skill"
 
@@ -177,6 +179,22 @@ export async function activateSkillVersion(
   return (await response.json()) as { skill: Skill; version: SkillVersion }
 }
 
+/**
+ * PROJ-141-α4 — discard an open draft (admin-only). Server calls the
+ * `discard_skill_draft` RPC which hard-deletes the draft row and writes
+ * a `skill_versions.discarded` audit event. Non-draft versions return 409.
+ */
+export async function discardSkillDraft(
+  id: string,
+  versionId: string
+): Promise<void> {
+  const response = await fetch(
+    `/api/skills/${encodeURIComponent(id)}/versions/${encodeURIComponent(versionId)}`,
+    { method: "DELETE" }
+  )
+  if (!response.ok) throw new Error(await safeError(response))
+}
+
 export async function rollbackSkillVersion(
   id: string,
   versionId: string
@@ -249,6 +267,71 @@ export async function deleteSkillExample(
 ): Promise<void> {
   const response = await fetch(
     `/api/skills/${encodeURIComponent(id)}/examples/${encodeURIComponent(exampleId)}`,
+    { method: "DELETE" }
+  )
+  if (!response.ok) throw new Error(await safeError(response))
+}
+
+// PROJ-77-γ — skill knowledge links (admin; link a skill to a DMS node).
+export interface SkillKnowledgeLinkInput {
+  document_node_id: string
+  include_subtree?: boolean
+  link_mode?: SkillLinkMode
+}
+
+export async function listSkillKnowledgeLinks(
+  id: string
+): Promise<SkillKnowledgeLink[]> {
+  const response = await fetch(
+    `/api/skills/${encodeURIComponent(id)}/knowledge-links`,
+    { method: "GET", cache: "no-store" }
+  )
+  if (!response.ok) throw new Error(await safeError(response))
+  const body = (await response.json()) as { links: SkillKnowledgeLink[] }
+  return body.links ?? []
+}
+
+export async function createSkillKnowledgeLink(
+  id: string,
+  input: SkillKnowledgeLinkInput
+): Promise<SkillKnowledgeLink> {
+  const response = await fetch(
+    `/api/skills/${encodeURIComponent(id)}/knowledge-links`,
+    {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(input),
+    }
+  )
+  if (!response.ok) throw new Error(await safeError(response))
+  const body = (await response.json()) as { link: SkillKnowledgeLink }
+  return body.link
+}
+
+export async function updateSkillKnowledgeLink(
+  id: string,
+  linkId: string,
+  input: { include_subtree?: boolean; link_mode?: SkillLinkMode }
+): Promise<SkillKnowledgeLink> {
+  const response = await fetch(
+    `/api/skills/${encodeURIComponent(id)}/knowledge-links/${encodeURIComponent(linkId)}`,
+    {
+      method: "PATCH",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(input),
+    }
+  )
+  if (!response.ok) throw new Error(await safeError(response))
+  const body = (await response.json()) as { link: SkillKnowledgeLink }
+  return body.link
+}
+
+export async function deleteSkillKnowledgeLink(
+  id: string,
+  linkId: string
+): Promise<void> {
+  const response = await fetch(
+    `/api/skills/${encodeURIComponent(id)}/knowledge-links/${encodeURIComponent(linkId)}`,
     { method: "DELETE" }
   )
   if (!response.ok) throw new Error(await safeError(response))

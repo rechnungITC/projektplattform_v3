@@ -6,6 +6,7 @@ import * as React from "react"
 import { toast } from "sonner"
 
 import { SkillExamplesSection } from "@/components/master-data/skill-examples-section"
+import { SkillKnowledgeLinksSection } from "@/components/master-data/skill-knowledge-links-section"
 import { SkillRollbackDiffDialog } from "@/components/master-data/skill-rollback-diff-dialog"
 import { SkillTagPicker } from "@/components/master-data/skill-tag-picker"
 import {
@@ -43,6 +44,7 @@ import { useAuth } from "@/hooks/use-auth"
 import {
   activateSkillVersion,
   createSkillVersion,
+  discardSkillDraft,
   getSkill,
   listSkillVersions,
   patchSkillVersion,
@@ -200,6 +202,10 @@ export function SkillDetailClient({ skillId }: Props) {
   const [rollbackTarget, setRollbackTarget] =
     React.useState<SkillVersion | null>(null)
   const [rollingBack, setRollingBack] = React.useState(false)
+
+  // PROJ-141-β4 — discard draft confirm dialog
+  const [discardOpen, setDiscardOpen] = React.useState(false)
+  const [discarding, setDiscarding] = React.useState(false)
 
   // per-version action busy id (timeline)
   const [versionBusyId, setVersionBusyId] = React.useState<string | null>(null)
@@ -379,6 +385,10 @@ export function SkillDetailClient({ skillId }: Props) {
           description: errMsg(err),
         })
       }
+    } finally {
+      // PROJ-141-β1 (M-7): reset busy state on both success and error paths;
+      // previously only the catch branch reset, so a successful publish left
+      // Save/Publish disabled until the next reload.
       setVersionBusyId(null)
       setPublishing(false)
     }
@@ -400,6 +410,26 @@ export function SkillDetailClient({ skillId }: Props) {
       setVersionBusyId(null)
     } finally {
       setRollingBack(false)
+    }
+  }
+
+  // PROJ-141-β4 — verwirft den offenen Draft via α4-DELETE-Endpunkt.
+  // Nur admin, nur bei vorhandenem Draft; alle Busy-States werden im
+  // `finally`-Zweig zurückgesetzt (analog β1).
+  const handleDiscardDraft = async () => {
+    if (!openDraft) return
+    setDiscarding(true)
+    setVersionBusyId(openDraft.id)
+    try {
+      await discardSkillDraft(skillId, openDraft.id)
+      toast.success(`Entwurf v${openDraft.version_number} verworfen`)
+      setDiscardOpen(false)
+      refresh()
+    } catch (err) {
+      toast.error("Verwerfen fehlgeschlagen", { description: errMsg(err) })
+    } finally {
+      setVersionBusyId(null)
+      setDiscarding(false)
     }
   }
 
@@ -509,7 +539,7 @@ export function SkillDetailClient({ skillId }: Props) {
                           <Button
                             size="sm"
                             variant="outline"
-                            disabled={busy || publishing}
+                            disabled={busy || publishing || discarding}
                             onClick={() => setPublishOpen(true)}
                           >
                             {busy && publishing && (
@@ -519,6 +549,20 @@ export function SkillDetailClient({ skillId }: Props) {
                               />
                             )}
                             Veröffentlichen
+                          </Button>
+                          <Button
+                            size="sm"
+                            variant="ghost"
+                            disabled={busy || publishing || discarding}
+                            onClick={() => setDiscardOpen(true)}
+                          >
+                            {busy && discarding && (
+                              <Loader2
+                                className="mr-1.5 h-3.5 w-3.5 animate-spin"
+                                aria-hidden
+                              />
+                            )}
+                            Draft verwerfen
                           </Button>
                         </div>
                       )}
@@ -824,9 +868,9 @@ export function SkillDetailClient({ skillId }: Props) {
                 </CardHeader>
                 <CardContent>
                   <p className="mb-3 text-xs text-muted-foreground">
-                    Exakt der Markdown-Text, der beim Speichern abgelegt und von
-                    nachgelagerten KI-Purposes konsumiert wird. Spiegelt die
-                    aktuellen Formularinhalte.
+                    Vorschau des serialisierten Markdown (Body + YAML-Frontmatter)
+                    — die Datenbank speichert Body und Frontmatter getrennt.
+                    Spiegelt die aktuellen Formularinhalte.
                   </p>
                   <pre className="max-h-[32rem] overflow-x-auto overflow-y-auto rounded-md border bg-muted/40 p-4 font-mono text-xs">
                     {previewMarkdown}
@@ -847,6 +891,9 @@ export function SkillDetailClient({ skillId }: Props) {
 
       {/* PROJ-77-β — admin-only reusable example pairs (additive) */}
       <SkillExamplesSection skillId={skillId} canEdit={isAdmin} />
+
+      {/* PROJ-77-γ — admin-only DMS knowledge-source links (additive) */}
+      <SkillKnowledgeLinksSection skillId={skillId} canEdit={isAdmin} />
 
       {/* Publish confirmation */}
       <AlertDialog open={publishOpen} onOpenChange={setPublishOpen}>
@@ -884,6 +931,39 @@ export function SkillDetailClient({ skillId }: Props) {
         </AlertDialogContent>
       </AlertDialog>
 
+      {/* PROJ-141-β4 — Discard-Draft confirmation (wires α4 DELETE endpoint) */}
+      <AlertDialog open={discardOpen} onOpenChange={setDiscardOpen}>
+        <AlertDialogContent>
+          <AlertDialogHeader>
+            <AlertDialogTitle>
+              {openDraft
+                ? `Entwurf v${openDraft.version_number} verwerfen?`
+                : "Entwurf verwerfen?"}
+            </AlertDialogTitle>
+            <AlertDialogDescription>
+              Der Entwurf wird gelöscht und ein Audit-Eintrag geschrieben. Die
+              aktive Version bleibt unverändert. Diese Aktion lässt sich nicht
+              rückgängig machen.
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogCancel disabled={discarding}>Abbrechen</AlertDialogCancel>
+            <AlertDialogAction
+              disabled={discarding}
+              onClick={(e) => {
+                e.preventDefault()
+                void handleDiscardDraft()
+              }}
+            >
+              {discarding && (
+                <Loader2 className="mr-2 h-4 w-4 animate-spin" aria-hidden />
+              )}
+              Draft verwerfen
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
+
       {/* Rollback diff confirmation */}
       <SkillRollbackDiffDialog
         open={rollbackTarget != null}
@@ -893,6 +973,8 @@ export function SkillDetailClient({ skillId }: Props) {
         targetVersionNumber={rollbackTarget?.version_number ?? null}
         activeContent={activeVersion?.markdown_content ?? ""}
         targetContent={rollbackTarget?.markdown_content ?? ""}
+        activeFrontmatter={activeVersion?.frontmatter ?? {}}
+        targetFrontmatter={rollbackTarget?.frontmatter ?? {}}
         onConfirm={() => void handleRollbackConfirm()}
         busy={rollingBack}
       />
