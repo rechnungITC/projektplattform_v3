@@ -17,6 +17,10 @@ export type AuditEntityType =
   | "ma_project_profiles"
   | "ma_advisor_profiles"
   | "ma_ndas"
+  | "skills"
+  | "skill_versions"
+  | "skill_examples"
+  | "skill_knowledge_links"
 
 export const AUDIT_ENTITY_TYPES: readonly AuditEntityType[] = [
   "stakeholders",
@@ -30,6 +34,10 @@ export const AUDIT_ENTITY_TYPES: readonly AuditEntityType[] = [
   "ma_project_profiles",
   "ma_advisor_profiles",
   "ma_ndas",
+  "skills",
+  "skill_versions",
+  "skill_examples",
+  "skill_knowledge_links",
 ] as const
 
 export const AUDIT_ENTITY_LABELS: Record<AuditEntityType, string> = {
@@ -44,6 +52,10 @@ export const AUDIT_ENTITY_LABELS: Record<AuditEntityType, string> = {
   ma_project_profiles: "M&A-Grundlage",
   ma_advisor_profiles: "Berater-Profil",
   ma_ndas: "NDA",
+  skills: "Skill",
+  skill_versions: "Skill-Version",
+  skill_examples: "Skill-Beispiel",
+  skill_knowledge_links: "Skill-Wissensquelle",
 }
 
 export interface AuditLogEntry {
