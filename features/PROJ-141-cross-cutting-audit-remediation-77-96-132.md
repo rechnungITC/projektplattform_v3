@@ -1,6 +1,6 @@
 # PROJ-141 — Cross-cutting Audit-Remediation (PROJ-77 · PROJ-96 · PROJ-132)
 
-## Status: Deployed (α + β + γ) — α/β 2026-07-29 · γ 2026-07-31. α Tag `v2.29.0-PROJ-141-alpha` (PR #276) · β Tag `v2.30.0-PROJ-141-beta` (PR #282) · γ (PROJ-96/132-Konsistenz) CIA-reviewed + 3 Forks User-locked, alle 8 ACs γ1–γ8 live-verifiziert (γ3+γ8 Live-Pentests 0 Residue), Tag pending Deploy-PR. **PROJ-141 KOMPLETT.**
+## Status: Deployed (α + β + γ) — α/β 2026-07-29 · γ 2026-07-31. α Tag `v2.29.0-PROJ-141-alpha` (PR #276) · β Tag `v2.30.0-PROJ-141-beta` (PR #282) · γ Tag `v2.32.0-PROJ-141-gamma` (PR #288 → main `33ef739`). **PROJ-141 KOMPLETT (alle 3 Sub-Slices deployed).**
 
 **Created:** 2026-07-28
 **Origin:** Querschnittsprüfung 2026-07-28 gegen die deployten Slices PROJ-77-α/β, PROJ-96 und PROJ-132. Verifiziert gegen `supabase/migrations/20260723120849_proj76_skill_framework.sql`, `src/app/api/skills/[id]/versions/[vid]/route.ts`, `src/app/api/wizard-drafts/[id]/finalize/route.ts`, `src/components/master-data/skill-detail-client.tsx`, `src/components/projects/ma/operative-report-view.tsx`, `src/app/api/skills/_schema.ts`.
@@ -428,6 +428,19 @@ Ein Slice, alle γ-ACs (γ1–γ8), gebaut auf Branch `proj-141/gamma-impl`.
 **Deviations:** (1) γ4 Stream-Filter mischt workstream_id (Tasks/Deliverables) + dd_stream_id (Findings/Q&A) unter einem „Workstream"-Dropdown — separate ID-Spaces, Auswahl trifft je Sektion die passende ID (AC-141.γ4-Wortlaut folgend). (2) γ3 Version-Bump-Trigger bewusst NICHT gebaut (kein Kind-Edit-Pfad → CIA-Over-Engineering → PROJ-Y-96c). (3) γ5 kein gefilterter Export (Drift-Vermeidung → PROJ-Y-132-filtered-export). (4) Playwright-Auth-Gates der betroffenen Routen (finalize/ma-project-templates/operatives-reporting) durch bestehende Specs (PROJ-132 u.a.) abgedeckt — keine neuen Routen.
 
 **PROJ-Y-Followups:** PROJ-Y-96b (Aufgaben-/RACI-Templates) · PROJ-Y-96c (immutable Versionshistorie + Version-Bump-Trigger) · PROJ-Y-96d (Template-Delete/CRUD-UI + RESTRICT→Soft-Delete-Re-Eval) · PROJ-Y-132-filtered-export (gefilterter Export via geteilter pure Filter-Lib).
+
+## Deployment — γ (2026-07-31)
+
+- **Tag:** `v2.32.0-PROJ-141-gamma` (annotiert, auf γ-Merge `33ef739`).
+- **PR:** #288 (squash-merge → main). Branch `proj-141/gamma-impl`; auf PR #287 (PROJ-77-Followups) konfliktfrei nachgezogen (INDEX-Zeilen disjunkt).
+- **Migration (seit /backend in Prod):** `20260731100000_proj141_gamma3_template_provenance_restrict` (γ3 FK `SET NULL → RESTRICT`, DDL-only, kein Datenchange; Repo == Prod-Version, PROJ-134-konform).
+- **Runtime-Deploy:** Vercel-Auto-Deploy vom Merge. `/deploy` = Bookkeeping + Tag; die Migration lag bereits seit /backend in Prod.
+- **Post-Deploy-Smoke:** `GET /api/ma-project-templates`, `GET /projects/[id]/operatives-reporting`, `POST /api/wizard-drafts/[id]/finalize` — je 307 Auth-Gate ohne Leck.
+- **Env/Secret:** keine Änderung.
+- **Advisor (Supabase):** 0 ERROR / 111 WARN (Baseline; γ3 fügt keine neue).
+- **Rollback-Plan:** γ3-Migration ist additiv-invertierbar (FK zurück auf SET NULL); Rest ist Code (Vercel-Deployment-Promotion auf pre-#288 SHA). Kein Datenverlust-Risiko.
+- **Cross-Ref-Bookkeeping:** PROJ-96-Spec + INDEX (γ1 Statuslüge korrigiert), PROJ-132-Pentest (γ8 Advisor-Cases) — beide im selben γ-Merge.
+- **Followups (Planned):** PROJ-Y-96b (Aufgaben-/RACI-Templates) · PROJ-Y-96c (immutable Versionshistorie + Version-Bump-Trigger) · PROJ-Y-96d (Template-Delete/CRUD-UI) · PROJ-Y-132-filtered-export.
 
 ## V2 Reference Material
 
