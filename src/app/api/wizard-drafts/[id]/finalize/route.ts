@@ -228,11 +228,20 @@ export async function POST(_request: Request, ctx: Ctx) {
     }
   }
 
+  // Non-fatal warnings surfaced in the 201 response so the wizard can toast them
+  // (PROJ-141-γ2). Best-effort finalize steps push here instead of failing hard.
+  const warnings: { code: string; message: string }[] = []
+
   // 4.3) PROJ-96 — apply the selected M&A project template (copy-on-create).
   // The template_id rides in the ma_foundation step. Best-effort: the project
   // is already usable without it, and an admin can apply a template later via
   // /api/projects/[id]/apply-template — so a failure here must NOT roll back
   // the project or block finalize (mirrors the optional context-source step).
+  //
+  // PROJ-141-γ2 (M-2): evaluate the RPC error instead of swallowing it. A silent
+  // failure left the user in a structurally empty project room while the wizard
+  // reported success. We keep the deliberate non-blocking design but make the
+  // failure VISIBLE — surface it as a warning and log it server-side.
   if (project && maFoundation) {
     const templateId = maFoundation.template_id
     const isUuid =
@@ -241,10 +250,23 @@ export async function POST(_request: Request, ctx: Ctx) {
         templateId
       )
     if (isUuid) {
-      await supabase.rpc("apply_ma_project_template", {
-        p_project_id: project.id,
-        p_template_id: templateId,
-      })
+      const { error: templateErr } = await supabase.rpc(
+        "apply_ma_project_template",
+        {
+          p_project_id: project.id,
+          p_template_id: templateId,
+        }
+      )
+      if (templateErr) {
+        console.error(
+          `[finalize] apply_ma_project_template failed for project ${project.id}, template ${templateId}: ${templateErr.message}`
+        )
+        warnings.push({
+          code: "template_apply_failed",
+          message:
+            "Projekt angelegt — die Projekt-Vorlage konnte nicht übernommen werden. Sie kann später in den Projekteinstellungen angewendet werden.",
+        })
+      }
     }
   }
 
@@ -340,5 +362,5 @@ export async function POST(_request: Request, ctx: Ctx) {
   // 5) Delete the draft (best-effort; orphan drafts are recoverable).
   await supabase.from("project_wizard_drafts").delete().eq("id", id)
 
-  return NextResponse.json({ project }, { status: 201 })
+  return NextResponse.json({ project, warnings }, { status: 201 })
 }

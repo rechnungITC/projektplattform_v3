@@ -304,3 +304,48 @@ describe("POST finalize — PROJ-135 clarifying Q&A persist (AC-135.4/4b/11)", (
     expect(kiRunsUpdateChain.is).toHaveBeenCalledWith("project_id", null)
   })
 })
+
+describe("POST finalize — PROJ-141-γ2 template-apply warning (M-2)", () => {
+  const TEMPLATE_ID = "77777777-7777-4777-8777-777777777777"
+
+  function maDraft() {
+    return {
+      name: "M&A Deal",
+      project_type: "ma",
+      description: "Acquire target X",
+      responsible_user_id: USER_ID,
+      ma_foundation: {
+        sponsor_user_id: USER_ID,
+        template_id: TEMPLATE_ID,
+      },
+    }
+  }
+
+  it("still returns 201 but surfaces a warning when apply_ma_project_template errors", async () => {
+    seedHappyPath(maDraft())
+    // profile creation succeeds, template apply fails.
+    rpcMock.mockImplementation((name: string) =>
+      Promise.resolve(
+        name === "apply_ma_project_template"
+          ? { error: { message: "boom" } }
+          : { error: null },
+      ),
+    )
+    const res = await POST(makeRequest(), ctx())
+    expect(res.status).toBe(201)
+    const body = (await res.json()) as {
+      warnings: { code: string; message: string }[]
+    }
+    expect(body.warnings).toHaveLength(1)
+    expect(body.warnings[0].code).toBe("template_apply_failed")
+  })
+
+  it("returns 201 with empty warnings when the template applies cleanly", async () => {
+    seedHappyPath(maDraft())
+    // seedHappyPath already resolves every rpc to { error: null }.
+    const res = await POST(makeRequest(), ctx())
+    expect(res.status).toBe(201)
+    const body = (await res.json()) as { warnings: unknown[] }
+    expect(body.warnings).toHaveLength(0)
+  })
+})

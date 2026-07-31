@@ -27,6 +27,7 @@ import type {
   OperativeExportSection,
   OperativeFindingRow,
   OperativeFindingStreamAgg,
+  OperativePreRead,
   OperativeReport,
 } from "@/types/operative-report"
 
@@ -72,6 +73,26 @@ function aggregateFindingStreams(
   )
 }
 
+/**
+ * Recompute the pre-read tiles from a (filtered) report so the headline numbers
+ * match the visible tables (PROJ-141-γ4/M-5). Only called when a screen filter is
+ * active; with no filter the server pre_read is kept byte-identical.
+ */
+function recomputePreRead(r: OperativeReport): OperativePreRead {
+  return {
+    ...r.pre_read,
+    overdue_tasks: r.tasks_overdue.tasks.filter((t) => t.is_overdue).length,
+    open_deal_breaker_findings: r.findings_by_severity.streams.reduce(
+      (a, s) => a + s.sev_deal_breaker,
+      0
+    ),
+    open_qa: r.qa_by_stream.reduce((a, q) => a + q.qa_open, 0),
+    deliverables_not_approved: r.deliverables_status.deliverables.filter(
+      (d) => d.status !== "approved"
+    ).length,
+  }
+}
+
 const EXPORT_SECTIONS: { section: OperativeExportSection; label: string }[] = [
   { section: "tasks", label: "Aufgaben" },
   { section: "findings", label: "Findings" },
@@ -98,18 +119,29 @@ export function OperativeReportView({ projectId }: { projectId: string }) {
   }, [members])
 
   // Filter options derived from the (need-to-know-filtered) report rows.
+  // PROJ-141-γ4 (M-4): the stream list is built from ALL FOUR sections — tasks +
+  // deliverables carry workstream_id, findings + Q&A carry dd_stream_id (a
+  // separate id space). A stream that appears only in findings/Q&A must still be
+  // selectable, and the selection must reach those sections too.
   const options = React.useMemo(() => {
     const workstreams = new Map<string, string>()
     const owners = new Set<string>()
     const phases = new Map<string, string>()
-    const rows = [
+    const wsRows = [
       ...(report?.tasks_overdue.tasks ?? []),
       ...(report?.deliverables_status.deliverables ?? []),
     ]
-    for (const r of rows) {
+    for (const r of wsRows) {
       if (r.workstream_id) workstreams.set(r.workstream_id, r.workstream_label ?? r.workstream_id.slice(0, 8))
       if (r.responsible_user_id) owners.add(r.responsible_user_id)
       if (r.phase_id) phases.set(r.phase_id, r.phase_name ?? r.phase_id.slice(0, 8))
+    }
+    // dd_stream ids from findings + Q&A (same "Workstream/Stream" filter axis).
+    for (const f of report?.findings_by_severity.findings ?? []) {
+      if (f.dd_stream_id) workstreams.set(f.dd_stream_id, f.stream_label ?? f.dd_stream_id.slice(0, 8))
+    }
+    for (const q of report?.qa_by_stream ?? []) {
+      if (q.dd_stream_id) workstreams.set(q.dd_stream_id, q.stream_label ?? q.dd_stream_id.slice(0, 8))
     }
     return {
       workstreams: Array.from(workstreams, ([id, label]) => ({ id, label })),
@@ -143,28 +175,45 @@ export function OperativeReportView({ projectId }: { projectId: string }) {
     if (!report) return null
     const tasks = report.tasks_overdue.tasks.filter(matchesRow)
     const deliverables = report.deliverables_status.deliverables.filter(matchesRow)
-    // Findings only carry a classification (no workstream/owner/phase) → the
-    // classification filter re-aggregates them; the other filters don't apply.
-    const findings =
-      fClass === ALL
-        ? report.findings_by_severity.findings
-        : report.findings_by_severity.findings.filter((f) => f.confidentiality_level === fClass)
-    return {
+    // PROJ-141-γ4 (M-4): findings carry dd_stream_id + confidentiality_level
+    // (no owner/phase). Filter by stream (Workstream axis) AND classification.
+    const findings = report.findings_by_severity.findings.filter(
+      (f) =>
+        (fWorkstream === ALL || f.dd_stream_id === fWorkstream) &&
+        (fClass === ALL || f.confidentiality_level === fClass)
+    )
+    // Q&A is a per-stream aggregate → only the stream axis applies.
+    const qa = report.qa_by_stream.filter(
+      (q) => fWorkstream === ALL || q.dd_stream_id === fWorkstream
+    )
+    const streams =
+      findings.length === report.findings_by_severity.findings.length
+        ? report.findings_by_severity.streams
+        : aggregateFindingStreams(findings)
+    const next: OperativeReport = {
       ...report,
       tasks_overdue: { ...report.tasks_overdue, tasks },
-      findings_by_severity: {
-        findings,
-        streams:
-          fClass === ALL
-            ? report.findings_by_severity.streams
-            : aggregateFindingStreams(findings),
-      },
+      findings_by_severity: { findings, streams },
+      qa_by_stream: qa,
       deliverables_status: { ...report.deliverables_status, deliverables },
-      // qa_by_stream is a stream-level aggregate with no per-row classification → shown as-is.
     }
-  }, [report, matchesRow, fClass])
+    // PROJ-141-γ4/M-5: with a filter active the pre-read tiles are recomputed
+    // from the filtered rows so headline numbers match the tables. With no
+    // filter the server pre_read is kept byte-identical to today.
+    const anyFilter =
+      fWorkstream !== ALL || fOwner !== ALL || fPhase !== ALL || fClass !== ALL
+    return anyFilter ? { ...next, pre_read: recomputePreRead(next) } : next
+  }, [report, matchesRow, fWorkstream, fOwner, fPhase, fClass])
 
-  const hasRows = (report?.tasks_overdue.tasks.length ?? 0) > 0
+  // PROJ-141-γ6 (M-6): each export button is gated by ITS OWN section's content.
+  // Export/print return the full (need-to-know-filtered) report (γ5), so gating
+  // is on the unfiltered report, not the screen-filtered view.
+  const sectionHasRows: Record<OperativeExportSection, boolean> = {
+    tasks: (report?.tasks_overdue.tasks.length ?? 0) > 0,
+    findings: (report?.findings_by_severity.streams.length ?? 0) > 0,
+    qa: (report?.qa_by_stream.length ?? 0) > 0,
+    deliverables: (report?.deliverables_status.deliverables.length ?? 0) > 0,
+  }
 
   return (
     <Card>
@@ -236,23 +285,31 @@ export function OperativeReportView({ projectId }: { projectId: string }) {
           </Select>
 
           <div className="ml-auto flex flex-wrap items-center gap-1.5">
-            <span className="text-xs text-muted-foreground">CSV:</span>
-            {EXPORT_SECTIONS.map((e) => (
-              <Button
-                key={e.section}
-                asChild
-                size="sm"
-                variant="outline"
-                disabled={!hasRows}
-              >
-                <a href={operativeReportExportUrl(projectId, e.section)} download>
+            <span className="text-xs text-muted-foreground">CSV (Gesamtreport):</span>
+            {EXPORT_SECTIONS.map((e) =>
+              sectionHasRows[e.section] ? (
+                <Button key={e.section} asChild size="sm" variant="outline">
+                  <a href={operativeReportExportUrl(projectId, e.section)} download>
+                    <Download className="h-3.5 w-3.5" aria-hidden />
+                    {e.label}
+                  </a>
+                </Button>
+              ) : (
+                <Button key={e.section} size="sm" variant="outline" disabled>
                   <Download className="h-3.5 w-3.5" aria-hidden />
                   {e.label}
-                </a>
-              </Button>
-            ))}
+                </Button>
+              )
+            )}
           </div>
         </div>
+
+        {/* PROJ-141-γ5 (M-5): make the export contract honest — CSV + print
+            return the full, need-to-know-filtered report, NOT the screen filters. */}
+        <p className="text-xs text-muted-foreground">
+          Export (CSV) und Druck enthalten den vollständigen, berechtigungsgefilterten
+          Report — nicht die oben aktiven Bildschirmfilter.
+        </p>
 
         {loading ? (
           <div className="flex items-center gap-2 py-10 text-sm text-muted-foreground">
