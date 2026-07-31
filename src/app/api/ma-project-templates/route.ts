@@ -26,11 +26,17 @@ export async function GET() {
   const tenantId = await resolveActiveTenantId(userId, supabase)
   if (!tenantId) return apiError("forbidden", "No tenant membership.", 403)
 
-  // Best-effort lazy seed of the Buy-Side default (idempotent; ignore failures
-  // so an empty catalog still lists rather than erroring).
-  await supabase.rpc("ensure_default_ma_project_templates", {
-    p_tenant_id: tenantId,
-  })
+  // Lazy seed of the Buy-Side default (idempotent). PROJ-141-γ7 (L-1): a real DB
+  // failure must NOT masquerade as a legitimately empty catalog (200 {templates:[]}).
+  // Membership is already established above, so any seed error other than an
+  // insufficient-privilege (42501) membership race is a real DB error → surface it.
+  const { error: seedErr } = await supabase.rpc(
+    "ensure_default_ma_project_templates",
+    { p_tenant_id: tenantId }
+  )
+  if (seedErr && seedErr.code !== "42501") {
+    return apiError("seed_failed", seedErr.message, 500)
+  }
 
   const { data: templates, error: tErr } = await supabase
     .from("ma_project_templates")

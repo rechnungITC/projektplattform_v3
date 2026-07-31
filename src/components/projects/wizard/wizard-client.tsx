@@ -437,6 +437,13 @@ export function WizardClient({ draftId }: WizardClientProps) {
         return
       }
       const project = await finalizeDraft(draft.id)
+      // PROJ-141-γ2 — surface non-fatal finalize warnings (e.g. a project
+      // template that could not be applied). The project is created and usable;
+      // the warning persists across the handoff navigation so the user knows to
+      // apply the template later from the project settings.
+      for (const w of project.warnings) {
+        toast.warning("Hinweis zum Projekt-Setup", { description: w.message })
+      }
       // PROJ-70-ε / PROJ-90 — when a kickoff file was uploaded, hand off into
       // the project graph with the orchestrated "Projekt befüllen" conductor
       // auto-opened + auto-generating Backlog + Stakeholder + Risiken from

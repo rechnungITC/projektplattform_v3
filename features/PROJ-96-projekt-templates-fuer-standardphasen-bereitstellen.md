@@ -14,7 +14,7 @@ summary_for_jira: "[A3] Projekt-Templates für Standardphasen bereitstellen"
 
 # PROJ-96: Projekt-Templates für Standardphasen bereitstellen
 
-## Status: Deployed (2026-07-27 — Tag `v2.26.0-PROJ-96`)
+## Status: Deployed (α — Katalog-Lesesicht: Phasen-Preset + Workstreams + Deliverables + Buy-Side-Default + Wizard-Picker; 2026-07-27, Tag `v2.26.0-PROJ-96`). Aufgaben-/RACI-Templates + Custom-CRUD/Copy/echte Versionierung/Deep-Editor `deferred → PROJ-Y-96b/96c/96d` (Scope-Ehrlichkeit via PROJ-141-γ1 2026-07-31)
 
 > **Post-Deploy-Audit 2026-07-28 — offene Remediation → [PROJ-141](PROJ-141-cross-cutting-audit-remediation-77-96-132.md):**
 > Querschnittsprüfung fand eine **Statusinkonsistenz**: die Spec verlangt in Original-AC1/AC2/AC3 Phasen · **Aufgaben** · Deliverables · **Rollen (RACI)** sowie **Anlegen/Kopieren/Versionieren eigener Templates**; in Prod live sind nur Phasenaktivierung + Workstreams + Deliverables + Default-Seed + read-only Katalog. Aufgaben-Templates, RACI-Templates, Custom-CRUD, Copy, echte Versionierung + Änderungsverlauf, Template-Editor fehlen. Die Story ist trotzdem als "PRODUCTION-READY" markiert.
@@ -48,11 +48,13 @@ Die zehn M&A-Phasen folgen einem gleichbleibenden Best-Practice-Muster. Damit Pr
 
 **Akzeptanzkriterien:**
 
-- [ ] Mindestens ein Standard-Template 'Buy-Side M&A' ist als Default verfügbar (alle Phasen, Standard-Workstreams, Standard-Deliverables, Standard-Rollen).
-- [ ] Templates können durch berechtigte Nutzer (Rolle 'Template-Admin') angelegt, kopiert und versioniert werden.
-- [ ] Bei Projektanlage (A1) kann ein Template ausgewählt werden; alle Standardinhalte werden in das neue Projekt übernommen.
-- [ ] Nach Übernahme können alle Inhalte projektindividuell angepasst werden, ohne das Template zu verändern.
-- [ ] Eine Template-Änderung wirkt nicht rückwirkend auf bereits angelegte Projekte (Versionsstand wird festgehalten).
+> **Scope-Ehrlichkeit (PROJ-141-γ1, 2026-07-31):** die ursprünglichen AC beschreiben das Zielbild; der 2026-07-27 deployte Slice liefert nur den Katalog-Kern (Phasen-Preset + Workstreams + Deliverables + Buy-Side-Default + read-only Katalog + Wizard-Picker). Nachstehend der tatsächlich gelieferte vs. deferierte Scope.
+
+- [x] Mindestens ein Standard-Template 'Buy-Side M&A' ist als Default verfügbar — **geliefert für Phasen (alle vom `activate_ma_phase_model`-Preset erzeugten Phasen; Phase 2 bleibt bis Mandats-Freigabe gesperrt — PROJ-95), Standard-Workstreams (7) und Standard-Deliverables (9)**. **Standard-Rollen (RACI) `deferred → PROJ-Y-96b`** (keine RACI-Template-Tabelle deployed).
+- [~] Templates können durch berechtigte Nutzer angelegt, kopiert und versioniert werden — **NICHT geliefert:** read-only Katalog + Buy-Side-Default-Seed live; **Custom-Anlegen/Kopieren `deferred → PROJ-Y-96c/96d`**, **echte Versionierung + Änderungsverlauf `deferred → PROJ-Y-96c`**, **Deep-Editor `deferred → PROJ-Y-96d`**. Kein separater „Template-Admin" — Katalog ist `is_tenant_admin`-gated (Deviation).
+- [x] Bei Projektanlage (A1) kann ein Template ausgewählt werden; alle Standardinhalte (Phasen-Preset + Workstreams + Deliverables) werden in das neue Projekt übernommen — **geliefert** (Wizard-Picker + `apply_ma_project_template`; Fehler beim Übernehmen ist seit PROJ-141-γ2 sichtbar via `warnings[]` + Wizard-Toast statt stumm).
+- [x] Nach Übernahme können alle Inhalte projektindividuell angepasst werden, ohne das Template zu verändern — **geliefert** (entkoppelte Kopie, kein Rück-FK auf Template-Inhalt).
+- [x] Eine Template-Änderung wirkt nicht rückwirkend auf bereits angelegte Projekte (Versionsstand wird festgehalten) — **geliefert** (entkoppelte Kopie + `source_template_version`-Stempel; Provenance-FK seit PROJ-141-γ3 `ON DELETE RESTRICT` → Template mit gelaufener Provenance nicht löschbar, Identität geschützt). **Automatischer Version-Bump bei Template-Änderung `deferred → PROJ-Y-96c`** (kein Kind-Edit-Pfad deployed).
 
 **Abgrenzungen (Out of Scope):**
 
@@ -72,9 +74,9 @@ Die zehn M&A-Phasen folgen einem gleichbleibenden Best-Practice-Muster. Damit Pr
 
 **Definition of Done:**
 
-- [ ] Mindestens ein produktives Template ist hinterlegt.
-- [ ] Projektanlage mit Template-Auswahl funktioniert.
-- [ ] Versionierung und Änderungs-Historie sind nachweisbar.
+- [x] Mindestens ein produktives Template ist hinterlegt (Buy-Side-Default lazy-seed).
+- [x] Projektanlage mit Template-Auswahl funktioniert (Wizard-Picker + `apply_ma_project_template`; γ2 macht Übernahme-Fehler sichtbar).
+- [~] Versionierung und Änderungs-Historie sind nachweisbar — **NUR Provenance-Stempel (`source_template_version`) live; echte Versionshistorie + automatischer Version-Bump `deferred → PROJ-Y-96c`.**
 
 **Abhängigkeiten:**
 
@@ -213,7 +215,7 @@ Keine. Reine EXTEND auf bestehendem Stack + deployten Bausteinen (PROJ-94/95/97/
 - **AC1 (Buy-Side-Default verfügbar)** ✅ — lazy-seed via `ensure_default_ma_project_templates` liefert 7 Workstreams + 9 Deliverables; im Pentest-Positivkontroll-Vektor bewiesen (admin_ok: apply ergibt ws=7/del=9). GET `/api/ma-project-templates` seedet bei Erstzugriff.
 - **AC2 (Templates anlegen/kopieren/versionieren durch Template-Admin)** ⚠️ **PARTIAL/Deviation** — Default-Template existiert + Katalog admin-gated (`is_tenant_admin`). Custom-Create/Copy/Deep-Version-Edit **deferiert → PROJ-Y-96d** (CIA-Scope: „kein Deep-Editor im MVP"). Versionsfeld + Provenance-Stempel vorhanden; manuelles Version-Bump-UI folgt in 96d. Dokumentierte Deviation.
 - **AC3 (Template bei Projektanlage wählbar → Inhalte übernommen)** ✅ — Wizard-Picker (`ma_foundation.template_id`) + Finalize-Hook rufen `apply_ma_project_template`. End-to-End DB-seitig live bewiesen (Seed→Apply→7 WS/9 Del + Phasen via activate_ma_phase_model). D-1: voll-eingeloggter Wizard-UI-E2E deferiert (Auth-Fixture/Seed, analog Vorgänger-Slices) — Mechanik über Route-Unit-Tests + Live-RPC abgedeckt.
-- **AC4 (nach Übernahme projektindividuell editierbar ohne Template zu ändern)** ✅ — entkoppelte Kopie (kein Rück-FK auf Template-Inhalt); nur `source_template_id/_version`-Provenance (ON DELETE SET NULL). Strukturelle Garantie.
+- **AC4 (nach Übernahme projektindividuell editierbar ohne Template zu ändern)** ✅ — entkoppelte Kopie (kein Rück-FK auf Template-Inhalt); nur `source_template_id/_version`-Provenance (seit PROJ-141-γ3 `ON DELETE RESTRICT` — Template mit gelaufener Provenance nicht löschbar, Identität geschützt; vorher SET NULL). Strukturelle Garantie.
 - **AC5 (Template-Änderung wirkt nicht rückwirkend)** ✅ — folgt aus AC4 (entkoppelte Kopie). Versionsstand über Provenance-Stempel festgehalten.
 
 **Security / Red-Team — Live-Pentest gegen Prod (`tests/sql/PROJ-96-project-templates-pentest.sql`, via RAISE-Rollback, 0 Residue):**

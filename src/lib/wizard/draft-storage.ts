@@ -122,11 +122,17 @@ export async function discardDraft(id: string): Promise<void> {
   }
 }
 
+export type FinalizeWarning = { code: string; message: string }
+
 /**
  * Atomic-ish finalize — backend creates the project, runs the auto-lead
- * bootstrap, then deletes the draft. Returns the new project id.
+ * bootstrap, then deletes the draft. Returns the new project id plus any
+ * non-fatal warnings from best-effort steps (PROJ-141-γ2, e.g. a template
+ * that could not be applied) so the caller can surface them.
  */
-export async function finalizeDraft(id: string): Promise<{ id: string }> {
+export async function finalizeDraft(
+  id: string
+): Promise<{ id: string; warnings: FinalizeWarning[] }> {
   const response = await fetch(
     `/api/wizard-drafts/${encodeURIComponent(id)}/finalize`,
     { method: "POST" }
@@ -134,6 +140,9 @@ export async function finalizeDraft(id: string): Promise<{ id: string }> {
   if (!response.ok) {
     throw new Error(await safeError(response))
   }
-  const body = (await response.json()) as { project: { id: string } }
-  return body.project
+  const body = (await response.json()) as {
+    project: { id: string }
+    warnings?: FinalizeWarning[]
+  }
+  return { ...body.project, warnings: body.warnings ?? [] }
 }

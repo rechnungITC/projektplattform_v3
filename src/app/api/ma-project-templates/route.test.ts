@@ -102,4 +102,26 @@ describe("GET /api/ma-project-templates", () => {
     const body = (await res.json()) as { templates: unknown[] }
     expect(body.templates).toHaveLength(0)
   })
+
+  // PROJ-141-γ7 (L-1) — a real seed DB error must not masquerade as an empty catalog.
+  it("500 seed_failed when ensure_default errors with a real DB error", async () => {
+    getUserMock.mockResolvedValue({ data: { user: { id: ME } } })
+    resolveTenantMock.mockResolvedValue(TENANT)
+    rpcMock.mockResolvedValue({ data: null, error: { code: "42P01", message: "boom" } })
+    const res = await GET()
+    expect(res.status).toBe(500)
+    const body = (await res.json()) as { error: { code: string } }
+    expect(body.error.code).toBe("seed_failed")
+  })
+
+  it("200 still lists when seed errors with 42501 (membership race, non-blocking)", async () => {
+    getUserMock.mockResolvedValue({ data: { user: { id: ME } } })
+    resolveTenantMock.mockResolvedValue(TENANT)
+    rpcMock.mockResolvedValue({ data: null, error: { code: "42501", message: "not a member" } })
+    results["ma_project_templates"] = { data: [], error: null }
+    const res = await GET()
+    expect(res.status).toBe(200)
+    const body = (await res.json()) as { templates: unknown[] }
+    expect(body.templates).toHaveLength(0)
+  })
 })
