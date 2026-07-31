@@ -14,7 +14,7 @@ summary_for_jira: "[M1] Management-Reporting und Steering-Dashboard"
 
 # PROJ-131: Management-Reporting und Steering-Dashboard
 
-## Status: Planned (Requirements refined 2026-07-28 — gegen deployten Stand geerdet, Scope-Schnitt gelockt; → /architecture)
+## Status: Deployed (2026-07-29 — PR #281 → main, Tag `v2.29.0-PROJ-131`; QA PASS Live-Pentest A–G 7/7, 0 Critical/High)
 **Created:** 2026-06-10
 **Origin:** M&A-Platform Backlog (Epic M — Reporting & Dashboards)
 **Priority:** P1
@@ -245,6 +245,17 @@ Getestet gegen den `/frontend`-Stand (`64dd883`) im Worktree `proj-131/requireme
 - **D-1 (Env):** Mobile-Safari-Projekt skipped (WebKit-Host-Libs fehlen, PROJ-67/F2) — nur Chromium exekutiert.
 
 **Verdikt: PRODUCTION-READY.** 0 Critical / 0 High. Status → Approved. → `/deploy`.
+
+## Deployment — 2026-07-29
+
+**Deployed via PR #281 (squash) → main (`c7e5f27`), Tag `v2.29.0-PROJ-131`.** Migration `20260728120000_proj131_steering_report` war seit `/backend` in Prod (idempotente `create or replace function` → kein Runtime-DB-Change beim Deploy; MCP-Versions-Drift `20260729082438` benign, PROJ-134). Code deployt via Vercel Auto-Deploy from main.
+
+- **Integration gegen fast-moving main:** Merge von `origin/main` (PROJ-77-γ + PROJ-141) konfliktfrei (Nav-/INDEX-Hotspots auto-merged); mehrfaches server-seitiges `update-branch` (main bewegte sich während der Checks weiter). Merged-Tree-Gates: tsc 0 neu (12 Baseline), build clean, method-templates+steering-report 136/136.
+- **Required-Checks grün:** Snyk · Schema-Drift (SELECT-columns) · Migration-Naming · npm-audit — alle PASS.
+- **Post-Deploy-Smoke:** 307-Auth-Gates auf allen 4 Prod-Routen (`/api/projects/[id]/steering-report` · `…/export` · `/projects/[id]/management-reporting` · `/projects/[id]/steering-report/print`).
+- **Kein neuer Env/Secret.** Tag-Hinweis: `v2.29.0` teilt sich die Minor mit `v2.29.0-PROJ-141-alpha` (Parallel-Track; suffix-getrennt, Repo-Konvention wie v2.27.0-PROJ-106/-77-beta).
+
+**Followups:** PROJ-131-β (Portfolio-/Multi-Deal-Sicht) · PROJ-Y-131a (Kaufpreis I1/I2 + Synergie K2 KPIs sobald PROJ-120/121/126 deployed) · PROJ-Y-131b (Word-Export + persistiertes Snapshot-Freeze).
 
 ---
 _Quelle: Backlog-Entwurf M&A-Projektplattform · M — Reporting & Dashboards_
