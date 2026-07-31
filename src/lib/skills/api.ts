@@ -16,6 +16,19 @@ interface ApiErrorBody {
   error?: { code?: string; message?: string; field?: string }
 }
 
+/**
+ * PROJ-77 follow-up — error carrying the HTTP status so callers can branch on
+ * `err.status` (e.g. 409 conflict) instead of matching server message text.
+ */
+export class SkillsApiError extends Error {
+  readonly status: number
+  constructor(message: string, status: number) {
+    super(message)
+    this.name = "SkillsApiError"
+    this.status = status
+  }
+}
+
 async function safeError(response: Response): Promise<string> {
   try {
     const body = (await response.json()) as ApiErrorBody
@@ -23,6 +36,11 @@ async function safeError(response: Response): Promise<string> {
   } catch {
     return `HTTP ${response.status}`
   }
+}
+
+/** Build a status-carrying error from a non-OK response. */
+async function apiError(response: Response): Promise<SkillsApiError> {
+  return new SkillsApiError(await safeError(response), response.status)
 }
 
 export async function listSkills(
@@ -33,7 +51,7 @@ export async function listSkills(
     method: "GET",
     cache: "no-store",
   })
-  if (!response.ok) throw new Error(await safeError(response))
+  if (!response.ok) throw await apiError(response)
   const body = (await response.json()) as { skills: Skill[] }
   return body.skills ?? []
 }
@@ -45,7 +63,7 @@ export async function getSkill(
     method: "GET",
     cache: "no-store",
   })
-  if (!response.ok) throw new Error(await safeError(response))
+  if (!response.ok) throw await apiError(response)
   return (await response.json()) as { skill: Skill; version: SkillVersion | null }
 }
 
@@ -68,7 +86,7 @@ export async function createSkill(
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify(input),
   })
-  if (!response.ok) throw new Error(await safeError(response))
+  if (!response.ok) throw await apiError(response)
   return (await response.json()) as { skill: Skill; version: SkillVersion }
 }
 
@@ -89,7 +107,7 @@ export async function updateSkillMetadata(
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify(input),
   })
-  if (!response.ok) throw new Error(await safeError(response))
+  if (!response.ok) throw await apiError(response)
   const body = (await response.json()) as { skill: Skill }
   return body.skill
 }
@@ -106,7 +124,7 @@ export async function toggleSkillActive(
       body: JSON.stringify({ is_active: isActive }),
     }
   )
-  if (!response.ok) throw new Error(await safeError(response))
+  if (!response.ok) throw await apiError(response)
   const body = (await response.json()) as { skill: Skill }
   return body.skill
 }
@@ -118,7 +136,7 @@ export async function listSkillVersions(
     `/api/skills/${encodeURIComponent(id)}/versions`,
     { method: "GET", cache: "no-store" }
   )
-  if (!response.ok) throw new Error(await safeError(response))
+  if (!response.ok) throw await apiError(response)
   const body = (await response.json()) as { versions: SkillVersion[] }
   return body.versions ?? []
 }
@@ -141,7 +159,7 @@ export async function createSkillVersion(
       body: JSON.stringify(input),
     }
   )
-  if (!response.ok) throw new Error(await safeError(response))
+  if (!response.ok) throw await apiError(response)
   const body = (await response.json()) as { version: SkillVersion }
   return body.version
 }
@@ -162,7 +180,7 @@ export async function patchSkillVersion(
     `/api/skills/${encodeURIComponent(id)}/versions/${encodeURIComponent(versionId)}`,
     { method: "PATCH", headers, body: JSON.stringify(input) }
   )
-  if (!response.ok) throw new Error(await safeError(response))
+  if (!response.ok) throw await apiError(response)
   const body = (await response.json()) as { version: SkillVersion }
   return body.version
 }
@@ -175,7 +193,7 @@ export async function activateSkillVersion(
     `/api/skills/${encodeURIComponent(id)}/versions/${encodeURIComponent(versionId)}/activate`,
     { method: "POST" }
   )
-  if (!response.ok) throw new Error(await safeError(response))
+  if (!response.ok) throw await apiError(response)
   return (await response.json()) as { skill: Skill; version: SkillVersion }
 }
 
@@ -192,7 +210,7 @@ export async function discardSkillDraft(
     `/api/skills/${encodeURIComponent(id)}/versions/${encodeURIComponent(versionId)}`,
     { method: "DELETE" }
   )
-  if (!response.ok) throw new Error(await safeError(response))
+  if (!response.ok) throw await apiError(response)
 }
 
 export async function rollbackSkillVersion(
@@ -203,7 +221,7 @@ export async function rollbackSkillVersion(
     `/api/skills/${encodeURIComponent(id)}/versions/${encodeURIComponent(versionId)}/rollback`,
     { method: "POST" }
   )
-  if (!response.ok) throw new Error(await safeError(response))
+  if (!response.ok) throw await apiError(response)
   return (await response.json()) as { skill: Skill; version: SkillVersion }
 }
 
@@ -221,7 +239,7 @@ export async function listSkillExamples(id: string): Promise<SkillExample[]> {
     `/api/skills/${encodeURIComponent(id)}/examples`,
     { method: "GET", cache: "no-store" }
   )
-  if (!response.ok) throw new Error(await safeError(response))
+  if (!response.ok) throw await apiError(response)
   const body = (await response.json()) as { examples: SkillExample[] }
   return body.examples ?? []
 }
@@ -238,7 +256,7 @@ export async function createSkillExample(
       body: JSON.stringify(input),
     }
   )
-  if (!response.ok) throw new Error(await safeError(response))
+  if (!response.ok) throw await apiError(response)
   const body = (await response.json()) as { example: SkillExample }
   return body.example
 }
@@ -256,7 +274,7 @@ export async function updateSkillExample(
       body: JSON.stringify(input),
     }
   )
-  if (!response.ok) throw new Error(await safeError(response))
+  if (!response.ok) throw await apiError(response)
   const body = (await response.json()) as { example: SkillExample }
   return body.example
 }
@@ -269,7 +287,7 @@ export async function deleteSkillExample(
     `/api/skills/${encodeURIComponent(id)}/examples/${encodeURIComponent(exampleId)}`,
     { method: "DELETE" }
   )
-  if (!response.ok) throw new Error(await safeError(response))
+  if (!response.ok) throw await apiError(response)
 }
 
 // PROJ-77-γ — skill knowledge links (admin; link a skill to a DMS node).
@@ -286,7 +304,7 @@ export async function listSkillKnowledgeLinks(
     `/api/skills/${encodeURIComponent(id)}/knowledge-links`,
     { method: "GET", cache: "no-store" }
   )
-  if (!response.ok) throw new Error(await safeError(response))
+  if (!response.ok) throw await apiError(response)
   const body = (await response.json()) as { links: SkillKnowledgeLink[] }
   return body.links ?? []
 }
@@ -303,7 +321,7 @@ export async function createSkillKnowledgeLink(
       body: JSON.stringify(input),
     }
   )
-  if (!response.ok) throw new Error(await safeError(response))
+  if (!response.ok) throw await apiError(response)
   const body = (await response.json()) as { link: SkillKnowledgeLink }
   return body.link
 }
@@ -321,7 +339,7 @@ export async function updateSkillKnowledgeLink(
       body: JSON.stringify(input),
     }
   )
-  if (!response.ok) throw new Error(await safeError(response))
+  if (!response.ok) throw await apiError(response)
   const body = (await response.json()) as { link: SkillKnowledgeLink }
   return body.link
 }
@@ -334,5 +352,5 @@ export async function deleteSkillKnowledgeLink(
     `/api/skills/${encodeURIComponent(id)}/knowledge-links/${encodeURIComponent(linkId)}`,
     { method: "DELETE" }
   )
-  if (!response.ok) throw new Error(await safeError(response))
+  if (!response.ok) throw await apiError(response)
 }

@@ -8,6 +8,7 @@ import { toast } from "sonner"
 import { SkillExamplesSection } from "@/components/master-data/skill-examples-section"
 import { SkillKnowledgeLinksSection } from "@/components/master-data/skill-knowledge-links-section"
 import { SkillRollbackDiffDialog } from "@/components/master-data/skill-rollback-diff-dialog"
+import { HistoryTab } from "@/components/audit/history-tab"
 import { SkillTagPicker } from "@/components/master-data/skill-tag-picker"
 import {
   AlertDialog,
@@ -49,6 +50,7 @@ import {
   listSkillVersions,
   patchSkillVersion,
   rollbackSkillVersion,
+  SkillsApiError,
   updateSkillMetadata,
 } from "@/lib/skills/api"
 import {
@@ -128,14 +130,9 @@ function errMsg(err: unknown): string {
  * generic error toast.
  */
 function isConflictError(err: unknown): boolean {
-  if (!(err instanceof Error)) return false
-  const m = err.message.toLowerCase()
-  return (
-    m.includes("changed since you loaded") ||
-    m.includes("open draft") ||
-    m.includes("only draft versions") ||
-    m.includes("concurrent")
-  )
+  // PROJ-77 follow-up: branch on the HTTP status the api wrapper now attaches
+  // (SkillsApiError.status), not on server message text.
+  return err instanceof SkillsApiError && err.status === 409
 }
 
 /** Parse `key=value` lines into a record; empty result = no overrides. */
@@ -591,6 +588,7 @@ export function SkillDetailClient({ skillId }: Props) {
             <TabsList>
               <TabsTrigger value="edit">Bearbeiten</TabsTrigger>
               <TabsTrigger value="preview">Vorschau (Rohtext)</TabsTrigger>
+              <TabsTrigger value="history">Verlauf</TabsTrigger>
             </TabsList>
 
             <TabsContent value="edit" className="space-y-6">
@@ -875,6 +873,21 @@ export function SkillDetailClient({ skillId }: Props) {
                   <pre className="max-h-[32rem] overflow-x-auto overflow-y-auto rounded-md border bg-muted/40 p-4 font-mono text-xs">
                     {previewMarkdown}
                   </pre>
+                </CardContent>
+              </Card>
+            </TabsContent>
+
+            <TabsContent value="history">
+              <Card>
+                <CardHeader>
+                  <CardTitle className="text-base">Verlauf</CardTitle>
+                </CardHeader>
+                <CardContent>
+                  <HistoryTab
+                    entityType="skills"
+                    entityId={skillId}
+                    onMutated={refresh}
+                  />
                 </CardContent>
               </Card>
             </TabsContent>
