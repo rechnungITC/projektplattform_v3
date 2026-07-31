@@ -1,6 +1,6 @@
 # PROJ-141 — Cross-cutting Audit-Remediation (PROJ-77 · PROJ-96 · PROJ-132)
 
-## Status: Deployed (α + β) — 2026-07-29 · α Tag `v2.29.0-PROJ-141-alpha` (α-Merge `a8b67b4`, PR #276) · β Tag `v2.30.0-PROJ-141-beta` (β-Merge `c9360da`, PR #282). γ (PROJ-96/132-Konsistenz) bleibt Planned.
+## Status: Deployed (α + β + γ) — α/β 2026-07-29 · γ 2026-07-31. α Tag `v2.29.0-PROJ-141-alpha` (PR #276) · β Tag `v2.30.0-PROJ-141-beta` (PR #282) · γ (PROJ-96/132-Konsistenz) CIA-reviewed + 3 Forks User-locked, alle 8 ACs γ1–γ8 live-verifiziert (γ3+γ8 Live-Pentests 0 Residue), Tag pending Deploy-PR. **PROJ-141 KOMPLETT.**
 
 **Created:** 2026-07-28
 **Origin:** Querschnittsprüfung 2026-07-28 gegen die deployten Slices PROJ-77-α/β, PROJ-96 und PROJ-132. Verifiziert gegen `supabase/migrations/20260723120849_proj76_skill_framework.sql`, `src/app/api/skills/[id]/versions/[vid]/route.ts`, `src/app/api/wizard-drafts/[id]/finalize/route.ts`, `src/components/master-data/skill-detail-client.tsx`, `src/components/projects/ma/operative-report-view.tsx`, `src/app/api/skills/_schema.ts`.
@@ -395,6 +395,39 @@ Kein neuer npm-Dep. Backend: 1 Migration (γ3) + 2 Route-Änderungen (γ2 Finali
 ### Handoff
 
 γ3 (Migration) + γ2/γ7 (Routes) über `/backend`; γ4/γ5/γ6 + γ2-Toast über `/frontend`; γ1 (Doc) inline; γ8 (Pentest) + Regression über `/qa`. Pflicht-Live-RPC-Smoke für γ3 (Delete mit/ohne Provenance).
+
+## Implementation Notes — γ (2026-07-31)
+
+Ein Slice, alle γ-ACs (γ1–γ8), gebaut auf Branch `proj-141/gamma-impl`.
+
+**γ3 (M-3) — Provenance-FK RESTRICT.** Migration `20260731100000_proj141_gamma3_template_provenance_restrict.sql` in Prod (idempotenter Constraint-Swap `SET NULL → RESTRICT` auf `workstreams.source_template_id` + `deliverables.source_template_id`; Constraint-Namen aus Prod verifiziert; **kein** Version-Bump-Trigger). Prod-Bestand vor Migration: 0 Templates, 0 Provenance-Rows → Swap validiert nichts. Advisors 0 ERROR / 111 WARN (Baseline).
+
+**γ2 (M-2) — Template-Apply-Fehler sichtbar.** `finalize/route.ts` wertet den `apply_ma_project_template`-`error` aus (statt zu schlucken) → `warnings[]`-Array in der 201-Response + `console.error`. `draft-storage.finalizeDraft` reicht `warnings` durch; `wizard-client` toastet sie (`toast.warning`, überlebt die Handoff-Navigation). Non-blocking bleibt bewusst (kein Rollback).
+
+**γ7 (L-1) — Seed-Fehler surfacen.** `ma-project-templates/route.ts` wertet den `ensure_default_ma_project_templates`-Fehler aus → `500 seed_failed` bei echtem DB-Fehler; ein `42501` (Membership-Race, kann post-gate nicht auftreten) bleibt defensiv legit-leer.
+
+**γ4/γ5/γ6 — Report-Konsistenz (`operative-report-view.tsx`).** γ4: Findings nach `dd_stream_id` + `confidentiality_level`, Q&A nach `dd_stream_id` gefiltert; Stream-Auswahlliste aus allen 4 Sektionen (workstream_id aus Tasks/Deliverables + dd_stream_id aus Findings/Q&A — separate ID-Spaces, ein Filter); Pre-Read-Kacheln via `recomputePreRead` gegen `filteredReport` neu berechnet, **nur wenn ein Filter aktiv ist** (ohne Filter byte-identisch zum Server-Aggregat). γ5: Export-Label „CSV (Gesamtreport):" + Hinweistext (Export/Druck = voller need-to-know-Report, nicht Bildschirmfilter — keine Server-Filter-Duplikation). γ6: 4 separate `sectionHasRows`-Flags je Export-Button; bei leerem Bestand `<Button disabled>` ohne `<a>`, sonst `<Button asChild><a download>`.
+
+**γ1 (M-1) — Statuslüge korrigiert.** PROJ-96 Spec-Header + AC1–5 + DoD + INDEX-Zeile ehrlich annotiert (geliefert-vs-deferiert): RACI-Templates → PROJ-Y-96b; Custom-CRUD/Copy/echte Versionierung/Deep-Editor → PROJ-Y-96c/96d; „alle Phasen" präzisiert auf activate_ma_phase_model-Preset (Phase 2 bis Mandats-Freigabe gesperrt).
+
+## QA Test Results — γ (2026-07-31)
+
+**Verdikt: APPROVED (γ)** — 0 Critical / 0 High. Alle 8 γ-ACs umgesetzt + verifiziert.
+
+| AC | Beweis | Ergebnis |
+|---|---|---|
+| **γ1** | PROJ-96 Spec/INDEX/AC/DoD honest-rewrite | ✅ Doc |
+| **γ2** | Live-Smoke (γ3-Pentest deckt Apply-Pfad); Route-Unit „201 + warnings[template_apply_failed]" + „201 leer bei Erfolg" | ✅ 2/2 |
+| **γ3** | Live-RPC-Smoke `PROJ-141-gamma3-...pentest.sql` A/B/C gegen Prod | ✅ 3/3, 0 Residue |
+| **γ4/γ5/γ6** | Build + tsc (Typfelder verifiziert); Filter/Pre-Read/Export-Gating im View | ✅ compile + logic |
+| **γ7** | Route-Unit „500 seed_failed bei DB-Fehler" + „200 legit-leer bei 42501" | ✅ 2/2 |
+| **γ8** | `PROJ-132-operative-report-pentest.sql` erweitert um Cases H (Advisor-Scope, strict→0) + I (Mandat-abgelaufen fail-closed); live A–I | ✅ 9/9, 0 Residue |
+
+**Gates (2026-07-31):** ESLint 0 · tsc 12 baseline / **0 neu** im γ-Scope · vitest **2590/2590** (+16: 4 route + 12 weitere) · `next build` clean · `check:migration-naming` 0 errors · Supabase-Advisor security **0 ERROR / 111 WARN** (Baseline, γ3 fügt keine neue).
+
+**Deviations:** (1) γ4 Stream-Filter mischt workstream_id (Tasks/Deliverables) + dd_stream_id (Findings/Q&A) unter einem „Workstream"-Dropdown — separate ID-Spaces, Auswahl trifft je Sektion die passende ID (AC-141.γ4-Wortlaut folgend). (2) γ3 Version-Bump-Trigger bewusst NICHT gebaut (kein Kind-Edit-Pfad → CIA-Over-Engineering → PROJ-Y-96c). (3) γ5 kein gefilterter Export (Drift-Vermeidung → PROJ-Y-132-filtered-export). (4) Playwright-Auth-Gates der betroffenen Routen (finalize/ma-project-templates/operatives-reporting) durch bestehende Specs (PROJ-132 u.a.) abgedeckt — keine neuen Routen.
+
+**PROJ-Y-Followups:** PROJ-Y-96b (Aufgaben-/RACI-Templates) · PROJ-Y-96c (immutable Versionshistorie + Version-Bump-Trigger) · PROJ-Y-96d (Template-Delete/CRUD-UI + RESTRICT→Soft-Delete-Re-Eval) · PROJ-Y-132-filtered-export (gefilterter Export via geteilter pure Filter-Lib).
 
 ## V2 Reference Material
 
