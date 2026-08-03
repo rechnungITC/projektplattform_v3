@@ -5,16 +5,19 @@ import {
   getAuthenticatedUserId,
   requireProjectAccess,
 } from "@/app/api/_lib/route-helpers"
+import { parseOperativeReportFilters } from "@/app/api/projects/[id]/operative-report/route"
 
-// PROJ-132 — CSV export of the operative reporting sections (AC: PDF/Excel export).
+// PROJ-132 + PROJ-141-γ4/γ5 — CSV export of the operative reporting sections.
 //
-// GET /api/projects/[id]/operative-report/export?section=tasks|findings|qa|deliverables
+// GET /api/projects/[id]/operative-report/export?section=<...>
+//   &workstream_id=<uuid>&owner_id=<uuid>&phase_id=<uuid>&classification=<enum>
 //
 // Single source of truth: calls the SAME SECURITY INVOKER RPC as the page
 // (operative_report), so every export is RLS-scoped to the caller — a row the
-// caller may not see (need-to-know / advisor stream) is never exported. Opens in
-// Excel; true .xlsx is out of scope (no new dep, repo convention). Responsible-
-// user ids are resolved to names via profiles (readable under the caller RLS).
+// caller may not see (need-to-know / advisor stream) is never exported.
+// γ4/γ5: filter query params are threaded to the RPC in-DB so the CSV is
+// consistent with the on-screen view (no more byte-identical CSV regardless of
+// filter choice). Opens in Excel; true .xlsx is out of scope.
 
 const SECTIONS = ["tasks", "findings", "qa", "deliverables"] as const
 type Section = (typeof SECTIONS)[number]
@@ -105,12 +108,23 @@ export async function GET(
     return apiError("validation_error", "Invalid project id.", 400, "id")
   }
 
-  const sectionParam = new URL(request.url).searchParams.get("section") ?? "tasks"
+  const url = new URL(request.url)
+  const sectionParam = url.searchParams.get("section") ?? "tasks"
   const parsedSection = z.enum(SECTIONS).safeParse(sectionParam)
   if (!parsedSection.success) {
     return apiError("validation_error", "Invalid section.", 400, "section")
   }
   const section = parsedSection.data
+
+  const parsedFilters = parseOperativeReportFilters(url.searchParams)
+  if ("error" in parsedFilters) {
+    return apiError(
+      "validation_error",
+      `Invalid ${parsedFilters.field}.`,
+      400,
+      parsedFilters.field
+    )
+  }
 
   const { userId, supabase } = await getAuthenticatedUserId()
   if (!userId) return apiError("unauthorized", "Not signed in.", 401)
@@ -120,6 +134,7 @@ export async function GET(
 
   const { data, error } = await supabase.rpc("operative_report", {
     p_project_id: projectId,
+    ...parsedFilters.filters,
   })
   if (error) return apiError("export_failed", error.message, 500)
 

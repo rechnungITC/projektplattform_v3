@@ -21,13 +21,14 @@ import {
 import { useAuth } from "@/hooks/use-auth"
 import { useOperativeReport } from "@/hooks/use-operative-report"
 import { useTenantMembers } from "@/hooks/use-tenant-members"
-import { operativeReportExportUrl } from "@/lib/ma-project/operative-report-api"
+import {
+  operativeReportExportUrl,
+  operativeReportPrintUrl,
+} from "@/lib/ma-project/operative-report-api"
 import type { MaConfidentialityLevel } from "@/types/confidentiality"
 import type {
   OperativeExportSection,
-  OperativeFindingRow,
-  OperativeFindingStreamAgg,
-  OperativeReport,
+  OperativeReportFilters,
 } from "@/types/operative-report"
 
 import { OperativeReportBody, LEVEL_LABEL } from "./operative-report-body"
@@ -35,42 +36,6 @@ import { OperativeReportBody, LEVEL_LABEL } from "./operative-report-body"
 const ALL = "all"
 const NO_OWNER = "__no_owner__"
 const CONF_LEVELS: MaConfidentialityLevel[] = ["standard", "confidential", "strict"]
-
-/** Re-aggregate the per-stream severity table from (classification-)filtered findings. */
-function aggregateFindingStreams(
-  findings: OperativeFindingRow[]
-): OperativeFindingStreamAgg[] {
-  const map = new Map<string, OperativeFindingStreamAgg>()
-  for (const f of findings) {
-    const cur =
-      map.get(f.dd_stream_id) ??
-      {
-        dd_stream_id: f.dd_stream_id,
-        stream_label: f.stream_label,
-        open_total: 0,
-        sev_niedrig: 0,
-        sev_mittel: 0,
-        sev_hoch: 0,
-        sev_deal_breaker: 0,
-        eur_sum: 0,
-        null_eur_count: 0,
-      }
-    cur.open_total += 1
-    if (f.severity === "niedrig") cur.sev_niedrig += 1
-    else if (f.severity === "mittel") cur.sev_mittel += 1
-    else if (f.severity === "hoch") cur.sev_hoch += 1
-    else if (f.severity === "deal_breaker") cur.sev_deal_breaker += 1
-    if (f.economic_impact_eur === null) cur.null_eur_count += 1
-    else cur.eur_sum += Number(f.economic_impact_eur)
-    map.set(f.dd_stream_id, cur)
-  }
-  return Array.from(map.values()).sort(
-    (a, b) =>
-      b.sev_deal_breaker - a.sev_deal_breaker ||
-      b.sev_hoch - a.sev_hoch ||
-      (a.stream_label ?? "").localeCompare(b.stream_label ?? "")
-  )
-}
 
 const EXPORT_SECTIONS: { section: OperativeExportSection; label: string }[] = [
   { section: "tasks", label: "Aufgaben" },
@@ -81,13 +46,30 @@ const EXPORT_SECTIONS: { section: OperativeExportSection; label: string }[] = [
 
 export function OperativeReportView({ projectId }: { projectId: string }) {
   const { currentTenant } = useAuth()
-  const { report, loading, error, refresh } = useOperativeReport(projectId)
   const { members } = useTenantMembers(currentTenant?.id)
 
   const [fWorkstream, setFWorkstream] = React.useState(ALL)
   const [fOwner, setFOwner] = React.useState(ALL)
   const [fPhase, setFPhase] = React.useState(ALL)
   const [fClass, setFClass] = React.useState(ALL)
+
+  // Filters → typed shape for the hook + URL builders.
+  // NO_OWNER is a UI-only sentinel; server-side it does not map to any RPC arg
+  // (no "unassigned owner" filter — Deviation D-γ6 documented in spec).
+  const filters = React.useMemo<OperativeReportFilters>(() => ({
+    workstream_id: fWorkstream === ALL ? null : fWorkstream,
+    owner_id: fOwner === ALL || fOwner === NO_OWNER ? null : fOwner,
+    phase_id: fPhase === ALL ? null : fPhase,
+    classification:
+      fClass === ALL
+        ? null
+        : (fClass as OperativeReportFilters["classification"]),
+  }), [fWorkstream, fOwner, fPhase, fClass])
+
+  const { report, loading, error, refresh } = useOperativeReport(
+    projectId,
+    filters
+  )
 
   const userName = React.useMemo(() => {
     const m = new Map<string, string>()
@@ -97,7 +79,11 @@ export function OperativeReportView({ projectId }: { projectId: string }) {
     return m
   }, [members])
 
-  // Filter options derived from the (need-to-know-filtered) report rows.
+  // Dropdown options come from the (need-to-know-filtered) RPC report, not
+  // client-computed — the filter axes for workstream/owner/phase are structural
+  // (tasks + deliverables only), so we derive the options from those two
+  // sections. Findings/Q&A workstream labels live under dd_streams — a separate
+  // catalog with no FK linkage to workstreams (see Tech Design D-γ4).
   const options = React.useMemo(() => {
     const workstreams = new Map<string, string>()
     const owners = new Set<string>()
@@ -107,9 +93,14 @@ export function OperativeReportView({ projectId }: { projectId: string }) {
       ...(report?.deliverables_status.deliverables ?? []),
     ]
     for (const r of rows) {
-      if (r.workstream_id) workstreams.set(r.workstream_id, r.workstream_label ?? r.workstream_id.slice(0, 8))
+      if (r.workstream_id)
+        workstreams.set(
+          r.workstream_id,
+          r.workstream_label ?? r.workstream_id.slice(0, 8)
+        )
       if (r.responsible_user_id) owners.add(r.responsible_user_id)
-      if (r.phase_id) phases.set(r.phase_id, r.phase_name ?? r.phase_id.slice(0, 8))
+      if (r.phase_id)
+        phases.set(r.phase_id, r.phase_name ?? r.phase_id.slice(0, 8))
     }
     return {
       workstreams: Array.from(workstreams, ([id, label]) => ({ id, label })),
@@ -118,53 +109,47 @@ export function OperativeReportView({ projectId }: { projectId: string }) {
     }
   }, [report, userName])
 
-  // Apply the shared filter to a task/deliverable row (all four dimensions).
-  const matchesRow = React.useCallback(
-    (r: {
-      workstream_id: string | null
-      responsible_user_id: string | null
-      phase_id: string | null
-      confidentiality_level: MaConfidentialityLevel
-    }) => {
-      if (fWorkstream !== ALL && r.workstream_id !== fWorkstream) return false
-      if (fOwner !== ALL) {
-        if (fOwner === NO_OWNER) {
-          if (r.responsible_user_id) return false
-        } else if (r.responsible_user_id !== fOwner) return false
-      }
-      if (fPhase !== ALL && r.phase_id !== fPhase) return false
-      if (fClass !== ALL && r.confidentiality_level !== fClass) return false
-      return true
-    },
-    [fWorkstream, fOwner, fPhase, fClass]
-  )
-
-  const filteredReport = React.useMemo<OperativeReport | null>(() => {
+  // Special-case: if the FE user selects NO_OWNER, we filter client-side to
+  // "responsible_user_id === null" over the already server-filtered rows.
+  // This is the only remaining client-side filter (semantic parity — there's
+  // no server RPC arg for "unassigned owner").
+  const displayReport = React.useMemo(() => {
     if (!report) return null
-    const tasks = report.tasks_overdue.tasks.filter(matchesRow)
-    const deliverables = report.deliverables_status.deliverables.filter(matchesRow)
-    // Findings only carry a classification (no workstream/owner/phase) → the
-    // classification filter re-aggregates them; the other filters don't apply.
-    const findings =
-      fClass === ALL
-        ? report.findings_by_severity.findings
-        : report.findings_by_severity.findings.filter((f) => f.confidentiality_level === fClass)
+    if (fOwner !== NO_OWNER) return report
     return {
       ...report,
-      tasks_overdue: { ...report.tasks_overdue, tasks },
-      findings_by_severity: {
-        findings,
-        streams:
-          fClass === ALL
-            ? report.findings_by_severity.streams
-            : aggregateFindingStreams(findings),
+      tasks_overdue: {
+        ...report.tasks_overdue,
+        tasks: report.tasks_overdue.tasks.filter(
+          (t) => t.responsible_user_id === null
+        ),
       },
-      deliverables_status: { ...report.deliverables_status, deliverables },
-      // qa_by_stream is a stream-level aggregate with no per-row classification → shown as-is.
+      deliverables_status: {
+        ...report.deliverables_status,
+        deliverables: report.deliverables_status.deliverables.filter(
+          (d) => d.responsible_user_id === null
+        ),
+      },
     }
-  }, [report, matchesRow, fClass])
+  }, [report, fOwner])
 
-  const hasRows = (report?.tasks_overdue.tasks.length ?? 0) > 0
+  // Per-section hasRows — no longer a single boolean gating all four buttons.
+  const hasOverdueTasks =
+    (displayReport?.tasks_overdue.tasks.length ?? 0) > 0
+  const hasFindings =
+    (displayReport?.findings_by_severity.findings.length ?? 0) > 0
+  const hasQa = (displayReport?.qa_by_stream.length ?? 0) > 0
+  const hasDeliverables =
+    (displayReport?.deliverables_status.deliverables.length ?? 0) > 0
+
+  const hasRowsBySection: Record<OperativeExportSection, boolean> = {
+    tasks: hasOverdueTasks,
+    findings: hasFindings,
+    qa: hasQa,
+    deliverables: hasDeliverables,
+  }
+
+  const printUrl = operativeReportPrintUrl(projectId, filters)
 
   return (
     <Card>
@@ -177,11 +162,7 @@ export function OperativeReportView({ projectId }: { projectId: string }) {
           </CardDescription>
         </div>
         <Button asChild size="sm" variant="outline">
-          <a
-            href={`/projects/${projectId}/operative-report/print`}
-            target="_blank"
-            rel="noopener noreferrer"
-          >
+          <a href={printUrl} target="_blank" rel="noopener noreferrer">
             <Printer className="mr-2 h-4 w-4" aria-hidden /> Drucken / PDF
           </a>
         </Button>
@@ -237,20 +218,39 @@ export function OperativeReportView({ projectId }: { projectId: string }) {
 
           <div className="ml-auto flex flex-wrap items-center gap-1.5">
             <span className="text-xs text-muted-foreground">CSV:</span>
-            {EXPORT_SECTIONS.map((e) => (
-              <Button
-                key={e.section}
-                asChild
-                size="sm"
-                variant="outline"
-                disabled={!hasRows}
-              >
-                <a href={operativeReportExportUrl(projectId, e.section)} download>
+            {EXPORT_SECTIONS.map((e) =>
+              hasRowsBySection[e.section] ? (
+                <Button
+                  key={e.section}
+                  asChild
+                  size="sm"
+                  variant="outline"
+                >
+                  <a
+                    href={operativeReportExportUrl(
+                      projectId,
+                      e.section,
+                      filters
+                    )}
+                    download
+                  >
+                    <Download className="h-3.5 w-3.5" aria-hidden />
+                    {e.label}
+                  </a>
+                </Button>
+              ) : (
+                <Button
+                  key={e.section}
+                  size="sm"
+                  variant="outline"
+                  disabled
+                  aria-disabled="true"
+                >
                   <Download className="h-3.5 w-3.5" aria-hidden />
                   {e.label}
-                </a>
-              </Button>
-            ))}
+                </Button>
+              )
+            )}
           </div>
         </div>
 
@@ -268,8 +268,8 @@ export function OperativeReportView({ projectId }: { projectId: string }) {
               Erneut versuchen
             </Button>
           </div>
-        ) : filteredReport ? (
-          <OperativeReportBody report={filteredReport} userName={userName} />
+        ) : displayReport ? (
+          <OperativeReportBody report={displayReport} userName={userName} />
         ) : null}
       </CardContent>
     </Card>

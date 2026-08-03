@@ -159,3 +159,19 @@ export const EMPTY_OPERATIVE_REPORT: OperativeReport = {
 
 /** Export sections for the CSV endpoint (?section=). */
 export type OperativeExportSection = "tasks" | "findings" | "qa" | "deliverables"
+
+/**
+ * PROJ-141-γ4/γ5 — filter args threaded from FE view → GET route → RPC (in-DB
+ * filtering, Option Alpha). All four axes are optional. When all are `null`
+ * the report is byte-identical to the pre-γ4 output (PROJ-132 pentest passes
+ * verbatim). Semantics:
+ *   - `classification` cross-cuts all four sections + pre-read
+ *   - `workstream_id` / `owner_id` / `phase_id` apply to tasks + deliverables
+ *     only (findings/qa have no FK on those axes)
+ */
+export interface OperativeReportFilters {
+  workstream_id?: string | null
+  owner_id?: string | null
+  phase_id?: string | null
+  classification?: "standard" | "confidential" | "strict" | null
+}

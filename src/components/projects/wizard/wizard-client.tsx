@@ -436,7 +436,21 @@ export function WizardClient({ draftId }: WizardClientProps) {
         setSubmitting(false)
         return
       }
-      const project = await finalizeDraft(draft.id)
+      const result = await finalizeDraft(draft.id)
+      const project = result.project
+      // PROJ-141-γ2 (M-2): surface non-fatal finalize warnings (e.g. the
+      // M&A project template failed to apply). The project was created
+      // successfully; the user can retry via the templates card in the
+      // project room (/api/projects/[id]/apply-template).
+      const templateWarning = result.warnings.find(
+        (w) => w.code === "template_apply_failed"
+      )
+      if (templateWarning) {
+        toast.warning("Projektvorlage nicht übernommen", {
+          description: `Projekt angelegt, Vorlage konnte nicht angewendet werden: ${templateWarning.message}. Sie können die Vorlage nachträglich im Projekt-Raum anwenden.`,
+          duration: 10000,
+        })
+      }
       // PROJ-70-ε / PROJ-90 — when a kickoff file was uploaded, hand off into
       // the project graph with the orchestrated "Projekt befüllen" conductor
       // auto-opened + auto-generating Backlog + Stakeholder + Risiken from

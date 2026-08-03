@@ -204,4 +204,33 @@ describe("GET /api/projects/[id]/operative-report/export", () => {
     })
     expect((await get("tasks")).status).toBe(500)
   })
+
+  it("PROJ-141-γ4/γ5 — threads filter query params to the RPC", async () => {
+    getUserMock.mockResolvedValue({ data: { user: { id: ME } } })
+    queueProjectView()
+    rpcMock.mockResolvedValue({
+      data: { qa_by_stream: [] },
+      error: null,
+    })
+    const ws = "11111111-2222-4222-8222-333333333333"
+    const url = `http://t/?section=qa&workstream_id=${ws}&classification=confidential`
+    const res = await GET(new Request(url), ctx())
+    expect(res.status).toBe(200)
+    expect(rpcMock).toHaveBeenCalledWith("operative_report", {
+      p_project_id: PROJECT,
+      p_workstream_id: ws,
+      p_owner_id: null,
+      p_phase_id: null,
+      p_classification: "confidential",
+    })
+  })
+
+  it("PROJ-141-γ4/γ5 — 400 on malformed filter query params", async () => {
+    getUserMock.mockResolvedValue({ data: { user: { id: ME } } })
+    const res = await GET(
+      new Request("http://t/?section=tasks&owner_id=not-a-uuid"),
+      ctx()
+    )
+    expect(res.status).toBe(400)
+  })
 })

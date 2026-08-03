@@ -123,10 +123,27 @@ export async function discardDraft(id: string): Promise<void> {
 }
 
 /**
- * Atomic-ish finalize — backend creates the project, runs the auto-lead
- * bootstrap, then deletes the draft. Returns the new project id.
+ * Non-fatal warnings returned by finalize (PROJ-141-γ2): e.g. the M&A
+ * project template failed to apply — the project still exists and the user
+ * can retry via the templates card in the project room.
  */
-export async function finalizeDraft(id: string): Promise<{ id: string }> {
+export interface FinalizeWarning {
+  code: "template_apply_failed" | string
+  message: string
+}
+
+export interface FinalizeResult {
+  project: { id: string }
+  warnings: FinalizeWarning[]
+}
+
+/**
+ * Atomic-ish finalize — backend creates the project, runs the auto-lead
+ * bootstrap, then deletes the draft. Returns the new project id AND any
+ * non-fatal warnings (best-effort steps that failed but didn't block the
+ * project creation).
+ */
+export async function finalizeDraft(id: string): Promise<FinalizeResult> {
   const response = await fetch(
     `/api/wizard-drafts/${encodeURIComponent(id)}/finalize`,
     { method: "POST" }
@@ -134,6 +151,9 @@ export async function finalizeDraft(id: string): Promise<{ id: string }> {
   if (!response.ok) {
     throw new Error(await safeError(response))
   }
-  const body = (await response.json()) as { project: { id: string } }
-  return body.project
+  const body = (await response.json()) as {
+    project: { id: string }
+    warnings?: FinalizeWarning[]
+  }
+  return { project: body.project, warnings: body.warnings ?? [] }
 }

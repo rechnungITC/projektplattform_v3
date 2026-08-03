@@ -304,3 +304,92 @@ describe("POST finalize — PROJ-135 clarifying Q&A persist (AC-135.4/4b/11)", (
     expect(kiRunsUpdateChain.is).toHaveBeenCalledWith("project_id", null)
   })
 })
+
+describe("POST finalize — PROJ-141-γ2 apply_ma_project_template warnings", () => {
+  const TEMPLATE_ID = "77777777-7777-4777-8777-777777777777"
+  const SPONSOR_ID = "88888888-8888-4888-8888-888888888888"
+
+  function seedMaHappyPath(templateId: string | null | "not-a-uuid" = TEMPLATE_ID) {
+    getUserMock.mockResolvedValue({ data: { user: { id: USER_ID } } })
+    draftReadChain.maybeSingle.mockResolvedValue({
+      data: {
+        id: DRAFT_ID,
+        tenant_id: TENANT_ID,
+        data: {
+          name: "M&A Deal Alpha",
+          description: "Buy-side objective.",
+          project_type: "ma",
+          project_method: "waterfall",
+          responsible_user_id: USER_ID,
+          ma_foundation: {
+            sponsor_user_id: SPONSOR_ID,
+            template_id: templateId,
+            deal_side: "buy",
+          },
+        },
+      },
+      error: null,
+    })
+    projectInsertChain.single.mockResolvedValue({
+      data: { id: PROJECT_ID, tenant_id: TENANT_ID, name: "M&A Deal Alpha" },
+      error: null,
+    })
+    // Ensure the second bootstrap RPC (create_ma_project_profile) succeeds
+    // while the third (apply_ma_project_template) fails to test the warnings
+    // path. Sequence per route.ts: transition + bootstrap_project_role + auto-
+    // lead_bootstrap + create_ma_project_profile + apply_ma_project_template.
+    rpcMock.mockResolvedValue({ error: null })
+    csUpdateResult = { data: null, error: null }
+    csSelectResult = { data: null, error: null }
+    kiRunsUpdateChain.is.mockResolvedValue({ data: null, error: null })
+  }
+
+  it("returns warnings[] when apply_ma_project_template fails (AC-141.γ2)", async () => {
+    seedMaHappyPath()
+    // Fail ONLY the apply_ma_project_template call — succeed everything else.
+    rpcMock.mockImplementation((fn: string) => {
+      if (fn === "apply_ma_project_template") {
+        return Promise.resolve({
+          error: { code: "P0001", message: "template not found or inactive" },
+        })
+      }
+      return Promise.resolve({ error: null })
+    })
+
+    const res = await POST(makeRequest(), ctx())
+    expect(res.status).toBe(201)
+    const body = (await res.json()) as {
+      project: { id: string }
+      warnings?: Array<{ code: string; message: string }>
+    }
+    expect(body.project.id).toBe(PROJECT_ID)
+    expect(body.warnings).toBeDefined()
+    expect(body.warnings?.[0]?.code).toBe("template_apply_failed")
+    expect(body.warnings?.[0]?.message).toContain("template not found")
+  })
+
+  it("omits warnings[] on happy path (template applies cleanly)", async () => {
+    seedMaHappyPath()
+    // All RPCs succeed.
+    rpcMock.mockResolvedValue({ error: null })
+    const res = await POST(makeRequest(), ctx())
+    expect(res.status).toBe(201)
+    const body = (await res.json()) as {
+      project: { id: string }
+      warnings?: unknown
+    }
+    expect(body.project.id).toBe(PROJECT_ID)
+    expect(body.warnings).toBeUndefined()
+  })
+
+  it("skips apply_ma_project_template entirely when template_id is not a UUID", async () => {
+    seedMaHappyPath(null)
+    rpcMock.mockResolvedValue({ error: null })
+    const res = await POST(makeRequest(), ctx())
+    expect(res.status).toBe(201)
+    const applyCalls = rpcMock.mock.calls.filter(
+      ([fn]) => fn === "apply_ma_project_template"
+    )
+    expect(applyCalls).toHaveLength(0)
+  })
+})

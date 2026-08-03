@@ -233,6 +233,14 @@ export async function POST(_request: Request, ctx: Ctx) {
   // is already usable without it, and an admin can apply a template later via
   // /api/projects/[id]/apply-template — so a failure here must NOT roll back
   // the project or block finalize (mirrors the optional context-source step).
+  //
+  // PROJ-141-γ2 (M-2): the RPC error was previously silently swallowed →
+  // the wizard reported success while the project stayed structure-less.
+  // We now surface any failure via the additive `warnings[]` in the response;
+  // the client toasts a "Template not applied" hint and links to the template
+  // card in the project room (nachträgliche Anwendung via
+  // /api/projects/[id]/apply-template ist möglich).
+  const warnings: Array<{ code: string; message: string }> = []
   if (project && maFoundation) {
     const templateId = maFoundation.template_id
     const isUuid =
@@ -241,10 +249,19 @@ export async function POST(_request: Request, ctx: Ctx) {
         templateId
       )
     if (isUuid) {
-      await supabase.rpc("apply_ma_project_template", {
-        p_project_id: project.id,
-        p_template_id: templateId,
-      })
+      const { error: applyErr } = await supabase.rpc(
+        "apply_ma_project_template",
+        {
+          p_project_id: project.id,
+          p_template_id: templateId,
+        }
+      )
+      if (applyErr) {
+        warnings.push({
+          code: "template_apply_failed",
+          message: applyErr.message,
+        })
+      }
     }
   }
 
@@ -340,5 +357,8 @@ export async function POST(_request: Request, ctx: Ctx) {
   // 5) Delete the draft (best-effort; orphan drafts are recoverable).
   await supabase.from("project_wizard_drafts").delete().eq("id", id)
 
-  return NextResponse.json({ project }, { status: 201 })
+  return NextResponse.json(
+    warnings.length > 0 ? { project, warnings } : { project },
+    { status: 201 }
+  )
 }

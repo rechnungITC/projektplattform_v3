@@ -14,7 +14,15 @@ summary_for_jira: "[A3] Projekt-Templates für Standardphasen bereitstellen"
 
 # PROJ-96: Projekt-Templates für Standardphasen bereitstellen
 
-## Status: Deployed (2026-07-27 — Tag `v2.26.0-PROJ-96`)
+## Status: Deployed (MVP-Cut, 2026-07-27 — Tag `v2.26.0-PROJ-96`)
+
+> **PROJ-141-γ1 Bookkeeping-Klarstellung (2026-07-31):** Als „Deployed" gilt bewusst nur der **MVP-Cut** = Katalog (Read-only Liste + Default-Seed) + Standard-Apply auf Phasen + Workstreams + Deliverables via `apply_ma_project_template`. Bewusst ausserhalb dieser Slice und in eigenen pilotgetriebenen Followups fortgeführt:
+> - **PROJ-Y-96b** — RACI-Templates (Kind-Tabelle `ma_template_raci`, Copy-Erweiterung, CIA-Pflicht wg. Cross-Slice-Risk zu PROJ-97)
+> - **PROJ-Y-96c** — Freigabesperre + immutable Versionshistorie (`supersedes_template_id`, `is_current`, Publish-RPC, Immutability-Trigger)
+> - **PROJ-Y-96d** — Custom-Template-Deep-Editor (Multi-Level-Tree-Editor + Validierung + neue Admin-APIs POST/PATCH/DELETE)
+> - **PROJ-Y-96e** — Aufgaben-Templates (`ma_template_tasks`, Mirror `ma_template_workstreams`-Rezept + Copy-Erweiterung + Herkunfts-Stempel auf `work_items`)
+>
+> PROJ-141-γ hat parallel dazu **γ2** (`apply_ma_project_template`-Fehler in Wizard-Finalize sichtbar via additivem `warnings[]`-Response-Feld + Sonner-Toast) und **γ3** (Provenance-Härtung: `ma_project_profiles.source_template_*` Snapshot-Spalten + FK ON DELETE RESTRICT auf `workstreams`/`deliverables`/`ma_project_profiles`) live gestellt — beide sind Bug-Fixes am hier gelockten MVP-Scope, kein neuer AC-Umfang.
 
 > **Post-Deploy-Audit 2026-07-28 — offene Remediation → [PROJ-141](PROJ-141-cross-cutting-audit-remediation-77-96-132.md):**
 > Querschnittsprüfung fand eine **Statusinkonsistenz**: die Spec verlangt in Original-AC1/AC2/AC3 Phasen · **Aufgaben** · Deliverables · **Rollen (RACI)** sowie **Anlegen/Kopieren/Versionieren eigener Templates**; in Prod live sind nur Phasenaktivierung + Workstreams + Deliverables + Default-Seed + read-only Katalog. Aufgaben-Templates, RACI-Templates, Custom-CRUD, Copy, echte Versionierung + Änderungsverlauf, Template-Editor fehlen. Die Story ist trotzdem als "PRODUCTION-READY" markiert.

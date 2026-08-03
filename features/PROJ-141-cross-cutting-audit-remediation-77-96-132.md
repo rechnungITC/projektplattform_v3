@@ -1,6 +1,6 @@
 # PROJ-141 — Cross-cutting Audit-Remediation (PROJ-77 · PROJ-96 · PROJ-132)
 
-## Status: Deployed (α + β) — 2026-07-29 · α Tag `v2.29.0-PROJ-141-alpha` (α-Merge `a8b67b4`, PR #276) · β Tag `v2.30.0-PROJ-141-beta` (β-Merge `c9360da`, PR #282). γ (PROJ-96/132-Konsistenz) bleibt Planned.
+## Status: Deployed (α + β) — 2026-07-29 · α Tag `v2.29.0-PROJ-141-alpha` (α-Merge `a8b67b4`, PR #276) · β Tag `v2.30.0-PROJ-141-beta` (β-Merge `c9360da`, PR #282). γ (PROJ-96/132-Konsistenz) — **Approved 2026-07-31** (Option Alpha locked; alle 5 γ-Slices γ1-γ6 implementiert, QA PASS, pending Deploy).
 
 **Created:** 2026-07-28
 **Origin:** Querschnittsprüfung 2026-07-28 gegen die deployten Slices PROJ-77-α/β, PROJ-96 und PROJ-132. Verifiziert gegen `supabase/migrations/20260723120849_proj76_skill_framework.sql`, `src/app/api/skills/[id]/versions/[vid]/route.ts`, `src/app/api/wizard-drafts/[id]/finalize/route.ts`, `src/components/master-data/skill-detail-client.tsx`, `src/components/projects/ma/operative-report-view.tsx`, `src/app/api/skills/_schema.ts`.
@@ -338,6 +338,290 @@ Production-ready für α. β (PROJ-77-UX: M-7/M-8/L-5 + β4 Discard-UI verdrahte
 - **Env/Secret:** keine Änderung.
 - **Rollback-Plan:** reine FE-Änderung — Vercel-Deployment-Promotion auf pre-#282 SHA (`c7e5f27`) rollt die UI zurück, α-Backend/Migrationen bleiben unangetastet. Kein Migration-Rollback nötig.
 - **Followups:** γ (PROJ-96/132 Konsistenz) bleibt in dieser Spec Planned.
+
+## Implementation Notes — γ (2026-07-31)
+
+### γ3 Provenance-Härtung — /backend live
+
+- Migration `20260731100000_proj141_gamma_template_provenance` in Prod (idempotent, minute-rastered).
+- Neue Snapshot-Spalten auf `ma_project_profiles`: `source_template_id` (FK → `ma_project_templates` ON DELETE **RESTRICT**), `source_template_label` (text), `source_template_version_snapshot` (integer), `source_template_applied_at` (timestamptz).
+- FKs auf `workstreams.source_template_id` und `deliverables.source_template_id` von ON DELETE SET NULL → **RESTRICT** umgestellt (aligned enforcement).
+- `apply_ma_project_template`-RPC angepasst: schreibt die drei Snapshot-Spalten atomar im selben SECURITY-DEFINER-Aufruf (mirror-Präzedenz: RPC ist einzige Schreib-Autorität, kein Trigger nötig).
+- Backfill für historische Zeilen: `ma_project_profiles`-Snapshots aus `workstreams`-Provenance rückwirkend gestempelt (Label via LEFT JOIN `ma_project_templates.name`; `source_template_applied_at` bleibt NULL für historische Zeilen — Zeitpunkt nicht rekonstruierbar).
+
+**Live-RPC-Smoke 5/5 PASS gegen Prod, 0 Residue** (`tests/sql/PROJ-141-gamma-template-provenance-pentest.sql`):
+- A) `apply_ma_project_template` auf frischem M&A-Projekt → alle vier Snapshot-Spalten gesetzt.
+- B) Template-Delete mit lebender Profil-Referenz → 23503 (foreign_key_violation via RESTRICT-FK).
+- C) Template-Delete nach Auflösen aller FKs (Profile + Workstreams + Deliverables + Kind-Tabellen) → OK.
+- D) Snapshot-Label überlebt Template-Delete (Text-Snapshot ist FK-los, DSGVO-transparent).
+- E) Cross-Tenant-Isolation: Fremd-Tenant-Admin sieht 0 Zeilen des Pentest-Profils (RLS intakt).
+
+### γ4/γ5 operative_report Filter-Args — /backend live
+
+- Migration `20260731100100_proj141_gamma_operative_report_filters` in Prod: `operative_report` DROP + CREATE mit erweiterter Signatur `(p_project_id uuid, p_workstream_id uuid default null, p_owner_id uuid default null, p_phase_id uuid default null, p_classification text default null)`, SECURITY INVOKER erhalten, EXECUTE anon revoked / authenticated granted.
+- Filter-Semantik gemäß Tech Design D-γ5: `p_classification` cross-cuts alle 4 Sektionen + Pre-Read; `p_workstream_id`/`p_owner_id`/`p_phase_id` gelten nur für Tasks + Deliverables (kein FK auf Findings/Q&A). Pre-Read zählt aus den bereits gefilterten CTEs — Pre-Read/CSV/Print/View immer konsistent.
+- Backward compatibility: alte 1-Arg-Aufrufe resolven byte-identisch via Default-`null`-Args → PROJ-132-Regression bleibt strukturell grün.
+- GET-Route + Export-Route + Print-Page threading Filter-Query-Params (`workstream_id`, `owner_id`, `phase_id`, `classification`) durch dieselbe `parseOperativeReportFilters`-Zod-Validierung (Single-Source-of-Truth, im GET-Route-Modul exportiert).
+- FE-View state → filter query params für Fetch + Export + Print (URL-encoded). Client-side `filteredReport`-Memo entfernt; nur `NO_OWNER`-Sentinel bleibt clientseitig (kein Server-RPC-Arg für „unassigned owner"; dokumentierte Deviation D-γ6).
+
+**Live-RPC-Smoke strukturell PASS** (`tests/sql/PROJ-141-gamma-operative-report-filters-pentest.sql`):
+- Function-Metadata: `prosecdef=false` (SECURITY INVOKER erhalten) ✅
+- Grants: `authenticated` EXECUTE only; anon revoked ✅
+- Passthrough: `operative_report(uuid) = operative_report(uuid, null, null, null, null)` byte-identical ✅
+- Filter-Narrowing: explizite Klassifikations-/Workstream-Filter engen die Rows/Aggregate erwartbar ein (0-Baseline auf Empty-Project — Filter fügt strukturell nichts hinzu).
+
+### γ6 hasRows per Sektion + korrektes Disabled-Verhalten — FE
+
+- 4 separate `hasRows`-Flags in `operative-report-view.tsx`, per-Sektion aus dem Report abgeleitet.
+- Export-Buttons rendern konditional: bei `hasRows === false` als echtes `<Button disabled aria-disabled="true">` (kein klickbarer `<a>`); bei `true` als `<Button asChild><a href>` mit Filter-Query-Params. Print-Button bleibt immer aktiv.
+
+### γ2 Wizard-Finalize warnings[] — /backend + /frontend
+
+- `finalize/route.ts:244` wertet jetzt `.error` von `apply_ma_project_template` aus.
+- Response um additives optionales `warnings: Array<{code, message}>` erweitert; HTTP-Status bleibt 201 (Best-Effort-Vertrag). Alte Clients ignorieren `warnings[]`.
+- `finalizeDraft`-Client-Wrapper (`lib/wizard/draft-storage.ts`) gibt jetzt `{ project, warnings }`-Tupel zurück; alte Consumer bekommen `warnings: []`.
+- Wizard-Client (`wizard-client.tsx`) surfaced `template_apply_failed`-Warnung via `toast.warning`: „Projektvorlage nicht übernommen — Projekt angelegt, Vorlage konnte nicht angewendet werden: {message}. Sie können die Vorlage nachträglich im Projekt-Raum anwenden."
+- 3 neue Vitest-Route-Cases (`route.test.ts`): warnings[] bei RPC-Fehler / warnings[] undefined bei Happy-Path / kein RPC-Call bei fehlendem template_id.
+
+### γ1 Bookkeeping — Doc-Only
+
+- PROJ-96-Spec-Header: Status auf **„Deployed (MVP-Cut)"** umformuliert mit expliziter Followup-Liste (Y-96b RACI / Y-96c Versionierung / Y-96d Deep-Editor / Y-96e Aufgaben-Templates — neu registriert).
+- `features/INDEX.md`-Zeile PROJ-96: Status-Column auf **„Deployed (MVP-Cut)"**, Zeile ergänzt um γ1-Bookkeeping-Klarstellung + Y-96e-Neu-Registrierung.
+- PROJ-Y-96e-Registrierung als geplanter Followup (Aufgaben-Templates-Kind-Tabelle `ma_template_tasks` mit Copy-Erweiterung in `apply_ma_project_template` + Herkunfts-Stempel auf `work_items`).
+
+### Adjacent Fix — Pre-existing Migration-Prefix-Collision
+
+- Beim Migration-Naming-Check aufgefallen (blockierte den γ-PR-Required-Check): `20260728120000_proj115_external_document_links.sql` + `20260728120000_proj131_steering_report.sql` teilten identisches 14-Digit-Präfix. Beide bereits als Prod-Deployed live (PROJ-115 als `20260729082833`, PROJ-131 als `20260729082438` in `schema_migrations`).
+- PROJ-134-konformer Fix: Repo-Dateien auf Prod-registrierte Versionen umbenannt (`git mv` — kein DDL-Change, kein Rollback). Blast-Radius: 0 (Prod läuft seit 2026-07-29 auf den neuen Versionen).
+
+## QA Test Results — γ (2026-07-31)
+
+### Live-Pentest — 0 Residue
+
+- `PROJ-141-gamma-template-provenance-pentest.sql` A–E **5/5 PASS** gegen Prod (Rollback-marker fired, 0 Residue verifiziert via Post-Rollback-Query).
+- `PROJ-141-gamma-operative-report-filters-pentest.sql` strukturell PASS (Signatur/Grants/Passthrough/Filter-Narrowing).
+- PROJ-96 + PROJ-132 Live-Pentests (`PROJ-96-project-templates-pentest.sql` / `PROJ-132-operative-report-pentest.sql`) — bleiben grün durch Default-`null`-Args-Passthrough (Signature-Level-Verify).
+
+### Playwright Auth-Gates
+
+- Neuer Spec `tests/PROJ-141-gamma-report-filters.spec.ts` mit 4 Auth-Gate-Assertions (GET + Export + Print alle mit Filter-Query-Params + Operatives-Reporting-Seite-Regression).
+- Bestehende PROJ-132-Playwright-Spec-Cases bleiben strukturell gültig (RPC-Signatur-Change ist auth-transparent).
+
+### Regression + Quality Gates (2026-07-31 auf γ-Worktree)
+
+- **Vitest 2593/2593 grün** (+19 gegenüber pre-γ: 5 Route-Cases operative-report + 8 Route-Cases operative-report/export + 3 finalize + 3 draft-storage).
+- **ESLint 0 errors / 0 warnings.**
+- **tsc**: 0 neue Errors im γ-Scope (12 Baseline-Errors pre-existing in unrelated Files — `releases/route.test.ts`, `stakeholder-swap-preview/route.test.ts`, `assistant/runtime.test.ts`, `assistant/speech.test.ts`, `ai/providers/graph-purpose-prompts.test.ts`, `release-summary.test.ts`, `PROJ-1-2-live-closure.spec.ts` — nicht γ-verursacht).
+- **`npm run build` clean** (17.9s, alle γ-Routen — `/operative-report` + `/operative-report/export` + `/operatives-reporting` + `/operative-report/print` — registriert).
+- **`npm run check:migration-naming`** 0 errors (nach Rename der preexisting Kollision `20260728120000`); 80 warnings pre-existing.
+- **Supabase Advisors 0 ERROR / 111 WARN** (WARNs alle pre-existing `function_search_path_mutable` — keine neuen durch γ-Migrationen).
+
+### Findings
+
+- **F-γ1 (Low, adjacent-fix):** preexisting Migration-Prefix-Kollision `20260728120000` (PROJ-115 + PROJ-131) blockierte den γ-PR-Required-Check. Bereits mit `git mv` auf Prod-Versions-basierte Repo-Filenamen aufgelöst — kein DDL, kein Rollback.
+- **D-γ7 (Deviation, Info):** γ4/γ5-Filter-Pentest ist strukturell (Signatur/Grants/Passthrough/Narrowing) — für einen echten Data-driven Need-to-know-Filter-Aggregat-Leak-Nachweis müsste ein Pilot-Tenant mit seeded confidential Findings/Deliverables/Tasks über allen 3 Klassifikationsstufen aufgesetzt werden. Wird bei Pilot-Onboarding nachgeholt.
+- **D-γ8 (Deviation, Info):** `NO_OWNER`-Filter-Wert bleibt clientseitig (kein RPC-Arg für „unassigned owner") — semantische Parität mit dem bestehenden UI-Sentinel; kein neuer Server-Kontrakt eingeführt.
+
+## Deployment — γ (offen, pending user-approval)
+
+- **Vorbereitung:** Branch `proj-141/gamma` auf `origin/main` basiert, alle γ-Änderungen bereit für Commit + PR.
+- **Erwarteter Tag:** `v2.32.0-PROJ-141-gamma`.
+- **Migrationen bereits in Prod:** `20260731100000_proj141_gamma_template_provenance` + `20260731100100_proj141_gamma_operative_report_filters` (beide via MCP `apply_migration` seit /backend live; PROJ-134-konform). Deploy = Code-Merge + Bookkeeping-Tag, kein Runtime-DB-Change.
+- **Runtime-Deploy:** Vercel-Auto-Deploy vom Merge (`main` → prod).
+- **Post-Deploy-Smoke:** 307-Auth-Gate auf `/api/projects/[id]/operative-report?workstream_id=…&classification=…`, Export-Route mit denselben Query-Params, Print-Seite `/projects/[id]/operative-report/print?workstream_id=…`, sowie POST `/api/wizard-drafts/[id]/finalize` (kein Verhaltens-Sichtbarwerden vor eingeloggter Session).
+- **Env/Secret:** keine Änderung.
+- **Rollback-Plan:** Vercel-Deployment-Promotion auf pre-γ-Merge-SHA rollt die UI/Route-Changes zurück. Die zwei γ-Migrationen sind idempotent und additiv (add-column-if-not-exists / drop+create RPC mit Backward-Compat-Default-Args) — Datenintegrität bleibt garantiert; kein Migration-Rollback nötig. Snapshot-Spalten bleiben harmlos NULL bis zum nächsten Template-Apply.
+
+## Tech Design (Solution Architect) — γ (2026-07-31)
+
+**CIA-Fork-Entscheidung 2026-07-31 (Option A locked)**: γ deckt nur die Konsistenz-Bugs M-2/M-3/M-4/M-5/M-6 + Bookkeeping. **M-1 (Aufgaben-/RACI-Templates + Custom-CRUD/Copy/Versionierung) wird herausgezogen** nach PROJ-Y-96b (RACI) / Y-96c (Versionierung) / Y-96d (Deep-Editor) / Y-96e (Aufgaben-Templates — neu). γ-Umfang: ~1 PT statt 2,5 PT.
+
+**Design-Fork γ4/γ5 (User-locked 2026-07-31: Option Alpha — SQL-Filter in RPC):** ein früherer Draft dieses Tech Designs empfahl Option Beta (shared pure Lib) mit dem Argument „kleiner Slice, keine Migration". Der User hat Option Alpha gewählt mit der Rationale, dass die 5-Sektionen-Konsistenz (Pre-Read + CSV + Print + View + FE-Options) am schmerzfreiesten in-DB durchgesetzt wird — jede shared-Lib-Alternative würde denselben Filter-Vertrag an vier Stellen replizieren, mit dauerhaftem Drift-Risiko. Kosten sind bewusst: eine Migration (drop+recreate mit nicht-brechender Signatur-Erweiterung), neuer Live-Smoke inkl. Aggregat-Leak-Probe unter Filter × Need-to-know, und CSV/Print-Routen ziehen die Filter-Query-Params zur RPC durch.
+
+### Ausgangslage (Ist-Zustand, code-verifiziert 2026-07-31)
+
+- `finalize/route.ts:236–248` ruft `apply_ma_project_template` **ohne** `error`-Auswertung; Kommentar lockt bereits „Best-Effort", aber Fehler wird **still** geschluckt (Wizard zeigt Erfolg, Projekt bleibt strukturleer).
+- `ma_project_profiles.source_template_id` steht auf `ON DELETE SET NULL` (aus PROJ-96 Migration `20260724120055`) → nach Template-Delete verliert Projekt-Provenance jede Identität; `source_template_version` (bereits vorhanden) wird als isoliertes Feld zurückgelassen.
+- `operative_report(p_project_id uuid)` (Migration `20260724120000`) ist `SECURITY INVOKER` / `language sql stable` und nimmt **keinerlei Filter-Args**; die 4 Filter-Achsen (Workstream / Verantwortlich / Phase / Klassifikation) leben ausschliesslich im FE (`operative-report-view.tsx:122–140`).
+- `filteredReport` (`operative-report-view.tsx:142–165`) filtert Tasks + Deliverables voll, Findings **nur** nach Klassifikation, Q&A **gar nicht**. Options-Liste (`:100–119`) baut Workstreams/Owners/Phases **nur** aus Tasks + Deliverables — Workstreams, die exklusiv in Findings/Q&A vorkommen, tauchen nicht auf.
+- Export-Route `operative-report/export?section=…` (`export/route.ts:121`) und Print-Seite (`print/page.tsx:42`) ignorieren Filter komplett — Server ruft dieselbe RPC ohne Filter-Kontext, CSV ist byte-identisch unabhängig von der FE-Filterwahl.
+- `hasRows` (`operative-report-view.tsx:167`) = nur `tasks_overdue.tasks.length > 0`; steuert aber ALLE vier Export-Buttons (Aufgaben/Findings/Q&A/Deliverables). Zusätzlich `<Button asChild disabled><a>` — HTML `<a>` kennt kein natives `disabled`, der Link bleibt klickbar.
+
+### Datenmodell-Klarheit (γ4-Vor-Analyse)
+
+`workstreams` (PROJ-102) ≠ `dd_streams` (PROJ-112). `work_items` + `deliverables` tragen `workstream_id`; `dd_findings` + `dd_questions` tragen `dd_stream_id`. Es gibt **keinen** FK zwischen beiden Katalogen. Die FE-„Workstream"-Filter-Dropdown listet PROJ-102-Workstreams — Findings/Q&A-Rows sind strukturell davon unabhängig.
+
+**Ehrliche Filter-Semantik in der neuen RPC** (User-locked):
+
+| Filter-Achse | Tasks | Deliverables | Findings | Q&A |
+|---|---|---|---|---|
+| `p_classification` | ✅ | ✅ | ✅ | — (Aggregat ohne Klass.) |
+| `p_workstream_id` | ✅ | ✅ | — (kein FK) | — (kein FK) |
+| `p_owner_id` | ✅ | ✅ | — (Findings sind team-scoped, kein Owner) | — |
+| `p_phase_id` | ✅ | ✅ | — (Findings hängen am DD-Stream, nicht Phase) | — |
+
+- `p_classification` = cross-cutting → filtert alle Zeilen-tragenden Sektionen. Q&A-Aggregat trägt keine per-Row-Klassifikation, wird aus der klassifikations-gefilterten `dd_questions`-Basis neu aggregiert (nicht pass-through).
+- `p_workstream_id` / `p_owner_id` / `p_phase_id` = tasks + deliverables-scoped. Findings/Q&A bleiben unter diesen Achsen sichtbar (keine strukturelle Anwendbarkeit).
+- **Pre-Read**: jede Kachel zählt aus der **jeweiligen bereits gefilterten CTE**. `overdue_tasks` respektiert alle 4 Filter; `open_deal_breaker_findings` respektiert nur `p_classification`; `open_qa` respektiert nur `p_classification`; `deliverables_not_approved` respektiert alle 4.
+- **FE-Options-Liste (M-4)**: Workstream/Owner/Phase-Dropdowns bleiben tasks+deliverables-derived (semantisch korrekt, da nur diese die Felder tragen). Klassifikation-Dropdown ist statische Enum. Deviation D-γ4: keine synthetische Workstream-DD-Stream-Vermischung — das wäre eine falsche semantische Fusion.
+
+### Impact-Analyse (CIA-Auflage 2026-07-31 — gitnexus_impact)
+
+- `fetchOperativeReport` upstream: 12 Files im operative-report-Tree, keine Fremd-Callers (der initial gemeldete CRITICAL/116-Treffer war gitnexus-Ambiguität auf einem Shared-Symbol; mit `file_path`-Hint bereinigt).
+- `apply_ma_project_template` (RPC): γ2 ändert nur den **Caller** (`finalize/route.ts`), nicht die RPC selbst → additive Response-Änderung, kein Migration-Risiko.
+- `ma_project_profiles.source_template_id` (FK): γ3 wechselt Kaskade + fügt Snapshot-Column an — Migration-Blast auf 1 deployte Tabelle, additiv.
+- `operative_report` (RPC): γ4/γ5 = DROP + CREATE mit erweiterter Signatur. Alte 1-Arg-Callers resolven weiter über Default-Args. Neuer Live-Smoke Pflicht inkl. Filter × Need-to-know-Aggregat-Leak-Probe.
+
+---
+
+### Block 1 — PROJ-96-Konsistenz (M-2 + M-3)
+
+#### γ2 (M-2) — apply-Fehler in Wizard-Finalize sichtbar machen
+
+**Was gebaut wird:** Der Aufruf von `apply_ma_project_template` in `finalize/route.ts:244` wird um `.error`-Auswertung erweitert. Der bereits im Kommentar gelockte Best-Effort-Vertrag bleibt (Projekt-Anlage schlägt NICHT fehl), aber der Fehler wird sichtbar:
+
+- Response-Shape um optionales `warnings[]`-Array erweitert: `{ project, warnings?: Array<{ code: "template_apply_failed", message: string }> }`.
+- Beim RPC-Fehler wird ein Eintrag in `warnings[]` geschrieben; HTTP-Status bleibt `201` (Projekt existiert).
+- Der Wizard-Client zeigt bei nicht-leerem `warnings[]` einen Sonner-Toast „Projekt angelegt — Template-Vorlage nicht übernommen. Grund: …" mit Verweis auf die nachträgliche Anwendung via `/api/projects/[id]/apply-template` (PROJ-96 deployt).
+
+**Warum diese Semantik (nicht Wizard-Rollback):**
+- Der Kommentar im Live-Code (`finalize/route.ts:232–235`) lockt bereits „Best-Effort … a failure here must NOT roll back the project".
+- Nachträgliche Anwendung ist heute schon möglich via `/api/projects/[id]/apply-template`.
+- Compensating-Delete auf Projekt-Anlage + Context-Source-Attach wäre ein deutlich grösserer Refactor mit eigenem Testbedarf; γ soll schlank bleiben.
+
+**Kein Migration.** Kein neuer Endpoint. Nur Response-Shape-Erweiterung + Toast im Wizard-Client.
+
+#### γ3 (M-3) — Provenance-Härtung
+
+**Was gebaut wird:** Eine neue Migration mit vier DDL-Schritten (alle idempotent, PROJ-134-konform):
+
+1. **Neue Snapshot-Spalten** auf `ma_project_profiles` (additiv, `add column if not exists`):
+   - `source_template_label text` — Text-Snapshot des Template-Labels zum Zeitpunkt der Anwendung.
+   - `source_template_version_snapshot integer` — Numerischer Snapshot der Template-Version (aktuelle `templates.version`).
+   - `source_template_applied_at timestamptz` — Zeitstempel der Anwendung.
+2. **FK-Wechsel** `source_template_id`: `ON DELETE SET NULL` → `ON DELETE RESTRICT`. Verhindert Template-Löschung, solange Projekt-Provenance darauf zeigt. (`SET DEFAULT`/`CASCADE` explizit ausgeschlossen.)
+3. **Backfill** für bestehende Zeilen: Snapshot-Spalten aus dem aktuellen Katalog-Zustand befüllen. Zeilen mit `source_template_id is null` bleiben snapshot-lose (ohnehin bereits Provenance-verwaist).
+4. **`apply_ma_project_template`-RPC** wird angepasst: befüllt die drei Snapshot-Spalten **atomar** im gleichen INSERT-Zweig, in dem `source_template_id` gesetzt wird.
+
+**Warum RESTRICT und nicht Soft-Delete:**
+- Templates sind Katalog-Objekte mit lazy-seed; harte Löschung ist kein normaler Betrieb-Case (heute nur Admin-CRUD via Katalog-Route).
+- Die deferred PROJ-Y-96c-Slice führt volle immutable Versionierung mit `is_current`-Flag ein — Soft-Delete lebt dort im richtigen Design-Kontext.
+- Für γ genügt Text-Snapshot: Provenance-Identität überlebt jede Katalog-Änderung, auch nach späterer Y-96c-Migration.
+
+**Live-RPC-Smoke Pflicht:** `tests/sql/PROJ-141-gamma-template-provenance-pentest.sql` — 5 Vektoren (DO-Block + Rollback-Marker):
+- A) Neues Projekt via `apply_ma_project_template` → Snapshot-Spalten (label + version + applied_at) sind gesetzt.
+- B) Template-Delete mit lebender Projekt-Referenz → `raise exception … 23503` (foreign_key_violation via RESTRICT).
+- C) Template-Delete nach `set source_template_id = null` auf Projekt → PASS (Template löschbar, Provenance-Snapshot bleibt erhalten).
+- D) Backfill-Beweis: bestehende Zeile mit gesetztem `source_template_id` hat nach Migration ausgefüllte Snapshot-Spalten.
+- E) Cross-Tenant-Isolation: Admin-Impersonation aus Fremd-Tenant sieht die Projekt-Zeile nicht (RLS unverändert).
+
+---
+
+### Block 2 — PROJ-132-Konsistenz (M-4 + M-5 + M-6) — Option Alpha
+
+#### γ4 (M-4) + γ5 (M-5) — RPC mit Filter-Args, Pre-Read/CSV/Print konsistent
+
+**Was gebaut wird:** Eine Migration, die `operative_report` idempotent recreated mit erweiterter Signatur:
+
+```sql
+drop function if exists public.operative_report(uuid);
+create function public.operative_report(
+  p_project_id uuid,
+  p_workstream_id uuid default null,
+  p_owner_id uuid default null,
+  p_phase_id uuid default null,
+  p_classification text default null
+) returns jsonb ...
+```
+
+Alte 1-Arg-Callers (bestehende Tests, Print-Page, GET-Route ohne Filter) resolven weiter über Default-`null`-Args → **passthrough-Behaviour byte-identisch** zur bisherigen RPC. Neue Callers geben nicht-`null`-Args und triggern die WHERE-Klausel-Filter in den jeweiligen CTEs. Alle CTEs behalten `security invoker` — Need-to-know-Gate über RESTRICTIVE-Policies unverändert (Filter wird **nach** RLS angewandt, also strukturell sicher).
+
+**Filter-Application pro CTE:**
+- `task_base` WHERE `AND (p_workstream_id IS NULL OR wi.workstream_id = p_workstream_id) AND (p_owner_id IS NULL OR wi.responsible_user_id = p_owner_id) AND (p_phase_id IS NULL OR wi.phase_id = p_phase_id) AND (p_classification IS NULL OR wi.confidentiality_level::text = p_classification)`
+- `deliverable_base` WHERE analog (alle 4 Filter, nur classification-Cast auf `d.confidentiality_level::text`)
+- `finding_open` WHERE `AND (p_classification IS NULL OR f.confidentiality_level::text = p_classification)` (nur classification — Findings sind team/stream-scoped, keine Workstream/Owner/Phase-FK)
+- `qa_agg` liest die `dd_questions`-Basis so, dass wenn `p_classification` gesetzt ist, das Q&A-Aggregat aus der klassifikations-gefilterten Basis neu gezählt wird. (Q&A trägt keine per-Row-Klassifikation, aber `dd_questions` tragen `confidentiality_level` — der Filter fasst also.)
+- Pre-Read: unverändert die vier Sub-Queries `from task_base` / `from finding_open` / `from qa_agg` / `from deliverable_base` — d.h. sie zählen automatisch aus den bereits gefilterten CTEs (kein Zusatz-Code, funktioniert per Konstruktion).
+
+**Route-/View-/Print-Wiring:**
+- `GET /api/projects/[id]/operative-report` liest `workstream_id` / `owner_id` / `phase_id` / `classification` aus `URLSearchParams` (jeweils optional Zod-UUID bzw. Enum), leitet sie als RPC-Args weiter.
+- `GET /api/projects/[id]/operative-report/export` analog + spiegelt sie in die Response-Row-Auswahl.
+- `/projects/[id]/operative-report/print/page.tsx` liest Filter-Query-Params aus `searchParams` (Next-Server-Component-Kontrakt), leitet weiter zur RPC.
+- `operativeReportExportUrl` + Print-Link im View erhalten die aktiven Filter als Query-Params (via Helper `buildFilterQuery(filters)`).
+- `useOperativeReport(projectId, filters)` bekommt einen `filters`-Parameter, dependen-array baut den Effect neu bei Änderung.
+- FE `filteredReport` fällt weg — die RPC liefert bereits gefilterten Report; `filteredReport = report`. Die `aggregateFindingStreams`-Helper-Funktion bleibt zunächst als toter Code stehen (unused-Warning wird entfernt), oder wird gelöscht (Präferenz: löschen — Simplify-Skill).
+
+#### γ6 (M-6) — `hasRows` per Sektion + korrektes Disabled-Verhalten
+
+**Was gebaut wird in `operative-report-view.tsx`:**
+
+- Vier separate `hasRows`-Flags (`useMemo`-abgeleitet aus dem RPC-Report):
+  - `hasOverdueTasks = report.tasks_overdue.tasks.length > 0`
+  - `hasFindings = report.findings_by_severity.findings.length > 0`
+  - `hasQa = report.qa_by_stream.length > 0`
+  - `hasDeliverables = report.deliverables_status.deliverables.length > 0`
+- Vier Export-Buttons rendern **konditional**: bei `hasRows === false` als `<Button disabled>` (kein `<a>`, kein Link — echtes HTML-`disabled`); bei `hasRows === true` als `<Button asChild><a href="…?section=…&<filters>">…</a></Button>`.
+- Print-Button verbleibt immer aktiv (der Print-Report darf leer bleiben — zeigt dann „Keine Zeilen für Ihre Filterauswahl" im Body).
+
+---
+
+### Block 3 — Bookkeeping (γ1 + M-1-Extract)
+
+#### γ1 (M-1) — PROJ-96-Statuslüge auflösen (Doc-Only)
+
+1. **`features/PROJ-96-projekt-templates-fuer-standardphasen-bereitstellen.md`** — Header um MVP-Cut-Klausel: „**Deployed (MVP-Cut):** Kern-Katalog + Standard-Apply live seit 2026-07-27 (Tag `v2.26.0-PROJ-96`, PR #263). Bewusst ausserhalb dieser Slice und in eigenen Followups fortgeführt: **PROJ-Y-96b** (RACI-Templates) · **PROJ-Y-96c** (Freigabesperre + immutable Versionshistorie) · **PROJ-Y-96d** (Custom-Template-CRUD / Copy / Deep-Editor) · **PROJ-Y-96e** (Aufgaben-Templates `ma_template_tasks`)."
+2. **`features/INDEX.md`** — PROJ-96-Zeile bleibt „Deployed", mit MVP-Cut-Annotation.
+3. **PROJ-Y-96e** (neu) in `features/INDEX.md` als Followup-Zeile registrieren, analog zu Y-96b/c/d aus PROJ-96-Header.
+
+**Kein Code, keine Migration.** Reine Doku.
+
+---
+
+### Nicht in γ (per CIA Option A herausgezogen)
+
+- **M-1 vollständig** — geht als eigene Slice-Familie (siehe γ1 oben). Bauen wenn Pilot-Feedback zeigt, dass der Standard-Katalog nicht reicht.
+
+---
+
+### Test-Plan
+
+| Ebene | Umfang |
+|---|---|
+| Live-SQL-Pentest (Prod, DO-Block, rolled-back) | `PROJ-141-gamma-template-provenance-pentest.sql` A–E (γ3) + `PROJ-141-gamma-operative-report-filters-pentest.sql` A–H (γ4/γ5: classification-cross-cut, workstream/owner/phase applied to tasks+deliverables, Need-to-know-Aggregat-Leak unter Filter, cross-tenant, filter × pre_read consistency) — **Pflicht für γ3 + γ4/γ5** |
+| Vitest Unit | keine neue Lib (RPC ist die Filter-Autorität); `EMPTY_OPERATIVE_REPORT` bleibt |
+| Vitest Route | `finalize/route.test.ts` erweitert um „warnings[]-Rückgabe bei RPC-Fehler" (γ2); `operative-report/route.test.ts` + `.../export/route.test.ts` um „Filter-Query-Params werden an RPC durchgereicht" |
+| Playwright | `PROJ-141-gamma-report-filters.spec.ts` — 4 Auth-Gates (GET + Export + Print + Wizard-Finalize) alle mit Filter-Query-Params; 1 Regression (bestehende PROJ-132-Spec bleibt grün) |
+| Regression | PROJ-96-Route-Tests (`ma-project-templates`) + PROJ-132-Live-Pentest (`PROJ-132-operative-report-pentest.sql`) müssen grün bleiben — durch Default-`null`-Args passthrough-Behaviour beweisbar |
+
+### Dependencies
+
+**Keine neuen** (CIA-Auflage). Alle Änderungen mit Bestand-Stack: TypeScript + Zod + Supabase + shadcn/sonner.
+
+### Risks + Deviations
+
+- **R-γ1 (mittel):** Backfill in γ3 überspringt Zeilen mit gelöschtem Template. Mitigation: Text-Snapshot-Spalten bleiben `null` — die betroffenen Zeilen sind ohnehin schon Provenance-verwaist. Kein Datenverlust, aber sichtbar in Reports (Snapshot-`null` → „Herkunft unbekannt").
+- **R-γ2 (niedrig):** M-2 `warnings[]`-Array ist additiv; alte Clients ignorieren es. Kein Breaking-Change.
+- **R-γ3 (mittel):** Alpha-RPC-Recreate: alle bestehenden 1-Arg-Callers müssen weiter passthrough-korrekt sein. Absicherung: PROJ-132-Live-Pentest wird **verbatim** re-ausgeführt (0 Residue erwartet); + neuer Filter-Pentest.
+- **D-γ1 (Deviation zur Spec):** PROJ-141-AC-141.γ1 forderte „Anlegen/Kopieren/Versionieren" als deferred zu markieren — γ1 macht das explizit + registriert die vier neuen Y-96-Slices statt sie im PROJ-96-Backlog stehen zu lassen.
+- **D-γ2 (Deviation zur Spec):** PROJ-141-AC-141.γ2 gab „(a) Wizard-Rollback" ODER „(b) Best-Effort mit warnings[]" als offenen Fork — Tech Design lockt **(b)**.
+- **D-γ3 (Deviation zur Spec):** PROJ-141-AC-141.γ3 gab „RESTRICT" ODER „NO ACTION + Soft-Delete-Flag" als offenen Fork — Tech Design lockt **RESTRICT + Text-Snapshot**. Soft-Delete-Flag wird nach PROJ-Y-96c verschoben.
+- **D-γ4 (Deviation zum Draft-Tech-Design 2026-07-30):** der erste Draft empfahl Option Beta (shared pure Lib) — γ-User-Entscheidung 2026-07-31 lockt **Option Alpha** (SQL-Filter in RPC). Rationale: 5-Sektionen-Konsistenz (Pre-Read/CSV/Print/View/Options) ist in-DB nachhaltig durchsetzbar; shared Lib würde denselben Filter-Vertrag an vier Stellen replizieren mit Drift-Risiko.
+- **D-γ5 (Filter-Semantik-Sub-Fork):** `p_classification` cross-cuts alle 4 Sektionen; `p_workstream_id`/`p_owner_id`/`p_phase_id` gelten nur für Tasks + Deliverables (kein FK auf Findings/Q&A). Die FE-Workstream-Dropdown bleibt tasks+deliverables-derived — kein synthetisches Merge mit `dd_streams` (semantisch falsch).
+
+---
+
+### Handoff
+
+Nach User-Review: `/backend` startet mit:
+
+1. **Impact-Analyse** erledigt (siehe oben).
+2. **γ3-Migration** schreiben + `apply_migration` (PROJ-134-konform, minute-rastered), Live-Smoke-SQL parallel entwickeln.
+3. **γ4/γ5-Migration** — separate Migration für `operative_report`-Recreate mit Filter-Args (nicht mit γ3 vermischen für saubere Rollback-Chirurgie).
+4. **γ2 Route-Change** (`finalize/route.ts` + warnings[]-Wire-through zum Wizard-Client).
+5. **γ4/γ5/γ6 Backend + FE** (GET-Route + Export-Route + Print-Page + FE-View + Hook + `operativeReportExportUrl`).
+6. **γ1 Bookkeeping-Doku** als Teil desselben Commits (Doku + Code atomisch, mirror PROJ-141-α-Muster).
+
+Anschliessend `/qa` mit Playwright + Pentest-SQL, dann `/deploy` als γ-Bookkeeping-Slice (Tag `v2.32.0-PROJ-141-gamma`).
 
 ## V2 Reference Material
 

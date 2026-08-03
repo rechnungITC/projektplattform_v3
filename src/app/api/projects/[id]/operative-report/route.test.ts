@@ -101,6 +101,10 @@ describe("GET /api/projects/[id]/operative-report", () => {
     expect(res.status).toBe(200)
     expect(rpcMock).toHaveBeenCalledWith("operative_report", {
       p_project_id: PROJECT,
+      p_workstream_id: null,
+      p_owner_id: null,
+      p_phase_id: null,
+      p_classification: null,
     })
     const json = (await res.json()) as {
       tasks_overdue: { tasks: unknown[] }
@@ -109,6 +113,44 @@ describe("GET /api/projects/[id]/operative-report", () => {
     expect(json.tasks_overdue.tasks).toHaveLength(1)
     expect(json.pre_read.overdue_tasks).toBe(1)
     expect(json.pre_read.open_qa).toBe(2)
+  })
+
+  it("PROJ-141-γ4/γ5 — threads filter query params to the RPC", async () => {
+    getUserMock.mockResolvedValue({ data: { user: { id: ME } } })
+    queueProjectView()
+    rpcMock.mockResolvedValue({
+      data: { tasks_overdue: { tasks: [], summary: {} } },
+      error: null,
+    })
+    const ws = "11111111-2222-4222-8222-333333333333"
+    const owner = "44444444-5555-4555-8555-666666666666"
+    const phase = "77777777-8888-4888-8888-999999999999"
+    const url = `http://t/?workstream_id=${ws}&owner_id=${owner}&phase_id=${phase}&classification=strict`
+    const res = await GET(new Request(url), ctx())
+    expect(res.status).toBe(200)
+    expect(rpcMock).toHaveBeenCalledWith("operative_report", {
+      p_project_id: PROJECT,
+      p_workstream_id: ws,
+      p_owner_id: owner,
+      p_phase_id: phase,
+      p_classification: "strict",
+    })
+  })
+
+  it("PROJ-141-γ4/γ5 — 400 on malformed filter query params", async () => {
+    getUserMock.mockResolvedValue({ data: { user: { id: ME } } })
+    // Do NOT queue a project-view chain — the route should reject BEFORE auth.
+    const res = await GET(
+      new Request("http://t/?workstream_id=not-a-uuid"),
+      ctx()
+    )
+    expect(res.status).toBe(400)
+    // Also rejects unknown classification value.
+    const res2 = await GET(
+      new Request("http://t/?classification=top_secret"),
+      ctx()
+    )
+    expect(res2.status).toBe(400)
   })
 
   it("normalises a null RPC result to an empty report", async () => {
