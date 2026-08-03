@@ -440,7 +440,26 @@ Ein Slice, alle γ-ACs (γ1–γ8), gebaut auf Branch `proj-141/gamma-impl`.
 - **Advisor (Supabase):** 0 ERROR / 111 WARN (Baseline; γ3 fügt keine neue).
 - **Rollback-Plan:** γ3-Migration ist additiv-invertierbar (FK zurück auf SET NULL); Rest ist Code (Vercel-Deployment-Promotion auf pre-#288 SHA). Kein Datenverlust-Risiko.
 - **Cross-Ref-Bookkeeping:** PROJ-96-Spec + INDEX (γ1 Statuslüge korrigiert), PROJ-132-Pentest (γ8 Advisor-Cases) — beide im selben γ-Merge.
-- **Followups (Planned):** PROJ-Y-96b (Aufgaben-/RACI-Templates) · PROJ-Y-96c (immutable Versionshistorie + Version-Bump-Trigger) · PROJ-Y-96d (Template-Delete/CRUD-UI) · PROJ-Y-132-filtered-export.
+- **Followups (Planned):** PROJ-Y-96b (RACI-Templates) · PROJ-Y-96c (immutable Versionshistorie + Version-Bump-Trigger) · PROJ-Y-96d (Template-Delete/CRUD-UI) · **PROJ-Y-96e** (Aufgaben-Templates `ma_template_tasks` + Copy-Erweiterung + Herkunfts-Stempel; von PROJ-Y-96b herausgezogen 2026-08-03, damit Aufgaben-Templates unabhängig von RACI priorisierbar sind) · PROJ-Y-132-filtered-export.
+
+### γ-Supplement — additive Prod-DB-Migrationen (2026-08-03 nachregistriert)
+
+Parallel zur γ-Session lagen zwei in Prod applizierte, aber nicht ins Repo committete Zusatz-Migrationen aus einer anderen Session vor. Sie sind additiv, backward-compat, und werden bis zur konsumierenden Slice (PROJ-Y-132-filtered-export / PROJ-Y-96c-Versionshistorie) von keinem deployten Code gelesen:
+
+- **`20260731111930_proj141_gamma_template_provenance.sql`** (Prod-Version, minute-rastered per PROJ-134):
+  - +4 nullable Snapshot-Spalten auf `ma_project_profiles` (`source_template_id` mit FK ON DELETE RESTRICT / `source_template_label` text / `source_template_version_snapshot` int / `source_template_applied_at` timestamptz)
+  - Recreated `apply_ma_project_template` stempelt die Snapshot-Spalten atomar bei jeder Anwendung
+  - Backfill historischer `ma_project_profiles`-Zeilen aus `workstreams`-Provenance (Label via Live-Katalog-Lookup; `applied_at` bleibt NULL da historischer Zeitpunkt nicht rekonstruierbar)
+  - **Konvergent mit** `20260731100000_proj141_gamma3_template_provenance_restrict` (identische FK-Semantik auf workstreams/deliverables, idempotenter `drop constraint if exists`-Swap)
+  - **Konsumenten-Vorarbeit für**: PROJ-Y-96c (immutable Versionshistorie mit rückwirkbarer Herkunft) + PROJ-Y-96d (Template-Delete-UI mit „Herkunft"-Anzeige)
+
+- **`20260731130442_proj141_gamma_operative_report_filters.sql`** (Prod-Version):
+  - `operative_report(uuid)` → `operative_report(uuid, uuid default null, uuid default null, uuid default null, text default null)` mit `p_workstream_id` / `p_owner_id` / `p_phase_id` / `p_classification` als optionale WHERE-Klausel-Args in allen 5 CTE-Sektionen + Pre-Read-Recount
+  - Backward-compat: 1-arg-Callers (bestehende GET-Route + Print-Page nach #288) greifen auf Default-`null`-Args → byte-identisches Passthrough
+  - SECURITY INVOKER erhalten, `authenticated`-only EXECUTE, anon revoked
+  - **Konsumenten-Vorarbeit für**: PROJ-Y-132-filtered-export (Server-Filter-Threading an CSV + Print + Pre-Read statt heute nur clientseitig in `operative-report-view.tsx`)
+
+**Warum diese Files jetzt (und nicht bei #288)**: Beide Migrationen wurden 2026-07-31 während einer parallelen γ-Session via `apply_migration` direkt gegen Prod appliziert; der Merge #288 fuhr aber mit einem schmaleren γ-Scope, sodass die Repo-Files verwaisten. Ohne Repo-Files bricht `supabase db push` bei fresh-provision und der Schema-Drift-Guard läuft in ein „migration in DB but not in repo"-False-Positive. Diese Supplement-Slice schließt die Repo-Lücke und dokumentiert die Konsumenten-Wege — keine weitere DB-Änderung, kein Runtime-Deploy nötig.
 
 ## V2 Reference Material
 
