@@ -229,19 +229,118 @@ export async function POST(_request: Request, ctx: Ctx) {
   }
 
   // Non-fatal warnings surfaced in the 201 response so the wizard can toast them
-  // (PROJ-141-γ2). Best-effort finalize steps push here instead of failing hard.
-  const warnings: { code: string; message: string }[] = []
+  // (PROJ-141-γ2 + PROJ-Y-96b + PROJ-Y-96e). Best-effort finalize steps push
+  // here instead of failing hard. Y-96b/e widen the shape with optional
+  // structured fields so the FE can drill down without losing the flat
+  // `code + message` toast contract.
+  const warnings: {
+    code: string
+    message: string
+    target_type?: string
+    target_key?: string
+    role_key?: string
+    task_key?: string
+    workstream_key?: string
+    phase_key?: string
+    parent_task_key?: string
+  }[] = []
 
-  // 4.3) PROJ-96 — apply the selected M&A project template (copy-on-create).
-  // The template_id rides in the ma_foundation step. Best-effort: the project
-  // is already usable without it, and an admin can apply a template later via
-  // /api/projects/[id]/apply-template — so a failure here must NOT roll back
-  // the project or block finalize (mirrors the optional context-source step).
+  // PROJ-Y-96b: server-side aggregation of the apply-RPC's per-row RACI
+  // warnings so a Buy-Side-Default apply against an empty tenant does not spam
+  // the toast with one entry per (target × role). Groups by (code, role_key)
+  // and formats a concise German message with the affected-target count.
+  //
+  // PROJ-Y-96e: task-skip warnings (`skipped_*`) stay individual entries
+  // because each row is a distinct actionable case (unlike RACI which repeats
+  // the same 3 role_keys × N targets on the Buy-Side default). The full raw
+  // list still rides in the 201 payload under `template_result.warnings` for
+  // FE drill-down.
+  interface RpcWarning {
+    code:
+      | "raci_unknown_role_key"
+      | "raci_orphan_target"
+      | "skipped_task_missing_workstream"
+      | "skipped_task_missing_phase"
+      | "skipped_subtask_missing_workstream"
+      | "skipped_subtask_missing_phase"
+      | "skipped_subtask_parent_missing"
+    target_type?: string
+    target_key?: string
+    role_key?: string
+    task_key?: string
+    workstream_key?: string
+    phase_key?: string
+    parent_task_key?: string
+  }
+  function aggregateTemplateWarnings(raw: RpcWarning[]): typeof warnings {
+    const out: typeof warnings = []
+    // Y-96b RACI aggregation — group by (code, role_key), count targets.
+    const raciGroups = new Map<
+      string,
+      { code: RpcWarning["code"]; role_key?: string; count: number }
+    >()
+    for (const w of raw) {
+      if (w.code === "raci_unknown_role_key" || w.code === "raci_orphan_target") {
+        const key = `${w.code}::${w.role_key ?? ""}`
+        const existing = raciGroups.get(key)
+        if (existing) existing.count += 1
+        else raciGroups.set(key, { code: w.code, role_key: w.role_key, count: 1 })
+      }
+    }
+    for (const g of raciGroups.values()) {
+      if (g.code === "raci_unknown_role_key") {
+        out.push({
+          code: g.code,
+          role_key: g.role_key,
+          message: `Rolle „${g.role_key ?? "?"}" ist im Tenant nicht bekannt (${g.count} RACI-Zuweisung${g.count === 1 ? "" : "en"} aus der Vorlage). Zuweisung wurde gestempelt — legen Sie die Rolle unter Stammdaten an, damit Tagessätze und Zuweisungen ineinandergreifen.`,
+        })
+      } else {
+        out.push({
+          code: g.code,
+          role_key: g.role_key,
+          message: `RACI-Vorlage verweist auf ${g.count} unbekannte${g.count === 1 ? "s" : ""} Ziel${g.count === 1 ? "" : "e"} — Zeile${g.count === 1 ? "" : "n"} übersprungen.`,
+        })
+      }
+    }
+    // Y-96e task-skip warnings — one entry per skipped row.
+    for (const w of raw) {
+      if (w.code.startsWith("skipped_")) {
+        const detail =
+          w.task_key && w.workstream_key
+            ? `${w.task_key} → ${w.workstream_key}`
+            : w.task_key && w.phase_key
+              ? `${w.task_key} → Phase ${w.phase_key}`
+              : w.task_key && w.parent_task_key
+                ? `${w.task_key} → ${w.parent_task_key}`
+                : (w.task_key ?? "")
+        out.push({
+          code: w.code,
+          task_key: w.task_key,
+          workstream_key: w.workstream_key,
+          phase_key: w.phase_key,
+          parent_task_key: w.parent_task_key,
+          message: `Vorlage angewendet — eine Zeile wurde übersprungen (${w.code}${detail ? `: ${detail}` : ""}).`,
+        })
+      }
+    }
+    return out
+  }
+
+  // 4.3) PROJ-96 + PROJ-Y-96b + PROJ-Y-96e — apply the selected M&A project
+  // template (copy-on-create). The template_id rides in the ma_foundation step.
+  // Best-effort: the project is already usable without it, and an admin can
+  // apply a template later via /api/projects/[id]/apply-template — so a
+  // failure here must NOT roll back the project or block finalize.
   //
   // PROJ-141-γ2 (M-2): evaluate the RPC error instead of swallowing it. A silent
   // failure left the user in a structurally empty project room while the wizard
-  // reported success. We keep the deliberate non-blocking design but make the
-  // failure VISIBLE — surface it as a warning and log it server-side.
+  // reported success.
+  //
+  // PROJ-Y-96b + Y-96e: on success, forward the RPC's structured `warnings[]`
+  // (RACI orphans + unknown roles + task-copy skips) — aggregated into the
+  // top-level warnings array for toast + attached raw under `template_result`
+  // for drill-down.
+  let templateResult: Record<string, unknown> | null = null
   if (project && maFoundation) {
     const templateId = maFoundation.template_id
     const isUuid =
@@ -266,22 +365,21 @@ export async function POST(_request: Request, ctx: Ctx) {
           message:
             "Projekt angelegt — die Projekt-Vorlage konnte nicht übernommen werden. Sie kann später in den Projekteinstellungen angewendet werden.",
         })
-      } else {
-        // PROJ-Y-96e — pass RPC warnings[] through as user-visible toasts. The
-        // apply-RPC skips a task/subtask when its anchor (workstream/phase) or
-        // its parent is missing in the project copy and pushes a code-prefixed
-        // warning. Surface each so the admin knows what wasn't seeded.
-        const rpcWarnings =
-          templateData && typeof templateData === "object" && "warnings" in templateData
-            ? (templateData as { warnings?: unknown }).warnings
-            : null
-        if (Array.isArray(rpcWarnings)) {
-          for (const raw of rpcWarnings) {
-            if (typeof raw !== "string" || raw.length === 0) continue
-            warnings.push({
-              code: "template_apply_skipped_row",
-              message: `Vorlage angewendet — eine Zeile wurde übersprungen (${raw}).`,
-            })
+      } else if (templateData && typeof templateData === "object") {
+        templateResult = templateData as Record<string, unknown>
+        const rawWarnings = (templateResult.warnings ?? []) as unknown
+        if (Array.isArray(rawWarnings) && rawWarnings.length > 0) {
+          // The consolidation migration returns jsonb objects `{code, ...}`
+          // for BOTH the Y-96b RACI-copy and the Y-96e task-copy warning
+          // classes. Filter out any non-object entries defensively.
+          const structured = rawWarnings.filter(
+            (r): r is RpcWarning =>
+              !!r &&
+              typeof r === "object" &&
+              typeof (r as { code?: unknown }).code === "string"
+          )
+          for (const aggr of aggregateTemplateWarnings(structured)) {
+            warnings.push(aggr)
           }
         }
       }
@@ -380,5 +478,8 @@ export async function POST(_request: Request, ctx: Ctx) {
   // 5) Delete the draft (best-effort; orphan drafts are recoverable).
   await supabase.from("project_wizard_drafts").delete().eq("id", id)
 
-  return NextResponse.json({ project, warnings }, { status: 201 })
+  return NextResponse.json(
+    { project, warnings, template_result: templateResult },
+    { status: 201 }
+  )
 }

@@ -367,9 +367,18 @@ describe("POST finalize — PROJ-141-γ2 template-apply warning (M-2)", () => {
                 tasks_created: 23,
                 subtasks_created: 2,
                 warnings: [
-                  "skipped_subtask_parent_missing:financial_qoe_prep:financial_qoe",
-                  "skipped_task_missing_workstream:custom_task:missing_ws",
+                  {
+                    code: "skipped_subtask_parent_missing",
+                    task_key: "financial_qoe_prep",
+                    parent_task_key: "financial_qoe",
+                  },
+                  {
+                    code: "skipped_task_missing_workstream",
+                    task_key: "custom_task",
+                    workstream_key: "missing_ws",
+                  },
                 ],
+                raci_created: 0,
                 applied_at: "2026-08-06T00:00:00.000Z",
               },
               error: null,
@@ -382,13 +391,146 @@ describe("POST finalize — PROJ-141-γ2 template-apply warning (M-2)", () => {
     const body = (await res.json()) as {
       warnings: { code: string; message: string }[]
     }
-    // Two RPC warnings ⇒ two toast entries, all with the `skipped_row` code
-    // so FE i18n can group/label them consistently.
+    // PROJ-Y-96b/e consolidation: jsonb warnings — codes preserved individually
+    // so FE i18n can label the specific skip class.
     expect(body.warnings).toHaveLength(2)
-    expect(body.warnings.every((w) => w.code === "template_apply_skipped_row")).toBe(
+    const codes = body.warnings.map((w) => w.code)
+    expect(codes).toContain("skipped_subtask_parent_missing")
+    expect(codes).toContain("skipped_task_missing_workstream")
+  })
+})
+
+describe("POST finalize — PROJ-Y-96b template_result + RACI warnings", () => {
+  const TEMPLATE_ID = "88888888-8888-4888-8888-888888888888"
+
+  function maDraft() {
+    return {
+      name: "M&A Deal",
+      project_type: "ma",
+      description: "Acquire target X",
+      responsible_user_id: USER_ID,
+      ma_foundation: {
+        sponsor_user_id: USER_ID,
+        template_id: TEMPLATE_ID,
+      },
+    }
+  }
+
+  it("attaches the raw RPC template_result to the 201 payload on success", async () => {
+    seedHappyPath(maDraft())
+    rpcMock.mockImplementation((name: string) =>
+      Promise.resolve(
+        name === "apply_ma_project_template"
+          ? {
+              data: {
+                template_id: TEMPLATE_ID,
+                template_version: 1,
+                workstreams_created: 7,
+                deliverables_created: 9,
+                raci_created: 23,
+                tasks_created: 23,
+                subtasks_created: 2,
+                phase_model: { seeded: 9 },
+                applied_at: "2026-08-06T00:00:00.000Z",
+              },
+              error: null,
+            }
+          : { error: null },
+      ),
+    )
+    const res = await POST(makeRequest(), ctx())
+    expect(res.status).toBe(201)
+    const body = (await res.json()) as {
+      template_result: { raci_created: number; tasks_created: number } | null
+      warnings: unknown[]
+    }
+    expect(body.template_result).toMatchObject({
+      raci_created: 23,
+      tasks_created: 23,
+    })
+    expect(body.warnings).toHaveLength(0)
+  })
+
+  it("aggregates RPC RACI warnings by (code, role_key) into top-level warnings", async () => {
+    seedHappyPath(maDraft())
+    rpcMock.mockImplementation((name: string) =>
+      Promise.resolve(
+        name === "apply_ma_project_template"
+          ? {
+              data: {
+                template_id: TEMPLATE_ID,
+                template_version: 1,
+                workstreams_created: 7,
+                deliverables_created: 9,
+                raci_created: 23,
+                tasks_created: 0,
+                subtasks_created: 0,
+                phase_model: { seeded: 9 },
+                applied_at: "2026-08-06T00:00:00.000Z",
+                warnings: [
+                  // 7× deal_lead on workstreams — Buy-Side seed pattern.
+                  ...Array.from({ length: 7 }, (_, i) => ({
+                    code: "raci_unknown_role_key",
+                    target_type: "workstream",
+                    target_key: `ws${i}`,
+                    role_key: "deal_lead",
+                  })),
+                  // 9× sponsor on deliverables.
+                  ...Array.from({ length: 9 }, (_, i) => ({
+                    code: "raci_unknown_role_key",
+                    target_type: "deliverable",
+                    target_key: `del${i}`,
+                    role_key: "sponsor",
+                  })),
+                  // 1 orphan.
+                  {
+                    code: "raci_orphan_target",
+                    target_type: "workstream",
+                    target_key: "nope",
+                    role_key: "deal_lead",
+                  },
+                ],
+              },
+              error: null,
+            }
+          : { error: null },
+      ),
+    )
+    const res = await POST(makeRequest(), ctx())
+    expect(res.status).toBe(201)
+    const body = (await res.json()) as {
+      template_result: { warnings: unknown[] } | null
+      warnings: { code: string; role_key?: string; message: string }[]
+    }
+    // 17 raw RPC warnings → 3 aggregated top-level warnings
+    // (deal_lead-unknown, sponsor-unknown, deal_lead-orphan).
+    expect(body.warnings).toHaveLength(3)
+    const codes = body.warnings.map((w) => `${w.code}::${w.role_key ?? ""}`)
+    expect(codes).toContain("raci_unknown_role_key::deal_lead")
+    expect(codes).toContain("raci_unknown_role_key::sponsor")
+    expect(codes).toContain("raci_orphan_target::deal_lead")
+    // Raw list still available under template_result for drill-down.
+    expect((body.template_result?.warnings as unknown[])?.length).toBe(17)
+  })
+
+  it("template_result is null on apply failure (regression for γ2 error path)", async () => {
+    seedHappyPath(maDraft())
+    rpcMock.mockImplementation((name: string) =>
+      Promise.resolve(
+        name === "apply_ma_project_template"
+          ? { error: { message: "boom" } }
+          : { error: null },
+      ),
+    )
+    const res = await POST(makeRequest(), ctx())
+    expect(res.status).toBe(201)
+    const body = (await res.json()) as {
+      template_result: unknown
+      warnings: { code: string }[]
+    }
+    expect(body.template_result).toBeNull()
+    expect(body.warnings.some((w) => w.code === "template_apply_failed")).toBe(
       true,
     )
-    expect(body.warnings[0].message).toContain("skipped_subtask_parent_missing")
-    expect(body.warnings[1].message).toContain("skipped_task_missing_workstream")
   })
 })
