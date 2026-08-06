@@ -1,8 +1,8 @@
 # PROJ-Y-96e: Aufgaben-Templates (`ma_template_tasks`)
 
-## Status: In Progress (/backend live)
+## Status: In Progress (/backend + /frontend live)
 **Created:** 2026-08-04
-**Last Updated:** 2026-08-06 (/backend gebaut: Migration `20260805083132_proj_y_96e_task_templates` in Prod, Live-Pentest 11/11 A–K PASS 0 Residue, TypeScript-Layer erweitert, vitest 2592/2592, tsc 0 neu, ESLint 0, build clean)
+**Last Updated:** 2026-08-06 (/frontend gebaut: Admin-Katalog-Tasks-Sektion + Wizard-Picker-Vorschau-Update; ESLint 0, tsc 0 neu, vitest 2600/2600, build clean. Backend/Migration/Live-Pentest 11/11 A–K bereits am selben Tag; nächste Schritte /qa + /deploy.)
 
 > **Elternfeature:** PROJ-96 (Projekt-Templates für Standardphasen) — Deployed (α). Diese Slice ergänzt Aufgaben-Templates als dritte Kind-Tabelle neben Workstreams + Deliverables.
 >
@@ -378,8 +378,24 @@ Keine. Reine EXTEND auf deployten Bausteinen.
 
 **Offen für /qa:** volles Route-E2E via Playwright (Auth-Gates + Toast-Passthrough im Wizard), + optionales Live-Re-Run des Pentests nach jedem PR-Merge.
 
-## Implementation Notes — /frontend
-_To be added — Admin-Katalog-Anzeige `/stammdaten/projekt-vorlagen` bekommt Tasks-Sektion (Nested), Wizard-Picker-Vorschau bekommt „N Aufgaben (M Sub-Aufgaben)"._
+## Implementation Notes — /frontend (2026-08-06)
+
+**Admin-Katalog** (`src/components/master-data/ma-project-templates-page-client.tsx`):
+- Header-Meta-Zeile pro Template zeigt jetzt `N Workstreams · M Deliverables · X Aufgaben (Y Sub-Aufgaben)` (der Sub-Klammertext erscheint nur wenn > 0).
+- Neue read-only `TemplateTasksSection`-Komponente nach dem Workstreams-Grid: Grid mit einer Kachel pro Top-Level-Task; Priority-Badge (Niedrig/Mittel/Hoch/Kritisch mit Amber/Destructive-Tint), Anker-Badge (Workstream-Key ODER `Phase <N>`), Fälligkeits-Hinweis (`+N Tage`), Description-Preview. Sub-Aufgaben genestet als Listeneinträge unter ihrer Parent-Task. Waisen-Bucket („Ohne Parent-Aufgabe") mit Amber-Border falls je Subtasks ohne resolvbaren Parent auftauchen (Buy-Side-Seed produziert keine; PROJ-Y-96d Deep-Editor könnte).
+- Pure Helper `countTasks(tasks)` exportiert für Unit-Test.
+
+**Wizard-Picker-Vorschau** (`src/components/projects/wizard/step-ma-foundation.tsx`):
+- Neuer exportierter Helper `buildTemplatePreview(template)` ersetzt die inline-formulierte FormDescription. Baut jetzt `Beim Anlegen werden Phasen, N Workstreams, M Deliverables, X Aufgaben übernommen (Y Sub-Aufgaben) — danach frei anpassbar.` (Klammer-Suffix nur bei subtask_count > 0).
+- Fallback-Text (kein Template ausgewählt) erweitert um „Aufgaben" in der Aufzählung.
+
+**Tests:**
+- `ma-project-templates-page-client.test.ts` — 4 Cases für `countTasks` (leer, nur Top-Level, gemischt, Buy-Side-Shape 24/3).
+- `step-ma-foundation.preview.test.ts` — 4 Cases für `buildTemplatePreview` (keine Subtasks, mit Subtasks, leer, Buy-Side-Shape 24/3).
+
+**Reuse:** shadcn Badge/Skeleton/Button vorhanden; kein neues shadcn-Component installiert; kein neuer npm-Dep.
+
+**Gates:** ESLint 0 · tsc 12 baseline / 0 neu · vitest **2600/2600** (+8 neue) · Turbopack build clean (14.1s). Kein Migrations- oder Schema-Change (reines Client-Rendering auf der um `tasks[]` erweiterten Katalog-Antwort aus /backend).
 
 ## QA Test Results
 _To be added by /qa_

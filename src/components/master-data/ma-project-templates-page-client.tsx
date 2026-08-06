@@ -1,6 +1,6 @@
 "use client"
 
-import { LayoutTemplate, RotateCcw } from "lucide-react"
+import { LayoutTemplate, ListTree, RotateCcw } from "lucide-react"
 import * as React from "react"
 import { toast } from "sonner"
 
@@ -12,7 +12,25 @@ import {
   type DealSide,
   listMaProjectTemplates,
   type MaProjectTemplate,
+  type MaTemplateTask,
+  type MaTemplateTaskPriority,
 } from "@/lib/ma-project/templates-api"
+
+// PROJ-Y-96e — priority label + tint for the read-only tasks preview.
+// Matches WorkItemPriority values but stays local because the Stammdaten catalog
+// shouldn't pull in the whole work-item enum module.
+const TASK_PRIORITY_LABELS: Record<MaTemplateTaskPriority, string> = {
+  low: "Niedrig",
+  medium: "Mittel",
+  high: "Hoch",
+  critical: "Kritisch",
+}
+const TASK_PRIORITY_TINT: Record<MaTemplateTaskPriority, string> = {
+  low: "bg-muted text-muted-foreground",
+  medium: "",
+  high: "border-amber-500/50 text-amber-700 dark:text-amber-400",
+  critical: "border-destructive/70 text-destructive",
+}
 
 /**
  * PROJ-96 — read-only tenant catalog of M&A project templates.
@@ -93,7 +111,9 @@ export function MaProjectTemplatesPageClient() {
                 </div>
                 <span className="text-xs text-muted-foreground">
                   {t.workstreams.length} Workstreams · {t.deliverables.length}{" "}
-                  Deliverables
+                  Deliverables · {countTasks(t.tasks).tasks} Aufgaben
+                  {countTasks(t.tasks).subtasks > 0 &&
+                    ` (${countTasks(t.tasks).subtasks} Sub-Aufgaben)`}
                 </span>
               </div>
 
@@ -127,10 +147,124 @@ export function MaProjectTemplatesPageClient() {
                   })}
                 </ul>
               )}
+
+              {t.tasks.length > 0 && (
+                <TemplateTasksSection tasks={t.tasks} />
+              )}
             </article>
           ))}
         </div>
       )}
+    </div>
+  )
+}
+
+// PROJ-Y-96e — pure helper: split tasks[] into top-level count vs subtask count.
+// Exported so a unit test can pin the semantics (drop-in for spec AC verification).
+export function countTasks(tasks: MaTemplateTask[]): {
+  tasks: number
+  subtasks: number
+} {
+  let taskCount = 0
+  let subtaskCount = 0
+  for (const t of tasks) {
+    if (t.target_kind === "subtask") subtaskCount++
+    else taskCount++
+  }
+  return { tasks: taskCount, subtasks: subtaskCount }
+}
+
+/**
+ * PROJ-Y-96e — read-only preview of a template's task rows.
+ * Groups by parent (top-level tasks + their subtasks). Waisen-subtasks (parent
+ * missing in the same array) fall back to a "Ohne Parent" bucket so the admin
+ * sees them at all — Waisen were never possible via the seed, but PROJ-Y-96d
+ * custom-CRUD could produce them.
+ */
+function TemplateTasksSection({ tasks }: { tasks: MaTemplateTask[] }) {
+  const parents = tasks.filter((t) => t.target_kind === "task")
+  const subtasks = tasks.filter((t) => t.target_kind === "subtask")
+
+  const orphanSubtasks = subtasks.filter(
+    (s) => !parents.some((p) => p.task_key === s.parent_task_key)
+  )
+
+  return (
+    <div className="mt-4">
+      <div className="mb-2 flex items-center gap-2 text-xs font-medium uppercase tracking-wide text-muted-foreground">
+        <ListTree className="h-3.5 w-3.5" aria-hidden />
+        Vorbereitete Aufgaben ({parents.length}
+        {subtasks.length > 0 && `, ${subtasks.length} Sub-Aufgaben`})
+      </div>
+      <ul className="grid gap-2 sm:grid-cols-2">
+        {parents.map((p) => {
+          const kids = subtasks.filter((s) => s.parent_task_key === p.task_key)
+          return (
+            <li
+              key={p.id}
+              className="rounded border bg-muted/10 px-3 py-2 text-sm"
+            >
+              <div className="flex flex-wrap items-center gap-2">
+                <span className="font-medium">{p.title}</span>
+                {p.priority && (
+                  <Badge
+                    variant="outline"
+                    className={TASK_PRIORITY_TINT[p.priority]}
+                  >
+                    {TASK_PRIORITY_LABELS[p.priority]}
+                  </Badge>
+                )}
+                {p.workstream_key && (
+                  <Badge variant="secondary" className="font-normal">
+                    {p.workstream_key}
+                  </Badge>
+                )}
+                {p.phase_key && (
+                  <Badge variant="secondary" className="font-normal">
+                    Phase {p.phase_key}
+                  </Badge>
+                )}
+                {p.due_date_offset_days !== null && (
+                  <span className="text-xs text-muted-foreground">
+                    +{p.due_date_offset_days} Tage
+                  </span>
+                )}
+              </div>
+              {p.description && (
+                <p className="mt-1 text-xs text-muted-foreground">
+                  {p.description}
+                </p>
+              )}
+              {kids.length > 0 && (
+                <ul className="mt-1 list-disc pl-4 text-xs text-muted-foreground">
+                  {kids.map((s) => (
+                    <li key={s.id}>
+                      {s.title}
+                      {s.priority && (
+                        <span className="ml-1 text-[10px] uppercase tracking-wide">
+                          · {TASK_PRIORITY_LABELS[s.priority]}
+                        </span>
+                      )}
+                    </li>
+                  ))}
+                </ul>
+              )}
+            </li>
+          )
+        })}
+        {orphanSubtasks.length > 0 && (
+          <li className="rounded border border-amber-500/40 bg-amber-500/5 px-3 py-2 text-sm">
+            <div className="font-medium text-amber-700 dark:text-amber-400">
+              Ohne Parent-Aufgabe ({orphanSubtasks.length})
+            </div>
+            <ul className="mt-1 list-disc pl-4 text-xs text-muted-foreground">
+              {orphanSubtasks.map((s) => (
+                <li key={s.id}>{s.title}</li>
+              ))}
+            </ul>
+          </li>
+        )}
+      </ul>
     </div>
   )
 }
