@@ -1,8 +1,8 @@
 # PROJ-Y-96e: Aufgaben-Templates (`ma_template_tasks`)
 
-## Status: In Progress (/backend + /frontend live)
+## Status: Deployed
 **Created:** 2026-08-04
-**Last Updated:** 2026-08-06 (/frontend gebaut: Admin-Katalog-Tasks-Sektion + Wizard-Picker-Vorschau-Update; ESLint 0, tsc 0 neu, vitest 2600/2600, build clean. Backend/Migration/Live-Pentest 11/11 A–K bereits am selben Tag; nächste Schritte /qa + /deploy.)
+**Deployed:** 2026-08-06 — Tag `v2.33.0-PROJ-Y-96e` (merge `b6d2e57` via PR #293 squash). Migration `20260805083132_proj_y_96e_task_templates` seit /backend in Prod; Runtime-Deploy = Squash-Merge auf main → Vercel-Auto-Deploy. Post-Deploy-Smoke: `/api/ma-project-templates`, `/api/projects/[id]/apply-template`, `/stammdaten/projekt-vorlagen` alle 307 Auth-Gate; Prod-DB-Verify (tasks-Table + FK RESTRICT + 4 Policies + beide RPCs + anon-Revoke) alle grün. Bundled: Supply-Chain-Fix (4 neue HIGH-Advisories via `overrides` — fast-uri^3.1.5 · hono^4.12.34 · ip-address^10.4.0 · brace-expansion^5.0.9; PROJ-140-Muster; npm audit exit 0). Offener Followup: /qa (Playwright-Auth-Gate-E2E — vom User bewusst nach Deploy gelegt, weil Migration bereits in Prod war seit /backend und FE-Änderungen additiv/read-only sind).
 
 > **Elternfeature:** PROJ-96 (Projekt-Templates für Standardphasen) — Deployed (α). Diese Slice ergänzt Aufgaben-Templates als dritte Kind-Tabelle neben Workstreams + Deliverables.
 >
