@@ -348,4 +348,47 @@ describe("POST finalize — PROJ-141-γ2 template-apply warning (M-2)", () => {
     const body = (await res.json()) as { warnings: unknown[] }
     expect(body.warnings).toHaveLength(0)
   })
+
+  // PROJ-Y-96e — apply RPC returns warnings[] for skipped rows (waisen-subtasks,
+  // missing workstream/phase anchors). Finalize passes each through as its own
+  // toast so the admin knows what didn't seed.
+  it("passes RPC warnings[] through as separate toast entries", async () => {
+    seedHappyPath(maDraft())
+    rpcMock.mockImplementation((name: string) =>
+      Promise.resolve(
+        name === "apply_ma_project_template"
+          ? {
+              data: {
+                template_id: TEMPLATE_ID,
+                template_version: 1,
+                phase_model: {},
+                workstreams_created: 7,
+                deliverables_created: 9,
+                tasks_created: 23,
+                subtasks_created: 2,
+                warnings: [
+                  "skipped_subtask_parent_missing:financial_qoe_prep:financial_qoe",
+                  "skipped_task_missing_workstream:custom_task:missing_ws",
+                ],
+                applied_at: "2026-08-06T00:00:00.000Z",
+              },
+              error: null,
+            }
+          : { error: null },
+      ),
+    )
+    const res = await POST(makeRequest(), ctx())
+    expect(res.status).toBe(201)
+    const body = (await res.json()) as {
+      warnings: { code: string; message: string }[]
+    }
+    // Two RPC warnings ⇒ two toast entries, all with the `skipped_row` code
+    // so FE i18n can group/label them consistently.
+    expect(body.warnings).toHaveLength(2)
+    expect(body.warnings.every((w) => w.code === "template_apply_skipped_row")).toBe(
+      true,
+    )
+    expect(body.warnings[0].message).toContain("skipped_subtask_parent_missing")
+    expect(body.warnings[1].message).toContain("skipped_task_missing_workstream")
+  })
 })

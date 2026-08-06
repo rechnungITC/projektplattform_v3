@@ -119,8 +119,8 @@ export function StepMaFoundation({ tenantId }: StepMaFoundationProps) {
               </Select>
               <FormDescription>
                 {selected
-                  ? `Beim Anlegen werden Phasen, ${selected.workstreams.length} Workstreams und ${selected.deliverables.length} Deliverables übernommen (danach frei anpassbar).`
-                  : "Optional: Standardstruktur (Phasen, Workstreams, Deliverables) aus einem Template übernehmen. Vorlagen pflegt der Admin unter Stammdaten."}
+                  ? buildTemplatePreview(selected)
+                  : "Optional: Standardstruktur (Phasen, Workstreams, Deliverables, Aufgaben) aus einem Template übernehmen. Vorlagen pflegt der Admin unter Stammdaten."}
               </FormDescription>
               <FormMessage />
             </FormItem>
@@ -354,4 +354,25 @@ export function StepMaFoundation({ tenantId }: StepMaFoundationProps) {
       />
     </div>
   )
+}
+
+/**
+ * PROJ-Y-96e — builds the wizard template-picker preview text.
+ * Shown as FormDescription under the Select once the user picks a template.
+ * Exported for unit-test — pinned to spec AC5 "Vorschau zeigt Task-Counts".
+ */
+export function buildTemplatePreview(template: MaProjectTemplate): string {
+  const wsCount = template.workstreams.length
+  const delCount = template.deliverables.length
+  const tasks = template.tasks ?? []
+  const taskCount = tasks.filter((t) => t.target_kind === "task").length
+  const subtaskCount = tasks.filter((t) => t.target_kind === "subtask").length
+
+  const parts = [
+    `${wsCount} Workstreams`,
+    `${delCount} Deliverables`,
+    `${taskCount} Aufgaben`,
+  ]
+  const suffix = subtaskCount > 0 ? ` (${subtaskCount} Sub-Aufgaben)` : ""
+  return `Beim Anlegen werden Phasen, ${parts.join(", ")} übernommen${suffix} — danach frei anpassbar.`
 }

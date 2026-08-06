@@ -38,6 +38,31 @@ export interface MaTemplateDeliverable {
   sort_order: number
 }
 
+/**
+ * PROJ-Y-96e — a template row that copies to a `work_items` entry when the
+ * template is applied. Anchor rule: `workstream_key` OR `phase_key` must be
+ * set (CHECK enforces ≥1 anchor). Subtasks reference a Parent-Task within
+ * the same template via `parent_task_key` (self-FK, target_kind='task' only).
+ */
+export type MaTemplateTaskKind = "task" | "subtask"
+export type MaTemplateTaskPriority = "low" | "medium" | "high" | "critical"
+
+export interface MaTemplateTask {
+  id: string
+  template_id: string
+  task_key: string
+  title: string
+  description: string | null
+  target_kind: MaTemplateTaskKind
+  workstream_key: string | null
+  phase_key: string | null
+  parent_task_key: string | null
+  priority: MaTemplateTaskPriority | null
+  estimated_days: number | null
+  due_date_offset_days: number | null
+  sort_order: number
+}
+
 export interface MaProjectTemplate {
   id: string
   tenant_id: string
@@ -51,7 +76,24 @@ export interface MaProjectTemplate {
   updated_at: string
   workstreams: MaTemplateWorkstream[]
   deliverables: MaTemplateDeliverable[]
+  tasks: MaTemplateTask[]
 }
+
+/**
+ * PROJ-Y-96e — `warnings[]` is a best-effort list of skipped rows during
+ * apply. Each entry is a colon-delimited code so the FE can parse + i18n:
+ *   - `skipped_task_missing_workstream:<task_key>:<workstream_key>`
+ *   - `skipped_task_missing_phase:<task_key>:<phase_key>`
+ *   - `skipped_subtask_missing_workstream:<subtask_key>:<workstream_key>`
+ *   - `skipped_subtask_missing_phase:<subtask_key>:<phase_key>`
+ *   - `skipped_subtask_parent_missing:<subtask_key>:<parent_task_key>`
+ */
+export type TemplateApplyWarningPrefix =
+  | "skipped_task_missing_workstream"
+  | "skipped_task_missing_phase"
+  | "skipped_subtask_missing_workstream"
+  | "skipped_subtask_missing_phase"
+  | "skipped_subtask_parent_missing"
 
 export interface ApplyTemplateResult {
   template_id: string
@@ -59,6 +101,10 @@ export interface ApplyTemplateResult {
   phase_model: unknown
   workstreams_created: number
   deliverables_created: number
+  tasks_created: number
+  subtasks_created: number
+  warnings: string[]
+  applied_at: string
 }
 
 interface ApiErrorBody {
