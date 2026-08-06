@@ -14,7 +14,7 @@ summary_for_jira: "[A3b] RACI-Zuordnungen in M&A-Projekt-Templates"
 
 # PROJ-Y-96b: M&A Template RACI-Zuordnungen
 
-## Status: Approved
+## Status: Deployed
 **Created:** 2026-08-04
 **Origin:** Followup von PROJ-96 „Projekt-Templates für Standardphasen bereitstellen" MVP-Cut, festgelegt via PROJ-141-γ1 Bookkeeping 2026-07-31. Aufgaben-Templates (`ma_template_tasks`) wurden 2026-08-04 aus dem ursprünglichen Y-96b-Scope zu PROJ-Y-96e ausgegliedert, damit RACI unabhängig priorisierbar bleibt — Y-96b ist jetzt **nur der RACI-Teil** von PROJ-96.
 
@@ -368,4 +368,31 @@ Keine. Reine EXTEND auf bestehendem Stack + deployten Bausteinen (PROJ-96 / 97b 
 
 **READY** — 0 Critical, 0 High. Alle 8 ACs erfüllt. Live-Pentest 9/9 + Red-Team-Supplement 6/6 grün gegen Prod, 0 Residue. Regression durchweg grün außer F-1 (strukturelles PROJ-96-Pentest-Issue, nicht Y-96b-verursacht).
 
-**Next step:** `/deploy` — Backend-Slice + AC-Y96b.6-FE-Ergänzung deploybar. Kein neuer Env, keine Dep-Änderung. Migration seit /backend live in Prod, restlicher Deploy = Runtime-Code-Merge via Vercel Auto-Deploy from main.
+---
+
+## Deployment — 2026-08-06
+
+**Deployed:** 2026-08-06 · **Tag:** `v2.34.0-PROJ-Y-96b` · **PR:** [#294](https://github.com/rechnungITC/projektplattform_v3/pull/294) (squash-merged → main `640e31a`) · **Production URL:** https://projektplattform-v3.vercel.app
+
+**Merge-Track — Konsolidierung mit PROJ-Y-96e:** Zwischen /qa (2026-08-06 vormittags) und /deploy hat die parallele **PROJ-Y-96e-Slice (Aufgaben-Templates)** auf `main` gemerged (`b6d2e57`) — sie berührt genau denselben apply-RPC + Template-Katalog. Rebase hatte 4 Konflikte, aufgelöst durch **Konsolidierung beider Slices** (nicht Wegdrücken einer Seite).
+
+Zusätzliche Migration in Prod: **`20260806113600_proj_y96b_y96e_apply_consolidation.sql`** — recreates `apply_ma_project_template` mit **6 atomaren Copy-Blöcken** in einer TX: phases → workstreams → deliverables → tasks (Y-96e 2-pass) → RACI (Y-96b) → profile-snapshot (γ3). Recreates `ensure_default_ma_project_templates` mit idempotenter Task-Backfill (Y-96e-L5) UND idempotenter RACI-Backfill (Y-96b-Fork-B1). **Unified jsonb warnings-Shape** — Y-96e's `text[]`-Colon-Codes werden zu strukturierten Objekten `{code, task_key / workstream_key / phase_key / parent_task_key}` mit derselben Form wie Y-96b's `{code, target_type, target_key, role_key}`. Finalize-Route + Route-Tests aktualisiert (Y-96e-Consumer parst jetzt jsonb-Objekte statt Colon-Strings).
+
+**Live-Smoke der Konsolidierung (rolled back, 0 Residue):** `ws=7 · del=9 · tasks=22 · subtasks=3 · raci=23 · profile_snap=✓ · warnings=14 unified jsonb entries` — beide Slices in einer atomaren TX voll funktional.
+
+**Post-Deploy-Smoke gegen Prod (2026-08-06):**
+- `GET /api/ma-project-templates` → **307 Auth-Gate** ✅
+- `GET /stammdaten/projekt-vorlagen` → **307 Auth-Gate** ✅
+- `POST /api/projects/{id}/apply-template` → **307 Auth-Gate** ✅
+- `POST /api/wizard-drafts/{id}/finalize` → **307 Auth-Gate** ✅
+
+Kein neuer Env / Secret. Migrationen bereits seit /backend in Prod. Runtime-Deploy = Code-Merge via Vercel Auto-Deploy from main.
+
+**Required-Checks CI (alle grün):** Snyk production dependency scan · Verify SELECT columns vs migration schema (PROJ-42) · Verify migration filename naming + version-prefix uniqueness (PROJ-134) · npm audit production dependencies (PROJ-74) · Vercel Preview deploy.
+
+**Zusätzliche Deviation D-Y96b.merge.1:** Y-96b's ursprüngliche AC-Y96b.7 verlangte „RACI-Backfill nicht rückwirkend für bestehende Tenants". Die Konsolidierung übernimmt Y-96e's symmetrisches „idempotent-wenn-fehlt"-Muster auch für RACI (Fork B1 relaxed). Bessere UX für den Prod-Tenant — der bereits geseedete Buy-Side-Default bekommt beim nächsten Katalog-Access den RACI-Katalog nachträglich.
+
+**Post-Deploy-Followups:**
+- **PROJ-Y-Followup PROJ-96-pentest-set-local-fix** (F-1 Low, PROJ-96 strukturell — nicht Y-96b): `set_config('request.jwt.claims', ..., true)` in `tests/sql/PROJ-96-project-templates-pentest.sql` V3 VOR den `BEGIN…EXCEPTION`-Block verschieben. Mirror des Y-96b-Pentest-Musters, das dieses Problem strukturell vermeidet.
+- **PROJ-Y-96d Deep-Editor** — inline CRUD für RACI-Zeilen; aktuell nur read-only Matrix im Admin-Katalog.
+- **PROJ-Y-96c echte Versionshistorie** — `is_current` + Publish-RPC + auto-Version-Bump-Trigger bei Kind-Edit.
