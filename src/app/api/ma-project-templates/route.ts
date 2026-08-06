@@ -7,8 +7,9 @@ import { apiError, getAuthenticatedUserId } from "../_lib/route-helpers"
 //
 // GET /api/ma-project-templates
 //   Lazy-seeds the Buy-Side default (idempotent) then lists the tenant's
-//   templates with their workstreams + deliverables. Used by the wizard
-//   template picker (before a project exists) and the admin catalog view.
+//   templates with their workstreams + deliverables + tasks (PROJ-Y-96e) +
+//   RACI matrix (PROJ-Y-96b, AC-Y96b.6). Used by the wizard template picker
+//   (before a project exists) and the admin catalog view.
 //   RLS scopes every row to the caller's tenant.
 //
 // Flat selects (no embedded resources) keep the schema-drift guard happy.
@@ -17,10 +18,13 @@ const TEMPLATE_COLUMNS =
 const WORKSTREAM_COLUMNS =
   "id, template_id, workstream_key, label, goal, confidentiality_level, sort_order"
 const DELIVERABLE_COLUMNS =
-  "id, template_id, workstream_key, name, description, status, confidentiality_level, sort_order"
+  "id, template_id, workstream_key, deliverable_key, name, description, status, confidentiality_level, sort_order"
 // PROJ-Y-96e — additional kind-table for task templates.
 const TASK_COLUMNS =
   "id, template_id, task_key, title, description, target_kind, workstream_key, phase_key, parent_task_key, priority, estimated_days, due_date_offset_days, sort_order"
+// PROJ-Y-96b (AC-Y96b.6) — RACI child rows for the admin catalog's read-only matrix.
+const RACI_COLUMNS =
+  "id, template_id, target_type, target_key, role_key, raci_letter, sort_order"
 
 export async function GET() {
   const { userId, supabase } = await getAuthenticatedUserId()
@@ -54,7 +58,7 @@ export async function GET() {
     return NextResponse.json({ templates: [] })
   }
 
-  const [wsRes, delRes, taskRes] = await Promise.all([
+  const [wsRes, delRes, taskRes, raciRes] = await Promise.all([
     supabase
       .from("ma_template_workstreams")
       .select(WORKSTREAM_COLUMNS)
@@ -70,20 +74,29 @@ export async function GET() {
       .select(TASK_COLUMNS)
       .in("template_id", templateIds)
       .order("sort_order", { ascending: true }),
+    // PROJ-Y-96b (AC-Y96b.6): read-only RACI matrix in admin catalog.
+    supabase
+      .from("ma_template_raci")
+      .select(RACI_COLUMNS)
+      .in("template_id", templateIds)
+      .order("sort_order", { ascending: true }),
   ])
   if (wsRes.error) return apiError("list_failed", wsRes.error.message, 500)
   if (delRes.error) return apiError("list_failed", delRes.error.message, 500)
   if (taskRes.error) return apiError("list_failed", taskRes.error.message, 500)
+  if (raciRes.error) return apiError("list_failed", raciRes.error.message, 500)
 
   const workstreams = wsRes.data ?? []
   const deliverables = delRes.data ?? []
   const tasks = taskRes.data ?? []
+  const raci = raciRes.data ?? []
 
   const assembled = (templates ?? []).map((t) => ({
     ...t,
     workstreams: workstreams.filter((w) => w.template_id === t.id),
     deliverables: deliverables.filter((d) => d.template_id === t.id),
     tasks: tasks.filter((tk) => tk.template_id === t.id),
+    raci: raci.filter((r) => r.template_id === t.id),
   }))
 
   return NextResponse.json({ templates: assembled })
