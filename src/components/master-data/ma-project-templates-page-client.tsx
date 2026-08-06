@@ -8,17 +8,25 @@ import { Badge } from "@/components/ui/badge"
 import { Button } from "@/components/ui/button"
 import { Skeleton } from "@/components/ui/skeleton"
 import {
+  Table,
+  TableBody,
+  TableCell,
+  TableHead,
+  TableHeader,
+  TableRow,
+} from "@/components/ui/table"
+import {
   DEAL_SIDE_LABELS,
   type DealSide,
   listMaProjectTemplates,
   type MaProjectTemplate,
+  type MaTemplateRaci,
   type MaTemplateTask,
   type MaTemplateTaskPriority,
+  type RaciLetter,
 } from "@/lib/ma-project/templates-api"
 
 // PROJ-Y-96e — priority label + tint for the read-only tasks preview.
-// Matches WorkItemPriority values but stays local because the Stammdaten catalog
-// shouldn't pull in the whole work-item enum module.
 const TASK_PRIORITY_LABELS: Record<MaTemplateTaskPriority, string> = {
   low: "Niedrig",
   medium: "Mittel",
@@ -30,6 +38,56 @@ const TASK_PRIORITY_TINT: Record<MaTemplateTaskPriority, string> = {
   medium: "",
   high: "border-amber-500/50 text-amber-700 dark:text-amber-400",
   critical: "border-destructive/70 text-destructive",
+}
+
+// PROJ-Y-96b (AC-Y96b.6) — read-only RACI matrix.
+const RACI_LETTER_VARIANT: Record<RaciLetter, "default" | "secondary" | "outline"> = {
+  R: "default",
+  A: "default",
+  C: "secondary",
+  I: "outline",
+}
+const RACI_LETTER_LABEL: Record<RaciLetter, string> = {
+  R: "R — Responsible",
+  A: "A — Accountable",
+  C: "C — Consulted",
+  I: "I — Informed",
+}
+
+function raciTargetLabel(
+  raci: MaTemplateRaci,
+  template: MaProjectTemplate
+): { primary: string; sublabel: string } {
+  if (raci.target_type === "workstream") {
+    const ws = template.workstreams.find(
+      (w) => w.workstream_key === raci.target_key
+    )
+    return {
+      primary: ws?.label ?? raci.target_key,
+      sublabel: `Workstream · ${raci.target_key}`,
+    }
+  }
+  const del = template.deliverables.find(
+    (d) => d.deliverable_key === raci.target_key
+  )
+  return {
+    primary: del?.name ?? raci.target_key,
+    sublabel: `Deliverable · ${raci.target_key}`,
+  }
+}
+
+/** Sorted rows: workstreams first, then deliverables; each block by sort_order. */
+function sortedRaciRows(rows: MaTemplateRaci[]): MaTemplateRaci[] {
+  return [...rows].sort((a, b) => {
+    if (a.target_type !== b.target_type) {
+      return a.target_type === "workstream" ? -1 : 1
+    }
+    if (a.sort_order !== b.sort_order) return a.sort_order - b.sort_order
+    if (a.target_key !== b.target_key) {
+      return a.target_key.localeCompare(b.target_key)
+    }
+    return a.role_key.localeCompare(b.role_key)
+  })
 }
 
 /**
@@ -114,6 +172,7 @@ export function MaProjectTemplatesPageClient() {
                   Deliverables · {countTasks(t.tasks).tasks} Aufgaben
                   {countTasks(t.tasks).subtasks > 0 &&
                     ` (${countTasks(t.tasks).subtasks} Sub-Aufgaben)`}
+                  {t.raci.length > 0 && ` · ${t.raci.length} RACI`}
                 </span>
               </div>
 
@@ -151,6 +210,60 @@ export function MaProjectTemplatesPageClient() {
               {t.tasks.length > 0 && (
                 <TemplateTasksSection tasks={t.tasks} />
               )}
+
+              {/* PROJ-Y-96b (AC-Y96b.6) — read-only RACI matrix per template. */}
+              <section
+                className="mt-4"
+                aria-label={`RACI-Zuordnungen für ${t.name}`}
+                data-testid="raci-matrix-section"
+              >
+                <h3 className="text-sm font-medium text-muted-foreground">
+                  RACI-Zuordnungen
+                </h3>
+                {t.raci.length === 0 ? (
+                  <p className="mt-1 text-xs text-muted-foreground">
+                    Keine RACI-Zuweisungen im Template hinterlegt.
+                  </p>
+                ) : (
+                  <div className="mt-2 overflow-x-auto rounded border">
+                    <Table>
+                      <TableHeader>
+                        <TableRow>
+                          <TableHead>Ziel</TableHead>
+                          <TableHead>Rolle</TableHead>
+                          <TableHead className="w-24">R/A/C/I</TableHead>
+                        </TableRow>
+                      </TableHeader>
+                      <TableBody>
+                        {sortedRaciRows(t.raci).map((raci) => {
+                          const target = raciTargetLabel(raci, t)
+                          return (
+                            <TableRow key={raci.id}>
+                              <TableCell>
+                                <div className="text-sm">{target.primary}</div>
+                                <div className="text-xs text-muted-foreground">
+                                  {target.sublabel}
+                                </div>
+                              </TableCell>
+                              <TableCell className="text-sm">
+                                {raci.role_key}
+                              </TableCell>
+                              <TableCell>
+                                <Badge
+                                  variant={RACI_LETTER_VARIANT[raci.raci_letter]}
+                                  title={RACI_LETTER_LABEL[raci.raci_letter]}
+                                >
+                                  {raci.raci_letter}
+                                </Badge>
+                              </TableCell>
+                            </TableRow>
+                          )
+                        })}
+                      </TableBody>
+                    </Table>
+                  </div>
+                )}
+              </section>
             </article>
           ))}
         </div>
@@ -160,7 +273,6 @@ export function MaProjectTemplatesPageClient() {
 }
 
 // PROJ-Y-96e — pure helper: split tasks[] into top-level count vs subtask count.
-// Exported so a unit test can pin the semantics (drop-in for spec AC verification).
 export function countTasks(tasks: MaTemplateTask[]): {
   tasks: number
   subtasks: number
