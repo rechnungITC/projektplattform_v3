@@ -402,8 +402,14 @@ export function WizardClient({ draftId }: WizardClientProps) {
           return
         }
       }
-      // auto-save on transition (silent)
-      await persistDraft(form.getValues(), { silent: true })
+      // auto-save on transition (silent). If the save fails — a network/server
+      // error or an optimistic-lock conflict — persistDraft returns null and has
+      // already surfaced an error toast or the conflict banner. Hold navigation
+      // so the user stays on the current step with their unsaved changes rather
+      // than progressing on top of a stale/failed server draft (mirrors the
+      // abort-on-null guard in onCreate + onCancelSaveAndExit).
+      const saved = await persistDraft(form.getValues(), { silent: true })
+      if (!saved) return
       setStep(target)
       const newFurthestIndex = Math.max(
         steps.indexOf(furthestStep),
