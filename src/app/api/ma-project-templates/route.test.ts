@@ -80,17 +80,61 @@ describe("GET /api/ma-project-templates", () => {
       data: [{ id: "d1", template_id: TPL, workstream_key: "financial" }],
       error: null,
     }
+    // PROJ-Y-96e — the third kind-table is loaded in the same Promise.all.
+    results["ma_template_tasks"] = {
+      data: [
+        {
+          id: "t1",
+          template_id: TPL,
+          task_key: "financial_kickoff",
+          target_kind: "task",
+          workstream_key: "financial",
+        },
+        {
+          id: "t2",
+          template_id: TPL,
+          task_key: "financial_qoe_prep",
+          target_kind: "subtask",
+          workstream_key: "financial",
+          parent_task_key: "financial_qoe",
+        },
+      ],
+      error: null,
+    }
     const res = await GET()
     expect(res.status).toBe(200)
     const body = (await res.json()) as {
-      templates: Array<{ workstreams: unknown[]; deliverables: unknown[] }>
+      templates: Array<{
+        workstreams: unknown[]
+        deliverables: unknown[]
+        tasks: unknown[]
+      }>
     }
     expect(body.templates).toHaveLength(1)
     expect(body.templates[0].workstreams).toHaveLength(1)
     expect(body.templates[0].deliverables).toHaveLength(1)
+    expect(body.templates[0].tasks).toHaveLength(2)
     expect(rpcMock).toHaveBeenCalledWith("ensure_default_ma_project_templates", {
       p_tenant_id: TENANT,
     })
+  })
+
+  // PROJ-Y-96e — a real error loading tasks must not masquerade as empty tasks.
+  it("500 list_failed when ma_template_tasks select errors", async () => {
+    getUserMock.mockResolvedValue({ data: { user: { id: ME } } })
+    resolveTenantMock.mockResolvedValue(TENANT)
+    results["ma_project_templates"] = {
+      data: [{ id: TPL, tenant_id: TENANT }],
+      error: null,
+    }
+    results["ma_template_tasks"] = {
+      data: null,
+      error: { code: "42P01", message: "relation missing" },
+    }
+    const res = await GET()
+    expect(res.status).toBe(500)
+    const body = (await res.json()) as { error: { code: string } }
+    expect(body.error.code).toBe("list_failed")
   })
 
   it("200 returns empty list when no templates exist", async () => {

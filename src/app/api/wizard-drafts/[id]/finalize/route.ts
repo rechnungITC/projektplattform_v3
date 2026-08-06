@@ -250,7 +250,7 @@ export async function POST(_request: Request, ctx: Ctx) {
         templateId
       )
     if (isUuid) {
-      const { error: templateErr } = await supabase.rpc(
+      const { data: templateData, error: templateErr } = await supabase.rpc(
         "apply_ma_project_template",
         {
           p_project_id: project.id,
@@ -266,6 +266,24 @@ export async function POST(_request: Request, ctx: Ctx) {
           message:
             "Projekt angelegt — die Projekt-Vorlage konnte nicht übernommen werden. Sie kann später in den Projekteinstellungen angewendet werden.",
         })
+      } else {
+        // PROJ-Y-96e — pass RPC warnings[] through as user-visible toasts. The
+        // apply-RPC skips a task/subtask when its anchor (workstream/phase) or
+        // its parent is missing in the project copy and pushes a code-prefixed
+        // warning. Surface each so the admin knows what wasn't seeded.
+        const rpcWarnings =
+          templateData && typeof templateData === "object" && "warnings" in templateData
+            ? (templateData as { warnings?: unknown }).warnings
+            : null
+        if (Array.isArray(rpcWarnings)) {
+          for (const raw of rpcWarnings) {
+            if (typeof raw !== "string" || raw.length === 0) continue
+            warnings.push({
+              code: "template_apply_skipped_row",
+              message: `Vorlage angewendet — eine Zeile wurde übersprungen (${raw}).`,
+            })
+          }
+        }
       }
     }
   }

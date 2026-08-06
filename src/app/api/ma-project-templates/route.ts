@@ -18,6 +18,9 @@ const WORKSTREAM_COLUMNS =
   "id, template_id, workstream_key, label, goal, confidentiality_level, sort_order"
 const DELIVERABLE_COLUMNS =
   "id, template_id, workstream_key, name, description, status, confidentiality_level, sort_order"
+// PROJ-Y-96e — additional kind-table for task templates.
+const TASK_COLUMNS =
+  "id, template_id, task_key, title, description, target_kind, workstream_key, phase_key, parent_task_key, priority, estimated_days, due_date_offset_days, sort_order"
 
 export async function GET() {
   const { userId, supabase } = await getAuthenticatedUserId()
@@ -51,7 +54,7 @@ export async function GET() {
     return NextResponse.json({ templates: [] })
   }
 
-  const [wsRes, delRes] = await Promise.all([
+  const [wsRes, delRes, taskRes] = await Promise.all([
     supabase
       .from("ma_template_workstreams")
       .select(WORKSTREAM_COLUMNS)
@@ -62,17 +65,25 @@ export async function GET() {
       .select(DELIVERABLE_COLUMNS)
       .in("template_id", templateIds)
       .order("sort_order", { ascending: true }),
+    supabase
+      .from("ma_template_tasks")
+      .select(TASK_COLUMNS)
+      .in("template_id", templateIds)
+      .order("sort_order", { ascending: true }),
   ])
   if (wsRes.error) return apiError("list_failed", wsRes.error.message, 500)
   if (delRes.error) return apiError("list_failed", delRes.error.message, 500)
+  if (taskRes.error) return apiError("list_failed", taskRes.error.message, 500)
 
   const workstreams = wsRes.data ?? []
   const deliverables = delRes.data ?? []
+  const tasks = taskRes.data ?? []
 
   const assembled = (templates ?? []).map((t) => ({
     ...t,
     workstreams: workstreams.filter((w) => w.template_id === t.id),
     deliverables: deliverables.filter((d) => d.template_id === t.id),
+    tasks: tasks.filter((tk) => tk.template_id === t.id),
   }))
 
   return NextResponse.json({ templates: assembled })
