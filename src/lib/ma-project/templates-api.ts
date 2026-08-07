@@ -31,10 +31,51 @@ export interface MaTemplateDeliverable {
   id: string
   template_id: string
   workstream_key: string
+  /** PROJ-Y-96b: stable soft-reference key (backfilled from name). */
+  deliverable_key: string
   name: string
   description: string | null
   status: string
   confidentiality_level: MaConfidentialityLevel
+  sort_order: number
+}
+
+/**
+ * PROJ-Y-96e — a template row that copies to a `work_items` entry when the
+ * template is applied. Anchor rule: `workstream_key` OR `phase_key` must be
+ * set (CHECK enforces ≥1 anchor). Subtasks reference a Parent-Task within
+ * the same template via `parent_task_key` (self-FK, target_kind='task' only).
+ */
+export type MaTemplateTaskKind = "task" | "subtask"
+export type MaTemplateTaskPriority = "low" | "medium" | "high" | "critical"
+
+export interface MaTemplateTask {
+  id: string
+  template_id: string
+  task_key: string
+  title: string
+  description: string | null
+  target_kind: MaTemplateTaskKind
+  workstream_key: string | null
+  phase_key: string | null
+  parent_task_key: string | null
+  priority: MaTemplateTaskPriority | null
+  estimated_days: number | null
+  due_date_offset_days: number | null
+  sort_order: number
+}
+
+/** PROJ-Y-96b (AC-Y96b.6) — one RACI row in the template catalog. */
+export type MaTemplateRaciTargetType = "workstream" | "deliverable"
+export type RaciLetter = "R" | "A" | "C" | "I"
+export interface MaTemplateRaci {
+  id: string
+  template_id: string
+  target_type: MaTemplateRaciTargetType
+  /** soft-reference to workstream_key or deliverable_key inside the same template */
+  target_key: string
+  role_key: string
+  raci_letter: RaciLetter
   sort_order: number
 }
 
@@ -51,6 +92,56 @@ export interface MaProjectTemplate {
   updated_at: string
   workstreams: MaTemplateWorkstream[]
   deliverables: MaTemplateDeliverable[]
+  /** PROJ-Y-96e: task templates copied on apply. */
+  tasks: MaTemplateTask[]
+  /** PROJ-Y-96b (AC-Y96b.6): RACI matrix rows for the read-only admin catalog. */
+  raci: MaTemplateRaci[]
+}
+
+/**
+ * PROJ-Y-96b/e unified warning shape emitted by `apply_ma_project_template`
+ * when a template's task-copy or RACI-copy step encounters a non-blocking
+ * issue. Warnings never fail the apply — they surface via UI toast so the
+ * caller can act on them.
+ *
+ * PROJ-Y-96b (RACI):
+ *   - `raci_unknown_role_key` — role_key not in tenant's role_rates /
+ *     stakeholders. Row is stamped anyway (free-text per PROJ-24).
+ *   - `raci_orphan_target`    — target_key not in template's siblings. Row
+ *     is NOT stamped.
+ *
+ * PROJ-Y-96e (task copy):
+ *   - `skipped_task_missing_workstream`    — task_key's workstream_key not
+ *     resolved to a live workstream.
+ *   - `skipped_task_missing_phase`         — task_key's phase_key not
+ *     resolved to a live phase.
+ *   - `skipped_subtask_missing_workstream` — same as above for subtask.
+ *   - `skipped_subtask_missing_phase`      — same as above for subtask.
+ *   - `skipped_subtask_parent_missing`     — subtask's parent_task_key
+ *     couldn't be mapped (parent row was likely skipped in pass 1).
+ */
+export type ApplyTemplateWarningCode =
+  // Y-96b (RACI)
+  | "raci_unknown_role_key"
+  | "raci_orphan_target"
+  // Y-96e (task copy)
+  | "skipped_task_missing_workstream"
+  | "skipped_task_missing_phase"
+  | "skipped_subtask_missing_workstream"
+  | "skipped_subtask_missing_phase"
+  | "skipped_subtask_parent_missing"
+
+export interface ApplyTemplateWarning {
+  code: ApplyTemplateWarningCode
+  // Y-96b RACI fields
+  target_type?: "workstream" | "deliverable"
+  target_key?: string
+  role_key?: string
+  // Y-96e task-copy fields
+  task_key?: string
+  workstream_key?: string
+  phase_key?: string
+  parent_task_key?: string
 }
 
 export interface ApplyTemplateResult {
@@ -59,6 +150,16 @@ export interface ApplyTemplateResult {
   phase_model: unknown
   workstreams_created: number
   deliverables_created: number
+  /** PROJ-Y-96b: number of raci_assignments rows stamped by this apply. */
+  raci_created: number
+  /** PROJ-Y-96e: number of `kind='task'` work_items stamped by this apply. */
+  tasks_created: number
+  /** PROJ-Y-96e: number of `kind='subtask'` work_items stamped by this apply. */
+  subtasks_created: number
+  /** PROJ-Y-96e: server-side apply timestamp (also stamps `ma_project_profiles`). */
+  applied_at: string
+  /** PROJ-Y-96b+96e: unified non-blocking warnings (omitted or empty on success). */
+  warnings?: ApplyTemplateWarning[]
 }
 
 interface ApiErrorBody {

@@ -122,6 +122,68 @@ describe("POST /api/projects/[id]/apply-template", () => {
     })
   })
 
+  it("200 passes through the PROJ-Y-96b raci_created field", async () => {
+    getUserMock.mockResolvedValue({ data: { user: { id: ME } } })
+    queueViewAccess()
+    rpcMock.mockResolvedValue({
+      data: {
+        template_id: TEMPLATE,
+        template_version: 1,
+        workstreams_created: 7,
+        deliverables_created: 9,
+        raci_created: 23,
+        phase_model: { seeded: 9 },
+      },
+      error: null,
+    })
+    const res = await POST(req(), ctx())
+    expect(res.status).toBe(200)
+    expect(await res.json()).toMatchObject({
+      workstreams_created: 7,
+      deliverables_created: 9,
+      raci_created: 23,
+    })
+  })
+
+  it("200 passes through PROJ-Y-96b RACI warnings verbatim", async () => {
+    getUserMock.mockResolvedValue({ data: { user: { id: ME } } })
+    queueViewAccess()
+    rpcMock.mockResolvedValue({
+      data: {
+        template_id: TEMPLATE,
+        template_version: 1,
+        workstreams_created: 7,
+        deliverables_created: 9,
+        raci_created: 23,
+        phase_model: { seeded: 9 },
+        warnings: [
+          {
+            code: "raci_unknown_role_key",
+            target_type: "workstream",
+            target_key: "commercial",
+            role_key: "deal_lead",
+          },
+          {
+            code: "raci_orphan_target",
+            target_type: "deliverable",
+            target_key: "does_not_exist",
+            role_key: "sponsor",
+          },
+        ],
+      },
+      error: null,
+    })
+    const res = await POST(req(), ctx())
+    expect(res.status).toBe(200)
+    const body = await res.json()
+    expect(body.warnings).toHaveLength(2)
+    expect(body.warnings[0]).toMatchObject({
+      code: "raci_unknown_role_key",
+      role_key: "deal_lead",
+    })
+    expect(body.warnings[1]).toMatchObject({ code: "raci_orphan_target" })
+  })
+
   it("403 maps the RPC authority denial (42501)", async () => {
     getUserMock.mockResolvedValue({ data: { user: { id: ME } } })
     queueViewAccess()
