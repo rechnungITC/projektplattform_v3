@@ -14,7 +14,8 @@ summary_for_jira: "[HYGIENE] Supply-Chain-Remediation js-yaml + pdfjs-dist — n
 
 # PROJ-142: Supply-Chain-Remediation js-yaml + pdfjs-dist
 
-## Status: In Progress
+## Status: Deployed (2026-08-07)
+**Deployed:** 2026-08-07 — PR #297 → main (`c4419bf`), Tag `v2.35.0-PROJ-142`. Alle 6 Required-Checks grün (npm audit + Snyk exit 0, schema-drift, migration-naming, Vercel). Vercel-Prod-Deploy `dpl_HCe64Av` READY auf main HEAD `1c3fdef`; Post-Deploy-Smoke `/`, `/projects`, `/stammdaten/skills`, `GET`+`POST /api/context-sources` (pdfjs-Pfad) alle 307 Auth-Gate ohne Leck. Runtime-Dep-Bump `pdfjs-dist@6.2.108` + `js-yaml@4.3.1` live. Clean-`npm ci` von merged main re-verifiziert: audit 0, ESLint 0. Kein neuer Env/Secret, keine Migration. **Entblockt PROJ-Y-3 (#292), das unmittelbar danach gemerged wurde.**
 **Created:** 2026-08-07
 **Origin:** PROJ-74 `npm audit --omit=dev --audit-level=high` Required-Check auf `main` rot; blockierte den ansonsten fertigen PROJ-Y-3-Merge (PR #292). Portfolioweit, kein Feature-Bug.
 
