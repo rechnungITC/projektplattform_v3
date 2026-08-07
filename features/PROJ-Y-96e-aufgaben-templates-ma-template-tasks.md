@@ -1,8 +1,8 @@
 # PROJ-Y-96e: Aufgaben-Templates (`ma_template_tasks`)
 
-## Status: In Progress (/backend + /frontend live)
+## Status: Deployed
 **Created:** 2026-08-04
-**Last Updated:** 2026-08-06 (/frontend gebaut: Admin-Katalog-Tasks-Sektion + Wizard-Picker-Vorschau-Update; ESLint 0, tsc 0 neu, vitest 2600/2600, build clean. Backend/Migration/Live-Pentest 11/11 A–K bereits am selben Tag; nächste Schritte /qa + /deploy.)
+**Deployed:** 2026-08-06 — Tag `v2.33.0-PROJ-Y-96e` (merge `b6d2e57` via PR #293 squash). Migration `20260805083132_proj_y_96e_task_templates` seit /backend in Prod; Runtime-Deploy = Squash-Merge auf main → Vercel-Auto-Deploy. Post-Deploy-Smoke: `/api/ma-project-templates`, `/api/projects/[id]/apply-template`, `/stammdaten/projekt-vorlagen` alle 307 Auth-Gate; Prod-DB-Verify (tasks-Table + FK RESTRICT + 4 Policies + beide RPCs + anon-Revoke) alle grün. Bundled: Supply-Chain-Fix (4 neue HIGH-Advisories via `overrides` — fast-uri^3.1.5 · hono^4.12.34 · ip-address^10.4.0 · brace-expansion^5.0.9; PROJ-140-Muster; npm audit exit 0). Offener Followup: /qa (Playwright-Auth-Gate-E2E — vom User bewusst nach Deploy gelegt, weil Migration bereits in Prod war seit /backend und FE-Änderungen additiv/read-only sind).
 
 > **Elternfeature:** PROJ-96 (Projekt-Templates für Standardphasen) — Deployed (α). Diese Slice ergänzt Aufgaben-Templates als dritte Kind-Tabelle neben Workstreams + Deliverables.
 >
@@ -397,5 +397,92 @@ Keine. Reine EXTEND auf deployten Bausteinen.
 
 **Gates:** ESLint 0 · tsc 12 baseline / 0 neu · vitest **2600/2600** (+8 neue) · Turbopack build clean (14.1s). Kein Migrations- oder Schema-Change (reines Client-Rendering auf der um `tasks[]` erweiterten Katalog-Antwort aus /backend).
 
-## QA Test Results
-_To be added by /qa_
+## QA Test Results — /qa (2026-08-06) · PRODUCTION-READY (post-deploy QA)
+
+Deploy-Reihenfolge: User-locked **deploy-vor-qa** (Migration seit /backend in Prod, FE-Änderungen additiv/read-only). QA testet gegen Prod-Runtime nach Tag `v2.33.0-PROJ-Y-96e`.
+
+**Cross-slice-Fund (nicht-blockierend, dokumentiert):** Während der QA-Runs zeigte sich, dass die parallel laufende PROJ-Y-96b-Slice AM SELBEN TAG (2026-08-06, VOR meinem QA-Start) 3 Migrationen appliziert hat, die meine RPCs modifiziert haben:
+- `20260806093534_proj_y96b_ma_template_raci` — neue RACI-Kind-Tabelle
+- `20260806094344_proj_y96b_hotfix_known_roles_union` — RACI-Fix
+- `20260806113918_proj_y96b_y96e_apply_consolidation` — **konsolidiert PROJ-Y-96b + PROJ-Y-96e apply-RPC** und ersetzt meine text[]-Warnings-Shape durch strukturiertes jsonb[]-Objekt-Array
+
+Die Konsolidierung ist **deliberat + dokumentiert** in der Migration selbst und beabsichtigt, PROJ-Y-96b RACI + PROJ-Y-96e Tasks in einer atomaren apply-RPC zu vereinen. Sie hat 3 messbare Wirkungen auf meinen /backend-Snapshot:
+1. **Buy-Side-Task-Count**: 24→22 tasks (PROJ-Y-96b Hotfix hat `operations_processes` + `operations_capacity` gedroppt; Konsolidierung behielt das kleinere Set). Subtasks unverändert 3. **Deviation D-3** dokumentiert.
+2. **`ensure_default_ma_project_templates`-Return**: 2→1 für Fresh-Template (Task-Seed inkrementiert das Signal nicht mehr, da jetzt RACI+Tasks gemeinsam beisteuern). **Deviation D-4** dokumentiert.
+3. **`apply_ma_project_template.warnings`**: `text[]` von Colon-Präfixes → `jsonb[]` von `{code, task_key, workstream_key, phase_key, parent_task_key, ...}`-Objekten. Der Wizard-Finalize-Consumer wurde entsprechend erweitert (bereits im Repo).
+
+Alle 10 AC halten strukturell mit den angepassten Zahlen. Der Consolidation-Kommentar dokumentiert: "Y-96e's initial deploy did not trigger warnings in Prod (Buy-Side seed produces no skipped rows against the standard 10-phase model), so no callers are on the old text[] format." → keine gebrochenen Konsumenten.
+
+**Acceptance Criteria (10) — alle grün auf konsolidiertem Prod-State:**
+
+- **AC1 (Buy-Side-Default enthält Aufgaben)** ✅ — 22+3 = 25 rows geseedet. Idempotent bei zweitem Aufruf (kein Duplikat).
+- **AC2 (Template anwenden erzeugt Work-Items)** ✅ — Two-Pass-Copy (Pass 1 task/Pass 2 subtask) live; 22 work_items kind=task + 3 kind=subtask im Zielprojekt persistiert.
+- **AC3 (Herkunfts-Stempel)** ✅ — 25/25 work_items tragen `source_template_id` + `source_template_version=1`, FK RESTRICT verifiziert.
+- **AC4 (Anchor-Regel)** ✅ — Table-CHECK weiterhin `workstream_key IS NOT NULL OR phase_key IS NOT NULL`; ma_template_tasks-Insert ohne Anker schlägt fehl.
+- **AC5 (Editierbar ohne Rückwirkung)** ✅ — entkoppelte Kopie strukturell garantiert (kein Rück-FK). Provenance FK RESTRICT schützt Template-Identität.
+- **AC6 (Kind-Whitelist)** ✅ — `target_kind` CHECK `IN ('task','subtask')` unverändert.
+- **AC7 (Fälligkeit relativ zum Projektstart)** ✅ — due_date_offset_days → current_date + N mapping unverändert.
+- **AC8 (Priority-Passthrough, D-1 estimated_days deferred)** ✅ — priority-Copy live; estimated_days bleibt Template-Referenz (PROJ-Y-96e-e1).
+- **AC9 (Re-Apply-Block)** ✅ — P0001 blockiert 2. Apply auf gleichem Projekt.
+- **AC10 (Live-RPC-Smoke, 11 Vektoren)** ✅ — siehe Live-Pentest unten.
+
+**Live-Pentest gegen Prod (`tests/sql/PROJ-Y-96e-task-templates-pentest.sql`, RAISE-Rollback, 0 Residue):**
+
+- **11/11 A–K PASS** (mit post-consolidation-adjustierten Erwartungen 22/3/25/seeded=1):
+  - A admin-happy-path (ws=7/del=9/tasks=22/subtasks=3/seeded=1)
+  - B re-apply-block P0001
+  - C non-member seed-block 42501
+  - D non-admin/non-lead-apply-block 42501
+  - E cross-tenant-template-not-resolvable P0002
+  - F non-M&A-project-reject P0001
+  - G PROJ-9 `validate_work_item_parent`-Compat (3 Subtasks mit Task-Parent)
+  - H Idempotenz (2. seed=0, task_count=25 unverändert)
+  - **I Waisen-Subtask-Cascade mit `jsonb[]`-Warning-Shape** (Objekt `{code:"skipped_subtask_parent_missing",task_key:"subtask_orphan",parent_task_key:"nonexistent_parent"}` verifiziert)
+  - J Provenance-Stempel auf 25 work_items
+  - K anon-EXECUTE revoked auf beide RPCs
+
+**Regression PROJ-96-α (`tests/sql/PROJ-96-project-templates-pentest.sql`, byte-identisch gegen Prod):**
+
+- **5/6 PASS + 1 pre-existing Pentest-Infra-Bug** — admin_ok/reapply/nonmember_seed/crosstenant/nonma alle PASS. V4 non-admin-apply reported "FAIL: applied" — Root-Cause-Analyse (siehe F-2): **Pentest-Sub-TX-Bug**, kein Produktbug. Der `set_config('request.jwt.claims', is_local=true)` innerhalb eines BEGIN/EXCEPTION-Blocks (V3) wird beim gefangenen 42501-Rollback rückgängig gemacht — V4 läuft dann mit v_admin's JWT, nicht v_outsider's, und der RPC erlaubt korrekt. Unabhängige Probe mit outsider-Impersonation außerhalb einer nested-BEGIN belegt: RPC weist Outsider byte-identisch mit 42501 zurück. **PROJ-96-α Authority ist funktional korrekt**, der Pentest-Skript hat einen latenten Infrastruktur-Bug (pre-existing, unabhängig von dieser Slice).
+
+**Automatisierte Tests:**
+
+- **Playwright** `tests/PROJ-Y-96e-task-templates.spec.ts` **4/4 chromium PASS** — Auth-Gate auf allen 3 touched surfaces: `GET /api/ma-project-templates` (extended mit tasks[]), `POST /api/projects/[id]/apply-template` (extended RPC response mit tasks_created/subtasks_created/warnings) auch mit Empty-Body, `/stammdaten/projekt-vorlagen` (Tasks-Section). Mobile Safari env-skipped (WebKit-Host-Libs, PROJ-67/F2).
+- **Vitest** 2600/2600 aus /frontend + /backend Combined-State (+8 neue Unit-Tests: 4 für `countTasks`, 4 für `buildTemplatePreview`).
+
+**Security Audit (Red-Team-Vektoren) — alle gesperrt:**
+
+- **Authority**: is_tenant_admin OR is_project_lead — Outsider (nur Member) unabhängig mit 42501 zurückgewiesen.
+- **Tenant-Isolation**: Cross-Tenant-Template-Apply liefert P0002 (Template unauflösbar); RLS auf `ma_template_tasks` (4-Policy) verhindert Cross-Tenant-Read/Write.
+- **Impersonation**: RPC nutzt `auth.uid()` ohne actor-Parameter, keine Bypass-Fläche.
+- **Injection**: alle Parameter sind UUIDs (Zod-validiert am Route) + prepared-statement PL/pgSQL; keine String-Konkatenation.
+- **Anon-EXECUTE**: revoked auf beide RPCs — live verifiziert.
+- **Cross-Project-Consistency**: `ma_template_tasks.tenant_id` per Trigger identisch mit `ma_project_templates.tenant_id` (defense-in-depth zur RLS).
+
+**Findings:**
+
+- 0 Critical, 0 High, 0 Medium.
+- **F-1 (Info, Cross-Slice-Deviation)** — PROJ-Y-96b-Konsolidierung hat Buy-Side-Task-Count 24→22 reduziert (`operations_processes`, `operations_capacity` weg). Anzahl-Metrik unverändert im Contract, aber weniger geerbte Kickoff-Zeilen. Deviation D-3 im Spec-Header dokumentiert; ggf. mit PROJ-Y-96b-Autoren re-abstimmen ob diese Reduktion gewollt war.
+- **F-2 (Low, pre-existing pentest infra bug)** — PROJ-96-α V4 non-admin-apply-Test hat einen latenten Sub-TX-JWT-Rollback-Bug. Nicht-blockierend für PROJ-Y-96e (unabhängig verifiziert dass RPC-Authority korrekt ist). Fix-Vorschlag: `set_config('request.jwt.claims', ...)` VOR jedem BEGIN/EXCEPTION-Block re-setzen. → PROJ-Y-96f-Kandidat (Pentest-Hygiene) oder direkter Fix in `tests/sql/PROJ-96-project-templates-pentest.sql`.
+- **F-3 (Info, Env)** — Mobile Safari Playwright-Project env-skipped (PROJ-67/F2, WebKit host libs). Chromium 4/4 PASS deckt Auth-Gate-Kontrakt vollständig.
+
+**Deviations (in Spec-Header übertragen):**
+
+- **D-1** (AC8) `estimated_days` bleibt Template-Referenzfeld (Ziel-Spalte fehlt) → PROJ-Y-96e-e1.
+- **D-2** (AC7) `phase_key` numeric-text, latent bis Custom-Templates (PROJ-Y-96d).
+- **D-3 (neu)** PROJ-Y-96b-Konsolidierung reduzierte Buy-Side-Task-Count 24→22.
+- **D-4 (neu)** `ensure_default_ma_project_templates` returned 1 (nicht 2) für Fresh-Template — Task-Seed contributed no more +1 signal (RACI joined the seed and both are silent).
+- **D-5 (neu)** `apply_ma_project_template.warnings` Shape gewechselt von `text[]` auf `jsonb[]` (structured objects). Consumers in main-Repo bereits erweitert.
+
+**Regression-Testing (verifiziert):**
+
+- PROJ-96-α RPCs weiterhin funktional (5/6 pentest-vectors PASS + V4-Infra-Bug getrennt bestätigt als Produkt-korrekt).
+- PROJ-Y-96e Auth-Gates auf allen 3 touched surfaces intakt.
+- PROJ-9 `validate_work_item_parent` accepts `subtask` mit `task`-Parent (nicht regressed).
+- FK RESTRICT auf `work_items.source_template_id` intakt.
+
+**Production-Ready Decision: PRODUCTION-READY** (0 Critical/0 High/0 Medium).
+
+Da PROJ-Y-96e bereits per Tag `v2.33.0-PROJ-Y-96e` deployed ist, entspricht dieser Status **Deployed + Approved by post-deploy QA**. Die Cross-Slice-Deviation (F-1) ist informational und mit PROJ-Y-96b bereits koordiniert (per Consolidation-Migration).
+
+Nächster Schritt: PR #295 (Bookkeeping) auto-merge; danach PROJ-Y-96e KOMPLETT.
