@@ -104,5 +104,5 @@ Fix: den Override versions-scopen (`minimatch@3`), sodass nur die 3.x-Linie das 
 
 ## Follow-ups
 
-- **PROJ-Y-142a** — Node-Baseline 20 → 22/24 in lokalem Host + 4 CI-Workflows (`migration-naming`, `supply-chain-audit` ×2, `schema-drift`) + `@types/node`. Bringt CI in den von `pdfjs-dist@6` deklarierten Engine-Bereich und schließt die Divergenz zu Vercel (Node 24). CIA-pflichtig (Toolchain-Baseline).
+- ~~**PROJ-Y-142a** — Node-Baseline 20 → 22/24 in lokalem Host + 4 CI-Workflows + `@types/node`.~~ **Erledigt 2026-08-08** → [PROJ-Y-142a](PROJ-Y-142a-node-baseline-20-to-24.md): CI + `.nvmrc` auf **24** (Prod-Parität), `engines.node >=22.13.0`, `@types/node@^24` (0 neue tsc-Fehler); volle Regression auf echtem Node 24 grün. Lokaler Host-Node bleibt als nicht-blockierender User-Handoff offen.
 - **PROJ-Y-142b** — Audit der übrigen mock-only Parser-Abdeckung (`mammoth`/DOCX, `mailparser`/EML, `@kenjiuno/msgreader`/MSG) nach dem Muster dieser Slice und PROJ-79: mindestens ein un-gemockter Pfad je Parser, damit Major-Bumps nicht still grün bleiben.
