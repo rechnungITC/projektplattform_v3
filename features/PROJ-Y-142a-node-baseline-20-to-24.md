@@ -14,7 +14,8 @@ summary_for_jira: "[HYGIENE] Node-Baseline 20 → 24 in CI + Toolchain-Deklarati
 
 # PROJ-Y-142a: Node-Baseline 20 → 24
 
-## Status: In Progress
+## Status: Deployed (2026-08-08)
+**Deployed:** 2026-08-08 — PR #299 → main (`297cc72`), Tag `v2.36.0-PROJ-Y-142a`. Alle 6 Required-Checks grün. **CI lief nachweislich auf Node 24.18.0** (Job-Log: `node-version: 24`, aus Toolcache) — damit ist AC-Y142a.1 nicht nur konfiguriert, sondern beobachtet, und **D-Y142a.3 aufgelöst**: `schema-drift` (lokal mangels Docker nicht fahrbar) lief in CI grün durch (1m4s). Nebenbefund aus dem Runner-Log: GitHub deprecated Node 20 auf den Actions-Runnern ohnehin. Vercel-Prod `dpl_4Jrz8967` READY auf main HEAD; Post-Deploy-Smoke `/`, `/projects`, `/api/context-sources` → alle 307 Auth-Gate. Kein neuer Env/Secret, keine Migration. Offen bleibt nur der nicht-blockierende User-Handoff (Host-Node).
 **Created:** 2026-08-08
 **Origin:** Followup aus PROJ-142 (Deviation D-142.1). `pdfjs-dist@6.2.108` deklariert `engines: { node: ">=22.13.0 || >=24" }`; die Toolchain lief auf Node 20. PROJ-142 hat das bewusst nicht mit-migriert, weil es für die Advisory-Remediation nicht nötig war — die Divergenz blieb aber als stille technische Schuld stehen.
 
