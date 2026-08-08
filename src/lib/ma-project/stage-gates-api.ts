@@ -36,6 +36,13 @@ export interface StageGatePrereadiness {
   risks_without_measure: number
   open_red_flags: number
   mandatory_deliverables: number | null
+  /**
+   * PROJ-122 — SPA issues still in status open/escalated. Counted for every
+   * gate (gate_key is copied per project and may drift), but only highlighted
+   * from the SPA-negotiation gate onwards. Deliberately NOT folded into
+   * `has_blocking_readiness`: the spec asks for a hint, not a blocker.
+   */
+  open_spa_issues: number
   has_blocking_readiness: boolean
 }
 
