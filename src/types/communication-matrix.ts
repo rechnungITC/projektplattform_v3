@@ -104,6 +104,59 @@ export interface CommunicationEntry {
   created_by: string | null
   created_at: string
   updated_at: string
+  /** PROJ-119 AC3 — restricts visibility to the named inner circle. */
+  is_inner_circle: boolean
+  /** PROJ-119 AC4 — ISO timestamp; blocks approved → sent until reached. */
+  embargo_at: string | null
+  /**
+   * PROJ-119 B2 — the list endpoint withholds `message` for inner-circle
+   * entries so that reading content stays an explicit, logged act. This flag
+   * tells the UI whether a body exists without revealing it.
+   */
+  has_message?: boolean
+}
+
+/** PROJ-119 — a named member of an entry's inner circle. */
+export interface InnerCircleMember {
+  id: string
+  entry_id: string
+  user_id: string
+  added_by: string | null
+  created_at: string
+}
+
+/** PROJ-119 — append-only access + circle-governance log entry. */
+export type AccessLogAction =
+  | "view_content"
+  | "export"
+  | "print_view"
+  | "dissolve"
+  | "circle_enabled"
+  | "circle_disabled"
+  | "member_added"
+  | "member_removed"
+  | "embargo_blocked"
+
+export const ACCESS_LOG_ACTION_LABELS: Record<AccessLogAction, string> = {
+  view_content: "Inhalt angesehen",
+  export: "Exportiert",
+  print_view: "Druckansicht",
+  dissolve: "Kreis aufgelöst",
+  circle_enabled: "Inner Circle aktiviert",
+  circle_disabled: "Inner Circle deaktiviert",
+  member_added: "Person hinzugefügt",
+  member_removed: "Person entfernt",
+  embargo_blocked: "Versand durch Embargo blockiert",
+}
+
+export interface CommunicationAccessLogEntry {
+  id: string
+  entry_id: string
+  user_id: string
+  user_name: string | null
+  action: AccessLogAction
+  outcome: "granted" | "denied"
+  created_at: string
 }
 
 export interface CommunicationTemplate {
