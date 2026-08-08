@@ -385,7 +385,7 @@ export function CommunicationGovernanceSheet({
                 />
                 <p className="text-xs text-muted-foreground">
                   Solange das Embargo nicht erreicht ist, lässt sich der Eintrag
-                  nicht auf „Versendet" setzen. Es gibt bewusst keine
+                  nicht auf „Versendet“ setzen. Es gibt bewusst keine
                   Übersteuerung — der Weg ist, das Embargo zu ändern, was im
                   Änderungsverlauf festgehalten wird. Zeitzone:{" "}
                   {Intl.DateTimeFormat().resolvedOptions().timeZone}.
