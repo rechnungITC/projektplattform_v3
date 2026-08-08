@@ -1,8 +1,8 @@
 # PROJ-78: Skill-Projektzuordnung
 
-## Status: Architected
+## Status: Approved
 **Created:** 2026-06-06
-**Last Updated:** 2026-08-07
+**Last Updated:** 2026-08-08
 
 ## Summary
 Wizard-Erweiterung und Project-Room-Sidebar-Entry: When a project is created (or its method/project_type is changed), the system auto-assigns matching Skills based on `method_tags`, `project_type_tags`, and the `cross_cutting` category. The PM sees a confirmation step in the wizard and can remove auto-assigned skills or add others from the catalog. Inside the project room, a new "Skills" section in the method-aware sidebar shows the active set.
@@ -351,7 +351,118 @@ unsichtbar). **Fix gehört zu PROJ-76**: P11 auf die geseedeten IDs
 einschränken statt auf `count(*) where tenant_id = …`. → PROJ-Y-78e.
 
 ## QA Test Results
-_To be added by /qa._
+
+**QA-Durchlauf 2026-08-07/08 — 0 Critical / 0 High → PRODUCTION-READY**
+(kein `/deploy` in diesem Lauf; Branch `proj-78/skill-project-assignment`.)
+
+### AC-Matrix
+
+| Bereich | Ergebnis | Nachweis |
+|---|---|---|
+| Datenmodell (`project_skills`, Unique, FK RESTRICT) | ✅ PASS | Migration + Live-DDL-Verifikation |
+| Auto-Auflösung (Kategorie-Regeln, Dedup, Leer = kein Fehler) | ✅ PASS | 14 Unit-Tests `resolve.test.ts` |
+| Priorität method → project_type → cross_cutting | ✅ PASS | Unit-Test „de-duplicates and keeps the FIRST match" |
+| Wizard-Step „Skills" (Karten, Katalog-Dialog, 0 Skills erlaubt, Leer-Hinweis + Deep-Link) | ✅ PASS | `step-skills.tsx`; `validateStep("skills") → true` |
+| Persistenz bei Wizard-Abschluss | ✅ PASS | Finalize-Schritt 4.4 + 5 Route-Tests |
+| Projektraum-Tab, Herkunfts-Anzeige, „inaktiv"-Badge, Hinzufügen/Entfernen | ✅ PASS | `project-skills-page.tsx` |
+| Entfernen einer `auto_*`-Zuordnung wird als Übersteuerung auditiert | ✅ PASS | Pentest-Vektor G (`manual_override=true`) |
+| ~~Re-Resolution bei Methoden-/Typ-Wechsel~~ → additiver Abgleich | ✅ PASS (umgeschrieben) | Live widerlegt, s. Tech Design D1 |
+| Audit-Ereignisse `assigned` / `removed` | ✅ PASS | Pentest A2 + G; explizit in den RPCs |
+| Multi-Tenant / RLS | ✅ PASS | Pentest E, I, K |
+
+### Live-Sicherheitstests (alle gegen Prod, rolled back, **0 Residue** verifiziert)
+
+`tests/sql/PROJ-78-project-skills-pentest.sql` — **14/14 PASS**:
+A/A2 Happy-Path + 3 Audit-Zeilen · B Idempotenz (0/3, Audit unverändert) ·
+C `manual_pm` überlebt auto-Replay · D **Viewer-Zuordnung geblockt (42501)** ·
+E **Cross-Tenant-Skill geblockt (42501)** · F inaktiver Skill geblockt (22023) ·
+G Entfernen + `manual_override` · **H `removed`-Audit bleibt lesbar** (der Grund
+für `entity_id = project_id`) · I Nicht-Mitglied sieht 0 Zeilen und darf das
+Audit nicht lesen · J **anon-EXECUTE auf beiden RPCs revoked** ·
+K Tenant-Mismatch-Trigger · L/L2 Viewer-DELETE 0 rows, SELECT weiterhin erlaubt.
+
+### Regressionen (Live gegen Prod)
+
+| Suite | Ergebnis |
+|---|---|
+| PROJ-141-α1 (skill_versions-RLS) | **8/8 PASS** |
+| PROJ-141-α3/α4 (activate/discard + Audit) | **11/11 PASS** |
+| PROJ-77-α (Draft-Immutability) | **4/4 PASS** |
+| PROJ-76 (Skill-Framework-RLS) | **10/11 verbatim** — P11 s. F-1; Gate scoped **3/3 PASS** |
+
+### Automatisierte Gates
+
+| Gate | Ergebnis |
+|---|---|
+| Vitest (voll) | **2641/2641** (339 Dateien) |
+| `tsc --noEmit` | **13** = Baseline, **0 neue**, 0 in der PROJ-78-Fläche |
+| `npm run build` | clean; 4 neue Routen registriert |
+| `check:migration-naming` | **0 errors** |
+| Supabase-Advisors | **0 ERROR** (meine 2 RPCs nur die übliche `authenticated_security_definer_function_executable`-Klasse) |
+| ESLint | **0 errors** (exit 0) — nur über Shim ausführbar, s. **F-3** |
+| Playwright `PROJ-78-project-skills.spec.ts` | **6/6** chromium |
+
+### Findings
+
+- **F-1 (Low, VORBESTEHEND):** PROJ-76-Pentest **P11** prüft eine absolute
+  Skill-Anzahl im Tenant `329f…`; seit dem 2026-08-04 liegt dort ein echter,
+  über die deployte UI angelegter Skill („Scrum Coach", inaktiv) → erwartet 2,
+  gezählt 3. Das Gate selbst ist intakt (scoped 3/3: Admin sieht beide
+  geseedeten, Member nur den aktiven, der vorbestehende inaktive bleibt für
+  Member unsichtbar). Fix gehört zu PROJ-76 → **PROJ-Y-78e**.
+- **F-2 (Low, VORBESTEHEND):** `tests/PROJ-135-clarifying-questions.spec.ts`
+  navigierte per Klick auf einen **Stepper-Button** zum KI-Backlog-Schritt.
+  Der Stepper aktiviert nur Schritte bis `furthestStep`, ein frischer Wizard
+  startet bei `basics` → der Button ist disabled; „Weiter" hilft nicht, weil
+  `validateStep` Name und Projekttyp verlangt, die der Test nie füllt. Nie
+  aufgefallen, weil PROJ-135 mit **unausgeführtem** authentifiziertem E2E-Layer
+  ausgeliefert wurde (INDEX-Deviation D-1). Upload-Hälfte als dokumentiertes
+  `test.fixme` isoliert → **PROJ-Y-78f**. Die Zähl-Assertions (6→7 bzw. 7→8)
+  wurden korrekt nachgezogen, ebenso in `PROJ-70-epsilon-wizard.spec.ts`.
+- **F-3 (Medium, VORBESTEHEND, BLOCKER für den Roh-Gate):** `npx eslint`
+  crasht **repo-weit** mit `TypeError: expand is not a function`
+  (`brace-expansion@^5` in `overrides` vs. `minimatch@3.1.5`, das die
+  v1-Default-Funktion erwartet). Bereits im Basis-Commit `e0337bd`;
+  `package.json`/`package-lock.json` von PROJ-78 **unverändert**. Über einen
+  reinen In-Memory-Preload-Shim verifiziert: **0 errors, exit 0** (`src` und
+  Voll-Repo). Gehört zum laufenden Supply-Chain-Track (PROJ-142) →
+  **PROJ-Y-78g**.
+- **F-4 (Info):** Volle Playwright-Suite: 348 passed / 13 failed. Gegen den
+  Basis-Commit gemessen (identischer Aufruf, gleiche Dateien): **7 failed auf
+  main, 7 failed auf dem Branch**, nahezu deckungsgleiche Menge
+  (PROJ-137 Live-AI + PROJ-51-Snapshot-Drift). PROJ-58/70-δ/88/89 fielen nur
+  im parallelen Voll-Lauf aus und sind im gezielten Lauf grün (28 passed) →
+  **kein PROJ-78-Regress**. PROJ-51-Snapshot-Drift ist bereits als PROJ-88-QA
+  F-3 dokumentiert.
+
+### Deviations
+
+- **D-1:** Mobile Safari env-skipped (WebKit-Host-Libs fehlen, PROJ-67/F2);
+  Firefox ist in `playwright.config.ts` gar nicht konfiguriert — die
+  „Cross-Browser Chrome/Firefox/Safari"-Checkliste ist in diesem Repo
+  strukturell nicht erfüllbar.
+- **D-2:** Kein authentifizierter End-to-End-Durchlauf „Wizard komplett
+  ausfüllen → Projekt anlegen → Skills persistiert". Der Persistenzpfad ist
+  stattdessen auf zwei Ebenen bewiesen: Finalize-Route-Tests (5 Fälle inkl.
+  Best-Effort-Fehlerpfad) und der Live-RPC-Pentest. Grund: derselbe
+  Wizard-Fülllauf, den F-2 als unlösbar für PROJ-135 ausweist.
+- **D-3:** Beide beauftragten Subagenten (Frontend-Build, unabhängiges
+  QA-Review) endeten mit abgeschnittenen Abschlussberichten. Der Code wurde
+  daher von mir direkt reviewt; dabei gefunden und behoben: fehlender Import
+  `emptySkillsWizardData`, ein Typ-Konflikt im Zod-Resolver, ein fehlender
+  Back-Compat-Backfill im Konflikt-Reload-Pfad sowie eine von mir selbst
+  eingebaute Syntaxfehler-Falle (deutsches Anführungszeichen mit
+  ASCII-Endquote, hätte den Build gebrochen).
+
+### Followups
+
+- **PROJ-Y-78a** — echter Methodenwechsel (`migrate_project_method`-RPC)
+- **PROJ-Y-78b** — Projekttyp nachträglich änderbar machen
+- **PROJ-Y-78c** — Massen-Zuordnung über mehrere Projekte
+- **PROJ-Y-78d** — Skill-Empfehlungen („könnte auch passen")
+- **PROJ-Y-78e** — PROJ-76-Pentest P11 auf geseedete IDs einschränken (F-1)
+- **PROJ-Y-78f** — PROJ-135 AC-135.3 Upload-Hälfte lauffähig machen (F-2)
+- **PROJ-Y-78g** — ESLint-Bruch durch `brace-expansion`-Override (F-3)
 
 ## Deployment
 _To be added by /deploy._
