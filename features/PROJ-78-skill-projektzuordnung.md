@@ -399,8 +399,9 @@ K Tenant-Mismatch-Trigger · L/L2 Viewer-DELETE 0 rows, SELECT weiterhin erlaubt
 | `npm run build` | clean; 4 neue Routen registriert |
 | `check:migration-naming` | **0 errors** |
 | Supabase-Advisors | **0 ERROR** (meine 2 RPCs nur die übliche `authenticated_security_definer_function_executable`-Klasse) |
-| ESLint | **0 errors** (exit 0) — nur über Shim ausführbar, s. **F-3** |
+| ESLint | **0 errors** (exit 0) — nach Rebase auf main nativ ohne Shim, s. **F-3** |
 | Playwright `PROJ-78-project-skills.spec.ts` | **6/6** chromium |
+| Playwright Voll-Suite (chromium, warm) | Branch **353 passed / 7 failed / 11 skipped** vs. main **350 / 7 / 7** — kein PROJ-78-Regress, s. **F-4** |
 
 ### Findings
 
@@ -425,22 +426,65 @@ K Tenant-Mismatch-Trigger · L/L2 Viewer-DELETE 0 rows, SELECT weiterhin erlaubt
   v1-Default-Funktion erwartet). Bereits im Basis-Commit `e0337bd`;
   `package.json`/`package-lock.json` von PROJ-78 **unverändert**. Über einen
   reinen In-Memory-Preload-Shim verifiziert: **0 errors, exit 0** (`src` und
-  Voll-Repo). Gehört zum laufenden Supply-Chain-Track (PROJ-142) →
-  **PROJ-Y-78g**.
-- **F-4 (Info):** Volle Playwright-Suite: 348 passed / 13 failed. Gegen den
-  Basis-Commit gemessen (identischer Aufruf, gleiche Dateien): **7 failed auf
-  main, 7 failed auf dem Branch**, nahezu deckungsgleiche Menge
-  (PROJ-137 Live-AI + PROJ-51-Snapshot-Drift). PROJ-58/70-δ/88/89 fielen nur
-  im parallelen Voll-Lauf aus und sind im gezielten Lauf grün (28 passed) →
-  **kein PROJ-78-Regress**. PROJ-51-Snapshot-Drift ist bereits als PROJ-88-QA
-  F-3 dokumentiert.
+  Voll-Repo). **Erledigt 2026-08-08:** nach dem Rebase auf main (PROJ-142 /
+  PROJ-Y-142a) läuft `npx eslint . --ext ts,tsx` nativ ohne Shim durch —
+  **0 errors, exit 0**. Das Shim-Ergebnis ist damit bestätigt; PROJ-Y-78g
+  entfällt.
+- **F-4 (Info) — E2E-Vollvergleich, korrigiert 2026-08-08.**
+  Die erste Fassung dieses Findings verglich Äpfel mit Birnen: eine
+  **Voll-Suite** auf dem Branch (13 failed) gegen einen **7-Dateien-Teillauf**
+  auf dem Basis-Commit (7 failed). Beides zusätzlich mit
+  `PW_SKIP_WARM_COMPILE=1` auf teils kaltem `.next`-Cache, was
+  First-Compile-Timeouts als Fehlschläge zählte. Nachgemessen mit identischem
+  Aufruf, **Warm-Compile aktiv**, JSON-Reporter, `retries: 0`, `fullyParallel`:
+
+  | Lauf | passed | failed | skipped | Summe |
+  |---|---|---|---|---|
+  | Branch `6a379c5` | 353 | **7** | 11 | 371 |
+  | main `8824152` | 350 | **7** | 7 | 364 |
+
+  Die Differenz von 7 Tests ist vollständig erklärt: 6 neue
+  PROJ-78-Auth-Gate-Tests + 1 Test, der durch das Aufsplitten von
+  PROJ-135 AC-135.3 (Zähl-Assertion + `test.fixme`-Upload-Hälfte) entsteht.
+
+  **Identisch in beiden Läufen (6, vorbestehend):** PROJ-137 ×4
+  (`class3_blocked` proposal-from-context, `class3_blocked` risk-proposals,
+  AC-6 clean-backlog-ohne-Banner, CLEANUP zero-residue) — Live-AI-abhängig;
+  PROJ-51 ×2 (Dashboard, Master Data root) — Snapshot-Drift, bereits als
+  PROJ-88-QA F-3 dokumentiert.
+
+  **Nur auf main (1):** `PROJ-135 :: clarifying step is absent until a kickoff
+  is uploaded (AC-135.3)`. Das ist exakt der unter **F-2** beschriebene
+  Defekt — sein Fehlschlag auf main ist der unabhängige Beweis, dass er
+  vorbestehend ist und nicht von PROJ-78 verursacht wurde. Auf dem Branch ist
+  er behoben/isoliert.
+
+  **Nur auf dem Branch (1):** `PROJ-1-2-live-closure :: PROJ-1 domain claim
+  form submits through the browser`. **Nachweislich umgebungsbedingt, nicht
+  PROJ-78:** die Ursache ist ein Supabase-Auth-Kontingent —
+  `{"code":"invite_failed","message":"email rate limit exceeded"}`. Der Spec
+  lädt pro Lauf einen Nutzer per E-Mail ein; meine wiederholten Läufe haben
+  das Kontingent aufgebraucht. Kontrollexperiment: isoliert auf main zuerst
+  **3/3 bestanden**, danach — nach Aufbrauchen des Kontingents — auf dem
+  Branch 2/3 bestanden und anschließend **4/4 mit exakt dieser Meldung
+  fehlgeschlagen**, und auf **main ebenso 2/2 fehlgeschlagen** mit identischer
+  Meldung. Der Fehlschlag folgt der Aufrufreihenfolge, nicht dem Code.
+
+  **Netto: keine einzige durch PROJ-78 verursachte E2E-Regression**; der
+  Branch behebt gegenüber main sogar einen vorbestehenden Fehlschlag.
+  Residue nach allen Läufen: **0** (project_skills, Audit, Test-Skills,
+  Test-Projekte, ki_runs, context_sources je 0).
 
 ### Deviations
 
-- **D-1:** Mobile Safari env-skipped (WebKit-Host-Libs fehlen, PROJ-67/F2);
-  Firefox ist in `playwright.config.ts` gar nicht konfiguriert — die
-  „Cross-Browser Chrome/Firefox/Safari"-Checkliste ist in diesem Repo
-  strukturell nicht erfüllbar.
+- **D-1 (Browser-Abdeckung — alle E2E-Zahlen sind chromium-only):**
+  `playwright.config.ts` registriert **genau ein** lauffähiges Projekt,
+  `chromium`. `Mobile Safari` wird beim Start deaktiviert (WebKit-Host-Libs
+  fehlen, `ldd` meldet ungelöste Shared Objects — PROJ-67/F2), **Firefox ist
+  überhaupt nicht konfiguriert**. Es gibt in diesem Repo also keine
+  Browser-Dimension, über die sich Fehlschläge verteilen könnten; die
+  „Cross-Browser Chrome/Firefox/Safari"-Checkliste ist strukturell nicht
+  erfüllbar.
 - **D-2:** Kein authentifizierter End-to-End-Durchlauf „Wizard komplett
   ausfüllen → Projekt anlegen → Skills persistiert". Der Persistenzpfad ist
   stattdessen auf zwei Ebenen bewiesen: Finalize-Route-Tests (5 Fälle inkl.
@@ -462,7 +506,7 @@ K Tenant-Mismatch-Trigger · L/L2 Viewer-DELETE 0 rows, SELECT weiterhin erlaubt
 - **PROJ-Y-78d** — Skill-Empfehlungen („könnte auch passen")
 - **PROJ-Y-78e** — PROJ-76-Pentest P11 auf geseedete IDs einschränken (F-1)
 - **PROJ-Y-78f** — PROJ-135 AC-135.3 Upload-Hälfte lauffähig machen (F-2)
-- **PROJ-Y-78g** — ESLint-Bruch durch `brace-expansion`-Override (F-3)
+- ~~PROJ-Y-78g — ESLint-Bruch durch `brace-expansion`-Override (F-3)~~ — **erledigt** durch PROJ-142/PROJ-Y-142a auf main
 
 ## Deployment
 _To be added by /deploy._
