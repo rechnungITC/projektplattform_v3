@@ -5,12 +5,17 @@ export type ExternalLinkEntityType =
   | "dd_finding"
   | "work_item"
   | "deliverable"
+  // PROJ-120 — Bewertungs-Artefakt (Excel/PDF im Fachwerkzeug bzw. VDR). Die
+  // Plattform verlinkt bewusst nur; ein Upload wäre heute nicht auf "Inner
+  // Circle" einschränkbar (DMS ohne confidentiality_level → PROJ-Y-120c/115c).
+  | "ma_valuation"
 
 export const EXTERNAL_LINK_ENTITY_TYPES: ExternalLinkEntityType[] = [
   "dd_question",
   "dd_finding",
   "work_item",
   "deliverable",
+  "ma_valuation",
 ]
 
 export interface ExternalDocumentLink {

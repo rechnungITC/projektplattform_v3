@@ -14,7 +14,7 @@ summary_for_jira: "[I1] Bewertungsmodell und Business Case verknüpfen"
 
 # PROJ-120: Bewertungsmodell und Business Case verknüpfen
 
-## Status: Architected
+## Status: Approved
 **Created:** 2026-06-10
 **Origin:** M&A-Platform Backlog (Epic I — Bewertung & Kaufpreislogik)
 **Priority:** P1
@@ -184,6 +184,111 @@ Querschnitt: PROJ-131 Steering-Kachel „Kaufpreisbandbreite" zeigt statt „n/a
 - **PROJ-Y-120b:** weiches `valuation_current`-Signal in `stage_gate_prereadiness`.
 - **PROJ-Y-120c:** Upload-Pfad für Bewertungsartefakte (nach PROJ-Y-115c).
 - **PROJ-126-Kontrakt:** `'synergy_hypothesis'` in `ma_valuation_links` + Cleanup-Trigger + Gate-Zweig.
+
+---
+
+## Backend Implementation Notes (2026-08-08)
+
+**Migration 1 — `20260807211457_proj120_valuation_business_case.sql`** (in Prod).
+- `ma_valuations`: Versionskette je Deal (`version_no`, `supersedes_valuation_id`, `is_current`, `version_comment`, `title`, `valuation_date`, `method`, `value_low`/`value_high numeric(18,2)`, `currency char(3)` gegen `_is_supported_currency`, `assumptions`, `author_user_id`, `confidentiality_level` **Default `'confidential'`**). **F1-Invariante als DB-Constraint**: `unique index … (project_id) where is_current`.
+- `ma_valuation_links`: M:N Bewertung ↔ Finding, CHECK **nur** `'dd_finding'` + Erweiterungs-Kontrakt für PROJ-126 im Migrations-Header (CHECK **und** Gate-Zweig **und** Cleanup-Trigger — sonst Dangling-Referenzen).
+- RLS: SELECT permissive (`is_project_member`) + **RESTRICTIVE `can_access_classified` auf allen vier Achsen**; keine INSERT/UPDATE/DELETE-permissive-Policy → Schreiben ausschließlich über RPCs (H3). Links sind **beidseitig** gegated über `_ma_valuation_link_target_visible` (H2, fail-closed bei unbekanntem Kind).
+- Immutability-Guard-Trigger (42501) auf allen Inhaltsspalten; nur `is_current` änderbar (H4).
+- 3 RPCs `add_ma_valuation_version` / `set_ma_valuation_link` / `remove_ma_valuation_link` — SECURITY DEFINER, **kein actor-Param** (`auth.uid()`), Rollen- **und** Clearance-Re-Check, `revoke … from public, anon`.
+- `external_document_links` um `entity_type='ma_valuation'` erweitert (idempotenter CHECK-Swap + additiver Resolver-Branch + Cleanup-Trigger).
+- **Audit-Trio per Anchor-Replace aus den LIVE-Definitionen** (H5) + expliziter `grant execute … to authenticated` danach. Verifiziert, dass fremde Zweige erhalten blieben — `project_skills` der parallelen PROJ-78-Session steht weiterhin im CHECK. `_tracked_audit_columns('ma_valuations') = ['is_current']` (nur diese Spalte ist überhaupt änderbar) → der Versionswechsel ist auditiert (DoD).
+
+**Migration 2 — `20260808142745_proj120_steering_report_valuation.sql`** (in Prod, F5).
+`steering_report` **aus der LIVE-Definition** neu aufgebaut; additiv nur die CTE `valuation_current`, der Key `'valuation'` und vier `pre_read`-Felder. **SECURITY INVOKER bleibt** → Need-to-know greift im Aufrufer-Kontext, kein zweites Gate.
+
+**Migrations-Versions-Drift (PROJ-134):** MCP `apply_migration` vergab trotz korrekt übergebenem `name` eigene Versionen (`20260807211457` bzw. `20260808142745`). Gemäß `docs/production/migration-naming.md` wurden die **Repo-Dateien auf die Prod-Versionen umbenannt**. Beide kollisionsfrei; Apply-Reihenfolge unverändert. **Abweichung von der Vorgabe „Fenster 20260807 10xxxx"** — die verbindliche PROJ-134-Regel hat Vorrang, der Zweck (Kollisionsfreiheit) ist erfüllt. `check:migration-naming` = 0 errors.
+
+**API/TS:** `GET|POST /api/projects/[id]/valuations`, `GET|POST|DELETE /api/projects/[id]/valuations/[vid]/links`; `src/types/valuation.ts`, `src/lib/ma-project/valuations-api.ts`, `src/hooks/use-valuations.ts`; `ExternalLinkEntityType` additiv um `"ma_valuation"` erweitert (3 Consumer, alle additiv — LOW blast radius).
+
+### Live-Nachweise (Pflicht, alle gegen Prod, 0 Residue)
+| Suite | Ergebnis |
+|---|---|
+| `tests/sql/PROJ-120-valuation-pentest.sql` A–N | **16/16 PASS** |
+| PROJ-131-Pentest A–G verbatim + neue Fälle H/I | **9/9 PASS** |
+| `tests/sql/PROJ-115-external-links-pentest.sql` A–I (Regression) | **9/9 PASS** |
+| Supabase-Advisors | **0 ERROR** (129 WARN; die 4 PROJ-120-WARNs sind die repo-übliche `authenticated_security_definer_function_executable`-Klasse) |
+
+Kern-Beweise: Kette V1→V2 mit atomarem Flip · zweite Kette abgelehnt (23514) · Immutability-Guard (42501) · Doppel-Kopf am Partial-Unique-Index (23505) · **Aggregat-Leak-Probe**: nicht freigegebener Projekt-*Lead* sieht 0 Bewertungen **und** `max(value_high) is null` **und** im Steering-Report weder `valuation` noch die Pre-Read-Bandbreite · Link zu einem `strict`-Finding für einen nur bewertungs-freigegebenen Nutzer unsichtbar · non-M&A-Projekt abgelehnt (P0001) · Cross-Tenant 0 · anon-EXECUTE auf allen 3 RPCs entzogen · Audit-Zeile für den Versionswechsel.
+
+## Frontend Implementation Notes (2026-08-08)
+
+- Nav: `MA_VALUATION_SECTION` (`bewertung`, Icon `Calculator`, `requiresProjectType: "ma"`), eingefügt zwischen DD-Bericht und Operativem Reporting. **Minimaler Eingriff im Hotspot:** 1 Icon-Import, 1 Konstante, 1 Array-Zeile.
+- Route `src/app/(app)/projects/[id]/bewertung/page.tsx` + `src/components/projects/ma/valuations-page.tsx`:
+  - Karte **„Aktuelle Bewertungssicht"** (Bandbreite, Methode, Stand-Datum, Version, Vertraulichkeits-Badge, Annahmen) — AC4
+  - **Versionshistorie** mit Versionskommentar; abgelöste Stände abgeblendet, Kopf mit „aktuell"-Badge — AC2
+  - Dialog **„Neue Version"** (setzt `supersedes` automatisch auf den aktuellen Kopf) — AC1
+  - **„Verknüpfte DD-Findings"** mit Picker + Entfernen — AC3 (Findings-Hälfte)
+  - **„Bewertungs-Artefakte"** über die bestehende `<ExternalLinksSection entityType="ma_valuation">` — AC1/F2
+  - alle Mutationen `edit_master`-gated
+- PROJ-131-Kachel „Kaufpreisbandbreite" zeigt jetzt die Bandbreite; bei fehlender Bewertung **oder** fehlender Freigabe denselben neutralen `n/a`-Platzhalter — aus der Anzeige ist damit **nicht** ableitbar, ob eine Bewertung existiert. Synergie-Kachel bleibt `n/a`.
+
+## Quality Gates (2026-08-08)
+| Gate | Baseline | Ergebnis |
+|---|---|---|
+| `npm run lint` | 0 | **0 errors** |
+| `npx tsc --noEmit` | 13 | **13** (identische Verteilung, 0 neue) |
+| `npx vitest run` | 2605/2605 | **2627/2627** (+22 neue Route-Tests) |
+| `npm run build` | clean | **clean**, 3 neue Routen registriert |
+| `npm run check:migration-naming` | 0 errors | **0 errors** |
+| Playwright `tests/PROJ-120-valuation.spec.ts` | — | **7/7 chromium** |
+
+## Deviations
+- **AC3 Synergie-Hälfte nicht gebaut** — K2/PROJ-126 existiert nachweislich nicht (0 Tabellen/Spalten/RPCs). Findings-Hälfte vollständig; Synergie-Hälfte per Erweiterungs-Kontrakt übergeben.
+- **Kein Löschen von Bewertungsversionen** (append-only, Invariante-#5-Geist). Korrektur = neue Version mit Kommentar.
+- **Kein Datei-Upload** (F2, sicherheitsgetrieben).
+- **Keine FX-Umrechnung** der Bandbreite.
+- **Migrations-Fenster** siehe PROJ-134-Absatz oben.
+- **Mobile Safari** im E2E übersprungen (fehlende WebKit-Host-Libs, PROJ-67/F2 — Umgebung, nicht Slice).
+
+## QA Test Results (2026-08-08) — PASS, PRODUCTION-READY
+
+**0 Critical · 0 High · 1 Low (in-QA gefixt) · 0 offen**
+
+### Acceptance Criteria
+| AC | Ergebnis | Nachweis |
+|---|---|---|
+| AC1 — versionierte Bewertungs-Artefakte mit Stand-Datum, Methode, Bandbreite, Annahmen, Verfasser | ✅ PASS | Pentest A/B (Kette V1→V2 mit allen Feldern); Route-Tests 400 bei unbekannter Methode / invertierter Bandbreite / nicht unterstützter Währung; UI-Dialog. Artefakt = Verweis (F2). |
+| AC2 — Versionswechsel explizit dokumentiert | ✅ PASS | `version_comment` („V2 – nach Integration der Financial-DD-Findings") in Pentest B; Immutability-Guard (D) erzwingt, dass Korrekturen neue Versionen sind; Versionshistorie-UI. |
+| AC3 — Verknüpfung mit Findings (G3) **und** Synergien (K2) | ⚠️ **PARTIAL** | Findings-Hälfte voll: Pentest H1/H2 + Route-Tests + UI-Picker. **Synergie-Hälfte nicht baubar** — PROJ-126 existiert nachweislich nicht (0 Tabellen/Spalten/RPCs). Erweiterungs-Kontrakt im Migrations-Header + Followup. |
+| AC4 — „Aktuelle Bewertungssicht" mit gültiger Version + Bandbreite | ✅ PASS | Partial-Unique-Index garantiert genau einen Kopf (Pentest E); Karte im Tab; zusätzlich in der PROJ-131-Steering-Kachel (Fall H). |
+
+### Security / Red-Team (live gegen Prod, Impersonation, 0 Residue)
+| Suite | Ergebnis |
+|---|---|
+| `tests/sql/PROJ-120-valuation-pentest.sql` A–N | **16/16 PASS** (nach dem F-1-Fix erneut 16/16) |
+| Red-Team-Supplement O–U + S2–S5 | **11/11 PASS** (nach Fix) |
+| PROJ-131-Pentest A–G verbatim + neue Fälle H/I | **9/9 PASS** |
+| `tests/sql/PROJ-115-external-links-pentest.sql` A–I (Regression) | **9/9 PASS** |
+| Supabase-Advisors | **0 ERROR** |
+
+Geblockte Angriffsvektoren: direkter INSERT/UPDATE unter Umgehung der RPCs — selbst als Tenant-Admin (O/P/Q) · SQL-Injection in `linked_kind` (R, parameterisiert → 22023) · Cross-Tenant-Version-Anlage (T) · Cross-Tenant-Lesen von Bewertungen und Links (K/S2) · **Aggregat-Leak**: nicht freigegebener Projekt-*Lead* sieht 0 Bewertungen, `max(value_high) is null`, und im Steering-Report weder `valuation` noch die Pre-Read-Bandbreite (G/I) · Link zu einem `strict`-Finding für einen nur bewertungs-freigegebenen Nutzer unsichtbar (H2) · anon-EXECUTE auf allen RPCs entzogen (L) · non-M&A-Projekt abgewiesen (J).
+
+### Findings
+**F-1 (Low, in-QA gefixt) — Existenz-Orakel im Sichtbarkeits-Helfer.**
+`_ma_valuation_link_target_visible` delegierte ausschließlich an `can_access_classified`, das für Stufe `'standard'` bedingungslos `true` liefert (bewusst so — Need-to-know liegt additiv über der Mitglieds-RLS der jeweiligen Tabelle). Weil der Helfer an `authenticated` ge-granted sein **muss** (die RLS-Policy ruft ihn im Aufrufer-Kontext auf), war er auch direkt als RPC aufrufbar: ein Nutzer eines fremden Tenants bekam für ein `standard`-Finding `true` und konnte damit die Existenz einer ihm bekannten dd_findings-UUID bestätigen.
+*Bewertung Low:* kein Inhaltsabfluss (nur ein Boolean), ein gültiges v4-UUID musste bereits vorliegen, und das eigentliche Link-Gate war **nicht** geschwächt — die SELECT-Policy UND-verknüpft den Helfer mit der Bewertungs-Seite, weshalb Fall K (Cross-Tenant → 0 Links) durchgehend grün blieb.
+*Fix:* Migration `20260808144247_proj120_link_visibility_membership_guard` — explizite `is_project_member`-Prüfung im Helfer (fail-closed). Re-Test S/S2–S5 **5/5 PASS** (kein Over-Block: Projektmitglieder sehen ihre Links unverändert), Haupt-Pentest danach erneut **16/16 PASS**.
+
+### Automatisierte Tests
+- `tests/PROJ-120-valuation.spec.ts` — **7/7 chromium** (alle 5 API-Flächen + malformed id + `/bewertung`-Seite auth-gated)
+- Route-Unit-Tests **22/22**; volle Vitest-Regression **2627/2627**
+
+### Deviations
+- **D-1** AC3-Synergie-Hälfte → PROJ-126 (Erweiterungs-Kontrakt hinterlegt).
+- **D-2** Kein Löschen von Versionen (append-only, Invariante-#5-Geist).
+- **D-3** Kein Datei-Upload (F2, sicherheitsgetrieben) → PROJ-Y-120c nach PROJ-Y-115c.
+- **D-4** Mobile Safari im E2E übersprungen (fehlende WebKit-Host-Libs, PROJ-67/F2 — Umgebung, nicht Slice).
+- **D-5** Migrations-Fenster: Repo-Dateien tragen die Prod-Versionen (PROJ-134-Regel), nicht das ursprünglich zugewiesene `20260807 10xxxx`.
+
+**Empfehlung: PRODUCTION-READY** (kein Deploy im Rahmen dieses Laufs — Branch endet nach `/qa`).
+
+## Environment Fix (nicht Teil der Slice, nicht committet)
+Im Worktree war `npm run lint` kaputt (`TypeError: expand is not a function`): der Hardlink-Kopie fehlten die verschachtelten `minimatch/node_modules/{brace-expansion@1,balanced-match@1}` sowie `concat-map`, sodass `minimatch@3` gegen das gehobene `brace-expansion@5` lief. Aus dem Primary-Checkout gespiegelt (nur `node_modules`, gitignored) — kein Repo-Change.
 
 ---
 _Quelle: Backlog-Entwurf M&A-Projektplattform · I — Bewertung & Kaufpreislogik_
