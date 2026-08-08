@@ -534,3 +534,74 @@ describe("POST finalize — PROJ-Y-96b template_result + RACI warnings", () => {
     )
   })
 })
+
+// PROJ-78 — step 4.4: persist the wizard's chosen skill set, best-effort.
+describe("POST finalize — PROJ-78 skill assignment (step 4.4)", () => {
+  const skillsDraft = (assignments: unknown) => ({
+    name: "Deal",
+    project_type: "erp",
+    skills: { assignments },
+  })
+  const ONE = [
+    {
+      skill_id: "11111111-1111-4111-8111-111111111111",
+      assignment_source: "auto_method",
+    },
+  ]
+
+  it("forwards the chosen assignments to assign_project_skills", async () => {
+    seedHappyPath(skillsDraft(ONE))
+    const res = await POST(makeRequest(), ctx())
+    expect(res.status).toBe(201)
+    expect(rpcMock).toHaveBeenCalledWith("assign_project_skills", {
+      p_project_id: PROJECT_ID,
+      p_assignments: ONE,
+    })
+  })
+
+  it("does NOT call the RPC when the PM finished with zero skills", async () => {
+    seedHappyPath(skillsDraft([]))
+    const res = await POST(makeRequest(), ctx())
+    expect(res.status).toBe(201)
+    expect(
+      rpcMock.mock.calls.some((c) => c[0] === "assign_project_skills"),
+    ).toBe(false)
+  })
+
+  it("does NOT call the RPC when the skills block is absent entirely", async () => {
+    seedHappyPath({ name: "Deal", project_type: "erp" })
+    const res = await POST(makeRequest(), ctx())
+    expect(res.status).toBe(201)
+    expect(
+      rpcMock.mock.calls.some((c) => c[0] === "assign_project_skills"),
+    ).toBe(false)
+  })
+
+  it("drops malformed assignment entries instead of forwarding them", async () => {
+    seedHappyPath(skillsDraft([{ nope: true }, ...ONE]))
+    await POST(makeRequest(), ctx())
+    expect(rpcMock).toHaveBeenCalledWith("assign_project_skills", {
+      p_project_id: PROJECT_ID,
+      p_assignments: ONE,
+    })
+  })
+
+  // Best-effort (PROJ-141-γ2 lock): a failed assignment must never cost the
+  // user the project — it surfaces as a warning instead.
+  it("still returns 201 and warns when assign_project_skills fails", async () => {
+    seedHappyPath(skillsDraft(ONE))
+    rpcMock.mockImplementation((name: string) =>
+      Promise.resolve(
+        name === "assign_project_skills"
+          ? { error: { message: "boom" } }
+          : { error: null },
+      ),
+    )
+    const res = await POST(makeRequest(), ctx())
+    expect(res.status).toBe(201)
+    const body = (await res.json()) as { warnings: { code: string }[] }
+    expect(body.warnings.some((w) => w.code === "skill_assign_failed")).toBe(
+      true,
+    )
+  })
+})

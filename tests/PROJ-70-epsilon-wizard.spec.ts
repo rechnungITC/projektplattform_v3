@@ -79,11 +79,12 @@ test.describe("PROJ-70-ε / wizard UI gating", () => {
       .poll(async () => stepper.count(), { timeout: 30_000 })
       .toBeGreaterThan(0)
 
-    // Toggle off → 5 steps, no KI-Backlog.
+    // Toggle off → 6 steps, no KI-Backlog.
+    // (PROJ-78 added the unconditional "Skills" step after Detail-Fragen.)
     const stepsOff = (await stepper.allInnerTexts()).map((t) =>
       t.replace(/\s+/g, " ").trim(),
     )
-    expect(stepsOff).toHaveLength(5)
+    expect(stepsOff).toHaveLength(6)
     expect(stepsOff.join(" ")).not.toContain("KI-Backlog")
 
     // Flip the toggle.
@@ -91,15 +92,15 @@ test.describe("PROJ-70-ε / wizard UI gating", () => {
     await expect(toggle).toBeVisible()
     await toggle.click()
 
-    // Toggle on → 6 steps, KI-Backlog at position 5 (before Review).
+    // Toggle on → 7 steps, KI-Backlog second-to-last (before Review).
     await expect
       .poll(async () => stepper.count(), { timeout: 5_000 })
-      .toBe(6)
+      .toBe(7)
     const stepsOn = (await stepper.allInnerTexts()).map((t) =>
       t.replace(/\s+/g, " ").trim(),
     )
-    expect(stepsOn[4]).toContain("KI-Backlog")
-    expect(stepsOn[5]).toContain("Review")
+    expect(stepsOn[5]).toContain("KI-Backlog")
+    expect(stepsOn[6]).toContain("Review")
   })
 })
 

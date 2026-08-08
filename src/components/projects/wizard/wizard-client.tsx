@@ -42,7 +42,12 @@ import {
 } from "@/types/project-method"
 import { PROJECT_TYPES, type ProjectType } from "@/types/project"
 import {
+  SKILL_ASSIGNMENT_SOURCES,
+  type SkillAssignmentSource,
+} from "@/types/project-skill"
+import {
   WIZARD_STEP_LABELS,
+  emptySkillsWizardData,
   emptyWizardData,
   visibleWizardSteps,
   type WizardData,
@@ -56,6 +61,7 @@ import { StepKiBacklog } from "./step-ki-backlog"
 import { StepMaFoundation } from "./step-ma-foundation"
 import { StepMethod } from "./step-method"
 import { StepReview } from "./step-review"
+import { StepSkills } from "./step-skills"
 import { StepType } from "./step-type"
 import { WizardStepper } from "./wizard-stepper"
 
@@ -81,6 +87,24 @@ const wizardSchema = z.object({
     .enum(PROJECT_METHODS as unknown as [ProjectMethod, ...ProjectMethod[]])
     .nullable(),
   type_specific_data: z.record(z.string(), z.string()),
+  // PROJ-78 — skill set chosen in the "Skills" step (draft JSON passthrough).
+  // Required (neither `.optional()` nor `.default()`) so the resolver's input
+  // type stays assignable to the non-optional `WizardData["skills"]`. Drafts
+  // created BEFORE PROJ-78 carry no `skills` block — the hydration below
+  // backfills the empty default before `form.reset`.
+  skills: z.object({
+    assignments: z.array(
+      z.object({
+        skill_id: z.string().uuid(),
+        assignment_source: z.enum(
+          SKILL_ASSIGNMENT_SOURCES as unknown as [
+            SkillAssignmentSource,
+            ...SkillAssignmentSource[],
+          ],
+        ),
+      }),
+    ),
+  }),
   // PROJ-70-ε — optional KI-Backlog block (lives in draft JSON payload).
   ki_backlog: z.object({
     enabled: z.boolean(),
@@ -204,7 +228,12 @@ export function WizardClient({ draftId }: WizardClientProps) {
         const existing = await getDraft(draftId)
         if (cancelled) return
         if (existing) {
-          form.reset(existing.data)
+          // PROJ-78 — backfill the `skills` block for drafts saved before the
+          // step existed, so the strict schema keeps validating.
+          form.reset({
+            ...existing.data,
+            skills: existing.data.skills ?? emptySkillsWizardData(),
+          })
           setLastSeenUpdatedAt(existing.updated_at)
         } else {
           toast.error("Entwurf nicht gefunden", {
@@ -271,7 +300,12 @@ export function WizardClient({ draftId }: WizardClientProps) {
     try {
       const fresh = await getDraft(conflict.draftId)
       if (fresh) {
-        form.reset(fresh.data)
+        // PROJ-78 — same backfill as the initial hydrate: a pre-PROJ-78 draft
+        // reloaded after a save-conflict must not drop out of the strict schema.
+        form.reset({
+          ...fresh.data,
+          skills: fresh.data.skills ?? emptySkillsWizardData(),
+        })
         setLastSeenUpdatedAt(fresh.updated_at)
         setConflict(null)
         toast.success("Neueste Version geladen")
@@ -350,6 +384,10 @@ export function WizardClient({ draftId }: WizardClientProps) {
           }
           return ok
         }
+        case "skills":
+          // PROJ-78 — the PM may finish with ZERO skills (spec AC); the step
+          // only shows a soft hint. Never blocks "Weiter".
+          return true
         case "ma_foundation": {
           // PROJ-94 — sponsor + objective (Step-1 description) are mandatory
           // for M&A projects; finalize enforces them server-side too.
@@ -621,6 +659,8 @@ export function WizardClient({ draftId }: WizardClientProps) {
                   : null
               }
             />
+          ) : step === "skills" ? (
+            <StepSkills />
           ) : step === "ma_foundation" ? (
             <StepMaFoundation tenantId={tenantId} />
           ) : step === "ki_backlog" ? (

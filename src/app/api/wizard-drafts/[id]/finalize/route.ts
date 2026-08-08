@@ -386,6 +386,47 @@ export async function POST(_request: Request, ctx: Ctx) {
     }
   }
 
+  // 4.4) PROJ-78 — persist the skill set chosen in the wizard's "Skills" step.
+  //
+  // Best-effort, mirroring the PROJ-141-γ2 template lock: a project without
+  // skills is fully functional and repairable from the project room, so a
+  // failure here must never cost the user the whole project. The RPC writes
+  // the explicit audit events (the PROJ-10 UPDATE-diff trigger cannot see
+  // INSERTs) and is idempotent via `on conflict do nothing`.
+  if (project) {
+    const skillsBlock = (data.skills ?? null) as {
+      assignments?: unknown
+    } | null
+    const rawAssignments = Array.isArray(skillsBlock?.assignments)
+      ? skillsBlock.assignments
+      : []
+    // Defensive shape filter — the draft payload rides through `.passthrough()`.
+    const assignments = rawAssignments.filter(
+      (a): a is { skill_id: string; assignment_source: string } =>
+        !!a &&
+        typeof a === "object" &&
+        typeof (a as { skill_id?: unknown }).skill_id === "string" &&
+        typeof (a as { assignment_source?: unknown }).assignment_source ===
+          "string"
+    )
+    if (assignments.length > 0) {
+      const { error: skillsErr } = await supabase.rpc("assign_project_skills", {
+        p_project_id: project.id,
+        p_assignments: assignments,
+      })
+      if (skillsErr) {
+        console.error(
+          `[finalize] assign_project_skills failed for project ${project.id}: ${skillsErr.message}`
+        )
+        warnings.push({
+          code: "skill_assign_failed",
+          message:
+            "Projekt angelegt — die Skills konnten nicht zugeordnet werden. Sie lassen sich im Projektraum unter „Projekt-Skills“ nachtragen.",
+        })
+      }
+    }
+  }
+
   // 4.5) PROJ-70-ε — attach an uploaded kickoff context-source to the new
   // project (Post-Finalize-Handoff). The wizard's ki_backlog step uploaded
   // the file WITHOUT a project_id; now that the project exists we wire it up

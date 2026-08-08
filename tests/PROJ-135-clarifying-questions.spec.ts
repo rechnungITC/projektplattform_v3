@@ -111,30 +111,54 @@ test.describe("PROJ-135 / wizard UI gating (AC-135.3)", () => {
     const toggle = page.getByRole("switch", { name: /KI-Backlog/ })
     await expect(toggle).toBeVisible()
     await toggle.click()
-    await expect.poll(async () => stepper.count(), { timeout: 5_000 }).toBe(6)
+    await expect.poll(async () => stepper.count(), { timeout: 5_000 }).toBe(7)
     expect((await stepper.allInnerTexts()).join(" ")).not.toContain("Rückfragen")
 
-    // Navigate to the KI-Backlog step and upload a real kickoff file.
-    await page.getByRole("button", { name: /KI-Backlog/ }).click()
-    await page
-      .getByTestId("wizard-ki-backlog-file-input")
-      .setInputFiles({
+  })
+
+  // ── Pre-existing defect, surfaced (not caused) by PROJ-78 ────────────────
+  // The upload half of the original AC-135.3 test navigated with
+  // `getByRole("button", {name: /KI-Backlog/}).click()` — a STEPPER button.
+  // The stepper only enables steps up to `furthestStep`
+  // (wizard-stepper.tsx: `isVisited = idx <= furthestIndex`), and a fresh
+  // wizard starts at `basics`, so that button is disabled. Going forward via
+  // "Weiter" does not help either: `validateStep` requires a project name
+  // (basics) and a project type (type) that this test never fills.
+  //
+  // It never failed before because PROJ-135 shipped with its authenticated
+  // E2E layer UNRUN (see INDEX PROJ-135, Deviation D-1: "authenticated/
+  // service-role E2E-Layer lief NICHT in CI"). This environment provisions
+  // the storage state, so the dead code path executes for the first time.
+  //
+  // PROJ-78 only shifted the step COUNTS (asserted above, corrected 6→7).
+  // Making this reachable means filling basics+type+followups first — a
+  // rewrite that belongs to PROJ-135, not here. → PROJ-Y-78f.
+  test.fixme(
+    "kickoff upload makes the clarifying step appear (AC-135.3, upload half)",
+    async ({ authenticatedPage }) => {
+      const page = authenticatedPage
+      await page.goto("/projects/new/wizard", { timeout: 120_000 })
+      const stepper = page.locator('[aria-label="Wizard-Schritte"] button')
+      await page.getByRole("switch", { name: /KI-Backlog/ }).click()
+
+      await page.getByTestId("wizard-ki-backlog-file-input").setInputFiles({
         name: "clarify-kickoff.eml",
         mimeType: "message/rfc822",
         buffer: Buffer.from(EML_FIXTURE),
       })
 
-    // Upload succeeded → the clarifying step now appears (7 steps), after
-    // KI-Backlog and before Review.
-    await expect
-      .poll(async () => stepper.count(), { timeout: 60_000 })
-      .toBe(7)
-    const labels = (await stepper.allInnerTexts()).map((t) =>
-      t.replace(/\s+/g, " ").trim(),
-    )
-    expect(labels[5]).toContain("Rückfragen")
-    expect(labels[6]).toContain("Review")
-  })
+      // Upload succeeded → the clarifying step now appears (8 steps with the
+      // PROJ-78 "Skills" step), after KI-Backlog and before Review.
+      await expect
+        .poll(async () => stepper.count(), { timeout: 60_000 })
+        .toBe(8)
+      const labels = (await stepper.allInnerTexts()).map((t) =>
+        t.replace(/\s+/g, " ").trim(),
+      )
+      expect(labels[6]).toContain("Rückfragen")
+      expect(labels[7]).toContain("Review")
+    },
+  )
 })
 
 // ---------------------------------------------------------------------------

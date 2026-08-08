@@ -29,6 +29,7 @@ import {
   Network,
   ShieldAlert,
   ShieldCheck,
+  Sparkles,
   Users,
   Workflow,
 } from "lucide-react"
@@ -226,6 +227,19 @@ const DMS_DOCUMENTS_SECTION: SidebarSection = {
   tabPath: "dokumente",
 }
 
+// PROJ-78 — the "Projekt-Skills" section: the skill set assigned to this
+// project (auto-resolved from method + project type + cross-cutting, plus
+// manual additions). CORE for ALL project types (no `requiresProjectType`
+// gate), so it is injected here once next to the Dokumente section.
+// The label is deliberately "Projekt-Skills": the plain "Skills" label is
+// already taken by the tenant-wide catalog in the main navigation.
+const PROJECT_SKILLS_SECTION: SidebarSection = {
+  id: "project-skills",
+  label: "Projekt-Skills",
+  icon: Sparkles,
+  tabPath: "skills",
+}
+
 // PROJ-132 — the "Operatives Reporting" section: weekly-steering operative
 // bundle (overdue tasks / open findings by severity / Q&A status / deliverable
 // status) with filters + CSV/PDF export. Project-TYPE driven (M&A); read-only
@@ -261,6 +275,7 @@ function withMaFoundation(config: MethodConfig): MethodConfig {
     sidebarSections: [
       ...sections.slice(0, insertAt),
       DMS_DOCUMENTS_SECTION,
+      PROJECT_SKILLS_SECTION,
       MA_FOUNDATION_SECTION,
       MA_PHASE_MODEL_SECTION,
       MA_STAGE_GATES_SECTION,

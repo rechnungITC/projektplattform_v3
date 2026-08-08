@@ -11,6 +11,7 @@ import {
 import { parseLocalDate } from "@/lib/dates/iso-date"
 import { computeRules } from "@/lib/project-rules/engine"
 import type { ProjectTypeOverrideFields } from "@/types/master-data"
+import { isAutoSource } from "@/types/project-skill"
 import { PROJECT_METHOD_LABELS } from "@/types/project-method"
 import { PROJECT_TYPE_LABELS } from "@/types/project"
 import type { WizardData } from "@/types/wizard"
@@ -39,6 +40,13 @@ export function StepReview({ projectTypeOverride }: StepReviewProps = {}) {
   const methodLabel = data.project_method
     ? PROJECT_METHOD_LABELS[data.project_method]
     : "Noch nicht festgelegt"
+
+  // PROJ-78 — defensive read: drafts created before this step exist without
+  // the `skills` block.
+  const skillAssignments = data.skills?.assignments ?? []
+  const autoSkillCount = skillAssignments.filter((a) =>
+    isAutoSource(a.assignment_source),
+  ).length
 
   const rules =
     data.project_type !== null
@@ -101,6 +109,30 @@ export function StepReview({ projectTypeOverride }: StepReviewProps = {}) {
           </CardContent>
         </Card>
       ) : null}
+
+      {/* PROJ-78 — the skill set chosen in the "Skills" step. Zero skills is a
+          valid outcome, so the card renders an explicit "keine" instead of
+          being hidden. */}
+      <Card>
+        <CardHeader>
+          <CardTitle className="text-base">
+            Skills ({skillAssignments.length})
+          </CardTitle>
+        </CardHeader>
+        <CardContent className="space-y-2 text-sm">
+          {skillAssignments.length === 0 ? (
+            <Row
+              label="Zugeordnet"
+              value="Keine — im Projektraum unter „Projekt-Skills“ nachtragbar"
+            />
+          ) : (
+            <Row
+              label="Zugeordnet"
+              value={`${skillAssignments.length} Skill(s) — davon ${autoSkillCount} automatisch vorgeschlagen`}
+            />
+          )}
+        </CardContent>
+      </Card>
 
       {/* PROJ-70-ε (AC-ε2) — surface the uploaded kickoff artefact so the
           user knows a KI-Backlog run will start after the project is

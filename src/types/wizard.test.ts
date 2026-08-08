@@ -7,6 +7,7 @@ import { describe, expect, it } from "vitest"
 import {
   WIZARD_STEPS,
   emptyKiBacklogData,
+  emptySkillsWizardData,
   emptyWizardData,
   visibleWizardSteps,
   type WizardData,
@@ -16,13 +17,22 @@ describe("visibleWizardSteps — AC-ε1 conditional step", () => {
   it("omits ki_backlog when the toggle is off", () => {
     const steps = visibleWizardSteps(false)
     expect(steps).not.toContain("ki_backlog")
-    expect(steps).toEqual(["basics", "type", "method", "followups", "review"])
+    // PROJ-78 — the unconditional "skills" step sits between followups and review.
+    expect(steps).toEqual([
+      "basics",
+      "type",
+      "method",
+      "followups",
+      "skills",
+      "review",
+    ])
   })
 
-  it("includes ki_backlog (after followups, before review) when on", () => {
+  it("includes ki_backlog (after skills, before review) when on", () => {
     const steps = visibleWizardSteps(true)
     expect(steps).toContain("ki_backlog")
-    expect(steps.indexOf("ki_backlog")).toBe(steps.indexOf("followups") + 1)
+    expect(steps.indexOf("ki_backlog")).toBe(steps.indexOf("skills") + 1)
+    expect(steps.indexOf("skills")).toBe(steps.indexOf("followups") + 1)
   })
 
   it("preserves the canonical order of the other steps in both modes", () => {
@@ -47,10 +57,11 @@ describe("visibleWizardSteps — PROJ-94 M&A conditional step", () => {
     expect(visibleWizardSteps(false)).not.toContain("ma_foundation")
   })
 
-  it("includes ma_foundation (after followups) for project_type 'ma'", () => {
+  it("includes ma_foundation (after skills) for project_type 'ma'", () => {
     const steps = visibleWizardSteps(false, "ma")
     expect(steps).toContain("ma_foundation")
-    expect(steps.indexOf("ma_foundation")).toBe(steps.indexOf("followups") + 1)
+    // PROJ-78 — the "skills" step was inserted between followups and ma_foundation.
+    expect(steps.indexOf("ma_foundation")).toBe(steps.indexOf("skills") + 1)
     // With ki_backlog off and no kickoff uploaded, ma_foundation is the last
     // step before review.
     expect(steps.indexOf("ma_foundation")).toBe(steps.indexOf("review") - 1)
@@ -122,9 +133,55 @@ describe("ki_backlog draft round-trip (AC-ε6)", () => {
     )
   })
 
-  it("a disabled block round-trips to a 5-step flow", () => {
+  it("a disabled block round-trips to a 6-step flow", () => {
     const data = emptyWizardData("u")
     const roundTripped = JSON.parse(JSON.stringify(data)) as WizardData
-    expect(visibleWizardSteps(roundTripped.ki_backlog.enabled)).toHaveLength(5)
+    // basics, type, method, followups, skills, review (PROJ-78 added skills).
+    expect(visibleWizardSteps(roundTripped.ki_backlog.enabled)).toHaveLength(6)
+  })
+})
+
+describe("PROJ-78 — unconditional skills step", () => {
+  it("is always part of the flow, regardless of the conditional toggles", () => {
+    for (const kiEnabled of [true, false]) {
+      for (const type of ["ma", "erp", null] as const) {
+        for (const kickoff of [true, false]) {
+          expect(visibleWizardSteps(kiEnabled, type, kickoff)).toContain(
+            "skills",
+          )
+        }
+      }
+    }
+  })
+
+  it("sits directly after the followups step", () => {
+    const steps = visibleWizardSteps(true, "ma", true)
+    expect(steps.indexOf("skills")).toBe(steps.indexOf("followups") + 1)
+  })
+
+  it("starts with an empty assignment list", () => {
+    const data = emptyWizardData("11111111-1111-1111-1111-111111111111")
+    expect(data.skills).toEqual(emptySkillsWizardData())
+    expect(data.skills.assignments).toEqual([])
+  })
+
+  it("survives the draft JSON round-trip", () => {
+    const data: WizardData = {
+      ...emptyWizardData("u"),
+      skills: {
+        assignments: [
+          {
+            skill_id: "33333333-3333-3333-3333-333333333333",
+            assignment_source: "auto_method",
+          },
+          {
+            skill_id: "44444444-4444-4444-4444-444444444444",
+            assignment_source: "manual_pm",
+          },
+        ],
+      },
+    }
+    const roundTripped = JSON.parse(JSON.stringify(data)) as WizardData
+    expect(roundTripped.skills).toEqual(data.skills)
   })
 })
