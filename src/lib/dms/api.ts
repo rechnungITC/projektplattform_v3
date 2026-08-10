@@ -4,6 +4,7 @@
  * upload dialog, quota bar).
  */
 
+import type { MaConfidentialityLevel } from "@/types/confidentiality"
 import type {
   DmsDocument,
   DocumentTreeNode,
@@ -48,7 +49,11 @@ export async function fetchDocumentTree(
 
 export async function createFolder(
   projectId: string,
-  payload: { name: string; parent_id?: string | null },
+  payload: {
+    name: string
+    parent_id?: string | null
+    confidentiality_level?: MaConfidentialityLevel
+  },
 ): Promise<DocumentTreeNode> {
   const res = await fetch(`${p(projectId)}/tree/nodes`, {
     method: "POST",
@@ -87,6 +92,28 @@ export async function moveNode(
       method: "PATCH",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({ parent_id: parentId }),
+    },
+  )
+  if (!res.ok) throw new Error(await safeError(res))
+  return ((await res.json()) as { node: DocumentTreeNode }).node
+}
+
+/**
+ * PROJ-Y-115c — reclassify a node. Raising a folder cascades down its whole
+ * subtree server-side; a downgrade below the parent's level is rejected (409),
+ * as is a level the caller has no clearance for (403).
+ */
+export async function setNodeConfidentiality(
+  projectId: string,
+  nodeId: string,
+  level: MaConfidentialityLevel,
+): Promise<DocumentTreeNode> {
+  const res = await fetch(
+    `${p(projectId)}/tree/nodes/${encodeURIComponent(nodeId)}`,
+    {
+      method: "PATCH",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ confidentiality_level: level }),
     },
   )
   if (!res.ok) throw new Error(await safeError(res))

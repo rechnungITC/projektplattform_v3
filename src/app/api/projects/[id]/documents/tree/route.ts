@@ -25,7 +25,7 @@ import type { TreeNodeDocumentMeta, TreeNodeWithDocument } from "@/types/dms"
 
 const TREE_SELECT =
   "id, tenant_id, project_id, parent_id, node_type, name, slug, sort_order, " +
-  "created_by, created_at, updated_at, deleted_at, " +
+  "confidentiality_level, created_by, created_at, updated_at, deleted_at, " +
   "documents(id, mime_type, size_bytes, original_filename, deleted_at)"
 
 interface RawTreeRow {

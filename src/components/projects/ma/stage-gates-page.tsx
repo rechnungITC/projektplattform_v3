@@ -130,7 +130,23 @@ function GatePreRead({ projectId, gate }: { projectId: string; gate: StageGate }
               <span className="text-right text-muted-foreground">
                 {data.mandatory_deliverables ?? "—"}
               </span>
+              <span className="text-muted-foreground">Offene SPA-Issues</span>
+              <span className="text-right font-medium">
+                {data.open_spa_issues ?? 0}
+              </span>
             </div>
+            {/* PROJ-122 AC-4 — hint (not a blocker) that unresolved contract
+                points are still open. Highlighted from the SPA-negotiation gate
+                (sequence 7) onwards, i.e. before Signing (gate 8); matching on
+                sequence_number rather than gate_key because gate keys are
+                copied per project and may be renamed per tenant. */}
+            {gate.sequence_number >= 7 && (data.open_spa_issues ?? 0) > 0 && (
+              <p className="flex items-start gap-2 rounded bg-amber-500/10 p-2 text-xs text-amber-700 dark:text-amber-400">
+                <AlertTriangle className="mt-0.5 h-4 w-4 shrink-0" />
+                Es bestehen noch {data.open_spa_issues} offene bzw. eskalierte
+                SPA-Issues. Vor dem Signing klären.
+              </p>
+            )}
             {data.has_blocking_readiness && (
               <p className="flex items-start gap-2 rounded bg-amber-500/10 p-2 text-xs text-amber-700 dark:text-amber-400">
                 <AlertTriangle className="mt-0.5 h-4 w-4 shrink-0" />

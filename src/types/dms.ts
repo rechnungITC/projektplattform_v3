@@ -8,6 +8,8 @@
  * are kept in the unions for forward-compatibility.
  */
 
+import type { MaConfidentialityLevel } from "@/types/confidentiality"
+
 export type DmsNodeType = "folder" | "document" | "external_link"
 export type DmsStorageBackend = "internal" | "sharepoint" | "gdrive"
 
@@ -20,6 +22,12 @@ export interface DocumentTreeNode {
   name: string
   slug: string
   sort_order: number
+  /**
+   * PROJ-Y-115c — need-to-know level. Lives on the node only; `documents`
+   * inherit it via `tree_node_id`. Children are floor-enforced >= parent, so
+   * a node created inside a classified folder inherits its level.
+   */
+  confidentiality_level: MaConfidentialityLevel
   created_by: string | null
   created_at: string
   updated_at: string
@@ -86,6 +94,8 @@ export interface QuotaStatus extends QuotaStatusRow {
 export interface CreateFolderRequest {
   parent_id?: string | null
   name: string
+  /** Optional. Coerced upward to the parent's level by the floor trigger. */
+  confidentiality_level?: MaConfidentialityLevel
 }
 
 export interface RenameNodeRequest {
@@ -96,7 +106,15 @@ export interface MoveNodeRequest {
   parent_id: string | null
 }
 
-export type PatchNodeRequest = RenameNodeRequest | MoveNodeRequest
+/** PROJ-Y-115c — reclassify a node (cascades down its subtree when raised). */
+export interface SetNodeConfidentialityRequest {
+  confidentiality_level: MaConfidentialityLevel
+}
+
+export type PatchNodeRequest =
+  | RenameNodeRequest
+  | MoveNodeRequest
+  | SetNodeConfidentialityRequest
 
 export interface TreeListResponse {
   nodes: TreeNodeWithDocument[]

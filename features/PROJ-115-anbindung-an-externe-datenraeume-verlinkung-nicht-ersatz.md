@@ -168,7 +168,7 @@ Need-to-know + Autorisierung serverseitig (RLS); `canEdit` steuert nur die Affor
 ### Deviations / Followups
 - **PROJ-Y-115a** — gehärteter aktiver Reachability-HEAD-Check (SSRF-Slice, DNS-Pin/no-redirect/timeout, eigener Pentest).
 - **PROJ-Y-115b** — VDR-Anbieter-Connector (AC3 „Could", Pilot-Bedarf).
-- **PROJ-Y-115c** — CIA-F4: `work_item_documents` ohne Need-to-know-Gate (Bestands-Leck, sicherheitsrelevant, priorisieren).
+- **PROJ-Y-115c** — ✅ **erledigt 2026-08-10** ([Spec](PROJ-Y-115c-document-layer-need-to-know-gate.md)). CIA-F4 war `work_item_documents`; beim Aufsetzen zeigte sich, dass die gesamte PROJ-79-DMS-Kette keine Vertraulichkeitsachse hatte und die `documents`-Bucket-Policy den Download-Proxy zum Scheingate machte. Beides geschlossen, Live-Pentest 17/17 + 5/5.
 - **Mobile-Safari-E2E** env-skipped (WebKit-Host-Libs, PROJ-67/F2); Chromium deckt Auth-Gates ab.
 
 ---
