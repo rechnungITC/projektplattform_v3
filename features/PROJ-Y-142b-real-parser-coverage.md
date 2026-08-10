@@ -14,7 +14,8 @@ summary_for_jira: "[HYGIENE] Un-gemockte Parser-Abdeckung für die Kickoff-Inges
 
 # PROJ-Y-142b: Un-gemockte Parser-Abdeckung
 
-## Status: In Progress
+## Status: Deployed (2026-08-10)
+**Deployed:** 2026-08-10 — PR #305 → main (`e6607f3`), Tag `v2.37.0-PROJ-Y-142b`. Alle 6 Required-Checks grün. Vercel-Prod `dpl_7Sp1114P` READY auf main HEAD; Post-Deploy-Smoke `/`, `/projects`, `/api/context-sources` (der vom Sniff-Fix betroffene Upload-Pfad) → alle 307 Auth-Gate. Kein Env/Secret, keine Migration.
 **Created:** 2026-08-10
 **Origin:** Followup aus PROJ-142. Dort fiel auf, dass `file-parser.test.ts` seine Bibliotheken vollständig mockt und deshalb **über einen Major-Sprung hinweg grün blieb** (`pdfjs-dist` 5.6.205 → 6.2.108). PROJ-142 schloss die Lücke nur für PDF; die übrigen Parser blieben mock-only.
 
