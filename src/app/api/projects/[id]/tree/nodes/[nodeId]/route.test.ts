@@ -128,6 +128,78 @@ describe("PATCH /api/projects/[id]/tree/nodes/[nodeId]", () => {
   })
 })
 
+describe("PATCH reclassify (PROJ-Y-115c)", () => {
+  const NODE_ROW = {
+    id: NODE,
+    project_id: PROJECT,
+    confidentiality_level: "strict",
+    deleted_at: null,
+  }
+
+  it("400 when combined with another operation (XOR)", async () => {
+    getAuthMock.mockResolvedValue({ userId: ME, supabase: supa([]) })
+    accessMock.mockResolvedValue({ project: { id: PROJECT, tenant_id: "t1" } })
+    const res = await PATCH(
+      patchReq({ name: "X", confidentiality_level: "strict" }),
+      ctx(),
+    )
+    expect(res.status).toBe(400)
+  })
+
+  it("400 on an unknown level", async () => {
+    getAuthMock.mockResolvedValue({ userId: ME, supabase: supa([]) })
+    accessMock.mockResolvedValue({ project: { id: PROJECT, tenant_id: "t1" } })
+    const res = await PATCH(patchReq({ confidentiality_level: "top-secret" }), ctx())
+    expect(res.status).toBe(400)
+    expect((await res.json()).error.field).toBe("confidentiality_level")
+  })
+
+  it("200 returns the reclassified node", async () => {
+    getAuthMock.mockResolvedValue({
+      userId: ME,
+      supabase: supa([{ data: NODE_ROW, error: null }]),
+    })
+    accessMock.mockResolvedValue({ project: { id: PROJECT, tenant_id: "t1" } })
+    const res = await PATCH(patchReq({ confidentiality_level: "strict" }), ctx())
+    expect(res.status).toBe(200)
+    expect((await res.json()).node.confidentiality_level).toBe("strict")
+  })
+
+  it("409 when the floor trigger rejects a downgrade (23514)", async () => {
+    getAuthMock.mockResolvedValue({
+      userId: ME,
+      supabase: supa([
+        { data: null, error: { code: "23514", message: "unter Eltern" } },
+      ]),
+    })
+    accessMock.mockResolvedValue({ project: { id: PROJECT, tenant_id: "t1" } })
+    const res = await PATCH(patchReq({ confidentiality_level: "standard" }), ctx())
+    expect(res.status).toBe(409)
+  })
+
+  it("403 when the need-to-know policy rejects the level (42501)", async () => {
+    getAuthMock.mockResolvedValue({
+      userId: ME,
+      supabase: supa([
+        { data: null, error: { code: "42501", message: "denied" } },
+      ]),
+    })
+    accessMock.mockResolvedValue({ project: { id: PROJECT, tenant_id: "t1" } })
+    const res = await PATCH(patchReq({ confidentiality_level: "strict" }), ctx())
+    expect(res.status).toBe(403)
+  })
+
+  it("404 when RLS hides the row (no data, no error)", async () => {
+    getAuthMock.mockResolvedValue({
+      userId: ME,
+      supabase: supa([{ data: null, error: null }]),
+    })
+    accessMock.mockResolvedValue({ project: { id: PROJECT, tenant_id: "t1" } })
+    const res = await PATCH(patchReq({ confidentiality_level: "strict" }), ctx())
+    expect(res.status).toBe(404)
+  })
+})
+
 describe("DELETE /api/projects/[id]/tree/nodes/[nodeId]", () => {
   it("401 unauthenticated", async () => {
     getAuthMock.mockResolvedValue({ userId: null, supabase: supa([]) })
