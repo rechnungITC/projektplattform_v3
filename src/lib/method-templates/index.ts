@@ -27,6 +27,7 @@ import {
   MessagesSquare,
   Microscope,
   Network,
+  Scale,
   ShieldAlert,
   ShieldCheck,
   Users,
@@ -252,6 +253,18 @@ const MA_STEERING_REPORT_SECTION: SidebarSection = {
   requiresProjectType: "ma",
 }
 
+// PROJ-122 — the "SPA Issues" section: the Epic-J contract negotiation list
+// (clause reference, both sides' positions, negotiation status, risk if no
+// agreement). Project-TYPE driven (M&A); need-to-know-scoped server-side and
+// feeding the open-issues hint on the stage-gate pre-read.
+const MA_SPA_ISSUES_SECTION: SidebarSection = {
+  id: "ma-spa-issues",
+  label: "SPA Issues",
+  icon: Scale,
+  tabPath: "spa-issues",
+  requiresProjectType: "ma",
+}
+
 function withMaFoundation(config: MethodConfig): MethodConfig {
   const sections = config.sidebarSections
   // Insert right after the leading "overview" section (index 0) when present.
@@ -275,6 +288,7 @@ function withMaFoundation(config: MethodConfig): MethodConfig {
       MA_CONFIDENTIALITY_SECTION,
       MA_DUE_DILIGENCE_SECTION,
       MA_DD_REPORT_SECTION,
+      MA_SPA_ISSUES_SECTION,
       MA_OPERATIVE_REPORT_SECTION,
       MA_STEERING_REPORT_SECTION,
       ...sections.slice(insertAt),
