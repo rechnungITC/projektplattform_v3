@@ -1,29 +1,53 @@
-# AI Coding Starter Kit
+# Projektplattform V3
 
-> A Next.js template with an AI-powered development workflow using specialized skills for Requirements, Architecture, Frontend, Backend, QA, and Deployment.
+> A multi-tenant, AI-supported **project orchestration platform** (ERP · construction · software · M&A deal lifecycle),
+> built with an AI-driven development workflow using specialized skills for Requirements, Architecture,
+> Frontend, Backend, QA, and Deployment. See `docs/PRD.md` for the product thesis.
+>
+> This is a live product with ~190 migrations in production — not a template. Treat every change as
+> touching real tenant data.
 
 ## Tech Stack
 
-- **Framework:** Next.js 16 (App Router), TypeScript
+- **Runtime:** Node.js — `engines: >=22.13.0`, CI + `.nvmrc` pin **24** (matches Vercel prod). Keep the lower bound and the pin distinct.
+- **Framework:** Next.js 16 (App Router), React 19, TypeScript
 - **Styling:** Tailwind CSS + shadcn/ui (copy-paste components)
-- **Backend:** Supabase (PostgreSQL + Auth + Storage) - optional
-- **Deployment:** Vercel
-- **Validation:** Zod + react-hook-form
-- **State:** React useState / Context API
+- **Backend:** Supabase (PostgreSQL + Auth + Storage + RLS) — **not** optional; it is the system of record
+- **AI:** Vercel AI SDK v6, multi-provider (`anthropic` · `openai` · `google` · `azure` · `ollama`), tenant-supplied keys
+- **Deployment:** Vercel (auto-deploy from `main`) + Sentry (EU region)
+- **Validation:** Zod 4 + react-hook-form
+- **State:** React useState / Context API — no global store
+- **Tests:** Vitest (unit/integration) + Playwright (E2E) + live SQL pentests
+
+The stack is fixed. Adding a dependency requires a Continuous Improvement Agent review (see below).
 
 ## Project Structure
 
 ```
 src/
-  app/              Pages (Next.js App Router)
+  app/              Pages + API routes (Next.js App Router)
   components/
     ui/             shadcn/ui components (NEVER recreate these)
-  hooks/            Custom React hooks
-  lib/              Utilities (supabase.ts, utils.ts)
+  hooks/            Custom React hooks (useX → {data, loading, error, refresh, ...mutators})
+  lib/              Domain modules — one folder per bounded concern
+    ai/             Multi-provider router, key-resolver, Class-3 gate
+    dms/            Document tree + storage (PROJ-79)
+    ma-project/     M&A extension (PROJ-94ff)
+    method-templates/  Project-Room nav registry — frequent merge hotspot
+    skills/         Skill framework (PROJ-76/77)
+  types/            Shared TypeScript types
 features/           Feature specifications (PROJ-X-name.md)
-  INDEX.md          Feature status overview
+  INDEX.md          Feature status overview — read first, update last
+  OPEN-DEFERRED-STATUS.md   Deferred follow-ups and MVP cuts
+supabase/
+  migrations/       ~190 applied migrations — append-only, never edit a shipped file
+tests/              Playwright E2E specs (PROJ-X-*.spec.ts)
+  sql/              Live RLS/RPC pentests (PROJ-X-*-pentest.sql)
+scripts/            check-schema-drift · check-migration-naming · e2e-fresh
 docs/
   PRD.md            Product Requirements Document
+  decisions/        ADRs (35 records, see decisions/INDEX.md)
+  architecture/     Domain model, term boundaries, target picture
   production/       Production guides (Sentry, security, performance)
 ```
 
@@ -36,18 +60,35 @@ docs/
 5. `/qa` - Test against acceptance criteria + security audit
 6. `/deploy` - Deploy to Vercel + production-ready checks
 
+`/continuous-improvement` runs alongside these — see the CIA section below for when it is mandatory.
+
+Large features ship as lettered sub-slices (α, β, γ, …), each carried through the full
+build → QA → deploy chain rather than merged as one block.
+
 ## Feature Tracking
 
 All features tracked in `features/INDEX.md`. Every skill reads it at start and updates it when done. Feature specs live in `features/PROJ-X-name.md`.
 
+Statuses: **Planned → Architected → In Progress → In Review → Approved → Deployed.**
+Follow-ups deferred out of a slice are registered as `PROJ-Y-<id>` and tracked in
+`features/OPEN-DEFERRED-STATUS.md`. Keep the INDEX row, the spec header, and reality in sync —
+a row claiming "Deployed" for work that was actually deferred is a bug in its own right (PROJ-141-γ1).
+
 ## Key Conventions
 
-- **Feature IDs:** PROJ-1, PROJ-2, etc. (sequential)
+- **Feature IDs:** PROJ-1, PROJ-2, etc. (sequential — see "Next Available ID" at the bottom of INDEX.md)
 - **Commits:** `feat(PROJ-X): description`, `fix(PROJ-X): description`
 - **Single Responsibility:** One feature per spec file
 - **shadcn/ui first:** NEVER create custom versions of installed shadcn components
 - **Human-in-the-loop:** All workflows have user approval checkpoints
-- **Tests:** Unit tests co-located next to source files (`useHook.test.ts` next to `useHook.ts`). E2E tests in `tests/`.
+- **Tests:** Unit tests co-located next to source files (`useHook.test.ts` next to `useHook.ts`).
+  E2E specs in `tests/PROJ-X-*.spec.ts`; live RLS/RPC pentests in `tests/sql/PROJ-X-*-pentest.sql`.
+- **Don't mock what you're actually testing.** A parser suite that mocks its parser stayed green across
+  a major version bump (PROJ-142); test the real library against a generated fixture instead.
+- **Hooks & APIs:** `useX` returns `{data, loading, error, refresh, ...mutators}`; effects use a
+  `let cancelled` guard. Routes go through `requireProjectAccess` (`src/app/api/_lib/route-helpers.ts`)
+  and the session-bound Supabase client — a report RPC called with the service-role key bypasses every
+  RLS gate above it.
 
 ## Build & Test Commands
 
@@ -58,8 +99,35 @@ npm run lint         # ESLint
 npm run start        # Production server
 npm test             # Vitest unit/integration tests
 npm run test:e2e     # Playwright E2E tests
+npm run test:e2e:fresh   # E2E with a clean dev server (use after a wedged Turbopack worker)
 npm run test:all     # Both test suites
+
+# CI guards — run these locally before opening a PR
+npm run audit:prod              # npm audit --omit=dev --audit-level=high
+npm run check:migration-naming  # filename format + version-prefix collisions
+npm run check:schema-drift      # .from().select() columns vs migration schema (needs Docker)
 ```
+
+## CI Required Checks (branch protection on `main`)
+
+A PR cannot merge until all of these pass. Run their local equivalents before pushing:
+
+| Check | Guards against | Local |
+|---|---|---|
+| `npm audit production dependencies` | HIGH+ CVEs in runtime deps | `npm run audit:prod` |
+| `Snyk production dependency scan` | same, second opinion | — (needs `SNYK_TOKEN`) |
+| `Verify SELECT columns vs migration schema` | schema drift — a `.select()` naming a column no migration creates | `npm run check:schema-drift` |
+| `Verify migration filename naming + version-prefix uniqueness` | migration version collisions / malformed names | `npm run check:migration-naming` |
+| Vercel build | build + type errors | `npm run build` |
+
+Two of these have bitten repeatedly and are worth knowing up front:
+
+- **Schema-drift replays migrations from files into a fresh shadow DB.** Prod passing proves nothing — a
+  migration that depends on a column another migration adds must add it idempotently itself
+  (`add column if not exists`), or the dependent migration fails on fresh-apply.
+- **`npm audit` breaks unrelated PRs.** When a new CVE lands overnight, fix it in its own slice
+  (PROJ-140/142 pattern: targeted `overrides` / in-range bumps) rather than `npm audit fix --force`,
+  which happily downgrades Next.js and `pdfjs-dist` into *older, more vulnerable* majors.
 
 ## Product Context
 
@@ -73,7 +141,7 @@ npm run test:all     # Both test suites
 
 V3 inherits a stable domain model, decision history, and story roadmap from V2 (`/home/sven/projects/Projeketplattform_v2_D.U/`). When in doubt about domain semantics or decisions:
 
-1. Check `docs/decisions/` for ADRs (22 inherited records, see [INDEX.md](docs/decisions/INDEX.md))
+1. Check `docs/decisions/` for ADRs (22 inherited from V2, 35 records today — see [INDEX.md](docs/decisions/INDEX.md))
 2. Check `docs/GLOSSARY.md` and `docs/architecture/{domain-model,term-boundaries,target-picture,module-structure}.md` for terminology and architecture intent
 3. Check `features/PROJ-X-*.md` "V2 Reference Material" section for V2 code paths to study
 4. Reference V2 code as INPUT for V3 implementations — never copy/paste; rewrite for Next.js + Supabase + RLS
@@ -82,6 +150,36 @@ V3 inherits a stable domain model, decision history, and story roadmap from V2 (
 
 ### Multi-tenant invariant
 Every new table created from PROJ-3 onward MUST include `tenant_id UUID NOT NULL REFERENCES tenants(id) ON DELETE CASCADE`. RLS policies MUST use the helpers established in PROJ-1: `is_tenant_member(tenant_id)`, `has_tenant_role(tenant_id, role)`, `is_tenant_admin(tenant_id)`. Tenant data MUST never leak across tenant boundaries — there is no "global" data in this product (except for catalogs explicitly marked as global, e.g. project-type catalog in PROJ-6).
+
+### Need-to-know invariant (confidentiality sublayer)
+Orthogonal to tenancy and to the Class-3 privacy axis. Objects that can carry sensitive content
+(`projects`, `phases`, `work_items`, `risks`, `deliverables`, DD tables, DMS nodes, …) carry
+`confidentiality_level ma_confidentiality_level` (`standard` → `confidential` → `strict`, ordered,
+default `standard`) and are gated by **RESTRICTIVE** policies calling `can_access_classified(...)`
+(PROJ-100a). Rules that keep this honest:
+
+- A confidentiality gate is **additive and RESTRICTIVE** — it narrows, never widens. Default `standard`
+  means non-M&A behaviour stays byte-identical; prove that with a regression run of the existing pentests.
+- **Aggregates leak.** Any RPC that counts, sums, or produces a pre-read must be `SECURITY INVOKER` so
+  the caller's RLS applies. A `SECURITY DEFINER` summary over gated rows is a leak even when the row
+  list is correctly hidden — every report slice ships an explicit aggregate-leak probe.
+- Child tables inherit via their parent (`floor trigger`: a child may never be *less* confidential than
+  its parent). Where a resolver is needed across a polymorphic edge, add one `SECURITY DEFINER` context
+  resolver — never a second source of truth.
+
+### Domain extensions on the shared core
+The core (Project · Phase · Milestone · Work Item · Risk · Decision · Stakeholder) is shared. Extensions
+must reuse it rather than fork it:
+
+- **M&A / deal lifecycle** (PROJ-94–132) is `project_type='ma'` — *not* a parallel module. Deal phases
+  reuse `phases`, DD tasks reuse `work_items`, findings link to `risks`, stage gates write PROJ-20
+  `decisions`. See `docs/decisions/ma-domain-architecture.md`.
+- **DMS** (PROJ-79) owns the canonical binary store (`documents` + `document_tree_nodes`); other
+  features link to it rather than growing their own upload path.
+- **Skills** (PROJ-76/77) are tenant-scoped markdown with immutable versions and an activate/rollback RPC pair.
+
+Before modelling anything new, search for the primitive that already exists — several slices
+(PROJ-101/103/108/109) collapsed from "new table" to "thin read view" once the prior art was found.
 
 ### Architecture principles inherited from V2
 1. **Shared core before specialization** — anything universal (Project, Phase, Milestone, Task, Risk, Stakeholder, Decision) lives in core; ERP/Construction/Software specifics are extensions.
@@ -92,6 +190,21 @@ Every new table created from PROJ-3 onward MUST include `tenant_id UUID NOT NULL
 6. **Compliance as dependency** — ISO/DSGVO/process artifacts are first-class via tags + `ComplianceTrigger` (PROJ-18), not afterthoughts.
 7. **Field-level audit** — every editable business field is field-level versioned, undo-able, and DSGVO-redactable on export (PROJ-10).
 8. **MCP-first for external tools** — when exposing tools to the LLM, prefer MCP server integration (PROJ-14) over ad-hoc API adapters.
+
+### AI layer (PROJ-12 · 32 · 85 · 137)
+One router, many purposes. `src/lib/ai/` holds the purpose registry (`AIPurpose`, 14 values today),
+the tenant key-resolver (5 provider types), and the Class-3 gate. When adding a purpose:
+
+- Add it to `AIPurpose` **and** to the `ki_runs` / `tenant_ai_cost_caps` purpose CHECKs in the same
+  migration (lockstep — a missing CHECK value 5xx's in prod, as it did for `sentiment`/`coaching`).
+- Implement it for **every** cloud provider, not just the one you tested. The router silently falls back
+  to the empty `stub` provider otherwise, which is indistinguishable from "the AI found nothing"
+  (PROJ-85). A data-driven capability-matrix test over `AIPurpose` catches this.
+- Every run persists a typed `reason_code` (`no_provider` · `class3_blocked` · `provider_error` ·
+  `cost_cap_exceeded` · `external_ai_disabled`) so an empty result is always explainable to the user (PROJ-137).
+- Ground generation in the project's stated intent, but treat that intent as an **evaluation axis only** —
+  never as a source of items. The model will otherwise invent a plausible backlog from the goal instead of
+  extracting from the document (PROJ-91).
 
 ### Language convention (carried from V2)
 - **Domain-facing artifacts** (feature specs, user stories, glossary, V2-imported docs) — German is acceptable when quoting V2 verbatim; otherwise English is preferred for V3 originals.
@@ -107,6 +220,37 @@ Each `features/PROJ-X-*.md` carries a **V2 Reference Material** section that lis
 - V2 migration files relevant to the domain
 
 Engineers and architects can use these as prior-art reading before redesigning for V3's Supabase + Next.js stack.
+
+## Database & Migration Conventions
+
+Hard-won rules. Each one traces to a production incident; none is stylistic.
+
+**Naming (PROJ-134).** When applying a migration via the Supabase MCP `apply_migration`, the `name`
+argument MUST equal the repo filename stem. The MCP assigns its own timestamp otherwise, which drifts
+from the repo file and breaks `supabase db push`. Version prefixes must be unique — resolve collisions
+*order-preservingly* (`+1` on the later file), because the schema-drift guard replays migrations in
+filename order and a reorder can make a fresh apply fail where prod passed.
+
+**Migrations are append-only.** Never edit a file that has been applied to prod. Fix forward.
+
+**`moddatetime` must be schema-qualified** — `extensions.moddatetime`. The bare form resolves in prod
+but not in the schema-drift shadow DB.
+
+**Live RPC smoke is mandatory before Approved.** Mocked route tests have twice masked a broken prod RPC.
+Every new `SECURITY DEFINER` RPC gets one real call against the live DB. Pentests live in
+`tests/sql/PROJ-X-*-pentest.sql` and follow the DO-block + nested-`EXCEPTION` + rollback-marker pattern
+so they leave **zero residue**. Assert the negative cases (cross-tenant, non-member, non-admin,
+`anon` EXECUTE revoked), not just the happy path.
+
+**RPCs must not take an actor parameter.** Read `auth.uid()` inside the function — an actor argument is
+an impersonation hole (found live in PROJ-94). Revoke EXECUTE from `anon` on everything.
+
+**Patching a deployed function: replace from live, never retype.** Fetch `pg_get_functiondef`, anchor-replace
+the branch you need, and re-`GRANT` in the same statement. Audit helpers (`can_read_audit_entry`,
+`record_audit_changes`, the `entity_type` CHECK) accumulate one branch per feature — transcribing them
+from memory silently drops sibling slices' branches, and a concurrent session's recreate-from-live can
+clobber yours. Extend the `audit_log_entity_type` CHECK **in the same migration** that adds the table,
+or the first `grant`/`revoke` RPC call fails on the constraint.
 
 ## Parallel Sessions (MANDATORY — git worktree per session)
 
