@@ -129,6 +129,38 @@ Two of these have bitten repeatedly and are worth knowing up front:
   (PROJ-140/142 pattern: targeted `overrides` / in-range bumps) rather than `npm audit fix --force`,
   which happily downgrades Next.js and `pdfjs-dist` into *older, more vulnerable* majors.
 
+## Dev Environment — run everything inside WSL, never from Windows
+
+The repo lives in WSL (`/home/sven/projects/projektplattform_v3`) and its toolchain is
+Linux + Node 24 (nvm). **Never run `npm` from a Windows shell against the
+`\\wsl.localhost\...` path.** Two independent failures follow:
+
+1. `CMD.EXE` cannot use a UNC path as working directory. It silently falls back to
+   `C:\Windows`, so npm tries to write `C:\Windows\package-lock.json` and dies with
+   `EPERM ... errno -4048`. The repo itself is untouched — nothing to repair.
+2. Even with a correct working directory, Windows npm installs the wrong binaries.
+   `node_modules` carries platform-specific artifacts (`@next/swc`, `sharp`,
+   Turbopack); a `win32-x64` install breaks build, Vitest, Playwright, and Vercel,
+   all of which run on `linux-x64`. `engines.node` is `>=22.13` (PROJ-Y-142a, driven
+   by `pdfjs-dist@6`) — a stray `C:\Program Files\nodejs` is a separate, unpinned
+   Node install.
+
+One-off from a Windows shell (the `-lc` is required so nvm loads and `node` resolves):
+
+```
+wsl.exe -d Ubuntu-24.04 --cd /home/sven/projects/projektplattform_v3 -- bash -lc "npm install"
+```
+
+JetBrains IDEs (WebStorm / IntelliJ) — configure once:
+
+- *Settings → Tools → Terminal → Shell path:* `wsl.exe -d Ubuntu-24.04`
+- *Settings → Languages & Frameworks → Node.js → Node interpreter → Add → WSL* →
+  Ubuntu-24.04 → `/home/sven/.nvm/versions/node/v24.19.0/bin/node`
+
+Best: open the project via *Remote Development → WSL* rather than the
+`\\wsl.localhost` network path — the whole toolchain then runs natively in Linux, the
+UNC failure mode disappears, and file access avoids the slow 9P bridge.
+
 ## Product Context
 
 @docs/PRD.md
