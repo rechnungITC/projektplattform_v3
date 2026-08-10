@@ -2,6 +2,7 @@ import {
   AlertTriangle,
   ArrowUpRight,
   CalendarClock,
+  Coins,
   Flag,
   GitBranch,
   Layers,
@@ -21,6 +22,7 @@ import type {
   RiskSeverityBucket,
   SteeringCriticalTask,
   SteeringGateStatus,
+  SteeringPreRead,
   SteeringRedFlagFinding,
   SteeringRedFlagRisk,
   SteeringReport,
@@ -33,10 +35,35 @@ import { fmtEur, SEVERITY_LABEL } from "./dd-finding-labels"
 // fetching, no state) so it renders identically in the in-app view and the
 // chrome-less /print page. Data comes from the SECURITY-INVOKER RPC
 // steering_report, so what reaches this component is already need-to-know-
-// filtered for the caller. Kaufpreis (I1/I2) and Synergie (K2) are not built
-// yet → shown as "not-yet-available" placeholders (AC-131-5 → PROJ-Y-131a).
+// filtered for the caller. Kaufpreis (I1) is live since PROJ-120 — the tile
+// shows the price band of the current valuation, or the neutral "n/a"
+// placeholder when there is none OR the viewer is not cleared for it. Synergie
+// (K2) is still unbuilt → placeholder (AC-131-5 → PROJ-Y-131a / PROJ-126).
 
 const TOP_N = 5
+
+/**
+ * PROJ-120 (F5) — formatiert die Kaufpreisbandbreite der gültigen Bewertung.
+ * `null`, wenn keine Bewertung existiert oder der Betrachter nicht freigegeben
+ * ist (der Server liefert die Felder dann gar nicht erst) — die Kachel fällt in
+ * beiden Fällen auf den neutralen "n/a"-Platzhalter zurück, damit aus der
+ * Anzeige NICHT ableitbar ist, ob eine Bewertung existiert.
+ */
+function valuationBand(pre: SteeringPreRead): string | null {
+  const { valuation_value_low: low, valuation_value_high: high } = pre
+  if (low == null && high == null) return null
+  const currency = pre.valuation_currency ?? "EUR"
+  const fmt = (n: number) =>
+    new Intl.NumberFormat("de-DE", {
+      style: "currency",
+      currency,
+      maximumFractionDigits: 0,
+    }).format(n)
+  if (low != null && high != null) {
+    return low === high ? fmt(low) : `${fmt(low)} – ${fmt(high)}`
+  }
+  return fmt((low ?? high) as number)
+}
 
 const GATE_STATUS_LABEL: Record<SteeringGateStatus, string> = {
   pending: "Offen",
@@ -117,12 +144,19 @@ function PreReadTiles({
       icon: CalendarClock,
       danger: pre.critical_tasks > 0,
     },
+    // PROJ-120 (F5) — gefüllt, sobald es eine gültige Bewertung gibt UND der
+    // Betrachter dafür freigegeben ist. Beides entscheidet der Server
+    // (steering_report ist SECURITY INVOKER); der Client hat kein zweites Gate
+    // und zeigt bei `null` denselben neutralen Platzhalter wie zuvor.
     {
       label: "Kaufpreisbandbreite",
-      value: "n/a",
-      sub: "noch nicht verfügbar",
-      icon: AlertTriangle,
-      muted: true,
+      value: valuationBand(pre) ?? "n/a",
+      sub:
+        pre.valuation_version_no != null
+          ? `Bewertung v${pre.valuation_version_no}`
+          : "noch nicht verfügbar",
+      icon: valuationBand(pre) ? Coins : AlertTriangle,
+      muted: !valuationBand(pre),
     },
     {
       label: "Synergie-Stand",

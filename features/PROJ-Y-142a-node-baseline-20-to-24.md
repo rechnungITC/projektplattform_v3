@@ -90,7 +90,7 @@ Verifiziert mit einem lokal entpackten Node-24-Tarball (kein Eingriff ins Host-S
 
 ## Deviations
 
-- **D-Y142a.1** — Der **lokale Dev-Host bleibt auf Node 20.20.2**. Ein System-Node-Upgrade braucht `sudo`/Paketmanager und ist keine Repo-Änderung → **User-Handoff** (siehe unten). Analog zum WebKit-Host-Libs-Handoff aus PROJ-67/F2. Der Handoff ist **nicht dringend**: die volle Suite läuft auf Node 20 weiter grün, es erscheint nur eine `EBADENGINE`-Warnung.
+- **D-Y142a.1** — ~~Der lokale Dev-Host bleibt auf Node 20.20.2.~~ **Am 2026-08-10 geschlossen** (siehe Abschnitt User-Handoff). Ursprünglich: Der lokale Dev-Host blieb auf Node 20.20.2. Ein System-Node-Upgrade braucht `sudo`/Paketmanager und ist keine Repo-Änderung → **User-Handoff** (siehe unten). Analog zum WebKit-Host-Libs-Handoff aus PROJ-67/F2. Der Handoff ist **nicht dringend**: die volle Suite läuft auf Node 20 weiter grün, es erscheint nur eine `EBADENGINE`-Warnung.
 - **D-Y142a.2** — `engines.node` ist `>=22.13.0` (echte Untergrenze), nicht `>=24` (Pin). Bewusste Trennung von *Anforderung* und *getesteter Version*; ein `>=24` hätte Entwickler auf 22-LTS ohne fachlichen Grund ausgesperrt.
 - **D-Y142a.3** — `schema-drift` konnte lokal nicht end-to-end verifiziert werden (braucht Docker, WSL-Integration offen — vorbestehend aus PROJ-67/F6). Der Workflow ist Required-Check und beweist sich beim ersten CI-Lauf selbst.
 
@@ -106,7 +106,11 @@ nvm use
 npm ci
 ```
 
-Bis dahin: alles funktioniert weiter, `npm install` warnt lediglich.
+**Erledigt 2026-08-10.** nvm v0.40.1 installiert, `nvm install` las `.nvmrc` → **Node 24.19.0**, `nvm alias default 24` gesetzt; eine frische Login-Shell startet jetzt auf v24.19.0.
+
+Dabei kam ein Hindernis hoch, das das Rezept oben nicht vorhersah: `~/.npmrc` enthielt `prefix=/home/sven/.npm-global`, und nvm verweigert die Aktivierung bei gesetztem `prefix`/`globalconfig` (incompatible with nvm). Gelöst durch Entfernen der `prefix`-Zeile (Backup unter `~/.npmrc.bak-pre-nvm-2026-08-10`). Die global installierten CLIs bleiben erreichbar, weil `~/.npm-global/bin` unabhängig davon in `.bashrc:128` im PATH steht — verifiziert: `claude`, `gitnexus`, `codex` lösen weiterhin auf (`claude-mem` hat `bin: null`, hatte also nie ein CLI). Folge fürs Weitere: neue `npm i -g`-Installationen landen ab jetzt im nvm-Verzeichnis der aktiven Node-Version, nicht mehr in `~/.npm-global`.
+
+Verifikation unter dem neuen Default-Node (frischer `npm ci`): audit **0 vulnerabilities**, ESLint **0**, vitest **2631/2631**, Build clean.
 
 ## Follow-ups
 

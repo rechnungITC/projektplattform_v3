@@ -8,10 +8,23 @@
 
 import { z } from "zod"
 
+import { MA_CONFIDENTIALITY_LEVELS } from "@/types/confidentiality"
+
+/**
+ * PROJ-Y-115c — need-to-know level accepted on create/reclassify. The DB is
+ * the authority: the floor trigger coerces upward to the parent's level and
+ * rejects an explicit downgrade below it, and the RESTRICTIVE policies reject
+ * a level the caller has no clearance for.
+ */
+const confidentialityLevelSchema = z.enum(
+  MA_CONFIDENTIALITY_LEVELS as unknown as [string, ...string[]],
+)
+
 /** POST /tree/nodes — create a folder. */
 export const createFolderSchema = z.object({
   parent_id: z.string().uuid().nullish(),
   name: z.string().trim().min(1).max(200),
+  confidentiality_level: confidentialityLevelSchema.optional(),
 })
 export type CreateFolderInput = z.infer<typeof createFolderSchema>
 
@@ -30,6 +43,14 @@ export const moveNodeSchema = z.object({
   parent_id: z.string().uuid().nullable(),
 })
 export type MoveNodeInput = z.infer<typeof moveNodeSchema>
+
+/** PATCH /tree/nodes/[nodeId] — reclassify (third mutually exclusive op). */
+export const setNodeConfidentialitySchema = z.object({
+  confidentiality_level: confidentialityLevelSchema,
+})
+export type SetNodeConfidentialityInput = z.infer<
+  typeof setNodeConfidentialitySchema
+>
 
 /** Multipart scalar fields for POST /documents. */
 export const uploadFieldsSchema = z.object({

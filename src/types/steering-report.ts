@@ -16,6 +16,7 @@ import type {
   FindingTreatment,
 } from "@/lib/ma-project/dd-findings-api"
 import type { MaConfidentialityLevel } from "@/types/confidentiality"
+import type { ValuationMethod } from "@/types/valuation"
 import type { WorkItemKind, WorkItemStatus } from "@/types/work-item"
 
 export type SteeringPhaseStatus =
@@ -142,12 +143,36 @@ export interface SteeringPreRead {
   open_red_flag_findings: number
   open_high_risks: number
   critical_tasks: number
+  // PROJ-120 (F5) — Kaufpreisbandbreite der gültigen Bewertung. `null`, wenn es
+  // keine Bewertung gibt ODER der Aufrufer dafür nicht freigegeben ist (die RPC
+  // ist SECURITY INVOKER → Need-to-know greift, kein zweites Gate im Client).
+  valuation_version_no: number | null
+  valuation_value_low: number | null
+  valuation_value_high: number | null
+  valuation_currency: string | null
+}
+
+/** PROJ-120 — die gültige Bewertungsversion des Deals (AC4). */
+export interface SteeringValuation {
+  id: string
+  version_no: number
+  title: string
+  valuation_date: string
+  method: ValuationMethod
+  value_low: number | null
+  value_high: number | null
+  currency: string
+  version_comment: string | null
+  author_user_id: string | null
+  confidentiality_level: MaConfidentialityLevel
 }
 
 export interface SteeringReport {
   deal_status: SteeringDealStatus
   next_stage_gate: SteeringNextGate | null
   stage_gate_summary: SteeringGateSummary
+  /** PROJ-120 — null ohne Bewertung oder ohne Clearance. */
+  valuation: SteeringValuation | null
   red_flags: {
     findings: SteeringRedFlagFinding[]
     risks: SteeringRedFlagRisk[]
@@ -175,6 +200,7 @@ export const EMPTY_STEERING_REPORT: SteeringReport = {
   },
   next_stage_gate: null,
   stage_gate_summary: { total: 0, pending: 0, passed: 0, conditional: 0, aborted: 0 },
+  valuation: null,
   red_flags: {
     findings: [],
     risks: [],
@@ -205,6 +231,10 @@ export const EMPTY_STEERING_REPORT: SteeringReport = {
     open_red_flag_findings: 0,
     open_high_risks: 0,
     critical_tasks: 0,
+    valuation_version_no: null,
+    valuation_value_low: null,
+    valuation_value_high: null,
+    valuation_currency: null,
   },
 }
 
