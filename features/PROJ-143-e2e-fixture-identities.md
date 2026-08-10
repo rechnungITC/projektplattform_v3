@@ -53,15 +53,24 @@ Zweiter, unabhängiger Befund: **`playwright.config.ts` setzte kein `timeout`.**
 
 **Volle chromium-Suite** gegen die neuen Identitäten. Ausgangsstand `main`: 350 passed / 7 failed.
 
-Fehlschläge nach der Umstellung, einzeln zugeordnet:
+**Endstand: 353 passed / 3 failed / 5 skipped** (Ausgangsstand `main`: 350 passed / 7 failed).
+
+Fehlschläge einzeln zugeordnet:
 
 | Fehlschlag | Bewertung |
 |---|---|
-| PROJ-137 ×4 | vorbestehend, unverändert (Live-AI) |
 | PROJ-135 AC-135.3 | erwartet — Fix liegt in PROJ-Y-78f (#307), dieser Branch hängt an `main` |
-| PROJ-1-2 Invite-Route | vorbestehend, Supabase-E-Mail-Kontingent (in PROJ-78 F-4 durch Kontrollexperiment belegt: fällt auch auf `main` um) |
-| PROJ-1-2 Domain-Claim | **von dieser Slice verursacht und behoben** — duplizierte Domain-Konstante kollidierte mit `tenants_domain_unique` |
+| PROJ-1-2 Invite-Route | vorbestehend, Supabase-E-Mail-Kontingent — reproduzierbar mit expliziter Meldung `invite_failed: email rate limit exceeded`; in PROJ-78 F-4 per Kontrollexperiment auch auf `main` belegt |
+| PROJ-76 Auth-Gate / PROJ-1-2 Domain-Claim | **Last-Flakes**, treffen im Volllauf abwechselnd den einen oder anderen Test; isoliert beide grün (2 Durchgänge, 13/13). Vorbestehende Infra-Instabilität (PROJ-138-Domäne), nicht Folge dieser Slice |
+| PROJ-1-2 Domain-Claim (Kollision) | **war von dieser Slice verursacht und ist behoben** — duplizierte Domain-Konstante kollidierte mit `tenants_domain_unique` |
 | PROJ-51 ×2 Snapshots | **Folge dieser Slice** — frischer Tenant rendert andere Inhalte; neu baselined |
+| PROJ-137 ×5 | **keine echten Fehlschläge** — siehe unten |
+
+### Nebenbefund: PROJ-137 meldete jahrelang Phantom-Fehlschläge
+
+Im ersten Volllauf schlug PROJ-137 fünfmal fehl (`duplicate key … projects_pkey`, `violates foreign key … context_sources_project_id_fkey`). Ursache ist **nicht** diese Slice: beide Describes der Datei seeden und löschen dieselbe fest kodierte `RFC_PROJECT_ID` in eigenen `beforeAll`/`afterAll`; unter `fullyParallel` landen sie in verschiedenen Workern und der Cleanup des einen räumt dem anderen das Projekt weg. **Seriell ausgeführt: 9/9 grün** — inklusive der drei `class3_blocked`-Tests, die seit Monaten als „vorbestehende Fehlschläge" durch die Berichte wandern und offenbar nie seriell gegengeprüft wurden.
+
+Behoben mit `test.describe.configure({ mode: "serial" })` (dieselbe Fehlerklasse wie das markerbasierte Cleanup in PROJ-Y-78f). Gleichzeitig wurde der Datei-Kommentar korrigiert, der durch diese Slice inhaltlich falsch wurde: er behauptete weiterhin, `E2E_PROJECT_ID` sei nicht RFC-4122-konform, und begründete damit die separate `RFC_PROJECT_ID` — die jetzt der Isolation dient, nicht mehr einem Workaround. **Das war der vierte lokale Workaround für dieselbe Wurzel**, nicht der dritte.
 
 ## Deviations
 
