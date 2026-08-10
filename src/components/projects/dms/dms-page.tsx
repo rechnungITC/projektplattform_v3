@@ -10,7 +10,7 @@
  * (useProjectAccess); the API + RLS re-enforce the role server-side.
  */
 
-import { FolderPlus, Loader2, Upload } from "lucide-react"
+import { FolderPlus, Loader2, ShieldCheck, Upload } from "lucide-react"
 import * as React from "react"
 import { toast } from "sonner"
 
@@ -41,6 +41,13 @@ import {
 } from "@/components/ui/dialog"
 import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from "@/components/ui/select"
 import { useProjectAccess } from "@/hooks/use-project-access"
 import { useDocumentTree } from "@/hooks/use-document-tree"
 import { useStorageQuota } from "@/hooks/use-storage-quota"
@@ -50,10 +57,18 @@ import {
   getDownloadUrl,
   moveNode,
   renameNode,
+  setNodeConfidentiality,
   uploadDocument,
 } from "@/lib/dms/api"
 import { formatBytes } from "@/lib/dms/format"
+import {
+  MA_CONFIDENTIALITY_LEVEL_LABELS,
+  MA_CONFIDENTIALITY_LEVELS,
+  type MaConfidentialityLevel,
+} from "@/types/confidentiality"
 import type { TreeForestNode } from "@/types/dms"
+
+import { ConfidentialityBadge } from "@/components/projects/ma/confidentiality-badge"
 
 import { DmsQuotaBar } from "./dms-quota-bar"
 import { DmsTree } from "./dms-tree"
@@ -97,9 +112,14 @@ export function DmsPage({ projectId }: { projectId: string }) {
   >(null)
   const [folderName, setFolderName] = React.useState("")
   const [folderBusy, setFolderBusy] = React.useState(false)
+  // PROJ-Y-115c: create-time classification. The DB floor trigger coerces this
+  // upward to the parent folder's level, so this is a minimum, not an override.
+  const [folderLevel, setFolderLevel] =
+    React.useState<MaConfidentialityLevel>("standard")
 
   const openCreate = (parentId: string | null) => {
     setFolderName("")
+    setFolderLevel("standard")
     setFolderDialog({ mode: "create", parentId })
   }
   const openRename = (node: TreeForestNode) => {
@@ -115,6 +135,7 @@ export function DmsPage({ projectId }: { projectId: string }) {
         await createFolder(projectId, {
           name: folderName.trim(),
           parent_id: folderDialog.parentId,
+          confidentiality_level: folderLevel,
         })
         toast.success("Ordner angelegt.")
       } else {
@@ -127,6 +148,36 @@ export function DmsPage({ projectId }: { projectId: string }) {
       toast.error(err instanceof Error ? err.message : "Aktion fehlgeschlagen.")
     } finally {
       setFolderBusy(false)
+    }
+  }
+
+  // --- Reclassify dialog (PROJ-Y-115c) ------------------------------------
+  const [levelDialog, setLevelDialog] = React.useState<TreeForestNode | null>(
+    null,
+  )
+  const [nextLevel, setNextLevel] =
+    React.useState<MaConfidentialityLevel>("standard")
+  const [levelBusy, setLevelBusy] = React.useState(false)
+
+  const openReclassify = (node: TreeForestNode) => {
+    setNextLevel(node.confidentiality_level)
+    setLevelDialog(node)
+  }
+
+  const submitLevel = async () => {
+    if (!levelDialog) return
+    setLevelBusy(true)
+    try {
+      await setNodeConfidentiality(projectId, levelDialog.id, nextLevel)
+      toast.success("Vertraulichkeit aktualisiert.")
+      setLevelDialog(null)
+      await refresh()
+    } catch (err) {
+      toast.error(
+        err instanceof Error ? err.message : "Änderung fehlgeschlagen.",
+      )
+    } finally {
+      setLevelBusy(false)
     }
   }
 
@@ -240,6 +291,7 @@ export function DmsPage({ projectId }: { projectId: string }) {
               onSelect={setSelectedId}
               onCreateChild={(parentId) => openCreate(parentId)}
               onRename={openRename}
+              onReclassify={openReclassify}
               onDelete={setDeleteTarget}
               onDownload={handleDownload}
               onMove={handleMove}
@@ -263,6 +315,10 @@ export function DmsPage({ projectId }: { projectId: string }) {
                 <p className="text-muted-foreground">
                   Ordner · {selected.children?.length ?? 0} direkte Element(e)
                 </p>
+                <div className="flex items-center gap-2">
+                  <span className="text-muted-foreground">Vertraulichkeit</span>
+                  <ConfidentialityBadge level={selected.confidentiality_level} />
+                </div>
                 {canEdit ? (
                   <div className="flex flex-wrap gap-2 pt-1">
                     <Button size="sm" variant="outline" onClick={() => openCreate(selected.id)}>
@@ -270,6 +326,14 @@ export function DmsPage({ projectId }: { projectId: string }) {
                     </Button>
                     <Button size="sm" onClick={openUpload}>
                       <Upload className="mr-2 h-4 w-4" aria-hidden /> Hierhin laden
+                    </Button>
+                    <Button
+                      size="sm"
+                      variant="outline"
+                      onClick={() => openReclassify(selected)}
+                    >
+                      <ShieldCheck className="mr-2 h-4 w-4" aria-hidden />{" "}
+                      Vertraulichkeit
                     </Button>
                   </div>
                 ) : null}
@@ -285,6 +349,14 @@ export function DmsPage({ projectId }: { projectId: string }) {
                 <MetaRow
                   label="Angelegt"
                   value={new Date(selected.created_at).toLocaleString("de-DE")}
+                />
+                <MetaRow
+                  label="Vertraulichkeit"
+                  value={
+                    MA_CONFIDENTIALITY_LEVEL_LABELS[
+                      selected.confidentiality_level
+                    ]
+                  }
                 />
                 <div className="pt-2">
                   <Button size="sm" onClick={() => handleDownload(selected)}>
@@ -326,12 +398,87 @@ export function DmsPage({ projectId }: { projectId: string }) {
               }}
             />
           </div>
+          {folderDialog?.mode === "create" ? (
+            <div className="space-y-2">
+              <Label htmlFor="dms-folder-level">Vertraulichkeit</Label>
+              <Select
+                value={folderLevel}
+                onValueChange={(v) => setFolderLevel(v as MaConfidentialityLevel)}
+              >
+                <SelectTrigger id="dms-folder-level">
+                  <SelectValue />
+                </SelectTrigger>
+                <SelectContent>
+                  {MA_CONFIDENTIALITY_LEVELS.map((l) => (
+                    <SelectItem key={l} value={l}>
+                      {MA_CONFIDENTIALITY_LEVEL_LABELS[l]}
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+              <p className="text-xs text-muted-foreground">
+                Liegt der übergeordnete Ordner höher, wird diese Stufe
+                automatisch angehoben.
+              </p>
+            </div>
+          ) : null}
           <DialogFooter>
             <Button variant="outline" onClick={() => setFolderDialog(null)}>
               Abbrechen
             </Button>
             <Button onClick={submitFolder} disabled={folderBusy || folderName.trim() === ""}>
               {folderBusy ? <Loader2 className="mr-2 h-4 w-4 animate-spin" aria-hidden /> : null}
+              Speichern
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
+      {/* Reclassify dialog (PROJ-Y-115c) */}
+      <Dialog
+        open={levelDialog != null}
+        onOpenChange={(o) => !o && setLevelDialog(null)}
+      >
+        <DialogContent>
+          <DialogHeader>
+            <DialogTitle>Vertraulichkeit ändern</DialogTitle>
+            <DialogDescription>
+              Gilt für „{levelDialog?.name}“. Beim Anheben übernehmen alle
+              enthaltenen Ordner und Dokumente die neue Stufe. Eine Stufe
+              unterhalb des übergeordneten Ordners ist nicht möglich.
+            </DialogDescription>
+          </DialogHeader>
+          <div className="space-y-2">
+            <Label htmlFor="dms-next-level">Stufe</Label>
+            <Select
+              value={nextLevel}
+              onValueChange={(v) => setNextLevel(v as MaConfidentialityLevel)}
+            >
+              <SelectTrigger id="dms-next-level">
+                <SelectValue />
+              </SelectTrigger>
+              <SelectContent>
+                {MA_CONFIDENTIALITY_LEVELS.map((l) => (
+                  <SelectItem key={l} value={l}>
+                    {MA_CONFIDENTIALITY_LEVEL_LABELS[l]}
+                  </SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
+          </div>
+          <DialogFooter>
+            <Button variant="outline" onClick={() => setLevelDialog(null)}>
+              Abbrechen
+            </Button>
+            <Button
+              onClick={submitLevel}
+              disabled={
+                levelBusy || nextLevel === levelDialog?.confidentiality_level
+              }
+            >
+              {levelBusy ? (
+                <Loader2 className="mr-2 h-4 w-4 animate-spin" aria-hidden />
+              ) : null}
               Speichern
             </Button>
           </DialogFooter>

@@ -22,7 +22,7 @@ import { dedupeName } from "@/lib/dms/slug"
 
 const NODE_SELECT =
   "id, tenant_id, project_id, parent_id, node_type, name, slug, sort_order, " +
-  "created_by, created_at, updated_at, deleted_at"
+  "confidentiality_level, created_by, created_at, updated_at, deleted_at"
 
 export async function POST(
   request: Request,
@@ -101,6 +101,12 @@ export async function POST(
       node_type: "folder",
       name,
       slug,
+      // PROJ-Y-115c: omitted → DB default 'standard'. The floor trigger then
+      // coerces upward to the parent's level, so a folder created inside a
+      // classified folder inherits its classification.
+      ...(parsed.data.confidentiality_level
+        ? { confidentiality_level: parsed.data.confidentiality_level }
+        : {}),
       created_by: userId,
     })
     .select(NODE_SELECT)
@@ -109,6 +115,15 @@ export async function POST(
   if (error) {
     if (error.code === "23505") {
       return apiError("conflict", "A folder with that name already exists.", 409)
+    }
+    // PROJ-Y-115c: RESTRICTIVE need-to-know policy rejected the level.
+    if (error.code === "42501") {
+      return apiError(
+        "forbidden",
+        "Keine Freigabe für diese Vertraulichkeitsstufe.",
+        403,
+        "confidentiality_level",
+      )
     }
     return apiError("create_failed", error.message, 500)
   }
