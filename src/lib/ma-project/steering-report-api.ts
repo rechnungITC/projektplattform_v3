@@ -36,6 +36,9 @@ export async function fetchSteeringReport(
     next_stage_gate: json.next_stage_gate ?? null,
     stage_gate_summary:
       json.stage_gate_summary ?? EMPTY_STEERING_REPORT.stage_gate_summary,
+    // PROJ-120 — null, wenn keine Bewertung existiert ODER der Aufrufer nicht
+    // freigegeben ist (die RPC filtert im Aufrufer-Kontext, kein Client-Gate).
+    valuation: json.valuation ?? null,
     red_flags: {
       findings: json.red_flags?.findings ?? [],
       risks: json.red_flags?.risks ?? [],
