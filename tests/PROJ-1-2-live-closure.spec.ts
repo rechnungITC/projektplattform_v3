@@ -22,12 +22,19 @@ import {
 
 import { expect, hasAuthStorageState, test } from "./fixtures/auth-fixture"
 import {
+  E2E_TENANT_DOMAIN,
   E2E_TENANT_ID,
   E2E_TENANT_NAME,
   E2E_USER_ID,
 } from "./fixtures/constants"
 
-const E2E_DOMAIN = "e2e.projektplattform-v3.test"
+/**
+ * PROJ-143 — was a duplicated literal ("e2e.projektplattform-v3.test") that
+ * drifted from the fixture the moment the tenant moved to an RFC-4122 id.
+ * `tenants.domain` is UNIQUE and the pre-PROJ-143 tenant still holds the old
+ * value, so the reset below hit a unique violation. Single source of truth.
+ */
+const E2E_DOMAIN = E2E_TENANT_DOMAIN
 
 async function createAdminClient(): Promise<SupabaseClient | null> {
   const url = process.env.NEXT_PUBLIC_SUPABASE_URL
