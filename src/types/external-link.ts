@@ -9,6 +9,10 @@ export type ExternalLinkEntityType =
   // Plattform verlinkt bewusst nur; ein Upload wäre heute nicht auf "Inner
   // Circle" einschränkbar (DMS ohne confidentiality_level → PROJ-Y-120c/115c).
   | "ma_valuation"
+  // PROJ-122 — SPA issues carry a free-text clause reference; the actual draft
+  // or redline lives in the data room, so the document link is what makes the
+  // reference verifiable.
+  | "spa_issue"
 
 export const EXTERNAL_LINK_ENTITY_TYPES: ExternalLinkEntityType[] = [
   "dd_question",
@@ -16,6 +20,7 @@ export const EXTERNAL_LINK_ENTITY_TYPES: ExternalLinkEntityType[] = [
   "work_item",
   "deliverable",
   "ma_valuation",
+  "spa_issue",
 ]
 
 export interface ExternalDocumentLink {

@@ -94,8 +94,9 @@ export class FileParseError extends Error {
 }
 
 /**
- * AC-γH-5 — Magic-byte detection. Inspects the first ~4 KB of the buffer
- * via the `file-type` lib (dynamic import; ESM-only since v17).
+ * AC-γH-5 — Magic-byte detection via the `file-type` lib (dynamic import;
+ * ESM-only since v17). The FULL buffer is passed, not a head slice — see the
+ * note at the call site (PROJ-Y-142b).
  *
  * Returns the detected MIME, OR throws when:
  *   * the buffer is too short to sniff
@@ -142,8 +143,17 @@ export async function sniffMagic(
 
   // AC-γH-8 — dynamic import keeps cold-start small + bypasses ESM/CJS friction.
   const { fileTypeFromBuffer } = await import("file-type")
-  // file-type only reads the first 4100 bytes; pass the slice for clarity.
-  const detected = await fileTypeFromBuffer(buffer.subarray(0, 4_100))
+  // PROJ-Y-142b — pass the FULL buffer, not a 4100-byte head slice. OOXML
+  // (.docx) is a ZIP container whose subtype detection needs the archive
+  // structure: when the first stored entry is larger than the slice window,
+  // the head yields only `application/zip`, which is not in ALLOWED_MIME_TYPES
+  // and would 415 a perfectly valid .docx. Mainstream Word writes
+  // `[Content_Types].xml` first so it usually survived the slice, which is why
+  // this went unnoticed — but the mocked `file-type` in `file-parser.test.ts`
+  // could never have caught it either way. This mirrors the identical fix
+  // PROJ-79 already made in the DMS path (`src/lib/dms/mime.ts`), so both
+  // upload paths now agree. `file-type` reads lazily, so this stays cheap.
+  const detected = await fileTypeFromBuffer(buffer)
   if (!detected) {
     throw new FileParseError(
       "magic_byte_mismatch",
