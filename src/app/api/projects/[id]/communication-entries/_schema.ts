@@ -62,10 +62,51 @@ export const createTemplateSchema = z.object({
   body_skeleton: optionalText,
 })
 
-// Select shape for the confidentiality-gated entry list. RLS + the restrictive
-// need-to-know gate scope rows; this is the full row minus nothing sensitive.
+// Select shape for the confidentiality-gated entry list. RLS + the two
+// restrictive gates (need-to-know + PROJ-119 inner circle) scope the rows.
 export const ENTRY_SELECT =
   "id, tenant_id, project_id, target_group_key, target_group_label, message, channel, " +
   "planned_date, actual_date, responsible_user_id, approver_user_id, approval_status, " +
   "approved_at, rejection_reason, confidentiality_level, template_id, phase_id, " +
-  "stage_gate_id, work_item_id, sort_order, created_by, created_at, updated_at"
+  "stage_gate_id, work_item_id, sort_order, created_by, created_at, updated_at, " +
+  "is_inner_circle, embargo_at"
+
+// ── PROJ-119 ───────────────────────────────────────────────────────────────
+
+export const setInnerCircleSchema = z.object({ enabled: z.boolean() })
+
+export const innerCircleMemberSchema = z.object({
+  user_id: z.string().uuid("A valid user id is required."),
+})
+
+export const dissolveInnerCircleSchema = z.object({
+  reason: z
+    .string()
+    .trim()
+    .min(1, "A reason is required to dissolve an inner circle.")
+    .max(100, "The reason may be at most 100 characters."),
+})
+
+export const setEmbargoSchema = z.object({
+  // null clears the embargo. Full timestamp (not just a date): signing
+  // embargoes are hour-precise and cross-timezone.
+  embargo_at: z.string().datetime({ offset: true }).nullable(),
+})
+
+/**
+ * PROJ-119 B2 — an inner-circle entry must NOT ship its content in the list
+ * response. Otherwise the "every access to inner-circle content is logged"
+ * guarantee would be false the moment the page mounts: the text would already
+ * be on the client, unlogged. Callers fetch the body through the dedicated,
+ * logged `/content` endpoint instead.
+ *
+ * The row itself is still visible — RLS already decided that. This only strips
+ * the payload so that reading it becomes an explicit, auditable act.
+ */
+export function redactInnerCircleContent<
+  T extends { is_inner_circle?: boolean | null; message?: string | null },
+>(row: T): T & { has_message: boolean } {
+  const hasMessage = Boolean(row.message && row.message.trim().length > 0)
+  if (!row.is_inner_circle) return { ...row, has_message: hasMessage }
+  return { ...row, message: null, has_message: hasMessage }
+}
