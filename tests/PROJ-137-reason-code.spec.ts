@@ -24,15 +24,32 @@ import { E2E_PROJECT_ID, E2E_TENANT_ID, E2E_USER_ID } from "./fixtures/constants
 import { expect, hasAuthStorageState, test } from "./fixtures/auth-fixture"
 
 /**
- * The synthetic E2E_PROJECT_ID (`…0e21`) is NOT a valid RFC-4122 UUID (the
- * version + variant nibbles are 0), so the stakeholder/risk routes' strict
- * `z.string().uuid()` project-id pre-check rejects it with 400 (the backlog
- * route has no such pre-check → it works on E2E_PROJECT_ID directly). To
- * exercise the class3_blocked path on all three purposes we seed a proper
- * RFC-4122 project (same pattern as PROJ-89's PROJECT_ID). Documented as
- * deviation D-1 — mirrors PROJ-89 F-3.
+ * A dedicated project for this spec, kept apart from the shared seed project
+ * so its ki_runs / ki_suggestions churn cannot disturb other specs.
+ *
+ * HISTORY — this started life as a workaround: the synthetic E2E_PROJECT_ID
+ * used to be `…0e21`, whose version and variant nibbles were 0, so the
+ * stakeholder/risk routes' strict `z.string().uuid()` pre-check rejected it
+ * with 400 (the backlog route has no such pre-check, hence the asymmetry).
+ * That was one of four local workarounds for the same root cause; PROJ-143
+ * fixed it at the source, and E2E_PROJECT_ID is RFC-4122 conformant now. The
+ * separate project is retained for isolation, not for conformance.
  */
 const RFC_PROJECT_ID = "137e2e00-1111-4222-8333-444455556666"
+
+/**
+ * PROJ-143 — both describes below seed and delete RFC_PROJECT_ID in their own
+ * beforeAll/afterAll. Under `fullyParallel` they land in different workers, so
+ * one worker's cleanup raced the other's seed:
+ *   - "duplicate key value violates unique constraint projects_pkey"
+ *   - "violates foreign key constraint context_sources_project_id_fkey"
+ * Both surfaced as up to 5 failures that vanished at `--workers=1` (9/9), i.e.
+ * they were never real defects — they masked the actual signal of this spec.
+ * Serial mode pins the whole file to one worker, which is what a shared,
+ * fixed-id fixture requires. (Same failure class as the marker-based cleanup
+ * fixed in PROJ-Y-78f.)
+ */
+test.describe.configure({ mode: "serial" })
 
 // PII content that the classifier (src/lib/ai/classify.ts → detectClass3Markers)
 // flags Class-3: salutation+name, role-label+name with colon, email, phone.

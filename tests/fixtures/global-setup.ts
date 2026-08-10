@@ -12,12 +12,46 @@ import {
   E2E_PROJECT_ID,
   E2E_PROJECT_NAME,
   E2E_STORAGE_STATE_PATH,
+  E2E_TENANT_DOMAIN,
   E2E_TENANT_ID,
   E2E_TENANT_NAME,
   E2E_TEST_EMAIL,
   E2E_TEST_PASSWORD,
   E2E_USER_ID,
 } from "./constants"
+
+/**
+ * PROJ-143 — the fixture ids must be RFC-4122 conformant.
+ *
+ * This is deliberately a HARD failure, unlike the fail-open paths below: a
+ * missing env var only costs you the auth-fixture tests, but a malformed id
+ * costs days. It does not fail at setup — it fails much later, as a 400 from
+ * an API route (zod 4's `z.string().uuid()` enforces version + variant) or as
+ * a silent client-side form-validation error. That exact bug was worked
+ * around locally three times (PROJ-70 F-3, PROJ-89 F-3, PROJ-Y-78f) before
+ * anyone named the root cause. `tests/**` is excluded from vitest and owned
+ * by Playwright, so this guard lives here rather than in a unit test.
+ */
+const RFC_4122_V4 =
+  /^[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/
+
+function assertConformantFixtureIds(): void {
+  const offenders = Object.entries({
+    E2E_USER_ID,
+    E2E_TENANT_ID,
+    E2E_PROJECT_ID,
+  }).filter(([, id]) => !RFC_4122_V4.test(id))
+
+  if (offenders.length > 0) {
+    throw new Error(
+      `[PROJ-143 globalSetup] non-RFC-4122 fixture id(s): ` +
+        offenders.map(([name, id]) => `${name}="${id}"`).join(", ") +
+        `. The app validates ids with zod 4, which enforces the version (4) ` +
+        `and variant (8/9/a/b) nibbles — such an id is rejected at the API ` +
+        `boundary, not here. Fix tests/fixtures/constants.ts.`,
+    )
+  }
+}
 
 type PlaywrightStorageCookie = {
   name: string
@@ -117,6 +151,7 @@ function buildSupabaseAuthCookies(
 }
 
 async function globalSetup(config: FullConfig): Promise<void> {
+  assertConformantFixtureIds()
   await loadEnvLocal()
 
   const url = process.env.NEXT_PUBLIC_SUPABASE_URL
@@ -186,7 +221,7 @@ async function globalSetup(config: FullConfig): Promise<void> {
       {
         id: E2E_TENANT_ID,
         name: E2E_TENANT_NAME,
-        domain: "e2e.projektplattform-v3.test",
+        domain: E2E_TENANT_DOMAIN,
         created_by: E2E_USER_ID,
         language: "de",
         branding: {},
