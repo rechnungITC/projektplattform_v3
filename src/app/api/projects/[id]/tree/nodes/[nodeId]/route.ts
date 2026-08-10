@@ -18,12 +18,16 @@ import {
   getAuthenticatedUserId,
   requireProjectAccess,
 } from "@/app/api/_lib/route-helpers"
-import { moveNodeSchema, renameNodeSchema } from "@/lib/dms/schema"
+import {
+  moveNodeSchema,
+  renameNodeSchema,
+  setNodeConfidentialitySchema,
+} from "@/lib/dms/schema"
 import { dedupeName } from "@/lib/dms/slug"
 
 const NODE_SELECT =
   "id, tenant_id, project_id, parent_id, node_type, name, slug, sort_order, " +
-  "created_by, created_at, updated_at, deleted_at"
+  "confidentiality_level, created_by, created_at, updated_at, deleted_at"
 
 interface PgError {
   code?: string
@@ -81,12 +85,62 @@ export async function PATCH(
   const raw = (body ?? {}) as Record<string, unknown>
   const hasName = "name" in raw
   const hasParent = "parent_id" in raw
-  if (hasName === hasParent) {
+  const hasLevel = "confidentiality_level" in raw
+  if ([hasName, hasParent, hasLevel].filter(Boolean).length !== 1) {
     return apiError(
       "validation_error",
-      "Provide exactly one of `name` (rename) or `parent_id` (move).",
+      "Provide exactly one of `name` (rename), `parent_id` (move) or " +
+        "`confidentiality_level` (reclassify).",
       400,
     )
+  }
+
+  // --- Reclassify (PROJ-Y-115c) -------------------------------------------
+  // Raising a folder cascades down its subtree (DB trigger); an explicit
+  // downgrade below the parent is rejected with 23514; a level the caller has
+  // no clearance for is rejected by the RESTRICTIVE policy (0 rows / 42501).
+  if (hasLevel) {
+    const parsed = setNodeConfidentialitySchema.safeParse(raw)
+    if (!parsed.success) {
+      const first = parsed.error.issues[0]
+      return apiError(
+        "validation_error",
+        first?.message ?? "Invalid confidentiality_level.",
+        400,
+        "confidentiality_level",
+      )
+    }
+    const { data, error } = await supabase
+      .from("document_tree_nodes")
+      .update({ confidentiality_level: parsed.data.confidentiality_level })
+      .eq("id", nodeId)
+      .eq("project_id", projectId)
+      .is("deleted_at", null)
+      .select(NODE_SELECT)
+      .maybeSingle()
+    if (error) {
+      if (error.code === "23514") {
+        return apiError(
+          "conflict",
+          error.message ??
+            "Die Stufe darf nicht unter der des übergeordneten Ordners liegen.",
+          409,
+          "confidentiality_level",
+        )
+      }
+      if (error.code === "42501") {
+        return apiError(
+          "forbidden",
+          "Keine Freigabe für diese Vertraulichkeitsstufe.",
+          403,
+          "confidentiality_level",
+        )
+      }
+      return apiError("update_failed", error.message, 500)
+    }
+    // No row came back → RLS hid it (not cleared) or it does not exist.
+    if (!data) return apiError("not_found", "Node not found.", 404)
+    return NextResponse.json({ node: data })
   }
 
   // --- Move ---------------------------------------------------------------

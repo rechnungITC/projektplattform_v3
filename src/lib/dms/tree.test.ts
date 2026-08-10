@@ -19,6 +19,7 @@ function node(
     name,
     slug: name.toLowerCase(),
     sort_order: 0,
+    confidentiality_level: "standard",
     created_by: null,
     created_at: "2026-01-01",
     updated_at: "2026-01-01",
