@@ -99,4 +99,4 @@ Die Bestands-Mocks in `file-parser.test.ts` / `msg-parser.test.ts` bleiben absic
 
 ## Follow-ups
 
-- **PROJ-Y-142c** — Prüfen, ob der Upload-Pfad `/api/context-sources` einen `.docx` mit vorangestelltem Großeintrag jetzt auch end-to-end akzeptiert (der Fix ist auf Lib-Ebene bewiesen; ein Route-Level-Smoke wäre die Bestätigung). Klein, nicht dringend.
+- ~~**PROJ-Y-142c** — Route-Level-Smoke für denselben Fall.~~ **Erledigt 2026-08-10** → [PROJ-Y-142c](PROJ-Y-142c-route-level-upload-smoke.md): `route.upload.real.test.ts` bestätigt **201 statt 415** am Endpunkt (red-green: `expected 415 to be 201`), plus Negativkontrollen, dass das Allowlist-Tor unverändert greift. Nebenbei die erste Testabdeckung für `route.ts` überhaupt.
