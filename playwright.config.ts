@@ -45,6 +45,21 @@ export default defineConfig({
   retries: process.env.CI ? 2 : 0,
   reporter: 'html',
   globalSetup: './tests/fixtures/global-setup.ts',
+  /**
+   * PROJ-143 — explicit per-test budget.
+   *
+   * Without this, Playwright's 30s default applied, and it silently CAPPED
+   * every longer timeout passed further down: a `page.goto(url, {timeout:
+   * 120_000})` or `expect(...).toHaveValue(v, {timeout: 120_000})` could
+   * never wait longer than the test itself was allowed to run. Several such
+   * calls exist in `tests/` and were effectively 30s all along.
+   *
+   * 60s covers a cold first compile of the heavy deep-link routes without
+   * masking a genuinely wedged dev server (PROJ-138 keeps its own, tighter
+   * warm-compile budgets). Individual slow tests opt out with
+   * `test.setTimeout()` / `test.slow()` rather than raising this further.
+   */
+  timeout: 60_000,
   expect: {
     toHaveScreenshot: {
       // PROJ-67 F3: caret "hide" mutates inline styles pre-hydration and

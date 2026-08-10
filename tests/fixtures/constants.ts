@@ -2,16 +2,46 @@
  * PROJ-29 Block C — shared E2E test-tenant identifiers.
  *
  * Hardcoded UUIDs so the migration, the global-setup script, and any
- * test-specific data fixtures all agree on the same rows. The UUIDs are
- * clearly synthetic (trailing `e2e0..e2e2`) and are extremely unlikely
- * to collide with real production tenants/users.
+ * test-specific data fixtures all agree on the same rows. They stay
+ * obviously synthetic (`e2e…` prefix) and will not collide with real
+ * production tenants/users.
+ *
+ * PROJ-143 — these MUST be RFC-4122 conformant. The original ids
+ * (`00000000-0000-0000-0000-000000000e2e` / `…e20` / `…e21`) carried a
+ * zero version and zero variant nibble, so they are not valid UUIDs. The
+ * app validates with zod 4, whose `z.string().uuid()` enforces both — so
+ * every request body or form field carrying one of these ids was rejected
+ * with a 400 or a client-side validation error. Consequences seen in the
+ * wild, worked around locally three times before the root cause was named:
+ *
+ *   - PROJ-70 F-3 / PROJ-89 F-3: the wizard-draft CREATE route rejects the
+ *     tenant id, so drafts had to be seeded service-role.
+ *   - PROJ-Y-78f: `responsible_user_id` is validated with `z.string()
+ *     .uuid()`, so the E2E user could not get past step 1 of the wizard —
+ *     the whole flow was untestable end-to-end.
+ *
+ * Real Supabase auth ids are v4, so this only ever affected the fixture.
+ * Keep any replacement RFC-4122 conformant (version nibble 4, variant
+ * nibble 8/9/a/b) — `constants.test.ts` pins that.
  */
 
-export const E2E_USER_ID = "00000000-0000-0000-0000-000000000e2e"
-export const E2E_TENANT_ID = "00000000-0000-0000-0000-000000000e20"
-export const E2E_TEST_EMAIL = "e2e-test@projektplattform-v3.test"
+export const E2E_USER_ID = "e2e00000-0000-4e2e-8e2e-000000000001"
+export const E2E_TENANT_ID = "e2e00000-0000-4e2e-8e2e-000000000002"
+/**
+ * Distinct from the pre-PROJ-143 address on purpose. `global-setup` treats
+ * "already registered" as success and then signs in BY EMAIL — reusing the
+ * old address would silently authenticate the old, non-conformant user and
+ * make the migration a no-op.
+ */
+export const E2E_TEST_EMAIL = "e2e-rfc4122@projektplattform-v3.test"
 export const E2E_TEST_PASSWORD = "Test-Password-PROJ29!" // local-only, never deployed
+/** Unchanged: PROJ-51 visual-regression snapshots render this string. */
 export const E2E_TENANT_NAME = "[E2E] Projektplattform Test"
+/**
+ * `tenants.domain` is UNIQUE and the pre-PROJ-143 tenant still holds
+ * `e2e.projektplattform-v3.test`, so the new row needs its own.
+ */
+export const E2E_TENANT_DOMAIN = "e2e-rfc4122.projektplattform-v3.test"
 
 /**
  * PROJ-51-ε.4 — fixed-UUID seed project for Project-Room visual
@@ -20,7 +50,7 @@ export const E2E_TENANT_NAME = "[E2E] Projektplattform Test"
  * "general" keeps the seed minimal — no trigger-spawned phases or
  * sprints that would change between runs.
  */
-export const E2E_PROJECT_ID = "00000000-0000-0000-0000-000000000e21"
+export const E2E_PROJECT_ID = "e2e00000-0000-4e2e-8e2e-000000000003"
 export const E2E_PROJECT_NAME = "[E2E] Visual-Regression Project"
 
 /**
