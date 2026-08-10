@@ -196,6 +196,28 @@ Querschnitt: PROJ-131 Steering-Kachel „Kaufpreisbandbreite" zeigt statt „n/a
 - Immutability-Guard-Trigger (42501) auf allen Inhaltsspalten; nur `is_current` änderbar (H4).
 - 3 RPCs `add_ma_valuation_version` / `set_ma_valuation_link` / `remove_ma_valuation_link` — SECURITY DEFINER, **kein actor-Param** (`auth.uid()`), Rollen- **und** Clearance-Re-Check, `revoke … from public, anon`.
 - `external_document_links` um `entity_type='ma_valuation'` erweitert (idempotenter CHECK-Swap + additiver Resolver-Branch + Cleanup-Trigger).
+
+**Nachtrag 2026-08-10 — R-2 war real eingetreten (Anchor-Audit vor dem Merge).**
+Der CHECK-Swap war idempotent, der Resolver-Branch aber **nicht additiv**: `external_link_parent_ctx`
+wurde per unbedingtem `create or replace` aus einem Live-Snapshot komplett neu definiert.
+In Prod blieb das folgenlos, weil dort zuerst PROJ-120 und danach PROJ-122 angewendet wurde.
+Im **Fresh-Replay** (Schema-Drift-Shadow-DB, Neuaufsetzung) entscheidet dagegen der Dateiname —
+PROJ-122 (`20260807110000`) läuft **vor** dieser Migration (`20260807211457`), sein
+`when 'spa_issue'`-Zweig wäre also vom Snapshot überschrieben worden. Der Verlust wäre **still**
+gewesen: der CHECK-Constraint behält `spa_issue` (additiver Terminator-Anker), Links ließen sich
+weiter anlegen, wären über den `project_id := null`-Pfad aber dauerhaft unsichtbar. Beide PR-CIs
+blieben grün, weil jede PR **einzeln** gegen `main` replayed wird — die Kollision entsteht erst,
+wenn beide gemergt sind.
+
+Fix: Voll-Replace → whitespace-toleranter Anchor-Replace (Muster PROJ-122 / PROJ-Y-115c-Lektion,
+weil PROJ-115 den `else`-Zweig im Repo **zweizeilig** schreibt und in Prod einzeilig steht) plus
+Regressionsguard auf die vier Basiszweige und auf `spa_issue` (Muster PROJ-78).
+**Live-Beweis gegen Prod, zurückgerollt, 0 Residue** (Replay-Reihenfolge nachgestellt: PROJ-115-Repo-Form
+→ PROJ-122-Patch → PROJ-120): Anker trifft die zweizeilige Form (`t`); **RED** (alter Code)
+`spa_issue=f` — Zweig weg; **GREEN** (neuer Code) `spa_issue=t ma_valuation=t` + alle vier
+Basiszweige erhalten. Prod-Endzustand unverändert (`external_link_parent_ctx` 1252 Zeichen, beide
+Zweige, `anon` nicht grantee) → der neue Block ist auf Prod ein idempotenter No-op, kein
+Re-Apply nötig.
 - **Audit-Trio per Anchor-Replace aus den LIVE-Definitionen** (H5) + expliziter `grant execute … to authenticated` danach. Verifiziert, dass fremde Zweige erhalten blieben — `project_skills` der parallelen PROJ-78-Session steht weiterhin im CHECK. `_tracked_audit_columns('ma_valuations') = ['is_current']` (nur diese Spalte ist überhaupt änderbar) → der Versionswechsel ist auditiert (DoD).
 
 **Migration 2 — `20260808142745_proj120_steering_report_valuation.sql`** (in Prod, F5).

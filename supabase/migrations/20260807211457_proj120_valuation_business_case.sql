@@ -292,31 +292,65 @@ begin
   end if;
 end $mig$;
 
--- (b) Resolver-Branch (aus der LIVE-Definition abgeleitet; gleiche Signatur →
---     die bestehenden ACLs bleiben erhalten).
-create or replace function public.external_link_parent_ctx(
-  p_entity_type text,
-  p_entity_id uuid,
-  out project_id uuid,
-  out level public.ma_confidentiality_level
-)
-returns record
-language plpgsql
-stable
-security definer
-set search_path to 'public', 'pg_temp'
-as $function$
+-- (b) Resolver-Branch — ANCHOR-REPLACE auf der LIVE-Definition, KEIN Voll-
+--     Replace. Eine vollständige Neudefinition aus einem Snapshot hätte den
+--     `when 'spa_issue'`-Zweig von PROJ-122 still gelöscht: im Fresh-Replay
+--     (Schema-Drift-Shadow-DB) entscheidet der Dateiname, und PROJ-122
+--     (20260807110000) läuft VOR dieser Migration (20260807211457). In Prod
+--     war die Anwendungsreihenfolge umgekehrt, der Verlust wäre also erst
+--     beim Neuaufsetzen sichtbar geworden — und still: der CHECK-Constraint
+--     behält 'spa_issue' (additiver Terminator-Anker), Links ließen sich
+--     weiter anlegen, wären über den null-project_id-Pfad aber für immer
+--     unsichtbar. Additive Zweige sind reihenfolgeunabhängig; die
+--     CASE-Reihenfolge ist bei disjunkten Werten semantisch irrelevant.
+--
+--     Der Anker ist whitespace-tolerant: PROJ-115 schreibt den else-Zweig im
+--     Repo zweizeilig, in Prod steht er einzeilig. Ein literales replace()
+--     träfe genau eine der beiden Welten (PROJ-Y-115c-Lektion).
+do $mig$
+declare d text; d0 text;
 begin
-  case p_entity_type
-    when 'deliverable' then select d.project_id, d.confidentiality_level into project_id, level from public.deliverables d where d.id = p_entity_id;
-    when 'work_item' then select w.project_id, w.confidentiality_level into project_id, level from public.work_items w where w.id = p_entity_id;
-    when 'dd_question' then select q.project_id, q.confidentiality_level into project_id, level from public.dd_questions q where q.id = p_entity_id;
-    when 'dd_finding' then select f.project_id, f.confidentiality_level into project_id, level from public.dd_findings f where f.id = p_entity_id;
-    when 'ma_valuation' then select v.project_id, v.confidentiality_level into project_id, level from public.ma_valuations v where v.id = p_entity_id;
-    else project_id := null; level := null;
-  end case;
-end;
-$function$;
+  select pg_get_functiondef('public.external_link_parent_ctx(text,uuid)'::regprocedure) into d;
+  if d is null then
+    raise exception 'external_link_parent_ctx not found — PROJ-115 muss zuerst angewendet sein';
+  end if;
+  d0 := d; -- Vorher-Stand, auch beim idempotenten Skip (sonst liefe der
+           -- spa_issue-Guard unten gegen NULL und wäre wirkungslos).
+
+  if position('''ma_valuation''' in d) = 0 then
+    d := regexp_replace(d,
+      '(\n\s*)else(\s+)project_id := null; level := null;',
+      E'\\1when ''ma_valuation'' then select v.project_id, v.confidentiality_level '
+      || E'into project_id, level from public.ma_valuations v where v.id = p_entity_id;'
+      || E'\\1else\\2project_id := null; level := null;');
+    if d = d0 then
+      raise exception 'external_link_parent_ctx anchor not found';
+    end if;
+    execute d;
+  end if;
+
+  -- Regressionsschutz: ein Recreate darf keinen fremden Zweig verlieren
+  -- (PROJ-78-Muster). Die vier Basis-Typen stammen aus PROJ-115 und sind in
+  -- jedem Replay vorhanden; 'spa_issue' nur, wenn PROJ-122 bereits lief.
+  select pg_get_functiondef('public.external_link_parent_ctx(text,uuid)'::regprocedure) into d;
+  if position('''ma_valuation''' in d) = 0 then
+    raise exception 'external_link_parent_ctx patch did not apply';
+  end if;
+  if position('''deliverable''' in d) = 0
+     or position('''work_item''' in d) = 0
+     or position('''dd_question''' in d) = 0
+     or position('''dd_finding''' in d) = 0 then
+    raise exception 'external_link_parent_ctx lost pre-existing branches — aborting';
+  end if;
+  if position('''spa_issue''' in d0) > 0 and position('''spa_issue''' in d) = 0 then
+    raise exception 'external_link_parent_ctx dropped the PROJ-122 branch — aborting';
+  end if;
+end $mig$;
+
+-- CREATE OR REPLACE erhält die ACLs; erneut setzen dokumentiert die Absicht
+-- und schützt gegen ein späteres drop/recreate in dieser Kette (AC-122-H2).
+revoke execute on function public.external_link_parent_ctx(text, uuid) from public, anon;
+grant execute on function public.external_link_parent_ctx(text, uuid) to authenticated;
 
 -- (c) Cleanup-Trigger (polymorph → keine FK möglich)
 drop trigger if exists cleanup_external_links on public.ma_valuations;
