@@ -23,6 +23,7 @@ import {
   MoreHorizontal,
   Pencil,
   Plus,
+  ShieldCheck,
   Trash2,
 } from "lucide-react"
 import * as React from "react"
@@ -36,6 +37,7 @@ import {
   DropdownMenuSeparator,
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu"
+import { ConfidentialityBadge } from "@/components/projects/ma/confidentiality-badge"
 import { cn } from "@/lib/utils"
 import type { TreeForestNode } from "@/types/dms"
 
@@ -61,6 +63,7 @@ export interface DmsTreeProps {
   onSelect: (id: string | null) => void
   onCreateChild: (parentId: string) => void
   onRename: (node: TreeForestNode) => void
+  onReclassify: (node: TreeForestNode) => void
   onDelete: (node: TreeForestNode) => void
   onDownload: (node: TreeForestNode) => void
   onMove: (nodeId: string, newParentId: string | null) => void | Promise<void>
@@ -73,6 +76,7 @@ interface NodeRendererProps {
   canEdit: boolean
   onCreateChild: (parentId: string) => void
   onRename: (node: TreeForestNode) => void
+  onReclassify: (node: TreeForestNode) => void
   onDelete: (node: TreeForestNode) => void
   onDownload: (node: TreeForestNode) => void
 }
@@ -84,6 +88,7 @@ function NodeRenderer({
   canEdit,
   onCreateChild,
   onRename,
+  onReclassify,
   onDelete,
   onDownload,
 }: NodeRendererProps) {
@@ -132,6 +137,15 @@ function NodeRenderer({
 
       <span className="truncate">{data.name}</span>
 
+      {/* PROJ-Y-115c: classification is inherited down the tree, so showing it
+          on every non-standard row makes the boundary visible where people
+          actually work. `standard` stays unbadged to keep the tree calm. */}
+      <ConfidentialityBadge
+        level={data.confidentiality_level}
+        hideStandard
+        className="ml-1 px-1.5 py-0 text-[10px] leading-4"
+      />
+
       {canEdit ? (
         <DropdownMenu>
           <DropdownMenuTrigger asChild>
@@ -157,6 +171,10 @@ function NodeRenderer({
             )}
             <DropdownMenuItem onSelect={() => onRename(data)}>
               <Pencil className="mr-2 h-4 w-4" aria-hidden /> Umbenennen
+            </DropdownMenuItem>
+            <DropdownMenuItem onSelect={() => onReclassify(data)}>
+              <ShieldCheck className="mr-2 h-4 w-4" aria-hidden />{" "}
+              Vertraulichkeit ändern
             </DropdownMenuItem>
             <DropdownMenuSeparator />
             <DropdownMenuItem
@@ -194,6 +212,7 @@ export function DmsTree({
   onSelect,
   onCreateChild,
   onRename,
+  onReclassify,
   onDelete,
   onDownload,
   onMove,
@@ -237,6 +256,7 @@ export function DmsTree({
           canEdit={canEdit}
           onCreateChild={onCreateChild}
           onRename={onRename}
+          onReclassify={onReclassify}
           onDelete={onDelete}
           onDownload={onDownload}
         />

@@ -15,6 +15,7 @@
 
 import {
   BarChart3,
+  Calculator,
   ClipboardCheck,
   FileText,
   Flag,
@@ -27,6 +28,7 @@ import {
   MessagesSquare,
   Microscope,
   Network,
+  Scale,
   ShieldAlert,
   ShieldCheck,
   Sparkles,
@@ -252,6 +254,19 @@ const MA_OPERATIVE_REPORT_SECTION: SidebarSection = {
   requiresProjectType: "ma",
 }
 
+// PROJ-120 — the "Bewertung" section: the deal's valuation register — an
+// immutable version chain whose head is the "Aktuelle Bewertungssicht" (price
+// band, method, as-of date, author) plus links to DD findings and to the
+// valuation artifact itself (external link; the platform never hosts the
+// model). Project-TYPE driven (M&A); need-to-know-scoped server-side.
+const MA_VALUATION_SECTION: SidebarSection = {
+  id: "ma-valuation",
+  label: "Bewertung",
+  icon: Calculator,
+  tabPath: "bewertung",
+  requiresProjectType: "ma",
+}
+
 // PROJ-131 — the "Steering-Dashboard" section: management/steering-level bundle
 // (deal status + next stage gate + top red flags [DD-findings + high risks] +
 // critical open tasks + steering pre-read) with CSV/PDF export + drill-down.
@@ -263,6 +278,18 @@ const MA_STEERING_REPORT_SECTION: SidebarSection = {
   label: "Steering-Dashboard",
   icon: LineChart,
   tabPath: "management-reporting",
+  requiresProjectType: "ma",
+}
+
+// PROJ-122 — the "SPA Issues" section: the Epic-J contract negotiation list
+// (clause reference, both sides' positions, negotiation status, risk if no
+// agreement). Project-TYPE driven (M&A); need-to-know-scoped server-side and
+// feeding the open-issues hint on the stage-gate pre-read.
+const MA_SPA_ISSUES_SECTION: SidebarSection = {
+  id: "ma-spa-issues",
+  label: "SPA Issues",
+  icon: Scale,
+  tabPath: "spa-issues",
   requiresProjectType: "ma",
 }
 
@@ -290,6 +317,8 @@ function withMaFoundation(config: MethodConfig): MethodConfig {
       MA_CONFIDENTIALITY_SECTION,
       MA_DUE_DILIGENCE_SECTION,
       MA_DD_REPORT_SECTION,
+      MA_VALUATION_SECTION,
+      MA_SPA_ISSUES_SECTION,
       MA_OPERATIVE_REPORT_SECTION,
       MA_STEERING_REPORT_SECTION,
       ...sections.slice(insertAt),

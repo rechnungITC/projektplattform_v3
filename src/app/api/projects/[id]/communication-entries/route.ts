@@ -7,7 +7,11 @@ import {
   requireProjectAccess,
 } from "@/app/api/_lib/route-helpers"
 
-import { createEntrySchema, ENTRY_SELECT } from "./_schema"
+import {
+  createEntrySchema,
+  ENTRY_SELECT,
+  redactInnerCircleContent,
+} from "./_schema"
 
 // PROJ-118 — Kommunikationsmatrix entries per project.
 //
@@ -39,7 +43,12 @@ export async function GET(
     .order("created_at", { ascending: true })
     .limit(500)
   if (error) return apiError("list_failed", error.message, 500)
-  return NextResponse.json({ entries: data ?? [] })
+  // PROJ-119 B2 — never ship inner-circle content in the list.
+  const rows = (data ?? []) as unknown as {
+    is_inner_circle?: boolean | null
+    message?: string | null
+  }[]
+  return NextResponse.json({ entries: rows.map(redactInnerCircleContent) })
 }
 
 export async function POST(

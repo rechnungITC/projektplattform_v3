@@ -9,13 +9,17 @@
 
 import type { MaConfidentialityLevel } from "@/types/confidentiality"
 import type {
+  CommunicationAccessLogEntry,
   CommunicationEntry,
   CommunicationTemplate,
+  InnerCircleMember,
 } from "@/types/communication-matrix"
 
 export type {
+  CommunicationAccessLogEntry,
   CommunicationEntry,
   CommunicationTemplate,
+  InnerCircleMember,
 } from "@/types/communication-matrix"
 
 export interface CommunicationEntryPayload {
@@ -148,6 +152,121 @@ export async function markSent(
   })
   if (!res.ok) throw new Error(await safeError(res))
   return ((await res.json()) as { entry: CommunicationEntry }).entry
+}
+
+// ── PROJ-119: inner circle, embargo, content access ─────────────────────────
+
+/**
+ * Fetch an entry's body. This is the ONLY path to inner-circle content and it
+ * is logged server-side on every call, granted or denied — which is what makes
+ * the "every access is audited" guarantee real rather than aspirational.
+ */
+export async function readEntryContent(
+  projectId: string,
+  entryId: string
+): Promise<string | null> {
+  const res = await fetch(`${entriesBase(projectId)}/${entryId}/content`, {
+    cache: "no-store",
+  })
+  if (!res.ok) throw new Error(await safeError(res))
+  return ((await res.json()) as { message: string | null }).message
+}
+
+export async function setInnerCircle(
+  projectId: string,
+  entryId: string,
+  enabled: boolean
+): Promise<CommunicationEntry> {
+  const res = await fetch(`${entriesBase(projectId)}/${entryId}/inner-circle`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ enabled }),
+  })
+  if (!res.ok) throw new Error(await safeError(res))
+  return ((await res.json()) as { entry: CommunicationEntry }).entry
+}
+
+export async function listInnerCircle(
+  projectId: string,
+  entryId: string
+): Promise<InnerCircleMember[]> {
+  const res = await fetch(`${entriesBase(projectId)}/${entryId}/inner-circle`, {
+    cache: "no-store",
+  })
+  if (!res.ok) throw new Error(await safeError(res))
+  return ((await res.json()) as { members?: InnerCircleMember[] }).members ?? []
+}
+
+export async function addInnerCircleMember(
+  projectId: string,
+  entryId: string,
+  userId: string
+): Promise<void> {
+  const res = await fetch(`${entriesBase(projectId)}/${entryId}/inner-circle`, {
+    method: "PUT",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ user_id: userId }),
+  })
+  if (!res.ok) throw new Error(await safeError(res))
+}
+
+export async function removeInnerCircleMember(
+  projectId: string,
+  entryId: string,
+  userId: string
+): Promise<void> {
+  const res = await fetch(
+    `${entriesBase(projectId)}/${entryId}/inner-circle?user_id=${encodeURIComponent(userId)}`,
+    { method: "DELETE" }
+  )
+  if (!res.ok) throw new Error(await safeError(res))
+}
+
+/** Tenant-admin break-glass: dissolve the circle loudly (never read silently). */
+export async function dissolveInnerCircle(
+  projectId: string,
+  entryId: string,
+  reason: string
+): Promise<CommunicationEntry> {
+  const res = await fetch(`${entriesBase(projectId)}/${entryId}/dissolve`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ reason }),
+  })
+  if (!res.ok) throw new Error(await safeError(res))
+  return ((await res.json()) as { entry: CommunicationEntry }).entry
+}
+
+export async function setEmbargo(
+  projectId: string,
+  entryId: string,
+  embargoAt: string | null
+): Promise<CommunicationEntry> {
+  const res = await fetch(`${entriesBase(projectId)}/${entryId}/embargo`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ embargo_at: embargoAt }),
+  })
+  if (!res.ok) throw new Error(await safeError(res))
+  return ((await res.json()) as { entry: CommunicationEntry }).entry
+}
+
+export async function listAccessLog(
+  projectId: string,
+  entryId: string
+): Promise<CommunicationAccessLogEntry[]> {
+  const res = await fetch(`${entriesBase(projectId)}/${entryId}/access-log`, {
+    cache: "no-store",
+  })
+  if (!res.ok) throw new Error(await safeError(res))
+  return (
+    ((await res.json()) as { entries?: CommunicationAccessLogEntry[] }).entries ?? []
+  )
+}
+
+/** URL for the gated CSV export (standard/confidential only — see AC2 matrix). */
+export function entryExportUrl(projectId: string, entryId: string): string {
+  return `${entriesBase(projectId)}/${entryId}/export?as=csv`
 }
 
 // ── Templates ────────────────────────────────────────────────────────────────

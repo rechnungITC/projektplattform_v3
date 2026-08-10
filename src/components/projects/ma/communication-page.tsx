@@ -1,7 +1,10 @@
 "use client"
 
 import {
+  Clock,
+  Eye,
   Loader2,
+  Lock,
   MessagesSquare,
   Pencil,
   Plus,
@@ -49,6 +52,7 @@ import {
   listEntries,
   listTemplates,
   markSent,
+  readEntryContent,
   respondApproval,
   submitEntry,
   type CommunicationEntry,
@@ -69,6 +73,7 @@ import {
 } from "@/types/confidentiality"
 
 import { CommunicationEntryDialog } from "./communication-entry-dialog"
+import { CommunicationGovernanceSheet } from "./communication-governance-sheet"
 import { CommunicationTemplatesDialog } from "./communication-templates-dialog"
 
 const ALL = "__all__"
@@ -124,7 +129,7 @@ const EMPTY_FILTERS: Filters = {
 }
 
 export function CommunicationPage({ projectId }: { projectId: string }) {
-  const { user, currentTenant } = useAuth()
+  const { user, currentTenant, currentRole } = useAuth()
   const canManage = useProjectAccess(projectId, "edit_master")
   const { phases } = usePhases(projectId)
   const { stageGates } = useStageGates(projectId)
@@ -143,6 +148,8 @@ export function CommunicationPage({ projectId }: { projectId: string }) {
   const [approvalFor, setApprovalFor] = React.useState<CommunicationEntry | null>(
     null
   )
+  const [governanceFor, setGovernanceFor] =
+    React.useState<CommunicationEntry | null>(null)
   const [templatesOpen, setTemplatesOpen] = React.useState(false)
 
   const reload = React.useCallback(async () => {
@@ -153,6 +160,9 @@ export function CommunicationPage({ projectId }: { projectId: string }) {
     setEntries(e)
     setTemplates(t)
     setApprovalFor((prev) => (prev ? e.find((x) => x.id === prev.id) ?? null : null))
+    setGovernanceFor((prev) =>
+      prev ? e.find((x) => x.id === prev.id) ?? null : null
+    )
   }, [projectId])
 
   React.useEffect(() => {
@@ -426,9 +436,20 @@ export function CommunicationPage({ projectId }: { projectId: string }) {
                     )}
                   </TableCell>
                   <TableCell className="max-w-[240px]">
-                    <span className="block truncate text-sm text-muted-foreground">
-                      {e.message?.trim() || "—"}
-                    </span>
+                    {/* PROJ-119 B2 — inner-circle bodies never travel with the
+                        list; they are fetched through the logged endpoint. */}
+                    {e.is_inner_circle ? (
+                      <span className="flex items-center gap-1 text-sm text-muted-foreground">
+                        <Lock className="h-3.5 w-3.5 shrink-0" aria-hidden />
+                        {e.has_message
+                          ? "Inhalt geschützt"
+                          : "Kein Inhalt hinterlegt"}
+                      </span>
+                    ) : (
+                      <span className="block truncate text-sm text-muted-foreground">
+                        {e.message?.trim() || "—"}
+                      </span>
+                    )}
                   </TableCell>
                   <TableCell className="text-sm text-muted-foreground">
                     {e.channel?.trim() || "—"}
@@ -449,9 +470,24 @@ export function CommunicationPage({ projectId }: { projectId: string }) {
                       : "—"}
                   </TableCell>
                   <TableCell>
-                    <Badge variant={levelBadgeVariant(e.confidentiality_level)}>
-                      {MA_CONFIDENTIALITY_LEVEL_LABELS[e.confidentiality_level]}
-                    </Badge>
+                    <div className="flex flex-wrap items-center gap-1">
+                      <Badge variant={levelBadgeVariant(e.confidentiality_level)}>
+                        {MA_CONFIDENTIALITY_LEVEL_LABELS[e.confidentiality_level]}
+                      </Badge>
+                      {e.is_inner_circle && (
+                        <Badge variant="destructive" className="gap-1">
+                          <Lock className="h-3 w-3" aria-hidden /> Inner Circle
+                        </Badge>
+                      )}
+                      {e.embargo_at && (
+                        <Badge variant="outline" className="gap-1">
+                          <Clock className="h-3 w-3" aria-hidden />
+                          {new Date(e.embargo_at) > new Date()
+                            ? `Embargo bis ${fmtDate(e.embargo_at)}`
+                            : "Embargo abgelaufen"}
+                        </Badge>
+                      )}
+                    </div>
                   </TableCell>
                   <TableCell>
                     <Badge variant={statusBadgeVariant(e.approval_status)}>
@@ -467,6 +503,14 @@ export function CommunicationPage({ projectId }: { projectId: string }) {
                         onClick={() => setApprovalFor(e)}
                       >
                         <Send className="h-4 w-4" aria-hidden />
+                      </Button>
+                      <Button
+                        size="icon"
+                        variant="ghost"
+                        aria-label="Vertraulichkeit und Zugriff"
+                        onClick={() => setGovernanceFor(e)}
+                      >
+                        <Lock className="h-4 w-4" aria-hidden />
                       </Button>
                       {canManage && (
                         <>
@@ -524,6 +568,21 @@ export function CommunicationPage({ projectId }: { projectId: string }) {
         />
       )}
 
+      {governanceFor && (
+        <CommunicationGovernanceSheet
+          projectId={projectId}
+          entry={governanceFor}
+          canManage={canManage}
+          isTenantAdmin={currentRole === "admin"}
+          members={members.map((m) => ({
+            user_id: m.user_id,
+            name: m.display_name ?? m.email.split("@")[0] ?? "Mitglied",
+          }))}
+          onClose={() => setGovernanceFor(null)}
+          onChanged={reload}
+        />
+      )}
+
       {templatesOpen && (
         <CommunicationTemplatesDialog
           projectId={projectId}
@@ -532,6 +591,78 @@ export function CommunicationPage({ projectId }: { projectId: string }) {
           onChanged={reload}
         />
       )}
+    </div>
+  )
+}
+
+/**
+ * PROJ-119 B2/DoD — renders the body of an entry.
+ *
+ * For a normal entry the text already travelled with the list. For an
+ * inner-circle entry it did not: revealing it is an explicit act that the
+ * server records in the access log, so it sits behind a button that says so.
+ */
+function EntryMessage({
+  projectId,
+  entry,
+}: {
+  projectId: string
+  entry: CommunicationEntry
+}) {
+  const [revealed, setRevealed] = React.useState<string | null>(null)
+  const [loading, setLoading] = React.useState(false)
+
+  if (!entry.is_inner_circle) {
+    if (!entry.message?.trim()) return null
+    return (
+      <div>
+        <dt className="text-muted-foreground">Botschaft</dt>
+        <dd className="whitespace-pre-wrap">{entry.message}</dd>
+      </div>
+    )
+  }
+
+  if (!entry.has_message) return null
+
+  return (
+    <div>
+      <dt className="text-muted-foreground">Botschaft</dt>
+      <dd>
+        {revealed !== null ? (
+          <span className="whitespace-pre-wrap">{revealed}</span>
+        ) : (
+          <div className="space-y-2">
+            <p className="flex items-center gap-1 text-sm text-muted-foreground">
+              <Lock className="h-3.5 w-3.5" aria-hidden /> Inhalt geschützt (Inner
+              Circle)
+            </p>
+            <Button
+              size="sm"
+              variant="outline"
+              disabled={loading}
+              onClick={async () => {
+                setLoading(true)
+                try {
+                  setRevealed((await readEntryContent(projectId, entry.id)) ?? "")
+                } catch (err) {
+                  toast.error(
+                    err instanceof Error ? err.message : "Zugriff verweigert."
+                  )
+                } finally {
+                  setLoading(false)
+                }
+              }}
+            >
+              {loading ? (
+                <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+              ) : (
+                <Eye className="mr-2 h-4 w-4" aria-hidden />
+              )}
+              Inhalt anzeigen (wird protokolliert)
+            </Button>
+          </div>
+        )}
+      </dd>
     </div>
   )
 }
@@ -590,12 +721,7 @@ function ApprovalSheet({
               <dt className="text-muted-foreground">Zielgruppe</dt>
               <dd className="font-medium">{targetGroupDisplay(entry)}</dd>
             </div>
-            {entry.message?.trim() && (
-              <div>
-                <dt className="text-muted-foreground">Botschaft</dt>
-                <dd className="whitespace-pre-wrap">{entry.message}</dd>
-              </div>
-            )}
+            <EntryMessage projectId={projectId} entry={entry} />
             <div>
               <dt className="text-muted-foreground">Status</dt>
               <dd>

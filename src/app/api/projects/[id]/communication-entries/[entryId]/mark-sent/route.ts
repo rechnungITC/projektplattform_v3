@@ -32,6 +32,20 @@ export async function POST(
   const { data, error } = await supabase.rpc("mark_communication_sent", {
     p_entry_id: entryId,
   })
+
+  // PROJ-119 AC4 — the embargo block carries its own SQLSTATE so it can be
+  // told apart from every other check violation without string matching. The
+  // RPC cannot log it itself (its own RAISE would roll the row back), so the
+  // attempt is recorded here, in a separate transaction.
+  if (error?.code === "EM001") {
+    await supabase.rpc("log_communication_access", {
+      p_entry_id: entryId,
+      p_action: "embargo_blocked",
+      p_outcome: "denied",
+    })
+    return apiError("embargo_active", error.message, 422)
+  }
+
   if (error) return mapCommEntryRpcError(error)
   return NextResponse.json({ entry: data })
 }
