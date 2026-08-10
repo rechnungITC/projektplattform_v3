@@ -5,12 +5,17 @@ export type ExternalLinkEntityType =
   | "dd_finding"
   | "work_item"
   | "deliverable"
+  // PROJ-122 — SPA issues carry a free-text clause reference; the actual draft
+  // or redline lives in the data room, so the document link is what makes the
+  // reference verifiable.
+  | "spa_issue"
 
 export const EXTERNAL_LINK_ENTITY_TYPES: ExternalLinkEntityType[] = [
   "dd_question",
   "dd_finding",
   "work_item",
   "deliverable",
+  "spa_issue",
 ]
 
 export interface ExternalDocumentLink {
