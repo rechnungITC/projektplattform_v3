@@ -154,6 +154,44 @@ Prod-Zustand den Skip-Pfad nehmen (kein Grant-Churn bei Re-Application).
 
 ---
 
+## Deployment
+
+**Deployed 2026-08-10** — PR #309 squash-merged to `main` (`c2d5d80`),
+Tag `v2.39.0-PROJ-Y-115c`.
+
+Beide Migrationen lagen seit dem `/backend`-Schritt in Prod, der Merge brachte
+also keinen Runtime-DB-Change — nur den Code, der die Dimension ausdrücken kann.
+Weil in Prod 0 Zeilen ≠ `standard` sind, war der zuvor deployte Code über die
+ganze Zeit konsistent mit dem schon aktiven Gate.
+
+Alle drei Required Checks grün auf `cc328de` (Migration Naming Guard, Schema
+Drift Guard, Supply Chain Audit); Auto-Merge (Squash) hat auf dieses Grün
+gewartet.
+
+Post-Deploy-Smoke (307 Auth-Gate, kein Leck): `/projects/[id]/dokumente`,
+`GET …/documents/tree?all=true`, `POST …/tree/nodes`,
+`PATCH …/tree/nodes/[nodeId]`.
+
+Prod-DB-Verify: 4 Bucket-Policies über den Resolver · 12 RESTRICTIVE-Policies
+über die drei Tabellen · 2 RPCs mit Clearance-Check · 2 Trigger am Baum ·
+Default `'standard'` · 0 Zeilen ≠ `standard`.
+
+Kein neues Env/Secret.
+
+### Ablauf-Notizen
+
+- **Vier Parallel-Session-Merges** auf `main` während der Slice (PROJ-Y-142a →
+  142b → 142c + zwei Closures) erzwangen zwei Rebases. Kollidiert ist jedes Mal
+  nur `features/INDEX.md`; beide Zeilen sind erhalten. Zwischenzeitlich lief die
+  andere Session im Primary-Checkout und committete auf den ursprünglichen
+  Branch dieser Slice — die Arbeit wurde in eine eigene Worktree transplantiert
+  und der Primary-Checkout unangetastet auf ihren Stand zurückgesetzt.
+- **Kein CI ohne Merge-Ref:** solange der PR `CONFLICTING` war, entstanden für
+  gepushte Commits gar keine Workflow-Runs (GitHub kann `refs/pull/N/merge`
+  nicht bauen). Erst nach dem Rebase lief die Prüfung — wichtig zu wissen, wenn
+  „keine Checks" wie „Checks hängen" aussieht.
+
+
 ## Deviations / Followups
 
 - **D-Y115c.1 — Kein CIA-Pass.** `.claude/rules/continuous-improvement.md` macht
