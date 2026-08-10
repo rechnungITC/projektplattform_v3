@@ -352,7 +352,27 @@ describe("ma-foundation injection into method configs (PROJ-94)", () => {
       // PROJ-79-α injected the core "Dokumente" section right after overview
       // (shown for all project types); the M&A foundation follows immediately.
       expect(ids.indexOf("dms-documents")).toBe(ids.indexOf("overview") + 1)
-      expect(ids.indexOf("ma-foundation")).toBe(ids.indexOf("dms-documents") + 1)
+      // PROJ-78 injected the core "Projekt-Skills" section next to Dokumente
+      // (also shown for all project types); the M&A foundation follows.
+      expect(ids.indexOf("project-skills")).toBe(
+        ids.indexOf("dms-documents") + 1,
+      )
+      expect(ids.indexOf("ma-foundation")).toBe(ids.indexOf("project-skills") + 1)
+    }
+  })
+
+  it("injects the core Projekt-Skills section in every method (PROJ-78)", () => {
+    for (const method of [
+      "scrum",
+      "waterfall",
+      "kanban",
+      "safe",
+      "pmi",
+      "prince2",
+      "vxt2",
+      null,
+    ] as const) {
+      expect(getMethodSlug("project-skills", method)).toBe("skills")
     }
   })
 

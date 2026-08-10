@@ -10,12 +10,14 @@
 import type { ProjectMethod } from "@/types/project-method"
 import type { ProjectType } from "@/types/project"
 import { type MaFoundationData, emptyMaFoundationData } from "@/types/ma-project"
+import type { SkillAssignmentSource } from "@/types/project-skill"
 
 export const WIZARD_STEPS = [
   "basics",
   "type",
   "method",
   "followups",
+  "skills",
   "ma_foundation",
   "ki_backlog",
   "clarifying",
@@ -29,6 +31,7 @@ export const WIZARD_STEP_LABELS: Record<WizardStep, string> = {
   type: "Projekttyp",
   method: "Methode",
   followups: "Detail-Fragen",
+  skills: "Skills",
   ma_foundation: "M&A-Grundlage",
   ki_backlog: "KI-Backlog",
   clarifying: "Rückfragen",
@@ -43,6 +46,11 @@ export const WIZARD_STEP_LABELS: Record<WizardStep, string> = {
  *   UPLOADED (a `context_source_id` exists).
  * Everything else is always in the flow; the full `WIZARD_STEPS` catalog drives
  * the stepper/labels.
+ *
+ * PROJ-78 — the `skills` step is UNCONDITIONAL by design: an empty tenant
+ * catalog is the normal case (not an error), the step then just renders its
+ * hint + catalog deep-link. Keeping it unconditional also keeps this
+ * signature stable for the other slices that call it.
  */
 export function visibleWizardSteps(
   kiBacklogEnabled: boolean,
@@ -80,6 +88,12 @@ export interface WizardData {
   // Step 4 — keyed by RequiredInfo.key, value = user answer text
   type_specific_data: Record<string, string>
 
+  // PROJ-78 — the skill set chosen in the "Skills" step. Auto-resolved from
+  // method + project_type (plus cross-cutting skills), de-selectable, and
+  // extendable from the catalog. Lives in the draft's passthrough JSON; on
+  // finalize the backend calls `assign_project_skills` (best-effort).
+  skills: SkillsWizardData
+
   // PROJ-70-ε — optional KI-Backlog generation from a kickoff artefact.
   // `enabled` toggles the `ki_backlog` step; `context_source_id` +
   // `filename` are filled once the user uploads a file in that step.
@@ -104,6 +118,16 @@ export interface KiBacklogData {
   enabled: boolean
   context_source_id: string | null
   filename: string | null
+}
+
+/** PROJ-78 — one chosen skill plus the origin it was chosen through. */
+export interface SkillWizardAssignment {
+  skill_id: string
+  assignment_source: SkillAssignmentSource
+}
+
+export interface SkillsWizardData {
+  assignments: SkillWizardAssignment[]
 }
 
 /** PROJ-135 — one answered clarifying question. Skipped questions are omitted. */
@@ -141,6 +165,10 @@ export function emptyKiBacklogData(): KiBacklogData {
   return { enabled: false, context_source_id: null, filename: null }
 }
 
+export function emptySkillsWizardData(): SkillsWizardData {
+  return { assignments: [] }
+}
+
 export function emptyWizardData(responsibleUserId: string): WizardData {
   return {
     name: "",
@@ -152,6 +180,7 @@ export function emptyWizardData(responsibleUserId: string): WizardData {
     project_type: null,
     project_method: null,
     type_specific_data: {},
+    skills: emptySkillsWizardData(),
     ki_backlog: emptyKiBacklogData(),
     ma_foundation: emptyMaFoundationData(),
   }
