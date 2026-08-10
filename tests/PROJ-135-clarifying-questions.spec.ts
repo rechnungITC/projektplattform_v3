@@ -61,6 +61,12 @@ const EML_FIXTURE = [
 
 const VALID_UUID = "11111111-1111-4111-8111-111111111111"
 
+/** Markers for the AC-135.3 upload half, so its rows can be cleaned up. */
+const DRAFT_NAME = "[E2E 135 AC3] Upload Gating"
+const KICKOFF_FILENAME = "ac135-3-kickoff.eml"
+/** Format-valid RFC-4122 v4 stand-in — see the seed comment below. */
+const LEAD_PLACEHOLDER_UUID = "3f1c9d64-5b7a-4a1e-9c2f-8d6e5b4a3c21"
+
 // ---------------------------------------------------------------------------
 // 1. Auth-gate — runs without a session
 // ---------------------------------------------------------------------------
@@ -96,7 +102,48 @@ test.describe("PROJ-135 / wizard UI gating (AC-135.3)", () => {
   )
   test.skip(!hasAuthStorageState(), "no auth storage state provisioned")
 
-  test("clarifying step is absent until a kickoff is uploaded, then appears (AC-135.3)", async ({
+  // Walking the wizard auto-saves a draft on every transition and the upload
+  // creates a real context_source + storage object — both are cleaned up here
+  // (0-residue norm). Without service-role we cannot clean, so the upload half
+  // skips rather than leaving rows behind.
+  let admin: SupabaseClient | null = null
+  let seededDraftId: string | null = null
+
+  test.beforeAll(async () => {
+    admin = await createAdminClient()
+  })
+
+  test.afterAll(async () => {
+    if (!admin) return
+    // `fullyParallel` spreads a file's tests across workers and runs
+    // beforeAll/afterAll ONCE PER WORKER. Cleaning up by marker (name /
+    // filename) would let the worker that ran the gating test delete the rows
+    // of the worker still running the upload test — which is exactly what made
+    // this test fail only in parallel mode. So: clean up only in the worker
+    // that actually seeded, and only what it seeded.
+    if (!seededDraftId) return
+    const safe = (p: PromiseLike<unknown>) =>
+      p.then(() => undefined, () => undefined)
+
+    const { data: sources } = await admin
+      .from("context_sources")
+      .select("id")
+      .eq("tenant_id", E2E_TENANT_ID)
+      .eq("original_filename", KICKOFF_FILENAME)
+    for (const s of (sources ?? []) as { id: string }[]) {
+      await safe(
+        admin.storage
+          .from("context-source-uploads")
+          .remove([`${E2E_TENANT_ID}/${s.id}/${KICKOFF_FILENAME}`]),
+      )
+      await safe(admin.from("context_sources").delete().eq("id", s.id))
+    }
+    await safe(
+      admin.from("project_wizard_drafts").delete().eq("id", seededDraftId),
+    )
+  })
+
+  test("clarifying step is absent until a kickoff is uploaded (AC-135.3, gating half)", async ({
     authenticatedPage,
   }) => {
     const page = authenticatedPage
@@ -116,49 +163,141 @@ test.describe("PROJ-135 / wizard UI gating (AC-135.3)", () => {
 
   })
 
-  // ── Pre-existing defect, surfaced (not caused) by PROJ-78 ────────────────
-  // The upload half of the original AC-135.3 test navigated with
-  // `getByRole("button", {name: /KI-Backlog/}).click()` — a STEPPER button.
-  // The stepper only enables steps up to `furthestStep`
-  // (wizard-stepper.tsx: `isVisited = idx <= furthestIndex`), and a fresh
-  // wizard starts at `basics`, so that button is disabled. Going forward via
-  // "Weiter" does not help either: `validateStep` requires a project name
-  // (basics) and a project type (type) that this test never fills.
+  // ── Upload half — PROJ-Y-78f ─────────────────────────────────────────────
+  // History: the original version of this test navigated to the KI-Backlog
+  // step with `getByRole("button", {name: /KI-Backlog/}).click()` — a STEPPER
+  // button. The stepper only enables steps up to `furthestStep`
+  // (wizard-stepper.tsx: `isVisited = idx <= furthestIndex`) and a fresh
+  // wizard starts at `basics`, so that button is permanently disabled. The
+  // click therefore never navigated and the upload never happened. It went
+  // unnoticed because PROJ-135 shipped with its authenticated E2E layer UNRUN
+  // (INDEX PROJ-135, Deviation D-1) — the dead path was never executed.
   //
-  // It never failed before because PROJ-135 shipped with its authenticated
-  // E2E layer UNRUN (see INDEX PROJ-135, Deviation D-1: "authenticated/
-  // service-role E2E-Layer lief NICHT in CI"). This environment provisions
-  // the storage state, so the dead code path executes for the first time.
+  // Two things make the naive fix ("just click Weiter") fail as well:
   //
-  // PROJ-78 only shifted the step COUNTS (asserted above, corrected 6→7).
-  // Making this reachable means filling basics+type+followups first — a
-  // rewrite that belongs to PROJ-135, not here. → PROJ-Y-78f.
-  test.fixme(
-    "kickoff upload makes the clarifying step appear (AC-135.3, upload half)",
-    async ({ authenticatedPage }) => {
-      const page = authenticatedPage
-      await page.goto("/projects/new/wizard", { timeout: 120_000 })
-      const stepper = page.locator('[aria-label="Wizard-Schritte"] button')
-      await page.getByRole("switch", { name: /KI-Backlog/ }).click()
+  //  1. `validateStep` gates every step in between — basics needs a name and a
+  //     project lead, `type` a project type, `followups` every required_info
+  //     field from the PROJ-6 catalog.
+  //  2. More fundamentally: `goToStep` auto-saves on each transition and, since
+  //     PROJ-Y-3, HOLDS navigation when that save fails. In the E2E tenant the
+  //     save always fails — `E2E_TENANT_ID` ("…-000000000e20") is not a valid
+  //     RFC-4122 UUID and `wizardDraftCreateSchema.tenant_id` is `z.string()
+  //     .uuid()`, which zod 4 rejects (same root cause as PROJ-70 F-3). So a
+  //     freshly started wizard cannot be walked in this tenant AT ALL.
+  //
+  // `wizardDraftPatchSchema` carries no `tenant_id`, so resuming an existing
+  // draft (real DB uuid in the path) saves fine. We therefore seed the draft
+  // service-role and resume it via `?draftId=` — the real user journey from the
+  // "continue draft" entry point. Navigation, validation, the upload and the
+  // step derivation under test all run for real.
+  test("kickoff upload makes the clarifying step appear (AC-135.3, upload half)", async ({
+    authenticatedPage,
+  }) => {
+    const page = authenticatedPage
+    test.skip(!admin, "service-role env not available")
+    // Playwright's default per-test cap is 30s and the config sets none, so a
+    // longer assertion timeout alone is ineffective. This test walks six wizard
+    // steps and waits on a deep link that `warmCompileDeepLinkRoutes`
+    // (PROJ-67 AC-9) does not pre-compile — under parallel workers that first
+    // compile alone can exceed 30s.
+    test.setTimeout(180_000)
 
-      await page.getByTestId("wizard-ki-backlog-file-input").setInputFiles({
-        name: "clarify-kickoff.eml",
-        mimeType: "message/rfc822",
-        buffer: Buffer.from(EML_FIXTURE),
+    const { data: draft, error: draftErr } = await admin!
+      .from("project_wizard_drafts")
+      .insert({
+        tenant_id: E2E_TENANT_ID,
+        created_by: E2E_USER_ID,
+        name: DRAFT_NAME,
+        project_type: "general",
+        // No method: `validateStep("method")` treats null as valid, and method
+        // follow-ups are what add required_info on top of 'general' (which
+        // contributes none itself). Keeps the walk independent of catalog
+        // contents; the generic fill below still covers tenant overrides.
+        project_method: null,
+        data: {
+          name: DRAFT_NAME,
+          project_type: "general",
+          project_method: null,
+          // NOT E2E_USER_ID: the wizard validates `responsible_user_id` with
+          // `z.string().uuid()`, and the synthetic fixture id
+          // ("…-000000000e2e") is not RFC-4122 — zod 4 rejects it, basics
+          // never validates and navigation stalls on step 1. The project lead
+          // is not what this test asserts (we never finalize), so a
+          // format-valid uuid stands in. Fixing the fixture identities for
+          // real is PROJ-Y-78f-fixtures.
+          responsible_user_id: LEAD_PLACEHOLDER_UUID,
+          description: "AC-135.3 upload gating.",
+          ki_backlog: { enabled: true, context_source_id: null, filename: null },
+        },
       })
+      .select("id")
+      .single()
+    if (draftErr || !draft) {
+      throw new Error(`draft seed failed: ${draftErr?.message}`)
+    }
+    seededDraftId = (draft as { id: string }).id
 
-      // Upload succeeded → the clarifying step now appears (8 steps with the
-      // PROJ-78 "Skills" step), after KI-Backlog and before Review.
-      await expect
-        .poll(async () => stepper.count(), { timeout: 60_000 })
-        .toBe(8)
-      const labels = (await stepper.allInnerTexts()).map((t) =>
-        t.replace(/\s+/g, " ").trim(),
-      )
-      expect(labels[6]).toContain("Rückfragen")
-      expect(labels[7]).toContain("Review")
-    },
-  )
+    await page.goto(`/projects/new/wizard?draftId=${seededDraftId}`, {
+      timeout: 120_000,
+    })
+
+    const stepper = page.locator('[aria-label="Wizard-Schritte"] button')
+    const currentStep = () =>
+      page.locator('[aria-label="Wizard-Schritte"] button[aria-current="step"]')
+    const next = async () => {
+      await page.getByRole("button", { name: "Weiter", exact: true }).click()
+    }
+
+    // Draft hydrated → KI-Backlog is already on (7 steps), no upload yet.
+    // Generous: hydration waits on the tenant context, and this deep link is
+    // not part of `warmCompileDeepLinkRoutes` (PROJ-67 AC-9), so under parallel
+    // workers the first compile of this route can take a while.
+    await expect(page.getByLabel(/Projektname/)).toHaveValue(DRAFT_NAME, {
+      timeout: 120_000,
+    })
+    await expect.poll(async () => stepper.count(), { timeout: 10_000 }).toBe(7)
+    expect((await stepper.allInnerTexts()).join(" ")).not.toContain("Rückfragen")
+
+    // ── walk to the KI-Backlog step ───────────────────────────────────────
+    await next()
+    await expect(currentStep()).toContainText("Projekttyp")
+    await next()
+    await expect(currentStep()).toContainText("Methode")
+
+    // followups: fill every catalog-driven required field generically, so a
+    // catalog change cannot silently re-break this test.
+    await next()
+    await expect(currentStep()).toContainText("Detail-Fragen")
+    const required = page.locator("textarea")
+    for (let i = 0; i < (await required.count()); i++) {
+      const field = required.nth(i)
+      if ((await field.inputValue()).trim().length === 0) {
+        await field.fill("[E2E 135] AC-135.3")
+      }
+    }
+
+    await next()
+    await expect(currentStep()).toContainText("Skills")
+    await next()
+    await expect(currentStep()).toContainText("KI-Backlog")
+
+    // ── the actual assertion: a real upload reveals the clarifying step ────
+    await page.getByTestId("wizard-ki-backlog-file-input").setInputFiles({
+      name: KICKOFF_FILENAME,
+      mimeType: "message/rfc822",
+      buffer: Buffer.from(EML_FIXTURE),
+    })
+
+    // 8 steps once uploaded (7 + "Rückfragen"), after KI-Backlog, before Review.
+    await expect
+      .poll(async () => stepper.count(), { timeout: 60_000 })
+      .toBe(8)
+    const labels = (await stepper.allInnerTexts()).map((t) =>
+      t.replace(/\s+/g, " ").trim(),
+    )
+    expect(labels[6]).toContain("Rückfragen")
+    expect(labels[7]).toContain("Review")
+  })
 })
 
 // ---------------------------------------------------------------------------
