@@ -14,14 +14,16 @@ summary_for_jira: "[L3] Lückenloser Audit-Trail (Cross-Cutting)"
 
 # PROJ-130: Lückenloser Audit-Trail (Cross-Cutting)
 
-## Status: In Progress (γ komplett bis auf die Oberfläche: α + β + γ1 + γ2 + γ3 + γ4 live; γ2b/δ/ε offen)
+## Status: In Progress (α + β + γ komplett bis auf UI + δ1 live; δ2/γ2b/ε offen)
 **Created:** 2026-06-10
 **Architected:** 2026-08-11 (CIA-reviewed, GO-mit-Auflagen — Tech Design unten)
 **α /backend:** 2026-08-11 — Migration in Prod, Live-Pentest 19/19, 0 Residuen (gemergt, `537f727`)
 **β /backend:** 2026-08-11 — Migration in Prod, Live-Pentest 12/12, 0 Residuen (gemergt, `b2a82df`)
 **γ1 /backend:** 2026-08-11 — Migration in Prod, Live-Pentest 9/9, 0 Residuen (gemergt, `52111f3`)
 **γ2 + γ4 /backend:** 2026-08-11 — Migration in Prod, Live-Pentest 11/11, 0 Residuen (gemergt, PR #329)
-**γ3 /backend:** 2026-08-11 — Objektarten-Register 15 → 88, Drift strukturell geschlossen
+**γ3 /backend:** 2026-08-11 — Objektarten-Register 15 to 88, Drift strukturell geschlossen (gemergt, PR #330)
+**PROJ-Y-130h:** 2026-08-11 — Test-Mandanten-Ausnahme, Live-Pentest 8/8 (gemergt, PR #331)
+**δ1 /backend:** 2026-08-11 — Zugriffsprotokoll fuer austretende Inhalte, Live-Pentest 10/10, 0 Residuen
 **Origin:** M&A-Platform Backlog (Epic L — Vertraulichkeit, NDA & Audit)
 **Priority:** P1
 
@@ -188,6 +190,7 @@ Keine. Weder neue Bibliothek noch neuer Dienst. Prüfwert-Bildung und Zeitsteuer
 - **PROJ-Y-130d** — Audit-Abdeckung der verbleibenden unabgedeckten Tabellen.
 - **PROJ-Y-130e** — Blätterung für Bericht und Export (heute hartes Limit 500 ohne Fortsetzung).
 - **PROJ-Y-130f** — **Prod/Repo-Divergenz in der Audit-Abdeckung** (Fund aus α, siehe unten): Prod hat zwei auditierte Tabellen mehr, als die Migrationsdateien herstellen. Genau bestimmbar erst mit einer lokalen Shadow-DB (blockiert durch den offenen Docker/WSL-Handoff aus PROJ-67/F6).
+- **PROJ-Y-130k** — `communication_access_log` (PROJ-119) traegt einen FK auf `projects`; sein Protokoll verschwindet bei einer Projekt-Loeschung mit. An die FK-freie Linie von α und δ1 angleichen.
 - **PROJ-Y-130j** — suchbare Combobox statt 88-Eintrag-Select im Audit-Bericht (γ3-Nebeneffekt).
 - **PROJ-Y-130i** — **Auditor sieht keine mandantenweiten Katalogänderungen** (bewusste γ2-Grenze): Zweige des Lesetors, die direkt `is_tenant_member(...)` oder `return false` liefern, umgehen den gemeinsamen Ausgang. Ausweitung = 9 weitere Einzel-Ersetzungen, gehört nicht in dieselbe Migration.
 - ~~**PROJ-Y-130h**~~ — **erledigt 2026-08-11** (PO-Entscheidung: Test-Mandanten ausnehmen). Siehe eigenen Abschnitt unten.
@@ -287,6 +290,32 @@ Nebenbefund: `audit_escalation_patterns` auf `stakeholders` schreibt entgegen de
 **Beobachtung, die die β-Warnung bestätigt:** Zwischen den Läufen sind in Prod **7 Audit-Zeilen aus einem fremden Live-Testlauf** aufgetaucht (11:25 UTC, 3× `context_sources` angelegt und gelöscht, 1 Projekt angelegt). Der Test hat seine Daten aufgeräumt — das Protokoll des Aufräumens bleibt dauerhaft, weil es keinen Löschpfad mehr gibt. Test-Rauschen sammelt sich also unwiderruflich in einem Compliance-Artefakt. → **PROJ-Y-130h**.
 
 **Offen nach γ1:** γ2 Auditor-Grant · γ3 TS-Enum-Öffnung · γ4 `redaction_off`.
+
+## Implementation Notes — δ1 (2026-08-11, `/backend`) — Zugriffsprotokoll, erste Stufe
+
+**Migration `20260811180000_proj130_delta1_confidential_read_log.sql` in Prod angewendet.**
+
+**Die Bestandsaufnahme hat den geplanten Zuschnitt widerlegt.** Das Tech Design sah eine Positivliste „Detailansichten" und eine Negativliste „Listenansichten" vor. Die Erhebung zeigt: es gibt **fast keine Einzelobjekt-Routen**. `dd_findings`, `dd_questions`, `ma_valuations`, `spa_issues` und `deliverable_documents` werden ausschließlich **als Listen** gelesen — die Anwendung holt Sammlungen und filtert clientseitig. Die geplante Positivliste bezieht sich damit auf Flächen, die nicht existieren, und die Negativliste würde wörtlich genommen bedeuten, in der App praktisch nichts zu protokollieren.
+
+**Die Grenze, die stattdessen trägt:** δ1 protokolliert die Flächen, an denen vertrauliche Inhalte das System **verlassen** — als Datei oder als Download-Link. Forensisch ist das der Kern („wer hat die Daten herausgetragen"), die Stufe ist dort pro Zeile exakt bekannt, und die Menge ist klein und begründbar.
+
+**Umgesetzt (3 Flächen):**
+- **DMS-Download** — die Stufe hängt seit PROJ-Y-115c am Baumknoten, nicht am Dokument; der Knoten wird für die Projekt-Prüfung ohnehin eingebettet, das Mitlesen kostet **keine** zusätzliche Abfrage. Die Aktion heißt `download_url_issued` und **nicht** `download`: protokollierbar ist nur die Ausgabe des signierten Links (120 s Gültigkeit), eingelöst wird er außerhalb der Anwendung. Das Protokoll sagt „Zugriff wurde ermöglicht", nicht „Datei wurde geladen" — dieser Unterschied muss in der Auswertung sichtbar bleiben.
+- **DD-Fragen-CSV-Export** und **SPA-Issues-CSV-Export** — beide führen die Stufe pro Zeile im Ergebnis. Protokolliert wird **ein** Ereignis pro Export mit der höchsten Stufe und der Anzahl der vertraulichen Zeilen, nicht eine Zeile pro Datensatz.
+
+**Ausfallverhalten nach Stufe:** bei `strict` fail-closed (schlägt das Protokollieren fehl, gibt es weder Link noch Datei), bei `confidential` best-effort. Sonst würde das Protokoll selbst zum Ausfallrisiko für die gutartige Mehrheit der Zugriffe. Die Entscheidung liegt beim Aufrufer, weil sie von der Stufe abhängt — der Helfer `mustBlockOnLogFailure` macht die Regel an einer Stelle nachlesbar.
+
+**Kein Fremdschlüssel auf `tenants`/`projects`** — ein forensisches Protokoll muss die Löschung seines Gegenstands überleben, dieselbe Begründung wie beim Mandanten-FK in α. Das ist eine **Abweichung von `communication_access_log`** (PROJ-119), das noch einen FK auf `projects` trägt und dessen Protokoll bei einer Projekt-Löschung mitverschwindet → **PROJ-Y-130k**.
+
+**Bewusst noch nicht (→ δ2):** die Listen-GETs (die eigentliche In-App-Lesefläche) und die drei Report-RPCs mit ihren Exporten. Der Grund für Letztere ist nicht Bequemlichkeit, sondern **ungleiche Ableitbarkeit**: `steering_report` führt die Stufe an 5 Stellen und ist exakt auswertbar, `operative_report` lässt den Q&A-Abschnitt ohne Stufe (nur teilweise), und `dd_report_consolidated` führt sie **gar nicht** — dort bräuchte es eine Zweitabfrage. Diese Ungleichheit gehört in eine eigene Slice, nicht in eine Fußnote.
+
+**Dauerhafte Negativliste** (gehört in die Freigabe): alles auf Stufe `standard` (damit trägt ein Nicht-M&A-Mandant null Zusatzlast) · Baum-, Dashboard- und Suchansichten · bei Downloads der **tatsächliche** Abruf.
+
+**Live-Pentest `tests/sql/PROJ-130-delta1-confidential-read-pentest.sql` gegen Prod: 10/10 PASS, 0 Residuen.** Aussagekräftig sind: **B** `standard` wird still verworfen · **C** ein Fremder kann mit geratenen Projekt-IDs nichts schreiben (42501) · **D** ein Prüfer mit γ2-Freigabe darf protokollieren, **ohne** Projektmitglied zu sein (genau der Fall „externer Prüfer exportiert") · **F** ein gewöhnliches Projektmitglied darf das Protokoll **nicht** lesen · **H** Direkt-INSERT umgeht den RPC nicht · **I1** kein Fremdschlüssel.
+
+**Zwei eigene Fehler unterwegs, beide korrigiert:** mein schmales Client-Interface passte strukturell nicht auf Supabases generisches `rpc` (jetzt ein Callback — typsicher **und** testbar ohne Client-Nachbau). Und ich habe Prettier über drei Dateien laufen lassen, obwohl das Projekt **keine** Prettier-Konfiguration hat und der Bestand ohne Semikolons schreibt — das hat 193 statt 20 Zeilen angefasst und wurde zurückgenommen; der Diff liegt jetzt bei 101 Einfügungen.
+
+**Gates:** ESLint **0** · tsc **13 vorbestehend / 0 neu** · vitest **2786/2786** (357 Dateien, +9) · Build clean · `check:migration-naming` **0 Fehler**.
 
 ## Implementation Notes — PROJ-Y-130h (2026-08-11) — Test-Mandanten-Ausnahme
 
