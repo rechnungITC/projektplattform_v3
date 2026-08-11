@@ -135,10 +135,7 @@ grant execute on function public._tracked_audit_columns(text) to postgres, servi
 --     auf denselben Sachverhalt. Dokumentierte Ausnahme, siehe Drift-Guard.
 do $$
 declare
-  v_tbl text;
-  v_trg text;
-begin
-  foreach v_tbl in array array[
+  v_targets text[] := array[
     'tenant_memberships',
     'role_rates',
     'vendor_documents',
@@ -147,7 +144,38 @@ begin
     'communication_templates',
     'committee_meeting_attendees',
     'committee_meeting_documents'
-  ]
+  ];
+  v_tbl text;
+  v_trg text;
+  v_before int;
+  v_after int;
+  v_expected_new int;
+begin
+  -- Die Abdeckung wird RELATIV geprüft, nicht gegen eine absolute Zahl: die
+  -- Shadow-DB des Schema-Drift-Guards baut sich allein aus den Migrations-
+  -- dateien auf und erreicht dort 2 auditierte Tabellen weniger als Prod
+  -- (65 statt 67 nach dieser Migration). Eine absolute Schwelle wäre in
+  -- genau einer der beiden Umgebungen falsch — die relative Prüfung ist in
+  -- beiden korrekt und sagt zudem mehr aus. Die Prod/Repo-Divergenz selbst
+  -- ist ein eigener Fund (siehe Spec, Followup PROJ-Y-130f).
+  select count(distinct c.relname) into v_before
+    from pg_trigger tg
+    join pg_class c on c.oid = tg.tgrelid
+    join pg_proc p on p.oid = tg.tgfoid
+   where p.proname = 'record_audit_changes' and not tg.tgisinternal;
+
+  select count(*) into v_expected_new
+    from unnest(v_targets) t
+   where not exists (
+     select 1 from pg_trigger tg
+     join pg_class c on c.oid = tg.tgrelid
+     join pg_proc p on p.oid = tg.tgfoid
+     where p.proname = 'record_audit_changes'
+       and not tg.tgisinternal
+       and c.relname = t
+   );
+
+  foreach v_tbl in array v_targets
   loop
     if coalesce(array_length(public._tracked_audit_columns(v_tbl), 1), 0) = 0 then
       raise exception 'PROJ-130-α: % hat keine getrackten Spalten — Trigger wäre stumm', v_tbl;
@@ -160,6 +188,19 @@ begin
       v_trg, v_tbl
     );
   end loop;
+
+  select count(distinct c.relname) into v_after
+    from pg_trigger tg
+    join pg_class c on c.oid = tg.tgrelid
+    join pg_proc p on p.oid = tg.tgfoid
+   where p.proname = 'record_audit_changes' and not tg.tgisinternal;
+
+  if v_after <> v_before + v_expected_new then
+    raise exception 'PROJ-130-α: Abdeckung unerwartet (vorher %, erwartet neu %, nachher %)',
+      v_before, v_expected_new, v_after;
+  end if;
+
+  raise notice 'PROJ-130-α: auditierte Tabellen % -> % (+%)', v_before, v_after, v_expected_new;
 end $$;
 
 -- =====================================================================
@@ -326,16 +367,15 @@ begin
     raise exception 'PROJ-130-α: record_audit_changes wurde verändert oder ist beschädigt';
   end if;
 
-  -- Abdeckung ist gewachsen, nicht geschrumpft
+  -- Abdeckung: bewusst KEINE absolute Schwelle (siehe Block 1c). Die
+  -- verbindliche Prüfung ist die Zweig-für-Zweig-Prüfung oben plus die
+  -- relative Delta-Prüfung in 1c. Hier nur zur Protokollierung.
   select count(distinct c.relname) into v_count
   from pg_trigger tg
   join pg_class c on c.oid = tg.tgrelid
   join pg_proc p on p.oid = tg.tgfoid
   where p.proname = 'record_audit_changes'
     and not tg.tgisinternal;
-  if v_count < 67 then
-    raise exception 'PROJ-130-α: >= 67 auditierte Tabellen erwartet, % gefunden', v_count;
-  end if;
 
   raise notice 'PROJ-130-α: alle Post-Conditions erfüllt (% auditierte Tabellen)', v_count;
 end $$;

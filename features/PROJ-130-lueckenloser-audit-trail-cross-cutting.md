@@ -183,6 +183,7 @@ Keine. Weder neue Bibliothek noch neuer Dienst. Prüfwert-Bildung und Zeitsteuer
 - **PROJ-Y-130c** — kontenlose externe Prüfer über das bestehende Einmal-Link-Muster aus PROJ-31.
 - **PROJ-Y-130d** — Audit-Abdeckung der verbleibenden unabgedeckten Tabellen.
 - **PROJ-Y-130e** — Blätterung für Bericht und Export (heute hartes Limit 500 ohne Fortsetzung).
+- **PROJ-Y-130f** — **Prod/Repo-Divergenz in der Audit-Abdeckung** (Fund aus α, siehe unten): Prod hat zwei auditierte Tabellen mehr, als die Migrationsdateien herstellen. Genau bestimmbar erst mit einer lokalen Shadow-DB (blockiert durch den offenen Docker/WSL-Handoff aus PROJ-67/F6).
 
 ### Handoff
 
@@ -209,6 +210,12 @@ Keine. Weder neue Bibliothek noch neuer Dienst. Prüfwert-Bildung und Zeitsteuer
 **Gates:** ESLint **0** · tsc **13 vorbestehend / 0 neu** · vitest **2750/2750** (352 Dateien, +4 neue) · Build clean · `check:migration-naming` **0 Fehler** · Supabase-Advisors **0 ERROR** und **kein einziger** audit_log-bezogener Lint (die neue Guard-Funktion trägt `set search_path`).
 
 **Betriebshinweis:** Die Migration ist in Prod, der Code-Rückbau des Purges deployt erst mit dem Merge. Zwischen Anwendung und Merge würde der 03:30-Cron einen `delete` versuchen und am Guard-Trigger scheitern — er **fällt sicher aus** (HTTP 500 `delete_failed`, nichts wird gelöscht) statt still zu truncaten. Bei Merge am selben Tag entsteht dieses Fenster gar nicht.
+
+**Fund aus dem CI-Replay (neu, → PROJ-Y-130f):** Der Schema-Drift-Guard baut die Shadow-DB allein aus den Migrationsdateien auf und erreichte dort **65** auditierte Tabellen, während Prod nach α **67** hat. Es gibt also zwei Audit-Trigger in Prod, die die Migrationsdateien nicht herstellen — eine Prod/Repo-Divergenz, genau die Klasse, für die PROJ-42-γ („Prod-Drift") zurückgestellt wurde. Welche zwei Tabellen es sind, ist **nicht** bestimmt: die Trigger-Statements sind mehrzeilig, ein Datei-Grep ist dafür untauglich, und eine lokale Shadow-DB ist durch den offenen Docker/WSL-Handoff (PROJ-67/F6) nicht verfügbar. Die Zahl 65 vs. 67 ist belegt, die Zuordnung nicht — bewusst nicht geraten.
+
+**Daraus die eine echte Korrektur in α:** die Abdeckungsprüfung war als **absolute** Schwelle (`>= 67`) geschrieben und damit in genau einer der beiden Umgebungen zwangsläufig falsch — sie hat den Guard rot gemacht (`ERROR: >= 67 auditierte Tabellen erwartet, 65 gefunden`), obwohl die Migration inhaltlich korrekt durchlief und die Anker-Ersetzung sauber griff. Ersetzt durch eine **relative** Delta-Prüfung im Verdrahtungs-Block (zähle vorher, zähle wie viele der 8 Ziele einen Trigger vermissen, prüfe nachher auf genau dieses Delta). Das ist in beiden Umgebungen korrekt, bleibt bei Wiederholung grün (Delta 0) und sagt mehr aus als eine Schwelle. Die verbindliche Prüfung bleibt die Zweig-für-Zweig-Prüfung; die Gesamtzahl wird nur noch protokolliert. Idempotent gegen Prod nachgezogen, damit Datei und Prod-Wirkung übereinstimmen.
+
+**Lehre für β–ε:** in einer Umgebung gemessene absolute Bestandszahlen gehören nicht in Migrations-Assertions, solange Prod und Repo-Replay nachweislich auseinanderliegen. Relative Deltas und Existenzprüfungen pro Objekt sind die tragfähige Form.
 
 **Offen in α:** nichts. **Nächster Schritt:** `/qa` für α, danach `/backend` für β.
 
