@@ -1,6 +1,7 @@
 # PROJ-78: Skill-Projektzuordnung
 
-## Status: Approved
+## Status: Deployed (2026-08-11)
+**Deployed:** 2026-08-11 — Closure-Deploy, Tag `v2.44.0-PROJ-78`. Code lag bereits auf main (Merge `61943e6`, PR #301), Migration `20260807205228_proj78_project_skills` seit `/backend` in Prod → kein Runtime-Deploy nötig (Vercel deployt automatisch von main). Verifiziert auf main `265cccb`: ESLint 0 · `npm run build` clean · `check:migration-naming` 0 Errors · Post-Deploy-Smoke gegen Prod: alle neuen Flächen 307 Auth-Gate, kein Leck.
 **Created:** 2026-06-06
 **Last Updated:** 2026-08-08
 

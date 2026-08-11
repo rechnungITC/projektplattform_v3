@@ -213,6 +213,8 @@ Neu, zwei Tabellen:
 ### Blocker / offene Punkte
 
 - **ESLint kann in diesem Worktree nicht laufen** — und zwar bereits auf dem unveränderten Basis-Commit `e0337bd`, also unabhängig von dieser Slice. Ursache: `package.json` erzwingt repo-weit `brace-expansion@^5.0.9`, während `minimatch@3.1.5` (transitiv unter `@eslint/config-array`) `^1.1.7` erwartet; die v5-Exportform ist nicht mehr aufrufbar → `TypeError: expand is not a function`, noch bevor eine einzige Datei gelesen wird. Repo-weit, gehört zu PROJ-142 (Supply-Chain). Kein Workaround möglich, ohne `node_modules` anzufassen — das ist hier eine Hardlink-Kopie, die mit anderen Worktrees geteilt wird.
+- **Dieser Blocker ist erledigt (2026-08-11).** PROJ-142 hat die Ursache repo-weit behoben (versions-scoped Override `"minimatch@3": { "brace-expansion": "^1.1.18" }`); `npm run lint` läuft auf main `265cccb` mit **0 Problemen** durch. Gegengeprüft im Rahmen des Closure-Deploys.
+- **Weiterhin offen für den Deployed-Stempel:** formaler `/qa`-Abschluss. Der Code ist seit `c020ff8` (PR #302) live und die Sicherheitsnachweise sind stark (Live-Pentest A–N 14/14, Regressionen PROJ-100a/100b/118 grün, Advisors 0 ERROR), aber es fehlen (a) das Abhaken der beiden Akzeptanzkriterien, (b) ein Playwright-Auth-Gate-Spec für die 6 neuen Routen analog den Schwester-Slices, (c) ein formales QA-Verdikt. Post-Deploy-Smoke im Closure-Lauf: `/api/projects/{id}/communication-entries` → 307 Auth-Gate. Status bleibt daher bewusst **In Review** — kein Deployed-Stempel ohne QA.
 
 ### Followups (PROJ-Y)
 
