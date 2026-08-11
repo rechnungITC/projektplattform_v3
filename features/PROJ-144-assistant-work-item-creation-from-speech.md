@@ -1,8 +1,8 @@
 # PROJ-144: Work-Item-Anlage aus Spracheingabe (Assistant Action Pack)
 
-## Status: Architected
+## Status: In Progress (Backend fertig, Frontend offen)
 **Created:** 2026-08-11
-**Last Updated:** 2026-08-11 (Tech Design ergänzt; L7 + L8 gelockt)
+**Last Updated:** 2026-08-11 (Backend gebaut, Live-Pentest 17/17 gegen Prod)
 
 ## Summary
 
@@ -497,6 +497,94 @@ die **drei oder mehr** Folgeschritte betrifft. Hier trifft keines davon zu: kein
 statt Musterwechsel, und die einzige offene Frage betraf die Platzierung der Entwurfsliste
 (zwei Folgeschritte, jetzt als L7 entschieden). Ein Review ist daher **optional** — sinnvoll
 wäre er, falls stattdessen doch der Sprachmodell-Weg (PROJ-Y-144a) vorgezogen werden soll.
+
+## Implementation Notes — /backend (2026-08-11)
+
+### Was gebaut wurde
+
+**Datenbank.** Migration `20260811190000_proj144_assistant_work_item_drafts` (in Prod):
+Tabelle `assistant_work_item_drafts` mit 4 RLS-Policies (nutzer-privat: `user_id =
+(select auth.uid())` **und** `is_tenant_member(tenant_id)`), 8 CHECK-Constraints,
+`extensions.moddatetime`-Trigger und 3 Indizes. **Kein Feld-Audit** und **kein Zweig im
+`audit_log_entity_type`-Register** — bewusst, weil Entwürfe flüchtiger, privater Scratch sind
+und die Handlung selbst über `assistant_action_events` protokolliert wird (AC-144.27). Neben
+der fachlichen Begründung hatte das einen praktischen Nutzen: die parallel laufende
+PROJ-130-Kette arbeitet genau an diesen Audit-Funktionen; so gab es null Kollisionsfläche.
+
+**Anwendung.**
+- `src/lib/assistant/work-item-command.ts` — regelbasierte Befehlszerlegung + Methoden-Abbildung,
+  komplett I/O-frei und damit über alle sieben Methoden testbar.
+- `src/lib/work-items/create-work-item.ts` — die geprüfte Anlage aus
+  `POST /api/projects/[id]/work-items` **herausgelöst** (D3). Die Route ist jetzt ein dünner
+  Aufrufer; ihr Drift-Test läuft weiterhin durch denselben Pfad und bleibt der Wächter.
+- `src/lib/projects/access.ts` — die Drei-Rollen-Schreibregel als reine Funktion, genutzt von
+  `requireProjectAccess` **und** der Runtime (D6). Ohne das stünde die Regel an zwei Stellen.
+- `src/lib/assistant/transcript.ts` — Redaktion geteilt statt zweimal geschrieben.
+- Drei Routen: Liste, Bestätigen, Verwerfen. Das Beanspruchen (`open → claiming`) läuft
+  **vor** der Anlage (D5).
+- Aufräumung als zweiter Schritt im bestehenden 03:00-Lauf, eigene Frist 14 Tage (L8).
+
+### Nachweise
+
+| Prüfung | Ergebnis |
+|---|---|
+| Live-Pentest gegen Prod (`tests/sql/PROJ-144-…-pentest.sql`) | **17/17 PASS, 0 Residue** |
+| vitest (volle Suite) | 363 Dateien / **2841 Tests** grün (+54 neu) |
+| ESLint | 0 |
+| tsc | 13 = Baseline, **0 neu** |
+| Build | clean, alle 3 Routen registriert |
+| `check:migration-naming` | 0 Fehler |
+| Supabase-Advisors | **0 ERROR** (Security + Performance) |
+
+Kernbeweis des Pentests ist Fall B: ein **Tenant-Admin**, der nicht der Ersteller ist, sieht
+fremde Entwürfe nicht (0 Zeilen). Ebenfalls live belegt: kein Schreibzugriff auf fremde
+Entwürfe (0 betroffene Zeilen statt Fehler), `INSERT` auf fremde `user_id` → 42501,
+Doppel-Beanspruchen → zweiter Versuch 0 Zeilen (AC-144.19 auf DB-Ebene), Cascade beim
+Projekt-Löschen, sowie die drei CHECKs.
+
+### Befunde und Abweichungen
+
+- **D-144.1 — AC-144.23 ist nur zur Hälfte erfüllbar.** `ModuleKey` kennt keinen Schalter für
+  den Backlog; der ist Kernfunktion und nicht abschaltbar. Das Gate reduziert sich damit
+  ehrlich auf das **Assistant**-Modul, das auf allen drei neuen Routen geprüft wird. Die
+  Spec-Formulierung „oder der Backlog-Bereich" beschreibt etwas, das im Datenmodell nicht
+  existiert.
+- **D-144.2 — `anon` ist strenger gesperrt als erwartet.** Der erste Pentest-Lauf lief in
+  `42501`, weil `anon` kein EXECUTE auf `is_tenant_member` hat (PROJ-68-Härtung): die Policy
+  ist für anon nicht einmal auswertbar. Der Testfall akzeptiert jetzt beides (0 Zeilen **oder**
+  42501) und benennt 42501 als das strengere Ergebnis.
+- **D-144.3 — ein naiver `updated_at`-Test schlägt immer fehl.** `now()` ist innerhalb einer
+  Transaktion konstant, und `moddatetime` schreibt genau `now()`; „Zeitstempel wird größer"
+  kann im Pentest nie zutreffen. Belastbar ist die Gegenprobe: ein absichtlich auf 30 Tage
+  zurückgesetztes `updated_at` wird vom Trigger überschrieben — sonst könnte ein Client sich
+  der Aufräumung entziehen. Diese Falle ist im Pentest kommentiert.
+- **D-144.4 — der Cascade-Fall braucht ein mitgliedschaftsfreies Projekt.** Ein Hart-Löschen
+  scheitert sonst am live `enforce_last_lead()`-Trigger, der das Entfernen der letzten
+  Projektleitung verweigert. Vorbestehende Produkteigenschaft, im Pentest dokumentiert.
+- **D-144.5 — zwei FK-Indizes bewusst weggelassen.** Die Performance-Advisors melden
+  `created_work_item_id` und `user_id` als „foreign key without covering index" (INFO). Beide
+  liegen nicht auf einem Leseweg: der Verweis wird geschrieben, nie gefiltert, und
+  Konto-Löschungen sind selten (PROJ-69-Triage-Muster „delete-rare → skip"). Der
+  Aufräum-Index erscheint erwartungsgemäß als „unused", bis der nächtliche Lauf ihn nutzt.
+- **D-144.6 — Projektname nur am Satzende.** „… im Projekt X" wird als Zielprojekt gelesen,
+  wenn es den Satz beendet. Bei eingeschobener Nennung („lege im Projekt X eine Story an")
+  greift der Projektraum-Kontext. Bewusst konservativ: greifzügigeres Abtrennen würde Teile
+  des Titels als Projektnamen verschlucken.
+- **PROJ-134-Versionsdrift (benign).** Die MCP registrierte `20260811133225` statt des
+  Dateinamens — wie bei **jeder** Migration dieses Tages in allen Sessions. Der Dateiname
+  bleibt, weil er die echte Anwendungsreihenfolge gegenüber den Geschwister-Migrationen
+  spiegelt; ein Rename auf `133225` würde sie gegenüber Prod verdrehen. Die Migration ist
+  durchgängig idempotent (`create table if not exists`, `drop policy if exists`), `db push`
+  bleibt also unberührt.
+
+### Offen für die Folgeschritte
+
+- **`/frontend`** — Entwurfs-Karte mit **korrigierbarem Titel** (ohne das ist die Bestätigung
+  eine Formsache), Entwurfsliste im Overlay, Erfolgsmeldung mit Sprung, Zustände für „kein
+  Mikrofon" und „kein Schreibrecht".
+- **`/qa`** — Playwright-Auth-Gates auf den drei neuen Routen, der Methoden-Regressionstest
+  über alle sieben Methoden als bewusster Prüfpunkt (D4: keine DB-Absicherung), und ein
+  End-to-End-Durchlauf Diktat → Bestätigen → Work-Item.
 
 ## QA Test Results
 _To be added by /qa_
