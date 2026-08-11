@@ -7,7 +7,7 @@ import { AUDIT_ENTITY_TYPES } from "@/types/audit"
 import {
   apiError,
   getAuthenticatedUserId,
-  requireTenantAdmin,
+  requireAuditRead,
 } from "../../_lib/route-helpers"
 
 // PROJ-10 — GET /api/audit/export
@@ -118,12 +118,24 @@ export async function GET(request: Request) {
     return apiError("unauthorized", "Not signed in.", 401)
   }
 
-  const adminError = await requireTenantAdmin(
-    supabase,
-    parsed.data.tenant_id,
-    userId
-  )
-  if (adminError) return adminError
+  // PROJ-130-γ2: der Export ist der Kern des Prüfer-Auftrags — ein externer
+  // Prüfer ohne Mandanten-Mitgliedschaft muss ihn erreichen können. Die
+  // Vertraulichkeits-Prüfung aus γ1 wirkt weiterhin in der Datenbank: was der
+  // Prüfer ohne Freischaltung nicht sehen darf, kommt hier gar nicht an.
+  const access = await requireAuditRead(supabase, parsed.data.tenant_id, userId)
+  if (access.error) return access.error
+
+  // PROJ-130-γ4: die Redaktion abzuschalten ist Admin-Vorbehalt. Ein Auditor
+  // oder externer Prüfer darf exportieren, aber nicht unredigiert — sonst wäre
+  // die Class-3-Redaktion über einen befristeten Zugang aushebelbar.
+  if (parsed.data.redaction_off && !access.isAdmin) {
+    return apiError(
+      "forbidden",
+      "Nur Mandanten-Admins dürfen unredigiert exportieren.",
+      403,
+      "redaction_off"
+    )
+  }
 
   const moduleDenial = await requireModuleActive(
     supabase,
