@@ -18,6 +18,18 @@ import { apiError } from "../../_lib/route-helpers"
 
 const RETENTION_DAYS = 90
 
+/**
+ * PROJ-144 (Lock L8) — Sprach-Entwürfe für Work-Items werden deutlich früher
+ * entfernt als Projekt-Entwürfe: ein Diktat ist eine flüchtige Notiz, und je
+ * weniger diktierter Text herumliegt, desto besser. Bewusst KEIN zweiter
+ * Zeitplan-Eintrag — dieser Lauf erledigt beides.
+ *
+ * Entfernt werden alle Zustände, nicht nur die offenen: verworfene sind erledigt,
+ * und bei bestätigten trägt das Work-Item die Herkunft, der Entwurf hat keinen
+ * weiteren Zweck.
+ */
+const WORK_ITEM_DRAFT_RETENTION_DAYS = 14
+
 export async function GET(request: Request) {
   const expected = process.env.CRON_SECRET
   if (!expected) {
@@ -47,9 +59,29 @@ export async function GET(request: Request) {
     return apiError("delete_failed", error.message, 500)
   }
 
+  const workItemDraftCutoff = new Date(
+    Date.now() - WORK_ITEM_DRAFT_RETENTION_DAYS * 24 * 60 * 60 * 1000
+  ).toISOString()
+
+  const {
+    data: draftData,
+    error: draftError,
+    count: draftCount,
+  } = await supabase
+    .from("assistant_work_item_drafts")
+    .delete({ count: "exact" })
+    .lt("updated_at", workItemDraftCutoff)
+    .select("id")
+
+  if (draftError) {
+    return apiError("delete_failed", draftError.message, 500)
+  }
+
   return NextResponse.json({
     ok: true,
     cutoff,
     purged: count ?? data?.length ?? 0,
+    work_item_draft_cutoff: workItemDraftCutoff,
+    work_item_drafts_purged: draftCount ?? draftData?.length ?? 0,
   })
 }

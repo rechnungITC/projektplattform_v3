@@ -1,20 +1,33 @@
 import type { SupabaseClient } from "@supabase/supabase-js"
 
 import { getProjectSectionHref } from "@/lib/method-templates/routing"
-import { PROJECT_METHODS, type ProjectMethod } from "@/types/project-method"
+import { isProjectEditAllowed } from "@/lib/projects/access"
+import {
+  PROJECT_METHOD_LABELS,
+  PROJECT_METHODS,
+  type ProjectMethod,
+} from "@/types/project-method"
 import { PROJECT_TYPES, type ProjectType } from "@/types/project"
 import type { ModuleKey } from "@/types/tenant-settings"
+import { WORK_ITEM_KIND_LABELS, type WorkItemKind } from "@/types/work-item"
 
 import {
   ASSISTANT_SETTINGS_DEFAULTS,
   normalizeAssistantSettings,
   type AssistantSettings,
 } from "./settings"
+import { transcriptForPersistence } from "./transcript"
+import {
+  parseWorkItemCommand,
+  resolveTargetKind,
+  type WorkItemCommand,
+} from "./work-item-command"
 import type {
   AssistantIntent,
   AssistantProjectChoice,
   AssistantRuntimeResult,
   AssistantToolCall,
+  AssistantWorkItemDraftRef,
 } from "./types"
 
 interface AssistantRuntimeArgs {
@@ -32,6 +45,8 @@ interface ClassifiedIntent {
   area: ProjectArea | null
   projectQuery: string | null
   draft: DraftExtraction | null
+  /** PROJ-144 — gefüllt, wenn der Satz ein Work-Item anlegen will. */
+  workItem?: WorkItemCommand | null
 }
 
 interface DraftExtraction {
@@ -88,6 +103,21 @@ const GENERIC_RESPONSE =
 export function classifyAssistantIntent(input: string): ClassifiedIntent {
   const text = normalizeText(input)
   const area = detectArea(text)
+
+  // PROJ-144 — vor der Projektanlage geprüft, weil „Erstelle eine Story im
+  // Projekt X" beide Muster streift. `parseWorkItemCommand` tritt seinerseits
+  // zurück, wenn `projekt` das Objekt der Erzeugung ist (AC-144.31).
+  // Absichtlich auf dem Originaltext: der Titel soll seine Schreibweise behalten.
+  const workItem = parseWorkItemCommand(input)
+  if (workItem) {
+    return {
+      intent: "work_item_create_draft",
+      area: null,
+      projectQuery: workItem.projectQuery,
+      draft: null,
+      workItem,
+    }
+  }
 
   if (isCreateDraftIntent(text)) {
     return {
@@ -179,6 +209,10 @@ export async function handleAssistantTurn(
 
   if (classified.intent === "project_create_draft") {
     return createWizardDraft(args, classified.draft, settings)
+  }
+
+  if (classified.intent === "work_item_create_draft" && classified.workItem) {
+    return createWorkItemDraft(args, classified.workItem, settings)
   }
 
   const projectResolution = await resolveProject(args, classified.projectQuery)
@@ -292,6 +326,234 @@ async function createWizardDraft(
       label: "Entwurf prüfen",
     },
   })
+}
+
+/**
+ * PROJ-144 — Schritt 1 des Zwei-Schritt-Flusses: aus dem Sprachbefehl wird ein
+ * gespeicherter Entwurf. Es entsteht hier bewusst KEIN Work-Item; das passiert
+ * erst über `POST /api/assistant/work-item-drafts/[id]/confirm` (AC-144.15/16).
+ */
+async function createWorkItemDraft(
+  args: AssistantRuntimeArgs,
+  command: WorkItemCommand,
+  settings: AssistantSettings,
+): Promise<AssistantRuntimeResult> {
+  const requestedLabel = WORK_ITEM_KIND_LABELS[command.requestedKind]
+
+  // Nur die Art genannt, kein Inhalt → Rückfrage statt geratener Titel.
+  if (!command.title) {
+    return result({
+      intent: "work_item_create_draft",
+      status: "needs_clarification",
+      response: `Wie soll die Position heißen? Zum Beispiel: „Neue ${requestedLabel}: Rechnungsimport testen".`,
+      projectId: args.projectId ?? null,
+      settings,
+      requiresConfirmation: false,
+    })
+  }
+
+  // Ein gesprochener Projektname schlägt den Kontext (AC-144.12). Ohne Namen
+  // gilt das offene Projekt (AC-144.11); ohne beides wird gefragt (AC-144.13).
+  const scopeArgs = command.projectQuery
+    ? { ...args, projectId: null }
+    : args
+  const projectResolution = await resolveProject(scopeArgs, command.projectQuery)
+  if (projectResolution.status !== "resolved") {
+    return result({
+      intent: "work_item_create_draft",
+      status: "needs_clarification",
+      response: projectResolution.response,
+      projectId: null,
+      choices: projectResolution.choices,
+      toolCalls: projectResolution.toolCalls,
+      settings,
+      requiresConfirmation: false,
+    })
+  }
+
+  const project = projectResolution.project
+
+  // Schreibrecht schon jetzt prüfen (D6) — sonst bekäme ein Nutzer mit
+  // Leserechten eine Prüfansicht, die beim Bestätigen scheitert.
+  const mayEdit = await hasProjectEditAccess(args, project)
+  if (!mayEdit) {
+    return result({
+      intent: "work_item_create_draft",
+      status: "blocked",
+      response: `In „${project.name}" hast du nur Leserechte — dort kann ich nichts anlegen.`,
+      projectId: project.id,
+      settings,
+      requiresConfirmation: false,
+      toolCalls: [
+        {
+          key: "work_item_draft.create",
+          label: "Sprach-Entwurf anlegen",
+          status: "blocked",
+          metadata: { reason: "missing_edit_right" },
+        },
+      ],
+    })
+  }
+
+  // Zielart aus der Projektmethode ableiten (L1/D4).
+  const kindResolution = resolveTargetKind(
+    command.requestedKind,
+    project.project_method,
+  )
+  if (kindResolution.status === "not_creatable") {
+    const response =
+      kindResolution.reason === "requires_parent"
+        ? `Eine ${requestedLabel} braucht ein übergeordnetes Element. Das kann ich per Sprache noch nicht zuordnen — bitte im Backlog anlegen.`
+        : `In „${project.name}" gibt es keine passende Position auf oberster Ebene für „${requestedLabel}".`
+    return result({
+      intent: "work_item_create_draft",
+      status: "needs_clarification",
+      response,
+      projectId: project.id,
+      settings,
+      requiresConfirmation: false,
+      toolCalls: [
+        {
+          key: "work_item_draft.create",
+          label: "Sprach-Entwurf anlegen",
+          status: "blocked",
+          metadata: { reason: kindResolution.reason },
+        },
+      ],
+    })
+  }
+
+  const targetKind = kindResolution.kind
+  const targetLabel = WORK_ITEM_KIND_LABELS[targetKind]
+
+  const transcriptPersistence =
+    settings.transcript_retention_mode === "no_persist"
+      ? "none"
+      : settings.transcript_retention_mode === "persist_redacted_transcript"
+        ? "redacted"
+        : "metadata"
+
+  const { data: row, error } = await args.supabase
+    .from("assistant_work_item_drafts")
+    .insert({
+      tenant_id: args.tenantId,
+      user_id: args.userId,
+      project_id: project.id,
+      requested_kind: command.requestedKind,
+      target_kind: targetKind,
+      title: command.title,
+      description: command.description,
+      // Rohtranskript nur im Rahmen der Mandanten-Regel (AC-144.26); der Titel
+      // selbst ist gewollter Geschäftsinhalt und wird immer gespeichert.
+      source_transcript: transcriptForPersistence(
+        args.inputText,
+        transcriptPersistence,
+      ),
+      source_modality: args.modality,
+    })
+    .select("id, title, description, target_kind, requested_kind")
+    .single()
+
+  const toolCalls: AssistantToolCall[] = [
+    {
+      key: "work_item_draft.create",
+      label: "Sprach-Entwurf anlegen",
+      status: error ? "failed" : "executed",
+      metadata: {
+        draft_id: (row as { id?: string } | null)?.id ?? null,
+        requested_kind: command.requestedKind,
+        target_kind: targetKind,
+        kind_was_mapped: kindResolution.mapped,
+      },
+    },
+  ]
+
+  if (error || !row) {
+    return result({
+      intent: "work_item_create_draft",
+      status: "failed",
+      response:
+        error?.message ?? "Der Entwurf konnte nicht vorbereitet werden.",
+      projectId: project.id,
+      settings,
+      toolCalls,
+      requiresConfirmation: false,
+    })
+  }
+
+  const draft = row as {
+    id: string
+    title: string
+    description: string | null
+    target_kind: string
+    requested_kind: string | null
+  }
+
+  // Weicht die Art von der gesagten ab, wird das ausdrücklich benannt (AC-144.8).
+  const methodLabel = project.project_method
+    ? PROJECT_METHOD_LABELS[project.project_method]
+    : null
+  const response = kindResolution.mapped
+    ? `Dieses Projekt läuft nach ${methodLabel} — dort gibt es keine ${requestedLabel}. Ich habe ein ${targetLabel} „${draft.title}" vorbereitet. Bitte prüfen und bestätigen.`
+    : `Ich habe ${articleFor(targetLabel)} ${targetLabel} „${draft.title}" für „${project.name}" vorbereitet. Bitte prüfen und bestätigen.`
+
+  const workItemDraft: AssistantWorkItemDraftRef = {
+    id: draft.id,
+    title: draft.title,
+    description: draft.description,
+    target_kind: draft.target_kind,
+    requested_kind: draft.requested_kind,
+    kind_was_mapped: kindResolution.mapped,
+    project_id: project.id,
+    project_name: project.name,
+  }
+
+  return result({
+    intent: "work_item_create_draft",
+    status: "success",
+    response,
+    projectId: project.id,
+    settings,
+    toolCalls,
+    workItemDraft,
+    requiresConfirmation: true,
+  })
+}
+
+/**
+ * Darf der Aufrufer in diesem Projekt fachlich schreiben? Die Rollenregel liegt
+ * in `@/lib/projects/access` und ist damit dieselbe, die `requireProjectAccess`
+ * auf der API-Ebene anwendet.
+ */
+async function hasProjectEditAccess(
+  args: AssistantRuntimeArgs,
+  project: ProjectRow,
+): Promise<boolean> {
+  const [tenantRes, projectRes] = await Promise.all([
+    args.supabase
+      .from("tenant_memberships")
+      .select("role")
+      .eq("tenant_id", project.tenant_id)
+      .eq("user_id", args.userId)
+      .maybeSingle(),
+    args.supabase
+      .from("project_memberships")
+      .select("role")
+      .eq("project_id", project.id)
+      .eq("user_id", args.userId)
+      .maybeSingle(),
+  ])
+
+  const tenantRole = (tenantRes.data as { role?: string } | null)?.role ?? null
+  const projectRole = (projectRes.data as { role?: string } | null)?.role ?? null
+  return isProjectEditAllowed(tenantRole, projectRole)
+}
+
+/** „ein Arbeitspaket" vs. „eine Story" — reine Textkosmetik der Antwort. */
+function articleFor(label: string): string {
+  return /^(Story|Aufgabe|Unteraufgabe|Teilaufgabe)$/.test(label)
+    ? "eine"
+    : "ein"
 }
 
 async function statusResult(
@@ -579,20 +841,31 @@ function result(args: {
   routeTarget?: AssistantRuntimeResult["route_target"]
   choices?: AssistantProjectChoice[]
   wizardDraft?: AssistantRuntimeResult["wizard_draft"]
+  workItemDraft?: AssistantRuntimeResult["work_item_draft"]
   toolCalls?: AssistantToolCall[]
+  /**
+   * PROJ-144 — bis dahin war die Bestätigungs-Meldung fest an den einen
+   * Projektanlage-Intent gebunden. Ohne Angabe gilt genau dieses alte
+   * Verhalten weiter (AC-144.30/144.31); die neuen Pfade setzen den Wert
+   * ausdrücklich, weil ein Klärungs- oder Sperr-Ergebnis desselben Intents
+   * gerade KEINE Bestätigung erwartet.
+   */
+  requiresConfirmation?: boolean
 }): AssistantRuntimeResult {
   const settings = args.settings ?? ASSISTANT_SETTINGS_DEFAULTS
+  const requiresConfirmation =
+    args.requiresConfirmation ?? args.intent === "project_create_draft"
   return {
     recognized_intent: args.intent,
-    requires_confirmation: args.intent === "project_create_draft",
-    confirmation_state:
-      args.intent === "project_create_draft" ? "required" : "not_required",
+    requires_confirmation: requiresConfirmation,
+    confirmation_state: requiresConfirmation ? "required" : "not_required",
     result_status: args.status,
     user_response: args.response,
     project_id: args.projectId,
     route_target: args.routeTarget ?? null,
     project_choices: args.choices ?? [],
     wizard_draft: args.wizardDraft ?? null,
+    work_item_draft: args.workItemDraft ?? null,
     tool_calls: args.toolCalls ?? [],
     transcript_persistence:
       settings.transcript_retention_mode === "no_persist"
