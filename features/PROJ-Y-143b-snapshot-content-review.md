@@ -14,9 +14,18 @@ summary_for_jira: "[HYGIENE] Visual-Regression: eingefrorene UI inhaltlich prüf
 
 # PROJ-Y-143b: Inhaltliche Prüfung der neuen Snapshots
 
-## Status: Planned
+## Status: In Review
 **Created:** 2026-08-11
+**Reviewed:** 2026-08-11
 **Origin:** Followup aus PROJ-143, Deviation D-1.
+
+> **Ergebnis vorweg:** Die zwei Baselines, um die es laut Auftrag ging (`dashboard`,
+> `stammdaten`), sind **inhaltlich korrekt** — die Aufnahme aus PROJ-143 hat den geladenen
+> Zustand erwischt. Die Prüfung hat den Fehler aber bei **zwei anderen** Snapshots gefunden,
+> die niemand im Verdacht hatte: `projects-list` und `project-room` waren auf **1280 × 720**
+> eingefroren, exakt Viewport-Höhe, also `fullPage`-Aufnahmen von Seiten, die noch nicht
+> gewachsen waren. `projects-list` zeigt fünf graue Skeleton-Zeilen an der Stelle der
+> Projekttabelle. Diese Tests waren grün und verglichen eine Ladeanimation.
 
 > **Hygiene-Slice.** Prüfung + ggf. Korrektur von Baselines. Kein Produktivcode erwartet — falls die Prüfung echte UI-Fehler findet, werden das eigene Slices.
 
@@ -82,3 +91,151 @@ npx playwright test tests/PROJ-51-visual-regression-authenticated.spec.ts --proj
 # → dashboard.png rot: "Expected an image 1280px by 1714px, received 1280px by 1430px"
 # unmittelbar danach erneut (Routen jetzt warm) → 7/7 grün
 ```
+
+---
+
+## Ergebnis 2026-08-11
+
+### AC-Y143b.1/2 — Klassifikation der geprüften Baselines
+
+Beide Auftrags-Baselines wurden visuell durchgesehen und **gegen den Code** abgeglichen, nicht
+nur gegen das Auge.
+
+**`stammdaten.png` (1280 × 1554)**
+
+| Beobachtung | Klasse | Belegt durch |
+|---|---|---|
+| 13 Karten sichtbar: Ressourcen · Stakeholder-Rollup · Stakeholder-Typen · Projekttypen · Methoden · Lieferanten · Berechtigungsprofile · 4-Augen-Genehmigung · Organisation · DD-Stream-Vorlagen · Projekt-Vorlagen (M&A) · Risikokategorien · Skills | **(a) korrekt** | `src/app/(app)/stammdaten/page.tsx` definiert genau diese 13 — Inventar vollständig, **keine Karte fehlt** |
+| Die seit PROJ-66/76/96 ergänzten Einträge sind da (Skills, Projekt-Vorlagen (M&A), Einstellungen-Chevron in der Sidebar) | **(a) korrekt** | Abgleich gegen die Karten-Registry |
+| Alle 13 mit „Nur für Tenant-Admins." | **(a) korrekt** | 13 × `adminOnly` in derselben Datei; Testnutzer ist Admin |
+
+**`dashboard.png` (1280 × 1714)**
+
+| Beobachtung | Klasse | Belegt durch |
+|---|---|---|
+| Werte gerendert („0 Items", „0 von 2 Projekten"), **keine** Skeletons | **(a) korrekt** | Die Aufnahme aus PROJ-143 traf den geladenen Zustand — genau das, was AC-Y143b.7 verlangt |
+| Alle KPI/Panels auf Null bzw. Leerzustand („Keine offenen Items", „Keine aktiven Alerts", „Keine offenen Freigaben", „Alle Projekte im Plan", „Noch keine Snapshots") | **(b) frischer Tenant** | Erwartet und **darf** eingefroren bleiben |
+| Sidebar-Hintergrund endet bei ~715 px, darunter weiß | **(a) Aufnahme-Artefakt, kein UI-Fehler** | `src/components/ui/sidebar.tsx:247` ist `fixed inset-y-0 h-svh` — bei `fullPage` malt eine viewport-hohe Sidebar nur ihre eigene Box. Folge: die Snapshots prüfen die Sidebar unterhalb der Falz **nicht** |
+| My-Work/Approvals/Project-Health-Regionen vorhanden | **(a) korrekt** | Von AC-Y143b.1 gefordert, alle drei da |
+
+### AC-Y143b.3 — (c)-Funde, jeweils mit eigenem Eintrag
+
+Die Baseline wurde für **keinen** dieser Punkte stillschweigend passend gemacht.
+
+**C-1 (hoch, der eigentliche Fund) — zwei Baselines waren im Ladezustand eingefroren.**
+`projects-list-chromium-linux.png` und `project-room-chromium-linux.png` sind **1280 × 720**,
+also genau der Viewport. Unter einem Daten-Anker rendern dieselben Seiten **1200 px** bzw.
+**2423 px**. Die `projects-list`-Baseline zeigt fünf Skeleton-Zeilen statt der Tabelle. Beide
+Tests waren dauerhaft grün, ohne etwas zu bewachen — dieselbe Klasse wie der Dashboard-Fund
+aus dem Nachtrag, nur bereits *materialisiert* statt bloß drohend. Bei `project-room` hatte
+der Datei-Header die Ursache sogar vorhergesagt („computed paths, work-item counts,
+last-edit-times"); der eingefrorene Leer-Shell hat es verdeckt. → **stillgelegt via
+`test.fixme`**, Wiederinbetriebnahme = **PROJ-Y-143d**.
+
+**C-2 (mittel) — der geladene Zustand ist auf diesen Seiten nicht einfrierbar.**
+`projects-table.tsx:129` rendert `formatRelative(project.updated_at)`, also „just now" /
+„10m ago" / „5h ago" — ändert sich pro Lauf. Zusätzlich wächst die Zeilenzahl mit jedem
+E2E-Lauf (beobachtet: 12 Zeilen, davon 11 akkumulierte `[E2E …]`-Fixtures, vgl.
+**PROJ-Y-143c**). Damit variiert die Höhe, und ein `fullPage`-Baseline ist strukturell
+unmöglich. Ein simples „neu aufnehmen" hätte den Test nur von *falsch-grün* auf
+*dauerhaft-rot* gedreht. Auflösung braucht eine Coverage-Entscheidung (Clip auf die
+deterministische Kopf-/Filter-Region **oder** gepinnte Seed-Daten) → **PROJ-Y-143d**.
+
+**C-3 (niedrig) — Sprachmix auf einer Fläche.** Das Dashboard zeigt englische Titel
+(`my-work-panel.tsx:108` „My Work", `project-health-exceptions-panel.tsx:77` „Project Health",
+Tab „Approvals", Panel „Alerts") direkt neben deutschen Geschwister-Panels
+(„Genehmigungen", „Deliverable-Freigaben", „Aktuelle Reports"). Schärfster Fall: der Tab
+heißt **„Approvals"**, das Panel unmittelbar daneben **„Genehmigungen"** — dasselbe Konzept
+zweisprachig auf einem Screen. Die Projektliste ist komplett englisch („Projects", „New
+project", „Filters", „All statuses") bei deutscher Sidebar. Verstößt gegen die
+Sprachkonvention in `CLAUDE.md` (fachliche Oberfläche = deutsch). Kein Testfehler, reine
+Produktinkonsistenz → **PROJ-Y-143e**.
+
+**C-4 (niedrig) — Kartenkopf bricht um.** „Project Health" umbricht im schmalen
+rechten Spalten-Panel auf zwei Zeilen und drängt sich neben „0 von 2 Projekten". Rein
+kosmetisch → mit **PROJ-Y-143e** gebündelt.
+
+### Keine (c)-Klasse: `settings-tenant` ist echte Feature-Drift
+
+Der Snapshot fiel nach dem Anker-Wechsel mit 4465 → **4505 px** aus. Ursache **nicht**
+Ladezustand — die Tenant-Settings rendern gar keine Skeletons (0 Treffer in
+`src/components/settings/`). Ursache ist `537f727` (**PROJ-130-α**, #321): in
+`privacy-section.tsx` wurde eine 2-zeilige `FormDescription` durch eine 7-zeilige ersetzt
+(„Ohne Wirkung: der Audit-Trail wird unbegrenzt aufbewahrt …"). Das sind die 40 px. Die
+Baseline war lediglich **älter als das Feature** → **einmalig neu aufgenommen und hier
+begründet**, nicht stillschweigend angepasst.
+
+### AC-Y143b.5 — Daten-Anker statt Shell-Anker
+
+`tests/PROJ-51-visual-regression-authenticated.spec.ts`: der Warte-Anker
+`[data-sidebar='sidebar']` (Kommentar: „the most stable indicator of *fully loaded*") ist an
+**allen 7** Aufrufstellen durch `waitForRenderedData()` ersetzt. Der Anker ist bewusst
+**zweiseitig**, weil jede Hälfte allein unsauber ist:
+
+- **positiv** `networkidle` — die Panel-Fetches sind zurück. *Nur* auf die Abwesenheit von
+  Skeletons zu warten würde auf einem noch leeren DOM **sofort** durchlaufen (klassische
+  Falle beim Warten auf Abwesenheit).
+- **negativ** `.animate-pulse` → `toHaveCount(0)` — React hat die Daten geflusht. *Nur* auf
+  das Netzwerk zu warten würde den Paint verpassen.
+
+`.animate-pulse` ist das shadcn-`Skeleton`-Primitive. Die einzigen weiteren Nutzer in `src/`
+sind Gantt-Submit-State, `sprint-card` und `trajectory-badges` — **keiner** rendert auf den
+hier gesnapshotteten Seiten, auf diesen Routen bedeutet die Klasse also „Skeleton" und sonst
+nichts. Eine Seite mit *dauerhaftem* Puls würde den Helper hängen lassen; das ist im
+Doc-Kommentar als Prüfpflicht für neue Routen festgehalten.
+
+### AC-Y143b.6 — Kaltstart belegt, kein Warm-Compile nötig
+
+Erste Variante gewählt und **gemessen**: der Daten-Anker fängt den Kaltstart allein ab, die
+`/api/dashboard/*`-Routen mussten **nicht** in `warmCompileDeepLinkRoutes` aufgenommen werden.
+
+| Lauf | Bedingung | Ergebnis |
+|---|---|---|
+| 1 | frischer Worktree, **kein `.next` überhaupt** (kälter als `rm -rf .next/dev`) | Dashboard **grün** — vorher genau der Fehlschlag; 3 andere rot = die Funde C-1/Drift |
+| 2 | `rm -rf .next/dev` nach dem Fix | **5 passed / 2 skipped** |
+| 3 | Wiederholung | **5 passed / 2 skipped** |
+
+### AC-Y143b.7 — Regel für künftige Neuaufnahmen
+
+Im Doc-Kommentar des Helpers verankert: eine Neuaufnahme darf **nur** im verifiziert geladenen
+Zustand erfolgen; ein Baseline-Bild im Skeleton-Zustand gilt als Fehler, nicht als neue
+Wahrheit. Zusätzlich ein billiger Selbsttest, der C-1 sofort entlarvt hätte: **ist ein
+`fullPage`-Snapshot exakt 720 px hoch, ist er verdächtig** — das ist die Viewport-Höhe, nicht
+die Höhe einer echten Seite.
+
+### AC-Status
+
+| AC | Status |
+|---|---|
+| AC-Y143b.1 Baselines durchgesehen + gegen Soll-UI abgeglichen | ✅ (gegen die Code-Registry, nicht nur visuell) |
+| AC-Y143b.2 jede Abweichung klassifiziert (a)/(b)/(c) | ✅ |
+| AC-Y143b.3 (c)-Funde mit eigenem Eintrag, keine stille Anpassung | ✅ C-1/C-2 → PROJ-Y-143d, C-3/C-4 → PROJ-Y-143e |
+| AC-Y143b.4 Ergebnis in dieser Spec dokumentiert | ✅ |
+| AC-Y143b.5 Daten-Anker statt Shell | ✅ 7/7 Aufrufstellen |
+| AC-Y143b.6 Kaltstart grün **oder** Warm-Compile erweitert | ✅ erste Variante, gemessen |
+| AC-Y143b.7 Regel für Neuaufnahmen festgehalten | ✅ inkl. 720-px-Selbsttest |
+
+### Gates
+
+ESLint **0** · tsc **13 = Baseline, 0 in der geänderten Datei** · Playwright chromium
+**2× 5 passed / 2 skipped** · kein Produktivcode angefasst (nur Testdatei + **eine** begründete
+Baseline).
+
+### Deviations
+
+- **D-Y143b.1** — Der Auftrag erwartete Funde in `dashboard`/`stammdaten`; die sind sauber.
+  Der Fehler saß in `projects-list`/`project-room`. Scope entsprechend erweitert, weil es
+  exakt die Fehlerklasse ist, welche diese Spec adressiert.
+- **D-Y143b.2** — Zwei Tests sind jetzt `test.fixme` statt grün. Das ist **Coverage-Gewinn
+  an Ehrlichkeit, kein Verlust**: sie haben vorher Skeletons verglichen. Wiederinbetriebnahme
+  = PROJ-Y-143d.
+- **D-Y143b.3** — `settings-tenant` einmalig neu aufgenommen. Zulässig, weil als
+  PROJ-130-α-Drift belegt (`537f727`) und hier begründet.
+- **D-Y143b.4** — Mobile Safari übersprungen (WebKit-Host-Libs, PROJ-67/F2).
+
+### Followups
+
+- **PROJ-Y-143d** — `projects-list` + `project-room` wieder aktivieren: Clip auf die
+  deterministische Region **oder** gepinnte Seed-Daten. Muss C-2 (relative Zeitstempel +
+  wachsende Zeilenzahl) lösen, sonst dauerhaft rot.
+- **PROJ-Y-143e** — Sprachmix Dashboard/Projektliste (C-3) + „Project Health"-Umbruch (C-4).
