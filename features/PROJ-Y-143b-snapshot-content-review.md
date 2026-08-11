@@ -82,3 +82,34 @@ npx playwright test tests/PROJ-51-visual-regression-authenticated.spec.ts --proj
 # → dashboard.png rot: "Expected an image 1280px by 1714px, received 1280px by 1430px"
 # unmittelbar danach erneut (Routen jetzt warm) → 7/7 grün
 ```
+
+---
+
+## Umsetzung 2026-08-11 — AC-Y143b.5 / .6 / .7 erledigt
+
+**AC-Y143b.5 (Daten-Anker).** Alle sieben authentifizierten Snapshot-Tests nutzen jetzt einen gemeinsamen Helfer `waitForDataReady()` statt des Sidebar-Ankers. Er wartet zusätzlich darauf, dass kein `[data-slot="skeleton"]` mehr im DOM ist. Der veraltete Kommentar („most stable indicator of *fully loaded*") ist entfernt — er behauptete das Gegenteil des Gemessenen.
+
+Zwei Entscheidungen dabei:
+
+- **Anker ist `[data-slot="skeleton"]`, nicht `.animate-pulse`.** Es gibt dauerhaft pulsierende Elemente (Live-Dot in `sprint-card`, `trajectory-badges`); auf diesen Seiten würde ein Klassen-Anker nie null erreichen und den Test in den Timeout laufen lassen. Zusätzlich lässt `cn`s tailwind-merge zu, dass ein `rounded-full` des Aufrufers das `rounded-md` des Primitives verdrängt — eine Klassen-Kombination ist also ebenfalls nicht verlässlich.
+- **Eine Zeile Produktivcode**, entgegen der Annahme „kein Produktivcode erwartet": `src/components/ui/skeleton.tsx` bekommt `data-slot="skeleton"`. Rein additives Attribut, kein Styling, kein Verhalten — und genau das, was upstream shadcn/ui inzwischen selbst tut.
+
+**AC-Y143b.6 (Kaltstart-Beleg).** Der zweite Zweig ist erfüllt, der Warm-Compile bleibt unangetastet: Der Lauf erfolgte in einem frischen Worktree **ganz ohne `.next`** — also härter als „nur `.next/dev` geleert" — und das Dashboard war grün. Der 30-s-Wartebudget im Helfer deckt die Turbopack-Erstkompilierung der `/api/**`-Routen ab.
+
+**AC-Y143b.7 (Regel für Neuaufnahmen).** Im Helfer dokumentiert, inklusive Begründung, warum eine Baseline im Ladezustand schlimmer ist als ein roter Test.
+
+### Was die Umstellung aufgedeckt hat
+
+Der Daten-Anker fotografiert erstmals den geladenen Zustand — und **drei Baselines fielen dabei durch**:
+
+| Snapshot | Baseline | Tatsächlich |
+|---|---|---|
+| `projects-list.png` | **720 px** — leerer Viewport | 1200 px |
+| `project-room.png` | **720 px** — leerer Viewport | 2423 px |
+| `settings-tenant.png` | 4465 px | 4505 px, 3 % Diff (Toleranz 2 %) |
+
+Das ist der in AC-Y143b.7 beschriebene Fall, in schärfster Ausprägung: zwei Baselines sind **leere Seiten**. Sie waren dauerhaft grün, weil der alte Anker so früh auslöste, dass die Seite noch leer war — passend zur leeren Baseline. Die Tests bewachten nichts und meldeten Erfolg.
+
+Sie wurden **nicht** neu gezogen: `projects-list` rendert relative Zeitstempel und wächst mit jedem E2E-Lauf (die Läufe legen Projekte an und räumen nicht ab), `project-room` ebenso. Ein Re-Baseline verschöbe das Rot nur in den nächsten Lauf. Stattdessen sind alle drei als `test.fixme()` mit Begründung markiert — bewusst nicht `skip`, damit sie im Report sichtbar bleiben — und in **PROJ-Y-143d** als eigener Eintrag erfasst (AC-Y143b.3: keine stillschweigend „passend" gemachte Baseline).
+
+Endstand der authentifizierten Suite: **4 passed, 3 fixme**, davon das Dashboard im vollständigen Kaltstart.
