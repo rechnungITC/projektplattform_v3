@@ -45,6 +45,29 @@ const SECURITY_HEADERS = [
 ]
 
 const nextConfig: NextConfig = {
+  /*
+   * PROJ-Y-143d: hide the Next dev-tools indicator for visual-regression runs.
+   *
+   * The indicator is a permanently mounted dev-only control in the bottom-left
+   * corner. It was sitting in *every* authenticated baseline — dark circle when
+   * idle, wide "Compiling …" pill while Turbopack works — so the images froze
+   * tooling chrome, and its two shapes differ between runs. At ~0.4% of a
+   * 1280x720 frame it stays under `maxDiffPixelRatio: 0.02`, which is why no
+   * test ever complained.
+   *
+   * It cannot be removed from the test side: it lives in a *closed* shadow
+   * root, so it is unreachable for CSS (`nextjs-portal { display: none }` was
+   * tried), for `mask`, and for a text wait — all three verified empirically.
+   * Turning it off in config is the only supported route.
+   *
+   * Env-gated on purpose: `npm run dev` by a human is unaffected; only the
+   * Playwright-managed server sets the flag (see `playwright.config.ts`).
+   * Caveat: with `reuseExistingServer` a dev server already started by hand
+   * is reused as-is and will still show the indicator.
+   */
+  ...(process.env.PW_DISABLE_DEV_INDICATOR === "1"
+    ? { devIndicators: false as const }
+    : {}),
   outputFileTracingIncludes: {
     "/api/projects/*/snapshots": ["node_modules/@sparticuz/chromium/bin/**/*"],
     "/api/projects/*/snapshots/*/render-pdf": [
