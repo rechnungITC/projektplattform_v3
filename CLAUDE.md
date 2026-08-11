@@ -1,11 +1,14 @@
 # Projektplattform V3
 
-> **`AGENTS.md` is kept in sync with this file** (same content, without Claude-Code-specific syntax).
-> Change one, change the other — they drifted apart once already.
+> **`AGENTS.md` is a symlink to this file** — one canonical set of instructions for every tool, so the two
+> cannot drift (they did once). Edit `CLAUDE.md`; `AGENTS.md` follows automatically.
+> If a tool ever replaces the symlink with a regular file, restore it with `ln -sf CLAUDE.md AGENTS.md`.
+>
+> Because this file is also served as `AGENTS.md`, keep it tool-agnostic: Claude-Code-specific mechanics
+> (`@`-imports, slash commands, sub-agents) always carry a plain-path or plain-prose equivalent alongside.
 
 > A multi-tenant, AI-supported **project orchestration platform** (ERP · construction · software · M&A deal lifecycle),
-> built with an AI-driven development workflow using specialized skills for Requirements, Architecture,
-> Frontend, Backend, QA, and Deployment. See `docs/PRD.md` for the product thesis.
+> built with an AI-driven development workflow. See `docs/PRD.md` for the product thesis.
 >
 > This is a live product with ~190 migrations in production — not a template. Treat every change as
 > touching real tenant data.
@@ -56,14 +59,20 @@ docs/
 
 ## Development Workflow
 
-1. `/requirements` - Create feature spec from idea
-2. `/architecture` - Design tech architecture (PM-friendly, no code)
-3. `/frontend` - Build UI components (shadcn/ui first!)
-4. `/backend` - Build APIs, database, RLS policies
-5. `/qa` - Test against acceptance criteria + security audit
-6. `/deploy` - Deploy to Vercel + production-ready checks
+Work moves through six stages. In Claude Code each is the slash command shown below, backed by a skill in
+`.claude/skills/`; other tools should follow the same sequence manually and read that skill file for the
+stage's checklist.
 
-`/continuous-improvement` runs alongside these — see the CIA section below for when it is mandatory.
+1. `/requirements` — create the feature spec from an idea
+2. `/architecture` — design the tech architecture (PM-friendly, no code)
+3. `/frontend` — build UI components (shadcn/ui first!)
+4. `/backend` — build APIs, database, RLS policies
+5. `/qa` — test against acceptance criteria + security audit
+6. `/deploy` — deploy to Vercel + production-ready checks
+
+Stages are not optional and not reorderable: a feature reaches `Deployed` only after QA passes with no
+critical/high findings. `/continuous-improvement` runs alongside these — see the CIA section below for
+when it is mandatory.
 
 Large features ship as lettered sub-slices (α, β, γ, …), each carried through the full
 build → QA → deploy chain rather than merged as one block.
@@ -163,6 +172,17 @@ JetBrains IDEs (WebStorm / IntelliJ) — configure once:
 Best: open the project via *Remote Development → WSL* rather than the
 `\\wsl.localhost` network path — the whole toolchain then runs natively in Linux, the
 UNC failure mode disappears, and file access avoids the slow 9P bridge.
+
+## Required Reading
+
+Claude Code auto-imports the first two below. **Tools that don't resolve `@`-imports must open these
+paths directly** — they are the product and status source of truth, and no change should be planned
+without them:
+
+- **`docs/PRD.md`** — vision, target users, roadmap, constraints, non-goals
+- **`features/INDEX.md`** — every feature, its status, and its implementation history
+  (large; skim for the PROJ-X rows relevant to your task rather than reading end to end)
+- **`features/OPEN-DEFERRED-STATUS.md`** — deferred follow-ups and MVP cuts
 
 ## Product Context
 
@@ -318,7 +338,12 @@ Rules:
 
 Dieses Projekt verwendet einen spezialisierten **Continuous Improvement & Technology Scout Agent**.
 
-Agent-Datei: `.claude/agents/continuous-improvement-agent.md`
+Agent-Datei: `.claude/agents/continuous-improvement-agent.md` · Trigger-Regeln:
+`.claude/rules/continuous-improvement.md`
+
+Tools without sub-agent support: treat the trigger list below as a **stop-and-ask checkpoint** — surface
+the decision to the user with the same structured output (Findings · Risks · Recommendations) instead of
+deciding unilaterally. The rule is about the review happening, not about which tool performs it.
 
 ### Zweck
 
