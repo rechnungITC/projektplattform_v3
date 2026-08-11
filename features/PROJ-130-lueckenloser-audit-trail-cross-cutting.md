@@ -14,9 +14,10 @@ summary_for_jira: "[L3] Lückenloser Audit-Trail (Cross-Cutting)"
 
 # PROJ-130: Lückenloser Audit-Trail (Cross-Cutting)
 
-## Status: Architected
+## Status: In Progress (α gebaut + live-verifiziert; β/γ/δ/ε offen)
 **Created:** 2026-06-10
 **Architected:** 2026-08-11 (CIA-reviewed, GO-mit-Auflagen — Tech Design unten)
+**α /backend:** 2026-08-11 — Migration in Prod, Live-Pentest 19/19, 0 Residuen
 **Origin:** M&A-Platform Backlog (Epic L — Vertraulichkeit, NDA & Audit)
 **Priority:** P1
 
@@ -186,6 +187,30 @@ Keine. Weder neue Bibliothek noch neuer Dienst. Prüfwert-Bildung und Zeitsteuer
 ### Handoff
 
 α und β sind rein serverseitig (Datenbank + Auswertungs-Schicht) → nächster Schritt ist `/backend`. γ und δ bringen Oberflächenanteile (Freigabe-Verwaltung, Maskierungs-Darstellung) → dort `/frontend` nach dem jeweiligen Backend-Teil. ε ist wieder rein serverseitig.
+
+## Implementation Notes — α (2026-08-11, `/backend`)
+
+**Migration `20260811093000_proj130_alpha_audit_trail_integrity.sql` in Prod angewendet** (MCP-`name` = Repo-Dateiname-Stamm, PROJ-134). Vier Blöcke:
+
+1. **entity_type-CHECK 80 → 81 Werte.** `ma_project_profiles` ergänzt — die latente Prod-Bombe ist entschärft. Anker-Ersetzung an der Live-Definition mit Fail-Loud-Guard; bei unerwarteter Form bricht die Migration ab statt zu raten.
+2. **`_tracked_audit_columns` 63 → 69 Zweige.** Die sechs stummen Trigger haben jetzt Spalten: `ma_project_profiles` (11), `project_goals` (8), `releases` (6), `sprints` (6), `stakeholder_coaching_recommendations` (2), `dependencies` (2). Whitespace-toleranter Regex-Anker auf das abschließende `else array[]::text[]`, Zweig-Zählung als Post-Condition, `execute` nur nach erfolgreicher Ersetzung. Explizites Re-Grant in derselben Migration.
+   **Nebeneffekt: zwei der β-Statuslücken sind damit geschlossen** — `transition_mandate_status` (über `ma_project_profiles.mandate_status`) und `set_sprint_state` (über `sprints.state`) protokollieren jetzt. β behält nur noch die Actor-Parameter-Bereinigung (→ PROJ-Y-130b).
+3. **8 waise Whitelist-Zweige verdrahtet** (59 → **67** auditierte Tabellen): `tenant_memberships`, `role_rates`, `vendor_documents`, `ma_nda_assignments`, `committee_templates`, `communication_templates`, `committee_meeting_attendees`, `committee_meeting_documents`. **Rollenwechsel im Mandanten sind damit erstmals nachvollziehbar.** `budget_postings` bleibt bewusst ohne Trigger — die Buchungs-Routen schreiben ihre Audit-Zeilen selbst; ein Trigger wäre ein zweiter Schreibpfad auf denselben Sachverhalt (dokumentierte Ausnahme für den Drift-Guard).
+4. **Löschstopp + Schreibschutz.** Mandanten-FK (`audit_log_tenant_fkey`, war `ON DELETE CASCADE`) entkoppelt; drei Guard-Trigger (`audit_log_no_update`/`_no_delete`/`_no_truncate`) blockieren mit `42501` für **jede** Rolle inklusive `service_role` und `postgres`; DML-Rechte von `anon` und `authenticated` entzogen, `SELECT` bleibt. Kein pauschaler Rechteentzug (CIA-Auflage 4) — vorab verifiziert, dass `audit_undo_field` und `audit_restore_entity` den Trail nur lesen und neue Zeilen schreiben.
+
+**App-Seite:** `/api/cron/apply-retention` purged nicht mehr, sondern meldet `audit_purge: "disabled"` samt Begründung und konstruiert **gar keinen** DB-Client mehr; Cron-Eintrag und Route bleiben bestehen, damit die Abschaltung beobachtbar ist statt wie ein verlorener Job auszusehen. Das Feld „Audit-Log-Aufbewahrung" in den Mandanten-Einstellungen ist deaktiviert und erklärt, bleibt aber im Zod-Schema (Bestandswerte würden sonst ungültig und der PROJ-17-Settings-PUT bräche).
+
+**Live-Pentest `tests/sql/PROJ-130-audit-trail-integrity-pentest.sql` gegen Prod: 19/19 PASS, 0 Residuen** (487 Audit-Zeilen vor und nach dem Lauf, neuester Eintrag älter als der Test). Vektoren: UPDATE/DELETE/TRUNCATE auf Audit-Einträge je `42501` blockiert · `INSERT` mit `entity_type='ma_project_profiles'` erlaubt (Bombe entschärft) · unbekannter `entity_type` weiter `23514` · vier vormals stumme bzw. neu verdrahtete Trigger schreiben nachweislich je eine Zeile · `authenticated` kann nicht mehr schreiben, liest aber weiter · Katalog-Prüfungen (FK weg, 3 Wächter, 67 Tabellen, 8 neue Trigger) · **Clobber-Prüfung: alle 22 Sibling-Zweige der Nachbar-Slices unverändert.**
+
+**Zwei Test-Vektoren mussten dem Prod-Seed angepasst werden** (ehrlich dokumentiert, nicht stillschweigend):
+- Ein Rollenwechsel ist auf diesem Seed nicht auslösbar — jeder Mandant hat genau einen Admin und `enforce_admin_invariant` blockiert die Herabstufung mit `23514`. Der Vektor bewegt deshalb die zweite getrackte Spalte (`organization_unit_id`); die Trigger-Anbindung selbst ist katalogseitig belegt (K4).
+- Für `ma_project_profiles` existiert in Prod keine Zeile (0 Profile). Die entschärfte CHECK-Bombe wird darum direkt am Constraint bewiesen (synthetischer Audit-Insert), nicht über einen Mandatswechsel.
+
+**Gates:** ESLint **0** · tsc **13 vorbestehend / 0 neu** · vitest **2750/2750** (352 Dateien, +4 neue) · Build clean · `check:migration-naming` **0 Fehler** · Supabase-Advisors **0 ERROR** und **kein einziger** audit_log-bezogener Lint (die neue Guard-Funktion trägt `set search_path`).
+
+**Betriebshinweis:** Die Migration ist in Prod, der Code-Rückbau des Purges deployt erst mit dem Merge. Zwischen Anwendung und Merge würde der 03:30-Cron einen `delete` versuchen und am Guard-Trigger scheitern — er **fällt sicher aus** (HTTP 500 `delete_failed`, nichts wird gelöscht) statt still zu truncaten. Bei Merge am selben Tag entsteht dieses Fenster gar nicht.
+
+**Offen in α:** nichts. **Nächster Schritt:** `/qa` für α, danach `/backend` für β.
 
 ---
 _Quelle: Backlog-Entwurf M&A-Projektplattform · L — Vertraulichkeit, NDA & Audit_
