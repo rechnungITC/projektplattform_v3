@@ -14,7 +14,7 @@ summary_for_jira: "[H3] Vertraulichkeitsgesteuerte Verteilung von Kommunikation"
 
 # PROJ-119: Vertraulichkeitsgesteuerte Verteilung von Kommunikation
 
-## Status: In Review
+## Status: Approved (QA PASS 2026-08-11 — 0 Critical / 0 High)
 **Created:** 2026-06-10
 **Origin:** M&A-Platform Backlog (Epic H — Kommunikation, Gremien & Stakeholder)
 **Priority:** P1
@@ -36,10 +36,10 @@ Das Modell macht das Need-to-know-Prinzip zur Pflichtgrundlage. Kommunikationsen
 
 **Akzeptanzkriterien:**
 
-- [ ] Pro Kommunikationseintrag (H2) kann eine Vertraulichkeitsstufe gesetzt werden (siehe L2), die die Sichtbarkeit auf einen festgelegten Personenkreis einschränkt.
-- [ ] Versuche, Inhalte herunterzuladen oder zu drucken, werden je nach Stufe protokolliert oder unterbunden.
-- [ ] Eine 'Inner Circle'-Markierung beschränkt Sichtbarkeit auf eine explizit benannte Personenliste, unabhängig von Workstream-Rollen.
-- [ ] Vor dem Statuswechsel 'freigegeben → versandt' prüft die Plattform, ob das Embargodatum erreicht ist (falls gesetzt).
+- [x] Pro Kommunikationseintrag (H2) kann eine Vertraulichkeitsstufe gesetzt werden (siehe L2), die die Sichtbarkeit auf einen festgelegten Personenkreis einschränkt.
+- [x] Versuche, Inhalte herunterzuladen oder zu drucken, werden je nach Stufe protokolliert oder unterbunden.
+- [x] Eine 'Inner Circle'-Markierung beschränkt Sichtbarkeit auf eine explizit benannte Personenliste, unabhängig von Workstream-Rollen.
+- [x] Vor dem Statuswechsel 'freigegeben → versandt' prüft die Plattform, ob das Embargodatum erreicht ist (falls gesetzt).
 
 **Abgrenzungen (Out of Scope):**
 
@@ -53,13 +53,13 @@ Das Modell macht das Need-to-know-Prinzip zur Pflichtgrundlage. Kommunikationsen
 
 **Definition of Ready:**
 
-- [ ] Klassifikationsstufen aus L2 sind definiert.
-- [ ] Sicht-/Aktionsregeln je Stufe sind dokumentiert.
+- [x] Klassifikationsstufen aus L2 sind definiert.
+- [x] Sicht-/Aktionsregeln je Stufe sind dokumentiert.
 
 **Definition of Done:**
 
-- [ ] Sichtbarkeit, Embargo und Inner-Circle-Logik funktionieren.
-- [ ] Audit-Trail erfasst jeden Zugriff auf 'inner-circle'-Inhalte.
+- [x] Sichtbarkeit, Embargo und Inner-Circle-Logik funktionieren.
+- [x] Audit-Trail erfasst jeden Zugriff auf 'inner-circle'-Inhalte.
 
 **Abhängigkeiten:**
 
@@ -225,3 +225,82 @@ Neu, zwei Tabellen:
 
 ---
 _Quelle: Backlog-Entwurf M&A-Projektplattform · H — Kommunikation, Gremien & Stakeholder_
+
+---
+
+## QA Test Results
+
+**Getestet:** 2026-08-11 · **Tester:** QA Engineer (AI) · **Basis:** main `ebae5ac` · **Ergebnis: PASS — 0 Critical / 0 High → Approved**
+
+### Warum dieser Lauf nötig war
+
+Der Code war seit `c020ff8` (#302) live und die Nachweise stark, aber es existierte kein formales QA-Verdikt und keines der Akzeptanzkriterien war abgehakt. Der Closure-Lauf vom 2026-08-11 hat den Deployed-Stempel deshalb bewusst zurückgehalten. Dieser Lauf schließt die Lücke.
+
+**Korrektur zur damaligen Closure-Begründung:** dort wurde als Rückstand „kein Playwright-Auth-Gate-Spec für die 6 neuen Routen" genannt. **Das war falsch.** `tests/PROJ-119-confidential-distribution.spec.ts` existiert seit #302 mit 11 Fällen, und `proj119.test.ts` liefert 26 Route-Unit-Tests inklusive der vollständigen AC2-Export-Matrix. Zustande kam der Fehlschluss, weil die Nachweis-Tabelle dieser Spec beides nicht auflistete und nur die SQL-/Vitest-Ebene nannte. Hier nachgetragen.
+
+### Akzeptanzkriterien
+
+| AC | Ergebnis | Nachweis |
+|---|---|---|
+| **AC1** Vertraulichkeitsstufe je Eintrag beschränkt Sichtbarkeit | **PASS** | Pentest **C** (freigegebener Außenstehender sieht 0) + **M** (Bestandsverhalten unverändert); Stufe stammt aus PROJ-118, Tor aus PROJ-100a |
+| **AC2** Download/Druck je Stufe protokolliert **oder** unterbunden | **PASS** | 6 Route-Unit-Tests der Export-Matrix: standard = Export ohne Protokoll · confidential = Export **und** `granted` · strict = 403 + `denied` · Inner Circle = 403 selbst auf `confidential` · Druckansicht protokolliert `print_view` · versteckter Eintrag = 404, Versuch trotzdem protokolliert |
+| **AC3** Inner Circle überstimmt Rollen und Freigaben | **PASS** | Pentest **B** (Tenant-Admin außerhalb sieht 0 — Admin-Bypass überstimmt), **C**, **O** (kein stiller Selbst-Eintritt) |
+| **AC4** Embargo-Prüfung vor „freigegeben → versandt" | **PASS** | Pentest **I** (blockt mit `EM001`, gibt nach Anpassung frei) + Route-Test (EM001 → 422, Versuch protokolliert) + **S** (Grenzfall) |
+
+**Definition of Done:** Sichtbarkeit/Embargo/Inner-Circle funktionieren ✅ · Audit-Trail erfasst jeden Zugriff auf Inner-Circle-Inhalte ✅ (Pentest **K**: Inhalt gelesen → 1× `granted`, verweigert → 1× `denied`).
+
+### Blockierende Hardening-Kriterien
+
+| | Ergebnis | Nachweis |
+|---|---|---|
+| **H1** Live-Sicherheitstest, 0 Rückstände | **PASS** | A–N 14/14 gegen Prod re-verifiziert; Cross-Tenant über alle drei Tabellen (**L**) |
+| **H2** Aggregat-Leck | **PASS** | **D**: Mitgliedschaft und Zugriffsprotokoll außerhalb des Kreises unsichtbar (0/0), innerhalb 2 |
+| **H3** Schreibpfad geschlossen (B1) | **PASS** | **E** (UPDATE) + **F** (DELETE/MARK_SENT/SUBMIT) je `42501` für Projektleitung ohne Freigabe |
+| **H4** Kein Aussperren | **PASS** | **A** (Ersteller + Verantwortliche automatisch), **G** (letztes Mitglied nicht entfernbar, `23514`), **H** (Auflösung schreibt Zugriffsprotokoll **und** Feld-Audit) |
+| **H5** Anon entzogen, Protokoll nur anfügbar | **PASS** | **J** (INSERT `42501`, UPDATE/DELETE 0 Zeilen), **N** (anon auf allen 10 Funktionen entzogen, interner Guard auch für `authenticated` nicht erreichbar), **P** |
+| **H6** Regressionen unverändert | **PASS** | **M** behavioral + strukturell live: `can_access_classified` kennt `inner_circle` nicht, **genau eine** neue RESTRICTIVE-Policy und nur auf `communication_matrix_entries` |
+| **H7** Listenantwort ohne Nachrichtentext | **PASS** | `redactInnerCircleContent` + 3 Unit-Tests (strippt Inner-Circle-Text, lässt normale Zeile unberührt, `has_message` bei leerem Text) |
+
+### Red-Team-Supplement (neu in diesem Lauf)
+
+Fünf Vektoren, die A–N **nicht** abdeckte — live gegen Prod, zurückgerollt, 0 Rückstände:
+
+| | Angriff | Ergebnis |
+|---|---|---|
+| **O** | Tenant-Admin **außerhalb** des Kreises fügt sich per `add_communication_inner_circle_member` **selbst** hinzu — ein stiller Weg hinein, der den lauten Break-Glass umgehen würde | **PASS** — blockiert; die Auflösung mit Protokoll- und Audit-Eintrag bleibt der einzige Zugang. Das ist der Kern der Story: der Administrator kommt an den Inhalt, aber nur nachweisbar. |
+| **P** | Fremder Mandant schreibt Zeilen ins Zugriffsprotokoll eines Eintrags, den er nicht sehen darf (Audit-Verfälschung) | **PASS** — 0 gefälschte Zeilen. Zusätzlich strukturell: `log_communication_access(p_entry_id, p_action, p_outcome)` hat **keinen** Nutzer-Parameter, der Akteur kommt aus `auth.uid()` — Zuschreibungs-Fälschung ist ausgeschlossen. |
+| **Q** | Cross-Tenant-Inhaltsabruf über die SECURITY-DEFINER-RPC `read_communication_content` | **PASS** — kein Inhalt |
+| **S** | Embargo-Grenzfall: Zeitpunkt **exakt** `now()` | **INFO** — gilt als erreicht, Versand erlaubt (inklusive Grenze). Sinnvoll und hier dokumentiert, damit es niemand später „korrigiert". |
+| **T** | Gewöhnliches Kreis-Mitglied (Rolle `editor`) erweitert den Kreis auf einen Außenstehenden | **INFO** — blockiert (`42501`); Erweitern erfordert Manager-Rechte. Strenger als der Prosa-Text der Spec vermuten lässt. |
+
+### Automatisierte Suiten
+
+| Prüfung | Ergebnis |
+|---|---|
+| Vitest (voll) | **2746/2746** |
+| Playwright `PROJ-119-confidential-distribution.spec.ts` | **11/11** chromium (alle 6 neuen Routen + Druckansicht + Protokoll + „unauthentifizierter Export leakt nie Inhalt") |
+| Route-Unit-Tests `proj119.test.ts` | **26** (Redaktion, `/content`, Inner-Circle-CRUD, Auflösung, Embargo, `mark-sent` unter Embargo, AC2-Matrix) |
+| ESLint | **0 Probleme** |
+| `npm run build` | clean |
+| `check:migration-naming` | 0 Errors |
+| Supabase-Advisors | **0 ERROR**; keine der 131 WARN ist PROJ-119 zuzuordnen (alle sechs neuen Funktionen tragen `search_path=public, pg_temp`) |
+
+### Befunde
+
+**F-1 — Nachweis-Tabelle war unvollständig (Info, in diesem Lauf behoben).** Playwright-Spec und die 26 Route-Unit-Tests fehlten in der Auflistung. Reale Folge: der Closure-Lauf hielt die Slice mit einer teils falschen Begründung zurück. Kein Produktfehler, aber ein Dokumentationsfehler mit Entscheidungswirkung — deshalb hier als Befund geführt.
+
+**F-2 — Embargo-Grenze ist inklusiv (Info).** `embargo_at == now()` gilt als erreicht. Bewusst dokumentiert, kein Handlungsbedarf.
+
+**F-3 — Kreis-Erweiterung ist manager-gebunden (Info).** Ein `editor` im Kreis kann niemanden aufnehmen. Der Prosa-Abschnitt „Die vier Bausteine" liest sich offener; das Verhalten ist die sicherere Variante und bleibt.
+
+Keine Critical-, High-, Medium- oder Low-Befunde.
+
+### Nicht getestet (und warum)
+
+- **Cross-Browser:** Mobile Safari übersprungen — WebKit-Host-Bibliotheken fehlen auf diesem Host (vorbestehend, PROJ-67/F2). Chromium vollständig.
+- **Responsive 375/768/1440:** nicht Teil dieses Laufs; die Slice fügt der bestehenden Kommunikationsmatrix-Seite Badges und ein Sheet hinzu, beide aus vorhandenen shadcn-Primitiven ohne eigenes Layout.
+- **Wasserzeichen / Sponsor-Pflichtbestätigung / Protokoll-Aufbewahrung:** bewusste Followups (siehe oben), nicht im Scope.
+
+### Production-Ready
+
+**JA.** 4/4 Akzeptanzkriterien, 2/2 Definition-of-Done, 7/7 Hardening-Kriterien, 3 neue Angriffsvektoren abgewehrt, 0 Critical/High.
