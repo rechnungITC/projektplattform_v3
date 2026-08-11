@@ -64,8 +64,6 @@ const VALID_UUID = "11111111-1111-4111-8111-111111111111"
 /** Markers for the AC-135.3 upload half, so its rows can be cleaned up. */
 const DRAFT_NAME = "[E2E 135 AC3] Upload Gating"
 const KICKOFF_FILENAME = "ac135-3-kickoff.eml"
-/** Format-valid RFC-4122 v4 stand-in — see the seed comment below. */
-const LEAD_PLACEHOLDER_UUID = "3f1c9d64-5b7a-4a1e-9c2f-8d6e5b4a3c21"
 
 // ---------------------------------------------------------------------------
 // 1. Auth-gate — runs without a session
@@ -218,14 +216,13 @@ test.describe("PROJ-135 / wizard UI gating (AC-135.3)", () => {
           name: DRAFT_NAME,
           project_type: "general",
           project_method: null,
-          // NOT E2E_USER_ID: the wizard validates `responsible_user_id` with
-          // `z.string().uuid()`, and the synthetic fixture id
-          // ("…-000000000e2e") is not RFC-4122 — zod 4 rejects it, basics
-          // never validates and navigation stalls on step 1. The project lead
-          // is not what this test asserts (we never finalize), so a
-          // format-valid uuid stands in. Fixing the fixture identities for
-          // real is PROJ-Y-78f-fixtures.
-          responsible_user_id: LEAD_PLACEHOLDER_UUID,
+          // PROJ-143 made the fixture identities RFC-4122 conformant, so the
+          // real seeded user now passes the wizard's `z.string().uuid()` check
+          // on `responsible_user_id`. The format-valid stand-in this used to
+          // need is gone (PROJ-Y-143a); verified against zod directly —
+          // "e2e00000-0000-4e2e-8e2e-000000000001" is accepted, the old
+          // "…-000000000e2e" is not.
+          responsible_user_id: E2E_USER_ID,
           description: "AC-135.3 upload gating.",
           ki_backlog: { enabled: true, context_source_id: null, filename: null },
         },
