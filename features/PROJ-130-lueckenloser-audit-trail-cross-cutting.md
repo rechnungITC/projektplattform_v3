@@ -14,11 +14,12 @@ summary_for_jira: "[L3] Lückenloser Audit-Trail (Cross-Cutting)"
 
 # PROJ-130: Lückenloser Audit-Trail (Cross-Cutting)
 
-## Status: In Progress (α + β gebaut + live-verifiziert; γ/δ/ε offen)
+## Status: In Progress (α + β + γ1 gebaut + live-verifiziert; γ2–γ4/δ/ε offen)
 **Created:** 2026-06-10
 **Architected:** 2026-08-11 (CIA-reviewed, GO-mit-Auflagen — Tech Design unten)
 **α /backend:** 2026-08-11 — Migration in Prod, Live-Pentest 19/19, 0 Residuen (gemergt, `537f727`)
-**β /backend:** 2026-08-11 — Migration in Prod, Live-Pentest 12/12, 0 Residuen
+**β /backend:** 2026-08-11 — Migration in Prod, Live-Pentest 12/12, 0 Residuen (gemergt, `b2a82df`)
+**γ1 /backend:** 2026-08-11 — Migration in Prod, Live-Pentest 9/9, 0 Residuen
 **Origin:** M&A-Platform Backlog (Epic L — Vertraulichkeit, NDA & Audit)
 **Priority:** P1
 
@@ -101,7 +102,7 @@ PROJ-130 wurde als „M&A-Objekte in den bestehenden Audit-Trail eintragen" gepl
 |---|---|---|---|---|
 | **α** | Nichts geht mehr verloren | Löschpfade schließen, Schreibschutz auf DB-Ebene, die vier Register in Einklang bringen | 1,5 | **pilot-kritisch, zuerst** |
 | **β** | Schreibvorgänge vollständig | Anlage + Löschung + Papierkorb protokollieren, zwei fehlende Statuswechsel, Begründungs-Konvention | 2,5 | **pilot-kritisch** |
-| **γ** | Leseberechtigung + Maskierung | Auditor-Rolle, befristeter externer Prüfer, Wertmaskierung gegen Need-to-know, Suche/Export für alle Objektarten öffnen | 2,0 | vor erstem externen Audit |
+| **γ** | Leseberechtigung + Need-to-know | Auditor-Rolle, befristeter externer Prüfer, Need-to-know-Gate im Trail, Suche/Export für alle Objektarten öffnen | 2,0 | vor erstem externen Audit |
 | **δ** | Lese-Zugriffe auf `strict` | Zugriffsprotokoll für vertrauliche Inhalte, mit veröffentlichter Positivliste | 2,0 | vor erstem Pilot mit `strict`-Inhalten |
 | **ε** | Manipulationsnachweis | Hash-Verkettung über periodische Anker + Verifikationslauf | 1,5 | zuletzt |
 
@@ -142,7 +143,7 @@ Warum diese Grenzen: **ε setzt eine stabile Zeilenmenge voraus** — jede β-Ä
 
 **Auditor als Freigabe, nicht als vierte Mandanten-Rolle.** Die Mandanten-Rolle ist die Achse hinter praktisch jeder Zugriffsregel im System. Ein vierter Rollenwert würde den Auditor automatisch zum Mandanten-Mitglied machen — und damit überall lesend durchlassen, wo nur Mitgliedschaft geprüft wird. Das ist das Gegenteil einer rein lesenden Revision. Stattdessen eine separate Freigabe plus **ein** zusätzlicher Zweig in der Leseprüfung des Trails: modul-lokaler Eingriff statt globalem Regelwerk-Durchlauf. Das bestehende Muster für externe Berater (Mandat + Vertraulichkeitsvereinbarung) wird **nicht** wiederverwendet — es bedeutet „externer Berater in einem Deal", nicht „Revisor über den Mandanten", und würde die Vertraulichkeitsprüfung semantisch überladen.
 
-**Wertmaskierung: der Trail darf kein Seitenkanal sein.** Heute liest ein Mandanten-Administrator den gesamten Trail bedingungslos — einschließlich der Vorher-/Nachher-Werte von Objekten, die nach Need-to-know für ihn gesperrt sind. Mit einem Auditor und einem externen Prüfer verschärft sich das. γ maskiert deshalb die Werte, wo die Vertraulichkeitsprüfung negativ ausfällt, und lässt die Metadaten (wer, wann, welches Objekt, welches Feld) sichtbar. Die Maskierung sitzt in der Leseschicht, damit sie alle drei Leseflächen trifft — Objekt-Historie, Bericht, Export — und nicht in der Oberfläche.
+**Wertmaskierung: der Trail darf kein Seitenkanal sein.** _(Beim Bau von γ1 widerlegt und durch das strengere Zeilen-Verbergen ersetzt — Begründung in den γ1-Implementation-Notes. Der Absatz bleibt als Entscheidungshistorie stehen.)_ Heute liest ein Mandanten-Administrator den gesamten Trail bedingungslos — einschließlich der Vorher-/Nachher-Werte von Objekten, die nach Need-to-know für ihn gesperrt sind. Mit einem Auditor und einem externen Prüfer verschärft sich das. γ maskiert deshalb die Werte, wo die Vertraulichkeitsprüfung negativ ausfällt, und lässt die Metadaten (wer, wann, welches Objekt, welches Feld) sichtbar. Die Maskierung sitzt in der Leseschicht, damit sie alle drei Leseflächen trifft — Objekt-Historie, Bericht, Export — und nicht in der Oberfläche.
 
 **Löschstopp mit Rücksicht auf Bestand.** Der nächtliche Job bleibt bestehen, sein Audit-Löschblock entfällt und die Antwort weist den Rückbau ausdrücklich aus (ein stiller Rückbau sieht später wie ein Fehler aus). Das Frist-Feld wird in der Mandanten-Oberfläche deaktiviert und begründet, aber **nicht** aus der Schema-Prüfung entfernt: bestehende Werte würden sonst ungültig und das Speichern der Mandanten-Einstellungen bräche. Die Kopplung, über die ein Mandanten-Offboarding den Trail mitlöscht, wird aufgehoben — der Mandantenbezug bleibt als schlichter Verweis erhalten. Genau diese Begründung ist im Zugriffsprotokoll aus PROJ-119 bereits verankert: ein forensisches Protokoll muss die Löschung seines Bezugsobjekts überleben.
 
@@ -185,6 +186,7 @@ Keine. Weder neue Bibliothek noch neuer Dienst. Prüfwert-Bildung und Zeitsteuer
 - **PROJ-Y-130d** — Audit-Abdeckung der verbleibenden unabgedeckten Tabellen.
 - **PROJ-Y-130e** — Blätterung für Bericht und Export (heute hartes Limit 500 ohne Fortsetzung).
 - **PROJ-Y-130f** — **Prod/Repo-Divergenz in der Audit-Abdeckung** (Fund aus α, siehe unten): Prod hat zwei auditierte Tabellen mehr, als die Migrationsdateien herstellen. Genau bestimmbar erst mit einer lokalen Shadow-DB (blockiert durch den offenen Docker/WSL-Handoff aus PROJ-67/F6).
+- **PROJ-Y-130h** — **Test-Rauschen sammelt sich unwiderruflich im Trail** (Beobachtung aus γ1): ein fremder Live-Testlauf hat 7 dauerhafte Lifecycle-Zeilen hinterlassen. Optionen: designierten Test-Mandanten von der Lifecycle-Protokollierung ausnehmen, oder bewusst akzeptieren und Live-Tests strikt auf das Rollback-Muster verpflichten.
 - **PROJ-Y-130g** — **`stakeholder_interaction_participants` bricht die Feld-Audit-Funktion** (Fund aus β): kein einspaltiger `id`-PK, aber Trigger + 7 getrackte Spalten → `entity_id` wird NULL → `NOT NULL`-Verstoß. Ein UPDATE einer getrackten Spalte schlägt in Prod fehl; es passiert nur nie. Der neue β-Resolver behandelt den Fall korrekt, die Altfunktion bleibt wegen CIA-Auflage 3 unangetastet.
 
 ### Handoff
@@ -255,7 +257,32 @@ Nebenbefund: `audit_escalation_patterns` auf `stakeholders` schreibt entgegen de
 
 **Gates:** ESLint **0** · tsc **13 vorbestehend / 0 neu** · vitest **2755/2755** (353 Dateien, +5) · Build clean · `check:migration-naming` **0 Fehler**.
 
-**Offen in β:** nichts. **Nächster Schritt:** γ (Auditor-Rolle, befristeter Prüfer, Wertmaskierung, TS-Enum-Öffnung) — die TS-Enum-Öffnung ist jetzt dringlicher, weil β 6 weitere Objektarten in den Trail schreibt, die die Oberfläche noch nicht filtern kann.
+**Offen in β:** nichts.
+
+## Implementation Notes — γ1 (2026-08-11, `/backend`) — Need-to-know im Trail
+
+**Migration `20260811120000_proj130_gamma1_audit_need_to_know.sql` in Prod angewendet.**
+
+**Die Live-Erhebung hat die geplante Wertmaskierung widerlegt.** Das Tech Design sah vor, Werte zu maskieren und Metadaten sichtbar zu lassen. Zwei Fakten sprechen dagegen:
+
+1. **`can_access_classified` gibt für Tenant-Admins unbedingt `true` zurück** — produktweit, seit PROJ-100a. Ein Admin kann jedes `strict`-Objekt ohnehin öffnen. Werte im Trail für Admins zu maskieren hätte nichts geschützt und eine zweite, abweichende Semantik neben PROJ-100a gestellt.
+2. **Es gibt sechs Leseflächen auf den Trail**, nicht drei: Historie, Bericht, Export **plus** Stakeholder-Risk-Trend, Undo und Restore. Eine Maskierung pro Route hätte drei davon verfehlt.
+
+**Der echte Befund ist enger und schärfer:** 20 Tabellen tragen `confidentiality_level`, 17 davon haben einen Zweig in `can_read_audit_entry` — aber nur **drei** Zweige prüfen die Stufe (alle aus PROJ-Y-115c). Die übrigen **16** lösen nur das Projekt auf. Ein Projektmitglied ohne Freischaltung konnte damit die Vorher-/Nachher-Werte von `strict`-Objekten lesen, die es nicht öffnen darf. Umsetzung deshalb: **Zeile verbergen statt Werte maskieren** — strenger (auch die Metadaten verraten die Existenz eines vertraulichen Vorgangs nicht mehr), konsistent mit PROJ-100a, und über die RLS-Policy für alle sechs Leseflächen gleichzeitig wirksam. Kein Eingriff in eine einzige Route.
+
+**Ein Anker statt 21 Ersetzungen.** Die naive Variante wäre gewesen, in 21 Zweigen je einen Gate-Aufruf einzuflechten — 21 formabhängige Regexe auf der historisch am häufigsten geclobberten Funktion des Projekts. Stattdessen: die Stufen-Auflösung in **eine** neue Funktion `_audit_entry_classified_ok` (24 Zweige: eigene Stufe oder vom Elternobjekt geerbt), und `can_read_audit_entry` an genau **einer** Stelle erweitert — an ihrem gemeinsamen Ausgang.
+
+**Ein Fehler, den ich dabei fast gemacht hätte:** `if v_project is null then return false` kommt auch im `vendor_invoices`-Zweig vor, und `regexp_replace` ersetzt ohne `'g'` nur das **erste** Vorkommen. Hätte das Muster zweimal gepasst, wäre die falsche Stelle erweitert worden, der Ausgang ungegated geblieben — und die Zweig-Zählung hätte es nicht bemerkt. Die Migration zählt deshalb die Anker-Treffer und bricht bei ≠ 1 ab.
+
+**Das neue Register ist prüfbar, anders als die vier bestehenden.** Welche Tabellen die Stufen-Auflösung abdecken muss, ist aus dem Katalog **berechenbar**: Spalte `confidentiality_level` **und** Zweig in `can_read_audit_entry`. Genau das prüft die Migration am Ende — nicht gegen eine gepflegte Liste, sondern gegen die Datenbank.
+
+**Live-Pentest `tests/sql/PROJ-130-gamma1-need-to-know-pentest.sql` gegen Prod: 9/9 PASS, 0 Residuen.** Kern-Beweis: Mitglied ohne Freigabe sieht für das `strict`-Objekt **0** Zeilen, für das `standard`-Objekt weiter **1** (kein Blanket-Deny), nach Freischaltung **1** (das Tor öffnet wirklich); Tenant-Admin sieht beides (bewusster produktweiter Bypass); Nicht-Mitglied 0; `anon` 42501; 57 Zweige unverändert; α-Wächter intakt. Das Nicht-Admin-Mitglied musste synthetisiert werden — im Prod-Seed ist jedes Mandanten-Mitglied Admin, und an Admins ist das Tor nicht prüfbar. (`tenant_memberships.user_id` referenziert `profiles`, nicht `auth.users` — erst der FK-Fehler hat das gezeigt.)
+
+**Gates:** ESLint **0** · tsc **13 vorbestehend / 0 neu** · vitest **2755/2755** (unverändert, γ1 ist rein DB-seitig) · Build clean · `check:migration-naming` **0 Fehler**.
+
+**Beobachtung, die die β-Warnung bestätigt:** Zwischen den Läufen sind in Prod **7 Audit-Zeilen aus einem fremden Live-Testlauf** aufgetaucht (11:25 UTC, 3× `context_sources` angelegt und gelöscht, 1 Projekt angelegt). Der Test hat seine Daten aufgeräumt — das Protokoll des Aufräumens bleibt dauerhaft, weil es keinen Löschpfad mehr gibt. Test-Rauschen sammelt sich also unwiderruflich in einem Compliance-Artefakt. → **PROJ-Y-130h**.
+
+**Offen in γ:** γ2 Auditor-Grant + befristeter externer Prüfer · γ3 TS-Enum-Öffnung (15 von 87 Werten; `AUDIT_ENTITY_LABELS` ist der einzige Exhaustiveness-Zwang, und das Array ist als `readonly AuditEntityType[]` typisiert, wodurch der `as const`-Tupel-Charakter verloren geht — ein neuer Union-Wert ohne Array-Eintrag kompiliert sauber und wird dann still mit 400 abgelehnt) · γ4 `redaction_off` für Auditoren sperren.
 
 ---
 _Quelle: Backlog-Entwurf M&A-Projektplattform · L — Vertraulichkeit, NDA & Audit_
