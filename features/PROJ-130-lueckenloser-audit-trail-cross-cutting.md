@@ -190,7 +190,7 @@ Keine. Weder neue Bibliothek noch neuer Dienst. Prüfwert-Bildung und Zeitsteuer
 - **PROJ-Y-130f** — **Prod/Repo-Divergenz in der Audit-Abdeckung** (Fund aus α, siehe unten): Prod hat zwei auditierte Tabellen mehr, als die Migrationsdateien herstellen. Genau bestimmbar erst mit einer lokalen Shadow-DB (blockiert durch den offenen Docker/WSL-Handoff aus PROJ-67/F6).
 - **PROJ-Y-130j** — suchbare Combobox statt 88-Eintrag-Select im Audit-Bericht (γ3-Nebeneffekt).
 - **PROJ-Y-130i** — **Auditor sieht keine mandantenweiten Katalogänderungen** (bewusste γ2-Grenze): Zweige des Lesetors, die direkt `is_tenant_member(...)` oder `return false` liefern, umgehen den gemeinsamen Ausgang. Ausweitung = 9 weitere Einzel-Ersetzungen, gehört nicht in dieselbe Migration.
-- **PROJ-Y-130h** — **Test-Rauschen sammelt sich unwiderruflich im Trail** (Beobachtung aus γ1): ein fremder Live-Testlauf hat 7 dauerhafte Lifecycle-Zeilen hinterlassen. Optionen: designierten Test-Mandanten von der Lifecycle-Protokollierung ausnehmen, oder bewusst akzeptieren und Live-Tests strikt auf das Rollback-Muster verpflichten.
+- ~~**PROJ-Y-130h**~~ — **erledigt 2026-08-11** (PO-Entscheidung: Test-Mandanten ausnehmen). Siehe eigenen Abschnitt unten.
 - **PROJ-Y-130g** — **`stakeholder_interaction_participants` bricht die Feld-Audit-Funktion** (Fund aus β): kein einspaltiger `id`-PK, aber Trigger + 7 getrackte Spalten → `entity_id` wird NULL → `NOT NULL`-Verstoß. Ein UPDATE einer getrackten Spalte schlägt in Prod fehl; es passiert nur nie. Der neue β-Resolver behandelt den Fall korrekt, die Altfunktion bleibt wegen CIA-Auflage 3 unangetastet.
 
 ### Handoff
@@ -287,6 +287,30 @@ Nebenbefund: `audit_escalation_patterns` auf `stakeholders` schreibt entgegen de
 **Beobachtung, die die β-Warnung bestätigt:** Zwischen den Läufen sind in Prod **7 Audit-Zeilen aus einem fremden Live-Testlauf** aufgetaucht (11:25 UTC, 3× `context_sources` angelegt und gelöscht, 1 Projekt angelegt). Der Test hat seine Daten aufgeräumt — das Protokoll des Aufräumens bleibt dauerhaft, weil es keinen Löschpfad mehr gibt. Test-Rauschen sammelt sich also unwiderruflich in einem Compliance-Artefakt. → **PROJ-Y-130h**.
 
 **Offen nach γ1:** γ2 Auditor-Grant · γ3 TS-Enum-Öffnung · γ4 `redaction_off`.
+
+## Implementation Notes — PROJ-Y-130h (2026-08-11) — Test-Mandanten-Ausnahme
+
+**Migration `20260811160000_projy130h_test_tenant_lifecycle_exempt.sql` in Prod angewendet.** PO-Entscheidung auf die aus γ1 gemeldete Beobachtung.
+
+**Diagnose zuerst.** Alle 7 Streuzeilen gehörten dem Mandanten `e2e00000-0000-4e2e-8e2e-000000000002` („[E2E] Projektplattform Test"). Es gibt **zwei** solche Test-Mandanten; der Produktivmandant „IT-Couch GmbH" hatte 436 Audit-Zeilen und **null** Lifecycle-Rauschen. Die Ausnahme trifft also genau das, was sie treffen soll.
+
+**Eine Ausnahme im Trail ist die Sorte stille Lücke, gegen die PROJ-130 antritt** — wird ein ausgenommener Mandant je für echte Daten benutzt, ist sein Protokoll unvollständig und ein späterer Prüfer sieht das nicht. Deshalb drei Sicherungen, ohne die ich das nicht gebaut hätte:
+
+1. **Sichtbares Feld statt Trigger-Konstante:** `tenants.audit_lifecycle_exempt`. Kein magischer UUID-Vergleich im Trigger, den niemand mehr findet.
+2. **Das Setzen ist selbst auditiert** — und zwar über den Feld-Audit-Pfad, der von der Ausnahme **nicht** betroffen ist. Wer die Ausnahme setzt, kann seine eigene Spur nicht damit verwischen. Die Migration prüft zusätzlich, dass der Feld-Audit-Trigger auf `tenants` überhaupt existiert; sonst wäre das Flag nominell getrackt, aber stumm.
+3. **Bericht und Export weisen sie aus.** Damit das auch für die Zielgruppe funktioniert, brauchte es einen schmalen DEFINER-Helper `tenant_audit_lifecycle_exempt`: ein Blick auf `tenants` genügt nicht, weil die RLS dort Mitgliedschaft verlangt — und ein externer Prüfer mit γ2-Freigabe ist bewusst **kein** Mitglied, hätte den Hinweis also gerade nicht bekommen.
+
+**Eng gefasst:** die Ausnahme gilt nur für Anlage/Löschung. Feldänderungen, Statuswechsel und Klassifikationsänderungen werden auch in Test-Mandanten weiter protokolliert — dort entsteht das Rauschen nicht, und der Verzicht hätte die Tests selbst weniger prüfbar gemacht.
+
+**Kennzeichnung über den Namen (`[E2E]%`)**, nicht über eine UUID-Liste: so profitieren auch frisch aufgebaute Umgebungen, und die Post-Condition kann prüfen, dass **nichts ohne Test-Kennung** ausgenommen ist. Genau diese Prüfung ist der Grund für die Namenslösung.
+
+**CSV-Hinweis nur im Ausnahmefall.** Ein gewöhnlicher Export bleibt byte-identisch (keine Parser brechen); nur beim ausgenommenen Mandanten steht eine `#`-Zeile voran. Ein Export, der als vollständiger Prüfnachweis durchgeht, muss den Vorbehalt in der Datei tragen, nicht nur in der Oberfläche.
+
+**Live-Pentest `tests/sql/PROJ-Y-130h-test-tenant-exempt-pentest.sql` gegen Prod: 8/8 PASS, 0 Residuen.** Kern: **A** nur Test-Mandanten ausgenommen · **B** dort keine Anlage-Zeile · **C** Feldänderung dort trotzdem geloggt · **D** Produktivmandant unverändert · **E** Flag-Änderung selbst auditiert · **F** nach Widerruf protokolliert er wieder · **G** α-Wächter und γ1/γ2-Lesetor unberührt.
+
+**Mein eigener Test hat dabei eine Regression gefangen:** die Export-Route ruft jetzt eine zweite RPC, und die Zusicherung „der Admin-Pfad ruft gar keine RPC" war zu grob. Präzisiert auf „nicht die Freigabe-RPC" — die Ausnahme-RPC gehört zur Antwort, nicht zur Autorisierung.
+
+**Gates:** ESLint **0** · tsc **13 vorbestehend / 0 neu** · vitest **2777/2777** (+2) · Build clean · `check:migration-naming` **0 Fehler**.
 
 ## Implementation Notes — γ3 (2026-08-11, `/backend`) — Objektarten-Register
 
