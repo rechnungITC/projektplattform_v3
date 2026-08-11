@@ -43,6 +43,15 @@ import {
   type AuditLogEntry,
 } from "@/types/audit"
 
+/**
+ * PROJ-130-γ3: das Register ist von 15 auf 88 Objektarten gewachsen. Das Array
+ * ist nach technischem Namen sortiert; im Dropdown stehen aber die deutschen
+ * Labels, die dann willkürlich geordnet wirkten. Einmal nach Label sortieren.
+ */
+const ENTITY_OPTIONS: readonly AuditEntityType[] = [...AUDIT_ENTITY_TYPES].sort(
+  (a, b) => AUDIT_ENTITY_LABELS[a].localeCompare(AUDIT_ENTITY_LABELS[b], "de")
+)
+
 type EntityFilter = "all" | AuditEntityType
 
 function formatValue(v: unknown): string {
@@ -142,7 +151,7 @@ export function AuditReportClient() {
               </SelectTrigger>
               <SelectContent>
                 <SelectItem value="all">Alle</SelectItem>
-                {AUDIT_ENTITY_TYPES.map((t) => (
+                {ENTITY_OPTIONS.map((t) => (
                   <SelectItem key={t} value={t}>
                     {AUDIT_ENTITY_LABELS[t]}
                   </SelectItem>

@@ -14,13 +14,14 @@ summary_for_jira: "[L3] Lückenloser Audit-Trail (Cross-Cutting)"
 
 # PROJ-130: Lückenloser Audit-Trail (Cross-Cutting)
 
-## Status: In Progress (α + β + γ1 + γ2 + γ4 gebaut + live-verifiziert; γ3/γ2b/δ/ε offen)
+## Status: In Progress (γ komplett bis auf die Oberfläche: α + β + γ1 + γ2 + γ3 + γ4 live; γ2b/δ/ε offen)
 **Created:** 2026-06-10
 **Architected:** 2026-08-11 (CIA-reviewed, GO-mit-Auflagen — Tech Design unten)
 **α /backend:** 2026-08-11 — Migration in Prod, Live-Pentest 19/19, 0 Residuen (gemergt, `537f727`)
 **β /backend:** 2026-08-11 — Migration in Prod, Live-Pentest 12/12, 0 Residuen (gemergt, `b2a82df`)
 **γ1 /backend:** 2026-08-11 — Migration in Prod, Live-Pentest 9/9, 0 Residuen (gemergt, `52111f3`)
-**γ2 + γ4 /backend:** 2026-08-11 — Migration in Prod, Live-Pentest 11/11, 0 Residuen
+**γ2 + γ4 /backend:** 2026-08-11 — Migration in Prod, Live-Pentest 11/11, 0 Residuen (gemergt, PR #329)
+**γ3 /backend:** 2026-08-11 — Objektarten-Register 15 → 88, Drift strukturell geschlossen
 **Origin:** M&A-Platform Backlog (Epic L — Vertraulichkeit, NDA & Audit)
 **Priority:** P1
 
@@ -187,6 +188,7 @@ Keine. Weder neue Bibliothek noch neuer Dienst. Prüfwert-Bildung und Zeitsteuer
 - **PROJ-Y-130d** — Audit-Abdeckung der verbleibenden unabgedeckten Tabellen.
 - **PROJ-Y-130e** — Blätterung für Bericht und Export (heute hartes Limit 500 ohne Fortsetzung).
 - **PROJ-Y-130f** — **Prod/Repo-Divergenz in der Audit-Abdeckung** (Fund aus α, siehe unten): Prod hat zwei auditierte Tabellen mehr, als die Migrationsdateien herstellen. Genau bestimmbar erst mit einer lokalen Shadow-DB (blockiert durch den offenen Docker/WSL-Handoff aus PROJ-67/F6).
+- **PROJ-Y-130j** — suchbare Combobox statt 88-Eintrag-Select im Audit-Bericht (γ3-Nebeneffekt).
 - **PROJ-Y-130i** — **Auditor sieht keine mandantenweiten Katalogänderungen** (bewusste γ2-Grenze): Zweige des Lesetors, die direkt `is_tenant_member(...)` oder `return false` liefern, umgehen den gemeinsamen Ausgang. Ausweitung = 9 weitere Einzel-Ersetzungen, gehört nicht in dieselbe Migration.
 - **PROJ-Y-130h** — **Test-Rauschen sammelt sich unwiderruflich im Trail** (Beobachtung aus γ1): ein fremder Live-Testlauf hat 7 dauerhafte Lifecycle-Zeilen hinterlassen. Optionen: designierten Test-Mandanten von der Lifecycle-Protokollierung ausnehmen, oder bewusst akzeptieren und Live-Tests strikt auf das Rollback-Muster verpflichten.
 - **PROJ-Y-130g** — **`stakeholder_interaction_participants` bricht die Feld-Audit-Funktion** (Fund aus β): kein einspaltiger `id`-PK, aber Trigger + 7 getrackte Spalten → `entity_id` wird NULL → `NOT NULL`-Verstoß. Ein UPDATE einer getrackten Spalte schlägt in Prod fehl; es passiert nur nie. Der neue β-Resolver behandelt den Fall korrekt, die Altfunktion bleibt wegen CIA-Auflage 3 unangetastet.
@@ -285,6 +287,22 @@ Nebenbefund: `audit_escalation_patterns` auf `stakeholders` schreibt entgegen de
 **Beobachtung, die die β-Warnung bestätigt:** Zwischen den Läufen sind in Prod **7 Audit-Zeilen aus einem fremden Live-Testlauf** aufgetaucht (11:25 UTC, 3× `context_sources` angelegt und gelöscht, 1 Projekt angelegt). Der Test hat seine Daten aufgeräumt — das Protokoll des Aufräumens bleibt dauerhaft, weil es keinen Löschpfad mehr gibt. Test-Rauschen sammelt sich also unwiderruflich in einem Compliance-Artefakt. → **PROJ-Y-130h**.
 
 **Offen nach γ1:** γ2 Auditor-Grant · γ3 TS-Enum-Öffnung · γ4 `redaction_off`.
+
+## Implementation Notes — γ3 (2026-08-11, `/backend`) — Objektarten-Register
+
+**Keine Migration, keine DB-Änderung.** γ3 behebt einen reinen TypeScript-Defekt mit sehr konkreter Wirkung.
+
+**Der Befund, quantifiziert:** In Prod tragen **22** Objektarten tatsächlich Audit-Zeilen. Das TS-Register kannte **15** Werte, von denen sich nur **8** mit den vorhandenen Daten überschnitten. **14 der 22 real protokollierten Objektarten waren über die API überhaupt nicht abfragbar** — darunter `tenants`, `tenant_settings`, `role_rates`, `budget_postings`, `resources`, `organization_units`, `context_sources` und `tenant_ai_providers`. Beide Audit-Routen validieren mit `z.enum(AUDIT_ENTITY_TYPES)`, ein Filter auf eine dieser Arten gab also **400**, und im Dropdown fehlten sie. Die Einträge existierten, waren aber unerreichbar.
+
+**Der strukturelle Teil ist wichtiger als die Liste.** Vorher waren Union und Array **zwei handgepflegte Kopien**, und das Array war als `readonly AuditEntityType[]` typisiert — womit der `as const`-Tupel-Charakter verloren ging. Ein Wert in der Union ohne Array-Eintrag kompilierte sauber und wurde danach still mit 400 abgelehnt. Genau dieses Loch hat die Drift auf 15-gegen-88 wachsen lassen. Die Union wird jetzt **aus dem Array abgeleitet** (`(typeof AUDIT_ENTITY_TYPES)[number]`); die beiden können nicht mehr auseinanderlaufen. `AUDIT_ENTITY_LABELS` bleibt ein totaler `Record` und erzwingt damit ein deutsches Label pro neuem Wert.
+
+**Was TypeScript nicht prüfen kann**, ist die Übereinstimmung mit dem DB-CHECK. Dafür ein Test gegen einen eingefrorenen Constraint-Abzug (88 Werte): läuft er rot, ist entweder eine Migration ohne TS-Nachzug gelandet oder umgekehrt. Dazu Tests auf Label-Vollständigkeit, keine Labels für Unbekannte, Duplikatfreiheit, erhaltener Tupel-Charakter (via `@ts-expect-error` auf einen erfundenen Wert) und Abdeckung der von α/β/γ2 neu hinzugekommenen Arten.
+
+**Nebeneffekt der Verbreiterung:** das Filter-Dropdown wuchs von 15 auf 88 Einträge und war nach *technischem* Namen sortiert, während es deutsche Labels anzeigt — also scheinbar willkürlich geordnet. Einmal nach Label sortiert (`localeCompare` mit `de`). Eine suchbare Combobox wäre bei 88 Optionen die bessere Lösung → **PROJ-Y-130j**.
+
+**Gates:** ESLint **0** · tsc **13 vorbestehend / 0 neu** (kein einziger Konsument brach — es gibt im Bestand keine erschöpfenden `switch`-Anweisungen über die Union) · vitest **2775/2775** (356 Dateien, +6) · Build clean.
+
+**Offen in γ:** nur noch γ2b, die Verwaltungs-Oberfläche für die Revisions-Freigaben (heute über `GET/POST/DELETE /api/tenants/[id]/audit-readers` bedienbar).
 
 ## Implementation Notes — γ2 + γ4 (2026-08-11, `/backend`) — Revisions-Leseberechtigung
 
