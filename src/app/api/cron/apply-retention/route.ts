@@ -1,25 +1,30 @@
 import { NextResponse } from "next/server"
 
-import { createAdminClient } from "@/lib/supabase/admin"
-import type { RetentionOverrides } from "@/types/tenant-settings"
-
 import { apiError } from "../../_lib/route-helpers"
 
-// PROJ-10 + PROJ-17 — daily cron that purges audit_log_entries older than
-// each tenant's policy. PROJ-17 introduced `tenant_settings.retention_overrides
-// .audit_log_days` — when set, that wins for the tenant; otherwise the system
-// default of 730 days applies. Triggered by Vercel Cron with
-// `Authorization: Bearer ${CRON_SECRET}`.
-
-const SYSTEM_DEFAULT_RETENTION_DAYS = 730
-const MS_PER_DAY = 24 * 60 * 60 * 1000
-
-interface PerTenantPurge {
-  tenant_id: string
-  retention_days: number
-  cutoff: string
-  purged: number
-}
+// PROJ-10 + PROJ-17 + PROJ-130-α — daily retention cron.
+//
+// HISTORY: until PROJ-130-α this route hard-deleted `audit_log_entries` older
+// than each tenant's `retention_overrides.audit_log_days` (system default 730
+// days), using the service-role client. That made the platform's own promise
+// ("Audit-Einträge sind nicht änderbar und nicht löschbar") false: the trail
+// was silently truncated every night at 03:30.
+//
+// PROJ-130-α (PO lock 2026-08-11): audit retention is UNLIMITED, there is no
+// purge. Subject-rights requests are served through the redaction in
+// `GET /api/audit/export`, not by deleting the trail.
+//
+// The purge is disabled in two independent places, on purpose:
+//   1. here, so no code path even attempts it, and
+//   2. in the database, via the `audit_log_no_delete` guard trigger — a future
+//      cron cannot silently reactivate the purge.
+//
+// The route and its Vercel Cron entry are kept rather than removed so the
+// disablement is observable (`audit_purge: "disabled"`) instead of looking like
+// a lost job, and so a future retention concern that IS allowed to delete
+// (e.g. PROJ-40 assistant transcripts, declared but never enforced) has a home.
+//
+// Triggered by Vercel Cron with `Authorization: Bearer ${CRON_SECRET}`.
 
 export async function GET(request: Request) {
   const expected = process.env.CRON_SECRET
@@ -35,60 +40,12 @@ export async function GET(request: Request) {
     return apiError("unauthorized", "Invalid or missing cron secret.", 401)
   }
 
-  const supabase = createAdminClient()
-
-  // Pull all tenants + their per-tenant retention override (if any).
-  const { data: tenants, error: tenantsErr } = await supabase
-    .from("tenants")
-    .select(
-      "id, tenant_settings!inner(retention_overrides)"
-    )
-
-  if (tenantsErr) {
-    return apiError("read_failed", tenantsErr.message, 500)
-  }
-
-  const reports: PerTenantPurge[] = []
-  let totalPurged = 0
-
-  for (const row of tenants ?? []) {
-    const tenantId = row.id as string
-    const tsRows = row.tenant_settings as
-      | Array<{ retention_overrides: RetentionOverrides | null }>
-      | { retention_overrides: RetentionOverrides | null }
-      | null
-    const overrides = Array.isArray(tsRows) ? tsRows[0] : tsRows
-    const tenantDays = overrides?.retention_overrides?.audit_log_days
-    const retentionDays =
-      typeof tenantDays === "number" && tenantDays > 0
-        ? tenantDays
-        : SYSTEM_DEFAULT_RETENTION_DAYS
-    const cutoff = new Date(Date.now() - retentionDays * MS_PER_DAY).toISOString()
-
-    const { data, error, count } = await supabase
-      .from("audit_log_entries")
-      .delete({ count: "exact" })
-      .eq("tenant_id", tenantId)
-      .lt("changed_at", cutoff)
-      .select("id")
-
-    if (error) {
-      return apiError("delete_failed", error.message, 500)
-    }
-
-    const purged = count ?? data?.length ?? 0
-    totalPurged += purged
-    reports.push({
-      tenant_id: tenantId,
-      retention_days: retentionDays,
-      cutoff,
-      purged,
-    })
-  }
-
   return NextResponse.json({
     ok: true,
-    total_purged: totalPurged,
-    tenants: reports,
+    audit_purge: "disabled",
+    reason:
+      "PROJ-130-α: audit retention is unlimited. The audit trail is append-only and has no purge path; DB-side the `audit_log_no_delete` guard trigger blocks deletion for every role.",
+    total_purged: 0,
+    tenants: [],
   })
 }

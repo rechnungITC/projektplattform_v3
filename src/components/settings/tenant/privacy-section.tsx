@@ -207,13 +207,19 @@ export function PrivacySection() {
                       min={1}
                       max={3650}
                       placeholder={String(SYSTEM_DEFAULT_RETENTION)}
-                      disabled={submitting}
+                      disabled
+                      aria-describedby="audit-retention-disabled"
                       {...field}
                     />
                   </FormControl>
-                  <FormDescription>
-                    Leer lassen für System-Default ({SYSTEM_DEFAULT_RETENTION}{" "}
-                    Tage). Maximum: 3650 Tage (10 Jahre).
+                  <FormDescription id="audit-retention-disabled">
+                    Ohne Wirkung: der Audit-Trail wird unbegrenzt aufbewahrt und
+                    hat keinen Löschpfad mehr (PROJ-130). Der nächtliche Purge
+                    ist abgeschaltet, die Datenbank blockiert das Löschen von
+                    Audit-Einträgen für jede Rolle. Auskunfts- und
+                    Löschersuchen laufen über die Redaktion im Audit-Export.
+                    Bestehende Werte bleiben gespeichert, werden aber nicht mehr
+                    ausgewertet.
                   </FormDescription>
                   <FormMessage />
                 </FormItem>
