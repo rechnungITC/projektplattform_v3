@@ -83,5 +83,13 @@ export default defineConfig({
     command: 'npm run dev',
     url: 'http://localhost:3000',
     reuseExistingServer: !process.env.CI,
+    // PROJ-Y-143d: keep the Next dev-tools indicator out of the visual
+    // baselines. It is a permanent dev-only control in the bottom-left corner
+    // that ended up in every authenticated snapshot, and it changes shape
+    // (idle circle vs "Compiling …" pill) between runs. It sits in a closed
+    // shadow root, so CSS/mask/text-wait cannot reach it — config is the only
+    // lever. Only this server gets the flag; `npm run dev` by hand keeps the
+    // indicator. See the matching comment in `next.config.ts`.
+    env: { ...process.env, PW_DISABLE_DEV_INDICATOR: '1' },
   },
 })

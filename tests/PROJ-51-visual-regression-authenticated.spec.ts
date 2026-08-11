@@ -63,6 +63,19 @@ async function waitForRenderedData(page: Page): Promise<void> {
   await expect(page.locator(".animate-pulse")).toHaveCount(0, {
     timeout: 30_000,
   })
+  // PROJ-Y-143d: the dev server's "Compiling …" badge must be gone too.
+  // It lives in the `<nextjs-portal>` shadow root (Playwright's CSS engine
+  // pierces open shadow roots, so this locator reaches it) and only exists
+  // while Turbopack is busy. Taking a baseline in that moment bakes a piece
+  // of *tooling* state into the image — and at ~0.4% of a 1280x720 frame it
+  // sits comfortably under `maxDiffPixelRatio: 0.02`, so it would neither
+  // fail the run nor announce itself. Suppressing the host via the
+  // screenshot stylesheet was tried first and did **not** remove it, so we
+  // wait it out instead of hiding it.
+  await expect(page.locator("nextjs-portal").getByText(/compil/i)).toHaveCount(
+    0,
+    { timeout: 60_000 },
+  )
 }
 
 test.describe("PROJ-51-ε.3 — Visual Regression (authenticated)", () => {
@@ -87,30 +100,41 @@ test.describe("PROJ-51-ε.3 — Visual Regression (authenticated)", () => {
     })
   })
 
-  // PROJ-Y-143b: disabled on purpose, and this is an *increase* in honesty.
-  // The committed baseline was 1280x720 — exactly the viewport — i.e. a
-  // `fullPage` shot of a page that had not grown yet. It shows five grey
-  // skeleton rows where the project table belongs, so the test was green
-  // while comparing a loading animation.
+  // PROJ-Y-143d: re-enabled with a deterministic capture.
   //
-  // It cannot simply be re-taken in the loaded state either: the table
-  // renders `formatRelative(project.updated_at)` (`projects-table.tsx:129`),
-  // so cells read "just now" / "10m ago" / "5h ago" and change every run,
-  // and the row count grows as other E2E specs create projects (12 rows
-  // observed, 11 of them accumulated `[E2E …]` fixtures — see PROJ-Y-143c).
-  // Height therefore varies, which rules out a `fullPage` baseline.
+  // History: the old baseline was a `fullPage` shot frozen at 1280x720 —
+  // exactly the viewport — showing five skeleton rows instead of the table
+  // (PROJ-Y-143b). It was green while comparing a loading animation.
   //
-  // Re-enabling needs a deliberate coverage decision — clip to the
-  // deterministic header/filter region, or pin seed data — tracked as
-  // PROJ-Y-143d. Freezing the skeleton again is forbidden by AC-Y143b.7.
-  test.fixme("Projects list page", async ({ authenticatedPage }) => {
+  // A loaded `fullPage` baseline is impossible here, so this is not a
+  // re-take but a changed capture strategy. Two independent sources of
+  // non-determinism:
+  //   1. `projects-table.tsx:129` renders `formatRelative(updated_at)` —
+  //      cells read "just now" / "10m ago" and change between runs;
+  //   2. the row count grows as other E2E specs create projects, so the
+  //      page height grows with the tenant's history (PROJ-Y-143c).
+  //
+  // Both are handled structurally rather than by tolerance:
+  //   - `fullPage: false` pins the capture to the 1280x720 viewport, so
+  //     height cannot drift with row count. This is the one case where a
+  //     720px-high snapshot is correct by construction rather than the
+  //     symptom of a missed load (see the AC-Y143b.7 self-check).
+  //   - `mask` paints over the table body, so the volatile cells cannot
+  //     produce a diff.
+  //
+  // What this still guards: shell, sidebar, page header, the Filters card
+  // and the table *header* row. What it deliberately does not guard: the
+  // row content. That trade is the point — the previous version guarded
+  // nothing at all while appearing to pass.
+  test("Projects list page", async ({ authenticatedPage }) => {
     await authenticatedPage.goto("/projects", {
       waitUntil: "domcontentloaded",
     })
     await waitForRenderedData(authenticatedPage)
     await expect(authenticatedPage).toHaveScreenshot("projects-list.png", {
       maxDiffPixelRatio: 0.02,
-      fullPage: true,
+      fullPage: false,
+      mask: [authenticatedPage.locator("table tbody")],
     })
   })
 
@@ -177,14 +201,20 @@ test.describe("PROJ-51-ε.4 — Visual Regression (Project-Room)", () => {
     "Project-Room snapshots are pinned to desktop chromium for now.",
   )
 
-  // PROJ-Y-143b: same defect as the projects list, and the header comment
-  // above already predicted the cause — "Project-Room renders more dynamic
-  // content (computed paths, work-item counts, last-edit-times)". The
-  // committed baseline is 1280x720, the viewport height, so none of that
-  // content was captured; under a data anchor the page is 2423px. The old
-  // baseline froze the empty shell, which is why nobody noticed.
-  // Re-enable via PROJ-Y-143d together with the projects list.
-  test.fixme("Project-Room overview", async ({ authenticatedPage }) => {
+  // PROJ-Y-143d: re-enabled, same strategy as the projects list.
+  //
+  // The old baseline was 1280x720 `fullPage` — the empty shell — while the
+  // loaded page is 2423px (PROJ-Y-143b). The file header above had already
+  // named the risk ("computed paths, work-item counts, last-edit-times");
+  // the frozen shell hid it.
+  //
+  // Pinned to the viewport (`fullPage: false`) rather than masked: the
+  // volatile parts of this page — the absolute `CREATED` timestamp and the
+  // Master-data block — sit *below* the fold, while everything above it
+  // (title, lifecycle badges, Budget/Risiken/Health tiles, the Projekt-Setup
+  // counters) is derived from the fixed-UUID seed project and is therefore
+  // stable. Verified over three consecutive runs.
+  test("Project-Room overview", async ({ authenticatedPage }) => {
     const response = await authenticatedPage.goto(`/projects/${E2E_PROJECT_ID}`, {
       waitUntil: "domcontentloaded",
     })
@@ -197,7 +227,7 @@ test.describe("PROJ-51-ε.4 — Visual Regression (Project-Room)", () => {
     await waitForRenderedData(authenticatedPage)
     await expect(authenticatedPage).toHaveScreenshot("project-room.png", {
       maxDiffPixelRatio: 0.03,
-      fullPage: true,
+      fullPage: false,
     })
   })
 })
