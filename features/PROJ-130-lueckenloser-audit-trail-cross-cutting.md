@@ -14,10 +14,11 @@ summary_for_jira: "[L3] Lückenloser Audit-Trail (Cross-Cutting)"
 
 # PROJ-130: Lückenloser Audit-Trail (Cross-Cutting)
 
-## Status: In Progress (α gebaut + live-verifiziert; β/γ/δ/ε offen)
+## Status: In Progress (α + β gebaut + live-verifiziert; γ/δ/ε offen)
 **Created:** 2026-06-10
 **Architected:** 2026-08-11 (CIA-reviewed, GO-mit-Auflagen — Tech Design unten)
-**α /backend:** 2026-08-11 — Migration in Prod, Live-Pentest 19/19, 0 Residuen
+**α /backend:** 2026-08-11 — Migration in Prod, Live-Pentest 19/19, 0 Residuen (gemergt, `537f727`)
+**β /backend:** 2026-08-11 — Migration in Prod, Live-Pentest 12/12, 0 Residuen
 **Origin:** M&A-Platform Backlog (Epic L — Vertraulichkeit, NDA & Audit)
 **Priority:** P1
 
@@ -184,6 +185,7 @@ Keine. Weder neue Bibliothek noch neuer Dienst. Prüfwert-Bildung und Zeitsteuer
 - **PROJ-Y-130d** — Audit-Abdeckung der verbleibenden unabgedeckten Tabellen.
 - **PROJ-Y-130e** — Blätterung für Bericht und Export (heute hartes Limit 500 ohne Fortsetzung).
 - **PROJ-Y-130f** — **Prod/Repo-Divergenz in der Audit-Abdeckung** (Fund aus α, siehe unten): Prod hat zwei auditierte Tabellen mehr, als die Migrationsdateien herstellen. Genau bestimmbar erst mit einer lokalen Shadow-DB (blockiert durch den offenen Docker/WSL-Handoff aus PROJ-67/F6).
+- **PROJ-Y-130g** — **`stakeholder_interaction_participants` bricht die Feld-Audit-Funktion** (Fund aus β): kein einspaltiger `id`-PK, aber Trigger + 7 getrackte Spalten → `entity_id` wird NULL → `NOT NULL`-Verstoß. Ein UPDATE einer getrackten Spalte schlägt in Prod fehl; es passiert nur nie. Der neue β-Resolver behandelt den Fall korrekt, die Altfunktion bleibt wegen CIA-Auflage 3 unangetastet.
 
 ### Handoff
 
@@ -217,7 +219,43 @@ Keine. Weder neue Bibliothek noch neuer Dienst. Prüfwert-Bildung und Zeitsteuer
 
 **Lehre für β–ε:** in einer Umgebung gemessene absolute Bestandszahlen gehören nicht in Migrations-Assertions, solange Prod und Repo-Replay nachweislich auseinanderliegen. Relative Deltas und Existenzprüfungen pro Objekt sind die tragfähige Form.
 
-**Offen in α:** nichts. **Nächster Schritt:** `/qa` für α, danach `/backend` für β.
+**Offen in α:** nichts.
+
+## Implementation Notes — β (2026-08-11, `/backend`)
+
+**Migration `20260811104500_proj130_beta_lifecycle_audit.sql` in Prod angewendet.** Additiv: `record_audit_changes` und ihre 67 UPDATE-Trigger sind unangetastet (Post-Condition prüft das).
+
+1. **Zweite Trigger-Funktion `record_audit_lifecycle()`** — EINE Zeile pro Objekt, `field_name` als Sentinel (`__created` / `__deleted`), Wert = kompakte Kennung (Titel/Name/Label/Code, gekappt auf 200 Zeichen) statt Row-Abzug. Ein Row-Abzug hätte personenbezogenen Klartext ins Protokoll gespült und die Redaktion im Export umgangen.
+2. **Gemeinsamer Resolver `_audit_entity_context`** für Objekt- und Mandanten-Identität, inklusive der Tabellen ohne einspaltigen `id`-PK.
+3. **entity_type-CHECK 81 → 87.** Sechs Zustands-/Zugangs-Tabellen ergänzt, deren Anlage/Löschung ein Governance-Ereignis ist: `mcp_access_tokens`, `tenant_secrets`, `context_sources`, `deliverable_approvals`, `deliverable_approval_stages`, `decision_approval_state`.
+4. **Papierkorb sichtbar (β2):** `is_deleted` in die Whitelist-Zweige von `projects`, `phases`, `milestones`, `work_items` — der fachliche Löschvorgang der vier Kernobjekte war unprotokolliert.
+5. **75 Tabellen mit Lifecycle-Trigger** (UPDATE-Abdeckung unverändert bei 67).
+
+**Drei bewusste Ausnahmen, live erhoben statt geraten.** Eine Abfrage über alle Trigger, die in `audit_log_entries` schreiben, ergab genau drei Tabellen, die Anlage/Löschung schon eigenständig protokollieren — ohne diese Prüfung hätte β dort Doppel-Einträge erzeugt:
+- `dependencies` — eigene INSERT- **und** DELETE-Audit-Trigger → gar nicht verdrahtet
+- `decisions` — eigener INSERT-Audit-Trigger → **nur DELETE** verdrahtet
+- `budget_postings` — die Buchungs-Routen schreiben ihre Zeilen selbst (dieselbe Ausnahme wie in α) → gar nicht verdrahtet
+
+Nebenbefund: `audit_escalation_patterns` auf `stakeholders` schreibt entgegen der ersten Annahme **nicht** in den Trail — `stakeholders` ist also unbedenklich verdrahtet.
+
+**Abweichung von der CIA-Empfehlung (F2).** CIA wollte, dass **beide** Trigger-Funktionen den gemeinsamen Resolver nutzen. Das würde `record_audit_changes` anfassen und damit Auflage 3 verletzen. Der Resolver ist deshalb zunächst nur Autorität für die neue Funktion; damit daraus kein fünftes driftendes Register wird, prüft dieselbe Migration, dass `record_audit_changes` keinen Sonderfall kennt, den der Resolver nicht hat — und schlägt laut fehl, sobald jemand dort einen Zweig ergänzt.
+
+**Zwei Folgeprobleme, vor dem Ausliefern gefunden:**
+- **Verlaufs-Tab zeigte Sentinels roh.** Ohne Behandlung hätte dort „__created" als Feldname gestanden. Neu: `src/lib/audit/lifecycle.ts` (Sentinel-Menge, Anzeigename, Undo-Eignung) plus Darstellung als Badge „Angelegt"/„Gelöscht" mit der Kennung statt eines Vorher/Nachher-Paares.
+- **Undo-Affordanz auf Anlage-Einträgen.** `audit_undo_field` sucht eine Spalte namens `__created`, findet keine und meldet `entity_not_found` — beschädigt nichts, aber der Button hätte irreführend fehlgeschlagen. Undo ist für Lifecycle-Einträge jetzt ausgeblendet; 5 Unit-Tests pinnen die Abgrenzung (`is_deleted` bleibt bewusst *undo-fähig*, es ist eine echte Feldänderung).
+- **`audit_restore_entity` ist by construction sicher** — es iteriert über `_tracked_audit_columns` und kennt die Sentinels darum nicht. Verifiziert an der Live-Definition, nicht angenommen (CIA-Risiko 4).
+
+**Neuer Fund → PROJ-Y-130g:** `stakeholder_interaction_participants` hat keinen einspaltigen `id`-PK (PK ist `interaction_id` + `stakeholder_id`), trägt aber einen Audit-Trigger und 7 getrackte Spalten. Die bestehende Funktion löst `entity_id` über `NEW.id` auf → NULL → `NOT NULL`-Verstoß. Ein UPDATE einer getrackten Spalte dort **würde in Prod fehlschlagen**; es passiert nur nie. Dieselbe Defektklasse wie die in α entschärfte CHECK-Bombe. Der neue Resolver behandelt den Fall korrekt (Elternobjekt = Interaktion); die Inline-Auflösung der Altfunktion bleibt wegen Auflage 3 unangetastet.
+
+**Mengenrechnung (weil es keinen Purge mehr gibt):** ein Audit-Eintrag ist ~200 Byte. Die vier Kernobjekte nutzen Soft-Delete, echte Hard-Deletes sind selten; der größte Verstärker ist ein Mandanten-Offboarding, das über ~130 Tabellen kaskadiert. Selbst 1 Mio. Lifecycle-Zeilen wären ~200 MB. Das ist kein Grund, Löschungen ungeloggt zu lassen.
+
+**Betriebliche Folge:** jede **committende** Live-Aktion hinterlässt jetzt dauerhafte Anlage-Einträge, die nicht mehr löschbar sind. Live-Smokes müssen deshalb konsequent im Rollback-Muster laufen (wie α und β es tun) — ein committender Seed verschmutzt den Trail unwiderruflich.
+
+**Live-Pentest `tests/sql/PROJ-130-beta-lifecycle-pentest.sql` gegen Prod: 12/12 PASS, 0 Residuen** (0 Lifecycle-Zeilen in Prod nach dem Lauf). Vektoren: Anlage → genau eine `__created`-Zeile mit korrekter Kennung · Löschung → genau eine `__deleted`-Zeile · Soft-Delete eines Arbeitspakets → `is_deleted`-Zeile · neu in den CHECK aufgenommene Tabelle schreibt wirklich · `decisions` nur DELETE-verdrahtet (kein Doppel-Eintrag) · `dependencies`/`budget_postings` gar nicht verdrahtet · α-Wächter weiter wirksam · Katalog-Prüfungen · Resolver-Drift-Wächter · Nachbar-Zweige unverändert.
+
+**Gates:** ESLint **0** · tsc **13 vorbestehend / 0 neu** · vitest **2755/2755** (353 Dateien, +5) · Build clean · `check:migration-naming` **0 Fehler**.
+
+**Offen in β:** nichts. **Nächster Schritt:** γ (Auditor-Rolle, befristeter Prüfer, Wertmaskierung, TS-Enum-Öffnung) — die TS-Enum-Öffnung ist jetzt dringlicher, weil β 6 weitere Objektarten in den Trail schreibt, die die Oberfläche noch nicht filtern kann.
 
 ---
 _Quelle: Backlog-Entwurf M&A-Projektplattform · L — Vertraulichkeit, NDA & Audit_

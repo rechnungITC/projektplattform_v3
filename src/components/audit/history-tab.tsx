@@ -16,6 +16,10 @@ import {
   restoreEntity,
   undoAuditEntry,
 } from "@/lib/audit/api"
+import {
+  auditFieldLabel,
+  isAuditLifecycleField,
+} from "@/lib/audit/lifecycle"
 import { cn } from "@/lib/utils"
 import type { AuditEntityType, AuditLogEntry } from "@/types/audit"
 
@@ -213,14 +217,27 @@ export function HistoryTab({
                 formatValue
                   ? formatValue(entry.field_name, value)
                   : formatDefault(value)
+              // PROJ-130-β: Anlage/Löschung sind keine Feldänderungen — sie
+              // haben kein Vorher/Nachher-Paar und sind nicht feldweise
+              // rückgängig zu machen.
+              const isLifecycle = isAuditLifecycleField(entry.field_name)
+              const lifecycleLabel = isLifecycle
+                ? ((entry.new_value ?? entry.old_value) as string | null)
+                : null
               return (
                 <Card key={entry.id}>
                   <CardContent className="flex flex-col gap-3 py-3 sm:flex-row sm:items-start sm:justify-between">
                     <div className="min-w-0 flex-1 space-y-1">
                       <div className="flex flex-wrap items-center gap-2 text-sm">
-                        <span className="font-mono text-xs text-muted-foreground">
-                          {entry.field_name}
-                        </span>
+                        {isLifecycle ? (
+                          <Badge variant="secondary" className="text-xs">
+                            {auditFieldLabel(entry.field_name)}
+                          </Badge>
+                        ) : (
+                          <span className="font-mono text-xs text-muted-foreground">
+                            {entry.field_name}
+                          </span>
+                        )}
                         {reasonBadge(entry.change_reason)}
                         <span className="ml-auto text-xs text-muted-foreground">
                           {formatDistanceToNow(new Date(entry.changed_at), {
@@ -229,6 +246,11 @@ export function HistoryTab({
                           })}
                         </span>
                       </div>
+                      {isLifecycle ? (
+                        <p className="truncate text-sm text-muted-foreground">
+                          {lifecycleLabel ?? "ohne Bezeichnung"}
+                        </p>
+                      ) : (
                       <div className="grid gap-1 text-sm sm:grid-cols-[auto_1fr]">
                         <span className="text-xs text-muted-foreground">
                           vorher
@@ -251,8 +273,10 @@ export function HistoryTab({
                           {renderValue(entry.new_value)}
                         </span>
                       </div>
+                      )}
                     </div>
                     <div className="flex shrink-0 gap-1">
+                      {isLifecycle ? null : (
                       <Button
                         type="button"
                         variant="outline"
@@ -270,6 +294,7 @@ export function HistoryTab({
                           <Undo2 className="h-4 w-4" aria-hidden />
                         )}
                       </Button>
+                      )}
                       <Button
                         type="button"
                         variant="outline"
