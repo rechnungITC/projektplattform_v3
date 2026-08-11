@@ -184,8 +184,22 @@ export async function GET(request: Request) {
     row_count: redacted.length,
   })
 
+  // PROJ-Y-130h: ist der Mandant von der Lifecycle-Protokollierung ausgenommen
+  // (Test-Mandant), fehlen Anlage- und Löschzeilen. Ein Export, der als
+  // vollständiger Prüfnachweis durchgeht, muss das mitteilen.
+  const { data: exemptFlag } = await supabase.rpc(
+    "tenant_audit_lifecycle_exempt",
+    { p_tenant_id: f.tenant_id }
+  )
+  const lifecycleExempt = exemptFlag === true
+
   if (f.format === "csv") {
-    return new NextResponse(toCsv(redacted), {
+    // Der Hinweis wird NUR im Ausnahmefall vorangestellt, damit ein
+    // gewöhnlicher Export byte-identisch bleibt und keine Parser bricht.
+    const csv = lifecycleExempt
+      ? `# Hinweis: Dieser Mandant ist von der Lifecycle-Protokollierung ausgenommen (PROJ-Y-130h). Anlage- und Loeschvorgaenge fehlen in diesem Export.\n${toCsv(redacted)}`
+      : toCsv(redacted)
+    return new NextResponse(csv, {
       status: 200,
       headers: {
         "Content-Type": "text/csv; charset=utf-8",
@@ -194,5 +208,8 @@ export async function GET(request: Request) {
     })
   }
 
-  return NextResponse.json({ entries: redacted })
+  return NextResponse.json({
+    entries: redacted,
+    lifecycle_exempt: lifecycleExempt,
+  })
 }

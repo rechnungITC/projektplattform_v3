@@ -99,9 +99,19 @@ export interface ReportFilter {
   limit?: number
 }
 
+export interface ReportResult {
+  entries: AuditLogEntry[]
+  /**
+   * PROJ-Y-130h: true, wenn der Mandant von der Lifecycle-Protokollierung
+   * ausgenommen ist (Test-Mandant). Dann fehlen Anlage- und Löschzeilen, der
+   * Trail ist also bewusst unvollständig.
+   */
+  lifecycleExempt: boolean
+}
+
 export async function fetchReports(
   filter: ReportFilter
-): Promise<AuditLogEntry[]> {
+): Promise<ReportResult> {
   const params = new URLSearchParams()
   for (const [key, value] of Object.entries(filter)) {
     if (value !== undefined && value !== null && value !== "") {
@@ -116,8 +126,14 @@ export async function fetchReports(
     const err = await safeError(response)
     throw new Error(err.message)
   }
-  const body = (await response.json()) as { entries: AuditLogEntry[] }
-  return body.entries ?? []
+  const body = (await response.json()) as {
+    entries: AuditLogEntry[]
+    lifecycle_exempt?: boolean
+  }
+  return {
+    entries: body.entries ?? [],
+    lifecycleExempt: body.lifecycle_exempt === true,
+  }
 }
 
 /**
