@@ -14,12 +14,13 @@ summary_for_jira: "[L3] Lückenloser Audit-Trail (Cross-Cutting)"
 
 # PROJ-130: Lückenloser Audit-Trail (Cross-Cutting)
 
-## Status: In Progress (α + β + γ1 gebaut + live-verifiziert; γ2–γ4/δ/ε offen)
+## Status: In Progress (α + β + γ1 + γ2 + γ4 gebaut + live-verifiziert; γ3/γ2b/δ/ε offen)
 **Created:** 2026-06-10
 **Architected:** 2026-08-11 (CIA-reviewed, GO-mit-Auflagen — Tech Design unten)
 **α /backend:** 2026-08-11 — Migration in Prod, Live-Pentest 19/19, 0 Residuen (gemergt, `537f727`)
 **β /backend:** 2026-08-11 — Migration in Prod, Live-Pentest 12/12, 0 Residuen (gemergt, `b2a82df`)
-**γ1 /backend:** 2026-08-11 — Migration in Prod, Live-Pentest 9/9, 0 Residuen
+**γ1 /backend:** 2026-08-11 — Migration in Prod, Live-Pentest 9/9, 0 Residuen (gemergt, `52111f3`)
+**γ2 + γ4 /backend:** 2026-08-11 — Migration in Prod, Live-Pentest 11/11, 0 Residuen
 **Origin:** M&A-Platform Backlog (Epic L — Vertraulichkeit, NDA & Audit)
 **Priority:** P1
 
@@ -186,6 +187,7 @@ Keine. Weder neue Bibliothek noch neuer Dienst. Prüfwert-Bildung und Zeitsteuer
 - **PROJ-Y-130d** — Audit-Abdeckung der verbleibenden unabgedeckten Tabellen.
 - **PROJ-Y-130e** — Blätterung für Bericht und Export (heute hartes Limit 500 ohne Fortsetzung).
 - **PROJ-Y-130f** — **Prod/Repo-Divergenz in der Audit-Abdeckung** (Fund aus α, siehe unten): Prod hat zwei auditierte Tabellen mehr, als die Migrationsdateien herstellen. Genau bestimmbar erst mit einer lokalen Shadow-DB (blockiert durch den offenen Docker/WSL-Handoff aus PROJ-67/F6).
+- **PROJ-Y-130i** — **Auditor sieht keine mandantenweiten Katalogänderungen** (bewusste γ2-Grenze): Zweige des Lesetors, die direkt `is_tenant_member(...)` oder `return false` liefern, umgehen den gemeinsamen Ausgang. Ausweitung = 9 weitere Einzel-Ersetzungen, gehört nicht in dieselbe Migration.
 - **PROJ-Y-130h** — **Test-Rauschen sammelt sich unwiderruflich im Trail** (Beobachtung aus γ1): ein fremder Live-Testlauf hat 7 dauerhafte Lifecycle-Zeilen hinterlassen. Optionen: designierten Test-Mandanten von der Lifecycle-Protokollierung ausnehmen, oder bewusst akzeptieren und Live-Tests strikt auf das Rollback-Muster verpflichten.
 - **PROJ-Y-130g** — **`stakeholder_interaction_participants` bricht die Feld-Audit-Funktion** (Fund aus β): kein einspaltiger `id`-PK, aber Trigger + 7 getrackte Spalten → `entity_id` wird NULL → `NOT NULL`-Verstoß. Ein UPDATE einer getrackten Spalte schlägt in Prod fehl; es passiert nur nie. Der neue β-Resolver behandelt den Fall korrekt, die Altfunktion bleibt wegen CIA-Auflage 3 unangetastet.
 
@@ -282,7 +284,29 @@ Nebenbefund: `audit_escalation_patterns` auf `stakeholders` schreibt entgegen de
 
 **Beobachtung, die die β-Warnung bestätigt:** Zwischen den Läufen sind in Prod **7 Audit-Zeilen aus einem fremden Live-Testlauf** aufgetaucht (11:25 UTC, 3× `context_sources` angelegt und gelöscht, 1 Projekt angelegt). Der Test hat seine Daten aufgeräumt — das Protokoll des Aufräumens bleibt dauerhaft, weil es keinen Löschpfad mehr gibt. Test-Rauschen sammelt sich also unwiderruflich in einem Compliance-Artefakt. → **PROJ-Y-130h**.
 
-**Offen in γ:** γ2 Auditor-Grant + befristeter externer Prüfer · γ3 TS-Enum-Öffnung (15 von 87 Werten; `AUDIT_ENTITY_LABELS` ist der einzige Exhaustiveness-Zwang, und das Array ist als `readonly AuditEntityType[]` typisiert, wodurch der `as const`-Tupel-Charakter verloren geht — ein neuer Union-Wert ohne Array-Eintrag kompiliert sauber und wird dann still mit 400 abgelehnt) · γ4 `redaction_off` für Auditoren sperren.
+**Offen nach γ1:** γ2 Auditor-Grant · γ3 TS-Enum-Öffnung · γ4 `redaction_off`.
+
+## Implementation Notes — γ2 + γ4 (2026-08-11, `/backend`) — Revisions-Leseberechtigung
+
+**Migration `20260811140000_proj130_gamma2_audit_reader_grants.sql` in Prod angewendet.**
+
+**Keine vierte Mandanten-Rolle.** `tenant_memberships.role` ist die Achse hinter `is_tenant_member`/`has_tenant_role` und damit hinter praktisch jeder Zugriffsregel. Ein Wert `'auditor'` hätte den Revisor automatisch zum Mandanten-Mitglied gemacht — überall lesend, wo nur Mitgliedschaft geprüft wird. Das ist das Gegenteil einer rein lesenden Revision. Stattdessen die Tabelle **`audit_reader_grants`** nach dem Muster von `ma_confidentiality_clearances`: genau eine SELECT-Policy, **keine** schreibenden Policies, alle Writes über `grant_audit_reader` / `revoke_audit_reader` (SECURITY DEFINER, admin-gated, kein Actor-Parameter, `anon` EXECUTE entzogen). `valid_until` nullbar — damit ist der befristete externe Prüfer ein Datum, **kein neues Token-Verfahren**.
+
+**Der wichtigste Zusammenhang: die Freigabe ersetzt die Mitgliedschaft, nicht die Klassifikation.** Im Lesetor steht jetzt `is_project_member(projekt) OR has_audit_reader_grant(mandant)`, und **dahinter unverändert** die γ1-Prüfung. Ein Auditor ohne Vertraulichkeits-Freischaltung sieht `strict`-Einträge also weiterhin nicht. Wieder genau **ein** Anker — die Zeile, die γ1 eingefügt hat — mit Eindeutigkeits-Zählung und Zweig-Zahl-Kontrolle.
+
+**Die Freigabe ist selbst auditpflichtig.** Wer wem Einsicht in den Trail gibt, ist ein Governance-Ereignis: entity_type-CHECK 87 → 88, Whitelist-Zweig (`valid_from`/`valid_until`/`note` — Identitätsspalten bewusst nicht), plus Feld- und Lifecycle-Trigger. Eine `can_read_audit_entry`-Zweig braucht die Tabelle nicht: sie fällt auf `else return false` und ist damit korrekt admin-only.
+
+**γ4 fiel dabei fast von selbst an.** Der Export ist der Kern des Prüfer-Auftrags, war aber `requireTenantAdmin`-gegated — ein externer Prüfer kam nicht heran. Neuer Helper `requireAuditRead` (Admin **oder** gültige Freigabe) ersetzt das Gate, und `redaction_off` bleibt **Admin-Vorbehalt**: sonst wäre die Class-3-Redaktion über einen befristeten Zugang aushebelbar. Die Absage kommt **vor** der Abfrage, es wird also weder gelesen noch protokolliert.
+
+**Die Berichts-Route brauchte keine Änderung** — sie hat gar keine Mitgliedschaftsprüfung, und `requireModuleActive` fällt bei unsichtbaren Settings bewusst offen zurück. Dort gatet ausschließlich RLS, und die kennt die Freigabe jetzt. Verifiziert am Code, nicht angenommen.
+
+**Bekannte Grenze, bewusst so.** Zweige des Lesetors, die direkt `is_tenant_member(...)` oder `return false` liefern, umgehen den gemeinsamen Ausgang — ein Auditor **ohne** Mandanten-Mitgliedschaft sieht deshalb keine mandantenweiten Katalogänderungen (Lieferanten, Skills, Vorlagen) und keine der admin-only Objektarten. Für den Deal-Prüfungsauftrag (projektbezogene Vorgänge) ist das die richtige Grenze; die Ausweitung wäre 9 weitere Einzel-Ersetzungen und gehört nicht in dieselbe Migration. → **PROJ-Y-130i**.
+
+**Live-Pentest `tests/sql/PROJ-130-gamma2-audit-reader-pentest.sql` gegen Prod: 11/11 PASS, 0 Residuen.** Kern-Paar: **D** der Prüfer sieht Einträge **ohne** Projektmitgliedschaft · **E** er sieht `strict` **nicht** (γ1 hält). Dazu: ohne Freigabe nichts sichtbar; Nicht-Admin darf nicht vergeben (42501); Admin vergibt über den echten RPC; die Freigabe erzeugt ihren eigenen `__created`-Eintrag; fremde Freigaben sind für Dritte unsichtbar; **abgelaufene Freigabe wirkt nicht**; Admin widerruft; `anon` 42501; Lesetor trägt γ1 **und** γ2.
+
+**Gates:** ESLint **0** · tsc **13 vorbestehend / 0 neu** · vitest **2769/2769** (355 Dateien, +14: 9 Freigabe-Route, 5 Export-Gate) · Build clean (neue Route registriert) · `check:migration-naming` **0 Fehler**.
+
+**Offen in γ:** γ3 TS-Enum-Öffnung (15 von 88 Werten sichtbar; `AUDIT_ENTITY_LABELS` ist der einzige Exhaustiveness-Zwang, und das Array ist als `readonly AuditEntityType[]` typisiert — ein neuer Union-Wert ohne Array-Eintrag kompiliert sauber und wird dann still mit 400 abgelehnt) · Verwaltungs-Oberfläche für die Freigaben (heute nur über die API) → **γ2b**.
 
 ---
 _Quelle: Backlog-Entwurf M&A-Projektplattform · L — Vertraulichkeit, NDA & Audit_
