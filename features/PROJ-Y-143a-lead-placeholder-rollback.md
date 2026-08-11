@@ -14,7 +14,8 @@ summary_for_jira: "[HYGIENE] E2E: Platzhalter-UUID für den Projektleiter zurüc
 
 # PROJ-Y-143a: LEAD_PLACEHOLDER_UUID zurückführen
 
-## Status: Planned
+## Status: Deployed (2026-08-11)
+**Deployed:** 2026-08-11 — Tag `v2.46.0-PROJ-Y-143a`. Test-only, kein Runtime-Verhalten, keine Migration.
 **Created:** 2026-08-11
 **Origin:** Followup aus PROJ-143 (dort als Followup notiert, hier als eigene Spec registriert).
 
@@ -48,3 +49,35 @@ Der Test ist der einzige, der die Wizard-Validierung an dieser Stelle real durch
 ## Voraussetzung
 
 Erfüllt — PROJ-143 ist auf main (`812832a`), und der Inhalt von PROJ-Y-78f ist über #301 (`61943e6`) ebenfalls dort. Die Slice ist unblockiert.
+
+---
+
+## Implementation Notes
+
+**Umgesetzt:** 2026-08-11 · test-only · kein Produktivcode, keine Migration, keine Dependency
+
+### Was geändert wurde
+
+- `LEAD_PLACEHOLDER_UUID` samt Doc-Kommentar aus `tests/PROJ-135-clarifying-questions.spec.ts` entfernt
+- die Verwendung auf `E2E_USER_ID` zurückgeführt; damit nutzen jetzt **alle drei** `responsible_user_id`-Stellen der Datei konsistent die geseedete Identität
+- der erklärende Kommentarblock ersetzt: er beschrieb ein gelöstes Problem und verwies auf ein Followup, das es nicht mehr gibt
+
+### Verifikation
+
+**Der entscheidende Punkt war nicht das Löschen, sondern der Beweis, dass die Konformität reicht.** Zwei unabhängige Nachweise:
+
+1. **Direkt gegen zod** (die Instanz, an der es damals scheiterte): `z.string().uuid()` **akzeptiert** `e2e00000-0000-4e2e-8e2e-000000000001` (Versions-Nibble `4`, Variant-Nibble `8`) und **weist** die alte `00000000-0000-0000-0000-000000000e2e` **ab**. Der Existenzgrund des Platzhalters ist damit messbar entfallen, nicht nur plausibel.
+2. **Playwright** `tests/PROJ-135-clarifying-questions.spec.ts` **6/6 grün** (chromium) — darunter „kickoff upload makes the clarifying step appear (AC-135.3, upload half)", also genau der Fall, der den Wizard mit `responsible_user_id` über Step 1 hinausfährt. Wäre die ID nicht konform, würde die Navigation dort stehenbleiben — exakt das Symptom, das den Platzhalter ursprünglich nötig machte.
+
+Nebenbefund: die Endpoint-/Finalize-Fälle (Zeilen 348 + 426) liefen in diesem Lauf **mit**, anders als bei PROJ-135s ursprünglichem QA-Lauf (dort Deviation D-1: übersprungen ohne `SERVICE_ROLE_KEY`/storage-state). Die Slice ist damit besser abgedeckt als bei ihrer Erstabnahme.
+
+### Gates
+
+ESLint 0 · `tsc --noEmit` 13 Fehler = Baseline, **0 neu** · `grep` bestätigt 0 verbleibende Referenzen auf den Platzhalter · Vitest unberührt (`tests/**` ist von vitest ausgeschlossen und gehört Playwright).
+
+### Acceptance Criteria
+
+- **AC-Y143a.1** ✅ Platzhalter entfernt, Stelle nutzt `E2E_USER_ID`
+- **AC-Y143a.2** ✅ Kommentar ersetzt (kein Verweis mehr auf ein gelöstes Problem)
+- **AC-Y143a.3** ✅ Spec 6/6 grün inkl. der Fälle jenseits von Step 1
+- **AC-Y143a.4** ✅ keine weitere Referenz im Repo
