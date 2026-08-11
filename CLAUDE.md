@@ -1,5 +1,8 @@
 # Projektplattform V3
 
+> **`AGENTS.md` is kept in sync with this file** (same content, without Claude-Code-specific syntax).
+> Change one, change the other — they drifted apart once already.
+
 > A multi-tenant, AI-supported **project orchestration platform** (ERP · construction · software · M&A deal lifecycle),
 > built with an AI-driven development workflow using specialized skills for Requirements, Architecture,
 > Frontend, Backend, QA, and Deployment. See `docs/PRD.md` for the product thesis.
