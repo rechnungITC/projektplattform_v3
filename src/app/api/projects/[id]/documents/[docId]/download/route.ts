@@ -39,15 +39,27 @@ export async function GET(
   const access = await requireProjectAccess(supabase, projectId, userId, "view")
   if (access.error) return access.error
 
+  // PROJ-130-δ1: die Vertraulichkeitsstufe hängt seit PROJ-Y-115c am
+  // Baumknoten, nicht am Dokument. Sie wird hier mitgelesen — der Knoten wird
+  // ohnehin schon für die Projekt-Prüfung eingebettet, es kostet keine
+  // zusätzliche Abfrage.
   const { data: doc, error } = await supabase
     .from("documents")
-    .select("id, storage_path, deleted_at, document_tree_nodes(project_id)")
+    .select(
+      "id, storage_path, deleted_at, document_tree_nodes(project_id, confidentiality_level)"
+    )
     .eq("id", docId)
     .maybeSingle()
   if (error) return apiError("internal_error", error.message, 500)
 
-  const node = (doc as { document_tree_nodes?: { project_id?: string } | null } | null)
-    ?.document_tree_nodes
+  const node = (
+    doc as {
+      document_tree_nodes?: {
+        project_id?: string
+        confidentiality_level?: string
+      } | null
+    } | null
+  )?.document_tree_nodes
   const docPath = (doc as { storage_path?: string; deleted_at?: string | null } | null)
   if (
     !doc ||
@@ -56,6 +68,36 @@ export async function GET(
     node.project_id !== projectId
   ) {
     return apiError("not_found", "Document not found.", 404)
+  }
+
+  // PROJ-130-δ1: Zugriff auf vertrauliche Inhalte protokollieren, BEVOR der
+  // signierte Link herausgeht. Die Aktion heißt `download_url_issued` und nicht
+  // `download`, weil nur die Ausgabe des Links protokollierbar ist — eingelöst
+  // wird er außerhalb der Anwendung (120 s Gültigkeit).
+  //
+  // Ausfallverhalten nach Stufe: bei `strict` fail-closed (schlägt das
+  // Protokollieren fehl, gibt es den Link nicht), bei `confidential`
+  // best-effort. Sonst würde das Protokoll selbst zum Ausfallrisiko für die
+  // gutartige Mehrheit der Zugriffe.
+  const level = node.confidentiality_level ?? "standard"
+  if (level !== "standard") {
+    const { error: logError } = await supabase.rpc("log_confidential_read", {
+      p_project_id: projectId,
+      p_entity_type: "documents",
+      p_max_level: level,
+      p_object_count: 1,
+      p_action: "download_url_issued",
+      p_outcome: "granted",
+      p_entity_id: docId,
+      p_detail: { ttl_seconds: SIGNED_URL_TTL_SECONDS },
+    })
+    if (logError && level === "strict") {
+      return apiError(
+        "audit_log_failed",
+        "Zugriff auf streng vertrauliche Inhalte konnte nicht protokolliert werden — der Download wurde deshalb nicht freigegeben.",
+        500
+      )
+    }
   }
 
   try {

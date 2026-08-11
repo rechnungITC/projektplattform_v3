@@ -82,5 +82,18 @@ export async function GET(request: Request) {
     return apiError("read_failed", error.message, 500)
   }
 
-  return NextResponse.json({ entries: data ?? [] })
+  // PROJ-Y-130h: ein Mandant kann von der Lifecycle-Protokollierung
+  // ausgenommen sein (Test-Mandanten). Dann fehlen Anlage- und Löschzeilen —
+  // das muss der Leser wissen, sonst hält er einen bewusst unvollständigen
+  // Trail für vollständig. Best-effort: schlägt der Hinweis fehl, bleibt der
+  // Bericht nutzbar.
+  const { data: exempt } = await supabase.rpc(
+    "tenant_audit_lifecycle_exempt",
+    { p_tenant_id: f.tenant_id }
+  )
+
+  return NextResponse.json({
+    entries: data ?? [],
+    lifecycle_exempt: exempt === true,
+  })
 }

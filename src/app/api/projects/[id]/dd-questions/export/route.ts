@@ -5,6 +5,11 @@ import {
   getAuthenticatedUserId,
   requireProjectAccess,
 } from "@/app/api/_lib/route-helpers"
+import {
+  logConfidentialExport,
+  mustBlockOnLogFailure,
+} from "@/lib/audit/confidential-read"
+
 import { DD_QUESTION_STATUSES } from "../_schema"
 
 // PROJ-113 — CSV export of the DD Q&A list for the seller side.
@@ -82,6 +87,32 @@ export async function GET(
   if (error) return apiError("export_failed", error.message, 500)
 
   const rows = (data ?? []) as unknown as Record<string, unknown>[]
+
+  // PROJ-130-δ1: hier verlassen vertrauliche Inhalte das System als Datei.
+  // Protokolliert wird EIN Ereignis pro Export mit der höchsten Stufe und der
+  // Anzahl der vertraulichen Zeilen — nicht eine Zeile pro Datensatz. Enthält
+  // der Export nichts oberhalb von `standard`, wird nichts geschrieben.
+  const readLog = await logConfidentialExport(
+    async (fn, args) => await supabase.rpc(fn, args),
+    {
+      projectId,
+      entityType: "dd_questions",
+      rows: rows as ReadonlyArray<{ confidentiality_level?: string | null }>,
+      detail: {
+        format: "csv",
+        stream_id: streamId ?? null,
+        status: status ?? null,
+      },
+    }
+  )
+  if (mustBlockOnLogFailure(readLog)) {
+    return apiError(
+      "audit_log_failed",
+      "Der Export enthält streng vertrauliche Inhalte und konnte nicht protokolliert werden — er wurde deshalb nicht ausgeliefert.",
+      500
+    )
+  }
+
   const header = COLUMNS.join(",")
   const body = rows.map((r) => COLUMNS.map((c) => csvCell(r[c])).join(",")).join("\n")
   const csv = `${header}\n${body}`

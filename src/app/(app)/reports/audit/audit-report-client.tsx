@@ -43,6 +43,15 @@ import {
   type AuditLogEntry,
 } from "@/types/audit"
 
+/**
+ * PROJ-130-γ3: das Register ist von 15 auf 88 Objektarten gewachsen. Das Array
+ * ist nach technischem Namen sortiert; im Dropdown stehen aber die deutschen
+ * Labels, die dann willkürlich geordnet wirkten. Einmal nach Label sortieren.
+ */
+const ENTITY_OPTIONS: readonly AuditEntityType[] = [...AUDIT_ENTITY_TYPES].sort(
+  (a, b) => AUDIT_ENTITY_LABELS[a].localeCompare(AUDIT_ENTITY_LABELS[b], "de")
+)
+
 type EntityFilter = "all" | AuditEntityType
 
 function formatValue(v: unknown): string {
@@ -61,6 +70,8 @@ export function AuditReportClient() {
   const [fromDate, setFromDate] = React.useState("")
   const [toDate, setToDate] = React.useState("")
   const [entries, setEntries] = React.useState<AuditLogEntry[]>([])
+  // PROJ-Y-130h: bewusst unvollständiger Trail eines Test-Mandanten.
+  const [lifecycleExempt, setLifecycleExempt] = React.useState(false)
   const [loading, setLoading] = React.useState(false)
 
   const buildFilter = React.useCallback((): ReportFilter | null => {
@@ -79,9 +90,10 @@ export function AuditReportClient() {
     if (!filter) return
     try {
       setLoading(true)
-      const list = await fetchReports(filter)
-      setEntries(list)
-      if (list.length === 0) {
+      const result = await fetchReports(filter)
+      setEntries(result.entries)
+      setLifecycleExempt(result.lifecycleExempt)
+      if (result.entries.length === 0) {
         toast.info("Keine Einträge mit diesen Filtern.")
       }
     } catch (err) {
@@ -142,7 +154,7 @@ export function AuditReportClient() {
               </SelectTrigger>
               <SelectContent>
                 <SelectItem value="all">Alle</SelectItem>
-                {AUDIT_ENTITY_TYPES.map((t) => (
+                {ENTITY_OPTIONS.map((t) => (
                   <SelectItem key={t} value={t}>
                     {AUDIT_ENTITY_LABELS[t]}
                   </SelectItem>
@@ -205,6 +217,22 @@ export function AuditReportClient() {
           </div>
         </CardContent>
       </Card>
+
+      {lifecycleExempt ? (
+        <div
+          role="status"
+          className="rounded-md border border-amber-500/50 bg-amber-500/10 px-4 py-3 text-sm"
+        >
+          <p className="font-medium">Dieser Trail ist bewusst unvollständig</p>
+          <p className="text-muted-foreground">
+            Der Mandant ist von der Protokollierung von Anlage- und
+            Löschvorgängen ausgenommen (Test-Mandant). Feldänderungen,
+            Statuswechsel und Klassifikationsänderungen sind vollständig
+            enthalten, Anlage und Löschung von Objekten fehlen. Exporte dieses
+            Mandanten tragen denselben Hinweis.
+          </p>
+        </div>
+      ) : null}
 
       <div className="overflow-x-auto rounded-md border">
         <Table>

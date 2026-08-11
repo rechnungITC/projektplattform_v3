@@ -103,7 +103,43 @@ describe("GET /api/audit/export — Zugang", () => {
     results.tenant_memberships = { data: { role: "admin" }, error: null }
     const res = await GET(url("&redaction_off=true"))
     expect(res.status).toBe(200)
-    // Admin-Pfad braucht die Freigabe-RPC nicht.
-    expect(rpcMock).not.toHaveBeenCalled()
+    // Der Admin-Pfad kommt ohne die Freigabe-RPC aus — die Prüfung endet bei
+    // der Rolle. (Die Ausnahme-RPC aus PROJ-Y-130h läuft trotzdem, sie gehört
+    // zur Antwort und nicht zur Autorisierung.)
+    expect(rpcMock).not.toHaveBeenCalledWith(
+      "has_audit_reader_grant",
+      expect.anything()
+    )
+  })
+
+  it("weist einen bewusst unvollständigen Trail aus (PROJ-Y-130h)", async () => {
+    results.tenant_memberships = { data: { role: "admin" }, error: null }
+    rpcMock.mockImplementation((fn: string) =>
+      Promise.resolve({
+        data: fn === "tenant_audit_lifecycle_exempt" ? true : false,
+        error: null,
+      })
+    )
+    const res = await GET(url())
+    expect(res.status).toBe(200)
+    expect((await res.json()).lifecycle_exempt).toBe(true)
+  })
+
+  it("stellt den CSV-Hinweis nur im Ausnahmefall voran", async () => {
+    results.tenant_memberships = { data: { role: "admin" }, error: null }
+    const csvUrl = () =>
+      new Request(
+        `http://localhost/api/audit/export?tenant_id=${TENANT}&format=csv`
+      )
+
+    // Regelfall: der Export bleibt byte-identisch, damit keine Parser brechen.
+    rpcMock.mockResolvedValue({ data: false, error: null })
+    const clean = await (await GET(csvUrl())).text()
+    expect(clean.startsWith("#")).toBe(false)
+
+    // Ausnahmefall: der Hinweis steht in der Datei, nicht nur in der UI.
+    rpcMock.mockResolvedValue({ data: true, error: null })
+    const flagged = await (await GET(csvUrl())).text()
+    expect(flagged.startsWith("# Hinweis:")).toBe(true)
   })
 })
