@@ -60,7 +60,7 @@ export function BudgetRiskAlertsPanel({
             className="h-5 w-5 text-muted-foreground"
             aria-hidden
           />
-          Alerts
+          Warnungen
         </CardTitle>
       </CardHeader>
       <CardContent>
@@ -77,7 +77,7 @@ function Body({ envelope, isLoading, onRetry }: BudgetRiskAlertsPanelProps) {
   if (envelope.state === "error") {
     return (
       <DashboardSectionError
-        title="Alerts"
+        title="Warnungen"
         message={envelope.error}
         onRetry={onRetry}
       />
@@ -86,7 +86,7 @@ function Body({ envelope, isLoading, onRetry }: BudgetRiskAlertsPanelProps) {
   if (envelope.state === "unavailable") {
     return (
       <DashboardSectionUnavailable
-        title="Alerts werden vorbereitet"
+        title="Warnungen werden vorbereitet"
         description="Budget- und Risiko-Signale werden mit der PROJ-64 Backend-Slice eingebunden."
       />
     )
@@ -95,7 +95,7 @@ function Body({ envelope, isLoading, onRetry }: BudgetRiskAlertsPanelProps) {
   if (items.length === 0) {
     return (
       <DashboardSectionEmpty
-        title="Keine aktiven Alerts"
+        title="Keine aktiven Warnungen"
         description="Budget, Risiken und Stakeholder-Health zeigen keine kritischen Werte."
       />
     )

@@ -40,13 +40,13 @@ export function ProjectHealthExceptionsPanel({
 }: ProjectHealthExceptionsPanelProps) {
   return (
     <Card>
-      <CardHeader className="flex flex-row items-center justify-between gap-3">
-        <CardTitle className="flex items-center gap-2 text-lg">
+      <CardHeader className="flex flex-row flex-wrap items-center justify-between gap-x-3 gap-y-1">
+        <CardTitle className="flex items-center gap-2 whitespace-nowrap text-lg">
           <ShieldAlert className="h-5 w-5 text-muted-foreground" aria-hidden />
-          Project Health
+          Projekt-Health
         </CardTitle>
         {envelope.state === "ready" && envelope.data && (
-          <span className="text-xs text-muted-foreground">
+          <span className="whitespace-nowrap text-xs text-muted-foreground">
             {envelope.data.items.length} von{" "}
             {envelope.data.total_accessible_projects} Projekten
           </span>
@@ -74,7 +74,7 @@ function Body({
   if (envelope.state === "error") {
     return (
       <DashboardSectionError
-        title="Project Health"
+        title="Projekt-Health"
         message={envelope.error}
         onRetry={onRetry}
       />
