@@ -1,6 +1,7 @@
 # PROJ-144: Work-Item-Anlage aus Spracheingabe (Assistant Action Pack)
 
 ## Status: In Review (Backend + Frontend fertig, ein AC bleibt ausdrücklich offen)
+**Deployment scope:** — (leer; nicht deployed — für „In Review" ist kein Scope zulässig)
 **Created:** 2026-08-11
 **Last Updated:** 2026-08-12 (Frontend gebaut, QA gefahren, Live-Pentest 17/17 re-verifiziert; AC-144.29-Browserhälfte offen — siehe F-8)
 
