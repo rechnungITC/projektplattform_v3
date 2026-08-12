@@ -14,8 +14,9 @@ summary_for_jira: "[HYGIENE] Visual-Regression: zwei stillgelegte Baselines dete
 
 # PROJ-Y-143d: deterministische Baselines für datentragende Seiten
 
-## Status: In Review
+## Status: Deployed
 **Created:** 2026-08-11
+**Deployed:** 2026-08-12 — Tag `v2.47.0-PROJ-Y-143d`
 **Origin:** Followup aus PROJ-Y-143b (C-1/C-2).
 
 ## Problem
@@ -111,6 +112,64 @@ Verlässlich neu ziehen heißt: **Baseline-Dateien löschen**, dann aufnehmen. D
 Mechanismus, über den Werkzeug-Zustand überhaupt in Bildern überdauert, und gehört zur
 AC-Y143b.7-Regel dazu.
 
+## Abnahme auf gemergtem `main` (2026-08-12) — und was sie noch gefunden hat
+
+Der Merge (`cb28ecd`, #332) wurde in einer frischen Worktree von `origin/main` nachgeprüft,
+mit leerem `.next`. Volle authentifizierte Suite **7/7 grün**.
+
+Grün allein ist bei genau diesen Tests aber kein Beweis — das war der Ausgangsbefund der
+ganzen 143er-Reihe. Also eine **Rot-Grün-Gegenprobe**, ob die zwei reaktivierten Aufnahmen
+überhaupt etwas vergleichen:
+
+| Kontrollfall (temporär injiziert) | Diff | Ergebnis |
+|---|---|---|
+| Tabellenkopfzeile der Projektliste rot eingefärbt | 45.394 px (5 %) | **rot** → Kopfzeile wird trotz `tbody`-Maske verglichen |
+| „Projekt-Setup"-Karte im Projektraum rot eingefärbt | 113.214 px (13 %) | **rot** → Karte liegt oberhalb der Falz und wird verglichen |
+
+Beide Regionen sind also echt bewacht. Danach zurückgebaut, Suite wieder grün.
+
+### F-3 (in der Abnahme gefunden und behoben) — die Toleranz war ~440× zu grob
+
+Der **erste** Kontrollfall war kleiner gewählt: „Name" → „NameZZ" im Tabellenkopf und
+„Projekt-Setup" → „Projekt-SetupZZ" im Projektraum. Beide Tests blieben **grün**. Ursache ist
+nicht die Aufnahme, sondern die von PROJ-51 geerbte Toleranz: `maxDiffPixelRatio: 0.02` sind
+auf 1280 × 720 rund **18.400 Pixel**. Gemessen statt geschätzt:
+
+| Größe | gemessen |
+|---|---|
+| Lauf-zu-Lauf-Rauschen (4 Läufe bei Toleranz 0) | **0 px** |
+| Umbenannte Tabellen-Spaltenüberschrift | **42 px** |
+| Zwei Zeichen mehr im Karten-Titel | **97 px** |
+| erlaubt durch `0.02` / `0.03` | ~18.400 / ~27.600 px |
+
+Damit hätte eine umbenannte Spalte, ein vertauschtes Label oder ein falscher Status-Text die
+Tests **nie** rot gemacht. Es ist exakt derselbe blinde Fleck, durch den in dieser Slice schon
+der Next-Dev-Indikator (F-1, ~0,4 %) unbemerkt in **allen sieben** Bildern saß — dort als
+Zufallsfund, hier als Systemeigenschaft benannt.
+
+Behoben, wo es jetzt belegbar tragfähig ist: die beiden viewport-fixierten Aufnahmen bekommen
+eine **absolute** Schranke `maxDiffPixels: 20` statt der Verhältnis-Toleranz. Der Wert liegt
+zwischen gemessenem Rauschen (0) und kleinster echter Änderung (42) — er ist wählbar, *weil*
+die Aufnahme jetzt deterministisch ist; vor dieser Slice wäre er unmöglich gewesen. Gegenprobe:
+derselbe Zwei-Zeichen-Wechsel, der bei `0.02` grün blieb, ist bei `20` rot (42 px bzw. 97 px).
+
+Die Formulierung „Was weiter bewacht wird: … Tabellenkopf" aus dem Abschnitt oben war damit
+bis zu diesem Fix **zu stark**: die Region wurde zwar verglichen, aber erst ab ~18.400
+abweichenden Pixeln. Jetzt stimmt sie.
+
+**Nicht mit angefasst:** die fünf `fullPage`-Baselines behalten `0.02`. Ihr Rauschen ist nicht
+gemessen, und `fullPage`-Aufnahmen tragen mehr Layout-Varianz — dieselbe Behandlung dort ist
+ein eigener Schritt (→ PROJ-Y-143g), kein Beifang.
+
+### Nebenbefund Betrieb — der PROJ-138-Wedge ist real und trat hier auf
+
+Während der Gegenprobe brach der Dev-Server mitten im Lauf weg (`page.goto:
+net::ERR_ABORTED`, Port 3000 tot), begünstigt durch einen parallel laufenden `next build`
+einer anderen Session. Kein Speicherproblem (kein OOM, 9,9 GB frei). Das in PROJ-138
+dokumentierte Rezept — frischer Server nach `rm -rf .next` — hat es sofort behoben. Wichtig
+für die Auswertung: der Fehlschlag sah aus wie ein Testfehler, war aber ein Werkzeugausfall;
+ein Kontrollfall, der so scheitert, beweist **nichts** und musste wiederholt werden.
+
 ## Acceptance Criteria
 
 - **AC-Y143d.1** — `projects-list` und `project-room` sind wieder aktiv (kein `test.fixme`). ✅
@@ -123,11 +182,19 @@ AC-Y143b.7-Regel dazu.
 - **AC-Y143d.6** — Die in PROJ-Y-143b zertifizierten Baselines bleiben im geladenen Zustand. ✅
   Höhen nach dem Neuziehen deckungsgleich: Dashboard 1714, Stammdaten 1554,
   Tenant-Settings 4505, Settings 868.
+- **AC-Y143d.7** (Abnahme ergänzt) — Beide reaktivierten Tests sind nachweislich **nicht
+  leerlaufend**: eine Änderung in der bewachten Region macht sie rot. ✅ Großflächig
+  45.394 px / 113.214 px; nach dem F-3-Fix auch auf Text-Ebene (42 px / 97 px).
 
 ## Gates
 
 ESLint **0** · tsc **13 = Baseline, 0 in den geänderten Dateien** · `npm run build` **clean**
 (`next.config.ts` angefasst) · Playwright chromium **3× 7/7** + Kaltstart **7/7**.
+
+**Abnahme-Lauf auf gemergtem `main` (2026-08-12), frische Worktree, leeres `.next`:**
+Playwright chromium **7/7** · Rot-Grün-Gegenprobe **2/2 rot** großflächig und **2/2 rot** auf
+Text-Ebene nach dem F-3-Fix, danach **7/7** grün · 4 Läufe bei Toleranz 0 pixel-identisch ·
+ESLint **0** · tsc **13 = Baseline, 0 in der geänderten Datei**.
 
 ## Deviations
 
@@ -141,6 +208,9 @@ ESLint **0** · tsc **13 = Baseline, 0 in den geänderten Dateien** · `npm run 
 - **D-Y143d.3** — `stammdaten-resources` und `project-room` frieren weiterhin einen
   Fehlerzustand ein (F-2). Bewusst nicht geglättet → PROJ-Y-143f.
 - **D-Y143d.4** — Mobile Safari übersprungen (WebKit-Host-Libs, PROJ-67/F2).
+- **D-Y143d.5** (Abnahme) — Die Toleranz-Verschärfung (F-3) betrifft **nur** die zwei
+  viewport-fixierten Aufnahmen. Die fünf `fullPage`-Baselines behalten `0.02`, weil ihr
+  Rauschen nicht gemessen ist → PROJ-Y-143g. Die Asymmetrie ist bewusst und im Test begründet.
 
 ## Followups
 
@@ -150,3 +220,10 @@ ESLint **0** · tsc **13 = Baseline, 0 in den geänderten Dateien** · `npm run 
 - **PROJ-Y-143e** (bereits offen) — der Sprachmix betrifft auch diese Seiten:
   „Resource not found.", „Back to projects", „Master data", „Danger zone", „Move to trash"
   neben deutschen Abschnitten.
+- **PROJ-Y-143g** (neu, aus F-3) — dieselbe gemessene Toleranz-Behandlung für die fünf
+  `fullPage`-Baselines (Dashboard, Stammdaten, Resources, Settings, Tenant-Settings). Sie
+  laufen weiter auf `maxDiffPixelRatio: 0.02`, also ~2 % der jeweiligen Bildfläche — bei
+  `settings-tenant` (1280 × 4505) sind das über **115.000** Pixel Spielraum. Vorgehen wie
+  hier: Rauschen über mehrere Läufe bei Toleranz 0 messen, kleinste sinnvolle Änderung
+  messen, Schranke dazwischen legen. Ob `fullPage`-Aufnahmen dafür stabil genug sind, ist
+  offen — genau das ist zu messen.
