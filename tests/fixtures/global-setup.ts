@@ -9,6 +9,11 @@ import { createClient as createSupabaseClient } from "@supabase/supabase-js"
 import type { FullConfig } from "@playwright/test"
 
 import {
+  E2E_ASSISTANT_PROJECT_ID,
+  E2E_ASSISTANT_PROJECT_NAME,
+  E2E_ASSISTANT_TENANT_DOMAIN,
+  E2E_ASSISTANT_TENANT_ID,
+  E2E_ASSISTANT_TENANT_NAME,
   E2E_PROJECT_ID,
   E2E_PROJECT_NAME,
   E2E_STORAGE_STATE_PATH,
@@ -40,6 +45,11 @@ function assertConformantFixtureIds(): void {
     E2E_USER_ID,
     E2E_TENANT_ID,
     E2E_PROJECT_ID,
+    // PROJ-Y-144d — the assistant tenant/project ids reach the same zod
+    // boundary (the confirm route validates the draft id, the runtime the
+    // project id), so they belong in the same guard.
+    E2E_ASSISTANT_TENANT_ID,
+    E2E_ASSISTANT_PROJECT_ID,
   }).filter(([, id]) => !RFC_4122_V4.test(id))
 
   if (offenders.length > 0) {
@@ -281,6 +291,108 @@ async function globalSetup(config: FullConfig): Promise<void> {
     )
   }
 
+  // 3.6) PROJ-Y-144d — a second tenant with the ASSISTANT MODULE ON, plus a
+  //      scrum project, so the PROJ-144 chain (dictate → review → confirm →
+  //      work item) can be driven in a real browser.
+  //
+  //      Kept apart from E2E_TENANT_ID on purpose: `AssistantLauncher` lives
+  //      in the app shell, so an active module puts a `fixed` button on every
+  //      signed-in page — precisely what the authenticated visual-regression
+  //      spec captures `fullPage`. Two tenants, two concerns.
+  //
+  //      `active_modules` is written EXPLICITLY. Both gates fail open on a
+  //      missing settings row (`isModuleActive` returns true for null,
+  //      `requireModuleActive` returns null), so the flow would "work" with no
+  //      row at all — but a fixture whose whole purpose is "assistant is on"
+  //      must not rest on a fail-open. The table default does NOT contain
+  //      "assistant", so an implicit row would switch it off.
+  //      Failure is non-fatal: only the PROJ-Y-144d chain spec skips.
+  // `PromiseLike`, not `Promise`: a Supabase query builder is thenable but has
+  // no `catch`/`finally`, so annotating it as a Promise is a type error (and
+  // `await` works on either).
+  const assistantSeedSteps: {
+    label: string
+    run: () => PromiseLike<{ error: { message: string } | null }>
+  }[] = [
+    {
+      label: "tenant",
+      run: () =>
+        admin.from("tenants").upsert(
+          {
+            id: E2E_ASSISTANT_TENANT_ID,
+            name: E2E_ASSISTANT_TENANT_NAME,
+            domain: E2E_ASSISTANT_TENANT_DOMAIN,
+            created_by: E2E_USER_ID,
+            language: "de",
+            branding: {},
+          },
+          { onConflict: "id" },
+        ),
+    },
+    {
+      label: "membership",
+      run: () =>
+        admin.from("tenant_memberships").upsert(
+          {
+            tenant_id: E2E_ASSISTANT_TENANT_ID,
+            user_id: E2E_USER_ID,
+            // Admin: `isProjectEditAllowed` grants edit on tenant-admin alone,
+            // so the chain needs no project_memberships row — which also keeps
+            // `enforce_last_lead()` out of the cleanup path.
+            role: "admin",
+          },
+          { onConflict: "tenant_id,user_id" },
+        ),
+    },
+    {
+      label: "settings",
+      run: () =>
+        admin.from("tenant_settings").upsert(
+          {
+            tenant_id: E2E_ASSISTANT_TENANT_ID,
+            active_modules: [
+              "risks",
+              "decisions",
+              "ai_proposals",
+              "audit_reports",
+              "assistant",
+            ],
+          },
+          { onConflict: "tenant_id" },
+        ),
+    },
+    {
+      label: "project",
+      run: () =>
+        admin.from("projects").upsert(
+          {
+            id: E2E_ASSISTANT_PROJECT_ID,
+            tenant_id: E2E_ASSISTANT_TENANT_ID,
+            name: E2E_ASSISTANT_PROJECT_NAME,
+            project_type: "software",
+            // Scrum so "Neue Story" resolves to `story` and the method rule is
+            // genuinely exercised. `projects_method_immutable` blocks changing
+            // this later, so it must be right at insert time.
+            project_method: "scrum",
+            responsible_user_id: E2E_USER_ID,
+            created_by: E2E_USER_ID,
+          },
+          { onConflict: "id" },
+        ),
+    },
+  ]
+
+  for (const step of assistantSeedSteps) {
+    const { error } = await step.run()
+    if (error) {
+      console.warn(
+        `[PROJ-Y-144d globalSetup] assistant ${step.label} seed failed ` +
+          `(assistant chain spec will skip): ${error.message}`,
+      )
+      break
+    }
+  }
+
   // 4) Sign in to obtain access/refresh tokens, then write a
   //    Playwright storage state that injects them into the test
   //    origin's SSR cookies and localStorage in the shape Supabase expects.
@@ -317,8 +429,30 @@ async function globalSetup(config: FullConfig): Promise<void> {
     baseURL,
   )
 
+  // PROJ-Y-143f — pin the active tenant.
+  //
+  // `use-auth.tsx` resolves it from the `active_tenant_id` cookie and falls
+  // back to `memberships[0]` when the cookie is absent. That fallback made
+  // the whole authenticated suite depend on *membership order*: on
+  // 2026-08-12 a parallel slice added this shared user to a second tenant
+  // ("[E2E] Assistant Test"), the fallback picked it, and because the tenant
+  // name renders in the sidebar header, **all seven** visual baselines went
+  // red at once — for a reason that had nothing to do with the change under
+  // test. Writing the cookie makes the choice explicit and immune to any
+  // future membership a foreign spec creates.
+  const activeTenantCookie = {
+    name: "active_tenant_id",
+    value: E2E_TENANT_ID,
+    domain: new URL(baseURL).hostname,
+    path: "/",
+    expires: -1,
+    httpOnly: false,
+    secure: baseOrigin.startsWith("https://"),
+    sameSite: "Lax" as const,
+  }
+
   const storageState = {
-    cookies: supabaseCookies,
+    cookies: [...supabaseCookies, activeTenantCookie],
     origins: [
       {
         origin: baseOrigin,

@@ -9,6 +9,7 @@ import {
 } from "@/app/api/_lib/route-helpers"
 import { handleAssistantTurn } from "@/lib/assistant/runtime"
 import { normalizeAssistantSettings } from "@/lib/assistant/settings"
+import { transcriptForPersistence } from "@/lib/assistant/transcript"
 import { requireModuleActive } from "@/lib/tenant-settings/server"
 
 const turnSchema = z.object({
@@ -85,12 +86,10 @@ export async function POST(request: Request) {
   })
   if (session.error) return session.error
 
-  const persistedInput =
-    runtime.transcript_persistence === "redacted"
-      ? redactTranscript(parsed.data.input_text)
-      : runtime.transcript_persistence === "metadata"
-        ? null
-        : null
+  const persistedInput = transcriptForPersistence(
+    parsed.data.input_text,
+    runtime.transcript_persistence,
+  )
 
   const { data: turn, error: turnError } = await supabase
     .from("assistant_turns")
@@ -110,6 +109,9 @@ export async function POST(request: Request) {
       route_target: runtime.route_target,
       wizard_draft_id: runtime.wizard_draft?.id ?? null,
     })
+    // PROJ-144: der Verweis auf einen Sprach-Entwurf reist bewusst im
+    // tool_calls-Protokoll mit, nicht in einer eigenen Spalte — sonst wird
+    // diese Tabelle mit jedem künftigen Aktionspaket breiter (Tech Design §4).
     .select("id, created_at")
     .single()
 
@@ -209,11 +211,4 @@ async function upsertSession(args: {
   }
 
   return { id: (data as { id: string }).id }
-}
-
-function redactTranscript(input: string): string {
-  return input
-    .replace(/[A-Z0-9._%+-]+@[A-Z0-9.-]+\.[A-Z]{2,}/gi, "[redacted-email]")
-    .replace(/\+?\d[\d\s()./-]{6,}\d/g, "[redacted-phone]")
-    .slice(0, 5000)
 }

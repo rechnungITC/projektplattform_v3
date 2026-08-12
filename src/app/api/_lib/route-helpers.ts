@@ -1,5 +1,9 @@
 import { NextResponse } from "next/server"
 
+import {
+  isProjectEditAllowed,
+  isProjectMemberManagementAllowed,
+} from "@/lib/projects/access"
 import { createClient } from "@/lib/supabase/server"
 
 export interface ApiErrorBody {
@@ -231,17 +235,17 @@ export async function requireProjectAccess(
 
   const tenantRole = tenantRes.data?.role ?? null
   const projectRole = projectMembershipRes.data?.role ?? null
-  const isTenantAdmin = tenantRole === "admin"
-  const isProjectLead = projectRole === "lead"
-  const isProjectEditor = projectRole === "editor"
 
+  // Die Rollenregel selbst liegt in `@/lib/projects/access`, weil die
+  // Assistant-Runtime (PROJ-144) sie als Wahrheitswert braucht. Verhalten
+  // unverändert — nur die Entscheidung hat jetzt eine einzige Quelle.
   let allowed = false
   let denyMessage = ""
   if (action === "edit") {
-    allowed = isTenantAdmin || isProjectLead || isProjectEditor
+    allowed = isProjectEditAllowed(tenantRole, projectRole)
     denyMessage = "Editor or lead role required to edit this project."
   } else if (action === "manage_members") {
-    allowed = isTenantAdmin || isProjectLead
+    allowed = isProjectMemberManagementAllowed(tenantRole, projectRole)
     denyMessage = "Only project leads or tenant admins can manage members."
   }
 

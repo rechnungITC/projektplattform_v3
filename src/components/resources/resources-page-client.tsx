@@ -4,6 +4,7 @@ import { AlertCircle, AlertTriangle, Loader2, Plus, Sparkles, User, UserMinus } 
 import * as React from "react"
 import { toast } from "sonner"
 
+import { ModuleUnavailableNotice } from "@/components/app/module-unavailable-notice"
 import { Badge } from "@/components/ui/badge"
 import { Button } from "@/components/ui/button"
 import { Card, CardContent } from "@/components/ui/card"
@@ -59,8 +60,16 @@ export function ResourcesPageClient() {
     [showInactive, kindFilter]
   )
 
-  const { resources, loading, error, create, update, remove, refresh } =
-    useResources(options)
+  const {
+    resources,
+    loading,
+    error,
+    unavailable,
+    create,
+    update,
+    remove,
+    refresh,
+  } = useResources(options)
 
   // PROJ-54-γ BUG-4 v2 (2026-05-09): auto-poll the open drawer's
   // resource whenever its recompute_status is pending/running. This
@@ -202,9 +211,13 @@ export function ResourcesPageClient() {
               werden zentral hier gepflegt.
             </p>
           </div>
-          <Button onClick={() => setDrawer({ mode: "create" })}>
-            <Plus className="mr-2 h-4 w-4" aria-hidden /> Ressource
-          </Button>
+          {/* PROJ-Y-143f: with the module off the POST answers 403, so
+              offering the action would only produce a failed toast. */}
+          {unavailable ? null : (
+            <Button onClick={() => setDrawer({ mode: "create" })}>
+              <Plus className="mr-2 h-4 w-4" aria-hidden /> Ressource
+            </Button>
+          )}
         </header>
 
         <div className="flex flex-wrap items-center gap-3">
@@ -234,6 +247,13 @@ export function ResourcesPageClient() {
 
         {loading && resources.length === 0 ? (
           <p className="text-sm text-muted-foreground">Lade Ressourcen …</p>
+        ) : unavailable ? (
+          // PROJ-Y-143f: the list route's only 404 path is the module gate,
+          // so here the reason is unambiguous and can be named.
+          <ModuleUnavailableNotice
+            title="Das Modul „Ressourcen“ ist für diesen Workspace nicht aktiv."
+            description="Ein Tenant-Admin kann es unter Einstellungen → Workspace aktivieren. Bis dahin werden hier keine Ressourcen geführt."
+          />
         ) : error ? (
           <p className="text-sm text-destructive">{error}</p>
         ) : resources.length === 0 ? (
