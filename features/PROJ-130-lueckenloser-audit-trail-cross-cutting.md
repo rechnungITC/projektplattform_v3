@@ -14,7 +14,7 @@ summary_for_jira: "[L3] Lückenloser Audit-Trail (Cross-Cutting)"
 
 # PROJ-130: Lückenloser Audit-Trail (Cross-Cutting)
 
-## Status: In Progress (α + β + γ komplett bis auf UI + δ1 + δ2 live; γ2b/ε offen)
+## Status: In Progress (α + β + γ komplett inkl. γ2b + δ1 + δ2 live; nur ε offen)
 **Created:** 2026-06-10
 **Architected:** 2026-08-11 (CIA-reviewed, GO-mit-Auflagen — Tech Design unten)
 **α /backend:** 2026-08-11 — Migration in Prod, Live-Pentest 19/19, 0 Residuen (gemergt, `537f727`)
@@ -377,7 +377,7 @@ Nebenbefund: `audit_escalation_patterns` auf `stakeholders` schreibt entgegen de
 
 **Gates:** ESLint **0** · tsc **13 vorbestehend / 0 neu** · vitest **2769/2769** (355 Dateien, +14: 9 Freigabe-Route, 5 Export-Gate) · Build clean (neue Route registriert) · `check:migration-naming` **0 Fehler**.
 
-**Offen in γ:** γ3 TS-Enum-Öffnung (15 von 88 Werten sichtbar; `AUDIT_ENTITY_LABELS` ist der einzige Exhaustiveness-Zwang, und das Array ist als `readonly AuditEntityType[]` typisiert — ein neuer Union-Wert ohne Array-Eintrag kompiliert sauber und wird dann still mit 400 abgelehnt) · Verwaltungs-Oberfläche für die Freigaben (heute nur über die API) → **γ2b**.
+**Offen in γ:** γ3 TS-Enum-Öffnung (15 von 88 Werten sichtbar; `AUDIT_ENTITY_LABELS` ist der einzige Exhaustiveness-Zwang, und das Array ist als `readonly AuditEntityType[]` typisiert — ein neuer Union-Wert ohne Array-Eintrag kompiliert sauber und wird dann still mit 400 abgelehnt) · Verwaltungs-Oberfläche für die Freigaben → **γ2b, seit 2026-08-12 live**.
 
 ## Tech Design — δ2 (2026-08-12) — Auswertungen und In-App-Lesen
 
@@ -453,6 +453,31 @@ Damit bleibt die Negativliste im Kern gültig (Listen protokollieren nicht) mit 
 **Deployed 2026-08-12:** PR #336 (squash) → main (`4b1ff94`), Tag `v2.48.0-PROJ-130-delta2`. Migration lag seit `/backend` in Prod, der Merge bringt nur den Code (Vercel-Auto-Deploy von main) — zwischen Anwendung und Merge trug Prod den neuen Schlüssel, protokollierte aber noch nicht; harmlos, weil ein unbenutzter Nutzlast-Schlüssel niemanden stört. Alle Required-Checks grün, darunter der **Schema-Drift-Guard** — er ist der unabhängige Beweis, dass die Anker-Ersetzung auch in einer frisch aus den Migrationsdateien gebauten Datenbank greift und nicht nur gegen Prods Live-Definitionen. Post-Deploy-Smoke: alle 7 verdrahteten Flächen → 307 Auth-Gate, kein Leck.
 
 **Offen in PROJ-130:** γ2b (Verwaltungs-Oberfläche für die Revisions-Freigaben) und ε (Hash-Anker + Verifikationslauf).
+
+## Implementation Notes — γ2b (2026-08-12, `/frontend`) — Bedienfläche für den Revisionszugriff
+
+**Keine Migration, keine neue Route.** γ2 hatte Tabelle, RPCs und `GET/POST/DELETE /api/tenants/[id]/audit-readers` schon vollständig; γ2b ist die fehlende Bedienfläche: `Stammdaten → Revisionszugriff` (admin-only Karte), `src/app/(app)/stammdaten/revisionszugriff/page.tsx` + `audit-readers-page-client.tsx` + Client-Wrapper `src/lib/audit/audit-readers-api.ts`. Die Autorität bleibt, wo sie war — in den SECURITY-DEFINER-RPCs und der einen SELECT-Policy; die Oberfläche ist bewusst kein zweites Gate.
+
+**Zwei Dinge musste die Oberfläche sichtbar machen, sonst wird sie falsch bedient:**
+
+1. **Der externe Prüfer ist absichtlich kein Mandanten-Mitglied.** Genau das ist die γ2-Entscheidung (ein vierter Rollenwert hätte ihn automatisch überall lesend gemacht) — und genau deshalb wäre eine reine Mitglieder-Auswahl am Zweck vorbei: der wichtigste Anwendungsfall stünde nicht in der Liste. Es gibt daher zwei Wege: Mitglied auswählen (interne Revision) **oder** Konto-Kennung eingeben, mit der Erklärung, warum die Person nicht in der Auswahl steht. Eine E-Mail-Suche wäre freundlicher, funktioniert aber gerade für Externe nicht — `profiles` ist RLS-begrenzt, ein echter Externer wäre nicht auffindbar.
+2. **Eine abgelaufene Freigabe bleibt in der Liste, wirkt aber nicht mehr** (`has_audit_reader_grant` prüft die Frist bei jedem Lesezugriff; γ2-Pentest-Fall „abgelaufene Freigabe wirkt nicht"). Ohne Statusspalte hält ein Administrator jemanden für berechtigt, der längst nichts mehr sieht. Status wird deshalb aus `valid_until` abgeleitet — `unbefristet` / `aktiv` / `abgelaufen` — und ist unit-getestet.
+
+**Datum vs. Zeitpunkt.** Das Formular fragt ein Datum, die API verlangt einen Zeitpunkt mit Offset. `endOfDayIso` legt die Frist auf das **Ende** des gewählten Tages: bei Mitternacht verlöre der Prüfer den Zugang einen Tag früher als zugesagt. Auch das ist getestet, inklusive Abweisung eines unbrauchbaren Datums (lieber ein Fehler als eine falsche Frist).
+
+**Zwei eigene Fehler, beide von den Gates gefangen:**
+- `TenantMember` ist **flach** (`user_id`/`email`/`display_name`), nicht genestet mit `profile` — meine erste Fassung nahm das Gegenteil an, `tsc` hat es gemeldet.
+- ESLint verbietet `set-state-in-effect` (der React-Compiler erstickt daran). Umgestellt auf das Haus-Muster aus `use-tenant-members`: `cancelled`-Guard, State erst **nach** dem `await`, und `hasLoaded` statt eines `loading`-Flags — damit die Liste nie „keine Freigaben erteilt" behauptet, solange nichts geladen wurde. Eine falsche Aussage über Berechtigungen ist schlimmer als ein Skelett, das eine Sekunde länger steht.
+
+**Tiefen-Nachweis bleibt γ2s Pentest** (11/11 gegen Prod, inklusive „Prüfer liest ohne Mitgliedschaft, sieht aber `strict` nicht" und „abgelaufene Freigabe wirkt nicht"): γ2b legt keine neue Datenbank-Fläche an, es gibt also nichts neu zu penetrieren. Neu ist nur der Auth-Gate-Nachweis der Oberfläche: `tests/PROJ-130-gamma2b-audit-readers.spec.ts` **4/4 chromium** (Seite leitet unauthentifiziert auf `/login`, alle drei API-Verben 307/401/403).
+
+**Gates:** ESLint **0** · tsc **13 vorbestehend / 0 neu** · vitest **2809/2809** (359 Dateien, +7 Status-/Fristen-Tests) · Build clean (`/stammdaten/revisionszugriff` registriert) · Playwright **4/4** (Mobile Safari env-übersprungen, PROJ-67/F2).
+
+**Prozess-Notiz:** der Worktree hatte keine `.env.local` (gitignored, wandert nicht mit) — der Playwright-`webServer` stürzte deshalb in `proxy.ts` an fehlenden Supabase-Variablen, was wie ein Produktfehler aussieht. Aus dem Primär-Checkout kopiert; für künftige Worktrees mit E2E-Bedarf einplanen.
+
+**Abgrenzung:** kein Bulk-Widerruf, keine E-Mail-Einladung, keine Sicht auf die Protokollzeilen selbst (der Audit-Bericht existiert bereits) · kontenlose Prüfer bleiben PROJ-Y-130c · die bewusste γ2-Grenze aus PROJ-Y-130i (Auditor sieht keine mandantenweiten Katalogänderungen) ist unverändert.
+
+**Offen in PROJ-130:** nur noch **ε** (Hash-Anker + Verifikationslauf).
 
 ---
 _Quelle: Backlog-Entwurf M&A-Projektplattform · L — Vertraulichkeit, NDA & Audit_

@@ -102,6 +102,14 @@ const SECTIONS: Section[] = [
     adminOnly: true,
   },
   {
+    href: "/stammdaten/revisionszugriff",
+    icon: ShieldCheck,
+    title: "Revisionszugriff",
+    description:
+      "Leseberechtigung am Audit-Trail für Revision und befristete externe Prüfer — ohne Projektmitgliedschaft und ohne Schreibrechte. Ersetzt die Mitgliedschaft, nicht die Vertraulichkeitsstufe.",
+    adminOnly: true,
+  },
+  {
     href: "/stammdaten/organisation",
     icon: Network,
     title: "Organisation",
