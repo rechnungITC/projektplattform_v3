@@ -14,7 +14,29 @@ summary_for_jira: "[L3] Lückenloser Audit-Trail (Cross-Cutting)"
 
 # PROJ-130: Lückenloser Audit-Trail (Cross-Cutting)
 
-## Status: Approved (α + β + γ inkl. γ2b + δ1 + δ2 + ε gebaut und live-verifiziert; Deployed-Stempel + Deployment-Scope pending Portfolio-Migration, siehe ε-Notes)
+## Status: Deployed (α + β + γ inkl. γ2b + δ1 + δ2 + ε gebaut und live-verifiziert)
+## Deployment Scope: mvp
+
+**Klassifiziert 2026-08-12 durch PROJ-145** (der Portfolio-Migration, die `features/INDEX.md` die
+`Deployment Scope`-Spalte gegeben hat — bis dahin war dieser Stempel blockiert, weil die
+Bookkeeping-Regel Abbruch verlangt statt geratener Scopes).
+
+Abgeleitet aus AC-Liste, Abweichungen und Live-Nachweisen, **nicht** aus dem Status-Etikett. Alle
+fünf geplanten Sub-Slices sind gebaut, in Prod und per Live-Pentest verifiziert (α 19/19 · β 12/12 ·
+γ1 9/9 · γ2 11/11 · δ1 10/10 · δ2 11/11 + Regressionen · ε 11/11). `full` ist trotzdem **nicht**
+zulässig, und zwar aus einem Grund, den diese Spec selbst benennt:
+
+- **AC-5 („konfigurierbare Speicherdauer") wurde per PO-Lock umgekehrt statt erfüllt** — siehe die
+  AC-Tabelle und die Abweichungen: „Das AC wird nicht erfüllt, sondern begründet aufgehoben." Die
+  Umkehr ist produktlich die stärkere Wahl (unbegrenzte Aufbewahrung schützt den Trail, ein Purge
+  war die eigentliche Lücke), aber formal bleibt das Kriterium offen.
+- **Kein Legal-Hold** — bewusste, dokumentierte Abweichung.
+- **Restabdeckung** der 132 mandantenbezogenen Tabellen war nicht Teil von β → PROJ-Y-130d.
+
+Damit greift `mvp` wörtlich: eine ausdrücklich freigegebene, nutzbare Grenze ist ausgeliefert, und
+jede weggelassene Original-Anforderung ist benannt und verfolgt (PROJ-Y-130a…o). Ein Upgrade auf
+`full` verlangt laut Regel einen neuen QA-/Deploy-Durchlauf und würde bedeuten, AC-5 entweder zu
+erfüllen oder die Spec-Anforderung selbst zu ändern — nicht, die Bewertung nachzuziehen.
 **Created:** 2026-06-10
 **Architected:** 2026-08-11 (CIA-reviewed, GO-mit-Auflagen — Tech Design unten)
 **α /backend:** 2026-08-11 — Migration in Prod, Live-Pentest 19/19, 0 Residuen (gemergt, `537f727`)
@@ -524,7 +546,7 @@ Dazu: Anker-Update/-Delete je `42501`, gewöhnliches Mitglied darf nicht prüfen
 
 **Code deployed 2026-08-12:** PR #343 (squash) → main (`84dc1a1`), Tag `v2.50.0-PROJ-130-epsilon`. Post-Deploy-Smoke: Siegel-Cron **401** ohne und mit falschem Bearer (identisch zum Bestands-Cron), Prüf-Route **307**. Der erste Cron-Lauf um 03:45 UTC siegelt die Historie in einem Zug (~203 Fenster).
 
-**Damit sind alle fünf Sub-Slices von PROJ-130 gebaut (α · β · γ inkl. γ2b · δ1/δ2 · ε).** Der endgültige `Deployed`-Stempel samt Deployment-Scope wird hier **nicht** gesetzt: die neue Bookkeeping-Regel verlangt eine eigene `Deployment Scope`-Spalte in `features/INDEX.md`, die dort noch nicht existiert, und sie untersagt ausdrücklich, Scopes für nicht auditierte Zeilen zu erfinden. Statusstufe daher **Approved**; die Deployed-Klassifizierung gehört in die Portfolio-Migration, die die Spalte einführt — zusammen mit der ehrlichen Bewertung, dass AC-5 (konfigurierbare Speicherdauer) per PO-Lock **umgekehrt** statt erfüllt wurde.
+**Damit sind alle fünf Sub-Slices von PROJ-130 gebaut (α · β · γ inkl. γ2b · δ1/δ2 · ε).** Der endgültige `Deployed`-Stempel samt Deployment-Scope wird hier **nicht** gesetzt: die neue Bookkeeping-Regel verlangt eine eigene `Deployment Scope`-Spalte in `features/INDEX.md`, die dort noch nicht existiert, und sie untersagt ausdrücklich, Scopes für nicht auditierte Zeilen zu erfinden. Statusstufe daher **Approved**; die Deployed-Klassifizierung gehört in die Portfolio-Migration, die die Spalte einführt — zusammen mit der ehrlichen Bewertung, dass AC-5 (konfigurierbare Speicherdauer) per PO-Lock **umgekehrt** statt erfüllt wurde. **Erledigt am 2026-08-12:** PROJ-145 hat die Spalte eingeführt und diese Slice als `Deployed` / **`mvp`** gebucht — genau mit der hier vorweggenommenen AC-5-Bewertung als Ausschlussgrund für `full` (Begründung im Kopf der Spec).
 
 ## Implementation Notes — PROJ-Y-130m (2026-08-12, `/frontend`) — Kettenstatus in der Oberfläche
 

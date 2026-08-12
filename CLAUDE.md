@@ -152,6 +152,7 @@ npm run test:all     # Both test suites
 # CI guards — run these locally before opening a PR
 npm run audit:prod              # npm audit --omit=dev --audit-level=high
 npm run check:migration-naming  # filename format + version-prefix collisions
+npm run check:index-scope       # INDEX.md: lifecycle status vs deployment scope
 npm run check:schema-drift      # .from().select() columns vs migration schema (needs Docker)
 ```
 
@@ -165,6 +166,7 @@ A PR cannot merge until all of these pass. Run their local equivalents before pu
 | `Snyk production dependency scan` | same, second opinion | — (needs `SNYK_TOKEN`) |
 | `Verify SELECT columns vs migration schema` | schema drift — a `.select()` naming a column no migration creates | `npm run check:schema-drift` |
 | `Verify migration filename naming + version-prefix uniqueness` | migration version collisions / malformed names | `npm run check:migration-naming` |
+| `Verify lifecycle status vs deployment scope in features/INDEX.md` **(runs on every PR, not yet enrolled as required — PROJ-Y-145c)** | a `Deployed` row without a scope, a pre-deployment row carrying one, `Deployed + superseded`, an invented scope value, or a row whose cell count is wrong because a prose `\|` was left unescaped | `npm run check:index-scope` |
 | Vercel build | build + type errors | `npm run build` |
 
 Two of these have bitten repeatedly and are worth knowing up front:
