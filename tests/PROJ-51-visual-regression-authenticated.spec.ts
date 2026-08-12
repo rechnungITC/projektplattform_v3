@@ -126,13 +126,30 @@ test.describe("PROJ-51-ε.3 — Visual Regression (authenticated)", () => {
   // and the table *header* row. What it deliberately does not guard: the
   // row content. That trade is the point — the previous version guarded
   // nothing at all while appearing to pass.
+  //
+  // Tolerance (PROJ-Y-143d closure): an absolute `maxDiffPixels`, not the
+  // inherited `maxDiffPixelRatio: 0.02`. All three numbers below were
+  // measured on this capture, not estimated:
+  //
+  //   - run-to-run noise .......... 0 px (four consecutive runs identical)
+  //   - "Name" -> "NameZZ" in the
+  //     table header ............. 42 px  <- smallest change worth catching
+  //   - the 0.02 ratio allowed .... ~18,400 px
+  //
+  // So the inherited ratio was ~440x too coarse to notice a renamed column
+  // header, and it stayed green when that rename was injected. That is the
+  // same blind spot which let the Next dev-indicator (F-1) ride along at
+  // ~0.4% unnoticed. A tight absolute bound is affordable *because* the
+  // capture is now deterministic; 20 px sits between the measured noise
+  // floor and the smallest real change, so it covers incidental
+  // antialiasing without covering content.
   test("Projects list page", async ({ authenticatedPage }) => {
     await authenticatedPage.goto("/projects", {
       waitUntil: "domcontentloaded",
     })
     await waitForRenderedData(authenticatedPage)
     await expect(authenticatedPage).toHaveScreenshot("projects-list.png", {
-      maxDiffPixelRatio: 0.02,
+      maxDiffPixels: 20,
       fullPage: false,
       mask: [authenticatedPage.locator("table tbody")],
     })
@@ -214,6 +231,12 @@ test.describe("PROJ-51-ε.4 — Visual Regression (Project-Room)", () => {
   // (title, lifecycle badges, Budget/Risiken/Health tiles, the Projekt-Setup
   // counters) is derived from the fixed-UUID seed project and is therefore
   // stable. Verified over three consecutive runs.
+  //
+  // Tolerance: `maxDiffPixels` for the same reason as the projects list.
+  // The inherited 0.03 ratio allowed ~27,600 differing pixels on a
+  // 1280x720 frame — more area than the entire Projekt-Setup card — while
+  // appending two characters to that card's title measures 97 px. Noise
+  // here is likewise 0 across four consecutive runs.
   test("Project-Room overview", async ({ authenticatedPage }) => {
     const response = await authenticatedPage.goto(`/projects/${E2E_PROJECT_ID}`, {
       waitUntil: "domcontentloaded",
@@ -226,7 +249,7 @@ test.describe("PROJ-51-ε.4 — Visual Regression (Project-Room)", () => {
     }
     await waitForRenderedData(authenticatedPage)
     await expect(authenticatedPage).toHaveScreenshot("project-room.png", {
-      maxDiffPixelRatio: 0.03,
+      maxDiffPixels: 20,
       fullPage: false,
     })
   })
