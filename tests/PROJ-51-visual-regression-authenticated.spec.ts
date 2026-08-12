@@ -25,6 +25,41 @@ import type { Page } from "@playwright/test"
 
 import { expect, test } from "./fixtures/auth-fixture"
 import { E2E_PROJECT_ID } from "./fixtures/constants"
+import {
+  dashboardApprovalsFixture,
+  dashboardDeliverableApprovalsFixture,
+  dashboardSummaryFixture,
+  FIXED_NOW,
+} from "./fixtures/dashboard-payload"
+
+/**
+ * PROJ-Y-143h — answer the three dashboard endpoints from the pinned
+ * fixture. Everything else on the page still hits the real app.
+ *
+ * The patterns are anchored with `**` on both sides so they match whether
+ * the app requests them relative or absolute, and each handler is
+ * registered before navigation so no live response can win the race.
+ */
+async function routeDashboardFixtures(page: Page): Promise<void> {
+  const payloads: Record<string, unknown> = {
+    "**/api/dashboard/summary**": { summary: dashboardSummaryFixture },
+    "**/api/dashboard/approvals**": dashboardApprovalsFixture,
+    "**/api/dashboard/deliverable-approvals**":
+      dashboardDeliverableApprovalsFixture,
+  }
+  // No overlap to worry about: glob segments are exact, so
+  // "**/api/dashboard/approvals**" does not match the
+  // ".../deliverable-approvals" path — the segment differs.
+  for (const [pattern, body] of Object.entries(payloads)) {
+    await page.route(pattern, (route) =>
+      route.fulfill({
+        status: 200,
+        contentType: "application/json",
+        body: JSON.stringify(body),
+      }),
+    )
+  }
+}
 
 /**
  * Waits until the page has actually rendered its data — not just its shell.
@@ -88,38 +123,115 @@ test.describe("PROJ-51-ε.3 — Visual Regression (authenticated)", () => {
   )
 
 
-  // PROJ-Y-143g: this is the ONE page that keeps the ratio tolerance, and
-  // the reason is not "it was fine as it was".
+  // PROJ-Y-143h: the dashboard is the one page whose stability came from the
+  // *tenant*, not from the page — every KPI read 0 and My Work read
+  // "0 Items" only because nothing was assigned to the [E2E] user, while
+  // four panels format dates. PROJ-Y-143g measured both failure modes: a
+  // counter going 0 -> 3 costs 82 px (so a tight bound goes red as soon as
+  // any other spec seeds data) and the 2% ratio allowed ~44,000 px (so My
+  // Work could fill with rows unnoticed). No tolerance number fixes that.
   //
-  // Measured: back-to-back noise is 0 px like everywhere else, and a single
-  // KPI counter going 0 -> 3 costs 82 px. But that 0 is not a property of
-  // the page, it is a property of the *tenant*: every counter here reads 0
-  // and My Work reads "0 Items" only because nothing is assigned to the
-  // [E2E] user. The first work item, approval or report in that tenant
-  // changes this image — through data, not through a UI regression.
+  // So the data is pinned at the network boundary instead. The page stays
+  // real — real shell, real components, real layout, real navigation; only
+  // the three dashboard endpoints answer from a typed fixture. Compared to
+  // the two options registered in 143g this needs no `data-testid` in seven
+  // production components (masking) and writes nothing into the shared
+  // tenant (seeding), and unlike masking it leaves the panels *rendered*,
+  // so their content is guarded rather than painted over.
   //
-  // So neither bound is right, and both horns were measured:
-  //   - tight (20 px): the 82 px digit flip turns it red, i.e. a foreign
-  //     spec seeding data makes this test fail for something it does not
-  //     guard. That is flakiness, not coverage.
-  //   - ratio 0.02: ~35,000 px on this 1280x1714 frame. Wide enough that
-  //     even My Work filling up with rows would pass silently.
+  // Both pins are necessary and neither is sufficient:
+  //   - the fixture fixes *what* is rendered;
+  //   - `clock.setFixedTime` fixes *when*, because `my-work-panel.tsx`
+  //     buckets rows through `Date.now()` for the "Bald fällig" chip count,
+  //     so even a fixed due date would drift as real time passes.
+  //     `setFixedTime` pins Date/now readings but keeps timers running, so
+  //     React and Next behave normally.
   //
-  // The real fix is to make the page deterministic — pinned seed data, or
-  // masking the data panels, which needs test hooks in seven production
-  // components. That is its own slice (PROJ-Y-143h), not a tolerance
-  // number. Until then this snapshot knowingly guards layout only, and
-  // this comment is what keeps that from looking like an oversight.
-  test("Dashboard renders past auth gate", async ({ authenticatedPage }) => {
+  // The live dashboard keeps its own smoke below; this test owns the image.
+  test("Dashboard with pinned data", async ({ authenticatedPage }) => {
+    await authenticatedPage.clock.setFixedTime(FIXED_NOW)
+    await routeDashboardFixtures(authenticatedPage)
+
     const response = await authenticatedPage.goto("/", {
       waitUntil: "domcontentloaded",
     })
     expect(response?.status()).toBeLessThan(400)
     await waitForRenderedData(authenticatedPage)
+    // Guard against the fixture silently not being used: with live data
+    // every counter is 0, so a non-zero KPI proves the route interception
+    // took effect before the panels rendered.
+    await expect(
+      authenticatedPage.getByLabel("Offene Aufgaben: 4"),
+    ).toBeVisible()
+
     await expect(authenticatedPage).toHaveScreenshot("dashboard.png", {
-      maxDiffPixelRatio: 0.02,
+      maxDiffPixels: 20,
       fullPage: true,
     })
+  })
+
+  // Live counterpart, deliberately without a screenshot. It keeps the real
+  // page in the suite — the aggregation endpoint really answers, the shell
+  // really renders — without re-introducing a baseline whose content nobody
+  // controls. This is the half that would notice a broken /api/dashboard/*.
+  test("Dashboard renders past auth gate (live data)", async ({
+    authenticatedPage,
+  }) => {
+    const response = await authenticatedPage.goto("/", {
+      waitUntil: "domcontentloaded",
+    })
+    expect(response?.status()).toBeLessThan(400)
+    await waitForRenderedData(authenticatedPage)
+    await expect(
+      authenticatedPage.getByRole("heading", { name: /Hallo,/ }),
+    ).toBeVisible()
+  })
+
+  // Fixture-drift guard. The typed fixture already fails to compile if the
+  // `DashboardSummary` contract changes, but that only binds the fixture to
+  // the *type* — a route that drifts away from its own type would go
+  // unnoticed, and the visual test would then happily guard a shape the
+  // server no longer sends. So compare the live payload's keys against the
+  // fixture's, top level and per section.
+  test("dashboard fixture still matches the live contract", async ({
+    authenticatedPage,
+  }) => {
+    await authenticatedPage.goto("/", { waitUntil: "domcontentloaded" })
+    const live = await authenticatedPage.evaluate(async () => {
+      const res = await fetch("/api/dashboard/summary", {
+        credentials: "include",
+      })
+      return (await res.json()) as { summary: Record<string, unknown> }
+    })
+
+    expect(Object.keys(live.summary).sort()).toEqual(
+      Object.keys(dashboardSummaryFixture).sort(),
+    )
+    for (const section of [
+      "my_work",
+      "approvals",
+      "project_health",
+      "alerts",
+      "reports",
+    ] as const) {
+      const liveSection = live.summary[section] as Record<string, unknown>
+      expect(Object.keys(liveSection).sort()).toEqual(
+        expect.arrayContaining(["data", "state"]),
+      )
+      const liveData = liveSection.data as Record<string, unknown> | null
+      const fixtureData = dashboardSummaryFixture[section].data as Record<
+        string,
+        unknown
+      > | null
+      if (liveData && fixtureData) {
+        expect(Object.keys(liveData).sort()).toEqual(
+          Object.keys(fixtureData).sort(),
+        )
+      }
+    }
+    expect(Object.keys(live.summary.kpis as object).sort()).toEqual(
+      Object.keys(dashboardSummaryFixture.kpis).sort(),
+    )
   })
 
   // PROJ-Y-143d: re-enabled with a deterministic capture.
