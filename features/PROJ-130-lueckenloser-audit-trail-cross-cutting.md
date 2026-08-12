@@ -518,6 +518,8 @@ Dazu: Anker-Update/-Delete je `42501`, gewöhnliches Mitglied darf nicht prüfen
 - Der erste Cron-Lauf nach dem Deploy siegelt die Historie in einem Zug (~203 Fenster); danach täglich wenige.
 - Ein Mandant ohne Audit-Zeilen bekommt keine Anker; die Kette beginnt beim ersten Eintrag.
 
+**Code deployed 2026-08-12:** PR #343 (squash) → main (`84dc1a1`), Tag `v2.50.0-PROJ-130-epsilon`. Post-Deploy-Smoke: Siegel-Cron **401** ohne und mit falschem Bearer (identisch zum Bestands-Cron), Prüf-Route **307**. Der erste Cron-Lauf um 03:45 UTC siegelt die Historie in einem Zug (~203 Fenster).
+
 **Damit sind alle fünf Sub-Slices von PROJ-130 gebaut (α · β · γ inkl. γ2b · δ1/δ2 · ε).** Der endgültige `Deployed`-Stempel samt Deployment-Scope wird hier **nicht** gesetzt: die neue Bookkeeping-Regel verlangt eine eigene `Deployment Scope`-Spalte in `features/INDEX.md`, die dort noch nicht existiert, und sie untersagt ausdrücklich, Scopes für nicht auditierte Zeilen zu erfinden. Statusstufe daher **Approved**; die Deployed-Klassifizierung gehört in die Portfolio-Migration, die die Spalte einführt — zusammen mit der ehrlichen Bewertung, dass AC-5 (konfigurierbare Speicherdauer) per PO-Lock **umgekehrt** statt erfüllt wurde.
 
 ---
