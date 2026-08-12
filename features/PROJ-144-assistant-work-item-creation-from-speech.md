@@ -815,9 +815,45 @@ Kriterium mehr seit F-8 über PROJ-Y-144d), aber die Spalte, in die er gehört, 
 
 Das ist derselbe Wartezustand wie bei **PROJ-130** (dort seit 2026-08-12 aus identischem Grund).
 Beide Zeilen bekommen Status und Scope in der evidenzbasierten Portfolio-Migration, die die
-Spalte einführt und die 139 als `Deployed` geführten Altzeilen klassifiziert; sie ist noch
-nirgends als eigene Slice registriert. **Ehrliche Einordnung:** die Funktion ist für den Piloten
-nutzbar, die Buchhaltung hinkt bewusst nach — nicht umgekehrt.
+Spalte einführt und die Altzeilen klassifiziert. **Inzwischen registriert als PROJ-Y-145** in
+`features/OPEN-DEFERRED-STATUS.md` (die frühere Fassung dieses Absatzes sagte „noch nirgends
+registriert" — das galt beim Schreiben, ist jetzt erledigt). **Ehrliche Einordnung:** die
+Funktion ist für den Piloten nutzbar, die Buchhaltung hinkt bewusst nach — nicht umgekehrt.
+
+Gemessene Größe der Migration (statt geschätzt): **164** PROJ-Zeilen, davon **138** mit einer
+`Deployed`-Variante in der Status-Zelle (`grep -cE '\| Deployed[^|]* \| (\[Spec\]|_spec pending_)'`).
+Die frühere Angabe „139" in diesem Absatz war um eins daneben. PROJ-Y-145 trägt zusätzlich zwei
+Vorbedingungen, die vor dem Umbau bekannt sein müssen: alle 164 Zeilen enden sauber auf
+`| [Spec](…) | YYYY-MM-DD |`, der Umbau muss deshalb **am Zeilenende verankern statt an
+Feldnummern** — denn fünf Zeilen (PROJ-78/79/92/142/Y-142a) tragen Pipe-Zeichen in der Prosa und
+würden bei feldbasiertem Tausch zerreißen. Diese fünf rendern schon heute mit 8 bzw. 9 statt 7
+Feldern; eigener Bestandsfund, unabhängig von der Migration.
+
+### Ergänzende Nachweise (2026-08-12, zweiter Lauf)
+
+Der Post-Deploy-Smoke oben belegt Erreichbarkeit und Auth-Gate. Vier Punkte kommen hinzu, weil
+ein Auth-Redirect allein laut Regel **kein** funktionaler Nachweis ist:
+
+| Prüfung | Ergebnis |
+|---|---|
+| Vercel-Deployment des Merge-Commits | `dpl_58pfMkmPbuX858Q6jqmrZRLJfCff` — **READY, target=production** |
+| Prod-Stand danach | `967ee04`; `fc56186` als Vorfahre des Tags verifiziert (`merge-base --is-ancestor`) |
+| Runtime-Fehler in Prod, 3-h-Fenster über den Deploy | **keine** |
+| Assistant-Modul im Prod-Mandanten „IT-Couch GmbH" | **aktiv** |
+
+Der letzte Punkt ist kein Formalismus: wäre das Modul beim Kunden aus, wäre „deployed" wahr und
+gleichzeitig wertlos, weil niemand die Fläche erreichen könnte. Das war vorher nirgends geprüft.
+
+**Verbleibende Lücke, ausdrücklich benannt:** ein *mutierender* Durchlauf durch die deployte
+Vercel-Runtime fehlt. Bewiesen sind Datenebene (Pentest 17/17 gegen die Prod-Datenbank), Kette im
+Browser (3/3 gegen dieselbe Prod-Datenbank) und ein fehlerfreies Prod-Deployment desselben
+Bundles — nicht aber, dass die ausgelieferten Serverless-Funktionen den Schreibpfad ausführen.
+Ein Prüfskript dafür ist geschrieben (Diktat → Entwurf → Bestätigen mit korrigiertem Titel →
+Doppelklick-Abweisung gegen die Produktions-URL, bewusst im Assistant-**Test**mandanten:
+dasselbe Bundle bedient alle Mandanten, damit ist die Runtime-Frage beantwortet, ohne in
+Kundendaten zu schreiben oder ein fremdes Konto zu übernehmen). Die Ausführung scheiterte an
+einem Werkzeug-Ausfall in der Session, nicht an einem Befund. Beim Upgrade auf Scope `full` ist
+sie nachzuholen.
 
 **Nebenbefund:** die Version `v2.52.0` ist doppelt belegt (parallele Lane hat zeitgleich
 `v2.52.0-PROJ-Y-130n` getaggt). Das ist im Bestand geübte Praxis bei parallelen Lanes
