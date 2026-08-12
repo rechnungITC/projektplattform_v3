@@ -477,6 +477,8 @@ Damit bleibt die Negativliste im Kern gültig (Listen protokollieren nicht) mit 
 
 **Abgrenzung:** kein Bulk-Widerruf, keine E-Mail-Einladung, keine Sicht auf die Protokollzeilen selbst (der Audit-Bericht existiert bereits) · kontenlose Prüfer bleiben PROJ-Y-130c · die bewusste γ2-Grenze aus PROJ-Y-130i (Auditor sieht keine mandantenweiten Katalogänderungen) ist unverändert.
 
+**Deployed 2026-08-12:** PR #338 (squash) → main (`a0f3737`), Tag `v2.49.0-PROJ-130-gamma2b`; kein DB-Change. Post-Deploy-Smoke: Seite + GET/POST der Freigaben-Route → 307 Auth-Gate.
+
 **Offen in PROJ-130:** nur noch **ε** (Hash-Anker + Verifikationslauf).
 
 ---
