@@ -16,7 +16,7 @@ summary_for_jira: "[HYGIENE] Visual-Regression: Toleranz der fullPage-Baselines 
 
 ## Status: Deployed
 **Created:** 2026-08-12
-**Deployed:** 2026-08-12 — Tag `v2.48.0-PROJ-Y-143g`
+**Deployed:** 2026-08-12 — Tag `v2.50.0-PROJ-Y-143g`
 **Origin:** Fund F-3 aus der PROJ-Y-143d-Abnahme.
 
 ## Problem
@@ -94,6 +94,27 @@ sagt das ausdrücklich, damit es nicht wie ein Versehen aussieht. Vorgeführt st
 im Rot-Grün-Lauf ist das Dashboard mit der 82-px-Datenänderung als **einzige** Seite grün
 geblieben.
 
+## Der Wächter hat noch während der Slice zugeschlagen
+
+Zwischen dem Aufsetzen und dem Merge zog `main` weiter: PROJ-130-γ2b (#338) hängte eine Karte
+**„Revisionszugriff"** ins Stammdaten-Raster. Beim Nachziehen des Branches wurde
+`stammdaten` prompt rot — 1554 → **1574 px**, 34.129 abweichende Pixel.
+
+Das ist keine Regression, sondern eine **legitime Funktionsergänzung, die ohne Neuaufnahme der
+Baseline gemergt wurde** — möglich, weil die Visual-Suite nicht in CI läuft, sondern lokal.
+Genau dafür sind diese Tests da.
+
+Ehrlich eingeordnet: **diesen** Fall hätte auch die alte Toleranz gefangen, weil sich die
+Bildhöhe geändert hat und Playwright bei abweichender Bildgröße unabhängig von der Toleranz
+fehlschlägt. Der Gewinn der Verschärfung liegt bei Änderungen **innerhalb** gleicher Höhe —
+umbenannte Karten, vertauschte Labels, geänderte Beschreibungen. Die hätten bei
+`stammdaten` bis zu ~39.800 Pixel groß sein dürfen.
+
+Vor dem Neuziehen wurde der geladene Zustand geprüft statt blind aufgenommen (AC-Y143b.7):
+14 Karten, „Revisionszugriff" sichtbar, `scrollHeight` 1574 = neue Bildhöhe. Aufnahme über
+**Löschen der Datei**, nicht über `--update-snapshots` — Letzteres ist unter der Toleranz ein
+stiller No-op (Werkzeug-Fund aus 143d).
+
 ## Acceptance Criteria
 
 - **AC-Y143g.1** — Rauschen aller `fullPage`-Baselines gemessen (mehrere Läufe, Toleranz 0). ✅ 0 px
@@ -104,8 +125,9 @@ geblieben.
   Beibehaltung. ✅ `dashboard`, mit beiden gemessenen Hörnern
 - **AC-Y143g.5** — Rot-Grün: die verschärften Tests werden bei einer Änderung in der bewachten
   Region rot. ✅ 4/4 rot, danach 7/7 grün
-- **AC-Y143g.6** — Keine Baseline neu gezogen (die Bilder ändern sich nicht, nur ihre
-  Schranke). ✅
+- **AC-Y143g.6** — Keine Baseline **wegen der Schranke** neu gezogen. ✅ Eine Ausnahme mit
+  eigenem Grund: `stammdaten` wurde neu aufgenommen, weil PROJ-130-γ2b während der Slice eine
+  Karte ergänzt hat (1554 → 1574 px) — verifizierter geladener Zustand, nicht kosmetisch.
 
 ## Gates
 
@@ -122,6 +144,8 @@ geänderten Datei**. Test-only: kein Produktivcode, keine Migration.
   zusätzlich dafür, dass der Test beim Beheben von 143f rot wird — was richtig ist, die
   Baseline wird dort ohnehin neu gezogen.
 - **D-Y143g.3** — Mobile Safari übersprungen (WebKit-Host-Libs, PROJ-67/F2).
+- **D-Y143g.4** — `stammdaten.png` neu gezogen (s. o.). Ursache liegt außerhalb dieser Slice
+  (PROJ-130-γ2b), die Aufnahme geschah nach Prüfung des geladenen Zustands.
 
 ## Followups
 
