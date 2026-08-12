@@ -14,7 +14,7 @@ summary_for_jira: "[L3] Lückenloser Audit-Trail (Cross-Cutting)"
 
 # PROJ-130: Lückenloser Audit-Trail (Cross-Cutting)
 
-## Status: In Progress (α + β + γ komplett bis auf UI + δ1 live; δ2/γ2b/ε offen)
+## Status: In Progress (α + β + γ komplett inkl. γ2b + δ1 + δ2 live; nur ε offen)
 **Created:** 2026-06-10
 **Architected:** 2026-08-11 (CIA-reviewed, GO-mit-Auflagen — Tech Design unten)
 **α /backend:** 2026-08-11 — Migration in Prod, Live-Pentest 19/19, 0 Residuen (gemergt, `537f727`)
@@ -377,7 +377,109 @@ Nebenbefund: `audit_escalation_patterns` auf `stakeholders` schreibt entgegen de
 
 **Gates:** ESLint **0** · tsc **13 vorbestehend / 0 neu** · vitest **2769/2769** (355 Dateien, +14: 9 Freigabe-Route, 5 Export-Gate) · Build clean (neue Route registriert) · `check:migration-naming` **0 Fehler**.
 
-**Offen in γ:** γ3 TS-Enum-Öffnung (15 von 88 Werten sichtbar; `AUDIT_ENTITY_LABELS` ist der einzige Exhaustiveness-Zwang, und das Array ist als `readonly AuditEntityType[]` typisiert — ein neuer Union-Wert ohne Array-Eintrag kompiliert sauber und wird dann still mit 400 abgelehnt) · Verwaltungs-Oberfläche für die Freigaben (heute nur über die API) → **γ2b**.
+**Offen in γ:** γ3 TS-Enum-Öffnung (15 von 88 Werten sichtbar; `AUDIT_ENTITY_LABELS` ist der einzige Exhaustiveness-Zwang, und das Array ist als `readonly AuditEntityType[]` typisiert — ein neuer Union-Wert ohne Array-Eintrag kompiliert sauber und wird dann still mit 400 abgelehnt) · Verwaltungs-Oberfläche für die Freigaben → **γ2b, seit 2026-08-12 live**.
+
+## Tech Design — δ2 (2026-08-12) — Auswertungen und In-App-Lesen
+
+δ1 hat zwei Flächenklassen ausdrücklich offen gelassen: die drei Auswertungs-Funktionen samt Exporten und Druckseiten, und die Listen-GETs als eigentliche In-App-Lesefläche. δ2 schließt beide.
+
+**Der Widerspruch, den δ2 auflösen muss.** Die veröffentlichte Negativliste (CIA-Auflage 5) nennt „Listenansichten, Baumansichten, Dashboards und Suchergebnisse" als *nie* protokolliert — δ1 hat die Listen-GETs aber nach δ2 verschoben, weil die geplante Positivliste „Detailansichten" auf Flächen zeigte, die es nicht gibt. Der Bestand bestätigt das erneut: von den Einzelobjekt-Routen hat **nur `risks/[rid]` überhaupt einen GET-Handler**, alle anderen (`dd-questions/[qid]`, `spa-issues/[issueId]`, `dd-streams/[streamId]`, `committees/[cid]`, `tree/nodes/[nodeId]`) sind reine Schreibpfade. Wer „nie Listen" wörtlich nimmt, protokolliert in der Anwendung nichts — und AC-1 („Zugriff auf Strictly Confidential wird protokolliert") bleibt unerfüllt.
+
+**Die Regel, die stattdessen gilt** — eine Zeile, an einer Stelle im Code, in der Freigabe veröffentlicht:
+
+> **Austritt** (Download-Link, CSV-Export, Druckseite) wird ab `confidential` protokolliert. **In-App-Lesen** (Listen, Auswertungs-Ansicht) wird **nur bei `strict`** protokolliert.
+
+Das amendiert die Negativliste **eng und sichtbar**: Listenansichten bleiben unprotokolliert, *außer* die Antwort enthält `strict`-Inhalte. Begründung: `strict` ist die Stufe, für die überhaupt Rechenschaft zugesagt ist; sie ist selten, also bleibt die Mengenkurve flach und ein Nicht-M&A-Mandant trägt weiterhin **null** Zusatzlast. Bei `confidential` wäre das Gegenteil der Fall — `ma_valuations` trägt `confidential` als Default, jede Bewertungsliste würde schreiben.
+
+**Entprellung statt Mengenexplosion.** Wiederholtes Lesen derselben Fläche (Neuladen, React-Refetch, zweifacher Server-Render einer Druckseite) erzeugt genau **eine** Zeile pro 15-Minuten-Fenster je (Akteur, Projekt, Objektart, Aktion, Stufe). Die Entprellung sitzt **in der RPC**, nicht im Aufrufer, und ist an die Aktion gebunden (`list_read`/`report_read`) statt an einen neuen Parameter — die Signatur bleibt damit unverändert, `create or replace` genügt. Bewusster Verlust: Wiederholungen innerhalb des Fensters sind nicht einzeln nachweisbar. Das Protokoll bleibt **append-only** (keine Zähler-Updates), sonst wäre der forensische Wert beschädigt.
+
+**Die Stufe kommt aus der Auswertung selbst, nicht aus ihrer Nutzlast.** Der naheliegende Weg — die Route summiert die Stufen der zurückgegebenen Zeilen wie bei δ1 — trägt für Auswertungen **nicht**: `steering_report` aggregiert Stage-Gates in `stage_gate_summary` und `pre_read`, `operative_report` und `dd_report_consolidated` aggregieren Findings und Fragen zu Zählern. Deren Stufen erscheinen in der Nutzlast nie, und ein aus der Nutzlast gerechneter Höchstwert würde **unterberichten** — die gefährliche Richtung für ein forensisches Protokoll. Deshalb liefert jede der drei Funktionen einen neuen Schlüssel `confidentiality` = `{max_level, confidential_count}`, berechnet über **genau die Quellen, die sie liest, in der Granularität, in der sie sie liest** (Auswertung läuft INVOKER → nur was der Aufrufer sehen darf). `dd_report_consolidated` führte die Stufe bislang an **null** Stellen; damit ist die von δ1 gemeldete „ungleiche Ableitbarkeit" beseitigt, ohne die Nutzlast mit Zeilen-Stufen aufzublähen.
+
+**Eingriff in die drei live Funktionen: Anker am Ende, nicht Neutippen.** Alle drei enden identisch auf `\n  );\n$function$`. Die Migration liest `pg_get_functiondef`, fügt den neuen Schlüssel **vor** diesem Ende ein und führt das Ergebnis aus — Eindeutigkeits-Zählung des Ankers, harter Abbruch bei unerwarteter Form, Idempotenz-Sprung wenn der Schlüssel schon da ist, und eine **verhaltensbasierte** Post-Condition (Funktion aufrufen, Schlüssel muss existieren). Kein Retypen von 27 KB Funktionskörper (Transkriptionsrisiko), keine Regex-Chirurgie im Inneren.
+
+**Kein Drift-Register, sondern ein Wächter.** 12 Inhalts-Listen zu verdrahten heißt: die nächste neue vertrauliche Liste wird es vergessen — genau die Krankheit, die PROJ-130 behandelt. Ein datengetriebener Test zählt darum alle Routen, die `confidentiality_level` lesen, und verlangt für jede entweder eine Protokollierung **oder** einen benannten Eintrag in einer Ausnahmeliste mit Grund. Neue Fläche ohne Entscheidung → roter Test.
+
+**Ausnahmen (mit Grund, nicht stillschweigend):** `access-explain`/`access-overview` (Governance-Sichten ohne Inhalte — sie *sind* die Need-to-know-Auskunft) · `documents/tree` (Baumansicht = dauerhafte Negativliste; der Austritt ist über den Download aus δ1 gedeckt) · `communication-entries` inkl. Export (**eigenes** Protokoll aus PROJ-119 — Doppelprotokollierung wäre ein zweites driftendes Register) · `ma-project-templates` (Mandanten-Katalog, keine Projektinhalte).
+
+**Ausfallverhalten** bleibt die δ1-Regel, jetzt auch für Listen und Auswertungen: schlägt das Protokollieren von `strict` fehl, wird nicht ausgeliefert (Liste → 500, Druckseite → 404). Bei `confidential` best-effort.
+
+**Abgrenzung.** Kein Frontend-Anteil (die Auswertungs-Sicht der Protokollzeilen ist γ2b/ε-Thema) · keine Retention (α: unbegrenzt) · `risks`-Einzelroute wird mitgenommen, weil sie der einzige echte Detail-GET ist.
+
+## Implementation Notes — δ2 (2026-08-12, `/backend`) — Auswertungen und In-App-Lesen
+
+**Migration `20260812093000_proj130_delta2_report_and_list_reads.sql` in Prod angewendet** (registrierte Version `20260812092101`, Drift benign — die Migration ist durchgängig idempotent: `drop constraint if exists`, `create or replace`, Marker-gesteuerter Idempotenz-Sprung; PROJ-134-Domäne). Der angewendete Text entspricht der Repo-Datei in **jeder Anweisung**; die Repo-Datei trägt zusätzliche Kommentarblöcke.
+
+**Der Widerspruch war echt und ist eng aufgelöst.** Die veröffentlichte Negativliste sagt „Listenansichten nie", δ1 hatte sie nach δ2 verschoben. Der Bestand bestätigt δ1s Befund erneut: von den Einzelobjekt-Routen hat **nur `risks/[rid]` einen GET-Handler**, alle anderen sind reine Schreibpfade. Neue Regel, an **einer** Stelle im Code (`shouldLogRead`) und hier veröffentlicht:
+
+| Fläche | Schwelle | Aktion |
+|---|---|---|
+| Download-Link, CSV-Export, Druckseite (**Austritt**) | ab `confidential` | `download_url_issued` · `export` · `report_read` |
+| Liste, Auswertungs-Ansicht (**In-App**) | **nur `strict`** | `list_read` · `report_read` |
+
+Damit bleibt die Negativliste im Kern gültig (Listen protokollieren nicht) mit der genannten Ausnahme. Bei `confidential` wäre das Gegenteil passiert: `ma_valuations` trägt `confidential` als Default — jede Bewertungsliste hätte geschrieben.
+
+**Entprellung in der RPC, nicht im Aufrufer.** `list_read`/`report_read` erzeugen eine Zeile pro 15-Minuten-Fenster je (Akteur, Projekt, Objektart, Aktion, Stufe). An die **Aktion** gebunden statt an einen neuen Parameter → Signatur unverändert, `create or replace` genügt, und die Regel greift auch, wenn ein künftiger Aufrufer den TS-Helfer umgeht. Austritts-Aktionen werden **nicht** entprellt (jeder Export ist ein eigener Vorgang). Das Protokoll bleibt append-only — kein Zähler-Update, das den forensischen Wert beschädigen würde.
+
+**Die Stufe kommt aus der Auswertung, nicht aus ihrer Nutzlast — und das ist keine Stilfrage.** `steering_report` aggregiert Stage-Gates in `stage_gate_summary`/`pre_read`, `operative_report` und `dd_report_consolidated` aggregieren Findings und Fragen zu Zählern; deren Stufen erscheinen in der Nutzlast **nie**. Ein aus der Nutzlast gerechneter Höchstwert würde damit **unterberichten** — die gefährliche Richtung für ein forensisches Protokoll. Jede der drei Funktionen liefert deshalb `confidentiality = {max_level, confidential_count}`, berechnet über genau die Quellen, die sie liest, in der Granularität, in der sie sie liest. `dd_report_consolidated` führte die Stufe vorher an **null** Stellen — die von δ1 gemeldete „ungleiche Ableitbarkeit" ist damit beseitigt.
+
+**Eingriff in drei live Funktionen über EINEN Anker.** Alle drei enden identisch auf `\n  );\n$function$`; die Migration liest `pg_get_functiondef`, zählt den Anker (≠1 → harter Abbruch, keine Blindpatchung), springt bei vorhandenem Marker, führt das Ergebnis aus und prüft danach **verhaltensbasiert** (Funktion aufrufen, Schlüssel muss existieren) plus katalogseitig, dass alle drei weiterhin `SECURITY INVOKER`/`STABLE` sind. Kein Neutippen von 27 KB Funktionskörper, keine Regex-Chirurgie im Inneren.
+
+**Was das TS-Pflichtfeld gefangen hat.** `confidentiality` ist in allen drei Report-Typen **Pflicht** (γ3-Lehre: was nicht kompiliert, driftet nicht). Der erste `tsc`-Lauf deckte damit **vier** Konstruktionsstellen auf, die ich nicht auf dem Schirm hatte — die drei Client-Wrapper (`fetchDdReport`, `fetchOperativeReport`, `fetchSteeringReport`) mit eigenen Leer-Fallbacks — und die Operativ-Route trug zusätzlich eine **untypisierte lokale Kopie** von `EMPTY_OPERATIVE_REPORT`, die das neue Feld still ignoriert hätte; sie ist jetzt durch die geteilte, typisierte Konstante ersetzt. Die beiden CSV-Export-Routen führen bewusst eigene schmale Interfaces — die schweigen nicht mehr über die Stufe.
+
+**Abdeckungs-Wächter statt fünftes Register.** 17 verdrahtete Leseflächen wären ohne Wächter die nächste Drift. `src/lib/audit/confidential-read-coverage.test.ts` zählt alle Routen, die `confidentiality_level` lesen, und verlangt für jede eine **Entscheidung**: protokollieren oder benannte Ausnahme mit Grund. Zweite Regel: wer eine Auswertungs-RPC aufruft, muss protokollieren (fängt die Druckseiten, die keine Stufe im Code führen). **Rot-Grün bewiesen** — Import aus `deliverables/route.ts` entfernt → roter Test mit Handlungsanweisung; Import aus der Steering-Druckseite entfernt → zweite Regel schlägt an.
+
+**Verdrahtet (17):** 12 Inhalts-Listen (DD-Streams · DD-Fragen · DD-Findings · Eskalationen · SPA-Issues · Bewertungen · Deliverables · Risiken · Workstreams · Gremien · Sitzungen · M&A-Grundlage) + 2 Einzelobjekt-GETs (Risiko-Detail, Sitzungs-Detail) + 3 Auswertungen × 3 Flächen (Ansicht, CSV, Druck). Der δ1-Download nutzt jetzt denselben Helfer statt einer inline-Kopie der Regel.
+
+**Begründete Ausnahmen (6):** `documents/tree` (Baumansicht = Negativliste; Austritt via Download gedeckt) · `access-overview`/`access-explain` (Governance-Auskunft ohne Inhalte) · `communication-entries` + dessen Export (**eigenes** Protokoll aus PROJ-119 — Doppelprotokollierung wäre das zweite driftende Register) · `ma-project-templates` (Mandanten-Katalog).
+
+**Live-Nachweise gegen Prod, alle mit Rollback und 0 Residuen** (nachgezählt: 0 Protokollzeilen, 0 gesäte Streams/Findings, 0 Pentest-Mandanten, 0 Freigaben, 0 Clearances):
+- **δ2-Pentest `tests/sql/PROJ-130-delta2-report-read-pentest.sql`: A–K 11/11 PASS.** Kern sind E/F/G — die **Aggregat-Leck-Probe über alle drei Auswertungen**: ein Mitglied mit `confidential`-Freigabe sieht in `confidentiality.max_level` **`confidential`**, der Administrator **`strict`** (DD-Bericht zusätzlich `1` gegen `2` vertrauliche Objekte). Die Zusammenfassung entsteht also im Aufrufer-Kontext und verrät die Existenz des strengsten Objekts nicht. H beweist, dass der Klassifikations-Filter auch auf die Zusammenfassung wirkt (Filter `standard` → `standard`, obwohl `strict` existiert). C/D beweisen Entprellung und ihre Abwesenheit beim Austritt.
+- **Regressionen verbatim:** PROJ-116 **A–H 8/8** · PROJ-131 **A–G 7/7** · PROJ-132 **A–I 9/9** · PROJ-130-δ1 **A–I 10/10**. Zusatz-Vektoren aus δ2 in denselben Läufen: die Zusammenfassung fällt für einen fremden Mandanten auf `standard` und — aussagekräftig — **auch für einen externen Berater mit abgelaufenem Mandat**, obwohl seine Clearance intakt ist (das Berater-Tor aus PROJ-99/141-γ8 wirkt also auch auf die neue Zusammenfassung).
+- Advisors **0 ERROR** / 137 WARN; der einzige δ2-bezogene WARN ist der beabsichtigte `authenticated_security_definer_function_executable` auf `log_confidential_read` (der einzige Schreibweg muss aufrufbar sein — unverändert seit δ1).
+
+**Gates:** ESLint **0** · tsc **13 vorbestehend / 0 neu** · vitest **2802/2802** (358 Dateien, +16: 11 Regel-/Helfer-Tests, 5 Abdeckungs-Wächter) · Build clean · `check:migration-naming` **0 Fehler**.
+
+**Drei Funde, ehrlich protokolliert:**
+- **F-1 (δ1-Altlast, behoben):** δ1s Pentest-Vektor B („`standard` wird still verworfen") zählte **in der Mitglieds-Rolle** — die das Protokoll per RLS gar nicht lesen darf (Vektor F desselben Tests beweist das). Er hätte also auch dann PASS gemeldet, wenn `standard`-Zeilen geschrieben würden. Ein Test, der immer besteht, ist schlimmer als keiner; die Zählung läuft jetzt als `postgres`, der Vektor ist danach **echt** grün.
+- **F-2 (eigener Fehler, vor jeder Schlussfolgerung behoben):** derselbe blinde Zählpfad steckte im ersten δ2-Pentest-Lauf (A/C/D meldeten „0 Zeilen"). Erkannt, weil Vektor J im selben Lauf genau diese RLS-Sperre bewies — die Zahlen widersprachen sich, nicht das Produkt.
+- **F-3 (Prozess):** ein `git checkout <datei>` zum Zurücksetzen eines Rot-Grün-Experiments hat die noch **uncommitteten** δ2-Änderungen in zwei Dateien mitgelöscht. Sofort neu angewendet und verifiziert; Lehre: Experimente auf noch nicht committeter Arbeit über eine Kopie zurücknehmen, nicht über `git checkout`.
+
+**Abweichungen:**
+- Die **veröffentlichte Negativliste ist amendiert** (Listen protokollieren bei `strict`) — eng, begründet und in dieser Spec sichtbar, nicht stillschweigend.
+- `confidential_count` einer Auswertung ist eine **Obergrenze innerhalb ihres Umfangs**: die Zusammenfassung respektiert Projekt-Umfang und den Klassifikations-Filter, ignoriert aber die Verengung nach Workstream/Verantwortlichem/Phase. Sie kann damit über-, aber **nie** unterberichten — die einzige Richtung, die für ein forensisches Protokoll vertretbar ist.
+- Wiederholungen innerhalb von 15 Minuten sind nicht einzeln nachweisbar (Preis der Entprellung).
+- Kein Frontend-Anteil: die Auswertungs-Sicht auf die Protokollzeilen bleibt γ2b/ε.
+
+**Deployed 2026-08-12:** PR #336 (squash) → main (`4b1ff94`), Tag `v2.48.0-PROJ-130-delta2`. Migration lag seit `/backend` in Prod, der Merge bringt nur den Code (Vercel-Auto-Deploy von main) — zwischen Anwendung und Merge trug Prod den neuen Schlüssel, protokollierte aber noch nicht; harmlos, weil ein unbenutzter Nutzlast-Schlüssel niemanden stört. Alle Required-Checks grün, darunter der **Schema-Drift-Guard** — er ist der unabhängige Beweis, dass die Anker-Ersetzung auch in einer frisch aus den Migrationsdateien gebauten Datenbank greift und nicht nur gegen Prods Live-Definitionen. Post-Deploy-Smoke: alle 7 verdrahteten Flächen → 307 Auth-Gate, kein Leck.
+
+**Offen in PROJ-130:** γ2b (Verwaltungs-Oberfläche für die Revisions-Freigaben) und ε (Hash-Anker + Verifikationslauf).
+
+## Implementation Notes — γ2b (2026-08-12, `/frontend`) — Bedienfläche für den Revisionszugriff
+
+**Keine Migration, keine neue Route.** γ2 hatte Tabelle, RPCs und `GET/POST/DELETE /api/tenants/[id]/audit-readers` schon vollständig; γ2b ist die fehlende Bedienfläche: `Stammdaten → Revisionszugriff` (admin-only Karte), `src/app/(app)/stammdaten/revisionszugriff/page.tsx` + `audit-readers-page-client.tsx` + Client-Wrapper `src/lib/audit/audit-readers-api.ts`. Die Autorität bleibt, wo sie war — in den SECURITY-DEFINER-RPCs und der einen SELECT-Policy; die Oberfläche ist bewusst kein zweites Gate.
+
+**Zwei Dinge musste die Oberfläche sichtbar machen, sonst wird sie falsch bedient:**
+
+1. **Der externe Prüfer ist absichtlich kein Mandanten-Mitglied.** Genau das ist die γ2-Entscheidung (ein vierter Rollenwert hätte ihn automatisch überall lesend gemacht) — und genau deshalb wäre eine reine Mitglieder-Auswahl am Zweck vorbei: der wichtigste Anwendungsfall stünde nicht in der Liste. Es gibt daher zwei Wege: Mitglied auswählen (interne Revision) **oder** Konto-Kennung eingeben, mit der Erklärung, warum die Person nicht in der Auswahl steht. Eine E-Mail-Suche wäre freundlicher, funktioniert aber gerade für Externe nicht — `profiles` ist RLS-begrenzt, ein echter Externer wäre nicht auffindbar.
+2. **Eine abgelaufene Freigabe bleibt in der Liste, wirkt aber nicht mehr** (`has_audit_reader_grant` prüft die Frist bei jedem Lesezugriff; γ2-Pentest-Fall „abgelaufene Freigabe wirkt nicht"). Ohne Statusspalte hält ein Administrator jemanden für berechtigt, der längst nichts mehr sieht. Status wird deshalb aus `valid_until` abgeleitet — `unbefristet` / `aktiv` / `abgelaufen` — und ist unit-getestet.
+
+**Datum vs. Zeitpunkt.** Das Formular fragt ein Datum, die API verlangt einen Zeitpunkt mit Offset. `endOfDayIso` legt die Frist auf das **Ende** des gewählten Tages: bei Mitternacht verlöre der Prüfer den Zugang einen Tag früher als zugesagt. Auch das ist getestet, inklusive Abweisung eines unbrauchbaren Datums (lieber ein Fehler als eine falsche Frist).
+
+**Zwei eigene Fehler, beide von den Gates gefangen:**
+- `TenantMember` ist **flach** (`user_id`/`email`/`display_name`), nicht genestet mit `profile` — meine erste Fassung nahm das Gegenteil an, `tsc` hat es gemeldet.
+- ESLint verbietet `set-state-in-effect` (der React-Compiler erstickt daran). Umgestellt auf das Haus-Muster aus `use-tenant-members`: `cancelled`-Guard, State erst **nach** dem `await`, und `hasLoaded` statt eines `loading`-Flags — damit die Liste nie „keine Freigaben erteilt" behauptet, solange nichts geladen wurde. Eine falsche Aussage über Berechtigungen ist schlimmer als ein Skelett, das eine Sekunde länger steht.
+
+**Tiefen-Nachweis bleibt γ2s Pentest** (11/11 gegen Prod, inklusive „Prüfer liest ohne Mitgliedschaft, sieht aber `strict` nicht" und „abgelaufene Freigabe wirkt nicht"): γ2b legt keine neue Datenbank-Fläche an, es gibt also nichts neu zu penetrieren. Neu ist nur der Auth-Gate-Nachweis der Oberfläche: `tests/PROJ-130-gamma2b-audit-readers.spec.ts` **4/4 chromium** (Seite leitet unauthentifiziert auf `/login`, alle drei API-Verben 307/401/403).
+
+**Gates:** ESLint **0** · tsc **13 vorbestehend / 0 neu** · vitest **2809/2809** (359 Dateien, +7 Status-/Fristen-Tests) · Build clean (`/stammdaten/revisionszugriff` registriert) · Playwright **4/4** (Mobile Safari env-übersprungen, PROJ-67/F2).
+
+**Prozess-Notiz:** der Worktree hatte keine `.env.local` (gitignored, wandert nicht mit) — der Playwright-`webServer` stürzte deshalb in `proxy.ts` an fehlenden Supabase-Variablen, was wie ein Produktfehler aussieht. Aus dem Primär-Checkout kopiert; für künftige Worktrees mit E2E-Bedarf einplanen.
+
+**Abgrenzung:** kein Bulk-Widerruf, keine E-Mail-Einladung, keine Sicht auf die Protokollzeilen selbst (der Audit-Bericht existiert bereits) · kontenlose Prüfer bleiben PROJ-Y-130c · die bewusste γ2-Grenze aus PROJ-Y-130i (Auditor sieht keine mandantenweiten Katalogänderungen) ist unverändert.
+
+**Deployed 2026-08-12:** PR #338 (squash) → main (`a0f3737`), Tag `v2.49.0-PROJ-130-gamma2b`; kein DB-Change. Post-Deploy-Smoke: Seite + GET/POST der Freigaben-Route → 307 Auth-Gate.
+
+**Offen in PROJ-130:** nur noch **ε** (Hash-Anker + Verifikationslauf).
 
 ---
 _Quelle: Backlog-Entwurf M&A-Projektplattform · L — Vertraulichkeit, NDA & Audit_

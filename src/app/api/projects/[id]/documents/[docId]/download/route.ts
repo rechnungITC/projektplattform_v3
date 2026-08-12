@@ -17,6 +17,10 @@ import {
   getAuthenticatedUserId,
   requireProjectAccess,
 } from "@/app/api/_lib/route-helpers"
+import {
+  logConfidentialDownload,
+  mustBlockOnLogFailure,
+} from "@/lib/audit/confidential-read"
 import { createDocumentSignedUrl } from "@/lib/dms/storage"
 
 const SIGNED_URL_TTL_SECONDS = 120
@@ -79,25 +83,24 @@ export async function GET(
   // Protokollieren fehl, gibt es den Link nicht), bei `confidential`
   // best-effort. Sonst würde das Protokoll selbst zum Ausfallrisiko für die
   // gutartige Mehrheit der Zugriffe.
-  const level = node.confidentiality_level ?? "standard"
-  if (level !== "standard") {
-    const { error: logError } = await supabase.rpc("log_confidential_read", {
-      p_project_id: projectId,
-      p_entity_type: "documents",
-      p_max_level: level,
-      p_object_count: 1,
-      p_action: "download_url_issued",
-      p_outcome: "granted",
-      p_entity_id: docId,
-      p_detail: { ttl_seconds: SIGNED_URL_TTL_SECONDS },
-    })
-    if (logError && level === "strict") {
-      return apiError(
-        "audit_log_failed",
-        "Zugriff auf streng vertrauliche Inhalte konnte nicht protokolliert werden — der Download wurde deshalb nicht freigegeben.",
-        500
-      )
+  // δ2: die Stufen-Regel und das Ausfallverhalten lagen hier inline — jetzt im
+  // gemeinsamen Helfer, damit Download, Export, Liste und Auswertung nicht vier
+  // Varianten derselben Regel tragen.
+  const readLog = await logConfidentialDownload(
+    async (fn, args) => await supabase.rpc(fn, args),
+    {
+      projectId,
+      documentId: docId,
+      level: node.confidentiality_level,
+      detail: { ttl_seconds: SIGNED_URL_TTL_SECONDS },
     }
+  )
+  if (mustBlockOnLogFailure(readLog)) {
+    return apiError(
+      "audit_log_failed",
+      "Zugriff auf streng vertrauliche Inhalte konnte nicht protokolliert werden — der Download wurde deshalb nicht freigegeben.",
+      500
+    )
   }
 
   try {

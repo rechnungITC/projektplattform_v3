@@ -68,7 +68,7 @@ async function waitForRenderedData(page: Page): Promise<void> {
   // pierces open shadow roots, so this locator reaches it) and only exists
   // while Turbopack is busy. Taking a baseline in that moment bakes a piece
   // of *tooling* state into the image — and at ~0.4% of a 1280x720 frame it
-  // sits comfortably under `maxDiffPixelRatio: 0.02`, so it would neither
+  // sits comfortably under `maxDiffPixels: 0`, so it would neither
   // fail the run nor announce itself. Suppressing the host via the
   // screenshot stylesheet was tried first and did **not** remove it, so we
   // wait it out instead of hiding it.
@@ -88,6 +88,28 @@ test.describe("PROJ-51-ε.3 — Visual Regression (authenticated)", () => {
   )
 
 
+  // PROJ-Y-143g: this is the ONE page that keeps the ratio tolerance, and
+  // the reason is not "it was fine as it was".
+  //
+  // Measured: back-to-back noise is 0 px like everywhere else, and a single
+  // KPI counter going 0 -> 3 costs 82 px. But that 0 is not a property of
+  // the page, it is a property of the *tenant*: every counter here reads 0
+  // and My Work reads "0 Items" only because nothing is assigned to the
+  // [E2E] user. The first work item, approval or report in that tenant
+  // changes this image — through data, not through a UI regression.
+  //
+  // So neither bound is right, and both horns were measured:
+  //   - tight (20 px): the 82 px digit flip turns it red, i.e. a foreign
+  //     spec seeding data makes this test fail for something it does not
+  //     guard. That is flakiness, not coverage.
+  //   - ratio 0.02: ~35,000 px on this 1280x1714 frame. Wide enough that
+  //     even My Work filling up with rows would pass silently.
+  //
+  // The real fix is to make the page deterministic — pinned seed data, or
+  // masking the data panels, which needs test hooks in seven production
+  // components. That is its own slice (PROJ-Y-143h), not a tolerance
+  // number. Until then this snapshot knowingly guards layout only, and
+  // this comment is what keeps that from looking like an oversight.
   test("Dashboard renders past auth gate", async ({ authenticatedPage }) => {
     const response = await authenticatedPage.goto("/", {
       waitUntil: "domcontentloaded",
@@ -126,29 +148,60 @@ test.describe("PROJ-51-ε.3 — Visual Regression (authenticated)", () => {
   // and the table *header* row. What it deliberately does not guard: the
   // row content. That trade is the point — the previous version guarded
   // nothing at all while appearing to pass.
+  //
+  // Tolerance (PROJ-Y-143d closure): an absolute `maxDiffPixels`, not the
+  // inherited `maxDiffPixels: 0`. All three numbers below were
+  // measured on this capture, not estimated:
+  //
+  //   - run-to-run noise .......... 0 px (four consecutive runs identical)
+  //   - "Name" -> "NameZZ" in the
+  //     table header ............. 42 px  <- smallest change worth catching
+  //   - the 0.02 ratio allowed .... ~18,400 px
+  //
+  // So the inherited ratio was ~440x too coarse to notice a renamed column
+  // header, and it stayed green when that rename was injected. That is the
+  // same blind spot which let the Next dev-indicator (F-1) ride along at
+  // ~0.4% unnoticed. A tight absolute bound is affordable *because* the
+  // capture is now deterministic; 20 px sits between the measured noise
+  // floor and the smallest real change, so it covers incidental
+  // antialiasing without covering content.
   test("Projects list page", async ({ authenticatedPage }) => {
     await authenticatedPage.goto("/projects", {
       waitUntil: "domcontentloaded",
     })
     await waitForRenderedData(authenticatedPage)
     await expect(authenticatedPage).toHaveScreenshot("projects-list.png", {
-      maxDiffPixelRatio: 0.02,
+      maxDiffPixels: 20,
       fullPage: false,
       mask: [authenticatedPage.locator("table tbody")],
     })
   })
 
+  // PROJ-Y-143g: absolute bound, same reasoning as the two viewport-pinned
+  // captures in PROJ-Y-143d. This page renders a static card grid — labels
+  // and descriptions from the nav registry, no counts, no timestamps — so
+  // its determinism is structural, not a side effect of an empty tenant.
+  // Measured here: noise 0 px over three runs at tolerance 0, and renaming
+  // the "Stammdaten" h1 by two characters costs 228 px.
   test("Master Data root", async ({ authenticatedPage }) => {
     await authenticatedPage.goto("/stammdaten", {
       waitUntil: "domcontentloaded",
     })
     await waitForRenderedData(authenticatedPage)
     await expect(authenticatedPage).toHaveScreenshot("stammdaten.png", {
-      maxDiffPixelRatio: 0.02,
+      maxDiffPixels: 20,
       fullPage: true,
     })
   })
 
+  // PROJ-Y-143g: absolute bound. Note what this page currently *is*: the
+  // resource list area shows the red "Resource not found." error (F-2 of
+  // PROJ-Y-143d, tracked as PROJ-Y-143f), which is why a fullPage shot is
+  // only 720px high. That state is static, so the bound is safe — but the
+  // tighter bound now also means this test will go red the moment
+  // PROJ-Y-143f replaces the error with a real (or empty) list. That is
+  // correct behaviour: re-take the baseline as part of that fix.
+  // Measured: noise 0 px over three runs, two-character change 44 px.
   test("Resources page", async ({ authenticatedPage }) => {
     await authenticatedPage.goto("/stammdaten/resources", {
       waitUntil: "domcontentloaded",
@@ -157,30 +210,39 @@ test.describe("PROJ-51-ε.3 — Visual Regression (authenticated)", () => {
     await expect(authenticatedPage).toHaveScreenshot(
       "stammdaten-resources.png",
       {
-        maxDiffPixelRatio: 0.02,
+        maxDiffPixels: 20,
         fullPage: true,
       },
     )
   })
 
+  // PROJ-Y-143g: absolute bound. Static form chrome; the only tenant-derived
+  // values are the workspace name and domain, which no spec edits.
+  // Measured: noise 0 px over three runs, two-character change 42 px.
   test("Settings root", async ({ authenticatedPage }) => {
     await authenticatedPage.goto("/settings", {
       waitUntil: "domcontentloaded",
     })
     await waitForRenderedData(authenticatedPage)
     await expect(authenticatedPage).toHaveScreenshot("settings.png", {
-      maxDiffPixelRatio: 0.02,
+      maxDiffPixels: 20,
       fullPage: true,
     })
   })
 
+  // PROJ-Y-143g: absolute bound. This is the page the old ratio treated
+  // worst — at 1280x4505 the 2% allowance was over 115,000 pixels, while a
+  // two-character change measures 42 px. Same static-form reasoning as
+  // /settings; it is also the baseline that caught the PROJ-130-α
+  // FormDescription growth in PROJ-Y-143d, which is the kind of change the
+  // ratio would have hidden had it been slightly smaller.
   test("Tenant settings page", async ({ authenticatedPage }) => {
     await authenticatedPage.goto("/settings/tenant", {
       waitUntil: "domcontentloaded",
     })
     await waitForRenderedData(authenticatedPage)
     await expect(authenticatedPage).toHaveScreenshot("settings-tenant.png", {
-      maxDiffPixelRatio: 0.02,
+      maxDiffPixels: 20,
       fullPage: true,
     })
   })
@@ -214,6 +276,12 @@ test.describe("PROJ-51-ε.4 — Visual Regression (Project-Room)", () => {
   // (title, lifecycle badges, Budget/Risiken/Health tiles, the Projekt-Setup
   // counters) is derived from the fixed-UUID seed project and is therefore
   // stable. Verified over three consecutive runs.
+  //
+  // Tolerance: `maxDiffPixels` for the same reason as the projects list.
+  // The inherited 0.03 ratio allowed ~27,600 differing pixels on a
+  // 1280x720 frame — more area than the entire Projekt-Setup card — while
+  // appending two characters to that card's title measures 97 px. Noise
+  // here is likewise 0 across four consecutive runs.
   test("Project-Room overview", async ({ authenticatedPage }) => {
     const response = await authenticatedPage.goto(`/projects/${E2E_PROJECT_ID}`, {
       waitUntil: "domcontentloaded",
@@ -226,7 +294,7 @@ test.describe("PROJ-51-ε.4 — Visual Regression (Project-Room)", () => {
     }
     await waitForRenderedData(authenticatedPage)
     await expect(authenticatedPage).toHaveScreenshot("project-room.png", {
-      maxDiffPixelRatio: 0.03,
+      maxDiffPixels: 20,
       fullPage: false,
     })
   })
