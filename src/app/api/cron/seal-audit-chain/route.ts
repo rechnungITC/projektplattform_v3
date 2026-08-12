@@ -6,7 +6,8 @@ import { apiError } from "../../_lib/route-helpers"
 
 // PROJ-130-ε — nächtliches Siegeln der Audit-Prüfwert-Kette.
 //
-// Siegelt je Mandant die abgeschlossenen Tagesfenster zu Prüfwert-Ankern. Jeder
+// Siegelt je Mandant UND je Quelle (Änderungs-Trail + Zugriffsprotokoll seit
+// PROJ-Y-130n) die abgeschlossenen Tagesfenster zu Prüfwert-Ankern. Jeder
 // Anker schließt den Prüfwert seines Vorgängers ein — eine Manipulation am Trail
 // wird damit nachweisbar, und wer sie durch Nachziehen eines Ankers verdecken
 // will, muss die gesamte Folgekette nachziehen.
@@ -26,6 +27,8 @@ import { apiError } from "../../_lib/route-helpers"
 
 interface SealRow {
   sealed_tenant_id: string
+  /** PROJ-Y-130n: `audit_log` oder `confidential_read` — je Quelle eine eigene Kette. */
+  sealed_source: string
   sealed_windows: number
   last_window_start: string
 }
@@ -56,8 +59,10 @@ export async function GET(request: Request) {
   const rows = (data ?? []) as SealRow[]
   return NextResponse.json({
     ok: true,
-    tenants_sealed: rows.length,
+    // Eine Zeile ist seit PROJ-Y-130n eine KETTE (Mandant × Quelle), nicht ein
+    // Mandant — der alte Name `tenants_sealed` hätte die Zahl falsch erklärt.
+    chains_sealed: rows.length,
     windows_sealed: rows.reduce((sum, r) => sum + (r.sealed_windows ?? 0), 0),
-    tenants: rows,
+    chains: rows,
   })
 }

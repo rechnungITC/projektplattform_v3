@@ -63,11 +63,11 @@ describe("GET /api/cron/seal-audit-chain", () => {
     expect(createAdminClient).not.toHaveBeenCalled()
   })
 
-  it("siegelt über die service-role-RPC und summiert die Fenster", async () => {
+  it("siegelt über die service-role-RPC und summiert die Fenster beider Ketten", async () => {
     rpc.mockResolvedValue({
       data: [
-        { sealed_tenant_id: "t1", sealed_windows: 3, last_window_start: "2026-08-11T00:00:00Z" },
-        { sealed_tenant_id: "t2", sealed_windows: 1, last_window_start: "2026-08-11T00:00:00Z" },
+        { sealed_tenant_id: "t1", sealed_source: "audit_log", sealed_windows: 3, last_window_start: "2026-08-11T00:00:00Z" },
+        { sealed_tenant_id: "t1", sealed_source: "confidential_read", sealed_windows: 1, last_window_start: "2026-08-11T00:00:00Z" },
       ],
       error: null,
     })
@@ -76,7 +76,7 @@ describe("GET /api/cron/seal-audit-chain", () => {
     expect(rpc).toHaveBeenCalledWith("seal_audit_chain")
     await expect(res.json()).resolves.toMatchObject({
       ok: true,
-      tenants_sealed: 2,
+      chains_sealed: 2,
       windows_sealed: 4,
     })
   })
@@ -96,7 +96,7 @@ describe("GET /api/cron/seal-audit-chain", () => {
     expect(res.status).toBe(200)
     await expect(res.json()).resolves.toMatchObject({
       ok: true,
-      tenants_sealed: 0,
+      chains_sealed: 0,
       windows_sealed: 0,
     })
   })

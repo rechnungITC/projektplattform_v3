@@ -26,6 +26,8 @@ import {
  */
 
 interface VerifyRow {
+  /** PROJ-Y-130n: `audit_log` (Änderungs-Trail) oder `confidential_read` (Zugriffsprotokoll). */
+  source: string
   window_start: string
   entry_count_sealed: number
   entry_count_now: number
@@ -64,6 +66,16 @@ export async function GET(
   const windows = (data ?? []) as VerifyRow[]
   const broken = windows.filter((w) => !w.digest_ok || !w.link_ok)
 
+  // PROJ-Y-130n: seit die Kette zwei Quellen hat (Änderungs-Trail und
+  // Zugriffsprotokoll), muss das Urteil je Kette lesbar sein. Ein
+  // zusammengefasstes „intakt" würde verschweigen, WELCHES Protokoll betroffen ist.
+  const bySource = new Map<string, VerifyRow[]>()
+  for (const w of windows) {
+    const list = bySource.get(w.source) ?? []
+    list.push(w)
+    bySource.set(w.source, list)
+  }
+
   return NextResponse.json({
     windows_checked: windows.length,
     intact: broken.length === 0,
@@ -71,5 +83,11 @@ export async function GET(
     // für einen Prüfer Rauschen, und das Urteil ist die Aussage, nicht die Menge.
     findings: broken,
     last_window_start: windows.at(-1)?.window_start ?? null,
+    sources: Array.from(bySource.entries()).map(([source, rows]) => ({
+      source,
+      windows_checked: rows.length,
+      intact: rows.every((w) => w.digest_ok && w.link_ok),
+      last_window_start: rows.at(-1)?.window_start ?? null,
+    })),
   })
 }

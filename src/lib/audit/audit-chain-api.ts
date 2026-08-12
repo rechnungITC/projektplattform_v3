@@ -11,7 +11,24 @@
  * nicht gibt. Genau diese Unterscheidung ist hier unit-getestet.
  */
 
+export type ChainSource = "audit_log" | "confidential_read"
+
+/** Klartext für die zwei Ketten (PROJ-Y-130n). */
+export const CHAIN_SOURCE_LABEL: Record<ChainSource, string> = {
+  audit_log: "Änderungs-Trail",
+  confidential_read: "Zugriffsprotokoll",
+}
+
+export interface ChainSourceSummary {
+  source: ChainSource
+  windows_checked: number
+  intact: boolean
+  last_window_start: string | null
+}
+
 export interface AuditChainFinding {
+  /** PROJ-Y-130n: welche der beiden Ketten betroffen ist. */
+  source: ChainSource
   window_start: string
   entry_count_sealed: number
   entry_count_now: number
@@ -24,6 +41,8 @@ export interface AuditChainStatus {
   intact: boolean
   findings: AuditChainFinding[]
   last_window_start: string | null
+  /** Je Kette getrennt — die beiden Ketten laufen unabhängig (PROJ-Y-130n). */
+  sources: ChainSourceSummary[]
 }
 
 interface ApiErrorBody {
@@ -109,6 +128,10 @@ export function describeChainStatus(status: AuditChainStatus): ChainVerdict {
 }
 
 /** Kurzlabel für eine einzelne Abweichung (Tabellenzelle). */
+export function sourceLabel(source: string): string {
+  return CHAIN_SOURCE_LABEL[source as ChainSource] ?? source
+}
+
 export function findingKind(finding: AuditChainFinding): string {
   if (!finding.digest_ok && !finding.link_ok) return "Inhalt + Anker"
   if (!finding.digest_ok) return "Inhalt verändert"
