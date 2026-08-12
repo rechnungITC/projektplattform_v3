@@ -2,13 +2,8 @@ import { NextResponse } from "next/server"
 import { z } from "zod"
 
 import { apiError, getAuthenticatedUserId } from "@/app/api/_lib/route-helpers"
-import {
-  ALLOWED_PARENT_KINDS,
-  WORK_ITEM_KINDS,
-  WORK_ITEM_METHOD_VISIBILITY,
-  type WorkItemKind,
-} from "@/types/work-item"
-import type { ProjectMethod } from "@/types/project-method"
+import { createWorkItemChecked } from "@/lib/work-items/create-work-item"
+import { WORK_ITEM_KINDS } from "@/types/work-item"
 
 // Schemas live in `_schema.ts` so the drift-tests can introspect them.
 import { workItemCreateSchema as createSchema } from "./_schema"
@@ -54,92 +49,24 @@ export async function POST(
   const { userId, supabase } = await getAuthenticatedUserId()
   if (!userId) return apiError("unauthorized", "Not signed in.", 401)
 
-  // Resolve project tenant_id + project_method (RLS still applies).
-  const { data: project, error: projErr } = await supabase
-    .from("projects")
-    .select("tenant_id, project_method")
-    .eq("id", projectId)
-    .maybeSingle()
-  if (projErr) return apiError("internal_error", projErr.message, 500)
-  if (!project) return apiError("not_found", "Project not found.", 404)
+  // Method visibility, parent-kind rules and the insert itself live in
+  // `createWorkItemChecked` since PROJ-144 (D3) — the assistant confirmation
+  // path goes through the exact same checks instead of duplicating them.
+  // Behaviour, error codes and statuses are unchanged; the drift-test below
+  // still runs through this call and remains the guard.
+  const created = await createWorkItemChecked({
+    supabase,
+    userId,
+    projectId,
+    input: parsed.data,
+  })
 
-  const method =
-    (project as { project_method?: ProjectMethod | null }).project_method ??
-    null
-  const kind = parsed.data.kind as WorkItemKind
-
-  // Method visibility check — bug is allowed in every method (cross-method);
-  // when method is null ("not yet chosen"), every kind is creatable.
-  if (method !== null && !WORK_ITEM_METHOD_VISIBILITY[kind].includes(method)) {
-    return apiError(
-      "method_violation",
-      `Kind '${kind}' is not visible in method '${method}'.`,
-      422,
-      "kind"
-    )
+  if (!created.ok) {
+    const { code, message, status, field } = created.failure
+    return apiError(code, message, status, field)
   }
 
-  // Parent-kind validation (defense in depth — DB trigger is the guarantee).
-  if (parsed.data.parent_id) {
-    const { data: parent, error: parentErr } = await supabase
-      .from("work_items")
-      .select("id, kind, project_id, is_deleted")
-      .eq("id", parsed.data.parent_id)
-      .maybeSingle()
-    if (parentErr) return apiError("internal_error", parentErr.message, 500)
-    if (!parent) return apiError("invalid_parent", "Parent not found.", 422, "parent_id")
-    if (parent.project_id !== projectId) {
-      return apiError("invalid_parent", "Parent is not in this project.", 422, "parent_id")
-    }
-    if (parent.is_deleted) {
-      return apiError("invalid_parent", "Parent is deleted.", 422, "parent_id")
-    }
-    if (!ALLOWED_PARENT_KINDS[kind].includes(parent.kind as WorkItemKind)) {
-      return apiError(
-        "invalid_parent_kind",
-        `${kind} cannot have a ${parent.kind} parent.`,
-        422,
-        "parent_id"
-      )
-    }
-  } else if (parsed.data.parent_id === null || parsed.data.parent_id === undefined) {
-    // No parent provided — verify top-level is allowed for this kind.
-    if (!ALLOWED_PARENT_KINDS[kind].includes(null)) {
-      return apiError(
-        "invalid_parent_kind",
-        `${kind} requires a parent.`,
-        422,
-        "parent_id"
-      )
-    }
-  }
-
-  // Spread-Pattern. Every schema field flows through automatically. DB
-  // defaults (status='todo', priority='medium', attributes='{}') fire on
-  // omitted keys. Drift-test in route.test.ts asserts every schema key
-  // reaches the payload.
-  const insertPayload = {
-    ...parsed.data,
-    // Server-only fields (NOT in Zod schema):
-    tenant_id: project.tenant_id,
-    project_id: projectId,
-    created_by: userId,
-  }
-
-  const { data: row, error } = await supabase
-    .from("work_items")
-    .insert(insertPayload)
-    .select()
-    .single()
-
-  if (error) {
-    if (error.code === "23514") return apiError("constraint_violation", error.message, 422)
-    if (error.code === "23503") return apiError("invalid_reference", error.message, 422)
-    if (error.code === "42501") return apiError("forbidden", "Not allowed.", 403)
-    return apiError("create_failed", error.message, 500)
-  }
-
-  return NextResponse.json({ work_item: row }, { status: 201 })
+  return NextResponse.json({ work_item: created.row }, { status: 201 })
 }
 
 // -----------------------------------------------------------------------------

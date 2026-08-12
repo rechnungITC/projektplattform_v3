@@ -190,6 +190,9 @@ Keine. Weder neue Bibliothek noch neuer Dienst. Prüfwert-Bildung und Zeitsteuer
 - **PROJ-Y-130d** — Audit-Abdeckung der verbleibenden unabgedeckten Tabellen.
 - **PROJ-Y-130e** — Blätterung für Bericht und Export (heute hartes Limit 500 ohne Fortsetzung).
 - **PROJ-Y-130f** — **Prod/Repo-Divergenz in der Audit-Abdeckung** (Fund aus α, siehe unten): Prod hat zwei auditierte Tabellen mehr, als die Migrationsdateien herstellen. Genau bestimmbar erst mit einer lokalen Shadow-DB (blockiert durch den offenen Docker/WSL-Handoff aus PROJ-67/F6).
+- ~~**PROJ-Y-130m**~~ — **erledigt 2026-08-12** (Kettenstatus-Karte im Revisionszugriff, siehe eigenen Abschnitt unten).
+- **PROJ-Y-130o** — freigabe-gegatete Revisions-Sicht: ein Revisor mit γ2-Freigabe darf die Kette prüfen, erreicht die admin-only Stammdaten-Seite aber nicht.
+- **PROJ-Y-130n** — Zugriffsprotokoll aus δ1/δ2 ebenfalls verketten (ε deckt den Änderungs-Trail).
 - **PROJ-Y-130k** — `communication_access_log` (PROJ-119) traegt einen FK auf `projects`; sein Protokoll verschwindet bei einer Projekt-Loeschung mit. An die FK-freie Linie von α und δ1 angleichen.
 - **PROJ-Y-130j** — suchbare Combobox statt 88-Eintrag-Select im Audit-Bericht (γ3-Nebeneffekt).
 - **PROJ-Y-130i** — **Auditor sieht keine mandantenweiten Katalogänderungen** (bewusste γ2-Grenze): Zweige des Lesetors, die direkt `is_tenant_member(...)` oder `return false` liefern, umgehen den gemeinsamen Ausgang. Ausweitung = 9 weitere Einzel-Ersetzungen, gehört nicht in dieselbe Migration.
@@ -521,6 +524,22 @@ Dazu: Anker-Update/-Delete je `42501`, gewöhnliches Mitglied darf nicht prüfen
 **Code deployed 2026-08-12:** PR #343 (squash) → main (`84dc1a1`), Tag `v2.50.0-PROJ-130-epsilon`. Post-Deploy-Smoke: Siegel-Cron **401** ohne und mit falschem Bearer (identisch zum Bestands-Cron), Prüf-Route **307**. Der erste Cron-Lauf um 03:45 UTC siegelt die Historie in einem Zug (~203 Fenster).
 
 **Damit sind alle fünf Sub-Slices von PROJ-130 gebaut (α · β · γ inkl. γ2b · δ1/δ2 · ε).** Der endgültige `Deployed`-Stempel samt Deployment-Scope wird hier **nicht** gesetzt: die neue Bookkeeping-Regel verlangt eine eigene `Deployment Scope`-Spalte in `features/INDEX.md`, die dort noch nicht existiert, und sie untersagt ausdrücklich, Scopes für nicht auditierte Zeilen zu erfinden. Statusstufe daher **Approved**; die Deployed-Klassifizierung gehört in die Portfolio-Migration, die die Spalte einführt — zusammen mit der ehrlichen Bewertung, dass AC-5 (konfigurierbare Speicherdauer) per PO-Lock **umgekehrt** statt erfüllt wurde.
+
+## Implementation Notes — PROJ-Y-130m (2026-08-12, `/frontend`) — Kettenstatus in der Oberfläche
+
+**Kein Backend-Anteil, keine Migration.** ε hatte Anker, Siegel-Cron und Verifikations-RPC samt Route; bedienbar war die Prüfung nur per API. PROJ-Y-130m ergänzt die dritte Karte „Manipulationsnachweis" auf der bestehenden γ2b-Seite `Stammdaten → Revisionszugriff` — bewusst dort, weil Freigabe (wer darf prüfen) und Nachweis (was ergibt die Prüfung) zusammengehören, und kein neuer Navigationspunkt nötig ist.
+
+**Der eigentliche Inhalt dieser Slice ist eine Unterscheidung, nicht ein Knopf.** Die API antwortet auf eine noch leere Kette mit `intact: true` — logisch korrekt (es gibt nichts, was nicht stimmt), als Anzeige aber gefährlich falsch: „alles in Ordnung" würde einen Manipulationsnachweis behaupten, den es vor dem ersten Siegel-Lauf gar nicht gibt. `describeChainStatus` trennt daher drei Fälle — **noch kein Nachweis** (`pending`, mit dem ausdrücklichen Satz „das ist keine Entwarnung"), **nachgerechnet und unauffällig** (`ok`, mit der Zahl geprüfter Fenster), **Abweichung** (`alarm`). Die Funktion ist rein und unit-getestet; der erste Test pinnt genau diese Verwechslung.
+
+**Die zwei Bruch-Arten werden getrennt benannt**, weil sie Verschiedenes bedeuten und zu verschiedenen nächsten Schritten führen: gebrochener **Prüfwert** heißt „Einträge wurden nachträglich geändert, gelöscht oder zurückdatiert"; gebrochene **Verkettung** heißt „der Anker selbst wurde verändert — typisch für den Versuch, eine Fälschung zu verdecken". Eine gemeinsame Meldung „Kette fehlerhaft" hätte den forensisch wichtigsten Unterschied verschluckt.
+
+**Nicht beim Rendern geladen.** Der Verifikationslauf rechnet jedes gesiegelte Fenster neu nach (in Prod aktuell 106 Fenster für den größten Mandanten). Das ist eine ausdrückliche Handlung („Kette prüfen"), keine Beiläufigkeit beim Seitenaufbau — auch damit ein Seitenbesuch nicht ungewollt Last erzeugt.
+
+**Gates:** ESLint **0** · tsc **13 vorbestehend / 0 neu** · vitest **2828/2828** (+6 Auswertungs-Tests) · Build clean · Playwright `PROJ-130-gamma2b-audit-readers.spec.ts` **5/5** chromium (der neue Fall deckt den Auth-Gate der Kettenstatus-Route).
+
+**Deployed 2026-08-12:** PR #345 (squash) → main (`ebffe03`), Tag `v2.51.0-PROJ-Y-130m`; kein DB-Change. Post-Deploy-Smoke: Seite + Kettenstatus-Route → 307.
+
+**Abweichung, die benannt gehört:** die Karte sitzt auf einer **admin-only** Seite. Ein Revisor mit γ2-Freigabe darf die Kette laut RPC prüfen, erreicht die Oberfläche aber nicht — für ihn bleibt nur die API. Eine eigene, freigabe-gegatete Revisions-Sicht ist ein eigener Schritt → **PROJ-Y-130o**. Bewusst nicht hier mitgemacht, weil das eine neue Seite mit eigenem Zugriffsmodell wäre, nicht eine Karte.
 
 ---
 _Quelle: Backlog-Entwurf M&A-Projektplattform · L — Vertraulichkeit, NDA & Audit_

@@ -47,6 +47,15 @@ test.describe("PROJ-130-γ2b / Revisionszugriff", () => {
     expect(GATE).toContain(res.status())
   })
 
+  // PROJ-Y-130m: die Kettenstatus-Anzeige auf derselben Seite ruft diese Route.
+  test("GET des Kettenstatus ist auth-gegated (PROJ-Y-130m)", async ({ request }) => {
+    const res = await request.get(`/api/tenants/${DUMMY}/audit-chain`, {
+      failOnStatusCode: false,
+      maxRedirects: 0,
+    })
+    expect(GATE).toContain(res.status())
+  })
+
   test("DELETE (Widerruf) ist auth-gegated", async ({ request }) => {
     const res = await request.delete(`/api/tenants/${DUMMY}/audit-readers`, {
       data: { user_id: DUMMY },
