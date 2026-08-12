@@ -138,6 +138,42 @@ async function waitForRenderedData(page: Page): Promise<void> {
   )
 }
 
+/**
+ * PROJ-Y-143e — fail the run when the page logs a runtime error.
+ *
+ * Why this exists: a re-taken dashboard baseline came back with a red
+ * "2 Issues" pill from the Next dev overlay baked into the image. That is
+ * tooling chrome again (PROJ-Y-143d, F-1) but this time it carried a real
+ * signal — two duplicate-key errors from `approval-inbox-panel`, which keyed
+ * rows by `approver_id` while every row in that panel *is* the same
+ * approver. Freezing either the badge or the bug would have been wrong.
+ *
+ * The first attempt asserted on the overlay's DOM
+ * (`nextjs-portal` + text `/issue/i`) and was quietly useless in the other
+ * direction: it matched the overlay's always-present hidden markup, so every
+ * page failed even with a clean console. Watching the console is both
+ * narrower and more honest — it observes what the app does, not how the
+ * tooling renders it. `devIndicators: false` does not suppress the error
+ * badge, so this is the only reliable half.
+ */
+function watchRuntimeIssues(page: Page): () => string[] {
+  const issues: string[] = []
+  page.on("console", (m) => {
+    if (m.type() !== "error") return
+    // Chromium logs every non-2xx response as a console error, including the
+    // module-gated 404s that PROJ-Y-143f made the UI handle *deliberately*
+    // (`requireModuleActive`, read intent). Those are expected traffic on the
+    // resources page and the project room, not application errors — keeping
+    // them would make the guard fire on correct behaviour and train everyone
+    // to ignore it. React errors and uncaught exceptions, which is what this
+    // is for, never take this shape.
+    if (m.text().startsWith("Failed to load resource")) return
+    issues.push(`[console] ${m.text()}`)
+  })
+  page.on("pageerror", (e) => issues.push(`[pageerror] ${e.message}`))
+  return () => issues
+}
+
 test.describe("PROJ-51-ε.3 — Visual Regression (authenticated)", () => {
   // Desktop-only: on mobile the sidebar collapses behind a hamburger,
   // changing the layout substantially. Mobile snapshots are a separate
@@ -146,6 +182,15 @@ test.describe("PROJ-51-ε.3 — Visual Regression (authenticated)", () => {
     ({ browserName }) => browserName !== "chromium",
     "Authenticated visual snapshots are pinned to desktop chromium for now.",
   )
+
+  // PROJ-Y-143e — no page in this suite may log a runtime error.
+  let runtimeIssues: () => string[] = () => []
+  test.beforeEach(({ authenticatedPage }) => {
+    runtimeIssues = watchRuntimeIssues(authenticatedPage)
+  })
+  test.afterEach(() => {
+    expect(runtimeIssues(), "page logged runtime errors").toEqual([])
+  })
 
 
   // PROJ-Y-143h: the dashboard is the one page whose stability came from the
@@ -312,7 +357,22 @@ test.describe("PROJ-51-ε.3 — Visual Regression (authenticated)", () => {
       maxDiffPixels: 20,
       fullPage: false,
       mask: [
-        authenticatedPage.locator("table tbody"),
+        // PROJ-Y-143e: the whole table, not just its body.
+        //
+        // PROJ-Y-143d masked `table tbody` and claimed the header row stayed
+        // guarded. It does not: with `table-layout: auto` the column widths
+        // are computed from the *body* content, so a foreign spec creating a
+        // project with a longer name shifts every header label sideways. It
+        // survived four isolated runs and only failed inside the full suite,
+        // where other specs seed rows — the give-away was a diff showing the
+        // headers doubled at two x positions.
+        //
+        // Forcing `table-layout: fixed` through the screenshot stylesheet
+        // would have kept the header in frame, but the baseline would then
+        // show a layout no user ever sees. Losing the header is the honest
+        // trade; what remains guarded is shell, sidebar, page header and the
+        // Filters card.
+        authenticatedPage.locator("table"),
         ...sharedStateMasks(authenticatedPage),
       ],
     })
@@ -407,6 +467,14 @@ test.describe("PROJ-51-ε.4 — Visual Regression (Project-Room)", () => {
     ({ browserName }) => browserName !== "chromium",
     "Project-Room snapshots are pinned to desktop chromium for now.",
   )
+
+  let runtimeIssues: () => string[] = () => []
+  test.beforeEach(({ authenticatedPage }) => {
+    runtimeIssues = watchRuntimeIssues(authenticatedPage)
+  })
+  test.afterEach(() => {
+    expect(runtimeIssues(), "page logged runtime errors").toEqual([])
+  })
 
   // PROJ-Y-143d: re-enabled, same strategy as the projects list.
   //

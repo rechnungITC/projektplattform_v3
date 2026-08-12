@@ -154,9 +154,9 @@ export function ProjectsListClient() {
     return (
       <Card>
         <CardHeader>
-          <CardTitle>No active workspace</CardTitle>
+          <CardTitle>Kein aktiver Workspace</CardTitle>
           <CardDescription>
-            Select a workspace from the top-right switcher.
+            Wähle oben rechts einen Workspace aus.
           </CardDescription>
         </CardHeader>
       </Card>
@@ -165,7 +165,7 @@ export function ProjectsListClient() {
   if (!currentRole) {
     // Defensive — shouldn't happen because (app) layout guards memberships.
     return (
-      <p className="text-sm text-muted-foreground">Loading workspace…</p>
+      <p className="text-sm text-muted-foreground">Workspace wird geladen …</p>
     )
   }
 
@@ -174,17 +174,17 @@ export function ProjectsListClient() {
       <div className="flex flex-col gap-4 sm:flex-row sm:items-end sm:justify-between">
         <div>
           <h1 className="text-2xl font-semibold tracking-tight sm:text-3xl">
-            Projects
+            Projekte
           </h1>
           <p className="text-sm text-muted-foreground">
-            All active projects in {currentTenant.name}.
+            Alle aktiven Projekte in {currentTenant.name}.
           </p>
         </div>
         {canCreate ? (
           <Button asChild className="self-start sm:self-auto">
             <Link href="/projects/new/wizard">
               <Plus className="mr-2 h-4 w-4" aria-hidden />
-              New project
+              Neues Projekt
             </Link>
           </Button>
         ) : null}
@@ -192,10 +192,10 @@ export function ProjectsListClient() {
 
       <Card>
         <CardHeader className="pb-4">
-          <CardTitle className="text-base">Filters</CardTitle>
+          <CardTitle className="text-base">Filter</CardTitle>
           <CardDescription>
-            Combine filters to narrow down the list. Bookmark the URL to share
-            this view.
+            Filter lassen sich kombinieren. Die URL kann als Lesezeichen
+            gespeichert und geteilt werden.
           </CardDescription>
         </CardHeader>
         <CardContent>
@@ -208,17 +208,17 @@ export function ProjectsListClient() {
                 value={lifecycleStatus ?? ALL_VALUE}
                 onValueChange={handleStatusChange}
               >
-                <SelectTrigger aria-label="Filter by lifecycle status">
-                  <SelectValue placeholder="All statuses">
+                <SelectTrigger aria-label="Nach Lebenszyklus-Status filtern">
+                  <SelectValue placeholder="Alle Status">
                     {lifecycleStatus ? (
                       <LifecycleBadge status={lifecycleStatus} />
                     ) : (
-                      "All statuses"
+                      "Alle Status"
                     )}
                   </SelectValue>
                 </SelectTrigger>
                 <SelectContent>
-                  <SelectItem value={ALL_VALUE}>All statuses</SelectItem>
+                  <SelectItem value={ALL_VALUE}>Alle Status</SelectItem>
                   {LIFECYCLE_STATUSES.map((status) => (
                     <SelectItem key={status} value={status}>
                       {LIFECYCLE_STATUS_LABELS[status]}
@@ -229,17 +229,17 @@ export function ProjectsListClient() {
             </div>
             <div className="space-y-1.5">
               <label className="text-xs font-medium text-muted-foreground">
-                Type
+                Typ
               </label>
               <Select
                 value={projectType ?? ALL_VALUE}
                 onValueChange={handleTypeChange}
               >
-                <SelectTrigger aria-label="Filter by project type">
-                  <SelectValue placeholder="All types" />
+                <SelectTrigger aria-label="Nach Projekttyp filtern">
+                  <SelectValue placeholder="Alle Typen" />
                 </SelectTrigger>
                 <SelectContent>
-                  <SelectItem value={ALL_VALUE}>All types</SelectItem>
+                  <SelectItem value={ALL_VALUE}>Alle Typen</SelectItem>
                   {PROJECT_TYPES.map((type) => (
                     <SelectItem key={type} value={type}>
                       {PROJECT_TYPE_LABELS[type]}
@@ -250,15 +250,15 @@ export function ProjectsListClient() {
             </div>
             <div className="space-y-1.5 sm:col-span-2">
               <label className="text-xs font-medium text-muted-foreground">
-                Responsible
+                Verantwortlich
               </label>
               <ResponsibleUserPicker
                 tenantId={currentTenant.id}
                 value={responsibleUserId}
                 onChange={handleResponsibleChange}
                 includeAllOption
-                placeholder="All members"
-                ariaLabel="Filter by responsible user"
+                placeholder="Alle Mitglieder"
+                ariaLabel="Nach verantwortlicher Person filtern"
               />
             </div>
           </div>
@@ -270,7 +270,7 @@ export function ProjectsListClient() {
               onClick={clearFilters}
             >
               <X className="mr-1 h-3.5 w-3.5" aria-hidden />
-              Clear filters
+              Filter zurücksetzen
             </Button>
           ) : null}
         </CardContent>
@@ -285,13 +285,13 @@ export function ProjectsListClient() {
         emptyMessage={
           <Card>
             <CardHeader>
-              <CardTitle>No projects yet</CardTitle>
+              <CardTitle>Noch keine Projekte</CardTitle>
               <CardDescription>
                 {filtersActive
-                  ? "No projects match your filters. Try clearing them."
+                  ? "Keine Projekte passen zu den Filtern. Setze sie zurück."
                   : canCreate
-                    ? "Get started by creating your first project."
-                    : "Ask an admin or member to create a project."}
+                    ? "Lege das erste Projekt an, um zu starten."
+                    : "Bitte eine Administratorin oder ein Mitglied, ein Projekt anzulegen."}
               </CardDescription>
             </CardHeader>
             {canCreate && !filtersActive ? (
@@ -299,7 +299,7 @@ export function ProjectsListClient() {
                 <Button asChild>
                   <Link href="/projects/new/wizard">
                     <Plus className="mr-2 h-4 w-4" aria-hidden />
-                    Create your first project
+                    Erstes Projekt anlegen
                   </Link>
                 </Button>
               </CardContent>
@@ -318,7 +318,7 @@ export function ProjectsListClient() {
             className={history.length === 0 ? "invisible" : undefined}
           >
             <ChevronLeft className="mr-1 h-4 w-4" aria-hidden />
-            Previous
+            Zurück
           </Button>
           <Button
             variant="outline"
@@ -326,7 +326,7 @@ export function ProjectsListClient() {
             onClick={handleNext}
             disabled={!nextCursor}
           >
-            Next
+            Weiter
             <ChevronRight className="ml-1 h-4 w-4" aria-hidden />
           </Button>
         </div>
