@@ -4,6 +4,7 @@ import { Download, Loader2, ShieldCheck } from "lucide-react"
 import * as React from "react"
 
 import { AuditChainResult } from "@/components/audit/audit-chain-result"
+import { AuditReportView } from "@/components/audit/audit-report-view"
 import { Badge } from "@/components/ui/badge"
 import { Button } from "@/components/ui/button"
 import {
@@ -46,9 +47,10 @@ function formatDate(value: string | null): string {
 /**
  * PROJ-Y-130o — was ein Revisor hier tun kann, und was ausdrücklich nicht.
  *
- * Kann: die Prüfwert-Ketten eines freigegebenen Mandanten nachrechnen und den
- * Audit-Trail als CSV exportieren. Beides läuft durch Gates, die serverseitig
- * längst bestehen (`verify_audit_chain`, `requireAuditRead`).
+ * Kann: die Prüfwert-Ketten eines freigegebenen Mandanten nachrechnen, den
+ * Audit-Trail filterbar durchsehen (PROJ-Y-130p) und als CSV exportieren. Alle drei
+ * laufen durch Gates, die serverseitig längst bestehen (`verify_audit_chain`, RLS
+ * am Trail, `requireAuditRead`).
  *
  * Kann nicht: die Redaktion abschalten (Admin-Vorbehalt aus γ4) und streng
  * vertrauliche Einträge ohne eigene Freischaltung sehen (γ1-Tor in der Datenbank).
@@ -187,6 +189,24 @@ export function RevisionClient({ tenants }: { tenants: RevisionTenant[] }) {
               </Button>
               {error ? <p className="text-destructive text-sm">{error}</p> : null}
               {status ? <AuditChainResult status={status} /> : null}
+            </CardContent>
+          </Card>
+
+          <Card>
+            <CardHeader>
+              <CardTitle>Audit-Bericht</CardTitle>
+              <CardDescription>
+                Dieselbe filterbare Sicht wie in der Administration (PROJ-Y-130p) —
+                nach Objektart, Person, Feld und Zeitraum. Was hier erscheint,
+                entscheidet die Datenbank: das Lesetor lässt Ihre Freigabe durch,
+                hält streng vertrauliche Einträge ohne eigene Freischaltung aber
+                zurück.
+              </CardDescription>
+            </CardHeader>
+            <CardContent>
+              {selected ? (
+                <AuditReportView tenantId={selected} showHeading={false} />
+              ) : null}
             </CardContent>
           </Card>
 
