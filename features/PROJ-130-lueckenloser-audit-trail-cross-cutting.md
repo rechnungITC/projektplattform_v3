@@ -450,6 +450,8 @@ Damit bleibt die Negativliste im Kern gültig (Listen protokollieren nicht) mit 
 - Wiederholungen innerhalb von 15 Minuten sind nicht einzeln nachweisbar (Preis der Entprellung).
 - Kein Frontend-Anteil: die Auswertungs-Sicht auf die Protokollzeilen bleibt γ2b/ε.
 
+**Deployed 2026-08-12:** PR #336 (squash) → main (`4b1ff94`), Tag `v2.48.0-PROJ-130-delta2`. Migration lag seit `/backend` in Prod, der Merge bringt nur den Code (Vercel-Auto-Deploy von main) — zwischen Anwendung und Merge trug Prod den neuen Schlüssel, protokollierte aber noch nicht; harmlos, weil ein unbenutzter Nutzlast-Schlüssel niemanden stört. Alle Required-Checks grün, darunter der **Schema-Drift-Guard** — er ist der unabhängige Beweis, dass die Anker-Ersetzung auch in einer frisch aus den Migrationsdateien gebauten Datenbank greift und nicht nur gegen Prods Live-Definitionen. Post-Deploy-Smoke: alle 7 verdrahteten Flächen → 307 Auth-Gate, kein Leck.
+
 **Offen in PROJ-130:** γ2b (Verwaltungs-Oberfläche für die Revisions-Freigaben) und ε (Hash-Anker + Verifikationslauf).
 
 ---
