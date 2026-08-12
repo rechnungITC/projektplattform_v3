@@ -14,7 +14,7 @@ summary_for_jira: "[L3] Lückenloser Audit-Trail (Cross-Cutting)"
 
 # PROJ-130: Lückenloser Audit-Trail (Cross-Cutting)
 
-## Status: In Progress (α + β + γ komplett inkl. γ2b + δ1 + δ2 live; nur ε offen)
+## Status: Approved (α + β + γ inkl. γ2b + δ1 + δ2 + ε gebaut und live-verifiziert; Deployed-Stempel + Deployment-Scope pending Portfolio-Migration, siehe ε-Notes)
 **Created:** 2026-06-10
 **Architected:** 2026-08-11 (CIA-reviewed, GO-mit-Auflagen — Tech Design unten)
 **α /backend:** 2026-08-11 — Migration in Prod, Live-Pentest 19/19, 0 Residuen (gemergt, `537f727`)
@@ -480,6 +480,45 @@ Damit bleibt die Negativliste im Kern gültig (Listen protokollieren nicht) mit 
 **Deployed 2026-08-12:** PR #338 (squash) → main (`a0f3737`), Tag `v2.49.0-PROJ-130-gamma2b`; kein DB-Change. Post-Deploy-Smoke: Seite + GET/POST der Freigaben-Route → 307 Auth-Gate.
 
 **Offen in PROJ-130:** nur noch **ε** (Hash-Anker + Verifikationslauf).
+
+## Implementation Notes — ε (2026-08-12, `/backend`) — Manipulationsnachweis
+
+**Zwei Migrationen in Prod:** `20260812110000_proj130_epsilon_chain_anchors` (Anker, Prüfwert-Bildung, Siegeln, Verifikation) und `20260812111500_proj130_epsilon_seal_ambiguity_fix` (Fix-forward, siehe F-2).
+
+**Was ε leistet — und was ausdrücklich nicht.** Die Barriere ist α: die Wächter-Trigger verhindern Änderung und Löschung für **jede** Rolle, auch `service_role` und `postgres`. ε verhindert nichts, es macht **nachweisbar** — und zwar genau die Manipulation, die nur gelingen kann, wenn jemand auf Datenbankebene die Wächter entfernt. Deshalb sind die Anker selbst so unveränderlich wie der Trail (eigene Wächter): wer den Trail fälscht, würde sonst einfach den Anker nachziehen. Und weil jeder Anker den Prüfwert seines Vorgängers einschließt, müsste er **alle folgenden** Anker nachziehen.
+
+**Anker statt Kette pro Zeile** (CIA-Auflage 2). Eine Verkettung pro Eintrag müsste jede Geschäfts-Transaktion auf die Kettenspitze serialisieren; da eine einzelne Änderung leicht 5–15 Einträge erzeugt, würde die Sperre über die gesamte Transaktionsdauer gehalten. Tagesfenster kosten im Schreibpfad **null**. Bewusste Grenze: Manipulation im noch offenen Fenster ist nicht nachweisbar.
+
+**Sicherheitsmarge.** Gesiegelt wird nur ein Tag, der vollständig **und** länger als die Marge (Vorgabe 2 h) vorbei ist. Ohne sie meldete der Verifikationslauf Manipulation, wo bloß eine spät abgeschlossene Transaktion nachgerückt ist: ihr `now()` liegt im Fenster, sichtbar wird die Zeile erst beim Commit.
+
+**Leere Tage werden mitgesiegelt.** Sonst könnte man eine Zeile nachträglich in einen ungesiegelten Tag zurückdatieren und niemand merkte es. Kosten: ~365 Ankerzeilen pro Mandant und Jahr.
+
+**Drei Entscheidungen, die beim Bauen aus der Sache selbst kamen:**
+
+1. **Der Verifikationslauf muss `SECURITY DEFINER` sein — sonst erzeugt γ1 einen Fehlalarm.** Unter dem Need-to-know-Tor blieben `strict`-Einträge für den Prüfenden verborgen; er käme auf einen anderen Prüfwert und die Kette wirkte gebrochen, obwohl nur eine Freigabe fehlt. Damit die Funktion kein Umweg um γ1 wird, gibt sie **ausschließlich Zahlen und Urteile** zurück, nie Inhalte. Dasselbe gilt für die Fenster-Prüfwert-Funktion.
+2. **Der Prüfwert wird über `jsonb` kanonisiert, nicht über verkettete Feldinhalte.** Meine erste Fassung verkettete mit einem Trennzeichen — und schrieb dafür versehentlich `E''`, also den **leeren** String. Beim Gegenlesen aufgefallen, bevor etwas lief: damit wäre die Verkettung trennzeichenlos gewesen und genau die Mehrdeutigkeit offen geblieben, gegen die ich argumentiert hatte (ein Freitext, der das Trennzeichen enthält, kann eine Änderung an anderer Stelle ausgleichen). `jsonb` sortiert Schlüssel und escaped Werte, braucht also **gar kein** Trennzeichen. `changed_at` wird als UTC-Text festgeschrieben, damit eine Prüfung in anderer Sitzungs-Zeitzone denselben Wert ergibt.
+3. **Der Ketten-Prüfwert existiert genau einmal** (`_audit_chain_digest`). Rechneten Siegeln und Prüfen ihn getrennt nach, wäre eine stille Abweichung zwischen zwei Formeln nicht von einer Manipulation zu unterscheiden — der Verifikationslauf meldete Fälschung, wo nur der Code auseinandergelaufen ist.
+
+**Siegeln ist `service_role`-only.** Kein Anwendungsnutzer, auch kein Mandanten-Admin: wer siegeln kann, wählt den Zeitpunkt der Siegelung. Ausgeführt vom neuen Cron `/api/cron/seal-audit-chain` um **03:45 UTC**, also nach dem Retention-Lauf (03:30), der seit α nichts mehr löscht. Ein fehlgeschlagener Lauf antwortet mit **500** statt still `ok` zu melden — ungesiegelte Fenster sind nachträglich nicht mehr manipulationssicher nachweisbar. Prüfen darf Mandanten-Admin **oder** Revisions-Freigabe (γ2), über `GET /api/tenants/[id]/audit-chain`; die Route formuliert das Gate **nicht** erneut, sondern übersetzt nur das Urteil der RPC (42501 → 403), damit es nicht zwei Wahrheiten gibt.
+
+**Live-Pentest `tests/sql/PROJ-130-epsilon-chain-anchors-pentest.sql`: A–K 11/11 PASS gegen Prod, 0 Residuen** (203 Fenster über 3 Mandanten gesiegelt, 106 im größten). Die beiden Vektoren, um die es geht:
+- **D** — eine Fälschung am Trail, nachgestellt durch Abschalten der α-Wächter (der einzige Weg, auf dem sie überhaupt gelingt), schlägt in **genau einem** Fenster aus.
+- **E** — zieht der Angreifer danach den Anker nach, stimmt der Prüfwert **wieder** (0 Abweichungen), aber die **Verkettung bricht** (1 Bruch). Das ist der Mehrwert der Kette gegenüber einer bloßen Prüfsumme je Fenster.
+Dazu: Anker-Update/-Delete je `42501`, gewöhnliches Mitglied darf nicht prüfen (`42501`), mit γ2-Freigabe schon, Siegeln für Anwendungsnutzer gesperrt, `anon` ohne EXECUTE auf allen vier ε-Funktionen, Idempotenz (zweiter Lauf siegelt 0).
+
+**Gates:** ESLint **0** · tsc **13 vorbestehend / 0 neu** · vitest **2822/2822** (361 Dateien, +13: 6 Cron-Route, 7 Verifikations-Route) · Build clean (beide neuen Routen registriert) · `check:migration-naming` **0 Fehler** · Advisors **0 ERROR** (+1 WARN: `verify_audit_chain` ist für `authenticated` aufrufbar — beabsichtigt, das Gate sitzt in der Funktion, wie bei `log_confidential_read` seit δ1).
+
+**Zwei eigene Fehler, beide vor Wirkung gefangen:**
+- **F-1** (siehe oben, Punkt 2): `E''` als „Trennzeichen" — beim Gegenlesen bemerkt, bevor die Migration lief.
+- **F-2:** `seal_audit_chain` deklarierte über `returns table (tenant_id uuid, …)` eine plpgsql-Variable `tenant_id`, die im INSERT mit der gleichnamigen **Spalte** kollidiert (`42702`). Die Funktion wäre beim ersten Siegelversuch abgebrochen — gefunden vom Live-Pentest, bevor ein einziger Anker existierte. Behoben per Fix-forward-Migration (Rückgabespalte heißt `sealed_tenant_id`; `create or replace` konnte den Zeilentyp nicht ändern, daher `drop` + `create`). Die erste Migration bleibt unangetastet (append-only).
+
+**Abgrenzung / Abweichungen:**
+- Kein Frontend: die Kettenstatus-Anzeige ist bewusst nicht Teil von ε (Spec: „ε ist wieder rein serverseitig"). Die Prüfung ist über die Route bedienbar; eine Anzeige im Revisionszugriff-Bereich wäre ein kleiner Folgeschritt → **PROJ-Y-130m**.
+- Das **Zugriffsprotokoll** (δ1/δ2, `confidential_read_log`) ist **nicht** verkettet — ε deckt den Änderungs-Trail. Für das Zugriffsprotokoll wäre dasselbe Muster anwendbar → **PROJ-Y-130n**.
+- Der erste Cron-Lauf nach dem Deploy siegelt die Historie in einem Zug (~203 Fenster); danach täglich wenige.
+- Ein Mandant ohne Audit-Zeilen bekommt keine Anker; die Kette beginnt beim ersten Eintrag.
+
+**Damit sind alle fünf Sub-Slices von PROJ-130 gebaut (α · β · γ inkl. γ2b · δ1/δ2 · ε).** Der endgültige `Deployed`-Stempel samt Deployment-Scope wird hier **nicht** gesetzt: die neue Bookkeeping-Regel verlangt eine eigene `Deployment Scope`-Spalte in `features/INDEX.md`, die dort noch nicht existiert, und sie untersagt ausdrücklich, Scopes für nicht auditierte Zeilen zu erfinden. Statusstufe daher **Approved**; die Deployed-Klassifizierung gehört in die Portfolio-Migration, die die Spalte einführt — zusammen mit der ehrlichen Bewertung, dass AC-5 (konfigurierbare Speicherdauer) per PO-Lock **umgekehrt** statt erfüllt wurde.
 
 ---
 _Quelle: Backlog-Entwurf M&A-Projektplattform · L — Vertraulichkeit, NDA & Audit_
