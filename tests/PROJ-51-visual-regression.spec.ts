@@ -2,7 +2,15 @@
  * PROJ-51-ε — Visual Regression baseline tests.
  *
  * Per the locked Tech Design (Fork 5b: Playwright-Snapshots):
- *   `toHaveScreenshot({ maxDiffPixelRatio: 0.01 })` for anti-flake.
+ *   `toHaveScreenshot({ maxDiffPixels: 20 })` — a measured bound, not a
+ *   ratio. PROJ-Y-143m: the inherited `maxDiffPixelRatio` (0.01 here, 0.02
+ *   for the theme flip) allowed 9,216 px on a 1280x720 frame, and it hid a
+ *   real drift — after PROJ-Y-143m translated these forms the login baseline
+ *   differed by 5,213 px and the dark one by 4,527 px, yet both stayed
+ *   **green while showing English text the page no longer renders**. Same
+ *   blind spot PROJ-Y-143g measured away on the authenticated suite, which
+ *   deliberately left this file alone. Noise here is 0 px across three runs
+ *   at zero tolerance, so 20 px covers antialiasing and nothing else.
  *   8 key pages targeted; this commit lands 2 baseline tests (Login +
  *   marketing-public root) to validate the setup before extending the
  *   matrix to authenticated pages (which need test-tenant seeding).
@@ -31,7 +39,7 @@ test.describe("PROJ-51-ε — Visual Regression baseline", () => {
       page.getByRole("textbox", { name: /e-?mail/i }),
     ).toBeVisible()
     await expect(page).toHaveScreenshot("login.png", {
-      maxDiffPixelRatio: 0.01,
+      maxDiffPixels: 20,
       // Login page has no animations once mounted; full-page is safe.
       fullPage: true,
     })
@@ -44,7 +52,7 @@ test.describe("PROJ-51-ε — Visual Regression baseline", () => {
       page.getByRole("textbox", { name: /e-?mail/i }),
     ).toBeVisible()
     await expect(page).toHaveScreenshot("login-mobile.png", {
-      maxDiffPixelRatio: 0.01,
+      maxDiffPixels: 20,
       fullPage: true,
     })
   })
@@ -55,7 +63,7 @@ test.describe("PROJ-51-ε — Visual Regression baseline", () => {
       page.getByRole("textbox", { name: /e-?mail/i }),
     ).toBeVisible()
     await expect(page).toHaveScreenshot("signup.png", {
-      maxDiffPixelRatio: 0.01,
+      maxDiffPixels: 20,
       fullPage: true,
     })
   })
@@ -79,7 +87,7 @@ test.describe("PROJ-51-ε — Visual Regression baseline", () => {
       // affects `prefers-color-scheme` media queries.
     })
     await expect(page).toHaveScreenshot("login-dark.png", {
-      maxDiffPixelRatio: 0.02, // slightly higher tolerance for theme flips
+      maxDiffPixels: 20,
       fullPage: true,
     })
   })

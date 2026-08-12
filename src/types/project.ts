@@ -26,18 +26,18 @@ export const PROJECT_TYPES: readonly ProjectType[] = [
 ] as const
 
 export const LIFECYCLE_STATUS_LABELS: Record<LifecycleStatus, string> = {
-  draft: "Draft",
-  active: "Active",
-  paused: "Paused",
-  completed: "Completed",
-  canceled: "Canceled",
+  draft: "Entwurf",
+  active: "Aktiv",
+  paused: "Pausiert",
+  completed: "Abgeschlossen",
+  canceled: "Abgebrochen",
 }
 
 export const PROJECT_TYPE_LABELS: Record<ProjectType, string> = {
   erp: "ERP",
-  construction: "Construction",
+  construction: "Bau",
   software: "Software",
-  general: "General",
+  general: "Allgemein",
   ma: "M&A",
 }
 

@@ -33,13 +33,13 @@ const resetSchema = z
   .object({
     password: z
       .string()
-      .min(8, "Password must be at least 8 characters")
-      .max(72, "Password is too long"),
-    confirmPassword: z.string().min(1, "Please confirm your password"),
+      .min(8, "Passwort muss mindestens 8 Zeichen haben")
+      .max(72, "Passwort ist zu lang"),
+    confirmPassword: z.string().min(1, "Bitte Passwort bestätigen"),
   })
   .refine((data) => data.password === data.confirmPassword, {
     path: ["confirmPassword"],
-    message: "Passwords do not match",
+    message: "Passwörter stimmen nicht überein",
   })
 
 type ResetValues = z.infer<typeof resetSchema>
@@ -65,14 +65,14 @@ export function ResetPasswordForm() {
 
       if (error) {
         setFormError(error.message)
-        toast.error("Could not update password", {
+        toast.error("Passwort konnte nicht geändert werden", {
           description: error.message,
         })
         setSubmitting(false)
         return
       }
 
-      toast.success("Password updated", {
+      toast.success("Passwort geändert", {
         description: "You can now log in with your new password.",
       })
 
@@ -80,9 +80,9 @@ export function ResetPasswordForm() {
       await supabase.auth.signOut()
       window.location.href = "/login"
     } catch (err) {
-      const message = err instanceof Error ? err.message : "Unexpected error"
+      const message = err instanceof Error ? err.message : "Unerwarteter Fehler"
       setFormError(message)
-      toast.error("Could not update password", { description: message })
+      toast.error("Passwort konnte nicht geändert werden", { description: message })
       setSubmitting(false)
     }
   }
@@ -90,9 +90,9 @@ export function ResetPasswordForm() {
   return (
     <Card>
       <CardHeader>
-        <CardTitle className="text-2xl">Set a new password</CardTitle>
+        <CardTitle className="text-2xl">Neues Passwort setzen</CardTitle>
         <CardDescription>
-          Choose a strong password you haven&apos;t used before.
+          Wähle ein starkes Passwort, das du noch nicht verwendet hast.
         </CardDescription>
       </CardHeader>
       <CardContent>
@@ -112,7 +112,7 @@ export function ResetPasswordForm() {
               name="password"
               render={({ field }) => (
                 <FormItem>
-                  <FormLabel>New password</FormLabel>
+                  <FormLabel>Neues Passwort</FormLabel>
                   <FormControl>
                     <Input
                       type="password"
@@ -130,7 +130,7 @@ export function ResetPasswordForm() {
               name="confirmPassword"
               render={({ field }) => (
                 <FormItem>
-                  <FormLabel>Confirm password</FormLabel>
+                  <FormLabel>Passwort bestätigen</FormLabel>
                   <FormControl>
                     <Input
                       type="password"
@@ -147,7 +147,7 @@ export function ResetPasswordForm() {
               {submitting && (
                 <Loader2 className="mr-2 h-4 w-4 animate-spin" aria-hidden />
               )}
-              Update password
+              Passwort ändern
             </Button>
           </form>
         </Form>

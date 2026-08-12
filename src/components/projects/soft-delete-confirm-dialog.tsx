@@ -71,14 +71,15 @@ export function SoftDeleteConfirmDialog({
     <AlertDialog open={open} onOpenChange={onOpenChange}>
       <AlertDialogContent>
         <AlertDialogHeader>
-          <AlertDialogTitle>Move project to trash?</AlertDialogTitle>
+          <AlertDialogTitle>Projekt in den Papierkorb verschieben?</AlertDialogTitle>
           <AlertDialogDescription>
-            <strong>{projectName}</strong> will be hidden from active views. An
-            admin can restore or permanently delete it later.
+            <strong>{projectName}</strong> wird aus den aktiven Ansichten
+            ausgeblendet. Eine Administratorin kann es später wiederherstellen
+            oder endgültig löschen.
           </AlertDialogDescription>
         </AlertDialogHeader>
         <AlertDialogFooter>
-          <AlertDialogCancel disabled={submitting}>Cancel</AlertDialogCancel>
+          <AlertDialogCancel disabled={submitting}>Abbrechen</AlertDialogCancel>
           <AlertDialogAction
             onClick={(event) => {
               event.preventDefault()
@@ -87,7 +88,7 @@ export function SoftDeleteConfirmDialog({
             disabled={submitting}
             className="bg-destructive text-destructive-foreground hover:bg-destructive/90"
           >
-            Move to trash
+            In den Papierkorb
           </AlertDialogAction>
         </AlertDialogFooter>
       </AlertDialogContent>

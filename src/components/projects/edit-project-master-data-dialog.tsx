@@ -395,7 +395,7 @@ export function EditProjectMasterDataDialog({
                 {submitting && (
                   <Loader2 className="mr-2 h-4 w-4 animate-spin" aria-hidden />
                 )}
-                Save changes
+                Speichern
               </Button>
             </DialogFooter>
           </form>

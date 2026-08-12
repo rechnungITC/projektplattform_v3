@@ -183,7 +183,7 @@ export function ProjectDetailClient({ projectId }: ProjectDetailClientProps) {
                   disabled={project.is_deleted}
                 >
                   <Pencil className="mr-1 h-4 w-4" aria-hidden />
-                  Edit
+                  Bearbeiten
                 </Button>
                 {canTransition ? (
                   <DropdownMenu
@@ -192,7 +192,7 @@ export function ProjectDetailClient({ projectId }: ProjectDetailClientProps) {
                   >
                     <DropdownMenuTrigger asChild>
                       <Button size="sm">
-                        Lifecycle action
+                        Lebenszyklus
                         <ChevronDown className="ml-1 h-4 w-4" aria-hidden />
                       </Button>
                     </DropdownMenuTrigger>
@@ -250,10 +250,10 @@ export function ProjectDetailClient({ projectId }: ProjectDetailClientProps) {
         }
       />
 
-      {/* Master data */}
+      {/* Stammdaten */}
       <Card>
         <CardHeader>
-          <CardTitle className="text-lg">Master data</CardTitle>
+          <CardTitle className="text-lg">Stammdaten</CardTitle>
         </CardHeader>
         <CardContent className="grid gap-4 sm:grid-cols-2">
           <Field label="Description" wide>
@@ -366,25 +366,25 @@ export function ProjectDetailClient({ projectId }: ProjectDetailClientProps) {
         </CardContent>
       </Card>
 
-      {/* Danger zone */}
+      {/* Gefahrenbereich */}
       {!project.is_deleted && (canSoftDelete || canHardDelete) ? (
         <Card className="border-destructive/40">
           <CardHeader>
             <CardTitle className="text-lg text-destructive">
-              Danger zone
+              Gefahrenbereich
             </CardTitle>
             <CardDescription>
-              Destructive operations on this project.
+              Unwiderrufliche Aktionen an diesem Projekt.
             </CardDescription>
           </CardHeader>
           <CardContent className="space-y-4">
             {canSoftDelete ? (
               <div className="flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
                 <div className="text-sm">
-                  <p className="font-medium">Move to trash</p>
+                  <p className="font-medium">In den Papierkorb</p>
                   <p className="text-muted-foreground">
-                    Hides the project from active views. Can be restored later
-                    by an admin.
+                    Blendet das Projekt aus den aktiven Ansichten aus. Kann später
+                    von einer Administratorin wiederhergestellt werden.
                   </p>
                 </div>
                 <Button
@@ -393,7 +393,7 @@ export function ProjectDetailClient({ projectId }: ProjectDetailClientProps) {
                   onClick={() => setSoftDeleteOpen(true)}
                 >
                   <Trash2 className="mr-1 h-4 w-4" aria-hidden />
-                  Move to trash
+                  In den Papierkorb
                 </Button>
               </div>
             ) : null}
@@ -488,7 +488,7 @@ function BackLink() {
       className="inline-flex items-center text-sm text-muted-foreground hover:text-foreground"
     >
       <ArrowLeft className="mr-1 h-4 w-4" aria-hidden />
-      Back to projects
+      Zurück zu den Projekten
     </Link>
   )
 }

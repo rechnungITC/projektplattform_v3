@@ -1,7 +1,7 @@
 import type { Metadata } from "next"
 
 export const metadata: Metadata = {
-  title: "Settings · Projektplattform",
+  title: "Einstellungen · Projektplattform",
 }
 
 export default function SettingsLayout({
@@ -13,10 +13,10 @@ export default function SettingsLayout({
     <div className="mx-auto w-full max-w-5xl px-4 py-8 sm:px-6 sm:py-10">
       <div className="mb-6 flex flex-col gap-1">
         <h1 className="text-2xl font-semibold tracking-tight sm:text-3xl">
-          Settings
+          Einstellungen
         </h1>
         <p className="text-sm text-muted-foreground">
-          Manage your profile, workspace, and team.
+          Profil, Workspace und Team verwalten.
         </p>
       </div>
       <section>{children}</section>

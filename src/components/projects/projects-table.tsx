@@ -94,7 +94,7 @@ export function ProjectsTable({
                 onClick={handleRowClick}
                 tabIndex={0}
                 role="link"
-                aria-label={`View ${project.name}`}
+                aria-label={`${project.name} öffnen`}
                 onKeyDown={(e) => {
                   if (e.key === "Enter" || e.key === " ") {
                     e.preventDefault()
@@ -180,7 +180,7 @@ function RowActions({
           variant="ghost"
           size="icon"
           className="h-8 w-8"
-          aria-label={`Actions for ${project.name}`}
+          aria-label={`Aktionen für ${project.name}`}
           onClick={stop}
         >
           <MoreHorizontal className="h-4 w-4" aria-hidden />
@@ -194,7 +194,7 @@ function RowActions({
           }}
         >
           <Eye className="mr-2 h-4 w-4" aria-hidden />
-          View
+          Öffnen
         </DropdownMenuItem>
         {canSoftDelete && onRequestSoftDelete ? (
           <>
@@ -207,7 +207,7 @@ function RowActions({
               }}
             >
               <Trash2 className="mr-2 h-4 w-4" aria-hidden />
-              Move to trash
+              In den Papierkorb
             </DropdownMenuItem>
           </>
         ) : null}
@@ -221,7 +221,7 @@ function RowActions({
               }}
             >
               <RotateCcw className="mr-2 h-4 w-4" aria-hidden />
-              Restore
+              Wiederherstellen
             </DropdownMenuItem>
           </>
         ) : null}
@@ -234,7 +234,7 @@ function RowActions({
             }}
           >
             <Trash2 className="mr-2 h-4 w-4" aria-hidden />
-            Delete forever
+            Endgültig löschen
           </DropdownMenuItem>
         ) : null}
       </DropdownMenuContent>
@@ -244,7 +244,7 @@ function RowActions({
 
 function ProjectsTableSkeleton() {
   return (
-    <div className="space-y-3" aria-label="Loading projects">
+    <div className="space-y-3" aria-label="Projekte werden geladen">
       {[0, 1, 2, 3, 4].map((i) => (
         <div key={i} className="flex items-center gap-3 rounded-md border p-3">
           <Skeleton className="h-5 w-1/3" />
