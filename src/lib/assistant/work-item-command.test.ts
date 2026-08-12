@@ -10,6 +10,7 @@ import { PROJECT_METHODS, type ProjectMethod } from "@/types/project-method"
 import {
   ALLOWED_PARENT_KINDS,
   isKindVisibleInMethod,
+  WORK_ITEM_KINDS,
   type WorkItemKind,
 } from "@/types/work-item"
 
@@ -174,16 +175,15 @@ describe("resolveTargetKind — Methoden-Abbildung (AC-144.6 – AC-144.9)", () 
 
   // Der eigentliche Wächter: über ALLE Methoden und ALLE Arten darf nie eine
   // Kombination herauskommen, die die Work-Item-Route ablehnen würde.
-  it("liefert über alle 7 Methoden × alle Arten nur gültige Kombinationen", () => {
-    const kinds: WorkItemKind[] = [
-      "epic",
-      "feature",
-      "story",
-      "task",
-      "subtask",
-      "bug",
-      "work_package",
-    ]
+  it("liefert über alle Methoden × alle Arten nur gültige Kombinationen", () => {
+    // Beide Achsen kommen aus den Konstanten, nicht aus einer Liste hier: eine
+    // neue Methode oder eine neue Art ist damit automatisch mitgeprüft. Eine
+    // handgepflegte Kopie hätte genau die Drift erlaubt, gegen die dieser Test
+    // antritt — die Zuordnung Methode↔Art hat in der Datenbank keinen
+    // Constraint, der sie auffängt.
+    const kinds: readonly WorkItemKind[] = WORK_ITEM_KINDS
+    expect(kinds.length).toBeGreaterThan(0)
+    expect(PROJECT_METHODS.length).toBeGreaterThan(0)
 
     for (const method of PROJECT_METHODS) {
       for (const kind of kinds) {
