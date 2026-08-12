@@ -12,6 +12,19 @@ interface UseSnapshotsResult {
   snapshots: SnapshotListItem[]
   loading: boolean
   error: string | null
+  /**
+   * PROJ-Y-143f — the report surface is not available for this project.
+   *
+   * Kept apart from `error`: a module-gated `GET` answers `404` by design
+   * (`requireModuleActive`, read intent, module `output_rendering`), and
+   * rendering that as "Snapshots konnten nicht geladen werden: HTTP 404"
+   * put a red failure where a configuration state belongs.
+   *
+   * Unlike the resources list, this route has a second 404 path
+   * (`requireProjectAccess`), so the consumer must not claim *which* reason
+   * applies — see the copy in `snapshot-list.tsx`.
+   */
+  unavailable: boolean
   create: (
     body: CreateSnapshotRequest,
   ) => Promise<{ snapshot: ReportSnapshot; snapshotUrl: string } | null>
@@ -33,6 +46,7 @@ export function useSnapshots(projectId: string): UseSnapshotsResult {
   const [snapshots, setSnapshots] = React.useState<SnapshotListItem[]>([])
   const [loading, setLoading] = React.useState(true)
   const [error, setError] = React.useState<string | null>(null)
+  const [unavailable, setUnavailable] = React.useState(false)
 
   const refresh = React.useCallback(async (options?: { silent?: boolean }) => {
     const silent = options?.silent === true
@@ -42,9 +56,17 @@ export function useSnapshots(projectId: string): UseSnapshotsResult {
       const res = await fetch(`/api/projects/${projectId}/snapshots`, {
         cache: "no-store",
       })
+      if (res.status === 404) {
+        // Module gate (or no access) — a state, not a failure.
+        setSnapshots([])
+        setError(null)
+        setUnavailable(true)
+        return
+      }
       if (!res.ok) {
         throw new Error(`HTTP ${res.status}`)
       }
+      setUnavailable(false)
       const data = (await res.json()) as { snapshots: SnapshotListItem[] }
       setSnapshots(data.snapshots ?? [])
     } catch (err) {
@@ -104,5 +126,5 @@ export function useSnapshots(projectId: string): UseSnapshotsResult {
     [projectId, refresh],
   )
 
-  return { snapshots, loading, error, create, retryPdf, refresh }
+  return { snapshots, loading, error, unavailable, create, retryPdf, refresh }
 }

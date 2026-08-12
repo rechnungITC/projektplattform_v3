@@ -6,6 +6,7 @@
  * work item. RLS + module gating happen server-side.
  */
 
+import { apiRequestError } from "@/lib/api-error"
 import type {
   Resource,
   ResourceAvailability,
@@ -15,18 +16,6 @@ import type {
   WorkItemResource,
 } from "@/types/resource"
 
-interface ApiErrorBody {
-  error?: { code?: string; message?: string }
-}
-
-async function safeError(response: Response): Promise<string> {
-  try {
-    const body = (await response.json()) as ApiErrorBody
-    return body.error?.message ?? `HTTP ${response.status}`
-  } catch {
-    return `HTTP ${response.status}`
-  }
-}
 
 // ─── Resources (tenant-scoped pool) ───────────────────────────────────
 
@@ -44,7 +33,7 @@ export async function listResources(
   const qs = params.toString()
   const url = qs ? `/api/resources?${qs}` : "/api/resources"
   const response = await fetch(url, { method: "GET", cache: "no-store" })
-  if (!response.ok) throw new Error(await safeError(response))
+  if (!response.ok) throw await apiRequestError(response)
   const body = (await response.json()) as { resources: Resource[] }
   return body.resources ?? []
 }
@@ -58,7 +47,7 @@ export async function fetchResource(resourceId: string): Promise<Resource> {
     `/api/resources/${encodeURIComponent(resourceId)}`,
     { method: "GET", cache: "no-store" }
   )
-  if (!response.ok) throw new Error(await safeError(response))
+  if (!response.ok) throw await apiRequestError(response)
   const body = (await response.json()) as { resource: Resource }
   return body.resource
 }
@@ -88,7 +77,7 @@ export async function createResource(
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify(input),
   })
-  if (!response.ok) throw new Error(await safeError(response))
+  if (!response.ok) throw await apiRequestError(response)
   const body = (await response.json()) as { resource: Resource }
   return body.resource
 }
@@ -104,7 +93,7 @@ export async function promoteStakeholderToResource(
     `/api/stakeholders/${encodeURIComponent(stakeholderId)}/promote-to-resource`,
     { method: "POST" }
   )
-  if (!response.ok) throw new Error(await safeError(response))
+  if (!response.ok) throw await apiRequestError(response)
   return (await response.json()) as { resource: Resource; created: boolean }
 }
 
@@ -139,7 +128,7 @@ export async function updateResource(
       body: JSON.stringify(input),
     }
   )
-  if (!response.ok) throw new Error(await safeError(response))
+  if (!response.ok) throw await apiRequestError(response)
   const body = (await response.json()) as { resource: Resource }
   return body.resource
 }
@@ -150,7 +139,7 @@ export async function deleteResource(resourceId: string): Promise<void> {
     { method: "DELETE" }
   )
   if (!response.ok && response.status !== 204) {
-    throw new Error(await safeError(response))
+    throw await apiRequestError(response)
   }
 }
 
@@ -163,7 +152,7 @@ export async function listAvailabilities(
     `/api/resources/${encodeURIComponent(resourceId)}/availabilities`,
     { method: "GET", cache: "no-store" }
   )
-  if (!response.ok) throw new Error(await safeError(response))
+  if (!response.ok) throw await apiRequestError(response)
   const body = (await response.json()) as {
     availabilities: ResourceAvailability[]
   }
@@ -189,7 +178,7 @@ export async function createAvailability(
       body: JSON.stringify(input),
     }
   )
-  if (!response.ok) throw new Error(await safeError(response))
+  if (!response.ok) throw await apiRequestError(response)
   const body = (await response.json()) as {
     availability: ResourceAvailability
   }
@@ -205,7 +194,7 @@ export async function deleteAvailability(
     { method: "DELETE" }
   )
   if (!response.ok && response.status !== 204) {
-    throw new Error(await safeError(response))
+    throw await apiRequestError(response)
   }
 }
 
@@ -219,7 +208,7 @@ export async function listWorkItemResources(
     `/api/projects/${encodeURIComponent(projectId)}/work-items/${encodeURIComponent(workItemId)}/resources`,
     { method: "GET", cache: "no-store" }
   )
-  if (!response.ok) throw new Error(await safeError(response))
+  if (!response.ok) throw await apiRequestError(response)
   const body = (await response.json()) as { allocations: WorkItemResource[] }
   return body.allocations ?? []
 }
@@ -242,7 +231,7 @@ export async function createAllocation(
       body: JSON.stringify(input),
     }
   )
-  if (!response.ok) throw new Error(await safeError(response))
+  if (!response.ok) throw await apiRequestError(response)
   const body = (await response.json()) as { allocation: WorkItemResource }
   return body.allocation
 }
@@ -261,7 +250,7 @@ export async function updateAllocation(
       body: JSON.stringify(input),
     }
   )
-  if (!response.ok) throw new Error(await safeError(response))
+  if (!response.ok) throw await apiRequestError(response)
   const body = (await response.json()) as { allocation: WorkItemResource }
   return body.allocation
 }
@@ -276,7 +265,7 @@ export async function deleteAllocation(
     { method: "DELETE" }
   )
   if (!response.ok && response.status !== 204) {
-    throw new Error(await safeError(response))
+    throw await apiRequestError(response)
   }
 }
 
@@ -300,7 +289,7 @@ export async function fetchUtilization(
     method: "GET",
     cache: "no-store",
   })
-  if (!response.ok) throw new Error(await safeError(response))
+  if (!response.ok) throw await apiRequestError(response)
   const body = (await response.json()) as { cells: UtilizationCell[] }
   return body.cells ?? []
 }

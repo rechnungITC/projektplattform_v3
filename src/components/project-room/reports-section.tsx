@@ -31,7 +31,8 @@ export function ReportsSection({
   kiNarrativeEnabled,
 }: ReportsSectionProps) {
   const canCreate = useProjectAccess(projectId, "edit_master")
-  const { snapshots, loading, error, create, retryPdf } = useSnapshots(projectId)
+  const { snapshots, loading, error, unavailable, create, retryPdf } =
+    useSnapshots(projectId)
 
   return (
     <Card>
@@ -46,7 +47,9 @@ export function ReportsSection({
             </CardDescription>
           </div>
         </div>
-        {canCreate ? (
+        {/* PROJ-Y-143f: with the module off the POST answers 403, so the
+            button could only ever produce a failed toast. */}
+        {canCreate && !unavailable ? (
           <SnapshotCreateButton
             projectId={projectId}
             kiNarrativeEnabled={kiNarrativeEnabled}
@@ -60,6 +63,7 @@ export function ReportsSection({
           snapshots={snapshots}
           loading={loading}
           error={error}
+          unavailable={unavailable}
           onRetryPdf={retryPdf}
         />
       </CardContent>

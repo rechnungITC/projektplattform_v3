@@ -2,6 +2,8 @@
 
 import * as React from "react"
 
+import { isUnavailable } from "@/lib/api-error"
+
 import {
   createResource,
   deleteResource,
@@ -17,6 +19,17 @@ interface UseResourcesResult {
   resources: Resource[]
   loading: boolean
   error: string | null
+  /**
+   * PROJ-Y-143f — the `resources` module is not active for this workspace.
+   *
+   * Kept separate from `error` because it is not a failure: the list route's
+   * only 404 path is `requireModuleActive` (read intent), which answers with
+   * the deliberately generic "Resource not found." Rendering that verbatim
+   * put a red technical error where the resource list belongs, and it had
+   * been frozen into the PROJ-51 visual baseline as if it were the intended
+   * UI.
+   */
+  unavailable: boolean
   refresh: () => Promise<void>
   create: (input: ResourceInput) => Promise<Resource>
   update: (
@@ -33,6 +46,7 @@ export function useResources(
   const [resources, setResources] = React.useState<Resource[]>([])
   const [loading, setLoading] = React.useState(true)
   const [error, setError] = React.useState<string | null>(null)
+  const [unavailable, setUnavailable] = React.useState(false)
   const [tick, setTick] = React.useState(0)
 
   // Capture options in a ref so the effect can read the latest values without
@@ -49,8 +63,17 @@ export function useResources(
         if (cancelled) return
         setResources(list)
         setError(null)
+        setUnavailable(false)
       } catch (err) {
         if (cancelled) return
+        // Module gate, not a failure — see `unavailable` above.
+        if (isUnavailable(err)) {
+          setResources([])
+          setError(null)
+          setUnavailable(true)
+          return
+        }
+        setUnavailable(false)
         setError(err instanceof Error ? err.message : "Unbekannter Fehler")
       } finally {
         if (!cancelled) setLoading(false)
@@ -95,5 +118,14 @@ export function useResources(
     [refresh]
   )
 
-  return { resources, loading, error, refresh, create, update, remove }
+  return {
+    resources,
+    loading,
+    error,
+    unavailable,
+    refresh,
+    create,
+    update,
+    remove,
+  }
 }

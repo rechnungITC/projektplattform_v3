@@ -317,8 +317,30 @@ async function globalSetup(config: FullConfig): Promise<void> {
     baseURL,
   )
 
+  // PROJ-Y-143f — pin the active tenant.
+  //
+  // `use-auth.tsx` resolves it from the `active_tenant_id` cookie and falls
+  // back to `memberships[0]` when the cookie is absent. That fallback made
+  // the whole authenticated suite depend on *membership order*: on
+  // 2026-08-12 a parallel slice added this shared user to a second tenant
+  // ("[E2E] Assistant Test"), the fallback picked it, and because the tenant
+  // name renders in the sidebar header, **all seven** visual baselines went
+  // red at once — for a reason that had nothing to do with the change under
+  // test. Writing the cookie makes the choice explicit and immune to any
+  // future membership a foreign spec creates.
+  const activeTenantCookie = {
+    name: "active_tenant_id",
+    value: E2E_TENANT_ID,
+    domain: new URL(baseURL).hostname,
+    path: "/",
+    expires: -1,
+    httpOnly: false,
+    secure: baseOrigin.startsWith("https://"),
+    sameSite: "Lax" as const,
+  }
+
   const storageState = {
-    cookies: supabaseCookies,
+    cookies: [...supabaseCookies, activeTenantCookie],
     origins: [
       {
         origin: baseOrigin,

@@ -33,6 +33,31 @@ import {
 } from "./fixtures/dashboard-payload"
 
 /**
+ * PROJ-Y-143f — the tenant control in the sidebar footer is shared-account
+ * state, so it cannot be part of a stable baseline.
+ *
+ * `tenant-switcher.tsx` renders a plain label below two memberships and a
+ * dropdown *button* (different size, plus a chevron) from two upwards. On
+ * 2026-08-12 a parallel slice added this shared E2E user to a second tenant
+ * for its own tests, and that single row flipped the control on **every**
+ * authenticated page — all seven baselines went red at once, ~1,038 px each,
+ * for a reason unrelated to any of them.
+ *
+ * Freezing the switched state instead would only invert the problem: the
+ * baselines would then depend on that foreign tenant continuing to exist.
+ * Masking is the structural answer — the region is small, and what it shows
+ * is account bookkeeping rather than the page under test. Pinning *which*
+ * tenant is active happens separately, in `global-setup`.
+ */
+function sharedStateMasks(page: Page) {
+  return [
+    page.locator(
+      '[aria-label="Current workspace"], [aria-label="Switch workspace"]',
+    ),
+  ]
+}
+
+/**
  * PROJ-Y-143h — answer the three dashboard endpoints from the pinned
  * fixture. Everything else on the page still hits the real app.
  *
@@ -167,6 +192,7 @@ test.describe("PROJ-51-ε.3 — Visual Regression (authenticated)", () => {
     await expect(authenticatedPage).toHaveScreenshot("dashboard.png", {
       maxDiffPixels: 20,
       fullPage: true,
+      mask: sharedStateMasks(authenticatedPage),
     })
   })
 
@@ -285,7 +311,10 @@ test.describe("PROJ-51-ε.3 — Visual Regression (authenticated)", () => {
     await expect(authenticatedPage).toHaveScreenshot("projects-list.png", {
       maxDiffPixels: 20,
       fullPage: false,
-      mask: [authenticatedPage.locator("table tbody")],
+      mask: [
+        authenticatedPage.locator("table tbody"),
+        ...sharedStateMasks(authenticatedPage),
+      ],
     })
   })
 
@@ -303,6 +332,7 @@ test.describe("PROJ-51-ε.3 — Visual Regression (authenticated)", () => {
     await expect(authenticatedPage).toHaveScreenshot("stammdaten.png", {
       maxDiffPixels: 20,
       fullPage: true,
+      mask: sharedStateMasks(authenticatedPage),
     })
   })
 
@@ -324,6 +354,7 @@ test.describe("PROJ-51-ε.3 — Visual Regression (authenticated)", () => {
       {
         maxDiffPixels: 20,
         fullPage: true,
+        mask: sharedStateMasks(authenticatedPage),
       },
     )
   })
@@ -339,6 +370,7 @@ test.describe("PROJ-51-ε.3 — Visual Regression (authenticated)", () => {
     await expect(authenticatedPage).toHaveScreenshot("settings.png", {
       maxDiffPixels: 20,
       fullPage: true,
+      mask: sharedStateMasks(authenticatedPage),
     })
   })
 
@@ -356,6 +388,7 @@ test.describe("PROJ-51-ε.3 — Visual Regression (authenticated)", () => {
     await expect(authenticatedPage).toHaveScreenshot("settings-tenant.png", {
       maxDiffPixels: 20,
       fullPage: true,
+      mask: sharedStateMasks(authenticatedPage),
     })
   })
 })
@@ -408,6 +441,7 @@ test.describe("PROJ-51-ε.4 — Visual Regression (Project-Room)", () => {
     await expect(authenticatedPage).toHaveScreenshot("project-room.png", {
       maxDiffPixels: 20,
       fullPage: false,
+      mask: sharedStateMasks(authenticatedPage),
     })
   })
 })
