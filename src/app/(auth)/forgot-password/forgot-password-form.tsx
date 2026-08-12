@@ -30,7 +30,7 @@ import { Input } from "@/components/ui/input"
 import { createClient } from "@/lib/supabase/client"
 
 const forgotSchema = z.object({
-  email: z.string().min(1, "Email is required").email("Invalid email address"),
+  email: z.string().min(1, "E-Mail ist erforderlich").email("Ungültige E-Mail-Adresse"),
 })
 
 type ForgotValues = z.infer<typeof forgotSchema>
@@ -63,20 +63,20 @@ export function ForgotPasswordForm() {
 
       if (error) {
         setFormError(error.message)
-        toast.error("Could not send reset link", { description: error.message })
+        toast.error("Link konnte nicht gesendet werden", { description: error.message })
         setSubmitting(false)
         return
       }
 
       setSubmittedEmail(values.email)
-      toast.success("Reset link sent", {
+      toast.success("Link zum Zurücksetzen gesendet", {
         description: "Check your inbox to continue.",
       })
       setSubmitting(false)
     } catch (err) {
-      const message = err instanceof Error ? err.message : "Unexpected error"
+      const message = err instanceof Error ? err.message : "Unerwarteter Fehler"
       setFormError(message)
-      toast.error("Could not send reset link", { description: message })
+      toast.error("Link konnte nicht gesendet werden", { description: message })
       setSubmitting(false)
     }
   }
@@ -87,16 +87,16 @@ export function ForgotPasswordForm() {
         <CardHeader>
           <CardTitle className="flex items-center gap-2 text-2xl">
             <CheckCircle2 className="h-5 w-5 text-primary" aria-hidden />
-            Check your email
+            E-Mail-Postfach prüfen
           </CardTitle>
           <CardDescription>
-            We sent a password reset link to{" "}
+            Wir haben einen Link zum Zurücksetzen geschickt an{" "}
             <span className="font-medium text-foreground">{submittedEmail}</span>.
-            Follow the link in the email to set a new password.
+            Folge dem Link in der E-Mail, um ein neues Passwort zu setzen.
           </CardDescription>
         </CardHeader>
         <CardContent className="text-sm text-muted-foreground">
-          Didn&apos;t get the email? Check your spam folder, or{" "}
+          Keine E-Mail erhalten? Sieh im Spam-Ordner nach, oder{" "}
           <button
             type="button"
             onClick={() => setSubmittedEmail(null)}
@@ -111,7 +111,7 @@ export function ForgotPasswordForm() {
             href="/login"
             className="font-medium text-foreground underline-offset-4 hover:underline"
           >
-            Back to log in
+            Zurück zur Anmeldung
           </Link>
         </CardFooter>
       </Card>
@@ -121,9 +121,9 @@ export function ForgotPasswordForm() {
   return (
     <Card>
       <CardHeader>
-        <CardTitle className="text-2xl">Forgot your password?</CardTitle>
+        <CardTitle className="text-2xl">Passwort vergessen?</CardTitle>
         <CardDescription>
-          Enter your email and we&apos;ll send you a reset link.
+          Gib deine E-Mail-Adresse ein, wir senden dir einen Link zum Zurücksetzen.
         </CardDescription>
       </CardHeader>
       <CardContent>
@@ -143,7 +143,7 @@ export function ForgotPasswordForm() {
               name="email"
               render={({ field }) => (
                 <FormItem>
-                  <FormLabel>Email</FormLabel>
+                  <FormLabel>E-Mail</FormLabel>
                   <FormControl>
                     <Input
                       type="email"
@@ -161,7 +161,7 @@ export function ForgotPasswordForm() {
               {submitting && (
                 <Loader2 className="mr-2 h-4 w-4 animate-spin" aria-hidden />
               )}
-              Send reset link
+              Link senden
             </Button>
           </form>
         </Form>
@@ -171,7 +171,7 @@ export function ForgotPasswordForm() {
           href="/login"
           className="font-medium text-foreground underline-offset-4 hover:underline"
         >
-          Back to log in
+          Zurück zur Anmeldung
         </Link>
       </CardFooter>
     </Card>

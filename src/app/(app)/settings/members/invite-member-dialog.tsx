@@ -99,7 +99,7 @@ export function InviteMemberDialog({
       await onInvited()
       onOpenChange(false)
     } catch (err) {
-      const message = err instanceof Error ? err.message : "Unexpected error"
+      const message = err instanceof Error ? err.message : "Unerwarteter Fehler"
       toast.error("Could not send invite", { description: message })
     } finally {
       setSubmitting(false)

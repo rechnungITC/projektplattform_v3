@@ -33,13 +33,13 @@ import { createClient } from "@/lib/supabase/client"
 const signupSchema = z.object({
   display_name: z
     .string()
-    .min(2, "Name must be at least 2 characters")
-    .max(80, "Name is too long"),
-  email: z.string().min(1, "Email is required").email("Invalid email address"),
+    .min(2, "Name muss mindestens 2 Zeichen haben")
+    .max(80, "Name ist zu lang"),
+  email: z.string().min(1, "E-Mail ist erforderlich").email("Ungültige E-Mail-Adresse"),
   password: z
     .string()
-    .min(8, "Password must be at least 8 characters")
-    .max(72, "Password is too long"),
+    .min(8, "Passwort muss mindestens 8 Zeichen haben")
+    .max(72, "Passwort ist zu lang"),
 })
 
 type SignupValues = z.infer<typeof signupSchema>
@@ -69,16 +69,16 @@ export function SignupForm() {
 
       if (error) {
         setFormError(error.message)
-        toast.error("Sign up failed", { description: error.message })
+        toast.error("Registrierung fehlgeschlagen", { description: error.message })
         setSubmitting(false)
         return
       }
 
       // Email confirmation may be required — no session yet in that case.
       if (!data.session) {
-        toast.success("Check your inbox", {
+        toast.success("Bitte E-Mail-Postfach prüfen", {
           description:
-            "We sent you a confirmation link. Verify your email, then log in.",
+            "Wir haben dir einen Bestätigungslink geschickt. Bestätige deine E-Mail-Adresse und melde dich dann an.",
         })
         setSubmitting(false)
         return
@@ -87,9 +87,9 @@ export function SignupForm() {
       // Session exists — go to onboarding so the workspace is set up.
       window.location.href = "/onboarding"
     } catch (err) {
-      const message = err instanceof Error ? err.message : "Unexpected error"
+      const message = err instanceof Error ? err.message : "Unerwarteter Fehler"
       setFormError(message)
-      toast.error("Sign up failed", { description: message })
+      toast.error("Registrierung fehlgeschlagen", { description: message })
       setSubmitting(false)
     }
   }
@@ -97,9 +97,9 @@ export function SignupForm() {
   return (
     <Card>
       <CardHeader>
-        <CardTitle className="text-2xl">Create your account</CardTitle>
+        <CardTitle className="text-2xl">Konto anlegen</CardTitle>
         <CardDescription>
-          We&apos;ll auto-link you to your organization based on your work email.
+          Anhand deiner Arbeits-E-Mail ordnen wir dich automatisch deiner Organisation zu.
         </CardDescription>
       </CardHeader>
       <CardContent>
@@ -119,7 +119,7 @@ export function SignupForm() {
               name="display_name"
               render={({ field }) => (
                 <FormItem>
-                  <FormLabel>Display name</FormLabel>
+                  <FormLabel>Anzeigename</FormLabel>
                   <FormControl>
                     <Input
                       autoComplete="name"
@@ -137,7 +137,7 @@ export function SignupForm() {
               name="email"
               render={({ field }) => (
                 <FormItem>
-                  <FormLabel>Work email</FormLabel>
+                  <FormLabel>Arbeits-E-Mail</FormLabel>
                   <FormControl>
                     <Input
                       type="email"
@@ -148,8 +148,8 @@ export function SignupForm() {
                     />
                   </FormControl>
                   <FormDescription>
-                    Use your company email so we can route you to your team
-                    workspace.
+                    Nutze deine Firmen-E-Mail, damit wir dich dem Workspace
+                    deines Teams zuordnen können.
                   </FormDescription>
                   <FormMessage />
                 </FormItem>
@@ -160,7 +160,7 @@ export function SignupForm() {
               name="password"
               render={({ field }) => (
                 <FormItem>
-                  <FormLabel>Password</FormLabel>
+                  <FormLabel>Passwort</FormLabel>
                   <FormControl>
                     <Input
                       type="password"
@@ -169,7 +169,7 @@ export function SignupForm() {
                       {...field}
                     />
                   </FormControl>
-                  <FormDescription>At least 8 characters.</FormDescription>
+                  <FormDescription>Mindestens 8 Zeichen.</FormDescription>
                   <FormMessage />
                 </FormItem>
               )}
@@ -178,19 +178,19 @@ export function SignupForm() {
               {submitting && (
                 <Loader2 className="mr-2 h-4 w-4 animate-spin" aria-hidden />
               )}
-              Create account
+              Konto anlegen
             </Button>
           </form>
         </Form>
       </CardContent>
       <CardFooter className="flex justify-center text-sm text-muted-foreground">
         <span>
-          Already have an account?{" "}
+          Du hast schon ein Konto?{" "}
           <Link
             href="/login"
             className="font-medium text-foreground underline-offset-4 hover:underline"
           >
-            Log in
+            Anmelden
           </Link>
         </span>
       </CardFooter>

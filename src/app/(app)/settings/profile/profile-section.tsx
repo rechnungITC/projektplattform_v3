@@ -32,21 +32,21 @@ import { createClient } from "@/lib/supabase/client"
 const displayNameSchema = z.object({
   display_name: z
     .string()
-    .min(2, "Display name must be at least 2 characters")
-    .max(80, "Display name is too long"),
+    .min(2, "Anzeigename muss mindestens 2 Zeichen haben")
+    .max(80, "Anzeigename ist zu lang"),
 })
 
 const passwordSchema = z
   .object({
     password: z
       .string()
-      .min(8, "Password must be at least 8 characters")
-      .max(72, "Password is too long"),
-    confirmPassword: z.string().min(1, "Please confirm your password"),
+      .min(8, "Passwort muss mindestens 8 Zeichen haben")
+      .max(72, "Passwort ist zu lang"),
+    confirmPassword: z.string().min(1, "Bitte Passwort bestätigen"),
   })
   .refine((data) => data.password === data.confirmPassword, {
     path: ["confirmPassword"],
-    message: "Passwords do not match",
+    message: "Passwörter stimmen nicht überein",
   })
 
 type DisplayNameValues = z.infer<typeof displayNameSchema>
@@ -88,17 +88,17 @@ function DisplayNameCard() {
 
       if (error) {
         setFormError(error.message)
-        toast.error("Could not update profile", { description: error.message })
+        toast.error("Profil konnte nicht gespeichert werden", { description: error.message })
         setSubmitting(false)
         return
       }
 
-      toast.success("Profile updated")
+      toast.success("Profil gespeichert")
       await refresh()
     } catch (err) {
-      const message = err instanceof Error ? err.message : "Unexpected error"
+      const message = err instanceof Error ? err.message : "Unerwarteter Fehler"
       setFormError(message)
-      toast.error("Could not update profile", { description: message })
+      toast.error("Profil konnte nicht gespeichert werden", { description: message })
     } finally {
       setSubmitting(false)
     }
@@ -107,9 +107,9 @@ function DisplayNameCard() {
   return (
     <Card>
       <CardHeader>
-        <CardTitle>Profile</CardTitle>
+        <CardTitle>Profil</CardTitle>
         <CardDescription>
-          Update your display name. Your email is managed via authentication.
+          Anzeigename ändern. Die E-Mail-Adresse wird über die Anmeldung verwaltet.
         </CardDescription>
       </CardHeader>
       <CardContent>
@@ -129,7 +129,7 @@ function DisplayNameCard() {
                 FormControl which would call `useFormField` outside a
                 FormField context (shadcn/ui requires the wrapper). */}
             <div className="space-y-2">
-              <Label htmlFor="profile-email">Email</Label>
+              <Label htmlFor="profile-email">E-Mail</Label>
               <Input
                 id="profile-email"
                 value={profile?.email ?? user.email ?? ""}
@@ -141,7 +141,7 @@ function DisplayNameCard() {
               name="display_name"
               render={({ field }) => (
                 <FormItem>
-                  <FormLabel>Display name</FormLabel>
+                  <FormLabel>Anzeigename</FormLabel>
                   <FormControl>
                     <Input
                       autoComplete="name"
@@ -158,7 +158,7 @@ function DisplayNameCard() {
                 {submitting && (
                   <Loader2 className="mr-2 h-4 w-4 animate-spin" aria-hidden />
                 )}
-                Save changes
+                Speichern
               </Button>
             </div>
           </form>
@@ -189,17 +189,17 @@ function PasswordCard() {
 
       if (error) {
         setFormError(error.message)
-        toast.error("Could not change password", { description: error.message })
+        toast.error("Passwort konnte nicht geändert werden", { description: error.message })
         setSubmitting(false)
         return
       }
 
-      toast.success("Password changed")
+      toast.success("Passwort geändert")
       form.reset({ password: "", confirmPassword: "" })
     } catch (err) {
-      const message = err instanceof Error ? err.message : "Unexpected error"
+      const message = err instanceof Error ? err.message : "Unerwarteter Fehler"
       setFormError(message)
-      toast.error("Could not change password", { description: message })
+      toast.error("Passwort konnte nicht geändert werden", { description: message })
     } finally {
       setSubmitting(false)
     }
@@ -208,9 +208,9 @@ function PasswordCard() {
   return (
     <Card>
       <CardHeader>
-        <CardTitle>Password</CardTitle>
+        <CardTitle>Passwort</CardTitle>
         <CardDescription>
-          Choose a strong password you haven&apos;t used before.
+          Wähle ein starkes Passwort, das du noch nicht verwendet hast.
         </CardDescription>
       </CardHeader>
       <CardContent>
@@ -230,7 +230,7 @@ function PasswordCard() {
               name="password"
               render={({ field }) => (
                 <FormItem>
-                  <FormLabel>New password</FormLabel>
+                  <FormLabel>Neues Passwort</FormLabel>
                   <FormControl>
                     <Input
                       type="password"
@@ -248,7 +248,7 @@ function PasswordCard() {
               name="confirmPassword"
               render={({ field }) => (
                 <FormItem>
-                  <FormLabel>Confirm new password</FormLabel>
+                  <FormLabel>Neues Passwort bestätigen</FormLabel>
                   <FormControl>
                     <Input
                       type="password"
@@ -266,7 +266,7 @@ function PasswordCard() {
                 {submitting && (
                   <Loader2 className="mr-2 h-4 w-4 animate-spin" aria-hidden />
                 )}
-                Update password
+                Passwort ändern
               </Button>
             </div>
           </form>
