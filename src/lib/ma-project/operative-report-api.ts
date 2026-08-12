@@ -50,6 +50,9 @@ export async function fetchOperativeReport(
         EMPTY_OPERATIVE_REPORT.deliverables_status.summary,
     },
     pre_read: json.pre_read ?? EMPTY_OPERATIVE_REPORT.pre_read,
+    // PROJ-130-δ2: Stufen-Zusammenfassung der Auswertung; fehlt sie, gilt
+    // `standard` — der Server hat dann schon entschieden, nicht zu protokollieren.
+    confidentiality: json.confidentiality ?? EMPTY_OPERATIVE_REPORT.confidentiality,
   }
 }
 

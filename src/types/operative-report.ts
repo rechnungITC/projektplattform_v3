@@ -7,6 +7,7 @@
  * that reaches the client is already need-to-know-filtered for the caller.
  */
 
+import type { ReportConfidentiality } from "@/lib/audit/confidential-read"
 import type {
   FindingSeverity,
   FindingStatus,
@@ -121,6 +122,12 @@ export interface OperativeReport {
     summary: OperativeDeliverableSummary
   }
   pre_read: OperativePreRead
+  /**
+   * PROJ-130-δ2 — Stufen-Zusammenfassung dieser Auswertung, von der RPC im
+   * INVOKER-Kontext des Aufrufers berechnet (respektiert auch den
+   * Klassifikations-Filter). Grundlage der Zugriffs-Protokollierung.
+   */
+  confidentiality: ReportConfidentiality
 }
 
 export const EMPTY_OPERATIVE_REPORT: OperativeReport = {
@@ -155,6 +162,7 @@ export const EMPTY_OPERATIVE_REPORT: OperativeReport = {
     open_qa: 0,
     deliverables_not_approved: 0,
   },
+  confidentiality: { max_level: "standard", confidential_count: 0 },
 }
 
 /** Export sections for the CSV endpoint (?section=). */

@@ -6,6 +6,14 @@ import {
   getAuthenticatedUserId,
   requireProjectAccess,
 } from "@/app/api/_lib/route-helpers"
+import {
+  logConfidentialReportRead,
+  mustBlockOnLogFailure,
+} from "@/lib/audit/confidential-read"
+import {
+  EMPTY_OPERATIVE_REPORT,
+  type OperativeReport,
+} from "@/types/operative-report"
 
 // PROJ-132 — Operatives Reporting für PMO, Deal Lead und Workstreams (read-only).
 //
@@ -17,39 +25,9 @@ import {
 // (B4: an external advisor sees only their cleared stream; no aggregate leak).
 // MUST use the session-bound user client, NEVER service-role.
 
-const EMPTY_REPORT = {
-  tasks_overdue: {
-    tasks: [],
-    summary: {
-      open_total: 0,
-      overdue_total: 0,
-      due_today_total: 0,
-      due_this_week_total: 0,
-      blocked_total: 0,
-    },
-  },
-  findings_by_severity: { streams: [], findings: [] },
-  qa_by_stream: [],
-  deliverables_status: {
-    deliverables: [],
-    summary: {
-      total: 0,
-      planned: 0,
-      in_progress: 0,
-      in_review: 0,
-      approved: 0,
-      suspended: 0,
-      overdue_total: 0,
-      not_approved_total: 0,
-    },
-  },
-  pre_read: {
-    overdue_tasks: 0,
-    open_deal_breaker_findings: 0,
-    open_qa: 0,
-    deliverables_not_approved: 0,
-  },
-}
+// Die leere Nutzlast lag hier als untypisierte Kopie von EMPTY_OPERATIVE_REPORT.
+// PROJ-130-δ2 nutzt die geteilte, TYPISIERTE Konstante: das neue Pflichtfeld
+// `confidentiality` hätte die Kopie sonst still nicht mitbekommen.
 
 export async function GET(
   _request: Request,
@@ -71,5 +49,23 @@ export async function GET(
   })
   if (error) return apiError("overview_failed", error.message, 500)
 
-  return NextResponse.json(data ?? EMPTY_REPORT)
+  const report = (data ?? EMPTY_OPERATIVE_REPORT) as OperativeReport
+
+  // PROJ-130-δ2: In-App-Lesen einer Auswertung — protokolliert wird NUR bei
+  // `strict`. Die Stufe kommt aus der Auswertung selbst; ihre Q&A- und
+  // Finding-Abschnitte aggregieren zu Zählern, deren Stufen in der Nutzlast nie
+  // einzeln erscheinen.
+  const readLog = await logConfidentialReportRead(
+    async (fn, args) => await supabase.rpc(fn, args),
+    { projectId, report: "operative_report", surface: "view", payload: report }
+  )
+  if (mustBlockOnLogFailure(readLog)) {
+    return apiError(
+      "audit_log_failed",
+      "Die Auswertung enthält streng vertrauliche Inhalte und konnte nicht protokolliert werden — sie wurde deshalb nicht ausgeliefert.",
+      500
+    )
+  }
+
+  return NextResponse.json(report)
 }

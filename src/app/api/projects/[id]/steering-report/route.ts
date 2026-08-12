@@ -6,7 +6,11 @@ import {
   getAuthenticatedUserId,
   requireProjectAccess,
 } from "@/app/api/_lib/route-helpers"
-import { EMPTY_STEERING_REPORT } from "@/types/steering-report"
+import {
+  logConfidentialReportRead,
+  mustBlockOnLogFailure,
+} from "@/lib/audit/confidential-read"
+import { EMPTY_STEERING_REPORT, type SteeringReport } from "@/types/steering-report"
 
 // PROJ-131 — Management-Reporting & Steering-Dashboard (read-only).
 //
@@ -38,5 +42,24 @@ export async function GET(
   })
   if (error) return apiError("overview_failed", error.message, 500)
 
-  return NextResponse.json(data ?? EMPTY_STEERING_REPORT)
+  const report = (data ?? EMPTY_STEERING_REPORT) as SteeringReport
+
+  // PROJ-130-δ2: In-App-Lesen einer Auswertung — protokolliert wird NUR bei
+  // `strict`. Die Stufe kommt aus der Auswertung selbst, weil
+  // `stage_gate_summary` und `pre_read` über Objekte aggregieren, deren Stufen
+  // in der Nutzlast nie einzeln erscheinen (aus der Nutzlast gerechnet würde der
+  // Höchstwert unterberichten).
+  const readLog = await logConfidentialReportRead(
+    async (fn, args) => await supabase.rpc(fn, args),
+    { projectId, report: "steering_report", surface: "view", payload: report }
+  )
+  if (mustBlockOnLogFailure(readLog)) {
+    return apiError(
+      "audit_log_failed",
+      "Die Auswertung enthält streng vertrauliche Inhalte und konnte nicht protokolliert werden — sie wurde deshalb nicht ausgeliefert.",
+      500
+    )
+  }
+
+  return NextResponse.json(report)
 }

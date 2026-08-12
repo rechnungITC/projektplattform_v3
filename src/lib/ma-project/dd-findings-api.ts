@@ -5,6 +5,7 @@
  * Consumed by the /frontend slice (DD-Findings tab in the project room).
  */
 
+import type { ReportConfidentiality } from "@/lib/audit/confidential-read"
 import type { MaConfidentialityLevel } from "@/types/confidentiality"
 
 export type FindingSeverity = "niedrig" | "mittel" | "hoch" | "deal_breaker"
@@ -197,6 +198,20 @@ export interface DdReportRedFlag {
 export interface DdReport {
   streams: DdReportStreamRow[]
   red_flags: DdReportRedFlag[]
+  /**
+   * PROJ-130-δ2 — Stufen-Zusammenfassung dieser Auswertung, von der RPC im
+   * INVOKER-Kontext des Aufrufers berechnet. `dd_report_consolidated` führte die
+   * Stufe vorher an null Stellen — die Zähler in `streams` aggregieren über
+   * Findings und Fragen, deren Stufen nie einzeln erscheinen.
+   */
+  confidentiality: ReportConfidentiality
+}
+
+/** Leerer Bericht — eine Quelle, damit das Pflichtfeld nicht dreimal getippt wird. */
+export const EMPTY_DD_REPORT: DdReport = {
+  streams: [],
+  red_flags: [],
+  confidentiality: { max_level: "standard", confidential_count: 0 },
 }
 
 /** Consolidated, live DD report (need-to-know-scoped server-side via INVOKER RPC). */
@@ -204,5 +219,11 @@ export async function fetchDdReport(projectId: string): Promise<DdReport> {
   const res = await fetch(`${p(projectId)}/dd-report`, { cache: "no-store" })
   if (!res.ok) throw new Error(await safeError(res))
   const json = (await res.json()) as Partial<DdReport>
-  return { streams: json.streams ?? [], red_flags: json.red_flags ?? [] }
+  return {
+    streams: json.streams ?? [],
+    red_flags: json.red_flags ?? [],
+    // PROJ-130-δ2: die Stufen-Zusammenfassung der Auswertung; fehlt sie, gilt
+    // `standard` — der Server hat dann schon entschieden, nichts zu protokollieren.
+    confidentiality: json.confidentiality ?? EMPTY_DD_REPORT.confidentiality,
+  }
 }

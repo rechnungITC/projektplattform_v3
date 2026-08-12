@@ -6,6 +6,11 @@ import {
   getAuthenticatedUserId,
   requireProjectAccess,
 } from "@/app/api/_lib/route-helpers"
+import {
+  logConfidentialListRead,
+  mustBlockOnLogFailure,
+  STRICT_LOG_FAILED_MESSAGE,
+} from "@/lib/audit/confidential-read"
 
 // PROJ-114 — deal-breaker escalations for a project (project members; RLS +
 // need-to-know gate scope rows). GET /api/projects/[id]/dd-finding-escalations
@@ -40,5 +45,21 @@ export async function GET(
     .order("escalated_at", { ascending: false })
     .limit(500)
   if (error) return apiError("list_failed", error.message, 500)
+
+  // PROJ-130-δ2: In-App-Lesen einer Inhalts-Liste. Ein Eintrag entsteht NUR, wenn
+  // `strict` dabei ist (und dann entprellt auf eine Zeile pro 15-Minuten-Fenster);
+  // bei `standard`/`confidential` gibt es keinen zusätzlichen Datenbank-Aufruf.
+  const readLog = await logConfidentialListRead(
+    async (fn, args) => await supabase.rpc(fn, args),
+    {
+      projectId,
+      entityType: "dd_finding_escalations",
+      rows: (data ?? []) as ReadonlyArray<{ confidentiality_level?: string | null }>,
+    }
+  )
+  if (mustBlockOnLogFailure(readLog)) {
+    return apiError("audit_log_failed", STRICT_LOG_FAILED_MESSAGE, 500)
+  }
+
   return NextResponse.json({ escalations: data ?? [] })
 }
