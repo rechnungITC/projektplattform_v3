@@ -537,6 +537,8 @@ Dazu: Anker-Update/-Delete je `42501`, gewöhnliches Mitglied darf nicht prüfen
 
 **Gates:** ESLint **0** · tsc **13 vorbestehend / 0 neu** · vitest **2828/2828** (+6 Auswertungs-Tests) · Build clean · Playwright `PROJ-130-gamma2b-audit-readers.spec.ts` **5/5** chromium (der neue Fall deckt den Auth-Gate der Kettenstatus-Route).
 
+**Deployed 2026-08-12:** PR #345 (squash) → main (`ebffe03`), Tag `v2.51.0-PROJ-Y-130m`; kein DB-Change. Post-Deploy-Smoke: Seite + Kettenstatus-Route → 307.
+
 **Abweichung, die benannt gehört:** die Karte sitzt auf einer **admin-only** Seite. Ein Revisor mit γ2-Freigabe darf die Kette laut RPC prüfen, erreicht die Oberfläche aber nicht — für ihn bleibt nur die API. Eine eigene, freigabe-gegatete Revisions-Sicht ist ein eigener Schritt → **PROJ-Y-130o**. Bewusst nicht hier mitgemacht, weil das eine neue Seite mit eigenem Zugriffsmodell wäre, nicht eine Karte.
 
 ---
