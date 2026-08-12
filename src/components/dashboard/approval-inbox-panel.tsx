@@ -84,10 +84,16 @@ function Body({
       />
     )
   }
+  // PROJ-Y-143e: rows are keyed by decision, not approver. This panel lists
+  // the decisions waiting on *me*, so `approver_id` holds the same value in
+  // every row — any user with two pending approvals produced duplicate React
+  // keys, which React warns "may cause children to be duplicated and/or
+  // omitted". Never observed because the [E2E] tenant has no approvals; a
+  // pinned two-row fixture surfaced it as a dev-overlay "2 Issues" badge.
   return (
     <ul className="space-y-2">
       {approvals.slice(0, 5).map((item) => (
-        <li key={item.approver_id}>
+        <li key={item.decision_id}>
           <Link
             href={`/projects/${item.project_id}/entscheidungen?decision=${item.decision_id}`}
             className="group flex items-start gap-3 rounded-md border bg-card p-3 transition-colors hover:bg-accent"

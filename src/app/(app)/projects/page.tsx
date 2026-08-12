@@ -3,7 +3,7 @@ import type { Metadata } from "next"
 import { ProjectsListClient } from "./projects-list-client"
 
 export const metadata: Metadata = {
-  title: "Projects · Projektplattform",
+  title: "Projekte · Projektplattform",
 }
 
 export default function ProjectsPage() {

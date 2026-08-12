@@ -13,7 +13,7 @@ interface ResponsibleUserPickerProps {
   tenantId: string
   value: string | undefined
   onChange: (userId: string) => void
-  /** When true, includes an "All members" option whose value maps to onChange("") */
+  /** When true, includes an "Alle Mitglieder" option whose value maps to onChange("") */
   includeAllOption?: boolean
   /** Disable the picker (e.g. while submitting). */
   disabled?: boolean
@@ -71,7 +71,7 @@ export function ResponsibleUserPicker({
       </SelectTrigger>
       <SelectContent>
         {includeAllOption && (
-          <SelectItem value={ALL_VALUE}>All members</SelectItem>
+          <SelectItem value={ALL_VALUE}>Alle Mitglieder</SelectItem>
         )}
         {members.length === 0 && !loading && !includeAllOption ? (
           <div className="px-2 py-1.5 text-sm text-muted-foreground">
