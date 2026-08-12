@@ -56,6 +56,16 @@ test.describe("PROJ-130-γ2b / Revisionszugriff", () => {
     expect(GATE).toContain(res.status())
   })
 
+  // PROJ-Y-130o: die Revisions-Sicht liegt bewusst AUSSERHALB der App-Hülle
+  // (deren Layout leitet Nutzer ohne Mitgliedschaft nach /onboarding). Sie muss
+  // trotzdem eine Sitzung verlangen.
+  test("Die Revisions-Sicht ist ohne Sitzung nicht erreichbar (PROJ-Y-130o)", async ({
+    page,
+  }) => {
+    await page.goto("/revision", { waitUntil: "domcontentloaded" })
+    expect(page.url()).toContain("/login")
+  })
+
   test("DELETE (Widerruf) ist auth-gegated", async ({ request }) => {
     const res = await request.delete(`/api/tenants/${DUMMY}/audit-readers`, {
       data: { user_id: DUMMY },
