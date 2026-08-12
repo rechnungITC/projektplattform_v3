@@ -13,9 +13,11 @@ import {
   type AuditChainFinding,
   describeChainStatus,
   findingKind,
+  sourceLabel,
 } from "./audit-chain-api"
 
 const ok = (over: Partial<AuditChainFinding> = {}): AuditChainFinding => ({
+  source: "audit_log",
   window_start: "2026-08-10T00:00:00Z",
   entry_count_sealed: 5,
   entry_count_now: 5,
@@ -31,6 +33,7 @@ describe("describeChainStatus", () => {
       intact: true,
       findings: [],
       last_window_start: null,
+      sources: [],
     })
     expect(v.tone).toBe("pending")
     expect(v.headline).toMatch(/Noch keine/)
@@ -43,6 +46,7 @@ describe("describeChainStatus", () => {
       intact: true,
       findings: [],
       last_window_start: "2026-08-11T00:00:00Z",
+      sources: [],
     })
     expect(v.tone).toBe("ok")
     expect(v.headline).toContain("106")
@@ -54,6 +58,7 @@ describe("describeChainStatus", () => {
       intact: false,
       findings: [ok({ digest_ok: false })],
       last_window_start: "2026-08-11T00:00:00Z",
+      sources: [],
     })
     expect(v.tone).toBe("alarm")
     expect(v.detail).toMatch(/verändertem Inhalt/)
@@ -66,6 +71,7 @@ describe("describeChainStatus", () => {
       intact: false,
       findings: [ok({ link_ok: false })],
       last_window_start: "2026-08-11T00:00:00Z",
+      sources: [],
     })
     expect(v.tone).toBe("alarm")
     expect(v.detail).toMatch(/gebrochener Verkettung/)
@@ -79,6 +85,7 @@ describe("describeChainStatus", () => {
       intact: false,
       findings: [ok({ digest_ok: false }), ok({ link_ok: false }), ok({ digest_ok: false })],
       last_window_start: "2026-08-11T00:00:00Z",
+      sources: [],
     })
     expect(v.headline).toBe("3 von 10 Fenstern weichen ab")
     expect(v.detail).toMatch(/2 Fenster mit verändertem Inhalt/)
@@ -92,5 +99,16 @@ describe("findingKind", () => {
     expect(findingKind(ok({ link_ok: false }))).toBe("Anker verändert")
     expect(findingKind(ok({ digest_ok: false, link_ok: false }))).toBe("Inhalt + Anker")
     expect(findingKind(ok())).toBe("—")
+  })
+})
+
+describe("sourceLabel", () => {
+  it("benennt die beiden Ketten in Klartext", () => {
+    expect(sourceLabel("audit_log")).toBe("Änderungs-Trail")
+    expect(sourceLabel("confidential_read")).toBe("Zugriffsprotokoll")
+  })
+
+  it("gibt eine unbekannte Quelle unverändert zurück statt sie zu verschweigen", () => {
+    expect(sourceLabel("etwas_neues")).toBe("etwas_neues")
   })
 })

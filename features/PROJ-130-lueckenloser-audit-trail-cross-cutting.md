@@ -192,7 +192,7 @@ Keine. Weder neue Bibliothek noch neuer Dienst. Prüfwert-Bildung und Zeitsteuer
 - **PROJ-Y-130f** — **Prod/Repo-Divergenz in der Audit-Abdeckung** (Fund aus α, siehe unten): Prod hat zwei auditierte Tabellen mehr, als die Migrationsdateien herstellen. Genau bestimmbar erst mit einer lokalen Shadow-DB (blockiert durch den offenen Docker/WSL-Handoff aus PROJ-67/F6).
 - ~~**PROJ-Y-130m**~~ — **erledigt 2026-08-12** (Kettenstatus-Karte im Revisionszugriff, siehe eigenen Abschnitt unten).
 - **PROJ-Y-130o** — freigabe-gegatete Revisions-Sicht: ein Revisor mit γ2-Freigabe darf die Kette prüfen, erreicht die admin-only Stammdaten-Seite aber nicht.
-- **PROJ-Y-130n** — Zugriffsprotokoll aus δ1/δ2 ebenfalls verketten (ε deckt den Änderungs-Trail).
+- ~~**PROJ-Y-130n**~~ — **erledigt 2026-08-12** (Schreibschutz + Verkettung des Zugriffsprotokolls; der Followup war unterspezifiziert, siehe eigenen Abschnitt).
 - **PROJ-Y-130k** — `communication_access_log` (PROJ-119) traegt einen FK auf `projects`; sein Protokoll verschwindet bei einer Projekt-Loeschung mit. An die FK-freie Linie von α und δ1 angleichen.
 - **PROJ-Y-130j** — suchbare Combobox statt 88-Eintrag-Select im Audit-Bericht (γ3-Nebeneffekt).
 - **PROJ-Y-130i** — **Auditor sieht keine mandantenweiten Katalogänderungen** (bewusste γ2-Grenze): Zweige des Lesetors, die direkt `is_tenant_member(...)` oder `return false` liefern, umgehen den gemeinsamen Ausgang. Ausweitung = 9 weitere Einzel-Ersetzungen, gehört nicht in dieselbe Migration.
@@ -540,6 +540,28 @@ Dazu: Anker-Update/-Delete je `42501`, gewöhnliches Mitglied darf nicht prüfen
 **Deployed 2026-08-12:** PR #345 (squash) → main (`ebffe03`), Tag `v2.51.0-PROJ-Y-130m`; kein DB-Change. Post-Deploy-Smoke: Seite + Kettenstatus-Route → 307.
 
 **Abweichung, die benannt gehört:** die Karte sitzt auf einer **admin-only** Seite. Ein Revisor mit γ2-Freigabe darf die Kette laut RPC prüfen, erreicht die Oberfläche aber nicht — für ihn bleibt nur die API. Eine eigene, freigabe-gegatete Revisions-Sicht ist ein eigener Schritt → **PROJ-Y-130o**. Bewusst nicht hier mitgemacht, weil das eine neue Seite mit eigenem Zugriffsmodell wäre, nicht eine Karte.
+
+## Implementation Notes — PROJ-Y-130n (2026-08-12, `/backend`) — Zugriffsprotokoll: Schutz und Kette
+
+**Der Followup war unterspezifiziert — die Bestandsaufnahme hat mehr gefunden als „Kette fehlt".** `confidential_read_log` hatte **keine** Wächter-Trigger (δ1/δ2 verließen sich allein auf RLS), und `anon`/`authenticated` hielten auf Tabellenebene noch **INSERT/UPDATE/DELETE**. In der Praxis blockiert RLS sie — δ1s Pentest-Vektor H beweist 42501 — aber das ist **eine** Barriere, nicht Verteidigung in der Tiefe; α hatte genau diese Rechte auf `audit_log_entries` ausdrücklich entzogen. Eine Kette über ein Protokoll zu legen, das man still ändern kann, wäre Detektion ohne Schutz. Deshalb hier dieselbe Reihenfolge, auf die PROJ-130 als Ganzes besteht: **Prävention vor Nachweis.**
+
+**Zwei Migrationen in Prod:** `20260812140000_proj_y_130n_read_log_chain` (Wächter + Revokes + Quellen-Erweiterung + Fingerabdruck + generalisiertes Siegeln/Prüfen) und `20260812143000_proj_y_130n_fingerprint_revokes` (Fix-forward, siehe unten).
+
+**Eine Anker-Tabelle, zwei Ketten.** Der Mechanismus wird **nicht kopiert**, sondern um eine `source` erweitert (`audit_log` · `confidential_read`), Eindeutigkeit jetzt `(tenant_id, source, window_start)`. Zwei parallele Anker-Tabellen wären genau die Register-Verdopplung, gegen die PROJ-130 überhaupt angetreten ist. Günstiger Zeitpunkt: es existierte noch **kein einziger Anker** (der erste Siegel-Lauf kommt um 03:45 UTC), der Umbau der Eindeutigkeit war reibungsfrei — einen Tag später hätte er eine Kettenhistorie berührt.
+
+**Die Ketten laufen unabhängig.** `verify_audit_chain` setzt den Vorgänger-Prüfwert beim Quellenwechsel auf die Wurzel zurück; sonst meldete der Übergang zwischen zwei Ketten einen Bruch, den es nicht gibt. Die Route liefert das Urteil **je Quelle** (`sources[]`) — ein zusammengefasstes „intakt" würde verschweigen, *welches* Protokoll betroffen ist. Die Karte im Revisionszugriff zeigt entsprechend eine Zeile pro Kette, und die Fund-Tabelle hat eine Protokoll-Spalte.
+
+**Cron-Antwort umbenannt, weil die Zahl etwas anderes bedeutet:** eine Zeile ist jetzt eine **Kette** (Mandant × Quelle), nicht ein Mandant — aus `tenants_sealed` wurde `chains_sealed`. Ein beibehaltener Name hätte die Zahl falsch erklärt.
+
+**Live-Pentest `tests/sql/PROJ-Y-130n-read-log-chain-pentest.sql`: A–J 10/10 PASS gegen Prod, 0 Residuen** (audit_log 106 Fenster, confidential_read 1). Kern-Vektor ist **F**: eine Fälschung am Zugriffsprotokoll (nachgestellt durch Abschalten des neuen Wächters) trifft **nur dessen** Kette — Zugriffsprotokoll 1 Abweichung, Änderungs-Trail 0. Damit ist bewiesen, dass ein Fund zuordenbar ist. Dazu: Protokoll-Update/-Delete je 42501, keine offenen DML-Grants, beide Ketten gesiegelt und sauber, unbekannte Quelle 22023, Prüf-Gate unverändert, α/ε-Wächter unberührt.
+
+**Der Pentest hat zwei vergessene Revokes gefunden — einen davon aus ε.** Vektor I meldete FAIL: `anon` konnte `_read_log_entry_fingerprint` (neu) **und** `_audit_entry_fingerprint` (aus ε) aufrufen; in ε hatte ich den Revoke vergessen, und **ε's eigener Vektor K zählte diese Funktion nicht auf** — ein Vektor prüft nur, was er auflistet. Einordnung ohne Dramatisierung: beide sind `immutable` und rechnen ausschließlich über übergebene Argumente, sie lesen keine Tabelle. Ein anonymer Aufrufer hätte nur den Prüfwert von Werten bilden können, die er schon kennt: **kein Informationsgewinn, kein Schreibpfad**. Verletzt war die Hausnorm (interne Helfer sind für Anwendungsrollen nicht aufrufbar) und die Konsistenz zu den übrigen Helfern. Behoben per Fix-forward-Migration mit einer Post-Condition, die **alle sieben** Helfer aufzählt; ε's Vektor K ist ergänzt, der neue Vektor I listet die vollständige Menge.
+
+**Gegenprobe nach den Revokes** (eigener Lauf, weil ein entzogenes EXECUTE einen Aufrufer brechen kann, der nicht Eigentümer ist): die Prüfung läuft weiter — 107 Fenster, 0 Abweichungen —, und `anon` bekommt auf dem Fingerabdruck jetzt 42501. Die DEFINER-Aufrufkette ist intakt.
+
+**Gates:** ESLint **0** · tsc **13 vorbestehend / 0 neu** · vitest **2831/2831** (+3 gegenüber PROJ-Y-130m: Quellen-Trennung in der Route, Klartext-Labels) · Build clean · `check:migration-naming` **0 Fehler**.
+
+**Abgrenzung:** kein neues Frontend-Konzept (die Karte aus PROJ-Y-130m wird erweitert, nicht ersetzt) · das Zugriffsprotokoll hat weiterhin **keinen** Löschpfad, es braucht also keine Retention-Ausnahme · die γ2-Grenze aus PROJ-Y-130o (Revisor ohne Admin-Rechte erreicht die Oberfläche nicht) gilt unverändert auch für die neue Quelle.
 
 ---
 _Quelle: Backlog-Entwurf M&A-Projektplattform · L — Vertraulichkeit, NDA & Audit_

@@ -63,8 +63,8 @@ describe("GET /api/tenants/[id]/audit-chain", () => {
     signedIn()
     rpcMock.mockResolvedValue({
       data: [
-        { window_start: "2026-08-10T00:00:00Z", entry_count_sealed: 5, entry_count_now: 5, digest_ok: true, link_ok: true },
-        { window_start: "2026-08-11T00:00:00Z", entry_count_sealed: 0, entry_count_now: 0, digest_ok: true, link_ok: true },
+        { source: "audit_log", window_start: "2026-08-10T00:00:00Z", entry_count_sealed: 5, entry_count_now: 5, digest_ok: true, link_ok: true },
+        { source: "audit_log", window_start: "2026-08-11T00:00:00Z", entry_count_sealed: 0, entry_count_now: 0, digest_ok: true, link_ok: true },
       ],
       error: null,
     })
@@ -75,6 +75,14 @@ describe("GET /api/tenants/[id]/audit-chain", () => {
       intact: true,
       findings: [],
       last_window_start: "2026-08-11T00:00:00Z",
+      sources: [
+        {
+          source: "audit_log",
+          windows_checked: 2,
+          intact: true,
+          last_window_start: "2026-08-11T00:00:00Z",
+        },
+      ],
     })
   })
 
@@ -82,7 +90,7 @@ describe("GET /api/tenants/[id]/audit-chain", () => {
     signedIn()
     rpcMock.mockResolvedValue({
       data: [
-        { window_start: "2026-08-10T00:00:00Z", entry_count_sealed: 5, entry_count_now: 5, digest_ok: false, link_ok: true },
+        { source: "audit_log", window_start: "2026-08-10T00:00:00Z", entry_count_sealed: 5, entry_count_now: 5, digest_ok: false, link_ok: true },
       ],
       error: null,
     })
@@ -95,7 +103,7 @@ describe("GET /api/tenants/[id]/audit-chain", () => {
     signedIn()
     rpcMock.mockResolvedValue({
       data: [
-        { window_start: "2026-08-10T00:00:00Z", entry_count_sealed: 5, entry_count_now: 5, digest_ok: true, link_ok: false },
+        { source: "audit_log", window_start: "2026-08-10T00:00:00Z", entry_count_sealed: 5, entry_count_now: 5, digest_ok: true, link_ok: false },
       ],
       error: null,
     })
@@ -113,6 +121,28 @@ describe("GET /api/tenants/[id]/audit-chain", () => {
       intact: true,
       findings: [],
       last_window_start: null,
+      sources: [],
     })
+  })
+
+  // PROJ-Y-130n: der eigentliche Zugewinn — ein zusammengefasstes Urteil würde
+  // verschweigen, WELCHES Protokoll betroffen ist.
+  it("beurteilt die beiden Ketten getrennt", async () => {
+    signedIn()
+    rpcMock.mockResolvedValue({
+      data: [
+        { source: "audit_log", window_start: "2026-08-10T00:00:00Z", entry_count_sealed: 5, entry_count_now: 5, digest_ok: true, link_ok: true },
+        { source: "confidential_read", window_start: "2026-08-10T00:00:00Z", entry_count_sealed: 2, entry_count_now: 3, digest_ok: false, link_ok: true },
+      ],
+      error: null,
+    })
+    const body = await (await GET(req, { params: Promise.resolve({ id: TENANT }) })).json()
+    expect(body.intact).toBe(false)
+    expect(body.sources).toEqual([
+      { source: "audit_log", windows_checked: 1, intact: true, last_window_start: "2026-08-10T00:00:00Z" },
+      { source: "confidential_read", windows_checked: 1, intact: false, last_window_start: "2026-08-10T00:00:00Z" },
+    ])
+    expect(body.findings).toHaveLength(1)
+    expect(body.findings[0].source).toBe("confidential_read")
   })
 })
