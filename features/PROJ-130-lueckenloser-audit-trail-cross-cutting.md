@@ -192,7 +192,7 @@ Keine. Weder neue Bibliothek noch neuer Dienst. Prüfwert-Bildung und Zeitsteuer
 - **PROJ-Y-130f** — **Prod/Repo-Divergenz in der Audit-Abdeckung** (Fund aus α, siehe unten): Prod hat zwei auditierte Tabellen mehr, als die Migrationsdateien herstellen. Genau bestimmbar erst mit einer lokalen Shadow-DB (blockiert durch den offenen Docker/WSL-Handoff aus PROJ-67/F6).
 - ~~**PROJ-Y-130m**~~ — **erledigt 2026-08-12** (Kettenstatus-Karte im Revisionszugriff, siehe eigenen Abschnitt unten).
 - ~~**PROJ-Y-130o**~~ — **erledigt 2026-08-12** (Seite `/revision` außerhalb der App-Hülle; die Lücke war die Mitgliedschafts-Annahme der Hülle, kein fehlendes Recht).
-- **PROJ-Y-130p** — filterbares Berichts-UI für Revisoren: `/revision` liefert Prüfung und Export, die Bericht-Oberfläche mit Filtern bleibt der Administration.
+- ~~**PROJ-Y-130p**~~ — **erledigt 2026-08-12** (geteilte `AuditReportView` auf beiden Flächen; kein Backend-Anteil nötig, die Route hatte nie ein Mitgliedschafts-Gate).
 - ~~**PROJ-Y-130n**~~ — **erledigt 2026-08-12** (Schreibschutz + Verkettung des Zugriffsprotokolls; der Followup war unterspezifiziert, siehe eigenen Abschnitt).
 - **PROJ-Y-130k** — `communication_access_log` (PROJ-119) traegt einen FK auf `projects`; sein Protokoll verschwindet bei einer Projekt-Loeschung mit. An die FK-freie Linie von α und δ1 angleichen.
 - **PROJ-Y-130j** — suchbare Combobox statt 88-Eintrag-Select im Audit-Bericht (γ3-Nebeneffekt).
@@ -589,6 +589,24 @@ Dazu: Anker-Update/-Delete je `42501`, gewöhnliches Mitglied darf nicht prüfen
 **Deployed 2026-08-12:** PR #351 (squash) → main (`9332765`), Tag `v2.53.0-PROJ-Y-130o`. Post-Deploy-Smoke: `/revision` und Audit-Export ohne Sitzung → 307.
 
 **Abgrenzung:** kein Navigationseintrag (ein Revisor bekommt den Link mit der Freigabe; die Hüllen-Navigation setzt Mitgliedschaft voraus) · kein Berichts-UI mit Filtern für Revisoren — die Sicht liefert Prüfung und Export, die filterbare Bericht-Oberfläche bleibt der Administration → **PROJ-Y-130p** · kein E-Mail-Versand der Freigabe.
+
+## Implementation Notes — PROJ-Y-130p (2026-08-12) — Filterbarer Bericht für Revisoren
+
+**Kein Backend-Anteil, keine Migration.** Die Berichts-Route `/api/audit/reports` hat — wie γ2 festgestellt hatte — **kein Mitgliedschafts-Gate**; dort filtert ausschließlich RLS (`can_read_audit_entry` inklusive des γ2-Zweigs für Revisions-Freigaben). Ein Revisor durfte den Bericht also längst abrufen; es fehlte nur die Oberfläche. PROJ-Y-130o hatte ihm Kettenprüfung und CSV-Export gegeben, aber keine durchsuchbare Sicht.
+
+**Die Sicht wird geteilt, nicht kopiert.** `AuditReportView` ist aus der Administrations-Seite herausgezogen und nimmt den Mandanten als **Prop** statt aus `useAuth()`. Grund: die Revisions-Sicht liegt außerhalb der App-Hülle, dort gibt es keinen AuthProvider und keinen Sitzungs-Mandanten — ein `useAuth()` in der Sicht hätte **nur auf dieser einen Fläche** zur Laufzeit gebrochen, ohne Typfehler. Die Administrations-Seite ist jetzt ein dünner Aufrufer, der genau eine Sache tut: den Mandanten aus dem Sitzungskontext holen.
+
+Damit sind es die zweiten geteilten Bausteine dieser Reihe (nach `AuditChainResult` aus PROJ-Y-130o). Das ist kein Selbstzweck: zwei Fassungen derselben Sicht driften, und dann zeigt eine Fläche Einträge, die die andere verschweigt — bei einem Audit-Trail ist genau das der Schaden.
+
+**Struktureller Wächter statt Vertrauen.** `audit-report-view.contract.test.ts` prüft, dass die Sicht keinen `use-auth`-Import trägt und dass **beide** Flächen die geteilte Sicht importieren. Rot-Grün bewiesen (künstlich eingefügter Import → roter Test, danach über eine **Kopie** zurückgesetzt, nicht per `git checkout` — die Lehre aus δ2/F-3).
+
+**Ein eigener Fehler dabei, der etwas über Tests aussagt:** die erste Fassung des Wächters suchte nach dem Wort `useAuth` — und schlug an dem **Kommentar** an, der erklärt, warum die Sicht ohne `useAuth` arbeitet. Ein Test, der die Erklärung bestraft statt den Fehler zu finden, ist wertlos; geprüft wird jetzt der Import.
+
+**Live-Nachweis (Prod, Rollback, 0 Residuen):** genau die Abfragen, die die Berichts-Route baut, aus Revisor-Sicht — **4/4 PASS**: ohne Filter 346 Einträge · Objektart-Filter greift (123 von 346, 9 Arten sichtbar) · Person- und Zeitraum-Filter laufen · **ohne Freigabe 0 Einträge**. Beobachtung ohne Befund: der Zeitraum-Filter „letzte 30 Tage" liefert für diesen Mandanten 0, weil dessen neuester Eintrag älter ist — die jüngeren Zeilen liegen bei einem Test-Mandanten.
+
+**Gates:** ESLint **0** · tsc **13 vorbestehend / 0 neu** · vitest **2908/2908** (+4 Vertrags-Tests) · Build clean · Playwright **6/6** chromium · `check:migration-naming` **0 Fehler**.
+
+**Abgrenzung:** die Sicht zeigt bis zu 200 Einträge pro Abfrage (Bestandsverhalten, Blätterung bleibt **PROJ-Y-130e**) · die 88-Werte-Auswahl der Objektart bleibt ein Select (suchbare Combobox = **PROJ-Y-130j**) · kein Navigationseintrag für Revisoren (die Hüllen-Navigation setzt Mitgliedschaft voraus).
 
 ---
 _Quelle: Backlog-Entwurf M&A-Projektplattform · L — Vertraulichkeit, NDA & Audit_
