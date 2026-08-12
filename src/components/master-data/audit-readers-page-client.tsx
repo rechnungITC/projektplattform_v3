@@ -1,6 +1,6 @@
 "use client"
 
-import { Loader2, ShieldAlert, Trash2, UserPlus } from "lucide-react"
+import { Link2, Loader2, ShieldAlert, ShieldCheck, Trash2, UserPlus } from "lucide-react"
 import * as React from "react"
 import { toast } from "sonner"
 
@@ -41,6 +41,12 @@ import {
   listAuditReaders,
   revokeAuditReader,
 } from "@/lib/audit/audit-readers-api"
+import {
+  type AuditChainStatus,
+  describeChainStatus,
+  fetchAuditChainStatus,
+  findingKind,
+} from "@/lib/audit/audit-chain-api"
 
 const EXTERNAL = "__external__"
 
@@ -99,6 +105,28 @@ export function AuditReadersPageClient() {
   const [note, setNote] = React.useState("")
 
   const refresh = React.useCallback(() => setTick((t) => t + 1), [])
+
+  // PROJ-Y-130m: Kettenstatus wird NICHT beim Öffnen der Seite geladen. Der
+  // Verifikationslauf rechnet jedes gesiegelte Fenster neu nach; das ist eine
+  // ausdrückliche Handlung („Kette prüfen“), keine Beiläufigkeit beim Rendern.
+  const [chain, setChain] = React.useState<AuditChainStatus | null>(null)
+  const [chainError, setChainError] = React.useState<string | null>(null)
+  const [chainBusy, setChainBusy] = React.useState(false)
+
+  async function handleVerifyChain() {
+    if (!tenantId) return
+    setChainBusy(true)
+    try {
+      const result = await fetchAuditChainStatus(tenantId)
+      setChain(result)
+      setChainError(null)
+    } catch (err) {
+      setChain(null)
+      setChainError(err instanceof Error ? err.message : "Prüfung fehlgeschlagen")
+    } finally {
+      setChainBusy(false)
+    }
+  }
 
   React.useEffect(() => {
     let cancelled = false
@@ -355,6 +383,88 @@ export function AuditReadersPageClient() {
               </TableBody>
             </Table>
           )}
+        </CardContent>
+      </Card>
+
+      <Card>
+        <CardHeader>
+          <CardTitle className="flex items-center gap-2">
+            <Link2 className="h-5 w-5" aria-hidden /> Manipulationsnachweis
+          </CardTitle>
+          <CardDescription>
+            Der Audit-Trail ist auf Datenbankebene gegen Änderung und Löschung
+            gesperrt — für jede Rolle. Die Prüfwert-Kette beweist zusätzlich, ob
+            trotzdem etwas verändert wurde: sie rechnet jedes gesiegelte Tagesfenster
+            nach und prüft, ob die Anker noch aneinander hängen.
+          </CardDescription>
+        </CardHeader>
+        <CardContent className="space-y-4">
+          <Button onClick={() => void handleVerifyChain()} disabled={chainBusy}>
+            {chainBusy ? (
+              <Loader2 className="h-4 w-4 animate-spin" aria-hidden />
+            ) : (
+              <ShieldCheck className="h-4 w-4" aria-hidden />
+            )}
+            Kette prüfen
+          </Button>
+
+          {chainError ? <p className="text-destructive text-sm">{chainError}</p> : null}
+
+          {chain ? (
+            (() => {
+              const verdict = describeChainStatus(chain)
+              return (
+                <div className="space-y-3" aria-live="polite">
+                  <div className="flex flex-wrap items-center gap-2">
+                    <Badge
+                      variant={
+                        verdict.tone === "ok"
+                          ? "default"
+                          : verdict.tone === "alarm"
+                            ? "destructive"
+                            : "secondary"
+                      }
+                    >
+                      {verdict.headline}
+                    </Badge>
+                    {chain.last_window_start ? (
+                      <span className="text-muted-foreground text-xs">
+                        letztes gesiegeltes Fenster: {formatDate(chain.last_window_start)}
+                      </span>
+                    ) : null}
+                  </div>
+                  <p className="text-muted-foreground text-sm">{verdict.detail}</p>
+
+                  {chain.findings.length > 0 ? (
+                    <Table>
+                      <TableHeader>
+                        <TableRow>
+                          <TableHead>Fenster</TableHead>
+                          <TableHead>Art der Abweichung</TableHead>
+                          <TableHead>Einträge gesiegelt</TableHead>
+                          <TableHead>Einträge jetzt</TableHead>
+                        </TableRow>
+                      </TableHeader>
+                      <TableBody>
+                        {chain.findings.map((f) => (
+                          <TableRow key={f.window_start}>
+                            <TableCell className="font-medium">
+                              {formatDate(f.window_start)}
+                            </TableCell>
+                            <TableCell>
+                              <Badge variant="destructive">{findingKind(f)}</Badge>
+                            </TableCell>
+                            <TableCell>{f.entry_count_sealed}</TableCell>
+                            <TableCell>{f.entry_count_now}</TableCell>
+                          </TableRow>
+                        ))}
+                      </TableBody>
+                    </Table>
+                  ) : null}
+                </div>
+              )
+            })()
+          ) : null}
         </CardContent>
       </Card>
     </div>
