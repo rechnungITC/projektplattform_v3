@@ -1,9 +1,13 @@
 # PROJ-144: Work-Item-Anlage aus Spracheingabe (Assistant Action Pack)
 
 ## Status: Approved
-**Deployment scope:** — (leer; noch nicht deployed — für „Approved" ist kein Scope zulässig)
+## Deployment Scope: —
+**Zum Scope:** leer, weil für `Approved` kein Scope zulässig ist. Der Code ist seit dem Merge von
+PR #341 in Produktion und mit `v2.52.0-PROJ-144` getaggt; der `Deployed`-Stempel samt Scope
+(belegbar `full`) wartet auf die Portfolio-Migration, die `features/INDEX.md` die
+`Deployment Scope`-Spalte gibt — siehe Abschnitt „Deployment". Gleicher Wartezustand wie PROJ-130.
 **Created:** 2026-08-11
-**Last Updated:** 2026-08-12 (F-8 geschlossen: der Browser-Durchlauf ist über PROJ-Y-144d bewiesen, 3/3 chromium; 0 Critical/0 High, keine offenen AC)
+**Last Updated:** 2026-08-12 (getaggt + Post-Deploy-Smoke grün; F-8 geschlossen: der Browser-Durchlauf ist über PROJ-Y-144d bewiesen, 3/3 chromium; 0 Critical/0 High, keine offenen AC)
 
 ## Summary
 
@@ -778,4 +782,43 @@ einem unbewiesenen AC auf `main` stehen lassen.
   PROJ-67/F2).
 
 ## Deployment
-_To be added by /deploy_
+
+**Tag:** `v2.52.0-PROJ-144` (auf dem Merge-Commit `fc56186`, PR #341 squash) · **Datum:** 2026-08-12
+· **Produktion:** https://projektplattform-v3.vercel.app
+
+**Kein separater Runtime-Deploy.** Vercel deployt automatisch von `main`; der Code ist mit dem
+Merge von PR #341 live gegangen, die Migration `20260811190000_proj144_assistant_work_item_drafts`
+(Prod-Version `20260811133225`) liegt seit `/backend` in Prod. Dieser Lauf ist damit Tag +
+Verifikation + Bookkeeping, nicht das Ausliefern selbst. Kein neues Env, kein neues Secret, kein
+neuer Zeitplan-Eintrag (die Aufräumung reitet auf dem bestehenden 03:00-Lauf).
+
+**Post-Deploy-Smoke gegen Prod** — alle vier Flächen antworten mit 307 Auth-Gate, der
+Antwortrumpf enthält ausschließlich `Redirecting...`, also weder Projekt- noch Mandanten-Kennung
+noch den Entwurfstitel:
+
+| Fläche | Ergebnis |
+|---|---|
+| `GET /api/assistant/work-item-drafts` | 307 |
+| `POST /api/assistant/work-item-drafts/[draftId]/confirm` | 307, kein Leck im Rumpf |
+| `DELETE /api/assistant/work-item-drafts/[draftId]` | 307 |
+| `POST /api/assistant/turns` (Nicht-Regression) | 307 |
+
+### Lifecycle bleibt bewusst `Approved` — Deployment Scope offen
+
+Der `Deployed`-Stempel wird hier **nicht** gesetzt, obwohl die Arbeit fertig und in Produktion
+ist. Grund ist die Bookkeeping-Regel, die parallel zu dieser Slice in `CLAUDE.md` und
+`.claude/rules/general.md` verbindlich wurde (Commit `a212171`): Deployment Scope ist ein eigenes
+Pflichtfeld, `features/INDEX.md` führt die Spalte noch nicht, und die Regel verlangt in diesem
+Fall ausdrücklich, das Bookkeeping abzubrechen statt einen Scope zu erfinden. Ein Scope wäre hier
+zwar aus den Nachweisen belegbar (`full` — alle AC erfüllt, 0 Critical/0 High, kein offenes
+Kriterium mehr seit F-8 über PROJ-Y-144d), aber die Spalte, in die er gehört, existiert nicht.
+
+Das ist derselbe Wartezustand wie bei **PROJ-130** (dort seit 2026-08-12 aus identischem Grund).
+Beide Zeilen bekommen Status und Scope in der evidenzbasierten Portfolio-Migration, die die
+Spalte einführt und die 139 als `Deployed` geführten Altzeilen klassifiziert; sie ist noch
+nirgends als eigene Slice registriert. **Ehrliche Einordnung:** die Funktion ist für den Piloten
+nutzbar, die Buchhaltung hinkt bewusst nach — nicht umgekehrt.
+
+**Nebenbefund:** die Version `v2.52.0` ist doppelt belegt (parallele Lane hat zeitgleich
+`v2.52.0-PROJ-Y-130n` getaggt). Das ist im Bestand geübte Praxis bei parallelen Lanes
+(`v2.50.0` und `v2.51.0` sind ebenfalls doppelt); die Tag-**Namen** bleiben eindeutig.
