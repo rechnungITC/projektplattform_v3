@@ -81,7 +81,42 @@ build → QA → deploy chain rather than merged as one block.
 
 All features tracked in `features/INDEX.md`. Every skill reads it at start and updates it when done. Feature specs live in `features/PROJ-X-name.md`.
 
-Statuses: **Planned → Architected → In Progress → In Review → Approved → Deployed.**
+Lifecycle statuses: **Planned → Architected → In Progress → In Review → Approved → Deployed.**
+`Superseded` is an additional terminal status for a feature that is intentionally replaced and was not
+deployed as its own feature.
+
+Deployment scope is mandatory and orthogonal to lifecycle status. Use exactly one of:
+**`full` | `mvp` | `alpha` | `tooling-only` | `superseded`**.
+
+- Before production deployment, deployment scope is empty (`—`).
+- `Deployed` requires `full`, `mvp`, `alpha`, or `tooling-only`.
+- `Superseded` requires `superseded`; never combine `Deployed` with `superseded`.
+- `full` means every current in-scope acceptance criterion and the Definition of Done are satisfied.
+  Separate later enhancements may remain open, but no deferred original acceptance criterion may.
+- `mvp` means an explicitly approved usable MVP boundary was deployed. Every omitted original
+  requirement is named and tracked as a follow-up.
+- `alpha` means a named sub-slice with its own acceptance criteria, QA, and deployment evidence was
+  deployed; remaining slices are listed explicitly.
+- `tooling-only` means the delivered outcome affects repository tooling, CI, tests, or workflow and adds
+  no product runtime capability.
+- `superseded` means the replacement feature is named and every original acceptance criterion is mapped
+  to absorbed, rejected, or follow-up work. It does not claim an implementation of the superseded feature.
+
+At deployment or supersession, update and then re-read all applicable sources of truth:
+
+1. `features/INDEX.md`: lifecycle status and deployment scope as separate columns/fields.
+2. The feature spec: matching `## Status: ...` and `## Deployment Scope: ...` headers,
+   acceptance-criteria evidence, QA/deployment evidence,
+   deviations, and the exact delivered boundary.
+3. `features/OPEN-DEFERRED-STATUS.md`: every accepted omission from an original requirement, with its
+   source acceptance criterion and target follow-up ID.
+
+Never infer deployment scope from the word `Deployed`, commit count, file-name matches, or an auth-gate
+smoke alone. Classify it from the delivered behavior and evidence. Scope upgrades such as
+`alpha → mvp → full` require a new QA/deployment pass; retain the earlier slice history in the spec.
+Legacy entries are not auto-classified from their old `Deployed` label. Migrate them in an evidence-based
+portfolio audit; until that audit is complete, any feature whose lifecycle status changes must receive an
+explicit scope, and the INDEX schema must be upgraded before recording the change.
 Follow-ups deferred out of a slice are registered as `PROJ-Y-<id>` and tracked in
 `features/OPEN-DEFERRED-STATUS.md`. Keep the INDEX row, the spec header, and reality in sync —
 a row claiming "Deployed" for work that was actually deferred is a bug in its own right (PROJ-141-γ1).
@@ -380,7 +415,7 @@ Strukturierte Ergebnisse (kein loser Brainstorm): Findings, Requirements, User S
 <!-- gitnexus:start -->
 # GitNexus — Code Intelligence
 
-This project is indexed by GitNexus as **projektplattform_v3** (23318 symbols, 45870 relationships, 300 execution flows). Use the GitNexus MCP tools to understand code, assess impact, and navigate safely.
+This project is indexed by GitNexus as **projektplattform_v3** (23429 symbols, 46191 relationships, 300 execution flows). Use the GitNexus MCP tools to understand code, assess impact, and navigate safely.
 
 > Index stale? Run `node .gitnexus/run.cjs analyze` from the project root — it auto-selects an available runner. No `.gitnexus/run.cjs` yet? `npx gitnexus analyze` (npm 11 crash → `npm i -g gitnexus`; #1939).
 
