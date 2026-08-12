@@ -1,8 +1,8 @@
 # PROJ-144: Work-Item-Anlage aus Spracheingabe (Assistant Action Pack)
 
-## Status: In Progress (Backend fertig, Frontend offen)
+## Status: In Review (Backend + Frontend fertig, ein AC bleibt ausdrücklich offen)
 **Created:** 2026-08-11
-**Last Updated:** 2026-08-11 (Backend gebaut, Live-Pentest 17/17 gegen Prod)
+**Last Updated:** 2026-08-12 (Frontend gebaut, QA gefahren, Live-Pentest 17/17 re-verifiziert; AC-144.29-Browserhälfte offen — siehe F-8)
 
 ## Summary
 
@@ -586,8 +586,109 @@ Projekt-Löschen, sowie die drei CHECKs.
   über alle sieben Methoden als bewusster Prüfpunkt (D4: keine DB-Absicherung), und ein
   End-to-End-Durchlauf Diktat → Bestätigen → Work-Item.
 
-## QA Test Results
-_To be added by /qa_
+## Implementation Notes — /frontend (2026-08-12)
+
+### Was gebaut wurde
+
+- **`AssistantWorkItemDraftCard`** (`src/components/assistant/assistant-work-item-draft-card.tsx`) —
+  die Prüfansicht. Titel **korrigierbar** (Tech-Design-Pflichtrisiko), Beschreibung optional,
+  Art-Badge, Erklärung einer von der Methode erzwungenen Art (AC-144.8), Anlegen/Verwerfen mit
+  Lade- und Fehlerzustand. Bewusst mit `key={draft.id}` zu rendern: der lokale State wird aus den
+  Props *initialisiert*, ein Reset per Effect wäre eine set-state-in-effect-Verletzung des
+  React-Compilers (Lehre aus PROJ-70-β). Die Anforderung steht als Kommentar in der Datei, weil
+  sie sonst beim nächsten Aufrufer verloren geht.
+- **`useAssistantWorkItemDrafts`** (`src/hooks/use-assistant-work-item-drafts.ts`) — Haus-Muster
+  (`{data, loading, error, refresh, …Mutatoren}`, `let cancelled`-Guard). Lädt nur bei offenem
+  Overlay. Serverfehler werden über den stabilen `code` ins Deutsche übersetzt statt rohe
+  englische Meldungen durchzureichen; `draft_not_open` (409) wird ausdrücklich **nicht** als
+  technischer Fehlschlag formuliert, weil das Work-Item in dem Moment bereits existiert.
+- **Overlay** (`assistant-launcher.tsx`) — Entwurfsliste (L7, AC-144.17) mit Zusage der
+  Aufbewahrungsfrist, Karte direkt am Sprechfluss (L2), nach der Anlage Erfolgsmeldung +
+  Sprung-Link, Overlay bleibt offen (L6). Ein Entwurf erscheint nie doppelt (inline **oder**
+  Liste). Der Sprung nutzt den **kanonischen** `backlog`-Slug; die Methoden-Auflösung bleibt bei
+  `src/proxy.ts` (308, PROJ-28) statt hier nachgebaut zu werden.
+
+### Nachweise
+
+- `assistant-work-item-draft-card.test.tsx` **6/6** — Fall 1 ist der Kern: der korrigierte Titel
+  muss bis in den `confirm`-Aufruf durchreisen. Dazu: vor dem Klick passiert nichts
+  (AC-144.15/16), leerer Titel ist nicht bestätigbar, erzwungene Art wird erklärt (AC-144.8),
+  nach einem Fehlschlag bleibt die Karte bedienbar (kein Dauer-Ladezustand), Verwerfen-Pfad.
+- `use-assistant-work-item-drafts.test.ts` **5/5** — Fehlerübersetzung, damit ein umbenannter
+  Code nicht still auf den Sammelfall zurückfällt.
+- Gates: ESLint 0 · tsc 13 = Baseline / **0 neu** · vitest 2852/2852 (+11) · Build clean.
+
+### Befunde und Abweichungen
+
+- **F-6 (behoben, betraf den eigenen Backend-Stand):** `runtime.work-item-draft.test.ts` gab
+  seinen Mock mit `as never` zurück. Der Typ war auf **keiner** Aufrufstelle einem
+  `SupabaseClient` zuweisbar → **9 tsc-Fehler**, die der Backend-Commit als „tsc 13 = Baseline/0
+  neu" gemeldet hatte. Die Zahl war nie gegen `main` gegengemessen worden. Jetzt auf eine
+  Schnittmenge umgestellt (zuweisbar UND weiter als Mock erkennbar für die
+  `toHaveBeenCalledWith`-Zusicherungen); Baseline auf reinem `origin/main` nachgemessen: **13**,
+  gleiche Dateiverteilung. Lehre: „0 neu" ohne Gegenmessung ist eine Behauptung, keine Messung.
+- **F-7 (behoben):** die 14-Tage-Frist stand privat in der Aufräum-Route, während das Overlay sie
+  dem Nutzer zusagt. Nach `lib/assistant/work-item-command` gezogen — zwei Kopien wären eine
+  Zusage, die der nächtliche Lauf still brechen könnte.
+
+## QA Test Results — 2026-08-12
+
+**Verdikt: 0 Critical / 0 High.** Ein Akzeptanzkriterium bleibt ausdrücklich **offen** (F-8),
+nicht als „Deviation" verbucht.
+
+### Ausgeführt
+
+- **Live-Pentest gegen Prod** (`tests/sql/PROJ-144-assistant-work-item-drafts-pentest.sql`):
+  **17/17 PASS**, Rollback-Marker erreicht. Rückstände nicht angenommen, sondern per
+  Gegenabfrage geprüft: Pentest-Projekte 0, Entwürfe 0, Pentest-Profile 0,
+  Bestätigungs-Events 0. Kernbeweis Fall B unverändert: ein **Tenant-ADMIN** sieht fremde
+  Entwürfe NICHT — strenger als jede Vertraulichkeitsstufe im Produkt.
+- **Playwright** `tests/PROJ-144-assistant-work-item-drafts.spec.ts` **4/4** chromium: alle drei
+  Routen auth-gated; die Bestätigungsroute verrät ohne Sitzung weder Titel noch Projekt- oder
+  Mandantenkennung.
+- **Methoden-Matrix (D4)** — die Zuordnung Methode↔Art hat in der Datenbank keinen Constraint.
+  Die Matrix lief über `PROJECT_METHODS` schon datengetrieben, die **Arten**-Achse war eine
+  handgepflegte Kopie; auf `WORK_ITEM_KINDS` umgestellt, damit eine neue Art nicht still
+  ungeprüft bleibt. Verhalten unverändert (beide Achsen 7 Werte) — der Gewinn ist die künftige
+  Drift-Sicherung, kein gefundener Fehler.
+- **Advisors:** Security 137 Findings, **alle WARN, 0 ERROR**, davon **0** zur neuen Tabelle.
+  Keine DDL-Änderung in Frontend/QA, daher unverändert gegenüber dem /backend-Stand
+  (dort 3 INFO zu erwarteten unbenutzten Indizes einer neuen Tabelle).
+- Volle Gates: ESLint 0 · tsc 13 = Baseline/0 neu · vitest 2852/2852 · Build clean ·
+  migration-naming 0 Fehler.
+
+### F-8 (OFFEN, nicht behoben) — die Browserhälfte des Durchlaufs ist nicht bewiesen
+
+Ein authentifizierter Durchlauf Diktat → Prüfansicht → Bestätigen → Work-Item wurde **nicht**
+ausgeführt. Grund ist keine Bequemlichkeit, sondern eine belegte Blockade:
+
+1. Alle drei Assistant-Flächen sind modul-gegated (`requireModuleActive(…, "assistant")`), und im
+   E2E-Mandanten ist das Assistant-Modul **aus** (live geprüft: `assistant_aktiv = false`). Ohne
+   Modul rendert `AssistantLauncher` `null` und auch der reine API-Weg antwortet 403/404.
+2. `AssistantLauncher` sitzt in `src/components/app/app-shell.tsx:57`, also auf **jeder**
+   eingeloggten Seite, als `fixed`-Knopf unten rechts. `tests/PROJ-51-visual-regression-authenticated.spec.ts`
+   fotografiert genau diese Shell (`/`, `/projects`, `/stammdaten`, `fullPage`). Das Modul im
+   geteilten E2E-Mandanten anzuschalten würde die sieben Baselines verändern, die PROJ-Y-143b/d
+   gerade stabilisiert haben — und Playwright fährt Dateien parallel, ein Ein-/Ausschalten
+   innerhalb eines Specs wäre für gleichzeitig laufende Visual-Specs eine Flake-Quelle.
+3. Das E2E-Projekt hat zudem **keine Methode** (`project_method = null`), womit die
+   Methoden-Abbildung dort ohnehin nicht greifen würde.
+
+Das ist eine Entscheidung über eine geteilte Test-Fixture und gehört nicht in diese Slice.
+Empfohlener Weg → **PROJ-Y-144d**: ein eigener Assistant-E2E-Mandant mit aktivem Modul und einem
+Projekt mit Methode, damit die Visual-Baselines unberührt bleiben. Bis dahin gilt: die
+Bestätigungs**mechanik** ist auf Datenbank- (17/17), Routen- (11 Fälle) und Komponentenebene
+(6 Fälle) bewiesen; die **Verkettung im Browser** ist es nicht.
+
+Ausdrücklich in der Sprache von PROJ-135 festgehalten: ein nicht ausgeführter E2E-Layer ist
+**kein** „Deviation", sondern ein offenes Akzeptanzkriterium.
+
+### Weitere Abweichungen
+
+- **D-144.1** (aus /backend) — AC-144.23 ist nur zur Hälfte erfüllbar: `ModuleKey` hat keinen
+  Backlog-Schalter, Backlog ist Kern. Das Gate ist das Assistant-Modul.
+- **D-144.7** — Mobile Safari umgebungsbedingt übersprungen (WebKit-Host-Bibliotheken,
+  PROJ-67/F2).
 
 ## Deployment
 _To be added by /deploy_
