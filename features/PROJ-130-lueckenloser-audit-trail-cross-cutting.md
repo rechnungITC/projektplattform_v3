@@ -561,6 +561,8 @@ Dazu: Anker-Update/-Delete je `42501`, gewöhnliches Mitglied darf nicht prüfen
 
 **Gates:** ESLint **0** · tsc **13 vorbestehend / 0 neu** · vitest **2831/2831** (+3 gegenüber PROJ-Y-130m: Quellen-Trennung in der Route, Klartext-Labels) · Build clean · `check:migration-naming` **0 Fehler**.
 
+**Deployed 2026-08-12:** PR #348 (squash) → main (`65a1e48`), Tag `v2.52.0-PROJ-Y-130n`. Post-Deploy-Smoke: Siegel-Cron **401**, Prüf-Route und Revisionszugriff-Seite **307**.
+
 **Abgrenzung:** kein neues Frontend-Konzept (die Karte aus PROJ-Y-130m wird erweitert, nicht ersetzt) · das Zugriffsprotokoll hat weiterhin **keinen** Löschpfad, es braucht also keine Retention-Ausnahme · die γ2-Grenze aus PROJ-Y-130o (Revisor ohne Admin-Rechte erreicht die Oberfläche nicht) gilt unverändert auch für die neue Quelle.
 
 ---
