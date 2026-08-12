@@ -606,6 +606,8 @@ Damit sind es die zweiten geteilten Bausteine dieser Reihe (nach `AuditChainResu
 
 **Gates:** ESLint **0** · tsc **13 vorbestehend / 0 neu** · vitest **2908/2908** (+4 Vertrags-Tests) · Build clean · Playwright **6/6** chromium · `check:migration-naming` **0 Fehler**.
 
+**Deployed 2026-08-12:** PR #355 (squash) → main (`2622c90`), Tag `v2.54.0-PROJ-Y-130p`; kein DB-Change. Post-Deploy-Smoke: `/revision`, `/reports/audit` und die Berichts-Route → 307.
+
 **Abgrenzung:** die Sicht zeigt bis zu 200 Einträge pro Abfrage (Bestandsverhalten, Blätterung bleibt **PROJ-Y-130e**) · die 88-Werte-Auswahl der Objektart bleibt ein Select (suchbare Combobox = **PROJ-Y-130j**) · kein Navigationseintrag für Revisoren (die Hüllen-Navigation setzt Mitgliedschaft voraus).
 
 ---
