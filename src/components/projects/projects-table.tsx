@@ -73,12 +73,12 @@ export function ProjectsTable({
         <TableHeader>
           <TableRow>
             <TableHead className="min-w-[200px]">Name</TableHead>
-            <TableHead className="hidden md:table-cell">Type</TableHead>
+            <TableHead className="hidden md:table-cell">Typ</TableHead>
             <TableHead>Status</TableHead>
-            <TableHead className="hidden lg:table-cell">Responsible</TableHead>
-            <TableHead className="hidden sm:table-cell">Updated</TableHead>
+            <TableHead className="hidden lg:table-cell">Verantwortlich</TableHead>
+            <TableHead className="hidden sm:table-cell">Aktualisiert</TableHead>
             <TableHead className="w-12 text-right">
-              <span className="sr-only">Actions</span>
+              <span className="sr-only">Aktionen</span>
             </TableHead>
           </TableRow>
         </TableHeader>

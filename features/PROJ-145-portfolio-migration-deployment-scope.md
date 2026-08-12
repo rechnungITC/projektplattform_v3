@@ -40,6 +40,11 @@ Regel geschrieben wurde, nur mit mehr Spalten.
 
 ## Erhebung (gemessen, nicht geschätzt)
 
+Die Zahlen sind eine **Momentaufnahme zum Zeitpunkt der Erhebung**. Die Tabelle wächst weiter —
+schon während dieser Slice kamen über zwei gemergte Fremd-PRs zwei Zeilen dazu (Stand beim Merge:
+166 Zeilen, 140 unklassifiziert). Deshalb ist der Wächter die maßgebliche Quelle: `npm run
+check:index-scope` nennt den Ist-Stand bei jedem Lauf, und kein Dokument muss der Zahl nachlaufen.
+
 | Größe | Wert | Messweg |
 |---|---|---|
 | PROJ-Zeilen in `features/INDEX.md` | **164** | Zeilen mit Präfix `\| PROJ-` |
