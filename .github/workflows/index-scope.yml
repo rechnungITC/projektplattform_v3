@@ -1,0 +1,39 @@
+name: Index Scope Guard
+
+on:
+  pull_request:
+    branches: [main]
+  push:
+    branches: [main]
+
+# Auto-cancel duplicate runs on the same ref.
+concurrency:
+  group: index-scope-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  check:
+    name: Verify lifecycle status vs deployment scope in features/INDEX.md
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: "24"
+          cache: "npm"
+
+      - name: Install dependencies
+        run: npm ci
+
+      # Pure file analysis — no database, no network, no secrets. Hard-fails when lifecycle status
+      # and deployment scope disagree (`Deployed` without a scope, a pre-deployment row carrying
+      # one, `Deployed + superseded`), on an unknown scope value, and on a row whose cell count is
+      # wrong — an unescaped "|" in prose silently shifts every later cell, which is how four rows
+      # rendered broken for weeks. Warns with the count of legacy rows still awaiting the
+      # evidence-based audit, so that debt stays visible instead of settling in. PROJ-145.
+      - name: Run index-scope check
+        run: npm run check:index-scope
