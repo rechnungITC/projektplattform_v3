@@ -1,10 +1,13 @@
 # PROJ-145: Portfolio-Migration — `Deployment Scope` als eigene Spalte
 
-## Status: Approved
-## Deployment Scope: —
-**Zum Scope:** leer, weil für `Approved` kein Scope zulässig ist. Beim Deploy wird
-`tooling-only` gesetzt — die Slice liefert keine Produkt-Laufzeitfähigkeit, sondern eine
-Registerspalte, einen ausführbaren Wächter und zwei nachgeholte Buchungen.
+## Status: Deployed
+## Deployment Scope: tooling-only
+**Zum Scope:** `tooling-only` — die Slice liefert **keine** Produkt-Laufzeitfähigkeit, sondern eine
+Registerspalte, einen ausführbaren Wächter samt CI-Workflow und zwei nachgeholte Buchungen. Nachweis
+nach Regel („evidence is an executed repository tool, test, workflow, or CI check plus the relevant
+repository/CI result"): `npm run check:index-scope` läuft mit 0 Fehlern, die 14 neuen Tests sind grün,
+und der Workflow **`Verify lifecycle status vs deployment scope in features/INDEX.md` war im CI-Lauf
+von PR #360 beim ersten Einsatz SUCCESS** — zusammen mit allen vier bestehenden Required Checks.
 **Created:** 2026-08-12
 **Last Updated:** 2026-08-12
 
@@ -199,3 +202,34 @@ ESLint 0 · tsc 13 = Baseline / 0 neu · Build clean.
   Der Wächter nennt die Restzahl bei jedem Lauf, damit die Schuld nicht einschläft.
 - **PROJ-Y-145c** — Eintrag von `Verify lifecycle status vs deployment scope in features/INDEX.md`
   als Required Check im `main`-Ruleset (Repo-Eigner-Handoff).
+
+## Deployment
+
+**Tag:** `v2.55.0-PROJ-145` · **Datum:** 2026-08-12 · **Merge:** PR #360 (squash) → `main` (`d1402bb`)
+
+**Kein Runtime-Deploy und keine Migration.** Die Slice ändert kein `src/**`, keine Datenbank und kein
+Dependency; sie verschiebt Buchhaltung und fügt einen Wächter hinzu. Vercel deployt den Merge
+automatisch von `main`, weil das für jeden Merge gilt — nicht, weil hier Laufzeitverhalten entstünde.
+
+**Nachweis (nach Regel proportional zur Slice, ein Auth-Redirect zählt hier gar nicht):**
+
+| Nachweis | Ergebnis |
+|---|---|
+| `npm run check:index-scope` lokal | 0 Fehler, 1 Warnung (141 offene Altzeilen) |
+| neue Tests `scripts/check-index-scope/analyze.test.ts` | 14/14 |
+| CI-Workflow `Verify lifecycle status vs deployment scope …` | **SUCCESS beim ersten Lauf** (PR #360) |
+| vier bestehende Required Checks auf PR #360 | alle SUCCESS, `mergeState: CLEAN` |
+| Schema-Drift-Guard | SUCCESS — belegt unabhängig, dass ein Frisch-Aufbau trägt |
+| volle Vitest-Regression | 2922/2922 (374 Dateien) |
+| Inhaltstreue der Tabelle gegen `main` | 163/165 Zeilen byte-identisch, keine entfernt |
+
+**Erste Anwendung des neuen Schemas auf sich selbst:** diese Zeile ist `Deployed` / `tooling-only`,
+und der Wächter akzeptiert die Kombination — womit die Slice ihre eigene Regel einmal durchlaufen hat.
+
+**Nebenbefund zur Auslieferung (nicht inhaltlich, aber wissenswert):** der erste PR (#356) bekam von
+GitHub reproduzierbar **keine** Actions-Check-Suite — über `opened`, `reopened` und `synchronize`
+hinweg, obwohl Actions repo-weit gesund war. Ursache war die Historie: der Branch trug Commits eines
+fremden, nie auf `main` gewesenen Branches. Nachgewiesen per Wegwerf-PR von einem frischen Branch,
+der sofort drei Actions-Suites erhielt. Konsequenz für künftige Slices: **einen PR-Branch immer von
+`origin/main` abzweigen**, nie von einem fremden Feature-Branch — sonst laufen die Required Checks
+stillschweigend nie, und der PR wartet auf Prüfungen, die niemand angefordert hat.
