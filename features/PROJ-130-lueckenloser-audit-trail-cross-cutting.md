@@ -191,7 +191,8 @@ Keine. Weder neue Bibliothek noch neuer Dienst. Prüfwert-Bildung und Zeitsteuer
 - **PROJ-Y-130e** — Blätterung für Bericht und Export (heute hartes Limit 500 ohne Fortsetzung).
 - **PROJ-Y-130f** — **Prod/Repo-Divergenz in der Audit-Abdeckung** (Fund aus α, siehe unten): Prod hat zwei auditierte Tabellen mehr, als die Migrationsdateien herstellen. Genau bestimmbar erst mit einer lokalen Shadow-DB (blockiert durch den offenen Docker/WSL-Handoff aus PROJ-67/F6).
 - ~~**PROJ-Y-130m**~~ — **erledigt 2026-08-12** (Kettenstatus-Karte im Revisionszugriff, siehe eigenen Abschnitt unten).
-- **PROJ-Y-130o** — freigabe-gegatete Revisions-Sicht: ein Revisor mit γ2-Freigabe darf die Kette prüfen, erreicht die admin-only Stammdaten-Seite aber nicht.
+- ~~**PROJ-Y-130o**~~ — **erledigt 2026-08-12** (Seite `/revision` außerhalb der App-Hülle; die Lücke war die Mitgliedschafts-Annahme der Hülle, kein fehlendes Recht).
+- **PROJ-Y-130p** — filterbares Berichts-UI für Revisoren: `/revision` liefert Prüfung und Export, die Bericht-Oberfläche mit Filtern bleibt der Administration.
 - ~~**PROJ-Y-130n**~~ — **erledigt 2026-08-12** (Schreibschutz + Verkettung des Zugriffsprotokolls; der Followup war unterspezifiziert, siehe eigenen Abschnitt).
 - **PROJ-Y-130k** — `communication_access_log` (PROJ-119) traegt einen FK auf `projects`; sein Protokoll verschwindet bei einer Projekt-Loeschung mit. An die FK-freie Linie von α und δ1 angleichen.
 - **PROJ-Y-130j** — suchbare Combobox statt 88-Eintrag-Select im Audit-Bericht (γ3-Nebeneffekt).
@@ -561,7 +562,31 @@ Dazu: Anker-Update/-Delete je `42501`, gewöhnliches Mitglied darf nicht prüfen
 
 **Gates:** ESLint **0** · tsc **13 vorbestehend / 0 neu** · vitest **2831/2831** (+3 gegenüber PROJ-Y-130m: Quellen-Trennung in der Route, Klartext-Labels) · Build clean · `check:migration-naming` **0 Fehler**.
 
+**Deployed 2026-08-12:** PR #348 (squash) → main (`65a1e48`), Tag `v2.52.0-PROJ-Y-130n`. Post-Deploy-Smoke: Siegel-Cron **401**, Prüf-Route und Revisionszugriff-Seite **307**.
+
 **Abgrenzung:** kein neues Frontend-Konzept (die Karte aus PROJ-Y-130m wird erweitert, nicht ersetzt) · das Zugriffsprotokoll hat weiterhin **keinen** Löschpfad, es braucht also keine Retention-Ausnahme · die γ2-Grenze aus PROJ-Y-130o (Revisor ohne Admin-Rechte erreicht die Oberfläche nicht) gilt unverändert auch für die neue Quelle.
+
+## Implementation Notes — PROJ-Y-130o (2026-08-12) — Revisions-Sicht ohne Mitgliedschaft
+
+**Die Lücke war kein fehlendes Recht, sondern eine Annahme der App-Hülle.** Serverseitig durfte ein Revisor mit γ2-Freigabe längst alles Nötige: `can_read_audit_entry` lässt ihn den Trail lesen (γ2), `requireAuditRead` lässt ihn exportieren (γ4), `verify_audit_chain` lässt ihn prüfen (ε). Erreichen konnte er nichts davon: **`(app)/layout.tsx` leitet jeden Nutzer ohne Mitgliedschaft nach `/onboarding`**, und die Audit-Bericht-Seite leitet ihren Mandanten aus `useAuth().currentTenant` ab — beides an die Mitgliedschaft gebunden, die ein Revisor bewusst **nicht** hat (γ2: ein vierter Rollenwert hätte ihn überall lesend gemacht).
+
+**Deshalb eine eigene Seite außerhalb der Hülle** (`/revision`, dasselbe strukturelle Muster wie die Druckseiten) statt eines Rechte-Schalters auf einer bestehenden. Sie löst ihren Mandanten aus der **Freigabe** auf, nicht aus einer Mitgliedschaft, und fügt **kein eigenes Gate** hinzu — sie zeigt, was die Datenbank ohnehin erlaubt. Nicht gewählt: die Mandanten-Auflösung der App-Hülle um Freigaben erweitern. Das ist die Achse, an der praktisch jede Zugriffsregel hängt; ein Revisor mit „aktivem Mandanten" wäre überall dort sichtbar, wo nur `currentTenant` geprüft wird.
+
+**Inhalt:** Auswahl der freigegebenen Mandanten · Kettenprüfung (dieselbe Darstellung wie in der Administrations-Karte) · CSV-Export des Trails. Dazu zwei Grenzen ausdrücklich benannt, damit ein unvollständiger Export nicht für die ganze Wahrheit gehalten wird: die Redaktion bleibt an (Abschalten ist Admin-Vorbehalt, γ4) und `strict`-Einträge erscheinen nur mit eigener Freischaltung (γ1-Tor).
+
+**Die Ergebnis-Darstellung ist jetzt eine gemeinsame Komponente** (`AuditChainResult`), genutzt von der Administrations-Karte aus PROJ-Y-130m und der neuen Sicht. Zwei Darstellungen desselben Urteils wären genau die Krankheit, gegen die PROJ-130 antritt: sie driften, und dann sagt eine Fläche „unauffällig", während die andere einen Fund zeigt.
+
+**Ein Fund, der eine frühere Aussage von mir korrigiert.** Eine erste Sondierung hatte gemeldet, der Revisor könne den Mandantennamen lesen („JA, 1 Zeile"). Der Pentest zeigte das Gegenteil: **der Name ist nicht lesbar** — `tenants` hängt an der Mitgliedschaft. Die Sondierung war irreführend, weil ihr Testnutzer den Namen über eine *andere* Mitgliedschaft sah, nicht über die Freigabe. Konsequenz: neuer schmaler DEFINER-Helfer `audit_reader_tenants()` (parameterlos, `auth.uid()` intern, nur eigene Freigaben, mit Namen und Wirksamkeits-Flag) — statt die `tenants`-Policy aufzuweiten, deren Blast-Radius zu einer Namensanzeige in keinem Verhältnis stünde. Vektor C beweist, dass die Policy unberührt bleibt: über die Tabelle sieht der Revisor weiterhin nichts.
+
+**ESLint hat eine Design-Entscheidung erzwungen, und zwar die richtige.** Mein erster Entwurf rechnete die Ablauf-Frist mit `Date.now()` im Render nach → `react-hooks/purity`. Statt die Regel zu umgehen: die Wirksamkeit kommt jetzt aus derselben Funktion, die auch das Lesetor benutzt. Eine eigene Frist-Auswertung in TypeScript wäre eine zweite Wahrheit gewesen — ausgerechnet über die Frage, ob jemand gerade lesen darf.
+
+**Live-Pentest `tests/sql/PROJ-Y-130o-revision-view-pentest.sql`: A–J 10/10 PASS gegen Prod, 0 Residuen.** Kern: **B** Helfer liefert Name + Wirksamkeit · **C** `tenants`-Policy unberührt (0 Zeilen über die Tabelle) · **D/E** Prüfung und Export-Gate tragen ohne Mitgliedschaft (106 Fenster, 0 Abweichungen) · **F/G** ohne Freigabe leere Sicht und 42501 · **H/I** abgelaufene Freigabe sichtbar **mit Erklärung**, aber unwirksam (Gate false, Prüfung 42501) · **J** anon 42501.
+
+**Nebenbefund:** `grant_audit_reader` weist eine Frist in der Vergangenheit ab (22023, γ2-Hygiene) — eine abgelaufene Freigabe kann also nur durch Zeitablauf entstehen, nicht durch Anlage. Vektor H simuliert den Zeitablauf mit einem direkten INSERT.
+
+**Gates:** ESLint **0** · tsc **13 vorbestehend / 0 neu** · vitest **2904/2904** · Build clean (`/revision` registriert) · Playwright **6/6** chromium (neuer Fall: `/revision` verlangt eine Sitzung) · `check:migration-naming` **0 Fehler**.
+
+**Abgrenzung:** kein Navigationseintrag (ein Revisor bekommt den Link mit der Freigabe; die Hüllen-Navigation setzt Mitgliedschaft voraus) · kein Berichts-UI mit Filtern für Revisoren — die Sicht liefert Prüfung und Export, die filterbare Bericht-Oberfläche bleibt der Administration → **PROJ-Y-130p** · kein E-Mail-Versand der Freigabe.
 
 ---
 _Quelle: Backlog-Entwurf M&A-Projektplattform · L — Vertraulichkeit, NDA & Audit_

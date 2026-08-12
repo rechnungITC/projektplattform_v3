@@ -61,7 +61,18 @@ For first deployment, guide the user through these setup guides:
 
 ### 6. Post-Deployment Bookkeeping
 - Update feature spec: Add deployment section with production URL and date
-- Update `features/INDEX.md`: Set status to **Deployed**
+- Classify deployment scope independently as `full`, `mvp`, `alpha`, or `tooling-only` using
+  `.claude/rules/general.md`; do not infer it from the existing status
+- If `features/INDEX.md` still lacks the separate `Deployment Scope` column, stop bookkeeping and perform
+  the evidence-based legacy portfolio migration defined in the rule; never guess scopes for old rows
+- Update the feature spec first with status **Deployed**, deployment scope, the exact delivered boundary,
+  acceptance-criteria evidence, deviations, and remaining work
+- Register every accepted omission from an original requirement in
+  `features/OPEN-DEFERRED-STATUS.md` with its source AC and target follow-up ID
+- Update `features/INDEX.md` last: set lifecycle status to **Deployed** and write deployment scope in its
+  separate column/field
+- Re-read the spec, `OPEN-DEFERRED-STATUS.md`, and `INDEX.md`; verify status, scope, evidence, and
+  follow-up IDs agree
 - Create git tag: `git tag -a v1.X.0-PROJ-X -m "Deploy PROJ-X: [Feature Name]"`
 - Push tag: `git push origin v1.X.0-PROJ-X`
 
@@ -98,7 +109,9 @@ If production is broken:
 - [ ] Security headers configured in next.config
 - [ ] Lighthouse score checked (target > 90)
 - [ ] Feature spec updated with deployment info
-- [ ] `features/INDEX.md` updated to Deployed
+- [ ] Deployment scope classified from delivered behavior and evidence
+- [ ] Every omitted original requirement registered as a follow-up
+- [ ] Feature spec, deferred register, and `features/INDEX.md` agree on status and scope
 - [ ] Git tag created and pushed
 - [ ] User has verified production deployment
 
