@@ -1,11 +1,26 @@
 # PROJ-144: Work-Item-Anlage aus Spracheingabe (Assistant Action Pack)
 
-## Status: Approved
-## Deployment Scope: —
-**Zum Scope:** leer, weil für `Approved` kein Scope zulässig ist. Der Code ist seit dem Merge von
-PR #341 in Produktion und mit `v2.52.0-PROJ-144` getaggt; der `Deployed`-Stempel samt Scope
-(belegbar `full`) wartet auf die Portfolio-Migration, die `features/INDEX.md` die
-`Deployment Scope`-Spalte gibt — siehe Abschnitt „Deployment". Gleicher Wartezustand wie PROJ-130.
+## Status: Deployed
+## Deployment Scope: full
+
+**Klassifiziert 2026-08-12 durch PROJ-145** (der Portfolio-Migration, die `features/INDEX.md` die
+`Deployment Scope`-Spalte gegeben hat). Der Code ist seit dem Merge von PR #341 in Produktion und mit
+`v2.52.0-PROJ-144` getaggt.
+
+Begründung aus AC-Liste, QA und Nachweisen: **kein offenes Akzeptanzkriterium** (F-8 wurde durch
+PROJ-Y-144d geschlossen, 3/3 chromium), QA 0 Critical/0 High, und die Nachweislage trifft genau die
+Arten, die `.claude/rules/general.md` selbst als tauglich nennt — Live-RLS-Pentest **17/17 gegen die
+Prod-Datenbank**, E2E-Kette über Diktat → Titelkorrektur → Bestätigung → genau ein Work-Item,
+Produktions-Smoke, `READY`-Deployment, aktives Assistant-Modul im Prod-Mandanten, 0 Laufzeitfehler.
+**D-144.1 ist keine Deferrierung, sondern eine Unmöglichkeit:** AC-144.23 verlangt ein Modul-Gate
+„Backlog", aber `ModuleKey` hat keinen Backlog-Schalter, weil Backlog Kern ist.
+
+**Ein Punkt wurde gegen die Schwester-Lane entschieden, am Regeltext:** der Deploy-Nachtrag unten
+hält den *mutierenden* Durchlauf durch die deployte Vercel-Laufzeit für eine Voraussetzung von
+`full`. Die Regel verlangt „production behavior is verified" und nennt „API/RPC/RLS tests, UI/E2E
+checks, production smoke" als taugliche Nachweise; ausgeschlossen ist der Auth-Redirect **allein** —
+der ist hier nicht die Grundlage. Der zusätzliche Kombinationsdurchlauf (deployte Laufzeit + Prod-DB)
+ist damit zusätzliche Absicherung und als **PROJ-Y-145a** registriert, kein unerfülltes Kriterium.
 **Created:** 2026-08-11
 **Last Updated:** 2026-08-12 (getaggt + Post-Deploy-Smoke grün; F-8 geschlossen: der Browser-Durchlauf ist über PROJ-Y-144d bewiesen, 3/3 chromium; 0 Critical/0 High, keine offenen AC)
 
@@ -803,7 +818,11 @@ noch den Entwurfstitel:
 | `DELETE /api/assistant/work-item-drafts/[draftId]` | 307 |
 | `POST /api/assistant/turns` (Nicht-Regression) | 307 |
 
-### Lifecycle bleibt bewusst `Approved` — Deployment Scope offen
+### Lifecycle war bewusst `Approved` — aufgelöst am 2026-08-12 durch PROJ-145
+
+> **Nachtrag:** der folgende Abschnitt beschreibt den Wartezustand, der bis zum 2026-08-12 galt. Er
+> bleibt als Begründung stehen, ist aber **erledigt**: PROJ-145 hat die `Deployment Scope`-Spalte
+> eingeführt, und diese Slice ist jetzt `Deployed` / `full` (Begründung im Kopf der Spec).
 
 Der `Deployed`-Stempel wird hier **nicht** gesetzt, obwohl die Arbeit fertig und in Produktion
 ist. Grund ist die Bookkeeping-Regel, die parallel zu dieser Slice in `CLAUDE.md` und
