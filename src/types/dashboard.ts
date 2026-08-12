@@ -31,9 +31,9 @@ export const DASHBOARD_PRESETS: readonly DashboardPreset[] = [
 ] as const
 
 export const DASHBOARD_PRESET_LABELS: Record<DashboardPreset, string> = {
-  my_work: "My Work",
-  project_health: "Project Health",
-  approvals: "Approvals",
+  my_work: "Meine Aufgaben",
+  project_health: "Projekt-Health",
+  approvals: "Genehmigungen",
 }
 
 /** Filter chips inside the My Work panel. */

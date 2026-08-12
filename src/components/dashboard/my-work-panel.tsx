@@ -64,14 +64,14 @@ export function MyWorkPanel({
 
   return (
     <Card>
-      <CardHeader className="flex flex-row items-center justify-between gap-3">
-        <CardTitle className="flex items-center gap-2 text-lg">
+      <CardHeader className="flex flex-row flex-wrap items-center justify-between gap-x-3 gap-y-1">
+        <CardTitle className="flex items-center gap-2 whitespace-nowrap text-lg">
           <ListChecks className="h-5 w-5 text-muted-foreground" aria-hidden />
-          My Work
+          Meine Aufgaben
         </CardTitle>
-        <span className="text-xs text-muted-foreground">
+        <span className="whitespace-nowrap text-xs text-muted-foreground">
           {envelope.state === "ready" && envelope.data
-            ? `${envelope.data.total} ${envelope.data.total === 1 ? "Item" : "Items"}${envelope.data.capped ? " (gekappt)" : ""}`
+            ? `${envelope.data.total} ${envelope.data.total === 1 ? "Eintrag" : "Einträge"}${envelope.data.capped ? " (gekappt)" : ""}`
             : null}
         </span>
       </CardHeader>
@@ -105,7 +105,7 @@ function Body({
   if (envelope.state === "error") {
     return (
       <DashboardSectionError
-        title="My Work"
+        title="Meine Aufgaben"
         message={envelope.error}
         onRetry={onRetry}
       />
@@ -114,8 +114,8 @@ function Body({
   if (envelope.state === "unavailable") {
     return (
       <DashboardSectionUnavailable
-        title="My Work wird vorbereitet"
-        description="Die globale Aggregation der zugewiesenen Items wird in der Backend-Slice von PROJ-64 aktiviert."
+        title="Meine Aufgaben werden vorbereitet"
+        description="Die globale Aggregation der zugewiesenen Aufgaben wird in der Backend-Slice von PROJ-64 aktiviert."
       />
     )
   }
@@ -123,7 +123,7 @@ function Body({
     return (
       <DashboardSectionEmpty
         icon={Inbox}
-        title="Keine offenen Items"
+        title="Keine offenen Aufgaben"
         description="Wenn dir Tasks, Stories oder Bugs zugewiesen werden, erscheinen sie hier."
       />
     )
