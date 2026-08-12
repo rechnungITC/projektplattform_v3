@@ -1,3 +1,4 @@
+import type { SupabaseClient } from "@supabase/supabase-js"
 import { beforeEach, describe, expect, it, vi } from "vitest"
 
 import { classifyAssistantIntent, handleAssistantTurn } from "./runtime"
@@ -305,5 +306,10 @@ function makeSupabase(fixtures: Fixtures) {
     }
   }
 
-  return { from } as never as { from: typeof from }
+  // Schnittmenge statt `never`: der Mock muss dort einsetzbar sein, wo ein
+  // echter `SupabaseClient` erwartet wird, UND `from` muss für die
+  // `toHaveBeenCalledWith`-Zusicherungen weiter als Mock erkennbar bleiben.
+  // Ein reiner `as never`-Cast erfüllt nur das Zweite und ließ tsc auf jeder
+  // Aufrufstelle auflaufen.
+  return { from } as unknown as SupabaseClient & { from: typeof from }
 }

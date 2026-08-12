@@ -23,6 +23,16 @@ import type { ProjectMethod } from "@/types/project-method"
 export const WORK_ITEM_TITLE_MAX = 255
 export const WORK_ITEM_DESCRIPTION_MAX = 10_000
 
+/**
+ * Aufbewahrungsfrist nie bestätigter Sprach-Entwürfe in Tagen (Lock L8).
+ *
+ * Steht hier statt in der Aufräum-Route, weil zwei Stellen den Wert brauchen:
+ * der nächtliche Lauf löscht danach, und das Overlay sagt dem Nutzer zu, wie
+ * lange sein Entwurf liegen bleibt. Zwei Kopien wären eine Zusage, die der
+ * Aufräum-Lauf still brechen könnte.
+ */
+export const WORK_ITEM_DRAFT_RETENTION_DAYS = 14
+
 export interface WorkItemCommand {
   /** Die vom Nutzer genannte Art, vor jeder Methoden-Abbildung. */
   requestedKind: WorkItemKind

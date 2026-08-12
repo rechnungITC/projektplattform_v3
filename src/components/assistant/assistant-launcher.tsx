@@ -14,6 +14,7 @@ import { usePathname, useRouter } from "next/navigation"
 import * as React from "react"
 import { toast } from "sonner"
 
+import { AssistantWorkItemDraftCard } from "@/components/assistant/assistant-work-item-draft-card"
 import { Badge } from "@/components/ui/badge"
 import { Button } from "@/components/ui/button"
 import { ScrollArea } from "@/components/ui/scroll-area"
@@ -28,11 +29,17 @@ import {
 import { Textarea } from "@/components/ui/textarea"
 import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip"
 import { useAuth } from "@/hooks/use-auth"
+import {
+  useAssistantWorkItemDrafts,
+  type ConfirmedWorkItem,
+} from "@/hooks/use-assistant-work-item-drafts"
+import { WORK_ITEM_DRAFT_RETENTION_DAYS } from "@/lib/assistant/work-item-command"
 import { isModuleActive } from "@/lib/tenant-settings/modules"
 import type {
   AssistantIntent,
   AssistantResultStatus,
   AssistantRouteTarget,
+  AssistantWorkItemDraftRef,
 } from "@/lib/assistant/types"
 
 interface AssistantLauncherProps {
@@ -55,6 +62,8 @@ interface AssistantTurnResponse {
       lifecycle_status: string
     }>
     wizard_draft: { id: string; name: string | null; href: string } | null
+    /** PROJ-144 — der Sprach-Entwurf aus Schritt 1; noch kein Work-Item. */
+    work_item_draft: AssistantWorkItemDraftRef | null
   }
 }
 
@@ -67,6 +76,19 @@ interface AssistantMessage {
   routeTarget?: AssistantRouteTarget | null
   choices?: AssistantTurnResponse["result"]["project_choices"]
   draft?: AssistantTurnResponse["result"]["wizard_draft"]
+  workItemDraft?: AssistantWorkItemDraftRef | null
+}
+
+/**
+ * PROJ-144 — Sprung zum angelegten Work-Item (AC-144.20).
+ *
+ * Bewusst der **kanonische** Slug: die Methoden-Auflösung passiert in
+ * `src/proxy.ts`, das bei abweichender Methode mit 308 auf den passenden Slug
+ * umleitet (`/arbeitspakete` bei Wasserfall, PROJ-28). Hier die Methode selbst
+ * nachzubilden wäre eine zweite Autorität für dieselbe Regel.
+ */
+function workItemHref(projectId: string): string {
+  return `/projects/${projectId}/backlog`
 }
 
 type SpeechRecognitionCtor = new () => SpeechRecognitionLike
@@ -131,6 +153,15 @@ export function AssistantLauncher({ currentProjectId }: AssistantLauncherProps) 
   const [speechEnabled, setSpeechEnabled] = React.useState(false)
   const recognitionRef = React.useRef<SpeechRecognitionLike | null>(null)
   const manualStopRef = React.useRef(false)
+
+  // PROJ-144 — Entwürfe, die in dieser Sitzung bestätigt oder verworfen wurden.
+  // Ihre Karte verschwindet, damit nichts zweimal bestätigbar aussieht
+  // (AC-144.19); die eigentliche Verbraucht-Sicherung liegt serverseitig.
+  const [consumedDraftIds, setConsumedDraftIds] = React.useState<Set<string>>(
+    () => new Set(),
+  )
+  // Die Liste wird nur geladen, wenn das Overlay offen ist (Lock L7).
+  const drafts = useAssistantWorkItemDrafts(open)
 
   const assistantActive = isModuleActive(tenantSettings, "assistant")
   const ttsEnabled =
@@ -200,8 +231,12 @@ export function AssistantLauncher({ currentProjectId }: AssistantLauncherProps) 
           routeTarget: body.result.route_target,
           choices: body.result.project_choices,
           draft: body.result.wizard_draft,
+          workItemDraft: body.result.work_item_draft,
         }
         setMessages((prev) => [...prev, assistantMessage])
+        // Der neue Entwurf liegt schon in der Datenbank — die Liste im Overlay
+        // muss das mitbekommen, sonst zeigt sie einen veralteten Stand.
+        if (body.result.work_item_draft) drafts.refresh()
         speak(body.result.user_response)
       } catch (err) {
         const message =
@@ -220,7 +255,49 @@ export function AssistantLauncher({ currentProjectId }: AssistantLauncherProps) 
         setState("idle")
       }
     },
-    [currentProjectId, pathname, sessionId, speak, state],
+    [currentProjectId, drafts, pathname, sessionId, speak, state],
+  )
+
+  /**
+   * PROJ-144 — nach der Anlage: Erfolg melden, Sprung anbieten, Overlay offen
+   * lassen (Lock L6). Genau das erlaubt es, im Meeting mehrere Elemente in
+   * Folge zu diktieren, ohne den Arbeitskontext zu verlassen.
+   */
+  const handleDraftConfirmed = React.useCallback(
+    (draftId: string, workItem: ConfirmedWorkItem) => {
+      setConsumedDraftIds((prev) => new Set(prev).add(draftId))
+      const kind = workItem.kind
+      setMessages((prev) => [
+        ...prev,
+        {
+          id: crypto.randomUUID(),
+          role: "assistant",
+          text: `„${workItem.title}“ wurde angelegt.`,
+          status: "success",
+          routeTarget: {
+            href: workItemHref(workItem.project_id),
+            label: kind === "work_package" ? "Arbeitspakete öffnen" : "Backlog öffnen",
+          },
+        },
+      ])
+    },
+    [],
+  )
+
+  const handleDraftDiscarded = React.useCallback((draftId: string) => {
+    setConsumedDraftIds((prev) => new Set(prev).add(draftId))
+  }, [])
+
+  // Ein Entwurf, der direkt nach dem Diktat schon als Karte im Gesprächsverlauf
+  // steht, soll nicht zusätzlich in der Liste auftauchen.
+  const inlineDraftIds = React.useMemo(
+    () =>
+      new Set(
+        messages
+          .map((message) => message.workItemDraft?.id)
+          .filter((id): id is string => Boolean(id)),
+      ),
+    [messages],
   )
 
   const startListening = React.useCallback(async () => {
@@ -327,6 +404,10 @@ export function AssistantLauncher({ currentProjectId }: AssistantLauncherProps) 
 
   if (!assistantActive) return null
 
+  const resumableDrafts = drafts.data.filter(
+    (row) => !consumedDraftIds.has(row.id) && !inlineDraftIds.has(row.id),
+  )
+
   const statusLabel =
     state === "listening"
       ? "Hört zu"
@@ -368,7 +449,43 @@ export function AssistantLauncher({ currentProjectId }: AssistantLauncherProps) 
 
         <ScrollArea className="min-h-0 flex-1 px-5 py-4">
           <div className="space-y-3">
-            {messages.length === 0 ? (
+            {/* PROJ-144 (Lock L7 / AC-144.17) — nicht bestätigte Entwürfe sind
+                wiederaufnehmbar. Sie stehen im Overlay, nicht im Backlog: ein
+                Entwurf ist ein Artefakt des Assistenten, kein Work-Item. */}
+            {resumableDrafts.length > 0 ? (
+              <section
+                aria-label="Offene Sprach-Entwürfe"
+                className="space-y-2 rounded-md border border-dashed p-3"
+              >
+                <div className="flex items-center justify-between gap-2">
+                  <p className="text-sm font-medium">Offene Entwürfe</p>
+                  <Badge variant="outline">{resumableDrafts.length}</Badge>
+                </div>
+                <p className="text-xs text-muted-foreground">
+                  Diktiert, aber noch nicht angelegt. Wird nach{" "}
+                  {WORK_ITEM_DRAFT_RETENTION_DAYS} Tagen automatisch entfernt.
+                </p>
+                {resumableDrafts.map((row) => (
+                  <AssistantWorkItemDraftCard
+                    key={row.id}
+                    draft={row}
+                    showProject
+                    confirm={drafts.confirm}
+                    discard={drafts.discard}
+                    onConfirmed={(workItem) =>
+                      handleDraftConfirmed(row.id, workItem)
+                    }
+                    onDiscarded={handleDraftDiscarded}
+                  />
+                ))}
+              </section>
+            ) : null}
+            {drafts.error ? (
+              <p className="text-xs text-muted-foreground">
+                Entwürfe konnten nicht geladen werden: {drafts.error}
+              </p>
+            ) : null}
+            {messages.length === 0 && resumableDrafts.length === 0 ? (
               <div className="rounded-md border bg-muted/30 p-3 text-sm text-muted-foreground">
                 Keine Nachrichten
               </div>
@@ -427,6 +544,27 @@ export function AssistantLauncher({ currentProjectId }: AssistantLauncherProps) 
                     <Navigation className="mr-2 h-4 w-4" aria-hidden />
                     {message.routeTarget.label}
                   </Button>
+                ) : null}
+                {/* PROJ-144 — die Prüfansicht direkt am Sprechfluss (Lock L2).
+                    `key` gibt jedem Entwurf einen frischen Mount, damit die
+                    Titel-Korrektur nicht aus einem Effect zurückgesetzt wird. */}
+                {message.workItemDraft &&
+                !consumedDraftIds.has(message.workItemDraft.id) ? (
+                  <div className="mt-3">
+                    <AssistantWorkItemDraftCard
+                      key={message.workItemDraft.id}
+                      draft={message.workItemDraft}
+                      confirm={drafts.confirm}
+                      discard={drafts.discard}
+                      onConfirmed={(workItem) =>
+                        handleDraftConfirmed(
+                          message.workItemDraft!.id,
+                          workItem,
+                        )
+                      }
+                      onDiscarded={handleDraftDiscarded}
+                    />
+                  </div>
                 ) : null}
               </div>
             ))}

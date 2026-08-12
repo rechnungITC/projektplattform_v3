@@ -1,5 +1,6 @@
 import { NextResponse } from "next/server"
 
+import { WORK_ITEM_DRAFT_RETENTION_DAYS } from "@/lib/assistant/work-item-command"
 import { createAdminClient } from "@/lib/supabase/admin"
 
 import { apiError } from "../../_lib/route-helpers"
@@ -27,8 +28,11 @@ const RETENTION_DAYS = 90
  * Entfernt werden alle Zustände, nicht nur die offenen: verworfene sind erledigt,
  * und bei bestätigten trägt das Work-Item die Herkunft, der Entwurf hat keinen
  * weiteren Zweck.
+ *
+ * Die Frist selbst liegt in `lib/assistant/work-item-command`, weil das Overlay
+ * sie dem Nutzer zusagt — zwei Kopien wären eine Zusage, die dieser Lauf still
+ * brechen könnte.
  */
-const WORK_ITEM_DRAFT_RETENTION_DAYS = 14
 
 export async function GET(request: Request) {
   const expected = process.env.CRON_SECRET
