@@ -6,6 +6,11 @@ import {
   getAuthenticatedUserId,
   requireProjectAccess,
 } from "@/app/api/_lib/route-helpers"
+import {
+  logConfidentialListRead,
+  mustBlockOnLogFailure,
+  STRICT_LOG_FAILED_MESSAGE,
+} from "@/lib/audit/confidential-read"
 
 import { createDdStreamSchema, DD_STREAM_SELECT } from "./_schema"
 
@@ -51,6 +56,22 @@ export async function GET(
     open_findings: null as number | null,
     open_questions: null as number | null,
   }))
+
+  // PROJ-130-δ2: In-App-Lesen einer Inhalts-Liste. Ein Eintrag entsteht NUR, wenn
+  // `strict` dabei ist (und dann entprellt auf eine Zeile pro 15-Minuten-Fenster);
+  // bei `standard`/`confidential` gibt es keinen zusätzlichen Datenbank-Aufruf.
+  const readLog = await logConfidentialListRead(
+    async (fn, args) => await supabase.rpc(fn, args),
+    {
+      projectId,
+      entityType: "dd_streams",
+      rows: streams as ReadonlyArray<{ confidentiality_level?: string | null }>,
+    }
+  )
+  if (mustBlockOnLogFailure(readLog)) {
+    return apiError("audit_log_failed", STRICT_LOG_FAILED_MESSAGE, 500)
+  }
+
   return NextResponse.json({ streams })
 }
 

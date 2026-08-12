@@ -6,6 +6,11 @@ import {
   getAuthenticatedUserId,
   requireProjectAccess,
 } from "@/app/api/_lib/route-helpers"
+import {
+  logConfidentialListRead,
+  mustBlockOnLogFailure,
+  STRICT_LOG_FAILED_MESSAGE,
+} from "@/lib/audit/confidential-read"
 
 import { updateMeetingSchema } from "../_schema"
 
@@ -52,6 +57,21 @@ export async function GET(_request: Request, context: Ctx) {
       .select("id, meeting_id, outcome_type, decision_id, work_item_id")
       .eq("meeting_id", meetingId),
   ])
+
+  // PROJ-130-δ2: Einzelobjekt-Zugriff auf einen vertraulichen Inhalt. Ein Eintrag
+  // entsteht NUR, wenn die Stufe `strict` ist (entprellt auf eine Zeile pro
+  // 15-Minuten-Fenster).
+  const readLog = await logConfidentialListRead(
+    async (fn, args) => await supabase.rpc(fn, args),
+    {
+      projectId,
+      entityType: "committee_meetings",
+      rows: [meeting] as ReadonlyArray<{ confidentiality_level?: string | null }>,
+    }
+  )
+  if (mustBlockOnLogFailure(readLog)) {
+    return apiError("audit_log_failed", STRICT_LOG_FAILED_MESSAGE, 500)
+  }
 
   return NextResponse.json({
     meeting: {

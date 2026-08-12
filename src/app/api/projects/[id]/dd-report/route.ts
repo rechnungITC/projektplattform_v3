@@ -6,6 +6,11 @@ import {
   getAuthenticatedUserId,
   requireProjectAccess,
 } from "@/app/api/_lib/route-helpers"
+import {
+  logConfidentialReportRead,
+  mustBlockOnLogFailure,
+} from "@/lib/audit/confidential-read"
+import { EMPTY_DD_REPORT, type DdReport } from "@/lib/ma-project/dd-findings-api"
 
 // PROJ-116 — consolidated DD report + red-flag report (read-only, live).
 //
@@ -37,8 +42,24 @@ export async function GET(
   })
   if (error) return apiError("report_failed", error.message, 500)
 
-  // RPC returns a jsonb { streams: [...], red_flags: [...] }
-  return NextResponse.json(
-    data ?? { streams: [], red_flags: [] }
+  // RPC returns a jsonb { streams: [...], red_flags: [...], confidentiality: {...} }
+  const report = (data ?? EMPTY_DD_REPORT) as DdReport
+
+  // PROJ-130-δ2: In-App-Lesen einer Auswertung — protokolliert wird NUR bei
+  // `strict`. Die Stufe kommt aus der Auswertung selbst (Schlüssel
+  // `confidentiality`), nicht aus der Nutzlast: die Zähler in `streams`
+  // aggregieren über Findings und Fragen, deren Stufen nie einzeln erscheinen.
+  const readLog = await logConfidentialReportRead(
+    async (fn, args) => await supabase.rpc(fn, args),
+    { projectId, report: "dd_report", surface: "view", payload: report }
   )
+  if (mustBlockOnLogFailure(readLog)) {
+    return apiError(
+      "audit_log_failed",
+      "Die Auswertung enthält streng vertrauliche Inhalte und konnte nicht protokolliert werden — sie wurde deshalb nicht ausgeliefert.",
+      500
+    )
+  }
+
+  return NextResponse.json(report)
 }

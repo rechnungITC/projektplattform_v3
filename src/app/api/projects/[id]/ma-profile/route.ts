@@ -6,6 +6,11 @@ import {
   getAuthenticatedUserId,
   requireProjectAccess,
 } from "@/app/api/_lib/route-helpers"
+import {
+  logConfidentialListRead,
+  mustBlockOnLogFailure,
+  STRICT_LOG_FAILED_MESSAGE,
+} from "@/lib/audit/confidential-read"
 
 import { patchMaProfileSchema } from "./_schema"
 
@@ -99,6 +104,21 @@ export async function GET(
 
   if (error) return apiError("read_failed", error.message, 500)
   if (!data) return apiError("not_found", "M&A profile not found.", 404)
+  // PROJ-130-δ2: Einzelobjekt-Zugriff auf einen vertraulichen Inhalt. Ein Eintrag
+  // entsteht NUR, wenn die Stufe `strict` ist (entprellt auf eine Zeile pro
+  // 15-Minuten-Fenster).
+  const readLog = await logConfidentialListRead(
+    async (fn, args) => await supabase.rpc(fn, args),
+    {
+      projectId,
+      entityType: "ma_project_profiles",
+      rows: [data] as ReadonlyArray<{ confidentiality_level?: string | null }>,
+    }
+  )
+  if (mustBlockOnLogFailure(readLog)) {
+    return apiError("audit_log_failed", STRICT_LOG_FAILED_MESSAGE, 500)
+  }
+
   return NextResponse.json({ profile: data })
 }
 
