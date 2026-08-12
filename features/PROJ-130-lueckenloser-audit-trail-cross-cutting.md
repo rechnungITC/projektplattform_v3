@@ -586,6 +586,8 @@ Dazu: Anker-Update/-Delete je `42501`, gewöhnliches Mitglied darf nicht prüfen
 
 **Gates:** ESLint **0** · tsc **13 vorbestehend / 0 neu** · vitest **2904/2904** · Build clean (`/revision` registriert) · Playwright **6/6** chromium (neuer Fall: `/revision` verlangt eine Sitzung) · `check:migration-naming` **0 Fehler**.
 
+**Deployed 2026-08-12:** PR #351 (squash) → main (`9332765`), Tag `v2.53.0-PROJ-Y-130o`. Post-Deploy-Smoke: `/revision` und Audit-Export ohne Sitzung → 307.
+
 **Abgrenzung:** kein Navigationseintrag (ein Revisor bekommt den Link mit der Freigabe; die Hüllen-Navigation setzt Mitgliedschaft voraus) · kein Berichts-UI mit Filtern für Revisoren — die Sicht liefert Prüfung und Export, die filterbare Bericht-Oberfläche bleibt der Administration → **PROJ-Y-130p** · kein E-Mail-Versand der Freigabe.
 
 ---
