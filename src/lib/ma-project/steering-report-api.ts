@@ -51,6 +51,9 @@ export async function fetchSteeringReport(
         EMPTY_STEERING_REPORT.critical_tasks.summary,
     },
     pre_read: json.pre_read ?? EMPTY_STEERING_REPORT.pre_read,
+    // PROJ-130-δ2: Stufen-Zusammenfassung der Auswertung; fehlt sie, gilt
+    // `standard` — der Server hat dann schon entschieden, nicht zu protokollieren.
+    confidentiality: json.confidentiality ?? EMPTY_STEERING_REPORT.confidentiality,
   }
 }
 

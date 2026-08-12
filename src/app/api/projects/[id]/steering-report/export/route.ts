@@ -5,6 +5,11 @@ import {
   getAuthenticatedUserId,
   requireProjectAccess,
 } from "@/app/api/_lib/route-helpers"
+import {
+  logConfidentialReportRead,
+  mustBlockOnLogFailure,
+} from "@/lib/audit/confidential-read"
+import type { ReportConfidentiality } from "@/lib/audit/confidential-read"
 
 // PROJ-131 — CSV export of the steering report sections (AC-131-4).
 //
@@ -59,6 +64,8 @@ interface TaskRow {
 interface SteeringReport {
   red_flags?: { findings?: FindingRow[]; risks?: RiskRow[] }
   critical_tasks?: { tasks?: TaskRow[] }
+  /** PROJ-130-δ2 — Stufen-Zusammenfassung der Auswertung (Grundlage des Zugriffsprotokolls). */
+  confidentiality?: ReportConfidentiality
 }
 
 const COLUMNS: Record<Section, readonly string[]> = {
@@ -120,6 +127,27 @@ export async function GET(
   if (error) return apiError("export_failed", error.message, 500)
 
   const report = (data as SteeringReport | null) ?? {}
+
+  // PROJ-130-δ2: hier verlässt die Auswertung das System als Datei — Austritt,
+  // also ab `confidential` protokolliert (nicht erst bei `strict` wie die
+  // In-App-Ansicht). Ein Ereignis pro Export.
+  const readLog = await logConfidentialReportRead(
+    async (fn, args) => await supabase.rpc(fn, args),
+    {
+      projectId,
+      report: "steering_report",
+      surface: "export",
+      payload: report,
+      detail: { format: "csv", section },
+    }
+  )
+  if (mustBlockOnLogFailure(readLog)) {
+    return apiError(
+      "audit_log_failed",
+      "Der Export enthält streng vertrauliche Inhalte und konnte nicht protokolliert werden — er wurde deshalb nicht ausgeliefert.",
+      500
+    )
+  }
 
   // Resolve responsible-user display names for the tasks section only.
   const ownerIds = new Set<string>()

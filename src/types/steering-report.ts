@@ -10,6 +10,7 @@
  * until PROJ-120/121/126 land (AC-131-5 → PROJ-Y-131a).
  */
 
+import type { ReportConfidentiality } from "@/lib/audit/confidential-read"
 import type {
   FindingSeverity,
   FindingStatus,
@@ -183,6 +184,13 @@ export interface SteeringReport {
     summary: SteeringTaskSummary
   }
   pre_read: SteeringPreRead
+  /**
+   * PROJ-130-δ2 — Stufen-Zusammenfassung dieser Auswertung, von der RPC im
+   * INVOKER-Kontext des Aufrufers berechnet. Grundlage der Zugriffs-
+   * Protokollierung; NICHT aus der Nutzlast rechenbar, weil `stage_gate_summary`
+   * und `pre_read` über Objekte aggregieren, deren Stufen nie einzeln erscheinen.
+   */
+  confidentiality: ReportConfidentiality
 }
 
 export const EMPTY_STEERING_REPORT: SteeringReport = {
@@ -236,6 +244,7 @@ export const EMPTY_STEERING_REPORT: SteeringReport = {
     valuation_value_high: null,
     valuation_currency: null,
   },
+  confidentiality: { max_level: "standard", confidential_count: 0 },
 }
 
 /** Export sections for the CSV endpoint (?section=). */

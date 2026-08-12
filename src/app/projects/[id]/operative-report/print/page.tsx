@@ -2,6 +2,10 @@ import type { Metadata } from "next"
 import { notFound } from "next/navigation"
 
 import { OperativeReportBody } from "@/components/projects/ma/operative-report-body"
+import {
+  logConfidentialReportRead,
+  mustBlockOnLogFailure,
+} from "@/lib/audit/confidential-read"
 import { createClient } from "@/lib/supabase/server"
 import { EMPTY_OPERATIVE_REPORT, type OperativeReport } from "@/types/operative-report"
 
@@ -47,6 +51,20 @@ export default async function OperativeReportPrintPage({ params }: PageProps) {
   }
 
   const report = (data ?? EMPTY_OPERATIVE_REPORT) as OperativeReport
+
+  // PROJ-130-δ2: die Druckseite ist eine Austritts-Fläche — der Browser macht aus
+  // ihr eine PDF-Datei. Deshalb wird hier ab `confidential` protokolliert (die
+  // In-App-Ansicht derselben Auswertung erst bei `strict`). Der doppelte
+  // Server-Render einer Seite erzeugt keine zweite Zeile: die RPC entprellt
+  // `report_read` auf eine Zeile pro 15-Minuten-Fenster.
+  const readLog = await logConfidentialReportRead(
+    async (fn, args) => await supabase.rpc(fn, args),
+    { projectId: id, report: "operative_report", surface: "print", payload: report }
+  )
+  // Ausfallverhalten wie überall in δ: bei `strict` fail-closed.
+  if (mustBlockOnLogFailure(readLog)) {
+    notFound()
+  }
 
   // Resolve responsible-user display names (profiles readable under caller RLS).
   const ownerIds = Array.from(
