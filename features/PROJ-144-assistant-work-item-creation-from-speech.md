@@ -1,9 +1,9 @@
 # PROJ-144: Work-Item-Anlage aus Spracheingabe (Assistant Action Pack)
 
-## Status: In Review (Backend + Frontend fertig, ein AC bleibt ausdrücklich offen)
-**Deployment scope:** — (leer; nicht deployed — für „In Review" ist kein Scope zulässig)
+## Status: Approved
+**Deployment scope:** — (leer; noch nicht deployed — für „Approved" ist kein Scope zulässig)
 **Created:** 2026-08-11
-**Last Updated:** 2026-08-12 (Frontend gebaut, QA gefahren, Live-Pentest 17/17 re-verifiziert; AC-144.29-Browserhälfte offen — siehe F-8)
+**Last Updated:** 2026-08-12 (F-8 geschlossen: der Browser-Durchlauf ist über PROJ-Y-144d bewiesen, 3/3 chromium; 0 Critical/0 High, keine offenen AC)
 
 ## Summary
 
@@ -658,7 +658,16 @@ nicht als „Deviation" verbucht.
 - Volle Gates: ESLint 0 · tsc 13 = Baseline/0 neu · vitest 2852/2852 · Build clean ·
   migration-naming 0 Fehler.
 
-### F-8 (OFFEN, nicht behoben) — die Browserhälfte des Durchlaufs ist nicht bewiesen
+### F-8 — GESCHLOSSEN am 2026-08-12 durch PROJ-Y-144d
+
+Der authentifizierte Browser-Durchlauf ist jetzt bewiesen:
+`tests/PROJ-Y-144d-assistant-work-item-chain.spec.ts` **3/3 chromium**. Details und
+Nachweise stehen unten in den PROJ-Y-144d-Notizen. Die ursprüngliche Analyse bleibt
+unverändert stehen, weil sie erklärt, warum der Test nicht früher möglich war:
+
+---
+
+#### Ursprüngliche Analyse (Stand vor PROJ-Y-144d)
 
 Ein authentifizierter Durchlauf Diktat → Prüfansicht → Bestätigen → Work-Item wurde **nicht**
 ausgeführt. Grund ist keine Bequemlichkeit, sondern eine belegte Blockade:
@@ -683,6 +692,83 @@ Bestätigungs**mechanik** ist auf Datenbank- (17/17), Routen- (11 Fälle) und Ko
 
 Ausdrücklich in der Sprache von PROJ-135 festgehalten: ein nicht ausgeführter E2E-Layer ist
 **kein** „Deviation", sondern ein offenes Akzeptanzkriterium.
+
+## Implementation Notes — PROJ-Y-144d (2026-08-12): F-8 geschlossen
+
+Geliefert **in derselben PR** (#341) statt als eigener Zweig, weil der einzige Zweck das
+Schließen dieses offenen ACs ist — ein separater Merge hätte PROJ-144 zwischenzeitlich mit
+einem unbewiesenen AC auf `main` stehen lassen.
+
+### Was gebaut wurde
+
+- **Zweiter Test-Mandant** mit aktivem Assistant-Modul (`E2E_ASSISTANT_TENANT_ID`) plus
+  **Scrum**-Projekt (`E2E_ASSISTANT_PROJECT_ID`), in `global-setup` idempotent geseedet.
+  Scrum bewusst: `E2E_PROJECT_ID` hat `project_method = null`, dort ist jede Art erlaubt und
+  die Methoden-Abbildung ein No-op — ein Durchlauf dort hätte über die Methodenregel nichts
+  bewiesen.
+- `active_modules` wird **explizit** geschrieben. Beide Tore fallen bei fehlender
+  Settings-Zeile offen (`isModuleActive` gibt für `null` `true` zurück,
+  `requireModuleActive` gibt `null` zurück) — der Durchlauf hätte also auch ganz ohne Zeile
+  „funktioniert". Eine Fixture, deren Zweck „Assistant ist an" ist, darf nicht auf einem
+  Fail-open ruhen; der Tabellen-Default enthält `assistant` nämlich **nicht**.
+- **Aktiver Mandant explizit gepinnt** (`auth-fixture.ts` setzt `active_tenant_id`). Der
+  Nutzer ist jetzt in zwei Mandanten, und `resolveActiveTenantId` fällt ohne Cookie auf die
+  *früheste* Mitgliedschaft zurück — auf einer frisch geseedeten Umgebung entstehen beide in
+  derselben Sekunde, die Reihenfolge wäre ein Münzwurf. Ohne das Pinning wäre **jeder**
+  bestehende `authenticatedPage`-Spec einen Zufall von einem anderen Workspace entfernt
+  gewesen. Der Cookie ist keine Vertrauensgrenze: der Resolver prüft die Mitgliedschaft
+  serverseitig bei jedem Request nach (PROJ-55-α/ε).
+- **Neuer Spec** `tests/PROJ-Y-144d-assistant-work-item-chain.spec.ts`, 3 Fälle.
+
+### Nachweise
+
+- **3/3 chromium.** Tragend ist Fall 1, Schritt 4: **vor** dem Klick existiert der Entwurf,
+  aber **kein** Work-Item (service-role-Gegenabfrage). Ohne diese Zusicherung würde der Test
+  nur zeigen, dass ein Knopf eine Zeile anlegt — nicht, dass die Bestätigung ein Tor ist.
+  Danach: Titel korrigieren → bestätigen → **genau ein** `story` mit dem **korrigierten**
+  Titel, Entwurf auf `confirmed` mit Verweis auf das erzeugte Item, ein
+  `assistant_action_events`-Eintrag mit `result_status='success'` (AC-144.27).
+- Fall 2 (Wiederaufnahme) prüft nach einem **echten Reload**, nicht nach „Escape": das Sheet
+  schließen unmountet den Launcher nicht, `messages` überleben, die Karte steht also einfach
+  weiter da. Escape-und-wieder-auf hätte nur bewiesen, dass React-State überlebt — nicht, was
+  „später wiederaufnehmbar" bedeutet. Nach dem Reload kann der Titel nur aus der Datenbank
+  kommen. Anschließend Verwerfen → `status='discarded'`, kein Work-Item.
+- Fall 3 ist der **Wächter für die fremde Lane**: mit dem geteilten Mandanten aktiv ist der
+  Launcher-Knopf nicht im DOM (`toHaveCount(0)`), bei nachgewiesen passierter Auth-Schranke.
+  Damit ist die Trennung, auf der die Visual-Baselines beruhen, getestet statt behauptet.
+- **Rückstände 0** über alle fünf Assistant-Tabellen live gegengeprüft. Die Aufräumung
+  erfasst zusätzlich Sitzungen und Aktions-Events des Test-Mandanten: die vom
+  Bestätigungspfad geschriebenen Events tragen **keine** `session_id`, die FK-Kaskade greift
+  dort also nicht, und ohne das würden pro CI-Lauf Zeilen liegen bleiben. `audit_log_entries`
+  wird ausdrücklich **nicht** angefasst (seit PROJ-130-α append-only).
+- **Nicht-Regression gemessen, nicht behauptet:** `PROJ-51-visual-regression-authenticated`
+  ergibt auf reinem `origin/main` (bcf8e7c) **7 failed / 2 passed** und auf diesem Branch
+  **7 failed / 2 passed** — identische Menge. Die Fehlschläge sind vorbestehend (eine
+  Parallel-Session ist mitten im Re-Baselining). Ein erster Kontrolllauf war **ungültig**,
+  weil der Vergleichs-Worktree auf einem älteren main stand; erst nach Gleichziehen beider
+  Seiten auf denselben Commit ist die Aussage belastbar.
+
+### Befunde
+
+- **F-9 (behoben, eigener Fehler):** die Seed-Schritte waren als
+  `Promise<{error}>` typisiert — ein Supabase-Query-Builder ist *thenable*, aber kein
+  `Promise` → **4 neue tsc-Fehler**. Gegen `origin/main` gegengemessen (13), auf
+  `PromiseLike` umgestellt, wieder 13. Genau die Fehlerklasse, die ich am Backend-Commit
+  beanstandet hatte — deshalb wird hier gemessen und nicht behauptet.
+- **F-10 (behoben):** die inneren Timeouts des Specs (120 s) lagen **über** dem globalen
+  Test-Budget von 60 s aus `playwright.config.ts` und waren damit toter Code; bei kaltem
+  `.next` starb der Test vor seinem eigenen Navigations-Timeout. Budget per
+  `test.setTimeout(180_000)` angehoben statt die Wartezeiten zu kürzen — die Anwendung ist
+  nicht langsam, der Dev-Server ist kalt. Gegenprobe mit vollständig gelöschtem `.next`:
+  3/3 grün.
+- **F-11 (Doku-Korrektur):** `constants.ts` verwies auf ein `constants.test.ts`, das den
+  RFC-4122-Guard „pinnt". Die Datei existiert nicht und könnte es nicht: `tests/**` ist von
+  vitest ausgeschlossen, weshalb PROJ-143 den Guard in `global-setup` gelegt hat. Verweis
+  korrigiert, die beiden neuen Kennungen dem echten Guard hinzugefügt.
+- **Betriebshinweis:** dieser Spec darf nicht mit `PW_SKIP_WARM_COMPILE=1` neben anderen
+  Specs laufen — ohne die PROJ-138-Vorwärmung verhungert `/projects/[id]` an einem parallelen
+  Worker. Gemessen: mit Abkürzung im Paarlauf rot, isoliert grün; mit Vorwärmung als Paar
+  7/7.
 
 ### Weitere Abweichungen
 
