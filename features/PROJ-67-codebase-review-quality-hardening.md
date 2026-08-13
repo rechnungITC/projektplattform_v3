@@ -1,6 +1,7 @@
 # PROJ-67 - Codebase Review Quality Hardening
 
 ## Status: Deployed — 2026-06-15 (Tag `v1.91.0-PROJ-67`). 9/9 ACs PASS, L-1 behoben. Slice-Code war bereits via PRs #128/#131/#133/#135 live; Deploy = Closure + L-1-Fix + Tag.
+## Deployment Scope: tooling-only
 
 ## Deployment
 

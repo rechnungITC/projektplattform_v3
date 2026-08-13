@@ -15,6 +15,7 @@ summary_for_jira: "[HYGIENE] Visual-Regression: zwei stillgelegte Baselines dete
 # PROJ-Y-143d: deterministische Baselines für datentragende Seiten
 
 ## Status: Deployed
+## Deployment Scope: tooling-only
 **Created:** 2026-08-11
 **Deployed:** 2026-08-12 — Tag `v2.47.0-PROJ-Y-143d`
 **Origin:** Followup aus PROJ-Y-143b (C-1/C-2).

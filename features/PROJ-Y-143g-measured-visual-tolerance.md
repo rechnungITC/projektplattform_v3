@@ -15,6 +15,7 @@ summary_for_jira: "[HYGIENE] Visual-Regression: Toleranz der fullPage-Baselines 
 # PROJ-Y-143g: gemessene Toleranz statt geerbter Verhältniszahl
 
 ## Status: Deployed
+## Deployment Scope: tooling-only
 **Created:** 2026-08-12
 **Deployed:** 2026-08-12 — Tag `v2.50.0-PROJ-Y-143g`
 **Origin:** Fund F-3 aus der PROJ-Y-143d-Abnahme.
