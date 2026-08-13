@@ -58,7 +58,9 @@ abgeschaltete Feature-Familie.
 | `npm audit` | **ganzer** Produktions-Baum (`--omit=dev`), jeder Lauf | npm |
 | OSV-Scan | ganzes **Lockfile** — also **auch Dev-Abhängigkeiten** | OSV |
 
-Der OSV-Scan ist damit **breiter**, nicht deckungsgleich. Ein Lockfile-Scan lässt sich nicht auf
+Der OSV-Scan ist damit **breiter** in der Menge der geprüften Pakete (1133 Lockfile-Einträge gegen
+`npm audit`s Produktions-Teilmenge) und **gleich streng** in der Schwelle (HIGH+, gezogen von
+`scripts/osv-gate/`). Nicht deckungsgleich. Ein Lockfile-Scan lässt sich nicht auf
 Produktion einschränken: weder SBOM-Eingabe noch ein Dev-Filter ist für npm dokumentiert (geprüft in der
 OSV-Doku). Falls das PRs an Dev-Advisories blockiert, ist die Antwort eine **Policy-Entscheidung**
 (akzeptieren oder Ignore-Liste) — **kein** `continue-on-error`, das würde genau das dekorative Gate
@@ -69,11 +71,20 @@ wiederherstellen, das diese Slice entfernt.
 ### Block A — echte zweite Meinung gebaut
 - [x] **AC-147.1** Job `OSV scan of the dependency lockfile` in `supply-chain-audit.yml`; osv-scanner
       `v2.5.0` gepinnt und per SHA256 verifiziert; Aufruf `scan -L package-lock.json`.
-- [ ] **AC-147.2** Der Job läuft im PR dieser Slice und sein Ergebnis ist **beobachtet**, nicht
-      angenommen. Erster Versuch (dependency-review) ist hieran gescheitert — das AC hat funktioniert.
-- [ ] **AC-147.3** Der **Fehlerpfad ist bewiesen**: ein Fund macht den Job rot. Ein Gate, das nie
-      fehlschlägt, ist von einem dekorativen nicht zu unterscheiden (Muster aus PROJ-136 AC-6). Ist der
-      Scan grün, wird der Negativ-Nachweis eigens geführt.
+- [x] **AC-147.2** Der Job läuft und sein Ergebnis ist **beobachtet**: Lauf `31714854022`, Prüfsumme
+      `osv-scanner_linux_amd64: OK`, Version 2.5.0, `Scanned … package-lock.json file and found 1133
+      packages`, `No issues found`. Der erste Versuch (dependency-review) ist an diesem AC gescheitert —
+      es hat funktioniert.
+- [x] **AC-147.3** Der **Fehlerpfad ist bewiesen**, in beide Richtungen und gegen echte Scanner-Ausgabe:
+      ein Lockfile mit `lodash@4.17.15` liefert 4 Advisories und **Exit-Code 1**; das Repo-Lockfile
+      liefert 0 Funde und Exit 0. Ein Gate, das nie fehlschlägt, wäre von einem dekorativen nicht zu
+      unterscheiden (Muster PROJ-136 AC-6).
+- [x] **AC-147.10** Die Schwelle entspricht der **Hausnorm HIGH+**. osv-scanner hat keine
+      Schwellen-Option und exit-1t bei *jedem* Fund, auch Low — enrolliert wäre das eine nicht
+      abgestimmte Verschärfung und würde beim ersten Medium in einer Dev-Abhängigkeit alle PRs blockieren
+      (PROJ-140 hat Moderates ausdrücklich risk-akzeptiert). Die Schwelle zieht daher
+      `scripts/osv-gate/` (CVSS ≥ 7.0 **oder** GitHub-Label HIGH/CRITICAL), unit-getestet (7 Fälle) und
+      end-to-end belegt: die Fixture meldet 8.1/7.4 als blockierend und 5.3/6.9 als informativ.
 - [x] **AC-147.4** Abgrenzung zu `npm audit` in Workflow **und** CLAUDE.md-Tabelle benannt, inklusive der
       breiteren Dev-Abdeckung.
 
@@ -99,7 +110,9 @@ wiederherstellen, das diese Slice entfernt.
   macht sie überflüssig; wer sie später aktiviert, kann die Dependency Review zusätzlich einführen.
 - **Löschen des Snyk-Jobs** — erst nach AC-147.7 (siehe AC-147.8).
 - **Dev-Advisories aus dem OSV-Scan filtern** — Policy-Entscheidung, erst wenn die Praxis zeigt, dass es
-  nötig ist.
+  nötig ist. Der akute Druck ist weg, weil die Schwelle jetzt bei HIGH+ liegt statt bei „jeder Fund".
+- **Ignore-Liste für einzelne Advisories** (`osv-scanner.toml`) — erst wenn ein konkreter Fall es
+  verlangt; eine leere Ignore-Liste einzuführen lädt nur zum Wegdrücken ein.
 - **SHA-Pinning der GitHub-Actions** (`actions/checkout@v4` usw.) — der Bestand nutzt durchgehend
   gleitende Majors; eine Slice, die als einzige pinnt, erzeugt Inkonsistenz. Eigener Followup. Das
   osv-scanner-**Binary** ist hier trotzdem gepinnt, weil es Code aus einer fremden Release-Quelle ist.
@@ -112,8 +125,12 @@ wiederherstellen, das diese Slice entfernt.
 - **D-147.2** Werkzeugwechsel gegenüber PROJ-74s Vorgabe: nicht `dependency-review-action`, sondern
   OSV-Scanner-CLI. Grund ist kein Geschmack, sondern ein gemessener Fehlschlag (Lauf `31703387838`) und
   eine Repo-Einstellung, die nicht in meiner Hand liegt. Vom Nutzer entschieden.
-- **D-147.3** Der OSV-Scan ist **breiter** als `npm audit` (Dev-Abhängigkeiten inbegriffen), also keine
-  Scope-Parität mit dem ersetzten Snyk-Aufruf. Offengelegt statt behauptet.
+- **D-147.3** Der OSV-Scan ist in der **Paketmenge breiter** als `npm audit` (Dev-Abhängigkeiten
+  inbegriffen), in der **Schwelle** aber gleich (HIGH+). Offengelegt statt behauptet.
+- **D-147.4** Eigener Messfehler, damit er nicht wiederkehrt: die CI-Logzeile wurde beim Auslesen mit
+  `cut -c1-235` genau hinter `found 113` abgeschnitten und daraufhin als „nur 113 von 1165 Paketen
+  gescannt" fehlgedeutet. Tatsächlich steht dort `found 1133 packages`. Aufgefallen, weil derselbe Befehl
+  lokal 1133 lieferte. Lehre: Zahlen nicht aus abgeschnittenen Logzeilen lesen.
 
 ## Implementation Notes
 

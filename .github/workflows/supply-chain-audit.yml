@@ -81,8 +81,35 @@ jobs:
           chmod +x osv-scanner_linux_amd64
           ./osv-scanner_linux_amd64 --version
 
+      - name: Setup Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: "24"
+          cache: "npm"
+
+      - name: Install dependencies
+        run: npm ci
+
       - name: Scan package-lock.json against the OSV database
-        run: ./osv-scanner_linux_amd64 scan -L package-lock.json
+        run: |
+          set +e
+          ./osv-scanner_linux_amd64 scan -L package-lock.json --format json > osv-report.json
+          code=$?
+          set -e
+          # 0 = nothing found, 1 = findings (severity is judged by the gate below).
+          # Any other code is a scanner failure and must NOT read as "clean" — that
+          # would be the decorative-gate defect all over again.
+          if [ "$code" -ne 0 ] && [ "$code" -ne 1 ]; then
+            echo "::error::osv-scanner exited with $code, which is not a findings result"
+            exit "$code"
+          fi
+
+      # osv-scanner has no severity threshold and exits 1 on ANY finding, Low
+      # included. The house norm is HIGH and above, so the threshold is drawn here.
+      # Unit-tested in scripts/osv-gate/analyze.test.ts, and proven end-to-end in
+      # both directions against real scanner output (PROJ-147 AC-147.3).
+      - name: Gate on HIGH+ severity
+        run: npm run check:osv-gate -- osv-report.json
 
   snyk:
     name: Snyk production dependency scan
