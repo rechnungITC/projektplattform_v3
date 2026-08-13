@@ -12,7 +12,7 @@ Rules:
 | File | Purpose |
 |---|---|
 | [README.md](../README.md) | Project entry point |
-| [CLAUDE.md](../CLAUDE.md) | Working protocol for Claude Code (incl. V2 Heritage section) |
+| [CLAUDE.md](../CLAUDE.md) / [AGENTS.md](../AGENTS.md) | Canonical agent working protocol; `AGENTS.md` is a symlink to `CLAUDE.md` |
 | [package.json](../package.json) | Node/Next.js dependencies |
 | [tsconfig.json](../tsconfig.json), [next.config.ts](../next.config.ts) | Build config |
 | [tailwind.config.ts](../tailwind.config.ts) | Styling config |
@@ -31,7 +31,7 @@ Rules:
 | `src/components/` | Project-specific UI components |
 | `src/hooks/` | Reusable React hooks (e.g. `use-auth`, `use-tenant-memberships`) |
 | `src/lib/supabase/` | Supabase client factories (browser, server, middleware) |
-| `src/lib/` | Cross-cutting utilities (`utils.ts`, `auth-helpers.ts`) |
+| `src/lib/` | Domain modules and integrations, including AI, DMS, M&A, MCP, skills, project planning, reporting, and tenant settings |
 | `src/proxy.ts` | Next 16.2 middleware (renamed from `middleware.ts`); session refresh + auth redirects |
 | `src/types/` | Shared TypeScript types |
 | `src/test/` | Test scaffolding shared between vitest tests |
@@ -42,21 +42,22 @@ Rules:
 |---|---|
 | `supabase/migrations/` | SQL migrations (RLS policies, tables, functions, triggers) — apply in order |
 | `supabase/functions/` | Supabase Edge Functions (Deno + TypeScript) |
-| `supabase/config.toml` | Supabase project config |
 
 ## Tests
 
 | Path | Purpose |
 |---|---|
 | Co-located `*.test.ts(x)` next to source | Vitest unit tests (`useHook.test.ts` next to `useHook.ts`) |
-| `tests/` | Playwright E2E tests (only created as features need them) |
+| `tests/PROJ-X-*.spec.ts` | Playwright E2E and live integration tests |
+| `tests/sql/` | Live RLS/RPC pentests designed to leave zero residue |
 
 ## Features & specs
 
 | Path | Purpose |
 |---|---|
-| `features/INDEX.md` | Central tracking of all features (status, ID, spec link) |
-| `features/PROJ-X-*.md` | Per-feature specs — one feature, one file, status header, V2 reference material section |
+| `features/INDEX.md` | Central tracking of lifecycle status, deployment scope, ID, and spec link |
+| `features/OPEN-DEFERRED-STATUS.md` | Accepted omissions, MVP cuts, and deferred follow-ups |
+| `features/PROJ-X-*.md` | Per-feature specs with requirements, evidence, status, scope, and V2 reference material |
 | `features/README.md` | How features are organized |
 
 ## Documentation
@@ -77,17 +78,21 @@ Rules:
 | `docs/architecture/target-picture.md` | Target picture (with V3 stack adaptation note) |
 | `docs/architecture/term-boundaries.md` | Wave-1 binding term definitions (Task, Open Item, Decision, Stakeholder) |
 | `docs/architecture/module-structure.md` | Suggested technical module structure |
-| `docs/decisions/` | 22 inherited V2 ADRs + INDEX |
-| `docs/production/` | Production guides (Sentry, security, performance) |
+| `docs/decisions/` | Architecture decision records and their index |
+| `docs/design/` | Feature-specific UI and interaction design briefs |
+| `docs/production/` | Production guides (deployment, Sentry, security, performance, schema drift) |
+| `docs/deployment/` | Standalone operation, backup/restore, update, and Ollama hardening guides |
 
-## Claude Code
+## Agent workflows
 
 | Path | Purpose |
 |---|---|
-| `.claude/rules/{general,frontend,backend,security}.md` | V3-canonical rules |
-| `.claude/skills/{requirements,architecture,frontend,backend,qa,deploy,help,init,review,security-review}/SKILL.md` | Skill definitions for the workflow |
-| `.claude/skills/<skill>/<extra>.md` | Supplementary V2-derived materials (architecture/coding-standards, qa/bug-analysis, deploy/code-review, requirements/prompt-templates, requirements/story-writing) |
-| `.claude/agents/` | Agent personas (V2-derived: software-architect, architecture-review, documentation-writer; plus V3-native frontend-dev, backend-dev, qa-engineer) |
+| `.claude/rules/` | General, frontend, backend, security, designer, and continuous-improvement rules |
+| `.claude/skills/{requirements,architecture,frontend,backend,qa,deploy}/SKILL.md` | Ordered feature-delivery workflow |
+| `.claude/skills/{help,designer,continuous-improvement}/SKILL.md` | Supporting guidance, design, and improvement workflows |
+| `.claude/skills/gitnexus/` | Code exploration, impact analysis, debugging, refactoring, and index maintenance |
+| `.claude/skills/<skill>/<extra>.md` | Skill-specific checklists, templates, and reference material |
+| `.claude/agents/` | Specialized architecture, design, implementation, QA, documentation, and continuous-improvement roles |
 | `.claude/settings.json`, `.claude/settings.local.json` | Tool permissions, hooks |
 
 ## What's missing vs. V2 (intentional)
@@ -98,7 +103,7 @@ V3 is a single-app stack on Next.js + Supabase. V2's `apps/api/` (FastAPI), `ser
 - V2 `services/orchestrator/` → V3 Edge Functions / API routes (deferred, no separate service)
 - V2 `services/worker/` → V3 Supabase scheduled jobs / Edge Functions (when needed)
 - V2 `db/migrations/` → V3 `supabase/migrations/`
-- V2 `mcp/` → V3 not yet introduced; deferred to PROJ-12 (KI-Assistenz)
+- V2 `mcp/` → V3 MCP integrations live in `src/lib/mcp/` and connector/API surfaces rather than a separate top-level service
 - V2 `planning/` → V3 `features/` + `docs/`
 - V2 `build/` (concept-level) → V3 `docs/architecture/` + per-feature spec sections
 
@@ -110,4 +115,5 @@ V2 code paths are referenced from individual PROJ-X specs (in the **V2 Reference
 2. **shadcn/ui first** — never recreate components that exist under `src/components/ui/`.
 3. **Single-responsibility specs** — one feature per `features/PROJ-X-*.md`.
 4. **Multi-tenant invariant** — every new table has `tenant_id UUID NOT NULL REFERENCES tenants(id) ON DELETE CASCADE`. RLS uses helpers from PROJ-1.
-5. **No new top-level code areas without updating this file.**
+5. **Need-to-know is additive** — confidential objects use restrictive classification policies; aggregate paths must not bypass them.
+6. **No new top-level code areas without updating this file.**
