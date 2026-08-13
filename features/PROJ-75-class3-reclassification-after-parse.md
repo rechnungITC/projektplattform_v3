@@ -1,6 +1,8 @@
 # PROJ-75: Class-3-Re-Classification nach Parse
 
 ## Status: Deployed (2026-07-21, Tag `v2.15.0-PROJ-75`)
+## Deployment Scope: mvp
+**Zum Scope (klassifiziert 2026-08-13):** `mvp`, nicht `full`. Der **Ingestion-Pfad** ist vollstaendig und fail-closed ausgeliefert und schuetzt jeden neuen Upload (AC-75.1–75.5, 75.13/75.14). Der Block **„Backfill (Bestands-Rows)" (AC-75.6–75.10) ist deployed, aber gegen die realen Zeilen nie ausgefuehrt** — D-1 unten nennt genau das als nachzuholenden Deploy-Verify, und AC-75.10 verlangt eine Kennzahl *nach* dem Backfill, die es daher nicht gibt. Damit ist eine originaere Anforderung unerfuellt: kein `full`. Die Omission ist als **PROJ-Y-75a** registriert.
 **Created:** 2026-07-21
 **Last Updated:** 2026-07-21
 
@@ -399,6 +401,25 @@ ESLint 0 · tsc 14 baseline/0 neu · vitest **2302/2302** (+10) · build clean �
 Migration `20260721162717` seit /backend in Prod (DDL-only, kein Runtime-Migrationsschritt). Kein neuer Env/Secret.
 
 **Post-Deploy-Smoke (live gegen Prod):** Backfill-Route `POST /api/context-sources/reclassify-backfill` → 401 ohne Auth **und** mit falschem Bearer (kein 307 → H-1-Fix live bestätigt, kein Secret-Leak); `GET` → 405 (POST-only); Home → 307 (Session-Gate intakt). Required-Checks alle grün (schema-drift, migration-naming, npm-audit, Snyk).
+
+### Ist-Zustand am 2026-08-13 gemessen — der Backfill ist nach wie vor nicht gelaufen
+
+Drei Wochen nach dem Deploy gegen die Prod-Datenbank nachgezaehlt:
+
+| Kennzahl | Wert |
+|---|---|
+| Context-Sources gesamt | 15 |
+| davon je volltext-geprueft (`full_text_classified_at`) | **0** |
+| offene Backfill-Kandidaten | **15** |
+| davon im Kundenmandanten `IT-Couch GmbH` | **13**, alle `privacy_class = 2` |
+| deren `content_excerpt`-Laenge | **alle exakt 8000** — also alle abgeschnitten |
+| als `classification_unverified` markiert | 0 |
+
+Die 13 echten Kundendokumente tragen also weiterhin ein Datenschutz-Label, das nur aus den ersten 8000 Zeichen abgeleitet wurde — exakt der Zustand, fuer den diese Slice gebaut wurde.
+
+**Einordnung, kalibriert:** unmittelbar abgeflossen ist nichts. Die KI-Pfade senden das `content_excerpt` (8000 Zeichen) an einen Provider, nicht die Volldatei; PII jenseits 8000 hat das System also nie verlassen. Falsch ist das **Label**, und daran haengen die Routing-Entscheidung (Class-3 → nur tenant-eigenes Ollama bzw. attestiertes Azure) und jeder kuenftige Volltext-Konsument (PROJ-80/RAG). Ob ueberhaupt eines der 13 Dokumente PII jenseits 8000 traegt, ist **unbekannt** — genau das stellt der Backfill fest. Die Dokumentinhalte wurden dafuer nicht gelesen.
+
+**Warum es liegengeblieben ist:** D-1 war als Deploy-Verify notiert, aber der `Deployed`-Stempel im INDEX verdeckte, dass noch etwas aussteht — das Followup-Register sagte „Planned — still open" und lag damit **naeher an der Wahrheit** als das INDEX-Label. Der Widerspruch ist jetzt auf beiden Seiten aufgeloest (Scope `mvp` + PROJ-Y-75a).
 
 **Offener Post-Deploy-Handoff (D-1) — braucht Prod-`CRON_SECRET`:**
 1. Backfill einmal gegen die **13 realen `truncated` & < Class-3**-Rows laufen:
