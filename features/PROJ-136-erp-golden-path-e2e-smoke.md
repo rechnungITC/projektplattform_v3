@@ -1,6 +1,7 @@
 # PROJ-136: ERP-Pilot Golden-Path End-to-End Smoke
 
 ## Status: Deployed (2026-06-22, Tag `v1.96.0-PROJ-136`, Closure — kein Runtime-Deploy, Test-Infra + PROJ-70-Fix bereits via #163 live). QA-Pass: 7/7 AC inkl. AC-6 Negativ-Nachweis live, 0 Critical/High. Fand+fixte beim ersten Lauf den HIGH Waterfall-Taxonomie-Bug (PROJ-70). Playwright-UI-Flow = dokumentiertes Non-Goal.
+## Deployment Scope: full
 **Created:** 2026-06-19
 **Last Updated:** 2026-06-22
 

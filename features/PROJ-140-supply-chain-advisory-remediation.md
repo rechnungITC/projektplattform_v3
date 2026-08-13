@@ -15,6 +15,7 @@ summary_for_jira: "[HYGIENE] Supply-Chain-Advisory-Remediation — npm-audit Req
 # PROJ-140: Supply-Chain-Advisory-Remediation
 
 ## Status: Deployed (2026-07-23)
+## Deployment Scope: full
 **Deployed:** 2026-07-23 — PR #248 → main (`5c04f1a`), Tag `v2.16.0-PROJ-140`. Alle Required-Checks grün (npm audit + Snyk exit 0, schema-drift, migration-naming, Vercel). Vercel auto-deploy von main (Runtime-Dep-Bump `next@16.2.11` + `sharp@0.35.3` live). Entblockt PROJ-103.
 **Created:** 2026-07-22
 **Origin:** PROJ-74 `npm audit --omit=dev --audit-level=high` Required-Check über Nacht rot; blockierte den ansonsten fertigen PROJ-103-Merge. Portfolioweit, kein Feature-Bug.
