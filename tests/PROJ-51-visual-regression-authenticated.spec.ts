@@ -2,13 +2,20 @@
  * PROJ-51-ε.3 — Visual Regression baseline for authenticated pages.
  *
  * Continuation of `PROJ-51-visual-regression.spec.ts` (unauth pages).
- * Uses the PROJ-29 auth-fixture (`tests/fixtures/auth-fixture.ts`),
- * which logs the [E2E] test user in once via `globalSetup` and reuses
- * the storage state per test.
+ *
+ * PROJ-Y-143l — this suite runs on the `visualPage` fixture, i.e. its OWN
+ * user in its OWN tenant, seeded by `globalSetup`. Every other authenticated
+ * spec keeps using the shared `authenticatedPage`. That separation is the
+ * point: baselines photograph account and tenant state (the workspace label,
+ * the profile e-mail on /settings, name+domain+branding on /settings/tenant,
+ * and whatever `active_modules` makes /stammdaten/resources render), so while
+ * the account was shared, any slice adding a membership, renaming a profile
+ * or toggling a module moved these images — as happened on 2026-08-12
+ * (PROJ-Y-143f, F-1). Nothing outside this lane touches the visual identity.
  *
  * Scope (top-level pages only): Dashboard, Projects list, Master Data
  * root + Resources, Settings root + Tenant settings. These pages render
- * deterministically with just the [E2E] tenant + admin membership that
+ * deterministically with just the visual tenant + admin membership that
  * `globalSetup` provisions — no project/risk/decision seeding required.
  *
  * Project-Room snapshots are deliberately deferred until a follow-up
@@ -24,7 +31,10 @@
 import type { Page } from "@playwright/test"
 
 import { expect, test } from "./fixtures/auth-fixture"
-import { E2E_PROJECT_ID } from "./fixtures/constants"
+import {
+  E2E_VISUAL_PROJECT_ID,
+  E2E_VISUAL_TENANT_NAME,
+} from "./fixtures/constants"
 import {
   dashboardApprovalsFixture,
   dashboardDeliverableApprovalsFixture,
@@ -33,28 +43,33 @@ import {
 } from "./fixtures/dashboard-payload"
 
 /**
- * PROJ-Y-143f — the tenant control in the sidebar footer is shared-account
- * state, so it cannot be part of a stable baseline.
+ * PROJ-Y-143l — the workspace control is guarded again, not masked.
  *
- * `tenant-switcher.tsx` renders a plain label below two memberships and a
- * dropdown *button* (different size, plus a chevron) from two upwards. On
- * 2026-08-12 a parallel slice added this shared E2E user to a second tenant
- * for its own tests, and that single row flipped the control on **every**
- * authenticated page — all seven baselines went red at once, ~1,038 px each,
- * for a reason unrelated to any of them.
+ * History: `tenant-switcher.tsx` renders a plain label below two memberships
+ * and a dropdown *button* (different size, plus a chevron) from two upwards,
+ * in the sidebar footer of every signed-in page. On 2026-08-12 a parallel
+ * slice enrolled the *shared* E2E user in a second tenant for its own tests
+ * and that single row flipped the control everywhere — seven baselines red at
+ * once, ~1,038 px each, for a reason unrelated to any of them. PROJ-Y-143f
+ * masked the region, which was right while the account was shared: what it
+ * showed was somebody else's bookkeeping.
  *
- * Freezing the switched state instead would only invert the problem: the
- * baselines would then depend on that foreign tenant continuing to exist.
- * Masking is the structural answer — the region is small, and what it shows
- * is account bookkeeping rather than the page under test. Pinning *which*
- * tenant is active happens separately, in `global-setup`.
+ * It is no longer somebody else's. This suite now runs as its own user in its
+ * own tenant (`visualPage`), with exactly one membership, so the control is
+ * owned state and masking it would only make the lane blind to a real
+ * regression in it. Note that masking never fully protected anyway: the
+ * dropdown variant is *wider* than the label, so the surrounding pixels move
+ * with it.
+ *
+ * Asserted rather than left to the diff, so the failure is legible: a foreign
+ * membership on the visual user produces "expected 0, got 1 switcher" instead
+ * of an unexplained pixel delta in seven images.
  */
-function sharedStateMasks(page: Page) {
-  return [
-    page.locator(
-      '[aria-label="Current workspace"], [aria-label="Switch workspace"]',
-    ),
-  ]
+async function expectSoleWorkspaceLabel(page: Page): Promise<void> {
+  await expect(page.locator('[aria-label="Current workspace"]')).toHaveText(
+    E2E_VISUAL_TENANT_NAME,
+  )
+  await expect(page.locator('[aria-label="Switch workspace"]')).toHaveCount(0)
 }
 
 /**
@@ -136,6 +151,11 @@ async function waitForRenderedData(page: Page): Promise<void> {
     0,
     { timeout: 60_000 },
   )
+  // PROJ-Y-143l — the workspace control is part of every capture again, so
+  // check it here rather than in seven places. It also doubles as the
+  // identity check: if a spec ever runs the visual lane on the shared
+  // fixture, this fails with a readable message before any image is compared.
+  await expectSoleWorkspaceLabel(page)
 }
 
 /**
@@ -185,8 +205,8 @@ test.describe("PROJ-51-ε.3 — Visual Regression (authenticated)", () => {
 
   // PROJ-Y-143e — no page in this suite may log a runtime error.
   let runtimeIssues: () => string[] = () => []
-  test.beforeEach(({ authenticatedPage }) => {
-    runtimeIssues = watchRuntimeIssues(authenticatedPage)
+  test.beforeEach(({ visualPage }) => {
+    runtimeIssues = watchRuntimeIssues(visualPage)
   })
   test.afterEach(() => {
     expect(runtimeIssues(), "page logged runtime errors").toEqual([])
@@ -218,26 +238,25 @@ test.describe("PROJ-51-ε.3 — Visual Regression (authenticated)", () => {
   //     React and Next behave normally.
   //
   // The live dashboard keeps its own smoke below; this test owns the image.
-  test("Dashboard with pinned data", async ({ authenticatedPage }) => {
-    await authenticatedPage.clock.setFixedTime(FIXED_NOW)
-    await routeDashboardFixtures(authenticatedPage)
+  test("Dashboard with pinned data", async ({ visualPage }) => {
+    await visualPage.clock.setFixedTime(FIXED_NOW)
+    await routeDashboardFixtures(visualPage)
 
-    const response = await authenticatedPage.goto("/", {
+    const response = await visualPage.goto("/", {
       waitUntil: "domcontentloaded",
     })
     expect(response?.status()).toBeLessThan(400)
-    await waitForRenderedData(authenticatedPage)
+    await waitForRenderedData(visualPage)
     // Guard against the fixture silently not being used: with live data
     // every counter is 0, so a non-zero KPI proves the route interception
     // took effect before the panels rendered.
     await expect(
-      authenticatedPage.getByLabel("Offene Aufgaben: 4"),
+      visualPage.getByLabel("Offene Aufgaben: 4"),
     ).toBeVisible()
 
-    await expect(authenticatedPage).toHaveScreenshot("dashboard.png", {
+    await expect(visualPage).toHaveScreenshot("dashboard.png", {
       maxDiffPixels: 20,
       fullPage: true,
-      mask: sharedStateMasks(authenticatedPage),
     })
   })
 
@@ -246,15 +265,15 @@ test.describe("PROJ-51-ε.3 — Visual Regression (authenticated)", () => {
   // really renders — without re-introducing a baseline whose content nobody
   // controls. This is the half that would notice a broken /api/dashboard/*.
   test("Dashboard renders past auth gate (live data)", async ({
-    authenticatedPage,
+    visualPage,
   }) => {
-    const response = await authenticatedPage.goto("/", {
+    const response = await visualPage.goto("/", {
       waitUntil: "domcontentloaded",
     })
     expect(response?.status()).toBeLessThan(400)
-    await waitForRenderedData(authenticatedPage)
+    await waitForRenderedData(visualPage)
     await expect(
-      authenticatedPage.getByRole("heading", { name: /Hallo,/ }),
+      visualPage.getByRole("heading", { name: /Hallo,/ }),
     ).toBeVisible()
   })
 
@@ -265,10 +284,10 @@ test.describe("PROJ-51-ε.3 — Visual Regression (authenticated)", () => {
   // server no longer sends. So compare the live payload's keys against the
   // fixture's, top level and per section.
   test("dashboard fixture still matches the live contract", async ({
-    authenticatedPage,
+    visualPage,
   }) => {
-    await authenticatedPage.goto("/", { waitUntil: "domcontentloaded" })
-    const live = await authenticatedPage.evaluate(async () => {
+    await visualPage.goto("/", { waitUntil: "domcontentloaded" })
+    const live = await visualPage.evaluate(async () => {
       const res = await fetch("/api/dashboard/summary", {
         credentials: "include",
       })
@@ -348,12 +367,12 @@ test.describe("PROJ-51-ε.3 — Visual Regression (authenticated)", () => {
   // capture is now deterministic; 20 px sits between the measured noise
   // floor and the smallest real change, so it covers incidental
   // antialiasing without covering content.
-  test("Projects list page", async ({ authenticatedPage }) => {
-    await authenticatedPage.goto("/projects", {
+  test("Projects list page", async ({ visualPage }) => {
+    await visualPage.goto("/projects", {
       waitUntil: "domcontentloaded",
     })
-    await waitForRenderedData(authenticatedPage)
-    await expect(authenticatedPage).toHaveScreenshot("projects-list.png", {
+    await waitForRenderedData(visualPage)
+    await expect(visualPage).toHaveScreenshot("projects-list.png", {
       maxDiffPixels: 20,
       fullPage: false,
       mask: [
@@ -361,19 +380,24 @@ test.describe("PROJ-51-ε.3 — Visual Regression (authenticated)", () => {
         //
         // PROJ-Y-143d masked `table tbody` and claimed the header row stayed
         // guarded. It does not: with `table-layout: auto` the column widths
-        // are computed from the *body* content, so a foreign spec creating a
-        // project with a longer name shifts every header label sideways. It
-        // survived four isolated runs and only failed inside the full suite,
-        // where other specs seed rows — the give-away was a diff showing the
-        // headers doubled at two x positions.
+        // are computed from the *body* content, so a row with a longer project
+        // name shifts every header label sideways. It survived four isolated
+        // runs and only failed inside the full suite — the give-away was a
+        // diff showing the headers doubled at two x positions.
+        //
+        // PROJ-Y-143l retires one half of the original reason and keeps the
+        // other. Foreign specs can no longer seed rows here (this tenant is
+        // the visual lane's own), but `projects-table.tsx:129` still renders
+        // `formatRelative(updated_at)` — "just now" / "10m ago" — so the body
+        // remains time-dependent regardless of who owns the tenant. The mask
+        // stays for that reason alone.
         //
         // Forcing `table-layout: fixed` through the screenshot stylesheet
         // would have kept the header in frame, but the baseline would then
         // show a layout no user ever sees. Losing the header is the honest
         // trade; what remains guarded is shell, sidebar, page header and the
         // Filters card.
-        authenticatedPage.locator("table"),
-        ...sharedStateMasks(authenticatedPage),
+        visualPage.locator("table"),
       ],
     })
   })
@@ -384,15 +408,14 @@ test.describe("PROJ-51-ε.3 — Visual Regression (authenticated)", () => {
   // its determinism is structural, not a side effect of an empty tenant.
   // Measured here: noise 0 px over three runs at tolerance 0, and renaming
   // the "Stammdaten" h1 by two characters costs 228 px.
-  test("Master Data root", async ({ authenticatedPage }) => {
-    await authenticatedPage.goto("/stammdaten", {
+  test("Master Data root", async ({ visualPage }) => {
+    await visualPage.goto("/stammdaten", {
       waitUntil: "domcontentloaded",
     })
-    await waitForRenderedData(authenticatedPage)
-    await expect(authenticatedPage).toHaveScreenshot("stammdaten.png", {
+    await waitForRenderedData(visualPage)
+    await expect(visualPage).toHaveScreenshot("stammdaten.png", {
       maxDiffPixels: 20,
       fullPage: true,
-      mask: sharedStateMasks(authenticatedPage),
     })
   })
 
@@ -404,17 +427,16 @@ test.describe("PROJ-51-ε.3 — Visual Regression (authenticated)", () => {
   // PROJ-Y-143f replaces the error with a real (or empty) list. That is
   // correct behaviour: re-take the baseline as part of that fix.
   // Measured: noise 0 px over three runs, two-character change 44 px.
-  test("Resources page", async ({ authenticatedPage }) => {
-    await authenticatedPage.goto("/stammdaten/resources", {
+  test("Resources page", async ({ visualPage }) => {
+    await visualPage.goto("/stammdaten/resources", {
       waitUntil: "domcontentloaded",
     })
-    await waitForRenderedData(authenticatedPage)
-    await expect(authenticatedPage).toHaveScreenshot(
+    await waitForRenderedData(visualPage)
+    await expect(visualPage).toHaveScreenshot(
       "stammdaten-resources.png",
       {
         maxDiffPixels: 20,
         fullPage: true,
-        mask: sharedStateMasks(authenticatedPage),
       },
     )
   })
@@ -422,15 +444,14 @@ test.describe("PROJ-51-ε.3 — Visual Regression (authenticated)", () => {
   // PROJ-Y-143g: absolute bound. Static form chrome; the only tenant-derived
   // values are the workspace name and domain, which no spec edits.
   // Measured: noise 0 px over three runs, two-character change 42 px.
-  test("Settings root", async ({ authenticatedPage }) => {
-    await authenticatedPage.goto("/settings", {
+  test("Settings root", async ({ visualPage }) => {
+    await visualPage.goto("/settings", {
       waitUntil: "domcontentloaded",
     })
-    await waitForRenderedData(authenticatedPage)
-    await expect(authenticatedPage).toHaveScreenshot("settings.png", {
+    await waitForRenderedData(visualPage)
+    await expect(visualPage).toHaveScreenshot("settings.png", {
       maxDiffPixels: 20,
       fullPage: true,
-      mask: sharedStateMasks(authenticatedPage),
     })
   })
 
@@ -440,15 +461,14 @@ test.describe("PROJ-51-ε.3 — Visual Regression (authenticated)", () => {
   // /settings; it is also the baseline that caught the PROJ-130-α
   // FormDescription growth in PROJ-Y-143d, which is the kind of change the
   // ratio would have hidden had it been slightly smaller.
-  test("Tenant settings page", async ({ authenticatedPage }) => {
-    await authenticatedPage.goto("/settings/tenant", {
+  test("Tenant settings page", async ({ visualPage }) => {
+    await visualPage.goto("/settings/tenant", {
       waitUntil: "domcontentloaded",
     })
-    await waitForRenderedData(authenticatedPage)
-    await expect(authenticatedPage).toHaveScreenshot("settings-tenant.png", {
+    await waitForRenderedData(visualPage)
+    await expect(visualPage).toHaveScreenshot("settings-tenant.png", {
       maxDiffPixels: 20,
       fullPage: true,
-      mask: sharedStateMasks(authenticatedPage),
     })
   })
 })
@@ -469,8 +489,8 @@ test.describe("PROJ-51-ε.4 — Visual Regression (Project-Room)", () => {
   )
 
   let runtimeIssues: () => string[] = () => []
-  test.beforeEach(({ authenticatedPage }) => {
-    runtimeIssues = watchRuntimeIssues(authenticatedPage)
+  test.beforeEach(({ visualPage }) => {
+    runtimeIssues = watchRuntimeIssues(visualPage)
   })
   test.afterEach(() => {
     expect(runtimeIssues(), "page logged runtime errors").toEqual([])
@@ -495,8 +515,8 @@ test.describe("PROJ-51-ε.4 — Visual Regression (Project-Room)", () => {
   // 1280x720 frame — more area than the entire Projekt-Setup card — while
   // appending two characters to that card's title measures 97 px. Noise
   // here is likewise 0 across four consecutive runs.
-  test("Project-Room overview", async ({ authenticatedPage }) => {
-    const response = await authenticatedPage.goto(`/projects/${E2E_PROJECT_ID}`, {
+  test("Project-Room overview", async ({ visualPage }) => {
+    const response = await visualPage.goto(`/projects/${E2E_VISUAL_PROJECT_ID}`, {
       waitUntil: "domcontentloaded",
     })
     // Skip cleanly if the seed project upsert failed (warning logged in
@@ -505,11 +525,10 @@ test.describe("PROJ-51-ε.4 — Visual Regression (Project-Room)", () => {
     if ((response?.status() ?? 0) >= 400) {
       test.skip(true, `Seed project not reachable (${response?.status()}).`)
     }
-    await waitForRenderedData(authenticatedPage)
-    await expect(authenticatedPage).toHaveScreenshot("project-room.png", {
+    await waitForRenderedData(visualPage)
+    await expect(visualPage).toHaveScreenshot("project-room.png", {
       maxDiffPixels: 20,
       fullPage: false,
-      mask: sharedStateMasks(authenticatedPage),
     })
   })
 })
