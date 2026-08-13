@@ -15,6 +15,7 @@ summary_for_jira: "[HYGIENE] Route-Level-Abdeckung für den Multipart-Kickoff-Up
 # PROJ-Y-142c: Route-Level-Abdeckung für den Kickoff-Upload
 
 ## Status: Deployed (2026-08-10)
+## Deployment Scope: tooling-only
 **Deployed:** 2026-08-10 — PR #308 → main (`cf277ab`), Tag `v2.38.0-PROJ-Y-142c`. Alle 6 Required-Checks grün. Test-only, daher kein Runtime-Verhalten geändert; Vercel-Auto-Deploy von main lief mit. Post-Deploy-Smoke `/api/context-sources` → 307 Auth-Gate. Kein Env/Secret, keine Migration.
 **Created:** 2026-08-10
 **Origin:** Followup aus PROJ-Y-142b. Der dortige Sniff-Fix (`sniffMagic` übergibt `file-type` den vollen Buffer statt eines 4100-Byte-Kopfs) war auf **Bibliotheks-Ebene** bewiesen und red-green gepinnt. Was fehlte: die Bestätigung, dass sich das auch am **Endpunkt** so verhält — denn dort ist das Symptom ein sichtbarer HTTP-Status.
