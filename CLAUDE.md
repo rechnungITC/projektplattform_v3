@@ -158,9 +158,12 @@ npm run check:schema-drift      # .from().select() columns vs migration schema (
 
 ## CI Required Checks (branch protection on `main`)
 
-A PR cannot merge until all of these pass. Enrollment lives in the `main protection` ruleset (id
-`15992143`), not in this file — when you add a workflow, enrol it there too, so this table never claims
-a gate that does not exist. Run their local equivalents before pushing:
+A PR cannot merge until all of these pass. Enrollment lives in the branch rulesets on `main`, not in
+this file — when you add a workflow, enrol it there too, so this table never claims a gate that does not
+exist. **There are two active rulesets, so six contexts block in total:** `main protection` (id
+`15992143`) carries the five Actions checks below, and `main protection1` (id `15994143`) carries
+`Vercel Preview Comments`. Checking only the first one is how a PR ends up `BLOCKED` with every Actions
+check green. Run their local equivalents before pushing:
 
 | Check | Guards against | Local |
 |---|---|---|
@@ -169,7 +172,8 @@ a gate that does not exist. Run their local equivalents before pushing:
 | `Verify SELECT columns vs migration schema` | schema drift — a `.select()` naming a column no migration creates | `npm run check:schema-drift` |
 | `Verify migration filename naming + version-prefix uniqueness` | migration version collisions / malformed names | `npm run check:migration-naming` |
 | `Verify lifecycle status vs deployment scope in features/INDEX.md` | a `Deployed` row without a scope, a pre-deployment row carrying one, `Deployed + superseded`, an invented scope value, or a row whose cell count is wrong because a prose `\|` was left unescaped | `npm run check:index-scope` |
-| Vercel build | build + type errors | `npm run build` |
+| `Vercel Preview Comments` | the enrolled Vercel gate — lives in `main protection1`, not in the ruleset with the Actions checks | — (Vercel-side) |
+| `Vercel` (build) | build + type errors — **runs on every PR but is not enrolled**, so a red build does not block by ruleset | `npm run build` |
 
 Two of these have bitten repeatedly and are worth knowing up front:
 
