@@ -14,7 +14,12 @@ declare
   v_tenant uuid := '329f25e5-8b8d-42ac-9f11-4c529883f9a2';
   v_proj_a uuid := '434eddc2-cff2-4d37-ab7d-1478a2d001a3';
   v_tenant_b uuid := '00000000-0000-0000-0000-000000000e20';
-  v_proj_b uuid := 'f6564e78-7a9b-42a6-ab67-fa871657dfc5';
+  -- PROJ-Y-143c: v_proj_b hing an einem angesammelten Testprojekt des
+  -- Alt-Mandanten ('f6564e78-…', "[BE-SMOKE2] proj"). Das wurde mit den
+  -- übrigen 42 Leichen aufgeräumt → 23503. Das Fremdprojekt wird jetzt in
+  -- der Transaktion angelegt und mit ihr zurückgerollt; der Smoke hängt
+  -- damit an keinem Bestandsdatum mehr, nur noch am Mandanten selbst.
+  v_proj_b uuid;
   v_admin uuid := 'c31d4091-a087-430c-a02c-2d460d95fe18';
   v_member uuid := '00000000-0000-0000-0000-000000000e2e';
   v_stranger uuid := '00000000-0000-0000-0000-0000000000ff';
@@ -22,6 +27,9 @@ declare
   v_log text := E'\n=== PROJ-77-γ skill_knowledge_links SMOKE ===\n';
 begin
   insert into public.tenant_memberships (tenant_id, user_id, role) values (v_tenant, v_member, 'member');
+  insert into public.projects (tenant_id, name, project_type, created_by, responsible_user_id)
+    values (v_tenant_b, '[PROJ-77-γ SMOKE] Fremdmandant', 'software', v_member, v_member)
+    returning id into v_proj_b;
   insert into public.skills (tenant_id, name, slug, category, created_by) values (v_tenant, 'S', 'proj77g-smoke', 'method', v_admin) returning id into v_skill;
   insert into public.document_tree_nodes (tenant_id, project_id, node_type, name, slug) values (v_tenant, v_proj_a, 'folder', 'NodeA', 'node-a-p77g') returning id into v_node_a;
   insert into public.document_tree_nodes (tenant_id, project_id, node_type, name, slug) values (v_tenant_b, v_proj_b, 'folder', 'NodeB', 'node-b-p77g') returning id into v_node_b;
