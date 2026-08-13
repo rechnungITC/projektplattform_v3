@@ -1,6 +1,7 @@
 # PROJ-Y-115c — Need-to-know-Gate für die Dokumentenebene
 
 **Status:** Deployed
+## Deployment Scope: full
 **Erstellt:** 2026-08-10
 **Herkunft:** CIA-Bestandsfund F4 aus PROJ-115 (`work_item_documents` ohne Need-to-know-Gate) — beim Aufsetzen erweitert, weil die **gesamte DMS-Kette** aus PROJ-79-α keine Vertraulichkeitsdimension besaß.
 **Klasse:** Sicherheitsrelevant (Need-to-know / DSGVO-nah), Bestands-Leck — kein Feature.

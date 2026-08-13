@@ -1,6 +1,7 @@
 # PROJ-68 — DB-Hygiene Slice (RLS-Initplan · Permissive-Policies · Trigger-EXECUTE-Revokes)
 
 ## Status: Deployed (2026-05-30)
+## Deployment Scope: full
 
 **3 atomic migrations applied to Prod-DB:**
 - `20260530100000_proj68_alpha_rls_initplan_wraps.sql` — 12 policies wrapped
