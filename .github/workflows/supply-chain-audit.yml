@@ -35,6 +35,82 @@ jobs:
       - name: Audit production dependency tree
         run: npm run audit:prod
 
+  # Account-free second opinion, replacing the decorative Snyk check (PROJ-147).
+  #
+  # Why not `actions/dependency-review-action`, which PROJ-74 originally intended:
+  # it was built and it FAILED here with "Dependency review is not supported on
+  # this repository. Please ensure that Dependency graph is enabled" (run
+  # 31703387838). Being a public repo is not sufficient — this repository has its
+  # security features switched off (dependency graph off, dependabot off, secret
+  # scanning off). The documented OSV GitHub Action is no way around it either: it
+  # ships as reusable workflows that upload SARIF and need `security-events:
+  # write` plus code scanning, i.e. the same disabled family.
+  #
+  # So the scanner runs as a plain CLI: no GitHub feature, no account, no secret,
+  # and it keeps working if someone flips those repo settings again. OSV is a
+  # genuinely different advisory source than npm's, which is the point of a second
+  # opinion.
+  #
+  # SCOPE, stated because it is NOT the same as npm audit: `npm audit` runs with
+  # `--omit=dev` and judges production dependencies only. A lockfile scan cannot be
+  # narrowed that way — neither SBOM input nor a dev-dependency filter is
+  # documented for npm — so this job sees dev dependencies too and is therefore
+  # BROADER. If that turns out to block pull requests on dev-only advisories, the
+  # fix is a decision about policy (accept, or ignore-list), not a silent
+  # `continue-on-error` — that would recreate exactly the decorative gate this
+  # slice removes.
+  osv-scanner:
+    name: OSV scan of the dependency lockfile
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      # Pinned to an exact release and checksum-verified. A supply-chain job that
+      # curls an unpinned binary would be its own supply-chain hole.
+      - name: Install osv-scanner
+        env:
+          OSV_SCANNER_VERSION: v2.5.0
+        run: |
+          base="https://github.com/google/osv-scanner/releases/download/${OSV_SCANNER_VERSION}"
+          curl -fsSL -O "${base}/osv-scanner_linux_amd64"
+          curl -fsSL -O "${base}/osv-scanner_SHA256SUMS"
+          grep 'osv-scanner_linux_amd64$' osv-scanner_SHA256SUMS | sha256sum -c -
+          chmod +x osv-scanner_linux_amd64
+          ./osv-scanner_linux_amd64 --version
+
+      - name: Setup Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: "24"
+          cache: "npm"
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Scan package-lock.json against the OSV database
+        run: |
+          set +e
+          ./osv-scanner_linux_amd64 scan -L package-lock.json --format json > osv-report.json
+          code=$?
+          set -e
+          # 0 = nothing found, 1 = findings (severity is judged by the gate below).
+          # Any other code is a scanner failure and must NOT read as "clean" — that
+          # would be the decorative-gate defect all over again.
+          if [ "$code" -ne 0 ] && [ "$code" -ne 1 ]; then
+            echo "::error::osv-scanner exited with $code, which is not a findings result"
+            exit "$code"
+          fi
+
+      # osv-scanner has no severity threshold and exits 1 on ANY finding, Low
+      # included. The house norm is HIGH and above, so the threshold is drawn here.
+      # Unit-tested in scripts/osv-gate/analyze.test.ts, and proven end-to-end in
+      # both directions against real scanner output (PROJ-147 AC-147.3).
+      - name: Gate on HIGH+ severity
+        run: npm run check:osv-gate -- osv-report.json
+
   snyk:
     name: Snyk production dependency scan
     runs-on: ubuntu-latest
@@ -60,7 +136,16 @@ jobs:
         if: ${{ env.SNYK_TOKEN != '' }}
         run: npx snyk test --severity-threshold=high --fail-on=all
 
+      # PROJ-147: this branch is the normal case — PROJ-74 deliberately left
+      # SNYK_TOKEN unset ("Snyk zurückgestellt", no external account wanted). The
+      # job is nevertheless enrolled as a required check, so it reports a green
+      # "pass" while scanning nothing, which reads as a second opinion that does
+      # not exist. The warning text below used to ask for the enrollment that has
+      # meanwhile happened; it now names the real state instead. The honest fix is
+      # to deregister this context and enrol `Dependency review of new
+      # dependencies` in its place — a branch-protection change, tracked in
+      # PROJ-147 as a repo-owner handoff.
       - name: Snyk token not configured
         if: ${{ env.SNYK_TOKEN == '' }}
         run: |
-          echo "::warning::SNYK_TOKEN is not configured. Add the repository secret, then mark this job as a required check in branch protection."
+          echo "::warning::SNYK_TOKEN is not configured, so no Snyk scan ran — yet this job is an enrolled required check and reports as passing. Treat it as decorative until it is deregistered (PROJ-147); the account-free replacement is the 'Dependency review of new dependencies' job."

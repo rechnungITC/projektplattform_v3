@@ -153,6 +153,7 @@ npm run test:all     # Both test suites
 npm run audit:prod              # npm audit --omit=dev --audit-level=high
 npm run check:migration-naming  # filename format + version-prefix collisions
 npm run check:index-scope       # INDEX.md: lifecycle status vs deployment scope
+npm run check:osv-gate -- report.json  # OSV findings: fail only at HIGH+ (house norm)
 npm run check:schema-drift      # .from().select() columns vs migration schema (needs Docker)
 ```
 
@@ -168,7 +169,8 @@ check green. Run their local equivalents before pushing:
 | Check | Guards against | Local |
 |---|---|---|
 | `npm audit production dependencies` | HIGH+ CVEs in runtime deps | `npm run audit:prod` |
-| `Snyk production dependency scan` | same, second opinion | — (needs `SNYK_TOKEN`) |
+| `Snyk production dependency scan` | **nothing — decorative.** `SNYK_TOKEN` is deliberately unset (PROJ-74 shelved Snyk, no external account wanted), so the job skips the scan, warns, and reports green. It is still enrolled, so it reads as a passing gate. Deregistration is a repo-owner handoff (PROJ-147) | — |
+| `OSV scan of the dependency lockfile` | HIGH+ advisories in `package-lock.json` from the **OSV** database — a genuinely different source than npm's, which is the point of a second opinion. Pinned, checksum-verified CLI, so it needs no GitHub feature, account, or secret. Covers **more packages** than `npm audit` (all 1133 lockfile entries incl. dev) at the **same** severity threshold: osv-scanner itself has none and exits on any finding, so `scripts/osv-gate/` draws it at CVSS ≥ 7.0 or label HIGH/CRITICAL. **Runs on every PR, not yet enrolled** — PROJ-147 | `npm run check:osv-gate -- <report.json>` |
 | `Verify SELECT columns vs migration schema` | schema drift — a `.select()` naming a column no migration creates | `npm run check:schema-drift` |
 | `Verify migration filename naming + version-prefix uniqueness` | migration version collisions / malformed names | `npm run check:migration-naming` |
 | `Verify lifecycle status vs deployment scope in features/INDEX.md` | a `Deployed` row without a scope, a pre-deployment row carrying one, `Deployed + superseded`, an invented scope value, or a row whose cell count is wrong because a prose `\|` was left unescaped | `npm run check:index-scope` |
