@@ -20,9 +20,13 @@ hält den *mutierenden* Durchlauf durch die deployte Vercel-Laufzeit für eine V
 `full`. Die Regel verlangt „production behavior is verified" und nennt „API/RPC/RLS tests, UI/E2E
 checks, production smoke" als taugliche Nachweise; ausgeschlossen ist der Auth-Redirect **allein** —
 der ist hier nicht die Grundlage. Der zusätzliche Kombinationsdurchlauf (deployte Laufzeit + Prod-DB)
-ist damit zusätzliche Absicherung und als **PROJ-Y-145a** registriert, kein unerfülltes Kriterium.
+war damit zusätzliche Absicherung, kein unerfülltes Kriterium — und ist **inzwischen ausgeführt,
+8/8 PASS** (Abschnitt „Mutierender Durchlauf gegen die deployte Runtime"). Er lag zum Zeitpunkt
+dieser Klassifikation bereits vor, war aber beim Aufbau der Scope-Spalte übersehen worden, weil nur
+der frühere von zwei Commits derselben Lane übernommen wurde. Die Scope-Entscheidung bleibt davon
+unberührt; die Begründung steht jetzt auf beiden Beinen.
 **Created:** 2026-08-11
-**Last Updated:** 2026-08-12 (getaggt + Post-Deploy-Smoke grün; F-8 geschlossen: der Browser-Durchlauf ist über PROJ-Y-144d bewiesen, 3/3 chromium; 0 Critical/0 High, keine offenen AC)
+**Last Updated:** 2026-08-13 (mutierender Prod-Runtime-Durchlauf 8/8 nachgetragen → PROJ-Y-145a erledigt; Scope `full` unverändert)
 
 ## Summary
 
@@ -863,16 +867,43 @@ ein Auth-Redirect allein laut Regel **kein** funktionaler Nachweis ist:
 Der letzte Punkt ist kein Formalismus: wäre das Modul beim Kunden aus, wäre „deployed" wahr und
 gleichzeitig wertlos, weil niemand die Fläche erreichen könnte. Das war vorher nirgends geprüft.
 
-**Verbleibende Lücke, ausdrücklich benannt:** ein *mutierender* Durchlauf durch die deployte
-Vercel-Runtime fehlt. Bewiesen sind Datenebene (Pentest 17/17 gegen die Prod-Datenbank), Kette im
-Browser (3/3 gegen dieselbe Prod-Datenbank) und ein fehlerfreies Prod-Deployment desselben
-Bundles — nicht aber, dass die ausgelieferten Serverless-Funktionen den Schreibpfad ausführen.
-Ein Prüfskript dafür ist geschrieben (Diktat → Entwurf → Bestätigen mit korrigiertem Titel →
-Doppelklick-Abweisung gegen die Produktions-URL, bewusst im Assistant-**Test**mandanten:
-dasselbe Bundle bedient alle Mandanten, damit ist die Runtime-Frage beantwortet, ohne in
-Kundendaten zu schreiben oder ein fremdes Konto zu übernehmen). Die Ausführung scheiterte an
-einem Werkzeug-Ausfall in der Session, nicht an einem Befund. Beim Upgrade auf Scope `full` ist
-sie nachzuholen.
+### Mutierender Durchlauf gegen die deployte Runtime — 8/8 PASS (2026-08-12)
+
+Die oben zunächst als offen notierte Lücke ist **geschlossen**. Sie war es schon am selben Tag um
+16:25 (Commit `bb55ded` der Schwester-Lane); der Nachtrag darüber und der `PROJ-Y-145a`-Eintrag
+entstanden aus einem älteren Stand derselben Lane (`d918058`, 16:09), in dem die Ausführung noch an
+einem Werkzeug-Ausfall gescheitert war. Diese Reihenfolge ist an den Commit-Zeitstempeln geprüft,
+nicht erschlossen — nachgetragen, weil beim Aufbau der Scope-Spalte nur der frühere Commit
+übernommen wurde.
+
+Gefahren gegen `https://projektplattform-v3.vercel.app`, also gegen die **ausgelieferten
+Serverless-Funktionen**, mit der Session des E2E-Nutzers und bewusst im
+Assistant-**Test**mandanten: dasselbe Bundle bedient alle Mandanten, damit ist die Runtime-Frage
+beantwortet, ohne in Kundendaten zu schreiben oder ein fremdes Konto zu übernehmen.
+
+| # | Prüfung | Ergebnis |
+|---|---|---|
+| A | Diktat erzeugt Entwurf | HTTP 200, `intent=work_item_create_draft` |
+| B | Methode Scrum → Art `story` (Abbildung in Prod aktiv) | `target_kind=story` |
+| C | Bestätigung wird verlangt | `requires_confirmation=true` |
+| D | Entwurf erscheint in der nutzer-privaten Liste | HTTP 200, 1 Entwurf |
+| E | Bestätigung legt Work-Item an | **HTTP 201** |
+| F | korrigierter Titel ist angekommen | Titel = korrigierte Fassung, nicht die diktierte |
+| G | Art bleibt `story` | `kind=story` |
+| H | zweite Bestätigung wird abgewiesen | **HTTP 409** `draft_not_open` |
+
+E/F/G sind der Kern: die deployte Runtime führt den **Schreibpfad** aus, und die Korrektur am Titel
+wirkt bis in die persistierte Zeile. H beweist den Doppelklick-Schutz dort, wo er zählt.
+
+Anschließend restlos aufgeräumt: Work-Item, Entwurf, Sitzung und Aktions-Events des Test-Mandanten
+gelöscht, per Gegenabfrage auf **0** geprüft (fünf Tabellen). `audit_log_entries` blieb
+unangetastet — seit PROJ-130-α append-only.
+
+**Wirkung auf die Scope-Begründung:** `full` stand schon vorher am Regeltext (Pentest gegen die
+Prod-DB, E2E-Kette, Produktions-Smoke sind laut Regel taugliche Nachweise). Dieser Lauf macht die
+Begründung unabhängig von jener Auslegung: das Produktionsverhalten ist jetzt auch in der
+Kombination *deployte Laufzeit + Prod-Datenbank* funktional verifiziert. **PROJ-Y-145a** ist damit
+erledigt, nicht offen.
 
 **Nebenbefund:** die Version `v2.52.0` ist doppelt belegt (parallele Lane hat zeitgleich
 `v2.52.0-PROJ-Y-130n` getaggt). Das ist im Bestand geübte Praxis bei parallelen Lanes
