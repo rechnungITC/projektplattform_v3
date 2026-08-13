@@ -71,6 +71,43 @@ Die Route-Tests mocken `@/lib/reports/puppeteer-render`, ein grüner Testlauf sa
 
 **Ergebnis:** 8134 Bytes, gültiger `%PDF-`-Header, exit 0. Alle in `puppeteer-render.ts` benutzten Aufrufe existieren und verhalten sich unverändert.
 
+### Nachtrag 2026-08-13 — gegen das **echte Prod-Binary**, 17/17, und als Skript committet
+
+Zwei Dinge waren an der Fassung oben verbesserungsfaehig; beide sind jetzt erledigt.
+
+**1. Die Praemisse von D-146.2 traf nicht zu.** Dort stand, das Binary von `@sparticuz/chromium` sei
+fuer Amazon Linux 2023 gebaut und auf dem WSL-Host nicht lauffaehig, weshalb die Lambda-Seite der
+Schnittstelle lokal nicht pruefbar sei. Nachgemessen statt angenommen: `await
+chromium.executablePath()` entpackt nach `/tmp/chromium` (196.676.728 Bytes) und **startet** —
+`browser.version()` meldet ueber CDP `HeadlessChrome/147.0.7727.0`. Der Render ist damit nicht mehr
+nur gegen ein *fremdes* Chromium aus dem Playwright-Cache bewiesen, sondern gegen **genau das Binary,
+das auf Vercel laeuft**, mit `chromium.args` als Argumentsatz. Die Annahme duerfte von der
+Lambda-Zielplattform des Pakets herruehren; das Binary selbst ist ein gewoehnliches linux-x64-Chromium.
+
+**2. Der Nachweis war ein Einwegskript.** Genau daran ist PROJ-142 gescheitert: ein gemockter Parser
+ueberlebte einen Major-Sprung, weil niemand die echte Bibliothek fuhr. Der Durchlauf lebt jetzt als
+`npm run verify:pdf-render` im Repo (`scripts/verify-pdf-render.mjs`), damit der naechste
+`puppeteer-core`- oder `@sparticuz/chromium`-Bump nicht still durchrutscht.
+
+Abgedeckt sind jetzt **alle 17** Aufrufstellen statt 9. Neu gegenueber oben sind `browser.version()`
+ueber CDP, `page.evaluate(asyncFn, arg)` in der Form von `waitForPageAssets`, die `margin`-Option, der
+Rueckgabetyp `Uint8Array` (den der Supabase-Upload frisst) und vor allem die **HTTP-Verzweigungen**:
+der Produktivcode wirft bei `!response` und bei `!response.ok()`, was nur gegen einen echten
+HTTP-Server pruefbar ist — eine `data:`-URL liefert dort `null`. Verifiziert mit lokalem Server:
+`response.ok()`/`status()` = 200 auf der Druckseite, sauber erkannter **404** auf der Fehlerroute, und
+der ueber `setExtraHTTPHeaders` gesetzte Cookie kam serverseitig wirklich an.
+
+**Ergebnis:** 17/17 PASS, PDF 14.339 Bytes mit `%PDF-`-Magic. **Pruefstand gegengeprueft, nicht nur
+gruen:** Selektor auf ein nicht existierendes Attribut gedreht → `FAIL … Waiting for selector failed`,
+exit 1; danach zurueck → wieder 17/17. Ohne diese Gegenprobe waere „17/17" keine Aussage.
+
+Bewusst **ausserhalb** von CI und der Unit-Suite: das Skript entpackt ~190 MB und startet einen
+Browser. Es ist zum absichtlichen Aufruf gedacht, im Datei-Kopf so dokumentiert.
+
+**Was das an der Restarbeit aendert:** die lokale Haelfte von D-146.2 ist geschlossen — offen bleibt
+allein ein Snapshot-PDF *innerhalb* der ausgelieferten Serverless-Funktion (PROJ-Y-146a), nicht mehr
+die Lauffaehigkeit des Binaries.
+
 ## Nebeneffekt: kleinerer Angriffsfläche
 
 Der Wechsel entfernt neben `extract-zip` auch den `proxy-agent`-Teilbaum (`pac-proxy-agent`, `socks-proxy-agent`, `get-uri`, …), den `@puppeteer/browsers@2` mitzog: **–468 Lockfile-Zeilen gegen +184**. Weniger transitive Prod-Abhängigkeiten ist bei einem Supply-Chain-Slice ein erwünschter, kein zufälliger Ausgang.
@@ -78,7 +115,7 @@ Der Wechsel entfernt neben `extract-zip` auch den `proxy-agent`-Teilbaum (`pac-p
 ## Abgrenzung / Deviations
 
 - **D-146.1** — Major-Bump statt Patch. Unvermeidbar: der Advisory-Bereich reicht bis zur letzten 24.x (`24.43.1`), eine In-Range-Korrektur existiert nicht. Risiko durch die schmale, stabile API-Fläche (10 Aufrufe) und den echten Render-Nachweis begrenzt.
-- **D-146.2** — Kein Nachweis gegen `@sparticuz/chromium` in der Lambda-Umgebung: dessen Binary ist für Amazon Linux 2023 gebaut und auf dem WSL-Host nicht lauffähig. `@sparticuz/chromium` liefert nur `args` + `executablePath`; die puppeteer-Seite dieser Schnittstelle ist durch AC-146.5 abgedeckt. Post-Deploy ist die Snapshot-PDF-Erzeugung einmal produktiv zu prüfen.
+- **D-146.2** — ~~Kein Nachweis gegen `@sparticuz/chromium` in der Lambda-Umgebung: dessen Binary ist für Amazon Linux 2023 gebaut und auf dem WSL-Host nicht lauffähig.~~ **Korrigiert 2026-08-13 (siehe Nachtrag unter AC-146.5):** die Prämisse traf nicht zu — das Binary entpackt (196.676.728 Bytes) und startet auf diesem Host, `browser.version()` meldet `HeadlessChrome/147.0.7727.0`. Der Render ist gegen **genau das Prod-Binary** mit `chromium.args` verifiziert, 17/17. Rest-Lücke präzise: nicht das Binary, sondern der Lauf *innerhalb* der ausgelieferten Serverless-Funktion. `@sparticuz/chromium` liefert nur `args` + `executablePath`; die puppeteer-Seite dieser Schnittstelle ist durch AC-146.5 abgedeckt. Post-Deploy ist die Snapshot-PDF-Erzeugung einmal produktiv zu prüfen.
 - **D-146.3** — Der aus PROJ-140 stammende Risk-Accept für `@hono/node-server` (moderate, Windows-only) bleibt unverändert bestehen; `--audit-level=high` berührt ihn nicht.
 
 ## Definition of Done
@@ -90,4 +127,6 @@ Der Wechsel entfernt neben `extract-zip` auch den `proxy-agent`-Teilbaum (`pac-p
 - [x] PDF-Renderer real ausgeführt
 - [x] Merge nach `main`, Required-Checks grün (#364 → `1cbdc4b`; `npm audit` auf `main` von exit 1 auf success)
 - [x] Vercel-Prod-Build + -Deploy von `main` mit der neuen Major-Version erfolgreich
-- [ ] Post-Deploy: eine Snapshot-PDF-Erzeugung produktiv geprüft — **zusätzliche Absicherung, kein offenes AC** (D-146.2) → **PROJ-Y-146a**
+- [x] Render gegen das **echte Prod-Binary** (`@sparticuz/chromium`, `HeadlessChrome/147.0.7727.0`) verifiziert, 17/17 — schließt die lokale Hälfte von D-146.2
+- [x] Nachweis reproduzierbar committet als `npm run verify:pdf-render` (statt Einwegskript)
+- [ ] Post-Deploy: eine Snapshot-PDF-Erzeugung *innerhalb der deployten Funktion* produktiv geprüft — **zusätzliche Absicherung, kein offenes AC** (D-146.2) → **PROJ-Y-146a**
