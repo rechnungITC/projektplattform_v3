@@ -112,10 +112,74 @@ die Lauffaehigkeit des Binaries.
 
 Der Wechsel entfernt neben `extract-zip` auch den `proxy-agent`-Teilbaum (`pac-proxy-agent`, `socks-proxy-agent`, `get-uri`, …), den `@puppeteer/browsers@2` mitzog: **–468 Lockfile-Zeilen gegen +184**. Weniger transitive Prod-Abhängigkeiten ist bei einem Supply-Chain-Slice ein erwünschter, kein zufälliger Ausgang.
 
+### PROJ-Y-146a erledigt 2026-08-13 — Render **innerhalb der deployten Funktion**, 13/13
+
+Die letzte offene Zeile der Definition of Done. Bewiesen ist jetzt nicht mehr nur die Bibliothek und
+das Binary, sondern dass die **ausgelieferte Serverless-Funktion** den Schreibpfad ausführt.
+
+**Nachweiskette, an Zeitstempeln verankert statt erschlossen:**
+
+| Glied | Belegt durch |
+|---|---|
+| Produktions-Deployment `542f412` | GitHub-Deployment `Production`, `state=success`, 10:23:32Z |
+| Dieses Deployment enthält den Bump | `git merge-base --is-ancestor 1cbdc4b 542f412` → ja; `542f412:package.json` pinnt `puppeteer-core: ^25.6.0` |
+| Der Lauf fand **danach** statt | Probe-Fenster 10:26:10–10:26:27Z bzw. 10:30:29–10:30:37Z |
+
+Damit hängt das Ergebnis nachweislich an `puppeteer-core@25`, nicht an einer alten Instanz — genau die
+Lücke, die ein bloßes „hat funktioniert“ offen gelassen hätte.
+
+**Ergebnis:** `POST /api/projects/{id}/snapshots` gegen `https://projektplattform-v3.vercel.app` →
+**HTTP 200**, `pdf_status='available'`, PDF **33.190 Bytes** mit `%PDF-`-Magic im `reports`-Bucket, in
+der Datenbank gegengeprüft. Zweimal unabhängig gefahren (11,9 s / 13,3 s Kaltstart), zweiter Lauf
+**13/13 PASS**.
+
+**Warum die Prüfung nicht leerlaufen kann:** die Route fängt einen Render-Fehler und setzt
+`pdf_status='failed'` (`snapshots/route.ts`, catch-Zweig) — `'available'` ist also nur erreichbar,
+wenn die Funktion Chromium wirklich gestartet, die Druckseite über HTTP geholt und ein PDF erzeugt
+hat. Zusätzlich verlangt die Probe das Objekt im Bucket, die `%PDF-`-Magic und die Übereinstimmung mit
+der Datenbank, statt der Antwort zu glauben.
+
+**Kundendaten unberührt:** die Probe legt einen eigenen Wegwerf-Mandanten mit aktivem
+`output_rendering` an, statt das Modul auf einem geteilten E2E-Mandanten umzuschalten (Begründung wie
+PROJ-Y-144d: geteilter Fixture-Zustand kollidiert mit parallel laufenden Specs). Gegenprobe nach dem
+Aufräumen: `report_snapshots` über **alle** Mandanten = 10, also exakt der Bestand des
+Produktivmandanten von vor dem Lauf — es ist dort kein 11. Snapshot entstanden. Die geteilte
+E2E-Identität ist wieder bei genau 2 Mitgliedschaften.
+
+Reproduzierbar als `scripts/verify-prod-snapshot-render.mts`, **ohne** npm-Alias und hinter
+`PROD_WRITE_ACK=1`, damit niemand beim Testlauf hineinstolpert.
+
+#### Zwei Nebenbefunde, die der Lauf zutage gebracht hat
+
+**1. Ein Mandant lässt sich nicht hart löschen.** `enforce_admin_invariant` feuert BEFORE DELETE auf
+den letzten Admin — und weil `tenant_memberships.tenant_id` mit `ON DELETE CASCADE` hängt, bricht
+damit auch das Löschen des **Mandanten selbst** ab. Über die API bzw. `supabase-js` ist der Teardown
+also unmöglich; die letzten zwei Zeilen brauchen eine SQL-Sitzung mit
+`session_replication_role = replica`. Kein Produktfehler (Offboarding läuft über PROJ-17, nicht über
+Hard-Delete), aber eine Falle für jede Wegwerf-Fixture in Produktion → dokumentiert in
+**PROJ-Y-146b**. Das Skript räumt alles Räumbare weg, meldet die zwei Zeilen ehrlich und druckt das
+fertige SQL.
+
+**2. Test-Rauschen im Audit-Trail ist nicht kostenlos.** Der Trail ist seit PROJ-130-α append-only und
+sein Mandanten-FK entkoppelt — die Zeilen überleben den gelöschten Mandanten. Der erste Lauf hinterließ
+**8** permanente Zeilen. Gegenmaßnahme aus PROJ-Y-130h angewandt und **gemessen, nicht behauptet**:
+`tenants.audit_lifecycle_exempt = true` direkt nach der Mandanten-Anlage senkt den zweiten Lauf auf
+**5**. Der Rest ist strukturell unvermeidbar und erklärt sich an den Zeitstempeln: `tenants.__created`
+und `tenant_settings.__created` tragen **dieselbe** Zeit — die Settings-Zeile wird per Trigger bei der
+Mandanten-Anlage mitgelegt, beide also zwangsläufig *vor* dem Flag; dazu die Feld-Audits
+`audit_lifecycle_exempt` und `active_modules`, die das Flag bewusst **nicht** unterdrückt (wer die
+Ausnahme setzt, soll seine Spur nicht verwischen können), und `report_snapshots.snapshot_created` —
+das ist der Geschäftsvorfall, den wir gerade prüfen wollten. Wichtig für künftige Fixtures: das Flag
+wird **nicht** aus dem `[E2E]`-Namenspräfix abgeleitet, es muss gesetzt werden.
+
+**An der Einordnung ändert sich nichts:** PROJ-146 bleibt `Deployed` / `full`. Der Lauf war als
+zusätzliche Absicherung registriert, nicht als unerfülltes Kriterium — er macht die Begründung nur
+unabhängig von der Regeltext-Auslegung, über die PROJ-144/PROJ-Y-145a am Vortag entschieden wurde.
+
 ## Abgrenzung / Deviations
 
 - **D-146.1** — Major-Bump statt Patch. Unvermeidbar: der Advisory-Bereich reicht bis zur letzten 24.x (`24.43.1`), eine In-Range-Korrektur existiert nicht. Risiko durch die schmale, stabile API-Fläche (10 Aufrufe) und den echten Render-Nachweis begrenzt.
-- **D-146.2** — ~~Kein Nachweis gegen `@sparticuz/chromium` in der Lambda-Umgebung: dessen Binary ist für Amazon Linux 2023 gebaut und auf dem WSL-Host nicht lauffähig.~~ **Korrigiert 2026-08-13 (siehe Nachtrag unter AC-146.5):** die Prämisse traf nicht zu — das Binary entpackt (196.676.728 Bytes) und startet auf diesem Host, `browser.version()` meldet `HeadlessChrome/147.0.7727.0`. Der Render ist gegen **genau das Prod-Binary** mit `chromium.args` verifiziert, 17/17. Rest-Lücke präzise: nicht das Binary, sondern der Lauf *innerhalb* der ausgelieferten Serverless-Funktion. `@sparticuz/chromium` liefert nur `args` + `executablePath`; die puppeteer-Seite dieser Schnittstelle ist durch AC-146.5 abgedeckt. Post-Deploy ist die Snapshot-PDF-Erzeugung einmal produktiv zu prüfen.
+- **D-146.2** — ~~Kein Nachweis gegen `@sparticuz/chromium` in der Lambda-Umgebung: dessen Binary ist für Amazon Linux 2023 gebaut und auf dem WSL-Host nicht lauffähig.~~ **Korrigiert 2026-08-13 (siehe Nachtrag unter AC-146.5):** die Prämisse traf nicht zu — das Binary entpackt (196.676.728 Bytes) und startet auf diesem Host, `browser.version()` meldet `HeadlessChrome/147.0.7727.0`. Der Render ist gegen **genau das Prod-Binary** mit `chromium.args` verifiziert, 17/17. Rest-Lücke präzise: nicht das Binary, sondern der Lauf *innerhalb* der ausgelieferten Serverless-Funktion. `@sparticuz/chromium` liefert nur `args` + `executablePath`; die puppeteer-Seite dieser Schnittstelle ist durch AC-146.5 abgedeckt. ~~Post-Deploy ist die Snapshot-PDF-Erzeugung einmal produktiv zu prüfen.~~ **Erledigt 2026-08-13 (PROJ-Y-146a, 13/13):** Render innerhalb der deployten Funktion bewiesen, an das Deployment `542f412` zeitlich gebunden. D-146.2 ist damit vollständig geschlossen.
 - **D-146.3** — Der aus PROJ-140 stammende Risk-Accept für `@hono/node-server` (moderate, Windows-only) bleibt unverändert bestehen; `--audit-level=high` berührt ihn nicht.
 
 ## Definition of Done
@@ -129,4 +193,5 @@ Der Wechsel entfernt neben `extract-zip` auch den `proxy-agent`-Teilbaum (`pac-p
 - [x] Vercel-Prod-Build + -Deploy von `main` mit der neuen Major-Version erfolgreich
 - [x] Render gegen das **echte Prod-Binary** (`@sparticuz/chromium`, `HeadlessChrome/147.0.7727.0`) verifiziert, 17/17 — schließt die lokale Hälfte von D-146.2
 - [x] Nachweis reproduzierbar committet als `npm run verify:pdf-render` (statt Einwegskript)
-- [ ] Post-Deploy: eine Snapshot-PDF-Erzeugung *innerhalb der deployten Funktion* produktiv geprüft — **zusätzliche Absicherung, kein offenes AC** (D-146.2) → **PROJ-Y-146a**
+- [x] Post-Deploy: Snapshot-PDF-Erzeugung *innerhalb der deployten Funktion* produktiv geprüft — **13/13**, HTTP 200 / `pdf_status='available'` / 33.190 Bytes mit `%PDF-`-Magic, an Deployment `542f412` gebunden, Kundendaten unberührt (PROJ-Y-146a erledigt)
+- [x] Probe reproduzierbar committet (`scripts/verify-prod-snapshot-render.mts`, hinter `PROD_WRITE_ACK=1`, kein npm-Alias)
