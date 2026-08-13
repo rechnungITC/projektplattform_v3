@@ -50,6 +50,50 @@ Mandanten ohne Ausnahme wäre damit **unwiderruflich** (im Alt-Mandanten greift
 `tenants.audit_lifecycle_exempt` aus PROJ-Y-130h; für neue Fixture-Mandanten muss das bewusst gesetzt
 werden, sonst sammelt sich Rauschen dauerhaft im Compliance-Artefakt).
 
+## Sofortmaßnahme 2026-08-13 — Ausnahmeflag für die zwei neueren Fixture-Mandanten
+
+Der obige Absatz beschrieb die Gefahr; eine Messung am selben Tag zeigte, dass sie bereits eingetreten
+war. `audit_lifecycle_exempt` wird **nicht** aus dem `[E2E]`-Präfix abgeleitet (PROJ-Y-146b, Runbook
+`docs/production/prod-test-fixtures.md`) — die beiden älteren Fixture-Mandanten trugen es, die beiden
+**neueren** nicht, weil es nichts zu erben gibt:
+
+| Mandant | exempt (vorher) | Audit-Zeilen | davon Lifecycle |
+|---|---|---|---|
+| `IT-Couch GmbH` (Produktiv) | false | 443 | 2 |
+| `[E2E]` Alt (`…0e20`) | true | 41 | 0 |
+| `[E2E]` Fixture (`…0002`) | true | 30 | 7 |
+| `[E2E] Assistant Test` (`…0004`, PROJ-Y-144d) | **false** | 33 | **32** |
+| `[E2E] Visual-Regression Workspace` (`…0007`, PROJ-Y-143l) | **false** | 8 | **4** |
+
+Beim Assistant-Mandanten waren **32 von 33** Audit-Zeilen reines Testrauschen. Da `audit_log_entries`
+seit PROJ-130-α append-only ist und sein Mandanten-FK entkoppelt wurde, überleben diese Zeilen sogar
+das Löschen ihres Mandanten — Warten ist hier die *unumkehrbare* Richtung, das Setzen des Flags die
+umkehrbare. Deshalb nach ausdrücklicher Freigabe sofort gesetzt statt auf die Richtungsentscheidung
+dieser Slice zu warten:
+
+```sql
+update tenants set audit_lifecycle_exempt = true
+where id in ('e2e00000-…-0004','e2e00000-…-0007')
+  and name like '[E2E]%'
+  and domain like 'e2e-%.projektplattform-v3.test'
+  and audit_lifecycle_exempt = false;
+```
+
+Die drei Schutzbedingungen sind bewusst redundant zur ID-Liste: der UPDATE konnte den
+Produktivmandanten strukturell nicht treffen, auch bei falsch abgeschriebener UUID. Verifiziert
+danach: alle vier `[E2E]`-Mandanten `true`, `IT-Couch GmbH` unverändert `false` mit **0** Audit-Zeilen
+zum Flag. Jede der vier Flag-Setzungen hat genau **eine** Feld-Audit-Zeile erzeugt — so gewollt: wer
+die Ausnahme setzt, kann seine eigene Spur nicht verwischen (PROJ-Y-130h).
+
+**Damit ist `AC-Y143o.5` für den Bestand erfüllt**; offen bleibt der strukturelle Teil — dass ein
+*künftiger* Fixture-Mandant das Flag wieder nicht erbt. Das gehört in die Richtungsentscheidung unten.
+Die Bestandszeilen (7 + 32 + 4) sind nicht rückholbar und bleiben stehen.
+
+Nebenbefund, nicht in dieser Slice behandelt: `audit_lifecycle_exempt` ist an keine Test-Kennung
+gebunden — kein `CHECK`, kein Trigger. Es lässt sich also auch auf einen echten Mandanten setzen und
+dessen Anlage-/Löschprotokollierung abschalten; nachweisbar, weil die Änderung auditiert wird, aber
+nicht verhindert. Registriert als **PROJ-Y-146c** (PROJ-130-Mechanismus, CIA-pflichtig).
+
 ## Scope
 
 Ursache beheben, nicht erneut aufräumen. Zu klären ist die Richtung:
@@ -82,6 +126,9 @@ entsteht dieselbe Halde neu.
   nach PROJ-Y-143c, `PROJ-144`, `PROJ-Y-122a`).
 - **AC-Y143o.5** — Für jeden Mandanten, in dem E2E-Läufe Objekte anlegen, ist entschieden und
   dokumentiert, ob `tenants.audit_lifecycle_exempt` gesetzt sein soll (PROJ-Y-130h).
+  **Bestand erfüllt 2026-08-13** (siehe „Sofortmaßnahme"): alle vier `[E2E]`-Mandanten tragen das Flag,
+  der Produktivmandant nicht. **Strukturell offen**: ein künftiger Fixture-Mandant erbt es weiterhin
+  nicht — die gewählte Richtung muss das Setzen erzwingen oder prüfbar machen.
 
 ## Wechselwirkungen
 
