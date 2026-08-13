@@ -21,7 +21,8 @@
     "audit:prod": "npm audit --omit=dev --audit-level=high",
     "check:schema-drift": "tsx scripts/check-schema-drift/index.ts",
     "check:migration-naming": "tsx scripts/check-migration-naming/index.ts",
-    "check:index-scope": "tsx scripts/check-index-scope/index.ts"
+    "check:index-scope": "tsx scripts/check-index-scope/index.ts",
+    "verify:pdf-render": "node scripts/verify-pdf-render.mjs"
   },
   "dependencies": {
     "@ai-sdk/anthropic": "^3.0.72",
