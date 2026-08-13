@@ -46,6 +46,10 @@ export const workItemCreateSchema = z.object({
     .optional(),
   // PROJ-102 — workstream FK (M&A grouping; replaces the attributes.ma_workstream tag).
   workstream_id: z.string().uuid().nullable().optional(),
+  // PROJ-45-α — construction axes. Additive and optional: non-construction
+  // projects never send them and behave exactly as before.
+  trade_id: z.string().uuid().nullable().optional(),
+  section_id: z.string().uuid().nullable().optional(),
   attributes: z.record(z.string(), z.unknown()).optional(),
   position: z.number().optional(),
   created_from_proposal_id: z.string().uuid().nullable().optional(),
@@ -94,6 +98,10 @@ export const workItemPatchSchema = z
       .optional(),
     // PROJ-102 — workstream FK (M&A grouping).
     workstream_id: z.string().uuid().nullable().optional(),
+  // PROJ-45-α — construction axes. Additive and optional: non-construction
+  // projects never send them and behave exactly as before.
+  trade_id: z.string().uuid().nullable().optional(),
+  section_id: z.string().uuid().nullable().optional(),
   })
   .refine((v) => Object.keys(v).length > 0, {
     message: "At least one field required.",

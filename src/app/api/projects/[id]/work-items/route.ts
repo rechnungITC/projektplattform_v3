@@ -94,6 +94,9 @@ export async function GET(
   const dueAfterParam = url.searchParams.get("due_after")
   const dueBeforeParam = url.searchParams.get("due_before")
   const includeDeleted = url.searchParams.get("include_deleted") === "true"
+  // PROJ-45-α — construction axes.
+  const tradeParam = url.searchParams.get("trade_id")
+  const sectionParam = url.searchParams.get("section_id")
 
   const DATE_RE = /^\d{4}-\d{2}-\d{2}$/
 
@@ -139,6 +142,41 @@ export async function GET(
       return apiError("validation_error", "Invalid phase_id.", 400, "phase_id")
     }
     query = query.eq("phase_id", phaseParam)
+  }
+  if (tradeParam) {
+    if (!z.string().uuid().safeParse(tradeParam).success) {
+      return apiError("validation_error", "Invalid trade_id.", 400, "trade_id")
+    }
+    query = query.eq("trade_id", tradeParam)
+  }
+  if (sectionParam) {
+    if (!z.string().uuid().safeParse(sectionParam).success) {
+      return apiError("validation_error", "Invalid section_id.", 400, "section_id")
+    }
+    // AC-45.20: a section filter includes its descendants. The materialised
+    // ltree path makes that a prefix match instead of a recursive walk; we
+    // resolve the id set first so the work-item query stays a plain `in`.
+    const { data: anchorSection } = await supabase
+      .from("construction_sections")
+      .select("path")
+      .eq("id", sectionParam)
+      .eq("project_id", projectId)
+      .maybeSingle()
+
+    const anchorPath = (anchorSection as { path?: string | null } | null)?.path
+    if (!anchorPath) {
+      return apiError("validation_error", "Unknown section_id.", 400, "section_id")
+    }
+
+    const { data: subtree } = await supabase
+      .from("construction_sections")
+      .select("id")
+      .eq("project_id", projectId)
+      .or(`path.eq.${anchorPath},path.like.${anchorPath}.%`)
+      .limit(2000)
+
+    const ids = (subtree ?? []).map((row) => (row as { id: string }).id)
+    query = query.in("section_id", ids.length > 0 ? ids : [sectionParam])
   }
   if (dueAfterParam) {
     if (!DATE_RE.test(dueAfterParam)) {

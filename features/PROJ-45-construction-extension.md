@@ -1,6 +1,6 @@
 # PROJ-45: Construction Extension — Gewerke & Bauabschnitte
 
-## Status: Architected
+## Status: In Progress
 ## Deployment Scope: —
 
 **Created:** 2026-05-06
@@ -206,10 +206,63 @@ Compliance-Tags hinaus · mobiles Offline-Bautagebuch · Aufmaß- und Leistungsv
 
 | Fork | Entscheidung | Grundlage |
 |---|---|---|
-| **Q1** Standard-Gewerke vorbefüllen? | **Ja**, VOB/C-nahe Standardliste als Lazy-Seed beim ersten Katalogaufruf; alles umbenennbar und deaktivierbar. | Nutzer-Entscheid. Muster: `seed_risk_categories_if_empty` (PROJ-107), `ensure_default_ma_project_templates` (PROJ-96). In Produktion existieren bereits 3 Bauprojekte — ein leerer Katalog wäre der erste Eindruck. |
+| **Q1** Standard-Gewerke vorbefüllen? | **Ja**, VOB/C-nahe Standardliste als Lazy-Seed beim ersten Katalogaufruf; alles umbenennbar und deaktivierbar. | Nutzer-Entscheid. Muster: `seed_risk_categories_if_empty` (PROJ-107), `ensure_default_ma_project_templates` (PROJ-96). **Korrektur zur ersten Begründung:** dort stand „in Produktion existieren bereits 3 Bauprojekte". Beim Live-Smoke stellte sich heraus, dass **alle drei weich gelöscht** sind („Wasserfall 1", „enablence.ai", „Test" — Testreste im Papierkorb); es gibt **kein einziges lebendes Bauprojekt**. Der Entscheid bleibt, seine ursprüngliche Stütze war falsch. Der erste echte Pilot startet also auf grüner Wiese — was für den Seed spricht, nicht dagegen. |
 | **Q2** `workstreams` generalisieren? | **Nein — spiegeln (Option B).** Eigene Bau-Tabellen nach dem PROJ-112/102-Rezept. | CIA-Review 2026-08-13, Nutzer bestätigt. Tragender Grund unten. |
 | **Q3** Matrix Gewerk × Abschnitt? | **Später.** α liefert zwei Achsen + Filter; die Kreuzansicht wird erst mit Mängeln (β) und Abnahmen (γ) inhaltsvoll. | Nutzer-Entscheid. Reine Darstellung, nachlegbar ohne Modelländerung. |
 | **Q4** Modulschnitt | **Ein Schalter `construction`** für die ganze Extension. | Nutzer-Entscheid, CIA-konform: feinere Schalter erzeugen Kombinationen, die weder Test noch QA vollständig abdecken. |
+
+---
+
+## Implementierungsnotizen — /backend α (2026-08-13)
+
+**Datenbank live in Prod.** Zwei Migrationen: `20260813131238_proj45_alpha_construction_trades_sections`
+(4 Tabellen + 3 additive Verweise + 4 Guard-Trigger + 14 Policies + Register-Eingriffe + Lazy-Seed mit
+18 VOB/C-nahen Gewerken) und `20260813131346_proj45_alpha_work_items_audit_fix` (Fix-forward, siehe unten).
+Beide Dateinamen tragen die **registrierte Prod-Version** — der MCP vergab je einen eigenen Zeitstempel,
+die Dateien wurden nach PROJ-134 nachbenannt.
+
+**Eigener Fehler, von der Verifikation gefangen.** Die erste Migration erweiterte den `risks`-Zweig der
+Audit-Whitelist korrekt, den `work_items`-Zweig aber **nicht**: die Wächterbedingung
+`if position('trade_id' in v_def) = 0` kollidierte mit dem kurz zuvor selbst injizierten
+`project_construction_trades`-Zweig, der das Literal `'trade_id'` enthält — die Bedingung war sofort
+falsch, der Patch wurde stillschweigend übersprungen. Ein Umhängen zwischen Gewerken wäre unprotokolliert
+geblieben (AC-45.11 / Auflage A-2 nur halb erfüllt). Der `risks`-Block war korrekt, weil er auf die
+**präzise Zweigform** ankerte statt auf das nackte Literal. Fix-forward mit demselben präzisen Anker.
+Lehre: ein Anker darf nie auf Text prüfen, den dieselbe Migration selbst schreibt.
+
+**Zweiter Abbruch, ebenfalls gewollt:** der erste Anwendungsversuch brach mit
+„entity_type CHECK anchor not found — refusing to guess" ab. Die Constraint rendert als
+`ARRAY['x'::text, …])))`, nicht in der `]::text[]`-Form der Funktion. Nichts landete teilweise (atomar
+zurückgerollt, an 0 `construction*`-Tabellen verifiziert). Anker und Delta-Zählung korrigiert, lesend
+gegen die Live-Definition getestet (88 → 91), dann angewendet.
+
+**Abweichung von Auflage A-1, belegt statt behauptet.** A-1 verlangte einen Katalog *ohne* Audit nach
+dem `dd_stream_templates`-Muster. Live gemessen ist dieses Muster nicht einheitlich: `dd_stream_templates`
+und `ma_project_templates` tragen kein Audit, **`risk_categories`, `ma_clearance_profiles`,
+`committee_templates` und `organization_units` tragen beides**. Die Trennlinie ist *kopierte Vorlage* vs.
+*referenzierter Katalog* — und L7 macht den Gewerke-Katalog per Konstruktion zu einem referenzierten.
+Ohne Audit könnte niemand rekonstruieren, warum sich eine Bezeichnung in allen Projekten geändert hat.
+Gewählt: `risk_categories`-Muster (Feld-Audit + Lebenszyklus).
+
+**Live-Nachweise gegen Prod, 0 Rückstände:** Funktions-Smoke 10/10 (Pfadtiefe 3, Teilbaum-Filter,
+gleichnamige Geschwister unter verschiedenen Eltern erlaubt, unter demselben blockiert, Zyklus 23514,
+Katalog-Löschsperre, Repath nach Umhängen) und **Pentest 16/16** über alle neun Pflichtvektoren
+(`tests/sql/PROJ-45-construction-trades-sections-pentest.sql`). Tragend darin: der Feld-Audit-Nachweis
+lief unter einem **synthetisierten Nicht-Admin** — `V9c_not_admin=PASS` belegt, dass die Prüffunktion
+nicht kurzgeschlossen hat und der Vektor nicht falsch-grün war.
+
+**M&A unberührt:** `can_access_classified` enthält kein einziges `construction`-Vorkommen, `workstreams`
+hat unverändert 7 Policies, alle Geschwisterzweige der drei geteilten Register namentlich gegengeprüft,
+`can_read_audit_entry` an `authenticated` neu erteilt.
+
+**Gates:** ESLint 0 · tsc 13 = Baseline / 0 neu · Build clean (7 neue Routen registriert) ·
+`check:migration-naming` 0 Fehler · Advisors **0 ERROR** (der einzige slice-bezogene WARN ist die
+`authenticated`-ausführbare Seed-Funktion — beabsichtigt, sie prüft intern selbst auf Mandanten-Admin,
+identisch zu `seed_risk_categories_if_empty`).
+
+**Noch offen in α** (Übergabe an `/qa` bzw. Rest-Backend): Route-Unit-Tests, Client-Wrapper,
+`work_items`/`risks`-Hooks um die neuen Felder erweitern, und die M&A-Regressionspentests
+(PROJ-100a/100b/102/130-γ1) wörtlich nachfahren. Frontend ist eigener Schnitt.
 
 ---
 
