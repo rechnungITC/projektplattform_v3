@@ -210,10 +210,13 @@ ESLint 0 · tsc 13 = Baseline / 0 neu · Build clean.
   weiterhin leer. Der Context-Name ist an vier unabhängigen Stellen identisch belegt (Job-`name:` in
   `index-scope.yml`, `statusCheckRollup` von #362/#363/#364, `check-runs` auf `main`, Ruleset-Eintrag) —
   ein Tippfehler hätte jede künftige PR unmergebar gemacht.
-- **PROJ-Y-145d** — **offen:** derselbe Eintrag für
-  `Verify migration filename naming + version-prefix uniqueness` (PROJ-134s nie eingelöster Handoff,
-  gefunden bei der Ruleset-Arbeit von 145c). Läuft seit PROJ-134 auf jedem PR, blockiert aber nicht —
-  die CLAUDE.md-Tabelle behauptete das Gegenteil und ist jetzt ehrlich annotiert.
+- **PROJ-Y-145d** — ~~derselbe Eintrag für
+  `Verify migration filename naming + version-prefix uniqueness`~~ **erledigt 2026-08-13** auf
+  Nutzer-Entscheid: eingetragen im Ruleset `main protection` (ID 15992143), vorher 4 Checks, jetzt **5**.
+  Löst PROJ-134s F-1-Handoff ein, der seit dem 2026-07-01 offen stand. Diff wieder gegen einen
+  Vorher-Snapshot geprüft (nur der eine Context kam hinzu, die übrigen Regeln byte-identisch), Name
+  vorab doppelt belegt, kein Pfad-Filter, Rauchprobe am eigenen PR #370 grün. Damit trägt die
+  CLAUDE.md-Tabelle **keine** Vorbehalte mehr: jede darin gelistete Zeile ist wirklich eine Sperre.
 
 ## Deployment
 
