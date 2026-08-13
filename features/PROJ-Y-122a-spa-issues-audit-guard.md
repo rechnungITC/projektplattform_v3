@@ -15,6 +15,7 @@ summary_for_jira: "[HYGIENE] spa_issues-Audit-Verdrahtung: fehlende Anchor-Verif
 # PROJ-Y-122a: spa_issues-Audit-Verdrahtung härten
 
 ## Status: Deployed (2026-08-11)
+## Deployment Scope: full
 **Deployed:** 2026-08-11 — PR #316 (squash) → main (`f6d36e0`), Tag `v2.40.0-PROJ-Y-122a`. Migration seit `/backend` in Prod, daher kein Runtime-DB-Change beim Merge; Code-Deploy über Vercel-Auto-Deploy von main. Alle Required-Checks grün — darunter der **Schema-Drift-Guard**, also trägt die Migration auch im Fresh-Replay-Pfad. **Post-Deploy-Smoke gegen Prod, 0 Residue:** `A=PASS B=PASS(rows=1) C=PASS D=PASS admin_shortcircuit=f`. Kein Env/Secret.
 **PROJ-134-Versionsdrift (benign):** in Prod registriert als `20260811061845`, Repo-Dateiname `20260811090000_…`. Die Migration besteht ausschließlich aus `position()`-gegateten DO-Blöcken und Grants, ist also vollständig idempotent → `supabase db push` bricht nicht. Nicht umbenannt, weil die Datei bereits geshippt ist (Präzedenz PROJ-106/131).
 **Created:** 2026-08-11

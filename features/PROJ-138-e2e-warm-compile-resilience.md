@@ -1,6 +1,7 @@
 # PROJ-138: E2E Warm-Compile Resilience & Dev-Server-Wedge Guard (Hygiene-Slice)
 
 ## Status: Deployed
+## Deployment Scope: tooling-only
 **Created:** 2026-06-23
 **Last Updated:** 2026-06-23
 
