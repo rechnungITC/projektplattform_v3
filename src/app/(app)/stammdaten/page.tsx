@@ -1,155 +1,10 @@
 import type { Metadata } from "next"
-import {
-  Building2,
-  ChevronRight,
-  FolderTree,
-  LayoutTemplate,
-  ListChecks,
-  Microscope,
-  Network,
-  ShieldAlert,
-  ShieldCheck,
-  Sparkles,
-  Tags,
-  Users,
-  Users2,
-} from "lucide-react"
-import Link from "next/link"
 
-import {
-  Card,
-  CardContent,
-  CardDescription,
-  CardHeader,
-  CardTitle,
-} from "@/components/ui/card"
+import { StammdatenGrid } from "@/components/master-data/stammdaten-grid"
 
 export const metadata: Metadata = {
   title: "Stammdaten · Projektplattform",
 }
-
-interface Section {
-  href: string
-  icon: React.ComponentType<{ className?: string }>
-  title: string
-  description: string
-  /** True when only tenant_admin can navigate here. UI-only hint;
-   *  server-side admin-gating happens in the API routes. */
-  adminOnly?: boolean
-}
-
-const SECTIONS: Section[] = [
-  {
-    href: "/stammdaten/resources",
-    icon: Users,
-    title: "Ressourcen",
-    description:
-      "Mandantenweiter Pool plannbarer Personen und Parteien. FTE, Verfügbarkeit, Allokationen.",
-  },
-  {
-    href: "/stammdaten/stakeholder",
-    icon: Users2,
-    title: "Stakeholder-Rollup",
-    description:
-      "Tenant-weite Übersicht aller Stakeholder mit Projekt-Beteiligung. Read-only — Pflege bleibt pro Projekt.",
-    adminOnly: true,
-  },
-  {
-    href: "/stammdaten/stakeholder-types",
-    icon: Tags,
-    title: "Stakeholder-Typen",
-    description:
-      "Globale Defaults (Promoter/Supporter/Kritiker/Blockierer) plus eigene Typen pro Tenant — werden im Stakeholder-Form als Dropdown angeboten.",
-    adminOnly: true,
-  },
-  {
-    href: "/stammdaten/projekttypen",
-    icon: FolderTree,
-    title: "Projekttypen",
-    description:
-      "Tenant-spezifische Anpassungen der Standard-Rollen und Pflicht-Infos pro Projekttyp.",
-    adminOnly: true,
-  },
-  {
-    href: "/stammdaten/methoden",
-    icon: ListChecks,
-    title: "Methoden",
-    description:
-      "Aktivieren oder deaktivieren der verfügbaren Projektmethoden pro Tenant. Mindestens eine bleibt aktiv.",
-    adminOnly: true,
-  },
-  {
-    href: "/stammdaten/vendors",
-    icon: Building2,
-    title: "Lieferanten",
-    description:
-      "Mandantenweiter Vendor-Pool mit Bewertungen, Dokumenten-Slots und Projekt-Zuordnungen.",
-  },
-  {
-    href: "/stammdaten/berechtigungsprofile",
-    icon: ShieldCheck,
-    title: "Berechtigungsprofile",
-    description:
-      "Vorgefertigte Need-to-know-Vorlagen (z. B. „DD-Stream Legal voll“). Vergeben beim Anwenden eine Vertraulichkeitsstufe an einen Nutzer im Projekt.",
-    adminOnly: true,
-  },
-  {
-    href: "/stammdaten/vier-augen-genehmigung",
-    icon: ShieldCheck,
-    title: "4-Augen-Genehmigung",
-    description:
-      "Optionaler Genehmigungs-Gate für sensible Vertraulichkeits-Freischaltungen: Stufen aktivieren, erforderliche Personenzahl und Approver-Pool festlegen.",
-    adminOnly: true,
-  },
-  {
-    href: "/stammdaten/revisionszugriff",
-    icon: ShieldCheck,
-    title: "Revisionszugriff",
-    description:
-      "Leseberechtigung am Audit-Trail für Revision und befristete externe Prüfer — ohne Projektmitgliedschaft und ohne Schreibrechte. Ersetzt die Mitgliedschaft, nicht die Vertraulichkeitsstufe.",
-    adminOnly: true,
-  },
-  {
-    href: "/stammdaten/organisation",
-    icon: Network,
-    title: "Organisation",
-    description:
-      "Unternehmensorganigramm — Gesellschaften, Standorte, Bereiche, Abteilungen und Teams als hierarchischer Baum (Tree + Tabelle).",
-    adminOnly: true,
-  },
-  {
-    href: "/stammdaten/dd-stream-vorlagen",
-    icon: Microscope,
-    title: "DD-Stream-Vorlagen",
-    description:
-      "Tenant-Katalog der Due-Diligence-Streams (Commercial, Financial, Tax, Legal, HR, IT …). Werden beim Aktivieren in ein M&A-Projekt kopiert.",
-    adminOnly: true,
-  },
-  {
-    href: "/stammdaten/projekt-vorlagen",
-    icon: LayoutTemplate,
-    title: "Projekt-Vorlagen (M&A)",
-    description:
-      "Tenant-Katalog wiederverwendbarer M&A-Projektstrukturen (Phasen, Workstreams, Deliverables). Bei der Projektanlage wählbar; werden ins neue Projekt kopiert (Copy-on-create).",
-    adminOnly: true,
-  },
-  {
-    href: "/stammdaten/risikokategorien",
-    icon: ShieldAlert,
-    title: "Risikokategorien",
-    description:
-      "Tenant-Katalog der Risiko-Kategorien (Financial, Legal, Tax …). Pflichtfeld im M&A-Risiko-Register; der DD-Standardsatz wird bei Erstnutzung automatisch angelegt.",
-    adminOnly: true,
-  },
-  {
-    href: "/stammdaten/skills",
-    icon: Sparkles,
-    title: "Skills",
-    description:
-      "Tenant-Katalog wiederverwendbarer KI-Skill-Definitionen (Markdown + Metadaten), versioniert mit genau einer aktiven Version. Admin-Pflege; PMs sehen den Katalog read-only.",
-    adminOnly: true,
-  },
-]
 
 export default function StammdatenPage() {
   return (
@@ -163,39 +18,10 @@ export default function StammdatenPage() {
         </p>
       </header>
 
-      <div className="grid gap-3 sm:grid-cols-2">
-        {SECTIONS.map((s) => {
-          const Icon = s.icon
-          return (
-            <Link key={s.href} href={s.href} className="group">
-              <Card className="h-full transition-colors hover:border-primary">
-                <CardHeader className="flex flex-row items-start gap-3 space-y-0">
-                  <div className="flex h-9 w-9 shrink-0 items-center justify-center rounded-md bg-muted text-muted-foreground">
-                    <Icon className="h-5 w-5" aria-hidden />
-                  </div>
-                  <div className="flex-1">
-                    <CardTitle className="flex items-center justify-between text-base">
-                      {s.title}
-                      <ChevronRight
-                        className="h-4 w-4 text-muted-foreground transition-transform group-hover:translate-x-0.5"
-                        aria-hidden
-                      />
-                    </CardTitle>
-                    <CardDescription className="mt-1">
-                      {s.description}
-                    </CardDescription>
-                  </div>
-                </CardHeader>
-                {s.adminOnly ? (
-                  <CardContent className="text-xs text-muted-foreground">
-                    Nur für Tenant-Admins.
-                  </CardContent>
-                ) : null}
-              </Card>
-            </Link>
-          )
-        })}
-      </div>
+      {/* PROJ-Y-143k — the grid is a client component because it reads the
+          tenant's active modules; the page stays a server component so the
+          metadata export and the static header cost nothing on the client. */}
+      <StammdatenGrid />
     </div>
   )
 }
