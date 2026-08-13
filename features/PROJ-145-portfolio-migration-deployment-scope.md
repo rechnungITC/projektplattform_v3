@@ -196,12 +196,24 @@ ESLint 0 · tsc 13 = Baseline / 0 neu · Build clean.
 
 ## Followups
 
-- **PROJ-Y-145a** — mutierender Durchlauf durch die deployte Vercel-Laufzeit gegen die
-  Prod-Datenbank (zusätzliche Absicherung für PROJ-144, kein offenes AC).
-- **PROJ-Y-145b** — zeilenweises, evidenzbasiertes Audit der 139 Altzeilen gegen Spec/AC/QA/Code.
-  Der Wächter nennt die Restzahl bei jedem Lauf, damit die Schuld nicht einschläft.
-- **PROJ-Y-145c** — Eintrag von `Verify lifecycle status vs deployment scope in features/INDEX.md`
-  als Required Check im `main`-Ruleset (Repo-Eigner-Handoff).
+- **PROJ-Y-145a** — ~~mutierender Durchlauf durch die deployte Vercel-Laufzeit~~ **erledigt 2026-08-13**
+  (PR #362): 8/8 PASS. Der Lauf existierte bereits, er war beim Neubau eines Branches nur nicht
+  mitgewandert — kein fehlender, sondern ein verlorener Nachweis.
+- **PROJ-Y-145b** — zeilenweises, evidenzbasiertes Audit der Alt-`Deployed`-Zeilen gegen Spec/AC/QA/Code.
+  **Offen.** Der Wächter nennt die Restzahl bei jedem Lauf, damit die Schuld nicht einschläft; Stand
+  2026-08-13 sind es **141** (die Zahl wächst mit jeder neuen Altzeile, sie ist kein Countdown von 139).
+- **PROJ-Y-145c** — ~~Eintrag von `Verify lifecycle status vs deployment scope in features/INDEX.md`
+  als Required Check~~ **erledigt 2026-08-13** (PR #363): eingetragen im Ruleset **`main protection`**
+  (ID 15992143), vorher 3 Checks, jetzt 4. **Unabhängig nachgelesen 2026-08-13** über
+  `gh api repos/:owner/:repo/rulesets/15992143`, nicht aus der eigenen Schreib-Antwort geglaubt; die
+  übrigen Regeln (`deletion`, `non_fast_forward`, `pull_request`) sind unverändert, `bypass_actors`
+  weiterhin leer. Der Context-Name ist an vier unabhängigen Stellen identisch belegt (Job-`name:` in
+  `index-scope.yml`, `statusCheckRollup` von #362/#363/#364, `check-runs` auf `main`, Ruleset-Eintrag) —
+  ein Tippfehler hätte jede künftige PR unmergebar gemacht.
+- **PROJ-Y-145d** — **offen:** derselbe Eintrag für
+  `Verify migration filename naming + version-prefix uniqueness` (PROJ-134s nie eingelöster Handoff,
+  gefunden bei der Ruleset-Arbeit von 145c). Läuft seit PROJ-134 auf jedem PR, blockiert aber nicht —
+  die CLAUDE.md-Tabelle behauptete das Gegenteil und ist jetzt ehrlich annotiert.
 
 ## Deployment
 

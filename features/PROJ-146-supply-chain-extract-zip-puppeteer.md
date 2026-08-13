@@ -14,8 +14,12 @@ summary_for_jira: "[HYGIENE] Supply-Chain-Remediation extract-zip via puppeteer-
 
 # PROJ-146: Supply-Chain-Remediation extract-zip / puppeteer-core
 
-## Status: Approved
-## Deployment Scope: —
+## Status: Deployed
+## Deployment Scope: full
+
+**Deployed:** 2026-08-13 — PR **#364** (squash) → `main` (`1cbdc4b`). Alle 5 Required-Checks grün, darunter **`npm audit production dependencies: success`** auf `main` selbst (vorher exit 1 mit 3 HIGH). **Vercel-Prod-Build von `main` mit `puppeteer-core@25.6.0` erfolgreich** (`Vercel: success` auf `1cbdc4b`) — die neue Major-Version baut und deployt in der echten Zielumgebung, nicht nur lokal. Keine Migration, kein neuer Env/Secret.
+
+**Warum `full` und nicht `tooling-only`:** die Taxonomie hat keinen eigenen Eimer für Abhängigkeits-/Sicherheitspflege. `tooling-only` verlangt, dass der Ausgang „repository tooling, CI, tests, or workflow" betrifft — hier ändert sich aber eine **Produktions**-Laufzeit-Abhängigkeit, das trifft nicht zu. `full` ist dagegen kriterienweise erfüllt: AC-146.1–146.6 alle belegt, kein Critical/High, Produktionsverhalten über den erfolgreichen Prod-Build und -Deploy verifiziert. Der noch ausstehende produktive PDF-Lauf (D-146.2) ist **zusätzliche Absicherung, kein offenes Akzeptanzkriterium** — AC-146.5 ist durch den echten Render gegen die neue Bibliothek erfüllt. Das ist dieselbe Auslegung, die einen Tag zuvor bei PROJ-144/PROJ-Y-145a am selben Regeltext getroffen wurde; registriert als **PROJ-Y-146a**.
 
 **Created:** 2026-08-13
 **Origin:** PROJ-74 `npm audit --omit=dev --audit-level=high` Required-Check auf `main` rot; blockierte die beiden fertigen Doku-PRs **#362** (PROJ-Y-145a) und **#363** (PROJ-Y-145c). Portfolioweit, kein Feature-Bug.
@@ -84,5 +88,6 @@ Der Wechsel entfernt neben `extract-zip` auch den `proxy-agent`-Teilbaum (`pac-p
 - [x] tsc-Baseline unverändert (13, 0 neu)
 - [x] ESLint 0 · vitest 2922/2922 · Build clean
 - [x] PDF-Renderer real ausgeführt
-- [ ] Merge nach `main`, Required-Checks grün
-- [ ] Post-Deploy: eine Snapshot-PDF-Erzeugung produktiv geprüft (D-146.2)
+- [x] Merge nach `main`, Required-Checks grün (#364 → `1cbdc4b`; `npm audit` auf `main` von exit 1 auf success)
+- [x] Vercel-Prod-Build + -Deploy von `main` mit der neuen Major-Version erfolgreich
+- [ ] Post-Deploy: eine Snapshot-PDF-Erzeugung produktiv geprüft — **zusätzliche Absicherung, kein offenes AC** (D-146.2) → **PROJ-Y-146a**
