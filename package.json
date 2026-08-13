@@ -21,7 +21,8 @@
     "audit:prod": "npm audit --omit=dev --audit-level=high",
     "check:schema-drift": "tsx scripts/check-schema-drift/index.ts",
     "check:migration-naming": "tsx scripts/check-migration-naming/index.ts",
-    "check:index-scope": "tsx scripts/check-index-scope/index.ts"
+    "check:index-scope": "tsx scripts/check-index-scope/index.ts",
+    "verify:pdf-render": "node scripts/verify-pdf-render.mjs"
   },
   "dependencies": {
     "@ai-sdk/anthropic": "^3.0.72",
@@ -80,7 +81,7 @@
     "next-themes": "^0.4.6",
     "papaparse": "^5.5.3",
     "pdfjs-dist": "^6.2.108",
-    "puppeteer-core": "^24.42.0",
+    "puppeteer-core": "^25.6.0",
     "react": "^19.0.0",
     "react-arborist": "^3.5.0",
     "react-colorful": "^5.6.1",
