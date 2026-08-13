@@ -1,10 +1,10 @@
 # PROJ-45: Construction Extension — Gewerke & Bauabschnitte
 
-## Status: Planned
+## Status: Architected
 ## Deployment Scope: —
 
 **Created:** 2026-05-06
-**Last Updated:** 2026-08-13 (Requirements refined — gegen den deployten Stand geerdet, Zuschnitt in Sub-Slices getrennt, 8 Nutzer-Locks gesetzt)
+**Last Updated:** 2026-08-13 (Requirements refined + Tech Design — gegen den deployten Stand geerdet, Zuschnitt in Sub-Slices getrennt, 8 Nutzer-Locks, alle vier Forks beantwortet, CIA-Review zu Q2 eingearbeitet)
 
 ---
 
@@ -73,12 +73,28 @@ that already exists"*). Diese Tabelle ist bindender Input für `/architecture`:
 | Mängelanzeige-PDF | PROJ-21 Print-to-PDF (chrome-lose Druckseite) | Vorlage für β. |
 | Frist / Zuständigkeit | `work_items.due_date` + `responsible_user_id` (PROJ-101) | Kein zweites Fristmodell. |
 
-**Zwei echte Lücken**, die α schließen muss:
+**Eine echte Lücke**, die α schließen muss:
 
-1. `ModuleKey` (`src/types/tenant-settings.ts`) kennt kein `construction` — ein neuer Modulschalter ist nötig.
-2. Die projekttyp-gegatete Navigation (`requiresProjectType` in `src/lib/method-templates/index.ts`) ist
-   heute ausschließlich auf `"ma"` verdrahtet und muss verallgemeinert werden. Diese Datei ist ein
-   bekannter Merge-Hotspot — Konfliktbereitschaft einplanen.
+1. `ModuleKey` (`src/types/tenant-settings.ts:18-30`) kennt kein `construction`. Der Wert und sein
+   Eintrag in `TOGGLEABLE_MODULES` sind neu anzulegen — das ist der einzige Mechanismus-Zuwachs.
+
+**Korrektur gegenüber der ersten Fassung dieses Refinements (2026-08-13):** Dort stand, die
+projekttyp-gegatete Navigation müsse „verallgemeinert werden". Das ist **falsch** und wurde am Code
+widerlegt. Beide Tore sind bereits generisch und greifen komponiert:
+
+- `filterSectionsByProjectType` (`src/lib/method-templates/routing.ts:175-182`) filtert über
+  `!s.requiresProjectType || s.requiresProjectType === projectType`, und das Feld ist als
+  `requiresProjectType?: ProjectType` typisiert (`src/types/method-config.ts:61`) — **nicht** als
+  Literal `"ma"`. Dass heute nur M&A-Sektionen es benutzen, ist eine Eigenschaft der Daten, nicht des
+  Mechanismus.
+- `filterSectionsByModules` läuft davor; beide werden in `project-room-shell.tsx:46-53` und in der
+  Projekt-Sidebar zusammen angewandt.
+
+Für α heißt das: Sektionen mit `requiresProjectType: "construction"` und
+`requiresModule: "construction"` eintragen genügt — **kein** Umbau der Filterlogik, **keine**
+Signaturänderung, **keine** Migration bestehender Sektionen. Der Aufwand für ST-45.5 sinkt damit
+gegenüber der ersten Einschätzung deutlich. Bestehen bleibt nur die Vorsicht beim Ort: die
+Sektionsliste in `src/lib/method-templates/index.ts` ist ein bekannter Merge-Hotspot.
 
 ---
 
@@ -186,12 +202,118 @@ Compliance-Tags hinaus · mobiles Offline-Bautagebuch · Aufmaß- und Leistungsv
 
 ---
 
-## Offene Fragen für `/architecture`
+## Beantwortete Forks (2026-08-13)
 
-- **Q1 — Standard-Gewerke vorbefüllen?** Ein Lazy-Seed einer VOB/C-nahen Standardliste beim ersten Öffnen (Muster: `ensure_default_ma_project_templates`, `seed_risk_categories_if_empty`) oder bewusst leer starten? Betrifft AC-45.1 und den leeren Zustand.
-- **Q2 — Verhältnis zu `workstreams` (PROJ-102).** Generalisieren (eine Tabelle, zwei Vokabulare, Navigation je Projekttyp) oder als eigene Bau-Tabelle spiegeln? Die Feldmengen decken sich vollständig; `workstreams` trägt allerdings `confidentiality_level` aus dem M&A-Bedarf und hängt an einer `requiresProjectType: "ma"`-Navigation. **CIA-pflichtig**, sobald generalisiert wird: das berührt eine deployte Tabelle mit Verweisen aus `work_items` und `risks`.
-- **Q3 — Gewerk × Abschnitt als Matrix?** Braucht die Bauleitung eine gekreuzte Statusansicht (Gewerk je Abschnitt) oder genügen zwei getrennte Achsen mit Filter? Betrifft nur die Oberfläche, nicht das Modell — Antwort entscheidet über eine eigene Ansicht in α oder δ.
-- **Q4 — Modulschnitt.** Ein Schalter `construction` für die ganze Extension oder je Slice einer? Ein Schalter ist einfacher; feinere Schalter erlauben, β/γ getrennt auszurollen.
+| Fork | Entscheidung | Grundlage |
+|---|---|---|
+| **Q1** Standard-Gewerke vorbefüllen? | **Ja**, VOB/C-nahe Standardliste als Lazy-Seed beim ersten Katalogaufruf; alles umbenennbar und deaktivierbar. | Nutzer-Entscheid. Muster: `seed_risk_categories_if_empty` (PROJ-107), `ensure_default_ma_project_templates` (PROJ-96). In Produktion existieren bereits 3 Bauprojekte — ein leerer Katalog wäre der erste Eindruck. |
+| **Q2** `workstreams` generalisieren? | **Nein — spiegeln (Option B).** Eigene Bau-Tabellen nach dem PROJ-112/102-Rezept. | CIA-Review 2026-08-13, Nutzer bestätigt. Tragender Grund unten. |
+| **Q3** Matrix Gewerk × Abschnitt? | **Später.** α liefert zwei Achsen + Filter; die Kreuzansicht wird erst mit Mängeln (β) und Abnahmen (γ) inhaltsvoll. | Nutzer-Entscheid. Reine Darstellung, nachlegbar ohne Modelländerung. |
+| **Q4** Modulschnitt | **Ein Schalter `construction`** für die ganze Extension. | Nutzer-Entscheid, CIA-konform: feinere Schalter erzeugen Kombinationen, die weder Test noch QA vollständig abdecken. |
+
+---
+
+## Tech Design (Solution Architect)
+
+### Der tragende Grund für „spiegeln"
+
+Nicht der Blast-Radius (119 Dateien, 12 Datenbankfunktionen, 10 Policies), sondern ein **Lesevertrag**:
+Die Bezeichnung in `workstreams` ist pflichtbesetzt und wird von **allen fünf** Auswertungsfunktionen
+als Anzeigequelle gelesen. Lock **L7 / AC-45.5** verlangt dagegen, dass eine Umbenennung im Katalog
+überall wirkt und **kein** Name in die Projektzuordnung kopiert wird. Beim Generalisieren bliebe nur:
+die Pflichtbesetzung aufgeben — dann zeigen fünf deployte M&A-Auswertungen leere Bezeichnungen — oder
+den Namen kopieren und per Auslöser synchron halten, also genau die zweite Wahrheit, die L7
+ausschließt. Der Fork scheitert am Vertrag, nicht am Datenumzug; dass die Tabelle heute **null Zeilen**
+führt, macht das Generalisieren billiger, aber nicht richtiger.
+
+Zwei Nebenbefunde stützen dieselbe Richtung: die Vertraulichkeitsachse würde mitreisen, und sobald eine
+Bauleitung sie anhebt, käme sie an die eigenen Daten nicht mehr heran (die Freischaltungs-Oberfläche ist
+M&A-gegatet) — **die Bauleitung sperrt sich selbst aus**. Und die befürchteten „zwei bedeutungsgleichen
+Achsen" kosten in α faktisch nichts, weil alle fünf Auswertungen projekttyp-gegatet sind und ein
+Bauprojekt keine davon aufruft.
+
+### Was gebaut wird — Oberfläche
+
+```
+Stammdaten (mandantenweit, nur Administration)
+└── Gewerke-Katalog
+    ├── Liste: Bezeichnung · Kennung · aktiv/inaktiv · Reihenfolge
+    ├── Anlegen / Umbenennen / Deaktivieren / Sortieren
+    ├── Löschversuch bei Verwendung → Hinweis mit Namen der Projekte
+    └── Erstaufruf ohne Bestand → Standardliste wird angeboten
+
+Projektraum (nur Bauprojekte, nur bei aktivem Modul)
+├── Gewerke
+│   ├── Karte je Projekt-Gewerk: Bezeichnung (aus Katalog) · Verantwortlicher
+│   │   · Nachunternehmer · Ampel · Notiz
+│   ├── Gewerk hinzufügen (Auswahl aus aktivem Katalog, bereits vergebene ausgegraut)
+│   └── Ampel direkt in der Karte umschaltbar
+└── Bauabschnitte
+    ├── Baum, frei tief, mit Ziehen zum Umhängen
+    ├── Anlegen · Umbenennen · Umhängen · Löschen (mit Vorschau der Folgen)
+    └── Detail: Bezeichnung, Beschreibung, verknüpfte Phasen
+
+Bestehende Flächen, additiv erweitert
+├── Arbeitspaket-Dialog: zwei zusätzliche Auswahlfelder (Gewerk, Bauabschnitt)
+├── Arbeitspaket-Liste: zwei zusätzliche Filter; Abschnittsfilter schließt Unterabschnitte ein
+└── Risiko-Formular: ein zusätzliches Auswahlfeld (Gewerk)
+```
+
+### Was gespeichert wird — in Klartext
+
+**Gewerke-Katalog** (mandantenweit): Kennung, Bezeichnung, Reihenfolge, aktiv-Kennzeichen. Die Kennung
+ist je Mandant eindeutig. Kein Feld-Audit — der Katalog ist Mandantenkonfiguration, wie die
+DD-Stream-Vorlagen; damit bleibt er vollständig aus den vier Audit-Registern heraus.
+
+**Projekt-Gewerk**: Verweis auf Projekt und auf den Katalogeintrag, Verantwortlicher, optionaler
+Nachunternehmer, Ampel (grün/gelb/rot, Vorgabe grün, **immer manuell**), Notiz, Reihenfolge. Dieselbe
+Katalogposition kann je Projekt nur einmal vorkommen. Die Bezeichnung wird **nicht** kopiert, sondern
+immer über den Verweis gelesen — das ist die technische Umsetzung von L7.
+
+**Bauabschnitt**: Verweis auf Projekt, optionaler Verweis auf den übergeordneten Abschnitt,
+Bezeichnung, Beschreibung, Reihenfolge. Ein Abschnitt kann nicht sein eigener Vorfahre werden. Für den
+Filter „schließt Unterabschnitte ein" wird der Pfad materialisiert mitgeführt, statt bei jeder Abfrage
+den Baum rekursiv aufzurollen — dieselbe Technik, die der Arbeitspaket-Gliederung seit PROJ-9-R2
+zugrunde liegt.
+
+**Abschnitt ↔ Phase**: eigene Verbindungstabelle, weil beides mehrfach zueinander steht (ein Abschnitt
+läuft über mehrere Phasen, eine Phase deckt mehrere Abschnitte ab).
+
+**Additive Verweise auf Bestehendes**: Arbeitspakete bekommen zwei nullbare Verweise (Gewerk,
+Abschnitt), Risiken einen (Gewerk). Alle drei mit „beim Löschen auf leer setzen", damit das Entfernen
+eines Gewerks oder Abschnitts niemals Arbeit vernichtet (AC-45.22).
+
+### Bewusst nicht gebaut
+
+Keine Vertraulichkeitsachse in Bauprojekten (siehe oben — falls β/γ eine braucht, ist das ein eigener,
+dann bewusster Schnitt mit eigener Freischaltungs-Oberfläche). Keine gerechnete Ampel. Keine
+Kreuzmatrix (Q3). Keine Mängel, Abnahmen, Terminsignale, Fotos — das sind β/γ/δ/ε.
+
+### Auflagen aus dem CIA-Review (bindend für `/backend` und `/qa`)
+
+- **A-1** Katalog ohne Audit-Auslöser; Löschsperre über eine einschränkende Fremdschlüsselregel, Fehlermeldung nennt die betroffenen Projekte (AC-45.3).
+- **A-2** Die drei neuen Verweise additiv und beim Löschen auf leer setzend; der Arbeitspaket-Zweig der Audit-Whitelist wird **mit Regressionsschutz** für die elf Bestandsspalten erweitert.
+- **A-3** Jede Änderung an einer geteilten Registerfunktion: aus der Live-Definition lesen, **whitespace-toleranter** Anker, Treffer genau einmal prüfen, sonst lautstark abbrechen, nach dem Schreiben nachverifizieren, Geschwisterzweige namentlich gegenprüfen, Ausführungsrecht neu erteilen (Lehre aus PROJ-Y-115c und PROJ-Y-122a).
+- **A-4** Bestandszahlen in Migrationszusicherungen immer als **Differenz**, nie absolut (Lehre aus PROJ-130-α: Shadow-Datenbank und Produktion zählen unterschiedlich).
+- **A-5** `construction` in die Modul-Union **und** in die schaltbaren Module; Navigation über den bestehenden Projekttyp-Filter — keine Signaturänderung.
+- **A-6** Live-Pentest `tests/sql/PROJ-45-*.sql`, null Rückstände, mit den Vektoren: mandantenfremd · Nicht-Mitglied · Betrachter schreibt · Katalog-Löschsperre · Doppelzuordnung · Abschnitts-Zyklus · Unterabschnitt-Löschung ohne Waisen · `anon`-Ausführungsrecht entzogen · **Feld-Audit unter einem synthetisierten Nicht-Administrator** (unter Mandanten-Administration schließt die Prüffunktion kurz und wäre falsch-grün). **Nicht-Regression M&A wörtlich**: PROJ-100a · PROJ-100b · PROJ-102-Need-to-know · PROJ-130-γ1 · PROJ-Y-122a — plus je eine **Aggregat-Leck-Probe** auf die beiden Berichtsfunktionen, deren Lesepfad von A-2 berührt wird.
+
+### Offene Bestandsfunde (nicht Teil von α)
+
+- `work_items.workstream_id` ist **nicht** im Feld-Audit — eine Umhängung zwischen Arbeitssträngen ist heute unprotokolliert (CIA-Fund).
+- **`work_items.due_date` ebenfalls nicht** (eigene Nachprüfung gegen Produktion: der Arbeitspaket-Zweig führt `title, description, status, priority, responsible_user_id, kind, sprint_id, parent_id, story_points, confidentiality_level, is_deleted`). Für β relevant: eine stillschweigend verschobene Nachbesserungsfrist ist genau das, was eine Bauleitung nachweisen können muss. → eigener Followup.
+
+### Abhängigkeiten (Pakete)
+
+**Keine neuen.** Die Baumdarstellung nutzt `react-arborist` aus dem Bestand (PROJ-62/79), die Auswahlfelder
+und Karten die vorhandenen shadcn-Bausteine.
+
+### Reihenfolge
+
+`/backend` zuerst (Katalog, Projekt-Gewerke, Abschnitte, die drei Verweise, Live-Pentest), danach
+`/frontend` (Stammdaten-Katalog, zwei Projektraum-Flächen, die drei additiven Felder plus Filter),
+danach `/qa`. Grund: die Oberfläche ist ohne Katalog und Baum nicht sinnvoll baubar — dieselbe Reihenfolge
+wie bei PROJ-109 und PROJ-117.
 
 ---
 
