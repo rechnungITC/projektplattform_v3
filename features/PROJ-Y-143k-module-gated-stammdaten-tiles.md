@@ -170,6 +170,16 @@ Nicht mit `--update-snapshots` gezogen, sondern durch **Löschen der Datei**
 | `npm run check:index-scope` | OK, 0 errors |
 | Playwright Visual (chromium) | **7× 9/9** — 3 warm, 4 Kaltstart nach `rm -rf .next` |
 
+Nach dem Rebase auf `main` (PROJ-Y-145b/145c mergten währenddessen) **vollständig
+neu gemessen**, nicht übernommen: ESLint 0 · tsc 13 · vitest 2931/2931 · Build
+clean · index-scope OK · Visual 9/9.
+
+Der Konflikt lag ausschließlich in `features/INDEX.md` und war Block-gegen-Block:
+`main` hat die fünf Nachbarzeilen 143d/e/m/f/g im Scope-Audit (PROJ-Y-145b)
+umklassifiziert, mein Zweig trug deren alten Text. Aufgelöst durch **wörtliche
+Übernahme der fünf `main`-Zeilen**; ersetzt wurde nur die eigene 143k-Zeile,
+ergänzt nur die neue 143n-Zeile. Fremde Arbeit wurde nicht angefasst.
+
 ## Deviations
 
 - **D-Y143k.1** — Kein CIA-Pass: UI-Bugfix ohne Architekturänderung, ohne neue
