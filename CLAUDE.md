@@ -158,15 +158,18 @@ npm run check:schema-drift      # .from().select() columns vs migration schema (
 
 ## CI Required Checks (branch protection on `main`)
 
-A PR cannot merge until all of these pass. Run their local equivalents before pushing:
+A PR cannot merge until all of these pass — except where a row is explicitly annotated as running but
+not enrolled. Enrollment lives in the `main protection` ruleset, not in this file; when you add a
+workflow, enrol it there too or annotate it here, so this table never claims a gate that does not exist.
+Run their local equivalents before pushing:
 
 | Check | Guards against | Local |
 |---|---|---|
 | `npm audit production dependencies` | HIGH+ CVEs in runtime deps | `npm run audit:prod` |
 | `Snyk production dependency scan` | same, second opinion | — (needs `SNYK_TOKEN`) |
 | `Verify SELECT columns vs migration schema` | schema drift — a `.select()` naming a column no migration creates | `npm run check:schema-drift` |
-| `Verify migration filename naming + version-prefix uniqueness` | migration version collisions / malformed names | `npm run check:migration-naming` |
-| `Verify lifecycle status vs deployment scope in features/INDEX.md` **(runs on every PR, not yet enrolled as required — PROJ-Y-145c)** | a `Deployed` row without a scope, a pre-deployment row carrying one, `Deployed + superseded`, an invented scope value, or a row whose cell count is wrong because a prose `\|` was left unescaped | `npm run check:index-scope` |
+| `Verify migration filename naming + version-prefix uniqueness` **(runs on every PR, not enrolled as required — PROJ-134's open handoff)** | migration version collisions / malformed names | `npm run check:migration-naming` |
+| `Verify lifecycle status vs deployment scope in features/INDEX.md` | a `Deployed` row without a scope, a pre-deployment row carrying one, `Deployed + superseded`, an invented scope value, or a row whose cell count is wrong because a prose `\|` was left unescaped | `npm run check:index-scope` |
 | Vercel build | build + type errors | `npm run build` |
 
 Two of these have bitten repeatedly and are worth knowing up front:
