@@ -6,6 +6,8 @@ import {
   E2E_ASSISTANT_TENANT_ID,
   E2E_STORAGE_STATE_PATH,
   E2E_TENANT_ID,
+  E2E_VISUAL_STORAGE_STATE_PATH,
+  E2E_VISUAL_TENANT_ID,
 } from "./constants"
 
 /**
@@ -14,8 +16,10 @@ import {
  * was missing/invalid and globalSetup wrote an empty fallback. Tests using
  * this fixture should `test.skip()` accordingly.
  */
-export function hasAuthStorageState(): boolean {
-  const path = resolve(process.cwd(), E2E_STORAGE_STATE_PATH)
+export function hasAuthStorageState(
+  relativePath: string = E2E_STORAGE_STATE_PATH,
+): boolean {
+  const path = resolve(process.cwd(), relativePath)
   if (!existsSync(path)) return false
   try {
     const parsed = JSON.parse(readFileSync(path, "utf8")) as {
@@ -70,9 +74,10 @@ async function pinnedContext(
   browser: Browser,
   tenantId: string,
   baseURL: string | undefined,
+  storageStatePath: string = E2E_STORAGE_STATE_PATH,
 ) {
   const context = await browser.newContext({
-    storageState: E2E_STORAGE_STATE_PATH,
+    storageState: storageStatePath,
   })
   await context.addCookies([
     {
@@ -85,8 +90,10 @@ async function pinnedContext(
   return context
 }
 
-function skipUnlessProvisioned(): boolean {
-  if (hasAuthStorageState()) return false
+function skipUnlessProvisioned(
+  relativePath: string = E2E_STORAGE_STATE_PATH,
+): boolean {
+  if (hasAuthStorageState(relativePath)) return false
   // Defensive: if globalSetup couldn't provision auth (invalid env,
   // missing browser binary, etc.), skip the test cleanly instead of
   // crashing the browser launch.
@@ -108,6 +115,18 @@ export const test = base.extend<{
    * shell without the launcher button.
    */
   assistantTenantPage: Page
+  /**
+   * PROJ-Y-143l — signed in as the visual lane's OWN user, in the visual
+   * lane's own tenant. Used exclusively by
+   * `PROJ-51-visual-regression-authenticated.spec.ts`.
+   *
+   * The point is negative: this identity has exactly one membership and is not
+   * touched by any other slice, so no foreign slice's account bookkeeping —
+   * a second tenant, a role change, a renamed profile, a toggled module,
+   * branding — can move the baselines. `authenticatedPage` deliberately keeps
+   * the shared user for every other authenticated spec.
+   */
+  visualPage: Page
 }>({
   authenticatedPage: async ({ browser, baseURL }, use) => {
     if (skipUnlessProvisioned()) return
@@ -123,6 +142,19 @@ export const test = base.extend<{
       browser,
       E2E_ASSISTANT_TENANT_ID,
       baseURL,
+    )
+    const page = await context.newPage()
+    await use(page)
+    await context.close()
+  },
+
+  visualPage: async ({ browser, baseURL }, use) => {
+    if (skipUnlessProvisioned(E2E_VISUAL_STORAGE_STATE_PATH)) return
+    const context = await pinnedContext(
+      browser,
+      E2E_VISUAL_TENANT_ID,
+      baseURL,
+      E2E_VISUAL_STORAGE_STATE_PATH,
     )
     const page = await context.newPage()
     await use(page)

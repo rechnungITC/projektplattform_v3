@@ -29,6 +29,31 @@ function webkitHostDepsAvailable(): boolean {
   }
 }
 
+/**
+ * PROJ-Y-143l — one base URL, honoured by all three consumers.
+ *
+ * `tests/fixtures/global-setup.ts` has always read `PLAYWRIGHT_BASE_URL`
+ * (it pins the auth cookies to that host), while `use.baseURL` and
+ * `webServer.url` hardcoded `http://localhost:3000`. Setting the variable
+ * therefore produced a *split* run: cookies issued for one origin, pages
+ * fetched from another — i.e. an un-authenticated session that looks like a
+ * product bug.
+ *
+ * It matters beyond tidiness because `reuseExistingServer` is on outside CI:
+ * whoever owns port 3000 serves the tests. With one worktree per parallel
+ * session (CLAUDE.md), a second session's dev server silently answers the
+ * first session's suite. That was observed here, not theorised — a run of
+ * this very spec rendered a neighbouring branch's feature (module-gated
+ * Stammdaten tiles, PROJ-Y-143k) into an otherwise green-looking suite, and
+ * intermittently, because the two servers raced for the port. A visual
+ * baseline taken in that state records code that is not on this branch.
+ *
+ * So: export `PLAYWRIGHT_BASE_URL=http://localhost:<port>` and the runner,
+ * the dev server (`PORT`) and the fixture all agree.
+ */
+const BASE_URL = process.env.PLAYWRIGHT_BASE_URL ?? 'http://localhost:3000'
+const BASE_PORT = new URL(BASE_URL).port || '3000'
+
 const includeWebkit = webkitHostDepsAvailable()
 if (!includeWebkit) {
   console.warn(
@@ -70,7 +95,7 @@ export default defineConfig({
     },
   },
   use: {
-    baseURL: 'http://localhost:3000',
+    baseURL: BASE_URL,
     trace: 'on-first-retry',
   },
   projects: [
@@ -81,7 +106,7 @@ export default defineConfig({
   ],
   webServer: {
     command: 'npm run dev',
-    url: 'http://localhost:3000',
+    url: BASE_URL,
     reuseExistingServer: !process.env.CI,
     // PROJ-Y-143d: keep the Next dev-tools indicator out of the visual
     // baselines. It is a permanent dev-only control in the bottom-left corner
@@ -90,6 +115,8 @@ export default defineConfig({
     // shadow root, so CSS/mask/text-wait cannot reach it — config is the only
     // lever. Only this server gets the flag; `npm run dev` by hand keeps the
     // indicator. See the matching comment in `next.config.ts`.
-    env: { ...process.env, PW_DISABLE_DEV_INDICATOR: '1' },
+    // PROJ-Y-143l: `PORT` is what Next reads, so the server it starts and the
+    // URL Playwright waits on cannot drift apart.
+    env: { ...process.env, PW_DISABLE_DEV_INDICATOR: '1', PORT: BASE_PORT },
   },
 })

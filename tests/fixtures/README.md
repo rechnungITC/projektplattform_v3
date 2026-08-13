@@ -10,6 +10,23 @@ keep using plain `@playwright/test`.
 - `global-setup.ts` — runs once per test run; upserts the test tenant + user via Supabase admin API and writes a Playwright `storageState` to `.auth/storage-state.json` (gitignored).
 - `auth-fixture.ts` — exports `test` + `expect` extended with an `authenticatedPage` fixture that hydrates from the storage state.
 
+## Three identities, not one (PROJ-Y-143l)
+
+| Fixture | Identity | Used by |
+|---|---|---|
+| `authenticatedPage` | `E2E_USER_ID` in `E2E_TENANT_ID` | every authenticated spec except the two below |
+| `assistantTenantPage` | same user, `E2E_ASSISTANT_TENANT_ID` (assistant module on) | `PROJ-Y-144d-*` |
+| `visualPage` | `E2E_VISUAL_USER_ID` in `E2E_VISUAL_TENANT_ID`, **one** membership | `PROJ-51-visual-regression-authenticated.spec.ts` only |
+
+The visual lane is separate because its baselines photograph account and
+tenant state — the workspace label, the profile e-mail, the tenant name and
+domain, the module toggles. While that state was shared, a slice adding a
+membership for its own purposes moved all seven images at once (PROJ-Y-143f,
+F-1). **If you need a tenant with unusual settings, add your own identity to
+`constants.ts` and seed it in `global-setup.ts`; do not reconfigure an
+existing one.** `PROJ-Y-143l-visual-lane-isolation.spec.ts` fails with a
+readable message if the visual lane picks up a second membership.
+
 ## Required env vars
 
 `globalSetup` reads from `.env.local` (or pre-set env in CI):
@@ -20,6 +37,21 @@ keep using plain `@playwright/test`.
 
 Optional:
 - `PLAYWRIGHT_BASE_URL` — defaults to `http://localhost:3000`.
+
+  Since PROJ-Y-143l this drives **all three** consumers: the runner's
+  `use.baseURL`, the `webServer` URL, and the `PORT` the dev server binds.
+  Before that only `globalSetup` read it, so setting it produced cookies
+  pinned to one origin and pages fetched from another.
+
+  Use it when a second session is active. `reuseExistingServer` is on outside
+  CI, so whoever owns port 3000 serves *your* tests: a run of the visual spec
+  was observed rendering a neighbouring worktree's feature into an otherwise
+  green suite, intermittently, as the two servers raced for the port. A
+  baseline taken in that state records code that is not on your branch.
+
+  ```bash
+  PLAYWRIGHT_BASE_URL=http://localhost:3210 npx playwright test
+  ```
 
 ## Running
 

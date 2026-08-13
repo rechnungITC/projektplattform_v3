@@ -5,7 +5,10 @@ import {
   DEFAULT_COOKIE_OPTIONS,
   stringToBase64URL,
 } from "@supabase/ssr"
-import { createClient as createSupabaseClient } from "@supabase/supabase-js"
+import {
+  createClient as createSupabaseClient,
+  type SupabaseClient,
+} from "@supabase/supabase-js"
 import type { FullConfig } from "@playwright/test"
 
 import {
@@ -23,6 +26,17 @@ import {
   E2E_TEST_EMAIL,
   E2E_TEST_PASSWORD,
   E2E_USER_ID,
+  E2E_VISUAL_ACTIVE_MODULES,
+  E2E_VISUAL_PROJECT_ID,
+  E2E_VISUAL_PROJECT_NAME,
+  E2E_VISUAL_STORAGE_STATE_PATH,
+  E2E_VISUAL_TENANT_DOMAIN,
+  E2E_VISUAL_TENANT_ID,
+  E2E_VISUAL_TENANT_NAME,
+  E2E_VISUAL_TEST_EMAIL,
+  E2E_VISUAL_TEST_PASSWORD,
+  E2E_VISUAL_USER_DISPLAY_NAME,
+  E2E_VISUAL_USER_ID,
 } from "./constants"
 
 /**
@@ -50,6 +64,12 @@ function assertConformantFixtureIds(): void {
     // project id), so they belong in the same guard.
     E2E_ASSISTANT_TENANT_ID,
     E2E_ASSISTANT_PROJECT_ID,
+    // PROJ-Y-143l — the visual lane's own identity reaches the same zod
+    // boundary (the project id travels through `/projects/[id]` route params
+    // and every project-scoped API call the room makes).
+    E2E_VISUAL_USER_ID,
+    E2E_VISUAL_TENANT_ID,
+    E2E_VISUAL_PROJECT_ID,
   }).filter(([, id]) => !RFC_4122_V4.test(id))
 
   if (offenders.length > 0) {
@@ -121,8 +141,11 @@ async function loadEnvLocal(): Promise<void> {
  * the login flow per test. Existing 38 unauth E2E tests are unaffected
  * because they don't import the fixture.
  */
-async function writeEmptyStorageState(reason: string): Promise<void> {
-  const storagePath = resolve(process.cwd(), E2E_STORAGE_STATE_PATH)
+async function writeEmptyStorageState(
+  reason: string,
+  relativePath: string = E2E_STORAGE_STATE_PATH,
+): Promise<void> {
+  const storagePath = resolve(process.cwd(), relativePath)
   await mkdir(dirname(storagePath), { recursive: true })
   await writeFile(
     storagePath,
@@ -397,20 +420,57 @@ async function globalSetup(config: FullConfig): Promise<void> {
   //    Playwright storage state that injects them into the test
   //    origin's SSR cookies and localStorage in the shape Supabase expects.
   const baseURL = process.env.PLAYWRIGHT_BASE_URL ?? "http://localhost:3000"
+  const supabaseCookies = await signInAndPersist({
+    url,
+    anonKey,
+    baseURL,
+    email: E2E_TEST_EMAIL,
+    password: E2E_TEST_PASSWORD,
+    activeTenantId: E2E_TENANT_ID,
+    relativePath: E2E_STORAGE_STATE_PATH,
+    label: "PROJ-29",
+  })
+  if (!supabaseCookies) return
+
+  // 5) PROJ-Y-143l — the visual lane, provisioned and signed in separately.
+  //    Fail-open: only the authenticated visual specs skip if this fails.
+  await provisionVisualLane(admin, { url, anonKey, baseURL })
+
+  await maybeWarmCompileDeepLinkRoutes(config, baseURL, supabaseCookies)
+}
+
+/**
+ * Signs one identity in and writes its Playwright storage state.
+ *
+ * Extracted in PROJ-Y-143l because there are now two independent lanes. It
+ * returns the auth cookies (warm-compile needs them) or null after having
+ * written an empty state, which is what `hasAuthStorageState()` reads to make
+ * the dependent specs skip cleanly instead of crashing.
+ */
+async function signInAndPersist(args: {
+  url: string
+  anonKey: string
+  baseURL: string
+  email: string
+  password: string
+  activeTenantId: string
+  relativePath: string
+  label: string
+}): Promise<PlaywrightStorageCookie[] | null> {
+  const { url, anonKey, baseURL, email, password, activeTenantId } = args
   const baseOrigin = new URL(baseURL).origin
+
   const tokenRes = await fetch(`${url}/auth/v1/token?grant_type=password`, {
     method: "POST",
     headers: { apikey: anonKey, "Content-Type": "application/json" },
-    body: JSON.stringify({
-      email: E2E_TEST_EMAIL,
-      password: E2E_TEST_PASSWORD,
-    }),
+    body: JSON.stringify({ email, password }),
   })
   if (!tokenRes.ok) {
     await writeEmptyStorageState(
       `sign-in failed: ${tokenRes.status} ${await tokenRes.text()}`,
+      args.relativePath,
     )
-    return
+    return null
   }
   const session = (await tokenRes.json()) as {
     access_token: string
@@ -434,15 +494,19 @@ async function globalSetup(config: FullConfig): Promise<void> {
   // `use-auth.tsx` resolves it from the `active_tenant_id` cookie and falls
   // back to `memberships[0]` when the cookie is absent. That fallback made
   // the whole authenticated suite depend on *membership order*: on
-  // 2026-08-12 a parallel slice added this shared user to a second tenant
+  // 2026-08-12 a parallel slice added the shared user to a second tenant
   // ("[E2E] Assistant Test"), the fallback picked it, and because the tenant
-  // name renders in the sidebar header, **all seven** visual baselines went
+  // name renders in the sidebar footer, **all seven** visual baselines went
   // red at once — for a reason that had nothing to do with the change under
   // test. Writing the cookie makes the choice explicit and immune to any
   // future membership a foreign spec creates.
+  //
+  // PROJ-Y-143l keeps writing it for the visual lane too, even though that
+  // user has exactly one membership: the pin must not depend on the invariant
+  // it is there to survive.
   const activeTenantCookie = {
     name: "active_tenant_id",
-    value: E2E_TENANT_ID,
+    value: activeTenantId,
     domain: new URL(baseURL).hostname,
     path: "/",
     expires: -1,
@@ -457,24 +521,160 @@ async function globalSetup(config: FullConfig): Promise<void> {
       {
         origin: baseOrigin,
         localStorage: [
-          {
-            name: supabaseStorageKey,
-            value: supabaseStorageValue,
-          },
+          { name: supabaseStorageKey, value: supabaseStorageValue },
         ],
       },
     ],
   }
 
-  const storagePath = resolve(process.cwd(), E2E_STORAGE_STATE_PATH)
+  const storagePath = resolve(process.cwd(), args.relativePath)
   await mkdir(dirname(storagePath), { recursive: true })
   await writeFile(storagePath, JSON.stringify(storageState, null, 2), "utf8")
+  console.info(`[${args.label} globalSetup] ready — storage state at ${storagePath}`)
+  return supabaseCookies
+}
 
-  console.info(
-    `[PROJ-29 globalSetup] ready — storage state at ${storagePath}`
-  )
+/**
+ * PROJ-Y-143l — provision the identity that owns the authenticated
+ * visual-regression baselines: own auth user, own profile, own tenant, own
+ * `tenant_settings` row, exactly ONE membership, own seed project.
+ *
+ * "Exactly one membership" is the whole point. `tenant-switcher.tsx` renders a
+ * plain label below two memberships and a dropdown button from two upwards, in
+ * the sidebar footer of every signed-in page — so a foreign slice enrolling
+ * the *shared* user elsewhere used to move all seven baselines at once
+ * (PROJ-Y-143f, F-1). Nothing here is shared with `E2E_USER_ID`, so no other
+ * slice's account bookkeeping can reach these images.
+ *
+ * `active_modules` is written explicitly rather than left to the table
+ * default: four of the seven baselines depict states that depend on it, most
+ * visibly `stammdaten-resources.png`, which shows PROJ-Y-143f's
+ * `ModuleUnavailableNotice` precisely because `resources` is off.
+ *
+ * Fail-open, like the assistant lane: a failure here writes an empty visual
+ * storage state, the visual specs skip, and the rest of the suite is
+ * unaffected.
+ */
+async function provisionVisualLane(
+  admin: SupabaseClient,
+  env: { url: string; anonKey: string; baseURL: string },
+): Promise<void> {
+  const { error: createUserError } = await admin.auth.admin.createUser({
+    id: E2E_VISUAL_USER_ID,
+    email: E2E_VISUAL_TEST_EMAIL,
+    password: E2E_VISUAL_TEST_PASSWORD,
+    email_confirm: true,
+    user_metadata: { display_name: E2E_VISUAL_USER_DISPLAY_NAME },
+  })
+  if (
+    createUserError &&
+    !/already (been )?registered|exists|duplicate/i.test(createUserError.message)
+  ) {
+    await writeEmptyStorageState(
+      `visual auth.admin.createUser failed: ${createUserError.message}`,
+      E2E_VISUAL_STORAGE_STATE_PATH,
+    )
+    return
+  }
 
-  await maybeWarmCompileDeepLinkRoutes(config, baseURL, supabaseCookies)
+  // `PromiseLike`, not `Promise`: a Supabase query builder is thenable but has
+  // no `catch`/`finally` (PROJ-Y-144d, F-9).
+  const steps: {
+    label: string
+    run: () => PromiseLike<{ error: { message: string } | null }>
+  }[] = [
+    {
+      label: "profile",
+      run: () =>
+        admin.from("profiles").upsert(
+          {
+            id: E2E_VISUAL_USER_ID,
+            email: E2E_VISUAL_TEST_EMAIL,
+            display_name: E2E_VISUAL_USER_DISPLAY_NAME,
+          },
+          { onConflict: "id" },
+        ),
+    },
+    {
+      label: "tenant",
+      run: () =>
+        admin.from("tenants").upsert(
+          {
+            id: E2E_VISUAL_TENANT_ID,
+            name: E2E_VISUAL_TENANT_NAME,
+            domain: E2E_VISUAL_TENANT_DOMAIN,
+            created_by: E2E_VISUAL_USER_ID,
+            language: "de",
+            branding: {},
+          },
+          { onConflict: "id" },
+        ),
+    },
+    {
+      label: "settings",
+      run: () =>
+        admin.from("tenant_settings").upsert(
+          {
+            tenant_id: E2E_VISUAL_TENANT_ID,
+            active_modules: [...E2E_VISUAL_ACTIVE_MODULES],
+          },
+          { onConflict: "tenant_id" },
+        ),
+    },
+    {
+      label: "membership",
+      run: () =>
+        admin.from("tenant_memberships").upsert(
+          {
+            tenant_id: E2E_VISUAL_TENANT_ID,
+            user_id: E2E_VISUAL_USER_ID,
+            // Admin: /settings/tenant and the admin-only Stammdaten cards are
+            // part of the captured surface.
+            role: "admin",
+          },
+          { onConflict: "tenant_id,user_id" },
+        ),
+    },
+    {
+      label: "project",
+      run: () =>
+        admin.from("projects").upsert(
+          {
+            id: E2E_VISUAL_PROJECT_ID,
+            tenant_id: E2E_VISUAL_TENANT_ID,
+            name: E2E_VISUAL_PROJECT_NAME,
+            // "general" keeps the seed minimal — no trigger-spawned phases,
+            // sprints or WBS rows that would change between runs.
+            project_type: "general",
+            responsible_user_id: E2E_VISUAL_USER_ID,
+            created_by: E2E_VISUAL_USER_ID,
+          },
+          { onConflict: "id" },
+        ),
+    },
+  ]
+
+  for (const step of steps) {
+    const { error } = await step.run()
+    if (error) {
+      await writeEmptyStorageState(
+        `visual ${step.label} seed failed: ${error.message}`,
+        E2E_VISUAL_STORAGE_STATE_PATH,
+      )
+      return
+    }
+  }
+
+  await signInAndPersist({
+    url: env.url,
+    anonKey: env.anonKey,
+    baseURL: env.baseURL,
+    email: E2E_VISUAL_TEST_EMAIL,
+    password: E2E_VISUAL_TEST_PASSWORD,
+    activeTenantId: E2E_VISUAL_TENANT_ID,
+    relativePath: E2E_VISUAL_STORAGE_STATE_PATH,
+    label: "PROJ-Y-143l",
+  })
 }
 
 /**
