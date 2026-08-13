@@ -1,6 +1,7 @@
 # PROJ-42 — Schema-Drift-CI-Guard
 
 ## Status: Deployed (α live + branch protection on `main` enforced as Required-Check since 2026-05-12)
+## Deployment Scope: alpha
 **Created:** 2026-05-04
 **Last Updated:** 2026-05-12
 

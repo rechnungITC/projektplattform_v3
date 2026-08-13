@@ -1,6 +1,7 @@
 # PROJ-143 — RFC-4122-konforme E2E-Identitäten + explizites Test-Timeout
 
 **Status:** Deployed (2026-08-11) — Closure-Deploy, Tag `v2.43.0-PROJ-143`. Code lag bereits auf main (Merge `812832a`, PR #313); test-only, daher kein Runtime-Verhalten geändert und keine Migration. Verifiziert auf main `265cccb`: ESLint 0 · `npm run build` clean · `check:migration-naming` 0 Errors.
+## Deployment Scope: tooling-only
 **Erstellt:** 2026-08-10
 **Requires:** PROJ-29 (E2E-Fixture-Fundament), PROJ-67/PROJ-138 (E2E-Infra)
 

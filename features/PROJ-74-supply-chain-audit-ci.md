@@ -1,6 +1,7 @@
 # PROJ-74: Supply-Chain-Audit-CI
 
 ## Status: Deployed
+## Deployment Scope: tooling-only
 **Created:** 2026-06-04
 **Last Updated:** 2026-06-19
 

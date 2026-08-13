@@ -1,6 +1,7 @@
 # PROJ-134 — Migration-Versions-Drift-Guard & Naming-Konvention
 
 ## Status: Deployed (α — Tag `v2.5.0-PROJ-134` 2026-07-01; Guard + Workflow + Regel + Runbook live auf main, 3 Drift-Kollisionen behoben. Kein Runtime-Deploy [reine Tooling/Docs/Rename-Ebene]. Offen: Ruleset-Enrollment als User-Handoff, AC-134.7 deferred-β)
+## Deployment Scope: alpha
 <!-- prior: Approved (α QA-PASS 2026-07-01); In Progress (α gebaut 2026-06-30); Planned (CIA-reviewed 2026-06-15) -->
 
 **Created:** 2026-06-15
