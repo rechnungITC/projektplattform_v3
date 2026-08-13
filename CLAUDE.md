@@ -339,6 +339,16 @@ so they leave **zero residue**. Assert the negative cases (cross-tenant, non-mem
 **RPCs must not take an actor parameter.** Read `auth.uid()` inside the function — an actor argument is
 an impersonation hole (found live in PROJ-94). Revoke EXECUTE from `anon` on everything.
 
+**Committing test rows to prod needs the fixture runbook.** Verifying the *deployed* function
+sometimes requires real rows (PROJ-Y-146a). Never the customer tenant; prefer a rolled-back
+transaction (audit triggers write inside it, so rollback costs nothing); when you must commit, seed
+your own throwaway tenant rather than switching a module on for a shared `[E2E]` one, set
+`tenants.audit_lifecycle_exempt` **before** seeding (audit rows are append-only and outlive the
+tenant — the flag is *not* derived from the name prefix), and expect the teardown to be blocked:
+`enforce_admin_invariant` refuses the last admin and, via the cascade, the tenant itself
+(`23514`) — the final two rows need `session_replication_role = replica`. Full recipe with the
+measured numbers: [`docs/production/prod-test-fixtures.md`](docs/production/prod-test-fixtures.md).
+
 **Patching a deployed function: replace from live, never retype.** Fetch `pg_get_functiondef`, anchor-replace
 the branch you need, and re-`GRANT` in the same statement. Audit helpers (`can_read_audit_entry`,
 `record_audit_changes`, the `entity_type` CHECK) accumulate one branch per feature — transcribing them
