@@ -1,8 +1,45 @@
 # PROJ-29: Hygiene-Slice (Lint-Baseline · Function-Hardening · Auth-Fixture-Skelett)
 
 ## Status: Deployed
+## Deployment Scope: full
 **Created:** 2026-05-01
-**Last Updated:** 2026-05-01
+**Last Updated:** 2026-08-14
+
+### Scope-Klassifikation 2026-08-14 (PROJ-Y-145b, Tranche 2 nachgeholt)
+
+`full`, **nicht** `tooling-only`: Block B hat drei `SECURITY DEFINER`-Funktionen in Prod gehärtet
+(`enforce_decision_immutability`, `enforce_ki_suggestion_immutability`, `_is_supported_currency`,
+Migration `20260501120000`) — das sind Produktions-DB-Objekte, und die Grenzregel aus Tranche 2 sagt:
+was Produktions-Laufzeit anfasst, ist nicht `tooling-only`; wenn vollständig, dann `full`.
+QA-Verdikt 2026-05-01: **Approved, 0 Critical/High.**
+
+**Korrektur einer eigenen Behauptung.** Die Tranche-2-Notiz hielt PROJ-29 für nicht klassifizierbar, weil
+„der Block-C-Smoke *überspringt* (fehlender Service-Role-Key)". Das gilt nicht mehr — am 2026-08-14
+gemessen: `tests/PROJ-29-auth-fixture-smoke.spec.ts` läuft und ist grün (**1 passed, 21,1 s**, kein Skip).
+Der `test.skip`-Wächter hängt am Storage-State, den `global-setup` seit PROJ-143/PROJ-Y-143l zuverlässig
+provisioniert. AC Block C („ein Test zeigt die App-Shell nach Login") ist damit **erfüllt** — es war schon
+in der QA-Matrix ✅ und ist heute zusätzlich live nachgemessen. Grenze, die ich nicht verschweige: der Test
+prüft „Status < 400 und kein `/login`-Bounce", nicht wörtlich den `data-sidebar`-Selektor; den nennt die AC
+als Beispiel („z.B."), und die authentifizierte Visual-Suite fotografiert die Shell ohnehin ganzseitig.
+
+**Zwei abgeschriebene Kriterien** nach der Waiver-Regel in `.claude/rules/general.md`
+(alle vier Bedingungen je Kriterium geprüft, siehe [OPEN-DEFERRED-STATUS](OPEN-DEFERRED-STATUS.md)):
+
+1. **Block A, „Ausnahme zulässig nur wenn der Lint-Hit auf 3rd-Party-Code zeigt"** — 5 file-pattern
+   Overrides, davon 3 für React-19-Regeln, die auf legitime Muster fehlfeuern (QA-Finding M1).
+   Nichts zurückgestellt · schriftliche Abnahme in der QA-Matrix · Substanz belegt: `npm run lint`
+   exit 0, null per-line-Disables zum Slice-Zeitpunkt. **2026-08-14 nachgemessen: `npm run lint` weiterhin
+   exit 0.**
+2. **Block C, „Test-User-Seed als idempotente SQL-Migration bzw. `setup-test-tenant.sql`"** — real per
+   `globalSetup`-Admin-Upserts gelöst (QA-Finding M2), weil `auth.users` per SQL-INSERT brüchig ist
+   (interne Spalten). Nichts zurückgestellt · schriftliche Abnahme · Substanz belegt: der Seed ist
+   idempotent, verschmutzt die Prod-DB nicht über den `[E2E]`-Mandanten hinaus und lief am 2026-08-14
+   im Messlauf sichtbar durch (`[PROJ-29 globalSetup] ready — storage state at …`).
+
+**Drift seit PROJ-29, ausdrücklich nicht dieser Slice zuzurechnen:** heute tragen **47** Dateien
+per-line `eslint-disable-next-line` (QA maß damals null; PROJ-67 notierte 23→26). Die Baseline selbst ist
+grün. Erfasst als Beobachtung in OPEN-DEFERRED-STATUS, nicht als PROJ-29-Mangel — PROJ-29 kann für Code
+nicht haften, den es nicht gab.
 
 ## Summary
 Drei kleine, voneinander unabhängige Aufräum-Aktionen, die durch das CIA-Portfolio-Review als gemeinsame Hygiene-Slice priorisiert wurden, damit PROJ-21 (und alle folgenden Slices) auf einer sauberen Basis landen:

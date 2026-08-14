@@ -1,6 +1,35 @@
 # PROJ-69 — DB Index Audit (102 unindexed FKs · 73 unused indexes)
 
 ## Status: Deployed — 2026-06-15 (Tag `v1.92.0-PROJ-69`). α/β/γ-Migrations seit 2026-06-11 in Prod, QA-Closure 2026-06-15 (Prod-State re-verifiziert, vitest grün, Migration-Versions-Drift bereinigt).
+## Deployment Scope: full
+
+### Scope-Klassifikation 2026-08-14 (PROJ-Y-145b, Tranche 2 nachgeholt — erster Anwendungsfall der Waiver-Regel)
+
+`full`, **nicht** `tooling-only`: die Slice hat 19 Indexe angelegt, 7 gedroppt und 155 Kommentare in der
+**Prod**-Datenbank gesetzt — Produktions-DB-Objekte, also nach der Tranche-2-Grenzregel nicht `tooling-only`.
+AC-1 bis AC-5 und AC-7 sind erfüllt und live re-verifiziert (19/19 Indexe, 0/7 Drops übrig, 65+90 Kommentare).
+
+**AC-6 ist ein abgeschriebenes Kriterium** („0 WARN und **≤ 30 INFO**"; geliefert 0 WARN und 166 INFO).
+Die vier Bedingungen der Waiver-Regel (`.claude/rules/general.md`), am 2026-08-14 einzeln geprüft:
+
+1. **Nichts zurückgestellt.** Es gibt kein Followup und es bräuchte keines — die 84 bewussten FK-Skips
+   der Phase-1-Triage *sind* der gewollte Endzustand, nicht aufgeschobene Arbeit.
+2. **Nachweislich unerreichbar, heute stärker als damals.** Der Advisor kann dokumentierte
+   Skip-Entscheidungen nicht unterdrücken; die INFO-Zahl wächst folglich mit dem Schema, statt zu sinken.
+   Live gemessen 2026-08-14: **289 INFO** (195 `unindexed_foreign_keys`, 94 `unused_index`) — die
+   ≤-30-Grenze ist nicht knapp verfehlt, sie ist strukturell unerreichbar.
+3. **Schriftliche Abnahme benennt das Kriterium** — die Deviation steht seit dem 2026-06-11 wörtlich in
+   der AC-6-Zeile selbst und in der INDEX-Zeile, nicht als stillschweigende Lücke.
+4. **Substanz durch Messung belegt.** Live 2026-08-14: **65 Index-Kommentare + 91 Constraint-Kommentare**
+   in Prod — jede Keep-Entscheidung im Umfang von PROJ-69 trägt weiterhin ihre Begründung am Objekt.
+
+**Zwei Präzisierungen, damit der Nachweis nicht mehr behauptet als er trägt.** (a) Bedingung 4 gilt für den
+**Umfang von PROJ-69**: von den heutigen 195 unindexierten FKs stammen rund 100 aus Tabellen, die es zur
+Triage-Zeit nicht gab (M&A-Familie), die sind **nicht** dokumentiert und PROJ-69 nicht zuzurechnen.
+(b) Die Slice maß bei Closure **0 WARN**; heute sind es **15** (14 × `multiple_permissive_policies`,
+1 × `unindexed_foreign_keys`) — Drift späterer Slices, keine PROJ-69-Regression, denn PROJ-68 hatte die
+WARN-Zahl auf 0 gebracht und PROJ-69 hat sie dort gelassen. Beides als Beobachtung in
+[OPEN-DEFERRED-STATUS](OPEN-DEFERRED-STATUS.md) erfasst (→ PROJ-Y-145g), nicht als offener Rest dieser Slice.
 
 ## Deployment
 
@@ -100,7 +129,7 @@ The slice produces a **triaged list per finding**, then a small set of follow-up
 - [x] **AC-3: Migration `add_missing_indexes`** — single migration adding the (a)-classified FK indexes, with `CONCURRENTLY` if any table has > 100k rows estimated. ✅ 2026-06-11: 19 Indexe (18 + 1 PROJ-47-Nachtriage); kein Table > 100k → plain CREATE INDEX.
 - [x] **AC-4: Migration `drop_unused_indexes`** — single migration dropping the (α)-classified indexes. ✅ 2026-06-11: 7 Drops, im frischen Advisor re-bestätigt zero-scan.
 - [x] **AC-5: Migration `index_audit_notes`** — comment-only migration documenting (b)/(c)/(β)/(γ)-classified findings with the V3-grep evidence (route path + line, or feature ID + spec link) so future audits don't re-flag them. ✅ 2026-06-11: 65 Index- + 90 Constraint-Kommentare mit Feature-ID-Evidenz.
-- [x] **AC-6: Post-migration `get_advisors(performance)` shows 0 WARN and ≤ 30 INFO** — the remaining INFO entries are documented Keep-decisions, not unclassified leftovers. ⚠️ Deviation 2026-06-11: 0 WARN ✅, aber 166 INFO statt ≤ 30 — strukturell bedingt durch die 84 bewussten b-Skips der Phase-1-Triage (Advisor kann dokumentierte Entscheidungen nicht unterdrücken). Substanz erfüllt: jedes INFO ist eine per DB-Kommentar dokumentierte Entscheidung (siehe Implementation Notes).
+- [x] **AC-6: Post-migration `get_advisors(performance)` shows 0 WARN and ≤ 30 INFO** — the remaining INFO entries are documented Keep-decisions, not unclassified leftovers. ⚠️ Deviation 2026-06-11: 0 WARN ✅, aber 166 INFO statt ≤ 30 — strukturell bedingt durch die 84 bewussten b-Skips der Phase-1-Triage (Advisor kann dokumentierte Entscheidungen nicht unterdrücken). Substanz erfüllt: jedes INFO ist eine per DB-Kommentar dokumentierte Entscheidung (siehe Implementation Notes). **Am 2026-08-14 formal als abgeschriebenes Kriterium gebucht** (Waiver-Regel in `.claude/rules/general.md`, alle vier Bedingungen live geprüft — siehe Scope-Klassifikation im Kopf dieser Datei); das ändert nichts an der Lieferung, es macht die Buchung `full` nachweisbar statt stillschweigend.
 - [x] **AC-7: 1557/1557 vitest still green** — no behavior regression. ✅ 2026-06-11: 1770/1770 (Suite gewachsen).
 
 ## Non-Goals
