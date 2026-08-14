@@ -1167,6 +1167,16 @@ export interface DocumentSummaryAutoContext {
      *  aber als Kurzfassung des Ganzen ausgibt, wäre eine stille Unwahrheit. */
     truncated: boolean
   }
+  /**
+   * Zusatzanweisung aus der aktiven Fassung des `summarizer`-Skills (PROJ-76).
+   * `null`, wenn der Skill deaktiviert wurde oder keine aktive Fassung hat.
+   *
+   * Bewusst NUR eine Ergänzung: die unverhandelbaren Regeln (nur wiedergeben,
+   * nichts erfinden, Schema einhalten) stehen im Code. Ließe man sie
+   * überschreiben, könnte eine Mandanten-Anpassung die Zusicherung aushebeln,
+   * dass die Quintessenz das Dokument wiedergibt statt es auszuschmücken.
+   */
+  skill_instructions: string | null
 }
 
 /** Strukturierte Quintessenz (V1-Schema aus der Spec). */

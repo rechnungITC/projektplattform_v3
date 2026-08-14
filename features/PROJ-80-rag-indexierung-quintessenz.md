@@ -1,6 +1,6 @@
 # PROJ-80: RAG-Indexierung + Quintessenz
 
-## Status: In Progress (α.1 Datenschicht in Prod)
+## Status: In Progress (α-Backend komplett — α.1 + α.2a/b/c in Prod; Routen + Detailseite offen)
 ## Deployment Scope: —
 **Created:** 2026-06-06
 **Last Updated:** 2026-08-14
@@ -355,7 +355,62 @@ ist (`create table if not exists`, `create index if not exists`, `create or repl
 Dateiname die echte Reihenfolge gegenüber den Geschwistern abbildet — dieselbe Einordnung wie bei
 PROJ-106/109/131/132. `check:migration-naming`: 0 Fehler.
 
-**Offen für α.2:** Extraktion am Upload-Pfad (Wiederverwendung von `parseFile`), Volltext-Klassifikation
+### α.2 /backend — Extraktion, Klassifikation, Summarizer (2026-08-14)
+
+In drei Schritten geliefert, weil ein Lauf zu groß war:
+
+**α.2a — Extraktion + Volltext-Klassifikation.** Schließt die im Tech Design als sicherheitsrelevant
+benannte Lücke: der DMS-Pfad trug keine Datenschutz-Klassifikation. Kein neues Verfahren, sondern die
+Ausdehnung des PROJ-75-Musters (derselbe Parser, derselbe Klassifizierer über den **Volltext**, dieselbe
+fail-closed-Haltung). Zweite Obergrenze entschieden: `SUMMARY_INPUT_MAX_CHARS = 48.000` (~12k Token),
+getrennt von der 2-MB-Parsergrenze, weil sie einen anderen Zweck hat — konservativ, weil Class-3 nur an
+Ollama darf und lokale Modelle häufig mit 8k-Kontext laufen. **Kein Datenschutz-Loch:** die Klassifikation
+läuft vorher über den vollständigen Text. Nachweis: 4 **ungemockte** Fälle mit echten Dateien; der
+tragende setzt die E-Mail-Adresse bei Zeichen ~20.000, also weit hinter der Auszugsgrenze.
+
+**α.2b — Summarizer-Zweck über alle sechs Anbieter.** Lockstep-Migration `20260814140000`
+(`ki_runs` **und** `tenant_ai_cost_caps`), Anker mit Treffer-Eindeutigkeit und Post-Verifikation je
+Tabelle, plus eine **Verhaltensprobe statt Textprobe**. Ein geteilter Runner statt vier Kopien des
+Modell-Aufrufs; Ollama mit lockerem Schema und Kappung danach (PROJ-88); der Stub liefert `null` statt
+einer erfundenen Kurzfassung.
+
+> **Strukturbefund, in α.2b behoben:** die Capability-Matrix war **nicht** datengetrieben, sondern eine
+> Liste handgeschriebener Fälle — sie prüfte, woran sich jemand erinnert hatte, nicht die
+> `AIPurpose`-Union. Genau das Loch, gegen das PROJ-85 antrat: als `document_summary` dazukam, blieb sie
+> grün und bewies nichts. Jetzt über `AIPurpose` erschöpfend typisiert, **6 → 42 Fälle**. Der
+> Rot-Grün-Beweis fiel von selbst an: der erste Lauf fand drei Fehlannahmen — `sentiment`, `coaching` und
+> `proposal_stakeholders_from_context` sind nur bei Ollama+Stub, und das ist **richtig** (ihre
+> Klassifizierer geben fest 3 zurück). Meine Tabelle war falsch, das Produkt nicht. Sie hält diese Absicht
+> jetzt fest; der alte Test konnte „absichtlich nicht da" nicht von „vergessen" unterscheiden.
+
+**α.2c — Verdrahtung.** Migration `20260814160000`: `ensure_summarizer_skill` (nachgesät je Mandant, nach
+dem `seed_risk_categories_if_empty`-Muster) + Löschschutz-Trigger. Der Summarizer ist ein **gewöhnlicher**
+PROJ-76-Skill und erbt dadurch Versionierung, Entwurf/Veröffentlichen (PROJ-77), Audit und die
+Admin-Oberfläche, statt eine zweite Verwaltung aufzumachen. Sein Inhalt ist **Zusatzanweisung**, nicht der
+ganze Prompt: die unverhandelbaren Regeln stehen im Code, sonst könnte eine Mandanten-Anpassung die
+Zusicherung aushebeln, dass die Quintessenz das Dokument wiedergibt statt es auszuschmücken.
+
+Die Kette liegt in **einer** Funktion (`runDocumentPipeline`), weil sich drei Aufrufer sie teilen: Upload,
+Wiederholen und der nächtliche Lauf — und der nächtliche ist der Pfad, den niemand beobachtet. Die
+Quintessenz startet **nur** bei `status='extracted'`; das ist keine Optimierung, sondern die Zusicherung,
+dass ohne geprüften Volltext kein Text an ein Modell geht (5 Testfälle über alle anderen Zustände).
+
+Der Aufräumlauf (`/api/cron/document-summaries`, 04:15 UTC) holt **nur** nach, was nachweislich fehlt.
+Ein `failed`-Dokument bleibt `failed`: Wiederholen ist eine bewusste Nutzerhandlung, kein nächtliches
+Wiederkäuen, das Kosten verursacht und immer am selben Fehler scheitert.
+
+**Live-Smoke Skill 5/5 gegen Prod, 0 Rückstände** — inklusive der Gegenprobe, dass ein *gewöhnlicher*
+Skill weiterhin löschbar ist (der Wächter sperrt nicht alles): Anlage mit aktiver Fassung ·
+Idempotenz · Löschschutz `42501` · normaler Skill löschbar · fremder Mandant `P0003`.
+
+**Gates α.2c:** vitest 3041/3041 (384 Dateien) · tsc 13 = Baseline · ESLint 0 · Build clean (Cron-Route
+registriert) · migration-naming 0 Fehler.
+
+**Offen (α-Rest):** Routen für Anzeigen/Bearbeiten/Wiederholen der Quintessenz (mit `If-Match`, Spec-
+Edge-Case) und die Dokument-Detailseite — beides `/frontend`. Ein echter Ende-zu-Ende-Lauf mit
+Anbieter steht aus (wie bei PROJ-88/89 abhängig von einem erreichbaren Ollama bzw. Cloud-Schlüssel).
+
+**Offen für α.2 (historisch):** Extraktion am Upload-Pfad (Wiederverwendung von `parseFile`), Volltext-Klassifikation
 (PROJ-75-Muster), Summarizer-Skill + AI-Zweck über alle Anbieter, Routen, Anstoß per `after()` +
 nächtlicher Aufräumlauf, zweite Obergrenze für die Modell-Übergabe.
 

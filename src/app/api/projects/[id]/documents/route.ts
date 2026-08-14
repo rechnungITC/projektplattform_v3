@@ -25,7 +25,7 @@ import {
   getAuthenticatedUserId,
   requireProjectAccess,
 } from "@/app/api/_lib/route-helpers"
-import { runDocumentExtraction } from "@/lib/dms/extraction-runner"
+import { runDocumentPipeline } from "@/lib/dms/pipeline"
 import { DmsMimeError, sniffDocumentMime } from "@/lib/dms/mime"
 import { uploadFieldsSchema } from "@/lib/dms/schema"
 import { dedupeFilename, dedupeName } from "@/lib/dms/slug"
@@ -274,7 +274,7 @@ export async function POST(
       return apiError("create_failed", docErr?.message ?? "Failed to record document.", 500)
     }
 
-    // PROJ-80-α.2 — Textauszug + Datenschutz-Klassifikation im Hintergrund der
+    // PROJ-80-α — Textauszug, Klassifikation und Quintessenz im Hintergrund der
     // Antwort. Der Upload darf davon nicht abhängen: die Extraktion kann bei
     // großen PDFs Sekunden dauern, und ein Dokument ohne Auszug ist trotzdem ein
     // gültiges Dokument (der Auszug trägt seinen eigenen Zustand).
@@ -282,16 +282,28 @@ export async function POST(
     // `after()` wirft außerhalb eines Next.js-Request-Scopes — etwa wenn ein
     // Unit-Test den Handler direkt aufruft. Deshalb umschlossen: die Antwort
     // gewinnt immer (PROJ-54-Muster).
+    // PROJ-80-α.2c — Summarizer-Skill nachsäen, solange wir noch eine
+    // Nutzersitzung haben. Der Hintergrundlauf schreibt mit service-role und
+    // kann die RPC nicht selbst rufen: sie prüft `is_tenant_member`, und für
+    // service-role ist `auth.uid()` leer. Best-effort — fehlt der Skill, läuft
+    // die Erzeugung ohne Zusatzanweisung weiter (Spec: „indexing still runs").
+    try {
+      await supabase.rpc("ensure_summarizer_skill", { p_tenant_id: tenantId })
+    } catch {
+      // Kein Grund, den Upload scheitern zu lassen.
+    }
+
     try {
       const docId = (docRow as unknown as { id: string }).id
       after(async () => {
         try {
-          await runDocumentExtraction({
+          await runDocumentPipeline({
             tenantId,
             documentId: docId,
             buffer,
             filename: fileEntry.name,
             mimeHint: mime,
+            actorUserId: userId,
           })
         } catch {
           // `runDocumentExtraction` schreibt Fehler als Zustand in die Zeile und
