@@ -28,6 +28,7 @@
  */
 
 import { randomUUID } from "node:crypto"
+import { deleteOrThrow } from "./fixtures/cleanup"
 
 import { createClient, type SupabaseClient } from "@supabase/supabase-js"
 
@@ -145,8 +146,12 @@ test.describe.serial("PROJ-70-ε / finalize handoff + deep-link auto-generate", 
         await admin.from("ki_suggestions").delete().eq("project_id", projectId)
         await admin.from("ki_runs").delete().eq("project_id", projectId)
         await admin.from("context_sources").delete().eq("project_id", projectId)
-        await admin.from("project_members").delete().eq("project_id", projectId)
-        await admin.from("projects").delete().eq("id", projectId)
+        // PROJ-Y-143o: `project_members` existiert nicht; Mitgliedschaften raeumt seit
+        // PROJ-148 der CASCADE. Der Projekt-Delete ist laut, weil an ihm die Halde hing.
+        await deleteOrThrow(
+          admin.from("projects").delete().eq("id", projectId),
+          "PROJ-70-e Wizard-Projekt",
+        )
       }
       if (contextSourceId) {
         await admin.from("context_sources").delete().eq("id", contextSourceId)
@@ -367,8 +372,11 @@ test.describe.serial("PROJ-70-ε / accept seeded backlog via deep-linked drawer"
       await admin.from("work_items").delete().eq("project_id", PROJECT_ID)
       await admin.from("ki_suggestions").delete().eq("project_id", PROJECT_ID)
       if (runId) await admin.from("ki_runs").delete().eq("id", runId)
-      await admin.from("project_members").delete().eq("project_id", PROJECT_ID)
-      await admin.from("projects").delete().eq("id", PROJECT_ID)
+      // PROJ-Y-143o: siehe oben — falsche Tabelle raus, Projekt-Delete laut.
+      await deleteOrThrow(
+        admin.from("projects").delete().eq("id", PROJECT_ID),
+        "PROJ-70-e Accept-Projekt",
+      )
     } catch {
       // best-effort
     }

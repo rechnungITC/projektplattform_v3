@@ -32,6 +32,7 @@
  */
 
 import { createClient, type SupabaseClient } from "@supabase/supabase-js"
+import { deleteOrThrow } from "./fixtures/cleanup"
 
 import { expect, hasAuthStorageState, test } from "./fixtures/auth-fixture"
 import { E2E_TENANT_ID, E2E_USER_ID } from "./fixtures/constants"
@@ -331,8 +332,14 @@ test.describe.serial("PROJ-135 / endpoint + finalize persist", () => {
     if (projectId) {
       await safe(admin.from("ki_runs").delete().eq("project_id", projectId))
       await safe(admin.from("context_sources").delete().eq("project_id", projectId))
-      await safe(admin.from("project_members").delete().eq("project_id", projectId))
-      await safe(admin.from("projects").delete().eq("id", projectId))
+      // PROJ-Y-143o: `project_members` gibt es nicht (die Tabelle heisst
+      // `project_memberships`) — der Fehler wurde verschluckt. Die Mitgliedschaften
+      // raeumt seit PROJ-148 ohnehin der ON DELETE CASCADE weg; der Projekt-Delete
+      // selbst ist jetzt laut, weil an ihm die Anhaeufung hing.
+      await deleteOrThrow(
+        admin.from("projects").delete().eq("id", projectId),
+        "PROJ-135 Finalize-Projekt",
+      )
     }
     for (const id of [contextSourceId, finContextSourceId]) {
       if (id) await safe(admin.from("context_sources").delete().eq("id", id))
