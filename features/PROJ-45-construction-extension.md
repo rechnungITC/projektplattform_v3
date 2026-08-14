@@ -554,6 +554,9 @@ seit `/backend` in Prod; der Merge liefert Code. Vercel deployt automatisch von 
 - Post-Deploy-Smoke: alle fünf neuen Flächen (Katalog-Seite, Katalog-API, beide Projektraum-Tabs, Abschnitts-API) antworten mit **307 Auth-Gate**; der Antwortrumpf ist `Redirecting...` — kein Struktur- oder Datenleck
 - Rebase linear auf `main` statt Merge-Commit (ein Merge-Commit löst bei Vercel kein Build-Event aus); alle sechs Gates grün, darunter der **Schema-Drift-Wächter** — der belegt unabhängig, dass die Anker-Ersetzungen auch in einer frisch aus den Migrationsdateien gebauten Datenbank greifen
 
-**Offene Followups:** F-2 (Projekt-Konsistenz der additiven Verweise) sowie die Slices β/γ/δ/ε.
+**Followup F-2 erledigt 2026-08-14** — Tag `v2.57.0-PROJ-Y-45a`, PR #390: zwei BEFORE-Wächter
+erzwingen jetzt, dass ein referenziertes Gewerk bzw. ein Bauabschnitt zum selben Projekt gehört.
+Live-Smoke 9/9 gegen Prod, 0 Rückstände; die N-Vektoren belegen, dass der Normalpfad jedes
+Nicht-Bauprojekts unbeschädigt bleibt. **Offen bleiben nur die Slices β/γ/δ/ε.**
 
 ---
