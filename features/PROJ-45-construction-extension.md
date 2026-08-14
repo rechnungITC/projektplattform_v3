@@ -260,9 +260,24 @@ hat unverändert 7 Policies, alle Geschwisterzweige der drei geteilten Register 
 `authenticated`-ausführbare Seed-Funktion — beabsichtigt, sie prüft intern selbst auf Mandanten-Admin,
 identisch zu `seed_risk_categories_if_empty`).
 
-**Noch offen in α** (Übergabe an `/qa` bzw. Rest-Backend): Route-Unit-Tests, Client-Wrapper,
-`work_items`/`risks`-Hooks um die neuen Felder erweitern, und die M&A-Regressionspentests
-(PROJ-100a/100b/102/130-γ1) wörtlich nachfahren. Frontend ist eigener Schnitt.
+**M&A-Regression PROJ-130-γ1 wörtlich gefahren (2026-08-13):** alle Verhaltensvektoren PASS —
+A (standard bleibt sichtbar), **B (strict bleibt fuer nicht freigeschaltete Mitglieder verborgen)**,
+C (Freischaltung oeffnet das Tor), D (Admin-Bypass), E (Nicht-Mitglied 0), F (anon 42501),
+G1 (Tor ruft die Stufen-Aufloesung), G3 (alpha-Waechter 3/3). **G2 FAIL: 60 statt erwarteter 57
+Zweige** — das sind exakt die drei von dieser Slice ergaenzten. Kein Verhaltensbruch, sondern eine
+absolute Bestandszahl im Test einer Schwester-Slice; Sollwert auf 60 angehoben und im Test begruendet.
+Der Umbau auf eine Untergrenze plus namentliche Geschwisterpruefung ist ein eigener Followup — die
+absolute Zahl schlaegt bei jeder legitimen Erweiterung fehl, genau die Lehre, die PROJ-130-alpha fuer
+Migrations-Zusicherungen selbst gezogen hat.
+
+**Noch offen in α** (Uebergabe): (1) Route-Unit-Tests, (2) Client-Wrapper, (3) `work_items`/`risks`-Hooks
+um `trade_id`/`section_id` erweitern, (4) PROJ-100a und PROJ-100b wörtlich nachfahren — beide sind
+mehrteilige Skripte mit echten Inserts und eigenem Teardown (kein zurueckrollender DO-Block) und muessen
+abschnittsweise gefahren werden. Fuer PROJ-102 existiert keine eigene Pentest-Datei; die dokumentierten
+6/6 stammen aus einem Ad-hoc-Lauf. Strukturell ist die M&A-Seite bereits belegt:
+`can_access_classified` enthaelt kein `construction`-Vorkommen, `workstreams` hat unveraendert 7
+Policies, alle Geschwisterzweige der drei geteilten Register sind namentlich gegengeprueft.
+Frontend ist ein eigener Schnitt.
 
 ---
 
