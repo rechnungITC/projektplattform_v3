@@ -174,6 +174,136 @@ bei aktivem Modul erscheinen, damit ERP-, Software- und M&A-Projekte unveränder
 
 ---
 
+## PROJ-45-β — Mängelmanagement (Requirements 2026-08-14)
+
+**Status: Planned** · zweiter Sub-Slice, baut auf dem deployten α auf.
+
+### Ein Befund vorweg: L3s Begründung ist zur Hälfte überholt
+
+Lock **L3** wurde formuliert, **bevor** α gebaut war, und begründete das eigene Objekt damit, dass ein
+`work_item` der Art `bug` *„weder Prüf-Stufe noch Vendor-Bezug noch Ortsangabe"* habe. Drei dieser vier
+Lücken hat α selbst geschlossen:
+
+| L3-Argument | Stand heute |
+|---|---|
+| keine Ortsangabe | `work_items.section_id` — in α gebaut |
+| kein Gewerk | `work_items.trade_id` — in α gebaut |
+| keine Frist | `work_items.due_date` — seit PROJ-101 |
+| kein Verantwortlicher | `responsible_user_id` — seit PROJ-9 |
+
+Echt übrig bleiben **zwei** Lücken: der **Nachunternehmer** (`work_items` trägt keinen Vendor-Bezug,
+am Typ verifiziert) und die **Prüf-Stufe** — `WorkItemStatus` kennt `todo · in_progress · blocked ·
+done · cancelled`, und „erledigt" ist eben nicht „geprüft". Letzteres ist auch kein Statuswert, sondern
+ein **Zwei-Akteur-Gate**: der Nachunternehmer meldet fertig, die Bauleitung sieht nach.
+
+**L3 bleibt trotzdem — auf neuer Begründung** (Nutzer-Entscheid, L9): nicht wegen der Felder, sondern
+weil ein Mangel **keine geplante Arbeit** ist. Er ist ein eingetretener Sachverhalt mit
+Gewährleistungsgewicht und formaler Mängelanzeige. Im Backlog würde er Velocity, Burndown und die
+WBS-Rollups verfälschen — Auswertungen, die genau davon leben, dass dort geplante Arbeit steht.
+
+### Nutzer-Locks (β)
+
+| # | Entscheidung | Begründung |
+|---|---|---|
+| **L9** | **Eigenes Bau-Objekt**, L3 bleibt — aber fachlich begründet statt feldbegründet. | Siehe oben. Preis: eigene Oberfläche, kein Erben von Gantt und Abhängigkeiten. |
+| **L10** | **Bauleitung prüft, Vier-Augen, Rückweisung möglich.** Wer auf „erledigt" gesetzt hat, kann nicht selbst abnehmen; eine fehlgeschlagene Prüfung wirft auf „in Bearbeitung" zurück. | Genau die Trennung, wegen der die vierte Stufe existiert. Muster für das Vier-Augen-Gate: PROJ-105 / PROJ-100c. Rückweisung statt Duplikat, weil sonst Ketten zum selben Sachverhalt entstehen. |
+| **L11** | **Mängelanzeige in β**, als chrome-lose Druckseite (PROJ-21-Muster). | Ohne sie bliebe β ein internes Register; die Anzeige ist der Punkt, an dem der Mangel den Nachunternehmer erreicht. Kein neues Paket, kein Renderer. Echter Versand über PROJ-13 ausdrücklich **nicht** — der Nachunternehmer ist selten Plattformnutzer. |
+| **L12** | **Überfällig sichtbar + in der Engpass-Sicht** (PROJ-103), keine eigene Benachrichtigungsschicht. | PROJ-103 sammelt überfällige Arbeit bereits; ein zweiter Mechanismus wäre eine zweite Wahrheit. |
+| **L13** | **Gewerk ist Pflicht, Ort optional.** | Ein Mangel ohne Adressaten ist wertlos — das Gewerk trägt die Zuständigkeit und die Mängelanzeige. Der Ort ist beim Rundgang oft noch unpräzise; ihn zu erzwingen bremst die Erfassung dort, wo Mängel entstehen. |
+| **L14** | **Dreistufiger Schweregrad** (gering · erheblich · gravierend), **keine** Kostenschätzung. | Trennt den Kratzer im Treppenhaus von der undichten Dachhaut und macht eine Liste mit 200 Einträgen lesbar. Ein EUR-Betrag ist auf der Baustelle selten belastbar — ein leeres Pflichtfeld ist schlimmer als keins. |
+| **L15** | **Jedes Projektmitglied darf erfassen**, auch Betrachter. Ändern, Fristen setzen und Prüfen bleiben der Bauleitung. | Mängel entstehen beim Rundgang, nicht am Schreibtisch. **Bewusste Abweichung vom Hausmuster**, wo Betrachter nichts anlegen — deshalb architektur- und CIA-relevant (siehe offene Fragen). |
+| **L16** | **Entfernen sperren**, solange Mängel an einem Gewerk oder Abschnitt hängen; die Meldung nennt sie. | Wie die Katalog-Löschsperre aus α. **Bewusst inkonsistent zu α**, wo Arbeitspakete und Risiken ihren Bezug per `SET NULL` verlieren dürfen: ein Mangel ohne Adressaten ist gewährleistungsrechtlich wertlos, ein Arbeitspaket ohne Gewerk nur unscharf. |
+
+### Prior Art für β
+
+| Bedarf | Vorlage |
+|---|---|
+| Objektform, Schweregrad, Statuswechsel-RPC | `dd_findings` (PROJ-114) — inklusive `create`/`update`-Paar und Zusammenfassungs-RPC |
+| Vier-Augen-Prüfung | `deliverable_approvals` (PROJ-105), `_system`-Helfer-Muster aus PROJ-100c |
+| Mängelanzeige | PROJ-21 Print-to-PDF, zuletzt in PROJ-131/132 angewandt |
+| Nachunternehmer | `vendors` (PROJ-15) |
+| Überfälligkeit | `project_task_bottlenecks` (PROJ-103) |
+| Gewerk / Ort | `project_construction_trades`, `construction_sections` (α) — inkl. der in PROJ-Y-45a erzwungenen Projekt-Konsistenz |
+| Fotos | DMS (PROJ-79) — **nicht** in β, das ist ε |
+
+### User Stories (β)
+
+#### ST-45β.1 — Mangel erfassen
+Als **Projektmitglied auf der Baustelle** möchte ich einen Mangel in wenigen Feldern festhalten,
+damit er nicht verloren geht, während ich noch vor Ort bin.
+
+- [ ] **AC-45β.1** Jedes Projektmitglied — auch mit Betrachterrolle — kann einen Mangel anlegen (L15).
+- [ ] **AC-45β.2** Pflicht sind Titel, Gewerk und Schweregrad; Ort, Beschreibung, Frist und Nachunternehmer sind optional (L13/L14).
+- [ ] **AC-45β.3** Auswählbar sind nur Gewerke und Abschnitte **dieses** Projekts; ein projektfremder Verweis wird serverseitig abgewiesen.
+- [ ] **AC-45β.4** Ein neu erfasster Mangel steht auf „offen" und ist ohne weiteren Schritt in der Liste sichtbar.
+
+#### ST-45β.2 — Nachbesserung steuern
+Als **Bauleitung** möchte ich Frist, Verantwortlichen und ausführenden Nachunternehmer setzen,
+damit die Nachbesserung zugeordnet und terminiert ist.
+
+- [ ] **AC-45β.5** Nur Projektleitung/Bauleitung oder Mandanten-Administration ändert einen bestehenden Mangel; ein Betrachter kann nach dem Anlegen nichts mehr ändern (L15).
+- [ ] **AC-45β.6** Frist, Verantwortlicher und Nachunternehmer (aus PROJ-15) sind setz- und wieder entfernbar.
+- [ ] **AC-45β.7** Der Status folgt der Kette offen → in Bearbeitung → erledigt → geprüft; jeder Wechsel ist auditiert.
+- [ ] **AC-45β.8** Ein Mangel kann verworfen werden (etwa „kein Mangel"), mit Pflichtbegründung.
+
+#### ST-45β.3 — Prüfen
+Als **Bauleitung** möchte ich eine gemeldete Nachbesserung abnehmen oder zurückweisen,
+damit „erledigt" nicht dasselbe bedeutet wie „nachgesehen".
+
+- [ ] **AC-45β.9** „Geprüft" setzt ausschließlich Projektleitung/Bauleitung oder Mandanten-Administration.
+- [ ] **AC-45β.10** Wer den Mangel auf „erledigt" gesetzt hat, kann ihn **nicht selbst** auf „geprüft" setzen; der Versuch wird serverseitig abgewiesen (L10).
+- [ ] **AC-45β.11** Eine Prüfung kann fehlschlagen und wirft den Mangel auf „in Bearbeitung" zurück, mit Pflichtbegründung.
+- [ ] **AC-45β.12** Der Verlauf zeigt jede Runde nachvollziehbar — wer wann fertigmeldete, wer wann prüfte oder zurückwies.
+
+#### ST-45β.4 — Mängelanzeige herausgeben
+Als **Bauleitung** möchte ich eine Mängelanzeige je Nachunternehmer erzeugen,
+damit die Nachbesserung schriftlich und fristgebunden angefordert ist.
+
+- [ ] **AC-45β.13** Aus der Mängelliste lässt sich eine Anzeige erzeugen, gefiltert auf ein Gewerk oder einen Nachunternehmer.
+- [ ] **AC-45β.14** Die Anzeige ist eine chrome-lose Druckseite; der Browser druckt nach PDF (L11).
+- [ ] **AC-45β.15** Sie enthält je Mangel Titel, Beschreibung, Ort (falls gesetzt), Schweregrad und Nachbesserungsfrist, dazu Projekt- und Erstellungsangaben.
+- [ ] **AC-45β.16** Die Anzeige respektiert die Projektzugehörigkeit: sie zeigt ausschließlich Mängel, die der Aufrufer ohnehin sehen darf.
+
+#### ST-45β.5 — Überfälliges sehen
+Als **Bauleitung** möchte ich überschrittene Nachbesserungsfristen sofort erkennen,
+damit ich nachhake, bevor die Gewährleistung zum Thema wird.
+
+- [ ] **AC-45β.17** Ein Mangel mit überschrittener Frist und nicht abschließendem Status ist in der Liste als überfällig gekennzeichnet.
+- [ ] **AC-45β.18** Überfällige Mängel erscheinen in der bestehenden Engpass-Sicht aus PROJ-103, ohne dass dort ein zweiter Mechanismus entsteht (L12).
+- [ ] **AC-45β.19** Die Liste ist nach Gewerk, Abschnitt, Status, Schweregrad und Überfälligkeit filterbar.
+
+#### ST-45β.6 — Sichtbarkeit
+- [ ] **AC-45β.20** Mängel erscheinen nur in Bauprojekten mit aktivem Bau-Modul; bei abgeschaltetem Modul antwortet der Server gleichbleibend abweisend und die Oberfläche zeigt den neutralen „nicht aktiv"-Hinweis.
+- [ ] **AC-45β.21** Ein Gewerk oder Abschnitt, an dem Mängel hängen, lässt sich nicht aus dem Projekt entfernen; die Meldung benennt die betroffenen Mängel (L16).
+- [ ] **AC-45β.22** Mandanten- und Projekttrennung gilt unverändert: fremde Mängel sind unsichtbar, auch aggregiert.
+
+### Edge Cases (β)
+
+- **Erfasser prüft selbst.** Häufigster Versuch. Serverseitig abgewiesen (AC-45β.10) — nicht nur in der Oberfläche ausgeblendet.
+- **Frist liegt beim Anlegen bereits in der Vergangenheit.** Erlaubt (Nacherfassung eines alten Mangels), aber sofort als überfällig gekennzeichnet.
+- **Mangel ohne Ort.** Zulässig (L13); die Mängelanzeige lässt die Zeile weg statt „unbekannt" zu drucken.
+- **Nachunternehmer wird im Stammdatensatz gelöscht.** Der Bezug fällt auf leer, der Mangel bleibt — anders als beim Gewerk, das die Zuständigkeit trägt.
+- **Gewerk wird im Katalog nur deaktiviert.** Bestehende Mängel bleiben zugeordnet und sichtbar; nur die Neuauswahl entfällt.
+- **Mehrfache Rückweisung.** Der Verlauf muss alle Runden zeigen, nicht nur die letzte (AC-45β.12).
+- **Verworfener Mangel.** Zählt nicht als überfällig und erscheint nicht in der Engpass-Sicht.
+- **Bauprojekt ohne Abschnittsbaum.** Erfassung muss vollständig funktionieren; der Ort bleibt schlicht leer.
+- **Viele Mängel.** Bei 200+ Einträgen muss die Liste über Filter bedienbar bleiben; das ist der Grund für den Schweregrad (L14).
+
+### Out of Scope (β)
+
+Fotodokumentation (**ε**) · Verortung im Bauplan · echter Versand der Anzeige über PROJ-13 (L11) ·
+Abnahmen (**γ**) · Gewährleistungsfristen und -verfolgung über die Bauzeit hinaus ·
+Kostenschätzung je Mangel (L14).
+
+### Offene Fragen für `/architecture`
+
+- **Q-β1 — L15 weicht vom Hausmuster ab.** Betrachter dürfen sonst nirgends anlegen. Die Umsetzung braucht eine differenzierte Schreibregel (Anlegen ja, Ändern nein) statt der üblichen einen. **CIA-relevant**, weil es ein produktweit etabliertes Rechte-Muster aufweicht.
+- **Q-β2 — Wo lebt das Vier-Augen-Gate?** In einer Statuswechsel-RPC wie bei `dd_findings`, oder in einer eigenen Prüf-Tabelle wie bei den Freigaben aus PROJ-105? Die Rückweisung mit Begründung und der mehrrundige Verlauf (AC-45β.12) sprechen für Ersteres mit einer Ereignis-Tabelle daneben.
+- **Q-β3 — Wie kommt die Überfälligkeit in PROJ-103?** Dessen Auswertung ist heute auf `work_items` gebaut. Mängel sind ein zweiter Typ — erweitert die bestehende Funktion oder liefert eine zweite, die daneben gestellt wird?
+- **Q-β4 — Sperren statt `SET NULL` (L16).** In α tragen Arbeitspakete und Risiken `SET NULL`. Zwei Regeln auf derselben Fläche sind erklärungsbedürftig; zu prüfen ist, ob `RESTRICT` auf dem Projekt-Gewerk mit dem bestehenden Entfernen-Pfad kollidiert.
+
+---
+
 ## Out of Scope (α) — benannte Folge-Slices
 
 | Slice | Inhalt | Vorlage |
