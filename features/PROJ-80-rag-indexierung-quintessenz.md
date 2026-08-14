@@ -1,6 +1,6 @@
 # PROJ-80: RAG-Indexierung + Quintessenz
 
-## Status: Architected (α)
+## Status: In Progress (α.1 Datenschicht in Prod)
 ## Deployment Scope: —
 **Created:** 2026-06-06
 **Last Updated:** 2026-08-14
@@ -117,6 +117,11 @@ Das Design folgt dem gemessenen Stand, nicht dem Spec-Text.
 
 Dazu ein Befund, der kein Design-Problem ist, aber die Reihenfolge bestimmt: **das DMS ist in Produktion
 leer** — 0 Dokumente, 0 Baumknoten, drei Wochen nach dem α-Deploy von PROJ-79.
+
+> **Eingeordnet 2026-08-14 (Nutzer):** die Null ist **kein Adoptionssignal**. Das Produkt ist im
+> Entwicklungsstand, es legt schlicht noch niemand Dokumente ab. Der Befund bleibt als Begründung für den
+> α/β-Schnitt gültig (ein Vektorindex über null Dokumente wäre verfrüht), taugt aber **nicht** als Beleg
+> gegen das DMS. Wer ihn später liest: nicht als Warnsignal deuten.
 
 ### Zuschnitt: α liefert die Quintessenz, β den Vektorindex
 
@@ -263,7 +268,96 @@ eigenen CIA-Durchgang.
   getroffen hat.
 
 ## Implementation Notes
-_To be added by /frontend and /backend._
+
+### α.1 /backend — Datenschicht (2026-08-14)
+
+**Zuschnitt-Korrektur beim Bauen.** Der α-Backend war für einen Lauf zu groß. Die AI-Hälfte allein (neuer
+Zweck × 6 Anbieter + geteilte Prompts + Capability-Matrix + Lockstep-Migration) war bei PROJ-89 ein
+vollständiger `/backend`, die Daten-/Extraktions-Hälfte bei PROJ-70-γ ebenso. Geteilt in:
+
+- **α.1 (dieser Lauf)** — Tabellen, Vertraulichkeits-Vererbung, Audit-Register. Kein AI.
+- **α.2** — Extraktion am Upload-Pfad, Volltext-Klassifikation, Summarizer-Zweck, 6 Anbieter, Routen.
+
+**Migration `20260814100000_proj80_alpha1_document_extractions` in Prod.** `document_extractions` +
+`document_summaries` + Auflöser `_dms_document_ctx` + 10 Policies + 6 Trigger + Register-Erweiterungen.
+
+**Die drei offenen Punkte aus dem Tech Design, entschieden:**
+
+1. **Ablageort des Volltexts** → eigene Tabelle, **zusammen mit den drei Datenschutz-Feldern**. Der
+   Entwurf hatte sie noch trennen wollen; `context_sources` hält `content_excerpt` und `privacy_class`
+   aber auf **derselben** Zeile, und das ist der bessere Präzedenzfall: Text und Schutzklasse sind eine
+   Tatsache, die beim erneuten Hochladen atomar ersetzt wird. Getrennt könnten sie auseinanderlaufen —
+   ein Dokument mit neuem Text und alter Klasse wäre genau das Leck, gegen das Invariante #3 antritt.
+   `documents` bleibt schmal, weil es bei jedem Baum-Rendern gelesen wird.
+2. **Obergrenze** → **geerbt, nicht erfunden.** `parseFile` weist Text über 2 MB bereits fail-closed ab
+   (PROJ-75, „fully screened or rejected"). Der Zustand heißt `too_large` und ist bewusst von `failed`
+   getrennt: „zu groß, β löst das per Chunking" ist eine andere Aussage als „kaputt". Die zweite,
+   kleinere Grenze für die Übergabe an das Modell gehört zu α.2 und wird dort an den Kostendeckeln
+   begründet.
+3. **`entity_type`-CHECK** → in derselben Migration, per Anker-Ersetzung aus der Live-Definition, mit
+   Treffer-Eindeutigkeitsprüfung **und** Post-Verifikation.
+
+**Was bewusst NICHT getrackt wird.** `extracted_text` steht nicht in der Audit-Whitelist. Er ist
+Maschinenausgabe und kann megabytegroß sein; ihn zu tracken hieße, jede Neu-Extraktion als riesigen
+Feld-Diff in ein Protokoll zu schreiben, das seit PROJ-130-α **keinen Löschpfad** mehr hat.
+`summary_markdown` dagegen wird getrackt — den bearbeiten Menschen, und genau das will die Spec
+protokolliert sehen.
+
+**Vier eigene Fehler, von der eigenen Durchsicht bzw. den Vorprüfungen gefangen:**
+
+- `execute format($f$ … mehrere Anweisungen … $f$)` — auf einzelne `execute`-Aufrufe zerlegt, statt sich
+  auf mehrfach-Anweisungs-`EXECUTE` zu verlassen.
+- Beim Zerlegen rutschte `v_gate` **hinter** `begin` statt in die Deklaration — der `DO`-Block wäre nicht
+  kompiliert.
+- Eine tote Zeile berechnete Anker-Treffer über eine Längendivision, die für einen **variabel langen**
+  Regex-Treffer schlicht falsch ist. Ersetzt durch `regexp_matches(..., 'g')` mit harter
+  „genau ein Treffer"-Bedingung.
+- **Der ernsteste:** `pg_get_constraintdef` rendert die Werte als `'documents'::text`. Mein erstes
+  `replace()` hätte den Cast an das *letzte* eingefügte Element gehängt. Anker jetzt inklusive
+  optionalem Cast, Treffer live gegengezählt (**genau 1**), bevor die Migration lief.
+
+Dazu eine Konventionsabweichung korrigiert: die Migration setzte anfangs `begin;`/`commit;` selbst —
+**1 von 211** Bestandsmigrationen tut das (nämlich nur diese). Entfernt.
+
+**Live-Pentest `tests/sql/PROJ-80-document-extractions-pentest.sql` — 10/10 PASS gegen Prod, 0 Rückstände**
+(über fünf Zählungen gegengeprüft, nicht angenommen):
+
+| Vektor | Messwert | Aussage |
+|---|---|---|
+| A | `privacy_class=3` | Default ist fail-closed |
+| B | `23514` | `extracted` ohne Klassifikation unmöglich |
+| C / D | `1` / `0` | Mitglied sieht die Standard-Zeile, die `strict`-Zeile nicht |
+| **E** | `0` | **Volltextsuche nach dem Inhalt der `strict`-Zeile fördert nichts zutage** |
+| F | `42501` | kein Client-Schreibweg |
+| G / H | `true` / `false` | Verlauf lesbar wo erlaubt, verborgen wo nicht |
+| I | `2` | Lebenszyklus + Feld-Änderung protokolliert |
+| J | `0` | Auflöser fail-closed bei unbekanntem Dokument |
+
+E ist der tragende Vektor: er sucht im **Klartext**. Eine Policy, die nur die Zeilenliste filtert, den
+Text aber über eine Suche durchreicht, fiele genau dort auf. Das Mitglied musste synthetisiert werden —
+in Prod ist jedes Mandanten-Mitglied Admin, und für Admins schließt `can_access_classified` kurz; ein
+Smoke unter Admin wäre falsch-grün gewesen.
+
+**Struktur unabhängig nachgeprüft** (nicht der eigenen Schreib-Antwort geglaubt): 10 Policies (2 permissiv
++ 8 restriktiv), 6 Trigger, `entity_type`-CHECK trägt beide neuen Werte **und** `documents` weiterhin,
+Geschwisterzweig `documents` in `_tracked_audit_columns` unverändert (`deleted_at,mime_unsupported_for_rag`),
+`anon` ohne jedes Tabellenrecht.
+
+**Advisors 0 ERROR.** Die vier Meldungen auf `_dms_document_ctx` sind wörtlich dieselbe Kategorie
+(`authenticated_security_definer_function_executable`), die `_dms_node_ctx` aus PROJ-Y-115c bereits trägt —
+dem Muster inhärent, weil die Policies die Funktion als `authenticated` aufrufen müssen.
+
+**PROJ-134-Versionsdrift, benigne.** Prod registrierte `20260814075847`, die Repo-Datei heißt
+`20260814100000_proj80_alpha1_document_extractions`. Der `name`-Parameter war korrekt gesetzt (= Dateiname),
+die MCP vergibt die Version dennoch selbst. Nicht umbenannt, weil die Migration **durchgängig idempotent**
+ist (`create table if not exists`, `create index if not exists`, `create or replace function`,
+`drop trigger if exists`, Skip-Zweige in allen drei Register-Blöcken, idempotente Grants) und der
+Dateiname die echte Reihenfolge gegenüber den Geschwistern abbildet — dieselbe Einordnung wie bei
+PROJ-106/109/131/132. `check:migration-naming`: 0 Fehler.
+
+**Offen für α.2:** Extraktion am Upload-Pfad (Wiederverwendung von `parseFile`), Volltext-Klassifikation
+(PROJ-75-Muster), Summarizer-Skill + AI-Zweck über alle Anbieter, Routen, Anstoß per `after()` +
+nächtlicher Aufräumlauf, zweite Obergrenze für die Modell-Übergabe.
 
 ## QA Test Results
 _To be added by /qa._
