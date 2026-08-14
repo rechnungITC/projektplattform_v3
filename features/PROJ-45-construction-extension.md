@@ -1,6 +1,6 @@
 # PROJ-45: Construction Extension — Gewerke & Bauabschnitte
 
-## Status: In Progress
+## Status: Approved
 ## Deployment Scope: —
 
 **Created:** 2026-05-06
@@ -105,12 +105,12 @@ Als **Mandanten-Administrator** möchte ich die Gewerke meines Unternehmens einm
 damit jedes Bauprojekt dasselbe Vokabular benutzt und Auswertungen über Projekte hinweg tragen.
 
 **Akzeptanzkriterien**
-- [ ] **AC-45.1** Ein Administrator kann Gewerke anlegen, umbenennen, deaktivieren und sortieren; jedes trägt eine mandantenweit eindeutige Kennung und eine Bezeichnung.
-- [ ] **AC-45.2** Nicht-Administratoren sehen den Katalog, können ihn aber nicht ändern; der Schreibversuch wird serverseitig abgewiesen, nicht nur in der Oberfläche ausgeblendet.
-- [ ] **AC-45.3** Ein Gewerk, das in mindestens einem Projekt zugeordnet ist, lässt sich **nicht löschen**; die Fehlermeldung benennt die betroffenen Projekte und verweist auf „deaktivieren" (L7).
-- [ ] **AC-45.4** Ein deaktiviertes Gewerk verschwindet aus der Auswahl neuer Zuordnungen, bleibt aber in bestehenden Projekten sichtbar und ausgewertet.
-- [ ] **AC-45.5** Eine Umbenennung im Katalog wirkt sofort in allen Projekten (L7) — es wird kein Name in die Projektzuordnung kopiert.
-- [ ] **AC-45.6** Der Katalog ist mandantengetrennt: ein fremder Mandant sieht ihn nicht und kann nicht darauf verweisen.
+- [x] **AC-45.1** Ein Administrator kann Gewerke anlegen, umbenennen, deaktivieren und sortieren; jedes trägt eine mandantenweit eindeutige Kennung und eine Bezeichnung.
+- [x] **AC-45.2** Nicht-Administratoren sehen den Katalog, können ihn aber nicht ändern; der Schreibversuch wird serverseitig abgewiesen, nicht nur in der Oberfläche ausgeblendet.
+- [x] **AC-45.3** Ein Gewerk, das in mindestens einem Projekt zugeordnet ist, lässt sich **nicht löschen**; die Fehlermeldung benennt die betroffenen Projekte und verweist auf „deaktivieren" (L7).
+- [x] **AC-45.4** Ein deaktiviertes Gewerk verschwindet aus der Auswahl neuer Zuordnungen, bleibt aber in bestehenden Projekten sichtbar und ausgewertet.
+- [x] **AC-45.5** Eine Umbenennung im Katalog wirkt sofort in allen Projekten (L7) — es wird kein Name in die Projektzuordnung kopiert.
+- [x] **AC-45.6** Der Katalog ist mandantengetrennt: ein fremder Mandant sieht ihn nicht und kann nicht darauf verweisen.
 
 ### ST-45.2 — Gewerke einem Bauprojekt zuordnen
 Als **Bauleiter** möchte ich die für mein Projekt zutreffenden Gewerke auswählen und je Gewerk
@@ -118,22 +118,22 @@ Verantwortung, ausführenden Nachunternehmer und eine Ampel führen, damit die L
 lesbar ist.
 
 **Akzeptanzkriterien**
-- [ ] **AC-45.7** Ein Projekt-Gewerk trägt: Verweis auf den Katalogeintrag, verantwortliche Person, optionalen Nachunternehmer aus PROJ-15, Ampel (`gruen` · `gelb` · `rot`, Vorgabe `gruen`), optionale Notiz (L8).
-- [ ] **AC-45.8** Die Ampel wird **manuell** gesetzt und nie automatisch überschrieben (L8).
-- [ ] **AC-45.9** Dasselbe Katalog-Gewerk kann einem Projekt nur **einmal** zugeordnet werden.
-- [ ] **AC-45.10** Zuordnen, Ändern und Entfernen ist auf Projektleitung und Mandanten-Administration beschränkt; Betrachter sehen die Liste unverändert lesend.
-- [ ] **AC-45.11** Änderungen an Verantwortlichem, Nachunternehmer und Ampel sind im Feld-Audit (PROJ-10) nachvollziehbar.
+- [x] **AC-45.7** Ein Projekt-Gewerk trägt: Verweis auf den Katalogeintrag, verantwortliche Person, optionalen Nachunternehmer aus PROJ-15, Ampel (`gruen` · `gelb` · `rot`, Vorgabe `gruen`), optionale Notiz (L8).
+- [x] **AC-45.8** Die Ampel wird **manuell** gesetzt und nie automatisch überschrieben (L8).
+- [x] **AC-45.9** Dasselbe Katalog-Gewerk kann einem Projekt nur **einmal** zugeordnet werden.
+- [x] **AC-45.10** Zuordnen, Ändern und Entfernen ist auf Projektleitung und Mandanten-Administration beschränkt; Betrachter sehen die Liste unverändert lesend.
+- [x] **AC-45.11** Änderungen an Verantwortlichem, Nachunternehmer und Ampel sind im Feld-Audit (PROJ-10) nachvollziehbar.
 
 ### ST-45.3 — Bauabschnitte gliedern
 Als **Bauleiter** möchte ich das Bauvorhaben räumlich mehrstufig gliedern (Bauteil → Geschoss →
 Einheit), damit Arbeit dort verortet werden kann, wo sie stattfindet.
 
 **Akzeptanzkriterien**
-- [ ] **AC-45.12** Bauabschnitte sind je Projekt frei tief schachtelbar (Selbstverweis) und als Baum darstellbar (L5).
-- [ ] **AC-45.13** Ein Abschnitt kann umbenannt, verschoben (Elternwechsel) und gelöscht werden; die Reihenfolge unter einem Elternknoten ist bestimmbar.
-- [ ] **AC-45.14** Ein Abschnitt kann nicht sein eigener Vorfahre werden — der Zyklus wird serverseitig abgewiesen.
-- [ ] **AC-45.15** Beim Löschen eines Abschnitts mit Unterabschnitten wird die Folge vorher benannt und bestätigt; verwaiste Unterabschnitte entstehen nicht.
-- [ ] **AC-45.16** Bauabschnitte sind projekt- und mandantengetrennt.
+- [x] **AC-45.12** Bauabschnitte sind je Projekt frei tief schachtelbar (Selbstverweis) und als Baum darstellbar (L5).
+- [x] **AC-45.13** Ein Abschnitt kann umbenannt, verschoben (Elternwechsel) und gelöscht werden; die Reihenfolge unter einem Elternknoten ist bestimmbar.
+- [x] **AC-45.14** Ein Abschnitt kann nicht sein eigener Vorfahre werden — der Zyklus wird serverseitig abgewiesen.
+- [x] **AC-45.15** Beim Löschen eines Abschnitts mit Unterabschnitten wird die Folge vorher benannt und bestätigt; verwaiste Unterabschnitte entstehen nicht.
+- [x] **AC-45.16** Bauabschnitte sind projekt- und mandantengetrennt.
 
 ### ST-45.4 — Arbeit auf beiden Achsen verorten
 Als **Bauleiter** möchte ich Arbeitspakete, Phasen und Risiken einem Gewerk und einem Bauabschnitt
@@ -141,22 +141,22 @@ zuordnen, damit „Elektro-Grobinstallation in Haus A, 2. OG" als Filter existie
 Titel steht.
 
 **Akzeptanzkriterien**
-- [ ] **AC-45.17** Ein Arbeitspaket (`work_items`) kann je einem Gewerk und einem Bauabschnitt zugeordnet werden; beide Angaben sind optional (L6).
-- [ ] **AC-45.18** Eine Phase kann mit mehreren Bauabschnitten verknüpft werden und ein Abschnitt mit mehreren Phasen (M:N, L6).
-- [ ] **AC-45.19** Ein Risiko kann einem Gewerk zugeordnet werden (L6).
-- [ ] **AC-45.20** Die Arbeitspaket-Liste ist serverseitig nach Gewerk und nach Bauabschnitt filterbar; ein Abschnittsfilter schließt dessen Unterabschnitte ein.
-- [ ] **AC-45.21** Alle Verknüpfungen sind **additiv**: ohne Bau-Modul und außerhalb von Bauprojekten verhält sich der Kern unverändert — nachzuweisen durch eine grüne Regression der bestehenden Work-Item-, Phasen- und Risiko-Tests.
-- [ ] **AC-45.22** Wird ein Gewerk aus dem Projekt entfernt oder ein Abschnitt gelöscht, verlieren die verknüpften Objekte nur den Verweis; kein Arbeitspaket, keine Phase und kein Risiko wird gelöscht.
+- [x] **AC-45.17** Ein Arbeitspaket (`work_items`) kann je einem Gewerk und einem Bauabschnitt zugeordnet werden; beide Angaben sind optional (L6).
+- [x] **AC-45.18** Eine Phase kann mit mehreren Bauabschnitten verknüpft werden und ein Abschnitt mit mehreren Phasen (M:N, L6).
+- [x] **AC-45.19** Ein Risiko kann einem Gewerk zugeordnet werden (L6).
+- [x] **AC-45.20** Die Arbeitspaket-Liste ist serverseitig nach Gewerk und nach Bauabschnitt filterbar; ein Abschnittsfilter schließt dessen Unterabschnitte ein.
+- [x] **AC-45.21** Alle Verknüpfungen sind **additiv**: ohne Bau-Modul und außerhalb von Bauprojekten verhält sich der Kern unverändert — nachzuweisen durch eine grüne Regression der bestehenden Work-Item-, Phasen- und Risiko-Tests.
+- [x] **AC-45.22** Wird ein Gewerk aus dem Projekt entfernt oder ein Abschnitt gelöscht, verlieren die verknüpften Objekte nur den Verweis; kein Arbeitspaket, keine Phase und kein Risiko wird gelöscht.
 
 ### ST-45.5 — Sichtbarkeit nur dort, wo sie hingehört
 Als **Mandanten-Administrator** möchte ich, dass Bau-Funktionen ausschließlich in Bauprojekten und nur
 bei aktivem Modul erscheinen, damit ERP-, Software- und M&A-Projekte unverändert bleiben.
 
 **Akzeptanzkriterien**
-- [ ] **AC-45.23** Die Bau-Navigation erscheint nur bei `project_type = "construction"` **und** aktivem Bau-Modul; sie ist über `active_modules` abschaltbar.
-- [ ] **AC-45.24** Bei abgeschaltetem Modul antwortet der Server auf die Bau-Endpunkte gleichbleibend abweisend, ohne die Existenz der Fläche zu verraten — und die Oberfläche zeigt den neutralen „nicht aktiv"-Hinweis aus PROJ-Y-143f, **nicht** einen Leerzustand und **nicht** eine Fehlermeldung.
-- [ ] **AC-45.25** Das `construction`-Profil im Katalog (PROJ-6) verliert seinen Platzhalter-Status und benennt die Bau-Module.
-- [ ] **AC-45.26** Bestehende Projekte anderer Typen zeigen keine Bau-Elemente; nachzuweisen an einem ERP- und einem M&A-Projekt.
+- [x] **AC-45.23** Die Bau-Navigation erscheint nur bei `project_type = "construction"` **und** aktivem Bau-Modul; sie ist über `active_modules` abschaltbar.
+- [x] **AC-45.24** Bei abgeschaltetem Modul antwortet der Server auf die Bau-Endpunkte gleichbleibend abweisend, ohne die Existenz der Fläche zu verraten — und die Oberfläche zeigt den neutralen „nicht aktiv"-Hinweis aus PROJ-Y-143f, **nicht** einen Leerzustand und **nicht** eine Fehlermeldung.
+- [x] **AC-45.25** Das `construction`-Profil im Katalog (PROJ-6) verliert seinen Platzhalter-Status und benennt die Bau-Module.
+- [x] **AC-45.26** Bestehende Projekte anderer Typen zeigen keine Bau-Elemente; nachzuweisen an einem ERP- und einem M&A-Projekt.
 
 ---
 
@@ -465,7 +465,74 @@ Weiter: `docs/decisions/v3-code-extension-pattern.md` · `docs/decisions/ma-doma
 _To be added by /architecture_
 
 ## QA Test Results
-_To be added by /qa_
+
+**Lauf 2026-08-14 · Verdikt: 0 Critical / 0 High → PRODUCTION-READY · 26/26 Akzeptanzkriterien erfüllt**
+
+### Nachweise je Kriteriengruppe
+
+| Kriterien | Nachweis |
+|---|---|
+| AC-45.1–45.6 (Katalog) | 14 Route-Unit-Tests · Live-Pentest V3b (Nicht-Admin-Schreibsperre), V4 (Löschsperre 23503), V1/V2 (Mandanten- und Fremdsicht) · Rot-Team R3a/R3b (deaktiviertes Gewerk: Bestand überlebt, Neuzuordnung 23514) · AC-45.5 strukturell: die Projektzeile hat **keine** Label-Spalte, ein Test pinnt den JOIN auf den Katalog |
+| AC-45.7–45.11 (Projekt-Gewerk) | Pentest V5 (Doppelzuordnung 23505), V3 (Betrachter-Schreibsperre 42501), **V9a/V9b/V9c** (Feld-Audit unter synthetisiertem Nicht-Admin — `V9c_not_admin=PASS` schließt Falsch-Grün aus) · AC-45.8 strukturell: die Ampel wird nirgends abgeleitet |
+| AC-45.12–45.16 (Abschnittsbaum) | Funktions-Smoke 10/10 (Tiefe 3, Teilbaum-Filter, Repath nach Umhängen) · Pentest V6 (Zyklus 23514), V7 (keine Waisen), V2b (Fremdsicht 0) · 7 Unit-Tests der reinen Baum-Helfer |
+| AC-45.17–45.22 (Verknüpfung) | Migration SET NULL · Rot-Team R2 (Cross-Projekt-Phase abgewiesen, 23514) · AC-45.20 Smoke `D_subtree=ok` · **AC-45.21**: volle Suite 2976/2976 plus M&A-Regressionen PROJ-100a, PROJ-100b A–H 8/8, PROJ-130-γ1 |
+| AC-45.23–45.26 (Sichtbarkeit) | 4 Modul-Gate-Tests · 125 Routing-Tests · Playwright 16/16 Auth-Gates · AC-45.25 in diesem Lauf **nachgezogen** (siehe F-1) |
+
+### Automatisierte Läufe
+
+- **vitest 2976/2976** · tsc 13 = Baseline / 0 neu · ESLint 0 · Build clean · `check:index-scope` 0 Fehler · `check:migration-naming` 0 Fehler
+- **Playwright** `tests/PROJ-45-construction.spec.ts` **16/16** chromium — alle 7 API-Routen, 3 Seiten, plus eine Probe, dass eine unwohlgeformte Projekt-ID nichts über die Tabellenstruktur verrät
+- **Visual-Regression** 9/9 nach begründeter Neuaufnahme zweier Baselines (siehe D-2)
+
+### Rot-Team-Supplement (live gegen Prod, 0 Rückstände)
+
+| Vektor | Ergebnis |
+|---|---|
+| R1 Fremd-Mandanten-Gewerk zuordnen | **PASS** (23514) |
+| R2 Phase eines fremden Projekts verknüpfen | **PASS** (23514) |
+| R3a/R3b Deaktiviertes Gewerk | **PASS** — Bestand überlebt, Neuzuordnung abgewiesen |
+| R4 Arbeitspaket zeigt auf fremdes Projekt-Gewerk | **ANGENOMMEN → F-2** |
+| R4a Leckprüfung zu R4 | **PASS, kein Leck** — die fremde Zeile ist für das Mitglied unsichtbar |
+
+### Befunde
+
+**F-1 (Medium, in diesem Lauf behoben) — AC-45.25 war nicht umgesetzt.**
+Das `construction`-Profil stand unverändert auf `is_placeholder: true` und versprach die Extension
+weiterhin als Zukunft („fachliche Vertiefung folgt mit der Construction-Extension") — während die
+Extension bereits ausgeliefert wurde. Der Wizard hätte dem Nutzer damit das Gegenteil dessen gesagt,
+was er sieht. Behoben: Platzhalter-Marker **entfernt** statt auf `false` gesetzt (die Bedeutung ist
+„reserviert, nichts dahinter", und das stimmt nicht mehr), Zusammenfassung benennt jetzt Gewerke und
+Bauabschnitte, `standard_modules` um beide erweitert (dafür musste die `ProjectModule`-Union wachsen).
+Der Test, der den Platzhalter festnagelte, ist auf die neue Zusage umgestellt statt gelöscht.
+
+**F-2 (Medium, offen → Followup) — fehlende Projekt-Konsistenz auf den additiven Verweisen.**
+`work_items.trade_id` und `work_items.section_id` (analog `risks.trade_id`) sichern über den
+Fremdschlüssel nur, dass die Zielzeile **existiert**, nicht dass sie **zum selben Projekt gehört**. Ein
+Editor kann per API einem Arbeitspaket aus Projekt B ein Gewerk aus Projekt A zuweisen (live bestätigt).
+**Kein Sicherheitsbefund:** Vektor R4a zeigt, dass die fremde Zeile für das Mitglied unsichtbar bleibt
+(RLS ist projektbezogen) und die Oberfläche eine solche Auswahl gar nicht anbietet — sie listet nur die
+Gewerke des eigenen Projekts. Wirkung ist unsinnige Zuordnung, kein Informationsabfluss. Der Fix ist ein
+Konsistenz-Trigger analog `construction_section_phase_guard`; er gehört in dieselbe Klasse wie die schon
+vorhandenen Guards und ist billiger, bevor β/γ weitere Verweise ergänzen.
+
+### Abweichungen
+
+- **D-1** Der Bauabschnittsbaum ist eine eingerückte Liste mit ausdrücklichem Eltern-Picker statt
+  Drag-and-drop. Der Picker bietet den eigenen Teilbaum gar nicht an, kann also keinen Zug vorschlagen,
+  der nur scheitern kann. Ziehen ist Komfort und zurückgestellt.
+- **D-2** Zwei Visual-Baselines neu aufgenommen: Stammdaten **+206 px** (eine Kachelreihe für „Gewerke")
+  und Tenant-Einstellungen **+49 px** (eine Modulzeile). Beide Höhen-Deltas entsprechen exakt genau
+  einer neuen Zeile; nach Neuaufnahme zweimal stabil 9/9.
+- **D-3** Mobile Safari übersprungen (WebKit-Host-Bibliotheken fehlen, PROJ-67/F2) — chromium-only.
+- **D-4** Kein authentifizierter Browser-Durchlauf durch die drei Seiten: die Flächen sind
+  modul-gegatet, und im E2E-Mandanten ist `construction` aus. Das Einschalten hätte die frisch
+  stabilisierten Visual-Baselines verändert (dieselbe Abwägung wie PROJ-144/F-8). Die Mechanik ist
+  über DB-Pentest, Route-Tests und Auth-Gates bewiesen, die **Verkettung im Browser** nicht.
+
+---
+
+## QA Test Results (Vorlage)
+_ersetzt durch den Lauf oben_
 
 ## Deployment
 _To be added by /deploy_
