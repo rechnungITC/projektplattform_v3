@@ -303,6 +303,23 @@ test.describe.serial("PROJ-1/2 live closure", () => {
         throw new Error(`project seed failed: ${projectError.message}`)
       }
 
+      // PROJ-148: die Lead-Mitgliedschaft ist der Kern dieses Tests, nicht Beiwerk.
+      // Ohne sie prüfte er eine Projektform, die das Produkt nie erzeugt — jedes über den
+      // Wizard angelegte Projekt bekommt einen Lead — und lief damit an dem Fehler vorbei,
+      // den er hätte fangen sollen: der ON DELETE CASCADE löste `enforce_last_lead()` aus,
+      // der Hard-Delete scheiterte mit 23514, und dieser Test blieb trotzdem grün.
+      const { error: membershipError } = await admin
+        .from("project_memberships")
+        .insert({
+          project_id: projectId,
+          user_id: E2E_USER_ID,
+          role: "lead",
+          created_by: E2E_USER_ID,
+        })
+      if (membershipError) {
+        throw new Error(`membership seed failed: ${membershipError.message}`)
+      }
+
       const response = await authenticatedPage.request.delete(
         `/api/projects/${projectId}?hard=true`,
       )
