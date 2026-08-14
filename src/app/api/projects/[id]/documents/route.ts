@@ -17,7 +17,7 @@
 import { createHash } from "crypto"
 
 import type { SupabaseClient } from "@supabase/supabase-js"
-import { NextResponse } from "next/server"
+import { NextResponse, after } from "next/server"
 import { z } from "zod"
 
 import {
@@ -25,6 +25,7 @@ import {
   getAuthenticatedUserId,
   requireProjectAccess,
 } from "@/app/api/_lib/route-helpers"
+import { runDocumentExtraction } from "@/lib/dms/extraction-runner"
 import { DmsMimeError, sniffDocumentMime } from "@/lib/dms/mime"
 import { uploadFieldsSchema } from "@/lib/dms/schema"
 import { dedupeFilename, dedupeName } from "@/lib/dms/slug"
@@ -271,6 +272,35 @@ export async function POST(
     if (docErr || !docRow) {
       await cleanupOrphan(storagePath)
       return apiError("create_failed", docErr?.message ?? "Failed to record document.", 500)
+    }
+
+    // PROJ-80-α.2 — Textauszug + Datenschutz-Klassifikation im Hintergrund der
+    // Antwort. Der Upload darf davon nicht abhängen: die Extraktion kann bei
+    // großen PDFs Sekunden dauern, und ein Dokument ohne Auszug ist trotzdem ein
+    // gültiges Dokument (der Auszug trägt seinen eigenen Zustand).
+    //
+    // `after()` wirft außerhalb eines Next.js-Request-Scopes — etwa wenn ein
+    // Unit-Test den Handler direkt aufruft. Deshalb umschlossen: die Antwort
+    // gewinnt immer (PROJ-54-Muster).
+    try {
+      const docId = (docRow as unknown as { id: string }).id
+      after(async () => {
+        try {
+          await runDocumentExtraction({
+            tenantId,
+            documentId: docId,
+            buffer,
+            filename: fileEntry.name,
+            mimeHint: mime,
+          })
+        } catch {
+          // `runDocumentExtraction` schreibt Fehler als Zustand in die Zeile und
+          // wirft nicht. Dieser Fang deckt nur das Unerwartete ab.
+        }
+      })
+    } catch {
+      // Kein Request-Scope (Unit-Test). Der nächtliche Aufräumlauf holt die
+      // Extraktion nach — deshalb ist das Auslassen hier folgenlos.
     }
 
     return NextResponse.json({ document: docRow, node: nodeRow }, { status: 201 })
