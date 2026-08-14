@@ -31,6 +31,12 @@ interface UseWorkItemsOptions {
   workstream?: string
   /** PROJ-102 — workstream FK filter. null = unassigned; string = that workstream. */
   workstreamId?: string | null
+  /** PROJ-45-α — construction trade. `null` filters for "not assigned". */
+  tradeId?: string | null
+  /** PROJ-45-α — construction section. Filters the node itself only; the
+   *  descendant-inclusive variant lives in the API route, which resolves the
+   *  subtree from the materialised path (AC-45.20). */
+  sectionId?: string | null
 }
 
 interface UseWorkItemsResult {
@@ -89,7 +95,7 @@ export function useWorkItems(
             // PROJ-36 Phase 36-α — WBS hierarchy + roll-up fields. Re-deploy
             // 2026-05-04 (commit f6089f8 was reverted before reaching prod;
             // re-applied via 20260504400000_proj36a_wbs_hierarchy_rollup_redeploy).
-            "id, tenant_id, project_id, kind, parent_id, phase_id, milestone_id, sprint_id, title, description, status, priority, responsible_user_id, attributes, position, created_from_proposal_id, created_by, created_at, updated_at, is_deleted, outline_path, wbs_code, wbs_code_is_custom, planned_start, planned_end, derived_planned_start, derived_planned_end, derived_estimate_hours, due_date, workstream_id, responsible:profiles!work_items_responsible_user_id_fkey ( id, display_name, email )"
+            "id, tenant_id, project_id, kind, parent_id, phase_id, milestone_id, sprint_id, title, description, status, priority, responsible_user_id, attributes, position, created_from_proposal_id, created_by, created_at, updated_at, is_deleted, outline_path, wbs_code, wbs_code_is_custom, planned_start, planned_end, derived_planned_start, derived_planned_end, derived_estimate_hours, due_date, workstream_id, trade_id, section_id, responsible:profiles!work_items_responsible_user_id_fkey ( id, display_name, email )"
           )
           .eq("project_id", projectId)
           .order("position", { ascending: true, nullsFirst: false })
@@ -156,6 +162,20 @@ export function useWorkItems(
             query = query.is("workstream_id", null)
           } else {
             query = query.eq("workstream_id", opts.workstreamId)
+          }
+        }
+        if (opts.tradeId !== undefined) {
+          if (opts.tradeId === null) {
+            query = query.is("trade_id", null)
+          } else {
+            query = query.eq("trade_id", opts.tradeId)
+          }
+        }
+        if (opts.sectionId !== undefined) {
+          if (opts.sectionId === null) {
+            query = query.is("section_id", null)
+          } else {
+            query = query.eq("section_id", opts.sectionId)
           }
         }
 
@@ -226,6 +246,11 @@ export function useWorkItems(
               // PROJ-102 — workstream FK; explicit mapping (obs 202).
               workstream_id:
                 (row as { workstream_id?: string | null }).workstream_id ?? null,
+              // PROJ-45-α — construction axes; explicit mapping like the FK above.
+              trade_id:
+                (row as { trade_id?: string | null }).trade_id ?? null,
+              section_id:
+                (row as { section_id?: string | null }).section_id ?? null,
               derived_planned_start:
                 (row as { derived_planned_start?: string | null })
                   .derived_planned_start ?? null,

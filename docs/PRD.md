@@ -47,7 +47,7 @@ The product thesis: enterprise projects fail at the seams between execution, gov
 | PROJ-16 | P1 | Master Data UI: users, stakeholder rollup, catalog overrides | Planned |
 | PROJ-17 | P1 | Tenant Administration: branding, modules, privacy defaults, export, offboarding | Planned |
 | PROJ-18 | P1 | Compliance Automatik & Process Templates (ISO/DSGVO/MS-365/vendor-eval/...) | Planned |
-| _TBD_ | P2 | Construction extension: trades, sections, schedule logic, Gantt views | Planned |
+| PROJ-45 | P2 | Construction extension: Gewerke-Katalog + Bauabschnitte als zweite Gliederungsachse (α), danach Mängel (β), Abnahmen (γ), bauspezifische Terminsignale (δ). Strikt Core-Reuse: `project_type='construction'`, keine Parallelmodule; Gewerke werden gespiegelt statt `workstreams` zu generalisieren (CIA 2026-08-13). | Architected |
 | _TBD_ | P2 | Software project extension: sprints, releases, technical dependencies | Planned |
 | PROJ-21 | P2 | Output rendering: Status-Report + Executive-Summary (HTML+PDF). Gantt, PPTX, Markdown deferred to PROJ-21b/c. | Deployed |
 | PROJ-22 | P1 | Budget-Modul: 3 Ebenen (Kategorien/Posten/Buchungen) + Vendor-Invoice-Integration + Multi-Currency mit FX. Schließt P0-Lücke aus PROJ-7. | Planned |

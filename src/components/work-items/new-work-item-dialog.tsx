@@ -3,10 +3,11 @@
 import { zodResolver } from "@hookform/resolvers/zod"
 import { ChevronLeft, Loader2 } from "lucide-react"
 import * as React from "react"
-import { useForm } from "react-hook-form"
+import { useForm, useWatch } from "react-hook-form"
 import { toast } from "sonner"
 import { z } from "zod"
 
+import { ConstructionAxisFields } from "@/components/construction/construction-axis-fields"
 import { ResponsibleUserPicker } from "@/components/projects/responsible-user-picker"
 import { Button } from "@/components/ui/button"
 import {
@@ -37,6 +38,7 @@ import {
 import { Textarea } from "@/components/ui/textarea"
 import { useAuth } from "@/hooks/use-auth"
 import { usePhases } from "@/hooks/use-phases"
+import { useProject } from "@/hooks/use-project"
 import { useSprints } from "@/hooks/use-sprints"
 import { useWorkItems } from "@/hooks/use-work-items"
 import {
@@ -75,6 +77,9 @@ const newWorkItemSchema = z.object({
   responsible_user_id: z.string().nullable(),
   sprint_id: z.string().nullable(),
   phase_id: z.string().nullable(),
+  // PROJ-45-α — construction axes, both optional (lock L6).
+  trade_id: z.string().nullable(),
+  section_id: z.string().nullable(),
   planned_start: z.string().nullable(),
   planned_end: z.string().nullable(),
 })
@@ -103,6 +108,8 @@ export function NewWorkItemDialog({
   const { items: candidateParents } = useWorkItems(projectId)
   const { sprints } = useSprints(projectId)
   const { phases } = usePhases(projectId)
+  const { project } = useProject(projectId)
+  const isConstructionProject = project?.project_type === "construction"
 
   const [submitting, setSubmitting] = React.useState(false)
   const [selectedKind, setSelectedKind] = React.useState<WorkItemKind | null>(
@@ -130,10 +137,17 @@ export function NewWorkItemDialog({
       responsible_user_id: user?.id ?? null,
       sprint_id: null,
       phase_id: null,
+      trade_id: null,
+      section_id: null,
       planned_start: null,
       planned_end: null,
     },
   })
+
+  // PROJ-45-α — construction axes. useWatch (not form.watch) so the React
+  // Compiler keeps optimising this component (PROJ-67 AC-4).
+  const watchedTradeId = useWatch({ control: form.control, name: "trade_id" })
+  const watchedSectionId = useWatch({ control: form.control, name: "section_id" })
 
   React.useEffect(() => {
     if (open) {
@@ -147,6 +161,8 @@ export function NewWorkItemDialog({
         responsible_user_id: user?.id ?? null,
         sprint_id: null,
         phase_id: null,
+        trade_id: null,
+        section_id: null,
         planned_start: null,
         planned_end: null,
       })
@@ -181,6 +197,8 @@ export function NewWorkItemDialog({
         responsible_user_id: values.responsible_user_id,
         sprint_id: sprintAvailable ? values.sprint_id : null,
         phase_id: values.phase_id,
+        trade_id: values.trade_id,
+        section_id: values.section_id,
         planned_start: values.planned_start,
         planned_end: values.planned_end,
       }
@@ -516,6 +534,17 @@ export function NewWorkItemDialog({
                 </FormItem>
               )}
             />
+
+            {isConstructionProject ? (
+              <ConstructionAxisFields
+                projectId={projectId}
+                tradeId={watchedTradeId}
+                sectionId={watchedSectionId}
+                disabled={submitting}
+                onTradeChange={(value) => form.setValue("trade_id", value)}
+                onSectionChange={(value) => form.setValue("section_id", value)}
+              />
+            ) : null}
 
             <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
               <FormField

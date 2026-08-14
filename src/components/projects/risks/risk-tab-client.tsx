@@ -63,6 +63,8 @@ export function RiskTabClient({ projectId }: RiskTabClientProps) {
   const tenantId = currentTenant?.id ?? null
   const { project } = useProject(projectId)
   const isMaProject = project?.project_type === "ma"
+  // PROJ-45-α — the trade picker belongs in construction projects only.
+  const isConstructionProject = project?.project_type === "construction"
 
   const [categories, setCategories] = React.useState<RiskCategory[]>([])
   const [risks, setRisks] = React.useState<Risk[]>([])
@@ -296,6 +298,8 @@ export function RiskTabClient({ projectId }: RiskTabClientProps) {
                     tenantId={tenantId}
                     initial={drawer.risk}
                     isMaProject={isMaProject}
+          isConstructionProject={isConstructionProject}
+          projectId={projectId}
                     categories={categories}
                     onCancel={() => setDrawer({ mode: "closed" })}
                     onSubmit={(input) => onUpdate(drawer.risk.id, input)}
@@ -329,6 +333,8 @@ export function RiskTabClient({ projectId }: RiskTabClientProps) {
               <RiskForm
                 tenantId={tenantId}
                 isMaProject={isMaProject}
+          isConstructionProject={isConstructionProject}
+          projectId={projectId}
                 categories={categories}
                 onCancel={() => setDrawer({ mode: "closed" })}
                 onSubmit={onCreate}

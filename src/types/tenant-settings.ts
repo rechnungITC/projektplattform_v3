@@ -28,6 +28,9 @@ export type ModuleKey =
   | "budget"
   | "output_rendering"
   | "organization"
+  // PROJ-45-α — one switch for the whole construction extension (Q4).
+  // Finer switches would create combinations neither tests nor QA cover.
+  | "construction"
 
 /** Modules that are actually built in V3 today and toggleable. */
 export const TOGGLEABLE_MODULES: readonly ModuleKey[] = [
@@ -42,6 +45,7 @@ export const TOGGLEABLE_MODULES: readonly ModuleKey[] = [
   "budget",
   "output_rendering",
   "organization",
+  "construction",
 ] as const
 
 /** Modules that exist in the schema as future-reserved keys but are not
@@ -63,6 +67,7 @@ export const MODULE_LABELS: Record<ModuleKey, string> = {
   budget: "Budget",
   output_rendering: "Reports",
   organization: "Organisation",
+  construction: "Bauprojekte",
 }
 
 export type DataClass = 1 | 2 | 3

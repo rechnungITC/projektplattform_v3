@@ -77,9 +77,15 @@ describe("project type catalog", () => {
     ])
   })
 
-  it("Construction is marked is_placeholder", () => {
+  // PROJ-45-α — AC-45.25: the placeholder status is retired now that Gewerke
+  // and Bauabschnitte actually ship. The profile must name them instead of
+  // promising them, and must no longer carry the reserved-only marker.
+  it("Construction is no longer a placeholder and names its construction modules", () => {
     const p = getProjectTypeProfile("construction")
-    expect(p.is_placeholder).toBe(true)
+    expect(p.is_placeholder).toBeUndefined()
+    expect(p.standard_modules).toContain("gewerke")
+    expect(p.standard_modules).toContain("bauabschnitte")
+    expect(p.summary_de).not.toContain("folgt mit der Construction-Extension")
     expect(p.required_info).toEqual([])
   })
 
