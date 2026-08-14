@@ -148,12 +148,26 @@ rather than assumed, the two undeletable rows reported honestly with the finishi
 printed. It is gated behind `PROD_WRITE_ACK=1` and deliberately has **no** npm alias, so
 nobody triggers a production write while running the test suite. Copy that shape.
 
-## Known gap
+## Who may set the exemption (closed 2026-08-13, PROJ-Y-146c)
 
-Nothing restricts `audit_lifecycle_exempt` to test tenants at runtime — verified: no
-`CHECK` constraint and no trigger references the column. PROJ-Y-130h's "nothing without a
-test marker is exempt" was a **one-time migration post-condition**, not an enforced
-invariant. A tenant admin could therefore switch create/delete auditing off for a real
-workspace; the flag flip is itself field-audited, so it is detectable rather than silent,
-but it is not prevented. Whether to add a constraint is tracked as **PROJ-Y-146c** —
-it touches the PROJ-130 audit mechanism and wants a CIA review before anyone changes it.
+Setting `audit_lifecycle_exempt = true` is restricted to `service_role`, `postgres`, and
+`supabase_admin` by the trigger `tenants_audit_exempt_write_guard`. Through the application
+role it fails with `42501`. **Rule 4 above is therefore no longer a convention but an
+enforced condition** — and it is the reason your fixture script must talk to the database
+with the service-role key, not with a signed-in admin session.
+
+Two properties worth knowing before you debug a `42501` here:
+
+- **Only the dangerous direction is gated.** Turning the exemption *off* (`true → false`)
+  stays open to any tenant admin, so a flag left on by a failed teardown can be cleared
+  without the service key.
+- **The guard is `SECURITY INVOKER` on purpose.** Under `SECURITY DEFINER`, `current_user`
+  would be the function owner and the check would pass for everyone — the trigger would look
+  present and do nothing. The migration asserts `prosecdef = false` for exactly this reason.
+
+What the exemption still does *not* do: it never suppresses field-level audit. Renames,
+status changes and the `is_deleted` trash flag keep writing rows even while the exemption is
+on (measured 6/6). Only creations and hard deletes go unlogged. **Residual risk, accepted:**
+anyone holding the service-role key can still set the flag — that is the legitimate fixture
+path and cannot be closed without closing this runbook's own recipe. Reporting flag flips to
+a human is tracked as **PROJ-Y-146d**.
