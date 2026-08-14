@@ -14,8 +14,8 @@ summary_for_jira: "[BUG] Papierkorb laesst sich nicht leeren — Hard-Delete bri
 
 # PROJ-148: „Endgültig löschen" scheitert an der Lead-Invariante
 
-## Status: Approved
-## Deployment Scope: —
+## Status: Deployed
+## Deployment Scope: full
 **Created:** 2026-08-14
 **Origin:** Nebenbefund bei der Vorbereitung von PROJ-Y-143o.
 
@@ -108,4 +108,18 @@ das dieselbe Bauart hat (Mandanten-Hard-Delete bleibt blockiert; Offboarding lä
 - [x] Live-Pentest grün, 0 Rückstände
 - [x] E2E-Test auf die reale Projektform gehärtet
 - [x] Zweite Ursache benannt und als Followup registriert statt vermischt
-- [ ] Merge + Post-Deploy-Smoke
+- [x] Merge + Post-Deploy-Smoke — PR #384 → main `4403c97`, Tag `v2.57.0-PROJ-148`; Smoke 2/2 gegen Prod (Abriss-Zweig live + beide Invarianten erhalten; Hard-Delete mit Lead → 1 Zeile), 0 Rückstände
+
+## Deployment
+
+**Deployed 2026-08-14:** PR #384 (squash) → main `4403c97`, Tag `v2.57.0-PROJ-148`. Die Migration
+lag seit dem Bau in Prod, der Merge brachte also **keinen** Runtime-DB-Change — er schließt die
+Repo/Prod-Divergenz und liefert die Test-Härtung aus. Post-Deploy-Smoke 2/2 gegen Prod
+(zurückgerollt, 0 Rückstände).
+
+**Warum Scope `full` und nicht `mvp`:** alle sechs Akzeptanzkriterien sind belegt, QA ohne
+Critical/High, Produktionsverhalten live verifiziert. Die 4 verbleibenden Papierkorb-Projekte
+sind **kein zurückgestelltes Kriterium dieser Slice**, sondern eine zweite, während der Arbeit
+entdeckte Ursache mit eigener Entscheidungsfrage (PROJ-Y-148a) — AC-148.6 fordert ausdrücklich
+die *lead-bedingte* Blockade, und die ist auf 0 gemessen. Die Grenze steht unter „Bewusst nicht
+in Scope", damit `full` nicht mehr behauptet als geliefert wurde.
