@@ -843,7 +843,12 @@ export function buildDocumentSummaryPrompt(
     .filter(Boolean)
     .join("\n")
 
-  return `${head}\n\n--- Dokumenttext ---\n${d.text}`
+  const extra = ctx.skill_instructions?.trim()
+  const instructions = extra
+    ? `\n\n--- Zusaetzliche Vorgaben des Mandanten ---\n${extra}`
+    : ""
+
+  return `${head}${instructions}\n\n--- Dokumenttext ---\n${d.text}`
 }
 
 /**
