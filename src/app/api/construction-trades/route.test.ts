@@ -5,10 +5,11 @@ import { beforeEach, describe, expect, it, vi } from "vitest"
 // chainable mock, auth/tenant/admin helpers are stubbed, so the assertions are
 // about THIS route's gating and validation, not about the database.
 
-const { getUserMock, resolveTenantMock, requireAdminMock } = vi.hoisted(() => ({
+const { getUserMock, resolveTenantMock, requireAdminMock, moduleMock } = vi.hoisted(() => ({
   getUserMock: vi.fn(),
   resolveTenantMock: vi.fn(),
   requireAdminMock: vi.fn(),
+  moduleMock: vi.fn(),
 }))
 
 interface Chain {
@@ -45,6 +46,10 @@ vi.mock("../_lib/route-helpers", async (orig) => {
   return { ...actual, requireTenantAdmin: requireAdminMock }
 })
 
+vi.mock("@/lib/tenant-settings/server", () => ({
+  requireModuleActive: moduleMock,
+}))
+
 import { GET, POST } from "./route"
 
 const ME = "cccccccc-3333-4333-8333-cccccccccccc"
@@ -68,6 +73,7 @@ beforeEach(() => {
   getUserMock.mockResolvedValue({ data: { user: { id: ME } }, error: null })
   resolveTenantMock.mockResolvedValue(TENANT)
   requireAdminMock.mockResolvedValue(null)
+  moduleMock.mockResolvedValue(null)
 })
 
 describe("GET /api/construction-trades", () => {
@@ -85,6 +91,15 @@ describe("GET /api/construction-trades", () => {
     const res = await GET()
     expect(res.status).toBe(200)
     expect((await res.json()).trades).toHaveLength(1)
+  })
+
+  it("answers as if the surface did not exist when the construction module is off", async () => {
+    moduleMock.mockResolvedValue(
+      new Response(JSON.stringify({ error: { code: "not_found" } }), { status: 404 })
+    )
+    chain.limit.mockResolvedValue({ data: [], error: null })
+    const res = await GET()
+    expect(res.status).toBe(404)
   })
 
   it("includes inactive entries so the admin UI can reactivate them", async () => {
@@ -146,6 +161,14 @@ describe("POST /api/construction-trades", () => {
       p_tenant_id: TENANT,
     })
     expect(chain.insert).not.toHaveBeenCalled()
+  })
+
+  it("refuses writes while the module is off, before the admin check", async () => {
+    moduleMock.mockResolvedValue(
+      new Response(JSON.stringify({ error: {} }), { status: 404 })
+    )
+    expect((await post({ key: "elektro", label: "Elektro" })).status).toBe(404)
+    expect(requireAdminMock).not.toHaveBeenCalled()
   })
 
   it("still requires admin for the seed path", async () => {

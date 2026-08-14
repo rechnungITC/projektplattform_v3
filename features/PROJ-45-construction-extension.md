@@ -307,9 +307,35 @@ Gates: vitest **2965/2965**, tsc 13 = Baseline, ESLint 0.
    Ersatzweise strukturell belegt: `can_access_classified` enthält kein `construction`-Vorkommen,
    `workstreams` hat unverändert 7 Policies.
 
-**Offen bleibt nur das Frontend** — eigener Schnitt (`/frontend`): Stammdaten-Katalog, die zwei
-Projektraum-Flächen, die drei additiven Felder in den bestehenden Dialogen, sowie die Nav-Sektionen mit
-`requiresProjectType: "construction"` + `requiresModule: "construction"`.
+**Frontend α live 2026-08-14:** Stammdaten-Katalog `/stammdaten/gewerke` (Liste mit aktiv/inaktiv,
+Anlegen mit aus der Bezeichnung abgeleiteter Kennung, Umbenennen, Deaktivieren, Sortierung,
+Lazy-Seed-Leerzustand, Löschsperre die die blockierenden Projekte benennt), zwei Projektraum-Flächen
+(`/gewerke` mit Verantwortlichem + manueller Ampel + Notiz, `/bauabschnitte` als frei tiefer Baum mit
+Anlegen/Umbenennen/Umhängen/Löschen samt Folgenhinweis), die drei additiven Felder in **beiden**
+Work-Item-Dialogen und im Risiko-Formular über eine gemeinsame `ConstructionAxisFields`-Komponente,
+sowie die Registrierung: zwei Nav-Sektionen mit `requiresProjectType` **und** `requiresModule`, plus
+Stammdaten-Kachel.
+
+**Ein Fund beim Registrieren, der Backend-Arbeit nachzog:** die Kachel-Registry erlaubt
+`requiresModule` ausdrücklich nur, wenn die Fläche serverseitig wirklich gegatet ist — sonst behauptet
+die Kachel „nicht aktiv", während die Seite funktioniert. Meine Routen hatten dieses Gate noch nicht.
+AC-45.24 verlangt es ohnehin, also wurde `requireModuleActive("construction")` in **alle sieben**
+Routen nachgezogen (Lese-Absicht → 404, damit das Tor nicht verrät, was es verbirgt) und je Fläche ein
+expliziter Gate-Test ergänzt — sonst hätte ich das neue Gate in den Tests nur wegmockt.
+
+**Eine Invariante musste angepasst werden:** `routing.test.ts` verlangte **genau eine** Sektion je
+Modul. Diese Extension hat zwei Flächen hinter **einem** Schalter (Lock Q4). Die Prüfung ist auf ihre
+tatsächliche Absicht umgestellt — „mindestens eine, und alles Verschwundene gehört zu genau diesem
+Modul" plus Dedup auf der **Sektions-Kennung** statt auf dem Modulschlüssel. Damit fängt sie weiterhin
+das versehentliche Doppelregistrieren, verbietet aber keine Extension mit mehreren Oberflächen.
+
+**Deviation:** Der Bauabschnitts-Baum ist eine eingerückte Liste mit ausdrücklichem Eltern-Picker statt
+Drag-and-drop. Der Picker bietet den Knoten selbst und seinen Teilbaum gar nicht erst an, kann also
+keinen Zug vorschlagen, der nur scheitern kann; Ziehen ist Komfort und bewusst zurückgestellt.
+
+Gates: vitest **2976/2976** · tsc 13 = Baseline · ESLint 0 · Build clean (3 neue Seiten + 7 Routen).
+
+**Offen bleibt nur `/qa`** — gegen eine jetzt vollständige Basis.
 
 ---
 

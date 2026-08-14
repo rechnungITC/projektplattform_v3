@@ -1,6 +1,8 @@
 import { NextResponse } from "next/server"
 import { z } from "zod"
 
+import { requireModuleActive } from "@/lib/tenant-settings/server"
+
 import {
   apiError,
   getAuthenticatedUserId,
@@ -42,6 +44,14 @@ export async function GET(
   const access = await requireProjectAccess(supabase, projectId, userId, "view")
   if (access.error) return access.error
 
+  // AC-45.24: module off -> the surface answers as if it did not exist.
+  const moduleDenial = await requireModuleActive(
+    supabase,
+    access.project.tenant_id,
+    "construction"
+  )
+  if (moduleDenial) return moduleDenial
+
   const { data, error } = await supabase
     .from("construction_sections")
     .select(SECTION_SELECT)
@@ -68,6 +78,14 @@ export async function POST(
 
   const access = await requireProjectAccess(supabase, projectId, userId, "edit")
   if (access.error) return access.error
+
+  const moduleDenial = await requireModuleActive(
+    supabase,
+    access.project.tenant_id,
+    "construction",
+    { intent: "write" }
+  )
+  if (moduleDenial) return moduleDenial
 
   let body: unknown
   try {

@@ -1,6 +1,8 @@
 import { NextResponse } from "next/server"
 import { z } from "zod"
 
+import { requireModuleActive } from "@/lib/tenant-settings/server"
+
 import { resolveActiveTenantId } from "../../_lib/active-tenant"
 import {
   apiError,
@@ -38,6 +40,11 @@ export async function PATCH(
 
   const tenantId = await resolveActiveTenantId(userId, supabase)
   if (!tenantId) return apiError("forbidden", "No tenant membership.", 403)
+
+  const moduleDenial = await requireModuleActive(supabase, tenantId, "construction", {
+    intent: "write",
+  })
+  if (moduleDenial) return moduleDenial
 
   const adminDenial = await requireTenantAdmin(supabase, tenantId, userId)
   if (adminDenial) return adminDenial
@@ -84,6 +91,11 @@ export async function DELETE(
 
   const tenantId = await resolveActiveTenantId(userId, supabase)
   if (!tenantId) return apiError("forbidden", "No tenant membership.", 403)
+
+  const moduleDenial = await requireModuleActive(supabase, tenantId, "construction", {
+    intent: "write",
+  })
+  if (moduleDenial) return moduleDenial
 
   const adminDenial = await requireTenantAdmin(supabase, tenantId, userId)
   if (adminDenial) return adminDenial

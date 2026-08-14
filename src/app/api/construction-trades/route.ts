@@ -1,5 +1,7 @@
 import { NextResponse } from "next/server"
 
+import { requireModuleActive } from "@/lib/tenant-settings/server"
+
 import { resolveActiveTenantId } from "../_lib/active-tenant"
 import {
   apiError,
@@ -26,6 +28,14 @@ export async function GET() {
   const { userId, supabase } = await getAuthenticatedUserId()
   if (!userId) return apiError("unauthorized", "Not signed in.", 401)
 
+  // AC-45.23/24: with the construction module off this answers exactly like a
+  // surface that does not exist. Read intent -> 404, never 403, so the gate
+  // does not reveal what it is hiding.
+  const tenantId = await resolveActiveTenantId(userId, supabase)
+  if (!tenantId) return apiError("forbidden", "No tenant membership.", 403)
+  const moduleDenial = await requireModuleActive(supabase, tenantId, "construction")
+  if (moduleDenial) return moduleDenial
+
   const { data, error } = await supabase
     .from("construction_trades")
     .select(CONSTRUCTION_TRADE_SELECT)
@@ -44,6 +54,11 @@ export async function POST(request: Request) {
 
   const tenantId = await resolveActiveTenantId(userId, supabase)
   if (!tenantId) return apiError("forbidden", "No tenant membership.", 403)
+
+  const moduleDenial = await requireModuleActive(supabase, tenantId, "construction", {
+    intent: "write",
+  })
+  if (moduleDenial) return moduleDenial
 
   const adminDenial = await requireTenantAdmin(supabase, tenantId, userId)
   if (adminDenial) return adminDenial

@@ -7,6 +7,7 @@ import { useForm, useWatch } from "react-hook-form"
 import { toast } from "sonner"
 import { z } from "zod"
 
+import { ConstructionAxisFields } from "@/components/construction/construction-axis-fields"
 import { ResponsibleUserPicker } from "@/components/projects/responsible-user-picker"
 import { Alert, AlertDescription } from "@/components/ui/alert"
 import { Button } from "@/components/ui/button"
@@ -38,6 +39,7 @@ import {
 import { Textarea } from "@/components/ui/textarea"
 import { useAuth } from "@/hooks/use-auth"
 import { usePhases } from "@/hooks/use-phases"
+import { useProject } from "@/hooks/use-project"
 import type { Phase } from "@/types/phase"
 import { useSprints } from "@/hooks/use-sprints"
 import {
@@ -67,6 +69,9 @@ const editWorkItemSchema = z.object({
   responsible_user_id: z.string().nullable(),
   sprint_id: z.string().nullable(),
   phase_id: z.string().nullable(),
+  // PROJ-45-α — construction axes, both optional (lock L6).
+  trade_id: z.string().nullable(),
+  section_id: z.string().nullable(),
   planned_start: z.string().nullable(),
   planned_end: z.string().nullable(),
   attributes_json: z
@@ -110,6 +115,7 @@ export function EditWorkItemDialog({
   const { currentTenant } = useAuth()
   const { sprints } = useSprints(projectId)
   const { phases } = usePhases(projectId)
+  const { project } = useProject(projectId)
   const [submitting, setSubmitting] = React.useState(false)
 
   const form = useForm<EditWorkItemValues>({
@@ -121,6 +127,8 @@ export function EditWorkItemDialog({
       responsible_user_id: item.responsible_user_id,
       sprint_id: item.sprint_id,
       phase_id: item.phase_id,
+      trade_id: item.trade_id ?? null,
+      section_id: item.section_id ?? null,
       planned_start: item.planned_start ?? null,
       planned_end: item.planned_end ?? null,
       attributes_json: stringifyAttributes(item.attributes),
@@ -130,6 +138,10 @@ export function EditWorkItemDialog({
   // PROJ-67 AC-4 — `useWatch` is memoisation-safe; `form.watch(...)` in
   // JSX makes React Compiler skip optimisation for this component.
   const watchedPhaseId = useWatch({ control: form.control, name: "phase_id" })
+  // PROJ-45-α — construction axes; rendered only in construction projects.
+  const watchedTradeId = useWatch({ control: form.control, name: "trade_id" })
+  const watchedSectionId = useWatch({ control: form.control, name: "section_id" })
+  const isConstructionProject = project?.project_type === "construction"
   const watchedPlannedStart = useWatch({ control: form.control, name: "planned_start" })
   const watchedPlannedEnd = useWatch({ control: form.control, name: "planned_end" })
 
@@ -142,6 +154,8 @@ export function EditWorkItemDialog({
         responsible_user_id: item.responsible_user_id,
         sprint_id: item.sprint_id,
         phase_id: item.phase_id,
+        trade_id: item.trade_id ?? null,
+        section_id: item.section_id ?? null,
         planned_start: item.planned_start ?? null,
         planned_end: item.planned_end ?? null,
         attributes_json: stringifyAttributes(item.attributes),
@@ -163,6 +177,8 @@ export function EditWorkItemDialog({
         responsible_user_id: values.responsible_user_id,
         sprint_id: values.sprint_id,
         phase_id: values.phase_id,
+        trade_id: values.trade_id,
+        section_id: values.section_id,
         planned_start: values.planned_start,
         planned_end: values.planned_end,
         attributes,
@@ -362,6 +378,17 @@ export function EditWorkItemDialog({
                 )}
               />
             </div>
+
+            {isConstructionProject ? (
+              <ConstructionAxisFields
+                projectId={projectId}
+                tradeId={watchedTradeId}
+                sectionId={watchedSectionId}
+                disabled={submitting}
+                onTradeChange={(value) => form.setValue("trade_id", value)}
+                onSectionChange={(value) => form.setValue("section_id", value)}
+              />
+            ) : null}
 
             <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
               <FormField

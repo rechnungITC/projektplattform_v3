@@ -1,6 +1,8 @@
 import { NextResponse } from "next/server"
 import { z } from "zod"
 
+import { requireModuleActive } from "@/lib/tenant-settings/server"
+
 import {
   apiError,
   getAuthenticatedUserId,
@@ -34,6 +36,15 @@ async function gate(projectId: string, ptid: string) {
 
   const access = await requireProjectAccess(supabase, projectId, userId, "edit")
   if (access.error) return { error: access.error }
+
+  const moduleDenial = await requireModuleActive(
+    supabase,
+    access.project.tenant_id,
+    "construction",
+    { intent: "write" }
+  )
+  if (moduleDenial) return { error: moduleDenial }
+
   return { supabase }
 }
 

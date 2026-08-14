@@ -6,9 +6,10 @@ import { beforeEach, describe, expect, it, vi } from "vitest"
 // mapping. Tree integrity itself (cycles, orphans, sibling labels) is a
 // database property and is proven in tests/sql/PROJ-45-*-pentest.sql.
 
-const { getAuthMock, accessMock } = vi.hoisted(() => ({
+const { getAuthMock, accessMock, moduleMock } = vi.hoisted(() => ({
   getAuthMock: vi.fn(),
   accessMock: vi.fn(),
+  moduleMock: vi.fn(),
 }))
 
 vi.mock("@/app/api/_lib/route-helpers", async (orig) => {
@@ -19,6 +20,10 @@ vi.mock("@/app/api/_lib/route-helpers", async (orig) => {
     requireProjectAccess: accessMock,
   }
 })
+
+vi.mock("@/lib/tenant-settings/server", () => ({
+  requireModuleActive: moduleMock,
+}))
 
 import { GET, POST } from "./route"
 
@@ -60,6 +65,7 @@ beforeEach(() => {
     supabase: supa({ data: [], error: null }),
   })
   accessMock.mockResolvedValue({ project: { id: PROJECT, tenant_id: TENANT } })
+  moduleMock.mockResolvedValue(null)
 })
 
 describe("GET /api/projects/[id]/construction-sections", () => {
@@ -98,6 +104,13 @@ describe("GET /api/projects/[id]/construction-sections", () => {
       ME,
       "view"
     )
+  })
+
+  it("answers as if the surface did not exist when the construction module is off", async () => {
+    moduleMock.mockResolvedValue(
+      new Response(JSON.stringify({ error: { code: "not_found" } }), { status: 404 })
+    )
+    expect((await GET(new Request("http://t/"), ctx())).status).toBe(404)
   })
 })
 

@@ -5,9 +5,10 @@ import { beforeEach, describe, expect, it, vi } from "vitest"
 // in the database; what is asserted here is that this route maps them to
 // meaningful status codes instead of leaking a 500.
 
-const { getAuthMock, accessMock } = vi.hoisted(() => ({
+const { getAuthMock, accessMock, moduleMock } = vi.hoisted(() => ({
   getAuthMock: vi.fn(),
   accessMock: vi.fn(),
+  moduleMock: vi.fn(),
 }))
 
 vi.mock("@/app/api/_lib/route-helpers", async (orig) => {
@@ -18,6 +19,10 @@ vi.mock("@/app/api/_lib/route-helpers", async (orig) => {
     requireProjectAccess: accessMock,
   }
 })
+
+vi.mock("@/lib/tenant-settings/server", () => ({
+  requireModuleActive: moduleMock,
+}))
 
 import { GET, POST } from "./route"
 
@@ -63,6 +68,7 @@ beforeEach(() => {
   accessMock.mockReset()
   getAuthMock.mockResolvedValue({ userId: ME, supabase: supa({ data: [], error: null }) })
   accessMock.mockResolvedValue({ project: { id: PROJECT, tenant_id: TENANT } })
+  moduleMock.mockResolvedValue(null)
 })
 
 describe("GET /api/projects/[id]/construction-trades", () => {
@@ -78,6 +84,13 @@ describe("GET /api/projects/[id]/construction-trades", () => {
   it("joins the catalog label instead of storing a copy (lock L7)", async () => {
     await GET(new Request("http://t/"), ctx())
     expect(lastSelect).toContain("trade:construction_trades(")
+  })
+
+  it("answers as if the surface did not exist when the construction module is off", async () => {
+    moduleMock.mockResolvedValue(
+      new Response(JSON.stringify({ error: { code: "not_found" } }), { status: 404 })
+    )
+    expect((await GET(new Request("http://t/"), ctx())).status).toBe(404)
   })
 })
 

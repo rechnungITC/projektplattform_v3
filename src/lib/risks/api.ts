@@ -46,6 +46,8 @@ export interface RiskInput {
   category_id?: string | null
   confidentiality_level?: MaConfidentialityLevel
   workstream_id?: string | null
+  /** PROJ-45-α — construction trade a risk hangs on (AC-45.19). */
+  trade_id?: string | null
 }
 
 export async function createRisk(
