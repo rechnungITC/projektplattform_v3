@@ -1,7 +1,7 @@
 # PROJ-45: Construction Extension — Gewerke & Bauabschnitte
 
-## Status: Approved
-## Deployment Scope: —
+## Status: Deployed
+## Deployment Scope: alpha
 
 **Created:** 2026-05-06
 **Last Updated:** 2026-08-13 (Requirements refined + Tech Design — gegen den deployten Stand geerdet, Zuschnitt in Sub-Slices getrennt, 8 Nutzer-Locks, alle vier Forks beantwortet, CIA-Review zu Q2 eingearbeitet)
@@ -535,4 +535,25 @@ vorhandenen Guards und ist billiger, bevor β/γ weitere Verweise ergänzen.
 _ersetzt durch den Lauf oben_
 
 ## Deployment
-_To be added by /deploy_
+
+**Deployed 2026-08-14 · Tag `v2.56.0-PROJ-45-alpha` · PR #385 (squash) → main `3732532`**
+
+**Deployment Scope: `alpha`** — und bewusst nicht `full`. Alle **26** Akzeptanzkriterien *dieser*
+Slice sind erfüllt, aber die Erstfassung der Spec (2026-05-06) trug vier Stories; drei davon
+(Abnahmen, Mängel, bauspezifische Terminsignale) sind ausdrücklich auf β/γ/δ verschoben. Nach der
+Regel schließt eine zurückgestellte **ursprüngliche** Anforderung `full` aus, auch wenn der gelieferte
+Schnitt in sich vollständig ist. Verbleibende Slices sind unten und in
+`features/OPEN-DEFERRED-STATUS.md` namentlich aufgeführt.
+
+**Kein Runtime-DB-Change beim Merge:** beide Migrationen (`20260813131238`, `20260813131346`) liegen
+seit `/backend` in Prod; der Merge liefert Code. Vercel deployt automatisch von `main`.
+
+**Prod-Verifikation nach dem Deploy:**
+
+- 4 Tabellen mit aktivem RLS · 15 Policies · 4 Guard-Trigger · `anon`-EXECUTE auf der Seed-Funktion entzogen · `work_items`-Audit-Whitelist trägt `trade_id` · **0 Rückstände** in allen Bau-Tabellen
+- Post-Deploy-Smoke: alle fünf neuen Flächen (Katalog-Seite, Katalog-API, beide Projektraum-Tabs, Abschnitts-API) antworten mit **307 Auth-Gate**; der Antwortrumpf ist `Redirecting...` — kein Struktur- oder Datenleck
+- Rebase linear auf `main` statt Merge-Commit (ein Merge-Commit löst bei Vercel kein Build-Event aus); alle sechs Gates grün, darunter der **Schema-Drift-Wächter** — der belegt unabhängig, dass die Anker-Ersetzungen auch in einer frisch aus den Migrationsdateien gebauten Datenbank greifen
+
+**Offene Followups:** F-2 (Projekt-Konsistenz der additiven Verweise) sowie die Slices β/γ/δ/ε.
+
+---
