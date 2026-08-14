@@ -22,6 +22,7 @@ import { OllamaProvider } from "./ollama"
 import { OpenAIProvider } from "./openai"
 import { StubProvider } from "./stub"
 import type { AIProvider } from "./types"
+import type { AIPurpose } from "../types"
 
 const anthropic = new AnthropicProvider("claude-test", "sk-test")
 const openai = new OpenAIProvider({ apiKey: "sk-test", modelId: "gpt-test" })
@@ -115,4 +116,131 @@ describe("PROJ-85 — provider capability matrix", () => {
     expect(has(ollama, "generateRiskSuggestions")).toBe(true)
     expect(has(ollama, "generateNarrative")).toBe(true)
   })
+})
+
+// ---------------------------------------------------------------------------
+// PROJ-80-α — die Matrix datengetrieben machen
+// ---------------------------------------------------------------------------
+// Befund beim Hinzufügen von `document_summary`: die Fälle oben sind von Hand
+// geschrieben, einer je Zweck. Der Test prüft damit, woran sich jemand erinnert
+// hat — nicht die `AIPurpose`-Union. Ein neuer Zweck kann also lautlos ohne
+// Abdeckung bleiben, und genau daraus entstand PROJ-85 (stiller Stub-Rückfall).
+//
+// Die folgende Tabelle schließt das: sie ist über `AIPurpose` **erschöpfend**
+// typisiert. Ein neuer Wert in der Union bricht die Kompilierung hier, bis
+// jemand entscheidet, welcher Anbieter ihn können muss.
+
+type ProviderMethod = keyof AIProvider
+
+/** Für jeden Zweck: die Methode und wer sie implementieren MUSS. */
+const PURPOSE_MATRIX: Record<
+  AIPurpose,
+  { method: ProviderMethod; cloud: boolean; ollama: boolean }
+> = {
+  risks: { method: "generateRiskSuggestions", cloud: true, ollama: true },
+  // Diese drei laufen nicht über die Provider-Schnittstelle (kein eigener
+  // Methodenname) — sie sind hier als "nicht anwendbar" verbucht, damit die
+  // Erschöpfung trotzdem erzwungen wird.
+  decisions: { method: "name", cloud: false, ollama: false },
+  work_items: { method: "name", cloud: false, ollama: false },
+  open_items: { method: "name", cloud: false, ollama: false },
+  narrative: { method: "generateNarrative", cloud: true, ollama: true },
+  // PROJ-34 — Stimmungs- und Coaching-Auswertung über Stakeholder-Interaktionen.
+  // `classifySentimentAutoContext`/`classifyCoachingAutoContext` geben FEST 3
+  // zurück: die Daten sind personenbezogen per Konstruktion. Cloud-Anbieter
+  // dürfen sie deshalb NICHT können (Invariante #3). Live nachgemessen
+  // 2026-08-14: nur Ollama + Stub — und das ist richtig so.
+  sentiment: { method: "generateSentiment", cloud: false, ollama: true },
+  coaching: { method: "generateCoaching", cloud: false, ollama: true },
+  trajectory_sequence: {
+    method: "generateTrajectorySequence",
+    cloud: true,
+    ollama: true,
+  },
+  // Class-3 per Konstruktion → ausdrücklich NUR lokal (PROJ-65 ε.4.β).
+  resource_swap: { method: "generateResourceSwap", cloud: false, ollama: true },
+  cross_project_links: {
+    method: "generateCrossProjectLinks",
+    cloud: true,
+    ollama: true,
+  },
+  proposal_from_context: {
+    method: "generateProposalFromContext",
+    cloud: true,
+    ollama: true,
+  },
+  // PROJ-88 — extrahiert Personen aus einem Kickoff, also Class-3-gepinnt.
+  proposal_stakeholders_from_context: {
+    method: "generateStakeholderProposals",
+    cloud: false,
+    ollama: true,
+  },
+  proposal_risks_from_context: {
+    method: "generateRiskProposals",
+    cloud: true,
+    ollama: true,
+  },
+  clarifying_questions_from_context: {
+    method: "generateClarifyingQuestions",
+    cloud: true,
+    ollama: true,
+  },
+  document_summary: {
+    method: "generateDocumentSummary",
+    cloud: true,
+    ollama: true,
+  },
+}
+
+describe("PROJ-80 — Capability-Matrix über die ganze AIPurpose-Union", () => {
+  // Über die Schnittstelle indizieren, nicht über die konkreten Klassen:
+  // `keyof AIProvider` ist auf `OllamaProvider`/`StubProvider` sonst kein
+  // gültiger Index (die Klassen deklarieren die optionalen Methoden nicht alle).
+  const ollamaAsProvider: AIProvider = ollama
+  const stubAsProvider: AIProvider = stub
+
+  const cloudProviders: [string, AIProvider][] = [
+    ["anthropic", anthropic],
+    ["openai", openai],
+    ["google", google],
+    ["azure", azure],
+  ]
+
+  for (const [purpose, spec] of Object.entries(PURPOSE_MATRIX) as [
+    AIPurpose,
+    (typeof PURPOSE_MATRIX)[AIPurpose],
+  ][]) {
+    if (spec.method === "name") continue // nicht über die Provider-Schnittstelle
+
+    if (spec.cloud) {
+      it(`${purpose}: jeder Cloud-Anbieter implementiert ${spec.method}`, () => {
+        for (const [name, p] of cloudProviders) {
+          expect(
+            typeof p[spec.method],
+            `${name} fehlt ${spec.method} — der Router fiele still auf den Stub zurück`,
+          ).toBe("function")
+        }
+      })
+    } else {
+      it(`${purpose}: KEIN Cloud-Anbieter implementiert ${spec.method}`, () => {
+        for (const [name, p] of cloudProviders) {
+          expect(
+            typeof p[spec.method],
+            `${name} implementiert ${spec.method}, obwohl der Zweck lokal bleiben muss`,
+          ).not.toBe("function")
+        }
+      })
+    }
+
+    if (spec.ollama) {
+      it(`${purpose}: Ollama implementiert ${spec.method}`, () => {
+        expect(typeof ollamaAsProvider[spec.method]).toBe("function")
+      })
+    }
+
+    it(`${purpose}: der Stub implementiert ${spec.method} (Rückfallweg)`, () => {
+      // Ohne Stub-Umsetzung wirft der Router-Rückfall statt leer zu liefern.
+      expect(typeof stubAsProvider[spec.method]).toBe("function")
+    })
+  }
 })

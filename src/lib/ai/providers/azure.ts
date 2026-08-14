@@ -27,6 +27,7 @@ import { z } from "zod"
 import type {
   AIProvider,
   ClarifyingQuestionsGenerationRequest,
+  DocumentSummaryGenerationRequest,
   CrossProjectLinksGenerationRequest,
   NarrativeGenerationRequest,
   ProposalFromContextGenerationRequest,
@@ -36,6 +37,7 @@ import type {
 } from "./types"
 import type {
   ClarifyingQuestionsGenerationOutput,
+  DocumentSummaryGenerationOutput,
   CrossProjectLinksGenerationOutput,
   NarrativeGenerationOutput,
   ProposalFromContextGenerationOutput,
@@ -65,6 +67,7 @@ import {
   TRAJECTORY_SEQUENCE_SYSTEM_PROMPT,
   TrajectorySequenceResponseSchema,
 } from "./graph-purpose-prompts"
+import { runDocumentSummaryStrict } from "./document-summary-runner"
 
 // ---------------------------------------------------------------------------
 // Risk-suggestion schema + prompt (same shape as Anthropic / OpenAI / Ollama).
@@ -392,5 +395,13 @@ export class AzureOpenAIProvider implements AIProvider {
         latency_ms: Date.now() - start,
       },
     }
+  }
+
+  // PROJ-80-α — Quintessenz. Der Aufruf lebt im geteilten Runner, damit die
+  // sechs Anbieter nicht auseinanderlaufen (PROJ-85-Lehre).
+  async generateDocumentSummary(
+    request: DocumentSummaryGenerationRequest,
+  ): Promise<DocumentSummaryGenerationOutput> {
+    return runDocumentSummaryStrict(this.sdkProvider(this.modelId), request.context)
   }
 }

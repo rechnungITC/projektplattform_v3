@@ -30,6 +30,7 @@ import type {
 
 import {
   classifyClarifyingQuestionsAutoContext,
+  classifyDocumentSummaryAutoContext,
   classifyCoachingAutoContext,
   classifyCrossProjectLinksAutoContext,
   classifyNarrativeAutoContext,
@@ -70,6 +71,9 @@ import type {
   RiskProposalSuggestion,
   RiskSuggestion,
   RouterClarifyingQuestionsResult,
+  RouterDocumentSummaryResult,
+  DocumentSummaryAutoContext,
+  DocumentSummaryStructured,
   RouterCoachingResult,
   RouterCrossProjectLinksResult,
   RouterNarrativeResult,
@@ -2225,6 +2229,141 @@ export async function invokeClarifyingQuestionsGeneration({
     model_id: activeProvider.modelId,
     status: finalStatus,
     questions,
+    external_blocked: externalBlocked || providerFallbackMessage !== null,
+    error_message: finalErrorMessage ?? undefined,
+    reason_code: finalReasonCode,
+  }
+}
+
+// ---------------------------------------------------------------------------
+// PROJ-80-α — document_summary (Quintessenz)
+// ---------------------------------------------------------------------------
+
+interface InvokeDocumentSummaryGenerationArgs {
+  supabase: SupabaseClient
+  tenantId: string
+  /** Anders als bei PROJ-135 gibt es hier ein Projekt: Dokumente hängen über
+   *  den Baumknoten an einem. `ki_runs.project_id` wird also normal gefüllt. */
+  projectId: string
+  actorUserId: string
+  context: DocumentSummaryAutoContext
+}
+
+/**
+ * Erzeugt die Quintessenz eines Dokuments.
+ *
+ * Folgt dem `narrative`/`clarifying_questions`-Muster: genau eine `ki_runs`-
+ * Zeile, KEINE `ki_suggestions` — das Ergebnis lebt in `document_summaries`.
+ *
+ * Der Rückfall auf den Stub ist hier bewusst **kein** Schönwetter-Ersatz: der
+ * Stub liefert `null`, nicht eine erfundene Kurzfassung. Zusammen mit dem
+ * `reason_code` (PROJ-137) kann der Aufrufer dem Nutzer sagen, warum nichts da
+ * ist — der Unterschied zwischen „kein zulässiger Anbieter" und „das Dokument
+ * gibt nichts her" ist für eine Vertraulichkeits-Entscheidung wesentlich.
+ */
+export async function invokeDocumentSummaryGeneration({
+  supabase,
+  tenantId,
+  projectId,
+  actorUserId,
+  context,
+}: InvokeDocumentSummaryGenerationArgs): Promise<RouterDocumentSummaryResult> {
+  const overrides = await loadTenantOverrides(supabase, tenantId)
+  const classification = classifyDocumentSummaryAutoContext(
+    context,
+    overrides.privacyDefault as DataClass,
+  )
+  const choice = await selectProviderForPurpose(
+    supabase,
+    tenantId,
+    "document_summary",
+    classification,
+    overrides.providerConfig,
+  )
+  const { provider, externalBlocked, blockedReason, blockedReasonCode } =
+    await applyCostCap(supabase, tenantId, choice, "document_summary")
+
+  const runId = await insertKiRun(supabase, {
+    tenantId,
+    projectId,
+    actorUserId,
+    purpose: "document_summary",
+    classification,
+    provider,
+  })
+
+  let activeProvider: AIProvider = provider
+  let summary: DocumentSummaryStructured | null = null
+  let summaryMarkdown: string | null = null
+  let inputTokens: number | null = null
+  let outputTokens: number | null = null
+  let latencyMs: number | null = null
+  let providerError: string | null = null
+  let providerFallbackMessage: string | null = null
+
+  try {
+    if (!provider.generateDocumentSummary) {
+      throw new Error(
+        `Provider ${provider.name} does not implement generateDocumentSummary`,
+      )
+    }
+    const result = await provider.generateDocumentSummary({ context })
+    summary = result.summary
+    summaryMarkdown = result.summary_markdown
+    inputTokens = result.usage.input_tokens
+    outputTokens = result.usage.output_tokens
+    latencyMs = result.usage.latency_ms
+  } catch (err) {
+    providerError = err instanceof Error ? err.message : String(err)
+    if (provider.name !== "stub") {
+      const fallbackProvider = new StubProvider()
+      const fallback = await fallbackProvider.generateDocumentSummary!({ context })
+      providerFallbackMessage = `Provider ${provider.name} failed (${providerError}); fell back to Stub.`
+      activeProvider = fallbackProvider
+      summary = fallback.summary
+      summaryMarkdown = fallback.summary_markdown
+      inputTokens = fallback.usage.input_tokens
+      outputTokens = fallback.usage.output_tokens
+      latencyMs = fallback.usage.latency_ms
+      providerError = null
+    }
+  }
+
+  let finalStatus: "success" | "error" | "external_blocked"
+  if (providerError) {
+    finalStatus = "error"
+  } else if (externalBlocked || providerFallbackMessage) {
+    finalStatus = "external_blocked"
+  } else {
+    finalStatus = "success"
+  }
+
+  const finalErrorMessage =
+    providerError ?? providerFallbackMessage ?? blockedReason ?? null
+  const finalReasonCode = deriveReasonCode({
+    finalStatus,
+    blockedReasonCode,
+    providerError,
+    providerFallbackMessage,
+  })
+  await updateKiRunStatus(supabase, runId, {
+    status: finalStatus,
+    inputTokens,
+    outputTokens,
+    latencyMs,
+    errorMessage: finalErrorMessage,
+    provider: activeProvider,
+    reasonCode: finalReasonCode,
+  })
+
+  return {
+    run_id: runId,
+    classification,
+    provider: activeProvider.name,
+    model_id: activeProvider.modelId,
+    status: finalStatus,
+    summary,
+    summary_markdown: summaryMarkdown,
     external_blocked: externalBlocked || providerFallbackMessage !== null,
     error_message: finalErrorMessage ?? undefined,
     reason_code: finalReasonCode,

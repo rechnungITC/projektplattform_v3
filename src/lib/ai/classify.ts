@@ -17,6 +17,7 @@ import type {
   CoachingAutoContext,
   CrossProjectLinksAutoContext,
   DataClass,
+  DocumentSummaryAutoContext,
   NarrativeAutoContext,
   ProposalFromContextAutoContext,
   ResourceSwapAutoContext,
@@ -712,6 +713,47 @@ export function classifyClarifyingQuestionsAutoContext(
   }
 
   // Per-tenant floor — mirrors Narrative classifier semantics.
+  if (tenantDefault === 3 && max < 2) {
+    return max
+  }
+  return max
+}
+
+/**
+ * PROJ-80-α — Klassifizierer für die Quintessenz eines DMS-Dokuments.
+ *
+ * Unterscheidet sich von allen Geschwistern in einem Punkt: die Schutzklasse
+ * wurde bereits **gemessen** — über den VOLLTEXT, beim Hochladen, nach der
+ * PROJ-75-Regel (`document_extractions.privacy_class`). Sie ist damit die
+ * belastbarste Untergrenze, die es im Produkt gibt; die Geschwister arbeiten
+ * mit einer Stempelung über einen 8000-Zeichen-Auszug.
+ *
+ * Trotzdem wird der Text, der wirklich hinausgeht, hier **erneut** geprüft.
+ * Das ist keine Dopplung aus Misstrauen gegen die Messung, sondern
+ * Tiefenstaffelung gegen einen Aufrufer, der die falsche Zeile lädt oder den
+ * Text an der Kürzungsgrenze anders zusammensetzt: geprüft wird genau das
+ * Textstück, das der Anbieter zu sehen bekommt.
+ *
+ * Kann nur anheben, nie senken.
+ */
+export function classifyDocumentSummaryAutoContext(
+  ctx: DocumentSummaryAutoContext,
+  tenantDefault: DataClass = 3,
+): DataClass {
+  // Untergrenze: die beim Hochladen über den Volltext gemessene Klasse.
+  let max: DataClass = ctx.document.privacy_class
+
+  // Tiefenstaffelung auf dem Textstück, das tatsächlich übertragen wird.
+  if (max < 3 && detectClass3Markers(ctx.document.text)) {
+    max = 3
+  }
+  // Der Dateiname reist im Prompt mit und kann selbst personenbezogen sein
+  // ("Kuendigung_Mustermann.pdf").
+  if (max < 3 && detectClass3Markers(ctx.document.filename)) {
+    max = 3
+  }
+
+  // Mandanten-Voreinstellung wie bei den Geschwistern: sie kann nicht senken.
   if (tenantDefault === 3 && max < 2) {
     return max
   }
