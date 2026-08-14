@@ -11,6 +11,8 @@ import type {
   AIProviderName,
   ClarifyingQuestionsAutoContext,
   ClarifyingQuestionsGenerationOutput,
+  DocumentSummaryAutoContext,
+  DocumentSummaryGenerationOutput,
   CoachingAutoContext,
   CoachingGenerationOutput,
   CrossProjectLinksAutoContext,
@@ -90,6 +92,10 @@ export interface RiskProposalsGenerationRequest {
   count: number
 }
 
+export interface DocumentSummaryGenerationRequest {
+  context: DocumentSummaryAutoContext
+}
+
 export interface ClarifyingQuestionsGenerationRequest {
   context: ClarifyingQuestionsAutoContext
   /** Soft target for how many questions to emit (provider may emit fewer);
@@ -155,6 +161,11 @@ export interface AIProvider {
   generateClarifyingQuestions?(
     request: ClarifyingQuestionsGenerationRequest,
   ): Promise<ClarifyingQuestionsGenerationOutput>
+  // PROJ-80-α — Quintessenz eines DMS-Dokuments (Ergebnis geht nach
+  // `document_summaries`, nicht in die Vorschlags-Warteschlange).
+  generateDocumentSummary?(
+    request: DocumentSummaryGenerationRequest,
+  ): Promise<DocumentSummaryGenerationOutput>
 }
 
 /**

@@ -19,6 +19,7 @@
 import type {
   AIProvider,
   ClarifyingQuestionsGenerationRequest,
+  DocumentSummaryGenerationRequest,
   CoachingGenerationRequest,
   CrossProjectLinksGenerationRequest,
   NarrativeGenerationRequest,
@@ -32,6 +33,7 @@ import type {
 } from "./types"
 import type {
   ClarifyingQuestionsGenerationOutput,
+  DocumentSummaryGenerationOutput,
   CoachingGenerationOutput,
   CrossProjectLinkSuggestion,
   CrossProjectLinksGenerationOutput,
@@ -548,6 +550,30 @@ export class StubProvider implements AIProvider {
     const start = Date.now()
     return {
       questions: [],
+      usage: {
+        input_tokens: 0,
+        output_tokens: 0,
+        latency_ms: Date.now() - start,
+      },
+    }
+  }
+
+  /**
+   * PROJ-80-α — leere Quintessenz.
+   *
+   * `null` statt einer erfundenen Kurzfassung: der Stub läuft, wenn kein
+   * zulässiger Anbieter da ist (Class-3 ohne Ollama) oder ein Anbieter
+   * ausgefallen ist. Eine erfundene Zusammenfassung wäre an dieser Stelle
+   * schlimmer als keine — der Aufrufer bucht daraufhin `status='stale'` plus
+   * den maschinenlesbaren Grund (PROJ-137), und die Oberfläche sagt, warum.
+   */
+  async generateDocumentSummary(
+    _request: DocumentSummaryGenerationRequest,
+  ): Promise<DocumentSummaryGenerationOutput> {
+    const start = Date.now()
+    return {
+      summary: null,
+      summary_markdown: null,
       usage: {
         input_tokens: 0,
         output_tokens: 0,

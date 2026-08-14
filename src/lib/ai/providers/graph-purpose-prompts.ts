@@ -31,6 +31,7 @@ import type {
 import type {
   ClarifyingQuestionsGenerationOutput,
   CrossProjectLinksGenerationOutput,
+  DocumentSummaryAutoContext,
   ProposalFromContextGenerationOutput,
   RiskProposalsGenerationOutput,
   TrajectorySequenceGenerationOutput,
@@ -775,4 +776,107 @@ export function mapClarifyingQuestions(
       rationale: clampOrNull(q.rationale, 300),
       gap_tag: clampOrNull(q.gap_tag, 40),
     }))
+}
+
+// ---------------------------------------------------------------------------
+// PROJ-80-α — document_summary (Quintessenz)
+// ---------------------------------------------------------------------------
+
+/**
+ * V1-Schema aus der Spec. Bewusst streng: `structured_summary` wird geprüft,
+ * BEVOR sie geschrieben wird (Technical Requirement der Spec) — eine
+ * Kurzfassung, die das Schema verfehlt, ist kein halbgültiges Ergebnis,
+ * sondern keins.
+ */
+export const DocumentSummaryStructuredSchema = z.object({
+  title: z.string().min(1).max(300),
+  key_topics: z.array(z.string().min(1).max(120)).max(12),
+  entities: z
+    .array(
+      z.object({
+        name: z.string().min(1).max(160),
+        type: z.string().min(1).max(60),
+      }),
+    )
+    .max(30),
+  summary_paragraphs: z.array(z.string().min(1).max(2_000)).min(1).max(8),
+  references: z.array(z.string().min(1).max(300)).max(20),
+  language: z.string().min(2).max(20),
+})
+
+export const DocumentSummaryResponseSchema = z.object({
+  summary: DocumentSummaryStructuredSchema,
+})
+
+export const DOCUMENT_SUMMARY_SYSTEM_PROMPT = `Du fasst ein einzelnes Dokument zu einer kompakten, strukturierten Quintessenz zusammen.
+
+Regeln:
+- Gib AUSSCHLIESSLICH wieder, was im Dokument steht. Erfinde nichts, ergänze kein Vorwissen, ziehe keine Schlüsse über das Dokument hinaus.
+- Wenn das Dokument etwas nicht enthält, lass das Feld leer, statt es zu füllen.
+- \`title\` ist der Titel DES DOKUMENTS, nicht deine Beschreibung davon.
+- \`key_topics\` sind kurze Schlagworte, keine Sätze.
+- \`entities\` sind im Dokument genannte Beteiligte, Organisationen, Systeme oder Orte, jeweils mit einer knappen Typangabe.
+- \`summary_paragraphs\` sind 1 bis 8 Absätze Fließtext in der Sprache des Dokuments.
+- \`references\` sind im Dokument genannte Verweise (Normen, Verträge, Aktenzeichen, andere Dokumente).
+- \`language\` ist der ISO-Code der Dokumentsprache, z. B. "de" oder "en".
+- Antworte ausschließlich als JSON nach dem vorgegebenen Schema.`
+
+/**
+ * Baut die Nutzeranweisung.
+ *
+ * Der Hinweis auf einen abgeschnittenen Text steht bewusst IM Prompt: das
+ * Modell soll nicht so tun, als hätte es das ganze Dokument gesehen. Die
+ * gleiche Aussage geht zusätzlich in die Oberfläche — hier geht es darum, dass
+ * die Kurzfassung selbst ehrlich formuliert wird.
+ */
+export function buildDocumentSummaryPrompt(
+  ctx: DocumentSummaryAutoContext,
+): string {
+  const d = ctx.document
+  const head = [
+    `Dateiname: ${d.filename}`,
+    `Dateityp: ${d.mime_type}`,
+    d.truncated
+      ? "HINWEIS: Der folgende Text ist nur der ANFANG des Dokuments; der Rest wurde aus Längengründen nicht übergeben. Formuliere die Quintessenz so, dass sie sich erkennbar auf den vorliegenden Teil bezieht."
+      : null,
+  ]
+    .filter(Boolean)
+    .join("\n")
+
+  return `${head}\n\n--- Dokumenttext ---\n${d.text}`
+}
+
+/**
+ * Rendert die strukturierte Fassung zusätzlich als Markdown.
+ *
+ * Beide Formen entstehen aus DERSELBEN geprüften Struktur, statt das Modell
+ * zweimal zu fragen: sonst könnten Struktur und Fließtext auseinanderlaufen,
+ * und der Nutzer sähe etwas anderes als der Agent.
+ */
+export function renderDocumentSummaryMarkdown(
+  summary: z.infer<typeof DocumentSummaryStructuredSchema>,
+  opts: { truncated: boolean } = { truncated: false },
+): string {
+  const parts: string[] = [`# ${summary.title}`, ""]
+  if (opts.truncated) {
+    parts.push(
+      "> Diese Quintessenz beruht nur auf dem Anfang des Dokuments — der vollständige Text war zu lang für eine Anfrage.",
+      "",
+    )
+  }
+  parts.push(...summary.summary_paragraphs, "")
+  if (summary.key_topics.length > 0) {
+    parts.push("## Kernthemen", summary.key_topics.map((t) => `- ${t}`).join("\n"), "")
+  }
+  if (summary.entities.length > 0) {
+    parts.push(
+      "## Genannte Beteiligte",
+      summary.entities.map((e) => `- ${e.name} (${e.type})`).join("\n"),
+      "",
+    )
+  }
+  if (summary.references.length > 0) {
+    parts.push("## Verweise", summary.references.map((r) => `- ${r}`).join("\n"), "")
+  }
+  return parts.join("\n").trimEnd()
 }

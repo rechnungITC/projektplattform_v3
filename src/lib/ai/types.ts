@@ -39,6 +39,15 @@ export type AIPurpose =
   // answered Q&A to the kickoff's content_excerpt. Standard content-based
   // classification (Class-1/2 → cloud, Class-3 → local via resolver clamp).
   | "clarifying_questions_from_context"
+  // PROJ-80-α — Quintessenz eines DMS-Dokuments. Wie `narrative` und
+  // `clarifying_questions_from_context` schreibt dieser Zweck KEINE
+  // `ki_suggestions`: sein Ergebnis landet in `document_summaries`.
+  //
+  // Besonderheit gegenüber allen Geschwistern: die Schutzklasse ist hier
+  // bereits **gemessen** und steht in `document_extractions.privacy_class` —
+  // ermittelt über den VOLLTEXT (PROJ-75-Regel), nicht über einen Auszug. Der
+  // Klassifizierer nimmt sie als Untergrenze und kann sie nur anheben.
+  | "document_summary"
 
 /**
  * PROJ-137 — machine-readable reason a ki_run produced no/blocked output.
@@ -1126,5 +1135,70 @@ export interface RouterClarifyingQuestionsResult {
   error_message?: string
   /** PROJ-137 — machine-readable reason for empty/blocked output; null when
    *  a provider ran and returned a legit result. */
+  reason_code?: AiRunReasonCode | null
+}
+
+// ---------------------------------------------------------------------------
+// PROJ-80-α — document_summary (Quintessenz) purpose types
+// ---------------------------------------------------------------------------
+
+/**
+ * Kontext für die Quintessenz eines DMS-Dokuments.
+ *
+ * Bewusst schmal: Dateiname, Metadaten und der (auf `SUMMARY_INPUT_MAX_CHARS`
+ * gekürzte) Text. Kein Projekt-„Vorhaben" wie bei PROJ-91 — eine Quintessenz
+ * soll das Dokument wiedergeben, nicht es an einem Projektziel messen. Ein
+ * Zielvektor im Prompt würde das Modell dazu verleiten, die Kurzfassung in
+ * Richtung des Ziels zu verbiegen; genau der Fehler, den PROJ-91 bei der
+ * Backlog-Generierung live nachgewiesen hat.
+ */
+export interface DocumentSummaryAutoContext {
+  document: {
+    document_id: string
+    filename: string
+    mime_type: string
+    /** Untergrenze aus `document_extractions.privacy_class`, gemessen über den
+     *  VOLLTEXT (PROJ-75). Der Klassifizierer kann sie nur anheben. */
+    privacy_class: 1 | 2 | 3
+    /** Der Text, der wirklich an den Anbieter geht — bereits gekürzt. */
+    text: string
+    /** True, wenn `text` nur der Anfang des Dokuments ist. Muss im Ergebnis
+     *  sichtbar werden: eine Kurzfassung, die nur den Anfang gesehen hat, sich
+     *  aber als Kurzfassung des Ganzen ausgibt, wäre eine stille Unwahrheit. */
+    truncated: boolean
+  }
+}
+
+/** Strukturierte Quintessenz (V1-Schema aus der Spec). */
+export interface DocumentSummaryStructured {
+  title: string
+  key_topics: string[]
+  entities: { name: string; type: string }[]
+  summary_paragraphs: string[]
+  references: string[]
+  language: string
+}
+
+export interface DocumentSummaryGenerationOutput {
+  summary: DocumentSummaryStructured | null
+  summary_markdown: string | null
+  usage: ProviderUsage
+}
+
+/**
+ * Ergebnis eines Quintessenz-Laufs. Wie `narrative` genau eine `ki_runs`-Zeile,
+ * KEINE `ki_suggestions` — das Ergebnis lebt in `document_summaries`.
+ */
+export interface RouterDocumentSummaryResult {
+  run_id: string
+  classification: DataClass
+  provider: AIProviderName
+  model_id: string | null
+  status: "success" | "error" | "external_blocked"
+  summary: DocumentSummaryStructured | null
+  summary_markdown: string | null
+  external_blocked: boolean
+  error_message?: string
+  /** PROJ-137 — maschinenlesbarer Grund für ein leeres Ergebnis. */
   reason_code?: AiRunReasonCode | null
 }

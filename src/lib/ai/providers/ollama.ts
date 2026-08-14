@@ -25,6 +25,7 @@ import { z } from "zod"
 import type {
   AIProvider,
   ClarifyingQuestionsGenerationRequest,
+  DocumentSummaryGenerationRequest,
   CoachingGenerationRequest,
   CrossProjectLinksGenerationRequest,
   NarrativeGenerationRequest,
@@ -38,6 +39,7 @@ import type {
 } from "./types"
 import type {
   ClarifyingQuestionsGenerationOutput,
+  DocumentSummaryGenerationOutput,
   CoachingGenerationOutput,
   CoachingKind,
   CrossProjectLinksGenerationOutput,
@@ -72,6 +74,7 @@ import {
   TRAJECTORY_SEQUENCE_SYSTEM_PROMPT,
   TrajectorySequenceResponseSchema,
 } from "./graph-purpose-prompts"
+import { runDocumentSummaryLoose } from "./document-summary-runner"
 
 // ---------------------------------------------------------------------------
 // Risk-suggestion schema + prompt (identical to AnthropicProvider so that
@@ -1100,6 +1103,14 @@ export class OllamaProvider implements AIProvider {
         latency_ms: Date.now() - start,
       },
     }
+  }
+
+  // PROJ-80-α — Quintessenz. Der Aufruf lebt im geteilten Runner, damit die
+  // sechs Anbieter nicht auseinanderlaufen (PROJ-85-Lehre).
+  async generateDocumentSummary(
+    request: DocumentSummaryGenerationRequest,
+  ): Promise<DocumentSummaryGenerationOutput> {
+    return runDocumentSummaryLoose(this.sdkProvider(this.modelId), request.context)
   }
 }
 
