@@ -25,6 +25,10 @@ export type ProjectModule =
   | "stakeholders"
   | "governance"
   | "releases"
+  // PROJ-45-α — the two construction axes, so the profile can name what it
+  // actually offers instead of carrying a placeholder marker (AC-45.25).
+  | "gewerke"
+  | "bauabschnitte"
 
 /**
  * Standardized role keys reused across types so stakeholder rollups
@@ -172,16 +176,26 @@ const GENERAL_PROFILE: ProjectTypeProfile = {
   default_tag_keys: [],
 }
 
+// PROJ-45-α — the placeholder status is retired: Gewerke and Bauabschnitte
+// ship with this slice, so the profile now names them instead of promising
+// them. `is_placeholder` is dropped entirely rather than set to false — the
+// flag means "reserved, nothing behind it yet", which is no longer true.
 const CONSTRUCTION_PROFILE: ProjectTypeProfile = {
   key: "construction",
   label_de: "Bauprojekt",
   summary_de:
-    "Strukturell vorbereitet, fachliche Vertiefung folgt mit der Construction-Extension.",
+    "Gliederung nach Gewerken und Bauabschnitten, zusätzlich zu Phasen und Arbeitspaketen. Mängel, Abnahmen und bauspezifische Terminsignale folgen.",
   standard_roles: [ROLE_PL, ROLE_SPONSOR],
-  standard_modules: ["backlog", "planning", "members", "history"],
+  standard_modules: [
+    "backlog",
+    "planning",
+    "members",
+    "history",
+    "gewerke",
+    "bauabschnitte",
+  ],
   required_info: [],
   default_tag_keys: ["iso-9001"],
-  is_placeholder: true,
 }
 
 // PROJ-97a — M&A standard professional roles ("Fachrollen"). Single source of

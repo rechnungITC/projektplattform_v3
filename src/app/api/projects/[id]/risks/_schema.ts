@@ -31,6 +31,8 @@ export const riskCreateSchema = z.object({
   category_id: z.string().uuid().optional().nullable(),
   confidentiality_level: z.enum(CONFIDENTIALITY_LEVELS).default("standard"),
   workstream_id: z.string().uuid().optional().nullable(),
+  // PROJ-45-α — a risk can hang on a construction trade (AC-45.19).
+  trade_id: z.string().uuid().optional().nullable(),
 })
 
 export const riskPatchSchema = z
@@ -48,6 +50,8 @@ export const riskPatchSchema = z
     category_id: z.string().uuid().optional().nullable(),
     confidentiality_level: z.enum(CONFIDENTIALITY_LEVELS).optional(),
     workstream_id: z.string().uuid().optional().nullable(),
+  // PROJ-45-α — a risk can hang on a construction trade (AC-45.19).
+  trade_id: z.string().uuid().optional().nullable(),
   })
   .refine((val) => Object.keys(val).length > 0, {
     message: "At least one field must be provided.",

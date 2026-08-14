@@ -1,5 +1,9 @@
 "use client"
 
+import {
+  ConstructionAxisFields,
+  NO_CONSTRUCTION_VALUE,
+} from "@/components/construction/construction-axis-fields"
 import { zodResolver } from "@hookform/resolvers/zod"
 import { Loader2 } from "lucide-react"
 import * as React from "react"
@@ -58,6 +62,8 @@ function buildSchema(isMaProject: boolean) {
           .min(1, "Kategorie ist erforderlich")
           .refine((v) => v !== NO_CATEGORY, "Kategorie ist erforderlich")
       : z.string().optional(),
+    // PROJ-45-α — construction trade (AC-45.19). Optional by design.
+    trade_id: z.string().optional(),
     confidentiality_level: z.enum(
       MA_CONFIDENTIALITY_LEVELS as unknown as [
         MaConfidentialityLevel,
@@ -80,6 +86,10 @@ interface RiskFormProps {
   isMaProject?: boolean
   /** PROJ-107 — active categories applicable to the project (form picker). */
   categories?: RiskCategory[]
+  /** PROJ-45-α — construction projects additionally hang a risk on a trade. */
+  isConstructionProject?: boolean
+  /** Required when `isConstructionProject` — the trade picker loads per project. */
+  projectId?: string
 }
 
 const SCALE = [1, 2, 3, 4, 5] as const
@@ -93,6 +103,8 @@ export function RiskForm({
   secondaryAction,
   isMaProject = false,
   categories = [],
+  isConstructionProject = false,
+  projectId,
 }: RiskFormProps) {
   const formSchema = React.useMemo(() => buildSchema(isMaProject), [isMaProject])
   const form = useForm<FormValues>({
@@ -106,6 +118,7 @@ export function RiskForm({
       mitigation: initial?.mitigation ?? "",
       responsible_user_id: initial?.responsible_user_id ?? "",
       category_id: initial?.category_id ?? "",
+      trade_id: initial?.trade_id ?? "",
       confidentiality_level: initial?.confidentiality_level ?? "standard",
     },
   })
@@ -129,6 +142,10 @@ export function RiskForm({
           ? values.category_id
           : null,
       confidentiality_level: values.confidentiality_level,
+      trade_id:
+        values.trade_id && values.trade_id !== NO_CONSTRUCTION_VALUE
+          ? values.trade_id
+          : null,
     }
     await onSubmit(input)
   }
@@ -227,6 +244,17 @@ export function RiskForm({
           Score = Wahrscheinlichkeit × Auswirkung ={" "}
           <span className="font-mono">{score}</span>
         </p>
+
+        {isConstructionProject && projectId ? (
+          <div className="rounded-md border bg-muted/10 p-3">
+            <ConstructionAxisFields
+              projectId={projectId}
+              tradeId={form.watch("trade_id") || null}
+              disabled={submitting}
+              onTradeChange={(value) => form.setValue("trade_id", value ?? "")}
+            />
+          </div>
+        ) : null}
 
         {isMaProject ? (
           <div className="grid grid-cols-1 gap-3 rounded-md border bg-muted/10 p-3 sm:grid-cols-2">

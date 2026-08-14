@@ -19,6 +19,7 @@
 
 import {
   Building2,
+  HardHat,
   FolderTree,
   LayoutTemplate,
   ListChecks,
@@ -80,6 +81,15 @@ export const STAMMDATEN_SECTIONS: readonly StammdatenSection[] = [
     description:
       "Globale Defaults (Promoter/Supporter/Kritiker/Blockierer) plus eigene Typen pro Tenant — werden im Stakeholder-Form als Dropdown angeboten.",
     adminOnly: true,
+  },
+  {
+    href: "/stammdaten/gewerke",
+    icon: HardHat,
+    title: "Gewerke",
+    description:
+      "Mandantenweiter Gewerke-Katalog für Bauprojekte. Wird je Projekt ausgewählt; eine Umbenennung wirkt überall, weil Projekte den Eintrag referenzieren statt ihn zu kopieren.",
+    adminOnly: true,
+    requiresModule: "construction",
   },
   {
     href: "/stammdaten/projekttypen",

@@ -179,6 +179,10 @@ export interface WorkItem {
   /** PROJ-102 — workstream FK (M&A grouping). Nullable; replaces the
    *  attributes.ma_workstream free-text tag from PROJ-101. */
   workstream_id?: string | null
+  /** PROJ-45-α — construction axes: who executes, and where. Both optional;
+   *  non-construction projects never carry them. */
+  trade_id?: string | null
+  section_id?: string | null
 }
 
 /**
