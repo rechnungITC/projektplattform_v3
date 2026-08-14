@@ -258,6 +258,11 @@ async function globalSetup(config: FullConfig): Promise<void> {
         created_by: E2E_USER_ID,
         language: "de",
         branding: {},
+        // PROJ-Y-143o/PROJ-Y-130h: das Ausnahmeflag wird NICHT aus dem `[E2E]`-Praefix
+        // abgeleitet — ein neuer Fixture-Mandant erbt es nicht und schreibt sonst dauerhaft
+        // Testrauschen in den append-only Audit-Trail. Setzen darf es seit PROJ-Y-146c nur
+        // die Service-Role; global-setup ist genau dieser Pfad.
+        audit_lifecycle_exempt: true,
       },
       { onConflict: "id" }
     )
@@ -348,6 +353,7 @@ async function globalSetup(config: FullConfig): Promise<void> {
             created_by: E2E_USER_ID,
             language: "de",
             branding: {},
+            audit_lifecycle_exempt: true,
           },
           { onConflict: "id" },
         ),
@@ -606,6 +612,7 @@ async function provisionVisualLane(
             created_by: E2E_VISUAL_USER_ID,
             language: "de",
             branding: {},
+            audit_lifecycle_exempt: true,
           },
           { onConflict: "id" },
         ),

@@ -14,7 +14,7 @@ summary_for_jira: "[HYGIENE] E2E-Specs raeumen ihre angelegten Projekte nicht au
 
 # PROJ-Y-143o: E2E-Projektanhäufung an der Quelle stoppen
 
-## Status: Planned
+## Status: Approved
 ## Deployment Scope: —
 **Created:** 2026-08-13
 **Origin:** Nebenbefund aus der Impact-Analyse zu PROJ-Y-143c.
@@ -147,3 +147,56 @@ entsteht dieselbe Halde neu.
 
 Löschen der 20 Bestandszeilen im Mandanten `…0002`, Anfassen des Alt-Mandanten, Änderungen am
 Produktivmandanten.
+
+## Befund korrigiert 2026-08-14 — die Ursache war eine andere
+
+Die Spec ging davon aus, die Specs räumten nicht auf („entstehen, weil die Specs den
+Wizard-Finalize-Pfad durchfahren … und danach nichts aufräumen"). Das stimmt nicht. **Alle drei
+betroffenen Stellen hatten längst ein `afterAll` mit Projekt-Löschung.** Sie waren wirkungslos,
+und zwar aus zwei Gründen, die übereinander lagen:
+
+1. **Falsche Tabelle.** Die Teardowns löschten aus `project_members` — die Tabelle heißt
+   `project_memberships` und `project_members` existiert nicht. Die Lead-Mitgliedschaft blieb
+   also stehen.
+2. **Der Projekt-Delete brach ab.** Mit verbliebener Lead-Mitgliedschaft lief er in
+   `23514 / project must have at least one lead` — derselbe Fehler, der im Produkt „endgültig
+   löschen" unbrauchbar machte (**PROJ-148**, inzwischen behoben).
+
+**Warum beides tagelang unsichtbar blieb — das ist der eigentliche Defekt:** jeder Teardown
+verschluckte seine Fehler (`safe()`, `.then(()=>undefined,()=>undefined)`, `try {} catch {}`).
+supabase-js *wirft* bei Datenbankfehlern nicht, es gibt `{ error }` zurück; ein `await …delete()`
+ohne Prüfung sieht deshalb wie erfolgreiches Aufräumen aus und ist keins. Ein Aufräumschritt, der
+nicht sagen kann, dass er gescheitert ist, verwandelt jeden Folgefehler in langsam wachsenden
+Datenmüll — und er hat hier einen **Produktionsfehler mitverdeckt**.
+
+Damit ändert sich die Richtungsentscheidung: keine der drei Optionen (a)/(b)/(c) trifft die
+Ursache. Weder ein neuer Teardown noch ein Sweep hätte geholfen, solange Fehlschläge unsichtbar
+sind. Umgesetzt ist deshalb:
+
+- **Die falsche Tabelle entfällt** (die Mitgliedschaften räumt seit PROJ-148 der `ON DELETE
+  CASCADE`).
+- **Der Projekt-Delete ist laut** — neuer Helfer `tests/fixtures/cleanup.ts` (`deleteOrThrow`)
+  prüft `{ error }` und wirft mit Kontext. Bewusst nur für das Projekt: dort hängt die Anhäufung.
+  Storage-Objekte und Kindzeilen dürfen weiterhin leise scheitern, weil ein roter Lauf dafür mehr
+  Schaden als Nutzen brächte.
+- **AC-Y143o.5 strukturell geschlossen:** `global-setup` setzt `audit_lifecycle_exempt: true` in
+  allen drei Fixture-Mandanten-Upserts. Ein künftiger Fixture-Mandant erbt das Flag damit nicht
+  mehr zufällig nicht. Schreiben darf das seit PROJ-Y-146c nur die Service-Role — global-setup ist
+  genau dieser Pfad.
+
+## Nachweis (AC-Y143o.1)
+
+Vollständiger Lauf beider projekt-erzeugender Specs, **9 passed**:
+`projects` im Fixture-Mandanten **20 vorher → 20 nachher**, Reste exakt die 19 Altzeilen
+(`[E2E 135]` 10, `[E2E ε]` 9) plus die gepinnte Fixture. Vor dem Umbau hätte derselbe Lauf zwei
+Zeilen hinzugefügt. **AC-Y143o.2**: die gepinnte Fixture hat den Lauf überlebt.
+
+`tests/PROJ-1-2-live-closure.spec.ts` (in PROJ-148 auf die reale Projektform mit Lead gehärtet)
+läuft grün gegen den gefixten Trigger.
+
+## Bewusst offen
+
+Die 19 Altzeilen bleiben stehen — so in „Nicht in Scope" festgelegt, und sie sind jetzt jederzeit
+löschbar. **AC-Y143o.3** entfällt gegenstandslos: es wird kein Integritäts-Trigger umgangen, weil
+PROJ-148 den Abriss regulär erlaubt. **AC-Y143o.4** war bereits durch PROJ-Y-143c erledigt
+(`PROJ-77-γ` legt sein Fremdmandanten-Projekt seither in der Transaktion an).
