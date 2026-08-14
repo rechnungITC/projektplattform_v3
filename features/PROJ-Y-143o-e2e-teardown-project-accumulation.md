@@ -14,8 +14,8 @@ summary_for_jira: "[HYGIENE] E2E-Specs raeumen ihre angelegten Projekte nicht au
 
 # PROJ-Y-143o: E2E-Projektanhäufung an der Quelle stoppen
 
-## Status: Approved
-## Deployment Scope: —
+## Status: Deployed
+## Deployment Scope: tooling-only
 **Created:** 2026-08-13
 **Origin:** Nebenbefund aus der Impact-Analyse zu PROJ-Y-143c.
 
@@ -200,3 +200,10 @@ Die 19 Altzeilen bleiben stehen — so in „Nicht in Scope" festgelegt, und sie
 löschbar. **AC-Y143o.3** entfällt gegenstandslos: es wird kein Integritäts-Trigger umgangen, weil
 PROJ-148 den Abriss regulär erlaubt. **AC-Y143o.4** war bereits durch PROJ-Y-143c erledigt
 (`PROJ-77-γ` legt sein Fremdmandanten-Projekt seither in der Transaktion an).
+
+## Deployment
+
+**Deployed 2026-08-14:** PR #391 (squash) → main `dd332ec`, Tag `v2.58.0-PROJ-Y-143o`. Reine
+Test-/Fixture-Ebene — kein Produktivcode, keine Migration, kein Runtime-Verhalten. Scope daher
+`tooling-only`: der gelieferte Ausgang betrifft ausschließlich Tests und Testaufbau, der Nachweis
+ist der ausgeführte Lauf (9 passed, Projektzahl 20 → 20).
