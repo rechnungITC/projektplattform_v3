@@ -270,14 +270,46 @@ Der Umbau auf eine Untergrenze plus namentliche Geschwisterpruefung ist ein eige
 absolute Zahl schlaegt bei jeder legitimen Erweiterung fehl, genau die Lehre, die PROJ-130-alpha fuer
 Migrations-Zusicherungen selbst gezogen hat.
 
-**Noch offen in α** (Uebergabe): (1) Route-Unit-Tests, (2) Client-Wrapper, (3) `work_items`/`risks`-Hooks
-um `trade_id`/`section_id` erweitern, (4) PROJ-100a und PROJ-100b wörtlich nachfahren — beide sind
-mehrteilige Skripte mit echten Inserts und eigenem Teardown (kein zurueckrollender DO-Block) und muessen
-abschnittsweise gefahren werden. Fuer PROJ-102 existiert keine eigene Pentest-Datei; die dokumentierten
-6/6 stammen aus einem Ad-hoc-Lauf. Strukturell ist die M&A-Seite bereits belegt:
-`can_access_classified` enthaelt kein `construction`-Vorkommen, `workstreams` hat unveraendert 7
-Policies, alle Geschwisterzweige der drei geteilten Register sind namentlich gegengeprueft.
-Frontend ist ein eigener Schnitt.
+**Anwendungsschicht nachgezogen (2026-08-14):** Client-Wrapper `src/lib/construction/api.ts`
+(`ConstructionApiError` trägt den HTTP-Status mit, damit 409 „Gewerk noch zugeordnet" von einem echten
+Fehler unterscheidbar bleibt), `WorkItem`/`Risk`-Typen, `useWorkItems` reicht `tradeId`/`sectionId`
+durch, **34 Route-Unit-Tests** über die drei Flächen. Dabei schlugen **fünf Bestands-Drift-Wächter** an
+und taten genau ihre Arbeit: `type-vs-select-drift` (der Hook-SELECT ist eine explizite Spaltenliste,
+kein `*`), danach `hook-mapping-drift` für die Gegenrichtung (selektiert, aber nicht abgebildet),
+`modules.test`, sowie zwei Kitchen-Sink-Fixturen. Alle Erwartungen nachgezogen, keine abgeschwächt.
+Gates: vitest **2965/2965**, tsc 13 = Baseline, ESLint 0.
+
+**M&A-Regressionen wörtlich gefahren (2026-08-14), 0 Rückstände:**
+
+- **PROJ-100a** abschnittsweise (Seed → Vektoren → Teardown): V1+4 exakt wie dokumentiert
+  (`["P100A Conf","P100A Std"]`, Work-Item nur `confidential`, Phasen leer, `conf_true`/`strict_false`),
+  V3 Cross-Tenant (`["P100A T2 Conf"]`, Fremd-Projekt `false`), V2c+5 alle vier Bypass-Schreibversuche
+  **0 Zeilen**, V5c Freischaltungen für Nicht-Manager unlesbar, V6 Class-3-Orthogonalität (0/0),
+  Admin-Bypass sieht alle drei, abgelaufene Freischaltung wirkt nicht. Teardown 0 Rückstände.
+- **PROJ-100b** A–H **8/8 PASS** (Profil-Anwendung + Provenienz, Downgrade-Schutz, Wer-darf-was
+  inkl. Ausschluss des Nicht-Freigeschalteten, Baseline, inaktives Profil, Fremd-Tenant-Profil,
+  Manager-Gate, Katalog-Isolation).
+- **PROJ-130-γ1** siehe oben: alle Verhaltensvektoren PASS, nur die absolute Zweigzahl angehoben.
+
+**Drei Befunde, die nicht dieser Slice gehören:**
+
+1. **PROJ-130-α, sicherheitsrelevant:** die Append-only-Zusage („`42501` für **jede** Rolle inkl.
+   `service_role`/`postgres`") gilt für ein direktes `DELETE`, **nicht** unter
+   `session_replication_role = replica` — in diesem Modus sind die Wächter-Trigger deaktiviert und
+   Audit-Zeilen löschbar. Genau so räumt der PROJ-100a-Teardown seine 13 Lebenszyklus-Zeilen wieder ab
+   (deshalb 0 Rückstände). Wer den Modus setzen darf, ist auf Superuser/`service_role` beschränkt, über
+   die Anwendung ist es nicht erreichbar — die Zusage ist trotzdem zu stark formuliert. Eigener Followup.
+2. **PROJ-130-γ1:** die absolute Zweigzahl (57) im Test schlägt bei **jeder** legitimen Erweiterung
+   fehl. Umbau auf Untergrenze plus namentliche Geschwisterprüfung — eigener Followup.
+3. **Buchführung:** für **PROJ-102** existiert keine Pentest-Datei; die im INDEX dokumentierten
+   „Need-to-know 6/6" stammen aus einem Ad-hoc-Lauf und sind nicht reproduzierbar. Die von CIA-Auflage
+   A-6 namentlich verlangte Regression ist damit strukturell nicht führbar, solange die Datei fehlt.
+   Ersatzweise strukturell belegt: `can_access_classified` enthält kein `construction`-Vorkommen,
+   `workstreams` hat unverändert 7 Policies.
+
+**Offen bleibt nur das Frontend** — eigener Schnitt (`/frontend`): Stammdaten-Katalog, die zwei
+Projektraum-Flächen, die drei additiven Felder in den bestehenden Dialogen, sowie die Nav-Sektionen mit
+`requiresProjectType: "construction"` + `requiresModule: "construction"`.
 
 ---
 
