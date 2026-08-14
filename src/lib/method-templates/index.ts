@@ -14,6 +14,7 @@
  */
 
 import {
+  HardHat,
   BarChart3,
   Calculator,
   ClipboardCheck,
@@ -77,6 +78,33 @@ const MA_CONFIDENTIALITY_SECTION: SidebarSection = {
   icon: ShieldCheck,
   tabPath: "vertraulichkeit",
   requiresProjectType: "ma",
+}
+
+/**
+ * PROJ-45-α — the two construction axes. Same injection mechanism as the M&A
+ * sections: project-TYPE driven, so they are added once here instead of being
+ * duplicated into all eight method templates. They carry BOTH gates —
+ * `requiresProjectType` keeps them out of ERP/software/M&A rooms, and
+ * `requiresModule` lets a tenant switch the whole extension off (Q4: one
+ * switch, not one per slice). The renderers compose both filters, so no filter
+ * logic had to change for this.
+ */
+const CONSTRUCTION_TRADES_SECTION: SidebarSection = {
+  id: "construction-trades",
+  label: "Gewerke",
+  icon: HardHat,
+  tabPath: "gewerke",
+  requiresProjectType: "construction",
+  requiresModule: "construction",
+}
+
+const CONSTRUCTION_SECTIONS_SECTION: SidebarSection = {
+  id: "construction-sections",
+  label: "Bauabschnitte",
+  icon: Layers,
+  tabPath: "bauabschnitte",
+  requiresProjectType: "construction",
+  requiresModule: "construction",
 }
 
 // PROJ-95 — the M&A "Phasenmodell" cockpit (10-phase roadmap, activation,
@@ -321,6 +349,8 @@ function withMaFoundation(config: MethodConfig): MethodConfig {
       MA_SPA_ISSUES_SECTION,
       MA_OPERATIVE_REPORT_SECTION,
       MA_STEERING_REPORT_SECTION,
+      CONSTRUCTION_TRADES_SECTION,
+      CONSTRUCTION_SECTIONS_SECTION,
       ...sections.slice(insertAt),
     ],
   }

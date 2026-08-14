@@ -26,6 +26,7 @@ function bySlug(slug: string) {
 }
 
 const ALL_MODULES: ModuleKey[] = [
+  "construction",
   "risks",
   "decisions",
   "ai_proposals",
@@ -50,6 +51,9 @@ describe("STAMMDATEN_SECTIONS", () => {
     )
     expect(gated).toEqual([
       ["/stammdaten/resources", "resources"],
+      // PROJ-45-α — the catalog routes call requireModuleActive("construction"),
+      // so the tile may honestly claim the gate.
+      ["/stammdaten/gewerke", "construction"],
       ["/stammdaten/vendors", "vendor"],
     ])
   })
@@ -86,6 +90,7 @@ describe("resolveStammdatenSections", () => {
     )
     expect(resolved.filter((s) => s.moduleInactive).map((s) => s.href)).toEqual([
       "/stammdaten/resources",
+      "/stammdaten/gewerke",
       "/stammdaten/vendors",
     ])
   })

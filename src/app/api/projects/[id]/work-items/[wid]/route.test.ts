@@ -390,6 +390,8 @@ describe("PATCH /api/projects/[id]/work-items/[wid] — schema/DB-payload drift"
       planned_start: "2026-05-10",
       planned_end: "2026-05-20",
       due_date: "2026-07-15",
+      trade_id: MILESTONE_ID,
+      section_id: MILESTONE_ID,
       workstream_id: "aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa",
     }
 

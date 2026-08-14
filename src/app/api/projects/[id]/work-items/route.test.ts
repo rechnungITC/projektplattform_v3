@@ -105,6 +105,8 @@ describe("POST /api/projects/[id]/work-items — schema/DB-payload drift", () =>
       responsible_user_id: USER_ID,
       due_date: "2026-07-15",
       workstream_id: MILESTONE_ID,
+      trade_id: MILESTONE_ID,
+      section_id: MILESTONE_ID,
       attributes: { story_points: 5 },
       position: 100,
       created_from_proposal_id: PROPOSAL_ID,

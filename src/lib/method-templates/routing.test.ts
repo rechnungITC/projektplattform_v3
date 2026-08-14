@@ -589,18 +589,30 @@ describe("module-gating matrix (8 methods × 6 modules)", () => {
           settingsWith(ALL_MODULES.filter((m) => m !== moduleKey)),
         )
         const dropped = allOn.filter((s) => !off.includes(s))
-        // Every method template must declare the gated section.
-        expect(dropped).toHaveLength(1)
-        expect(dropped[0].requiresModule).toBe(moduleKey)
+        // Every method template must declare at least one gated section, and
+        // everything that disappears must be gated by exactly this module.
+        // PROJ-45-α relaxed this from "exactly one": the construction module
+        // gates TWO surfaces (Gewerke + Bauabschnitte) behind a single switch
+        // — one switch per extension was the deliberate choice (Q4), because
+        // finer switches produce combinations neither tests nor QA cover.
+        expect(dropped.length).toBeGreaterThanOrEqual(1)
+        for (const section of dropped) {
+          expect(section.requiresModule).toBe(moduleKey)
+        }
       })
     }
 
     it(`${methodLabel} template: every PROJ-17 module is represented exactly once`, () => {
-      const required = config.sidebarSections
+      const gatedSections = config.sidebarSections.filter(
+        (s) => s.requiresModule != null,
+      )
+      const required = gatedSections
         .map((s) => s.requiresModule)
         .filter((m): m is (typeof ALL_MODULES)[number] => m != null)
-      // Deduplication check.
-      expect(new Set(required).size).toBe(required.length)
+      // Deduplication is about accidentally registering the SAME section
+      // twice, not about a module owning several surfaces (see above).
+      const ids = gatedSections.map((s) => s.id)
+      expect(new Set(ids).size).toBe(ids.length)
       // Coverage check — every PROJ-17 module appears.
       for (const m of ALL_MODULES) {
         expect(required, `${methodLabel} must gate ${m}`).toContain(m)

@@ -81,7 +81,8 @@ Scope definitions and required evidence:
 
 - **`full`** — every current in-scope acceptance criterion and the Definition of Done are satisfied;
   QA has no Critical/High findings; production behavior is verified. Later enhancements may remain open
-  only if they do not defer or contradict an original in-scope acceptance criterion.
+  only if they do not defer or contradict an original in-scope acceptance criterion. For the narrow case
+  where a criterion is literally unfulfilled but nothing is outstanding, see *Waived criterion* below.
 - **`mvp`** — an explicitly approved, usable MVP boundary is deployed; the spec contains an acceptance-
   criteria matrix for the delivered core; every omitted original requirement has a named follow-up.
 - **`alpha`** — a named sub-slice with its own acceptance criteria completed QA and deployment; the spec
@@ -93,6 +94,30 @@ Scope definitions and required evidence:
 
 An auth redirect or route-existence smoke alone is not functional evidence. Use evidence proportional to
 the feature: real library tests, API/RPC/RLS tests, UI/E2E checks, production smoke, or CI/tool execution.
+
+#### Waived criterion — `full` despite a literally unfulfilled criterion
+
+A criterion can turn out to be unreachable or obsolete without any work being deferred: a measurement
+target the tooling cannot produce, or a criterion a later deployed slice has since satisfied. None of the
+other values fits — `mvp` and `alpha` both assert tracked outstanding work that does not exist, and
+`tooling-only` is a statement about the delivery axis, not about completeness. Rewriting the criterion is
+forbidden. Record a **waiver** and keep `full`, but only when **all four** of these hold:
+
+1. **Nothing was deferred.** No follow-up exists or is needed; there is no work item that would fulfil the
+   criterion.
+2. **The criterion is demonstrably unreachable or obsolete** — the reason is recorded (structural
+   limitation of the tool, or superseded by a named later slice) and re-verifiable today, not asserted.
+3. **A written acceptance names the criterion** — QA verdict, PO lock, or a deviation entry in the spec
+   that quotes it. An unremarked gap is not a waiver; it is an unfulfilled criterion.
+4. **The substance behind the criterion is met by other measured evidence.** Its intent must be satisfied
+   even though its literal wording is not.
+
+Record the waiver twice: next to the criterion in the spec, and as a **closed** entry in
+`features/OPEN-DEFERRED-STATUS.md` — closed rather than an open follow-up, because nothing is outstanding,
+but recorded so it stays greppable. If any of the four fails, the scope is not `full`.
+
+This is a narrow exception, not a discretionary override. "QA accepted it" alone satisfies condition 3
+only; conditions 1, 2, and 4 still have to be shown.
 
 ### Deployment/Supersession Bookkeeping Procedure
 

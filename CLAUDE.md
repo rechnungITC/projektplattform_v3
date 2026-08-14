@@ -93,6 +93,10 @@ Deployment scope is mandatory and orthogonal to lifecycle status. Use exactly on
 - `Superseded` requires `superseded`; never combine `Deployed` with `superseded`.
 - `full` means every current in-scope acceptance criterion and the Definition of Done are satisfied.
   Separate later enhancements may remain open, but no deferred original acceptance criterion may.
+  A criterion that turned out unreachable or obsolete **with nothing deferred** can be waived and still
+  count as `full` — but only under the four cumulative conditions in `.claude/rules/general.md`
+  ("Waived criterion"), and the waiver is recorded in the spec *and* as a closed entry in
+  `features/OPEN-DEFERRED-STATUS.md`. Never rewrite a criterion to justify `full`.
 - `mvp` means an explicitly approved usable MVP boundary was deployed. Every omitted original
   requirement is named and tracked as a follow-up.
 - `alpha` means a named sub-slice with its own acceptance criteria, QA, and deployment evidence was

@@ -212,6 +212,7 @@ describe("PATCH /api/projects/[id]/risks/[rid] — schema/DB-payload drift", () 
       category_id: "44444444-4444-4444-8444-444444444444",
       confidentiality_level: "confidential",
       workstream_id: "55555555-5555-4555-8555-555555555555",
+      trade_id: "55555555-5555-4555-8555-555555555555",
     }
 
     for (const key of schemaKeys) {
