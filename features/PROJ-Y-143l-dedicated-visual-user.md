@@ -14,9 +14,10 @@ summary_for_jira: "[HYGIENE] Visual-Regression bekommt eine eigene Identität (N
 
 # PROJ-Y-143l: eigene Identität für die Visual-Regression
 
-## Status: In Review
-## Deployment Scope: —
+## Status: Deployed
+## Deployment Scope: tooling-only
 **Erstellt:** 2026-08-12 · **Umgesetzt:** 2026-08-13
+**Deployed:** 2026-08-13 (Code); Buchführung nachgezogen 2026-08-17
 **Origin:** Fund F-1 aus PROJ-Y-143f.
 
 ## Problem
@@ -103,7 +104,12 @@ Projekte mehr in dem Mandanten an, den `projects-list.png` fotografiert.
   Spur nicht, wenn sie am geteilten Konto passiert, und trifft sie sehr wohl, wenn sie am
   eigenen Mandanten passiert. ✅ siehe Nachweis.
 - **AC-Y143l.9** — Null Rückstände in der Produktionsdatenbank aus den Experimenten,
-  per Folgeabfrage geprüft. ✅ mit einer benannten Ausnahme (siehe unten).
+  per Folgeabfrage geprüft. ⚠️ **abgeschriebenes Kriterium (Waiver, 2026-08-17)** — wörtlich
+  unerfüllt, nichts offen. 6 Zeilen in `audit_log_entries` bleiben; sie sind strukturell nicht
+  entfernbar (append-only seit PROJ-130-α, `42501` für **jede** Rolle inklusive `service_role`
+  und `postgres`). Die vier kumulativen Bedingungen aus `.claude/rules/general.md`
+  („Waived criterion") sind geprüft, Herleitung im Buchführungs-Nachtrag unten; zusätzlich als
+  **geschlossener** Eintrag `PROJ-Y-143l-w1` in `features/OPEN-DEFERRED-STATUS.md`.
 - **AC-Y143l.10** — Stabilität: ≥ 3 Läufe plus ein Lauf aus kaltem `.next`. ✅
 
 ## Nachweis der Isolation

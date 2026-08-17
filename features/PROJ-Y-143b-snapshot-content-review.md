@@ -14,9 +14,11 @@ summary_for_jira: "[HYGIENE] Visual-Regression: eingefrorene UI inhaltlich prüf
 
 # PROJ-Y-143b: Inhaltliche Prüfung der neuen Snapshots
 
-## Status: In Review
+## Status: Deployed
+## Deployment Scope: tooling-only
 **Created:** 2026-08-11
 **Reviewed:** 2026-08-11
+**Deployed:** 2026-08-11 (Code); Buchführung nachgezogen 2026-08-17
 **Origin:** Followup aus PROJ-143, Deviation D-1.
 
 > **Ergebnis vorweg:** Die zwei Baselines, um die es laut Auftrag ging (`dashboard`,
@@ -239,3 +241,44 @@ Baseline).
   deterministische Region **oder** gepinnte Seed-Daten. Muss C-2 (relative Zeitstempel +
   wachsende Zeilenzahl) lösen, sonst dauerhaft rot.
 - **PROJ-Y-143e** — Sprachmix Dashboard/Projektliste (C-3) + „Project Health"-Umbruch (C-4).
+
+---
+
+## Buchführungs-Nachtrag 2026-08-17 — `Deployed` / Scope `tooling-only`
+
+Die Zeile stand auf `In Review` mit leerem Scope, obwohl der Code seit dem 2026-08-11 auf
+`main` liegt. Nachgezogen wurde ausschließlich die Buchführung; **keine Code-Änderung**.
+
+**Merge-Nachweis:** `68053bd` — *„chore(PROJ-Y-143b): review the frozen visual baselines, fix
+the capture anchor"* (**PR #327**), verifiziert als Vorfahre von `origin/main`
+(`git merge-base --is-ancestor` → ja). Vorläufer derselben Spur: `a5e8960` (#319, Anker-Risiko
+ergänzt) und `f6d36e0` (#316, Registrierung der Zeile).
+
+**Artefakte gegen `origin/main` geprüft, nicht aus der Spec übernommen:**
+
+| Zusage | Befund auf `origin/main` |
+|---|---|
+| AC-Y143b.5 Daten-Anker statt Shell-Anker | `waitForRenderedData` definiert (Z. 135) + **8** Aufrufstellen; `[data-sidebar='sidebar']` als Warte-Anker verschwunden |
+| AC-Y143b.7 720-px-Selbsttest festgehalten | im Datei-Kommentar mehrfach verankert (Z. 329/342/344/425/501/515) |
+| C-1 stillgelegt via `test.fixme` | im eigenen Merge-Baum **2** Treffer — heute **0**, weil PROJ-Y-143d beide Tests wieder aktiviert hat |
+
+Die achte Aufrufstelle ist kein Widerspruch zu den in der Spec genannten sieben: PROJ-Y-143h hat
+danach den Fall „Dashboard mit gepinnter Nutzlast" ergänzt und den Anker mitbenutzt.
+
+**Warum `tooling-only`:** der Merge berührt vier Dateien — `features/INDEX.md`, diese Spec,
+`tests/PROJ-51-visual-regression-authenticated.spec.ts` und **eine** Baseline-PNG. **Kein
+`src/**`**, keine Migration, keine Abhängigkeit. Damit greift die Definition „affects repository
+tooling, CI, tests, or workflow and adds no product runtime capability" wörtlich, und die von der
+Regel für diesen Wert verlangte Nachweisart („an executed repository tool, test, workflow, or CI
+check") liegt vor: Playwright chromium 2× 5 passed / 2 skipped einschließlich eines Laufs aus
+kaltem `.next` (AC-Y143b.6), ESLint 0, tsc 13 = Baseline.
+
+**Keine offene Auslassung.** Alle sieben AC sind erfüllt; AC-Y143b.6 ist eine Disjunktion, deren
+erster Zweig gemessen wurde. Die beiden abgegebenen Fundgruppen sind **geschlossen**, nicht
+lediglich weitergereicht:
+
+- C-1/C-2 → **PROJ-Y-143d**, `Deployed` / `tooling-only`. Unabhängig belegt: die zwei
+  `test.fixme`-Markierungen existieren auf `main` nicht mehr, beide Tests laufen wieder.
+- C-3/C-4 → **PROJ-Y-143e**, `Deployed` / `full`.
+
+Die in D-Y143b.2 eingegangene Coverage-Schuld ist damit zurückgezahlt und nicht bloß umgebucht.

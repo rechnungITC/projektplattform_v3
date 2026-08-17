@@ -14,9 +14,10 @@ summary_for_jira: "[HYGIENE] Stammdaten-Kachelgitter kennzeichnet deaktivierte M
 
 # PROJ-Y-143k: die Navigation bewirbt nicht mehr, was das Tor verschließt
 
-## Status: In Review
-## Deployment Scope: —
+## Status: Deployed
+## Deployment Scope: full
 **Created:** 2026-08-13
+**Deployed:** 2026-08-13 (Code); Buchführung nachgezogen 2026-08-17
 **Origin:** Fund F-3 aus PROJ-Y-143f.
 
 ## Der Befund
@@ -223,3 +224,57 @@ weil ich es nicht benennen kann.
   „reserviert" kennzeichnen.
 - Offen aus der Reihe: **PROJ-Y-143c** (Alt-Mandant), **PROJ-Y-143l**
   (geteilter E2E-Nutzer), **PROJ-Y-143m** (restliche englische Texte).
+  — Stand 2026-08-17: alle drei inzwischen `Deployed`.
+
+---
+
+## Buchführungs-Nachtrag 2026-08-17 — `Deployed` / Scope `full`
+
+Die Zeile stand auf `In Review` mit leerem Scope, obwohl der Code seit dem 2026-08-13 auf `main`
+liegt. Nachgezogen wurde ausschließlich die Buchführung; **keine Code-Änderung**.
+
+**Merge-Nachweis:** `45e0204` — *„feat(PROJ-Y-143k): Stammdaten-Kacheln kennzeichnen deaktivierte
+Module"* (**PR #369**), verifiziert als Vorfahre von `origin/main`.
+
+**Artefakte gegen `origin/main` geprüft, nicht aus der Spec übernommen:**
+`src/lib/master-data/stammdaten-sections.ts` mit `STAMMDATEN_SECTIONS` und dem reinen Resolver
+`resolveStammdatenSections` (Z. 192), `src/components/master-data/stammdaten-grid.tsx`,
+`src/lib/master-data/stammdaten-sections.test.ts` mit **9** Fällen wie zugesagt,
+`src/app/(app)/stammdaten/page.tsx` von 184 auf wenige Zeilen reduziert.
+
+**Der eingefrorene Zuordnungs-Test hat inzwischen gewirkt — genau wie beabsichtigt.**
+`requiresModule` trägt auf `main` jetzt **drei** Werte statt der zwei aus dieser Slice:
+`resources`, `vendor` **und `construction`** (Zeile 92), eingebracht von PROJ-45 (`3732532`).
+Das ist keine Drift, sondern der belegte Ertrag von AC-Y143k.3: der Test friert die Liste exakt
+ein, also musste die Construction-Slice eine bewusste Entscheidung treffen statt stillschweigend
+eine ungegatete Kachel zu ergänzen.
+
+**Warum `full` und ausdrücklich nicht `tooling-only`:** der Merge liefert **vier Dateien unter
+`src/`** aus und verändert damit, was in Produktion gerendert wird — eine Kachel mit
+abgeschaltetem Modul ist gestrichelt, trägt ein Schloss statt des Chevrons, **ist kein Link mehr**
+und erklärt den Zustand im Fuß. Das ist eine Produkt-Laufzeitfähigkeit, also ist
+`tooling-only` („adds no product runtime capability") hier falsch; es gilt die in PROJ-Y-145b
+Tranche 2 präzisierte Grenzregel: was Produktions-Laufzeit anfasst, ist nicht `tooling-only` —
+wenn vollständig, dann `full`.
+
+`full` ist kriterienweise erfüllt: alle **sieben** AC ✅ (AC-Y143k.5 mit dem stärksten möglichen
+Nachweis — bei aktivierten Modulen rendert die Seite byte-identisch zur Vorher-Baseline, gleiche
+md5), Definition of Done erfüllt, kein Critical/High-Befund, und das Produktionsverhalten ist über
+UI/E2E belegt (Playwright Visual 7× 9/9 inklusive vier Kaltstarts, 9 Unit-Fälle, Build clean mit
+registrierter `/stammdaten`-Route) — beides Nachweisarten, die die Regel ausdrücklich zulässt.
+Der Code ist über den Merge in `main` und damit über den Vercel-Auto-Deploy live.
+
+**Eine offene Auslassung — aber keine aus einem AC dieser Slice:** **PROJ-Y-143n** (der
+`organization`-Modulschalter ist wirkungslos). Das ist wichtig für die Scope-Frage: AC-Y143k.3
+verlangt, dass **nur** Kacheln mit echtem Server-Gate gekennzeichnet werden. „Organisation"
+auszunehmen ist deshalb **Erfüllung** dieses Kriteriums, nicht seine Zurückstellung — der
+Schalter wird von keiner Route (`requireModuleActive`) und keiner Oberfläche (`isModuleActive`)
+gelesen, eine Kennzeichnung wäre eine Falschaussage in die Gegenrichtung gewesen. 143n stellt
+also kein Kriterium dieser Slice zurück und widerspricht keinem, womit `full` unberührt bleibt;
+registriert ist es trotzdem, weil es als D-Y143k.3 bewusst abgegeben wurde
+(`features/OPEN-DEFERRED-STATUS.md`, Herkunft benannt).
+
+D-Y143k.2 (nur 2 von 14 Kacheln modul-gebunden) ist eine Feststellung über den Bestand, keine
+Verengung einer Anforderung. Die „Beobachtung ohne Beweis" (einzelner nicht reproduzierbarer
+Fehlschlag nach `rm -rf .next`, Signatur PROJ-138-Turbopack-Wedge) bleibt als solche stehen und
+wird nicht zu einem Befund erhoben.
