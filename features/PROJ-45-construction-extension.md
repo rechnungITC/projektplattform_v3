@@ -176,7 +176,9 @@ bei aktivem Modul erscheinen, damit ERP-, Software- und M&A-Projekte unveränder
 
 ## PROJ-45-β — Mängelmanagement (Requirements 2026-08-14)
 
-**Status: Planned** · zweiter Sub-Slice, baut auf dem deployten α auf.
+**Status: Architected** (2026-08-17) · zweiter Sub-Slice, baut auf dem deployten α auf.
+Deployment Scope bleibt leer bis zum Deploy und wird dann `alpha` — β ist ein benannter Sub-Slice, und
+AC-45β.18 ist per Nutzer-Entscheid nach δ verschoben (D-β1).
 
 ### Ein Befund vorweg: L3s Begründung ist zur Hälfte überholt
 
@@ -295,12 +297,249 @@ Fotodokumentation (**ε**) · Verortung im Bauplan · echter Versand der Anzeige
 Abnahmen (**γ**) · Gewährleistungsfristen und -verfolgung über die Bauzeit hinaus ·
 Kostenschätzung je Mangel (L14).
 
-### Offene Fragen für `/architecture`
+### Offene Fragen für `/architecture` — **alle vier beantwortet 2026-08-17**, siehe Tech Design (β)
 
 - **Q-β1 — L15 weicht vom Hausmuster ab.** Betrachter dürfen sonst nirgends anlegen. Die Umsetzung braucht eine differenzierte Schreibregel (Anlegen ja, Ändern nein) statt der üblichen einen. **CIA-relevant**, weil es ein produktweit etabliertes Rechte-Muster aufweicht.
 - **Q-β2 — Wo lebt das Vier-Augen-Gate?** In einer Statuswechsel-RPC wie bei `dd_findings`, oder in einer eigenen Prüf-Tabelle wie bei den Freigaben aus PROJ-105? Die Rückweisung mit Begründung und der mehrrundige Verlauf (AC-45β.12) sprechen für Ersteres mit einer Ereignis-Tabelle daneben.
 - **Q-β3 — Wie kommt die Überfälligkeit in PROJ-103?** Dessen Auswertung ist heute auf `work_items` gebaut. Mängel sind ein zweiter Typ — erweitert die bestehende Funktion oder liefert eine zweite, die daneben gestellt wird?
 - **Q-β4 — Sperren statt `SET NULL` (L16).** In α tragen Arbeitspakete und Risiken `SET NULL`. Zwei Regeln auf derselben Fläche sind erklärungsbedürftig; zu prüfen ist, ob `RESTRICT` auf dem Projekt-Gewerk mit dem bestehenden Entfernen-Pfad kollidiert.
+
+---
+
+## Tech Design (β) — Mängelmanagement, 2026-08-17
+
+Gegen den **deployten** Stand geerdet, nicht gegen die Anforderungsfassung: Live-Prod-Katalog
+(Spalten, Fremdschlüssel-Regeln, Trigger, Registerstände), die sieben α-Routen und die geteilte
+Navigations-Registry. Zwei Messungen haben den Zuschnitt geändert, bevor eine Zeile Entwurf entstand.
+
+### Der Review-Pass
+
+`.claude/rules/continuous-improvement.md` macht eine CIA-Bewertung hier verbindlich (Q-β1 weicht von
+einem produktweit etablierten Rechte-Muster ab). CLAUDE.md hält fest, dass die Regel „about the review
+happening, not about which tool performs it" ist, und benennt den Halt-und-Frage-Checkpoint mit
+strukturierter Ausgabe als gleichwertigen Weg. So gelaufen: Prüfung gegen Live-Stand und α-Code,
+die zwei echt offenen Entscheidungen dem Nutzer vorgelegt statt einseitig entschieden.
+
+### Zwei Befunde, die den Zuschnitt geändert haben
+
+**B-β1 — L12 war nicht baubar.** Die Engpass-Sicht aus PROJ-103 trägt `requiresProjectType: "ma"`
+(`src/lib/method-templates/index.ts:179-185`), und `filterSectionsByProjectType` vergleicht mit
+striktem `===` auf **einem** `ProjectType` (`routing.ts:180`). In einem Bauprojekt existiert diese
+Fläche nicht. Verschärfend: die Out-of-Scope-Tabelle dieser Spec weist die PROJ-103-Anbindung
+ohnehin **δ** zu. **Nutzer-Entscheid: AC-45β.18 wandert nach δ.** β liefert Überfälligkeit dort, wo
+gehandelt wird — Kennzeichnung und Filter in der Mängelliste (AC-45β.17/.19) plus ein Zähler je
+Gewerk auf der α-Gewerke-Fläche. Kein Eingriff in die geteilte Navigations-Registry, kein Umbau der
+Auswertungsfunktion, keine gebrochenen PROJ-103-Pentest-Zählungen.
+
+**B-β2 — die Rechte weichen in *beide* Richtungen ab.** Die Anforderung liest sich als eine
+Aufweichung (Betrachter dürfen anlegen), ist aber zugleich eine Verschärfung: „Projektleitung/
+Bauleitung oder Mandanten-Administration" entspricht `admin | lead` und schließt den Projekt-`editor`
+aus, den das Hausrecht `edit` einschließt (`src/lib/projects/access.ts`). **Nutzer-Entscheid:
+so gewollt** — gewährleistungsrelevante Fristen liegen in einer Hand.
+
+| Handlung | Ebene | Wer |
+|---|---|---|
+| Mangel anlegen | `view` | jedes Projektmitglied, auch Betrachter (L15) |
+| Mangel ändern, Frist/Verantwortlicher/Nachunternehmer setzen | `manage_members` | Mandanten-Admin oder Projektleitung |
+| Fertigmelden, prüfen, zurückweisen, verwerfen | `manage_members` | Mandanten-Admin oder Projektleitung |
+| Mängel lesen | `view` | jedes Projektmitglied |
+
+### Die vier offenen Fragen, beantwortet
+
+**Q-β1 — kein Rechte-Muster wird aufgeweicht, weil es an dieser Stelle keins gibt.** Die Vorlage
+`dd_findings` trägt live **ausschließlich Lese-Regeln** (zwei SELECT-Policies, keine einzige für
+INSERT/UPDATE/DELETE) — geschrieben wird nur über Funktionen. Damit ist „Betrachter darf anlegen"
+keine gelockerte Zugriffsregel, sondern eine Rollenprüfung **innerhalb** der Anlege-Funktion. Nichts
+Bestehendes wird angefasst, die Abweichung endet an dieser einen Tabelle, und ein späterer Leser
+sieht die Regel an der Stelle, an der sie gilt. Der Preis ist Disziplin: es darf **keine**
+Schreib-Policy entstehen, sonst wandert die Autorität an zwei Orte.
+
+**Q-β2 — Statuswechsel-Funktion mit Ereignis-Tabelle daneben, nicht die Freigabe-Maschinerie aus
+PROJ-105.** Deren Tabellen modellieren *mehrstufige Freigabeketten mit benannten Freigebern*; β hat
+genau ein Tor und eine Rolle — das wäre Aufwand ohne Gegenwert. Entscheidend ist, dass PROJ-105 seinen
+**Verlauf ebenfalls aus einer eigenen Ereignis-Tabelle** bedient statt aus dem zentralen Protokoll
+(dortige Auflage H3, bewusst, um das Audit-Trio nicht neu bauen zu müssen). Genau das trägt hier den
+mehrrundigen Verlauf aus AC-45β.12.
+
+**Q-β3 — entfällt in β** (siehe B-β1). Die Auswertungsfunktion bleibt unberührt; ihre Gestalt ist
+dokumentiert, damit δ nicht neu erheben muss: `project_task_bottlenecks` ist `language sql`, STABLE,
+INVOKER, liest **allein** `work_items` und liefert `tasks[] · top_bottlenecks[] · summary{}`. Jeder
+Eintrag trägt `kind` — einen Arbeitspaket-Typ, den ein Mangel nicht hat. δ ergänzt deshalb einen
+**eigenen Schlüssel** statt Mängel unter `tasks` zu mischen, sonst brechen Typisierung im Frontend
+und der CSV-Export.
+
+**Q-β4 — Sperren am Fremdschlüssel, Meldung in der Route; die Kollision ist real und benannt.**
+Live gemessen: `work_items.trade_id`, `risks.trade_id` und `work_items.section_id` stehen auf
+`SET NULL`, `project_construction_trades.trade_id` dagegen schon auf `RESTRICT` (die Katalog-Sperre
+aus α). Beide projektbezogenen Entfernen-Pfade sind heute **schlichte Löschungen ohne Vorprüfung**,
+die jeden Fehler außer `42501` auf **500 `delete_failed`** abbilden
+(`construction-trades/[ptid]/route.ts:105-108`, `construction-sections/[sid]/route.ts:119-122`).
+Ein `RESTRICT` für Mängel liefe dort also in einen 500 mit rohem Datenbanktext — AC-45β.21 verlangt
+aber eine Meldung, die die betroffenen Mängel **benennt**. Die Lösung liegt ein Verzeichnis weiter:
+die Katalog-Route fängt genau diesen Fall ab, fragt die Blockierer nach und antwortet 409
+(`construction-trades/[id]/route.ts:105-120`). Dieses Muster wird auf die zwei Projekt-Routen gehoben —
+Löschung versuchen, `23503` abfangen, Mängel benennen, 409. Kein Vorab-Zählen: das kostet auf dem
+Normalpfad eine Abfrage und wäre zwischen Prüfung und Löschung ohnehin nicht dicht.
+
+**Der nicht offensichtliche Teil davon:** `construction_sections.parent_id` ist `CASCADE`. Das Löschen
+eines Oberabschnitts reißt den Teilbaum mit, also kann ein Mangel an einem **Enkel** die Löschung der
+Wurzel blockieren. Die benennende Abfrage muss deshalb den ganzen Teilbaum absuchen, nicht den einen
+Knoten — die in α gebaute `path`-Spalte macht das billig.
+
+### Weitere Befunde aus der Erdung
+
+**B-β3 — der Nachunternehmer existiert schon, eine Ebene höher.** `project_construction_trades`
+trägt live ein `vendor_id` (α, `SET NULL`). Der Mangel bekommt **trotzdem ein eigenes** Feld,
+vorbelegt aus dem Gewerk: gewährleistungsrechtlich zählt, wer **zum Zeitpunkt des Mangels**
+ausgeführt hat, und die Zuordnung am Gewerk darf sich später ändern. Ein abgeleiteter Wert würde
+alte Mängelanzeigen rückwirkend umschreiben. Die Anzeige filtert ausschließlich über das Feld am
+Mangel — eine Wahrheit für „wer wird zur Nachbesserung aufgefordert".
+
+**B-β4 — keine Vertraulichkeitsstufe.** Die Vorlage `dd_findings` trägt `confidentiality_level`;
+Mängel bekommen es **nicht**. α hat das für dieselbe Fläche schon entschieden und begründet: die
+Freischaltungs-Oberfläche ist M&A-gegatet, eine Bauleitung, die die Stufe versehentlich anhebt, käme
+an die eigenen Daten nicht mehr heran. Mandanten- und Projekttrennung tragen die Abgrenzung
+(AC-45β.22).
+
+**B-β5 — die Leer-Semantik ist eine bekannte Falle.** Fünf Felder müssen „setz- **und wieder
+entfernbar**" sein (AC-45β.6). PROJ-122 hat hier live einen Defekt produziert: ein weggelassener Wert
+wurde als „unverändert" gelesen, eine zurückgezogene Position überlebte stillschweigend. Die
+Änderungs-Funktion erhält deshalb **ausdrückliche Leeren-Schalter** je Feld (Muster
+`update_dd_finding`, das genau dafür schon einen trägt) — nicht weglassen-heißt-leeren, nicht
+Leerstring-heißt-leeren.
+
+**B-β6 — „überfällig" wird präzise definiert, weil der Wortlaut es offenlässt.** AC-45β.17 sagt
+„nicht abschließender Status". Als überfällig gilt ein Mangel mit verstrichener Frist in **offen**
+oder **in Bearbeitung**. Ausdrücklich **nicht** in „erledigt": dort hat der Nachunternehmer
+fertiggemeldet und es wartet die Prüfung — die Verspätung läge bei der Bauleitung, und die Liste
+würde den Falschen anzeigen. Damit dort nichts verrottet, führt die Liste **„wartet auf Prüfung"**
+als eigenes Signal. Verworfen und geprüft sind abschließend (Edge Case bestätigt).
+
+**B-β7 — das Vier-Augen-Tor kann in kleinen Projekten klemmen.** Fertigmelden *und* Prüfen liegen
+beide bei `admin | lead` (B-β2), und AC-45β.10 verbietet dieselbe Person für beides. Ist die
+Projektleitung gleichzeitig die einzige Mandanten-Administration, erreicht ein Mangel „geprüft" nie.
+Bewusst **kein Umgehungspfad** (PROJ-119-Haltung: der legitime Weg ist eine zweite berechtigte
+Person, nicht ein stiller Übersteuerungsschalter). `/qa` prüft den Fall ausdrücklich; tritt er beim
+Pilot auf, ist die Antwort eine zweite Leitung, nicht eine Aufweichung.
+
+### Komponentenstruktur
+
+```
+Projektraum › Mängel                      (neue Fläche, Bau-Projekttyp + Bau-Modul)
++-- Kopfzeile
+|   +-- "Mangel erfassen"                 sichtbar für JEDES Projektmitglied (L15)
+|   +-- "Mängelanzeige erzeugen"          nur Leitung/Admin
++-- Filterleiste                          Gewerk · Abschnitt · Status · Schweregrad · überfällig
++-- Mängelliste
+|   +-- Zeile je Mangel
+|       +-- Schweregrad-Abzeichen         gering · erheblich · gravierend
+|       +-- Status-Abzeichen              offen · in Bearbeitung · erledigt · geprüft · verworfen
+|       +-- Frist                         rot bei überfällig, Hinweis "wartet auf Prüfung"
+|       +-- Gewerk · Abschnitt · Nachunternehmer
+|       +-- Zeilenaktionen                nur Leitung/Admin
++-- Erfassen-Dialog                       Titel · Gewerk* · Schweregrad* | Ort · Beschreibung · Frist · Nachunternehmer
++-- Detail-Bereich (Leitung/Admin)
+|   +-- Bearbeiten                        mit Leeren je Feld (B-β5)
+|   +-- Statuswechsel                     Fertigmelden · Prüfen · Zurückweisen (Pflichtbegründung) · Verwerfen (Pflichtbegründung)
+|   +-- Verlauf                           jede Runde, aus der Ereignis-Tabelle (AC-45β.12)
++-- Zustände                              Laden · leer · Fehler · Modul nicht aktiv
+
+Projektraum › Gewerke                     (α-Fläche, additiv erweitert)
++-- je Gewerk: Zähler "N Mängel, davon M überfällig"
+
+/projects/<id>/maengelanzeige/print       (chrome-lose Druckseite, außerhalb der App-Hülle)
++-- Kopf                                  Projekt · Gewerk oder Nachunternehmer · Erstellungsdatum · Ersteller
++-- je Mangel                             Titel · Beschreibung · Ort (weggelassen falls leer) · Schweregrad · Frist
+```
+
+### Datenmodell (Klartext)
+
+**Ein Mangel** trägt: Mandant und Projekt · Titel (Pflicht, 1–200 Zeichen) · Beschreibung (frei) ·
+**Gewerk** (Pflicht, Verweis auf das Projekt-Gewerk aus α) · **Ort** (optional, Verweis auf einen
+Bauabschnitt) · **Schweregrad** (Pflicht, drei Stufen) · **Status** (fünf Werte) ·
+Nachbesserungsfrist (optional) · Verantwortlicher (optional) · **Nachunternehmer** (optional, eigener
+Verweis auf die Lieferanten-Stammdaten, vorbelegt aus dem Gewerk) · fortlaufende Nummer je Projekt
+(damit eine Mängelanzeige eindeutig referenzierbar ist) · wer zuletzt fertiggemeldet hat und wann
+(trägt das Vier-Augen-Tor) · Ersteller und Zeitstempel.
+
+**Ein Mangel-Ereignis** trägt: den Mangel · die Art (angelegt · fertiggemeldet · geprüft ·
+zurückgewiesen · verworfen · wieder aufgenommen) · Status davor und danach · die Begründung (Pflicht
+bei Zurückweisung und Verwerfen) · Akteur und Zeitpunkt. Diese Zeilen sind **unveränderlich** — sie
+sind der Verlauf, nicht eine Kopie davon.
+
+**Aufbewahrung.** Fremde Mängel sind unsichtbar, auch in Zählern. Geschrieben wird ausschließlich
+über Funktionen; Lesen erlaubt die Projektmitgliedschaft. Ein Gewerk oder Abschnitt mit Mängeln ist
+nicht entfernbar (Sperre am Verweis); ein gelöschter Nachunternehmer lässt den Verweis leer und den
+Mangel bestehen (Edge Case). Ein nur **deaktiviertes** Gewerk behält seine Mängel — es entfällt nur
+aus der Neuauswahl.
+
+### Technische Entscheidungen und warum
+
+| Entscheidung | Warum |
+|---|---|
+| Eigene Bau-Tabelle statt Arbeitspaket-Art | L9. Ein Mangel ist kein geplantes Arbeitspaket; im Backlog verfälscht er Velocity, Burndown und die WBS-Rollups. |
+| Schreiben nur über Funktionen, keine Schreib-Regeln | Vorlage `dd_findings` live so gebaut; macht die abweichende Rechte-Regel (B-β2) zu **einer** prüfbaren Stelle statt zu vier Policy-Ausdrücken. PROJ-Y-107c belegt, wie fehleranfällig Schreib-Bedingungen sind. |
+| Verlauf in eigener Ereignis-Tabelle | Trägt Mehrfach-Rückweisung (AC-45β.12) und vermeidet den Neubau der geteilten Audit-Funktionen — die sind die historisch am häufigsten überschriebenen Objekte im Projekt. PROJ-105-Präzedenz. |
+| Status **und** Feld-Protokoll zusätzlich | AC-45β.7 verlangt Auditierung; die Statusspalte kommt in die Feld-Whitelist, damit der Wechsel auch im zentralen Protokoll steht — der Verlauf-Reiter liest trotzdem die Ereignis-Tabelle. |
+| Deutsche Schlüsselwerte | α hat für dieselbe Fläche deutsche Werte gewählt (`gruen/gelb/rot`); die Anforderung benennt die Stufen deutsch. Anzeigetexte kommen aus einer Zuordnung, nicht aus der Datenbank. |
+| Druckseite statt Renderer | L11. Das Muster steht (PROJ-131/132): eigene Route außerhalb der App-Hülle, Sitzungs-Client — **nie** Dienst-Schlüssel, sonst zeigt die Anzeige mehr als der Aufrufer sehen darf (AC-45β.16). Kein neues Paket. |
+| Kein Versand | L11. Der Nachunternehmer ist selten Plattformnutzer; die PROJ-13-Ausgangspost dafür zu belasten wäre eine Zusage ohne Empfänger. |
+| Nav wie α | Beide α-Flächen tragen Projekttyp **und** Modulschalter; β erbt das wörtlich (AC-45β.20) und fügt der geteilten Registry genau einen Eintrag hinzu. |
+
+### Register-Eingriffe (live gemessen, Stand 2026-08-17)
+
+Die Mangel-Tabelle tritt den drei Registern bei, die α ebenfalls bedient (live bestätigt): Objektarten
+**93 → 94**, Feld-Whitelist **75 → 76**, Lese-Tor **62 → 63**. Die Ereignis-Tabelle bleibt **außen** —
+sie ist selbst das Protokoll, ein zweites Mitschreiben verdoppelte es (PROJ-130-β hat Doppel-
+Protokollierung genau dafür ausgeschlossen). Alle drei Eingriffe als **Anker-Ersetzung aus der
+Live-Definition** mit Treffer-Eindeutigkeit, Nachprüfung und Rechte-Neuvergabe in derselben
+Migration — PROJ-Y-122a war der Fall, in dem eine fehlende Nachprüfung ein stilles Nichts erzeugte,
+und PROJ-Y-115c der, in dem ein wörtlicher Anker in der frisch gebauten Datenbank nicht traf
+(Anker daher whitespace-tolerant).
+
+### Pflicht-Härtungskriterien (blockierend)
+
+- [ ] **AC-45βH-1** Mandanten- und Projekttrennung: fremde Mängel unsichtbar, auch in jedem Zähler.
+- [ ] **AC-45βH-2** Betrachter kann anlegen, aber **nicht** ändern, fertigmelden, prüfen oder verwerfen — serverseitig, nicht nur in der Oberfläche; ein Projekt-`editor` ebenfalls nicht (B-β2).
+- [ ] **AC-45βH-3** Vier-Augen: derselbe Akteur kann nicht fertigmelden und prüfen; abgewiesen auf **allen** Schreibwegen, auch bei mehreren Runden.
+- [ ] **AC-45βH-4** Kein Schreibweg an den Funktionen vorbei: direktes Einfügen und Ändern scheitert, auch als Mandanten-Administration.
+- [ ] **AC-45βH-5** Ereignis-Zeilen sind unveränderlich und nicht löschbar.
+- [ ] **AC-45βH-6** Projektfremdes Gewerk oder Abschnitt wird abgewiesen (PROJ-Y-45a-Wächter sinngemäß, hier für Mängel).
+- [ ] **AC-45βH-7** Entfernen-Sperre greift **und** benennt: Gewerk mit Mangel → 409 mit Nennung; Oberabschnitt, dessen **Enkel** einen Mangel trägt → ebenfalls 409, kein 500.
+- [ ] **AC-45βH-8** `anon` hat auf keiner neuen Funktion Ausführungsrecht.
+- [ ] **AC-45βH-9** Pflicht-Live-Pentest gegen Prod, Rollback-Muster, **0 Rückstände**; Nicht-Admin muss synthetisiert werden, weil in Prod jedes Mandanten-Mitglied Admin ist und das Lese-Tor für Admins kurzschließt — ein Smoke unter Admin wäre falsch-grün.
+- [ ] **AC-45βH-10** Regressionen wörtlich grün: α-Pentest (16/16), PROJ-Y-45a-Wächter (9/9), PROJ-103-Pentest (unberührt, belegt dass B-β1 nichts angefasst hat).
+- [ ] **AC-45βH-11** Druckseite ohne Sitzung → Anmelde-Umleitung, kein Mangel-Inhalt im Rumpf; mit Sitzung nur eigene Projekte.
+- [ ] **AC-45βH-12** Nicht-Bau-Projekte und abgeschaltetes Modul verhalten sich byte-gleich zu vorher.
+
+### Risiken für `/qa`
+
+1. **Feld leeren.** Jedes der fünf optionalen Felder einmal setzen und wieder leeren; überlebt der alte Wert, ist es der PROJ-122-Defekt (B-β5).
+2. **Vier-Augen unter einer Person.** B-β7 — reproduzieren und als Befund festhalten, nicht wegdrücken.
+3. **Anker-Ersetzung.** Nach der Migration alle Geschwister-Zweige der drei Register zählen; vier Nachbar-Slices arbeiten an denselben Objekten.
+4. **Teilbaum-Sperre.** AC-45βH-7 mit einem Mangel am Enkel, nicht am Kind — der naive Test greift daneben.
+5. **Überfälligkeits-Grenzen.** Frist heute, Frist gestern, Frist gestern aber „erledigt" (B-β6).
+
+### Abweichungen und Folgearbeit
+
+- **D-β1** AC-45β.18 (PROJ-103-Anbindung) auf **PROJ-45-δ** verschoben — Nutzer-Entscheid nach B-β1. Zurückgestellte Original-Anforderung → Registrierung in `features/OPEN-DEFERRED-STATUS.md` Pflicht. β kann damit **nicht** `full` werden; als Sub-Slice ohnehin `alpha`.
+- **D-β2** Änderungsrecht ohne Projekt-`editor` — strenger als das Hausmuster, Nutzer-Entscheid (B-β2).
+- **D-β3** Keine Vertraulichkeitsstufe (B-β4), abweichend von der Vorlage `dd_findings`, konsistent mit α.
+- **D-β4** Kein Umgehungspfad für das Vier-Augen-Tor (B-β7).
+- **PROJ-Y-45b (neu, klein)** α bildet auf beiden projektbezogenen Entfernen-Pfaden jeden Datenbankfehler außer `42501` auf **500** ab, obwohl einen Verzeichnis weiter das 409-Muster steht. β behebt das für Mängel; für andere künftige Verweise bleibt es bestehen.
+
+### Abhängigkeiten
+
+**Kein neues Paket.** Druckseite, Baumauswahl, Tabellen und Dialoge kommen aus dem Bestand
+(shadcn/ui, `react-arborist` für den Abschnitts-Picker aus α). Kein neuer Umgebungswert, kein Cron.
+Eine Migration; die Anwendungsschicht bringt eine Fläche, eine Druckseite und die additive Erweiterung
+zweier α-Routen.
+
+### Reihenfolge
+
+**`/backend` → `/frontend` → `/qa`** — abweichend von der Standard-Empfehlung des Skills, wie in α und
+aus demselben Grund: die Fläche ist ohne Statuswechsel-Funktionen und Ereignis-Verlauf nicht sinnvoll
+baubar (PROJ-109-Präzedenz).
 
 ---
 
