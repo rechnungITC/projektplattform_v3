@@ -258,12 +258,28 @@ ergänzt) und `f6d36e0` (#316, Registrierung der Zeile).
 
 | Zusage | Befund auf `origin/main` |
 |---|---|
-| AC-Y143b.5 Daten-Anker statt Shell-Anker | `waitForRenderedData` definiert (Z. 135) + **8** Aufrufstellen; `[data-sidebar='sidebar']` als Warte-Anker verschwunden |
+| AC-Y143b.5 Daten-Anker statt Shell-Anker | `waitForRenderedData` definiert (Z. 135) + **8** Aufrufstellen; keine Aufrufstelle wartet mehr direkt auf einen Shell-Selektor |
 | AC-Y143b.7 720-px-Selbsttest festgehalten | im Datei-Kommentar mehrfach verankert (Z. 329/342/344/425/501/515) |
 | C-1 stillgelegt via `test.fixme` | im eigenen Merge-Baum **2** Treffer — heute **0**, weil PROJ-Y-143d beide Tests wieder aktiviert hat |
 
 Die achte Aufrufstelle ist kein Widerspruch zu den in der Spec genannten sieben: PROJ-Y-143h hat
 danach den Fall „Dashboard mit gepinnter Nutzlast" ergänzt und den Anker mitbenutzt.
+
+**Eine Präzisierung an der eigenen Zusage, weil die Prüfung sie nicht ganz so vorfand.** Ein
+Zwischenstand dieses Nachtrags behauptete, `[data-sidebar='sidebar']` sei „als Warte-Anker
+verschwunden". Das ist falsch, und die Ungenauigkeit ist genau die Sorte, gegen die diese Slice
+angetreten ist: der Selektor steht weiterhin in der Datei, als **erster** Schritt *innerhalb*
+`waitForRenderedData` (Z. 136), gefolgt von `networkidle`, `.animate-pulse → toHaveCount(0)` und
+— seit PROJ-Y-143d — dem Warten auf das Verschwinden des „Compiling …"-Abzeichens im
+`<nextjs-portal>`.
+
+AC-Y143b.5 ist damit erfüllt, aber aus dem richtigen Grund: nicht weil die Shell-Prüfung entfernt
+wurde, sondern weil sie **nicht mehr entscheidet**. Der Aufruf kehrt erst zurück, wenn die
+datenseitigen Bedingungen halten; der Sidebar-Treffer ist eine billige Vorbedingung, keine
+Fertig-Meldung. Die Zweckklausel des Kriteriums („sodass weder Vergleich noch Neuaufnahme den
+Ladezustand erwischen können") ist damit vollständig getragen — belegt durch AC-Y143b.6, wo genau
+dieser Helfer den Kaltstart allein abfängt. Ein Waiver ist hier also **nicht** nötig; nötig war
+nur, den Befund richtig aufzuschreiben.
 
 **Warum `tooling-only`:** der Merge berührt vier Dateien — `features/INDEX.md`, diese Spec,
 `tests/PROJ-51-visual-regression-authenticated.spec.ts` und **eine** Baseline-PNG. **Kein

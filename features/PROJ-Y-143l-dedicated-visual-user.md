@@ -284,6 +284,100 @@ Playwright chromium: Visual **3× 9/9 + Kaltstart 9/9**, Isolation **6/6**.
 ## Followups
 
 - **PROJ-Y-143c** unverändert offen und unabhängig; der Nebenbefund zur Mandanten-Löschung oben
-  ist Eingangswissen dafür.
+  ist Eingangswissen dafür. — Stand 2026-08-17: inzwischen `Deployed` / `tooling-only`.
 - Kandidat: `npm run test:e2e:fresh` tötet den `:3000`-Listener und kennt den neuen Port noch
   nicht — harmlos, aber inkonsistent, sobald jemand mit `PLAYWRIGHT_BASE_URL` arbeitet.
+
+---
+
+## Buchführungs-Nachtrag 2026-08-17 — `Deployed` / Scope `tooling-only`
+
+Die Zeile stand auf `In Review` mit leerem Scope, obwohl der Code seit dem 2026-08-13 auf `main`
+liegt. Nachgezogen wurde ausschließlich die Buchführung; **keine Code-Änderung**.
+
+**Merge-Nachweis:** `102800c` — *„feat(PROJ-Y-143l): eigene Identität für die Visual-Regression"*
+(**PR #371**), verifiziert als Vorfahre von `origin/main` (`git merge-base --is-ancestor` → ja).
+
+**Artefakte gegen `origin/main` geprüft, nicht aus der Spec übernommen:**
+
+| Zusage | Befund auf `origin/main` |
+|---|---|
+| AC-Y143l.1 eigene, v4-konforme Identität | `E2E_VISUAL_USER_ID`/`_TENANT_ID`/`_PROJECT_ID` = `…-4e2e-8e2e-…000006/7/8` — Versions-Nibble **4**, Varianten-Nibble **8**, also wirklich RFC-4122-v4 und nicht bloß „sieht aus wie eine UUID" (genau der Defekt, den PROJ-143 behoben hat) |
+| AC-Y143l.2 eigene E-Mail + eigene Domain | `e2e-visual@…` und `e2e-visual.projektplattform-v3.test`, beide distinkt von der geteilten Identität |
+| AC-Y143l.3 genau eine Mitgliedschaft, als Test | `tests/PROJ-Y-143l-visual-lane-isolation.spec.ts` mit **6** Fällen |
+| AC-Y143l.4 `active_modules` explizit | `E2E_VISUAL_ACTIVE_MODULES` als eigene Konstante vorhanden |
+| AC-Y143l.5 nur die Visual-Spur nutzt die Identität | `visualPage` wird außer in der Fixture und ihrer README von **genau einer** Spec-Datei benutzt: `PROJ-51-visual-regression-authenticated.spec.ts`; alle übrigen bleiben auf `authenticatedPage` |
+| AC-Y143l.7 keine Toleranz gelockert | **7×** `maxDiffPixels: 20` — für jede der sieben Aufnahmen, keine auf eine Verhältniszahl zurückgedreht |
+
+**Warum `tooling-only`:** der Merge liefert 16 Dateien aus — `playwright.config.ts`, vier Dateien
+unter `tests/fixtures/`, zwei Spec-Dateien, sieben Baseline-PNGs, `features/INDEX.md` und diese
+Spec. **Kein `src/**`**, keine Migration, keine Abhängigkeit. Damit greift die Definition
+„affects repository tooling, CI, tests, or workflow and adds no product runtime capability"
+wörtlich, ebenso die in PROJ-Y-145b Tranche 2 präzisierte Grenzregel (was Produktions-Laufzeit
+nicht anfasst, ist `tooling-only`). Die für diesen Wert verlangte Nachweisart („an executed
+repository tool, test, workflow, or CI check") liegt vor: Playwright chromium Visual
+**3× 9/9 + Kaltstart 9/9** und Isolation **6/6**, ESLint 0, tsc 13 = Baseline, vitest 2931/2931,
+Build clean.
+
+Dass die Slice **Fixture-Zeilen in der Produktionsdatenbank** anlegt, ändert daran nichts: sie
+ändern kein Produktverhalten, sondern sind Testdaten in einem eigenen `[E2E]`-Mandanten — dieselbe
+Einordnung wie bei PROJ-143 und PROJ-Y-144d, die beide als `tooling-only` bzw. innerhalb ihrer
+Elternslice gebucht sind.
+
+### Die eine literal unerfüllte Zusage: AC-Y143l.9 (Waiver `PROJ-Y-143l-w1`)
+
+AC-Y143l.9 verlangt **„Null Rückstände in der Produktionsdatenbank aus den Experimenten"**.
+Wörtlich ist das nicht erfüllt: **6 Zeilen** in `audit_log_entries` bleiben stehen
+(`__created`/`__deleted` je für `tenants`, `tenant_memberships`, `tenant_settings` des
+Probe-Mandanten aus den Isolationsversuchen A/B1/B2). Das wird hier **nicht** zu „✅ mit
+Ausnahme" gerundet — die Slice-Reihe PROJ-141-γ1 und PROJ-96 sind die Hausbelege dafür, wohin das
+führt.
+
+Eingeordnet wird es als **abgeschriebenes Kriterium** nach dem Muster `PROJ-Y-145f-w1/w2`. Eine
+Ehrlichkeits-Anmerkung zur Regelanwendung: der Abschnitt „Waived criterion" in
+`.claude/rules/general.md` ist ausdrücklich für **`full`** geschrieben, und `tooling-only` ist
+nach seiner Definition eine Aussage über die **Lieferachse** samt Nachweisart, nicht über
+AC-Vollständigkeit — die vier Bedingungen sind hier also **nicht** formal erzwungen. Sie werden
+trotzdem angelegt, weil sie der strengste verfügbare Maßstab sind und weil Schritt 4 des
+Buchführungs-Verfahrens jede akzeptierte Auslassung unabhängig vom Scope sichtbar verlangt:
+
+1. **Nichts zurückgestellt.** Es gibt kein Folge-Ticket, das diese Zeilen entfernen würde, und es
+   kann keines geben — siehe (2). PROJ-Y-130h und PROJ-Y-143o betreffen *künftiges* Test-Rauschen
+   (Ausnahme-Flag bzw. Teardown an der Quelle), nicht diese sechs Bestandszeilen; PROJ-Y-143o
+   stellt in seinem Nachtrag ausdrücklich fest, dass bereits entstandene Zeilen „nicht rückholbar"
+   sind.
+2. **Nachweislich unerreichbar, heute re-verifizierbar.** Seit PROJ-130-α ist der Trail
+   append-only: die Wächter `audit_log_no_update`/`_no_delete`/`_no_truncate` liefern `42501` für
+   **jede** Rolle einschließlich `service_role` und `postgres`, und der Mandanten-Fremdschlüssel
+   wurde in derselben Migration entkoppelt, damit Zeilen das Löschen ihres Mandanten überleben.
+   Die Zeilen sind also nicht „noch nicht aufgeräumt", sondern **strukturell unlöschbar** — und
+   das ist gewollte Produkteigenschaft, nicht Defekt. Re-verifizierbar über den PROJ-130-α-Pentest
+   (19/19), der genau diese Wächter prüft.
+3. **Schriftliche Abnahme, die das Kriterium benennt.** `D-Y143l.4` („6 Audit-Zeilen bleiben
+   unwiderruflich") plus der Abschnitt *Rückstandsprüfung*, der die Ausnahme als **benannte
+   Ausnahme** führt und ihren Inhalt einzeln auflistet. Bewusst nicht behauptet wird ein
+   QA-Verdikt: für diese Slice ist kein `/qa`-Durchlauf gefahren worden, die Abnahme ist der
+   Deviation-Eintrag.
+4. **Substanz durch andere Messung belegt.** Die Absicht des Kriteriums ist, dass die Experimente
+   nichts hinterlassen, was Produktverhalten oder künftige Testergebnisse verändert. Genau das ist
+   gemessen und in der Tabelle *Rückstandsprüfung* protokolliert: Probe-Mandant 0 (per ID **und**
+   per Name), dessen Mitgliedschaften/Settings/Projekte 0/0/0, der geteilte Nutzer zurück auf
+   seinen Ausgangswert von 2 Mitgliedschaften, beide Modulsätze auf den Ausgangswerten, und der
+   für den Abriss kurzzeitig entschärfte `tenant_memberships_admin_invariant_delete` wieder scharf
+   (`O`). Die verbleibenden sechs Zeilen sind ein Protokoll *über* das Experiment, kein Zustand,
+   den das Experiment hinterlassen hat — sie sind zudem symmetrisch (`__created` **und**
+   `__deleted`) und wurden bewusst nicht per Trigger-Umgehung unterdrückt, weil ein `__created`
+   ohne Gegenstück den Trail schlechter hinterließe als sechs ehrliche Zeilen.
+
+Der Waiver ist doppelt protokolliert: an AC-Y143l.9 oben und als **geschlossener** Eintrag
+`PROJ-Y-143l-w1` in `features/OPEN-DEFERRED-STATUS.md` — geschlossen, weil nichts offen ist, aber
+eingetragen, damit er greppbar bleibt.
+
+**Sonst keine offene Auslassung.** Die übrigen neun AC sind erfüllt (oben gegen `origin/main`
+nachgeprüft, nicht aus der Spec übernommen). Die sechs Deviations D-Y143l.1–.6 sind Abweichungen
+in der *Vorgehensweise*, keine zurückgestellten Kriterien: D-Y143l.1 (Entmaskierung) **verschärft**
+die Prüfung, D-Y143l.2 (`playwright.config.ts` mitgeändert) war Voraussetzung dafür, dass
+überhaupt eine belastbare Messung möglich ist (F-1), D-Y143l.3 (mutierender Beweis nicht
+committet) ist eine begründete Test-Design-Entscheidung, D-Y143l.4 ist der oben behandelte Waiver,
+D-Y143l.5 ist die bekannte WebKit-Umgebungsgrenze (PROJ-67/F2), D-Y143l.6 dokumentiert die
+Doppel-Herkunft von `stammdaten.png`.

@@ -240,7 +240,10 @@ Module"* (**PR #369**), verifiziert als Vorfahre von `origin/main`.
 `src/lib/master-data/stammdaten-sections.ts` mit `STAMMDATEN_SECTIONS` und dem reinen Resolver
 `resolveStammdatenSections` (Z. 192), `src/components/master-data/stammdaten-grid.tsx`,
 `src/lib/master-data/stammdaten-sections.test.ts` mit **9** Fällen wie zugesagt,
-`src/app/(app)/stammdaten/page.tsx` von 184 auf wenige Zeilen reduziert.
+`src/app/(app)/stammdaten/page.tsx` von **201 auf 27** Zeilen reduziert (nachgezählt am Blob vor
+und nach dem Merge — die „184" aus `git diff --stat` ist die Zahl *geänderter* Zeilen
+(5 Einfügungen + 179 Löschungen), nicht die vorherige Dateilänge; ein Zwischenstand dieses
+Nachtrags hatte sie als Dateilänge missverstanden).
 
 **Der eingefrorene Zuordnungs-Test hat inzwischen gewirkt — genau wie beabsichtigt.**
 `requiresModule` trägt auf `main` jetzt **drei** Werte statt der zwei aus dieser Slice:
