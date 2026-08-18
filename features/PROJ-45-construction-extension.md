@@ -1,7 +1,12 @@
 # PROJ-45: Construction Extension — Gewerke & Bauabschnitte
 
-## Status: Deployed
-## Deployment Scope: alpha
+## Status: In Progress
+## Deployment Scope: —
+
+> Der Lebenszyklus ist mit **β** wieder in der Umsetzung, deshalb ist der Deployment-Scope
+> nach Hausregel leer — Scope wird erst bei einem Deployment vergeben. **α ist unverändert live**
+> (Tag `v2.56.0-PROJ-45-alpha`, Scope `alpha`, PR #385); die Nachweise dazu stehen weiter unten
+> unverändert. β: `/backend` in Prod, `/frontend` und `/qa` offen.
 
 **Created:** 2026-05-06
 **Last Updated:** 2026-08-13 (Requirements refined + Tech Design — gegen den deployten Stand geerdet, Zuschnitt in Sub-Slices getrennt, 8 Nutzer-Locks, alle vier Forks beantwortet, CIA-Review zu Q2 eingearbeitet)
@@ -176,7 +181,9 @@ bei aktivem Modul erscheinen, damit ERP-, Software- und M&A-Projekte unveränder
 
 ## PROJ-45-β — Mängelmanagement (Requirements 2026-08-14)
 
-**Status: Architected** (2026-08-17) · zweiter Sub-Slice, baut auf dem deployten α auf.
+**Status: In Progress** (2026-08-18) · zweiter Sub-Slice, baut auf dem deployten α auf.
+`/backend` ist fertig und in Prod (Migration `20260818104358`, Live-Pentest 53/53, 0 Rückstände);
+`/frontend` und `/qa` folgen als eigene Schritte.
 Deployment Scope bleibt leer bis zum Deploy und wird dann `alpha` — β ist ein benannter Sub-Slice, und
 AC-45β.18 ist per Nutzer-Entscheid nach δ verschoben (D-β1).
 
@@ -540,6 +547,146 @@ zweier α-Routen.
 **`/backend` → `/frontend` → `/qa`** — abweichend von der Standard-Empfehlung des Skills, wie in α und
 aus demselben Grund: die Fläche ist ohne Statuswechsel-Funktionen und Ereignis-Verlauf nicht sinnvoll
 baubar (PROJ-109-Präzedenz).
+
+---
+
+## Implementierungsnotizen — /backend β (2026-08-18)
+
+**Datenbank live in Prod.** Eine Migration, `20260818104358_proj45_beta_construction_defects`
+(Dateiname trägt die **registrierte Prod-Version**; der MCP vergab sie, die Datei wurde nach
+PROJ-134 nachbenannt). Zwei Tabellen, acht Funktionen, sechs Trigger, zwei Lese-Policies, die drei
+Register-Eingriffe, siebzehn Post-Condition-Gruppen. Alles atomar in einem Zug; die Post-Conditions
+liefen mit und meldeten „alle Post-Conditions erfuellt".
+
+**Register-Eingriffe genau wie im Tech Design vorhergesagt, live nachgemessen:**
+Objektarten **93 → 94**, Feld-Whitelist **75 → 76**, Lese-Tor **62 → 63**. Alle drei als
+whitespace-tolerante Anker-Ersetzung auf der Live-Definition, jeweils mit
+**Treffer-Eindeutigkeitsprüfung** (Abbruch bei ≠ 1 statt Raten), Nachprüfung nach dem `execute`,
+namentlicher Geschwister-Gegenprobe und Rechte-Neuvergabe. Die Ereignis-Tabelle ist bewusst
+**draussen** geblieben (nachgeprüft: sie steht in keinem der drei Register) — sie *ist* das
+Protokoll, ein zweites Mitschreiben verdoppelte es.
+
+**Vier Entscheidungen, die aus einer Messung statt aus einer Annahme kamen.**
+
+1. **`NO ACTION` statt `RESTRICT` für die zwei Sperren (L16).** Beide liefern für das *gezielte*
+   Entfernen `23503`, also genau die von AC-45β.21 verlangte Wirkung. Der Unterschied zeigt sich
+   beim Löschen eines ganzen Projekts, wo Gewerk-Zuordnung **und** Mangel in **derselben** Anweisung
+   kaskadiert werden: `RESTRICT` prüft sofort, `NO ACTION` am Ende der Anweisung. In zurückgerollten
+   Transaktionen gegengeprüft — unter `RESTRICT` entscheidet die **Feuerreihenfolge der RI-Trigger**
+   über Erfolg oder Fehlschlag, das Ergebnis hing an der Erzeugungsreihenfolge der Tabellen;
+   `NO ACTION` war in beiden Reihenfolgen robust. Ein `RESTRICT` hätte also einen neuen
+   Projekt-Hard-Delete-Blocker gebaut, ausgerechnet in der Woche, in der PROJ-148 diese Klasse
+   behoben hat.
+2. **Die Ausnahme im Unveränderlichkeits-Trigger ist selbsttragend, nicht geerbt.** Prod trägt einen
+   Helfer `_project_teardown_active()`, den `enforce_deliverable_approval_event_immutability` nutzt —
+   aber **keine einzige Migrationsdatei erzeugt ihn** (nachgezählt: 0 Treffer in
+   `supabase/migrations`). Ihn aufzurufen hätte die Migration im frisch aus den Dateien gebauten
+   Schema-Drift-Wächter gebrochen. Die Ausnahme lautet daher schlicht „der Mangel existiert nicht
+   mehr", was ohne Zusatzobjekt auskommt; empirisch bestätigt, dass ein von der Eltern-Kaskade
+   abgeräumtes Kind seinen Elternteil bereits als gelöscht sieht. Für Anwendungsnutzer ist der Zweig
+   **unerreichbar** — `construction_defects` hat gar keine DELETE-Policy. Als Nebenbefund ist damit
+   eine **Prod/Repo-Divergenz** belegt (Klasse PROJ-Y-130f), siehe Folgearbeit.
+3. **Der Unveränderlichkeits-Wächter ist `SECURITY DEFINER`, anders als die PROJ-105-Vorlage.** Seine
+   Ausnahme hängt an „der Mangel ist weg"; als INVOKER könnte RLS-Unsichtbarkeit sich als „weg"
+   tarnen. Die Prüfung darf nicht von der Sichtbarkeit des Aufrufers abhängen.
+4. **Ein siebter Ereignis-Typ.** Die Klartext-Liste des Tech Designs nennt sechs, aber AC-45β.7
+   verlangt die Kette `offen → in Bearbeitung`, für die keiner davon passt. `wieder_aufgenommen`
+   dafür zu überladen hätte zwei verschiedene Sachverhalte unter einen Namen gelegt; ergänzt wurde
+   `in_arbeit_genommen` (Abweichung D-β6).
+
+**Der Nachunternehmer wird beim Anlegen aus dem Gewerk vorbelegt** (B-β3), danach ist er
+eigenständig. Ein *abgeleiteter* Wert hätte alte Mängelanzeigen rückwirkend umgeschrieben, sobald
+die Zuordnung am Gewerk wechselt.
+
+**Fünf Leeren-Schalter, einzeln bewiesen (B-β5).** Die PROJ-122-Defektklasse ist in drei Vektoren
+eingezäunt: alle fünf Felder setzen, dann **weglassen** (Wert bleibt), dann **Schalter** (Wert wird
+leer). Ohne den mittleren Vektor wäre „weglassen heisst leeren" unentdeckt geblieben.
+
+**Live-Pentest `tests/sql/PROJ-45-beta-construction-defects-pentest.sql` — 53/53 PASS gegen Prod,
+0 Rückstände** (über neun Zähler gegengeprüft: beide neuen Tabellen 0, Fixture-Gewerke 0,
+-Abschnitte 0, -Nachunternehmer 0, Audit-Zeilen 0, synthetisierte Mitgliedschaften 0, Projektbestand
+des Testmandanten unverändert 20). Die tragenden Vektoren:
+
+- **D — der Projekt-`editor` kann NICHT ändern.** Das ist die Richtung, in die diese Slice *strenger*
+  ist als das Hausrecht `edit`, und sie ist damit belegt statt behauptet. Zugleich **D2**: anlegen
+  darf er weiter, denn er ist Projektmitglied.
+- **A — der Betrachter DARF anlegen.** Die einzige Aufweichung (L15), und sie sitzt in der
+  Anlege-Funktion, nicht in einer Policy.
+- **K — Vier-Augen greift in RUNDE 2.** Nach Rückweisung meldet ein *anderer* fertig; die Prüfung
+  liest `reported_done_by` neu und sperrt jetzt ihn. Ein Test nur über Runde 1 hätte eine Sperre
+  bestätigt, die beim zweiten Durchgang hätte durchfallen können.
+- **U/V — die Teilbaum-Sperre.** Der Mangel hängt am **Enkel**; das Löschen der **Wurzel** scheitert
+  mit `23503`. Vektor **V** zeigt zusätzlich, dass die naive Abfrage auf den einen Knoten **0**
+  Treffer liefert — genau die Falle, die das Tech Design für `/qa` benannt hat.
+- **Y — Aggregat-Leck-Probe.** Der Fremde erhält aus der INVOKER-Auswertung `total = 0`, während in
+  Wahrheit 1 Mangel existiert; **Y2** ist die Gegenprobe, dass der Berechtigte die Wahrheit sieht
+  (kein Blanket-Deny).
+- **W1–W4 — kein Schreibweg an den Funktionen vorbei, geprüft als MANDANTEN-ADMIN:** direktes
+  `INSERT` und Ereignis-`INSERT` → `42501`, `UPDATE`/`DELETE` → **0 Zeilen**.
+- **S2 — der lesende Nutzer ist nachweislich kein Admin.** Ohne diesen Vektor wäre der
+  Audit-Lesetest falsch-grün, weil `can_read_audit_entry` für Admins kurzschliesst.
+- **Z — der Projekt-Hard-Delete gelingt** trotz Mängeln und unveränderlichen Ereignissen; das ist die
+  Live-Bestätigung von Entscheidung 1 und 2 und zugleich eine PROJ-148-Regression.
+
+**Ein Befund beim ersten Lauf, der einen Vektor falsch-grün gemacht hätte:** es gibt **zwei**
+Mandanten mit dem Namen `[E2E] Projektplattform Test`. Der als zweiter Akteur gewählte Nutzer ist
+Admin des **anderen** und im Zielmandanten völlig unberechtigt — der Vier-Augen-Vektor brach mit
+`42501`. Er ist jetzt ausdrücklich Projekt-`lead`, was als Nebeneffekt die
+`is_project_lead`-Hälfte der Rechteregel prüft und nicht nur `is_tenant_admin`.
+
+**Regressionen wörtlich grün (AC-45βH-10), 0 Rückstände:**
+α-Pentest **16/16** (Block 1 elf, Block 2 fünf — Zahlen und Meldungen identisch zur Dokumentation),
+PROJ-Y-45a-Smoke **9/9**, **PROJ-103 A–G 7/7** (belegt unabhängig, dass B-β1 die Engpass-Auswertung
+nicht angefasst hat).
+
+**Advisors 0 ERROR** auf beiden Achsen (Security 144 WARN, Performance 15 WARN / 293 INFO). Die drei
+slice-bezogenen Security-WARN sind die drei Schreib-RPCs als `authenticated`-ausführbare
+`SECURITY DEFINER`-Funktionen — genau die Kategorie, die α ebenfalls trägt und die den Schreibweg
+überhaupt erst möglich macht (141 Bestandsfälle derselben Art); jede prüft die Rolle intern. Der
+einzelne `anon_security_definer`-WARN gehört `seed_risk_categories_if_empty` und ist Bestand —
+Pentest-Vektor **G1** belegt, dass `anon` auf keiner der acht neuen Funktionen EXECUTE hat. Die acht
+slice-bezogenen Performance-Meldungen sind INFO: fünf `unindexed_foreign_keys` auf
+Personen-Verweisen (`created_by`, `reported_done_by`, `responsible_user_id`, `actor_id`) — die von
+PROJ-69 ausdrücklich als „skip/delete-rare" triagierte Klasse, keine liegt auf einem Leseweg — und
+drei `unused_index`, was bei 0 Zeilen in Prod zu erwarten ist.
+
+### Abweichungen vom Tech Design (β)
+
+- **D-β5 — die Ausnahme im Unveränderlichkeits-Trigger.** AC-45βH-5 sagt „unveränderlich und nicht
+  löschbar". Umgesetzt: `42501` für `UPDATE` und für jedes `DELETE`, solange der Mangel existiert;
+  wird die Zeile von der Kaskade ihres eigenen Mangels abgeräumt, darf sie gehen. Ohne diese
+  Ausnahme wäre jeder Projekt-Hard-Delete an einem Bauprojekt mit Mängeln blockiert — eine neue
+  Instanz der Klasse, die PROJ-Y-148a offen führt. Über die Anwendung unerreichbar (keine
+  DELETE-Policy auf `construction_defects`); Pentest Q1/Q2 belegt die Sperre, Z die Ausnahme.
+- **D-β6 — siebter Ereignis-Typ `in_arbeit_genommen`** (Begründung oben).
+- **D-β7 — `fertigmelden` ist auch direkt aus `offen` erlaubt.** AC-45β.7 beschreibt die Kette,
+  verbietet das Überspringen aber nicht; ein kleiner, sofort behobener Mangel soll nicht durch einen
+  Pflicht-Zwischenschritt laufen.
+- **D-β8 — die Überfälligkeitsregel steht zweimal**, einmal als SQL-Prädikat
+  (`_construction_defect_is_overdue`, Autorität für die Zähler) und einmal als reine TS-Funktion für
+  die Listen-Anzeige. Eine gemeinsame Quelle über die Sprachgrenze gibt es nicht; beide Seiten sind
+  mit denselben Grenzfällen gepinnt (heute / gestern / gestern-aber-erledigt).
+- **D-β9 — die Routen gaten auf `view`, nicht auf `manage_members`.** Die verschärfte Regel lebt
+  ausschliesslich in den Funktionen, damit sie *eine* prüfbare Stelle bleibt (Q-β1). Eine zweite
+  Prüfung in der Route wäre eine zweite Wahrheit, die driften kann.
+- **AC-45β.18 bleibt nach δ verschoben** (D-β1, unverändert) — zurückgestellte
+  Original-Anforderung, registriert in `features/OPEN-DEFERRED-STATUS.md`.
+
+### Nicht in dieser Slice gebaut
+
+Oberfläche, Mängelanzeige-Druckseite und Zähler auf der α-Gewerke-Fläche gehören zu `/frontend`;
+die Datenbank- und Routenschicht liefert alles, was sie brauchen (`construction_defect_summary`
+liefert die Zähler je Gewerk bereits). `/qa` steht aus.
+
+### Fremde Befunde (nicht diese Slice)
+
+- **Prod/Repo-Divergenz, Klasse PROJ-Y-130f:** `_project_teardown_active()` und die entschärfte
+  Fassung von `enforce_deliverable_approval_event_immutability` existieren in Prod, werden aber von
+  **keiner** Migrationsdatei erzeugt. Eine frisch aus den Dateien gebaute Datenbank hat sie nicht.
+  Kein Sicherheitsbefund, aber eine echte Divergenz — eigener Followup.
+- **PROJ-45-α:** die zwei projektbezogenen Entfernen-Pfade bilden weiterhin jeden Datenbankfehler
+  ausser `42501` auf **500** ab. β behebt das für Mängel (409 mit Nennung); für andere künftige
+  Verweise bleibt es bestehen (**PROJ-Y-45b**, im Tech Design registriert).
 
 ---
 

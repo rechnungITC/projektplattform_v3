@@ -117,6 +117,40 @@ export async function DELETE(
     .eq("project_id", projectId)
 
   if (error) {
+    if (error.code === "23503") {
+      // PROJ-45-β / AC-45βH-7: a defect holds its section with NO ON DELETE
+      // clause (lock L16), so the delete is blocked instead of silently
+      // detaching the location of an open defect.
+      //
+      // The lookup MUST go through the RPC, not `.eq("section_id", sid)`:
+      // `parent_id` cascades, so deleting a parent takes the whole subtree with
+      // it and a defect on a GRANDCHILD is what blocks the root. The RPC walks
+      // the subtree recursively (and is SECURITY INVOKER, so it never names a
+      // defect the caller may not see); a flat filter would report "no
+      // blockers" for exactly the case that failed.
+      const { data: blocking } = await gated.supabase.rpc(
+        "construction_section_blocking_defects",
+        { p_section_id: sid }
+      )
+
+      const named = ((blocking ?? []) as Array<{
+        defect_number?: number
+        title?: string
+      }>)
+        .map((row) =>
+          row.defect_number ? `#${row.defect_number} ${row.title ?? ""}`.trim() : null
+        )
+        .filter((entry): entry is string => Boolean(entry))
+        .slice(0, 10)
+
+      return apiError(
+        "defects_present",
+        named.length > 0
+          ? `In diesem Abschnitt oder darunter bestehen noch Mängel: ${named.join(", ")}. Bitte zuerst abschliessen oder umhängen.`
+          : "In diesem Abschnitt oder darunter bestehen noch Mängel. Bitte zuerst abschliessen oder umhängen.",
+        409
+      )
+    }
     if (error.code === "42501") return apiError("forbidden", "Not allowed.", 403)
     return apiError("delete_failed", error.message, 500)
   }

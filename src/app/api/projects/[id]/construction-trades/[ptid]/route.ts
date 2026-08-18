@@ -103,6 +103,33 @@ export async function DELETE(
     .eq("project_id", projectId)
 
   if (error) {
+    if (error.code === "23503") {
+      // PROJ-45-β / AC-45βH-7: a defect holds the trade with NO ON DELETE
+      // clause, because the trade carries the responsibility a defect notice
+      // needs (lock L16). Without this branch the block would surface as a 500
+      // with raw database text; name the blockers instead, mirroring the catalog
+      // delete lock in /api/construction-trades/[id].
+      const { data: blocking } = await gated.supabase
+        .from("construction_defects")
+        .select("defect_number, title")
+        .eq("trade_id", ptid)
+        .limit(10)
+
+      const named = (blocking ?? [])
+        .map((row) => {
+          const r = row as { defect_number?: number; title?: string }
+          return r.defect_number ? `#${r.defect_number} ${r.title ?? ""}`.trim() : null
+        })
+        .filter((entry): entry is string => Boolean(entry))
+
+      return apiError(
+        "defects_present",
+        named.length > 0
+          ? `Zu diesem Gewerk bestehen noch Mängel: ${named.join(", ")}. Bitte zuerst abschliessen oder umhängen.`
+          : "Zu diesem Gewerk bestehen noch Mängel. Bitte zuerst abschliessen oder umhängen.",
+        409
+      )
+    }
     if (error.code === "42501") return apiError("forbidden", "Not allowed.", 403)
     return apiError("delete_failed", error.message, 500)
   }
