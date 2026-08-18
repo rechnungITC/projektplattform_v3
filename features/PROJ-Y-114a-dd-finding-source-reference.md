@@ -124,8 +124,8 @@ abgetippten Referenzen.
 | AC-Y114a.9 | Der Nachweis überlebt (kein stilles Verschwinden) | Pentest **I** PASS (23503 beim Löschen der Quell-Frage) |
 | AC-Y114a.10 | Schreibrechte unverändert streng | Pentest **J** PASS (Editor 42501), **K** PASS (`anon` ohne EXECUTE auf beiden RPCs) |
 | AC-Y114a.11 | Bestandsverhalten unbeschädigt | PROJ-114 **A–J 10/10** verbatim, PROJ-115 **A–I 9/9**, PROJ-Y-122a-Audit-Smoke **4/4** (`admin_shortcircuit=f`), Pentest **M** (Need-to-know hält) |
-| AC-Y114a.13 | Ein **unveränderter** Verweis sperrt niemanden aus, ein **geänderter** verlangt weiter die Freigabe | Pentest **O** PASS (Titeländerung mit unverändert mitgesendetem `strict`-Verweis geht durch, nach Entzug der Freigabe) **und** **P** PASS (Umbiegen auf eine andere `strict`-Frage weiterhin 42501) |
 | AC-Y114a.12 | Wächter nicht von außen aufrufbar, feuert dennoch | Pentest **N** PASS; Fix-forward-Migration + Live-Gegenprobe (`anon=f`, `auth=f`, ACL ohne PUBLIC, Trigger greift) |
+| AC-Y114a.13 | Ein **unveränderter** Verweis sperrt niemanden aus, ein **geänderter** verlangt weiter die Freigabe | Pentest **O** PASS (Titeländerung mit unverändert mitgesendetem `strict`-Verweis geht durch, nach Entzug der Freigabe) **und** **P** PASS (Umbiegen auf eine andere `strict`-Frage weiterhin 42501) |
 
 ---
 
@@ -151,9 +151,9 @@ abgetippten Referenzen.
 | `npx eslint .` | **0** (exit 0) |
 | `npx tsc --noEmit` | **13 vorbestehend / 0 neu** (Verteilung unverändert, keiner in berührten Dateien) |
 | `npx vitest run` | **3055/3055** (385 Dateien, +12 neu) |
-| `npm run build` | clean, 12.4 s |
+| `npm run build` | clean |
 | `npm run check:migration-naming` | 220 Migrationen, **0 Fehler** |
-| `npm run check:index-scope` | 171 Zeilen, **0 Fehler** |
+| `npm run check:index-scope` | 172 Zeilen, **0 Fehler** |
 
 ---
 
