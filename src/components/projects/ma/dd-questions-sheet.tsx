@@ -34,6 +34,7 @@ import {
 } from "@/components/ui/sheet"
 import { Skeleton } from "@/components/ui/skeleton"
 import { Textarea } from "@/components/ui/textarea"
+import { useProjectAccess } from "@/hooks/use-project-access"
 import { useProjectMembers } from "@/hooks/use-project-members"
 import type { DdStream } from "@/lib/ma-project/dd-streams-api"
 import {
@@ -75,8 +76,10 @@ const LEVELS: MaConfidentialityLevel[] = ["standard", "confidential", "strict"]
 // PROJ-Y-114a: die Aktion "Zu Finding eskalieren" ist aktiv (vorher deaktivierter
 // Platzhalter). Sie erzeugt ein Finding mit dieser Frage als Quelle
 // (`source_kind='qa_answer'` + `source_dd_question_id`); die Rechtepruefung liegt
-// in `create_dd_finding` (Projektleitung/Administration) und ist damit strenger
-// als `canEdit` — der Server weist mit 403 ab und der Dialog zeigt die Meldung.
+// in `create_dd_finding` (Projektleitung/Administration) und ist damit strenger als
+// `canEdit`; die Oberflaeche spiegelt das ueber `useProjectAccess(..., "manage_members")`
+// — dieselbe Berechtigung wie im Findings-Panel — statt einem Editor einen Knopf zu
+// zeigen, der nur 403 liefern kann. Der Server bleibt die Autoritaet.
 export function DdQuestionsSheet({
   stream,
   projectId,
@@ -508,6 +511,12 @@ function QuestionDetailDialog({
   // Hinweis "Verfuegbar mit DD-Findings (PROJ-114)", obwohl PROJ-114 seit dem
   // 2026-06-26 live ist.
   const [escalating, setEscalating] = React.useState(false)
+  // Ein Finding anzulegen verlangt Projektleitung/Administration (`create_dd_finding`),
+  // NICHT das `edit` hinter `canEdit`. Die Aktion daher an derselben Berechtigung
+  // haengen, die auch das Findings-Panel nutzt — sonst zeigt die Oberflaeche einem
+  // Editor einen Knopf, der nur 403 liefern kann (PROJ-Y-143f-Lehre: keine
+  // Affordanz fuer eine sicher verschlossene Tuer).
+  const canCreateFinding = useProjectAccess(projectId, "manage_members")
   const [error, setError] = React.useState<string | null>(null)
 
   React.useEffect(() => {
@@ -583,7 +592,7 @@ function QuestionDetailDialog({
               Fundort abtippen zu lassen. Rechte entscheidet der Server: die RPC
               verlangt Projektleitung oder Mandanten-Administration und weist
               andernfalls mit 403 ab. */}
-          {canEdit && question && (
+          {canCreateFinding && question && (
             <Button
               type="button"
               variant="outline"

@@ -101,7 +101,10 @@ Post-Verifikation und Geschwister-Stichprobe über vier fremde Slices
 **UI:** Quelle-Auswahl + Fundort im Finding-Dialog, Herkunft als Unterzeile unter dem
 Titel in der Findings-Tabelle (kein zusätzliche Spalte), und der **aktivierte**
 Eskalations-Knopf im Q&A-Detail, der das Finding mit `source_kind='qa_answer'` +
-verknüpfter Frage anlegt — so entsteht die Provenance aus dem Arbeitsfluss statt aus
+verknüpfter Frage anlegt — gegated über `useProjectAccess(…, "manage_members")`, weil
+`create_dd_finding` Projektleitung/Administration verlangt und `canEdit` (Projekt-`edit`)
+dafür zu weit wäre: ein Editor bekäme sonst eine Affordanz, die nur 403 liefern kann
+(PROJ-Y-143f-Lehre) — so entsteht die Provenance aus dem Arbeitsfluss statt aus
 abgetippten Referenzen.
 
 ---
