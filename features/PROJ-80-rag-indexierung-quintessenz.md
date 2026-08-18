@@ -1,9 +1,13 @@
 # PROJ-80: RAG-Indexierung + Quintessenz
 
-## Status: In Progress (α-Backend komplett — α.1 + α.2a/b/c in Prod; Routen + Detailseite offen)
+## Status: In Progress (α gebaut — Backend + Frontend vollständig; `/qa` offen)
 ## Deployment Scope: —
+> Scope bleibt bewusst leer: `Deployed` verlangt eine QA ohne Critical/High, und die hat nicht
+> stattgefunden. Zwei Kriterien sind zudem noch offen (echter Anbieter-Lauf, angemeldeter
+> Browser-Durchlauf) — siehe „Offenes Kriterium" in den Implementierungsnotizen.
+
 **Created:** 2026-06-06
-**Last Updated:** 2026-08-14
+**Last Updated:** 2026-08-18
 
 > **Zuschnitt 2026-08-14:** geteilt in **α — Quintessenz ohne Vektor** (dieses Tech Design) und
 > **β — Retrieval** (Vektorindex, Embeddings, pgvector; zurückgestellt, bis das DMS Dokumente enthält).
@@ -406,13 +410,165 @@ Idempotenz · Löschschutz `42501` · normaler Skill löschbar · fremder Mandan
 **Gates α.2c:** vitest 3041/3041 (384 Dateien) · tsc 13 = Baseline · ESLint 0 · Build clean (Cron-Route
 registriert) · migration-naming 0 Fehler.
 
-**Offen (α-Rest):** Routen für Anzeigen/Bearbeiten/Wiederholen der Quintessenz (mit `If-Match`, Spec-
-Edge-Case) und die Dokument-Detailseite — beides `/frontend`. Ein echter Ende-zu-Ende-Lauf mit
-Anbieter steht aus (wie bei PROJ-88/89 abhängig von einem erreichbaren Ollama bzw. Cloud-Schlüssel).
+### α /frontend — Detailansicht + Routen (2026-08-14, abgeschlossen 2026-08-18)
 
-**Offen für α.2 (historisch):** Extraktion am Upload-Pfad (Wiederverwendung von `parseFile`), Volltext-Klassifikation
-(PROJ-75-Muster), Summarizer-Skill + AI-Zweck über alle Anbieter, Routen, Anstoß per `after()` +
-nächtlicher Aufräumlauf, zweite Obergrenze für die Modell-Übergabe.
+3 Routen (`GET`/`PATCH …/summary`, `POST …/summary/retry`), Client-Wrapper, und der Reiter
+**Quintessenz** neben **Vorschau** am ausgewählten Dokument. Der erste Lauf endete durch einen
+Umgebungsabbruch mitten in der Arbeit; der zweite hat den Zwischenstand **nicht** als fertig übernommen,
+sondern gegen die Gates und gegen die Datenbank nachgeprüft — und dabei vier Dinge gefunden, die unten
+einzeln stehen.
+
+**Der Kern der Fläche ist das Unterscheiden, nicht das Anzeigen.** „läuft noch", „keine Textebene",
+„zu groß", „kein zulässiger Anbieter" und „ist da" sind fünf Zustände mit fünf verschiedenen nächsten
+Schritten. Ein gemeinsames „keine Quintessenz vorhanden" wäre bequem und falsch — und würde einen
+Vertraulichkeits-Block wie ein Produktversagen aussehen lassen. Deshalb liefert `GET` Quintessenz **und**
+Auszugs-Zustand, und die Oberfläche übersetzt beide (inkl. der PROJ-137-`reason_code`s).
+
+#### Der Autorisierungs-Fix (`src/lib/dms/document-scope.ts`) — sicherheitsrelevant
+
+Der `PATCH` prüfte das Bearbeitungsrecht gegen das Projekt aus dem **Pfad**, holte die zu ändernde Zeile
+danach aber allein über `document_id`. Beides zusammen ist die Lücke: die Lese-Policy
+`document_summaries_select` verlangt nur `is_project_member` des **eigenen** Projekts des Dokuments, und
+geschrieben wird mit service-role. Ein Nutzer mit Bearbeitungsrecht in Projekt A konnte damit die
+Quintessenz eines Dokuments aus Projekt B ändern, in dem er bloß Betrachter ist — **das Recht wurde am
+falschen Projekt geprüft**. Die Projekt-Kennung im Pfad war für den Schreibvorgang Dekoration.
+
+Warum der Fix trägt, in dieser Reihenfolge:
+
+1. **Er sitzt vor dem Schreibvorgang, nicht daneben.** `resolveDocumentInProject` löst das Projekt über
+   `documents.tree_node_id → document_tree_nodes.project_id` auf und gibt `null`, sobald das nicht das
+   Projekt aus dem Pfad ist. Erst danach wird überhaupt eine Zeile geholt.
+2. **Er liest mit der Nutzersitzung, nicht mit service-role.** Die Auflösung ist damit gleichzeitig die
+   Sichtbarkeitsprüfung — mit service-role wäre sie wirkungslos („a report RPC called with the
+   service-role key bypasses every RLS gate above it", CLAUDE.md).
+3. **Er ist EINE Autorität für alle drei Routen.** Vorher stand die Prüfung zweimal kopiert (`GET`,
+   `retry`) und fehlte genau dort, wo geschrieben wird. Drei Kopien einer Berechtigungsregel sind die
+   Krankheit, nicht das Symptom (PROJ-130: vier Register, die auseinanderliefen).
+4. **Er verrät nichts.** Unsichtbar, nicht existent und fremd liefern alle `null` → 404. Jede
+   Unterscheidung wäre eine Aussage über fremden Bestand.
+5. **Er nimmt die Stufe vom Knoten, nicht vom Dokument.** Damit bleibt die Kette aus PROJ-Y-115c
+   unverändert die einzige Quelle (Dokumente erben über den Baumknoten); eine zweite Stufenspalte wäre
+   die Wahrheit, die auseinanderläuft.
+
+**Nicht behauptet, sondern rot-grün belegt:** wird der Zweig entfernt, fällt genau
+`404 wenn das Dokument zu einem anderen Projekt gehört — auch mit Bearbeitungsrecht hier`, und der Test
+prüft zusätzlich, dass **gar nicht geschrieben** wurde (`admin.update` nicht gerufen) — ein 404 allein
+würde nicht ausschließen, dass vorher schon etwas passiert ist.
+
+#### Optimistische Sperre: serverseitig erzwungen, nicht beratend
+
+`If-Match` ist **Pflicht** (fehlt der Kopf → `428`, PROJ-141-α2-Lehre), ein veralteter Wert → `409`.
+Entscheidend ist die zweite Hälfte: die Bedingung steht **im `UPDATE` selbst** (`.eq("updated_at", ifMatch)`),
+und trifft es 0 Zeilen, antwortet die Route `409` statt Erfolg. Zwischen Vorprüfung und Schreibvorgang
+liegt sonst ein Moment, in dem ein zweiter Bearbeiter zuschlägt — dann wäre die Prüfung Zierde und der
+Spec-Edge-Case „zwei PMs bearbeiten gleichzeitig" nicht abgedeckt. Der Trigger
+`document_summaries_set_updated_at` ist `before update`, die `where`-Bedingung sieht also den Wert **vor**
+dem Schreiben; das ist der Grund, dass der Vergleich überhaupt funktioniert. Rot-grün belegt: ohne das
+`.eq(...)` fällt `trägt die If-Match-Bedingung IM Update`.
+
+#### Vier Funde des zweiten Laufs
+
+- **F-1 (4 neue `tsc`-Fehler, behoben).** Der Zwischenstand nahm einen echten `SupabaseClient` gegen ein
+  nachgebautes `from().select().eq().maybeSingle()`-Interface — nicht zuweisbar, weil Supabases Builder ein
+  *thenable* ist (`then`, aber kein `catch`/`finally`) und seine Ketten generisch überladen sind: `TS2345`
+  ×3 plus `TS2589` („type instantiation is excessively deep"). Wörtlich PROJ-144-F-9. Auch der zweite
+  Anlauf (`PromiseLike` in derselben Interface-Form, dann eine Fabrik) blieb an `TS2589` hängen; getragen
+  hat erst das **Callback** — dieselbe Auflösung, die PROJ-130-δ1 für `RpcInvoker` gewählt hat, weil dabei
+  nichts verglichen, sondern der Parameter *abgeleitet* wird. Baseline wieder **13, 0 neu**.
+- **F-2 (Deckungsverlust durch genau diesen Fix, ersetzt).** Der Schema-Drift-Wächter löst ausschließlich
+  **String-Literale** in einer `.from("…").select("…")`-Kette auf (`ast-walker.ts:44-49`). Mit dem Callback
+  stehen Tabelle und Spalten in Variablen — zwei Abfragen wurden für den Wächter unsichtbar, und die zwei
+  Selects der Detailroute waren als Konstanten ohnehin nie sichtbar. Nicht verschwiegen, sondern ersetzt:
+  `DOCUMENT_SCOPE_COLUMNS` + `summary-select.ts` machen die Spalten zu Daten, und ein Test prüft **alle
+  vier Tabellen** gegen die Migrationsdateien. Das läuft ohne Docker (offener Handoff PROJ-67/F6) und ist
+  für diese Abfragen damit belastbarer als der Wächter. Rot-grün: eine erfundene Spalte macht ihn rot.
+- **F-3 (Schutz der Handänderung war Zufall, jetzt Zusicherung).** Die Spec verlangt zweimal, dass eine
+  von Hand geänderte Fassung nicht automatisch verloren geht. Das hielt auch vorher — aber nur aus dem
+  Zusammenspiel dreier Aufrufer (Upload legt stets ein *neues* Dokument an, der nächtliche Lauf
+  überspringt jede vorhandene Zeile, nur der Knopf trifft eine bestehende). Ein vierter Aufrufer — β mit
+  Überschreiben beim erneuten Hochladen — hätte den Handtext stillschweigend vernichtet.
+  `runDocumentSummary` hat jetzt `force` (Standard `false`), bricht **vor** dem Modellaufruf ab (spart auch
+  den Kostenaufruf) und meldet `status: "user_edited"` mit Grund `user_edited_preserved`; nur die
+  Wiederholen-Route setzt `force: true`. Dazu wird beim Neuerzeugen der Bearbeiter-Stempel geleert — eine
+  Zeile, die „automatisch erzeugt" sagt und gleichzeitig einen Bearbeiter trägt, ist falsch; die Historie
+  steht im Feld-Audit (`status`, `summary_markdown` sind getrackt).
+- **F-4 (destruktiver Knopf ohne Rückfrage, behoben).** „Neu erzeugen" über eine Handänderung ist der
+  einzige Weg im Produkt, der eine menschlich verantwortete Quintessenz vernichtet, und die Spec erlaubt
+  das ausdrücklich nur als Ausnahme („unless admin force-re-runs"). Ein Klick ohne Rückfrage wäre die
+  Ausnahme als Regel → `AlertDialog` (shadcn, im Bestand) **nur** bei `status === "user_edited"`.
+
+**Zwei Gates haben dabei eigene Fehler gefangen, nicht der Autor:** `react-hooks/static-components` lehnte
+die im Render definierte Dialog-Komponente ab (sie hätte bei jedem Durchlauf ihren Zustand verloren — beim
+Bestätigungsdialog heißt das: er schließt sich unter der Hand), und `react-hooks/set-state-in-effect`
+lehnte den geteilten `load()`-Weg ab, der vor dem `await` `setLoading(true)` setzte. Beides auf das
+Haus-Muster `use-tenant-members` umgestellt (Anfangszustand `loading = true`, Zustand nur **nach** dem
+`await`, Neuladen über einen Zähler in der Abhängigkeitsliste). Der `cancelled`-Wächter ist hier keine
+Zierde: der Nutzer klickt im Baum weiter, während die Antwort läuft — ohne ihn schreibt die alte Anfrage
+die Quintessenz des vorigen Dokuments in die neue Ansicht.
+
+#### Belege je Akzeptanzkriterium (α-Anteil)
+
+| Kriterium (Spec-Block) | Zustand | Beleg |
+|---|---|---|
+| Detailseite: Reiter Vorschau / Quintessenz | erfüllt (2 von 3 Reitern) | `dms-page.tsx` shadcn-`Tabs`; Reiter „Verlinkungen" **nicht** gebaut → PROJ-Y-80a |
+| Quintessenz-Reiter zeigt Markdown, inline bearbeitbar | erfüllt | `document-summary-panel.tsx`; `PATCH`-Route; Routentest „speichert, hebt auf `user_edited` und stempelt den Bearbeiter" |
+| Speichern hebt Status auf `user_edited` | erfüllt | Routentest (Statuswechsel + `edited_by_user_id`) |
+| … und stoppt weitere automatische Erzeugung | erfüllt, **jetzt erzwungen** | `summary-runner.test.ts`: „überschreibt … NICHT und ruft kein Modell" (F-3) |
+| „unless admin force-re-runs" | erfüllt, mit Abweichung D-α.3 | `force: true` nur aus der Wiederholen-Route + Bestätigungsdialog; Recht ist `edit`, nicht `admin` |
+| Fehlschlag → Zeile `stale` + „Quintessenz nicht erzeugt" + Wiederholen-Knopf | erfüllt | Panel-Zustand 3; `explainReason` übersetzt alle fünf `reason_code`s; `summary-runner.test.ts` bucht leeres Ergebnis als `stale` **mit** Grund |
+| „Summarizer Skill nicht aktiv" → Erzeugung läuft trotzdem | erfüllt | Retry-Routentest „erzeugt trotzdem, wenn das Nachsäen scheitert" |
+| Extraktion fehlgeschlagen → im DMS sichtbar, kein Weiterlauf | erfüllt | `explainExtraction` unterscheidet `pending`/`too_large`/`unsupported_type`/`failed`+`no_text_layer`; Retry-Route `409` für alle Nicht-`extracted`-Zustände, und der Test prüft, dass der Erzeuger **gar nicht** gerufen wird |
+| Optimistische Sperre via `If-Match`, einer bekommt 409 | erfüllt, serverseitig | 428 / 409 / 409-bei-0-Zeilen; rot-grün belegt |
+| Lesen folgt Dokument-RLS; Bearbeiten braucht Lead/Editor | erfüllt | `requireProjectAccess(…, "view"\|"edit")` + `resolveDocumentInProject`; Routentest pinnt die Rolle je Route |
+| Audit-Hook (PROJ-10) | erfüllt, mit Abweichung D-α.4 | Feld-Audit auf `status`/`summary_markdown`/`structured_summary` + Lebenszyklus (α.1); **keine** benannten Ereignisse `document.summary_edited` etc. |
+| Zugriffsprotokoll für vertrauliche Inhalte | erfüllt | `logConfidentialAccess`; Routentests belegen Eintrag bei `strict`, **kein** Eintrag bei `standard`, und Auslieferungs-Stopp bei fehlgeschlagenem Pflichteintrag — inkl. Prüfung, dass der Inhalt dabei nicht doch durchsickert |
+| Umschalter „Vollständig / Quintessenz" am verknüpften Dokument | **offen, nicht baubar** | keine Aufgabe↔Dokument-Verknüpfung im Produkt → PROJ-Y-80b |
+| Echter Ende-zu-Ende-Lauf mit Anbieter | **offenes Kriterium** | siehe unten |
+
+#### Offenes Kriterium (ausdrücklich keine Abweichung)
+
+Ein **echter Ende-zu-Ende-Lauf mit erreichbarem Anbieter** — ein Dokument, das durch ein reales Modell zu
+einer Quintessenz wird — ist **nicht** bewiesen. Bewiesen ist die Mechanik: Extraktion ungemockt,
+Volltext-Klassifikation, Kette, Skill-Nachsaat, Lockstep-Regeln, alle drei Tore, Sperre, Protokoll. Nicht
+bewiesen ist die Verkettung mit einem Modell — wie bei PROJ-88/89 abhängig von einem erreichbaren Ollama
+bzw. einem Cloud-Schlüssel. Das ist ein **offenes Akzeptanzkriterium**, keine Abweichung (PROJ-135-Lehre:
+eine nicht ausgeführte Prüfebene ist kein Zugeständnis, sondern eine offene Zusage). Ebenso nicht bewiesen
+ist ein **angemeldeter Browser-Durchlauf** über die Fläche; die DMS-Fläche ist zwar nicht modul-gegatet,
+das DMS in Produktion aber leer, und ein Dokument mit Auszug und Quintessenz gibt es in keiner Fixture.
+Beides gehört zu `/qa`.
+
+#### Abweichungen
+
+- **D-α.1 — Reiter „Verlinkungen" nicht gebaut.** Live geprüft: auf `documents` verweist außer Auszug und
+  Quintessenz **kein einziges** Domänen-Objekt (Deliverables und Arbeitspakete hängen an eigenen
+  Dokument-Tabellen mit anderem Modell). Ein Reiter, der nur „nichts" zeigen kann, ist ein Versprechen
+  ohne Deckung. → PROJ-Y-80a, gebunden an PROJ-79s eigenen Vorbehalt `PROJ-Y-doc-refs`.
+- **D-α.2 — Umschalter „Vollständig / Quintessenz" nicht gebaut.** Das Tech Design wollte ihn „dort
+  zeigen, wo bereits Verknüpfungen bestehen"; es bestehen keine. → PROJ-Y-80b.
+- **D-α.3 — Recht zum Neuerzeugen ist `edit`, nicht `admin`.** Die Akzeptanzkriterien sagen „admin
+  force-re-runs", die Technical Requirements derselben Spec sagen „edit requires project_lead or editor
+  role". Gefolgt wurde den Technical Requirements (sonst könnte der Bearbeiter speichern, aber nicht
+  korrigieren); die Zerstörungsgefahr ist stattdessen durch den Bestätigungsdialog abgedeckt.
+- **D-α.4 — kein benanntes Ereignis-Vokabular.** Die Spec listet `document.indexed`,
+  `document.summary_edited` usw.; das Produkt hat keinen Ereignis-Bus, sondern Feld- und
+  Lebenszyklus-Audit (PROJ-10/PROJ-130). Die *Sache* — nachvollziehbar, wer wann was geändert hat — ist
+  erfüllt, die Form nicht. Ein Parallel-Vokabular wäre ein zweites Register (PROJ-130).
+- **D-α.5 — Mobile Safari übersprungen** (WebKit-Host-Bibliotheken, PROJ-67/F2).
+
+#### Gates (zweiter Lauf, 2026-08-18)
+
+ESLint **0 Fehler** · `tsc` **13 = Baseline, 0 neu** (auf `origin/main` gegengemessen) ·
+vitest **3093/3093** (388 Dateien; +47 gegenüber dem Zwischenstand) · Build **clean, 13,2 s**, beide
+Routen registriert · `check:migration-naming` **0 Fehler** (217 Migrationen, 89 vorbestehende Warnungen) ·
+`check:index-scope` **0 Fehler** · Playwright `tests/PROJ-80-document-summary.spec.ts` **4/4** chromium.
+
+Die Playwright-Zusicherungen wurden dabei **verschärft**: sie akzeptierten vorher `[307, 401, 404]` und
+hätten damit auch bestanden, wenn die Routen gar nicht mehr existierten — ein Tortest, der das Fehlen der
+Tür für ein verschlossenes Tor nimmt. Jetzt genau `307`. Der Rumpf wird zusätzlich **positiv** geprüft;
+dabei fiel die erste Erwartung (`Redirecting…`) durch und wurde durch den gemessenen Wert ersetzt: diese
+API-Routen liefern das Umleitungsziel `/login?next=…`.
+
+**Offen für α (historisch, erledigt):** Routen Anzeigen/Bearbeiten/Wiederholen und die Dokument-Detailfläche.
 
 ## QA Test Results
 _To be added by /qa._
