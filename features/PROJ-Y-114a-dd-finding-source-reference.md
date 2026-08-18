@@ -121,13 +121,14 @@ abgetippten Referenzen.
 | AC-Y114a.9 | Der Nachweis überlebt (kein stilles Verschwinden) | Pentest **I** PASS (23503 beim Löschen der Quell-Frage) |
 | AC-Y114a.10 | Schreibrechte unverändert streng | Pentest **J** PASS (Editor 42501), **K** PASS (`anon` ohne EXECUTE auf beiden RPCs) |
 | AC-Y114a.11 | Bestandsverhalten unbeschädigt | PROJ-114 **A–J 10/10** verbatim, PROJ-115 **A–I 9/9**, PROJ-Y-122a-Audit-Smoke **4/4** (`admin_shortcircuit=f`), Pentest **M** (Need-to-know hält) |
+| AC-Y114a.13 | Ein **unveränderter** Verweis sperrt niemanden aus, ein **geänderter** verlangt weiter die Freigabe | Pentest **O** PASS (Titeländerung mit unverändert mitgesendetem `strict`-Verweis geht durch, nach Entzug der Freigabe) **und** **P** PASS (Umbiegen auf eine andere `strict`-Frage weiterhin 42501) |
 | AC-Y114a.12 | Wächter nicht von außen aufrufbar, feuert dennoch | Pentest **N** PASS; Fix-forward-Migration + Live-Gegenprobe (`anon=f`, `auth=f`, ACL ohne PUBLIC, Trigger greift) |
 
 ---
 
 ## 4. Nachweise (live gegen Prod, 0 Rückstände)
 
-- **`tests/sql/PROJ-Y-114a-dd-finding-source-pentest.sql` — A–N 14/14 PASS.**
+- **`tests/sql/PROJ-Y-114a-dd-finding-source-pentest.sql` — A–P 16/16 PASS.**
   Nicht-Admin **synthetisiert** (`ld2` = Projektleitung ohne Mandanten-Adminrechte):
   in Prod ist jedes Mandanten-Mitglied Administrator, und für Administratoren
   schließt `can_access_classified` unbedingt mit `true` kurz — ein Smoke unter Admin
@@ -148,7 +149,7 @@ abgetippten Referenzen.
 | `npx tsc --noEmit` | **13 vorbestehend / 0 neu** (Verteilung unverändert, keiner in berührten Dateien) |
 | `npx vitest run` | **3055/3055** (385 Dateien, +12 neu) |
 | `npm run build` | clean, 12.4 s |
-| `npm run check:migration-naming` | 219 Migrationen, **0 Fehler** |
+| `npm run check:migration-naming` | 220 Migrationen, **0 Fehler** |
 | `npm run check:index-scope` | 171 Zeilen, **0 Fehler** |
 
 ---
@@ -167,6 +168,22 @@ abgetippten Referenzen.
   Revokes in PROJ-Y-130n. Fix-forward `20260817123000` (kein Datei-Edit, die
   Hauptmigration war in Prod), Gegenprobe: `anon=f`, `auth=f`, PUBLIC weg, **Trigger
   feuert weiter** — als Vektor **N** dauerhaft im Pentest.
+- **F-4 (Medium, in dieser Slice selbst gefunden und behoben):** Die Selbstdurchsicht des
+  Bearbeiten-Pfades deckte eine Falle **meines eigenen Entwurfs** auf. Der Dialog sendet
+  `source_dd_question_id` bei jedem Speichern mit, um die Verknüpfung über
+  `clear_source = true` hinweg zu erhalten — `update_dd_finding` prüfte den Verweis aber
+  **unbedingt** gegen `can_access_classified`. Eine Projektleitung, deren Freigabe unter
+  der Stufe der verknüpften **Frage** liegt, hätte das Finding damit gar nicht mehr
+  bearbeiten können: 42501 selbst für eine reine Titeländerung, obwohl sie für das
+  Finding selbst freigegeben ist. Über die Oberfläche nicht erreichbar (der
+  Eskalationspfad legt das Finding im Stream der Frage an, einen Verweis-Picker gibt es
+  nicht) und stets fail-closed, also kein Sicherheitsbefund — aber eine Falle, die
+  zuschlägt, sobald ein Cross-Stream-Verweis über die API entsteht. Behoben mit der
+  präzisen Regel **„ein unveränderter Verweis ist keine neue Offenlegung"**: geprüft wird
+  nur bei `is distinct from` dem gespeicherten Wert (Fix-forward `20260817124000`). Dass
+  die Abschwächung das Leck-Tor **nicht** öffnet, ist der eigentliche Nachweis und steht
+  als Vektorpaar im Pentest: **O** (unverändert → erlaubt) **und** **P** (Umbiegen auf
+  eine andere `strict`-Frage → weiter 42501).
 - **F-2 (Info, Bookkeeping):** `PROJ-Y-113c` war in `OPEN-DEFERRED-STATUS.md` nie
   registriert (nur in der PROJ-113-Spec zugesagt). Hier eingelöst und nachgetragen.
 - **F-3 (Info, Bookkeeping):** `PROJ-Y-1` ist fünffach belegt. Die Registerzeile dieser
@@ -186,9 +203,9 @@ abgetippten Referenzen.
 - **D-3:** Kein authentifizierter Browser-Durchlauf. Die DD-Flächen sind in Prod
   **datenlos** (0 Streams / 0 Fragen / 0 Findings), ein E2E-Klickpfad hätte erst einen
   Deal-Raum samt Stream seeden müssen; die Verkettung ist stattdessen über den
-  Live-Pentest (14 Vektoren, echte RPCs) und 29 Routen-/Lib-Tests belegt.
-- **D-4:** Benigne Migrations-Versionsdrift (`20260818103550` bzw. `20260818…` in Prod
-  gegen die Dateinamen `20260817120000`/`20260817123000`) — beide Migrationen sind
+  Live-Pentest (16 Vektoren, echte RPCs) und 29 Routen-/Lib-Tests belegt.
+- **D-4:** Benigne Migrations-Versionsdrift (Prod-Versionen im Fenster `20260818…`
+  gegen die Dateinamen `20260817120000`/`20260817123000`/`20260817124000`) — alle drei sind
   durchgängig idempotent (`add column if not exists`, DO-Block-Guards,
   `create or replace`, `drop … if exists`), brechen `supabase db push` also nicht;
   Dateinamen behalten wie bei den unmittelbaren Nachbarn (PROJ-80/148/Y-45a),
