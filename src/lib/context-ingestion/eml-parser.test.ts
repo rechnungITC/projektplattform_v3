@@ -143,6 +143,39 @@ describe("parseEml — Lock-6 / AC-δH-5 HTML stripping", () => {
     expect(result.excerpt).toContain("Hallo")
     expect(result.excerpt).toContain("Kickoff!")
   })
+
+  /**
+   * PROJ-149 regression guard.
+   *
+   * mailparser derives `text` from an HTML-only mail via html-to-text,
+   * which builds its option graph (selectors + formatters) through
+   * `deepmergeCustom` from deepmerge-ts. A supply-chain bump of that
+   * transitive dependency can degrade the option merge *without*
+   * breaking the assertions above: tag stripping is base behaviour and
+   * survives even an empty option graph, so "no angle brackets left"
+   * would stay green while link and list rendering silently regressed.
+   *
+   * These assertions therefore pin output that only exists when the
+   * merged option graph arrives intact: the `a` selector's anchor
+   * formatter appends the bracketed href, and the list formatter emits
+   * the ` * ` item prefix.
+   */
+  it("keeps option-dependent formatting (anchor href + list markers) intact", async () => {
+    const result = await parseEml(
+      buildEml({
+        htmlBody:
+          "<p>Doku: <a href=\"https://example.test/spec\">Spec</a></p>" +
+          "<ul><li>Alpha</li><li>Beta</li></ul>",
+      }),
+    )
+
+    expect(result.excerpt).not.toContain("<")
+    // anchor formatter from the merged `selectors` graph
+    expect(result.excerpt).toContain("Spec [https://example.test/spec]")
+    // list formatter from the merged `formatters` graph
+    expect(result.excerpt).toContain("* Alpha")
+    expect(result.excerpt).toContain("* Beta")
+  })
 })
 
 describe("parseEml — AC-δH-2 multipart-bomb guard", () => {
