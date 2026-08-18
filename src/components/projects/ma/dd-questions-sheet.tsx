@@ -589,9 +589,9 @@ function QuestionDetailDialog({
 
           {/* PROJ-Y-114a — aktive Eskalation. Das erzeugte Finding traegt die Frage
               als maschinell pruefbare Quelle (`source_dd_question_id`), statt den
-              Fundort abtippen zu lassen. Rechte entscheidet der Server: die RPC
-              verlangt Projektleitung oder Mandanten-Administration und weist
-              andernfalls mit 403 ab. */}
+              Fundort abtippen zu lassen. Sichtbarkeit spiegelt `create_dd_finding`
+              (Projektleitung/Administration); der Server prueft unabhaengig davon
+              erneut und weist andernfalls mit 403 ab. */}
           {canCreateFinding && question && (
             <Button
               type="button"
