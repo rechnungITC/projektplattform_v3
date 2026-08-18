@@ -93,4 +93,39 @@ describe("PATCH /api/projects/[id]/dd-findings/[findingId]", () => {
     rpcMock.mockResolvedValue({ data: null, error: { code: "P0002", message: "not found" } })
     expect((await patch({ status: "resolved" })).status).toBe(404)
   })
+
+  // --- PROJ-Y-114a — Herkunftsnachweis ------------------------------------
+  it("passes clear_source through so a source can actually be removed", async () => {
+    getUserMock.mockResolvedValue({ data: { user: { id: ME } } })
+    queueProjectView()
+    rpcMock.mockResolvedValue({ data: { id: FINDING }, error: null })
+    const res = await patch({ clear_source: true, source_kind: "interview" })
+    expect(res.status).toBe(200)
+    expect(rpcMock).toHaveBeenCalledWith(
+      "update_dd_finding",
+      expect.objectContaining({
+        p_clear_source: true,
+        p_source_kind: "interview",
+        p_source_ref: null,
+        p_source_dd_question_id: null,
+      })
+    )
+  })
+  it("leaves clear_source false when the caller does not ask for it", async () => {
+    getUserMock.mockResolvedValue({ data: { user: { id: ME } } })
+    queueProjectView()
+    rpcMock.mockResolvedValue({ data: { id: FINDING }, error: null })
+    await patch({ status: "resolved" })
+    expect(rpcMock).toHaveBeenCalledWith(
+      "update_dd_finding",
+      expect.objectContaining({ p_clear_source: false })
+    )
+  })
+  it("400 on an invented source_kind", async () => {
+    getUserMock.mockResolvedValue({ data: { user: { id: ME } } })
+    queueProjectView()
+    const res = await patch({ source_kind: "hearsay" })
+    expect(res.status).toBe(400)
+    expect(rpcMock).not.toHaveBeenCalled()
+  })
 })

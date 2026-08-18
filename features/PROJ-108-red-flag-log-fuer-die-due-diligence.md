@@ -34,7 +34,7 @@ summary_for_jira: "[E2] Red-Flag-Log für die Due Diligence"
 > | 108-AC | Disposition | Ziel |
 > |---|---|---|
 > | AC1 Felder (Stream/Beschreibung/Schweregrad/Empfehlung/Owner) | ✅ erfüllt | PROJ-114 `dd_findings` (severity inkl. `deal_breaker` + `recommended_treatment`) |
-> | AC1-Gap „Quelle/Dokumentenverweis" | offen → kleiner 114-Followup | **PROJ-Y-1** (`source_ref`/`document_link`-Feld an `dd_findings`) |
+> | AC1-Gap „Quelle/Dokumentenverweis" | **2026-08-18 aufgelöst, zweigeteilt** | **Dokumentenverweis (extern) war bereits erfüllt** durch das deployte **PROJ-115** (`external_document_links` mit `entity_type='dd_finding'` + `<ExternalLinksSection>` im Finding-Dialog). Die verbleibende Hälfte „**Quelle**" (Interview / Begehung / Analyse / Datenraum-Fundstelle / Q&A-Antwort) ist gebaut in **PROJ-Y-114a** — `source_kind` + `source_ref` + `source_dd_question_id` an `dd_findings`. Der interne DMS-Verweis bleibt zurückgestellt (**PROJ-Y-114b**), weil das DMS in Prod leer ist. Die ID hieß bis dahin `PROJ-Y-1` und war fünffach belegt. |
 > | AC2 zwingend DD-Stream-zugeordnet | ✅ erfüllt | PROJ-114 (`dd_stream_id NOT NULL`) |
 > | AC3 Übernahme in Bewertung (I2) + SPA-Issues (J1) | transferiert (Zielobjekte nicht gebaut) | **PROJ-120/121** (Bewertung/Kaufpreis-Bridge) + **PROJ-122** (SPA Issues) — als AC „akzeptiert ein `dd_finding` als Quelle" beim jeweiligen `/requirements` ergänzen |
 > | AC4 dedizierter Red-Flag-Report (PDF/Excel, SteerCo) | transferiert | **PROJ-116** (DD-Berichte/Red-Flag-Report; bereits Owner laut Reuse-Matrix) |

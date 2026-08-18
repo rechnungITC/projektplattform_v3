@@ -252,7 +252,7 @@ Ergänzend: **Backend-Live-RPC-Smoke 11/11** (fand+fixte die Status-RPC-Clearanc
 - **Vercel-Prod:** Deployment für `9a9c15a` `state=success` (GitHub-Deployment-Status); kein Runtime-Risiko (additive Routen/Komponenten).
 - **Post-Deploy-Smoke:** 4/4 = 307 Auth-Gate (`/api/projects/[id]/dd-questions`, `…/dd-questions/export`, `/projects/[id]/due-diligence`, `/`).
 - **Merge-Hinweis:** zwei INDEX-Konflikte mit fast-moving main (paralleler PROJ-114-Build) sauber aufgelöst (PROJ-113-Zeile behalten, PROJ-114-Zeile von main übernommen); Code conflict-free.
-- **Offene Followups (nicht-blockierend):** PROJ-Y-113a (Multi-Turn-Thread), PROJ-Y-113b (Export-Audit), PROJ-Y-113c (Eskalation→Finding, an PROJ-114).
+- **Offene Followups (nicht-blockierend):** PROJ-Y-113a (Multi-Turn-Thread), PROJ-Y-113b (Export-Audit). **PROJ-Y-113c (Eskalation→Finding) ist erledigt** — eingelöst 2026-08-18 in **PROJ-Y-114a**: `dd_findings.source_dd_question_id` (FK, `ON DELETE RESTRICT`) + Projekt-Konsistenz-Wächter + Need-to-know-Tor auf der referenzierten Frage, und der hier gelieferte **deaktivierte** Platzhalter „Zu Finding eskalieren" ist aktiv geschaltet (er versprach die Funktion mit dem Tooltip „Verfügbar mit DD-Findings (PROJ-114)" noch sieben Wochen nach dem PROJ-114-Deploy). Befund am Rande: PROJ-Y-113c war in `OPEN-DEFERRED-STATUS.md` **nie registriert** und ist dort jetzt nachgetragen.
 
 ---
 _Quelle: Backlog-Entwurf M&A-Projektplattform · G — Due Diligence_
