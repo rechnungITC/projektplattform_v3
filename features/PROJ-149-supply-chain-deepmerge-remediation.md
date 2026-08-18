@@ -18,6 +18,7 @@ summary_for_jira: "[HYGIENE] Supply-Chain-Remediation deepmerge-ts via Override 
 ## Deployment Scope: —
 
 **Created:** 2026-08-18
+**PR:** #401 — alle **8** Required-Checks grün, `mergeStateStatus: CLEAN` (noch **nicht** gemergt)
 **Origin:** Der PROJ-74-Required-Check `npm audit production dependencies` ist auf `main` **selbst** rot
 und blockiert per Branch-Protection **alle** offenen PRs (#397, #398, #399). Unabhängig nachgemessen:
 `package.json` und `package-lock.json` sind byte-identisch mit `origin/main` (`git diff origin/main`
@@ -193,6 +194,7 @@ Danach zurückgesetzt: Suite wieder 15/15.
 | `npm run build` | clean, exit 0 |
 | `npm run check:index-scope` | 0 errors, exit 0 |
 | `npm run check:migration-naming` | 0 errors, exit 0 (unberührt) |
+| **CI am PR #401** | **8/8 pass** — darunter `npm audit production dependencies` **pass** (auf `main` vorher rot) und `OSV scan of the dependency lockfile` **pass**; dazu Schema-Drift, Migration-Naming, Index-Scope, Snyk, **Vercel-Build pass** |
 
 ## Abgrenzung / Deviations
 
@@ -243,5 +245,6 @@ Auslieferung.
 - [x] tsc-Baseline unverändert (13, 0 neu) · ESLint 0 · vitest 3042/3042 · Build clean
 - [x] Lockfile selbstkonsistent (`npm ci` aus sauberem Zustand)
 - [x] `node_modules`-Instrumentierung restlos zurückgesetzt
-- [ ] Merge nach `main`, Required-Checks am PR grün → dann Status `Deployed` + Scope `full`
+- [x] Required-Checks **am PR** grün: #401, **8/8 pass**, `mergeStateStatus: CLEAN` — beide Supply-Chain-Gates bestätigen den Fix in CI, nicht nur lokal; der **Vercel-Build** belegt zusätzlich, dass der erzwungene Major in der echten Zielumgebung baut (PROJ-146-Muster)
+- [ ] Merge nach `main` → dann Status `Deployed` + Scope `full` (bewusst dem Nutzer überlassen)
 - [ ] Nachziehen von #397/#398/#399 per `update-branch` (Folgeschritt, nicht Teil dieser Slice)
