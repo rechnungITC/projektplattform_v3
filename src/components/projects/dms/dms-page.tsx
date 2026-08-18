@@ -25,6 +25,7 @@ import {
   AlertDialogTitle,
 } from "@/components/ui/alert-dialog"
 import { Button } from "@/components/ui/button"
+import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs"
 import {
   Card,
   CardContent,
@@ -69,6 +70,7 @@ import {
 import type { TreeForestNode } from "@/types/dms"
 
 import { ConfidentialityBadge } from "@/components/projects/ma/confidentiality-badge"
+import { DocumentSummaryPanel } from "@/components/projects/dms/document-summary-panel"
 
 import { DmsQuotaBar } from "./dms-quota-bar"
 import { DmsTree } from "./dms-tree"
@@ -339,31 +341,58 @@ export function DmsPage({ projectId }: { projectId: string }) {
                 ) : null}
               </>
             ) : (
-              <dl className="space-y-1.5">
-                <MetaRow label="Dateiname" value={selected.document?.original_filename ?? selected.name} />
-                <MetaRow label="Typ" value={selected.document?.mime_type ?? "—"} />
-                <MetaRow
-                  label="Größe"
-                  value={selected.document ? formatBytes(selected.document.size_bytes) : "—"}
-                />
-                <MetaRow
-                  label="Angelegt"
-                  value={new Date(selected.created_at).toLocaleString("de-DE")}
-                />
-                <MetaRow
-                  label="Vertraulichkeit"
-                  value={
-                    MA_CONFIDENTIALITY_LEVEL_LABELS[
-                      selected.confidentiality_level
-                    ]
-                  }
-                />
-                <div className="pt-2">
-                  <Button size="sm" onClick={() => handleDownload(selected)}>
-                    Herunterladen
-                  </Button>
-                </div>
-              </dl>
+              // PROJ-80-α — Vorschau und Quintessenz als Reiter. Ein dritter
+              // Reiter "Verlinkungen" steht in der Spec, hat aber heute keine
+              // Datenquelle: auf `documents` verweist ausser Auszug und
+              // Quintessenz kein einziges Domaenen-Objekt (live geprueft). Ein
+              // Reiter, der nur "nichts" zeigen kann, waere ein Versprechen
+              // ohne Deckung — er kommt, wenn es Verweise gibt (PROJ-Y-doc-refs).
+              <Tabs defaultValue="vorschau">
+                <TabsList>
+                  <TabsTrigger value="vorschau">Vorschau</TabsTrigger>
+                  <TabsTrigger value="quintessenz">Quintessenz</TabsTrigger>
+                </TabsList>
+                <TabsContent value="vorschau" className="pt-3">
+                  <dl className="space-y-1.5">
+                    <MetaRow label="Dateiname" value={selected.document?.original_filename ?? selected.name} />
+                    <MetaRow label="Typ" value={selected.document?.mime_type ?? "—"} />
+                    <MetaRow
+                      label="Größe"
+                      value={selected.document ? formatBytes(selected.document.size_bytes) : "—"}
+                    />
+                    <MetaRow
+                      label="Angelegt"
+                      value={new Date(selected.created_at).toLocaleString("de-DE")}
+                    />
+                    <MetaRow
+                      label="Vertraulichkeit"
+                      value={
+                        MA_CONFIDENTIALITY_LEVEL_LABELS[
+                          selected.confidentiality_level
+                        ]
+                      }
+                    />
+                    <div className="pt-2">
+                      <Button size="sm" onClick={() => handleDownload(selected)}>
+                        Herunterladen
+                      </Button>
+                    </div>
+                  </dl>
+                </TabsContent>
+                <TabsContent value="quintessenz" className="pt-3">
+                  {selected.document ? (
+                    <DocumentSummaryPanel
+                      projectId={projectId}
+                      documentId={selected.document.id}
+                      canEdit={canEdit}
+                    />
+                  ) : (
+                    <p className="text-muted-foreground">
+                      Zu diesem Eintrag gehört keine Datei.
+                    </p>
+                  )}
+                </TabsContent>
+              </Tabs>
             )}
           </CardContent>
         </Card>
