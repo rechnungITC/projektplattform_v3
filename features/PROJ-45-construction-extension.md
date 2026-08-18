@@ -183,7 +183,8 @@ bei aktivem Modul erscheinen, damit ERP-, Software- und M&A-Projekte unveränder
 
 **Status: In Progress** (2026-08-18) · zweiter Sub-Slice, baut auf dem deployten α auf.
 `/backend` ist fertig und in Prod (Migration `20260818104358`, Live-Pentest 53/53, 0 Rückstände);
-`/frontend` und `/qa` folgen als eigene Schritte.
+`/frontend` ist fertig (Mängel-Fläche, Druckseite, Zähler je Gewerk, ein Nav-Eintrag; 9/9
+Visual-Baselines unberührt), **`/qa` steht aus**.
 Deployment Scope bleibt leer bis zum Deploy und wird dann `alpha` — β ist ein benannter Sub-Slice, und
 AC-45β.18 ist per Nutzer-Entscheid nach δ verschoben (D-β1).
 
@@ -687,6 +688,188 @@ liefert die Zähler je Gewerk bereits). `/qa` steht aus.
 - **PROJ-45-α:** die zwei projektbezogenen Entfernen-Pfade bilden weiterhin jeden Datenbankfehler
   ausser `42501` auf **500** ab. β behebt das für Mängel (409 mit Nennung); für andere künftige
   Verweise bleibt es bestehen (**PROJ-Y-45b**, im Tech Design registriert).
+
+---
+
+## Implementierungsnotizen — /frontend β (2026-08-18)
+
+Kein neues Paket, keine Migration, kein neuer RPC. Die Datenschicht aus `/backend` hat alles getragen,
+was die Fläche braucht — auch die Zähler je Gewerk (`construction_defect_summary`) und die
+benennende Teilbaum-Abfrage lagen bereits vor.
+
+**Was entstanden ist**
+
+| Fläche | Datei | Inhalt |
+|---|---|---|
+| Projektraum-Reiter „Mängel" | `src/app/(app)/projects/[id]/maengel/page.tsx` + `construction-defects-page.tsx` | Register mit fünf serverseitigen Filtern, Kopfzahlen, Zeilenaktionen |
+| Erfassen / Bearbeiten | `construction-defect-dialog.tsx` | eine Maske für beide Vorgänge, mit sichtbaren Leeren-Schaltern |
+| Detail + Statuswechsel + Verlauf | `construction-defect-detail-sheet.tsx` | Handlungen, Vier-Augen-Erklärung, unveränderliche Zeitleiste |
+| Mängelanzeige erzeugen | `construction-defect-notice-dialog.tsx` | Achse Gewerk **oder** Nachunternehmer, Vorschau-Zahl |
+| Mängelanzeige (Druck) | `src/app/projects/[id]/maengelanzeige/print/page.tsx` | chrome-los, ausserhalb der App-Hülle, Sitzungs-Client |
+| Navigation | `src/lib/method-templates/index.ts` | **ein** Eintrag, +18 Zeilen im Merge-Hotspot |
+| α-Fläche „Gewerke" | `project-trades-page.tsx` | Zähler je Gewerk (Mängel · überfällig · wartet auf Prüfung) |
+| Reine Ableitungen | `defect-actions.ts`, `defect-notice.ts` | Angebots-Spiegel, Änderungs-Differenz, Anzeigen-Umfang |
+| Lesezugriffe | `use-construction-defects.ts` | Liste, Zähler, Verlauf — Hausmuster inkl. `moduleInactive` |
+
+**Das Zwei-Akteur-Gate in der Oberfläche — erklären, nicht nachbauen.** Die Regel lebt in
+`transition_construction_defect_status` und weist mit `42501` ab (D-β9: die Routen gaten nur `view`).
+Die Fläche tut drei Dinge und keins davon formuliert die Regel neu:
+
+1. Für die Rechtefrage fragt sie das **bestehende Hausprädikat** `useProjectAccess(…,
+   "manage_members")` ab — das ist `admin | lead` **ohne** den permissiven Rückfall, den
+   `edit_master` trägt, und damit deckungsgleich mit `is_tenant_admin OR is_project_lead` in den
+   Funktionen. Bewusst **nicht** `edit_master`: das schliesst den Projekt-`editor` ein, den diese
+   Slice ausschliesst (B-β2). „Mangel erfassen" trägt umgekehrt **gar kein** Rechte-Gate (L15).
+2. Sie bietet nur Handlungen an, die der Aufrufer wirklich ausführen kann. `offeredDefectActions`
+   entfernt „Abnehmen" für die Person, die fertiggemeldet hat — verglichen wird dasselbe Feld, das
+   die Datenbank liest (`reported_done_by`), das bei **jeder** Fertigmeldung neu gesetzt wird. Damit
+   stimmt die Anzeige auch in Runde n nach mehrfacher Rückweisung (Pentest-Vektor K).
+   „Zurückweisen" und „Verwerfen" bleiben stehen — sonst wäre der Mangel eingefroren.
+3. Sie **benennt den klemmenden Fall** statt ihn zu verschweigen: `describeReviewBlock` erklärt, dass
+   die Abnahme eine zweite berechtigte Person braucht, und sagt für den Fall „Projektleitung ist
+   gleichzeitig die einzige Mandanten-Administration" ausdrücklich, dass der legitime Ausweg eine
+   zweite Projektleitung ist (B-β7). **Kein Umgehungsweg, kein stiller Übersteuerungsschalter**
+   — PROJ-119-Haltung.
+
+**Die Leeren-Schalter sind wirklich in der Maske.** Alle fünf optionalen Felder tragen einen
+sichtbaren „Leeren"-Knopf, sobald sie einen Wert haben: Beschreibung, Ort, Frist, Verantwortlicher,
+Nachunternehmer. Ort und Nachunternehmer haben zusätzlich eine ausdrückliche Leer-Option in der
+Auswahl („— ohne Ortsangabe —" / „— keiner —"), weil eine Auswahl ohne solche Option gar nicht
+zurückgesetzt werden kann.
+
+Die Übersetzung nach `clear_*: true` macht `buildDefectUpdatePayload` als **Differenz** zum
+Ausgangszustand — ein in der Maske geleertes Feld wird zum Schalter, nicht zu einem weggelassenen
+Feld (das hiesse „unverändert") und nicht zu einem Leerstring (das wäre ein gesetzter Wert). Genau
+dieser Unterschied ist die in PROJ-122 live ausgelieferte Defektklasse. Das ist eine reine Funktion
+und mit den drei Vektoren des Pentests gepinnt: setzen, weglassen (Wert bleibt), Schalter (Wert wird
+leer); dazu ein Fall, der beweist, dass **nie** ein Wert und sein eigener Schalter zusammen gesendet
+werden (die Route weist das mit 422 als widersprüchlich ab). Bei „nichts geändert" wird gar nicht
+gesendet, weil die Funktion einen leeren Rumpf mit 422 abweist — die Maske sagt dann „Keine Änderung"
+statt einen Fehler zu zeigen.
+
+**Zwei getrennte Signale, nicht verschmolzen.** „überfällig" (rot, mit Frist) gilt nur in `offen`
+und `in_bearbeitung`; sobald fertiggemeldet ist, erscheint stattdessen „wartet auf Prüfung" (amber) —
+dort läge die Verspätung bei der Bauleitung, und ein gemeinsames Abzeichen würde den Falschen
+anzeigen (B-β6). Beide Signale stehen in der Zeile, in der Detailansicht **und** in den Kopfzahlen;
+die Zeilen-Flags kommen aus der vorhandenen TS-Lib (`deriveDefectFlags`), die Kopf- und
+Gewerke-Zähler aus dem SQL-Zwilling — es ist **keine dritte Kopie** entstanden (D-β8 unverändert).
+
+**Ein AC hat eine Entscheidung erzwungen, die im Entwurf nicht stand.** AC-45β.4 verlangt, dass ein
+neu erfasster Mangel „ohne weiteren Schritt in der Liste sichtbar" ist. Bei aktivem Filter kann er
+das nicht sein: wer nach „Gewerk Dach" filtert und einen Elektro-Mangel erfasst, sähe nichts und
+müsste rätseln. Nach dem Erfassen wird die Auswahl deshalb zurückgesetzt **und das gesagt**
+(„Filter zurückgesetzt, damit der neue Mangel sichtbar ist") — nicht stillschweigend behalten und
+nicht stillschweigend verworfen.
+
+**Die Mängelanzeige.** Chrome-lose Route ausserhalb der `(app)`-Gruppe, alle vier Abfragen über den
+cookie-gebundenen Sitzungs-Client (`createClient`) — **nie** der Dienst-Schlüssel; genau daran hängt
+AC-45β.16. Das Modul-Tor ist von Hand nachgezogen (`requireModuleActive` gibt eine HTTP-Antwort für
+Routen zurück, eine Seite braucht `notFound()`), Regel wörtlich übernommen inklusive „fehlende
+Einstellungszeile → offen bleiben". Ein nicht gesetzter Ort wird **weggelassen** statt als
+„unbekannt" gedruckt (Edge Case β). Der Vorschau-Zähler im Dialog läuft über eine **eigene,
+ungefilterte** Abfrage: die Liste der Fläche zu nehmen wäre bei aktivem Filter eine Zusage, die das
+gedruckte Blatt bricht.
+
+**Der Modul-Aus-Zustand ist der dritte Zustand, nicht Fehler und nicht leer.** Die Fläche rendert
+`ModuleUnavailableNotice` (PROJ-Y-143f), und die abhängigen Abrufe (Gewerke, Abschnitte, Zähler)
+werden gar nicht gestartet, sobald die Liste 404 gemeldet hat. Lieferanten-Stammdaten sind bewusst
+**optional**: ist das Modul „Lieferanten" aus, bleibt die Auswahl leer und weist darauf hin — über
+das Gewerk funktioniert alles weiter, und ein fremdes Modul darf hier keinen Fehlerbanner erzeugen.
+Ein bereits gesetzter Nachunternehmer bleibt in der Auswahl wählbar, auch wenn er nicht in der
+geladenen Liste steht; sonst verlöre ein Speichervorgang die Zuordnung stillschweigend.
+
+### Nachweise je Akzeptanzkriterium
+
+| AC | Nachweis |
+|---|---|
+| AC-45β.1 | „Mangel erfassen" ohne Rechte-Gate in der Kopfzeile; Autorität ist die Anlege-Funktion (Pentest A: Betrachter darf, D2: Editor darf) |
+| AC-45β.2 | Speichern erst bei Titel **und** Gewerk; Schweregrad vorbelegt `gering`; die vier übrigen Felder optional |
+| AC-45β.3 | Auswahl kommt aus `useProjectTrades`/`useConstructionSections` **dieses** Projekts; serverseitig durch die PROJ-Y-45a-Wächter belegt |
+| AC-45β.4 | Anlegen → `reload()`; bei aktivem Filter Rücksetzen mit Hinweis (siehe oben) |
+| AC-45β.5 | Zeilen-Bearbeiten-Knopf und Steuerblock nur bei `manage_members`; Server entscheidet (Pentest D) |
+| AC-45β.6 | fünf Leeren-Schalter + `buildDefectUpdatePayload` (7 Unit-Fälle, darunter „Wert und Schalter nie zusammen") |
+| AC-45β.7 | Handlungsknöpfe aus `availableDefectActions`, gegen die Migrationstabelle gepinnt (je Handlung ein Fall) |
+| AC-45β.8 | „Verwerfen" öffnet den Begründungsblock; Senden erst bei nicht-leerem Text |
+| AC-45β.9 | „Abnehmen" nur im Steuerblock, der `manage_members` verlangt |
+| AC-45β.10 | `offeredDefectActions` hält „Abnehmen" zurück, `describeReviewBlock` erklärt es (6 Unit-Fälle inkl. Runde 2) |
+| AC-45β.11 | „Zurückweisen" mit Pflichtbegründung, Zielzustand `in_bearbeitung` aus der gepinnten Tabelle |
+| AC-45β.12 | Zeitleiste aus `construction_defect_events`, älteste zuerst, mit Begründung je Runde und Hinweis auf Unveränderlichkeit |
+| AC-45β.13 | Anzeigen-Dialog mit Achse Gewerk **oder** Nachunternehmer |
+| AC-45β.14 | Druckseite ausserhalb der App-Hülle, `theme-print`, kein Renderer |
+| AC-45β.15 | je Mangel Nr., Titel, Beschreibung, Ort (nur falls gesetzt), Schweregrad, Frist; Kopf mit Projekt, Adressat, Datum, Ersteller |
+| AC-45β.16 | ausschliesslich Sitzungs-Client; RLS ist `is_project_member`, Playwright belegt Anmelde-Umleitung ohne Inhalt |
+| AC-45β.17 | rote Frist + „überfällig" in der Zeile, Abzeichen in Kopf und Detail |
+| AC-45β.18 | **nicht gebaut** — nach δ verschoben (D-β1) |
+| AC-45β.19 | fünf Filter (Gewerk · Abschnitt · Status · Schweregrad · nur überfällig), alle serverseitig |
+| AC-45β.20 | Nav-Sektion mit `requiresProjectType: "construction"` **und** `requiresModule: "construction"`; Fläche zeigt `ModuleUnavailableNotice`, Druckseite `notFound()` |
+| AC-45β.21 | 409 mit Nennung kommt aus `/backend`; die α-Fläche zeigt die Servermeldung unverändert an (`ConstructionApiError` trägt den Status mit) |
+| AC-45β.22 | keine Zeile und kein Zähler entsteht im Client; alles kommt aus RLS-gebundenen Abfragen und der INVOKER-Auswertung |
+
+Die Härtungskriterien AC-45βH-1…10 und -12 sind serverseitig und im `/backend`-Pentest (53/53)
+belegt; **AC-45βH-11** ist die Hälfte, die diese Slice hinzufügt und die hier belegt ist
+(Playwright: Anmelde-Umleitung ohne „Mängelanzeige" im Rumpf). Der authentifizierte Durchlauf
+bleibt `/qa`.
+
+### Abweichungen (/frontend β)
+
+- **D-β10 — der Zustandsautomat steht ein zweites Mal, in TypeScript.** Ohne ihn müsste die Fläche
+  alle sechs Handlungen anbieten und den 422 abwarten. Er ist ein **Angebots-Spiegel**, keine zweite
+  Autorität: die Datenbank prüft unverändert. Gepinnt durch eine Testtabelle, die den `case
+  p_action`-Block der Migration **wörtlich abschreibt** statt ihn aus dem Prüfling abzuleiten — ein
+  Test, der seine Erwartung aus dem Prüfling bezieht, bestätigt nur sich selbst.
+- **D-β11 — die Anzeige lässt geprüfte und verworfene Mängel weg.** Der Wortlaut von AC-45β.13/.15
+  nennt nur die Achse, keinen Status. Ausgenommen sind ausschliesslich die beiden **abschliessenden**
+  Zustände: bei `geprueft` ist abgenommen, bei `verworfen` war es keiner — eine Aufforderung wäre in
+  beiden Fällen falsch. `erledigt` bleibt **drin** und wird als „fertiggemeldet, Prüfung offen"
+  gekennzeichnet, damit keine Position verschwindet, die der Empfänger erwartet. Die Regel steht
+  einmal (`NOTICE_STATUSES`), wird im Dialog angekündigt und im Blatt als Fusszeile ausgewiesen.
+- **D-β12 — „Verantwortlich" erscheint nur beim Bearbeiten.** Die Anlege-Funktion nimmt das Feld
+  nicht an; es beim Erfassen anzuzeigen hiesse, eine Eingabe zu verwerfen.
+- **D-β13 — die Druckseite verlässt sich auf die RLS statt auf ein eigenes Mitgliedschafts-Tor.**
+  Ein Mandanten-Mitglied ohne Projektmitgliedschaft sieht eine **leere** Anzeige, keinen 404. Kein
+  Inhaltsabfluss (`construction_defects` verlangt `is_project_member`), und der Projektname ist ihm
+  über die PROJ-2-RLS ohnehin sichtbar. Genau so verhalten sich die drei bestehenden Druckseiten
+  (PROJ-116/131/132).
+- **D-β14 — kein authentifizierter Browser-Durchlauf in diesem Schritt.** Die Flächen sind
+  modul-gegatet und der E2E-Mandant hat `construction` **aus**; ihn einzuschalten hätte die frisch
+  stabilisierten Visual-Baselines verschoben (PROJ-Y-143f/143l-Lehre). Belegt ist stattdessen: die
+  neun Baselines bleiben **unberührt** (siehe unten), die α-Auth-Gates 16/16 grün, die zwei neuen
+  Flächen auth-gegatet. Der Durchlauf gehört zu `/qa`.
+- **Kein Deep-Link von den Gewerke-Zählern in die gefilterte Mängelliste.** Die Filter sind
+  Zustand, nicht URL; ein Link, der die Auswahl nicht setzt, wäre irreführend. Der Zähler
+  informiert, er navigiert nicht.
+
+### Baselines und Gates
+
+**Visual-Regression unberührt, empirisch belegt:** `PROJ-51-visual-regression-authenticated`
+**9/9 grün ohne Neuaufnahme**. Erwartet, weil der Visual-Mandant `construction` nicht in
+`E2E_VISUAL_ACTIVE_MODULES` führt und die drei Bau-Sektionen damit doppelt herausgefiltert werden
+(Modul **und** Projekttyp) — aber gemessen statt geschlossen. `routing.test.ts` brauchte keine
+Anpassung: α hat die Invariante schon von „genau eine Sektion je Modul" auf ihre Absicht umgestellt.
+
+| Gate | Ergebnis |
+|---|---|
+| `npx eslint .` | **0 Fehler** (Exit 0) |
+| `npx tsc --noEmit` | **13 = Baseline, 0 neu** |
+| `npx vitest run` | **3240/3240** (395 Dateien), davon **34 neu** in dieser Slice |
+| `npm run build` | clean, beide neuen Routen registriert (`/projects/[id]/maengel`, `…/maengelanzeige/print`) |
+| `npm run check:migration-naming` | 0 Fehler |
+| `npm run check:index-scope` | 0 Fehler |
+| Playwright `PROJ-45-construction` | **18/18** chromium (16 α-Regression + 2 neu) |
+| Playwright `PROJ-51-visual-authenticated` | **9/9**, keine Baseline neu gezogen |
+
+**Eine Messfalle unterwegs, festgehalten weil sie wiederkehrt:** die erste Baseline-Messung meldete
+**15** tsc-Fehler ohne die Slice gegen 13 mit ihr — die Slice hätte Fehler *behoben*. Ursache waren
+die von `npm run build` erzeugten Routen-Typen unter `.next`, die nach dem Wegstashen auf gelöschte
+Dateien zeigten. Nach `rm -rf .next` sind beide Seiten **13**. Dieselbe Klasse wie der
+`validator.ts`-Befund aus PROJ-Y-143e; eine tsc-Baseline ist nur mit geleertem `.next` belastbar.
+
+### Nicht in dieser Slice gebaut
+
+`/qa` steht aus: der authentifizierte Durchlauf (Erfassen als Betrachter → Fertigmelden → Abnahme
+durch eine **zweite** Person), die fünf Risiken aus dem Tech Design (Feld leeren, Vier-Augen unter
+einer Person, Anker-Zweige zählen, Teilbaum-Sperre am **Enkel**, Überfälligkeits-Grenzen) sowie ein
+echter Druck nach PDF. AC-45β.18 bleibt nach **δ** verschoben.
 
 ---
 

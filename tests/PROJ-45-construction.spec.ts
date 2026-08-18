@@ -165,3 +165,39 @@ test.describe("PROJ-45 / construction auth-gates", () => {
     expect(page.url()).toContain("/login")
   })
 })
+
+/**
+ * PROJ-45-β — die beiden Flächen, die der `/frontend`-Schritt hinzufügt.
+ *
+ * Die fünf β-API-Routen sind hier bewusst NICHT aufgeführt: sie gehören zum
+ * `/backend`-Schritt und sind dort über 39 Route-Unit-Tests und den Live-Pentest
+ * (53/53 gegen Prod, 0 Rückstände) abgedeckt. Was diese Slice neu erreichbar
+ * macht, sind zwei Seiten — und die Druckseite liegt ausserhalb der App-Hülle,
+ * ist also die einzige, bei der man das Anmelde-Tor nicht schon aus der
+ * Gruppenzugehörigkeit ableiten kann.
+ *
+ * Die Tiefe (Rollen, Vier-Augen, Leeren-Schalter, Teilbaum-Sperre) prüft der
+ * Pentest; ein authentifizierter Browser-Durchlauf gehört zu `/qa`.
+ */
+test.describe("PROJ-45-β / defect surfaces auth-gates", () => {
+  test("the project Mängel tab is auth-gated", async ({ page }) => {
+    await page.goto(`/projects/${DUMMY}/maengel`, { waitUntil: "domcontentloaded" })
+    expect(page.url()).toContain("/login")
+  })
+
+  test("the Mängelanzeige print page is auth-gated and leaks no defect content", async ({
+    page,
+  }) => {
+    const res = await page.goto(
+      `/projects/${DUMMY}/maengelanzeige/print?trade=${DUMMY}`,
+      { waitUntil: "domcontentloaded" }
+    )
+    expect(page.url()).toContain("/login")
+    expect(res?.status()).toBeLessThan(500)
+    // AC-45βH-11: kein Mangel-Inhalt im Rumpf, auch nicht die Überschrift der
+    // Anzeige — sonst verriete die Umleitungsseite, dass es die Fläche gibt.
+    const body = await page.content()
+    expect(body).not.toContain("Mängelanzeige")
+    expect(body).not.toContain("construction_defects")
+  })
+})
