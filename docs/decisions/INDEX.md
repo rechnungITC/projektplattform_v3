@@ -13,6 +13,7 @@
 | [compliance-as-dependency.md](compliance-as-dependency.md) | Compliance & process artifacts (ISO, GDPR, M365, vendor-evaluation, etc.) are first-class dependencies via tags + `ComplianceTrigger` service. |
 | [connector-framework.md](connector-framework.md) | Connector registry with `ConnectorDescriptor`, default `UnconfiguredConnector` stubs, admin-only API surface. |
 | [data-privacy-classification.md](data-privacy-classification.md) | Three data classes (1/2/3); class-3 (personal data) is technically blocked from external LLMs — no bypass. |
+| [governance-history-retention-vs-erasure.md](governance-history-retention-vs-erasure.md) | **Proposed — wartet auf rechtliche Feststellung.** Fällt die append-only Governance-Historie (Genehmigungen, Freigaben, Freischaltungen, Mängel, Stakeholder-Profile) unter eine Ausnahme des Art. 17 Abs. 3 DSGVO? Faktenlage gemessen, Folgen je Antwort benannt; entscheidet, ob überhaupt ein Löschmechanismus gebaut wird. |
 | [deployment-modes.md](deployment-modes.md) | Two operation modes (shared SaaS, stand-alone enterprise) sharing one codebase, switched by config. |
 | [master-data-editing.md](master-data-editing.md) | Master-data editing covered by cross-cutting Audit/Undo/Role-checks; no new code path needed for EP-03-ST-05. |
 | [metadata-model-context-sources.md](metadata-model-context-sources.md) | Minimal metadata model for context sources: required (id/project/type/title/date), optional (author/origin/tag), and Wave-3 reserved fields. |
