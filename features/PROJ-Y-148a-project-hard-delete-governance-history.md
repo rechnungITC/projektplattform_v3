@@ -14,8 +14,8 @@ summary_for_jira: "[CORE] Papierkorb: 4 Projekte nicht loeschbar wegen append-on
 
 # PROJ-Y-148a — Hard-Delete vs. append-only Governance-Historie
 
-## Status: Approved (Variante 1 gebaut + verifiziert 2026-08-19 — 0 Critical / 0 High)
-## Deployment Scope: —
+## Status: Deployed
+## Deployment Scope: full
 
 > **Entscheid des Nutzers 2026-08-19: Variante 1.** Q-1 ist damit beantwortet. Die AC der Variante 2
 > bleiben als verworfene Alternative stehen (Abschnitt 7) und sind **nicht** umgesetzt; sie sind keine
@@ -204,10 +204,10 @@ Genau das ist behebbar, ohne eine einzige Zusage anzufassen.
 
 ## 10. Nächste Schritte
 
-- [ ] Nutzer entscheidet Q-1.
-- [ ] Bei V1: `/frontend` + schmaler Route-Anteil, ~0,5 PT, keine Migration, kein CIA-Folgepass nötig.
-- [ ] Bei V2: `/architecture` mit CIA-Folgepass (unumkehrbarer Eingriff, R-1/R-2), dann `/backend`.
-- [ ] Q-2 als eigenen Followup registrieren, unabhängig vom Entscheid.
+- [x] Nutzer entscheidet Q-1. **Entschieden 2026-08-19: Variante 1.**
+- [x] Bei V1: `/frontend` + schmaler Route-Anteil, ~0,5 PT, keine Migration, kein CIA-Folgepass nötig. **Gebaut, verifiziert und deployed 2026-08-19** (PR #407 → main `29d0002`, Tag `v2.63.0-PROJ-Y-148a`).
+- [~] Bei V2: `/architecture` mit CIA-Folgepass … — **entfällt.** Variante 2 wurde als Alternative **verworfen**, nicht zurückgestellt: sie gibt fünf append-only-Zusagen auf und liefert dafür keine verwertbare Historie (NOT NULL + doppeltes CASCADE → die überlebende Zeile ist lesbar, aber nicht auflösbar), und sie löst die DSGVO-Frage nicht, sondern verschärft sie. Deshalb ist ihr Nichtbau **keine** offene Original-Anforderung und schließt Scope `full` nicht aus.
+- [x] Q-2 als eigenen Followup registrieren, unabhängig vom Entscheid. **Registriert als PROJ-Y-148b** (DSGVO Art. 17 auf `payload`, CIA-pflichtig).
 
 ## Nachweise dieser Vorlage
 
@@ -497,3 +497,23 @@ append-only-Zusagen sind nach der Slice wörtlich unverändert") ist nicht mehr 
 dieser Slice fremd gebrochen wurde. Diese Slice hält den überprüfbaren Teil (sie fasst keinen Guard, keine
 Migration und keinen Fremdschlüssel an); den Rest führt **PROJ-Y-148c**. Wer `full` stempelt, sollte das
 mitschreiben, statt es in ein Häkchen zu verwandeln.
+
+## Deploy und Post-Deploy-Nachweis (2026-08-19)
+
+**Deployed:** PR #407 (squash) → main `29d0002`, Tag `v2.63.0-PROJ-Y-148a`, Vercel-Prod-Deployment
+`5978173031` `success`. Keine Migration, kein Guard, kein Fremdschlüssel, keine neue Route — der Merge
+ist der Runtime-Deploy.
+
+**Post-Deploy-Smoke gegen Prod.** HTTP: die berührte Löschroute in beiden Methoden sowie Projektliste und
+Papierkorb-Seite antworten ohne Sitzung durchweg **307**, Rumpf nur `Redirecting...` — kein Leck über
+Projektexistenz oder Blockadegrund. DB-Lesevektor **byte-gleich zur Vor-Deploy-Messung**: 52 Projekte,
+23 im Papierkorb, Ereigniszeilen 47 / 10 / 0 / 0 / 0 über die fünf Inseln. Die Slice hat also nichts an
+Daten bewegt, was sie auch nicht sollte.
+
+**Was der Smoke nicht zeigt, ausdrücklich benannt:** der blockierte Pfad ist im Browser nicht
+durchgefahren. Er müsste eine append-only-Zeile in Prod schreiben, die danach unentfernbar ist und ihr
+Projekt dauerhaft unlöschbar macht — der Nachweis würde also genau den Zustand herstellen, den die Slice
+beschreibt. Gedeckt ist er stattdessen dreifach: 33 Unit-Fälle mit ausgeführter Rot-Grün-Gegenprobe in
+beide Richtungen, die Live-Löschprobe in zurückgerollter Transaktion (blockiert → `23514`, unblockiert →
+`rows_left=0`), und die PostgREST-Gegenprobe, die den FK-Anker als tragend belegt (ohne ihn HTTP 300) —
+letzteres kann kein Unit-Test leisten.
