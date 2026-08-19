@@ -14,15 +14,11 @@ summary_for_jira: "[HYGIENE] Modulschalter `organization` ist nur auf dem CSV-Im
 
 # PROJ-Y-143n: der Modulschalter `organization` hält nur zur Hälfte, was er verspricht
 
-## Status: Approved
-## Deployment Scope: —
-<!-- Scope stays empty until the merge: `general.md` allows a value only on
-     `Deployed`. From the evidence below `full` is the classification the deploy
-     run should record — all 12 applicable criteria are met with measured
-     evidence and nothing is deferred out of the slice. The one item that cannot
-     be closed before the merge is the second half of AC-Y143n.11 (the
-     post-deploy read vector on the production tenant); the pre-deploy half is
-     measured. -->
+## Status: Deployed
+## Deployment Scope: full
+<!-- Deployed 2026-08-19: PR #406 (squash) -> main `0280610`, Tag `v2.62.0-PROJ-Y-143n`.
+     Prod-Deployment 5978088984 `success`. Die vor dem Merge einzig offene Haelfte von
+     AC-Y143n.11 (Lesevektor NACH dem Deploy) ist damit belegt; Nachweis in der Tabelle. -->
 **Created:** 2026-08-18
 **Origin:** Abweichung D-Y143k.3 aus PROJ-Y-143k — dort bewusst nicht mitentschieden, weil eine
 Kennzeichnung im UI das fehlende Server-Tor nicht ersetzt und die Nachrüstung API-Verhalten ändert.
@@ -283,18 +279,18 @@ Kriterien greifen, ist je Variante ausgewiesen. Über den Fork entscheidet der N
 
 ## Definition of Done
 
-- [ ] Der Fork ist vom Nutzer entschieden; die gewählte Variante steht mit Begründung in dieser Spec.
-- [ ] Alle gemeinsamen Kriterien (.1–.6) sowie die Kriterien der gewählten Variante sind erfüllt und je
+- [x] Der Fork ist vom Nutzer entschieden; die gewählte Variante steht mit Begründung in dieser Spec.
+- [x] Alle gemeinsamen Kriterien (.1–.6) sowie die Kriterien der gewählten Variante sind erfüllt und je
       Kriterium mit Nachweis belegt (Datei:Zeile, Testname, oder Live-Abfrage).
-- [ ] Live gegen Prod geprüft, in **beiden** Schalterstellungen, in einem **Test**mandanten — nicht im
+- [x] Live gegen Prod geprüft, in **beiden** Schalterstellungen, in einem **Test**mandanten — nicht im
       Kundenmandanten; keine Rückstände, Gegenabfrage dokumentiert.
-- [ ] Neue Tests: je betroffener Route ein Tor-Test; mindestens ein Playwright-Auth-Gate-Test für die
+- [x] Neue Tests: je betroffener Route ein Tor-Test; mindestens ein Playwright-Auth-Gate-Test für die
       bislang völlig untestete Fläche.
-- [ ] Gates: ESLint 0 · tsc = Baseline / 0 neu · vitest grün · Build clean · `check:index-scope` ohne
+- [x] Gates: ESLint 0 · tsc = Baseline / 0 neu · vitest grün · Build clean · `check:index-scope` ohne
       Fehler · bei Migration zusätzlich `check:migration-naming`.
-- [ ] Visual-Regression: entweder unverändert grün, oder Baseline begründet und im Bild geprüft neu
+- [x] Visual-Regression: entweder unverändert grün, oder Baseline begründet und im Bild geprüft neu
       gezogen.
-- [ ] Buchführung: `features/INDEX.md`, diese Spec und `features/OPEN-DEFERRED-STATUS.md` stimmen
+- [x] Buchführung: `features/INDEX.md`, diese Spec und `features/OPEN-DEFERRED-STATUS.md` stimmen
       überein; die Korrektur an PROJ-Y-143k ist eingetragen.
 
 ---
@@ -492,7 +488,7 @@ Fall, der die erste Kachel absichert, die `adminOnly` **und** modul-gegatet ist.
 | **.8** | Siehe „Die zwei Sonderfälle" oben; die tragenden Fälle sind `gates on the row's tenant, not on the active workspace` (4×, mit auseinanderfallenden Mandanten) und `never reaches the RPC when the gate closes`. |
 | **.9** | Live im Browser (Playwright, authentifiziert, Modul aus): beide Seiten zeigen „Das Modul „Organisation" ist für diesen Workspace nicht aktiv.", und es ist **weder** der rote Kasten („Daten konnten nicht geladen werden" 0×, „Resource not found." 0×) **noch** eine Leer-Behauptung; CSV-Import-Knopf, Tree-Reiter und Upload-Reiter sind nicht vorhanden. |
 | **.10** | `stammdaten-sections.ts` + Kommentarblock; `stammdaten-sections.test.ts` von 9 auf 10 Fälle, gepinnte Liste um `["/stammdaten/organisation", "organization"]` erweitert. |
-| **.11** | Produktivmandant `IT-Couch GmbH` **vor und nach** allen Läufen: `organization` **ON**, **3** Organisationseinheiten, **1** Standort — unverändert. Über alle Mandanten: 3 Einheiten / 1 Standort / 0 Importe gesamt, **0** Sonden-Zeilen, **2** Mandanten mit `organization` an (identisch zur Erhebung im Requirements-Lauf). Es wurde **keine** Mandanten-Einstellung dauerhaft verändert; die einzige Änderung war der Testmandant im Experiment, zurückgeschrieben und verifiziert. Zweite Hälfte („nach dem Deploy") gehört in den Deploy-Lauf. |
+| **.11** | Produktivmandant `IT-Couch GmbH` **vor und nach** allen Läufen: `organization` **ON**, **3** Organisationseinheiten, **1** Standort — unverändert. Über alle Mandanten: 3 Einheiten / 1 Standort / 0 Importe gesamt, **0** Sonden-Zeilen, **2** Mandanten mit `organization` an (identisch zur Erhebung im Requirements-Lauf). Es wurde **keine** Mandanten-Einstellung dauerhaft verändert; die einzige Änderung war der Testmandant im Experiment, zurückgeschrieben und verifiziert. Zweite Hälfte („nach dem Deploy") gehört in den Deploy-Lauf. **Zweite Hälfte nach dem Deploy nachgeholt (2026-08-19, Prod-Deployment 5978088984 `success` für `0280610`):** DB-Lesevektor über **alle** Mandanten — Produktivmandant `organization` **an**, **3** Einheiten, **1** Standort, 11 Module, also byte-gleich zum Vor-Deploy-Stand; kein Mandant in unerwartetem Zustand. HTTP-Lesevektor über **alle 8 gegateten Routen plus beide Seiten**: durchweg **307** Auth-Gate, Rumpf nur `Redirecting...`, kein Leck. Der 307 ist dabei der tragende Teil und nicht bloß Formsache: läge das Modul-Tor **vor** dem Auth-Gate, müsste eine anonyme Anfrage je Modulzustand unterschiedlich antworten (404 statt 307) — die Reihenfolge Auth-vor-Tor ist damit in der ausgelieferten Umgebung gemessen, nicht nur im Code gelesen. |
 | **.12** | In PROJ-62 an der Randfall-Zeile dokumentiert: 403 gilt für die sieben schreibenden Handler, die fünf lesenden antworten nach PROJ-17 ST-02 mit **404**. Die literale PROJ-62-Formulierung ist als **überholt gekennzeichnet, nicht umgeschrieben**. |
 | **.13–.16** | Nicht anwendbar (Variante B verworfen). |
 
