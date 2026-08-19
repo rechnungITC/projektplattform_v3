@@ -10,6 +10,11 @@
 **Origin:** Q-2 aus der PROJ-Y-148a-Vorlage, dort ausdrücklich nicht mitentschieden. Verschärft durch
 PROJ-Y-148d (fünf blockende Inseln) und PROJ-Y-148c (der einzige faktische Tilgungsweg ist entfernt).
 **Art:** CIA-Review mit Entscheidungsvorlage. **Kein Code, keine Migration.**
+**Nutzer-Entscheid 2026-08-19: Variante V1** — Rechtsgrundlage zuerst klären. Die Frage ist als ADR
+[governance-history-retention-vs-erasure.md](../docs/decisions/governance-history-retention-vs-erasure.md)
+mit Status `Proposed — wartet auf rechtliche Feststellung` gestellt, kategorienweise beantwortbar.
+**PROJ-Y-148f wartet ebenfalls auf diesen Entscheid** (Nutzer-Entscheid 2026-08-19), weil seine
+richtige Auflösung davon abhängt.
 
 ---
 
@@ -180,9 +185,13 @@ aufzulösen ist — heute macht er jeden Stakeholder unlöschbar, der je eine En
 
 ### Gemeinsam
 
-- [ ] **AC-Y148b.1** — Die Rechtsfrage ist **entschieden und schriftlich begründet** (ADR): fällt die
-      Governance-Historie unter Art. 17 Abs. 3 oder nicht. Ohne diese Entscheidung wird keine der
-      technischen Varianten gebaut.
+- [~] **AC-Y148b.1** — Die Rechtsfrage ist **gestellt und dokumentiert**, die Antwort steht aus.
+      ADR [governance-history-retention-vs-erasure.md](../docs/decisions/governance-history-retention-vs-erasure.md),
+      Status `Proposed`: die Frage ist nach Art. 17 Abs. 3 lit. b/e formuliert und in **drei**
+      Kategorien getrennt (Genehmigungs-/Freigabe-Historie · Mängel-Historie ·
+      Stakeholder-Profile), weil ein gemischtes Ergebnis wahrscheinlich ist — die Profildaten sind
+      der schwächste Kandidat für eine Ausnahme. Die Folgen je Antwort stehen im ADR.
+      **Solange `Proposed`, wird keine der technischen Varianten gebaut.**
 - [ ] **AC-Y148b.2** — Die Oberfläche sagt bei einem Löschverlangen ehrlich, was aufbewahrt wird und
       warum (Muster: die Absage aus PROJ-Y-148a).
 - [ ] **AC-Y148b.3** — F-4 ist adressiert: der Widerspruch `ON DELETE SET NULL` gegen
