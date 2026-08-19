@@ -37,9 +37,25 @@ const orgUnitsChain: {
   },
 }
 
+// PROJ-Y-143n — the handlers now read `tenant_settings` through
+// `requireModuleActive`. Default is "organization is on", so every test below
+// keeps asserting exactly what it asserted before the gate existed; the new
+// block at the bottom switches it off.
+let activeModules: string[] | null = ["organization"]
+
+const tenantSettingsChain = {
+  select: () => tenantSettingsChain,
+  eq: () => tenantSettingsChain,
+  maybeSingle: async () => ({
+    data: activeModules === null ? null : { active_modules: activeModules },
+    error: null,
+  }),
+}
+
 const fromMock = vi.fn((table: string) => {
   if (table === "tenant_memberships") return tenantMembershipChain
   if (table === "organization_units") return orgUnitsChain
+  if (table === "tenant_settings") return tenantSettingsChain
   throw new Error(`unexpected table ${table}`)
 })
 
@@ -65,6 +81,7 @@ function makePost(body: unknown): Request {
 
 beforeEach(() => {
   vi.clearAllMocks()
+  activeModules = ["organization"]
   tenantMembershipChain.select.mockReturnValue(tenantMembershipChain)
   tenantMembershipChain.eq.mockReturnValue(tenantMembershipChain)
   tenantMembershipChain.order.mockReturnValue(tenantMembershipChain)
@@ -250,5 +267,70 @@ describe("POST /api/organization-units", () => {
     expect(res.status).toBe(400)
     const body = (await res.json()) as { error: { code: string } }
     expect(body.error.code).toBe("invalid_parent")
+  })
+})
+
+// PROJ-Y-143n — the `organization` module gate.
+//
+// PROJ-62 promised this ("requireModuleActive gates all UI and API paths") and
+// its own QA filed the omission as debt; only the PROJ-63 CSV-import routes
+// ever got it, which made the switch half-effective rather than merely
+// unenforced. Read intent answers 404 so the gate reveals nothing, write intent
+// answers 403.
+describe("organization module gate", () => {
+  function signedInAdmin() {
+    getUserMock.mockResolvedValue({ data: { user: { id: USER_ID } } })
+    // `mockReset` first, deliberately: these cases stop early on purpose, so
+    // they leave an unconsumed `mockResolvedValueOnce` behind — and
+    // `vi.clearAllMocks()` does not drain that queue. Without the reset the
+    // next case would read the previous one's leftover reply as its
+    // active-tenant lookup and fail for a reason unrelated to the gate. The
+    // pre-existing cases in this file are only safe because each consumes
+    // exactly two replies.
+    tenantMembershipChain.maybeSingle.mockReset()
+    tenantMembershipChain.maybeSingle
+      .mockResolvedValueOnce({ data: { tenant_id: TENANT_ID }, error: null })
+      .mockResolvedValueOnce({ data: { role: "admin" }, error: null })
+  }
+
+  it("GET answers 404 when the module is off", async () => {
+    activeModules = []
+    signedInAdmin()
+    const res = await GET()
+    expect(res.status).toBe(404)
+    expect(await res.json()).toEqual({
+      error: { code: "not_found", message: "Resource not found." },
+    })
+  })
+
+  it("GET leaks no unit names when the module is off", async () => {
+    activeModules = []
+    signedInAdmin()
+    orgUnitsChain.__listResult = {
+      data: [{ id: "u1", name: "Acme Holding" }],
+      error: null,
+    }
+    const res = await GET()
+    expect(await res.text()).not.toContain("Acme")
+  })
+
+  it("POST answers 403 when the module is off, and writes nothing", async () => {
+    activeModules = []
+    signedInAdmin()
+    const res = await POST(makePost({ name: "X", type: "team" }))
+    expect(res.status).toBe(403)
+    const body = (await res.json()) as { error: { code: string } }
+    expect(body.error.code).toBe("module_disabled")
+    expect(orgUnitsChain.insert).not.toHaveBeenCalled()
+  })
+
+  it("fails open when the tenant has no settings row at all", async () => {
+    // Mirrors `requireModuleActive`: a legacy tenant without a settings row
+    // keeps working instead of losing its organization behind a 404.
+    activeModules = null
+    signedInAdmin()
+    orgUnitsChain.__listResult = { data: [], error: null }
+    const res = await GET()
+    expect(res.status).toBe(200)
   })
 })

@@ -2,12 +2,23 @@
 
 import * as React from "react"
 
+import { apiRequestError, isUnavailable } from "@/lib/api-error"
 import type { OrganizationLandscapeItem } from "@/types/organization"
 
 interface UseOrganizationLandscapeResult {
   items: OrganizationLandscapeItem[]
   loading: boolean
   error: string | null
+  /**
+   * PROJ-Y-143n — the `organization` module is not active for this workspace.
+   *
+   * Separate from `error` because it is not a failure (PROJ-Y-143f): this
+   * route's only 404 path is `requireModuleActive` with read intent, whose
+   * body is the deliberately generic "Resource not found.". Rendered as
+   * `error` that reads as a defect, which is exactly the bug this slice
+   * removes from the CSV-import page.
+   */
+  unavailable: boolean
   refresh: () => Promise<void>
 }
 
@@ -23,6 +34,7 @@ export function useOrganizationLandscape(
   const [items, setItems] = React.useState<OrganizationLandscapeItem[]>([])
   const [loading, setLoading] = React.useState(false)
   const [error, setError] = React.useState<string | null>(null)
+  const [unavailable, setUnavailable] = React.useState(false)
 
   const refresh = React.useCallback(async () => {
     if (!enabled) return
@@ -32,14 +44,20 @@ export function useOrganizationLandscape(
       const response = await fetch("/api/organization-landscape", {
         cache: "no-store",
       })
-      if (!response.ok) {
-        throw new Error(`HTTP ${response.status}`)
-      }
+      if (!response.ok) throw await apiRequestError(response)
       const body = (await response.json()) as {
         items: OrganizationLandscapeItem[]
       }
       setItems(body?.items ?? [])
+      setUnavailable(false)
     } catch (err) {
+      // Module gate, not a failure — see `unavailable` above.
+      if (isUnavailable(err)) {
+        setItems([])
+        setUnavailable(true)
+        return
+      }
+      setUnavailable(false)
       setError(err instanceof Error ? err.message : String(err))
     } finally {
       setLoading(false)
@@ -51,6 +69,7 @@ export function useOrganizationLandscape(
     if (!enabled) {
       setItems([])
       setError(null)
+      setUnavailable(false)
       setLoading(false)
       return
     }
@@ -63,5 +82,5 @@ export function useOrganizationLandscape(
     }
   }, [enabled, refresh])
 
-  return { items, loading, error, refresh }
+  return { items, loading, error, unavailable, refresh }
 }

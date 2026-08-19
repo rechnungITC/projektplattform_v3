@@ -6,6 +6,7 @@ import { useRouter, useSearchParams } from "next/navigation"
 import * as React from "react"
 import { toast } from "sonner"
 
+import { ModuleUnavailableNotice } from "@/components/app/module-unavailable-notice"
 import { Button } from "@/components/ui/button"
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs"
 import { useOrganizationImports } from "@/hooks/use-organization-imports"
@@ -22,6 +23,7 @@ export function OrganizationImportPageClient() {
     imports,
     loading,
     error,
+    unavailable,
     refresh,
     upload,
     preview,
@@ -137,7 +139,17 @@ export function OrganizationImportPageClient() {
         </div>
       ) : null}
 
-      {loadingPreview ? (
+      {/* PROJ-Y-143n — this is the page the slice was opened for: it has been
+          answering 404 in every workspace with the module off since PROJ-63,
+          and the hook painted that 404 red as if the import were broken. The
+          gate was right, the rendering was not. Upload, history and rollback
+          are all behind the same gate, so none of them is offered here. */}
+      {unavailable ? (
+        <ModuleUnavailableNotice
+          title="Das Modul „Organisation“ ist für diesen Workspace nicht aktiv."
+          description="Der CSV-Import gehört zum Modul „Organisation“. Ein Tenant-Admin kann es unter Einstellungen → Workspace aktivieren."
+        />
+      ) : loadingPreview ? (
         <div className="rounded-md border p-6 text-sm text-muted-foreground">
           Vorschau wird geladen…
         </div>

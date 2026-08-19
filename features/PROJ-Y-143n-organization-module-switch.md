@@ -14,8 +14,15 @@ summary_for_jira: "[HYGIENE] Modulschalter `organization` ist nur auf dem CSV-Im
 
 # PROJ-Y-143n: der Modulschalter `organization` hält nur zur Hälfte, was er verspricht
 
-## Status: Planned
+## Status: Approved
 ## Deployment Scope: —
+<!-- Scope stays empty until the merge: `general.md` allows a value only on
+     `Deployed`. From the evidence below `full` is the classification the deploy
+     run should record — all 12 applicable criteria are met with measured
+     evidence and nothing is deferred out of the slice. The one item that cannot
+     be closed before the merge is the second half of AC-Y143n.11 (the
+     post-deploy read vector on the production tenant); the pre-deploy half is
+     measured. -->
 **Created:** 2026-08-18
 **Origin:** Abweichung D-Y143k.3 aus PROJ-Y-143k — dort bewusst nicht mitentschieden, weil eine
 Kennzeichnung im UI das fehlende Server-Tor nicht ersetzt und die Nachrüstung API-Verhalten ändert.
@@ -327,6 +334,13 @@ Schalter verschwindet aus der Bedienfläche) — die Entscheidung liegt also nic
 | Preis 3 | Zurückgenommen würde eine Zusage, die nicht nur im Typ-Katalog steht, sondern **in der Datenbank**: die PROJ-62-Migration registriert den Schlüssel, backfillt jeden Mandanten und setzt ihn in die Startliste jedes neuen Mandanten (`…:478-500`). Nach B stünde in dieser Startliste ein reservierter Schlüssel |
 | Wofür B trotzdem sprechen könnte | Wenn Organisationsdaten produktstrategisch als **Kern** gelten (wie Backlog — vgl. D-144.1: `ModuleKey` hat bewusst keinen Backlog-Schalter), dann ist Abschaltbarkeit gar nicht gewollt, und A würde eine Fähigkeit härten, die es nicht geben soll |
 
+### Entschieden: Variante A (Nutzer-Entscheid 2026-08-19)
+
+Der Fork ist zugunsten von **A** entschieden — das Tor wird nachgerüstet, die
+Zusage also eingelöst statt zurückgenommen. Umgesetzt in dieser Slice; die
+Nachweise stehen unter „Umsetzung und Nachweise" am Ende dieser Datei. Die
+Kriterien .13–.16 (Variante B) sind damit **nicht anwendbar**.
+
 ### Empfehlung: Variante A
 
 **Tragender Grund:** die Zusage steht nicht in einer Typ-Liste, die man leise umsortieren kann, sondern in
@@ -386,3 +400,154 @@ richtig und A wäre gehärteter Unsinn. Genau deshalb wird hier nichts implement
 - **Requires PROJ-Y-143k** (Kachel-Kennzeichnung; Ursprung dieses Followups, Aussage zu korrigieren) — Deployed.
 - **Berührt PROJ-Y-143l** (Visual-Mandant hat das Modul aus → `stammdaten.png`) und **PROJ-51**
   (Baseline-Toleranzen).
+
+---
+
+## Umsetzung und Nachweise (Variante A, 2026-08-19)
+
+### Was gebaut wurde
+
+**Server — 12 Handler in 8 Dateien**, jeder mit `requireModuleActive(…,
+"organization", …)`: 5 lesende ohne `intent` (→ **404**), 7 schreibende mit
+`{ intent: "write" }` (→ **403**). Kein neuer Helfer, kein neues Muster — die
+zwei Zeilen stehen so, wie PROJ-45-α sie in seinen sieben `construction`-Routen
+stehen hat, und in derselben Reihenfolge wie im PROJ-63-Helfer: **Modul-Tor vor
+der Rollenprüfung**.
+
+| Datei | Handler | Absicht | Mandanten-Anker |
+|---|---|---|---|
+| `organization-units/route.ts` | `GET` · `POST` | read · write | `resolveActiveTenantId` |
+| `organization-units/[id]/route.ts` | `PATCH` · `DELETE` | write · write | **geladene Zeile** |
+| `organization-units/[id]/move/route.ts` | `POST` | write | **geladene Zeile** (neu) |
+| `organization-units/tree/route.ts` | `GET` | read | `resolveActiveTenantId` |
+| `organization-units/combobox/route.ts` | `GET` | read | `resolveActiveTenantId` |
+| `locations/route.ts` | `GET` · `POST` | read · write | `resolveActiveTenantId` |
+| `locations/[id]/route.ts` | `PATCH` · `DELETE` | write · write | **geladene Zeile** |
+| `organization-landscape/route.ts` | `GET` | read | `resolveActiveTenantId` |
+
+**Die zwei Sonderfälle, wie gefordert gelöst und begründet (AC-Y143n.8):**
+
+1. **Die vier `[id]`-Handler** behalten die Auflösung aus der geladenen Zeile;
+   das Tor sitzt direkt hinter dem Lookup. Ein zweiter Auflösungspfad wäre hier
+   nicht bloß redundant, sondern **falsch**: diese Handler wirken bewusst auf
+   den Mandanten der Zeile, ein Tor auf dem *aktiven* Mandanten könnte also die
+   Einstellungen eines anderen Mandanten befragen als den, in den geschrieben
+   wird. Das Tor kann seinem eigenen Anker damit nicht vorausgehen — was es
+   garantiert und auch tut: vor ihm wird **nichts mutiert und kein
+   Fachinhalt zurückgegeben** (der Vorab-Lookup liest nur Identitätsspalten, und
+   eine für den Aufrufer per RLS unsichtbare Zeile hat schon vorher 404
+   geantwortet). Zwei Testfälle je Handler nageln das fest: sie lassen
+   Zeilen-Mandant und aktiven Mandanten **auseinanderfallen** und prüfen, welchen
+   das Tor befragt hat — ein Tor auf dem aktiven Mandanten würde ein naives
+   „Modul aus → 403" bestehen und dabei die falschen Einstellungen lesen.
+2. **`move`** hatte auf Routen-Ebene **überhaupt keinen** Mandantenbezug; die
+   `SECURITY DEFINER`-RPC war das Einzige, was gatete. Die Route lädt jetzt die
+   zu verschiebende Einheit — derselbe Anker wie bei den Geschwistern, kein
+   neuer. Die RPC verliert **keine** ihrer Prüfungen (sie leitet Mandant, Rolle,
+   Same-Tenant-Parent, Zyklen und den Optimistic-Lock intern aus `auth.uid()`
+   ab); ein Testfall prüft, dass die RPC bei geschlossenem Tor **gar nicht
+   erreicht** wird, und drei weitere, dass ihre eigenen Absagen (`forbidden`,
+   `version_conflict`, `cycle_detected`) bei offenem Tor unverändert
+   durchkommen.
+
+**Zwei bewusste Verhaltensänderungen an `move`**, beide dokumentiert statt
+versteckt: eine per RLS unsichtbare Einheit antwortet nun **404 vor** der RPC
+(die DEFINER-RPC sah die Zeile und antwortete 403) — das ist das Verhalten der
+Geschwister-Handler und leakt weniger, nicht mehr; und bei geschlossenem Modul
+antwortet ein fehlerhafter Body **403 statt 400**, weil das Tor vor der
+Validierung läuft, wie auf jeder anderen gegateten Route.
+
+**UI — der dritte Zustand (AC-Y143n.9).** `unavailable` in **fünf** Hooks
+(`use-organization-units`, `-tree`, `-locations`, `-landscape`, `-imports`), über
+`apiRequestError`/`isUnavailable` aus PROJ-Y-143f; `ModuleUnavailableNotice` auf
+beiden Seiten; die Aktionen, die nur 403 erzeugen könnten, verschwinden
+(CSV-Import-Knopf, Tabs, Anlegen). Der Grund darf hier überall benannt werden,
+weil **jede** dieser fünf Listen-Routen genau **einen** 404-Pfad hat (401 ohne
+Sitzung, 403 ohne Mandant/Rolle, 404 nur vom Modul-Tor) — die Wortwahl-Regel aus
+143f ist also erfüllt und nicht bloß beachtet. `location-table.tsx` bekommt den
+Zustand ebenfalls, weil es seine **eigene** `useLocations`-Instanz hält.
+
+**Der Defekt, für den die Slice geöffnet wurde**, ist damit weg: die
+CSV-Import-Seite hat seit PROJ-63 in vier von sechs Mandanten 404 geantwortet
+und das als roten Fehlerkasten gezeigt. Das Tor war richtig, die Darstellung
+nicht.
+
+**Kachel (AC-Y143n.10).** `requiresModule: "organization"` in
+`stammdaten-sections.ts`; der Kommentarblock, der die Auslassung begründete, ist
+auf den neuen Stand gebracht. Der pinnende Test trägt jetzt vier Zeilen statt
+drei — die Erwartung wurde **erweitert, nicht abgeschwächt** —, plus ein neuer
+Fall, der die erste Kachel absichert, die `adminOnly` **und** modul-gegatet ist.
+
+### Nachweise je Kriterium
+
+| AC | Nachweis |
+|---|---|
+| **.1** | Erhebung über alle `requireModuleActive`-Aufrufstellen (multiline-tolerant, nicht per Zeilen-Grep): **alle 12** `TOGGLEABLE_MODULES`-Schlüssel haben mindestens eine Aufrufstelle — `ai_proposals` 21 · `budget` 18 · `vendor` 15 · `resources` 14 · `construction` 12 · `decisions` 10 · `communication` 8 · `risks` 6 · `output_rendering` 5 · `assistant` 4 · `audit_reports` 2 · **`organization` 12 (vorher 1)**. `connectors` steht in `RESERVED_MODULES`, hat also korrekt keine. **Wichtige Einschränkung, ausdrücklich protokolliert:** „≥ 1 Aufrufstelle" ist **nicht** dasselbe wie „jede Route dieses Moduls gatet" — genau diese Metrik hat `organization` drei Monate lang unauffällig gemacht (1 gegatete, 11 ungegatete Routen sehen im Grep wie Abdeckung aus). Für `organization` ist die vollständige Abdeckung hier handverfolgt und getestet; für die übrigen 11 ist der Ist-Zustand erhoben und **nicht** saniert (Abgrenzung der Spec). Eine Vollprüfung je Schlüssel wäre ein Sammel-Refactoring über fremde Belange → CIA-pflichtig, eigener Eintrag. |
+| **.2** | Live gegen Prod-DB + laufenden Server, in **beiden** Schalterstellungen im Testmandanten `e2e00000-…-0002`. **Aus:** Playwright 17/17, darunter beide Seiten mit Hinweis statt Fehlerkasten und `{units:404, tree:404, combobox:404, locations:404, landscape:404, createUnit:403, createLocation:403}`. **An** (einmaliges Experiment, `active_modules` vorher `["risks","decisions","ai_proposals","audit_reports"]`): alle fünf Lesewege **200**, beide Schreibwege **400** (= im Validator, also hinter dem Tor), echter Rundlauf **Anlegen 201 → in der Liste sichtbar → Löschen 204**, beide Seiten rendern die echte Oberfläche. Danach exakt zurückgeschrieben und verifiziert (`RESTORED active_modules = ["risks","decisions","ai_proposals","audit_reports"]`). Der halbe Zustand ist damit beseitigt: in **beiden** Stellungen verhalten sich Kernfläche und Import gleich. |
+| **.3** | Drei Ebenen. **(a) Struktur:** `git diff` berührt weder `src/app/api/_lib/route-helpers.ts` noch eine Policy oder Migration; die 12 `requireTenantMember`/`requireTenantAdmin`-Aufrufe stehen unverändert an derselben Stelle. **(b) Live-RLS**, `tests/sql/PROJ-Y-143n-organization-rls-no-regress.sql` gegen Prod, **6/6 PASS, 0 Rückstände** (Rollback-Marker): synthetisierter Nicht-Admin liest 3 Einheiten und 1 Standort, `INSERT` → **42501**, `UPDATE` → **0 Zeilen**, `DELETE` → **0 Zeilen**, und V6 belegt, dass die Identität wirklich kein Admin ist (ohne diesen Vektor wären die vier darüber falsch-grün — in Prod ist jede Mitgliedschaft `admin`). **(c) Unit:** je Sammel-Route ein Fall „Nicht-Admin bleibt bei offenem Modul 403 `forbidden`". Rechte-Regress ist damit gemessen, nicht aus der Diff-Größe geschlossen. |
+| **.4** | `features/PROJ-Y-143k-…md` trägt einen ausdrücklichen Korrekturblock: „vollständig wirkungslos" → „nur auf den fünf CSV-Import-Routen wirksam", mit Fundort `organization-imports/_helpers.ts:48-53`, und die Tabellenzeile steht auf „⚠️ **halb**". Die Korrektur benennt auch die **Ursache des Irrtums** (die Frage „gibt es Aufrufstellen?" statt „gatet jede Route?"), weil sonst dieselbe Fehlmessung wiederkommt. `OPEN-DEFERRED-STATUS.md` trug die korrigierte Fassung bereits aus dem Requirements-Lauf; dort ist jetzt der Status nachgezogen. |
+| **.5** | Genau **eine** Baseline bewegt sich: `stammdaten.png`, 1796 → **1832 px** (+36 px), 26.966 abweichende Pixel — die Kachel wird zur **dritten** gekennzeichneten, weil der Visual-Mandant das Modul aus hat. Vor der Übernahme **im Bild geprüft** (gestrichelter Rahmen, Schloss statt Chevron, gedämpfter Titel, Modul-Zeile; geladener Zustand, keine Skelette, kein Kompilier-Abzeichen) und per **Löschen der Datei** neu gezogen, nicht per `--update-snapshots`. Danach **3× 9/9** stabil; die anderen acht Baselines waren im selben Lauf grün, also kein Kollateral. Keine Toleranz angefasst. |
+| **.6** | PROJ-63 Randfall (Zeile 169) abgehakt **mit Fundort** und mit dem Hinweis, dass dies drei Monate lang die einzige Aufrufstelle im Produktivcode war; PROJ-62 M2-Re in der Fund-Tabelle **und** in der Carry-over-Tabelle auf „behoben" gesetzt, samt der Feststellung, dass die dort angekündigte Polish-Slice nie gebaut wurde. PROJ-62 AC (Zeile 97) auf `[x]` mit der Trennung „Datenbank-Hälfte 2026-05 / Tor-Hälfte 2026-08". |
+| **.7** | 12 Gates gezählt (2+2+1+1+1+2+2+1), davon 7 mit `{ intent: "write" }`. **28 neue Route-Unit-Fälle in 7 Dateien plus 4 in der bestehenden** — je Handler eigene Fälle, kein Sammeltest. **Rot-Grün geführt:** mit zurückgenommenen Gates fallen **25 von 53** Fällen, während die 28 Fälle für unverändertes Verhalten grün bleiben (genau die Aufteilung, die man will). |
+| **.8** | Siehe „Die zwei Sonderfälle" oben; die tragenden Fälle sind `gates on the row's tenant, not on the active workspace` (4×, mit auseinanderfallenden Mandanten) und `never reaches the RPC when the gate closes`. |
+| **.9** | Live im Browser (Playwright, authentifiziert, Modul aus): beide Seiten zeigen „Das Modul „Organisation" ist für diesen Workspace nicht aktiv.", und es ist **weder** der rote Kasten („Daten konnten nicht geladen werden" 0×, „Resource not found." 0×) **noch** eine Leer-Behauptung; CSV-Import-Knopf, Tree-Reiter und Upload-Reiter sind nicht vorhanden. |
+| **.10** | `stammdaten-sections.ts` + Kommentarblock; `stammdaten-sections.test.ts` von 9 auf 10 Fälle, gepinnte Liste um `["/stammdaten/organisation", "organization"]` erweitert. |
+| **.11** | Produktivmandant `IT-Couch GmbH` **vor und nach** allen Läufen: `organization` **ON**, **3** Organisationseinheiten, **1** Standort — unverändert. Über alle Mandanten: 3 Einheiten / 1 Standort / 0 Importe gesamt, **0** Sonden-Zeilen, **2** Mandanten mit `organization` an (identisch zur Erhebung im Requirements-Lauf). Es wurde **keine** Mandanten-Einstellung dauerhaft verändert; die einzige Änderung war der Testmandant im Experiment, zurückgeschrieben und verifiziert. Zweite Hälfte („nach dem Deploy") gehört in den Deploy-Lauf. |
+| **.12** | In PROJ-62 an der Randfall-Zeile dokumentiert: 403 gilt für die sieben schreibenden Handler, die fünf lesenden antworten nach PROJ-17 ST-02 mit **404**. Die literale PROJ-62-Formulierung ist als **überholt gekennzeichnet, nicht umgeschrieben**. |
+| **.13–.16** | Nicht anwendbar (Variante B verworfen). |
+
+### Gates
+
+ESLint **0** · tsc **13 = Baseline, 0 neu** (alle 13 in unberührten Dateien) ·
+vitest **3109/3109** (393 Dateien, **+52**) · Build clean · `check:index-scope`
+0 Fehler · `check:migration-naming` 0 Fehler (keine Migration in dieser Slice) ·
+Playwright `PROJ-Y-143n-organization-module-gate.spec.ts` **17/17** chromium ·
+Visual **3× 9/9**.
+
+### Funde und Abweichungen
+
+- **F-Y143n.1 (behoben, in der Slice entstanden).** Die neuen Fälle in der
+  bestehenden `organization-units/route.test.ts` fielen zunächst mit einer
+  irreführenden Meldung: `vi.clearAllMocks()` leert die
+  `mockResolvedValueOnce`-Warteschlange **nicht**, und weil Tor-Fälle bewusst
+  früh abbrechen, hinterlassen sie eine unverbrauchte Antwort, die der nächste
+  Fall als seine Mandanten-Auflösung liest. Behoben mit `mockReset()` und im
+  Testcode begründet. Der Bestand war nur zufällig sicher: jeder alte Fall
+  verbraucht genau zwei Antworten. Genau deshalb dispatcht die neue
+  `src/test/module-gate-harness.ts` auf die **abgefragte Spalte** statt auf die
+  Aufrufreihenfolge — eine Kopplung, die still bricht, sobald ein Handler eine
+  Abfrage gewinnt oder verliert, also bei genau dieser Art Änderung.
+- **D-Y143n.1** — Ein geteilter Test-Harness (`src/test/module-gate-harness.ts`)
+  statt acht kopierter Mock-Blöcke. Er mockt ausdrücklich **nicht**
+  `requireModuleActive`, sondern nur die `tenant_settings`-Zeile, die es liest:
+  der echte Gate-Code läuft in jedem Fall, inklusive der 404/403-Weiche und des
+  **fail-open**-Zweigs bei fehlender Settings-Zeile (eigener Testfall). Ein
+  weggemocktes Tor hätte den Mock getestet.
+- **D-Y143n.2** — Der Beweis für **beide** Schalterstellungen ist ein
+  dokumentiertes **Einzel-Experiment**, kein committeter Test. Ein Test, der die
+  Modul-Einstellung eines geteilten Fixture-Mandanten umschaltet, würde die
+  Specs beeinflussen, die denselben Mandanten nutzen — genau die Kopplung, die
+  PROJ-Y-143l eine Slice lang beseitigt hat (dort mit derselben Begründung
+  read-only gehalten). Committet ist die read-only Hälfte, und sie **prüft ihre
+  eigene Voraussetzung**: der Spec liest `active_modules` per Service-Role und
+  schlägt mit einem erklärenden Satz fehl, falls der Mandant das Modul doch an
+  hat — sonst würde er nur belegen, dass eine funktionierende Seite keine
+  Fehlerseite ist.
+- **D-Y143n.3** — „Mitglied schreibend → abgewiesen" ist **live auf der
+  RLS-Ebene** und in Unit-Tests belegt, **nicht** über eine echte
+  Browser-Sitzung eines Nicht-Admins. Grund: in Prod ist jede Mitgliedschaft
+  `admin`, und `enforce_admin_invariant` verhindert das Herabstufen des letzten
+  Admins; einen zweiten Auth-Nutzer anzulegen und anzumelden wäre neue
+  Fixture-Fläche für eine Aussage, die die Policies bereits messbar tragen.
+- **D-Y143n.4** — Aus der Spec-Abgrenzung übernommen und **nicht** angefasst:
+  `tenant_organization_landscape` verbindet `organization_units` mit `vendors`,
+  also berührt die Lesesicht zwei Modulschalter. Gegatet ist hier nur
+  `organization` — das Modul, dem die Route gehört. Ob eine Fläche zwei Schalter
+  lesen müsste, bleibt die eigene Frage, die die Spec benannt hat.
+- **D-Y143n.5** — Kein CIA-Pass. Spec-folgende Umsetzung des etablierten
+  `requireModuleActive`-Musters, kein neues Dependency, kein neues
+  Persistenzmuster, keine Migration — der von der Spec vorgesehene Fall.
+- **Nicht in dieser Slice, unverändert offen:** die englischen Texte der
+  Import-Seite („Organization CSV Import") sind ein PROJ-Y-143m-Rest; die 11
+  übrigen Modulschlüssel sind erhoben, nicht saniert; ob `move` über das Tor
+  hinaus ein eigenes Routen-Gate braucht, obwohl die RPC prüft, bleibt getrennt.
