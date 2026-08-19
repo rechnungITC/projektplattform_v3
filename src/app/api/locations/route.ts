@@ -1,6 +1,8 @@
 import { NextResponse } from "next/server"
 import { z } from "zod"
 
+import { requireModuleActive } from "@/lib/tenant-settings/server"
+
 import {
   apiError,
   getAuthenticatedUserId,
@@ -31,6 +33,13 @@ export async function GET() {
   const tenantId = await resolveActiveTenantId(userId, supabase)
   if (!tenantId) return apiError("forbidden", "No tenant membership.", 403)
 
+  const moduleDenial = await requireModuleActive(
+    supabase,
+    tenantId,
+    "organization",
+  )
+  if (moduleDenial) return moduleDenial
+
   const memberDenial = await requireTenantMember(supabase, tenantId, userId)
   if (memberDenial) return memberDenial
 
@@ -50,6 +59,14 @@ export async function POST(request: Request) {
 
   const tenantId = await resolveActiveTenantId(userId, supabase)
   if (!tenantId) return apiError("forbidden", "No tenant membership.", 403)
+
+  const moduleDenial = await requireModuleActive(
+    supabase,
+    tenantId,
+    "organization",
+    { intent: "write" },
+  )
+  if (moduleDenial) return moduleDenial
 
   const adminDenial = await requireTenantAdmin(supabase, tenantId, userId)
   if (adminDenial) return adminDenial

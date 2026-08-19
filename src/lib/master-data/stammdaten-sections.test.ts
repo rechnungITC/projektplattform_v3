@@ -43,9 +43,14 @@ const ALL_MODULES: ModuleKey[] = [
 
 describe("STAMMDATEN_SECTIONS", () => {
   it("only declares requiresModule where a server gate exists", () => {
-    // Kept in lockstep with `requireModuleActive` call sites. `organization`
-    // is intentionally absent: the toggle exists but no organization route
-    // enforces it, so claiming "not active" would be false.
+    // Kept in lockstep with `requireModuleActive` call sites. Adding a key
+    // here is a claim about the server, so this list is pinned exactly: a new
+    // entry has to be argued for, not slipped in.
+    //
+    // Counting call sites is *not* enough to justify an entry, which is how
+    // `organization` stayed wrong for three months — it had one gated route
+    // (the CSV import) and eleven ungated ones, so any grep for the key found
+    // a hit. PROJ-Y-143n gated all twelve handlers; hence the fourth line.
     const gated = STAMMDATEN_SECTIONS.filter((s) => s.requiresModule).map(
       (s) => [s.href, s.requiresModule],
     )
@@ -55,6 +60,9 @@ describe("STAMMDATEN_SECTIONS", () => {
       // so the tile may honestly claim the gate.
       ["/stammdaten/gewerke", "construction"],
       ["/stammdaten/vendors", "vendor"],
+      // PROJ-Y-143n — all 12 handlers behind /stammdaten/organisation (units,
+      // tree, combobox, locations, landscape, move) now gate on the key.
+      ["/stammdaten/organisation", "organization"],
     ])
   })
 
@@ -84,7 +92,7 @@ describe("resolveStammdatenSections", () => {
     expect(resolved.filter((s) => s.moduleInactive)).toHaveLength(1)
   })
 
-  it("flags both gated tiles when both modules are off", () => {
+  it("flags every gated tile when all of their modules are off", () => {
     const resolved = resolveStammdatenSections(
       settings(["risks", "decisions", "ai_proposals", "audit_reports"]),
     )
@@ -92,7 +100,18 @@ describe("resolveStammdatenSections", () => {
       "/stammdaten/resources",
       "/stammdaten/gewerke",
       "/stammdaten/vendors",
+      "/stammdaten/organisation",
     ])
+  })
+
+  it("keeps the organisation tile a link while its module is on", () => {
+    // PROJ-Y-143n — the tile is admin-only *and* module-gated, the first in
+    // this grid to be both. Neither flag may swallow the other: with the
+    // module on the tile must stay navigable for an admin.
+    const resolved = resolveStammdatenSections(settings(["organization"]))
+    const organisation = resolved.find(bySlug("organisation"))
+    expect(organisation?.moduleInactive).toBe(false)
+    expect(organisation?.adminOnly).toBe(true)
   })
 
   it("leaves core master data untouched when every module is off", () => {

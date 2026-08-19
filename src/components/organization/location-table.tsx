@@ -22,6 +22,7 @@ import {
   TableHeader,
   TableRow,
 } from "@/components/ui/table"
+import { ModuleUnavailableNotice } from "@/components/app/module-unavailable-notice"
 import { useLocations } from "@/hooks/use-locations"
 import type { Location } from "@/types/organization"
 
@@ -32,7 +33,8 @@ interface LocationTableProps {
 }
 
 export function LocationTable({ canEdit }: LocationTableProps) {
-  const { locations, loading, error, create, patch, remove } = useLocations()
+  const { locations, loading, error, unavailable, create, patch, remove } =
+    useLocations()
   const [editing, setEditing] = React.useState<Location | null>(null)
   const [dialogOpen, setDialogOpen] = React.useState(false)
   const [deletingId, setDeletingId] = React.useState<string | null>(null)
@@ -73,6 +75,19 @@ export function LocationTable({ canEdit }: LocationTableProps) {
           <Skeleton key={i} className="h-10 w-full" />
         ))}
       </div>
+    )
+  }
+
+  // PROJ-Y-143n — the module gate answers 404; that is a state, not a fault.
+  // Checked before `error` because this component owns its own `useLocations`
+  // instance: the page already stops rendering the tab when the module is off,
+  // so this branch is defence in depth against the two ever disagreeing.
+  if (unavailable) {
+    return (
+      <ModuleUnavailableNotice
+        title="Das Modul „Organisation“ ist für diesen Workspace nicht aktiv."
+        description="Standorte gehören zum Modul „Organisation“."
+      />
     )
   }
 
