@@ -22,7 +22,22 @@
 import { expect, test } from "@playwright/test"
 
 const DUMMY = "00000000-0000-0000-0000-000000000000"
-const GATE = [307, 401, 403, 404]
+/**
+ * PROJ-45-β `/qa` — tightened from `[307, 401, 403, 404]` to the single value
+ * that actually occurs.
+ *
+ * Measured against the running app: every construction endpoint — all twelve α
+ * ones and all six new β ones — answers exactly **307** with
+ * `location: /login?next=…`, because the proxy gates before the handler ever
+ * runs. A four-value array was therefore three values too generous, and each
+ * spare value hid a different regression: `404` would keep the test green if a
+ * route were DELETED, `403` if the gate stopped being an auth redirect, `401`
+ * if the proxy stopped matching the path. An assertion that cannot fail is not
+ * a gate test.
+ */
+const GATE_STATUS = 307
+/** Kept as an array so `expect(...).toContain(...)` reads unchanged below. */
+const GATE = [GATE_STATUS]
 
 test.describe("PROJ-45 / construction auth-gates", () => {
   test("GET /api/construction-trades (tenant catalog) is auth-gated", async ({
@@ -144,7 +159,9 @@ test.describe("PROJ-45 / construction auth-gates", () => {
       failOnStatusCode: false,
       maxRedirects: 0,
     })
-    expect([...GATE, 400]).toContain(res.status())
+    // Not `[...GATE, 400]`: the proxy redirects before the handler validates the
+    // id, so an unauthenticated malformed request never reaches the 400 path.
+    expect(GATE).toContain(res.status())
     const body = await res.text()
     expect(body).not.toContain("construction_sections")
   })
