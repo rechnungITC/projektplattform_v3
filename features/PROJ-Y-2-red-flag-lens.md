@@ -14,9 +14,10 @@ summary_for_jira: "[M&A] Red-Flag-Lens (Filter + EUR-Summe) auf dem DD-Findings-
 
 # PROJ-Y-2: Red-Flag-Lens auf dem DD-Findings-Panel
 
-## Status: In Review
-## Deployment Scope: —
+## Status: Deployed
+## Deployment Scope: full
 **Created:** 2026-08-17
+**Deployed:** 2026-08-18 — Tag `v2.60.0-PROJ-Y-2` auf dem Merge-Commit **`9a2d59e`** (PR #397, squash → `main`, gemergt 14:00:20Z durch `rechnungITC`)
 **Origin:** Followup aus dem supersedeten PROJ-108 (CIA-Review 2026-06-26). In der
 dortigen Rest-Transfer-Tabelle die einzige Zeile, die als *echter* Netto-Zuwachs
 übrig blieb: „Red-Flag-Lens (Filter-Sicht `severity ≥ hoch` + EUR-Summe) →
@@ -134,6 +135,52 @@ Kontroll-Reste, wieder 16/16.
 tsc **13 = Baseline / 0 neu** · vitest **grün** · `npm run build` clean ·
 `npm run check:index-scope` grün.
 
+## Deployment (2026-08-18)
+
+**Tag `v2.60.0-PROJ-Y-2` auf dem Merge-Commit `9a2d59e`** — nicht auf dem Buchführungs-Commit dieses
+Abschlusslaufs. Der Tag markiert, was ausgeliefert wurde; die Auslieferung ist der Merge nach `main`
+(Vercel deployt automatisch von `main`), nicht die nachgezogene Statuszeile.
+
+Beim Abschluss **unabhängig nachgemessen** statt aus der Spec übernommen — jedes Akzeptanzkriterium
+gegen den Code auf `main` gegengelesen, nicht gegen die Nachweis-Spalte:
+
+| Prüfung | Ergebnis |
+|---|---|
+| PR #397 wirklich gemergt | `state: MERGED`, `mergeCommit 9a2d59e`, `mergedAt 2026-08-18T14:00:20Z` |
+| `9a2d59e` wirklich auf `main` | ist **selbst** der `origin/main`-HEAD dieses Abschlusslaufs |
+| Required-Checks am PR | **8/8 SUCCESS** |
+| Vercel-Produktion | `dpl_DV6hjAaiW47zY13yPji2pTRBQchD`, `target: production`, **`state: READY`**, `githubCommitSha 9a2d59e` — die Produktion ist aus **genau** dem Commit gebaut, der die Linse einführt |
+| Laufzeitfehler nach dem Deploy | **0** im 6-h-Fenster |
+| AC-Y2.1 | `dd-findings-panel.tsx:275–293` — `ToggleGroup` mit `onValueChange={(v) => v && setLens(...)}`; die Auswahl kann nicht leer werden |
+| AC-Y2.2 | `red-flag-lens.ts:27` — `RED_FLAG_SEVERITIES = ["hoch","deal_breaker"]` als **Aufzählung**; `grep status` in der Lib → **kein Treffer**, also nachweislich kein Status-Filter |
+| AC-Y2.3 | `:287` `Alle ({totals.count})` · `:291` `Red Flags ({redFlags.count})` · `:248` `{redFlags.dealBreakerCount} Deal Breaker` |
+| AC-Y2.4 | `:175` `activeTotals` folgt der Linse · `:238` EUR-Summe · `:241–242` `({nullEurCount} ohne Schätzung)` |
+| AC-Y2.5 | `compareRedFlags`, in den 16 Lib-Tests rot-grün gepinnt |
+| AC-Y2.6 | `:297` „Keine Red Flags unter den sichtbaren Befunden." |
+| AC-Y2.7 | Diffstat `9a2d59e`: 3 `src/`-Dateien, **alle** unter `components/` — keine Route, keine Migration, kein `package.json`-Diff, keine neue Abfrage |
+| AC-Y2.8 | `git show 9a2d59e -- dd-findings-panel.tsx` gefiltert auf `handleAck`/`canManage`/`fetch(`/`useProjectAccess`: die einzigen Treffer sind **zwei reine Einrückungsänderungen** an `canManage`-Zeilen — Logik unberührt |
+| Prod-Smoke (ergänzend) | `/projects/{id}/due-diligence`, `…/dd-findings`, `…/dd-findings/summary`, `…/dd-streams`, `/`, `/projects` → alle **307** auf `/login?next=…`, Rumpf exakt `Redirecting...` (15 Bytes), kein Leck |
+| Gates | ESLint **0** · tsc **13 = Baseline / 0 neu**, keiner in den drei Dateien · vitest **3058/3058** in 385 Dateien · Build clean · index-scope 173 Zeilen/0 errors · migration-naming 0 errors |
+
+### Warum `full`
+
+Alle acht Akzeptanzkriterien sind erfüllt und oben einzeln am Code belegt; nichts ist zurückgestellt, kein
+Critical/High offen. `mvp` und `alpha` behaupten beide benannte, zurückgestellte Original-Anforderungen —
+die gibt es hier nicht: die Ursprungszeile aus PROJ-108 lautet „filter/tab für `severity ∈ {hoch,
+deal_breaker}` + EUR-Summe", und beides ist ausgeliefert. `tooling-only` trifft nicht zu, weil eine
+sichtbare Produktfähigkeit geliefert wurde.
+
+Der Prod-Smoke ist **ausdrücklich nur ergänzend** geführt — die Hausregel sagt zu Recht, dass ein
+Auth-Redirect allein kein funktionaler Nachweis ist. Der tragende Nachweis ist stattdessen
+verhältnismäßig zur Slice: echte Bibliotheks-Tests auf dem **tatsächlich ausgelieferten** Modul
+(16 Fälle, rot-grün gegengeprüft), die Herleitung der Definition aus der **deployten** Wahrheit
+(`pg_get_functiondef` von `dd_report_consolidated` gegen Prod) und ein Produktions-Deployment, das
+nachweislich aus genau diesem Commit gebaut ist.
+
+Die **Waiver**-Ausnahme aus `.claude/rules/general.md` wird **nicht** in Anspruch genommen und war nicht
+nötig — sie greift nur, wenn ein Kriterium wörtlich unerfüllt bleibt. Hier bleibt keines unerfüllt;
+D-Y2.1 betrifft die *Nachweistiefe*, nicht ein Kriterium (Begründung dort).
+
 ## Abweichungen
 
 - **D-Y2.1 — kein authentifizierter Playwright-Durchlauf.** Die Fläche ist
@@ -143,6 +190,21 @@ tsc **13 = Baseline / 0 neu** · vitest **grün** · `npm run build` clean ·
   bestehenden `dd-findings`-Routen sind durch PROJ-114 bereits auth-gate-getestet.
   Ein Test, der nichts Neues bewacht, wurde bewusst nicht committet. Die Logik ist
   stattdessen auf Lib-Ebene rot-grün gepinnt.
+  **Einordnung beim Abschluss (nachgeprüft, nicht übernommen):** das ist eine
+  Abweichung in der *Nachweistiefe*, **keine** zurückgestellte Original-Anforderung.
+  Geprüft wurde das an der AC-Tabelle selbst — keines der acht Kriterien verlangt
+  einen Browser-Durchlauf, und die Kriterien, die das Aussehen betreffen
+  (AC-Y2.1/.3/.4/.6), sind oben Zeile für Zeile am ausgelieferten Code belegt.
+  Damit ist nichts an einen Folgeschritt abgegeben und `full` bleibt zutreffend.
+  Was **wirklich** offen bleibt und darum nicht verschwiegen wird: die gerenderte
+  Oberfläche wurde nie in einer angemeldeten Sitzung beobachtet. Der Weg dahin ist
+  keine Test-Ergänzung, sondern eine Fixture — ein E2E-Mandant mit
+  `project_type='ma'` und aktivierten DD-Streams, wie ihn PROJ-Y-144d für die
+  Assistant-Fläche gebaut hat. Weil das mehreren M&A-Flächen zugleich nützt und
+  nicht zu dieser Slice gehört, ist es als **spätere Erweiterung** unter
+  **PROJ-Y-2a** registriert (keine zurückgestellte Anforderung; `full` unberührt,
+  weil die Regel offene spätere Erweiterungen ausdrücklich zulässt, solange sie
+  kein Akzeptanzkriterium verschieben).
 - **D-Y2.2 — `nullEurCount`-Angabe ergänzt.** Die Followup-Zeile nennt „Filter +
   EUR-Summe". Die Zahl der Befunde ohne Schätzung ist nicht Beiwerk, sondern die
   Bedingung dafür, dass die Summe ehrlich lesbar ist (PROJ-116-H5-Präzedenz). Ohne
