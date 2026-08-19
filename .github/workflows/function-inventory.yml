@@ -1,0 +1,43 @@
+name: Function Inventory Guard
+
+# PROJ-Y-148e — prüft, ob jede Funktion des versionierten Prod-Inventars einer
+# bekannten Quelle zuordenbar ist: entweder legt eine Migrationsdatei sie an, oder
+# sie steht mit Begründung in der Ausnahmeliste.
+#
+# Reine Dateianalyse: kein Datenbankzugang, kein Docker, keine Secrets. Der Preis
+# dafür steht im Runbook — das Inventar muss aufgefrischt werden, sonst ist der
+# Wächter für neue Prod-Funktionen blind.
+#
+# NICHT als Required Check eingetragen. Das Enrollment in die Branch-Rulesets ist
+# eine Repo-Eigner-Entscheidung (siehe PROJ-147, wo genau das der offene Handoff ist).
+
+on:
+  pull_request:
+    branches: [main]
+  push:
+    branches: [main]
+
+concurrency:
+  group: function-inventory-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  check:
+    name: Verify prod function inventory vs migration files
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: "24"
+          cache: "npm"
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Check function inventory
+        run: npm run check:function-inventory
