@@ -1,13 +1,22 @@
 /**
- * PROJ-45-α — fetch wrappers for the construction extension: tenant-wide trade
- * catalog, per-project trade assignment, and the section tree. Consumed by the
- * /frontend slice (Stammdaten catalog + the two project-room surfaces).
+ * PROJ-45-α/β — fetch wrappers for the construction extension: tenant-wide trade
+ * catalog, per-project trade assignment, the section tree, and the defect
+ * register. Consumed by the /frontend slice (Stammdaten catalog + the project-room
+ * surfaces).
  *
  * Mirrors `ma-project/workstreams-api.ts`. Errors surface the server's message
  * so the caller can show why something was refused — in particular the
  * catalog delete lock, which names the blocking projects (AC-45.3).
  */
 
+import type {
+  ConstructionDefect,
+  ConstructionDefectAction,
+  ConstructionDefectEvent,
+  ConstructionDefectSeverity,
+  ConstructionDefectStatus,
+  ConstructionDefectSummary,
+} from "@/types/construction-defect"
 import type {
   ConstructionRagStatus,
   ConstructionSection,
@@ -277,4 +286,154 @@ export async function setSectionPhases(
   )
   if (!res.ok) await fail(res)
   return (await res.json()) as { linked: number; added: number; removed: number }
+}
+
+// ── Defects (PROJ-45-β) ─────────────────────────────────────────────────────
+
+export interface ListDefectFilters {
+  trade_id?: string
+  section_id?: string
+  status?: ConstructionDefectStatus
+  severity?: ConstructionDefectSeverity
+  /** Server-side overdue filter; the definition lives in SQL + defects.ts. */
+  overdue?: boolean
+}
+
+export async function listConstructionDefects(
+  projectId: string,
+  filters: ListDefectFilters = {}
+): Promise<ConstructionDefect[]> {
+  const query = new URLSearchParams()
+  if (filters.trade_id) query.set("trade_id", filters.trade_id)
+  if (filters.section_id) query.set("section_id", filters.section_id)
+  if (filters.status) query.set("status", filters.status)
+  if (filters.severity) query.set("severity", filters.severity)
+  if (filters.overdue !== undefined) query.set("overdue", String(filters.overdue))
+
+  const suffix = query.size > 0 ? `?${query.toString()}` : ""
+  const res = await fetch(`${p(projectId)}/construction-defects${suffix}`, {
+    method: "GET",
+    cache: "no-store",
+  })
+  if (!res.ok) await fail(res)
+  return ((await res.json()) as { defects: ConstructionDefect[] }).defects
+}
+
+export interface CreateDefectPayload {
+  title: string
+  /** Mandatory — the trade carries responsibility (lock L13). */
+  trade_id: string
+  severity?: ConstructionDefectSeverity
+  section_id?: string | null
+  description?: string | null
+  due_date?: string | null
+  /** Omit to inherit the trade's subcontractor as a starting value. */
+  vendor_id?: string | null
+}
+
+/**
+ * Reports a defect. Allowed for ANY project member including viewers (lock
+ * L15) — the server, not this wrapper, is the authority.
+ */
+export async function createConstructionDefect(
+  projectId: string,
+  payload: CreateDefectPayload
+): Promise<ConstructionDefect> {
+  const res = await fetch(`${p(projectId)}/construction-defects`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify(payload),
+  })
+  if (!res.ok) await fail(res)
+  return ((await res.json()) as { defect: ConstructionDefect }).defect
+}
+
+/**
+ * Changes a defect. Emptying an optional field needs its explicit `clear_*`
+ * switch — leaving a value out means "unchanged", never "empty". Sending a value
+ * together with its own switch is refused with 422 as ambiguous.
+ *
+ * Restricted to tenant admins and project leads; a project `editor` gets 403,
+ * which is stricter than the house `edit` level on purpose.
+ */
+export interface UpdateDefectPayload {
+  title?: string
+  description?: string
+  clear_description?: true
+  severity?: ConstructionDefectSeverity
+  trade_id?: string
+  section_id?: string
+  clear_section?: true
+  due_date?: string
+  clear_due_date?: true
+  responsible_user_id?: string
+  clear_responsible?: true
+  vendor_id?: string
+  clear_vendor?: true
+}
+
+export async function updateConstructionDefect(
+  projectId: string,
+  defectId: string,
+  payload: UpdateDefectPayload
+): Promise<ConstructionDefect> {
+  const res = await fetch(
+    `${p(projectId)}/construction-defects/${encodeURIComponent(defectId)}`,
+    {
+      method: "PATCH",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(payload),
+    }
+  )
+  if (!res.ok) await fail(res)
+  return ((await res.json()) as { defect: ConstructionDefect }).defect
+}
+
+/**
+ * Moves a defect along its lifecycle. `zurueckweisen` and `verwerfen` require a
+ * reason. `pruefen` is refused with status 403 for whoever reported completion
+ * (four-eyes) — the thrown message says so, so the caller can distinguish it
+ * from a missing role.
+ */
+export async function transitionConstructionDefect(
+  projectId: string,
+  defectId: string,
+  action: ConstructionDefectAction,
+  reason?: string
+): Promise<ConstructionDefect> {
+  const res = await fetch(
+    `${p(projectId)}/construction-defects/${encodeURIComponent(defectId)}/status`,
+    {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(reason ? { action, reason } : { action }),
+    }
+  )
+  if (!res.ok) await fail(res)
+  return ((await res.json()) as { defect: ConstructionDefect }).defect
+}
+
+/** The append-only history of one defect, oldest first (AC-45β.12). */
+export async function listConstructionDefectEvents(
+  projectId: string,
+  defectId: string
+): Promise<ConstructionDefectEvent[]> {
+  const res = await fetch(
+    `${p(projectId)}/construction-defects/${encodeURIComponent(defectId)}/events`,
+    { method: "GET", cache: "no-store" }
+  )
+  if (!res.ok) await fail(res)
+  return ((await res.json()) as { events: ConstructionDefectEvent[] }).events
+}
+
+/** Totals and per-trade counters, computed under the caller's own RLS. */
+export async function fetchConstructionDefectSummary(
+  projectId: string
+): Promise<ConstructionDefectSummary | null> {
+  const res = await fetch(`${p(projectId)}/construction-defects/summary`, {
+    method: "GET",
+    cache: "no-store",
+  })
+  if (!res.ok) await fail(res)
+  return ((await res.json()) as { summary: ConstructionDefectSummary | null }).summary
 }

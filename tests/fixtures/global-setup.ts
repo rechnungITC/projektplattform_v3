@@ -13,6 +13,29 @@ import type { FullConfig } from "@playwright/test"
 
 import {
   E2E_ASSISTANT_PROJECT_ID,
+  E2E_CONSTRUCTION_ACTIVE_MODULES,
+  E2E_CONSTRUCTION_LEAD_DISPLAY_NAME,
+  E2E_CONSTRUCTION_LEAD_EMAIL,
+  E2E_CONSTRUCTION_LEAD_STORAGE_STATE_PATH,
+  E2E_CONSTRUCTION_LEAD_USER_ID,
+  E2E_CONSTRUCTION_PASSWORD,
+  E2E_CONSTRUCTION_PROJECT_ID,
+  E2E_CONSTRUCTION_PROJECT_NAME,
+  E2E_CONSTRUCTION_PROJECT_TRADE_ID,
+  E2E_CONSTRUCTION_SECTION_CHILD_ID,
+  E2E_CONSTRUCTION_SECTION_CHILD_LABEL,
+  E2E_CONSTRUCTION_SECTION_ROOT_ID,
+  E2E_CONSTRUCTION_SECTION_ROOT_LABEL,
+  E2E_CONSTRUCTION_TENANT_DOMAIN,
+  E2E_CONSTRUCTION_TENANT_ID,
+  E2E_CONSTRUCTION_TENANT_NAME,
+  E2E_CONSTRUCTION_TRADE_ID,
+  E2E_CONSTRUCTION_TRADE_KEY,
+  E2E_CONSTRUCTION_TRADE_LABEL,
+  E2E_CONSTRUCTION_VIEWER_DISPLAY_NAME,
+  E2E_CONSTRUCTION_VIEWER_EMAIL,
+  E2E_CONSTRUCTION_VIEWER_STORAGE_STATE_PATH,
+  E2E_CONSTRUCTION_VIEWER_USER_ID,
   E2E_ASSISTANT_PROJECT_NAME,
   E2E_ASSISTANT_TENANT_DOMAIN,
   E2E_ASSISTANT_TENANT_ID,
@@ -70,6 +93,18 @@ function assertConformantFixtureIds(): void {
     E2E_VISUAL_USER_ID,
     E2E_VISUAL_TENANT_ID,
     E2E_VISUAL_PROJECT_ID,
+    // PROJ-45-β `/qa` — the construction lane. Every one of these crosses the
+    // same zod boundary: the project id travels through `/projects/[id]` route
+    // params, and the trade and section ids are validated by
+    // `createDefectSchema` before `create_construction_defect` ever sees them.
+    E2E_CONSTRUCTION_TENANT_ID,
+    E2E_CONSTRUCTION_PROJECT_ID,
+    E2E_CONSTRUCTION_LEAD_USER_ID,
+    E2E_CONSTRUCTION_VIEWER_USER_ID,
+    E2E_CONSTRUCTION_TRADE_ID,
+    E2E_CONSTRUCTION_PROJECT_TRADE_ID,
+    E2E_CONSTRUCTION_SECTION_ROOT_ID,
+    E2E_CONSTRUCTION_SECTION_CHILD_ID,
   }).filter(([, id]) => !RFC_4122_V4.test(id))
 
   if (offenders.length > 0) {
@@ -442,6 +477,11 @@ async function globalSetup(config: FullConfig): Promise<void> {
   //    Fail-open: only the authenticated visual specs skip if this fails.
   await provisionVisualLane(admin, { url, anonKey, baseURL })
 
+  // 6) PROJ-45-β `/qa` — the construction lane (own tenant, three actors).
+  //    Fail-open like the two lanes above: only the construction chain spec
+  //    skips if this fails.
+  await provisionConstructionLane(admin, { url, anonKey, baseURL })
+
   await maybeWarmCompileDeepLinkRoutes(config, baseURL, supabaseCookies)
 }
 
@@ -682,6 +722,279 @@ async function provisionVisualLane(
     relativePath: E2E_VISUAL_STORAGE_STATE_PATH,
     label: "PROJ-Y-143l",
   })
+}
+
+/**
+ * PROJ-45-β `/qa` — provision the construction lane: own tenant with the
+ * `construction` module ON, a `project_type = "construction"` project, a trade
+ * (a defect cannot exist without one) and a two-level section tree.
+ *
+ * THREE actors, because the chain the slice has to prove needs three distinct
+ * role holders (see `constants.ts`):
+ *   - `E2E_CONSTRUCTION_VIEWER_USER_ID` — project `viewer`, may only CREATE
+ *     (L15, the single place the house rule is relaxed);
+ *   - `E2E_CONSTRUCTION_LEAD_USER_ID` — project `lead`, reports done;
+ *   - `E2E_USER_ID` — tenant `admin`, approves. Reusing the shared identity
+ *     keeps this to two extra sign-ins, and `is_project_member` counts a
+ *     tenant admin as a member, so it needs no project_memberships row —
+ *     which also keeps `enforce_last_lead()` out of the teardown path.
+ *
+ * Both new users are tenant `member`, NOT `admin`, on purpose: in production
+ * every tenant member happens to be admin, and `is_tenant_admin` short-circuits
+ * the role check inside all three write RPCs. An actor seeded as admin would
+ * sail through the very gates this lane exists to prove closed — the same
+ * false-green the pentest header warns about.
+ */
+async function provisionConstructionLane(
+  admin: SupabaseClient,
+  env: { url: string; anonKey: string; baseURL: string },
+): Promise<void> {
+  const bail = async (why: string) => {
+    // Fail-open, but LOUD (PROJ-Y-143o: a teardown/seed that cannot say it
+    // failed turns every later error into a mystery). Both storage states are
+    // emptied so `hasAuthStorageState` makes the chain spec skip cleanly
+    // instead of running against a half-seeded tenant and "passing".
+    console.warn(`[PROJ-45-β globalSetup] construction lane skipped: ${why}`)
+    await writeEmptyStorageState(why, E2E_CONSTRUCTION_LEAD_STORAGE_STATE_PATH)
+    await writeEmptyStorageState(why, E2E_CONSTRUCTION_VIEWER_STORAGE_STATE_PATH)
+  }
+
+  const actors = [
+    {
+      id: E2E_CONSTRUCTION_LEAD_USER_ID,
+      email: E2E_CONSTRUCTION_LEAD_EMAIL,
+      name: E2E_CONSTRUCTION_LEAD_DISPLAY_NAME,
+    },
+    {
+      id: E2E_CONSTRUCTION_VIEWER_USER_ID,
+      email: E2E_CONSTRUCTION_VIEWER_EMAIL,
+      name: E2E_CONSTRUCTION_VIEWER_DISPLAY_NAME,
+    },
+  ]
+
+  for (const actor of actors) {
+    const { error } = await admin.auth.admin.createUser({
+      id: actor.id,
+      email: actor.email,
+      password: E2E_CONSTRUCTION_PASSWORD,
+      email_confirm: true,
+      user_metadata: { display_name: actor.name },
+    })
+    if (
+      error &&
+      !/already (been )?registered|exists|duplicate/i.test(error.message)
+    ) {
+      await bail(`createUser ${actor.email} failed: ${error.message}`)
+      return
+    }
+  }
+
+  // `PromiseLike`, not `Promise`: a Supabase query builder is thenable but has
+  // no `catch`/`finally` (PROJ-Y-144d, F-9).
+  const steps: {
+    label: string
+    run: () => PromiseLike<{ error: { message: string } | null }>
+  }[] = [
+    {
+      label: "profiles",
+      run: () =>
+        admin.from("profiles").upsert(
+          actors.map((a) => ({
+            id: a.id,
+            email: a.email,
+            display_name: a.name,
+          })),
+          { onConflict: "id" },
+        ),
+    },
+    {
+      label: "tenant",
+      run: () =>
+        admin.from("tenants").upsert(
+          {
+            id: E2E_CONSTRUCTION_TENANT_ID,
+            name: E2E_CONSTRUCTION_TENANT_NAME,
+            domain: E2E_CONSTRUCTION_TENANT_DOMAIN,
+            created_by: E2E_USER_ID,
+            language: "de",
+            branding: {},
+            // PROJ-Y-130h/143o: NOT derived from the `[E2E]` name prefix. A new
+            // fixture tenant does not inherit it, and `audit_log_entries` is
+            // append-only since PROJ-130-α — unflagged test noise would settle
+            // in the compliance artefact permanently and outlive the tenant.
+            audit_lifecycle_exempt: true,
+          },
+          { onConflict: "id" },
+        ),
+    },
+    {
+      label: "settings",
+      run: () =>
+        admin.from("tenant_settings").upsert(
+          {
+            tenant_id: E2E_CONSTRUCTION_TENANT_ID,
+            active_modules: [...E2E_CONSTRUCTION_ACTIVE_MODULES],
+          },
+          { onConflict: "tenant_id" },
+        ),
+    },
+    {
+      label: "memberships",
+      run: () =>
+        admin.from("tenant_memberships").upsert(
+          [
+            // The tenant needs at least one admin (`enforce_admin_invariant`),
+            // and this seat is also the approver — the second person of the
+            // four-eyes gate.
+            {
+              tenant_id: E2E_CONSTRUCTION_TENANT_ID,
+              user_id: E2E_USER_ID,
+              role: "admin",
+            },
+            {
+              tenant_id: E2E_CONSTRUCTION_TENANT_ID,
+              user_id: E2E_CONSTRUCTION_LEAD_USER_ID,
+              role: "member",
+            },
+            {
+              tenant_id: E2E_CONSTRUCTION_TENANT_ID,
+              user_id: E2E_CONSTRUCTION_VIEWER_USER_ID,
+              role: "member",
+            },
+          ],
+          { onConflict: "tenant_id,user_id" },
+        ),
+    },
+    {
+      label: "project",
+      run: () =>
+        admin.from("projects").upsert(
+          {
+            id: E2E_CONSTRUCTION_PROJECT_ID,
+            tenant_id: E2E_CONSTRUCTION_TENANT_ID,
+            name: E2E_CONSTRUCTION_PROJECT_NAME,
+            // MUST be "construction": `filterSectionsByProjectType` removes the
+            // three construction nav sections for every other type, so the
+            // Mängel tab would simply not exist. No `project_method` — the
+            // register is method-agnostic and a method spawns phases/sprints
+            // this lane has no use for.
+            project_type: "construction",
+            // `bootstrap_project_lead` gives `created_by` the project `lead`
+            // role, which is exactly the seat that reports done.
+            created_by: E2E_CONSTRUCTION_LEAD_USER_ID,
+            responsible_user_id: E2E_CONSTRUCTION_LEAD_USER_ID,
+          },
+          { onConflict: "id" },
+        ),
+    },
+    {
+      label: "project_memberships",
+      run: () =>
+        admin.from("project_memberships").upsert(
+          [
+            // `created_by` is NOT NULL here (unlike most tables, where it is
+            // nullable) — leaving it out fails the whole seed.
+            {
+              project_id: E2E_CONSTRUCTION_PROJECT_ID,
+              user_id: E2E_CONSTRUCTION_LEAD_USER_ID,
+              role: "lead",
+              created_by: E2E_CONSTRUCTION_LEAD_USER_ID,
+            },
+            {
+              project_id: E2E_CONSTRUCTION_PROJECT_ID,
+              user_id: E2E_CONSTRUCTION_VIEWER_USER_ID,
+              role: "viewer",
+              created_by: E2E_CONSTRUCTION_LEAD_USER_ID,
+            },
+          ],
+          { onConflict: "project_id,user_id" },
+        ),
+    },
+    {
+      label: "trade_catalog",
+      run: () =>
+        admin.from("construction_trades").upsert(
+          {
+            id: E2E_CONSTRUCTION_TRADE_ID,
+            tenant_id: E2E_CONSTRUCTION_TENANT_ID,
+            key: E2E_CONSTRUCTION_TRADE_KEY,
+            label: E2E_CONSTRUCTION_TRADE_LABEL,
+            is_active: true,
+            created_by: E2E_USER_ID,
+          },
+          { onConflict: "id" },
+        ),
+    },
+    {
+      label: "project_trade",
+      run: () =>
+        admin.from("project_construction_trades").upsert(
+          {
+            id: E2E_CONSTRUCTION_PROJECT_TRADE_ID,
+            tenant_id: E2E_CONSTRUCTION_TENANT_ID,
+            project_id: E2E_CONSTRUCTION_PROJECT_ID,
+            trade_id: E2E_CONSTRUCTION_TRADE_ID,
+            responsible_user_id: E2E_CONSTRUCTION_LEAD_USER_ID,
+            // Deliberately NO `vendor_id`: `create_construction_defect`
+            // prefills the Nachunternehmer from the trade (B-β3), and a
+            // prefilled value would mask whether the UI actually set it.
+            rag_status: "gruen",
+          },
+          { onConflict: "id" },
+        ),
+    },
+    {
+      label: "sections",
+      run: () =>
+        admin.from("construction_sections").upsert(
+          [
+            {
+              id: E2E_CONSTRUCTION_SECTION_ROOT_ID,
+              tenant_id: E2E_CONSTRUCTION_TENANT_ID,
+              project_id: E2E_CONSTRUCTION_PROJECT_ID,
+              parent_id: null,
+              label: E2E_CONSTRUCTION_SECTION_ROOT_LABEL,
+              sort_order: 0,
+              created_by: E2E_USER_ID,
+            },
+            {
+              id: E2E_CONSTRUCTION_SECTION_CHILD_ID,
+              tenant_id: E2E_CONSTRUCTION_TENANT_ID,
+              project_id: E2E_CONSTRUCTION_PROJECT_ID,
+              parent_id: E2E_CONSTRUCTION_SECTION_ROOT_ID,
+              label: E2E_CONSTRUCTION_SECTION_CHILD_LABEL,
+              sort_order: 0,
+              created_by: E2E_USER_ID,
+            },
+          ],
+          { onConflict: "id" },
+        ),
+    },
+  ]
+
+  for (const step of steps) {
+    const { error } = await step.run()
+    if (error) {
+      await bail(`${step.label} seed failed: ${error.message}`)
+      return
+    }
+  }
+
+  for (const [actor, path] of [
+    [actors[0], E2E_CONSTRUCTION_LEAD_STORAGE_STATE_PATH],
+    [actors[1], E2E_CONSTRUCTION_VIEWER_STORAGE_STATE_PATH],
+  ] as const) {
+    await signInAndPersist({
+      url: env.url,
+      anonKey: env.anonKey,
+      baseURL: env.baseURL,
+      email: actor.email,
+      password: E2E_CONSTRUCTION_PASSWORD,
+      activeTenantId: E2E_CONSTRUCTION_TENANT_ID,
+      relativePath: path,
+      label: "PROJ-45-β",
+    })
+  }
 }
 
 /**
