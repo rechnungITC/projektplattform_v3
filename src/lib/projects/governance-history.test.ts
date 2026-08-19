@@ -73,8 +73,8 @@ describe("GOVERNANCE_HISTORY_ISLANDS", () => {
       ["decision_approval_events", true],
       ["deliverable_approval_events", true],
       ["ma_clearance_request_events", true],
-      // PROJ-45-β: guard steps aside on plain parent absence → PROJ-Y-148d.
-      ["construction_defect_events", false],
+      // Was `false` until PROJ-Y-148d removed the exit from PROJ-45-β's guard.
+      ["construction_defect_events", true],
     ])
   })
 
@@ -122,21 +122,51 @@ describe("detectGovernanceHistory", () => {
   })
 
   it("does not refuse for an island that does not block the cascade", async () => {
-    // Measured live: `construction_defect_events` has rows, yet the project
-    // delete succeeds and takes them along, because its guard steps aside on
-    // plain parent absence. Counting it as a blocker would refuse a delete that
-    // in fact works — the one way this slice could make things worse.
+    // Since PROJ-Y-148d all five real islands block, so this rule can no longer
+    // be triggered through the registry — and a test that cannot fail guards
+    // nothing. It is therefore driven by a synthetic island. The rule still
+    // matters: counting a non-blocking island as a blocker would refuse a delete
+    // that in fact works, the one way this area can get worse.
     const result = await detectGovernanceHistory(
-      counterFor({ construction_defect_events: 12 })
+      counterFor({ future_non_blocking_events: 12 }),
+      [{ ...GOVERNANCE_HISTORY_ISLANDS[0], table: "future_non_blocking_events",
+         blocksHardDelete: false }]
     )
     expect(result).toEqual({ status: "ok", block: null })
   })
 
+  it("refuses for construction defect history — the PROJ-Y-148d flip", async () => {
+    // The inverse of what this test asserted before PROJ-Y-148d: the guard no
+    // longer steps aside when the cascade removes the parent defect, so the
+    // pre-flight must refuse instead of letting the history go.
+    const result = await detectGovernanceHistory(
+      counterFor({ construction_defect_events: 12 })
+    )
+    expect(result).toEqual({
+      status: "ok",
+      block: { kinds: ["Mängel-Historie"], total: 12 },
+    })
+  })
+
   it("never even asks a non-blocking island", async () => {
+    // Same reason as above: driven by a synthetic island, because every real one
+    // blocks since PROJ-Y-148d. Asking a non-blocking island would be harmless
+    // but wasteful, and the skip is what keeps the rule above honest.
+    const count = vi.fn(counterFor({}))
+    await detectGovernanceHistory(count, [
+      { ...GOVERNANCE_HISTORY_ISLANDS[0], table: "blocks", blocksHardDelete: true },
+      { ...GOVERNANCE_HISTORY_ISLANDS[0], table: "skipped", blocksHardDelete: false },
+    ])
+    const asked = count.mock.calls.map(([island]) => island.table)
+    expect(asked).toEqual(["blocks"])
+  })
+
+  it("asks all five real islands now that none is skipped", async () => {
     const count = vi.fn(counterFor({}))
     await detectGovernanceHistory(count)
-    const asked = count.mock.calls.map(([island]) => island.table)
-    expect(asked).not.toContain("construction_defect_events")
+    expect(count.mock.calls.map(([i]) => i.table)).toEqual(
+      GOVERNANCE_HISTORY_ISLANDS.map((i) => i.table)
+    )
   })
 
   it("sums the rows and lists the affected kinds in registry order", async () => {

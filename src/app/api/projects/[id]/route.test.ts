@@ -517,6 +517,18 @@ describe("DELETE /api/projects/[id]", () => {
     // as its guard exists in prod, while a database built from the migration
     // files may lag by one merge (`construction_defect_events` did, until
     // PROJ-45-β landed).
+    //
+    // Two notes for the record, both measured rather than assumed. Until
+    // PROJ-Y-148d the queued `42P01` was dropped entirely: `pushGovernanceCounts`
+    // queues a chain only for BLOCKING islands, and `construction_defect_events`
+    // was not one. Now it arrives. But that does NOT make this case a guard for
+    // the missing-table branch: removing the `MISSING_TABLE_CODES` skip leaves
+    // this test green, because a failed pre-flight also lets the delete proceed
+    // (see the next case) — both paths end in 200 and the route cannot tell them
+    // apart. The real guard is in `governance-history.test.ts`, deliberately
+    // driven through a *blocking* island so the tolerance is exercised instead of
+    // hidden. What this case still asserts is worth keeping and no more: on the
+    // route, an absent table must not block the delete.
     queueAdminHardDelete()
     pushGovernanceCounts({
       construction_defect_events: { code: "42P01", message: "does not exist" },
@@ -527,16 +539,21 @@ describe("DELETE /api/projects/[id]", () => {
     expect(adminDeleteChain.delete).toHaveBeenCalled()
   })
 
-  it("does not refuse for history that the cascade removes anyway", async () => {
-    // `construction_defect_events` has rows in this scenario, but its guard
-    // steps aside on parent absence — measured live: the delete succeeds.
-    // Refusing here would be the one regression this slice could introduce.
+  it("PROJ-Y-148d: refuses for construction defect history too", async () => {
+    // The inverse of what this asserted before PROJ-Y-148d. Until then the guard
+    // stepped aside whenever the parent defect was gone — which a cascade
+    // arranges — so the history went with the project and refusing would have
+    // blocked a delete that in fact worked. The guard no longer steps aside, so
+    // the pre-flight must refuse, with the kind named.
     queueAdminHardDelete()
     pushGovernanceCounts({ construction_defect_events: 12 })
 
     const res = await DELETE(makeRequest("?hard=true"), makeContext())
-    expect(res.status).toBe(200)
-    expect(adminDeleteChain.delete).toHaveBeenCalled()
+    expect(res.status).toBe(422)
+    const { error } = await res.json()
+    expect(error.code).toBe("governance_history_immutable")
+    expect(error.message).toContain("Mängel-Historie")
+    expect(adminDeleteChain.delete).not.toHaveBeenCalled()
   })
 
   it("a failed pre-flight lets the database decide instead of refusing", async () => {

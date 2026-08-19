@@ -632,8 +632,11 @@ des Testmandanten unverändert 20). Die tragenden Vektoren:
   `INSERT` und Ereignis-`INSERT` → `42501`, `UPDATE`/`DELETE` → **0 Zeilen**.
 - **S2 — der lesende Nutzer ist nachweislich kein Admin.** Ohne diesen Vektor wäre der
   Audit-Lesetest falsch-grün, weil `can_read_audit_entry` für Admins kurzschliesst.
-- **Z — der Projekt-Hard-Delete gelingt** trotz Mängeln und unveränderlichen Ereignissen; das ist die
-  Live-Bestätigung von Entscheidung 1 und 2 und zugleich eine PROJ-148-Regression.
+- **Z — der Projekt-Hard-Delete wird von der Mängel-Historie blockiert** (`42501`).
+  **Umgedreht durch PROJ-Y-148d am 2026-08-19**; bis dahin gelang er, und das war die korrekte
+  Beschreibung des damaligen Stands. Die PROJ-148-Regression bleibt, nur in der anderen Richtung: ein
+  Bauprojekt **ohne** Mängel muss weiter löschbar sein — geprüft als Vektor B in
+  `tests/sql/PROJ-Y-148d-defect-events-no-cascade-exit-pentest.sql`.
 
 **Ein Befund beim ersten Lauf, der einen Vektor falsch-grün gemacht hätte:** es gibt **zwei**
 Mandanten mit dem Namen `[E2E] Projektplattform Test`. Der als zweiter Akteur gewählte Nutzer ist
@@ -659,12 +662,21 @@ drei `unused_index`, was bei 0 Zeilen in Prod zu erwarten ist.
 
 ### Abweichungen vom Tech Design (β)
 
-- **D-β5 — die Ausnahme im Unveränderlichkeits-Trigger.** AC-45βH-5 sagt „unveränderlich und nicht
-  löschbar". Umgesetzt: `42501` für `UPDATE` und für jedes `DELETE`, solange der Mangel existiert;
-  wird die Zeile von der Kaskade ihres eigenen Mangels abgeräumt, darf sie gehen. Ohne diese
-  Ausnahme wäre jeder Projekt-Hard-Delete an einem Bauprojekt mit Mängeln blockiert — eine neue
-  Instanz der Klasse, die PROJ-Y-148a offen führt. Über die Anwendung unerreichbar (keine
-  DELETE-Policy auf `construction_defects`); Pentest Q1/Q2 belegt die Sperre, Z die Ausnahme.
+- **D-β5 — die Ausnahme im Unveränderlichkeits-Trigger. ~~Abweichung~~ → aufgelöst am 2026-08-19
+  durch PROJ-Y-148d; AC-45βH-5 ist jetzt wörtlich erfüllt.**
+  Ursprünglich umgesetzt: `42501` für `UPDATE` und für jedes `DELETE`, solange der Mangel existiert;
+  wurde die Zeile von der Kaskade ihres eigenen Mangels abgeräumt, durfte sie gehen. Begründet war das
+  mit „über die Anwendung unerreichbar (keine DELETE-Policy auf `construction_defects`)" und damit,
+  keine neue Instanz der von PROJ-Y-148a geführten Blocker-Klasse anzulegen.
+  **Beide Gründe haben sich als nicht tragend erwiesen:** die Unerreichbarkeit gilt für den *direkten*
+  Weg, nicht für die Kaskade `projects → construction_defects → construction_defect_events`, die keine
+  Policy braucht — und da eine Kaskade den Eltern-Mangel zuerst entfernt, griff die Ausnahme bei
+  **jedem** Projekt-Abriss, nicht nur im Randfall. Der zweite Grund entfiel, als PROJ-Y-148a am
+  2026-08-19 **Variante 1** wählte: dort ist die Blockade die gewollte Antwort und wird lediglich
+  ehrlich kommuniziert (422 mit benannter Ursache statt 500). Der Ausweg ist deshalb entfernt
+  (Migration `20260819140000`), die Mängel-Historie überlebt den Projekt-Abriss, und
+  `construction_defect_events` blockt den Hard-Delete wie ihre vier Geschwister-Inseln.
+  Pentest Q1/Q2 belegt die Sperre; **Z prüft jetzt die Blockade statt der Ausnahme**.
 - **D-β6 — siebter Ereignis-Typ `in_arbeit_genommen`** (Begründung oben).
 - **D-β7 — `fertigmelden` ist auch direkt aus `offen` erlaubt.** AC-45β.7 beschreibt die Kette,
   verbietet das Überspringen aber nicht; ein kleiner, sofort behobener Mangel soll nicht durch einen
