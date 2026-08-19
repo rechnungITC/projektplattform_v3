@@ -1,8 +1,10 @@
 # PROJ-Y-148d — `construction_defect_events` hält seine Zusage jetzt auch beim Projekt-Abriss
 
-## Status: Approved
-## Deployment Scope: —
-<!-- Scope bleibt leer bis zum Merge; aus den Belegen ist `full` die Klassifikation. -->
+## Status: Deployed
+## Deployment Scope: full
+<!-- Deployed 2026-08-19: PR #411 (squash) -> main `b38c11d`, Tag `v2.65.0-PROJ-Y-148d`.
+     Migration lag seit dem Bau in Prod; der Merge liefert die Anwendungsseite aus
+     (`blocksHardDelete: true`) und schliesst die Repo-Seite. Scope `full`: alle 8 AC belegt. -->
 
 **Created:** 2026-08-19
 **Origin:** Fund F-14 aus PROJ-Y-148a. Dort bewusst nicht behoben — der Guard einer fremden, gerade
@@ -137,3 +139,21 @@ clean · `check:migration-naming` 0 Fehler · `check:index-scope` 0 Fehler.
   **verschärft** die Frage: mit fünf blockenden Inseln ist der Papierkorb für Projekte mit Historie
   endgültig ein Dauerzustand, und ein Redaktionspfad existiert weiterhin nicht.
 - **PROJ-Y-148e** — Wächter gegen Prod/Repo-Divergenz bei Funktionsdefinitionen.
+
+## Deploy
+
+**Deployed 2026-08-19:** PR #411 (squash) → main `b38c11d`, Tag `v2.65.0-PROJ-Y-148d`.
+
+Die Migration lag seit dem Bau in Prod. Anders als bei PROJ-Y-148c liefert der Merge hier **auch
+Anwendungsverhalten** aus: `blocksHardDelete: true` bewirkt, dass die Vorabprüfung die Insel abfragt und
+die Absage „Mängel-Historie" nennt. Bis zum Merge hätte die Datenbank blockiert, während die Oberfläche
+noch nicht erklärt hätte, warum — sichtbar geworden wäre das erst am ersten Bauprojekt mit Mängeln, von
+denen es in Prod **null** gibt. Das Fenster war also real, aber leer.
+
+**Deploy-Nachweis:** der Schema-Drift-Wächter war auf #411 grün und belegt, dass die neue
+Guard-Definition auch in einer frisch aus den Migrationsdateien gebauten Datenbank entsteht. Ein
+HTTP-Smoke wäre schwach: die berührte Route ist unverändert `DELETE /api/projects/[id]`, deren Auth-Gate
+schon PROJ-Y-148a nachgewiesen hat.
+
+**Scope `full`:** alle 8 Akzeptanzkriterien belegt, keines zurückgestellt. PROJ-Y-148b (DSGVO) ist keine
+Auslassung dieser Slice, sondern eine von ihr **verschärfte** eigene Frage.
