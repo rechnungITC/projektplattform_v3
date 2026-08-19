@@ -1,9 +1,11 @@
 # PROJ-Y-148c — Rückbau der nie gemergten „Variante 3" (Governance-Teardown mit Grabstein)
 
-## Status: Approved
-## Deployment Scope: —
-<!-- Scope bleibt leer bis zum Merge: `general.md` erlaubt einen Wert erst bei
-     `Deployed`. Aus den Belegen ist `full` die Klassifikation. -->
+## Status: Deployed
+## Deployment Scope: full
+<!-- Deployed 2026-08-19: PR #409 (squash) -> main `816de97`, Tag `v2.64.0-PROJ-Y-148c`.
+     Migration lag seit dem Bau in Prod, der Merge ist kein Runtime-DB-Change. Scope `full`:
+     alle 11 AC belegt, kein zurueckgestelltes Kriterium -- der Waechter gegen die Wiederholung
+     (PROJ-Y-148e) war nie Teil dieser Slice, sondern ist ihr benannter Nachfolger. -->
 
 **Created:** 2026-08-19
 **Origin:** Fund F-13 aus PROJ-Y-148a, dort bewusst nicht mitbehoben — ein Rückbau wäre eine
@@ -169,3 +171,19 @@ geschrieben, `ok: true`.
   Schema-Drift-Wächter vergleicht nur `SELECT`-Spalten, nicht Funktionskörper oder Grants — PROJ-Y-130f
   hat dieselbe Klasse Lücke aus anderer Richtung beschrieben. Ein Wächter, der Prod-Funktionsdefinitionen
   gegen den Datei-Replay vergleicht, wäre die eigentliche Vorbeugung; das ist eine eigene Slice.
+
+## Deploy
+
+**Deployed 2026-08-19:** PR #409 (squash) → main `816de97`, Tag `v2.64.0-PROJ-Y-148c`.
+
+Die Migration lag seit dem Bau in Prod — der Merge ist **kein** Runtime-DB-Change, sondern schließt die
+Divergenz auf der Repo-Seite. Kein `src/`-Diff, also auch kein Verhaltenswechsel in der Anwendung.
+
+**Der tragende Deploy-Nachweis ist ein CI-Gate, nicht ein Smoke:** `Verify SELECT columns vs migration
+schema` ist auf dem PR grün. Dieser Wächter spielt die Migrationsdateien in eine frische Shadow-DB ein —
+er belegt damit unabhängig, dass die vier Guard-Definitionen auch dort entstehen und AC-Y148c.10 hält.
+Ein HTTP-Smoke wäre hier ohne Aussagekraft: die Slice ändert keine Route.
+
+**Scope `full`:** alle 11 Akzeptanzkriterien sind belegt, keines zurückgestellt. PROJ-Y-148e (Wächter
+gegen die Wiederholung) und PROJ-Y-148d (PROJ-45-βs Ausweg) waren nie Teil dieser Slice — sie sind ihre
+benannten Nachfolger, keine Auslassungen.
