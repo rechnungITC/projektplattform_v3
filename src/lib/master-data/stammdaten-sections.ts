@@ -13,8 +13,14 @@
  * — hiding them would leave a tenant admin with no way to discover what
  * could be switched on, and would make the setting itself undiscoverable.
  *
- * `requiresModule` is only set where a server gate actually exists. See the
- * spec for why the `organization` toggle is deliberately *not* wired up here.
+ * `requiresModule` is only set where a server gate actually exists — a
+ * UI-only claim would be worse than no claim, because the tile would read
+ * "not active" while the page behind it still works.
+ *
+ * PROJ-Y-143n closed the one exception this file used to carry: `organization`
+ * was left out because only the five CSV-import routes enforced the switch
+ * while the twelve handlers of the core surface ignored it. Those handlers now
+ * call `requireModuleActive`, so the tile may state the gate like the others.
  */
 
 import {
@@ -146,6 +152,7 @@ export const STAMMDATEN_SECTIONS: readonly StammdatenSection[] = [
     description:
       "Unternehmensorganigramm — Gesellschaften, Standorte, Bereiche, Abteilungen und Teams als hierarchischer Baum (Tree + Tabelle).",
     adminOnly: true,
+    requiresModule: "organization",
   },
   {
     href: "/stammdaten/dd-stream-vorlagen",

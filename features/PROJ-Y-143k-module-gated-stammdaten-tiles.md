@@ -71,24 +71,40 @@ modul-gegatet. Erhoben über alle `requireModuleActive`-Aufrufstellen in
 | **Ressourcen** | `/api/resources` | ✅ `resources` |
 | **Lieferanten** | `/api/vendors` | ✅ `vendor` |
 | Stakeholder-Rollup, Stakeholder-Typen, Projekttypen, Methoden, Berechtigungsprofile, 4-Augen-Genehmigung, Revisionszugriff, DD-Stream-Vorlagen, Projekt-Vorlagen (M&A), Risikokategorien, Skills | `master-data`, `stakeholder-types`, `project-types`, `clearance-profiles`, `clearance-approval-policies`, `tenants/[id]/audit-readers`, `dd-stream-templates`, `ma-project-templates`, `risk-categories`, `skills` | — Kernstammdaten, kein Modul |
-| **Organisation** | `organization-units`, `locations`, `organization-imports`, `organization-landscape` | ⚠️ **keins** (siehe unten) |
+| **Organisation** | `organization-units`, `locations`, `organization-imports`, `organization-landscape` | ⚠️ **halb** — nur die fünf CSV-Import-Routen (siehe unten) |
 
 ### Die Abweichung, die die Vorgabe vorgesehen hat: „Organisation"
 
+> **Korrektur 2026-08-19 (PROJ-Y-143n, AC-Y143n.4).** Dieser Abschnitt hat
+> behauptet, **keine** der Organisations-Routen rufe `requireModuleActive` und
+> der Schalter sei „vollständig wirkungslos". Die zweite Hälfte der Erhebung
+> (Frontend liest den Schlüssel nirgends) war richtig, die erste **falsch**:
+> `src/app/api/organization-imports/_helpers.ts:48-53` ruft das Tor, und **alle
+> fünf** CSV-Import-Routen aus PROJ-63 gehen durch diesen Helfer. Der Schalter
+> war also nicht wirkungslos, sondern **halb wirksam** — der schlechtere der
+> beiden Zustände, weil er die Zusage nicht bloß nicht einlöste, sondern ihr
+> widersprach: `/stammdaten/organisation` funktionierte, während
+> `/stammdaten/organisation/import` in denselben vier Mandanten 404 antwortete
+> und das als roten Fehlerkasten zeigte. Die *Entscheidung* dieser Slice bleibt
+> richtig — ein UI-Kennzeichen ersetzt kein fehlendes Tor —, nur ihre
+> Begründung war zu absolut. Der Ursprung liegt bei der Meß-Methode: „gibt es
+> Aufrufstellen für den Schlüssel?" war die falsche Frage, weil eine gegatete
+> von zwölf ungegateten Routen dabei wie Abdeckung aussieht. **PROJ-Y-143n hat
+> alle zwölf Handler nachgerüstet; die Kachel trägt seither
+> `requiresModule: "organization"`.**
+
 `organization` **ist** ein `ModuleKey`, steht in `TOGGLEABLE_MODULES` und hat
 ein Label — die naheliegende Zuordnung wäre also die Kachel „Organisation".
-Sie wurde bewusst **nicht** gemacht, weil sie eine Behauptung wäre, die nichts
-trägt:
-
-- **keine** der vier Organisations-Routen ruft `requireModuleActive`,
-- **keine** Stelle im Frontend fragt `isModuleActive(settings, "organization")`.
-
-Der Schalter ist heute vollständig wirkungslos. Hätte die Kachel ihn gelesen,
+Sie wurde in dieser Slice bewusst **nicht** gemacht, weil sie eine Behauptung
+gewesen wäre, die nichts trägt: die zwölf Handler der Kernfläche (`units`,
+`tree`, `combobox`, `locations`, `landscape`, `move`) prüften den Schlüssel
+nicht, und keine Stelle im Frontend fragte
+`isModuleActive(settings, "organization")`. Hätte die Kachel ihn gelesen,
 stünde dort „nicht aktiv", während die Seite dahinter einwandfrei funktioniert
 — eine Falschaussage in die andere Richtung, und ein direkter Verstoß gegen die
 Regel, an der sich 143f ausrichtet: *die Oberfläche sagt nur, was die
-Aufrufstelle wirklich weiß.* Das Gate nachzurüsten ist kein UI-Thema und
-änderte API-Verhalten für Bestandsmandanten → **PROJ-Y-143n**.
+Aufrufstelle wirklich weiß.* Das Gate nachzurüsten war kein UI-Thema und
+änderte API-Verhalten für Bestandsmandanten → **PROJ-Y-143n** (erledigt).
 
 Der Unit-Test friert diese Zuordnung ein: er prüft die Liste der
 `requiresModule`-Kacheln exakt, damit ein späterer Zusatz eine bewusste
@@ -121,7 +137,9 @@ Testfall hält die zwei Flags auseinander.
   (alle Module an / alle aus) prüft Anzahl **und** Reihenfolge.
 - **AC-Y143k.3** — Nur Kacheln mit echtem Server-Gate werden gekennzeichnet;
   keine UI-only-Behauptung. ✅ Unit-Test friert die Zuordnung exakt ein;
-  `organization` bewusst ausgenommen (→ PROJ-Y-143n).
+  `organization` bewusst ausgenommen (→ PROJ-Y-143n, das das Tor 2026-08-19
+  nachgerüstet und die Kachel dabei ergänzt hat — der Test trägt seither vier
+  Zeilen statt drei, genau wie vorgesehen).
 - **AC-Y143k.4** — Kernstammdaten ohne Modul bleiben unangetastet und voll
   funktionsfähig. ✅ 12 von 14 Kacheln byte-identisch im Bild; eigener
   Testfall („alle Module aus" ⇒ kein Kern-Flag gesetzt").
@@ -191,7 +209,8 @@ ergänzt nur die neue 143n-Zeile. Fremde Arbeit wurde nicht angefasst.
   damit kleiner als der Titel „nach aktiven Modulen filtern" nahelegt. Der Wert
   liegt ebenso im festgehaltenen Befund, dass die übrigen 12 Kernstammdaten
   sind und keinen Modulschalter haben *sollen*.
-- **D-Y143k.3** — „Organisation" bleibt ungegatet (Begründung oben) →
+- **D-Y143k.3** — „Organisation" bleibt in *dieser* Slice ungegatet
+  (Begründung oben; von PROJ-Y-143n am 2026-08-19 aufgelöst) →
   **PROJ-Y-143n**.
 - **D-Y143k.4** — Die Seite wird zur Server-Component mit Client-Grid statt
   serverseitig die Settings zu lesen. Grund: jede andere Fläche im Produkt
@@ -215,7 +234,8 @@ weil ich es nicht benennen kann.
 
 ## Followups
 
-- **PROJ-Y-143n** (neu) — der `organization`-Modulschalter ist wirkungslos: er
+- **PROJ-Y-143n** (erledigt 2026-08-19) — der `organization`-Modulschalter ist
+  nur halb wirksam (Korrektur oben): er
   steht in `TOGGLEABLE_MODULES`, wird aber weder von einer Route
   (`requireModuleActive`) noch von der Oberfläche (`isModuleActive`) gelesen.
   Ein Tenant-Admin schaltet ihn heute aus und nichts passiert. Zu entscheiden:
@@ -268,7 +288,7 @@ registrierter `/stammdaten`-Route) — beides Nachweisarten, die die Regel ausdr
 Der Code ist über den Merge in `main` und damit über den Vercel-Auto-Deploy live.
 
 **Eine offene Auslassung — aber keine aus einem AC dieser Slice:** **PROJ-Y-143n** (der
-`organization`-Modulschalter ist wirkungslos). Das ist wichtig für die Scope-Frage: AC-Y143k.3
+`organization`-Modulschalter ist nur halb wirksam — Korrektur oben). Das ist wichtig für die Scope-Frage: AC-Y143k.3
 verlangt, dass **nur** Kacheln mit echtem Server-Gate gekennzeichnet werden. „Organisation"
 auszunehmen ist deshalb **Erfüllung** dieses Kriteriums, nicht seine Zurückstellung — der
 Schalter wird von keiner Route (`requireModuleActive`) und keiner Oberfläche (`isModuleActive`)
