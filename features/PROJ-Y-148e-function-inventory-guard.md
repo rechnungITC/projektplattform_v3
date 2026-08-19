@@ -1,9 +1,10 @@
 # PROJ-Y-148e — Wächter gegen undokumentierte Prod-Funktionen
 
-## Status: Approved
-## Deployment Scope: —
-<!-- Scope bleibt leer bis zum Merge. Aus den Belegen ist `tooling-only` die
-     Klassifikation: reine Repo-/CI-Ebene, kein Produkt-Runtime-Verhalten. -->
+## Status: Deployed
+## Deployment Scope: tooling-only
+<!-- Deployed 2026-08-19: PR #415 (squash) -> main `a6d430e`, Tag `v2.66.0-PROJ-Y-148e`.
+     Scope `tooling-only`: Werkzeug, Tests, CI-Workflow, Runbook, versioniertes Inventar —
+     kein `src/`-Diff, keine Migration, kein Produkt-Runtime-Verhalten. -->
 
 **Created:** 2026-08-19
 **Origin:** PROJ-Y-148c. Dort wurde ein Einzelfall aufgeräumt — eine Migration lief fünf Tage in Prod,
@@ -122,3 +123,21 @@ Wächter unabhängig von der Prozessdisziplin machen und zusätzlich Rümpfe, Gr
 Das ist eine Sicherheitsentscheidung des Repo-Eigners — ein Lesezugang zur Produktionsdatenbank in
 jedem CI-Lauf — und keine, die eine Werkzeug-Slice nebenbei trifft. Wenn sie fällt, ist dieser Wächter
 die natürliche Stelle dafür.
+
+## Deploy
+
+**Deployed 2026-08-19:** PR #415 (squash) → main `a6d430e`, Tag `v2.66.0-PROJ-Y-148e`.
+
+**Der Deploy-Nachweis ist der Wächter selbst.** Auf #415 lief der neue CI-Job
+`Verify prod function inventory vs migration files` **grün** — er ist damit nicht nur lokal, sondern in
+der Umgebung betrieblich nachgewiesen, in der er künftig wirkt. Ein HTTP-Smoke wäre gegenstandslos: die
+Slice hat keinen `src/`-Diff und ändert kein Laufzeitverhalten.
+
+**Scope `tooling-only`** — Werkzeug, Tests, CI-Workflow, Runbook und versioniertes Inventar. Die
+Definition trifft wörtlich zu („repository tooling, CI, tests, or workflow"), und es gibt bewusst keine
+Produktfläche.
+
+**Ein Kriterium der Definition of Done bleibt offen und ist kein Versäumnis dieser Slice:** das
+Enrollment als Required Check ist eine Repo-Eigner-Entscheidung — genau der Handoff-Typ, der bei
+PROJ-42, PROJ-74 und PROJ-147 ebenfalls beim Eigner liegt. Der Workflow läuft auf jedem PR und meldet
+sein Ergebnis; er sperrt nur noch nicht.
