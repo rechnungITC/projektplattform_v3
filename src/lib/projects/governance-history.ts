@@ -74,10 +74,11 @@ export interface GovernanceHistoryIsland {
  * exactly why the delete branch cannot rely on a single SQLSTATE and the
  * pre-check is the authoritative mechanism.
  *
- * All five are listed even though only four block, so that the list stays a
- * complete picture of the cascade closure and a sixth island cannot slip in
- * unnoticed. Whether an island blocks is `blocksHardDelete`, measured per
- * island rather than inferred from the presence of a guard.
+ * Since PROJ-Y-148d all five block. The flag stays on every entry rather than
+ * being dropped as redundant: whether an island refuses the cascade is a
+ * property of its guard, measured per island, not something to infer from the
+ * mere presence of a guard — `construction_defect_events` had a guard and
+ * refused nothing. A sixth island may well be non-blocking again.
  */
 export const GOVERNANCE_HISTORY_ISLANDS = [
   {
@@ -118,14 +119,22 @@ export const GOVERNANCE_HISTORY_ISLANDS = [
     parentForeignKey: "construction_defect_events_defect_id_fkey",
     label: "Mängel-Historie",
     promisedBy: "PROJ-45-β",
-    // Measured: with one seeded event the project delete SUCCEEDED and the
-    // event rows went with it. `enforce_construction_defect_event_immutability`
-    // steps aside on plain parent absence, without requiring the teardown
-    // switch the other four insist on — and a cascade removes the parent first.
-    // Listing it as a blocker would refuse deletes that in fact succeed. That
-    // the promise is weaker here than in its four siblings is a finding about
-    // PROJ-45-β, tracked as PROJ-Y-148d, not something to paper over here.
-    blocksHardDelete: false,
+    // Flipped to `true` by PROJ-Y-148d, which removed the exit from
+    // `enforce_construction_defect_event_immutability`. Until then the guard
+    // stepped aside on plain parent absence — and a cascade removes the parent
+    // first, so the exception fired on every project teardown and the history
+    // went with the project, unlike its four siblings.
+    //
+    // Two things settled that, neither of them a judgement call: PROJ-45-β
+    // justified the exit as "unreachable through the app (no DELETE policy on
+    // construction_defects)", which is true of the *direct* path and not of the
+    // cascade; and its second reason — do not create a new blocker of the
+    // PROJ-148 class — expired when PROJ-Y-148a chose variant 1, where blocking
+    // IS the answer and only has to be said honestly.
+    //
+    // Re-measured after the migration: a project with one seeded defect event is
+    // refused, one without is still deleted.
+    blocksHardDelete: true,
   },
 ] as const satisfies readonly GovernanceHistoryIsland[]
 
@@ -175,12 +184,23 @@ export type GovernanceHistoryCounter = (
 const MISSING_TABLE_CODES = new Set(["42P01", "PGRST205"])
 
 export async function detectGovernanceHistory(
-  count: GovernanceHistoryCounter
+  count: GovernanceHistoryCounter,
+  /**
+   * Which islands to ask. Defaults to the real registry; overridable so the
+   * `blocksHardDelete: false` rule below stays under test.
+   *
+   * PROJ-Y-148d made all five islands blocking, which left the two tests for
+   * that rule unable to trigger it through the real registry — a test that
+   * cannot fail guards nothing. The rule itself still matters: a sixth island
+   * may well be non-blocking, and it must then not be queried. So it is tested
+   * against a synthetic island instead of against today's data.
+   */
+  islands: readonly GovernanceHistoryIsland[] = GOVERNANCE_HISTORY_ISLANDS
 ): Promise<GovernanceHistoryDetection> {
   const kinds: string[] = []
   let total = 0
 
-  for (const island of GOVERNANCE_HISTORY_ISLANDS) {
+  for (const island of islands) {
     // An island that does not refuse the cascade must not produce a refusal
     // here either, or the pre-flight would block a delete that would succeed.
     if (!island.blocksHardDelete) continue
