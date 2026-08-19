@@ -1,15 +1,21 @@
 # PROJ-45: Construction Extension — Gewerke & Bauabschnitte
 
-## Status: In Progress
+## Status: Approved
 ## Deployment Scope: —
 
-> Der Lebenszyklus ist mit **β** wieder in der Umsetzung, deshalb ist der Deployment-Scope
-> nach Hausregel leer — Scope wird erst bei einem Deployment vergeben. **α ist unverändert live**
-> (Tag `v2.56.0-PROJ-45-alpha`, Scope `alpha`, PR #385); die Nachweise dazu stehen weiter unten
-> unverändert. β: `/backend` in Prod, `/frontend` und `/qa` offen.
+> **β ist QA-abgenommen (2026-08-19, 0 Critical / 0 High).** Der Deployment-Scope bleibt nach
+> Hausregel leer — `Approved` verlangt `—`, und `/deploy` vergibt ihn; er wird `alpha`, weil drei
+> Original-Anforderungen (Abnahmen γ, Terminsignale δ, Fotodokumentation ε) und zusätzlich
+> AC-45β.18 zurückgestellt sind. **α ist unverändert live** (Tag `v2.56.0-PROJ-45-alpha`, Scope
+> `alpha`, PR #385); die Nachweise dazu stehen weiter unten unverändert.
+>
+> `features/INDEX.md` stand vor diesem Lauf auf `In Progress | —` und ist damit mitgezogen — die
+> beiden Quellen waren nicht auseinandergelaufen. (Eine frühere Fassung dieses Absatzes behauptete
+> eine Drift `Deployed | alpha`; das stammte aus einer veralteten Momentaufnahme und ist am
+> INDEX gegengeprüft falsch — zurückgezogen, statt es stehen zu lassen.)
 
 **Created:** 2026-05-06
-**Last Updated:** 2026-08-13 (Requirements refined + Tech Design — gegen den deployten Stand geerdet, Zuschnitt in Sub-Slices getrennt, 8 Nutzer-Locks, alle vier Forks beantwortet, CIA-Review zu Q2 eingearbeitet)
+**Last Updated:** 2026-08-19 (β `/qa` PASS — Zwei-Personen-Durchlauf gefahren, fünf Tech-Design-Risiken geprüft, echter PDF-Druck, 4 Befunde. Vorher: 2026-08-13 Requirements refined + Tech Design — gegen den deployten Stand geerdet, Zuschnitt in Sub-Slices getrennt, 8 Nutzer-Locks, alle vier Forks beantwortet, CIA-Review zu Q2 eingearbeitet)
 
 ---
 
@@ -870,6 +876,223 @@ Dateien zeigten. Nach `rm -rf .next` sind beide Seiten **13**. Dieselbe Klasse w
 durch eine **zweite** Person), die fünf Risiken aus dem Tech Design (Feld leeren, Vier-Augen unter
 einer Person, Anker-Zweige zählen, Teilbaum-Sperre am **Enkel**, Überfälligkeits-Grenzen) sowie ein
 echter Druck nach PDF. AC-45β.18 bleibt nach **δ** verschoben.
+
+---
+
+## QA Test Results — β (2026-08-19)
+
+**Verdikt: PASS — 0 Critical / 0 High / 0 Medium, 3 Low/Info.** 21 von 22 Akzeptanzkriterien
+erfüllt, alle 12 blockierenden Härtungskriterien erfüllt. **AC-45β.18 ist ein offenes
+Kriterium**, keine Abweichung — es ist per Nutzer-Entscheid (D-β1) nach δ verschoben und als
+Auslassung geführt. Status → **Approved**; Deployment-Scope bleibt leer, `/deploy` vergibt ihn
+(er wird `alpha`, weil drei Original-Anforderungen auf γ/δ/ε liegen).
+
+### Was dieser Lauf hinzufügt
+
+`/frontend` β hatte drei Dinge ausdrücklich offen gelassen. Alle drei sind jetzt ausgeführt,
+nicht kompensiert — nach der PROJ-135/AC-135.3-Lehre ist ein nicht gelaufener Nachweis ein
+offenes Kriterium und keine Deviation:
+
+1. **Der Zwei-Personen-Durchlauf ist wirklich gelaufen**, in drei getrennten authentifizierten
+   Browser-Sitzungen: Betrachter erfasst → Bauleitung meldet fertig → **zweite Person** nimmt ab.
+2. **Die fünf Tech-Design-Risiken** sind einzeln geprüft.
+3. **Ein echter Druck nach PDF** liegt vor (`%PDF-`-Kopf, 15 KB, als Testartefakt angehängt).
+
+### Die vierte Fixture-Lane (Bau)
+
+Der Durchlauf brauchte eine Fläche, die doppelt gegatet ist (`project_type = 'construction'`
+**und** Modul `construction`). Das Modul im geteilten `[E2E]`-Mandanten einzuschalten war
+ausgeschlossen — genau der Griff, den PROJ-Y-143f/143l verboten haben, weil die authentifizierten
+Visual-Baselines Mandanten-Zustand fotografieren. Also eine eigene Lane nach dem
+PROJ-Y-144d-Muster: eigener Mandant `[E2E] Bau Test`, eigenes Bauprojekt, eigenes Gewerk,
+zweistufiger Abschnittsbaum, `active_modules` **ausdrücklich** geschrieben (beide Modul-Tore
+fallen bei fehlender Einstellungszeile offen zurück — eine Fixture mit dem Zweck „das Modul ist
+an" darf nicht auf einem Fail-open ruhen), `audit_lifecycle_exempt` **vor** dem Seeden gesetzt.
+
+**Drei Akteure, weil die Rollen es erzwingen** und nicht aus Bequemlichkeit: der Betrachter darf
+anlegen, aber nicht fertigmelden; Fertigmelden verlangt `admin | lead`; Abnehmen verlangt
+dieselbe Rolle **und** eine andere Person. Zwei davon sind neue Identitäten, der Abnehmer ist der
+geteilte E2E-Nutzer als Mandanten-Administration — dass dessen Einbuchung in einen vierten
+Mandanten heute gefahrlos ist, verdankt sich PROJ-Y-143l und ist unten **gemessen**, nicht
+angenommen. Alle acht neuen Kennungen sind RFC-4122-konform und im harten `global-setup`-Wächter
+eingetragen (PROJ-143).
+
+### Nachweise je Akzeptanzkriterium
+
+| AC | Nachweis |
+|---|---|
+| AC-45β.1 | **Browser, Betrachter-Sitzung:** „Mangel erfassen" ist für die Betrachterrolle sichtbar und der Mangel entsteht; Gegenprobe im selben Test, dass „Mängelanzeige" ihm **nicht** angeboten wird (sonst wäre der Nachweis auch auf einer Fläche grün, die jedem alles zeigt). Datenbankseitig Pentest A/D2. |
+| AC-45β.2 | Speichern erst bei Titel **und** Gewerk; Pentest A (Titel getrimmt, Status `offen`), Vektoren für fehlenden Titel und fehlendes Gewerk → `23514`. Die vier übrigen Felder sind im Durchlauf leer geblieben und der Mangel entstand trotzdem. |
+| AC-45β.3 | Pentest **E/F** (projektfremdes Gewerk / projektfremder Abschnitt → `23514`), plus PROJ-Y-45a-Wächter 9/9. Die Auswahl der Oberfläche stammt aus den Projekt-Hooks. |
+| AC-45β.4 | **Browser:** direkt nach dem Erfassen ist die Zeile sichtbar und trägt „Offen" — ohne Reload und ohne weiteren Schritt. |
+| AC-45β.5 | **Browser, Betrachter-Sitzung:** statt des Steuerblocks erscheint der Nur-Lese-Hinweis; „Fertigmelden", „Abnehmen" und „Angaben bearbeiten" haben Trefferzahl **0**. Serverseitig Rot-Team über HTTP: sein `PATCH` und sein Statuswechsel enden auf **403**, und die Zeile ist danach unverändert (`titel` und `status` gegengeprüft). Pentest B/C/D. |
+| AC-45β.6 | Pentest **O0/O1/O2** über **alle fünf** optionalen Felder in drei Zuständen: setzen → **weglassen behält** → Schalter leert wirklich. Der mittlere Zustand ist der eigentliche Nachweis: ohne ihn bliebe „weglassen heißt leeren" unentdeckt (die live ausgelieferte PROJ-122-Defektklasse). **Browser** zusätzlich für den Ort, das schwerste Feld, weil eine Auswahlliste ohne ausdrückliche Leer-Option gar nicht zurückgesetzt werden kann — geprüft gegen die **persistierte Zeile**, nicht gegen die gerenderte Zelle. |
+| AC-45β.7 | Pentest über jeden Übergang der Kette; zusätzlich **im Feld-Protokoll live nachgewiesen**: die drei Durchläufe erzeugten 28 Zeilen `construction_defects.status` in `audit_log_entries` (danach aufgeräumt, siehe Rückstände). |
+| AC-45β.8 | Pentest **M** (Verwerfen ohne Begründung → `23514`); in der Maske öffnet „Verwerfen" den Begründungsblock und sendet erst bei nicht-leerem Text. |
+| AC-45β.9 | **Browser:** „Abnehmen" existiert nur im Steuerblock, den die Betrachter-Sitzung nicht bekommt; die Abnahme selbst gelingt in der Sitzung der Mandanten-Administration. |
+| AC-45β.10 | **Der Kern des Durchlaufs.** In der Sitzung der Bauleitung, die fertiggemeldet hat, ist „Abnehmen" mit Trefferzahl **0** — „Zurückweisen"/„Verwerfen" bleiben stehen, sonst wäre der Mangel eingefroren. Und weil ein zurückgehaltener Knopf allein kosmetisch ist: dieselbe Sitzung fragt die Statusroute direkt und erhält **403** mit `four-eyes` im Rumpf. Pentest **I** und **K** (Runde 2 nach Rückweisung). |
+| AC-45β.11 | Pentest **L/L2**; Rot-Team über HTTP: Zurückweisen ohne Begründung → **422**, und der Mangel bleibt auf `erledigt` (kein Nebeneffekt). |
+| AC-45β.12 | **Browser:** die Zeitleiste zeigt nach der Abnahme „Angelegt", „Fertiggemeldet", „Geprüft" mit dem Unveränderlichkeits-Hinweis. Pentest **R** prüft jetzt die volle Mehrrunden-Kette (siehe F-1) und **R2** beide Fertigmeldungen. |
+| AC-45β.13 | **Browser:** Anzeigen-Dialog mit Achse Gewerk oder Nachunternehmer, nur für die Leitung. |
+| AC-45β.14 | **Echter Druck:** `page.pdf()` auf der Druckseite liefert einen gültigen `%PDF-`-Kopf und ~15 KB; die App-Hülle ist nachweislich nicht im DOM (`[data-sidebar]` Trefferzahl 0). |
+| AC-45β.15 | Titel, Ort und Gewerk stehen auf dem Blatt (im gedruckten Fall mit gesetztem Ort, Frist und Schweregrad `erheblich`). |
+| AC-45β.16 | Ohne Sitzung führt die Druckseite zur Anmeldung und der Rumpf enthält weder „Mängelanzeige" noch `construction_defects`. Rot-Team über HTTP: ein Fremder aus einem anderen Mandanten erhält auf Liste **und** Zähler **404** (nicht 403 — 403 würde die Existenz des Projekts bestätigen). |
+| AC-45β.17 | **Risiko 5, alle drei Grenzen:** Frist **heute** → nicht überfällig (`<`, nicht `<=`), Frist **gestern** → überfällig, Frist gestern **aber fertiggemeldet** → „wartet auf Prüfung" und ausdrücklich **nicht** überfällig. Pentest P1–P4. |
+| AC-45β.18 | **OFFEN — nicht erfüllt.** Nach PROJ-45-δ verschoben (D-β1, Nutzer-Entscheid nach B-β1). Als zurückgestellte Original-Anforderung in `features/OPEN-DEFERRED-STATUS.md` in der δ-Zeile geführt. Der PROJ-103-Pentest ist als Regression **A–G 7/7** grün und belegt unabhängig, dass β die Engpass-Auswertung nicht angefasst hat. |
+| AC-45β.19 | Fünf serverseitige Filter; im Durchlauf mitbenutzt (der Filter wird nach dem Erfassen zurückgesetzt und das gesagt). |
+| AC-45β.20 | Positive Hälfte im Browser: die Fläche ist überhaupt nur erreichbar, weil Projekttyp **und** Modul stimmen — die Fixture-Lane ist der Nachweis. Negative Hälfte: der Fremd-Mandant (Modul `construction` aus) erhält 404 ohne Mangeldaten. |
+| AC-45β.21 | **Risiko 4 im Browser/HTTP:** der Mangel hängt am **Enkel**, gelöscht wird die **Wurzel** → **409** mit `defects_present` **und dem Titel des Mangels im Rumpf**. Pentest U/V/V2/V3, wobei **V** zeigt, dass die naive Abfrage auf den einen Knoten 0 Treffer liefert. |
+| AC-45β.22 | Rot-Team über HTTP (404 auf Liste und Zähler, kein Leck des Laufkennzeichens) + Pentest X/X2 und die **Aggregat-Leck-Probe Y/Y2** (Fremder sieht `total = 0`, obwohl 1 Mangel existiert; Berechtigter sieht die Wahrheit — kein Blanket-Deny). |
+
+### Härtungskriterien
+
+| # | Nachweis |
+|---|---|
+| AC-45βH-1 | Pentest X/X2/Y/Y2 + HTTP-404 auf Liste und Zähler. |
+| AC-45βH-2 | Pentest B/C/D (Betrachter und Projekt-`editor`) + HTTP-403 auf `PATCH` und Statuswechsel + Trefferzahl 0 für alle Steuer-Knöpfe in der Betrachter-Sitzung. |
+| AC-45βH-3 | Pentest I und **K** (Runde 2) + der 403 aus der Sitzung des Fertigmelders. |
+| AC-45βH-4 | Pentest W1–W4 **als Mandanten-Administration**: direktes `INSERT` und Ereignis-`INSERT` → `42501`, `UPDATE`/`DELETE` → 0 Zeilen. Strukturell zusätzlich: **0** Schreib-Policies auf beiden Tabellen (live gezählt), RLS auf beiden aktiv. |
+| AC-45βH-5 | Pentest Q1/Q2 (`42501`), Ausnahme durch Z belegt (D-β5). |
+| AC-45βH-6 | Pentest E/F + PROJ-Y-45a-Wächter 9/9. |
+| AC-45βH-7 | **Risiko 4**: 409 mit Nennung, am Enkel ausgelöst, kein 500. |
+| AC-45βH-8 | **Vollständig geprüft, nicht als Stichprobe** (PROJ-Y-114a-Lehre): alle **acht** von der Migration erzeugten Funktionen **und** die **vier** geteilten, die sie neu schreibt (`can_read_audit_entry`, `_tracked_audit_columns`, `record_audit_changes`, `record_audit_lifecycle`) haben `has_function_privilege('anon', …) = false` **und keinen PUBLIC-Eintrag in der ACL** (`=X/` kommt in keiner der zwölf vor). Die beiden internen Wächter sind auch für `authenticated` nicht aufrufbar; die drei Auswertungen sind INVOKER, die drei Schreibwege DEFINER; alle zwölf tragen `search_path`. |
+| AC-45βH-9 | Live-Pentest gegen Prod im Rollback-Muster; Nicht-Admin, Projekt-`viewer` und Projekt-`editor` werden synthetisiert (in Prod ist jedes Mandanten-Mitglied Admin und `is_tenant_admin` schließt die Rechteprüfung kurz — ein Smoke unter Admin wäre falsch-grün). Vektor **S2** belegt ausdrücklich, dass der lesende Nutzer kein Admin ist. |
+| AC-45βH-10 | α-Pentest **16/16**, PROJ-Y-45a **9/9**, PROJ-103 **A–G 7/7** — alle wörtlich, alle unverändert. |
+| AC-45βH-11 | Druckseite ohne Sitzung → Anmelde-Umleitung ohne Inhalt; mit Sitzung nur eigene Projekte (RLS `is_project_member`, Sitzungs-Client, kein Dienst-Schlüssel). |
+| AC-45βH-12 | Nicht-Bau/Modul-aus verhält sich unverändert: **9/9 Visual-Baselines grün ohne Neuaufnahme**, α-Auth-Gates **18/18**, vitest 3240/3240. |
+
+### Automatisierte Läufe
+
+| Lauf | Ergebnis |
+|---|---|
+| Live-Pentest `tests/sql/PROJ-45-beta-construction-defects-pentest.sql` | **53/53 PASS, 0 FAIL** gegen Prod (32 + 14 + 7), 0 Rückstände |
+| Regression α `PROJ-45-construction-trades-sections-pentest.sql` | **16/16** wörtlich |
+| Regression `PROJ-Y-45a-reference-consistency-smoke.sql` | **9/9** wörtlich |
+| Regression PROJ-103 (Engpass-Auswertung unberührt) | **A–G 7/7** wörtlich |
+| Playwright `PROJ-45-beta-defects.spec.ts` (neu) | **18/18** chromium — 6 Auth-Gates, 3 Kettenschritte, 4 Risiken, 2 Anzeige, 3 Rot-Team |
+| Playwright `PROJ-45-construction.spec.ts` (α-Regression) | **18/18** chromium |
+| Beide zusammen, dreimal hintereinander | **36/36 · 36/36 · 36/36** |
+| Playwright `PROJ-51-visual-regression-authenticated` | **9/9**, keine Baseline neu gezogen |
+| `npx vitest run` | **3240/3240** (395 Dateien) |
+| `npx eslint .` | **0** (Exit 0) |
+| `npx tsc --noEmit` (nach `rm -rf .next`) | **13 = Baseline, 0 neu** |
+| `npm run build` | clean; alle 5 neuen API-Routen und beide Seiten registriert |
+| `npm run check:migration-naming` | 0 Fehler (218 Migrationen) |
+| `npm run check:index-scope` | 0 Fehler |
+| Supabase-Advisors | **0 ERROR** auf beiden Achsen (Security 144 WARN, Performance 15 WARN / 293 INFO) |
+
+Die drei slice-bezogenen Security-WARN sind die drei Schreib-RPCs als `authenticated`-ausführbare
+`SECURITY DEFINER`-Funktionen — dieselbe Kategorie, die α trägt und die den Schreibweg überhaupt
+erst möglich macht; jede prüft die Rolle intern. Der einzelne `anon_security_definer`-WARN gehört
+`seed_risk_categories_if_empty` und ist Bestand. Die acht Performance-Meldungen sind INFO: fünf
+`unindexed_foreign_keys` auf Personen-Verweisen (die von PROJ-69 ausdrücklich als
+„skip/delete-rare" triagierte Klasse, keine auf einem Leseweg) und drei `unused_index`, was bei 0
+Zeilen in Prod zu erwarten ist.
+
+### Register-Anker (Risiko 3)
+
+Live nachgezählt, gegen die vier Nachbar-Slices, die an denselben Objekten arbeiten:
+Objektarten **94**, Feld-Whitelist **76**, Lese-Tor **63** — genau die im Tech Design
+vorhergesagten Werte. Die Ereignis-Tabelle steht in **keinem** der drei Register (dreifach
+gegengeprüft), sie *ist* das Protokoll. Namentliche Geschwister-Gegenprobe über 18 Nachbar-Objekte
+(`dd_findings`, `spa_issues`, `ma_valuations`, `communication_matrix_entries`, `raci_assignments`,
+`document_extractions`, `document_summaries`, `audit_reader_grants`, `work_items`, `risks`, …):
+alle Zweige erhalten. Zwei Abwesenheiten sind dokumentierter Bestand und kein Clobber-Schaden —
+`project_skills` trägt bewusst keinen Whitelist-Zweig (PROJ-78) und `audit_reader_grants` bewusst
+keinen Lesetor-Zweig (PROJ-130-γ2, fällt korrekt auf `else return false`). Die γ1-Klausel
+(`_audit_entry_classified_ok`) und die γ2-Klausel (`has_audit_reader_grant`) stehen unverändert im
+gemeinsamen Ausgang, und der `authenticated`-Grant auf `can_read_audit_entry` ist intakt.
+
+### Befunde
+
+**F-1 (Low, in `/qa` behoben) — ein Pentest-Vektor trug den Namen von AC-45β.12, ohne es zu
+belegen.** Der Lauf zählte **52** wörtliche PASS-Marken, nicht die dokumentierten 53. Ursache:
+`R_history_for_second_defect` **gab einen Wert aus statt zu prüfen** (`angelegt`) und konnte
+strukturell nicht fehlschlagen; zusätzlich las er den **falschen** Mangel, weil Vektor M
+`v_defect` zuvor auf einen frischen Mangel umbiegt — die Mehrrunden-Kette hing an der ersten
+Zeile, deren Kennung niemand mehr hielt. Nicht die Zahl wurde nachjustiert, sondern der Vektor:
+eine neue Variable `v_defect_rounds` hält den Mangel mit den Runden, und `R_multi_round_history`
+prüft die Kette jetzt wörtlich gegen
+`angelegt>fertiggemeldet>zurueckgewiesen>fertiggemeldet>geprueft`.
+
+**Nachgemessen gegen Prod nach der Härtung:** Block 1 gibt **32/32 PASS** aus (vorher 31 PASS
+plus eine Wertausgabe), Block 2 vierzehn, Block 3 sieben — **53/53 PASS, 0 FAIL**, und damit
+erstmals 53 *Zusicherungen* statt 53 *Marken*. Das Produkt war nie falsch: der Verlauf war
+korrekt, nur unbewiesen. Kein Produktivcode berührt. Nebenbefund derselben Prüfung: das
+Header-Etikett listete `J0/J`, obwohl `J0` gar kein ausgegebener Vektor ist — auf `J` korrigiert,
+die Gesamtzahl 53 war davon unberührt.
+
+**F-2 (Low, offen → PROJ-Y-45d) — die Gewerk-Auswahl kippt von unkontrolliert auf kontrolliert.**
+`construction-defect-dialog.tsx:241` übergibt beim leeren Feld `undefined`, React meldet beim
+ersten Auswählen „Select is changing from uncontrolled to controlled". Bei jedem Öffnen der
+Erfassen-Maske reproduziert. **Es ist die einzige Stelle dieser Form im ganzen Repo** (1 Treffer
+in `src/`), also von β eingebracht — die beiden optionalen Auswahllisten unmittelbar darüber
+machen es mit einem `NONE`-Wächter richtig. Wirkung ist Konsolenlärm, keine Fehlfunktion (18/18
+laufen über genau diesen Pfad). Bewusst nicht in `/qa` behoben: der naheliegende Fix berührt das
+Verhalten des Platzhalters „Gewerk wählen …", und dessen Prüfung gehört ins Frontend. Nebenbei:
+der Konsolen-Wächter aus PROJ-Y-143e greift auf `console.error`, dies ist eine `console.warn` — er
+konnte sie nicht fangen.
+
+**F-3 (Info, in `/qa` behoben, eigener Fehler) — Aufräumen nach Laufkennzeichen löschte fremden
+Blöcken die Daten weg.** Die erste Fassung des neuen Specs räumte je Block „alles mit diesem
+Laufkennzeichen" ab. Playwright verteilt Blöcke auf parallele Worker und alle vier melden in
+**dasselbe** Projekt — also verschwand der Mangel der Kette mitten im Test, und der Fehlschlag
+sah aus wie „der Status wurde nicht aktualisiert". Behoben durch ein Kennzeichen je Block; danach
+dreimal hintereinander 36/36. Dieselbe Klasse wie PROJ-Y-143o, eine Ebene weiter: nicht das
+Verschlucken des Fehlers, sondern der **Geltungsbereich** des Aufräumens.
+
+**F-4 (Info, offen → PROJ-Y-45e) — `audit_lifecycle_exempt` deckt den Feld-Audit nicht ab.** Die
+drei committenden Durchläufe hinterließen **33** unlöschbare Zeilen in `audit_log_entries` (28 ×
+`status`, 5 × `section_id`) plus eine aus dem Fixture-Seed. Das Flag aus PROJ-Y-130h unterdrückt
+nur `record_audit_lifecycle`, nicht `record_audit_changes` — und `status` steht in der
+Feld-Whitelist, weil AC-45β.7 es verlangt. `/qa` hat sie über den Runbook-Weg
+(`session_replication_role = replica`, streng auf den Fixture-Mandanten begrenzt, mit
+Vorbedingungen und Nachprüfung) entfernt und 0 Rückstände belegt; die Wächter aus PROJ-130-α sind
+danach nachweislich wieder scharf (3/3 aktiv, `session_replication_role = origin`). Das ist ein
+manueller Nachlauf, den der nächste Lauf erneut braucht.
+
+**Kein Befund, aber festgehalten:** die α-Auth-Gate-Zusicherung war
+`expect([307, 401, 403, 404]).toContain(status)` — vier erlaubte Werte, wo genau **einer**
+auftritt. Gemessen gegen die laufende Anwendung antworten **alle** achtzehn Konstruktions-Endpunkte
+(zwölf α, sechs β) mit exakt **307** und `location: /login?next=…`, weil der Proxy vor dem Handler
+greift. Jeder überzählige Wert deckte eine andere Regression: `404` hielte den Test grün, wenn
+eine Route **gelöscht** würde, `403` wenn das Tor seinen Charakter änderte, `401` wenn der Proxy
+den Pfad nicht mehr träfe. Auf den einen Wert verschärft, in α und in β. Zusätzlich hatten die
+fünf neuen β-**API**-Routen bisher **gar keinen** Auth-Gate-Test — `/frontend` β hatte nur die
+zwei Seiten abgedeckt.
+
+### Rückstände (Gegenabfrage, nicht Behauptung)
+
+Der Browser-Durchlauf muss committen; ein zurückgerollter Vorgang kann ihn nicht abbilden. Nach
+allen Läufen und dem Aufräumen, über zehn Zähler gegengeprüft:
+
+`construction_defects` **0** · `construction_defect_events` **0** · Mängel mit `[E2E β]` **0** ·
+Mängel im Bau-Projekt **0** · `audit_log_entries` für `construction_defects` **0** ·
+`audit_log_entries` des Bau-Mandanten **0** · Mängel im **Kundenmandanten 0** (er wurde nie
+berührt) · PROJ-130-α-Wächter **3/3 aktiv** · `session_replication_role` = `origin` ·
+`audit_log_entries` gesamt **576** (Bestand anderer Mandanten, unangetastet).
+
+**Bewusst stehen bleibt die Fixture-Lane selbst** — Mandant, Projekt, drei Mitgliedschaften, zwei
+Projektrollen, ein Gewerk, eine Projektzuordnung, zwei Abschnitte. Das ist kein Rückstand, sondern
+dieselbe dauerhafte, idempotent nachgesäte Fixture wie die Assistant- und die Visual-Lane;
+`global-setup` stellt sie bei jedem Lauf wieder her. `audit_lifecycle_exempt` ist gesetzt.
+
+### Abweichungen (`/qa`)
+
+- **D-β15** Der Zwei-Personen-Durchlauf fährt die Zustandswechsel über die Oberfläche, die
+  Negativ-Nachweise („darf der Server das auch wirklich nicht?") dagegen als direkte Anfrage aus
+  **derselben authentifizierten Sitzung**. Das ist Absicht: der echte Anfragepfad wird benutzt,
+  kein Dienst-Schlüssel, und der Nachweis hängt nicht daran, dass ein Knopf fehlt.
+- **D-β16** Der Dienst-Schlüssel wird ausschließlich zum **Lesen** der erzeugten Kennungen und
+  zum Aufräumen benutzt, nie zum Herstellen eines Zustands, den die Oberfläche herstellen soll.
+- **D-β17** Mobile Safari bleibt umgebungsbedingt übersprungen (WebKit-Host-Bibliotheken,
+  PROJ-67/F2). Firefox ist gar nicht konfiguriert; alle Zahlen sind chromium.
+- **D-β18** Die UI-Hälfte des Leeren-Schalters ist für **ein** Feld (Ort) gefahren, nicht für alle
+  fünf; die anderen vier sind über O0/O1/O2 auf Funktionsebene in allen drei Zuständen belegt. Der
+  Ort ist bewusst gewählt, weil eine Auswahlliste der einzige Feldtyp ist, der ohne ausdrückliche
+  Leer-Option gar nicht zurücksetzbar wäre.
+- **D-β14 aufgelöst.** Die Deviation „kein authentifizierter Browser-Durchlauf" aus `/frontend` ist
+  eingelöst und entfällt.
 
 ---
 
