@@ -1,10 +1,9 @@
 # PROJ-Y-130g — Die Fresh-Apply-Abbrüche an der Wurzel beheben
 
-## Status: In Progress
+## Status: Approved
 ## Deployment Scope: —
-<!-- Der Status bleibt `In Progress`, bis der eigene CI-Lauf zeigt, was die
-     search_path-Angleichung wirklich bewirkt. Die Erwartung steht unten und wird
-     gegen das Ergebnis gehalten, nicht nachträglich passend gemacht. -->
+<!-- Der CI-Lauf hat die vorab festgehaltene Erwartung in jedem Punkt bestätigt,
+     inklusive der Zeilenzahl. Scope beim Merge: `tooling-only`. -->
 
 **Created:** 2026-08-20
 **Origin:** PROJ-Y-130f, das die sieben Abbrüche benennbar gemacht hat und die Behebung ausdrücklich
@@ -60,7 +59,30 @@ Ausdrücklich vorab festgehalten, damit sie prüfbar ist statt hinterher angepas
    dann ab. Genau deshalb ist diese Slice von der Diagnose getrennt: der PR-Lauf zeigt es, **bevor**
    etwas auf `main` landet.
 
-**Ergebnis:** _wird nach dem CI-Lauf hier eingetragen._
+### Ergebnis — die Erwartung ist in jedem Punkt eingetroffen
+
+```
+Applied 216 migration(s); 4 tolerated abort(s); 0 structural failures.
+PROJ-Y-130f: 4 Migration(en) brechen im Fresh-Apply ab; rund 116 Zeile(n) laufen dadurch nicht.
+```
+
+| | erwartet | tatsächlich |
+|---|---|---|
+| Abbrüche | 7 → 4 | **7 → 4** |
+| verschwunden | `proj107` · `proj110` · `proj122` | **genau diese drei** |
+| verbleibend | `harden_trigger_only_functions` · `security_internal_functions_lockdown` · `proj70_beta_accept_bulk_rpc` · `proj148_last_lead_cascade_fix` | **genau diese vier**, mit unveränderten Abbruchzeilen 18/75/441/70 |
+| verlorene Zeilen | 883 → ~116 | **883 → 116** |
+| `structural failures` | 0 (das Risiko) | **0** |
+| angewendete Dateien | — | 213 → **216** |
+
+**Das Risiko hat sich nicht materialisiert.** Die 704 Zeilen, die `proj107` und `proj110` nun erstmals
+ausführen, liefen fehlerfrei durch — der Schema-Drift-Guard blieb grün, ebenso die übrigen acht Checks.
+Das war vorher nicht bekannt und ist der Grund, warum diese Slice von der Diagnose getrennt war: hätte
+eine dieser Zeilen gescheitert, wäre der Required Check rot geworden.
+
+**Bemerkenswert am Rande:** die Kaskade hat sich exakt so aufgelöst wie vorhergesagt. `proj122` scheiterte
+nie an sich selbst, sondern an einer Funktion, die `proj110` hinter seiner Abbruchstelle anlegt — mit
+`proj110` verschwand auch `proj122` aus der Liste, ohne dass diese Slice die Datei berührt hat.
 
 ---
 
@@ -75,16 +97,16 @@ Ausdrücklich vorab festgehalten, damit sie prüfbar ist statt hinterher angepas
 - [x] **AC-Y130g.5** — Die `g`-Flag-Falle von `RegExp.test` ist behandelt und durch einen Test über
       **zwei** verletzende Dateien abgesichert (ohne Rücksetzen bliebe die zweite stumm).
 - [x] **AC-Y130g.6** — Exit-Logik des Drift-Workflows unverändert; YAML-Integrität geprüft.
-- [ ] **AC-Y130g.7** — Der eigene CI-Lauf bestätigt die Erwartung oben, **oder** die Abweichung ist
-      benannt und behandelt.
-- [ ] **AC-Y130g.8** — Keine neuen `structural failures`. Falls doch: einzeln behandelt, nicht durch
-      Zurücknehmen des Fixes verdeckt.
+- [x] **AC-Y130g.7** — Der eigene CI-Lauf bestätigt die Erwartung **in jedem Punkt**, inklusive der
+      Zeilenzahl (116, vorhergesagt „rund 116") und der Identität der vier verbleibenden Abbrüche.
+- [x] **AC-Y130g.8** — **0 `structural failures`**, obwohl 704 Zeilen erstmals ausgeführt wurden. Alle
+      neun Checks grün.
 
 ## Definition of Done
 
 - [x] `search_path`-Angleichung, expliziter Regel-Wächter, Tests, Rot-Grün.
-- [ ] CI-Lauf beobachtet, Ergebnis gegen die Erwartung gehalten und eingetragen.
-- [ ] Buchführung final; verbleibende Abbrüche als eigener Followup registriert, falls sie bleiben.
+- [x] CI-Lauf beobachtet, Ergebnis gegen die Erwartung gehalten und eingetragen.
+- [x] Buchführung final; die vier verbleibenden Abbrüche sind als **PROJ-Y-130h** registriert.
 
 ## Was diese Slice nicht tut
 
