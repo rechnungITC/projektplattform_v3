@@ -15,6 +15,9 @@ summary_for_jira: "[B2] Gremien und Steuerungskreise abbilden"
 # PROJ-98: Gremien und Steuerungskreise abbilden
 
 ## Status: Deployed (2026-07-03 — tag v2.8.0-PROJ-98)
+## Deployment Scope: mvp
+
+> **Scope-Klassifikation (PROJ-Y-145b, Tranche 3, 2026-08-20):** **AC2 „teilweise"** — `decision_scope`/`escalation_scope` nur als Freitext, strukturierter Stage-Gate-/Eskalations-Link deferiert; AC3/AC4/AC5-Termine ebenfalls zurückgestellt (Zielkennungen in der Spec, siehe Registerhinweis zur ID-Kollision). PROJ-117 hat die Termin-Hälfte seither geliefert.
 
 **Deployed 2026-07-03:** Code live auf main via #216 (backend) + #221 (frontend) + #223 (QA); Migration `20260702120000_proj98_committees` seit /backend in Prod. Vercel-Prod-Deploy von `c09e164` (#223) **READY** (dpl_47x7i4uXovUYD6tarBSq59LrH38A, target=production). Kein neues Dep, keine separate Runtime-Migration im Closure. Post-Deploy-Smoke: 307-Auth-Gates auf `/projects/[id]/gremien` + `/api/projects/[id]/committees`. Tag `v2.8.0-PROJ-98`. Forward-compat-Followups offen: PROJ-Y-1 (Stage-Gate-Link/110), PROJ-Y-2 (Meeting-Link+nächste-Termine/117), PROJ-Y-3 (Template-Prefill/96), PROJ-Y-4 (strukturierter Eskalations-Link/111).
 

@@ -15,6 +15,10 @@ summary_for_jira: "[A3b] RACI-Zuordnungen in M&A-Projekt-Templates"
 # PROJ-Y-96b: M&A Template RACI-Zuordnungen
 
 ## Status: Deployed
+## Deployment Scope: full
+
+> **Scope-Klassifikation (PROJ-Y-145b, Tranche 3, 2026-08-20):** QA 2026-08-06: **alle 8 AC ✅**, Live-Pentest 9/9 + Red-Team 6/6 gegen Prod, 0 Rückstände, 0 Critical/High. Der Deep-Editor bleibt ausdrücklich PROJ-Y-96d und ist kein Kriterium dieser Slice.
+
 **Created:** 2026-08-04
 **Origin:** Followup von PROJ-96 „Projekt-Templates für Standardphasen bereitstellen" MVP-Cut, festgelegt via PROJ-141-γ1 Bookkeeping 2026-07-31. Aufgaben-Templates (`ma_template_tasks`) wurden 2026-08-04 aus dem ursprünglichen Y-96b-Scope zu PROJ-Y-96e ausgegliedert, damit RACI unabhängig priorisierbar bleibt — Y-96b ist jetzt **nur der RACI-Teil** von PROJ-96.
 

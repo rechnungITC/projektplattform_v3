@@ -1,6 +1,10 @@
 # PROJ-100c: 4-Augen-Prinzip für besonders sensible Vertraulichkeits-Freischaltungen
 
 ## Status: Deployed (2026-06-25 — Tag `v2.1.0-PROJ-100c` auf `72555d1`; Vercel prod READY; Post-Deploy-Auth-Gate-Smoke 5/5 = 307. QA PASS 11/11 AC + 9/9 Hardening, 0 Critical/High/Medium. Migration `20260624125208` in Prod. AC-100c-8 Magic-Link = Out-of-Scope-Followup.)
+## Deployment Scope: mvp
+
+> **Scope-Klassifikation (PROJ-Y-145b, Tranche 3, 2026-08-20):** **AC-100c-8 (Magic-Link für externe Approver) ist deferiert** — der Approver-Pool ist konto-basiert (`approver_user_id`). **Korrektur:** das QA-Verdikt sagt „11/11 AC", die Spec führt aber **12** numerierte Kriterien (1, 2, 3, 4, 5, 5b, 6, 7, 8, 9, 10, 11); die Zahl war eine Fehlzählung, nicht eine vollständige Abdeckung.
+
 **Created:** 2026-06-24
 **Last Updated:** 2026-06-24
 **Origin:** AC5 aus [PROJ-100](PROJ-100-berechtigungskonzept-nach-need-to-know-umsetzen.md); aus [PROJ-100b](PROJ-100b-berechtigungsprofile-und-sichtbarkeit.md) ausgegliedert (eigene Genehmigungs-State-Machine, CIA-schwer).

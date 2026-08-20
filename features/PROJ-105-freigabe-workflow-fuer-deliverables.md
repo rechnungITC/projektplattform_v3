@@ -15,6 +15,10 @@ summary_for_jira: "[D2] Freigabe-Workflow für Deliverables"
 # PROJ-105: Freigabe-Workflow für Deliverables
 
 ## Status: Deployed
+## Deployment Scope: full
+
+> **Scope-Klassifikation (PROJ-Y-145b, Tranche 3, 2026-08-20):** QA 2026-07-03: **AC1…AC5 alle ✅**, 0 Critical/High/Medium/Low, Live-Pentest 11/11 + Red-Team J–M 4/4. **Zur α-Bezeichnung:** die Sub-Slice-Teilung α/β betrifft die Auslieferungsreihenfolge, nicht ein offenes Kriterium — die AC-Liste nennt weder externe Freigeber ohne Konto noch paralleles Quorum; beides sind spätere Erweiterungen.
+
 **Created:** 2026-06-10
 **Origin:** M&A-Platform Backlog (Epic D — Deliverables & Artefakte)
 **Priority:** P1

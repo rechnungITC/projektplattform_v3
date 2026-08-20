@@ -15,6 +15,10 @@ summary_for_jira: "[H3] Vertraulichkeitsgesteuerte Verteilung von Kommunikation"
 # PROJ-119: Vertraulichkeitsgesteuerte Verteilung von Kommunikation
 
 ## Status: Deployed (2026-08-11)
+## Deployment Scope: full
+
+> **Scope-Klassifikation (PROJ-Y-145b, Tranche 3, 2026-08-20):** QA 2026-08-11: **4/4 AC**, 2/2 DoD, **7/7 Härtungskriterien**, 0 Critical/High/Medium/Low; Live-Pentest A–N 14/14 + Red-Team O/P/Q/S/T gegen Prod, 0 Rückstände.
+
 **Deployed:** 2026-08-11 — Closure-Deploy nach QA PASS, Tag `v2.45.0-PROJ-119`. Code lag seit `c020ff8` (#302) auf main, alle drei Migrationen seit `/backend` in Prod → kein Runtime-Deploy nötig (Vercel deployt automatisch von main). Post-Deploy-Smoke gegen Prod: `/api/projects/{id}/communication-entries` → 307 Auth-Gate. Kein Env/Secret. QA-Verdikt und Red-Team-Supplement siehe unten.
 **Created:** 2026-06-10
 **Origin:** M&A-Platform Backlog (Epic H — Kommunikation, Gremien & Stakeholder)

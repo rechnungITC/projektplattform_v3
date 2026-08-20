@@ -15,6 +15,10 @@ summary_for_jira: "[C1] Aufgaben mit Verantwortlichkeit und Frist verwalten"
 # PROJ-101: Aufgaben mit Verantwortlichkeit und Frist verwalten
 
 ## Status: Deployed (2026-07-01 — tag v2.6.0-PROJ-101)
+## Deployment Scope: mvp
+
+> **Scope-Klassifikation (PROJ-Y-145b, Tranche 3, 2026-08-20):** **AC2 halb deferiert** — Phasen-Link ✅, aber Verknüpfung zu Risiko/Entscheidung/Deliverable CIA-gelockt zurückgestellt (D-2, Owner PROJ-104/107 → PROJ-Y-101b). Rest ✅; F-1 (≥10k-Perf-DoD) als Low registriert.
+
 **Created:** 2026-06-10
 **Origin:** M&A-Platform Backlog (Epic C — Aufgaben & Workstreams)
 **Priority:** P1

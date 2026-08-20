@@ -15,6 +15,10 @@ summary_for_jira: "[L1] NDA-Verwaltung und Vertraulichkeitsverpflichtungen"
 # PROJ-128: NDA-Verwaltung und Vertraulichkeitsverpflichtungen
 
 ## Status: Deployed (2026-06-24 — Bundle PR #182 → main `0135ce3`, Tag `v2.0.0-PROJ-99-128-129`. QA PASS. F-1-Followup: `document_link`-Scheme-Validierung vor Link-Render. Details siehe PROJ-99.)
+## Deployment Scope: mvp
+
+> **Scope-Klassifikation (PROJ-Y-145b, Tranche 3, 2026-08-20):** **AC2 ausdrücklich „Offen"** — `reminder_date` ist als Feld vorhanden, der Wiedervorlage-/Ablauf-Job (30 Tage vor Ablauf) ist nicht gebaut; das Zugriffs-Gate hängt bewusst nicht daran. AC1/AC3/AC4/AC5 ✅ über das Bundle-Backend (Live-Smoke 10/10).
+
 **Created:** 2026-06-10
 **Origin:** M&A-Platform Backlog (Epic L — Vertraulichkeit, NDA & Audit)
 **Priority:** P1

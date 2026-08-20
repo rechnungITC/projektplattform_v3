@@ -15,6 +15,10 @@ summary_for_jira: "[L2] Vertraulichkeits-Klassifikation und Need-to-know-Steueru
 # PROJ-129: Vertraulichkeits-Klassifikation und Need-to-know-Steuerung
 
 ## Status: Deployed (2026-06-24 — Bundle PR #182 → main `0135ce3`, Tag `v2.0.0-PROJ-99-128-129`. QA PASS. Klassifikations-Tab + projektweite Matrix gate-faithful. Details siehe PROJ-99.)
+## Deployment Scope: mvp
+
+> **Scope-Klassifikation (PROJ-Y-145b, Tranche 3, 2026-08-20):** **AC2 bewusst reduziert** — geliefert sind drei geordnete Stufen, „Public" wurde als Export-/Publikationsfall ausdrücklich späteren Report-/DMS-Regeln überlassen; **AC5** (Exporte tragen die Stufe, z. B. als Wasserzeichen) ist ebenfalls nicht gebaut. AC1/AC3/AC4 ✅ über `ma_access_explain` + das 100a-Tor.
+
 **Created:** 2026-06-10
 **Origin:** M&A-Platform Backlog (Epic L — Vertraulichkeit, NDA & Audit)
 **Priority:** P1

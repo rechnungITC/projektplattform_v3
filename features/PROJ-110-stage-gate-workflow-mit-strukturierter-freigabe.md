@@ -15,6 +15,9 @@ summary_for_jira: "[F1] Stage-Gate-Workflow mit strukturierter Freigabe"
 # PROJ-110: Stage-Gate-Workflow mit strukturierter Freigabe
 
 ## Status: Deployed (2026-07-21, Tag `v2.12.0-PROJ-110`, gebündelt mit PROJ-111)
+## Deployment Scope: mvp
+
+> **Scope-Klassifikation (PROJ-Y-145b, Tranche 3, 2026-08-20):** **AC1 teilweise** („konfigurativ erweitern" via Custom-Gates zurückgestellt) und **AC2 teilweise** (Pflicht-Deliverables im Pre-Read blieben Platzhalter → PROJ-104). Kern ✅ und live-bewiesen (Pentest A–J 11/11). Quorum ist **kein** AC (die AC verlangen ein 3-Wege-Ergebnis) und daher keine Auslassung.
 
 > **Deployed 2026-07-21:** Tag `v2.12.0-PROJ-110`; Code live via PR #238 (squash → main `a72e3ae`); Migration `20260721094301` seit /backend in Prod; Vercel auto-deploy from main. Post-Deploy-Smoke: /stage-gates-Seite + GET stage-gates + seed + prereadiness + decide + decisions/export → 307 Auth-Gate ohne Leck. Kein neuer Env/Secret. Deploy entsperrt durch lockfile-only `npm audit fix` (brace-expansion 5.0.7 + js-yaml 4.3.0 — behob 2 repo-weite High-Advisories, die den npm-audit-Required-Check blockierten). Offene Followups: PROJ-Y-110-quorum (Multi-Approver), PROJ-104 (Pflicht-Deliverables im Pre-Read), PROJ-Y-111a (111 committee/options-FE + Timeline-Filter).
 
