@@ -1,6 +1,10 @@
 import { NextResponse } from "next/server"
 import { z } from "zod"
 
+import {
+  buildBlockingMessage,
+  parseBlockingRefs,
+} from "@/lib/construction/blocking-refs"
 import { requireModuleActive } from "@/lib/tenant-settings/server"
 
 import {
@@ -118,36 +122,27 @@ export async function DELETE(
 
   if (error) {
     if (error.code === "23503") {
-      // PROJ-45-β / AC-45βH-7: a defect holds its section with NO ON DELETE
-      // clause (lock L16), so the delete is blocked instead of silently
-      // detaching the location of an open defect.
+      // PROJ-45-β/γ: ein Mangel ODER eine Abnahme hält den Abschnitt ohne
+      // `on delete`-Klausel (L16), das Entfernen wird also blockiert statt den
+      // Ort still abzuhängen.
       //
-      // The lookup MUST go through the RPC, not `.eq("section_id", sid)`:
-      // `parent_id` cascades, so deleting a parent takes the whole subtree with
-      // it and a defect on a GRANDCHILD is what blocks the root. The RPC walks
-      // the subtree recursively (and is SECURITY INVOKER, so it never names a
-      // defect the caller may not see); a flat filter would report "no
-      // blockers" for exactly the case that failed.
+      // Die Abfrage MUSS über die Auskunftsfunktion laufen, nicht über
+      // `.eq("section_id", sid)`: `parent_id` kaskadiert, das Löschen eines
+      // Oberabschnitts reisst den Teilbaum mit, und blockiert wird die Wurzel
+      // von einem Eintrag am ENKEL. Der flache Filter meldete für genau den
+      // Fall „keine Blockierer". Die Funktion läuft rekursiv über den Teilbaum
+      // und ist SECURITY INVOKER.
+      //
+      // GENERALISIERT in γ: sie nennt jetzt Art UND Bezeichnung, weil der Zweig
+      // sonst über Mängel spräche, wo eine Abnahme blockiert.
       const { data: blocking } = await gated.supabase.rpc(
-        "construction_section_blocking_defects",
+        "construction_section_blocking_refs",
         { p_section_id: sid }
       )
 
-      const named = ((blocking ?? []) as Array<{
-        defect_number?: number
-        title?: string
-      }>)
-        .map((row) =>
-          row.defect_number ? `#${row.defect_number} ${row.title ?? ""}`.trim() : null
-        )
-        .filter((entry): entry is string => Boolean(entry))
-        .slice(0, 10)
-
       return apiError(
-        "defects_present",
-        named.length > 0
-          ? `In diesem Abschnitt oder darunter bestehen noch Mängel: ${named.join(", ")}. Bitte zuerst abschliessen oder umhängen.`
-          : "In diesem Abschnitt oder darunter bestehen noch Mängel. Bitte zuerst abschliessen oder umhängen.",
+        "references_present",
+        buildBlockingMessage("Abschnitt", parseBlockingRefs(blocking)),
         409
       )
     }

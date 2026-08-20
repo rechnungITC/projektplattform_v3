@@ -1,6 +1,10 @@
 import { NextResponse } from "next/server"
 import { z } from "zod"
 
+import {
+  buildBlockingMessage,
+  parseBlockingRefs,
+} from "@/lib/construction/blocking-refs"
 import { requireModuleActive } from "@/lib/tenant-settings/server"
 
 import {
@@ -104,29 +108,23 @@ export async function DELETE(
 
   if (error) {
     if (error.code === "23503") {
-      // PROJ-45-β / AC-45βH-7: a defect holds the trade with NO ON DELETE
-      // clause, because the trade carries the responsibility a defect notice
-      // needs (lock L16). Without this branch the block would surface as a 500
-      // with raw database text; name the blockers instead, mirroring the catalog
-      // delete lock in /api/construction-trades/[id].
-      const { data: blocking } = await gated.supabase
-        .from("construction_defects")
-        .select("defect_number, title")
-        .eq("trade_id", ptid)
-        .limit(10)
-
-      const named = (blocking ?? [])
-        .map((row) => {
-          const r = row as { defect_number?: number; title?: string }
-          return r.defect_number ? `#${r.defect_number} ${r.title ?? ""}`.trim() : null
-        })
-        .filter((entry): entry is string => Boolean(entry))
+      // PROJ-45-β/γ (AC-45βH-7 / AC-45γ.27): der Bezug wird ohne
+      // `on delete`-Klausel gehalten, weil das Gewerk die Zuständigkeit trägt,
+      // die eine Mängelanzeige und ein Abnahmeprotokoll brauchen (L16).
+      //
+      // GENERALISIERT in γ: bis dahin sprach dieser Zweig wörtlich von Mängeln
+      // (Code `defects_present`). Sobald auch eine ABNAHME blockiert, wäre die
+      // Meldung FALSCH gewesen, nicht bloss unvollständig. Die INVOKER-Auskunft
+      // nennt jetzt Art UND Bezeichnung; sie läuft im Recht des Aufrufers und
+      // benennt darum nie ein Objekt, das er ohnehin nicht sehen darf.
+      const { data: blocking } = await gated.supabase.rpc(
+        "construction_trade_blocking_refs",
+        { p_trade_id: ptid }
+      )
 
       return apiError(
-        "defects_present",
-        named.length > 0
-          ? `Zu diesem Gewerk bestehen noch Mängel: ${named.join(", ")}. Bitte zuerst abschliessen oder umhängen.`
-          : "Zu diesem Gewerk bestehen noch Mängel. Bitte zuerst abschliessen oder umhängen.",
+        "references_present",
+        buildBlockingMessage("Gewerk", parseBlockingRefs(blocking)),
         409
       )
     }

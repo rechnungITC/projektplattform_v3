@@ -154,9 +154,12 @@ describe("DELETE /api/projects/[id]/construction-sections/[sid]", () => {
           },
         },
         {
+          // PROJ-45-γ: die Auskunft traegt jetzt die ART mit — und der Fall
+          // mischt beide bewusst. Genau das konnte der alte, woertlich auf
+          // Maengel formulierte Zweig nicht ausdruecken.
           data: [
-            { id: "d1", defect_number: 4, title: "Riss in der Wand", section_id: SID },
-            { id: "d2", defect_number: 5, title: "Fuge undicht", section_id: CHILD },
+            { kind: "mangel", id: "d1", ref_number: 4, label: "Riss in der Wand" },
+            { kind: "abnahme", id: "a1", ref_number: 5, label: "Fuge undicht" },
           ],
           error: null,
         }
@@ -165,10 +168,15 @@ describe("DELETE /api/projects/[id]/construction-sections/[sid]", () => {
     const res = await del()
     expect(res.status).toBe(409)
     const body = await res.json()
-    expect(body.error.code).toBe("defects_present")
+    // PROJ-45-γ: der Code war `defects_present` und sprach damit woertlich
+    // von Maengeln. Seit eine ABNAHME denselben Bezug halten kann, waere das
+    // FALSCH statt bloss unvollstaendig — der Zweig benennt jetzt die Art.
+    expect(body.error.code).toBe("references_present")
     expect(body.error.message).toContain("#4 Riss in der Wand")
     expect(body.error.message).toContain("#5 Fuge undicht")
     expect(body.error.message).not.toContain("foreign key")
+    // Beide Arten sind benannt, nicht nur eine.
+    expect(body.error.message).toContain("Mängel und Abnahmen")
   })
 
   it("looks the blockers up through the recursive RPC, not a flat section filter", async () => {
@@ -179,8 +187,9 @@ describe("DELETE /api/projects/[id]/construction-sections/[sid]", () => {
       supabase: supa(
         { data: null, error: { code: "23503", message: "fk" } },
         {
+          // PROJ-45-γ: Auskunft traegt jetzt die ART mit.
           data: [
-            { id: "d2", defect_number: 5, title: "Fuge undicht", section_id: CHILD },
+            { kind: "mangel", id: "d2", ref_number: 5, label: "Fuge undicht" },
           ],
           error: null,
         }
@@ -189,7 +198,7 @@ describe("DELETE /api/projects/[id]/construction-sections/[sid]", () => {
     const res = await del()
     expect(res.status).toBe(409)
     expect(rec.rpc).toEqual([
-      ["construction_section_blocking_defects", { p_section_id: SID }],
+      ["construction_section_blocking_refs", { p_section_id: SID }],
     ])
     // No second table query — the subtree walk lives in the RPC.
     expect(rec.tables).toEqual(["construction_sections"])
@@ -207,7 +216,11 @@ describe("DELETE /api/projects/[id]/construction-sections/[sid]", () => {
     })
     const res = await del()
     expect(res.status).toBe(409)
-    expect((await res.json()).error.message).toContain("Mängel")
+    // PROJ-45-γ: ohne benennbare Zeilen nennt die Meldung die beiden Arten,
+    // die den Bezug ueberhaupt halten koennen.
+    const msg = (await res.json()).error.message as string
+    expect(msg).toContain("Mängel oder Abnahmen")
+    expect(msg).not.toContain("fk")
   })
 
   it("names at most ten blockers", async () => {
@@ -217,10 +230,10 @@ describe("DELETE /api/projects/[id]/construction-sections/[sid]", () => {
         { data: null, error: { code: "23503", message: "fk" } },
         {
           data: Array.from({ length: 25 }, (_, i) => ({
+            kind: "mangel",
             id: `d${i}`,
-            defect_number: i + 1,
-            title: `M${i + 1}`,
-            section_id: SID,
+            ref_number: i + 1,
+            label: `M${i + 1}`,
           })),
           error: null,
         }

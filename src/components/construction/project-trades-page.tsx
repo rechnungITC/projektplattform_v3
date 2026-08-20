@@ -20,6 +20,7 @@ import { Skeleton } from "@/components/ui/skeleton"
 import { Textarea } from "@/components/ui/textarea"
 import { useAuth } from "@/hooks/use-auth"
 import { useConstructionTradeCatalog, useProjectTrades } from "@/hooks/use-construction"
+import { useConstructionAcceptanceSummary } from "@/hooks/use-construction-acceptances"
 import { useConstructionDefectSummary } from "@/hooks/use-construction-defects"
 import { useProjectAccess } from "@/hooks/use-project-access"
 import {
@@ -59,6 +60,21 @@ export function ProjectTradesPage({ projectId }: { projectId: string }) {
     projectId,
     !moduleInactive
   )
+  // PROJ-45-γ — Abnahmestand je Gewerk. Aus derselben SECURITY-INVOKER-
+  // Auswertung wie die Kopfzahlen der Abnahme-Fläche, also unter der RLS des
+  // Aufrufers gerechnet: die Zahl hier kann nie mehr behaupten als die Liste
+  // dort zeigt. Der Abnahmestand steht neben den Mängeln, weil beide dieselbe
+  // Frage beantworten — „wie weit ist dieses Gewerk?".
+  const { summary: acceptanceSummary } = useConstructionAcceptanceSummary(projectId)
+
+  const acceptancesByTrade = React.useMemo(
+    () =>
+      new Map(
+        (acceptanceSummary?.by_trade ?? []).map((row) => [row.trade_id, row])
+      ),
+    [acceptanceSummary]
+  )
+
   const defectsByTrade = React.useMemo(
     () =>
       new Map(
@@ -228,6 +244,41 @@ export function ProjectTradesPage({ projectId }: { projectId: string }) {
                         <Badge className="bg-amber-500/15 text-amber-700 dark:text-amber-300">
                           {awaiting} wartet auf Prüfung
                         </Badge>
+                      ) : null}
+                    </div>
+                  )
+                })()}
+
+                {(() => {
+                  // PROJ-45-γ — Abnahmestand. Eigener Block statt derselben
+                  // Zeile: ein Gewerk kann abgenommen sein UND Mängel tragen
+                  // (Abnahme unter Vorbehalt), beides in eine Zeile zu mischen
+                  // läse sich als Widerspruch.
+                  const acc = acceptancesByTrade.get(t.id)
+                  if (!acc || Number(acc.total) === 0) return null
+                  const scheduled = Number(acc.scheduled)
+                  const accepted = Number(acc.accepted)
+                  const refused = Number(acc.refused)
+                  return (
+                    <div className="flex flex-wrap items-center gap-2 text-xs">
+                      {accepted > 0 ? (
+                        <Badge className="bg-emerald-500/15 text-emerald-700 dark:text-emerald-300">
+                          {accepted === 1 ? "abgenommen" : `${accepted}× abgenommen`}
+                        </Badge>
+                      ) : null}
+                      {scheduled > 0 ? (
+                        <Badge className="bg-sky-500/15 text-sky-700 dark:text-sky-300">
+                          {scheduled} Abnahme angesetzt
+                        </Badge>
+                      ) : null}
+                      {refused > 0 ? (
+                        <Badge variant="destructive">{refused}× verweigert</Badge>
+                      ) : null}
+                      {acc.warranty_end_date ? (
+                        <span className="text-muted-foreground">
+                          Gewährleistung bis{" "}
+                          {new Date(acc.warranty_end_date).toLocaleDateString("de-DE")}
+                        </span>
                       ) : null}
                     </div>
                   )
