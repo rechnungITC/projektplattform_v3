@@ -1,3 +1,4 @@
+import { ConstructionSignalReportBlock } from "./construction-signal-report-block"
 import { SnapshotFooter } from "./snapshot-footer"
 import { SnapshotHeader } from "./snapshot-header"
 import { SnapshotSection } from "./snapshot-section"
@@ -21,13 +22,25 @@ function formatDate(value: string | null): string {
  *
  * Sections (locked order, per spec § ST-04):
  *   1. Header & Status-Light
- *   2. Phasen-Timeline (table)
- *   3. Aktuelle & nächste Meilensteine (next 5)
- *   4. Top-5-Risiken (sorted by score desc)
- *   5. Top-5-Entscheidungen (latest 5, with is_revised flag)
- *   6. Offene Punkte (count + 3 most overdue)
- *   7. Backlog-Übersicht (count by kind + status)
- *   8. Footer (version, generator, date)
+ *   2. Projekt-Setup (readiness — optional, PROJ-56-ε)
+ *   3. Phasen-Timeline (table)
+ *   4. Aktuelle & nächste Meilensteine (next 5)
+ *   5. Bauspezifische Terminsignale (optional, PROJ-45-δ)
+ *   6. Top-5-Risiken (sorted by score desc)
+ *   7. Top-5-Entscheidungen (latest 5, with is_revised flag)
+ *   8. Offene Punkte (count + 3 most overdue)
+ *   9. Backlog-Übersicht (count by kind + status)
+ *  10. KI-Kurzfazit (optional)
+ *  11. Footer (version, generator, date)
+ *
+ * Zwei der Abschnitte sind OPTIONAL und werden bei fehlendem Inhalt ganz
+ * weggelassen — nicht als leerer Abschnitt mit „—" gerendert. Der
+ * `isEmpty`-Pfad von `SnapshotSection` bedeutet „Abschnitt gilt, ist aber
+ * leer"; „gilt für dieses Projekt gar nicht" ist eine andere Aussage.
+ *
+ * Eintrag 2 fehlte in dieser Liste, seit PROJ-56-ε den Readiness-Block
+ * eingefügt hat (Doku-Drift, hier mit PROJ-45-δ nachgetragen — nur im
+ * Kommentar, das Rendering ist unverändert).
  */
 export function StatusReportBody({ version, content }: StatusReportBodyProps) {
   return (
@@ -85,6 +98,21 @@ export function StatusReportBody({ version, content }: StatusReportBodyProps) {
           ))}
         </ul>
       </SnapshotSection>
+
+      {/*
+        PROJ-45-δ (AC-45δ.17/.19) — nur bei einem Bauprojekt MIT belegter
+        Bauachse ist der Schlüssel überhaupt gesetzt (der Aggregator lässt ihn
+        sonst weg). Position: hinter der generischen Terminachse
+        (Phasen → Meilensteine) und VOR den Risiken, weil blockierte Gewerke
+        benannte Ausnahmen der Terminlage sind und nicht hinter der
+        Backlog-Tabelle begraben werden dürfen. Für Nicht-Bauprojekte bleibt
+        der Bericht unverändert.
+      */}
+      {content.construction && (
+        <SnapshotSection title="Bauspezifische Terminsignale" isEmpty={false}>
+          <ConstructionSignalReportBlock construction={content.construction} />
+        </SnapshotSection>
+      )}
 
       <SnapshotSection
         title="Top-5-Risiken"

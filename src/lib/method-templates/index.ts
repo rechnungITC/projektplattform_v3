@@ -17,6 +17,7 @@ import {
   HardHat,
   BarChart3,
   Calculator,
+  CalendarClock,
   ClipboardCheck,
   ClipboardList,
   FileText,
@@ -135,6 +136,23 @@ const CONSTRUCTION_ACCEPTANCES_SECTION: SidebarSection = {
   label: "Abnahmen",
   icon: ClipboardCheck,
   tabPath: "abnahmen",
+  requiresProjectType: "construction",
+  requiresModule: "construction",
+}
+
+/**
+ * PROJ-45-δ — die Terminsignale: der zusammenfassende Blick auf Gewerke,
+ * Bauabschnitte, Fristen und überfällige Mängel. Fünfte Fläche hinter demselben
+ * EINEN Schalter (Q4) und, anders als die vier davor, rein LESEND — sie gatet
+ * `view` und kennt bewusst kein verschärftes Rollen-Gate (AC-45δ.23, D-δ10).
+ * Der Gantt bleibt unberührt (L24/AC-45δ.24); dies ist die Fläche, die an
+ * seiner Stelle die Signale trägt.
+ */
+const CONSTRUCTION_SIGNALS_SECTION: SidebarSection = {
+  id: "construction-schedule-signals",
+  label: "Terminsignale",
+  icon: CalendarClock,
+  tabPath: "terminsignale",
   requiresProjectType: "construction",
   requiresModule: "construction",
 }
@@ -385,6 +403,7 @@ function withMaFoundation(config: MethodConfig): MethodConfig {
       CONSTRUCTION_SECTIONS_SECTION,
       CONSTRUCTION_DEFECTS_SECTION,
       CONSTRUCTION_ACCEPTANCES_SECTION,
+      CONSTRUCTION_SIGNALS_SECTION,
       ...sections.slice(insertAt),
     ],
   }
