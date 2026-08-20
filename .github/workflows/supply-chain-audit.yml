@@ -111,41 +111,13 @@ jobs:
       - name: Gate on HIGH+ severity
         run: npm run check:osv-gate -- osv-report.json
 
-  snyk:
-    name: Snyk production dependency scan
-    runs-on: ubuntu-latest
-    timeout-minutes: 10
-
-    env:
-      SNYK_TOKEN: ${{ secrets.SNYK_TOKEN }}
-
-    steps:
-      - name: Checkout
-        uses: actions/checkout@v4
-
-      - name: Setup Node
-        uses: actions/setup-node@v4
-        with:
-          node-version: "24"
-          cache: "npm"
-
-      - name: Install dependencies
-        run: npm ci
-
-      - name: Run Snyk test
-        if: ${{ env.SNYK_TOKEN != '' }}
-        run: npx snyk test --severity-threshold=high --fail-on=all
-
-      # PROJ-147: this branch is the normal case — PROJ-74 deliberately left
-      # SNYK_TOKEN unset ("Snyk zurückgestellt", no external account wanted). The
-      # job is nevertheless enrolled as a required check, so it reports a green
-      # "pass" while scanning nothing, which reads as a second opinion that does
-      # not exist. The warning text below used to ask for the enrollment that has
-      # meanwhile happened; it now names the real state instead. The honest fix is
-      # to deregister this context and enrol `Dependency review of new
-      # dependencies` in its place — a branch-protection change, tracked in
-      # PROJ-147 as a repo-owner handoff.
-      - name: Snyk token not configured
-        if: ${{ env.SNYK_TOKEN == '' }}
-        run: |
-          echo "::warning::SNYK_TOKEN is not configured, so no Snyk scan ran — yet this job is an enrolled required check and reports as passing. Treat it as decorative until it is deregistered (PROJ-147); the account-free replacement is the 'Dependency review of new dependencies' job."
+  # PROJ-147 AC-147.7/AC-147.8: the `snyk` job that used to sit here is gone.
+  # It never scanned anything — PROJ-74 deliberately left SNYK_TOKEN unset (no
+  # external account wanted), so the job skipped, warned, and reported green
+  # while being an enrolled required check: a second opinion that did not exist.
+  # Its context `Snyk production dependency scan` was deregistered from the
+  # `main protection` ruleset on 2026-08-20 and `OSV scan of the dependency
+  # lockfile` was enrolled in its place, in one PUT so no gate was ever missing.
+  # Removing the job only after the deregistration is deliberate: deleting it
+  # while its context was still required would have left every PR waiting
+  # forever on a status that is never reported (AC-147.8).
