@@ -1,7 +1,7 @@
 # PROJ-Y-130g — Die Fresh-Apply-Abbrüche an der Wurzel beheben
 
-## Status: Approved
-## Deployment Scope: —
+## Status: Deployed
+## Deployment Scope: tooling-only
 <!-- Der CI-Lauf hat die vorab festgehaltene Erwartung in jedem Punkt bestätigt,
      inklusive der Zeilenzahl. Scope beim Merge: `tooling-only`. -->
 
@@ -115,3 +115,17 @@ die keine Migrationsdatei anlegt (`enforce_last_lead` — die Alt-Divergenz, die
 führt) oder die eine spätere Migration droppt (`decrypt_tenant_ai_key`). Dort ist je Fall zu entscheiden,
 ob die verlorenen `revoke`-Anweisungen per Fix-forward nachzuholen sind — 116 Zeilen gegenüber 767, die
 diese Slice adressiert.
+
+## Deploy
+
+**Deployed 2026-08-20:** PR #419 (squash) → main `21bd260`, Tag `v2.68.0-PROJ-Y-130g`.
+
+**Der Deploy-Nachweis ist der Lauf des PRs selbst** — er hat die Wirkung gemessen, nicht behauptet:
+`Applied 216 migration(s); 4 tolerated abort(s); 0 structural failures`, und der Schema-Drift-Guard blieb
+dabei grün. Ein zusätzlicher Smoke wäre gegenstandslos: kein `src/`-Diff, keine Migration, kein
+Laufzeitverhalten.
+
+**Scope `tooling-only`** — eine Workflow-Zeile, eine Guard-Prüfung, Tests, Dokumentation.
+
+**Offen bleibt PROJ-Y-130h** (vier Abbrüche, 116 Zeilen) — kein zurückgestelltes Kriterium dieser Slice:
+ihr Auftrag waren die `moddatetime`-Fälle und die Erzwingung der Regel. Beide erledigt.
