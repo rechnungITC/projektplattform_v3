@@ -9,6 +9,10 @@
  * aggregator (`lib/reports/aggregate-snapshot-data.ts`).
  */
 
+import type {
+  ConstructionBlockerReason,
+  ConstructionProgressSource,
+} from "@/types/construction-signals"
 import type { DataClass } from "@/types/tenant-settings"
 
 export type SnapshotKind = "status_report" | "executive_summary"
@@ -85,6 +89,37 @@ export interface SnapshotOpenItemRef {
 /** Counts derived from `work_items`. */
 export type WorkItemAggregate = Record<string, number>
 
+/** PROJ-45-δ — ein blockiertes Gewerk im Bericht. Der Grund wird BENANNT,
+ *  nicht nur die Farbe gezeigt (AC-45δ.3, hier auf den Bericht gespiegelt). */
+export interface SnapshotConstructionBlockedTrade {
+  trade_label: string
+  blocker_reasons: ConstructionBlockerReason[]
+}
+
+/** PROJ-45-δ — ein Bauabschnitt im Bericht. `progress_percent: null` heisst
+ *  „nichts verknüpft" und ist bewusst NICHT 0 % (AC-45δ.10); die Quelle steht
+ *  daneben, sonst sind beide Fälle nicht unterscheidbar. */
+export interface SnapshotConstructionSection {
+  label: string
+  progress_percent: number | null
+  progress_source: ConstructionProgressSource | null
+  overdue_items: number
+}
+
+/** PROJ-45-δ — kompakter Bau-Block des Status-Reports (AC-45δ.17). Bewusst
+ *  eine Auswahl aus `ConstructionScheduleSignals`, nicht die ganze Nutzlast:
+ *  Termine und Mängel-Einzelzeilen gehören in die Bau-Fläche, nicht in den
+ *  eingefrorenen Bericht. */
+export interface SnapshotConstructionBlock {
+  /** Der EINE Zeitbezug der Auswertung, zum Zeitpunkt der Erzeugung eingefroren. */
+  as_of: string
+  trades_total: number
+  blocked_trades_total: number
+  blocked_trades: SnapshotConstructionBlockedTrade[]
+  sections: SnapshotConstructionSection[]
+  overdue_defects_total: number
+}
+
 /** Header metadata frozen into the snapshot at create-time. */
 export interface SnapshotHeader {
   project_id: string
@@ -140,6 +175,15 @@ export interface SnapshotContent {
     open_warnings: number
     satisfied: number
   }
+  /**
+   * PROJ-45-δ (AC-45δ.17/.18/.19) — optionaler Bau-Block, eingefroren zum
+   * Zeitpunkt der Erzeugung. Er erscheint NUR bei `project_type = 'construction'`
+   * MIT belegter Bauachse. Sonst fehlt der Schlüssel ganz — nicht `null`, nicht
+   * `{}` —, damit der gespeicherte Inhalt eines Nicht-Bauprojekts byte-identisch
+   * zu vor dieser Slice bleibt. Alte Schnappschüsse haben ihn nicht; der
+   * Renderer gatet darauf.
+   */
+  construction?: SnapshotConstructionBlock
 }
 
 /** A snapshot row as returned by the API list endpoint. */

@@ -34,6 +34,10 @@ import type {
   ConstructionTrade,
   ProjectConstructionTrade,
 } from "@/types/construction"
+import type {
+  ConstructionScheduleSignals,
+  ConstructionSignalExportSection,
+} from "@/types/construction-signals"
 
 interface ApiErrorBody {
   error?: { code?: string; message?: string }
@@ -656,4 +660,42 @@ export async function fetchConstructionAcceptanceSummary(
   if (!res.ok) await fail(res)
   return ((await res.json()) as { summary: ConstructionAcceptanceSummary | null })
     .summary
+}
+
+// ── PROJ-45-δ — Terminsignale ───────────────────────────────────────────────
+
+/**
+ * Die eine Auswertung für alle vier Blöcke (Gewerke, Abschnitte, Fristen,
+ * überfällige Mängel). `construction_schedule_signals` ist SECURITY INVOKER —
+ * Vertraulichkeit und Mandantentrennung entscheidet serverseitig die RLS im
+ * Recht des Aufrufers, hier wird nichts nachgefiltert.
+ *
+ * Gibt `null` zurück, wenn die Auswertung nichts liefert. Bewusst KEIN
+ * ausgedachtes Leer-Objekt: `as_of` ist der eine Zeitbezug der Slice (D-δ1),
+ * und ein erfundener Zeitstempel wäre eine Falschaussage auf einer Fläche, die
+ * gerade dafür gebaut ist, „nichts da" von „0" zu unterscheiden. Gleiche Form
+ * wie `fetchConstructionAcceptanceSummary` in dieser Datei.
+ */
+export async function fetchConstructionScheduleSignals(
+  projectId: string
+): Promise<ConstructionScheduleSignals | null> {
+  const res = await fetch(`${p(projectId)}/construction-schedule-signals`, {
+    method: "GET",
+    cache: "no-store",
+  })
+  if (!res.ok) await fail(res)
+  return ((await res.json()) as { signals: ConstructionScheduleSignals | null })
+    .signals
+}
+
+/**
+ * CSV-Ausgabe je Abschnitt (D-δ7). Der Abschnitt ist über
+ * `ConstructionSignalExportSection` typgebunden, ein Tippfehler bricht beim
+ * Kompilieren statt in einer 400er-Antwort.
+ */
+export function constructionScheduleSignalsExportUrl(
+  projectId: string,
+  section: ConstructionSignalExportSection
+): string {
+  return `${p(projectId)}/construction-schedule-signals/export?section=${section}`
 }
