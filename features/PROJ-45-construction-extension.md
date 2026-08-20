@@ -2100,7 +2100,7 @@ freigegeben wird; dann gehört er zu jener Slice, nicht zu dieser.
 
 | Baustein | Woher | Was übernommen wird |
 |---|---|---|
-| Auswertungsfunktion | `construction_defects_summary` / `construction_acceptance_summary` (β/γ) | `SECURITY INVOKER`, `stable`, `search_path` gesetzt, `jsonb`-Rückgabe, `anon`-EXECUTE entzogen. Aggregate erben die Sichtbarkeit vom Aufrufer (Aggregat-Leck-Invariante). |
+| Auswertungsfunktion | `construction_defect_summary` / `construction_acceptance_summary` (β/γ) | `SECURITY INVOKER`, `stable`, `search_path` gesetzt, `jsonb`-Rückgabe, `anon`-EXECUTE entzogen. Aggregate erben die Sichtbarkeit vom Aufrufer (Aggregat-Leck-Invariante). |
 | Engpass-Form | `project_task_bottlenecks` (PROJ-103) | Die **Form** `{summary, <listen>, top_*}` — nicht die Funktion selbst. Mängel gehören in einen **eigenen Schlüssel**, nicht unter `tasks`: jeder `tasks`-Eintrag trägt ein `kind` (einen Arbeitspaket-Typ, den ein Mangel nicht hat) → sonst brechen die Typisierung im Frontend und der CSV-Export. |
 | Überfälligkeit | β, `isDefectOverdue` + SQL-Zwilling | **Wörtlich wiederverwendet**, nicht nachgebaut. |
 | Vorbehalts-Offenheit | γ, `ACCEPTANCE_OPEN_DEFECT_STATUSES` | **Wörtlich wiederverwendet**, nicht mit der Überfälligkeitsregel verwechselt. |
@@ -2251,6 +2251,213 @@ Als Bauleitung möchte ich bei leerer Fläche erklärt bekommen, **warum** kein 
 - **Erfordert:** PROJ-45-α (Gewerke, Abschnitte, `construction_section_phases`, die drei additiven Verweise) · PROJ-45-β (Mängel, `due_date`, Überfälligkeitsregel) · PROJ-45-γ (Abnahmen, `scheduled_for`, Vorbehalts-Verweise) — **alle deployed**.
 - **Nutzt:** PROJ-19 (Phasen) · PROJ-9 (Arbeitspakete) · PROJ-21 (`SnapshotContent`) · PROJ-17 (Modul-Gate) · PROJ-28 (Navigations-Registry).
 - **Berührt nicht:** PROJ-25/53 (Gantt) · PROJ-103 (Engpass-Sicht) · PROJ-131/132 (M&A-Berichte).
+
+---
+
+## Tech Design (Solution Architect) — δ, 2026-08-20
+
+Gegen den deployten Stand geerdet in **vier parallelen Messläufen** (Funktions-Granularität + CSV ·
+Teilbaum-Aggregation · Berichts-Block · Wiederverwendungs-Inventar). Zwei Nutzer-Locks vorab gesetzt:
+Vorausschau-Fenster **14 Tage** (verstrichene ohne Grenze), **kein CIA-Pass** — es entsteht kein neues
+Paket, keine neue Tabelle und kein Register-Eingriff, und der einzige Eingriff in eine deployte Fläche
+ist der additive Berichts-Block.
+
+### Die sechs offenen Fragen — beantwortet
+
+| Frage | Antwort | Tragender Grund (gemessen) |
+|---|---|---|
+| **Q1** Eine Auswertungsfunktion oder drei? | **Eine**, mit vier Top-Level-Schlüsseln und je Block eigener Kopfzahl | Nicht Sparsamkeit, sondern **ein Zeitbezug**: alle vier Blöcke rechnen gegen `current_date`. Vier getrennte Aufrufe können über Mitternacht auseinanderfallen und die Fläche zeigte dann Kopfzahlen, die zu ihren Listen nicht passen. Hausmuster ist ohnehin gebündelt (PROJ-131 4 Blöcke, PROJ-132 5, PROJ-103 3). |
+| **Q2** Teilbaum über `path` oder rekursiv? | **Rekursives CTE über `parent_id`**, wie β/γ | α hat `path` als echtes `ltree` **mit GiST-Index** angelegt, und `<@` wäre die elegantere Abfrage — aber β und γ lösen dieselbe Frage am **selben Baum** rekursiv, `path` ist `nullable` **ohne CHECK**, und Perf ist bei diesen Baumgrößen keine Frage. Eine dritte Technik innerhalb von PROJ-45 wäre die Drift, nicht der Gewinn. |
+| **Q3** Fenster „Nächste Fristen" | **14 Tage** vorausschauend, verstrichene ohne Grenze | Nutzer-Lock. Als **Konstante** in der Funktion, nicht als Parameter — ein Parameter vergrößert die Pentest-Matrix ohne Nutzen, solange kein Umschalter existiert. |
+| **Q4** Wo hängt der Bau-Block im Schnappschuss? | Optionales Feld **neben `readiness`**, Aggregation im eigenen Fehler-Zweig, Rendering per Guard, **nur** im Status-Report | PROJ-56-ε hat genau dieses Muster gesetzt; die Exec-Summary führt `readiness` bewusst nicht. Rückwärtskompatibilität ist **gratis**: das `content` wird beim Lesen gar nicht validiert (keine Zod-Prüfung), unbekannte Felder werden ignoriert. |
+| **Q5** CSV? | **Ja**, eine Route mit Abschnitts-Parameter | Aus dem Bestand begründet, nicht aus Prinzip: δ liefert die Engpass-Sicht, die PROJ-103 für Aufgaben hat — **und die hat einen Export**. Ohne δ-CSV könnte derselbe Nutzer überfällige Aufgaben exportieren, überfällige Mängel nicht. α/β/γ haben bisher keine einzige Export-Route. |
+| **Q6** CIA-Pass? | **Nein** | Nutzer-Entscheid, gestützt auf die Messung: kein Paket, keine Tabelle, kein Register. |
+
+### Drei Befunde, die eine Vorlage oder ein Kriterium korrigieren
+
+**1. Der Funktionsname in den δ-Anforderungen war falsch.** Die Prior-Art-Tabelle nennt
+`construction_defects_summary`; deployt ist **`construction_defect_summary`** (Singular, β-Migration
+Block 14). Im Anforderungstext korrigiert. Ein Name, der erst beim Bauen auffällt, kostet einen
+Migrationslauf — dieselbe Klasse wie der falsch angenommene Helfer in PROJ-45-β.
+
+**2. Die naheliegende Umsetzung von AC-45β.18 widerspricht L25 und wird abgelehnt.** Der Messlauf
+empfahl, die überfälligen Mängel per Anker-Ersetzung als eigenen Schlüssel in
+`project_task_bottlenecks` zu hängen. Das ist technisch sauber und **fachlich wirkungslos**: die
+PROJ-103-Fläche trägt `requiresProjectType: "ma"`, ein Bauprojekt erreicht sie nicht — die Zahl
+entstünde an einem Ort, an dem sie niemand sieht, und der PROJ-103-Pentest nagelt absolute Zahlen
+fest. δ erfüllt die **Absicht** des Kriteriums in der eigenen Fläche (L25) und lässt
+`project_task_bottlenecks` **unberührt**. Die Abweichung wird dokumentiert, nicht umgeschrieben.
+
+**3. „Byte-identisch" (AC-45δ.18) ist heute nicht messbar — δ bringt das Messwerkzeug mit.** Der
+Schnappschuss-Aggregator hat **keinen** Unit-Test, der Route-Test mockt ihn weg, und **keine**
+Visual-Baseline fotografiert die Report-Fläche. Ein Kriterium ohne Instrument ist eine Behauptung.
+δ liefert daher einen Wächter, der für ein Nicht-Bauprojekt die **eingefrorene Feldliste** des
+Schnappschuss-Inhalts prüft und dass der Bau-Schlüssel **abwesend** ist — mit Rot-Grün-Gegenprobe.
+
+### Architektur
+
+#### A) Fläche (Komponentenbaum, PM-lesbar)
+
+```
+Projektraum → Reiter „Terminsignale"   (nur Bauprojekt + Modul „construction")
++-- Kopfzeile: vier getrennte Zahlen
+|     überfällig · ohne Frist · wartet auf Prüfung · offene Blocker
+|     (über ALLE Zeilen gerechnet, nicht über die angezeigten)
++-- Block 1 „Gewerke"
+|   +-- je Gewerk eine Zeile, auch ohne Befund („ohne Befund" ausdrücklich)
+|   |     manuelle Ampel (α)  |  gerechnetes Signal  |  Grund im Klartext
+|   |     drei Zahlen: überfällig · ohne Frist · wartet auf Prüfung
+|   +-- Sprung auf Mängel- bzw. Abnahme-Fläche (keine Mutation)
++-- Block 2 „Bauabschnitte"  (eingerückter Baum wie α, Kinder unter Eltern)
+|   +-- je Abschnitt: Fortschritt + QUELLE („aus 7 Arbeitspaketen im Teilbaum")
+|   +-- nichts verknüpft → Hinweis mit Handlungsaufforderung, KEIN „0 %"
++-- Block 3 „Nächste Fristen" (14 Tage)
+|   +-- verstrichene oben und gekennzeichnet, dann künftige aufsteigend
+|   +-- Art · Gewerk · Bezug
++-- Block 4 „Engpässe: überfällige Mängel"   (erfüllt AC-45β.18)
+|   +-- am längsten überfällige zuerst: Tage über Frist · Gewerk · Ort · Verantwortlicher
++-- CSV-Ausgabe je Block
+```
+
+Die Fläche ist **lesend**. Jede Aktion ist ein Sprung auf die zuständige Fläche — kein
+Schreibpfad, kein verschärftes Rollen-Gate (anders als β/γ beim Schreiben; hier wird nichts
+geschrieben, also gilt `view`).
+
+#### B) Was gespeichert wird: nichts
+
+δ legt **keine Tabelle** an und hält **keinen Signalzustand**. Alle vier Blöcke sind aus dem
+Bestand ableitbar:
+
+| Block | Quelle |
+|---|---|
+| Gewerk-Signal | β-Mängel + γ-Abnahmen, je Projekt-Gewerk; Zählspalten aus den beiden vorhandenen Auswertungen |
+| Abschnittsfortschritt | verknüpfte Arbeitspakete (α-Verweis), ersatzweise verknüpfte Phasen (α-M:N-Tabelle) |
+| Nächste Fristen | Mangel-Frist und Abnahme-Termin |
+| Engpässe | β-Mängel mit verstrichener Frist |
+
+Ein gespeicherter Zustand wäre eine zweite Wahrheit, die veralten kann, und zöge die vier
+Register-Pflichten aus PROJ-130 nach sich.
+
+#### C) Eine Auswertungsfunktion
+
+Eine neue Funktion je Projekt, `SECURITY INVOKER`, `stable`, `search_path` gesetzt, **ohne**
+Akteur-Parameter, `anon` **und PUBLIC** ohne Ausführungsrecht. Sie gibt vier Blöcke plus je Block
+eine Kopfzahl über die **ungefilterte** Menge zurück — das Vorbild dafür ist PROJ-103, wo die
+Zusammenfassung ausdrücklich über die Grundmenge und nicht über die sortierte Auswahl rechnet.
+
+**Wiederverwendung statt Nachbau** (die eigentliche Substanz des Entwurfs):
+
+| Baustein | Herkunft | δ macht daraus |
+|---|---|---|
+| Überfälligkeitsregel in SQL | β-Helfer `_construction_defect_is_overdue` | **aufrufen** — keine dritte Kopie des Prädikats |
+| Überfälligkeit + „wartet auf Prüfung" in TypeScript | β-Bibliothek `defects.ts` | **importieren** für Zeilen-Abzeichen |
+| „Vorbehalt offen" | γ, heute **inline** in der Protokollier-Funktion (genau eine Stelle) | siehe **D-δ4** |
+| Zählungen je Gewerk | `construction_defect_summary` · `construction_acceptance_summary` | **aufrufen** und verbinden, statt ein drittes Mal zu zählen |
+| Datumsvergleich | β/γ, `YYYY-MM-DD` lexikographisch, `<` nicht `<=` | derselbe Rand für „Termin verstrichen" |
+| Teilbaum | γ, `construction_section_blocking_refs` | dieselbe rekursive Technik |
+
+Beim Verbinden der beiden Auswertungen ist ein gemessener Stolperstein zu beachten: die
+Gewerk-Listen tragen **unterschiedliche Schlüsselnamen** (β `project_trade_id`, γ `trade_id`). Die
+α-Fläche führt sie bereits zusammen; genau diese Fundstelle ist das Vorbild.
+
+#### D) Rechte und Gates
+
+Reihenfolge wie in allen Bau-Routen: Kennung prüfen → Anmeldung → **Projektzugriff `view`** (liefert
+erst die Mandanten-Kennung) → **danach** Modul-Tor. Lese-Absicht wird auf **404** abgebildet, damit
+die Fläche ihre Existenz nicht verrät; die Oberfläche zeigt dafür einen Hinweis statt eines
+Fehlerkastens, und der Hook meldet den Zustand im vorhandenen Feld `moduleInactive` (so heißt es im
+Bestand — nicht `unavailable`).
+
+Der Navigations-Eintrag ist der **fünfte** dieser Art und kommt **ohne Testanpassung** dazu: α hatte
+die Registry-Invariante damals von „genau eine Sektion je Modul" auf ihre Absicht umgestellt. Das ist
+der zweite Nutzen jener Änderung; die fünf Fälle, die den Projekttyp-Filter festnageln, bleiben
+unberührt und `requiresProjectType` bleibt **einwertig**.
+
+#### E) Berichts-Block
+
+Ein **optionales** Feld neben `readiness`, gefüllt nur wenn (a) das Projekt ein Bauprojekt ist und
+(b) die Bauachse belegt ist; sonst bleibt es **abwesend**. Drei Dinge sind dabei nicht verhandelbar:
+
+- **Abwesend heißt abwesend.** Ein leerer Wert statt Abwesenheit legt den Schlüssel im gespeicherten
+  Inhalt ab und verletzt AC-45δ.18.
+- **Der Projekttyp fehlt heute in der Abfrage des Aggregators** — er liest die Methode, nicht den Typ.
+  Ohne diese Ergänzung ist die Gate-Bedingung nicht auswertbar.
+- **Fehler dürfen nicht durchschlagen.** Der Bau-Block bekommt denselben Fehler-Zweig wie der
+  Readiness-Block; nur der Projekt-Lookup selbst darf die Schnappschuss-Erzeugung abbrechen.
+
+Der PDF-Weg braucht **keine** Änderung (er rendert dieselbe Druckseite). Der Schnappschuss ist
+strukturell eingefroren: die Tabelle hat weder eine Änderungs- noch eine Löschregel — AC-45δ.20 ist
+damit ohne Zutun erfüllt.
+
+### Neue Entscheidungen (δ)
+
+- **D-δ1** Eine gebündelte Auswertungsfunktion, vier Schlüssel, je Block eigene Kopfzahl über die
+  ungefilterte Menge, **ein** Zeitbezug.
+- **D-δ2** Die beiden vorhandenen Auswertungen werden **aufgerufen und verbunden**, nicht nachgezählt;
+  die abweichenden Gewerk-Schlüsselnamen werden nach dem α-Vorbild zusammengeführt.
+- **D-δ3** Teilbaum **rekursiv über `parent_id`**, nicht über den `ltree`-Operator. Der GiST-Index
+  bleibt vorerst ungenutzt; die Konsolidierung samt `path`-Pflichtfeld ist als **PROJ-Y-45j**
+  registriert, weil sie α/β/γ betrifft und nicht in eine Lesefläche gehört.
+- **D-δ4** Das Prädikat „Vorbehalt offen" wird ein **geteilter SQL-Helfer**, und γs **einzige**
+  Inline-Stelle wird per Anker-Ersetzung aus der Live-Definition darauf umgestellt — damit es in SQL
+  genau **eine** Autorität gibt (die TypeScript-Konstante bleibt der Zwilling, wie bei β). Alternative
+  war „Helfer daneben stellen und γ nicht anfassen"; sie wurde verworfen, weil dann drei Kopien
+  derselben Statusliste existieren und die gefährliche Verwechslung mit der Überfälligkeitsregel
+  unauffällig bleibt. **Preis und Absicherung:** δ berührt damit einen deployten Schreibpfad; das Tor
+  dafür ist der **γ-Pentest wörtlich** (60/60) plus ein neuer Vektor, der beweist, dass die
+  Protokollier-Funktion nach der Umstellung dieselbe Entscheidung trifft.
+- **D-δ5** Fortschritt = erledigte Arbeitspakete gegen alle nicht gelöschten, **ohne die
+  verworfenen**. Das weicht von PROJ-102 ab, das verworfene im Nenner behält: auf einer operativen
+  Bau-Fläche wäre ein Fortschritt, der 100 % nie erreichen kann, irreführend. Ersatzweise über Phasen:
+  „abgeschlossen" zählt, „verworfen" fällt aus dem Nenner, „geplant/laufend/ausgesetzt" zählen als
+  offen. Beide Formeln werden mit Grenzfällen eingefroren.
+- **D-δ6** Der Berichts-Block spiegelt das Readiness-Muster; Abwesenheit statt Leerwert; der
+  Projekttyp wird in die Aggregator-Abfrage aufgenommen; nur Status-Report, nicht Exec-Summary; die
+  Abschnittsliste im Kopfkommentar des Renderers wird **mitgepflegt** (PROJ-56-ε hat das versäumt).
+- **D-δ7** Eine CSV-Route mit Abschnitts-Parameter, dieselbe Auswertung wie die Ansicht,
+  Formel-Neutralisierung und Umfangs-Kopfzeile wie im Bestand. Die Escaping-Hilfe wird **kopiert**,
+  nicht vereinheitlicht — eine Vereinheitlichung berührte mindestens fünf Dateien und wäre damit
+  CIA-pflichtig; als **PROJ-Y-45k** registriert.
+- **D-δ8** `project_task_bottlenecks` bleibt **unberührt** (Befund 2).
+- **D-δ9** Das Fenster ist eine Konstante, kein Parameter.
+- **D-δ10** Die Fläche gatet `view`; es gibt bewusst **kein** verschärftes Rollen-Gate.
+
+### Zusätzliche Härtungskriterien (blockierend, zu AC-45δH-1…9)
+
+- [ ] **AC-45δH-10** Nach der Umstellung aus **D-δ4**: γ-Pentest **wörtlich** grün, plus ein Vektor,
+      der einen fertiggemeldeten Mangel als offenen Vorbehalt führt und belegt, dass Protokollier-Weg
+      und δ-Signal **dieselbe** Entscheidung treffen. Anker-Ersetzung mit Treffer-Eindeutigkeit,
+      Fail-Loud und Post-Verifikation aus der Live-Definition.
+- [ ] **AC-45δH-11** Der Wächter für AC-45δ.18 existiert und ist **rot-grün belegt**: eingefrorene
+      Feldliste des Schnappschuss-Inhalts und Abwesenheit des Bau-Schlüssels bei einem
+      Nicht-Bauprojekt.
+- [ ] **AC-45δH-12** **Je Route** ein eigener Modul-Gate-Test. α musste das Tor in alle sieben Routen
+      nachziehen, weil die Registry es voraussetzt — ohne eigenen Test wird das neue Tor nur weggemockt.
+- [ ] **AC-45δH-13** Der Teilbaum-Fall ist mit einem **Enkel** geprüft: die Verknüpfung hängt am
+      Kindeskind, die naive Ein-Knoten-Abfrage findet sie **nicht**, die Teilbaum-Abfrage schon.
+      Genau diese Falle hat β/γ je einen Vektor gekostet.
+- [ ] **AC-45δH-14** Funktions-Inventar am Ende der Slice aufgefrischt; die Zahl wird gegen Prod
+      **gegengezählt**, nicht aus der Migration übernommen.
+
+### Risiken für `/qa`
+
+| # | Risiko | Prüfung |
+|---|---|---|
+| R-δ1 | **D-δ4 berührt einen deployten Schreibpfad.** Eine falsch verankerte Ersetzung würde die Protokollier-Funktion still verändern. | γ-Pentest wörtlich + AC-45δH-10; Anker zählt seine Treffer und bricht bei ≠1 ab |
+| R-δ2 | **Die zwei Offen-Begriffe werden vermischt.** Wer für Blocker und Überfälligkeit denselben nimmt, liegt an genau einer Stelle falsch — unauffällig. | eingefrorener Test: `erledigt` bei „überfällig" **aus**, bei „Vorbehalt offen" **ein** |
+| R-δ3 | **Aggregat-Leck.** Eine Auswertung als `SECURITY DEFINER` über gegatete Zeilen leckt, auch wenn die Zeilenliste stimmt. | Leck-Probe **je Block** samt Gegenprobe (wahrer Wert ≠ 0), unter **synthetisiertem Nicht-Admin** |
+| R-δ4 | **Leerzustand behauptet Ruhe.** In Prod sind alle drei additiven α-Verweise bei null Zeilen — der Leerzustand ist der Normalfall. | AC-45δ.10 + ST-δ6: Hinweis mit Grund, nie „0 %" |
+| R-δ5 | **Fortschrittsformel weicht von PROJ-102 ab** (D-δ5) und könnte als Fehler gelesen werden. | Grenzfälle eingefroren, Abweichung in der Spec benannt |
+| R-δ6 | **Fixture-Lane räumt nicht vollständig auf**: γ-Zeilen sind by design nicht löschbar. | Bau-Lane aus der β-QA wiederverwenden, Grenze über PROJ-Y-45h führen; **nicht** das Modul im geteilten Test-Mandanten einschalten (verschiebt die stabilisierten Visual-Baselines) |
+
+### Abhängigkeiten und Reihenfolge
+
+**Kein neues Paket.** Keine neue Tabelle, kein Register-Eingriff. Eine Migration (Auswertungsfunktion,
+geteilter Helfer aus D-δ4, Anker-Ersetzung an γs Protokollier-Funktion); Dateiname zuerst, der
+Migrationsname gleich dem Dateistamm.
+
+Reihenfolge **`/backend` → `/frontend` → `/qa`**: die Fläche ist ohne die Auswertungsfunktion nicht
+sinnvoll baubar, und der Berichts-Block hat einen Backend- und einen Frontend-Anteil.
 
 ---
 
