@@ -84,6 +84,29 @@ jobs:
           create schema if not exists extensions;
           create extension if not exists moddatetime schema extensions;
 
+          -- PROJ-Y-130g: den search_path an Prod angleichen.
+          --
+          -- Prod läuft mit `"$user", public, extensions` (live gelesen), die Shadow-DB
+          -- bisher mit dem Standard OHNE `extensions`. Genau daraus entstand die in
+          -- CLAUDE.md notierte Beobachtung, die bare Form `moddatetime()` löse "in prod
+          -- but not in the schema-drift shadow DB" auf — und daraus wiederum zwei der
+          -- sieben Fresh-Apply-Abbrüche aus PROJ-Y-130f, mit 214 und 490 verlorenen
+          -- Zeilen die beiden größten. Über die Kaskade (proj110 bricht vor der Zeile
+          -- ab, in der es `stage_gate_prereadiness` anlegt) hängt ein dritter daran.
+          --
+          -- Die Angleichung baut also nichts nach, sondern beseitigt eine
+          -- Umgebungsdifferenz: der Replay prüft ab hier gegen dieselbe Auflösung, die
+          -- Prod verwendet. `alter database` wirkt auf neue Verbindungen, und die
+          -- Migrationsschleife öffnet pro Datei eine — hier in dieser Session noch nicht,
+          -- was für die Stubs oben aber unerheblich ist (alle voll qualifiziert).
+          --
+          -- Die CLAUDE.md-Regel bleibt trotzdem richtig und wird ab jetzt AUSDRÜCKLICH
+          -- erzwungen statt als Nebenwirkung dieser Differenz: `npm run check:moddatetime`.
+          -- Grund: in einer `SECURITY DEFINER`-Funktion mit `set search_path = public,
+          -- pg_temp` löst die bare Form weiterhin NICHT auf — die Regel schützt vor mehr
+          -- als vor diesem Replay.
+          alter database postgres set search_path = "$user", public, extensions;
+
           -- storage schema stubs — minimum columns for FK references and policies.
           create schema if not exists storage;
           create table if not exists storage.buckets (
