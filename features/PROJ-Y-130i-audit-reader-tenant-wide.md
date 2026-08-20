@@ -1,7 +1,7 @@
 # PROJ-Y-130i — Die Revisions-Freigabe erreicht auch die mandantenweiten Zweige
 
-## Status: Approved
-## Deployment Scope: —
+## Status: Deployed
+## Deployment Scope: full
 
 Followup aus **PROJ-130-γ2**, dort als bewusste Grenze notiert. γ2 hat die Freigabe
 `audit_reader_grants` eingeführt und im Lesetor `can_read_audit_entry` an **einer** Stelle verdrahtet:
@@ -88,7 +88,7 @@ betroffenen Typen (live gezählt = 0). Die frühen Rückgaben umgehen also keine
 - [x] Regressionen: γ2 **11/11 wörtlich**, γ1 **11/11** (nach dem G2-Umbau, siehe F-1).
 - [x] Gates: ESLint 0 · tsc 13 = Baseline / 0 neu · vitest 3414/3414 · Build clean · migration-naming 0 ·
       index-scope 0.
-- [ ] CI-Lauf und Merge.
+- [x] CI-Lauf grün, gemergt, getaggt, Zustand nach dem Merge erneut gemessen.
 
 ---
 
@@ -161,3 +161,29 @@ nicht. In dieser Spec sind sie getrennt (A/B/C).
 - **D-Y130i.4 — kein Anwendungscode.** Die Sichtbarkeit entscheidet die RLS über dieses Tor; keine Route,
   kein Hook, kein Test in `src/` musste sich ändern. Die Revisions-Sicht aus PROJ-Y-130o/130p zeigt die
   neuen Zeilen ohne Zutun.
+
+---
+
+## Deployment
+
+**Deployed 2026-08-20: PR #425 (squash) → main `37380d7`, Tag `v2.70.0-PROJ-Y-130i`.**
+
+- Die Migration liegt seit dem Bau in Prod, registriert unter dem **Dateistamm**
+  `20260820140000_projy130i_audit_reader_tenant_wide` (PROJ-134-konform). Beim Merge gab es **keine**
+  Laufzeit-Änderung an der Datenbank.
+- Post-Deploy erneut gegen Prod gemessen, nicht aus dem Bau-Lauf übernommen: Klasse A **10**,
+  Konfigurations-Zweige **4**, `resources` weiter **zu**, Skill-Kataloge weiter **admin-gegatet**,
+  `when`-Zweige **64**, `authenticated` ja / `anon` nein, **0** Freigaben als Rückstand.
+- Der Merge liefert **keinen** Anwendungscode aus (kein `src/`-Diff) — ein HTTP-Smoke wäre gegenstandslos.
+  Tragender Nachweis bleibt der Verhaltens-Pentest (33/33 unter einem Nicht-Mitglied) plus die beiden
+  wörtlich grünen Regressionen.
+- Der Versions-Teil des Tags ist wie schon einmal im Bestand doppelt belegt (`v2.70.0-PROJ-45-gamma` aus
+  einer parallelen Lane); die Tag-**Namen** bleiben eindeutig.
+
+### Warum `full`
+
+Alle acht Akzeptanzkriterien sind belegt, nichts ist zurückgestellt. **PROJ-Y-130r** ist keine
+zurückgestellte Anforderung dieser Slice, sondern eine **neu entdeckte** Nachbarfrage: die Redaktion war
+nie Teil des Auftrags, und ihre Enge ist genau der Grund, `resources` bewusst auszuschliessen — eine
+Entscheidung, nicht eine Auslassung. Geliefert ist eine rechte-setzende Migration mit Post-Conditions,
+also keine Werkzeug-Ebene.
