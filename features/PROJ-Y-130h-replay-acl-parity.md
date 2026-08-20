@@ -124,14 +124,16 @@ ist, weil sie ins Leere greift — bei F-3 war es der Wächter selbst, der jahre
 - [x] **AC-Y130h.10** — Nachgewiesen, dass F-3 kein Einzelfall ist: für jedes andere Lockdown-Ziel
       existiert ein späterer Grant, der sich im Replay selbst heilt, und der gemessene Prod-Zustand deckt
       sich mit ihm.
-- [ ] **AC-Y130h.8** — Der CI-Lauf zeigt, dass die Datei im Replay durchläuft und **keinen** neuen
-      `structural failure` erzeugt.
+- [x] **AC-Y130h.8** — Der CI-Lauf zeigt, dass die Datei im Replay durchläuft und **keinen** neuen
+      `structural failure` erzeugt: `Applied 217 migration(s); 4 tolerated abort(s); 0 structural
+      failures.` Der erste Lauf war rot und hat dabei F-3 aufgedeckt — der Nachweis ist also nicht nur
+      ein grünes Häkchen, sondern ein Wächter, der einmal wirklich etwas gefangen hat.
 
 ## Definition of Done
 
 - [x] Migration in Prod und im Repo, Post-Conditions gemessen wirksam.
-- [ ] CI-Lauf beobachtet; Ergebnis eingetragen.
-- [ ] Buchführung final.
+- [x] CI-Lauf beobachtet; Ergebnis eingetragen (rot → F-3 gefunden → grün, 0 structural failures).
+- [x] Buchführung final.
 
 ## Abweichungen
 
