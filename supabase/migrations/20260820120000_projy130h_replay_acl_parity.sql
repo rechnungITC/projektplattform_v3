@@ -34,6 +34,37 @@
 --
 -- Maßstab ist deshalb nicht die historische Absicht, sondern der **gemessene
 -- Prod-Zustand**: alle betroffenen Funktionen haben dort `anon = false` und kein
+-- ORDNUNGS-INVERSION (im CI-Lauf dieser Slice gefunden, Bestandsbefund)
+-- ---------------------------------------------------------------------------
+-- Der Fresh-Apply endete mit **0 von 6** RLS-Helfern für `authenticated`
+-- aufrufbar. Nicht durch diese Datei — die entzieht nur `public`/`anon` —,
+-- sondern durch die Dateireihenfolge:
+--
+--   20260504070000_hotfix_grant_rls_helpers_to_authenticated.sql  (grant)
+--   20260504500001_security_internal_functions_lockdown.sql       (revoke)
+--
+-- Nach Dateinamen läuft der Grant ZUERST und der Lockdown hebt ihn wieder auf.
+-- In Prod war es umgekehrt, in der Registry nachgelesen statt vermutet:
+-- Lockdown `20260504144601`, Hotfix `20260504150013` — der Hotfix kam rund
+-- 15 Minuten SPÄTER. Der Dateiname `…500001` ist eine synthetische
+-- Ordnungsnummer (vgl. PROJ-134) und invertiert das Paar.
+--
+-- Die Tragweite ist die, die der Hotfix selbst beschreibt: ohne EXECUTE
+-- greift die `SECURITY DEFINER`-Erhöhung nicht, jede Policy, die einen der
+-- Helfer aufruft, scheitert mit „permission denied for function" — am
+-- sichtbarsten beim Onboarding. Jede frisch aus den Dateien gebaute
+-- Umgebung war davon betroffen; gesehen hat es niemand, weil der
+-- Drift-Wächter Spalten vergleicht, keine Rechte.
+--
+-- Von allen Lockdown-Zielen ist dieses das einzige unversorgte: für
+-- `can_read_audit_entry` (0813/0814/0818) und die Krypto-Helfer (0521183000)
+-- liegen spätere Grants vor, die sich im Replay selbst heilen — geprüft, und
+-- der gemessene Prod-Zustand deckt sich mit ihnen.
+--
+-- Geheilt wird fix-forward am Ende der Kette, nicht durch Umbenennen der
+-- beiden Bestandsdateien: eine Umbenennung verschiebt zwei geshippte
+-- Migrationen und genau davor warnt PROJ-134.
+--
 -- `PUBLIC`; `authenticated` unterscheidet sich pro Funktion und ist unten
 -- einzeln abgebildet.
 --
@@ -111,6 +142,18 @@ declare
     'public.enforce_last_lead()',
     'public.enforce_project_membership_user_in_tenant()'
   ];
+
+  -- Die sechs RLS-Helfer. Sie MÜSSEN für `authenticated` aufrufbar sein, sonst
+  -- schlägt jede Policy fehl, die sie aufruft. Im Fresh-Apply waren sie es
+  -- nicht — Begründung im Kopfkommentar unter „Ordnungs-Inversion".
+  v_helper_grant text[] := array[
+    'public.is_tenant_admin(uuid)',
+    'public.is_tenant_member(uuid)',
+    'public.has_tenant_role(uuid, text)',
+    'public.is_project_member(uuid)',
+    'public.is_project_lead(uuid)',
+    'public.has_project_role(uuid, text)'
+  ];
 begin
   foreach v_fn in array v_all loop
     begin
@@ -135,6 +178,15 @@ begin
     execute format('revoke execute on function %s from public, anon', v_fn);
     if v_fn = any (v_also_auth) then
       execute format('revoke execute on function %s from authenticated', v_fn);
+    end if;
+  end loop;
+
+  -- Ordnungs-Inversion heilen: den `authenticated`-Grant der sechs Helfer
+  -- herstellen. In Prod ein gemessener No-op (alle sechs tragen dort
+  -- `authenticated=X`), im Fresh-Apply die Reparatur.
+  foreach v_fn in array v_helper_grant loop
+    if v_fn = any (v_present) then
+      execute format('grant execute on function %s to authenticated', v_fn);
     end if;
   end loop;
 
@@ -216,7 +268,7 @@ begin
      and has_function_privilege('authenticated', p.oid, 'EXECUTE');
   if v_helpers_kept <> v_helpers_present then
     raise exception
-      'PROJ-Y-130h: nur % von % vorhandenen Rollen-Helfern fuer authenticated aufrufbar — zu breit entzogen',
+      'PROJ-Y-130h: nur % von % vorhandenen Rollen-Helfern fuer authenticated aufrufbar — zu breit entzogen oder Grant fehlt',
       v_helpers_kept, v_helpers_present;
   end if;
 

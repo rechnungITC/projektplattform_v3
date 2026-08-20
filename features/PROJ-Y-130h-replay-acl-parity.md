@@ -46,7 +46,7 @@ und ist einzeln abgebildet.
 
 ---
 
-## Zwei eigene Fehler, beide vor der Wirkung gefangen
+## Drei Fehler, alle vor der Wirkung gefangen — der dritte ist ein Bestandsbefund
 
 **F-1 — die erste Fassung hätte den Required Check rot gemacht.** Sie prüfte die Existenz aller 14
 Funktionen mit `raise exception`. Aber `enforce_last_lead` und
@@ -64,8 +64,40 @@ gegen `0`: trivial erfüllt, ohne irgendetwas zu bewachen. Gefangen nur, weil ic
 **nachgemessen** habe, statt der Migration zu glauben. Korrekt ist `oidvectortypes(p.proargtypes)`,
 nachgewiesen mit 14/14 gefundenen Funktionen und 6/6 erhaltenen Helfern.
 
-Beide Fehler sind derselbe Typ, der in dieser Followup-Kette mehrfach auftrat: eine Prüfung, die grün
-ist, weil sie ins Leere greift.
+**F-3 — der Fresh-Apply endete mit gebrochenen RLS-Helfern. Nicht durch diese Slice.** Der erste
+CI-Lauf machte den Wächter rot, und zwar an genau der Post-Condition, die F-2 wirksam gemacht hatte:
+**0 von 6** Rollen-Helfern waren für `authenticated` aufrufbar. Die naheliegende Reaktion — die Prüfung
+weicher stellen — wäre die falsche gewesen; sie hatte recht.
+
+Die Ursache ist die **Dateireihenfolge**, nicht mein `revoke` (das trifft nur `public`/`anon`):
+
+| Datei | Wirkung |
+|---|---|
+| `20260504070000_hotfix_grant_rls_helpers_to_authenticated.sql` | `grant … to authenticated` |
+| `20260504500001_security_internal_functions_lockdown.sql` | `revoke … from public, anon, authenticated` |
+
+Nach Dateinamen läuft der Grant **zuerst**, der Lockdown hebt ihn wieder auf. In Prod war es umgekehrt —
+in der Registry nachgelesen statt vermutet: Lockdown `20260504144601`, Hotfix `20260504150013`, also rund
+15 Minuten **später**. Der Dateiname `…500001` ist eine synthetische Ordnungsnummer (PROJ-134-Domäne) und
+invertiert das Paar.
+
+Die Tragweite beschreibt der Hotfix selbst: ohne `EXECUTE` greift die `SECURITY DEFINER`-Erhöhung nicht,
+und jede Policy, die einen der Helfer aufruft, scheitert mit „permission denied for function" — am
+sichtbarsten beim Onboarding. **Jede frisch aus den Dateien gebaute Umgebung war davon betroffen**;
+gesehen hat es niemand, weil der Drift-Wächter Spalten vergleicht, keine Rechte.
+
+Geprüft, ob das ein Einzelfall ist: von allen Lockdown-Zielen ist es der **einzige** unversorgte. Für
+`can_read_audit_entry` liegen spätere Grants vor (`…0813`, `…0814`, `…0818`), für die Krypto-Helfer
+`…20260521183000` — die heilen sich im Replay selbst, und der gemessene Prod-Zustand deckt sich mit ihnen
+(`can_read_audit_entry`, `encrypt_tenant_secret`, `decrypt_tenant_secret` alle `authenticated=X`).
+
+Geheilt wird **fix-forward** am Ende der Kette: die Datei stellt den Grant der sechs Helfer her. Kein
+Umbenennen der zwei Bestandsdateien — eine Umbenennung verschiebt zwei geshippte Migrationen, und genau
+davor warnt PROJ-134. In Prod ist der Grant ein gemessener No-op (vorher 6/6, nachher 6/6, `anon`
+unverändert 0).
+
+Alle drei Fehler sind derselbe Typ, der in dieser Followup-Kette mehrfach auftrat: eine Prüfung, die grün
+ist, weil sie ins Leere greift — bei F-3 war es der Wächter selbst, der jahrelang nicht hinsah.
 
 ---
 
@@ -86,6 +118,12 @@ ist, weil sie ins Leere greift.
       Funktionen gefunden, `anon` 0, Guards 0, Helfer 6/6. Die vorige Fassung hätte 0/0 verglichen.
 - [x] **AC-Y130h.7** — In Prod ist die Datei ein No-op; verifiziert durch eine zurückgerollte
       Verhaltensprobe (14 vorhanden, 0 übersprungen, 0 fehlend) und die Messung der ACLs davor und danach.
+- [x] **AC-Y130h.9** — Die sechs RLS-Helfer sind im Fresh-Apply für `authenticated` aufrufbar. Die
+      Ordnungs-Inversion zwischen Hotfix und Lockdown ist an der Prod-Registry belegt (`…144601` vor
+      `…150013`) und fix-forward geheilt; in Prod ein gemessener No-op (6/6 vorher und nachher, `anon` 0).
+- [x] **AC-Y130h.10** — Nachgewiesen, dass F-3 kein Einzelfall ist: für jedes andere Lockdown-Ziel
+      existiert ein späterer Grant, der sich im Replay selbst heilt, und der gemessene Prod-Zustand deckt
+      sich mit ihm.
 - [ ] **AC-Y130h.8** — Der CI-Lauf zeigt, dass die Datei im Replay durchläuft und **keinen** neuen
       `structural failure` erzeugt.
 
@@ -101,9 +139,15 @@ ist, weil sie ins Leere greift.
   fehlerfrei, alle 14 Funktionen vorhanden); im Repo liegt die **zweite**, die sich nur im Verhalten bei
   *abwesenden* Funktionen unterscheidet. In Prod ist dieser Zweig unerreichbar, beide Fassungen sind dort
   also verhaltensgleiche No-ops. Die Datei erneut anzuwenden hätte eine zweite Registry-Version für
-  dieselbe Datei erzeugt; das ist die schlechtere Wahl. Der Inhalt ist durchgängig idempotent, `db push`
-  bleibt unberührt (PROJ-134-Domäne).
+  dieselbe Datei erzeugt; das ist die schlechtere Wahl. Nach F-3 trägt die Repo-Fassung zusätzlich den
+  Helfer-Grant, den die registrierte Fassung nicht hat — in Prod nachweislich wirkungslos, weil alle sechs
+  Rechte dort bereits gesetzt sind (vor und nach dem Ausführen 6/6 gemessen, `anon` unverändert 0). Der
+  Inhalt ist durchgängig idempotent, `db push` bleibt unberührt (PROJ-134-Domäne).
 - **D-Y130h.2 — die vier Abbrüche bleiben bestehen.** Diese Slice heilt ihre **Folgen**, nicht ihre
   Ursache: eine neue Migration kommt ans Ende und kann an Position 18/70/75/441 nichts ändern. Der
   Diagnose-Notice meldet weiterhin vier Abbrüche — inhaltlich richtig, denn die Zeilen laufen dort
   wirklich nicht. Was sich ändert, ist der **Endzustand** des Replays.
+- **D-Y130h.3 — die Ordnungs-Inversion selbst bleibt in den Dateien stehen.** Geheilt ist ihr Ergebnis,
+  nicht ihre Ursache. Wer die zwei Bestandsdateien künftig umbenennt, muss beachten, dass der Grant nach
+  dem Lockdown liegen muss; der Wächter dafür ist die Post-Condition in dieser Datei, die es beim ersten
+  Lauf auch gefunden hat.
