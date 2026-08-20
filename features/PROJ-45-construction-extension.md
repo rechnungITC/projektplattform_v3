@@ -2461,6 +2461,138 @@ sinnvoll baubar, und der Berichts-Block hat einen Backend- und einen Frontend-An
 
 ---
 
+## `/backend` — δ live 2026-08-20
+
+Migration **`20260820180000_proj45_delta_construction_schedule_signals`** in Prod (registriert unter
+`20260820155944`; die Versionsdrift ist benign — die Datei besteht durchgängig aus `create or replace`
+und idempotenten DO-Blöcken und bricht `supabase db push` nicht, PROJ-134-Domäne). **Keine neue
+Tabelle, kein Register-Eingriff, kein gespeicherter Signalzustand** — L30 gehalten.
+
+Geliefert: drei neue Funktionen (`_construction_defect_is_open`, `_construction_reservation_is_open`,
+beide `immutable`; `construction_schedule_signals` als `SECURITY INVOKER`, `stable`, mit gesetztem
+`search_path`, ohne Actor-Parameter, `anon` **und PUBLIC** ohne EXECUTE), zwei Anker-Ersetzungen aus
+der Live-Definition, eine Typdatei, zwei Routen (Daten + CSV), Client-Wrapper, reine Anzeige-Lib und
+der Backend-Anteil des Berichts-Blocks. Die Migration prüft ihr eigenes Ergebnis: Modus, Volatilität
+und `search_path` je neuer Funktion, dazu `anon`/PUBLIC/`authenticated` über **fünf** Funktionen
+(die drei neuen plus die zwei umgestellten).
+
+### Der Auftrag D-δ4 wurde nach einer Messung erweitert — zwei Umstellungen statt einer
+
+Live gemessen tragen **vier** Funktionen das Wort `in_bearbeitung`, und nur zwei davon sind
+Regel-Kopien: `_construction_defect_is_overdue` (1× die Paar-Liste) und
+`record_construction_acceptance` (1× die Dreier-Liste) wurden umgestellt;
+`construction_defect_summary` (1× als Einzelstatus-**Zählung**) und
+`transition_construction_defect_status` (4× als **Zustandsübergänge**) sind keine und bleiben
+unberührt. Der Grund für die Erweiterung ist konkret: δ braucht für „Mangel **ohne Frist**" die
+Statuspaar-Liste, und der β-Helfer gibt sie nicht her (er verlangt ein Datum). Ohne den neuen
+`_construction_defect_is_open` hätte δ sie ein **drittes** Mal tippen müssen — genau das, was D-δ4
+verhindern soll. In SQL gibt es jetzt je Begriff **eine** Autorität; die TypeScript-Konstanten bleiben
+die Zwillinge wie bei β.
+
+### Zwei Messungen haben Entwurfsannahmen korrigiert
+
+**1. D-δ2 war zu stark formuliert.** „Die beiden vorhandenen Auswertungen aufrufen statt nachzuzählen"
+ist für den Gewerk-Block **nicht** möglich: `construction_defect_summary.by_trade` gruppiert über die
+**Mängel** und listet damit nur Gewerke **mit** Befund — AC-45δ.1 verlangt ausdrücklich alle, auch die
+„ohne Befund". δ baut die Gewerk-Liste deshalb aus `project_construction_trades` und wiederverwendet
+die **Prädikate** statt der Gruppierung. Damit die zweite Gruppierung nicht auseinanderläuft, prüft
+Pentest-Vektor **J** die überlappende Zahl gegen die β-Auswertung.
+
+**2. Die abweichenden Schlüsselnamen sind nur Namen.** β nennt das Feld `project_trade_id`, γ
+`trade_id` — beide Fremdschlüssel zeigen auf `project_construction_trades.id` (am Katalog gemessen,
+nicht angenommen). Es war also kein Umschlüsseln nötig, nur Aufmerksamkeit beim Verbinden.
+
+### Live-Pentest: 46/46 PASS gegen Prod, 0 Rückstände
+
+`tests/sql/PROJ-45-delta-schedule-signals-pentest.sql` (Block 1 **21** · Block 2 **16** · Block 3 **9**),
+jeder Block endet im `raise` und rollt zurück. Tragend sind:
+
+- **D/D2 — der Enkel-Fall (AC-45δH-13):** die Wurzel zählt die Arbeitspakete ihres **Kindeskindes**
+  (`source_count=2`), und die naive Ein-Knoten-Abfrage findet **0**. Genau diese Falle hat β und γ je
+  einen Vektor gekostet.
+- **E — verworfene Arbeitspakete fallen aus dem Nenner** (D-δ5): 1 erledigt von 2 zählbaren = 50 %,
+  bei 3 verknüpften. Ohne diese Regel wäre 33 % herausgekommen und 100 % nie erreichbar.
+- **G — nichts verknüpft ergibt kein „0 %"**, sondern Abwesenheit (`progress_source` und
+  `progress_percent` beide leer). Das ist in Prod heute der Normalfall.
+- **B — eine abgesagte Abnahme blockiert nicht** (L27), auch mit verstrichenem Termin.
+- **H6 — der fertiggemeldete Mangel ist keine Frist** (β-Regel), zählt aber als offener **Vorbehalt**
+  (γ-Regel): derselbe Mangel in zwei Zahlen mit zwei Bedeutungen, beide getrennt geführt.
+- **L/L2 + M/M2 — Aggregat-Leck-Probe mit Gegenprobe (AC-45δH-2):** ein Nicht-Mitglied erhält in
+  **jeder** Kopfzahl 0 und in **jeder** Liste nichts, während dieselbe Abfrage ohne Rollenwechsel
+  Werte ≠ 0 liefert; dasselbe für einen fremden Mandanten (dort 1 Gewerk / 2 Abschnitte in Wahrheit).
+- **K2 — der Leser ist nachweislich kein Admin (AC-45δH-3).** Ohne diesen Vektor wäre K falsch-grün:
+  in Prod ist jedes Mandanten-Mitglied `admin`.
+- **Q/Q2/R/R2 — die Parität der Umstellung (AC-45δH-10):** ein fertiggemeldeter Mangel blockiert das
+  Protokollieren einer Abnahme weiterhin (`P0001`), die ausdrückliche Bestätigung hebt es weiterhin
+  auf, δ sieht denselben Mangel als offenen Vorbehalt — und nach `geprueft` **löst sich der Blocker
+  ohne Zutun**. Beide Seiten hängen jetzt an derselben Liste, und das ist gemessen, nicht behauptet.
+- **P/P2 — Verhaltenstabellen statt Textprüfung** über beide Prädikate (7 bzw. 5 Kombinationen).
+
+Beim ersten Lauf gefangen: `phases.sequence_number` ist `NOT NULL` — die Fixture hätte sonst nur
+scheinbar geseedet.
+
+### Regressionen wörtlich grün
+
+**β 53/53 · γ 60/60 · α 18/18 · PROJ-Y-45a 9/9 · PROJ-103 7/7**, jeweils 0 Rückstände und **0**
+deaktivierte Trigger auf den `construction%`-Tabellen. Bei γ ist zusätzlich belegt, dass die
+Umstellung in Prod **wirklich aktiv** ist (der Helfer existiert und der Aufruf steht im
+Funktionsrumpf) — der Lauf ist also nicht am alten Prädikat vorbeigelaufen; ohne diesen Nachweis
+hätte „60/60 grün" auch bedeuten können, dass gar nichts umgestellt war. PROJ-103 hält seine
+**absoluten** Zahlen: δ hat die M&A-Engpass-Auswertung nachweislich nicht angefasst (D-δ8).
+
+### Ein Befund an der Nahtstelle, den kein Typ gefangen hätte
+
+Die Datenroute antwortet `{ signals: … | null }`; der erste Client-Wrapper las die Antwort als nackte
+Nutzlast und hätte in Produktion ein Objekt aus lauter `undefined`-Feldern geliefert — **beide** Seiten
+tragen nur eine `as`-Zusicherung, der Compiler schweigt dazu. Korrigiert auf das Auspacken der Hülle
+(deckungsgleich mit dem γ-Wrapper in derselben Datei); drei Tests pinnen die Form. Bewusst **kein**
+erfundenes Leer-Objekt: `as_of` ist der eine Zeitbezug, ein ausgedachter Zeitstempel wäre eine
+Falschaussage genau auf der Fläche, die „nichts da" von „0" trennen soll.
+
+### Der Wächter für AC-45δ.18 existiert und beisst
+
+Die Zusage „byte-identisch" hatte kein Messwerkzeug (der Schnappschuss-Aggregator hatte **keinen**
+Unit-Test, der Route-Test mockt ihn weg, keine Visual-Baseline zeigt die Report-Fläche). Jetzt prüft
+ein Test für ein Nicht-Bauprojekt die **eingefrorene Schlüsselliste** *und* die Abwesenheit des
+Bau-Schlüssels. **Rot-grün in drei Richtungen ausgeführt:** unbedingtes `null` → 3 rot, unbedingtes
+`{}` → 3 rot, und nach Umsortierung der Zusicherungen fällt auch die `in`-Prüfung selbst — sie war
+sonst nie *nachweislich* wirksam, weil der Listenvergleich strikt stärker ist und immer zuerst
+zuschlägt. Der Block wird per **bedingtem Spread** gesetzt, nicht als Schlüssel mit `undefined`.
+
+### Neue Entscheidungen aus dem Bauen
+
+- **D-δ11** „Überfällig" bei Arbeitspaketen folgt der Engpass-Auswertung aus PROJ-103 **wörtlich**:
+  gesetztes `due_date`, vor heute, Status `todo`/`in_progress`/`blocked`. Kein `planned_end`-Rückfall —
+  δ erfindet keine zweite Überfälligkeitsregel neben den beiden, die es schon gibt.
+- **D-δ12** Neben `source_count` (gezählte Vorgänge) trägt jeder Abschnitt `linked_count`
+  (verknüpfte inkl. verworfener). Ohne die zweite Zahl wäre „verknüpft, aber nichts zählbar" von
+  „nichts verknüpft" nicht zu unterscheiden — beide würden ohne Fortschritt erscheinen, obwohl nur
+  einer ein Handlungsproblem ist.
+- **D-δ13** Der Berichts-Block ist eine **Auswahl** (Blocker je Gewerk, Fortschritt je Abschnitt,
+  Kopfzahlen), nicht die ganze Nutzlast: Termine und Mängel-Einzelzeilen gehören in die Fläche, nicht
+  in einen eingefrorenen Bericht.
+- **D-δ14** Die CSV-Route weist einen unbekannten `section`-Wert mit **400** ab statt auf den Default
+  zurückzufallen — ein Tippfehler bekäme sonst eine plausible, aber falsche Datei.
+- **D-δ15** Kein Zugriffs-Protokoll-Eintrag (PROJ-130-δ2): die Bau-Erweiterung trägt per α-Entscheid
+  **keine** Vertraulichkeitsstufe, es gibt also keine Stufe zu protokollieren.
+- **D-δ16** `manual_status` ist im Typ der α-Typ `ConstructionRagStatus`, keine vierte Kopie derselben
+  drei Werte (beim Gegenlesen der Typdatei gefunden und sofort behoben).
+
+### Gates
+
+vitest **3469/3469** (413 Dateien) · ESLint **0** repo-weit · tsc **13 = Baseline / 0 neu** (auch nach
+dem Build gemessen, PROJ-Y-143e-Messfalle) · Build clean mit **beiden** Routen registriert ·
+`check:migration-naming` 0 Fehler · `check:index-scope` 0 Fehler · Funktions-Inventar **283 → 286**
+(gegen Prod gegengezählt, AC-45δH-14) · Advisors **149 WARN / 0 ERROR**, und **keine** der Meldungen
+betrifft eine der drei δ-Funktionen — sie sind INVOKER mit gesetztem `search_path`, erzeugen also
+weder eine `function_search_path_mutable`- noch eine DEFINER-Warnung.
+
+Offen: **`/frontend`** (Reiter „Terminsignale" mit den vier Blöcken, CSV-Knöpfe, Sprünge, plus der
+JSX-Guard für den Berichts-Block und die Pflege der Abschnittsliste im Kopfkommentar des Renderers)
+und danach **`/qa`** (authentifizierter Durchlauf in der Bau-Fixture-Lane, AC-45δH-9).
+
+---
+
 ## Deployment — γ (2026-08-20)
 
 **Tag `v2.70.0-PROJ-45-gamma` · PR #422 (squash) → main `31aef7f` · Deployment Scope `alpha`.**

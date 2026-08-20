@@ -22,7 +22,9 @@ _comm_in_inner_circle
 _comm_project_authority
 _comm_validate_links
 _committee_authority
+_construction_defect_is_open
 _construction_defect_is_overdue
+_construction_reservation_is_open
 _cost_aggregate_bucket
 _create_clearance_grant_request
 _dd_finding_source_question_guard
@@ -90,6 +92,7 @@ construction_acceptance_guard
 construction_acceptance_summary
 construction_defect_guard
 construction_defect_summary
+construction_schedule_signals
 construction_section_blocking_defects
 construction_section_blocking_refs
 construction_section_guard
