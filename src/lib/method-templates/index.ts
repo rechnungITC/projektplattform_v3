@@ -124,6 +124,21 @@ const CONSTRUCTION_DEFECTS_SECTION: SidebarSection = {
   requiresModule: "construction",
 }
 
+/**
+ * PROJ-45-γ — das Abnahmeregister. Vierte Fläche hinter demselben EINEN
+ * Schalter (Q4). `routing.test.ts` prüft seit α auf die Absicht („mindestens
+ * eine Sektion je Modul, und alles Verschwundene gehört zu diesem Modul")
+ * statt auf genau eine — diese Sektion kommt darum ohne Testanpassung dazu.
+ */
+const CONSTRUCTION_ACCEPTANCES_SECTION: SidebarSection = {
+  id: "construction-acceptances",
+  label: "Abnahmen",
+  icon: ClipboardCheck,
+  tabPath: "abnahmen",
+  requiresProjectType: "construction",
+  requiresModule: "construction",
+}
+
 // PROJ-95 — the M&A "Phasenmodell" cockpit (10-phase roadmap, activation,
 // mandate/stage-gate status). Project-TYPE driven, same injection pattern.
 const MA_PHASE_MODEL_SECTION: SidebarSection = {
@@ -369,6 +384,7 @@ function withMaFoundation(config: MethodConfig): MethodConfig {
       CONSTRUCTION_TRADES_SECTION,
       CONSTRUCTION_SECTIONS_SECTION,
       CONSTRUCTION_DEFECTS_SECTION,
+      CONSTRUCTION_ACCEPTANCES_SECTION,
       ...sections.slice(insertAt),
     ],
   }

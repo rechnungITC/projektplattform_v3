@@ -65,7 +65,7 @@ export interface GovernanceHistoryIsland {
 }
 
 /**
- * The five append-only islands in the `ON DELETE CASCADE` closure of
+ * The six append-only islands in the `ON DELETE CASCADE` closure of
  * `projects`, measured live against prod: recursive `pg_constraint` walk over
  * `confdeltype='c'`, intersected with `DELETE` triggers whose function raises.
  * All five sit at cascade depth 2 (project → parent → events).
@@ -134,6 +134,26 @@ export const GOVERNANCE_HISTORY_ISLANDS = [
     //
     // Re-measured after the migration: a project with one seeded defect event is
     // refused, one without is still deleted.
+    blocksHardDelete: true,
+  },
+  {
+    table: "construction_acceptance_events",
+    parentTable: "construction_acceptances",
+    parentForeignKey: "construction_acceptance_events_acceptance_id_fkey",
+    label: "Abnahme-Historie",
+    promisedBy: "PROJ-45-γ",
+    // GEMESSEN, nicht abgeleitet (rollback-Sonde gegen Prod): mit EINEM
+    // geseedeten Ereignis wird das endgueltige Loeschen des Projekts mit
+    // `42501 construction acceptance events are append-only` abgelehnt.
+    //
+    // Die sechste Insel — und der Kommentar oben („eine sechste kann nicht
+    // unbemerkt hereinrutschen") hat genau dafuer gestanden. Sie kam zustande,
+    // weil γs Waechter zunaechst nach dem Vorbild von β gebaut war und dessen
+    // Kaskaden-Ausstieg mitgeerbt hatte; eine parallele Session hat β am selben
+    // Tag gehaertet (PROJ-Y-148d), γ ist per Fix-forward nachgezogen
+    // (20260819170000). Ohne beides waere die Abnahme-Historie beim
+    // Projekt-Abriss still verschwunden — bei dem Objekt, das Gefahrenuebergang
+    // und Fristbeginn belegt.
     blocksHardDelete: true,
   },
 ] as const satisfies readonly GovernanceHistoryIsland[]

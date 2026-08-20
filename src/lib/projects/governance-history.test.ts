@@ -42,13 +42,18 @@ describe("GOVERNANCE_HISTORY_ISLANDS", () => {
    * If this fails, do not just extend the array: decide what the new history is
    * called in front of a user, and whether it really may not be deleted.
    */
-  it("covers exactly the five measured append-only islands", () => {
+  it("covers exactly the six measured append-only islands", () => {
+    // Dieser Test hat 2026-08-19 seine Arbeit getan: PROJ-45-γ hat die SECHSTE
+    // Insel eingebracht (`construction_acceptance_events`), und die Liste ist
+    // erst nach einer gemessenen Entscheidung erweitert worden — nicht, weil
+    // der Test rot war.
     expect(GOVERNANCE_HISTORY_ISLANDS.map((i) => i.table)).toEqual([
       "stakeholder_profile_audit_events",
       "decision_approval_events",
       "deliverable_approval_events",
       "ma_clearance_request_events",
       "construction_defect_events",
+      "construction_acceptance_events",
     ])
   })
 
@@ -75,6 +80,12 @@ describe("GOVERNANCE_HISTORY_ISLANDS", () => {
       ["ma_clearance_request_events", true],
       // Was `false` until PROJ-Y-148d removed the exit from PROJ-45-β's guard.
       ["construction_defect_events", true],
+      // PROJ-45-γ: GEMESSEN `true`. γs Waechter hatte den Ausstieg von β
+      // zunaechst geerbt und ist per Fix-forward (20260819170000) bedingungslos
+      // gemacht worden — im Gleichzug zu PROJ-Y-148d, das dieselbe Aenderung
+      // fuer die Maengel-Historie vorgenommen hat. Rollback-Sonde gegen Prod:
+      // ein geseedetes Ereignis lehnt das Projekt-Loeschen mit `42501` ab.
+      ["construction_acceptance_events", true],
     ])
   })
 
@@ -85,6 +96,7 @@ describe("GOVERNANCE_HISTORY_ISLANDS", () => {
       "PROJ-105",
       "PROJ-100c",
       "PROJ-45-β",
+      "PROJ-45-γ",
     ])
   })
 
