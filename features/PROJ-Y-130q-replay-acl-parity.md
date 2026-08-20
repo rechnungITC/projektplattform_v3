@@ -1,7 +1,7 @@
-# PROJ-Y-130h — Die Folgen der vier verbleibenden Fresh-Apply-Abbrüche nachholen
+# PROJ-Y-130q — Die Folgen der vier verbleibenden Fresh-Apply-Abbrüche nachholen
 
-## Status: Approved
-## Deployment Scope: —
+## Status: Deployed
+## Deployment Scope: full
 <!-- Aus den Belegen ist `full` die Klassifikation: eine Migration mit gemessener Wirkung
      und Post-Conditions, keine reine Tooling-Ebene. Wert beim Merge. -->
 
@@ -10,6 +10,25 @@
 vollständigen Daten hier übergab.
 
 ---
+
+## Zur ID
+
+Diese Slice lief zunächst als **PROJ-Y-130h** — die ID war jedoch **schon belegt**: PROJ-Y-130h ist die
+am 2026-08-11 abgeschlossene Ausnahme für Test-Mandanten (`20260811160000_projy130h_test_tenant_lifecycle_exempt`
+plus `tests/sql/PROJ-Y-130h-test-tenant-exempt-pentest.sql`). Die PROJ-Y-130g-Lane hat den Buchstaben ein
+zweites Mal ausgegeben, und diese Slice hat darauf aufgebaut. Ein Buchstabe für zwei unverwandte Slices ist
+genau die Fäule, gegen die PROJ-145 angetreten ist, also weicht die **jüngere**: die ältere ist ausgeliefert
+und trägt ihren Namen in einer Pentest-Datei.
+
+Zwei Artefakte behalten `130h`, bewusst und nicht aus Bequemlichkeit:
+
+- **die Migrationsdatei** `20260820120000_projy130h_replay_acl_parity.sql` — sie ist in Prod unter genau
+  diesem Stamm registriert, und PROJ-134 verlangt Gleichheit von Registrierungsname und Dateiname.
+  Umbenennen bräche `supabase db push`.
+- **der Tag** `v2.69.0-PROJ-Y-130h` — bereits veröffentlicht; ein Tag wird nicht nachträglich umgeschrieben.
+
+Beides ist hier vermerkt, damit ein `grep` nach `130h` auf diese Erklärung stößt statt auf einen
+Widerspruch.
 
 ## Was von 116 Zeilen wirklich Substanz hat
 
@@ -103,28 +122,28 @@ ist, weil sie ins Leere greift — bei F-3 war es der Wächter selbst, der jahre
 
 ## Akzeptanzkriterien
 
-- [x] **AC-Y130h.1** — Die 13 substanziellen `revoke`s sind nachgeholt, hergeleitet aus dem gemessenen
+- [x] **AC-Y130q.1** — Die 13 substanziellen `revoke`s sind nachgeholt, hergeleitet aus dem gemessenen
       Prod-Zustand statt aus der historischen Absicht.
-- [x] **AC-Y130h.2** — `record_tenant_ai_provider_audit` behält `authenticated` (Prod-Zustand), die
+- [x] **AC-Y130q.2** — `record_tenant_ai_provider_audit` behält `authenticated` (Prod-Zustand), die
       Shadow-DB wird also nicht strenger als Prod.
-- [x] **AC-Y130h.3** — `accept_proposal_from_context_undo` wird mit der **echten** Signatur
+- [x] **AC-Y130q.3** — `accept_proposal_from_context_undo` wird mit der **echten** Signatur
       `(uuid, uuid[])` angesprochen.
-- [x] **AC-Y130h.4** — Die zwei im Replay abwesenden Funktionen werden übersprungen und gemeldet, **nicht**
+- [x] **AC-Y130q.4** — Die zwei im Replay abwesenden Funktionen werden übersprungen und gemeldet, **nicht**
       als Fehler behandelt; eine unerwartet fehlende Funktion bleibt ein Fehler.
-- [x] **AC-Y130h.5** — Post-Conditions prüfen drei Richtungen: `anon` nirgends aufrufbar, Trigger-Guards
+- [x] **AC-Y130q.5** — Post-Conditions prüfen drei Richtungen: `anon` nirgends aufrufbar, Trigger-Guards
       auch für `authenticated` gesperrt, **und die sechs Rollen-Helfer erhalten** — letzteres ist die
       Absicherung gegen ein zu breites `revoke`, das jede RLS-Policy gebrochen hätte.
-- [x] **AC-Y130h.6** — Die Post-Conditions sind **nachweislich wirksam**: gegen Prod gemessen 14/14
+- [x] **AC-Y130q.6** — Die Post-Conditions sind **nachweislich wirksam**: gegen Prod gemessen 14/14
       Funktionen gefunden, `anon` 0, Guards 0, Helfer 6/6. Die vorige Fassung hätte 0/0 verglichen.
-- [x] **AC-Y130h.7** — In Prod ist die Datei ein No-op; verifiziert durch eine zurückgerollte
+- [x] **AC-Y130q.7** — In Prod ist die Datei ein No-op; verifiziert durch eine zurückgerollte
       Verhaltensprobe (14 vorhanden, 0 übersprungen, 0 fehlend) und die Messung der ACLs davor und danach.
-- [x] **AC-Y130h.9** — Die sechs RLS-Helfer sind im Fresh-Apply für `authenticated` aufrufbar. Die
+- [x] **AC-Y130q.9** — Die sechs RLS-Helfer sind im Fresh-Apply für `authenticated` aufrufbar. Die
       Ordnungs-Inversion zwischen Hotfix und Lockdown ist an der Prod-Registry belegt (`…144601` vor
       `…150013`) und fix-forward geheilt; in Prod ein gemessener No-op (6/6 vorher und nachher, `anon` 0).
-- [x] **AC-Y130h.10** — Nachgewiesen, dass F-3 kein Einzelfall ist: für jedes andere Lockdown-Ziel
+- [x] **AC-Y130q.10** — Nachgewiesen, dass F-3 kein Einzelfall ist: für jedes andere Lockdown-Ziel
       existiert ein späterer Grant, der sich im Replay selbst heilt, und der gemessene Prod-Zustand deckt
       sich mit ihm.
-- [x] **AC-Y130h.8** — Der CI-Lauf zeigt, dass die Datei im Replay durchläuft und **keinen** neuen
+- [x] **AC-Y130q.8** — Der CI-Lauf zeigt, dass die Datei im Replay durchläuft und **keinen** neuen
       `structural failure` erzeugt: `Applied 217 migration(s); 4 tolerated abort(s); 0 structural
       failures.` Der erste Lauf war rot und hat dabei F-3 aufgedeckt — der Nachweis ist also nicht nur
       ein grünes Häkchen, sondern ein Wächter, der einmal wirklich etwas gefangen hat.
@@ -137,7 +156,7 @@ ist, weil sie ins Leere greift — bei F-3 war es der Wächter selbst, der jahre
 
 ## Abweichungen
 
-- **D-Y130h.1 — Registry-Drift, bewusst.** Die **erste** Fassung ist in Prod registriert (sie lief dort
+- **D-Y130q.1 — Registry-Drift, bewusst.** Die **erste** Fassung ist in Prod registriert (sie lief dort
   fehlerfrei, alle 14 Funktionen vorhanden); im Repo liegt die **zweite**, die sich nur im Verhalten bei
   *abwesenden* Funktionen unterscheidet. In Prod ist dieser Zweig unerreichbar, beide Fassungen sind dort
   also verhaltensgleiche No-ops. Die Datei erneut anzuwenden hätte eine zweite Registry-Version für
@@ -145,11 +164,37 @@ ist, weil sie ins Leere greift — bei F-3 war es der Wächter selbst, der jahre
   Helfer-Grant, den die registrierte Fassung nicht hat — in Prod nachweislich wirkungslos, weil alle sechs
   Rechte dort bereits gesetzt sind (vor und nach dem Ausführen 6/6 gemessen, `anon` unverändert 0). Der
   Inhalt ist durchgängig idempotent, `db push` bleibt unberührt (PROJ-134-Domäne).
-- **D-Y130h.2 — die vier Abbrüche bleiben bestehen.** Diese Slice heilt ihre **Folgen**, nicht ihre
+- **D-Y130q.2 — die vier Abbrüche bleiben bestehen.** Diese Slice heilt ihre **Folgen**, nicht ihre
   Ursache: eine neue Migration kommt ans Ende und kann an Position 18/70/75/441 nichts ändern. Der
   Diagnose-Notice meldet weiterhin vier Abbrüche — inhaltlich richtig, denn die Zeilen laufen dort
   wirklich nicht. Was sich ändert, ist der **Endzustand** des Replays.
-- **D-Y130h.3 — die Ordnungs-Inversion selbst bleibt in den Dateien stehen.** Geheilt ist ihr Ergebnis,
+- **D-Y130q.3 — die Ordnungs-Inversion selbst bleibt in den Dateien stehen.** Geheilt ist ihr Ergebnis,
   nicht ihre Ursache. Wer die zwei Bestandsdateien künftig umbenennt, muss beachten, dass der Grant nach
   dem Lockdown liegen muss; der Wächter dafür ist die Post-Condition in dieser Datei, die es beim ersten
   Lauf auch gefunden hat.
+
+---
+
+## Deployment
+
+**Deployed 2026-08-20: PR #421 (squash) → main `0496f6c`, Tag `v2.69.0-PROJ-Y-130h`.**
+
+- Die Migration liegt seit `/backend` in Prod (registriert `20260820103655`, Name = Repo-Dateistamm, also
+  PROJ-134-konform; Versionsdrift benign, weil der Inhalt durchgängig idempotent ist). Beim Merge gab es
+  **keine** Laufzeit-Änderung an der Datenbank.
+- **Der Deploy-Nachweis ist der CI-Lauf des PRs selbst**, nicht eine Behauptung über ihn:
+  `Applied 217 migration(s); 4 tolerated abort(s); 0 structural failures.` Der **erste** Lauf war rot und
+  hat dabei F-3 gefunden — der Wächter hat also einmal wirklich etwas gefangen, statt nur grün zu sein.
+- Post-Deploy gegen Prod gemessen: RLS-Helfer **6/6** für `authenticated`, `anon` auf allen betroffenen
+  Funktionen **0**, Trigger-Guards **0** offen für `authenticated`.
+
+### Warum `full` und nicht `tooling-only`
+
+Geliefert ist eine Migration, die Rechte setzt und ihren Zustand mit Post-Conditions prüft — keine
+Werkzeug-, CI- oder Testebene. Dass ihre Wirkung **in Prod** null ist, ist der Zweck (Parität), nicht ein
+verkürzter Umfang: die Wirkung entsteht in jeder frisch aus den Dateien gebauten Umgebung, und dort
+behebt F-3 eine echte Störung — ohne `EXECUTE` auf den RLS-Helfern scheitert jede Policy, die sie aufruft.
+Alle zehn Akzeptanzkriterien sind belegt, nichts ist zurückgestellt. Die vier verbleibenden Abbrüche
+(D-Y130q.2) sind **kein** zurückgestelltes Kriterium dieser Slice: ihr Auftrag waren die Folgen, und die
+Ursache ist die Dateireihenfolge, an der eine ans Ende gestellte Migration konstruktionsbedingt nichts
+ändern kann.
