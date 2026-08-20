@@ -10,15 +10,17 @@
 > Fotodokumentation ε) offen bleiben. Die Ausnahme „Waived criterion“ greift **nicht** — Begründung
 > an allen vier Bedingungen im Abschnitt „Deployment — β“.
 >
-> **γ ist abgenommen (`/qa` PASS 2026-08-20, 0 Critical / 0 High / 0 Medium) und nicht deployed.**
-> Anforderungen, Tech Design, `/backend`-, `/frontend`- und QA-Notizen stehen weiter unten, Status
-> dort **Approved**. 29/29 AC, **12/12** Härtungskriterien. Datenschicht seit 2026-08-19 in Prod,
-> Oberfläche seit 2026-08-20; γ-Pentest **60/60**, Rot-Team **11/11**, authentifizierte Kette
-> **3× 3/3** inkl. echtem PDF-Druck, Regressionen α 18/18 · PROJ-Y-45a 9/9 · PROJ-103 7/7 ·
-> β **53/53** (im QA-Lauf 52/53; PROJ-Y-148d hat Vektor `Z` inzwischen umgedreht, auf dem
-> Deploy-Stand wörtlich grün nachgemessen), **0 Rückstände** über 14 Zähler. Die Zeile in
-> `features/INDEX.md` bleibt unverändert `Deployed` / `alpha`: γ ändert die **gelieferte** Grenze
-> erst mit `/deploy`.
+> **γ ist deployed (2026-08-20, Tag `v2.70.0-PROJ-45-gamma`, PR #422 squash → main `31aef7f`).**
+> **Deployment Scope bleibt `alpha`** — aus den Belegen klassifiziert, nicht aus dem Etikett, und
+> γ ändert daran nichts: `full` bleibt ausgeschlossen, weil **AC-45β.18** eine zurückgestellte
+> **ursprüngliche** Anforderung ist (nach δ verschoben, D-β1) und weil zwei Stories der Erstfassung
+> — Terminsignale (δ) und Fotodokumentation (ε) — offen bleiben. Die Ausnahme „Waived criterion“
+> greift nicht: sie verlangt „nothing was deferred“, hier ist ausdrücklich etwas zurückgestellt und
+> mit Ziel-ID registriert. Begründung an allen vier Bedingungen im Abschnitt „Deployment — γ“.
+> 29/29 γ-AC, **12/12** Härtungskriterien; γ-Pentest **60/60**, Rot-Team **11/11**,
+> authentifizierte Kette **3× 3/3** inkl. echtem PDF-Druck, Regressionen α 18/18 ·
+> PROJ-Y-45a 9/9 · PROJ-103 7/7 · β **53/53**, **0 Rückstände**. **Kein Runtime-DB-Change beim
+> Merge** — beide Migrationen liegen seit `/backend` in Prod.
 >
 > **α ist unverändert live** (Tag `v2.56.0-PROJ-45-alpha`, Scope `alpha`, PR #385); die Nachweise
 > dazu stehen weiter unten unverändert. Die Zeile in `features/INDEX.md` führt weiterhin **einen**
@@ -1120,7 +1122,7 @@ dieselbe dauerhafte, idempotent nachgesäte Fixture wie die Assistant- und die V
 
 ## PROJ-45-γ — Abnahmen (Requirements 2026-08-19)
 
-**Status: Approved** (2026-08-20) · dritter Sub-Slice, baut auf dem deployten α (Gewerke +
+**Status: Deployed** (2026-08-20, Tag `v2.70.0-PROJ-45-gamma`) · dritter Sub-Slice, baut auf dem deployten α (Gewerke +
 Bauabschnitte) und β (Mängel) auf. Tech Design und `/backend`-Notizen stehen unten; alle sieben
 Architekturfragen sind beantwortet, vier davon durch eine Messung statt durch eine Annahme.
 **Kein CIA-Pass nötig** (Q-γ6). **Datenschicht, Anwendungsschicht und Oberfläche sind gebaut;
@@ -2022,6 +2024,106 @@ deaktivierte Trigger**). Als **PROJ-Y-45h** registriert.
   Zusage angepasst (F-γ4, Hälfte 2 — Hälfte 1, der Pentest-Vektor `Z`, ist von
   148d selbst erledigt und im `/deploy`-Lauf grün nachgemessen). Sachlich
   dieselbe Lücke wie **PROJ-Y-45h**, nur eine Slice früher.
+
+---
+
+## Deployment — γ (2026-08-20)
+
+**Tag `v2.70.0-PROJ-45-gamma` · PR #422 (squash) → main `31aef7f` · Deployment Scope `alpha`.**
+
+### Was ausgeliefert wurde
+
+Die Abnahme als eigenes Bau-Objekt: zweistufig **angesetzt → Ergebnis**, dreiwertiges Ergebnis
+(abgenommen · unter Vorbehalt · verweigert), Vorbehalte als **Verweise** auf β-Mängel (bestehende
+anhaken und neue über β's Anlegefunktion — keine zweite Mängelliste), gerechnete
+Gewährleistungsfrist, unveränderliche Ereigniskette, strukturierte Teilnehmer, ein Beleg je
+Abnahme und ein Abnahmeprotokoll als Druckseite. Ein Ergebnis ist endgültig; die Nachabnahme ist
+ein **neuer** Datensatz mit Verweis (Invariante #5).
+
+**Kein Runtime-DB-Change beim Merge** — beide Migrationen (`20260819120000` /
+Prod-Version `20260819163906` und `20260819170000`) liegen seit `/backend` in Prod. Der Merge
+liefert die Anwendungsschicht aus.
+
+### Auslieferung belegt, nicht angenommen
+
+Vercel-Produktions-Deployment **`dpl_3UYP2FbCNTuzuPowxsrZVnB3reaf` READY**, gebaut aus genau
+`githubCommitSha 31aef7f85d9663cef413637e056a102896c478df` — nicht bloß „ein Deployment existiert".
+Fehler-Logs über die gesamte Lebensdauer dieses Deployments (READY 11:05:37 UTC bis zur Messung):
+**keine**. Das Fenster ist mit ~9 Minuten kurz, weil eine Parallel-Slice unmittelbar danach ein
+neueres Produktions-Deployment auslöste; ein längeres Fenster für **diesen** SHA existiert nicht,
+und das wird hier gesagt statt gerundet.
+
+**Alle sechs Pflicht-Checks grün**, darunter der **Schema-Drift-Wächter** — der belegt unabhängig,
+dass die Register-Anker-Ersetzungen auch in einer **frisch aus den Migrationsdateien** gebauten
+Datenbank greifen, nicht nur gegen die gewachsene Prod-Definition. Ebenfalls grün: der neue
+**Funktions-Inventar-Wächter** (PROJ-Y-148e) — das Inventar wurde von 272 auf **283** Einträge
+aufgefrischt und gegen Prod gegengezählt (283).
+
+### Post-Deploy-Smoke: 13 Flächen, exakt 307, kein Leck
+
+Alle sechs API-Routen (`GET`/`POST` Liste · `GET`/`PATCH` Detail · `POST` Statuswechsel ·
+`PUT` Teilnehmer · `PUT` Beleg · `GET` Zähler), beide Seiten (`/abnahmen`,
+`/abnahmeprotokoll/print`) und drei α/β-Flächen als Nicht-Regression antworten mit **307**,
+Rumpf exakt `Redirecting...`; kein Vorkommen von Projekt-/Abnahme-Kennung, „Abnahme", „Gewerk",
+`warranty`, `accepted_on` oder `construction` im Rumpf.
+
+**Die Existenz der Routen ist ausdrücklich nicht daraus gefolgert.** Gegenprobe: ein erfundener
+Pfad antwortet **ebenfalls 307** — 307 allein beweist nichts. Der Beleg kommt aus dem **Build-Log
+des ausgelieferten Deployments**, in dem alle **acht** neuen Flächen als registrierte Routen
+stehen (`ƒ /api/projects/[id]/construction-acceptances`, `…/[aid]`, `…/[aid]/document`,
+`…/[aid]/participants`, `…/[aid]/status`, `…/summary`, `ƒ /projects/[id]/abnahmen`,
+`ƒ /projects/[id]/abnahmeprotokoll/print`) — und in dem die **17** α/β-Flächen unverändert
+mitgeführt sind.
+
+### Prod eigenständig nachgemessen
+
+| | gemessen |
+|---|---|
+| Tabellen (`relkind='r'`) | **4**, alle mit aktivem RLS |
+| Policies | **4** — je Tabelle genau eine Lese-Policy |
+| **Schreib-Policies** | **0** — geschrieben wird ausschließlich über Funktionen |
+| Funktionen | **11** (8 DEFINER-Schreibwege/Wächter, **3 INVOKER**-Auswertungen) |
+| `anon`-EXECUTE / PUBLIC-Eintrag in der ACL | **0 / 0** über alle 11 (PROJ-Y-114a-Lehre vollständig, nicht als Stichprobe) |
+| Funktionen ohne `search_path` | **0** |
+| Trigger | **5** (4 auf `construction_acceptances`, 1 auf den Ereignissen) |
+| Deaktivierte Bau-Trigger | **0** |
+| Objektarten-Register | **95** wie vorhergesagt (94 → 95) |
+| Rückstände (Abnahmen · Ereignisse · Mängel) | **0 · 0 · 0** |
+| Advisors | **0 ERROR**; die 6 γ-WARN sind eine einzige beabsichtigte Kategorie (`authenticated`-aufrufbare `SECURITY DEFINER`-Schreibwege — dieselbe wie α/β und 141 Bestandsfälle) |
+
+**Ein Messfehler in der eigenen ersten Abfrage, festgehalten statt stillschweigend korrigiert:**
+`pg_class` enthält auch Indizes, die erste Zählung meldete darum „20 Tabellen". Mit
+`relkind='r'` sind es **4**. Die Zahl war nie falsch verwendet — sie wurde nachgezählt, bevor sie
+irgendwo behauptet wurde.
+
+### Warum `alpha` und nicht `full`
+
+Der Scope steht am **Feature** PROJ-45, nicht an der Teilscheibe, und wird aus den Belegen
+klassifiziert. Alle vier Bedingungen der Ausnahme „Waived criterion" einzeln geprüft:
+
+1. **„Nothing was deferred" — trifft nicht zu.** **AC-45β.18** (überfällige Mängel in der
+   PROJ-103-Engpass-Sicht) ist eine zurückgestellte **ursprüngliche** Anforderung mit Ziel-ID
+   (D-β1, nach δ). Damit ist die Ausnahme schon an der ersten Bedingung erschöpft.
+2. Nicht unerreichbar oder obsolet — δ wird sie liefern.
+3. Es gibt eine schriftliche Annahme, aber als **Zurückstellung**, nicht als Verzicht.
+4. Die Substanz ist **nicht** anderweitig erfüllt — die Engpass-Sicht zeigt die Mängel heute nicht.
+
+Dazu bleiben zwei Stories der Erstfassung offen: **Terminsignale (δ)** und **Fotodokumentation (ε)**.
+γs eigene 29 Kriterien sind sämtlich erfüllt; das hebt den Feature-Scope nicht, weil `full` sich auf
+**alle** aktuellen in-scope-Kriterien des Features bezieht.
+
+**Die gelieferte Grenze wird gegenüber β breiter:** Abnahmevorgänge mit Termin und dreiwertigem
+Ergebnis, Vorbehalte gekoppelt an die Mängel statt dupliziert, gerechnete Gewährleistungsfrist,
+Nachabnahme als verwiesene Kette, unveränderlicher Verlauf, Teilnehmer, Beleg und Druckprotokoll.
+
+### Offene Folgearbeit nach γ
+
+**PROJ-45-δ** (Terminsignale, enthält AC-45β.18) · **PROJ-45-ε** (Fotodokumentation) ·
+**PROJ-Y-45b/45c/45d/45e** (aus α/β) · **PROJ-Y-45f** (β's
+`construction_section_blocking_defects` ist nach diesem Deploy ohne Aufrufer) · **PROJ-Y-45g**
+(Beleg als Dokumentknoten auswählbar — die Datenbankseite steht und ist geprüft, es fehlt allein
+der Picker) · **PROJ-Y-45h** (Teardown für die Bau-E2E-Lane) · **PROJ-Y-45i** (verdeckter Titel im
+Ladezustand, WCAG). **Nicht γ:** β's QA-Teardown im 148d-Zweig (F-γ4, Hälfte 2).
 
 ---
 
