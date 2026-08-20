@@ -1,8 +1,10 @@
 # PROJ-Y-130f — Warum die Shadow-DB nicht deckungsgleich mit Prod ist
 
-## Status: Approved
-## Deployment Scope: —
-<!-- Scope bleibt leer bis zum Merge; aus den Belegen ist `tooling-only` die Klassifikation. -->
+## Status: Deployed
+## Deployment Scope: tooling-only
+<!-- Deployed 2026-08-20: PR #417 (squash) -> main `7825ad6`, Tag `v2.67.0-PROJ-Y-130f`.
+     Scope `tooling-only`: nur der CI-Workflow und Dokumentation, kein `src/`-Diff,
+     keine Migration, kein Produktverhalten. -->
 
 **Created:** 2026-08-20
 **Origin:** PROJ-130-α (CI-Replay-Befund), dreifach in Prosa benannt, als Registerzeile nachgetragen in
@@ -156,3 +158,18 @@ Zwei Gründe, und der zweite ist der wichtigere:
    `structural failure` — und der Schema-Drift-Guard ist ein **Required Check**: er würde dann jeden PR
    blockieren. Das gehört in eine Slice, die genau das erwartet und beobachtet, nicht als Nebenwirkung
    einer Diagnose-Änderung.
+
+## Deploy
+
+**Deployed 2026-08-20:** PR #417 (squash) → main `7825ad6`, Tag `v2.67.0-PROJ-Y-130f`.
+
+**Der Deploy-Nachweis ist der Lauf, der diese Slice beantwortet hat.** Der CI-Lauf des PRs führte die neue
+Diagnose aus und lieferte alle sieben Ursachen samt Abbruchzeilen — sie ist damit nicht nur eingebaut,
+sondern in der Umgebung, in der sie wirkt, nachweislich wirksam. Ein weiterer Smoke wäre gegenstandslos:
+kein `src/`-Diff, kein Laufzeitverhalten.
+
+**Scope `tooling-only`** — ein CI-Workflow und Dokumentation.
+
+**Offen bleibt allein die Behebung** (PROJ-Y-130g), und das ist kein zurückgestelltes Kriterium dieser
+Slice: ihr Auftrag war, die Ursache benennbar zu machen. Sie ist benannt, mit Datei, Zeile, fehlender
+Funktion und Zeilenverlust für alle sieben Fälle.
