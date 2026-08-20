@@ -2027,6 +2027,233 @@ deaktivierte Trigger**). Als **PROJ-Y-45h** registriert.
 
 ---
 
+## PROJ-45-δ — Bauspezifische Terminsignale (Requirements 2026-08-20)
+
+**Status: Planned** · vierter Sub-Slice, baut auf dem deployten α (Gewerke + Bauabschnitte),
+β (Mängel) und γ (Abnahmen) auf. Enthält **AC-45β.18**, die aus β zurückgestellte ursprüngliche
+Anforderung — und damit den Grund, dass PROJ-45 heute `alpha` statt `full` trägt.
+
+Bis hierher ist die Extension eine **Erfassungsfläche**: Gewerke, Abschnitte, Mängel und Abnahmen
+lassen sich anlegen und einzeln durchsehen. Was fehlt, ist der Blick, mit dem eine Bauleitung
+morgens auf die Baustelle schaut: *welches Gewerk hängt, welcher Abschnitt kommt nicht voran,
+was ist diese Woche fällig.* δ liefert genau diesen Blick — und nichts weiter.
+
+### Erdung — gegen den deployten Stand gemessen, nicht aus der Erstfassung übernommen
+
+Die Erstfassung (2026-05-06) sagt „Abschnittsfortschritt und Gewerk-Blocker **in Gantt und
+Berichten**". Sieben Messungen gegen Prod und den Code; **vier widerlegen eine naheliegende Lesart**:
+
+| Gemessen (2026-08-20) | Wert | Folge für δ |
+|---|---|---|
+| Datumsfelder auf `construction_sections` | **0** (`id · tenant_id · project_id · parent_id · label · description · sort_order · path · created_by · created_at · updated_at`) | „Abschnittsfortschritt" ist **abgeleitet, nicht gespeichert**. Es gibt kein `planned_start`/`planned_end`/`progress`/`status`. |
+| Quellen für die Ableitung | 2: `construction_section_phases` (M:N) und `work_items.section_id` | Beide sind real, beide sind heute leer. |
+| `construction_section_phases`-Zeilen in Prod | **0** | Die α-Verknüpfung Abschnitt↔Phase ist unbenutzt. |
+| `work_items` mit `section_id` / mit `trade_id` / `risks` mit `trade_id` | **0 / 0 / 0** | **Alle drei additiven α-Verweise sind unbenutzt.** Der Leerzustand ist der Normalfall, nicht der Ausnahmefall. |
+| Bauprojekte mit Bauachse **und** Terminen | **0** | Das einzige lebende Bauprojekt ist die β/γ-QA-Fixture (`project_method = null`, 0 Arbeitspakete, 0 Phasen, 0 Meilensteine, aber 2 Abschnitte + 1 Gewerk). Die drei mit Phasen/Meilensteinen (6/5) sind **weich gelöscht** und haben 0 Abschnitte. |
+| Zeilenarten im Gantt (`GanttView`, 1809 Zeilen) | **3** — Phasen, Meilensteine, Arbeitspakete (`kind='work_package'`) | Eine vierte Art wäre ein Eingriff hoher Reichweite in Ziehen/Größenänderung/Abhängigkeiten, und die Balken müssten wegen Zeile 1 gerechnet werden. |
+| Auswertungsflächen, die ein Bauprojekt erreicht | **0 von 5** — Maßnahmen · Engpässe · DD-Bericht · Operatives Reporting · Steering-Dashboard sind **alle** `requiresProjectType: "ma"` | „in Berichten" hat im naheliegenden Sinn **kein Haus**. |
+| `requiresProjectType` | **einwertig** (`?: ProjectType`), Filter vergleicht `===`, 22 Sektionen nutzen es, 125 Registry-Tests, **5** pinnen genau diesen Filter | AC-45β.18 ist über die geteilte Registry nur mit Typänderung erreichbar. |
+| `project_task_bottlenecks` (live gelesen, nicht aus dem Register übernommen) | `sql` · STABLE · **INVOKER** · `search_path` gesetzt · 3092 Zeichen · Schlüssel `summary · tasks · top_bottlenecks` · `summary = {open_total, blocked_total, overdue_total, due_today_total, due_this_week_total}` · **0** Vorkommen von `construction` | Die M&A-Auswertung kennt Mängel nicht und liest allein `work_items`. |
+
+**Ein Haus ist offen, und es ist nicht das erwartete.** `ReportsSection` (PROJ-21, Status-Report +
+Executive-Summary) sitzt auf der **Übersicht** (`tabPath: ""`), die jede Methoden-Konfiguration
+führt und die **nicht** projekttyp-gegatet ist. Ihr Inhalt ist ein typisierter, erweiterbarer
+Schnappschuss (`SnapshotContent`: `header · traffic_light · phases · upcoming_milestones ·
+top_risks · top_decisions · overdue_open_items · work_item_counts · ki_summary · manual_summary ·
+readiness`). Ein additiver Bau-Abschnitt ist dort möglich, ohne eine deployte M&A-Fläche zu berühren.
+
+**Ein zweiter Befund, der eine naive Umsetzung falsch machen würde: β und γ führen bewusst *zwei
+verschiedene* Offen-Begriffe, und δ braucht beide.**
+
+| Begriff | Herkunft | Statuswerte | Warum verschieden |
+|---|---|---|---|
+| „überfällig" | β, `isDefectOverdue` + SQL-Zwilling | `offen` · `in_bearbeitung` — **ohne** `erledigt` | Bei `erledigt` wartet die Prüfung; die Verspätung läge bei der Bauleitung, nicht beim Nachunternehmer. Daneben steht β's eigenes Signal `isDefectAwaitingReview`. |
+| „Vorbehalt offen" | γ, `ACCEPTANCE_OPEN_DEFECT_STATUSES` | `offen` · `in_bearbeitung` · **`erledigt`** | Kommentar im Code: „für eine Abnahme ist fertiggemeldet **nicht** erledigt" — solange niemand nachgesehen hat, ist der Vorbehalt nicht erfüllt. |
+
+Beide sind bereits **doppelt gepinnt** (SQL + TypeScript, je mit denselben Grenzfällen). δ verwendet
+jeden an seinem Platz und erfindet **keinen dritten**. Wer für beide Zwecke denselben Begriff nimmt,
+liegt an genau einer der beiden Stellen falsch — und zwar unauffällig.
+
+### Eine δ zugewiesene Entscheidung ist gegenstandslos, nicht offen
+
+Das Followup-Register führt bei δ die Achsen-Frage aus dem α-CIA-Review (**F-4**): „welche Achse
+führt eine Auswertung, wenn ein Projekt sowohl Workstreams als auch Gewerke trägt". Gemessen:
+`workstreams` hat **0 Zeilen** in Prod, und alle fünf Workstream-Auswertungen sind M&A-gegatet —
+**ein Bauprojekt ruft keine davon auf.** Der Konflikt hat heute keinen erreichbaren Fall. δ
+entscheidet ihn daher nicht, sondern hält fest, dass er nicht entscheidbar ist, solange die beiden
+Achsen sich nirgends treffen. Er wird real, sobald eine Auswertung für **beide** Projekttypen
+freigegeben wird; dann gehört er zu jener Slice, nicht zu dieser.
+
+### Nutzer-Locks (δ)
+
+| # | Lock | Begründung |
+|---|---|---|
+| **L24** | **Eigene Fläche „Terminsignale" plus ein optionaler Bau-Abschnitt im PROJ-21-Status-Report. Der Gantt bleibt unberührt.** | Die Erstfassung nennt den Gantt, aber Abschnitte haben keine Termine (Erdung Zeile 1) und der Gantt hat drei fest verdrahtete Zeilenarten in 1809 Zeilen Interaktionslogik. Eine vierte Art wäre teuer **und** würde für jedes heutige Projekt leer rendern (0 Arbeitspakete mit Bauachse). Die eigene Fläche ist sofort nützlich und trägt genau die drei Signale, für die Daten existieren. |
+| **L25** | **AC-45β.18 wird in der δ-Fläche erfüllt, nicht in der M&A-Engpass-Sicht.** | Der Wortlaut nennt PROJ-103; erreichbar ist die Fläche für ein Bauprojekt nicht (einwertiges Gate). Die Alternative wäre eine Typänderung am geteilten `requiresProjectType`, am Filter, an 5 Registry-Tests und an einer deployten M&A-Auswertung — dazu eine Pflicht-Regression auf einen Pentest, der **absolute Zahlen** festnagelt. Die **Absicht** des Kriteriums (überfällige Mängel werden in einer Engpass-Übersicht sichtbar) wird an einem Ort erfüllt, den ein Bauprojekt erreicht. **Abweichung wird dokumentiert, nicht umgeschrieben.** |
+| **L26** | **Das gerechnete Gewerk-Signal steht *neben* der manuellen α-Ampel, nicht an ihrer Stelle.** | Zwei Angaben, zwei Bedeutungen: „so hat die Bauleitung es bewertet" und „das sagen die Daten". Weichen sie ab, ist genau das die interessante Information. Die α-Zusage „manuelle Ampel" bleibt wörtlich gültig. |
+| **L27** | **Ein Gewerk ist blockiert bei: überfälligen Mängeln · verweigerter Abnahme · angesetzter Abnahme mit verstrichenem Termin · Abnahme unter Vorbehalt mit noch offenen Vorbehalten.** „Abgesagt" blockiert **nicht**. | γ hat „absagen" ausdrücklich als Korrekturweg gebaut (die Zeilen sind nicht löschbar) — ein Tippfehler im Termin darf keinen dauerhaften Blocker erzeugen. Der Vorbehalts-Fall löst sich von selbst, weil Vorbehalte **Verweise** auf β-Mängel sind. |
+| **L28** | **Abschnittsfortschritt aus verknüpften Arbeitspaketen; fehlen sie, aus verknüpften Phasen. Die Fläche sagt, aus welcher Quelle die Zahl kommt.** | Ohne Quellenangabe ist „0 %" nicht von „nichts verknüpft" zu unterscheiden — und *das* ist in Prod heute der Normalfall (0 von beidem). Beide α-Verknüpfungen werden genutzt, keine bleibt reine Dokumentation. |
+| **L29** | **„Überfällig" behält β's Bedeutung. Ein Mangel ohne Frist wird getrennt gezählt und blockiert nicht.** | β hat „überfällig" an eine gesetzte Frist gebunden und in SQL **und** TypeScript mit denselben Grenzfällen gepinnt. Eine Kulanzspanne wäre eine zweite Definition im Produkt. Der fristlose Mangel wird trotzdem **benannt**, damit die Zahl auf der δ-Fläche nicht kleiner ist als die in der Mängelliste. |
+| **L30** | **δ legt keine neue Tabelle an und speichert keinen Signalzustand.** | Alle Signale sind aus β/γ/α und dem Kern ableitbar. Ein gespeicherter Zustand wäre eine zweite Wahrheit, die veralten kann, und bräuchte die vier Register aus PROJ-130. |
+
+### Prior Art für δ
+
+| Baustein | Woher | Was übernommen wird |
+|---|---|---|
+| Auswertungsfunktion | `construction_defects_summary` / `construction_acceptance_summary` (β/γ) | `SECURITY INVOKER`, `stable`, `search_path` gesetzt, `jsonb`-Rückgabe, `anon`-EXECUTE entzogen. Aggregate erben die Sichtbarkeit vom Aufrufer (Aggregat-Leck-Invariante). |
+| Engpass-Form | `project_task_bottlenecks` (PROJ-103) | Die **Form** `{summary, <listen>, top_*}` — nicht die Funktion selbst. Mängel gehören in einen **eigenen Schlüssel**, nicht unter `tasks`: jeder `tasks`-Eintrag trägt ein `kind` (einen Arbeitspaket-Typ, den ein Mangel nicht hat) → sonst brechen die Typisierung im Frontend und der CSV-Export. |
+| Überfälligkeit | β, `isDefectOverdue` + SQL-Zwilling | **Wörtlich wiederverwendet**, nicht nachgebaut. |
+| Vorbehalts-Offenheit | γ, `ACCEPTANCE_OPEN_DEFECT_STATUSES` | **Wörtlich wiederverwendet**, nicht mit der Überfälligkeitsregel verwechselt. |
+| Fristrechnung / Datumsvergleich | γ, `src/lib/construction/acceptances.ts` | `YYYY-MM-DD`-Vergleich lexikographisch, Klemmung am Monatsende — die F-γ1-Lehre gilt weiter. |
+| Berichts-Erweiterung | PROJ-21 `SnapshotContent` + PROJ-56-ε `readiness` | Additiver **optionaler** Block. Vorbild ist, wie PROJ-56-ε seinen Readiness-Block eingehängt hat. |
+| Fläche + Navigation | α/β/γ-Reiter | Ein Eintrag in der geteilten Registry, `requiresProjectType: "construction"` **und** `requiresModule: "construction"`, Routen gaten `view`. |
+| Leerzustand mit Grund | PROJ-Y-143f `ModuleUnavailableNotice`-Muster | Ein Leerzustand darf nicht „alles in Ordnung" behaupten, wenn nichts verknüpft ist. |
+
+### User Stories (δ)
+
+**ST-δ1 — Bauleitung: „Welches Gewerk hängt?"**
+Als Bauleitung möchte ich auf einen Blick sehen, welche Gewerke meines Projekts blockiert sind und
+woran, damit ich weiß, wo ich heute eingreifen muss — ohne vier Listen einzeln durchzugehen.
+
+**ST-δ2 — Bauleitung: „Kommt der Abschnitt voran?"**
+Als Bauleitung möchte ich je Bauabschnitt den Fortschritt und die Zahl der überfälligen Vorgänge
+sehen, damit ich Verzug auf der Ortsachse erkenne und nicht nur auf der Gewerkeachse.
+
+**ST-δ3 — Bauleitung: „Was ist diese Woche fällig?"**
+Als Bauleitung möchte ich die nächsten Fristen aus Mängeln und Abnahmen in einer Liste sehen,
+damit ich Termine wahrnehme, bevor sie verstreichen.
+
+**ST-δ4 — Projektleitung: „Überfällige Mängel als Engpass"** *(erfüllt AC-45β.18)*
+Als Projektleitung möchte ich die überfälligen Mängel als Engpass-Übersicht mit den dringendsten
+zuerst sehen, damit ich Eskalationen priorisieren kann.
+
+**ST-δ5 — Sponsor: „Steht das im Bericht?"**
+Als Sponsor möchte ich im Status-Report einen Bau-Abschnitt sehen, der Gewerk-Blocker und
+Abschnittsfortschritt zusammenfasst, damit ich den Bauteil ohne Zugriff auf den Projektraum
+beurteilen kann.
+
+**ST-δ6 — Bauleitung: „Warum ist hier nichts?"**
+Als Bauleitung möchte ich bei leerer Fläche erklärt bekommen, **warum** kein Signal erscheint
+(nichts verknüpft vs. nichts zu melden), damit ich Ruhe nicht mit Blindheit verwechsle.
+
+### Akzeptanzkriterien (δ)
+
+**Gewerk-Signal**
+
+- [ ] **AC-45δ.1** Die Fläche listet **alle** Projekt-Gewerke, auch die ohne Befund; ein Gewerk ohne Blocker wird ausdrücklich als „ohne Befund" gekennzeichnet, nicht weggelassen.
+- [ ] **AC-45δ.2** Je Gewerk stehen die von α gesetzte **manuelle Ampel** und das **gerechnete Signal** nebeneinander, beide beschriftet, sodass erkennbar ist, welche Angabe woher kommt (L26).
+- [ ] **AC-45δ.3** Ein Gewerk gilt als blockiert bei mindestens einem von: überfälliger Mangel · verweigerte Abnahme · angesetzte Abnahme mit verstrichenem Termin · Abnahme unter Vorbehalt mit noch offenen Vorbehalten (L27). Der Grund wird **benannt**, nicht nur die Farbe gezeigt.
+- [ ] **AC-45δ.4** Eine **abgesagte** Abnahme blockiert nicht (L27).
+- [ ] **AC-45δ.5** Je Gewerk werden zusätzlich benannt: Zahl der überfälligen Mängel, der Mängel **ohne Frist**, und der Mängel, die auf Prüfung warten (L29). Die drei Zahlen sind getrennt und nicht addiert.
+- [ ] **AC-45δ.6** „Überfällig" verwendet **wörtlich** β's Regel (gesetzte Frist verstrichen, Status `offen` oder `in_bearbeitung`); „Vorbehalt offen" verwendet **wörtlich** γ's Regel (Status `offen`, `in_bearbeitung` **oder** `erledigt`). Es entsteht keine dritte Definition.
+
+**Abschnittsfortschritt**
+
+- [ ] **AC-45δ.7** Je Bauabschnitt werden Fortschritt und Zahl der überfälligen Vorgänge gezeigt; die Hierarchie aus α bleibt sichtbar (Kinder unter ihren Eltern).
+- [ ] **AC-45δ.8** Der Fortschritt kommt aus verknüpften **Arbeitspaketen**; fehlen sie, aus verknüpften **Phasen** (L28).
+- [ ] **AC-45δ.9** Die verwendete **Quelle wird angezeigt** („aus 7 Arbeitspaketen" / „aus 2 Phasen").
+- [ ] **AC-45δ.10** Ist nichts verknüpft, erscheint **kein** Fortschritt von 0 %, sondern ein Hinweis mit Handlungsaufforderung (L28, ST-δ6).
+
+**Nächste Fristen**
+
+- [ ] **AC-45δ.11** Eine Liste der nächsten Fristen aus Mängeln (`due_date`) und Abnahmen (`scheduled_for`) im vorausschauenden Fenster, aufsteigend nach Datum, mit Art, Gewerk und Bezug.
+- [ ] **AC-45δ.12** Bereits verstrichene Fristen erscheinen **oberhalb** der künftigen und sind als verstrichen gekennzeichnet.
+- [ ] **AC-45δ.13** Eine künftige, angesetzte Abnahme erscheint hier — und **nicht** als Blocker (L27, AC-45δ.3).
+
+**Engpass-Sicht (erfüllt AC-45β.18)**
+
+- [ ] **AC-45δ.14** Die überfälligen Mängel erscheinen als Engpass-Übersicht mit den am längsten überfälligen zuerst; je Zeile stehen Tage über Frist, Gewerk, Ort und Verantwortlicher.
+- [ ] **AC-45δ.15** Eine Kopfzeile nennt die Gesamtzahlen (überfällig · ohne Frist · wartet auf Prüfung · offene Blocker), berechnet über **alle** Zeilen, nicht nur die angezeigten.
+- [ ] **AC-45δ.16** *(AC-45β.18, Erfüllungsnachweis)* Die Anforderung „überfällige Mängel in der Engpass-Sicht" ist erfüllt; der **Ort** weicht vom Wortlaut ab (δ-Fläche statt PROJ-103-Fläche) und die Abweichung ist in der Spec und im Register benannt (L25).
+
+**Bericht**
+
+- [ ] **AC-45δ.17** Der PROJ-21-Status-Report trägt einen **optionalen** Bau-Abschnitt mit Gewerk-Blockern und Abschnittsfortschritt.
+- [ ] **AC-45δ.18** Der Abschnitt erscheint **nur**, wenn das Projekt ein Bauprojekt mit belegter Bauachse ist; sonst ist der Bericht **byte-identisch** zu heute.
+- [ ] **AC-45δ.19** Bestehende Schnappschüsse bleiben lesbar; der neue Block ist optional und wird bei alten Berichten nicht erwartet.
+- [ ] **AC-45δ.20** Der Bericht ist ein **eingefrorener** Schnappschuss: der Block zeigt den Stand zum Erzeugungszeitpunkt und ändert sich nicht rückwirkend.
+
+**Fläche, Rechte, Gates**
+
+- [ ] **AC-45δ.21** Ein Projektraum-Reiter „Terminsignale", gegatet auf `project_type='construction'` **und** das Modul `construction`; ein Lesezugriff bei inaktivem Modul antwortet 404 (Lese-Absicht verrät die Fläche nicht).
+- [ ] **AC-45δ.22** Die Fläche ist **lesend**. Sie mutiert nichts; jede Aktion ist ein Sprung auf die zuständige Fläche (Mangel, Abnahme, Arbeitspaket).
+- [ ] **AC-45δ.23** Jedes Projektmitglied mit Leserecht sieht die Fläche; es gibt **keine** verschärfte Rolle (anders als β/γ beim Schreiben — hier wird nichts geschrieben).
+- [ ] **AC-45δ.24** Der Gantt ist **unverändert**: keine neue Zeilenart, keine neue Zeichnung, keine Änderung an Ziehen/Größenänderung/Abhängigkeiten (L24).
+
+**Härtungskriterien (blockierend)**
+
+- [ ] **AC-45δH-1** Jede neue Auswertungsfunktion ist `SECURITY INVOKER`, `stable`, mit gesetztem `search_path`, ohne Actor-Parameter, und `anon` **sowie PUBLIC** haben kein EXECUTE (PROJ-Y-114a-Lehre: vollständig prüfen, nicht als Stichprobe).
+- [ ] **AC-45δH-2** **Aggregat-Leck-Probe** ist Pflicht: ein Nicht-Mitglied und ein Mandantenfremder erhalten in **jeder** Kopfzahl und **jeder** Liste 0 — inklusive einer Gegenprobe, die belegt, dass der wahre Wert ≠ 0 ist.
+- [ ] **AC-45δH-3** Die Prüfung läuft unter einem **synthetisierten Nicht-Admin** (in Prod ist jedes Mandanten-Mitglied Admin; ein Lauf unter Admin wäre falsch-grün).
+- [ ] **AC-45δH-4** Keine neue Tabelle, kein Register-Eingriff, kein gespeicherter Signalzustand (L30). Wird das verletzt, gelten die vier PROJ-130-Register-Pflichten in derselben Migration.
+- [ ] **AC-45δH-5** Regressionen **wörtlich** grün: α-Pentest, PROJ-Y-45a, β-Pentest, γ-Pentest und **PROJ-103 A–G**. Letzteres besonders: der PROJ-103-Pentest nagelt **absolute Zahlen** fest (PROJ-130-α-Lehre), und δ darf ihn nicht bewegen.
+- [ ] **AC-45δH-6** Die Registry-Tests (125) bleiben grün **ohne** Abschwächung einer Invariante; `requiresProjectType` bleibt einwertig (L25).
+- [ ] **AC-45δH-7** Die beiden Offen-Begriffe werden aus den bestehenden Libs **importiert**, nicht kopiert; ein Test friert ein, dass `erledigt` bei „überfällig" **aus**- und bei „Vorbehalt offen" **ein**geschlossen ist.
+- [ ] **AC-45δH-8** Der Bericht ohne Bauachse ist **byte-identisch** zu heute — gemessen, nicht behauptet (AC-45δ.18).
+- [ ] **AC-45δH-9** Ein authentifizierter Durchlauf in der Bau-Fixture-Lane belegt mindestens einen echten Blocker und einen echten Leerzustand mit Grund; die Lane räumt hinterher auf (Grenze: γs Zeilen sind nicht löschbar → PROJ-Y-45h).
+
+### Edge Cases (δ)
+
+| Fall | Erwartetes Verhalten |
+|---|---|
+| Projekt ohne Gewerke | Fläche erscheint, erklärt den Leerzustand und verweist auf die Gewerke-Fläche. Kein „alles grün". |
+| Gewerk ohne Mängel und ohne Abnahme | „ohne Befund" — ausdrücklich, nicht durch Abwesenheit (AC-45δ.1). |
+| Mangel ohne Frist | Getrennt gezählt, blockiert nicht (L29). |
+| Mangel im Status `erledigt` (fertiggemeldet) | Nicht überfällig (β), aber „wartet auf Prüfung". Zählt als offener Vorbehalt, wenn er an einer Abnahme hängt (γ). Derselbe Mangel erscheint also in zwei Zahlen mit zwei Bedeutungen — beide beschriftet. |
+| Abnahme unter Vorbehalt, alle Vorbehalte erledigt | Kein Blocker mehr; löst sich ohne Zutun (L27). |
+| Abnahme angesetzt, Termin heute | Nicht überfällig (Vergleich `< heute`, wie β und γ). Erscheint unter „Nächste Fristen". |
+| Abgesagte Abnahme, kein neuer Termin | Kein Blocker (L27). Erscheint auch nicht unter den Fristen. |
+| Abschnitt mit Kindern, nur Kinder haben Verknüpfungen | Eltern zeigen den zusammengefassten Stand des Teilbaums; die Quelle wird als „aus N Arbeitspaketen im Teilbaum" benannt. |
+| Abschnitt mit Arbeitspaketen **und** Phasen | Arbeitspakete führen (L28); die Phasen werden als weitere Angabe genannt, nicht stillschweigend verworfen. |
+| Arbeitspaket ohne Termine, aber mit `section_id` | Zählt in den Fortschritt (Status), nicht in „überfällig" (kein Datum). |
+| Bauprojekt mit `project_method = null` | Fläche funktioniert; sie hängt nicht an einer Methode. (Gemessen: das einzige lebende Bauprojekt ist genau dieser Fall.) |
+| Modul `construction` aus | 404 auf den Routen, Hinweis statt Fehlerkasten auf der Fläche (PROJ-Y-143f-Muster). |
+| Nicht-Bauprojekt | Reiter erscheint nicht; die Routen antworten 404. |
+| Bericht ohne Bauachse | Kein Bau-Abschnitt, Ausgabe byte-identisch (AC-45δ.18). |
+| Alter Schnappschuss ohne Bau-Block | Bleibt lesbar (AC-45δ.19). |
+
+### Out of Scope (δ)
+
+| Nicht in δ | Warum | Wohin |
+|---|---|---|
+| Bauabschnitte als Gantt-Zeilenart | L24 — Abschnitte haben keine Termine, der Gantt hat 1809 Zeilen Interaktionslogik | eigene Slice, falls ein Pilot es verlangt |
+| Marker auf bestehenden Gantt-Zeilen | Würde heute leer bleiben (0 Arbeitspakete mit Bauachse) | eigene Slice, wenn die Achse belegt ist |
+| Eigene Termine auf `construction_sections` | Wäre eine zweite Terminwahrheit neben Phasen und Arbeitspaketen | bewusst nicht vorgesehen |
+| Benachrichtigung / Eskalation bei Fristablauf | δ **zeigt**, δ **meldet nicht** — Versand ist PROJ-13, Fälligkeits-Inbox ist PROJ-64 | eigene Slice |
+| Gewährleistungs-Ablaufwarnung | γ hat sie ausdrücklich ausgenommen („gerechnet und gezeigt, nicht überwacht") | eigene Slice |
+| Freigabe der M&A-Engpass-Sicht für Bau | L25 | eigene Slice, dann mit Typänderung und PROJ-103-Regression |
+| Fotodokumentation | ε | PROJ-45-ε |
+| Achsen-Entscheidung Workstreams ↔ Gewerke | Hat heute keinen erreichbaren Fall (siehe oben) | jene Slice, die eine Auswertung für beide Typen freigibt |
+
+### Offene Fragen für `/architecture`
+
+1. **Eine Auswertungsfunktion oder drei?** Die Fläche trägt vier Blöcke (Gewerke · Abschnitte · Fristen · Engpässe). β/γ haben je eine `*_summary`-Funktion; PROJ-103 bündelt vier Dinge in einer. Eine Funktion bedeutet einen Aufruf und eine Kopfzahl-Wahrheit, aber einen größeren Rumpf.
+2. **Wie wird der Abschnitts-Teilbaum aggregiert?** α hat `construction_sections.path` (und einen `repath`-Trigger). Reicht `path` für die Teilbaum-Summe, oder braucht es eine rekursive Abfrage wie in `construction_section_blocking_refs`?
+3. **Fenster für „Nächste Fristen".** Vorschlag 14 Tage vorausschauend, verstrichene ohne Grenze. Zu bestätigen oder zu ersetzen.
+4. **Wo genau hängt der Bau-Block im Schnappschuss?** `SnapshotContent` ist typisiert; der Block muss optional sein und die Aggregation in `aggregateSnapshotData` braucht einen projekttyp-abhängigen Zweig. Zu prüfen, ob PROJ-56-ε dort ein Muster gesetzt hat.
+5. **Trägt δ eine CSV-Ausgabe?** PROJ-103 und PROJ-132 haben eine; β/γ nicht. Falls ja, gilt das Formel-Escaping-Muster.
+6. **Braucht δ einen CIA-Pass?** Nach den Locks entsteht keine neue Tabelle, keine neue Abhängigkeit und kein Eingriff in eine deployte Fläche außer dem additiven Berichts-Block. Vermutlich nicht — zu bestätigen bei `/architecture`.
+
+### Technische Anforderungen (δ)
+
+- **Kein neues Paket.** Alles ist Wiederverwendung.
+- **Keine neue Tabelle**, kein Register-Eingriff (L30) — sonst greifen die vier PROJ-130-Register-Pflichten in derselben Migration, als Anker-Ersetzung aus der Live-Definition mit Fail-Loud-Guard und Re-Grant.
+- **Auswertungen sind `SECURITY INVOKER`.** Ein `SECURITY DEFINER`-Aggregat über gegatete Zeilen ist ein Leck, auch wenn die Zeilenliste korrekt verborgen ist.
+- **Kein Actor-Parameter**; `auth.uid()` wird intern gelesen. `anon` und PUBLIC ohne EXECUTE.
+- **Delta- statt Absolutzusicherungen** in Migrations-Post-Conditions (PROJ-130-α-Lehre).
+- **Live-Pentest ist Pflicht** vor `Approved`, nach dem DO-Block-Muster mit Rollback-Marker und **null Rückständen**, mit synthetisiertem Nicht-Admin und Aggregat-Leck-Probe samt Gegenprobe.
+- **Regressionen wörtlich**: α · PROJ-Y-45a · β · γ · **PROJ-103 A–G** (absolute Zahlen!).
+- **Migration nur falls nötig**; dann Dateiname zuerst, `apply_migration`-`name` = Dateistamm (PROJ-134), `extensions.moddatetime` schema-qualifiziert.
+- **Funktions-Inventar** (`supabase/prod-inventory/functions.txt`) am Ende der Slice auffrischen (PROJ-Y-148e).
+
+### Abhängigkeiten
+
+- **Erfordert:** PROJ-45-α (Gewerke, Abschnitte, `construction_section_phases`, die drei additiven Verweise) · PROJ-45-β (Mängel, `due_date`, Überfälligkeitsregel) · PROJ-45-γ (Abnahmen, `scheduled_for`, Vorbehalts-Verweise) — **alle deployed**.
+- **Nutzt:** PROJ-19 (Phasen) · PROJ-9 (Arbeitspakete) · PROJ-21 (`SnapshotContent`) · PROJ-17 (Modul-Gate) · PROJ-28 (Navigations-Registry).
+- **Berührt nicht:** PROJ-25/53 (Gantt) · PROJ-103 (Engpass-Sicht) · PROJ-131/132 (M&A-Berichte).
+
+---
+
 ## Deployment — γ (2026-08-20)
 
 **Tag `v2.70.0-PROJ-45-gamma` · PR #422 (squash) → main `31aef7f` · Deployment Scope `alpha`.**
