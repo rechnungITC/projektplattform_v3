@@ -36,9 +36,15 @@ test.describe("PROJ-45-δ — Terminsignale: Auth-Gates", () => {
       // Geprüft wird die Abwesenheit von INHALT, nicht die des Pfades: der Rumpf
       // spiegelt `?next=<angefragter Pfad>` und damit die Eingabe des Aufrufers
       // selbst — das ist keine Preisgabe (Hausform aus der β/γ-Spec).
+      // `overdue_defects` waere hier die FALSCHE Marke: es ist ein Sektionsname
+      // und steht im gespiegelten `?next=…?section=overdue_defects`. Genau diese
+      // Verwechslung hat die erste Fassung dieser Zusicherung fehlschlagen
+      // lassen, ohne einen Fehler zu belegen. Geprueft werden daher nur Marken,
+      // die ausschliesslich in der NUTZLAST auftreten koennen.
       expect(body).not.toContain("blocker_reasons")
       expect(body).not.toContain("progress_source")
-      expect(body).not.toContain("overdue_defects")
+      expect(body).not.toContain("days_overdue")
+      expect(body).not.toContain("trade_label")
       // Eine CSV-Route darf ohne Sitzung auch keinen CSV-Rumpf liefern.
       expect(res.headers()["content-type"] ?? "").not.toContain("text/csv")
     })

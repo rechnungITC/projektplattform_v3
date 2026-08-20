@@ -2593,6 +2593,117 @@ und danach **`/qa`** (authentifizierter Durchlauf in der Bau-Fixture-Lane, AC-45
 
 ---
 
+## `/frontend` — δ live 2026-08-20
+
+Keine Migration, kein neues Paket, kein Backend-Diff. Geliefert: der Projektraum-Reiter
+**„Terminsignale"** (`terminsignale`) als **fünfte** Bau-Fläche hinter demselben **einen** Modul-Schalter
+(Q4), ein Hook mit dem Bestandsfeld `moduleInactive`, fünf Block-Komponenten plus eine reine
+Baum-Hilfe, und der **Rendering**-Anteil des Berichts-Blocks.
+
+Die Fläche trägt die vier Blöcke des Tech Designs: Kopfzeile mit den vier getrennten Zahlen ·
+Gewerke mit **manueller α-Ampel und gerechnetem Signal nebeneinander, beide beschriftet** (L26) und
+**benannten** Blocker-Gründen · Bauabschnitte als eingerückter Baum mit **Quellenangabe** statt „0 %"
+· nächste Fristen mit verstrichenen oben und gekennzeichnet · Engpass-Sicht der überfälligen Mängel ·
+CSV je Block. Sie ist **rein lesend**: jede Aktion ist ein Sprung auf die zuständige Fläche, und sie
+fragt bewusst **nicht** `manage_members` ab — das ist γs Schreib-Gate und hier falsch (AC-45δ.23,
+D-δ10).
+
+**Der Navigations-Eintrag kam ohne Testanpassung dazu.** α hatte die Registry-Invariante damals von
+„genau eine Sektion je Modul" auf ihre **Absicht** umgestellt (mindestens eine, Dedup auf der
+Sektions-Kennung); das zahlt sich hier zum dritten Mal aus — die 125 Registry-Fälle und die fünf, die
+den Projekttyp-Filter festnageln, bleiben unberührt, `requiresProjectType` bleibt einwertig
+(AC-45δH-6).
+
+Der Berichts-Block sitzt **hinter den Meilensteinen und vor den Risiken**: er ist die bauspezifische
+Fortsetzung der generischen Terminachse, und blockierte Gewerke sind benannte Ausnahmen, die vor die
+generische Governance gehören. Der Guard lässt den Abschnitt bei fehlendem Feld **ganz weg** statt ihn
+leer zu rendern — der `isEmpty`-Pfad wäre für „kein Bauprojekt" die falsche Zusage. **D-δ6 ist
+erledigt und zwar doppelt:** der Bau-Block **und** der von PROJ-56-ε nie eingetragene
+`readiness`-Block stehen jetzt in der „locked order" des Kopfkommentars.
+
+### Eine Entscheidung, die eine Wiederverwendung bewusst ablehnt
+
+**D-δ-FE-1:** der Bericht ruft `describeProgressSource` **nicht**. Die Funktion braucht
+`source_count`/`linked_count`/`phase_linked_count` — genau die drei Zahlen lässt der eingefrorene
+Block bewusst weg (D-δ13). Mit Platzhalter-Nullen zu rufen hieße, Zahlen zu behaupten, die im
+Schnappschuss nie standen. Der Bericht formuliert die Quelle daher **ohne Mengenangabe**, unterscheidet
+aber weiterhin die zwei Null-Fälle („nichts verknüpft" vs. „verknüpft, nichts zählbar") und zeigt
+**nie** „0 %", wo nichts gemessen wurde. Die Blocker-**Gründe** kommen unverändert aus der geteilten
+Konstante, und der Test vergleicht gegen die Konstante statt gegen abgeschriebene Zeichenketten — eine
+Umformulierung *in der Bibliothek* darf den Test nicht brechen, eine zweite Formulierung *im Bericht*
+muss.
+
+### Zwei eigene Fehler, beide von den Gates gefangen
+
+1. **Die Auth-Gate-Zusicherung war falsch, nicht das Produkt.** Der erste Lauf meldete einen
+   Fehlschlag auf `overdue_defects` — das ist ein **Sektionsname** und steht im gespiegelten
+   `?next=…?section=overdue_defects`, also in der **Eingabe des Aufrufers**. Genau diese Verwechslung
+   von „Abwesenheit von Inhalt" und „Abwesenheit des Pfades" warnt der γ-Spec im Kommentar an, und ich
+   bin hineingelaufen. Geprüft werden jetzt nur Marken, die ausschließlich in der Nutzlast auftreten
+   können (`blocker_reasons`, `progress_source`, `days_overdue`, `trade_label`), plus dass eine
+   CSV-Route ohne Sitzung keinen CSV-Rumpf liefert.
+2. **Drei ESLint-Fehler** (`react/no-unescaped-entities`) an deutschen Schlusszeichen im JSX-Text.
+   Behoben mit der **typografischen** Form `„…“` statt `&quot;` — das ist die Form, die der Bestand
+   ohnehin verwendet, und liest sich neben dem öffnenden `„` richtig.
+
+### Ein Fund, der nicht zu δ gehört, aber jede lokale Messzahl dieses Abends berührt
+
+Im **Wurzelverzeichnis des Repos** liegt seit heute Abend ein **fremdes, untracked Projekt**
+(`U-Know/`, **4,1 GB**). `tsconfig.json` zieht `**/*.ts(x)` ein, deshalb gilt lokal:
+
+- `npx tsc` meldet **4632** Fehler statt 13 — **alle** aus `U-Know/`; ohne diese Fläche gezählt sind es
+  **13 = Baseline / 0 neu**.
+- `npm run build` **schlägt fehl** in der Typprüfungs-Phase, mit einem fehlenden Modul in
+  `U-Know/src/app/dashboard/achievements/page.tsx`.
+- `npx vitest run` meldet **86 fehlgeschlagene Dateien / 34 Tests** — ebenfalls sämtlich aus `U-Know/`.
+
+Weil eine Zahl, die man nicht erklären kann, kein Gate ist, wurde der Build in einem **frischen
+git-Worktree** auf demselben Commit gemessen (hartverlinktes `node_modules`, Hausrezept): dort
+**tsc 13 = Baseline** und **Build clean mit allen drei Flächen registriert**
+(`/projects/[id]/terminsignale` plus die zwei API-Routen). Das Verzeichnis ist **nicht** committet und
+erreicht CI also nicht; es wurde bewusst **nicht** angefasst (4,1 GB fremder Arbeitsstand). Sollte es
+dauerhaft dort bleiben, gehört es in `.gitignore` **und** in `tsconfig.exclude` — das ist eine
+Entscheidung des Repo-Eigners, keine dieser Slice.
+
+### Nachweise
+
+- **Auth-Gates δ: 6/6** chromium (Auswertung + vier CSV-Sektionen + Reiter), nach der Korrektur oben.
+- **Visual-Regression: 9/9 ohne Neuaufnahme** — gemessen, nicht geschlossen. Die neue Sektion ist auf
+  `project_type='construction'` **und** das Modul gegatet, und der Visual-Mandant hat beides nicht;
+  die Erwartung „keine Baseline bewegt sich" ist damit belegt statt behauptet.
+- **α/γ-Auth-Gates unverändert grün** im gemeinsamen Lauf.
+- **vitest 3484/3484 in 415 Dateien** (ohne `U-Know/`), ESLint **0** über `src` und `tests`.
+
+### Eine Regression, die nicht δ gehört
+
+`tests/PROJ-45-beta-defects.spec.ts` fällt mit **5 failed / 1 did not run / 12 passed**, Stacktrace auf
+`removeRunDefects → deleteOrThrow` — **byte-identisch** zu der Signatur, die schon der γ-`/qa`- und der
+γ-`/deploy`-Lauf gemessen und als **PROJ-Y-45h** registriert haben (Ursache: PROJ-Y-148d hat
+`construction_defects` unlöschbar gemacht, der Teardown der Spec kennt den sanktionierten Weg noch
+nicht). **Strukturell belegt, dass δ es nicht sein kann:** die δ-Migration enthält **0** DDL-Anweisungen
+(kein `alter table`, `create table`, `create policy`, `create trigger`, `drop`) und nennt
+`construction_defects` nur an zwei Stellen — beide lesend innerhalb der Auswertung.
+
+### Abweichungen
+
+- **D-δ-FE-1** Bericht ohne `describeProgressSource` (oben begründet).
+- **D-δ-FE-2** Kein shadcn-Primitive im Berichts-Block: die Report-Fläche ist druckoptimiert und
+  rendert durchgehend nackte semantische Tabellen mit Tailwind — auch der `readiness`-Block. Eine Card
+  mitten im PDF wäre der Stilbruch, nicht die Regelbefolgung.
+- **D-δ-FE-3** Unbekannte Enum-Werte im eingefrorenen Block werden **roh** ausgegeben statt
+  verschwiegen: ein alter Schnappschuss kann Werte tragen, die dieser Build nicht kennt.
+- **D-δ-FE-4** **Kein authentifizierter Browser-Durchlauf in diesem Schritt** — die Fläche ist
+  projekttyp- **und** modul-gegatet, und das Modul im geteilten `[E2E]`-Mandanten einzuschalten hätte
+  die frisch gemessenen Visual-Baselines verschoben (PROJ-Y-143f/143l). Gehört mit der Bau-Fixture-Lane
+  nach `/qa` (AC-45δH-9), zusammen mit dem Befund, dass die Lane **von sich aus nur den Leerzustand**
+  hergibt: live gemessen liefert sie 1 Gewerk ohne Befund, 2 Abschnitte ohne Verknüpfung, 0 Fristen,
+  0 Engpässe — ein echter Blocker muss dort geseedet werden, sonst prüft der Durchlauf nur die leere
+  Hälfte.
+
+Offen: **`/qa`**.
+
+---
+
 ## Deployment — γ (2026-08-20)
 
 **Tag `v2.70.0-PROJ-45-gamma` · PR #422 (squash) → main `31aef7f` · Deployment Scope `alpha`.**
