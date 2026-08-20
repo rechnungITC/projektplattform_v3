@@ -18,6 +18,16 @@ import type {
   ConstructionDefectSummary,
 } from "@/types/construction-defect"
 import type {
+  ConstructionAcceptance,
+  ConstructionAcceptanceEvent,
+  ConstructionAcceptanceNewReservation,
+  ConstructionAcceptanceParticipant,
+  ConstructionAcceptanceReservation,
+  ConstructionAcceptanceResult,
+  ConstructionAcceptanceStatus,
+  ConstructionAcceptanceSummary,
+} from "@/types/construction-acceptance"
+import type {
   ConstructionRagStatus,
   ConstructionSection,
   ConstructionSectionPhase,
@@ -436,4 +446,214 @@ export async function fetchConstructionDefectSummary(
   })
   if (!res.ok) await fail(res)
   return ((await res.json()) as { summary: ConstructionDefectSummary | null }).summary
+}
+
+// ── PROJ-45-γ — Abnahmen ────────────────────────────────────────────────────
+
+export interface AcceptanceFilters {
+  trade_id?: string
+  section_id?: string
+  status?: ConstructionAcceptanceStatus
+  /** `gesamt` ist der ankerlose Fall — die Abnahme des ganzen Projekts. */
+  subject?: "gewerk" | "abschnitt" | "gesamt"
+  from?: string
+  to?: string
+}
+
+/** Abnahmen eines Projekts. Gefiltert wird SERVERSEITIG (AC-45γ.29). */
+export async function listConstructionAcceptances(
+  projectId: string,
+  filters: AcceptanceFilters = {}
+): Promise<ConstructionAcceptance[]> {
+  const qs = new URLSearchParams()
+  for (const [key, value] of Object.entries(filters)) {
+    if (value) qs.set(key, value)
+  }
+  const suffix = qs.toString() ? `?${qs.toString()}` : ""
+  const res = await fetch(`${p(projectId)}/construction-acceptances${suffix}`, {
+    method: "GET",
+    cache: "no-store",
+  })
+  if (!res.ok) await fail(res)
+  return ((await res.json()) as { acceptances: ConstructionAcceptance[] }).acceptances
+}
+
+/**
+ * Termin ansetzen. Höchstens EIN Anker: `trade_id` ODER `section_id` ODER
+ * keiner von beiden — dann ist es die Gesamtabnahme (D-γ1).
+ */
+export async function scheduleConstructionAcceptance(
+  projectId: string,
+  input: {
+    scheduled_for: string
+    trade_id?: string | null
+    section_id?: string | null
+    title?: string | null
+    notes?: string | null
+    supersedes_acceptance_id?: string | null
+  }
+): Promise<ConstructionAcceptance> {
+  const res = await fetch(`${p(projectId)}/construction-acceptances`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify(input),
+  })
+  if (!res.ok) await fail(res)
+  return ((await res.json()) as { acceptance: ConstructionAcceptance }).acceptance
+}
+
+export interface AcceptanceDetail {
+  acceptance: ConstructionAcceptance
+  participants: ConstructionAcceptanceParticipant[]
+  reservations: ConstructionAcceptanceReservation[]
+  events: ConstructionAcceptanceEvent[]
+}
+
+/** Detail samt Teilnehmern, Vorbehalten und unveränderlichem Verlauf. */
+export async function fetchConstructionAcceptance(
+  projectId: string,
+  acceptanceId: string
+): Promise<AcceptanceDetail> {
+  const res = await fetch(
+    `${p(projectId)}/construction-acceptances/${encodeURIComponent(acceptanceId)}`,
+    { method: "GET", cache: "no-store" }
+  )
+  if (!res.ok) await fail(res)
+  return (await res.json()) as AcceptanceDetail
+}
+
+/**
+ * Ändern, solange angesetzt. Leeren geht NUR über den jeweiligen Schalter —
+ * ein weggelassenes Feld heisst „unverändert" (PROJ-122-Defektklasse).
+ */
+export async function updateConstructionAcceptance(
+  projectId: string,
+  acceptanceId: string,
+  patch: {
+    scheduled_for?: string
+    title?: string
+    clear_title?: true
+    notes?: string
+    clear_notes?: true
+  }
+): Promise<ConstructionAcceptance> {
+  const res = await fetch(
+    `${p(projectId)}/construction-acceptances/${encodeURIComponent(acceptanceId)}`,
+    {
+      method: "PATCH",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(patch),
+    }
+  )
+  if (!res.ok) await fail(res)
+  return ((await res.json()) as { acceptance: ConstructionAcceptance }).acceptance
+}
+
+/** Absagen — Begründung ist Pflicht (AC-45γ.5). */
+export async function cancelConstructionAcceptance(
+  projectId: string,
+  acceptanceId: string,
+  reason: string
+): Promise<ConstructionAcceptance> {
+  const res = await fetch(
+    `${p(projectId)}/construction-acceptances/${encodeURIComponent(acceptanceId)}/status`,
+    {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ action: "absagen", reason }),
+    }
+  )
+  if (!res.ok) await fail(res)
+  return ((await res.json()) as { acceptance: ConstructionAcceptance }).acceptance
+}
+
+/**
+ * Protokollieren. `new_reservations` werden serverseitig über die BESTEHENDE
+ * β-Anlegefunktion zu echten Mängeln und dann verwiesen — es entsteht keine
+ * zweite Mängelliste (L20).
+ */
+export async function recordConstructionAcceptance(
+  projectId: string,
+  acceptanceId: string,
+  input: {
+    result: ConstructionAcceptanceResult
+    accepted_on?: string
+    reason?: string
+    warranty_months?: number | null
+    reservation_defect_ids?: string[]
+    new_reservations?: ConstructionAcceptanceNewReservation[]
+    accept_despite_open_defects?: boolean
+  }
+): Promise<ConstructionAcceptance> {
+  const res = await fetch(
+    `${p(projectId)}/construction-acceptances/${encodeURIComponent(acceptanceId)}/status`,
+    {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ action: "protokollieren", ...input }),
+    }
+  )
+  if (!res.ok) await fail(res)
+  return ((await res.json()) as { acceptance: ConstructionAcceptance }).acceptance
+}
+
+/** Teilnehmerliste ersetzen. Genau eine Quelle je Zeile (Q-γ3). */
+export async function setConstructionAcceptanceParticipants(
+  projectId: string,
+  acceptanceId: string,
+  participants: Array<{
+    stakeholder_id?: string | null
+    vendor_id?: string | null
+    display_name?: string | null
+    role_in_acceptance?: string
+    attendance?: string
+  }>
+): Promise<number> {
+  const res = await fetch(
+    `${p(projectId)}/construction-acceptances/${encodeURIComponent(acceptanceId)}/participants`,
+    {
+      method: "PUT",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ participants }),
+    }
+  )
+  if (!res.ok) await fail(res)
+  return ((await res.json()) as { count: number }).count
+}
+
+/**
+ * Beleg anhängen oder entfernen — der einzige Schreibvorgang, der NACH dem
+ * Ergebnis noch erlaubt ist (D-γ4): das unterschriebene Protokoll kommt
+ * naturgemäss erst danach zurück.
+ */
+export async function setConstructionAcceptanceDocument(
+  projectId: string,
+  acceptanceId: string,
+  input:
+    | { clear: true }
+    | { label?: string | null; url?: string | null; document_node_id?: string | null }
+): Promise<ConstructionAcceptance> {
+  const res = await fetch(
+    `${p(projectId)}/construction-acceptances/${encodeURIComponent(acceptanceId)}/document`,
+    {
+      method: "PUT",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(input),
+    }
+  )
+  if (!res.ok) await fail(res)
+  return ((await res.json()) as { acceptance: ConstructionAcceptance }).acceptance
+}
+
+/** Kopfzahlen und Abnahmestand je Gewerk, im Recht des Aufrufers gerechnet. */
+export async function fetchConstructionAcceptanceSummary(
+  projectId: string
+): Promise<ConstructionAcceptanceSummary | null> {
+  const res = await fetch(`${p(projectId)}/construction-acceptances/summary`, {
+    method: "GET",
+    cache: "no-store",
+  })
+  if (!res.ok) await fail(res)
+  return ((await res.json()) as { summary: ConstructionAcceptanceSummary | null })
+    .summary
 }

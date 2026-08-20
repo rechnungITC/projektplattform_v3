@@ -38,6 +38,7 @@ interface Recorded {
   tables: string[]
   eq: Array<[string, unknown]>
   limit: number[]
+  rpc: Array<[string, unknown]>
 }
 let rec: Recorded
 
@@ -71,7 +72,14 @@ function supa(results: Array<{ data: unknown; error: unknown }>) {
       c.then = (resolve: (v: unknown) => void) => resolve(result)
       return c
     }),
-    rpc: vi.fn(),
+    // PROJ-45-γ: die Blockierer-Auskunft laeuft jetzt ueber eine INVOKER-RPC.
+    // Sie zieht aus DERSELBEN Warteschlange wie `.from(...)`, damit die Tests
+    // die Reihenfolge der Aufrufe weiterhin abbilden koennen, und zeichnet den
+    // Aufruf auf.
+    rpc: vi.fn(async (fn: string, args: unknown) => {
+      rec.rpc.push([fn, args])
+      return queue.shift() ?? { data: null, error: null }
+    }),
   }
 }
 
@@ -80,7 +88,7 @@ function ctx(id: string = PROJECT, ptid: string = PTID) {
 }
 
 beforeEach(() => {
-  rec = { tables: [], eq: [], limit: [] }
+  rec = { tables: [], eq: [], limit: [], rpc: [] }
   getAuthMock.mockReset()
   accessMock.mockReset()
   moduleMock.mockReset()
@@ -145,9 +153,12 @@ describe("DELETE /api/projects/[id]/construction-trades/[ptid]", () => {
       supabase: supa([
         { data: null, error: { code: "23503", message: 'violates foreign key "construction_defects_trade_id_fkey"' } },
         {
+          // PROJ-45-γ: die Auskunft kommt jetzt aus der INVOKER-RPC und traegt
+          // die ART mit. Der Fall unten mischt beide Arten bewusst — genau das
+          // konnte der alte, woertlich auf Maengel formulierte Zweig nicht.
           data: [
-            { defect_number: 4, title: "Riss in der Wand" },
-            { defect_number: 9, title: "Fuge undicht" },
+            { kind: "mangel", id: "d1", ref_number: 4, label: "Riss in der Wand" },
+            { kind: "abnahme", id: "a1", ref_number: 9, label: "Fuge undicht" },
           ],
           error: null,
         },
@@ -156,16 +167,22 @@ describe("DELETE /api/projects/[id]/construction-trades/[ptid]", () => {
     const res = await DELETE(new Request("http://t/", { method: "DELETE" }), ctx())
     expect(res.status).toBe(409)
     const body = await res.json()
-    expect(body.error.code).toBe("defects_present")
+    // PROJ-45-γ: der Code war `defects_present` und sprach damit woertlich
+    // von Maengeln. Seit eine ABNAHME denselben Bezug halten kann, waere das
+    // FALSCH statt bloss unvollstaendig — der Zweig benennt jetzt die Art.
+    expect(body.error.code).toBe("references_present")
     expect(body.error.message).toContain("#4 Riss in der Wand")
     expect(body.error.message).toContain("#9 Fuge undicht")
     // And it must not leak the raw constraint text.
     expect(body.error.message).not.toContain("foreign key")
-    expect(rec.tables).toEqual([
-      "project_construction_trades",
-      "construction_defects",
+    // Beide Arten sind benannt, nicht nur eine.
+    expect(body.error.message).toContain("Mängel und Abnahmen")
+    // Die Blockierer-Auskunft laeuft ueber die INVOKER-RPC; es gibt keine
+    // zweite Tabellenabfrage mehr.
+    expect(rec.tables).toEqual(["project_construction_trades"])
+    expect(rec.rpc).toEqual([
+      ["construction_trade_blocking_refs", { p_trade_id: PTID }],
     ])
-    expect(rec.limit).toEqual([10])
   })
 
   it("still answers 409 when the blockers cannot be named", async () => {
@@ -180,7 +197,11 @@ describe("DELETE /api/projects/[id]/construction-trades/[ptid]", () => {
     })
     const res = await DELETE(new Request("http://t/", { method: "DELETE" }), ctx())
     expect(res.status).toBe(409)
-    expect((await res.json()).error.message).toContain("Mängel")
+    // PROJ-45-γ: ohne benennbare Zeilen nennt die Meldung die beiden Arten,
+    // die den Bezug ueberhaupt halten koennen.
+    const msg = (await res.json()).error.message as string
+    expect(msg).toContain("Mängel oder Abnahmen")
+    expect(msg).not.toContain("fk")
   })
 
   it("keeps mapping a permission refusal to 403", async () => {
