@@ -79,15 +79,15 @@ Slice den Replay selbst sprechen, statt weiter zu raten.
       der Schleife belegt (Summe 18, nicht 103).
 - [x] **AC-Y130f.8** — Ein konkreter Abbruch ist benannt und mit einer unabhängigen Messung verbunden
       (PROJ-Y-148e: `enforce_last_lead` wird von keiner Datei angelegt).
-- [ ] **AC-Y130f.9** — Die restlichen **sechs** Ursachen sind benannt. Wird durch den CI-Lauf dieses PRs
-      geliefert und **vor dem Merge** hier nachgetragen.
+- [x] **AC-Y130f.9** — **Alle sieben Ursachen sind benannt**, geliefert vom CI-Lauf dieses PRs (siehe
+      Tabelle unten). Der Lauf beziffert die Tragweite mit **883 nicht ausgeführten Zeilen**.
 
 ## Definition of Done
 
 - [x] Workflow-Diagnose, YAML-Integrität geprüft, Exit-Logik unverändert.
 - [x] Buchführung: diese Spec, `features/INDEX.md`, `features/OPEN-DEFERRED-STATUS.md`.
-- [ ] Die sechs offenen Ursachen aus dem eigenen CI-Lauf nachgetragen.
-- [ ] **Behebung** der sieben Abbrüche — eigene Folgearbeit, siehe unten.
+- [x] Alle sieben Ursachen aus dem eigenen CI-Lauf nachgetragen.
+- [ ] **Behebung** der sieben Abbrüche — eigene Folgearbeit als **PROJ-Y-130g**, siehe unten.
 
 ---
 
@@ -103,3 +103,56 @@ Die Tragweite ist auch nach dieser Slice **nicht vollständig bekannt**: wie vie
 Shadow-DB fehlen, sagt erst der Vergleich, den PROJ-Y-148e für Funktionen aufgebaut hat und der für
 Trigger, Grants und Policies noch fehlt — dafür braucht es die Shadow-DB als Quelle, also Docker
 (offener Handoff PROJ-67/F6).
+
+---
+
+## Die sieben Ursachen — aus dem CI-Lauf dieses PRs
+
+| Datei | Abbruch | verlorene Zeilen | fehlende Funktion |
+|---|---|---|---|
+| `harden_trigger_only_functions` | 18/35 | 17 | `enforce_last_lead()` |
+| `security_internal_functions_lockdown` | 75/85 | 10 | `decrypt_tenant_ai_key(uuid,text)` |
+| `proj70_beta_accept_bulk_rpc` | 441/505 | 64 | `accept_proposal_from_context_undo(uuid,uuid)` |
+| **`proj107_risk_register`** | 42/256 | **214** | **`moddatetime()`** |
+| **`proj110_stage_gates_and_decision_fields`** | 130/620 | **490** | **`moddatetime()`** |
+| `proj122_spa_issues` | 436/499 | 63 | `stage_gate_prereadiness(uuid)` |
+| `proj148_last_lead_cascade_fix` | 70/95 | 25 | `enforce_last_lead()` |
+
+**Summe: 883 Zeilen laufen im Fresh-Apply nicht.**
+
+### Der Hauptbefund: eine dokumentierte Regel, zweimal verletzt
+
+Die zwei **größten** Verluste — 214 und 490 Zeilen, zusammen 80 % der Gesamtsumme — haben dieselbe
+Ursache: die **bare** Form `moddatetime()` statt `extensions.moddatetime`. Genau davor warnt CLAUDE.md
+wörtlich: *„`moddatetime` must be schema-qualified — `extensions.moddatetime`. The bare form resolves in
+prod but not in the schema-drift shadow DB."*
+
+Live nachgemessen, warum die Regel stimmt: die Extension liegt in Prod im Schema **`extensions`**, in
+`public` gibt es **0** `moddatetime`-Funktionen. In Prod trägt der `search_path` die Auflösung, in der
+Shadow-DB nicht.
+
+Beide Dateien verletzen die Regel (bare = 1, qualifiziert = 0). Die Regel war also da, die Verletzung war
+da — und **der Wächter hat sie verschwiegen**, weil seine Warnung die Ursache nicht nannte.
+
+### Eine Kausalkette, die drei der sieben verbindet
+
+`proj110` bricht an Zeile 130 ab, legt `stage_gate_prereadiness` aber erst in **Zeile 543** an — die
+Funktion entsteht im Replay also nie. `proj122` braucht sie in Zeile 436 und bricht deshalb ebenfalls ab.
+
+**Drei der sieben Abbrüche gehen damit auf zwei `moddatetime()`-Verletzungen zurück** (107, 110 direkt;
+122 als Folge), und mit ihnen 767 der 883 Zeilen. Das macht die Behebung greifbar, statt sie als sieben
+Einzelfälle erscheinen zu lassen.
+
+### Warum die Behebung eine eigene Slice ist — PROJ-Y-130g
+
+Zwei Gründe, und der zweite ist der wichtigere:
+
+1. **Migrationen sind append-only.** Die fehlerhaften Zeilen sind nicht editierbar. Der naheliegende Weg
+   wäre ein `public.moddatetime`-Stub in der Vorbereitungsphase des Workflows (dort, wo schon Rollen und
+   Storage-Stubs entstehen) — das ist Test-Infrastruktur, keine Migration, und würde die Shadow-DB der
+   echten Supabase-Umgebung **ähnlicher** machen statt eine Migration zu verbiegen.
+2. **Der Fix macht den Wächter strenger, und das ist ein Risiko.** Läuft `proj110` künftig durch, werden
+   **490 zusätzliche Zeilen** angewendet, die bisher nie liefen. Scheitert eine davon, ist es ein
+   `structural failure` — und der Schema-Drift-Guard ist ein **Required Check**: er würde dann jeden PR
+   blockieren. Das gehört in eine Slice, die genau das erwartet und beobachtet, nicht als Nebenwirkung
+   einer Diagnose-Änderung.
