@@ -12,11 +12,11 @@
 >
 > **γ ist abgenommen (`/qa` PASS 2026-08-20, 0 Critical / 0 High / 0 Medium) und nicht deployed.**
 > Anforderungen, Tech Design, `/backend`-, `/frontend`- und QA-Notizen stehen weiter unten, Status
-> dort **Approved**. 29/29 AC, 12/12 Härtungskriterien (AC-45γH-10 mit benannter, **nicht von γ
-> verursachter** Abweichung). Datenschicht seit 2026-08-19 in Prod, Oberfläche seit 2026-08-20;
-> γ-Pentest **60/60**, Rot-Team **11/11**, authentifizierte Kette **3× 3/3** inkl. echtem
-> PDF-Druck, Regressionen α 18/18 · PROJ-Y-45a 9/9 · PROJ-103 7/7 · β **52/53** (der eine
-> Fehlschlag stammt aus PROJ-Y-148d), **0 Rückstände** über 14 Zähler. Die Zeile in
+> dort **Approved**. 29/29 AC, **12/12** Härtungskriterien. Datenschicht seit 2026-08-19 in Prod,
+> Oberfläche seit 2026-08-20; γ-Pentest **60/60**, Rot-Team **11/11**, authentifizierte Kette
+> **3× 3/3** inkl. echtem PDF-Druck, Regressionen α 18/18 · PROJ-Y-45a 9/9 · PROJ-103 7/7 ·
+> β **53/53** (im QA-Lauf 52/53; PROJ-Y-148d hat Vektor `Z` inzwischen umgedreht, auf dem
+> Deploy-Stand wörtlich grün nachgemessen), **0 Rückstände** über 14 Zähler. Die Zeile in
 > `features/INDEX.md` bleibt unverändert `Deployed` / `alpha`: γ ändert die **gelieferte** Grenze
 > erst mit `/deploy`.
 >
@@ -1813,7 +1813,7 @@ voller Breite und ein Rot-Team über den Pentest hinaus.
 | **Rot-Team-Supplement O–W2** (neu in `/qa`) | **11/11 PASS** |
 | Regression α (Block 1 + gehärteter Block 2) | **18/18 PASS** |
 | Regression PROJ-Y-45a | **9/9 PASS verbatim** |
-| Regression β (Block 1 · Block 2 · Block 3) | **52/53** — `Z` fällt, Ursache **PROJ-Y-148d**, nicht γ (siehe F-γ4) |
+| Regression β (Block 1 · Block 2 · Block 3) | im QA-Lauf **52/53** (`Z` fiel, Ursache PROJ-Y-148d, nicht γ); auf dem Deploy-Stand **53/53** — 148d hat `Z` an die geänderte Zusage angepasst, `Z_project_hard_delete_blocked=PASS(42501)` nachgemessen (siehe F-γ4) |
 | Regression PROJ-103 A–G | **7/7 PASS verbatim** |
 | Rückstände | **0** über 14 Zähler; Fixture unverändert (1 Katalog-Gewerk · 2 Abschnitte · 1 Projekt-Gewerk), 29 lebende Projekte, **0 deaktivierte Trigger** |
 
@@ -1894,7 +1894,7 @@ Unterschriftenzeile), und `page.pdf()` liefert einen Puffer mit `%PDF-`-Kopf und
 | AC-45γH-7 | ✅ **T/T2/T3** — die Abnahme am **Enkel** blockiert die Wurzel, die naive Ein-Knoten-Abfrage findet sie **nicht** |
 | AC-45γH-8 | ✅ **W** (Fremder sieht `total=0`) mit **W2** als Gegenprobe (Berechtigter sieht 2) |
 | AC-45γH-9 | ✅ **M** (eingefroren) **und M2** (Beleg danach) in derselben Probe — beide Richtungen |
-| AC-45γH-10 | ⚠️ **erfüllt mit benannter Abweichung**: α 18/18, PROJ-Y-45a 9/9, PROJ-103 7/7 wörtlich grün; β **52/53** — der eine Fehlschlag (`Z`) ist von **PROJ-Y-148d** verursacht und nachweislich nicht von γ (siehe F-γ4). Die **Absicht** des Kriteriums („γ hat β nicht gebrochen") ist erfüllt: β Block 1 ist **32/32 wörtlich** grün, und das ist der Block, der die von γ angefassten geteilten Register durchläuft |
+| AC-45γH-10 | ✅ α 18/18, PROJ-Y-45a 9/9, PROJ-103 7/7, **β 53/53** — alle wörtlich grün. Im QA-Lauf war β 52/53; der eine Fehlschlag (`Z`) war von **PROJ-Y-148d** verursacht und nachweislich nicht von γ. 148d hat den Vektor inzwischen an die geänderte Zusage angepasst; auf dem Deploy-Stand `Z_project_hard_delete_blocked=PASS(42501)` nachgemessen (siehe F-γ4) |
 | AC-45γH-11 | ✅ Register-Anker mit Post-Verifikation; Geschwister-Zweige namentlich geprüft; Objektarten 94 → **95** wie vorhergesagt |
 | AC-45γH-12 | ✅ der Nicht-Administrator ist **synthetisiert**; `S2_not_admin=PASS` in der β-Regression schliesst Falsch-Grün aus |
 
@@ -1928,19 +1928,32 @@ war richtig, die Zusicherung war rückstandsabhängig.** Umgestellt auf „der
 Mangel dieses Laufs ist verknüpft, und jeder Vorbehalt zeigt auf einen echten
 Mangel"; danach **3× 3/3**.
 
-**F-γ4 (Medium, offen, fremd verursacht → Folgearbeit im 148d-Zweig):**
+**F-γ4 (fremd verursacht; Hälfte 1 im Deploy-Lauf als erledigt nachgemessen,
+Hälfte 2 offen → Folgearbeit im 148d-Zweig):**
 **PROJ-Y-148d hat β's QA-Infrastruktur gebrochen**, an zwei Stellen, beide
 gemessen:
 
-1. **β's Pentest-Vektor `Z`** sichert zu, dass ein Projekt-Hard-Delete *trotz*
-   Mängeln und unveränderlichen Ereignissen **gelingt**. Er meldet jetzt
-   `FAIL(42501)` — 148d hat dem Wächter den Kaskaden-Ausstieg genommen, also
-   gilt die Zusage nicht mehr.
-2. **β's authentifizierte Spec** fällt in ihrem **Teardown**: gemessen
-   **5 failed / 1 did not run / 12 passed**, Stacktrace auf
-   `deleteOrThrow → removeRunDefects`. `construction_defects` ist nicht mehr
-   löschbar. `deleteOrThrow` tut dabei genau das, wofür PROJ-Y-143o ihn
-   eingebaut hat — laut scheitern statt still anhäufen.
+1. **β's Pentest-Vektor `Z`** sicherte zu, dass ein Projekt-Hard-Delete *trotz*
+   Mängeln und unveränderlichen Ereignissen **gelingt**. Im QA-Lauf meldete er
+   `FAIL(42501)` — 148d hatte dem Wächter den Kaskaden-Ausstieg genommen, also
+   galt die Zusage nicht mehr.
+   **Erledigt, im `/deploy`-Lauf nachgemessen (2026-08-20):** 148d hat den
+   Vektor in seinem eigenen Merge (`b38c11d`) **umgedreht** statt ihn stehen zu
+   lassen — er erwartet jetzt die Blockade und meldet auf dem rebasten
+   Deploy-Stand gegen Prod `Z_project_hard_delete_blocked=PASS(42501)`.
+   **β ist damit wieder 53/53.** Die im QA-Abschnitt festgehaltene Zahl 52/53
+   war zum Messzeitpunkt richtig und ist überholt; sie bleibt zur
+   Nachvollziehbarkeit stehen.
+2. **β's authentifizierte Spec** fällt in ihrem **Teardown** — **weiter offen**,
+   auf dem Deploy-Stand erneut gemessen: **5 failed / 1 did not run /
+   12 passed**, Stacktrace unverändert auf `deleteOrThrow → removeRunDefects`.
+   `construction_defects` ist nicht mehr löschbar. 148d hat `b38c11d` nur den
+   Pentest angefasst, **nicht** `tests/PROJ-45-beta-defects.spec.ts` und nicht
+   `tests/fixtures/cleanup.ts` (am Merge-Diff geprüft). `deleteOrThrow` tut
+   dabei genau das, wofür PROJ-Y-143o ihn eingebaut hat — laut scheitern statt
+   still anhäufen. Die Rückstände dieses Messlaufs sind über den
+   Runbook-Weg entfernt (0 Mängel, 0 Ereignisse, 0 Audit-Zeilen,
+   0 deaktivierte Wächter).
 
 **Ursache belegt, nicht geschlussfolgert:** γs beide Migrationen enthalten
 **0 Definitionen** von `enforce_construction_defect_event_immutability`; der
@@ -2005,8 +2018,10 @@ deaktivierte Trigger**). Als **PROJ-Y-45h** registriert.
   mandantengebundenen Aufräumschritt (Klasse PROJ-Y-45e / PROJ-Y-130h).
 - **PROJ-Y-45i** — verdeckter Titel im Ladezustand der Abnahme-Detailansicht
   (F-γ2).
-- **Für den 148d-Zweig** (nicht γ): β's Pentest-Vektor `Z` und β's
-  QA-Teardown gehören an die geänderte Zusage angepasst (F-γ4).
+- **Für den 148d-Zweig** (nicht γ): β's **QA-Teardown** gehört an die geänderte
+  Zusage angepasst (F-γ4, Hälfte 2 — Hälfte 1, der Pentest-Vektor `Z`, ist von
+  148d selbst erledigt und im `/deploy`-Lauf grün nachgemessen). Sachlich
+  dieselbe Lücke wie **PROJ-Y-45h**, nur eine Slice früher.
 
 ---
 

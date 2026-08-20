@@ -1,4 +1,4 @@
-# Prod-Funktionsinventar — Stand 2026-08-19
+# Prod-Funktionsinventar — Stand 2026-08-20
 #
 # Die in der Produktionsdatenbank vorhandenen Funktionen des Schemas `public`,
 # ohne die 71 Funktionen der `ltree`-Extension (die gehoeren nicht dem Projekt).
@@ -77,6 +77,7 @@ bootstrap_project_lead
 can_access_classified
 can_read_audit_entry
 cancel_clearance_grant_request
+cancel_construction_acceptance
 canonicalize_work_item_link_type
 cascade_decision_revision_to_approval
 cascade_stakeholder_approver_revoke
@@ -85,12 +86,16 @@ clear_work_item_raci
 commit_meeting_minutes
 compute_critical_path_phases
 compute_escalation_patterns
+construction_acceptance_guard
+construction_acceptance_summary
 construction_defect_guard
 construction_defect_summary
 construction_section_blocking_defects
+construction_section_blocking_refs
 construction_section_guard
 construction_section_phase_guard
 construction_section_repath_subtree
+construction_trade_blocking_refs
 convert_open_item_to_decision
 convert_open_item_to_task
 create_committee
@@ -127,6 +132,7 @@ enforce_audit_exempt_write
 enforce_class3_trusted_processor
 enforce_clearance_event_immutability
 enforce_committee_meeting_confidentiality_floor
+enforce_construction_acceptance_event_immutability
 enforce_construction_defect_event_immutability
 enforce_dd_question_confidentiality_floor
 enforce_decision_immutability
@@ -186,6 +192,7 @@ record_approval_response
 record_audit_changes
 record_audit_lifecycle
 record_clearance_approval_response
+record_construction_acceptance
 record_decision_insert
 record_deliverable_approval_response
 record_dependency_delete_audit
@@ -209,6 +216,7 @@ revoke_tenant_ai_provider_dpa
 risk_construction_reference_guard
 risk_measure_overview
 rollback_skill_version
+schedule_construction_acceptance
 seal_audit_chain
 seed_committee_templates
 seed_communication_templates
@@ -217,6 +225,8 @@ seed_risk_categories_if_empty
 seed_stage_gates
 set_communication_embargo
 set_communication_inner_circle
+set_construction_acceptance_document
+set_construction_acceptance_participants
 set_deliverable_raci
 set_ma_valuation_link
 set_meeting_attendee
@@ -269,6 +279,7 @@ update_committee
 update_committee_meeting
 update_committee_member
 update_communication_entry
+update_construction_acceptance
 update_construction_defect
 update_dd_finding
 update_spa_issue
