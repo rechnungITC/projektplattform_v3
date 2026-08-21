@@ -19,10 +19,33 @@ export interface RunSummaryArgs {
   documentId: string
   /** Wer den Lauf ausgelöst hat — landet in `ki_runs.actor_user_id`. */
   actorUserId: string
+  /**
+   * Überschreibt eine von Hand geänderte Fassung. Standard ist `false`.
+   *
+   * Die Spec verlangt zweimal, dass eine Handänderung nicht automatisch verloren
+   * geht: „save promotes status to `user_edited` and stops further
+   * auto-regeneration unless admin force-re-runs" und der Edge-Case „User edits
+   * Quintessenz then re-uploads document → previous user edit is preserved
+   * unless PM explicitly opts into regeneration".
+   *
+   * Heute hielte das auch ohne diesen Schalter — aber nur zufällig, aus dem
+   * Zusammenspiel dreier Aufrufer: der Upload legt stets ein neues Dokument an,
+   * der nächtliche Lauf überspringt jede vorhandene Zeile, und nur der
+   * Wiederholen-Knopf trifft eine bestehende. Ein vierter Aufrufer (β mit
+   * Überschreiben beim erneuten Hochladen) würde die Handänderung stillschweigend
+   * vernichten. Der Schalter macht aus der zufälligen Eigenschaft eine
+   * zugesicherte: wer überschreiben will, muss es sagen.
+   */
+  force?: boolean
 }
 
 export interface RunSummaryResult {
-  status: "auto" | "stale"
+  /**
+   * `user_edited` heißt: es wurde bewusst NICHTS getan, die Handänderung steht
+   * weiter. Ein eigener Wert statt `stale`, weil „ich habe deine Fassung
+   * behalten" das Gegenteil von „es ist keine da" ist.
+   */
+  status: "auto" | "stale" | "user_edited"
   reason_code: string | null
 }
 
@@ -37,10 +60,24 @@ export interface RunSummaryResult {
 export async function runDocumentSummary(
   args: RunSummaryArgs,
 ): Promise<RunSummaryResult | null> {
-  const { tenantId, documentId, actorUserId } = args
+  const { tenantId, documentId, actorUserId, force = false } = args
 
   try {
     const supabase = createAdminClient()
+
+    // 0. Handänderung schützen, BEVOR irgendetwas an ein Modell geht. Früh, weil
+    //    ein Abbruch danach nicht nur die Fassung retten, sondern auch einen
+    //    unnötigen (kostenpflichtigen) Modellaufruf sparen soll.
+    if (!force) {
+      const { data: current } = await supabase
+        .from("document_summaries")
+        .select("status")
+        .eq("document_id", documentId)
+        .maybeSingle()
+      if (current?.status === "user_edited") {
+        return { status: "user_edited", reason_code: "user_edited_preserved" }
+      }
+    }
 
     // 1. Auszug laden. Ohne 'extracted' gibt es nichts zu tun — der Zustand
     //    der Extraktions-Zeile ist bereits die Erklärung für den Nutzer.
@@ -128,6 +165,13 @@ export async function runDocumentSummary(
         generated_at: new Date().toISOString(),
         status: hasSummary ? "auto" : "stale",
         reason_code: result.reason_code ?? null,
+        // Zurücksetzen, nicht stehen lassen: der Inhalt ist ab jetzt
+        // Maschinenausgabe, und ein Bearbeiter-Stempel auf einem Text, den
+        // niemand angefasst hat, wäre schlicht falsch. Dass die Fassung einmal
+        // von Hand geändert war, steht im Feld-Audit (`status` und
+        // `summary_markdown` sind getrackt) — es geht also nichts verloren.
+        edited_by_user_id: null,
+        edited_at: null,
       },
       { onConflict: "document_id" },
     )

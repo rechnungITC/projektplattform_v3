@@ -171,3 +171,114 @@ export async function fetchStorageQuota(
   if (!res.ok) throw new Error(await safeError(res))
   return (await res.json()) as QuotaStatus
 }
+
+// ---------------------------------------------------------------------------
+// PROJ-80-α — Quintessenz
+// ---------------------------------------------------------------------------
+
+export interface DocumentExtractionMeta {
+  status: "pending" | "extracted" | "failed" | "too_large" | "unsupported_type"
+  char_count: number | null
+  page_count: number | null
+  failure_code: string | null
+  privacy_class: 1 | 2 | 3
+  classification_unverified: boolean
+  extracted_at: string | null
+}
+
+export interface DocumentSummaryRow {
+  document_id: string
+  structured_summary: Record<string, unknown> | null
+  summary_markdown: string | null
+  status: "auto" | "user_edited" | "stale"
+  reason_code: string | null
+  generated_at: string | null
+  generated_by_skill_version_id: string | null
+  edited_by_user_id: string | null
+  edited_at: string | null
+  updated_at: string
+}
+
+export interface DocumentSummaryResponse {
+  // Beide Felder sind in `documents` nullable und werden von der Route
+  // unverändert durchgereicht — als `string` deklariert wären sie eine
+  // Zusicherung, die der Server nicht einhält.
+  document: { id: string; original_filename: string | null; mime_type: string | null }
+  summary: DocumentSummaryRow | null
+  extraction: DocumentExtractionMeta | null
+}
+
+/**
+ * Ergebnis eines Erzeugungslaufs. `user_edited` bedeutet „bewusst nichts getan,
+ * die Handänderung steht weiter" — über den Wiederholen-Knopf kann es nicht
+ * auftreten (der erzwingt), über einen automatischen Lauf schon.
+ */
+export interface DocumentSummaryRunResult {
+  status: "auto" | "stale" | "user_edited"
+  reason_code: string | null
+}
+
+/**
+ * Fehler mit HTTP-Status.
+ *
+ * Die Oberfläche muss 409 („jemand anders war schneller") von einem echten
+ * Fehlschlag unterscheiden können. Auf die Meldung zu prüfen wäre das
+ * Anti-Muster, das PROJ-77-α als Followup hinterlassen hat.
+ */
+export class DmsRequestError extends Error {
+  readonly status: number
+  constructor(status: number, message: string) {
+    super(message)
+    this.name = "DmsRequestError"
+    this.status = status
+  }
+}
+
+export async function fetchDocumentSummary(
+  projectId: string,
+  documentId: string,
+): Promise<DocumentSummaryResponse> {
+  const res = await fetch(
+    `${p(projectId)}/documents/${encodeURIComponent(documentId)}/summary`,
+    { method: "GET", cache: "no-store" },
+  )
+  if (!res.ok) throw new DmsRequestError(res.status, await safeError(res))
+  return (await res.json()) as DocumentSummaryResponse
+}
+
+/**
+ * Speichert die von Hand geänderte Fassung.
+ *
+ * `updated_at` reist als `If-Match` mit — der Server verlangt den Kopf (428
+ * ohne ihn) und antwortet mit 409, wenn zwischenzeitlich jemand anders
+ * gespeichert hat.
+ */
+export async function saveDocumentSummary(
+  projectId: string,
+  documentId: string,
+  summaryMarkdown: string,
+  updatedAt: string,
+): Promise<DocumentSummaryRow> {
+  const res = await fetch(
+    `${p(projectId)}/documents/${encodeURIComponent(documentId)}/summary`,
+    {
+      method: "PATCH",
+      headers: { "content-type": "application/json", "if-match": updatedAt },
+      body: JSON.stringify({ summary_markdown: summaryMarkdown }),
+    },
+  )
+  if (!res.ok) throw new DmsRequestError(res.status, await safeError(res))
+  return ((await res.json()) as { summary: DocumentSummaryRow }).summary
+}
+
+export async function retryDocumentSummary(
+  projectId: string,
+  documentId: string,
+): Promise<DocumentSummaryRunResult> {
+  const res = await fetch(
+    `${p(projectId)}/documents/${encodeURIComponent(documentId)}/summary/retry`,
+    { method: "POST" },
+  )
+  if (!res.ok) throw new DmsRequestError(res.status, await safeError(res))
+  return (await res.json()) as DocumentSummaryRunResult
+}
