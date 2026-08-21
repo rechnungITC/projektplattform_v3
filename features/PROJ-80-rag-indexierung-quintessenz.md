@@ -1,6 +1,6 @@
 # PROJ-80: RAG-Indexierung + Quintessenz
 
-## Status: In Progress (α gebaut — Backend + Frontend vollständig; `/qa` offen)
+## Status: Approved (α — `/qa` PASS 2026-08-21, 0 Critical / 0 High; ein offenes Kriterium: echter Anbieter-Lauf)
 ## Deployment Scope: —
 > Scope bleibt bewusst leer: `Deployed` verlangt eine QA ohne Critical/High, und die hat nicht
 > stattgefunden. Zwei Kriterien sind zudem noch offen (echter Anbieter-Lauf, angemeldeter
@@ -523,7 +523,10 @@ die Quintessenz des vorigen Dokuments in die neue Ansicht.
 | Audit-Hook (PROJ-10) | erfüllt, mit Abweichung D-α.4 | Feld-Audit auf `status`/`summary_markdown`/`structured_summary` + Lebenszyklus (α.1); **keine** benannten Ereignisse `document.summary_edited` etc. |
 | Zugriffsprotokoll für vertrauliche Inhalte | erfüllt | `logConfidentialAccess`; Routentests belegen Eintrag bei `strict`, **kein** Eintrag bei `standard`, und Auslieferungs-Stopp bei fehlgeschlagenem Pflichteintrag — inkl. Prüfung, dass der Inhalt dabei nicht doch durchsickert |
 | Umschalter „Vollständig / Quintessenz" am verknüpften Dokument | **offen, nicht baubar** | keine Aufgabe↔Dokument-Verknüpfung im Produkt → PROJ-Y-80b |
-| Echter Ende-zu-Ende-Lauf mit Anbieter | **offenes Kriterium** | siehe unten |
+| Echter Ende-zu-Ende-Lauf mit Anbieter | **offenes Kriterium** | siehe unten; in `/qa` 2026-08-21 bestätigt offen — Anbieter nur im Kundenmandanten, Nutzer stellt Endpunkt → PROJ-Y-80d |
+| Angemeldeter Browser-Durchlauf über die Fläche | **erfüllt in `/qa`** | `PROJ-80-alpha-qa-chain.spec.ts`: Baum → Dokument → Reiter Quintessenz → Handänderung, in Oberfläche **und** Datenbank geprüft (3× grün) |
+| Autorisierungs-Fix greift wirklich (#399) | **erfüllt in `/qa`** | HTTP-Kette mit echter Sitzung + 3 Gegenproben; rot-grün: ohne Auflöser antwortet der Angriff **200** und schreibt |
+| Zugriffsprotokoll live (δ2), nicht nur gemockt | **erfüllt in `/qa`** | `strict` erzeugt genau 1 Eintrag, `standard` keinen; rot-grün belegt |
 
 #### Offenes Kriterium (ausdrücklich keine Abweichung)
 
@@ -536,6 +539,11 @@ eine nicht ausgeführte Prüfebene ist kein Zugeständnis, sondern eine offene Z
 ist ein **angemeldeter Browser-Durchlauf** über die Fläche; die DMS-Fläche ist zwar nicht modul-gegatet,
 das DMS in Produktion aber leer, und ein Dokument mit Auszug und Quintessenz gibt es in keiner Fixture.
 Beides gehört zu `/qa`.
+
+> **Nachtrag `/qa` 2026-08-21:** die zweite Hälfte ist eingelöst — der Browser-Durchlauf läuft gegen ein
+> in `/qa` geseedetes Dokument (`PROJ-80-alpha-qa-chain.spec.ts`). Die erste Hälfte (Modell-Aufruf) bleibt
+> offen und ist als **PROJ-Y-80d** registriert; der Nutzer stellt dafür einen Endpunkt bereit, weil
+> Anbieter live ausschließlich im Kundenmandanten existieren.
 
 #### Abweichungen
 
@@ -571,7 +579,215 @@ API-Routen liefern das Umleitungsziel `/login?next=…`.
 **Offen für α (historisch, erledigt):** Routen Anzeigen/Bearbeiten/Wiederholen und die Dokument-Detailfläche.
 
 ## QA Test Results
-_To be added by /qa._
+
+### `/qa` PASS 2026-08-21 — 0 Critical / 0 High / 0 Medium / 0 Low → **Approved**
+
+Die α-Slice war bis hierher gebaut, aber nie als Ganzes abgenommen. `/frontend`
+hatte zwei Zusagen ausdrücklich offen gelassen; **eine ist jetzt eingelöst**, die
+andere bleibt ein benanntes offenes Kriterium (unten).
+
+Wichtiger als das Nachmessen der Belege war der **Sicherheits-Fix aus #399**. Er
+ist Anwendungscode (`resolveDocumentInProject`), und ein Anwendungs-Guard ist nur
+so viel wert wie die Aussage, dass die Datenbank ihn nicht ohnehin überflüssig
+macht. Genau das war offen.
+
+#### 1. Der Autorisierungs-Fix — Voraussetzung und Wirkung getrennt bewiesen
+
+**Die Voraussetzung** (Live-Pentest, Teil 1, Vektoren K und L als Paar): die
+Quintessenz-Zeile **ist** für jedes Projektmitglied lesbar (`L = 1`), es gibt aber
+**keinen** Client-Schreibweg (`K/M/N = 42501`) — geschrieben wird also mit
+service-role. Zwischen „Bearbeitungsrecht in Projekt A" und „Quintessenz eines
+Dokuments aus Projekt B" steht damit nachweislich **nichts** außer dem Auflöser.
+
+**Die Wirkung** (`tests/PROJ-80-alpha-qa-chain.spec.ts`, echte Sitzung über HTTP):
+
+| Fall | Erwartung | Ergebnis |
+|---|---|---|
+| Angriff: `PATCH /projects/A/documents/{docB}` | 404, Zeile unverändert | **404**, `status` weiter `auto`, `edited_by_user_id` null |
+| Angriff: `GET /projects/A/documents/{docB}` | 404, kein Inhalt im Rumpf | **404** |
+| Angriff: `POST …/{docB}/summary/retry` über Projekt A | 404, `updated_at` unverändert | **404** |
+| Gegenprobe Sichtbarkeit: `GET /projects/B/documents/{docB}` | 200 mit Inhalt | **200** |
+| Gegenprobe Recht: `PATCH /projects/A/documents/{docA}` | 200 → `user_edited` | **200**, Bearbeiter gestempelt |
+| Rollenregel: `PATCH /projects/B/documents/{docB}` | 403 (nur Betrachter) | **403** |
+| Sperre: ohne `If-Match` / veraltet | 428 / 409 | **428 / 409** |
+
+Die drei Gegenproben sind der Kern. Der Angriff allein belegt nichts — ein 404
+könnte auch von einer kaputten Sitzung kommen. Erst *Angriff + Recht* sagt „der
+**Pfad** war das Problem, nicht die Sitzung", und erst *Angriff + Sichtbarkeit*
+sagt „die RLS hat die Zeile **nicht** verborgen; gestoppt hat allein der
+Auflöser". Die Rollenregel trennt zusätzlich `403` (Bereich richtig, Rolle zu
+schwach) von `404` (Bereich falsch) — ohne sie bliebe unklar, woran der Angriff
+scheitert.
+
+**Rot-Grün, und das Ergebnis ist der eigentliche Befund:** mit entferntem
+Auflöser im `PATCH` antwortet derselbe Angriff **HTTP 200**. Der Schreibvorgang
+gelingt also wirklich — ein Projekt-`viewer` in B überschreibt B's Quintessenz
+über Projekt A. (Die Route gibt 200 ausschließlich, wenn das `UPDATE` eine Zeile
+zurückgab; andernfalls 409. Das 200 belegt damit den Schreibvorgang, nicht nur
+den Statuscode.) Der Fix ist tragend, nicht dekorativ. Danach zurückgesetzt —
+über eine Dateikopie, nicht `git checkout` (PROJ-130-δ2/F-3) — und wieder grün.
+
+**Warum der Bau-Betrachter der einzig mögliche Akteur ist:**
+`isProjectEditAllowed` gibt für `tenantRole === "admin"` in **jedem** Projekt des
+Mandanten `true` zurück (live am Code gelesen). Mit dem geteilten E2E-Nutzer ist
+„Betrachter in Projekt B" also gar nicht darstellbar und der Angriff würde
+legitim mit 200 enden. `E2E_CONSTRUCTION_VIEWER_USER_ID` ist Mandanten-`member`
+und Projekt-`viewer` — von PROJ-45-β genau aus diesem Grund so angelegt. Er
+bringt seine Sitzung mit: keine fünfte Fixture-Spur, kein weiterer
+Anmeldevorgang.
+
+#### 2. Die Fläche im angemeldeten Browser (schließt die erste `/frontend`-Zusage)
+
+Dokument mit Auszug und Quintessenz geseedet, dann durchfahren: Baum → Dokument
+wählen → Reiter „Quintessenz" → Kurzfassung sichtbar, Abzeichen „Automatisch
+erzeugt" → „Bearbeiten" → speichern → Abzeichen „Von Hand geändert". Beide
+Hälften geprüft: die Oberfläche sagt es **und** die Datenbank bestätigt es
+(`summary_markdown`, `status='user_edited'`, `edited_by_user_id`). Ohne die zweite
+Hälfte wäre nur belegt, dass ein Abzeichen seinen Text wechselt.
+
+#### 3. Zugriffsprotokoll für vertrauliche Inhalte (δ2), erstmals live
+
+Die Routentests belegen das gemockt; hier läuft es gegen die echte RPC. Das
+**Paar** ist die Zusicherung: bei `strict` entsteht genau **ein** Eintrag, bei
+`standard` **keiner**. Nur die erste Hälfte wäre auch mit „protokolliert immer
+alles" grün — eine andere und teurere Zusage.
+
+#### Live-Nachweise gegen Prod (alle zurückgerollt)
+
+| Datei / Lauf | Ergebnis |
+|---|---|
+| `PROJ-80-document-extractions-pentest.sql` (α.1, **wörtlich**) | **10/10 PASS** |
+| `PROJ-80-alpha-qa-redteam-pentest.sql` Teil 1 (neu) | **13/13 PASS** |
+| `PROJ-80-alpha-qa-redteam-pentest.sql` Teil 2 (neu, Summarizer-Skill) | **9/9 PASS** |
+| `PROJ-Y-115c-document-confidentiality-pentest.sql` Teil 1 (Regression, **wörtlich**) | **A–Q 17/17 PASS** |
+| Playwright `PROJ-80-alpha-qa-chain.spec.ts` + `PROJ-80-document-summary.spec.ts` | **3× 13/13** chromium |
+
+Die 115c-Regression ist nicht Zierde: α.1 hat `entity_type`-CHECK,
+`_tracked_audit_columns` und `can_read_audit_entry` per Anker-Ersetzung gepatcht,
+und deren Vektor Q prüft genau den `document_tree_nodes`-Zweig des Lesetors.
+
+Teil 2 belegt die Skill-Kriterien (nachgesät · aktive Fassung · `cross_cutting` ·
+idempotent · **nicht löschbar `42501`**) mit `F` als Falsch-Grün-Sicherung: ein
+*gewöhnlicher* Skill bleibt löschbar, der Wächter sperrt also nicht alles.
+
+#### Zwei eigene Prüf-Fehler, gefunden und behoben
+
+- **Der wichtigere:** die erste Fassung der Protokoll-Prüfung war **grün, obwohl
+  der Protokoll-Aufruf aus der Route entfernt war** — sie fragte „existiert ein
+  `strict`-Eintrag?", und das Protokoll ist seit δ1 append-only, also war die
+  Antwort durch die Geschichte früherer Läufe erfüllt. Zusätzlich war die
+  Vorfassung mit einer `+1`-Erwartung ab dem zweiten Lauf rot, weil δ2
+  **entprellt** — Schlüssel `(actor, project, entity_type, action, max_level)` in
+  15 Minuten, `entity_id` gehört **nicht** dazu (an der Live-Definition gemessen,
+  nicht vermutet). Das Produkt war beide Male richtig, die Erwartung falsch.
+  Gelöst über ein **je Lauf frisches Projekt**: keine Vorgeschichte möglich,
+  Entprellungs-Schlüssel garantiert neu, Erwartung exakt (0 dann genau 1) — und
+  rot-grün belegt.
+- Zwei Fixture-/Locator-Fehler: das Dokument war zunächst als `node_type:
+  "folder"` geseedet (der Baum rendert `document_tree_nodes`, ein Ordner bekommt
+  korrekt keine Reiter), und „Automatisch erzeugt" traf ohne `exact` auch den
+  Fixture-Text. Beides meine Fehler, nicht die des Produkts.
+
+#### Gates
+
+ESLint **0** · `tsc` **13 = Baseline / 0 neu** — gegen einen **frischen
+`origin/main`-Worktree** gegengemessen (13 = 13); ein Zwischenlauf meldete
+irreführend **3**, das ist die `.next`-Messfalle aus PROJ-Y-143e/PROJ-45-β, nach
+`rm -rf .next` sind beide Seiten 13 · vitest **3562/3562** (423 Dateien) · Build
+**clean**, beide Routen registriert · `check:migration-naming` 0 Fehler ·
+`check:index-scope` 0 Fehler · Supabase-Advisors **149 WARN / 0 ERROR**.
+
+Die zwei PROJ-80-Advisor-Meldungen (`_dms_document_ctx`,
+`ensure_summarizer_skill`) sind nachgeprüft **dieselbe** Kategorie
+(`authenticated_security_definer_function_executable`), die `_dms_node_ctx` seit
+PROJ-Y-115c trägt und die 146× im Bestand vorkommt — dem Muster inhärent, weil
+die Policies die Funktion als `authenticated` aufrufen müssen.
+
+#### Offenes Kriterium (unverändert, ausdrücklich keine Abweichung)
+
+Der **echte Ende-zu-Ende-Lauf mit erreichbarem Anbieter** ist weiterhin nicht
+bewiesen. Live gemessen, warum: das DMS in Prod ist leer (0 Dokumente), es gibt
+kein lokales Ollama, keine Schlüssel in `.env.local`, und Anbieter hat
+ausschließlich der **Kundenmandant** (`ollama` + `openai`, beide `valid`). Der
+Nutzer hat entschieden, einen eigenen Endpunkt bzw. Wegwerf-Schlüssel
+bereitzustellen; damit wird die Kette in einem eigenen `[E2E]`-Mandanten
+gefahren. Bis dahin bleibt es ein **offenes Akzeptanzkriterium**, keine
+Abweichung (PROJ-135-Lehre) → **PROJ-Y-80d**.
+
+Bewiesen ist alles davor: ungemockte Extraktion, Volltext-Klassifikation, die
+Kette in `runDocumentPipeline`, die Skill-Nachsaat, die Lockstep-Regeln, alle drei
+Tore, die Sperre und das Protokoll.
+
+#### Befunde
+
+- **F-1 (Info, vorbestehend, repo-weit — NICHT PROJ-80):** `authenticated` **und**
+  `anon` halten `TRUNCATE` auf **151 von 152** Tabellen des `public`-Schemas
+  (Supabase-Standardvergabe). `TRUNCATE` umgeht RLS vollständig. Über die
+  Produktfläche nicht erreichbar — PostgREST hat kein `TRUNCATE`-Verb, es braucht
+  direkten SQL-Zugang, der ohnehin privilegiert ist; `audit_log_entries` trägt
+  seit PROJ-130-α einen eigenen `no_truncate`-Wächter, das Projekt kennt die
+  Klasse also. **PROJ-80s Tabellen sind dabei strenger als der Bestand**: kein
+  einziger Schreib-Grant (Vektor `W = 0`), während 150 Tabellen `INSERT` tragen.
+  Nichts verfolgt das heute → **PROJ-Y-80e**.
+- **F-2 (Info, vorbestehend, PROJ-107 — NICHT PROJ-80):**
+  `seed_risk_categories_if_empty` ist `anon`-ausführbar (einziger
+  `anon_security_definer`-Advisor). Live geprüft **nicht ausnutzbar** (`anon` →
+  `42501`), aber eine Abweichung von der Hausnorm „revoke EXECUTE from `anon` on
+  everything". PROJ-80s `ensure_summarizer_skill` folgt demselben Muster und ist
+  dort **korrekt entzogen** → **PROJ-Y-80f**.
+- **F-3 (Info, gemessene Einordnung, kein Fund):** das Tor von
+  `ensure_summarizer_skill` ist die **Mitgliedschaft**, nicht Admin (Nicht-Mitglied
+  → `P0003`). Das ist richtig: die Kette startet am Upload, den jeder Bearbeiter
+  auslösen darf — ein Admin-Tor würde die Quintessenz eines Nicht-Admin-Uploads
+  verhindern. Live gegengeprüft ist es zudem das Hausmuster:
+  `seed_risk_categories_if_empty` (PROJ-107) und
+  `ensure_default_ma_project_templates` (PROJ-96) sind **beide** ebenso
+  mitgliedschafts-gegatet.
+
+- **F-4 (Info, vorbestehend, PROJ-Y-114a/148e — NICHT PROJ-80):** der CI-Wächter
+  „Verify prod function inventory vs migration files" schlägt am QA-PR fehl,
+  obwohl dieser **keine** Migration enthält. Nachgemessen statt zugeordnet: grün
+  auf `7feb4c92`, rot auf `d59b08b0` (dem PROJ-Y-114a-Merge) und allen
+  `main`-Läufen danach — also **seit und wegen** PROJ-Y-114a. Der Wächter tut
+  genau das, wofür PROJ-Y-148e ihn gebaut hat: dessen `pending_merge`-Ausnahme
+  `_dd_finding_source_question_guard` wurde mit dem Merge überflüssig, und die
+  Liste räumt sich selbst auf. Nicht hier mitbehoben, weil die Zusage dieses PRs
+  „kein `src/`-Diff" ist und fremde Slice-Buchführung ihn schwerer prüfbar
+  machte; der Check ist nicht enrolled, blockiert also keinen Merge →
+  **PROJ-Y-114d**.
+
+#### Rückstände — offengelegt statt gerundet
+
+Alle Datenzeilen sind entfernt: `document_summaries`, `document_extractions`,
+`documents`, `document_tree_nodes`, `[E2E 80]`-Projekte und -Mitgliedschaften je
+**0**; Mandanten wieder **6**.
+
+**Nicht entfernt: 16 Feld-Audit-Zeilen** (`document_summaries`, Paare aus
+`status` + `summary_markdown`) aus den erfolgreichen Handänderungen der
+Testläufe, sämtlich in `[E2E]`-Mandanten mit synthetischem Inhalt. Sie sind seit
+PROJ-130-α **append-only ohne Löschpfad**. Bemerkenswert dabei: **keine einzige
+Lebenszyklus-Zeile** ist angefallen — `audit_lifecycle_exempt` hat für Anlage und
+Löschung der Fixtures gegriffen; durchgekommen ist nur der Feld-Audit, der von
+der Ausnahme nicht abgedeckt ist. Das ist genau **PROJ-Y-45e**. Bewusst nicht
+über den Runbook-Weg (`session_replication_role = replica`) entfernt: dafür
+müssten in Produktion die Append-only-Wächter abgeschaltet werden, und dieses
+Risiko ist größer als 16 synthetische Zeilen in Testmandanten. Dazu **eine
+Protokollzeile je Lauf** in `confidential_read_log` (ebenfalls append-only,
+δ1/PROJ-Y-130n) — der Preis dafür, dass die Protokoll-Prüfung nicht ins Leere
+greift.
+
+#### Abweichungen
+
+Die fünf Abweichungen aus `/frontend` (D-α.1 … D-α.5) bleiben unverändert
+gültig. Neu hinzu:
+
+- **D-α.6 — kein authentifizierter Durchlauf für `strict`-Sichtbarkeit.** Die
+  Browser-Prüfung des Protokolls läuft als Mandanten-Admin, für den
+  `can_access_classified` kurzschließt; geprüft wird dort das **Protokoll**, nicht
+  das Tor. Das Tor selbst ist im Live-Pentest belegt (`T`/`U`: `strict` verborgen,
+  auch gegen eine Klartextsuche im Markdown) — bewusst dort, weil ein
+  Nicht-Admin-Mitglied in Prod synthetisiert werden muss.
+- **D-α.7 — Mobile Safari übersprungen** (WebKit-Host-Bibliotheken, PROJ-67/F2).
 
 ## Deployment
 _To be added by /deploy._
