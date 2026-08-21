@@ -1,10 +1,11 @@
 # PROJ-80: RAG-Indexierung + Quintessenz
 
-## Status: In Progress (α gebaut — Backend + Frontend vollständig; `/qa` offen)
+## Status: Approved (α — QA PASS 2026-08-21, 0 Critical / 0 High)
 ## Deployment Scope: —
-> Scope bleibt bewusst leer: `Deployed` verlangt eine QA ohne Critical/High, und die hat nicht
-> stattgefunden. Zwei Kriterien sind zudem noch offen (echter Anbieter-Lauf, angemeldeter
-> Browser-Durchlauf) — siehe „Offenes Kriterium" in den Implementierungsnotizen.
+> Scope bleibt leer, bis `/deploy` läuft (Hausregel: Scope ist ein Feld des Deployments). Die QA vom
+> 2026-08-21 ist bestanden. Vom vorherigen Hinweis ist **ein** Kriterium erledigt — der angemeldete
+> Browser-Durchlauf — und eines bleibt offen: der echte Anbieter-Lauf; sein Grund ist jetzt gemessen
+> statt vermutet (kein Fixture-Mandant hat einen KI-Anbieter, kein lokales Ollama erreichbar).
 
 **Created:** 2026-06-06
 **Last Updated:** 2026-08-18
@@ -570,8 +571,141 @@ API-Routen liefern das Umleitungsziel `/login?next=…`.
 
 **Offen für α (historisch, erledigt):** Routen Anzeigen/Bearbeiten/Wiederholen und die Dokument-Detailfläche.
 
-## QA Test Results
-_To be added by /qa._
+## QA Test Results — α, 2026-08-21 (PASS · 0 Critical / 0 High → Approved)
+
+Unabhängig gegen den **deployten** Stand geprüft (`main` = `a26c63e`). Der `/frontend`-Lauf hat
+**zwei Kriterien ausdrücklich an `/qa` übergeben**; eines davon ist hier geschlossen, das andere
+ist nachgemessen begründet und bleibt offen.
+
+### 1. Angemeldeter Browser-Durchlauf — geschlossen
+
+Neu: `tests/PROJ-80-alpha-summary-chain.spec.ts`, **2/2 chromium**, im Verbund mit den
+Bestands-Specs **14/14** (PROJ-80 4 + PROJ-79 8 + neu 2).
+
+Warum überhaupt geseedet werden musste — live gemessen, nicht angenommen: das DMS ist in
+Produktion **leer** (0 `documents`, 0 `document_tree_nodes`, 0 `document_extractions`,
+0 `document_summaries`), und keine Fixture legt ein Dokument mit Auszug und Quintessenz an. Die
+Fläche ist **nicht** modul-gegatet, deshalb genügt der geteilte E2E-Mandant; eine eigene Lane wie
+bei PROJ-Y-144d war nicht nötig.
+
+| Schritt | Zusicherung |
+|---|---|
+| Reiter „Quintessenz" am ausgewählten Dokument | Fassung sichtbar, Abzeichen **„Automatisch erzeugt"** |
+| „Bearbeiten" → Text ändern → „Speichern" | Abzeichen wechselt auf **„Von Hand geändert"** |
+| **Gegenprobe in der Datenbank** | `status='user_edited'`, `summary_markdown` = der neue Text, `edited_by_user_id` = der angemeldete Nutzer — die Oberfläche behauptet den Wechsel, die Zeile beweist ihn |
+| „Neu erzeugen" über der Handänderung | **Bestätigungsdialog** „Handänderung überschreiben?" erscheint |
+| „Abbrechen" | Text **und** `status='user_edited'` unverändert |
+
+**Die tragende Zusicherung ist der Dialog.** Ohne ihn wäre die von der Spec nur als Ausnahme
+erlaubte Zerstörung („unless admin force-re-runs") ein einzelner Klick — F-4 des zweiten
+`/frontend`-Laufs. Ein Panel-Test beweist, dass die Komponente den Dialog *kennt*; erst dieser
+Durchlauf beweist, dass er auf der echten Seite auch **erscheint**.
+
+*Eigener Testfehler, im ersten Lauf gefangen:* die Zusicherung auf das Abzeichen „Automatisch
+erzeugt" war zweideutig, weil mein Seed-Text dieselben Worte enthielt. Auf `exact: true` verschärft
+**und** die Seed-Texte umbenannt, damit die Falle nicht wiederkommt.
+
+### 2. Echter Ende-zu-Ende-Lauf mit Anbieter — bleibt offen, Grund gemessen
+
+**Nicht durchgeführt, und zwar nicht aus Nachlässigkeit:**
+
+- **Kein Fixture-Mandant hat einen KI-Anbieter.** Live erhoben: `tenant_ai_providers` trägt genau
+  zwei Zeilen, beide im **Kundenmandanten** (`IT-Couch GmbH`: `ollama`, `openai`).
+- **Kein lokales Ollama erreichbar** (`127.0.0.1:11434` antwortet nicht, keine CLI installiert) —
+  derselbe Blocker wie in PROJ-89-D-1.
+- Den Lauf zu erzwingen hieße, im **Kundenmandanten** ein Dokument samt Auszug anzulegen und dessen
+  OpenAI-Schlüssel zu verbrauchen. Das hinterlässt **dauerhafte** Feld-Audit-Zeilen in seinem
+  Compliance-Protokoll (append-only seit PROJ-130-α; `audit_lifecycle_exempt` deckt Feld-Audit
+  **nicht** ab, und es beim Kunden zu setzen wäre falsch). Das ist eine Produkt-Entscheidung, keine
+  QA-Entscheidung.
+
+Beides ist damit ein **offenes Akzeptanzkriterium**, keine Abweichung — und es ist jetzt mit Zahlen
+statt mit „Anbieter nicht erreichbar" begründet. Die Lockstep-Voraussetzungen sind live geprüft und
+tragen, sobald ein Anbieter da ist: `ki_runs_purpose_check` **und** der Kostendeckel-CHECK enthalten
+beide `document_summary`.
+
+### 3. Datenschicht: Pentest und Rot-Team
+
+**`tests/sql/PROJ-80-document-extractions-pentest.sql` — 10/10 am Ziel** gegen Prod
+(A default `privacy_class=3` fail-closed · B ungeprüfter Text 23514 · C/D Sichtbarkeit 1/0 ·
+**E Aggregat-Leck 0** · F Mitglieds-INSERT 42501 · G/H Audit-Tor `true`/`false` · I Audit-Zeilen 2 ·
+J unbekannter Auflöser 0). **Ergänzt um `X_admin_shortcircuit=false`** — ohne diesen Zusatz wäre
+Vektor **G** (`can_read_audit_entry` = `true`) für einen Mandanten-Administrator trivial grün.
+
+**Rot-Team-Supplement, neu in dieser QA — 9/9 am Ziel:**
+
+| Vektor | Frage | Ergebnis |
+|---|---|---|
+| **K** | Ist die lesende Identität wirklich kein Administrator? | `false` — die übrigen Vektoren sind damit nicht falsch-grün |
+| **L** | Direkter `UPDATE` der Quintessenz als Projekt-**Editor** | **42501** — und zwar auf **Grant**-Ebene, noch vor RLS |
+| **M** | Direktes `DELETE` | **42501** |
+| **N** | `strict`-Quintessenz im **eigenen** Projekt sichtbar? | 0 |
+| **O** | **Inhaltssuche** nach ihrem Text (Gegenprobe zu N) | 0 — eine Regel, die nur Zeilenlisten filtert, fällt hier auf |
+| **P** | Quintessenz eines Dokuments im **fremden Mandanten** | 0 |
+| **Q** | Eigene `standard`-Quintessenz lesbar? | 1 — kein Blanket-Deny |
+| **R** | Auszug derselben `strict`-Zeile | 0 |
+| **S** | Schreibrechte von `authenticated` auf `document_summaries` | **0** (kein INSERT/UPDATE/DELETE-Grant) |
+
+**L/M/S zusammen sind der eigentliche Befund dieser Prüfung, und er ist beruhigend:** die
+Autorisierung des `PATCH` (der sicherheitsrelevante Fix aus `/frontend`) ist **nicht** die einzige
+Verteidigung. Beide Tabellen tragen genau **eine** permissive Regel — für `SELECT` — und keine
+einzige für Schreibvorgänge; `authenticated` hält dazu gar kein Schreibrecht. Geschrieben wird
+ausschließlich mit Dienst-Schlüssel durch die Route. Das ist dasselbe Rezept wie bei `dd_findings`
+und macht die Route zur einzigen Tür, statt zur bequemsten.
+
+**Regression der Vertraulichkeitskette (PROJ-Y-115c), auf der α aufsetzt — 5/5:** Wächter-Funktionen
+für `authenticated` **nicht** aufrufbar, die zwei Policy-Auflöser sehr wohl (sonst wären die Regeln
+wirkungslos), Vererbung beim Einfügen greift, Herabstufen 23514, Anheben kaskadiert in den Teilbaum.
+
+### 4. Belege je Akzeptanzkriterium (α-Anteil)
+
+Die Belegtabelle der `/frontend`-Notizen ist am Code und an der Datenbank nachgeprüft; sie hält.
+Zwei Ergänzungen aus dieser QA:
+
+| Kriterium | Zustand nach QA |
+|---|---|
+| Quintessenz-Reiter sichtbar und inline bearbeitbar | **im Browser bewiesen** (vorher nur Routen-/Panel-Test) |
+| Speichern hebt auf `user_edited` | **im Browser bewiesen, mit DB-Gegenprobe** |
+| „unless admin force-re-runs" | **Dialog im Browser bewiesen** |
+| Lesen folgt Dokument-RLS, Bearbeiten braucht Lead/Editor | zusätzlich **auf DB-Ebene** belegt: kein Schreib-Grant, keine Schreib-Policy |
+| Echter Anbieter-Lauf | **offen** (Abschnitt 2) |
+| Reiter „Verlinkungen", Umschalter „Vollständig/Quintessenz" | **offen**, nicht baubar → PROJ-Y-80a / PROJ-Y-80b (unverändert) |
+
+### 5. Befunde
+
+- **F-α.1 (Info, Betrieb, kein Produktfehler):** Feld-Audit-Zeilen aus Testläufen sind **dauerhaft**.
+  Gemessen nach meinem Lauf: `document_summaries` hat **0** Zeilen, aber es gibt **60** Audit-Zeilen
+  dazu — **4 davon aus meinen zwei Durchläufen**, die übrigen 56 (plus 18 zu
+  `document_tree_nodes`) aus **fremden** Läufen desselben Tages in zwei Fixture-Mandanten. Ursache
+  ist der bereits registrierte PROJ-Y-45e: `tenants.audit_lifecycle_exempt` unterdrückt nur
+  Anlage/Löschung, **nicht** den Feld-Audit. Kein Leck und kein Fehler dieser Slice — aber jeder
+  E2E-Durchlauf über eine Zustandsmaschine lässt das Compliance-Artefakt unwiderruflich wachsen.
+  Für α bedeutet das: die Fläche ist E2E-testbar, aber nicht rückstandsfrei.
+- **F-α.2 (Info, Beobachtung):** der `summarizer`-Skill ist in **keinem** Mandanten geseedet
+  (`skills where slug='summarizer'` → 0). Das ist so gebaut (Nachsaat bei Bedarf über
+  `ensure_summarizer_skill`), heißt aber: das AC „aktiv in jedem Mandanten" ist erst erfüllt,
+  **nachdem** der Pfad einmal gelaufen ist. Der Retry-Routentest deckt genau den Fall ab, dass die
+  Nachsaat scheitert und die Erzeugung trotzdem läuft.
+
+**Keine Critical-, High- oder Medium-Befunde.**
+
+### 6. Gates (2026-08-21, auf `main` = `a26c63e`)
+
+ESLint **0** · `tsc` **13 = Baseline / 0 neu** · vitest **3573/3573** (425 Dateien) ·
+Build **clean** · `check:index-scope` 0 Fehler · `check:migration-naming` 0 Fehler ·
+Playwright **14/14** chromium · Advisors **149 WARN / 0 ERROR** · **Datenrückstände 0**
+(alle vier DMS-Tabellen wieder bei 0, keine Fixture-Zeile übrig).
+
+Mobile Safari übersprungen (WebKit-Host-Bibliotheken, PROJ-67/F2 — D-α.5 unverändert).
+
+### 7. Verdikt
+
+**PRODUCTION-READY — 0 Critical / 0 High.** Status auf **`Approved`**; Deployment Scope bleibt `—`,
+bis `/deploy` läuft. **Zwei offene Kriterien bleiben offen und sind benannt:** der echte
+Anbieter-Lauf (Abschnitt 2, braucht eine Produkt-Entscheidung oder einen erreichbaren Anbieter) und
+die beiden nicht baubaren Flächen (PROJ-Y-80a/80b). Beim Buchen des Scopes im `/deploy`-Schritt
+schließen diese `full` aus — die zurückgestellten Original-Anforderungen sind registriert.
+
 
 ## Deployment
 _To be added by /deploy._
