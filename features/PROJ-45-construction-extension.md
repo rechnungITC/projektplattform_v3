@@ -2821,6 +2821,78 @@ gefahren.
 
 ---
 
+## Deployment — δ (2026-08-21)
+
+**Tag `v2.73.0-PROJ-45-delta` · PR #435 (squash) → main `cde35eb` · Feature-Scope bleibt `alpha`.**
+
+### Was wann live ging — und warum das nicht derselbe Commit ist
+
+Die δ-**Laufzeit** ist mit dem `/frontend`-Merge live gegangen (`b7e328d`, Produktions-Deployment
+`dpl_J3RytyDRAxYEDPcjQVL7XdrShPds`, **READY**); der `/qa`-Commit `cde35eb` ändert **nur** Tests und
+Buchführung und hat kein Laufzeitverhalten. Der Tag sitzt auf dem QA-Merge, weil dort die Slice
+abgeschlossen ist — die Fläche selbst lief schon vorher. Gesagt statt gerundet, weil ein Tag, der auf
+einem docs-Commit sitzt, sonst als Auslieferungszeitpunkt gelesen würde.
+
+**Kein Runtime-DB-Change beim Merge:** die Migration `20260820180000` liegt seit `/backend` in Prod.
+
+### Prod eigenständig nachgemessen, nicht aus den Notizen übernommen
+
+- **3** δ-Funktionen vorhanden, davon **0** `SECURITY DEFINER` (alle drei INVOKER) und **3** mit
+  gesetztem `search_path`.
+- `anon` kann **keine** der fünf berührten Funktionen ausführen; **0** PUBLIC-Einträge in den ACLs
+  (geprüft über den Eintrag, der mit `=` **beginnt** — ein naives `%=X/%` trifft `authenticated`).
+- **9** `construction%`-Tabellen — **unverändert**: δ hat keine angelegt.
+- `audit_log_entity_type_check` trägt **95** Objektarten — **unverändert** gegenüber γ. L30 ist damit
+  nicht nur zugesagt, sondern gemessen: kein Register-Eingriff.
+- **0** deaktivierte Trigger auf den Bau-Tabellen, **0** Rückstände der QA-Läufe.
+
+### Auslieferung belegt, nicht gefolgert
+
+Alle **drei** δ-Flächen stehen im **Build-Log des ausgelieferten Produktions-Deployments** als Routen:
+`/projects/[id]/terminsignale`, `/api/projects/[id]/construction-schedule-signals` und
+`…/construction-schedule-signals/export`. Das ist die tragende Aussage — ein **307 beweist die
+Existenz einer Route nicht**, weil der Proxy auch auf erfundene Pfade umleitet (in γ gegengeprüft).
+Der Post-Deploy-Smoke über sechs Adressen liefert genau **307** mit `text/plain`-Rumpf und **keinem**
+CSV-Inhalt, auch für die Export-Route mit gültiger **und** mit erfundener Sektion. **0 Laufzeitfehler**
+im 24-Stunden-Fenster.
+
+Alle sechs Pflicht-Checks grün, darunter der **Schema-Drift-Wächter** — der belegt unabhängig, dass
+die zwei Anker-Ersetzungen auch in einer frisch aus den Migrationsdateien gebauten Datenbank greifen
+— und der **Funktions-Inventar-Wächter** (283 → **286**, gegen Prod gegengezählt).
+
+### Scope bleibt `alpha` — aber aus einem anderen Grund als vorher
+
+Bis γ trug PROJ-45 `alpha`, weil **AC-45β.18** eine zurückgestellte ursprüngliche Anforderung war und
+γ/δ/ε offen standen. **AC-45β.18 ist mit δ erfüllt** (AC-45δ.16): die überfälligen Mängel erscheinen
+als Engpass-Sicht an einem Ort, den ein Bauprojekt **erreicht**; der Ort weicht vom Wortlaut ab
+(δ-Fläche statt der M&A-Engpass-Sicht aus PROJ-103) und die Abweichung ist als L25/D-δ8 dokumentiert,
+**nicht** umgeschrieben. Damit fällt der bisherige Hauptgrund weg.
+
+**Übrig bleibt genau einer:** **PROJ-45-ε (Fotodokumentation)** ist eine ursprüngliche Anforderung der
+Erstfassung, per L4 ausdrücklich zurückgestellt („Fotodokumentation später") und in
+`features/OPEN-DEFERRED-STATUS.md` mit Ziel-ID geführt. Eine einzige zurückgestellte
+Original-Anforderung schließt `full` aus, und die Ausnahme „Waived criterion" scheitert schon an ihrer
+**ersten** Bedingung („nothing was deferred"). `mvp` wäre falsch, weil δ ein **benannter Sub-Slice**
+der Reihe α/β/γ/δ/ε mit eigenen 24 Kriterien ist und ε namentlich geführt wird — das ist wörtlich die
+`alpha`-Definition. Nach ε ist `full` erreichbar, dann mit eigener QA- und Deploy-Runde.
+
+### Die gelieferte Grenze wird gegenüber γ breiter
+
+Vier Sub-Slices lang war die Bau-Erweiterung eine **Erfassungsfläche**: Gewerke, Abschnitte, Mängel
+und Abnahmen ließen sich anlegen und einzeln durchsehen. δ liefert den **zusammenfassenden Blick**:
+Gewerk-Signale mit benannten Gründen neben der manuellen Ampel, Abschnittsfortschritt mit
+Quellenangabe statt „0 %", die nächsten 14 Tage mit verstrichenen Fristen oben, die Engpass-Sicht der
+überfälligen Mängel, CSV je Block, und einen optionalen Bau-Abschnitt im Status-Report. Alles **rein
+lesend** — jede Aktion ist ein Sprung auf die Fläche, die schreibt.
+
+### Offen nach δ
+
+**PROJ-45-ε** (Fotodokumentation) sowie **PROJ-Y-45b/45c/45d/45e/45f/45g/45h/45i/45j/45k/45l/45m**.
+Nicht δ: β's QA-Teardown im PROJ-Y-148d-Zweig (PROJ-Y-45h, von dieser QA präzisiert — unlöschbar ist
+ein Mangel erst **mit** Verlaufszeilen).
+
+---
+
 ## Deployment — γ (2026-08-20)
 
 **Tag `v2.70.0-PROJ-45-gamma` · PR #422 (squash) → main `31aef7f` · Deployment Scope `alpha`.**
