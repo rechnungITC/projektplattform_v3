@@ -31,7 +31,12 @@ export function ConstructionSignalExportButton({
 }) {
   if (disabled) {
     return (
-      <Button size="sm" variant="outline" disabled>
+      <Button
+        size="sm"
+        variant="outline"
+        disabled
+        aria-label={`${label} als CSV herunterladen`}
+      >
         <Download className="mr-1 h-3.5 w-3.5" aria-hidden />
         {label}
       </Button>
@@ -39,9 +44,15 @@ export function ConstructionSignalExportButton({
   }
   return (
     <Button asChild size="sm" variant="outline">
+      {/*
+        Der sichtbare Text ist knapp („Gewerke"), weil er neben dem Blocktitel
+        steht — als ZUGÄNGLICHER Name wäre er aber doppelt und verschwiege, dass
+        hier eine Datei kommt. Darum ein eigener `aria-label` (QA-Befund δ).
+      */}
       <a
         href={constructionScheduleSignalsExportUrl(projectId, section)}
         download
+        aria-label={`${label} als CSV herunterladen`}
       >
         <Download className="mr-1 h-3.5 w-3.5" aria-hidden />
         {label}
