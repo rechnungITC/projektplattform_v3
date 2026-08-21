@@ -61,6 +61,13 @@ export async function PATCH(
     p_status: d.status ?? null,
     p_linked_risk_id: d.linked_risk_id ?? null,
     p_responsible_user_id: d.responsible_user_id ?? null,
+    // PROJ-Y-114a — Herkunftsnachweis. `p_clear_source` verwirft die alte Aussage,
+    // damit ein weggelassenes Feld nicht stillschweigend den alten Wert behaelt
+    // (der Defekt, den PROJ-122 als D-1 live getroffen hat).
+    p_source_kind: d.source_kind ?? null,
+    p_source_ref: d.source_ref ?? null,
+    p_source_dd_question_id: d.source_dd_question_id ?? null,
+    p_clear_source: d.clear_source ?? false,
   })
 
   if (error) {

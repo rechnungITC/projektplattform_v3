@@ -112,6 +112,10 @@ export async function POST(
     p_recommended_treatment: d.recommended_treatment ?? null,
     p_linked_risk_id: d.linked_risk_id ?? null,
     p_confidentiality_level: d.confidentiality_level ?? null,
+    // PROJ-Y-114a — Herkunftsnachweis.
+    p_source_kind: d.source_kind ?? null,
+    p_source_ref: d.source_ref ?? null,
+    p_source_dd_question_id: d.source_dd_question_id ?? null,
   })
 
   if (error) {

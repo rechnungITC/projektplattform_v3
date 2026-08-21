@@ -15,7 +15,14 @@ import { runDocumentSummary } from "./summary-runner"
 
 export interface PipelineResult {
   extraction_status: string | null
-  summary_status: "auto" | "stale" | null
+  /**
+   * `user_edited` heißt: es lag eine von Hand geänderte Fassung vor und der Lauf
+   * hat sie bewusst stehen gelassen. Der Wert ist hier nicht bloß der
+   * Vollständigkeit halber — ein automatischer Lauf, der einen Handtext
+   * überschreibt, wäre ein Datenverlust, und dieser Rückgabewert ist die Stelle,
+   * an der ein Aufrufer das unterscheiden kann.
+   */
+  summary_status: "auto" | "stale" | "user_edited" | null
 }
 
 /**

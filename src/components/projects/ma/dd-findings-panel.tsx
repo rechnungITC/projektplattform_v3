@@ -51,6 +51,7 @@ import {
   type DdFindingEscalation,
   type DdFindingsSummaryRow,
   type FindingSeverity,
+  type FindingSourceKind,
   type FindingStatus,
   type FindingTreatment,
   fetchFindingsSummary,
@@ -65,7 +66,10 @@ import {
 
 import {
   fmtEur,
+  FINDING_SOURCE_KIND_LABEL,
+  FINDING_SOURCE_KINDS,
   FINDING_STATUS_LABEL,
+  formatFindingSource,
   SEVERITY_LABEL,
   severityBadgeVariant,
   TREATMENT_LABEL,
@@ -314,7 +318,15 @@ export function DdFindingsPanel({ projectId }: { projectId: string }) {
                       <TableBody>
                         {visibleFindings.map((f) => (
                           <TableRow key={f.id}>
-                            <TableCell className="font-medium">{f.title}</TableCell>
+                            <TableCell className="font-medium">
+                              {f.title}
+                              {/* PROJ-Y-114a — Herkunft direkt unter der Feststellung. */}
+                              {formatFindingSource(f.source_kind, f.source_ref) && (
+                                <span className="block text-xs font-normal text-muted-foreground">
+                                  Quelle: {formatFindingSource(f.source_kind, f.source_ref)}
+                                </span>
+                              )}
+                            </TableCell>
                             <TableCell className="text-muted-foreground">{streamLabel(f.dd_stream_id)}</TableCell>
                             <TableCell>
                               <Badge variant={severityBadgeVariant(f.severity)}>
@@ -402,6 +414,11 @@ function FindingDialog({
     finding?.recommended_treatment ?? ""
   )
   const [status, setStatus] = React.useState<FindingStatus>(finding?.status ?? "open")
+  // PROJ-Y-114a — Herkunftsnachweis (PROJ-108 AC1 "Quelle").
+  const [sourceKind, setSourceKind] = React.useState<FindingSourceKind | "">(
+    finding?.source_kind ?? ""
+  )
+  const [sourceRef, setSourceRef] = React.useState(finding?.source_ref ?? "")
   const [submitting, setSubmitting] = React.useState(false)
   const [error, setError] = React.useState<string | null>(null)
 
@@ -425,6 +442,14 @@ function FindingDialog({
           clear_eur: eurNum === null,
           recommended_treatment: treatment === "" ? null : treatment,
           status,
+          // Die Herkunft wird als Ganzes neu gesetzt: `clear_source` verwirft die
+          // alte Aussage, danach gilt nur, was der Dialog mitgibt. Ohne das Flag
+          // liesse sich eine einmal gesetzte Quelle nie wieder entfernen — genau
+          // der Defekt, den PROJ-122 als D-1 in Prod hatte.
+          clear_source: true,
+          source_kind: sourceKind === "" ? null : sourceKind,
+          source_ref: sourceRef.trim() || null,
+          source_dd_question_id: finding.source_dd_question_id,
         })
         toast.success(
           severity === "deal_breaker" && finding.severity !== "deal_breaker"
@@ -439,6 +464,8 @@ function FindingDialog({
           severity,
           economic_impact_eur: eurNum,
           recommended_treatment: treatment === "" ? null : treatment,
+          source_kind: sourceKind === "" ? null : sourceKind,
+          source_ref: sourceRef.trim() || null,
         }
         await createFinding(projectId, payload)
         toast.success(
@@ -569,6 +596,47 @@ function FindingDialog({
                 </div>
               )}
             </div>
+            {/* PROJ-Y-114a — Quelle / Herkunftsnachweis. Getrennt vom Sachverhalt,
+                weil "was wurde festgestellt" und "woher stammt es" bei einem
+                Deal-Breaker zwei verschiedene Aussagen sind. */}
+            <div className="flex flex-wrap gap-3">
+              <div className="min-w-[180px] flex-1 space-y-2">
+                <Label>Quelle</Label>
+                <Select
+                  value={sourceKind === "" ? "__none" : sourceKind}
+                  onValueChange={(v) =>
+                    setSourceKind(v === "__none" ? "" : (v as FindingSourceKind))
+                  }
+                >
+                  <SelectTrigger>
+                    <SelectValue placeholder="—" />
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="__none">—</SelectItem>
+                    {FINDING_SOURCE_KINDS.map((k) => (
+                      <SelectItem key={k} value={k}>
+                        {FINDING_SOURCE_KIND_LABEL[k]}
+                      </SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+              </div>
+              <div className="min-w-[180px] flex-1 space-y-2">
+                <Label htmlFor="f-source-ref">Fundort (optional)</Label>
+                <Input
+                  id="f-source-ref"
+                  value={sourceRef}
+                  onChange={(e) => setSourceRef(e.target.value)}
+                  maxLength={500}
+                  placeholder="z. B. VDR 3.4.1 oder Interview CFO 12.05."
+                />
+              </div>
+            </div>
+            {isEdit && finding?.source_dd_question_id && (
+              <p className="text-xs text-muted-foreground">
+                Aus einer DD-Frage eskaliert — die Verknüpfung bleibt erhalten.
+              </p>
+            )}
             {error && <p className="text-sm text-destructive">{error}</p>}
 
             {isEdit && finding && (

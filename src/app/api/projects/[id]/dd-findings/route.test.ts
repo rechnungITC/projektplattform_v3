@@ -121,4 +121,64 @@ describe("POST /api/projects/[id]/dd-findings", () => {
     rpcMock.mockResolvedValue({ data: null, error: { code: "P0002", message: "no stream" } })
     expect((await post({ dd_stream_id: STREAM, title: "X" })).status).toBe(404)
   })
+
+  // --- PROJ-Y-114a — Herkunftsnachweis ------------------------------------
+  it("passes the source provenance through to the RPC", async () => {
+    getUserMock.mockResolvedValue({ data: { user: { id: ME } } })
+    queueProjectView()
+    rpcMock.mockResolvedValue({ data: { id: "f1" }, error: null })
+    const QUESTION = "77777777-7777-4777-8777-777777777777"
+    const res = await post({
+      dd_stream_id: STREAM,
+      title: "Altlasten",
+      source_kind: "qa_answer",
+      source_ref: "VDR 3.4.1",
+      source_dd_question_id: QUESTION,
+    })
+    expect(res.status).toBe(201)
+    expect(rpcMock).toHaveBeenCalledWith(
+      "create_dd_finding",
+      expect.objectContaining({
+        p_source_kind: "qa_answer",
+        p_source_ref: "VDR 3.4.1",
+        p_source_dd_question_id: QUESTION,
+      })
+    )
+  })
+  it("defaults the source to null when omitted (no silent provenance)", async () => {
+    getUserMock.mockResolvedValue({ data: { user: { id: ME } } })
+    queueProjectView()
+    rpcMock.mockResolvedValue({ data: { id: "f1" }, error: null })
+    await post({ dd_stream_id: STREAM, title: "X" })
+    expect(rpcMock).toHaveBeenCalledWith(
+      "create_dd_finding",
+      expect.objectContaining({
+        p_source_kind: null,
+        p_source_ref: null,
+        p_source_dd_question_id: null,
+      })
+    )
+  })
+  it("400 on an invented source_kind", async () => {
+    getUserMock.mockResolvedValue({ data: { user: { id: ME } } })
+    queueProjectView()
+    const res = await post({
+      dd_stream_id: STREAM,
+      title: "X",
+      source_kind: "hearsay",
+    })
+    expect(res.status).toBe(400)
+    expect(rpcMock).not.toHaveBeenCalled()
+  })
+  it("400 on a non-uuid source_dd_question_id", async () => {
+    getUserMock.mockResolvedValue({ data: { user: { id: ME } } })
+    queueProjectView()
+    const res = await post({
+      dd_stream_id: STREAM,
+      title: "X",
+      source_dd_question_id: "not-a-uuid",
+    })
+    expect(res.status).toBe(400)
+    expect(rpcMock).not.toHaveBeenCalled()
+  })
 })

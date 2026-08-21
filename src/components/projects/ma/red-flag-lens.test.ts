@@ -53,6 +53,11 @@ function finding(
     linked_risk_id: null,
     responsible_user_id: null,
     confidentiality_level: "standard",
+    // PROJ-Y-114a hat die drei Herkunftsfelder als Pflichtfelder ergaenzt; die
+    // Linse (PROJ-Y-2) filtert nach Schwere und liest sie nicht.
+    source_kind: null,
+    source_ref: null,
+    source_dd_question_id: null,
     created_by: null,
     created_at: "2026-08-17T10:00:00Z",
     updated_at: "2026-08-17T10:00:00Z",

@@ -1,5 +1,6 @@
 import type {
   FindingSeverity,
+  FindingSourceKind,
   FindingStatus,
   FindingTreatment,
 } from "@/lib/ma-project/dd-findings-api"
@@ -26,6 +27,39 @@ export const FINDING_STATUS_LABEL: Record<FindingStatus, string> = {
   in_review: "In Prüfung",
   resolved: "Erledigt",
   dismissed: "Verworfen",
+}
+
+// PROJ-Y-114a — Herkunftsnachweis. Die Reihenfolge ist die des Beweiswerts:
+// ein Datenraum-Dokument oder eine schriftliche Q&A-Antwort traegt weiter als
+// eine muendliche Auskunft — genau die Unterscheidung, die vorher nur als
+// Freitext im Sachverhalt stand.
+export const FINDING_SOURCE_KIND_LABEL: Record<FindingSourceKind, string> = {
+  document: "Datenraum-Dokument",
+  qa_answer: "Q&A-Antwort",
+  interview: "Management-Interview",
+  site_visit: "Standortbesichtigung",
+  analysis: "Eigene Analyse",
+  other: "Sonstige",
+}
+
+export const FINDING_SOURCE_KINDS: readonly FindingSourceKind[] = [
+  "document",
+  "qa_answer",
+  "interview",
+  "site_visit",
+  "analysis",
+  "other",
+] as const
+
+/** „Datenraum-Dokument — VDR 3.4.1" bzw. nur eines von beiden; `null` wenn keine Quelle. */
+export function formatFindingSource(
+  kind: FindingSourceKind | null | undefined,
+  ref: string | null | undefined
+): string | null {
+  const k = kind ? FINDING_SOURCE_KIND_LABEL[kind] : null
+  const r = ref?.trim() ? ref.trim() : null
+  if (k && r) return `${k} — ${r}`
+  return k ?? r
 }
 
 export function severityBadgeVariant(
