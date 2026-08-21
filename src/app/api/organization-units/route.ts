@@ -1,6 +1,8 @@
 import { NextResponse } from "next/server"
 import { z } from "zod"
 
+import { requireModuleActive } from "@/lib/tenant-settings/server"
+
 import {
   apiError,
   getAuthenticatedUserId,
@@ -12,6 +14,13 @@ import { resolveActiveTenantId } from "../_lib/active-tenant"
 // PROJ-62 — Organization Unit collection endpoint.
 // GET  /api/organization-units → tenant-member, flat list
 // POST /api/organization-units → tenant-admin, create
+//
+// PROJ-Y-143n — both handlers gate on the `organization` module. PROJ-62
+// promised this ("requireModuleActive gates all UI and API paths") and its own
+// QA booked the omission as debt (bug M2-Re); only the PROJ-63 CSV-import
+// routes ever got the gate, which left the switch half-effective. Read intent
+// answers 404 so the gate does not reveal what it hides; write intent answers
+// 403 because the caller demonstrably knows the surface.
 
 const SELECT_COLUMNS =
   "id, tenant_id, parent_id, name, code, type, location_id, import_id, description, is_active, sort_order, created_at, updated_at"
@@ -42,6 +51,13 @@ export async function GET() {
   const tenantId = await resolveActiveTenantId(userId, supabase)
   if (!tenantId) return apiError("forbidden", "No tenant membership.", 403)
 
+  const moduleDenial = await requireModuleActive(
+    supabase,
+    tenantId,
+    "organization",
+  )
+  if (moduleDenial) return moduleDenial
+
   const memberDenial = await requireTenantMember(supabase, tenantId, userId)
   if (memberDenial) return memberDenial
 
@@ -61,6 +77,14 @@ export async function POST(request: Request) {
 
   const tenantId = await resolveActiveTenantId(userId, supabase)
   if (!tenantId) return apiError("forbidden", "No tenant membership.", 403)
+
+  const moduleDenial = await requireModuleActive(
+    supabase,
+    tenantId,
+    "organization",
+    { intent: "write" },
+  )
+  if (moduleDenial) return moduleDenial
 
   const adminDenial = await requireTenantAdmin(supabase, tenantId, userId)
   if (adminDenial) return adminDenial

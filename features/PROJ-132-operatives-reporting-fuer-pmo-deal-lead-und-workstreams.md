@@ -15,6 +15,9 @@ summary_for_jira: "[M2] Operatives Reporting für PMO, Deal Lead und Workstreams
 # PROJ-132: Operatives Reporting für PMO, Deal Lead und Workstreams
 
 ## Status: Deployed (2026-07-27 — PR #263 → main, Tag v2.25.0-PROJ-132; QA PASS need-to-know-Pentest A–G 7/7, 0 Critical/High)
+## Deployment Scope: full
+
+> **Scope-Klassifikation (PROJ-Y-145b, Tranche 3, 2026-08-20):** QA 2026-07-24: **AC1…AC5 alle ✅ PASS**, Need-to-know-Pentest A–G 7/7 inkl. Aggregat-Leck-Probe, Playwright 5/5. D-1 („Excel" = CSV) ist eine dokumentierte Umsetzungsabweichung innerhalb der AC-Formulierung „PDF/Excel", die PDF-Hälfte ist gebaut.
 
 > **Post-Deploy-Audit 2026-07-28 — offene Remediation → [PROJ-141](PROJ-141-cross-cutting-audit-remediation-77-96-132.md):**
 > Querschnittsprüfung fand 3 MEDIUM Filter-/Konsistenzbefunde + 1 LOW-Pentest-Lücke, die AC2 + DoD in der Praxis brechen (QA-Vektoren A–G haben die Wechselwirkung nicht getroffen).

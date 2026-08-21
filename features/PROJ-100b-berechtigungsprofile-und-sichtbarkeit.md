@@ -14,6 +14,10 @@ summary_for_jira: "[B5b] Berechtigungsprofile + Wer-darf-was-Übersicht + anon-R
 # PROJ-100b: Berechtigungsprofile & Wer-darf-was-Sichtbarkeit
 
 ## Status: Deployed (2026-06-24 — frontend PR #178 squash-merged 3d7a4ea, backend via #174; tag v1.99.0-PROJ-100b; 2 Migrations in Prod; prod auth-gate smoke 5/5 307)
+## Deployment Scope: full
+
+> **Scope-Klassifikation (PROJ-Y-145b, Tranche 3, 2026-08-20):** QA 2026-06-24: **11/11 AC** ✅, 0 Critical/High, Prod-Auth-Gate-Smoke 5/5, Live-Pentest A–H.
+
 **Created:** 2026-06-23
 **Last Updated:** 2026-06-24
 

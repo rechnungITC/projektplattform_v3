@@ -3,8 +3,31 @@
 ## Status: Deployed
 ## Deployment Scope: alpha
 
+> **β ist deployed (2026-08-19, Tag `v2.61.0-PROJ-45-beta`, PR #402 squash → main `740b16b`).**
+> **Deployment Scope `alpha`** — aus den Belegen klassifiziert, nicht aus dem Etikett: `full` ist
+> ausgeschlossen, weil **AC-45β.18 eine zurückgestellte ursprüngliche Anforderung** ist (nach
+> PROJ-45-δ verschoben, D-β1), und weil drei Stories der Erstfassung (Abnahmen γ, Terminsignale δ,
+> Fotodokumentation ε) offen bleiben. Die Ausnahme „Waived criterion“ greift **nicht** — Begründung
+> an allen vier Bedingungen im Abschnitt „Deployment — β“.
+>
+> **γ ist deployed (2026-08-20, Tag `v2.70.0-PROJ-45-gamma`, PR #422 squash → main `31aef7f`).**
+> **Deployment Scope bleibt `alpha`** — aus den Belegen klassifiziert, nicht aus dem Etikett, und
+> γ ändert daran nichts: `full` bleibt ausgeschlossen, weil **AC-45β.18** eine zurückgestellte
+> **ursprüngliche** Anforderung ist (nach δ verschoben, D-β1) und weil zwei Stories der Erstfassung
+> — Terminsignale (δ) und Fotodokumentation (ε) — offen bleiben. Die Ausnahme „Waived criterion“
+> greift nicht: sie verlangt „nothing was deferred“, hier ist ausdrücklich etwas zurückgestellt und
+> mit Ziel-ID registriert. Begründung an allen vier Bedingungen im Abschnitt „Deployment — γ“.
+> 29/29 γ-AC, **12/12** Härtungskriterien; γ-Pentest **60/60**, Rot-Team **11/11**,
+> authentifizierte Kette **3× 3/3** inkl. echtem PDF-Druck, Regressionen α 18/18 ·
+> PROJ-Y-45a 9/9 · PROJ-103 7/7 · β **53/53**, **0 Rückstände**. **Kein Runtime-DB-Change beim
+> Merge** — beide Migrationen liegen seit `/backend` in Prod.
+>
+> **α ist unverändert live** (Tag `v2.56.0-PROJ-45-alpha`, Scope `alpha`, PR #385); die Nachweise
+> dazu stehen weiter unten unverändert. Die Zeile in `features/INDEX.md` führt weiterhin **einen**
+> Scope für das Feature; er bleibt `alpha`, die gelieferte Grenze wird um β breiter.
+
 **Created:** 2026-05-06
-**Last Updated:** 2026-08-13 (Requirements refined + Tech Design — gegen den deployten Stand geerdet, Zuschnitt in Sub-Slices getrennt, 8 Nutzer-Locks, alle vier Forks beantwortet, CIA-Review zu Q2 eingearbeitet)
+**Last Updated:** 2026-08-20 (**γ `/qa` PASS** — 29/29 AC, 12/12 Härtungskriterien, 0 Critical/High/Medium; der authentifizierte Durchlauf ist gefahren und ein echter PDF-Druck liegt vor. Vier Befunde, davon **einer fremd verursacht und gewichtig**: PROJ-Y-148d hat β's QA-Teardown und β's Pentest-Vektor Z gebrochen — gemessen, und die Ursache ist belegt bei 148d, nicht bei γ. Vorher: **γ `/frontend` live** — Reiter, zwei Masken, Detailansicht, Druckseite; ein gemessener Befund: die Fristrechnung existiert zwangsläufig zweimal und die naive TypeScript-Fassung wich am Monatsende von Postgres ab, hätte dem Nutzer also ein anderes rechtlich relevantes Fristende gezeigt als gespeichert wird — behoben und über fünf live gemessene Datumspaare gepinnt. Vorher: **γ `/backend` live** — 2 Migrationen in Prod, Live-Pentest 56/56 + 4/4 Nachlauf, 0 Rückstände; vier Befunde, darunter zwei, die ohne Nachmessen still geblieben wären: eine parallele Session hat β's Ereignis-Wächter am selben Tag gehärtet und γ hatte die schwache Form geerbt, und das Teilnehmer-Modell hätte das Löschen eines Stakeholders blockiert. Vorher: **γ architected** — alle sieben Fragen beantwortet, kein CIA-Pass nötig; vier Befunde aus der Erdung, drei davon korrigieren ein Akzeptanzkriterium: die Gesamtabnahme über den Wurzel-Abschnitt war nicht baubar, der Beleg hätte mit eingefroren, und die Teilnehmer-Achse „Projektmitglied" war doppelt. Vierter Befund: die Entfernen-Meldung aus α/β würde durch γ **falsch**, nicht bloss unvollständig. Vorher: **γ spezifiziert** — Abnahmen, 29 AC, 7 Nutzer-Locks. Vorher: β **deployed** — Tag `v2.61.0-PROJ-45-beta`, Scope `alpha`, Prod-Verifikation eigenständig nachgemessen, Post-Deploy-Smoke 8/8 exakt 307 ohne Leck, ein Dokumentationsfehler korrigiert (Trigger-Zahl). Vorher: β `/qa` PASS — Zwei-Personen-Durchlauf gefahren, fünf Tech-Design-Risiken geprüft, echter PDF-Druck, 4 Befunde; 2026-08-13 Requirements refined + Tech Design)
 
 ---
 
@@ -176,7 +199,12 @@ bei aktivem Modul erscheinen, damit ERP-, Software- und M&A-Projekte unveränder
 
 ## PROJ-45-β — Mängelmanagement (Requirements 2026-08-14)
 
-**Status: Planned** · zweiter Sub-Slice, baut auf dem deployten α auf.
+**Status: Deployed** (2026-08-19, Scope `alpha`) · zweiter Sub-Slice, baut auf dem deployten α auf.
+`/backend` in Prod seit 2026-08-18 (Migration `20260818104358`, Live-Pentest 53/53, 0 Rückstände),
+`/frontend` dieselbe Woche (Mängel-Fläche, Druckseite, Zähler je Gewerk, ein Nav-Eintrag; 9/9
+Visual-Baselines unberührt), `/qa` **PASS** 2026-08-19 (0 Critical / 0 High / 0 Medium),
+`/deploy` 2026-08-19 (Tag `v2.61.0-PROJ-45-beta`, PR #402 → main `740b16b`).
+Scope `alpha`, weil AC-45β.18 per Nutzer-Entscheid nach δ verschoben ist (D-β1) und γ/δ/ε offen sind.
 
 ### Ein Befund vorweg: L3s Begründung ist zur Hälfte überholt
 
@@ -232,50 +260,50 @@ WBS-Rollups verfälschen — Auswertungen, die genau davon leben, dass dort gepl
 Als **Projektmitglied auf der Baustelle** möchte ich einen Mangel in wenigen Feldern festhalten,
 damit er nicht verloren geht, während ich noch vor Ort bin.
 
-- [ ] **AC-45β.1** Jedes Projektmitglied — auch mit Betrachterrolle — kann einen Mangel anlegen (L15).
-- [ ] **AC-45β.2** Pflicht sind Titel, Gewerk und Schweregrad; Ort, Beschreibung, Frist und Nachunternehmer sind optional (L13/L14).
-- [ ] **AC-45β.3** Auswählbar sind nur Gewerke und Abschnitte **dieses** Projekts; ein projektfremder Verweis wird serverseitig abgewiesen.
-- [ ] **AC-45β.4** Ein neu erfasster Mangel steht auf „offen" und ist ohne weiteren Schritt in der Liste sichtbar.
+- [x] **AC-45β.1** Jedes Projektmitglied — auch mit Betrachterrolle — kann einen Mangel anlegen (L15).
+- [x] **AC-45β.2** Pflicht sind Titel, Gewerk und Schweregrad; Ort, Beschreibung, Frist und Nachunternehmer sind optional (L13/L14).
+- [x] **AC-45β.3** Auswählbar sind nur Gewerke und Abschnitte **dieses** Projekts; ein projektfremder Verweis wird serverseitig abgewiesen.
+- [x] **AC-45β.4** Ein neu erfasster Mangel steht auf „offen" und ist ohne weiteren Schritt in der Liste sichtbar.
 
 #### ST-45β.2 — Nachbesserung steuern
 Als **Bauleitung** möchte ich Frist, Verantwortlichen und ausführenden Nachunternehmer setzen,
 damit die Nachbesserung zugeordnet und terminiert ist.
 
-- [ ] **AC-45β.5** Nur Projektleitung/Bauleitung oder Mandanten-Administration ändert einen bestehenden Mangel; ein Betrachter kann nach dem Anlegen nichts mehr ändern (L15).
-- [ ] **AC-45β.6** Frist, Verantwortlicher und Nachunternehmer (aus PROJ-15) sind setz- und wieder entfernbar.
-- [ ] **AC-45β.7** Der Status folgt der Kette offen → in Bearbeitung → erledigt → geprüft; jeder Wechsel ist auditiert.
-- [ ] **AC-45β.8** Ein Mangel kann verworfen werden (etwa „kein Mangel"), mit Pflichtbegründung.
+- [x] **AC-45β.5** Nur Projektleitung/Bauleitung oder Mandanten-Administration ändert einen bestehenden Mangel; ein Betrachter kann nach dem Anlegen nichts mehr ändern (L15).
+- [x] **AC-45β.6** Frist, Verantwortlicher und Nachunternehmer (aus PROJ-15) sind setz- und wieder entfernbar.
+- [x] **AC-45β.7** Der Status folgt der Kette offen → in Bearbeitung → erledigt → geprüft; jeder Wechsel ist auditiert.
+- [x] **AC-45β.8** Ein Mangel kann verworfen werden (etwa „kein Mangel"), mit Pflichtbegründung.
 
 #### ST-45β.3 — Prüfen
 Als **Bauleitung** möchte ich eine gemeldete Nachbesserung abnehmen oder zurückweisen,
 damit „erledigt" nicht dasselbe bedeutet wie „nachgesehen".
 
-- [ ] **AC-45β.9** „Geprüft" setzt ausschließlich Projektleitung/Bauleitung oder Mandanten-Administration.
-- [ ] **AC-45β.10** Wer den Mangel auf „erledigt" gesetzt hat, kann ihn **nicht selbst** auf „geprüft" setzen; der Versuch wird serverseitig abgewiesen (L10).
-- [ ] **AC-45β.11** Eine Prüfung kann fehlschlagen und wirft den Mangel auf „in Bearbeitung" zurück, mit Pflichtbegründung.
-- [ ] **AC-45β.12** Der Verlauf zeigt jede Runde nachvollziehbar — wer wann fertigmeldete, wer wann prüfte oder zurückwies.
+- [x] **AC-45β.9** „Geprüft" setzt ausschließlich Projektleitung/Bauleitung oder Mandanten-Administration.
+- [x] **AC-45β.10** Wer den Mangel auf „erledigt" gesetzt hat, kann ihn **nicht selbst** auf „geprüft" setzen; der Versuch wird serverseitig abgewiesen (L10).
+- [x] **AC-45β.11** Eine Prüfung kann fehlschlagen und wirft den Mangel auf „in Bearbeitung" zurück, mit Pflichtbegründung.
+- [x] **AC-45β.12** Der Verlauf zeigt jede Runde nachvollziehbar — wer wann fertigmeldete, wer wann prüfte oder zurückwies.
 
 #### ST-45β.4 — Mängelanzeige herausgeben
 Als **Bauleitung** möchte ich eine Mängelanzeige je Nachunternehmer erzeugen,
 damit die Nachbesserung schriftlich und fristgebunden angefordert ist.
 
-- [ ] **AC-45β.13** Aus der Mängelliste lässt sich eine Anzeige erzeugen, gefiltert auf ein Gewerk oder einen Nachunternehmer.
-- [ ] **AC-45β.14** Die Anzeige ist eine chrome-lose Druckseite; der Browser druckt nach PDF (L11).
-- [ ] **AC-45β.15** Sie enthält je Mangel Titel, Beschreibung, Ort (falls gesetzt), Schweregrad und Nachbesserungsfrist, dazu Projekt- und Erstellungsangaben.
-- [ ] **AC-45β.16** Die Anzeige respektiert die Projektzugehörigkeit: sie zeigt ausschließlich Mängel, die der Aufrufer ohnehin sehen darf.
+- [x] **AC-45β.13** Aus der Mängelliste lässt sich eine Anzeige erzeugen, gefiltert auf ein Gewerk oder einen Nachunternehmer.
+- [x] **AC-45β.14** Die Anzeige ist eine chrome-lose Druckseite; der Browser druckt nach PDF (L11).
+- [x] **AC-45β.15** Sie enthält je Mangel Titel, Beschreibung, Ort (falls gesetzt), Schweregrad und Nachbesserungsfrist, dazu Projekt- und Erstellungsangaben.
+- [x] **AC-45β.16** Die Anzeige respektiert die Projektzugehörigkeit: sie zeigt ausschließlich Mängel, die der Aufrufer ohnehin sehen darf.
 
 #### ST-45β.5 — Überfälliges sehen
 Als **Bauleitung** möchte ich überschrittene Nachbesserungsfristen sofort erkennen,
 damit ich nachhake, bevor die Gewährleistung zum Thema wird.
 
-- [ ] **AC-45β.17** Ein Mangel mit überschrittener Frist und nicht abschließendem Status ist in der Liste als überfällig gekennzeichnet.
+- [x] **AC-45β.17** Ein Mangel mit überschrittener Frist und nicht abschließendem Status ist in der Liste als überfällig gekennzeichnet.
 - [ ] **AC-45β.18** Überfällige Mängel erscheinen in der bestehenden Engpass-Sicht aus PROJ-103, ohne dass dort ein zweiter Mechanismus entsteht (L12).
-- [ ] **AC-45β.19** Die Liste ist nach Gewerk, Abschnitt, Status, Schweregrad und Überfälligkeit filterbar.
+- [x] **AC-45β.19** Die Liste ist nach Gewerk, Abschnitt, Status, Schweregrad und Überfälligkeit filterbar.
 
 #### ST-45β.6 — Sichtbarkeit
-- [ ] **AC-45β.20** Mängel erscheinen nur in Bauprojekten mit aktivem Bau-Modul; bei abgeschaltetem Modul antwortet der Server gleichbleibend abweisend und die Oberfläche zeigt den neutralen „nicht aktiv"-Hinweis.
-- [ ] **AC-45β.21** Ein Gewerk oder Abschnitt, an dem Mängel hängen, lässt sich nicht aus dem Projekt entfernen; die Meldung benennt die betroffenen Mängel (L16).
-- [ ] **AC-45β.22** Mandanten- und Projekttrennung gilt unverändert: fremde Mängel sind unsichtbar, auch aggregiert.
+- [x] **AC-45β.20** Mängel erscheinen nur in Bauprojekten mit aktivem Bau-Modul; bei abgeschaltetem Modul antwortet der Server gleichbleibend abweisend und die Oberfläche zeigt den neutralen „nicht aktiv"-Hinweis.
+- [x] **AC-45β.21** Ein Gewerk oder Abschnitt, an dem Mängel hängen, lässt sich nicht aus dem Projekt entfernen; die Meldung benennt die betroffenen Mängel (L16).
+- [x] **AC-45β.22** Mandanten- und Projekttrennung gilt unverändert: fremde Mängel sind unsichtbar, auch aggregiert.
 
 ### Edge Cases (β)
 
@@ -295,7 +323,7 @@ Fotodokumentation (**ε**) · Verortung im Bauplan · echter Versand der Anzeige
 Abnahmen (**γ**) · Gewährleistungsfristen und -verfolgung über die Bauzeit hinaus ·
 Kostenschätzung je Mangel (L14).
 
-### Offene Fragen für `/architecture`
+### Offene Fragen für `/architecture` — **alle vier beantwortet 2026-08-17**, siehe Tech Design (β)
 
 - **Q-β1 — L15 weicht vom Hausmuster ab.** Betrachter dürfen sonst nirgends anlegen. Die Umsetzung braucht eine differenzierte Schreibregel (Anlegen ja, Ändern nein) statt der üblichen einen. **CIA-relevant**, weil es ein produktweit etabliertes Rechte-Muster aufweicht.
 - **Q-β2 — Wo lebt das Vier-Augen-Gate?** In einer Statuswechsel-RPC wie bei `dd_findings`, oder in einer eigenen Prüf-Tabelle wie bei den Freigaben aus PROJ-105? Die Rückweisung mit Begründung und der mehrrundige Verlauf (AC-45β.12) sprechen für Ersteres mit einer Ereignis-Tabelle daneben.
@@ -304,12 +332,2601 @@ Kostenschätzung je Mangel (L14).
 
 ---
 
+## Tech Design (β) — Mängelmanagement, 2026-08-17
+
+Gegen den **deployten** Stand geerdet, nicht gegen die Anforderungsfassung: Live-Prod-Katalog
+(Spalten, Fremdschlüssel-Regeln, Trigger, Registerstände), die sieben α-Routen und die geteilte
+Navigations-Registry. Zwei Messungen haben den Zuschnitt geändert, bevor eine Zeile Entwurf entstand.
+
+### Der Review-Pass
+
+`.claude/rules/continuous-improvement.md` macht eine CIA-Bewertung hier verbindlich (Q-β1 weicht von
+einem produktweit etablierten Rechte-Muster ab). CLAUDE.md hält fest, dass die Regel „about the review
+happening, not about which tool performs it" ist, und benennt den Halt-und-Frage-Checkpoint mit
+strukturierter Ausgabe als gleichwertigen Weg. So gelaufen: Prüfung gegen Live-Stand und α-Code,
+die zwei echt offenen Entscheidungen dem Nutzer vorgelegt statt einseitig entschieden.
+
+### Zwei Befunde, die den Zuschnitt geändert haben
+
+**B-β1 — L12 war nicht baubar.** Die Engpass-Sicht aus PROJ-103 trägt `requiresProjectType: "ma"`
+(`src/lib/method-templates/index.ts:179-185`), und `filterSectionsByProjectType` vergleicht mit
+striktem `===` auf **einem** `ProjectType` (`routing.ts:180`). In einem Bauprojekt existiert diese
+Fläche nicht. Verschärfend: die Out-of-Scope-Tabelle dieser Spec weist die PROJ-103-Anbindung
+ohnehin **δ** zu. **Nutzer-Entscheid: AC-45β.18 wandert nach δ.** β liefert Überfälligkeit dort, wo
+gehandelt wird — Kennzeichnung und Filter in der Mängelliste (AC-45β.17/.19) plus ein Zähler je
+Gewerk auf der α-Gewerke-Fläche. Kein Eingriff in die geteilte Navigations-Registry, kein Umbau der
+Auswertungsfunktion, keine gebrochenen PROJ-103-Pentest-Zählungen.
+
+**B-β2 — die Rechte weichen in *beide* Richtungen ab.** Die Anforderung liest sich als eine
+Aufweichung (Betrachter dürfen anlegen), ist aber zugleich eine Verschärfung: „Projektleitung/
+Bauleitung oder Mandanten-Administration" entspricht `admin | lead` und schließt den Projekt-`editor`
+aus, den das Hausrecht `edit` einschließt (`src/lib/projects/access.ts`). **Nutzer-Entscheid:
+so gewollt** — gewährleistungsrelevante Fristen liegen in einer Hand.
+
+| Handlung | Ebene | Wer |
+|---|---|---|
+| Mangel anlegen | `view` | jedes Projektmitglied, auch Betrachter (L15) |
+| Mangel ändern, Frist/Verantwortlicher/Nachunternehmer setzen | `manage_members` | Mandanten-Admin oder Projektleitung |
+| Fertigmelden, prüfen, zurückweisen, verwerfen | `manage_members` | Mandanten-Admin oder Projektleitung |
+| Mängel lesen | `view` | jedes Projektmitglied |
+
+### Die vier offenen Fragen, beantwortet
+
+**Q-β1 — kein Rechte-Muster wird aufgeweicht, weil es an dieser Stelle keins gibt.** Die Vorlage
+`dd_findings` trägt live **ausschließlich Lese-Regeln** (zwei SELECT-Policies, keine einzige für
+INSERT/UPDATE/DELETE) — geschrieben wird nur über Funktionen. Damit ist „Betrachter darf anlegen"
+keine gelockerte Zugriffsregel, sondern eine Rollenprüfung **innerhalb** der Anlege-Funktion. Nichts
+Bestehendes wird angefasst, die Abweichung endet an dieser einen Tabelle, und ein späterer Leser
+sieht die Regel an der Stelle, an der sie gilt. Der Preis ist Disziplin: es darf **keine**
+Schreib-Policy entstehen, sonst wandert die Autorität an zwei Orte.
+
+**Q-β2 — Statuswechsel-Funktion mit Ereignis-Tabelle daneben, nicht die Freigabe-Maschinerie aus
+PROJ-105.** Deren Tabellen modellieren *mehrstufige Freigabeketten mit benannten Freigebern*; β hat
+genau ein Tor und eine Rolle — das wäre Aufwand ohne Gegenwert. Entscheidend ist, dass PROJ-105 seinen
+**Verlauf ebenfalls aus einer eigenen Ereignis-Tabelle** bedient statt aus dem zentralen Protokoll
+(dortige Auflage H3, bewusst, um das Audit-Trio nicht neu bauen zu müssen). Genau das trägt hier den
+mehrrundigen Verlauf aus AC-45β.12.
+
+**Q-β3 — entfällt in β** (siehe B-β1). Die Auswertungsfunktion bleibt unberührt; ihre Gestalt ist
+dokumentiert, damit δ nicht neu erheben muss: `project_task_bottlenecks` ist `language sql`, STABLE,
+INVOKER, liest **allein** `work_items` und liefert `tasks[] · top_bottlenecks[] · summary{}`. Jeder
+Eintrag trägt `kind` — einen Arbeitspaket-Typ, den ein Mangel nicht hat. δ ergänzt deshalb einen
+**eigenen Schlüssel** statt Mängel unter `tasks` zu mischen, sonst brechen Typisierung im Frontend
+und der CSV-Export.
+
+**Q-β4 — Sperren am Fremdschlüssel, Meldung in der Route; die Kollision ist real und benannt.**
+Live gemessen: `work_items.trade_id`, `risks.trade_id` und `work_items.section_id` stehen auf
+`SET NULL`, `project_construction_trades.trade_id` dagegen schon auf `RESTRICT` (die Katalog-Sperre
+aus α). Beide projektbezogenen Entfernen-Pfade sind heute **schlichte Löschungen ohne Vorprüfung**,
+die jeden Fehler außer `42501` auf **500 `delete_failed`** abbilden
+(`construction-trades/[ptid]/route.ts:105-108`, `construction-sections/[sid]/route.ts:119-122`).
+Ein `RESTRICT` für Mängel liefe dort also in einen 500 mit rohem Datenbanktext — AC-45β.21 verlangt
+aber eine Meldung, die die betroffenen Mängel **benennt**. Die Lösung liegt ein Verzeichnis weiter:
+die Katalog-Route fängt genau diesen Fall ab, fragt die Blockierer nach und antwortet 409
+(`construction-trades/[id]/route.ts:105-120`). Dieses Muster wird auf die zwei Projekt-Routen gehoben —
+Löschung versuchen, `23503` abfangen, Mängel benennen, 409. Kein Vorab-Zählen: das kostet auf dem
+Normalpfad eine Abfrage und wäre zwischen Prüfung und Löschung ohnehin nicht dicht.
+
+**Der nicht offensichtliche Teil davon:** `construction_sections.parent_id` ist `CASCADE`. Das Löschen
+eines Oberabschnitts reißt den Teilbaum mit, also kann ein Mangel an einem **Enkel** die Löschung der
+Wurzel blockieren. Die benennende Abfrage muss deshalb den ganzen Teilbaum absuchen, nicht den einen
+Knoten — die in α gebaute `path`-Spalte macht das billig.
+
+### Weitere Befunde aus der Erdung
+
+**B-β3 — der Nachunternehmer existiert schon, eine Ebene höher.** `project_construction_trades`
+trägt live ein `vendor_id` (α, `SET NULL`). Der Mangel bekommt **trotzdem ein eigenes** Feld,
+vorbelegt aus dem Gewerk: gewährleistungsrechtlich zählt, wer **zum Zeitpunkt des Mangels**
+ausgeführt hat, und die Zuordnung am Gewerk darf sich später ändern. Ein abgeleiteter Wert würde
+alte Mängelanzeigen rückwirkend umschreiben. Die Anzeige filtert ausschließlich über das Feld am
+Mangel — eine Wahrheit für „wer wird zur Nachbesserung aufgefordert".
+
+**B-β4 — keine Vertraulichkeitsstufe.** Die Vorlage `dd_findings` trägt `confidentiality_level`;
+Mängel bekommen es **nicht**. α hat das für dieselbe Fläche schon entschieden und begründet: die
+Freischaltungs-Oberfläche ist M&A-gegatet, eine Bauleitung, die die Stufe versehentlich anhebt, käme
+an die eigenen Daten nicht mehr heran. Mandanten- und Projekttrennung tragen die Abgrenzung
+(AC-45β.22).
+
+**B-β5 — die Leer-Semantik ist eine bekannte Falle.** Fünf Felder müssen „setz- **und wieder
+entfernbar**" sein (AC-45β.6). PROJ-122 hat hier live einen Defekt produziert: ein weggelassener Wert
+wurde als „unverändert" gelesen, eine zurückgezogene Position überlebte stillschweigend. Die
+Änderungs-Funktion erhält deshalb **ausdrückliche Leeren-Schalter** je Feld (Muster
+`update_dd_finding`, das genau dafür schon einen trägt) — nicht weglassen-heißt-leeren, nicht
+Leerstring-heißt-leeren.
+
+**B-β6 — „überfällig" wird präzise definiert, weil der Wortlaut es offenlässt.** AC-45β.17 sagt
+„nicht abschließender Status". Als überfällig gilt ein Mangel mit verstrichener Frist in **offen**
+oder **in Bearbeitung**. Ausdrücklich **nicht** in „erledigt": dort hat der Nachunternehmer
+fertiggemeldet und es wartet die Prüfung — die Verspätung läge bei der Bauleitung, und die Liste
+würde den Falschen anzeigen. Damit dort nichts verrottet, führt die Liste **„wartet auf Prüfung"**
+als eigenes Signal. Verworfen und geprüft sind abschließend (Edge Case bestätigt).
+
+**B-β7 — das Vier-Augen-Tor kann in kleinen Projekten klemmen.** Fertigmelden *und* Prüfen liegen
+beide bei `admin | lead` (B-β2), und AC-45β.10 verbietet dieselbe Person für beides. Ist die
+Projektleitung gleichzeitig die einzige Mandanten-Administration, erreicht ein Mangel „geprüft" nie.
+Bewusst **kein Umgehungspfad** (PROJ-119-Haltung: der legitime Weg ist eine zweite berechtigte
+Person, nicht ein stiller Übersteuerungsschalter). `/qa` prüft den Fall ausdrücklich; tritt er beim
+Pilot auf, ist die Antwort eine zweite Leitung, nicht eine Aufweichung.
+
+### Komponentenstruktur
+
+```
+Projektraum › Mängel                      (neue Fläche, Bau-Projekttyp + Bau-Modul)
++-- Kopfzeile
+|   +-- "Mangel erfassen"                 sichtbar für JEDES Projektmitglied (L15)
+|   +-- "Mängelanzeige erzeugen"          nur Leitung/Admin
++-- Filterleiste                          Gewerk · Abschnitt · Status · Schweregrad · überfällig
++-- Mängelliste
+|   +-- Zeile je Mangel
+|       +-- Schweregrad-Abzeichen         gering · erheblich · gravierend
+|       +-- Status-Abzeichen              offen · in Bearbeitung · erledigt · geprüft · verworfen
+|       +-- Frist                         rot bei überfällig, Hinweis "wartet auf Prüfung"
+|       +-- Gewerk · Abschnitt · Nachunternehmer
+|       +-- Zeilenaktionen                nur Leitung/Admin
++-- Erfassen-Dialog                       Titel · Gewerk* · Schweregrad* | Ort · Beschreibung · Frist · Nachunternehmer
++-- Detail-Bereich (Leitung/Admin)
+|   +-- Bearbeiten                        mit Leeren je Feld (B-β5)
+|   +-- Statuswechsel                     Fertigmelden · Prüfen · Zurückweisen (Pflichtbegründung) · Verwerfen (Pflichtbegründung)
+|   +-- Verlauf                           jede Runde, aus der Ereignis-Tabelle (AC-45β.12)
++-- Zustände                              Laden · leer · Fehler · Modul nicht aktiv
+
+Projektraum › Gewerke                     (α-Fläche, additiv erweitert)
++-- je Gewerk: Zähler "N Mängel, davon M überfällig"
+
+/projects/<id>/maengelanzeige/print       (chrome-lose Druckseite, außerhalb der App-Hülle)
++-- Kopf                                  Projekt · Gewerk oder Nachunternehmer · Erstellungsdatum · Ersteller
++-- je Mangel                             Titel · Beschreibung · Ort (weggelassen falls leer) · Schweregrad · Frist
+```
+
+### Datenmodell (Klartext)
+
+**Ein Mangel** trägt: Mandant und Projekt · Titel (Pflicht, 1–200 Zeichen) · Beschreibung (frei) ·
+**Gewerk** (Pflicht, Verweis auf das Projekt-Gewerk aus α) · **Ort** (optional, Verweis auf einen
+Bauabschnitt) · **Schweregrad** (Pflicht, drei Stufen) · **Status** (fünf Werte) ·
+Nachbesserungsfrist (optional) · Verantwortlicher (optional) · **Nachunternehmer** (optional, eigener
+Verweis auf die Lieferanten-Stammdaten, vorbelegt aus dem Gewerk) · fortlaufende Nummer je Projekt
+(damit eine Mängelanzeige eindeutig referenzierbar ist) · wer zuletzt fertiggemeldet hat und wann
+(trägt das Vier-Augen-Tor) · Ersteller und Zeitstempel.
+
+**Ein Mangel-Ereignis** trägt: den Mangel · die Art (angelegt · fertiggemeldet · geprüft ·
+zurückgewiesen · verworfen · wieder aufgenommen) · Status davor und danach · die Begründung (Pflicht
+bei Zurückweisung und Verwerfen) · Akteur und Zeitpunkt. Diese Zeilen sind **unveränderlich** — sie
+sind der Verlauf, nicht eine Kopie davon.
+
+**Aufbewahrung.** Fremde Mängel sind unsichtbar, auch in Zählern. Geschrieben wird ausschließlich
+über Funktionen; Lesen erlaubt die Projektmitgliedschaft. Ein Gewerk oder Abschnitt mit Mängeln ist
+nicht entfernbar (Sperre am Verweis); ein gelöschter Nachunternehmer lässt den Verweis leer und den
+Mangel bestehen (Edge Case). Ein nur **deaktiviertes** Gewerk behält seine Mängel — es entfällt nur
+aus der Neuauswahl.
+
+### Technische Entscheidungen und warum
+
+| Entscheidung | Warum |
+|---|---|
+| Eigene Bau-Tabelle statt Arbeitspaket-Art | L9. Ein Mangel ist kein geplantes Arbeitspaket; im Backlog verfälscht er Velocity, Burndown und die WBS-Rollups. |
+| Schreiben nur über Funktionen, keine Schreib-Regeln | Vorlage `dd_findings` live so gebaut; macht die abweichende Rechte-Regel (B-β2) zu **einer** prüfbaren Stelle statt zu vier Policy-Ausdrücken. PROJ-Y-107c belegt, wie fehleranfällig Schreib-Bedingungen sind. |
+| Verlauf in eigener Ereignis-Tabelle | Trägt Mehrfach-Rückweisung (AC-45β.12) und vermeidet den Neubau der geteilten Audit-Funktionen — die sind die historisch am häufigsten überschriebenen Objekte im Projekt. PROJ-105-Präzedenz. |
+| Status **und** Feld-Protokoll zusätzlich | AC-45β.7 verlangt Auditierung; die Statusspalte kommt in die Feld-Whitelist, damit der Wechsel auch im zentralen Protokoll steht — der Verlauf-Reiter liest trotzdem die Ereignis-Tabelle. |
+| Deutsche Schlüsselwerte | α hat für dieselbe Fläche deutsche Werte gewählt (`gruen/gelb/rot`); die Anforderung benennt die Stufen deutsch. Anzeigetexte kommen aus einer Zuordnung, nicht aus der Datenbank. |
+| Druckseite statt Renderer | L11. Das Muster steht (PROJ-131/132): eigene Route außerhalb der App-Hülle, Sitzungs-Client — **nie** Dienst-Schlüssel, sonst zeigt die Anzeige mehr als der Aufrufer sehen darf (AC-45β.16). Kein neues Paket. |
+| Kein Versand | L11. Der Nachunternehmer ist selten Plattformnutzer; die PROJ-13-Ausgangspost dafür zu belasten wäre eine Zusage ohne Empfänger. |
+| Nav wie α | Beide α-Flächen tragen Projekttyp **und** Modulschalter; β erbt das wörtlich (AC-45β.20) und fügt der geteilten Registry genau einen Eintrag hinzu. |
+
+### Register-Eingriffe (live gemessen, Stand 2026-08-17)
+
+Die Mangel-Tabelle tritt den drei Registern bei, die α ebenfalls bedient (live bestätigt): Objektarten
+**93 → 94**, Feld-Whitelist **75 → 76**, Lese-Tor **62 → 63**. Die Ereignis-Tabelle bleibt **außen** —
+sie ist selbst das Protokoll, ein zweites Mitschreiben verdoppelte es (PROJ-130-β hat Doppel-
+Protokollierung genau dafür ausgeschlossen). Alle drei Eingriffe als **Anker-Ersetzung aus der
+Live-Definition** mit Treffer-Eindeutigkeit, Nachprüfung und Rechte-Neuvergabe in derselben
+Migration — PROJ-Y-122a war der Fall, in dem eine fehlende Nachprüfung ein stilles Nichts erzeugte,
+und PROJ-Y-115c der, in dem ein wörtlicher Anker in der frisch gebauten Datenbank nicht traf
+(Anker daher whitespace-tolerant).
+
+### Pflicht-Härtungskriterien (blockierend)
+
+- [x] **AC-45βH-1** Mandanten- und Projekttrennung: fremde Mängel unsichtbar, auch in jedem Zähler.
+- [x] **AC-45βH-2** Betrachter kann anlegen, aber **nicht** ändern, fertigmelden, prüfen oder verwerfen — serverseitig, nicht nur in der Oberfläche; ein Projekt-`editor` ebenfalls nicht (B-β2).
+- [x] **AC-45βH-3** Vier-Augen: derselbe Akteur kann nicht fertigmelden und prüfen; abgewiesen auf **allen** Schreibwegen, auch bei mehreren Runden.
+- [x] **AC-45βH-4** Kein Schreibweg an den Funktionen vorbei: direktes Einfügen und Ändern scheitert, auch als Mandanten-Administration.
+- [x] **AC-45βH-5** Ereignis-Zeilen sind unveränderlich und nicht löschbar.
+- [x] **AC-45βH-6** Projektfremdes Gewerk oder Abschnitt wird abgewiesen (PROJ-Y-45a-Wächter sinngemäß, hier für Mängel).
+- [x] **AC-45βH-7** Entfernen-Sperre greift **und** benennt: Gewerk mit Mangel → 409 mit Nennung; Oberabschnitt, dessen **Enkel** einen Mangel trägt → ebenfalls 409, kein 500.
+- [x] **AC-45βH-8** `anon` hat auf keiner neuen Funktion Ausführungsrecht.
+- [x] **AC-45βH-9** Pflicht-Live-Pentest gegen Prod, Rollback-Muster, **0 Rückstände**; Nicht-Admin muss synthetisiert werden, weil in Prod jedes Mandanten-Mitglied Admin ist und das Lese-Tor für Admins kurzschließt — ein Smoke unter Admin wäre falsch-grün.
+- [x] **AC-45βH-10** Regressionen wörtlich grün: α-Pentest (16/16), PROJ-Y-45a-Wächter (9/9), PROJ-103-Pentest (unberührt, belegt dass B-β1 nichts angefasst hat).
+- [x] **AC-45βH-11** Druckseite ohne Sitzung → Anmelde-Umleitung, kein Mangel-Inhalt im Rumpf; mit Sitzung nur eigene Projekte.
+- [x] **AC-45βH-12** Nicht-Bau-Projekte und abgeschaltetes Modul verhalten sich byte-gleich zu vorher.
+
+### Risiken für `/qa`
+
+1. **Feld leeren.** Jedes der fünf optionalen Felder einmal setzen und wieder leeren; überlebt der alte Wert, ist es der PROJ-122-Defekt (B-β5).
+2. **Vier-Augen unter einer Person.** B-β7 — reproduzieren und als Befund festhalten, nicht wegdrücken.
+3. **Anker-Ersetzung.** Nach der Migration alle Geschwister-Zweige der drei Register zählen; vier Nachbar-Slices arbeiten an denselben Objekten.
+4. **Teilbaum-Sperre.** AC-45βH-7 mit einem Mangel am Enkel, nicht am Kind — der naive Test greift daneben.
+5. **Überfälligkeits-Grenzen.** Frist heute, Frist gestern, Frist gestern aber „erledigt" (B-β6).
+
+### Abweichungen und Folgearbeit
+
+- **D-β1** AC-45β.18 (PROJ-103-Anbindung) auf **PROJ-45-δ** verschoben — Nutzer-Entscheid nach B-β1. Zurückgestellte Original-Anforderung → Registrierung in `features/OPEN-DEFERRED-STATUS.md` Pflicht. β kann damit **nicht** `full` werden; als Sub-Slice ohnehin `alpha`.
+- **D-β2** Änderungsrecht ohne Projekt-`editor` — strenger als das Hausmuster, Nutzer-Entscheid (B-β2).
+- **D-β3** Keine Vertraulichkeitsstufe (B-β4), abweichend von der Vorlage `dd_findings`, konsistent mit α.
+- **D-β4** Kein Umgehungspfad für das Vier-Augen-Tor (B-β7).
+- **PROJ-Y-45b (neu, klein)** α bildet auf beiden projektbezogenen Entfernen-Pfaden jeden Datenbankfehler außer `42501` auf **500** ab, obwohl einen Verzeichnis weiter das 409-Muster steht. β behebt das für Mängel; für andere künftige Verweise bleibt es bestehen.
+
+### Abhängigkeiten
+
+**Kein neues Paket.** Druckseite, Baumauswahl, Tabellen und Dialoge kommen aus dem Bestand
+(shadcn/ui, `react-arborist` für den Abschnitts-Picker aus α). Kein neuer Umgebungswert, kein Cron.
+Eine Migration; die Anwendungsschicht bringt eine Fläche, eine Druckseite und die additive Erweiterung
+zweier α-Routen.
+
+### Reihenfolge
+
+**`/backend` → `/frontend` → `/qa`** — abweichend von der Standard-Empfehlung des Skills, wie in α und
+aus demselben Grund: die Fläche ist ohne Statuswechsel-Funktionen und Ereignis-Verlauf nicht sinnvoll
+baubar (PROJ-109-Präzedenz).
+
+---
+
+## Implementierungsnotizen — /backend β (2026-08-18)
+
+**Datenbank live in Prod.** Eine Migration, `20260818104358_proj45_beta_construction_defects`
+(Dateiname trägt die **registrierte Prod-Version**; der MCP vergab sie, die Datei wurde nach
+PROJ-134 nachbenannt). Zwei Tabellen, acht Funktionen, **fünf** Trigger, zwei Lese-Policies, die drei
+Register-Eingriffe, siebzehn Post-Condition-Gruppen. Alles atomar in einem Zug; die Post-Conditions
+liefen mit und meldeten „alle Post-Conditions erfuellt".
+
+**Register-Eingriffe genau wie im Tech Design vorhergesagt, live nachgemessen:**
+Objektarten **93 → 94**, Feld-Whitelist **75 → 76**, Lese-Tor **62 → 63**. Alle drei als
+whitespace-tolerante Anker-Ersetzung auf der Live-Definition, jeweils mit
+**Treffer-Eindeutigkeitsprüfung** (Abbruch bei ≠ 1 statt Raten), Nachprüfung nach dem `execute`,
+namentlicher Geschwister-Gegenprobe und Rechte-Neuvergabe. Die Ereignis-Tabelle ist bewusst
+**draussen** geblieben (nachgeprüft: sie steht in keinem der drei Register) — sie *ist* das
+Protokoll, ein zweites Mitschreiben verdoppelte es.
+
+**Vier Entscheidungen, die aus einer Messung statt aus einer Annahme kamen.**
+
+1. **`NO ACTION` statt `RESTRICT` für die zwei Sperren (L16).** Beide liefern für das *gezielte*
+   Entfernen `23503`, also genau die von AC-45β.21 verlangte Wirkung. Der Unterschied zeigt sich
+   beim Löschen eines ganzen Projekts, wo Gewerk-Zuordnung **und** Mangel in **derselben** Anweisung
+   kaskadiert werden: `RESTRICT` prüft sofort, `NO ACTION` am Ende der Anweisung. In zurückgerollten
+   Transaktionen gegengeprüft — unter `RESTRICT` entscheidet die **Feuerreihenfolge der RI-Trigger**
+   über Erfolg oder Fehlschlag, das Ergebnis hing an der Erzeugungsreihenfolge der Tabellen;
+   `NO ACTION` war in beiden Reihenfolgen robust. Ein `RESTRICT` hätte also einen neuen
+   Projekt-Hard-Delete-Blocker gebaut, ausgerechnet in der Woche, in der PROJ-148 diese Klasse
+   behoben hat.
+2. **Die Ausnahme im Unveränderlichkeits-Trigger ist selbsttragend, nicht geerbt.** Prod trägt einen
+   Helfer `_project_teardown_active()`, den `enforce_deliverable_approval_event_immutability` nutzt —
+   aber **keine einzige Migrationsdatei erzeugt ihn** (nachgezählt: 0 Treffer in
+   `supabase/migrations`). Ihn aufzurufen hätte die Migration im frisch aus den Dateien gebauten
+   Schema-Drift-Wächter gebrochen. Die Ausnahme lautet daher schlicht „der Mangel existiert nicht
+   mehr", was ohne Zusatzobjekt auskommt; empirisch bestätigt, dass ein von der Eltern-Kaskade
+   abgeräumtes Kind seinen Elternteil bereits als gelöscht sieht. Für Anwendungsnutzer ist der Zweig
+   **unerreichbar** — `construction_defects` hat gar keine DELETE-Policy. Als Nebenbefund ist damit
+   eine **Prod/Repo-Divergenz** belegt (Klasse PROJ-Y-130f), siehe Folgearbeit.
+3. **Der Unveränderlichkeits-Wächter ist `SECURITY DEFINER`, anders als die PROJ-105-Vorlage.** Seine
+   Ausnahme hängt an „der Mangel ist weg"; als INVOKER könnte RLS-Unsichtbarkeit sich als „weg"
+   tarnen. Die Prüfung darf nicht von der Sichtbarkeit des Aufrufers abhängen.
+4. **Ein siebter Ereignis-Typ.** Die Klartext-Liste des Tech Designs nennt sechs, aber AC-45β.7
+   verlangt die Kette `offen → in Bearbeitung`, für die keiner davon passt. `wieder_aufgenommen`
+   dafür zu überladen hätte zwei verschiedene Sachverhalte unter einen Namen gelegt; ergänzt wurde
+   `in_arbeit_genommen` (Abweichung D-β6).
+
+**Der Nachunternehmer wird beim Anlegen aus dem Gewerk vorbelegt** (B-β3), danach ist er
+eigenständig. Ein *abgeleiteter* Wert hätte alte Mängelanzeigen rückwirkend umgeschrieben, sobald
+die Zuordnung am Gewerk wechselt.
+
+**Fünf Leeren-Schalter, einzeln bewiesen (B-β5).** Die PROJ-122-Defektklasse ist in drei Vektoren
+eingezäunt: alle fünf Felder setzen, dann **weglassen** (Wert bleibt), dann **Schalter** (Wert wird
+leer). Ohne den mittleren Vektor wäre „weglassen heisst leeren" unentdeckt geblieben.
+
+**Live-Pentest `tests/sql/PROJ-45-beta-construction-defects-pentest.sql` — 53/53 PASS gegen Prod,
+0 Rückstände** (über neun Zähler gegengeprüft: beide neuen Tabellen 0, Fixture-Gewerke 0,
+-Abschnitte 0, -Nachunternehmer 0, Audit-Zeilen 0, synthetisierte Mitgliedschaften 0, Projektbestand
+des Testmandanten unverändert 20). Die tragenden Vektoren:
+
+- **D — der Projekt-`editor` kann NICHT ändern.** Das ist die Richtung, in die diese Slice *strenger*
+  ist als das Hausrecht `edit`, und sie ist damit belegt statt behauptet. Zugleich **D2**: anlegen
+  darf er weiter, denn er ist Projektmitglied.
+- **A — der Betrachter DARF anlegen.** Die einzige Aufweichung (L15), und sie sitzt in der
+  Anlege-Funktion, nicht in einer Policy.
+- **K — Vier-Augen greift in RUNDE 2.** Nach Rückweisung meldet ein *anderer* fertig; die Prüfung
+  liest `reported_done_by` neu und sperrt jetzt ihn. Ein Test nur über Runde 1 hätte eine Sperre
+  bestätigt, die beim zweiten Durchgang hätte durchfallen können.
+- **U/V — die Teilbaum-Sperre.** Der Mangel hängt am **Enkel**; das Löschen der **Wurzel** scheitert
+  mit `23503`. Vektor **V** zeigt zusätzlich, dass die naive Abfrage auf den einen Knoten **0**
+  Treffer liefert — genau die Falle, die das Tech Design für `/qa` benannt hat.
+- **Y — Aggregat-Leck-Probe.** Der Fremde erhält aus der INVOKER-Auswertung `total = 0`, während in
+  Wahrheit 1 Mangel existiert; **Y2** ist die Gegenprobe, dass der Berechtigte die Wahrheit sieht
+  (kein Blanket-Deny).
+- **W1–W4 — kein Schreibweg an den Funktionen vorbei, geprüft als MANDANTEN-ADMIN:** direktes
+  `INSERT` und Ereignis-`INSERT` → `42501`, `UPDATE`/`DELETE` → **0 Zeilen**.
+- **S2 — der lesende Nutzer ist nachweislich kein Admin.** Ohne diesen Vektor wäre der
+  Audit-Lesetest falsch-grün, weil `can_read_audit_entry` für Admins kurzschliesst.
+- **Z — der Projekt-Hard-Delete wird von der Mängel-Historie blockiert** (`42501`).
+  **Umgedreht durch PROJ-Y-148d am 2026-08-19**; bis dahin gelang er, und das war die korrekte
+  Beschreibung des damaligen Stands. Die PROJ-148-Regression bleibt, nur in der anderen Richtung: ein
+  Bauprojekt **ohne** Mängel muss weiter löschbar sein — geprüft als Vektor B in
+  `tests/sql/PROJ-Y-148d-defect-events-no-cascade-exit-pentest.sql`.
+
+**Ein Befund beim ersten Lauf, der einen Vektor falsch-grün gemacht hätte:** es gibt **zwei**
+Mandanten mit dem Namen `[E2E] Projektplattform Test`. Der als zweiter Akteur gewählte Nutzer ist
+Admin des **anderen** und im Zielmandanten völlig unberechtigt — der Vier-Augen-Vektor brach mit
+`42501`. Er ist jetzt ausdrücklich Projekt-`lead`, was als Nebeneffekt die
+`is_project_lead`-Hälfte der Rechteregel prüft und nicht nur `is_tenant_admin`.
+
+**Regressionen wörtlich grün (AC-45βH-10), 0 Rückstände:**
+α-Pentest **16/16** (Block 1 elf, Block 2 fünf — Zahlen und Meldungen identisch zur Dokumentation),
+PROJ-Y-45a-Smoke **9/9**, **PROJ-103 A–G 7/7** (belegt unabhängig, dass B-β1 die Engpass-Auswertung
+nicht angefasst hat).
+
+**Advisors 0 ERROR** auf beiden Achsen (Security 144 WARN, Performance 15 WARN / 293 INFO). Die drei
+slice-bezogenen Security-WARN sind die drei Schreib-RPCs als `authenticated`-ausführbare
+`SECURITY DEFINER`-Funktionen — genau die Kategorie, die α ebenfalls trägt und die den Schreibweg
+überhaupt erst möglich macht (141 Bestandsfälle derselben Art); jede prüft die Rolle intern. Der
+einzelne `anon_security_definer`-WARN gehört `seed_risk_categories_if_empty` und ist Bestand —
+Pentest-Vektor **G1** belegt, dass `anon` auf keiner der acht neuen Funktionen EXECUTE hat. Die acht
+slice-bezogenen Performance-Meldungen sind INFO: fünf `unindexed_foreign_keys` auf
+Personen-Verweisen (`created_by`, `reported_done_by`, `responsible_user_id`, `actor_id`) — die von
+PROJ-69 ausdrücklich als „skip/delete-rare" triagierte Klasse, keine liegt auf einem Leseweg — und
+drei `unused_index`, was bei 0 Zeilen in Prod zu erwarten ist.
+
+### Abweichungen vom Tech Design (β)
+
+- **D-β5 — die Ausnahme im Unveränderlichkeits-Trigger. ~~Abweichung~~ → aufgelöst am 2026-08-19
+  durch PROJ-Y-148d; AC-45βH-5 ist jetzt wörtlich erfüllt.**
+  Ursprünglich umgesetzt: `42501` für `UPDATE` und für jedes `DELETE`, solange der Mangel existiert;
+  wurde die Zeile von der Kaskade ihres eigenen Mangels abgeräumt, durfte sie gehen. Begründet war das
+  mit „über die Anwendung unerreichbar (keine DELETE-Policy auf `construction_defects`)" und damit,
+  keine neue Instanz der von PROJ-Y-148a geführten Blocker-Klasse anzulegen.
+  **Beide Gründe haben sich als nicht tragend erwiesen:** die Unerreichbarkeit gilt für den *direkten*
+  Weg, nicht für die Kaskade `projects → construction_defects → construction_defect_events`, die keine
+  Policy braucht — und da eine Kaskade den Eltern-Mangel zuerst entfernt, griff die Ausnahme bei
+  **jedem** Projekt-Abriss, nicht nur im Randfall. Der zweite Grund entfiel, als PROJ-Y-148a am
+  2026-08-19 **Variante 1** wählte: dort ist die Blockade die gewollte Antwort und wird lediglich
+  ehrlich kommuniziert (422 mit benannter Ursache statt 500). Der Ausweg ist deshalb entfernt
+  (Migration `20260819140000`), die Mängel-Historie überlebt den Projekt-Abriss, und
+  `construction_defect_events` blockt den Hard-Delete wie ihre vier Geschwister-Inseln.
+  Pentest Q1/Q2 belegt die Sperre; **Z prüft jetzt die Blockade statt der Ausnahme**.
+- **D-β6 — siebter Ereignis-Typ `in_arbeit_genommen`** (Begründung oben).
+- **D-β7 — `fertigmelden` ist auch direkt aus `offen` erlaubt.** AC-45β.7 beschreibt die Kette,
+  verbietet das Überspringen aber nicht; ein kleiner, sofort behobener Mangel soll nicht durch einen
+  Pflicht-Zwischenschritt laufen.
+- **D-β8 — die Überfälligkeitsregel steht zweimal**, einmal als SQL-Prädikat
+  (`_construction_defect_is_overdue`, Autorität für die Zähler) und einmal als reine TS-Funktion für
+  die Listen-Anzeige. Eine gemeinsame Quelle über die Sprachgrenze gibt es nicht; beide Seiten sind
+  mit denselben Grenzfällen gepinnt (heute / gestern / gestern-aber-erledigt).
+- **D-β9 — die Routen gaten auf `view`, nicht auf `manage_members`.** Die verschärfte Regel lebt
+  ausschliesslich in den Funktionen, damit sie *eine* prüfbare Stelle bleibt (Q-β1). Eine zweite
+  Prüfung in der Route wäre eine zweite Wahrheit, die driften kann.
+- **AC-45β.18 bleibt nach δ verschoben** (D-β1, unverändert) — zurückgestellte
+  Original-Anforderung, registriert in `features/OPEN-DEFERRED-STATUS.md`.
+
+### Nicht in dieser Slice gebaut
+
+Oberfläche, Mängelanzeige-Druckseite und Zähler auf der α-Gewerke-Fläche gehören zu `/frontend`;
+die Datenbank- und Routenschicht liefert alles, was sie brauchen (`construction_defect_summary`
+liefert die Zähler je Gewerk bereits). `/qa` steht aus.
+
+### Fremde Befunde (nicht diese Slice)
+
+- **Prod/Repo-Divergenz, Klasse PROJ-Y-130f:** `_project_teardown_active()` und die entschärfte
+  Fassung von `enforce_deliverable_approval_event_immutability` existieren in Prod, werden aber von
+  **keiner** Migrationsdatei erzeugt. Eine frisch aus den Dateien gebaute Datenbank hat sie nicht.
+  Kein Sicherheitsbefund, aber eine echte Divergenz — eigener Followup.
+- **PROJ-45-α:** die zwei projektbezogenen Entfernen-Pfade bilden weiterhin jeden Datenbankfehler
+  ausser `42501` auf **500** ab. β behebt das für Mängel (409 mit Nennung); für andere künftige
+  Verweise bleibt es bestehen (**PROJ-Y-45b**, im Tech Design registriert).
+
+---
+
+## Implementierungsnotizen — /frontend β (2026-08-18)
+
+Kein neues Paket, keine Migration, kein neuer RPC. Die Datenschicht aus `/backend` hat alles getragen,
+was die Fläche braucht — auch die Zähler je Gewerk (`construction_defect_summary`) und die
+benennende Teilbaum-Abfrage lagen bereits vor.
+
+**Was entstanden ist**
+
+| Fläche | Datei | Inhalt |
+|---|---|---|
+| Projektraum-Reiter „Mängel" | `src/app/(app)/projects/[id]/maengel/page.tsx` + `construction-defects-page.tsx` | Register mit fünf serverseitigen Filtern, Kopfzahlen, Zeilenaktionen |
+| Erfassen / Bearbeiten | `construction-defect-dialog.tsx` | eine Maske für beide Vorgänge, mit sichtbaren Leeren-Schaltern |
+| Detail + Statuswechsel + Verlauf | `construction-defect-detail-sheet.tsx` | Handlungen, Vier-Augen-Erklärung, unveränderliche Zeitleiste |
+| Mängelanzeige erzeugen | `construction-defect-notice-dialog.tsx` | Achse Gewerk **oder** Nachunternehmer, Vorschau-Zahl |
+| Mängelanzeige (Druck) | `src/app/projects/[id]/maengelanzeige/print/page.tsx` | chrome-los, ausserhalb der App-Hülle, Sitzungs-Client |
+| Navigation | `src/lib/method-templates/index.ts` | **ein** Eintrag, +18 Zeilen im Merge-Hotspot |
+| α-Fläche „Gewerke" | `project-trades-page.tsx` | Zähler je Gewerk (Mängel · überfällig · wartet auf Prüfung) |
+| Reine Ableitungen | `defect-actions.ts`, `defect-notice.ts` | Angebots-Spiegel, Änderungs-Differenz, Anzeigen-Umfang |
+| Lesezugriffe | `use-construction-defects.ts` | Liste, Zähler, Verlauf — Hausmuster inkl. `moduleInactive` |
+
+**Das Zwei-Akteur-Gate in der Oberfläche — erklären, nicht nachbauen.** Die Regel lebt in
+`transition_construction_defect_status` und weist mit `42501` ab (D-β9: die Routen gaten nur `view`).
+Die Fläche tut drei Dinge und keins davon formuliert die Regel neu:
+
+1. Für die Rechtefrage fragt sie das **bestehende Hausprädikat** `useProjectAccess(…,
+   "manage_members")` ab — das ist `admin | lead` **ohne** den permissiven Rückfall, den
+   `edit_master` trägt, und damit deckungsgleich mit `is_tenant_admin OR is_project_lead` in den
+   Funktionen. Bewusst **nicht** `edit_master`: das schliesst den Projekt-`editor` ein, den diese
+   Slice ausschliesst (B-β2). „Mangel erfassen" trägt umgekehrt **gar kein** Rechte-Gate (L15).
+2. Sie bietet nur Handlungen an, die der Aufrufer wirklich ausführen kann. `offeredDefectActions`
+   entfernt „Abnehmen" für die Person, die fertiggemeldet hat — verglichen wird dasselbe Feld, das
+   die Datenbank liest (`reported_done_by`), das bei **jeder** Fertigmeldung neu gesetzt wird. Damit
+   stimmt die Anzeige auch in Runde n nach mehrfacher Rückweisung (Pentest-Vektor K).
+   „Zurückweisen" und „Verwerfen" bleiben stehen — sonst wäre der Mangel eingefroren.
+3. Sie **benennt den klemmenden Fall** statt ihn zu verschweigen: `describeReviewBlock` erklärt, dass
+   die Abnahme eine zweite berechtigte Person braucht, und sagt für den Fall „Projektleitung ist
+   gleichzeitig die einzige Mandanten-Administration" ausdrücklich, dass der legitime Ausweg eine
+   zweite Projektleitung ist (B-β7). **Kein Umgehungsweg, kein stiller Übersteuerungsschalter**
+   — PROJ-119-Haltung.
+
+**Die Leeren-Schalter sind wirklich in der Maske.** Alle fünf optionalen Felder tragen einen
+sichtbaren „Leeren"-Knopf, sobald sie einen Wert haben: Beschreibung, Ort, Frist, Verantwortlicher,
+Nachunternehmer. Ort und Nachunternehmer haben zusätzlich eine ausdrückliche Leer-Option in der
+Auswahl („— ohne Ortsangabe —" / „— keiner —"), weil eine Auswahl ohne solche Option gar nicht
+zurückgesetzt werden kann.
+
+Die Übersetzung nach `clear_*: true` macht `buildDefectUpdatePayload` als **Differenz** zum
+Ausgangszustand — ein in der Maske geleertes Feld wird zum Schalter, nicht zu einem weggelassenen
+Feld (das hiesse „unverändert") und nicht zu einem Leerstring (das wäre ein gesetzter Wert). Genau
+dieser Unterschied ist die in PROJ-122 live ausgelieferte Defektklasse. Das ist eine reine Funktion
+und mit den drei Vektoren des Pentests gepinnt: setzen, weglassen (Wert bleibt), Schalter (Wert wird
+leer); dazu ein Fall, der beweist, dass **nie** ein Wert und sein eigener Schalter zusammen gesendet
+werden (die Route weist das mit 422 als widersprüchlich ab). Bei „nichts geändert" wird gar nicht
+gesendet, weil die Funktion einen leeren Rumpf mit 422 abweist — die Maske sagt dann „Keine Änderung"
+statt einen Fehler zu zeigen.
+
+**Zwei getrennte Signale, nicht verschmolzen.** „überfällig" (rot, mit Frist) gilt nur in `offen`
+und `in_bearbeitung`; sobald fertiggemeldet ist, erscheint stattdessen „wartet auf Prüfung" (amber) —
+dort läge die Verspätung bei der Bauleitung, und ein gemeinsames Abzeichen würde den Falschen
+anzeigen (B-β6). Beide Signale stehen in der Zeile, in der Detailansicht **und** in den Kopfzahlen;
+die Zeilen-Flags kommen aus der vorhandenen TS-Lib (`deriveDefectFlags`), die Kopf- und
+Gewerke-Zähler aus dem SQL-Zwilling — es ist **keine dritte Kopie** entstanden (D-β8 unverändert).
+
+**Ein AC hat eine Entscheidung erzwungen, die im Entwurf nicht stand.** AC-45β.4 verlangt, dass ein
+neu erfasster Mangel „ohne weiteren Schritt in der Liste sichtbar" ist. Bei aktivem Filter kann er
+das nicht sein: wer nach „Gewerk Dach" filtert und einen Elektro-Mangel erfasst, sähe nichts und
+müsste rätseln. Nach dem Erfassen wird die Auswahl deshalb zurückgesetzt **und das gesagt**
+(„Filter zurückgesetzt, damit der neue Mangel sichtbar ist") — nicht stillschweigend behalten und
+nicht stillschweigend verworfen.
+
+**Die Mängelanzeige.** Chrome-lose Route ausserhalb der `(app)`-Gruppe, alle vier Abfragen über den
+cookie-gebundenen Sitzungs-Client (`createClient`) — **nie** der Dienst-Schlüssel; genau daran hängt
+AC-45β.16. Das Modul-Tor ist von Hand nachgezogen (`requireModuleActive` gibt eine HTTP-Antwort für
+Routen zurück, eine Seite braucht `notFound()`), Regel wörtlich übernommen inklusive „fehlende
+Einstellungszeile → offen bleiben". Ein nicht gesetzter Ort wird **weggelassen** statt als
+„unbekannt" gedruckt (Edge Case β). Der Vorschau-Zähler im Dialog läuft über eine **eigene,
+ungefilterte** Abfrage: die Liste der Fläche zu nehmen wäre bei aktivem Filter eine Zusage, die das
+gedruckte Blatt bricht.
+
+**Der Modul-Aus-Zustand ist der dritte Zustand, nicht Fehler und nicht leer.** Die Fläche rendert
+`ModuleUnavailableNotice` (PROJ-Y-143f), und die abhängigen Abrufe (Gewerke, Abschnitte, Zähler)
+werden gar nicht gestartet, sobald die Liste 404 gemeldet hat. Lieferanten-Stammdaten sind bewusst
+**optional**: ist das Modul „Lieferanten" aus, bleibt die Auswahl leer und weist darauf hin — über
+das Gewerk funktioniert alles weiter, und ein fremdes Modul darf hier keinen Fehlerbanner erzeugen.
+Ein bereits gesetzter Nachunternehmer bleibt in der Auswahl wählbar, auch wenn er nicht in der
+geladenen Liste steht; sonst verlöre ein Speichervorgang die Zuordnung stillschweigend.
+
+### Nachweise je Akzeptanzkriterium
+
+| AC | Nachweis |
+|---|---|
+| AC-45β.1 | „Mangel erfassen" ohne Rechte-Gate in der Kopfzeile; Autorität ist die Anlege-Funktion (Pentest A: Betrachter darf, D2: Editor darf) |
+| AC-45β.2 | Speichern erst bei Titel **und** Gewerk; Schweregrad vorbelegt `gering`; die vier übrigen Felder optional |
+| AC-45β.3 | Auswahl kommt aus `useProjectTrades`/`useConstructionSections` **dieses** Projekts; serverseitig durch die PROJ-Y-45a-Wächter belegt |
+| AC-45β.4 | Anlegen → `reload()`; bei aktivem Filter Rücksetzen mit Hinweis (siehe oben) |
+| AC-45β.5 | Zeilen-Bearbeiten-Knopf und Steuerblock nur bei `manage_members`; Server entscheidet (Pentest D) |
+| AC-45β.6 | fünf Leeren-Schalter + `buildDefectUpdatePayload` (7 Unit-Fälle, darunter „Wert und Schalter nie zusammen") |
+| AC-45β.7 | Handlungsknöpfe aus `availableDefectActions`, gegen die Migrationstabelle gepinnt (je Handlung ein Fall) |
+| AC-45β.8 | „Verwerfen" öffnet den Begründungsblock; Senden erst bei nicht-leerem Text |
+| AC-45β.9 | „Abnehmen" nur im Steuerblock, der `manage_members` verlangt |
+| AC-45β.10 | `offeredDefectActions` hält „Abnehmen" zurück, `describeReviewBlock` erklärt es (6 Unit-Fälle inkl. Runde 2) |
+| AC-45β.11 | „Zurückweisen" mit Pflichtbegründung, Zielzustand `in_bearbeitung` aus der gepinnten Tabelle |
+| AC-45β.12 | Zeitleiste aus `construction_defect_events`, älteste zuerst, mit Begründung je Runde und Hinweis auf Unveränderlichkeit |
+| AC-45β.13 | Anzeigen-Dialog mit Achse Gewerk **oder** Nachunternehmer |
+| AC-45β.14 | Druckseite ausserhalb der App-Hülle, `theme-print`, kein Renderer |
+| AC-45β.15 | je Mangel Nr., Titel, Beschreibung, Ort (nur falls gesetzt), Schweregrad, Frist; Kopf mit Projekt, Adressat, Datum, Ersteller |
+| AC-45β.16 | ausschliesslich Sitzungs-Client; RLS ist `is_project_member`, Playwright belegt Anmelde-Umleitung ohne Inhalt |
+| AC-45β.17 | rote Frist + „überfällig" in der Zeile, Abzeichen in Kopf und Detail |
+| AC-45β.18 | **nicht gebaut** — nach δ verschoben (D-β1) |
+| AC-45β.19 | fünf Filter (Gewerk · Abschnitt · Status · Schweregrad · nur überfällig), alle serverseitig |
+| AC-45β.20 | Nav-Sektion mit `requiresProjectType: "construction"` **und** `requiresModule: "construction"`; Fläche zeigt `ModuleUnavailableNotice`, Druckseite `notFound()` |
+| AC-45β.21 | 409 mit Nennung kommt aus `/backend`; die α-Fläche zeigt die Servermeldung unverändert an (`ConstructionApiError` trägt den Status mit) |
+| AC-45β.22 | keine Zeile und kein Zähler entsteht im Client; alles kommt aus RLS-gebundenen Abfragen und der INVOKER-Auswertung |
+
+Die Härtungskriterien AC-45βH-1…10 und -12 sind serverseitig und im `/backend`-Pentest (53/53)
+belegt; **AC-45βH-11** ist die Hälfte, die diese Slice hinzufügt und die hier belegt ist
+(Playwright: Anmelde-Umleitung ohne „Mängelanzeige" im Rumpf). Der authentifizierte Durchlauf
+bleibt `/qa`.
+
+### Abweichungen (/frontend β)
+
+- **D-β10 — der Zustandsautomat steht ein zweites Mal, in TypeScript.** Ohne ihn müsste die Fläche
+  alle sechs Handlungen anbieten und den 422 abwarten. Er ist ein **Angebots-Spiegel**, keine zweite
+  Autorität: die Datenbank prüft unverändert. Gepinnt durch eine Testtabelle, die den `case
+  p_action`-Block der Migration **wörtlich abschreibt** statt ihn aus dem Prüfling abzuleiten — ein
+  Test, der seine Erwartung aus dem Prüfling bezieht, bestätigt nur sich selbst.
+- **D-β11 — die Anzeige lässt geprüfte und verworfene Mängel weg.** Der Wortlaut von AC-45β.13/.15
+  nennt nur die Achse, keinen Status. Ausgenommen sind ausschliesslich die beiden **abschliessenden**
+  Zustände: bei `geprueft` ist abgenommen, bei `verworfen` war es keiner — eine Aufforderung wäre in
+  beiden Fällen falsch. `erledigt` bleibt **drin** und wird als „fertiggemeldet, Prüfung offen"
+  gekennzeichnet, damit keine Position verschwindet, die der Empfänger erwartet. Die Regel steht
+  einmal (`NOTICE_STATUSES`), wird im Dialog angekündigt und im Blatt als Fusszeile ausgewiesen.
+- **D-β12 — „Verantwortlich" erscheint nur beim Bearbeiten.** Die Anlege-Funktion nimmt das Feld
+  nicht an; es beim Erfassen anzuzeigen hiesse, eine Eingabe zu verwerfen.
+- **D-β13 — die Druckseite verlässt sich auf die RLS statt auf ein eigenes Mitgliedschafts-Tor.**
+  Ein Mandanten-Mitglied ohne Projektmitgliedschaft sieht eine **leere** Anzeige, keinen 404. Kein
+  Inhaltsabfluss (`construction_defects` verlangt `is_project_member`), und der Projektname ist ihm
+  über die PROJ-2-RLS ohnehin sichtbar. Genau so verhalten sich die drei bestehenden Druckseiten
+  (PROJ-116/131/132).
+- **D-β14 — kein authentifizierter Browser-Durchlauf in diesem Schritt.** Die Flächen sind
+  modul-gegatet und der E2E-Mandant hat `construction` **aus**; ihn einzuschalten hätte die frisch
+  stabilisierten Visual-Baselines verschoben (PROJ-Y-143f/143l-Lehre). Belegt ist stattdessen: die
+  neun Baselines bleiben **unberührt** (siehe unten), die α-Auth-Gates 16/16 grün, die zwei neuen
+  Flächen auth-gegatet. Der Durchlauf gehört zu `/qa`.
+- **Kein Deep-Link von den Gewerke-Zählern in die gefilterte Mängelliste.** Die Filter sind
+  Zustand, nicht URL; ein Link, der die Auswahl nicht setzt, wäre irreführend. Der Zähler
+  informiert, er navigiert nicht.
+
+### Baselines und Gates
+
+**Visual-Regression unberührt, empirisch belegt:** `PROJ-51-visual-regression-authenticated`
+**9/9 grün ohne Neuaufnahme**. Erwartet, weil der Visual-Mandant `construction` nicht in
+`E2E_VISUAL_ACTIVE_MODULES` führt und die drei Bau-Sektionen damit doppelt herausgefiltert werden
+(Modul **und** Projekttyp) — aber gemessen statt geschlossen. `routing.test.ts` brauchte keine
+Anpassung: α hat die Invariante schon von „genau eine Sektion je Modul" auf ihre Absicht umgestellt.
+
+| Gate | Ergebnis |
+|---|---|
+| `npx eslint .` | **0 Fehler** (Exit 0) |
+| `npx tsc --noEmit` | **13 = Baseline, 0 neu** |
+| `npx vitest run` | **3240/3240** (395 Dateien), davon **34 neu** in dieser Slice |
+| `npm run build` | clean, beide neuen Routen registriert (`/projects/[id]/maengel`, `…/maengelanzeige/print`) |
+| `npm run check:migration-naming` | 0 Fehler |
+| `npm run check:index-scope` | 0 Fehler |
+| Playwright `PROJ-45-construction` | **18/18** chromium (16 α-Regression + 2 neu) |
+| Playwright `PROJ-51-visual-authenticated` | **9/9**, keine Baseline neu gezogen |
+
+**Eine Messfalle unterwegs, festgehalten weil sie wiederkehrt:** die erste Baseline-Messung meldete
+**15** tsc-Fehler ohne die Slice gegen 13 mit ihr — die Slice hätte Fehler *behoben*. Ursache waren
+die von `npm run build` erzeugten Routen-Typen unter `.next`, die nach dem Wegstashen auf gelöschte
+Dateien zeigten. Nach `rm -rf .next` sind beide Seiten **13**. Dieselbe Klasse wie der
+`validator.ts`-Befund aus PROJ-Y-143e; eine tsc-Baseline ist nur mit geleertem `.next` belastbar.
+
+### Nicht in dieser Slice gebaut
+
+`/qa` steht aus: der authentifizierte Durchlauf (Erfassen als Betrachter → Fertigmelden → Abnahme
+durch eine **zweite** Person), die fünf Risiken aus dem Tech Design (Feld leeren, Vier-Augen unter
+einer Person, Anker-Zweige zählen, Teilbaum-Sperre am **Enkel**, Überfälligkeits-Grenzen) sowie ein
+echter Druck nach PDF. AC-45β.18 bleibt nach **δ** verschoben.
+
+---
+
+## QA Test Results — β (2026-08-19)
+
+**Verdikt: PASS — 0 Critical / 0 High / 0 Medium, 3 Low/Info.** 21 von 22 Akzeptanzkriterien
+erfüllt, alle 12 blockierenden Härtungskriterien erfüllt. **AC-45β.18 ist ein offenes
+Kriterium**, keine Abweichung — es ist per Nutzer-Entscheid (D-β1) nach δ verschoben und als
+Auslassung geführt. Status → **Approved**; Deployment-Scope bleibt leer, `/deploy` vergibt ihn
+(er wird `alpha`, weil drei Original-Anforderungen auf γ/δ/ε liegen).
+
+### Was dieser Lauf hinzufügt
+
+`/frontend` β hatte drei Dinge ausdrücklich offen gelassen. Alle drei sind jetzt ausgeführt,
+nicht kompensiert — nach der PROJ-135/AC-135.3-Lehre ist ein nicht gelaufener Nachweis ein
+offenes Kriterium und keine Deviation:
+
+1. **Der Zwei-Personen-Durchlauf ist wirklich gelaufen**, in drei getrennten authentifizierten
+   Browser-Sitzungen: Betrachter erfasst → Bauleitung meldet fertig → **zweite Person** nimmt ab.
+2. **Die fünf Tech-Design-Risiken** sind einzeln geprüft.
+3. **Ein echter Druck nach PDF** liegt vor (`%PDF-`-Kopf, 15 KB, als Testartefakt angehängt).
+
+### Die vierte Fixture-Lane (Bau)
+
+Der Durchlauf brauchte eine Fläche, die doppelt gegatet ist (`project_type = 'construction'`
+**und** Modul `construction`). Das Modul im geteilten `[E2E]`-Mandanten einzuschalten war
+ausgeschlossen — genau der Griff, den PROJ-Y-143f/143l verboten haben, weil die authentifizierten
+Visual-Baselines Mandanten-Zustand fotografieren. Also eine eigene Lane nach dem
+PROJ-Y-144d-Muster: eigener Mandant `[E2E] Bau Test`, eigenes Bauprojekt, eigenes Gewerk,
+zweistufiger Abschnittsbaum, `active_modules` **ausdrücklich** geschrieben (beide Modul-Tore
+fallen bei fehlender Einstellungszeile offen zurück — eine Fixture mit dem Zweck „das Modul ist
+an" darf nicht auf einem Fail-open ruhen), `audit_lifecycle_exempt` **vor** dem Seeden gesetzt.
+
+**Drei Akteure, weil die Rollen es erzwingen** und nicht aus Bequemlichkeit: der Betrachter darf
+anlegen, aber nicht fertigmelden; Fertigmelden verlangt `admin | lead`; Abnehmen verlangt
+dieselbe Rolle **und** eine andere Person. Zwei davon sind neue Identitäten, der Abnehmer ist der
+geteilte E2E-Nutzer als Mandanten-Administration — dass dessen Einbuchung in einen vierten
+Mandanten heute gefahrlos ist, verdankt sich PROJ-Y-143l und ist unten **gemessen**, nicht
+angenommen. Alle acht neuen Kennungen sind RFC-4122-konform und im harten `global-setup`-Wächter
+eingetragen (PROJ-143).
+
+### Nachweise je Akzeptanzkriterium
+
+| AC | Nachweis |
+|---|---|
+| AC-45β.1 | **Browser, Betrachter-Sitzung:** „Mangel erfassen" ist für die Betrachterrolle sichtbar und der Mangel entsteht; Gegenprobe im selben Test, dass „Mängelanzeige" ihm **nicht** angeboten wird (sonst wäre der Nachweis auch auf einer Fläche grün, die jedem alles zeigt). Datenbankseitig Pentest A/D2. |
+| AC-45β.2 | Speichern erst bei Titel **und** Gewerk; Pentest A (Titel getrimmt, Status `offen`), Vektoren für fehlenden Titel und fehlendes Gewerk → `23514`. Die vier übrigen Felder sind im Durchlauf leer geblieben und der Mangel entstand trotzdem. |
+| AC-45β.3 | Pentest **E/F** (projektfremdes Gewerk / projektfremder Abschnitt → `23514`), plus PROJ-Y-45a-Wächter 9/9. Die Auswahl der Oberfläche stammt aus den Projekt-Hooks. |
+| AC-45β.4 | **Browser:** direkt nach dem Erfassen ist die Zeile sichtbar und trägt „Offen" — ohne Reload und ohne weiteren Schritt. |
+| AC-45β.5 | **Browser, Betrachter-Sitzung:** statt des Steuerblocks erscheint der Nur-Lese-Hinweis; „Fertigmelden", „Abnehmen" und „Angaben bearbeiten" haben Trefferzahl **0**. Serverseitig Rot-Team über HTTP: sein `PATCH` und sein Statuswechsel enden auf **403**, und die Zeile ist danach unverändert (`titel` und `status` gegengeprüft). Pentest B/C/D. |
+| AC-45β.6 | Pentest **O0/O1/O2** über **alle fünf** optionalen Felder in drei Zuständen: setzen → **weglassen behält** → Schalter leert wirklich. Der mittlere Zustand ist der eigentliche Nachweis: ohne ihn bliebe „weglassen heißt leeren" unentdeckt (die live ausgelieferte PROJ-122-Defektklasse). **Browser** zusätzlich für den Ort, das schwerste Feld, weil eine Auswahlliste ohne ausdrückliche Leer-Option gar nicht zurückgesetzt werden kann — geprüft gegen die **persistierte Zeile**, nicht gegen die gerenderte Zelle. |
+| AC-45β.7 | Pentest über jeden Übergang der Kette; zusätzlich **im Feld-Protokoll live nachgewiesen**: die drei Durchläufe erzeugten 28 Zeilen `construction_defects.status` in `audit_log_entries` (danach aufgeräumt, siehe Rückstände). |
+| AC-45β.8 | Pentest **M** (Verwerfen ohne Begründung → `23514`); in der Maske öffnet „Verwerfen" den Begründungsblock und sendet erst bei nicht-leerem Text. |
+| AC-45β.9 | **Browser:** „Abnehmen" existiert nur im Steuerblock, den die Betrachter-Sitzung nicht bekommt; die Abnahme selbst gelingt in der Sitzung der Mandanten-Administration. |
+| AC-45β.10 | **Der Kern des Durchlaufs.** In der Sitzung der Bauleitung, die fertiggemeldet hat, ist „Abnehmen" mit Trefferzahl **0** — „Zurückweisen"/„Verwerfen" bleiben stehen, sonst wäre der Mangel eingefroren. Und weil ein zurückgehaltener Knopf allein kosmetisch ist: dieselbe Sitzung fragt die Statusroute direkt und erhält **403** mit `four-eyes` im Rumpf. Pentest **I** und **K** (Runde 2 nach Rückweisung). |
+| AC-45β.11 | Pentest **L/L2**; Rot-Team über HTTP: Zurückweisen ohne Begründung → **422**, und der Mangel bleibt auf `erledigt` (kein Nebeneffekt). |
+| AC-45β.12 | **Browser:** die Zeitleiste zeigt nach der Abnahme „Angelegt", „Fertiggemeldet", „Geprüft" mit dem Unveränderlichkeits-Hinweis. Pentest **R** prüft jetzt die volle Mehrrunden-Kette (siehe F-1) und **R2** beide Fertigmeldungen. |
+| AC-45β.13 | **Browser:** Anzeigen-Dialog mit Achse Gewerk oder Nachunternehmer, nur für die Leitung. |
+| AC-45β.14 | **Echter Druck:** `page.pdf()` auf der Druckseite liefert einen gültigen `%PDF-`-Kopf und ~15 KB; die App-Hülle ist nachweislich nicht im DOM (`[data-sidebar]` Trefferzahl 0). |
+| AC-45β.15 | Titel, Ort und Gewerk stehen auf dem Blatt (im gedruckten Fall mit gesetztem Ort, Frist und Schweregrad `erheblich`). |
+| AC-45β.16 | Ohne Sitzung führt die Druckseite zur Anmeldung und der Rumpf enthält weder „Mängelanzeige" noch `construction_defects`. Rot-Team über HTTP: ein Fremder aus einem anderen Mandanten erhält auf Liste **und** Zähler **404** (nicht 403 — 403 würde die Existenz des Projekts bestätigen). |
+| AC-45β.17 | **Risiko 5, alle drei Grenzen:** Frist **heute** → nicht überfällig (`<`, nicht `<=`), Frist **gestern** → überfällig, Frist gestern **aber fertiggemeldet** → „wartet auf Prüfung" und ausdrücklich **nicht** überfällig. Pentest P1–P4. |
+| AC-45β.18 | **OFFEN — nicht erfüllt.** Nach PROJ-45-δ verschoben (D-β1, Nutzer-Entscheid nach B-β1). Als zurückgestellte Original-Anforderung in `features/OPEN-DEFERRED-STATUS.md` in der δ-Zeile geführt. Der PROJ-103-Pentest ist als Regression **A–G 7/7** grün und belegt unabhängig, dass β die Engpass-Auswertung nicht angefasst hat. |
+| AC-45β.19 | Fünf serverseitige Filter; im Durchlauf mitbenutzt (der Filter wird nach dem Erfassen zurückgesetzt und das gesagt). |
+| AC-45β.20 | Positive Hälfte im Browser: die Fläche ist überhaupt nur erreichbar, weil Projekttyp **und** Modul stimmen — die Fixture-Lane ist der Nachweis. Negative Hälfte: der Fremd-Mandant (Modul `construction` aus) erhält 404 ohne Mangeldaten. |
+| AC-45β.21 | **Risiko 4 im Browser/HTTP:** der Mangel hängt am **Enkel**, gelöscht wird die **Wurzel** → **409** mit `defects_present` **und dem Titel des Mangels im Rumpf**. Pentest U/V/V2/V3, wobei **V** zeigt, dass die naive Abfrage auf den einen Knoten 0 Treffer liefert. |
+| AC-45β.22 | Rot-Team über HTTP (404 auf Liste und Zähler, kein Leck des Laufkennzeichens) + Pentest X/X2 und die **Aggregat-Leck-Probe Y/Y2** (Fremder sieht `total = 0`, obwohl 1 Mangel existiert; Berechtigter sieht die Wahrheit — kein Blanket-Deny). |
+
+### Härtungskriterien
+
+| # | Nachweis |
+|---|---|
+| AC-45βH-1 | Pentest X/X2/Y/Y2 + HTTP-404 auf Liste und Zähler. |
+| AC-45βH-2 | Pentest B/C/D (Betrachter und Projekt-`editor`) + HTTP-403 auf `PATCH` und Statuswechsel + Trefferzahl 0 für alle Steuer-Knöpfe in der Betrachter-Sitzung. |
+| AC-45βH-3 | Pentest I und **K** (Runde 2) + der 403 aus der Sitzung des Fertigmelders. |
+| AC-45βH-4 | Pentest W1–W4 **als Mandanten-Administration**: direktes `INSERT` und Ereignis-`INSERT` → `42501`, `UPDATE`/`DELETE` → 0 Zeilen. Strukturell zusätzlich: **0** Schreib-Policies auf beiden Tabellen (live gezählt), RLS auf beiden aktiv. |
+| AC-45βH-5 | Pentest Q1/Q2 (`42501`), Ausnahme durch Z belegt (D-β5). |
+| AC-45βH-6 | Pentest E/F + PROJ-Y-45a-Wächter 9/9. |
+| AC-45βH-7 | **Risiko 4**: 409 mit Nennung, am Enkel ausgelöst, kein 500. |
+| AC-45βH-8 | **Vollständig geprüft, nicht als Stichprobe** (PROJ-Y-114a-Lehre): alle **acht** von der Migration erzeugten Funktionen **und** die **vier** geteilten, die sie neu schreibt (`can_read_audit_entry`, `_tracked_audit_columns`, `record_audit_changes`, `record_audit_lifecycle`) haben `has_function_privilege('anon', …) = false` **und keinen PUBLIC-Eintrag in der ACL** (`=X/` kommt in keiner der zwölf vor). Die beiden internen Wächter sind auch für `authenticated` nicht aufrufbar; die drei Auswertungen sind INVOKER, die drei Schreibwege DEFINER; alle zwölf tragen `search_path`. |
+| AC-45βH-9 | Live-Pentest gegen Prod im Rollback-Muster; Nicht-Admin, Projekt-`viewer` und Projekt-`editor` werden synthetisiert (in Prod ist jedes Mandanten-Mitglied Admin und `is_tenant_admin` schließt die Rechteprüfung kurz — ein Smoke unter Admin wäre falsch-grün). Vektor **S2** belegt ausdrücklich, dass der lesende Nutzer kein Admin ist. |
+| AC-45βH-10 | α-Pentest **16/16**, PROJ-Y-45a **9/9**, PROJ-103 **A–G 7/7** — alle wörtlich, alle unverändert. |
+| AC-45βH-11 | Druckseite ohne Sitzung → Anmelde-Umleitung ohne Inhalt; mit Sitzung nur eigene Projekte (RLS `is_project_member`, Sitzungs-Client, kein Dienst-Schlüssel). |
+| AC-45βH-12 | Nicht-Bau/Modul-aus verhält sich unverändert: **9/9 Visual-Baselines grün ohne Neuaufnahme**, α-Auth-Gates **18/18**, vitest 3240/3240. |
+
+### Automatisierte Läufe
+
+| Lauf | Ergebnis |
+|---|---|
+| Live-Pentest `tests/sql/PROJ-45-beta-construction-defects-pentest.sql` | **53/53 PASS, 0 FAIL** gegen Prod (32 + 14 + 7), 0 Rückstände |
+| Regression α `PROJ-45-construction-trades-sections-pentest.sql` | **16/16** wörtlich |
+| Regression `PROJ-Y-45a-reference-consistency-smoke.sql` | **9/9** wörtlich |
+| Regression PROJ-103 (Engpass-Auswertung unberührt) | **A–G 7/7** wörtlich |
+| Playwright `PROJ-45-beta-defects.spec.ts` (neu) | **18/18** chromium — 6 Auth-Gates, 3 Kettenschritte, 4 Risiken, 2 Anzeige, 3 Rot-Team |
+| Playwright `PROJ-45-construction.spec.ts` (α-Regression) | **18/18** chromium |
+| Beide zusammen, dreimal hintereinander | **36/36 · 36/36 · 36/36** |
+| Playwright `PROJ-51-visual-regression-authenticated` | **9/9**, keine Baseline neu gezogen |
+| `npx vitest run` | **3240/3240** (395 Dateien) |
+| `npx eslint .` | **0** (Exit 0) |
+| `npx tsc --noEmit` (nach `rm -rf .next`) | **13 = Baseline, 0 neu** |
+| `npm run build` | clean; alle 5 neuen API-Routen und beide Seiten registriert |
+| `npm run check:migration-naming` | 0 Fehler (218 Migrationen) |
+| `npm run check:index-scope` | 0 Fehler |
+| Supabase-Advisors | **0 ERROR** auf beiden Achsen (Security 144 WARN, Performance 15 WARN / 293 INFO) |
+
+Die drei slice-bezogenen Security-WARN sind die drei Schreib-RPCs als `authenticated`-ausführbare
+`SECURITY DEFINER`-Funktionen — dieselbe Kategorie, die α trägt und die den Schreibweg überhaupt
+erst möglich macht; jede prüft die Rolle intern. Der einzelne `anon_security_definer`-WARN gehört
+`seed_risk_categories_if_empty` und ist Bestand. Die acht Performance-Meldungen sind INFO: fünf
+`unindexed_foreign_keys` auf Personen-Verweisen (die von PROJ-69 ausdrücklich als
+„skip/delete-rare" triagierte Klasse, keine auf einem Leseweg) und drei `unused_index`, was bei 0
+Zeilen in Prod zu erwarten ist.
+
+### Register-Anker (Risiko 3)
+
+Live nachgezählt, gegen die vier Nachbar-Slices, die an denselben Objekten arbeiten:
+Objektarten **94**, Feld-Whitelist **76**, Lese-Tor **63** — genau die im Tech Design
+vorhergesagten Werte. Die Ereignis-Tabelle steht in **keinem** der drei Register (dreifach
+gegengeprüft), sie *ist* das Protokoll. Namentliche Geschwister-Gegenprobe über 18 Nachbar-Objekte
+(`dd_findings`, `spa_issues`, `ma_valuations`, `communication_matrix_entries`, `raci_assignments`,
+`document_extractions`, `document_summaries`, `audit_reader_grants`, `work_items`, `risks`, …):
+alle Zweige erhalten. Zwei Abwesenheiten sind dokumentierter Bestand und kein Clobber-Schaden —
+`project_skills` trägt bewusst keinen Whitelist-Zweig (PROJ-78) und `audit_reader_grants` bewusst
+keinen Lesetor-Zweig (PROJ-130-γ2, fällt korrekt auf `else return false`). Die γ1-Klausel
+(`_audit_entry_classified_ok`) und die γ2-Klausel (`has_audit_reader_grant`) stehen unverändert im
+gemeinsamen Ausgang, und der `authenticated`-Grant auf `can_read_audit_entry` ist intakt.
+
+### Befunde
+
+**F-1 (Low, in `/qa` behoben) — ein Pentest-Vektor trug den Namen von AC-45β.12, ohne es zu
+belegen.** Der Lauf zählte **52** wörtliche PASS-Marken, nicht die dokumentierten 53. Ursache:
+`R_history_for_second_defect` **gab einen Wert aus statt zu prüfen** (`angelegt`) und konnte
+strukturell nicht fehlschlagen; zusätzlich las er den **falschen** Mangel, weil Vektor M
+`v_defect` zuvor auf einen frischen Mangel umbiegt — die Mehrrunden-Kette hing an der ersten
+Zeile, deren Kennung niemand mehr hielt. Nicht die Zahl wurde nachjustiert, sondern der Vektor:
+eine neue Variable `v_defect_rounds` hält den Mangel mit den Runden, und `R_multi_round_history`
+prüft die Kette jetzt wörtlich gegen
+`angelegt>fertiggemeldet>zurueckgewiesen>fertiggemeldet>geprueft`.
+
+**Nachgemessen gegen Prod nach der Härtung:** Block 1 gibt **32/32 PASS** aus (vorher 31 PASS
+plus eine Wertausgabe), Block 2 vierzehn, Block 3 sieben — **53/53 PASS, 0 FAIL**, und damit
+erstmals 53 *Zusicherungen* statt 53 *Marken*. Das Produkt war nie falsch: der Verlauf war
+korrekt, nur unbewiesen. Kein Produktivcode berührt. Nebenbefund derselben Prüfung: das
+Header-Etikett listete `J0/J`, obwohl `J0` gar kein ausgegebener Vektor ist — auf `J` korrigiert,
+die Gesamtzahl 53 war davon unberührt.
+
+**F-2 (Low, offen → PROJ-Y-45d) — die Gewerk-Auswahl kippt von unkontrolliert auf kontrolliert.**
+`construction-defect-dialog.tsx:241` übergibt beim leeren Feld `undefined`, React meldet beim
+ersten Auswählen „Select is changing from uncontrolled to controlled". Bei jedem Öffnen der
+Erfassen-Maske reproduziert. **Es ist die einzige Stelle dieser Form im ganzen Repo** (1 Treffer
+in `src/`), also von β eingebracht — die beiden optionalen Auswahllisten unmittelbar darüber
+machen es mit einem `NONE`-Wächter richtig. Wirkung ist Konsolenlärm, keine Fehlfunktion (18/18
+laufen über genau diesen Pfad). Bewusst nicht in `/qa` behoben: der naheliegende Fix berührt das
+Verhalten des Platzhalters „Gewerk wählen …", und dessen Prüfung gehört ins Frontend. Nebenbei:
+der Konsolen-Wächter aus PROJ-Y-143e greift auf `console.error`, dies ist eine `console.warn` — er
+konnte sie nicht fangen.
+
+**F-3 (Info, in `/qa` behoben, eigener Fehler) — Aufräumen nach Laufkennzeichen löschte fremden
+Blöcken die Daten weg.** Die erste Fassung des neuen Specs räumte je Block „alles mit diesem
+Laufkennzeichen" ab. Playwright verteilt Blöcke auf parallele Worker und alle vier melden in
+**dasselbe** Projekt — also verschwand der Mangel der Kette mitten im Test, und der Fehlschlag
+sah aus wie „der Status wurde nicht aktualisiert". Behoben durch ein Kennzeichen je Block; danach
+dreimal hintereinander 36/36. Dieselbe Klasse wie PROJ-Y-143o, eine Ebene weiter: nicht das
+Verschlucken des Fehlers, sondern der **Geltungsbereich** des Aufräumens.
+
+**F-4 (Info, offen → PROJ-Y-45e) — `audit_lifecycle_exempt` deckt den Feld-Audit nicht ab.** Die
+drei committenden Durchläufe hinterließen **33** unlöschbare Zeilen in `audit_log_entries` (28 ×
+`status`, 5 × `section_id`) plus eine aus dem Fixture-Seed. Das Flag aus PROJ-Y-130h unterdrückt
+nur `record_audit_lifecycle`, nicht `record_audit_changes` — und `status` steht in der
+Feld-Whitelist, weil AC-45β.7 es verlangt. `/qa` hat sie über den Runbook-Weg
+(`session_replication_role = replica`, streng auf den Fixture-Mandanten begrenzt, mit
+Vorbedingungen und Nachprüfung) entfernt und 0 Rückstände belegt; die Wächter aus PROJ-130-α sind
+danach nachweislich wieder scharf (3/3 aktiv, `session_replication_role = origin`). Das ist ein
+manueller Nachlauf, den der nächste Lauf erneut braucht.
+
+**Kein Befund, aber festgehalten:** die α-Auth-Gate-Zusicherung war
+`expect([307, 401, 403, 404]).toContain(status)` — vier erlaubte Werte, wo genau **einer**
+auftritt. Gemessen gegen die laufende Anwendung antworten **alle** achtzehn Konstruktions-Endpunkte
+(zwölf α, sechs β) mit exakt **307** und `location: /login?next=…`, weil der Proxy vor dem Handler
+greift. Jeder überzählige Wert deckte eine andere Regression: `404` hielte den Test grün, wenn
+eine Route **gelöscht** würde, `403` wenn das Tor seinen Charakter änderte, `401` wenn der Proxy
+den Pfad nicht mehr träfe. Auf den einen Wert verschärft, in α und in β. Zusätzlich hatten die
+fünf neuen β-**API**-Routen bisher **gar keinen** Auth-Gate-Test — `/frontend` β hatte nur die
+zwei Seiten abgedeckt.
+
+### Rückstände (Gegenabfrage, nicht Behauptung)
+
+Der Browser-Durchlauf muss committen; ein zurückgerollter Vorgang kann ihn nicht abbilden. Nach
+allen Läufen und dem Aufräumen, über zehn Zähler gegengeprüft:
+
+`construction_defects` **0** · `construction_defect_events` **0** · Mängel mit `[E2E β]` **0** ·
+Mängel im Bau-Projekt **0** · `audit_log_entries` für `construction_defects` **0** ·
+`audit_log_entries` des Bau-Mandanten **0** · Mängel im **Kundenmandanten 0** (er wurde nie
+berührt) · PROJ-130-α-Wächter **3/3 aktiv** · `session_replication_role` = `origin` ·
+`audit_log_entries` gesamt **576** (Bestand anderer Mandanten, unangetastet).
+
+**Bewusst stehen bleibt die Fixture-Lane selbst** — Mandant, Projekt, drei Mitgliedschaften, zwei
+Projektrollen, ein Gewerk, eine Projektzuordnung, zwei Abschnitte. Das ist kein Rückstand, sondern
+dieselbe dauerhafte, idempotent nachgesäte Fixture wie die Assistant- und die Visual-Lane;
+`global-setup` stellt sie bei jedem Lauf wieder her. `audit_lifecycle_exempt` ist gesetzt.
+
+### Abweichungen (`/qa`)
+
+- **D-β15** Der Zwei-Personen-Durchlauf fährt die Zustandswechsel über die Oberfläche, die
+  Negativ-Nachweise („darf der Server das auch wirklich nicht?") dagegen als direkte Anfrage aus
+  **derselben authentifizierten Sitzung**. Das ist Absicht: der echte Anfragepfad wird benutzt,
+  kein Dienst-Schlüssel, und der Nachweis hängt nicht daran, dass ein Knopf fehlt.
+- **D-β16** Der Dienst-Schlüssel wird ausschließlich zum **Lesen** der erzeugten Kennungen und
+  zum Aufräumen benutzt, nie zum Herstellen eines Zustands, den die Oberfläche herstellen soll.
+- **D-β17** Mobile Safari bleibt umgebungsbedingt übersprungen (WebKit-Host-Bibliotheken,
+  PROJ-67/F2). Firefox ist gar nicht konfiguriert; alle Zahlen sind chromium.
+- **D-β18** Die UI-Hälfte des Leeren-Schalters ist für **ein** Feld (Ort) gefahren, nicht für alle
+  fünf; die anderen vier sind über O0/O1/O2 auf Funktionsebene in allen drei Zuständen belegt. Der
+  Ort ist bewusst gewählt, weil eine Auswahlliste der einzige Feldtyp ist, der ohne ausdrückliche
+  Leer-Option gar nicht zurücksetzbar wäre.
+- **D-β14 aufgelöst.** Die Deviation „kein authentifizierter Browser-Durchlauf" aus `/frontend` ist
+  eingelöst und entfällt.
+
+---
+
+## PROJ-45-γ — Abnahmen (Requirements 2026-08-19)
+
+**Status: Deployed** (2026-08-20, Tag `v2.70.0-PROJ-45-gamma`) · dritter Sub-Slice, baut auf dem deployten α (Gewerke +
+Bauabschnitte) und β (Mängel) auf. Tech Design und `/backend`-Notizen stehen unten; alle sieben
+Architekturfragen sind beantwortet, vier davon durch eine Messung statt durch eine Annahme.
+**Kein CIA-Pass nötig** (Q-γ6). **Datenschicht, Anwendungsschicht und Oberfläche sind gebaut;
+`/qa` steht aus.** Die Abnahme ist der Punkt, an dem Bauleistung rechtlich übergeht: sie setzt die
+Gewährleistungsfrist in Gang, kehrt die Beweislast um und lässt Vorbehalte verfallen, die nicht
+**bei** der Abnahme erklärt werden. Ohne sie bleibt die Extension eine Erfassungsfläche.
+
+### Erdung — gegen den deployten Stand gemessen, nicht aus der Erstfassung übernommen
+
+| Gemessen (2026-08-19, Prod) | Wert | Folge für γ |
+|---|---|---|
+| Lebende Bauprojekte | **1** — die β-QA-Fixture `[E2E] Bau-Projekt Mängel`, mit 0 Phasen, 0 Meilensteinen, 0 Arbeitspaketen | γ startet weiter auf grüner Wiese; kein Bestand zu migrieren, keine Rücksicht auf gewachsene Daten |
+| `construction_defects` | **0 Zeilen** (β-QA hat rückstandsfrei aufgeräumt) | Die Vorbehalts-Kopplung ist neu zu bauen, nicht an Bestand anzupassen |
+| `deliverables` / `deliverable_approvals` | **0 Zeilen** | Die in der α-Tabelle benannte Vorlage ist in Produktion **nirgends im Einsatz** — sie ist ein Muster, kein erprobter Betrieb |
+| `deliverables_anchor_check` | `phase_id is not null or workstream_id is not null` | Das „mindestens ein Anker"-Muster ist deployt und für L17 direkt übertragbar |
+| `milestones` (Kern, alle Projekttypen) | `target_date` · `actual_date` · vier Status | Trägt **kein** Protokoll: keine Teilnehmer, kein Ergebnis mit Abstufung, keine Vorbehalte, keine Frist |
+| `external_document_links.entity_type` | **6** Werte live (`dd_question · dd_finding · work_item · deliverable · ma_valuation · spa_issue`) | γ bräuchte einen siebten — und einen Zweig im Auflöser `external_link_parent_ctx` |
+| `external_link_parent_ctx` | gibt `(project_id, level)` zurück; **jeder** Zweig liest ein `confidentiality_level` | Bau hat per α-Entscheid **keine** Vertraulichkeitsachse → ein Bau-Zweig müsste konstant `standard` liefern (Q-γ1) |
+| DMS-Knoten-Verweis | Vorbild ist `skill_knowledge_links` (PROJ-77-γ): FK auf `document_tree_nodes` + Mandanten-Konsistenz-Trigger | Der DMS-Beleg ist ein **Verweis auf einen vorhandenen Knoten**, kein zweiter Ablageweg |
+| `work_item_documents` | trägt `kind/title/body/checklist/version` | **Keine** DMS-Verknüpfung — die naheliegende Namensgleichheit trügt, als Vorbild untauglich |
+
+### Ein Befund vorweg: die benannte Vorlage trägt nur zur Hälfte
+
+Die α-Tabelle nennt `deliverable_approvals` (PROJ-105) als Vorlage für γ. Am deployten Objekt
+gemessen passt davon die **Form des Protokolls**, nicht die **Mechanik**:
+
+| PROJ-105 | Abnahme |
+|---|---|
+| sequenzielle Stufen, je Stufe **ein** Freigeber, der Reihe nach | **ein gemeinsamer Termin** mit mehreren Anwesenden gleichzeitig |
+| Ergebnis binär (`approve`/`reject`) | dreiwertig: abgenommen · **unter Vorbehalt** · verweigert |
+| hängt an `deliverables` (M&A-Fläche, `confidentiality_level`, Anker Phase **oder** Workstream) | hängt an Gewerk oder Bauabschnitt (α) |
+| kein Rechtsdatum | **setzt die Gewährleistungsfrist in Gang** |
+
+Übernommen wird daher: die **unveränderliche Ereignis-Tabelle**, das **Schreiben ausschließlich über
+Funktionen** (keine Schreib-Policies) und die Sperre „höchstens ein offener Vorgang je Bezug".
+Nicht übernommen wird die Stufen-Maschinerie — sie hätte in γ keinen Adressaten.
+
+**Und ein zweiter Befund:** `milestones` wäre die billige Antwort („eine Abnahme ist ein Meilenstein"),
+trägt aber weder Ergebnisabstufung noch Teilnehmer, Vorbehalte oder Frist. Ein Meilenstein *kann* den
+Abnahmetermin im Gantt spiegeln — das ist eine Anzeigefrage für **δ**, kein Datenmodell für γ.
+
+### Nutzer-Locks (γ)
+
+| # | Entscheidung | Begründung |
+|---|---|---|
+| **L17** | **Genau ein Bezug je Abnahme: Projekt-Gewerk *oder* Bauabschnitt.** Die Gesamtabnahme ist die Abnahme des Wurzel-Abschnitts. | Deckt die reale Teilabnahme in beiden Richtungen („Elektro ist abgenommen", „Haus A ist abgenommen") mit **einem** erprobten Muster (`deliverables_anchor_check`). Ein dritter, ankerloser Fall hätte in jeder Prüfung, Auswertung und Anzeige eine eigene Verzweigung erzwungen. |
+| **L18** | **Zweistufig: angesetzt → Ergebnis.** Ein Termin wird zuerst angesetzt und später protokolliert; Absagen ist möglich. | Der angesetzte Termin ist der Zustand, den die Baustelle braucht („Abnahme steht an") und die Vorarbeit für die Terminsignale in **δ**. Ohne ihn entstünde der Datensatz erst rückwirkend und δ müsste ihn nachziehen. Eine dritte Stufe („Prüfung der Prüfung") entfällt: die Abnahme **ist** der Prüfschritt. |
+| **L19** | **Ein Ergebnis ist endgültig.** Eine verweigerte Abnahme bleibt stehen; die Nachabnahme ist ein **neuer** Datensatz mit Verweis auf den vorigen. | Hausregel „Entscheidungen sind unveränderlich" (PROJ-20, Invariante #5) und Rechtslage: jede Abnahme ist ein eigener Akt mit eigenem Datum. Ein Protokoll mit zwei Abnahmedaten ist nicht sauber ausdruckbar — genau deshalb **nicht** das Runden-Modell aus β. |
+| **L20** | **Vorbehalte koppeln an die β-Mängel.** Beim Protokollieren lassen sich bestehende offene Mängel als Vorbehalt anhaken **und** neue direkt erfassen; die neuen entstehen über die bestehende β-Anlegefunktion als echte Mängel. | Eine Wahrheit. Ein Freitext-Vorbehalt liefe an der Mängelverfolgung vorbei und würde nie nachgehalten — und ein Vorbehalt, der nicht nachgehalten wird, ist der teuerste Fehler dieser Domäne. Setzt den Spec-Satz „erzeugt prüfbare Vorschläge für Mangel" um. |
+| **L21** | **Gewährleistung: Dauer wählbar, Fristende sichtbar — keine Überwachung.** | Abnahmedatum plus Dauer (VOB 4 Jahre · BGB 5 Jahre · frei) ergibt ein sichtbares Fristende im Protokoll und in der Liste. Ohne das verlöre die Abnahme ihren wichtigsten Zweck. Ablaufwarnung und Mängelverfolgung **über die Bauzeit hinaus** brauchen Auswertung, Anzeigeort und Zuständigkeit — das ist eine eigene Slice, nicht γ. |
+| **L22** | **Protokollieren dürfen nur Projektleitung/Bauleitung oder Mandanten-Administration.** Betrachter dürfen hier **nicht** anlegen. | **Bewusste Abweichung von L15**, und zwar in die verschärfende Richtung: der Mangel wird beim Rundgang erfasst, die Abnahme ist eine rechtsverbindliche Erklärung. Dieselbe Regel wie beim Prüfen in β — damit lebt auf der Baufläche **eine** verschärfte Rolle, nicht zwei verschiedene. **Kein Vier-Augen-Tor**: die Abnahme ist ein Akt der Bauherrenseite, kein interner Freigabelauf. |
+| **L23** | **Ausgabe: Protokoll als Druckseite; Beleg auf zwei Wegen; Teilnehmer strukturiert.** | Das unterschriebene Protokoll lebt je nach Kunde im eigenen System (externer Link, PROJ-115) **oder** auf der Plattform (DMS-Knoten, PROJ-79). Beide Wege werden angeboten, **einer** je Abnahme — die Gefahr zweier Wahrheiten ist erkannt und in Q-γ1 gestellt. Teilnehmer aus Projektmitgliedern, Stakeholdern (PROJ-8) und Nachunternehmern (PROJ-15), mit Freitext-Rückfall für Anwesende ohne Datensatz. |
+
+### Prior Art für γ
+
+| Bedarf | Vorlage | Anmerkung |
+|---|---|---|
+| Bezug „genau ein Anker" | `deliverables_anchor_check` (PROJ-104) | Deployt; γ verschärft von „mindestens einer" auf „genau einer" |
+| Projekt-Konsistenz der Verweise | `PROJ-Y-45a` (α-Nachzug) | Zwei BEFORE-Wächter erzwingen, dass Gewerk und Abschnitt zum selben Projekt gehören — γ erbt die Pflicht |
+| Unveränderlicher Verlauf | `construction_defect_events` (β), `deliverable_approval_events` (PROJ-105) | Ereignis-Tabelle **außerhalb** der drei Audit-Register (β-Begründung: sie *ist* das Protokoll) |
+| Höchstens ein offener Vorgang | `deliverable_approvals_one_pending` (partieller Unique-Index) | Überträgt sich auf „ein angesetzter Termin je Bezug" |
+| Schreiben nur über Funktionen | `dd_findings` (PROJ-114), β | Macht die verschärfte Rolle (L22) zu **einer** prüfbaren Stelle |
+| Mangel anlegen aus γ heraus | `create_construction_defect(...)` (β) | Wird aufgerufen, nicht nachgebaut |
+| Teilnehmer | `committee_meeting_attendees` (PROJ-117, stakeholder-zentriert) | γ braucht zusätzlich den **Nachunternehmer** — Gremien kennen keine Vendors |
+| Protokoll-Druckseite | Mängelanzeige (β), PROJ-21-Muster | Sitzungs-Client, **nie** Dienst-Schlüssel |
+| Beleg als externer Link | `external_document_links` (PROJ-115) | Siebter Objekttyp + Zweig im Auflöser (Q-γ1) |
+| Beleg als DMS-Knoten | `skill_knowledge_links` (PROJ-77-γ) | Verweis auf vorhandenen Knoten; Upload bleibt der bestehende DMS-Weg |
+| Entfernen-Sperre mit Nennung | β (409 statt 500, Teilbaum-Abfrage) | γ erweitert die bestehende Sperre, statt eine zweite danebenzustellen |
+
+### User Stories (γ)
+
+#### ST-45γ.1 — Abnahmetermin ansetzen
+Als **Bauleitung** möchte ich einen Abnahmetermin für ein Gewerk oder einen Bauabschnitt ansetzen,
+damit alle Beteiligten wissen, wann abgenommen wird, und der Termin nicht in einer E-Mail versandet.
+
+- [ ] **AC-45γ.1** *(korrigiert im Tech Design, D-γ1)* Eine Abnahme wird auf **höchstens einen** Bezug angesetzt: ein Projekt-Gewerk **oder** einen Bauabschnitt (L17) — **oder keinen von beiden**, dann ist es die Gesamtabnahme des Projekts. **Beides zugleich** wird serverseitig abgewiesen. Die ursprüngliche Fassung („genau einer", Gesamtabnahme über den Wurzel-Abschnitt) war nicht baubar: ein Bauprojekt ohne Abschnittsbaum hat keinen Wurzelknoten, und der eigene Edge Case verlangt, dass es vollständig funktioniert.
+- [ ] **AC-45γ.2** Auswählbar sind nur Gewerke und Abschnitte **dieses** Projekts; ein projektfremder Verweis wird serverseitig abgewiesen (PROJ-Y-45a-Pflicht).
+- [ ] **AC-45γ.3** Pflicht beim Ansetzen sind Bezug und Termin; Titel, Bemerkung und Teilnehmer sind optional nachtragbar.
+- [ ] **AC-45γ.4** Je Bezug ist höchstens **eine** Abnahme gleichzeitig angesetzt; ein zweiter Versuch wird mit benennender Meldung abgewiesen.
+- [ ] **AC-45γ.5** Ein angesetzter Termin kann verschoben oder mit Pflichtbegründung abgesagt werden; beides steht im Verlauf.
+- [ ] **AC-45γ.6** Jede Abnahme trägt eine fortlaufende Nummer je Projekt, damit das Protokoll eindeutig referenzierbar ist.
+
+#### ST-45γ.2 — Abnahme protokollieren
+Als **Bauleitung** möchte ich das Ergebnis der Abnahme festhalten,
+damit der Übergang belegt ist und nicht später rekonstruiert werden muss.
+
+- [ ] **AC-45γ.7** Das Ergebnis ist dreiwertig: **abgenommen** · **abgenommen unter Vorbehalt** · **verweigert**; „verweigert" verlangt eine Pflichtbegründung.
+- [ ] **AC-45γ.8** Protokolliert werden dürfen nur Projektleitung/Bauleitung oder Mandanten-Administration; ein Betrachter kann weder ansetzen noch protokollieren (L22) — serverseitig abgewiesen, nicht nur in der Oberfläche ausgeblendet.
+- [ ] **AC-45γ.9** *(präzisiert im Tech Design, D-γ4)* Ein protokolliertes Ergebnis ist **endgültig** und nicht mehr änderbar (L19); der Versuch wird serverseitig abgewiesen. **Ausgenommen ist der Belegverweis** — das unterschriebene Protokoll kommt naturgemäß erst **nach** der Abnahme zurück; ohne diese Ausnahme wäre AC-45γ.24 unerfüllbar.
+- [ ] **AC-45γ.10** Nach einer verweigerten Abnahme lässt sich eine **neue** Abnahme auf denselben Bezug ansetzen; sie verweist auf die vorige, und die Kette ist im Protokoll und in der Liste sichtbar.
+- [ ] **AC-45γ.11** Das tatsächliche Abnahmedatum ist getrennt vom angesetzten Termin erfassbar (die Abnahme findet oft an einem anderen Tag statt).
+- [ ] **AC-45γ.12** Jeder Schritt — angesetzt, verschoben, abgesagt, protokolliert — steht mit Akteur und Zeitpunkt in einem unveränderlichen Verlauf.
+
+#### ST-45γ.3 — Vorbehalte festhalten
+Als **Bauleitung** möchte ich bei der Abnahme erklärte Vorbehalte festhalten,
+damit sie nicht verfallen und die Nachbesserung nachgehalten wird.
+
+- [ ] **AC-45γ.13** Beim Protokollieren lassen sich **bestehende offene Mängel** dieses Bezugs als Vorbehalt anhaken; die Liste schlägt sie von sich aus vor.
+- [ ] **AC-45γ.14** **Neue Vorbehalte** lassen sich im selben Schritt erfassen und werden zu echten Mängeln über die bestehende β-Anlegefunktion — es entsteht **keine** zweite Mängelliste (L20).
+- [ ] **AC-45γ.15** Ein Ergebnis „unter Vorbehalt" verlangt mindestens einen Vorbehalt; „abgenommen" verlangt, dass keiner offen ist oder die Abweichung ausdrücklich bestätigt wird.
+- [ ] **AC-45γ.16** Das Protokoll listet jeden Vorbehalt mit Titel, Ort (falls gesetzt), Schweregrad und Nachbesserungsfrist.
+- [ ] **AC-45γ.17** Wird ein als Vorbehalt verknüpfter Mangel später verworfen oder geprüft, bleibt das Protokoll unverändert — es hält den Stand **zum Abnahmezeitpunkt** fest.
+
+#### ST-45γ.4 — Gewährleistungsfrist sehen
+Als **Bauleitung** möchte ich sehen, wann die Gewährleistung für eine abgenommene Leistung endet,
+damit ich vor Fristablauf handeln kann.
+
+- [ ] **AC-45γ.18** Beim Protokollieren ist die Gewährleistungsdauer wählbar (VOB 4 Jahre · BGB 5 Jahre · frei in Monaten); Vorbelegung ist möglich, aber nichts wird stillschweigend gesetzt.
+- [ ] **AC-45γ.19** Aus Abnahmedatum und Dauer ergibt sich ein Fristende, das im Protokoll und in der Abnahmeliste steht.
+- [ ] **AC-45γ.20** Eine verweigerte Abnahme setzt **keine** Frist in Gang; das Feld bleibt leer statt auf einen Platzhalter zu zeigen.
+
+#### ST-45γ.5 — Protokoll herausgeben und Beleg ablegen
+Als **Bauleitung** möchte ich ein Abnahmeprotokoll ausgeben und das unterschriebene Exemplar ablegen,
+damit der Vorgang außerhalb der Plattform belegbar ist.
+
+- [ ] **AC-45γ.21** Aus einer Abnahme lässt sich ein Protokoll als chrome-lose Druckseite erzeugen; der Browser druckt nach PDF (L23).
+- [ ] **AC-45γ.22** Das Protokoll enthält Projekt- und Abnahmeangaben, Bezug, angesetzten Termin und Abnahmedatum, Teilnehmer mit Rolle, Ergebnis, Vorbehalte, Gewährleistungsende sowie Unterschriftenzeilen.
+- [ ] **AC-45γ.23** Das Protokoll respektiert die Projektzugehörigkeit: es zeigt ausschließlich, was der Aufrufer ohnehin sehen darf — der Sitzungs-Client trägt die Prüfung, **nie** der Dienst-Schlüssel.
+- [ ] **AC-45γ.24** *(korrigiert im Tech Design, D-γ2)* An eine Abnahme lässt sich **ein** Beleg hängen: entweder eine externe Adresse **oder** ein vorhandener Dokumentknoten aus dem DMS (PROJ-79) — nicht beides nebeneinander. Die Ablage ist eine **eigene Bau-Tabelle**, nicht die geteilte Verknüpfung aus PROJ-115; wiederverwendet wird deren **Adressprüfung** (Statik, kein Server-Abruf), also die Stelle, an der die Sicherheitslogik sitzt.
+- [ ] **AC-45γ.25** *(korrigiert im Tech Design, D-γ3)* Teilnehmer werden strukturiert erfasst, **genau eine Quelle je Zeile**: Stakeholder (PROJ-8), Nachunternehmer (PROJ-15) oder Freitext-Name — je mit Rolle im Termin. Das **Projektmitglied entfällt** als eigene Achse: ein anwesendes Mitglied ist fachlich ein Stakeholder, und der Bezug zum Konto hängt bereits dort (Hausregel „Stakeholder ≠ User", gleiche Grenze wie bei den Gremien-Teilnehmern in PROJ-117).
+
+#### ST-45γ.6 — Sichtbarkeit und Sperren
+- [ ] **AC-45γ.26** Abnahmen erscheinen nur in Bauprojekten mit aktivem Bau-Modul; bei abgeschaltetem Modul antwortet der Server gleichbleibend abweisend und die Oberfläche zeigt den neutralen „nicht aktiv"-Hinweis (α/β-Muster).
+- [ ] **AC-45γ.27** Ein Gewerk oder Abschnitt, an dem Abnahmen hängen, lässt sich nicht aus dem Projekt entfernen; die Meldung benennt die betroffenen Abnahmen — als **Erweiterung** der bestehenden β-Sperre, nicht als zweite Quelle daneben.
+- [ ] **AC-45γ.28** Mandanten- und Projekttrennung gilt unverändert: fremde Abnahmen sind unsichtbar, auch aggregiert und auch in Zählern je Gewerk.
+- [ ] **AC-45γ.29** Die Abnahmeliste ist nach Bezug, Status, Ergebnis und Zeitraum filterbar; die α-Gewerkfläche zeigt je Gewerk den Abnahmestand.
+
+### Edge Cases (γ)
+
+- **Abnahme auf einem Gewerk mit offenen Mängeln.** Nicht verboten — aber die offenen Mängel werden als Vorbehalt vorgeschlagen, und „abgenommen" ohne Vorbehalt verlangt eine ausdrückliche Bestätigung (AC-45γ.15). Genau hier verfallen Vorbehalte in der Praxis.
+- **Abnahmetermin in der Vergangenheit.** Erlaubt (Nacherfassung eines längst gelaufenen Termins), sonst ist der Erstpilot nicht abbildbar.
+- **Abnahme verweigert, dann Nachabnahme, dann wieder verweigert.** Kette aus drei Datensätzen; jede Stufe bleibt lesbar und druckbar (L19).
+- **Bezug wird nach der Abnahme umbenannt.** Das Protokoll zeigt den **aktuellen** Namen — der Bezug ist ein Verweis, kein kopierter Text (α-Lock L7 gilt weiter).
+- **Gewerk wird im Katalog nur deaktiviert.** Bestehende Abnahmen bleiben sichtbar und druckbar; nur die Neuauswahl entfällt.
+- **Nachunternehmer als Teilnehmer ist kein Plattformnutzer.** Regelfall — er wird über den Vendor-Bezug oder als Freitext geführt und unterschreibt auf dem Ausdruck, nicht in der Anwendung.
+- **Bauprojekt ohne Abschnittsbaum.** Abnahme je Gewerk muss vollständig funktionieren; die Abschnittsauswahl bleibt schlicht leer.
+- **Zwei Abnahmen desselben Bezugs am selben Tag.** Durch AC-45γ.4 ausgeschlossen, solange eine angesetzt ist; nach einem Ergebnis ist eine neue Abnahme zulässig.
+- **Verworfener Vorbehalts-Mangel.** Das Protokoll bleibt, wie es war (AC-45γ.17) — sonst schriebe eine spätere Bewertung die Rechtslage zum Abnahmezeitpunkt um.
+- **Abnahme ohne Teilnehmer.** Beim Ansetzen zulässig; beim Protokollieren verlangt das Protokoll mindestens einen Anwesenden, sonst wäre die Unterschriftenzeile eine leere Behauptung.
+
+### Out of Scope (γ)
+
+Gewährleistungs**verfolgung** über die Bauzeit hinaus inkl. Ablaufwarnung und Mängeln nach Abnahme
+(L21 — eigene Slice) · fiktive und stillschweigende Abnahme nach VOB/B §12 Abs. 5 (Fristablauf,
+Ingebrauchnahme) · Vertragsstrafen-Vorbehalt und Zahlungsfreigabe (berührt PROJ-22/24) ·
+Restleistungs- und Aufmaßprüfung (VOB/C, dauerhaft außerhalb) · Fotodokumentation am Vorbehalt
+(**ε**) · Abnahmetermin im Gantt und als Terminsignal (**δ**) · Versand des Protokolls über PROJ-13
+(wie in β: der Nachunternehmer ist selten Plattformnutzer) · Unterschrift in der Anwendung
+(Signaturpad, qualifizierte Signatur).
+
+### Offene Fragen für `/architecture`
+
+- **Q-γ1 — Zwei Belegwege, eine Wahrheit?** L23 lässt externen Link **und** DMS-Knoten zu. Zu entscheiden ist, ob das ein Feldpaar mit „genau einer"-Prüfung wird oder zwei getrennte Verknüpfungen. Dazu der gemessene Preis des externen Wegs: `external_document_links` bekäme einen **siebten** Objekttyp und `external_link_parent_ctx` einen Bau-Zweig — der Auflöser gibt heute je Zweig ein `confidentiality_level` zurück, das Bauprojekte per α-Entscheid **nicht** haben. Ein konstantes `standard` ist die naheliegende Antwort, muss aber ausgesprochen und geprüft werden, weil der Auflöser ein geteiltes Sicherheitsobjekt ist (Anker-Ersetzung aus der Live-Definition, Fail-Loud, Post-Verifikation).
+- **Q-γ2 — Wo lebt „genau ein Anker"?** CHECK-Bedingung wie `deliverables_anchor_check`, aber verschärft auf Ausschluss — plus die zwei Projekt-Konsistenz-Wächter, die PROJ-Y-45a für dieselben Verweise bereits erzwingt. Zu prüfen: lässt sich der bestehende Wächter erweitern, oder braucht γ einen eigenen?
+- **Q-γ3 — Teilnehmer-Modell.** Drei nullbare Verweise (Projektmitglied · Stakeholder · Vendor) plus Freitext mit „genau einer"-Prüfung, oder ein schlankeres Modell aus Freitext und optionalem Verweis? `committee_meeting_attendees` ist stakeholder-zentriert und kennt keine Vendors — die Übertragung ist keine Kopie.
+- **Q-γ4 — Gewährleistung: gerechnet oder gespeichert?** Ein gerechnetes Fristende schriebe die Historie um, sobald jemand die Dauer ändert; ein gespeichertes kann von seinem Ausgangswert abdriften. Vorschlag: Dauer **und** Fristende zum Zeitpunkt des Protokollierens festschreiben, danach unveränderlich wie das Ergebnis selbst.
+- **Q-γ5 — Sperre auf Entfernen (AC-45γ.27).** β liefert für Gewerk und Abschnitt bereits eine 409-Absage mit Nennung, für Abschnitte über eine Teilbaum-Abfrage. γ muss sich **in** diese Absage einreihen, nicht danebenstellen — sonst nennt die Meldung je nach Ursache mal Mängel, mal Abnahmen, nie beides.
+- **Q-γ6 — Braucht γ einen CIA-Pass?** Keine neue Technologie, kein neues Paket, kein aufgeweichtes Rechte-Muster (L22 verschärft, β hat gelockert). CIA-relevant ist genau **ein** Punkt: der Eingriff in den geteilten Auflöser `external_link_parent_ctx` (Q-γ1). Fällt Q-γ1 auf „nur DMS-Knoten", entfällt der Anlass.
+
+### Technische Anforderungen (γ)
+
+Es gelten unverändert die Vorgaben aus **Technical Requirements** weiter unten — insbesondere:
+Mandantentrennung mit `tenant_id`; Eintrag der neuen Tabellen in **alle vier** PROJ-130-Register per
+**Anker-Ersetzung aus der Live-Definition** mit Fail-Loud-Guard und Re-Grant; Lebenszyklus-Protokoll
+über `record_audit_lifecycle`; **keine Actor-Parameter** in Funktionen; `extensions.moddatetime`
+schemaqualifiziert; **Live-RPC-Smoke ist Pflicht** vor `Approved`, mit Pentest unter
+**synthetisiertem Nicht-Administrator** und null Rückständen. Die Ereignis-Tabelle bleibt wie in β
+**außerhalb** der Register — sie *ist* das Protokoll. Kein neues Paket erwartet.
+
+---
+
+## Tech Design (γ) — Abnahmen, 2026-08-19
+
+**Gegen den deployten Stand geerdet**, nicht aus der Anforderung abgeleitet. Der Durchgang hat
+**vier** Befunde erbracht, von denen drei ein Akzeptanzkriterium korrigieren und einer einen
+Bestandsfehler aufdeckt, den γ auslösen würde.
+
+### Die sechs offenen Fragen, beantwortet
+
+| Frage | Entscheidung | Grundlage |
+|---|---|---|
+| **Q-γ1** Beleg | **Eigene Bau-Ablage** — eine kleine Tabelle in γ, die **beide** Fälle trägt (externe Adresse **oder** Verweis auf einen Dokumentknoten). Die vorhandene Adressprüfung (kein Server-Abruf, nur Statik) wird als reine Funktion **wiederverwendet**, nicht nachgebaut. | Nutzer-Entscheid. Dieselbe Begründung wie α bei den Gewerken: das Primitiv aus PROJ-115 **ist** im Kern ein Vertraulichkeits-Auflöser mit sechs Bestandszweigen — Bau hat diese Achse per α-Entscheid nicht, bekäme also einen Zweig, der konstant `standard` zurückgibt, und dafür einen Eingriff in ein geteiltes Sicherheitsobjekt. |
+| **Q-γ2** „genau ein Anker" | **CHECK auf höchstens einen Anker** (siehe Q-γ7) **plus** Projekt-Konsistenz **in den Funktionen**, kein neuer Wächter-Trigger. | Live gemessen: β prüft die Projektzugehörigkeit von Gewerk und Abschnitt **innerhalb** der Anlege-Funktion, weil auf der Mangel-Tabelle ohnehin keine Schreib-Regel existiert. Die Trigger aus PROJ-Y-45a sitzen auf `work_items` und `risks` — γ schreibt keine dieser Tabellen und braucht sie nicht. |
+| **Q-γ3** Teilnehmer | **Stakeholder · Nachunternehmer · Freitext**, genau eine Quelle je Zeile. Das **Projektmitglied entfällt** als eigene Achse. | Nutzer-Entscheid. `stakeholders` ist projektbezogen und trägt bereits den Verweis auf das Benutzerkonto; eine vierte Achse wäre ein zweiter Weg zur selben Person und weichte die Hausregel „Stakeholder ≠ User" auf. PROJ-117 hat für Gremien-Teilnehmer dieselbe Grenze gezogen (dort stakeholder-only). |
+| **Q-γ4** Gewährleistung | **Dauer und Fristende werden beim Protokollieren festgeschrieben** und sind danach so unveränderlich wie das Ergebnis. | Ein später gerechnetes Fristende schriebe die Rechtslage um, sobald jemand die Voreinstellung ändert. Die Frist ist Teil des Protokolls, nicht eine Ansicht darauf. |
+| **Q-γ5** Entfernen-Sperre | γ reiht sich **in die bestehende Absage ein**. Die Auskunftsfunktion für Abschnitte wird um eine **Art**-Angabe erweitert, für Gewerke kommt eine gleichgebaute daneben; beide bleiben `SECURITY INVOKER`. Fehlercode und Meldung werden neutral. | **Bestandsbefund, siehe unten** — heute ist die Meldung nicht bloß unvollständig, sie würde **falsch**. |
+| **Q-γ6** CIA-Pass | **Nicht erforderlich.** | Der einzige Anlass war Q-γ1. Mit der eigenen Bau-Ablage berührt γ kein geteiltes Sicherheitsobjekt, kein neues Paket, kein aufgeweichtes Rechte-Muster (L22 verschärft). Bleibt spec-folgendes Muster — wie β nach Auflösung seiner vier Fragen. |
+| **Q-γ7** *(neu, aus der Erdung)* Gesamtabnahme | **Dritter Fall: Abnahme ohne Anker = das ganze Projekt.** | Nutzer-Entscheid. Siehe Befund 2. |
+
+### Vier Befunde
+
+**1. Die Entfernen-Meldung würde durch γ falsch — nicht bloß unvollständig.**
+Beide Entfernen-Pfade aus α behandeln heute den Fremdschlüssel-Konflikt in einem Zweig, der
+**wörtlich von Mängeln spricht**: der Fehlercode heißt `defects_present`, und die Meldung lautet
+„Zu diesem Gewerk bestehen noch Mängel". Hängt künftig eine **Abnahme** am Gewerk, blockiert sie
+das Entfernen genauso — und der Nutzer läse eine Meldung über Mängel, von denen es keine gibt.
+Das ist die Klasse Fehler, die PROJ-Y-45b vorausgesagt hat („wer als nächster eine Sperre an diese
+Achsen hängt, muss den Zweig erneut ergänzen"). γ löst ihn für seinen eigenen Fall mit: die
+Auskunft nennt künftig **Art und Bezeichnung** des Blockierers, und der Fehlercode wird neutral.
+Die Abschnittsseite behält dabei ihre Teilbaum-Abfrage — ein flacher Filter verfehlt genau den
+Fall, in dem eine Abnahme am **Enkel** die Wurzel blockiert.
+
+**2. „Gesamtabnahme = Wurzel-Abschnitt" ist nicht baubar.**
+Die Anforderung löste die Gesamtabnahme über den Wurzel-Abschnitt auf. Der eigene Edge Case
+verlangt aber, dass ein Bauprojekt **ohne Abschnittsbaum** vollständig funktioniert — und dort gibt
+es keinen Wurzelknoten. Ein Bauherr müsste also eine Gliederung anlegen, nur um ein Protokoll
+schreiben zu dürfen. **Folge: der Anker wird optional.** Genau ein Gewerk **oder** genau ein
+Abschnitt **oder** keins von beidem; ohne Anker ist die Abnahme die des ganzen Projekts.
+**AC-45γ.1 ist entsprechend korrigiert** (von „genau einem" auf „höchstens einen").
+
+**3. Der Beleg darf nicht mit einfrieren.**
+AC-45γ.9 friert das Ergebnis ein. Wörtlich angewandt würde das auch den Beleg sperren — und das
+unterschriebene Protokoll kommt **nach** der Abnahme zurück. Der Einfrier-Wächter nimmt den
+Belegverweis daher ausdrücklich aus; alles andere am protokollierten Datensatz bleibt gesperrt.
+Ohne diese Ausnahme wäre AC-45γ.24 unerfüllbar.
+
+**4. Die Teilnehmer-Achse „Projektmitglied" war doppelt.**
+Siehe Q-γ3. **AC-45γ.25 ist korrigiert.**
+
+### Komponentenstruktur
+
+```
+Projektraum eines Bauprojekts (Modul „construction" an, Projekttyp „construction")
++-- Gewerke            (α, bestehend)  -> bekommt Spalte „Abnahmestand" je Gewerk
++-- Bauabschnitte      (α, bestehend)
++-- Mängel             (β, bestehend)
++-- Abnahmen           (γ, NEU — vierter Reiter)
+    +-- Kopfzeile: Zähler je Ergebnis (angesetzt / abgenommen / unter Vorbehalt / verweigert)
+    +-- Filterleiste: Bezug · Status · Ergebnis · Zeitraum
+    +-- Register (eine Zeile je Abnahme)
+    |   +-- Nummer · Bezug (Gewerk / Abschnitt / ganzes Projekt) · Termin · Ergebnis
+    |   +-- Gewährleistungsende (nur bei abgenommen / unter Vorbehalt)
+    |   +-- Hinweis „Nachabnahme zu Nr. N" bei verwiesener Kette
+    +-- Dialog „Abnahme ansetzen"      -> Bezug, Termin, Titel, Bemerkung
+    +-- Dialog „Abnahme protokollieren"
+    |   +-- Ergebnis (drei Schaltflächen, Begründung Pflicht bei Verweigerung)
+    |   +-- Vorbehalte: offene Mängel dieses Bezugs zum Anhaken (vorausgewählt)
+    |   +-- Vorbehalte: neue Zeilen erfassen -> werden zu echten Mängeln
+    |   +-- Gewährleistung: Dauer wählen, Fristende wird gezeigt
+    |   +-- Teilnehmer: Zeilen aus Stakeholder / Nachunternehmer / Freitext, je mit Rolle
+    +-- Detailansicht (Seitenblende)
+    |   +-- Kopf, Teilnehmer, Vorbehalte mit aktuellem Mangel-Status
+    |   +-- Unveränderliche Zeitleiste (angesetzt · verschoben · abgesagt · protokolliert)
+    |   +-- Beleg: externe Adresse ODER Dokumentknoten anhängen (auch nach der Abnahme)
+    |   +-- „Protokoll drucken" -> eigene Druckseite
+    +-- Druckseite „Abnahmeprotokoll" (ausserhalb der App-Hülle, wie die Mängelanzeige)
+```
+
+### Datenmodell (Klartext)
+
+**Eine Abnahme** trägt: Mandant und Projekt · fortlaufende Nummer je Projekt · Titel · Bemerkung ·
+**höchstens einen Bezug** (Projekt-Gewerk **oder** Bauabschnitt; keiner von beiden bedeutet
+Gesamtabnahme) · angesetzten Termin · tatsächliches Abnahmedatum · **Status** mit fünf Werten
+(angesetzt · abgenommen · abgenommen unter Vorbehalt · verweigert · abgesagt) · Begründung
+(Pflicht bei Verweigerung und Absage) · Gewährleistungsdauer in Monaten und daraus festgeschriebenes
+Fristende · Verweis auf die **vorige Abnahme** desselben Bezugs (die Nachabnahme-Kette) · Ersteller,
+Protokollant und Zeitstempel.
+
+**Ein Abnahme-Ereignis** trägt: die Abnahme · die Art (angesetzt · verschoben · abgesagt ·
+protokolliert) · Status davor und danach · Begründung · Akteur und Zeitpunkt. **Unveränderlich** —
+diese Zeilen *sind* der Verlauf.
+
+**Ein Teilnehmer** trägt: die Abnahme · **genau eine** Quelle (Stakeholder · Nachunternehmer ·
+Freitext-Name) · die Rolle im Termin (Auftraggeber · Auftragnehmer · Bauleitung · Sachverständiger ·
+Sonstige) · Anwesenheitsvermerk.
+
+**Ein Vorbehalt** ist ein Verweis von der Abnahme auf einen **bestehenden Mangel** — keine Kopie
+seines Inhalts. Neue Vorbehalte werden beim Protokollieren über die **bestehende β-Anlegefunktion**
+zu echten Mängeln und dann verwiesen. Es gibt keine zweite Mängelliste.
+
+**Ein Beleg** trägt: die Abnahme · Bezeichnung · **entweder** eine externe Adresse **oder** einen
+Verweis auf einen Dokumentknoten aus dem Dokumentenbaum — nie beides.
+
+**Aufbewahrung und Regeln.** Fremde Abnahmen sind unsichtbar, auch in Zählern. Geschrieben wird
+**ausschließlich über Funktionen**; Lesen erlaubt die Projektmitgliedschaft. Je Bezug ist höchstens
+**eine** Abnahme im Zustand *angesetzt* — dreifach abgesichert, je einmal für Gewerk, Abschnitt und
+Gesamtprojekt. Ein protokolliertes Ergebnis ist gesperrt; **einzige Ausnahme ist der Beleg**
+(Befund 3). Ein Gewerk oder Abschnitt, an dem Abnahmen hängen, ist nicht entfernbar.
+
+### Technische Entscheidungen und warum
+
+| Entscheidung | Warum |
+|---|---|
+| Eigenes Bau-Objekt statt Freigabe-Vorgang aus PROJ-105 | Die Vorlage arbeitet **sequenziell mit einem Freigeber je Stufe** und binärem Ergebnis; eine Abnahme ist ein **gemeinsamer Termin** mit dreiwertigem Ergebnis, das eine Rechtsfrist auslöst. Übernommen wird die unveränderliche Ereignis-Tabelle, das Schreiben nur über Funktionen und „höchstens ein offener Vorgang je Bezug" — nicht die Stufen-Maschinerie. Zusatzbeleg: die Vorlage hat in Produktion **0 Zeilen**. |
+| Kein Meilenstein-Modell | `milestones` trägt Zieldatum, Ist-Datum und vier Status — kein Ergebnis, keine Teilnehmer, keine Vorbehalte, keine Frist. Ein Meilenstein kann den Termin höchstens **spiegeln**; das ist eine Anzeigefrage für δ. |
+| Nachabnahme als neuer Datensatz mit Verweis | L19. Ein Protokoll mit zwei Abnahmedaten ist nicht sauber druckbar. Bewusst **nicht** das Runden-Modell aus β: dort ist der Mangel ein fortlaufender Sachverhalt, hier ist jede Abnahme ein eigener Rechtsakt. |
+| Vorbehalte als Verweis, nie als Kopie | L20. Eine Kopie wäre eine zweite Wahrheit und würde beim nächsten Statuswechsel des Mangels veralten. Dass das Protokoll trotzdem den **Stand zum Abnahmezeitpunkt** zeigen muss (AC-45γ.17), löst der Druck: er nennt den Mangel mit seinen Stammdaten, nicht mit seinem heutigen Status. |
+| Neue Vorbehalte über die β-Funktion, nicht per Direkteinfügung | Die β-Funktion vergibt die fortlaufende Mangelnummer unter Sperre, prüft Gewerk und Abschnitt gegen das Projekt und schreibt das Anlege-Ereignis. Sie zu umgehen hieße, drei Regeln zu duplizieren. |
+| Eigene Beleg-Ablage statt Erweiterung der geteilten Verknüpfung | Q-γ1. Die Adressprüfung wird als **Funktion** wiederverwendet — die Wiederverwendung liegt dort, wo die Sicherheitslogik sitzt, nicht in der Tabelle. |
+| Deutsche Schlüsselwerte | α und β haben für dieselbe Fläche deutsch gewählt (`gruen/gelb/rot`, `offen/in_bearbeitung/...`). Anzeigetexte kommen aus einer Zuordnung, nicht aus der Datenbank. |
+| Druckseite statt Renderer | Muster steht zweifach (PROJ-131/132, β). Eigene Route außerhalb der App-Hülle mit **Sitzungs-Client** — **nie** Dienst-Schlüssel, sonst zeigt das Protokoll mehr, als der Aufrufer sehen darf. Kein neues Paket. |
+| Nav wie α und β | Ein Eintrag in der geteilten Navigations-Registry, mit Projekttyp **und** Modulschalter. Bekannter Merge-Hotspot — eine Zeile, kein Umbau. |
+
+### Register-Eingriffe
+
+Die Objektarten-Liste trägt heute **94** Einträge (live gezählt). Die Abnahme-Tabelle und ihre drei
+Kind-Tabellen treten ihr bei, damit Anlage und Löschung protokolliert werden. Ein **Feld-Audit** und
+einen Zweig im Lese-Tor bekommt **nur die Abnahme-Tabelle** — die Kind-Zeilen sind mit dem Ergebnis
+eingefroren und aus dem Protokoll reproduzierbar. Die **Ereignis-Tabelle bleibt außerhalb aller
+Register**: sie *ist* das Protokoll, ein zweites Mitschreiben verdoppelte es (β-Präzedenz).
+
+**Alle Register-Änderungen als Anker-Ersetzung aus der Live-Definition**, mit Eindeutigkeitsprüfung
+des Ankers, Fail-Loud bei Nicht-Treffer, Post-Verifikation und Re-Grant. **Zusicherungen als Delta,
+nie als absolute Bestandszahl** — die Lehre aus PROJ-130-α, die α sich selbst schon einmal eingefangen
+hat: eine absolute Schwelle ist in einer der beiden Umgebungen (Prod / frisch aus den Dateien) zwangs-
+läufig falsch. Und kein Anker darf auf Text prüfen, den dieselbe Migration zuvor selbst geschrieben hat
+(der α-Fehler, der die Arbeitspaket-Whitelist still übersprang).
+
+### Pflicht-Härtungskriterien (blockierend)
+
+- **AC-45γH-1** Jede neue Tabelle trägt `tenant_id` und ist über die Haus-Helfer abgesichert; **keine** Schreib-Regeln, geschrieben wird nur über Funktionen.
+- **AC-45γH-2** Keine Funktion nimmt einen Akteur-Parameter; der Aufrufer wird intern gelesen.
+- **AC-45γH-3** `anon` **und PUBLIC** haben auf **keiner** neuen Funktion Ausführungsrecht — vollständig geprüft, nicht stichprobenhaft (PROJ-Y-114a-Lehre).
+- **AC-45γH-4** Auswertungen sind `SECURITY INVOKER`, Schreibwege `SECURITY DEFINER`; alle mit gesetztem Suchpfad.
+- **AC-45γH-5** Live-Pentest gegen Produktion mit **null Rückständen**, gegengeprüft über Zähler je berührter Tabelle.
+- **AC-45γH-6** Der Pentest führt die verschärfte Rolle in **beide** Richtungen: ein Projekt-`editor` kann **nicht** ansetzen und **nicht** protokollieren; ein Betrachter erst recht nicht — belegt, nicht behauptet.
+- **AC-45γH-7** Der Pentest prüft die Sperre am **Enkel**: eine Abnahme an einem Unterabschnitt blockiert das Entfernen der Wurzel, und die naive Ein-Knoten-Abfrage findet sie **nicht**.
+- **AC-45γH-8** Aggregat-Leck-Probe: ein Fremder sieht in den Zählern **0**, obwohl Abnahmen existieren; mit Gegenprobe, dass die Probe nicht leer läuft.
+- **AC-45γH-9** Der Einfrier-Wächter ist beidseitig belegt: ein protokolliertes Ergebnis lässt sich nicht ändern, ein Beleg **danach** sehr wohl.
+- **AC-45γH-10** Regressionen **wörtlich** grün: α-Pentest, PROJ-Y-45a, **β-Pentest 53/53** und PROJ-103 A–G. β ist die engste Nachbarschaft — γ ruft seine Anlegefunktion.
+- **AC-45γH-11** Register-Anker mit Post-Verifikation; die Geschwister-Zweige werden namentlich gegengeprüft.
+- **AC-45γH-12** Der Nicht-Administrator im Feld-Audit-Vektor ist **synthetisiert**; unter Mandanten-Administration schließt das Lese-Tor kurz und der Vektor wäre falsch-grün.
+
+### Risiken für `/qa`
+
+1. **Verschachtelter Aufruf.** Das Protokollieren ruft die β-Anlegefunktion. Deren eigene Rollenprüfung ist *lockerer* (jedes Mitglied) als die von γ (nur Bauleitung/Administration) — der strengere Aufrufer entscheidet, aber das muss geprüft sein, nicht angenommen. Ebenso die Nummernvergabe unter Sperre innerhalb derselben Transaktion.
+2. **Drei Sperren gegen Doppel-Termine.** Gewerk, Abschnitt und Gesamtprojekt brauchen je eine eigene Absicherung; die dritte ist die leicht zu vergessende.
+3. **Die Kette.** Verweigert → Nachabnahme → verweigert muss lesbar und **druckbar** bleiben; jede Stufe behält ihr eigenes Datum.
+4. **Frist-Randfälle.** Eine verweigerte Abnahme setzt **keine** Frist; das Feld bleibt leer statt auf einen Platzhalter zu zeigen.
+5. **Die neutrale Entfernen-Meldung.** Nach der Verallgemeinerung muss der **β-Fall unverändert** funktionieren: blockiert nur ein Mangel, muss die Meldung weiterhin von Mängeln sprechen. Rot-Grün in beide Richtungen.
+
+### Abweichungen von den Anforderungen
+
+- **D-γ1** **AC-45γ.1** korrigiert: „genau ein Bezug" → **höchstens einer**; ohne Anker ist die Abnahme die des ganzen Projekts (Befund 2, Nutzer-Entscheid Q-γ7).
+- **D-γ2** **AC-45γ.24** korrigiert: der Beleg lebt in einer **eigenen Bau-Ablage**, die beide Wege trägt, statt in der geteilten Verknüpfung aus PROJ-115 (Q-γ1). Die Adressprüfung wird wiederverwendet.
+- **D-γ3** **AC-45γ.25** korrigiert: Teilnehmerquellen sind **Stakeholder · Nachunternehmer · Freitext**; das Projektmitglied entfällt als eigene Achse (Q-γ3).
+- **D-γ4** **AC-45γ.9** präzisiert: das Einfrieren nimmt den **Belegverweis** aus, sonst wäre AC-45γ.24 unerfüllbar (Befund 3).
+- **D-γ5** Die Verallgemeinerung der Entfernen-Meldung ist **Bestandsarbeit an α/β-Code** und damit streng genommen über den γ-Umfang hinaus. Sie wird trotzdem hier erledigt, weil γ sie sonst **falsch** machen würde (Befund 1). Der breitere Fall bleibt **PROJ-Y-45b**.
+
+### Abhängigkeiten (Pakete)
+
+**Keine.** Baumdarstellung, Druckseiten-Muster, Adressprüfung, Dokumentknoten-Auswahl und
+Datumsfelder sind sämtlich im Bestand.
+
+### Reihenfolge
+
+`/backend` → `/frontend` → `/qa`, wie in β. Der Protokoll-Dialog ist ohne die Funktionen nicht
+sinnvoll baubar, und die Vorbehalts-Kopplung entscheidet sich in der Datenschicht.
+
+---
+
+## Implementierungsnotizen — /backend γ (2026-08-19)
+
+**Status: In Progress** · Datenschicht und Anwendungsschicht stehen, Oberfläche
+und `/qa` offen. Zwei Migrationen in Prod, Live-Pentest **56/56 + 4/4 Nachlauf**,
+null Rückstände über 13 Zähler.
+
+### Was gebaut wurde
+
+Migration `20260819120000_proj45_gamma_construction_acceptances` (in Prod):
+vier Tabellen (`construction_acceptances` · `…_events` unveränderlich ·
+`…_participants` · `…_reservations`), **nur Lese-Regeln** (geschrieben wird
+ausschliesslich über Funktionen, β-/`dd_findings`-Rezept), neun Funktionen
+(sechs Schreibwege `SECURITY DEFINER`, drei Auswertungen `SECURITY INVOKER`),
+fünf Trigger, Register-Eingriffe per Anker-Ersetzung aus der Live-Definition.
+Objektarten **94 → 95** wie vorhergesagt, Feld-Whitelist und Lese-Tor um je
+einen Zweig, Ereignis-/Teilnehmer-/Vorbehalts-Tabellen bewusst **ausserhalb**
+der Register.
+
+Anwendungsschicht: sechs Routen (Liste mit sechs Server-Filtern · Ansetzen ·
+Detail mit Teilnehmern/Vorbehalten/Verlauf · Ändern · Absagen/Protokollieren ·
+Teilnehmer · Beleg · Kopfzahlen), Typen, Client-Wrapper, **33 Route-Tests** und
+**10 Lib-Tests**. Kein neues Paket.
+
+### Vier Befunde
+
+**B-γ1 — die eigene Post-Condition war falsch, nicht die Rechte.** Der erste
+Anwendungsversuch brach ab: *„schedule_construction_acceptance is still
+executable by anon or PUBLIC"*. Die Prüfung suchte `%=X/%` im zusammengefügten
+ACL-Text — das trifft auch `postgres=X/postgres` und `authenticated=X/postgres`
+und meldete damit **jede korrekt vergebene** Funktion als Verstoss. PUBLIC
+rendert mit **leerem Empfänger**, also als Eintrag, der mit `=` *beginnt*;
+geprüft wird jetzt elementweise. Die Migration lief **atomar zurück** (0
+Tabellen, 0 Funktionen, Register unverändert bei 94 — nachgemessen, nicht
+angenommen). Ohne die Post-Condition wäre nichts passiert; sie hat einen Fehler
+gefunden, nur eben ihren eigenen.
+
+**B-γ2 — die α-Regression war seit einem Tag scope-blind.** Block 2 des
+α-Pentests meldete drei FAIL. Diagnose statt Wertung: der als „fremd" gewählte
+Nutzer ist der geteilte E2E-Nutzer — **kein** Mitglied des Zielmandanten
+(`IT-Couch GmbH`), aber sehr wohl Mitglied von `[E2E] Bau Test`, und dort liegen
+seit der β-QA vom 2026-08-19 **alle** Bau-Zeilen in Prod (1 Gewerk, 2
+Abschnitte). Die Vektoren zählten **global** und behaupteten damit „sieht
+nirgends etwas". Die RLS war korrekt, die Zusicherung war es nicht — dieselbe
+Klasse wie PROJ-96/F-1 und PROJ-Y-78e. **Gehärtet statt abgeschwächt:** auf den
+Zielmandanten begrenzt, plus ein schärferer Vektor „keine Zeile eines fremden
+Mandanten sichtbar" und eine Gegenprobe, dass die Sonde nicht leer läuft — live
+**5/5 PASS**. Block 1 des α-Pentests lief wörtlich **11/11**.
+
+**B-γ3 — das Teilnehmer-Modell hätte die Stammdatenpflege blockiert.** Beim
+Gegenlesen vor dem Anwenden gefunden: die erste Fassung verlangte „mindestens
+eine der drei Quellen" und liess den Namen nur als Rückfall zu. Wird ein
+Stakeholder später gelöscht, setzt `on delete set null` den Verweis auf leer —
+die Zeile hätte **null** Quellen, die Bedingung schlüge zu, und **das Löschen
+des Stakeholders wäre gescheitert**. Ein Protokoll darf keine Stammdatenpflege
+verhindern. Gelöst durch einen **Namensschnappschuss** (`display_name` immer
+gesetzt, aus der Quelle aufgelöst) — was für ein Abnahmeprotokoll ohnehin richtig
+ist: es hält fest, wer an *jenem Tag* anwesend war. Dieselbe Begründung wie beim
+eigenen Nachunternehmer-Bezug des Mangels in β. Pentest-Vektor **R3** belegt es.
+
+**B-γ4 — eine Parallel-Session hat β's Wächter gehärtet, γ hatte die schwache
+Form geerbt.** Beim Abgleich der Migrations-Zeitstempel fielen zwei fremde
+Einträge desselben Tages auf; am Funktionsrumpf nachgelesen: PROJ-Y-148d hat
+`enforce_construction_defect_event_immutability` den **Kaskaden-Ausstieg**
+genommen (wirft jetzt bedingungslos). γs Wächter war nach β's **alter** Vorlage
+gebaut und trug den Ausstieg noch. Der Kaskadenweg `projects →
+construction_acceptances → _events` braucht keine Lösch-Regel und entfernt die
+Elternzeile **zuerst** — ein Ausstieg auf Elternabwesenheit greift also bei
+**jedem** Projekt-Abriss. γ hätte die gerade geschlossene Lücke eine Tabelle
+weiter neu aufgerissen, ausgerechnet bei dem Objekt, das Gefahrenübergang und
+Fristbeginn belegt. Fix-forward `20260819170000_…_no_cascade_exit` in Prod;
+Nachlauf-Vektoren **P3/P4 PASS** (Projekt-Löschen wird mit `42501` abgelehnt,
+Wächter ohne Ausstieg).
+
+**Folge, die nicht liegen bleiben durfte:** damit ist
+`construction_acceptance_events` die **sechste** unveränderliche Insel aus
+PROJ-Y-148a. Der Registry-Eintrag ist ergänzt — mit **gemessenem**
+`blocksHardDelete: true` (Rollback-Sonde gegen Prod) — und die drei
+eingefrorenen Listen im zugehörigen Test sind nachgezogen. Der Einfrier-Test hat
+dabei **von selbst** angeschlagen; das war sein Zweck („eine sechste Insel kann
+nicht unbemerkt hereinrutschen"). Ohne diesen Nachzug wäre die ehrliche Absage
+aus PROJ-Y-148a an γ vorbeigelaufen und der Nutzer hätte wieder einen rohen 500
+bekommen.
+
+### Bestandsarbeit: die Entfernen-Meldung (Tech-Design Befund 1)
+
+Beide α-Entfernen-Pfade sprachen im `23503`-Zweig **wörtlich von Mängeln**
+(Code `defects_present`). Mit γ wäre die Meldung **falsch** geworden, nicht bloss
+unvollständig. Verallgemeinert über zwei neue INVOKER-Auskünfte
+(`construction_trade_blocking_refs` / `construction_section_blocking_refs`), die
+**Art und Bezeichnung** nennen, plus eine geteilte Meldungs-Lib: bei nur einer
+Art bleibt der β-Wortlaut unverändert, bei beiden werden beide genannt, ohne
+benennbare Zeilen nennt sie die zwei Arten, die den Bezug überhaupt halten
+können. Neuer Fehlercode `references_present`. Die Teilbaum-Abfrage bleibt — ein
+flacher Filter verfehlt genau die Abnahme am **Enkel** (Vektoren T2/T3).
+
+β's Funktion `construction_section_blocking_defects` bleibt **bewusst bestehen**:
+zwischen dem Anwenden der Migration und dem Ausliefern des Codes ruft die
+deployte Route noch sie; sie zu ziehen wäre ein Bruch in genau diesem Fenster.
+Aufräumen ist Folgearbeit (**PROJ-Y-45f**).
+
+### Live-Nachweise (gegen Prod, alles zurückgerollt)
+
+| Lauf | Ergebnis |
+|---|---|
+| γ-Pentest Block 1 (Rechte · Anker · Doppel-Termin · Protokoll · Einfrieren · Verlauf) | **31/31 PASS** |
+| γ-Pentest Block 2 (Sperren · Umgehung · Fremdsicht · Aggregat-Leck) | **14/14 PASS** |
+| γ-Pentest Block 3 (Rechtevergabe · Sicherheitsmodus) | **11/11 PASS** |
+| γ-Pentest Block 4 (Ereignis-Wächter nach Fix-forward) | **4/4 PASS** |
+| α-Pentest Block 1 wörtlich | **11/11 PASS** |
+| α-Pentest Block 2 nach Härtung (B-γ2) | **5/5 PASS** |
+| β-Pentest Block 3 wörtlich (Rechte/Modi — die geteilte Fläche) | **7/7 PASS** |
+| Rückstände | **0** über 13 Zähler; Testmandant unverändert 20 Projekte |
+
+Tragende Einzelvektoren: **C/C2** der Projekt-`editor` kann weder ansetzen noch
+protokollieren (die verschärfende Richtung, belegt statt behauptet) · **I** die
+dritte Absicherung greift, eine zweite **Gesamtabnahme** wird abgelehnt · **M**
+Einfrieren und **M2** Beleg-Nachtrag in derselben Probe (beide Richtungen von
+D-γ4) · **K2/K3** ein neuer Vorbehalt wird über die **β-Anlegefunktion** zu einem
+echten Mangel mit Projekt, Gewerk und Status · **T2/T3** die naive Ein-Knoten-
+Abfrage findet die Abnahme am Enkel **nicht**, die Teilbaum-Auskunft schon ·
+**W/W2** Aggregat-Leck-Probe mit Gegenprobe · **U1–U4** kein Schreibweg an den
+Funktionen vorbei, geprüft als **Mandanten-Admin**.
+
+### Gates
+
+ESLint **0** · tsc **13 = Baseline / 0 neu** (auch nach `rm -rf .next`, gegen
+die PROJ-Y-143e-Messfalle) · vitest **3383/3383** (davon **43 neu** in dieser
+Slice) · Build clean, **alle 6 Routen registriert** · migration-naming 0 Fehler ·
+index-scope 0 Fehler · Advisors **0 ERROR** (die 6 γ-WARN sind die beabsichtigten
+`authenticated`-ausführbaren Schreib-RPCs, dieselbe Kategorie wie α/β).
+
+Rot-Grün ausgeführt statt behauptet, über Dateikopie zurückgesetzt (nie
+`git checkout` — PROJ-130-δ2/F-3): ohne die `P0001`-Abbildung fallen 2 Tests,
+ohne die Projektzugehörigkeits-Prüfung 1, danach wieder 33/33.
+
+### Abweichungen vom Tech Design
+
+- **D-γ6** Der **Beleg liegt als drei Spalten** auf der Abnahme, nicht in einer
+  eigenen Tabelle. AC-45γ.24 verlangt *genau einen* Beleg je Abnahme — eine
+  1:1-Tabelle wäre übernormalisiert, und die Spaltenform bringt drei Dinge
+  geschenkt: der Beleg fällt automatisch in die Feld-Whitelist (die Änderung
+  **nach** der Abnahme ist damit auditiert, und genau das ist der einzige nach
+  dem Einfrieren erlaubte Schreibvorgang), der Einfrier-Wächter muss nur Spalten
+  ausnehmen statt eine Tabelle, und es entsteht keine zusätzliche Objektart.
+- **D-γ7** Die Adressprüfung wird als **Funktion** aus PROJ-115 wiederverwendet
+  (`validateExternalUrl`), die Ablage selbst ist eigen — die Wiederverwendung
+  liegt dort, wo die Sicherheitslogik sitzt. Kein serverseitiger Abruf, nirgends.
+- **D-γ8** Die Liste gatet `view`, die Schreibrouten `edit`; die **verschärfte**
+  Regel (nur Projektleitung/Bauleitung oder Mandanten-Administration) lebt
+  ausschliesslich in den Funktionen. Bewusst anders als β, das `view` gaten muss,
+  weil dort auch Betrachter anlegen dürfen.
+- **D-γ9** Die Teilnehmerzeile trägt einen **Namensschnappschuss** (B-γ3).
+- **D-γ10** Der Fehlercode der Entfernen-Absage heisst jetzt
+  `references_present` statt `defects_present`; zwei Bestands-Route-Tests sind
+  entsprechend nachgezogen — die alte Zusicherung wäre mit γ **falsch** gewesen.
+- **D-γ11** `P0001` ist gegenüber β **neu** in der Fehlerabbildung (→ 409). β
+  kannte den Code nicht und hätte die drei benennenden Absagen auf 500 gelegt.
+
+### Nicht in dieser Slice gebaut
+
+Oberfläche (Reiter „Abnahmen", Ansetzen-/Protokoll-Maske, Detailansicht,
+Druckseite „Abnahmeprotokoll", Zähler auf der α-Gewerkfläche) → `/frontend`.
+Authentifizierter Browser-Durchlauf, Regressionen wörtlich in voller Breite und
+die 12 Härtungskriterien als geschlossene Abnahme → `/qa`. Der
+Playwright-Auth-Gate-Spec (`tests/PROJ-45-gamma-acceptances.spec.ts`, 8 Fälle)
+ist geschrieben, aber in diesem Schritt **nicht ausgeführt**.
+
+### Neue Folgearbeit
+
+- **PROJ-Y-45f** — `construction_section_blocking_defects` (β) ist nach dem
+  γ-Deploy ohne Aufrufer und kann gezogen werden. Bewusst nicht jetzt: zwischen
+  Migration und Code-Deploy ruft die deployte Route sie noch.
+
+---
+
+## Implementierungsnotizen — /frontend γ (2026-08-20)
+
+**Status: In Progress** · Oberfläche steht, `/qa` offen. Keine Migration, kein
+neues Paket, kein neuer Backend-Code — **eine** Ausnahme, und die ist ein
+gefundener Fehler (siehe F-γ1).
+
+### Was gebaut wurde
+
+Projektraum-Reiter **„Abnahmen"** (`abnahmen`) mit Kopfzahlen je Ergebnis, drei
+serverseitigen Filtern (Status · Bezug · Gewerk) und Zeilenaktionen; **eine**
+Maske für Ansetzen *und* Ändern; eine eigene Maske für das **Protokollieren**;
+Detailansicht als Seitenblende mit unveränderlicher Zeitleiste, Vorbehalten,
+Teilnehmern, Beleg und Absage; chrome-lose **Druckseite** „Abnahmeprotokoll"
+ausserhalb der App-Hülle (Sitzungs-Client, nie Dienst-Schlüssel); **ein**
+Eintrag in der geteilten Navigations-Registry; Abnahmestand je Gewerk auf der
+α-Fläche.
+
+### F-γ1 — die Fristrechnung existierte zweimal und wich ab (gemessen, behoben)
+
+Die Gewährleistungsfrist wird beim Protokollieren in der Datenbank
+**festgeschrieben**; die Maske muss sie schon vorher zeigen. Damit existiert die
+Rechnung zwangsläufig zweimal — und die naive TypeScript-Fassung war falsch:
+
+| | Postgres `+ make_interval(months => n)` | naives `setUTCMonth` |
+|---|---|---|
+| 2026-01-31 + 1 Monat | **2026-02-28** | 2026-03-03 |
+| 2026-08-31 + 6 Monate | **2027-02-28** | 2027-03-03 |
+
+Postgres **klemmt** am Monatsende, JavaScript **läuft über**. Die Maske hätte dem
+Nutzer also ein anderes — rechtlich relevantes — Fristende angezeigt als
+danach gespeichert wird. Behoben durch eine geteilte Lib
+(`src/lib/construction/acceptances.ts`) mit ausdrücklicher Klemmung; die fünf
+Datumspaare sind **live gegen Prod gemessen** und im Test eingefroren. Rot-Grün
+ausgeführt: ohne die Klemmung fallen 3 der 10 Fälle.
+
+Das war der Grund, überhaupt eine Lib anzulegen — nicht Aufräumen: der Test
+braucht einen Angriffspunkt, und eine Funktion im Dialog hat keinen.
+
+### Entscheidungen, die die Oberfläche treffen musste
+
+**Der dritte Bezug ist eine benannte Wahl, kein „nichts ausgewählt".** Die
+Auswahl bietet „Ein Gewerk / Ein Bauabschnitt / **Das ganze Projekt
+(Gesamtabnahme)**" an. Die ankerlose Abnahme als Abwesenheit zu bauen hätte
+genau die Verwechslung eingebaut, die D-γ1 beseitigt hat.
+
+**Beim Ändern verschwindet der Bezug — und das wird gesagt.** Er gehört zur
+Identität der Abnahme, und die Änderungs-Funktion nimmt ihn gar nicht an. Statt
+ihn auszugrauen erklärt die Maske es.
+
+**Teilnehmer werden VOR dem Ergebnis gesendet.** Sie frieren mit dem Ergebnis
+ein; die Datenbank nimmt sie danach nicht mehr an. Die Maske sendet sie darum
+zuerst und dann das Ergebnis. Schlägt das Protokollieren fehl, bleibt die
+Teilnehmerliste erhalten und der Vorgang ist wiederholbar — die Reihenfolge ist
+bewusst gewählt, nicht zufällig.
+
+**Der Einfrier-Zustand wird ausgesprochen.** Nach dem Ergebnis verschwinden die
+Zeilenaktionen, und die Detailansicht sagt: „Ergebnis, Termin, Teilnehmer und
+Vorbehalte sind festgeschrieben; nur der Beleg lässt sich noch nachtragen."
+Ohne diesen Satz wäre die einzige erlaubte Ausnahme (D-γ4) nicht erkennbar.
+
+**Nach einer Verweigerung wird „Nachabnahme" angeboten, nicht „bearbeiten".**
+Die Maske übernimmt den Bezug und verweist auf die alte Abnahme, die
+unverändert stehen bleibt (L19).
+
+**Die Abdeckung des Abschnitts-Teilbaums wird NICHT im Browser nachgebaut.** Die
+Maske schlägt die Mängel des direkten Abschnitts als Vorbehalt vor; die
+Teilbaum-Prüfung bleibt allein in der Datenbank. Ein zweiter Baumlauf im Browser
+wäre eine zweite Wahrheit — und die naive Ein-Knoten-Variante ist genau der
+Fehler, den Pentest-Vektor T2 festhält.
+
+**Das Rechte-Gate ist erklärt, nicht nachgebaut.** Die Fläche fragt das
+bestehende Hausprädikat `manage_members` (= `admin | lead`) — deckungsgleich mit
+der Prüfung in den Funktionen und bewusst **nicht** `edit_master`, das den
+Projekt-`editor` einschliesst, den L22 ausschliesst. Entschieden wird weiter in
+der Datenbank; die Oberfläche blendet nur aus.
+
+### Nachweise
+
+| Lauf | Ergebnis |
+|---|---|
+| Playwright γ-Auth-Gates (8 Routen + 2 Seiten) | **10/10** chromium |
+| Playwright α/β-Konstruktions-Auth-Gates, wörtlich | **18/18** |
+| Visual-Regression (authentifiziert) | **3× 9/9**, **keine Baseline neu aufgenommen** |
+| vitest | **3393/3393** (+10 in diesem Schritt) |
+
+Der **erste** Visual-Lauf meldete 2 Fehlschläge (Stammdaten, Mandanten-
+Einstellungen) — er lief direkt nach `rm -rf .next && npm run build`, also auf
+kaltem Kompilat; drei Folgeläufe waren durchgehend grün. Kaltstart-Klasse
+(PROJ-67/AC-9, PROJ-138), kein Produktbefund. Festgehalten statt weggelassen,
+weil ein einzelner grüner Wiederholungslauf allein nichts belegt.
+
+Die neue Navigations-Sektion kam **ohne Testanpassung** durch
+(`method-templates` 125/125): α hat die Invariante damals auf ihre Absicht
+umgestellt („mindestens eine Sektion je Modul") statt auf genau eine — der
+Nutzen zeigt sich jetzt zum zweiten Mal.
+
+### Gates
+
+ESLint **0** (repo-weit) · tsc **13 = Baseline / 0 neu**, auch nach dem Build ·
+vitest **3393/3393** · Build clean, **alle 6 Routen und beide Seiten
+registriert** · migration-naming 0 · index-scope 0.
+
+### Abweichungen (/frontend γ)
+
+- **D-γ12** Die Fristrechnung liegt **doppelt** vor (SQL + TypeScript) — nicht
+  vermeidbar, weil die Maske sie vor dem Speichern zeigen muss. Beide Seiten
+  sind über fünf live gemessene Datumspaare gepinnt; die TS-Seite klemmt
+  ausdrücklich wie Postgres (F-γ1).
+- **D-γ13** Der Beleg ist in dieser Slice nur als **externe Adresse**
+  anhängbar. Der zweite von L23 zugelassene Weg (Verweis auf einen
+  Dokumentknoten) ist in der Datenbank vollständig vorhanden und geprüft
+  (Spalte, Fremdschlüssel, Projekt-Konsistenz im Wächter, `set`-Funktion), hat
+  aber noch keine Auswahl in der Oberfläche → **PROJ-Y-45g**. Bewusst so
+  geschnitten: der Knoten-Picker ist eine eigene, testbare Fläche, und der
+  externe Weg deckt den Regelfall „unterschriebenes Exemplar liegt im System des
+  Kunden".
+- **D-γ14** Die Detailansicht nutzt eine kleine Funktion-im-JSX, um TypeScript
+  beide Verengungen (`detail` und `detail.acceptance`) zugleich sehen zu lassen.
+  Unschön, aber typsicher — die Alternative wäre eine nicht-null-Behauptung
+  gewesen, und die hätte den Nutzen der Prüfung aufgegeben.
+- **D-γ15** Kein authentifizierter Browser-Durchlauf in diesem Schritt: die
+  Fläche ist projekttyp- **und** modul-gegatet, und der geteilte E2E-Mandant hat
+  `construction` aus. Das Einschalten hätte die frisch stabilisierten
+  Visual-Baselines berührt (PROJ-Y-143f/143l) → `/qa`, dort mit eigener
+  Bau-Fixture wie in β.
+- **D-γ16** `loading` im Detail-Hook ist **abgeleitet**, nicht gesetzt
+  (`react-hooks/set-state-in-effect` ist Hausregel-verboten). Nebeneffekt und
+  Absicht: ein `refresh()` zeigt weiter den vorhandenen Stand statt eines
+  Skelett-Aufblitzens.
+
+### Nicht in dieser Slice gebaut
+
+Authentifizierter Zwei-Personen-Durchlauf, echter Druck nach PDF, die 12
+Härtungskriterien als geschlossene Abnahme und die Regressionen in voller Breite
+→ `/qa`. Dokumentknoten-Auswahl für den Beleg → PROJ-Y-45g.
+
+### Neue Folgearbeit
+
+- **PROJ-Y-45g** — Beleg als **Dokumentknoten** auswählbar machen
+  (DMS-Picker-Muster aus PROJ-77-γ). Datenbankseite steht und ist geprüft, es
+  fehlt allein die Auswahl in der Oberfläche.
+
+---
+
+## QA Test Results — γ (2026-08-20)
+
+**Verdikt: PASS — 0 Critical / 0 High / 0 Medium in γ.** 29/29 Akzeptanzkriterien,
+12/12 Härtungskriterien (eines mit **benannter, nicht von γ verursachter**
+Abweichung). Status → **Approved**.
+
+Der von `/frontend` offen gelassene Kern ist ausgeführt: der **authentifizierte
+Durchlauf in echten Sitzungen** (Betrachter → Bauleitung → Protokoll →
+Einfrieren → Beleg → Druck), ein **echter Druck nach PDF**, die Regressionen in
+voller Breite und ein Rot-Team über den Pentest hinaus.
+
+### Live gegen Prod — alles zurückgerollt oder aufgeräumt
+
+| Lauf | Ergebnis |
+|---|---|
+| γ-Pentest Block 1 (Rechte · Anker · Doppel-Termin · Protokoll · Einfrieren · Verlauf) | **31/31 PASS** |
+| γ-Pentest Block 2 (Sperren · Umgehung · Fremdsicht · Aggregat-Leck) | **14/14 PASS** |
+| γ-Pentest Block 3 (Rechtevergabe · Sicherheitsmodus) | **11/11 PASS** |
+| γ-Pentest Block 4 (Ereignis-Wächter nach Fix-forward) | **4/4 PASS** |
+| **Rot-Team-Supplement O–W2** (neu in `/qa`) | **11/11 PASS** |
+| Regression α (Block 1 + gehärteter Block 2) | **18/18 PASS** |
+| Regression PROJ-Y-45a | **9/9 PASS verbatim** |
+| Regression β (Block 1 · Block 2 · Block 3) | im QA-Lauf **52/53** (`Z` fiel, Ursache PROJ-Y-148d, nicht γ); auf dem Deploy-Stand **53/53** — 148d hat `Z` an die geänderte Zusage angepasst, `Z_project_hard_delete_blocked=PASS(42501)` nachgemessen (siehe F-γ4) |
+| Regression PROJ-103 A–G | **7/7 PASS verbatim** |
+| Rückstände | **0** über 14 Zähler; Fixture unverändert (1 Katalog-Gewerk · 2 Abschnitte · 1 Projekt-Gewerk), 29 lebende Projekte, **0 deaktivierte Trigger** |
+
+### Der authentifizierte Durchlauf (schliesst D-γ15)
+
+`tests/PROJ-45-gamma-acceptance-chain.spec.ts`, **3× 3/3 chromium**, in der
+Bau-Fixture-Lane aus β (eigener Mandant, `construction` an, eigene Bauleitung
+und eigener Betrachter — der geteilte `[E2E]`-Mandant wurde bewusst **nicht**
+angefasst, PROJ-Y-143f/143l).
+
+Tragend sind die **negativen** Zusicherungen:
+
+- **Der Betrachter bekommt „Termin ansetzen" gar nicht zu sehen** — und im
+  selben Test wird gegengeprüft, dass derselbe Betrachter beim **Mangel**
+  „Mangel erfassen" sehr wohl sieht. Ohne diese zweite Hälfte belegte der Test
+  nur „Knopf fehlt", nicht „hier strenger als dort" — und genau das ist L22.
+- **Nach dem Protokollieren verschwinden die Zeilenaktionen** (kein
+  „Protokollieren", kein „Termin ändern").
+- **Der Beleg geht danach trotzdem** — die einzige Ausnahme (D-γ4), und die
+  Datenbank bestätigt, dass das Ergebnis dabei **nicht** mitgewandert ist.
+- **Nach einer Verweigerung** erscheint „Nachabnahme", **nicht** „Bearbeiten",
+  und die Datenbank hält **keine** Frist (AC-45γ.20).
+- Die **Gesamtabnahme** (ankerloser Fall, D-γ1) ist über die Oberfläche
+  angesetzt und in der Datenbank mit `trade_id IS NULL AND section_id IS NULL`
+  gegengeprüft — der Fall, den die ursprüngliche Anforderung über den
+  Wurzel-Abschnitt lösen wollte und der so nicht baubar war.
+
+**Echter Druck nach PDF:** die Druckseite wird geöffnet, die vier
+Pflichtbestandteile aus AC-45γ.22 einzeln geprüft (Abnahmedatum,
+Gewährleistung, der verknüpfte Vorbehalt **mit seinem Titel**,
+Unterschriftenzeile), und `page.pdf()` liefert einen Puffer mit `%PDF-`-Kopf und
+> 1000 Byte.
+
+### Nachweise je Akzeptanzkriterium
+
+| AC | Nachweis |
+|---|---|
+| AC-45γ.1 | Pentest **D** (beide Anker → 23514) + **E** (ankerlos = Gesamtabnahme) + Route-Test „refuses both anchors" + **Browser**: Gesamtabnahme angesetzt und in der DB ankerlos gegengeprüft |
+| AC-45γ.2 | Pentest **F** (projektfremdes Gewerk → 23514), Rot-Team **O** (fremdes Projekt → 42501) |
+| AC-45γ.3 | Pentest **A** (Termin Pflicht, Titel/Bemerkung optional), Maske: `#acc-date` erforderlich |
+| AC-45γ.4 | Pentest **H** (zweiter Termin am Gewerk → P0001) + **I** (zweite **Gesamtabnahme** → P0001, die dritte Absicherung) |
+| AC-45γ.5 | Pentest **P**-Reihe + Detailansicht: Absage mit Pflichtbegründung |
+| AC-45γ.6 | Pentest **A** (`nr=1`), Nummer je Projekt fortlaufend |
+| AC-45γ.7 | Pentest **L** (verweigert ohne Begründung → 23514), **J2**, **K2**; Rot-Team **P** (Injektion im Ergebniswert → 22023) |
+| AC-45γ.8 | Pentest **B** (Betrachter) + **C/C2** (Projekt-**Editor** kann weder ansetzen noch protokollieren) + **Browser**: Betrachter sieht den Knopf nicht |
+| AC-45γ.9 | Pentest **M** (42501) + **Browser**: Zeilenaktionen verschwinden |
+| AC-45γ.10 | Pentest **O** (nur nach Verweigerung) + **O2** (Kette verweist) + **Browser**: „Nachabnahme" statt „Bearbeiten" |
+| AC-45γ.11 | Pentest **J2** (`accepted_on` getrennt vom Termin), Maske zeigt den angesetzten Termin als Hinweis |
+| AC-45γ.12 | Pentest **Q** (`angesetzt>verschoben`), Detailansicht: unveränderliche Zeitleiste |
+| AC-45γ.13 | **Browser**: die offenen Mängel des Bezugs sind **vorausgewählt** (geprüft, nicht gesetzt) |
+| AC-45γ.14 | Pentest **K2/K3** (neuer Vorbehalt wird über die β-Anlegefunktion ein **echter** Mangel mit Projekt, Gewerk, Status) + **Browser**: der Vorbehalt zeigt auf den Mangel dieses Laufs |
+| AC-45γ.15 | Pentest **K** (unter Vorbehalt ohne Vorbehalt → 23514) + **J** (abgenommen bei offenem Mangel → P0001) + **J2** (mit Bestätigung) |
+| AC-45γ.16 | **Druck**: jeder Vorbehalt mit Titel, Ort, Schweregrad, Frist |
+| AC-45γ.17 | Druckseite liest die **Stammdaten** des Mangels, ausdrücklich **nicht** seinen heutigen Status (im Code festgehalten und begründet) |
+| AC-45γ.18 | **Browser**: Dauer wählbar, nichts vorbelegt; Pentest **N** (48 Monate) |
+| AC-45γ.19 | Pentest **N** (Fristende = Abnahmedatum + Monate, gegen `make_interval` geprüft) + Liste/Protokoll zeigen es |
+| AC-45γ.20 | Pentest **L2** (Frist bei Verweigerung → 23514) + **L3** (kein Fristende) + **Browser**-Gegenprobe in der DB |
+| AC-45γ.21 | **Echter `page.pdf()`** mit `%PDF-`-Kopf |
+| AC-45γ.22 | Vier Pflichtbestandteile einzeln im Browser geprüft |
+| AC-45γ.23 | Druckseite nutzt den Sitzungs-Client; Auth-Gate-Spec: ohne Sitzung 307 und **weder Überschrift noch Inhalt** im Rumpf |
+| AC-45γ.24 | Pentest **M2** (Beleg nach dem Einfrieren) + Route-Tests (SSRF-Prüfung, Adresse **oder** Knoten) + Rot-Team **R** (http → 23514) und **S** (fremder Dokumentknoten → 23514) + **Browser** |
+| AC-45γ.25 | Pentest **R** (zwei Quellen → 23514) + **R2** (Namensschnappschuss) + **R3** (Stakeholder löschbar) |
+| AC-45γ.26 | Route-Tests (Modul-Absage durchgereicht) + Auth-Gate-Spec |
+| AC-45γ.27 | Pentest **S** (Gewerk) + **T** (Wurzel wegen **Enkel**) + **T2** (naive Abfrage findet nichts) + **T3/T4** (Auskunft benennt die Art) |
+| AC-45γ.28 | Pentest **V/V2** (Fremder sieht nichts) + **W** (Aggregat-Leck) + **W2** (Gegenprobe) + Rot-Team **W/W2** (fremde Auswertung leer) |
+| AC-45γ.29 | Route-Tests: sechs Filter serverseitig, `gesamt` über **beide** Ankerspalten; bogus-Werte ignoriert |
+
+### Härtungskriterien
+
+| # | Ergebnis |
+|---|---|
+| AC-45γH-1 | ✅ `tenant_id` überall, **0 Schreib-Policies** auf allen vier Tabellen (Block 3 / G6) |
+| AC-45γH-2 | ✅ keine Funktion nimmt einen Akteur-Parameter (Signaturen geprüft) |
+| AC-45γH-3 | ✅ `anon` **und PUBLIC** ohne EXECUTE über **alle 11** Funktionen — vollständig, nicht stichprobenhaft (G1/G1b) |
+| AC-45γH-4 | ✅ 3 Auswertungen INVOKER, 6 Schreibwege DEFINER, alle 11 mit `search_path` (G4a/G4b/G5) |
+| AC-45γH-5 | ✅ Live-Pentest, **0 Rückstände** über 14 Zähler |
+| AC-45γH-6 | ✅ **C/C2** — der Projekt-`editor` kann weder ansetzen noch protokollieren; Betrachter erst recht nicht (**B**), im Browser gegengeprüft |
+| AC-45γH-7 | ✅ **T/T2/T3** — die Abnahme am **Enkel** blockiert die Wurzel, die naive Ein-Knoten-Abfrage findet sie **nicht** |
+| AC-45γH-8 | ✅ **W** (Fremder sieht `total=0`) mit **W2** als Gegenprobe (Berechtigter sieht 2) |
+| AC-45γH-9 | ✅ **M** (eingefroren) **und M2** (Beleg danach) in derselben Probe — beide Richtungen |
+| AC-45γH-10 | ✅ α 18/18, PROJ-Y-45a 9/9, PROJ-103 7/7, **β 53/53** — alle wörtlich grün. Im QA-Lauf war β 52/53; der eine Fehlschlag (`Z`) war von **PROJ-Y-148d** verursacht und nachweislich nicht von γ. 148d hat den Vektor inzwischen an die geänderte Zusage angepasst; auf dem Deploy-Stand `Z_project_hard_delete_blocked=PASS(42501)` nachgemessen (siehe F-γ4) |
+| AC-45γH-11 | ✅ Register-Anker mit Post-Verifikation; Geschwister-Zweige namentlich geprüft; Objektarten 94 → **95** wie vorhergesagt |
+| AC-45γH-12 | ✅ der Nicht-Administrator ist **synthetisiert**; `S2_not_admin=PASS` in der β-Regression schliesst Falsch-Grün aus |
+
+### Befunde
+
+**F-γ1 (Low, offen — NICHT γ):** die Konsole meldet auf dem durchlaufenen Pfad
+`Select is changing from uncontrolled to controlled`. **Zugeordnet, nicht
+vermutet:** das Muster `value={… : undefined}` existiert im ganzen Repo genau
+**einmal** — in `construction-defect-dialog.tsx:241`, dem bereits registrierten
+Befund **PROJ-Y-45d** aus β. Alle sieben γ-Selects übergeben eine Zeichenkette.
+Durch Ausschluss bestätigt: nur der Test, der β's Dialog öffnet, erzeugt die
+Meldung; die beiden rein-γ-Tests nicht. **Nebennutzen:** γs Ketten-Spec
+reproduziert PROJ-Y-45d jetzt zuverlässig — der Befund hat damit erstmals einen
+Regressionslauf.
+
+**F-γ2 (Low, offen → PROJ-Y-45i):** die **Detailansicht hat im Ladezustand
+keinen zugänglichen Namen.** Radix meldet `DialogContent requires a DialogTitle`
+und eine fehlende Beschreibung. Ursache im eigenen Code: `SheetHeader`/
+`SheetTitle` stehen nur im geladenen Zweig, der Skelett-Zweig hat keinen Titel.
+**Nur unter Last sichtbar** — im isolierten Lauf lädt das Detail schnell genug,
+dass der getitelte Zweig zuerst rendert; im 3-Worker-Lauf tritt es auf. WCAG-
+relevant (ein Bildschirmleser bekommt einen namenlosen Dialog), fachlich
+harmlos, trivial zu beheben (verdeckter Titel im Skelett-Zweig). Bewusst
+**nicht** in `/qa` behoben — Bugfixes gehören in `/frontend`.
+
+**F-γ3 (Info, in `/qa` behoben — eigener Testfehler):** die erste Fassung der
+Ketten-Spec nagelte die Zahl der Vorbehalte auf **1**. Beim zweiten Lauf fiel
+sie: die Maske hakt **alle** offenen Mängel des Gewerks vor (AC-45γ.13,
+korrektes Verhalten), und wie viele das sind, hängt am Bestand. **Das Produkt
+war richtig, die Zusicherung war rückstandsabhängig.** Umgestellt auf „der
+Mangel dieses Laufs ist verknüpft, und jeder Vorbehalt zeigt auf einen echten
+Mangel"; danach **3× 3/3**.
+
+**F-γ4 (fremd verursacht; Hälfte 1 im Deploy-Lauf als erledigt nachgemessen,
+Hälfte 2 offen → Folgearbeit im 148d-Zweig):**
+**PROJ-Y-148d hat β's QA-Infrastruktur gebrochen**, an zwei Stellen, beide
+gemessen:
+
+1. **β's Pentest-Vektor `Z`** sicherte zu, dass ein Projekt-Hard-Delete *trotz*
+   Mängeln und unveränderlichen Ereignissen **gelingt**. Im QA-Lauf meldete er
+   `FAIL(42501)` — 148d hatte dem Wächter den Kaskaden-Ausstieg genommen, also
+   galt die Zusage nicht mehr.
+   **Erledigt, im `/deploy`-Lauf nachgemessen (2026-08-20):** 148d hat den
+   Vektor in seinem eigenen Merge (`b38c11d`) **umgedreht** statt ihn stehen zu
+   lassen — er erwartet jetzt die Blockade und meldet auf dem rebasten
+   Deploy-Stand gegen Prod `Z_project_hard_delete_blocked=PASS(42501)`.
+   **β ist damit wieder 53/53.** Die im QA-Abschnitt festgehaltene Zahl 52/53
+   war zum Messzeitpunkt richtig und ist überholt; sie bleibt zur
+   Nachvollziehbarkeit stehen.
+2. **β's authentifizierte Spec** fällt in ihrem **Teardown** — **weiter offen**,
+   auf dem Deploy-Stand erneut gemessen: **5 failed / 1 did not run /
+   12 passed**, Stacktrace unverändert auf `deleteOrThrow → removeRunDefects`.
+   `construction_defects` ist nicht mehr löschbar. 148d hat `b38c11d` nur den
+   Pentest angefasst, **nicht** `tests/PROJ-45-beta-defects.spec.ts` und nicht
+   `tests/fixtures/cleanup.ts` (am Merge-Diff geprüft). `deleteOrThrow` tut
+   dabei genau das, wofür PROJ-Y-143o ihn eingebaut hat — laut scheitern statt
+   still anhäufen. Die Rückstände dieses Messlaufs sind über den
+   Runbook-Weg entfernt (0 Mängel, 0 Ereignisse, 0 Audit-Zeilen,
+   0 deaktivierte Wächter).
+
+**Ursache belegt, nicht geschlussfolgert:** γs beide Migrationen enthalten
+**0 Definitionen** von `enforce_construction_defect_event_immutability`; der
+einzige Treffer ist ein **Kommentar**. Die Rückstände dieses β-Laufs wurden über
+den Runbook-Weg entfernt (0 Rückstände nachgemessen).
+
+### Betriebsbefund: γs Zeilen sind by design nicht löschbar
+
+Der γ-Fix-forward macht `construction_acceptance_events` append-only **ohne**
+Kaskaden-Ausstieg (Gleichzug zu PROJ-Y-148d). Gemessen: `delete from
+construction_acceptances` → **42501**, auch als Dienst-Schlüssel; unter
+`session_replication_role = replica` geht es (1 Zeile). Fachlich richtig — ein
+Abnahmeprotokoll soll nicht verschwinden, und der vorgesehene Weg für einen
+Fehl-Eintrag ist „absagen". **Folge für die Testinfrastruktur:** ein
+authentifizierter γ-Durchlauf kann sich nicht selbst aufräumen. Diese QA hat die
+Zeilen deshalb über den Runbook-Weg entfernt, streng auf den Bau-Mandanten und
+auf `[E2E γ]`-Kennungen begrenzt, mit Vorbedingungen (Mandantenname, gesammelte
+Kennungen, Zählerstand fremder Projekte) und Nachprüfung (0 Rückstände, **0
+deaktivierte Trigger**). Als **PROJ-Y-45h** registriert.
+
+### Automatisierte Läufe
+
+| Suite | Ergebnis |
+|---|---|
+| vitest | **3393/3393** (408 Dateien) |
+| Playwright γ-Auth-Gates (8 Routen + 2 Seiten) | **10/10** chromium |
+| Playwright γ-Kette (authentifiziert, 3 Sitzungsrollen) | **3× 3/3** chromium |
+| Playwright α/β-Konstruktions-Auth-Gates | **18/18** wörtlich |
+| Visual-Regression (authentifiziert) | **9/9 ohne Neuaufnahme** |
+| ESLint · tsc · Build · migration-naming · index-scope | 0 · **13 = Baseline/0 neu** · clean · 0 · 0 |
+| Supabase-Advisors | **0 ERROR** / 149 WARN, davon 6 γ-bezogen und alle aus **einer** beabsichtigten Kategorie (`authenticated`-ausführbare Schreib-RPCs) |
+
+### Abweichungen (`/qa`)
+
+- **D-γ17** Mobile Safari bleibt umgebungsbedingt übersprungen (WebKit-Host-
+  Bibliotheken, PROJ-67/F2); Firefox ist gar nicht konfiguriert. Alle Zahlen
+  sind chromium.
+- **D-γ18** Der Beleg ist nur als **externe Adresse** durchgefahren; der
+  Dokumentknoten-Weg ist auf DB-Ebene geprüft (Rot-Team **S**), hat aber noch
+  keine Auswahl in der Oberfläche (D-γ13 → PROJ-Y-45g).
+- **D-γ19** Die Teilnehmer-Erfassung ist über die **Funktionen** und die
+  Pentest-Vektoren R/R2/R3 belegt, nicht über die Maske: der Browser-Durchlauf
+  protokolliert ohne Teilnehmer, weil die Repeater-Zeilen keine stabilen
+  Kennungen tragen. Die Maske selbst wurde beim Durchlauf gerendert und
+  bedient; die Zusicherung liegt auf der Datenschicht.
+- **D-γ20** `deleteOrThrow` ist in der γ-Kette bewusst **nicht** benutzt — er
+  würde bei jedem Lauf zu Recht scheitern (siehe Betriebsbefund). Der Verzicht
+  ist im Kopf der Datei begründet, damit niemand ihn für Nachlässigkeit hält.
+- **D-γ21** Der erste Visual-Lauf dieses Tages meldete zwei Fehlschläge auf
+  kaltem Kompilat direkt nach `rm -rf .next`; danach durchgehend grün
+  (Kaltstart-Klasse PROJ-67/AC-9). Festgehalten, weil ein einzelner grüner
+  Wiederholungslauf allein nichts belegt.
+- **Messnotiz:** `--reporter=line | tail -1` kann eine **veraltete**
+  Fortschrittszeile zeigen (der Reporter überschreibt sie). Zwei Läufe meldeten
+  so „2 passed", der `list`-Reporter wies 3/3 aus. Keine Produktaussage, aber
+  eine Falle für künftige Messungen.
+
+### Neue Folgearbeit
+
+- **PROJ-Y-45h** — Teardown für die Bau-E2E-Lane: γs Abnahmen und β's Mängel
+  sind nicht mehr löschbar, beide Specs brauchen einen sanktionierten,
+  mandantengebundenen Aufräumschritt (Klasse PROJ-Y-45e / PROJ-Y-130h).
+- **PROJ-Y-45i** — verdeckter Titel im Ladezustand der Abnahme-Detailansicht
+  (F-γ2).
+- **Für den 148d-Zweig** (nicht γ): β's **QA-Teardown** gehört an die geänderte
+  Zusage angepasst (F-γ4, Hälfte 2 — Hälfte 1, der Pentest-Vektor `Z`, ist von
+  148d selbst erledigt und im `/deploy`-Lauf grün nachgemessen). Sachlich
+  dieselbe Lücke wie **PROJ-Y-45h**, nur eine Slice früher.
+
+---
+
+## PROJ-45-δ — Bauspezifische Terminsignale (Requirements 2026-08-20)
+
+**Status: Planned** · vierter Sub-Slice, baut auf dem deployten α (Gewerke + Bauabschnitte),
+β (Mängel) und γ (Abnahmen) auf. Enthält **AC-45β.18**, die aus β zurückgestellte ursprüngliche
+Anforderung — und damit den Grund, dass PROJ-45 heute `alpha` statt `full` trägt.
+
+Bis hierher ist die Extension eine **Erfassungsfläche**: Gewerke, Abschnitte, Mängel und Abnahmen
+lassen sich anlegen und einzeln durchsehen. Was fehlt, ist der Blick, mit dem eine Bauleitung
+morgens auf die Baustelle schaut: *welches Gewerk hängt, welcher Abschnitt kommt nicht voran,
+was ist diese Woche fällig.* δ liefert genau diesen Blick — und nichts weiter.
+
+### Erdung — gegen den deployten Stand gemessen, nicht aus der Erstfassung übernommen
+
+Die Erstfassung (2026-05-06) sagt „Abschnittsfortschritt und Gewerk-Blocker **in Gantt und
+Berichten**". Sieben Messungen gegen Prod und den Code; **vier widerlegen eine naheliegende Lesart**:
+
+| Gemessen (2026-08-20) | Wert | Folge für δ |
+|---|---|---|
+| Datumsfelder auf `construction_sections` | **0** (`id · tenant_id · project_id · parent_id · label · description · sort_order · path · created_by · created_at · updated_at`) | „Abschnittsfortschritt" ist **abgeleitet, nicht gespeichert**. Es gibt kein `planned_start`/`planned_end`/`progress`/`status`. |
+| Quellen für die Ableitung | 2: `construction_section_phases` (M:N) und `work_items.section_id` | Beide sind real, beide sind heute leer. |
+| `construction_section_phases`-Zeilen in Prod | **0** | Die α-Verknüpfung Abschnitt↔Phase ist unbenutzt. |
+| `work_items` mit `section_id` / mit `trade_id` / `risks` mit `trade_id` | **0 / 0 / 0** | **Alle drei additiven α-Verweise sind unbenutzt.** Der Leerzustand ist der Normalfall, nicht der Ausnahmefall. |
+| Bauprojekte mit Bauachse **und** Terminen | **0** | Das einzige lebende Bauprojekt ist die β/γ-QA-Fixture (`project_method = null`, 0 Arbeitspakete, 0 Phasen, 0 Meilensteine, aber 2 Abschnitte + 1 Gewerk). Die drei mit Phasen/Meilensteinen (6/5) sind **weich gelöscht** und haben 0 Abschnitte. |
+| Zeilenarten im Gantt (`GanttView`, 1809 Zeilen) | **3** — Phasen, Meilensteine, Arbeitspakete (`kind='work_package'`) | Eine vierte Art wäre ein Eingriff hoher Reichweite in Ziehen/Größenänderung/Abhängigkeiten, und die Balken müssten wegen Zeile 1 gerechnet werden. |
+| Auswertungsflächen, die ein Bauprojekt erreicht | **0 von 5** — Maßnahmen · Engpässe · DD-Bericht · Operatives Reporting · Steering-Dashboard sind **alle** `requiresProjectType: "ma"` | „in Berichten" hat im naheliegenden Sinn **kein Haus**. |
+| `requiresProjectType` | **einwertig** (`?: ProjectType`), Filter vergleicht `===`, 22 Sektionen nutzen es, 125 Registry-Tests, **5** pinnen genau diesen Filter | AC-45β.18 ist über die geteilte Registry nur mit Typänderung erreichbar. |
+| `project_task_bottlenecks` (live gelesen, nicht aus dem Register übernommen) | `sql` · STABLE · **INVOKER** · `search_path` gesetzt · 3092 Zeichen · Schlüssel `summary · tasks · top_bottlenecks` · `summary = {open_total, blocked_total, overdue_total, due_today_total, due_this_week_total}` · **0** Vorkommen von `construction` | Die M&A-Auswertung kennt Mängel nicht und liest allein `work_items`. |
+
+**Ein Haus ist offen, und es ist nicht das erwartete.** `ReportsSection` (PROJ-21, Status-Report +
+Executive-Summary) sitzt auf der **Übersicht** (`tabPath: ""`), die jede Methoden-Konfiguration
+führt und die **nicht** projekttyp-gegatet ist. Ihr Inhalt ist ein typisierter, erweiterbarer
+Schnappschuss (`SnapshotContent`: `header · traffic_light · phases · upcoming_milestones ·
+top_risks · top_decisions · overdue_open_items · work_item_counts · ki_summary · manual_summary ·
+readiness`). Ein additiver Bau-Abschnitt ist dort möglich, ohne eine deployte M&A-Fläche zu berühren.
+
+**Ein zweiter Befund, der eine naive Umsetzung falsch machen würde: β und γ führen bewusst *zwei
+verschiedene* Offen-Begriffe, und δ braucht beide.**
+
+| Begriff | Herkunft | Statuswerte | Warum verschieden |
+|---|---|---|---|
+| „überfällig" | β, `isDefectOverdue` + SQL-Zwilling | `offen` · `in_bearbeitung` — **ohne** `erledigt` | Bei `erledigt` wartet die Prüfung; die Verspätung läge bei der Bauleitung, nicht beim Nachunternehmer. Daneben steht β's eigenes Signal `isDefectAwaitingReview`. |
+| „Vorbehalt offen" | γ, `ACCEPTANCE_OPEN_DEFECT_STATUSES` | `offen` · `in_bearbeitung` · **`erledigt`** | Kommentar im Code: „für eine Abnahme ist fertiggemeldet **nicht** erledigt" — solange niemand nachgesehen hat, ist der Vorbehalt nicht erfüllt. |
+
+Beide sind bereits **doppelt gepinnt** (SQL + TypeScript, je mit denselben Grenzfällen). δ verwendet
+jeden an seinem Platz und erfindet **keinen dritten**. Wer für beide Zwecke denselben Begriff nimmt,
+liegt an genau einer der beiden Stellen falsch — und zwar unauffällig.
+
+### Eine δ zugewiesene Entscheidung ist gegenstandslos, nicht offen
+
+Das Followup-Register führt bei δ die Achsen-Frage aus dem α-CIA-Review (**F-4**): „welche Achse
+führt eine Auswertung, wenn ein Projekt sowohl Workstreams als auch Gewerke trägt". Gemessen:
+`workstreams` hat **0 Zeilen** in Prod, und alle fünf Workstream-Auswertungen sind M&A-gegatet —
+**ein Bauprojekt ruft keine davon auf.** Der Konflikt hat heute keinen erreichbaren Fall. δ
+entscheidet ihn daher nicht, sondern hält fest, dass er nicht entscheidbar ist, solange die beiden
+Achsen sich nirgends treffen. Er wird real, sobald eine Auswertung für **beide** Projekttypen
+freigegeben wird; dann gehört er zu jener Slice, nicht zu dieser.
+
+### Nutzer-Locks (δ)
+
+| # | Lock | Begründung |
+|---|---|---|
+| **L24** | **Eigene Fläche „Terminsignale" plus ein optionaler Bau-Abschnitt im PROJ-21-Status-Report. Der Gantt bleibt unberührt.** | Die Erstfassung nennt den Gantt, aber Abschnitte haben keine Termine (Erdung Zeile 1) und der Gantt hat drei fest verdrahtete Zeilenarten in 1809 Zeilen Interaktionslogik. Eine vierte Art wäre teuer **und** würde für jedes heutige Projekt leer rendern (0 Arbeitspakete mit Bauachse). Die eigene Fläche ist sofort nützlich und trägt genau die drei Signale, für die Daten existieren. |
+| **L25** | **AC-45β.18 wird in der δ-Fläche erfüllt, nicht in der M&A-Engpass-Sicht.** | Der Wortlaut nennt PROJ-103; erreichbar ist die Fläche für ein Bauprojekt nicht (einwertiges Gate). Die Alternative wäre eine Typänderung am geteilten `requiresProjectType`, am Filter, an 5 Registry-Tests und an einer deployten M&A-Auswertung — dazu eine Pflicht-Regression auf einen Pentest, der **absolute Zahlen** festnagelt. Die **Absicht** des Kriteriums (überfällige Mängel werden in einer Engpass-Übersicht sichtbar) wird an einem Ort erfüllt, den ein Bauprojekt erreicht. **Abweichung wird dokumentiert, nicht umgeschrieben.** |
+| **L26** | **Das gerechnete Gewerk-Signal steht *neben* der manuellen α-Ampel, nicht an ihrer Stelle.** | Zwei Angaben, zwei Bedeutungen: „so hat die Bauleitung es bewertet" und „das sagen die Daten". Weichen sie ab, ist genau das die interessante Information. Die α-Zusage „manuelle Ampel" bleibt wörtlich gültig. |
+| **L27** | **Ein Gewerk ist blockiert bei: überfälligen Mängeln · verweigerter Abnahme · angesetzter Abnahme mit verstrichenem Termin · Abnahme unter Vorbehalt mit noch offenen Vorbehalten.** „Abgesagt" blockiert **nicht**. | γ hat „absagen" ausdrücklich als Korrekturweg gebaut (die Zeilen sind nicht löschbar) — ein Tippfehler im Termin darf keinen dauerhaften Blocker erzeugen. Der Vorbehalts-Fall löst sich von selbst, weil Vorbehalte **Verweise** auf β-Mängel sind. |
+| **L28** | **Abschnittsfortschritt aus verknüpften Arbeitspaketen; fehlen sie, aus verknüpften Phasen. Die Fläche sagt, aus welcher Quelle die Zahl kommt.** | Ohne Quellenangabe ist „0 %" nicht von „nichts verknüpft" zu unterscheiden — und *das* ist in Prod heute der Normalfall (0 von beidem). Beide α-Verknüpfungen werden genutzt, keine bleibt reine Dokumentation. |
+| **L29** | **„Überfällig" behält β's Bedeutung. Ein Mangel ohne Frist wird getrennt gezählt und blockiert nicht.** | β hat „überfällig" an eine gesetzte Frist gebunden und in SQL **und** TypeScript mit denselben Grenzfällen gepinnt. Eine Kulanzspanne wäre eine zweite Definition im Produkt. Der fristlose Mangel wird trotzdem **benannt**, damit die Zahl auf der δ-Fläche nicht kleiner ist als die in der Mängelliste. |
+| **L30** | **δ legt keine neue Tabelle an und speichert keinen Signalzustand.** | Alle Signale sind aus β/γ/α und dem Kern ableitbar. Ein gespeicherter Zustand wäre eine zweite Wahrheit, die veralten kann, und bräuchte die vier Register aus PROJ-130. |
+
+### Prior Art für δ
+
+| Baustein | Woher | Was übernommen wird |
+|---|---|---|
+| Auswertungsfunktion | `construction_defect_summary` / `construction_acceptance_summary` (β/γ) | `SECURITY INVOKER`, `stable`, `search_path` gesetzt, `jsonb`-Rückgabe, `anon`-EXECUTE entzogen. Aggregate erben die Sichtbarkeit vom Aufrufer (Aggregat-Leck-Invariante). |
+| Engpass-Form | `project_task_bottlenecks` (PROJ-103) | Die **Form** `{summary, <listen>, top_*}` — nicht die Funktion selbst. Mängel gehören in einen **eigenen Schlüssel**, nicht unter `tasks`: jeder `tasks`-Eintrag trägt ein `kind` (einen Arbeitspaket-Typ, den ein Mangel nicht hat) → sonst brechen die Typisierung im Frontend und der CSV-Export. |
+| Überfälligkeit | β, `isDefectOverdue` + SQL-Zwilling | **Wörtlich wiederverwendet**, nicht nachgebaut. |
+| Vorbehalts-Offenheit | γ, `ACCEPTANCE_OPEN_DEFECT_STATUSES` | **Wörtlich wiederverwendet**, nicht mit der Überfälligkeitsregel verwechselt. |
+| Fristrechnung / Datumsvergleich | γ, `src/lib/construction/acceptances.ts` | `YYYY-MM-DD`-Vergleich lexikographisch, Klemmung am Monatsende — die F-γ1-Lehre gilt weiter. |
+| Berichts-Erweiterung | PROJ-21 `SnapshotContent` + PROJ-56-ε `readiness` | Additiver **optionaler** Block. Vorbild ist, wie PROJ-56-ε seinen Readiness-Block eingehängt hat. |
+| Fläche + Navigation | α/β/γ-Reiter | Ein Eintrag in der geteilten Registry, `requiresProjectType: "construction"` **und** `requiresModule: "construction"`, Routen gaten `view`. |
+| Leerzustand mit Grund | PROJ-Y-143f `ModuleUnavailableNotice`-Muster | Ein Leerzustand darf nicht „alles in Ordnung" behaupten, wenn nichts verknüpft ist. |
+
+### User Stories (δ)
+
+**ST-δ1 — Bauleitung: „Welches Gewerk hängt?"**
+Als Bauleitung möchte ich auf einen Blick sehen, welche Gewerke meines Projekts blockiert sind und
+woran, damit ich weiß, wo ich heute eingreifen muss — ohne vier Listen einzeln durchzugehen.
+
+**ST-δ2 — Bauleitung: „Kommt der Abschnitt voran?"**
+Als Bauleitung möchte ich je Bauabschnitt den Fortschritt und die Zahl der überfälligen Vorgänge
+sehen, damit ich Verzug auf der Ortsachse erkenne und nicht nur auf der Gewerkeachse.
+
+**ST-δ3 — Bauleitung: „Was ist diese Woche fällig?"**
+Als Bauleitung möchte ich die nächsten Fristen aus Mängeln und Abnahmen in einer Liste sehen,
+damit ich Termine wahrnehme, bevor sie verstreichen.
+
+**ST-δ4 — Projektleitung: „Überfällige Mängel als Engpass"** *(erfüllt AC-45β.18)*
+Als Projektleitung möchte ich die überfälligen Mängel als Engpass-Übersicht mit den dringendsten
+zuerst sehen, damit ich Eskalationen priorisieren kann.
+
+**ST-δ5 — Sponsor: „Steht das im Bericht?"**
+Als Sponsor möchte ich im Status-Report einen Bau-Abschnitt sehen, der Gewerk-Blocker und
+Abschnittsfortschritt zusammenfasst, damit ich den Bauteil ohne Zugriff auf den Projektraum
+beurteilen kann.
+
+**ST-δ6 — Bauleitung: „Warum ist hier nichts?"**
+Als Bauleitung möchte ich bei leerer Fläche erklärt bekommen, **warum** kein Signal erscheint
+(nichts verknüpft vs. nichts zu melden), damit ich Ruhe nicht mit Blindheit verwechsle.
+
+### Akzeptanzkriterien (δ)
+
+**Gewerk-Signal**
+
+- [ ] **AC-45δ.1** Die Fläche listet **alle** Projekt-Gewerke, auch die ohne Befund; ein Gewerk ohne Blocker wird ausdrücklich als „ohne Befund" gekennzeichnet, nicht weggelassen.
+- [ ] **AC-45δ.2** Je Gewerk stehen die von α gesetzte **manuelle Ampel** und das **gerechnete Signal** nebeneinander, beide beschriftet, sodass erkennbar ist, welche Angabe woher kommt (L26).
+- [ ] **AC-45δ.3** Ein Gewerk gilt als blockiert bei mindestens einem von: überfälliger Mangel · verweigerte Abnahme · angesetzte Abnahme mit verstrichenem Termin · Abnahme unter Vorbehalt mit noch offenen Vorbehalten (L27). Der Grund wird **benannt**, nicht nur die Farbe gezeigt.
+- [ ] **AC-45δ.4** Eine **abgesagte** Abnahme blockiert nicht (L27).
+- [ ] **AC-45δ.5** Je Gewerk werden zusätzlich benannt: Zahl der überfälligen Mängel, der Mängel **ohne Frist**, und der Mängel, die auf Prüfung warten (L29). Die drei Zahlen sind getrennt und nicht addiert.
+- [ ] **AC-45δ.6** „Überfällig" verwendet **wörtlich** β's Regel (gesetzte Frist verstrichen, Status `offen` oder `in_bearbeitung`); „Vorbehalt offen" verwendet **wörtlich** γ's Regel (Status `offen`, `in_bearbeitung` **oder** `erledigt`). Es entsteht keine dritte Definition.
+
+**Abschnittsfortschritt**
+
+- [ ] **AC-45δ.7** Je Bauabschnitt werden Fortschritt und Zahl der überfälligen Vorgänge gezeigt; die Hierarchie aus α bleibt sichtbar (Kinder unter ihren Eltern).
+- [ ] **AC-45δ.8** Der Fortschritt kommt aus verknüpften **Arbeitspaketen**; fehlen sie, aus verknüpften **Phasen** (L28).
+- [ ] **AC-45δ.9** Die verwendete **Quelle wird angezeigt** („aus 7 Arbeitspaketen" / „aus 2 Phasen").
+- [ ] **AC-45δ.10** Ist nichts verknüpft, erscheint **kein** Fortschritt von 0 %, sondern ein Hinweis mit Handlungsaufforderung (L28, ST-δ6).
+
+**Nächste Fristen**
+
+- [ ] **AC-45δ.11** Eine Liste der nächsten Fristen aus Mängeln (`due_date`) und Abnahmen (`scheduled_for`) im vorausschauenden Fenster, aufsteigend nach Datum, mit Art, Gewerk und Bezug.
+- [ ] **AC-45δ.12** Bereits verstrichene Fristen erscheinen **oberhalb** der künftigen und sind als verstrichen gekennzeichnet.
+- [ ] **AC-45δ.13** Eine künftige, angesetzte Abnahme erscheint hier — und **nicht** als Blocker (L27, AC-45δ.3).
+
+**Engpass-Sicht (erfüllt AC-45β.18)**
+
+- [ ] **AC-45δ.14** Die überfälligen Mängel erscheinen als Engpass-Übersicht mit den am längsten überfälligen zuerst; je Zeile stehen Tage über Frist, Gewerk, Ort und Verantwortlicher.
+- [ ] **AC-45δ.15** Eine Kopfzeile nennt die Gesamtzahlen (überfällig · ohne Frist · wartet auf Prüfung · offene Blocker), berechnet über **alle** Zeilen, nicht nur die angezeigten.
+- [ ] **AC-45δ.16** *(AC-45β.18, Erfüllungsnachweis)* Die Anforderung „überfällige Mängel in der Engpass-Sicht" ist erfüllt; der **Ort** weicht vom Wortlaut ab (δ-Fläche statt PROJ-103-Fläche) und die Abweichung ist in der Spec und im Register benannt (L25).
+
+**Bericht**
+
+- [ ] **AC-45δ.17** Der PROJ-21-Status-Report trägt einen **optionalen** Bau-Abschnitt mit Gewerk-Blockern und Abschnittsfortschritt.
+- [ ] **AC-45δ.18** Der Abschnitt erscheint **nur**, wenn das Projekt ein Bauprojekt mit belegter Bauachse ist; sonst ist der Bericht **byte-identisch** zu heute.
+- [ ] **AC-45δ.19** Bestehende Schnappschüsse bleiben lesbar; der neue Block ist optional und wird bei alten Berichten nicht erwartet.
+- [ ] **AC-45δ.20** Der Bericht ist ein **eingefrorener** Schnappschuss: der Block zeigt den Stand zum Erzeugungszeitpunkt und ändert sich nicht rückwirkend.
+
+**Fläche, Rechte, Gates**
+
+- [ ] **AC-45δ.21** Ein Projektraum-Reiter „Terminsignale", gegatet auf `project_type='construction'` **und** das Modul `construction`; ein Lesezugriff bei inaktivem Modul antwortet 404 (Lese-Absicht verrät die Fläche nicht).
+- [ ] **AC-45δ.22** Die Fläche ist **lesend**. Sie mutiert nichts; jede Aktion ist ein Sprung auf die zuständige Fläche (Mangel, Abnahme, Arbeitspaket).
+- [ ] **AC-45δ.23** Jedes Projektmitglied mit Leserecht sieht die Fläche; es gibt **keine** verschärfte Rolle (anders als β/γ beim Schreiben — hier wird nichts geschrieben).
+- [ ] **AC-45δ.24** Der Gantt ist **unverändert**: keine neue Zeilenart, keine neue Zeichnung, keine Änderung an Ziehen/Größenänderung/Abhängigkeiten (L24).
+
+**Härtungskriterien (blockierend)**
+
+- [ ] **AC-45δH-1** Jede neue Auswertungsfunktion ist `SECURITY INVOKER`, `stable`, mit gesetztem `search_path`, ohne Actor-Parameter, und `anon` **sowie PUBLIC** haben kein EXECUTE (PROJ-Y-114a-Lehre: vollständig prüfen, nicht als Stichprobe).
+- [ ] **AC-45δH-2** **Aggregat-Leck-Probe** ist Pflicht: ein Nicht-Mitglied und ein Mandantenfremder erhalten in **jeder** Kopfzahl und **jeder** Liste 0 — inklusive einer Gegenprobe, die belegt, dass der wahre Wert ≠ 0 ist.
+- [ ] **AC-45δH-3** Die Prüfung läuft unter einem **synthetisierten Nicht-Admin** (in Prod ist jedes Mandanten-Mitglied Admin; ein Lauf unter Admin wäre falsch-grün).
+- [ ] **AC-45δH-4** Keine neue Tabelle, kein Register-Eingriff, kein gespeicherter Signalzustand (L30). Wird das verletzt, gelten die vier PROJ-130-Register-Pflichten in derselben Migration.
+- [ ] **AC-45δH-5** Regressionen **wörtlich** grün: α-Pentest, PROJ-Y-45a, β-Pentest, γ-Pentest und **PROJ-103 A–G**. Letzteres besonders: der PROJ-103-Pentest nagelt **absolute Zahlen** fest (PROJ-130-α-Lehre), und δ darf ihn nicht bewegen.
+- [ ] **AC-45δH-6** Die Registry-Tests (125) bleiben grün **ohne** Abschwächung einer Invariante; `requiresProjectType` bleibt einwertig (L25).
+- [ ] **AC-45δH-7** Die beiden Offen-Begriffe werden aus den bestehenden Libs **importiert**, nicht kopiert; ein Test friert ein, dass `erledigt` bei „überfällig" **aus**- und bei „Vorbehalt offen" **ein**geschlossen ist.
+- [ ] **AC-45δH-8** Der Bericht ohne Bauachse ist **byte-identisch** zu heute — gemessen, nicht behauptet (AC-45δ.18).
+- [ ] **AC-45δH-9** Ein authentifizierter Durchlauf in der Bau-Fixture-Lane belegt mindestens einen echten Blocker und einen echten Leerzustand mit Grund; die Lane räumt hinterher auf (Grenze: γs Zeilen sind nicht löschbar → PROJ-Y-45h).
+
+### Edge Cases (δ)
+
+| Fall | Erwartetes Verhalten |
+|---|---|
+| Projekt ohne Gewerke | Fläche erscheint, erklärt den Leerzustand und verweist auf die Gewerke-Fläche. Kein „alles grün". |
+| Gewerk ohne Mängel und ohne Abnahme | „ohne Befund" — ausdrücklich, nicht durch Abwesenheit (AC-45δ.1). |
+| Mangel ohne Frist | Getrennt gezählt, blockiert nicht (L29). |
+| Mangel im Status `erledigt` (fertiggemeldet) | Nicht überfällig (β), aber „wartet auf Prüfung". Zählt als offener Vorbehalt, wenn er an einer Abnahme hängt (γ). Derselbe Mangel erscheint also in zwei Zahlen mit zwei Bedeutungen — beide beschriftet. |
+| Abnahme unter Vorbehalt, alle Vorbehalte erledigt | Kein Blocker mehr; löst sich ohne Zutun (L27). |
+| Abnahme angesetzt, Termin heute | Nicht überfällig (Vergleich `< heute`, wie β und γ). Erscheint unter „Nächste Fristen". |
+| Abgesagte Abnahme, kein neuer Termin | Kein Blocker (L27). Erscheint auch nicht unter den Fristen. |
+| Abschnitt mit Kindern, nur Kinder haben Verknüpfungen | Eltern zeigen den zusammengefassten Stand des Teilbaums; die Quelle wird als „aus N Arbeitspaketen im Teilbaum" benannt. |
+| Abschnitt mit Arbeitspaketen **und** Phasen | Arbeitspakete führen (L28); die Phasen werden als weitere Angabe genannt, nicht stillschweigend verworfen. |
+| Arbeitspaket ohne Termine, aber mit `section_id` | Zählt in den Fortschritt (Status), nicht in „überfällig" (kein Datum). |
+| Bauprojekt mit `project_method = null` | Fläche funktioniert; sie hängt nicht an einer Methode. (Gemessen: das einzige lebende Bauprojekt ist genau dieser Fall.) |
+| Modul `construction` aus | 404 auf den Routen, Hinweis statt Fehlerkasten auf der Fläche (PROJ-Y-143f-Muster). |
+| Nicht-Bauprojekt | Reiter erscheint nicht; die Routen antworten 404. |
+| Bericht ohne Bauachse | Kein Bau-Abschnitt, Ausgabe byte-identisch (AC-45δ.18). |
+| Alter Schnappschuss ohne Bau-Block | Bleibt lesbar (AC-45δ.19). |
+
+### Out of Scope (δ)
+
+| Nicht in δ | Warum | Wohin |
+|---|---|---|
+| Bauabschnitte als Gantt-Zeilenart | L24 — Abschnitte haben keine Termine, der Gantt hat 1809 Zeilen Interaktionslogik | eigene Slice, falls ein Pilot es verlangt |
+| Marker auf bestehenden Gantt-Zeilen | Würde heute leer bleiben (0 Arbeitspakete mit Bauachse) | eigene Slice, wenn die Achse belegt ist |
+| Eigene Termine auf `construction_sections` | Wäre eine zweite Terminwahrheit neben Phasen und Arbeitspaketen | bewusst nicht vorgesehen |
+| Benachrichtigung / Eskalation bei Fristablauf | δ **zeigt**, δ **meldet nicht** — Versand ist PROJ-13, Fälligkeits-Inbox ist PROJ-64 | eigene Slice |
+| Gewährleistungs-Ablaufwarnung | γ hat sie ausdrücklich ausgenommen („gerechnet und gezeigt, nicht überwacht") | eigene Slice |
+| Freigabe der M&A-Engpass-Sicht für Bau | L25 | eigene Slice, dann mit Typänderung und PROJ-103-Regression |
+| Fotodokumentation | ε | PROJ-45-ε |
+| Achsen-Entscheidung Workstreams ↔ Gewerke | Hat heute keinen erreichbaren Fall (siehe oben) | jene Slice, die eine Auswertung für beide Typen freigibt |
+
+### Offene Fragen für `/architecture`
+
+1. **Eine Auswertungsfunktion oder drei?** Die Fläche trägt vier Blöcke (Gewerke · Abschnitte · Fristen · Engpässe). β/γ haben je eine `*_summary`-Funktion; PROJ-103 bündelt vier Dinge in einer. Eine Funktion bedeutet einen Aufruf und eine Kopfzahl-Wahrheit, aber einen größeren Rumpf.
+2. **Wie wird der Abschnitts-Teilbaum aggregiert?** α hat `construction_sections.path` (und einen `repath`-Trigger). Reicht `path` für die Teilbaum-Summe, oder braucht es eine rekursive Abfrage wie in `construction_section_blocking_refs`?
+3. **Fenster für „Nächste Fristen".** Vorschlag 14 Tage vorausschauend, verstrichene ohne Grenze. Zu bestätigen oder zu ersetzen.
+4. **Wo genau hängt der Bau-Block im Schnappschuss?** `SnapshotContent` ist typisiert; der Block muss optional sein und die Aggregation in `aggregateSnapshotData` braucht einen projekttyp-abhängigen Zweig. Zu prüfen, ob PROJ-56-ε dort ein Muster gesetzt hat.
+5. **Trägt δ eine CSV-Ausgabe?** PROJ-103 und PROJ-132 haben eine; β/γ nicht. Falls ja, gilt das Formel-Escaping-Muster.
+6. **Braucht δ einen CIA-Pass?** Nach den Locks entsteht keine neue Tabelle, keine neue Abhängigkeit und kein Eingriff in eine deployte Fläche außer dem additiven Berichts-Block. Vermutlich nicht — zu bestätigen bei `/architecture`.
+
+### Technische Anforderungen (δ)
+
+- **Kein neues Paket.** Alles ist Wiederverwendung.
+- **Keine neue Tabelle**, kein Register-Eingriff (L30) — sonst greifen die vier PROJ-130-Register-Pflichten in derselben Migration, als Anker-Ersetzung aus der Live-Definition mit Fail-Loud-Guard und Re-Grant.
+- **Auswertungen sind `SECURITY INVOKER`.** Ein `SECURITY DEFINER`-Aggregat über gegatete Zeilen ist ein Leck, auch wenn die Zeilenliste korrekt verborgen ist.
+- **Kein Actor-Parameter**; `auth.uid()` wird intern gelesen. `anon` und PUBLIC ohne EXECUTE.
+- **Delta- statt Absolutzusicherungen** in Migrations-Post-Conditions (PROJ-130-α-Lehre).
+- **Live-Pentest ist Pflicht** vor `Approved`, nach dem DO-Block-Muster mit Rollback-Marker und **null Rückständen**, mit synthetisiertem Nicht-Admin und Aggregat-Leck-Probe samt Gegenprobe.
+- **Regressionen wörtlich**: α · PROJ-Y-45a · β · γ · **PROJ-103 A–G** (absolute Zahlen!).
+- **Migration nur falls nötig**; dann Dateiname zuerst, `apply_migration`-`name` = Dateistamm (PROJ-134), `extensions.moddatetime` schema-qualifiziert.
+- **Funktions-Inventar** (`supabase/prod-inventory/functions.txt`) am Ende der Slice auffrischen (PROJ-Y-148e).
+
+### Abhängigkeiten
+
+- **Erfordert:** PROJ-45-α (Gewerke, Abschnitte, `construction_section_phases`, die drei additiven Verweise) · PROJ-45-β (Mängel, `due_date`, Überfälligkeitsregel) · PROJ-45-γ (Abnahmen, `scheduled_for`, Vorbehalts-Verweise) — **alle deployed**.
+- **Nutzt:** PROJ-19 (Phasen) · PROJ-9 (Arbeitspakete) · PROJ-21 (`SnapshotContent`) · PROJ-17 (Modul-Gate) · PROJ-28 (Navigations-Registry).
+- **Berührt nicht:** PROJ-25/53 (Gantt) · PROJ-103 (Engpass-Sicht) · PROJ-131/132 (M&A-Berichte).
+
+---
+
+## Tech Design (Solution Architect) — δ, 2026-08-20
+
+Gegen den deployten Stand geerdet in **vier parallelen Messläufen** (Funktions-Granularität + CSV ·
+Teilbaum-Aggregation · Berichts-Block · Wiederverwendungs-Inventar). Zwei Nutzer-Locks vorab gesetzt:
+Vorausschau-Fenster **14 Tage** (verstrichene ohne Grenze), **kein CIA-Pass** — es entsteht kein neues
+Paket, keine neue Tabelle und kein Register-Eingriff, und der einzige Eingriff in eine deployte Fläche
+ist der additive Berichts-Block.
+
+### Die sechs offenen Fragen — beantwortet
+
+| Frage | Antwort | Tragender Grund (gemessen) |
+|---|---|---|
+| **Q1** Eine Auswertungsfunktion oder drei? | **Eine**, mit vier Top-Level-Schlüsseln und je Block eigener Kopfzahl | Nicht Sparsamkeit, sondern **ein Zeitbezug**: alle vier Blöcke rechnen gegen `current_date`. Vier getrennte Aufrufe können über Mitternacht auseinanderfallen und die Fläche zeigte dann Kopfzahlen, die zu ihren Listen nicht passen. Hausmuster ist ohnehin gebündelt (PROJ-131 4 Blöcke, PROJ-132 5, PROJ-103 3). |
+| **Q2** Teilbaum über `path` oder rekursiv? | **Rekursives CTE über `parent_id`**, wie β/γ | α hat `path` als echtes `ltree` **mit GiST-Index** angelegt, und `<@` wäre die elegantere Abfrage — aber β und γ lösen dieselbe Frage am **selben Baum** rekursiv, `path` ist `nullable` **ohne CHECK**, und Perf ist bei diesen Baumgrößen keine Frage. Eine dritte Technik innerhalb von PROJ-45 wäre die Drift, nicht der Gewinn. |
+| **Q3** Fenster „Nächste Fristen" | **14 Tage** vorausschauend, verstrichene ohne Grenze | Nutzer-Lock. Als **Konstante** in der Funktion, nicht als Parameter — ein Parameter vergrößert die Pentest-Matrix ohne Nutzen, solange kein Umschalter existiert. |
+| **Q4** Wo hängt der Bau-Block im Schnappschuss? | Optionales Feld **neben `readiness`**, Aggregation im eigenen Fehler-Zweig, Rendering per Guard, **nur** im Status-Report | PROJ-56-ε hat genau dieses Muster gesetzt; die Exec-Summary führt `readiness` bewusst nicht. Rückwärtskompatibilität ist **gratis**: das `content` wird beim Lesen gar nicht validiert (keine Zod-Prüfung), unbekannte Felder werden ignoriert. |
+| **Q5** CSV? | **Ja**, eine Route mit Abschnitts-Parameter | Aus dem Bestand begründet, nicht aus Prinzip: δ liefert die Engpass-Sicht, die PROJ-103 für Aufgaben hat — **und die hat einen Export**. Ohne δ-CSV könnte derselbe Nutzer überfällige Aufgaben exportieren, überfällige Mängel nicht. α/β/γ haben bisher keine einzige Export-Route. |
+| **Q6** CIA-Pass? | **Nein** | Nutzer-Entscheid, gestützt auf die Messung: kein Paket, keine Tabelle, kein Register. |
+
+### Drei Befunde, die eine Vorlage oder ein Kriterium korrigieren
+
+**1. Der Funktionsname in den δ-Anforderungen war falsch.** Die Prior-Art-Tabelle nennt
+`construction_defects_summary`; deployt ist **`construction_defect_summary`** (Singular, β-Migration
+Block 14). Im Anforderungstext korrigiert. Ein Name, der erst beim Bauen auffällt, kostet einen
+Migrationslauf — dieselbe Klasse wie der falsch angenommene Helfer in PROJ-45-β.
+
+**2. Die naheliegende Umsetzung von AC-45β.18 widerspricht L25 und wird abgelehnt.** Der Messlauf
+empfahl, die überfälligen Mängel per Anker-Ersetzung als eigenen Schlüssel in
+`project_task_bottlenecks` zu hängen. Das ist technisch sauber und **fachlich wirkungslos**: die
+PROJ-103-Fläche trägt `requiresProjectType: "ma"`, ein Bauprojekt erreicht sie nicht — die Zahl
+entstünde an einem Ort, an dem sie niemand sieht, und der PROJ-103-Pentest nagelt absolute Zahlen
+fest. δ erfüllt die **Absicht** des Kriteriums in der eigenen Fläche (L25) und lässt
+`project_task_bottlenecks` **unberührt**. Die Abweichung wird dokumentiert, nicht umgeschrieben.
+
+**3. „Byte-identisch" (AC-45δ.18) ist heute nicht messbar — δ bringt das Messwerkzeug mit.** Der
+Schnappschuss-Aggregator hat **keinen** Unit-Test, der Route-Test mockt ihn weg, und **keine**
+Visual-Baseline fotografiert die Report-Fläche. Ein Kriterium ohne Instrument ist eine Behauptung.
+δ liefert daher einen Wächter, der für ein Nicht-Bauprojekt die **eingefrorene Feldliste** des
+Schnappschuss-Inhalts prüft und dass der Bau-Schlüssel **abwesend** ist — mit Rot-Grün-Gegenprobe.
+
+### Architektur
+
+#### A) Fläche (Komponentenbaum, PM-lesbar)
+
+```
+Projektraum → Reiter „Terminsignale"   (nur Bauprojekt + Modul „construction")
++-- Kopfzeile: vier getrennte Zahlen
+|     überfällig · ohne Frist · wartet auf Prüfung · offene Blocker
+|     (über ALLE Zeilen gerechnet, nicht über die angezeigten)
++-- Block 1 „Gewerke"
+|   +-- je Gewerk eine Zeile, auch ohne Befund („ohne Befund" ausdrücklich)
+|   |     manuelle Ampel (α)  |  gerechnetes Signal  |  Grund im Klartext
+|   |     drei Zahlen: überfällig · ohne Frist · wartet auf Prüfung
+|   +-- Sprung auf Mängel- bzw. Abnahme-Fläche (keine Mutation)
++-- Block 2 „Bauabschnitte"  (eingerückter Baum wie α, Kinder unter Eltern)
+|   +-- je Abschnitt: Fortschritt + QUELLE („aus 7 Arbeitspaketen im Teilbaum")
+|   +-- nichts verknüpft → Hinweis mit Handlungsaufforderung, KEIN „0 %"
++-- Block 3 „Nächste Fristen" (14 Tage)
+|   +-- verstrichene oben und gekennzeichnet, dann künftige aufsteigend
+|   +-- Art · Gewerk · Bezug
++-- Block 4 „Engpässe: überfällige Mängel"   (erfüllt AC-45β.18)
+|   +-- am längsten überfällige zuerst: Tage über Frist · Gewerk · Ort · Verantwortlicher
++-- CSV-Ausgabe je Block
+```
+
+Die Fläche ist **lesend**. Jede Aktion ist ein Sprung auf die zuständige Fläche — kein
+Schreibpfad, kein verschärftes Rollen-Gate (anders als β/γ beim Schreiben; hier wird nichts
+geschrieben, also gilt `view`).
+
+#### B) Was gespeichert wird: nichts
+
+δ legt **keine Tabelle** an und hält **keinen Signalzustand**. Alle vier Blöcke sind aus dem
+Bestand ableitbar:
+
+| Block | Quelle |
+|---|---|
+| Gewerk-Signal | β-Mängel + γ-Abnahmen, je Projekt-Gewerk; Zählspalten aus den beiden vorhandenen Auswertungen |
+| Abschnittsfortschritt | verknüpfte Arbeitspakete (α-Verweis), ersatzweise verknüpfte Phasen (α-M:N-Tabelle) |
+| Nächste Fristen | Mangel-Frist und Abnahme-Termin |
+| Engpässe | β-Mängel mit verstrichener Frist |
+
+Ein gespeicherter Zustand wäre eine zweite Wahrheit, die veralten kann, und zöge die vier
+Register-Pflichten aus PROJ-130 nach sich.
+
+#### C) Eine Auswertungsfunktion
+
+Eine neue Funktion je Projekt, `SECURITY INVOKER`, `stable`, `search_path` gesetzt, **ohne**
+Akteur-Parameter, `anon` **und PUBLIC** ohne Ausführungsrecht. Sie gibt vier Blöcke plus je Block
+eine Kopfzahl über die **ungefilterte** Menge zurück — das Vorbild dafür ist PROJ-103, wo die
+Zusammenfassung ausdrücklich über die Grundmenge und nicht über die sortierte Auswahl rechnet.
+
+**Wiederverwendung statt Nachbau** (die eigentliche Substanz des Entwurfs):
+
+| Baustein | Herkunft | δ macht daraus |
+|---|---|---|
+| Überfälligkeitsregel in SQL | β-Helfer `_construction_defect_is_overdue` | **aufrufen** — keine dritte Kopie des Prädikats |
+| Überfälligkeit + „wartet auf Prüfung" in TypeScript | β-Bibliothek `defects.ts` | **importieren** für Zeilen-Abzeichen |
+| „Vorbehalt offen" | γ, heute **inline** in der Protokollier-Funktion (genau eine Stelle) | siehe **D-δ4** |
+| Zählungen je Gewerk | `construction_defect_summary` · `construction_acceptance_summary` | **aufrufen** und verbinden, statt ein drittes Mal zu zählen |
+| Datumsvergleich | β/γ, `YYYY-MM-DD` lexikographisch, `<` nicht `<=` | derselbe Rand für „Termin verstrichen" |
+| Teilbaum | γ, `construction_section_blocking_refs` | dieselbe rekursive Technik |
+
+Beim Verbinden der beiden Auswertungen ist ein gemessener Stolperstein zu beachten: die
+Gewerk-Listen tragen **unterschiedliche Schlüsselnamen** (β `project_trade_id`, γ `trade_id`). Die
+α-Fläche führt sie bereits zusammen; genau diese Fundstelle ist das Vorbild.
+
+#### D) Rechte und Gates
+
+Reihenfolge wie in allen Bau-Routen: Kennung prüfen → Anmeldung → **Projektzugriff `view`** (liefert
+erst die Mandanten-Kennung) → **danach** Modul-Tor. Lese-Absicht wird auf **404** abgebildet, damit
+die Fläche ihre Existenz nicht verrät; die Oberfläche zeigt dafür einen Hinweis statt eines
+Fehlerkastens, und der Hook meldet den Zustand im vorhandenen Feld `moduleInactive` (so heißt es im
+Bestand — nicht `unavailable`).
+
+Der Navigations-Eintrag ist der **fünfte** dieser Art und kommt **ohne Testanpassung** dazu: α hatte
+die Registry-Invariante damals von „genau eine Sektion je Modul" auf ihre Absicht umgestellt. Das ist
+der zweite Nutzen jener Änderung; die fünf Fälle, die den Projekttyp-Filter festnageln, bleiben
+unberührt und `requiresProjectType` bleibt **einwertig**.
+
+#### E) Berichts-Block
+
+Ein **optionales** Feld neben `readiness`, gefüllt nur wenn (a) das Projekt ein Bauprojekt ist und
+(b) die Bauachse belegt ist; sonst bleibt es **abwesend**. Drei Dinge sind dabei nicht verhandelbar:
+
+- **Abwesend heißt abwesend.** Ein leerer Wert statt Abwesenheit legt den Schlüssel im gespeicherten
+  Inhalt ab und verletzt AC-45δ.18.
+- **Der Projekttyp fehlt heute in der Abfrage des Aggregators** — er liest die Methode, nicht den Typ.
+  Ohne diese Ergänzung ist die Gate-Bedingung nicht auswertbar.
+- **Fehler dürfen nicht durchschlagen.** Der Bau-Block bekommt denselben Fehler-Zweig wie der
+  Readiness-Block; nur der Projekt-Lookup selbst darf die Schnappschuss-Erzeugung abbrechen.
+
+Der PDF-Weg braucht **keine** Änderung (er rendert dieselbe Druckseite). Der Schnappschuss ist
+strukturell eingefroren: die Tabelle hat weder eine Änderungs- noch eine Löschregel — AC-45δ.20 ist
+damit ohne Zutun erfüllt.
+
+### Neue Entscheidungen (δ)
+
+- **D-δ1** Eine gebündelte Auswertungsfunktion, vier Schlüssel, je Block eigene Kopfzahl über die
+  ungefilterte Menge, **ein** Zeitbezug.
+- **D-δ2** Die beiden vorhandenen Auswertungen werden **aufgerufen und verbunden**, nicht nachgezählt;
+  die abweichenden Gewerk-Schlüsselnamen werden nach dem α-Vorbild zusammengeführt.
+- **D-δ3** Teilbaum **rekursiv über `parent_id`**, nicht über den `ltree`-Operator. Der GiST-Index
+  bleibt vorerst ungenutzt; die Konsolidierung samt `path`-Pflichtfeld ist als **PROJ-Y-45j**
+  registriert, weil sie α/β/γ betrifft und nicht in eine Lesefläche gehört.
+- **D-δ4** Das Prädikat „Vorbehalt offen" wird ein **geteilter SQL-Helfer**, und γs **einzige**
+  Inline-Stelle wird per Anker-Ersetzung aus der Live-Definition darauf umgestellt — damit es in SQL
+  genau **eine** Autorität gibt (die TypeScript-Konstante bleibt der Zwilling, wie bei β). Alternative
+  war „Helfer daneben stellen und γ nicht anfassen"; sie wurde verworfen, weil dann drei Kopien
+  derselben Statusliste existieren und die gefährliche Verwechslung mit der Überfälligkeitsregel
+  unauffällig bleibt. **Preis und Absicherung:** δ berührt damit einen deployten Schreibpfad; das Tor
+  dafür ist der **γ-Pentest wörtlich** (60/60) plus ein neuer Vektor, der beweist, dass die
+  Protokollier-Funktion nach der Umstellung dieselbe Entscheidung trifft.
+- **D-δ5** Fortschritt = erledigte Arbeitspakete gegen alle nicht gelöschten, **ohne die
+  verworfenen**. Das weicht von PROJ-102 ab, das verworfene im Nenner behält: auf einer operativen
+  Bau-Fläche wäre ein Fortschritt, der 100 % nie erreichen kann, irreführend. Ersatzweise über Phasen:
+  „abgeschlossen" zählt, „verworfen" fällt aus dem Nenner, „geplant/laufend/ausgesetzt" zählen als
+  offen. Beide Formeln werden mit Grenzfällen eingefroren.
+- **D-δ6** Der Berichts-Block spiegelt das Readiness-Muster; Abwesenheit statt Leerwert; der
+  Projekttyp wird in die Aggregator-Abfrage aufgenommen; nur Status-Report, nicht Exec-Summary; die
+  Abschnittsliste im Kopfkommentar des Renderers wird **mitgepflegt** (PROJ-56-ε hat das versäumt).
+- **D-δ7** Eine CSV-Route mit Abschnitts-Parameter, dieselbe Auswertung wie die Ansicht,
+  Formel-Neutralisierung und Umfangs-Kopfzeile wie im Bestand. Die Escaping-Hilfe wird **kopiert**,
+  nicht vereinheitlicht — eine Vereinheitlichung berührte mindestens fünf Dateien und wäre damit
+  CIA-pflichtig; als **PROJ-Y-45k** registriert.
+- **D-δ8** `project_task_bottlenecks` bleibt **unberührt** (Befund 2).
+- **D-δ9** Das Fenster ist eine Konstante, kein Parameter.
+- **D-δ10** Die Fläche gatet `view`; es gibt bewusst **kein** verschärftes Rollen-Gate.
+
+### Zusätzliche Härtungskriterien (blockierend, zu AC-45δH-1…9)
+
+- [ ] **AC-45δH-10** Nach der Umstellung aus **D-δ4**: γ-Pentest **wörtlich** grün, plus ein Vektor,
+      der einen fertiggemeldeten Mangel als offenen Vorbehalt führt und belegt, dass Protokollier-Weg
+      und δ-Signal **dieselbe** Entscheidung treffen. Anker-Ersetzung mit Treffer-Eindeutigkeit,
+      Fail-Loud und Post-Verifikation aus der Live-Definition.
+- [ ] **AC-45δH-11** Der Wächter für AC-45δ.18 existiert und ist **rot-grün belegt**: eingefrorene
+      Feldliste des Schnappschuss-Inhalts und Abwesenheit des Bau-Schlüssels bei einem
+      Nicht-Bauprojekt.
+- [ ] **AC-45δH-12** **Je Route** ein eigener Modul-Gate-Test. α musste das Tor in alle sieben Routen
+      nachziehen, weil die Registry es voraussetzt — ohne eigenen Test wird das neue Tor nur weggemockt.
+- [ ] **AC-45δH-13** Der Teilbaum-Fall ist mit einem **Enkel** geprüft: die Verknüpfung hängt am
+      Kindeskind, die naive Ein-Knoten-Abfrage findet sie **nicht**, die Teilbaum-Abfrage schon.
+      Genau diese Falle hat β/γ je einen Vektor gekostet.
+- [ ] **AC-45δH-14** Funktions-Inventar am Ende der Slice aufgefrischt; die Zahl wird gegen Prod
+      **gegengezählt**, nicht aus der Migration übernommen.
+
+### Risiken für `/qa`
+
+| # | Risiko | Prüfung |
+|---|---|---|
+| R-δ1 | **D-δ4 berührt einen deployten Schreibpfad.** Eine falsch verankerte Ersetzung würde die Protokollier-Funktion still verändern. | γ-Pentest wörtlich + AC-45δH-10; Anker zählt seine Treffer und bricht bei ≠1 ab |
+| R-δ2 | **Die zwei Offen-Begriffe werden vermischt.** Wer für Blocker und Überfälligkeit denselben nimmt, liegt an genau einer Stelle falsch — unauffällig. | eingefrorener Test: `erledigt` bei „überfällig" **aus**, bei „Vorbehalt offen" **ein** |
+| R-δ3 | **Aggregat-Leck.** Eine Auswertung als `SECURITY DEFINER` über gegatete Zeilen leckt, auch wenn die Zeilenliste stimmt. | Leck-Probe **je Block** samt Gegenprobe (wahrer Wert ≠ 0), unter **synthetisiertem Nicht-Admin** |
+| R-δ4 | **Leerzustand behauptet Ruhe.** In Prod sind alle drei additiven α-Verweise bei null Zeilen — der Leerzustand ist der Normalfall. | AC-45δ.10 + ST-δ6: Hinweis mit Grund, nie „0 %" |
+| R-δ5 | **Fortschrittsformel weicht von PROJ-102 ab** (D-δ5) und könnte als Fehler gelesen werden. | Grenzfälle eingefroren, Abweichung in der Spec benannt |
+| R-δ6 | **Fixture-Lane räumt nicht vollständig auf**: γ-Zeilen sind by design nicht löschbar. | Bau-Lane aus der β-QA wiederverwenden, Grenze über PROJ-Y-45h führen; **nicht** das Modul im geteilten Test-Mandanten einschalten (verschiebt die stabilisierten Visual-Baselines) |
+
+### Abhängigkeiten und Reihenfolge
+
+**Kein neues Paket.** Keine neue Tabelle, kein Register-Eingriff. Eine Migration (Auswertungsfunktion,
+geteilter Helfer aus D-δ4, Anker-Ersetzung an γs Protokollier-Funktion); Dateiname zuerst, der
+Migrationsname gleich dem Dateistamm.
+
+Reihenfolge **`/backend` → `/frontend` → `/qa`**: die Fläche ist ohne die Auswertungsfunktion nicht
+sinnvoll baubar, und der Berichts-Block hat einen Backend- und einen Frontend-Anteil.
+
+---
+
+## `/backend` — δ live 2026-08-20
+
+Migration **`20260820180000_proj45_delta_construction_schedule_signals`** in Prod (registriert unter
+`20260820155944`; die Versionsdrift ist benign — die Datei besteht durchgängig aus `create or replace`
+und idempotenten DO-Blöcken und bricht `supabase db push` nicht, PROJ-134-Domäne). **Keine neue
+Tabelle, kein Register-Eingriff, kein gespeicherter Signalzustand** — L30 gehalten.
+
+Geliefert: drei neue Funktionen (`_construction_defect_is_open`, `_construction_reservation_is_open`,
+beide `immutable`; `construction_schedule_signals` als `SECURITY INVOKER`, `stable`, mit gesetztem
+`search_path`, ohne Actor-Parameter, `anon` **und PUBLIC** ohne EXECUTE), zwei Anker-Ersetzungen aus
+der Live-Definition, eine Typdatei, zwei Routen (Daten + CSV), Client-Wrapper, reine Anzeige-Lib und
+der Backend-Anteil des Berichts-Blocks. Die Migration prüft ihr eigenes Ergebnis: Modus, Volatilität
+und `search_path` je neuer Funktion, dazu `anon`/PUBLIC/`authenticated` über **fünf** Funktionen
+(die drei neuen plus die zwei umgestellten).
+
+### Der Auftrag D-δ4 wurde nach einer Messung erweitert — zwei Umstellungen statt einer
+
+Live gemessen tragen **vier** Funktionen das Wort `in_bearbeitung`, und nur zwei davon sind
+Regel-Kopien: `_construction_defect_is_overdue` (1× die Paar-Liste) und
+`record_construction_acceptance` (1× die Dreier-Liste) wurden umgestellt;
+`construction_defect_summary` (1× als Einzelstatus-**Zählung**) und
+`transition_construction_defect_status` (4× als **Zustandsübergänge**) sind keine und bleiben
+unberührt. Der Grund für die Erweiterung ist konkret: δ braucht für „Mangel **ohne Frist**" die
+Statuspaar-Liste, und der β-Helfer gibt sie nicht her (er verlangt ein Datum). Ohne den neuen
+`_construction_defect_is_open` hätte δ sie ein **drittes** Mal tippen müssen — genau das, was D-δ4
+verhindern soll. In SQL gibt es jetzt je Begriff **eine** Autorität; die TypeScript-Konstanten bleiben
+die Zwillinge wie bei β.
+
+### Zwei Messungen haben Entwurfsannahmen korrigiert
+
+**1. D-δ2 war zu stark formuliert.** „Die beiden vorhandenen Auswertungen aufrufen statt nachzuzählen"
+ist für den Gewerk-Block **nicht** möglich: `construction_defect_summary.by_trade` gruppiert über die
+**Mängel** und listet damit nur Gewerke **mit** Befund — AC-45δ.1 verlangt ausdrücklich alle, auch die
+„ohne Befund". δ baut die Gewerk-Liste deshalb aus `project_construction_trades` und wiederverwendet
+die **Prädikate** statt der Gruppierung. Damit die zweite Gruppierung nicht auseinanderläuft, prüft
+Pentest-Vektor **J** die überlappende Zahl gegen die β-Auswertung.
+
+**2. Die abweichenden Schlüsselnamen sind nur Namen.** β nennt das Feld `project_trade_id`, γ
+`trade_id` — beide Fremdschlüssel zeigen auf `project_construction_trades.id` (am Katalog gemessen,
+nicht angenommen). Es war also kein Umschlüsseln nötig, nur Aufmerksamkeit beim Verbinden.
+
+### Live-Pentest: 46/46 PASS gegen Prod, 0 Rückstände
+
+`tests/sql/PROJ-45-delta-schedule-signals-pentest.sql` (Block 1 **21** · Block 2 **16** · Block 3 **9**),
+jeder Block endet im `raise` und rollt zurück. Tragend sind:
+
+- **D/D2 — der Enkel-Fall (AC-45δH-13):** die Wurzel zählt die Arbeitspakete ihres **Kindeskindes**
+  (`source_count=2`), und die naive Ein-Knoten-Abfrage findet **0**. Genau diese Falle hat β und γ je
+  einen Vektor gekostet.
+- **E — verworfene Arbeitspakete fallen aus dem Nenner** (D-δ5): 1 erledigt von 2 zählbaren = 50 %,
+  bei 3 verknüpften. Ohne diese Regel wäre 33 % herausgekommen und 100 % nie erreichbar.
+- **G — nichts verknüpft ergibt kein „0 %"**, sondern Abwesenheit (`progress_source` und
+  `progress_percent` beide leer). Das ist in Prod heute der Normalfall.
+- **B — eine abgesagte Abnahme blockiert nicht** (L27), auch mit verstrichenem Termin.
+- **H6 — der fertiggemeldete Mangel ist keine Frist** (β-Regel), zählt aber als offener **Vorbehalt**
+  (γ-Regel): derselbe Mangel in zwei Zahlen mit zwei Bedeutungen, beide getrennt geführt.
+- **L/L2 + M/M2 — Aggregat-Leck-Probe mit Gegenprobe (AC-45δH-2):** ein Nicht-Mitglied erhält in
+  **jeder** Kopfzahl 0 und in **jeder** Liste nichts, während dieselbe Abfrage ohne Rollenwechsel
+  Werte ≠ 0 liefert; dasselbe für einen fremden Mandanten (dort 1 Gewerk / 2 Abschnitte in Wahrheit).
+- **K2 — der Leser ist nachweislich kein Admin (AC-45δH-3).** Ohne diesen Vektor wäre K falsch-grün:
+  in Prod ist jedes Mandanten-Mitglied `admin`.
+- **Q/Q2/R/R2 — die Parität der Umstellung (AC-45δH-10):** ein fertiggemeldeter Mangel blockiert das
+  Protokollieren einer Abnahme weiterhin (`P0001`), die ausdrückliche Bestätigung hebt es weiterhin
+  auf, δ sieht denselben Mangel als offenen Vorbehalt — und nach `geprueft` **löst sich der Blocker
+  ohne Zutun**. Beide Seiten hängen jetzt an derselben Liste, und das ist gemessen, nicht behauptet.
+- **P/P2 — Verhaltenstabellen statt Textprüfung** über beide Prädikate (7 bzw. 5 Kombinationen).
+
+Beim ersten Lauf gefangen: `phases.sequence_number` ist `NOT NULL` — die Fixture hätte sonst nur
+scheinbar geseedet.
+
+### Regressionen wörtlich grün
+
+**β 53/53 · γ 60/60 · α 18/18 · PROJ-Y-45a 9/9 · PROJ-103 7/7**, jeweils 0 Rückstände und **0**
+deaktivierte Trigger auf den `construction%`-Tabellen. Bei γ ist zusätzlich belegt, dass die
+Umstellung in Prod **wirklich aktiv** ist (der Helfer existiert und der Aufruf steht im
+Funktionsrumpf) — der Lauf ist also nicht am alten Prädikat vorbeigelaufen; ohne diesen Nachweis
+hätte „60/60 grün" auch bedeuten können, dass gar nichts umgestellt war. PROJ-103 hält seine
+**absoluten** Zahlen: δ hat die M&A-Engpass-Auswertung nachweislich nicht angefasst (D-δ8).
+
+### Ein Befund an der Nahtstelle, den kein Typ gefangen hätte
+
+Die Datenroute antwortet `{ signals: … | null }`; der erste Client-Wrapper las die Antwort als nackte
+Nutzlast und hätte in Produktion ein Objekt aus lauter `undefined`-Feldern geliefert — **beide** Seiten
+tragen nur eine `as`-Zusicherung, der Compiler schweigt dazu. Korrigiert auf das Auspacken der Hülle
+(deckungsgleich mit dem γ-Wrapper in derselben Datei); drei Tests pinnen die Form. Bewusst **kein**
+erfundenes Leer-Objekt: `as_of` ist der eine Zeitbezug, ein ausgedachter Zeitstempel wäre eine
+Falschaussage genau auf der Fläche, die „nichts da" von „0" trennen soll.
+
+### Der Wächter für AC-45δ.18 existiert und beisst
+
+Die Zusage „byte-identisch" hatte kein Messwerkzeug (der Schnappschuss-Aggregator hatte **keinen**
+Unit-Test, der Route-Test mockt ihn weg, keine Visual-Baseline zeigt die Report-Fläche). Jetzt prüft
+ein Test für ein Nicht-Bauprojekt die **eingefrorene Schlüsselliste** *und* die Abwesenheit des
+Bau-Schlüssels. **Rot-grün in drei Richtungen ausgeführt:** unbedingtes `null` → 3 rot, unbedingtes
+`{}` → 3 rot, und nach Umsortierung der Zusicherungen fällt auch die `in`-Prüfung selbst — sie war
+sonst nie *nachweislich* wirksam, weil der Listenvergleich strikt stärker ist und immer zuerst
+zuschlägt. Der Block wird per **bedingtem Spread** gesetzt, nicht als Schlüssel mit `undefined`.
+
+### Neue Entscheidungen aus dem Bauen
+
+- **D-δ11** „Überfällig" bei Arbeitspaketen folgt der Engpass-Auswertung aus PROJ-103 **wörtlich**:
+  gesetztes `due_date`, vor heute, Status `todo`/`in_progress`/`blocked`. Kein `planned_end`-Rückfall —
+  δ erfindet keine zweite Überfälligkeitsregel neben den beiden, die es schon gibt.
+- **D-δ12** Neben `source_count` (gezählte Vorgänge) trägt jeder Abschnitt `linked_count`
+  (verknüpfte inkl. verworfener). Ohne die zweite Zahl wäre „verknüpft, aber nichts zählbar" von
+  „nichts verknüpft" nicht zu unterscheiden — beide würden ohne Fortschritt erscheinen, obwohl nur
+  einer ein Handlungsproblem ist.
+- **D-δ13** Der Berichts-Block ist eine **Auswahl** (Blocker je Gewerk, Fortschritt je Abschnitt,
+  Kopfzahlen), nicht die ganze Nutzlast: Termine und Mängel-Einzelzeilen gehören in die Fläche, nicht
+  in einen eingefrorenen Bericht.
+- **D-δ14** Die CSV-Route weist einen unbekannten `section`-Wert mit **400** ab statt auf den Default
+  zurückzufallen — ein Tippfehler bekäme sonst eine plausible, aber falsche Datei.
+- **D-δ15** Kein Zugriffs-Protokoll-Eintrag (PROJ-130-δ2): die Bau-Erweiterung trägt per α-Entscheid
+  **keine** Vertraulichkeitsstufe, es gibt also keine Stufe zu protokollieren.
+- **D-δ16** `manual_status` ist im Typ der α-Typ `ConstructionRagStatus`, keine vierte Kopie derselben
+  drei Werte (beim Gegenlesen der Typdatei gefunden und sofort behoben).
+
+### Gates
+
+vitest **3469/3469** (413 Dateien) · ESLint **0** repo-weit · tsc **13 = Baseline / 0 neu** (auch nach
+dem Build gemessen, PROJ-Y-143e-Messfalle) · Build clean mit **beiden** Routen registriert ·
+`check:migration-naming` 0 Fehler · `check:index-scope` 0 Fehler · Funktions-Inventar **283 → 286**
+(gegen Prod gegengezählt, AC-45δH-14) · Advisors **149 WARN / 0 ERROR**, und **keine** der Meldungen
+betrifft eine der drei δ-Funktionen — sie sind INVOKER mit gesetztem `search_path`, erzeugen also
+weder eine `function_search_path_mutable`- noch eine DEFINER-Warnung.
+
+Offen: **`/frontend`** (Reiter „Terminsignale" mit den vier Blöcken, CSV-Knöpfe, Sprünge, plus der
+JSX-Guard für den Berichts-Block und die Pflege der Abschnittsliste im Kopfkommentar des Renderers)
+und danach **`/qa`** (authentifizierter Durchlauf in der Bau-Fixture-Lane, AC-45δH-9).
+
+---
+
+## `/frontend` — δ live 2026-08-20
+
+Keine Migration, kein neues Paket, kein Backend-Diff. Geliefert: der Projektraum-Reiter
+**„Terminsignale"** (`terminsignale`) als **fünfte** Bau-Fläche hinter demselben **einen** Modul-Schalter
+(Q4), ein Hook mit dem Bestandsfeld `moduleInactive`, fünf Block-Komponenten plus eine reine
+Baum-Hilfe, und der **Rendering**-Anteil des Berichts-Blocks.
+
+Die Fläche trägt die vier Blöcke des Tech Designs: Kopfzeile mit den vier getrennten Zahlen ·
+Gewerke mit **manueller α-Ampel und gerechnetem Signal nebeneinander, beide beschriftet** (L26) und
+**benannten** Blocker-Gründen · Bauabschnitte als eingerückter Baum mit **Quellenangabe** statt „0 %"
+· nächste Fristen mit verstrichenen oben und gekennzeichnet · Engpass-Sicht der überfälligen Mängel ·
+CSV je Block. Sie ist **rein lesend**: jede Aktion ist ein Sprung auf die zuständige Fläche, und sie
+fragt bewusst **nicht** `manage_members` ab — das ist γs Schreib-Gate und hier falsch (AC-45δ.23,
+D-δ10).
+
+**Der Navigations-Eintrag kam ohne Testanpassung dazu.** α hatte die Registry-Invariante damals von
+„genau eine Sektion je Modul" auf ihre **Absicht** umgestellt (mindestens eine, Dedup auf der
+Sektions-Kennung); das zahlt sich hier zum dritten Mal aus — die 125 Registry-Fälle und die fünf, die
+den Projekttyp-Filter festnageln, bleiben unberührt, `requiresProjectType` bleibt einwertig
+(AC-45δH-6).
+
+Der Berichts-Block sitzt **hinter den Meilensteinen und vor den Risiken**: er ist die bauspezifische
+Fortsetzung der generischen Terminachse, und blockierte Gewerke sind benannte Ausnahmen, die vor die
+generische Governance gehören. Der Guard lässt den Abschnitt bei fehlendem Feld **ganz weg** statt ihn
+leer zu rendern — der `isEmpty`-Pfad wäre für „kein Bauprojekt" die falsche Zusage. **D-δ6 ist
+erledigt und zwar doppelt:** der Bau-Block **und** der von PROJ-56-ε nie eingetragene
+`readiness`-Block stehen jetzt in der „locked order" des Kopfkommentars.
+
+### Eine Entscheidung, die eine Wiederverwendung bewusst ablehnt
+
+**D-δ-FE-1:** der Bericht ruft `describeProgressSource` **nicht**. Die Funktion braucht
+`source_count`/`linked_count`/`phase_linked_count` — genau die drei Zahlen lässt der eingefrorene
+Block bewusst weg (D-δ13). Mit Platzhalter-Nullen zu rufen hieße, Zahlen zu behaupten, die im
+Schnappschuss nie standen. Der Bericht formuliert die Quelle daher **ohne Mengenangabe**, unterscheidet
+aber weiterhin die zwei Null-Fälle („nichts verknüpft" vs. „verknüpft, nichts zählbar") und zeigt
+**nie** „0 %", wo nichts gemessen wurde. Die Blocker-**Gründe** kommen unverändert aus der geteilten
+Konstante, und der Test vergleicht gegen die Konstante statt gegen abgeschriebene Zeichenketten — eine
+Umformulierung *in der Bibliothek* darf den Test nicht brechen, eine zweite Formulierung *im Bericht*
+muss.
+
+### Zwei eigene Fehler, beide von den Gates gefangen
+
+1. **Die Auth-Gate-Zusicherung war falsch, nicht das Produkt.** Der erste Lauf meldete einen
+   Fehlschlag auf `overdue_defects` — das ist ein **Sektionsname** und steht im gespiegelten
+   `?next=…?section=overdue_defects`, also in der **Eingabe des Aufrufers**. Genau diese Verwechslung
+   von „Abwesenheit von Inhalt" und „Abwesenheit des Pfades" warnt der γ-Spec im Kommentar an, und ich
+   bin hineingelaufen. Geprüft werden jetzt nur Marken, die ausschließlich in der Nutzlast auftreten
+   können (`blocker_reasons`, `progress_source`, `days_overdue`, `trade_label`), plus dass eine
+   CSV-Route ohne Sitzung keinen CSV-Rumpf liefert.
+2. **Drei ESLint-Fehler** (`react/no-unescaped-entities`) an deutschen Schlusszeichen im JSX-Text.
+   Behoben mit der **typografischen** Form `„…“` statt `&quot;` — das ist die Form, die der Bestand
+   ohnehin verwendet, und liest sich neben dem öffnenden `„` richtig.
+
+### Ein Fund, der nicht zu δ gehört, aber jede lokale Messzahl dieses Abends berührt
+
+Im **Wurzelverzeichnis des Repos** liegt seit heute Abend ein **fremdes, untracked Projekt**
+(`U-Know/`, **4,1 GB**). `tsconfig.json` zieht `**/*.ts(x)` ein, deshalb gilt lokal:
+
+- `npx tsc` meldet **4632** Fehler statt 13 — **alle** aus `U-Know/`; ohne diese Fläche gezählt sind es
+  **13 = Baseline / 0 neu**.
+- `npm run build` **schlägt fehl** in der Typprüfungs-Phase, mit einem fehlenden Modul in
+  `U-Know/src/app/dashboard/achievements/page.tsx`.
+- `npx vitest run` meldet **86 fehlgeschlagene Dateien / 34 Tests** — ebenfalls sämtlich aus `U-Know/`.
+
+Weil eine Zahl, die man nicht erklären kann, kein Gate ist, wurde der Build in einem **frischen
+git-Worktree** auf demselben Commit gemessen (hartverlinktes `node_modules`, Hausrezept): dort
+**tsc 13 = Baseline** und **Build clean mit allen drei Flächen registriert**
+(`/projects/[id]/terminsignale` plus die zwei API-Routen). Das Verzeichnis ist **nicht** committet und
+erreicht CI also nicht; es wurde bewusst **nicht** angefasst (4,1 GB fremder Arbeitsstand). Sollte es
+dauerhaft dort bleiben, gehört es in `.gitignore` **und** in `tsconfig.exclude` — das ist eine
+Entscheidung des Repo-Eigners, keine dieser Slice.
+
+### Nachweise
+
+- **Auth-Gates δ: 6/6** chromium (Auswertung + vier CSV-Sektionen + Reiter), nach der Korrektur oben.
+- **Visual-Regression: 9/9 ohne Neuaufnahme** — gemessen, nicht geschlossen. Die neue Sektion ist auf
+  `project_type='construction'` **und** das Modul gegatet, und der Visual-Mandant hat beides nicht;
+  die Erwartung „keine Baseline bewegt sich" ist damit belegt statt behauptet.
+- **α/γ-Auth-Gates unverändert grün** im gemeinsamen Lauf.
+- **vitest 3484/3484 in 415 Dateien** (ohne `U-Know/`), ESLint **0** über `src` und `tests`.
+
+### Eine Regression, die nicht δ gehört
+
+`tests/PROJ-45-beta-defects.spec.ts` fällt mit **5 failed / 1 did not run / 12 passed**, Stacktrace auf
+`removeRunDefects → deleteOrThrow` — **byte-identisch** zu der Signatur, die schon der γ-`/qa`- und der
+γ-`/deploy`-Lauf gemessen und als **PROJ-Y-45h** registriert haben (Ursache: PROJ-Y-148d hat
+`construction_defects` unlöschbar gemacht, der Teardown der Spec kennt den sanktionierten Weg noch
+nicht). **Strukturell belegt, dass δ es nicht sein kann:** die δ-Migration enthält **0** DDL-Anweisungen
+(kein `alter table`, `create table`, `create policy`, `create trigger`, `drop`) und nennt
+`construction_defects` nur an zwei Stellen — beide lesend innerhalb der Auswertung.
+
+### Abweichungen
+
+- **D-δ-FE-1** Bericht ohne `describeProgressSource` (oben begründet).
+- **D-δ-FE-2** Kein shadcn-Primitive im Berichts-Block: die Report-Fläche ist druckoptimiert und
+  rendert durchgehend nackte semantische Tabellen mit Tailwind — auch der `readiness`-Block. Eine Card
+  mitten im PDF wäre der Stilbruch, nicht die Regelbefolgung.
+- **D-δ-FE-3** Unbekannte Enum-Werte im eingefrorenen Block werden **roh** ausgegeben statt
+  verschwiegen: ein alter Schnappschuss kann Werte tragen, die dieser Build nicht kennt.
+- **D-δ-FE-4** **Kein authentifizierter Browser-Durchlauf in diesem Schritt** — die Fläche ist
+  projekttyp- **und** modul-gegatet, und das Modul im geteilten `[E2E]`-Mandanten einzuschalten hätte
+  die frisch gemessenen Visual-Baselines verschoben (PROJ-Y-143f/143l). Gehört mit der Bau-Fixture-Lane
+  nach `/qa` (AC-45δH-9), zusammen mit dem Befund, dass die Lane **von sich aus nur den Leerzustand**
+  hergibt: live gemessen liefert sie 1 Gewerk ohne Befund, 2 Abschnitte ohne Verknüpfung, 0 Fristen,
+  0 Engpässe — ein echter Blocker muss dort geseedet werden, sonst prüft der Durchlauf nur die leere
+  Hälfte.
+
+Offen: **`/qa`**.
+
+---
+
+## `/qa` — δ PASS 2026-08-21 (0 Critical / 0 High / 0 Medium → Approved)
+
+**24/24 Akzeptanzkriterien, 14/14 Härtungskriterien.** Kein Kriterium bleibt offen; die zwei, die
+eine Nachweismatrix als „nur Code" ausgewiesen hat, sind in diesem Lauf mit Tests unterlegt worden.
+
+### Der Kern: der Durchlauf, den `/frontend` offen gelassen hat — mit geseedetem Blocker
+
+`tests/PROJ-45-delta-signals-chain.spec.ts`, **3× 2/2 chromium**. Die Fixture-Lane gibt von sich aus
+**nur** den Leerzustand her (live gemessen: 1 Gewerk ohne Befund, 2 Abschnitte ohne Verknüpfung, 0
+Fristen, 0 Engpässe) — ein Durchlauf darauf hätte von den vier Blöcken **keinen** im gefüllten
+Zustand belegt. Die Kette seedet daher einen echten Blocker und prüft **beide Hälften gegeneinander**:
+
+- **gefüllt:** überfälliger Mangel → Gewerk „Blockiert" mit **benanntem** Grund, die drei getrennten
+  Zahlen, „aus 2 Arbeitspaketen im Teilbaum" an der **Wurzel** (die Arbeitspakete hängen am Kind),
+  50 % Fortschritt, die Frist als **verstrichen**, die Engpass-Zeile mit „6 Tage";
+- **leer, mit Grund:** ein Abschnitt ohne Verknüpfung zeigt weder Balken noch „0 %", sondern den Satz,
+  warum nichts messbar ist.
+
+**Zwei negative Zusicherungen tragen den Rechte-Teil**, weil eine Kette, die nur den Glückspfad geht,
+über ein Tor nichts beweist: der **Betrachter** sieht die Fläche vollständig (AC-45δ.23 — hier gibt es
+bewusst **keine** verschärfte Rolle, anders als bei γ), und sie bietet ihm **keinen** Schreibweg —
+während derselbe Betrachter im **gleichen Test** auf der Mängel-Fläche „Mangel erfassen" sehr wohl
+sieht (β/L15). Ohne diese Gegenprobe belegte „kein Knopf" nur die Abwesenheit eines Knopfes.
+
+### Live gegen Prod: 199 PASS / 0 FAIL über sechs Dateien, 0 Rückstände
+
+| Datei | Ergebnis |
+|---|---|
+| **δ** `PROJ-45-delta-schedule-signals-pentest.sql` | **52/52** (21 + 16 + 9 + 2 + 4) |
+| **δ Rot-Team** `PROJ-45-delta-redteam-supplement.sql` | **21/21** (neu in `/qa`) |
+| β | **53/53** wörtlich |
+| γ | **60/60** wörtlich |
+| α | **18/18** wörtlich |
+| PROJ-Y-45a | **9/9** wörtlich |
+| PROJ-103 | **7/7** wörtlich — die **absoluten** Zahlen halten, δ hat die M&A-Engpass-Auswertung nicht angefasst |
+
+Rückstandsfreiheit über neun Zähler; **0** deaktivierte Trigger (mit Gegenprobe „19 Trigger vorhanden,
+19 aktiv" — sonst hieße „0 Treffer" auch „keine Trigger gefunden"). Der Bestand von 14 Mängeln und 24
+Ereignissen im Bau-Mandanten ist **zugeordnet** statt unerklärt gelassen: β/γ-QA-Fixture vom 2026-08-20.
+
+**Das Tor der Slice ist belegt, nicht bloß grün:** beide Prädikat-Umstellungen sind in Prod aktiv
+(je 1 Aufruf im Rumpf, das alte Literal im β-Helfer nachweislich verschwunden, die Geschwister-Zweige
+der γ-Funktion erhalten), beide Helfer `immutable` mit `search_path`, `anon` **und PUBLIC** ohne
+EXECUTE. Ohne diesen Nachweis hätte „60/60 grün" auch „nichts umgestellt" heißen können.
+
+### Was `/qa` selbst nachgebessert hat
+
+Eine Nachweismatrix über alle 38 Kriterien hat drei Lücken benannt, alle in diesem Lauf geschlossen:
+
+1. **AC-45δ.2 und AC-45δ.15 waren „nur Code".** Keine Testdatei rendert die Fläche; die zwei
+   Kriterien, die am leisesten kippen, hingen an Kommentaren. Neu: **19 Komponenten-Fälle** in drei
+   Dateien, jeweils **rot-grün belegt**. Der schärfste ist die Kopfzeile: die Zusammenfassung sagt
+   7/5/3/2, die Listen tragen **eine** Zeile und ein unblockiertes Gewerk — nur eine Kopfzeile, die
+   aus `summary` liest, kann das anzeigen. Würde eine künftige Fassung aus den Listen rechnen (die
+   benannte Gefahr), stünde dort 1 bzw. 0. Dazu: die Summe 15 darf **nicht** vorkommen, weil sie
+   denselben Mangel mehrfach zählte. Beim Schreiben fiel auf, dass „Überfällig" **zweimal** im DOM
+   steht (Kachel und Gewerk-Zähler) — ein `getByText` war mehrdeutig und ist auf „Beschriftung mit
+   dem Wert aus `summary`" präzisiert.
+2. **Die Aggregat-Leck-Probe deckte vier von sechs Kopfzahlen.** `defects_without_due_date` und
+   `defects_awaiting_review` waren in **keinem** Leck-Vektor zugesichert. Neuer Block 2b: der Seed
+   macht alle drei Mangel-Zähler ungleich 0 (sonst wäre die Zusicherung trivial erfüllt) und die
+   Prüfung **iteriert über die Schlüssel** — ein künftiger siebter Zähler kann nicht stillschweigend
+   ungeprüft bleiben.
+3. **AC-45δ.20 hing an einem Strukturargument** („`report_snapshots` hat keine UPDATE/DELETE-Policy").
+   Neuer Block 4 macht daraus Verhalten: **42501** auf beiden Wegen, und S3 belegt, dass die Zeile für
+   denselben Nutzer **lesbar** ist — ohne das wären S1/S2 auch bei unsichtbarer Zeile grün.
+
+### Befunde
+
+- **F-δ1 (Low, in `/qa` behoben).** Der CSV-Knopf trug als **zugänglichen** Namen nur den Blocknamen
+  („Gewerke") — im gleichnamigen Block doppelt und ohne Hinweis, dass eine Datei kommt. Jetzt
+  `aria-label` „… als CSV herunterladen"; die Kette prüft darauf.
+- **F-δ2 (Low, offen → PROJ-Y-45l).** Der Rekursions-Riegel der Auswertung (`depth < 20`)
+  **unterberichtet still**: bei 25 verschachtelten Abschnitten zählt die Wurzel nur bis Ebene 20, der
+  tiefe Knoten sieht sein eigenes Arbeitspaket (also kein Fehler, kein Hängen) — aber der Fortschritt
+  an der Wurzel ist zu niedrig, ohne dass die Oberfläche es sagen könnte. Gemessen, nicht vermutet;
+  reale Abschnittsbäume haben 2–4 Ebenen, die Fixture zwei.
+- **F-δ3 (Info, offen → PROJ-Y-45m).** Die Auswertung joint `projects` nicht und filtert daher
+  `is_deleted` nicht: Zeilen eines **weich gelöschten** Projekts erscheinen, wenn man die Kennung
+  kennt. Kein Rechteproblem (RLS und Projekt-Mitgliedschaft unverändert) und **konsistent mit den
+  Geschwister-Flächen** — deshalb Info und cross-cutting, nicht δ-Defekt.
+- **F-δ4 (Info) — eine Korrektur an einem registrierten Followup.** PROJ-Y-45h ist **enger** als
+  notiert: ein Mangel ist nicht grundsätzlich unlöschbar, sondern erst **mit** Verlaufszeilen. Die
+  fünf Zeilen dieses Laufs ließen sich mit einem gewöhnlichen `DELETE` entfernen — **kein** Runbook-Weg,
+  **0** deaktivierte Trigger. Was β's Teardown bricht, ist die unveränderliche **Historie**, nicht die
+  Mangel-Zeile; damit ist auch die Richtung für 45h klarer.
+- **F-δ5 (Info, eigener Fehler).** Zwei meiner Zusicherungen waren falsch, nicht das Produkt: die
+  Auth-Gate-Marke `overdue_defects` ist ein **Sektionsname** und steht im gespiegelten `?next=`
+  (genau die Verwechslung, vor der der γ-Spec im Kommentar warnt), und die Quellenangabe hatte ich
+  erfunden statt nachgelesen („aus N Arbeitspaketen im Teilbaum"). Beide korrigiert; die Testdateien
+  tragen die Begründung, damit die nächste Fassung nicht wieder hineinläuft.
+
+### Gates
+
+vitest **3496/3496** in 419 Dateien · ESLint **0** über `src` und `tests` · tsc **13 = Baseline / 0
+neu** · Playwright **36/36** chromium (δ-Auth-Gates 6 + δ-Kette 2 + α 18 + γ 10) · **Visual 9/9 ohne
+Neuaufnahme** · Advisors **149 WARN / 0 ERROR**, davon **keine** zu einer der drei δ-Funktionen ·
+`check:index-scope` 0 · `check:migration-naming` 0 · Funktions-Inventar **286**, gegen Prod
+gegengezählt.
+
+Alle lokalen Zahlen sind **ohne** das fremde, untracked `U-Know/` im Wurzelverzeichnis gemessen (siehe
+`/frontend`-Notiz); der Build wurde dafür erneut in einem frischen Worktree auf demselben Commit
+gefahren.
+
+### Abweichungen
+
+- **D-δ-QA-1** Mobile Safari env-übersprungen (WebKit-Host-Bibliotheken fehlen, PROJ-67/F2).
+- **D-δ-QA-2** Kein Durchlauf der β-**authentifizierten** Spec: sie fällt weiterhin mit
+  **5 failed / 1 did not run / 12 passed** im Teardown (`removeRunDefects → deleteOrThrow`) — die
+  bereits als **PROJ-Y-45h** registrierte Signatur aus PROJ-Y-148d. Strukturell belegt, dass δ es
+  nicht sein kann: die δ-Migration enthält **0** DDL-Anweisungen und nennt `construction_defects` nur
+  lesend. F-δ4 präzisiert die Ursache.
+- **D-δ-QA-3** Der Rot-Team-Lauf ist DB-Ebene; die CSV-Formel-Neutralisierung ist über die
+  Route-Tests belegt, nicht über einen authentifizierten Abruf mit Datei-Download.
+
+---
+
+## Deployment — γ (2026-08-20)
+
+**Tag `v2.70.0-PROJ-45-gamma` · PR #422 (squash) → main `31aef7f` · Deployment Scope `alpha`.**
+
+### Was ausgeliefert wurde
+
+Die Abnahme als eigenes Bau-Objekt: zweistufig **angesetzt → Ergebnis**, dreiwertiges Ergebnis
+(abgenommen · unter Vorbehalt · verweigert), Vorbehalte als **Verweise** auf β-Mängel (bestehende
+anhaken und neue über β's Anlegefunktion — keine zweite Mängelliste), gerechnete
+Gewährleistungsfrist, unveränderliche Ereigniskette, strukturierte Teilnehmer, ein Beleg je
+Abnahme und ein Abnahmeprotokoll als Druckseite. Ein Ergebnis ist endgültig; die Nachabnahme ist
+ein **neuer** Datensatz mit Verweis (Invariante #5).
+
+**Kein Runtime-DB-Change beim Merge** — beide Migrationen (`20260819120000` /
+Prod-Version `20260819163906` und `20260819170000`) liegen seit `/backend` in Prod. Der Merge
+liefert die Anwendungsschicht aus.
+
+### Auslieferung belegt, nicht angenommen
+
+Vercel-Produktions-Deployment **`dpl_3UYP2FbCNTuzuPowxsrZVnB3reaf` READY**, gebaut aus genau
+`githubCommitSha 31aef7f85d9663cef413637e056a102896c478df` — nicht bloß „ein Deployment existiert".
+Fehler-Logs über die gesamte Lebensdauer dieses Deployments (READY 11:05:37 UTC bis zur Messung):
+**keine**. Das Fenster ist mit ~9 Minuten kurz, weil eine Parallel-Slice unmittelbar danach ein
+neueres Produktions-Deployment auslöste; ein längeres Fenster für **diesen** SHA existiert nicht,
+und das wird hier gesagt statt gerundet.
+
+**Alle sechs Pflicht-Checks grün**, darunter der **Schema-Drift-Wächter** — der belegt unabhängig,
+dass die Register-Anker-Ersetzungen auch in einer **frisch aus den Migrationsdateien** gebauten
+Datenbank greifen, nicht nur gegen die gewachsene Prod-Definition. Ebenfalls grün: der neue
+**Funktions-Inventar-Wächter** (PROJ-Y-148e) — das Inventar wurde von 272 auf **283** Einträge
+aufgefrischt und gegen Prod gegengezählt (283).
+
+### Post-Deploy-Smoke: 13 Flächen, exakt 307, kein Leck
+
+Alle sechs API-Routen (`GET`/`POST` Liste · `GET`/`PATCH` Detail · `POST` Statuswechsel ·
+`PUT` Teilnehmer · `PUT` Beleg · `GET` Zähler), beide Seiten (`/abnahmen`,
+`/abnahmeprotokoll/print`) und drei α/β-Flächen als Nicht-Regression antworten mit **307**,
+Rumpf exakt `Redirecting...`; kein Vorkommen von Projekt-/Abnahme-Kennung, „Abnahme", „Gewerk",
+`warranty`, `accepted_on` oder `construction` im Rumpf.
+
+**Die Existenz der Routen ist ausdrücklich nicht daraus gefolgert.** Gegenprobe: ein erfundener
+Pfad antwortet **ebenfalls 307** — 307 allein beweist nichts. Der Beleg kommt aus dem **Build-Log
+des ausgelieferten Deployments**, in dem alle **acht** neuen Flächen als registrierte Routen
+stehen (`ƒ /api/projects/[id]/construction-acceptances`, `…/[aid]`, `…/[aid]/document`,
+`…/[aid]/participants`, `…/[aid]/status`, `…/summary`, `ƒ /projects/[id]/abnahmen`,
+`ƒ /projects/[id]/abnahmeprotokoll/print`) — und in dem die **17** α/β-Flächen unverändert
+mitgeführt sind.
+
+### Prod eigenständig nachgemessen
+
+| | gemessen |
+|---|---|
+| Tabellen (`relkind='r'`) | **4**, alle mit aktivem RLS |
+| Policies | **4** — je Tabelle genau eine Lese-Policy |
+| **Schreib-Policies** | **0** — geschrieben wird ausschließlich über Funktionen |
+| Funktionen | **11** (8 DEFINER-Schreibwege/Wächter, **3 INVOKER**-Auswertungen) |
+| `anon`-EXECUTE / PUBLIC-Eintrag in der ACL | **0 / 0** über alle 11 (PROJ-Y-114a-Lehre vollständig, nicht als Stichprobe) |
+| Funktionen ohne `search_path` | **0** |
+| Trigger | **5** (4 auf `construction_acceptances`, 1 auf den Ereignissen) |
+| Deaktivierte Bau-Trigger | **0** |
+| Objektarten-Register | **95** wie vorhergesagt (94 → 95) |
+| Rückstände (Abnahmen · Ereignisse · Mängel) | **0 · 0 · 0** |
+| Advisors | **0 ERROR**; die 6 γ-WARN sind eine einzige beabsichtigte Kategorie (`authenticated`-aufrufbare `SECURITY DEFINER`-Schreibwege — dieselbe wie α/β und 141 Bestandsfälle) |
+
+**Ein Messfehler in der eigenen ersten Abfrage, festgehalten statt stillschweigend korrigiert:**
+`pg_class` enthält auch Indizes, die erste Zählung meldete darum „20 Tabellen". Mit
+`relkind='r'` sind es **4**. Die Zahl war nie falsch verwendet — sie wurde nachgezählt, bevor sie
+irgendwo behauptet wurde.
+
+### Warum `alpha` und nicht `full`
+
+Der Scope steht am **Feature** PROJ-45, nicht an der Teilscheibe, und wird aus den Belegen
+klassifiziert. Alle vier Bedingungen der Ausnahme „Waived criterion" einzeln geprüft:
+
+1. **„Nothing was deferred" — trifft nicht zu.** **AC-45β.18** (überfällige Mängel in der
+   PROJ-103-Engpass-Sicht) ist eine zurückgestellte **ursprüngliche** Anforderung mit Ziel-ID
+   (D-β1, nach δ). Damit ist die Ausnahme schon an der ersten Bedingung erschöpft.
+2. Nicht unerreichbar oder obsolet — δ wird sie liefern.
+3. Es gibt eine schriftliche Annahme, aber als **Zurückstellung**, nicht als Verzicht.
+4. Die Substanz ist **nicht** anderweitig erfüllt — die Engpass-Sicht zeigt die Mängel heute nicht.
+
+Dazu bleiben zwei Stories der Erstfassung offen: **Terminsignale (δ)** und **Fotodokumentation (ε)**.
+γs eigene 29 Kriterien sind sämtlich erfüllt; das hebt den Feature-Scope nicht, weil `full` sich auf
+**alle** aktuellen in-scope-Kriterien des Features bezieht.
+
+**Die gelieferte Grenze wird gegenüber β breiter:** Abnahmevorgänge mit Termin und dreiwertigem
+Ergebnis, Vorbehalte gekoppelt an die Mängel statt dupliziert, gerechnete Gewährleistungsfrist,
+Nachabnahme als verwiesene Kette, unveränderlicher Verlauf, Teilnehmer, Beleg und Druckprotokoll.
+
+### Offene Folgearbeit nach γ
+
+**PROJ-45-δ** (Terminsignale, enthält AC-45β.18) · **PROJ-45-ε** (Fotodokumentation) ·
+**PROJ-Y-45b/45c/45d/45e** (aus α/β) · **PROJ-Y-45f** (β's
+`construction_section_blocking_defects` ist nach diesem Deploy ohne Aufrufer) · **PROJ-Y-45g**
+(Beleg als Dokumentknoten auswählbar — die Datenbankseite steht und ist geprüft, es fehlt allein
+der Picker) · **PROJ-Y-45h** (Teardown für die Bau-E2E-Lane) · **PROJ-Y-45i** (verdeckter Titel im
+Ladezustand, WCAG). **Nicht γ:** β's QA-Teardown im 148d-Zweig (F-γ4, Hälfte 2).
+
+---
+
 ## Out of Scope (α) — benannte Folge-Slices
 
 | Slice | Inhalt | Vorlage |
 |---|---|---|
 | **PROJ-45-β** | **Mängelmanagement**: eigenes Objekt mit Lebenszyklus offen → in Bearbeitung → erledigt → **geprüft**, Nachbesserungsfrist, Pflicht-Gewerk, Ort (Abschnitt), verantwortlicher Nachunternehmer; Mängelanzeige als PDF (L3) | `dd_findings` (PROJ-114) + PROJ-21 |
-| **PROJ-45-γ** | **Abnahmen**: Abnahmeprotokoll mit Status, Termin, verantwortlicher Rolle und Belegverweis; fehlgeschlagene Abnahme erzeugt prüfbare Vorschläge für Mangel oder Risiko | `deliverable_approvals` (PROJ-105) |
+| **PROJ-45-γ** | **Abnahmen**: Abnahmeprotokoll mit Status, Termin, verantwortlicher Rolle und Belegverweis; fehlgeschlagene Abnahme erzeugt prüfbare Vorschläge für Mangel oder Risiko. **Spezifiziert 2026-08-19** — siehe Abschnitt „PROJ-45-γ — Abnahmen" oben (29 AC, Locks L17–L23) | `deliverable_approvals` (PROJ-105) — **nur die Protokollform**, siehe Befund im γ-Block |
 | **PROJ-45-δ** | **Bauspezifische Terminsignale**: Abschnittsfortschritt und Gewerk-Blocker in Gantt und Berichten | PROJ-25 · PROJ-103 · PROJ-132 |
 | **PROJ-45-ε** | **Fotodokumentation** am Mangel über das DMS (L4) | PROJ-79 · PROJ-Y-115c |
 
@@ -664,7 +3281,150 @@ vorhandenen Guards und ist billiger, bevor β/γ weitere Verweise ergänzen.
 ## QA Test Results (Vorlage)
 _ersetzt durch den Lauf oben_
 
-## Deployment
+## Deployment — β (2026-08-19)
+
+**Deployed 2026-08-19 · Tag `v2.61.0-PROJ-45-beta` · PR #402 (squash) → main `740b16b`**
+
+**Deployment Scope: `alpha`.** Aus den Belegen klassifiziert, nicht aus dem Etikett und nicht aus
+der Vorab-Einordnung. Der Reihe nach an `.claude/rules/general.md`:
+
+- **`tooling-only` fällt weg** — β liefert produktive Laufzeitfähigkeit (zwei Tabellen, fünf
+  API-Routen, zwei Seiten, eine Bedienfläche), nicht Werkzeug/CI/Tests.
+- **`full` ist ausgeschlossen.** Die Regel verlangt *jedes* aktuell in Umfang stehende
+  Akzeptanzkriterium; **AC-45β.18** ist von `/qa` ausdrücklich als „OFFEN — nicht erfüllt" geführt
+  und per Nutzer-Entscheid (D-β1) nach **PROJ-45-δ** verschoben. Genau dieser Fall ist in der Regel
+  benannt: spätere Erweiterungen dürfen offen bleiben, „only if they do not defer … an original
+  in-scope acceptance criterion".
+- **Die Ausnahme „Waived criterion" greift nicht** — sie verlangt **alle vier** Bedingungen
+  kumulativ, und drei sind verletzt:
+  1. *„Nothing was deferred."* **Verletzt** — AC-45β.18 ist zurückgestellt und mit Ziel-ID in
+     `features/OPEN-DEFERRED-STATUS.md` (δ-Zeile) registriert. Es gibt sehr wohl ein Arbeitspaket,
+     das das Kriterium erfüllen würde.
+  2. *Nachweislich unerreichbar oder obsolet.* **Verletzt** — die Engpass-Auswertung
+     `project_task_bottlenecks` ist deployed und erweiterbar; sie ist nur *noch nicht* erweitert.
+     Die Erhebung dazu liegt in der δ-Zeile bereits vor.
+  3. *Schriftliche Abnahme, die das Kriterium benennt.* **Erfüllt** — QA-Verdikt und D-β1.
+  4. *Die Substanz ist durch andere Messung gedeckt.* **Verletzt** — überfällige Mängel erscheinen
+     in der Engpass-Sicht gar nicht; der PROJ-103-Pentest belegt im Gegenteil, dass β sie
+     **unberührt** gelassen hat. Der Zweck des Kriteriums ist damit nicht erreicht, nur seine
+     Nachbarschaft (Überfälligkeit in der Mängelliste, AC-45β.17/.19).
+- **`mvp` gegen `alpha`:** β ist ein **benannter Sub-Slice** der Reihe α/β/γ/δ/ε mit eigenen 22
+  Akzeptanzkriterien, eigenem QA-Durchlauf und eigener Deploy-Evidenz, und die verbleibenden Slices
+  γ/δ/ε sind namentlich geführt — das ist wörtlich die `alpha`-Definition, keine MVP-Grenze.
+  Dieselbe Einordnung wie α aus demselben Grund.
+
+**Die gelieferte Grenze.** Mängel als eigenes Bau-Objekt (L9) mit Zwei-Akteur-Prüfung: erfassen darf
+jedes Projektmitglied inklusive Betrachter (L15), ändern und prüfen nur Projektleitung/Bauleitung
+oder Mandanten-Administration — der Projekt-`editor` ist bewusst **ausgeschlossen** (D-β2, strenger
+als das Hausrecht `edit`). Kette offen → in Bearbeitung → erledigt → geprüft, mit Rückweisung und
+Pflichtbegründung, unveränderlicher Ereignis-Historie über mehrere Runden, Vier-Augen-Tor **ohne**
+Umgehungspfad (D-β4). Dazu: fünf serverseitige Filter, Überfälligkeitskennzeichen, Zähler je Gewerk,
+Entfernen-Sperre mit Nennung der blockierenden Mängel auch am **Enkel** (409, nicht 500), und die
+Mängelanzeige als chrome-lose Druckseite (L11). **Nicht** geliefert: Anbindung an die Engpass-Sicht
+(AC-45β.18 → δ), Abnahmen (γ), Fotodokumentation (ε), Kostenschätzung je Mangel (L14, Out of Scope),
+echter Versand über PROJ-13 (L11, Out of Scope).
+
+**Kein Runtime-DB-Change beim Merge:** die Migration `20260818104358_proj45_beta_construction_defects`
+liegt seit `/backend` (2026-08-18) in Prod; der Merge liefert ausschließlich Code. Vercel deployt
+automatisch von `main`, es gibt keine Vercel-CLI auf diesem Host.
+
+### Vercel-Deployment (nicht „ein Deployment existiert", sondern dieses)
+
+`dpl_C9Mk4gxt68CRPzZ9AEUtioe96iU9` — **`state: READY`**, **`target: production`**, gebaut aus
+**`githubCommitSha: 740b16b…`** auf `githubCommitRef: main`, Signatur `verified`, fertig
+**2026-08-19T06:51:59Z**; es ist zugleich das **neueste** Deployment, also der aktuelle
+Produktionsstand. Build-Log: „Build Completed … Deployment completed". **Runtime-Fehler im
+24-h-Fenster über den Deploy: 0** — mit der ehrlichen Einschränkung, dass das Beobachtungsfenster
+nach dem Deploy erst wenige Minuten umfasst.
+
+### Prod-Verifikation (eigenständig gegen Prod gemessen, nicht aus den `/backend`-Notizen übernommen)
+
+| Prüfung | Ergebnis |
+|---|---|
+| Migration in Prod | `20260818104358` = `proj45_beta_construction_defects`, Version deckt sich mit dem Repo-Dateinamen |
+| Tabellen + RLS | `construction_defects` **RLS aktiv**, `construction_defect_events` **RLS aktiv** |
+| Policies | genau **2**, beide `SELECT`, beide `PERMISSIVE` — **keine einzige Schreib-Policy** auf beiden Tabellen (geschrieben wird ausschließlich über Funktionen) |
+| Funktionen | **8** von der Migration erzeugt: 3 Schreibwege `DEFINER` (`create_` / `update_` / `transition_…_status`), **3** Auswertungen `INVOKER` (`construction_defect_summary`, `construction_section_blocking_defects`, `_construction_defect_is_overdue`), 2 Wächter `DEFINER`; alle 8 tragen `search_path` |
+| Trigger | **5** auf den beiden Tabellen, alle `ENABLED`: Unveränderlichkeit (Ereignisse), Wächter, `moddatetime`, Feld-Audit, Lebenszyklus — siehe Befund D-45β-DEPLOY-1 |
+| `anon` EXECUTE | **false** auf **allen 15** `%construction%`-Funktionen und auf den 4 geteilten Audit-Funktionen |
+| PUBLIC EXECUTE | **0 PUBLIC-Einträge** in der ACL aller 19 geprüften Funktionen (über `aclexplode`, `grantee = 0`) — die PROJ-Y-114a-Lehre vollständig, nicht als Stichprobe |
+| interne Wächter | `construction_defect_guard` und `enforce_construction_defect_event_immutability` sind auch für `authenticated` **nicht** aufrufbar |
+| Register | Objektarten **94** · Feld-Whitelist **76** · Lese-Tor **63** — exakt die im Tech Design vorhergesagten Werte; `construction_defects` in allen drei, `construction_defect_events` in **keinem** |
+| Geschwister-Zweige | **14** Nachbar-Objekte namentlich gegengeprüft, alle erhalten; die zwei Abwesenheiten sind der dokumentierte Bestand (`project_skills` ohne Whitelist-Zweig, PROJ-78; `audit_reader_grants` ohne Lesetor-Zweig, PROJ-130-γ2). γ1-Klausel `_audit_entry_classified_ok` und γ2-Klausel `has_audit_reader_grant` unverändert im gemeinsamen Ausgang, `authenticated`-Grant auf `can_read_audit_entry` intakt |
+| Advisors | **0 ERROR** auf beiden Achsen (Security 144 WARN, Performance 15 WARN / 293 INFO). Die 3 slice-bezogenen Security-WARN sind die drei Schreib-RPCs als `authenticated`-ausführbare `SECURITY DEFINER`-Funktionen — die Kategorie, die den Schreibweg überhaupt trägt. Der einzelne `anon_security_definer`-WARN gehört `seed_risk_categories_if_empty` und ist **Bestand** (PROJ-107), keine Bau-Funktion. Die 8 slice-bezogenen Performance-Meldungen sind INFO |
+| Rückstände | `construction_defects` **0** · `construction_defect_events` **0** · `audit_log_entries` für `construction_defects` **0** · Mängel im **Kundenmandanten 0** · PROJ-130-α-Wächter **3/3 aktiv** · `session_replication_role` = `origin` · `audit_log_entries` gesamt **576** (Bestand anderer Mandanten, unangetastet). Die Bau-Fixture-Lane bleibt bewusst stehen |
+
+### Post-Deploy-Smoke (Produktions-URL, alle sieben neuen Flächen)
+
+Acht Methoden/Pfad-Kombinationen über die fünf API-Routen und die zwei Seiten. Erwartung auf **genau
+einen** Wert verschärft, wie `/qa` es für die α-Gates getan hat — nicht auf eine Liste zulässiger
+Codes:
+
+| Fläche | Aufruf | Ergebnis |
+|---|---|---|
+| Mängelliste | `GET /api/projects/{id}/construction-defects` | **307** → `/login?next=…` |
+| Mangel anlegen | `POST` dieselbe Route | **307** |
+| Zähler je Gewerk | `GET …/construction-defects/summary` | **307** |
+| Mangel ändern | `PATCH …/construction-defects/{did}` | **307** |
+| Statuswechsel | `POST …/construction-defects/{did}/status` | **307** |
+| Verlauf | `GET …/construction-defects/{did}/events` | **307** |
+| Mängel-Seite | `GET /projects/{id}/maengel` | **307** |
+| Mängelanzeige-Druck | `GET /projects/{id}/maengelanzeige/print` | **307** |
+
+Der Rumpf ist in allen acht Fällen **exakt** `Redirecting...` (15 Byte); ein Raster über
+`construction_defect · maengel · mangel · trade_id · severity · geprueft · fertiggemeldet ·
+vendor_id · defects_present` findet **keinen** Treffer — kein Struktur-, Status- oder Datenleck.
+
+**Was dieser Smoke nicht beweist, und wie die Lücke geschlossen wurde.** Der Proxy-Matcher greift auf
+praktisch jeden Pfad, also antwortet auch ein **erfundener** Pfad mit 307 (gegengeprüft:
+`/api/projects/{id}/gibt-es-nicht-xyz` und `/projects/{id}/erfundene-seite-xyz` → beide **307**).
+Ein 307 belegt damit das Auth-Tor, aber **nicht** die Existenz der Route — genau die Blindheit, die
+`/qa` beim α-Gate für `404` beschrieben hat, eine Ebene weiter. Geschlossen nicht durch Schlussfolgern
+vom lokalen Build, sondern am **Build-Log des ausgelieferten Deployments**: es listet alle sieben
+Flächen namentlich (`/api/projects/[id]/construction-defects`, `…/[did]`, `…/[did]/events`,
+`…/[did]/status`, `…/summary`, `/projects/[id]/maengel`, `/projects/[id]/maengelanzeige/print`).
+
+### Gates auf dem gemergten `main`-Stand
+
+| Gate | Ergebnis |
+|---|---|
+| `npx eslint .` | **0** (Exit 0) |
+| `npx tsc --noEmit` (nach `rm -rf .next`) | **13 = Baseline, 0 neu** |
+| `npx vitest run` | **3240/3240** (395 Dateien) |
+| `npm run build` | clean; alle **7** Flächen im Routen-Manifest registriert |
+| `npm run check:migration-naming` | **0 Fehler** (218 Migrationen, 90 Bestands-Warnungen) |
+| `npm run check:index-scope` | **0 Fehler** (1 Warnung: 117 Altzeilen ohne Klassifikation — die von PROJ-145 bewusst sichtbar gehaltene Buchführungsschuld) |
+
+### Befund aus diesem Schritt
+
+**D-45β-DEPLOY-1 (Dokumentationsfehler, hier behoben) — die Migration erzeugt fünf Trigger, nicht
+sechs.** Die `/backend`-Notiz führte „Zwei Tabellen, acht Funktionen, **sechs** Trigger". In Prod
+stehen **5** nicht-interne Trigger auf den beiden Tabellen, und die Migrationsdatei enthält genau
+**5** `create trigger`-Anweisungen; ihr eigener Post-Condition-Block prüft vier davon namentlich. Die
+Zahl war nie irgendwo geprüft — dieselbe Klasse wie F-1 aus `/qa`, wo ein Vektor die Marke von
+AC-45β.12 trug, ohne sie zu belegen. Kein Produktfehler und keine fehlende Absicherung: alle fünf
+Trigger sind vorhanden und aktiv, die Zahl in der Notiz war falsch. Auf **fünf** korrigiert statt
+stehen gelassen.
+
+### Was offen bleibt
+
+- **AC-45β.18** — überfällige Mängel in der Engpass-Sicht (PROJ-103). Zurückgestellte
+  **ursprüngliche** Anforderung, Ziel **PROJ-45-δ**, mit Quell-AC und der bereits erhobenen
+  Vorarbeit in `features/OPEN-DEFERRED-STATUS.md` geführt. Der Grund, dass β **nicht** `full` ist.
+- **PROJ-45-γ** (Abnahmen), **PROJ-45-δ** (Terminsignale), **PROJ-45-ε** (Fotodokumentation) —
+  zurückgestellte Original-Stories der Erstfassung.
+- **PROJ-Y-45d** (Low, aus β) — die Gewerk-Auswahlliste kippt von unkontrolliert auf kontrolliert;
+  Konsolenlärm, keine Fehlfunktion.
+- **PROJ-Y-45e** (Info, cross-cutting) — `audit_lifecycle_exempt` deckt den **Feld**-Audit nicht ab;
+  ein committender Durchlauf über die Zustandsmaschine lässt den append-only Trail wachsen und braucht
+  bis zur Klärung einen manuellen Nachlauf.
+- **PROJ-Y-45b** (aus α) — der rohe 500-Pfad der beiden Entfernen-Routen bleibt für *künftige*
+  Verweise bestehen; β hat ihn nur für Mängel auf 409 gebracht.
+- **PROJ-Y-45c** (cross-cutting, in β belegt) — Prod/Repo-Divergenz bei `_project_teardown_active()`.
+
+---
+
+## Deployment — α (2026-08-14)
 
 **Deployed 2026-08-14 · Tag `v2.56.0-PROJ-45-alpha` · PR #385 (squash) → main `3732532`**
 

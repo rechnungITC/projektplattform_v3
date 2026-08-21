@@ -13,6 +13,7 @@ import { Upload } from "lucide-react"
 import Link from "next/link"
 import { toast } from "sonner"
 
+import { ModuleUnavailableNotice } from "@/components/app/module-unavailable-notice"
 import { Button } from "@/components/ui/button"
 import {
   Card,
@@ -164,6 +165,7 @@ export function OrganizationPageClient({
     units,
     loading: unitsLoading,
     error: unitsError,
+    unavailable: unitsUnavailable,
     refresh: refreshUnits,
     create,
     patch,
@@ -182,6 +184,7 @@ export function OrganizationPageClient({
     tree,
     loading: treeLoading,
     error: treeError,
+    unavailable: treeUnavailable,
     refresh: refreshTree,
   } = useOrganizationTree({ includeVendors: false })
 
@@ -277,28 +280,51 @@ export function OrganizationPageClient({
     await refreshTree()
   }
 
+  // PROJ-Y-143n — with the `organization` module off, every read on this page
+  // answers 404 by design. Both list routes have exactly one 404 path (the
+  // module gate), so the reason can be named; PROJ-Y-143f settled that this is
+  // a third state — not the red error box, and not "keine Einheiten vorhanden",
+  // which would claim the structure is empty when we were not allowed to look.
+  const moduleUnavailable = unitsUnavailable || treeUnavailable
+
+  const header = (
+    <header className="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
+      <div>
+        <h1 className="text-2xl font-semibold tracking-tight">Organisation</h1>
+        <p className="text-sm text-muted-foreground">
+          Pflege die Organisationsstruktur deines Tenants — Gesellschaften,
+          Standorte, Bereiche, Abteilungen und Teams. Stakeholder, Ressourcen
+          und Mitglieder können später diesen Einheiten zugeordnet werden.
+        </p>
+      </div>
+      {/* The CSV import is gated by the same module, so offering it here
+          would only lead to a second locked surface. */}
+      {canEdit && !moduleUnavailable ? (
+        <Button variant="outline" asChild>
+          <Link href="/stammdaten/organisation/import">
+            <Upload className="mr-2 h-4 w-4" aria-hidden />
+            CSV Import
+          </Link>
+        </Button>
+      ) : null}
+    </header>
+  )
+
+  if (moduleUnavailable) {
+    return (
+      <div className="space-y-4">
+        {header}
+        <ModuleUnavailableNotice
+          title="Das Modul „Organisation“ ist für diesen Workspace nicht aktiv."
+          description="Ein Tenant-Admin kann es unter Einstellungen → Workspace aktivieren. Bis dahin wird hier keine Organisationsstruktur geführt."
+        />
+      </div>
+    )
+  }
+
   return (
     <div className="space-y-4">
-      <header className="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
-        <div>
-          <h1 className="text-2xl font-semibold tracking-tight">
-            Organisation
-          </h1>
-          <p className="text-sm text-muted-foreground">
-            Pflege die Organisationsstruktur deines Tenants — Gesellschaften,
-            Standorte, Bereiche, Abteilungen und Teams. Stakeholder, Ressourcen
-            und Mitglieder können später diesen Einheiten zugeordnet werden.
-          </p>
-        </div>
-        {canEdit ? (
-          <Button variant="outline" asChild>
-            <Link href="/stammdaten/organisation/import">
-              <Upload className="mr-2 h-4 w-4" aria-hidden />
-              CSV Import
-            </Link>
-          </Button>
-        ) : null}
-      </header>
+      {header}
 
       {(unitsError || treeError) && (
         <Card className="border-destructive/50 bg-destructive/5">

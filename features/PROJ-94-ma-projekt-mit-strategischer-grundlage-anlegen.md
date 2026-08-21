@@ -15,6 +15,10 @@ summary_for_jira: "[A1] M&A-Projekt mit strategischer Grundlage anlegen"
 # PROJ-94: M&A-Projekt mit strategischer Grundlage anlegen
 
 ## Status: Deployed (2026-06-23 — PR #168 squash-merged 7024daf, tag v1.97.0-PROJ-94; prod auth-gate smoke 3/3 307; mandate-RPC need-to-know hardening live)
+## Deployment Scope: full
+
+> **Scope-Klassifikation (PROJ-Y-145b, Tranche 3, 2026-08-20):** QA 2026-06-23: **5/5 AC** ✅, 0 Critical/0 High, Prod-Auth-Gate-Smoke 3/3. Die Out-of-Scope-Punkte (Phasen, RACI, DD, DMS-Upload) sind eigene Features, **keine** zurückgestellte AC dieser Story.
+
 **Created:** 2026-06-10
 **Origin:** M&A-Platform Backlog (Epic A — Projektgrundlagen & Phasenmodell)
 **Priority:** P1

@@ -1,6 +1,8 @@
 import { NextResponse } from "next/server"
 import { z } from "zod"
 
+import { requireModuleActive } from "@/lib/tenant-settings/server"
+
 import {
   apiError,
   getAuthenticatedUserId,
@@ -10,6 +12,20 @@ import {
 // PROJ-62 — Locations single endpoint.
 // PATCH  /api/locations/[id]  → update (admin, optimistic-lock)
 // DELETE /api/locations/[id]  → delete (admin, blocker-aware)
+//
+// PROJ-Y-143n — both handlers gate on the `organization` module (write intent
+// → 403). Unlike the collection routes the tenant is **not** resolved from the
+// active-workspace cookie but from the row that was just loaded, and the gate
+// sits directly behind that lookup:
+//
+//   * A second resolution path would be wrong, not just redundant. These
+//     handlers deliberately act on the row's tenant, so gating on the caller's
+//     *active* tenant could consult a different tenant's module settings than
+//     the one being written to.
+//   * The gate therefore cannot precede its own anchor. What it can guarantee
+//     — and does — is that nothing is mutated and no domain content is
+//     returned before it: the pre-lookup selects the identity columns only,
+//     and a row the caller cannot see through RLS already answered 404 above.
 
 const SELECT_COLUMNS =
   "id, tenant_id, name, code, country, city, address, import_id, is_active, created_at, updated_at"
@@ -40,6 +56,14 @@ export async function PATCH(request: Request, ctx: Ctx) {
     .maybeSingle()
   if (lookupError) return apiError("internal_error", lookupError.message, 500)
   if (!existing) return apiError("not_found", "Location not found.", 404)
+
+  const moduleDenial = await requireModuleActive(
+    supabase,
+    existing.tenant_id as string,
+    "organization",
+    { intent: "write" },
+  )
+  if (moduleDenial) return moduleDenial
 
   const adminDenial = await requireTenantAdmin(
     supabase,
@@ -114,6 +138,14 @@ export async function DELETE(_request: Request, ctx: Ctx) {
     .maybeSingle()
   if (lookupError) return apiError("internal_error", lookupError.message, 500)
   if (!existing) return apiError("not_found", "Location not found.", 404)
+
+  const moduleDenial = await requireModuleActive(
+    supabase,
+    existing.tenant_id as string,
+    "organization",
+    { intent: "write" },
+  )
+  if (moduleDenial) return moduleDenial
 
   const adminDenial = await requireTenantAdmin(
     supabase,

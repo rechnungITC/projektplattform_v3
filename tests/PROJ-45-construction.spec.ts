@@ -22,7 +22,22 @@
 import { expect, test } from "@playwright/test"
 
 const DUMMY = "00000000-0000-0000-0000-000000000000"
-const GATE = [307, 401, 403, 404]
+/**
+ * PROJ-45-β `/qa` — tightened from `[307, 401, 403, 404]` to the single value
+ * that actually occurs.
+ *
+ * Measured against the running app: every construction endpoint — all twelve α
+ * ones and all six new β ones — answers exactly **307** with
+ * `location: /login?next=…`, because the proxy gates before the handler ever
+ * runs. A four-value array was therefore three values too generous, and each
+ * spare value hid a different regression: `404` would keep the test green if a
+ * route were DELETED, `403` if the gate stopped being an auth redirect, `401`
+ * if the proxy stopped matching the path. An assertion that cannot fail is not
+ * a gate test.
+ */
+const GATE_STATUS = 307
+/** Kept as an array so `expect(...).toContain(...)` reads unchanged below. */
+const GATE = [GATE_STATUS]
 
 test.describe("PROJ-45 / construction auth-gates", () => {
   test("GET /api/construction-trades (tenant catalog) is auth-gated", async ({
@@ -144,7 +159,9 @@ test.describe("PROJ-45 / construction auth-gates", () => {
       failOnStatusCode: false,
       maxRedirects: 0,
     })
-    expect([...GATE, 400]).toContain(res.status())
+    // Not `[...GATE, 400]`: the proxy redirects before the handler validates the
+    // id, so an unauthenticated malformed request never reaches the 400 path.
+    expect(GATE).toContain(res.status())
     const body = await res.text()
     expect(body).not.toContain("construction_sections")
   })
@@ -163,5 +180,41 @@ test.describe("PROJ-45 / construction auth-gates", () => {
   test("the project Bauabschnitte tab is auth-gated", async ({ page }) => {
     await page.goto(`/projects/${DUMMY}/bauabschnitte`, { waitUntil: "domcontentloaded" })
     expect(page.url()).toContain("/login")
+  })
+})
+
+/**
+ * PROJ-45-β — die beiden Flächen, die der `/frontend`-Schritt hinzufügt.
+ *
+ * Die fünf β-API-Routen sind hier bewusst NICHT aufgeführt: sie gehören zum
+ * `/backend`-Schritt und sind dort über 39 Route-Unit-Tests und den Live-Pentest
+ * (53/53 gegen Prod, 0 Rückstände) abgedeckt. Was diese Slice neu erreichbar
+ * macht, sind zwei Seiten — und die Druckseite liegt ausserhalb der App-Hülle,
+ * ist also die einzige, bei der man das Anmelde-Tor nicht schon aus der
+ * Gruppenzugehörigkeit ableiten kann.
+ *
+ * Die Tiefe (Rollen, Vier-Augen, Leeren-Schalter, Teilbaum-Sperre) prüft der
+ * Pentest; ein authentifizierter Browser-Durchlauf gehört zu `/qa`.
+ */
+test.describe("PROJ-45-β / defect surfaces auth-gates", () => {
+  test("the project Mängel tab is auth-gated", async ({ page }) => {
+    await page.goto(`/projects/${DUMMY}/maengel`, { waitUntil: "domcontentloaded" })
+    expect(page.url()).toContain("/login")
+  })
+
+  test("the Mängelanzeige print page is auth-gated and leaks no defect content", async ({
+    page,
+  }) => {
+    const res = await page.goto(
+      `/projects/${DUMMY}/maengelanzeige/print?trade=${DUMMY}`,
+      { waitUntil: "domcontentloaded" }
+    )
+    expect(page.url()).toContain("/login")
+    expect(res?.status()).toBeLessThan(500)
+    // AC-45βH-11: kein Mangel-Inhalt im Rumpf, auch nicht die Überschrift der
+    // Anzeige — sonst verriete die Umleitungsseite, dass es die Fläche gibt.
+    const body = await page.content()
+    expect(body).not.toContain("Mängelanzeige")
+    expect(body).not.toContain("construction_defects")
   })
 })

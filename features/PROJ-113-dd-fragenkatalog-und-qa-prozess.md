@@ -15,6 +15,10 @@ summary_for_jira: "[G2] DD-Fragenkatalog und Q&A-Prozess"
 # PROJ-113: DD-Fragenkatalog und Q&A-Prozess
 
 ## Status: Deployed (2026-06-26 — Tag `v2.2.0-PROJ-113`, PR #197 merged → main `9a9c15a`; Vercel-Prod deploy success + Post-Deploy-Auth-Gate-Smoke 4/4 = 307; Migrationen `20260625124849` (dd_questions) + `20260626072731` (PROJ-112c) seit /backend in Prod. 0 Critical/High.)
+## Deployment Scope: mvp
+
+> **Scope-Klassifikation (PROJ-Y-145b, Tranche 3, 2026-08-20):** **AC4 ⏳ deferiert** („Frage → Finding eskalieren"): geliefert ist ein deaktivierter UI-Platzhalter, der Herkunftsnachweis am Finding ist bis heute offen (PROJ-Y-113c / PROJ-Y-114a). AC1/AC2/AC3/AC5/AC6 ✅, Live-Smoke 11/11.
+
 **Created:** 2026-06-10
 **Origin:** M&A-Platform Backlog (Epic G — Due Diligence)
 **Priority:** P1

@@ -1,6 +1,8 @@
 import { describe, expect, it } from "vitest"
 
-import { analyzeMigrations, type MigrationFile } from "./analyze"
+import { analyzeMigrations, type MigrationFile,
+  MODDATETIME_EXCEPTIONS,
+} from "./analyze"
 
 const ok = (name: string, content = "select 1;"): MigrationFile => ({ name, content })
 
@@ -78,5 +80,62 @@ describe("analyzeMigrations", () => {
       ok("20260101120100_proj1_b.sql", "select 1"),
     ])
     expect(r.warnings.some((w) => w.includes("not strictly ascending"))).toBe(false)
+  })
+})
+
+// ---------------------------------------------------------------------------
+// PROJ-Y-130g — bare `moddatetime`
+// ---------------------------------------------------------------------------
+
+describe("bare moddatetime", () => {
+  const file = (name: string, content: string) => ({ name, content })
+  const ok = "20260820120000_x.sql"
+
+  it("meldet die bare Form als Fehler", () => {
+    const r = analyzeMigrations([
+      file(ok, "create trigger t before update on x for each row execute function moddatetime('updated_at');"),
+    ])
+    expect(r.errors.some((e) => e.includes("bare `moddatetime`"))).toBe(true)
+  })
+
+  it("akzeptiert die schema-qualifizierte Form", () => {
+    const r = analyzeMigrations([
+      file(ok, "create trigger t before update on x for each row execute function extensions.moddatetime('updated_at');"),
+    ])
+    expect(r.errors.some((e) => e.includes("moddatetime"))).toBe(false)
+  })
+
+  it("meldet auch `public.moddatetime` — dort liegt die Funktion nicht", () => {
+    const r = analyzeMigrations([
+      file(ok, "execute function public.moddatetime('updated_at')"),
+    ])
+    expect(r.errors.some((e) => e.includes("bare `moddatetime`"))).toBe(true)
+  })
+
+  it("schweigt bei den zwei dokumentierten Ausnahmen", () => {
+    const r = analyzeMigrations(
+      MODDATETIME_EXCEPTIONS.map((n) => file(n, "execute function moddatetime('updated_at')"))
+    )
+    expect(r.errors.some((e) => e.includes("moddatetime"))).toBe(false)
+  })
+
+  it("meldet MEHRERE Dateien — der `g`-Flag-Zustand darf nicht durchschlagen", () => {
+    // `RegExp.prototype.test` mit `g` merkt sich `lastIndex`: ohne Rücksetzen
+    // findet der zweite Aufruf nichts und die zweite Datei bliebe stumm. Genau
+    // diese Klasse Fehler hat in PROJ-Y-148d schon einmal einen Test entwertet.
+    const body = "execute function moddatetime('updated_at')"
+    const r = analyzeMigrations([
+      file("20260820120000_a.sql", body),
+      file("20260820120100_b.sql", body),
+    ])
+    const hits = r.errors.filter((e) => e.includes("bare `moddatetime`"))
+    expect(hits).toHaveLength(2)
+  })
+
+  it("friert die Ausnahmeliste ein", () => {
+    expect([...MODDATETIME_EXCEPTIONS]).toEqual([
+      "20260703135741_proj107_risk_register.sql",
+      "20260721094301_proj110_stage_gates_and_decision_fields.sql",
+    ])
   })
 })

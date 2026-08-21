@@ -41,6 +41,7 @@ import {
   TableRow,
 } from "@/components/ui/table"
 import { Textarea } from "@/components/ui/textarea"
+import { ToggleGroup, ToggleGroupItem } from "@/components/ui/toggle-group"
 import { useProjectAccess } from "@/hooks/use-project-access"
 import {
   acknowledgeFindingEscalation,
@@ -73,6 +74,12 @@ import {
   severityBadgeVariant,
   TREATMENT_LABEL,
 } from "./dd-finding-labels"
+import {
+  applyFindingsLens,
+  findingTotals,
+  type FindingsLens,
+  redFlagTotals,
+} from "./red-flag-lens"
 
 const SEVERITIES: FindingSeverity[] = ["niedrig", "mittel", "hoch", "deal_breaker"]
 const TREATMENTS: FindingTreatment[] = [
@@ -154,8 +161,25 @@ export function DdFindingsPanel({ projectId }: { projectId: string }) {
     }
   }, [projectId])
 
-  const totalEur = summary.reduce((acc, r) => acc + Number(r.eur_sum || 0), 0)
-  const dealBreakerCount = findings.filter((f) => f.severity === "deal_breaker").length
+  // PROJ-Y-2 — Red-Flag-Lens. Kennzahlen kommen aus `dd_findings_summary`
+  // (SECURITY INVOKER → Need-to-know des Aufrufers greift, das Aggregat verrät
+  // nichts über verborgene Zeilen) und NICHT aus `findings`: die Listen-Route
+  // deckelt bei 500 Zeilen, eine daraus gerechnete Summe würde stillschweigend
+  // untertreiben. Die Tabelle zeigt weiterhin die (gedeckelte) Liste.
+  const [lens, setLens] = React.useState<FindingsLens>("all")
+  const totals = findingTotals(summary)
+  const redFlags = redFlagTotals(summary)
+  const visibleFindings = React.useMemo(
+    () => applyFindingsLens(findings, lens),
+    [findings, lens]
+  )
+  // Die Kennzahl folgt der Linse, damit Überschrift und Tabelle nie
+  // auseinanderlaufen — eine Summe über alle Befunde neben einer auf Red Flags
+  // gefilterten Liste liest sich wie ein Widerspruch.
+  const activeTotals = lens === "red_flags" ? redFlags : totals
+  // Aggregat (unbeschränkt) vs. gelistete Zeilen (max. 500) — ohne Hinweis läse
+  // sich die Abweichung wie ein Widerspruch zwischen Kennzahl und Tabelle.
+  const listedShortfall = activeTotals.count - visibleFindings.length
 
   const handleAck = async (esc: DdFindingEscalation) => {
     try {
@@ -213,11 +237,20 @@ export function DdFindingsPanel({ projectId }: { projectId: string }) {
             </CardTitle>
             <CardDescription>
               Befunde je Stream, nach Schwere bewertet und – wo möglich – in EUR
-              quantifiziert. Kaufpreis-Risiko (Summe): <strong>{fmtEur(totalEur)}</strong>
-              {dealBreakerCount > 0 && (
+              quantifiziert.{" "}
+              {lens === "red_flags" ? "Red-Flag-Risiko" : "Kaufpreis-Risiko"} (Summe):{" "}
+              <strong>{fmtEur(activeTotals.eurSum)}</strong>
+              {/* Ohne diese Angabe liest sich die Summe als vollständig, obwohl
+                  Befunde ohne EUR-Schätzung nicht darin enthalten sind (PROJ-116-H5). */}
+              {activeTotals.nullEurCount > 0 && (
+                <> ({activeTotals.nullEurCount} ohne Schätzung)</>
+              )}
+              {redFlags.dealBreakerCount > 0 && (
                 <>
                   {" · "}
-                  <span className="text-destructive">{dealBreakerCount} Deal Breaker</span>
+                  <span className="text-destructive">
+                    {redFlags.dealBreakerCount} Deal Breaker
+                  </span>
                 </>
               )}
             </CardDescription>
@@ -240,62 +273,101 @@ export function DdFindingsPanel({ projectId }: { projectId: string }) {
               Noch keine Findings erfasst.
             </div>
           ) : (
-            <div className="overflow-x-auto rounded-md border">
-              <Table>
-                <TableHeader>
-                  <TableRow>
-                    <TableHead>Titel</TableHead>
-                    <TableHead>Stream</TableHead>
-                    <TableHead>Schwere</TableHead>
-                    <TableHead className="hidden sm:table-cell text-right">EUR</TableHead>
-                    <TableHead className="hidden md:table-cell">Behandlung</TableHead>
-                    <TableHead className="hidden sm:table-cell">Status</TableHead>
-                    {canManage && <TableHead className="w-12" />}
-                  </TableRow>
-                </TableHeader>
-                <TableBody>
-                  {findings.map((f) => (
-                    <TableRow key={f.id}>
-                      <TableCell className="font-medium">
-                        {f.title}
-                        {/* PROJ-Y-114a — Herkunft direkt unter der Feststellung. */}
-                        {formatFindingSource(f.source_kind, f.source_ref) && (
-                          <span className="block text-xs font-normal text-muted-foreground">
-                            Quelle: {formatFindingSource(f.source_kind, f.source_ref)}
-                          </span>
-                        )}
-                      </TableCell>
-                      <TableCell className="text-muted-foreground">{streamLabel(f.dd_stream_id)}</TableCell>
-                      <TableCell>
-                        <Badge variant={severityBadgeVariant(f.severity)}>
-                          {SEVERITY_LABEL[f.severity]}
-                        </Badge>
-                      </TableCell>
-                      <TableCell className="hidden sm:table-cell text-right">
-                        {fmtEur(f.economic_impact_eur)}
-                      </TableCell>
-                      <TableCell className="hidden md:table-cell text-muted-foreground">
-                        {f.recommended_treatment ? TREATMENT_LABEL[f.recommended_treatment] : "—"}
-                      </TableCell>
-                      <TableCell className="hidden sm:table-cell text-muted-foreground">
-                        {FINDING_STATUS_LABEL[f.status]}
-                      </TableCell>
-                      {canManage && (
-                        <TableCell>
-                          <Button
-                            size="icon"
-                            variant="ghost"
-                            aria-label="Finding bearbeiten"
-                            onClick={() => setDialog({ mode: "edit", finding: f })}
-                          >
-                            <Pencil className="h-4 w-4" aria-hidden />
-                          </Button>
-                        </TableCell>
-                      )}
-                    </TableRow>
-                  ))}
-                </TableBody>
-              </Table>
+            <div className="space-y-3">
+              {/* PROJ-Y-2 — Red-Flag-Lens. Rein clientseitig auf den bereits
+                  RLS-gefilterten Zeilen; kein zweiter Abruf, kein zweites Tor. */}
+              <ToggleGroup
+                type="single"
+                value={lens}
+                // Radix meldet "" beim Abwählen des aktiven Elements. Ungeprüft
+                // übernommen wäre die Linse leer und die Tabelle verschwände.
+                onValueChange={(v) => v && setLens(v as FindingsLens)}
+                variant="outline"
+                size="sm"
+                className="justify-start"
+                aria-label="Findings-Ansicht"
+              >
+                <ToggleGroupItem value="all" aria-label="Alle Befunde zeigen">
+                  Alle ({totals.count})
+                </ToggleGroupItem>
+                <ToggleGroupItem value="red_flags" aria-label="Nur Red Flags zeigen">
+                  <AlertTriangle className="mr-1.5 h-4 w-4" aria-hidden />
+                  Red Flags ({redFlags.count})
+                </ToggleGroupItem>
+              </ToggleGroup>
+
+              {visibleFindings.length === 0 ? (
+                <div className="rounded-md border border-dashed py-8 text-center text-sm text-muted-foreground">
+                  Keine Red Flags unter den sichtbaren Befunden.
+                </div>
+              ) : (
+                <>
+                  <div className="overflow-x-auto rounded-md border">
+                    <Table>
+                      <TableHeader>
+                        <TableRow>
+                          <TableHead>Titel</TableHead>
+                          <TableHead>Stream</TableHead>
+                          <TableHead>Schwere</TableHead>
+                          <TableHead className="hidden sm:table-cell text-right">EUR</TableHead>
+                          <TableHead className="hidden md:table-cell">Behandlung</TableHead>
+                          <TableHead className="hidden sm:table-cell">Status</TableHead>
+                          {canManage && <TableHead className="w-12" />}
+                        </TableRow>
+                      </TableHeader>
+                      <TableBody>
+                        {visibleFindings.map((f) => (
+                          <TableRow key={f.id}>
+                            <TableCell className="font-medium">
+                              {f.title}
+                              {/* PROJ-Y-114a — Herkunft direkt unter der Feststellung. */}
+                              {formatFindingSource(f.source_kind, f.source_ref) && (
+                                <span className="block text-xs font-normal text-muted-foreground">
+                                  Quelle: {formatFindingSource(f.source_kind, f.source_ref)}
+                                </span>
+                              )}
+                            </TableCell>
+                            <TableCell className="text-muted-foreground">{streamLabel(f.dd_stream_id)}</TableCell>
+                            <TableCell>
+                              <Badge variant={severityBadgeVariant(f.severity)}>
+                                {SEVERITY_LABEL[f.severity]}
+                              </Badge>
+                            </TableCell>
+                            <TableCell className="hidden sm:table-cell text-right">
+                              {fmtEur(f.economic_impact_eur)}
+                            </TableCell>
+                            <TableCell className="hidden md:table-cell text-muted-foreground">
+                              {f.recommended_treatment ? TREATMENT_LABEL[f.recommended_treatment] : "—"}
+                            </TableCell>
+                            <TableCell className="hidden sm:table-cell text-muted-foreground">
+                              {FINDING_STATUS_LABEL[f.status]}
+                            </TableCell>
+                            {canManage && (
+                              <TableCell>
+                                <Button
+                                  size="icon"
+                                  variant="ghost"
+                                  aria-label="Finding bearbeiten"
+                                  onClick={() => setDialog({ mode: "edit", finding: f })}
+                                >
+                                  <Pencil className="h-4 w-4" aria-hidden />
+                                </Button>
+                              </TableCell>
+                            )}
+                          </TableRow>
+                        ))}
+                      </TableBody>
+                    </Table>
+                  </div>
+                  {listedShortfall > 0 && (
+                    <p className="text-xs text-muted-foreground">
+                      Die Kennzahl zählt {activeTotals.count} Befunde; die Tabelle
+                      listet {visibleFindings.length} (die Liste ist auf 500 Zeilen
+                      begrenzt).
+                    </p>
+                  )}
+                </>
+              )}
             </div>
           )}
         </CardContent>

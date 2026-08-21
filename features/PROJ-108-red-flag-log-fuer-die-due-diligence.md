@@ -15,6 +15,9 @@ summary_for_jira: "[E2] Red-Flag-Log für die Due Diligence"
 # PROJ-108: Red-Flag-Log für die Due Diligence
 
 ## Status: Superseded by PROJ-114 (Bookkeeping-Closure 2026-06-26, CIA-reviewed)
+## Deployment Scope: superseded
+
+> **Scope-Klassifikation (PROJ-Y-145b, Tranche 3, 2026-08-20):** Nachgetragen — die INDEX-Zeile trug `superseded` bereits, der Spec-Header nicht; die Hausregel verlangt beide Felder in **beiden** Quellen. Inhaltlich unverändert: PROJ-114 ist der Ersatz, die AC-für-AC-Zuordnung (AC1 ~85 % absorbiert, AC2/AC5 absorbiert, AC1-Restlücke → PROJ-Y-1-Herkunftsnachweis, AC3 → 120/121/122, AC4 → 116, Red-Flag-Lens → PROJ-Y-2 **geliefert**) steht im Spec-Kopf.
 **Created:** 2026-06-10
 **Origin:** M&A-Platform Backlog (Epic E — Risiken & Red Flags)
 **Priority:** P1

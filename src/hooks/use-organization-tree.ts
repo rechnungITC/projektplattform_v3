@@ -2,12 +2,23 @@
 
 import * as React from "react"
 
+import { apiRequestError, isUnavailable } from "@/lib/api-error"
 import type { OrganizationUnitTreeNode } from "@/types/organization"
 
 interface UseOrganizationTreeResult {
   tree: OrganizationUnitTreeNode[]
   loading: boolean
   error: string | null
+  /**
+   * PROJ-Y-143n — the `organization` module is not active for this workspace.
+   *
+   * Separate from `error` because it is not a failure (PROJ-Y-143f): this
+   * route's only 404 path is `requireModuleActive` with read intent, whose
+   * body is the deliberately generic "Resource not found.". Rendered as
+   * `error` that reads as a defect, which is exactly the bug this slice
+   * removes from the CSV-import page.
+   */
+  unavailable: boolean
   refresh: () => Promise<void>
 }
 
@@ -18,6 +29,7 @@ export function useOrganizationTree(options?: {
   const [tree, setTree] = React.useState<OrganizationUnitTreeNode[]>([])
   const [loading, setLoading] = React.useState(true)
   const [error, setError] = React.useState<string | null>(null)
+  const [unavailable, setUnavailable] = React.useState(false)
 
   const refresh = React.useCallback(async () => {
     setLoading(true)
@@ -27,14 +39,20 @@ export function useOrganizationTree(options?: {
       if (includeVendors) params.set("include_vendors", "true")
       const url = `/api/organization-units/tree${params.size ? `?${params}` : ""}`
       const response = await fetch(url, { cache: "no-store" })
-      if (!response.ok) {
-        throw new Error(`HTTP ${response.status}`)
-      }
+      if (!response.ok) throw await apiRequestError(response)
       const body = (await response.json()) as {
         tree: OrganizationUnitTreeNode[]
       }
       setTree(body?.tree ?? [])
+      setUnavailable(false)
     } catch (err) {
+      // Module gate, not a failure — see `unavailable` above.
+      if (isUnavailable(err)) {
+        setTree([])
+        setUnavailable(true)
+        return
+      }
+      setUnavailable(false)
       setError(err instanceof Error ? err.message : String(err))
     } finally {
       setLoading(false)
@@ -52,5 +70,5 @@ export function useOrganizationTree(options?: {
     }
   }, [refresh])
 
-  return { tree, loading, error, refresh }
+  return { tree, loading, error, unavailable, refresh }
 }

@@ -84,6 +84,29 @@ jobs:
           create schema if not exists extensions;
           create extension if not exists moddatetime schema extensions;
 
+          -- PROJ-Y-130g: den search_path an Prod angleichen.
+          --
+          -- Prod läuft mit `"$user", public, extensions` (live gelesen), die Shadow-DB
+          -- bisher mit dem Standard OHNE `extensions`. Genau daraus entstand die in
+          -- CLAUDE.md notierte Beobachtung, die bare Form `moddatetime()` löse "in prod
+          -- but not in the schema-drift shadow DB" auf — und daraus wiederum zwei der
+          -- sieben Fresh-Apply-Abbrüche aus PROJ-Y-130f, mit 214 und 490 verlorenen
+          -- Zeilen die beiden größten. Über die Kaskade (proj110 bricht vor der Zeile
+          -- ab, in der es `stage_gate_prereadiness` anlegt) hängt ein dritter daran.
+          --
+          -- Die Angleichung baut also nichts nach, sondern beseitigt eine
+          -- Umgebungsdifferenz: der Replay prüft ab hier gegen dieselbe Auflösung, die
+          -- Prod verwendet. `alter database` wirkt auf neue Verbindungen, und die
+          -- Migrationsschleife öffnet pro Datei eine — hier in dieser Session noch nicht,
+          -- was für die Stubs oben aber unerheblich ist (alle voll qualifiziert).
+          --
+          -- Die CLAUDE.md-Regel bleibt trotzdem richtig und wird ab jetzt AUSDRÜCKLICH
+          -- erzwungen statt als Nebenwirkung dieser Differenz: `npm run check:moddatetime`.
+          -- Grund: in einer `SECURITY DEFINER`-Funktion mit `set search_path = public,
+          -- pg_temp` löst die bare Form weiterhin NICHT auf — die Regel schützt vor mehr
+          -- als vor diesem Replay.
+          alter database postgres set search_path = "$user", public, extensions;
+
           -- storage schema stubs — minimum columns for FK references and policies.
           create schema if not exists storage;
           create table if not exists storage.buckets (
@@ -115,6 +138,7 @@ jobs:
           count=0
           warnings=0
           failures=0
+          skipped_total=0
           mkdir -p /tmp/drift-apply
           for f in supabase/migrations/*.sql; do
             base=$(basename "$f")
@@ -127,8 +151,33 @@ jobs:
               # pre-existing in the repo, not something for the drift-guard to
               # catch). Any other failure is a real structural error.
               if grep -qE "ERROR:.*function.*does not exist" "$log"; then
-                echo "::warning file=supabase/migrations/${base}::REVOKE/GRANT on missing function — pre-existing migration drift, harmless for schema-drift check."
+                # PROJ-Y-130f: die Meldung wurde hier bisher VERWORFEN. Sieben Dateien
+                # brachen bei jedem Lauf still ab, und die Warnung schrieb die Ursache
+                # "REVOKE/GRANT" fest, obwohl der grep oben nur "function does not
+                # exist" prüft — das trifft auch ein `create trigger ... execute
+                # function` oder einen Aufruf in einem DO-Block. Genau diese
+                # unbelegte Zuschreibung hat verdeckt, WAS jeweils fehlschlägt.
+                #
+                # `ON_ERROR_STOP=1` beendet die Datei an der Fehlerstelle: alles
+                # danach läuft nicht. Deshalb werden Fehlermeldung, Zeilennummer und
+                # die Zahl der übersprungenen Zeilen ausgegeben.
+                err=$(grep -m1 -E "^psql:.*ERROR:" "$log" || grep -m1 -E "ERROR:" "$log" || echo "(keine ERROR-Zeile im Log)")
+                srcline=$(printf '%s' "$err" | sed -nE 's/^psql:[^:]*:([0-9]+):.*/\1/p')
+                total=$(wc -l < "$f" | tr -d ' ')
+                if [ -n "$srcline" ]; then
+                  skipped=$((total - srcline))
+                  detail="bricht Zeile ${srcline}/${total} ab; ${skipped} Zeile(n) danach laufen NICHT"
+                else
+                  # Ohne diese Zuweisung traegt `skipped` den Wert des VORIGEN
+                  # Durchlaufs und die Summe unten waere falsch.
+                  skipped=0
+                  detail="Abbruchzeile nicht ermittelbar; Datei hat ${total} Zeile(n)"
+                fi
+                echo "::warning file=supabase/migrations/${base}::Fresh-Apply-Abbruch (toleriert): ${detail}. Ursache: ${err}"
+                echo "  toleriert: ${base} — ${detail}"
+                echo "             ${err}"
                 warnings=$((warnings + 1))
+                skipped_total=$((skipped_total + ${skipped:-0}))
               else
                 echo "::error file=supabase/migrations/${base}::Migration failed with structural error:"
                 tail -10 "$log"
@@ -136,7 +185,14 @@ jobs:
               fi
             fi
           done
-          echo "Applied $count migration(s); $warnings tolerated REVOKE-warnings; $failures structural failures."
+          echo "Applied $count migration(s); $warnings tolerated abort(s); $failures structural failures."
+          if [ "$warnings" -gt 0 ]; then
+            # PROJ-Y-130f: die Zahl allein hat sieben Jahre lang nichts gesagt. Diese
+            # Zeile benennt die Tragweite: der Replay ist um so viele Anweisungen
+            # aermer als Prod, und genau darin steckt die Divergenz, die der
+            # Spalten-Vergleich unten nicht sieht.
+            echo "::notice::PROJ-Y-130f: $warnings Migration(en) brechen im Fresh-Apply ab; rund $skipped_total Zeile(n) laufen dadurch nicht. Die Shadow-DB ist NICHT deckungsgleich mit Prod — Details in den Warnungen oben."
+          fi
           if [ "$failures" -gt 0 ]; then
             echo "::error::$failures structural migration failures — drift check cannot run reliably."
             exit 1

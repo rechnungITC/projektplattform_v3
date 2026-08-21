@@ -15,6 +15,9 @@ summary_for_jira: "[F2] Entscheidungslog für Management-Entscheidungen"
 # PROJ-111: Entscheidungslog für Management-Entscheidungen
 
 ## Status: Deployed (2026-07-21, Tag `v2.12.0-PROJ-110`, gebündelt mit PROJ-110)
+## Deployment Scope: mvp
+
+> **Scope-Klassifikation (PROJ-Y-145b, Tranche 3, 2026-08-20):** **AC1 mit Lücke** (Gremium/Optionen sind backendseitig vorhanden, aber ohne FE-Eingabe) und **AC2 teilweise** (Phase/Risiko/Finding ✅, Deliverable-Link deferiert); AC5-UI-Filter → PROJ-Y-111a. AC3/AC4 ✅ über PROJ-110 bzw. den PROJ-20-Immutability-Trigger.
 
 > **Deployed 2026-07-21:** Code live via PR #238 (squash → main `a72e3ae`, Tag `v2.12.0-PROJ-110`); Migration `20260721094301` (3 INSERT-only decisions-Felder) seit /backend in Prod. Post-Deploy-Smoke: decisions/export-Route 307 Auth-Gate. Kein neuer Env/Secret. Backend + CSV-Export live; FE-Followups PROJ-Y-111a (committee/options-Eingabe im DecisionForm + Timeline-Filter Phase/Entscheider/Quelle) + Deliverable-Link (PROJ-104).
 
