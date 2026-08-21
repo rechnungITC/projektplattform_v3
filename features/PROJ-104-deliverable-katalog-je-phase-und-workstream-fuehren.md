@@ -15,6 +15,10 @@ summary_for_jira: "[D1] Deliverable-Katalog je Phase und Workstream führen"
 # PROJ-104: Deliverable-Katalog je Phase und Workstream führen
 
 ## Status: Deployed (2026-07-03 — tag v2.9.0-PROJ-104)
+## Deployment Scope: mvp
+
+> **Scope-Klassifikation (PROJ-Y-145b, Tranche 3, 2026-08-20):** **AC3 ⏸ deferiert** (Deliverable aus Template vorbelegbar → PROJ-96 bzw. PROJ-Y-104a). AC1/AC2/AC4/AC5 ✅ inkl. Deliverable-Ampel im Workstream-Dashboard (löste PROJ-Y-102b). Binär-Upload war kein AC (AC4 verlangt „mit Dokumenten verknüpfbar").
+
 **Created:** 2026-06-10
 **Origin:** M&A-Platform Backlog (Epic D — Deliverables & Artefakte)
 **Priority:** P1

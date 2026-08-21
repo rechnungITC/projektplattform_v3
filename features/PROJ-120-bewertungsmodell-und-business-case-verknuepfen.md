@@ -15,6 +15,10 @@ summary_for_jira: "[I1] Bewertungsmodell und Business Case verknüpfen"
 # PROJ-120: Bewertungsmodell und Business Case verknüpfen
 
 ## Status: Deployed (2026-08-11)
+## Deployment Scope: mvp
+
+> **Scope-Klassifikation (PROJ-Y-145b, Tranche 3, 2026-08-20):** **AC3 ⚠ PARTIAL** — die Findings-Hälfte ist voll gebaut, die **Synergie-Hälfte (K2) ist nicht baubar**, weil PROJ-126 nachweislich nicht existiert; geliefert wurde stattdessen ein Erweiterungs-Kontrakt. AC1/AC2/AC4 ✅, Pentest A–N 16/16 + Red-Team 11/11.
+
 **Deployed:** 2026-08-11 — Closure-Deploy, Tag `v2.42.0-PROJ-120`. Code lag bereits auf main (Merge `3a3ac9f`, PR #304), alle 3 Migrationen seit `/backend` in Prod → kein Runtime-Deploy nötig (Vercel deployt automatisch von main). Verifiziert auf main `265cccb`: ESLint 0 · `npm run build` clean · `check:migration-naming` 0 Errors · Post-Deploy-Smoke gegen Prod: alle neuen Flächen 307 Auth-Gate, kein Leck.
 **Created:** 2026-06-10
 **Origin:** M&A-Platform Backlog (Epic I — Bewertung & Kaufpreislogik)

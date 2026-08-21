@@ -15,6 +15,10 @@ summary_for_jira: "[G3] DD-Findings erfassen, bewerten und quantifizieren"
 # PROJ-114: DD-Findings erfassen, bewerten und quantifizieren
 
 ## Status: Deployed (2026-06-26 — Tag `v2.2.0-PROJ-114` auf `d348901`; Vercel prod READY; Post-Deploy-Auth-Gate-Smoke 4/4 = 307. QA PASS 5/5 AC + 6/6 Hardening, 0 Critical/High/Medium; Pentest A–J 10/10 + 100b-Regression 4/4. Migrations `20260625152915`/`20260625153238` in Prod.)
+## Deployment Scope: mvp
+
+> **Scope-Klassifikation (PROJ-Y-145b, Tranche 3, 2026-08-20):** **AC2 ⚠ Teil** (Risiko-Link ✅, Q&A/SPA/Bewertung forward-compat deferiert) und **AC5 ⚠ Teil** (Liste/Summe in der UI, Datei-Export + DD-Bericht-Aggregation an PROJ-116). AC1/AC3/AC4 ✅ + 6/6 Härtung, Pentest A–J 10/10.
+
 **Created:** 2026-06-10
 **Origin:** M&A-Platform Backlog (Epic G — Due Diligence)
 **Priority:** P1

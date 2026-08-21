@@ -15,6 +15,10 @@ summary_for_jira: "[G4] Anbindung an externe Datenräume (Verlinkung, nicht Ersa
 # PROJ-115: Anbindung an externe Datenräume (Verlinkung, nicht Ersatz)
 
 ## Status: Deployed (2026-07-30 — Closure; Code live via PR #280 → main seit 2026-07-29, Tag `v2.31.0-PROJ-115`; QA PASS live pentest A–I 9/9 über alle 4 Typen, 0 Critical/High; Post-Deploy-Smoke GET external-links → 307 Auth-Gate)
+## Deployment Scope: mvp
+
+> **Scope-Klassifikation (PROJ-Y-145b, Tranche 3, 2026-08-20):** **AC2 verlangt Formatprüfung *und* Erreichbarkeitsprüfung** — geliefert ist die statische, SSRF-sichere Validierung, der aktive Check ist **PROJ-Y-115a**. AC1/AC4 ✅ (Pentest A–I 9/9 über alle 4 Typen). AC3 ist in der Spec ausdrücklich **„Optional"** formuliert und blockiert den Scope daher nicht.
+
 **Created:** 2026-06-10
 **Origin:** M&A-Platform Backlog (Epic G — Due Diligence)
 **Priority:** P1

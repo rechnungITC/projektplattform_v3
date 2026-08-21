@@ -15,6 +15,10 @@ summary_for_jira: "[D3] Versionierung und Änderungshistorie von Deliverables"
 # PROJ-106: Versionierung und Änderungshistorie von Deliverables
 
 ## Status: Deployed (2026-07-28 — PR #273 → main, Tag v2.27.0-PROJ-106; QA PASS live pentest A–I 9/9, 0 Critical/High)
+## Deployment Scope: full
+
+> **Scope-Klassifikation (PROJ-Y-145b, Tranche 3, 2026-08-20):** QA 2026-07-28: **AC1…AC5 alle ✅ PASS**, Live-Pentest A–I 9/9 gegen Prod, 0 Critical/High. Binär-Upload (PROJ-Y-106b) und Diff (PROJ-Y-106c) sind spätere Erweiterungen — **kein** AC verlangt sie (AC3 fordert Datum/Uploader/Kommentar je Version).
+
 **Created:** 2026-06-10
 **Origin:** M&A-Platform Backlog (Epic D — Deliverables & Artefakte)
 **Priority:** P1

@@ -15,6 +15,10 @@ summary_for_jira: "[B4] Berechtigungskonzept nach Need-to-know umsetzen"
 # PROJ-100: Berechtigungskonzept nach Need-to-know umsetzen
 
 ## Status: Deployed (2026-07-23 Closure — Tag `v2.21.0-PROJ-100`; 100a-Code live in Prod inkl. Fix-Migration 20260618100000, Prod-Smoke POST /api/projects/[id]/clearances → 307 auth-gate; AC2/4/5 über die bereits deployten 100b/100c abgedeckt). 100a backend gebaut 2026-06-16; QA-Pentest 2026-06-18: alle 6 SEC-Vektoren PASS; H-1 HIGH 2026-06-18 gefixt via Migration 20260618100000 + live re-verify grant/revoke/AC3-Audit → production-ready). 100b deferred.
+## Deployment Scope: full
+
+> **Scope-Klassifikation (PROJ-Y-145b, Tranche 3, 2026-08-20):** AC1/AC3 durch 100a live bewiesen (Pentest 6/6 + Fix-Migration `20260618100000`); **AC2/AC4/AC5 waren an PROJ-100b/100c deferiert und beide Slices sind vor der 100-Closure (2026-07-23) deployed** — zum Zeitpunkt dieser Buchung ist daher nichts offen. Die Teilstücke tragen ihren eigenen Scope in ihren eigenen Zeilen.
+
 **Created:** 2026-06-10
 
 ## Implementation Notes — 100a backend (2026-06-16)

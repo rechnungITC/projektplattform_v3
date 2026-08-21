@@ -15,6 +15,10 @@ summary_for_jira: "[M1] Management-Reporting und Steering-Dashboard"
 # PROJ-131: Management-Reporting und Steering-Dashboard
 
 ## Status: Deployed (2026-07-29 — PR #281 → main, Tag `v2.29.0-PROJ-131`; QA PASS Live-Pentest A–G 7/7, 0 Critical/High)
+## Deployment Scope: full
+
+> **Scope-Klassifikation (PROJ-Y-145b, Tranche 3, 2026-08-20):** QA 2026-07-29: **AC-131-1…5 alle ✅ PASS**, Live-Pentest A–G 7/7 inkl. Aggregat-Leck-Probe, 0 Critical/High. AC-131-5 verlangte ausdrücklich **sichtbare Platzhalter** für Kaufpreis/Synergie — genau das ist geliefert; Portfolio-Sicht (PROJ-131-β) und Word/Snapshot (PROJ-Y-131a/b) waren Requirements-Locks, keine zurückgestellten Kriterien.
+
 **Created:** 2026-06-10
 **Origin:** M&A-Platform Backlog (Epic M — Reporting & Dashboards)
 **Priority:** P1

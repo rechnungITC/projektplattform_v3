@@ -15,6 +15,10 @@ summary_for_jira: "[B3] Externe Berater kontrolliert einbinden"
 # PROJ-99: Externe Berater kontrolliert einbinden
 
 ## Status: Deployed (2026-06-24 — PR #182 squash-merged `0135ce3`, Tag `v2.0.0-PROJ-99-128-129`; Vercel prod READY; post-deploy auth-gate smoke 4/4 = 307. QA PASS 0 Critical/High/Medium. Backend live via #181.)
+## Deployment Scope: mvp
+
+> **Scope-Klassifikation (PROJ-Y-145b, Tranche 3, 2026-08-20):** **AC4 ausdrücklich „Offen"** (Spec: „Externe Aktivitäten (Logins/Downloads) auditierbar … Login-/DMS-Event-Marker folgen"): geliefert ist der Feld-Audit auf Advisor-/NDA-/Clearance-Objekten, **nicht** die separat markierte, filterbare Zugriffs-/Download-Spur. Rest (AC1/2/3/5) ✅; D-FE-1 (Historie-Tab) wurde mit PR #184 nachgeliefert.
+
 **Created:** 2026-06-10
 **Origin:** M&A-Platform Backlog (Epic B — Rollen, Gremien & Governance)
 **Priority:** P1

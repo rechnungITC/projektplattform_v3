@@ -15,6 +15,9 @@ summary_for_jira: "[H1] Gremien- und Meeting-Verwaltung"
 # PROJ-117: Gremien- und Meeting-Verwaltung
 
 ## Status: Deployed (2026-07-21, Tag `v2.14.0-PROJ-117`)
+## Deployment Scope: full
+
+> **Scope-Klassifikation (PROJ-Y-145b, Tranche 3, 2026-08-20):** QA 2026-07-21: **AC1…AC4 ✅**, Pentest A–I 9/9, 0 Critical/High. **AC5 ist in der Spec ausdrücklich „optional … (offene Frage)"** und wurde per PO-Entscheid mit dem authentifizierten ICS-Download bedient; der volle Zwei-Wege-Kalender-Sync (PROJ-Y-117a) ist damit eine Erweiterung, keine zurückgestellte Anforderung.
 
 > **Deployed 2026-07-21:** Tag `v2.14.0-PROJ-117`; Code live via PR #242 (squash → main `d5a0180`); Migration `20260721155102` seit /backend in Prod; Vercel auto-deploy from main. Post-Deploy-Smoke: meetings-list/commit/`meetings/ics` + committee-templates/seed + committees/from-template → alle 307 Auth-Gate ohne Leck. Kein neuer Env/Secret. Deploy-Fix: `moddatetime` → `extensions.moddatetime` schema-qualifiziert (bare Form bestand Prod, brach aber den Schema-Drift-Shadow-DB-Build; Prod-Trigger idempotent nachgezogen). Kein Nav-Konflikt mit PROJ-109 (Meetings hängen an der bestehenden Gremien-Fläche). Offene Followups: PROJ-Y-117a (Kalender-Sync), 117b (Datei-Upload/PROJ-79), 117c (Terminserien), 117d (Meeting→PROJ-13-Versand).
 
