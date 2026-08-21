@@ -237,14 +237,25 @@ export function ConstructionDefectDialog({
             <div className="grid gap-4 sm:grid-cols-2">
               <div className="space-y-2">
                 <Label htmlFor="defect-trade">Gewerk</Label>
+                {/* PROJ-Y-45d: der Wert ist NIE `undefined`. Ein undefined-Wert
+                    macht die Komponente unkontrolliert und sie kippt bei der
+                    ersten Auswahl auf kontrolliert („Select is changing from
+                    uncontrolled to controlled"). Das Gewerk ist Pflicht
+                    (`canSave`), der Sentinel ist deshalb nur ein anwählbarer
+                    Platzhalter — er speichert nichts, sondern macht Speichern
+                    unmöglich. Gleiche Form wie `section_id`/`vendor_id` unten und
+                    wie der Geschwister-Dialog `construction-defect-notice-dialog`. */}
                 <Select
-                  value={draft.trade_id.length > 0 ? draft.trade_id : undefined}
-                  onValueChange={(value) => set("trade_id", value)}
+                  value={draft.trade_id.length > 0 ? draft.trade_id : NONE}
+                  onValueChange={(value) =>
+                    set("trade_id", value === NONE ? "" : value)
+                  }
                 >
                   <SelectTrigger id="defect-trade">
                     <SelectValue placeholder="Gewerk wählen …" />
                   </SelectTrigger>
                   <SelectContent>
+                    <SelectItem value={NONE}>— bitte wählen —</SelectItem>
                     {tradeOptions.map((t) => (
                       <SelectItem key={t.id} value={t.id}>
                         {t.trade?.label ?? "Unbekanntes Gewerk"}

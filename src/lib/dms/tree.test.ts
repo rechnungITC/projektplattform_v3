@@ -2,7 +2,7 @@ import { describe, expect, it } from "vitest"
 
 import type { TreeNodeWithDocument } from "@/types/dms"
 
-import { buildForest } from "./tree"
+import { buildForest, nodePathOptions } from "./tree"
 
 function node(
   id: string,
@@ -65,5 +65,58 @@ describe("buildForest", () => {
     const forest = buildForest([node("orphan", "gone", "document", "x.pdf")])
     expect(forest).toHaveLength(1)
     expect(forest[0].id).toBe("orphan")
+  })
+})
+
+/**
+ * PROJ-Y-45g — `nodePathOptions` ist aus `skill-knowledge-links-section`
+ * herausgezogen, damit der Beleg-Picker der Bau-Abnahmen sie mitbenutzt statt
+ * eine zweite Kopie anzulegen. Die Fälle unten pinnen genau die Eigenschaften,
+ * auf die sich beide Verbraucher stützen.
+ */
+describe("nodePathOptions", () => {
+  it("baut den vollen Pfad über mehrere Ebenen", () => {
+    const options = nodePathOptions([
+      node("root", null, "folder", "Abnahmen"),
+      node("sub", "root", "folder", "2026"),
+      node("doc", "sub", "document", "protokoll.pdf"),
+    ])
+    expect(options.find((o) => o.id === "doc")?.label).toBe(
+      "Abnahmen / 2026 / protokoll.pdf",
+    )
+  })
+
+  it("kennzeichnet Ordner — der Beleg-Picker filtert darauf", () => {
+    const options = nodePathOptions([
+      node("f", null, "folder", "Ordner"),
+      node("d", null, "document", "datei.pdf"),
+    ])
+    expect(options.find((o) => o.id === "f")?.isFolder).toBe(true)
+    expect(options.find((o) => o.id === "d")?.isFolder).toBe(false)
+  })
+
+  it("endet an einer Lücke statt in einer Endlosschleife (Teil-Ladung)", () => {
+    const options = nodePathOptions([node("d", "fehlt", "document", "x.pdf")])
+    expect(options).toHaveLength(1)
+    expect(options[0].label).toBe("x.pdf")
+  })
+
+  it("bricht einen Zyklus ab, statt zu hängen", () => {
+    // Der Datenbank-Wächter verhindert Zyklen; diese Zusicherung schützt den
+    // reinen Helfer davor, bei kaputten Eingabedaten den Browser einzufrieren.
+    const options = nodePathOptions([
+      node("a", "b", "folder", "A"),
+      node("b", "a", "folder", "B"),
+    ])
+    expect(options).toHaveLength(2)
+    for (const o of options) expect(o.label.length).toBeGreaterThan(0)
+  })
+
+  it("sortiert nach Pfad, nicht nach Eingabereihenfolge", () => {
+    const options = nodePathOptions([
+      node("z", null, "document", "zeta.pdf"),
+      node("a", null, "document", "alpha.pdf"),
+    ])
+    expect(options.map((o) => o.id)).toEqual(["a", "z"])
   })
 })
