@@ -1241,7 +1241,7 @@ damit der Vorgang außerhalb der Plattform belegbar ist.
 - [ ] **AC-45γ.21** Aus einer Abnahme lässt sich ein Protokoll als chrome-lose Druckseite erzeugen; der Browser druckt nach PDF (L23).
 - [ ] **AC-45γ.22** Das Protokoll enthält Projekt- und Abnahmeangaben, Bezug, angesetzten Termin und Abnahmedatum, Teilnehmer mit Rolle, Ergebnis, Vorbehalte, Gewährleistungsende sowie Unterschriftenzeilen.
 - [ ] **AC-45γ.23** Das Protokoll respektiert die Projektzugehörigkeit: es zeigt ausschließlich, was der Aufrufer ohnehin sehen darf — der Sitzungs-Client trägt die Prüfung, **nie** der Dienst-Schlüssel.
-- [ ] **AC-45γ.24** *(korrigiert im Tech Design, D-γ2)* An eine Abnahme lässt sich **ein** Beleg hängen: entweder eine externe Adresse **oder** ein vorhandener Dokumentknoten aus dem DMS (PROJ-79) — nicht beides nebeneinander. Die Ablage ist eine **eigene Bau-Tabelle**, nicht die geteilte Verknüpfung aus PROJ-115; wiederverwendet wird deren **Adressprüfung** (Statik, kein Server-Abruf), also die Stelle, an der die Sicherheitslogik sitzt.
+- [x] **AC-45γ.24** *(korrigiert im Tech Design, D-γ2; **beide Wege seit 2026-08-21 erreichbar**, siehe „Followups 45d/45g/45i" unten — bis dahin war das Kriterium serverseitig erfüllt und für den Nutzer halb, registriert als PROJ-Y-45g)* An eine Abnahme lässt sich **ein** Beleg hängen: entweder eine externe Adresse **oder** ein vorhandener Dokumentknoten aus dem DMS (PROJ-79) — nicht beides nebeneinander. Die Ablage ist eine **eigene Bau-Tabelle**, nicht die geteilte Verknüpfung aus PROJ-115; wiederverwendet wird deren **Adressprüfung** (Statik, kein Server-Abruf), also die Stelle, an der die Sicherheitslogik sitzt.
 - [ ] **AC-45γ.25** *(korrigiert im Tech Design, D-γ3)* Teilnehmer werden strukturiert erfasst, **genau eine Quelle je Zeile**: Stakeholder (PROJ-8), Nachunternehmer (PROJ-15) oder Freitext-Name — je mit Rolle im Termin. Das **Projektmitglied entfällt** als eigene Achse: ein anwesendes Mitglied ist fachlich ein Stakeholder, und der Bezug zum Konto hängt bereits dort (Hausregel „Stakeholder ≠ User", gleiche Grenze wie bei den Gremien-Teilnehmern in PROJ-117).
 
 #### ST-45γ.6 — Sichtbarkeit und Sperren
@@ -2818,6 +2818,100 @@ gefahren.
   lesend. F-δ4 präzisiert die Ursache.
 - **D-δ-QA-3** Der Rot-Team-Lauf ist DB-Ebene; die CSV-Formel-Neutralisierung ist über die
   Route-Tests belegt, nicht über einen authentifizierten Abruf mit Datei-Download.
+
+---
+
+## Followups 45d / 45g / 45i — erledigt 2026-08-21
+
+Drei Kleinbefunde aus β/γ, zusammen erledigt weil sie **dieselben zwei Bau-Komponenten** anfassen. Kein
+Backend, keine Migration, kein neues Paket.
+
+### PROJ-Y-45g — der Beleg ist jetzt auch als Dokumentknoten wählbar *(schließt eine Auslassung)*
+
+Das ist die einzige der drei mit Scope-Bedeutung: **AC-45γ.24** verlangt „entweder eine externe Adresse
+**oder** ein vorhandener Dokumentknoten aus dem DMS" und war bis heute **serverseitig erfüllt und für den
+Nutzer halb**.
+
+**Die Registerangabe „es fehlt allein der Picker" habe ich nachgeprüft, nicht übernommen — sie stimmte:**
+Datenbank (`document_node_id`, Einzel-Beleg-CHECK), Route **und** Zod-Schema (`acceptanceDocumentSchema`
+mit drei `refine`-Regeln: nie beides, nie Entfernen-plus-Setzen, nie leer), Client-Wrapper und sogar die
+**Anzeige** („Dokument im Dokumentenbaum") trugen den zweiten Weg von Anfang an. Es fehlte wirklich nur
+der Eingabeweg.
+
+Geliefert: die Quelle ist eine **benannte Wahl** („Externe Adresse" / „Dokument aus dem
+Dokumentenbaum"), keine Ableitung aus „welches Feld ist gefüllt" — dieselbe Entscheidung wie bei γs
+drittem Bezug („Das ganze Projekt" statt „nichts ausgewählt"), und die einzige, die zum CHECK passt, der
+beides zugleich ablehnt. Die Liste zeigt **nur Dateien, keine Ordner** (ein Beleg ist *ein*
+unterschriebenes Protokoll), lädt **erst bei Auswahl der Quelle** und hat einen ehrlichen Leerzustand mit
+Verweis auf „Dokumente" statt einer leeren Auswahlliste.
+
+**Eine Kopie vermieden statt angelegt:** die Pfad-Beschriftung stand inline in
+`skill-knowledge-links-section` (PROJ-77-γ). Sie ist als reine Funktion `nodePathOptions` nach
+`lib/dms/tree.ts` gezogen und **beide** Verbraucher nutzen sie — hätte ich sie kopiert, wäre das der
+Anfang von genau dem Muster, das PROJ-Y-45k mit sieben CSV-Kopien beklagt. 5 neue Lib-Tests, darunter
+Zyklus-Abbruch und Lücke-in-der-Kette (der Wächter verhindert Zyklen, eine **teilweise** geladene Liste
+kann aber einen Knoten ohne Vorfahr enthalten).
+
+### PROJ-Y-45d — der Gewerk-Select kippt nicht mehr von unkontrolliert auf kontrolliert
+
+`construction-defect-dialog.tsx` übergab `undefined`, solange nichts gewählt war; React entscheidet die
+Kontrolliertheit an der ersten Render-Runde und meldete bei der ersten Auswahl „Select is changing from
+uncontrolled to controlled". Die Datei hatte die richtige Konstante `NONE` **schon** und benutzte sie für
+`section_id` und `vendor_id` — nur `trade_id` fiel heraus.
+
+**Ein Befund, der die Registerangabe korrigiert.** Dort steht „die einzige Stelle dieser Form im ganzen
+Repo". Das trifft auf die **wörtliche** Form zu (`value={… .length > 0 ? … : undefined}`, gemessen 1
+Treffer), **nicht** auf die Defektklasse: fünf weitere Selects übergeben `… ?? undefined`
+(`release-page-client`, `method-header`, `sprint-state-dialog`, `step-ma-foundation`,
+`ma-foundation-card`). Sie sind **nicht** mitgefixt — jede liegt in einer fremden Slice, und
+`method-header` rendert auf **jeder** Projektraum-Seite, also unter der Visual-Baseline `project-room`.
+Registriert als **PROJ-Y-45n**, mit der gemessenen Liste.
+
+Der Regressionsschutz ist deshalb ein **struktureller** Wächter
+(`src/test/select-controlled-value.contract.test.ts`, Muster `audit-report-view.contract.test.ts` aus
+PROJ-Y-130p) und keine Radix-Interaktion in jsdom: der Fehler ist eine Verdrahtung, keine Laufzeitlogik.
+Er hält die Mangel-Maske fest, sperrt die ganze Bau-Fläche, und die fünf stehen als **erschöpfende**
+Ausnahmeliste darin — ein *neuer* solcher Select macht den Lauf rot. Ein vierter Fall prüft, dass der
+Sucher nicht ins Leere greift (sonst wären die drei negativen Zusicherungen trivial grün — dieselbe
+Falle wie PROJ-130-δ1/F-1).
+
+### PROJ-Y-45i — die Abnahme-Detailansicht hat im Ladezustand einen Namen
+
+`SheetHeader`/`SheetTitle` standen im `else`-Zweig der Ladeverzweigung; solange geladen wurde, hatte das
+Fenster **keinen** zugänglichen Namen. Die Geschwister-Fläche `construction-defect-detail-sheet` rendert
+ihren Kopf seit β **unbedingt** und ihr Skeleton nur innen — γ ist damit jetzt strukturell gleich, statt
+einen zweiten Platzhalter-Titel danebenzustellen.
+
+Der Test prüft `getByRole("dialog", { name })`, also den **zugänglichen** Namen und nicht sichtbaren Text;
+ein `getByText` wäre auch grün, wenn der Text irgendwo im Rumpf stünde, ohne das Fenster zu benennen — und
+genau das war der Defekt. Ein zweiter Fall sichert die Gegenrichtung (nach dem Laden benennt der Titel die
+konkrete Abnahme und der Ladetitel ist **weg**), sonst wäre der erste Fall auch mit einem dauerhaft
+gerenderten Platzhalter grün.
+
+### Nachweise
+
+**Rot-Grün für beide Fixes ausgeführt**, Rücksetzung über eine Dateikopie statt `git checkout` (das hat in
+dieser Kette schon einmal uncommittete Arbeit gelöscht, PROJ-130-δ2/F-3):
+
+- 45d: ohne den Fix fallen **alle 4** Wächter-Fälle; danach 4/4 grün.
+- 45i: ohne den Fix fällt **genau** der Ladezustands-Fall, der geladene bleibt grün — der Test trifft also
+  den Defekt und nicht die Komponente allgemein.
+
+Gates im eigenen Worktree gemessen, also **ohne** das fremde untracked `U-Know/` im Wurzelverzeichnis des
+Primär-Checkouts, das jede lokale Zahl dort verfälscht: vitest **3573/3573** in 425 Dateien (+11) ·
+ESLint **0** über `src` und `tests` · tsc **13 = Baseline / 0 neu**, auch **nach** dem Build (PROJ-Y-143e-Falle)
+· Build clean.
+
+**Zwei ESLint-Funde an eigenem Code, beide nach Hausmuster gelöst statt per Ausnahme:** das synchrone
+`setTreeLoading(true)` im Effektkörper ist seit PROJ-67/AC-4 verboten → Zustand erst **nach** dem `await`
+(`treeLoaded`), Ladezustand daraus abgeleitet (`use-tenant-members`-Muster aus PROJ-130-γ2b); und ein
+deutsches Schlusszeichen im JSX-Text mit der **typografischen** Form behoben, nicht mit `&quot;` — das ist
+die Form des Bestands (δ `/frontend`).
+
+**Nicht bewiesen und so benannt:** kein authentifizierter Browser-Durchlauf des neuen Pickers. Er bräuchte
+im Bau-Mandanten eine Datei im Dokumentenbaum **und** eine Abnahme mit Ergebnis; das DMS ist dort leer
+(PROJ-80 hat 0 Dokumente in Prod gemessen). Belegt sind die Verdrahtung über Komponenten- und Lib-Tests
+und die Serverseite durch γs Rot-Team-Vektor **S** (fremder Knoten → `23514`).
 
 ---
 

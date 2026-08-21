@@ -51,3 +51,51 @@ export function buildForest(
   sortRec(roots)
   return roots
 }
+
+/** Ein Knoten des flachen Baums mit seinem lesbaren Pfad. */
+export interface NodePathOption {
+  id: string
+  /** `Ordner / Unterordner / Name` */
+  label: string
+  isFolder: boolean
+}
+
+/**
+ * PROJ-Y-45g — flache Knotenliste mit Pfad-Beschriftung, für Auswahllisten.
+ *
+ * Es gibt zwei Verbraucher: die Wissensquellen der Skills (PROJ-77-γ) und den
+ * Beleg-Picker der Bau-Abnahmen. Die Logik steht deshalb **einmal** hier statt
+ * zweimal in den Komponenten — dieselbe Entscheidung wie D-δ4 für das
+ * Vorbehalts-Prädikat, und die Gegenrichtung zu PROJ-Y-45k, wo eine
+ * Escaping-Hilfe inzwischen in sieben Kopien existiert.
+ *
+ * `guard` bricht Zyklen ab: der Datenbank-Wächter verhindert sie, aber eine
+ * teilweise geladene Liste kann einen Knoten enthalten, dessen Vorfahr fehlt —
+ * dann endet der Pfad an der Lücke statt in einer Endlosschleife.
+ */
+export function nodePathOptions(
+  nodes: readonly TreeNodeWithDocument[],
+): NodePathOption[] {
+  const byId = new Map<string, TreeNodeWithDocument>()
+  for (const n of nodes) byId.set(n.id, n)
+
+  const pathOf = (node: TreeNodeWithDocument): string => {
+    const parts: string[] = []
+    let cur: TreeNodeWithDocument | undefined = node
+    const guard = new Set<string>()
+    while (cur && !guard.has(cur.id)) {
+      guard.add(cur.id)
+      parts.unshift(cur.name)
+      cur = cur.parent_id ? byId.get(cur.parent_id) : undefined
+    }
+    return parts.join(" / ")
+  }
+
+  return nodes
+    .map((n) => ({
+      id: n.id,
+      label: pathOf(n),
+      isFolder: n.node_type === "folder",
+    }))
+    .sort((a, b) => a.label.localeCompare(b.label))
+}

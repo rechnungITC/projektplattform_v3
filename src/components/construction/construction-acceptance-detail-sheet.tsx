@@ -16,9 +16,19 @@ import {
   SheetHeader,
   SheetTitle,
 } from "@/components/ui/sheet"
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from "@/components/ui/select"
 import { Skeleton } from "@/components/ui/skeleton"
 import { Textarea } from "@/components/ui/textarea"
 import { useConstructionAcceptanceDetail } from "@/hooks/use-construction-acceptances"
+import { fetchDocumentTree } from "@/lib/dms/api"
+import { nodePathOptions } from "@/lib/dms/tree"
+import type { TreeNodeWithDocument } from "@/types/dms"
 import {
   cancelConstructionAcceptance,
   setConstructionAcceptanceDocument,
@@ -30,6 +40,14 @@ import {
   CONSTRUCTION_ACCEPTANCE_STATUS_LABELS,
   isAcceptanceOpen,
 } from "@/types/construction-acceptance"
+
+/**
+ * Sentinel für „noch nichts gewählt". Ein `undefined`-Wert an einem Radix-Select
+ * würde die Komponente unkontrolliert starten und bei der ersten Auswahl
+ * umkippen — genau der Defekt aus PROJ-Y-45d, der im Mangel-Dialog behoben
+ * wurde. Hier von Anfang an in der Hausform.
+ */
+const NO_NODE = "__none__"
 
 interface Props {
   projectId: string
@@ -81,6 +99,33 @@ export function ConstructionAcceptanceDetailSheet({
   const [docUrl, setDocUrl] = React.useState("")
   const [busy, setBusy] = React.useState(false)
 
+  /**
+   * PROJ-Y-45g — AC-45γ.24 verlangt „entweder eine externe Adresse **oder** ein
+   * vorhandener Dokumentknoten aus dem DMS". Die Datenbank, die Route und der
+   * Client trugen den zweiten Weg von Anfang an (der Einzel-Beleg-CHECK schliesst
+   * beides-zugleich aus, Rot-Team-Vektor S weist einen **fremden** Knoten mit
+   * 23514 ab) — es fehlte allein diese Auswahl, das Kriterium war damit
+   * serverseitig erfüllt und für den Nutzer halb.
+   *
+   * Die Quelle ist eine **benannte Wahl**, keine Ableitung aus „welches Feld ist
+   * gefüllt": dieselbe Entscheidung wie bei γs drittem Bezug („Das ganze
+   * Projekt" statt „nichts ausgewählt"). Sonst wäre unklar, was passiert, wenn
+   * beide Felder etwas enthalten — und genau das lehnt der CHECK ab.
+   */
+  const [docSource, setDocSource] = React.useState<"url" | "node">("url")
+  const [docNodeId, setDocNodeId] = React.useState("")
+  const [treeNodes, setTreeNodes] = React.useState<TreeNodeWithDocument[]>([])
+  const [treeError, setTreeError] = React.useState<string | null>(null)
+  /**
+   * Bewusst „geladen" statt „lädt": ein `setLoading(true)` **synchron** im
+   * Effektkörper ist im Haus verboten (`react-hooks/set-state-in-effect`, seit
+   * PROJ-67/AC-4). Der Zustand wird deshalb erst NACH dem `await` gesetzt und
+   * der Ladezustand daraus abgeleitet — dasselbe Muster wie `use-tenant-members`
+   * (PROJ-130-γ2b). Nebeneffekt: die Liste behauptet nie „keine Datei
+   * vorhanden", solange noch nichts geladen wurde.
+   */
+  const [treeLoaded, setTreeLoaded] = React.useState(false)
+
   const a = detail?.acceptance ?? null
   const open = a !== null && isAcceptanceOpen(a.status)
 
@@ -104,21 +149,68 @@ export function ConstructionAcceptanceDetailSheet({
     }
   }
 
+  /**
+   * Der Baum wird erst geladen, wenn der Nutzer die Dokument-Quelle wählt — die
+   * Fläche öffnet sich sonst für jede Abnahme mit einem Abruf, den fast niemand
+   * braucht. `cancelled`-Wächter nach Hausmuster.
+   */
+  React.useEffect(() => {
+    if (docSource !== "node" || !canManage) return
+    let cancelled = false
+    fetchDocumentTree(projectId)
+      .then((nodes) => {
+        if (cancelled) return
+        setTreeError(null)
+        setTreeNodes(nodes)
+      })
+      .catch((err: unknown) => {
+        if (cancelled) return
+        setTreeError(err instanceof Error ? err.message : "Unbekannter Fehler")
+      })
+      .finally(() => {
+        if (!cancelled) setTreeLoaded(true)
+      })
+    return () => {
+      cancelled = true
+    }
+  }, [docSource, canManage, projectId])
+
+  const treeLoading = docSource === "node" && !treeLoaded && treeError === null
+
+  /**
+   * Nur Dateien, keine Ordner: ein Beleg ist **ein** unterschriebenes Protokoll.
+   * Einen Ordner anzuhängen wäre keine Aussage darüber, was unterschrieben wurde.
+   */
+  const documentOptions = React.useMemo(
+    () => nodePathOptions(treeNodes).filter((n) => !n.isFolder),
+    [treeNodes]
+  )
+
   async function attach() {
     if (!a) return
-    if (!docUrl.trim()) {
+    if (docSource === "url" && !docUrl.trim()) {
       toast.error("Bitte eine Adresse angeben.")
+      return
+    }
+    if (docSource === "node" && !docNodeId) {
+      toast.error("Bitte ein Dokument auswählen.")
       return
     }
     setBusy(true)
     try {
-      await setConstructionAcceptanceDocument(projectId, a.id, {
-        label: docLabel.trim() || null,
-        url: docUrl.trim(),
-      })
+      // Genau EIN Feld geht raus — der Einzel-Beleg-CHECK weist beides
+      // gleichzeitig ab, und die Zod-Prüfung der Route tut es schon davor.
+      await setConstructionAcceptanceDocument(
+        projectId,
+        a.id,
+        docSource === "node"
+          ? { label: docLabel.trim() || null, document_node_id: docNodeId }
+          : { label: docLabel.trim() || null, url: docUrl.trim() }
+      )
       toast.success("Beleg angehängt.")
       setDocLabel("")
       setDocUrl("")
+      setDocNodeId("")
       await refresh()
       onChanged()
     } catch (err) {
@@ -146,12 +238,28 @@ export function ConstructionAcceptanceDetailSheet({
   return (
     <Sheet open={acceptanceId !== null} onOpenChange={onOpenChange}>
       <SheetContent className="w-full overflow-y-auto sm:max-w-xl">
+        {/* PROJ-Y-45i: der Kopf steht AUSSERHALB der Ladeverzweigung. Vorher war
+            er im `else`-Zweig, das Sheet hatte im Ladezustand also gar keinen
+            `SheetTitle` — für einen Screenreader ist der Kontext dieses Fensters
+            damit verloren, solange geladen wird (QA-Befund F-γ2). Die
+            Geschwister-Fläche `construction-defect-detail-sheet` rendert ihren
+            Kopf seit β unbedingt und ihr Skeleton nur INNEN; γ ist damit jetzt
+            strukturell gleich. Ein bloss versteckter Titel wäre schlechter: der
+            sichtbare Text sagt auch sehenden Nutzern, worauf sie warten. */}
         {loading || !detail ? (
-          <div className="space-y-3 p-6">
-            <Skeleton className="h-6 w-2/3" />
-            <Skeleton className="h-4 w-1/2" />
-            <Skeleton className="h-24 w-full" />
-          </div>
+          <>
+            <SheetHeader>
+              <SheetTitle>Abnahme wird geladen …</SheetTitle>
+              <SheetDescription>
+                Die Abnahmedaten werden abgerufen.
+              </SheetDescription>
+            </SheetHeader>
+            <div className="space-y-3 p-6">
+              <Skeleton className="h-6 w-2/3" />
+              <Skeleton className="h-4 w-1/2" />
+              <Skeleton className="h-24 w-full" />
+            </div>
+          </>
         ) : (
           ((acc) => (
           <>
@@ -347,16 +455,81 @@ export function ConstructionAcceptanceDetailSheet({
                       />
                     </div>
                     <div className="space-y-1">
-                      <Label htmlFor="doc-url" className="text-xs">
-                        Adresse (https)
+                      <Label htmlFor="doc-source" className="text-xs">
+                        Woher kommt der Beleg?
                       </Label>
-                      <Input
-                        id="doc-url"
-                        value={docUrl}
-                        onChange={(e) => setDocUrl(e.target.value)}
-                        placeholder="https://…"
-                      />
+                      <Select
+                        value={docSource}
+                        onValueChange={(v) => setDocSource(v as "url" | "node")}
+                      >
+                        <SelectTrigger id="doc-source">
+                          <SelectValue />
+                        </SelectTrigger>
+                        <SelectContent>
+                          <SelectItem value="url">Externe Adresse</SelectItem>
+                          <SelectItem value="node">
+                            Dokument aus dem Dokumentenbaum
+                          </SelectItem>
+                        </SelectContent>
+                      </Select>
                     </div>
+
+                    {docSource === "url" ? (
+                      <div className="space-y-1">
+                        <Label htmlFor="doc-url" className="text-xs">
+                          Adresse (https)
+                        </Label>
+                        <Input
+                          id="doc-url"
+                          value={docUrl}
+                          onChange={(e) => setDocUrl(e.target.value)}
+                          placeholder="https://…"
+                        />
+                      </div>
+                    ) : (
+                      <div className="space-y-1">
+                        <Label htmlFor="doc-node" className="text-xs">
+                          Dokument
+                        </Label>
+                        {treeLoading ? (
+                          <Skeleton className="h-9 w-full" />
+                        ) : treeError ? (
+                          <p className="text-xs text-destructive">
+                            Dokumentenbaum konnte nicht geladen werden:{" "}
+                            {treeError}
+                          </p>
+                        ) : documentOptions.length === 0 ? (
+                          /* Ehrlicher Leerzustand statt einer leeren Liste: das
+                             DMS-Modul kann aus sein oder der Baum leer. */
+                          <p className="text-xs text-muted-foreground">
+                            Im Dokumentenbaum dieses Projekts liegt noch keine
+                            Datei. Laden Sie das Protokoll zuerst unter
+                            „Dokumente“ hoch.
+                          </p>
+                        ) : (
+                          <Select
+                            value={docNodeId.length > 0 ? docNodeId : NO_NODE}
+                            onValueChange={(v) =>
+                              setDocNodeId(v === NO_NODE ? "" : v)
+                            }
+                          >
+                            <SelectTrigger id="doc-node">
+                              <SelectValue placeholder="Dokument wählen …" />
+                            </SelectTrigger>
+                            <SelectContent>
+                              <SelectItem value={NO_NODE}>
+                                — bitte wählen —
+                              </SelectItem>
+                              {documentOptions.map((n) => (
+                                <SelectItem key={n.id} value={n.id}>
+                                  {n.label}
+                                </SelectItem>
+                              ))}
+                            </SelectContent>
+                          </Select>
+                        )}
+                      </div>
+                    )}
                     <Button size="sm" onClick={attach} disabled={busy}>
                       Beleg anhängen
                     </Button>

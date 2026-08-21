@@ -59,6 +59,7 @@ import { Switch } from "@/components/ui/switch"
 import { useAuth } from "@/hooks/use-auth"
 import { useProjects } from "@/hooks/use-projects"
 import { fetchDocumentTree } from "@/lib/dms/api"
+import { nodePathOptions } from "@/lib/dms/tree"
 import {
   createSkillKnowledgeLink,
   deleteSkillKnowledgeLink,
@@ -279,28 +280,12 @@ export function SkillKnowledgeLinksSection({ skillId, canEdit }: Props) {
   }, [dialogOpen, pickProjectId])
 
   // Build "Folder / Sub / node" path labels from the flat tree.
-  const nodeOptions = React.useMemo(() => {
-    const byId = new Map<string, TreeNodeWithDocument>()
-    for (const n of treeNodes) byId.set(n.id, n)
-    const pathOf = (n: TreeNodeWithDocument): string => {
-      const parts: string[] = []
-      let cur: TreeNodeWithDocument | undefined = n
-      const guard = new Set<string>()
-      while (cur && !guard.has(cur.id)) {
-        guard.add(cur.id)
-        parts.unshift(cur.name)
-        cur = cur.parent_id ? byId.get(cur.parent_id) : undefined
-      }
-      return parts.join(" / ")
-    }
-    return treeNodes
-      .map((n) => ({
-        id: n.id,
-        label: pathOf(n),
-        isFolder: n.node_type === "folder",
-      }))
-      .sort((a, b) => a.label.localeCompare(b.label))
-  }, [treeNodes])
+  //
+  // PROJ-Y-45g: die Logik liegt jetzt in `lib/dms/tree.ts` und wird von zwei
+  // Flächen benutzt (hier und dem Beleg-Picker der Bau-Abnahmen). Die frühere
+  // Inline-Fassung stand genau hier; sie wurde herausgezogen statt kopiert —
+  // eine zweite Kopie wäre der Anfang von PROJ-Y-45k gewesen.
+  const nodeOptions = React.useMemo(() => nodePathOptions(treeNodes), [treeNodes])
 
   const handleCreate = async () => {
     if (!pickNodeId) {
