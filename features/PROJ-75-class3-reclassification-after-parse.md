@@ -1,8 +1,18 @@
 # PROJ-75: Class-3-Re-Classification nach Parse
 
 ## Status: Deployed (2026-07-21, Tag `v2.15.0-PROJ-75`)
-## Deployment Scope: mvp
-**Zum Scope (klassifiziert 2026-08-13):** `mvp`, nicht `full`. Der **Ingestion-Pfad** ist vollstaendig und fail-closed ausgeliefert und schuetzt jeden neuen Upload (AC-75.1–75.5, 75.13/75.14). Der Block **„Backfill (Bestands-Rows)" (AC-75.6–75.10) ist deployed, aber gegen die realen Zeilen nie ausgefuehrt** — D-1 unten nennt genau das als nachzuholenden Deploy-Verify, und AC-75.10 verlangt eine Kennzahl *nach* dem Backfill, die es daher nicht gibt. Damit ist eine originaere Anforderung unerfuellt: kein `full`. Die Omission ist als **PROJ-Y-75a** registriert.
+## Deployment Scope: full
+**Scope-Historie — `mvp` (2026-08-13) → `full` (2026-08-20), die frühere Einordnung bleibt zur Nachvollziehbarkeit stehen.**
+
+*Einordnung 2026-08-13 (`mvp`):* Der **Ingestion-Pfad** ist vollstaendig und fail-closed ausgeliefert und schuetzt jeden neuen Upload (AC-75.1–75.5, 75.13/75.14). Der Block **„Backfill (Bestands-Rows)" (AC-75.6–75.10) ist deployed, aber gegen die realen Zeilen nie ausgefuehrt** — D-1 unten nennt genau das als nachzuholenden Deploy-Verify, und AC-75.10 verlangt eine Kennzahl *nach* dem Backfill, die es daher nicht gibt. Damit ist eine originaere Anforderung unerfuellt: kein `full`. Die Omission ist als **PROJ-Y-75a** registriert.
+
+*Aufstufung 2026-08-20 (`full`) — Deploy-Verify-Pass, siehe „Backfill-Ausführung" unten.* Der genannte
+Blocker ist beseitigt: der Backfill ist **gegen die realen Zeilen gelaufen** und AC-75.10 hat jetzt eine
+gemessene Kennzahl (**15 geprüft / 0 hochgestuft / 0 unverifiziert / 15 gescreent / 0 verbleibend**).
+Nichts ist zurückgestellt, PROJ-Y-75a ist geschlossen, kein Followup nötig. Die zweite Hälfte von D-1
+(Ende-zu-Ende-**Upload** in Prod) bleibt als benannte Nachweistiefe offen (**D-3**) — das ist zusätzliche
+Absicherung, **kein** unerfülltes Kriterium, und dieselbe Kategorie, mit der PROJ-Y-2 (D-Y2.1) und
+PROJ-Y-148a als `full` ausgeliefert wurden.
 **Created:** 2026-07-21
 **Last Updated:** 2026-07-21
 
@@ -107,14 +117,14 @@ bereits vollständig geprüft.
       liefert ein identisches Ergebnis wie bisher (Volltext == Excerpt) und wird
       **nicht** als unverifiziert markiert.
 
-### Backfill (Bestands-Rows)
-- [ ] **AC-75.6** Ein re-runnbarer, tenant-sicherer Backfill prüft bestehende
+### Backfill (Bestands-Rows) — **ausgeführt 2026-08-20, Kennzahlen unten**
+- [x] **AC-75.6** Ein re-runnbarer, tenant-sicherer Backfill prüft bestehende
       `context_sources`-Zeilen, die als `truncated` markiert sind, über ihren
       Volltext (aus der Storage-Datei) nach.
-- [ ] **AC-75.7** Zeilen, deren Volltext Class-3-Marker enthält, werden auf
+- [x] **AC-75.7** *(im Lauf ohne Anlass — Mechanismus belegt, siehe unten.)* Zeilen, deren Volltext Class-3-Marker enthält, werden auf
       `privacy_class = 3` hochgestuft; die **Storage-Datei bleibt erhalten**
       (kein Hard-Delete), und das KI-Routing erzwingt fortan Ollama-only.
-- [ ] **AC-75.8** Kann der Volltext einer **Bestands-Zeile** nicht sicher
+- [x] **AC-75.8** *(im Lauf ohne Anlass — alle 15 Dateien waren parsebar.)* Kann der Volltext einer **Bestands-Zeile** nicht sicher
       abgeleitet werden (Re-Parse-Fehler, fehlende/gelöschte Storage-Datei),
       bleibt die bestehende `privacy_class` **unverändert** und die Zeile wird als
       **`classification_unverified`** markiert; der Fehlschlag wird protokolliert
@@ -123,11 +133,12 @@ bereits vollständig geprüft.
       markierten Zeilen müssen für die DSGV-Prüfung (AC-75.10) abfragbar sein.
       (Der **Ingestion-Pfad** ist durch AC-75.13/14 fail-closed und trägt kein
       Residual.)
-- [ ] **AC-75.9** Der Backfill ist **idempotent**: bereits erfolgreich
+- [x] **AC-75.9** *(live bewiesen: zweiter Lauf 0 Zeilen.)* Der Backfill ist **idempotent**: bereits erfolgreich
       re-klassifizierte Zeilen werden bei erneutem Lauf übersprungen; ein zweiter
       Lauf erzeugt keine abweichenden Ergebnisse.
-- [ ] **AC-75.10** Nach dem Backfill wird eine Kennzahl ausgegeben:
+- [x] **AC-75.10** *(erfüllt 2026-08-20 — die Kennzahl existiert.)* Nach dem Backfill wird eine Kennzahl ausgegeben:
       Anzahl geprüfter / hochgestufter / als unverifiziert markierter Zeilen.
+      **Gemessen: 15 geprüft / 0 hochgestuft / 0 unverifiziert / 15 gescreent / 0 verbleibend.**
 
 ### Fail-closed: kein unvollständig gescreentes Dokument (KEIN Restrisiko)
 - [ ] **AC-75.13** Ein Dokument, dessen Inhalt **nicht vollständig** auf PII
@@ -390,7 +401,19 @@ Auth-Gate: POST ohne Auth / falsches Bearer / GET → erreicht Handler (kein 307
 
 ### Deviations / Env-Limitierungen
 - **D-1 (Env):** Der Ingestion-Live-Test (echter Upload mit PII jenseits 8000 → Class-3) und der echte End-to-End-Backfill-Route-Lauf gegen die 13 realen Rows laufen erst **post-deploy** (Code noch nicht deployed; kein prod-`CRON_SECRET` im Worktree). Kompensiert durch: identische Klassifizierer-Logik in Ingestion & Backfill (unit-getestet), Live-DB-Smoke A1–A6 der DB-Semantik, vitest-Route-Wiring. **Als Deploy-Verify nachzuholen.**
+  → **Zweite Hälfte eingelöst 2026-08-20** (Backfill-Route-Lauf gegen die realen Zeilen, siehe
+  „Backfill-Ausführung"). Die erste Hälfte lebt als **D-3** weiter.
 - **D-2 (Env):** Mobile-Safari-E2E übersprungen (WebKit-Host-Libs, PROJ-67/F2).
+- **D-3 (Nachweistiefe, offen — kein unerfülltes Kriterium):** Ein **Ende-zu-Ende-Upload in Prod** mit
+  PII jenseits Zeichen 8000, der die Zeile beim *Ingestieren* auf Class-3 hebt, ist weiter nicht
+  gefahren. Er bräuchte eine authentifizierte Sitzung und würde eine Prod-Zeile plus Storage-Objekt
+  erzeugen (Wegwerf-Mandant nach `docs/production/prod-test-fixtures.md`) — bewusst nicht nebenbei
+  gemacht. **Was stattdessen belegt ist:** die Hochstufungs-Mechanik läuft in
+  `reclassify-backfill/route.test.ts` gegen den **echten** Klassifizierer (nur Download und Parser sind
+  gemockt, also das I/O); der Fall „8100 Zeichen unauffällig, dann eine E-Mail" ergibt
+  `privacy_class: 3` und `upgraded: 1`. Ingestion und Backfill teilen diesen Klassifizierer. Damit ist
+  die Aussage „0 Hochstufungen" eine Aussage über den **Bestand**, nicht über einen blinden Detektor —
+  genau diese Unterscheidung wäre sonst offen geblieben.
 
 ### Gates
 ESLint 0 · tsc 14 baseline/0 neu · vitest **2302/2302** (+10) · build clean · Playwright 3/3 chromium · Advisor: keine neuen (additive Spalten + Index).
@@ -421,8 +444,58 @@ Die 13 echten Kundendokumente tragen also weiterhin ein Datenschutz-Label, das n
 
 **Warum es liegengeblieben ist:** D-1 war als Deploy-Verify notiert, aber der `Deployed`-Stempel im INDEX verdeckte, dass noch etwas aussteht — das Followup-Register sagte „Planned — still open" und lag damit **naeher an der Wahrheit** als das INDEX-Label. Der Widerspruch ist jetzt auf beiden Seiten aufgeloest (Scope `mvp` + PROJ-Y-75a).
 
-**Offener Post-Deploy-Handoff (D-1) — braucht Prod-`CRON_SECRET`:**
-1. Backfill einmal gegen die **13 realen `truncated` & < Class-3**-Rows laufen:
+**~~Offener~~ Post-Deploy-Handoff (D-1) — brauchte Prod-`CRON_SECRET`:**
+1. ~~Backfill einmal gegen die **13 realen `truncated` & < Class-3**-Rows laufen~~ → **ausgeführt 2026-08-20**, siehe unten.
    `curl -X POST https://projektplattform-v3.vercel.app/api/context-sources/reclassify-backfill -H "Authorization: Bearer $CRON_SECRET" -H "content-type: application/json" -d '{"limit":500}'`
    → Response-Zähler prüfen (upgraded/unverified/remaining); schließt die reale DSGVO-Exposure.
-2. Optional-Gegenprobe: neuen Upload mit PII jenseits Zeichen 8000 → `privacy_class=3` verifizieren.
+2. Optional-Gegenprobe: neuen Upload mit PII jenseits Zeichen 8000 → `privacy_class=3` verifizieren. → **offen, jetzt als D-3 geführt.**
+
+### Backfill-Ausführung 2026-08-20 — AC-75.10-Kennzahl, gemessen
+
+Der Repo-Eigner hat das Prod-`CRON_SECRET` bereitgestellt; damit ist Punkt 1 des Handoffs erledigt.
+
+**Vor dem Lauf** (gegen Prod nachgezählt, nicht aus dem Register übernommen): 15 Context-Sources,
+**0** je volltext-geprüft; 13 im Kundenmandanten `IT-Couch GmbH` mit `privacy_class = 2`, alle 13 mit
+`content_excerpt` **exakt 8000** Zeichen **und** alle 13 vom Parser als `truncated` markiert; 2 E2E-Zeilen
+`privacy_class = 1`, nicht abgeschnitten; **alle 15 mit vorhandener Storage-Datei**.
+
+**Lauf 1** (`limit: 500`, HTTP 200 in **20,0 s**):
+
+| Zähler | Wert |
+|---|---|
+| `checked` | **15** |
+| `upgraded` | **0** |
+| `unverified` | **0** |
+| `screened_unchanged` | **15** |
+| `remaining` | **0** |
+
+**Nachzustand in der DB gegengeprüft:** alle 15 Zeilen tragen `full_text_classified_at`, **0**
+`classification_unverified`, Klassen unverändert (2 × Klasse 1, 13 × Klasse 2).
+
+**Kein Zeitstempel-Kurzschluss — geprüft, nicht angenommen.** Die Route hat einen Zweig, der eine Zeile
+*ohne* Re-Parse als gescreent stempelt (`parseStoragePointer` liefert `null`). Weil **alle 15** Zeilen eine
+Datei tragen, ist dieser Zweig für keine erreicht worden: jede Zeile lief durch Download → `parseFile` →
+Klassifikation über `parsed.result.full_text` → monotones `max`. `unverified: 0` belegt zusätzlich, dass
+kein Parse geworfen hat.
+
+**Lauf 2 = Idempotenz-Beweis (AC-75.9):** `checked: 0`, `remaining: 0`, HTTP 200 in **1,8 s**. Der
+Laufzeitunterschied 20 s → 1,8 s ist der Nebenbeweis, dass Lauf 1 echte Downloads und Parses gemacht hat.
+**Negativkontrolle:** derselbe Aufruf ohne Bearer → **401** `unauthorized`.
+
+**Wie viel Text war überhaupt neu?** Das qualifiziert das Ergebnis, deshalb gemessen statt weggelassen:
+die 13 Kundenzeilen sind **dasselbe DOCX** — `raw_length` bei allen exakt **12 044** Zeichen, eine Seite.
+Es sind also 13 Uploads **eines** Dokuments, nicht 13 verschiedene. Neu geprüft wurden damit **4 044
+Zeichen** echten Neutexts (12 044 − 8 000) pro Zeile, 52 572 Zeichen in Summe, aber nur **4 044 Zeichen
+unterschiedlicher** Inhalt.
+
+**Was das Ergebnis heißt — und was nicht.** Der zuvor ungeprüfte Rumpf dieses Dokuments enthält keine
+Class-3-Marker; das Label `privacy_class = 2` war also von Anfang an richtig, gefehlt hat die
+**Verifikation**. Das Ergebnis trägt bewusst **keine** Aussage über den Klassifizierer bei vielfältigen
+Dokumenten: der Bestand ist ein einziges Dokument. Dass der Detektor im Rumpf überhaupt greift, ist
+getrennt belegt (D-3). AC-75.7 und AC-75.8 hatten im Lauf **keinen Anlass** — nichts war hochzustufen,
+nichts unparsebar; beide sind damit erfüllt, ohne gegen echte Daten *ausgeübt* worden zu sein, und beides
+steht so in der AC-Liste.
+
+**Kundendaten:** ausschließlich die vorgesehenen Felder geschrieben
+(`full_text_classified_at`, `classification_unverified`), keine Zeile angelegt oder gelöscht, keine
+Dokumentinhalte gelesen oder protokolliert. **Rückstände: keine.**

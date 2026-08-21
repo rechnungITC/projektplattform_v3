@@ -13,11 +13,14 @@
 
 import type { SupabaseClient } from "@supabase/supabase-js"
 
+import type { ConstructionScheduleSignals } from "@/types/construction-signals"
+
 import {
   computeStatusTrafficLight,
   type StatusTrafficLightResult,
 } from "./status-traffic-light"
 import type {
+  SnapshotConstructionBlock,
   SnapshotContent,
   SnapshotDecisionRef,
   SnapshotHeader,
@@ -66,7 +69,7 @@ export async function aggregateSnapshotData(
   const { data: project, error: projectErr } = await supabase
     .from("projects")
     .select(
-      "id, tenant_id, name, project_method, responsible_user_id, type_specific_data",
+      "id, tenant_id, name, project_method, project_type, responsible_user_id, type_specific_data",
     )
     .eq("id", input.projectId)
     .maybeSingle()
@@ -273,6 +276,56 @@ export async function aggregateSnapshotData(
     readiness = undefined
   }
 
+  // PROJ-45-δ (AC-45δ.17/.18) — optionaler Bau-Block. Zwei Bedingungen müssen
+  // gemeinsam halten: Bauprojekt UND belegte Bauachse. Ist eine nicht erfüllt,
+  // bleibt `construction` `undefined` und der Schlüssel wird unten NICHT
+  // gesetzt (nicht `null`, nicht `{}` — sonst landet er im JSONB und der
+  // gespeicherte Inhalt eines Nicht-Bauprojekts wäre nicht mehr byte-identisch).
+  // Die Auswertung ist SECURITY INVOKER und wird deshalb mit dem
+  // sitzungsgebundenen Client des Aufrufers gerufen — ein Service-Role-Client
+  // wäre hier ein Aggregat-Leck.
+  // Fehler fallen weich zurück wie bei `readiness`: nur der Projekt-Lookup
+  // oben darf werfen, ein Bau-Fehler darf die Schnappschuss-Erzeugung nicht
+  // brechen.
+  let construction: SnapshotConstructionBlock | undefined
+  if ((project.project_type as string | null) === "construction") {
+    try {
+      const { data: signalsRaw, error: signalsErr } = await supabase.rpc(
+        "construction_schedule_signals",
+        { p_project_id: input.projectId },
+      )
+      if (signalsErr) {
+        throw new Error(signalsErr.message)
+      }
+      const signals = signalsRaw as ConstructionScheduleSignals | null
+      if (
+        signals?.summary &&
+        (signals.summary.trades_total > 0 || signals.summary.sections_total > 0)
+      ) {
+        construction = {
+          as_of: signals.as_of,
+          trades_total: signals.summary.trades_total,
+          blocked_trades_total: signals.summary.blocked_trades,
+          blocked_trades: (signals.trades ?? [])
+            .filter((t) => t.is_blocked)
+            .map((t) => ({
+              trade_label: t.trade_label,
+              blocker_reasons: t.blocker_reasons ?? [],
+            })),
+          sections: (signals.sections ?? []).map((s) => ({
+            label: s.label,
+            progress_percent: s.progress_percent,
+            progress_source: s.progress_source,
+            overdue_items: s.overdue_items,
+          })),
+          overdue_defects_total: signals.summary.overdue_defects,
+        }
+      }
+    } catch {
+      construction = undefined
+    }
+  }
+
   const content: SnapshotContent = {
     header,
     traffic_light: trafficLight.light,
@@ -288,6 +341,10 @@ export async function aggregateSnapshotData(
     generated_by_name: input.generatorDisplayName,
     generated_at: now.toISOString(),
     readiness,
+    // Bedingter Spread, nicht `construction,` — ein gesetzter Schlüssel mit
+    // `undefined` überlebt `Object.keys` und würde die eingefrorene
+    // Schlüsselliste eines Nicht-Bauprojekts verändern (AC-45δ.18).
+    ...(construction ? { construction } : {}),
   }
   // Suppress unused warning for `kind` — reserved for future
   // kind-specific aggregation (e.g. shorter lists for Executive-

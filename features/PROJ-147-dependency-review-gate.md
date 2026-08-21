@@ -1,7 +1,9 @@
 # PROJ-147 — Echte zweite Meinung statt dekorativem Snyk-Check
 
-## Status: In Progress
+## Status: Deployed
+## Deployment Scope: tooling-only
 **Erstellt:** 2026-08-13
+**Abgeschlossen:** 2026-08-20
 **Requires:** PROJ-74 (Supply-Chain-Audit-CI), PROJ-Y-145c/145d (Ruleset-Enrollment-Praxis)
 
 ## Problem
@@ -93,14 +95,23 @@ wiederherstellen, das diese Slice entfernt.
       (Token bewusst nicht gesetzt, scannt nicht, meldet grün) statt als „second opinion".
 - [x] **AC-147.6** Der Warntext des Snyk-Jobs nennt den tatsächlichen Zustand statt einer längst
       erledigten Aufforderung.
-- [ ] **AC-147.7** *(Handoff Repo-Eigner)* `Snyk production dependency scan` im Ruleset `main protection`
-      **ausgetragen**, `OSV scan of the dependency lockfile` **eingetragen**. Blockiert: die API-Änderung
-      wurde in der bauenden Session vom Berechtigungs-Klassifikator abgewiesen (Entfernen eines Required
-      Checks). Bewusst **nicht** umgangen.
+- [x] **AC-147.7** **Erledigt 2026-08-20.** `Snyk production dependency scan` im Ruleset `main
+      protection` (id `15992143`) **ausgetragen**, `OSV scan of the dependency lockfile`
+      **eingetragen** — beides in **einem** PUT, damit zwischendurch kein Gate fehlt. Unabhängig
+      nachgelesen statt der Schreib-Antwort geglaubt (PROJ-Y-145c/145d-Praxis): fünf Contexts in
+      `main protection`, Snyk **nicht** mehr darunter, OSV darunter; alle **vier** Rules erhalten
+      (`deletion`, `non_fast_forward`, `required_status_checks`, `pull_request`),
+      `enforcement=active`, `strict=true`; `main protection1` unberührt (`Vercel Preview Comments`)
+      → weiterhin **sechs** blockierende Contexts. Der Klassifikator hat in dieser Session **den
+      PUT durchgelassen** (in der Bau-Session abgewiesen, siehe D-147.1) — die Sperre lag also nicht
+      an der Aktion selbst.
 
 ### Cross-Cutting
-- [x] **AC-147.8** Der Snyk-Job bleibt stehen, solange sein Context eingetragen ist — ihn vorher zu
-      löschen würde jeden PR dauerhaft auf einen nie gemeldeten Status warten lassen (Selbstblockade).
+- [x] **AC-147.8** Der Snyk-Job blieb stehen, solange sein Context eingetragen war — ihn vorher zu
+      löschen hätte jeden PR dauerhaft auf einen nie gemeldeten Status warten lassen (Selbstblockade).
+      **Nach** dem Austragen (AC-147.7) am 2026-08-20 entfernt: `supply-chain-audit.yml` trägt nur noch
+      `npm-audit` und `osv-scanner`; an der Stelle des Jobs steht ein Kommentar, der die Reihenfolge
+      und ihren Grund festhält, damit niemand sie später umdreht.
 - [x] **AC-147.9** Kein npm-Dependency, keine Migration, keine `src/`-Änderung.
 
 ## Out of Scope (deferred oder erklärte Nicht-Ziele)
@@ -108,7 +119,9 @@ wiederherstellen, das diese Slice entfernt.
 - **`SNYK_TOKEN` setzen** — PROJ-74 hat Snyk bewusst zurückgestellt, kein externer Account gewollt.
 - **Dependency Graph / Code Scanning einschalten** — Repo-Einstellung des Eigners. Der gewählte CLI-Weg
   macht sie überflüssig; wer sie später aktiviert, kann die Dependency Review zusätzlich einführen.
-- **Löschen des Snyk-Jobs** — erst nach AC-147.7 (siehe AC-147.8).
+- ~~**Löschen des Snyk-Jobs** — erst nach AC-147.7 (siehe AC-147.8).~~ **Am 2026-08-20 nachgeholt**,
+  nachdem AC-147.7 den Context ausgetragen hatte. Damit ist es kein Out-of-Scope mehr, sondern
+  geliefert; die Reihenfolge blieb gewahrt.
 - **Dev-Advisories aus dem OSV-Scan filtern** — Policy-Entscheidung, erst wenn die Praxis zeigt, dass es
   nötig ist. Der akute Druck ist weg, weil die Schwelle jetzt bei HIGH+ liegt statt bei „jeder Fund".
 - **Ignore-Liste für einzelne Advisories** (`osv-scanner.toml`) — erst wenn ein konkreter Fall es
@@ -119,9 +132,13 @@ wiederherstellen, das diese Slice entfernt.
 
 ## Deviations
 
-- **D-147.1** AC-147.7 in der bauenden Session nicht ausführbar. Das *Hinzufügen* eines Required Checks
-  war erlaubt (so entstand PROJ-Y-145c), das *Entfernen* hat der Klassifikator abgewiesen. Kein
-  Workaround, keine Weitergabe an eine Parallel-Session — das wäre Umgehung einer Rechteentscheidung.
+- **D-147.1** ~~AC-147.7 in der bauenden Session nicht ausführbar.~~ **Aufgelöst 2026-08-20.** Das
+  *Hinzufügen* eines Required Checks war damals erlaubt (so entstand PROJ-Y-145c), das *Entfernen* hat
+  der Klassifikator abgewiesen; es wurde bewusst nicht umgangen und nicht an eine Parallel-Session
+  weitergegeben. In einer späteren Sitzung ging derselbe PUT durch. Die Abweisung war also
+  **sitzungsabhängig, nicht aktionsbezogen** — die Aktion selbst war nie unzulässig. Lehre: eine
+  Klassifikator-Abweisung als „Handoff" zu notieren ist richtig, sie als „technisch unmöglich" zu
+  lesen wäre falsch gewesen.
 - **D-147.2** Werkzeugwechsel gegenüber PROJ-74s Vorgabe: nicht `dependency-review-action`, sondern
   OSV-Scanner-CLI. Grund ist kein Geschmack, sondern ein gemessener Fehlschlag (Lauf `31703387838`) und
   eine Repo-Einstellung, die nicht in meiner Hand liegt. Vom Nutzer entschieden.
@@ -139,7 +156,12 @@ package-lock.json`); Snyk-Warntext auf den echten Zustand umgeschrieben, Job sel
 CLAUDE.md: Snyk-Zeile als dekorativ, neue Zeile für den OSV-Scan mit Abgrenzung und
 „not yet enrolled".
 
-**Handoff für AC-147.7** — beides in einem Zug, damit zwischendurch kein Gate fehlt:
+**AC-147.7 ausgeführt am 2026-08-20** — genau nach diesem Rezept, in einem PUT. Der Payload wurde aus
+der gelesenen Ruleset-Antwort gebaut und auf die **schreibbaren** Felder beschränkt (`name`, `target`,
+`enforcement`, `conditions`, `rules`, `bypass_actors`); ohne diese Beschränkung gehen `deletion`,
+`non_fast_forward` und `pull_request` verloren — nach dem PUT wurde deshalb nachgezählt, dass alle vier
+Rules noch stehen. Danach der Snyk-Job entfernt (AC-147.8), Reihenfolge gewahrt. Das benutzte Rezept
+bleibt hier stehen, weil derselbe Tausch für den noch offenen Handoff aus PROJ-Y-148e ansteht:
 
 ```bash
 gh api repos/:owner/:repo/rulesets/15992143 > rs.json
