@@ -86,14 +86,6 @@ export const INVENTORY_EXCEPTIONS: readonly InventoryException[] = [
       "in `20260428120000`, kein `create function` in irgendeiner Migrationsdatei.",
     kind: "legacy",
   },
-  {
-    name: "_dd_finding_source_question_guard",
-    reason:
-      "PROJ-Y-114a (dd-finding-source-ref): Migration `20260817120000` ist seit dem 2026-08-17 in Prod, " +
-      "die Slice war am 2026-08-19 noch nicht gemergt. Wegwerf-Eintrag — sobald sie landet, meldet der " +
-      "Wächter ihn als veraltet und er ist zu entfernen.",
-    kind: "pending_merge",
-  },
 ] as const
 
 export interface InventoryFinding {
@@ -107,8 +99,15 @@ export interface InventoryResult {
   exceptionCount: number
   /** In Prod, von keiner Migrationsdatei angelegt, nicht in der Ausnahmeliste. */
   unexplained: string[]
-  /** In der Ausnahmeliste, aber gar nicht (mehr) in Prod — die Liste ist veraltet. */
+  /** In der Ausnahmeliste, aber nicht mehr noetig — siehe `staleExceptionReasons`. */
   staleExceptions: string[]
+  /**
+   * Warum eine Ausnahme veraltet ist: `absent_in_prod` (Funktion gar nicht mehr
+   * in Prod) oder `now_in_repo` (eine Migrationsdatei legt sie inzwischen an,
+   * die Slice ist also gemergt). Ohne diese Unterscheidung meldete der Waechter
+   * fuer einen gemergten `pending_merge`-Eintrag eine falsche Ursache.
+   */
+  staleExceptionReasons: Map<string, "absent_in_prod" | "now_in_repo">
   /**
    * Im Repo angelegt, aber nicht im Prod-Inventar. Rein informativ und **kein
    * Fehler**: eine gerade gemergte Slice, deren Migration noch nicht in Prod ist,
@@ -167,9 +166,18 @@ export function analyzeInventory(
   // erledigt — genau dadurch räumt die Liste sich auf, statt zuzuwachsen. Ohne diese
   // Prüfung würde ein liegengebliebener Eintrag einen künftigen echten Fund gleichen
   // Namens stillschweigend durchlassen.
+  // Zwei grundverschiedene Gruende, und die Unterscheidung gehoert in die
+  // Meldung: `!prod.has` heisst „gar nicht mehr in Prod" (Liste veraltet),
+  // `repo.has` heisst „eine Migrationsdatei legt sie inzwischen an" (die Slice
+  // ist gemergt, der Wegwerf-Eintrag hat seinen Zweck erfuellt). Bis
+  // PROJ-Y-45f/45l/45m nannte der Waechter immer nur den ersten — und war damit
+  // bei einem gemergten `pending_merge`-Eintrag sachlich falsch.
   const staleExceptions = [...allowed]
     .filter((n) => !prod.has(n) || repo.has(n))
     .sort()
+  const staleExceptionReasons = new Map<string, "absent_in_prod" | "now_in_repo">(
+    staleExceptions.map((n) => [n, prod.has(n) ? "now_in_repo" : "absent_in_prod"])
+  )
   const repoOnly = [...repo].filter((n) => !prod.has(n)).sort()
 
   return {
@@ -178,6 +186,7 @@ export function analyzeInventory(
     exceptionCount: allowed.size,
     unexplained,
     staleExceptions,
+    staleExceptionReasons,
     repoOnly,
   }
 }

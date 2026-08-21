@@ -71,9 +71,17 @@ function main(): number {
     )
   }
   for (const name of result.staleExceptions) {
+    // Der Grund gehoert in die Meldung: ein gemergter `pending_merge`-Eintrag ist
+    // veraltet, WEIL eine Migrationsdatei die Funktion jetzt anlegt — nicht, weil
+    // sie aus Prod verschwunden waere. Die alte Fassung nannte immer nur den
+    // zweiten Fall und schickte damit auf die falsche Spur.
+    const why =
+      result.staleExceptionReasons.get(name) === "now_in_repo"
+        ? "eine Migrationsdatei legt sie inzwischen an (die Slice ist gemergt) — der Wegwerf-Eintrag hat seinen Zweck erfüllt"
+        : "die Funktion existiert nicht mehr im Prod-Inventar"
     console.error(
-      `::error file=scripts/check-function-inventory/analyze.ts::Ausnahme \`${name}\` ist veraltet — die Funktion ` +
-        `existiert nicht mehr im Prod-Inventar. Eintrag entfernen, sonst deckt er künftig einen echten Fund gleichen Namens.`
+      `::error file=scripts/check-function-inventory/analyze.ts::Ausnahme \`${name}\` ist veraltet — ${why}. ` +
+        `Eintrag entfernen, sonst deckt er künftig einen echten Fund gleichen Namens.`
     )
   }
   if (result.repoOnly.length > 0) {

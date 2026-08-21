@@ -3039,6 +3039,40 @@ Kappungs-Abzeichen fällt der UI-Fall; ohne die CSV-Zelle fällt der Export-Fall
 aus PROJ-Y-143e vermieden) · vitest **3580/3580** in 426 Dateien (+7) · Build clean mit allen drei
 δ-Flächen registriert · migration-naming 0 Fehler · index-scope 0 Fehler.
 
+### Der Funktions-Inventar-Wächter hat zugeschlagen — und das ist der Ertrag
+
+Der erste CI-Lauf war rot: **`Verify prod function inventory vs migration files`** (PROJ-Y-148e).
+Genau sein Zweck, und er hat zwei Dinge sichtbar gemacht.
+
+**1. Das Inventar musste aufgefrischt werden** — Pflicht am Ende jeder Slice mit Migration
+(`docs/production/function-inventory.md`), von mir zunächst versäumt. Der Diff ist **genau eine Zeile**:
+`construction_section_blocking_defects` verschwindet, **286 → 285**. Nichts Unerklärtes tauchte auf —
+das ist die Aussage, für die das Auffrischen da ist. Die gezogene Funktion erscheint jetzt korrekt in
+der *informativen* Zeile „im Repo angelegt, aber nicht im Prod-Inventar (gedroppt …)": β's Migration
+legt sie an (append-only), meine zieht sie.
+
+**2. Ein vorbestehender Fehlschlag auf `main`, nachgemessen statt vermutet.** Mit main's Inventar und
+main's Wächter fällt derselbe Lauf — Ursache ist **PROJ-Y-114as Merge** (PR #400): sein
+`pending_merge`-Wegwerf-Eintrag ist damit überflüssig, genau wie sein eigener Kommentar es
+vorhergesagt hat („sobald sie landet, meldet der Wächter ihn als veraltet und er ist zu entfernen").
+Eintrag entfernt, der pinnende Test führt die Liste jetzt ohne ihn — bewusst **ohne Ersatz**: sie soll
+leer laufen, nicht gepflegt werden.
+
+**Dabei ein kleiner Defekt im Wächter selbst, behoben.** Die Staleness-Bedingung hat **zwei** Zweige
+(`!prod.has(n) || repo.has(n)`), die Meldung nannte immer nur den ersten — für einen gemergten
+`pending_merge`-Eintrag war sie damit **sachlich falsch** („existiert nicht mehr im Prod-Inventar",
+obwohl die Funktion sehr wohl in Prod steht). Sie nennt jetzt den zutreffenden Grund; Gegenprobe
+ausgeführt (Eintrag testweise wieder eingesetzt → neue, richtige Formulierung). Dieselbe Klasse, die
+PROJ-Y-130f eine Ebene höher behoben hat: eine Meldung, die die Ursache nicht nennt, schickt auf die
+falsche Spur.
+
+**Nebenbefund am eigenen Vorgehen, festgehalten:** ein `git stash -u` in einem Baum ohne
+uncommittete Arbeit stasht nichts — das folgende `git stash pop` hat deshalb einen **fremden, älteren
+Stash** einer anderen Session ausgepackt und einen Konflikt an `CLAUDE.md`/`AGENTS.md` erzeugt (genau
+die Symlink-Falle, vor der CLAUDE.md warnt). Kein Schaden: `pop` behält den Eintrag bei Konflikt, der
+Konflikt wurde verworfen, alle drei Stashes sind unversehrt und `AGENTS.md` ist wieder ein Symlink.
+Lehre: für einen Blick auf fremde Dateiversionen `git show <ref>:<pfad>` statt stash/checkout.
+
 ### Abweichungen
 
 - **D-Y45db.1** Der Wächter ist neu geschrieben statt anker-ersetzt (Begründung oben); die Migration
