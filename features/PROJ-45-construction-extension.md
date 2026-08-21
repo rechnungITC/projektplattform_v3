@@ -2704,6 +2704,123 @@ Offen: **`/qa`**.
 
 ---
 
+## `/qa` — δ PASS 2026-08-21 (0 Critical / 0 High / 0 Medium → Approved)
+
+**24/24 Akzeptanzkriterien, 14/14 Härtungskriterien.** Kein Kriterium bleibt offen; die zwei, die
+eine Nachweismatrix als „nur Code" ausgewiesen hat, sind in diesem Lauf mit Tests unterlegt worden.
+
+### Der Kern: der Durchlauf, den `/frontend` offen gelassen hat — mit geseedetem Blocker
+
+`tests/PROJ-45-delta-signals-chain.spec.ts`, **3× 2/2 chromium**. Die Fixture-Lane gibt von sich aus
+**nur** den Leerzustand her (live gemessen: 1 Gewerk ohne Befund, 2 Abschnitte ohne Verknüpfung, 0
+Fristen, 0 Engpässe) — ein Durchlauf darauf hätte von den vier Blöcken **keinen** im gefüllten
+Zustand belegt. Die Kette seedet daher einen echten Blocker und prüft **beide Hälften gegeneinander**:
+
+- **gefüllt:** überfälliger Mangel → Gewerk „Blockiert" mit **benanntem** Grund, die drei getrennten
+  Zahlen, „aus 2 Arbeitspaketen im Teilbaum" an der **Wurzel** (die Arbeitspakete hängen am Kind),
+  50 % Fortschritt, die Frist als **verstrichen**, die Engpass-Zeile mit „6 Tage";
+- **leer, mit Grund:** ein Abschnitt ohne Verknüpfung zeigt weder Balken noch „0 %", sondern den Satz,
+  warum nichts messbar ist.
+
+**Zwei negative Zusicherungen tragen den Rechte-Teil**, weil eine Kette, die nur den Glückspfad geht,
+über ein Tor nichts beweist: der **Betrachter** sieht die Fläche vollständig (AC-45δ.23 — hier gibt es
+bewusst **keine** verschärfte Rolle, anders als bei γ), und sie bietet ihm **keinen** Schreibweg —
+während derselbe Betrachter im **gleichen Test** auf der Mängel-Fläche „Mangel erfassen" sehr wohl
+sieht (β/L15). Ohne diese Gegenprobe belegte „kein Knopf" nur die Abwesenheit eines Knopfes.
+
+### Live gegen Prod: 199 PASS / 0 FAIL über sechs Dateien, 0 Rückstände
+
+| Datei | Ergebnis |
+|---|---|
+| **δ** `PROJ-45-delta-schedule-signals-pentest.sql` | **52/52** (21 + 16 + 9 + 2 + 4) |
+| **δ Rot-Team** `PROJ-45-delta-redteam-supplement.sql` | **21/21** (neu in `/qa`) |
+| β | **53/53** wörtlich |
+| γ | **60/60** wörtlich |
+| α | **18/18** wörtlich |
+| PROJ-Y-45a | **9/9** wörtlich |
+| PROJ-103 | **7/7** wörtlich — die **absoluten** Zahlen halten, δ hat die M&A-Engpass-Auswertung nicht angefasst |
+
+Rückstandsfreiheit über neun Zähler; **0** deaktivierte Trigger (mit Gegenprobe „19 Trigger vorhanden,
+19 aktiv" — sonst hieße „0 Treffer" auch „keine Trigger gefunden"). Der Bestand von 14 Mängeln und 24
+Ereignissen im Bau-Mandanten ist **zugeordnet** statt unerklärt gelassen: β/γ-QA-Fixture vom 2026-08-20.
+
+**Das Tor der Slice ist belegt, nicht bloß grün:** beide Prädikat-Umstellungen sind in Prod aktiv
+(je 1 Aufruf im Rumpf, das alte Literal im β-Helfer nachweislich verschwunden, die Geschwister-Zweige
+der γ-Funktion erhalten), beide Helfer `immutable` mit `search_path`, `anon` **und PUBLIC** ohne
+EXECUTE. Ohne diesen Nachweis hätte „60/60 grün" auch „nichts umgestellt" heißen können.
+
+### Was `/qa` selbst nachgebessert hat
+
+Eine Nachweismatrix über alle 38 Kriterien hat drei Lücken benannt, alle in diesem Lauf geschlossen:
+
+1. **AC-45δ.2 und AC-45δ.15 waren „nur Code".** Keine Testdatei rendert die Fläche; die zwei
+   Kriterien, die am leisesten kippen, hingen an Kommentaren. Neu: **19 Komponenten-Fälle** in drei
+   Dateien, jeweils **rot-grün belegt**. Der schärfste ist die Kopfzeile: die Zusammenfassung sagt
+   7/5/3/2, die Listen tragen **eine** Zeile und ein unblockiertes Gewerk — nur eine Kopfzeile, die
+   aus `summary` liest, kann das anzeigen. Würde eine künftige Fassung aus den Listen rechnen (die
+   benannte Gefahr), stünde dort 1 bzw. 0. Dazu: die Summe 15 darf **nicht** vorkommen, weil sie
+   denselben Mangel mehrfach zählte. Beim Schreiben fiel auf, dass „Überfällig" **zweimal** im DOM
+   steht (Kachel und Gewerk-Zähler) — ein `getByText` war mehrdeutig und ist auf „Beschriftung mit
+   dem Wert aus `summary`" präzisiert.
+2. **Die Aggregat-Leck-Probe deckte vier von sechs Kopfzahlen.** `defects_without_due_date` und
+   `defects_awaiting_review` waren in **keinem** Leck-Vektor zugesichert. Neuer Block 2b: der Seed
+   macht alle drei Mangel-Zähler ungleich 0 (sonst wäre die Zusicherung trivial erfüllt) und die
+   Prüfung **iteriert über die Schlüssel** — ein künftiger siebter Zähler kann nicht stillschweigend
+   ungeprüft bleiben.
+3. **AC-45δ.20 hing an einem Strukturargument** („`report_snapshots` hat keine UPDATE/DELETE-Policy").
+   Neuer Block 4 macht daraus Verhalten: **42501** auf beiden Wegen, und S3 belegt, dass die Zeile für
+   denselben Nutzer **lesbar** ist — ohne das wären S1/S2 auch bei unsichtbarer Zeile grün.
+
+### Befunde
+
+- **F-δ1 (Low, in `/qa` behoben).** Der CSV-Knopf trug als **zugänglichen** Namen nur den Blocknamen
+  („Gewerke") — im gleichnamigen Block doppelt und ohne Hinweis, dass eine Datei kommt. Jetzt
+  `aria-label` „… als CSV herunterladen"; die Kette prüft darauf.
+- **F-δ2 (Low, offen → PROJ-Y-45l).** Der Rekursions-Riegel der Auswertung (`depth < 20`)
+  **unterberichtet still**: bei 25 verschachtelten Abschnitten zählt die Wurzel nur bis Ebene 20, der
+  tiefe Knoten sieht sein eigenes Arbeitspaket (also kein Fehler, kein Hängen) — aber der Fortschritt
+  an der Wurzel ist zu niedrig, ohne dass die Oberfläche es sagen könnte. Gemessen, nicht vermutet;
+  reale Abschnittsbäume haben 2–4 Ebenen, die Fixture zwei.
+- **F-δ3 (Info, offen → PROJ-Y-45m).** Die Auswertung joint `projects` nicht und filtert daher
+  `is_deleted` nicht: Zeilen eines **weich gelöschten** Projekts erscheinen, wenn man die Kennung
+  kennt. Kein Rechteproblem (RLS und Projekt-Mitgliedschaft unverändert) und **konsistent mit den
+  Geschwister-Flächen** — deshalb Info und cross-cutting, nicht δ-Defekt.
+- **F-δ4 (Info) — eine Korrektur an einem registrierten Followup.** PROJ-Y-45h ist **enger** als
+  notiert: ein Mangel ist nicht grundsätzlich unlöschbar, sondern erst **mit** Verlaufszeilen. Die
+  fünf Zeilen dieses Laufs ließen sich mit einem gewöhnlichen `DELETE` entfernen — **kein** Runbook-Weg,
+  **0** deaktivierte Trigger. Was β's Teardown bricht, ist die unveränderliche **Historie**, nicht die
+  Mangel-Zeile; damit ist auch die Richtung für 45h klarer.
+- **F-δ5 (Info, eigener Fehler).** Zwei meiner Zusicherungen waren falsch, nicht das Produkt: die
+  Auth-Gate-Marke `overdue_defects` ist ein **Sektionsname** und steht im gespiegelten `?next=`
+  (genau die Verwechslung, vor der der γ-Spec im Kommentar warnt), und die Quellenangabe hatte ich
+  erfunden statt nachgelesen („aus N Arbeitspaketen im Teilbaum"). Beide korrigiert; die Testdateien
+  tragen die Begründung, damit die nächste Fassung nicht wieder hineinläuft.
+
+### Gates
+
+vitest **3496/3496** in 419 Dateien · ESLint **0** über `src` und `tests` · tsc **13 = Baseline / 0
+neu** · Playwright **36/36** chromium (δ-Auth-Gates 6 + δ-Kette 2 + α 18 + γ 10) · **Visual 9/9 ohne
+Neuaufnahme** · Advisors **149 WARN / 0 ERROR**, davon **keine** zu einer der drei δ-Funktionen ·
+`check:index-scope` 0 · `check:migration-naming` 0 · Funktions-Inventar **286**, gegen Prod
+gegengezählt.
+
+Alle lokalen Zahlen sind **ohne** das fremde, untracked `U-Know/` im Wurzelverzeichnis gemessen (siehe
+`/frontend`-Notiz); der Build wurde dafür erneut in einem frischen Worktree auf demselben Commit
+gefahren.
+
+### Abweichungen
+
+- **D-δ-QA-1** Mobile Safari env-übersprungen (WebKit-Host-Bibliotheken fehlen, PROJ-67/F2).
+- **D-δ-QA-2** Kein Durchlauf der β-**authentifizierten** Spec: sie fällt weiterhin mit
+  **5 failed / 1 did not run / 12 passed** im Teardown (`removeRunDefects → deleteOrThrow`) — die
+  bereits als **PROJ-Y-45h** registrierte Signatur aus PROJ-Y-148d. Strukturell belegt, dass δ es
+  nicht sein kann: die δ-Migration enthält **0** DDL-Anweisungen und nennt `construction_defects` nur
+  lesend. F-δ4 präzisiert die Ursache.
+- **D-δ-QA-3** Der Rot-Team-Lauf ist DB-Ebene; die CSV-Formel-Neutralisierung ist über die
+  Route-Tests belegt, nicht über einen authentifizierten Abruf mit Datei-Download.
+
+---
+
 ## Deployment — γ (2026-08-20)
 
 **Tag `v2.70.0-PROJ-45-gamma` · PR #422 (squash) → main `31aef7f` · Deployment Scope `alpha`.**
