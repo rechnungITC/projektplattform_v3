@@ -46,7 +46,16 @@ export interface ConstructionSectionSignal {
   parent_id: string | null
   label: string
   sort_order: number
+  /** Hoehe des gezaehlten Teilbaums. Bei Kappung = `section_depth_cap`. */
   subtree_depth: number
+  /**
+   * PROJ-Y-45l: `true`, wenn der Teilbaum TIEFER reicht als der Riegel und die
+   * Zahlen darunter deshalb NICHT mitgezaehlt sind. Bis dahin hat die
+   * Auswertung in diesem Fall still zu niedrig gezaehlt. Ein Baum, der genau
+   * bis zum Riegel reicht, gilt NICHT als gekappt — die Auswertung schaut eine
+   * Ebene tiefer als sie zaehlt, die Grenze ist also exakt und nicht geraten.
+   */
+  subtree_truncated: boolean
   /** `null` heisst: nichts verknüpft — dann KEIN Fortschritt von 0 % zeigen (AC-45δ.10). */
   progress_source: ConstructionProgressSource | null
   /** Zahl der gezählten Vorgänge im Teilbaum inkl. dieses Abschnitts. */
@@ -102,6 +111,13 @@ export interface ConstructionScheduleSignals {
   /** Der EINE Zeitbezug der Auswertung (D-δ1). */
   as_of: string
   window_days: number
+  /**
+   * PROJ-Y-45l: Tiefen-Riegel des Abschnitts-Teilbaums. Er ist tragend, nicht
+   * dekorativ — ohne ihn haette die Auswertung auf einem zyklischen Baum
+   * gehangen statt zu niedrig zu zaehlen (live gemessen). Seit derselben Slice
+   * kann ein Zyklus nicht mehr entstehen, der Riegel ist also der zweite Riegel.
+   */
+  section_depth_cap: number
   summary: ConstructionSignalSummary
   trades: ConstructionTradeSignal[]
   sections: ConstructionSectionSignal[]

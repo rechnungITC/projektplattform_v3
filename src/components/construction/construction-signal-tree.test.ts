@@ -16,6 +16,7 @@ function section(
     label: id,
     sort_order: sortOrder,
     subtree_depth: 0,
+    subtree_truncated: false,
     progress_source: null,
     source_count: 0,
     linked_count: 0,

@@ -124,7 +124,9 @@ describe("INVENTORY_EXCEPTIONS", () => {
     expect(INVENTORY_EXCEPTIONS.map((e) => [e.name, e.kind])).toEqual([
       ["enforce_last_lead", "legacy"],
       ["enforce_project_membership_user_in_tenant", "legacy"],
-      ["_dd_finding_source_question_guard", "pending_merge"],
+      // PROJ-Y-114as `pending_merge`-Eintrag ist mit dessen Merge entfallen —
+      // genau wie sein Kommentar es vorhergesagt hat. Kein Ersatz: die Liste
+      // soll leer laufen, nicht gepflegt werden.
     ])
   })
 })

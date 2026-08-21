@@ -2915,6 +2915,181 @@ und die Serverseite durch γs Rot-Team-Vektor **S** (fremder Knoten → `23514`)
 
 ---
 
+## Followups 45f / 45l / 45m — erledigt 2026-08-21 (DB-Gruppe)
+
+Drei Registereinträge, zusammen erledigt weil sie **denselben Abschnittsbaum** betreffen. Eine Migration
+(`20260821120000_projy45_db_group_hygiene`), keine neue Tabelle, kein neues Paket, kein CIA-Pass
+(Fehlerbehebung, keine Architekturänderung).
+
+**Die Messung hat die Prämisse von 45l umgekehrt und die von 45m widerlegt.** Beide Registereinträge
+waren als „entscheiden oder dokumentieren" formuliert; keine der dort genannten Optionen war nach der
+Messung noch richtig.
+
+### PROJ-Y-45f — die tote β-Auskunft ist gezogen
+
+`construction_section_blocking_defects(uuid)` stand seit dem γ-Deploy ohne Aufrufer in Prod. Vor dem
+Ziehen **gemessen statt vermutet**: 0 Aufrufer in Funktionskörpern, Views, Policies, CHECK-Bedingungen
+und Spalten-Defaults (eine Abfrage über alle fünf Fundstellen-Arten), 0 in `src/`. Die Migration bringt
+diese Abfrage als **Vorbedingung** mit und bricht laut ab, falls doch jemand ruft.
+
+**Nebenfund:** der TypeScript-Typ `ConstructionSectionBlockingDefect` hatte seine Funktion überlebt und
+war ebenfalls unbenutzt (0 Verwender) — mit gezogen. Ein Typ ohne Funktion und ohne Verwender ist genau
+die Art Rest, die später jemand wieder anschließt.
+
+**Drei Testdateien nachgezogen, keine abgeschwächt:**
+- β's Vektoren V2/V3 rufen jetzt `construction_section_blocking_refs` und prüfen dabei **zusätzlich die
+  Art** des Blockers (`kind='mangel'`) — die Nachfolge-Auskunft liefert sie mit, die Zusicherung wird
+  also schärfer statt bloß umgehängt. Neu ist **V4**: die gezogene Funktion ist wirklich weg.
+- β's ACL-/`search_path`-Listen verlieren den Namen (6 → 5 aufrufbare, 3 → 2 lesende Funktionen). Keine
+  Abdeckungslücke: der γ-Pentest führt beide Nachfolge-Auskünfte in seinen eigenen Listen.
+- γ's Vektor **G8 ist umgedreht**. Er sicherte zu, β's Funktion existiere weiter, „weil die deployte
+  Route sie im Fenster zwischen Migration und Code-Deploy ruft" — dieses Fenster ist mit dem γ-Deploy
+  geschlossen. Jetzt prüft er den Endzustand, **G8b** neu, dass die Nachfolge steht (sonst wäre die
+  Auskunft entfernt statt ersetzt).
+
+### PROJ-Y-45l — der Tiefen-Riegel war **nicht** dekorativ
+
+Der Registereintrag nannte drei Wege und begründete sie mit „Zyklen sind durch
+`construction_sections_no_self_loop` und den `<@`-Zyklustest im α-Wächter strukturell ausgeschlossen".
+**Diese Begründung trägt nicht — live in zurückgerollten Transaktionen belegt:**
+
+| Messung | Ergebnis |
+|---|---|
+| Zyklus mit gesetztem `path` | abgelehnt, `23514` ✔ |
+| `update construction_sections set path = null` | **gelingt** — `path` ist nullable ohne CHECK und steht **nicht** in der Spaltenliste des Wächter-Triggers |
+| derselbe Zyklus danach | **gelingt**, 2 Zyklus-Kanten |
+| Spaltenrecht `UPDATE (path)` für `authenticated` | **vorhanden** — der Weg ist aus dem Browser-Client erreichbar (Projektleitung/Mandanten-Admin) |
+| δ-Auswertung auf dem Zyklus | terminiert (`subtree_depth` = Riegelhöhe) |
+| γ-Auskunft `construction_section_blocking_refs` auf demselben Zyklus | **hängt** (`57014` Statement-Timeout) — und die ruft die deployte „Abschnitt entfernen"-Route |
+
+Der Zyklus-Zweig hing an `OLD.path is not null` und wurde übersprungen, sobald `path` genullt war. Der
+Riegel war damit das Einzige, was die Terminsignale vor dem Hängen bewahrt hat — **den Riegel zu
+entfernen (Option 1 des Registereintrags) hätte die Slice verschlechtert**, nicht verbessert.
+
+**Deshalb zwei Eingriffe statt einem:**
+
+1. **Ursache.** Der Zyklus-Test läuft jetzt `path`-unabhängig: ein begrenzter Lauf aufwärts über
+   `parent_id`, der abbricht, wenn er die eigene Zeile trifft. Das ist die Prüfung, die der Wächter
+   gemeint hat. Der Wächter ist dafür **ganz neu geschrieben** statt anker-ersetzt — die Hausnorm
+   (Anker-Ersetzung aus der Live-Definition) schützt Funktionen mit über Slices angesammelten Zweigen,
+   dieser hat vier Bedingungen und genau ein `raise` je Bedingung; alle Bestandszweige sind wörtlich
+   übernommen und die Migration prüft ihre Anwesenheit nach.
+2. **Symptom.** Der Riegel bleibt (jetzt aus gemessenem Grund), steigt von 20 auf **50** und die Kappung
+   wird **ausgewiesen** statt verschwiegen: `section_depth_cap` in der Nutzlast, `subtree_truncated` je
+   Abschnitt, Abzeichen „Teilbaum gekappt ab Ebene N" auf der Fläche, Spalte `teilbaum_gekappt` in der
+   CSV. Die Grenze ist **exakt**, nicht geschätzt: die Schließung läuft eine Ebene **tiefer** als
+   gezählt wird, ein Baum genau in Riegelhöhe gilt also **nicht** als gekappt (Pentest B1/B2).
+
+**Bewusst NICHT getan:** der ungekappten γ-Auskunft ebenfalls einen Riegel geben. Sie benennt die
+Blocker einer Entfernen-Sperre; ein Riegel dort würde in genau dieser Meldung unterberichten — also die
+Defektklasse einführen, die 45l gerade beseitigt. Mit dem geschlossenen Wächter ist ihr Hängen
+unerreichbar, und die Migration prüft nach, dass der Bestand keine Zyklus-Kante trägt (Prod: 0).
+
+**`path` bleibt manipulierbar** (Wert desynchronisierbar, Zyklus nicht mehr) — die Spalte
+schreibgeschützt zu machen hätte einen Trigger auf `path` gebraucht, und der hätte den Repath-Trigger
+bei Zweigen ab drei Ebenen gebrochen: der Wächter rechnet je Zeile aus dem **Vor-Stand** des
+Elternteils, während der Repath alle Nachfahren in einer Anweisung umschreibt. Pflichtfeld und
+`ltree`-Konsolidierung bleiben bei **PROJ-Y-45j**, wo sie schon geführt sind.
+
+### PROJ-Y-45m — produktweite Konvention, kein δ-Defekt (keine Codeänderung an δ)
+
+Der Registereintrag verlangte zu prüfen, ob die Geschwister-Flächen dasselbe tun. **Gemessen: ja,
+ausnahmslos** — und die entscheidende Stelle lag woanders als vermutet.
+
+- **11 von 11** projektbezogenen Auswertungsfunktionen filtern `projects.is_deleted` nicht (nur
+  `steering_report` liest `projects` überhaupt, und auch sie filtert nicht).
+- **4 von 4** Bau-RLS-Policies gaten auf `is_project_member(project_id)`, ohne Papierkorb-Prüfung.
+- **Aber:** `requireProjectAccess` selektiert `.eq("is_deleted", false)` und antwortet für ein
+  Papierkorb-Projekt mit **404** — für alle drei Aktionen und damit für jede Route, die den Helfer
+  benutzt, die Terminsignal-Routen eingeschlossen. Der Papierkorb **ist** durchgesetzt, an genau
+  **einer** Stelle.
+
+δ ist damit kein Ausreißer, und ein `is_deleted`-Filter in die eine Funktion zu kopieren wäre falsch:
+er schützt nichts (das Mitglied liest die Quellzeilen ohnehin direkt), wäre strenger als die Tabellen,
+die er liest, und wäre die elfte Kopie einer Regel, die genau dadurch driftet.
+
+**Geliefert wurde deshalb das, was fehlte:** die Konvention ist als
+[ADR `soft-delete-enforcement-scope.md`](../docs/decisions/soft-delete-enforcement-scope.md)
+niedergeschrieben (samt verworfener Alternative und der akzeptierten Folge, dass ein direkter
+`supabase.rpc(...)`-Aufruf die 404 umgeht) und die **einzige** Durchsetzungsstelle ist festgenagelt:
+`route-helpers.soft-delete.test.ts` prüft das Verhalten (404 statt 403/500, alle drei Aktionen) **und
+strukturell**, dass der Filter angewandt wird. Ohne die zweite Hälfte bliebe der Test grün, wenn der
+Filter verschwindet — rot-grün belegt: entfernt man ihn, fällt genau die strukturelle Hälfte.
+
+### Nachweise
+
+**Neuer Live-Pentest `tests/sql/PROJ-Y-45-db-group-pentest.sql` 16/16 PASS gegen Prod, 0 Rückstände.**
+Tragend: **A3** die Umgehung ist zu (derselbe Zyklus, der vorher gelang, wird abgelehnt) mit **A3b** als
+Gegenprobe, dass `path` wirklich null war — ohne sie prüfte A3 nur A2 ein zweites Mal; **A4** der
+mehrstufige Zyklus (Grossvater unter Enkel); **A5** der Repath ist unberührt; **B1/B2** die exakte
+Grenze der Kappung in beide Richtungen; **C3** `anon` **und** PUBLIC ohne EXECUTE über den ACL-Eintrag,
+der mit `=` **beginnt** (γ-Lehre B-γ1).
+
+**Regressionen wörtlich grün, je 0 Rückstände:** α **18/18** · β **54/54** (32+15+7, mit V4 neu) ·
+γ **61/61** (31+14+12+4, mit G8b neu) · δ **53/53** (22+16+9+2+4, mit D4 neu) · PROJ-Y-45a **9/9**.
+Prod-Zustand vor und nach den Läufen identisch (2 Abschnitte, 14 Mängel, 0 Abnahmen, 52 Projekte,
+0 `path`-Nullwerte, 0 Zyklus-Kanten, 19 Bau-Trigger, **0** deaktiviert).
+**Advisors 149 WARN / 0 ERROR** — keine einzige Meldung nennt eine der zwei neu geschriebenen Funktionen.
+
+**Rot-Grün dreimal ausgeführt** (jeweils über eine Dateikopie zurückgesetzt, nie `git checkout` —
+PROJ-130-δ2/F-3): ohne den `is_deleted`-Filter fällt die strukturelle Hälfte des 45m-Wächters; ohne das
+Kappungs-Abzeichen fällt der UI-Fall; ohne die CSV-Zelle fällt der Export-Fall.
+
+**Gates:** ESLint **0** · tsc **13 = Baseline / 0 neu** (auch nach dem Build gemessen, `.next`-Falle
+aus PROJ-Y-143e vermieden) · vitest **3580/3580** in 426 Dateien (+7) · Build clean mit allen drei
+δ-Flächen registriert · migration-naming 0 Fehler · index-scope 0 Fehler.
+
+### Der Funktions-Inventar-Wächter hat zugeschlagen — und das ist der Ertrag
+
+Der erste CI-Lauf war rot: **`Verify prod function inventory vs migration files`** (PROJ-Y-148e).
+Genau sein Zweck, und er hat zwei Dinge sichtbar gemacht.
+
+**1. Das Inventar musste aufgefrischt werden** — Pflicht am Ende jeder Slice mit Migration
+(`docs/production/function-inventory.md`), von mir zunächst versäumt. Der Diff ist **genau eine Zeile**:
+`construction_section_blocking_defects` verschwindet, **286 → 285**. Nichts Unerklärtes tauchte auf —
+das ist die Aussage, für die das Auffrischen da ist. Die gezogene Funktion erscheint jetzt korrekt in
+der *informativen* Zeile „im Repo angelegt, aber nicht im Prod-Inventar (gedroppt …)": β's Migration
+legt sie an (append-only), meine zieht sie.
+
+**2. Ein vorbestehender Fehlschlag auf `main`, nachgemessen statt vermutet.** Mit main's Inventar und
+main's Wächter fällt derselbe Lauf — Ursache ist **PROJ-Y-114as Merge** (PR #400): sein
+`pending_merge`-Wegwerf-Eintrag ist damit überflüssig, genau wie sein eigener Kommentar es
+vorhergesagt hat („sobald sie landet, meldet der Wächter ihn als veraltet und er ist zu entfernen").
+Eintrag entfernt, der pinnende Test führt die Liste jetzt ohne ihn — bewusst **ohne Ersatz**: sie soll
+leer laufen, nicht gepflegt werden.
+
+**Dabei ein kleiner Defekt im Wächter selbst, behoben.** Die Staleness-Bedingung hat **zwei** Zweige
+(`!prod.has(n) || repo.has(n)`), die Meldung nannte immer nur den ersten — für einen gemergten
+`pending_merge`-Eintrag war sie damit **sachlich falsch** („existiert nicht mehr im Prod-Inventar",
+obwohl die Funktion sehr wohl in Prod steht). Sie nennt jetzt den zutreffenden Grund; Gegenprobe
+ausgeführt (Eintrag testweise wieder eingesetzt → neue, richtige Formulierung). Dieselbe Klasse, die
+PROJ-Y-130f eine Ebene höher behoben hat: eine Meldung, die die Ursache nicht nennt, schickt auf die
+falsche Spur.
+
+**Nebenbefund am eigenen Vorgehen, festgehalten:** ein `git stash -u` in einem Baum ohne
+uncommittete Arbeit stasht nichts — das folgende `git stash pop` hat deshalb einen **fremden, älteren
+Stash** einer anderen Session ausgepackt und einen Konflikt an `CLAUDE.md`/`AGENTS.md` erzeugt (genau
+die Symlink-Falle, vor der CLAUDE.md warnt). Kein Schaden: `pop` behält den Eintrag bei Konflikt, der
+Konflikt wurde verworfen, alle drei Stashes sind unversehrt und `AGENTS.md` ist wieder ein Symlink.
+Lehre: für einen Blick auf fremde Dateiversionen `git show <ref>:<pfad>` statt stash/checkout.
+
+### Abweichungen
+
+- **D-Y45db.1** Der Wächter ist neu geschrieben statt anker-ersetzt (Begründung oben); die Migration
+  prüft dafür beides nach — der neue Lauf ist da **und** der `path`-abhängige Zweig ist weg. Nur
+  „hinzugefügt" hätte die Umgehung stehen gelassen.
+- **D-Y45db.2** Der Riegel steigt von 20 auf 50. Für reale Bäume (2–4 Ebenen) ohne Wirkung; er ist
+  jetzt eine zweite Reihe hinter dem geschlossenen Wächter, nicht die erste.
+- **D-Y45db.3** 45m ändert keinen Produktivcode an δ — geliefert sind ADR und Wächter. Wer eine
+  Codeänderung erwartet hat, findet die Begründung im ADR.
+- **D-Y45db.4** Kein authentifizierter Browser-Durchlauf: die Kappung ist ab 51 Abschnittsebenen
+  sichtbar, das reale Fixture hat zwei. Belegt sind Datenbank (Pentest B1/B2), Oberfläche
+  (Komponenten-Test, rot-grün) und CSV (Route-Test, rot-grün) — nicht die Verkettung im Browser.
+- **D-Y45db.5** `path` bleibt für Projektleitung/Admin desynchronisierbar (Zyklus nicht mehr) →
+  **PROJ-Y-45j**.
+
+---
+
 ## Deployment — δ (2026-08-21)
 
 **Tag `v2.73.0-PROJ-45-delta` · PR #435 (squash) → main `cde35eb` · Feature-Scope bleibt `alpha`.**
