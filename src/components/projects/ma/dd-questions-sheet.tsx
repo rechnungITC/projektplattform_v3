@@ -6,6 +6,7 @@ import { toast } from "sonner"
 
 import { Badge } from "@/components/ui/badge"
 import { ExternalLinksSection } from "@/components/projects/ma/external-links-section"
+import { createFinding } from "@/lib/ma-project/dd-findings-api"
 import { Button } from "@/components/ui/button"
 import {
   Dialog,
@@ -33,6 +34,7 @@ import {
 } from "@/components/ui/sheet"
 import { Skeleton } from "@/components/ui/skeleton"
 import { Textarea } from "@/components/ui/textarea"
+import { useProjectAccess } from "@/hooks/use-project-access"
 import { useProjectMembers } from "@/hooks/use-project-members"
 import type { DdStream } from "@/lib/ma-project/dd-streams-api"
 import {
@@ -69,8 +71,15 @@ const LEVELS: MaConfidentialityLevel[] = ["standard", "confidential", "strict"]
 
 // PROJ-113 — Q&A for a single DD stream. Questions are visible to project
 // members (RLS hides ones above clearance); create/answer/status/delete need
-// `edit` (server-enforced; canEdit gates the affordances). The "escalate to
-// Finding" action is a disabled placeholder until PROJ-114.
+// `edit` (server-enforced; canEdit gates the affordances).
+//
+// PROJ-Y-114a: die Aktion "Zu Finding eskalieren" ist aktiv (vorher deaktivierter
+// Platzhalter). Sie erzeugt ein Finding mit dieser Frage als Quelle
+// (`source_kind='qa_answer'` + `source_dd_question_id`); die Rechtepruefung liegt
+// in `create_dd_finding` (Projektleitung/Administration) und ist damit strenger als
+// `canEdit`; die Oberflaeche spiegelt das ueber `useProjectAccess(..., "manage_members")`
+// — dieselbe Berechtigung wie im Findings-Panel — statt einem Editor einen Knopf zu
+// zeigen, der nur 403 liefern kann. Der Server bleibt die Autoritaet.
 export function DdQuestionsSheet({
   stream,
   projectId,
@@ -497,6 +506,17 @@ function QuestionDetailDialog({
   const [answerText, setAnswerText] = React.useState("")
   const [answerLink, setAnswerLink] = React.useState("")
   const [submitting, setSubmitting] = React.useState(false)
+  // PROJ-Y-114a — Eskalation zu einem Finding. Loest das in PROJ-113 vorgezeichnete,
+  // nie gebaute PROJ-Y-113c ein; der Platzhalter darunter war deaktiviert mit dem
+  // Hinweis "Verfuegbar mit DD-Findings (PROJ-114)", obwohl PROJ-114 seit dem
+  // 2026-06-26 live ist.
+  const [escalating, setEscalating] = React.useState(false)
+  // Ein Finding anzulegen verlangt Projektleitung/Administration (`create_dd_finding`),
+  // NICHT das `edit` hinter `canEdit`. Die Aktion daher an derselben Berechtigung
+  // haengen, die auch das Findings-Panel nutzt — sonst zeigt die Oberflaeche einem
+  // Editor einen Knopf, der nur 403 liefern kann (PROJ-Y-143f-Lehre: keine
+  // Affordanz fuer eine sicher verschlossene Tuer).
+  const canCreateFinding = useProjectAccess(projectId, "manage_members")
   const [error, setError] = React.useState<string | null>(null)
 
   React.useEffect(() => {
@@ -567,16 +587,44 @@ function QuestionDetailDialog({
             </p>
           )}
 
-          {/* PROJ-114 placeholder — escalation activates once dd_findings exists. */}
-          <Button
-            type="button"
-            variant="outline"
-            size="sm"
-            disabled
-            title="Verfügbar mit DD-Findings (PROJ-114)"
-          >
-            Zu Finding eskalieren
-          </Button>
+          {/* PROJ-Y-114a — aktive Eskalation. Das erzeugte Finding traegt die Frage
+              als maschinell pruefbare Quelle (`source_dd_question_id`), statt den
+              Fundort abtippen zu lassen. Sichtbarkeit spiegelt `create_dd_finding`
+              (Projektleitung/Administration); der Server prueft unabhaengig davon
+              erneut und weist andernfalls mit 403 ab. */}
+          {canCreateFinding && question && (
+            <Button
+              type="button"
+              variant="outline"
+              size="sm"
+              disabled={escalating || submitting}
+              onClick={async () => {
+                setError(null)
+                setEscalating(true)
+                try {
+                  await createFinding(projectId, {
+                    dd_stream_id: question.dd_stream_id,
+                    title: question.title,
+                    source_kind: "qa_answer",
+                    source_dd_question_id: question.id,
+                  })
+                  toast.success("Finding aus Frage erstellt — Quelle verknüpft")
+                  onSaved()
+                } catch (err) {
+                  setError(
+                    err instanceof Error ? err.message : "Eskalation fehlgeschlagen"
+                  )
+                } finally {
+                  setEscalating(false)
+                }
+              }}
+            >
+              {escalating && (
+                <Loader2 className="mr-2 h-4 w-4 animate-spin" aria-hidden />
+              )}
+              Zu Finding eskalieren
+            </Button>
+          )}
 
           {error && <p className="text-sm text-destructive">{error}</p>}
 

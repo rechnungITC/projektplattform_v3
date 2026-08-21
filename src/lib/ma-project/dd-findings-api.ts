@@ -17,6 +17,23 @@ export type FindingTreatment =
   | "akzeptiert"
 export type FindingStatus = "open" | "in_review" | "resolved" | "dismissed"
 
+/**
+ * PROJ-Y-114a — Klasse des Herkunftsnachweises am Finding.
+ *
+ * Schliesst die letzte offene Haelfte von PROJ-108 AC1. Der *externe*
+ * Dokumentenverweis liegt weiterhin in `external_document_links` (PROJ-115,
+ * `entity_type='dd_finding'`); `source_kind` benennt die Beweisklasse und
+ * `source_ref` den Fundort, `source_dd_question_id` die maschinell pruefbare
+ * Quelle (PROJ-113 `dd_questions`).
+ */
+export type FindingSourceKind =
+  | "document"
+  | "qa_answer"
+  | "interview"
+  | "site_visit"
+  | "analysis"
+  | "other"
+
 export interface DdFinding {
   id: string
   tenant_id: string
@@ -32,6 +49,9 @@ export interface DdFinding {
   linked_risk_id: string | null
   responsible_user_id: string | null
   confidentiality_level: MaConfidentialityLevel
+  source_kind: FindingSourceKind | null
+  source_ref: string | null
+  source_dd_question_id: string | null
   created_by: string | null
   created_at: string
   updated_at: string
@@ -80,6 +100,9 @@ export interface CreateFindingPayload {
   recommended_treatment?: FindingTreatment | null
   linked_risk_id?: string | null
   confidentiality_level?: MaConfidentialityLevel | null
+  source_kind?: FindingSourceKind | null
+  source_ref?: string | null
+  source_dd_question_id?: string | null
 }
 
 export type UpdateFindingPayload = Partial<{
@@ -93,6 +116,11 @@ export type UpdateFindingPayload = Partial<{
   status: FindingStatus
   linked_risk_id: string | null
   responsible_user_id: string | null
+  source_kind: FindingSourceKind | null
+  source_ref: string | null
+  source_dd_question_id: string | null
+  /** Verwirft die bisherige Herkunftsaussage; danach gilt nur, was mitgegeben wurde. */
+  clear_source: boolean
 }>
 
 export async function listFindings(
