@@ -2821,6 +2821,81 @@ gefahren.
 
 ---
 
+## Deployment — δ (2026-08-21)
+
+**Tag `v2.73.0-PROJ-45-delta` · PR #435 (squash) → main `cde35eb` · Feature-Scope bleibt `alpha`.**
+
+### Der Scope — und warum δ ihn *fast* hebt
+
+Aus den Belegen klassifiziert, nicht aus dem Etikett. δ beseitigt den Grund, der β und γ auf `alpha`
+gehalten hat: **AC-45β.18 ist erfüllt** (AC-45δ.16, Block 4 der Auswertung; der **Ort** weicht per L25
+vom Wortlaut ab und die Abweichung ist dokumentiert, nicht umgeschrieben). Damit ist die zurückgestellte
+ursprüngliche Anforderung aus β **abgetragen** und ihre Registerzeile geschlossen.
+
+**`full` bleibt trotzdem ausgeschlossen — durch genau eine Sache.** Die Spec führt drei zurückgestellte
+Original-Stories der Erstfassung: Abnahmen (γ, erledigt), Terminsignale (δ, hiermit erledigt),
+**Fotodokumentation (ε, offen)**. ε ist keine spätere Erweiterung, sondern eine Story der Erstfassung —
+die Regel erlaubt offene Erweiterungen nur, „only if they do not defer … an original in-scope acceptance
+criterion". Die Ausnahme **„Waived criterion" greift nicht**: sie verlangt „nothing was deferred", und ε
+ist mit Ziel-ID registriert; es existiert sehr wohl ein Arbeitspaket, das die Anforderung erfüllen würde.
+
+**`mvp` gegen `alpha`:** δ ist ein **benannter Sub-Slice** der Reihe α/β/γ/δ/ε mit eigenen 24
+Akzeptanzkriterien, eigenem QA-Durchlauf und eigener Deploy-Evidenz, und der verbleibende Slice ε ist
+namentlich geführt — wörtlich die `alpha`-Definition, keine MVP-Grenze. Dieselbe Einordnung wie α/β/γ aus
+demselben Grund. **`tooling-only` fällt weg:** δ liefert produktive Laufzeitfähigkeit (drei
+Datenbankfunktionen, Routen, eine fünfte Bau-Fläche, ein Berichts-Block).
+
+### Die gelieferte Grenze
+
+Terminsignale als **rein lesende** fünfte Bau-Fläche hinter demselben einen Modul-Schalter: Kopfzahlen,
+Gewerk-Signale mit **benannten** Gründen (das gerechnete Signal steht **neben** der manuellen α-Ampel —
+die Abweichung ist der Ertrag, L26), Bauabschnitte als eingerückter Baum mit **Quellenangabe** statt eines
+irreführenden „0 %", nächste Fristen (verstrichene oben und gekennzeichnet), Engpass-Sicht der überfälligen
+Mängel (= AC-45β.18), CSV je Block, plus ein optionaler Bau-Block im PROJ-21-Status-Report. Jede Aktion ist
+ein **Sprung** auf die zuständige Fläche — kein Schreibpfad, und bewusst **kein** verschärftes Rollen-Gate
+(anders als γ): der Betrachter sieht die Fläche vollständig, bekommt aber keinen Schreibweg.
+
+**Nicht** geliefert: Fotodokumentation (ε), Gantt-Integration (per Nutzer-Entscheid L24 unberührt —
+eine vierte Zeilenart würde für jedes heutige Projekt leer rendern), Kostenschätzung je Mangel (L14,
+Out of Scope).
+
+### Kein Runtime-DB-Change beim Merge
+
+Die Migration `20260820180000_proj45_delta_construction_schedule_signals` liegt seit `/backend`
+(2026-08-20) in Prod; der Merge liefert ausschließlich Code. Vercel deployt automatisch von `main`.
+
+### Prod eigenständig nachgemessen, nicht aus den QA-Notizen übernommen
+
+| geprüft | Ergebnis |
+|---|---|
+| `construction_schedule_signals` | **INVOKER**, `stable`, `search_path=public, pg_temp` — INVOKER ist der Aggregat-Leck-Schutz: die Auswertung rechnet im Rechtekontext des Aufrufers |
+| `_construction_defect_is_open` (D-δ4) | INVOKER, **immutable**, `search_path` gesetzt |
+| `_construction_reservation_is_open` (D-δ4) | INVOKER, **immutable**, `search_path` gesetzt |
+| `anon` EXECUTE über alle **29** Bau-Funktionen | **keine** |
+| **PUBLIC** in der ACL über alle 29 | **keine** — PROJ-Y-114a-Lehre vollständig, nicht als Stichprobe |
+| Funktionen ohne `search_path` | **0** |
+
+Damit sind die drei δ-Funktionen als *drei* belegt und nicht bloß gezählt: zwei Prädikat-Autoritäten
+(`immutable`, weil sie nur über ihre Argumente entscheiden) und eine Auswertung.
+
+### Deploy-Nachweis
+
+Vercel-Produktions-Deployment `dpl_5142o56yE2QPtKRV8F36FZ842nNF`, **`target: production`**, gebaut aus
+**genau diesem SHA** (`githubCommitSha cde35eb…`) — nicht bloß „ein Deployment existiert". Post-Deploy-Smoke
+über die neuen Flächen: siehe unten.
+
+### Was offen bleibt
+
+- **PROJ-45-ε** (Fotodokumentation) — zurückgestellte **Original-Story** der Erstfassung und ab jetzt der
+  **einzige** Grund, dass PROJ-45 `alpha` statt `full` trägt.
+- **PROJ-Y-45l** (Low, aus δ-QA) — der Rekursions-Riegel `depth < 20` unterberichtet **still**.
+- **PROJ-Y-45m** (Info, cross-cutting) — weich gelöschte Projekte werden von den Bau-Auswertungen nicht
+  ausgeblendet; konsistent mit den Geschwister-Flächen, deshalb cross-cutting statt δ-Defekt.
+- **PROJ-Y-45b/45c/45d/45e/45f/45g/45h/45i/45j/45k** unverändert; **PROJ-Y-45h** ist durch F-δ4 **enger**
+  gefasst als notiert (unlöschbar ist ein Mangel erst **mit** Verlaufszeilen, nicht grundsätzlich).
+
+---
+
 ## Deployment — γ (2026-08-20)
 
 **Tag `v2.70.0-PROJ-45-gamma` · PR #422 (squash) → main `31aef7f` · Deployment Scope `alpha`.**
