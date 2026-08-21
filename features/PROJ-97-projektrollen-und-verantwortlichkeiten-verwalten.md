@@ -15,6 +15,9 @@ summary_for_jira: "[B1] Projektrollen und Verantwortlichkeiten verwalten"
 # PROJ-97: Projektrollen und Verantwortlichkeiten verwalten
 
 ## Status: Deployed (2026-06-26 — 97a+97b, Tag v2.3.0-PROJ-139-95-97, PR #189; /rollen + RACI prod auth-gate 307; migration 20260624154503 live)
+## Deployment Scope: full
+
+> **Scope-Klassifikation (PROJ-Y-145b, Tranche 3, 2026-08-20):** QA 2026-06-26: **AC-97-1…5 alle ✓**, keine Findings (Critical/High/Medium/Low). Der Out-of-Scope-Abschnitt §7 verweist ausschließlich auf **Fremdfeatures** (PROJ-96 Template-Vorbelegung, PROJ-104 Deliverable-RACI-Ziel, PROJ-99 Durchsetzung, IdP-Föderation).
 
 ## Implementation Notes — Frontend (2026-06-25)
 

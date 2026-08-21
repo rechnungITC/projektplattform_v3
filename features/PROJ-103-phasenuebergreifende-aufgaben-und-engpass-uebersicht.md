@@ -15,6 +15,10 @@ summary_for_jira: "[C3] Phasenübergreifende Aufgaben- und Engpass-Übersicht"
 # PROJ-103: Phasenübergreifende Aufgaben- und Engpass-Übersicht
 
 ## Status: Deployed (2026-07-23)
+## Deployment Scope: mvp
+
+> **Scope-Klassifikation (PROJ-Y-145b, Tranche 3, 2026-08-20):** **AC3 nennt den Ort ausdrücklich** („Top-3-Engpässe werden **auf dem Projekt-Dashboard** angezeigt"). Geliefert ist die Top-3-Kachel auf der Engpässe-Seite; das Cockpit-Embed ist als **PROJ-Y-103a** registriert. AC1/AC2/AC4 ✅ (`.xlsx` → CSV ist durch die AC-Formulierung „Excel/CSV" gedeckt).
+
 **Created:** 2026-06-10
 **Deployed:** 2026-07-23 — Tag `v2.17.0-PROJ-103` (v2.16.0 belegt PROJ-140, das zuerst mergte). Migration `20260721184740_proj103_task_bottlenecks` (INVOKER-RPC `project_task_bottlenecks`) seit /backend in Prod; kein Runtime-DB-Change (reine VIEW/RPC-Lesesicht). Rebase auf aktuellen main konfliktfrei; Post-Deploy-Smoke: 307-Auth-Gate auf `/projects/[id]/engpaesse` + `/api/projects/[id]/task-bottlenecks` (+ Export). Followup offen: PROJ-Y-103a (AC3-Cockpit-Embed), .xlsx out-of-scope.
 **Origin:** M&A-Platform Backlog (Epic C — Aufgaben & Workstreams)

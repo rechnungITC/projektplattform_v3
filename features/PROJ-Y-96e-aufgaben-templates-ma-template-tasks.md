@@ -1,6 +1,10 @@
 # PROJ-Y-96e: Aufgaben-Templates (`ma_template_tasks`)
 
 ## Status: Deployed
+## Deployment Scope: mvp
+
+> **Scope-Klassifikation (PROJ-Y-145b, Tranche 3, 2026-08-20):** **AC8 halb erfüllt** — der Priority-Passthrough ist live, der Estimated-Days-Passthrough ist deferiert, weil die Zielspalte `work_items.estimated_days` nicht existiert (D-1 → PROJ-Y-96e-e1). AC1…AC7 und AC9 ✅, Live-Pentest A–K 11/11.
+
 **Created:** 2026-08-04
 **Deployed:** 2026-08-06 — Tag `v2.33.0-PROJ-Y-96e` (merge `b6d2e57` via PR #293 squash). Migration `20260805083132_proj_y_96e_task_templates` seit /backend in Prod; Runtime-Deploy = Squash-Merge auf main → Vercel-Auto-Deploy. Post-Deploy-Smoke: `/api/ma-project-templates`, `/api/projects/[id]/apply-template`, `/stammdaten/projekt-vorlagen` alle 307 Auth-Gate; Prod-DB-Verify (tasks-Table + FK RESTRICT + 4 Policies + beide RPCs + anon-Revoke) alle grün. Bundled: Supply-Chain-Fix (4 neue HIGH-Advisories via `overrides` — fast-uri^3.1.5 · hono^4.12.34 · ip-address^10.4.0 · brace-expansion^5.0.9; PROJ-140-Muster; npm audit exit 0). Offener Followup: /qa (Playwright-Auth-Gate-E2E — vom User bewusst nach Deploy gelegt, weil Migration bereits in Prod war seit /backend und FE-Änderungen additiv/read-only sind).
 

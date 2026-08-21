@@ -15,6 +15,10 @@ summary_for_jira: "[H2] Kommunikationsmatrix für interne und externe Zielgruppe
 # PROJ-118: Kommunikationsmatrix für interne und externe Zielgruppen
 
 ## Status: Deployed (2026-07-24 — PR #258 → main `a6c535c`, Tag `v2.23.0-PROJ-118`; QA PASS 0 Critical/0 High; Live-Pentest A–I 9/9 + Playwright 11/11)
+## Deployment Scope: full
+
+> **Scope-Klassifikation (PROJ-Y-145b, Tranche 3, 2026-08-20):** QA 2026-07-24: **AC1…AC5 ✅** und H1–H6 ✅, Playwright 11/11, Live-Pentest A–I 9/9. Die Abweichungen betreffen die *Umsetzung*, nicht den Umfang (D-2: Signing/Closing-Sicht als Namens-Filter; D-3: Approver-Gating clientseitig, SoD serverseitig erzwungen). Die Sende-Brücke (PROJ-Y-118a) verlangt kein AC — AC3 endet bei „versandbereit".
+
 **Created:** 2026-06-10
 **Origin:** M&A-Platform Backlog (Epic H — Kommunikation, Gremien & Stakeholder)
 **Priority:** P1

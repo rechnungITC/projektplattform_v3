@@ -15,6 +15,10 @@ summary_for_jira: "[E1] Risikoregister je Projekt führen"
 # PROJ-107: Risikoregister je Projekt führen
 
 ## Status: Deployed
+## Deployment Scope: mvp
+
+> **Scope-Klassifikation (PROJ-Y-145b, Tranche 3, 2026-08-20):** **AC5 verlangt Heatmap und Top-Risiken-Liste „im Reporting"** — geliefert sind score-sortierte Liste und Heatmap im Register, die dedizierte Reporting-Sicht wurde bewusst an PROJ-116/131/132 verschoben. Dazu **D-CIA-1**: die M&A-Kategorie-Pflicht aus AC1 ist nur clientseitig durchgesetzt (`category_id` nullable ohne CHECK) → PROJ-Y-107a.
+
 **Created:** 2026-06-10
 **Deployed:** 2026-07-05 · PR #236 → main (`b6400cf`) · Tag `v2.11.0-PROJ-107` · kein Runtime-DB-Change (Migration `20260703135741` seit /backend in Prod) · Post-Deploy-Smoke 307-Auth-Gate auf allen 3 neuen Routen + DB-Objekte live re-verifiziert · Followups PROJ-Y-107a/b/c offen.
 **Origin:** M&A-Platform Backlog (Epic E — Risiken & Red Flags)

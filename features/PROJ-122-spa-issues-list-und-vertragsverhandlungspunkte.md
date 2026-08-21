@@ -15,6 +15,10 @@ summary_for_jira: "[J1] SPA Issues List und Vertragsverhandlungspunkte"
 # PROJ-122: SPA Issues List und Vertragsverhandlungspunkte
 
 ## Status: Deployed (2026-08-11)
+## Deployment Scope: mvp
+
+> **Scope-Klassifikation (PROJ-Y-145b, Tranche 3, 2026-08-20):** **AC-3 ⚠ teilweise** — Finding- und Risiko-Verknüpfung gebaut, Kaufpreis-Bridge (PROJ-121) und Closing Conditions (PROJ-123) sind `Planned` und daher nicht verknüpfbar (D-3 → PROJ-Y-122a). AC-1/2/4/5 ✅ + H1–H9 9/9, Pentest A–Z 26/26.
+
 **Deployed:** 2026-08-11 — Closure-Deploy, Tag `v2.41.0-PROJ-122`. Code lag bereits auf main (Merge `481a5a7`, PR #303), beide Migrationen seit `/backend` in Prod → kein Runtime-Deploy nötig (Vercel deployt automatisch von main). Verifiziert auf main `265cccb`: ESLint 0 · `npm run build` clean · `check:migration-naming` 0 Errors · Post-Deploy-Smoke gegen Prod: alle neuen Flächen 307 Auth-Gate, kein Leck.
 **Nachtrag PROJ-Y-122a:** die Audit-Anchor-Patches dieser Migration (Z. 119–144) liefen ohne Verifikation nach dem `replace()`; nachgerüstet durch die Reconcile-Migration `20260811090000` (PROJ-Y-122a, Tag `v2.40.0`) samt Live-Smoke. Kein Eingriff in diese Datei — sie ist geshippt.
 **Created:** 2026-06-10
