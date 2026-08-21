@@ -60,6 +60,11 @@ const SIGNALS = {
       label: "Haus A",
       sort_order: 1,
       subtree_depth: 1,
+      // PROJ-Y-45l: bewusst der GEKAPPTE Fall, damit die neue Spalte beide
+      // Werte zeigt (Haus B unten ist der Normalfall). Ohne einen gekappten
+      // Datensatz wuerde die Spalte nur "nein" ausgeben und der Test belegte
+      // nicht, dass sie ueberhaupt vom Feld abhaengt.
+      subtree_truncated: true,
       progress_source: "work_items",
       source_count: 4,
       linked_count: 5,
@@ -73,6 +78,7 @@ const SIGNALS = {
       label: "Haus B",
       sort_order: 2,
       subtree_depth: 0,
+      subtree_truncated: false,
       // Nichts verknüpft -> KEIN Fortschritt (AC-45δ.10).
       progress_source: null,
       source_count: 0,
@@ -246,11 +252,14 @@ describe("CSV rendering", () => {
   it("leaves the progress cells EMPTY when nothing is linked", async () => {
     const lines = (await (await call("?section=sections")).text()).split("\n")
     expect(lines[0]).toContain("fortschritt_prozent")
-    // Haus A: Quelle und 50 vorhanden.
-    expect(lines[1]).toBe("Haus A,1,work_items,50,4,5,1,0")
+    // PROJ-Y-45l: die Kappung steht auch in der CSV — sie hier weglassen hiesse,
+    // die stille Unterberichtung nur aus der Oberfläche zu entfernen.
+    expect(lines[0]).toContain("teilbaum_gekappt")
+    // Haus A: Quelle und 50 vorhanden, Teilbaum gekappt.
+    expect(lines[1]).toBe("Haus A,1,ja,work_items,50,4,5,1,0")
     // Haus B: zwei leere Zellen statt 0 % — sonst wäre der Export eine
-    // Falschaussage (AC-45δ.10).
-    expect(lines[2]).toBe("Haus B,0,,,0,0,0,0")
+    // Falschaussage (AC-45δ.10) — und nicht gekappt.
+    expect(lines[2]).toBe("Haus B,0,nein,,,0,0,0,0")
   })
 
   it("renders the deadlines section with the elapsed flag", async () => {

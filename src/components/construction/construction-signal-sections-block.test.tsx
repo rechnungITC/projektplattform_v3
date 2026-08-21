@@ -29,6 +29,7 @@ function section(
     label: "Haus Nord",
     sort_order: 0,
     subtree_depth: 0,
+    subtree_truncated: false,
     progress_source: null,
     source_count: 0,
     linked_count: 0,
@@ -96,6 +97,52 @@ describe("ConstructionSignalSectionsBlock", () => {
     expect(screen.getByText(/3 Arbeitspakete verknüpft/)).toBeInTheDocument()
     expect(screen.getByText(/0 zählbar/)).toBeInTheDocument()
     expect(screen.queryByText(/0\s*%/)).not.toBeInTheDocument()
+  })
+
+  // PROJ-Y-45l — die Kappung wird BENANNT. Bis dahin zählte die Auswertung bei
+  // einem Teilbaum tiefer als der Riegel still zu niedrig, ohne dass die Fläche
+  // das sagen konnte; ein Fortschritt, dem Vorgänge fehlen, darf nicht wie eine
+  // vollständige Zahl aussehen.
+  it("benennt einen gekappten Teilbaum samt Ebene", () => {
+    render(
+      <ConstructionSignalSectionsBlock
+        projectId={PROJECT}
+        sections={[
+          section({
+            label: "Turm",
+            subtree_depth: 50,
+            subtree_truncated: true,
+            progress_source: "work_items",
+            source_count: 4,
+            linked_count: 4,
+            progress_percent: 25,
+          }),
+        ]}
+      />
+    )
+
+    expect(screen.getByText(/Teilbaum gekappt ab Ebene 50/)).toBeInTheDocument()
+  })
+
+  it("sagt beim gewöhnlichen Baum NICHTS von Kappung (sonst warnt die Fläche immer)", () => {
+    render(
+      <ConstructionSignalSectionsBlock
+        projectId={PROJECT}
+        sections={[
+          section({
+            label: "Haus",
+            subtree_depth: 2,
+            subtree_truncated: false,
+            progress_source: "work_items",
+            source_count: 4,
+            linked_count: 4,
+            progress_percent: 25,
+          }),
+        ]}
+      />
+    )
+
+    expect(screen.queryByText(/gekappt/)).not.toBeInTheDocument()
   })
 
   it("hält die Hierarchie sichtbar: Kind unter Eltern", () => {

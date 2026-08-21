@@ -116,11 +116,22 @@ export function ConstructionSignalSectionsBlock({
                         {section.label}
                       </p>
                     </div>
-                    {section.overdue_items > 0 ? (
-                      <Badge variant="destructive">
-                        {section.overdue_items} überfällig
-                      </Badge>
-                    ) : null}
+                    <div className="flex shrink-0 items-center gap-2">
+                      {/* PROJ-Y-45l — die Kappung wird BENANNT. Vorher zählte
+                          die Auswertung in diesem Fall still zu niedrig; ein
+                          Fortschritt, dem Vorgänge fehlen, darf nicht wie eine
+                          vollständige Zahl aussehen. */}
+                      {section.subtree_truncated ? (
+                        <Badge variant="outline">
+                          Teilbaum gekappt ab Ebene {section.subtree_depth}
+                        </Badge>
+                      ) : null}
+                      {section.overdue_items > 0 ? (
+                        <Badge variant="destructive">
+                          {section.overdue_items} überfällig
+                        </Badge>
+                      ) : null}
+                    </div>
                   </div>
 
                   {measurable ? (
