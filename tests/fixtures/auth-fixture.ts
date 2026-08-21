@@ -4,6 +4,9 @@ import { test as base, type Browser, type Page } from "@playwright/test"
 
 import {
   E2E_ASSISTANT_TENANT_ID,
+  E2E_CONSTRUCTION_LEAD_STORAGE_STATE_PATH,
+  E2E_CONSTRUCTION_TENANT_ID,
+  E2E_CONSTRUCTION_VIEWER_STORAGE_STATE_PATH,
   E2E_STORAGE_STATE_PATH,
   E2E_TENANT_ID,
   E2E_VISUAL_STORAGE_STATE_PATH,
@@ -127,6 +130,20 @@ export const test = base.extend<{
    * the shared user for every other authenticated spec.
    */
   visualPage: Page
+  /**
+   * PROJ-45-β `/qa` — the three seats of the defect chain, all in the
+   * construction tenant (own tenant so no module has to be toggled on a shared
+   * one; PROJ-Y-143f/143l).
+   *
+   * `constructionAdminPage` reuses the SHARED user's storage state and only
+   * re-pins the active tenant — the shared identity is the tenant admin here,
+   * so the lane costs two extra sign-ins instead of three.
+   */
+  constructionAdminPage: Page
+  /** Project `lead`, tenant `member` — reports the defect done. */
+  constructionLeadPage: Page
+  /** Project `viewer`, tenant `member` — may only create (L15). */
+  constructionViewerPage: Page
 }>({
   authenticatedPage: async ({ browser, baseURL }, use) => {
     if (skipUnlessProvisioned()) return
@@ -155,6 +172,45 @@ export const test = base.extend<{
       E2E_VISUAL_TENANT_ID,
       baseURL,
       E2E_VISUAL_STORAGE_STATE_PATH,
+    )
+    const page = await context.newPage()
+    await use(page)
+    await context.close()
+  },
+
+  constructionAdminPage: async ({ browser, baseURL }, use) => {
+    if (skipUnlessProvisioned()) return
+    const context = await pinnedContext(
+      browser,
+      E2E_CONSTRUCTION_TENANT_ID,
+      baseURL,
+    )
+    const page = await context.newPage()
+    await use(page)
+    await context.close()
+  },
+
+  constructionLeadPage: async ({ browser, baseURL }, use) => {
+    if (skipUnlessProvisioned(E2E_CONSTRUCTION_LEAD_STORAGE_STATE_PATH)) return
+    const context = await pinnedContext(
+      browser,
+      E2E_CONSTRUCTION_TENANT_ID,
+      baseURL,
+      E2E_CONSTRUCTION_LEAD_STORAGE_STATE_PATH,
+    )
+    const page = await context.newPage()
+    await use(page)
+    await context.close()
+  },
+
+  constructionViewerPage: async ({ browser, baseURL }, use) => {
+    if (skipUnlessProvisioned(E2E_CONSTRUCTION_VIEWER_STORAGE_STATE_PATH))
+      return
+    const context = await pinnedContext(
+      browser,
+      E2E_CONSTRUCTION_TENANT_ID,
+      baseURL,
+      E2E_CONSTRUCTION_VIEWER_STORAGE_STATE_PATH,
     )
     const page = await context.newPage()
     await use(page)

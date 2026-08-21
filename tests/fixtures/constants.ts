@@ -168,3 +168,113 @@ export const E2E_STORAGE_STATE_PATH = "tests/fixtures/.auth/storage-state.json"
 /** PROJ-Y-143l — separate sign-in, therefore a separate storage state. */
 export const E2E_VISUAL_STORAGE_STATE_PATH =
   "tests/fixtures/.auth/visual-storage-state.json"
+
+/**
+ * PROJ-45-β (`/qa`) — a FOURTH lane: the construction lane.
+ *
+ * Why an own tenant, not a module toggled on a shared one: the Mängel surface
+ * is gated twice (`requiresProjectType: "construction"` AND
+ * `requiresModule: "construction"`), so reaching it needs both a construction
+ * project and the module switched on. Switching `construction` on in
+ * `E2E_TENANT_ID` is exactly the move PROJ-Y-143f/143l taught us not to make:
+ * tenant-level state is photographed by the authenticated visual baselines,
+ * and `/frontend` β verified those nine images are currently green *because*
+ * `construction` is absent from `E2E_VISUAL_ACTIVE_MODULES`. A toggle would
+ * either move them or race them (Playwright parallelises files).
+ *
+ * Why THREE actors: the chain PROJ-45-β actually has to prove is
+ * `Erfassen als Betrachter → Fertigmelden → Abnahme durch eine ZWEITE Person`,
+ * and the roles make three identities unavoidable:
+ *   - the *Betrachter* may create (L15) but may not report done or approve;
+ *   - reporting done needs `is_tenant_admin OR is_project_lead` (B-β2);
+ *   - approving needs the same role AND a different person than the reporter
+ *     (AC-45β.10 four-eyes, enforced on `reported_done_by` in the RPC).
+ * So: viewer creates, lead reports done, tenant admin approves. Collapsing any
+ * two of them would make the run prove less than the AC set demands.
+ *
+ * The admin seat is `E2E_USER_ID`, whose storage state already exists — the
+ * lane therefore adds two sign-ins, not three. Enrolling the shared user in a
+ * further tenant is safe *since* PROJ-Y-143l gave the visual lane its own
+ * user; before that it would have flipped the workspace switcher in every
+ * baseline (PROJ-Y-143f, F-1).
+ */
+export const E2E_CONSTRUCTION_TENANT_ID = "e2e00000-0000-4e2e-8e2e-000000000009"
+export const E2E_CONSTRUCTION_TENANT_NAME = "[E2E] Bau Test"
+export const E2E_CONSTRUCTION_TENANT_DOMAIN =
+  "e2e-bau.projektplattform-v3.test"
+
+/**
+ * `project_type` MUST be "construction": `filterSectionsByProjectType` drops
+ * the three construction nav sections for any other type, so the Mängel tab
+ * would not exist. Deliberately no `project_method` — the defect register is
+ * method-agnostic and a method would spawn trigger-side phases/sprints this
+ * lane has no use for.
+ */
+export const E2E_CONSTRUCTION_PROJECT_ID =
+  "e2e00000-0000-4e2e-8e2e-00000000000a"
+export const E2E_CONSTRUCTION_PROJECT_NAME = "[E2E] Bau-Projekt Mängel"
+
+/** Reports the defect done — project `lead`, tenant `member` (NOT admin). */
+export const E2E_CONSTRUCTION_LEAD_USER_ID =
+  "e2e00000-0000-4e2e-8e2e-00000000000b"
+export const E2E_CONSTRUCTION_LEAD_EMAIL =
+  "e2e-bau-lead@projektplattform-v3.test"
+export const E2E_CONSTRUCTION_LEAD_DISPLAY_NAME = "[E2E] Bauleitung Eins"
+
+/**
+ * Creates the defect — project `viewer`, tenant `member`. Tenant `member`
+ * matters: in production every tenant member happens to be `admin`, and
+ * `is_tenant_admin` short-circuits the role check inside every write RPC, so
+ * an actor seeded as admin would pass gates this run is meant to prove closed.
+ */
+export const E2E_CONSTRUCTION_VIEWER_USER_ID =
+  "e2e00000-0000-4e2e-8e2e-00000000000c"
+export const E2E_CONSTRUCTION_VIEWER_EMAIL =
+  "e2e-bau-viewer@projektplattform-v3.test"
+export const E2E_CONSTRUCTION_VIEWER_DISPLAY_NAME = "[E2E] Bau Betrachter"
+
+export const E2E_CONSTRUCTION_PASSWORD = "Test-Password-PROJ29!" // local-only
+
+/**
+ * A defect REQUIRES a trade (L13, `p_trade_id` is rejected as null), and the
+ * trade must be assigned to *this* project and active — so the lane seeds the
+ * tenant catalog row and the project assignment with pinned ids.
+ */
+export const E2E_CONSTRUCTION_TRADE_ID = "e2e00000-0000-4e2e-8e2e-00000000000d"
+export const E2E_CONSTRUCTION_TRADE_KEY = "e2e_dach"
+export const E2E_CONSTRUCTION_TRADE_LABEL = "[E2E] Dachabdichtung"
+export const E2E_CONSTRUCTION_PROJECT_TRADE_ID =
+  "e2e00000-0000-4e2e-8e2e-00000000000e"
+
+/**
+ * Two sections, parent and child. The location is optional (L13), so the walk
+ * would run without them — they exist so the set-then-clear proof for
+ * `section_id` (B-β5 / the PROJ-122 defect class) has something to select.
+ */
+export const E2E_CONSTRUCTION_SECTION_ROOT_ID =
+  "e2e00000-0000-4e2e-8e2e-00000000000f"
+export const E2E_CONSTRUCTION_SECTION_ROOT_LABEL = "[E2E] Bauabschnitt Nord"
+export const E2E_CONSTRUCTION_SECTION_CHILD_ID =
+  "e2e00000-0000-4e2e-8e2e-000000000010"
+export const E2E_CONSTRUCTION_SECTION_CHILD_LABEL = "[E2E] Nord · 1. OG"
+
+/**
+ * Written explicitly, never left to the table default (PROJ-Y-143l's rule):
+ * this fixture's entire purpose is that `construction` is ON, and a fixture
+ * whose purpose is "the module is on" must not rest on a fail-open. Both
+ * module gates fall OPEN when the `tenant_settings` row is missing, so an
+ * implicit seed would make the gate tests pass for the wrong reason.
+ * `vendor` is included so the Nachunternehmer picker has a populated source
+ * rather than the deliberate "module off" empty state.
+ */
+export const E2E_CONSTRUCTION_ACTIVE_MODULES = [
+  "risks",
+  "decisions",
+  "construction",
+  "vendor",
+] as const
+
+export const E2E_CONSTRUCTION_LEAD_STORAGE_STATE_PATH =
+  "tests/fixtures/.auth/construction-lead-storage-state.json"
+export const E2E_CONSTRUCTION_VIEWER_STORAGE_STATE_PATH =
+  "tests/fixtures/.auth/construction-viewer-storage-state.json"

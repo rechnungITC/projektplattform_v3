@@ -15,6 +15,10 @@ summary_for_jira: "[C2] Workstreams strukturieren und steuern"
 # PROJ-102: Workstreams strukturieren und steuern
 
 ## Status: Deployed (2026-07-02 — tag v2.7.0-PROJ-102)
+## Deployment Scope: mvp
+
+> **Scope-Klassifikation (PROJ-Y-145b, Tranche 3, 2026-08-20):** **AC4 und AC5 vollständig ⏸ deferiert** (Reporting-Integration → PROJ-131/132, Template-Vorbelegung → PROJ-96), **AC2/AC3 teilweise** (Deliverable-Liste/-Count → PROJ-104, Dashboard zeigte „—"). Alle drei Ziel-Slices sind inzwischen deployed; ein Upgrade verlangt einen eigenen Pass.
+
 **Created:** 2026-06-10
 **Origin:** M&A-Platform Backlog (Epic C — Aufgaben & Workstreams)
 **Priority:** P1

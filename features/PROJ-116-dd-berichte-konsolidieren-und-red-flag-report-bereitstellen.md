@@ -15,6 +15,9 @@ summary_for_jira: "[G5] DD-Berichte konsolidieren und Red-Flag-Report bereitstel
 # PROJ-116: DD-Berichte konsolidieren und Red-Flag-Report bereitstellen
 
 ## Status: Deployed (2026-06-30 — tag v2.4.0-PROJ-116)
+## Deployment Scope: mvp
+
+> **Scope-Klassifikation (PROJ-Y-145b, Tranche 3, 2026-08-20):** **AC1 „teilweise"** — die Pflicht-Deliverables-Hälfte (D1) war beim Deploy forward-compat deferiert (PROJ-Y-3, inzwischen mit #292 geliefert). AC2/AC3/AC4 ✅ (Word ist durch „PDF **oder** Word" gedeckt), Pentest A–H 8/8 inkl. Aggregat-Leck-Probe.
 
 **Deployed 2026-06-30:** Code live auf main via #205 (backend) + #206 (frontend) + #208 (QA); Migration `20260629084539_proj116_dd_report_consolidated` seit /backend in Prod. Vercel-Prod-Deploy von `f4bb369` (#208) **READY** (dpl_56nMDPEUkQFVhVUoehVgChYu4puv, target=production). Kein neues Dep, keine separate Runtime-Migration im Closure (DDL war bereits in Prod). Post-Deploy-Smoke: 307-Auth-Gates auf `/api/projects/[id]/dd-report` + `/projects/[id]/dd-bericht` + `/projects/[id]/dd-report/print`. Tag `v2.4.0-PROJ-116`. PROJ-Y-1 (Word-Export) / PROJ-Y-2 (Snapshot-Freeze) / PROJ-Y-3 (D1-Deliverables) bleiben offene Followups.
 

@@ -1,6 +1,12 @@
 import { NextResponse } from "next/server"
 import { z } from "zod"
 
+import {
+  detectGovernanceHistory,
+  governanceHistoryMessage,
+  GOVERNANCE_HISTORY_BLOCK_CODE,
+  type GovernanceHistoryCounter,
+} from "@/lib/projects/governance-history"
 import { createAdminClient } from "@/lib/supabase/admin"
 
 import { PROJECT_METHODS } from "@/types/project-method"
@@ -59,10 +65,42 @@ interface RouteContext {
 }
 
 // -----------------------------------------------------------------------------
+// PROJ-Y-148a — governance-history pre-flight
+// -----------------------------------------------------------------------------
+
+/**
+ * Builds the row counter for `detectGovernanceHistory` from a session-bound
+ * client, so RLS decides what is visible. Deliberately *not* the service-role
+ * client: a report-shaped read through service-role bypasses every gate above
+ * it, and this one has no reason to.
+ *
+ * The table name comes from the island registry — five tables, one query shape
+ * — so the SELECT is dynamic and the schema-drift guard skips it. That guard
+ * therefore does not validate these five; the frozen registry test and the live
+ * PostgREST probe carry the coverage instead. It also decouples the code from
+ * merge order: `construction_defect_events` existed in prod before any repo
+ * migration created it (PROJ-45-β has since closed that gap), and a static
+ * reference would have hard-failed the guard in the meantime.
+ */
+function governanceHistoryCounter(
+  supabase: Awaited<ReturnType<typeof getAuthenticatedUserId>>["supabase"],
+  projectId: string
+): GovernanceHistoryCounter {
+  return (island) =>
+    supabase
+      .from(island.table)
+      .select(
+        `id, ${island.parentTable}!${island.parentForeignKey}!inner(project_id)`,
+        { count: "exact", head: true }
+      )
+      .eq(`${island.parentTable}.project_id`, projectId)
+}
+
+// -----------------------------------------------------------------------------
 // GET /api/projects/[id] -- detail (project + last 20 events)
 // -----------------------------------------------------------------------------
 
-export async function GET(_request: Request, context: RouteContext) {
+export async function GET(request: Request, context: RouteContext) {
   const { id: projectId } = await context.params
 
   const idCheck = z.string().uuid().safeParse(projectId)
@@ -90,6 +128,32 @@ export async function GET(_request: Request, context: RouteContext) {
     return apiError("not_found", "Project not found.", 404)
   }
 
+  // PROJ-Y-148a: opt-in pre-flight for the hard-delete dialog (AC-Y148a.V1-4).
+  // Off by default, so the ordinary detail response keeps its exact shape and
+  // pays nothing for a question only the trash dialog asks. Reusing this route
+  // rather than adding one keeps the surface — and the auth gate — singular.
+  const checkRequested =
+    new URL(request.url).searchParams.get("hard_delete_check") === "true"
+  let hardDeleteBlock = null
+
+  if (checkRequested) {
+    // The answer is about an admin-only action. Telling a viewer whether a
+    // permanent delete would succeed would describe a capability they do not
+    // have — the "say only what the caller can act on" rule from PROJ-Y-143f.
+    const denied = await requireTenantAdmin(supabase, project.tenant_id, userId)
+    if (denied) return denied
+
+    const detection = await detectGovernanceHistory(
+      governanceHistoryCounter(supabase, projectId)
+    )
+    if (detection.status === "check_failed") {
+      return apiError("read_failed", detection.message, 500)
+    }
+    hardDeleteBlock = detection.block
+  }
+
+  const extra = checkRequested ? { hard_delete_block: hardDeleteBlock } : {}
+
   const { data: events, error: eventsError } = await supabase
     .from("project_lifecycle_events")
     .select("id, project_id, from_status, to_status, comment, changed_by, changed_at")
@@ -99,10 +163,13 @@ export async function GET(_request: Request, context: RouteContext) {
 
   if (eventsError) {
     // Non-fatal: return the project with an empty events array.
-    return NextResponse.json({ project, events: [] }, { status: 200 })
+    return NextResponse.json({ project, events: [], ...extra }, { status: 200 })
   }
 
-  return NextResponse.json({ project, events: events ?? [] }, { status: 200 })
+  return NextResponse.json(
+    { project, events: events ?? [], ...extra },
+    { status: 200 }
+  )
 }
 
 // -----------------------------------------------------------------------------
@@ -221,6 +288,26 @@ export async function DELETE(request: Request, context: RouteContext) {
     const denied = await requireTenantAdmin(supabase, project.tenant_id, userId)
     if (denied) return denied
 
+    // PROJ-Y-148a (AC-Y148a.V1-1/V1-5): refuse up front when append-only
+    // governance history hangs off this project. Five event tables in the
+    // cascade closure raise on DELETE — two with `23514`, three with `42501` —
+    // so a single SQLSTATE mapping cannot cover them. Counting the rows does,
+    // and it also lets the dialog ask the same question before offering the
+    // button. A check failure is *not* treated as a refusal: the database
+    // guards remain the enforcement, so falling through can never destroy
+    // history, whereas refusing on a failed count would block a delete we
+    // have no reason to block.
+    const detection = await detectGovernanceHistory(
+      governanceHistoryCounter(supabase, projectId)
+    )
+    if (detection.status === "ok" && detection.block) {
+      return apiError(
+        GOVERNANCE_HISTORY_BLOCK_CODE,
+        governanceHistoryMessage(detection.block),
+        422
+      )
+    }
+
     // Use the service-role client to bypass RLS. The pre-check above is
     // what actually authorizes this branch — RLS would also allow it (admin),
     // but going through service-role removes any chance of an `auth.uid()`
@@ -242,6 +329,21 @@ export async function DELETE(request: Request, context: RouteContext) {
       .eq("id", projectId)
 
     if (deleteError) {
+      // F-4: this branch used to map *every* failure to 500 `delete_failed`,
+      // while PATCH already treated the very same `23514` as a 422 user error.
+      // A check_violation here is a guard refusing the delete — a statement
+      // about the data, not a broken server. Defence in depth behind the
+      // pre-check above, which normally answers first; this catches the window
+      // between counting and deleting.
+      if (deleteError.code === "23514") {
+        return apiError(
+          GOVERNANCE_HISTORY_BLOCK_CODE,
+          "Dieses Projekt kann nicht endgültig gelöscht werden: es trägt " +
+            "unveränderliche Historie, die auch beim Löschen erhalten bleiben " +
+            "muss. Das Projekt bleibt dauerhaft im Papierkorb.",
+          422
+        )
+      }
       return apiError("delete_failed", deleteError.message, 500)
     }
 

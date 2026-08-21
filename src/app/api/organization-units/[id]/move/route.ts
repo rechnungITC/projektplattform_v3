@@ -1,6 +1,8 @@
 import { NextResponse } from "next/server"
 import { z } from "zod"
 
+import { requireModuleActive } from "@/lib/tenant-settings/server"
+
 import {
   apiError,
   getAuthenticatedUserId,
@@ -9,6 +11,24 @@ import {
 // PROJ-62 — Atomic move via SECURITY DEFINER RPC `move_organization_unit`.
 // The RPC enforces tenant-admin auth + same-tenant + cycle + optimistic-lock
 // in a single transaction (Tech-Design Lock 2).
+//
+// PROJ-Y-143n — this route had no tenant reference of its own at all: the RPC
+// was the only thing gating it. A module gate needs a tenant, so the route now
+// resolves one the same way its PATCH/DELETE siblings do — by loading the unit
+// it is about to move. Deliberately *not* via `resolveActiveTenantId`: that
+// would be a second, different notion of "which tenant is this about" for the
+// same object, and could consult the wrong tenant's module settings.
+//
+// The RPC keeps every check it had. The route adds one gate and takes nothing
+// away — it cannot, since the RPC re-derives tenant, admin role, same-tenant
+// parent, cycles and the optimistic lock from `auth.uid()` internally.
+//
+// Two visible consequences of putting the lookup first, both deliberate:
+//   * A unit the caller cannot see through RLS now answers 404 before the RPC
+//     is reached, where the DEFINER RPC used to see the row and answer 403.
+//     That is the sibling handlers' behaviour and leaks less, not more.
+//   * With the module off, a malformed body answers 403 rather than 400: the
+//     gate runs before validation, as it does on every other gated route.
 
 const moveSchema = z.object({
   new_parent_id: z.string().uuid().nullable(),
@@ -26,6 +46,23 @@ export async function POST(request: Request, ctx: Ctx) {
   const { id } = await ctx.params
   const { userId, supabase } = await getAuthenticatedUserId()
   if (!userId) return apiError("unauthorized", "Not signed in.", 401)
+
+  // The unit is the tenant anchor — see the header note.
+  const { data: existing, error: lookupError } = await supabase
+    .from("organization_units")
+    .select("id, tenant_id")
+    .eq("id", id)
+    .maybeSingle()
+  if (lookupError) return apiError("internal_error", lookupError.message, 500)
+  if (!existing) return apiError("not_found", "Unit not found.", 404)
+
+  const moduleDenial = await requireModuleActive(
+    supabase,
+    existing.tenant_id as string,
+    "organization",
+    { intent: "write" },
+  )
+  if (moduleDenial) return moduleDenial
 
   let body: unknown
   try {

@@ -15,6 +15,10 @@ summary_for_jira: "[E3] Maßnahmen-Tracking und Owner-Verantwortung"
 # PROJ-109: Maßnahmen-Tracking und Owner-Verantwortung
 
 ## Status: Deployed (2026-07-21 · Tag `v2.13.0-PROJ-109`)
+## Deployment Scope: full
+
+> **Scope-Klassifikation (PROJ-Y-145b, Tranche 3, 2026-08-20):** QA 2026-07-21: **4/4 AC PASS**, 0 Critical/High, Live-Pentest A–H 8/8 gegen Prod inkl. Aggregat-Leck-Probe. Die zwei Abweichungen sind Low/Info (Label-Wortwahl → PROJ-Y-109b, Mobile-Safari-Umgebung).
+
 **Created:** 2026-06-10
 **Origin:** M&A-Platform Backlog (Epic E — Risiken & Red Flags)
 **Priority:** P1

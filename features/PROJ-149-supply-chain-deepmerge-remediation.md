@@ -14,11 +14,12 @@ summary_for_jira: "[HYGIENE] Supply-Chain-Remediation deepmerge-ts via Override 
 
 # PROJ-149: Supply-Chain-Remediation `deepmerge-ts`
 
-## Status: Approved
-## Deployment Scope: —
+## Status: Deployed
+## Deployment Scope: full
 
 **Created:** 2026-08-18
-**PR:** #401 — alle **8** Required-Checks grün, `mergeStateStatus: CLEAN` (noch **nicht** gemergt)
+**Deployed:** 2026-08-18 — Tag `v2.59.0-PROJ-149` auf dem Merge-Commit **`4d9321a`** (PR #401, squash → `main`, gemergt 13:31:11Z durch `rechnungITC`)
+**PR:** #401 — alle **8** Required-Checks grün, `mergeStateStatus: CLEAN` → **gemergt**
 **Origin:** Der PROJ-74-Required-Check `npm audit production dependencies` ist auf `main` **selbst** rot
 und blockiert per Branch-Protection **alle** offenen PRs (#397, #398, #399). Unabhängig nachgemessen:
 `package.json` und `package-lock.json` sind byte-identisch mit `origin/main` (`git diff origin/main`
@@ -221,17 +222,65 @@ Danach zurückgesetzt: Suite wieder 15/15.
   hatte gar keine Map. Ein `require('deepmerge-ts/package.json')` bricht dadurch. Für dieses Repo
   irrelevant — einziger Konsument ist `html-to-text`, das nur den Paket-Root importiert — aber
   festgehalten, weil es der eine echte Bruch ist, den der Major mitbringt.
-- **D-149.6 — kein Merge in diesem Lauf.** Status bleibt `Approved`, Deployment Scope `—`.
+- **D-149.6 — Merge war ein Folgeschritt.** Der Bau-Lauf endete bewusst auf `Approved`/`—`. Eingelöst am
+  2026-08-18: gemergt als `4d9321a`, Scope beim Abschluss eingetragen (siehe unten).
 
-## Erwarteter Deployment Scope (nach dem Merge)
+## Deployment (2026-08-18)
 
-**`full`**, nach der in PROJ-146 getroffenen und dort begründeten Auslegung: die Taxonomie hat keinen
-eigenen Eimer für Abhängigkeits-/Sicherheitspflege, und `tooling-only` verlangt, dass der Ausgang
-„repository tooling, CI, tests, or workflow" betrifft — hier wechselt eine **Produktions**-Laufzeit-
-Abhängigkeit im `.eml`-Ingestionspfad (PROJ-70-δ), das trifft nicht zu. `full` ist kriterienweise
-erfüllt: AC-149.1–149.9 sind alle belegt, es ist nichts zurückgestellt, kein Critical/High offen.
-Eingetragen wird der Scope erst mit dem Merge, nicht vorher — die Regel untersagt einen Scope vor der
-Auslieferung.
+**Tag `v2.59.0-PROJ-149` auf dem Merge-Commit `4d9321a`** — nicht auf dem Buchführungs-Commit dieses
+Abschlusslaufs. Der Tag markiert, was ausgeliefert wurde; die Auslieferung ist der Merge nach `main`
+(Vercel deployt automatisch von `main`), nicht die nachgezogene Statuszeile. Ein Tag auf dem Doku-Commit
+würde auf einen Stand zeigen, der die Änderung gar nicht einführt.
+
+Beim Abschluss **unabhängig nachgemessen** statt aus dem Bau-Lauf übernommen:
+
+| Prüfung | Ergebnis |
+|---|---|
+| PR #401 wirklich gemergt | `state: MERGED`, `mergeCommit 4d9321a`, `mergedAt 2026-08-18T13:31:11Z` |
+| `4d9321a` wirklich auf `main` | `git merge-base --is-ancestor 4d9321a origin/main` → **ja** |
+| Required-Checks am PR | **8/8 SUCCESS**, darunter `npm audit production dependencies` und `OSV scan of the dependency lockfile` (beide Advisory-Quellen) sowie der **Vercel-Build** |
+| Vercel-Produktion | `dpl_DVswsf63d9atjJ4Y2kujy1fCkZsH`, `target: production`, **`state: READY`**, `githubCommitSha 4d9321a` — der erzwungene Major baut und läuft in der echten Zielumgebung (PROJ-146-Muster) |
+| Laufzeitfehler nach dem Deploy | **0** im 6-h-Fenster über beide Produktions-Deploys |
+| AC-149.1 erneut | `npm run audit:prod` → `found 0 vulnerabilities`, exit **0** |
+| AC-149.3 + AC-149.8 erneut | `rm -rf node_modules && npm ci` → `mailparser@3.9.14` → `html-to-text@10.0.0` → **`deepmerge-ts@8.0.1`**; `mailparser` nachweislich **nicht** unter 3.9.9 gedrückt |
+| AC-149.9 erneut | Diffstat von `4d9321a`: `package.json` +1, `package-lock.json` +13/−3, **1** Testdatei, 2 `features/`-Dateien — **kein** Produktivcode, keine Migration |
+
+**Fund beim Abschluss (Umgebung, nicht Produkt):** der Abschluss-Worktree war mit einer
+hardlink-kopierten `node_modules` bestückt, die **vor** dem Override entstanden war — auf der Platte lag
+noch `deepmerge-ts@7.1.5` (`npm ls` meldete `invalid: "^8.0.0" from node_modules/html-to-text`), während
+Sperrdatei und `package.json` korrekt auf `8.0.1`/`^8.0.0` standen. `npm audit` liest die Sperrdatei und
+meldete deshalb schon vorher grün; jeder **Test-** oder **Build**-Lauf in diesem Worktree hätte aber den
+Zustand *vor* dem Fix gemessen und wäre trotzdem grün gewesen. Genau die Blindheitsklasse, gegen die
+AC-149.8 geschrieben ist. Behoben durch `rm -rf node_modules && npm ci` (betrifft nur das eigene
+Verzeichnis — das Entfernen einer Hardlink-Referenz lässt die übrigen Worktrees unberührt); alle unten
+protokollierten Gates sind **danach** gemessen, laufen also gegen `deepmerge-ts@8.0.1`.
+
+### Warum `full` und nicht `tooling-only`
+
+Nach der in PROJ-146 getroffenen und dort begründeten Auslegung, hier eigens gegengeprüft: die Taxonomie
+hat keinen eigenen Eimer für Abhängigkeits-/Sicherheitspflege, und `tooling-only` verlangt, dass der
+Ausgang „repository tooling, CI, tests, or workflow" betrifft. Das trifft **nicht** zu — getauscht wird
+eine **Produktions**-Laufzeitabhängigkeit im `.eml`-Ingestionspfad (PROJ-70-δ); `mailparser` steht in
+`dependencies`, nicht in `devDependencies`, und `html-to-text` wird zur Laufzeit für HTML-only-Mails
+aufgerufen. `mvp` und `alpha` behaupten beide zurückgestellte Arbeit, die es hier nicht gibt. Damit ist
+`full` der einzige zutreffende Wert, und er ist kriterienweise erfüllt: AC-149.1–149.9 alle belegt,
+nichts zurückgestellt, kein Critical/High offen. Gleiche Einordnung wie die drei Präzedenzfälle
+PROJ-140, PROJ-142 und PROJ-146.
+
+Die **Waiver**-Ausnahme aus `.claude/rules/general.md` wird **nicht** in Anspruch genommen und war nicht
+nötig: kein Akzeptanzkriterium ist wörtlich unerfüllt.
+
+### Gates beim Abschluss (nach `npm ci`, auf `main`-Stand `9a2d59e`)
+
+| Gate | Ergebnis |
+|---|---|
+| `npm run audit:prod` | **0 vulnerabilities**, exit 0 |
+| `npx eslint .` | **0**, exit 0 |
+| `npx tsc --noEmit` | **13** = exakte Baseline, **0 neu**, keiner in `eml-parser.test.ts` |
+| `npm test` (vitest) | **3058/3058** in 385 Dateien, exit 0 |
+| `npm run build` | clean, exit 0 |
+| `npm run check:index-scope` | 173 Zeilen, **0 errors**, exit 0 |
+| `npm run check:migration-naming` | 217 Migrationen, **0 errors**, exit 0 (unberührt — keine Migration in dieser Slice) |
 
 ## Definition of Done
 
@@ -246,5 +295,9 @@ Auslieferung.
 - [x] Lockfile selbstkonsistent (`npm ci` aus sauberem Zustand)
 - [x] `node_modules`-Instrumentierung restlos zurückgesetzt
 - [x] Required-Checks **am PR** grün: #401, **8/8 pass**, `mergeStateStatus: CLEAN` — beide Supply-Chain-Gates bestätigen den Fix in CI, nicht nur lokal; der **Vercel-Build** belegt zusätzlich, dass der erzwungene Major in der echten Zielumgebung baut (PROJ-146-Muster)
-- [ ] Merge nach `main` → dann Status `Deployed` + Scope `full` (bewusst dem Nutzer überlassen)
-- [ ] Nachziehen von #397/#398/#399 per `update-branch` (Folgeschritt, nicht Teil dieser Slice)
+- [x] Merge nach `main` (`4d9321a`, 2026-08-18 13:31:11Z) → Status `Deployed` + Scope `full` eingetragen
+- [x] Vercel-Produktions-Deploy von `4d9321a` **READY** verifiziert; 0 Laufzeitfehler danach
+- [x] Nachziehen der blockierten PRs: #397 (PROJ-Y-2) und #398 (PROJ-Y-143b/k/l) sind seither **gemergt**
+      — der Zweck der Slice (Repo entblocken) ist damit belegt eingetreten. #399 (PROJ-80-α-Frontend) ist
+      eine eigene, weiterhin offene Slice; das war schon im Bau-Lauf als „Folgeschritt, nicht Teil dieser
+      Slice" abgegrenzt und ist deshalb **kein** zurückgestelltes Akzeptanzkriterium dieser Slice.

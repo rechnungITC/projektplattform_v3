@@ -1,6 +1,10 @@
 import { NextResponse } from "next/server"
 import { z } from "zod"
 
+import {
+  buildBlockingMessage,
+  parseBlockingRefs,
+} from "@/lib/construction/blocking-refs"
 import { requireModuleActive } from "@/lib/tenant-settings/server"
 
 import {
@@ -103,6 +107,27 @@ export async function DELETE(
     .eq("project_id", projectId)
 
   if (error) {
+    if (error.code === "23503") {
+      // PROJ-45-β/γ (AC-45βH-7 / AC-45γ.27): der Bezug wird ohne
+      // `on delete`-Klausel gehalten, weil das Gewerk die Zuständigkeit trägt,
+      // die eine Mängelanzeige und ein Abnahmeprotokoll brauchen (L16).
+      //
+      // GENERALISIERT in γ: bis dahin sprach dieser Zweig wörtlich von Mängeln
+      // (Code `defects_present`). Sobald auch eine ABNAHME blockiert, wäre die
+      // Meldung FALSCH gewesen, nicht bloss unvollständig. Die INVOKER-Auskunft
+      // nennt jetzt Art UND Bezeichnung; sie läuft im Recht des Aufrufers und
+      // benennt darum nie ein Objekt, das er ohnehin nicht sehen darf.
+      const { data: blocking } = await gated.supabase.rpc(
+        "construction_trade_blocking_refs",
+        { p_trade_id: ptid }
+      )
+
+      return apiError(
+        "references_present",
+        buildBlockingMessage("Gewerk", parseBlockingRefs(blocking)),
+        409
+      )
+    }
     if (error.code === "42501") return apiError("forbidden", "Not allowed.", 403)
     return apiError("delete_failed", error.message, 500)
   }

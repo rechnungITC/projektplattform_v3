@@ -14,9 +14,10 @@ summary_for_jira: "[HYGIENE] Stammdaten-Kachelgitter kennzeichnet deaktivierte M
 
 # PROJ-Y-143k: die Navigation bewirbt nicht mehr, was das Tor verschließt
 
-## Status: In Review
-## Deployment Scope: —
+## Status: Deployed
+## Deployment Scope: full
 **Created:** 2026-08-13
+**Deployed:** 2026-08-13 (Code); Buchführung nachgezogen 2026-08-17
 **Origin:** Fund F-3 aus PROJ-Y-143f.
 
 ## Der Befund
@@ -70,24 +71,40 @@ modul-gegatet. Erhoben über alle `requireModuleActive`-Aufrufstellen in
 | **Ressourcen** | `/api/resources` | ✅ `resources` |
 | **Lieferanten** | `/api/vendors` | ✅ `vendor` |
 | Stakeholder-Rollup, Stakeholder-Typen, Projekttypen, Methoden, Berechtigungsprofile, 4-Augen-Genehmigung, Revisionszugriff, DD-Stream-Vorlagen, Projekt-Vorlagen (M&A), Risikokategorien, Skills | `master-data`, `stakeholder-types`, `project-types`, `clearance-profiles`, `clearance-approval-policies`, `tenants/[id]/audit-readers`, `dd-stream-templates`, `ma-project-templates`, `risk-categories`, `skills` | — Kernstammdaten, kein Modul |
-| **Organisation** | `organization-units`, `locations`, `organization-imports`, `organization-landscape` | ⚠️ **keins** (siehe unten) |
+| **Organisation** | `organization-units`, `locations`, `organization-imports`, `organization-landscape` | ⚠️ **halb** — nur die fünf CSV-Import-Routen (siehe unten) |
 
 ### Die Abweichung, die die Vorgabe vorgesehen hat: „Organisation"
 
+> **Korrektur 2026-08-19 (PROJ-Y-143n, AC-Y143n.4).** Dieser Abschnitt hat
+> behauptet, **keine** der Organisations-Routen rufe `requireModuleActive` und
+> der Schalter sei „vollständig wirkungslos". Die zweite Hälfte der Erhebung
+> (Frontend liest den Schlüssel nirgends) war richtig, die erste **falsch**:
+> `src/app/api/organization-imports/_helpers.ts:48-53` ruft das Tor, und **alle
+> fünf** CSV-Import-Routen aus PROJ-63 gehen durch diesen Helfer. Der Schalter
+> war also nicht wirkungslos, sondern **halb wirksam** — der schlechtere der
+> beiden Zustände, weil er die Zusage nicht bloß nicht einlöste, sondern ihr
+> widersprach: `/stammdaten/organisation` funktionierte, während
+> `/stammdaten/organisation/import` in denselben vier Mandanten 404 antwortete
+> und das als roten Fehlerkasten zeigte. Die *Entscheidung* dieser Slice bleibt
+> richtig — ein UI-Kennzeichen ersetzt kein fehlendes Tor —, nur ihre
+> Begründung war zu absolut. Der Ursprung liegt bei der Meß-Methode: „gibt es
+> Aufrufstellen für den Schlüssel?" war die falsche Frage, weil eine gegatete
+> von zwölf ungegateten Routen dabei wie Abdeckung aussieht. **PROJ-Y-143n hat
+> alle zwölf Handler nachgerüstet; die Kachel trägt seither
+> `requiresModule: "organization"`.**
+
 `organization` **ist** ein `ModuleKey`, steht in `TOGGLEABLE_MODULES` und hat
 ein Label — die naheliegende Zuordnung wäre also die Kachel „Organisation".
-Sie wurde bewusst **nicht** gemacht, weil sie eine Behauptung wäre, die nichts
-trägt:
-
-- **keine** der vier Organisations-Routen ruft `requireModuleActive`,
-- **keine** Stelle im Frontend fragt `isModuleActive(settings, "organization")`.
-
-Der Schalter ist heute vollständig wirkungslos. Hätte die Kachel ihn gelesen,
+Sie wurde in dieser Slice bewusst **nicht** gemacht, weil sie eine Behauptung
+gewesen wäre, die nichts trägt: die zwölf Handler der Kernfläche (`units`,
+`tree`, `combobox`, `locations`, `landscape`, `move`) prüften den Schlüssel
+nicht, und keine Stelle im Frontend fragte
+`isModuleActive(settings, "organization")`. Hätte die Kachel ihn gelesen,
 stünde dort „nicht aktiv", während die Seite dahinter einwandfrei funktioniert
 — eine Falschaussage in die andere Richtung, und ein direkter Verstoß gegen die
 Regel, an der sich 143f ausrichtet: *die Oberfläche sagt nur, was die
-Aufrufstelle wirklich weiß.* Das Gate nachzurüsten ist kein UI-Thema und
-änderte API-Verhalten für Bestandsmandanten → **PROJ-Y-143n**.
+Aufrufstelle wirklich weiß.* Das Gate nachzurüsten war kein UI-Thema und
+änderte API-Verhalten für Bestandsmandanten → **PROJ-Y-143n** (erledigt).
 
 Der Unit-Test friert diese Zuordnung ein: er prüft die Liste der
 `requiresModule`-Kacheln exakt, damit ein späterer Zusatz eine bewusste
@@ -120,7 +137,9 @@ Testfall hält die zwei Flags auseinander.
   (alle Module an / alle aus) prüft Anzahl **und** Reihenfolge.
 - **AC-Y143k.3** — Nur Kacheln mit echtem Server-Gate werden gekennzeichnet;
   keine UI-only-Behauptung. ✅ Unit-Test friert die Zuordnung exakt ein;
-  `organization` bewusst ausgenommen (→ PROJ-Y-143n).
+  `organization` bewusst ausgenommen (→ PROJ-Y-143n, das das Tor 2026-08-19
+  nachgerüstet und die Kachel dabei ergänzt hat — der Test trägt seither vier
+  Zeilen statt drei, genau wie vorgesehen).
 - **AC-Y143k.4** — Kernstammdaten ohne Modul bleiben unangetastet und voll
   funktionsfähig. ✅ 12 von 14 Kacheln byte-identisch im Bild; eigener
   Testfall („alle Module aus" ⇒ kein Kern-Flag gesetzt").
@@ -190,7 +209,8 @@ ergänzt nur die neue 143n-Zeile. Fremde Arbeit wurde nicht angefasst.
   damit kleiner als der Titel „nach aktiven Modulen filtern" nahelegt. Der Wert
   liegt ebenso im festgehaltenen Befund, dass die übrigen 12 Kernstammdaten
   sind und keinen Modulschalter haben *sollen*.
-- **D-Y143k.3** — „Organisation" bleibt ungegatet (Begründung oben) →
+- **D-Y143k.3** — „Organisation" bleibt in *dieser* Slice ungegatet
+  (Begründung oben; von PROJ-Y-143n am 2026-08-19 aufgelöst) →
   **PROJ-Y-143n**.
 - **D-Y143k.4** — Die Seite wird zur Server-Component mit Client-Grid statt
   serverseitig die Settings zu lesen. Grund: jede andere Fläche im Produkt
@@ -214,7 +234,8 @@ weil ich es nicht benennen kann.
 
 ## Followups
 
-- **PROJ-Y-143n** (neu) — der `organization`-Modulschalter ist wirkungslos: er
+- **PROJ-Y-143n** (erledigt 2026-08-19) — der `organization`-Modulschalter ist
+  nur halb wirksam (Korrektur oben): er
   steht in `TOGGLEABLE_MODULES`, wird aber weder von einer Route
   (`requireModuleActive`) noch von der Oberfläche (`isModuleActive`) gelesen.
   Ein Tenant-Admin schaltet ihn heute aus und nichts passiert. Zu entscheiden:
@@ -223,3 +244,60 @@ weil ich es nicht benennen kann.
   „reserviert" kennzeichnen.
 - Offen aus der Reihe: **PROJ-Y-143c** (Alt-Mandant), **PROJ-Y-143l**
   (geteilter E2E-Nutzer), **PROJ-Y-143m** (restliche englische Texte).
+  — Stand 2026-08-17: alle drei inzwischen `Deployed`.
+
+---
+
+## Buchführungs-Nachtrag 2026-08-17 — `Deployed` / Scope `full`
+
+Die Zeile stand auf `In Review` mit leerem Scope, obwohl der Code seit dem 2026-08-13 auf `main`
+liegt. Nachgezogen wurde ausschließlich die Buchführung; **keine Code-Änderung**.
+
+**Merge-Nachweis:** `45e0204` — *„feat(PROJ-Y-143k): Stammdaten-Kacheln kennzeichnen deaktivierte
+Module"* (**PR #369**), verifiziert als Vorfahre von `origin/main`.
+
+**Artefakte gegen `origin/main` geprüft, nicht aus der Spec übernommen:**
+`src/lib/master-data/stammdaten-sections.ts` mit `STAMMDATEN_SECTIONS` und dem reinen Resolver
+`resolveStammdatenSections` (Z. 192), `src/components/master-data/stammdaten-grid.tsx`,
+`src/lib/master-data/stammdaten-sections.test.ts` mit **9** Fällen wie zugesagt,
+`src/app/(app)/stammdaten/page.tsx` von **201 auf 27** Zeilen reduziert (nachgezählt am Blob vor
+und nach dem Merge — die „184" aus `git diff --stat` ist die Zahl *geänderter* Zeilen
+(5 Einfügungen + 179 Löschungen), nicht die vorherige Dateilänge; ein Zwischenstand dieses
+Nachtrags hatte sie als Dateilänge missverstanden).
+
+**Der eingefrorene Zuordnungs-Test hat inzwischen gewirkt — genau wie beabsichtigt.**
+`requiresModule` trägt auf `main` jetzt **drei** Werte statt der zwei aus dieser Slice:
+`resources`, `vendor` **und `construction`** (Zeile 92), eingebracht von PROJ-45 (`3732532`).
+Das ist keine Drift, sondern der belegte Ertrag von AC-Y143k.3: der Test friert die Liste exakt
+ein, also musste die Construction-Slice eine bewusste Entscheidung treffen statt stillschweigend
+eine ungegatete Kachel zu ergänzen.
+
+**Warum `full` und ausdrücklich nicht `tooling-only`:** der Merge liefert **vier Dateien unter
+`src/`** aus und verändert damit, was in Produktion gerendert wird — eine Kachel mit
+abgeschaltetem Modul ist gestrichelt, trägt ein Schloss statt des Chevrons, **ist kein Link mehr**
+und erklärt den Zustand im Fuß. Das ist eine Produkt-Laufzeitfähigkeit, also ist
+`tooling-only` („adds no product runtime capability") hier falsch; es gilt die in PROJ-Y-145b
+Tranche 2 präzisierte Grenzregel: was Produktions-Laufzeit anfasst, ist nicht `tooling-only` —
+wenn vollständig, dann `full`.
+
+`full` ist kriterienweise erfüllt: alle **sieben** AC ✅ (AC-Y143k.5 mit dem stärksten möglichen
+Nachweis — bei aktivierten Modulen rendert die Seite byte-identisch zur Vorher-Baseline, gleiche
+md5), Definition of Done erfüllt, kein Critical/High-Befund, und das Produktionsverhalten ist über
+UI/E2E belegt (Playwright Visual 7× 9/9 inklusive vier Kaltstarts, 9 Unit-Fälle, Build clean mit
+registrierter `/stammdaten`-Route) — beides Nachweisarten, die die Regel ausdrücklich zulässt.
+Der Code ist über den Merge in `main` und damit über den Vercel-Auto-Deploy live.
+
+**Eine offene Auslassung — aber keine aus einem AC dieser Slice:** **PROJ-Y-143n** (der
+`organization`-Modulschalter ist nur halb wirksam — Korrektur oben). Das ist wichtig für die Scope-Frage: AC-Y143k.3
+verlangt, dass **nur** Kacheln mit echtem Server-Gate gekennzeichnet werden. „Organisation"
+auszunehmen ist deshalb **Erfüllung** dieses Kriteriums, nicht seine Zurückstellung — der
+Schalter wird von keiner Route (`requireModuleActive`) und keiner Oberfläche (`isModuleActive`)
+gelesen, eine Kennzeichnung wäre eine Falschaussage in die Gegenrichtung gewesen. 143n stellt
+also kein Kriterium dieser Slice zurück und widerspricht keinem, womit `full` unberührt bleibt;
+registriert ist es trotzdem, weil es als D-Y143k.3 bewusst abgegeben wurde
+(`features/OPEN-DEFERRED-STATUS.md`, Herkunft benannt).
+
+D-Y143k.2 (nur 2 von 14 Kacheln modul-gebunden) ist eine Feststellung über den Bestand, keine
+Verengung einer Anforderung. Die „Beobachtung ohne Beweis" (einzelner nicht reproduzierbarer
+Fehlschlag nach `rm -rf .next`, Signatur PROJ-138-Turbopack-Wedge) bleibt als solche stehen und
+wird nicht zu einem Befund erhoben.

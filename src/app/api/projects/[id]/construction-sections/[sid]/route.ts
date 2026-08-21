@@ -1,6 +1,10 @@
 import { NextResponse } from "next/server"
 import { z } from "zod"
 
+import {
+  buildBlockingMessage,
+  parseBlockingRefs,
+} from "@/lib/construction/blocking-refs"
 import { requireModuleActive } from "@/lib/tenant-settings/server"
 
 import {
@@ -117,6 +121,31 @@ export async function DELETE(
     .eq("project_id", projectId)
 
   if (error) {
+    if (error.code === "23503") {
+      // PROJ-45-β/γ: ein Mangel ODER eine Abnahme hält den Abschnitt ohne
+      // `on delete`-Klausel (L16), das Entfernen wird also blockiert statt den
+      // Ort still abzuhängen.
+      //
+      // Die Abfrage MUSS über die Auskunftsfunktion laufen, nicht über
+      // `.eq("section_id", sid)`: `parent_id` kaskadiert, das Löschen eines
+      // Oberabschnitts reisst den Teilbaum mit, und blockiert wird die Wurzel
+      // von einem Eintrag am ENKEL. Der flache Filter meldete für genau den
+      // Fall „keine Blockierer". Die Funktion läuft rekursiv über den Teilbaum
+      // und ist SECURITY INVOKER.
+      //
+      // GENERALISIERT in γ: sie nennt jetzt Art UND Bezeichnung, weil der Zweig
+      // sonst über Mängel spräche, wo eine Abnahme blockiert.
+      const { data: blocking } = await gated.supabase.rpc(
+        "construction_section_blocking_refs",
+        { p_section_id: sid }
+      )
+
+      return apiError(
+        "references_present",
+        buildBlockingMessage("Abschnitt", parseBlockingRefs(blocking)),
+        409
+      )
+    }
     if (error.code === "42501") return apiError("forbidden", "Not allowed.", 403)
     return apiError("delete_failed", error.message, 500)
   }

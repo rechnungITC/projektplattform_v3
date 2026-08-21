@@ -17,7 +17,9 @@ import {
   HardHat,
   BarChart3,
   Calculator,
+  CalendarClock,
   ClipboardCheck,
+  ClipboardList,
   FileText,
   Flag,
   FolderTree,
@@ -103,6 +105,54 @@ const CONSTRUCTION_SECTIONS_SECTION: SidebarSection = {
   label: "Bauabschnitte",
   icon: Layers,
   tabPath: "bauabschnitte",
+  requiresProjectType: "construction",
+  requiresModule: "construction",
+}
+
+/**
+ * PROJ-45-β — das Mängelregister. Dritte Fläche hinter demselben EINEN Schalter
+ * (Q4): feinere Schalter erzeugen Kombinationen, die weder Tests noch QA
+ * abdecken. `routing.test.ts` prüft deshalb seit α auf die Absicht („mindestens
+ * eine Sektion je Modul, und alles Verschwundene gehört zu diesem Modul") statt
+ * auf genau eine — diese Sektion kommt ohne Testanpassung dazu.
+ */
+const CONSTRUCTION_DEFECTS_SECTION: SidebarSection = {
+  id: "construction-defects",
+  label: "Mängel",
+  icon: ClipboardList,
+  tabPath: "maengel",
+  requiresProjectType: "construction",
+  requiresModule: "construction",
+}
+
+/**
+ * PROJ-45-γ — das Abnahmeregister. Vierte Fläche hinter demselben EINEN
+ * Schalter (Q4). `routing.test.ts` prüft seit α auf die Absicht („mindestens
+ * eine Sektion je Modul, und alles Verschwundene gehört zu diesem Modul")
+ * statt auf genau eine — diese Sektion kommt darum ohne Testanpassung dazu.
+ */
+const CONSTRUCTION_ACCEPTANCES_SECTION: SidebarSection = {
+  id: "construction-acceptances",
+  label: "Abnahmen",
+  icon: ClipboardCheck,
+  tabPath: "abnahmen",
+  requiresProjectType: "construction",
+  requiresModule: "construction",
+}
+
+/**
+ * PROJ-45-δ — die Terminsignale: der zusammenfassende Blick auf Gewerke,
+ * Bauabschnitte, Fristen und überfällige Mängel. Fünfte Fläche hinter demselben
+ * EINEN Schalter (Q4) und, anders als die vier davor, rein LESEND — sie gatet
+ * `view` und kennt bewusst kein verschärftes Rollen-Gate (AC-45δ.23, D-δ10).
+ * Der Gantt bleibt unberührt (L24/AC-45δ.24); dies ist die Fläche, die an
+ * seiner Stelle die Signale trägt.
+ */
+const CONSTRUCTION_SIGNALS_SECTION: SidebarSection = {
+  id: "construction-schedule-signals",
+  label: "Terminsignale",
+  icon: CalendarClock,
+  tabPath: "terminsignale",
   requiresProjectType: "construction",
   requiresModule: "construction",
 }
@@ -351,6 +401,9 @@ function withMaFoundation(config: MethodConfig): MethodConfig {
       MA_STEERING_REPORT_SECTION,
       CONSTRUCTION_TRADES_SECTION,
       CONSTRUCTION_SECTIONS_SECTION,
+      CONSTRUCTION_DEFECTS_SECTION,
+      CONSTRUCTION_ACCEPTANCES_SECTION,
+      CONSTRUCTION_SIGNALS_SECTION,
       ...sections.slice(insertAt),
     ],
   }

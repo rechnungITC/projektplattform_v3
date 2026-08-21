@@ -15,6 +15,9 @@ summary_for_jira: "[A2] M&A-Phasenmodell abbilden und visualisieren"
 # PROJ-95: M&A-Phasenmodell abbilden und visualisieren
 
 ## Status: Deployed (2026-06-26 — Tag v2.3.0-PROJ-139-95-97, PR #189; /phasenmodell prod auth-gate 307; migration 20260624120635 live)
+## Deployment Scope: mvp
+
+> **Scope-Klassifikation (PROJ-Y-145b, Tranche 3, 2026-08-20):** AC-95-5 ist ausdrücklich **„(teilweise)"**: Notizen + Risiko-Link ✅, **Deliverable-Verknüpfung an PROJ-104 deferiert**. PROJ-104 ist seither deployed (`deliverables.phase_id`) — ein Upgrade auf `full` ist damit erreichbar, verlangt nach Hausregel aber einen eigenen QA-/Deploy-Pass für PROJ-95.
 
 ## Implementation Notes — Frontend Cockpit (2026-06-25)
 

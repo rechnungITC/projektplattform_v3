@@ -15,6 +15,10 @@ summary_for_jira: "[G1] Due-Diligence-Streams konfigurieren und steuern"
 # PROJ-112: Due-Diligence-Streams konfigurieren und steuern
 
 ## Status: Deployed (2026-06-25 — Tag `v2.1.0-PROJ-112`, PR #190 merged → main `5643735`; Vercel-Prod deploy success + Post-Deploy-Auth-Gate-Smoke 5/5 = 307; Migration `20260624105317` seit /backend in Prod. 0 Critical/High.)
+## Deployment Scope: mvp
+
+> **Scope-Klassifikation (PROJ-Y-145b, Tranche 3, 2026-08-20):** **AC2 teilweise** (Pflicht-Deliverables → PROJ-104, Prüfpunktliste → PROJ-113), **AC4 teilweise** (Findings-/Q&A-Zähler bewusst `null`/„—" statt `0` → PROJ-Y-112a) und **AC5 nur forward-compat** (Gate-5-Auswertung → PROJ-110). AC1/AC3 ✅.
+
 **Created:** 2026-06-10
 **Origin:** M&A-Platform Backlog (Epic G — Due Diligence)
 **Priority:** P1

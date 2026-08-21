@@ -21,6 +21,7 @@
     "audit:prod": "npm audit --omit=dev --audit-level=high",
     "check:schema-drift": "tsx scripts/check-schema-drift/index.ts",
     "check:migration-naming": "tsx scripts/check-migration-naming/index.ts",
+    "check:function-inventory": "tsx scripts/check-function-inventory/index.ts",
     "check:index-scope": "tsx scripts/check-index-scope/index.ts",
     "check:osv-gate": "tsx scripts/osv-gate/index.ts",
     "verify:pdf-render": "node scripts/verify-pdf-render.mjs"

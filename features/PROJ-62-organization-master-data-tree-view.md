@@ -94,7 +94,7 @@ V3 setzt V2-Modell **nicht** 1:1 um; die FK-only-Strategie ist V3-spezifisch und
   - INSERT/UPDATE/DELETE: `is_tenant_admin(tenant_id) OR has_tenant_role(tenant_id, 'org_admin')` (neue Rolle als Hook für PROJ-57-β; Default-Belegung bleibt admin-only).
 - [ ] `locations` RLS: identisch zu `organization_units`.
 - [ ] FK-Spalten an `stakeholders`/`resources`/`tenant_memberships` erben Bestands-RLS (kein Schema-Konflikt mit existierenden Policies).
-- [ ] Modul-Toggle gilt: `organization` als TOGGLEABLE_MODULES-Key, default-on, idempotent backfilled in `tenant_settings.active_modules` aller existierenden Tenants. `requireModuleActive(tenant, 'organization', { intent: 'read'|'write' })` gatet alle UI- und API-Pfade.
+- [x] Modul-Toggle gilt: `organization` als TOGGLEABLE_MODULES-Key, default-on, idempotent backfilled in `tenant_settings.active_modules` aller existierenden Tenants. `requireModuleActive(tenant, 'organization', { intent: 'read'|'write' })` gatet alle UI- und API-Pfade. — **Datenbank-Hälfte seit 2026-05-09 erfüllt** (Migration `20260509220000_…:478-500`), **Tor-Hälfte erst 2026-08-19 durch PROJ-Y-143n**: PROJ-62 selbst lieferte sie nicht (Bug M2-Re unten), PROJ-63 nur für die fünf CSV-Import-Routen. Seit PROJ-Y-143n rufen alle 12 Handler der Kernfläche das Tor. Die UI-Hälfte ist der dritte Zustand nach PROJ-Y-143f (`ModuleUnavailableNotice`) plus die Kennzeichnung der Stammdaten-Kachel.
 
 ### API (ST-03)
 
@@ -153,7 +153,7 @@ V3 setzt V2-Modell **nicht** 1:1 um; die FK-only-Strategie ist V3-spezifisch und
 - [ ] **Cross-Tenant-Parent**: durch RLS technisch unmöglich; UI listet nur valid Parents auf.
 - [ ] **Typen-Hierarchie**: Soft-Validation in der UI (Warnung "Ungewöhnlich: ein 'team' als Parent von 'company'") — nicht hart blockiert, weil reale Konzern-Strukturen Ausnahmen haben.
 - [ ] **Tiefe > 12**: Server-side hard-cap in der Tree-CTE; UI zeigt "Tiefer als 12 Ebenen wird nicht unterstützt".
-- [ ] **Modul deaktiviert**: API liefert 403 mit `error_code: 'module_disabled'`; UI zeigt Modul-Hinweis statt Tabelle/Tree.
+- [x] **Modul deaktiviert**: API liefert 403 mit `error_code: 'module_disabled'`; UI zeigt Modul-Hinweis statt Tabelle/Tree. — Erfüllt 2026-08-19 (PROJ-Y-143n). **Abweichung, bewusst und nicht umgeschrieben** (AC-Y143n.12): die 403-Zusage gilt nur für die *sieben schreibenden* Handler. Die *fünf lesenden* antworten **404**, weil die Hausnorm aus PROJ-17 ST-02 (`src/lib/tenant-settings/server.ts:60-67`) für Lese-Absicht 404 verlangt — ein 403 auf einem GET bestätigt die Existenz der Fläche, die das Tor verbergen soll. Diese Zeile ist als überholt gekennzeichnet, nicht angepasst: die literale Formulierung stammt aus 2026-05 und ist älter als die Konvention, die das Produkt seither überall anwendet. Die UI-Hälfte („Modul-Hinweis statt Tabelle/Tree") ist wörtlich erfüllt.
 - [ ] **Knoten löschen mit Children/Stakeholdern/Resources**: 409 + Liste der Blocker. UI zeigt Modal "Diese Einheit hat 12 Mitglieder + 3 Children — entferne zuerst die Verknüpfungen oder verschiebe sie".
 - [ ] **Location löschen mit org-units**: 409 + Liste. UI bietet "Standort an allen Einheiten leeren?"-Action (setzt FK auf NULL, tenant-admin only).
 - [ ] **Optimistic-Lock-Konflikt** (zwei Admins editieren gleichzeitig): 409 mit aktuellem `updated_at`. UI zeigt Refresh-Hinweis.
@@ -1026,7 +1026,7 @@ All routes redirect to `/login` when unauthenticated. **No cross-tenant leakage 
 | Severity | ID | Finding | Status |
 |---|---|---|---|
 | Medium | M1 (carryover) | Bestätigungsdialog für "kritische Strukturänderungen" beim DnD-Move ist im Spec offen gelassen. Backend-RPC führt jeden Move ohne Confirm-Hop durch. | Accept-as-is — UX-Polish-Slice (PROJ-62-Polish) |
-| Medium | M2-Re | API routes do not call `requireModuleActive(tenantId, 'organization', …)`. Module-Toggle is **declared** (key in TOGGLEABLE_MODULES + backfilled) but **not enforced** at the API layer. Disabling the module in `tenant_settings.active_modules` would leave the routes still callable. | **Acceptable for V1 production** — the module is default-on for all current tenants; the gate is a soft feature-flag. Wire `requireModuleActive` in a follow-up PROJ-62-Polish slice or PROJ-55-style hardening. |
+| Medium | M2-Re | API routes do not call `requireModuleActive(tenantId, 'organization', …)`. Module-Toggle is **declared** (key in TOGGLEABLE_MODULES + backfilled) but **not enforced** at the API layer. Disabling the module in `tenant_settings.active_modules` would leave the routes still callable. | **BEHOBEN 2026-08-19 durch PROJ-Y-143n** (12 Handler in 8 Dateien, Lesen → 404 / Schreiben → 403, plus UI-Zustand und Kachel-Kennzeichnung). Die hier angekündigte „PROJ-62-Polish"-Slice wurde nie gebaut — der Befund lag drei Monate offen und wurde von PROJ-Y-143k unabhängig wiederentdeckt. Die damalige Einschätzung „acceptable for V1, default-on for all current tenants" war für die Sicherheitsfrage korrekt (RLS + Member-/Admin-Gates greifen unabhängig, es floss nichts ab) und für die Produktzusage falsch: nachdem PROJ-63 den Import gatete, war der Schalter nicht mehr bloß unerzwungen, sondern **widersprüchlich** — dieselbe Fläche, ein Mandant, eine Seite offen und eine 404 mit rotem Fehlerkasten. |
 | Low | L1–L7 (carryover) | Frontend UX-Polish: bulk-action, soft-validation, aria-live, vendor-detail-panel, depth-banner, location-blocker-dialog, optimistic-lock-refresh-action. | Accept-as-is — bundle into PROJ-62-Polish. |
 | Info | I1 (carryover) | Hooks have no unit tests | Acceptable — pattern aligns with PROJ-21 |
 | Info | I2 (carryover) | E2E tests deferred (auth-fixture limitation from PROJ-29) | Pre-existing project-level limitation |
@@ -1051,7 +1051,7 @@ Rationale:
 | Item | Type | Owner |
 |---|---|---|
 | M1: Move-Bestätigungsdialog für ">5 Descendants oder Cross-Type-Group" | UX-Polish | PROJ-62-Polish slice |
-| M2-Re: `requireModuleActive('organization', …)` Gate in API-Routen | Backend hardening | PROJ-62-Polish slice or PROJ-55 |
+| ~~M2-Re: `requireModuleActive('organization', …)` Gate in API-Routen~~ — **erledigt 2026-08-19 (PROJ-Y-143n)** | Backend hardening | ~~PROJ-62-Polish slice or PROJ-55~~ |
 | L1–L7: 7 UX-Polish-Items | Frontend | PROJ-62-Polish slice |
 | I1: Hooks-Unit-Tests | Test-Coverage-Polish | optional |
 | I2: E2E-Smoke (full create→render-pdf-style) | Test-Coverage | depends on auth-fixture refresh (PROJ-29 thread) |
