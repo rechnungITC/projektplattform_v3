@@ -1,6 +1,11 @@
 # PROJ-55: Tenant Context, Settings Schema & Audit Hardening
 
 ## Status: Deployed (α + β + γ + δ + ε strict-cookie 403 live)
+
+## Deployment Scope: full
+
+> **Scope-Klassifikation (PROJ-Y-145b, Tranche 5, 2026-08-24):** Die AC-Tabelle traegt zwei 🟡, und **beide** loesen sich auf. **AC-3** (manipuliertes Cookie fuehrte zum Rueckfall auf die aelteste Mitgliedschaft statt 403) ist von der eigenen Slice **ε** geschlossen — im Code nachgemessen: `active-tenant.ts` gibt bei fremdem/manipuliertem Cookie `null` zurueck, damit der Aufrufer mit **403** antwortet; der Statusheader fuehrt ε als live. **AC-10** verlangt eine explizite Modul-fuer-Modul-Zusicherung; der gelieferte Drift-Test importiert stattdessen die kanonische `TOGGLEABLE_MODULES`-Konstante, wodurch jedes neue Modul automatisch mitgeprueft wird — sachlich staerker als die geforderte Aufzaehlung. Die Spec nennt ihre QA selbst „partial" und empfiehlt einen tieferen Durchgang nach der naechsten Foundation-Slice; PROJ-56 und PROJ-57 haben den Resolver seither wie vorhergesagt belastet.
+
 **Created:** 2026-05-07
 **Last Updated:** 2026-05-07
 

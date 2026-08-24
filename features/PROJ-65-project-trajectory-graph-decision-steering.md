@@ -1,6 +1,12 @@
 # PROJ-65: Project Trajectory Graph \& Decision Steering
 
-# Status: Draft / Ready for Refinement
+## Status: Deployed (alle 4 Phasen + ε.4.α/β/γ + 2 Hotfixes live; Schluss-Verdikt „APPROVED with non-blocking concerns", 0 Critical / 0 High)
+<!-- Korrigiert 2026-08-24 (PROJ-Y-145b, Tranche 5): der Kopf stand bis hierher auf „Draft / Ready for Refinement" und benutzte `#` statt `##` — beides falsch und nicht greppbar, waehrend die Datei 3600 Zeilen Implementierungs-Logs bis ε.4.γ traegt. -->
+
+## Deployment Scope: full
+
+> **Scope-Klassifikation (PROJ-Y-145b, Tranche 5, 2026-08-24):** Das Schluss-Verdikt lautet **„APPROVED with non-blocking concerns"** mit **0 Critical · 0 High** (2 Medium, 3 Low), und die vier Phasen samt aller ε.4-Teil-Slices und zwei Hotfixes sind mit Implementierungs-Logs belegt. Kein Kriterium ist zurueckgestellt. **Zwei Medium-Befunde bleiben offen und sind sicherheitsnah**, weshalb sie hier ausdruecklich stehen statt in einer Fussnote: **B-1** — eine `causation_id` laesst sich mandantenintern projektuebergreifend zum Ausloesen eines Undo verwenden; **B-2** — ein leeres `if_updated_at` ueberspringt die Sperrpruefung fuer alle Knoten. Die Spec fuehrt sie unter `F-PROJ-65-50` ohne eigene Followup-Kennung → jetzt **PROJ-Y-65a**. **Bookkeeping-Befund:** der Kopf der Spec steht bis heute auf **„Status: Draft / Ready for Refinement"** und benutzt `#` statt `##` — sie ist damit weder greppbar noch aktuell.
+
 
 # Created: 2026-05-13
 

@@ -1,6 +1,11 @@
 # PROJ-62: Organization Master Data + Tree-View
 
 ## Status: Deployed
+
+## Deployment Scope: mvp
+
+> **Scope-Klassifikation (PROJ-Y-145b, Tranche 5, 2026-08-24):** Der **zweite** QA-Durchgang ist der operative: **APPROVED (full slice — Frontend + Backend)**, 0 Critical/0 High, alle zuvor 🟡 markierten AC jetzt ✅, 10 Rot-Team-Angriffe geblockt. Offen bleibt aber ein **originaeres** Kriterium: die **Bulk-Aktion „Mehrere markieren → unter Parent verschieben"** ist mit ❌ als nicht implementiert ausgewiesen (Bug L1) → **PROJ-Y-62a**. Zwei weitere Punkte sind ausdruecklich **keine** Auslassungen: der Bestaetigungsdialog fuer „kritische Strukturaenderungen" (M1) wurde von der Spec nie definiert („offen in /architecture"), und die `@dnd-kit`-Nennung war laut QA eine ungenaue Spec-Formulierung, weil `react-arborist` seine eigene, aequivalente Baum-DnD mitbringt. **M2-Re** (Modul-Tor nicht durchgesetzt) ist inzwischen von **PROJ-Y-143n** geschlossen.
+
 **Created:** 2026-05-09
 **Last Updated:** 2026-05-09
 **Priority:** P1

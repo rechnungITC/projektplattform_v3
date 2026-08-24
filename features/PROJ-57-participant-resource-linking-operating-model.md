@@ -1,6 +1,11 @@
 # PROJ-57: Participant, Stakeholder & Resource Linking Operating Model
 
 ## Status: Deployed (α + β + β-UI + γ tagessatz-source + δ Class-3-masking + ε readiness-integration live)
+
+## Deployment Scope: full
+
+> **Scope-Klassifikation (PROJ-Y-145b, Tranche 5, 2026-08-24):** Die QA der ersten Slice fuehrt γ/δ/ε als „bewusst deferred" — der Statusheader fuehrt sie inzwischen als live, und das ist **im Code nachgemessen**, nicht aus dem Etikett gefolgert: `participant-relationship-card.tsx` traegt den `RateSourceBadge` (β-UI), die Rate-Quellen-Klassifikation (γ) und die Class-3-Maskierung (δ) mit `maskAmount={!canSeeRateAmount}` samt Kommentar „PROJ-57-δ — concrete rate amounts are Class-3"; ε ist die Readiness-Anbindung in PROJ-56. Alle Zurueckstellungen waren additiv und sind von **derselben** Feature-Familie eingeloest worden. Keine Critical/High-Befunde.
+
 **Created:** 2026-05-07
 **Last Updated:** 2026-05-07
 

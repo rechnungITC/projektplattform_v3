@@ -1,6 +1,11 @@
 # PROJ-137: AI-Failure-Transparency — sichtbarer Grund statt stiller Stub-0-Vorschläge
 
 ## Status: Deployed (2026-06-24 — Tag `v1.98.0-PROJ-137`; Code via #169/#172 live seit Backend-/Frontend-Merge, #176 QA-Pass 7/7 AC, 0 Critical/0 High)
+
+## Deployment Scope: full
+
+> **Scope-Klassifikation (PROJ-Y-145b, Tranche 5, 2026-08-24):** QA-Pass mit **7/7 AC**, live gegen Prod verifiziert: `class3_blocked` ueber alle drei Drawer-Zwecke mit `response.reason_code == DB.reason_code`, `provider=stub` (also **kein** externer Aufruf), `status=external_blocked` und 0 Vorschlaegen — und die Gegenprobe, dass ein sauberer Class-1-Lauf `reason_code = null` und `status = success` liefert. Der datengetriebene Erschoepfungs-Test ueber `AIPurpose` ist genau der Waechter, der die urspruengliche Luecke verursacht hatte. **F-1** (Low) ist eine `error_message`-Luecke in einem Zweig, in dem das dedizierte `reason_code` die Anforderung ohnehin erfuellt.
+
 **Created:** 2026-06-19
 **Last Updated:** 2026-06-24
 

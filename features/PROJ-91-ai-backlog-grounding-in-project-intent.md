@@ -1,6 +1,11 @@
 # PROJ-91: AI Backlog Grounding in Project Intent (Wizard-Vorhaben)
 
 ## Status: Deployed
+
+## Deployment Scope: full
+
+> **Scope-Klassifikation (PROJ-Y-145b, Tranche 5, 2026-08-24):** Die Spec fuehrt keinen ausgefuellten QA-Abschnitt, aber **AC-91.7 ist live in Prod in beiden Richtungen bewiesen**: ein divergenter Kickoff (Webseiten-Compliance gegen ein ERP-Vorhaben) ergibt `ki_run 8ae0ba6a` mit **15/15** aus dem Dokument extrahierten und als `off_goal` markierten Punkten, die Gegenprobe mit passendem ERP-Kickoff `ki_run 688141ff` mit **7/7 on_goal** (danach aufgeraeumt). Wichtiger als das Ergebnis ist die daraus gezogene **Track-Invariante**, die seither fuer PROJ-88/89 gilt: das Vorhaben ist **nur Bewertungsmassstab, nie Generierungsquelle** — die erste Fassung hatte genau das verletzt und einen plausiblen ERP-Backlog erfunden, zwei Contract-Tests pinnen es jetzt.
+
 **Created:** 2026-06-09
 **Last Updated:** 2026-06-10
 **Origin:** Live prod finding 2026-06-09 (PROJ-86 verification session)
