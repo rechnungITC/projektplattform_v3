@@ -2915,6 +2915,409 @@ und die Serverseite durch γs Rot-Team-Vektor **S** (fremder Knoten → `23514`)
 
 ---
 
+## Followups 45f / 45l / 45m — erledigt 2026-08-21 (DB-Gruppe)
+
+Drei Registereinträge, zusammen erledigt weil sie **denselben Abschnittsbaum** betreffen. Eine Migration
+(`20260821120000_projy45_db_group_hygiene`), keine neue Tabelle, kein neues Paket, kein CIA-Pass
+(Fehlerbehebung, keine Architekturänderung).
+
+**Die Messung hat die Prämisse von 45l umgekehrt und die von 45m widerlegt.** Beide Registereinträge
+waren als „entscheiden oder dokumentieren" formuliert; keine der dort genannten Optionen war nach der
+Messung noch richtig.
+
+### PROJ-Y-45f — die tote β-Auskunft ist gezogen
+
+`construction_section_blocking_defects(uuid)` stand seit dem γ-Deploy ohne Aufrufer in Prod. Vor dem
+Ziehen **gemessen statt vermutet**: 0 Aufrufer in Funktionskörpern, Views, Policies, CHECK-Bedingungen
+und Spalten-Defaults (eine Abfrage über alle fünf Fundstellen-Arten), 0 in `src/`. Die Migration bringt
+diese Abfrage als **Vorbedingung** mit und bricht laut ab, falls doch jemand ruft.
+
+**Nebenfund:** der TypeScript-Typ `ConstructionSectionBlockingDefect` hatte seine Funktion überlebt und
+war ebenfalls unbenutzt (0 Verwender) — mit gezogen. Ein Typ ohne Funktion und ohne Verwender ist genau
+die Art Rest, die später jemand wieder anschließt.
+
+**Drei Testdateien nachgezogen, keine abgeschwächt:**
+- β's Vektoren V2/V3 rufen jetzt `construction_section_blocking_refs` und prüfen dabei **zusätzlich die
+  Art** des Blockers (`kind='mangel'`) — die Nachfolge-Auskunft liefert sie mit, die Zusicherung wird
+  also schärfer statt bloß umgehängt. Neu ist **V4**: die gezogene Funktion ist wirklich weg.
+- β's ACL-/`search_path`-Listen verlieren den Namen (6 → 5 aufrufbare, 3 → 2 lesende Funktionen). Keine
+  Abdeckungslücke: der γ-Pentest führt beide Nachfolge-Auskünfte in seinen eigenen Listen.
+- γ's Vektor **G8 ist umgedreht**. Er sicherte zu, β's Funktion existiere weiter, „weil die deployte
+  Route sie im Fenster zwischen Migration und Code-Deploy ruft" — dieses Fenster ist mit dem γ-Deploy
+  geschlossen. Jetzt prüft er den Endzustand, **G8b** neu, dass die Nachfolge steht (sonst wäre die
+  Auskunft entfernt statt ersetzt).
+
+### PROJ-Y-45l — der Tiefen-Riegel war **nicht** dekorativ
+
+Der Registereintrag nannte drei Wege und begründete sie mit „Zyklen sind durch
+`construction_sections_no_self_loop` und den `<@`-Zyklustest im α-Wächter strukturell ausgeschlossen".
+**Diese Begründung trägt nicht — live in zurückgerollten Transaktionen belegt:**
+
+| Messung | Ergebnis |
+|---|---|
+| Zyklus mit gesetztem `path` | abgelehnt, `23514` ✔ |
+| `update construction_sections set path = null` | **gelingt** — `path` ist nullable ohne CHECK und steht **nicht** in der Spaltenliste des Wächter-Triggers |
+| derselbe Zyklus danach | **gelingt**, 2 Zyklus-Kanten |
+| Spaltenrecht `UPDATE (path)` für `authenticated` | **vorhanden** — der Weg ist aus dem Browser-Client erreichbar (Projektleitung/Mandanten-Admin) |
+| δ-Auswertung auf dem Zyklus | terminiert (`subtree_depth` = Riegelhöhe) |
+| γ-Auskunft `construction_section_blocking_refs` auf demselben Zyklus | **hängt** (`57014` Statement-Timeout) — und die ruft die deployte „Abschnitt entfernen"-Route |
+
+Der Zyklus-Zweig hing an `OLD.path is not null` und wurde übersprungen, sobald `path` genullt war. Der
+Riegel war damit das Einzige, was die Terminsignale vor dem Hängen bewahrt hat — **den Riegel zu
+entfernen (Option 1 des Registereintrags) hätte die Slice verschlechtert**, nicht verbessert.
+
+**Deshalb zwei Eingriffe statt einem:**
+
+1. **Ursache.** Der Zyklus-Test läuft jetzt `path`-unabhängig: ein begrenzter Lauf aufwärts über
+   `parent_id`, der abbricht, wenn er die eigene Zeile trifft. Das ist die Prüfung, die der Wächter
+   gemeint hat. Der Wächter ist dafür **ganz neu geschrieben** statt anker-ersetzt — die Hausnorm
+   (Anker-Ersetzung aus der Live-Definition) schützt Funktionen mit über Slices angesammelten Zweigen,
+   dieser hat vier Bedingungen und genau ein `raise` je Bedingung; alle Bestandszweige sind wörtlich
+   übernommen und die Migration prüft ihre Anwesenheit nach.
+2. **Symptom.** Der Riegel bleibt (jetzt aus gemessenem Grund), steigt von 20 auf **50** und die Kappung
+   wird **ausgewiesen** statt verschwiegen: `section_depth_cap` in der Nutzlast, `subtree_truncated` je
+   Abschnitt, Abzeichen „Teilbaum gekappt ab Ebene N" auf der Fläche, Spalte `teilbaum_gekappt` in der
+   CSV. Die Grenze ist **exakt**, nicht geschätzt: die Schließung läuft eine Ebene **tiefer** als
+   gezählt wird, ein Baum genau in Riegelhöhe gilt also **nicht** als gekappt (Pentest B1/B2).
+
+**Bewusst NICHT getan:** der ungekappten γ-Auskunft ebenfalls einen Riegel geben. Sie benennt die
+Blocker einer Entfernen-Sperre; ein Riegel dort würde in genau dieser Meldung unterberichten — also die
+Defektklasse einführen, die 45l gerade beseitigt. Mit dem geschlossenen Wächter ist ihr Hängen
+unerreichbar, und die Migration prüft nach, dass der Bestand keine Zyklus-Kante trägt (Prod: 0).
+
+**`path` bleibt manipulierbar** (Wert desynchronisierbar, Zyklus nicht mehr) — die Spalte
+schreibgeschützt zu machen hätte einen Trigger auf `path` gebraucht, und der hätte den Repath-Trigger
+bei Zweigen ab drei Ebenen gebrochen: der Wächter rechnet je Zeile aus dem **Vor-Stand** des
+Elternteils, während der Repath alle Nachfahren in einer Anweisung umschreibt. Pflichtfeld und
+`ltree`-Konsolidierung bleiben bei **PROJ-Y-45j**, wo sie schon geführt sind.
+
+### PROJ-Y-45m — produktweite Konvention, kein δ-Defekt (keine Codeänderung an δ)
+
+Der Registereintrag verlangte zu prüfen, ob die Geschwister-Flächen dasselbe tun. **Gemessen: ja,
+ausnahmslos** — und die entscheidende Stelle lag woanders als vermutet.
+
+- **11 von 11** projektbezogenen Auswertungsfunktionen filtern `projects.is_deleted` nicht (nur
+  `steering_report` liest `projects` überhaupt, und auch sie filtert nicht).
+- **4 von 4** Bau-RLS-Policies gaten auf `is_project_member(project_id)`, ohne Papierkorb-Prüfung.
+- **Aber:** `requireProjectAccess` selektiert `.eq("is_deleted", false)` und antwortet für ein
+  Papierkorb-Projekt mit **404** — für alle drei Aktionen und damit für jede Route, die den Helfer
+  benutzt, die Terminsignal-Routen eingeschlossen. Der Papierkorb **ist** durchgesetzt, an genau
+  **einer** Stelle.
+
+δ ist damit kein Ausreißer, und ein `is_deleted`-Filter in die eine Funktion zu kopieren wäre falsch:
+er schützt nichts (das Mitglied liest die Quellzeilen ohnehin direkt), wäre strenger als die Tabellen,
+die er liest, und wäre die elfte Kopie einer Regel, die genau dadurch driftet.
+
+**Geliefert wurde deshalb das, was fehlte:** die Konvention ist als
+[ADR `soft-delete-enforcement-scope.md`](../docs/decisions/soft-delete-enforcement-scope.md)
+niedergeschrieben (samt verworfener Alternative und der akzeptierten Folge, dass ein direkter
+`supabase.rpc(...)`-Aufruf die 404 umgeht) und die **einzige** Durchsetzungsstelle ist festgenagelt:
+`route-helpers.soft-delete.test.ts` prüft das Verhalten (404 statt 403/500, alle drei Aktionen) **und
+strukturell**, dass der Filter angewandt wird. Ohne die zweite Hälfte bliebe der Test grün, wenn der
+Filter verschwindet — rot-grün belegt: entfernt man ihn, fällt genau die strukturelle Hälfte.
+
+### Nachweise
+
+**Neuer Live-Pentest `tests/sql/PROJ-Y-45-db-group-pentest.sql` 16/16 PASS gegen Prod, 0 Rückstände.**
+Tragend: **A3** die Umgehung ist zu (derselbe Zyklus, der vorher gelang, wird abgelehnt) mit **A3b** als
+Gegenprobe, dass `path` wirklich null war — ohne sie prüfte A3 nur A2 ein zweites Mal; **A4** der
+mehrstufige Zyklus (Grossvater unter Enkel); **A5** der Repath ist unberührt; **B1/B2** die exakte
+Grenze der Kappung in beide Richtungen; **C3** `anon` **und** PUBLIC ohne EXECUTE über den ACL-Eintrag,
+der mit `=` **beginnt** (γ-Lehre B-γ1).
+
+**Regressionen wörtlich grün, je 0 Rückstände:** α **18/18** · β **54/54** (32+15+7, mit V4 neu) ·
+γ **61/61** (31+14+12+4, mit G8b neu) · δ **53/53** (22+16+9+2+4, mit D4 neu) · PROJ-Y-45a **9/9**.
+Prod-Zustand vor und nach den Läufen identisch (2 Abschnitte, 14 Mängel, 0 Abnahmen, 52 Projekte,
+0 `path`-Nullwerte, 0 Zyklus-Kanten, 19 Bau-Trigger, **0** deaktiviert).
+**Advisors 149 WARN / 0 ERROR** — keine einzige Meldung nennt eine der zwei neu geschriebenen Funktionen.
+
+**Rot-Grün dreimal ausgeführt** (jeweils über eine Dateikopie zurückgesetzt, nie `git checkout` —
+PROJ-130-δ2/F-3): ohne den `is_deleted`-Filter fällt die strukturelle Hälfte des 45m-Wächters; ohne das
+Kappungs-Abzeichen fällt der UI-Fall; ohne die CSV-Zelle fällt der Export-Fall.
+
+**Gates:** ESLint **0** · tsc **13 = Baseline / 0 neu** (auch nach dem Build gemessen, `.next`-Falle
+aus PROJ-Y-143e vermieden) · vitest **3580/3580** in 426 Dateien (+7) · Build clean mit allen drei
+δ-Flächen registriert · migration-naming 0 Fehler · index-scope 0 Fehler.
+
+### Der Funktions-Inventar-Wächter hat zugeschlagen — und das ist der Ertrag
+
+Der erste CI-Lauf war rot: **`Verify prod function inventory vs migration files`** (PROJ-Y-148e).
+Genau sein Zweck, und er hat zwei Dinge sichtbar gemacht.
+
+**1. Das Inventar musste aufgefrischt werden** — Pflicht am Ende jeder Slice mit Migration
+(`docs/production/function-inventory.md`), von mir zunächst versäumt. Der Diff ist **genau eine Zeile**:
+`construction_section_blocking_defects` verschwindet, **286 → 285**. Nichts Unerklärtes tauchte auf —
+das ist die Aussage, für die das Auffrischen da ist. Die gezogene Funktion erscheint jetzt korrekt in
+der *informativen* Zeile „im Repo angelegt, aber nicht im Prod-Inventar (gedroppt …)": β's Migration
+legt sie an (append-only), meine zieht sie.
+
+**2. Ein vorbestehender Fehlschlag auf `main`, nachgemessen statt vermutet.** Mit main's Inventar und
+main's Wächter fällt derselbe Lauf — Ursache ist **PROJ-Y-114as Merge** (PR #400): sein
+`pending_merge`-Wegwerf-Eintrag ist damit überflüssig, genau wie sein eigener Kommentar es
+vorhergesagt hat („sobald sie landet, meldet der Wächter ihn als veraltet und er ist zu entfernen").
+Eintrag entfernt, der pinnende Test führt die Liste jetzt ohne ihn — bewusst **ohne Ersatz**: sie soll
+leer laufen, nicht gepflegt werden.
+
+**Denselben Defekt im Wächter hat eine Parallel-Session zuerst behoben — und meine Fassung ist
+verworfen.** Die Staleness-Bedingung hat **zwei** Zweige (`!prod.has(n) || repo.has(n)`), die Meldung
+nannte immer nur den ersten und war für einen gemergten `pending_merge`-Eintrag damit **sachlich
+falsch** („existiert nicht mehr im Prod-Inventar", obwohl die Funktion sehr wohl in Prod steht). Ich
+hatte das unabhängig gemessen und behoben; während dieser Slice landete **PROJ-Y-114f** (#443) mit
+derselben Diagnose auf `main`, in besserer Form: ein eigener Helfer `describeStaleException`, vier
+zusätzliche Testfälle und die Schnittstelle von `analyzeInventory` **unberührt** — meine Fassung hatte
+sie um ein Feld erweitert. Beim Rebase habe ich die drei Wächter-Dateien deshalb **wörtlich von `main`
+übernommen** und meine Änderung fallen gelassen. Aus dieser Slice bleibt nur, was allein ihr gehört:
+die Inventar-Auffrischung. Festgehalten, weil zwei Sessions denselben Fund gemacht haben — der Wächter
+war auf `main` rot und färbte jeden offenen PR mit, was genau die Art ist, wie ein Wächter ignoriert
+wird.
+
+**Nebenbefund am eigenen Vorgehen, festgehalten:** ein `git stash -u` in einem Baum ohne
+uncommittete Arbeit stasht nichts — das folgende `git stash pop` hat deshalb einen **fremden, älteren
+Stash** einer anderen Session ausgepackt und einen Konflikt an `CLAUDE.md`/`AGENTS.md` erzeugt (genau
+die Symlink-Falle, vor der CLAUDE.md warnt). Kein Schaden: `pop` behält den Eintrag bei Konflikt, der
+Konflikt wurde verworfen, alle drei Stashes sind unversehrt und `AGENTS.md` ist wieder ein Symlink.
+Lehre: für einen Blick auf fremde Dateiversionen `git show <ref>:<pfad>` statt stash/checkout.
+
+### Abweichungen
+
+- **D-Y45db.1** Der Wächter ist neu geschrieben statt anker-ersetzt (Begründung oben); die Migration
+  prüft dafür beides nach — der neue Lauf ist da **und** der `path`-abhängige Zweig ist weg. Nur
+  „hinzugefügt" hätte die Umgehung stehen gelassen.
+- **D-Y45db.2** Der Riegel steigt von 20 auf 50. Für reale Bäume (2–4 Ebenen) ohne Wirkung; er ist
+  jetzt eine zweite Reihe hinter dem geschlossenen Wächter, nicht die erste.
+- **D-Y45db.3** 45m ändert keinen Produktivcode an δ — geliefert sind ADR und Wächter. Wer eine
+  Codeänderung erwartet hat, findet die Begründung im ADR.
+- **D-Y45db.4** Kein authentifizierter Browser-Durchlauf: die Kappung ist ab 51 Abschnittsebenen
+  sichtbar, das reale Fixture hat zwei. Belegt sind Datenbank (Pentest B1/B2), Oberfläche
+  (Komponenten-Test, rot-grün) und CSV (Route-Test, rot-grün) — nicht die Verkettung im Browser.
+- **D-Y45db.5** `path` bleibt für Projektleitung/Admin desynchronisierbar (Zyklus nicht mehr) →
+  **PROJ-Y-45j**.
+
+---
+
+## PROJ-45-ε — Fotodokumentation (Requirements, 2026-08-24)
+
+Die **letzte offene Slice** der Bau-Erweiterung und seit dem δ-Deploy der **einzige** Grund, warum
+PROJ-45 den Scope `alpha` statt `full` trägt: eine zurückgestellte Original-Story (L4) mit Ziel-ID
+schliesst `full` aus, und „Waived criterion" scheitert an seiner ersten Bedingung („nothing was
+deferred").
+
+### Was die Messung gegen den deployten Stand ergeben hat
+
+Acht Messungen; **drei widerlegen eine naheliegende Lesart von L4** („Fotos hängen sich später an das
+DMS"):
+
+| Messung | Ergebnis | Folge |
+|---|---|---|
+| DMS-Bestand in Prod | **0** Dokumente, **0** Baumknoten, **0** Storage-Objekte — drei Wochen nach dem PROJ-79-α-Deploy | Der „Anhängen"-Weg aus 45g (Knoten auswählen) setzt einen Baum voraus, den es nicht gibt |
+| Erlaubte Bildformate | `image/png` + `image/jpeg` — im **Bucket und im Code**, mit Magic-Byte-Prüfung. **Kein** HEIC/HEIF, kein WebP | iPhones fotografieren standardmässig HEIC → heute abgewiesen |
+| Bildverarbeitung im Produktivcode | **keine.** `sharp` ist nur Next.js' eigener Optimierer; der einzige Grep-Treffer war das englische Wort „sharper" in einem Kommentar | Vorschaubilder und HEIC-Umwandlung brauchen ein neues Paket |
+| DMS-Download | Signed URL, 120 s, **mit `download: true`** | Rendert im Browser als Datei-Download, **nicht** als `<img>`; `next.config` hat zudem keine `images.remotePatterns` |
+| Druck-Rendering | `puppeteer-render` setzt einen Cookie-Kopf (`setExtraHTTPHeaders`) | Eine gleich-origin Inline-Route ist aus dem PDF-Lauf **erreichbar** — L33 ist baubar |
+| PROJ-80-α-Pipeline | läuft per `after()` bei **jedem** DMS-Upload, unbedingt; `mime_unsupported_for_rag` steht für **alle neun** erlaubten Formate hart auf `false` | Jedes Foto bekäme einen `failed`-Auszug. Der Kommentar der Datei sagt selbst, das Feld existiere genau für diesen Fall |
+| Quintessenz-Gate | startet **nur** bei `extracted` | Kein verschwendeter Modell-Aufruf — aber eine dauerhafte Fehlanzeige |
+| Anker-Bestand | `construction_defects` hat **keine** Dokument-Spalten (18 Spalten); `construction_acceptances` trägt das 45g-Tripel mit **0** Zeilen | Beides sind **Einzel**-Verweise; Fotos sind viele → Verknüpfungstabelle, nicht Spalten |
+
+Zwei Vorbilder, beide gemessen: `skill_knowledge_links` (PROJ-77-γ) ist die DMS-Verknüpfung des Hauses
+(`document_node_id`, Mandanten-Konsistenz-Trigger), und `construction_acceptances.document_node_id`
+(PROJ-Y-45g, gestern) ist das jüngste Bau-Beispiel. Beide verknüpfen **einen** Knoten — für eine
+Fotostrecke trägt das nicht.
+
+**Vertraulichkeit:** Bauprojekte haben per α-Entscheid **keine** Vertraulichkeitsachse. Die Fotos landen
+im DMS auf `standard`, das PROJ-Y-115c-Gate ist für sie damit wirkungslos — bewusst, und ε führt **keine**
+zweite Achse ein. Das ist dieselbe Begründung wie bei Q-γ1.
+
+### Nutzer-Locks (L31–L38)
+
+| # | Lock | Begründung |
+|---|---|---|
+| **L31** | **DMS als Ablage, Zielordner automatisch.** Das Foto ist ein echter `documents`-Eintrag; ε legt den Ordner selbst an, die Verknüpfung läuft über eine Bau-Tabelle | Erbt Quota, Magic-Byte-Prüfung, Papierkorb und Vertraulichkeits-Gate von PROJ-79 statt sie neu zu bauen. Der Preis (Fotos erscheinen im Dokumentenbaum) ist für eine Bauleitung eher Merkmal als Fehler. **Keine Ordnerwahl beim Erfassen** — der entscheidende Unterschied zum 45g-Muster |
+| **L32** | **Drei Anker: Mangel, Abnahme, Bauabschnitt** — genau einer je Foto-Verknüpfung | Der Wortlaut der Erstfassung nennt den Mangel; ein Abnahmeprotokoll ohne Fotos ist der halbe Nachweis (Zustand bei Gefahrenübergang), und Baufortschritt je Abschnitt ist der klassische Bautagebuch-Fall. XOR-Bedingung wie γ sie für seinen Bezug schon führt |
+| **L33** | **Fotos erscheinen im Ausdruck** — Mängelanzeige (β) und Abnahmeprotokoll (γ) | Eine Mängelanzeige ohne Bild ist der halbe Nachweis. Kostet eine **Inline-Ausliefer-Route**, weil die Signed URL `download: true` trägt (gemessen) |
+| **L34** | **HEIC wird serverseitig nach JPEG umgewandelt** | iPhones fotografieren standardmässig HEIC; abweisen hiesse, jeden Bauleiter erst die Kameraeinstellung ändern zu lassen. **Neue Abhängigkeit → CIA-Pass bei `/architecture` verbindlich** (`.claude/rules/continuous-improvement.md`) |
+| **L35** | **Zwei abgeleitete Grössen:** kleine Vorschau für die Galerie, mittlere für den Ausdruck; das Original bleibt unangetastet und herunterladbar | Acht 8-MB-Originale sind >60 MB Galerie-Last und ein unbrauchbar grosses PDF. Mit dem Paket aus L34 ist das fast gratis |
+| **L36** | **EXIF: nur die Aufnahmezeit** (`DateTimeOriginal`), alles andere wird verworfen — kein GPS, keine Geräteangaben in der Datenbank | „Wann wurde das aufgenommen" ist der eigentliche Nachweiswert. Standortdaten sind eine eigene datenschutzrechtliche Achse, und Bau trägt keine Vertraulichkeitsstufe — die wird **nicht** nebenbei eröffnet. Das Original behält seine EXIF-Daten wie jede hochgeladene Datei |
+| **L37** | **Verschieben und Umbenennen im Dokumentenbaum bleiben erlaubt; das Löschen eines verknüpften Fotos wird mit Nennung abgewiesen** | Die Verknüpfung zeigt auf die Kennung, nicht auf den Pfad (α-Lock L7). Die Löschsperre ist dieselbe Linie wie β/γ beim Entfernen eines Gewerks mit Mängeln: ein Nachweis darf nicht unbemerkt aus einer bereits gedruckten Anzeige verschwinden |
+| **L38** | **`mime_unsupported_for_rag` wird für Bilder richtig gesetzt und die PROJ-80-Pipeline darauf gegatet** — kein Extraktionsversuch, kein `failed`, ein eigener ehrlicher Zustand | Behebt einen vorbestehenden Fehler an genau der Stelle, für die das Feld laut eigenem Kommentar gebaut wurde. Bestandsarbeit in einer fremden Slice — deren Tests sind das Tor |
+
+### User Stories
+
+- **ST-45ε.1 (Bauleitung)** Ich fotografiere einen Mangel und hänge das Bild in **einem** Schritt an den
+  Mangel — ohne vorher einen Ordner anzulegen oder auszuwählen.
+- **ST-45ε.2 (Bauleitung)** Ich sehe alle Fotos eines Mangels als Strecke mit Bildunterschrift und
+  Aufnahmedatum und kann die Reihenfolge festlegen, in der sie in der Anzeige erscheinen.
+- **ST-45ε.3 (Bauleitung)** Beim Abnahmetermin dokumentiere ich den Zustand und die Vorbehalte mit
+  Fotos, die im **Abnahmeprotokoll** mitgedruckt werden.
+- **ST-45ε.4 (Bauleitung)** Ich halte den Baufortschritt je Bauabschnitt fotografisch fest.
+- **ST-45ε.5 (Projektleitung)** Ich drucke eine Mängelanzeige mit Bildern und übergebe sie dem
+  Nachunternehmer als vollständigen Nachweis.
+- **ST-45ε.6 (Betrachter)** Ich sehe die Fotos, kann sie herunterladen, aber keine hinzufügen oder
+  entfernen.
+
+### Akzeptanzkriterien
+
+#### ST-45ε.1 — Erfassen in einem Schritt
+- [ ] **AC-45ε.1** Am Mangel, an der Abnahme und am Bauabschnitt gibt es „Foto hinzufügen"; der Upload
+  verlangt **keine** Ordnerwahl. ε legt den Zielordner im Dokumentenbaum selbst an und findet ihn beim
+  zweiten Foto **wieder** (idempotent, kein zweiter Ordner gleichen Namens).
+- [ ] **AC-45ε.2** Mehrere Dateien in einem Vorgang sind zulässig; jede wird einzeln geprüft, und eine
+  abgewiesene Datei bricht die übrigen **nicht** ab — die Antwort benennt je Datei das Ergebnis.
+- [ ] **AC-45ε.3** Abgewiesen wird, was PROJ-79 schon abweist: Datei > 50 MB, überschrittene
+  Mandanten-Quota (413), Datei, deren Magic Bytes nicht zum erlaubten Satz passen (415). ε **senkt keine**
+  dieser Schranken.
+- [ ] **AC-45ε.4** Ein **HEIC/HEIF**-Bild wird angenommen und serverseitig nach JPEG umgewandelt; das
+  gespeicherte Dokument trägt `image/jpeg`, und die Galerie zeigt es (L34).
+- [ ] **AC-45ε.5** Schlägt die Umwandlung fehl, wird die Datei **abgewiesen** mit einer Meldung, die den
+  Grund nennt — es entsteht **kein** halb angelegtes Dokument und kein Rückstand im Bucket.
+
+#### ST-45ε.2 — Fotostrecke
+- [ ] **AC-45ε.6** Die Fotos eines Ankers erscheinen als Strecke in festgelegter Reihenfolge; die
+  Reihenfolge ist änderbar und wird gespeichert.
+- [ ] **AC-45ε.7** Je Foto sind **Bildunterschrift** (frei, optional) und **Aufnahmedatum** sichtbar und
+  änderbar. Das Aufnahmedatum wird beim Upload aus `DateTimeOriginal` vorbelegt; fehlt es, bleibt das
+  Feld leer und ist nachtragbar — es wird **nicht** stillschweigend auf „heute" gesetzt (L36).
+- [ ] **AC-45ε.8** Aus den EXIF-Daten wird **ausschliesslich** die Aufnahmezeit übernommen. Weder GPS
+  noch Geräteangaben landen in der Datenbank; ein Foto **mit** GPS-EXIF beweist das im Test (L36).
+- [ ] **AC-45ε.9** Die Galerie lädt die **Vorschaugrösse**, nicht das Original; das Original ist über
+  „Herunterladen" erreichbar (L35).
+- [ ] **AC-45ε.10** Ein Foto lässt sich vom Anker **lösen**, ohne die Datei zu löschen — und löschen,
+  wobei die Datei in den DMS-Papierkorb wandert. Beide Wege sind unterscheidbar benannt.
+
+#### ST-45ε.3 / ST-45ε.5 — Ausdruck
+- [ ] **AC-45ε.11** Die **Mängelanzeige** (β-Druckseite) zeigt die Fotos des Mangels mit Bildunterschrift
+  und Aufnahmedatum; ohne Fotos bleibt sie **byte-identisch** zu heute (kein leerer Abschnitt).
+- [ ] **AC-45ε.12** Das **Abnahmeprotokoll** (γ-Druckseite) zeigt die Fotos der Abnahme, ebenso ohne
+  leeren Abschnitt bei null Fotos.
+- [ ] **AC-45ε.13** Der Ausdruck bettet die **Druckgrösse** ein, nicht das Original (L35), und der
+  erzeugte PDF-Lauf bleibt innerhalb der bestehenden Zeitgrenze der Schnappschuss-Erzeugung.
+- [ ] **AC-45ε.14** Ein Foto, das der Aufrufer nicht sehen darf, erscheint **nicht** im Ausdruck — die
+  Druckseite läuft wie die drei bestehenden über die Sitzung des Aufrufers, nicht über den
+  Dienst-Schlüssel.
+
+#### ST-45ε.4 — Baufortschritt
+- [ ] **AC-45ε.15** Am Bauabschnitt gibt es eine Fotostrecke; auf der α-Abschnittsfläche ist je Abschnitt
+  erkennbar, **ob** Fotos vorhanden sind (Zahl), ohne die Bilder zu laden.
+
+#### ST-45ε.6 — Rechte und Sichtbarkeit
+- [ ] **AC-45ε.16** **Betrachter** sehen und laden Fotos, können aber keine hinzufügen, ändern, lösen
+  oder löschen. Die Oberfläche bietet die Aktionen gar nicht an; der Server weist sie unabhängig davon ab.
+- [ ] **AC-45ε.17** Hinzufügen und Ändern folgen der **β-Regel** (jedes Projektmitglied darf erfassen,
+  Ändern und Entfernen nur Projektleitung/Bauleitung oder Mandanten-Administration) — **nicht** der
+  strengeren γ-Regel. Die Abweichung ist bewusst und wird begründet: ein Foto ist eine Beobachtung wie
+  ein Mangel, kein rechtsverbindlicher Vorgang wie eine Abnahme.
+- [ ] **AC-45ε.18** Die Fotoflächen erscheinen nur in Bauprojekten mit aktivem Bau-Modul; bei
+  abgeschaltetem Modul antwortet der Server gleichbleibend abweisend und die Oberfläche zeigt den
+  neutralen „nicht aktiv"-Hinweis (α/β/γ/δ-Muster).
+- [ ] **AC-45ε.19** Mandanten- und Projekttrennung gilt unverändert: fremde Fotos sind unsichtbar, auch
+  aggregiert und auch in den Zählern je Abschnitt.
+
+#### Löschsperre und PROJ-80-Wechselwirkung
+- [ ] **AC-45ε.20** Ein verknüpftes Foto lässt sich im **Dokumentenbaum nicht löschen**; die Meldung
+  benennt, woran es hängt (Mangel/Abnahme/Abschnitt samt Bezeichnung) — dieselbe Form wie die
+  γ-verallgemeinerte Entfernen-Absage (`references_present`).
+- [ ] **AC-45ε.21** **Verschieben und Umbenennen** im Dokumentenbaum lassen die Verknüpfung unberührt;
+  die Galerie zeigt das Foto danach unverändert (L37).
+- [ ] **AC-45ε.22** Ein Bild löst **keinen** Extraktionsversuch aus: es trägt
+  `mime_unsupported_for_rag = true`, die PROJ-80-Pipeline überspringt es, und der Zustand heisst nicht
+  `failed`, sondern benennt „Bild — kein Textauszug" (L38).
+- [ ] **AC-45ε.23** Die bestehenden PROJ-80-Fälle bleiben **wörtlich** grün: ein PDF/DOCX wird
+  unverändert extrahiert und zusammengefasst.
+
+### Blockierende Härtungskriterien
+
+- [ ] **AC-45εH-1** Live-Pentest gegen Prod, 0 Rückstände, mit **synthetisiertem Nicht-Admin** (in Prod
+  ist jedes Mandanten-Mitglied Admin — ein Lauf unter Admin wäre falsch-grün).
+- [ ] **AC-45εH-2** **Aggregat-Leck-Probe mit Gegenprobe** auf den Fotozähler je Abschnitt: ein Fremder
+  sieht 0, während wahr ≠ 0 ist.
+- [ ] **AC-45εH-3** `anon` **und PUBLIC** ohne EXECUTE auf **allen** neuen Funktionen, geprüft über den
+  ACL-Eintrag, der mit `=` **beginnt** (γ-Lehre B-γ1) — nicht über ein `%=X/%`-Muster.
+- [ ] **AC-45εH-4** Kein Schreibweg an den Funktionen vorbei, geprüft **als Mandanten-Admin**.
+- [ ] **AC-45εH-5** Register-Eingriffe (Objektarten, Feld-Whitelist, Lese-Tor) als **whitespace-tolerante
+  Anker-Ersetzung aus der Live-Definition** mit Treffer-Eindeutigkeit **und** Post-Verifikation, dazu
+  namentliche Gegenprüfung der Geschwister-Zweige.
+- [ ] **AC-45εH-6** Die **Inline-Ausliefer-Route** gibt Bytes nur an Berechtigte: ein Nicht-Projektmitglied
+  bekommt 404, und die Route trägt **kein** Dienst-Schlüssel-Client.
+- [ ] **AC-45εH-7** Die Umwandlung läuft **gebunden**: Grössen-, Pixel- und Zeitgrenze, und ein
+  präpariertes Bild („Dekompressionsbombe", riesige Pixelmasse bei kleiner Datei) wird abgewiesen statt
+  den Speicher der Funktion zu sprengen. Vorbild sind die PROJ-70-γ-Härtungen (Seiten-Deckel,
+  ZIP-Bomben-Wächter, 20-s-Grenze).
+- [ ] **AC-45εH-8** **Magic-Byte-Prüfung vor** der Umwandlung, nicht danach — eine als `.heic` benannte
+  Datei mit fremdem Inhalt erreicht das Bildpaket nicht.
+- [ ] **AC-45εH-9** Regressionen **wörtlich** grün, je 0 Rückstände: α, β, γ, δ, PROJ-Y-45a, PROJ-79-DMS,
+  PROJ-80-α.1, PROJ-Y-115c.
+- [ ] **AC-45εH-10** Visual-Regression **ohne Neuaufnahme** — und wenn eine Aufnahme nötig wird, im Bild
+  geprüft und per Dateilöschung gezogen (`--update-snapshots` ist unter der Toleranz ein stiller No-op).
+- [ ] **AC-45εH-11** Das **Funktions-Inventar** wird am Ende der Slice aufgefrischt; der Diff wird gelesen
+  und benannt (`docs/production/function-inventory.md`).
+- [ ] **AC-45εH-12** Rot-Grün ausgeführt für jede neue Zusicherung, Rücksetzung über eine **Dateikopie**,
+  nie `git checkout` (PROJ-130-δ2/F-3).
+
+### Edge Cases
+
+- **Foto ohne EXIF** (Screenshot, WhatsApp-Weiterleitung). Aufnahmedatum bleibt leer und nachtragbar —
+  **nicht** stillschweigend „heute" (AC-45ε.7).
+- **HEIC-Datei, die gar kein HEIC ist.** Magic Bytes entscheiden, nicht die Endung (AC-45εH-8).
+- **Dekompressionsbombe.** Kleine Datei, riesige Pixelmasse → abgewiesen, bevor das Bildpaket sie
+  entpackt (AC-45εH-7).
+- **Quota reisst mitten in einem Mehrfach-Upload.** Die bereits angelegten Fotos bleiben, die übrigen
+  werden mit 413 benannt — keine halbe Transaktion (AC-45ε.2).
+- **Foto am Mangel, Mangel wird verworfen.** Die Fotos bleiben am Mangel und im Ausdruck sichtbar; ein
+  verworfener Mangel ist Historie, kein Löschgrund.
+- **Abnahme ist protokolliert und damit eingefroren.** Fotos sind danach **nicht** mehr änderbar — die
+  einzige nachträglich erlaubte Änderung an einer protokollierten Abnahme bleibt der Beleg (γ, AC-45γ.9).
+  Zu entscheiden bei `/architecture`, ob Fotos wie der Beleg behandelt werden oder mit einfrieren.
+- **Abschnitt wird gelöscht, Fotos hängen dran.** Fällt unter die verallgemeinerte Entfernen-Absage aus
+  γ; die Meldung nennt jetzt auch die Art „Foto" (AC-45ε.20).
+- **Dasselbe Foto an zwei Ankern.** Zulässig — dieselbe Datei, zwei Verknüpfungen; die Löschsperre nennt
+  beide.
+- **Bau-Modul wird abgeschaltet, Fotos bleiben im DMS.** Die Fotoflächen verschwinden, die Dateien
+  bleiben über `/dokumente` erreichbar — der DMS-Reiter ist Kern und **nicht** modul-gegatet (gemessen).
+  Das ist gewollt und wird gesagt, nicht verschwiegen.
+- **Druck mit 20 Fotos.** Die Zeitgrenze der Schnappschuss-Erzeugung gilt unverändert; zu entscheiden bei
+  `/architecture`, ob eine Höchstzahl je Ausdruck nötig ist — und falls ja, wird die Kappung
+  **ausgewiesen**, nicht verschwiegen (Lehre aus PROJ-Y-45l).
+
+### Out of Scope (ε)
+
+Mobiles Offline-Bautagebuch (dauerhaft ausserhalb, Erstfassung) · Verortung des Fotos im Bauplan
+(dauerhaft ausserhalb) · Annotationen im Bild (Pfeile, Markierungen) · Videos · Foto-Vergleich
+„vorher/nachher" als eigene Ansicht · automatische Bilderkennung · GPS-Auswertung (L36) ·
+Wasserzeichen · Foto direkt aus der Kamera im Browser aufnehmen (`capture`-Attribut) — das ist eine
+eigene, kleine Erweiterung, sobald die Ablage steht.
+
+### Offene Architekturfragen für `/architecture`
+
+1. **Q-ε1 — Welches Bildpaket?** HEIC-Umwandlung (L34) und zwei abgeleitete Grössen (L35) brauchen eine
+   neue Abhängigkeit, die in einer Vercel-Funktion läuft (Speicher, Laufzeit, 50-MB-Eingaben). **Der
+   CIA-Pass ist hier verbindlich** — `.claude/rules/continuous-improvement.md`, „neue Technologien".
+   Mitzubewerten: `sharp` ist als Prod-Abhängigkeit ohnehin vorhanden (Next.js-Optimierer), trägt aber
+   HEIC nur mit `libheif`; die 5-GB-Paketgrenze der Vercel-Funktionen ist kein Hindernis.
+2. **Q-ε2 — Wo liegt der automatische Ordner und wie wird er wiedergefunden?** Name, Verschachtelung
+   (`/Fotos/Mangel 12`?), Verhalten bei umbenanntem Mangel, Kollision mit einem gleichnamigen Ordner, den
+   ein Nutzer selbst angelegt hat. Idempotenz ist AC-45ε.1.
+3. **Q-ε3 — Form der Inline-Ausliefer-Route.** Bytes streamen gegen Daten-URI in der Druckseite. Zu
+   klären: Zwischenspeicherung, Verhalten im Puppeteer-Lauf (Cookie ist gesetzt — gemessen) und ob die
+   Route auch die Galerie bedient oder nur den Druck.
+4. **Q-ε4 — Wie wird die Löschsperre durchgesetzt?** Der DMS-Löschweg ist ein **weiches** Löschen über
+   `dms_soft_delete_subtree` — ein Fremdschlüssel feuert dort **nicht**. Also Wächter im RPC oder
+   Erweiterung des RPC selbst; beides berührt eine deployte fremde Funktion.
+5. **Q-ε5 — Wie fügt sich „Foto" in die bestehende Entfernen-Absage?** γ hat sie über
+   `references_present` verallgemeinert und nennt Art plus Bezeichnung; ε bringt die dritte Art. Zu
+   prüfen, ob die Teilbaum-Abfrage der Abschnitte die Fotos mit erfasst (der Enkel-Fall hat β und γ je
+   einen Vektor gekostet).
+6. **Q-ε6 — Wohin gehören die abgeleiteten Grössen?** Eigene `documents`-Zeilen (dann erscheinen sie im
+   Baum und zählen dreifach in die Quota) gegen Storage-Objekte neben dem Dokument (dann braucht die
+   Quota-Buchhaltung einen Zweig). Beides hat Folgen für den Papierkorb.
+7. **Q-ε7 — Frieren Fotos mit der protokollierten Abnahme ein?** γ friert alles außer dem Beleg ein.
+   Fotos sind fachlich näher am Beleg (kommen nach dem Termin zurück) als am Ergebnis.
+
+**Kein CIA-Pass nötig für:** die Ablage-Entscheidung (L31 folgt dem gemessenen Muster von α/γ), die
+Anker (L32), den Ausdruck (L33). **CIA-pflichtig ist genau Q-ε1** — und damit vor `/backend` zu klären.
+
+**Reihenfolge:** `/architecture` (mit CIA-Pass zu Q-ε1) → `/backend` → `/frontend` → `/qa`.
+
+---
+
 ## Deployment — δ (2026-08-21)
 
 **Tag `v2.73.0-PROJ-45-delta` · PR #435 (squash) → main `cde35eb` · Feature-Scope bleibt `alpha`.**

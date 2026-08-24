@@ -1,4 +1,4 @@
-# Prod-Funktionsinventar — Stand 2026-08-20
+# Prod-Funktionsinventar — Stand 2026-08-21
 #
 # Die in der Produktionsdatenbank vorhandenen Funktionen des Schemas `public`,
 # ohne die 71 Funktionen der `ltree`-Extension (die gehoeren nicht dem Projekt).
@@ -93,7 +93,6 @@ construction_acceptance_summary
 construction_defect_guard
 construction_defect_summary
 construction_schedule_signals
-construction_section_blocking_defects
 construction_section_blocking_refs
 construction_section_guard
 construction_section_phase_guard

@@ -181,14 +181,8 @@ export interface ConstructionDefectSummary {
   by_trade: ConstructionDefectTradeSummary[]
 }
 
-/**
- * One blocking defect as named by `construction_section_blocking_defects`. The
- * RPC walks the whole subtree, because `construction_sections.parent_id`
- * cascades: a defect on a grandchild blocks deleting the root.
- */
-export interface ConstructionSectionBlockingDefect {
-  id: string
-  defect_number: number
-  title: string
-  section_id: string | null
-}
+// PROJ-Y-45f: `ConstructionSectionBlockingDefect` ist mit
+// `construction_section_blocking_defects(uuid)` gezogen. γ hat die Auskunft auf
+// `construction_section_blocking_refs` verallgemeinert (Art + Bezeichnung,
+// Mangel UND Abnahme); der Typ dafuer heisst `ConstructionBlockingRef` und
+// liegt bei den Bau-Referenzen. Der Typ hier hatte 0 Verwender.
