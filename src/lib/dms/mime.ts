@@ -7,10 +7,14 @@
  * parser uses) for binary formats, and trust the extension for the three
  * text formats that have no magic signature.
  *
- * α allowlist == RAG-supported set (9 formats). Everything else is a hard
- * 415. `mime_unsupported_for_rag` therefore always defaults `false` in α;
- * the flag exists for PROJ-80 (β) when the allowlist widens beyond the
- * RAG-parseable set.
+ * The α allowlist has 9 formats; everything else is a hard 415.
+ *
+ * PROJ-45-ε KORRIGIERT eine Annahme dieses Kommentars: die Allowlist war NIE
+ * deckungsgleich mit dem RAG-tauglichen Satz — `image/png` und `image/jpeg`
+ * stehen seit α darin und sind nicht parsebar. Das Feld
+ * `mime_unsupported_for_rag` stand trotzdem hart auf `false`, wodurch JEDES
+ * Bild einen dauerhaften `failed`-Auszug bekam (gemessen). Es wird jetzt fuer
+ * Bilder gesetzt, und `runDocumentExtraction` gatet darauf.
  *
  * AC (mirror PROJ-70 γ-hardening): magic-byte sniff before any persistence,
  * dynamic `import` of the ESM-only `file-type` lib to keep cold-start small.
@@ -56,8 +60,38 @@ const BINARY_EXT_TO_MIME: Record<string, DmsAllowedMime> = {
   jpeg: "image/jpeg",
 }
 
+/**
+ * PROJ-45-ε (L38): Formate, die die Allowlist erlaubt, die aber KEINEN Textauszug
+ * hergeben. Bilder standen von Anfang an in der Allowlist, waren aber als
+ * RAG-tauglich gefuehrt — dieser Kopfkommentar sagte selbst, das Feld existiere
+ * fuer genau diesen Fall. Folge ohne den Eintrag hier: jedes Baufoto bekaeme
+ * einen dauerhaften `failed`-Auszug (gemessen).
+ */
+const NOT_RAG_PARSEABLE = new Set<string>(["image/png", "image/jpeg"])
+
+/**
+ * Ob ein Format zwar erlaubt, aber ohne Textauszug ist. `runDocumentExtraction`
+ * gatet darauf, damit ein Bild keinen `failed`-Auszug bekommt (L38).
+ */
+export function isNotRagParseable(mime: string): boolean {
+  return NOT_RAG_PARSEABLE.has(mime)
+}
+
+/**
+ * PROJ-45-ε (Q-ε1): HEIC/HEIF wird ERKANNT und mit Begruendung abgewiesen.
+ *
+ * `file-type` sniffet die Datei korrekt als `image/heic` (live gemessen), sie
+ * ist aber nicht verarbeitbar: das mit `sharp` ausgelieferte libvips liest den
+ * Container und scheitert beim Dekodieren mit „Decoder plugin generated an
+ * error" — sharps eigene Typdefinition sagt, HEIC brauche ein global
+ * installiertes libvips mit libheif, libde265 und x265. Ohne diesen Zweig
+ * bekaeme der Nutzer die generische „nicht erlaubtes Format"-Meldung und keinen
+ * Hinweis, was zu tun ist.
+ */
+const HEIF_MIMES = new Set<string>(["image/heic", "image/heif", "image/heic-sequence"])
+
 export class DmsMimeError extends Error {
-  readonly code: "magic_byte_mismatch" | "unsupported_mime"
+  readonly code: "magic_byte_mismatch" | "unsupported_mime" | "heif_not_supported"
   constructor(code: DmsMimeError["code"], message: string) {
     super(message)
     this.code = code
@@ -114,6 +148,16 @@ export async function sniffDocumentMime(
       "Could not detect a supported file type from the uploaded bytes.",
     )
   }
+  // PROJ-45-ε: HEIC/HEIF VOR der generischen Abweisung, damit die Meldung sagt,
+  // was zu tun ist. Reihenfolge ist wichtig — HEIC steht nicht in der Allowlist
+  // und faellt sonst in den generischen Zweig darunter.
+  if (HEIF_MIMES.has(detected.mime)) {
+    throw new DmsMimeError(
+      "heif_not_supported",
+      "HEIC/HEIF wird nicht unterstützt. Bitte als JPEG aufnehmen oder exportieren — " +
+        "am iPhone: Einstellungen → Kamera → Formate → Maximale Kompatibilität.",
+    )
+  }
   if (!ALLOWED.has(detected.mime)) {
     throw new DmsMimeError(
       "unsupported_mime",
@@ -130,6 +174,9 @@ export async function sniffDocumentMime(
   }
   return {
     mime: detected.mime as DmsAllowedMime,
-    mime_unsupported_for_rag: false,
+    // PROJ-45-ε (L38): Bilder sind erlaubt, aber nicht parsebar. Vorher stand
+    // hier hart `false` — der Kopfkommentar dieser Datei nannte selbst genau
+    // diesen Fall als Zweck des Feldes.
+    mime_unsupported_for_rag: NOT_RAG_PARSEABLE.has(detected.mime),
   }
 }

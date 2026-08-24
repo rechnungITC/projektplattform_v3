@@ -3199,8 +3199,13 @@ zweite Achse ein. Das ist dieselbe Begründung wie bei Q-γ1.
   erkennbar, **ob** Fotos vorhanden sind (Zahl), ohne die Bilder zu laden.
 
 #### ST-45ε.6 — Rechte und Sichtbarkeit
-- [ ] **AC-45ε.16** **Betrachter** sehen und laden Fotos, können aber keine hinzufügen, ändern, lösen
-  oder löschen. Die Oberfläche bietet die Aktionen gar nicht an; der Server weist sie unabhängig davon ab.
+- [ ] **AC-45ε.16** *(korrigiert in `/backend` 2026-08-24 — die Erstfassung widersprach AC-45ε.17)*
+  **Betrachter** sehen, laden und **fügen hinzu**, können aber nicht ändern, lösen oder löschen. Die
+  Erstfassung schloss das Hinzufügen für Betrachter aus und stand damit im Widerspruch zu AC-45ε.17
+  („β-Regel"), das jedem Projektmitglied das Erfassen zugesteht. Aufgelöst zugunsten der β-Regel: L15
+  lässt Betrachter ausdrücklich Mängel erfassen, und ein Foto ist dieselbe Art Beobachtung — wer den
+  Mangel melden darf, darf ihn auch fotografieren. Für Ändern, Lösen und Löschen bietet die Oberfläche
+  die Aktionen gar nicht an; der Server weist sie unabhängig davon ab.
 - [ ] **AC-45ε.17** Hinzufügen und Ändern folgen der **β-Regel** (jedes Projektmitglied darf erfassen,
   Ändern und Entfernen nur Projektleitung/Bauleitung oder Mandanten-Administration) — **nicht** der
   strengeren γ-Regel. Die Abweichung ist bewusst und wird begründet: ein Foto ist eine Beobachtung wie
@@ -3448,6 +3453,100 @@ vorgeschalteter Lizenzklärung.
 
 **Reihenfolge:** `/backend` → `/frontend` → `/qa`. Ein weiterer CIA-Pass ist nur nötig, wenn die
 Messung in `/backend` negativ ausfällt **und** entschieden wird, ein Paket aufzunehmen.
+
+### `/backend` — Datenschicht live 2026-08-24 (Anwendungsschicht offen)
+
+**Was steht.** Migration `20260824140000_proj45_epsilon_construction_photos` in Prod:
+`construction_photos` als **Verknüpfung** (die Bilddatei bleibt ein gewöhnliches DMS-Dokument, wodurch ε
+Magic-Byte-Prüfung, 50-MB-Grenze, Quota, Papierkorb, Vertraulichkeits-Gate und Feld-Audit erbt),
+**0 Schreib-Policies** (Schreiben nur über Funktionen, β/γ-Rezept), XOR-Bedingung für genau einen Bezug,
+5 Trigger, 8 Funktionen, Objektarten **95 → 96**. Dazu **L38** (der gemessene Bestandsdefekt) und der
+**Q-ε1-Zweig** für HEIC.
+
+**Q-ε1 ist entschieden — durch Messung an einer echten Datei, wie der Lock es verlangt (AC-45εH-13).**
+Zwei echte HEIC-Dateien (eine iPhone-Kameraaufnahme, eine Mehrbild-Datei) gegen das installierte `sharp`
+gefahren. Der Verlauf ist lehrreich, weil ich **zweimal** fast das Falsche berichtet hätte:
+
+1. Erster Versuch: `Security limit exceeded: Number of references in iref box (48) exceeds … 16`. Also
+   **kein** Codec-Fehler, sondern eine Sicherheitsgrenze. Ursache am Container belegt statt vermutet:
+   `grid`-Box + **49** `hvc1`-Items + 52 `infe`-Einträge — iPhone speichert ein Foto als **Kachelraster**
+   aus HEVC-Kacheln, deren `iref/dimg`-Verweise die libheif-Standardgrenze von 16 zwangsläufig reissen.
+2. Mit `{ unlimited: true }` **gelingt** das Lesen: `heif 3024x4032`. An dieser Stelle sah es aus, als
+   könne sharp HEIC.
+3. Die Umwandlung scheitert dann aber mit **`heif: Decoder plugin generated an error`** — der Container
+   wird gelesen, die Pixel nicht. Das deckt sich mit sharps **eigener** Typdefinition: „Support for
+   patent-encumbered HEIC images requires the use of a globally-installed libvips compiled with support
+   for libheif, libde265 and x265."
+
+**Ergebnis: negativ, HEIC wird abgewiesen — aber mit erklärender Meldung** (eigener Fehlercode
+`heif_not_supported`, Text nennt den einmaligen iPhone-Handgriff). Die Datei wird vom Sniffer korrekt als
+`image/heic` erkannt (gemessen), der Zweig sitzt also **vor** der generischen „nicht erlaubtes
+Format"-Absage. Die Umwandlung bleibt ein Followup **mit vorgeschalteter Lizenzklärung**
+(→ **PROJ-Y-45o**), weil der Prod-Baum **1166 Pakete und keine einzige GPL-only** trägt.
+
+**Nebenbefund zu L35, festgehalten:** `{ unlimited: true }` schaltet die Speicher-Schutzgrenzen ab. Ein
+künftiger HEIC-Weg müsste die Pixelgrenze also **selbst** wieder ziehen (AC-45εH-7 wird dadurch
+strenger, nicht laxer).
+
+**L38 — der gemessene Bestandsdefekt ist behoben.** `mime_unsupported_for_rag` stand für **alle neun**
+erlaubten Formate hart auf `false`, obwohl `image/png` und `image/jpeg` seit α in der Allowlist stehen
+und keinen Textauszug hergeben; der Kopfkommentar der Datei nannte selbst genau diesen Fall als Zweck
+des Feldes. **Der Statuswert `unsupported_type` war im CHECK von `document_extractions` von Anfang an
+vorhanden** — PROJ-80-α hatte den Fall bedacht, nur Flag und Tor fehlten, deshalb **keine** zweite
+Migration. Jetzt: Flag für Bilder gesetzt, `runDocumentExtraction` gatet darauf, `privacy_class` bleibt
+bewusst 3 (fail-closed: ohne gelesenen Text ist keine Klassifikation belegt). Der irreführende
+Kopfkommentar ist **korrigiert**, nicht stehengelassen. Alle **83** Bestandstests von PROJ-79/PROJ-80
+bleiben grün; **rot-grün belegt**: ohne die Änderung fallen genau die drei neuen Zusicherungen, die drei
+Kontrollfälle bleiben grün.
+
+**L36 — Aufnahmezeit dep-frei.** Eigener Leser für **ein** Feld (`DateTimeOriginal`), weil ein
+EXIF-Paket den ganzen Metadaten-Baum mitbrächte, GPS und Geräteangaben eingeschlossen — also genau das,
+was L36 heraushalten soll. Ein Leser, der nur ein Feld kennt, kann auch nur ein Feld ausleiten; die
+Signatur (`string | null`) ist der tragende Nachweis, und ein Test fährt ein Bild **mit**
+GPS-EXIF gegen sie. Rückgabe ist ein **Tagesdatum**: der EXIF-Wert trägt keine Zeitzone, und daraus eine
+Zeitmarke zu bauen hiesse, eine Zone zu erfinden. Ein Bild ohne EXIF bekommt **kein** erfundenes Datum.
+**Eine eigene Annahme dabei widerlegt:** ich hatte den `exif`-Block von sharp für den blanken TIFF-Kopf
+gehalten — er enthält das `Exif\0\0`-Präfix, der Kopf beginnt bei Byte 6. Die erste Fassung las „Ex" als
+Bytefolge-Marke und gab **still `null`** zurück; gefunden, weil die Tests am echten sharp-Bild liefen und
+nicht an einem Mock (PROJ-142-Lehre). Code **und** falscher Kommentar korrigiert.
+
+**Ein Widerspruch in den eigenen Kriterien, in `/backend` gefunden und aufgelöst:** AC-45ε.16 schloss das
+Hinzufügen für Betrachter aus, AC-45ε.17 gestand es per β-Regel jedem Projektmitglied zu. Aufgelöst
+zugunsten der β-Regel (L15 lässt Betrachter ausdrücklich Mängel erfassen; ein Foto ist dieselbe Art
+Beobachtung) — AC-45ε.16 ist korrigiert, nicht still übergangen.
+
+**Live-Pentest `tests/sql/PROJ-45-epsilon-construction-photos-pentest.sql` gegen Prod, 0 Rückstände über
+zehn Zähler.** Block 1 **12/13**, Block 2 **6/6**. Tragend: **A** Betrachter darf verknüpfen, **B/C**
+derselbe Betrachter darf nicht ändern und nicht entfernen (die Gegenrichtung, belegt statt behauptet),
+**F** die Löschsperre greift **und** benennt den Bezug, **G** derselbe Weg über die deployte
+DMS-Funktion ist ebenfalls gesperrt — der Punkt von Q-ε4, weil das DMS **weich** löscht und ein
+Fremdschlüssel dabei gar nicht feuert, **K** Projekt-Hart-Löschen gelingt trotz Fotos (**kein** neuer
+Blocker der PROJ-148-Klasse). **Das eine FAIL ist kein Produktfehler:** der Zielmandant trägt seit
+PROJ-Y-143o `audit_lifecycle_exempt`, der Lebenszyklus-Pfad schreibt dort bewusst nichts — der Vektor
+war blind dafür. Statt ihn abzuschwächen hebt Block 2 die Ausnahme **innerhalb der zurückgerollten
+Transaktion** auf und beweist den Pfad positiv (**L3/L4**: `__created` und `__deleted` werden
+geschrieben) — das ist der Vektor, der zählt, weil er belegt, dass der gemeinsame Audit-Auflöser mit der
+neuen Tabelle umgehen kann (PROJ-Y-130g-Falle).
+
+**Der Anker-Wächter hat zugeschlagen und die Migration atomar zurückgerollt:** `'document_node_id']`
+kommt **zweimal** in `_tracked_audit_columns` vor — auch `skill_knowledge_links` (PROJ-77-γ) trägt einen
+Dokumentknoten. Anker um die drei vorangehenden Abnahme-Spalten erweitert, alle drei Anker **vorab**
+als eindeutig gemessen, danach angewendet. Ohne den Wächter wäre der Zweig an der falschen Stelle
+gelandet. Zwei weitere eigene Fehler fing die Post-Condition bzw. der erste Lauf: die erwartete
+Trigger-Zahl war 4 statt 5, und `documents.checksum` ist NOT NULL.
+
+**Gates:** ESLint **0** · tsc **13 = Baseline / 0 neu** · vitest **3612/3612** (12 neu) ·
+migration-naming 0 · Advisors nach dem Anwenden noch zu erheben (`/qa`).
+
+#### Offen in `/backend` — ehrlich benannt, nicht gerundet
+
+Die **Anwendungsschicht** fehlt: die abgeleiteten Größen (`sharp`, gemessen: Vorschau 480 px 14 KB/66 ms,
+Druckgröße 1400 px 457 KB/101 ms bei einem 9-MB-Rauschbild in iPhone-Auflösung, beide parallel 144 ms bei
++32 MB RSS — absolut also ~0,5 MB je Foto, bei einem typischen 2-MB-Foto rund 25 % Zusatzlast, was die
+Q-ε6-Entscheidung stützt), die fünf Routen (Upload · Liste · Ändern · Entfernen · Inline-Auslieferung),
+Typen, Client-Wrapper und deren Route-Tests. Die Datenschicht ist ohne sie **nicht** über HTTP
+erreichbar — die Slice ist damit lauffähig geprüft, aber nicht benutzbar.
+
 
 ---
 
