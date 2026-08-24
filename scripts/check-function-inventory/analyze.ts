@@ -86,14 +86,6 @@ export const INVENTORY_EXCEPTIONS: readonly InventoryException[] = [
       "in `20260428120000`, kein `create function` in irgendeiner Migrationsdatei.",
     kind: "legacy",
   },
-  {
-    name: "_dd_finding_source_question_guard",
-    reason:
-      "PROJ-Y-114a (dd-finding-source-ref): Migration `20260817120000` ist seit dem 2026-08-17 in Prod, " +
-      "die Slice war am 2026-08-19 noch nicht gemergt. Wegwerf-Eintrag — sobald sie landet, meldet der " +
-      "Wächter ihn als veraltet und er ist zu entfernen.",
-    kind: "pending_merge",
-  },
 ] as const
 
 export interface InventoryFinding {
@@ -180,6 +172,38 @@ export function analyzeInventory(
     staleExceptions,
     repoOnly,
   }
+}
+
+/**
+ * Benennt, **warum** ein Ausnahme-Eintrag veraltet ist.
+ *
+ * `analyzeInventory` erkennt zwei grundverschiedene Fälle (`!prod.has(n) || repo.has(n)`),
+ * die Meldung nannte aber nur den ersten — und behauptete damit im zweiten Fall etwas
+ * Falsches („existiert nicht mehr im Prod-Inventar", während die Funktion dort steht).
+ * Wer der Meldung folgte, prüfte die falsche Seite. Gefunden in der PROJ-Y-114a-QA
+ * (F-2), als genau der zweite Fall eintrat: die Slice war gemergt, die Funktion in
+ * Prod **und** im Repo.
+ */
+export function describeStaleException(
+  name: string,
+  where: { inProd: boolean; inRepo: boolean }
+): string {
+  if (where.inRepo) {
+    return (
+      `Ausnahme \`${name}\` ist veraltet — eine Migrationsdatei legt die Funktion inzwischen selbst an ` +
+      `(der Normalfall: die Slice ist gemergt). Eintrag entfernen, sonst deckt er künftig einen echten ` +
+      `Fund gleichen Namens.`
+    )
+  }
+  if (!where.inProd) {
+    return (
+      `Ausnahme \`${name}\` ist veraltet — die Funktion existiert nicht mehr im Prod-Inventar. ` +
+      `Eintrag entfernen, sonst deckt er künftig einen echten Fund gleichen Namens.`
+    )
+  }
+  // Kein erreichbarer Fall über `analyzeInventory`; lieber ehrlich unbestimmt als
+  // eine erfundene Ursache.
+  return `Ausnahme \`${name}\` ist veraltet. Eintrag entfernen.`
 }
 
 /** Exit-relevant: nur unerklärte Funktionen und veraltete Ausnahmen sind Fehler. */

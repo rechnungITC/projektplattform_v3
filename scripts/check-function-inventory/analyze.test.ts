@@ -2,6 +2,7 @@ import { describe, expect, it } from "vitest"
 
 import {
   analyzeInventory,
+  describeStaleException,
   extractCreatedFunctions,
   hasFailures,
   parseInventory,
@@ -124,7 +125,36 @@ describe("INVENTORY_EXCEPTIONS", () => {
     expect(INVENTORY_EXCEPTIONS.map((e) => [e.name, e.kind])).toEqual([
       ["enforce_last_lead", "legacy"],
       ["enforce_project_membership_user_in_tenant", "legacy"],
-      ["_dd_finding_source_question_guard", "pending_merge"],
     ])
+  })
+})
+
+describe("describeStaleException", () => {
+  it("nennt den Repo-Fall, wenn die Funktion inzwischen von einer Migration angelegt wird", () => {
+    const msg = describeStaleException("_guard", { inProd: true, inRepo: true })
+    expect(msg).toContain("Migrationsdatei legt die Funktion inzwischen selbst an")
+    // Die alte Meldung behauptete hier das Gegenteil — dieser Fall ist der Grund
+    // fuer den Helfer (PROJ-Y-114a QA, F-2).
+    expect(msg).not.toContain("existiert nicht mehr im Prod-Inventar")
+  })
+
+  it("nennt den Prod-Fall, wenn die Funktion aus dem Inventar verschwunden ist", () => {
+    const msg = describeStaleException("_guard", { inProd: false, inRepo: false })
+    expect(msg).toContain("existiert nicht mehr im Prod-Inventar")
+  })
+
+  it("erfindet keine Ursache, wenn keine der beiden Bedingungen zutrifft", () => {
+    const msg = describeStaleException("_guard", { inProd: true, inRepo: false })
+    expect(msg).toContain("ist veraltet")
+    expect(msg).not.toContain("Prod-Inventar")
+    expect(msg).not.toContain("Migrationsdatei")
+  })
+
+  it("der Repo-Fall gewinnt, weil er der haeufigere und eindeutige ist", () => {
+    // Beide Bedingungen zugleich: gedroppt UND von einer Datei angelegt. Dann ist
+    // "die Slice ist gemergt" die Aussage, die den Leser weiterbringt.
+    expect(describeStaleException("_g", { inProd: false, inRepo: true })).toContain(
+      "Migrationsdatei"
+    )
   })
 })
