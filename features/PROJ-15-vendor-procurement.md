@@ -1,6 +1,11 @@
 # PROJ-15: Vendor and Procurement (Stammdaten, Project Assignment, Evaluation Matrix, Document Slots)
 
 ## Status: Deployed
+
+## Deployment Scope: full
+
+> **Scope-Klassifikation (PROJ-Y-145b, Tranche 4, 2026-08-24):** QA-Verdikt **READY**, **0 Bugs in allen vier Schweregraden**; alle funktionalen AC angehakt und live belegt (Vendor-Schema, Tenant-Isolation P1, Audit P4, Assignments mit UNIQUE + CASCADE P3, Bewertungen mit Score-CHECK und serverseitigem Durchschnitt, Dokumente mit HTTPS-only-CHECK, Projektraum-Tab mit Modul-Gate). **ST-05 (KI-Vertragspruefung)** ist **im Out-of-Scope der Spec** als durch eine Rechtsfrage (§ 1 RDG) gesperrt gefuehrt — spezifiziertes Nicht-Ziel, keine Auslassung. Die unangehakten Schlusszeilen sind eine manuelle Browser-Checkliste.
+
 **Created:** 2026-04-25
 **Last Updated:** 2026-04-25
 

@@ -1,6 +1,11 @@
 # PROJ-21: Output Rendering — Status-Report & Executive-Summary
 
 ## Status: Deployed
+
+## Deployment Scope: mvp
+
+> **Scope-Klassifikation (PROJ-Y-145b, Tranche 4, 2026-08-24):** QA **READY**, 0 Critical/0 High; geliefert sind **Status-Report + Executive-Summary als HTML und PDF**. Die weiteren in der Roadmap-Zeile dieser Story genannten Ausgabeformen — **Gantt-Rendering, PPTX und Markdown** — sind ausdruecklich nach **PROJ-21b/c** verschoben (so auch in `docs/PRD.md` festgehalten). Zwei Nachweistiefen bleiben benannt: keine echte Lastmessung fuer „< 2 s bei 50 Risiken/100 Arbeitspaketen" (🟡, im Pilot zu bestaetigen) und kein authentifizierter Ende-zu-Ende-Durchlauf des Render-Downloads (L2, Fixture-Grenze); die Produktions-Bestaetigung des PDF-Flusses erfolgte manuell am 2026-05-08.
+
 **Created:** 2026-04-30
 **Last Updated:** 2026-04-30
 

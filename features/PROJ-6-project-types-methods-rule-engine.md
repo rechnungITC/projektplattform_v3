@@ -1,6 +1,11 @@
 # PROJ-6: Project Types, Methods Catalog, and Rule Engine
 
 ## Status: Deployed
+
+## Deployment Scope: mvp
+
+> **Scope-Klassifikation (PROJ-Y-145b, Tranche 4, 2026-08-24):** Zwei AC-Zeilen sind nicht gruen. (1) **„Methodenaenderungen auditiert (PROJ-10-Hook)"** war ⚪ DEFERRED, weil PROJ-10 damals nicht existierte; heute fuehrt `_tracked_audit_columns('projects')` die Spalte `project_method` — die Anforderung ist **sachlich erfuellt**, aber von einer fremden, eigenstaendig deployten Slice, daher nach Hausregel **Upgrade-Kandidat** statt stillschweigendem `full`. (2) **„Templates in `docs/architecture/method-templates.md` dokumentiert"** ist als Finding **L1** ausdruecklich abgenommen: der Architektur-Pass hat den Templates-Begriff fallen gelassen, das Dokument waere irrefuehrend — **abgeschriebenes Kriterium** (Waiver, siehe PROJ-Y-145f-w3). Das 🟡 beim Cross-Tenant-Parent-Guard ist eine Nachweisluecke (Trigger vorhanden + unit-getestet).
+
 **Created:** 2026-04-25
 **Last Updated:** 2026-04-27
 

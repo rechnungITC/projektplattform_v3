@@ -1,6 +1,11 @@
 # PROJ-41: Assistant Speech, Provider & Wake-Word Infrastructure
 
 ## Status: Deployed (Assistant core MVP slice live since 2026-05-18; mic policy fix 2026-05-21)
+
+## Deployment Scope: mvp
+
+> **Scope-Klassifikation (PROJ-Y-145b, Tranche 4, 2026-08-24):** Die Spec sagt es selbst: **„External speech providers, provider health surfaces, and wake-word runtime are represented by settings but intentionally remain inactive in this MVP slice."** Geliefert ist die lokale Sprachschicht (Browser-STT/TTS mit Verfuegbarkeitserkennung, jederzeit sichtbarer Text-Fallback, optionale Sprachausgabe). Dazu die Nachweisgrenze: der Chromium-E2E belegt nur, dass unangemeldete Nutzer den Launcher nicht sehen; **volle Cross-Browser-Sprachvalidierung bleibt zurueckgestellt**, solange der Test-Host keine System-Sprachfaehigkeiten hat. Fortsetzung im PRD als Assistant-Track **Release 3**.
+
 **Created:** 2026-05-04
 **Last Updated:** 2026-05-21
 

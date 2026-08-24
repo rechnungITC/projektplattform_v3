@@ -1,6 +1,11 @@
 # PROJ-27: Cross-Project Work-Item Links + Sub-Project Bridge
 
 ## Status: Deployed
+
+## Deployment Scope: mvp
+
+> **Scope-Klassifikation (PROJ-Y-145b, Tranche 4, 2026-08-24):** Die Implementierungsnotiz fuehrt unter **„Known deviations / deferred"** ausdruecklich: **„PROJ-13 notification emission for pending links is not wired in this slice"** — die AC „Notification feuert beim Erstellen eines pending-Links" ist damit nicht erfuellt (die Inbox-Route existiert, muss aber gepollt werden); neu registriert als **PROJ-Y-27a**. Zweitens ist der AC-Block **„Tests"** (sechs Live-MCP-Smokes plus ein Playwright-E2E des Sub-Projekt-Assistenten) **nicht ausgefuehrt**: die QA-Sektion listet ausschliesslich Unit-/Route-Tests, Build, Lint und Schema-Drift, keinen Live-Smoke und keinen E2E → **PROJ-Y-27b**.
+
 **Created:** 2026-05-01
 **Last Updated:** 2026-05-12
 

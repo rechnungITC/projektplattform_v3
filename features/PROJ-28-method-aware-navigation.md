@@ -1,6 +1,11 @@
 # PROJ-28: Method-aware Project-Room Navigation (Labels + Routes)
 
 ## Status: Deployed
+
+## Deployment Scope: mvp
+
+> **Scope-Klassifikation (PROJ-Y-145b, Tranche 4, 2026-08-24):** Drei AC-Zeilen stehen auf ❌: **Tenant-Setting-Flag (Default false)**, **Pilot-Rollout (1 Tenant → Sentry-Woche → global)** und **Registrierung in `feature-flags.ts`**. Die QA bewertet die Folge selbst als Low, weil kanonische URLs immer funktionieren und seit 2026-06-07 ein globaler Kill-Switch (`METHOD_AWARE_ROUTES_DISABLED`) existiert — der deckt aber **Rollback**, nicht den tenant-weisen Rollout. Neu registriert als **PROJ-Y-28a**. Dazu zwei 🟡-Nachweisluecken (Methode × Sektion URL-Stabilitaet und Live-308 brauchen eine angemeldete Playwright-Fixture).
+
 **Created:** 2026-05-01
 **Last Updated:** 2026-06-07 (hardening follow-up: global kill-switch + structured Sentry breadcrumb)
 

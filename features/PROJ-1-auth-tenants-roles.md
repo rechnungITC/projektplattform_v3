@@ -1,6 +1,11 @@
 # PROJ-1: Authentication, Tenants, and Role-Based Membership
 
 ## Status: Deployed
+
+## Deployment Scope: full
+
+> **Scope-Klassifikation (PROJ-Y-145b, Tranche 4, 2026-08-24):** QA 2026-04-25 **Approved**, 0 Critical/0 High; der AC-Durchgang fuehrt **jede** Gruppe als ✅ PASS (Auth, Tenancy-Modell, Zuordnung bei Signup, Domain-Claim, Invite, RLS-Rollen, Rollenverwaltung, Last-Admin-Invariante) und die Live-Sicherheitstests A–F sind einzeln belegt. Die drei als 🟡 DEFERRED markierten Faelle (Pre-existing user post-claim, E-Mail-Wechsel, Freemail) sind **in der Spec selbst** als Nicht-Ziel bzw. P1 formuliert — geliefert wurde also genau das spezifizierte Verhalten, nichts wurde zurueckgestellt. Die 2026-06-12 nachgeholten Browser-/Live-Route-Smokes schliessen die letzten Nachweisluecken.
+
 **Created:** 2026-04-25
 **Last Updated:** 2026-06-12
 

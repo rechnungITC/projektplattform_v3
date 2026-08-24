@@ -1,6 +1,11 @@
 # PROJ-4: Platform Foundation — Navigation, Project Roles, RBAC Enforcement
 
 ## Status: Deployed
+
+## Deployment Scope: full
+
+> **Scope-Klassifikation (PROJ-Y-145b, Tranche 4, 2026-08-24):** QA **Approved**, 0 Critical/0 High; M1 (Auto-Lead-Bootstrap) und M2 (`requireProjectAccess`) wurden **noch am 2026-04-27** geschlossen. Die einzige nicht-gruene AC-Zeile — „404 vs 403 mapping" 🟡 NEEDS LIVE TEST — war eine **Nachweisluecke**, keine zurueckgestellte Arbeit: das Verhalten war implementiert (`route-helpers.ts`: RLS-verborgenes Projekt → 404, fehlende Rolle → 403) und ist heute produktweit route-getestet sowie in spaeteren Live-Pentests mit synthetisierten Nicht-Admin-Mitgliedern belegt. Nach der in Tranche 2 an PROJ-29 angewandten Linie ist eine spaeter geschlossene Demonstrationsluecke kein Scope-Abzug.
+
 **Created:** 2026-04-25
 **Last Updated:** 2026-04-26
 

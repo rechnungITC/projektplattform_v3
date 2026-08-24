@@ -1,6 +1,11 @@
 # PROJ-19: Phases & Milestones — Cross-cutting Schedule Backbone
 
 ## Status: Deployed
+
+## Deployment Scope: mvp
+
+> **Scope-Klassifikation (PROJ-Y-145b, Tranche 4, 2026-08-24):** QA **READY**, 0 Critical/0 High; die einzige nicht-gruene AC-Zeile ist **„Overdue-Berechnung treibt die PROJ-7-Health"** ⚪ — „Health formula still scaffold". Echte Health-Scores kamen erst mit **PROJ-56** (eigenstaendig deployed) → **Upgrade-Kandidat** nach Hausregel, kein stillschweigendes `full`.
+
 <!-- Frontend (commit 96f2976) + Backend (commit pending) shipped; QA pending -->
 
 **Created:** 2026-04-25

@@ -4,6 +4,10 @@
 
 Deployed — 2026-06-15 (Tag `v1.93.0-PROJ-50`). α backend + β frontend + γ QA; 0 Critical/0 High. Code live via PR #136; QA-Closure 2026-06-15 (Prod-State + Routen live re-verifiziert, Migration-Versions-Drift bereinigt).
 
+## Deployment Scope: mvp
+
+> **Scope-Klassifikation (PROJ-Y-145b, Tranche 4, 2026-08-24):** Das Verdikt ist **PRODUCTION-READY „for the α+β scope"**, und zwei Abweichungen benennen zurueckgestellte Teile des Eingangspfads: **D-1** — Status-Konflikte werden nur **protokolliert**, es gibt keine automatische Rueckabbildung; `jira_wins` auf `status` quittiert, **ohne** zu schreiben („Deferred to β"). **D-3** — die Auto-Apply-Whitelist umfasst nur Titel und Beschreibung; `kind`-Aenderungen und eingehendes Re-Parenting sind out of scope. Neu registriert als **PROJ-Y-50a** (Status-Auto-Apply) und **PROJ-Y-50b** (Kind/Reparenting inbound).
+
 ## Deployment
 
 - **Date:** 2026-06-15 (Closure; Code seit PR #136 / `b468d84` auf main + Vercel-Auto-Deploy, 2 Migrations seit 2026-06-11/12 via MCP in Prod).

@@ -1,6 +1,11 @@
 # PROJ-24: Cost-Stack — Tagessätze pro Rolle, Velocity-Modell & Kosten pro Work-Item
 
 ## Status: Deployed (24-α/β/γ/δ/ε live in production — 2026-05-03)
+
+## Deployment Scope: full
+
+> **Scope-Klassifikation (PROJ-Y-145b, Tranche 4, 2026-08-24):** QA-Verdikt **Approved** mit **0 Critical / 0 High / 0 Medium / 0 Low**, und der Statusheader belegt alle fuenf Teil-Slices (24-α/β/γ/δ/ε) als live. In der QA-Sektion findet sich **kein** zurueckgestelltes Kriterium; der einzige Nachtrag betrifft eine Migrations-Versionsdrift (Datei via `git mv` auf die in Prod registrierte Version umbenannt, PROJ-134-Domaene).
+
 **Created:** 2026-04-30
 **Last Updated:** 2026-05-03
 

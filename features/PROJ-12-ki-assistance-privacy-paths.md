@@ -1,6 +1,11 @@
 # PROJ-12: KI Assistance and Data-Privacy Paths
 
 ## Status: Deployed
+
+## Deployment Scope: mvp
+
+> **Scope-Klassifikation (PROJ-Y-145b, Tranche 4, 2026-08-24):** Die Slice ist der bewusst geschnittene KI-Kern; die QA weist zahlreiche originaere Kriterien als ⏳ aus, darunter **Cost-Cap pro Tenant**, **`tenant_settings.ai_provider_config`**, **Admin-UI**, **`compliance_hints`-Katalog**, **Wizard-Entry-Toggle**, **Freitext-Dialog → Review-Schritt** und eine **exportierbare KI-Event-Sicht**. Ein Teil ist inzwischen von fremden Slices eingeloest (Cost-Cap + Provider-Konfiguration in PROJ-32, Wizard-KI-Pfad in PROJ-70-ε/PROJ-135) → **Upgrade-Kandidat**; offen bleiben `compliance_hints` (→ PROJ-18) und die Export-Sicht (**PROJ-Y-12a**).
+
 **Created:** 2026-04-25
 **Last Updated:** 2026-04-29
 

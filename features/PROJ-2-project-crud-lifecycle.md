@@ -1,6 +1,11 @@
 # PROJ-2: Project CRUD and Lifecycle State Machine
 
 ## Status: Deployed
+
+## Deployment Scope: full
+
+> **Scope-Klassifikation (PROJ-Y-145b, Tranche 4, 2026-08-24):** QA **Approved**, 0 Critical/0 High; AC-Gruppen Schema, RLS, Zustandsmaschine, CRUD und Validierung alle ✅. „Concurrent updates → last-write-wins" ist **in der Spec** als MVP-Verhalten mit P1-Ausblick festgeschrieben (Edge Cases), also kein zurueckgestelltes Kriterium. Die einzige offene Nachweisluecke (Live-Hard-Delete) wurde 2026-06-12 geschlossen.
+
 **Created:** 2026-04-25
 **Last Updated:** 2026-06-12
 

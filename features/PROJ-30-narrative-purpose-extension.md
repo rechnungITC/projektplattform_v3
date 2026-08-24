@@ -1,6 +1,11 @@
 # PROJ-30: KI-Narrative-Purpose Erweiterung des AI-Routers
 
 ## Status: Deployed
+
+## Deployment Scope: full
+
+> **Scope-Klassifikation (PROJ-Y-145b, Tranche 4, 2026-08-24):** QA **READY**, 0 Critical/0 High. Die vier Low-Findings sind ausdruecklich abgenommen und treffen **kein** Akzeptanzkriterium: drei sind Test-Abdeckungsluecken in Pfaden, die symmetrisch bereits getestet sind (`buildNarrativeAutoContext`, `preview-ki`-Route), das vierte ist der bewusst nicht gebaute serverseitige Hard-Timeout, den die QA als „V1-akzeptabel" mit Folge-Spec-Option PROJ-30b einordnet.
+
 **Created:** 2026-05-01
 **Last Updated:** 2026-05-02
 **Deployed:** 2026-05-02 — Production: https://projektplattform-v3.vercel.app — Tag: `v1.30.0-PROJ-30`

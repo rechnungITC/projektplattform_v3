@@ -1,6 +1,11 @@
 # PROJ-17: Tenant Administration — Branding, Modules, Privacy Defaults, Export, Offboarding
 
 ## Status: Deployed
+
+## Deployment Scope: mvp
+
+> **Scope-Klassifikation (PROJ-Y-145b, Tranche 4, 2026-08-24):** Die QA fuehrt einen eigenen Abschnitt **„Deferred per locked design"**; darin **ST-04 (DSGVO-Export)** und **ST-05 (Offboarding/Hard-Delete)** — zwei vollstaendige Stories dieser Spec — sowie die **Sprachumschaltung** („stored, not yet wired to UI strings"). Unabhaengig nachgemessen: unter `src/app/api/tenants/[id]/` existiert **keine** Export- und **keine** Offboarding-Route, die Luecke besteht also fort und wirkt bis in **PROJ-40** hinein (dessen AC „Assistant-Daten in Export-/Deletion-Konzepten" dadurch unerfuellbar bleibt). Neu registriert als **PROJ-Y-17a** (Export) und **PROJ-Y-17b** (Offboarding); H1 (Privacy-Default liess sich nicht speichern) war zum Deploy behoben.
+
 **Created:** 2026-04-25
 **Last Updated:** 2026-04-29
 

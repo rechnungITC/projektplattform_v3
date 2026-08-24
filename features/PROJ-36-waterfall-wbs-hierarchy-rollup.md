@@ -1,6 +1,11 @@
 # PROJ-36: Waterfall-WBS Hierarchy & Roll-up
 
 ## Status: Deployed (36-Pre + 36-α + 36-γ live; 36-β absorbed by PROJ-9-R2)
+
+## Deployment Scope: full
+
+> **Scope-Klassifikation (PROJ-Y-145b, Tranche 4, 2026-08-24):** Der Statusheader belegt 36-Pre, 36-α und 36-γ als live; **36-β wurde von PROJ-9-R2 absorbiert** und die Spec haelt in einer eigenen Bookkeeping-Notiz fest, dass die Alt-Verweise **historisch** sind und **kein offenes Followup** bezeichnen. Auch **PROJ-36c** (Virtualisierungs-Library) ist nicht zurueckgestellt, sondern **entfaellt**: die Slice hat `react-arborist` direkt mitgenommen und damit die frueher offene Bibliotheksentscheidung vorweg getroffen.
+
 **Created:** 2026-05-03
 **Last Updated:** 2026-06-07 (bookkeeping cleanup: legacy 36-β references are historical only; 36-β was absorbed by PROJ-9-R2 and is not an open PROJ-36 follow-up)
 

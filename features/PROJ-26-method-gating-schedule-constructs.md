@@ -1,6 +1,11 @@
 # PROJ-26: Method-Gating für Schedule-Constructs (Sprints, Phasen, Milestones)
 
 ## Status: Deployed
+
+## Deployment Scope: full
+
+> **Scope-Klassifikation (PROJ-Y-145b, Tranche 4, 2026-08-24):** QA **Approved**, 0 Critical/0 High; **alle fuenf AC-Bloecke** und **alle fuenf Live-Red-Team-Szenarien** sind gruen, 432/432 Tests, 0 neue Advisor-Warnungen. Die zwei 🟡-Zeilen (methodenbewusste „Anlegen"-Schaltflaechen in der Sidebar, Method-Templates auf die neue Registry umstellen) sind **im Out-of-Scope der Spec** als spaeterer UI-Pass deklariert und als **L1** ausdruecklich als „documented deferral per spec § Out-of-Scope" abgenommen — die API blockt hart mit 422, ein veralteter Knopf kann keine inkonsistenten Daten erzeugen. Eingeloest wurden sie ohnehin durch **PROJ-28**.
+
 **Created:** 2026-05-01
 **Last Updated:** 2026-05-01
 

@@ -1,6 +1,11 @@
 # PROJ-14: Connector Framework, Jira Integration, MCP Bridge, Stand-alone Deployment Hooks
 
 ## Status: Deployed
+
+## Deployment Scope: mvp
+
+> **Scope-Klassifikation (PROJ-Y-145b, Tranche 4, 2026-08-24):** Die QA-Zusammenfassung nennt die Grenze wortwoertlich: **„This slice ships ST-01, ST-03, ST-06, ST-08 end-to-end. ST-02, ST-04, ST-05, ST-07 are explicitly deferred to follow-up slices (PROJ-14b/c/d/e)"** — vier von acht Stories zurueckgestellt, mit benannten Ziel-IDs. Die Nachfolger sind inzwischen als **PROJ-47** (Jira-Export), **PROJ-48** (MCP-Bridge), **PROJ-49** (Teams) und **PROJ-50** (bidirektionaler Sync) geliefert → **Upgrade-Kandidat**. Zusaetzlich: Tenant-Secret-Overrides fuer den E-Mail-Kanal sind gespeichert, aber vom Adapter noch nicht gelesen („Plumbing only").
+
 **Created:** 2026-04-25
 **Last Updated:** 2026-04-25
 

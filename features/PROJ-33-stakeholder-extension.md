@@ -1,6 +1,11 @@
 # PROJ-33: Erweitertes Stakeholder-Management — Stammdaten + Skill/Persönlichkeit + Self-Assessment
 
 ## Status: Deployed (Phase 33-α + β + γ + δ live in production)
+
+## Deployment Scope: full
+
+> **Scope-Klassifikation (PROJ-Y-145b, Tranche 4, 2026-08-24):** Alle vier Phasen (33-α/β/γ/δ) tragen ein eigenes Verdikt **Approved** mit **0 Critical / 0 High / 0 Medium / 0 Low**, und die δ-Bilanz belegt das Self-Assessment-Formular samt Magic-Link-Pfad und Idempotenz gegen Doppel-Absenden. Kein Kriterium dieser Story ist als zurueckgestellt ausgewiesen.
+
 **Created:** 2026-05-02
 **Last Updated:** 2026-05-02
 **Phase 33-α Deployed:** 2026-05-02 — Tag: `v1.33.0-PROJ-33-alpha`

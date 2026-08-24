@@ -4,6 +4,10 @@
 
 Deployed (2026-07-23 Closure — Tag `v2.19.0-PROJ-49`). α backend + β frontend + γ QA — Workflows-Webhook transport; 0 Critical/0 High. Code merged to main via #136 + #140 and live in prod (Prod-Smoke POST /api/connectors → 307 auth-gate). Reine Status-Closure, kein neuer Runtime-Deploy. Offener User-Handoff: echter Teams-Workflows-Webhook-Live-Send (Konfiguration durch Tenant-Admin). PROJ-133 (Graph-delegated named-user/bot sender) bleibt separater Pilot-Followup.
 
+## Deployment Scope: full
+
+> **Scope-Klassifikation (PROJ-Y-145b, Tranche 4, 2026-08-24):** Die Spec verlangt in ihrer Zusammenfassung ausdruecklich **„Microsoft Graph *oder* approved webhook integration"** — geliefert ist die Workflows-Webhook-Variante, und der CIA-Review vom 2026-06-15 belegt mit Primaerquellen, **warum** der Graph-Weg nicht gangbar ist (App-only-Kanalposting laesst nur `Teamwork.Migrate.All` zu, ausdruecklich auf Datenmigration beschraenkt; der klassische Incoming-Webhook-Connector ist im Mai 2026 abgeschaltet worden). Das Kriterium ist damit **erfuellt**, nicht umgangen. **PROJ-133** (Graph-delegierter Sender im Namen eines Nutzers/Bots) ist eine **neue** Faehigkeit, keine zurueckgestellte AC. Der offene Punkt ist ein **Konfigurations-Handoff** an die Mandanten-Administration (echter Live-Send), kein Code-Rest.
+
 ## Summary
 
 Replace the Teams stub path with a real Microsoft Teams delivery adapter using Microsoft Graph or approved webhook integration. The adapter must plug into PROJ-13 communication outbox and PROJ-14 connector secrets.

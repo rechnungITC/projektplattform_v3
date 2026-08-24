@@ -1,6 +1,11 @@
 # PROJ-37: Voice Agent Assistant ("Hey Sven")
 
 ## Status: Deployed (Assistant core MVP slice live since 2026-05-18; mic policy fix 2026-05-21)
+
+## Deployment Scope: mvp
+
+> **Scope-Klassifikation (PROJ-Y-145b, Tranche 4, 2026-08-24):** Die Spec benennt die Grenze selbst: **„The delivered cut is the Assistant core MVP. Wake-word is modeled in settings but remains off; always-listening, external speech providers, and full autonomous workflows remain deferred."** Dazu die AC-Zeile, dass persistente Konversationsspeicherung „explizit deferred" bleibt und das MVP nur ephemeren Sitzungszustand fuehren darf. Die Fortsetzung ist im PRD als Assistant-Track **Release 3/4** geplant.
+
 **Created:** 2026-05-04
 **Last Updated:** 2026-05-21
 

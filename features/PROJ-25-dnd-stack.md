@@ -1,6 +1,11 @@
 # PROJ-25: Drag-and-Drop Stack — Backlog↔Sprint + Gantt voll
 
 ## Status: Deployed (Gantt half — Stages 1-5 + Today/Zoom/Edit-Dialog live in production; Backlog↔Sprint DnD deferred to PROJ-25b)
+
+## Deployment Scope: alpha
+
+> **Scope-Klassifikation (PROJ-Y-145b, Tranche 4, 2026-08-24):** Die QA nennt die gelieferte Einheit selbst: **„READY for /deploy as PROJ-25-α (Gantt half)"** — ein benannter Teil-Schnitt mit eigener AC-Bilanz, eigener QA und eigenem Deployment, waehrend der Rest ausdruecklich aufgelistet ist: **ST-01 (Backlog↔Sprint-DnD)** und **ST-06 (Keyboard/aria-live, Cross-Project-Indikator)** nach **PROJ-25b** abgegeben, **ST-07 (3 Performance-Kriterien)** nicht gemessen. Damit trifft die Definition von `alpha` woertlich, nicht die von `mvp`. PROJ-25b ist seither deployed → **Upgrade-Kandidat**.
+
 **Created:** 2026-04-30
 **Last Updated:** 2026-05-05 (formal /qa + /deploy closure after 8 silent-shipped commits)
 

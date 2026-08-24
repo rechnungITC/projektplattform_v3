@@ -1,6 +1,11 @@
 # PROJ-8: Stakeholders and Organization
 
 ## Status: Deployed
+
+## Deployment Scope: mvp
+
+> **Scope-Klassifikation (PROJ-Y-145b, Tranche 4, 2026-08-24):** Drei Deploy-Abweichungen sind ausdruecklich protokolliert und treffen je ein originaeres Kriterium: **„Edits audited via PROJ-10 hook"** ⏳, **Class-3-Export-Redaktion** ⏳ (PROJ-12) und **tenant-konfigurierbare Influence/Impact-Labels** (PROJ-17). PROJ-10 und PROJ-12 sind seither deployed → **Upgrade-Kandidat**; die Tenant-Labels sind neu als **PROJ-Y-8a** registriert. Bug M1 (Recover-Link nur in derselben Sitzung) und M2 (Zellklick bei Mehrfachtreffern) wurden vor dem Tag in `3a61ef6` geschlossen.
+
 **Created:** 2026-04-25
 **Last Updated:** 2026-04-28
 

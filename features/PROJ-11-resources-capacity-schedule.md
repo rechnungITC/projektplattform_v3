@@ -1,6 +1,11 @@
 # PROJ-11: Resources, Capacities, and Schedule Logic
 
 ## Status: Deployed
+
+## Deployment Scope: mvp
+
+> **Scope-Klassifikation (PROJ-Y-145b, Tranche 4, 2026-08-24):** Das AC **„Filter: Rolle, Org-Einheit, Zeitraum, intern/extern"** ist nur zur Haelfte geliefert — die QA-Zeile sagt es selbst: „UI; role/org-unit/internal-external are out of MVP scope". Dazu der Spec-Edge-Case **„Resource aus deaktiviertem Stakeholder wird automatisch inaktiv"**, in der QA als *„not implemented in this slice (tracked as Low M1)"* vermerkt. Beide neu registriert als **PROJ-Y-11a** bzw. **PROJ-Y-11b**. Der Rest ist mit 10 Live-Red-Team-Sonden und rueckgerollten Transaktionen belegt.
+
 **Created:** 2026-04-25
 **Last Updated:** 2026-04-25
 

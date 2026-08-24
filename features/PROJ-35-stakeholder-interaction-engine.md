@@ -1,6 +1,11 @@
 # PROJ-35: Stakeholder-Wechselwirkungs-Engine — Risiko-Score, Eskalations-Indikatoren & Tonalitäts-Empfehlungen
 
 ## Status: Deployed (alle 3 Phasen α + β + γ live)
+
+## Deployment Scope: mvp
+
+> **Scope-Klassifikation (PROJ-Y-145b, Tranche 4, 2026-08-24):** Alle drei Phasen haben nach den Fix-Zyklen ein **Approved** mit 0 Bugs — aber die γ-Bilanz fuehrt **B7.3 (Counter-Badge mit Lazy-Fetch)** zweimal als ⏳ **„nicht in MVP"** mit der Begruendung, es wuerde eine Erweiterung des `SidebarSection`-Typs erfordern, und verweist auf ein unbenanntes „PROJ-35.next". Eine zurueckgestellte originaere Anforderung ohne Ziel-ID; jetzt als **PROJ-Y-35a** registriert.
+
 **Created:** 2026-05-02
 **Last Updated:** 2026-05-03 (35-α Frontend live in production; Tag v1.35.1-PROJ-35-alpha-frontend)
 

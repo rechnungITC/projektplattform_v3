@@ -1,6 +1,11 @@
 # PROJ-22: Budget-Modul mit Historisierung, Vendor-Integration & Multi-Currency
 
 ## Status: Deployed
+
+## Deployment Scope: full
+
+> **Scope-Klassifikation (PROJ-Y-145b, Tranche 4, 2026-08-24):** Auch hier ist das **erste** Verdikt („NOT READY", HIGH-1: Modul-Gate fehlte in allen 11 Routen) nicht das operative: der **zweite** Pass ist **READY** mit 0 Critical/0 High und verifiziert **HIGH-1, LOW-1 (23 neue Eintraege in der Datenschutz-Registry) und MEDIUM-1 (Frontend-Slice)** einzeln. Die letzte verbliebene Luecke — `VendorInvoicesTab` war nicht in den Vendor-Drawer eingebunden — ist **von PROJ-22 selbst** geschlossen worden (`feat(PROJ-22): integrate VendorInvoicesTab into vendor drawer`, heute in `vendors-page-client.tsx` verdrahtet), also kein fremder Nachzug.
+
 **Created:** 2026-04-30
 **Last Updated:** 2026-04-30
 
