@@ -64,6 +64,10 @@ const COLUMNS: Record<
   sections: [
     "abschnitt",
     "teilbaum_tiefe",
+    // PROJ-Y-45l: die Kappung steht auch in der CSV. Sie hier weglassen hiesse,
+    // die stille Unterberichtung nur aus der Oberflaeche zu entfernen und in
+    // der maschinenlesbaren Ausgabe stehen zu lassen.
+    "teilbaum_gekappt",
     "fortschritt_quelle",
     "fortschritt_prozent",
     "gezaehlte_vorgaenge",
@@ -189,6 +193,7 @@ export async function GET(
       [
         s.label,
         s.subtree_depth,
+        s.subtree_truncated ? "ja" : "nein",
         // `null` heisst „nichts verknüpft" — die Zelle bleibt LEER statt 0 %
         // zu behaupten (AC-45δ.10). csvCell macht aus null den Leerstring.
         s.progress_source,

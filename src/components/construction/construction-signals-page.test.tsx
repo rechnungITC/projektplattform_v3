@@ -28,6 +28,7 @@ const SIGNALS: ConstructionScheduleSignals = {
   project_id: "aaaaaaaa-1111-4111-8111-aaaaaaaaaaaa",
   as_of: "2026-08-21",
   window_days: 14,
+  section_depth_cap: 50,
   summary: {
     overdue_defects: 7,
     defects_without_due_date: 5,

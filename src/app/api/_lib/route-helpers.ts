@@ -182,6 +182,14 @@ type RequireProjectAccessResult =
  * Defense in depth: RLS still gates every subsequent write. This helper
  * only adds a clean 403 with helpful copy and short-circuits before the
  * route runs DB statements that would otherwise surface as 500/Postgres.
+ *
+ * PROJ-Y-45m — `.eq("is_deleted", false)` unten ist die EINZIGE Stelle im
+ * Produkt, die den Papierkorb durchsetzt: keine der 11 projektbezogenen
+ * Auswertungsfunktionen und keine der Kindtabellen-RLS prüfen ihn (gemessen).
+ * Wird die Zeile entfernt, fällt die Zusage produktweit und ohne Fehlermeldung.
+ * Begründung, verworfene Alternative und Folgen:
+ * `docs/decisions/soft-delete-enforcement-scope.md`; festgenagelt in
+ * `route-helpers.soft-delete.test.ts` (Verhalten UND Struktur).
  */
 export async function requireProjectAccess(
   supabase: Awaited<ReturnType<typeof createClient>>,
