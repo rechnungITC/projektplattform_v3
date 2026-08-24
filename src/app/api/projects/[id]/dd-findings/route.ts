@@ -11,6 +11,11 @@ import {
   mustBlockOnLogFailure,
   STRICT_LOG_FAILED_MESSAGE,
 } from "@/lib/audit/confidential-read"
+import {
+  maskInvisibleSourceQuestion,
+  maskInvisibleSourceQuestions,
+  type VisibleQuestionLookup,
+} from "@/lib/ma-project/dd-finding-source-visibility"
 
 import { createFindingSchema, FINDING_SELECT } from "./_schema"
 
@@ -20,6 +25,25 @@ import { createFindingSchema, FINDING_SELECT } from "./_schema"
 //      + need-to-know gate scope rows).
 // POST /api/projects/[id]/dd-findings              — create via create_dd_finding
 //      RPC (manager + need-to-know enforced server-side; deal_breaker escalates).
+
+/**
+ * PROJ-Y-114d — sichtbare Fragen mit der **Nutzersitzung** ermitteln. Die Antwort
+ * der RLS *ist* die Sichtbarkeitsprüfung; mit Dienst-Schlüssel wäre sie wirkungslos.
+ */
+function visibleQuestions(
+  supabase: Parameters<typeof requireProjectAccess>[0]
+): VisibleQuestionLookup {
+  return async (ids) => {
+    const { data, error } = await supabase
+      .from("dd_questions")
+      .select("id")
+      .in("id", ids as string[])
+    // Fail-closed: kann nicht festgestellt werden, was sichtbar ist, wird nichts
+    // durchgelassen — eine verschwiegene Verknüpfung ist harmlos, eine verratene nicht.
+    if (error) return []
+    return ((data ?? []) as { id: string }[]).map((r) => r.id)
+  }
+}
 
 export async function GET(
   request: Request,
@@ -66,7 +90,14 @@ export async function GET(
     return apiError("audit_log_failed", STRICT_LOG_FAILED_MESSAGE, 500)
   }
 
-  return NextResponse.json({ findings: data ?? [] })
+  const findings = await maskInvisibleSourceQuestions(
+    (data ?? []) as ({ confidentiality_level?: string | null } & {
+      source_dd_question_id?: string | null
+    })[],
+    visibleQuestions(supabase)
+  )
+
+  return NextResponse.json({ findings })
 }
 
 export async function POST(
@@ -131,5 +162,9 @@ export async function POST(
     return apiError("create_failed", error.message, 500)
   }
 
-  return NextResponse.json({ finding: data }, { status: 201 })
+  const finding = await maskInvisibleSourceQuestion(
+    data as { source_dd_question_id?: string | null } | null,
+    visibleQuestions(supabase)
+  )
+  return NextResponse.json({ finding }, { status: 201 })
 }

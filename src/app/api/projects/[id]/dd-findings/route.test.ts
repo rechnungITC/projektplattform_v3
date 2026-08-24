@@ -6,6 +6,8 @@ const rpcMock = vi.fn()
 interface QueryChain {
   select: ReturnType<typeof vi.fn>
   eq: ReturnType<typeof vi.fn>
+  /** PROJ-Y-114d: die Sichtbarkeitsabfrage auf `dd_questions` endet auf `.in()`. */
+  in: ReturnType<typeof vi.fn>
   order: ReturnType<typeof vi.fn>
   limit: ReturnType<typeof vi.fn>
   maybeSingle: ReturnType<typeof vi.fn>
@@ -14,6 +16,7 @@ function newQueryChain(): QueryChain {
   const c = {} as QueryChain
   c.select = vi.fn().mockReturnValue(c)
   c.eq = vi.fn().mockReturnValue(c)
+  c.in = vi.fn()
   c.order = vi.fn().mockReturnValue(c)
   c.limit = vi.fn()
   c.maybeSingle = vi.fn()
@@ -39,6 +42,7 @@ import { GET, POST } from "./route"
 const PROJECT = "aaaaaaaa-1111-4111-8111-aaaaaaaaaaaa"
 const STREAM = "55555555-5555-4555-8555-555555555555"
 const ME = "cccccccc-3333-4333-8333-cccccccccccc"
+const QUESTION = "99999999-9999-4999-8999-999999999999"
 
 function ctx() {
   return { params: Promise.resolve({ id: PROJECT }) }
@@ -79,6 +83,69 @@ describe("GET /api/projects/[id]/dd-findings", () => {
     const res = await GET(new Request("http://t/"), ctx())
     expect(res.status).toBe(200)
     expect(((await res.json()) as { findings: unknown[] }).findings).toHaveLength(1)
+  })
+
+  // PROJ-Y-114d — die Herkunfts-Verknuepfung darf keine unsichtbare Frage verraten.
+  // Gefunden als Vektor T der PROJ-Y-114a-QA: die Schreibseite war dicht, die
+  // Leseseite nicht. Autoritaet ist die RLS des Aufrufers — was die Abfrage auf
+  // `dd_questions` zurueckgibt, ist sichtbar; alles andere wird genullt.
+  it("nullt die Quell-Frage, wenn sie fuer den Aufrufer nicht sichtbar ist", async () => {
+    getUserMock.mockResolvedValue({ data: { user: { id: ME } } })
+    queueProjectView()
+    const list = newQueryChain()
+    list.limit.mockResolvedValue({
+      data: [{ id: "f1", severity: "hoch", source_dd_question_id: QUESTION }],
+      error: null,
+    })
+    queue.push(list)
+    const questions = newQueryChain()
+    questions.in.mockResolvedValue({ data: [], error: null }) // RLS verbirgt sie
+    queue.push(questions)
+
+    const res = await GET(new Request("http://t/"), ctx())
+    expect(res.status).toBe(200)
+    const body = (await res.json()) as {
+      findings: { source_dd_question_id: string | null }[]
+    }
+    expect(body.findings[0].source_dd_question_id).toBeNull()
+    // Gefragt wurde mit der Nutzersitzung auf `dd_questions` — nicht nachgebaut.
+    expect(fromMock).toHaveBeenCalledWith("dd_questions")
+  })
+
+  it("laesst die Quell-Frage stehen, wenn sie sichtbar ist (kein Blanket-Deny)", async () => {
+    getUserMock.mockResolvedValue({ data: { user: { id: ME } } })
+    queueProjectView()
+    const list = newQueryChain()
+    list.limit.mockResolvedValue({
+      data: [{ id: "f1", severity: "hoch", source_dd_question_id: QUESTION }],
+      error: null,
+    })
+    queue.push(list)
+    const questions = newQueryChain()
+    questions.in.mockResolvedValue({ data: [{ id: QUESTION }], error: null })
+    queue.push(questions)
+
+    const res = await GET(new Request("http://t/"), ctx())
+    const body = (await res.json()) as {
+      findings: { source_dd_question_id: string | null }[]
+    }
+    expect(body.findings[0].source_dd_question_id).toBe(QUESTION)
+  })
+
+  it("fragt `dd_questions` gar nicht, wenn keine Zeile eine Quelle traegt", async () => {
+    getUserMock.mockResolvedValue({ data: { user: { id: ME } } })
+    queueProjectView()
+    const list = newQueryChain()
+    list.limit.mockResolvedValue({
+      data: [{ id: "f1", severity: "hoch", source_dd_question_id: null }],
+      error: null,
+    })
+    queue.push(list)
+    // Keine zweite Kette in der Warteschlange: wuerde gefragt, liefe `from()` leer
+    // und der Fall waere rot. Genau das ist die Zusicherung.
+    const res = await GET(new Request("http://t/"), ctx())
+    expect(res.status).toBe(200)
+    expect(fromMock).not.toHaveBeenCalledWith("dd_questions")
   })
 })
 

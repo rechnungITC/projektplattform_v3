@@ -6,6 +6,7 @@ import {
   getAuthenticatedUserId,
   requireProjectAccess,
 } from "@/app/api/_lib/route-helpers"
+import { maskInvisibleSourceQuestion } from "@/lib/ma-project/dd-finding-source-visibility"
 
 import { updateFindingSchema } from "../_schema"
 
@@ -83,5 +84,20 @@ export async function PATCH(
     return apiError("update_failed", error.message, 500)
   }
 
-  return NextResponse.json({ finding: data })
+  // PROJ-Y-114d — auch die Antwort des Bearbeiten-Wegs darf keine unsichtbare
+  // Frage verraten: Vektor O erlaubt einer Leitung ohne Freigabe ausdrücklich,
+  // ein Finding mit UNVERÄNDERTER `strict`-Verknüpfung zu bearbeiten — die
+  // Kennung stünde sonst in der Antwort.
+  const finding = await maskInvisibleSourceQuestion(
+    data as { source_dd_question_id?: string | null } | null,
+    async (ids) => {
+      const { data: rows, error: qErr } = await supabase
+        .from("dd_questions")
+        .select("id")
+        .in("id", ids as string[])
+      if (qErr) return []
+      return ((rows ?? []) as { id: string }[]).map((r) => r.id)
+    }
+  )
+  return NextResponse.json({ finding })
 }
