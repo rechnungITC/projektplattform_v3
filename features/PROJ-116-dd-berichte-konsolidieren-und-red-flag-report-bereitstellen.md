@@ -17,9 +17,9 @@ summary_for_jira: "[G5] DD-Berichte konsolidieren und Red-Flag-Report bereitstel
 ## Status: Deployed (2026-06-30 — tag v2.4.0-PROJ-116)
 ## Deployment Scope: mvp
 
-> **Scope-Klassifikation (PROJ-Y-145b, Tranche 3, 2026-08-20):** **AC1 „teilweise"** — die Pflicht-Deliverables-Hälfte (D1) war beim Deploy forward-compat deferiert (PROJ-Y-3, inzwischen mit #292 geliefert). AC2/AC3/AC4 ✅ (Word ist durch „PDF **oder** Word" gedeckt), Pentest A–H 8/8 inkl. Aggregat-Leck-Probe.
+> **Scope-Klassifikation (PROJ-Y-145b, Tranche 3, 2026-08-20):** **AC1 „teilweise"** — die Pflicht-Deliverables-Hälfte (D1) war beim Deploy forward-compat deferiert (PROJ-Y-116c, inzwischen mit #292 geliefert). AC2/AC3/AC4 ✅ (Word ist durch „PDF **oder** Word" gedeckt), Pentest A–H 8/8 inkl. Aggregat-Leck-Probe.
 
-**Deployed 2026-06-30:** Code live auf main via #205 (backend) + #206 (frontend) + #208 (QA); Migration `20260629084539_proj116_dd_report_consolidated` seit /backend in Prod. Vercel-Prod-Deploy von `f4bb369` (#208) **READY** (dpl_56nMDPEUkQFVhVUoehVgChYu4puv, target=production). Kein neues Dep, keine separate Runtime-Migration im Closure (DDL war bereits in Prod). Post-Deploy-Smoke: 307-Auth-Gates auf `/api/projects/[id]/dd-report` + `/projects/[id]/dd-bericht` + `/projects/[id]/dd-report/print`. Tag `v2.4.0-PROJ-116`. PROJ-Y-1 (Word-Export) / PROJ-Y-2 (Snapshot-Freeze) / PROJ-Y-3 (D1-Deliverables) bleiben offene Followups.
+**Deployed 2026-06-30:** Code live auf main via #205 (backend) + #206 (frontend) + #208 (QA); Migration `20260629084539_proj116_dd_report_consolidated` seit /backend in Prod. Vercel-Prod-Deploy von `f4bb369` (#208) **READY** (dpl_56nMDPEUkQFVhVUoehVgChYu4puv, target=production). Kein neues Dep, keine separate Runtime-Migration im Closure (DDL war bereits in Prod). Post-Deploy-Smoke: 307-Auth-Gates auf `/api/projects/[id]/dd-report` + `/projects/[id]/dd-bericht` + `/projects/[id]/dd-report/print`. Tag `v2.4.0-PROJ-116`. PROJ-Y-116a (Word-Export) / PROJ-Y-116b (Snapshot-Freeze) / PROJ-Y-116c (D1-Deliverables) bleiben offene Followups.
 
 **Architected (CIA-reviewed 2026-06-29)** — VIEW-Slice: neue SECURITY-INVOKER-RPC `dd_report_consolidated` über deployte 112/113/114, need-to-know gratis; Export via PROJ-21-Print-to-PDF; Live-Sicht; Word/Snapshot/Deliverables deferred; 6 Hardening-ACs. Kein neues Dep, keine neue Tabelle.
 
@@ -37,7 +37,7 @@ summary_for_jira: "[G5] DD-Berichte konsolidieren und Red-Flag-Report bereitstel
 
 **QA PASS 2026-06-30 (0 Critical/0 High → PRODUCTION-READY):**
 
-- **Funktionale ACs:** AC2 (konsolidierter Red-Flag-Report hoch/deal_breaker, deal_breaker zuerst) ✅; AC3 (Export) ✅ via PDF/Print-Sicht (Word deferred PROJ-Y-1); AC4 (need-to-know-beschränkt) ✅. **AC1** teilweise — Findings (G3) + Q&A (G2) live; **Pflicht-Deliverables (D1) forward-compat deferred** → PROJ-Y-3 (dokumentierte Deviation, da PROJ-104 ungebaut).
+- **Funktionale ACs:** AC2 (konsolidierter Red-Flag-Report hoch/deal_breaker, deal_breaker zuerst) ✅; AC3 (Export) ✅ via PDF/Print-Sicht (Word deferred PROJ-Y-116a); AC4 (need-to-know-beschränkt) ✅. **AC1** teilweise — Findings (G3) + Q&A (G2) live; **Pflicht-Deliverables (D1) forward-compat deferred** → PROJ-Y-116c (dokumentierte Deviation, da PROJ-104 ungebaut).
 - **6 Hardening-ACs (H1–H6) alle ✅** belegt durch Live-Pentest (s.u.) + Code-Review: H1 (invoker/revoke anon+public/grant authenticated/kein actor-Param — verifiziert is_definer=false + Vektor G), H2 (Route + Print-Seite rufen RPC mit session-gebundenem Client; Auth-Gates 4/4), H3 (red_flags direkt aus dd_findings — Vektor D), H4 (höher-klassifizierte Streams gefiltert — Vektoren C/F), H5 (`null_eur_count`-Disclosure im Body), H6 (Live-Smoke).
 - **Live-Pentest** `tests/sql/PROJ-116-dd-report-pentest.sql` (3 Streams standard/confidential/strict + Fremd-Tenant, self-rolling-back, **0 Residue**): **A–H 8/8 PASS** — A admin sieht alle 3 Streams · B 3 Red-Flags deal_breaker-first · C Member nur standard-Stream (H4) · D Member 0 conf/strict Red-Flags (H2/H3 Aggregat-Leak-Probe) · E Member-Aggregat korrekt · F confidential-cleared sieht std+conf NICHT strict (Stufen-Ordnung) · G anon execute revoked (H1) · H Cross-Tenant 0/0 (kein Leak).
 - **Playwright** `tests/PROJ-116-dd-report.spec.ts` 4/4 chromium: Auth-Gates auf GET `/api/projects/[id]/dd-report` + malformed-id + In-App-Seite `/dd-bericht` + Print-Seite `/dd-report/print` (alle 307/401/403 unauth). Route-Unit-Test 5/5 (inkl. 400-uuid-Validierung).
@@ -143,8 +143,8 @@ PROJ-116 DD-Bericht
 | # | Entscheidung | Wahl | Warum |
 |---|---|---|---|
 | E1 | **Daten-Assembly** | **Neue SECURITY-INVOKER-RPC `dd_report_consolidated`** (Muster `dd_findings_summary`: sql/stable/invoker, kein actor-Param, revoke public+anon) | INVOKER ⇒ RESTRICTIVE need-to-know-Policies laufen im Caller-Kontext **vor** der Aggregation → AC4 gratis, kein Aggregat-Leak. SQL-VIEW = Definer-äquivalent (Need-to-know-Bypass) → abgelehnt. `dd_findings_summary` erweitern → bräche den deployten 114-Contract → abgelehnt. |
-| E2 | **Export PDF/Word** | **PROJ-21-Print-to-PDF wiederverwenden** (HTML-Report-Seite + `/print`); **Word deferiert** → PROJ-Y-1 | AC3 sagt „PDF **oder** Word" → PDF allein erfüllt die AC. Server-DOCX-Generator = neues Dep ⇒ vermeidbar. |
-| E3 | **Snapshot-Freeze** (offene Frage) | **Live-Sicht im MVP**; Freeze → PROJ-Y-2 (`report_snapshots`-Reuse) | User Story will „jederzeit aktueller Stand statt manuell gepflegtem Report" = Live. Freeze ist Should/Later. |
+| E2 | **Export PDF/Word** | **PROJ-21-Print-to-PDF wiederverwenden** (HTML-Report-Seite + `/print`); **Word deferiert** → PROJ-Y-116a | AC3 sagt „PDF **oder** Word" → PDF allein erfüllt die AC. Server-DOCX-Generator = neues Dep ⇒ vermeidbar. |
+| E3 | **Snapshot-Freeze** (offene Frage) | **Live-Sicht im MVP**; Freeze → PROJ-Y-116b (`report_snapshots`-Reuse) | User Story will „jederzeit aktueller Stand statt manuell gepflegtem Report" = Live. Freeze ist Should/Later. |
 | E4 | **AC4 Need-to-know** | INVOKER-RPC + bestehende RESTRICTIVE-Policies; **RPC MUSS mit User-Session-Client aufgerufen werden, nie service-role** | Häufigster INVOKER-Fehler (R1): service-role → `auth.uid()` null → Tor greift nicht. Der bestehende Route-Pattern (`getAuthenticatedUserId()` → session-gebundener Client) erfüllt das. |
 | E5 | **D1-Deliverables** (ungebaut) | **Forward-compat deferieren** (PROJ-104) | Findings + Q&A (zwei wertvolle Drittel) sofort lieferbar; Deliverables-Sektion als „noch nicht verfügbar"-Slot, den PROJ-104 später andockt. Nicht blockieren. |
 
@@ -160,9 +160,12 @@ PROJ-116 DD-Bericht
 **Keine neuen npm-Pakete.** 1 Migration (nur die INVOKER-RPC; keine Tabelle/Policy). Reuse: PROJ-112/113/114 + PROJ-21-Print-Muster.
 
 ### 6. PROJ-Y Followups (nicht-blockierend)
-- **PROJ-Y-1:** DOCX-Export (neues Dep `docx`, CIA-pflichtig) — nur bei Pilot-Bedarf.
-- **PROJ-Y-2:** DD-Report Snapshot-Freeze via `report_snapshots` (Einfrieren vor Gate 5 / Audit-Nachweis).
-- **PROJ-Y-3:** D1/Pflicht-Deliverables-Sektion andocken, sobald PROJ-104 deployed.
+
+> **ID-Hygiene (PROJ-Y-114c, 2026-08-24):** die folgenden Followups trugen spec-lokal `PROJ-Y-1`…`PROJ-Y-3`. Dieser Name war repo-weit **mehrfach belegt** — PROJ-70, PROJ-98, PROJ-100c, PROJ-114 und PROJ-116 führten je ein eigenes „PROJ-Y-1", und die globale Registerzeile ein sechstes. Ein „PROJ-Y-2 ist erledigt" war damit nicht auflösbar. Die Kennungen sind hier auf `PROJ-Y-116a`…`PROJ-Y-116c`; **`PROJ-Y-116c` (D1-Deliverables) ist mit #292 erledigt** umgestellt; Inhalt und Reihenfolge sind unverändert.
+
+- **PROJ-Y-116a:** DOCX-Export (neues Dep `docx`, CIA-pflichtig) — nur bei Pilot-Bedarf.
+- **PROJ-Y-116b:** DD-Report Snapshot-Freeze via `report_snapshots` (Einfrieren vor Gate 5 / Audit-Nachweis).
+- **PROJ-Y-116c:** D1/Pflicht-Deliverables-Sektion andocken, sobald PROJ-104 deployed.
 
 ### 7. Handoff
 `/backend` zuerst (INVOKER-RPC + API-Route + Live-Smoke H6), dann `/frontend` (DD-Bericht-Ansicht + `/print`), dann `/qa` (H2/H3-Pentest im gemischten Need-to-know-Kontext). Abhängigkeiten 110/111/104 bleiben forward-compat ungekoppelt.
@@ -170,9 +173,9 @@ PROJ-116 DD-Bericht
 ### Locked design decisions (für /backend + /frontend)
 1. Neue INVOKER-RPC `dd_report_consolidated` (JSON: streams[] + red_flags[]); keine Tabelle, keine View.
 2. Need-to-know gratis über INVOKER + User-Session-Client-Aufruf (H2 zwingend).
-3. Export = PROJ-21-Print-to-PDF; Word = PROJ-Y-1.
-4. Live-Sicht; Snapshot-Freeze = PROJ-Y-2.
-5. D1-Deliverables forward-compat (PROJ-Y-3).
+3. Export = PROJ-21-Print-to-PDF; Word = PROJ-Y-116a.
+4. Live-Sicht; Snapshot-Freeze = PROJ-Y-116b.
+5. D1-Deliverables forward-compat (PROJ-Y-116c).
 6. 6 Hardening-ACs (H1–H6) Pflicht vor Approved.
 
 ---

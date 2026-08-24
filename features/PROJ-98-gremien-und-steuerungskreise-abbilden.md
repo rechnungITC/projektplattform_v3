@@ -19,7 +19,7 @@ summary_for_jira: "[B2] Gremien und Steuerungskreise abbilden"
 
 > **Scope-Klassifikation (PROJ-Y-145b, Tranche 3, 2026-08-20):** **AC2 „teilweise"** — `decision_scope`/`escalation_scope` nur als Freitext, strukturierter Stage-Gate-/Eskalations-Link deferiert; AC3/AC4/AC5-Termine ebenfalls zurückgestellt (Zielkennungen in der Spec, siehe Registerhinweis zur ID-Kollision). PROJ-117 hat die Termin-Hälfte seither geliefert.
 
-**Deployed 2026-07-03:** Code live auf main via #216 (backend) + #221 (frontend) + #223 (QA); Migration `20260702120000_proj98_committees` seit /backend in Prod. Vercel-Prod-Deploy von `c09e164` (#223) **READY** (dpl_47x7i4uXovUYD6tarBSq59LrH38A, target=production). Kein neues Dep, keine separate Runtime-Migration im Closure. Post-Deploy-Smoke: 307-Auth-Gates auf `/projects/[id]/gremien` + `/api/projects/[id]/committees`. Tag `v2.8.0-PROJ-98`. Forward-compat-Followups offen: PROJ-Y-1 (Stage-Gate-Link/110), PROJ-Y-2 (Meeting-Link+nächste-Termine/117), PROJ-Y-3 (Template-Prefill/96), PROJ-Y-4 (strukturierter Eskalations-Link/111).
+**Deployed 2026-07-03:** Code live auf main via #216 (backend) + #221 (frontend) + #223 (QA); Migration `20260702120000_proj98_committees` seit /backend in Prod. Vercel-Prod-Deploy von `c09e164` (#223) **READY** (dpl_47x7i4uXovUYD6tarBSq59LrH38A, target=production). Kein neues Dep, keine separate Runtime-Migration im Closure. Post-Deploy-Smoke: 307-Auth-Gates auf `/projects/[id]/gremien` + `/api/projects/[id]/committees`. Tag `v2.8.0-PROJ-98`. Forward-compat-Followups offen: PROJ-Y-98a (Stage-Gate-Link/110), PROJ-Y-98b (Meeting-Link+nächste-Termine/117), PROJ-Y-98c (Template-Prefill/96), PROJ-Y-98d (strukturierter Eskalations-Link/111).
 
 **Architected (CIA-reviewed 2026-07-01 — GO mit ADJUST):** EXTEND auf PROJ-112-Backbone-Rezept; `committees` + `committee_members` (stakeholder-zentriert, Invariante #4); Need-to-know via PROJ-100a-Tor (kein eigenes ACL); forward-compat-Defer für Stage-Gate/Meeting/Template-Links (110/117/96); 6 Hardening-ACs H1–H6. Kein neues Dep.
 
@@ -33,7 +33,7 @@ summary_for_jira: "[B2] Gremien und Steuerungskreise abbilden"
 
 **QA PASS 2026-07-02 (0 Critical/0 High → PRODUCTION-READY):**
 
-- **Funktionale ACs:** AC1 (Gremien anlegbar: Name/Zweck/Frequenz/Mitglieder/Entscheidungskompetenz) ✅. **AC2** teilweise — `decision_scope`/`escalation_scope` als Freitext live; strukturierter Stage-Gate-/Eskalations-Link **forward-compat deferred** (PROJ-110/111 ungebaut → PROJ-Y-1/PROJ-Y-4). **AC3** (Meeting-Protokoll-Verknüpfung) deferred → PROJ-Y-2 (PROJ-117 ungebaut). **AC4** (Standard-Gremien aus Template) deferred → PROJ-Y-3 (PROJ-96 ungebaut). **AC5** Gremienübersicht: Besetzung ✅; „nächste Termine" deferred → PROJ-Y-2. DoD „Berechtigungen je Gremium technisch wirksam" ✅ (PROJ-100a-Tor). Alle Deferrals waren im Tech-Design gelockt (forward-compat), keine neuen Funde.
+- **Funktionale ACs:** AC1 (Gremien anlegbar: Name/Zweck/Frequenz/Mitglieder/Entscheidungskompetenz) ✅. **AC2** teilweise — `decision_scope`/`escalation_scope` als Freitext live; strukturierter Stage-Gate-/Eskalations-Link **forward-compat deferred** (PROJ-110/111 ungebaut → PROJ-Y-98a/PROJ-Y-98d). **AC3** (Meeting-Protokoll-Verknüpfung) deferred → PROJ-Y-98b (PROJ-117 ungebaut). **AC4** (Standard-Gremien aus Template) deferred → PROJ-Y-98c (PROJ-96 ungebaut). **AC5** Gremienübersicht: Besetzung ✅; „nächste Termine" deferred → PROJ-Y-98b. DoD „Berechtigungen je Gremium technisch wirksam" ✅ (PROJ-100a-Tor). Alle Deferrals waren im Tech-Design gelockt (forward-compat), keine neuen Funde.
 - **6 Hardening-ACs (H1–H6) alle ✅** via Live-Pentest + Code-Review.
 - **Live-Pentest** `tests/sql/PROJ-98-committees-pentest.sql` (self-rolling-back, **0 Residue**, gegen aktuellen Prod re-verifiziert): **A–J 10/10 PASS** — create std+strict · add-member · **H5 cross-project-reject (23514)** · **H2 need-to-know** (non-cleared Member sieht standard NICHT strict) · **H4 non-manager-block (42501)** · anon-execute-revoked · **H1 cross-tenant 0 committees** · **H3 Audit-Zeilen für beide Tabellen** · remove.
 - **Playwright** `tests/PROJ-98-committees.spec.ts` 8/8 chromium: Auth-Gates auf allen 4 Route-Flächen (committees collection GET/POST · item PATCH/DELETE · members POST · member PATCH/DELETE) + Gremien-Seite. Route-Unit 6/6.
@@ -163,10 +163,13 @@ PROJ-98 Gremien & Steuerungskreise
 **Keine neuen npm-Pakete.** 1 Migration (2 Tabellen + Policies + RPCs + Audit-Verdrahtung + CHECK-Erweiterung). Reuse: PROJ-8/57 (Stakeholder + linked_user_id), PROJ-100a (Need-to-know-Tor), PROJ-10 (Audit), PROJ-97 (Rollen).
 
 ### 6. PROJ-Y Followups (nicht-blockierend)
-- **PROJ-Y-1:** Stage-Gate-Zuordnung (`committee_stage_gates` M:N) — sobald PROJ-110 deployt.
-- **PROJ-Y-2:** Meeting-/Protokoll-Verknüpfung + „nächste Termine" in der Übersicht — sobald PROJ-117 deployt.
-- **PROJ-Y-3:** Standard-Gremien-Seed aus Projekt-Template — sobald PROJ-96 deployt.
-- **PROJ-Y-4:** Kalender-Sync (Outlook/Google) — Spec-Open-Question, out-of-scope MVP.
+
+> **ID-Hygiene (PROJ-Y-114c, 2026-08-24):** die folgenden Followups trugen spec-lokal `PROJ-Y-1`…`PROJ-Y-4`. Dieser Name war repo-weit **mehrfach belegt** — PROJ-70, PROJ-98, PROJ-100c, PROJ-114 und PROJ-116 führten je ein eigenes „PROJ-Y-1", und die globale Registerzeile ein sechstes. Ein „PROJ-Y-2 ist erledigt" war damit nicht auflösbar. Die Kennungen sind hier auf `PROJ-Y-98a`…`PROJ-Y-98c` und `PROJ-Y-98e` umgestellt (98a–98d vergeben in Tranche 3 von PROJ-Y-145b). **Dabei ist ein Widerspruch aufgefallen, der genau von der Mehrfachbelegung lebte:** die INDEX-Zeile beschrieb „PROJ-Y-4" als *Eskalations-Link (PROJ-111)*, diese Spec beschreibt ihn als *Kalender-Sync*. Beide Punkte sind echt, also hat jeder eine eigene Kennung bekommen — `PROJ-Y-98d` bleibt der Eskalations-Bezug (wie im Register), `PROJ-Y-98e` ist der Kalender-Sync. Sonst sind Inhalt und Reihenfolge unverändert.
+
+- **PROJ-Y-98a:** Stage-Gate-Zuordnung (`committee_stage_gates` M:N) — sobald PROJ-110 deployt.
+- **PROJ-Y-98b:** Meeting-/Protokoll-Verknüpfung + „nächste Termine" in der Übersicht — sobald PROJ-117 deployt.
+- **PROJ-Y-98c:** Standard-Gremien-Seed aus Projekt-Template — sobald PROJ-96 deployt.
+- **PROJ-Y-98e:** Kalender-Sync (Outlook/Google) — Spec-Open-Question, out-of-scope MVP. **Seit PROJ-117 teilweise erledigt:** ein authentifizierter ICS-Download je Gremium ist live (PO-Entscheid 2026-07-21); offen ist der volle Zwei-Wege-Sync, was sich mit PROJ-Y-117a deckt.
 
 ### 7. Handoff
 `/backend` zuerst (2 Tabellen + RESTRICTIVE-Policies + Audit-CHECK-Erweiterung in DERSELBEN Migration + impersonation-sichere RPCs + Live-RPC-Smoke H1–H6), dann `/frontend` (Projektraum-Sektion „Gremien" + Liste/Dialog + Besetzungs-Sheet + Übersicht), dann `/qa` (H1–H3-Pentest im gemischten Need-to-know-/Tenant-Kontext). Abhängigkeiten 110/117/96 bleiben forward-compat ungekoppelt.
@@ -175,7 +178,7 @@ PROJ-98 Gremien & Steuerungskreise
 1. `committees` + `committee_members` (stakeholder-zentriert, Invariante #4) — Backbone-Rezept PROJ-112.
 2. Vertraulichkeit = PROJ-100a-Tor auf der Gremien-Zeile; kein eigenes ACL.
 3. Entscheidungskompetenz = `decision_scope` Freitext + nullable Wert-Schwelle; Enforcement bleibt PROJ-110.
-4. Stage-Gate/Meeting/Template/Eskalation forward-compat deferred (PROJ-Y-1..4).
+4. Stage-Gate/Meeting/Template/Eskalation forward-compat deferred (PROJ-Y-98a…98d).
 5. 6 Hardening-ACs (H1–H6) Pflicht vor Approved; Audit-CHECK-Erweiterung + Impersonation-Sicherheit sind die zwei historischen Fallstricke.
 
 ---

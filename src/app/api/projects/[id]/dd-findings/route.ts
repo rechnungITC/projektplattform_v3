@@ -11,8 +11,13 @@ import {
   mustBlockOnLogFailure,
   STRICT_LOG_FAILED_MESSAGE,
 } from "@/lib/audit/confidential-read"
+import {
+  maskInvisibleSourceQuestion,
+  maskInvisibleSourceQuestions,
+} from "@/lib/ma-project/dd-finding-source-visibility"
 
 import { createFindingSchema, FINDING_SELECT } from "./_schema"
+import { visibleQuestions } from "./_visible-questions"
 
 // PROJ-114 — DD-Findings per project.
 //
@@ -66,7 +71,14 @@ export async function GET(
     return apiError("audit_log_failed", STRICT_LOG_FAILED_MESSAGE, 500)
   }
 
-  return NextResponse.json({ findings: data ?? [] })
+  const findings = await maskInvisibleSourceQuestions(
+    (data ?? []) as ({ confidentiality_level?: string | null } & {
+      source_dd_question_id?: string | null
+    })[],
+    visibleQuestions(supabase)
+  )
+
+  return NextResponse.json({ findings })
 }
 
 export async function POST(
@@ -131,5 +143,9 @@ export async function POST(
     return apiError("create_failed", error.message, 500)
   }
 
-  return NextResponse.json({ finding: data }, { status: 201 })
+  const finding = await maskInvisibleSourceQuestion(
+    data as { source_dd_question_id?: string | null } | null,
+    visibleQuestions(supabase)
+  )
+  return NextResponse.json({ finding }, { status: 201 })
 }

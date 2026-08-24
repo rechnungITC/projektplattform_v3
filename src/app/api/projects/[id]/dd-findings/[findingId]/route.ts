@@ -6,8 +6,10 @@ import {
   getAuthenticatedUserId,
   requireProjectAccess,
 } from "@/app/api/_lib/route-helpers"
+import { maskInvisibleSourceQuestion } from "@/lib/ma-project/dd-finding-source-visibility"
 
 import { updateFindingSchema } from "../_schema"
+import { visibleQuestions } from "../_visible-questions"
 
 // PROJ-114 — update a DD-Finding via update_dd_finding RPC (manager +
 // need-to-know; a transition INTO deal_breaker escalates to Deal Lead + Sponsor).
@@ -83,5 +85,13 @@ export async function PATCH(
     return apiError("update_failed", error.message, 500)
   }
 
-  return NextResponse.json({ finding: data })
+  // PROJ-Y-114d — auch die Antwort des Bearbeiten-Wegs darf keine unsichtbare
+  // Frage verraten: Vektor O erlaubt einer Leitung ohne Freigabe ausdrücklich,
+  // ein Finding mit UNVERÄNDERTER `strict`-Verknüpfung zu bearbeiten — die
+  // Kennung stünde sonst in der Antwort.
+  const finding = await maskInvisibleSourceQuestion(
+    data as { source_dd_question_id?: string | null } | null,
+    visibleQuestions(supabase)
+  )
+  return NextResponse.json({ finding })
 }

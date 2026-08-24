@@ -168,16 +168,21 @@ export function DueDiligenceStreamsPage({ projectId }: { projectId: string }) {
           <div className="overflow-x-auto rounded-md border">
             <Table>
               <TableHeader>
+                {/* PROJ-Y-114e — die vier Titel hier kuendigten DD-Findings (PROJ-114)
+                    und DD-Q&A (PROJ-113) als Zukunft an; beide sind seit dem 2026-06-26
+                    live. Der Gedankenstrich in den Zellen ist dagegen richtig: die
+                    Live-Zaehler wurden nie verdrahtet (PROJ-Y-112a). Also nur der Text,
+                    der die Ursache benennt — nicht die Zelle. */}
                 <TableRow>
                   <TableHead>Stream</TableHead>
                   <TableHead>Status</TableHead>
                   <TableHead className="hidden md:table-cell">Lead</TableHead>
                   <TableHead className="hidden lg:table-cell">Zeitfenster</TableHead>
                   <TableHead className="hidden sm:table-cell">Vertraulich</TableHead>
-                  <TableHead className="text-center" title="Verfügbar mit DD-Findings (PROJ-114)">
+                  <TableHead className="text-center" title="Offene Findings je Stream. Der Zähler wird noch nicht ermittelt — die Findings selbst stehen im Reiter „Findings“ am Stream.">
                     Findings
                   </TableHead>
-                  <TableHead className="text-center" title="Verfügbar mit DD-Q&A (PROJ-113)">
+                  <TableHead className="text-center" title="Offene Q&A-Punkte je Stream. Der Zähler wird noch nicht ermittelt — die Fragen selbst stehen im Q&A-Blatt am Stream.">
                     Q&amp;A
                   </TableHead>
                   {canManage && <TableHead className="w-[150px] text-right">Aktion</TableHead>}
@@ -237,13 +242,13 @@ export function DueDiligenceStreamsPage({ projectId }: { projectId: string }) {
                       </TableCell>
                       <TableCell
                         className="text-center text-muted-foreground"
-                        title="Verfügbar mit DD-Findings (PROJ-114)"
+                        title="Offene Findings je Stream. Der Zähler wird noch nicht ermittelt — die Findings selbst stehen im Reiter „Findings“ am Stream."
                       >
                         {s.open_findings ?? "—"}
                       </TableCell>
                       <TableCell
                         className="text-center text-muted-foreground"
-                        title="Verfügbar mit DD-Q&A (PROJ-113)"
+                        title="Offene Q&A-Punkte je Stream. Der Zähler wird noch nicht ermittelt — die Fragen selbst stehen im Q&A-Blatt am Stream."
                       >
                         {s.open_questions ?? "—"}
                       </TableCell>

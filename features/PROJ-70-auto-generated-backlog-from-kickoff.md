@@ -163,11 +163,14 @@ Diese 5 sind aus dem CIA-Review-Output. Sie sind **nicht-blockierend** für γ �
 
 | Y-Slot | Titel | Trigger |
 |---|---|---|
-| **PROJ-Y-1** | OCR-Slice für Scan-PDFs | `pdfjs-dist` extrahiert nur eingebetteten Text; bildbasierte PDFs liefern leeres Excerpt → AI bekommt keinen Kontext. Optional Tesseract.js oder externer OCR-Provider. Pilot-Feedback-getrieben. |
-| **PROJ-Y-2** | Streaming-Parse bei Skalierung | > 50 parallele Uploads × 25 MB sprengen Vercel-Function-Memory (1 GB default). Streaming/Chunked Parse oder Background-Worker (Supabase Edge Function + Queue). Erst wenn Pilot reale Last zeigt. |
-| **PROJ-Y-3** | Mehr Formate (PPTX, XLSX, MD, EML) | PROJ-44 listet E-Mails und Meeting-Notes als Zielquellen; γ deckt nur PDF+DOCX. EML-Parsing (`mailparser`) und MD-Passthrough ist die δ/ε-Erweiterung. |
-| **PROJ-Y-4** | Supply-Chain-Audit-CI | `npm audit --omit=dev` + Snyk-CI als Required-Check analog PROJ-42 Schema-Drift-Guard. CIA-Rule 1+8 würde davon profitieren. |
-| **PROJ-Y-5** | Class-3-Re-Classification nach Parse | `detectClass3Markers` läuft auf 8000-char-Excerpt; Original-PDF kann mehr PII enthalten als das Excerpt zeigt. Re-Classification-Job über Volltext oder hard-rule "PDF mit Class-3-Markern im Excerpt → Storage-Datei gleichzeitig löschen". |
+
+> **ID-Hygiene (PROJ-Y-114c, 2026-08-24):** die folgenden Followups trugen spec-lokal `PROJ-Y-1`…`PROJ-Y-5`. Dieser Name war repo-weit **mehrfach belegt** — PROJ-70, PROJ-98, PROJ-100c, PROJ-114 und PROJ-116 führten je ein eigenes „PROJ-Y-1", und die globale Registerzeile ein sechstes. Ein „PROJ-Y-2 ist erledigt" war damit nicht auflösbar. Die Kennungen sind hier auf die **echten** Feature-Kennungen `PROJ-71`…`PROJ-75`, die diese Arbeit seit dem 2026-06-04 im Register trägt umgestellt; Inhalt und Reihenfolge sind unverändert.
+
+| **PROJ-71** | OCR-Slice für Scan-PDFs | `pdfjs-dist` extrahiert nur eingebetteten Text; bildbasierte PDFs liefern leeres Excerpt → AI bekommt keinen Kontext. Optional Tesseract.js oder externer OCR-Provider. Pilot-Feedback-getrieben. |
+| **PROJ-72** | Streaming-Parse bei Skalierung | > 50 parallele Uploads × 25 MB sprengen Vercel-Function-Memory (1 GB default). Streaming/Chunked Parse oder Background-Worker (Supabase Edge Function + Queue). Erst wenn Pilot reale Last zeigt. |
+| **PROJ-73** | Mehr Formate (PPTX, XLSX, MD, EML) | PROJ-44 listet E-Mails und Meeting-Notes als Zielquellen; γ deckt nur PDF+DOCX. EML-Parsing (`mailparser`) und MD-Passthrough ist die δ/ε-Erweiterung. |
+| **PROJ-74** | Supply-Chain-Audit-CI | `npm audit --omit=dev` + Snyk-CI als Required-Check analog PROJ-42 Schema-Drift-Guard. CIA-Rule 1+8 würde davon profitieren. |
+| **PROJ-75** | Class-3-Re-Classification nach Parse | `detectClass3Markers` läuft auf 8000-char-Excerpt; Original-PDF kann mehr PII enthalten als das Excerpt zeigt. Re-Classification-Job über Volltext oder hard-rule "PDF mit Class-3-Markern im Excerpt → Storage-Datei gleichzeitig löschen". |
 
 ### Slice 70-δ — Outlook .msg + .eml + DnD-Reparenting
 
