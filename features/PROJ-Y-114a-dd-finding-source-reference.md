@@ -1,6 +1,6 @@
 # PROJ-Y-114a: Quelle / Herkunftsnachweis am DD-Finding
 
-## Status: In Progress
+## Status: Approved (QA PASS 2026-08-21 — 0 Critical / 0 High)
 ## Deployment Scope: —
 
 **Created:** 2026-08-18
@@ -216,6 +216,114 @@ abgetippten Referenzen.
 - **D-5:** Kein CIA-Pass. Additive Spalten auf einer deployten Tabelle nach dem
   etablierten EXTEND-Rezept, kein neues Dependency, kein neues Modell — keiner der
   acht Trigger aus `.claude/rules/continuous-improvement.md` greift.
+
+---
+
+## QA Test Results — 2026-08-21 (PASS · 0 Critical / 0 High → Approved)
+
+Unabhängig gegen den **deployten** Stand geprüft (`main` = `a26c63e`, drei Slices nach
+dem Merge von #400), nicht aus den `/backend`-Notizen übernommen.
+
+### Akzeptanzkriterien: 13/13 verifiziert
+
+| AC | Verdikt | Womit ich es geprüft habe |
+|---|---|---|
+| AC-Y114a.1 | ✅ | Pentest **A** PASS gegen Prod (`document` / `VDR 3.4.1` persistiert) |
+| AC-Y114a.2 | ✅ | Pentest **L** PASS; UI-Hälfte am Code gegengelesen: der Knopf rendert nur unter `canCreateFinding = useProjectAccess(projectId, "manage_members")` (`dd-questions-sheet.tsx:519/595`), der deaktivierte Platzhalter ist weg |
+| AC-Y114a.3 | ✅ | `external_document_links_entity_type_check` live gelesen: **6** Werte inkl. `dd_finding`, unverändert; PROJ-115-Regression **A–I 9/9** verbatim |
+| AC-Y114a.4 | ✅ | Pentest **B** PASS; **live gezählt:** `_tracked_audit_columns('dd_findings')` = **13**, alle drei neuen Spalten enthalten |
+| AC-Y114a.5 | ✅ | Pentest **C** PASS; zusätzlich eigener Vektor **S** (siehe Rot-Team) |
+| AC-Y114a.6 | ✅ | Pentest **D** PASS (23514); zusätzlich eigener Vektor **Q** (Mandanten-Grenze) |
+| AC-Y114a.7 | ✅ | Pentest **E**+**F** PASS; die zwei CHECKs live gelesen (6-Werte-Vokabular, `length <= 500`) |
+| AC-Y114a.8 | ✅ | Pentest **G** (42501) **und** **H** (nach Freigabe erlaubt) PASS — das Paar ist selbsttragend: dass **G** verweigert, beweist, dass `ld2` wirklich kein Administrator ist, sonst hätte `can_access_classified` kurzgeschlossen und **H** wäre falsch-grün |
+| AC-Y114a.9 | ✅ | Pentest **I** PASS (23503); FK-Regel live gelesen: `confdeltype='r'` = RESTRICT |
+| AC-Y114a.10 | ✅ | Pentest **J**+**K** PASS |
+| AC-Y114a.11 | ✅ | **PROJ-114 A–J 10/10** und **PROJ-115 A–I 9/9** wörtlich grün, **PROJ-Y-122a-Audit-Smoke 4/4** mit `admin_shortcircuit=f`. Der 114-Lauf belegt zugleich die Zusicherung zur Argumentreihenfolge: seine **9-** und **4-stelligen** Positionsaufrufe lösen gegen die auf 12/15 Parameter gewachsenen Signaturen unverändert auf |
+| AC-Y114a.12 | ✅ | Pentest **N** PASS; **ACL live gelesen:** `postgres=X/postgres service_role=X/postgres` — kein PUBLIC-Eintrag, kein `anon`, kein `authenticated`; 5 Trigger auf `dd_findings` aktiv |
+| AC-Y114a.13 | ✅ | Pentest **O** (unverändert → erlaubt) **und** **P** (Umbiegen → 42501) PASS |
+
+### Läufe
+
+| Prüfung | Ergebnis |
+|---|---|
+| `tests/sql/PROJ-Y-114a-dd-finding-source-pentest.sql` | **A–P 16/16 PASS** gegen Prod |
+| Rückstände danach | **0** über 10 Zählungen (Mandant per ID **und** per Name, Profile, `auth.users`, Projekte, `dd_findings`, `dd_questions`, `dd_streams`, Freischaltungen, Audit) |
+| Rot-Team-Supplement (neu in dieser QA) | **Q · R · S PASS**, **T** = Befund F-3 |
+| Regression PROJ-114 | **A–J 10/10** wörtlich |
+| Regression PROJ-115 | **A–I 9/9** wörtlich |
+| Regression PROJ-Y-122a | **4/4**, `admin_shortcircuit=f` |
+| Playwright (chromium) | **11/11** — 7 PROJ-114-Auth-Gates + 4 PROJ-115; die Slice hat **keine neue Route** angelegt, sie ändert nur RPC-Signaturen hinter bestehenden Routen |
+| `npx vitest run` | **3573/3573** (425 Dateien); Slice-nah isoliert 36/36 |
+| `npx eslint .` | **0** |
+| `npx tsc --noEmit` | **13 = Baseline / 0 neu** |
+| `npm run check:index-scope` | 0 Fehler |
+| `npm run check:migration-naming` | 228 Migrationen, 0 Fehler |
+| `npm run check:function-inventory` | **exit 1** → Befund F-1 |
+| Advisors | **149 WARN / 0 ERROR**. Die zwei Meldungen zu dieser Slice sind die beabsichtigten `authenticated`-ausführbaren Schreib-RPCs (Kategorie der ganzen M&A-Familie). Zur Wächter-Funktion **keine** Meldung — Beleg, dass der F-1-Fix aus `/backend` hält |
+
+### Rot-Team-Supplement (vier eigene Vektoren, über A–P hinaus)
+
+| Vektor | Frage | Ergebnis |
+|---|---|---|
+| **Q** | Frage aus einem **fremden Mandanten** als Quelle (A–P prüft nur ein fremdes *Projekt* desselben Mandanten) | **PASS** — 23514 |
+| **R** | Injektion in `source_ref` (`VDR''); drop table public.dd_findings; -- <script>…`) | **PASS** — Zeichenkette **wörtlich** als Daten gespeichert, `dd_findings` existiert unverändert |
+| **S** | `clear_source=true` **zusammen mit** neuen Werten — leert es und setzt dann? | **PASS** — Ergebnis `interview/Interview CFO/<frage-id>`, genau die zugesagte Semantik |
+| **T** | **Leseseite**: verrät ein sichtbares Finding die Existenz einer *unsichtbaren* `strict`-Frage über `source_dd_question_id`? | **Befund F-3** — Finding sichtbar (1), Verweis **lesbar**, Frage selbst unsichtbar (0) |
+
+**T ist die Lücke, die A–P strukturell nicht sehen konnte:** die Vektoren G/H/P prüfen
+ausschließlich den **Schreib**weg (darf ich eine Frage als Quelle *benennen*), nicht den
+**Lese**weg (sehe ich, dass eine benannte Quelle existiert).
+
+### Befunde
+
+- **F-1 (Medium, Buchführung/CI, gehört dieser Slice):** `check:function-inventory` läuft
+  auf `main` **rot**. Der Eintrag `_dd_finding_source_question_guard` in
+  `INVENTORY_EXCEPTIONS` ist ein `pending_merge`-Wegwerf-Eintrag, den der Merge von #400
+  hätte entfernen müssen — die Spec sagt das selbst wörtlich voraus („sobald sie landet,
+  meldet der Wächter ihn als veraltet und er ist zu entfernen"). Kein Produktfehler und
+  **heute kein Merge-Blocker** (der Wächter ist bewusst noch nicht enrolled, PROJ-Y-148e),
+  aber er ist ab jetzt bei **jedem** PR rot — und genau so wird ein Wächter ignoriert.
+  Fix = eine Löschung von 8 Zeilen plus die eingefrorene Erwartung in `analyze.test.ts`.
+- **F-2 (Low, gehört PROJ-Y-148e, nicht dieser Slice):** die Meldung zum veralteten Eintrag
+  nennt nur **eine** der beiden Bedingungen. Der Code ist
+  `!prod.has(n) || repo.has(n)`, die Meldung sagt aber „die Funktion existiert nicht mehr im
+  Prod-Inventar" — hier falsch: sie **steht** im Inventar (`functions.txt`, Zeile 30), stale
+  ist der Eintrag wegen `repo.has(n)`. Wer der Meldung folgt, prüft die falsche Seite.
+- **F-3 (Low, aus Vektor T, neu):** `FINDING_SELECT` liefert `source_dd_question_id` an
+  **jeden**, der das Finding lesen darf — auch an eine Projektleitung ohne Freigabe für die
+  verknüpfte `strict`-Frage. Kein Inhaltsabfluss: die Frage selbst bleibt unsichtbar, die
+  Kennung ist nicht auflösbar, und die **Oberfläche rendert sie nie** (sie zeigt nur den Satz
+  „Aus einer DD-Frage eskaliert — die Verknüpfung bleibt erhalten", also die Existenz ohne
+  Kennung). Erreichbar erst, nachdem ein freigegebener Nutzer eine `strict`-Frage an ein
+  niedriger klassifiziertes Finding gehängt hat — was AC-Y114a.8/Vektor H ausdrücklich
+  erlaubt. Dieselbe Klasse wie PROJ-107-F-2 (`risk_links`-Ziel-Inferenz, Low → PROJ-Y-107b)
+  und PROJ-120-F-1 → **PROJ-Y-114d**.
+- **F-4 (Low, Nachbarfläche):** die Ehrlichkeitsarbeit dieser Slice ist auf **einer** Fläche
+  hängen geblieben. `due-diligence-streams-page.tsx` trägt weiterhin **vier** veraltete
+  Tooltips: zweimal „Verfügbar mit DD-Findings (PROJ-114)" (Zeilen 177, 240) und zweimal
+  „Verfügbar mit DD-Q&A (PROJ-113)" (Zeilen 180, 245). **Beide** Features sind seit dem
+  2026-06-26 live; die Tooltips kündigen sie als Zukunft an. Dass die Zellen `—` zeigen, ist
+  dagegen **richtig** und registriert (PROJ-Y-112a: Live-Zähler wurden nie verdrahtet) — falsch
+  ist nur der Text, der die Ursache benennt → **PROJ-Y-114e**.
+
+### Was ich ausdrücklich **nicht** belegt habe
+
+**D-3 bleibt bestehen: kein authentifizierter Browser-Durchlauf.** Ich habe die Prämisse
+selbst nachgemessen statt sie zu übernehmen — `dd_findings`, `dd_questions` und `dd_streams`
+haben in Prod **je 0 Zeilen**, die DD-Flächen sind also datenlos. Ein Klickpfad hätte zuerst
+einen M&A-Deal-Raum samt Stream und Frage in Prod anlegen müssen; diese Fixture-Lane ist als
+**PROJ-Y-2a** eigens registriert und gehört nicht in diese Slice. Belegt ist die Verkettung
+stattdessen über 16 Pentest-Vektoren mit echten RPCs, 4 eigene Rot-Team-Vektoren, 36
+Routen-/Lib-Tests und 11 Auth-Gate-Fälle im Browser.
+
+Mobile Safari übersprungen (fehlende WebKit-Host-Bibliotheken, PROJ-67/F-2).
+
+### Verdikt
+
+**PRODUCTION-READY — 0 Critical / 0 High.** 13/13 Akzeptanzkriterien erfüllt, drei
+Regressionen wörtlich grün, 0 Rückstände. Vier Befunde, alle Medium oder Low; **F-1 sollte
+vor dem Deploy fallen**, weil er einen Wächter dauerhaft rot färbt und die Slice ihn selbst
+als eigene Aufräumarbeit vorgezeichnet hat.
 
 ## 7. Followups
 
