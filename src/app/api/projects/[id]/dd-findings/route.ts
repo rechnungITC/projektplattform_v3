@@ -14,10 +14,10 @@ import {
 import {
   maskInvisibleSourceQuestion,
   maskInvisibleSourceQuestions,
-  type VisibleQuestionLookup,
 } from "@/lib/ma-project/dd-finding-source-visibility"
 
 import { createFindingSchema, FINDING_SELECT } from "./_schema"
+import { visibleQuestions } from "./_visible-questions"
 
 // PROJ-114 — DD-Findings per project.
 //
@@ -25,25 +25,6 @@ import { createFindingSchema, FINDING_SELECT } from "./_schema"
 //      + need-to-know gate scope rows).
 // POST /api/projects/[id]/dd-findings              — create via create_dd_finding
 //      RPC (manager + need-to-know enforced server-side; deal_breaker escalates).
-
-/**
- * PROJ-Y-114d — sichtbare Fragen mit der **Nutzersitzung** ermitteln. Die Antwort
- * der RLS *ist* die Sichtbarkeitsprüfung; mit Dienst-Schlüssel wäre sie wirkungslos.
- */
-function visibleQuestions(
-  supabase: Parameters<typeof requireProjectAccess>[0]
-): VisibleQuestionLookup {
-  return async (ids) => {
-    const { data, error } = await supabase
-      .from("dd_questions")
-      .select("id")
-      .in("id", ids as string[])
-    // Fail-closed: kann nicht festgestellt werden, was sichtbar ist, wird nichts
-    // durchgelassen — eine verschwiegene Verknüpfung ist harmlos, eine verratene nicht.
-    if (error) return []
-    return ((data ?? []) as { id: string }[]).map((r) => r.id)
-  }
-}
 
 export async function GET(
   request: Request,

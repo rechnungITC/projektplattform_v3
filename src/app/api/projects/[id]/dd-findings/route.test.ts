@@ -248,4 +248,26 @@ describe("POST /api/projects/[id]/dd-findings", () => {
     expect(res.status).toBe(400)
     expect(rpcMock).not.toHaveBeenCalled()
   })
+  // PROJ-Y-114d — die Antwort des Anlege-Wegs ist derselbe Kanal wie die Liste.
+  // Ohne diesen Fall waere nur die GET-Verdrahtung geprueft, waehrend `POST` die
+  // Kennung einer unsichtbaren Frage im 201-Rumpf zurueckgeben koennte.
+  it("nullt die Quell-Frage auch in der 201-Antwort, wenn sie unsichtbar ist", async () => {
+    getUserMock.mockResolvedValue({ data: { user: { id: ME } } })
+    queueProjectView()
+    rpcMock.mockResolvedValue({
+      data: { id: "f1", source_dd_question_id: QUESTION },
+      error: null,
+    })
+    const questions = newQueryChain()
+    questions.in.mockResolvedValue({ data: [], error: null }) // RLS verbirgt sie
+    queue.push(questions)
+
+    const res = await post({ dd_stream_id: STREAM, title: "X" })
+    expect(res.status).toBe(201)
+    const body = (await res.json()) as {
+      finding: { source_dd_question_id: string | null }
+    }
+    expect(body.finding.source_dd_question_id).toBeNull()
+    expect(fromMock).toHaveBeenCalledWith("dd_questions")
+  })
 })

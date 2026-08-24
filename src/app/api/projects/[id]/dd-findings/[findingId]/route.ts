@@ -9,6 +9,7 @@ import {
 import { maskInvisibleSourceQuestion } from "@/lib/ma-project/dd-finding-source-visibility"
 
 import { updateFindingSchema } from "../_schema"
+import { visibleQuestions } from "../_visible-questions"
 
 // PROJ-114 — update a DD-Finding via update_dd_finding RPC (manager +
 // need-to-know; a transition INTO deal_breaker escalates to Deal Lead + Sponsor).
@@ -90,14 +91,7 @@ export async function PATCH(
   // Kennung stünde sonst in der Antwort.
   const finding = await maskInvisibleSourceQuestion(
     data as { source_dd_question_id?: string | null } | null,
-    async (ids) => {
-      const { data: rows, error: qErr } = await supabase
-        .from("dd_questions")
-        .select("id")
-        .in("id", ids as string[])
-      if (qErr) return []
-      return ((rows ?? []) as { id: string }[]).map((r) => r.id)
-    }
+    visibleQuestions(supabase)
   )
   return NextResponse.json({ finding })
 }
