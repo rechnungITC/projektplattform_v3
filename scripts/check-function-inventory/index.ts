@@ -14,6 +14,7 @@ import { join } from "node:path"
 
 import {
   analyzeInventory,
+  describeStaleException,
   extractCreatedFunctions,
   hasFailures,
   parseInventory,
@@ -70,10 +71,14 @@ function main(): number {
         `verschwindet mit dem Merge.`
     )
   }
+  const prodSet = new Set(prod.map((n) => n.toLowerCase()))
   for (const name of result.staleExceptions) {
     console.error(
-      `::error file=scripts/check-function-inventory/analyze.ts::Ausnahme \`${name}\` ist veraltet — die Funktion ` +
-        `existiert nicht mehr im Prod-Inventar. Eintrag entfernen, sonst deckt er künftig einen echten Fund gleichen Namens.`
+      `::error file=scripts/check-function-inventory/analyze.ts::` +
+        describeStaleException(name, {
+          inProd: prodSet.has(name.toLowerCase()),
+          inRepo: repo.has(name.toLowerCase()),
+        })
     )
   }
   if (result.repoOnly.length > 0) {
