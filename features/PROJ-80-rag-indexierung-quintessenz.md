@@ -2,9 +2,10 @@
 
 ## Status: Approved (α — `/qa` PASS 2026-08-21, 0 Critical / 0 High; ein offenes Kriterium: echter Anbieter-Lauf)
 ## Deployment Scope: —
-> Scope bleibt bewusst leer: `Deployed` verlangt eine QA ohne Critical/High, und die hat nicht
-> stattgefunden. Zwei Kriterien sind zudem noch offen (echter Anbieter-Lauf, angemeldeter
-> Browser-Durchlauf) — siehe „Offenes Kriterium" in den Implementierungsnotizen.
+> Scope bleibt leer, bis `/deploy` läuft (Hausregel: Scope ist ein Feld des Deployments). Die QA vom
+> 2026-08-21 ist bestanden. **Berichtigt 2026-08-24:** dieser Block nannte weiterhin *zwei* offene
+> Kriterien, während die Statuszeile schon *eines* sagt — der angemeldete Browser-Durchlauf ist mit
+> #440 erledigt, offen ist allein der echte Anbieter-Lauf.
 
 **Created:** 2026-06-06
 **Last Updated:** 2026-08-18
@@ -544,6 +545,47 @@ Beides gehört zu `/qa`.
 > in `/qa` geseedetes Dokument (`PROJ-80-alpha-qa-chain.spec.ts`). Die erste Hälfte (Modell-Aufruf) bleibt
 > offen und ist als **PROJ-Y-80d** registriert; der Nutzer stellt dafür einen Endpunkt bereit, weil
 > Anbieter live ausschließlich im Kundenmandanten existieren.
+
+#### Nachtrag 2026-08-24 — zweite, parallel gelaufene QA (#441)
+
+Die α-QA lief in **zwei Sitzungen gleichzeitig**. Das ist zuerst ein Befund über die
+Arbeitsteilung, nicht über das Produkt: zwei Läufe haben dieselbe Slice abgenommen,
+ohne voneinander zu wissen. Festgehalten wird hier, was der zweite Lauf **zusätzlich**
+belegt — und ausdrücklich auch, was er *nicht* zusätzlich belegt.
+
+**Deckungsgleich (also kein Zugewinn):** der zweite Lauf hatte auf Datenbankebene
+Schreib-Grants, direktes `INSERT`/`UPDATE`/`DELETE` als Projekt-Editor, `strict`
+verborgen **samt Klartextsuche**, fremden Mandanten und `anon`-Rechte geprüft. Genau
+diese Vektoren stehen unabhängig auch in `PROJ-80-alpha-qa-redteam-pentest.sql`
+(`W_schreib_grants`, `K`/`M`/`N`, `T`/`U`, `O`, `Q`) — zwei Wege, dasselbe Ergebnis.
+Der Browser-Durchlauf (Reiter, Handänderung, DB-Gegenprobe) ebenso.
+
+**Echt zusätzlich, zwei Dinge:**
+
+1. **Der Bestätigungsdialog vor dem Überschreiben einer Handänderung** —
+   `tests/PROJ-80-alpha-regenerate-confirm.spec.ts` (1 Fall, chromium; im Verbund mit
+   den beiden anderen PROJ-80-Specs **14/14**). Die neun Fälle aus #440 prüfen ihn
+   nicht, und er sichert den **destruktivsten** Weg im Produkt: „Neu erzeugen" über
+   einer von Hand verantworteten Fassung, von der Spec nur als Ausnahme erlaubt
+   („unless admin force-re-runs", F-4 des zweiten `/frontend`-Laufs). Geprüft wird,
+   dass der Dialog auf der echten Seite **erscheint** und dass „Abbrechen" Text *und*
+   `status='user_edited'` unberührt lässt — ein Komponententest beweist nur, dass die
+   Komponente ihn kennt.
+2. **Regression der Vertraulichkeitskette, auf der α aufsetzt** — der Verifikationsteil
+   von `PROJ-Y-115c-document-confidentiality-pentest.sql`, **5/5** live gegen Prod:
+   Wächter-Funktionen für `authenticated` nicht aufrufbar, die zwei Policy-Auflöser
+   sehr wohl (sonst wären die Regeln wirkungslos), Vererbung beim Einfügen greift,
+   Herabstufen `23514`, Anheben kaskadiert in den Teilbaum. Der Auszugs- und
+   Quintessenz-Zugriff erbt seine Stufe über genau diese Kette; bräche sie, ginge das
+   Tor lautlos auf. Im Rot-Team-Pentest von #440 kommt sie nicht vor.
+
+**Beobachtung ohne Schweregrad, mit Zahlen:** Feld-Audit-Zeilen aus Testläufen sind
+dauerhaft. Nach beiden Läufen hatte `document_summaries` **0** Zeilen, es gab aber
+**60** Audit-Zeilen dazu — **4** aus dem zweiten Lauf, 56 aus dem ersten und weiteren
+Läufen desselben Tages, plus 18 zu `document_tree_nodes`. Ursache ist das registrierte
+**PROJ-Y-45e**: `tenants.audit_lifecycle_exempt` unterdrückt Anlage und Löschung, den
+Feld-Audit **nicht**. Kein Fehler dieser Slice — aber die Fläche ist E2E-testbar und
+dabei **nicht** rückstandsfrei, und das gehört gesagt, weil es mit jedem Lauf wächst.
 
 #### Abweichungen
 
