@@ -44,7 +44,9 @@ describe("maskInvisibleSourceQuestions", () => {
   })
 
   it("fragt jede Kennung nur einmal, auch bei mehreren Zeilen darauf", async () => {
-    const lookup = vi.fn(async () => [A])
+    // Signatur explizit: ohne sie leitet TS die Argumentliste als `[]` ab und
+    // `mock.calls[0][0]` ist ein Tupel-Zugriff ins Leere (TS2493).
+    const lookup = vi.fn(async (_ids: readonly string[]) => [A])
     await maskInvisibleSourceQuestions(
       [{ source_dd_question_id: A }, { source_dd_question_id: A }],
       lookup

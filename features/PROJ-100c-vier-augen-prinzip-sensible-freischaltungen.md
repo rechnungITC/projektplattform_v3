@@ -158,9 +158,12 @@ PROJ-100c 4-Augen-Gate
 | Tenant-Isolation in neuen Tabellen | Hoch | `tenant_id NOT NULL` + RLS-Helper + Pentest-Vektor (AC-C4) |
 
 ### 9. PROJ-Y Followups (CIA, nicht-blockierend)
-- **PROJ-Y-1:** Pro-Objekt-„sensibel"-Markierung (in 100c als „Later" gelockt).
-- **PROJ-Y-2:** Pro-Projekt-Approver-Override (MVP = tenant-weit).
-- **PROJ-Y-3:** Extraktion der geteilten Approval-Primitive (Token/Immutability/Quorum) in ein gemeinsames Modul — **nur falls PROJ-110 dieselben Bausteine braucht**, als Refactor mit CIA-Review, nicht spekulativ jetzt.
+
+> **ID-Hygiene (PROJ-Y-114c, 2026-08-24):** die folgenden Followups trugen spec-lokal `PROJ-Y-1`…`PROJ-Y-3`. Dieser Name war repo-weit **mehrfach belegt** — PROJ-70, PROJ-98, PROJ-100c, PROJ-114 und PROJ-116 führten je ein eigenes „PROJ-Y-1", und die globale Registerzeile ein sechstes. Ein „PROJ-Y-2 ist erledigt" war damit nicht auflösbar. Die Kennungen sind hier auf `PROJ-Y-100c-b`…`PROJ-Y-100c-d` (`PROJ-Y-100c-a` ist der in Tranche 3 registrierte Magic-Link aus AC-100c-8) umgestellt; Inhalt und Reihenfolge sind unverändert.
+
+- **PROJ-Y-100c-b:** Pro-Objekt-„sensibel"-Markierung (in 100c als „Later" gelockt).
+- **PROJ-Y-100c-c:** Pro-Projekt-Approver-Override (MVP = tenant-weit).
+- **PROJ-Y-100c-d:** Extraktion der geteilten Approval-Primitive (Token/Immutability/Quorum) in ein gemeinsames Modul — **nur falls PROJ-110 dieselben Bausteine braucht**, als Refactor mit CIA-Review, nicht spekulativ jetzt.
 
 ### Locked design decisions (für /backend + /frontend)
 1. **Fork B** — parallele Tabellen, Primitiven-Sharing; PROJ-31-`decision_*` unangetastet.
