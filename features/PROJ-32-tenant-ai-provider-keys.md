@@ -2,6 +2,10 @@
 
 ## Status: Deployed 32a + 32b + 32c + 32d (full PROJ-32 slice live)
 
+## Deployment Scope: full
+
+> **Scope-Klassifikation (PROJ-Y-145b, Tranche 4, 2026-08-24):** QA **READY** mit **0 Bugs in allen vier Schweregraden** und der ausdruecklichen Feststellung, dass **alle 25 Akzeptanzkriterien** bestehen; der Statusheader belegt alle vier Teil-Slices (32a Anthropic, 32b OpenAI+Google, 32c Ollama+Priority, 32d Cost-Caps) als live. Die zurueckgestellten Punkte sind Nicht-Ziele der Spec (Vault-Key-Rotation als Runbook-Thema, Mehr-Endpunkt-Betrieb je Provider) bzw. Nachweistiefe (kein Cross-Browser-Lauf fuer reine shadcn-Komposition).
+
 **Created:** 2026-05-04
 **Last Updated:** 2026-05-04
 

@@ -1,6 +1,11 @@
 # PROJ-10: Change Management — Field-level Versioning, Compare, Undo, Copy, Audit Reports
 
 ## Status: Deployed
+
+## Deployment Scope: mvp
+
+> **Scope-Klassifikation (PROJ-Y-145b, Tranche 4, 2026-08-24):** Vier originaere Kriterien sind mit ⏳ **Deferred** ausgewiesen: **Compare-Modus** (zwei Zeitstempel waehlen und diffen — heute nur „vorher/nachher" je Zeile), **`metadata.copied_from`** (keine Entitaet hat die JSONB-Spalte), **Undo-Toast direkt nach dem Speichern** (Undo lebt nur im Historie-Tab) und **Per-Tenant-Retention-Override** (braucht PROJ-17). Dazu L3: der HistoryTab war zum Zeitpunkt der Runde nur am Stakeholder verdrahtet. Neu registriert als **PROJ-Y-10a** (Compare), **PROJ-Y-10b** (`copied_from`), **PROJ-Y-10c** (Undo-Toast); der Retention-Override haengt an PROJ-17 (dort ST-04/ST-05, siehe **PROJ-Y-17a/17b**).
+
 **Created:** 2026-04-25
 **Last Updated:** 2026-04-28
 **Build mode:** Phase A + B + C in one iteration (per user direction).

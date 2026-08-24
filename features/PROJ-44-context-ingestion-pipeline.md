@@ -1,6 +1,11 @@
 # PROJ-44: Context Ingestion Pipeline
 
 ## Status: Deployed (α + β live; γ classifier deferred; **δ + ε superseded by PROJ-70 on 2026-06-04** — see [PROJ-70 spec](PROJ-70-auto-generated-backlog-from-kickoff.md))
+
+## Deployment Scope: alpha
+
+> **Scope-Klassifikation (PROJ-Y-145b, Tranche 4, 2026-08-24):** Die Slice-Tabelle der Spec nennt vier Teil-Schnitte: **44-α** (Spec-Dokumente + Abgleich der Datenschutz-Registry) und **44-β** (`context_sources` + RLS + POST/GET) sind live mit eigener QA und eigenem Deployment, **44-γ** (Auto-Privacy-Klassifikator) ist **deferred**, **44-δ/ε** sind seit 2026-06-04 **von PROJ-70 superseded**. Genau die Form, die `alpha` beschreibt: ein benannter Teil-Schnitt geliefert, die restlichen ausdruecklich aufgelistet. γs Substanz existiert heute ueber den Klassifizierer aus PROJ-70-α (samt PROJ-86-Fix) und die Volltext-Klassifikation aus PROJ-75 → **Upgrade-Kandidat**, aber von fremden Slices geliefert.
+
 **Created:** 2026-05-06
 **Last Updated:** 2026-05-11
 

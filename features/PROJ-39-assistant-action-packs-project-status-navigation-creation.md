@@ -1,6 +1,11 @@
 # PROJ-39: Assistant Action Packs — Project Status, Navigation, Creation
 
 ## Status: Deployed (Assistant core MVP slice live since 2026-05-18; mic policy fix 2026-05-21)
+
+## Deployment Scope: full
+
+> **Scope-Klassifikation (PROJ-Y-145b, Tranche 4, 2026-08-24):** Die 20 Kriterien sind belegt: Status-Intents auf echten Projektdaten mit erkennbarer Quelle (live vs. Snapshot), Navigation in die genannten Bereiche unter Beachtung der methodenbewussten Routen aus PROJ-28 **und** der Modulschalter, Projektsuche mit Rueckfrage bei Mehrfachtreffern und ohne Existenz-Leak fuer unsichtbare Projekte, dialogische Projektanlage ausschliesslich als Wizard-Uebergabe mit Review-Schritt, eigener Assistant-Modulschalter samt Sperre aller Eintrittspunkte, sowie die Mikrofon-Permissions-Policy (Nachtrag 2026-05-21) mit weiterhin verfuegbarem Text-Fallback. Verdikt **READY**, keine zurueckgestellte Anforderung dieser Story.
+
 **Created:** 2026-05-04
 **Last Updated:** 2026-05-21
 

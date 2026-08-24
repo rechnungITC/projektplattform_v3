@@ -1,6 +1,11 @@
 # PROJ-34: Stakeholder Communication Tracking
 
 ## Status: Deployed (Status-Closure 2026-05-31; alle Slices α/β/γ.1/γ.2/δ/ε/ζ + QA-Pass + F-9 audit-restore live in production)
+
+## Deployment Scope: mvp
+
+> **Scope-Klassifikation (PROJ-Y-145b, Tranche 4, 2026-08-24):** Zwei Dinge bleiben ausdruecklich offen. (1) Die Spec haelt eine **honest scope-note** fest: die Cost-Cap-Konfiguration ist purpose-scoped, das **Usage-Tracking bleibt purpose-agnostisch** — eine purpose-spezifische Obergrenze bremst also ab Schwellwert, **isoliert aber kein Budget**; „Per-purpose Usage-Isolation ist als v2-Enhancement nach Pilot deferred" → **PROJ-Y-34a**. (2) Die QA-Findings **F-2** (Toast statt Tab-Level-Banner bei `external_blocked`) und **F-5** (geloeschte Stakeholder werden still herausgefiltert statt ausgegraut) sind Teilerfuellungen spezifizierter Edge Cases und in der Spec selbst „gehoeren in eine Polish-Slice nach ε" → **PROJ-Y-34b**. F-3 (View-only-Pill) und F-9 (Audit-Restore) sind geschlossen.
+
 **Created:** 2026-05-06
 **Last Updated:** 2026-05-13
 

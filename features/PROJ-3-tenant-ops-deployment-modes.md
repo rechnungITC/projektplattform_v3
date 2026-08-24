@@ -1,6 +1,11 @@
 # PROJ-3: Tenant Operations and Deployment Modes (Stand-alone vs SaaS)
 
 ## Status: Deployed
+
+## Deployment Scope: full
+
+> **Scope-Klassifikation (PROJ-Y-145b, Tranche 4, 2026-08-24):** Alle **10** AC in beiden Tabellen (Stand-alone-Definition, Update-Strategie) ✅ mit benannter Evidenz in `docs/deployment/{standalone,update-strategy,backup-restore}.md`. Die zwei offenen Punkte sind **Info**-Findings ohne AC-Bezug: I1 (`isExternalAIBlocked()` hat bis PROJ-12 keinen Konsumenten — Nachweisluecke, kein Defekt) und I2 (Fail-permissive-Semantik von `EXTERNAL_AI_DISABLED`, Spec trifft dazu keine Aussage). **Nicht** `tooling-only`: die Slice liefert mit `isStandalone()`/`isExternalAIBlocked()` Produktionscode aus, nicht nur Doku.
+
 **Created:** 2026-04-25
 **Last Updated:** 2026-04-29
 

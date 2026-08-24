@@ -1,6 +1,11 @@
 # PROJ-9: Work Item Metamodel — Backlog Structure (Epic / Story / Task / Work Package / Bug)
 
 ## Status: Deployed (R1 + R2 live in production)
+
+## Deployment Scope: mvp
+
+> **Scope-Klassifikation (PROJ-Y-145b, Tranche 4, 2026-08-24):** Zwei AC-Zeilen sind ⚪: der **Audit-Hook auf Feldaenderungen** („PROJ-10 not yet built; hook point will land with that feature") und die **FK von `created_from_proposal_id`** („Column present, FK deferred until PROJ-12 builds the table"). Beide Ziel-Slices sind seither deployed → **Upgrade-Kandidat**. Die uebrigen Einschraenkungen sind Nachweistiefe, nicht Umfang: kein E2E-Suite zum Zeitpunkt der Runde, ON-DELETE-Cascade in R2 „pass by symmetry" statt live, Performance nicht lastgetestet.
+
 **Created:** 2026-04-25
 **Last Updated:** 2026-05-04 (R2 deployed — git tag `v0.9.0-proj9r2`, commit `60cccd9`; migration applied to Supabase; API routes live via Vercel auto-deploy)
 

@@ -1,6 +1,11 @@
 # PROJ-5: Guided Project Creation Wizard with Type/Method-Aware Questions
 
 ## Status: Deployed
+
+## Deployment Scope: mvp
+
+> **Scope-Klassifikation (PROJ-Y-145b, Tranche 4, 2026-08-24):** Der AC-Block **„KI-driven alternative (F2.1b)"** ist mit ⏳ **„Deferred per spec. No code path built"** ausgewiesen und in „Open follow-ups" wiederholt — eine zurueckgestellte **originaere** Anforderung, jetzt als **PROJ-Y-5a** registriert. Die zwei anderen Auffaelligkeiten sind **keine** Auslassungen: Bug M2 (methodengetriebene Rueckfragen) wurde in PROJ-5s **eigenem** Deploy-Commit `295f1a1` geschlossen, und der 90-Tage-Purge-Cron kam mit PROJ-5s **eigenem** Nachlauf-Commit (`chore(PROJ-5): post-deploy follow-ups … cron`) — `src/app/api/cron/purge-wizard-drafts/route.ts` traegt die Slice-ID im Kopf.
+
 **Created:** 2026-04-25
 **Last Updated:** 2026-04-28
 

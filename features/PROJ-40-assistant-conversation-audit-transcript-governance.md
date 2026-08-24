@@ -1,6 +1,11 @@
 # PROJ-40: Assistant Conversation Audit & Transcript Governance
 
 ## Status: Deployed (Assistant core MVP slice live since 2026-05-18; mic policy fix 2026-05-21)
+
+## Deployment Scope: mvp
+
+> **Scope-Klassifikation (PROJ-Y-145b, Tranche 4, 2026-08-24):** Der Governance-Kern ist geliefert (Sitzungs-/Turn-/Aktions-Schema mit RLS, drei Transkript-Modi mit `persist_metadata_only` als Default, Redaktionspfad, Audit-Ergaenzung zu PROJ-10, Tenant-Settings-Bereich, auditierte Policy-Aenderungen). **Nicht erfuellbar** sind dagegen zwei Kriterien, die auf eine fremde Grundlage verweisen: **„Assistant-Daten sind in tenantweiten Export-/Deletion-Konzepten beruecksichtigt"** und **„Offboarding / tenant deletion raeumt Assistant-Daten konsistent mit auf"**. Unabhaengig nachgemessen: unter `src/app/api/tenants/[id]/` existiert **weder** eine Export- **noch** eine Offboarding-Route — PROJ-17 hat ST-04 und ST-05 nie gebaut. Verfolgt unter **PROJ-Y-17a/17b**; damit ist die Luecke benannt und nicht dieser Story zugeschrieben.
+
 **Created:** 2026-05-04
 **Last Updated:** 2026-05-21
 

@@ -4,6 +4,10 @@
 
 Deployed (2026-06-10; code live on main since PR #85 / 2026-06-01, tag `v1.86.0-PROJ-47`)
 
+## Deployment Scope: full
+
+> **Scope-Klassifikation (PROJ-Y-145b, Tranche 4, 2026-08-24):** Alle **9** Akzeptanzkriterien der drei Stories (ST-01 Verbindung, ST-02 Feld-Mapping, ST-03 Export-Job und Sync-Log) sind angehakt und im QA-/Deploy-Block belegt; das Verdikt lautet **READY**. Die Out-of-Scope-Liste der Spec nennt Webhooks, Konfliktauflösung und eingehende Aenderungen — das ist **PROJ-50** und damit ein spezifiziertes Nicht-Ziel. Offen bleibt allein die **Nachweistiefe**: ein Playwright-Browserfluss mit gemockten Jira-APIs und angemeldeter Fixture („Known deferred work"). Synchroner, auf 100 Items begrenzter Export und der lokale Retry sind bewusste Design-Entscheidungen des Tech Designs, keine offenen Kriterien.
+
 ## Deployment
 
 - **Date:** 2026-06-10 (formal deploy closure; feature code merged to `main` via PR #85 on 2026-06-01 and live via Vercel auto-deploy since then)

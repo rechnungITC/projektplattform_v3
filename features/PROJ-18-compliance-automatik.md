@@ -1,6 +1,11 @@
 # PROJ-18: Compliance Automatik & Process Templates
 
 ## Status: Deployed
+
+## Deployment Scope: mvp
+
+> **Scope-Klassifikation (PROJ-Y-145b, Tranche 4, 2026-08-24):** **Wichtig fuer spaetere Leser:** das im Dokument zuerst sichtbare Verdikt **„NOT READY (1 Critical, 3 High)"** ist der **erste** Durchgang. Der **zweite** Pass vom selben Tag ist **READY** mit 0 Critical/0 High und verifiziert CRITICAL-1, HIGH-1, HIGH-2 und HIGH-3 einzeln. Die Abschluss-Bilanz weist **ST-01…ST-05 ✅** und **ST-06 (Template-UI) ⛔ deferiert nach PROJ-18b** aus — eine zurueckgestellte originaere Story mit benannter Ziel-ID. Mitgenommen bleiben LOW-1 (Umbenennen von Plattform-Default-Tags moeglich), LOW-2 (INSERT-Provenienz in `attributes` statt im Audit) und MEDIUM-1 (Inline-Panel statt Modal am Phasen-Abschluss).
+
 **Created:** 2026-04-25
 **Last Updated:** 2026-04-25
 

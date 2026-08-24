@@ -1,6 +1,11 @@
 # PROJ-16: Master Data UI — Users, Stakeholder Rollup, Project Type & Method Catalog Overrides
 
 ## Status: Deployed
+
+## Deployment Scope: mvp
+
+> **Scope-Klassifikation (PROJ-Y-145b, Tranche 4, 2026-08-24):** Zwei originaere Punkte sind zurueckgestellt und **mit eigener ID** protokolliert: **PROJ-16-A1** (`last_login`-Spalte in `/settings/members` und optionaler Outbox-Audit-Eintrag beim Invite, „bewusst deferred per A-mit-Offenheit-Lock-in") sowie die AC-Zeile **„Deaktivierte Methoden im Wizard ausgeblendet"**, die als *„out of MVP-scope — PROJ-5 liest den Code-Katalog direkt"* vermerkt ist. Der Rest ist mit 0 Bugs in allen Schweregraden abgenommen.
+
 **Created:** 2026-04-25
 **Last Updated:** 2026-04-25
 

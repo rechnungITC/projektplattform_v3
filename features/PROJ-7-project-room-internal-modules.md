@@ -1,6 +1,11 @@
 # PROJ-7: Project Room with Internal Kanban / Scrum / Gantt Modules
 
 ## Status: Deployed (MVP slice)
+
+## Deployment Scope: mvp
+
+> **Scope-Klassifikation (PROJ-Y-145b, Tranche 4, 2026-08-24):** Der Statusheader nennt die Grenze selbst („MVP slice"). Die Spec fuehrt vier Punkte mit ❌ als nicht gebaut (Sprint-Engine, echte Gantt-Kalkulation mit Critical Path, Tenant-Override fuer Method-Configs, KI-Stakeholder-Matcher) und die Deploy-Notiz raeumt vier **Coming-Soon-Stubs** in der Sidebar sowie das Trimmen doppelter Routen-Sektionen in 7 Method-Templates ein. Sprint-Engine → PROJ-9/PROJ-60, Gantt/Critical-Path → PROJ-25/PROJ-53, Matcher → PROJ-12; Tenant-Override neu als **PROJ-Y-7a** registriert.
+
 **Created:** 2026-04-25
 **Last Updated:** 2026-04-25
 

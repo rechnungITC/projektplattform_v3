@@ -1,6 +1,11 @@
 # PROJ-13: Communication Center, Email/Slack/Teams Send, Internal Project Chat
 
 ## Status: Deployed
+
+## Deployment Scope: full
+
+> **Scope-Klassifikation (PROJ-Y-145b, Tranche 4, 2026-08-24):** QA-Verdikt **READY**, ausdruecklich **0 Bugs in allen vier Schweregraden**; alle funktionalen AC sind mit Evidenz angehakt (Outbox-Tabelle, Class-3-Registrierung, Filter, Draft-Trennung, Resend-Adapter, Erfolg-/Fehler-CHECKs, KI-Badge, Editor-Gate, Slack-/Teams-Stubs mit `not_implemented`, append-only Chat, Realtime, Modul-Gate). Die zurueckgestellten Punkte (bidirektionaler Chat, Reply-Parsing, Anhaenge, Empfaengerauflösung, Retry-Worker) stehen **im Out-of-Scope der Spec** — sie sind spezifizierte Nicht-Ziele. Die unangehakten Zeilen am Ende der QA sind eine **manuelle Browser-Checkliste**, keine offenen Kriterien.
+
 **Created:** 2026-04-25
 **Last Updated:** 2026-04-29
 

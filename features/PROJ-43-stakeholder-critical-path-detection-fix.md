@@ -1,6 +1,11 @@
 # PROJ-43: Stakeholder-Health Critical-Path Detection — Korrektheits- und Coverage-Fix
 
 ## Status: Deployed (43-α + β + γ live 2026-05-06)
+
+## Deployment Scope: full
+
+> **Scope-Klassifikation (PROJ-Y-145b, Tranche 4, 2026-08-24):** **Korrektur einer verbreiteten Fehllesung:** mehrere Stellen der Spec (und `docs/PRD.md`) fuehren **43-γ** als „deferred" — das ist der Stand **vor** dem 2026-05-06. Dieselbe Datei traegt danach „Tech Design — 43-γ", „Implementation Notes — 43-γ Backend (2026-05-06)" und „Frontend Implementation Notes — 43-γ (2026-05-06)"; γ ist also gebaut, und der Statusheader (α + β + γ live) ist die richtige Angabe. Die QA weist **alle 9 Akzeptanzkriterien als erfuellt** aus, 0 Critical/0 High, Class-3-Grenze geprueft, kein Regressionsrisiko fuer PROJ-35-γ. Das Sprint-Card-Badge ist ausdruecklich **out of scope fuer β** (reine Lese-Komponente), also ein Nicht-Ziel, keine Auslassung. AC-α-9 ist ein statischer Nachweis mit Post-Deploy-Smoke-Empfehlung.
+
 **Created:** 2026-05-05
 **Last Updated:** 2026-05-06
 

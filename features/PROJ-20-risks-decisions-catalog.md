@@ -1,6 +1,11 @@
 # PROJ-20: Risks & Decisions Catalog (Cross-cutting Governance Backbone)
 
 ## Status: Deployed
+
+## Deployment Scope: mvp
+
+> **Scope-Klassifikation (PROJ-Y-145b, Tranche 4, 2026-08-24):** QA **READY**; zurueckgestellt ist der **Bulk-Import bestehender Entscheidungen** mit `change_reason = 'decision_imported'` — als **L1** ausgewiesen und in der Edge-Case-Tabelle als „⏳ Not built. Out of scope for this MVP slice; documented as deferred" wiederholt. Dazu **L4**: Phasen- und Risiko-Picker im `DecisionForm` fehlen, obwohl DB und API sie annehmen. Neu registriert als **PROJ-Y-20a** (Bulk-Import) und **PROJ-Y-20b** (Picker).
+
 **Created:** 2026-04-25
 **Last Updated:** 2026-04-29
 

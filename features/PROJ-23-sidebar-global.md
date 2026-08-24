@@ -1,6 +1,11 @@
 # PROJ-23: Globale Sidebar-Navigation (UI-Refactor)
 
 ## Status: Deployed
+
+## Deployment Scope: mvp
+
+> **Scope-Klassifikation (PROJ-Y-145b, Tranche 4, 2026-08-24):** QA **READY**, 0 Critical/0 High — aber die AC-Zeile **„Server-seitiger Default je Viewport"** ist ⚠ **Partial** (MEDIUM-1): der Default ist fuer beide Sidebars `expanded`, die viewport-abhaengige Entscheidung faellt erst clientseitig im `SidebarProvider`, was auf Mobil/Tablet beim Erstbesuch ein kurzes Aufklappen sichtbar macht. Die QA nennt es „Medium-as-deferred-known-limit" mit Mitigationspfad — eine benannte, abgenommene, aber **nicht erfuellte** Anforderung; neu registriert als **PROJ-Y-23a**. Der WCAG-Kontrast ist code-seitig ueber Tailwind-Token belegt, der visuelle Nachweis blieb offen.
+
 **Created:** 2026-04-30
 **Last Updated:** 2026-05-01
 

@@ -1,6 +1,11 @@
 # PROJ-31: Approval-Gates für formale Decisions
 
 ## Status: Deployed
+
+## Deployment Scope: full
+
+> **Scope-Klassifikation (PROJ-Y-145b, Tranche 4, 2026-08-24):** QA **Approved (Production-Ready)**, 0 Critical/0 High. Das einzige Medium — **Bug-M1**, fehlendes `search_path` auf zwei neuen Funktionen — war als „fix recommended before /deploy" markiert und ist **vor dem Deploy** in `db57d4c` („search_path hardening (BUG-M1)") geschlossen worden. Die zwei Lows sind Baseline-Themen des ganzen Repos (keine Rate-Limits auf neuen Endpunkten; die RPC kurzschliesst nach der ersten Antwort mit `approver_already_responded`, ein Spam aendert also keinen Zustand).
+
 **Created:** 2026-05-02
 **Last Updated:** 2026-05-02
 **Deployed:** 2026-05-02 — Production: https://projektplattform-v3.vercel.app — Tag: `v1.31.0-PROJ-31`

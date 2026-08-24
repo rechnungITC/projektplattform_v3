@@ -1,6 +1,11 @@
 # PROJ-38: Assistant Orchestrator & Intent Runtime
 
 ## Status: Deployed (Assistant core MVP slice live since 2026-05-18; mic policy fix 2026-05-21)
+
+## Deployment Scope: full
+
+> **Scope-Klassifikation (PROJ-Y-145b, Tranche 4, 2026-08-24):** Die 18 Kriterien dieser Story — zentraler Orchestrator, Intent-Klassifikation mit Trennung read-only/Navigation/Schreibabsicht, strukturiertes Turn-Ergebnis, Bestaetigungspflicht vor jeder Mutation, Policy-Pruefungen mit erklaerender Antwort, Aufrufe ausschliesslich ueber bestehende APIs/Wizard-Flows, Tool-Plan, Disambiguierung, Sitzungskontext mit Invalidierung, Turn-Audit inklusive blockierter Ausfuehrungen ohne Class-3-Rohdaten — sind in den Implementierungsnotizen einzeln belegt und durch Unit-Tests, Lint, Build und einen fokussierten Chromium-Smoke abgenommen (**READY**). Der Zusatz „Assistant core MVP" im Statusheader beschreibt die **gemeinsame** Auslieferung von PROJ-37–41, nicht eine Teilerfuellung dieser Story: PROJ-38s Umfang ist die Laufzeitschicht, und die ist vollstaendig.
+
 **Created:** 2026-05-04
 **Last Updated:** 2026-05-21
 

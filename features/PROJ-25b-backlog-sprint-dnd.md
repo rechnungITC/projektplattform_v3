@@ -1,6 +1,11 @@
 # PROJ-25b: Backlog ↔ Sprint Drag-and-Drop (mit a11y-Polish + Multi-Select + Perf-Benchmark)
 
 ## Status: Deployed
+
+## Deployment Scope: full
+
+> **Scope-Klassifikation (PROJ-Y-145b, Tranche 4, 2026-08-24):** Die Slice schliesst die aus PROJ-25 abgegebenen Punkte **D-1 bis D-5** (`@dnd-kit/core`-DnD, aria-live, Keyboard-DnD, Escape-Cancel, Multi-Select mit Bulk-API). Die QA-Auflage **A** wurde vor dem Deploy in `3e5219c` eingebaut; die Auflage **B** (Playwright-Suite + 30×100-Performance-Benchmark) war als **PROJ-25b-α** benannt und ist laut INDEX am 2026-06-05 nachgeliefert — damit ist kein Kriterium dieser Story mehr offen. Hierarchisches Re-Parenting ist ausdruecklich **nicht** Teil der Story (eigene Spec PROJ-59).
+
 **Created:** 2026-05-05
 **Last Updated:** 2026-05-08
 **Deployed:** 2026-05-05 (commits 8b1f693 + 938d312 + 3e5219c on `main`); deployment bookkeeping completed 2026-05-08

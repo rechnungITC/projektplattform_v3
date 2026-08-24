@@ -4,6 +4,10 @@
 
 Deployed (α + β + γ live — 0 Critical/0 High; merged to main via PR #157, tag `v1.95.0-PROJ-48`, 2026-06-19; prod-verified: POST /api/mcp no-token→401, bad-token→401 no-leak, admin token route→307)
 
+## Deployment Scope: full
+
+> **Scope-Klassifikation (PROJ-Y-145b, Tranche 4, 2026-08-24):** QA-Verdikt **PRODUCTION-READY**, 0 Critical/0 High; 3/3 User-Stories gruen, **10 Sicherheitssonden** geblockt (Tenant-Isolation, Need-to-know, Rate-Limit, widerrufene und abgelaufene Token, kein Leak ueber eine Live-DB-Sonde), ein echter MCP-SDK-Client-Rundlauf und 7/7 Playwright-Auth-Gates. Der einzige zurueckgestellte Punkt ist als **D-2 „nice-to-have"** klassifiziert und rein eine Nachweisfrage: kein externer MCP-Client ueber echtes HTTP gegen einen laufenden Server — ersetzt durch den In-Process-SDK-Rundlauf, die Auth-Gates und die Live-DB-Sonde.
+
 ## Summary
 
 Expose a tenant-scoped MCP bridge for safe external tool access. The bridge should provide a minimal, auditable tool surface over project data and enforce Class-3 redaction before any external model/tool boundary.
