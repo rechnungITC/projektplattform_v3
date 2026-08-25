@@ -20,6 +20,8 @@
 
 import { expect, test } from "@playwright/test"
 
+import { buttonVariants } from "@/components/ui/button"
+
 test.skip(
   ({ browserName }) => browserName !== "chromium",
   "Mobile-Safari-WebKit ist auf diesem Host env-deaktiviert (PROJ-67/F2).",
@@ -138,27 +140,24 @@ test.describe("PROJ-51 AC-20 — prefers-reduced-motion", () => {
     expect(property).toContain("color")
   })
 
-  // BEFUND F-2 dieses QA-Durchgangs (Medium, Barrierefreiheit) — bewusst als
-  // `test.fail()` kodiert: der Test beschreibt den SOLL-Zustand, ist heute
-  // rot und gilt damit als erwartet fehlschlagend. Wird der Defekt behoben,
-  // schlägt der Lauf an und verlangt das Entfernen dieser Markierung. Die
-  // Alternative — den Ist-Zustand zuzusichern — hätte den Fehler zementiert.
+  // PROJ-Y-51c (2026-08-25) — vorher `test.fail()`, jetzt eine echte
+  // Zusicherung: der Press-Effekt steht `motion-safe`-gekapselt an den
+  // Varianten statt in der Basis, es gibt also keine konkurrierende Regel mehr.
   //
-  // Ursache gemessen, nicht vermutet: `active:scale-[0.98]` gibt
-  // `.active\:scale-\[0\.98\]:active` aus (Spezifität 0,2,0),
-  // `motion-reduce:transform-none` gibt `.motion-reduce\:transform-none`
-  // innerhalb der Media-Query aus (0,1,0). Die Zustandsregel gewinnt
-  // unabhängig von der Reihenfolge. Im Kontrollexperiment mit angeglichener
-  // Spezifität (`…:disabled` innerhalb der Media-Query) kippt das Ergebnis
-  // sofort auf `none`. Die tragfähige Form wäre `motion-reduce:active:scale-100`.
-  test("Press-Feedback muss unter reduzierter Bewegung ausbleiben", async ({
+  // Zwei Dinge sind gegenüber der Erstfassung verschärft, beide weil die alte
+  // Form zu schwach war:
+  //   * Die Gegenkontrolle prüfte `!== "none"`. Ein ungedrückter Button liefert
+  //     `matrix(1, 0, 0, 1, 0, 0)` — das ist die IDENTITÄT und erfüllt
+  //     `!== "none"` mühelos. Die Kontrolle konnte also grün sein, ohne dass
+  //     je etwas skaliert wurde. Jetzt wird der Faktor selbst geprüft.
+  //   * Nach `mouse.down()` wird die Transition abgewartet: bei voller Bewegung
+  //     animiert `transform` über 150 ms, eine sofortige Messung liest noch den
+  //     Startwert. Genau daran hat eine Zwischenmessung dieser Slice erst
+  //     „skaliert nicht" gemeldet, wo sehr wohl skaliert wird.
+  test("Press-Feedback greift bei voller Bewegung und bleibt unter reduzierter Bewegung aus", async ({
     browser,
   }) => {
-    test.fail(
-      true,
-      "PROJ-51 F-2: motion-reduce:transform-none kann active:scale-[0.98] wegen geringerer Spezifität nicht überschreiben",
-    )
-    async function transformWhilePressed(
+    async function scaleWhilePressed(
       reducedMotion: "reduce" | "no-preference",
     ) {
       const context = await browser.newContext({ reducedMotion })
@@ -170,25 +169,100 @@ test.describe("PROJ-51 AC-20 — prefers-reduced-motion", () => {
       if (!box) throw new Error("Anmeldeknopf hat keine Geometrie")
       await page.mouse.move(box.x + box.width / 2, box.y + box.height / 2)
       await page.mouse.down()
-      const transform = await button.evaluate(
-        (el) => getComputedStyle(el).transform,
-      )
+      await page.waitForTimeout(260)
+      const measured = await button.evaluate((el) => ({
+        active: el.matches(":active"),
+        scale: getComputedStyle(el).getPropertyValue("--tw-scale-x").trim(),
+        transform: getComputedStyle(el).transform,
+      }))
       await page.mouse.up()
       await context.close()
-      return transform
+      return measured
     }
 
-    // Gegenkontrolle zuerst: ohne die Präferenz MUSS skaliert werden, sonst
-    // prüft die Zusicherung darunter nur die Abwesenheit von etwas, das es
-    // nie gab.
-    const pressedFullMotion = await transformWhilePressed("no-preference")
+    const full = await scaleWhilePressed("no-preference")
+    // Ohne diese Zeile wäre nicht unterscheidbar, ob die Sonde den Knopf
+    // überhaupt gedrückt hält — ein nicht-aktiver Knopf skaliert auch nicht.
+    expect(full.active, "Sonde hält den Knopf nicht gedrückt").toBe(true)
     expect(
-      pressedFullMotion,
-      "Ohne reduzierte Bewegung skaliert der Button beim Drücken nicht — die Sonde greift ins Leere",
-    ).not.toBe("none")
+      full.scale,
+      `Bei voller Bewegung fehlt das Press-Feedback (transform ${full.transform})`,
+    ).toBe(".98")
 
-    const pressedReduced = await transformWhilePressed("reduce")
-    expect(pressedReduced).toBe("none")
+    const reduced = await scaleWhilePressed("reduce")
+    expect(reduced.active, "Sonde hält den Knopf nicht gedrückt").toBe(true)
+    expect(
+      reduced.scale === "1" || reduced.scale === "",
+      `Unter prefers-reduced-motion bleibt eine Transform-Animation aktiv (--tw-scale-x=${reduced.scale}, transform ${reduced.transform})`,
+    ).toBe(true)
+  })
+
+  // PROJ-Y-51c, Befund F-4 — beim Beheben von F-2 mitgefunden und mitbehoben:
+  // die `link`-Variante trug `active:scale-100`, um sich vom Press-Effekt
+  // auszunehmen, und das war aus derselben Wurzel wirkungslos (Gleichstand
+  // 0,2,0, und die Basis-Regel stand im Kompilat später — Offsets 73972 gegen
+  // 74219 gemessen). Ein Textlink skalierte also beim Klicken.
+  //
+  // Die Klassen kommen aus `buttonVariants` selbst, nicht als Kopie: eine Kopie
+  // wäre genau die Drift, die diesen Test wertlos macht, sobald jemand die
+  // Variante ändert.
+  test("Die link-Variante nimmt sich vom Press-Feedback aus — Standardvariante als Gegenkontrolle", async ({
+    page,
+  }) => {
+    await page.goto("/login")
+
+    // Gedrückt wird wirklich: die Sonde wird an eine bekannte Stelle gehängt
+    // und dort mit der Maus gehalten. Eine Prüfung auf das Vorhandensein der
+    // Klasse wäre genau die Schwäche, die F-4 entstehen liess — der `link`-
+    // Opt-out WAR vorhanden und hat trotzdem verloren.
+    async function scaleWhilePressed(classes: string) {
+      await page.evaluate((cls) => {
+        document
+          .querySelectorAll("[data-proj51-probe]")
+          .forEach((e) => e.remove())
+        const el = document.createElement("button")
+        el.setAttribute("data-proj51-probe", "1")
+        el.className = cls
+        el.style.cssText =
+          "position:fixed;left:20px;top:20px;width:140px;height:44px;z-index:99999"
+        el.textContent = "probe"
+        document.body.appendChild(el)
+      }, classes)
+      await page.mouse.move(90, 42)
+      await page.mouse.down()
+      await page.waitForTimeout(260)
+      const measured = await page.evaluate(() => {
+        const el = document.querySelector("[data-proj51-probe]")!
+        return {
+          active: el.matches(":active"),
+          scale: getComputedStyle(el).getPropertyValue("--tw-scale-x").trim(),
+        }
+      })
+      await page.mouse.up()
+      await page.evaluate(() =>
+        document
+          .querySelectorAll("[data-proj51-probe]")
+          .forEach((e) => e.remove()),
+      )
+      return measured
+    }
+
+    // Die Klassen kommen aus `buttonVariants` selbst, nicht als Kopie — eine
+    // Kopie wäre die Drift, die diesen Test wertlos macht, sobald jemand die
+    // Variante ändert.
+    const def = await scaleWhilePressed(buttonVariants({ variant: "default" }))
+    expect(def.active, "Sonde hält die Standard-Sonde nicht gedrückt").toBe(true)
+    expect(
+      def.scale,
+      "Standardvariante skaliert beim Drücken nicht — die Zeile darunter würde die Abwesenheit von nichts prüfen",
+    ).toBe(".98")
+
+    const link = await scaleWhilePressed(buttonVariants({ variant: "link" }))
+    expect(link.active, "Sonde hält die link-Sonde nicht gedrückt").toBe(true)
+    expect(
+      link.scale === "1" || link.scale === "",
+      `Ein Textlink skaliert beim Drücken (--tw-scale-x=${link.scale})`,
+    ).toBe(true)
   })
 
   // BEFUND F-1 dieses QA-Durchgangs (Medium) — ebenfalls `test.fail()`:
