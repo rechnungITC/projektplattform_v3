@@ -42,10 +42,24 @@ const ME = "cccccccc-3333-4333-8333-cccccccccccc"
 
 type Result = { data: unknown; error: unknown }
 
-function chain(result: Result) {
+/**
+ * Mitschrift der Tabellenzugriffe als `"tabelle.methode"`.
+ *
+ * Ohne sie war die Rollback-Zusicherung blind: sie prüfte nur, dass das
+ * gespeicherte Objekt entfernt wird, nicht dass der verwaiste Knoten gelöscht
+ * wird — gegengeprüft, indem das Knotenaufräumen entfernt wurde: der Test blieb
+ * grün. Seit PROJ-45-ε liegt dieser Pfad im geteilten Aufnahmekern, und dort
+ * muss er bewacht sein.
+ */
+const calls: string[] = []
+
+function chain(table: string, result: Result) {
   const c: Record<string, unknown> = {}
   for (const m of ["select", "eq", "is", "order", "insert", "update", "delete", "neq", "limit"]) {
-    c[m] = vi.fn(() => c)
+    c[m] = vi.fn(() => {
+      calls.push(`${table}.${m}`)
+      return c
+    })
   }
   c.single = vi.fn(async () => result)
   c.maybeSingle = vi.fn(async () => result)
@@ -56,7 +70,9 @@ function supa(results: Result[], rpcResult: Result = { data: null, error: null }
   let i = 0
   const def: Result = { data: null, error: null }
   return {
-    from: vi.fn(() => chain(results.length ? results[Math.min(i++, results.length - 1)] : def)),
+    from: vi.fn((table: string) =>
+      chain(table, results.length ? results[Math.min(i++, results.length - 1)] : def),
+    ),
     rpc: vi.fn(async () => rpcResult),
   }
 }
@@ -75,6 +91,7 @@ beforeEach(() => {
   sniffMock.mockReset()
   uploadMock.mockReset()
   deleteMock.mockReset()
+  calls.length = 0
 })
 
 describe("POST /api/projects/[id]/documents", () => {
@@ -176,7 +193,11 @@ describe("POST /api/projects/[id]/documents", () => {
     uploadMock.mockResolvedValue({ path: "t1/p/n1/doc.pdf" })
     const res = await POST(multipartReq(), ctx())
     expect(res.status).toBe(500)
-    // Orphan cleanup: the stored object is removed.
+    // Orphan cleanup, BOTH halves: the stored object is removed …
     expect(deleteMock).toHaveBeenCalledWith(expect.anything(), "t1/p/n1/doc.pdf")
+    // … and the tree node it belonged to is deleted again. Asserting only the
+    // object left the node half unguarded (proven: removing the node delete kept
+    // this test green).
+    expect(calls).toContain("document_tree_nodes.delete")
   })
 })

@@ -14,6 +14,7 @@
 import { createAdminClient } from "@/lib/supabase/admin"
 
 import { extractAndClassify } from "./extraction"
+import { isNotRagParseable } from "./mime"
 
 export interface RunExtractionArgs {
   tenantId: string
@@ -47,23 +48,45 @@ export async function runDocumentExtraction(
   const { tenantId, documentId, buffer, filename, mimeHint } = args
 
   let outcome
-  try {
-    outcome = await extractAndClassify(buffer, filename, mimeHint)
-  } catch {
-    // Unerwarteter Fehler jenseits der bekannten Parser-Codes. Die Zeile wird
-    // trotzdem geschrieben, damit das Dokument nicht dauerhaft ohne jede
-    // Auszugs-Information dasteht — "wir wissen es nicht" ist eine Aussage,
-    // ein fehlender Datensatz ist keine.
+  if (isNotRagParseable(mimeHint)) {
+    // PROJ-45-ε (L38): Bilder gar nicht erst parsen. Der Statuswert
+    // `unsupported_type` war im CHECK von `document_extractions` von Anfang an
+    // vorgesehen — PROJ-80-α hat den Fall bedacht, nur Flag und Tor fehlten.
+    // Ohne dieses Tor bekaeme jedes Baufoto ein `failed`, und die Fläche
+    // meldete „Extraktion fehlgeschlagen" fuer ein Bild, bei dem nichts
+    // fehlgeschlagen ist. `privacy_class` bleibt bewusst 3 (fail-closed): ohne
+    // gelesenen Text ist keine Klassifikation belegt, und eine unbelegte
+    // niedrige Klasse wuerde Cloud-Routing freigeben.
     outcome = {
-      status: "failed" as const,
+      status: "unsupported_type" as const,
       extracted_text: null,
       char_count: null,
       page_count: null,
       parser: null,
-      failure_code: "unexpected_error",
+      failure_code: null,
       privacy_class: 3 as const,
       full_text_classified_at: null,
       classification_unverified: false,
+    }
+  } else {
+    try {
+      outcome = await extractAndClassify(buffer, filename, mimeHint)
+    } catch {
+      // Unerwarteter Fehler jenseits der bekannten Parser-Codes. Die Zeile wird
+      // trotzdem geschrieben, damit das Dokument nicht dauerhaft ohne jede
+      // Auszugs-Information dasteht — "wir wissen es nicht" ist eine Aussage,
+      // ein fehlender Datensatz ist keine.
+      outcome = {
+        status: "failed" as const,
+        extracted_text: null,
+        char_count: null,
+        page_count: null,
+        parser: null,
+        failure_code: "unexpected_error",
+        privacy_class: 3 as const,
+        full_text_classified_at: null,
+        classification_unverified: false,
+      }
     }
   }
 

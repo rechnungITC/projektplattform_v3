@@ -14,8 +14,6 @@
  * Access: lead/editor/admin ("edit").
  */
 
-import { createHash } from "crypto"
-
 import type { SupabaseClient } from "@supabase/supabase-js"
 import { NextResponse, after } from "next/server"
 import { z } from "zod"
@@ -25,22 +23,17 @@ import {
   getAuthenticatedUserId,
   requireProjectAccess,
 } from "@/app/api/_lib/route-helpers"
+import {
+  fetchDocumentQuota,
+  ingestDocumentFile,
+  wouldExceedQuota,
+} from "@/lib/dms/ingest"
 import { runDocumentPipeline } from "@/lib/dms/pipeline"
 import { DmsMimeError, sniffDocumentMime } from "@/lib/dms/mime"
 import { uploadFieldsSchema } from "@/lib/dms/schema"
 import { dedupeFilename, dedupeName } from "@/lib/dms/slug"
-import { deleteDocumentFile, uploadDocumentFile } from "@/lib/dms/storage"
-import type { QuotaStatusRow } from "@/types/dms"
 
 const MAX_FILE_BYTES = 52_428_800 // 50 MB — matches documents.size_bytes CHECK
-
-const NODE_SELECT =
-  "id, tenant_id, project_id, parent_id, node_type, name, slug, sort_order, " +
-  "created_by, created_at, updated_at, deleted_at"
-const DOC_SELECT =
-  "id, tenant_id, tree_node_id, storage_backend, storage_path, mime_type, " +
-  "size_bytes, original_filename, checksum, mime_unsupported_for_rag, " +
-  "ai_generated, ai_generated_metadata, created_by, created_at, updated_at, deleted_at"
 
 export async function POST(
   request: Request,
@@ -155,21 +148,13 @@ export async function POST(
   }
 
   // Quota pre-flight (SECURITY DEFINER — readable by any project member).
-  const { data: quotaData, error: quotaErr } = await supabase.rpc(
-    "dms_quota_status",
-    { p_project_id: projectId },
-  )
-  if (quotaErr) {
-    if (quotaErr.code === "42501")
-      return apiError("forbidden", quotaErr.message ?? "Not allowed.", 403)
-    if (quotaErr.code === "P0002")
-      return apiError("not_found", "Project not found.", 404)
-    return apiError("internal_error", quotaErr.message ?? "Quota check failed.", 500)
+  const quotaLookup = await fetchDocumentQuota(supabase as SupabaseClient, projectId)
+  if (quotaLookup.error) {
+    const q = quotaLookup.error
+    return apiError(q.code, q.message, q.status)
   }
-  const quota = (Array.isArray(quotaData) ? quotaData[0] : quotaData) as
-    | QuotaStatusRow
-    | undefined
-  if (quota && quota.current_usage_bytes + fileEntry.size > quota.max_bytes) {
+  const quota = quotaLookup.quota
+  if (quota && wouldExceedQuota(quota, fileEntry.size)) {
     return NextResponse.json(
       {
         error: {
@@ -201,127 +186,67 @@ export async function POST(
     ? dedupeName(title, existingSlugs)
     : dedupeFilename(fileEntry.name, existingSlugs)
 
-  // (a) INSERT the tree node first — we need its id for the storage path.
-  const { data: nodeRow, error: nodeErr } = await supabase
-    .from("document_tree_nodes")
-    .insert({
-      tenant_id: tenantId,
-      project_id: projectId,
-      parent_id: parentId,
-      node_type: "document",
-      name,
-      slug,
-      created_by: userId,
-    })
-    .select(NODE_SELECT)
-    .single()
-  if (nodeErr || !nodeRow) {
-    if (nodeErr?.code === "23505") {
-      return apiError("conflict", "A document with that name already exists.", 409)
-    }
-    return apiError("create_failed", nodeErr?.message ?? "Failed to create tree node.", 500)
-  }
-  const nodeId = (nodeRow as unknown as { id: string }).id
-
-  const cleanupOrphan = async (storagePath: string | null) => {
-    if (storagePath) {
-      try {
-        await deleteDocumentFile(supabase as SupabaseClient, storagePath)
-      } catch {
-        /* best-effort */
-      }
-    }
-    try {
-      await supabase.from("document_tree_nodes").delete().eq("id", nodeId)
-    } catch {
-      /* best-effort */
-    }
+  const ingest = await ingestDocumentFile({
+    supabase: supabase as SupabaseClient,
+    tenantId,
+    projectId,
+    parentId,
+    name,
+    slug,
+    buffer,
+    mime,
+    mimeUnsupportedForRag,
+    filename: fileEntry.name,
+    sizeBytes: fileEntry.size,
+    userId,
+  })
+  if (!ingest.ok) {
+    return apiError(ingest.code, ingest.message, ingest.status)
   }
 
-  // (b) Upload the file. (c) INSERT the documents row.
-  let storagePath: string | null = null
+  // PROJ-80-α.2c — Summarizer-Skill nachsäen, solange wir noch eine
+  // Nutzersitzung haben. Der Hintergrundlauf schreibt mit service-role und
+  // kann die RPC nicht selbst rufen: sie prüft `is_tenant_member`, und für
+  // service-role ist `auth.uid()` leer. Best-effort — fehlt der Skill, läuft
+  // die Erzeugung ohne Zusatzanweisung weiter (Spec: „indexing still runs").
   try {
-    const upload = await uploadDocumentFile({
-      supabase: supabase as SupabaseClient,
-      tenantId,
-      projectId,
-      nodeId,
-      buffer,
-      mimeType: mime,
-      filename: fileEntry.name,
-    })
-    storagePath = upload.path
-
-    const checksum = createHash("sha256").update(buffer).digest("hex")
-    const { data: docRow, error: docErr } = await supabase
-      .from("documents")
-      .insert({
-        tenant_id: tenantId,
-        tree_node_id: nodeId,
-        storage_backend: "internal",
-        storage_path: upload.path,
-        mime_type: mime,
-        size_bytes: fileEntry.size,
-        original_filename: fileEntry.name,
-        checksum,
-        mime_unsupported_for_rag: mimeUnsupportedForRag,
-        created_by: userId,
-      })
-      .select(DOC_SELECT)
-      .single()
-    if (docErr || !docRow) {
-      await cleanupOrphan(storagePath)
-      return apiError("create_failed", docErr?.message ?? "Failed to record document.", 500)
-    }
-
-    // PROJ-80-α — Textauszug, Klassifikation und Quintessenz im Hintergrund der
-    // Antwort. Der Upload darf davon nicht abhängen: die Extraktion kann bei
-    // großen PDFs Sekunden dauern, und ein Dokument ohne Auszug ist trotzdem ein
-    // gültiges Dokument (der Auszug trägt seinen eigenen Zustand).
-    //
-    // `after()` wirft außerhalb eines Next.js-Request-Scopes — etwa wenn ein
-    // Unit-Test den Handler direkt aufruft. Deshalb umschlossen: die Antwort
-    // gewinnt immer (PROJ-54-Muster).
-    // PROJ-80-α.2c — Summarizer-Skill nachsäen, solange wir noch eine
-    // Nutzersitzung haben. Der Hintergrundlauf schreibt mit service-role und
-    // kann die RPC nicht selbst rufen: sie prüft `is_tenant_member`, und für
-    // service-role ist `auth.uid()` leer. Best-effort — fehlt der Skill, läuft
-    // die Erzeugung ohne Zusatzanweisung weiter (Spec: „indexing still runs").
-    try {
-      await supabase.rpc("ensure_summarizer_skill", { p_tenant_id: tenantId })
-    } catch {
-      // Kein Grund, den Upload scheitern zu lassen.
-    }
-
-    try {
-      const docId = (docRow as unknown as { id: string }).id
-      after(async () => {
-        try {
-          await runDocumentPipeline({
-            tenantId,
-            documentId: docId,
-            buffer,
-            filename: fileEntry.name,
-            mimeHint: mime,
-            actorUserId: userId,
-          })
-        } catch {
-          // `runDocumentExtraction` schreibt Fehler als Zustand in die Zeile und
-          // wirft nicht. Dieser Fang deckt nur das Unerwartete ab.
-        }
-      })
-    } catch {
-      // Kein Request-Scope (Unit-Test). Der nächtliche Aufräumlauf holt die
-      // Extraktion nach — deshalb ist das Auslassen hier folgenlos.
-    }
-
-    return NextResponse.json({ document: docRow, node: nodeRow }, { status: 201 })
-  } catch (err) {
-    await cleanupOrphan(storagePath)
-    return apiError(
-      "internal_error",
-      err instanceof Error ? err.message : "Upload failed.",
-      500,
-    )
+    await supabase.rpc("ensure_summarizer_skill", { p_tenant_id: tenantId })
+  } catch {
+    // Kein Grund, den Upload scheitern zu lassen.
   }
+
+  // PROJ-80-α — Textauszug, Klassifikation und Quintessenz im Hintergrund der
+  // Antwort. Der Upload darf davon nicht abhängen: die Extraktion kann bei
+  // großen PDFs Sekunden dauern, und ein Dokument ohne Auszug ist trotzdem ein
+  // gültiges Dokument (der Auszug trägt seinen eigenen Zustand).
+  //
+  // `after()` wirft außerhalb eines Next.js-Request-Scopes — etwa wenn ein
+  // Unit-Test den Handler direkt aufruft. Deshalb umschlossen: die Antwort
+  // gewinnt immer (PROJ-54-Muster).
+  try {
+    const docId = ingest.documentId
+    after(async () => {
+      try {
+        await runDocumentPipeline({
+          tenantId,
+          documentId: docId,
+          buffer,
+          filename: fileEntry.name,
+          mimeHint: mime,
+          actorUserId: userId,
+        })
+      } catch {
+        // `runDocumentExtraction` schreibt Fehler als Zustand in die Zeile und
+        // wirft nicht. Dieser Fang deckt nur das Unerwartete ab.
+      }
+    })
+  } catch {
+    // Kein Request-Scope (Unit-Test). Der nächtliche Aufräumlauf holt die
+    // Extraktion nach — deshalb ist das Auslassen hier folgenlos.
+  }
+
+  return NextResponse.json(
+    { document: ingest.document, node: ingest.node },
+    { status: 201 },
+  )
 }

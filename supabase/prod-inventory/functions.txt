@@ -1,4 +1,4 @@
-# Prod-Funktionsinventar — Stand 2026-08-21
+# Prod-Funktionsinventar — Stand 2026-08-24
 #
 # Die in der Produktionsdatenbank vorhandenen Funktionen des Schemas `public`,
 # ohne die 71 Funktionen der `ltree`-Extension (die gehoeren nicht dem Projekt).
@@ -24,6 +24,7 @@ _comm_validate_links
 _committee_authority
 _construction_defect_is_open
 _construction_defect_is_overdue
+_construction_photo_may_manage
 _construction_reservation_is_open
 _cost_aggregate_bucket
 _create_clearance_grant_request
@@ -92,6 +93,10 @@ construction_acceptance_guard
 construction_acceptance_summary
 construction_defect_guard
 construction_defect_summary
+construction_photo_counts
+construction_photo_document_lock
+construction_photo_guard
+construction_photo_removal_guard
 construction_schedule_signals
 construction_section_blocking_refs
 construction_section_guard
@@ -173,6 +178,7 @@ is_project_lead
 is_project_member
 is_tenant_admin
 is_tenant_member
+link_construction_photo
 log_communication_access
 log_confidential_read
 ma_access_explain
@@ -206,6 +212,7 @@ record_tenant_ai_priority_audit
 record_tenant_ai_provider_audit
 remove_committee_member
 remove_communication_inner_circle_member
+remove_construction_photo
 remove_ma_valuation_link
 remove_meeting_attendee
 remove_meeting_document
@@ -229,6 +236,7 @@ set_communication_embargo
 set_communication_inner_circle
 set_construction_acceptance_document
 set_construction_acceptance_participants
+set_construction_photo_meta
 set_deliverable_raci
 set_ma_valuation_link
 set_meeting_attendee
