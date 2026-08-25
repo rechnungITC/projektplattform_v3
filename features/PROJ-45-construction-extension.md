@@ -3784,6 +3784,235 @@ nicht.
   wird, prüft der Routentest der Datenschicht; dass die Strecke sie *anzeigt*,
   folgt aus der serverseitigen Sortierung und ist im Browser nicht nachgemessen.
 
+## QA Test Results — ε (2026-08-25)
+
+**Verdikt: 0 Critical · 1 High · 0 Medium · 2 Low/Info → NICHT produktionsreif.**
+Der High-Befund ist eine **nicht erfüllte Zusage an eine ganze Rolle**, nicht ein
+Randfall; er gehört vor dem Deploy entschieden.
+
+### Was dieser Lauf geleistet hat
+
+Der von `/backend` und `/frontend` ausdrücklich offen gelassene Kern ist
+ausgeführt: **der authentifizierte Durchlauf in der β-Bau-Lane mit echten
+Bilddateien** und ein **echter Druck nach PDF mit sichtbarem Foto**
+(45.039 Byte, `%PDF-`-Kopf). Neue Datei
+`tests/PROJ-45-epsilon-photo-chain.spec.ts`, **11 grün / 1 als Befund markiert**,
+dreimal hintereinander stabil.
+
+Die Bilder werden **zur Laufzeit erzeugt** statt eingecheckt
+(`tests/fixtures/photo-fixtures.ts`, PROJ-Y-142b-Muster): eine Binärdatei im Repo
+wäre nicht nachvollziehbar, und `sharp` ist ohnehin Produktions-Abhängigkeit. Der
+EXIF-Inhalt ist dabei der Zweck — ohne Geräteangaben und GPS-Marke im Original
+liesse sich AC-45ε.8 nicht belegen.
+
+### F-1 (High) — die β-Regel ist Ende-zu-Ende nicht erreichbar
+
+**Befund.** AC-45ε.16/.17 sagen zu, dass **jedes** Projektmitglied Fotos
+hinzufügen darf, Betrachter eingeschlossen. Über die echte Route ist das nicht
+möglich: der Betrachter erhält **422** mit
+`create_failed: new row violates row-level security policy for table
+"document_tree_nodes"`, während dieselbe Anfrage als Bauleitung mit **201**
+antwortet. Beides live gemessen, im selben Mandanten, mit derselben Datei.
+
+**Ursache — ein Widerspruch zwischen zwei Nutzer-Locks, kein Tippfehler.** L31
+legt das Foto als echtes DMS-Dokument ab; PROJ-79s `document_tree_nodes_insert`
+erlaubt INSERT nur `lead`/`editor`/Mandanten-Admin (an der Migration
+nachgelesen, Zeile 84–88: `pm.role in ('lead','editor')`), `documents_insert`
+ebenso. Die Fotostrecke ist damit strenger, als ihr eigenes Kriterium behauptet.
+
+**Warum die bisherigen Nachweise das nicht sahen — alle drei prüfen daneben:**
+
+| Nachweis | Warum er die Lücke verfehlt |
+|---|---|
+| Pentest-Vektor **A** („Betrachter darf verknüpfen") | verknüpft ein Dokument, das der **Admin** geseedet hat — geprüft wird `link_construction_photo`, nicht der DMS-Einfügepfad |
+| Routentests | mocken `ingestDocumentFile` vollständig weg |
+| Komponententest | belegt, dass der Knopf **angeboten** wird, nicht dass er wirkt |
+
+Genau diese Schichtung ist der Grund, warum ε einen echten Durchlauf verlangt —
+und dieselbe Klasse, die in PROJ-135 ein Kriterium ein Vierteljahr unbemerkt
+unerfüllt liess. Der DMS-Regressionslauf bestätigt die Policy unabhängig
+(`VIEWER-ins viewer insert blocked (42501)`).
+
+**Wirkung.** Fail-closed, kein Sicherheitsbefund, kein Datenabfluss. Aber: die
+Oberfläche bietet die Handlung an, der Nutzer bekommt rohen Datenbanktext, und
+die fachliche Absicht („wer den Mangel melden darf, darf ihn fotografieren") ist
+für die Rolle aufgehoben, für die sie geschrieben wurde. Ausweg heute: eine
+Bauleitung lädt hoch. **Nicht in `/qa` behoben** — die Entscheidung ist eine
+Architekturfrage (Einfügen über eine DEFINER-Funktion wie alles andere in dieser
+Slice, oder das Kriterium verengen) und gehört nicht in einen Testlauf.
+Als Befund im Spec-Test `test.fixme` markiert, damit die Lücke registriert ist
+statt versteckt.
+
+### F-2 (Medium, vorbestehend aus PROJ-79-α, von ε verschärft)
+
+**Der Speicherplatz-Zähler geht nur hoch, nie herunter.**
+`_dms_bump_storage_usage` addiert bei jedem `documents`-INSERT; im ganzen Repo
+existiert **kein** Dekrement und **kein** Neuberechnungspfad (`grep` über
+Migrationen und `src/`: nur Lese- und Additionsstellen). `last_recomputed_at`
+wird geschrieben, aber nichts berechnet je neu.
+
+**Schon vor diesem Lauf in Prod eingetreten, nicht hergeleitet:** beide
+Test-Mandanten behaupten Verbrauch bei **null** gespeicherten Byte —
+`[E2E] Projektplattform Test` 1.176 Byte / 0 tatsächlich,
+`[E2E] Bau Test` 1.344 / 0. Mein Lauf hob den Bau-Wert auf 108.390 und ich habe
+**nur meinen eigenen Beitrag** zurückgenommen (auf 1.344): die vorbestehende
+Abweichung bleibt stehen, sie ist der Befund und nicht mein Rückstand.
+
+**Warum ε das verschärft:** PROJ-79 machte Uploads gelegentlich, ε macht sie zur
+Routine. Eine Bauleitung, die täglich fotografiert und aufräumt, verliert
+Speicherplatz dauerhaft. Registriert als **PROJ-Y-45p**.
+
+### F-3 (Info) — PROJ-Y-45h ist eingetreten, mit Messwert
+
+Der Teardown der Kette scheiterte im ersten Lauf an
+`construction defect events are append-only`: seit PROJ-Y-148d hat der
+Ereignis-Wächter seinen Kaskaden-Ausstieg verloren, ein Mangel mit Verlauf ist
+nicht mehr löschbar. Genau die in PROJ-Y-45h registrierte Lücke, jetzt mit
+konkretem Fehlschlag belegt. Der Spec löscht deshalb **nur** die Fotozeilen
+(laut, per `deleteOrThrow`) und **nicht** den Mangel; die 17 zurückgebliebenen
+Mängel dieses Laufs sind über den Runbook-Weg entfernt
+(`session_replication_role = replica`, auf Fixture-Projekt und eigene Titel
+begrenzt, mit Vorbedingungen und Nachprüfung). Nachher: 14 Bestandsmängel,
+**0** von mir, **0** deaktivierte Trigger.
+
+### Live-Nachweise gegen Prod — 172 Zusicherungen, 0 FAIL, 0 Rückstände
+
+| Datei / Sonde | Ergebnis |
+|---|---|
+| ε-Pentest `PROJ-45-epsilon-construction-photos-pentest.sql` | **18/18** (Block 1 12, Block 2 6) |
+| α `PROJ-45-construction-trades-sections-pentest.sql` | **18/18** wörtlich (11 + 7) |
+| β `PROJ-45-beta-construction-defects-pentest.sql` | **54/54** wörtlich (32 + 15 + 7) |
+| γ `PROJ-45-gamma-construction-acceptances-pentest.sql` | Blöcke 3 + 4 **16/16** wörtlich |
+| PROJ-Y-45a `reference-consistency-smoke.sql` | **9/9** wörtlich |
+| PROJ-Y-45 `db-group-pentest.sql` | **16/16** wörtlich (7 + 5 + 4) |
+| PROJ-79 `dms-pentest.sql` | **16/16** wörtlich |
+| PROJ-80 `document-extractions-pentest.sql` | **10/10** wörtlich |
+| Gezielte Nachbar-Sonde (neu, diese QA) | **15/15** |
+
+Tragende Vektoren des ε-Pentests: **A** Betrachter darf auf RPC-Ebene verknüpfen
+(die Ebene, auf der die β-Regel hält — F-1 sitzt eine Schicht darüber) · **B/C**
+derselbe Betrachter darf nicht ändern und nicht entfernen · **F** die Löschsperre
+greift **und benennt** den Bezug · **G** derselbe Weg über die deployte
+DMS-Funktion ist ebenfalls gesperrt (weiches Löschen lässt keinen Fremdschlüssel
+feuern) · **K** Projekt-Hart-Löschen gelingt trotz Fotos.
+
+Die Nachbar-Sonde prüft genau die Flächen, die ε angefasst hat: alle vier
+geteilten Register mit **namentlich** gegengeprüften Geschwister-Zweigen
+(`construction_defects`, `construction_acceptances`, `spa_issues`,
+`ma_valuations`, `document_tree_nodes`, `skill_knowledge_links`), Funktionsformen
+(Auswertungen INVOKER, Schreibwege DEFINER, alle mit `search_path`), **0**
+Schreib-Policies über alle fünf Bau-Objekttabellen, `anon` **und** PUBLIC ohne
+EXECUTE über **alle** `construction%`-Funktionen, sowie γs Einfrier-Wächter mit
+angehängtem Foto.
+
+**Q-ε7 verhaltensmässig belegt:** an der protokollierten Abnahme ist Entfernen
+gesperrt (**42501**), ein **anderes** Foto nachtragen geht (R10b), Bildtext
+ändern geht (R11) — und dieselbe Datei zweimal am selben Anker wird abgewiesen
+(**23505**, R10c). Der erste Versuch von R10 war mein Sondenfehler: ich hängte
+dasselbe Dokument zweimal an dieselbe Abnahme und traf
+`construction_photos_acceptance_doc_uk`. Produkt richtig, Vektor falsch.
+
+**Ein Ergebnis ist bewusst INFO statt FAIL:** das Projekt-Hart-Löschen scheitert
+in der Sonde mit `42501`, weil dieses Projekt eine **Abnahme mit Ereignissen**
+trägt — γs unveränderliche Insel aus PROJ-Y-148a, nicht ein ε-Regress. Der
+ε-Pentest belegt mit Vektor K, dass Fotos allein **keinen** neuen Blocker
+erzeugen.
+
+### Abdeckungslücke, benannt statt gerundet
+
+**AC-45εH-9 ist nur teilweise erfüllt.** Wörtlich nachgefahren sind α, β,
+PROJ-Y-45a, db-group, PROJ-79 und PROJ-80 vollständig sowie γ Blöcke 3–4.
+**Nicht** wörtlich nachgefahren: **γ Blöcke 1–2** und **δ Blöcke 1–5**.
+
+Was das abdeckt und was nicht: δs Auswertung `construction_schedule_signals` ist
+durch die db-group-Blöcke **B0–B4 wörtlich** exerziert (dieselbe Funktion,
+inklusive Tiefen-Riegel) und durch Sonden-Vektor R12 mit Fotos im Projekt; γs
+Rechte-, ACL- und Wächterfläche durch Blöcke 3–4 plus die Einfrier-Vektoren.
+**Offen bleibt** die wörtliche Wiederholung von γs Abnahme-Ablauf und δs
+Signal-Buchhaltung. Das ist eine echte Lücke gegenüber dem Wortlaut des
+Kriteriums, kein erledigter Punkt.
+
+### Akzeptanzkriterien
+
+| AC | Ergebnis |
+|---|---|
+| **45ε.1** Foto hinzufügen an allen drei Ankern, kein Ordnerwahl, Ordner idempotent | ✅ Kette 1c + Abschnitts-Block; Ordner-Wettlauf per Unit-Test |
+| **45ε.2** Mehrfach, eine Abweisung bricht nicht ab, Ergebnis je Datei | ✅ 2 durch / 2 abgewiesen, beide namentlich |
+| **45ε.3** 50-MB-, Quota- und Magic-Byte-Schranken unverändert | ✅ Routentests + Kette (Text-als-`.jpg` und PDF abgewiesen) |
+| **45ε.4 / .5** HEIC → JPEG | ❌ **zurückgestellt** → PROJ-Y-45o (Q-ε1 negativ gemessen, Lizenzklärung) |
+| **45ε.6** Reihenfolge änderbar und gespeichert | ✅ Tausch in der DB gegengeprüft |
+| **45ε.7** Aufnahmedatum vorbelegt, sonst leer, nachtragbar | ✅ mit EXIF `2026-03-14`, ohne EXIF **NULL** (nicht „heute") |
+| **45ε.8** ausschliesslich die Aufnahmezeit | ✅ Original trägt Geräteangaben + GPS-Marke (auf **Bytes** geprüft), Zeile trägt nur das Datum |
+| **45ε.9** Galerie lädt Vorschau, Original per Download | ✅ Adressen im DOM festgenagelt |
+| **45ε.10** lösen ohne Dateiverlust, löschen in den Papierkorb | ✅ Dokumentzahl unverändert, `deleted_at` null |
+| **45ε.11** Mängelanzeige zeigt Foto, Bildtext, Datum | ✅ plus `naturalWidth > 0` — die Bytes kommen an |
+| **45ε.12** Abnahmeprotokoll zeigt Fotos | ⚠️ nur über die Struktur (Prod hat 0 Abnahmen mit Fotos; Route und Island sind dieselben wie bei .11) |
+| **45ε.13** Druckgrösse eingebettet, Zeitgrenze | ✅ `size=print`, PDF 45.039 Byte |
+| **45ε.14** kein Foto ohne Berechtigung im Ausdruck | ✅ Sitzungs-Client; Auth-Gate-Spec belegt, dass ohne Sitzung nichts durchkommt |
+| **45ε.15** Fotostrecke am Abschnitt, Zahl in der Liste | ✅ Zähler 1 nach Upload, Anker in der DB gegengeprüft |
+| **45ε.16 / .17** β-Regel | ❌ **F-1** — angeboten, aber nicht ausführbar für Betrachter |
+| **45ε.18** Modul-Gate | ✅ Routentests + Auth-Gates |
+| **45ε.19** Mandanten-/Projekttrennung, auch aggregiert | ✅ ε-Pentest + Nachbar-Sonde |
+| **45ε.20** verknüpftes Foto nicht löschbar, Bezug benannt | ✅ Vektor F (nennt „Mangel") und G |
+| **45ε.21** Verschieben/Umbenennen unberührt | ⚠️ strukturell (Verknüpfung zeigt auf die Kennung); PROJ-79 `MOVE-OK` wörtlich grün |
+| **45ε.22** Bild löst keine Extraktion aus | ✅ L38-Tests, ungemockt |
+| **45ε.23** PROJ-80-Fälle wörtlich grün | ✅ 10/10 |
+
+**Härtungskriterien:** H-1 ✅ (Nicht-Admin synthetisiert) · H-2 ✅ (Aggregat-Leck
+mit Gegenprobe) · H-3 ✅ (`anon` **und** PUBLIC über alle) · H-4 ✅ (kein
+Schreibweg an den Funktionen vorbei, als Mandanten-Admin) · H-5 ✅ (Register mit
+Zweig-Gegenprobe) · H-6 ✅ (Ausliefer-Route ohne Sitzung: 307, kein Bild-Typ,
+keine Magic Bytes) · H-7 ✅ (Pixelgrenze vor dem Entpacken) · H-8 ✅ · **H-9 ⚠️
+teilweise** (siehe Abdeckungslücke) · H-10 ✅ (Visual 13/13 ohne Neuaufnahme) ·
+H-11 ✅ (Inventar in `/backend` aufgefrischt, 285 → 293) · H-12 ✅ (Rot-Grün
+14 Klassen über Backend und Frontend) · H-13 ✅ · **H-14 ⚠️** (Renderer-Hälfte
+gegenstandslos, in `/frontend` gemessen und begründet; die Benennungs-Hälfte ist
+gebaut und getestet) · H-15 ✅ (Vektor K) · H-16 ✅ · H-17 ✅
+
+### Gates
+
+| Prüfung | Ergebnis |
+|---|---|
+| `npx vitest run` | **3729/3729** (438 Dateien) |
+| ESLint repo-weit | **0**, Exit 0 |
+| `tsc --noEmit` | **13 = Baseline / 0 neu** (nach `rm -rf .next`) |
+| Playwright ε-Kette | **11 grün / 1 Befund-`fixme`**, 3× stabil |
+| Playwright ε-Auth-Gates | **9/9** |
+| Playwright α/β-Bau-Auth-Gates | **18/18** wörtlich |
+| Visual-Regression | **13/13** ohne Neuaufnahme |
+| Advisors (Security) | **152 WARN / 0 ERROR**; die 3 ε-WARN sind die beabsichtigte Kategorie mit 149 Bestandsfällen |
+| Prod-Rückstände | **0** (0 Fotos, 0 Dokumente, 0 Knoten, 0 eigene Mängel, Quota zurückgesetzt, 0 deaktivierte Trigger) |
+
+### Zwei eigene Messfehler, festgehalten
+
+**Der erste Kettenlauf meldete drei Fehlschläge, die keine Produktfehler waren.**
+Mein Aufräumen löschte projektweit, Playwright fährt `describe`-Blöcke aber
+parallel — ein fertiger Block nahm einem laufenden die Fotos weg. Dieselbe Klasse,
+die β mit Bereichsbuchstaben gelöst hat; hier nicht lösbar (ein Foto trägt keinen
+Titel), also läuft die Datei ganz seriell.
+
+**Die GPS-Zusicherung war falsch, nicht die Fixture.** EXIF speichert numerische
+Tag-Kennungen, keine Namen — eine Textsuche nach `GPSLatitudeRef` schlägt
+zwangsläufig fehl, auch wenn GPS-Daten vorhanden sind. Jetzt wird der
+GPS-IFD-Zeiger `0x8825` in der vom TIFF-Kopf angesagten Bytefolge gesucht,
+hinter dem `Exif\0\0`-Präfix.
+
+Dazu die aus PROJ-Y-143e bekannte Falle erneut angetroffen: eine halb
+geschriebene `.next/dev/types/validator.ts` liess `tsc` mit **3** statt 13
+Fehlern abbrechen — **weniger** Fehler sah wie eine Verbesserung aus. Nach
+`rm -rf .next` wieder 13.
+
+### Abweichungen
+
+- **D-ε.qa.1** — die Kettendatei läuft **ganz** seriell und ist nur als Ganzes
+  aussagekräftig; ein einzelner Block per `-g` scheitert, weil er auf den Upload
+  des Vortests aufbaut.
+- **D-ε.qa.2** — AC-45ε.12 und .21 sind strukturell belegt, nicht durchfahren
+  (Prod trägt keine Abnahme mit Fotos; Route und Island sind dieselben wie .11).
+- **D-ε.qa.3** — Mobile Safari env-übersprungen (PROJ-67/F2).
+- **D-ε.qa.4** — die 17 Mängel des Laufs über den Runbook-Weg entfernt, weil
+  PROJ-Y-45h den regulären Weg versperrt.
+
 ---
 
 ## Deployment — δ (2026-08-21)
