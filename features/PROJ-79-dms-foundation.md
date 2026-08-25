@@ -1,6 +1,11 @@
 # PROJ-79: DMS Foundation
 
 ## Status: Deployed (α backend + frontend + QA + live-RPC/RLS prod-smoke — 0 Critical/High; PR #247 → main, Tag v2.18.0-PROJ-79, 2026-07-23; β externe Konnektoren deferred)
+
+## Deployment Scope: alpha
+
+> **Scope-Klassifikation (PROJ-Y-145b, Tranche 5, 2026-08-24):** Der Statusheader nennt die Grenze selbst: **„α backend + frontend + QA + live-RPC/RLS prod-smoke … β externe Konnektoren deferred"**, und der CIA-Review vom 2026-07-21 hat den Schnitt ausdruecklich so gelegt — β (SharePoint/GDrive-OAuth, Vault, On-Demand-Fetch, naechtlicher Quota-Sweep) ist eine eigene, **CIA-pflichtige** Zeile. Ein benannter Teil-Schnitt mit eigener QA und eigenem Deployment, der Rest ausdruecklich aufgelistet: das ist `alpha`. α selbst ist stark belegt (Live-RPC/RLS-Prod-Smoke 16/16 mit 0 Rueckstaenden, echte OOXML-Erkennung inklusive des Beweises, dass die Full-Buffer-Pruefung noetig ist). Followup **PROJ-Y-79a**.
+
 **Created:** 2026-06-06
 **Last Updated:** 2026-07-21
 

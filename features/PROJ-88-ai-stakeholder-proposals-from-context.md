@@ -1,6 +1,11 @@
 # PROJ-88: AI Stakeholder Proposals from Context
 
 ## Status: Deployed
+
+## Deployment Scope: full
+
+> **Scope-Klassifikation (PROJ-Y-145b, Tranche 5, 2026-08-24):** QA-Pass mit **9/9 AC** und dem Kernbeweis live in Prod: ein Mandant mit **gueltigem** OpenAI-Schluessel bekommt `classification=3 / stub / external_blocked` — die Cloud wird also strukturell verweigert, nicht nur nicht gewaehlt. 6 Sicherheitssonden geblockt. **D-1 ist eingeloest**, nicht offen: der Nutzer stellte ein Remote-Ollama bereit, der finale Prod-Lauf `da0f606e` meldet `classification 3 / ollama / success / 7 Vorschlaege`. Dabei fielen zwei echte Fehler auf und wurden behoben (Zod-Obergrenzen verwarfen die ganze Antwort; `createOpenAICompatible` sandte **nie** ein `json_schema` — letzteres latent seit PROJ-32 und mit dem Fix fuer **alle acht** Ollama-Zwecke behoben).
+
 **Created:** 2026-06-08
 **Last Updated:** 2026-06-11
 **Origin:** CIA portfolio review 2026-06-08 (vision: "Wizard befüllt das ganze Projekt")

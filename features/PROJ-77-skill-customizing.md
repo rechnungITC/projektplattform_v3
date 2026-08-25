@@ -2,6 +2,11 @@
 
 ## Status: Deployed (α, β, γ) — COMPLETE
 
+## Deployment Scope: full
+
+> **Scope-Klassifikation (PROJ-Y-145b, Tranche 5, 2026-08-24):** Drei Teil-Slices α/β/γ, jede mit eigenem QA-Durchgang und je 0 Critical/0 High; γ fing dabei sogar eine **fremde** Audit-Regression (eine Parallel-Session hatte den `skill_knowledge_links`-Zweig aus `_tracked_audit_columns` gedroppt) und schloss sie mit einer idempotenten Reconcile-Migration. Der einzige registrierte Low — die 409-Erkennung ueber ein Meldungsfragment, weil der API-Wrapper den Status verwarf — ist von PROJ-77s **eigenem** Followup-Commit (#287) geschlossen worden, zusammen mit dem Verlauf-Tab und der Audit-Objektart-Erweiterung.
+
+
 > **Post-Deploy-Audit 2026-07-28 → [PROJ-141](PROJ-141-cross-cutting-audit-remediation-77-96-132.md) — α-Slice komplett in Prod 2026-07-28/29 (H-1 RLS + M-9 If-Match + M-10 activate-Guard + M-11 audit-events+discard + L-3 422). β (M-7/M-8/L-5) und γ (PROJ-96/132-Konsistenz) bleiben in PROJ-141 Planned. Details siehe dortige Implementation Notes.**
 **Created:** 2026-06-06
 **Last Updated:** 2026-07-29

@@ -1,6 +1,11 @@
 # PROJ-52: Gantt — Abhängigkeiten löschen via Klick
 
 ## Status: Deployed (after manual Vercel redeploy)
+
+## Deployment Scope: full
+
+> **Scope-Klassifikation (PROJ-Y-145b, Tranche 5, 2026-08-24):** Reiner Hot-Fix in einem Commit: **alle 5 AC angehakt** und im Text belegt (Klick-Dialog, DELETE-Aufruf mit Verschwinden des Pfeils, Fehler-Toast, `canEdit`-Gate, 12-px-Trefferflaeche). QA und Deployment sind duenn, aber vorhanden und ehrlich benannt: manuell vom Nutzer nach dem Live-Deploy bestaetigt (Commit `295c740`), **ohne** automatisierte Tests, weil die Gantt-Ansicht damals keine Abdeckung hatte. Die Liste „Bekannte Folge-Items" nennt Punkte **anderer** Slices (PROJ-25b-Auflagen, PROJ-43-β/γ, Vercel-Webhook), nicht offene Kriterien dieser.
+
 **Created:** 2026-05-06
 **Last Updated:** 2026-05-06
 

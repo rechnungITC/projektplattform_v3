@@ -1,6 +1,11 @@
 # PROJ-78: Skill-Projektzuordnung
 
 ## Status: Deployed (2026-08-11)
+
+## Deployment Scope: full
+
+> **Scope-Klassifikation (PROJ-Y-145b, Tranche 5, 2026-08-24):** QA **0 Critical/0 High**: Live-Pentest **14/14** gegen Prod mit 0 Rueckstaenden (Betrachter-Sperre 42501, mandantenuebergreifend, inaktiver Skill 422, Idempotenz, `manual_pm` ueberlebt den Auto-Replay, Lesbarkeit des `removed`-Ereignisses, `anon`-EXECUTE entzogen), dazu vier Regressions-Pentests fremder Slices und Playwright 6/6. **Der Architektur-Pass hat zwei Spec-Annahmen live widerlegt** und die Story dadurch erst baubar gemacht: die gespecte „Re-Resolution bei Methoden-/Typ-Wechsel" ist unerreichbar (Methode ist per Trigger unveraenderlich, `project_type` hat nach der Anlage keinen Schreibpfad) und wurde durch das real erreichbare, rein additive „Skills abgleichen" ersetzt; und `record_audit_changes` ist ein AFTER-**UPDATE**-Diff, haette fuer INSERT/DELETE also **nie** eine Zeile geschrieben. Die vier E2E-Befunde (F-1…F-4) sind vorbestehend oder Umgebungsgrenzen, keiner davon ein offenes Kriterium.
+
 **Deployed:** 2026-08-11 — Closure-Deploy, Tag `v2.44.0-PROJ-78`. Code lag bereits auf main (Merge `61943e6`, PR #301), Migration `20260807205228_proj78_project_skills` seit `/backend` in Prod → kein Runtime-Deploy nötig (Vercel deployt automatisch von main). Verifiziert auf main `265cccb`: ESLint 0 · `npm run build` clean · `check:migration-naming` 0 Errors · Post-Deploy-Smoke gegen Prod: alle neuen Flächen 307 Auth-Gate, kein Leck.
 **Created:** 2026-06-06
 **Last Updated:** 2026-08-08

@@ -1,6 +1,11 @@
 # PROJ-64: Global Dashboard / My Work Inbox
 
 ## Status: Deployed
+
+## Deployment Scope: mvp
+
+> **Scope-Klassifikation (PROJ-Y-145b, Tranche 5, 2026-08-24):** QA **Approved**, 0 Critical/0 High — aber **AC-5** ist nur zur Haelfte erfuellt: Risiko- und Termin-Warnungen sind live verdrahtet, die **Budget-Warnungen** (`budget_overrun`, `budget_threshold`, `missing_fx_rate`) stehen zwar im Typvertrag, werden aber **nicht emittiert**. Ein Alarm-Panel, das eine Budget-Kategorie kennt und nie ausloest, ist gegenueber dem Kriterium eine Auslassung, keine Nachweisluecke → **PROJ-Y-64a**. Die zwei Lows (Prioritaets-Sortierung ab > 50 offenen Punkten, „unknown"-Health bei leeren Projekten) sind bewusst abgenommen und laut AC-4 so gewollt.
+
 **Created:** 2026-05-10
 **Last Updated:** 2026-05-11
 

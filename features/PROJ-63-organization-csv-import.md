@@ -1,6 +1,11 @@
 # PROJ-63: Organization CSV Import
 
 ## Status: Deployed
+
+## Deployment Scope: full
+
+> **Scope-Klassifikation (PROJ-Y-145b, Tranche 5, 2026-08-24):** Die Definition-of-Done-Kaesten sind **saemtlich leer** — und das ist wieder nur veraltete Buchfuehrung, nicht der Lieferstand: die Spec traegt einen echten QA-Abschnitt (Clean-Worktree-Durchgang auf `/tmp/proj63-clean` an einem benannten Commit), und der Rest ist **am Code nachgemessen**: 5 API-Routen unter `src/app/api/organization-imports/`, die Wizard-Seite `/stammdaten/organisation/import`, der Cron `cleanup-organization-imports-preview`, **drei** Beispiel-CSVs unter `public/templates/`, vier Test-Dateien (Parser, Validatoren, Baumlauf, Route-Helfer) und die Migration `20260513111500_proj63_organization_csv_import.sql` in Prod. Nicht belegt sind die zwei **Nachweis**-Punkte der DoD: ein Playwright-Happy-Path mit angemeldeter Fixture (damals projektweit durch die Auth-Fixture-Grenze blockiert) und ein Live-Import mit ≥ 100 Zeilen.
+
 **Created:** 2026-05-09
 **Last Updated:** 2026-05-31
 **Deployed:** 2026-05-13 (code/migration); Status-Closure 2026-05-31 (Prod-Verify: `organization_imports` table present, `/api/organization-imports` + `/stammdaten/organisation/import` answer 307 auth-gate)

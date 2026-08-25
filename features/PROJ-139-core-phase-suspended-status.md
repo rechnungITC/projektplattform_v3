@@ -1,6 +1,11 @@
 # PROJ-139: Core — Phasen-Status „ausgesetzt" (suspended) + State-Machine
 
 ## Status: Deployed (2026-06-26 — Tag v2.3.0-PROJ-139-95-97, PR #189; prod auth-gate 307 on new routes; migration 20260624105817 live since /backend)
+
+## Deployment Scope: full
+
+> **Scope-Klassifikation (PROJ-Y-145b, Tranche 5, 2026-08-24):** QA **PASS** mit **7/7 AC**, unabhaengig live gegen Prod re-verifiziert (zurueckgerollt, 0 Rueckstaende): der CHECK akzeptiert `suspended` als fuenften Wert, die erlaubten Uebergaenge `in_progress ↔ suspended` und `suspended → cancelled` greifen, die **unerlaubten** (`suspended → completed`) werden abgewiesen, die Pflicht-Impact-Analyse liegt als eigenes Dokument vor (kein stiller Leser-Bruch auf einer Kerntabelle), `_tracked_audit_columns('phases')` enthaelt `status`, und die Regression ueber PROJ-19/26 ist gruen. Fuer eine Slice mit HOCH-Blast-Radius auf `phases` ist das die richtige Nachweistiefe.
+
 **Created:** 2026-06-24
 **Origin:** CIA-Review zu PROJ-95 (M&A-Phasenmodell) 2026-06-24 — E6 als eigene Core-Vor-Slice herausgelöst (User-bestätigt)
 **Priority:** P1 (Vorbedingung für PROJ-95 AC-95-2)

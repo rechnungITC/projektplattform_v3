@@ -1,6 +1,11 @@
 # PROJ-90: Orchestrated "Fill the Project" — Multi-Tab Generate-All + Accept-All
 
 ## Status: Deployed
+
+## Deployment Scope: full
+
+> **Scope-Klassifikation (PROJ-Y-145b, Tranche 5, 2026-08-24):** QA-Pass mit **7/7 AC**, und der Kernbeweis faellt in **einem** Lauf: eine orchestrierte Sequenz aus **einer** Quelle ergibt Backlog `2/openai/success/6` + Stakeholder `3/stub/external_blocked/0` + Risiken `2/openai/success/6` — damit sind AC-90.6 (Class-3-Isolation) und AC-90.7 (Teil-Fehlschlag isoliert) gleichzeitig belegt, ohne sie stellen zu muessen. Dazu der Accept-All-Faecher (6 Arbeitspakete + 11 Risiken), ein Einzel-Undo im Fenster und das erwartete graceful-Verhalten bei abgelaufenem Fenster. Keine neuen Routen, also keine neue Angriffsflaeche; 0 Rueckstaende.
+
 **Created:** 2026-06-08
 **Last Updated:** 2026-06-15
 **Origin:** CIA portfolio review 2026-06-08 (vision: "Wizard befüllt das ganze Projekt")

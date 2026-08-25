@@ -1,6 +1,11 @@
 # PROJ-58: Interactive Project Graph & Decision Simulation
 
 ## Status: Deployed (α + β-backend + β-UI SVG + γ edge-delete + δ critical-overlay + ε decision-sim + ζ AI-proposal-nodes + η framer-motion polish + θ 3D-Verbindungsgraph live)
+
+## Deployment Scope: full
+
+> **Scope-Klassifikation (PROJ-Y-145b, Tranche 5, 2026-08-24):** Der Statusheader belegt **acht** Teil-Slices als live (α, β-Backend, β-UI-SVG, γ Kanten-Loeschen, δ Critical-Path-Overlay, ε Entscheidungs-Simulation, ζ KI-Vorschlagsknoten, η framer-motion-Politur, θ 3D-Verbindungsgraph), die QA schliesst mit **0 Critical/0 High** und das Produktions-Deployment ist mit Kennung und `Ready`-Zustand protokolliert. Die zwei CIA-Verdikte in der Historie (keine neue Graph-Bibliothek, kein `@xyflow/react`) sind bewusste Architektur-Entscheidungen, keine Auslassungen; die urspruengliche „2D-first / 3D-deferred"-Linie ist per Nutzer-Entscheid ausdruecklich **superseded** und mit θ eingeloest.
+
 **Created:** 2026-05-07
 **Last Updated:** 2026-05-12
 

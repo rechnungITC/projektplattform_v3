@@ -1,6 +1,11 @@
 # PROJ-86: Class-3 Classifier — German False-Positive Fix
 
 ## Status: Deployed
+
+## Deployment Scope: full
+
+> **Scope-Klassifikation (PROJ-Y-145b, Tranche 5, 2026-08-24):** Die Spec hat keinen ausgefuellten QA-Abschnitt, dafuer den staerksten moeglichen Beleg: **AC-86.5 ist live in Prod gegen beide Richtungen gemessen**. Vorher waren 9 von 9 Prod-Laeufen faelschlich Class-3 → Stub → 0 Vorschlaege; nach dem Fix meldet `ki_run` vom 21:42 `classification=2 / provider=openai / status=success / 2727→507 Tokens`. Der Fix ersetzt das Grossschreib-Bigramm-Muster durch anrede- und label-gebundene Erkennung, behaelt E-Mail und Telefon, laesst die Defense-in-depth (privacy_class-Floor, manueller Stempel) unberuehrt und pinnt 18 Klassifizierer-Tests gegen einen Korpus aus einem echten Prod-Auszug. Alle 6 Kriterien erfuellt.
+
 **Created:** 2026-06-08
 **Last Updated:** 2026-06-09
 **Origin:** CIA portfolio review + live prod diagnosis 2026-06-08

@@ -1,6 +1,11 @@
 # PROJ-66: Settings Navigation in der linken Main Sidebar vereinheitlichen
 
 ## Status: Deployed
+
+## Deployment Scope: full
+
+> **Scope-Klassifikation (PROJ-Y-145b, Tranche 5, 2026-08-24):** Die Spec hat **weder QA- noch Deployment-Abschnitt** und ihre Definition of Done ist unangehakt; klassifiziert ist daher **am Code gemessen**, und die Kriterien dieser Slice sind genau dafuer geeignet, weil sie strukturell sind: `global-sidebar.tsx` fuehrt Einstellungen (19 Fundstellen) **und** den Papierkorb (4), `project-sidebar.tsx` traegt **null** Einstellungs-Eintraege — die rechte Zusatznavigation ist also wirklich entfernt und nicht nur ausgeblendet, was das erste der fuenf Risiken der Spec war. Die Admin-Sichtbarkeit ist ueber `adminOnly` verdrahtet (12 Fundstellen). Der Umfang der Slice ist ausdruecklich Navigationsbereinigung ohne Datenmodell-, RLS- oder Lifecycle-Aenderung.
+
 **Created:** 2026-05-23
 **Last Updated:** 2026-05-25
 

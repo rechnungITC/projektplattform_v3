@@ -2,6 +2,11 @@
 # PROJ-135: Dialogic Wizard Clarifying Questions (AI-Rückfragen vor der Generierung)
 
 ## Status: Deployed
+
+## Deployment Scope: full
+
+> **Scope-Klassifikation (PROJ-Y-145b, Tranche 5, 2026-08-24):** QA-Pass mit **11/11 AC** und einem Live-Rot-Team-Smoke gegen Prod (zurueckgerollt, 0 Rueckstaende), der die heikelste Stelle dieser Slice absichert: ein projektloser `clarifying`-`ki_run` ist fuer Mandanten-Mitglieder sichtbar und fuer Fremde unsichtbar — kein mandantenuebergreifendes Leck. Der Architektur-Pass hatte dafuer eigens die `project_id`-NOT-NULL-Kollision aufgeloest (bounded-nullable mit partiellem CHECK, additive tenant-scoped RLS, `wizard_draft_id`-Korrelation und Finalize-Backfill). **Die Deviation D-1 ist eingeloest, aber die Geschichte gehoert dazu:** die nicht ausgefuehrte E2E-Schicht verdeckte, dass **AC-135.3 bis 2026-08-10 unverifiziert war** — der Test navigierte ueber eine deaktivierte Stepper-Schaltflaeche, der Upload fand nie statt. Erst PROJ-Y-78f machte ihn lauffaehig und gruen. Die Lehre steht in der INDEX-Zeile: eine nicht ausgefuehrte E2E-Schicht ist **keine** Abweichung, sondern ein offenes Kriterium.
+
 **Created:** 2026-06-16
 **Last Updated:** 2026-06-22
 **Origin:** PROJ-90 "Next/Later" — promoted to its own spec (user-requested 2026-06-16)

@@ -15,6 +15,11 @@ summary_for_jira: "[HYGIENE] E2E: Platzhalter-UUID für den Projektleiter zurüc
 # PROJ-Y-143a: LEAD_PLACEHOLDER_UUID zurückführen
 
 ## Status: Deployed (2026-08-11)
+
+## Deployment Scope: tooling-only
+
+> **Scope-Klassifikation (PROJ-Y-145b, Tranche 5, 2026-08-24):** Reine Test-Ebene: der Platzhalter `LEAD_PLACEHOLDER_UUID` war ein Workaround gegen die nicht RFC-4122-konforme Fixture-Kennung und mit PROJ-143 gegenstandslos geworden. Zwei unabhaengige Nachweise statt Plausibilitaet: direkt gegen zod geprueft, dass die neue Kennung akzeptiert und die alte abgelehnt wird (der Existenzgrund des Platzhalters ist damit **messbar** entfallen), und Playwright **6/6** chromium inklusive `AC-135.3 upload half` — also genau des Falls, der den Wizard mit `responsible_user_id` ueber Schritt 1 hinausfaehrt und bei nicht-konformer Kennung stehenbliebe. Kein `src/`-Diff, keine Migration, keine Abhaengigkeit.
+
 **Deployed:** 2026-08-11 — Tag `v2.46.0-PROJ-Y-143a`. Test-only, kein Runtime-Verhalten, keine Migration.
 **Created:** 2026-08-11
 **Origin:** Followup aus PROJ-143 (dort als Followup notiert, hier als eigene Spec registriert).
