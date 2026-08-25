@@ -3538,14 +3538,120 @@ Trigger-Zahl war 4 statt 5, und `documents.checksum` ist NOT NULL.
 **Gates:** ESLint **0** · tsc **13 = Baseline / 0 neu** · vitest **3612/3612** (12 neu) ·
 migration-naming 0 · Advisors nach dem Anwenden noch zu erheben (`/qa`).
 
-#### Offen in `/backend` — ehrlich benannt, nicht gerundet
+### `/backend` — Anwendungsschicht live 2026-08-25
 
-Die **Anwendungsschicht** fehlt: die abgeleiteten Größen (`sharp`, gemessen: Vorschau 480 px 14 KB/66 ms,
-Druckgröße 1400 px 457 KB/101 ms bei einem 9-MB-Rauschbild in iPhone-Auflösung, beide parallel 144 ms bei
-+32 MB RSS — absolut also ~0,5 MB je Foto, bei einem typischen 2-MB-Foto rund 25 % Zusatzlast, was die
-Q-ε6-Entscheidung stützt), die fünf Routen (Upload · Liste · Ändern · Entfernen · Inline-Auslieferung),
-Typen, Client-Wrapper und deren Route-Tests. Die Datenschicht ist ohne sie **nicht** über HTTP
-erreichbar — die Slice ist damit lauffähig geprüft, aber nicht benutzbar.
+Die Datenschicht war lauffähig geprüft, aber über HTTP unerreichbar. Geliefert sind jetzt **vier
+Routendateien** (Sammlung mit Upload und Liste · Einzelfoto mit Ändern und Entfernen · Inline-Bytes ·
+Zähler), die abgeleiteten Größen, der automatische Ordner, der EXIF-Leser als Aufrufer, Typen,
+Client-Wrapper und **41 Routentests**. Keine Migration, kein neues Paket.
+
+**Die Zählung weicht vom Entwurf ab, und das ist kein Rundungsfehler:** dort standen „fünf Routen", hier
+sind es vier Dateien — Upload und Liste teilen naturgemäß eine Adresse (`POST`/`GET` auf derselben
+Sammlung), und der Zähler ist im Entwurf gar nicht als eigene Route geführt. Fünf **Endpunkte** in vier
+Dateien, plus der Zähler als fünfte Fläche.
+
+#### Der geteilte Aufnahmekern — eine Autorität statt einer zweiten Kopie
+
+Die Fotoaufnahme braucht dieselbe Reihenfolge wie PROJ-79 (Knoten → Objekt → Dokumentzeile, mit
+Rücknahme bei jedem Fehlschlag danach) und dieselbe Quota-Regel. Diesen Block zu **kopieren** wäre genau
+die zweite Wahrheit, die diese Slice an anderen Stellen beseitigt: das Aufräumen verwaister Knoten stünde
+dann zweimal im Repo und könnte auseinanderlaufen. Er ist deshalb nach `src/lib/dms/ingest.ts`
+**herausgelöst**; `POST /api/projects/[id]/documents` ist jetzt ein dünner Aufrufer (PROJ-144-Präzedenz,
+wo `create-work-item` aus der Route gezogen wurde).
+
+**Dabei ist ein blinder Bestandstest aufgefallen** — und er ist genau der Grund, warum die Extraktion
+nachweisbar ist statt bloß plausibel. Der Fall „rolls back the node when the documents insert fails"
+prüfte **nur**, dass das gespeicherte Objekt entfernt wird, nicht dass der verwaiste Knoten gelöscht wird;
+gegengeprüft, indem das Knotenaufräumen entfernt wurde: **der Test blieb grün**. Dieselbe Klasse wie
+β/F-1 (ein Vektor trug die Marke von AC-45β.12, ohne sie zu belegen) und wie δ2/F-1 in PROJ-130. Die
+Mock-Vorrichtung schreibt jetzt die Tabellenzugriffe mit, die Zusicherung prüft **beide** Hälften, und
+Rot-Grün ist belegt (ohne das Knotenaufräumen fällt genau dieser eine Fall). Die acht Bestandsfälle sind
+danach wörtlich grün — der Beweis, dass die Herauslösung verhaltensgleich ist.
+
+#### Vier Messungen, die den Entwurf bestätigt oder korrigiert haben
+
+**Der Ablageweg der abgeleiteten Größen ist autorisiert — live gemessen, nicht aus dem Muster
+geschlossen.** Sie liegen als Geschwister unter `…/{knoten}/_derived/`. Ob die Bucket-Regel dort noch
+greift, entscheidet `_dms_object_access`: sie liest die Segmente **1–3** (Mandant/Projekt/Knoten) und
+ignoriert tiefere. Probe in einer zurückgerollten Transaktion, **6/6**: **A** Original erlaubt · **B** der
+`_derived`-Weg ebenfalls (der tragende Vektor) · **C** auch beliebig tiefer · **D** fremdes
+Projekt-Segment abgelehnt **trotz** gültigem Knoten · **E** Nicht-Mitglied bekommt auch die abgeleitete
+Größe nicht, mit **E2** als Gegenprobe, dass der Nutzer wirklich kein Mitglied ist (sonst wäre D/E
+falsch-grün). Wäre B negativ ausgefallen, hätte der Entwurf einen unerreichbaren Ablageweg vorgesehen.
+
+**AC-45εH-17 ist per Konstruktion erfüllt, nicht per Zusage.** Die Quota-Buchhaltung hängt an
+`_dms_bump_storage_usage`, einem AFTER-INSERT-Trigger auf `documents` — gemessen. Objekte ohne
+Dokumentzeile werden also weder gezählt noch im Baum angezeigt; die abgeleiteten Größen sind genau das.
+
+**Die zweite Hälfte von AC-45εH-16 löst der Lösch-Wächter, nicht die Ordner-Neuanlage.** Erwartet war der
+Fall „Nutzer legt den Ordner in den Papierkorb, Fotos werden unerreichbar". Gemessen:
+`dms_soft_delete_subtree` setzt `documents.deleted_at` für den **ganzen** Teilbaum und löst damit
+`documents_construction_photo_lock` aus — das Papierkorbieren des Ordners **scheitert**, solange darin ein
+verknüpftes Foto liegt. Der befürchtete Zustand ist also unerreichbar. Ehrliche Nebenwirkung: die Meldung
+nennt dann das **Foto**, nicht den Ordner; sachlich richtig, für `/qa` festgehalten.
+
+**Die Ordner-Eindeutigkeit kommt aus dem Index, nicht aus einer Sperre.**
+`document_tree_nodes_root_slug_uk` ist unique über `(project_id, slug)` für `parent_id is null and
+deleted_at is null` — live gelesen. Zwei gleichzeitige Uploads können keine zwei Ordner anlegen; der
+Verlierer bekommt `23505` und liest den Gewinner. Kein Advisory-Lock, und ein Test fährt genau diesen
+Wettlauf.
+
+#### Entscheidungen, die die Routen selbst treffen mussten
+
+**Die Quota wird je Datei fortgeschrieben, nicht je Vorgang.** Der naive Weg liest den Stand einmal und
+prüft jede Datei dagegen — acht Dateien à 6 MB kämen bei 10 MB Restplatz **alle** durch. Ein Test fährt
+den Grenzfall (zwei Dateien, die einzeln passen und gemeinsam nicht).
+
+**Die Bytes gehen durch die Route, nicht über eine Signed URL.** `createDocumentSignedUrl` setzt
+`download: true`; der Browser speichert die Datei dann statt sie zu zeichnen — für `<img>` und damit für
+Galerie **und** Ausdruck unbrauchbar. Gelesen wird mit dem **Sitzungs-Client**, die Berechtigung
+entscheidet also die Bucket-Regel, nicht diese Route.
+
+**Der Ablageweg verlässt die API nicht.** Die Liste flacht den Dokument-Join ein und lässt
+`storage_path` weg: ihn mitzuliefern wäre eine Einladung, an der Ausliefer-Route vorbei zu signieren.
+
+**Erfassen gatet auf `view`, nicht auf `edit`** — die β-Regel (AC-45ε.16/.17): wer einen Mangel melden
+darf, darf ihn auch fotografieren. Ändern und Entfernen sind strenger und leben **in den Funktionen**, die
+Route gatet einheitlich `view` (D-β9-Muster, damit das Recht eine prüfbare Stelle bleibt).
+
+**Scheitert die Verknüpfung, wird das Dokument zurückgenommen.** Sonst bliebe im Baum eine Datei stehen,
+die niemand angefordert hat.
+
+#### Rot-Grün über acht Zusicherungsklassen
+
+Jede Umkehrung landet auf **genau einem** Fall — kein Test läuft leer, keiner ist zu breit. Zurückgesetzt
+über Dateikopien, nie über `git checkout` (PROJ-130-δ2/F-3-Lehre): Erfassen auf `edit` verschärft · erste
+Absage bricht die Serie ab · Quota nicht fortgeschrieben · Bildprüfung entfernt · Ablageweg durchgereicht ·
+`DELETE` löscht die Datei ohne Parameter · fremdes Projekt in der Adresse erlaubt · Galerie zieht das
+Original. Danach wieder **37/37**.
+
+#### Gates
+
+| Prüfung | Ergebnis |
+|---|---|
+| ESLint (repo-weit) | **0**, Exit 0 |
+| `tsc --noEmit` | **13 = Baseline / 0 neu** |
+| `npx vitest run` | **3653/3653** (434 Dateien) |
+| `npm run build` | clean; **alle vier** Fotoflächen im Routen-Manifest |
+| `check:migration-naming` | 0 Fehler |
+| `check:index-scope` | 0 Fehler |
+| Prod-Rückstände | **0** (0 Fotos, 0 Dokumente, 0 Fotoordner, 0 Sondenprojekte) |
+
+#### Was offen bleibt — benannt, nicht gerundet
+
+- **AC-45ε.4 und AC-45ε.5 sind unerfüllt** (HEIC/HEIF wird nach JPEG umgewandelt). Das ist die Folge des
+  Nutzer-Entscheids zu Q-ε1: die Messung an einer echten Datei fiel negativ aus, HEIC wird deshalb mit
+  **erklärender** Meldung abgewiesen (der Text nennt JPEG als Ausweg), und die Umwandlung braucht eine
+  **Lizenzklärung** vor einem Paket. Registriert als **PROJ-Y-45o**. AC-45ε.5 („schlägt die Umwandlung
+  fehl, wird abgewiesen ohne halbes Dokument") ist damit gegenstandslos, solange es keine Umwandlung gibt —
+  die Abweisung selbst ist gebaut und getestet.
+- **Die Oberfläche fehlt** (`/frontend`): Fotostrecken an Mangel, Abnahme und Bauabschnitt, Zähler auf der
+  α-Abschnittsfläche, Bilder in den beiden Druckseiten (L33, AC-45ε.11–.14) samt der
+  Drei-Sekunden-Absicherung aus AC-45εH-14.
+- **Kein authentifizierter Browser-Durchlauf** in diesem Schritt. Die Flächen sind modul- und
+  projekttyp-gegatet, und der Bau-Mandant trägt **0 Dokumente** — der Nachweis gehört in `/qa` mit der
+  Bau-Fixture-Lane aus β.
+- Advisors sind nach der Datenschicht erhoben; für die reinen Routen entsteht keine neue DB-Fläche.
 
 
 ---

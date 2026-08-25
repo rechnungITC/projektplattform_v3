@@ -114,4 +114,51 @@ export async function createDocumentSignedUrl(
   return data.signedUrl
 }
 
+/**
+ * Upload to an EXPLICIT object path. Used for derived sizes (PROJ-45-ε), which
+ * live as siblings under the owning node's folder and therefore must not go
+ * through {@link uploadDocumentFile}'s path construction.
+ *
+ * Safe with respect to the bucket policy: `_dms_object_access` resolves the
+ * node from path segments 1–3 (tenant/project/node) and ignores deeper
+ * segments — measured against the live definition, not assumed.
+ */
+export async function uploadObjectAtPath(
+  supabase: SupabaseClient,
+  path: string,
+  buffer: Buffer,
+  contentType: string,
+): Promise<void> {
+  const { error } = await supabase.storage.from(BUCKET_ID).upload(path, buffer, {
+    contentType,
+    upsert: true,
+    cacheControl: "private, max-age=0",
+  })
+  if (error) {
+    throw new Error(
+      `Failed to upload object at ${path}: ${error.message ?? "unknown storage error"}`,
+    )
+  }
+}
+
+/**
+ * Download an object's bytes under the caller's RLS context.
+ *
+ * PROJ-45-ε serves photo bytes through the route rather than a signed URL:
+ * {@link createDocumentSignedUrl} passes `download: true`, which makes the
+ * browser save the file instead of rendering it — unusable for `<img>`.
+ */
+export async function downloadDocumentFile(
+  supabase: SupabaseClient,
+  path: string,
+): Promise<Buffer> {
+  const { data, error } = await supabase.storage.from(BUCKET_ID).download(path)
+  if (error || !data) {
+    throw new Error(
+      `Failed to download object at ${path}: ${error?.message ?? "unknown storage error"}`,
+    )
+  }
+  return Buffer.from(await data.arrayBuffer())
+}
+
 export const DMS_STORAGE_BUCKET_ID = BUCKET_ID
