@@ -737,8 +737,6 @@ Followups: **PROJ-Y-51b** (F-1) · **PROJ-Y-51c** (F-2) · **PROJ-Y-51d** (F-3).
 
 ## Deployment
 
-_To be added by /deploy_
-
 **Rückwirkend protokolliert im `/qa`-Durchgang 2026-08-24** — dieser Abschnitt stand seit 2026-05-07 auf
 `_To be added by /deploy_`, obwohl die Slice-Familie inkrementell ausgeliefert wurde. Kein neuer
 Runtime-Deploy: PROJ-51 ging in Einzel-Locks live, jede mit eigenem Vercel-Deployment.
