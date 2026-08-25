@@ -2,16 +2,20 @@
 
 ## Status: Deployed (α + β + γ + γ.5/γ.6 + δ + δ.2/δ.3 + ε + ε.2/ε.3/ε.4/ε.5 + Theme-Toggle + Print-Theme — alle Slices live; einzig `work-item-kind-badge` und `ui/toast` bewusst hartcodiert)
 
-## Deployment Scope: mvp
+## Deployment Scope: full
 
-> Klassifiziert im rueckwirkenden `/qa`-Durchgang 2026-08-24 (PROJ-Y-51a). 24 von 25 Kriterien
-> erfuellt; **AC-20** (`prefers-reduced-motion`) ist literal unerfuellt und als **PROJ-Y-51c**
-> registriert, deshalb nicht `full` — die Waiver-Regel scheitert an ihrer ersten Bedingung
-> („nothing was deferred“). Die gelieferte Grenze ist ein nutzbares, in den
-> Implementierungsnotizen ausdruecklich als MVP benanntes Design-System; jede Auslassung ist
-> benannt und verfolgt (PROJ-Y-51b/51c/51d).
-**Created:** 2026-05-06
-**Last Updated:** 2026-05-07
+> **Aufgestuft 2026-08-25 durch PROJ-Y-51c** (`mvp` → `full`, mit eigenem QA-/Deploy-Pass wie von der
+> Hausregel verlangt; die Historie der Erstklassifikation bleibt unten stehen). Alle **25** Kriterien
+> sind erfüllt: AC-20 (`prefers-reduced-motion`) war der einzige Fehlschlag und ist behoben und
+> gemessen. Die Spec hat keine Definition-of-Done-Sektion; **EC-2** (reduzierte Bewegung ohne
+> Layoutsprünge) ist mit derselben Messung erfüllt.
+>
+> Die zwei verbliebenen Followups **PROJ-Y-51b** (109 tote Animations-Klassen) und **PROJ-Y-51d**
+> (fehlender Guard gegen Direktfarben-Drift) blockieren `full` nicht: beide betreffen **kein**
+> Akzeptanzkriterium dieser Spec — kein AC verlangt eine Ein-/Ausblendung der Radix-Primitiven, und
+> keines verlangt einen Wächter. Es ist damit auch nichts *zurückgestellt*, was hier gefordert war.
+>
+> **Erstklassifikation (2026-08-24, `/qa`): `mvp`** — AC-20 FAIL, registriert als PROJ-Y-51c.
 
 ## Kontext
 
@@ -79,7 +83,7 @@ PROJ-51 ist deshalb kein einzelner Redesign-Big-Bang, sondern ein kontrollierter
 - [x] AC-17: Kleine Microinteractions nutzen zuerst Tailwind-Transitions und `motion-safe`/`motion-reduce`.
 - [x] AC-18: Komplexere Animationen (Presence, Layout, Drag, Page/View-Wechsel) werden nur mit einer dedizierten Motion-Library umgesetzt, wenn Tailwind nicht reicht.
 - [x] AC-19: View Transition API wird fuer Seiten-/Viewwechsel evaluiert, aber nur genutzt, wenn sie progressiv und ohne funktionalen Bruch funktioniert.
-- [ ] AC-20: Alle Animationen respektieren `prefers-reduced-motion`. — **FAIL** (`/qa` 2026-08-24, Befund F-2: `motion-reduce:transform-none` kann `active:scale-[0.98]` wegen geringerer Spezifitaet nicht ueberschreiben; im Browser gemessen und im Kontrollexperiment ursaechlich belegt) → **PROJ-Y-51c**
+- [x] AC-20: Alle Animationen respektieren `prefers-reduced-motion`. — **PASS seit PROJ-Y-51c (2026-08-25)**; im `/qa` vom 2026-08-24 war es der einzige FAIL (Befund F-2: `motion-reduce:transform-none` konnte `active:scale-[0.98]` wegen geringerer Spezifität nicht überschreiben). Der Press-Effekt steht jetzt `motion-safe`-gekapselt an den Varianten, es gibt keine konkurrierende Regel mehr. Gemessen über alle 6 Varianten × beide Modi: `--tw-scale-x` ist `.98` **nur** bei den fünf Press-Varianten und **nur** ohne Reduktionswunsch, sonst `1`; `:active` in allen 12 Fällen `true`, also kein Fall leerlaufend.
 - [x] AC-21: Animationen duerfen Lade-, Speicher- oder PDF-Status nicht verdecken; Status muss weiterhin deterministisch sichtbar sein.
 
 ## Acceptance Criteria — 51-epsilon Project-Room Anwendung
@@ -629,7 +633,7 @@ Fixes (Hausregel: `/qa` findet, `/frontend` behebt).
 | AC-17 Tailwind-Transitions zuerst, `motion-safe`/`motion-reduce` | ✅ mit Einschränkung | Tailwind-first ist eingehalten; der `motion-reduce`-Guard existiert aber nur an 2 Komponenten (3 Dateien, 7 Vorkommen) — siehe F-2 |
 | AC-18 Motion-Library nur wo Tailwind nicht reicht | ✅ | 4 echte framer-motion-Stellen (Graph, Trajektorie, Bulk-Bar), nicht flächig; Bundle-Budget aus dem CIA-Review eingehalten |
 | AC-19 View-Transition-API progressiv | ✅ | `useViewTransition` mit Feature-Detection + Server-Zweig, 4 Tests; opt-in über 4 CSS-Klassen, verdrahtet an `vt-tab-panel` |
-| **AC-20 alle Animationen respektieren `prefers-reduced-motion`** | ❌ **FAIL** | **Befund F-2**, gemessen und ursächlich belegt — siehe unten |
+| **AC-20 alle Animationen respektieren `prefers-reduced-motion`** | ❌ FAIL am 2026-08-24 → ✅ **PASS seit PROJ-Y-51c (2026-08-25)** | Befund F-2, gemessen und ursächlich belegt — siehe unten; Behebung und Nachmessung im Nachtrag am Ende dieses Abschnitts |
 | AC-21 Animationen verdecken keinen Lade-/Speicher-/PDF-Status | ✅ | `pdf_status` wird in drei expliziten Zweigen als Text/Badge gerendert **plus** Stale-Guard (`isPdfPendingStale` → `failed`): der Status kommt aus Daten, die Animation begleitet ihn |
 | AC-22 Projektraum-Dashboard nutzt die neuen Tokens | ✅ | `health-snapshot.tsx` 0 Direktfarben; `project-detail-client.tsx` 18 Token-Treffer / 0 Direktfarben |
 | AC-23 Kacheln zeigen Datenquellen und Leerzustände | ✅ | Datenquelle ausgeschrieben („Basis: Budget · Risiken · Termine · Stakeholder"), Leerzustände in Health-Snapshot und Detail-Client vorhanden |
@@ -653,7 +657,7 @@ funktionieren also — die Lücke ist genau die Enter-/Exit-Schicht.
 **falsch** — es konkurriert nichts, weil nichts animiert. Die Entscheidung ist damit nicht widerlegt, aber
 ihre Begründung trägt nicht mehr. → **PROJ-Y-51b**
 
-**F-2 (Medium, Barrierefreiheit) — AC-20 verletzt: der `motion-reduce`-Guard am Button ist wirkungslos.**
+**F-2 (Medium, Barrierefreiheit) — AC-20 verletzt: der `motion-reduce`-Guard am Button ist wirkungslos.** **[Behoben 2026-08-25 in PROJ-Y-51c — siehe Nachtrag.]**
 Unter `prefers-reduced-motion: reduce` skaliert der Button beim Drücken **weiter** (`matrix(0.98, 0, 0, 0.98, 0, 0)`),
 obwohl er `motion-reduce:transform-none` trägt. **Ursache gemessen, nicht vermutet:**
 `active:scale-[0.98]` gibt `.active\:scale-\[0\.98\]:active` aus — Spezifität (0,2,0) —, während
@@ -734,6 +738,75 @@ ausdrücklich als MVP benanntes Design-System (die Implementierungsnotiz sagt se
 damit deployt"), jede Auslassung ist benannt und verfolgt.
 
 Followups: **PROJ-Y-51b** (F-1) · **PROJ-Y-51c** (F-2) · **PROJ-Y-51d** (F-3).
+
+### Nachtrag 2026-08-25 — PROJ-Y-51c: AC-20 behoben, Scope `mvp` → `full`
+
+**Ergebnis: 25 von 25 Kriterien PASS, 0 Critical / 0 High / 0 Medium / 0 Low in dieser Slice.**
+Der Fix ist eine Verschiebung, keine Balance-Korrektur — und unterwegs ist ein zweiter Defekt derselben
+Wurzel aufgefallen, der vorher niemandem auffiel.
+
+**Die Wurzel, einmal ausgesprochen:** eine Überschreibung mit **gleicher** Spezifität entscheidet sich über
+die Quellreihenfolge im Kompilat. `button.tsx` hatte davon zwei — und **beide** verloren:
+
+| Zusage im Code | Spezifität | Gemessenes Verhalten vorher |
+|---|---|---|
+| `motion-reduce:transform-none` soll `active:scale-[0.98]` abschalten | 0,1,0 gegen **0,2,0** | verlor immer → Button skalierte unter `reduce` weiter (**F-2**, AC-20 FAIL) |
+| `active:scale-100` an `link` soll den Press-Effekt abschalten | 0,2,0 gegen 0,2,0 | verlor über die Reihenfolge → **Textlinks skalierten beim Klicken** (**F-4**, neu) |
+
+**F-4 ist in dieser Slice gefunden und mitbehoben.** Er stand in keinem Befund des `/qa`-Durchgangs, weil
+dessen Vertragstest die **Klasse** prüfte und nicht, wer gewinnt — genau die Schwäche, die dort im Text
+schon benannt, aber nicht auf die `link`-Ausnahme angewandt wurde. Beleg zweifach: die Offsets im Kompilat
+(`.active\:scale-100:active` bei 73972, die Basis-Regel bei 74219 — die spätere gewinnt) und der Browser
+(`--tw-scale-x: .98` an einer gedrückten `link`-Sonde).
+
+**Umsetzung — Abwesenheit statt Gegenregel.** Der Press-Effekt ist aus der Basis in die fünf Varianten
+gewandert, die ihn wollen, und dort `motion-safe`-gekapselt (`motion-safe:active:scale-[0.98]`). Damit gibt
+es **keine konkurrierende Regel mehr**: unter `reduce` existiert die Regel gar nicht, und `link` nimmt sich
+durch **Abwesenheit** aus — Abwesenheit kann keine Kaskade verlieren. Die zwei widerlegten Klassen sind
+**entfernt**, nicht neu gewichtet: eine Klasse im Code zu lassen, die nachweislich nichts tut, wäre eine
+falsche Zusage. `motion-reduce:transition-colors` bleibt, dass es greift ist gemessen.
+
+**Messung über alle 6 Varianten × beide Modi** (eigene Sonde, je Fall frischer Browser-Kontext):
+
+| | 5 Press-Varianten | `link` |
+|---|---|---|
+| `no-preference` | `--tw-scale-x: .98` | `1` |
+| `reduce` | `1` | `1` |
+
+`:active` war in allen **12** Fällen `true` — kein Fall lief leer. **EC-2** ist damit ebenfalls erfüllt:
+unter reduzierter Bewegung entfällt die Transformation ganz, es gibt also auch keinen Layoutsprung.
+
+**Zwei Messfallen, beide erst falsch gemessen und dann korrigiert** — festgehalten, weil sie beim nächsten
+Mal wieder zuschlagen: (1) eine Schleifen-Sonde, die mehrere Elemente hintereinander drückt, meldete
+„skaliert nicht" für den Fall, der sehr wohl skaliert; mit je einem frischen Kontext und Instrumentierung
+(`:active`, `--tw-scale-x`, `matchMedia`) war es eindeutig. (2) `transition-all duration-150` animiert den
+Transform: unmittelbar nach `mouse.down()` liest man den Startwert. Unter `reduce` greift der Wert dagegen
+sofort — das Verhältnis kippt also **gegen** die Intuition, und ohne Wartezeit misst man das Gegenteil.
+
+**Eine Schwäche im eigenen ausgelieferten Test korrigiert.** Die Gegenkontrolle vom 2026-08-24 prüfte
+`transform !== "none"`. Ein ungedrückter Button liefert `matrix(1, 0, 0, 1, 0, 0)` — die **Identität**, die
+diese Bedingung mühelos erfüllt. Die Kontrolle konnte also grün sein, ohne dass je etwas skaliert wurde;
+jetzt wird der Faktor selbst geprüft.
+
+**Nachweise:**
+- `tests/PROJ-51-interaction-states.spec.ts` **8/8 chromium** (das eine ✘ ist F-1s verbliebene
+  `test.fail()`-Markierung, also erwartet). Die F-2-Markierung ist **entfernt** und durch eine echte
+  Zusicherung ersetzt; neu ist der `link`-Fall mit der Standardvariante als Positivkontrolle. Die
+  Sonden-Klassen kommen aus `buttonVariants` selbst statt als Kopie — eine Kopie wäre die Drift, die
+  solche Tests wertlos macht.
+- `src/components/ui/design-system-contract.test.ts` **36/36**: die fünf Press-Varianten tragen die
+  gekapselte Utility, `link` trägt **keine** Skalierungs-Utility, und die zwei widerlegten Klassen sind
+  als abwesend festgeschrieben. Der Test warnt jetzt ausdrücklich, dass er nur Präsenz sieht und der
+  Verhaltensnachweis im Playwright-Spec liegt.
+- **Rot-Grün beidseitig ausgeführt**, gegen die Fassung von vor dem Fix: 2 Vertragsfälle rot, **beide**
+  neuen Browser-Zusicherungen rot; mit dem Fix alles grün. Rücksetzung über `git show HEAD:…` in eine
+  Kopie, nicht per `git checkout` (das löscht uncommittete Slice-Arbeit).
+- **Visual-Regression 13 grün / 5 env-übersprungen, ohne Neuaufnahme** — die Umstellung ändert den
+  Ruhezustand nicht, und das ist gemessen statt angenommen.
+- Gates: vitest **3648/3648** (429 Dateien) · ESLint **0** · tsc **13 = Baseline** · Build clean.
+
+**Offen bleiben PROJ-Y-51b und PROJ-Y-51d** — beide berühren kein Akzeptanzkriterium dieser Spec und
+blockieren `full` deshalb nicht.
 
 ## Deployment
 

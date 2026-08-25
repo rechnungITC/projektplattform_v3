@@ -81,15 +81,47 @@ describe("PROJ-51 AC-12 — Button trägt alle vier Zustände in jeder Variante"
     },
   )
 
-  it("Active-Press ist in der Basis und die link-Variante nimmt sich dokumentiert aus", () => {
-    expect(buttonVariants({ variant: "default" })).toContain(
-      "active:scale-[0.98]",
-    )
-    // `link` ist ein Textlink — ein Skalieren wäre dort falsch. Die Ausnahme
-    // wird festgeschrieben, damit sie eine Entscheidung bleibt und nicht als
-    // Lücke gelesen wird.
-    expect(buttonVariants({ variant: "link" })).toContain("active:scale-100")
+  it("Press-Feedback steht motion-safe-gekapselt an den Varianten, nicht in der Basis", () => {
+    // PROJ-Y-51c: vorher stand `active:scale-[0.98]` in der Basis und `link`
+    // nahm sich per `active:scale-100` aus. Beide Zusagen hielten nicht —
+    // Gleichstand der Spezifität (0,2,0), entschieden über die Quellreihenfolge
+    // im Kompilat. Jetzt gibt es keine konkurrierende Regel mehr.
+    //
+    // ACHTUNG bei Erweiterungen: diese Prüfung sieht nur, DASS die Utility da
+    // steht — nicht, dass sie gewinnt. Genau diese Lücke hat F-2 und F-4
+    // entstehen lassen. Der Verhaltensnachweis liegt in
+    // `tests/PROJ-51-interaction-states.spec.ts` und drückt echte Knöpfe.
+    const PRESS = "motion-safe:active:scale-[0.98]"
+    for (const variant of BUTTON_VARIANTS) {
+      const classes = buttonVariants({ variant })
+      if (variant === "link") {
+        // Ein Textlink soll nicht springen. Der Opt-out ist die ABWESENHEIT
+        // jeder Skalierungs-Utility — Abwesenheit kann keine Kaskade verlieren.
+        expect(classes, "link trägt wieder eine Skalierungs-Utility").not.toMatch(
+          /scale-/,
+        )
+      } else {
+        expect(classes, `Variante ${variant} ohne Press-Feedback`).toContain(
+          PRESS,
+        )
+      }
+    }
   })
+
+  it("die widerlegten Überschreibungen sind aus dem Code verschwunden, nicht neu ausbalanciert", () => {
+    // Eine Klasse, die nachweislich nichts tut, im Code zu lassen wäre eine
+    // falsche Zusage — deshalb wird ihre Abwesenheit festgeschrieben.
+    for (const variant of BUTTON_VARIANTS) {
+      const classes = buttonVariants({ variant })
+      expect(classes).not.toContain("motion-reduce:transform-none")
+      expect(classes).not.toContain("active:scale-100")
+    }
+    // Der Transitions-Anteil des Guards greift dagegen (gemessen) und bleibt.
+    expect(buttonVariants({ variant: "default" })).toContain(
+      "motion-reduce:transition-colors",
+    )
+  })
+
 })
 
 describe("PROJ-51 AC-14 — Badge-Varianten folgen einem Muster", () => {
