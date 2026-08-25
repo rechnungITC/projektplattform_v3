@@ -3654,6 +3654,136 @@ Original. Danach wieder **37/37**.
 - Advisors sind nach der Datenschicht erhoben; für die reinen Routen entsteht keine neue DB-Fläche.
 
 
+### `/frontend` — Fotoflächen live 2026-08-25
+
+Geliefert: **eine** Fotostrecke für alle drei Anker (Mangel · Abnahme ·
+Bauabschnitt), ein Client-Eiland für die beiden Druckseiten, Fotozähler auf der
+α-Abschnittsfläche, zwei Hooks und die reine Strecken-Lib. **Keine Migration,
+kein neues Paket, keine neue Route.** 29 neue Tests plus ein Auth-Gate-Spec.
+
+#### Ein Befund, der ein Härtungskriterium umdeutet
+
+**AC-45εH-14 verlangt, dass „der Renderer gemessen höchstens drei Sekunden
+wartet und dann still weiterläuft" — auf diese zwei Druckseiten trifft das
+nicht zu.** `renderSnapshotPdf` baut seine Adresse **fest verdrahtet** als
+`/reports/snapshots/{id}/print` (`puppeteer-render.ts:105`); die Mängelanzeige
+und das Abnahmeprotokoll werden von **niemandem** durch Puppeteer geschickt,
+sondern per Verweis im Browser geöffnet und dort gedruckt — genau so, wie β und
+γ ihren „echten Druck nach PDF" in `/qa` geführt haben. Die
+Drei-Sekunden-Grenze (`ASSET_READY_TIMEOUT_MS`) gehört zum Schnappschuss-Lauf
+und ist hier gegenstandslos; das Warten auf Bilder übernimmt der Browser des
+Nutzers.
+
+Damit bleibt die **tragende** Hälfte des Kriteriums, und die ist gebaut: ein
+Bild, das nicht geladen werden konnte, wird **benannt** (Dateiname statt leerer
+Kasten), und die Bildunterschrift bleibt stehen — der Nachweis sagt also, *was*
+fehlt. Ein lautlos ausfallendes Foto wäre genau die Klasse, die PROJ-Y-45l
+beseitigt hat. Sieben Fälle pinnen das, darunter „ein Fehlschlag betrifft nur
+sein eigenes Bild".
+
+**Nicht** stillschweigend übergangen: hätte ich das Kriterium wörtlich als
+erfüllt gebucht, wäre die Zusage an einen Renderer gebunden, der diese Seiten
+nie besucht.
+
+#### Entscheidungen, die die Oberfläche treffen musste
+
+**Der Anker wird per `key` gewechselt, nicht im Effect zurückgesetzt.** Ein
+`setState` im Effect-Rumpf ist im Haus verboten (`react-hooks/set-state-in-effect`
+schlug beim ersten Entwurf zu); die Antwort ist dieselbe wie in γ beim
+Protokoll-Formular und in PROJ-70-β: der Aufrufer montiert die Strecke neu.
+
+**Die Einfrier-Achse stammt aus dem deployten Wächter, nicht aus einer Annahme.**
+`construction_photo_removal_guard` wurde live gelesen: er weist bei genau
+`abgenommen`, `abgenommen_unter_vorbehalt` und `verweigert` mit `42501` ab. Das
+neue Prädikat `isAcceptanceRecorded` leitet sich aus der schon vorhandenen
+Konstante `CONSTRUCTION_ACCEPTANCE_RESULTS` ab statt aus einer zweiten
+Werteliste — eine Kopie liefe beim nächsten Ergebnis-Wert auseinander. Und weil
+der Wächter **allein am Löschen** hängt, bleiben Bildunterschrift, Datum und
+Reihenfolge änderbar: das ist die Ergänzung, die Q-ε7 ausdrücklich zulässt.
+
+**Umsortieren sind zwei Schreibvorgänge, nicht N.** Die ganze Strecke
+durchzunummerieren wäre bei einem Fehlschlag in der Mitte halb umsortiert.
+Sonderfall gepinnt: bei **gleichen** Ordnungswerten (Löschen hinterlässt Lücken)
+wird gezielt verschoben, sonst wäre der Tausch wirkungslos.
+
+**Leeren geht über den ausdrücklichen Schalter, nicht über ein weggelassenes
+Feld** — „weglassen" heisst serverseitig UNVERÄNDERT (der in PROJ-122 live
+aufgetretene Defekt, den β und γ schon so behandeln). Gesendet wird ausserdem nur
+das wirklich Geänderte.
+
+**Kein Abzeichen, wenn die Zahl unbekannt ist.** Der Zähler kommt aus **einer**
+Abfrage für die ganze Abschnittsliste (AC-45ε.15 verlangt „ohne die Bilder zu
+laden"); solange sie fehlt, erscheint gar kein Abzeichen statt einer erfundenen
+Null — „keine Fotos" und „noch nicht geladen" dürfen nicht gleich aussehen
+(PROJ-64 AC-9).
+
+**Die Galerie lädt die Vorschau, der Ausdruck die Druckgrösse, das Original hängt
+am Herunterladen-Knopf** (AC-45ε.9/.13). Beide Adressen sind im Test festgenagelt,
+weil der Unterschied nur dort ablesbar ist und die falsche Wahl zweistellige
+Megabyte je Ansicht kostet.
+
+**Die Fläche erklärt, was die Quota zählt** (AC-45εH-17): nur die Originaldatei.
+Ohne diesen Satz wäre die Anzeige richtig und unverständlich.
+
+#### Die Rechteweiche ist als PAAR bewiesen
+
+Der Test belegt nicht nur, dass dem Betrachter Ändern und Entfernen fehlen,
+sondern im **selben** Zustand, dass ihm „Foto hinzufügen" angeboten wird. Nur die
+eine Hälfte belegte „Knopf fehlt", nicht „hier bewusst anders als bei der
+Abnahme" — genau die Lücke, die der γ-QA-Lauf an seinem eigenen Test gefunden
+hat. Herunterladen bleibt dem Betrachter ebenfalls (AC-45ε.16).
+
+#### Rot-Grün über sechs Zusicherungsklassen
+
+Jede Umkehrung landet, und die Trefferzahlen sind aussagekräftig: Hinzufügen an
+`canManage` binden trifft **2** Fälle (beide Hälften des Paars), die Einfrier-Achse
+aushebeln **2** (Lib und DOM), das Fehlbild verschweigen **3**, Ausdruck auf das
+Original umstellen **1**, Galerie auf das Original **1**, abgewiesene Dateien nicht
+benennen **2**. Zurückgesetzt über Dateikopien, nie über `git checkout`.
+
+#### Gates
+
+| Prüfung | Ergebnis |
+|---|---|
+| ESLint (repo-weit) | **0**, Exit 0 |
+| `tsc --noEmit` | **13 = Baseline / 0 neu** |
+| `npx vitest run` | **3729/3729** (438 Dateien, +29) |
+| `npm run build` | clean; beide Druckseiten im Routen-Manifest |
+| Visual-Regression | **13/13 ohne Neuaufnahme** (AC-45εH-10) |
+| α/β-Bau-Auth-Gates | **18/18 wörtlich** |
+| ε-Auth-Gates (neu) | **9/9** |
+| `check:index-scope` · `check:migration-naming` | je 0 Fehler |
+
+**Ein eigener Messfehler, festgehalten:** der erste Visual-Lauf meldete 9
+Fehlschläge. Ursache war meine Aufrufform — mit `127.0.0.1` als Basisadresse
+blockiert Next.js den Zugriff auf Dev-Ressourcen, das erzeugt einen
+Konsolenfehler, und der Wächter aus PROJ-Y-143e schlägt zu Recht an. Mit
+`localhost` sind es 13/13. Kein Produktfehler; die Lehre ist, dass ein
+Sammel-Fehlschlag über neun unabhängige Flächen zuerst nach Infrastruktur
+aussieht und nicht nach der eigenen Änderung.
+
+**Der neue ε-Auth-Gate-Spec schliesst vorbeugend die Lücke, die β's QA gefunden
+hat** (dort hatten die fünf neuen API-Routen bis zur Abnahme gar keinen
+Gate-Test). Tragender Fall ist die Ausliefer-Route: geprüft wird nicht nur der
+Status **307**, sondern dass weder ein Bild-Inhaltstyp noch JPEG-/PNG-Magic-Bytes
+im Rumpf stehen — ein Leck mit korrektem Status sieht eine reine Statusprüfung
+nicht.
+
+#### Was offen bleibt
+
+- **AC-45ε.4/.5** (HEIC → JPEG) unverändert unerfüllt → **PROJ-Y-45o**
+  (Lizenzklärung vor einem Paket).
+- **Kein authentifizierter Browser-Durchlauf und kein echter Druck nach PDF mit
+  sichtbaren Fotos.** Prod trägt **0 Dokumente** und **0 Fotos**; der Nachweis
+  braucht die Bau-Fixture-Lane aus β samt geseedeten Bildern und gehört nach
+  `/qa` — dort liegt auch der von den eigenen Risiken als schwierigster benannte
+  Fall. Ungeprüft ist damit insbesondere, ob `next/image` mit `unoptimized` im
+  Druckkontext wirklich Bytes zieht; die Adresse und der Fehlerpfad sind
+  getestet, der Ladevorgang selbst nicht.
+- **AC-45ε.6 zur Hälfte über die Lib belegt:** dass die Reihenfolge *gespeichert*
+  wird, prüft der Routentest der Datenschicht; dass die Strecke sie *anzeigt*,
+  folgt aus der serverseitigen Sortierung und ist im Browser nicht nachgemessen.
+
 ---
 
 ## Deployment — δ (2026-08-21)

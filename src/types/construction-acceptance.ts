@@ -212,6 +212,20 @@ export function isAcceptanceOpen(status: ConstructionAcceptanceStatus): boolean 
   return status === "angesetzt"
 }
 
+/**
+ * Ist die Abnahme protokolliert, also mit einem Ergebnis abgeschlossen?
+ *
+ * Spiegelt `construction_photo_removal_guard`, der bei genau diesen drei Werten
+ * das Entfernen eines Fotos mit `42501` abweist (PROJ-45-ε, Q-ε7). Abgeleitet
+ * aus `CONSTRUCTION_ACCEPTANCE_RESULTS` statt aus einer zweiten Werteliste —
+ * eine Kopie würde beim nächsten Ergebnis-Wert auseinanderlaufen.
+ */
+export function isAcceptanceRecorded(
+  status: ConstructionAcceptanceStatus
+): boolean {
+  return (CONSTRUCTION_ACCEPTANCE_RESULTS as readonly string[]).includes(status)
+}
+
 /** Trägt diese Abnahme eine laufende Gewährleistungsfrist? */
 export function hasWarranty(a: ConstructionAcceptance): boolean {
   return a.warranty_end_date !== null

@@ -2,7 +2,9 @@ import type { Metadata } from "next"
 import { notFound } from "next/navigation"
 
 import { CONSTRUCTION_DEFECT_SEVERITY_LABELS } from "@/lib/construction/defects"
+import { ConstructionPhotoPrintList } from "@/components/construction/construction-photo-print-list"
 import { createClient } from "@/lib/supabase/server"
+import type { ConstructionPhoto } from "@/types/construction-photo"
 import {
   CONSTRUCTION_ACCEPTANCE_PARTICIPANT_ROLE_LABELS,
   CONSTRUCTION_ACCEPTANCE_STATUS_LABELS,
@@ -20,6 +22,15 @@ export const metadata: Metadata = {
 interface PageProps {
   params: Promise<{ id: string }>
   searchParams: Promise<{ abnahme?: string }>
+}
+
+interface AcceptancePhotoRow extends ConstructionPhoto {
+  documents: {
+    original_filename: string | null
+    mime_type: string | null
+    size_bytes: number | null
+    deleted_at: string | null
+  } | null
 }
 
 const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i
@@ -132,6 +143,36 @@ export default async function ConstructionAcceptanceProtocolPrintPage({
     .maybeSingle()
 
   if (!acceptanceRow) notFound()
+
+  /*
+   * PROJ-45-ε (L33, AC-45ε.12) — Fotos dieser Abnahme.
+   *
+   * Wie überall auf dieser Seite über den Sitzungs-Client: was der Aufrufer
+   * nicht sehen darf, kommt nicht zurück (AC-45ε.14). `documents!inner` lässt
+   * Fotos weg, deren Datei im DMS-Papierkorb liegt.
+   */
+  const { data: photoRows } = await supabase
+    .from("construction_photos")
+    .select(
+      "id, project_id, document_id, defect_id, acceptance_id, section_id, " +
+        "caption, taken_on, sort_order, created_by, created_at, " +
+        "documents!inner(original_filename, mime_type, size_bytes, deleted_at)"
+    )
+    .eq("project_id", id)
+    .eq("acceptance_id", abnahme)
+    .order("sort_order", { ascending: true })
+    .order("created_at", { ascending: true })
+    .limit(500)
+
+  const photos: ConstructionPhoto[] = (photoRows ?? [])
+    .map((raw) => raw as unknown as AcceptancePhotoRow)
+    .filter((row) => !row.documents?.deleted_at)
+    .map((row) => ({
+      ...row,
+      original_filename: row.documents?.original_filename ?? null,
+      mime_type: row.documents?.mime_type ?? null,
+      size_bytes: row.documents?.size_bytes ?? null,
+    }))
   const a = acceptanceRow as unknown as AcceptanceRow
 
   const [{ data: participantRows }, { data: reservationRows }] = await Promise.all([
@@ -308,6 +349,13 @@ export default async function ConstructionAcceptanceProtocolPrintPage({
           Nicht in diesem Protokoll erklärte Vorbehalte verfallen mit der Abnahme.
         </p>
       </section>
+
+      {photos.length > 0 ? (
+        <section className="mt-8">
+          <h2 className="mb-2 text-base font-semibold">Fotodokumentation</h2>
+          <ConstructionPhotoPrintList projectId={id} photos={photos} />
+        </section>
+      ) : null}
 
       <section className="mt-12">
         <div className="grid grid-cols-2 gap-12 text-sm">

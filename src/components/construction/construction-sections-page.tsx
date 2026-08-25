@@ -1,21 +1,26 @@
 "use client"
 
-import { ChevronRight, Layers, Pencil, Plus, Trash2 } from "lucide-react"
+import { Camera, ChevronRight, Layers, Pencil, Plus, Trash2 } from "lucide-react"
 import * as React from "react"
 import { toast } from "sonner"
+
+import { ConstructionPhotoStrip } from "./construction-photo-strip"
 
 import { ModuleUnavailableNotice } from "@/components/app/module-unavailable-notice"
 import { ConstructionSectionDialog } from "@/components/construction/construction-section-dialog"
 import { Button } from "@/components/ui/button"
 import { Card, CardContent } from "@/components/ui/card"
+import { Badge } from "@/components/ui/badge"
 import { Skeleton } from "@/components/ui/skeleton"
 import {
   buildSectionTree,
   flattenSectionTree,
   useConstructionSections,
 } from "@/hooks/use-construction"
+import { useConstructionPhotoCounts } from "@/hooks/use-construction-photos"
 import { useProjectAccess } from "@/hooks/use-project-access"
 import { deleteConstructionSection } from "@/lib/construction/api"
+import type { ConstructionPhotoCounts } from "@/types/construction-photo"
 import type { ConstructionSection } from "@/types/construction"
 
 type DialogState =
@@ -39,6 +44,14 @@ export function ConstructionSectionsPage({ projectId }: { projectId: string }) {
     useConstructionSections(projectId)
   const [dialog, setDialog] = React.useState<DialogState>({ mode: "closed" })
   const [busyId, setBusyId] = React.useState<string | null>(null)
+  // PROJ-45-ε / AC-45ε.15 — EINE Abfrage für die ganze Liste. Je Abschnitt eine
+  // Strecke zu laden hiesse N Abrufe für eine Zahl, und die Bilder selbst
+  // braucht die Liste gar nicht.
+  const {
+    counts: photoCounts,
+    refresh: refreshPhotoCounts,
+  } = useConstructionPhotoCounts(projectId)
+  const [openPhotos, setOpenPhotos] = React.useState<string | null>(null)
 
   const rows = React.useMemo(
     () => flattenSectionTree(buildSectionTree(sections)),
@@ -147,6 +160,23 @@ export function ConstructionSectionsPage({ projectId }: { projectId: string }) {
                       </p>
                     ) : null}
                   </div>
+                  <Button
+                    variant="ghost"
+                    size="sm"
+                    className="shrink-0"
+                    aria-expanded={openPhotos === node.id}
+                    onClick={() =>
+                      setOpenPhotos((cur) => (cur === node.id ? null : node.id))
+                    }
+                  >
+                    <Camera className="mr-1 h-3.5 w-3.5" />
+                    Fotos
+                    {photoCount(photoCounts, node.id) > 0 ? (
+                      <Badge variant="secondary" className="ml-1.5">
+                        {photoCount(photoCounts, node.id)}
+                      </Badge>
+                    ) : null}
+                  </Button>
                   {canEdit ? (
                     <div className="flex shrink-0 items-center gap-1">
                       <Button
@@ -179,6 +209,20 @@ export function ConstructionSectionsPage({ projectId }: { projectId: string }) {
                 </li>
               ))}
             </ul>
+            {openPhotos ? (
+              <div className="border-t p-4">
+                <ConstructionPhotoStrip
+                  key={openPhotos}
+                  projectId={projectId}
+                  anchor={{ section_id: openPhotos }}
+                  canManage={canEdit}
+                  heading={`Fotos · ${
+                    rows.find((r) => r.id === openPhotos)?.label ?? "Abschnitt"
+                  }`}
+                  onChanged={refreshPhotoCounts}
+                />
+              </div>
+            ) : null}
           </CardContent>
         </Card>
       )}
@@ -196,4 +240,16 @@ export function ConstructionSectionsPage({ projectId }: { projectId: string }) {
       />
     </div>
   )
+}
+
+/**
+ * Fotozahl eines Abschnitts. `0` bei fehlender Auskunft — und die Fläche zeigt
+ * dann KEIN Abzeichen statt einer erfundenen Null: „keine Fotos" und „noch nicht
+ * geladen" sehen sonst gleich aus.
+ */
+function photoCount(
+  counts: ConstructionPhotoCounts | null,
+  sectionId: string
+): number {
+  return counts?.by_section?.[sectionId] ?? 0
 }
