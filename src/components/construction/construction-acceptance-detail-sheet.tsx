@@ -4,6 +4,8 @@ import { ExternalLink, FileText, Link2, Printer, Trash2, X } from "lucide-react"
 import * as React from "react"
 import { toast } from "sonner"
 
+import { ConstructionPhotoStrip } from "./construction-photo-strip"
+
 import { Badge } from "@/components/ui/badge"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
@@ -39,6 +41,7 @@ import {
   CONSTRUCTION_ACCEPTANCE_PARTICIPANT_ROLE_LABELS,
   CONSTRUCTION_ACCEPTANCE_STATUS_LABELS,
   isAcceptanceOpen,
+  isAcceptanceRecorded,
 } from "@/types/construction-acceptance"
 
 /**
@@ -540,6 +543,24 @@ export function ConstructionAcceptanceDetailSheet({
                   </p>
                 )}
               </section>
+
+              <Separator />
+
+              {/*
+                PROJ-45-ε — Fotostrecke der Abnahme (AC-45ε.1, AC-45ε.12).
+                `frozen` an einem der drei Ergebnis-Status: dort darf ergänzt,
+                aber nicht entfernt werden (Q-ε7). Die Regel ist
+                `construction_photo_removal_guard`; hier wird sie nur
+                ausgesprochen, damit kein Knopf in eine Absage führt.
+              */}
+              <ConstructionPhotoStrip
+                key={acc.id}
+                projectId={projectId}
+                anchor={{ acceptance_id: acc.id }}
+                canManage={canManage}
+                frozen={isAcceptanceRecorded(acc.status)}
+                heading="Fotos zur Abnahme"
+              />
 
               <Separator />
 

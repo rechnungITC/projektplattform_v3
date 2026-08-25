@@ -6,12 +6,14 @@ import {
   CONSTRUCTION_DEFECT_SEVERITY_LABELS,
   isDefectOverdue,
 } from "@/lib/construction/defects"
+import { ConstructionPhotoPrintList } from "@/components/construction/construction-photo-print-list"
 import { createClient } from "@/lib/supabase/server"
 import type { ModuleKey } from "@/types/tenant-settings"
 import type {
   ConstructionDefectSeverity,
   ConstructionDefectStatus,
 } from "@/types/construction-defect"
+import type { ConstructionPhoto } from "@/types/construction-photo"
 
 export const metadata: Metadata = {
   title: "Mängelanzeige · Druck",
@@ -108,6 +110,56 @@ export default async function ConstructionDefectNoticePrintPage({
 
   if (error) notFound()
   const defects = (defectRows ?? []) as unknown as NoticeDefectRow[]
+
+  /*
+   * PROJ-45-ε (L33, AC-45ε.11) — Fotos der angezeigten Mängel.
+   *
+   * EINE Abfrage für alle Mängel der Anzeige, nicht eine je Mangel. Sie läuft
+   * über denselben Sitzungs-Client wie alles andere auf dieser Seite: was die
+   * RLS verbirgt, kommt gar nicht zurück (AC-45ε.14) — die Anzeige braucht dafür
+   * kein eigenes Tor.
+   *
+   * `documents!inner` schliesst Fotos aus, deren Datei im DMS-Papierkorb liegt;
+   * ein gelöschtes Dokument soll nicht als leerer Kasten im Nachweis stehen.
+   */
+  const photosByDefect = new Map<string, ConstructionPhoto[]>()
+  if (defects.length > 0) {
+    const { data: photoRows } = await supabase
+      .from("construction_photos")
+      .select(
+        "id, project_id, document_id, defect_id, acceptance_id, section_id, " +
+          "caption, taken_on, sort_order, created_by, created_at, " +
+          "documents!inner(original_filename, mime_type, size_bytes, deleted_at)"
+      )
+      .eq("project_id", id)
+      .in(
+        "defect_id",
+        defects.map((d) => d.id)
+      )
+      .order("sort_order", { ascending: true })
+      .order("created_at", { ascending: true })
+      .limit(1000)
+
+    for (const raw of photoRows ?? []) {
+      const row = raw as unknown as ConstructionPhoto & {
+        documents: {
+          original_filename: string | null
+          mime_type: string | null
+          size_bytes: number | null
+          deleted_at: string | null
+        } | null
+      }
+      if (!row.defect_id || row.documents?.deleted_at) continue
+      const list = photosByDefect.get(row.defect_id) ?? []
+      list.push({
+        ...row,
+        original_filename: row.documents?.original_filename ?? null,
+        mime_type: row.documents?.mime_type ?? null,
+        size_bytes: row.documents?.size_bytes ?? null,
+      })
+      photosByDefect.set(row.defect_id, list)
+    }
+  }
 
   // Adressat für den Kopf. Beide Auflösungen laufen ebenfalls unter der RLS des
   // Aufrufers; ein fremdes Gewerk liefert schlicht keinen Namen.
@@ -229,6 +281,10 @@ export default async function ConstructionDefectNoticePrintPage({
                       </div>
                     ) : null}
                   </dl>
+                  <ConstructionPhotoPrintList
+                    projectId={id}
+                    photos={photosByDefect.get(d.id) ?? []}
+                  />
                 </li>
               )
             })}

@@ -16,6 +16,7 @@ import {
   SheetTitle,
 } from "@/components/ui/sheet"
 import { Skeleton } from "@/components/ui/skeleton"
+import { ConstructionPhotoStrip } from "./construction-photo-strip"
 import { Textarea } from "@/components/ui/textarea"
 import { useConstructionDefectEvents } from "@/hooks/use-construction-defects"
 import { transitionConstructionDefect } from "@/lib/construction/api"
@@ -292,6 +293,22 @@ export function ConstructionDefectDetailSheet({
               )}
 
               <Separator />
+
+              {/*
+                PROJ-45-ε — Fotostrecke des Mangels (AC-45ε.1). `key` an der
+                Mangel-Kennung: wechselt die Detailansicht auf einen anderen
+                Mangel, wird die Strecke neu aufgebaut statt im Effect
+                zurückgesetzt (γ-Lehre, `react-hooks/set-state-in-effect`).
+                „Foto hinzufügen" ist bewusst NICHT an `canManage` gebunden —
+                jedes Projektmitglied darf fotografieren (β-Regel).
+              */}
+              <ConstructionPhotoStrip
+                key={defect.id}
+                projectId={projectId}
+                anchor={{ defect_id: defect.id }}
+                canManage={canManage}
+                heading="Fotos zum Mangel"
+              />
 
               <div className="space-y-3">
                 <p className="text-sm font-medium">Verlauf</p>
