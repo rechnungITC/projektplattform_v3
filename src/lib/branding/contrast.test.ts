@@ -119,3 +119,49 @@ describe("buildBrandStyleBlock", () => {
     )
   })
 })
+
+/**
+ * PROJ-51 `/qa` (2026-08-24) — Rot-Team-Ergänzung.
+ *
+ * `buildBrandStyleBlock` baut eine CSS-Zeichenkette aus einem Wert, der aus
+ * `tenants.branding` kommt und damit von einem Mandanten-Administrator
+ * gesetzt wird. Käme dort ungeprüfter Text durch, wäre das eine
+ * CSS-Injektion in jede authentifizierte Seite. Der Schutz liegt in
+ * `parseHex` (strikte 6-stellige Prüfung); diese Fälle halten ihn fest,
+ * damit eine spätere Lockerung — etwa Kurzform-Hex oder benannte Farben —
+ * nicht unbemerkt zur Injektion wird.
+ */
+describe("PROJ-51 Rot-Team — Brand-Hex kann nicht aus dem CSS ausbrechen", () => {
+  const PAYLOADS = [
+    "red;}html{display:none}",
+    "#fff;}</style><script>alert(1)</script>",
+    "var(--primary)",
+    "url(javascript:alert(1))",
+    "expression(alert(1))",
+    "0 0% 0%;--primary:0 100% 50%",
+    "#a1cfd1 !important",
+    "a1cfd1;}",
+    "rgb(255,0,0)",
+    "  ",
+  ]
+
+  it.each(PAYLOADS)("weist %j ab und erzeugt keinen Style-Block", (payload) => {
+    expect(parseHex(payload)).toBeNull()
+    expect(buildBrandStyleBlock(payload)).toBe("")
+  })
+
+  it("lässt den legitimen Wert weiterhin durch (Gegenkontrolle)", () => {
+    // Ohne diese Hälfte würde ein kaputter Parser, der ALLES ablehnt, als
+    // sicher gelten — und das Branding wäre still tot.
+    expect(buildBrandStyleBlock("#a1cfd1")).toContain("--brand-accent:")
+  })
+
+  it("erzeugt ausschließlich Zahlen, Prozent und Leerzeichen im Wert", () => {
+    const block = buildBrandStyleBlock("#a1cfd1")
+    const values = [...block.matchAll(/--[a-z-]+:([^;}]+)/g)].map((m) => m[1])
+    expect(values.length).toBeGreaterThan(0)
+    for (const value of values) {
+      expect(value).toMatch(/^[0-9. %]+$/)
+    }
+  })
+})

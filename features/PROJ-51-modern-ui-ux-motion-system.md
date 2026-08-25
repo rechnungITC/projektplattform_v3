@@ -1,6 +1,15 @@
 # PROJ-51: Modern UI/UX & Motion System
 
 ## Status: Deployed (α + β + γ + γ.5/γ.6 + δ + δ.2/δ.3 + ε + ε.2/ε.3/ε.4/ε.5 + Theme-Toggle + Print-Theme — alle Slices live; einzig `work-item-kind-badge` und `ui/toast` bewusst hartcodiert)
+
+## Deployment Scope: mvp
+
+> Klassifiziert im rueckwirkenden `/qa`-Durchgang 2026-08-24 (PROJ-Y-51a). 24 von 25 Kriterien
+> erfuellt; **AC-20** (`prefers-reduced-motion`) ist literal unerfuellt und als **PROJ-Y-51c**
+> registriert, deshalb nicht `full` — die Waiver-Regel scheitert an ihrer ersten Bedingung
+> („nothing was deferred“). Die gelieferte Grenze ist ein nutzbares, in den
+> Implementierungsnotizen ausdruecklich als MVP benanntes Design-System; jede Auslassung ist
+> benannt und verfolgt (PROJ-Y-51b/51c/51d).
 **Created:** 2026-05-06
 **Last Updated:** 2026-05-07
 
@@ -42,43 +51,43 @@ PROJ-51 ist deshalb kein einzelner Redesign-Big-Bang, sondern ein kontrollierter
 
 ## Acceptance Criteria — 51-alpha UI/UX Audit + Tokens
 
-- [ ] AC-1: Bestehende Design-Dokumente (`docs/design/design-system.md`, Dashboard-Templates) sind gegen aktuellen Codebestand abgeglichen.
-- [ ] AC-2: Aktuelle globale Token in `globals.css`, `tailwind.config.ts` und shadcn-Komponenten sind dokumentiert.
-- [ ] AC-3: Abweichungen zwischen Ziel-Design-System und realem UI sind als Liste mit betroffenen Bereichen erfasst.
-- [ ] AC-4: Entscheidung dokumentiert, welche Tokens global werden und welche nur Tenant-/Branding-spezifisch sind.
-- [ ] AC-5: CIA/GitNexus-Impact fuer gemeinsam genutzte UI-Komponenten (`Button`, `Badge`, `Card`, `Sidebar`, `Input`, `Select`) ist dokumentiert, bevor Code geaendert wird.
-- [ ] AC-6: Kein visueller Big-Bang in alpha; alpha liefert Dokumentation und Migrationsplan.
+- [x] AC-1: Bestehende Design-Dokumente (`docs/design/design-system.md`, Dashboard-Templates) sind gegen aktuellen Codebestand abgeglichen.
+- [x] AC-2: Aktuelle globale Token in `globals.css`, `tailwind.config.ts` und shadcn-Komponenten sind dokumentiert.
+- [x] AC-3: Abweichungen zwischen Ziel-Design-System und realem UI sind als Liste mit betroffenen Bereichen erfasst.
+- [x] AC-4: Entscheidung dokumentiert, welche Tokens global werden und welche nur Tenant-/Branding-spezifisch sind.
+- [x] AC-5: CIA/GitNexus-Impact fuer gemeinsam genutzte UI-Komponenten (`Button`, `Badge`, `Card`, `Sidebar`, `Input`, `Select`) ist dokumentiert, bevor Code geaendert wird.
+- [x] AC-6: Kein visueller Big-Bang in alpha; alpha liefert Dokumentation und Migrationsplan.
 
 ## Acceptance Criteria — 51-beta Corporate-Farben
 
-- [ ] AC-7: Corporate-Farben werden ueber CSS-Variablen abgebildet, nicht durch harte Tailwind-Farben in einzelnen Komponenten.
-- [ ] AC-8: Tenant-Branding kann mindestens Accent/Primary fuer ausgewaehlte Elemente beeinflussen: Primary-Buttons, aktive Navigation, wichtige Status-Akzente.
-- [ ] AC-9: Fallback-Tokens greifen, wenn keine Tenant-Farbe gesetzt ist.
-- [ ] AC-10: Kontrast bleibt lesbar; fuer zu helle/dunkle Corporate-Farben wird ein sicherer Textkontrast gewaehlt.
-- [ ] AC-11: PDF-/Report-Branding aus PROJ-21 bleibt kompatibel und wird nicht durch App-Chrome-Tokens gebrochen.
+- [x] AC-7: Corporate-Farben werden ueber CSS-Variablen abgebildet, nicht durch harte Tailwind-Farben in einzelnen Komponenten.
+- [x] AC-8: Tenant-Branding kann mindestens Accent/Primary fuer ausgewaehlte Elemente beeinflussen: Primary-Buttons, aktive Navigation, wichtige Status-Akzente.
+- [x] AC-9: Fallback-Tokens greifen, wenn keine Tenant-Farbe gesetzt ist.
+- [x] AC-10: Kontrast bleibt lesbar; fuer zu helle/dunkle Corporate-Farben wird ein sicherer Textkontrast gewaehlt.
+- [x] AC-11: PDF-/Report-Branding aus PROJ-21 bleibt kompatibel und wird nicht durch App-Chrome-Tokens gebrochen.
 
 ## Acceptance Criteria — 51-gamma Component Refresh
 
-- [ ] AC-12: Buttons erhalten konsistente Hover-, Active-, Focus-visible- und Disabled-Zustaende.
-- [ ] AC-13: Leichte Schatten werden nur fuer interaktive oder elevated Elemente verwendet; keine grossflaechigen Card-in-Card-Layouts.
-- [ ] AC-14: Badges, Inputs, Selects und Dialoge nutzen konsistente Radius-, Border-, Shadow- und Spacing-Tokens.
-- [ ] AC-15: Existing shadcn/Radix-Komponenten bleiben die Basis; kein zweites UI-System wird eingefuehrt.
-- [ ] AC-16: Layouts bleiben auf Mobile und Desktop ohne Textueberlauf und ohne inkonsistente Ueberlappungen.
+- [x] AC-12: Buttons erhalten konsistente Hover-, Active-, Focus-visible- und Disabled-Zustaende.
+- [x] AC-13: Leichte Schatten werden nur fuer interaktive oder elevated Elemente verwendet; keine grossflaechigen Card-in-Card-Layouts.
+- [x] AC-14: Badges, Inputs, Selects und Dialoge nutzen konsistente Radius-, Border-, Shadow- und Spacing-Tokens.
+- [x] AC-15: Existing shadcn/Radix-Komponenten bleiben die Basis; kein zweites UI-System wird eingefuehrt.
+- [x] AC-16: Layouts bleiben auf Mobile und Desktop ohne Textueberlauf und ohne inkonsistente Ueberlappungen.
 
 ## Acceptance Criteria — 51-delta Motion Layer
 
-- [ ] AC-17: Kleine Microinteractions nutzen zuerst Tailwind-Transitions und `motion-safe`/`motion-reduce`.
-- [ ] AC-18: Komplexere Animationen (Presence, Layout, Drag, Page/View-Wechsel) werden nur mit einer dedizierten Motion-Library umgesetzt, wenn Tailwind nicht reicht.
-- [ ] AC-19: View Transition API wird fuer Seiten-/Viewwechsel evaluiert, aber nur genutzt, wenn sie progressiv und ohne funktionalen Bruch funktioniert.
-- [ ] AC-20: Alle Animationen respektieren `prefers-reduced-motion`.
-- [ ] AC-21: Animationen duerfen Lade-, Speicher- oder PDF-Status nicht verdecken; Status muss weiterhin deterministisch sichtbar sein.
+- [x] AC-17: Kleine Microinteractions nutzen zuerst Tailwind-Transitions und `motion-safe`/`motion-reduce`.
+- [x] AC-18: Komplexere Animationen (Presence, Layout, Drag, Page/View-Wechsel) werden nur mit einer dedizierten Motion-Library umgesetzt, wenn Tailwind nicht reicht.
+- [x] AC-19: View Transition API wird fuer Seiten-/Viewwechsel evaluiert, aber nur genutzt, wenn sie progressiv und ohne funktionalen Bruch funktioniert.
+- [ ] AC-20: Alle Animationen respektieren `prefers-reduced-motion`. — **FAIL** (`/qa` 2026-08-24, Befund F-2: `motion-reduce:transform-none` kann `active:scale-[0.98]` wegen geringerer Spezifitaet nicht ueberschreiben; im Browser gemessen und im Kontrollexperiment ursaechlich belegt) → **PROJ-Y-51c**
+- [x] AC-21: Animationen duerfen Lade-, Speicher- oder PDF-Status nicht verdecken; Status muss weiterhin deterministisch sichtbar sein.
 
 ## Acceptance Criteria — 51-epsilon Project-Room Anwendung
 
-- [ ] AC-22: Project-Room Dashboard nutzt die neuen Tokens fuer Health, Budget, Risiken, Status und Aktionen.
-- [ ] AC-23: Health-/Budget-/Risk-Kacheln zeigen Datenquellen und leere Zustaende klar an.
-- [ ] AC-24: UI-Aenderungen werden auf den wichtigsten Screens per Screenshot/Playwright geprueft.
-- [ ] AC-25: Lint und relevante Frontend-Tests laufen gruen; bekannte React-Compiler-Warnungen werden separat bewertet und nicht als Styling-Fix versteckt.
+- [x] AC-22: Project-Room Dashboard nutzt die neuen Tokens fuer Health, Budget, Risiken, Status und Aktionen.
+- [x] AC-23: Health-/Budget-/Risk-Kacheln zeigen Datenquellen und leere Zustaende klar an.
+- [x] AC-24: UI-Aenderungen werden auf den wichtigsten Screens per Screenshot/Playwright geprueft.
+- [x] AC-25: Lint und relevante Frontend-Tests laufen gruen; bekannte React-Compiler-Warnungen werden separat bewertet und nicht als Styling-Fix versteckt.
 
 ## Edge Cases
 
@@ -573,8 +582,175 @@ Damit ist PROJ-51 als Slice-Familie technisch durch — alle 5 Bereiche (α Audi
 
 ## QA Test Results
 
-_To be added by /qa_
+**Rückwirkender `/qa`-Durchgang 2026-08-24 — Verdikt: 24 von 25 Kriterien PASS, **AC-20 FAIL**;
+0 Critical / 0 High / 2 Medium / 1 Low. Deployment Scope: `mvp`.**
+
+Anlass war **PROJ-Y-51a**: PROJ-51 lief seit 2026-05-07 in Produktion, ohne dass ein einziges seiner
+Kriterien bewertet worden wäre — beide Abschnitte dieser Spec standen wörtlich auf `_To be added by …_`.
+Die Buchführung war damit die einzige unklassifizierte Zeile des Portfolio-Audits (PROJ-Y-145b, Tranche 5).
+Die dort protokollierte Begründung — die Kriterien seien Urteilsfragen, die sich nicht messen lassen —
+**trägt für den größeren Teil nicht**, und das ist der eigentliche Ertrag dieses Durchgangs:
+Konsistenz von Hover/Active/Focus-visible/Disabled entsteht nicht pro Aufrufstelle, sondern in **einer**
+cva-Basisklasse; und ob eine Animation läuft, steht im ausgelieferten Stylesheet, nicht im Auge des
+Betrachters. Gemessen wurde deshalb überall dort, wo ein Mechanismus existiert — und genau das hat die
+zwei Befunde gefunden, die ein Code-Review nicht sehen konnte.
+
+**Erste Korrektur: es sind 25 Kriterien, nicht 24.** Das Followup-Register und die Tranche-5-Notiz nennen
+24; gezählt sind AC-1…AC-25 (α 6 · β 5 · γ 5 · δ 5 · ε 4). Die Zahl war nie geprüft — dieselbe Klasse
+Fehler wie QA-Befund F-1 in PROJ-45-β.
+
+### Testumgebung
+
+Eigener Worktree `proj-51/qa` auf `origin/main` (`cd8c171`), Dev-Server auf Port 3055 (PROJ-Y-143l-Muster:
+`PLAYWRIGHT_BASE_URL` pinnt Runner, Server und Fixture auf denselben Host, sonst bedient ein fremder
+Worktree die Tests). Kein Produktivcode geändert — dieser Durchgang liefert Nachweise und Tests, keine
+Fixes (Hausregel: `/qa` findet, `/frontend` behebt).
+
+### Kriterien-Matrix
+
+| AC | Verdikt | Nachweis |
+|---|---|---|
+| AC-1 Design-Doku gegen Codebestand abgeglichen | ✅ | `docs/design/PROJ-51-alpha-ui-audit-tokens.md`, Abschnitt „Quellen" + „Ist-Stand: Drei Token-Welten" |
+| AC-2 Token-Inventar dokumentiert | ✅ | 19 Core + 35 Erweiterung + 3 Brand + 8 Sidebar, dazu Spacing/Typografie/Radius-Skalen |
+| AC-3 Abweichungsliste mit betroffenen Bereichen | ✅ | Hardcoded-Inventory: 4 Dateien mit Hex, 26 Dateien mit 105 Tailwind-Direktfarben, je mit Dateinamen |
+| AC-4 Entscheidung global vs. Tenant-spezifisch | ✅ | Brand-Layer als eigener Abschnitt getrennt von den Core-Tokens |
+| AC-5 Impact für die 6 geteilten Primitiven | ✅ | Impact-Matrix führt alle 40 shadcn-Primitiven mit Risikostufe; `button`/`card`/`sidebar` als **Hoch**, `badge`/`input`/`select` als **Mittel** einzeln begründet; CIA-Review dokumentiert |
+| AC-6 kein visueller Big-Bang in α | ✅ **gemessen** | `git show --stat bcc3146`: 4 Dateien, **keine unter `src/`** — α ist nachweislich reine Dokumentation |
+| AC-7 Corporate-Farben über CSS-Variablen | ✅ mit benannter Grenze | Brand-Layer über `--brand-*`; 6 Dateien tragen noch rohes Hex, stichprobenartig als legitim belegt (`\|\| "#ffffff"` Vorgabewert, `?? "#0f172a"` Report-Default, `placeholder="#2563EB"`) |
+| AC-8 Tenant-Branding für Primary/Nav/Status | ✅ | `(app)/layout.tsx` injiziert `--brand-accent`, `--brand-accent-foreground`, `--brand-nav-active` server-seitig, scoped auf authentifizierte Routen |
+| AC-9 Fallback bei fehlender Tenant-Farbe | ✅ | `buildBrandStyleBlock` gibt bei ungültigem Wert `""` zurück → Plattform-Default greift; 33 Tests in `contrast.test.ts` |
+| AC-10 lesbarer Kontrast | ✅ | `pickBrandForeground` über WCAG-2.1-Relativluminanz; Grenzfälle (Weiß/Schwarz/Gelb/dunkles Blau) testgepinnt |
+| AC-11 PDF-/Report-Branding bleibt kompatibel | ✅ **stärker als dokumentiert** | Der `.theme-print`-Scope wird heute von **7** Druckseiten benutzt (β/γ-Notizen nannten 2) — PROJ-45-β/γ, PROJ-116, PROJ-131, PROJ-132 haben ihn übernommen; der Mechanismus hat 15 Monate Folge-Slices getragen |
+| AC-12 Buttons: Hover/Active/Focus-visible/Disabled | ✅ **im Browser gemessen** | Hover ändert Fläche; **Tastaturfokus** erzeugt Ring, **Maus-Fokus nicht** (belegt `focus-visible`, nicht `focus`); Disabled nach der Transition 0.5 + `pointer-events: none`; dazu 12 Vertragsfälle über alle 6 Varianten |
+| AC-13 Schatten nur interaktiv/elevated | ✅ | `shadow-sm→md` nur an `default`/`destructive`/`secondary`, Card-Hover-Lift, Dialog `shadow-lg`; `ghost`/`link` bewusst ohne |
+| AC-14 konsistente Radius/Border/Shadow/Spacing | ✅ **testgepinnt** | Input, Textarea und Select-Trigger teilen einen **identischen** 10-Token-Satz; Badge: 11 Varianten nach einem Muster; Dialog + Sheet gemeinsame Backdrop-Behandlung |
+| AC-15 shadcn/Radix bleibt Basis | ✅ | Keine zweite Komponentenbibliothek; `framer-motion` hat 5 Konsumenten, davon 4 Graph-/Trajektorien-Ansichten — Motion, kein UI-System |
+| AC-16 kein Textüberlauf/Überlappung mobil+Desktop | ✅ (chromium) | `scrollWidth <= clientWidth` auf `/login` und `/signup` bei 375 / 768 / 1440 px; Mobile-Safari env-gesperrt (PROJ-67/F2) |
+| AC-17 Tailwind-Transitions zuerst, `motion-safe`/`motion-reduce` | ✅ mit Einschränkung | Tailwind-first ist eingehalten; der `motion-reduce`-Guard existiert aber nur an 2 Komponenten (3 Dateien, 7 Vorkommen) — siehe F-2 |
+| AC-18 Motion-Library nur wo Tailwind nicht reicht | ✅ | 4 echte framer-motion-Stellen (Graph, Trajektorie, Bulk-Bar), nicht flächig; Bundle-Budget aus dem CIA-Review eingehalten |
+| AC-19 View-Transition-API progressiv | ✅ | `useViewTransition` mit Feature-Detection + Server-Zweig, 4 Tests; opt-in über 4 CSS-Klassen, verdrahtet an `vt-tab-panel` |
+| **AC-20 alle Animationen respektieren `prefers-reduced-motion`** | ❌ **FAIL** | **Befund F-2**, gemessen und ursächlich belegt — siehe unten |
+| AC-21 Animationen verdecken keinen Lade-/Speicher-/PDF-Status | ✅ | `pdf_status` wird in drei expliziten Zweigen als Text/Badge gerendert **plus** Stale-Guard (`isPdfPendingStale` → `failed`): der Status kommt aus Daten, die Animation begleitet ihn |
+| AC-22 Projektraum-Dashboard nutzt die neuen Tokens | ✅ | `health-snapshot.tsx` 0 Direktfarben; `project-detail-client.tsx` 18 Token-Treffer / 0 Direktfarben |
+| AC-23 Kacheln zeigen Datenquellen und Leerzustände | ✅ | Datenquelle ausgeschrieben („Basis: Budget · Risiken · Termine · Stakeholder"), Leerzustände in Health-Snapshot und Detail-Client vorhanden |
+| AC-24 Screenshot-/Playwright-Prüfung der Hauptscreens | ✅ **heute ausgeführt** | **13 Screenshot-Vergleiche grün** über die drei ε-Suiten (Login hell/dunkel, Signup, Dashboard, Projekte, Stammdaten, Ressourcen, Einstellungen, Tenant-Einstellungen, Projektraum), 5 Mobile-Safari-Fälle env-übersprungen |
+| AC-25 Lint + Frontend-Tests grün, React-Compiler-Warnungen separat | ✅ | ESLint **0 Probleme** (exit 0, auch keine Warnungen), vitest **3647/3647**, Build clean; die React-Compiler-Warnungsklasse ist in PROJ-67 (AC-4/F3) separat abgehandelt |
+
+### Befunde
+
+**F-1 (Medium) — 109 tote Animations-Klassen: die Ein-/Ausblendungen der Radix-Primitiven laufen nicht.**
+`tailwindcss-animate` ist **keine** Abhängigkeit und `tailwind.config.ts` hat `plugins: []`. Damit existieren
+`animate-in`, `animate-out`, `fade-in-0`, `zoom-in-95` und `slide-in-from-*` im ausgelieferten Stylesheet
+nicht — obwohl **9 Dateien sie an 109 Stellen tragen**: Dialog, Alert-Dialog, Sheet, Select, Popover,
+Dropdown-Menu, Toast und Navigation-Menu. Sie erscheinen und verschwinden ohne jede Animation.
+Belegt am Kompilat, nicht am Quelltext: es enthält genau **vier** Keyframes (`accordion-down`, `accordion-up`,
+`pulse`, `spin`) und **null** `--tw-enter-*`-Variablen (die Signatur des Pakets); im Browser liefert eine Sonde
+mit den wörtlichen `DialogContent`-Klassen `animationName: "none"`, während die Positivkontrolle
+`animate-pulse` eine Animation liefert. Ladeanzeigen (`animate-spin`/`animate-pulse`, 259 Vorkommen)
+funktionieren also — die Lücke ist genau die Enter-/Exit-Schicht.
+**Nebenwirkung auf die Dokumentation:** die δ-Notiz begründet den Verzicht auf `<AnimatePresence>` mit
+„Radix animiert bereits via CSS-`data-state`-Pattern; Framer würde konkurrieren". Diese Prämisse ist
+**falsch** — es konkurriert nichts, weil nichts animiert. Die Entscheidung ist damit nicht widerlegt, aber
+ihre Begründung trägt nicht mehr. → **PROJ-Y-51b**
+
+**F-2 (Medium, Barrierefreiheit) — AC-20 verletzt: der `motion-reduce`-Guard am Button ist wirkungslos.**
+Unter `prefers-reduced-motion: reduce` skaliert der Button beim Drücken **weiter** (`matrix(0.98, 0, 0, 0.98, 0, 0)`),
+obwohl er `motion-reduce:transform-none` trägt. **Ursache gemessen, nicht vermutet:**
+`active:scale-[0.98]` gibt `.active\:scale-\[0\.98\]:active` aus — Spezifität (0,2,0) —, während
+`motion-reduce:transform-none` als `.motion-reduce\:transform-none` innerhalb der Media-Query landet — (0,1,0).
+Die Zustandsregel gewinnt unabhängig von der Reihenfolge. Im Kontrollexperiment mit **angeglichener**
+Spezifität (`…:disabled` innerhalb derselben Media-Query) kippt das Ergebnis sofort auf `none`.
+Tragfähig wäre `motion-reduce:active:scale-100`. Der **Transitions**-Anteil des Guards greift dagegen
+(gemessen: unter `reduce` ist `transition-property` nicht mehr `all`, sondern die Farbliste) — der Defekt ist
+also auf den Transform-Anteil begrenzt und nicht „reduced motion ist kaputt".
+Ein Code-Review konnte das nicht sehen: die Klasse steht da und sieht richtig aus. → **PROJ-Y-51c**
+
+**F-3 (Low) — die Token-Bereinigung erodiert, weil nichts sie bewacht.**
+Der α-Audit zählte **105** Tailwind-Direktfarb-Treffer in **26** Dateien und γ.5/γ.6 haben sie abgearbeitet.
+Heute sind es **656 Treffer in 81 Dateien**. Das ist **nicht** PROJ-51 zuzurechnen: von zehn namentlich
+migrierten Zielen sind **neun unverändert token-basiert** (`risk-banner`, `lifecycle-badge`,
+`stakeholder-table`, `traffic-light-pill`, `utilization-heatmap`, `work-item-status-badge`,
+`milestone-status-badge`, `risk-table`, `risk-matrix`); die zehnte (`phase-status-badge`) trug immer nur den
+`completed`-Zweig im Umfang. Der Zuwachs kam mit den ~50 Slices danach — es gibt keine Regel, keinen
+Lint und keinen Guard, der Direktfarben verhindert, während das Repo für Migrationsnamen, Index-Scope,
+Funktionsinventar und Read-Log-Abdeckung längst Wächter hat. → **PROJ-Y-51d**
+
+### Neue dauerhafte Nachweise (in dieser Slice geschrieben)
+
+- `tests/PROJ-51-interaction-states.spec.ts` — **7 Fälle chromium grün**. Interaktionszustände und
+  Reduced-Motion im Browser gemessen, jeder Block mit **Positiv- und Gegenkontrolle** (ohne die
+  Gegenkontrolle beweist „kein Unterschied messbar" nichts). Die beiden Defekte F-1/F-2 sind als
+  `test.fail()` kodiert: sie beschreiben den **Soll**-Zustand, gelten heute als erwartet rot und schlagen
+  an, sobald jemand sie behebt — die Alternative, den Ist-Zustand zuzusichern, hätte die Fehler zementiert.
+- `src/components/ui/design-system-contract.test.ts` — **35 Fälle**. Der Vertrag hinter AC-12/AC-14:
+  jede Button-Variante braucht einen Hover-Zustand und erbt Focus-visible + Disabled; die `link`-Ausnahme
+  ist als Entscheidung festgeschrieben; die drei Formular-Primitiven teilen einen Token-Satz.
+  **Rot-Grün ausgeführt:** drei Sabotagen (fehlendes `disabled:opacity-50`, `ghost` ohne Hover, Input ohne
+  `disabled:cursor-not-allowed`) → **8 rot**, nach Rücksetzung 35/35, Arbeitsbaum sauber.
+- `src/lib/branding/contrast.test.ts` — **+12 Rot-Team-Fälle** (21 → 33). Der Brand-Hex fließt in eine
+  CSS-Zeichenkette, die auf jede authentifizierte Seite geht; 10 Injektions-Nutzlasten
+  (`red;}html{display:none}`, `#fff;}</style><script>…`, `var(--primary)`, `url(javascript:…)`,
+  `expression(…)`, `0 0% 0%;--primary:…`, `!important`, …) werden von `parseHex` abgewiesen, der
+  legitime Wert kommt weiter durch (Gegenkontrolle), und die erzeugten Werte enthalten nur Zahlen,
+  Prozent und Leerzeichen. **Rot-Grün ausgeführt:** ohne die Prüfung in `parseHex` fallen **14** Fälle.
+
+### Sicherheitsprüfung (Rot-Team)
+
+Die einzige Angriffsfläche dieser Slice ist der Weg **Tenant-Branding → CSS**. Er ist geschlossen:
+`parseHex` prüft strikt `^[0-9a-fA-F]{6}$` nach dem Abstreifen genau eines `#`, jeder andere Wert führt zu
+`null` → `buildBrandStyleBlock` gibt `""` → kein `<style>`-Block. Die Injektion ist jetzt mit 12 Fällen
+dauerhaft abgesichert (siehe oben). Kein neuer Endpunkt, keine RLS-Fläche, keine Migration, kein
+Datenpfad — die übrigen Kriterien haben keine Sicherheitsdimension.
+
+### Regressionen
+
+- vitest **3647/3647** in 429 Dateien (Basis dieses Worktrees 3600/428, +47 aus dieser Slice)
+- ESLint **0 Probleme**, exit 0 · `npm run build` clean · tsc **13 = Baseline**, keiner davon in einer neuen Datei
+- Visual-Regression **13 grün / 5 env-übersprungen** — **ohne Neuaufnahme einer Baseline**
+- `npm run check:index-scope` 0 Fehler
+
+### Abweichungen
+
+- **D-51-QA-1: Lifecycle-Status bleibt `Deployed`.** Die Skill-Checkliste verlangt „In Review" zum
+  QA-Start; das wäre hier eine Falschaussage — der Code läuft seit 2026-05-07 in Produktion. Ein
+  rückwirkender Durchgang bewertet, er nimmt die Auslieferung nicht zurück.
+- **D-51-QA-2: Cross-Browser nur chromium.** Firefox ist nicht konfiguriert, Mobile-Safari-WebKit ist auf
+  diesem Host env-gesperrt (offener Handoff PROJ-67/F2). Bestehende Praxis des Repos.
+- **D-51-QA-3: Kein Urteil über Gestaltung.** „Wirkt moderner" (User-Story 3) und die Ästhetik der
+  Schattenstaffelung sind nicht messbar und werden hier nicht behauptet. Was gezeigt ist: die
+  Mechanismen existieren, greifen und sind gegen Drift gesichert. Die visuelle Abnahme im Browser bleibt
+  beim Nutzer.
+- **D-51-QA-4: Responsive nur auf den unauthentifizierten Seiten gemessen.** Die Überlauf-Sonde läuft auf
+  `/login` und `/signup`; die authentifizierten Flächen sind über die 13 Screenshot-Baselines abgedeckt,
+  aber nicht per Überlauf-Zusicherung bei 768 px.
+
+### Produktionsreife
+
+**READY** nach Hausmaßstab (0 Critical / 0 High) — und faktisch seit 15 Monaten in Produktion.
+`full` ist trotzdem **nicht** buchbar: AC-20 ist eine ursprüngliche Anforderung, die literal unerfüllt ist,
+und die Waiver-Regel scheitert an ihrer **ersten** Bedingung („nothing was deferred") — F-2 verlangt eine
+Behebung und ist mit Ziel-ID registriert. Damit **`mvp`**: die gelieferte Grenze ist ein nutzbares,
+ausdrücklich als MVP benanntes Design-System (die Implementierungsnotiz sagt selbst „PROJ-51-MVP ist
+damit deployt"), jede Auslassung ist benannt und verfolgt.
+
+Followups: **PROJ-Y-51b** (F-1) · **PROJ-Y-51c** (F-2) · **PROJ-Y-51d** (F-3).
 
 ## Deployment
 
-_To be added by /deploy_
+**Rückwirkend protokolliert im `/qa`-Durchgang 2026-08-24** — dieser Abschnitt stand seit 2026-05-07 auf
+`_To be added by /deploy_`, obwohl die Slice-Familie inkrementell ausgeliefert wurde. Kein neuer
+Runtime-Deploy: PROJ-51 ging in Einzel-Locks live, jede mit eigenem Vercel-Deployment.
+
+- **β** `8b6cc25` / `7ccfc31` / `4063c6a` — Token-Bridge, WCAG-Helfer, Brand-Injection
+  (`dpl_5i87fjVmDwLGThidqyYBrmGg58Ee` → `dpl_4AuFP9qj5LXE6KcUnyiKX7Wt5rub`)
+- **β-Revision** `d418a26` — Light/Dark wiederhergestellt, Dark-Teal als opt-in-Preset
+- **γ** `ec1e04d` / `c5f6979` / `0c28fc2` / `b4b6971` — Status-Tokens, Badge-Varianten,
+  Button-/Card-Microinteractions, Backdrop-Blur (`dpl_79DKCiUeAggiPuZbwNEmMpTVWK62`)
+- **γ.5 / γ.6** `8b56d8e` / `f372aba` + 4 Sub-Batches `ad10592` / `be7f451` / `f9a3424` / `dbf7fb0`
+- **δ / δ.2 / δ.3** `d3eb718` / `64a738a` / `1735980` + Theme-Toggle `87b21cc`
+- **Print-Theme** `b05d987` · **ε / ε.2 / ε.3 / ε.4+ε.5** `5ecdacf` / `72b0af2` / `a74e7f7` / `feba11e`
+- **α** `bcc3146` — reine Dokumentation, kein `src/`-Diff (Nachweis für AC-6)
+
+Keine Migration, kein neues Env/Secret, keine DB-Fläche. Der Nachweis der Auslieferung ist nicht der
+Deploy-Eintrag, sondern das Verhalten: die 13 Screenshot-Vergleiche und die Browser-Messungen dieses
+Durchgangs laufen gegen den heute ausgelieferten Stand.

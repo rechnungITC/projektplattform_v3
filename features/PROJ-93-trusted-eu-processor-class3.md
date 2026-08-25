@@ -1,6 +1,11 @@
 # PROJ-93: Trusted-EU-Processor — kontrollierte Class-3-Freigabe für attestiertes Azure OpenAI
 
 ## Status: Deployed
+
+## Deployment Scope: full
+
+> **Scope-Klassifikation (PROJ-Y-145b, Tranche 5, 2026-08-24):** QA **PASS**, 0 Critical/0 High; der Live-Pentest A–J **10/10** gegen Prod (0 Rueckstaende) plus Rot-Team-Ergaenzung K/L. Tragend sind die zwei Befunde, die der Architektur-Pass **live** gegen die naive Spec-Mechanik erhob: der Azure-Schluessel liegt in `encrypted_config` und ist fuer einen Trigger unlesbar (deshalb DPA-Attest als Klartext-Spalten), und der Write-Trigger feuert beim **Widerruf** des Attests nicht — ein Stale-Rule-Leck, weshalb der autoritative Pruefpunkt der TS-Resolver zur Laufzeit ist, gespeist von einem **mitglieds-aufrufbaren** DEFINER-Helfer (ein admin-only Select haette im Routing 0 Zeilen geliefert und fail-open erzeugt). **D-1** (echter Class-3-Lauf gegen eine attestierte Azure-Ressource) haengt daran, dass kein Pilot eine solche betreibt — Umgebungsgrenze; Tor und Resolver sind vollstaendig bewiesen, inklusive des Widerruf-Falls.
+
 **Created:** 2026-06-10
 **Last Updated:** 2026-07-03
 **Origin:** PO-Entscheidung 2026-06-10 (kontrollierte Lockerung der Invariante #3) · CIA-Review 2026-06-10 (GO mit Pflicht-Guardrails)

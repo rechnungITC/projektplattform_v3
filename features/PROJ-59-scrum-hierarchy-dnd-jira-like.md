@@ -1,6 +1,11 @@
 # PROJ-59: Scrum Hierarchy Drag-and-Drop (Jira-like Story -> Task)
 
 ## Status: Deployed (α + β + γ + δ live)
+
+## Deployment Scope: full
+
+> **Scope-Klassifikation (PROJ-Y-145b, Tranche 5, 2026-08-24):** Die Definition of Done ist bis auf einen Punkt abgehakt, und der eine offene ist ausdruecklich als **nicht code-blockierend** markiert: „Fachlicher Review mit Jira-erfahrenem Nutzer abgeschlossen (operationell offen)". Das ist ein **Handoff an eine Person**, kein unerfuelltes Produktkriterium — dieselbe Kategorie wie PROJ-49s Konfigurations-Handoff an die Mandanten-Administration. Belegt sind alle vier DnD-Richtungen, die client- **und** serverseitige Blockade ungueltiger Drops, 37/37 Route-Tests und ein in δ fixierter Playwright-Smoke.
+
 **Created:** 2026-05-08
 **Last Updated:** 2026-05-09
 

@@ -1,6 +1,11 @@
 # PROJ-92: Azure OpenAI Provider (Class-1/2) — fünfter Provider-Typ
 
 ## Status: Deployed (Tag `v2.8.0-PROJ-92` 2026-07-03 — Provider/Validator/Admin-Form + Migration live in Prod; Post-Deploy-Smoke 307 auth-gated. AC-92.7 real-Azure-Call = dokumentierte Stub-Deviation für Pilot)
+
+## Deployment Scope: full
+
+> **Scope-Klassifikation (PROJ-Y-145b, Tranche 5, 2026-08-24):** QA-PASS mit **7/7 AC**, 0 Critical/0 High, und die Kernzusicherung ist live in Prod rot-gruen geprueft (zurueckgerollt, 0 Rueckstaende): Class-1 mit `['azure']` wird akzeptiert, Class-3 wird in **allen** Reihenfolgen (`['azure']`, `['ollama','azure']`, `['azure','ollama']`) ueber `class3_local_only` abgelehnt — es gibt also keinen Bypass durch Beimischen von Ollama. Die EU-Regions-Pruefung liegt server-seitig, der Client haelt keine Liste. **F-1** (kein Aufruf gegen eine echte Azure-Ressource) ist ausdruecklich vom Spec-Pfad gedeckt und Nachweistiefe; Routing, DB-Regel und Validator sind vollstaendig live belegt. Nebenbefund mit Reichweite: der Prioritaets-Matrix-Filter hatte `anthropic|ollama` hartkodiert und **verwarf seit 32b alle Cloud-Anbieter** — in dieser Slice behoben.
+
 **Created:** 2026-06-10
 **Last Updated:** 2026-07-01
 **Origin:** PO-Entscheidung 2026-06-10 (Pilotkunden ohne Ollama-Betrieb) · CIA-Review 2026-06-10 (GO, Split 92a/92b)

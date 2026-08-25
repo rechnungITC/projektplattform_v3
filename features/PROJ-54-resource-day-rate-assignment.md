@@ -1,6 +1,11 @@
 # PROJ-54: Resource-Level Tagessatz-Zuweisung mit intuitiver Auswahl + Pflicht-Gate
 
 ## Status: Deployed (54-α + 54-β + 54-γ live; δ intentionally deferred until pilot demand)
+
+## Deployment Scope: mvp
+
+> **Scope-Klassifikation (PROJ-Y-145b, Tranche 5, 2026-08-24):** Die Spec sagt es dreimal und deutlich: **„PROJ-54 family is production-complete except for the intentionally deferred 54-δ"** — die versionierte `resource_rate_overrides`-Historie ist ein benannter Teil-Schnitt mit Schema-Aenderung, zurueckgestellt „until pilot demand". α/β/γ sind mit eigenen QA-Durchgaengen abgenommen (READY, 0 Critical/0 High). **Auch hier ist das erste Verdikt nicht das operative:** die erste Runde stand auf **NOT READY (1 Critical: stiller Datenverlust)**, der Fehler wurde behoben und in zwei Folgerunden verifiziert. AC-22 (Playwright) und AC-19 (Live-Performance-Bench) sind **laut Spec** optional bzw. post-deploy — Nachweistiefe, keine Auslassung. Followup **PROJ-Y-54a**.
+
 **Created:** 2026-05-06
 **Last Updated:** 2026-05-12
 **BUG-3 hotfix 2026-05-09 (commit 537fb75):** every PATCH save was returning **HTTP 412** before reaching the handler. Root cause: Vercel/Next.js edge layer applies RFC-7232 §3.4 semantics to the standard `If-Unmodified-Since` header and refuses the request preflight. Fix: rename the optimistic-lock token to a custom `X-If-Unmodified-Since` header — custom headers carry no protocol semantics, edge passes them through, the server's own 409 `stale_record` path remains the only conflict outcome. Server still reads the legacy header for one rollout cycle so in-flight clients aren't broken.

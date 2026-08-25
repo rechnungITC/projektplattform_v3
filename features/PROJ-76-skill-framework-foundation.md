@@ -1,6 +1,11 @@
 # PROJ-76: Skill-Framework Foundation
 
 ## Status: Deployed
+
+## Deployment Scope: mvp
+
+> **Scope-Klassifikation (PROJ-Y-145b, Tranche 5, 2026-08-24):** QA **PASS**, 0 Critical/0 High, mit RLS-Rollen-Pentest 11/11 und RPC-Zustandsmaschinen-Smoke 8/8 live gegen Prod. Die eine dokumentierte Abweichung trifft ein Kriterium: der Audit-**„Verlauf"-Tab** fehlte in der Detailansicht, weil `AuditEntityType` `skills`/`skill_versions` nicht kannte — die Audit-Zeilen entstanden in der Datenbank, waren ueber die Oberflaeche aber nicht lesbar. **Inzwischen geschlossen**, und zwar von der Nachfolge-Slice: `feat(PROJ-77): follow-ups — err.status 409, Verlauf-Tab, audit-entity widening` (#287); heute traegt `src/types/audit.ts` alle vier Skill-Objektarten und `skill-detail-client.tsx` rendert den `HistoryTab`. Nach Hausregel hebt das den Scope nicht automatisch → **Upgrade-Kandidat**.
+
 **Created:** 2026-06-06
 **Last Updated:** 2026-07-24
 

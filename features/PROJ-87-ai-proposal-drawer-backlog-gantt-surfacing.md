@@ -1,6 +1,11 @@
 # PROJ-87: AI Proposal Drawer — Surfacing in Backlog + Gantt
 
 ## Status: Deployed
+
+## Deployment Scope: full
+
+> **Scope-Klassifikation (PROJ-Y-145b, Tranche 5, 2026-08-24):** Reine Frontend-Slice ohne neuen Backend-Code: der Einstiegspunkt in den KI-Vorschlags-Drawer erscheint dort, wo PMs arbeiten (Backlog und Gantt), editor-gegatet und modul-geprueft. Die Spec fuehrt **keinen** QA-Abschnitt, und die INDEX-Zeile raeumte das beim Deploy ehrlich ein („Offen: deferred Playwright-Smoke"). **Der Nachweis ist seither erbracht — von der Nachbar-Slice:** PROJ-88s QA-Durchgang enthaelt ausdruecklich den nachgeholten PROJ-87-Smoke (Launcher → Drawer → Stakeholder-Reiter, chromium gruen). Kein Kriterium dieser Slice ist zurueckgestellt.
+
 **Created:** 2026-06-08
 **Last Updated:** 2026-06-10
 **Origin:** CIA portfolio review 2026-06-08

@@ -1,6 +1,11 @@
 # PROJ-89: AI Risk Proposals from Context
 
 ## Status: Deployed
+
+## Deployment Scope: full
+
+> **Scope-Klassifikation (PROJ-Y-145b, Tranche 5, 2026-08-24):** QA-Pass mit **9/9 AC**, vier davon live in Prod ueber eine authentifizierte Admin-Sitzung: Cloud-Happy-Path (`classification=2 / openai / 6 geerdete Vorschlaege`), **Class-3-Clamp** (PII-Quelle trotz Class-2-Stempel → `classification=3`, Resolver waehlt Ollama statt Cloud), der Spec-Edge-Case „Ollama nicht erreichbar" mit `external_blocked` und einer verwertbaren Fehlermeldung statt stiller Leere, sowie ein HTTP-Ende-zu-Ende-Durchlauf Accept → Undo im Fenster → Ablehnung nach Fensterende. 7 Sicherheitssonden geblockt, 0 Rueckstaende. **D-1** (Ollama-Happy-Path) ist eine Umgebungsgrenze — derselbe Codepfad ist in PROJ-88 zwei Tage zuvor live bewiesen.
+
 **Created:** 2026-06-08
 **Last Updated:** 2026-06-12
 **Origin:** CIA portfolio review 2026-06-08 (vision: "Wizard befüllt das ganze Projekt")

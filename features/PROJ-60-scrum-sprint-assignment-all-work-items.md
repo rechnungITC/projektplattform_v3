@@ -1,6 +1,11 @@
 # PROJ-60: Scrum Sprint Assignment DnD for Stories, Tasks and Bugs
 
 ## Status: Deployed
+
+## Deployment Scope: full
+
+> **Scope-Klassifikation (PROJ-Y-145b, Tranche 5, 2026-08-24):** Definition of Done vollstaendig abgehakt (Einzel- und Bulk-DnD fuer Story/Task/Bug, Loesen aus dem Sprint, serverseitige Ablehnung nicht sprintfaehiger Arten, Sprint-Karten, Tests fuer Single/Bulk/Closed/Invalid-Kind), und das Deployment ist ungewoehnlich sauber protokolliert: drei benannte Commits, Vercel-Deployment `dpl_8azA9N8NYUghzWhr7deFLCiW6rx7` **READY** auf `f0791c8`, Tag `v1.60.0-PROJ-60` und ein Post-Deploy-Smoke, der zeigt, dass die Sprint-Routen weiterhin mit 307 auf `/login` gehen.
+
 **Created:** 2026-05-09
 **Last Updated:** 2026-05-11
 

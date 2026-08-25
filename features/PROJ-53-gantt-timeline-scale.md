@@ -1,6 +1,11 @@
 # PROJ-53: Gantt Timeline-Scale — Tagesansicht, Wochenenden, KW (MS-Project-Style)
 
 ## Status: Deployed (α + β live; γ intentionally deferred until pilot demand)
+
+## Deployment Scope: alpha
+
+> **Scope-Klassifikation (PROJ-Y-145b, Tranche 5, 2026-08-24):** Die QA nennt die gelieferte Einheit selbst **„READY for /deploy als PROJ-53-α"**, und β wurde danach eigenstaendig von Approved auf Deployed gehoben — zwei benannte Teil-Schnitte mit je eigener QA und eigenem Deployment. **γ bleibt ausdruecklich zurueckgestellt** („intentionally deferred until pilot demand": Memo-Split, Custom-Kalender, Multi-Locale, PNG/PDF-Export). Damit greift die Definition von `alpha` woertlich, nicht die von `mvp`. ST-05 (Sticky-Header) war in α auf β verschoben und ist mit β geliefert. Followup **PROJ-Y-53a**.
+
 **Created:** 2026-05-06
 **Last Updated:** 2026-05-12
 

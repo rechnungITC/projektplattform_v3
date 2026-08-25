@@ -2,6 +2,11 @@
 
 ## Status: Deployed (α + β + γ) — α/β 2026-07-29 · γ 2026-07-31. α Tag `v2.29.0-PROJ-141-alpha` (PR #276) · β Tag `v2.30.0-PROJ-141-beta` (PR #282) · γ Tag `v2.32.0-PROJ-141-gamma` (PR #288 → main `33ef739`). **PROJ-141 KOMPLETT (alle 3 Sub-Slices deployed).**
 
+## Deployment Scope: full
+
+> **Scope-Klassifikation (PROJ-Y-145b, Tranche 5, 2026-08-24):** Drei Teil-Slices α/β/γ, alle deployed, und die Slice existiert ueberhaupt nur, weil ein Querschnitts-Audit **17 Befunde** in drei bereits deployten Features fand. Der wichtigste ist sicherheitsrelevant und in α geschlossen: **H-1** — die `skill_versions`-Lesepolicy filterte nicht auf `status='active'`, womit gewoehnliche Mandanten-Mitglieder Entwuerfe und Archivstaende samt `allowed_actions` direkt ueber den Supabase-Client lesen konnten (die PROJ-77-α-QA hatte nur den Schreibschutz geprueft). Belegt mit Live-Pentests 8/8 und 11/11 gegen Prod plus wortgleichen Regressionen der Nachbar-Slices. γ hat zusaetzlich die **Scope-Luege** von PROJ-96 korrigiert — eine Story, die als voll „Production-Ready" gefuehrt wurde, obwohl Aufgaben-/RACI-Templates und Custom-CRUD nie gebaut waren; genau die Klasse Fehler, gegen die dieser Audit hier antritt.
+
+
 **Created:** 2026-07-28
 **Origin:** Querschnittsprüfung 2026-07-28 gegen die deployten Slices PROJ-77-α/β, PROJ-96 und PROJ-132. Verifiziert gegen `supabase/migrations/20260723120849_proj76_skill_framework.sql`, `src/app/api/skills/[id]/versions/[vid]/route.ts`, `src/app/api/wizard-drafts/[id]/finalize/route.ts`, `src/components/master-data/skill-detail-client.tsx`, `src/components/projects/ma/operative-report-view.tsx`, `src/app/api/skills/_schema.ts`.
 **Related:** PROJ-76 · PROJ-77 · PROJ-82 · PROJ-83 · PROJ-96 · PROJ-131 · PROJ-132.

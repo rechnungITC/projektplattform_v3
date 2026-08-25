@@ -1,6 +1,11 @@
 # PROJ-61: Jira-like Releases with Story Gantt / Phase Mapping
 
 ## Status: Deployed (included in production since v1.65.0-PROJ-65; reverified against v1.77.0-PROJ-65-eps4c mainline)
+
+## Deployment Scope: full
+
+> **Scope-Klassifikation (PROJ-Y-145b, Tranche 5, 2026-08-24):** QA-Status **Approved**; die Definition of Done ist vollstaendig abgehakt (Release-Planungsansicht unter `/releases`, Stories/Tasks/Bugs im Release-Kontext, Story-Gantt aus eigenen oder Sprint-Daten, unscheduled Items sichtbar, blockierte/ausserhalb-des-Fensters markiert, bestehender Phasen-Gantt unberuehrt, Doku zu Routing/Datenmodell/Jira-Mapping). Der Code ging als Teil des PROJ-65-Zuges live und wurde gegen den spaeteren Mainline-Stand re-verifiziert; die Buchfuehrung wurde am 2026-05-29 nachgezogen.
+
 **Created:** 2026-05-09
 **Last Updated:** 2026-05-29
 

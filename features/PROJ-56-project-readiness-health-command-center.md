@@ -1,6 +1,11 @@
 # PROJ-56: Project Readiness & Health Command Center
 
 ## Status: Deployed (α + β + γ + δ wizard-handoff + ε report-integration live)
+
+## Deployment Scope: full
+
+> **Scope-Klassifikation (PROJ-Y-145b, Tranche 5, 2026-08-24):** Drei 🟡 zum Zeitpunkt der α-Runde, alle inzwischen aufgeloest: **AC-5** (vereinheitlichte Health-Quellen-Erklaerung) und **AC-9** (Report-Integration) waren nach **56-ε** verschoben, das der Statusheader als live fuehrt — im Code nachgemessen: `readiness` steckt in `src/lib/reports/aggregate-snapshot-data.ts`, die Report-Integration existiert also. **AC-12** (authentifizierte Visual-Regression) war eine Umgebungsgrenze (`SUPABASE_SERVICE_ROLE_KEY`) und damit Nachweistiefe, kein zurueckgestelltes Stueck Funktion; die Fixture-Arbeit aus PROJ-143 hat sie seither geschlossen. Keine Critical/High-Befunde.
+
 **Created:** 2026-05-07
 **Last Updated:** 2026-05-07
 

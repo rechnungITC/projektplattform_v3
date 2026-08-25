@@ -1,6 +1,11 @@
 # PROJ-85: AI Provider Capability Completeness
 
 ## Status: Deployed
+
+## Deployment Scope: full
+
+> **Scope-Klassifikation (PROJ-Y-145b, Tranche 5, 2026-08-24):** Die Slice schliesst die Silent-Stub-Luecke des Multi-Provider-Routers: `OllamaProvider` bekommt `generateTrajectorySequence` und `generateCrossProjectLinks` ueber geteilte Graph-Prompts, dazu ein **Capability-Matrix-Regressionstest**, der genau die Klasse Fehler faengt, gegen die die Slice antritt. `resource_swap` bleibt Ollama-only — das ist **by design** (Class-3), keine Luecke. Die Spec hat keinen eigenen QA-Abschnitt; belegt sind Deployment und Prod-Verifikation (Capability-Matrix 4/4, Auth-Gates 307) sowie vitest 1740/1740 mit sauberem Lint und Build.
+
 **Created:** 2026-06-08
 **Last Updated:** 2026-06-10
 
