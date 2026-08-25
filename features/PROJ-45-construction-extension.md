@@ -3318,6 +3318,139 @@ Anker (L32), den Ausdruck (L33). **CIA-pflichtig ist genau Q-ε1** — und damit
 
 ---
 
+### Tech Design (Solution Architect) — ε, 2026-08-24
+
+**Alle sieben Architekturfragen beantwortet.** Sechs davon hat die Messung entschieden, eine (Q-ε1) der
+Nutzer nach einem CIA-Review, den ich als Halt-und-Frage-Checkpoint geführt habe (Sub-Agenten in dieser
+Sitzung aus; `.claude/rules/continuous-improvement.md` sieht das ausdrücklich vor).
+
+#### Was gebaut wird — Bausteine der Oberfläche
+
+```
+Mangel-Detailansicht (β)                    Abnahme-Detailansicht (γ)
++-- … Bestand unverändert …                 +-- … Bestand unverändert …
++-- Fotostrecke                             +-- Fotostrecke  (dieselbe Komponente)
+    +-- Kachel je Foto                          +-- nach dem Protokollieren:
+    |   +-- Vorschaubild                            „Ergänzen möglich, Entfernen nicht"
+    |   +-- Bildunterschrift (bearbeitbar)
+    |   +-- Aufnahmedatum (bearbeitbar)
+    +-- „Foto hinzufügen"  (kein Ordner-Dialog)
+    +-- Leerzustand: „Noch keine Fotos"
+
+Bauabschnitte-Fläche (α)                    Druckseiten
++-- Baum, Bestand unverändert               +-- Mängelanzeige (β)  -> Foto-Abschnitt
+    +-- je Abschnitt: Fotozahl              +-- Abnahmeprotokoll (γ) -> Foto-Abschnitt
+    +-- Abschnitts-Detail: Fotostrecke          (beide: fehlt ein Bild, wird das GESAGT)
+
+Dokumentenbaum (PROJ-79, unverändert)
++-- Ordner „Baufotos"   <- von ε angelegt, nicht vom Nutzer gewählt
+    +-- die Bilddateien
+```
+
+**Eine** Fotostrecken-Komponente für alle drei Anker — nicht drei. Die Anker unterscheiden sich nur im
+Bezug und in der Schreibregel, nicht in der Darstellung; drei Fassungen würden auseinanderlaufen (die
+Lehre aus den doppelten Fortschritts-Formeln in δ).
+
+#### Wo die Daten liegen — im Klartext
+
+**Die Bilddatei selbst** ist ein gewöhnliches DMS-Dokument (PROJ-79). Damit erbt ε ohne eine Zeile
+eigener Härtung: die Magic-Byte-Prüfung, die 50-MB-Grenze, die Mandanten-Quota, den Papierkorb, das
+Vertraulichkeits-Gate und den Feld-Audit.
+
+**Neu ist genau eine Tabelle: die Verknüpfung.** Sie hält je Eintrag:
+
+- den Mandanten und das Projekt (für die Konsistenzprüfung, wie bei allen Bau-Tabellen),
+- **genau einen** Bezug — Mangel **oder** Abnahme **oder** Bauabschnitt (die Bedingung „genau einer"
+  wird erzwungen, dasselbe Muster, das γ für den Abnahme-Bezug schon führt),
+- den Verweis auf das Dokument,
+- Bildunterschrift (frei, optional), Aufnahmedatum (optional), Reihenfolge.
+
+**Nicht** in der Tabelle: Standortdaten, Geräteangaben, Bildmaße, Prüfsummen. Aus den EXIF-Daten wird
+ausschliesslich die Aufnahmezeit übernommen (L36); alles andere bleibt in der Originaldatei und
+erreicht die Datenbank nicht.
+
+**Die abgeleiteten Größen** (Galerie-Vorschau, Druckgröße) liegen als Geschwister-Dateien neben dem
+Original im selben Ablagefach — **nicht** als eigene DMS-Dokumente. Grund ist gemessen: die
+Quota-Buchhaltung addiert je Dokumentzeile beim Anlegen, ein Foto würde also **dreifach** zählen und
+**dreifach** im Dokumentenbaum erscheinen. Sie zählen nach Nutzer-Entscheid **nicht** in die Quota,
+weil sie jederzeit neu erzeugbar und um einen festen Faktor begrenzt sind — und weil die Quota ohnehin
+„Summe des je Hochgeladenen" misst und beim Löschen nie sinkt (ebenfalls gemessen). Diese Begründung
+gehört sichtbar in die Oberfläche, nicht nur in dieses Dokument.
+
+#### Die sieben Entscheidungen
+
+| Frage | Entscheidung | Warum — gemessen, nicht angenommen |
+|---|---|---|
+| **Q-ε1** Bildpaket | **Erst messen, dann entscheiden.** `/backend` prüft als **ersten** Schritt mit einer echten HEIC-Datei, ob das vorhandene `sharp` sie liest. Gelingt es, ist L34 ohne neues Paket erfüllt. Gelingt es nicht, wird HEIC mit erklärender Meldung abgewiesen und die Umwandlung wird ein eigener Followup **mit Lizenzklärung** | Der Vorschau-Teil braucht ohnehin kein neues Paket (`sharp@0.35.3` ist Prod-Abhängigkeit). Für HEIC ist die Lage per Inspektion **nicht** entscheidbar: `sharp.format.heif` nennt als Endung nur `.avif`, die Zeichenketten-Gegenprobe im gelinkten libvips ist zweideutig (HEVC-Treffer stammen aus dem Container-Parser). Der Blocker ist ausserdem nicht Können, sondern **Lizenz**: der Prod-Baum hat **1166 Pakete und keine einzige GPL-only**, die HEIC-Dekoder bündeln libde265 (dual GPL/kommerziell). Eine Lizenzentscheidung unter Zeitdruck wäre die schlechteste Form dieser Entscheidung |
+| **Q-ε2** Automatischer Ordner | **Ein** Ordner je Projekt („Baufotos"), **kein** Unterordner je Mangel. Wiedergefunden über eine feste Kennung, nicht über den Anzeigenamen | Der Dokumentenbaum hat gemessen zwei Eindeutigkeits-Indizes — je Projekt für Wurzelordner, je Elternordner für Kinder. Ein Wurzelordner mit fester Kennung ist damit **per Konstruktion** eindeutig: das Anlegen ist von sich aus wiederholbar, es braucht **keine** Sperre und hat **kein** Wettlauf-Fenster. Ein Ordner je Mangel hätte bei 200 Mängeln 200 Ordner erzeugt, und die Zuordnung steht ohnehin in der Verknüpfung — der Ordner ist ein Ort, kein Ordnungsprinzip |
+| **Q-ε3** Auslieferung fürs Bild | **Eine** Route liefert die Bytes, für Galerie **und** Druck — dieselbe Quelle, sitzungsgebunden. Keine Signed URL, kein `next/image`, keine Daten-URI | Die DMS-Signed-URL trägt gemessen `download: true` und rendert deshalb als Datei-Download, nicht als Bild; Remote-Bildhosts sind nicht konfiguriert. **Und der Druck-Renderer wartet schon heute auf Bilder** (er sammelt alle `<img>` und die Schriften) — dieser Teil muss also gar nicht gebaut werden. Zwei Routen (eine für die Galerie, eine für den Druck) wären zwei Wahrheiten über dieselbe Berechtigung |
+| **Q-ε4** Löschsperre | **Wächter am Dokument**, der das Setzen des Papierkorb-Merkers verweigert, solange eine Bau-Verknüpfung besteht — **nicht** eine Änderung der deployten Lösch-Funktion | Das DMS löscht **weich**; ein Fremdschlüssel feuert dabei gar nicht (gemessen an der Funktion). Der Wächter ist rein **additiv**, fasst keine fremde deployte Funktion an und greift auf **jedem** Weg — auch bei einer direkten Änderung durch einen Administrations-Client, die eine Prüfung nur in der Funktion verfehlt hätte. Wichtig und geprüft: er erzeugt **keinen** neuen Hart-Lösch-Blocker, weil der Projekt-Abriss über echtes Löschen kaskadiert und den Wächter nicht auslöst — genau die Klasse Fehler, die PROJ-148 behoben hat |
+| **Q-ε5** Entfernen-Absage | Die **Abschnitts**-Auskunft bekommt eine dritte Art „Foto"; die **Gewerk**-Auskunft bleibt unberührt. Die Teilbaum-Abfrage bleibt | Gemessen: genau zwei Routen rufen diese Auskünfte und bilden auf den Code `references_present` ab. Fotos hängen nie an einem Gewerk, also wäre eine Erweiterung dort toter Zweig. Die Teilbaum-Abfrage bleibt, weil ein Foto am **Enkel** die Wurzel blockiert — dieser Fall hat β und γ je einen Vektor gekostet |
+| **Q-ε6** Abgeleitete Größen | Geschwister-Dateien neben dem Original, **keine** eigenen Dokumentzeilen, **nicht** in der Quota | Siehe Datenmodell: die Quota-Buchhaltung addiert je Dokumentzeile, drei Zeilen hiessen dreifache Zählung und dreifache Anzeige im Baum |
+| **Q-ε7** Protokollierte Abnahme | **Ergänzen ja, Entfernen nein** | Gemessen: der Einfrier-Wächter der Abnahme vergleicht die **Spalten der Abnahmezeile** und nimmt dabei nur den Beleg aus — eine Verknüpfungstabelle sieht er **gar nicht**. Ohne ausdrückliche Regel wären Fotos nach dem Protokollieren also frei löschbar. Fotos kommen wie der Beleg erst nach dem Termin vom Telefon, dürfen aber aus einem bereits gedruckten Protokoll nicht verschwinden — Nachweise nachreichen ja, verschwinden lassen nein |
+
+#### Was wiederverwendet wird und was neu ist
+
+**Wiederverwendet** (Bausteine, nicht Routen): die Magic-Byte-Prüfung, die Ablage- und Signier-Helfer,
+die Quota-Vorprüfung und die Kennungs-Bildung des DMS; die Rechteprüfung des Hauses; die
+Entfernen-Absage aus γ; der Druck-Renderer samt seiner bereits vorhandenen Bild-Warteschleife; `sharp`
+für die abgeleiteten Größen.
+
+**Neu:** eine Verknüpfungstabelle, ein Wächter für die Löschsperre, eine Erweiterung der
+Abschnitts-Auskunft, eine eigene Upload-Route (die die DMS-Bausteine zusammensetzt und die
+Foto-Schritte ergänzt — **nicht** die DMS-Route erweitert, weil ein Foto in **einem** Vorgang
+umgewandelt, verkleinert, gespeichert **und** verknüpft werden muss), eine Auslieferungs-Route für die
+Bytes, eine Fotostrecken-Komponente, zwei Druckabschnitte.
+
+**Bestandsarbeit in einer fremden Slice:** der Kennsatz „für die Auswertung nicht parsebar" wird für
+Bilder richtig gesetzt und die Auswertungs-Pipeline darauf gegatet (L38). Tor sind die Tests jener
+Slice; ein Textdokument muss danach **wörtlich** unverändert ausgewertet und zusammengefasst werden.
+
+#### Zusätzliche Härtungskriterien aus dem Design
+
+- [ ] **AC-45εH-13** Die HEIC-Fähigkeit wird als **erster** `/backend`-Schritt mit einer echten Datei
+  gemessen, und das Ergebnis wird festgehalten — nicht aus der Paketbeschreibung geschlossen.
+- [ ] **AC-45εH-14** Ein Bild, das im Druck **nicht** geladen werden konnte, wird im PDF als fehlend
+  **benannt**. Der Renderer wartet gemessen höchstens **drei Sekunden** und läuft dann still weiter;
+  ohne dieses Kriterium fielen Fotos lautlos aus dem Nachweis — genau die Klasse, die 45l beseitigt hat.
+- [ ] **AC-45εH-15** Der Lösch-Wächter erzeugt **keinen** neuen Hart-Lösch-Blocker: ein
+  Projekt-Abriss mit verknüpften Fotos gelingt weiterhin (belegt, nicht behauptet — die PROJ-148-Lehre).
+- [ ] **AC-45εH-16** Der automatische Ordner wird beim zweiten Foto **wiedergefunden**, auch bei zwei
+  gleichzeitigen Uploads, und ein vom Nutzer in den Papierkorb gelegter Ordner führt **nicht** zu
+  unerreichbaren Fotos, ohne dass die Fläche das sagt.
+- [ ] **AC-45εH-17** Die abgeleiteten Größen erscheinen **nicht** im Dokumentenbaum und **nicht** in der
+  Quota-Anzeige; die Oberfläche erklärt, was die Quota zählt.
+
+#### Risiken für `/qa`
+
+1. **Der Druck ist der schwierigste Nachweis.** Drei-Sekunden-Grenze, stiller Fehlerpfad, echte
+   Bilddaten — hier gehört ein **echter** Druck nach PDF mit sichtbaren Fotos hin, nicht ein Test, der
+   die Bilder wegmockt.
+2. **Der Lösch-Wächter sitzt auf einer geteilten Tabelle.** Ein zu breiter Wächter bricht das Löschen
+   gewöhnlicher Dokumente. Beide Richtungen prüfen: verknüpftes Foto gesperrt, unverknüpftes Dokument
+   weiterhin löschbar.
+3. **Die Bestandsarbeit an der fremden Auswertungs-Pipeline.** Deren Tests sind das Tor; ein Textdokument
+   muss danach wörtlich unverändert durchlaufen.
+4. **Rechte weichen je Anker ab** — Ergänzen an einer protokollierten Abnahme ist erlaubt, Entfernen
+   nicht, sonst gilt die β-Regel. Drei Anker × drei Rollen ist die Matrix, die auszufahren ist.
+5. **Die Aufnahmezeit ist doppelt bestimmt** (aus der Datei vorbelegt, danach von Hand änderbar). Wie
+   bei der Gewährleistungsfrist in γ ist die Frage nicht „stimmt der Wert", sondern „stimmen beide Wege
+   überein" — und ein Foto ohne EXIF darf **kein** Datum erfinden.
+6. **Umwandlung und Verkleinerung laufen in einer Funktion mit Speichergrenze.** Ein präpariertes Bild
+   (kleine Datei, riesige Pixelmasse) muss abgewiesen werden, bevor es entpackt wird.
+
+#### Abhängigkeiten
+
+**Keine neue** — der Vorschau- und Verkleinerungsteil nutzt `sharp`, das als Produktions-Abhängigkeit
+bereits vorhanden ist. Ob HEIC ein zusätzliches Paket braucht, entscheidet die Messung in `/backend`
+(Q-ε1); fällt sie negativ aus, wird **kein** Paket aufgenommen und die Umwandlung wird ein Followup mit
+vorgeschalteter Lizenzklärung.
+
+**Reihenfolge:** `/backend` → `/frontend` → `/qa`. Ein weiterer CIA-Pass ist nur nötig, wenn die
+Messung in `/backend` negativ ausfällt **und** entschieden wird, ein Paket aufzunehmen.
+
+---
+
 ## Deployment — δ (2026-08-21)
 
 **Tag `v2.73.0-PROJ-45-delta` · PR #435 (squash) → main `cde35eb` · Feature-Scope bleibt `alpha`.**
