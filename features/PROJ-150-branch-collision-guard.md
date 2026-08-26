@@ -1,7 +1,7 @@
 # PROJ-150 — Branch-Kollisions-Guard
 
-## Status: In Progress
-## Deployment Scope: —
+## Status: Deployed
+## Deployment Scope: tooling-only
 
 ## Problem
 
@@ -112,3 +112,37 @@ Haus-Muster der Guards (`scripts/check-<name>/{analyze,analyze.test,index}.ts` +
 | 150.8 | Live: `PROJ-34` → 0 blockierend / 0 Warnungen / 9 informational, exit **0** |
 | 150.9 | Rot-Grün: Block-Regel entschärft → **3 von 30** Tests rot; per Dateikopie zurückgesetzt, byte-identisch |
 | 150.10 | `CLAUDE.md` Z. 161 + 397 |
+
+## Deployment
+
+**Deployed 2026-08-26 — Tag `v2.77.0-PROJ-150`, PR #461 (squash) → main `0b08093`.**
+
+Deployment Scope **`tooling-only`**, wörtlich nach Definition: der Merge liefert `scripts/`, ein
+`package.json`-Skript, die CLAUDE.md-Regel und Buchführung — **kein `src/`-Diff, keine Migration,
+kein Dependency**, also keine Laufzeitfähigkeit am Produkt. Für diese Slice ist der Merge selbst die
+Auslieferung: der Guard ist ein lokales Entwicklerwerkzeug, kein Produktpfad, deshalb wäre ein
+Routen-Smoke gegenstandslos.
+
+**Nachweis nach der Regel** („an executed repository tool, test, workflow, or CI check plus the
+relevant repository/CI result") — jeder Punkt **nach** dem Merge gegen `main` gemessen, nicht aus dem
+Bau-Lauf übernommen:
+
+| Nachweis | Ergebnis |
+|---|---|
+| Guard aus `main` gegen den Live-Bestand | `PROJ-Y-45p` → exit **1** mit **zwei** Blockern (fremder Worktree **und** `v2.75.0-PROJ-Y-45p`); `PROJ-34` (neun Branches) → exit **0**, still |
+| Unit-Tests aus `main` | **30/30** — tragend, weil vitest **nicht** in CI läuft und der Merge-Zustand sonst nie maschinell geprüft wäre |
+| Volle Suite auf `0b08093` | **3783/3783** in 441 Dateien |
+| ESLint / tsc / Build | **0** · **13 = Baseline / 0 neu** · Compiled successfully |
+| Datei-Guards | index-scope · migration-naming · token-drift · function-inventory alle **OK** |
+| CI + Auslieferung | 9/9 Checks grün; Vercel-Produktions-Build aus genau `0b08093` **success** |
+
+**Kein eigener `/qa`-Durchlauf** — bewusst und nach Präzedenz: die beiden nächstliegenden
+Guard-Slices (PROJ-147, PROJ-Y-148e, beide reine Dateianalyse ohne CI-Enrollment) sind ohne separate
+QA-Stufe auf `Deployed` gegangen, und jedes der zehn Kriterien trägt hier einen ausgeführten Nachweis
+inklusive Rot-Grün. Das ist eine Abweichung in der **Nachweisform**, kein unerfülltes Kriterium.
+
+**Alle 10 AC erfüllt, nichts zurückgestellt.** `PROJ-Y-150a` (Harness-Hook als echte Erzwingung) ist
+**keine** Auslassung dieser Slice: kein Akzeptanzkriterium verlangt Automatik — D-150.2 benennt die
+Grenze, und der einzige automatische Weg ändert Agentenverhalten für **alle** Sessions auf dieser
+Maschine und ist damit eine eigene Entscheidung. Ebenso ist D-150.1 (kein CI-Gate) eine gemessen
+begründete Entwurfsentscheidung, kein verkürzter Umfang.
