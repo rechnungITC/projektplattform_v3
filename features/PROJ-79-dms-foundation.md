@@ -254,6 +254,46 @@ drei neuen Funktionen oder `tenant_storage_quotas`.
 **Deployment Scope bleibt `alpha`:** β (externe Konnektoren) ist unverändert zurückgestellt.
 Dieses Kriterium war eine stille Lücke **innerhalb** von α und ist jetzt geschlossen.
 
+**Deployed 2026-08-26 — Tag `v2.75.0-PROJ-Y-45p`, PR #458 (squash) → main `775e222`.** Migration
+lag seit dem Bau in Prod, beim Merge also kein Laufzeit-DB-Change; ausgeliefert wurde der
+Cron-Schritt. Produktions-Deployment aus genau diesem SHA `success`. Post-Deploy gemessen:
+Cron-Route **401** ohne und mit falschem Bearer, Fehlerrumpf ohne einen Treffer auf
+Mandant/Quota/Byte/Sweep, Bestands-Cron identisch, Speicheranzeige und Upload-Pfad **307**. Prod
+eigenständig nachgemessen: genau **3** anweisungsweise Trigger, altes Inkrement **0**,
+**0 abweichende Zähler**.
+
+#### Kollision zweier Sessions, aufgelöst
+
+Zwei Sessions haben diesen Followup **gleichzeitig** gebaut und ihre Migrationen **27 Sekunden
+auseinander** nach Prod gebracht: `20260826110000` (dieser Zweig, anweisungsweise Neuberechnung)
+und `20260826120000` (der andere, zeilenweise Delta-Arithmetik). Prod trug damit kurzzeitig **zwei
+konkurrierende Buchhaltungen auf derselben Spalte** — dort entscheidet die Trigger-Reihenfolge,
+der schlechteste aller Zustände.
+
+Der andere Zweig hat seine Variante per `20260826130000` **selbst zurückgenommen** (PR #457,
+gemergt nach #458), mit einer gemessenen Begründung: eine Neuberechnung konvergiert, eine
+Gegenrechnung driftet an jedem Weg ohne Trigger; und seine Semantik „Papierkorb zählt weiter“ war
+auf der Annahme gebaut, soft-gelöschte Dokumente seien wiederherstellbar — den Pfad gibt es nicht,
+also hätte sie „für immer berechnet, ohne jede Freigabe“ bedeutet.
+
+**Zwei Dinge sind dabei belegt statt angenommen.** Erstens **keine Repo/Prod-Divergenz**: alle drei
+Migrationen liegen auf `main` in genau der Reihenfolge, in der sie in Prod liefen — die
+zurückgenommene wird ausdrücklich **nicht** gelöscht, weil eine Migration aus der Registry aus dem
+Repo zu entfernen die Divergenz wäre, gegen die PROJ-Y-148c/148e antreten. Zweitens die **Endlage
+eines frischen Aufbaus**: die Rücknahme-Migration wirft, wenn bei vorhandener
+Neuberechnungs-Funktion nicht genau 3 ihrer Trigger stehen, und der **Schema-Drift-Wächter ist auf
+`main` grün** — er spielt alle drei nacheinander in eine frisch gebaute Datenbank.
+
+Lehre in `CLAUDE.md` verankert: vor dem Start eines Followups nach einem Branch mit dessen ID
+suchen. Ein Worktree mit angelegtem, aber **commit-freiem** Branch sieht in `git log`, in
+`gh pr list` und auf dem Remote nach gar nichts aus — und bedeutet trotzdem, dass die Arbeit
+vergeben ist.
+
+**Ein Preis der gewählten Semantik, vom anderen Zweig gemessen:** die Bytes bleiben im Bucket
+liegen — **9 Objekte / 21.867 Byte ohne jede `documents`-Zeile**. Der Zähler ist damit ehrlich
+„gezählte Bytes“, nicht „Bytes auf der Platte“; ein echter Aufräumlauf gehört zu **PROJ-79-β**
+bzw. dem Waisen-Sweep **PROJ-Y-115c-3**.
+
 ### Backend — α (2026-07-21)
 DB + API layer for the internal DMS core. **Two migrations applied to prod** (`iqerihohwabyjzkpcujq`):
 - `20260721120000_proj79_dms_foundation_alpha` — 3 tables (`document_tree_nodes`, `documents`, `tenant_storage_quotas`) + private Storage bucket `documents` (50 MB cap + 9-MIME allowlist, tenant/project-prefixed) + 4 `storage.objects` RLS policies (seg1 tenant-member, seg2 project-member) + quota-increment trigger `_dms_bump_storage_usage` (locked to postgres/service_role) + RPCs `dms_move_node` (cycle guard) & `dms_soft_delete_subtree` (cascade). Audit trio (`audit_log_entity_type_check` + `_tracked_audit_columns` + `can_read_audit_entry`) recreated **non-destructively from live prod defs** (+authenticated re-grant, siblings preserved).
