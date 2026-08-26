@@ -1,7 +1,7 @@
 # PROJ-45: Construction Extension — Gewerke & Bauabschnitte
 
 ## Status: Deployed
-## Deployment Scope: alpha
+## Deployment Scope: mvp
 
 > **β ist deployed (2026-08-19, Tag `v2.61.0-PROJ-45-beta`, PR #402 squash → main `740b16b`).**
 > **Deployment Scope `alpha`** — aus den Belegen klassifiziert, nicht aus dem Etikett: `full` ist
@@ -4127,6 +4127,136 @@ Dekrement. Diese Slice hat ihn nicht angefasst — und weil die Reihenfolge
 unverändert bleibt, wird er nur bei **erfolgreichen** Uploads erhöht, nicht bei
 abgebrochenen. **AC-45ε.4/.5** (HEIC) unverändert → PROJ-Y-45o. **AC-45εH-9**
 bleibt teilweise erfüllt (γ Blöcke 1–2, δ Blöcke 1–5 nicht wörtlich).
+
+---
+
+## Deployment — ε (2026-08-26)
+
+**Tag `v2.74.0-PROJ-45-epsilon` · PR #453 (squash) → main `66335a8`.**
+**Deployment Scope: `alpha` → `mvp`.**
+
+### Die Scope-Entscheidung, aus den Kriterien statt aus dem alten Etikett
+
+`alpha` beschreibt die Lage **nicht mehr**: seine Definition verlangt, dass „die
+Spec jede verbleibende Slice auflistet" — es gibt keine. α (Gewerke &
+Bauabschnitte), β (Mängel), γ (Abnahmen), δ (Terminsignale) und ε
+(Fotodokumentation) sind alle ausgeliefert. Genau darauf haben sich β, γ und δ
+beim Buchen von `alpha` berufen („die Restslices sind namentlich geführt"); diese
+Begründung ist mit ε aufgebraucht.
+
+`full` ist **ausgeschlossen**, und zwar durch eine einzige Sache: **AC-45ε.4**
+(HEIC/HEIF wird serverseitig nach JPEG umgewandelt) ist eine **ursprüngliche**
+Anforderung dieser Slice und zurückgestellt, mit Ziel-ID **PROJ-Y-45o**. Die
+Ausnahme „Waived criterion" greift nicht — sie verlangt „nothing was deferred",
+und hier ist ausdrücklich etwas zurückgestellt und registriert. Dazu ist
+**AC-45εH-9** (Regressionen wörtlich) nur teilweise erfüllt → **PROJ-Y-45r**.
+
+`mvp` trifft dagegen zu, Bedingung für Bedingung: eine **ausdrücklich genehmigte,
+benutzbare Grenze** ist ausgeliefert (der Nutzer-Entscheid zu Q-ε1 lautete „erst
+messen, dann entscheiden", die Messung fiel negativ aus, und die Grenze ohne
+HEIC ist damit bewusst beschlossen statt versehentlich entstanden) · die Spec
+trägt eine **Akzeptanzkriterien-Matrix** für den gelieferten Kern (QA-Abschnitt
+oben, 23 AC + 17 Härtungskriterien einzeln bewertet) · **jede** ausgelassene
+ursprüngliche Anforderung hat einen benannten Followup. `tooling-only` fällt weg:
+ε liefert produktive Laufzeitfähigkeit.
+
+Die Regel verlangt für `alpha → mvp` einen **neuen QA- und Deployment-Durchgang**
+— beide liegen vor (ε-`/qa` 2026-08-25, dieser Deployment-Schritt), und die
+Slice-Historie von α bis δ bleibt oben unverändert stehen.
+
+### Die gelieferte Grenze
+
+Fotodokumentation als Verknüpfung auf das DMS (L31): das Bild ist ein echtes
+`documents`-Objekt und erbt Magic-Byte-Prüfung, 50-MB-Grenze, Quota, Papierkorb,
+Vertraulichkeits-Gate und Feld-Audit. Genau **ein** Bezug je Foto (Mangel ·
+Abnahme · Bauabschnitt), **eine** Fotostrecke für alle drei, zwei abgeleitete
+Größen (Vorschau 480 px für die Galerie, Druckgröße 1400 px für den Ausdruck,
+Original nur am Herunterladen-Knopf), Aufnahmedatum **ausschliesslich** aus
+`DateTimeOriginal` und niemals erfunden, Bilder in Mängelanzeige und
+Abnahmeprotokoll, Fotozähler auf der α-Abschnittsfläche, Löschsperre mit Nennung
+des Bezugs, und an der protokollierten Abnahme „ergänzen ja, entfernen nein".
+
+**Nicht geliefert:** die HEIC-Umwandlung (AC-45ε.4/.5) — abgewiesen mit
+erklärender Meldung, die JPEG als Ausweg nennt.
+
+### Kein Runtime-DB-Change beim Merge
+
+Beide Migrationen liegen seit ihrem Bau in Prod: `20260824140000` (Datenschicht,
+2026-08-24) und `20260826090000` (PROJ-Y-45q, 2026-08-26). Der Merge liefert
+Code.
+
+**Was mit diesem Deployment neu live geht, präzise:** die Laufzeit der Flächen
+ging schon mit dem `/frontend`-Merge live (`495f5a8`, Deployment
+`dpl_2vBafk15k6Nyb` READY). **Neu ist die Verhaltensänderung aus PROJ-Y-45q** —
+`photo-ingest.ts` und die umgestellte Route, also die Behebung von F-1. Bis zu
+diesem Deployment war die β-Regel in Produktion nicht erreichbar.
+
+### Vercel — dieses Deployment, nicht „irgendeines"
+
+`dpl_C3mhQonXfLdcs8wxTYRXDgGf4cMg`, **READY**, `target=production`, gebaut aus
+`githubCommitSha 66335a8ff164a1ead55c68768e9535038cff6a1d` — dem Merge-Commit
+dieser Slice. Build in 2m, `Deployment completed`. **0 Laufzeitfehler** im
+24-Stunden-Fenster.
+
+### Prod eigenständig nachgemessen, nicht aus den Notizen übernommen
+
+| geprüft | Ergebnis |
+|---|---|
+| `construction_photos` | 1 Tabelle mit aktivem RLS, **1 Policy und damit 0 Schreib-Policies** (geschrieben wird nur über Funktionen) |
+| Foto-Funktionen | **11** (8 aus ε + 3 aus PROJ-Y-45q), davon die drei neuen **alle DEFINER** |
+| `anon` **und** PUBLIC | **0** EXECUTE-Einträge über **alle** 11 (PROJ-Y-114a-Lehre vollständig, nicht als Stichprobe) |
+| `search_path` | **0** Funktionen ohne |
+| Trigger auf `construction_photos` + `documents` | 10, **0 deaktiviert** |
+| Objektarten (`audit_log_entity_type_check`) | **96**, `construction_photos` enthalten |
+| **PROJ-79-Schreibpolicies** | **2/2 intakt** — `document_tree_nodes_insert` und `documents_insert` fordern weiterhin `lead`/`editor`. Das ist die Zahl, die trägt: verlöre sie ihren Wert, verlöre PROJ-Y-45q seine Begründung |
+| Rückstände | **0** Fotos, 0 Dokumente, 0 Knoten, 0 eigene Mängel, Quota auf Ausgangswert |
+
+### Post-Deploy-Smoke — und warum der Smoke allein nichts beweist
+
+Alle **zehn** Flächen (4 API-Routen inkl. der drei Bildgrößen, Mängel-Reiter,
+Bauabschnitte, beide Druckseiten) antworten mit exakt **307**, Rumpf
+`Redirecting...` (15 Byte). Auf den drei Bild-Adressen **kein** Bild-Inhaltstyp
+und **keine** JPEG-/PNG-Magic-Bytes — ein Leck mit korrektem Status sieht eine
+reine Statusprüfung nicht.
+
+**Gegengeprüft, dass der Smoke die Existenz nicht belegt:** drei erfundene Pfade
+(`…/gibt-es-nicht`, `…/erfundene-flaeche`, `…/construction-photos-tippfehler`)
+antworten ebenfalls mit **307**. Die Existenz ist deshalb am **Build-Log des
+ausgelieferten Deployments** belegt — dort stehen alle vier Fotoflächen und beide
+Druckseiten als registrierte Routen.
+
+### Gates auf dem gemergten `main`-Stand
+
+| Prüfung | Ergebnis |
+|---|---|
+| ESLint (repo-weit) | **0**, Exit 0 |
+| `tsc --noEmit` | **13 = Baseline / 0 neu** (nach `rm -rf .next`) |
+| `npx vitest run` | **3747/3747** (die Zahl ist gegenüber dem QA-Lauf gewachsen — eine Parallel-Slice ist mitgelandet) |
+| `npm run build` | clean; alle vier Fotoflächen und beide Druckseiten im Manifest |
+| `check:migration-naming` · `check:index-scope` · `check:function-inventory` | je 0 Fehler |
+| Advisors (Security) | 152 WARN / **0 ERROR**; die 3 ε-WARN sind die beabsichtigte Kategorie mit 149 Bestandsfällen |
+
+Alle Pflicht-Checks des PRs grün, darunter der **Schema-Drift-Wächter** — der
+belegt unabhängig, dass die drei neuen Funktionen auch in einer frisch aus den
+Migrationsdateien gebauten Datenbank entstehen — und der **Funktions-Inventar-Wächter**
+(Inventar 293 → 296 aufgefrischt, Restliste 9 → 6).
+
+### Was offen bleibt
+
+- **AC-45ε.4/.5** (HEIC → JPEG) → **PROJ-Y-45o**. Der Grund ist Lizenz, nicht
+  Können: die HEIC-Dekoder bündeln libde265 (dual GPL/kommerziell), der Prod-Baum
+  trägt 1166 Pakete und **keine** GPL-only. **Der einzige Grund, warum diese Zeile
+  nicht `full` ist.**
+- **AC-45εH-9** teilweise → **PROJ-Y-45r**: γ Blöcke 1–2 und δ Blöcke 1–5 sind
+  nicht wörtlich nachgefahren. δs Auswertung ist über die db-group-Blöcke B0–B4
+  wörtlich abgedeckt, γs Rechte-/ACL-/Wächterfläche über Blöcke 3–4.
+- **PROJ-Y-45p** (Medium, vorbestehend aus PROJ-79-α): der Speicherplatz-Zähler
+  hat kein Dekrement; in Prod weichen beide Test-Mandanten bereits ab. ε hat ihn
+  nicht angefasst, macht Uploads aber routinemässig und damit den Verlust
+  erreichbar.
+- **AC-45ε.12/.21** strukturell belegt statt durchfahren (Prod trägt keine
+  Abnahme mit Fotos).
+- Kleinbefunde der Familie: **PROJ-Y-45b · 45e · 45h · 45i · 45j · 45k · 45n**.
 
 ---
 
