@@ -47,17 +47,44 @@ drop function if exists public.recompute_tenant_storage_usage(uuid);
 -- `_dms_bump_storage_usage` hatte ihre Migration bewusst gedroppt (Trigger UND
 -- Funktion); mein `create or replace` hat die Funktion 27 Sekunden später
 -- wiederbelebt. Ohne diesen Drop bliebe eine Funktion stehen, die ihr Entwurf
--- ausdrücklich entfernt hat — und die kein Trigger mehr aufruft.
-drop function if exists public._dms_bump_storage_usage();
+-- ausdrücklich entfernt hat.
+--
+-- **Bedingt, und der Grund ist eine Kaskade, die der Schema-Drift-Waechter
+-- gefunden hat.** In Prod lief der Drop unbedingt und ging durch, weil ihre
+-- Migration den Trigger `documents_bump_storage_usage` schon entfernt hatte. Im
+-- Fresh-Apply NUR dieses Zweiges existiert der Trigger aus PROJ-79 noch, und
+-- Postgres verweigert dann:
+--   cannot drop function _dms_bump_storage_usage() because other objects
+--   depend on it / trigger documents_bump_storage_usage on table documents
+--
+-- `CASCADE` waere hier die falsche Antwort: sie wuerde in einem Replay ohne ihre
+-- Migration den Trigger mitreissen und die Datenbank **ganz ohne**
+-- Speicherbuchhaltung zurücklassen — schlimmer als der Zustand, den diese Datei
+-- aufraeumt. Die Funktion gehoert ausserdem ihrer Migration, nicht meiner: ich
+-- habe sie nur als Nebenwirkung eines `create or replace` wiederbelebt. Also
+-- wird sie genau dann entfernt, wenn ihr Mechanismus vorhanden ist — und sonst
+-- unberuehrt gelassen, womit PROJ-79s Zustand steht.
+do $$
+begin
+  if exists (select 1 from pg_proc where pronamespace='public'::regnamespace and proname='_dms_recompute_storage_usage') then
+    drop function if exists public._dms_bump_storage_usage();
+  else
+    raise notice 'PROJ-Y-45p-revert: Neuberechnungs-Mechanismus fehlt — _dms_bump_storage_usage bleibt stehen (PROJ-79-Zustand)';
+  end if;
+end;
+$$;
 
 do $$
 declare
   v_meine int;
   v_ihre int;
 begin
+  -- Der Bump wird hier bewusst NICHT mitgezaehlt: ob er verschwindet, haengt an
+  -- ihrer Migration (siehe oben). Gezaehlt werden die zwei Funktionen, die
+  -- wirklich mir gehoeren.
   select count(*) into v_meine from pg_proc
    where pronamespace = 'public'::regnamespace
-     and proname in ('_dms_release_storage_usage', 'recompute_tenant_storage_usage', '_dms_bump_storage_usage');
+     and proname in ('_dms_release_storage_usage', 'recompute_tenant_storage_usage');
   if v_meine <> 0 then
     raise exception 'PROJ-Y-45p-revert: % eigene Funktion(en) verblieben', v_meine;
   end if;
