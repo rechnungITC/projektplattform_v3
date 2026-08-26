@@ -158,6 +158,7 @@ npm run audit:prod              # npm audit --omit=dev --audit-level=high
 npm run check:migration-naming  # filename format + version-prefix collisions
 npm run check:index-scope       # INDEX.md: lifecycle status vs deployment scope
 npm run check:token-drift       # src/: keine neuen rohen Tailwind-Palette-Farben (Ratsche)
+npm run check:branch-collision -- PROJ-Y-45p   # ist die Slice schon vergeben? (lokal, kein CI-Gate)
 npm run check:osv-gate -- report.json  # OSV findings: fail only at HIGH+ (house norm)
 npm run check:schema-drift      # .from().select() columns vs migration schema (needs Docker)
 ```
@@ -393,7 +394,16 @@ Rules:
   under `.claude/worktrees/`, so lint/test globs in the primary checkout
   don't pick them up.
 - Never touch another session's worktree, untracked files, or branches.
-- **Vor dem Start eines Followups nach einem Branch mit dessen ID suchen** (`git branch -a | grep <ID>`). Ein Worktree mit angelegtem, aber **commit-freiem** Branch sieht in `git log`, in `gh pr list` und auf dem Remote nach gar nichts aus — und bedeutet trotzdem, dass die Arbeit vergeben ist. Am 2026-08-26 haben zwei Sessions PROJ-Y-45p gleichzeitig gebaut und ihre Migrationen **27 Sekunden auseinander** nach Prod gebracht; Prod trug kurzzeitig zwei konkurrierende Buchhaltungen auf derselben Spalte.
+- **Vor dem Start einer Slice pruefen, ob sie schon vergeben ist** — `npm run check:branch-collision -- <ID>`
+  (PROJ-150). Ein Worktree mit angelegtem, aber **commit-freiem** Branch sieht in `git log`, in
+  `gh pr list` und auf dem Remote nach gar nichts aus — und bedeutet trotzdem, dass die Arbeit
+  vergeben ist. Am 2026-08-26 haben zwei Sessions PROJ-Y-45p gleichzeitig gebaut und ihre
+  Migrationen **27 Sekunden auseinander** nach Prod gebracht; Prod trug kurzzeitig zwei
+  konkurrierende Buchhaltungen auf derselben Spalte.
+  Das naive `git branch -a | grep <ID>` aus der Erstfassung dieser Regel taugt **nicht**: mehrere
+  Branches pro Slice sind hier der Normalfall (`proj-130` traegt 12, `proj-34` neun), es haette also
+  fast immer angeschlagen. Der Guard trennt daher **lebende** Ansprueche (fremder Worktree, oder ein
+  Tag → schon deployed) von Altlast und blockiert nur bei den beiden eindeutigen Signalen.
 - Cleanup after merge: `git worktree remove <path>` + delete the branch.
 
 ## Continuous Improvement Agent
