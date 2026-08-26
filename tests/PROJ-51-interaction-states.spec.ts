@@ -265,21 +265,18 @@ test.describe("PROJ-51 AC-20 — prefers-reduced-motion", () => {
     ).toBe(true)
   })
 
-  // BEFUND F-1 dieses QA-Durchgangs (Medium) — ebenfalls `test.fail()`:
-  // `tailwindcss-animate` ist keine Abhängigkeit und `tailwind.config.ts`
-  // hat `plugins: []`, also existieren `animate-in`, `fade-in-0`,
-  // `zoom-in-95` und `slide-in-from-*` im ausgelieferten Stylesheet nicht —
-  // obwohl 9 Dateien sie an 109 Stellen tragen. Dialog, Sheet, Select,
-  // Popover, Dropdown, Toast, Alert-Dialog und Navigation-Menu erscheinen
-  // deshalb ohne jede Ein-/Ausblendung. Im Kompilat existieren genau vier
-  // Keyframes (accordion-down/-up, pulse, spin).
-  test("Die Enter-Klassen der Radix-Primitiven müssen eine Animation erzeugen", async ({
+  // PROJ-Y-51b (2026-08-26) — vorher `test.fail()`, jetzt eine echte Zusicherung.
+  //
+  // Der Marker hat seine Aufgabe erfuellt: als das Plugin verdrahtet wurde, meldete
+  // der Lauf "Expected to fail, but passed" und verlangte genau diese Umstellung.
+  // Ohne ihn waere der Fix still geblieben.
+  //
+  // Befund F-1 war ein Vendoring-Loch von Tag eins: `plugins: []` stand seit dem
+  // Initial commit, `tailwindcss-animate` war nie im Projekt, und die neun
+  // Radix-Primitiven trugen ihre Animationsklassen an 109 Stellen ins Leere.
+  test("Die Enter-Klassen der Radix-Primitiven erzeugen eine Animation", async ({
     page,
   }) => {
-    test.fail(
-      true,
-      "PROJ-51 F-1: tailwindcss-animate fehlt, die animate-in/zoom/slide-Utilities existieren nicht im Kompilat",
-    )
     await page.goto("/login")
     const probe = await page.evaluate(() => {
       function animationOf(classes: string) {
@@ -295,21 +292,72 @@ test.describe("PROJ-51 AC-20 — prefers-reduced-motion", () => {
       return {
         // Wortgleich die Klassen aus `DialogContent`.
         radixEnter: animationOf(
-          "data-[state=open]:animate-in data-[state=open]:fade-in-0 data-[state=open]:zoom-in-95",
+          "data-[state=open]:animate-in data-[state=open]:fade-in-0 data-[state=open]:zoom-in-95 duration-200",
         ),
-        // Positivkontrolle: eine Kern-Utility, die es gibt.
+        // Positivkontrolle: eine Kern-Utility, die es immer gab.
         pulse: animationOf("animate-pulse"),
       }
     })
 
-    // Positivkontrolle zuerst — schlägt sie fehl, ist die Sonde kaputt und
-    // der Negativbefund darunter wertlos.
     expect(
       probe.pulse.name,
       "Positivkontrolle animate-pulse liefert keine Animation — die Sonde misst nicht das echte Stylesheet",
     ).not.toBe("none")
+    expect(
+      probe.radixEnter.name,
+      "Die Enter-Klassen sind wieder wirkungslos — ist tailwindcss-animate aus tailwind.config.ts verschwunden?",
+    ).toBe("enter")
+    expect(Number.parseFloat(probe.radixEnter.duration)).toBeGreaterThan(0)
+  })
 
-    expect(probe.radixEnter.name).not.toBe("none")
+  // Die Kehrseite, und der Grund, warum F-1 nicht ohne Begleitung behoben werden
+  // durfte: das Plugin bringt keinen Reduced-Motion-Schutz mit (seine README
+  // empfiehlt `motion-safe:` je Klasse). Ohne die globale Regel in `globals.css`
+  // animierten hier 109 Stellen ungebremst — AC-20 waere an neun Primitiven
+  // gebrochen, einen Tag nachdem PROJ-Y-51c ihn am Button reparierte.
+  test("Unter reduzierter Bewegung sind die Overlay-Animationen praktisch aus, Fortschrittsanzeigen laufen weiter", async ({
+    browser,
+  }) => {
+    const context = await browser.newContext({ reducedMotion: "reduce" })
+    const page = await context.newPage()
+    await page.goto("/login")
+    const probe = await page.evaluate(() => {
+      function animationOf(classes: string, state = true) {
+        const el = document.createElement("div")
+        el.className = classes
+        if (state) el.setAttribute("data-state", "open")
+        document.body.appendChild(el)
+        const s = getComputedStyle(el)
+        const result = { name: s.animationName, duration: s.animationDuration }
+        el.remove()
+        return result
+      }
+      return {
+        dialog: animationOf(
+          "data-[state=open]:animate-in data-[state=open]:fade-in-0 data-[state=open]:zoom-in-95 duration-200",
+        ),
+        spinner: animationOf("animate-spin", false),
+        skeleton: animationOf("animate-pulse", false),
+      }
+    })
+    await context.close()
+
+    // `animation-duration` bleibt gesetzt (0.01ms) statt auf `none` zu gehen:
+    // Radix' Presence entscheidet ueber `animationName !== "none"`, ob es auf
+    // `animationend` wartet. Der Name muss also stehen bleiben, die Dauer nicht.
+    expect(probe.dialog.name).toBe("enter")
+    expect(
+      Number.parseFloat(probe.dialog.duration),
+      `Overlay-Animation laeuft unter prefers-reduced-motion weiter (${probe.dialog.duration}) — fehlt die Regel in globals.css?`,
+    ).toBeLessThan(0.001)
+
+    // AC-21: eine Fortschrittsanzeige einzufrieren wuerde einen laufenden
+    // Vorgang wie einen haengenden darstellen. Die Ausnahme ist Absicht.
+    expect(
+      Number.parseFloat(probe.spinner.duration),
+      "Der Ladekreis steht unter reduzierter Bewegung still",
+    ).toBeGreaterThan(0.5)
+    expect(Number.parseFloat(probe.skeleton.duration)).toBeGreaterThan(0.5)
   })
 })
 
