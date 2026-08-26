@@ -1,7 +1,7 @@
 # PROJ-Y-114a: Quelle / Herkunftsnachweis am DD-Finding
 
-## Status: Approved (QA PASS 2026-08-21 — 0 Critical / 0 High)
-## Deployment Scope: —
+## Status: Deployed
+## Deployment Scope: full
 
 **Created:** 2026-08-18
 **Parent:** PROJ-114 (DD-Findings) · **Requirement-Herkunft:** PROJ-108 AC1 (superseded)
@@ -331,3 +331,56 @@ als eigene Aufräumarbeit vorgezeichnet hat.
 |---|---|
 | **PROJ-Y-114b** | Verweis auf einen **internen DMS-Knoten** als Quelle (eigene Verweis-Tabelle nach dem `skill_knowledge_links`-Muster), sobald Dokumente in Prod existieren. `external_document_links` ist per SSRF-Härtung https-only und dafür strukturell untauglich. |
 | **PROJ-Y-114c** | ID-Hygiene: die vier spec-lokalen `PROJ-Y-1` in PROJ-70/98/100c/116 auf eindeutige `PROJ-Y-<Eltern><Buchstabe>`-IDs umschreiben. |
+
+---
+
+## 8. Deployment (2026-08-26)
+
+**Deployed — Scope `full`.** Kein Runtime-Deploy nötig: die drei Migrationen
+(`20260817120000` + Fix-forwards `20260817123000`/`20260817124000`) sind seit `/backend`
+in Prod, der Code liegt seit dem Merge von **#400** (`d59b08b`) auf `main` und ist über
+den Vercel-Auto-Deploy von `main` längst ausgeliefert. Dieser Schritt ist die fehlende
+**Closure**: Statuszeile, Scope und Tag. Zwischen QA-PASS (2026-08-21) und dieser Zeile
+lagen fünf Tage, in denen die Zeile `Approved` blieb, obwohl nichts mehr offen war —
+festgehalten, weil genau diese Lücke die Sorte Buchführungsfehler ist, gegen die
+PROJ-141-γ1 angetreten ist.
+
+### Scope-Begründung: `full`, nicht `mvp`
+
+Klassifiziert aus Akzeptanzkriterien und Belegen, nicht aus dem Etikett:
+
+- **13/13 Akzeptanzkriterien erfüllt** (Abschnitt 7), QA-Verdikt **0 Critical / 0 High**.
+- **Keine zurückgestellte Original-Anforderung.** `D-1` (interner DMS-Verweis →
+  PROJ-Y-114b) ist ausdrücklich **keine**: die Dokumentenverweis-Hälfte von PROJ-108 AC1
+  ist über **PROJ-115** erfüllt, offen ist nur der zusätzliche *interne* Pfad — eine
+  spätere Erweiterung, die kein Kriterium dieser Slice zurückstellt.
+- **`D-3` ist Nachweistiefe, kein unerfülltes Kriterium.** Kein Kriterium verlangt einen
+  Browser-Durchlauf; die DD-Flächen sind in Prod datenlos, die Verkettung ist über den
+  Live-Pentest (16 Vektoren gegen echte RPCs) belegt. Gleiche Einordnung wie **PROJ-Y-2**,
+  das aus demselben Grund `full` trägt.
+- Die Ausnahme *„Waived criterion"* wurde **nicht** in Anspruch genommen und war nicht
+  nötig — kein Kriterium ist wörtlich unerfüllt.
+
+### Prod eigenständig nachgemessen (nicht aus den QA-Notizen übernommen)
+
+| Messung | Erwartet | Gemessen 2026-08-26 |
+|---|---|---|
+| Neue Spalten auf `dd_findings` | 3 | **3** |
+| `source_dd_question_id` → `dd_questions` | `ON DELETE RESTRICT` | **`confdeltype='r'`** |
+| `source_kind`-CHECK | 6 Werte | **6** |
+| `_tracked_audit_columns('dd_findings')` | 13 | **13** |
+| `external_document_links_entity_type_check` | unverändert 6 Objektarten | **6** — keine zweite Verweis-Wahrheit |
+| `create_dd_finding` / `update_dd_finding` | 12 / 15 Parameter | **12 / 15** |
+| ACL `_dd_finding_source_question_guard` | kein `anon`, kein `authenticated`, **kein PUBLIC** | **`postgres=X/postgres, service_role=X/postgres`** |
+
+Die letzte Zeile ist die tragende: der F-1-Fix hält. Ein PUBLIC-Eintrag würde mit einem
+**leeren Empfänger** rendern (also mit führendem `=`) — der fehlt, und damit ist der
+Wächter für `anon` nicht erreichbar. Das ist genau die Prüfform, die in PROJ-Y-96b und
+PROJ-114 dreimal übersehen wurde, weil ein Entzug nur auf `anon`/`authenticated` den
+PUBLIC-Eintrag stehen lässt.
+
+### Offene Folgearbeit (keine Auslassung dieser Slice)
+
+`PROJ-Y-114b` (interner DMS-Verweis) und `PROJ-Y-114c` (ID-Hygiene der vier
+spec-lokalen `PROJ-Y-1`-Vorkommen) bleiben registriert. `PROJ-Y-114d`, `PROJ-Y-114e` und
+`PROJ-Y-114f` sind über **#443**/**#444** bereits erledigt.
