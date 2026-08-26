@@ -642,7 +642,7 @@ Fixes (Hausregel: `/qa` findet, `/frontend` behebt).
 
 ### Befunde
 
-**F-1 (Medium) — 109 tote Animations-Klassen: die Ein-/Ausblendungen der Radix-Primitiven laufen nicht.**
+**F-1 (Medium) — 109 tote Animations-Klassen: die Ein-/Ausblendungen der Radix-Primitiven laufen nicht.** **[Behoben 2026-08-26 in PROJ-Y-51b — siehe zweiten Nachtrag.]**
 `tailwindcss-animate` ist **keine** Abhängigkeit und `tailwind.config.ts` hat `plugins: []`. Damit existieren
 `animate-in`, `animate-out`, `fade-in-0`, `zoom-in-95` und `slide-in-from-*` im ausgelieferten Stylesheet
 nicht — obwohl **9 Dateien sie an 109 Stellen tragen**: Dialog, Alert-Dialog, Sheet, Select, Popover,
@@ -807,6 +807,70 @@ jetzt wird der Faktor selbst geprüft.
 
 **Offen bleiben PROJ-Y-51b und PROJ-Y-51d** — beide berühren kein Akzeptanzkriterium dieser Spec und
 blockieren `full` deshalb nicht.
+
+### Nachtrag 2026-08-26 — PROJ-Y-51b: die Ein-/Ausblendungen laufen, und AC-20 gilt jetzt projektweit
+
+**Der Fund war kein unerfüllter Wunsch, sondern ein Vendoring-Loch von Tag eins.** `plugins: []` steht
+seit dem **Initial commit** und `tailwindcss-animate` war **nie** im Projekt — die neun shadcn-Primitiven
+wurden mit ihren Animationsklassen übernommen, ohne das Plugin, gegen das sie geschrieben sind. Vier
+Monate Design-System-Arbeit haben das nicht bemerkt, weil nichts es geprüft hat.
+
+**CIA-Checkpoint statt Sub-Agent.** Neue Abhängigkeit *und* Änderung an geteilten Primitiven sind nach
+`.claude/rules/continuous-improvement.md` review-pflichtig; die Bewertung wurde als Findings · Risks ·
+Recommendations vorgelegt und die Richtung vom Nutzer freigegeben, bevor etwas installiert wurde.
+
+**Der tragende Fund der Bewertung, gemessen bevor entschieden wurde:** mit dem Plugin animiert der
+Dialog **unter `prefers-reduced-motion: reduce` identisch** (`enter`, 0,15 s) — F-1 naiv zu beheben
+hätte **AC-20 an 109 Stellen gebrochen**, einen Tag nachdem PROJ-Y-51c ihn am Button reparierte. Das
+Plugin bringt keinen Schutz mit; seine eigene README empfiehlt `motion-safe:` **je Klasse**. Diesem Rat
+zu folgen wäre hier falsch gewesen: 109 Stellen, die beim nächsten Primitive jemand vergisst — genau
+die Disziplin-statt-Mechanik, aus der diese ganze Schuldenkette entstand.
+
+**Umsetzung: EIN Ort.** Eine globale Regel in `globals.css` setzt unter `reduce`
+`animation-duration: 0.01ms !important` (plus `transition-duration`). `!important` ist hier nicht
+Bequemlichkeit, sondern der Punkt — die Regel darf keinen Spezifitäts-Wettstreit führen können, und
+genau daran ist der Schutz am Button gescheitert. `0.01ms` statt `animation: none`, weil Radix' Presence
+über `animationName !== "none"` entscheidet, ob es auf `animationend` wartet: der Name muss stehen
+bleiben, die Dauer nicht.
+
+**Ausdrückliche Ausnahme für Fortschrittsanzeigen** (`animate-spin`, `animate-pulse`): eine
+Ladeanzeige einzufrieren stellt einen laufenden Vorgang wie einen hängenden dar und läuft **AC-21**
+zuwider („Status muss weiterhin deterministisch sichtbar sein"). Sie bewegen keinen Inhalt und lösen
+keine vestibulären Beschwerden aus.
+
+| Modus | Dialog-Overlay | Ladekreis | Skelett |
+|---|---|---|---|
+| `no-preference` | `enter`, 0,15 s | `spin`, 1 s | `pulse`, 2 s |
+| `reduce` | `enter`, **0,00001 s** | `spin`, **1 s** | `pulse`, **2 s** |
+
+**AC-20 ist damit stärker als vor diesem Nachtrag:** vorher galt der Schutz für die eine
+Transform-Animation des Buttons, jetzt für **jede** Animation im Projekt, auch für künftige.
+**AC-17/18** bleiben unberührt in ihrer Aussage, sind aber erstmals wahr für die Enter-/Exit-Schicht:
+Tailwind-first, und die Motion-Library bleibt auf die vier Graph-Stellen begrenzt.
+
+**Der Selbsttest hat funktioniert.** Der `test.fail()`-Marker, den der `/qa`-Durchgang für F-1 gesetzt
+hat, meldete beim Verdrahten des Plugins **„Expected to fail, but passed"** und verlangte die
+Umstellung auf eine echte Zusicherung. Ohne ihn wäre die Behebung still geblieben — das war der Zweck
+der Kodierung, und er ist eingelöst.
+
+**Und das Ergebnis ist bewacht, nicht nur hergestellt.** Zwei neue Vertragsfälle in
+`design-system-contract.test.ts` halten fest, dass das Plugin verdrahtet **und** in `package.json`
+steht und dass die globale Regel samt Ausnahme existiert — die drei Zeilen, die vier Monate gefehlt
+haben. **Beide einzeln rot-grün belegt** (Plugin entfernt → 1 rot; Regel entfernt → 1 rot).
+
+**Nachweise:** `tests/PROJ-51-interaction-states.spec.ts` **9/9 chromium**, davon zwei neu (Enter-Klassen
+erzeugen `enter`; unter `reduce` praktisch aus, Fortschrittsanzeigen laufen) — **keine `test.fail()`-
+Markierung mehr in der Datei** · `design-system-contract.test.ts` **38/38** · vitest **3749/3749** ·
+**Visual-Regression 13 grün ohne Neuaufnahme** (die Aufnahmen sind Seitenbilder mit geschlossenen
+Dialogen — gemessen, nicht angenommen) · ESLint 0 · tsc 13 = Baseline · Build clean.
+
+**Kosten, gemessen:** `tailwindcss-animate@1.0.7`, MIT, **0 eigene Abhängigkeiten**, 36 KB, als
+**devDependency** — damit außerhalb der Fläche von `npm audit --omit=dev`. CSS-Kompilat 108.172 →
+113.358 Bytes (**+4,8 %**).
+
+**Damit sind alle vier Followups aus dem PROJ-51-`/qa` geschlossen** (51a Durchgang · 51b diese ·
+51c AC-20 am Button · 51d Token-Guard). Scope bleibt **`full`**: 25/25 Kriterien, und dieser Nachtrag
+macht zwei davon belastbarer statt eines neu zu öffnen.
 
 ## Deployment
 

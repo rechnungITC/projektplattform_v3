@@ -6,6 +6,53 @@
 @tailwind utilities;
 
 /* =============================================================================
+   PROJ-Y-51b — EIN Ort fuer prefers-reduced-motion.
+   =============================================================================
+   Mit `tailwindcss-animate` animieren neun Radix-Primitiven an 109 Stellen. Das
+   Plugin bringt keinen Schutz mit; seine README empfiehlt `motion-safe:` je
+   Klasse. Das waere hier der falsche Weg: 109 Stellen, die jemand beim
+   naechsten Primitive vergisst — genau die Disziplin-statt-Mechanik, aus der
+   die ganze PROJ-51-Schuldenkette entstanden ist.
+
+   Stattdessen eine Regel, die nichts uebersehen kann, auch kuenftigen Code
+   nicht. `!important` ist hier nicht Bequemlichkeit, sondern der Punkt: die
+   Regel darf keinen Spezifitaets-Wettstreit fuehren koennen. Genau daran ist
+   der Schutz am Button gescheitert (PROJ-Y-51c: 0,1,0 gegen 0,2,0).
+
+   `0.01ms` statt `none`: Radix' Presence entscheidet ueber
+   `getComputedStyle(node).animationName !== "none"`, ob es auf `animationend`
+   wartet. Bei `none` wuerde es sofort unmounten — das waere ebenfalls korrekt,
+   aber jeder eigene `animationend`-Listener im Bestand wuerde still nie mehr
+   feuern. Mit 0.01ms feuert er praktisch sofort und die Kette bleibt intakt.
+
+   Ausnahme mit Absicht: `animate-spin` und `animate-pulse` sind
+   Fortschrittsanzeigen, keine Zierde. Sie bewegen keinen Inhalt und loesen
+   keine vestibulaeren Beschwerden aus; sie einzufrieren wuerde einen laufenden
+   Vorgang wie einen haengenden darstellen und AC-21 zuwiderlaufen ("Status
+   muss weiterhin deterministisch sichtbar sein").
+   ========================================================================== */
+@media (prefers-reduced-motion: reduce) {
+  *,
+  *::before,
+  *::after {
+    animation-duration: 0.01ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 0.01ms !important;
+    scroll-behavior: auto !important;
+  }
+
+  .animate-spin {
+    animation-duration: 1s !important;
+    animation-iteration-count: infinite !important;
+  }
+
+  .animate-pulse {
+    animation-duration: 2s !important;
+    animation-iteration-count: infinite !important;
+  }
+}
+
+/* =============================================================================
    PROJ-51-β/γ — Layered theme architecture (revised 2026-05-07).
    ============================================================================
    Three layers, all additive:

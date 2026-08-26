@@ -175,6 +175,44 @@ describe("PROJ-51 AC-14 — die Formular-Primitiven teilen EINEN Zustands- und S
     }
   })
 
+  it("die Enter-/Exit-Maschinerie ist verdrahtet — sonst sind 109 Klassen wieder wirkungslos", () => {
+    // PROJ-Y-51b: `plugins: []` stand seit dem Initial commit, waehrend die neun
+    // vendorierten Radix-Primitiven ihre Animationsklassen an 109 Stellen trugen.
+    // Vier Monate Design-System-Arbeit haben das nicht gemerkt, weil nichts es
+    // geprueft hat. Diese drei Zeilen sind der Unterschied.
+    const config = readFileSync(join(__dirname, "..", "..", "..", "tailwind.config.ts"), "utf8")
+    expect(config, "tailwindcss-animate ist nicht mehr als Plugin verdrahtet").toContain(
+      "tailwindcss-animate",
+    )
+    const pkg = JSON.parse(
+      readFileSync(join(__dirname, "..", "..", "..", "package.json"), "utf8"),
+    ) as { devDependencies?: Record<string, string>; dependencies?: Record<string, string> }
+    expect(
+      pkg.devDependencies?.["tailwindcss-animate"] ?? pkg.dependencies?.["tailwindcss-animate"],
+      "tailwindcss-animate fehlt in package.json",
+    ).toBeTruthy()
+  })
+
+  it("prefers-reduced-motion ist an EINER Stelle geregelt, mit Ausnahme fuer Fortschrittsanzeigen", () => {
+    // Der Schutz darf keinen Spezifitaets-Wettstreit fuehren koennen — daran ist
+    // er am Button gescheitert (PROJ-Y-51c). Deshalb eine globale Regel mit
+    // `!important`, und deshalb wird ihre Existenz festgeschrieben statt auf
+    // Disziplin an 109 Klassen zu setzen.
+    const css = readFileSync(join(__dirname, "..", "..", "app", "globals.css"), "utf8")
+    const block = css.slice(css.indexOf("@media (prefers-reduced-motion: reduce)"))
+    expect(block, "globale Reduced-Motion-Regel fehlt in globals.css").toContain(
+      "animation-duration: 0.01ms !important",
+    )
+    // `animation-duration`, nicht `animation: none`: Radix' Presence entscheidet
+    // ueber `animationName !== "none"`, ob es auf `animationend` wartet.
+    expect(block).not.toContain("animation: none !important")
+    // Fortschrittsanzeigen bleiben ausgenommen (AC-21).
+    expect(block, "animate-spin ist nicht ausgenommen — der Ladekreis stuende still").toContain(
+      ".animate-spin",
+    )
+    expect(block).toContain(".animate-pulse")
+  })
+
   it("Dialog und Sheet teilen den Backdrop-Behandlung aus γ.4", () => {
     for (const file of ["dialog.tsx", "sheet.tsx"]) {
       const source = readFileSync(join(__dirname, file), "utf8")

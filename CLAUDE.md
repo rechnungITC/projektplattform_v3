@@ -17,7 +17,7 @@
 
 - **Runtime:** Node.js — `engines: >=22.13.0`, CI + `.nvmrc` pin **24** (matches Vercel prod). Keep the lower bound and the pin distinct.
 - **Framework:** Next.js 16 (App Router), React 19, TypeScript
-- **Styling:** Tailwind CSS + shadcn/ui (copy-paste components)
+- **Styling:** Tailwind CSS + shadcn/ui (copy-paste components) + `tailwindcss-animate` — das Plugin, gegen das die vendorierten Primitiven geschrieben sind. Es fehlte vom Initial commit bis 2026-08-26, wodurch neun Primitive ihre Enter-/Exit-Klassen an 109 Stellen ins Leere trugen (PROJ-Y-51b). `prefers-reduced-motion` ist an **einer** Stelle geregelt (`globals.css`), nicht pro Klasse — mit ausdrücklicher Ausnahme für Fortschrittsanzeigen
 - **Backend:** Supabase (PostgreSQL + Auth + Storage + RLS) — **not** optional; it is the system of record
 - **AI:** Vercel AI SDK v6, multi-provider (`anthropic` · `openai` · `google` · `azure` · `ollama`), tenant-supplied keys
 - **Deployment:** Vercel (auto-deploy from `main`) + Sentry (EU region)
