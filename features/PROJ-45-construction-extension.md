@@ -4125,7 +4125,8 @@ bekannten Bestandsfälle) · Prod-Rückstände **0** (0 Fotos, 0 Dokumente, 0 Kn
 **F-2 (PROJ-Y-45p)** bleibt offen: der Speicherplatz-Zähler hat weiterhin kein
 Dekrement. Diese Slice hat ihn nicht angefasst — und weil die Reihenfolge
 unverändert bleibt, wird er nur bei **erfolgreichen** Uploads erhöht, nicht bei
-abgebrochenen. **AC-45ε.4/.5** (HEIC) unverändert → PROJ-Y-45o. **AC-45εH-9**
+abgebrochenen. *(Nachtrag 2026-08-26: seither behoben, siehe „PROJ-Y-45p
+erledigt“ unten. Der Satz bleibt als Stand dieses Laufs stehen.)* **AC-45ε.4/.5** (HEIC) unverändert → PROJ-Y-45o. **AC-45εH-9**
 bleibt teilweise erfüllt (γ Blöcke 1–2, δ Blöcke 1–5 nicht wörtlich).
 
 ---
@@ -4250,10 +4251,9 @@ Migrationsdateien gebauten Datenbank entstehen — und der **Funktions-Inventar-
 - **AC-45εH-9** teilweise → **PROJ-Y-45r**: γ Blöcke 1–2 und δ Blöcke 1–5 sind
   nicht wörtlich nachgefahren. δs Auswertung ist über die db-group-Blöcke B0–B4
   wörtlich abgedeckt, γs Rechte-/ACL-/Wächterfläche über Blöcke 3–4.
-- **PROJ-Y-45p** (Medium, vorbestehend aus PROJ-79-α): der Speicherplatz-Zähler
-  hat kein Dekrement; in Prod weichen beide Test-Mandanten bereits ab. ε hat ihn
-  nicht angefasst, macht Uploads aber routinemässig und damit den Verlust
-  erreichbar.
+- ~~**PROJ-Y-45p**~~ **erledigt 2026-08-26** (Medium, vorbestehend aus PROJ-79-α):
+  der Zähler hat jetzt ein Dekrement — als Neuberechnung. Drift in Prod geheilt
+  (1.344 → 0 und 1.176 → 0). Siehe den Abschnitt unten.
 - **AC-45ε.12/.21** strukturell belegt statt durchfahren (Prod trägt keine
   Abnahme mit Fotos).
 - Kleinbefunde der Familie: **PROJ-Y-45b · 45e · 45h · 45i · 45j · 45k · 45n**.
@@ -4964,3 +4964,29 @@ Live-Smoke 9/9 gegen Prod, 0 Rückstände; die N-Vektoren belegen, dass der Norm
 Nicht-Bauprojekts unbeschädigt bleibt. **Offen bleiben nur die Slices β/γ/δ/ε.**
 
 ---
+
+---
+
+## PROJ-Y-45p erledigt — Speicherzähler mit Dekrement (2026-08-26)
+
+Der letzte Medium-Befund aus der ε-QA. Die Sache liegt in **PROJ-79**, nicht in ε — die
+ausführliche Darstellung steht deshalb dort (`features/PROJ-79-dms-foundation.md`,
+Implementation Notes). Hier nur, was für die Bau-Erweiterung zählt:
+
+- **Was ε davon hatte:** ε machte Uploads zur Routine und damit den Verlust erreichbar. Eine
+  Bauleitung, die täglich fotografiert und aufräumt, verlor bis dahin Kontingent dauerhaft.
+  Jetzt gibt jedes Löschen sofort frei — auch `remove_construction_photo`, das die
+  Dokumentzeile weich löscht und damit ohne eigene Verdrahtung durch den neuen
+  UPDATE-Trigger läuft.
+- **Was bewusst so bleibt:** die zwei abgeleiteten Grössen je Foto zählen **nicht** mit
+  (AC-45εH-17). Der Zähler ist „gezählte Bytes“, nicht „Bytes auf der Platte“ — und das ist
+  eine Entscheidung, kein Fehler.
+- **Regression für die Bau-Fläche wörtlich grün:** ε-Pentest Block 1 12/13 + H
+  (mandantenabhängig) und Block 2 6/6, PROJ-Y-45q 14/14 + 5/5 — inklusive
+  `B_viewer_records_document`, wo ein **Betrachter** eine Dokumentzeile schreibt und der neue
+  Trigger in seiner Sitzung läuft, ohne ihn zu blockieren. `K_project_hard_delete=PASS`: der
+  neue DELETE-Trigger legt keinen Blocker der PROJ-148-Klasse an.
+
+**Scope von PROJ-45 bleibt `mvp`.** Diese Slice ändert daran nichts: `full` ist unverändert
+durch **AC-45ε.4** (HEIC → PROJ-Y-45o) und **AC-45εH-9** (teilweise → PROJ-Y-45r) blockiert.
+PROJ-Y-45p war nie ein Kriterium von PROJ-45, sondern ein Fremdbefund aus PROJ-79-α.
