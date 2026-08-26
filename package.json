@@ -25,6 +25,7 @@
     "check:index-scope": "tsx scripts/check-index-scope/index.ts",
     "check:osv-gate": "tsx scripts/osv-gate/index.ts",
     "check:token-drift": "tsx scripts/check-token-drift/index.ts",
+    "check:branch-collision": "tsx scripts/check-branch-collision/index.ts",
     "verify:pdf-render": "node scripts/verify-pdf-render.mjs"
   },
   "dependencies": {
