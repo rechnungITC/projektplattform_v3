@@ -1,0 +1,39 @@
+name: Token Drift Guard
+
+on:
+  pull_request:
+    branches: [main]
+  push:
+    branches: [main]
+
+# Auto-cancel duplicate runs on the same ref.
+concurrency:
+  group: token-drift-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  check:
+    name: Verify no new direct Tailwind palette colors in src/
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: "24"
+          cache: "npm"
+
+      - name: Install dependencies
+        run: npm ci
+
+      # Pure file analysis — no database, no network, no secrets. A ratchet, not a cleanup demand:
+      # PROJ-51 migrated the design system to semantic tokens and left 76 direct-color hits in 8
+      # files; four months later, unguarded, it was 732 in 85. So the guard freezes what exists and
+      # hard-fails on anything NEW (an unrecorded file, or a recorded one that grew) while letting
+      # the number fall. `--write` refuses to raise any count, so refreshing the baseline cannot be
+      # used to launder a violation. PROJ-Y-51d.
+      - name: Run token-drift check
+        run: npm run check:token-drift
