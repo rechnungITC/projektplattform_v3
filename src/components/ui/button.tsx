@@ -4,25 +4,45 @@ import { cva, type VariantProps } from "class-variance-authority"
 
 import { cn } from "@/lib/utils"
 
-// PROJ-51-γ.3 — Hover-Shadow + Active-Press microinteractions added to the
-// shared base. Each variant inherits transition-all, shadow-on-hover, and
-// `active:scale-[0.98]` (subtle press feedback). `motion-reduce:transform-none`
-// respects user accessibility preference.
+// PROJ-51-γ.3 — Hover-Shadow + Active-Press microinteractions.
+//
+// PROJ-Y-51c (2026-08-25) hat den Press-Effekt aus der Basis in die Varianten
+// verschoben, weil die vorige Fassung zwei Zusagen trug, die beide nicht
+// hielten — und zwar aus derselben Wurzel: eine Überschreibung mit GLEICHER
+// Spezifität verliert über die Quellreihenfolge im Stylesheet.
+//
+//   1. `motion-reduce:transform-none` (Spezifität 0,1,0) konnte
+//      `active:scale-[0.98]` (0,2,0) nie überschreiben → der Button skalierte
+//      unter `prefers-reduced-motion: reduce` weiter. Das war AC-20 FAIL.
+//   2. `active:scale-100` an der `link`-Variante (0,2,0) stand im Kompilat
+//      VOR der Basis-Regel (Offsets 73972 gegen 74219, gemessen) → der
+//      dokumentierte Opt-out war ebenso wirkungslos.
+//
+// Beides ist jetzt strukturell weg statt neu ausbalanciert: der Press-Effekt
+// steht `motion-safe`-gekapselt an den fünf Varianten, die ihn wollen. Es gibt
+// keine konkurrierende Regel mehr, also auch keinen Reihenfolgen-Kampf — `link`
+// nimmt sich durch ABWESENHEIT aus, und Abwesenheit kann keine Kaskade
+// verlieren. `motion-reduce:transition-colors` bleibt in der Basis: dass es
+// greift, ist gemessen.
+//
+// Lehre für neue Varianten: eine Zusicherung, die nur die KLASSE prüft, hätte
+// beide Defekte nicht gefunden. Der Verhaltensnachweis liegt in
+// `tests/PROJ-51-interaction-states.spec.ts`.
 const buttonVariants = cva(
-  "inline-flex items-center justify-center gap-2 whitespace-nowrap rounded-md text-sm font-medium ring-offset-background transition-all duration-150 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 disabled:pointer-events-none disabled:opacity-50 active:scale-[0.98] motion-reduce:transform-none motion-reduce:transition-colors [&_svg]:pointer-events-none [&_svg]:size-4 [&_svg]:shrink-0",
+  "inline-flex items-center justify-center gap-2 whitespace-nowrap rounded-md text-sm font-medium ring-offset-background transition-all duration-150 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 disabled:pointer-events-none disabled:opacity-50 motion-reduce:transition-colors [&_svg]:pointer-events-none [&_svg]:size-4 [&_svg]:shrink-0",
   {
     variants: {
       variant: {
         default:
-          "bg-primary text-primary-foreground shadow-sm hover:bg-primary/90 hover:shadow-md",
+          "bg-primary text-primary-foreground shadow-sm hover:bg-primary/90 hover:shadow-md motion-safe:active:scale-[0.98]",
         destructive:
-          "bg-destructive text-destructive-foreground shadow-sm hover:bg-destructive/90 hover:shadow-md",
+          "bg-destructive text-destructive-foreground shadow-sm hover:bg-destructive/90 hover:shadow-md motion-safe:active:scale-[0.98]",
         outline:
-          "border border-input bg-background hover:bg-accent hover:text-accent-foreground hover:shadow-sm",
+          "border border-input bg-background hover:bg-accent hover:text-accent-foreground hover:shadow-sm motion-safe:active:scale-[0.98]",
         secondary:
-          "bg-secondary text-secondary-foreground shadow-sm hover:bg-secondary/80 hover:shadow-md",
-        ghost: "hover:bg-accent hover:text-accent-foreground",
-        link: "text-primary underline-offset-4 hover:underline active:scale-100",
+          "bg-secondary text-secondary-foreground shadow-sm hover:bg-secondary/80 hover:shadow-md motion-safe:active:scale-[0.98]",
+        ghost: "hover:bg-accent hover:text-accent-foreground motion-safe:active:scale-[0.98]",
+        link: "text-primary underline-offset-4 hover:underline",
       },
       size: {
         default: "h-10 px-4 py-2",
