@@ -29,12 +29,13 @@ _construction_reservation_is_open
 _cost_aggregate_bucket
 _create_clearance_grant_request
 _dd_finding_source_question_guard
-_dms_bump_storage_usage
 _dms_cascade_confidentiality_raise
 _dms_document_ctx
 _dms_enforce_confidentiality_floor
 _dms_node_ctx
 _dms_object_access
+_dms_recompute_quota_stmt
+_dms_recompute_storage_usage
 _escalate_dd_finding
 _guard_audit_chain_immutable
 _guard_audit_log_immutable
@@ -133,6 +134,7 @@ dissolve_inner_circle
 dms_move_node
 dms_quota_status
 dms_soft_delete_subtree
+dms_sweep_storage_quotas
 encrypt_tenant_secret
 encrypt_tenant_secret_with_key
 enforce_admin_invariant

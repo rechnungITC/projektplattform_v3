@@ -11,6 +11,18 @@
  * neu, was bereits einen Zustand hat. Ein Dokument mit `status='failed'` bleibt
  * `failed`: die Wiederholung ist eine bewusste Nutzerhandlung, kein nächtliches
  * Wiederkäuen, das Kosten verursacht und immer wieder am selben Fehler scheitert.
+ *
+ * **PROJ-Y-45p — zweiter Schritt: der Speicherzähler-Sweep.** Reitet bewusst auf
+ * diesem Lauf statt einen siebten Zeitplan anzulegen (Muster PROJ-144, PROJ-130-δ);
+ * thematisch gehört er hierher, weil dies der DMS-Cron ist. Die Trigger auf
+ * `documents` halten den Zähler bei jedem Schreibweg durch SQL richtig — der
+ * Sweep ist das Netz für alles, was daran vorbeigeht: Teardowns unter
+ * `session_replication_role = replica` (dort sind Trigger aus) und
+ * Objekte, die ohne `documents`-Zeile im Bucket landen. Genau so ist die vor
+ * PROJ-Y-45p in Prod gemessene Drift entstanden.
+ *
+ * Der Sweep läuft AUCH, wenn der Quintessenz-Teil scheitert: er hängt an keinem
+ * Anbieter und darf nicht von einem AI-Fehler mitgerissen werden.
  */
 
 import { NextResponse } from "next/server"
@@ -79,11 +91,30 @@ export async function GET(request: Request) {
     else if (result?.status === "stale") stale += 1
   }
 
+  // PROJ-Y-45p: Speicherzähler-Sweep. Bewusst NACH der Quintessenz-Runde und mit
+  // eigener Fehlerbehandlung — ein Anbieterausfall oben darf den Sweep nicht
+  // verhindern, und ein Sweep-Fehler darf die geschriebenen Quintessenzen nicht
+  // als Fehlschlag ausgeben. Der Zustand wird im Ergebnis benannt statt
+  // verschluckt (PROJ-130-α-Muster: `audit_purge:"disabled"`).
+  let quotaSweep: { tenants_swept: number; corrected: number } | { error: string }
+  const { data: sweep, error: sweepError } = await supabase.rpc(
+    "dms_sweep_storage_quotas",
+  )
+  if (sweepError) {
+    quotaSweep = { error: sweepError.message }
+  } else {
+    const row = (Array.isArray(sweep) ? sweep[0] : sweep) as
+      | { tenants_swept: number; corrected: number }
+      | undefined
+    quotaSweep = row ?? { error: "no_result" }
+  }
+
   return NextResponse.json({
     ok: true,
     scanned: candidates.length,
     attempted,
     created,
     stale,
+    quota_sweep: quotaSweep,
   })
 }

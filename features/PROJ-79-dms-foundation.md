@@ -59,7 +59,11 @@ The platform needs a project-scoped Document Management System: a navigation tre
 - [ ] External documents are read-only.
 
 ### Quota
-- [ ] `tenant_storage_quotas.current_usage_bytes` is recomputed on every upload, every soft delete, and on a daily sweep.
+- [x] `tenant_storage_quotas.current_usage_bytes` is recomputed on every upload, every soft delete, and on a daily sweep.
+  **Erst mit PROJ-Y-45p (2026-08-26) erfüllt.** α lieferte davon nur ein reines Inkrement beim
+  `documents`-INSERT; Neuberechnung, Soft-Delete-Pfad und täglicher Lauf fehlten. Jetzt:
+  `_dms_recompute_storage_usage` als einzige Autorität, drei anweisungsweise Trigger
+  (INSERT/UPDATE/DELETE) und `dms_sweep_storage_quotas` im nächtlichen DMS-Cron.
 - [ ] Admin route `/admin/storage` shows usage bar with soft warning (yellow at ≥ `soft_warning_pct`%, red at ≥ 100%).
 - [ ] Upload rejected at 100% with clear error message including current usage.
 - [ ] Quota is per tenant, NOT per project.
@@ -76,6 +80,14 @@ The platform needs a project-scoped Document Management System: a navigation tre
 - **Tenant at 99 % quota uploads 100 MB file** → 413 with current usage and quota limit in body.
 - **External source token expires** → connector status set to `error`, PM sees inline notice on external_link node, admin notified.
 - **PM deletes a folder containing 200 documents** → soft-delete cascades; quota is recomputed but bytes stay charged for 30 days (retention window for restore); finalize after retention.
+  **Zweite Hälfte per Nutzer-Entscheid überholt (PROJ-Y-45p, 2026-08-26): Löschen gibt sofort frei.**
+  Grund ist eine Messung, keine Vorliebe: die Aufbewahrungsfrist mit Purge und der
+  Wiederherstellen-Pfad, die „bytes stay charged“ tragen sollten, wurden **nie gebaut** (kein
+  Cron, kein Codepfad — beides live geprüft). Wörtlich umgesetzt hiesse die Klausel „für immer
+  berechnet“, und kein Produktpfad gäbe je ein Byte frei. Die **erste** Hälfte („quota is
+  recomputed“, ein Vorgang für 200 Dokumente) ist genau der Grund für anweisungsweise Trigger.
+  Kommt später eine echte Aufbewahrungsfrist mit Wiederherstellen, ist die Klausel neu zu
+  entscheiden — dann aber mit ihren Voraussetzungen.
 - **Duplicate filename in same folder** → server appends ` (2)`, ` (3)` etc. before extension.
 - **MIME type spoofing (file claims to be PDF but isn't)** → server checksums and probes; mismatch → 415.
 - **Cross-tenant access attempt** → 404 via RLS.
@@ -186,6 +198,61 @@ Drei neue Tabellen (Feld-Details in den Akzeptanzkriterien oben). Multi-Tenant-I
 Diese Slice hat sowohl Datenmodell/Storage/API (Backend) als auch Baum-/Upload-UI (Frontend). Empfehlung: **`/frontend` zuerst** (Tree + Upload-Dialog + Quota-Balken gegen gemockte/echte API), dann **`/backend`** (Migration + Bucket + RLS + RPCs + Audit + Quota-Trigger) — oder Backend-first, falls die UI reale Routen braucht. Danach `/qa` mit Pflicht-Vektoren: cross-tenant-404, MIME-Spoof-415, Zyklus-Move-409, Quota-413, soft-delete-Kaskade, RLS-Rollen (viewer read-only).
 
 ## Implementation Notes
+
+### PROJ-Y-45p — Speicherzähler: Dekrement als Neuberechnung (2026-08-26)
+
+Fremd-Slice-Nachtrag an **PROJ-79s** Quota-Kriterium, entdeckt in der ε-QA (Befund F-2,
+Medium) und dort als `PROJ-Y-45p` registriert. Migration
+`20260826110000_projy45p_quota_recompute`.
+
+**Der Befund war schärfer als das Followup ihn beschrieb.** Registriert war „Zähler ohne
+Dekrement“ mit der Notiz, die Papierkorb-Semantik sei „zu entscheiden, nicht zu raten“.
+Gemessen: entschieden **war** sie — die α-Migration sagt in ihrem eigenen Kommentar
+„Soft-delete does NOT free bytes (30-day retention window; freeing happens in β nightly
+truth-sweep)“, und das Kriterium oben verlangt Neuberechnung an drei Stellen. Nur trägt diese
+Politik nicht: **weder die Aufbewahrungsfrist mit Purge noch ein Wiederherstellen-Pfad
+existieren** (kein Cron, kein Codepfad, beides live geprüft), also wäre „nicht freigeben“
+gleichbedeutend mit „für immer berechnet“. Nutzer-Entscheid daher: Löschen gibt sofort frei.
+
+**Warum Neuberechnung statt Gegenrechnung** — eine Gegenrechnung driftet bei jedem Weg, der
+die Trigger nicht durchläuft, und genau so ist die Prod-Drift entstanden (unter
+`session_replication_role = replica` sind Trigger aus). Live gemessen: `[E2E] Projektplattform
+Test` 1.176 gezählte Byte bei **0** Dokumenten, `[E2E] Bau Test` 1.344 bei 0 — beide durch die
+Migration auf 0 geheilt und danach unabhängig nachgemessen.
+
+**Anweisungsweise, nicht zeilenweise.** `dms_soft_delete_subtree` löscht den Teilbaum in EINER
+UPDATE-Anweisung; zeilenweise wären das für den Edge-Case „Ordner mit 200 Dokumenten“ 200
+Neuberechnungen. Dynamisches SQL, weil Übergangstabellen je Ereignis anders heissen und ein
+Trigger mit Übergangstabellen nur für **ein** Ereignis erklärt werden darf — was der erste
+Anwendungsversuch belegt hat: eine Spaltenliste (`after update of …`) ist damit unvereinbar
+(`transition tables cannot be specified for triggers with column lists`), die Migration rollte
+atomar zurück (nachgemessen: 0 neue Funktionen, Zähler unverändert). Die Verengung sitzt
+deshalb **in** der Funktion als symmetrische Differenz über die zählrelevanten Spalten — und
+ist dort schärfer als eine Spaltenliste, die schon beim Nennen einer Spalte feuert.
+
+**Das reine Inkrement `_dms_bump_storage_usage` ist entfernt**, nicht stillgelegt: zwei
+Autoritäten für dieselbe Zahl wären der eigentliche Fehler. Funktionsinventar 296 → 298
+(+3 neue, −1 gedroppte).
+
+**Was der Zähler NICHT ist:** die Bytes auf der Platte. PROJ-45-ε legt je Foto zwei
+abgeleitete Grössen als Geschwister-Objekte ohne eigene `documents`-Zeile ab (AC-45εH-17,
+bewusst) — die zählen nicht mit. Wer das später „repariert“, ändert eine getroffene
+Entscheidung.
+
+**Nachweise (live gegen Prod, 0 Rückstände über sechs Zähler):** eigener Pentest
+`tests/sql/PROJ-Y-45p-quota-recompute-pentest.sql` **20/20** — tragend `B_softdelete_gibt_frei`
+und `B2_teilbaum_gibt_alles_frei` (der Nutzer-Entscheid, belegt statt behauptet),
+`C`/`D` (Hart-Löschen und Kaskade, die Quelle der Drift), `F` (Umbenennen löst **keine**
+Neuberechnung aus) mit `F2` als Gegenprobe, `J` (der Sweep heilt eine gepflanzte Drift),
+`H`/`H2` (Mandantentrennung — mit einem eigenen zweiten Wegwerf-Mandanten, weil der Vektor
+gegen die echten Mandanten nach dem Sweep 0 → 0 gemeldet und damit nichts belegt hätte),
+`I1`–`I5` (Rechte, inkl. PUBLIC). Regressionen wörtlich: **PROJ-79-DMS 16/16** (inkl.
+`QUOTA-seed usage=1000`), **PROJ-45-ε 12/13 + H mandantenabhängig / 6/6** wie protokolliert,
+**PROJ-Y-45q 14/14 + 5/5**. Advisors **0 ERROR** auf beiden Achsen, **kein** Treffer für die
+drei neuen Funktionen oder `tenant_storage_quotas`.
+
+**Deployment Scope bleibt `alpha`:** β (externe Konnektoren) ist unverändert zurückgestellt.
+Dieses Kriterium war eine stille Lücke **innerhalb** von α und ist jetzt geschlossen.
 
 ### Backend — α (2026-07-21)
 DB + API layer for the internal DMS core. **Two migrations applied to prod** (`iqerihohwabyjzkpcujq`):
