@@ -4990,3 +4990,8 @@ Implementation Notes). Hier nur, was für die Bau-Erweiterung zählt:
 **Scope von PROJ-45 bleibt `mvp`.** Diese Slice ändert daran nichts: `full` ist unverändert
 durch **AC-45ε.4** (HEIC → PROJ-Y-45o) und **AC-45εH-9** (teilweise → PROJ-Y-45r) blockiert.
 PROJ-Y-45p war nie ein Kriterium von PROJ-45, sondern ein Fremdbefund aus PROJ-79-α.
+
+**Deployed 2026-08-26 — Tag `v2.75.0-PROJ-Y-45p`, PR #458 → main `775e222`.** Die ausführliche
+Darstellung samt der **Kollision zweier Sessions** (beide bauten den Followup gleichzeitig, Prod
+trug 27 Sekunden zwei konkurrierende Buchhaltungen; der andere Zweig hat per PR #457 selbst
+zurückgenommen) steht in `features/PROJ-79-dms-foundation.md`.
