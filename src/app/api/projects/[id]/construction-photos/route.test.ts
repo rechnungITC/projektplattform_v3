@@ -87,21 +87,26 @@ vi.mock("@/lib/construction/photo-image", () => ({
   PhotoImageError: FakeImageError,
 }))
 vi.mock("@/lib/dms/ingest", () => ({
-  ingestDocumentFile: ingestMock,
   fetchDocumentQuota: quotaMock,
   wouldExceedQuota: (
     q: { current_usage_bytes: number; max_bytes: number } | null,
     add: number,
   ) => (q ? q.current_usage_bytes + add > q.max_bytes : false),
 }))
+vi.mock("@/lib/dms/storage", () => ({
+  downloadDocumentFile: downloadMock,
+  deleteDocumentFile: vi.fn(),
+}))
+// PROJ-Y-45q: die Aufnahme läuft foto-spezifisch über DEFINER-Funktionen, der
+// Ordner wird nur noch GELESEN (das Anlegen macht die Datenbank).
+vi.mock("@/lib/construction/photo-ingest", () => ({ ingestPhotoFile: ingestMock }))
 vi.mock("@/lib/construction/photo-folder", () => ({
-  ensurePhotoFolder: folderMock,
+  findPhotoFolder: folderMock,
   PHOTO_FOLDER_NAME: "Baufotos",
   PHOTO_FOLDER_SLUG: "baufotos",
 }))
 vi.mock("@/lib/construction/photo-exif", () => ({ readCaptureDate: exifMock }))
 vi.mock("@/lib/dms/pipeline", () => ({ runDocumentPipeline: vi.fn() }))
-vi.mock("@/lib/dms/storage", () => ({ downloadDocumentFile: downloadMock }))
 
 import { GET, POST } from "./route"
 
@@ -159,20 +164,23 @@ beforeEach(() => {
   probeMock.mockResolvedValue({ width: 100, height: 80, exif: null })
   renderMock.mockResolvedValue(Buffer.from("derived"))
   exifMock.mockReturnValue(null)
-  folderMock.mockResolvedValue({ nodeId: "folder-1", created: true })
+  folderMock.mockResolvedValue("folder-1")
   quotaMock.mockResolvedValue({
     quota: { max_bytes: 1_000_000, current_usage_bytes: 0, soft_warning_pct: 80 },
   })
   let n = 0
-  ingestMock.mockImplementation(async () => ({
-    ok: true,
-    node: { id: `n${++n}` },
-    document: { id: `d${n}` },
-    nodeId: `n${n}`,
-    documentId: `d${n}`,
-    storagePath: `t1/${PROJECT}/n${n}/f.jpg`,
-    derivedPaths: [],
-  }))
+  ingestMock.mockImplementation(async () => {
+    n += 1
+    return {
+      ok: true,
+      folderId: "folder-1",
+      nodeId: `n${n}`,
+      documentId: `d${n}`,
+      storagePath: `t1/${PROJECT}/n${n}/f.jpg`,
+      derivedPaths: [],
+      document: { id: `d${n}` },
+    }
+  })
 })
 
 describe("POST /api/projects/[id]/construction-photos", () => {
@@ -302,22 +310,28 @@ describe("POST /api/projects/[id]/construction-photos", () => {
     getAuthMock.mockResolvedValue({ userId: ME, supabase: c })
     const res = await POST(req([["a.jpg", "x"]], { defect_id: DEFECT }), ctx())
     expect(res.status).toBe(422)
-    // Kein Dokument bleibt stehen, das niemand angefordert hat.
-    expect(rpcCalls.map((r) => r.fn)).toContain("dms_soft_delete_subtree")
+    // Kein Dokument bleibt stehen, das niemand angefordert hat. Zurückgenommen
+    // wird über die eng geschnittene Rücknahme, NICHT über
+    // `dms_soft_delete_subtree` — die ist für Betrachter gesperrt und würde
+    // genau den Fall verfehlen, für den dieser Pfad existiert (PROJ-Y-45q).
+    expect(rpcCalls.map((r) => r.fn)).toContain("discard_construction_photo_node")
+    expect(rpcCalls.map((r) => r.fn)).not.toContain("dms_soft_delete_subtree")
   })
 
-  it("abgeleitete Größen entstehen als Geschwister ohne eigene Zeile (AC-45εH-17)", async () => {
+  it("die Aufnahme läuft über den foto-spezifischen Weg, nicht den generischen", async () => {
     getAuthMock.mockResolvedValue({ userId: ME, supabase: client() })
     await POST(req([["a.jpg", "x"]], { defect_id: DEFECT }), ctx())
-    const derive = ingestMock.mock.calls[0][0].deriveObjects as (
-      p: string,
-    ) => Promise<Array<{ path: string; contentType: string }>>
-    const objects = await derive("t1/p/n1/a.jpg")
-    expect(objects.map((o) => o.path)).toEqual([
-      "t1/p/n1/a.jpg::preview",
-      "t1/p/n1/a.jpg::print",
-    ])
-    expect(objects.every((o) => o.contentType === "image/jpeg")).toBe(true)
+    // PROJ-Y-45q: der generische DMS-Weg würde für einen Betrachter an PROJ-79s
+    // Schreib-Policy scheitern. Dass hier `ingestPhotoFile` gerufen wird, ist
+    // deshalb keine Stilfrage — es ist die Behebung von F-1.
+    expect(ingestMock).toHaveBeenCalledTimes(1)
+    const arg = ingestMock.mock.calls[0][0] as Record<string, unknown>
+    expect(arg.tenantId).toBe("t1")
+    expect(arg.projectId).toBe(PROJECT)
+    // Kein Elternordner im Aufruf: den setzt die Datenbank, der Aufrufer kann
+    // ihn nicht wählen.
+    expect(arg).not.toHaveProperty("parentId")
+    expect(arg).not.toHaveProperty("folderNodeId")
   })
 
   it("Modul aus: die Fläche antwortet, als gäbe es sie nicht (AC-45ε.18)", async () => {

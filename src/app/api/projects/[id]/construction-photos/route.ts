@@ -19,18 +19,11 @@ import type { SupabaseClient } from "@supabase/supabase-js"
 import { after } from "next/server"
 
 import { readCaptureDate } from "@/lib/construction/photo-exif"
-import {
-  PhotoImageError,
-  derivedObjectPath,
-  probePhoto,
-  renderVariant,
-} from "@/lib/construction/photo-image"
-import { ensurePhotoFolder } from "@/lib/construction/photo-folder"
-import {
-  fetchDocumentQuota,
-  ingestDocumentFile,
-  wouldExceedQuota,
-} from "@/lib/dms/ingest"
+import { PhotoImageError, probePhoto } from "@/lib/construction/photo-image"
+import { findPhotoFolder } from "@/lib/construction/photo-folder"
+import { ingestPhotoFile } from "@/lib/construction/photo-ingest"
+import { fetchDocumentQuota, wouldExceedQuota } from "@/lib/dms/ingest"
+import { deleteDocumentFile } from "@/lib/dms/storage"
 import { DmsMimeError, sniffDocumentMime } from "@/lib/dms/mime"
 import { runDocumentPipeline } from "@/lib/dms/pipeline"
 import { dedupeFilename } from "@/lib/dms/slug"
@@ -237,15 +230,6 @@ export async function POST(
     )
   }
 
-  const folder = await ensurePhotoFolder(
-    supabase as SupabaseClient,
-    tenantId,
-    projectId,
-    userId,
-  ).catch((err: Error) => err)
-  if (folder instanceof Error) {
-    return apiError("internal_error", folder.message, 500)
-  }
 
   // Quota EINMAL lesen, dann je Datei fortschreiben — sonst zählt eine Serie
   // gegen denselben Ausgangsstand und darf die Grenze gemeinsam überschreiten.
@@ -265,7 +249,6 @@ export async function POST(
       tenantId,
       projectId,
       userId,
-      folderNodeId: folder.nodeId,
       anchor,
       caption,
       file,
@@ -296,7 +279,6 @@ interface IngestOneArgs {
   tenantId: string
   projectId: string
   userId: string
-  folderNodeId: string
   anchor: { defect_id?: string; acceptance_id?: string; section_id?: string }
   caption: string | null
   file: File
@@ -361,21 +343,33 @@ async function ingestOnePhoto(
   // L36 — ausschliesslich die Aufnahmezeit; alles andere wird verworfen.
   const takenOn = readCaptureDate(probe.exif)
 
-  const { data: siblings } = await supabase
-    .from("document_tree_nodes")
-    .select("slug")
-    .eq("project_id", projectId)
-    .eq("parent_id", args.folderNodeId)
-    .is("deleted_at", null)
-    .limit(5000)
-  const existingSlugs = ((siblings ?? []) as { slug: string }[]).map((s) => s.slug)
+  // Geschwister lesen darf jedes Projektmitglied; gibt es den Ordner noch nicht,
+  // gibt es auch keine Geschwister. `dedupeFilename` bleibt die eine Autorität
+  // für Kennungen — deshalb wird hier gelesen und nicht in der Datenbank.
+  let existingSlugs: string[] = []
+  const folderId = await findPhotoFolder(supabase, projectId).catch(() => null)
+  if (folderId) {
+    const { data: siblings } = await supabase
+      .from("document_tree_nodes")
+      .select("slug")
+      .eq("project_id", projectId)
+      .eq("parent_id", folderId)
+      .is("deleted_at", null)
+      .limit(5000)
+    existingSlugs = ((siblings ?? []) as { slug: string }[]).map((s) => s.slug)
+  }
   const { name, slug } = dedupeFilename(file.name, existingSlugs)
 
-  const ingest = await ingestDocumentFile({
+  // PROJ-Y-45q — foto-spezifische Aufnahme über DEFINER-Funktionen. Der
+  // generische DMS-Weg würde für einen Betrachter an PROJ-79s Schreib-Policy
+  // scheitern (QA-Befund F-1); die β-Regel verlangt aber jedes Projektmitglied.
+  // Die abgeleiteten Größen entstehen dort als Geschwister-Objekte OHNE eigene
+  // `documents`-Zeile (AC-45εH-17): die Quota-Buchhaltung addiert je Zeile,
+  // drei Zeilen wären dreifache Zählung und drei Einträge im Dokumentenbaum.
+  const ingest = await ingestPhotoFile({
     supabase,
     tenantId: args.tenantId,
     projectId,
-    parentId: args.folderNodeId,
     name,
     slug,
     buffer,
@@ -383,29 +377,6 @@ async function ingestOnePhoto(
     mimeUnsupportedForRag,
     filename: file.name,
     sizeBytes: file.size,
-    userId: args.userId,
-    // L35 / AC-45εH-17 — abgeleitete Größen sind Geschwister-Objekte OHNE
-    // eigene `documents`-Zeile: die Quota-Buchhaltung addiert je Zeile
-    // (`_dms_bump_storage_usage` auf INSERT, live gemessen), drei Zeilen wären
-    // dreifache Zählung und drei Einträge im Dokumentenbaum.
-    deriveObjects: async (originalPath) => {
-      const [preview, print] = await Promise.all([
-        renderVariant(buffer, "preview"),
-        renderVariant(buffer, "print"),
-      ])
-      return [
-        {
-          path: derivedObjectPath(originalPath, "preview"),
-          buffer: preview,
-          contentType: "image/jpeg",
-        },
-        {
-          path: derivedObjectPath(originalPath, "print"),
-          buffer: print,
-          contentType: "image/jpeg",
-        },
-      ]
-    },
   })
   if (!ingest.ok) {
     return fail(ingest.code, ingest.message)
@@ -426,8 +397,22 @@ async function ingestOnePhoto(
   if (linkErr) {
     // Die Verknüpfung ist der Zweck des Vorgangs. Ohne sie wäre ein Dokument
     // entstanden, das niemand angefordert hat — deshalb zurücknehmen.
+    // `dms_soft_delete_subtree` ist für Betrachter gesperrt (lead/editor/Admin)
+    // und würde hier genau den Fall verfehlen, für den dieser Pfad existiert.
+    // Die eng geschnittene Rücknahme greift stattdessen — sie verlangt, dass der
+    // Knoten keine Datei trägt, weshalb das Objekt zuerst weg muss.
     try {
-      await supabase.rpc("dms_soft_delete_subtree", { p_node_id: ingest.nodeId })
+      await deleteDocumentFile(supabase, ingest.storagePath)
+      for (const p of ingest.derivedPaths) {
+        await deleteDocumentFile(supabase, p)
+      }
+    } catch {
+      /* nach bestem Bemühen */
+    }
+    try {
+      await supabase.rpc("discard_construction_photo_node", {
+        p_node_id: ingest.nodeId,
+      })
     } catch {
       /* nach bestem Bemühen */
     }

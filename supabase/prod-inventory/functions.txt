@@ -1,4 +1,4 @@
-# Prod-Funktionsinventar — Stand 2026-08-24
+# Prod-Funktionsinventar — Stand 2026-08-26
 #
 # Die in der Produktionsdatenbank vorhandenen Funktionen des Schemas `public`,
 # ohne die 71 Funktionen der `ltree`-Extension (die gehoeren nicht dem Projekt).
@@ -112,6 +112,7 @@ create_committee_template
 create_communication_entry
 create_communication_template
 create_construction_defect
+create_construction_photo_node
 create_dd_finding
 create_ma_project_profile
 create_spa_issue
@@ -126,6 +127,7 @@ decrypt_tenant_secret_with_key
 delete_committee
 delete_committee_meeting
 delete_communication_entry
+discard_construction_photo_node
 discard_skill_draft
 dissolve_inner_circle
 dms_move_node
@@ -201,6 +203,7 @@ record_audit_changes
 record_audit_lifecycle
 record_clearance_approval_response
 record_construction_acceptance
+record_construction_photo_document
 record_decision_insert
 record_deliverable_approval_response
 record_dependency_delete_audit

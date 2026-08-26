@@ -1,22 +1,18 @@
 /**
- * PROJ-45-ε (L31, AC-45ε.1, AC-45εH-16) — der Zielordner im Dokumentenbaum.
+ * PROJ-45-ε (L31, AC-45ε.1) — der Zielordner im Dokumentenbaum.
  *
- * Die Fotoaufnahme verlangt bewusst **keine** Ordnerwahl: eine Bauleitung mit
- * nassen Händen auf dem Gerüst soll fotografieren, nicht navigieren. ε legt
- * deshalb genau **einen** Wurzelordner je Projekt an und findet ihn beim zweiten
- * Foto wieder.
+ * **Das Anlegen ist seit PROJ-Y-45q nicht mehr hier**, sondern in
+ * `create_construction_photo_node`: über den Sitzungs-Client dürfen nur
+ * `lead`/`editor`/Admin in den Dokumentenbaum schreiben (PROJ-79), womit ein
+ * Betrachter kein Foto hätte hinzufügen können — genau der QA-Befund F-1. Was
+ * bleibt, ist das **Lesen**: das darf jedes Projektmitglied, und der Aufrufer
+ * braucht die Ordner-Kennung, um den Dateinamen gegen die Geschwister eindeutig
+ * zu machen (`dedupeFilename` bleibt die eine Autorität für Kennungen).
  *
- * Die Eindeutigkeit kommt aus der Datenbank, nicht aus einer Sperre im Code:
+ * Die Eindeutigkeit des Ordners kommt aus der Datenbank, nicht aus einer Sperre:
  * `document_tree_nodes_root_slug_uk` ist unique über `(project_id, slug)` für
- * `parent_id is null and deleted_at is null` — live gemessen. Zwei gleichzeitige
- * Uploads können also nicht zwei Ordner anlegen; der Verlierer bekommt `23505`
- * und liest den Gewinner. Kein Advisory-Lock nötig.
- *
- * Ein vom Nutzer in den Papierkorb gelegter Ordner fällt aus dem Index heraus,
- * ein neuer entsteht also. Für Fotos ist das kein Verlustfall: der Lösch-Wächter
- * auf `documents` weist das Papierkorbieren eines Teilbaums ab, solange darin ein
- * verknüpftes Foto liegt (`dms_soft_delete_subtree` setzt `documents.deleted_at`
- * und löst damit `documents_construction_photo_lock` aus — ebenfalls gemessen).
+ * `parent_id is null and deleted_at is null` — live gemessen. Der Wettlauf wird
+ * in der Funktion entschieden, der Verlierer liest den Gewinner.
  */
 
 import type { SupabaseClient } from "@supabase/supabase-js"
@@ -24,55 +20,22 @@ import type { SupabaseClient } from "@supabase/supabase-js"
 export const PHOTO_FOLDER_NAME = "Baufotos"
 export const PHOTO_FOLDER_SLUG = "baufotos"
 
-export interface PhotoFolderResult {
-  nodeId: string
-  created: boolean
-}
-
-export async function ensurePhotoFolder(
+/**
+ * Kennung des Fotoordners, oder `null`, wenn es ihn noch nicht gibt (dann hat er
+ * auch keine Geschwister, gegen die etwas eindeutig gemacht werden müsste).
+ */
+export async function findPhotoFolder(
   supabase: SupabaseClient,
-  tenantId: string,
   projectId: string,
-  userId: string,
-): Promise<PhotoFolderResult> {
-  const find = async () => {
-    const { data, error } = await supabase
-      .from("document_tree_nodes")
-      .select("id")
-      .eq("project_id", projectId)
-      .is("parent_id", null)
-      .is("deleted_at", null)
-      .eq("slug", PHOTO_FOLDER_SLUG)
-      .maybeSingle()
-    if (error) throw new Error(error.message)
-    return (data as { id: string } | null)?.id ?? null
-  }
-
-  const existing = await find()
-  if (existing) return { nodeId: existing, created: false }
-
+): Promise<string | null> {
   const { data, error } = await supabase
     .from("document_tree_nodes")
-    .insert({
-      tenant_id: tenantId,
-      project_id: projectId,
-      parent_id: null,
-      node_type: "folder",
-      name: PHOTO_FOLDER_NAME,
-      slug: PHOTO_FOLDER_SLUG,
-      created_by: userId,
-    })
     .select("id")
-    .single()
-
-  if (error) {
-    // Wettlauf: eine parallele Aufnahme war schneller. Der Gewinner ist der
-    // Ordner — nachlesen statt scheitern.
-    if (error.code === "23505") {
-      const won = await find()
-      if (won) return { nodeId: won, created: false }
-    }
-    throw new Error(error.message)
-  }
-  return { nodeId: (data as unknown as { id: string }).id, created: true }
+    .eq("project_id", projectId)
+    .is("parent_id", null)
+    .is("deleted_at", null)
+    .eq("slug", PHOTO_FOLDER_SLUG)
+    .maybeSingle()
+  if (error) throw new Error(error.message)
+  return (data as { id: string } | null)?.id ?? null
 }
