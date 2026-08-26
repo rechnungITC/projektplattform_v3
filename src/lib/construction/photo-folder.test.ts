@@ -1,85 +1,54 @@
 // @vitest-environment node
 //
-// PROJ-45-ε / AC-45εH-16 — der automatische Ordner wird wiedergefunden, auch
-// wenn zwei Uploads gleichzeitig laufen.
+// PROJ-Y-45q — der Ordner wird hier nur noch GELESEN.
+//
+// Das Anlegen ist nach `create_construction_photo_node` gewandert: über den
+// Sitzungs-Client dürfen nur `lead`/`editor`/Admin in den Dokumentenbaum
+// schreiben, womit ein Betrachter kein Foto hätte hinzufügen können (QA-Befund
+// F-1). Die Wettlauf- und Idempotenz-Fälle liegen damit in der Datenbank und
+// werden vom Live-Pentest belegt, nicht mehr hier.
 
 import { describe, expect, it, vi } from "vitest"
 
-import { PHOTO_FOLDER_SLUG, ensurePhotoFolder } from "./photo-folder"
+import { PHOTO_FOLDER_SLUG, findPhotoFolder } from "./photo-folder"
 
-type Row = { id: string } | null
-
-function client(opts: {
-  finds: Row[]
-  insert?: { data?: { id: string }; error?: { code: string; message: string } }
-}) {
-  let findIdx = 0
-  const inserted: Record<string, unknown>[] = []
-  const chain = (): Record<string, unknown> => {
-    const c: Record<string, unknown> = {}
-    for (const m of ["select", "eq", "is"]) c[m] = vi.fn(() => c)
-    c.insert = vi.fn((payload: Record<string, unknown>) => {
-      inserted.push(payload)
-      return c
+function client(row: { id: string } | null, error?: { message: string }) {
+  const calls: Record<string, unknown>[] = []
+  const chain: Record<string, unknown> = {}
+  for (const m of ["select", "eq", "is"]) {
+    chain[m] = vi.fn((...args: unknown[]) => {
+      calls.push({ m, args })
+      return chain
     })
-    c.maybeSingle = vi.fn(async () => ({
-      data: opts.finds[Math.min(findIdx++, opts.finds.length - 1)],
-      error: null,
-    }))
-    c.single = vi.fn(async () => ({
-      data: opts.insert?.data ?? null,
-      error: opts.insert?.error ?? null,
-    }))
-    return c
   }
-  return {
-    supabase: { from: vi.fn(() => chain()) } as never,
-    inserted,
-  }
+  chain.maybeSingle = vi.fn(async () => ({ data: row, error: error ?? null }))
+  return { supabase: { from: vi.fn(() => chain) } as never, calls }
 }
 
-describe("ensurePhotoFolder", () => {
-  it("findet einen vorhandenen Ordner und legt keinen zweiten an", async () => {
-    const { supabase, inserted } = client({ finds: [{ id: "f1" }] })
-    const res = await ensurePhotoFolder(supabase, "t1", "p1", "u1")
-    expect(res).toEqual({ nodeId: "f1", created: false })
-    expect(inserted).toHaveLength(0)
+describe("findPhotoFolder", () => {
+  it("liefert die Kennung eines vorhandenen Ordners", async () => {
+    const { supabase } = client({ id: "f1" })
+    expect(await findPhotoFolder(supabase, "p1")).toBe("f1")
   })
 
-  it("legt beim ersten Foto einen Wurzelordner mit festem Kennzeichen an", async () => {
-    const { supabase, inserted } = client({
-      finds: [null],
-      insert: { data: { id: "f2" } },
-    })
-    const res = await ensurePhotoFolder(supabase, "t1", "p1", "u1")
-    expect(res).toEqual({ nodeId: "f2", created: true })
-    expect(inserted[0]).toMatchObject({
-      tenant_id: "t1",
-      project_id: "p1",
-      parent_id: null,
-      node_type: "folder",
-      slug: PHOTO_FOLDER_SLUG,
-    })
+  it("liefert null, wenn es den Ordner noch nicht gibt", async () => {
+    // Wichtig als eigener Fall: „kein Ordner" ist kein Fehler, sondern heisst
+    // „auch keine Geschwister" — der Aufrufer muss dann nichts eindeutig machen.
+    const { supabase } = client(null)
+    expect(await findPhotoFolder(supabase, "p1")).toBeNull()
   })
 
-  it("bei gleichzeitigem Upload gewinnt einer, der andere liest ihn (23505)", async () => {
-    // Erster Blick: leer. Einfügen scheitert am Unique-Index. Zweiter Blick
-    // findet den Ordner des Gewinners — kein Fehlschlag für den Nutzer.
-    const { supabase } = client({
-      finds: [null, { id: "winner" }],
-      insert: { error: { code: "23505", message: "duplicate key" } },
-    })
-    const res = await ensurePhotoFolder(supabase, "t1", "p1", "u1")
-    expect(res).toEqual({ nodeId: "winner", created: false })
+  it("sucht nach Wurzel, Kennung und nicht gelöscht", async () => {
+    const { supabase, calls } = client({ id: "f1" })
+    await findPhotoFolder(supabase, "p1")
+    const flat = JSON.stringify(calls)
+    expect(flat).toContain(PHOTO_FOLDER_SLUG)
+    expect(flat).toContain("parent_id")
+    expect(flat).toContain("deleted_at")
   })
 
-  it("ein anderer Einfügefehler wird nicht als Ordner verkauft", async () => {
-    const { supabase } = client({
-      finds: [null, null],
-      insert: { error: { code: "23503", message: "fk violation" } },
-    })
-    await expect(ensurePhotoFolder(supabase, "t1", "p1", "u1")).rejects.toThrow(
-      "fk violation",
-    )
+  it("ein Datenbankfehler wird nicht als „kein Ordner“ verkauft", async () => {
+    const { supabase } = client(null, { message: "boom" })
+    await expect(findPhotoFolder(supabase, "p1")).rejects.toThrow("boom")
   })
 })

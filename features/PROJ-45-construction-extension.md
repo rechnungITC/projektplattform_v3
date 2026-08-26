@@ -3786,9 +3786,11 @@ nicht.
 
 ## QA Test Results — ε (2026-08-25)
 
-**Verdikt: 0 Critical · 1 High · 0 Medium · 2 Low/Info → NICHT produktionsreif.**
-Der High-Befund ist eine **nicht erfüllte Zusage an eine ganze Rolle**, nicht ein
-Randfall; er gehört vor dem Deploy entschieden.
+**Verdikt beim Abschluss des Laufs: 0 Critical · 1 High · 0 Medium → nicht
+produktionsreif.** **Nach der Behebung durch PROJ-Y-45q (2026-08-26): 0 Critical ·
+0 High · 1 Medium (vorbestehend, PROJ-Y-45p) → produktionsreif.** Der High-Befund
+war eine nicht erfüllte Zusage an eine ganze Rolle, kein Randfall — siehe
+Abschnitt „F-1 behoben" unten.
 
 ### Was dieser Lauf geleistet hat
 
@@ -3950,7 +3952,7 @@ Kriteriums, kein erledigter Punkt.
 | **45ε.13** Druckgrösse eingebettet, Zeitgrenze | ✅ `size=print`, PDF 45.039 Byte |
 | **45ε.14** kein Foto ohne Berechtigung im Ausdruck | ✅ Sitzungs-Client; Auth-Gate-Spec belegt, dass ohne Sitzung nichts durchkommt |
 | **45ε.15** Fotostrecke am Abschnitt, Zahl in der Liste | ✅ Zähler 1 nach Upload, Anker in der DB gegengeprüft |
-| **45ε.16 / .17** β-Regel | ❌ **F-1** — angeboten, aber nicht ausführbar für Betrachter |
+| **45ε.16 / .17** β-Regel | ✅ **seit PROJ-Y-45q** — der Betrachter lädt wirklich hoch (Kette 1b, Pentest A/B), und die Enge ist als Paar belegt (C–G). Vorher ❌ als F-1 |
 | **45ε.18** Modul-Gate | ✅ Routentests + Auth-Gates |
 | **45ε.19** Mandanten-/Projekttrennung, auch aggregiert | ✅ ε-Pentest + Nachbar-Sonde |
 | **45ε.20** verknüpftes Foto nicht löschbar, Bezug benannt | ✅ Vektor F (nennt „Mangel") und G |
@@ -4012,6 +4014,119 @@ Fehlern abbrechen — **weniger** Fehler sah wie eine Verbesserung aus. Nach
 - **D-ε.qa.3** — Mobile Safari env-übersprungen (PROJ-67/F2).
 - **D-ε.qa.4** — die 17 Mängel des Laufs über den Runbook-Weg entfernt, weil
   PROJ-Y-45h den regulären Weg versperrt.
+
+### F-1 behoben — PROJ-Y-45q (2026-08-26)
+
+**Nutzer-Entscheid: über eine `SECURITY DEFINER`-Funktion lösen, L31 bleibt.**
+Die Alternative (AC-45ε.16/.17 auf `lead`/`editor` verengen) hätte L15s
+Begründung zurückgenommen — wer einen Mangel melden darf, darf ihn auch
+fotografieren. **Verdikt damit: 0 Critical / 0 High / 1 Medium (vorbestehend) →
+produktionsreif.**
+
+#### Die Reihenfolge ist geblieben, weil zwei Messungen sie festlegen
+
+Naheliegend wäre gewesen, zuerst hochzuladen und Knoten plus Dokumentzeile
+danach in einem Zug zu schreiben. Beides scheidet aus, und zwar gemessen:
+`documents_bucket_insert` prüft `_dms_object_access(name)` mit
+`p_allow_orphan = false` — ein Hochladen **vor** dem Knoten wird abgewiesen; und
+die Dokumentzeile zuerst zu schreiben wäre schlechter, weil der Quota-Trigger auf
+ihrem INSERT feuert und es kein Dekrement gibt (Befund F-2). Ein fehlgeschlagener
+Upload hätte dann dauerhaft Speicherplatz gekostet. Also unverändert
+**Knoten → Objekt → Dokumentzeile**, wie PROJ-79 sie hat.
+
+#### Die Sicherheitsaussage ist die Enge, nicht das „DEFINER"
+
+Migration `20260826090000_projy45q_photo_document_definer`, drei Funktionen —
+und jede trägt genau eine Einschränkung, die sie vom allgemeinen Schreibrecht
+trennt:
+
+| Funktion | Was sie eng hält |
+|---|---|
+| `create_construction_photo_node` | der Zielordner wird **gesetzt, nicht gewählt** — der Aufrufer kann nicht bestimmen, wo der Knoten entsteht |
+| `record_construction_photo_document` | nur an einem Knoten, dessen Elternteil **genau der Fotoordner** des eigenen Projekts ist, und nur für JPEG/PNG |
+| `discard_construction_photo_node` | nur ein **halb** angelegter Knoten ohne Datei — kein Löschpfad für Inhalte |
+
+**PROJ-79 bleibt unangetastet.** Die Migration prüft das selbst: eine
+Post-Condition scheitert laut, wenn `document_tree_nodes_insert` oder
+`documents_insert` ihre `lead`/`editor`-Bedingung verloren hätten. Verlöre diese
+Slice die Enge, verlöre sie ihre Begründung.
+
+#### Live gegen Prod: 19/19, und der Nachweis ist ein Paar
+
+`tests/sql/PROJ-Y-45q-photo-document-definer-pentest.sql`, Block 1 **14/14** +
+Block 2 **5/5**, 0 Rückstände. Nur zu zeigen, dass der Betrachter durchkommt,
+wäre gefährlich — dann bliebe offen, ob er jetzt überall schreiben darf:
+
+- **A/B** der Betrachter legt den Knoten an und schreibt die Dokumentzeile
+  (vorher `42501`) · **A2** der Ordner ist wirklich der Fotoordner · **A3**
+  idempotent · **B2** L38-Flag steht
+- **C** ein fremder Knoten ausserhalb des Fotoordners ist unerreichbar (42501) ·
+  **C2** kein Nicht-Bild (22023)
+- **D/D2** direktes INSERT in `document_tree_nodes` und `documents` bleibt für
+  denselben Betrachter gesperrt (42501) — **PROJ-79 ist nicht aufgeweicht**
+- **E** ein Knoten mit Datei ist über die Rücknahme nicht löschbar · **E2** ein
+  halber schon · **E3** ein fremder Knoten nicht
+- **F** fremdes Projekt trotz Mandanten-Mitgliedschaft (42501) · **G/G2** ein
+  echter Fremder bekommt gar nichts · **H** Gegenprobe, dass der Betrachter kein
+  Admin ist (sonst wäre alles falsch-grün)
+
+**Regression PROJ-79-DMS 16/16 wörtlich** — darunter
+`VIEWER-ins viewer insert blocked (42501)`, also derselbe Nachweis von der
+anderen Seite.
+
+#### Ein blinder Vektor in meiner eigenen Sonde, gefunden und benannt
+
+Der erste Lauf meldete **G_stranger = FAIL(erlaubt!)** und sah wie ein Loch aus.
+Es war keins: mein „Fremder" wurde als *erster Nutzer ohne Mandanten-Mitgliedschaft*
+gewählt — und das war genau der Nutzer, den die Sonde zwei Zeilen später selbst
+zum Betrachter macht. Live gegengeprüft (gewählter Fremder = `…000006` = `v_low`).
+Klasse B-γ2 / PROJ-Y-78e. Der Vektor liegt jetzt in einem eigenen Block, schliesst
+beide bekannten Kennungen aus, **bricht ab, wenn kein echter Fremder existiert**
+(statt blind grün zu werden) und belegt vorab, dass der Gewählte weder Mandanten-
+noch Projektmitglied ist.
+
+#### Anwendungsschicht
+
+Neu `src/lib/construction/photo-ingest.ts` (foto-spezifisch); `dms/ingest.ts`
+bleibt für gewöhnliche Dokumente **unverändert** — dort ist die engere Regel
+richtig. `photo-folder.ts` ist auf **Lesen** reduziert: das Anlegen macht die
+Datenbank, gelesen wird nur die Ordner-Kennung, damit `dedupeFilename` die eine
+Autorität für Kennungen bleibt. Der Rücknahmepfad ruft nicht mehr
+`dms_soft_delete_subtree` (für Betrachter gesperrt und damit genau am Zweck
+vorbei), sondern entfernt erst die Objekte und dann den halben Knoten.
+
+**Ein eigener Fehler beim Gegenlesen gefangen, vor dem ersten Lauf:** die erste
+Fassung übergab `tenantId: ""` mit der Begründung, der Ablageweg käme aus der
+Knoten-Kennung. Falsch — `uploadDocumentFile` baut `{tenant}/{projekt}/{knoten}/…`,
+ein leeres erstes Segment hätte die Bucket-Policy abgelehnt.
+
+#### Der authentifizierte Nachweis
+
+Der `test.fixme` ist ersetzt: **1b fährt den Betrachter-Upload wirklich durch**
+(Bild erscheint als Vorschau, `naturalWidth > 0`, und im selben Zustand fehlen
+Ändern und Entfernen). Kette **12/12**, auch aus **kaltem** `.next`.
+
+Dabei ein Kaltstart-Fall, der nicht überdeckt wurde: 1b ist jetzt der erste Test,
+der die Ausliefer-Route berührt, und ein Lauf scheiterte an deren Kompilat statt
+an den Bytes. Der Test stellt jetzt eine Anfrage vorweg — damit ist getrennt, was
+getrennt gehört („Route noch nicht kompiliert" gegen „Bytes kommen nicht an"),
+statt nur länger zu warten.
+
+#### Gates
+
+vitest **3729/3729** · ESLint 0 · tsc **13 = Baseline / 0 neu** (nach
+`rm -rf .next`) · Build clean · migration-naming 0 · index-scope 0 ·
+**Funktions-Inventar 293 → 296** aufgefrischt (Restliste des Wächters 9 → 6, die
+bekannten Bestandsfälle) · Prod-Rückstände **0** (0 Fotos, 0 Dokumente, 0 Knoten,
+0 eigene Mängel, Quota zurückgesetzt, **0 deaktivierte Trigger**).
+
+#### Was das nicht behebt
+
+**F-2 (PROJ-Y-45p)** bleibt offen: der Speicherplatz-Zähler hat weiterhin kein
+Dekrement. Diese Slice hat ihn nicht angefasst — und weil die Reihenfolge
+unverändert bleibt, wird er nur bei **erfolgreichen** Uploads erhöht, nicht bei
+abgebrochenen. **AC-45ε.4/.5** (HEIC) unverändert → PROJ-Y-45o. **AC-45εH-9**
+bleibt teilweise erfüllt (γ Blöcke 1–2, δ Blöcke 1–5 nicht wörtlich).
 
 ---
 

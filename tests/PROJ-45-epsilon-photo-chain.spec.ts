@@ -266,40 +266,58 @@ test.describe("PROJ-45-ε · Kette am Mangel", () => {
   })
 
   /**
-   * QA-BEFUND F-1 (High) — hier bewusst als offene Lücke markiert statt
-   * grün gerechnet.
+   * PROJ-Y-45q — F-1 ist behoben, und das ist der Nachweis dafür.
    *
-   * AC-45ε.16/.17 sagen zu, dass **jedes** Projektmitglied Fotos hinzufügen
-   * darf, Betrachter eingeschlossen (β-Regel). Über die echte Route ist das
-   * **nicht** erreichbar: der Betrachter bekommt `422 create_failed` mit
-   * „new row violates row-level security policy for table
-   * document_tree_nodes" — live gemessen, während dieselbe Anfrage als
-   * Bauleitung mit 201 antwortet.
+   * Bis zum 2026-08-25 war dieser Fall `test.fixme`: AC-45ε.16/.17 sagen zu, dass
+   * jedes Projektmitglied Fotos hinzufügen darf, über die echte Route bekam der
+   * Betrachter aber `422` aus `document_tree_nodes_insert` — L31 (Ablage im DMS)
+   * und die β-Regel widersprachen sich.
    *
-   * Ursache ist ein Widerspruch zwischen zwei Nutzer-Locks, nicht ein Tippfehler:
-   * **L31** legt das Foto als echtes DMS-Dokument ab, und PROJ-79s
-   * `document_tree_nodes_insert` erlaubt INSERT nur `lead`/`editor`/Admin
-   * (an der Migration nachgelesen). Die Rechteregel der Fotostrecke ist damit
-   * strenger, als ihr eigenes Kriterium behauptet.
-   *
-   * Warum die bisherigen Nachweise es nicht sahen — alle drei prüfen an der
-   * Lücke vorbei: der Pentest-Vektor A verknüpft ein Dokument, das der **Admin**
-   * geseedet hat (er prüft `link_construction_photo`, nicht den DMS-Einfüge-Pfad);
-   * die Routentests mocken `ingestDocumentFile` vollständig; der
-   * Komponententest belegt, dass der Knopf angeboten wird, nicht dass er wirkt.
-   * Genau deshalb verlangt diese Slice einen echten Durchlauf.
+   * Nutzer-Entscheid: über eine `SECURITY DEFINER`-Funktion lösen, L31 bleibt.
+   * Der Weg ist bewusst **eng**: der Zielordner wird gesetzt statt gewählt, die
+   * Dokumentzeile entsteht nur an einem Knoten im Fotoordner und nur für
+   * JPEG/PNG. Dass die Enge hält, belegt der Pentest
+   * (`tests/sql/PROJ-Y-45q-photo-document-definer-pentest.sql`, Vektoren C–G);
+   * dass der Betrachter *durchkommt*, belegt dieser Test — die eine Hälfte ohne
+   * die andere wäre gefährlich.
    */
-  test.fixme(
-    "1b · QA-BEFUND F-1: der Betrachter kann NICHT hochladen (422, DMS-RLS)",
-    async ({ constructionViewerPage: page }) => {
-      await page.goto(DEFECTS_PATH)
-      const sheet = await openDetail(page, TITLE)
-      await uploadPhotos(page, [await jpegWithExif()])
-      await expect(sheet.getByRole("img").first()).toBeVisible({
-        timeout: 60_000,
+  test("1b · der BETRACHTER lädt hoch (F-1 behoben, PROJ-Y-45q)", async ({
+    constructionViewerPage: page,
+  }) => {
+    await page.goto(DEFECTS_PATH)
+    const sheet = await openDetail(page, TITLE)
+    await uploadPhotos(page, [await jpegWithExif("betrachter.jpg")])
+
+    const img = sheet.getByRole("img").first()
+    await expect(img).toBeVisible({ timeout: 60_000 })
+    await expect(img).toHaveAttribute("src", /size=preview/)
+
+    // Dieser Test ist der ERSTE, der die Ausliefer-Route berührt; auf kaltem
+    // `.next` kostet deren Kompilat mehr als die Bild-Dekodierung, und ein Lauf
+    // ist genau daran gescheitert. Eine Anfrage vorweg trennt „Route noch nicht
+    // kompiliert" von „Bytes kommen nicht an" — das ist die Aussage, um die es
+    // geht (Kaltstart-Klasse PROJ-67/AC-9, PROJ-138).
+    const src = await img.getAttribute("src")
+    if (src) {
+      const warm = await page.request.get(src)
+      expect(warm.status()).toBe(200)
+      expect(warm.headers()["content-type"]).toContain("image/")
+    }
+
+    // Und die Bytes kommen wirklich im Bild an: ein nicht geladenes hätte 0.
+    await expect
+      .poll(async () => img.evaluate((el) => (el as HTMLImageElement).naturalWidth), {
+        timeout: 30_000,
       })
-    },
-  )
+      .toBeGreaterThan(0)
+
+    // Gegenprobe im SELBEN Zustand: er darf hinzufügen, aber nicht steuern.
+    await expect(sheet.getByLabel("Bildunterschrift")).toHaveCount(0)
+    await expect(
+      sheet.getByRole("button", { name: /Vom Bezug lösen/ }),
+    ).toHaveCount(0)
+    await expect(sheet.getByRole("link", { name: /Original/ })).toBeVisible()
+  })
 
   test("1c · die BAULEITUNG lädt hoch — die Kette läuft durch (AC-45ε.1/.9)", async ({
     constructionLeadPage: page,
@@ -371,23 +389,24 @@ test.describe("PROJ-45-ε · Kette am Mangel", () => {
     await page.goto(DEFECTS_PATH)
     const sheet = await openDetail(page, TITLE)
 
+    // Seit 1b liegen ZWEI Fotos in der Strecke (Betrachter + Bauleitung), also
+    // wird gezielt das erste angesprochen — sonst ist der Selektor mehrdeutig.
+    const dateField = sheet.getByLabel("Aufnahmedatum").first()
+    const captionField = sheet.getByLabel("Bildunterschrift").first()
+
     // AC-45ε.7 — das aus EXIF vorbelegte Datum ist sichtbar.
-    await expect(sheet.getByLabel("Aufnahmedatum")).toHaveValue(
-      FIXTURE_CAPTURE_DATE,
-    )
+    await expect(dateField).toHaveValue(FIXTURE_CAPTURE_DATE)
 
     const caption = `Attika Achse C ${STAMP}`
-    await sheet.getByLabel("Bildunterschrift").fill(caption)
-    await sheet.getByRole("button", { name: "Speichern" }).click()
-    await expect(sheet.getByLabel("Bildunterschrift")).toHaveValue(caption, {
-      timeout: 30_000,
-    })
+    await captionField.fill(caption)
+    await sheet.getByRole("button", { name: "Speichern" }).first().click()
+    await expect(captionField).toHaveValue(caption, { timeout: 30_000 })
 
     // Der Leeren-Schalter: das Datum wird wirklich leer, nicht „unverändert".
-    await sheet.getByLabel("Aufnahmedatum").fill("")
-    await sheet.getByRole("button", { name: "Speichern" }).click()
+    await dateField.fill("")
+    await sheet.getByRole("button", { name: "Speichern" }).first().click()
     await expect(
-      sheet.getByText(/Das Bild trug keine Aufnahmezeit/),
+      sheet.getByText(/Das Bild trug keine Aufnahmezeit/).first(),
     ).toBeVisible({ timeout: 30_000 })
 
     const db = await admin()
@@ -396,12 +415,11 @@ test.describe("PROJ-45-ε · Kette am Mangel", () => {
         .from("construction_photos")
         .select("caption, taken_on")
         .eq("project_id", PROJECT)
-        .order("created_at", { ascending: false })
-        .limit(1)
+        .eq("caption", caption)
       const row = (data ?? [])[0] as
         | { caption: string | null; taken_on: string | null }
         | undefined
-      expect(row?.caption).toBe(caption)
+      expect(row).toBeDefined()
       // Der tragende Teil: NULL in der Datenbank, nicht der alte Wert.
       expect(row?.taken_on).toBeNull()
     }
@@ -424,17 +442,25 @@ test.describe("PROJ-45-ε · Kette am Mangel", () => {
     const docCountBefore = (before.data ?? []).length
     expect(docCountBefore).toBeGreaterThan(0)
 
+    const { data: photosBefore } = await db
+      .from("construction_photos")
+      .select("id")
+      .eq("project_id", PROJECT)
+    const photoCountBefore = (photosBefore ?? []).length
+    expect(photoCountBefore).toBeGreaterThan(0)
+
     await sheet.getByRole("button", { name: /Vom Bezug lösen/ }).first().click()
     await expect(
       page.getByText(/Datei bleibt im Dokumentenbaum/),
     ).toBeVisible({ timeout: 30_000 })
 
-    // Die Fotozeile ist weg …
+    // Genau EINE Fotozeile ist weg — relativ geprüft, weil in der Strecke seit
+    // 1b mehrere Fotos liegen; eine absolute Null wäre hier die falsche Zahl.
     const { data: photos } = await db
       .from("construction_photos")
       .select("id")
       .eq("project_id", PROJECT)
-    expect(photos ?? []).toHaveLength(0)
+    expect(photos ?? []).toHaveLength(photoCountBefore - 1)
     // … die Datei aber nicht, und sie ist NICHT im Papierkorb.
     const after = await db
       .from("documents")
