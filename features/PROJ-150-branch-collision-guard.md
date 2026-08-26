@@ -141,6 +141,11 @@ Guard-Slices (PROJ-147, PROJ-Y-148e, beide reine Dateianalyse ohne CI-Enrollment
 QA-Stufe auf `Deployed` gegangen, und jedes der zehn Kriterien trägt hier einen ausgeführten Nachweis
 inklusive Rot-Grün. Das ist eine Abweichung in der **Nachweisform**, kein unerfülltes Kriterium.
 
+**Nachtrag 2026-08-26:** `PROJ-Y-150a` ist gebaut — ein `PreToolUse`-Hook auf `Bash` faengt das
+Anlegen eines Branches ab und fragt bei belegter Slice zurueck. Damit ist D-150.2 eingeloest; die
+Grenze „vorgeschrieben, nicht erzwungen" gilt fuer diese Slice weiter, weil sie dort zutreffend
+beschrieben war.
+
 **Alle 10 AC erfüllt, nichts zurückgestellt.** `PROJ-Y-150a` (Harness-Hook als echte Erzwingung) ist
 **keine** Auslassung dieser Slice: kein Akzeptanzkriterium verlangt Automatik — D-150.2 benennt die
 Grenze, und der einzige automatische Weg ändert Agentenverhalten für **alle** Sessions auf dieser

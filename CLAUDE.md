@@ -404,6 +404,14 @@ Rules:
   Branches pro Slice sind hier der Normalfall (`proj-130` traegt 12, `proj-34` neun), es haette also
   fast immer angeschlagen. Der Guard trennt daher **lebende** Ansprueche (fremder Worktree, oder ein
   Tag → schon deployed) von Altlast und blockiert nur bei den beiden eindeutigen Signalen.
+  **Seit PROJ-Y-150a wird das erzwungen, nicht nur vorgeschrieben:** ein `PreToolUse`-Hook auf `Bash`
+  (`.claude/settings.json` → `scripts/hooks/branch-collision-guard.mjs`) faengt das **Anlegen** eines
+  Branches ab — `checkout -b`, `switch -c`, `worktree add -b`, `git branch <name>` — und fragt bei
+  belegter Slice zurueck (`ask`), mit Nennung des Halters. Wechseln, Auflisten, Loeschen und Rebasen
+  bleiben unberuehrt. Der Umgehungsweg ist bewusst **der Mensch** (Rueckfrage statt Sperre), damit es
+  keinen Bypass-Schalter gibt; fuer kopflose Laeufe `BRANCH_COLLISION_GUARD=off`. Der Hook ist
+  durchgaengig **fail-open** (Urteil ueber stdout, Exit immer 0) — er kann `git` nicht brechen.
+  Ansehen und abschalten: `/hooks`, oder `disableAllHooks` in den lokalen Einstellungen.
 - Cleanup after merge: `git worktree remove <path>` + delete the branch.
 
 ## Continuous Improvement Agent
