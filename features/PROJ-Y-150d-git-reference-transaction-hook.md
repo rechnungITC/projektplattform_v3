@@ -1,7 +1,7 @@
 # PROJ-Y-150d — Branch-Kollisions-Guard auf der git-Ebene
 
-## Status: In Progress
-## Deployment Scope: —
+## Status: Deployed
+## Deployment Scope: tooling-only
 
 ## Problem
 
@@ -91,5 +91,47 @@ Ein git-`reference-transaction`-Hook im **gemeinsamen** `.git/hooks` (dieses Rep
   Repos; eine Sitzung in einem anderen Klon bleibt unsichtbar.
 - **D-Y150d.4 Ein Aufruf des Guards je angelegtem Branch.** Eine Transaktion, die mehrere Branches
   auf einmal anlegt, zahlt mehrfach — praktisch selten, bewusst nicht optimiert.
+- **D-Y150d.6 Die Erkennung hat ein blindes Fenster — am Tag des Deploys vorgefuehrt.** Minuten nach
+  dem Merge nannte der Nutzer eine Slice als vergeben (**PROJ-Y-151b**), und der Guard antwortete
+  `free`. Nachgemessen zu Recht: es existiert **kein** Ref mit dieser Kennung, weder lokal noch auf
+  `origin`, und die andere Spur arbeitet in einem Worktree, der auf `proj-y-151a` steht. Der Guard
+  misst also korrekt, was er misst — Branches, Worktrees, Tags — und beantwortet die gestellte Frage
+  („ist die Slice vergeben?") trotzdem falsch. **Das blinde Fenster reicht vom Arbeitsbeginn bis zur
+  Branch-Anlage.** Im PROJ-Y-45p-Vorfall existierte der Branch (mit 0 Commits), was ihn ueberhaupt
+  erkennbar machte; eine Spur, die sequentiell in **einem** Worktree arbeitet — 151a fertig, dann
+  151b — legt bis zum Verzweigen keine Marke. Die Annahme aus PROJ-150-L3 („der lebende Anspruch ist
+  der Worktree") gilt damit nur **ab** der Branch-Anlage. Registriert als **PROJ-Y-150e**; der Fix
+  waere ein anderes Verfahren — eine **Erklaerung** beim Beginn statt einer **Ableitung** aus git.
 - **D-Y150d.5 Kein CIA-Pass.** Kein neues Dependency, keine Architekturentscheidung am Produkt; der
   Eingriff ist Werkzeug-Ebene. Wegen der Reichweite ausdrücklich benannt statt übergangen.
+
+## Deployment
+
+**Deployed 2026-08-27 — Tag `v2.81.0-PROJ-Y-150d`, PR #479 (squash) → main `e4593bf`.**
+
+Deployment Scope **`tooling-only`**: geliefert werden ein git-Hook, ein Installer, zwei npm-Skripte,
+Tests und Buchführung — **kein `src/`-Diff, keine Migration, kein Dependency**. Der Merge **ist** die
+Auslieferung des Codes; die **Wirkung** setzt zusätzlich ein `npm run hooks:install` je Klon voraus
+(D-Y150d.1/2), und das ist bewusst nicht geschehen.
+
+**Nachweis nach der Regel, nach dem Merge gegen `main` gemessen:**
+
+| Nachweis | Ergebnis |
+|---|---|
+| Artefakte auf `main` | Hook, Installer, Tests, Spec und **beide** npm-Skripte vorhanden |
+| Unit-Tests aus `main` | in der vollen Suite enthalten (59 Fälle der beiden Hook-Dateien) |
+| Volle Suite auf `e4593bf` | siehe Gates unten |
+| Verhalten | im Wegwerf-Klon vor dem Merge: **3/3 abgelehnt**, **8/8 durchgelassen**, Override durchgelassen |
+| CI | 9/9 Checks grün auf dem gemergten Stand |
+
+**Zwei Rebases beim Merge**, weil `main` sich dreimal bewegte (PROJ-151 `/qa`, dann dessen Deploy);
+beide Konflikte im INDEX-Hotspot, fremde Zeilen per `diff` gegen `main` als wörtlich erhalten
+nachgewiesen. Beim zweiten Versuch Push, Check-Wartezeit und Merge in **einem** Fenster, weil jede
+Lücke den nächsten Konflikt einfängt.
+
+**Kein eigener `/qa`-Durchlauf** — Präzedenz PROJ-147/PROJ-Y-148e, und jedes der neun Kriterien trägt
+einen ausgeführten Nachweis samt Rot-Grün.
+
+**Alle 9 AC erfüllt.** Offen bleibt **PROJ-Y-150e** (blindes Fenster der Erkennung, D-Y150d.6) — das
+ist eine neu entdeckte Nachbarfrage, kein zurückgestelltes Kriterium dieser Slice: keines der neun
+Kriterien verlangt, eine Slice ohne jede git-Spur zu erkennen.
