@@ -212,6 +212,94 @@ jobs:
             exit 1
           fi
 
+      - name: Verify audit whitelist vs real schema
+        env:
+          PGPASSWORD: test
+        run: |
+          set -euo pipefail
+          # PROJ-Y-130s: `_tracked_audit_columns` nannte 58 Spalten, die es nicht gibt.
+          # `record_audit_changes` macht `to_jsonb(OLD) -> v_col`; ein fehlender Schluessel
+          # liefert SQL-NULL, und `NULL is distinct from NULL` ist false — die Feldaenderung
+          # wird lautlos NICHT protokolliert. Kein Fehler, keine Meldung, kein Log. Genau
+          # deshalb blieb der Defekt von PROJ-21 (2026-05-01) bis PROJ-Y-130s unbemerkt.
+          #
+          # Warum hier und nicht als Dateianalyse (wie check:function-inventory): 14 der 78
+          # Whitelist-Migrationen patchen die Funktion per Anker-Ersetzung aus der jeweils
+          # LIVE-Definition. Statisch ist die effektive Whitelist damit nicht rekonstruierbar
+          # — eine Dateianalyse muesste sie raten. Die Shadow-DB hat sie.
+          #
+          # AUSNAHMELISTE IST LEER und soll es bleiben. Ein Eintrag hier heisst: "diese
+          # Feldaenderung wird bewusst nicht protokolliert" — das ist eine Compliance-
+          # Entscheidung und gehoert in eine Slice, nicht in eine Zeile Workflow.
+          EXCEPTIONS="array[]::text[]"
+
+          if ! psql -h localhost -U postgres -d postgres -tAc \
+                "select 1 from pg_proc p join pg_namespace n on n.oid=p.pronamespace \
+                 where n.nspname='public' and p.proname='_tracked_audit_columns'" | grep -q 1; then
+            echo "::error::_tracked_audit_columns fehlt in der Shadow-DB — die Audit-Whitelist kann nicht geprueft werden."
+            exit 1
+          fi
+
+          # Geisterspalten: in der Whitelist genannt, im realen Schema nicht vorhanden.
+          # Nur Tabellen, die es gibt — eine fehlende Tabelle ist ein ANDERER Befund (s. u.),
+          # und sie als 5 Geisterspalten zu melden wuerde die Diagnose verfaelschen.
+          GHOSTS=$(psql -h localhost -U postgres -d postgres -tA <<SQL
+          with tabs as (
+            select distinct m[1] as tbl
+            from regexp_matches(
+              (select pg_get_functiondef(p.oid) from pg_proc p
+               join pg_namespace n on n.oid = p.pronamespace
+               where n.nspname='public' and p.proname='_tracked_audit_columns'),
+              \$\$when\\s+'([a-z_]+)'\\s+then\\s+array\\[\$\$, 'g') m
+          )
+          select t.tbl || '.' || c.col
+          from tabs t
+          cross join lateral unnest(public._tracked_audit_columns(t.tbl)) as c(col)
+          where exists (select 1 from information_schema.tables
+                        where table_schema='public' and table_name=t.tbl and table_type='BASE TABLE')
+            and not exists (select 1 from information_schema.columns
+                            where table_schema='public' and table_name=t.tbl and column_name=c.col)
+            and not (t.tbl || '.' || c.col = any($EXCEPTIONS))
+          order by 1;
+          SQL
+          )
+
+          # Getrennte Kategorie: Whitelist nennt eine Tabelle, die es in dieser Umgebung nicht
+          # gibt. In der Shadow-DB ist das meist Folge eines Fresh-Apply-Abbruchs (PROJ-Y-130f)
+          # und nicht Sache dieses Waechters — gemeldet, aber nicht hart.
+          MISSING=$(psql -h localhost -U postgres -d postgres -tA <<SQL
+          with tabs as (
+            select distinct m[1] as tbl
+            from regexp_matches(
+              (select pg_get_functiondef(p.oid) from pg_proc p
+               join pg_namespace n on n.oid = p.pronamespace
+               where n.nspname='public' and p.proname='_tracked_audit_columns'),
+              \$\$when\\s+'([a-z_]+)'\\s+then\\s+array\\[\$\$, 'g') m
+          )
+          select t.tbl from tabs t
+          where not exists (select 1 from information_schema.tables
+                            where table_schema='public' and table_name=t.tbl and table_type='BASE TABLE')
+          order by 1;
+          SQL
+          )
+
+          if [ -n "$MISSING" ]; then
+            echo "::warning::Audit-Whitelist nennt Tabellen, die in dieser Umgebung fehlen (eigener Befund, nicht Geisterspalten):"
+            printf '  %s\n' $MISSING
+          fi
+
+          if [ -n "$GHOSTS" ]; then
+            n=$(printf '%s\n' "$GHOSTS" | grep -c . || true)
+            echo "::error::Audit-Whitelist nennt $n Spalte(n), die es nicht gibt. Feldaenderungen daran werden LAUTLOS nicht protokolliert (PROJ-Y-130s):"
+            printf '  %s\n' $GHOSTS
+            echo ""
+            echo "Entweder die Spalte heisst anders (dann den Whitelist-Eintrag korrigieren),"
+            echo "oder sie existiert nicht mehr (dann den Eintrag entfernen)."
+            exit 1
+          fi
+
+          echo "Audit-Whitelist: 0 Geisterspalten."
+
       - name: Run schema-drift check
         env:
           DATABASE_URL: postgres://postgres:test@localhost:5432/postgres
