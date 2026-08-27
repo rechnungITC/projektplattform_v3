@@ -1,7 +1,7 @@
 # PROJ-Y-150a — Branch-Kollisions-Guard erzwingen (Harness-Hook)
 
-## Status: In Progress
-## Deployment Scope: —
+## Status: Deployed
+## Deployment Scope: tooling-only
 
 ## Problem
 
@@ -104,3 +104,47 @@ node, was die Befehlserkennung zugleich testbar macht statt sie als Shell-Einzei
   aber als Dateien unter `.claude/agents/` oder einen neuen Agenten — beides trifft nicht zu. Der
   Hook ist Werkzeug-Konfiguration. Wegen der Reichweite (alle Sessions dieser Maschine) hier
   ausdrücklich benannt statt stillschweigend übergangen.
+
+## Deployment
+
+**Deployed 2026-08-27 — Tag `v2.78.0-PROJ-Y-150a`, PR #465 (squash) → main `2e8992b`** (gemergt
+2026-08-26 17:58 UTC; die Buchführung folgt einen Tag später, weil der Merge in einen
+GitHub-Actions-Ausfall fiel).
+
+Deployment Scope **`tooling-only`**, wörtlich nach Definition: geliefert werden ein Hook-Skript, ein
+Eintrag in `.claude/settings.json`, die CLAUDE.md-Regel und Buchführung — **kein `src/`-Diff, keine
+Migration, kein Dependency**, also keine Laufzeitfähigkeit am Produkt. Der Merge **ist** die
+Auslieferung; ein Routen-Smoke wäre gegenstandslos.
+
+**Nachweis nach der Regel** („an executed repository tool, test, workflow, or CI check plus the
+relevant repository/CI result") — jeder Punkt **nach** dem Merge gegen `main` gemessen:
+
+| Nachweis | Ergebnis |
+|---|---|
+| Hook aus `main`, belegte Slice | `PreToolUse` / **`ask`**, nennt den haltenden Worktree |
+| Hook aus `main`, gewöhnliche Arbeit | 5/5 still (`status`, `switch`, `branch -a`, `worktree add` ohne Anlege-Flag, `log --grep='checkout -b …'`) |
+| Fail-open | 3/3 still (unlesbare Nutzlast, fehlendes `tool_input`, leeres stdin) |
+| Unit-Tests aus `main` | **67/67** (37 Hook + 30 Guard) |
+| Volle Suite auf `2e8992b` | **3820/3820** in 442 Dateien |
+| ESLint · tsc · Build | **0** · **13 = Baseline / 0 neu** · Compiled successfully |
+| Datei-Guards | index-scope · migration-naming · token-drift · function-inventory **OK**; `check:branch-collision` selbst exit 0 |
+| CI + Auslieferung | 9/9 Checks grün; Vercel-Produktions-Build aus genau `2e8992b` **success** |
+
+**Betriebsbefund aus dem Ausfall, festgehalten weil er wiederkehrt:** GitHub Actions war beim
+Merge-Versuch in einem `major_outage`. Die während der Störung eingereihten Läufe wurden nach der
+Wiederherstellung **nicht** übernommen, und zwei Workflows (Schema-Drift, Migration-Naming) waren
+gar nicht erst erzeugt worden — die PR sah mit 2 von 9 Checks „blockiert" aus, ohne dass etwas rot
+war. Auflösung ohne Leer-Commit: eingereihte Läufe abbrechen, PR schliessen und wieder öffnen, was
+die `pull_request`-Events neu feuert und alle sechs Workflows anlegt. Ein Admin-Merge an den
+fehlenden Checks vorbei wurde ausdrücklich **nicht** gewählt: die vier nicht gelaufenen Guards sind
+genau die, die einen Fehler in dieser Änderung gefangen hätten.
+
+**Kein eigener `/qa`-Durchlauf** — nach derselben Präzedenz wie PROJ-150 (PROJ-147, PROJ-Y-148e:
+Dateianalyse-Guards ohne separate QA-Stufe) und weil jedes der acht Kriterien einen ausgeführten
+Nachweis samt Rot-Grün trägt. Abweichung in der **Nachweisform**, kein unerfülltes Kriterium.
+
+**Alle 8 AC erfüllt, nichts zurückgestellt.** Die in D-Y150a.1 benannte Grenze bleibt bestehen und
+ist mit dem Deploy **nicht** eingelöst: dass der Hook im Harness tatsächlich feuert, ist weiterhin
+nicht beobachtet — er wird erst nach einem Konfigurations-Neuladen (`/hooks` oder Neustart) scharf.
+Das ist eine Aussage über die Nachweistiefe, kein offenes Kriterium; AC-Y150a.6 verlangt, dass der
+**konfigurierte Befehl** trägt, und das ist aus drei Arbeitsverzeichnissen belegt.
