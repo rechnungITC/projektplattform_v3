@@ -16,8 +16,11 @@
  */
 
 import {
+  CLOUD_PROVIDER_TIMEOUT_MS,
+  createTimeoutFetch,
+} from "../provider-timeout"
+import {
   createGoogleGenerativeAI,
-  google as defaultGoogle,
 } from "@ai-sdk/google"
 import type { GoogleGenerativeAIProvider as GoogleSDKProvider } from "@ai-sdk/google"
 import { generateObject } from "ai"
@@ -182,9 +185,11 @@ export class GoogleProvider implements AIProvider {
 
   constructor(config?: GoogleProviderConfig) {
     this.modelId = config?.modelId ?? DEFAULT_GOOGLE_MODEL
-    this.sdkProvider = config?.apiKey
-      ? createGoogleGenerativeAI({ apiKey: config.apiKey })
-      : defaultGoogle
+    // PROJ-152: siehe openai.ts — Zeitbudget auch auf dem Env-Key-Pfad.
+    this.sdkProvider = createGoogleGenerativeAI({
+      ...(config?.apiKey ? { apiKey: config.apiKey } : {}),
+      fetch: createTimeoutFetch("google", CLOUD_PROVIDER_TIMEOUT_MS),
+    })
   }
 
   async generateRiskSuggestions(

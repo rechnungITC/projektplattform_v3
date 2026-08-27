@@ -51,6 +51,7 @@ import { GoogleProvider } from "./providers/google"
 import { OllamaProvider } from "./providers/ollama"
 import { OpenAIProvider } from "./providers/openai"
 import { StubProvider } from "./providers/stub"
+import { describeProviderFallback } from "./provider-timeout"
 import type { AIProvider } from "./providers/types"
 import type {
   AiRunReasonCode,
@@ -345,7 +346,14 @@ async function insertKiRun(
       model_id: args.provider.modelId,
       // PROJ-93: Azure trusted-processor runs record their EU region; null else.
       provider_region: args.provider.region ?? null,
-      status: "success", // optimistic; updated on error path
+      // PROJ-152: der Lauf startet als "running" und wird erst von
+      // `updateKiRunStatus` abgeschlossen. Vorher stand hier optimistisch
+      // "success" — erzwungen durch den alten CHECK, der kein "laeuft
+      // noch" kannte. Ein abgeschnittener Lauf las sich damit als Erfolg
+      // (live belegt: zwei Zeilen vom 2026-08-27 mit latency_ms = null und
+      // 0 Vorschlaegen). Bleibt eine Zeile auf "running" stehen, ist die
+      // Anfrage unterwegs gestorben — und das soll man sehen.
+      status: "running",
       wizard_draft_id: args.wizardDraftId ?? null,
     })
     .select("id")
@@ -1051,7 +1059,7 @@ export async function invokeTrajectorySequenceGeneration({
         context,
         count,
       })
-      providerFallbackMessage = `Provider ${provider.name} failed (${providerError}); fell back to Stub.`
+      providerFallbackMessage = describeProviderFallback(provider.name, err)
       activeProvider = fallbackProvider
       suggestions = fallback.suggestions
       inputTokens = fallback.usage.input_tokens
@@ -1424,7 +1432,7 @@ export async function invokeCrossProjectLinksGeneration({
         context,
         count,
       })
-      providerFallbackMessage = `Provider ${provider.name} failed (${providerError}); fell back to Stub.`
+      providerFallbackMessage = describeProviderFallback(provider.name, err)
       activeProvider = fallbackProvider
       suggestions = fallback.suggestions
       inputTokens = fallback.usage.input_tokens
@@ -1632,7 +1640,7 @@ export async function invokeProposalFromContextGeneration({
         context,
         count,
       })
-      providerFallbackMessage = `Provider ${provider.name} failed (${providerError}); fell back to Stub.`
+      providerFallbackMessage = describeProviderFallback(provider.name, err)
       activeProvider = fallbackProvider
       suggestions = fallback.suggestions
       inputTokens = fallback.usage.input_tokens
@@ -1820,7 +1828,7 @@ export async function invokeStakeholderProposalsGeneration({
         context,
         count,
       })
-      providerFallbackMessage = `Provider ${provider.name} failed (${providerError}); fell back to Stub.`
+      providerFallbackMessage = describeProviderFallback(provider.name, err)
       activeProvider = fallbackProvider
       suggestions = fallback.suggestions
       inputTokens = fallback.usage.input_tokens
@@ -2003,7 +2011,7 @@ export async function invokeRiskProposalsGeneration({
         context,
         count,
       })
-      providerFallbackMessage = `Provider ${provider.name} failed (${providerError}); fell back to Stub.`
+      providerFallbackMessage = describeProviderFallback(provider.name, err)
       activeProvider = fallbackProvider
       suggestions = fallback.suggestions
       inputTokens = fallback.usage.input_tokens
@@ -2187,7 +2195,7 @@ export async function invokeClarifyingQuestionsGeneration({
         context,
         count,
       })
-      providerFallbackMessage = `Provider ${provider.name} failed (${providerError}); fell back to Stub.`
+      providerFallbackMessage = describeProviderFallback(provider.name, err)
       activeProvider = fallbackProvider
       questions = fallback.questions
       inputTokens = fallback.usage.input_tokens
@@ -2320,7 +2328,7 @@ export async function invokeDocumentSummaryGeneration({
     if (provider.name !== "stub") {
       const fallbackProvider = new StubProvider()
       const fallback = await fallbackProvider.generateDocumentSummary!({ context })
-      providerFallbackMessage = `Provider ${provider.name} failed (${providerError}); fell back to Stub.`
+      providerFallbackMessage = describeProviderFallback(provider.name, err)
       activeProvider = fallbackProvider
       summary = fallback.summary
       summaryMarkdown = fallback.summary_markdown

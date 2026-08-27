@@ -21,6 +21,11 @@
  */
 
 import { createOpenAICompatible } from "@ai-sdk/openai-compatible"
+
+import {
+  CLOUD_PROVIDER_TIMEOUT_MS,
+  createTimeoutFetch,
+} from "../provider-timeout"
 import { generateObject } from "ai"
 import { z } from "zod"
 
@@ -216,6 +221,8 @@ export class AzureOpenAIProvider implements AIProvider {
       baseURL: `${base}/openai/deployments/${config.deployment}`,
       headers: { "api-key": config.apiKey },
       queryParams: { "api-version": config.apiVersion },
+      // PROJ-152: Zeitbudget fuer jeden Aufruf dieses Clients.
+      fetch: createTimeoutFetch("azure", CLOUD_PROVIDER_TIMEOUT_MS),
     })
   }
 

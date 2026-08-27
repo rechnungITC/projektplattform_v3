@@ -19,6 +19,11 @@
  */
 
 import { createOpenAICompatible } from "@ai-sdk/openai-compatible"
+
+import {
+  LOCAL_PROVIDER_TIMEOUT_MS,
+  createTimeoutFetch,
+} from "../provider-timeout"
 import { generateObject } from "ai"
 import { z } from "zod"
 
@@ -643,6 +648,11 @@ export class OllamaProvider implements AIProvider {
       // validation. Ollama supports json_schema (verified live against
       // 0.30.7). Affects all Ollama purposes, not just stakeholders.
       supportsStructuredOutputs: true,
+      // PROJ-152: das Zeitbudget, an dem es bisher fehlte. Grosszuegig,
+      // weil live gemessene erfolgreiche Laeufe 176 s und 253 s
+      // brauchten — aber endlich, damit ein nicht antwortender
+      // Endpunkt nicht die ganze Anfrage verschluckt.
+      fetch: createTimeoutFetch("ollama", LOCAL_PROVIDER_TIMEOUT_MS),
     })
   }
 
