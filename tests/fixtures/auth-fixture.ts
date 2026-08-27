@@ -4,6 +4,7 @@ import { test as base, type Browser, type Page } from "@playwright/test"
 
 import {
   E2E_ASSISTANT_TENANT_ID,
+  E2E_CHAT_TENANT_ID,
   E2E_CONSTRUCTION_LEAD_STORAGE_STATE_PATH,
   E2E_CONSTRUCTION_TENANT_ID,
   E2E_CONSTRUCTION_VIEWER_STORAGE_STATE_PATH,
@@ -119,6 +120,15 @@ export const test = base.extend<{
    */
   assistantTenantPage: Page
   /**
+   * PROJ-Y-151b — signed in with the CHAT tenant active, where `ai_chat` is on
+   * and the seed project is a waterfall ERP project with a description (the
+   * chat grounds its answer in it).
+   *
+   * Own tenant for the same reason as the assistant lane: the module adds a
+   * project-room tab, and the visual specs photograph the shell `fullPage`.
+   */
+  chatTenantPage: Page
+  /**
    * PROJ-Y-143l — signed in as the visual lane's OWN user, in the visual
    * lane's own tenant. Used exclusively by
    * `PROJ-51-visual-regression-authenticated.spec.ts`.
@@ -160,6 +170,14 @@ export const test = base.extend<{
       E2E_ASSISTANT_TENANT_ID,
       baseURL,
     )
+    const page = await context.newPage()
+    await use(page)
+    await context.close()
+  },
+
+  chatTenantPage: async ({ browser, baseURL }, use) => {
+    if (skipUnlessProvisioned()) return
+    const context = await pinnedContext(browser, E2E_CHAT_TENANT_ID, baseURL)
     const page = await context.newPage()
     await use(page)
     await context.close()

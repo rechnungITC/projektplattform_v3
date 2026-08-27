@@ -13,6 +13,11 @@ import type { FullConfig } from "@playwright/test"
 
 import {
   E2E_ASSISTANT_PROJECT_ID,
+  E2E_CHAT_PROJECT_ID,
+  E2E_CHAT_PROJECT_NAME,
+  E2E_CHAT_TENANT_DOMAIN,
+  E2E_CHAT_TENANT_ID,
+  E2E_CHAT_TENANT_NAME,
   E2E_CONSTRUCTION_ACTIVE_MODULES,
   E2E_CONSTRUCTION_LEAD_DISPLAY_NAME,
   E2E_CONSTRUCTION_LEAD_EMAIL,
@@ -105,6 +110,10 @@ function assertConformantFixtureIds(): void {
     E2E_CONSTRUCTION_PROJECT_TRADE_ID,
     E2E_CONSTRUCTION_SECTION_ROOT_ID,
     E2E_CONSTRUCTION_SECTION_CHILD_ID,
+    // PROJ-Y-151b — the chat lane. The project id travels through
+    // `/projects/[id]/ki-chat` and every chat API call the page makes.
+    E2E_CHAT_TENANT_ID,
+    E2E_CHAT_PROJECT_ID,
   }).filter(([, id]) => !RFC_4122_V4.test(id))
 
   if (offenders.length > 0) {
@@ -452,6 +461,86 @@ async function globalSetup(config: FullConfig): Promise<void> {
       console.warn(
         `[PROJ-Y-144d globalSetup] assistant ${step.label} seed failed ` +
           `(assistant chain spec will skip): ${error.message}`,
+      )
+      break
+    }
+  }
+
+  // PROJ-Y-151b — the chat lane. Same shape as the assistant lane above: own
+  // tenant, shared user, active tenant pinned by cookie in `auth-fixture.ts`.
+  // See `E2E_CHAT_TENANT_ID` in constants.ts for why it is not the assistant
+  // tenant and not the shared one — and why NO AI provider is seeded here.
+  const chatSeedSteps: {
+    label: string
+    run: () => PromiseLike<{ error: { message: string } | null }>
+  }[] = [
+    {
+      label: "tenant",
+      run: () =>
+        admin.from("tenants").upsert(
+          {
+            id: E2E_CHAT_TENANT_ID,
+            name: E2E_CHAT_TENANT_NAME,
+            domain: E2E_CHAT_TENANT_DOMAIN,
+            created_by: E2E_USER_ID,
+            language: "de",
+            branding: {},
+            // Before seeding, not after: audit rows are append-only since
+            // PROJ-130-α and outlive their tenant (PROJ-Y-146b).
+            audit_lifecycle_exempt: true,
+          },
+          { onConflict: "id" },
+        ),
+    },
+    {
+      label: "membership",
+      run: () =>
+        admin.from("tenant_memberships").upsert(
+          { tenant_id: E2E_CHAT_TENANT_ID, user_id: E2E_USER_ID, role: "admin" },
+          { onConflict: "tenant_id,user_id" },
+        ),
+    },
+    {
+      label: "settings",
+      run: () =>
+        admin.from("tenant_settings").upsert(
+          {
+            tenant_id: E2E_CHAT_TENANT_ID,
+            // Written explicitly, not left to the table default: both gates
+            // (`requireModuleActive` and the nav registry) fail OPEN when the
+            // settings row is missing, so a fixture whose whole point is
+            // "ai_chat is on" must not rest on a fail-open (PROJ-Y-144d).
+            active_modules: ["ai_chat", "risks", "decisions"],
+          },
+          { onConflict: "tenant_id" },
+        ),
+    },
+    {
+      label: "project",
+      run: () =>
+        admin.from("projects").upsert(
+          {
+            id: E2E_CHAT_PROJECT_ID,
+            tenant_id: E2E_CHAT_TENANT_ID,
+            name: E2E_CHAT_PROJECT_NAME,
+            description:
+              "Einführung eines ERP-Systems auf Basis von MS Dynamics.",
+            project_type: "erp",
+            project_method: "waterfall",
+            responsible_user_id: E2E_USER_ID,
+            created_by: E2E_USER_ID,
+          },
+          { onConflict: "id" },
+        ),
+    },
+  ]
+
+  for (const step of chatSeedSteps) {
+    const { error } = await step.run()
+    if (error) {
+      console.warn(
+        `[PROJ-Y-151b globalSetup] chat ${step.label} seed failed ` +
+          `(chat chain spec will skip): ${error.message}`,
       )
       break
     }

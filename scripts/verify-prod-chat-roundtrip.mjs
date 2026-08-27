@@ -270,17 +270,18 @@ async function run() {
   log(`  Sicht des Anrufers: project_skills=${JSON.stringify(seenLinks)}`)
   log(`  Sicht des Anrufers: skill_versions=${(seenVersions ?? []).length} ` +
     `(${(seenVersions ?? []).map((v) => v.status).join(",")})`)
-  // Die ZWEITE Abfrage der Ladefunktion woertlich nachgestellt — inklusive der
-  // eingebetteten `skills(name)`, die sich anders verhalten kann als die
-  // Einbettung aus project_skills.
-  const probe = await userClient
+  // Die ALTE, fehlerhafte Form der Ladefunktion nachgestellt. Sie MUSS
+  // scheitern — dass sie es tut, ist der Beleg fuer die Ursache und haelt sie
+  // fest: wer die Einbettung je wieder einbaut, laeuft erneut in eine still
+  // leere Skill-Liste.
+  const oldForm = await userClient
     .from("skill_versions")
     .select("skill_id, markdown_content, status, skills(name)")
     .in("skill_id", [SKILL])
     .eq("status", "active")
-  log(`  Ladefunktion nachgestellt: err=${probe.error?.message ?? "-"} ` +
-    `rows=${(probe.data ?? []).length} ` +
-    `content_len=${(probe.data ?? []).map((v) => (v.markdown_content ?? "").length).join(",")}`)
+  check("alte Form der Skill-Abfrage ist weiterhin mehrdeutig (Ursache belegt)",
+    (oldForm.error?.message ?? "").includes("more than one relationship"),
+    oldForm.error?.message ?? "kein Fehler")
 
   const created = await fetch(`${PROD}/api/projects/${P}/chat/conversations`, {
     method: "POST",

@@ -93,6 +93,32 @@ export const E2E_ASSISTANT_PROJECT_ID = "e2e00000-0000-4e2e-8e2e-000000000005"
 export const E2E_ASSISTANT_PROJECT_NAME = "[E2E] Assistant Scrum Project"
 
 /**
+ * PROJ-Y-151b — a lane for the project-scoped AI chat (PROJ-151).
+ *
+ * Own tenant, same shared user, active tenant pinned by cookie — the light
+ * variant of the PROJ-Y-144d pattern (no second account needed, because this
+ * lane photographs nothing).
+ *
+ * Why not simply switch `ai_chat` on in the assistant tenant: PROJ-Y-144d
+ * writes that tenant's `active_modules` explicitly and states its purpose is
+ * "the assistant is on". Mixing an unrelated module into it would weaken
+ * exactly that statement. And not on `E2E_TENANT_ID` either — `ai_chat` adds a
+ * project-room tab, and the visual specs photograph the shell `fullPage`.
+ *
+ * NO AI provider is configured here, deliberately. A permanent fixture holding
+ * a copy of the owner's key would call a paid provider on every E2E run. The
+ * real provider round-trip is proven separately and on demand by
+ * `scripts/verify-prod-chat-roundtrip.mjs`; what this lane proves is the
+ * authenticated path through the UI — and, with the stub answering, that an
+ * empty answer is EXPLAINED rather than shown as a silent blank (AC-151H.4).
+ */
+export const E2E_CHAT_TENANT_ID = "e2e00000-0000-4e2e-8e2e-000000000010"
+export const E2E_CHAT_TENANT_NAME = "[E2E] KI-Chat Test"
+export const E2E_CHAT_TENANT_DOMAIN = "e2e-chat.projektplattform-v3.test"
+export const E2E_CHAT_PROJECT_ID = "e2e00000-0000-4e2e-8e2e-000000000011"
+export const E2E_CHAT_PROJECT_NAME = "[E2E] KI-Chat Projekt"
+
+/**
  * PROJ-Y-143l — a THIRD identity, owned exclusively by the authenticated
  * visual-regression spec. Own user, own tenant, own project.
  *
