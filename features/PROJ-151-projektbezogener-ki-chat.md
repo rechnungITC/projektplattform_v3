@@ -434,19 +434,48 @@ Nebenbefund: `tenant_memberships.user_id` verweist auf `profiles`, nicht `auth.u
 **3832/3832** · Build clean, beide Routen registriert · migration-naming 0 · index-scope 0 ·
 Capability-Matrix 45/45 · Routentests 9/9.
 
-### Noch offen (ehrlich benannt)
+### Nachtrag — Nebenflächen fertiggestellt (2026-08-27)
 
-Der Kern ist nutzbar, die **Nebenflächen fehlen**:
-- **AC-151.18–.20** Routen für Prompt-Vorlagen, Favoriten und Ordner — die Tabellen stehen
-  samt Policies, die Endpunkte fehlen.
-- **AC-151.21–.23** Preistabelle: Tabelle da, Route und Kostenberechnung fehlen.
-- **AC-151.9/.10** Die Class-3-Warnung ist als Prüffunktion vorhanden
-  (`checkProjectChatInput`), aber noch nicht in einer Route verdrahtet — und der
-  Fehlalarm-Nachweis gegen echte Projekttexte steht aus.
-- **AC-151H.3** Nicht-Leerlauf-Kontrolle der Skill-Wirkung.
-- **AC-151H.4** Eigene Aufbewahrungs-Einstellung (Q2) — Entscheidung getroffen, nicht gebaut.
-- Kein echter Anbieter-Durchlauf: wie bei PROJ-88/89 abhängig von erreichbarem Ollama bzw.
-  einem Cloud-Schlüssel.
+**Fünf weitere Routen**, alle im Build registriert: Ordner (AC-151.20) · Prompt-Vorlagen mit
+Favoriten-Sortierung (AC-151.18/.19) · Favorit setzen/entfernen · Modellpreise (AC-151.21) ·
+Class-3-Vorprüfung (AC-151.9).
+
+**Kostenberechnung** (`chat-cost.ts`, AC-151.22/.23): reine Funktionen, ohne Datenbank testbar.
+Denk-Token zählen als Ausgabe. Fehlt ein Preis, wird das **gesagt** — `{known: false}` statt einer
+Null, die von „kostet nichts" nicht zu unterscheiden wäre. Währungen werden nicht vermischt:
+abweichende zählen als unbeziffert, ein Umrechner gehört nicht in diese Slice. **7 Tests.**
+
+**Aufbewahrung** (`chat-retention.ts`, AC-151H.4): eigene Einstellung mit Default „speichern",
+Bereinigung unverändert aus PROJ-40. Ein Test pinnt ausdrücklich, dass die
+**Assistenten-Einstellung nicht geerbt wird** — genau der Wert, der bei allen sechs Mandanten
+steht und den Verlauf sonst am ersten Tag geleert hätte. In der Nachrichten-Route verdrahtet: der
+Anbieter bekommt immer den vollen Text, die Einstellung regelt nur, was gespeichert wird; bei
+`none` wandert die aktuelle Frage trotzdem in den Kontext, sonst antwortete das Modell auf eine
+leere Zeile. Die Route meldet den Zustand zurück, damit die Fläche ihn **sagen** kann. **7 Tests.**
+
+**AC-151H.3 Nicht-Leerlauf-Kontrolle** (5 Tests): belegt, dass *ohne* Skill eine **andere**
+Anweisung entsteht — und dass ein Skill die Grundregeln nicht verdrängt, weil er den
+System-Prompt gar nicht erreicht (Q4). Zusätzlich gepinnt: die Kürzung des Verlaufs wird genannt
+statt verschwiegen, und die wahre Gesamtzahl der Arbeitspakete erscheint auch bei gekappter Liste.
+
+**Live-Pentest Block 2 — 7/7 PASS, 0 Rückstände.** Hier lautet die Regel „lesen jeder, schreiben
+nur die Administration", also musste ein **Nicht-Admin** synthetisiert werden; `W0` prüft das
+ausdrücklich, statt es anzunehmen — in Prod ist jedes Mitglied Admin, und ein Lauf unter Admin
+wäre falsch-grün gewesen. Belegt: Mitglied liest aktive Vorlagen und Preise, darf aber weder
+Vorlagen anlegen (42501) noch Preise pflegen (42501); Favoriten gehen für sich selbst, nicht für
+andere (42501).
+
+**Gates nach dem Nachtrag:** ESLint 0 · tsc 13 = Baseline / 0 neu · vitest **3851/3851** ·
+Build clean mit **sieben** Routen · migration-naming 0 · index-scope 0.
+
+### Weiterhin offen
+
+- **AC-151.10** Fehlalarm-Nachweis der Class-3-Warnung gegen echte Projekttexte. Die Prüfung ist
+  verdrahtet, aber wie oft sie bei gewöhnlichem Deutsch anschlägt, ist **nicht gemessen** — und
+  genau das ist die Frage (PROJ-86: dort galt jedes Großschreib-Bigramm als Name).
+- Kein echter Anbieter-Durchlauf: wie bei PROJ-88/89 abhängig von erreichbarem Ollama bzw. einem
+  Cloud-Schlüssel.
+- Keine Oberfläche — das ist `/frontend`.
 
 ## QA Test Results
 _To be added by /qa_

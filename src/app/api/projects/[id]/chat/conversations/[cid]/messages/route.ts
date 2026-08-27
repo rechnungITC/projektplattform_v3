@@ -26,6 +26,10 @@ import { collectProjectChatContext } from "@/lib/ai/project-chat-context"
 import { invokeProjectChat } from "@/lib/ai/router"
 import { requireModuleActive } from "@/lib/tenant-settings/server"
 import { loadProjectChatSkills } from "@/lib/ai/project-chat-skills"
+import {
+  contentForPersistence,
+  resolveChatRetention,
+} from "@/lib/ai/chat-retention"
 
 const SendSchema = z.object({
   content: z.string().trim().min(1).max(8000),
@@ -100,12 +104,26 @@ export async function POST(
 
   const tenantId = access.project.tenant_id
 
+  // Eigene Aufbewahrungs-Einstellung (Q2/AC-151H.4) — NICHT die des
+  // Assistenten: alle Mandanten stehen dort auf "nur Metadaten", der Verlauf
+  // wäre sonst am ersten Tag leer.
+  const { data: settingsRow } = await supabase
+    .from("tenant_settings")
+    .select("ai_chat_settings")
+    .eq("tenant_id", tenantId)
+    .maybeSingle()
+  const retention = resolveChatRetention(settingsRow)
+
+  // Der Anbieter bekommt IMMER den vollen Text — die Einstellung regelt, was
+  // gespeichert wird, nicht was gefragt werden darf.
+  const storedQuestion = contentForPersistence(parsed.data.content, retention)
+
   const { error: insertError } = await supabase.from("ai_chat_messages").insert({
     conversation_id: cid,
     tenant_id: tenantId,
     user_id: userId,
     role: "user",
-    content: parsed.data.content,
+    content: storedQuestion ?? "",
   })
   if (insertError) return apiError("internal_error", insertError.message, 500)
 
@@ -119,6 +137,12 @@ export async function POST(
     role: m.role as "user" | "assistant",
     content: m.content as string,
   }))
+
+  // Bei `none` steht in der Datenbank nichts — die aktuelle Frage muss dann
+  // trotzdem in den Kontext, sonst antwortet das Modell auf eine leere Zeile.
+  if (retention === "none") {
+    history.push({ role: "user", content: parsed.data.content })
+  }
 
   const skills = await loadProjectChatSkills(supabase, tenantId, projectId)
   const chatContext = await collectProjectChatContext(
@@ -146,7 +170,7 @@ export async function POST(
       tenant_id: tenantId,
       user_id: userId,
       role: "assistant",
-      content: result.text,
+      content: contentForPersistence(result.text, retention) ?? "",
       token_input: result.token_input,
       token_output: result.token_output,
       ki_run_id: result.run_id,
@@ -163,5 +187,11 @@ export async function POST(
     provider: result.provider,
     skills_applied: chatContext.skill_names,
     context_truncated: chatContext.history_truncated,
+    // Die Fläche muss es SAGEN können — ein still leerer Verlauf sähe aus wie
+    // ein Fehler (AC-151H.4).
+    history_retention: retention,
+    // Bei `none` ist der gespeicherte Text leer; die Antwort steht trotzdem
+    // hier, damit sie einmal angezeigt werden kann.
+    answer_text: result.text,
   })
 }
