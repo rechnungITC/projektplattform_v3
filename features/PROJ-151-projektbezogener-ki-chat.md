@@ -1,6 +1,6 @@
 # PROJ-151: Projektbezogener KI-Chat
 
-## Status: In Progress
+## Status: Approved
 ## Deployment Scope: —
 **Created:** 2026-08-27
 **Last Updated:** 2026-08-27
@@ -547,8 +547,102 @@ Visual-Suite schlägt mit **9 Fehlschlägen** fehl, aber **identisch auf unverä
 (`page.evaluate` bekommt HTML statt JSON), nicht die neue Nav-Sektion. Ob die Sektion Baselines
 bewegt, ist damit **nicht gemessen** — das gehört in `/qa` mit gültiger Fixture.
 
-## QA Test Results
-_To be added by /qa_
+## QA Test Results (2026-08-27)
+
+**Verdikt: 0 Critical · 0 High · 1 Medium · 1 Low → PRODUCTION-READY**, mit zwei ausdrücklich
+nicht gemessenen Punkten (siehe unten). Status → **Approved**.
+
+### Der wichtigste offene Punkt ist geschlossen: AC-151.10 ist gemessen
+
+Die Fehlalarmquote der Class-3-Warnung wurde gegen **echte Texte aus der Produktionsdatenbank**
+bestimmt — Projektbeschreibungen, Arbeitspaket-Titel und Risiken des Kundenmandanten, wörtlich
+entnommen, nicht erfunden. Genau daran ist PROJ-86 gescheitert.
+
+| Korpus | Fehlalarme |
+|---|---|
+| 25 echte Prod-Texte („MS Dynamics", „DSGVO-Prüfung", „ISO 27001 Informationssicherheits-Check" …) | **0** |
+| 6 typische Chat-Fragen | **0** |
+
+**Und die Gegenrichtung ist mitgeprüft:** bei einer E-Mail-Adresse und einer Telefonnummer schlägt
+der Detektor sehr wohl an. Ohne diese Hälfte wäre der Test auch mit einem kaputten Detektor grün —
+ein Detektor, der nie anschlägt, hat ebenfalls null Fehlalarme.
+
+Zusätzlich gepinnt: die Klassifizierung liest den **gesamten** Verlauf, nicht nur die letzte
+Nachricht (wer im dritten Satz eine Telefonnummer nennt, darf nicht dadurch an ein externes Modell
+geraten, dass der vierte harmlos ist), bezieht das Vorhaben mit ein, und unterschreitet die
+Mandanten-Voreinstellung nie.
+
+### Red-Team
+
+| Vektor | Ergebnis |
+|---|---|
+| R1 Injektion in `role` | PASS (23514) |
+| R2 fremder Mandant untergeschoben | PASS (42501) |
+| R3 unbekannte Unterhaltung | PASS (23503) |
+| R4 überlanger Titel | PASS (23514) |
+| R5 negative Token | PASS (23514) |
+| **R7 Projekt-Konsistenz** | **FUND — siehe F-1** |
+| R8 erfundene Projekt-Kennung | PASS (23503) |
+
+Dazu aus `/backend` wörtlich wiederholt: Block 1 **7/7** (L2 gegen einen nachweislich
+**Admin**-Nutzer) und Block 2 **7/7** (Schreibregeln gegen einen nachweislich **Nicht-Admin**).
+
+### Befunde
+
+**F-1 (Medium, offen → PROJ-Y-151a) — keine Projekt-Konsistenz.**
+`ai_chat_conversations` und `ai_chat_folders` erzwingen nicht, dass `project_id` zum `tenant_id`
+gehört. Ein Nutzer kann direkt über die REST-API eine Zeile mit eigenem Mandanten und **fremdem
+Projekt** anlegen.
+
+**Kein Sicherheitsbefund, und das ist gemessen, nicht angenommen:** der Angreifer sieht dabei
+**seine eigene** Zeile (1), das fremde Projekt aber **nicht** (0). Es bleibt eine unsinnige
+Zuordnung plus ein schwaches Existenz-Orakel auf Projekt-Kennungen (R8 belegt, dass eine erfundene
+Kennung am Fremdschlüssel scheitert — eine echte also nicht).
+
+Über die Anwendung ist es **nicht** erreichbar: die Route setzt `project_id` aus der Adresse
+hinter `requireProjectAccess`. Der Weg führt nur über die REST-API mit eigenem Token — genau die
+Angriffsfläche, die PROJ-Y-148c beschrieben hat („nicht was die App aufruft, sondern wer EXECUTE
+hat"). Gleiche Klasse wie PROJ-45/F-2. Fix wäre ein Wächter-Trigger analog PROJ-Y-45a.
+
+**F-2 (Low, nicht PROJ-151) — Visual-Suite nicht lauffähig.** 9 Fehlschläge, **identisch auf
+unverändertem `main`** (Kontrollexperiment gefahren). `page.evaluate` bekommt HTML statt JSON: die
+Anmeldung des Visual-Nutzers ist abgelaufen. Nicht von dieser Slice verursacht.
+
+### Regression
+
+| Prüfung | Ergebnis |
+|---|---|
+| Beide Purpose-Regeln vollständig (inkl. `narrative`, `sentiment`, `coaching`, `document_summary`) | 2/2 |
+| Audit-Whitelist ohne Geister (PROJ-Y-130s) | 0 |
+| `assistant_turns` unberührt | 2 Policies |
+| Rückstände in allen Chat-Tabellen | 0 |
+| Rückstände in `ki_runs` | 0 |
+
+### Akzeptanzkriterien
+
+**Erfüllt und belegt:** AC-151.1–.8 (Fläche, Router, Verlauf, L2 pentest-belegt, Mandantentrennung,
+Kontext, rein lesend, Class-3-Tor) · .9/.10 (Warnung verdrahtet **und gemessen**) · .11–.13
+(Grund-Hinweis, `ki_runs`, Capability-Matrix 45/45) · .14–.17 (Skill-Kontext, Zusatzanweisung,
+Betrieb ohne Skills, Anzeige) · .18–.23 (Vorlagen, Favoriten, Ordner, Preise, „nicht bezifferbar",
+Denk-Token) · H.1 (Pentest) · H.2 (Lockstep) · H.3 (Nicht-Leerlauf) · H.4 (Aufbewahrung) ·
+H.5 (Hard-Delete: `CASCADE`, kein append-only-Wächter, in `/backend` V7 belegt).
+
+**Nicht gemessen — ausdrücklich, nicht stillschweigend:**
+- **Kein echter Anbieter-Durchlauf.** Wie bei PROJ-88/89 an einem erreichbaren Ollama bzw. einem
+  Cloud-Schlüssel hängend. Router, Klassifizierung, Kostendeckel und `reason_code` sind über
+  Einheitstests und die Capability-Matrix belegt, eine echte Modellantwort ist es nicht.
+- **Kein authentifizierter Browser-Durchlauf.** Das Modul ist in keinem Test-Mandanten aktiv; es
+  einzuschalten hätte die Visual-Baselines berührt (PROJ-Y-143f/143l). Die Fläche ist über
+  Auth-Gates (10/10) und Einheitstests belegt, nicht im Betrieb.
+- **Ob die neue Nav-Sektion Baselines bewegt** (F-2).
+
+### Gates
+
+ESLint **0** · tsc **13 = Baseline / 0 neu** · vitest **3867/3867** · Playwright **10/10**
+chromium · Build clean · migration-naming 0 · index-scope 0.
+
+**Abweichungen:** D-151.1 Visual-Suite (F-2) · D-151.2 Mobile Safari env-übersprungen
+(PROJ-67/F2) · D-151.3 kein Anbieter-Durchlauf · D-151.4 kein Browser-Durchlauf.
 
 ## Deployment
 _To be added by /deploy_
