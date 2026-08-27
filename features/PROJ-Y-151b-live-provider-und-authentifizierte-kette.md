@@ -1,7 +1,7 @@
 # PROJ-Y-151b — Echter Anbieter-Durchlauf und authentifizierte Kette (KI-Chat)
 
-## Status: Approved
-## Deployment Scope: —
+## Status: Deployed
+## Deployment Scope: full
 
 Followup zu **PROJ-151** (Projektbezogener KI-Chat, deployed mit Scope `mvp`).
 Registriert als **Voraussetzung für Scope `full`**: der Kernpfad „Frage rein →
@@ -41,9 +41,24 @@ Skript auf Zuruf, nicht Teil der Suite.
 
 ## Ergebnis
 
-**Alle neun Kriterien erfüllt.** Live gegen Produktion: **16/16 PASS**,
-0 laufbezogene Rückstände über 12 Tabellen. Authentifizierte Kette **3× 3/3**,
-0 Rückstände.
+**Alle neun Kriterien erfüllt.** Live gegen die **deployte** Produktion:
+**17/17 PASS, 0 FAIL**, 0 laufbezogene Rückstände über 12 Tabellen.
+Authentifizierte Kette **3× 3/3**, 0 Rückstände.
+
+Die Antwort des Modells ist der Nachweis in einem Satz:
+
+> `NORDLICHT: Das interne Projektkennzeichen dieses Projekts ist ZORQ-4471.`
+
+Beide Kontrollmarken stehen darin — `ZORQ-4471` kann kein Weltwissen sein und
+stammt aus der Projektbeschreibung (K1), `NORDLICHT` schreibt der aktive Skill
+vor (K2). `provider=openai`, `status=success`, 272/22 Token.
+
+**Vorher/Nachher als Beleg für F-1:** derselbe Lauf gegen die Produktion **vor**
+dem Deploy war bei K2 rot (`skills_applied: []`, kein Losungswort, 237
+Eingabe-Token). Nach dem Deploy: grün, `skills_applied: ["[E2E]
+Losungswort-Skill"]`, **272** Eingabe-Token — der Zuwachs ist die Skill-Anweisung,
+die jetzt wirklich im Prompt landet. Das ist eine unabhängige Bestätigung
+neben der Textprüfung.
 
 ## Drei Produktfehler gefunden — alle nur durch echte Läufe sichtbar
 
@@ -133,6 +148,22 @@ Sie stehen hier, weil jeder von ihnen als Produktfehler aussah:
   Produktionsdatenbank und ruft einen kostenpflichtigen Anbieter (Muster
   `verify-prod-snapshot-render.mts`, PROJ-Y-146a).
 * **D-Y151b.4** — Mobile Safari env-übersprungen (PROJ-67/F2).
+
+## Deployment
+
+**Deployed 2026-08-27: Tag `v2.82.0-PROJ-Y-151b` auf dem Merge-Commit
+`51817f9` (PR #483, squash → `main`).** Der Merge **ist** die Auslieferung:
+kein Runtime-DB-Change, aber echter `src/`-Diff (Skill-Lader, Fehlerformat,
+Zugänglichkeit), also Laufzeitverhalten. Vercel-Produktions-Deployment aus genau
+diesem SHA erfolgreich; **erst danach** der Live-Lauf, damit er den neuen Stand
+misst und nicht den alten.
+
+Alle acht Pflicht-Checks grün, dazu der (nicht enrollte) Vercel-Build — er
+belegt, dass es in der Zielumgebung baut.
+
+Gates nach dem Merge auf `main`: ESLint 0 · tsc **13 = Baseline / 0 neu**
+(nach `rm -rf .next` gemessen, PROJ-Y-143e-Falle) · vitest **3898/3898** ·
+Build clean · Visual **3× 9/9** · index-scope 0 · migration-naming 0.
 
 ## Folge für PROJ-151
 
