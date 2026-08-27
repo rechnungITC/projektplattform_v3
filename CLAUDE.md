@@ -159,6 +159,7 @@ npm run check:migration-naming  # filename format + version-prefix collisions
 npm run check:index-scope       # INDEX.md: lifecycle status vs deployment scope
 npm run check:token-drift       # src/: keine neuen rohen Tailwind-Palette-Farben (Ratsche)
 npm run check:branch-collision -- PROJ-Y-45p   # ist die Slice schon vergeben? (lokal, kein CI-Gate)
+npm run hooks:install           # git-Hook, der die Kollisionspruefung erzwingt (PROJ-Y-150d)
 npm run check:osv-gate -- report.json  # OSV findings: fail only at HIGH+ (house norm)
 npm run check:schema-drift      # .from().select() columns vs migration schema (needs Docker)
 ```
@@ -409,6 +410,11 @@ Rules:
   Branches ab — `checkout -b`, `switch -c`, `worktree add -b`, `git branch <name>` — und **verweigert**
   bei belegter Slice, mit Nennung des Halters. Wechseln, Auflisten, Loeschen und Rebasen bleiben
   unberuehrt. **Umgehung nur ueber `BRANCH_COLLISION_GUARD=off`.**
+  **Zuverlaessiger ist der git-Hook (PROJ-Y-150d):** `npm run hooks:install` legt einen
+  `reference-transaction`-Hook ins **gemeinsame** `.git/hooks` (`core.hooksPath` zeigt dorthin). Er
+  haengt an **keiner** der drei Bedingungen oben, wirkt auch fuer `git` von Hand und hat nichts zu
+  parsen. Preis: `.git/hooks` ist **nicht versioniert** — je Klon einmal installieren, sonst fehlt die
+  Absicherung lautlos. Entfernen: `npm run hooks:uninstall`.
   *Warum Verweigerung und nicht Rueckfrage (PROJ-Y-150c, gemessen):* die erste Fassung urteilte `ask`,
   damit der **Mensch** der Umgehungsweg ist und kein Bypass-Schalter existiert. In diesem Repo ist das
   wirkungslos — `.claude/settings.local.json` erlaubt `Bash(git *)`, jeder git-Befehl ist also vorab
