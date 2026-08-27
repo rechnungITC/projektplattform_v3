@@ -26,6 +26,8 @@
     "check:osv-gate": "tsx scripts/osv-gate/index.ts",
     "check:token-drift": "tsx scripts/check-token-drift/index.ts",
     "check:branch-collision": "tsx scripts/check-branch-collision/index.ts",
+    "hooks:install": "node scripts/hooks/install-git-hooks.mjs",
+    "hooks:uninstall": "node scripts/hooks/install-git-hooks.mjs --uninstall",
     "verify:pdf-render": "node scripts/verify-pdf-render.mjs"
   },
   "dependencies": {
