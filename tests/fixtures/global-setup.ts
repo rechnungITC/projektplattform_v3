@@ -511,6 +511,11 @@ async function globalSetup(config: FullConfig): Promise<void> {
             // settings row is missing, so a fixture whose whole point is
             // "ai_chat is on" must not rest on a fail-open (PROJ-Y-144d).
             active_modules: ["ai_chat", "risks", "decisions"],
+            // Explizit Klasse 2. Ohne Angabe gilt die strengste Vorgabe (3),
+            // und dann waere JEDE Frage class-3-gesperrt — der Spec haette
+            // die Sperre gemessen statt des Normalfalls, und zwar abhaengig
+            // von einer Vorgabe, die er nicht selbst setzt.
+            privacy_defaults: { default_class: 2 },
           },
           { onConflict: "tenant_id" },
         ),
