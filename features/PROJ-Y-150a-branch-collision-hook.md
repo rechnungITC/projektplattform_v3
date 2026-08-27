@@ -87,6 +87,12 @@ node, was die Befehlserkennung zugleich testbar macht statt sie als Shell-Einzei
 
 ## Bewusste Abweichungen und Grenzen
 
+- **Nachtrag 2026-08-27 zu D-Y150a.1 — der dort genannte Grund war zu schwach.** Nach dem Deploy
+  probiert: der Hook feuerte **nicht**, und zwar nicht wegen der Zurueckhaltung gegenueber einem fremden
+  Checkout, sondern weil dieser Arbeitsbaum **31 Commits** hinter `main` stand und die dort liegende
+  `.claude/settings.json` die alte ohne `hooks`-Schluessel war (482 statt 935 Bytes). Die Reichweite des
+  Hooks ist damit „jede Sitzung, deren Arbeitsbaum aktuell genug ist", nicht „jede Sitzung" — und das
+  Ausbleiben ist lautlos. Als **PROJ-Y-150b** registriert.
 - **D-Y150a.1 Kein Nachweis des tatsächlichen Feuerns aus dieser Session.** Dafür müsste
   `.claude/settings.json` im **Primär-Checkout** liegen — der gehört einer anderen Spur, trägt
   uncommittete Arbeit, und drei Sessions laufen gerade. Belegt sind stattdessen: die Nutzlast-Probe
