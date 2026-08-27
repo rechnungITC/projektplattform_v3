@@ -501,6 +501,52 @@ gezeigt hätten.
   Cloud-Schlüssel.
 - Keine Oberfläche — das ist `/frontend`.
 
+## Implementation Notes (/frontend, 2026-08-27)
+
+**Geliefert:** Projektraum-Reiter „KI-Chat" (`/projects/[id]/ki-chat`), Nav-Sektion mit
+`requiresModule: "ai_chat"` und **ohne** `requiresProjectType` (CORE für alle Projekttypen),
+Seitenspalte mit eigenen Unterhaltungen, Gesprächsfläche, Eingabe mit Vorlagen-Auswahl
+(Favoriten mit ★ zuerst), Class-3-Warnung, Grund-Hinweis, Skill-Anzeige, Aufbewahrungs-Hinweis.
+Client-Wrapper, Hook nach Hausmuster (`{data, loading, error, refresh, …mutators}`, `let cancelled`).
+
+**Drei Entscheidungen, die die Oberfläche treffen musste:**
+
+1. **L2 wird ausgesprochen, nicht nur eingehalten.** Über der Liste steht „Nur für dich sichtbar —
+   auch nicht für die Projektleitung". Ohne diesen Satz weiß niemand, dass er frei formulieren
+   kann; die Regel allein nützt nur, wenn man ihr traut.
+2. **Die Class-3-Warnung lässt den Senden-Knopf aktiv.** Das ist der ganze Unterschied zwischen
+   Hinweis und Riegel (L3) — und war eine ausdrückliche Nutzer-Entscheidung. Die Prüfung läuft
+   verzögert (600 ms) und erst ab 12 Zeichen: bei jedem Tastendruck zu prüfen wäre Dauerfeuer und
+   ein flackernder Hinweis.
+3. **Nach dem Senden wird der Verlauf neu geladen, nicht angehängt.** Bei abgeschalteter
+   Aufbewahrung steht in der Datenbank etwas anderes als im Browser — angehängt wäre die Anzeige
+   eine Behauptung über den gespeicherten Zustand. Die Antwort wird dann einmalig separat gezeigt,
+   mit dem Hinweis, dass sie nicht bleibt.
+
+**Ein Lint-Fund, der den Entwurf verbessert hat:** `react-hooks/set-state-in-effect` beanstandete
+das synchrone Zurücksetzen der Warnung im Effekt. Statt es zu unterdrücken, wird der Anzeige-
+Zustand jetzt beim Rendern **abgeleitet** — dadurch verschwindet die Warnung beim Löschen des
+Textes sofort statt einen Wimpernschlag später.
+
+**Ein eigener Testfehler, gefunden und behoben:** meine erste Auth-Gate-Zusicherung verbot das
+Wort „conversation" im Antwortrumpf — die Umleitung trägt aber die Ziel-Adresse als
+`weiter=`-Parameter, und darin steht der Pfad. Das ist die Eingabe des Aufrufers, kein Leck.
+Geprüft wird jetzt, dass nichts JSON-Artiges zurückkommt. Nebenbei aufgefallen: die Anmeldung
+liegt seit PROJ-Y-143m unter `/anmelden`, nicht `/login`.
+
+**Nachweise:** Playwright **10/10** chromium — alle neun Routen plus die Seite, jeweils auf
+**exakt 307** (nicht „irgendein Umleitungsstatus": PROJ-45-β hatte eine Zusicherung, die vier
+Werte erlaubte, wo genau einer auftritt) und ohne Datenrumpf. Reason-Notice-Tests 5/5, davon einer
+in der Gegenrichtung (bei echter Antwort **kein** Hinweis — sonst wäre ein Hinweis auf jeder
+Antwort ebenfalls grün). Gates: ESLint **0** · tsc **13 = Baseline / 0 neu** · vitest
+**3860/3860** · Build clean mit der Seite registriert · index-scope 0.
+
+**Abweichung D-151.1 — Visual-Regression nicht aussagekräftig:** die authentifizierte
+Visual-Suite schlägt mit **9 Fehlschlägen** fehl, aber **identisch auf unverändertem `main`**
+(Kontrollexperiment gefahren). Ursache ist die abgelaufene Anmeldung des Visual-Nutzers
+(`page.evaluate` bekommt HTML statt JSON), nicht die neue Nav-Sektion. Ob die Sektion Baselines
+bewegt, ist damit **nicht gemessen** — das gehört in `/qa` mit gültiger Fixture.
+
 ## QA Test Results
 _To be added by /qa_
 

@@ -37,6 +37,7 @@ import {
   Sparkles,
   Users,
   Workflow,
+  MessageSquare,
 } from "lucide-react"
 
 import type { MethodConfig, SidebarSection } from "@/types/method-config"
@@ -91,6 +92,19 @@ const MA_CONFIDENTIALITY_SECTION: SidebarSection = {
  * switch, not one per slice). The renderers compose both filters, so no filter
  * logic had to change for this.
  */
+// PROJ-151-α — der projektbezogene KI-Chat. CORE für ALLE Projekttypen (kein
+// `requiresProjectType`), aber hinter dem eigenen Modul-Schalter `ai_chat`:
+// nicht `ai_proposals` (das sind Vorschlagslisten) und nicht `assistant` (der
+// ist regelbasiert, PROJ-144) — drei verschiedene Dinge unter einem Schalter
+// wären für den Mandanten nicht steuerbar.
+const AI_CHAT_SECTION: SidebarSection = {
+  id: "ai-chat",
+  label: "KI-Chat",
+  icon: MessageSquare,
+  tabPath: "ki-chat",
+  requiresModule: "ai_chat",
+}
+
 const CONSTRUCTION_TRADES_SECTION: SidebarSection = {
   id: "construction-trades",
   label: "Gewerke",
@@ -399,6 +413,7 @@ function withMaFoundation(config: MethodConfig): MethodConfig {
       MA_SPA_ISSUES_SECTION,
       MA_OPERATIVE_REPORT_SECTION,
       MA_STEERING_REPORT_SECTION,
+      AI_CHAT_SECTION,
       CONSTRUCTION_TRADES_SECTION,
       CONSTRUCTION_SECTIONS_SECTION,
       CONSTRUCTION_DEFECTS_SECTION,
