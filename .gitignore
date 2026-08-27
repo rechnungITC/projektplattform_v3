@@ -59,3 +59,10 @@ next-env.d.ts
 # slip through to WSL as plain files). Worthless to track.
 *:Zone.Identifier
 .gitnexus
+
+# Lokale Fremdprojekte, die im Repo-Wurzelverzeichnis liegen (z. B. `U-Know/`).
+# Sie gehoeren nicht zum Produkt, wuerden aber von `git add -A` aufgenommen —
+# `U-Know/.gitignore` greift nur relativ zu sich selbst und deckt den Ordner
+# auf Repo-Ebene NICHT ab. Wirkt nur fuer git; ESLint und tsc brauchen eigene
+# Eintraege (eslint.config.mjs -> ignores, tsconfig.json -> exclude).
+U-Know/

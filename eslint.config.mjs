@@ -18,6 +18,7 @@ const config = [
       "test-results/",
       ".vercel/",
       ".worktrees/",
+      "U-Know/",
     ],
   },
   {
