@@ -1,6 +1,6 @@
 # PROJ-151: Projektbezogener KI-Chat
 
-## Status: Architected
+## Status: In Progress
 ## Deployment Scope: —
 **Created:** 2026-08-27
 **Last Updated:** 2026-08-27
@@ -374,6 +374,132 @@ Listen sind im Bestand vorhanden.
 Der Zuschnitt **ist** das Ergebnis des CIA-Reviews vom 2026-08-27. Keine neue Abhängigkeit, keine
 neue Plattform, kein Eingriff in eine geteilte Funktion. Die vier Entscheidungen folgen
 etablierten Hausmustern (PROJ-80-α, PROJ-40, PROJ-144, PROJ-Y-148a).
+
+## Implementation Notes (/backend, 2026-08-27)
+
+**Geliefert — der Kern läuft.**
+
+*Datenschicht (2 Migrationen in Prod):*
+`20260827110000` — sechs Tabellen (`ai_chat_conversations`, `ai_chat_messages`, `ai_chat_folders`,
+`ai_chat_prompt_templates`, `ai_chat_prompt_favorites`, `ai_model_prices`), RLS überall aktiv, 19
+Policies, Indizes, `extensions.moddatetime` schema-qualifiziert. Post-Conditions prüfen RLS,
+Policy-Existenz, **die Abwesenheit jedes Admin-Zweigs** auf den drei privaten Tabellen (L2
+strukturell) und `ON DELETE CASCADE` auf dem Projekt (Q3).
+`20260827111000` — Zweck `project_chat` im **Lockstep** in `ki_runs` *und* `tenant_ai_cost_caps`,
+Anker whitespace-tolerant mit Treffer-Eindeutigkeit, Post-Verifikation je Tabelle plus
+Clobber-Kontrolle über sechs Geschwister-Werte, dazu eine **Verhaltensprobe** (der Zweck wird
+angenommen, ein erfundener abgelehnt) in zurückgerollter Unter-Transaktion.
+
+*Anwendungsschicht:* `AIPurpose` erweitert · geteilter Runner `project-chat-runner.ts`
+(`generateText` statt `generateObject` — eine Gesprächsantwort hat kein Schema) · **alle sechs
+Provider** implementieren `generateProjectChat` · Klassifizierer (inhaltsbasiert, **kein**
+Class-3-Pin) · Kontext-Sammler (Projekt, Phasen, offene Arbeitspakete, Verlauf — ohne Retrieval,
+Lock L6) · Skill-Lader (Zusatzanweisung, Q4) · Router-Funktion `invokeProjectChat` · ModuleKey
+`ai_chat` · zwei Routen (Unterhaltungen, Nachrichten).
+
+**Drei Wächter haben unterwegs angeschlagen und ihre Arbeit getan:**
+die datengetriebene Capability-Matrix (`project_chat` fehlte → Kompilierfehler, genau der
+PROJ-85-Schutz), `MODULE_LABELS` als erschöpfender Record, und der Bestandstest, der die
+Modulliste festnagelt (Erwartung **nachgezogen**, nicht abgeschwächt).
+
+**Zwei bewusste Abweichungen vom Bestandsmuster, beide begründet:**
+1. **Kein Ersatztext bei Anbieterfehler.** `invokeNarrativeGeneration` setzt einen Stub-Text ein,
+   damit der Aufrufer nie eine leere Erzählung sieht. Für einen Chat wäre das falsch — eine
+   erfundene Gesprächsantwort ist von einer echten nicht zu unterscheiden. Hier bleibt der Text
+   leer, der Grund steht im `reason_code` (AC-151.11).
+2. **Schreibwege über Policies statt Funktionen.** Präzedenz PROJ-144 (vier Policies für privates
+   Nutzer-Scratch). Funktionen nutzt das Haus, wo komplexe Rollenregeln zu prüfen sind; hier
+   lautet die Regel „eigene Zeilen", und dafür ist eine Policy klarer als eine RPC. Der
+   Pentest-Vektor lautet entsprechend „kein Schreibweg auf fremde Zeilen" statt „kein Weg an den
+   Funktionen vorbei".
+
+**Live-Pentest gegen Prod, 0 Rückstände** (`tests/sql/PROJ-151-chat-rls-pentest.sql`), Rollback
+erzwungen. **Der erste Lauf war unvollständig und der eigene Kontrollvektor hat es aufgedeckt:**
+der zufällig gewählte Zweitnutzer war *kein* Admin, womit nur „irgendjemand sieht nichts" belegt
+gewesen wäre statt L2. Zweiter Lauf mit synthetisiertem Admin:
+
+| Vektor | Ergebnis |
+|---|---|
+| V1 Eigentümer sieht seine Unterhaltung | PASS |
+| **V4 der andere ist nachweislich Admin** | **JA** |
+| **V2/V3 dieser Admin sieht Unterhaltung und Nachrichten NICHT** | **PASS** |
+| V8 derselbe Admin erreicht die Admin-Tabelle | PASS (Regel greift gezielt, nicht pauschal) |
+| V5 kein Schreiben auf fremde Zeilen | PASS (42501) |
+| V6 `anon` | PASS (42501 — strenger als nötig, Muster PROJ-144/D-144.2) |
+| V7 kein append-only-Wächter (Q3) | PASS |
+
+Nebenbefund: `tenant_memberships.user_id` verweist auf `profiles`, nicht `auth.users`.
+
+**Gates:** ESLint **0** · tsc **13 = Baseline / 0 neu** (nach `rm -rf .next`) · vitest
+**3832/3832** · Build clean, beide Routen registriert · migration-naming 0 · index-scope 0 ·
+Capability-Matrix 45/45 · Routentests 9/9.
+
+### Nachtrag — Nebenflächen fertiggestellt (2026-08-27)
+
+**Fünf weitere Routen**, alle im Build registriert: Ordner (AC-151.20) · Prompt-Vorlagen mit
+Favoriten-Sortierung (AC-151.18/.19) · Favorit setzen/entfernen · Modellpreise (AC-151.21) ·
+Class-3-Vorprüfung (AC-151.9).
+
+**Kostenberechnung** (`chat-cost.ts`, AC-151.22/.23): reine Funktionen, ohne Datenbank testbar.
+Denk-Token zählen als Ausgabe. Fehlt ein Preis, wird das **gesagt** — `{known: false}` statt einer
+Null, die von „kostet nichts" nicht zu unterscheiden wäre. Währungen werden nicht vermischt:
+abweichende zählen als unbeziffert, ein Umrechner gehört nicht in diese Slice. **7 Tests.**
+
+**Aufbewahrung** (`chat-retention.ts`, AC-151H.4): eigene Einstellung mit Default „speichern",
+Bereinigung unverändert aus PROJ-40. Ein Test pinnt ausdrücklich, dass die
+**Assistenten-Einstellung nicht geerbt wird** — genau der Wert, der bei allen sechs Mandanten
+steht und den Verlauf sonst am ersten Tag geleert hätte. In der Nachrichten-Route verdrahtet: der
+Anbieter bekommt immer den vollen Text, die Einstellung regelt nur, was gespeichert wird; bei
+`none` wandert die aktuelle Frage trotzdem in den Kontext, sonst antwortete das Modell auf eine
+leere Zeile. Die Route meldet den Zustand zurück, damit die Fläche ihn **sagen** kann. **7 Tests.**
+
+**AC-151H.3 Nicht-Leerlauf-Kontrolle** (5 Tests): belegt, dass *ohne* Skill eine **andere**
+Anweisung entsteht — und dass ein Skill die Grundregeln nicht verdrängt, weil er den
+System-Prompt gar nicht erreicht (Q4). Zusätzlich gepinnt: die Kürzung des Verlaufs wird genannt
+statt verschwiegen, und die wahre Gesamtzahl der Arbeitspakete erscheint auch bei gekappter Liste.
+
+**Live-Pentest Block 2 — 7/7 PASS, 0 Rückstände.** Hier lautet die Regel „lesen jeder, schreiben
+nur die Administration", also musste ein **Nicht-Admin** synthetisiert werden; `W0` prüft das
+ausdrücklich, statt es anzunehmen — in Prod ist jedes Mitglied Admin, und ein Lauf unter Admin
+wäre falsch-grün gewesen. Belegt: Mitglied liest aktive Vorlagen und Preise, darf aber weder
+Vorlagen anlegen (42501) noch Preise pflegen (42501); Favoriten gehen für sich selbst, nicht für
+andere (42501).
+
+**Gates nach dem Nachtrag:** ESLint 0 · tsc 13 = Baseline / 0 neu · vitest **3851/3851** ·
+Build clean mit **sieben** Routen · migration-naming 0 · index-scope 0.
+
+### Der Schema-Drift-Wächter hat drei echte Fehler gefunden
+
+Der Check war nach dem Nachtrag **rot** — und zwar zu Recht. Drei Spaltennamen waren falsch, alle
+drei hätten **still** versagt:
+
+1. **`tenant_settings.ai_chat_settings` existierte nicht.** Ich habe die Spalte gelesen, ohne sie
+   anzulegen. Wirkung wäre gewesen: die Abfrage liefert nichts, die Aufbewahrung steht immer auf
+   dem Default — ohne dass irgendwo etwas rot wird. Behoben mit Migration `20260827120000`
+   (eigene Spalte, wie jedes andere Modul sie hat).
+2. **`skill_versions.markdown_content` heißt nicht `content_md`.** Das ist der gravierendste:
+   der Skill-Lader hätte in Prod **nie einen Skill angewendet** — das Feld wäre `undefined`, der
+   Längenfilter hätte jeden Skill verworfen, und der Chat wäre stillschweigend ohne Skill-Kontext
+   gelaufen. Meine eigenen Tests hätten das **nicht** gefangen: AC-151H.3 prüft den Prompt-Bauer,
+   nicht den Lader.
+3. **`phases.sequence_number` heißt nicht `position`.** Diesen fand der Wächter gar nicht — er
+   prüft `.select()`-Spalten, keine `.order()`-Argumente. Aufgefallen, weil ich nach dem ersten
+   Fund **alle** gelesenen Spalten gegen das Schema geprüft habe statt nur die gemeldete.
+
+Danach live gegengeprüft: alle fünf Abfragen des Kontext-Sammlers und des Skill-Laders laufen
+gegen das echte Schema, inklusive einer real vorhandenen Skill-Fassung.
+
+Das ist der Ertrag von PROJ-42: drei Fehler, die weder Kompilierung noch Testlauf noch Build
+gezeigt hätten.
+
+### Weiterhin offen
+
+- **AC-151.10** Fehlalarm-Nachweis der Class-3-Warnung gegen echte Projekttexte. Die Prüfung ist
+  verdrahtet, aber wie oft sie bei gewöhnlichem Deutsch anschlägt, ist **nicht gemessen** — und
+  genau das ist die Frage (PROJ-86: dort galt jedes Großschreib-Bigramm als Name).
+- Kein echter Anbieter-Durchlauf: wie bei PROJ-88/89 abhängig von erreichbarem Ollama bzw. einem
+  Cloud-Schlüssel.
+- Keine Oberfläche — das ist `/frontend`.
 
 ## QA Test Results
 _To be added by /qa_
