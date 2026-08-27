@@ -1,7 +1,7 @@
 # PROJ-Y-130s — Geisterspalten in der Audit-Whitelist
 
-## Status: In Review
-## Deployment Scope: —
+## Status: Deployed
+## Deployment Scope: alpha
 
 Followup zu PROJ-130. Registriert in [`OPEN-DEFERRED-STATUS.md`](OPEN-DEFERRED-STATUS.md).
 
@@ -221,3 +221,32 @@ in Prod nichts — alle 78 Whitelist-Tabellen existieren.
   PROJ-Y-130r die Redaktion schließt.
 - **Nicht aufgenommen, bewusst:** `work_items.phase_id`/`.milestone_id`/`.wbs_code_is_custom` und
   die Freitextspalten. Nachholbar; Aufnehmen wäre es nicht.
+
+## Deployment
+
+**Deployed 2026-08-27: PR #467 (squash) → main `0be49e2`, Tag `v2.79.0-PROJ-Y-130s-alpha`.**
+Migration seit dem Bau in Prod — der Merge ist **kein** Runtime-DB-Change und liefert Wächter,
+Spec, Pentest und Buchführung aus. Kein `src/`-Diff.
+
+Alle **9** Pflicht-Checks grün. Der tragende Deploy-Nachweis ist nicht ein HTTP-Smoke (die Slice
+ändert keine Route), sondern der **Schema-Drift-Lauf**: sein neuer Schritt meldete in der
+Shadow-DB „Audit-Whitelist: 0 Geisterspalten." und **keine** fehlende Tabelle. Damit ist
+unabhängig belegt, dass die Anker-Ersetzung auch in einer frisch aus den Migrationsdateien
+gebauten Datenbank greift — bis dahin war sie nur gegen die Live-Definition gemessen — und dass
+das vorab nur abgeschätzte Shadow-DB-Risiko (vier Migrationen brechen im Replay ab) nicht trägt.
+
+**Prod nach dem Merge eigenständig nachgemessen** statt aus dem Bau-Lauf übernommen: 78 Zweige ·
+472 Einträge · **0 Geister** · **0 fehlende Tabellen** · `authenticated`-EXECUTE ja / `anon` nein ·
+76 Feld-Audit-Trigger · Audit-Zeilen **698** (0 Rückstände) · `work_item_resources` trägt
+`allocation_pct`.
+
+### Warum Scope `alpha` und nicht `full`
+
+Grenzfall, deshalb ausgesprochen statt still entschieden. Für `full` spräche: die **Registerzeile**
+fordert Bereinigung und Wächter, und beides ist vollständig geliefert; die PII-Aufnahme stand dort
+nie. Dagegen — und ausschlaggebend — spricht, dass diese Spec ausdrücklich **zwei benannte
+Sub-Slices** führt, α ihre eigenen zehn Akzeptanzkriterien hat und β namentlich offen und mit
+Sperrgrund geführt wird. Genau darauf zielt die Hausdefinition von `alpha`. `full` würde behaupten,
+es sei nichts offen; die Spec sagt das Gegenteil.
+
+Aufstufung auf `full` erst mit β — und die setzt **PROJ-Y-130r** voraus.
