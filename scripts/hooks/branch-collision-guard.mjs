@@ -15,9 +15,21 @@
  *      hook that can break `git` for every session on this machine must not be able to fail closed.
  *   2. It only reacts to branch CREATION. Switching, listing, deleting and rebasing are untouched —
  *      blocking those would break every ordinary workflow and train people to disable the hook.
- *   3. The verdict is `ask`, not `deny`. A collision is a judgement call ("is that lane still on
- *      it?"), so it goes to the human. That is also the override: there is no secret bypass flag to
- *      leak into a model's context. `BRANCH_COLLISION_GUARD=off` exists for headless runs only.
+ *   3. The verdict is `deny`, with `BRANCH_COLLISION_GUARD=off` as the documented override.
+ *
+ *      This reverses the original design and the reversal was forced by a measurement, not taste.
+ *      The first version used `ask`, reasoning that a collision is a judgement call and should go to
+ *      the human — which also avoided a bypass flag that could leak into a model's context. In this
+ *      repo that verdict is a no-op: `.claude/settings.local.json` carries `Bash(git *)` (plus
+ *      `git branch *`, `git checkout *`, `git worktree *`, `git switch *`) on its allow list, so
+ *      every git command is pre-approved and there is nothing left to ask about. Four attempts
+ *      produced no interception — with the settings file verified correct, no `disableAllHooks`
+ *      anywhere, and after a session restart.
+ *
+ *      `deny` is the only verdict a blanket allow rule cannot swallow. The cost is real and is not
+ *      hidden: the human stops being the override, so the environment variable becomes the single
+ *      way through. It is documented in CLAUDE.md rather than in the refusal message, so it does not
+ *      travel into a model's context on every collision.
  *
  * Note on portability: every documented hook example pipes stdin through `jq`. This host has no
  * `jq` (verified), so the parsing is done in node — which also lets the command parser be unit
@@ -218,18 +230,27 @@ function main() {
     .map((l) => l.replace("::error::", "").trim())
     .join(" | ")
 
-  process.stdout.write(
-    JSON.stringify({
-      hookSpecificOutput: {
-        hookEventName: "PreToolUse",
-        permissionDecision: "ask",
-        permissionDecisionReason:
-          `PROJ-150 branch-collision guard: "${branch}" belongs to a slice that already looks ` +
-          `claimed. ${detail || "See npm run check:branch-collision."} ` +
-          "Confirm with the other lane before opening a second branch (PROJ-Y-45p, 2026-08-26).",
-      },
-    })
-  )
+  process.stdout.write(JSON.stringify(buildRefusal(branch, detail)))
+}
+
+/**
+ * The PreToolUse payload for a claimed slice.
+ *
+ * Exported so a test can pin `deny` — nothing else in the suite would notice a silent slide back to
+ * `ask`, and `ask` is exactly the value this repo's allow list swallows.
+ */
+export function buildRefusal(branch, detail) {
+  return {
+    hookSpecificOutput: {
+      hookEventName: "PreToolUse",
+      permissionDecision: "deny",
+      permissionDecisionReason:
+        `PROJ-150 branch-collision guard: "${branch}" belongs to a slice that already looks ` +
+        `claimed. ${detail || "See npm run check:branch-collision."} ` +
+        "Talk to the other lane before opening a second branch (PROJ-Y-45p, 2026-08-26). " +
+        "If the claim is stale, say so and re-run deliberately.",
+    },
+  }
 }
 
 const invokedDirectly =

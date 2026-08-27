@@ -406,10 +406,16 @@ Rules:
   Tag → schon deployed) von Altlast und blockiert nur bei den beiden eindeutigen Signalen.
   **Seit PROJ-Y-150a wird das erzwungen, nicht nur vorgeschrieben:** ein `PreToolUse`-Hook auf `Bash`
   (`.claude/settings.json` → `scripts/hooks/branch-collision-guard.mjs`) faengt das **Anlegen** eines
-  Branches ab — `checkout -b`, `switch -c`, `worktree add -b`, `git branch <name>` — und fragt bei
-  belegter Slice zurueck (`ask`), mit Nennung des Halters. Wechseln, Auflisten, Loeschen und Rebasen
-  bleiben unberuehrt. Der Umgehungsweg ist bewusst **der Mensch** (Rueckfrage statt Sperre), damit es
-  keinen Bypass-Schalter gibt; fuer kopflose Laeufe `BRANCH_COLLISION_GUARD=off`. Der Hook ist
+  Branches ab — `checkout -b`, `switch -c`, `worktree add -b`, `git branch <name>` — und **verweigert**
+  bei belegter Slice, mit Nennung des Halters. Wechseln, Auflisten, Loeschen und Rebasen bleiben
+  unberuehrt. **Umgehung nur ueber `BRANCH_COLLISION_GUARD=off`.**
+  *Warum Verweigerung und nicht Rueckfrage (PROJ-Y-150c, gemessen):* die erste Fassung urteilte `ask`,
+  damit der **Mensch** der Umgehungsweg ist und kein Bypass-Schalter existiert. In diesem Repo ist das
+  wirkungslos — `.claude/settings.local.json` erlaubt `Bash(git *)`, jeder git-Befehl ist also vorab
+  freigegeben und es bleibt nichts zu fragen; vier Versuche fingen nichts ab. `deny` ist das einzige
+  Urteil, das eine pauschale Erlaubnisregel nicht schluckt. Der Preis ist benannt: der Schalter ist
+  jetzt der einzige Ausweg, und er steht **hier** statt in der Ablehnungsmeldung, damit er nicht bei
+  jeder Kollision in den Kontext eines Modells wandert. Der Hook ist
   durchgaengig **fail-open** (Urteil ueber stdout, Exit immer 0) — er kann `git` nicht brechen.
   Ansehen und abschalten: `/hooks`, oder `disableAllHooks` in den lokalen Einstellungen.
   **Vorbehalt (PROJ-Y-150b, zweimal gemessen):** der Hook wirkt nur, wenn **beides** zutrifft —

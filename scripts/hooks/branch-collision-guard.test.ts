@@ -2,7 +2,7 @@ import { describe, expect, it } from "vitest"
 
 // The hook is plain ESM JavaScript on purpose: it must start in milliseconds on every `git *` call,
 // so it carries no tsx/TypeScript startup cost. TypeScript resolves the .mjs import without help.
-import { detectBranchCreation, splitSegments, tokenize } from "./branch-collision-guard.mjs"
+import { buildRefusal, detectBranchCreation, splitSegments, tokenize } from "./branch-collision-guard.mjs"
 
 describe("splitSegments", () => {
   it("splits on shell operators", () => {
@@ -98,5 +98,38 @@ describe("detectBranchCreation — stays silent", () => {
   it("does not read `git switch -c` semantics into `git branch -c`", () => {
     // On `git branch`, -c means --copy, not --create.
     expect(detectBranchCreation("git branch -c old new")).toBeNull()
+  })
+})
+
+describe("buildRefusal", () => {
+  it("refuses with `deny`, not `ask`", () => {
+    // Pinned deliberately. `ask` was the original design and is a no-op in this repo:
+    // `.claude/settings.local.json` allow-lists `Bash(git *)`, so a pre-approved command leaves
+    // nothing to ask about — four live attempts intercepted nothing. `deny` is the only verdict a
+    // blanket allow rule cannot swallow, so a slide back to `ask` must fail loudly here.
+    const out = buildRefusal("proj-y-45p/x", "worktree /tmp/pv3-y45p")
+
+    expect(out.hookSpecificOutput.permissionDecision).toBe("deny")
+    expect(out.hookSpecificOutput.hookEventName).toBe("PreToolUse")
+  })
+
+  it("names the branch and passes the guard's detail through", () => {
+    const out = buildRefusal("proj-y-45p/x", "worktree /tmp/pv3-y45p")
+    const reason = out.hookSpecificOutput.permissionDecisionReason
+
+    expect(reason).toContain("proj-y-45p/x")
+    expect(reason).toContain("/tmp/pv3-y45p")
+  })
+
+  it("stays useful when the guard produced no detail", () => {
+    const reason = buildRefusal("proj-150/x", "").hookSpecificOutput.permissionDecisionReason
+    expect(reason).toContain("check:branch-collision")
+  })
+
+  it("does not put the override switch in the refusal text", () => {
+    // The override lives in CLAUDE.md on purpose: naming it here would ship a bypass into a model's
+    // context on every single collision.
+    const reason = buildRefusal("proj-150/x", "d").hookSpecificOutput.permissionDecisionReason
+    expect(reason).not.toContain("BRANCH_COLLISION_GUARD")
   })
 })

@@ -87,6 +87,15 @@ node, was die Befehlserkennung zugleich testbar macht statt sie als Shell-Einzei
 
 ## Bewusste Abweichungen und Grenzen
 
+- **Nachtrag 2026-08-27, zweiter: der `ask`-Entscheid ist zurueckgenommen (PROJ-Y-150c).** Diese Spec
+  verteidigt `ask` statt `deny` mit dem Argument, der Umgehungsweg solle **der Mensch** sein, damit kein
+  Bypass-Schalter in den Kontext eines Modells geraet. Das Argument bleibt richtig — in diesem Repo aber
+  gegenstandslos: `.claude/settings.local.json` erlaubt `Bash(git *)`, jeder git-Befehl ist vorab
+  freigegeben, und ein `ask` hat dann nichts zu fragen. **Vier Versuche fingen nichts ab**, bei gepruefter
+  Einstellungsdatei, ohne `disableAllHooks` und nach Sitzungs-Neustart. Umgestellt auf `deny`; der
+  Schalter `BRANCH_COLLISION_GUARD=off` ist damit der einzige Ausweg und steht in CLAUDE.md statt in der
+  Meldung. **Damit ist AC-Y150a.2 in seinem Wortlaut ueberholt** („das Urteil lautet `ask`") — die
+  Absicht (Kollision wird nicht stillschweigend zugelassen) ist erst mit `deny` erfuellbar.
 - **Nachtrag 2026-08-27 zu D-Y150a.1 — der dort genannte Grund war zu schwach.** Nach dem Deploy
   probiert: der Hook feuerte **nicht**, und zwar nicht wegen der Zurueckhaltung gegenueber einem fremden
   Checkout, sondern weil dieser Arbeitsbaum **31 Commits** hinter `main` stand und die dort liegende
