@@ -412,10 +412,12 @@ Rules:
   keinen Bypass-Schalter gibt; fuer kopflose Laeufe `BRANCH_COLLISION_GUARD=off`. Der Hook ist
   durchgaengig **fail-open** (Urteil ueber stdout, Exit immer 0) — er kann `git` nicht brechen.
   Ansehen und abschalten: `/hooks`, oder `disableAllHooks` in den lokalen Einstellungen.
-  **Vorbehalt (PROJ-Y-150b, gemessen):** der Hook wirkt nur in Sitzungen, deren **Arbeitsbaum** die
-  aktuelle `.claude/settings.json` enthaelt. Ein Checkout, der auf einem alten Branch parkt, bekommt
-  ihn nie — und **lautlos**, denn ein fehlender Hook meldet sich nicht. Wer sich auf ihn verlaesst,
-  sollte seinen Checkout aktuell halten; der Guard-Befehl selbst laeuft unabhaengig davon.
+  **Vorbehalt (PROJ-Y-150b, zweimal gemessen):** der Hook wirkt nur, wenn **beides** zutrifft —
+  (1) der **Arbeitsbaum** traegt die aktuelle `.claude/settings.json` (ein Checkout auf einem alten
+  Branch bekommt sie nie), und (2) die **laufende Sitzung hat sie geladen** (ein `git checkout`
+  ersetzt die Datei, ohne den Einstellungs-Watcher auszuloesen — dann hilft nur `/hooks` oeffnen oder
+  neu starten). **Beide Glieder scheitern lautlos:** ein fehlender Hook meldet sich nicht. Wer sich
+  auf ihn verlaesst, prueft es einmal aktiv; der Guard-**Befehl** laeuft unabhaengig von beidem.
 - Cleanup after merge: `git worktree remove <path>` + delete the branch.
 
 ## Continuous Improvement Agent
