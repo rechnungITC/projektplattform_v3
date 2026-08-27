@@ -125,6 +125,11 @@ export function AiChatPage({ projectId }: { projectId: string }) {
             size="sm"
             variant="outline"
             className="w-full justify-start"
+            // Die Aktion heisst anders als die Eintraege, die sie erzeugt.
+            // Vorher trugen Knopf und jede so angelegte Unterhaltung denselben
+            // Namen "Neue Unterhaltung" — fuer eine Sprachausgabe nicht
+            // unterscheidbar (und fuer einen Test mehrdeutig, so gefunden).
+            aria-label="Neue Unterhaltung beginnen"
             onClick={() => void chat.start("Neue Unterhaltung")}
           >
             <MessageSquarePlus className="size-4" aria-hidden />
