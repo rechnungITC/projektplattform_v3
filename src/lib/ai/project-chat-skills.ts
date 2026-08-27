@@ -11,6 +11,12 @@
 
 import type { SupabaseClient } from "@supabase/supabase-js"
 
+// Die Spalte heisst `markdown_content`, NICHT `content_md`. Der erste Entwurf
+// hatte den falschen Namen — der Schema-Drift-Waechter (PROJ-42) hat ihn
+// gefunden, bevor er in Prod ankam. Wirkung waere still gewesen: das Feld
+// undefined, der Laengenfilter unten haette jeden Skill verworfen, und der
+// Chat waere ohne Skill-Kontext gelaufen, ohne dass irgendetwas rot wird.
+
 export interface ProjectChatSkill {
   name: string
   instructions: string
@@ -38,12 +44,12 @@ export async function loadProjectChatSkills(
 
   const { data: versions } = await supabase
     .from("skill_versions")
-    .select("skill_id, content_md, status, skills(name)")
+    .select("skill_id, markdown_content, status, skills(name)")
     .in("skill_id", activeIds)
     .eq("status", "active")
 
   return (versions ?? []).map((v) => ({
     name: ((v.skills as { name?: string } | null)?.name ?? "Skill") as string,
-    instructions: (v.content_md as string) ?? "",
+    instructions: (v.markdown_content as string) ?? "",
   })).filter((s) => s.instructions.trim().length > 0)
 }

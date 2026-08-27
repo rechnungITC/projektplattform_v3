@@ -23,6 +23,13 @@ export const CHAT_MAX_WORK_ITEMS = 25
 export const CHAT_MAX_PHASES = 20
 export const CHAT_MAX_HISTORY = 30
 
+// `phases` sortiert nach `sequence_number`, NICHT `position` — der erste
+// Entwurf hatte den falschen Namen. Der Schema-Drift-Waechter prueft nur
+// `.select()`-Spalten, keine `.order()`-Argumente; hier haette also erst die
+// Laufzeit gemeckert. Gefunden, weil ich die gelesenen Spalten nach dem
+// Waechter-Fund vollstaendig gegen das Schema geprueft habe statt nur die
+// gemeldete.
+
 export async function collectProjectChatContext(
   supabase: SupabaseClient,
   projectId: string,
@@ -43,7 +50,8 @@ export async function collectProjectChatContext(
     .from("phases")
     .select("name, status")
     .eq("project_id", projectId)
-    .order("position", { ascending: true })
+    .eq("is_deleted", false)
+    .order("sequence_number", { ascending: true })
     .limit(CHAT_MAX_PHASES)
 
   // `count: "exact"` liefert die WAHRE Zahl, auch wenn wir nur die ersten

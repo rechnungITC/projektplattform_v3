@@ -468,6 +468,30 @@ andere (42501).
 **Gates nach dem Nachtrag:** ESLint 0 · tsc 13 = Baseline / 0 neu · vitest **3851/3851** ·
 Build clean mit **sieben** Routen · migration-naming 0 · index-scope 0.
 
+### Der Schema-Drift-Wächter hat drei echte Fehler gefunden
+
+Der Check war nach dem Nachtrag **rot** — und zwar zu Recht. Drei Spaltennamen waren falsch, alle
+drei hätten **still** versagt:
+
+1. **`tenant_settings.ai_chat_settings` existierte nicht.** Ich habe die Spalte gelesen, ohne sie
+   anzulegen. Wirkung wäre gewesen: die Abfrage liefert nichts, die Aufbewahrung steht immer auf
+   dem Default — ohne dass irgendwo etwas rot wird. Behoben mit Migration `20260827120000`
+   (eigene Spalte, wie jedes andere Modul sie hat).
+2. **`skill_versions.markdown_content` heißt nicht `content_md`.** Das ist der gravierendste:
+   der Skill-Lader hätte in Prod **nie einen Skill angewendet** — das Feld wäre `undefined`, der
+   Längenfilter hätte jeden Skill verworfen, und der Chat wäre stillschweigend ohne Skill-Kontext
+   gelaufen. Meine eigenen Tests hätten das **nicht** gefangen: AC-151H.3 prüft den Prompt-Bauer,
+   nicht den Lader.
+3. **`phases.sequence_number` heißt nicht `position`.** Diesen fand der Wächter gar nicht — er
+   prüft `.select()`-Spalten, keine `.order()`-Argumente. Aufgefallen, weil ich nach dem ersten
+   Fund **alle** gelesenen Spalten gegen das Schema geprüft habe statt nur die gemeldete.
+
+Danach live gegengeprüft: alle fünf Abfragen des Kontext-Sammlers und des Skill-Laders laufen
+gegen das echte Schema, inklusive einer real vorhandenen Skill-Fassung.
+
+Das ist der Ertrag von PROJ-42: drei Fehler, die weder Kompilierung noch Testlauf noch Build
+gezeigt hätten.
+
 ### Weiterhin offen
 
 - **AC-151.10** Fehlalarm-Nachweis der Class-3-Warnung gegen echte Projekttexte. Die Prüfung ist
