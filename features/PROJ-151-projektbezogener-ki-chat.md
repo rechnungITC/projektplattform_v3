@@ -1,7 +1,7 @@
 # PROJ-151: Projektbezogener KI-Chat
 
-## Status: Approved
-## Deployment Scope: —
+## Status: Deployed
+## Deployment Scope: mvp
 **Created:** 2026-08-27
 **Last Updated:** 2026-08-27
 
@@ -646,3 +646,55 @@ chromium · Build clean · migration-naming 0 · index-scope 0.
 
 ## Deployment
 _To be added by /deploy_
+
+
+## Deployment (2026-08-27)
+
+**Deployed: Tag `v2.80.0-PROJ-151` auf `4c9a811`.** Fünf PRs, alle als Vorfahren von `main`
+verifiziert: #472 · #473 · #475 · #477 · #478.
+
+**Die Laufzeit ging bereits mit dem `/frontend`-Merge live** (`0762225`, Vercel READY/production),
+das Backend mit `92edc66`. Der QA-Commit ändert nur Tests und Buchführung — gesagt statt gerundet,
+weil ein Tag auf einem Test-Commit sonst als Auslieferungszeitpunkt gelesen würde. Kein
+Runtime-DB-Change beim Merge: alle drei Migrationen liegen seit `/backend` in Prod.
+
+**Prod eigenständig nachgemessen:** 6 Tabellen · alle mit RLS · 19 Policies · **0 Admin-Zweige**
+auf den drei privaten Tabellen (L2 hält strukturell) · beide Purpose-Regeln tragen `project_chat` ·
+`ai_chat_settings` vorhanden · **0 Rückstände** in allen Chat-Tabellen und in `ki_runs`.
+
+**Post-Deploy-Smoke über alle sieben Flächen: exakt 307**, Rumpf 15 Bytes `Redirecting...`.
+**Die Existenz der Routen folgt daraus ausdrücklich NICHT** — die Gegenprobe zeigt, dass erfundene
+Pfade (`/api/chat/gibt-es-nicht`, `…/chat/quatsch`) **ebenfalls mit 307** antworten. Belegt ist sie
+am Build: alle acht Flächen als Routen registriert. PROJ-45-Lehre, hier gemessen statt zitiert.
+
+**Der Branch-Kollisions-Guard (PROJ-150) hat die Buchführung blockiert** — er sah den Tag und
+schloss auf eine fremde Lane. Fehlalarm: der Tag stammt aus derselben Sitzung, zwei Minuten alt,
+und Buchführung nach dem Taggen ist der reguläre Ablauf. Nach Rückfrage bewusst fortgesetzt, auf
+dem bereits bestehenden Slice-Branch statt über einen ausweichenden Namen — den Guard durch
+Umbenennen auszuhebeln wäre genau die Aushöhlung, gegen die er gebaut wurde. → **PROJ-Y-151c**.
+
+### Warum Scope `mvp` und nicht `full`
+
+**Für `full` spräche:** alle **28** Akzeptanzkriterien sind erfüllt und belegt — auch AC-151.10,
+das bis zuletzt offen war. F-1 ist ein Befund, kein zurückgestelltes Kriterium: kein AC verlangt
+Projekt-Konsistenz. QA hat 0 Critical und 0 High.
+
+**Ausschlaggebend dagegen:** `full` verlangt, dass **das Produktionsverhalten verifiziert ist**.
+Das ist es nicht. Es gab **keinen echten Anbieter-Durchlauf** — der Kernpfad „Frage rein →
+Modellantwort raus" ist nie gelaufen; belegt sind Router, Klassifizierung, Kostendeckel und
+Absagegründe, nicht eine echte Antwort. Und es gab **keinen authentifizierten Browser-Durchlauf**:
+das Modul ist in keinem Test-Mandanten aktiv, Einschalten hätte die Visual-Baselines berührt
+(PROJ-Y-143f/143l). Die Hausregel sagt ausdrücklich, ein Auth-Redirect allein sei kein
+funktionaler Nachweis — und genau das ist der Stand des Kernpfads.
+
+**Aufstufung auf `full`** setzt beides voraus und ist als PROJ-Y-151b registriert.
+
+### Offene Folgearbeit
+
+- **PROJ-Y-151a** (Medium) — Projekt-Konsistenz auf `ai_chat_conversations`/`ai_chat_folders`,
+  Wächter-Trigger analog PROJ-Y-45a.
+- **PROJ-Y-151b** — echter Anbieter-Durchlauf und authentifizierte Kette in eigener Fixture-Lane
+  (Muster PROJ-Y-144d); Voraussetzung für `full`.
+- **PROJ-Y-151c** — der Branch-Kollisions-Guard wertet den eigenen, sekundenalten Tag derselben
+  Sitzung als fremde Beanspruchung und blockiert damit jede Deploy-Buchführung nach dem Taggen.
+- **F-2** — die Visual-Suite ist unabhängig von dieser Slice nicht lauffähig.
