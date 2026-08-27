@@ -34,6 +34,9 @@ import type {
   RiskProposalsGenerationRequest,
   TrajectorySequenceGenerationRequest,
 } from "./types"
+import type { ProjectChatGenerationRequest } from "./types"
+import type { ProjectChatGenerationOutput } from "../types"
+import { runProjectChat } from "./project-chat-runner"
 import type {
   ClarifyingQuestionsGenerationOutput,
   DocumentSummaryGenerationOutput,
@@ -376,5 +379,12 @@ export class GoogleProvider implements AIProvider {
     request: DocumentSummaryGenerationRequest,
   ): Promise<DocumentSummaryGenerationOutput> {
     return runDocumentSummaryStrict(this.sdkProvider(this.modelId), request.context)
+  }
+
+  /** PROJ-151-α — Chat-Antwort über den geteilten Runner. */
+  async generateProjectChat(
+    request: ProjectChatGenerationRequest,
+  ): Promise<ProjectChatGenerationOutput> {
+    return runProjectChat(this.sdkProvider(this.modelId), request.context)
   }
 }

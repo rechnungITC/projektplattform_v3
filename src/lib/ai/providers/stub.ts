@@ -31,6 +31,8 @@ import type {
   StakeholderProposalsGenerationRequest,
   TrajectorySequenceGenerationRequest,
 } from "./types"
+import type { ProjectChatGenerationRequest } from "./types"
+import type { ProjectChatGenerationOutput } from "../types"
 import type {
   ClarifyingQuestionsGenerationOutput,
   DocumentSummaryGenerationOutput,
@@ -580,6 +582,20 @@ export class StubProvider implements AIProvider {
         latency_ms: Date.now() - start,
       },
     }
+  }
+
+  /**
+   * PROJ-151-α — der Stub antwortet bewusst mit LEEREM Text.
+   *
+   * Kein erfundener Satz: eine ausgedachte Antwort wäre von einer echten nicht
+   * zu unterscheiden und würde die Absage verschleiern, die der Router über
+   * `reason_code` mitteilt (PROJ-137). Leer + Grund ist ehrlich, erfunden wäre
+   * es nicht — dieselbe Entscheidung wie bei PROJ-80-α.
+   */
+  async generateProjectChat(
+    _request: ProjectChatGenerationRequest,
+  ): Promise<ProjectChatGenerationOutput> {
+    return { text: "", token_input: null, token_output: null }
   }
 }
 

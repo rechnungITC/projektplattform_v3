@@ -8,6 +8,8 @@
  */
 
 import type {
+  ProjectChatAutoContext,
+  ProjectChatGenerationOutput,
   AIProviderName,
   ClarifyingQuestionsAutoContext,
   ClarifyingQuestionsGenerationOutput,
@@ -166,6 +168,15 @@ export interface AIProvider {
   generateDocumentSummary?(
     request: DocumentSummaryGenerationRequest,
   ): Promise<DocumentSummaryGenerationOutput>
+
+  /**
+   * PROJ-151-α — projektbezogener Chat. Freier Text statt Objekt.
+   * Optional wie die Geschwister; der Router bildet ein Fehlen auf den leeren
+   * Stub ab, und die Capability-Matrix hält fest, wer ihn wirklich kann.
+   */
+  generateProjectChat?(
+    request: ProjectChatGenerationRequest,
+  ): Promise<ProjectChatGenerationOutput>
 }
 
 /**
@@ -178,4 +189,10 @@ export interface AIRiskProvider extends AIProvider {
   generateRiskSuggestions(
     request: RiskGenerationRequest,
   ): Promise<RiskGenerationOutput>
+}
+
+
+/** PROJ-151-α — Anfrage für eine Chat-Antwort. */
+export interface ProjectChatGenerationRequest {
+  context: ProjectChatAutoContext
 }

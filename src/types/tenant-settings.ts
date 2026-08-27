@@ -31,6 +31,11 @@ export type ModuleKey =
   // PROJ-45-α — one switch for the whole construction extension (Q4).
   // Finer switches would create combinations neither tests nor QA cover.
   | "construction"
+  // PROJ-151-α — ein Schalter für den projektbezogenen KI-Chat. Eigener Wert
+  // statt `ai_proposals` (das sind Vorschlagslisten) oder `assistant` (der ist
+  // regelbasiert, PROJ-144): drei verschiedene Dinge unter einem Schalter
+  // wären für den Mandanten nicht steuerbar.
+  | "ai_chat"
 
 /** Modules that are actually built in V3 today and toggleable. */
 export const TOGGLEABLE_MODULES: readonly ModuleKey[] = [
@@ -46,6 +51,7 @@ export const TOGGLEABLE_MODULES: readonly ModuleKey[] = [
   "output_rendering",
   "organization",
   "construction",
+  "ai_chat",
 ] as const
 
 /** Modules that exist in the schema as future-reserved keys but are not
@@ -68,6 +74,7 @@ export const MODULE_LABELS: Record<ModuleKey, string> = {
   output_rendering: "Reports",
   organization: "Organisation",
   construction: "Bauprojekte",
+  ai_chat: "KI-Chat",
 }
 
 export type DataClass = 1 | 2 | 3

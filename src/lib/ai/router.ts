@@ -28,6 +28,7 @@ import type {
   PrivacyDefaults,
 } from "@/types/tenant-settings"
 
+import { classifyProjectChatAutoContext } from "./classify-project-chat"
 import {
   classifyClarifyingQuestionsAutoContext,
   classifyDocumentSummaryAutoContext,
@@ -92,6 +93,7 @@ import type {
   SentimentSignal,
   TrajectorySequenceAutoContext,
   TrajectorySequenceSuggestion,
+  ProjectChatAutoContext,
 } from "./types"
 
 interface InvokeRiskGenerationArgs {
@@ -2366,6 +2368,136 @@ export async function invokeDocumentSummaryGeneration({
     summary_markdown: summaryMarkdown,
     external_blocked: externalBlocked || providerFallbackMessage !== null,
     error_message: finalErrorMessage ?? undefined,
+    reason_code: finalReasonCode,
+  }
+}
+
+
+// ---------------------------------------------------------------------------
+// PROJ-151-α — projektbezogener Chat
+// ---------------------------------------------------------------------------
+
+export interface InvokeProjectChatArgs {
+  supabase: SupabaseClient
+  tenantId: string
+  projectId: string
+  actorUserId: string
+  context: ProjectChatAutoContext
+}
+
+export interface RouterProjectChatResult {
+  run_id: string
+  classification: DataClass
+  provider: AIProviderName
+  model_id: string | null
+  status: "success" | "error" | "external_blocked"
+  /** Freier Antworttext. LEER, wenn nichts erzeugt werden konnte. */
+  text: string
+  token_input: number | null
+  token_output: number | null
+  external_blocked: boolean
+  error_message?: string
+  reason_code: AiRunReasonCode | null
+}
+
+/**
+ * Erzeugt eine Chat-Antwort über den bestehenden Router.
+ *
+ * **Bewusste Abweichung vom `narrative`-Muster:** dort wird bei einem
+ * Anbieterfehler ein Ersatztext des Stubs eingesetzt, damit der Aufrufer nie
+ * eine leere Erzählung sieht. Für einen Chat wäre das falsch — eine erfundene
+ * Gesprächsantwort ist von einer echten nicht zu unterscheiden, und der Nutzer
+ * hielte sie für die Auskunft des Modells. Hier bleibt der Text LEER und der
+ * Grund steht im `reason_code` (PROJ-137, AC-151.11). Lieber eine benannte
+ * Absage als eine erfundene Antwort.
+ */
+export async function invokeProjectChat({
+  supabase,
+  tenantId,
+  projectId,
+  actorUserId,
+  context,
+}: InvokeProjectChatArgs): Promise<RouterProjectChatResult> {
+  const overrides = await loadTenantOverrides(supabase, tenantId)
+  const classification = classifyProjectChatAutoContext(
+    context,
+    overrides.privacyDefault as DataClass,
+  )
+  const choice = await selectProviderForPurpose(
+    supabase,
+    tenantId,
+    "project_chat",
+    classification,
+    overrides.providerConfig,
+  )
+  const { provider, externalBlocked, blockedReason, blockedReasonCode } =
+    await applyCostCap(supabase, tenantId, choice, "project_chat")
+
+  const runId = await insertKiRun(supabase, {
+    tenantId,
+    projectId,
+    actorUserId,
+    purpose: "project_chat",
+    classification,
+    provider,
+  })
+
+  let text = ""
+  let inputTokens: number | null = null
+  let outputTokens: number | null = null
+  let providerError: string | null = null
+  const startedAt = Date.now()
+
+  try {
+    if (!provider.generateProjectChat) {
+      throw new Error(
+        `Provider ${provider.name} does not implement generateProjectChat`,
+      )
+    }
+    const result = await provider.generateProjectChat({ context })
+    text = result.text
+    inputTokens = result.token_input
+    outputTokens = result.token_output
+  } catch (err) {
+    providerError = err instanceof Error ? err.message : String(err)
+    // KEIN Ersatztext — siehe Funktionskommentar.
+  }
+
+  let finalStatus: "success" | "error" | "external_blocked"
+  if (providerError) {
+    finalStatus = "error"
+  } else if (externalBlocked) {
+    finalStatus = "external_blocked"
+  } else {
+    finalStatus = "success"
+  }
+
+  const finalReasonCode = deriveReasonCode({
+    finalStatus,
+    blockedReasonCode,
+    providerError,
+  })
+
+  await updateKiRunStatus(supabase, runId, {
+    status: finalStatus,
+    inputTokens,
+    outputTokens,
+    latencyMs: Date.now() - startedAt,
+    errorMessage: providerError ?? blockedReason ?? null,
+    reasonCode: finalReasonCode,
+  })
+
+  return {
+    run_id: runId,
+    classification,
+    provider: provider.name as AIProviderName,
+    model_id: provider.modelId,
+    status: finalStatus,
+    text,
+    token_input: inputTokens,
+    token_output: outputTokens,
+    external_blocked: externalBlocked,
+    error_message: providerError ?? blockedReason ?? undefined,
     reason_code: finalReasonCode,
   }
 }

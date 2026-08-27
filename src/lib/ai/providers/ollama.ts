@@ -23,6 +23,7 @@ import { generateObject } from "ai"
 import { z } from "zod"
 
 import type {
+  ProjectChatGenerationRequest,
   AIProvider,
   ClarifyingQuestionsGenerationRequest,
   DocumentSummaryGenerationRequest,
@@ -37,6 +38,8 @@ import type {
   StakeholderProposalsGenerationRequest,
   TrajectorySequenceGenerationRequest,
 } from "./types"
+import type { ProjectChatGenerationOutput } from "../types"
+import { runProjectChat } from "./project-chat-runner"
 import type {
   ClarifyingQuestionsGenerationOutput,
   DocumentSummaryGenerationOutput,
@@ -1111,6 +1114,13 @@ export class OllamaProvider implements AIProvider {
     request: DocumentSummaryGenerationRequest,
   ): Promise<DocumentSummaryGenerationOutput> {
     return runDocumentSummaryLoose(this.sdkProvider(this.modelId), request.context)
+  }
+
+  /** PROJ-151-α — Chat-Antwort über den geteilten Runner. */
+  async generateProjectChat(
+    request: ProjectChatGenerationRequest,
+  ): Promise<ProjectChatGenerationOutput> {
+    return runProjectChat(this.sdkProvider(this.modelId), request.context)
   }
 }
 
