@@ -28,15 +28,25 @@
 /**
  * Mindestlänge des vom Menschen geschriebenen Textes (Vorhaben + Antworten).
  *
- * Nutzer-Entscheid 2026-08-28: **streng** (800) statt großzügig (400). Bei
- * heutiger Datenlage sagt das Tor für **jedes** bestehende Projekt ab, bis
- * jemand ausführlich schreibt — das ist gewollt und der Grund, warum die
- * Dialogrunde (β) folgt.
+ * **Zweimal entschieden, und die zweite Messung hat die erste korrigiert.**
+ * Zuerst 800 („streng"). Dann wurde die Verteilung nachgesehen: die fünf
+ * vorhandenen Vorhaben sind **97, 67, 55, 10 und 4** Zeichen lang — auch eine
+ * Schwelle von *100* hätte alle fünf abgelehnt. Die Wahl zwischen 800, 400 und
+ * 200 war für den Bestand also **gegenstandslos**; sie wirkt erst auf künftige
+ * Texte.
+ *
+ * Der eigentliche Engpass lag woanders: das Eingabefeld hieß „Beschreibung
+ * (optional)", war drei Zeilen hoch und fragte „Worum geht es in diesem
+ * Projekt?" — eine Frage, auf die man mit einem Satz antwortet. Die Nutzer
+ * haben sich genau so verhalten, wie die Oberfläche es nahelegt. Behoben wird
+ * daher **das Feld** (`project-intent-field.tsx`), und die Schwelle steht auf
+ * **400**: hoch genug, dass ein Absatz nötig ist, niedrig genug, dass ein
+ * ernsthaft geschriebenes Vorhaben sie erreicht.
  *
  * **Startwert, kein Messergebnis.** Kalibriert wird in `/qa` an echten
  * Generierungen (AC-153.9).
  */
-export const INTENT_MIN_HUMAN_CHARS = 800
+export const INTENT_MIN_HUMAN_CHARS = 400
 
 /**
  * Mindestzahl **beantworteter** Rückfragen als Alternativpfad.

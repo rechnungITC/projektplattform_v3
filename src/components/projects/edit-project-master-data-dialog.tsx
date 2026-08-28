@@ -35,6 +35,10 @@ import {
 } from "@/components/ui/select"
 import { Textarea } from "@/components/ui/textarea"
 import {
+  PROJECT_INTENT_LABEL,
+  ProjectIntentField,
+} from "@/components/projects/project-intent-field"
+import {
   PROJECT_METHODS,
   PROJECT_METHOD_LABELS,
   type ProjectMethod,
@@ -267,13 +271,18 @@ export function EditProjectMasterDataDialog({
               name="description"
               render={({ field }) => (
                 <FormItem>
-                  <FormLabel>Description</FormLabel>
+                  {/* PROJ-153-α: hieß „Description" — englisch, von der
+                      Sprachbereinigung (PROJ-Y-143m) übersehen. Jetzt dieselbe
+                      Komponente wie im Wizard, damit beide Flächen dasselbe
+                      über dieselbe Schwelle sagen. */}
+                  <FormLabel>{PROJECT_INTENT_LABEL}</FormLabel>
                   <FormControl>
-                    <Textarea
-                      rows={4}
-                      maxLength={5000}
+                    <ProjectIntentField
+                      name={field.name}
+                      value={field.value}
+                      onChange={field.onChange}
+                      onBlur={field.onBlur}
                       disabled={submitting}
-                      {...field}
                     />
                   </FormControl>
                   <FormMessage />
