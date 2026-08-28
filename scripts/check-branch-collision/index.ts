@@ -74,11 +74,31 @@ function collectMerged(args: string[]): Set<string> {
 }
 
 function collectTags(): RefInput[] {
-  return git(["tag", "--list"])
-    .split("\n")
-    .map((t) => t.trim())
-    .filter(Boolean)
-    .map((name) => ({ kind: "tag" as const, name }))
+  // PROJ-Y-151c — a tag now needs a date and a reachability flag, not just a name.
+  //
+  // `creatordate` is the one field that answers for BOTH tag shapes: annotated tags carry their own
+  // tagger date, lightweight ones fall through to the commit date. `taggerdate` would be empty for
+  // every lightweight tag and quietly make it look infinitely old — which is the safe direction,
+  // but it would also make the exemption untestable against this repo's real corpus.
+  const reachable = new Set(
+    git(["tag", "--merged", "HEAD"])
+      .split("\n")
+      .map((t) => t.trim())
+      .filter(Boolean)
+  )
+  const out: RefInput[] = []
+  for (const line of git(["for-each-ref", "--format=%(refname:short)%09%(creatordate:iso-strict)", "refs/tags"]).split("\n")) {
+    const [name, date] = line.split("\t")
+    const clean = (name ?? "").trim()
+    if (!clean) continue
+    out.push({
+      kind: "tag",
+      name: clean,
+      tipIsoDate: (date ?? "").trim() || undefined,
+      reachableFromHead: reachable.has(clean),
+    })
+  }
+  return out
 }
 
 function main(argv: string[]): number {
