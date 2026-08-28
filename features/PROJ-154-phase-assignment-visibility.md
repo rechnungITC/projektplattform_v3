@@ -1,7 +1,7 @@
 # PROJ-154 — Phasenzuordnung sichtbar machen + Feld-Audit für `phase_id`/`milestone_id`
 
-## Status: In Progress
-## Deployment Scope: —
+## Status: Deployed
+## Deployment Scope: full
 
 ## Anlass
 
@@ -122,3 +122,48 @@ vollständig.
 - **D-154.3** Gantt-Prop-Name unverändert (siehe oben).
 - **D-154.4** Kein authentifizierter Browser-Durchlauf: die Regel ist als reine
   Funktion rot-grün belegt, die Verkettung im Browser nicht.
+
+## Deployment
+
+**Deployed 2026-08-28: PR #497 (squash) → main `1cc4e8f`, Tag `v2.85.0-PROJ-154`.**
+
+Der Merge **ist** die Auslieferung des Anzeige-Fix; die Migration
+`20260828100000` liegt seit dem Bau in Prod, beim Merge also **kein
+Runtime-DB-Change**. Produktions-Deployment `6138138954` **success**, gebaut aus
+genau diesem SHA. Alle **9** Pflicht-Checks grün, darunter der
+**Schema-Drift-Wächter** — er spielt die Migrationsdateien in eine frische
+Shadow-DB ein und belegt damit unabhängig, dass die Anker-Ersetzung auch dort
+greift (bis dahin war sie nur gegen die Live-Definition gemessen).
+
+**Post-Deploy-Smoke mit Gegenprobe:** `/planung`, `/phasen` und `/backlog`
+antworten **307** mit Rumpf `Redirecting...` — und **ein erfundener Pfad antwortet
+ebenfalls 307**. Der Smoke belegt also das Auth-Gate ohne Leck, **nicht** die
+Existenz der Flächen; nötig ist das hier auch nicht, weil die Slice **keine neue
+Route** anlegt, sondern nur ändert, was die bestehende Planungsseite geladen
+bekommt.
+
+**Zwei Rebases beim Merge**, weil `main` während der Slice dreimal gewandert ist
+(`PROJ-Y-151d`, `PROJ-Y-150g`). Beide Konflikte lagen im INDEX-Hotspot und wurden
+**nicht** durch Übernahme einer Seite gelöst: die fremde Zeile `PROJ-Y-151d` ist
+per `diff` gegen `origin/main` als **byte-identisch** belegt, und über die gesamte
+Tabelle sind **0 fremde Zeilen** verloren gegangen (196 → 197, genau die eigene
+dazu).
+
+### Scope-Entscheidung: `full`
+
+Alle **9** Akzeptanzkriterien sind erfüllt und **nichts ist zurückgestellt** —
+**PROJ-Y-154a** ist eine neu *entdeckte* Nachbarfrage (eine gemessene
+Entwurfsentscheidung des KI-Pfads), keine Auslassung dieser Slice: kein Kriterium
+verlangt, dass der Accept-Weg eine Phase setzt.
+
+Zur Bedingung „production behavior is verified", ausgesprochen statt still
+entschieden: die **Audit-Hälfte** ist mit zwei Verhaltensproben gegen Prod belegt.
+Die **Anzeige-Hälfte** ist über die rot-grün belegte reine Regel plus die
+**unveränderte** Renderkette belegt (`PhaseList` filtert weiter auf
+`phase_id === phase.id`, `PhaseCard` rendert weiter `phaseWorkItems`) — neu ist
+ausschließlich die *Menge*, die hineingeht, und diese Kette war für Arbeitspakete
+bereits in Betrieb. Das unterscheidet die Lage von **PROJ-152** (dort `mvp`), wo
+der Kernmechanismus — das Auslösen des Zeitbudgets — in Produktion nie stattfand
+und auch nicht erzwingbar war. Offen bleibt allein die Nachweistiefe eines
+angemeldeten Durchlaufs → **PROJ-Y-154b**, eine Erweiterung, kein unerfülltes
+Kriterium.
