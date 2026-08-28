@@ -1,7 +1,7 @@
 # PROJ-151: Projektbezogener KI-Chat
 
 ## Status: Deployed
-## Deployment Scope: mvp
+## Deployment Scope: full
 **Created:** 2026-08-27
 **Last Updated:** 2026-08-27
 
@@ -745,7 +745,54 @@ Akzeptanzkriterien sind erfüllt und belegt". Das war falsch — es sind 26; .22
 ist unerfüllt und .23 wirkungslos. Der Satz stand da, weil die Kriterien gegen
 den *Code* abgeglichen wurden und nicht gegen das *Verhalten*.
 
-### Warum Scope `mvp` und nicht `full`
+## Aufstufung auf `full` — 2026-08-28
+
+**Der QA-Durchgang oben hat die Aufstufung zunächst verhindert.** AC-151.22 war
+unerfüllt: die Kostenrechnung lag als Bibliothek ohne jeden Aufrufer vor. Das ist
+mit **PROJ-Y-151d** behoben, ausgeliefert und live belegt — erst danach wird hier
+aufgestuft.
+
+### Was seither dazugekommen ist
+
+* **AC-151.22 erfüllt und live belegt** (`scripts/verify-prod-chat-addons.mjs`,
+  **22/22** gegen die deployte Produktion): ohne hinterlegten Preis antwortet die
+  API `no_price` — es wird **gesagt**, keine Null behauptet; mit Preis kommen
+  **0,24 EUR** zurück, und die Zahl stimmt mit einer **Handrechnung** überein
+  (220 Eingabe-Token à 1000/Mio. + 9 Ausgabe-Token à 2000/Mio. = 0,238 → 0,24).
+  Die Handrechnung ist der eigentliche Nachweis: sie belegt, dass gerechnet und
+  nicht ein Feld durchgereicht wird — und dass Ausgabe-Token mit dem
+  **Ausgabe**preis multipliziert werden.
+* **AC-151.21 substanziell erfüllt.** Es war wörtlich erfüllt (Route und
+  Persistenz live belegt), aber es gab **keine Bedienfläche** — Preise kamen nur
+  per API-Aufruf ins System, womit die ganze Kostenfunktion für eine
+  Administration unerreichbar blieb. Die Pflegefläche liegt jetzt neben dem
+  Kostendeckel und ist im **Browser** nachgewiesen (ausfüllen, speichern, in der
+  Tabelle sehen) **plus** Gegenprobe in der Datenbank, weil der Bildschirm allein
+  keine Persistenz belegt.
+
+### Die Einschränkung, ausgesprochen statt gerundet
+
+**AC-151.23** („Denk-Token zählen als Ausgabe") ist implementiert, unit-gepinnt
+und seit PROJ-Y-151d **wirksam erreichbar** — aber im Lauf **hatte es keinen
+Anlass**: `gpt-4o` meldet keine Denk-Token. Die Regel ist damit erfüllt, jedoch
+nicht gegen echte Denk-Token ausgeübt. Gleiche Form wie bei AC-75.7/75.8
+(„erfüllt, aber nicht gegen echte Daten ausgeübt").
+
+### Warum `full` jetzt trägt
+
+Alle **28** Kriterien (23 nummerierte + 5 Härtung) sind erfüllt, und das
+Produktionsverhalten ist verifiziert — nicht über einen Auth-Redirect, sondern
+über einen echten Anbieter-Durchlauf, eine authentifizierte Kette und zwei
+Live-Prüfskripte. Nichts ist zurückgestellt: **PROJ-Y-151a/b/c/d sind alle
+erledigt und ausgeliefert**, keiner davon stellt ein Kriterium dieser Spec offen.
+
+Die Hausregel verlangt für `mvp → full` einen neuen QA- **und**
+Deployment-Durchgang. Beide liegen vor: der QA-Durchgang vom 2026-08-28 (der die
+Aufstufung erst **verhindert** hat), die Behebung als PROJ-Y-151d und deren
+Auslieferung samt Nachweis gegen Produktion. Die Slice-Historie bleibt oben
+unverändert stehen.
+
+### Warum Scope `mvp` und nicht `full` *(Stand des Deploys am 2026-08-27 — überholt durch die Aufstufung oben)*
 
 **Für `full` spräche:** alle **28** Akzeptanzkriterien sind erfüllt und belegt — auch AC-151.10,
 das bis zuletzt offen war. F-1 ist ein Befund, kein zurückgestelltes Kriterium: kein AC verlangt
