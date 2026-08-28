@@ -15,7 +15,12 @@
  * (platform-key path).
  */
 
-import { anthropic as defaultAnthropic, createAnthropic } from "@ai-sdk/anthropic"
+import { createAnthropic } from "@ai-sdk/anthropic"
+
+import {
+  CLOUD_PROVIDER_TIMEOUT_MS,
+  createTimeoutFetch,
+} from "../provider-timeout"
 import type { AnthropicProvider as AnthropicSDKProvider } from "@ai-sdk/anthropic"
 import { generateObject } from "ai"
 import { z } from "zod"
@@ -268,9 +273,11 @@ export class AnthropicProvider implements AIProvider {
 
   constructor(modelId?: string, apiKey?: string) {
     this.modelId = modelId ?? process.env.ANTHROPIC_MODEL ?? "claude-opus-4-7"
-    this.sdkProvider = apiKey
-      ? createAnthropic({ apiKey })
-      : defaultAnthropic
+    // PROJ-152: siehe openai.ts — Zeitbudget auch auf dem Env-Key-Pfad.
+    this.sdkProvider = createAnthropic({
+      ...(apiKey ? { apiKey } : {}),
+      fetch: createTimeoutFetch("anthropic", CLOUD_PROVIDER_TIMEOUT_MS),
+    })
   }
 
   async generateRiskSuggestions(
