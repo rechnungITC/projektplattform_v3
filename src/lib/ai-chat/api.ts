@@ -23,14 +23,24 @@ async function call<T>(url: string, init?: RequestInit): Promise<T> {
     headers: { "Content-Type": "application/json", ...(init?.headers ?? {}) },
   })
   if (!res.ok) {
+    // Das Haus-Fehlerformat ist `{ error: { code, message } }` (siehe
+    // `apiError` in src/app/api/_lib/route-helpers.ts). Die erste Fassung
+    // typisierte `error` als Zeichenkette und reichte das OBJEKT an den
+    // Fehlerkonstruktor weiter — der Nutzer las dann woertlich
+    // "[object Object]", und zwar bei JEDEM Chat-Fehler: Modul aus, 403, 404,
+    // fehlerhafte Eingabe. Gefunden vom authentifizierten Durchlauf
+    // (PROJ-Y-151b), nicht von den Route-Tests, die nur den Statuscode pruefen.
     const body = (await res.json().catch(() => null)) as
-      | { error?: string; message?: string }
+      | { error?: { code?: string; message?: string } | string; message?: string }
       | null
-    throw new ChatApiError(
-      body?.message ?? body?.error ?? `HTTP ${res.status}`,
-      res.status,
-      body?.error,
-    )
+    const envelope = typeof body?.error === "object" ? body.error : null
+    const code = envelope?.code ?? (typeof body?.error === "string" ? body.error : undefined)
+    const message =
+      envelope?.message ??
+      body?.message ??
+      (typeof body?.error === "string" ? body.error : undefined) ??
+      `HTTP ${res.status}`
+    throw new ChatApiError(message, res.status, code)
   }
   return (await res.json()) as T
 }

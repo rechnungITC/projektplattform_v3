@@ -105,6 +105,37 @@ Ein git-`reference-transaction`-Hook im **gemeinsamen** `.git/hooks` (dieses Rep
 - **D-Y150d.5 Kein CIA-Pass.** Kein neues Dependency, keine Architekturentscheidung am Produkt; der
   Eingriff ist Werkzeug-Ebene. Wegen der Reichweite ausdrücklich benannt statt übergangen.
 
+## Nachtrag 2026-08-27 — Installation ausgeführt, dabei zwei eigene Fehler gefunden (PROJ-Y-150f)
+
+**F-1: Der Shim zeigte in den Arbeitsbaum.** Der Installer schrieb `exec node <absoluter Pfad im
+Checkout>` — damit war Bedingung 1, der diese Slice per Konstruktion entkommen wollte, eine Ebene
+tiefer zurück: steht der Checkout auf einem Branch ohne das Skript, findet der Shim nichts und endet
+fail-open, also **lautlos**. Aus einem Temp-Worktree installiert wäre der Hook nach dem Aufräumen tot
+gewesen. Der Installer **kopiert** die Datei jetzt nach `.git/hooks`. Preis, benannt: die Kopie friert
+beim Installieren ein, nach einer Änderung am Guard ist erneut zu installieren — ein veralteter
+Wächter wacht noch, ein fehlender nicht.
+
+**F-2: Der Installer erkannte seinen eigenen Hook nicht.** Der Marker trug ein `# `, in die kopierte
+Datei wurde er ohne dieses Zeichen geschrieben — `hooks:uninstall` hielt den eigenen Hook für fremd
+und verweigerte die Arbeit. Das hätte eine repo-weit scharfe Sperre **ohne unterstützten Weg zur
+Entfernung** hinterlassen. Marker vereinheitlicht; fünf Installer-Tests in einem Wegwerf-Repository
+nageln den Rundlauf fest, Rot-Grün ausgeführt (Marker wieder getrennt → 2 rot).
+
+**Beinahe-Fehler, empirisch geklärt statt gehofft:** eine endungslose Datei liest node üblicherweise
+als CommonJS, die `import`-Anweisungen wären gescheitert. Node 24 erkennt ESM auch ohne Endung —
+nachgewiesen erst durch die **Ablehnung einer belegten Slice**; der erste `exit=0`-Test bewies nichts,
+weil das auch die Ausgabe eines korrekten Leerlaufs ist.
+
+**Installation verifiziert:** 8/8 gewöhnliche git-Operationen unberührt (Status, Fetch, Log,
+Branch-Anzeige, Stash, Tags, rev-parse, Worktree-Liste) — zuerst geprüft, weil drei fremde Spuren
+mitlaufen. Sperre greift **aus dem Primär-Checkout, der `ref-transaction-guard.mjs` gar nicht trägt**,
+was belegt, dass die Kopie die Arbeitsbaum-Abhängigkeit beseitigt. Name ohne Slice-Kennung geht durch.
+
+**D-Y150d.7 Restabhängigkeit, unverändert benannt:** die *Entscheidung*, ob eine Slice belegt ist,
+läuft weiter über `scripts/check-branch-collision` aus dem Arbeitsbaum — dort liegt die einzige
+Wahrheit für Slice-Kennungen. Fehlt sie, endet der Hook mit Exit 0. Sie zu lösen hieße, die
+Kennungs-Logik zu duplizieren; nicht einseitig entschieden.
+
 ## Deployment
 
 **Deployed 2026-08-27 — Tag `v2.81.0-PROJ-Y-150d`, PR #479 (squash) → main `e4593bf`.**

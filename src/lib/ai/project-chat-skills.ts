@@ -27,29 +27,63 @@ export async function loadProjectChatSkills(
   tenantId: string,
   projectId: string,
 ): Promise<ProjectChatSkill[]> {
-  const { data } = await supabase
+  const { data, error } = await supabase
     .from("project_skills")
     .select("skill_id, skills(name, is_active, current_version_id)")
     .eq("project_id", projectId)
     .eq("tenant_id", tenantId)
 
-  const activeIds = (data ?? [])
-    .filter((row) => {
-      const s = row.skills as { is_active?: boolean } | null
-      return s?.is_active === true
-    })
-    .map((row) => row.skill_id as string)
+  // Fehler NICHT verschlucken. Die erste Fassung tat das an beiden Abfragen,
+  // und genau deshalb blieb der Defekt unten unsichtbar (PROJ-Y-151b).
+  if (error) {
+    console.error(`loadProjectChatSkills(project_skills): ${error.message}`)
+    return []
+  }
+
+  // Der Name kommt aus DIESER Abfrage. Frueher holte ihn die zweite Abfrage
+  // ueber `skills(name)` noch einmal — und scheiterte daran:
+  //
+  //   "Could not embed because more than one relationship was found for
+  //    'skill_versions' and 'skills'"
+  //
+  // Zwischen den beiden Tabellen bestehen ZWEI Fremdschluessel
+  // (`skill_versions.skill_id -> skills.id` und
+  // `skills.current_version_id -> skill_versions.id`), PostgREST kann die
+  // Einbettung also nicht aufloesen. Weil der Fehler verschluckt wurde, war
+  // `versions` null, die Liste leer — und der Chat lief fuer JEDES Projekt
+  // ohne Skill-Kontext, ohne dass irgendetwas rot wurde. Live gefunden erst
+  // durch den echten Anbieter-Durchlauf: das vom Skill vorgeschriebene
+  // Losungswort fehlte in der Antwort.
+  //
+  // Der Schema-Drift-Waechter konnte das nicht fangen — er prueft, ob
+  // Spalten existieren, nicht ob eine Einbettung eindeutig ist.
+  const names = new Map<string, string>()
+  const activeIds: string[] = []
+  for (const row of data ?? []) {
+    const s = row.skills as { name?: string; is_active?: boolean } | null
+    if (s?.is_active !== true) continue
+    const id = row.skill_id as string
+    activeIds.push(id)
+    names.set(id, s.name ?? "Skill")
+  }
 
   if (activeIds.length === 0) return []
 
-  const { data: versions } = await supabase
+  const { data: versions, error: versionError } = await supabase
     .from("skill_versions")
-    .select("skill_id, markdown_content, status, skills(name)")
+    .select("skill_id, markdown_content")
     .in("skill_id", activeIds)
     .eq("status", "active")
 
-  return (versions ?? []).map((v) => ({
-    name: ((v.skills as { name?: string } | null)?.name ?? "Skill") as string,
-    instructions: (v.markdown_content as string) ?? "",
-  })).filter((s) => s.instructions.trim().length > 0)
+  if (versionError) {
+    console.error(`loadProjectChatSkills(skill_versions): ${versionError.message}`)
+    return []
+  }
+
+  return (versions ?? [])
+    .map((v) => ({
+      name: names.get(v.skill_id as string) ?? "Skill",
+      instructions: (v.markdown_content as string) ?? "",
+    }))
+    .filter((s) => s.instructions.trim().length > 0)
 }
