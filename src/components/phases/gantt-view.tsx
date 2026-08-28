@@ -1526,7 +1526,7 @@ export function GanttView({
                     width={createPreview.width}
                     height={ROW_HEIGHT - 16}
                     rx={3}
-                    className="fill-indigo-400/60 stroke-indigo-700 pointer-events-none"
+                    className="fill-primary/40 stroke-primary pointer-events-none"
                   />
                 ) : null}
                 {/* Der Titel oeffnet das Formular, die Flaeche zieht den
