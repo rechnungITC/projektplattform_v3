@@ -460,3 +460,17 @@ Deploy, aber sie sind nicht erledigt und hatten bis heute **keine** Followup-Ken
   schlechter als ein dokumentiertes Artefakt).
 - **Nicht Gegenstand dieser Slice:** die Ollama-Konfiguration des Kundenmandanten
   (`gemma4:latest` existiert bei Ollama nicht). Konfiguration, nicht Code.
+
+## PROJ-151 — Projektbezogener KI-Chat (Deployed, Scope `mvp`)
+
+- **PROJ-Y-151d — Skill-Anweisungen umgehen die Class-3-Klassifizierung (offen, sicherheitsrelevant).**
+  Fund des CIA-Passes zu PROJ-153/Q3 am 2026-08-28, unabhängig am Code nachgemessen:
+  `classify-project-chat.ts:50-53` klassifiziert Vorhaben und Verlauf, **nicht** die
+  Skill-Anweisungen — die aber über `project-chat-runner.ts:82-84` → `:101` als System-Prompt
+  an den Anbieter gehen. Personendaten in einem Skill erreichen damit ein Cloud-Modell, ohne
+  dass der Gate greift. Für Invariante #3 ist „daran vorbei" derselbe Bruch wie „ausgehebelt".
+  **Exposition gemessen: 2 Skills, 1 aktiv, dessen Inhalt hat Länge 0** — strukturell offen,
+  **unausgenutzt**, kein akuter Abfluss. Nicht in PROJ-153 mitbehoben (fremde deployte Slice,
+  CIA-Auflage A-2); PROJ-153 erbt die Lücke wegen seiner eigenen Auflage A-1 nicht.
+  Mitzuprüfen: ob PROJ-80-α denselben Pfad hat.
+  *Quelle: CIA-Review PROJ-153/Q3, Finding F-2.*
