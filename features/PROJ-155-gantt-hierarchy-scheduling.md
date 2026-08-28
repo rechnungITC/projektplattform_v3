@@ -1,7 +1,7 @@
 # PROJ-155 — Gantt: WBS-Hierarchie, Sammelvorgänge und Netzablaufplan
 
-## Status: In Progress
-## Deployment Scope: —
+## Status: Deployed
+## Deployment Scope: alpha
 
 Nutzer-Meldung 2026-08-28: *„das gantt diagramm ist fehlerhaft — die arbeitspakete
 ordnen sich nicht dem zeitstrahl unter, die anzeige ist nicht über den gesamten
@@ -49,6 +49,42 @@ kippten bei der Prüfung:
   Drag/Resize, Kritischer Pfad) wegwerfen und alle Visual-Baselines neu ziehen.
 - OpenProject ist AGPL-Rails, nicht übernehmbar — sein Bedienmodell (feste linke
   Tabelle, Zeilen ohne Balken bleiben sichtbar) steckt bereits in der Fläche.
+
+## Deployment
+
+**Deployed 2026-08-28: Tag `v2.86.0-PROJ-155` auf dem Merge-Commit `bf82bb7`
+(PR #504, squash → `main`).** Die Migration lag seit dem Bau in Prod; der Merge
+liefert die Oberfläche aus und löst damit einen halben Zustand auf (Rollup-Fix
+live, Anzeige nicht). Vercel-Produktions-Deployment aus genau diesem SHA
+**success**, Post-Deploy-Smoke `/projects` und die Abhängigkeits-Route je **307**
+(Auth-Gate). Alle **9** Pflicht-Checks grün — darunter der **Schema-Drift-Wächter**,
+der unabhängig belegt, dass die Trigger-Neufassung auch in einer frisch aus den
+Migrationsdateien gebauten Datenbank entsteht (bis dahin war sie nur gegen die
+Live-Definition gemessen).
+
+Der **Token-Drift-Wächter** (PROJ-Y-51d, einen Tag alt) hat dabei zu Recht
+angeschlagen: die create-Vorschau brachte zwei rohe Palette-Farben und hob die
+Datei von 15 auf 17 Treffer. Auf semantische Tokens umgestellt statt die Ratsche
+anzuheben.
+
+### Scope `alpha` — und warum nicht mehr
+
+`full` ist **nicht** buchbar, und zwar aus zwei Gründen, die ich nicht runde:
+
+1. **Es gab keinen `/qa`-Durchgang.** Die Hausregel lässt `Deployed` erst nach
+   QA ohne Critical/High zu. Belegt sind Zeilenlogik (27 Unit-Tests), Rollup
+   (rot-grün live gegen Prod) und Verknüpfbarkeit (live gegen Prod) — nicht die
+   Verkettung im Browser. Der Gantt hat im Bestand weder Komponententests noch
+   eine Visual-Baseline, es gibt also keinen Netzschutz, den ich hätte erben
+   können.
+2. **β ist namentlich offen** (Auto-Scheduling), und diese Spec ist ausdrücklich
+   als α geschnitten — der Nutzer hat den Zuschnitt „Termine + Hierarchie zuerst"
+   selbst gewählt.
+
+`mvp` trifft nicht, weil dafür eine AC-Matrix für den gelieferten Kern verlangt
+ist; diese Spec führt Befunde und Lieferungen, keine numerierten Kriterien. Das
+ist eine Schwäche der Slice, nicht ein Etikett-Problem — der saubere nächste
+Schritt ist ein `/qa`-Durchgang mit AC-Liste.
 
 ## α — geliefert
 
