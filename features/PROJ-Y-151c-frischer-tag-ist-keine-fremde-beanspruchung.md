@@ -1,7 +1,7 @@
 # PROJ-Y-151c — Ein frischer eigener Tag ist keine fremde Beanspruchung
 
-## Status: Approved
-## Deployment Scope: —
+## Status: Deployed
+## Deployment Scope: tooling-only
 
 Followup zu **PROJ-150** / **PROJ-Y-150a**. Der Branch-Kollisions-Guard wertete
 den Tag der eigenen, gerade abgeschlossenen Slice als „schon deployed — nicht
@@ -109,6 +109,26 @@ liegt. Kein Urteil kippt in die andere Richtung.
 **Rot-Grün ausgeführt:** mit ausgehängter Ausnahme fällt **genau** der neue
 Positivfall; die drei Grenzfälle bleiben grün, weil sie das alte Verhalten
 festhalten. Guard-Tests **34/34**, tsc 13 = Baseline / 0 neu.
+
+## Deployment
+
+**Deployed 2026-08-28: Tag `v2.83.0-PROJ-Y-151c` auf dem Merge-Commit `50fc34f`
+(PR #490, squash → `main`).** Der Merge **ist** die Auslieferung: der Guard ist
+ein lokales Werkzeug plus Hook, ein Routen-Smoke wäre gegenstandslos.
+
+Auf gemergtem `main` unabhängig nachgemessen statt aus dem Bau-Lauf übernommen:
+`PROJ-Y-45p` → exit **1** (blockiert weiter), `PROJ-Y-151b` → exit **0**,
+Guard-Tests **34/34**.
+
+**Der Fix hat sich beim Buchen selbst validiert.** Die Buchführung wurde
+absichtlich in der Reihenfolge gefahren, die vorher scheiterte: **erst taggen,
+dann verzweigen**. `v2.83.0-PROJ-Y-151c` gesetzt, danach
+`proj-y-151c/deploy-closure` angelegt — ohne Verweigerung. Genau dieser Ablauf
+hatte am Vortag zweimal `deny` erzeugt.
+
+Scope **`tooling-only`**, wörtlich nach Definition: drei Dateien unter
+`scripts/check-branch-collision/`, kein `src/`, keine Migration, kein Paket —
+kein Produkt-Laufzeitverhalten berührt.
 
 ## Abweichungen
 
