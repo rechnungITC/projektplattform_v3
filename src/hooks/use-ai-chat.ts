@@ -22,12 +22,15 @@ import {
   type ChatFolder,
   type ChatMessage,
   type SendMessageResult,
+  type ChatCostSummary,
 } from "@/lib/ai-chat/api"
 
 export interface UseAiChat {
   conversations: ChatConversation[]
   folders: ChatFolder[]
   messages: ChatMessage[]
+  /** PROJ-Y-151d — Kosten der offenen Unterhaltung, inkl. der Faelle ohne Zahl. */
+  cost: ChatCostSummary | null
   activeId: string | null
   loading: boolean
   sending: boolean
@@ -46,6 +49,7 @@ export function useAiChat(projectId: string): UseAiChat {
   const [conversations, setConversations] = useState<ChatConversation[]>([])
   const [folders, setFolders] = useState<ChatFolder[]>([])
   const [messages, setMessages] = useState<ChatMessage[]>([])
+  const [cost, setCost] = useState<ChatCostSummary | null>(null)
   const [activeId, setActiveId] = useState<string | null>(null)
   const [loading, setLoading] = useState(true)
   const [sending, setSending] = useState(false)
@@ -105,11 +109,16 @@ export function useAiChat(projectId: string): UseAiChat {
     (id: string | null) => {
       setActiveId(id)
       setMessages([])
+      setCost(null)
       setLastResult(null)
       if (!id) return
       void (async () => {
         try {
-          setMessages(await listMessages(projectId, id))
+          {
+            const r = await listMessages(projectId, id)
+            setMessages(r.messages)
+            setCost(r.cost)
+          }
         } catch (err) {
           setError(err instanceof Error ? err.message : "Unbekannter Fehler")
         }
@@ -124,6 +133,7 @@ export function useAiChat(projectId: string): UseAiChat {
       setConversations((prev) => [created, ...prev])
       setActiveId(created.id)
       setMessages([])
+      setCost(null)
       setLastResult(null)
     },
     [projectId],
@@ -140,7 +150,11 @@ export function useAiChat(projectId: string): UseAiChat {
         // Neu laden statt anzuhängen: bei abgeschalteter Aufbewahrung steht in
         // der Datenbank etwas anderes als hier — angehängt wäre die Anzeige
         // eine Behauptung über den gespeicherten Zustand.
-        setMessages(await listMessages(projectId, activeId))
+        {
+          const r = await listMessages(projectId, activeId)
+          setMessages(r.messages)
+          setCost(r.cost)
+        }
       } catch (err) {
         setError(err instanceof Error ? err.message : "Senden fehlgeschlagen")
       } finally {
@@ -151,7 +165,7 @@ export function useAiChat(projectId: string): UseAiChat {
   )
 
   return {
-    conversations, folders, messages, activeId,
+    conversations, folders, messages, cost, activeId,
     loading, sending, error, unavailable, lastResult,
     refresh, select, start, send,
   }

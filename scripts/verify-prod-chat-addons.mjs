@@ -189,6 +189,86 @@ async function run() {
     row && Number(row.input_per_1m) === 3 && Number(row.output_per_1m) === 15 && row.currency === "EUR",
     JSON.stringify(row ?? null))
 
+  // --- AC-151.22/.23: Kosten wirklich beziffern ---------------------------
+  //
+  // Das ist der Kern von PROJ-Y-151d. Die Rechnung lag als Bibliothek ohne
+  // Aufrufer vor; hier wird geprueft, dass sie im Produkt ankommt — und zwar
+  // als PAAR: MIT Preis eine Zahl, OHNE Preis eine Aussage statt 0 EUR.
+  const provider = await must("openai-Anbieter lesen", admin
+    .from("tenant_ai_providers")
+    .select("encrypted_config, key_fingerprint, last_validation_status")
+    .eq("provider", "openai").neq("tenant_id", T).limit(1).single())
+  await must("Anbieter in die Lane kopieren", admin.from("tenant_ai_providers").upsert({
+    tenant_id: T, provider: "openai",
+    encrypted_config: provider.encrypted_config,
+    key_fingerprint: provider.key_fingerprint,
+    last_validation_status: provider.last_validation_status,
+    created_by: (await admin.auth.admin.listUsers()).data.users.find((u) => u.email === EMAIL).id,
+  }, { onConflict: "tenant_id,provider" }))
+
+  const conv = await call(headers, "POST", `/api/projects/${P}/chat/conversations`,
+    { title: "Kostenprobe" })
+  const convId = conv.json?.conversation?.id
+  const sent = await call(headers, "POST",
+    `/api/projects/${P}/chat/conversations/${convId}/messages`,
+    { content: "Nenne in einem Satz den Projekttyp." })
+  // Lokal ist der Kostenpfad NICHT pruefbar: `SECRETS_ENCRYPTION_KEY` steht nur
+  // in Vercel, der Entwicklungsserver kann also keinen Anbieter entschluesseln
+  // und faellt immer auf den Stub zurueck (ohne Token). Das ausdruecklich als
+  // Umgebungsgrenze melden statt als Fehlschlag — ein Fehlschlag, den man
+  // "lokal halt immer" ignoriert, ist schlimmer als eine benannte Luecke.
+  const echterAnbieter = sent.json?.provider === "openai"
+  const kostenPruefbar = echterAnbieter || !PROD.includes("localhost")
+  if (!kostenPruefbar) {
+    // Ein Flag, KEIN `return`: die erste Fassung sprang aus der Funktion und
+    // nahm die AC-151.9-Pruefungen gleich mit — eine Umgebungsgrenze darf
+    // fremde Zusicherungen nicht stillschweigend mitreissen.
+    log("  UEBERSPRUNGEN  AC-151.22/.23 — lokal kein Anbieter (SECRETS_ENCRYPTION_KEY " +
+      "nur in Vercel); der Kostenpfad ist nur gegen Produktion pruefbar.")
+  }
+  if (kostenPruefbar) {
+  check("Kostenprobe: echte Antwort erzeugt", sent.status === 200 && echterAnbieter,
+    `${sent.status}/${sent.json?.provider}`)
+
+  // Das benutzte Modell NICHT raten — aus dem Lauf lesen.
+  const runs = await must("ki_runs lesen", admin
+    .from("ki_runs").select("provider, model_id, input_tokens, output_tokens")
+    .eq("tenant_id", T).order("created_at", { ascending: false }).limit(1))
+  const run = runs[0]
+  check("Kostenprobe: Lauf traegt Modell und Token",
+    !!run?.model_id && (run?.input_tokens ?? 0) > 0, JSON.stringify(run ?? null))
+
+  // Ohne Preis: AC-151.22 verlangt eine AUSSAGE, keine Null.
+  const ohnePreis = await call(headers, "GET",
+    `/api/projects/${P}/chat/conversations/${convId}/messages`)
+  check("AC-151.22 ohne Preis wird es GESAGT, nicht als 0 behauptet",
+    ohnePreis.json?.cost?.known === false && ohnePreis.json?.cost?.reason === "no_price",
+    JSON.stringify(ohnePreis.json?.cost ?? null))
+
+  // Mit Preis: dieselbe Unterhaltung muss jetzt eine Zahl liefern.
+  await call(headers, "PUT", "/api/chat/model-prices", {
+    provider: run.provider, model: run.model_id,
+    input_per_1m: 1000, output_per_1m: 2000, currency: "EUR",
+  })
+  created.priceKeys.push([run.provider, run.model_id])
+  const mitPreis = await call(headers, "GET",
+    `/api/projects/${P}/chat/conversations/${convId}/messages`)
+  const cost = mitPreis.json?.cost
+  check("AC-151.22 mit Preis wird beziffert",
+    cost?.known === true && cost.amount > 0 && cost.currency === "EUR",
+    JSON.stringify(cost ?? null))
+
+  // Gegenrechnung von Hand: belegt, dass wirklich gerechnet und nicht nur ein
+  // Feld durchgereicht wird — und dass AUSGABE-Token mit dem Ausgabepreis
+  // multipliziert werden (AC-151.23 haengt daran).
+  const erwartet = Math.round(
+    (((run.input_tokens ?? 0) / 1e6) * 1000 + ((run.output_tokens ?? 0) / 1e6) * 2000) * 100,
+  ) / 100
+  check("AC-151.22 die Zahl stimmt mit der Handrechnung ueberein",
+    cost?.amount === erwartet, `API ${cost?.amount} vs. erwartet ${erwartet}`)
+
+  }
+
   // --- AC-151.9: Class-3-Vorpruefung -------------------------------------
   const clean = await call(headers, "POST", `/api/projects/${P}/chat/check-input`,
     { content: "Wie ist der Stand der Migration im Projekt?" })

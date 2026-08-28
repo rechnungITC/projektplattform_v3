@@ -111,10 +111,19 @@ export const createConversation = (
     { method: "POST", body: JSON.stringify({ title, folder_id: folderId ?? null }) },
   ).then((r) => r.conversation)
 
+/**
+ * PROJ-Y-151d — die Kosten kommen mit dem Verlauf, nicht aus einer zweiten
+ * Abfrage: sie beziehen sich auf genau diese Nachrichten, und zwei Aufrufe
+ * koennten auseinanderlaufen.
+ */
+export type ChatCostSummary =
+  | { known: true; amount: number; currency: string; unpriced: number }
+  | { known: false; reason: "no_tokens" | "no_price" | "unavailable" }
+
 export const listMessages = (projectId: string, conversationId: string) =>
-  call<{ messages: ChatMessage[] }>(
+  call<{ messages: ChatMessage[]; cost: ChatCostSummary }>(
     `/api/projects/${projectId}/chat/conversations/${conversationId}/messages`,
-  ).then((r) => r.messages)
+  )
 
 export const sendMessage = (
   projectId: string,
