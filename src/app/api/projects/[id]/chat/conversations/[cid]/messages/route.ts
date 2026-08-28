@@ -24,6 +24,7 @@ import {
 } from "@/app/api/_lib/route-helpers"
 import { collectProjectChatContext } from "@/lib/ai/project-chat-context"
 import { invokeProjectChat } from "@/lib/ai/router"
+import { sumConversationCost, type TokenUsage } from "@/lib/ai/chat-cost"
 import { requireModuleActive } from "@/lib/tenant-settings/server"
 import { loadProjectChatSkills } from "@/lib/ai/project-chat-skills"
 import {
@@ -42,6 +43,15 @@ import {
  * 300 s ist das Maximum des Vercel-Pro-Plans dieses Projekts.
  */
 export const maxDuration = 300
+/**
+ * Was die Flaeche ueber die Kosten wissen muss — inklusive der Faelle, in denen
+ * es KEINE Zahl gibt. AC-151.22 verlangt ausdruecklich, dass ein fehlender Preis
+ * gesagt wird, statt 0 EUR zu behaupten.
+ */
+export type ChatCostSummary =
+  | { known: true; amount: number; currency: string; unpriced: number }
+  | { known: false; reason: "no_tokens" | "no_price" | "unavailable" }
+
 const SendSchema = z.object({
   content: z.string().trim().min(1).max(8000),
 })
@@ -67,12 +77,98 @@ export async function GET(
 
   const { data, error } = await supabase
     .from("ai_chat_messages")
-    .select("id, role, content, token_input, token_output, created_at")
+    .select("id, role, content, token_input, token_output, ki_run_id, created_at")
     .eq("conversation_id", cid)
     .order("created_at", { ascending: true })
 
   if (error) return apiError("internal_error", error.message, 500)
-  return NextResponse.json({ messages: data ?? [] })
+
+  const messages = data ?? []
+  const cost = await summariseCost(supabase, messages)
+
+  // `messages` ohne `ki_run_id` zurueckgeben: die Kennung ist internes
+  // Buchhaltungsdetail, die Flaeche braucht nur die Summe.
+  return NextResponse.json({
+    messages: messages.map(({ ki_run_id: _ignored, ...m }) => m),
+    cost,
+  })
+}
+
+/**
+ * PROJ-Y-151d — AC-151.22/.23 einloesen.
+ *
+ * Die Rechnung lag als reine Bibliothek vor und hatte NULL Aufrufer: geschrieben,
+ * unit-getestet, im Produkt tot (gefunden im QA-Durchgang zur `full`-Aufstufung,
+ * dieselbe Klasse wie der Skill-Fund aus PROJ-Y-151b). Hier bekommt sie ihren
+ * Aufrufer — serverseitig, damit es EINE Wahrheit gibt und die Flaeche nicht
+ * Preise und Token selbst zusammenrechnet.
+ *
+ * Bewusst ZWEI getrennte Abfragen statt einer Einbettung. Genau eine Einbettung
+ * hat den Skill-Kontext monatelang still leerlaufen lassen, weil PostgREST sie
+ * bei mehreren Fremdschluesseln nicht aufloest und der Fehler verschluckt wurde.
+ * Fehler werden hier gemeldet und fuehren zu einer EHRLICHEN Absage, nicht zu
+ * einer stillen Null.
+ */
+async function summariseCost(
+  supabase: Awaited<ReturnType<typeof getAuthenticatedUserId>>["supabase"],
+  messages: { token_input: number | null; token_output: number | null; ki_run_id: string | null }[],
+): Promise<ChatCostSummary> {
+  const runIds = [...new Set(messages.map((m) => m.ki_run_id).filter((v): v is string => !!v))]
+  if (runIds.length === 0) return { known: false, reason: "no_tokens" }
+
+  const [runsRes, pricesRes] = await Promise.all([
+    supabase.from("ki_runs").select("id, provider, model_id").in("id", runIds),
+    supabase.from("ai_model_prices").select("provider, model, input_per_1m, output_per_1m, currency"),
+  ])
+
+  // Ein fehlgeschlagenes Lesen darf nicht als "kostet nichts" durchgehen.
+  if (runsRes.error || pricesRes.error) {
+    console.error(
+      `chat cost summary: ${runsRes.error?.message ?? pricesRes.error?.message}`,
+    )
+    return { known: false, reason: "unavailable" }
+  }
+
+  const runs = new Map(
+    (runsRes.data ?? []).map((r) => [
+      r.id as string,
+      { provider: r.provider as string | null, model: r.model_id as string | null },
+    ]),
+  )
+  const usages: TokenUsage[] = messages
+    .filter((m) => m.ki_run_id)
+    .map((m) => ({
+      provider: runs.get(m.ki_run_id as string)?.provider ?? null,
+      model: runs.get(m.ki_run_id as string)?.model ?? null,
+      token_input: m.token_input,
+      token_output: m.token_output,
+    }))
+
+  const prices = (pricesRes.data ?? []).map((p) => ({
+    provider: p.provider as string,
+    model: p.model as string,
+    input_per_1m: Number(p.input_per_1m),
+    output_per_1m: Number(p.output_per_1m),
+    currency: p.currency as string,
+  }))
+
+  const summed = sumConversationCost(usages, prices)
+  if (summed.currency === null) {
+    // Den Grund nicht verwechseln: "noch keine Token" ist etwas anderes als
+    // "kein Preis hinterlegt". Die erste Fassung meldete pauschal `no_price`
+    // und haette dem Nutzer damit gesagt, es fehle eine Preispflege, wo in
+    // Wahrheit noch gar nichts zu beziffern war — genau die Art unwahrer
+    // Aussage, gegen die AC-151.22 geschrieben ist. Beim lokalen Lauf gegen
+    // den Stub-Anbieter (ohne Token) ist es sofort aufgefallen.
+    const hasTokens = usages.some((u) => u.token_input !== null || u.token_output !== null)
+    return { known: false, reason: hasTokens ? "no_price" : "no_tokens" }
+  }
+  return {
+    known: true,
+    amount: summed.amount,
+    currency: summed.currency,
+    unpriced: summed.unpriced,
+  }
 }
 
 export async function POST(
