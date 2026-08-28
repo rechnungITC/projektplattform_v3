@@ -575,3 +575,18 @@ Deploy, aber sie sind nicht erledigt und hatten bis heute **keine** Followup-Ken
 - **Nicht PROJ-155:** Befund 3 der Nutzer-Meldung („Arbeitspakete werden ohne
   Kontext hinzugefügt") ist **PROJ-Y-154a** — die KI-Übernahme kennt kein
   Phasenfeld, CIA-pflichtige eigene Slice.
+
+## PROJ-153 — Arbeitspakete aus dem Vorhaben (α `/backend` live, In Progress)
+
+- **PROJ-Y-153a — `accept_proposal_from_context_bulk` nur einmal je Transaktion
+  aufrufbar (offen, Bestandsbefund).** PROJ-70s Annahme-Funktion legt ihre
+  Arbeitstabelle mit `on commit drop` an; ein zweiter Aufruf in derselben
+  Transaktion scheitert mit `42P07`. Über HTTP nicht erreichbar (jede Anfrage ist
+  ihre eigene Transaktion), aber die Einschränkung steht nirgends. PROJ-153 hat es
+  für die eigene Funktion behoben und PROJ-70s bewusst **nicht** angefasst — fremde,
+  deployte Slice. Fix ist derselbe Zweizeiler.
+  *Quelle: PROJ-153-α Live-Smoke, Fund 3.*
+- **Nicht zurückgestellt, sondern noch nicht gebaut:** `/frontend` (Einstiegsfläche
+  und Prüfansicht) und `/qa` (Schwellen-Kalibrierung nach AC-153.9, echter
+  Anbieter-Durchlauf, authentifizierter Browser-Durchlauf). α ist über HTTP
+  erreichbar, über die Oberfläche nicht.
