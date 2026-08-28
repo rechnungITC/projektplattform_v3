@@ -7,6 +7,7 @@ import { afterEach, beforeEach, describe, expect, it } from "vitest"
 
 const INSTALLER = resolve(__dirname, "install-git-hooks.mjs")
 const GUARD = resolve(__dirname, "ref-transaction-guard.mjs")
+const CLI = resolve(__dirname, "..", "check-branch-collision")
 
 let repo = ""
 
@@ -25,7 +26,11 @@ beforeEach(() => {
   execFileSync("git", ["init", "--quiet", repo])
   // The installer copies the guard out of the checkout it is invoked from, so mirror that layout.
   execFileSync("mkdir", ["-p", join(repo, "scripts", "hooks")])
+  execFileSync("mkdir", ["-p", join(repo, "scripts", "check-branch-collision")])
   writeFileSync(join(repo, "scripts", "hooks", "ref-transaction-guard.mjs"), readFileSync(GUARD))
+  for (const f of ["index.ts", "analyze.ts"]) {
+    writeFileSync(join(repo, "scripts", "check-branch-collision", f), readFileSync(join(CLI, f)))
+  }
 })
 
 afterEach(() => {
@@ -76,6 +81,35 @@ describe("install-git-hooks", () => {
     expect(failed).toBe(true)
     // And it left the foreign hook alone.
     expect(readFileSync(hookPath(), "utf8")).toContain("somebody else's hook")
+  })
+
+  it("copies the collision CLI next to the hook", () => {
+    // This is what closes D-Y150d.7: with the CLI beside the hook, the decision no longer reaches
+    // into the working tree, so a checkout parked on an older branch cannot silence it.
+    run()
+
+    for (const f of ["index.ts", "analyze.ts"]) {
+      expect(existsSync(join(repo, ".git", "hooks", "collision", f))).toBe(true)
+    }
+  })
+
+  it("copies the CLI verbatim — it must not become a second implementation", () => {
+    // The hook and `npm run check:branch-collision` must never disagree about whether a slice is
+    // claimed. A copy of the one source cannot drift in judgement; a reimplementation would.
+    run()
+
+    for (const f of ["index.ts", "analyze.ts"]) {
+      expect(readFileSync(join(repo, ".git", "hooks", "collision", f), "utf8")).toBe(
+        readFileSync(join(CLI, f), "utf8")
+      )
+    }
+  })
+
+  it("removes the copied CLI on uninstall", () => {
+    run()
+    run(["--uninstall"])
+
+    expect(existsSync(join(repo, ".git", "hooks", "collision"))).toBe(false)
   })
 
   it("reports nothing to remove when no hook is installed", () => {

@@ -27,7 +27,7 @@
  * belongs to something else, and clobbering it could silently disable another tool's safeguard.
  */
 import { execFileSync } from "node:child_process"
-import { chmodSync, existsSync, mkdirSync, readFileSync, rmSync, writeFileSync } from "node:fs"
+import { chmodSync, existsSync, mkdirSync, readdirSync, readFileSync, rmSync, writeFileSync } from "node:fs"
 import { dirname, join, resolve } from "node:path"
 import { fileURLToPath } from "node:url"
 
@@ -68,6 +68,41 @@ function hookContentFrom(sourcePath) {
   return header + guard.replace(/^#!.*\n/, "")
 }
 
+/** Files the CLI needs, copied next to the hook so the decision no longer depends on the branch. */
+const CLI_FILES = ["index.ts", "analyze.ts"]
+
+/**
+ * Copies the collision CLI into `<hooks>/collision/`.
+ *
+ * Deliberately a copy of the ONE source in the repository, not a second implementation: the hook and
+ * `npm run check:branch-collision` must never disagree about whether a slice is claimed, and a
+ * reimplementation would drift. `npx tsx` reads them from here; `node_modules` is gitignored and does
+ * not change with the branch, so it is not part of the dependency being removed.
+ */
+function copyCollisionCli(hooksDirectory) {
+  const from = resolve(join(dirname(fileURLToPath(import.meta.url)), "..", "check-branch-collision"))
+  const to = join(hooksDirectory, "collision")
+  mkdirSync(to, { recursive: true })
+  const written = []
+  for (const f of CLI_FILES) {
+    const src = join(from, f)
+    if (!existsSync(src)) continue
+    writeFileSync(join(to, f), readFileSync(src))
+    written.push(f)
+  }
+  return written
+}
+
+/** Removes the copied CLI. Leaves anything it did not write. */
+function removeCollisionCli(hooksDirectory) {
+  const to = join(hooksDirectory, "collision")
+  for (const f of CLI_FILES) {
+    const p = join(to, f)
+    if (existsSync(p)) rmSync(p)
+  }
+  if (existsSync(to) && readdirSync(to).length === 0) rmSync(to, { recursive: true })
+}
+
 function main(argv) {
   const remove = argv.includes("--uninstall")
   const dir = hooksDir()
@@ -92,7 +127,8 @@ function main(argv) {
       return 0
     }
     rmSync(path)
-    process.stdout.write(`hooks: removed ${path}.\n`)
+    removeCollisionCli(dir)
+    process.stdout.write(`hooks: removed ${path} and the copied collision CLI.\n`)
     return 0
   }
 
@@ -104,9 +140,13 @@ function main(argv) {
   mkdirSync(dir, { recursive: true })
   writeFileSync(path, hookContentFrom(target))
   chmodSync(path, 0o755)
+  const copied = copyCollisionCli(dir)
   process.stdout.write(
     `hooks: installed ${HOOK} at ${path}\n` +
       `       copied from ${target} (a copy, so a branch switch cannot silence it)\n` +
+      `       plus the collision CLI (${copied.join(", ")}) — closes D-Y150d.7: the decision no\n` +
+      "       longer reaches into the working tree, so a checkout on an older branch cannot\n" +
+      "       silence it. Re-run this after changing the guard.\n" +
       "       Covers every worktree of this repo, and git typed by hand.\n" +
       "       Refuses to CREATE a branch whose slice is already claimed; switching, listing,\n" +
       "       deleting, committing, fetching and rebasing are untouched.\n" +
