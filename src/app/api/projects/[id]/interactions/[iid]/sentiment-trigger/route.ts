@@ -29,6 +29,17 @@ import {
   type ApiErrorBody,
 } from "../../../../../_lib/route-helpers"
 
+
+/**
+ * PROJ-152 — Zeitbudget der Funktion.
+ *
+ * Ohne diesen Wert gilt die Next.js-Voreinstellung, und die liegt unter dem
+ * Provider-Budget aus `provider-timeout.ts` (240 s fuer lokale Modelle).
+ * Die Funktion waere dann tot, bevor der Provider aufgibt — der Lauf bliebe
+ * auf `running` stehen und der Nutzer bekaeme nie einen Grund zu sehen.
+ * 300 s ist das Maximum des Vercel-Pro-Plans dieses Projekts.
+ */
+export const maxDuration = 300
 interface Ctx {
   params: Promise<{ id: string; iid: string }>
 }

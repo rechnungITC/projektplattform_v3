@@ -15,7 +15,12 @@
  * provider_order ⊆ {ollama}` are accepted.
  */
 
-import { createOpenAI, openai as defaultOpenAI } from "@ai-sdk/openai"
+import { createOpenAI } from "@ai-sdk/openai"
+
+import {
+  CLOUD_PROVIDER_TIMEOUT_MS,
+  createTimeoutFetch,
+} from "../provider-timeout"
 import type { OpenAIProvider as OpenAISDKProvider } from "@ai-sdk/openai"
 import { generateObject } from "ai"
 import { z } from "zod"
@@ -195,9 +200,14 @@ export class OpenAIProvider implements AIProvider {
 
   constructor(config?: OpenAIProviderConfig) {
     this.modelId = config?.modelId ?? DEFAULT_OPENAI_MODEL
-    this.sdkProvider = config?.apiKey
-      ? createOpenAI({ apiKey: config.apiKey })
-      : defaultOpenAI
+    // PROJ-152: eigenes `fetch` mit Zeitbudget statt des SDK-Default-
+    // Singletons — sonst hinge auch der Env-Key-Pfad unbegrenzt.
+    // Ohne `apiKey` laedt das SDK weiterhin OPENAI_API_KEY aus der
+    // Umgebung, der Fallback bleibt also derselbe.
+    this.sdkProvider = createOpenAI({
+      ...(config?.apiKey ? { apiKey: config.apiKey } : {}),
+      fetch: createTimeoutFetch("openai", CLOUD_PROVIDER_TIMEOUT_MS),
+    })
   }
 
   async generateRiskSuggestions(

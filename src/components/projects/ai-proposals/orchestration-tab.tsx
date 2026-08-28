@@ -78,7 +78,10 @@ type ModuleKey = "backlog" | "stakeholders" | "risks"
 
 type RowStatus =
   | { kind: "idle" }
-  | { kind: "running" }
+  /** PROJ-152: `startedAt` traegt die Fortschrittsanzeige. Ohne sie stand
+   *  hier nur "generiert …" — bei einem lokalen Modell, das gemessen 176 s
+   *  bis 253 s braucht, ist das von "haengt" nicht zu unterscheiden. */
+  | { kind: "running"; startedAt: number }
   | { kind: "done"; count: number }
   | { kind: "blocked"; reason: string }
   | { kind: "error"; reason: string }
@@ -89,9 +92,18 @@ interface ModuleState {
   status: RowStatus
 }
 
-const MODULES: { key: ModuleKey; label: string }[] = [
+const MODULES: { key: ModuleKey; label: string; slowHint?: string }[] = [
   { key: "backlog", label: "Backlog" },
-  { key: "stakeholders", label: "Stakeholder" },
+  {
+    // Stakeholder-Extraktion ist per Invariante #3 Class-3-gepinnt und darf
+    // damit ausschliesslich an ein tenant-eigenes Ollama gehen. Lokale
+    // Modelle antworten in Minuten, nicht Sekunden — das gehoert gesagt,
+    // sonst liest sich die Wartezeit als Defekt.
+    key: "stakeholders",
+    label: "Stakeholder",
+    slowHint:
+      "läuft über Ihr lokales Ollama (Datenschutz) — das kann einige Minuten dauern",
+  },
   { key: "risks", label: "Risiken" },
 ]
 
@@ -230,7 +242,7 @@ export function OrchestrationTab({
       }))
       try {
         for (const { key } of MODULES) {
-          setRow(key, { kind: "running" })
+          setRow(key, { kind: "running", startedAt: Date.now() })
           try {
             const result = await API[key].trigger(projectId, {
               contextSourceId: sourceId,
@@ -446,13 +458,14 @@ export function OrchestrationTab({
 
       {/* Progress / per-module rows */}
       <div className="space-y-1.5">
-        {MODULES.map(({ key, label }) => (
+        {MODULES.map(({ key, label, slowHint }) => (
           <ModuleRow
             key={key}
             label={label}
             state={modules[key]}
             busy={busy}
             onAccept={() => void acceptModules([key])}
+            slowHint={slowHint}
           />
         ))}
       </div>
@@ -487,9 +500,11 @@ interface ModuleRowProps {
   state: ModuleState
   busy: boolean
   onAccept: () => void
+  /** Warum dieses Modul lange brauchen darf (PROJ-152). */
+  slowHint?: string
 }
 
-function ModuleRow({ label, state, busy, onAccept }: ModuleRowProps) {
+function ModuleRow({ label, state, busy, onAccept, slowHint }: ModuleRowProps) {
   const { status, draftIds } = state
   return (
     <div
@@ -499,7 +514,11 @@ function ModuleRow({ label, state, busy, onAccept }: ModuleRowProps) {
       <div className="flex min-w-0 items-center gap-2">
         <StatusIcon status={status} />
         <span className="font-medium">{label}</span>
-        <StatusText status={status} draftCount={draftIds.length} />
+        <StatusText
+          status={status}
+          draftCount={draftIds.length}
+          slowHint={slowHint}
+        />
       </div>
       <Button
         size="sm"
@@ -553,37 +572,41 @@ function StatusIcon({ status }: { status: RowStatus }) {
 function StatusText({
   status,
   draftCount,
+  slowHint,
 }: {
   status: RowStatus
   draftCount: number
+  slowHint?: string
 }) {
   switch (status.kind) {
     case "running":
-      return (
-        <span className="text-xs text-muted-foreground">generiert …</span>
-      )
+      return <RunningText startedAt={status.startedAt} slowHint={slowHint} />
     case "done":
       return (
         <Badge variant="outline" className="text-[10px]">
           {status.count} generiert
         </Badge>
       )
+    // PROJ-152: der Grund stand vorher nur im `title`-Tooltip. Genau er ist
+    // aber die Auskunft, die der Nutzer braucht ("Ollama antwortet nicht" vs.
+    // "Datenklasse blockiert" fuehren zu verschiedenen naechsten Schritten),
+    // und ein Tooltip ist auf Touch-Geraeten gar nicht erreichbar.
     case "blocked":
       return (
         <span
-          className="truncate text-xs text-amber-700 dark:text-amber-300"
+          className="min-w-0 truncate text-xs text-amber-700 dark:text-amber-300"
           title={status.reason}
         >
-          blockiert
+          blockiert — {status.reason}
         </span>
       )
     case "error":
       return (
         <span
-          className="truncate text-xs text-destructive"
+          className="min-w-0 truncate text-xs text-destructive"
           title={status.reason}
         >
-          Fehler
+          Fehler — {status.reason}
         </span>
       )
     default:
@@ -593,4 +616,49 @@ function StatusText({
         </span>
       )
   }
+}
+
+/**
+ * PROJ-152 — laufender Zustand mit vergangener Zeit.
+ *
+ * `Date.now()` steht bewusst **nicht** im Render (das waere eine
+ * `react-hooks/purity`-Verletzung und wuerde bei jedem fremden Re-Render neu
+ * springen), sondern in einem Intervall, das seinen Wert in den Zustand
+ * schreibt. Ab 20 Sekunden kommt der Grund dazu, warum dieses Modul
+ * langsam sein *darf* — ohne ihn liest sich die Wartezeit als Defekt, und
+ * genau diese Verwechslung war der Ausloeser dieser Slice.
+ */
+export function RunningText({
+  startedAt,
+  slowHint,
+}: {
+  startedAt: number
+  slowHint?: string
+}) {
+  const [seconds, setSeconds] = React.useState(() =>
+    Math.max(0, Math.floor((Date.now() - startedAt) / 1000)),
+  )
+
+  React.useEffect(() => {
+    const tick = () =>
+      setSeconds(Math.max(0, Math.floor((Date.now() - startedAt) / 1000)))
+    tick()
+    const handle = window.setInterval(tick, 1000)
+    return () => window.clearInterval(handle)
+  }, [startedAt])
+
+  const elapsed =
+    seconds < 60
+      ? `${seconds} s`
+      : `${Math.floor(seconds / 60)}:${String(seconds % 60).padStart(2, "0")} min`
+
+  return (
+    <span
+      className="min-w-0 truncate text-xs text-muted-foreground"
+      aria-live="polite"
+    >
+      generiert … {elapsed}
+      {slowHint && seconds >= 20 ? ` — ${slowHint}` : ""}
+    </span>
+  )
 }

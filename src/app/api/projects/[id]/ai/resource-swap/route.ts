@@ -32,6 +32,17 @@ import {
   requireProjectAccess,
 } from "../../../../_lib/route-helpers"
 
+
+/**
+ * PROJ-152 — Zeitbudget der Funktion.
+ *
+ * Ohne diesen Wert gilt die Next.js-Voreinstellung, und die liegt unter dem
+ * Provider-Budget aus `provider-timeout.ts` (240 s fuer lokale Modelle).
+ * Die Funktion waere dann tot, bevor der Provider aufgibt — der Lauf bliebe
+ * auf `running` stehen und der Nutzer bekaeme nie einen Grund zu sehen.
+ * 300 s ist das Maximum des Vercel-Pro-Plans dieses Projekts.
+ */
+export const maxDuration = 300
 const SELECT_COLUMNS =
   "id, tenant_id, project_id, ki_run_id, purpose, payload, original_payload, is_modified, status, accepted_entity_type, accepted_entity_id, rejection_reason, created_by, created_at, updated_at, accepted_at, rejected_at"
 
