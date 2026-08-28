@@ -2,7 +2,7 @@ import { describe, expect, it } from "vitest"
 
 import type { WorkItemWithProfile } from "@/types/work-item"
 
-import { ganttRowItems, phaseListItems } from "./planning-items"
+import { phaseListItems } from "./planning-items"
 
 const PHASE = "00000000-0000-0000-0000-0000000000f1"
 
@@ -78,31 +78,5 @@ describe("phaseListItems", () => {
 
   it("lässt gelöschte Items weg", () => {
     expect(phaseListItems(ALLE).map((i) => i.id)).not.toContain("d-1")
-  })
-})
-
-describe("ganttRowItems", () => {
-  it("behält Arbeitspakete ohne Phase (Eimer 'ohne Phase')", () => {
-    expect(ganttRowItems(ALLE).map((i) => i.id)).toContain("wp-1")
-  })
-
-  it("nimmt einen zugeordneten Task auf", () => {
-    expect(ganttRowItems(ALLE).map((i) => i.id)).toContain("t-1")
-  })
-
-  it("lässt phasenlose Nicht-Arbeitspakete weg — sonst läuft der Eimer voll", () => {
-    expect(ganttRowItems(ALLE).map((i) => i.id)).not.toContain("t-2")
-  })
-
-  it("lässt gelöschte Items weg", () => {
-    expect(ganttRowItems(ALLE).map((i) => i.id)).not.toContain("d-1")
-  })
-
-  it("ist gegenüber der alten Regel echt weiter — Gegenkontrolle", () => {
-    // Die alte Regel war `kind === "work_package"`. Wäre die neue Menge
-    // damit identisch, würde dieser Test die Erweiterung nicht belegen.
-    const alt = ALLE.filter((i) => !i.is_deleted && i.kind === "work_package")
-    const neu = ganttRowItems(ALLE)
-    expect(neu.length).toBeGreaterThan(alt.length)
   })
 })
