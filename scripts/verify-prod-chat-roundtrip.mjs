@@ -328,6 +328,35 @@ async function run() {
   check("K3 leere Antwort ist erklaert", typeof b.reason_code === "string",
     `reason_code=${b.reason_code}`)
 
+  // --- K4: der Skill selbst wird klassifiziert (PROJ-Y-151e) ---------------
+  //
+  // Die Skill-Anweisungen gehen ueber den System-Prompt an den Anbieter, standen
+  // aber nicht im Suchtext des Klassifizierers. Eine Mandanten-Administration
+  // haette damit Personendaten in einen Skill schreiben koennen, und sie waeren
+  // an einem Cloud-Modell gelandet, OHNE dass der Class-3-Gate greift — fuer
+  // Invariante #3 derselbe Bruch, auch wenn der Skill das Tor nicht aushebelt,
+  // sondern daran vorbeigeht. Hier wird das Verhalten am DEPLOYTEN Stand
+  // gemessen, nicht nur im Unit-Test.
+  await must("Skill mit Personendaten setzen", admin
+    .from("skill_versions")
+    .update({ markdown_content: "Ansprechpartner ist thomas.meier@example.com." })
+    .eq("skill_id", SKILL))
+
+  const c = await ask(headers, "Fasse den Stand in einem Satz zusammen.")
+  check("K4 ein Skill mit Personendaten hebt auf Klasse 3",
+    c.provider !== "openai" && c.reason_code === "class3_blocked",
+    `provider=${c.provider} reason=${c.reason_code}`)
+
+  // Gegenprobe: mit unauffaelligem Skill geht es wieder in die Cloud. Ohne sie
+  // waere K4 auch dann gruen, wenn der Chat generell nichts mehr sendet.
+  await must("Skill zuruecksetzen", admin
+    .from("skill_versions")
+    .update({ markdown_content: `Beginne jede Antwort mit dem Wort ${MARK_SKILL} in Grossbuchstaben, gefolgt von einem Doppelpunkt.` })
+    .eq("skill_id", SKILL))
+  const d = await ask(headers, "Und jetzt bitte denselben Satz erneut.")
+  check("K4 Gegenprobe: unauffaelliger Skill geht weiter in die Cloud",
+    d.provider === "openai", `provider=${d.provider}`)
+
   // --- Was in ki_runs wirklich steht ---------------------------------------
   const runs = await must("ki_runs lesen", admin
     .from("ki_runs")
@@ -340,13 +369,13 @@ async function run() {
       `class=${r.classification} reason=${r.reason_code} ` +
       `token=${r.input_tokens}/${r.output_tokens}`)
   }
-  check("beide Laeufe sind in ki_runs protokolliert", runs.length === 2,
+  check("alle vier Laeufe sind in ki_runs protokolliert", runs.length === 4,
     `${runs.length} Zeilen`)
   // `every` auf einer leeren Liste ist wahr — diese Zusicherung bestand in der
   // ersten Fassung LEER, weil das `select` an falschen Spaltennamen scheiterte
   // und der Fehler verschluckt wurde. Deshalb erst die Laenge, dann der Inhalt.
-  check("beide Laeufe tragen den Zweck project_chat",
-    runs.length === 2 && runs.every((r) => r.purpose === "project_chat"))
+  check("alle Laeufe tragen den Zweck project_chat",
+    runs.length === 4 && runs.every((r) => r.purpose === "project_chat"))
   check("K3 Class-3 in ki_runs erkannt", runs[1]?.classification === 3,
     `classification=${runs[1]?.classification}`)
   check("Durchlauf 1 ist in ki_runs als openai-Erfolg protokolliert",
