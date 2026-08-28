@@ -603,3 +603,49 @@ migration-naming, index-scope, token-drift je 0.
   echter Anbieter-Durchlauf und ein authentifizierter Browser-Durchlauf.
 - **Bestandsbefund, bewusst nicht angefasst:** `accept_proposal_from_context_bulk`
   (PROJ-70) trägt dasselbe `on commit drop`-Muster → eigener Followup.
+
+## Implementierungsnotizen — α `/frontend` (2026-08-28)
+
+**Zwei Einstiege, ein Drawer.** Neben „KI-Backlog generieren" steht jetzt „Aus Vorhaben
+vorschlagen"; welcher Reiter aufgeht, entscheidet der geklickte Knopf. Der Nutzer soll
+nicht erst herausfinden, welcher Weg seiner ist.
+
+**Abweichung von AC-153.18 (D-153α.1), mit gemessenem Grund.** Das Kriterium sagt, die
+bestehende Prüfansicht werde wiederverwendet und nichts neu gebaut. Der PROJ-70-Reiter
+ist **892 Zeilen** und hängt an Kontextquelle, Auswahlliste, Upload und Drag-and-drop —
+nichts davon hat α. Seine Kartenkomponente nimmt ein `NodeApi` aus `react-arborist` und
+verlangt `dropDisabled`/`onIndent`/`onOutdent`; wiederverwenden hiesse, ein `NodeApi`
+zu fälschen. Wiederverwendet wird stattdessen, was **wirklich** geteilt gehört:
+`WORK_ITEM_KIND_LABELS` als eine Autorität, die shadcn-Primitiven und die Bedienlogik
+(Einzel-/Sammelannahme, 30-Sekunden-Rückgängig) im Verhalten. Eine 900-Zeilen-Kopie mit
+totem Kontextquellen- und DnD-Anteil wäre schlechter gewesen.
+
+**Die Absage bekommt die beste Fläche, nicht die knappste.** 30 von 31 Projekten liegen
+live unter der Schwelle — das ist der Zustand, den fast jeder sieht. Er nennt die
+Zahlen, statt „zu wenig Inhalt" zu sagen. Ebenso wird ein **leeres** Ergebnis erklärt
+(„eine kurze Liste ist ein zulässiges Ergebnis"), statt als leere Fläche zu erscheinen.
+
+**Lock L2 in der Fläche:** das Herkunftsmerkmal steht fest im Markup, weil es aus dem
+**Zweck** folgt. Läse die Fläche es aus der Nutzlast, könnte ein Skill es fälschen —
+PROJ-91 hat live belegt, dass das Modell Antwortfelder unter Prompt-Druck kippt.
+
+**Semantisches Token statt roher Palette-Farbe.** Die Geschwister-Reiter nutzen `amber`,
+aber die stehen im Bestand des Token-Drift-Wächters; eine **neue** Datei mit
+Direktfarben lässt ihn hart fehlschlagen. Gemessen: 85 Dateien unverändert, meine trägt
+keine.
+
+**Rot-Grün, dreimal genau eine:** Absage ohne Zahl → 1 rot · Herkunft aus der Nutzlast
+statt aus dem Zweck → 1 rot · Einrückung entfernt → 1 rot.
+
+**Gates:** vitest **3999/3999** (462 Dateien) · ESLint 0 · tsc 13 = Baseline / 0 neu ·
+Build clean · token-drift 0 · **Visual-Regression 9/9 ohne Neuaufnahme** (der zweite
+Knopf und der achte Reiter bewegen keine Baseline — gemessen, nicht angenommen).
+
+### Offen für α — nur noch `/qa`
+
+- **Kalibrierung der Schwelle** an echten Generierungen (AC-153.9). Die 400 sind ein
+  begründeter Ausgangspunkt, **kein Messergebnis**.
+- **Echter Anbieter-Durchlauf** — der Kernpfad „Vorhaben rein → Vorschläge raus" ist
+  nie gegen ein Modell gelaufen.
+- **Authentifizierter Browser-Durchlauf** der Kette Einstieg → Absage bzw. Vorschläge →
+  Übernahme → Rückgängig.
