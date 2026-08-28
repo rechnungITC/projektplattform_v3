@@ -303,8 +303,21 @@ Before modelling anything new, search for the primitive that already exists — 
 One router, many purposes. `src/lib/ai/` holds the purpose registry (`AIPurpose`, 14 values today),
 the tenant key-resolver (5 provider types), and the Class-3 gate. When adding a purpose:
 
-- Add it to `AIPurpose` **and** to the `ki_runs` / `tenant_ai_cost_caps` purpose CHECKs in the same
-  migration (lockstep — a missing CHECK value 5xx's in prod, as it did for `sentiment`/`coaching`).
+- Add it to `AIPurpose` **and** to **every** purpose register in the same migration. Es sind
+  **vier**, nicht zwei — die ersten beiden waren hier lange allein dokumentiert, die anderen zwei
+  hat der Pflicht-Live-Smoke von PROJ-153-α gefunden:
+  1. `ki_runs_purpose_check` — sonst 5xx in Prod, wie bei `sentiment`/`coaching`.
+  2. `tenant_ai_cost_caps_purpose_check` — derselbe Ausfall über den Kostendeckel.
+  3. `ki_suggestions_purpose_check` — **nur für Zwecke, die Vorschläge schreiben** (10 von 17
+     Zwecken stehen dort; `narrative`, `sentiment`, `coaching`,
+     `clarifying_questions_from_context`, `document_summary` und `project_chat` fehlen zu Recht).
+     Ohne ihn läuft die Generierung durch, ruft das Modell, **bezahlt** — und scheitert erst beim
+     Speichern mit `23514`. Ein 500 **nach** der Rechnung.
+  4. `enforce_ki_suggestion_immutability` — die hartkodierte Zweckliste des kontrollierten
+     Rückgängig-Auswegs. Fehlt der Zweck dort, ist sein 30-Sekunden-Undo **strukturell
+     unmöglich**: die RPC existiert, läuft, und wird vom Trigger abgewiesen. Immer per
+     **Anker-Ersetzung aus der Live-Definition**, nie neu getippt — die Funktion trägt daneben
+     die Spalten-Unveränderlichkeit.
 - Implement it for **every** cloud provider, not just the one you tested. The router silently falls back
   to the empty `stub` provider otherwise, which is indistinguishable from "the AI found nothing"
   (PROJ-85). A data-driven capability-matrix test over `AIPurpose` catches this.
