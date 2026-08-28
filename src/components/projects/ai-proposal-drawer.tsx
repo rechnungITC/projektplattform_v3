@@ -46,6 +46,7 @@ import {
 
 import { CrossProjectLinksTab } from "./ai-proposals/cross-project-links-tab"
 import { BacklogProposalTab } from "./ai-proposals/backlog-proposal-tab"
+import { IntentProposalTab } from "@/components/projects/ai-proposals/intent-proposal-tab"
 import { OrchestrationTab } from "./ai-proposals/orchestration-tab"
 import { ResourceSwapTab } from "./ai-proposals/resource-swap-tab"
 import { RiskProposalTab } from "./ai-proposals/risk-proposal-tab"
@@ -78,6 +79,7 @@ interface AIProposalDrawerProps {
     | "stakeholders"
     | "risks"
     | "fill"
+    | "intent"
   /** When set, auto-triggers generation for this context_source on mount.
    *  PROJ-70-ε routes it to the Backlog tab (`?aiDrawer=backlog`);
    *  PROJ-90 routes it to the conductor (`?aiDrawer=fill`) which fans it
@@ -220,6 +222,7 @@ export function AIProposalDrawer({
             <TabsTrigger value="resources">Ressourcen</TabsTrigger>
             <TabsTrigger value="links">Cross-Project</TabsTrigger>
             <TabsTrigger value="backlog">Backlog</TabsTrigger>
+            <TabsTrigger value="intent">Aus Vorhaben</TabsTrigger>
             <TabsTrigger value="stakeholders">Stakeholder</TabsTrigger>
             <TabsTrigger value="risks">Risiken</TabsTrigger>
           </TabsList>
@@ -324,6 +327,13 @@ export function AIProposalDrawer({
                 defaultTab === "fill" ? null : autoGenerateContextSourceId
               }
             />
+          </TabsContent>
+
+          {/* PROJ-153-α — ohne Kickoff-Datei. Eigener Reiter statt einer
+              Erweiterung des Backlog-Reiters: der hängt an einer Kontextquelle,
+              die dieser Zweck per Konstruktion nicht hat. */}
+          <TabsContent value="intent" className="mt-4">
+            <IntentProposalTab projectId={projectId} />
           </TabsContent>
 
           <TabsContent value="stakeholders" className="mt-4">
