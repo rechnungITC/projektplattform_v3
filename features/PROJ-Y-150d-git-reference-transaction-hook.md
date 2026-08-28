@@ -131,10 +131,32 @@ Branch-Anzeige, Stash, Tags, rev-parse, Worktree-Liste) — zuerst geprüft, wei
 mitlaufen. Sperre greift **aus dem Primär-Checkout, der `ref-transaction-guard.mjs` gar nicht trägt**,
 was belegt, dass die Kopie die Arbeitsbaum-Abhängigkeit beseitigt. Name ohne Slice-Kennung geht durch.
 
-**D-Y150d.7 Restabhängigkeit, unverändert benannt:** die *Entscheidung*, ob eine Slice belegt ist,
-läuft weiter über `scripts/check-branch-collision` aus dem Arbeitsbaum — dort liegt die einzige
-Wahrheit für Slice-Kennungen. Fehlt sie, endet der Hook mit Exit 0. Sie zu lösen hieße, die
-Kennungs-Logik zu duplizieren; nicht einseitig entschieden.
+**D-Y150d.7 — aufgelöst 2026-08-28 (PROJ-Y-150g), und billiger als angekündigt.** Die Restabhängigkeit
+lautete: die *Entscheidung*, ob eine Slice belegt ist, lief über `scripts/check-branch-collision` aus
+dem Arbeitsbaum; fehlte die Datei, endete der Hook mit Exit 0. Als Preis der Auflösung war
+Duplizierung der Kennungs-Logik veranschlagt — der Preis entfällt.
+
+**Der Zuschnitt kam aus einer Messung, nicht aus Abwägung:** `node_modules` ist **gitignored** und
+wechselt daher **nicht** mit dem Branch; nur die verfolgten Skriptdateien tun das. Die Abhängigkeit
+sind also die Dateien, nicht die Laufzeit. Der Installer kopiert deshalb die **eine** Quelle nach
+`<hooks>/collision/`, und der Hook bevorzugt diese Kopie vor dem Arbeitsbaum.
+
+**Damit gibt es weiterhin genau eine Definition im Repo.** Hook und `npm run check:branch-collision`
+können in der Beurteilung nicht auseinanderlaufen; ein Test prüft, dass die Kopie **wörtlich**
+identisch ist. Das ist mehr als Bequemlichkeit: kurz zuvor hat eine fremde Spur mit **PROJ-Y-151c**
+die Tag-Semantik korrigiert (ein *frischer eigener* Tag ist keine fremde Beanspruchung). Weil kopiert
+statt nachgebaut wird, trägt der Hook diese Korrektur automatisch — eine Zweitimplementierung wäre
+beim ersten fremden Fix auseinandergelaufen.
+
+**Nachweis:** im Wegwerf-Klon nach dem **Löschen des gesamten `scripts/`-Verzeichnisses** lehnt der
+Hook die belegte Slice weiter ab, lässt Name-ohne-Kennung und Commit durch. Drei Installer-Tests
+(Kopie vorhanden · wörtlich identisch · Uninstall entfernt sie), Rot-Grün ausgeführt (Kopie entfernt
+→ 2 rot).
+
+**Was bleibt, benannt:** `npx tsx` braucht `node_modules`. Dieses Verzeichnis ist gitignored und
+damit gerade **nicht** branch-abhängig — es ist nicht die Abhängigkeit, um die es ging. Fehlt es
+ganz, endet der Hook wie auf jedem Fehlerpfad mit Exit 0. Und die Kopie friert beim Installieren
+ein: nach einer Änderung am Guard ist erneut zu installieren.
 
 ## Deployment
 

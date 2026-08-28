@@ -79,6 +79,31 @@ export function branchesBeingCreated(entries, refExists) {
   return [...new Set(names)]
 }
 
+/**
+ * Locates the collision CLI, preferring the copy the installer placed next to this hook.
+ *
+ * This is what closes D-Y150d.7. The hook used to reach into the working tree for the decision, so a
+ * checkout parked on a branch that predates the guard silenced it — the same dependency option (c)
+ * was built to escape, surviving one level down. The installer now copies the CLI into `.git/hooks`
+ * alongside this file, and that copy wins.
+ *
+ * Note what is NOT duplicated: the slice-id logic still exists exactly once in the repository. The
+ * installed files are copies of that one source, not a second implementation — so the hook and
+ * `npm run check:branch-collision` cannot drift in their judgement, which a reimplementation would
+ * have risked. Re-run the installer after changing the guard; a stale copy still guards, and the
+ * installer test executes the installed artifact rather than trusting it.
+ *
+ * Residual requirement, named: `npx tsx` still needs `node_modules`. That directory is gitignored
+ * and therefore does NOT change with the branch, which is precisely why it is not the dependency
+ * this fixes. If it is missing entirely, the hook exits 0 like every other failure path.
+ */
+function resolveGuard(root) {
+  const installed = join(dirname(fileURLToPath(import.meta.url)), "collision", "index.ts")
+  if (existsSync(installed)) return installed
+  const inTree = join(root, "scripts", "check-branch-collision", "index.ts")
+  return existsSync(inTree) ? inTree : null
+}
+
 /** Repo root from this file's own location — independent of cwd, of env vars, and of the hook shim. */
 function repoRoot() {
   return resolve(dirname(dirname(dirname(fileURLToPath(import.meta.url)))))
@@ -141,8 +166,8 @@ function main(argv) {
   }
   if (created.length === 0) return 0
 
-  const guard = join(root, "scripts", "check-branch-collision", "index.ts")
-  if (!existsSync(guard)) return 0
+  const guard = resolveGuard(root)
+  if (!guard) return 0
 
   const claims = []
   for (const branch of created) {
