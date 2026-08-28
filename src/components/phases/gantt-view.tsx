@@ -67,6 +67,10 @@ interface GanttViewProps {
   phases: Phase[]
   milestones: Milestone[]
   /** PROJ-25 Stage 5 — work_items with kind='work_package' for the project. */
+  /** Zeilen unterhalb der Phasen. PROJ-154: enthaelt Arbeitspakete UND jedes
+   *  andere Work-Item mit Phasenzuordnung — der Name ist aus PROJ-25 geerbt
+   *  und bewusst nicht umbenannt (1809 Zeilen Diff-Flaeche, Visual-Baselines).
+   *  Was hier ankommt, entscheidet `lib/work-items/planning-items.ts`. */
   workPackages?: WorkItemWithProfile[]
   canEdit: boolean
   onChanged: () => void

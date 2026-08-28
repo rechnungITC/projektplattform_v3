@@ -55,7 +55,8 @@ import { X } from "lucide-react"
 interface PhaseCardProps {
   projectId: string
   phase: Phase
-  /** Work-items already filtered to phase_id === phase.id (passed by PhaseList). */
+  /** Work-items already filtered to phase_id === phase.id (passed by
+   *  PhaseList). PROJ-154: jede Art, nicht nur `work_package`. */
   phaseWorkItems?: WorkItemWithProfile[]
   onChanged: () => void | Promise<void>
   /** Triggered when the user picks "Sortieren" from the actions menu. */
@@ -264,15 +265,18 @@ export function PhaseCard({
           )}
         </section>
 
-        {/* Work packages — live list of WPs assigned to this phase. */}
+        {/* PROJ-154 — alles, was dieser Phase zugeordnet ist, unabhaengig
+            von der Art. Vorher kamen hier nur Arbeitspakete an, wodurch ein
+            zugeordneter Task unsichtbar blieb. Die Art steht als Abzeichen an
+            jeder Zeile, verwechselbar ist also nichts. */}
         <section
-          aria-label="Arbeitspakete in dieser Phase"
+          aria-label="Dieser Phase zugeordnete Elemente"
           className="space-y-2"
         >
           <div className="flex items-center justify-between">
             <h3 className="inline-flex items-center gap-2 text-sm font-medium">
               <ListTree className="h-4 w-4" aria-hidden />
-              Arbeitspakete ({phaseWorkItems.length})
+              Zugeordnete Elemente ({phaseWorkItems.length})
             </h3>
             <Link
               href={backlogHref}
@@ -283,8 +287,8 @@ export function PhaseCard({
           </div>
           {phaseWorkItems.length === 0 ? (
             <p className="rounded-md border bg-muted/30 px-3 py-2 text-xs text-muted-foreground">
-              Keine Arbeitspakete dieser Phase zugeordnet. Im Backlog kannst du
-              Pakete dieser Phase zuweisen.
+              Dieser Phase ist noch nichts zugeordnet. Im Backlog kannst du
+              Arbeitspakete und Aufgaben dieser Phase zuweisen.
             </p>
           ) : (
             <ul className="space-y-1.5">

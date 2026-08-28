@@ -153,6 +153,41 @@ This file is the cross-feature status register referenced by `features/INDEX.md`
 | PROJ-Y-150f | **Erledigt und deployed — Tag `v2.83.0-PROJ-Y-150f`, PR #484 (squash) → main `fd9549f`** (Scope `tooling-only`; Hook aus der gemergten Quelle neu installiert und geprueft) | **F-1 der Shim zeigte in den Arbeitsbaum**, womit Bedingung 1 eine Ebene tiefer zurueck war: auf einem Branch ohne das Skript findet er nichts und endet fail-open, also **lautlos**; aus einem Temp-Worktree installiert waere der Hook nach dem Aufraeumen tot gewesen. Jetzt **Kopie** nach `.git/hooks`. **F-2 der Installer erkannte seinen eigenen Hook nicht** (Marker mit `# `, Ausgabe ohne) — `hooks:uninstall` hielt ihn fuer fremd und verweigerte; das haette eine repo-weit scharfe Sperre **ohne Entfernungsweg** hinterlassen. Beides behoben, fuenf Installer-Tests im Wegwerf-Repository, Rot-Gruen ausgefuehrt. Installation verifiziert: 8/8 gewoehnliche git-Operationen unberuehrt, Sperre greift aus einem Checkout, der das Hook-Skript nicht traegt. |
 | PROJ-Y-150g | **Erledigt 2026-08-28 — D-Y150d.7 aufgeloest, ohne die angekuendigte Duplizierung** | Der Hook entschied „belegt oder nicht" ueber Dateien aus dem **Arbeitsbaum**; ein Checkout auf einem aelteren Branch stellte ihn damit still — dieselbe Abhaengigkeit, der Option (c) entkommen wollte, eine Ebene tiefer. Als Preis war die Duplizierung der Kennungs-Logik veranschlagt. **Eine Messung hat den Zuschnitt geaendert:** `node_modules` ist **gitignored** und wechselt nicht mit dem Branch — die Abhaengigkeit sind die verfolgten Dateien, nicht die Laufzeit. Der Installer kopiert daher die **eine** Quelle nach `<hooks>/collision/`, der Hook bevorzugt sie. **Weiterhin genau eine Definition im Repo**, ein Test prueft die woertliche Gleichheit — was sich sofort auszahlte: die fremde Spur PROJ-Y-151c hatte kurz zuvor die Tag-Semantik korrigiert, und weil kopiert statt nachgebaut wird, traegt der Hook diese Korrektur automatisch. **Nachweis:** im Wegwerf-Klon nach dem Loeschen des gesamten `scripts/`-Verzeichnisses lehnt der Hook die belegte Slice weiter ab; drei Installer-Tests, Rot-Gruen ausgefuehrt. Rest benannt: `npx tsx` braucht `node_modules` (gitignored, also gerade nicht branch-abhaengig), und die Kopie friert beim Installieren ein. |
 
+### PROJ-Y-154a — KI-Accept ordnet Arbeitspakete keiner Phase zu (aus PROJ-154)
+
+**Nicht als Defekt zurückgestellt, sondern als gemessene Entwurfsentscheidung
+weitergegeben.** Beim Nachforschen zu PROJ-154 lag die Vermutung nahe, der
+KI-Accept-Pfad „verliere" die Phasenzuordnung. Die Messung sagt etwas anderes:
+
+- `accept_proposal_from_context_bulk` (Live-Definition in Prod) erwähnt `phase_id`
+  an **keiner** Stelle — auch keine der Migrationsdateien.
+- Das Vorschlagsschema kennt **kein Phasenfeld**: `ProposalFromContextSuggestion`
+  trägt `temp_id`, `parent_temp_id`, `kind`, `title`, `description`, `confidence`,
+  `relevance` — nichts, das auf eine Phase zeigt.
+- Der Kontext, den das Modell sieht, enthält die Projektphasen **gar nicht**:
+  `ProposalFromContextAutoContext` führt `source_project`, `context_source` und
+  `method_hint`, keine Phasenliste.
+- Und es ist ausdrücklich so gewollt: Migration
+  `20260622100000_proj70_fix_waterfall_kind_taxonomy` schreibt wörtlich
+  „**Phases belong to the separate phases table (PROJ-19), not the backlog**" und
+  hat dafür die Wasserfall-Taxonomie von `('phase','work_package','todo')` auf
+  `('work_package','task','bug')` korrigiert.
+
+Ein „Fix" hätte also kein Feld, aus dem er die Phase nehmen könnte. Die Fähigkeit
+wäre neu und dreiteilig: (a) die bestehenden Phasen in den Generierungs-Kontext
+aufnehmen, (b) je Vorschlag eine Phase mitgeben, (c) sie beim Accept auflösen und
+gegen die Projektzugehörigkeit prüfen. Das berührt Prompt, Schema, alle Provider
+(PROJ-85: sonst stiller Stub) und einen deployten `SECURITY DEFINER`-RPC — nach
+`.claude/rules/continuous-improvement.md` **CIA-pflichtig**, also eigene Slice.
+
+**Praktische Folge bis dahin, ehrlich benannt:** nach „Projekt befüllen" ist die
+Phasenplanung leer, egal wie viele Arbeitspakete entstanden sind. Der vorhandene
+Weg ist die manuelle Zuweisung (Backlog → auswählen → „Phase zuweisen", oder der
+Bearbeiten-Dialog). Seit PROJ-154 ist diese Zuweisung wenigstens sichtbar **und**
+im Feld-Audit nachvollziehbar.
+
+*Quelle: PROJ-154, Befund 1.*
+
 ## New Feature Series
 
 The new Skill/DMS/RAG feature specs originally collided with reserved PROJ-71..75 IDs. They are now reconciled as PROJ-76..84.
