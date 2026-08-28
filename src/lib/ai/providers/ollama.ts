@@ -83,6 +83,11 @@ import {
   TrajectorySequenceResponseSchema,
 } from "./graph-purpose-prompts"
 import { runDocumentSummaryLoose } from "./document-summary-runner"
+import { runWorkItemsFromIntentLoose } from "./work-items-from-intent-runner"
+import type {
+  WorkItemsFromIntentGenerationOutput,
+  WorkItemsFromIntentGenerationRequest,
+} from "./types"
 
 // ---------------------------------------------------------------------------
 // Risk-suggestion schema + prompt (identical to AnthropicProvider so that
@@ -654,6 +659,19 @@ export class OllamaProvider implements AIProvider {
       // Endpunkt nicht die ganze Anfrage verschluckt.
       fetch: createTimeoutFetch("ollama", LOCAL_PROVIDER_TIMEOUT_MS),
     })
+  }
+
+  /**
+   * PROJ-153-alpha — Arbeitspakete aus dem Vorhaben (AC-153H.2).
+   *
+   * Lockeres Schema mit nachgelagerter Kappung: lokale Modelle verfehlen das
+   * strikte Schema oft knapp, und generateObject verwirft dann die GANZE
+   * Antwort (gemessen in PROJ-88/89). Die Deckel gelten unveraendert.
+   */
+  async generateWorkItemsFromIntent(
+    request: WorkItemsFromIntentGenerationRequest,
+  ): Promise<WorkItemsFromIntentGenerationOutput> {
+    return runWorkItemsFromIntentLoose(this.sdkProvider(this.modelId), request)
   }
 
   async generateRiskSuggestions(

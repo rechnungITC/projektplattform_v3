@@ -87,3 +87,18 @@ export async function loadProjectChatSkills(
     }))
     .filter((s) => s.instructions.trim().length > 0)
 }
+
+/**
+ * PROJ-153-α — neutraler Name für denselben Lader.
+ *
+ * Der Lader ist nicht chat-spezifisch: er liest die aktiven Skills eines
+ * Projekts. PROJ-153 braucht genau das. Eine zweite Fassung zu schreiben wäre
+ * die schlechteste Option — dieser Code trägt die Lehre aus PROJ-Y-151b (die
+ * mehrdeutige PostgREST-Einbettung, die den Chat für JEDES Projekt still ohne
+ * Skill-Kontext laufen liess), und eine Kopie würde davon abdriften.
+ *
+ * Nur ein Alias, kein neues Verhalten. Der ursprüngliche Name bleibt, damit
+ * PROJ-151s Aufrufstelle unberührt ist.
+ */
+export const loadActiveProjectSkills = loadProjectChatSkills
+export type ActiveProjectSkill = ProjectChatSkill

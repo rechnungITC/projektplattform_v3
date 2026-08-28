@@ -73,6 +73,11 @@ import {
   TrajectorySequenceResponseSchema,
 } from "./graph-purpose-prompts"
 import { runDocumentSummaryStrict } from "./document-summary-runner"
+import { runWorkItemsFromIntent } from "./work-items-from-intent-runner"
+import type {
+  WorkItemsFromIntentGenerationOutput,
+  WorkItemsFromIntentGenerationRequest,
+} from "./types"
 
 const DEFAULT_GOOGLE_MODEL = "gemini-2.0-flash-exp"
 
@@ -190,6 +195,15 @@ export class GoogleProvider implements AIProvider {
       ...(config?.apiKey ? { apiKey: config.apiKey } : {}),
       fetch: createTimeoutFetch("google", CLOUD_PROVIDER_TIMEOUT_MS),
     })
+  }
+
+  /**
+   * PROJ-153-alpha — Arbeitspakete aus dem Vorhaben (AC-153H.2).
+   */
+  async generateWorkItemsFromIntent(
+    request: WorkItemsFromIntentGenerationRequest,
+  ): Promise<WorkItemsFromIntentGenerationOutput> {
+    return runWorkItemsFromIntent(this.sdkProvider(this.modelId), request)
   }
 
   async generateRiskSuggestions(

@@ -52,6 +52,15 @@ import { OllamaProvider } from "./providers/ollama"
 import { OpenAIProvider } from "./providers/openai"
 import { StubProvider } from "./providers/stub"
 import { describeProviderFallback } from "./provider-timeout"
+import { classifyWorkItemsFromIntentAutoContext } from "./classify-work-items-from-intent"
+import type { WorkItemsFromIntentAutoContext } from "./classify-work-items-from-intent"
+import type { WorkItemsFromIntentGenerationOutput } from "./providers/types"
+import {
+  INTENT_MIN_ANSWERED_QUESTIONS,
+  INTENT_MIN_HUMAN_CHARS,
+  assessIntentSubstance,
+  describeSubstanceRejection,
+} from "./intent-substance"
 import type { AIProvider } from "./providers/types"
 import type {
   AiRunReasonCode,
@@ -78,6 +87,7 @@ import type {
   DocumentSummaryStructured,
   RouterCoachingResult,
   RouterCrossProjectLinksResult,
+  RouterWorkItemsFromIntentResult,
   RouterNarrativeResult,
   RouterProposalFromContextResult,
   RouterRiskProposalsResult,
@@ -2507,5 +2517,203 @@ export async function invokeProjectChat({
     external_blocked: externalBlocked,
     error_message: providerError ?? blockedReason ?? undefined,
     reason_code: finalReasonCode,
+  }
+}
+
+// ---------------------------------------------------------------------------
+// PROJ-153-α — Arbeitspakete aus dem Vorhaben (ohne Kickoff-Datei)
+// ---------------------------------------------------------------------------
+
+interface InvokeWorkItemsFromIntentGenerationArgs {
+  supabase: SupabaseClient
+  tenantId: string
+  projectId: string
+  actorUserId: string
+  context: WorkItemsFromIntentAutoContext
+  count: number
+}
+
+/**
+ * Erzeugt Arbeitspaket-Vorschläge aus dem Vorhaben.
+ *
+ * **Reihenfolge ist hier Sicherheit, nicht Geschmack:**
+ *   1. Substanz-Tor — VOR allem anderen. Reicht der menschlich geschriebene
+ *      Text nicht, wird gar nichts gerufen, kein Lauf angelegt und nichts
+ *      bezahlt. Aus einem Satz kann das Modell nur erfinden (PROJ-91, live
+ *      gemessen 8/8), und ein Lauf, den es nicht geben sollte, ist der
+ *      teuerste.
+ *   2. Klassifizierung über **alles, was der Anbieter sieht** — inklusive der
+ *      Skill-Anweisungen (CIA-Auflage A-1). Was in den Prompt geht, muss durch
+ *      die Klassifizierung.
+ *   3. Anbieterwahl und Kostendeckel wie bei jedem Zweck. Ein Skill kann hier
+ *      nicht eingreifen: er ist zu diesem Zeitpunkt Nutzlast, nicht Steuerung
+ *      (AC-153H.4 (b)).
+ */
+export async function invokeWorkItemsFromIntentGeneration({
+  supabase,
+  tenantId,
+  projectId,
+  actorUserId,
+  context,
+  count,
+}: InvokeWorkItemsFromIntentGenerationArgs): Promise<RouterWorkItemsFromIntentResult> {
+  // (1) Substanz-Tor — vor Klassifizierung, Anbieterwahl und Laufprotokoll.
+  const verdict = assessIntentSubstance(
+    context.project.description,
+    context.answers,
+  )
+  if (!verdict.ok) {
+    return {
+      run_id: null,
+      classification: 1,
+      provider: null,
+      model_id: null,
+      status: "substance_rejected",
+      suggestion_ids: [],
+      external_blocked: false,
+      reason_code: null,
+      substance: {
+        human_chars: verdict.humanChars,
+        answered_count: verdict.answeredCount,
+        required_chars: INTENT_MIN_HUMAN_CHARS,
+        required_answers: INTENT_MIN_ANSWERED_QUESTIONS,
+        message: describeSubstanceRejection(verdict),
+      },
+    }
+  }
+
+  const overrides = await loadTenantOverrides(supabase, tenantId)
+
+  // (2) Klassifizierung über Vorhaben + Antworten + SKILL-Anweisungen.
+  const classification = classifyWorkItemsFromIntentAutoContext(
+    context,
+    overrides.privacyDefault as DataClass,
+  )
+
+  // (3) Anbieterwahl + Kostendeckel.
+  const choice = await selectProviderForPurpose(
+    supabase,
+    tenantId,
+    "work_items_from_project_intent",
+    classification,
+    overrides.providerConfig,
+  )
+  const { provider, externalBlocked, blockedReason, blockedReasonCode } =
+    await applyCostCap(
+      supabase,
+      tenantId,
+      choice,
+      "work_items_from_project_intent",
+    )
+
+  const runId = await insertKiRun(supabase, {
+    tenantId,
+    projectId,
+    actorUserId,
+    purpose: "work_items_from_project_intent",
+    classification,
+    provider,
+  })
+
+  let activeProvider: AIProvider = provider
+  let suggestions: WorkItemsFromIntentGenerationOutput["suggestions"] = []
+  let inputTokens: number | null = null
+  let outputTokens: number | null = null
+  let latencyMs: number | null = null
+  let providerError: string | null = null
+  let providerFallbackMessage: string | null = null
+
+  try {
+    if (!provider.generateWorkItemsFromIntent) {
+      throw new Error(
+        `Provider ${provider.name} does not implement generateWorkItemsFromIntent`,
+      )
+    }
+    const result = await provider.generateWorkItemsFromIntent({
+      project: context.project,
+      answers: context.answers,
+      skill_instructions: context.skill_instructions,
+      count,
+    })
+    suggestions = result.suggestions
+    inputTokens = result.usage.input_tokens
+    outputTokens = result.usage.output_tokens
+    latencyMs = result.usage.latency_ms
+  } catch (err) {
+    providerError = err instanceof Error ? err.message : String(err)
+    if (provider.name !== "stub") {
+      const fallbackProvider = new StubProvider()
+      const fallback = await fallbackProvider.generateWorkItemsFromIntent!({
+        project: context.project,
+        answers: context.answers,
+        skill_instructions: context.skill_instructions,
+        count,
+      })
+      providerFallbackMessage = describeProviderFallback(provider.name, err)
+      activeProvider = fallbackProvider
+      suggestions = fallback.suggestions
+      inputTokens = fallback.usage.input_tokens
+      outputTokens = fallback.usage.output_tokens
+      latencyMs = fallback.usage.latency_ms
+      providerError = null
+    }
+  }
+
+  const suggestionIds: string[] = []
+  if (suggestions.length > 0) {
+    const { data, error } = await supabase
+      .from("ki_suggestions")
+      .insert(
+        suggestions.map((sugg) => ({
+          tenant_id: tenantId,
+          project_id: projectId,
+          ki_run_id: runId,
+          purpose: "work_items_from_project_intent",
+          payload: sugg,
+          original_payload: sugg,
+          status: "draft",
+          created_by: actorUserId,
+        })),
+      )
+      .select("id")
+    if (error) throw new Error(`ki_suggestions insert failed: ${error.message}`)
+    for (const row of data ?? []) suggestionIds.push((row as { id: string }).id)
+  }
+
+  const finalStatus =
+    providerError != null
+      ? "error"
+      : externalBlocked || providerFallbackMessage != null
+        ? "external_blocked"
+        : "success"
+
+  const reasonCode = deriveReasonCode({
+    finalStatus,
+    blockedReasonCode,
+    providerError,
+    providerFallbackMessage,
+  })
+
+  await updateKiRunStatus(supabase, runId, {
+    status: finalStatus,
+    inputTokens,
+    outputTokens,
+    latencyMs,
+    errorMessage: providerError ?? providerFallbackMessage ?? blockedReason ?? null,
+    provider: activeProvider,
+    reasonCode,
+  })
+
+  return {
+    run_id: runId,
+    classification,
+    provider: activeProvider.name,
+    model_id: activeProvider.modelId,
+    status: finalStatus,
+    suggestion_ids: suggestionIds,
+    external_blocked: externalBlocked || providerFallbackMessage != null,
+    error_message:
+      providerError ?? providerFallbackMessage ?? blockedReason ?? undefined,
+    reason_code: reasonCode,
   }
 }
