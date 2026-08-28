@@ -42,6 +42,7 @@ import { useAuth } from "@/hooks/use-auth"
 import { toast } from "sonner"
 
 import { CostCapSection } from "./cost-cap-section"
+import { ModelPricesSection } from "./model-prices-section"
 import { PriorityMatrixSection } from "./priority-matrix-section"
 
 type ProviderName = "anthropic" | "ollama" | "openai" | "google" | "azure"
@@ -248,6 +249,7 @@ export function AiProvidersPageClient() {
       />
 
       <CostCapSection tenantId={tenantId!} />
+      <ModelPricesSection />
     </div>
   )
 }

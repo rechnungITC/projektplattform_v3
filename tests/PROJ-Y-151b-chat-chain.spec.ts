@@ -45,6 +45,7 @@ test.describe("PROJ-Y-151b — KI-Chat, authentifizierte Kette", () => {
     await db.from("ai_chat_messages").delete().eq("tenant_id", E2E_CHAT_TENANT_ID)
     await db.from("ai_chat_conversations").delete().eq("tenant_id", E2E_CHAT_TENANT_ID)
     await db.from("ki_runs").delete().eq("tenant_id", E2E_CHAT_TENANT_ID)
+    await db.from("ai_model_prices").delete().eq("tenant_id", E2E_CHAT_TENANT_ID)
   })
 
   test("Reiter erreichbar, Vertraulichkeit ausgesprochen", async ({
@@ -114,6 +115,47 @@ test.describe("PROJ-Y-151b — KI-Chat, authentifizierte Kette", () => {
     expect(convError, convError?.message).toBeNull()
     expect(conv!.project_id).toBe(E2E_CHAT_PROJECT_ID)
     expect(conv!.user_id).toBe(E2E_USER_ID)
+  })
+
+  // PROJ-Y-151d — die Pflegefläche für die Modellpreise.
+  //
+  // Sie fehlte, und das war mehr als Komfort: ohne sie kam kein Preis ins
+  // System, womit die gesamte Kostenfunktion im Produkt unerreichbar war,
+  // obwohl AC-151.21 („pflegbar") wörtlich erfüllt schien. Dieser Fall ist
+  // ausdrücklich ein BROWSER-Durchlauf — ein Route-Test hätte genau die
+  // Lücke wieder offengelassen, die der QA-Durchgang gefunden hat.
+  test("Modellpreise sind in der Oberfläche pflegbar", async ({
+    chatTenantPage: page,
+  }) => {
+    await page.goto("/settings/tenant/ai-providers")
+    // Auf die Karte einschraenken: die Ollama-Karte derselben Seite hat
+    // ebenfalls ein Feld "Modell", `getByLabel` allein ist mehrdeutig.
+    const karte = page.getByTestId("model-prices")
+    await expect(karte).toBeVisible({ timeout: 30_000 })
+
+    const marke = `e2e-${Math.random().toString(36).slice(2, 7)}`
+    await karte.getByLabel("Anbieter").fill("openai")
+    await karte.getByLabel("Modell").fill(marke)
+    await karte.getByLabel("Eingabe / 1 Mio.").fill("3")
+    await karte.getByLabel("Ausgabe / 1 Mio.").fill("15")
+    await karte.getByRole("button", { name: "Preis speichern" }).click()
+
+    // In der Tabelle sichtbar …
+    await expect(karte.getByText(marke)).toBeVisible({ timeout: 30_000 })
+
+    // … und wirklich gespeichert. Der Bildschirm allein belegt keine
+    // Persistenz — die Zeile könnte rein clientseitig angehängt sein.
+    const db = admin()
+    test.skip(!db, "SUPABASE_SERVICE_ROLE_KEY fehlt")
+    const { data, error } = await db!
+      .from("ai_model_prices")
+      .select("provider, model, input_per_1m, output_per_1m, currency, tenant_id")
+      .eq("model", marke)
+    expect(error, error?.message).toBeNull()
+    expect(data?.length ?? 0).toBe(1)
+    expect(Number(data![0].input_per_1m)).toBe(3)
+    expect(Number(data![0].output_per_1m)).toBe(15)
+    expect(data![0].tenant_id).toBe(E2E_CHAT_TENANT_ID)
   })
 
   test("Class-3-Hinweis warnt, sperrt aber nicht (L3)", async ({
