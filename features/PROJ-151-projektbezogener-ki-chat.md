@@ -673,6 +673,78 @@ und Buchführung nach dem Taggen ist der reguläre Ablauf. Nach Rückfrage bewus
 dem bereits bestehenden Slice-Branch statt über einen ausweichenden Namen — den Guard durch
 Umbenennen auszuhebeln wäre genau die Aushöhlung, gegen die er gebaut wurde. → **PROJ-Y-151c**.
 
+## QA-Nachtrag 2026-08-28 — Prüfung der `full`-Aufstufung: **abgelehnt**
+
+Nach **PROJ-Y-151b** waren beide Gründe entfallen, die diese Zeile auf `mvp`
+hielten (echter Anbieter-Durchlauf und authentifizierte Kette liegen vor). Die
+Hausregel verlangt für `alpha → mvp → full` einen **eigenen QA-Durchgang**, kein
+Umschreiben des Etiketts. Der Durchgang hat die Aufstufung **verhindert**.
+
+### Der Anlass, genauer hinzusehen
+
+PROJ-Y-151b hat vorgeführt, dass **AC-151.14/.17** als „erfüllt und belegt"
+geführt wurden und in Produktion **tot** waren: ein verschluckter
+PostgREST-Fehler leerte die Skill-Liste, der Chat lief für **jedes** Projekt
+ohne Skill-Kontext. Danach ist „Route existiert, Unit-Test grün" kein Nachweis
+mehr. Also wurde die Testdeckung erhoben statt vorausgesetzt — mit einem
+Befund: **fünf der sieben Chat-Routen haben gar keine Route-Tests**, und zwar
+ausgerechnet die vom Eigner gewählten Zusätze (Vorlagen, Favoriten, Ordner,
+Modellpreise) plus `messages` und `check-input`.
+
+### Was live nachgewiesen wurde — `scripts/verify-prod-chat-addons.mjs`, 17/17
+
+Gegen die **deployte** Produktion, Wegwerf-Lane, 0 Rückstände über 8 Tabellen:
+
+* **AC-151.18** Vorlagen anlegen und im Chat auswählbar — bestätigt.
+* **AC-151.19** Favoriten stehen oben — und zwar **gegen die Alphabetik**
+  geprüft: die beiden Titel sind so gewählt (`Abnahme-Checkliste` /
+  `Zulieferer-Risiken`), dass die Favoritenregel der alphabetischen Reihenfolge
+  widerspricht. Ohne diesen Kniff hätte der Test auch bei einer rein
+  alphabetischen Sortierung bestanden. Entfernen kehrt die Reihenfolge zurück.
+* **AC-151.20** Ordner anlegen, Zuordnung überlebt das Neuladen, ohne Ordner
+  bleibt `folder_id` null — bestätigt.
+* **AC-151.21** Modellpreis pflegbar und zurücklesbar — bestätigt.
+* **AC-151.9** Vorprüfung: gewöhnlicher Projekttext löst **keinen** Alarm, eine
+  E-Mail schon — beide Richtungen bestätigt.
+
+### Der Fund, der die Aufstufung verhindert
+
+**AC-151.22 ist unerfüllt.** Der Wortlaut verlangt, dass bei hinterlegtem Preis
+„die Kosten einer Unterhaltung **beziffert**" werden und ohne Preis das
+**gesagt** wird. Es wird nirgends etwas beziffert und nirgends etwas gesagt:
+
+* `src/lib/ai/chat-cost.ts` hat **null Konsumenten** — die Rechnung ist
+  geschrieben und unit-getestet, aber niemand ruft sie auf.
+* Die Chat-Fläche und ihr Hook enthalten **null** Treffer auf
+  Kosten/Preis/Währung.
+* Der Client-Wrapper `listModelPrices` hat **null** Aufrufer, und **keine**
+  Route gibt Kosten zurück.
+
+Dreifach unabhängig gemessen. Dieselbe Klasse wie der Skill-Fund aus
+PROJ-Y-151b: geschrieben, unit-getestet, im Produkt tot.
+
+**AC-151.23** („Denk-Token zählen als Ausgabe") ist in der Bibliothek korrekt
+umgesetzt, wirkt im Produkt aber **nicht**, weil die Bibliothek nie läuft. Es
+hängt an .22 und wird mit ihm erledigt.
+
+**AC-151.21 mit einer Einschränkung:** „pflegbar" ist wörtlich erfüllt (Route
+und Persistenz live belegt), aber es existiert **keine** Bedienfläche — anders
+als bei AC-151.18, das „(Administration)" ausdrücklich nennt. Eine Preistabelle,
+die im Produkt niemand pflegen kann, ist von geringem Wert; das gehört in
+denselben Followup.
+
+### Folge
+
+Die Zeile bleibt **`mvp`** — jetzt aus einem anderen und besser belegten Grund
+als beim Deploy: **eine ursprüngliche Anforderung ist unerfüllt**, mit Ziel-ID
+**PROJ-Y-151d**. Die Ausnahme „Waived criterion" scheitert an ihrer ersten
+Bedingung („nothing was deferred").
+
+**Korrektur einer eigenen Angabe:** der Deploy-Abschnitt sagte „alle **28**
+Akzeptanzkriterien sind erfüllt und belegt". Das war falsch — es sind 26; .22
+ist unerfüllt und .23 wirkungslos. Der Satz stand da, weil die Kriterien gegen
+den *Code* abgeglichen wurden und nicht gegen das *Verhalten*.
+
 ### Warum Scope `mvp` und nicht `full`
 
 **Für `full` spräche:** alle **28** Akzeptanzkriterien sind erfüllt und belegt — auch AC-151.10,
