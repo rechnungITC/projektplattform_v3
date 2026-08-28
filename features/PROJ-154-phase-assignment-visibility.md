@@ -96,7 +96,9 @@ vollständig.
   `neu="6680a512-…"`; **Gegenprobe** `attributes` (nicht in der Whitelist) erzeugt
   **0** Zeilen. Ohne die zweite Hälfte belegte die erste nur, dass irgendein
   Trigger schreibt — nicht, dass die Whitelist ihn steuert.
-- Gates: ESLint 0 · tsc 13 = Baseline / 0 neu · migration-naming 0 · index-scope 0.
+- Gates, nach dem Rebase auf `main` neu gemessen: vitest **3933/3933** (456 Dateien;
+  vor dem Rebase 3925/3925 in 455 — PROJ-Y-151d brachte 8 Tests mit) · ESLint 0 ·
+  tsc 13 = Baseline / 0 neu · Build clean · migration-naming 0 · index-scope 0.
 
 ## Abweichungen
 
