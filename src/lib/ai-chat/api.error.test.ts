@@ -40,8 +40,16 @@ describe("ChatApiError aus dem Haus-Fehlerformat", () => {
 
   it("gibt niemals '[object Object]' aus", async () => {
     respond(404, { error: { code: "not_found", message: "Nicht gefunden." } })
-    const err = await listFolders("p1").catch((e) => e as ChatApiError)
-    expect(err.message).not.toContain("[object Object]")
+    // `.catch()` weitet den Typ auf "Erfolg ODER Fehler" — deshalb erst
+    // sicherstellen, dass wirklich geworfen wurde, statt den Typ wegzucasten.
+    await expect(listFolders("p1")).rejects.toBeInstanceOf(ChatApiError)
+    const err = await listFolders("p1").then(
+      () => null,
+      (e: unknown) => e as ChatApiError,
+    )
+    expect(err).not.toBeNull()
+    expect(err!.message).not.toContain("[object Object]")
+    expect(err!.message).toBe("Nicht gefunden.")
   })
 
   it("vertraegt weiterhin eine flache Zeichenkette", async () => {
