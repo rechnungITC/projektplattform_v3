@@ -444,3 +444,19 @@ Deploy, aber sie sind nicht erledigt und hatten bis heute **keine** Followup-Ken
 | PROJ-130 + PROJ-144 | **Resolved 2026-08-12 durch PROJ-145.** Beide sind gebucht: PROJ-130 `Deployed`/**`mvp`** (AC-5 per PO-Lock umgekehrt statt erfüllt, kein Legal-Hold, Restabdeckung → PROJ-Y-130d — alle Omissionen benannt), PROJ-144 `Deployed`/**`full`** (kein offenes AC, Nachweise treffen die von der Regel gelisteten Arten). Das Wartezimmer ist damit leer; die verbleibende Altlast sind die 139 unklassifizierten Bestandszeilen → PROJ-Y-145b. Ursprüngliche Aufnahme des Konflikts zum Nachlesen: **Zähle als offen, aber nicht als unfertige Arbeit.** Beide Features sind fertig, live in Prod und getaggt (`v2.51.0-PROJ-Y-130m` bzw. `v2.52.0-PROJ-144`), stehen aber auf `Approved`, weil `features/INDEX.md` die `Deployment Scope`-Spalte noch nicht führt. Die Regel (`CLAUDE.md`, `.claude/rules/general.md`, Commit `a212171`) verlangt in diesem Fall ausdrücklich, das Bookkeeping abzubrechen statt Scopes zu erfinden. **Auflösung = eine eigene Portfolio-Migrations-Slice** (noch ohne ID; nächste freie wäre PROJ-145): Spalte einführen und die **141** als `Deployed` geführten Altzeilen evidenzbasiert klassifizieren (`full`/`mvp`/`alpha`/`tooling-only`) — kein Rückschluss aus dem alten Label, das ist echte Prüfarbeit pro Zeile. Bis dahin wächst dieses Wartezimmer mit jedem weiteren fertigen Feature; das ist der eigentliche Preis und der Grund, die Migration nicht beliebig zu verschieben. Für beide Zeilen ist der Scope aus den Nachweisen bereits belegbar (`full`). |
 | PROJ-144 / AC-144.23 | Do not count as open: die einzige bewusste Verengung einer Original-Anforderung ist D-144.1 — AC-144.23 verlangt ein Modul-Gate „Backlog", aber `ModuleKey` hat keinen Backlog-Schalter, weil Backlog Kern ist. Gegatet wird über das Assistant-Modul; die Hälfte, die überhaupt existiert, ist erfüllt. Keine Folge-Slice nötig, solange Backlog kein abschaltbares Modul wird. |
 | PROJ-Y-1 / PROJ-Y-2 / PROJ-Y-3 | **Mehrfach belegte Kennungen, gemessen 2026-08-20 in Tranche 3.** `PROJ-Y-1` bezeichnet vier verschiedene Followups (Register / PROJ-98 / PROJ-114 / PROJ-116), `PROJ-Y-2` ebenfalls vier, `PROJ-Y-3` drei. Ein „PROJ-Y-2 ist erledigt" aus dem Register bedeutet **nicht**, dass die gleichnamigen Followups in 98, 114 und 116 erledigt sind. Für PROJ-98 sind eindeutige IDs vergeben (98a–98d); die Umbenennung in 114 und 116 ist **PROJ-Y-145h**. Bis dahin: Followup-Kennungen dieser Familie **immer mit Elternfeature lesen**. |
+
+## PROJ-152 — Zeitbudget für KI-Anbieter (Deployed, Scope `mvp`)
+
+- **PROJ-Y-152b — Live-Verifikation gegen Produktion (offen).**
+  Alle 9 Akzeptanzkriterien sind erfüllt und **nichts ist zurückgestellt**; für `full` fehlt
+  allein die Bedingung „production behavior is verified". Verifiziert ist die
+  Datenbank-Hälfte (4/4 gegen Prod, zurückgerollt) — **der Timeout hat in Produktion noch nie
+  ausgelöst**, und die Fortschrittsanzeige hat niemand im Browser gesehen. Aufstufung auf
+  `full` verlangt einen Lauf gegen die Produktion, der zeigt: Stakeholder bricht mit benanntem
+  Grund ab, Backlog und Risiken laufen danach weiter.
+  *Quelle: PROJ-152 D-152.1 / D-152.2.*
+- **Keine ausgelassene Anforderung.** Die zwei Phantom-`success`-Zeilen vom 2026-08-27 bleiben
+  bewusst unangetastet (Kundendaten — ein nachträglich korrigiertes Laufprotokoll wäre
+  schlechter als ein dokumentiertes Artefakt).
+- **Nicht Gegenstand dieser Slice:** die Ollama-Konfiguration des Kundenmandanten
+  (`gemma4:latest` existiert bei Ollama nicht). Konfiguration, nicht Code.

@@ -1,7 +1,7 @@
 # PROJ-152 — Zeitbudget für KI-Anbieter + ehrliches Laufprotokoll
 
-## Status: In Progress
-## Deployment Scope: —
+## Status: Deployed
+## Deployment Scope: mvp
 
 ## Auslöser
 
@@ -168,3 +168,45 @@ migration-naming 0 Fehler · index-scope 0 Fehler · token-drift 0 Fehler.
   dort existiert, ist eine Konfigurationsfrage außerhalb dieser Slice.
 - **PROJ-Y-152a** — Arbeitspakete aus dem Vorhaben + Projekt-Skills **ohne** Kickoff-Datei
   (der zweite Teil der Nutzer-Meldung). Eigener AI-Zweck, siehe Registereintrag.
+
+## Deployment
+
+**Deployed 2026-08-28: PR #485 (squash) → main `79ef11d`, Tag `v2.82.0-PROJ-152`.**
+Migration `20260827140000` lag seit dem Bau in Prod; der Merge liefert den Code (echter
+`src/`-Diff → Laufzeitverhalten). Vercel-Produktions-Deployment aus **genau diesem SHA**,
+`target: production`. Alle **9** Pflicht-Checks grün — darunter der **Schema-Drift-Wächter**,
+der unabhängig belegt, dass der erweiterte CHECK auch in einer frisch aus den
+Migrationsdateien gebauten Datenbank entsteht. Der Branch war beim ersten Anlauf `BEHIND`,
+wurde nachgezogen und der volle Satz Checks lief erneut grün (`CLEAN`).
+
+**Prod nach dem Merge eigenständig nachgemessen:** `ki_runs_status_check` trägt
+`running · success · error · external_blocked`.
+
+### Scope `mvp`, nicht `full` — ausgesprochen statt still entschieden
+
+Alle 9 Akzeptanzkriterien sind erfüllt, es ist **nichts zurückgestellt**, und es gibt keinen
+Critical/High-Befund. Für `full` fehlt trotzdem eine Bedingung der Hausregel: *„production
+behavior is verified"*. Verifiziert ist die **Datenbank**-Hälfte (4/4 gegen Prod gemessen und
+zurückgerollt) — die **Anwendungs**-Hälfte ist ausgeliefert, aber nie in Produktion ausgeübt:
+**der Timeout hat in Produktion noch nie ausgelöst**, und die Fortschrittsanzeige hat noch
+niemand im Browser gesehen.
+
+Das ist dieselbe Lage und dieselbe Entscheidung wie bei **PROJ-151** in derselben Woche und
+demselben Sachgebiet (Anbieter-Pfade), wo das Fehlen eines echten Anbieter-Durchlaufs den
+Ausschlag gegen `full` gab. Die Gegenposition — PROJ-Y-2 bekam `full` mit der Begründung, ein
+fehlender Browser-Durchlauf sei eine Abweichung in der *Nachweistiefe* und kein
+zurückgestelltes Kriterium — ist bekannt und wurde erwogen; sie trägt hier weniger, weil der
+Kern dieser Slice ein **Laufzeitverhalten unter Fehlerbedingungen** ist und genau dieses
+Verhalten in Produktion unbeobachtet bleibt.
+
+**Aufstufung auf `full`** braucht genau eine Sache: einen Lauf gegen die Produktion, der zeigt,
+dass die Stakeholder-Generierung mit benanntem Grund abbricht statt stehenzubleiben, und dass
+Backlog und Risiken danach weiterlaufen → **PROJ-Y-152b**.
+
+### Offen
+
+- **PROJ-Y-152b** — Live-Verifikation gegen Produktion (Aufstufungs-Voraussetzung).
+- **PROJ-153** — Arbeitspakete aus dem Vorhaben ohne Kickoff (zweiter Teil der Nutzer-Meldung;
+  war als `PROJ-Y-152a` registriert, läuft als eigenes Feature weiter).
+- **Ihre Ollama-Konfiguration** bleibt unrepariert — der Modellname `gemma4:latest` existiert
+  bei Ollama nicht. Das ist Konfiguration, nicht Code.
