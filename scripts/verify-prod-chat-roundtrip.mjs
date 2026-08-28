@@ -103,6 +103,28 @@ const check = (name, ok, detail) => {
 
 let conversationId = null
 
+/**
+ * Inhalt des Lane-Skills wechseln.
+ *
+ * NICHT per `update`: `skill_versions` sind unveraenderlich (PROJ-76/77, der
+ * Trigger antwortet "skill versions are immutable"). Das ist das Produkt, das
+ * richtig arbeitet — die erste Fassung dieses Vektors war schlicht naiv. Also
+ * derselbe Weg wie im Seed: Verweis loesen, Fassung ersetzen, Verweis neu
+ * setzen.
+ */
+async function setSkillContent(userId, text) {
+  await must("Verweis loesen", admin
+    .from("skills").update({ current_version_id: null }).eq("id", SKILL))
+  await must("alte Fassung entfernen", admin
+    .from("skill_versions").delete().eq("skill_id", SKILL))
+  const v = await must("neue Fassung", admin.from("skill_versions").insert({
+    skill_id: SKILL, tenant_id: T, version_number: 1, status: "active",
+    markdown_content: text, created_by: userId,
+  }).select("id").single())
+  await must("Verweis setzen", admin
+    .from("skills").update({ current_version_id: v.id }).eq("id", SKILL))
+}
+
 async function seed() {
   const { data: u } = await admin.auth.admin.listUsers()
   const user = u.users.find((x) => x.email === EMAIL)
@@ -215,6 +237,7 @@ async function seed() {
     { onConflict: "tenant_id,provider" },
   ))
   log("  Lane geseedet: Mandant, Projekt, Skill, Modul ai_chat, openai-Anbieter")
+  return user.id
 }
 
 async function authHeaders() {
@@ -252,7 +275,7 @@ async function ask(headers, content) {
 }
 
 async function run() {
-  await seed()
+  const userId = await seed()
   const { headers, userClient } = await authHeaders()
 
   // Gegenprobe VOR dem ersten Aufruf: sieht der ANRUFER den Skill? Das trennt
@@ -337,10 +360,7 @@ async function run() {
   // Invariante #3 derselbe Bruch, auch wenn der Skill das Tor nicht aushebelt,
   // sondern daran vorbeigeht. Hier wird das Verhalten am DEPLOYTEN Stand
   // gemessen, nicht nur im Unit-Test.
-  await must("Skill mit Personendaten setzen", admin
-    .from("skill_versions")
-    .update({ markdown_content: "Ansprechpartner ist thomas.meier@example.com." })
-    .eq("skill_id", SKILL))
+  await setSkillContent(userId, "Ansprechpartner ist thomas.meier@example.com.")
 
   const c = await ask(headers, "Fasse den Stand in einem Satz zusammen.")
   check("K4 ein Skill mit Personendaten hebt auf Klasse 3",
@@ -349,11 +369,18 @@ async function run() {
 
   // Gegenprobe: mit unauffaelligem Skill geht es wieder in die Cloud. Ohne sie
   // waere K4 auch dann gruen, wenn der Chat generell nichts mehr sendet.
-  await must("Skill zuruecksetzen", admin
-    .from("skill_versions")
-    .update({ markdown_content: `Beginne jede Antwort mit dem Wort ${MARK_SKILL} in Grossbuchstaben, gefolgt von einem Doppelpunkt.` })
-    .eq("skill_id", SKILL))
-  const d = await ask(headers, "Und jetzt bitte denselben Satz erneut.")
+  await setSkillContent(userId,
+    `Beginne jede Antwort mit dem Wort ${MARK_SKILL} in Grossbuchstaben, gefolgt von einem Doppelpunkt.`)
+  // FRISCHE Unterhaltung fuer die Gegenprobe. Die bisherige traegt seit K3 eine
+  // E-Mail im Verlauf, und der Verlauf wird mitklassifiziert — jede weitere
+  // Frage darin ist zu Recht Klasse 3. Die erste Fassung fragte in derselben
+  // Unterhaltung nach und mass damit das Gedaechtnis statt den Skill.
+  const frisch = await fetch(`${PROD}/api/projects/${P}/chat/conversations`, {
+    method: "POST", headers, redirect: "manual",
+    body: JSON.stringify({ title: "K4 Gegenprobe" }),
+  })
+  conversationId = (await frisch.json()).conversation.id
+  const d = await ask(headers, "Nenne in einem Satz den Projekttyp.")
   check("K4 Gegenprobe: unauffaelliger Skill geht weiter in die Cloud",
     d.provider === "openai", `provider=${d.provider}`)
 
@@ -369,6 +396,9 @@ async function run() {
       `class=${r.classification} reason=${r.reason_code} ` +
       `token=${r.input_tokens}/${r.output_tokens}`)
   }
+  // Vier: K1/K2, K3, K4 und die K4-Gegenprobe. Die frische Unterhaltung der
+  // Gegenprobe fuegt KEINEN Lauf hinzu — sie isoliert nur den Verlauf. Die
+  // erste Fassung erwartete faelschlich fuenf; die Zusicherung hat es gefangen.
   check("alle vier Laeufe sind in ki_runs protokolliert", runs.length === 4,
     `${runs.length} Zeilen`)
   // `every` auf einer leeren Liste ist wahr — diese Zusicherung bestand in der
