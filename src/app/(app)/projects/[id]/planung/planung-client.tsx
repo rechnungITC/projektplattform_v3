@@ -18,10 +18,7 @@ import { usePhases } from "@/hooks/use-phases"
 import { BacklogAiProposalLauncher } from "@/components/projects/ai-proposals/backlog-ai-proposal-launcher"
 import { useProjectAccess } from "@/hooks/use-project-access"
 import { useWorkItems } from "@/hooks/use-work-items"
-import {
-  ganttRowItems,
-  phaseListItems,
-} from "@/lib/work-items/planning-items"
+import { phaseListItems } from "@/lib/work-items/planning-items"
 import type { WorkItemWithProfile } from "@/types/work-item"
 
 interface PlanungClientProps {
@@ -49,10 +46,13 @@ export function PlanungClient({ projectId }: PlanungClientProps) {
     () => phaseListItems(allWorkItems),
     [allWorkItems],
   )
-  const ganttItems = React.useMemo(
-    () => ganttRowItems(allWorkItems),
-    [allWorkItems],
-  )
+  // PROJ-155-α: kein Vorfilter mehr. `ganttRowItems` liess nur Arbeitspakete
+  // und Items MIT `phase_id` durch — ein Task haengt aber per `parent_id` an
+  // seinem Arbeitspaket (in Prod 39 von 48) und fiel damit heraus, bevor die
+  // Baumlogik ihn sehen konnte. Welche Zeilen erscheinen, entscheidet jetzt
+  // `buildGanttRows`, weil nur dort die Hierarchie bekannt ist. Eine zweite
+  // Sichtbarkeitsregel daneben waere genau die Drift, die diese Slice behebt.
+  const ganttItems = allWorkItems
 
   const [tab, setTab] = React.useState<"phasen" | "meilensteine" | "gantt">(
     "phasen",
