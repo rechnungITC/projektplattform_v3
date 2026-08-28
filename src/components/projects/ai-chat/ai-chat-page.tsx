@@ -28,6 +28,7 @@ import { checkInput, listPromptTemplates, type ChatPromptTemplate } from "@/lib/
 import { AiChatComposer } from "./ai-chat-composer"
 import { AiChatMessages } from "./ai-chat-messages"
 import { reasonToNotice } from "./reason-notice"
+import { costNotice } from "./cost-notice"
 
 export function AiChatPage({ projectId }: { projectId: string }) {
   const chat = useAiChat(projectId)
@@ -192,6 +193,16 @@ export function AiChatPage({ projectId }: { projectId: string }) {
                 hier, ist nach dem Verlassen der Seite aber nicht mehr abrufbar.
               </AlertDescription>
             </Alert>
+          )}
+
+          {/* PROJ-Y-151d — AC-151.22. Abgeleitet beim Rendern, nicht im Effekt:
+              die Zeile haengt allein am geladenen Zustand. `costNotice` gibt
+              null zurueck, wo eine Aussage erfunden waere (nichts geladen, noch
+              keine Antwort) — deshalb steht hier keine zweite Bedingung. */}
+          {chat.activeId !== null && costNotice(chat.cost) && (
+            <p className="text-xs text-muted-foreground" data-testid="chat-cost">
+              {costNotice(chat.cost)}
+            </p>
           )}
 
           {chat.activeId === null ? (
