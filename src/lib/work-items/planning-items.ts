@@ -6,16 +6,15 @@
  * UND im Gantt unsichtbar — obwohl der Bearbeiten-Dialog jedem Work-Item
  * einen Phasen-Picker anbietet und dazu "für Wasserfall-WBS + Gantt" sagt.
  *
- * Die beiden Flächen brauchen unterschiedliche Mengen, deshalb zwei Regeln
- * statt einer:
- *
  * - Phasenliste: alles, was einer Phase zugeordnet ist, unabhängig von der
  *   Art. Die Karte zeigt die Art als Abzeichen, verwechselbar ist nichts.
- * - Gantt: Arbeitspakete wie bisher (auch ohne Phase — sie landen im Eimer
- *   "ohne Phase") PLUS jedes andere Item, das eine Phase trägt. Ohne die
- *   zweite Hälfte bliebe der zugeordnete Task unsichtbar; ohne die
- *   Einschränkung auf zugeordnete Items würde der Eimer "ohne Phase" mit
- *   jedem phasenlosen Task volllaufen (im Messprojekt 22 zusätzliche Zeilen).
+ * - Gantt: **umgezogen nach `gantt-rows.ts` (PROJ-155-α).** Die frühere Regel
+ *   hier filterte auf `kind === "work_package" || phase_id !== null` und liess
+ *   damit einen Task, der per `parent_id` an seinem Arbeitspaket hängt, gar
+ *   nicht erst durch — in Prod 39 von 48. Sichtbarkeit braucht den Baum, also
+ *   entscheidet sie dort; die Einschränkung des Eimers "ohne Phase" auf
+ *   Arbeitspakete ist mit umgezogen, damit er nicht mit dem Scrum-Backlog
+ *   volläuft (im Messprojekt 22 zusätzliche Zeilen).
  */
 
 import type { WorkItemWithProfile } from "@/types/work-item"
@@ -30,16 +29,3 @@ export function phaseListItems(
   return items.filter((item) => !item.is_deleted && item.phase_id !== null)
 }
 
-/**
- * Items für die Gantt-Zeilen: Arbeitspakete (mit und ohne Phase) plus alles
- * andere, das einer Phase zugeordnet ist.
- */
-export function ganttRowItems(
-  items: WorkItemWithProfile[],
-): WorkItemWithProfile[] {
-  return items.filter(
-    (item) =>
-      !item.is_deleted &&
-      (item.kind === "work_package" || item.phase_id !== null),
-  )
-}

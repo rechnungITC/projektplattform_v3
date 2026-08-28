@@ -42,6 +42,7 @@ import {
   weekendBands as buildWeekendBands,
 } from "@/lib/dates/gantt-timeline"
 import { cn } from "@/lib/utils"
+import { buildGanttRows, phaseRowKey } from "@/lib/work-items/gantt-rows"
 import { type Milestone, MILESTONE_STATUS_LABELS } from "@/types/milestone"
 import { PHASE_STATUS_LABELS, type Phase } from "@/types/phase"
 import type { WorkItemWithProfile } from "@/types/work-item"
@@ -51,7 +52,22 @@ import { useAuth } from "@/hooks/use-auth"
 // without touching this call site.
 import { useTenantLocale } from "@/hooks/use-tenant-locale"
 
-type LinkType = "phase" | "work_package"
+/**
+ * PROJ-155-α — Endpunkt-Arten einer Abhängigkeit.
+ *
+ * `dependencies.from_type`/`to_type` erlauben in Prod
+ * ('project','phase','work_package','todo','sprint') — gemessen am CHECK.
+ * Die Oberfläche kannte bisher nur zwei davon, weshalb Tasks nicht
+ * verknüpfbar waren, obwohl das Datenmodell es seit PROJ-9-R2 trägt.
+ * `todo` ist die WBS-Ebene unter dem Arbeitspaket (ADR-004).
+ */
+type LinkType = "phase" | "work_package" | "todo"
+
+const LINK_TYPES: ReadonlySet<string> = new Set<LinkType>([
+  "phase",
+  "work_package",
+  "todo",
+])
 
 interface PolymorphicDependency {
   id: string
@@ -134,6 +150,20 @@ type DragState =
       startX: number
       origDate: Date
       deltaDays: number
+    }
+  | {
+      /**
+       * PROJ-155-α — Zeitraum auf einer terminlosen Zeile aufziehen.
+       *
+       * Der Weg, den MS Project und OpenProject anbieten: statt 41 Dialoge
+       * zu oeffnen (die Prod-Lage in AUE_0001: 0 von 41 Zeilen mit Termin)
+       * zieht man den Balken direkt im Diagramm auf. Der Mensch legt den
+       * Zeitraum fest — es wird nichts aus der Phase erfunden.
+       */
+      kind: "create"
+      workItemId: string
+      anchorDay: number
+      currentDay: number
     }
   | {
       kind: "link"
@@ -241,8 +271,8 @@ export function GanttView({
         const supported: PolymorphicDependency[] = rows
           .filter(
             (r: { from_type?: string; to_type?: string }) =>
-              (r.from_type === "phase" || r.from_type === "work_package") &&
-              (r.to_type === "phase" || r.to_type === "work_package"),
+              LINK_TYPES.has(r.from_type ?? "") &&
+              LINK_TYPES.has(r.to_type ?? ""),
           )
           .map(
             (r: {
@@ -270,24 +300,6 @@ export function GanttView({
       cancelled = true
     }
   }, [projectId, phases, workPackages])
-
-  // Group work-packages by their parent phase. Orphan WPs (no phase_id
-  // or phase not in the phase list) get bucketed under the synthetic
-  // key "__unphased__" and render at the end.
-  const ORPHAN_BUCKET = "__unphased__"
-  const wpsByPhase = React.useMemo(() => {
-    const map = new Map<string, WorkItemWithProfile[]>()
-    const phaseIds = new Set(phases.map((p) => p.id))
-    for (const wp of workPackages) {
-      if (wp.is_deleted) continue
-      const key =
-        wp.phase_id && phaseIds.has(wp.phase_id) ? wp.phase_id : ORPHAN_BUCKET
-      const list = map.get(key) ?? []
-      list.push(wp)
-      map.set(key, list)
-    }
-    return map
-  }, [workPackages, phases])
 
   // Compute the calendar window from phase + work-package dates, pad each side.
   const { calendarStart, totalDays } = React.useMemo(() => {
@@ -322,31 +334,64 @@ export function GanttView({
     }
   }, [phases, workPackages])
 
-  // Build the row list — each phase followed by its work-packages, then
-  // any orphan WPs at the end. Each item gets a stable rowIndex used by
-  // the bar-render and layout maps below.
-  type Row =
-    | { kind: "phase"; phase: Phase; rowIndex: number }
-    | {
-        kind: "work_package"
-        item: WorkItemWithProfile
-        rowIndex: number
-      }
-  const rows: Row[] = React.useMemo(() => {
-    const out: Row[] = []
-    let idx = 0
-    for (const phase of phases) {
-      out.push({ kind: "phase", phase, rowIndex: idx++ })
-      const children = wpsByPhase.get(phase.id) ?? []
-      for (const wp of children) {
-        out.push({ kind: "work_package", item: wp, rowIndex: idx++ })
-      }
+  // PROJ-155-α — Zeilenliste kommt aus `buildGanttRows`: der WBS-Baum je
+  // Phase, sortiert nach Termin, mit Tiefe und Terminquelle. Die frühere
+  // Fassung war flach (Phase → Arbeitspakete) und sortierte gar nicht;
+  // Tasks kamen darin überhaupt nicht vor.
+  const [collapsedKeys, setCollapsedKeys] = React.useState<ReadonlySet<string>>(
+    () => new Set<string>(),
+  )
+  const toggleCollapsed = React.useCallback((key: string) => {
+    setCollapsedKeys((prev) => {
+      const next = new Set(prev)
+      if (next.has(key)) next.delete(key)
+      else next.add(key)
+      return next
+    })
+  }, [])
+
+  const rows = React.useMemo(
+    () => buildGanttRows({ phases, items: workPackages, collapsedKeys }),
+    [phases, workPackages, collapsedKeys],
+  )
+
+  // Alle Zeilen, die ueberhaupt Kinder haben — Grundlage fuer "Alle
+  // zuklappen". Aus der *aufgeklappten* Liste gerechnet, damit ein bereits
+  // zugeklappter Teilbaum seine Nachkommen nicht verbirgt.
+  const collapsibleKeys = React.useMemo(() => {
+    const full = buildGanttRows({ phases, items: workPackages })
+    return new Set(full.filter((r) => r.hasChildren).map((r) => r.key))
+  }, [phases, workPackages])
+
+  const [fullscreen, setFullscreen] = React.useState(false)
+  React.useEffect(() => {
+    if (!fullscreen) return
+    const onKey = (e: KeyboardEvent) => {
+      if (e.key === "Escape") setFullscreen(false)
     }
-    for (const wp of wpsByPhase.get(ORPHAN_BUCKET) ?? []) {
-      out.push({ kind: "work_package", item: wp, rowIndex: idx++ })
-    }
-    return out
-  }, [phases, wpsByPhase])
+    window.addEventListener("keydown", onKey)
+    return () => window.removeEventListener("keydown", onKey)
+  }, [fullscreen])
+
+  // Zeilenposition je Key — der Ersatz für das frühere `row.rowIndex`.
+  const rowIndexByKey = React.useMemo(() => {
+    const m = new Map<string, number>()
+    rows.forEach((row, idx) => m.set(row.key, idx))
+    return m
+  }, [rows])
+
+  /**
+   * Abhängigkeits-Typ eines Items. `dependencies.from_type` erlaubt seit
+   * PROJ-9-R2 `work_package` und `todo`; die WBS-Ebene unter dem
+   * Arbeitspaket ist `todo` (ADR-004). Damit bleiben bestehende
+   * Arbeitspaket-Pfeile unberührt und Task-Verknüpfungen sind in β ohne
+   * Schemaänderung anschließbar.
+   */
+  const depTypeOf = React.useCallback(
+    (item: WorkItemWithProfile): "work_package" | "todo" =>
+      item.kind === "work_package" ? "work_package" : "todo",
+    [],
+  )
 
   const totalWidth = totalDays * pixelsPerDay
   const totalHeight = HEADER_HEIGHT + rows.length * (ROW_HEIGHT + ROW_GAP)
@@ -479,8 +524,8 @@ export function GanttView({
       string,
       { x: number; y: number; width: number; midY: number }
     >()
-    rows.forEach((row) => {
-      const rowY = HEADER_HEIGHT + row.rowIndex * (ROW_HEIGHT + ROW_GAP)
+    rows.forEach((row, idx) => {
+      const rowY = HEADER_HEIGHT + idx * (ROW_HEIGHT + ROW_GAP)
       let ps: Date | null = null
       let pe: Date | null = null
       let key: string
@@ -488,10 +533,14 @@ export function GanttView({
         ps = toDate(row.phase.planned_start)
         pe = toDate(row.phase.planned_end)
         key = `phase:${row.phase.id}`
+      } else if (row.kind === "work_item") {
+        // Effektive Termine: eigene oder aus den Kindern abgeleitete. Damit
+        // hat auch ein Sammelvorgang einen Ankerpunkt für Pfeile.
+        ps = toDate(row.start)
+        pe = toDate(row.end)
+        key = `${depTypeOf(row.item)}:${row.item.id}`
       } else {
-        ps = toDate(row.item.planned_start ?? null)
-        pe = toDate(row.item.planned_end ?? null)
-        key = `work_package:${row.item.id}`
+        return // Eimer-Kopfzeile hat keinen Balken.
       }
       if (!ps || !pe) return
       const x = daysBetween(calendarStart, ps) * pixelsPerDay
@@ -507,7 +556,7 @@ export function GanttView({
       })
     })
     return m
-  }, [rows, calendarStart, pixelsPerDay])
+  }, [rows, calendarStart, pixelsPerDay, depTypeOf])
 
   // Phase-only view used by the milestone block.
   const phaseLayout = React.useMemo(() => {
@@ -522,6 +571,42 @@ export function GanttView({
     }
     return m
   }, [barLayout])
+
+  /**
+   * Aufziehen auf einer terminlosen Zeile. Der Klick darf den Bearbeiten-
+   * Dialog nicht mitauslösen, daher `stopPropagation` — sonst öffnet sich
+   * beim Loslassen zusätzlich das Formular.
+   */
+  const startCreateDrag = (
+    e: React.MouseEvent<SVGRectElement>,
+    workItemId: string,
+  ) => {
+    if (!canEdit) return
+    e.preventDefault()
+    e.stopPropagation()
+    const svg = svgRef.current
+    if (!svg) return
+    const rect = svg.getBoundingClientRect()
+    const day = Math.floor((e.clientX - rect.left) / pixelsPerDay)
+    setDrag({
+      kind: "create",
+      workItemId,
+      anchorDay: day,
+      currentDay: day,
+    })
+  }
+
+  const createPreview = React.useMemo(() => {
+    if (drag?.kind !== "create") return null
+    const from = Math.min(drag.anchorDay, drag.currentDay)
+    const to = Math.max(drag.anchorDay, drag.currentDay)
+    const days = Math.max(1, to - from)
+    return {
+      id: drag.workItemId,
+      x: from * pixelsPerDay,
+      width: days * pixelsPerDay,
+    }
+  }, [drag, pixelsPerDay])
 
   const startPhaseDrag = (
     e: React.MouseEvent<SVGRectElement | SVGGElement>,
@@ -623,6 +708,17 @@ export function GanttView({
         setDrag((prev) => (prev ? { ...prev, deltaDays } : null))
         return
       }
+      if (drag.kind === "create") {
+        const svg = svgRef.current
+        if (!svg) return
+        const rect = svg.getBoundingClientRect()
+        const day = Math.floor((e.clientX - rect.left) / pixelsPerDay)
+        if (day === drag.currentDay) return
+        setDrag((prev) =>
+          prev && prev.kind === "create" ? { ...prev, currentDay: day } : prev,
+        )
+        return
+      }
       if (drag.kind === "link") {
         const svg = svgRef.current
         const targetEl = document.elementFromPoint(e.clientX, e.clientY)
@@ -637,7 +733,7 @@ export function GanttView({
               const t = raw.slice(0, colon) as LinkType
               const id = raw.slice(colon + 1)
               if (
-                (t === "phase" || t === "work_package") &&
+                LINK_TYPES.has(t) &&
                 !(t === drag.fromType && id === drag.fromId)
               ) {
                 targetType = t
@@ -666,6 +762,44 @@ export function GanttView({
     const onUp = async () => {
       const snapshot = drag
       setDrag(null)
+
+      if (snapshot.kind === "create") {
+        const from = Math.min(snapshot.anchorDay, snapshot.currentDay)
+        const to = Math.max(snapshot.anchorDay, snapshot.currentDay)
+        const newStart = addDays(calendarStart, from)
+        // Mindestens ein Tag Dauer — ein reiner Klick soll nicht in einem
+        // Null-Zeitraum enden, sondern in einem Tag.
+        const newEnd = addDays(calendarStart, Math.max(to, from + 1))
+        setSubmitting(snapshot.workItemId)
+        try {
+          const res = await fetch(
+            `/api/projects/${projectId}/work-items/${snapshot.workItemId}`,
+            {
+              method: "PATCH",
+              headers: { "Content-Type": "application/json" },
+              body: JSON.stringify({
+                planned_start: toIsoDate(newStart),
+                planned_end: toIsoDate(newEnd),
+              }),
+            },
+          )
+          if (!res.ok) {
+            const err = await res.json().catch(() => ({}))
+            throw new Error(err?.error?.message ?? `HTTP ${res.status}`)
+          }
+          toast.success("Zeitraum gesetzt")
+          onChanged()
+        } catch (err) {
+          toast.error("Zeitraum konnte nicht gesetzt werden", {
+            description:
+              err instanceof Error ? err.message : "Unbekannter Fehler",
+          })
+          onChanged()
+        } finally {
+          setSubmitting(null)
+        }
+        return
+      }
 
       if (snapshot.kind === "phase") {
         if (snapshot.deltaDays === 0) return
@@ -852,7 +986,10 @@ export function GanttView({
       window.removeEventListener("mousemove", onMove)
       window.removeEventListener("mouseup", onUp)
     }
-  }, [drag, projectId, milestones, onChanged, pixelsPerDay])
+    // `calendarStart` ist Pflicht: der create-Zweig rechnet den aufgezogenen
+    // Tagesindex gegen dieses Fenster in ein Datum um. Fehlt es hier, schreibt
+    // der Handler nach einer Fensterverschiebung falsche Termine.
+  }, [drag, projectId, milestones, onChanged, pixelsPerDay, calendarStart])
 
   // Delete a dependency edge by clicking the arrow.
   const handleDeleteDependency = React.useCallback(
@@ -942,15 +1079,50 @@ export function GanttView({
             ? ` · ${criticalPhaseIds.size}`
             : null}
         </button>
+
+        <button
+          type="button"
+          onClick={() => setFullscreen((v) => !v)}
+          aria-pressed={fullscreen}
+          className="rounded-md border px-2 py-1 text-xs hover:bg-muted"
+        >
+          {fullscreen ? "Vollbild verlassen" : "Vollbild"}
+        </button>
+
+        <button
+          type="button"
+          onClick={() => setCollapsedKeys(collapsibleKeys)}
+          className="rounded-md border px-2 py-1 text-xs hover:bg-muted"
+        >
+          Alle zuklappen
+        </button>
+        <button
+          type="button"
+          onClick={() => setCollapsedKeys(new Set<string>())}
+          className="rounded-md border px-2 py-1 text-xs hover:bg-muted"
+        >
+          Alle aufklappen
+        </button>
       </div>
       <div
-        className="flex rounded-md border bg-card"
+        className={cn(
+          "flex rounded-md border bg-card",
+          // PROJ-155-α: im Vollbild fuellt das Diagramm das Fenster. Vorher
+          // war die Hoehe hart auf 70vh gedeckelt — bei 42 Zeilen (Prod-Lage
+          // in AUE_0001) sah man rund ein Viertel davon.
+          fullscreen && "fixed inset-0 z-50 rounded-none",
+        )}
         role="region"
         aria-label="Gantt-Diagramm der Phasen"
       >
         {/* Left fixed table column — name + dates per row.
             OpenProject-style split: items stay visible even without bars. */}
-        <div className="w-72 shrink-0 border-r">
+        <div
+          className={cn(
+            "shrink-0 border-r",
+            fullscreen ? "w-96" : "w-72",
+          )}
+        >
           <div
             style={{ height: HEADER_HEIGHT }}
             className="flex items-center gap-2 border-b bg-muted/50 px-3 text-xs font-medium text-muted-foreground"
@@ -960,42 +1132,86 @@ export function GanttView({
             <span className="w-20 text-right">Ende</span>
           </div>
           {rows.map((row, idx) => {
-            const isPhase = row.kind === "phase"
-            const ps = isPhase ? row.phase.planned_start : row.item.planned_start
-            const pe = isPhase ? row.phase.planned_end : row.item.planned_end
-            const label = isPhase
-              ? `${row.phase.sequence_number}. ${row.phase.name}`
-              : row.item.title
-            const onClick = !isPhase && onEditWorkItemRequest
-              ? () => onEditWorkItemRequest!(row.item)
-              : undefined
+            const label =
+              row.kind === "phase"
+                ? `${row.phase.sequence_number}. ${row.phase.name}`
+                : row.kind === "bucket"
+                  ? row.label
+                  : row.item.title
+            // Der Termin steht in der Tabelle so, wie er am Balken gilt:
+            // eigener oder abgeleiteter. Die Herkunft macht das Abzeichen
+            // sichtbar — sonst liest sich ein Sammelvorgang wie ein
+            // eingetragener Termin.
+            const isDerived = row.dateSource === "derived"
+            const onClick =
+              row.kind === "work_item" && onEditWorkItemRequest
+                ? () => onEditWorkItemRequest!(row.item)
+                : undefined
             return (
               <div
-                key={isPhase ? `phase-${row.phase.id}` : `wp-${row.item.id}`}
+                key={row.key}
                 style={{ height: ROW_HEIGHT + ROW_GAP }}
                 className={cn(
-                  "flex items-center gap-2 border-b border-border/40 px-3 text-xs",
+                  "flex items-center gap-1 border-b border-border/40 px-3 text-xs",
                   idx % 2 === 1 && "bg-muted/15",
-                  !isPhase && "pl-6",
+                  row.kind === "bucket" && "bg-muted/30",
                   onClick && "cursor-pointer hover:bg-muted/30",
                 )}
                 onClick={onClick}
-                title={onClick ? "Datum pflegen" : undefined}
+                title={onClick ? "Zum Bearbeiten öffnen" : undefined}
               >
+                {/* Einrückung nach WBS-Tiefe, wie in MS Project und
+                    OpenProject. Tiefe 1 sitzt direkt unter der Phase. */}
+                <span
+                  aria-hidden
+                  style={{ width: Math.max(0, row.depth - 1) * 14 }}
+                  className="shrink-0"
+                />
+                {row.hasChildren ? (
+                  <button
+                    type="button"
+                    onClick={(e) => {
+                      e.stopPropagation()
+                      toggleCollapsed(row.key)
+                    }}
+                    aria-expanded={!row.collapsed}
+                    aria-label={
+                      row.collapsed
+                        ? `${label} aufklappen`
+                        : `${label} zuklappen`
+                    }
+                    className="shrink-0 rounded px-0.5 text-muted-foreground hover:bg-muted hover:text-foreground"
+                  >
+                    {row.collapsed ? "▸" : "▾"}
+                  </button>
+                ) : (
+                  <span aria-hidden className="w-3.5 shrink-0" />
+                )}
                 <span
                   className={cn(
                     "flex-1 truncate",
-                    isPhase ? "font-medium" : "text-muted-foreground",
+                    row.kind === "phase"
+                      ? "font-medium"
+                      : row.kind === "bucket"
+                        ? "font-medium text-muted-foreground"
+                        : "text-muted-foreground",
                   )}
                 >
-                  {!isPhase ? "↳ " : null}
                   {label}
                 </span>
+                {isDerived ? (
+                  <span
+                    className="shrink-0 rounded bg-muted px-1 text-[10px] text-muted-foreground"
+                    title="Zeitraum aus den Unterpunkten abgeleitet"
+                  >
+                    abgeleitet
+                  </span>
+                ) : null}
                 <span className="w-20 text-right tabular-nums text-muted-foreground">
-                  {ps ? formatDateShort(ps) : "—"}
+                  {row.start ? formatDateShort(row.start) : "—"}
                 </span>
                 <span className="w-20 text-right tabular-nums text-muted-foreground">
-                  {pe ? formatDateShort(pe) : "—"}
+                  {row.end ? formatDateShort(row.end) : "—"}
                 </span>
               </div>
             )
@@ -1009,7 +1225,13 @@ export function GanttView({
             stretch to the full row count of giant projects. */}
         <div
           ref={containerRef}
-          className="flex-1 overflow-auto max-h-[70vh]"
+          className={cn(
+            "flex-1 overflow-auto",
+            // Ausserhalb des Vollbilds bleibt ein Deckel, damit die Seite bei
+            // grossen Projekten nicht endlos waechst — aber deutlich hoeher
+            // als die frueheren 70vh. Im Vollbild entfaellt er ganz.
+            fullscreen ? "h-screen" : "max-h-[calc(100vh-16rem)]",
+          )}
         >
       <svg
         ref={svgRef}
@@ -1109,10 +1331,7 @@ export function GanttView({
         {phases.map((phase) => {
           const ps = toDate(phase.planned_start)
           const pe = toDate(phase.planned_end)
-          const phaseRow = rows.find(
-            (r) => r.kind === "phase" && r.phase.id === phase.id,
-          )
-          const idx = phaseRow?.rowIndex ?? 0
+          const idx = rowIndexByKey.get(phaseRowKey(phase.id)) ?? 0
           const rowY = HEADER_HEIGHT + idx * (ROW_HEIGHT + ROW_GAP)
 
           if (!ps || !pe) {
@@ -1262,30 +1481,26 @@ export function GanttView({
             in the row stream so they visually nest under their phase.
             Smaller bars + lighter color than phases. Drag/resize and
             link semantics mirror phases. */}
-        {workPackages.map((wp) => {
-          const wpRow = rows.find(
-            (r) => r.kind === "work_package" && r.item.id === wp.id,
-          )
-          if (!wpRow) return null
-          const idx = wpRow.rowIndex
+        {rows.map((row, idx) => {
+          if (row.kind !== "work_item") return null
+          const wp = row.item
+          const depType = depTypeOf(wp)
+          // PROJ-155-α: Sammelvorgang — die Termine stammen aus den Kindern,
+          // nicht aus dem Item selbst. Er wird als Klammer dargestellt und ist
+          // NICHT ziehbar: sein Zeitraum ist ein Ergebnis, kein Eingabefeld
+          // (MS-Project- und OpenProject-Semantik).
+          const isSummary = row.dateSource === "derived"
+          const barDraggable = canEdit && !isSummary
+          const indent = Math.max(0, row.depth - 1) * 14
           const rowY = HEADER_HEIGHT + idx * (ROW_HEIGHT + ROW_GAP)
-          const ps = toDate(wp.planned_start ?? null)
-          const pe = toDate(wp.planned_end ?? null)
+          const ps = toDate(row.start)
+          const pe = toDate(row.end)
 
           if (!ps || !pe) {
             const placeholderClickable =
               canEdit && onEditWorkItemRequest !== undefined
             return (
-              <g
-                key={`wp-${wp.id}`}
-                aria-label={wp.title}
-                className={placeholderClickable ? "cursor-pointer" : undefined}
-                onClick={
-                  placeholderClickable
-                    ? () => onEditWorkItemRequest!(wp)
-                    : undefined
-                }
-              >
+              <g key={`wp-${wp.id}`} aria-label={wp.title}>
                 <rect
                   x={0}
                   y={rowY}
@@ -1293,23 +1508,50 @@ export function GanttView({
                   height={ROW_HEIGHT}
                   className={cn(
                     "fill-muted/15",
-                    placeholderClickable && "hover:fill-muted/30",
+                    canEdit
+                      ? "cursor-crosshair hover:fill-muted/30"
+                      : placeholderClickable && "hover:fill-muted/30",
                   )}
+                  onMouseDown={
+                    canEdit
+                      ? (e) => startCreateDrag(e, wp.id)
+                      : undefined
+                  }
                 />
+                {/* Vorschau des aufgezogenen Zeitraums. */}
+                {createPreview && createPreview.id === wp.id ? (
+                  <rect
+                    x={createPreview.x}
+                    y={rowY + 8}
+                    width={createPreview.width}
+                    height={ROW_HEIGHT - 16}
+                    rx={3}
+                    className="fill-primary/40 stroke-primary pointer-events-none"
+                  />
+                ) : null}
+                {/* Der Titel oeffnet das Formular, die Flaeche zieht den
+                    Zeitraum auf. Getrennt, weil ein onClick auf der ganzen
+                    Zeile nach jedem Aufziehen zusaetzlich den Dialog oeffnen
+                    wuerde. */}
                 <text
-                  x={32}
+                  x={32 + indent}
                   y={rowY + ROW_HEIGHT / 2 + 4}
                   fontSize={11}
                   className={cn(
                     "italic",
                     placeholderClickable
-                      ? "fill-primary"
+                      ? "fill-primary cursor-pointer"
                       : "fill-muted-foreground",
                   )}
+                  onClick={
+                    placeholderClickable
+                      ? () => onEditWorkItemRequest!(wp)
+                      : undefined
+                  }
                 >
-                  ↳ {wp.title} — {placeholderClickable
-                    ? "Datum pflegen, um Bar + Dependencies zu aktivieren"
-                    : "keine Daten gepflegt"}
+                  ↳ {wp.title} — {canEdit
+                    ? "Zeitraum im Diagramm aufziehen"
+                    : "kein Termin — auch nicht aus Unterpunkten ableitbar"}
                 </text>
               </g>
             )
@@ -1332,7 +1574,7 @@ export function GanttView({
 
           const isLinkTarget =
             drag?.kind === "link" &&
-            drag.targetType === "work_package" &&
+            drag.targetType === depType &&
             drag.targetId === wp.id
 
           return (
@@ -1357,25 +1599,59 @@ export function GanttView({
                 ↳
               </text>
 
-              {/* WP bar — slimmer than phase bars, indigo accent. */}
-              <rect
-                x={x}
-                y={rowY + 8}
-                width={width}
-                height={ROW_HEIGHT - 16}
-                rx={3}
-                data-bar-target={`work_package:${wp.id}`}
-                className={cn(
-                  "fill-indigo-400 stroke-indigo-700",
-                  canEdit ? "cursor-grab" : "cursor-default",
-                  isDragging && "opacity-80 shadow-md",
-                  isLinkTarget && "stroke-foreground stroke-[3px]",
-                  submitting === wp.id && "animate-pulse",
-                )}
-                onMouseDown={(e) => startWorkPackageDrag(e, wp, "move")}
-              />
+              {/* Sammelvorgang: schmale Klammer wie in MS Project. Sein
+                  Zeitraum ist die Spanne der Kinder, also ein Ergebnis —
+                  darum kein Ziehen und kein Resize-Griff. */}
+              {isSummary ? (
+                <g data-bar-target={`${depType}:${wp.id}`}>
+                  <rect
+                    x={x}
+                    y={rowY + ROW_HEIGHT / 2 - 3}
+                    width={width}
+                    height={6}
+                    className={cn(
+                      "fill-foreground/70",
+                      isLinkTarget && "stroke-foreground stroke-[3px]",
+                    )}
+                  >
+                    <title>
+                      Abgeleitet aus den Unterpunkten — nicht direkt verschiebbar
+                    </title>
+                  </rect>
+                  {/* Die zwei Klammerfüße, die den Sammelvorgang lesbar machen. */}
+                  <path
+                    d={`M ${x} ${rowY + ROW_HEIGHT / 2 + 3} l 0 6 l 5 -6 z`}
+                    className="fill-foreground/70"
+                  />
+                  <path
+                    d={`M ${x + width} ${rowY + ROW_HEIGHT / 2 + 3} l 0 6 l -5 -6 z`}
+                    className="fill-foreground/70"
+                  />
+                </g>
+              ) : (
+                <rect
+                  x={x}
+                  y={rowY + 8}
+                  width={width}
+                  height={ROW_HEIGHT - 16}
+                  rx={3}
+                  data-bar-target={`${depType}:${wp.id}`}
+                  className={cn(
+                    "fill-indigo-400 stroke-indigo-700",
+                    barDraggable ? "cursor-grab" : "cursor-default",
+                    isDragging && "opacity-80 shadow-md",
+                    isLinkTarget && "stroke-foreground stroke-[3px]",
+                    submitting === wp.id && "animate-pulse",
+                  )}
+                  onMouseDown={
+                    barDraggable
+                      ? (e) => startWorkPackageDrag(e, wp, "move")
+                      : undefined
+                  }
+                />
+              )}
 
-              {canEdit ? (
+              {barDraggable ? (
                 <rect
                   x={x + width - RESIZE_HANDLE_WIDTH}
                   y={rowY + 8}
@@ -1392,21 +1668,23 @@ export function GanttView({
                   cy={rowY + ROW_HEIGHT / 2}
                   r={5}
                   className="fill-primary stroke-primary-foreground stroke-1 cursor-crosshair opacity-70 hover:opacity-100"
-                  onMouseDown={(e) =>
-                    startLinkDrag(e, "work_package", wp.id)
-                  }
+                  onMouseDown={(e) => startLinkDrag(e, depType, wp.id)}
                 >
-                  <title>Dependency-Verknüpfung ziehen</title>
+                  <title>Abhängigkeit ziehen</title>
                 </circle>
               ) : null}
 
               <text
-                x={x + 8}
+                x={isSummary ? x + width + 8 : x + 8}
                 y={rowY + ROW_HEIGHT / 2 + 3}
                 fontSize={11}
                 className={cn(
                   "pointer-events-none",
-                  width > 60 ? "fill-white" : "fill-foreground",
+                  isSummary
+                    ? "fill-muted-foreground"
+                    : width > 60
+                      ? "fill-white"
+                      : "fill-foreground",
                 )}
               >
                 {wp.wbs_code ? `${wp.wbs_code} · ` : ""}

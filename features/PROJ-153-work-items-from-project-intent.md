@@ -1,6 +1,6 @@
 # PROJ-153: Arbeitspakete aus dem Vorhaben — KI-gestützt, ohne Kickoff-Datei
 
-## Status: Architected
+## Status: In Progress
 ## Deployment Scope: —
 **Created:** 2026-08-28
 **Last Updated:** 2026-08-28
@@ -497,3 +497,109 @@ _To be added by /qa_
 
 ## Deployment
 _To be added by /deploy_
+
+---
+
+## Implementierungsnotizen — α `/backend` (2026-08-28)
+
+**Zuschnitt (Nutzer-Entscheid):** α = Kern **ohne** Dialogrunde, β = Dialogrunde.
+Damit braucht α nur **einen** neuen KI-Zweck; der zweite (Rückfragen) kommt mit β.
+
+### Der Pflicht-Live-Smoke hat drei Fehler gefunden — zwei korrigieren eine Hausregel
+
+Keiner wäre von Kompilierung, Testlauf oder Build gezeigt worden.
+
+1. **Ein dritter Zweck-CHECK.** CLAUDE.md nannte `ki_runs` und
+   `tenant_ai_cost_caps`. Es gibt aber `ki_suggestions_purpose_check`, der nur die
+   Zwecke trägt, die wirklich Vorschläge schreiben (10 von 17). Ohne ihn hätte die
+   Generierung den Lauf angelegt, das Modell gerufen und **bezahlt** — und wäre erst
+   beim Speichern mit `23514` gescheitert. **Ein 500 nach der Rechnung.**
+2. **Ein vierter Ort.** `enforce_ki_suggestion_immutability` führt eine **eigene,
+   hartkodierte Zweckliste** für den kontrollierten Rückgängig-Ausweg. Fehlt der
+   Zweck dort, ist sein 30-Sekunden-Undo **strukturell unmöglich**: die Funktion
+   existiert, läuft, und wird vom Trigger abgewiesen.
+3. **`on commit drop`** machte die Annahme nur **einmal je Transaktion** aufrufbar.
+   Über HTTP nicht erreichbar (jede Anfrage ist ihre eigene Transaktion), aber die
+   Einschränkung stand nirgends.
+
+**CLAUDE.md ist korrigiert:** der Lockstep für einen vorschlags-schreibenden Zweck
+ist **vierstellig**, nicht zweistellig. Das ist der eigentliche Ertrag — die nächste
+Slice mit neuem Zweck läuft nicht mehr hinein.
+
+### Vier Migrationen, alle in Prod
+
+| Datei | Inhalt |
+|---|---|
+| `20260828120000` | Zweck-Lockstep (2 CHECKs) + Annahme + Rückgängig + Rechte |
+| `20260828121000` | Fix-forward: dritter CHECK (`ki_suggestions`) |
+| `20260828122000` | Fix-forward: vierter Ort (Rückgängig-Ausweg im Trigger) |
+| `20260828123000` | Fix-forward: Annahme mehrfach je Transaktion aufrufbar |
+
+### Live-Pentest 10/10 gegen Prod, 0 Rückstände über vier Zähler
+
+`tests/sql/PROJ-153-alpha-work-items-from-intent-pentest.sql`. Tragend sind die
+**Gegenproben**: **V4b** belegt, dass der Rückgängig-Ausweg **eng** ist (nur
+Rückkehr zu „Entwurf", nicht zu „abgelehnt") — ohne sie bewiese V4 nur, dass
+*irgendein* Bypass existiert. **V5** belegt, dass ein Vorschlag eines anderen Zwecks
+hier nicht angenommen werden kann, sonst bekäme er die Herkunft dieses Zwecks.
+**V3** belegt Lock L2: die Herkunft entsteht serverseitig mit hartkodiertem Typ.
+
+### Die Schwelle wurde neu abgewogen — und die Messung stellte die Frage anders
+
+Erst 800 („streng"). Dann die Verteilung nachgesehen: die fünf vorhandenen Vorhaben
+sind **97, 67, 55, 10 und 4** Zeichen lang. Auch eine Schwelle von **100** hätte alle
+fünf abgelehnt — die Wahl zwischen 800, 400 und 200 war für den Bestand
+**gegenstandslos**.
+
+**Der Engpass stand im Formular:** das Feld hieß „Beschreibung (optional)", war drei
+Zeilen hoch und fragte „Worum geht es in diesem Projekt?" — eine Frage, auf die ein
+Satz die vollständige Antwort ist. Die Nutzer haben sich genau so verhalten, wie die
+Oberfläche es nahelegte. Behoben wurde daher **das Feld** (eine geteilte Komponente
+für Wizard und Stammdaten-Dialog, Zahl importiert statt abgeschrieben), und die
+Schwelle steht auf **400**. Nebenbefund mitbehoben: der Stammdaten-Dialog trug noch
+das englische Label „Description".
+
+### AC-153H.4 — die vier Zusicherungen, mit Sabotage-Nachweis
+
+| Sabotage | Gefallen |
+|---|---|
+| (a) Router fasst `work_items` an | **3** |
+| (b) Class-3-Klemme entschärft | **2** |
+| (c) Schema bekommt ein Herkunftsfeld | genau **1** |
+| (d) Mandanten-Filter aus dem Skill-Lader | genau **1** |
+
+**Nicht schöngeredet:** bei (a) und (b) fällt mehr als eine. Der Prüfstand **wirft**
+bei jeder unerwarteten Tabelle, also trifft jede Router-Beschädigung alle
+Router-Fälle. Die tragende Eigenschaft ist erfüllt — **keine** Sabotage liess alle
+Zusicherungen grün.
+
+### AC-153H.6 — belegt statt behauptet
+
+PROJ-91s Vertragstests **18/18**, und der Diff an `graph-purpose-prompts.ts` ist
+**201 Einfügungen bei 0 Löschungen**. Der Kickoff-Prompt ist nachweislich unberührt.
+
+### Zwei eigene Prüfstandsfehler, festgehalten
+
+Beide hätten **jede** Sicherheitszusage trivial bestätigt: ohne
+`SECRETS_ENCRYPTION_KEY` liest der Resolver **gar keine** Anbieter (alles endet im
+Stub), und ohne Mandanten-Einstellungen fällt der Router fail-closed auf Klasse 3 mit
+`external_provider: "none"`. Ein Prüfstand, der alles blockt, beweist nichts.
+
+Dazu zwei Sonden-Fehler: `responsible_user_id` ist faktisch Pflicht (der Wächter hat
+keine NULL-Ausnahme), und ich setzte einmal `accepted_entity_type` ohne
+`accepted_entity_id`.
+
+### Gates
+
+vitest **3958/3958** (459 Dateien) · ESLint **0** · tsc **13 = Baseline / 0 neu** ·
+Build clean mit allen drei Routen · Playwright **4/4 exakt 307** ohne Leck ·
+migration-naming, index-scope, token-drift je 0.
+
+### Offen für α
+
+- **`/frontend`** — Einstiegsfläche und Prüfansicht. Über HTTP ist der Zweck
+  erreichbar, über die Oberfläche noch nicht.
+- **`/qa`** — Kalibrierung der Schwelle an echten Generierungen (AC-153.9), ein
+  echter Anbieter-Durchlauf und ein authentifizierter Browser-Durchlauf.
+- **Bestandsbefund, bewusst nicht angefasst:** `accept_proposal_from_context_bulk`
+  (PROJ-70) trägt dasselbe `on commit drop`-Muster → eigener Followup.

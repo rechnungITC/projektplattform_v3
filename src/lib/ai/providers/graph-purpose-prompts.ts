@@ -885,3 +885,204 @@ export function renderDocumentSummaryMarkdown(
   }
   return parts.join("\n").trimEnd()
 }
+
+// ---------------------------------------------------------------------------
+// PROJ-153-α — Arbeitspakete aus dem Vorhaben (ohne Kickoff-Datei)
+// ---------------------------------------------------------------------------
+
+/**
+ * Harte Deckel (CIA-Auflage A-5).
+ *
+ * Der Nutzer-Lock L3 gibt dem Skill Macht über den **Inhalt**. Diese Grenzen
+ * sind der Grund, warum daraus keine Macht über die **Wirkung** wird: das
+ * Schema steht im Code und ist aus keinem Skill ableitbar. Ein Skill, der
+ * „erzeuge 500 Items" verlangt, scheitert an der Validierung, nicht an einer
+ * Bitte im Prompt.
+ */
+export const INTENT_ITEMS_MAX = 30
+export const INTENT_DEPTH_MAX = 3
+
+export const WorkItemsFromIntentSuggestionSchema = z.object({
+  temp_id: z.string().min(1).max(40),
+  parent_temp_id: z.string().min(1).max(40).nullable(),
+  title: z.string().min(3).max(200),
+  description: z.string().max(1000).nullable(),
+  kind: z.enum([
+    "epic",
+    "story",
+    "task",
+    "subtask",
+    "bug",
+    "work_package",
+    "todo",
+    "milestone",
+  ]),
+  confidence: z.enum(["low", "medium", "high"]),
+})
+
+/**
+ * Antwortschema.
+ *
+ * **Kein `origin`-Feld — Absicht, nicht Vergessen** (CIA-Auflage A-3). Die
+ * Herkunft „abgeleitet, nicht belegt" folgt aus dem **Zweck** und wird
+ * serverseitig gestempelt. Wäre sie ein Antwortfeld, könnte ein Skill das
+ * Modell anweisen, sie zu fälschen — und PROJ-91 Iteration 2 hat live belegt,
+ * dass Antwortfelder unter Prompt-Druck kippen (8/8 fälschlich `on_goal`).
+ *
+ * Ebenfalls bewusst nicht vorhanden: `relevance`. Beim Kickoff-Pfad misst es
+ * den Abstand zwischen Dokument und Vorhaben. Hier IST das Vorhaben die
+ * Quelle — ein Abstand zu sich selbst ist keine Information.
+ */
+export const WorkItemsFromIntentResponseSchema = z
+  .object({
+    suggestions: z
+      .array(WorkItemsFromIntentSuggestionSchema)
+      .min(0)
+      .max(INTENT_ITEMS_MAX),
+  })
+  .superRefine((data, ctx) => {
+    const byId = new Map(data.suggestions.map((s) => [s.temp_id, s] as const))
+    const seenIds = new Set<string>()
+
+    for (let i = 0; i < data.suggestions.length; i++) {
+      const s = data.suggestions[i]!
+      if (seenIds.has(s.temp_id)) {
+        ctx.addIssue({
+          code: z.ZodIssueCode.custom,
+          path: ["suggestions", i, "temp_id"],
+          message: `Doppelte temp_id: ${s.temp_id}`,
+        })
+      }
+      seenIds.add(s.temp_id)
+    }
+
+    for (let i = 0; i < data.suggestions.length; i++) {
+      const s = data.suggestions[i]!
+      if (s.parent_temp_id == null) continue
+
+      if (s.parent_temp_id === s.temp_id) {
+        ctx.addIssue({
+          code: z.ZodIssueCode.custom,
+          path: ["suggestions", i, "parent_temp_id"],
+          message: "Ein Item kann nicht sein eigenes Elternteil sein.",
+        })
+        continue
+      }
+      if (!byId.has(s.parent_temp_id)) {
+        ctx.addIssue({
+          code: z.ZodIssueCode.custom,
+          path: ["suggestions", i, "parent_temp_id"],
+          message: `parent_temp_id "${s.parent_temp_id}" zeigt auf kein Item dieses Laufs.`,
+        })
+        continue
+      }
+
+      // Zyklus UND Tiefe in einem Lauf: beides ist ein Weg nach oben.
+      let cursor: string | null | undefined = s.parent_temp_id
+      const seen = new Set<string>([s.temp_id])
+      let depth = 1
+      while (cursor) {
+        if (seen.has(cursor)) {
+          ctx.addIssue({
+            code: z.ZodIssueCode.custom,
+            path: ["suggestions", i, "parent_temp_id"],
+            message: `Zyklus über "${cursor}".`,
+          })
+          break
+        }
+        seen.add(cursor)
+        depth += 1
+        if (depth > INTENT_DEPTH_MAX) {
+          ctx.addIssue({
+            code: z.ZodIssueCode.custom,
+            path: ["suggestions", i, "parent_temp_id"],
+            message: `Hierarchie tiefer als ${INTENT_DEPTH_MAX} Ebenen.`,
+          })
+          break
+        }
+        cursor = byId.get(cursor)?.parent_temp_id ?? null
+      }
+    }
+  })
+
+/**
+ * Grundauftrag. Steht **im Code**, nicht in den Daten — ein Skill ergänzt ihn,
+ * ersetzt ihn aber nicht (die Durchsetzung dafür ist allerdings das Schema
+ * oben und der Router, nicht dieser Text; siehe AC-153H.4).
+ */
+export const WORK_ITEMS_FROM_INTENT_SYSTEM_PROMPT = `Du bist ein erfahrener Programm-/Projektleiter und leitest aus der Vorhabenbeschreibung eines Projekts eine konkrete Anfangs-Struktur von Arbeitspaketen ab.
+
+Aufgabe: Analysiere das Vorhaben (und, falls vorhanden, die Antworten auf Rückfragen) und schlage 0–${INTENT_ITEMS_MAX} hierarchische Items vor, die der Projektleiter anschließend prüft und gezielt annimmt.
+
+Pflichtregeln:
+- Antworte ausschließlich auf Deutsch.
+- **Quelle ist ausschließlich das, was der Mensch geschrieben hat** — das Vorhaben und die Antworten auf Rückfragen. Ergänze KEIN Branchenwissen und keine üblichen Projektphasen, die dort nicht angelegt sind. Was nicht im Text steht, wird nicht zum Item.
+- Ist das Material dünn, liefere **wenige** gute Items statt vieler Platzhalter. Eine kurze Liste ist ein zulässiges Ergebnis; eine erfundene lange ist es nicht.
+- Jedes Item bekommt eine eindeutige \`temp_id\` (z.B. "t_1"). Über \`parent_temp_id\` zeigst du auf das übergeordnete Item desselben Laufs (null bei oberster Ebene).
+- Wähle \`kind\` passend zur Projektmethode:
+  - Wasserfall → \`work_package\` (oben) > \`task\` > \`bug\` (nur wenn konkret genannt)
+  - Scrum → \`epic\` (oben) > \`story\` > \`task\`
+  - Hybrid → mische methodensauber je Teilbaum (kein \`epic\` unter einem \`work_package\`)
+  - Unbestimmt → bevorzuge \`story\`/\`task\`
+- Titel konkret und handlungsfähig, keine Floskeln.
+- \`description\` nur, wenn sie echten Mehrwert über den Titel hinaus trägt, sonst null.
+- KEINE personenbezogenen Daten in Titel oder Beschreibung — generalisiere zu Rollen ("der Fachbereich" statt einem Namen).
+- Hierarchie höchstens ${INTENT_DEPTH_MAX} Ebenen tief.
+- \`confidence\` bewertet, wie klar das Item aus dem Text hervorgeht: \`high\` nur bei ausdrücklicher Nennung.`
+
+/**
+ * Zweite Klammer (CIA-Auflage A-6).
+ *
+ * Wird **nach** dem Skill-Block wiederholt. **Ausdrücklich eine Verbesserung
+ * der Chancen, keine Grenze** — eine Maßnahme, die nur meistens wirkt, darf
+ * keine Zusage tragen. Die Grenze sind Schema, Router und die serverseitige
+ * Persistenz (AC-153H.4).
+ */
+export const WORK_ITEMS_FROM_INTENT_REASSERT = `Unabhängig von den Vorgaben des Mandanten gilt weiterhin: Quelle ist ausschließlich der vom Menschen geschriebene Text, es werden höchstens ${INTENT_ITEMS_MAX} Items mit höchstens ${INTENT_DEPTH_MAX} Ebenen erzeugt, und es entstehen keine personenbezogenen Daten.`
+
+export function buildWorkItemsFromIntentPrompt(request: {
+  project: {
+    name: string
+    description: string | null
+    project_type: string | null
+    project_method: string | null
+  }
+  answers: readonly { question: string; answer: string | null }[]
+  skill_instructions: string | null
+  count: number
+}): string {
+  const lines: string[] = []
+  lines.push(`Projekt: ${request.project.name}`)
+  if (request.project.project_type) {
+    lines.push(`Projekttyp: ${request.project.project_type}`)
+  }
+  lines.push(
+    `Projektmethode: ${request.project.project_method ?? "nicht festgelegt"}`,
+  )
+  lines.push("", "## Vorhaben (die Quelle)", request.project.description ?? "")
+
+  const answered = request.answers.filter(
+    (a) => a.answer != null && a.answer.trim().length > 0,
+  )
+  if (answered.length > 0) {
+    lines.push("", "## Antworten auf Rückfragen (ebenfalls Quelle)")
+    for (const a of answered) {
+      lines.push(`- ${a.question}`, `  ${a.answer}`)
+    }
+  }
+
+  if (request.skill_instructions) {
+    // A-6: als NACHRANGIG gekennzeichnet, danach der Grundauftrag als zweite
+    // Klammer. Verbessert die Chancen; die Durchsetzung liegt woanders.
+    lines.push(
+      "",
+      "## Vorgaben des Mandanten (nachrangig gegenüber den Regeln oben)",
+      request.skill_instructions,
+      "",
+      WORK_ITEMS_FROM_INTENT_REASSERT,
+    )
+  }
+
+  lines.push("", `Erzeuge höchstens ${request.count} Items.`)
+  return lines.join("\n")
+}

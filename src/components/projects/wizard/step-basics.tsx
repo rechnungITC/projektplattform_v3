@@ -15,6 +15,10 @@ import {
 import { Input } from "@/components/ui/input"
 import { Switch } from "@/components/ui/switch"
 import { Textarea } from "@/components/ui/textarea"
+import {
+  PROJECT_INTENT_LABEL,
+  ProjectIntentField,
+} from "@/components/projects/project-intent-field"
 import { dateToIsoDate, parseLocalDate } from "@/lib/dates/iso-date"
 import { Sparkles } from "lucide-react"
 
@@ -74,13 +78,19 @@ export function StepBasics({ tenantId }: StepBasicsProps) {
         name="description"
         render={({ field }) => (
           <FormItem>
-            <FormLabel>Beschreibung (optional)</FormLabel>
+            <FormLabel>{PROJECT_INTENT_LABEL}</FormLabel>
             <FormControl>
-              <Textarea
-                placeholder="Worum geht es in diesem Projekt?"
-                rows={3}
-                {...field}
-                value={field.value ?? ""}
+              {/* PROJ-153-α: war „Beschreibung (optional)", 3 Zeilen, Platzhalter
+                  „Worum geht es in diesem Projekt?" — eine Frage, auf die man mit
+                  einem Satz antwortet. Gemessen: alle fünf vorhandenen Vorhaben
+                  lagen zwischen 4 und 97 Zeichen. Das Feld war der Engpass, nicht
+                  die Schwelle. */}
+              <ProjectIntentField
+                name={field.name}
+                value={field.value}
+                onChange={field.onChange}
+                onBlur={field.onBlur}
+                rows={5}
               />
             </FormControl>
             <FormMessage />

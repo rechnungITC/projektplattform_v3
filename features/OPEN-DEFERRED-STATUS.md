@@ -533,3 +533,60 @@ Deploy, aber sie sind nicht erledigt und hatten bis heute **keine** Followup-Ken
   CIA-Auflage A-2); PROJ-153 erbt die Lücke wegen seiner eigenen Auflage A-1 nicht.
   Mitzuprüfen: ob PROJ-80-α denselben Pfad hat.
   *Quelle: CIA-Review PROJ-153/Q3, Finding F-2.*
+
+## PROJ-155 — Gantt: Hierarchie, Sammelvorgänge, Netzablaufplan (Deployed, Scope `alpha`)
+
+- **PROJ-Y-155a — angemeldeter Browser-Durchlauf plus Visual-Baseline (offen).**
+  α ist ohne `/qa`-Durchgang deployed. Belegt sind Zeilenlogik (27 Unit-Tests),
+  Rollup-Fix (rot-grün live gegen Prod) und Verknüpfbarkeit (live gegen Prod) —
+  **nicht** die Verkettung im Browser: dass Tasks eingerückt erscheinen, das
+  Aufziehen einen Balken erzeugt, der Sammelvorgang mitwächst und das Vollbild
+  greift. Der Gantt hat im Bestand weder Komponententests noch eine
+  Visual-Baseline, es gab also keinen Netzschutz zu erben. Fixture-Lage: das
+  einzige Projekt mit WBS-Daten ist der Kundenmandant, ein E2E-Durchlauf braucht
+  eine eigene Lane (Muster PROJ-Y-144d).
+  *Quelle: PROJ-155 „Ausdrücklich nicht belegt".*
+
+- **PROJ-Y-155b — zwei Leseorte für denselben Termin (offen, Hygiene).**
+  `wbs-display.ts` (`ownPlannedStart`/`ownPlannedEnd`) liest Termine weiter aus
+  `attributes` JSONB, der Rest des Produkts aus der echten Spalte. Nach dem
+  Rollup-Fix ist das keine stille Lücke mehr (der Trigger liest beide), aber zwei
+  Leseorte bleiben. Gemessen: **0 von 138** Zeilen tragen das JSONB-Feld — zu
+  entscheiden ist mit einer Messung, ob es irgendein Schreibpfad noch füllt; wenn
+  nein, entfällt die Quelle.
+  *Quelle: PROJ-155 Befundaufnahme.*
+
+- **PROJ-155-β — Auto-Scheduling (benannt, nicht gebaut).** Eine Abhängigkeit
+  verschiebt den Nachfolger noch nicht automatisch; `lag_days` existiert in
+  `dependencies` und ist ungenutzt, `constraint_type` ist über die Oberfläche nicht
+  wählbar (immer der Default `FS`). Dazu: Vorgänger-Spalte in der Tabelle,
+  kritischer Pfad über Tasks, Baseline-Vergleich. Das ist der eigentliche
+  Netzablaufplan-Ausbau. **Kein zurückgestelltes α-Kriterium** — der Zuschnitt
+  „Termine und Hierarchie zuerst" ist ein Nutzer-Entscheid.
+  *Quelle: PROJ-155 Fundament-Entscheidung.*
+
+- **Registerkorrektur, keine Auslassung.** Die PROJ-25-Zeile im INDEX führt „SVAR
+  React Gantt MIT". Gemessen ist `wx-react-gantt@1.3.1` **GPLv3** mit
+  `peerDependencies: react ^18.3.1`. Die Angabe war seit PROJ-25 falsch; sie hat
+  nichts bewirkt, weil die Bibliothek nie aufgenommen wurde (die Fläche ist reines
+  SVG). Bei der nächsten Berührung von PROJ-25 zu korrigieren.
+  *Quelle: PROJ-155 Fundament-Prüfung.*
+
+- **Nicht PROJ-155:** Befund 3 der Nutzer-Meldung („Arbeitspakete werden ohne
+  Kontext hinzugefügt") ist **PROJ-Y-154a** — die KI-Übernahme kennt kein
+  Phasenfeld, CIA-pflichtige eigene Slice.
+
+## PROJ-153 — Arbeitspakete aus dem Vorhaben (α `/backend` live, In Progress)
+
+- **PROJ-Y-153a — `accept_proposal_from_context_bulk` nur einmal je Transaktion
+  aufrufbar (offen, Bestandsbefund).** PROJ-70s Annahme-Funktion legt ihre
+  Arbeitstabelle mit `on commit drop` an; ein zweiter Aufruf in derselben
+  Transaktion scheitert mit `42P07`. Über HTTP nicht erreichbar (jede Anfrage ist
+  ihre eigene Transaktion), aber die Einschränkung steht nirgends. PROJ-153 hat es
+  für die eigene Funktion behoben und PROJ-70s bewusst **nicht** angefasst — fremde,
+  deployte Slice. Fix ist derselbe Zweizeiler.
+  *Quelle: PROJ-153-α Live-Smoke, Fund 3.*
+- **Nicht zurückgestellt, sondern noch nicht gebaut:** `/frontend` (Einstiegsfläche
+  und Prüfansicht) und `/qa` (Schwellen-Kalibrierung nach AC-153.9, echter
+  Anbieter-Durchlauf, authentifizierter Browser-Durchlauf). α ist über HTTP
+  erreichbar, über die Oberfläche nicht.
