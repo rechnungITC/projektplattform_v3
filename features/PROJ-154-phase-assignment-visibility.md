@@ -96,16 +96,23 @@ vollständig.
   `neu="6680a512-…"`; **Gegenprobe** `attributes` (nicht in der Whitelist) erzeugt
   **0** Zeilen. Ohne die zweite Hälfte belegte die erste nur, dass irgendein
   Trigger schreibt — nicht, dass die Whitelist ihn steuert.
-- Gates, nach dem Rebase auf `main` neu gemessen: vitest **3933/3933** (456 Dateien;
-  vor dem Rebase 3925/3925 in 455 — PROJ-Y-151d brachte 8 Tests mit) · ESLint 0 ·
-  tsc 13 = Baseline / 0 neu · Build clean · migration-naming 0 · index-scope 0.
+- **Zweite Verhaltensprobe für `milestone_id`** (ebenfalls zurückgerollt): ein
+  angelegter Meilenstein wird zugewiesen → genau **1** Audit-Zeile für
+  `milestone_id`, während `phase_id` bei **0** bleibt. Damit ist die Wirkung
+  spaltengenau belegt, nicht nur als Zugehörigkeit zur Whitelist.
+- Gates auf dem endgueltigen Branch-Stand (Basis `789e1b9`): vitest **3936/3936**
+  (456 Dateien) · ESLint 0 · tsc **13 = Baseline / 0 neu** · Build clean ·
+  migration-naming 0 · index-scope 0 · token-drift 0. Die Zahl ist an den Stand
+  gebunden statt absolut genannt: `main` ist waehrend der Slice dreimal gewandert
+  (3925 → 3933 → 3936), die Differenz sind ausschliesslich fremde Tests.
 
 ## Abweichungen
 
-- **D-154.1** `milestone_id` ist strukturell belegt (dieselbe Whitelist, derselbe
-  Trigger, in Prod als getrackt gemessen), aber **nicht** über einen eigenen
-  UPDATE ausgeübt — `AUE_0001` hat keinen Meilenstein, ein Nachweis hätte einen
-  anlegen müssen.
+- **D-154.1 geschlossen (2026-08-28).** `milestone_id` ist jetzt ebenfalls per
+  eigenem UPDATE gegen Prod belegt: in einer zurückgerollten Transaktion einen
+  Meilenstein angelegt, zugewiesen → genau **1** Audit-Zeile für `milestone_id`,
+  und `phase_id` bleibt dabei bei **0** — die Whitelist wirkt also spaltengenau
+  statt pauschal. 0 Rückstände (0 Meilensteine, 0 Sondenreste, 0 Audit-Zeilen).
 - **D-154.2** Die Planung lädt jetzt **alle** Work-Items eines Projekts statt nur
   Arbeitspakete und filtert clientseitig. Bei den gemessenen Größen (33–40 Items)
   unkritisch; die bekannte Grenze ist als PROJ-Y-101d registriert. Serverseitig
