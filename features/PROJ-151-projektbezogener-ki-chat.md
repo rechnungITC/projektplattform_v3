@@ -778,10 +778,34 @@ Anlass**: `gpt-4o` meldet keine Denk-Token. Die Regel ist damit erfüllt, jedoch
 nicht gegen echte Denk-Token ausgeübt. Gleiche Form wie bei AC-75.7/75.8
 („erfüllt, aber nicht gegen echte Daten ausgeübt").
 
+### Nachtrag am selben Tag: die Aufstufung war zunächst verfrüht
+
+Wenige Minuten nach der Buchung kam ein Fund einer **parallelen Spur** ans Licht
+(CIA-Pass zu PROJ-153/Q3) und wurde hier unabhängig am Code nachgemessen:
+**die Skill-Anweisungen gingen an den Anbieter, ohne klassifiziert zu werden.**
+`classifyProjectChatAutoContext` baute seinen Suchtext aus
+`project.description` und dem Verlauf; `buildProjectChatContextBlock` hängt
+`skill_instructions` in den System-Prompt.
+
+Damit war **AC-151.8 („Jede Eingabe wird klassifiziert") unerfüllt**, und die
+Aufstufung trug nicht — sie war gebucht, während ein Kriterium offen war. Der
+Grund für den Fehler ist derselbe, den dieser Spec schon einmal an sich selbst
+korrigiert hat: die Kriterien wurden gegen das geprüft, was die Slice **gebaut**
+hat, und nicht gegen alles, was am Ende beim Anbieter **ankommt**.
+
+**Geschlossen als PROJ-Y-151e**, noch am selben Tag: eine Zeile im
+Klassifizierer, vier gepinnte Fälle, ausgeführtes Rot-Grün, und ein Live-Vektor
+gegen den deployten Stand (Skill mit E-Mail → Klasse 3, kein Cloud-Anbieter,
+`reason_code=class3_blocked`, mit Gegenprobe für den unauffälligen Skill).
+Erst danach trägt `full`.
+
+Festgehalten statt geglättet: zwischen Buchung und Behebung stand auf `main` für
+kurze Zeit ein `full`, das nicht galt.
+
 ### Warum `full` jetzt trägt
 
-Alle **28** Kriterien (23 nummerierte + 5 Härtung) sind erfüllt, und das
-Produktionsverhalten ist verifiziert — nicht über einen Auth-Redirect, sondern
+Alle **28** Kriterien (23 nummerierte + 5 Härtung) sind erfüllt — AC-151.8
+seit der Behebung oben —, und das Produktionsverhalten ist verifiziert — nicht über einen Auth-Redirect, sondern
 über einen echten Anbieter-Durchlauf, eine authentifizierte Kette und zwei
 Live-Prüfskripte. Nichts ist zurückgestellt: **PROJ-Y-151a/b/c/d sind alle
 erledigt und ausgeliefert**, keiner davon stellt ein Kriterium dieser Spec offen.

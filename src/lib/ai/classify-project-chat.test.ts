@@ -128,3 +128,59 @@ describe("classifyProjectChatAutoContext", () => {
     expect(classifyProjectChatAutoContext(c, 1)).toBe(1)
   })
 })
+
+
+/**
+ * PROJ-Y-151e — Skill-Anweisungen gehen an den Anbieter und muessen deshalb
+ * klassifiziert werden (AC-151.8, „jede Eingabe").
+ *
+ * Die Luecke war strukturell, nicht ausgenutzt: `buildProjectChatContextBlock`
+ * haengt `skill_instructions` in den System-Prompt, der Klassifizierer sah sie
+ * aber nicht. Eine Mandanten-Administration haette damit Personendaten in einen
+ * Skill schreiben koennen, und sie waeren an einem Cloud-Modell gelandet, OHNE
+ * dass der Class-3-Gate greift — fuer Invariante #3 derselbe Bruch, auch wenn
+ * der Skill das Tor nicht aushebelt, sondern daran vorbeigeht.
+ */
+describe("Skill-Anweisungen zaehlen als Eingabe", () => {
+  it("stuft auf Klasse 3 hoch, wenn ein Skill Personendaten enthaelt", () => {
+    expect(
+      classifyProjectChatAutoContext(
+        ctx({ skill_instructions: "Wende dich bei Rueckfragen an thomas.meier@example.com." }),
+        2,
+      ),
+    ).toBe(3)
+  })
+
+  it("laesst einen unauffaelligen Skill bei der Voreinstellung", () => {
+    // Gegenrichtung: ohne sie waere der Test auch mit einem Klassifizierer
+    // gruen, der pauschal 3 zurueckgibt.
+    expect(
+      classifyProjectChatAutoContext(
+        ctx({ skill_instructions: "Antworte knapp und nenne offene Arbeitspakete." }),
+        2,
+      ),
+    ).toBe(2)
+  })
+
+  it("prueft den Skill auch, wenn Vorhaben und Verlauf unauffaellig sind", () => {
+    // Der tragende Fall: die beiden bisher geprueften Quellen sind sauber,
+    // allein der Skill traegt die Personendaten. Genau hier lief es vorbei.
+    expect(
+      classifyProjectChatAutoContext(
+        ctx({
+          project: {
+            ...ctx().project,
+            description: "Einfuehrung eines ERP-Systems.",
+          },
+          history: [{ role: "user", content: "Wie ist der Stand?" }],
+          skill_instructions: "Ansprechpartnerin: Frau Meier, +49 170 1234567.",
+        }),
+        2,
+      ),
+    ).toBe(3)
+  })
+
+  it("kommt ohne Skill unveraendert klar", () => {
+    expect(classifyProjectChatAutoContext(ctx({ skill_instructions: null }), 2)).toBe(2)
+  })
+})

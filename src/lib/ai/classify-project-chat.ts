@@ -39,9 +39,10 @@ export function checkProjectChatInput(text: string): ProjectChatInputCheck {
 }
 
 /**
- * Schutzklasse für den Router. Berücksichtigt Verlauf **und** Projektangaben:
- * das Vorhaben eines Projekts kann Namen enthalten, und es geht mit in den
- * Kontext.
+ * Schutzklasse für den Router. Berücksichtigt Verlauf, Projektangaben **und**
+ * Skill-Anweisungen — die Regel ist einfach: was an den Anbieter geht, wird
+ * klassifiziert (AC-151.8, „jede Eingabe"). Alles andere waere ein Weg am Tor
+ * vorbei statt durch es hindurch.
  */
 export function classifyProjectChatAutoContext(
   context: ProjectChatAutoContext,
@@ -50,6 +51,15 @@ export function classifyProjectChatAutoContext(
   const haystack = [
     context.project.description ?? "",
     ...context.history.map((m) => m.content),
+    // PROJ-Y-151e — die Skill-Anweisungen gehoeren dazu, weil sie an den
+    // Anbieter GEHEN: `buildProjectChatContextBlock` haengt sie in den
+    // System-Prompt (project-chat-runner.ts). Fehlten sie hier, koennte eine
+    // Mandanten-Administration Personendaten in einen Skill schreiben und sie
+    // erreichten ein Cloud-Modell, OHNE dass der Class-3-Gate greift — der
+    // Skill hebelt das Tor nicht aus, er geht daran vorbei, und fuer
+    // Invariante #3 ("no bypass, even for tenant admins") ist das derselbe
+    // Bruch. Gefunden im CIA-Pass zu PROJ-153/Q3.
+    context.skill_instructions ?? "",
   ].join("\n")
 
   if (detectClass3Markers(haystack)) return 3
