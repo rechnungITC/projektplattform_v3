@@ -72,6 +72,11 @@ import {
   TrajectorySequenceResponseSchema,
 } from "./graph-purpose-prompts"
 import { runDocumentSummaryStrict } from "./document-summary-runner"
+import { runWorkItemsFromIntent } from "./work-items-from-intent-runner"
+import type {
+  WorkItemsFromIntentGenerationOutput,
+  WorkItemsFromIntentGenerationRequest,
+} from "./types"
 
 const DEFAULT_OPENAI_MODEL = "gpt-4o"
 
@@ -208,6 +213,15 @@ export class OpenAIProvider implements AIProvider {
       ...(config?.apiKey ? { apiKey: config.apiKey } : {}),
       fetch: createTimeoutFetch("openai", CLOUD_PROVIDER_TIMEOUT_MS),
     })
+  }
+
+  /**
+   * PROJ-153-alpha — Arbeitspakete aus dem Vorhaben (AC-153H.2).
+   */
+  async generateWorkItemsFromIntent(
+    request: WorkItemsFromIntentGenerationRequest,
+  ): Promise<WorkItemsFromIntentGenerationOutput> {
+    return runWorkItemsFromIntent(this.sdkProvider(this.modelId), request)
   }
 
   async generateRiskSuggestions(

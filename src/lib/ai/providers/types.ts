@@ -114,6 +114,42 @@ export interface ClarifyingQuestionsGenerationRequest {
  * the provider is appropriate; if a provider lacks the requested
  * method the router catches the runtime throw and falls back.
  */
+/**
+ * PROJ-153-α — Eingabe der Generierung aus dem Vorhaben.
+ *
+ * Enthält bewusst **nur menschlich geschriebenen Text** plus Projektmetadaten.
+ * Was hier hineingeht, geht an den Anbieter — und muss deshalb auch durch die
+ * Klassifizierung gelaufen sein (CIA-Auflage A-1, siehe
+ * `classify-work-items-from-intent.ts`).
+ */
+export interface WorkItemsFromIntentGenerationRequest {
+  project: {
+    name: string
+    description: string | null
+    project_type: string | null
+    project_method: string | null
+  }
+  answers: readonly { question: string; answer: string | null }[]
+  skill_instructions: string | null
+  count: number
+}
+
+export interface WorkItemsFromIntentSuggestion {
+  temp_id: string
+  parent_temp_id: string | null
+  title: string
+  description: string | null
+  kind:
+    | "epic" | "story" | "task" | "subtask"
+    | "bug" | "work_package" | "todo" | "milestone"
+  confidence: "low" | "medium" | "high"
+}
+
+export interface WorkItemsFromIntentGenerationOutput {
+  suggestions: WorkItemsFromIntentSuggestion[]
+  usage: { input_tokens: number; output_tokens: number; latency_ms: number }
+}
+
 export interface AIProvider {
   readonly name: AIProviderName
   readonly modelId: string | null
@@ -177,6 +213,10 @@ export interface AIProvider {
   generateProjectChat?(
     request: ProjectChatGenerationRequest,
   ): Promise<ProjectChatGenerationOutput>
+  /** PROJ-153-α — Arbeitspakete aus dem Vorhaben (AC-153H.2: jeder Anbieter). */
+  generateWorkItemsFromIntent?(
+    request: WorkItemsFromIntentGenerationRequest,
+  ): Promise<WorkItemsFromIntentGenerationOutput>
 }
 
 /**
