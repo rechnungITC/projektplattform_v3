@@ -165,3 +165,15 @@ export const setFavorite = (templateId: string, on: boolean) =>
 
 export const listModelPrices = () =>
   call<{ prices: ChatModelPrice[] }>("/api/chat/model-prices").then((r) => r.prices)
+
+export const upsertModelPrice = (price: {
+  provider: string
+  model: string
+  input_per_1m: number
+  output_per_1m: number
+  currency: string
+}) =>
+  call<{ price: ChatModelPrice }>("/api/chat/model-prices", {
+    method: "PUT",
+    body: JSON.stringify(price),
+  }).then((r) => r.price)
