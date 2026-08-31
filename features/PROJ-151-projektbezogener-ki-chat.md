@@ -807,8 +807,9 @@ kurze Zeit ein `full`, das nicht galt.
 Alle **28** Kriterien (23 nummerierte + 5 Härtung) sind erfüllt — AC-151.8
 seit der Behebung oben —, und das Produktionsverhalten ist verifiziert — nicht über einen Auth-Redirect, sondern
 über einen echten Anbieter-Durchlauf, eine authentifizierte Kette und zwei
-Live-Prüfskripte. Nichts ist zurückgestellt: **PROJ-Y-151a/b/c/d sind alle
-erledigt und ausgeliefert**, keiner davon stellt ein Kriterium dieser Spec offen.
+Live-Prüfskripte. Nichts ist zurückgestellt: **PROJ-Y-151a bis 151f sind alle
+erledigt und ausgeliefert** — 151e hat AC-151.8 geschlossen, 151f denselben Pfad in
+PROJ-80-α; keiner davon stellt ein Kriterium dieser Spec offen.
 
 Die Hausregel verlangt für `mvp → full` einen neuen QA- **und**
 Deployment-Durchgang. Beide liegen vor: der QA-Durchgang vom 2026-08-28 (der die

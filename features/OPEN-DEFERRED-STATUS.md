@@ -543,10 +543,12 @@ Deploy, aber sie sind nicht erledigt und hatten bis heute **keine** Followup-Ken
   hierher schaute, hielt eine geschlossene Invariante-#3-Lücke für offen. **Am Code
   nachgemessen statt aus den Merge-Titeln übernommen:** `classify-project-chat.ts:62` und
   `classify.ts:767` lesen die Skill-Anweisungen mit, alle drei Commits sind Vorfahren von
-  `main`. Der stehengelassene Rest ist benannt statt stillschweigend geglättet: der
-  INDEX-Satz zu PROJ-151 zählt „151a/b/c/d" auf und kennt e/f nicht (nicht falsch, aber
-  unvollständig) — nicht mitkorrigiert, weil `features/INDEX.md` im offenen PR #507 liegt und
-  der Hotspot keine zweite Spur verträgt.
+  `main`. **Nachtrag noch im selben Lauf:** die zwei zunächst zurückgestellten Korrekturen sind
+  mitgeliefert, weil **PROJ-153-α `/frontend` (#507) während der Slice gemergt wurde** und der
+  Grund für das Zurückstellen damit entfiel — die Aufzählung „151a/b/c/d" in `features/INDEX.md`
+  und in der PROJ-151-Spec nennt jetzt **151a bis 151f**, und die Fremdreferenz aus PROJ-153
+  (unten, `PROJ-Y-153b`) zeigt auf die richtige Kennung. Einen Followup für zwei Zeilen
+  stehenzulassen, während der Blocker weg ist, wäre genau die Fäule, die dieser Lauf behebt.
   *Quelle: eigene Messung 2026-08-31.*
 
 ## PROJ-155 — Gantt: Hierarchie, Sammelvorgänge, Netzablaufplan (Deployed, Scope `alpha`)
@@ -601,17 +603,19 @@ Deploy, aber sie sind nicht erledigt und hatten bis heute **keine** Followup-Ken
   für die eigene Funktion behoben und PROJ-70s bewusst **nicht** angefasst — fremde,
   deployte Slice. Fix ist derselbe Zweizeiler.
   *Quelle: PROJ-153-α Live-Smoke, Fund 3.*
-- **PROJ-Y-153b — die Spec verweist für die Class-3-Lücke auf die falsche Kennung
-  (offen, Buchführung).** `features/PROJ-153-work-items-from-project-intent.md`
-  (Zeilen 208 und 462) registriert den Fund des eigenen CIA-Passes als
-  `PROJ-Y-151d` — diese Kennung trägt seit dem 2026-08-28 aber die **Kostenanzeige**
-  (Tag `v2.84.0-PROJ-Y-151d`), der Sicherheitsfund heisst `PROJ-Y-151e` und ist
-  erledigt. Wer dem Verweis folgt, landet beim falschen Vorgang. Kein Produktfehler:
-  die Auflage A-1 ist in PROJ-153 umgesetzt (`classify-work-items-from-intent.ts:62`
-  liest die Skill-Anweisungen), nur der Zeiger stimmt nicht. **Nicht sofort korrigiert,
-  weil genau diese Datei im offenen PR #507 liegt** — Präzedenz PROJ-Y-148a/148d:
-  fremde bzw. in Arbeit befindliche Specs werden nicht nebenbei angefasst. Gleiche
-  Klasse wie die mehrfach belegten `PROJ-Y-1`/`PROJ-Y-2`-Kennungen (PROJ-Y-145h).
+- **PROJ-Y-153b — Verweis auf die falsche Kennung. Erledigt 2026-08-31.**
+  `features/PROJ-153-work-items-from-project-intent.md` (Zeilen 208 und 462)
+  registrierte den Fund des eigenen CIA-Passes als `PROJ-Y-151d` — diese Kennung
+  trägt seit dem 2026-08-28 aber die **Kostenanzeige** (Tag `v2.84.0-PROJ-Y-151d`),
+  der Sicherheitsfund heisst `PROJ-Y-151e`. Wer dem Verweis folgte, landete beim
+  falschen Vorgang; zusätzlich stand die Lücke dort im Präsens, obwohl sie behoben
+  ist. Kein Produktfehler — die Auflage A-1 ist in PROJ-153 umgesetzt
+  (`classify-work-items-from-intent.ts:62` liest die Skill-Anweisungen), nur der
+  Zeiger stimmte nicht. Gleiche Klasse wie die mehrfach belegten
+  `PROJ-Y-1`/`PROJ-Y-2`-Kennungen (PROJ-Y-145h). **Zunächst zurückgestellt**, weil die
+  Datei im offenen PR #507 lag (Präzedenz PROJ-Y-148a/148d); **mitkorrigiert, sobald
+  #507 gemergt war** — beide Verweise nennen jetzt `PROJ-Y-151e` samt Umbenennungsgrund
+  und Behebungsnachweis, und der Zwilling `PROJ-Y-151f` ist genannt.
   *Quelle: eigene Messung 2026-08-31 im Zuge der PROJ-151-Registerkorrektur.*
 - **Nicht zurückgestellt, sondern noch nicht gebaut:** `/frontend` (Einstiegsfläche
   und Prüfansicht) und `/qa` (Schwellen-Kalibrierung nach AC-153.9, echter
