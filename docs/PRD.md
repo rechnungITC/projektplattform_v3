@@ -32,7 +32,7 @@ The product thesis: enterprise projects fail at the seams between execution, gov
 | PROJ-3 | P0 (MVP) | Tenant Operations and Deployment Modes (Stand-alone vs SaaS) | Planned |
 | PROJ-4 | P0 (MVP) | Platform Foundation: Navigation, Project Roles, RBAC Enforcement | Planned |
 | PROJ-5 | P0 (MVP) | Guided Project Creation Wizard with Type/Method-Aware Questions | Planned |
-| PROJ-Y-5a | P1 | Skill-guided adaptive detail dialog during project creation; durably documents context coverage and gaps with or without AI | Architected |
+| PROJ-Y-5a | P1 | Skill-guided adaptive detail dialog during project creation; durably documents context coverage and gaps with or without AI | In Progress |
 | PROJ-6 | P0 (MVP) | Project Types, Methods Catalog, and Rule Engine | Planned |
 | PROJ-19 | P0 (MVP) | Shared core: Phases, Milestones (cross-cutting schedule backbone) | Planned |
 | PROJ-9 | P0 (MVP) | Shared core: Work Items (Epic/Story/Task/Subtask/Bug/Work Package) | Planned |

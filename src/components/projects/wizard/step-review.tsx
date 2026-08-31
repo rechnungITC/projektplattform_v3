@@ -1,13 +1,17 @@
 "use client"
 
-import { useFormContext } from "react-hook-form"
+import { AlertTriangle, CheckCircle2, FileCheck2 } from "lucide-react"
+import { useFormContext, useWatch } from "react-hook-form"
 
+import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert"
+import { Badge } from "@/components/ui/badge"
 import {
   Card,
   CardContent,
   CardHeader,
   CardTitle,
 } from "@/components/ui/card"
+import { Textarea } from "@/components/ui/textarea"
 import { parseLocalDate } from "@/lib/dates/iso-date"
 import { computeRules } from "@/lib/project-rules/engine"
 import type { ProjectTypeOverrideFields } from "@/types/master-data"
@@ -15,6 +19,14 @@ import { isAutoSource } from "@/types/project-skill"
 import { PROJECT_METHOD_LABELS } from "@/types/project-method"
 import { PROJECT_TYPE_LABELS } from "@/types/project"
 import type { WizardData } from "@/types/wizard"
+
+const REVIEW_COVERAGE_LABELS = {
+  needs_clarification: "Klärung nötig",
+  sufficient: "Ausreichend bestätigt",
+  unknown: "Unbekannt",
+  not_applicable: "Nicht relevant",
+  skipped: "Übersprungen",
+} as const
 
 function formatDate(iso: string | null): string {
   const d = parseLocalDate(iso)
@@ -34,6 +46,10 @@ interface StepReviewProps {
 export function StepReview({ projectTypeOverride }: StepReviewProps = {}) {
   const form = useFormContext<WizardData>()
   const data = form.getValues()
+  const projectContext = useWatch({
+    control: form.control,
+    name: "project_context",
+  })
 
   const typeLabel =
     data.project_type !== null ? PROJECT_TYPE_LABELS[data.project_type] : "—"
@@ -157,6 +173,137 @@ export function StepReview({ projectTypeOverride }: StepReviewProps = {}) {
           </CardContent>
         </Card>
       ) : null}
+
+      <Card data-testid="wizard-review-project-context">
+        <CardHeader>
+          <CardTitle className="flex items-center gap-2 text-base">
+            <FileCheck2 className="h-4 w-4" aria-hidden />
+            Projektkontext
+          </CardTitle>
+        </CardHeader>
+        <CardContent className="space-y-4">
+          <Alert>
+            {projectContext.analysis_status === "ai_analyzed" ? (
+              <CheckCircle2 className="h-4 w-4" aria-hidden />
+            ) : (
+              <AlertTriangle className="h-4 w-4" aria-hidden />
+            )}
+            <AlertTitle>
+              {projectContext.analysis_status === "ai_analyzed"
+                ? "KI-Analyse liegt vor"
+                : "Erfasst, nicht KI-analysiert"}
+            </AlertTitle>
+            <AlertDescription>
+              Die Dokumentation wird unabhängig vom Analyse-Status zusammen
+              mit dem Projekt angelegt. KI-Interpretationen gelten nie als
+              bestätigte Stammdaten.
+            </AlertDescription>
+          </Alert>
+
+          <div className="space-y-2">
+            <label htmlFor="project-context-summary" className="text-sm font-medium">
+              Bestätigte Zusammenfassung
+            </label>
+            <Textarea
+              id="project-context-summary"
+              value={projectContext.summary}
+              onChange={(event) =>
+                form.setValue("project_context.summary", event.target.value, {
+                  shouldDirty: true,
+                })
+              }
+              placeholder="Die bestätigte Zusammenfassung kann vor der Anlage ergänzt werden."
+              rows={5}
+              maxLength={20000}
+            />
+            <p className="text-xs text-muted-foreground">
+              Änderungen hier betreffen die Dokumentation, nicht automatisch
+              die Projekt-Stammdaten.
+            </p>
+          </div>
+
+          <div className="space-y-2">
+            <h3 className="text-sm font-medium">Skill-Abdeckung</h3>
+            {projectContext.skill_coverage.filter((row) => !row.stale).length ===
+            0 ? (
+              <p className="text-sm text-muted-foreground">
+                Keine Skills ausgewählt — keine Skill-Abdeckung bewertet.
+              </p>
+            ) : (
+              <ul className="space-y-2">
+                {projectContext.skill_coverage
+                  .filter((row) => !row.stale)
+                  .map((row) => (
+                    <li
+                      key={`${row.skill_id}:${row.skill_version_id ?? "unresolved"}`}
+                      className="flex flex-wrap items-center justify-between gap-2 rounded-md border p-3 text-sm"
+                    >
+                      <span>{row.skill_name}</span>
+                      <Badge
+                        variant={
+                          row.state === "sufficient" ? "default" : "secondary"
+                        }
+                      >
+                        {REVIEW_COVERAGE_LABELS[row.state]}
+                      </Badge>
+                    </li>
+                  ))}
+              </ul>
+            )}
+          </div>
+
+          {projectContext.gaps.length > 0 ||
+          projectContext.assumptions.length > 0 ||
+          projectContext.contradictions.length > 0 ? (
+            <div className="grid gap-3 sm:grid-cols-3">
+              <ReviewList title="Offene Lücken" items={projectContext.gaps} />
+              <ReviewList title="Annahmen" items={projectContext.assumptions} />
+              <ReviewList
+                title="Widersprüche"
+                items={projectContext.contradictions}
+              />
+            </div>
+          ) : null}
+
+          <div className="space-y-2">
+            <h3 className="text-sm font-medium">Quellen &amp; Herkunft</h3>
+            <ul className="space-y-2">
+              {projectContext.statements.map((statement) => (
+                <li key={statement.id} className="rounded-md bg-muted/40 p-3 text-sm">
+                  <div className="mb-1 flex flex-wrap gap-2">
+                    <Badge variant="outline">{statement.source_label}</Badge>
+                    <Badge variant="secondary">
+                      {statement.origin === "ai_interpretation"
+                        ? "KI-Interpretation — zu bestätigen"
+                        : "Bestätigte Quelle"}
+                    </Badge>
+                  </div>
+                  <p className="whitespace-pre-wrap">{statement.text}</p>
+                </li>
+              ))}
+            </ul>
+          </div>
+        </CardContent>
+      </Card>
+    </div>
+  )
+}
+
+function ReviewList({ title, items }: { title: string; items: string[] }) {
+  return (
+    <div className="rounded-md border p-3">
+      <h4 className="text-xs font-semibold uppercase tracking-wide text-muted-foreground">
+        {title}
+      </h4>
+      {items.length === 0 ? (
+        <p className="mt-2 text-sm text-muted-foreground">Keine</p>
+      ) : (
+        <ul className="mt-2 list-disc space-y-1 pl-4 text-sm">
+          {items.map((item) => (
+            <li key={item}>{item}</li>
+          ))}
+        </ul>
+      )}
     </div>
   )
 }

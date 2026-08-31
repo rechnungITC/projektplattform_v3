@@ -1,6 +1,6 @@
 # PROJ-Y-5a: Skill-Guided Project Creation Dialog
 
-## Status: Architected
+## Status: In Progress
 
 ## Deployment Scope: —
 
@@ -619,6 +619,66 @@ project-room context view. The frontend stage reuses installed shadcn/ui
 primitives and introduces no dependency. Database records, atomic finalize,
 AI-purpose wiring, APIs, RLS, and transcript authorization remain the following
 `/backend` stage; the UI may use typed fixture state until those contracts exist.
+
+## Frontend Implementation Notes (2026-08-31)
+
+The Alpha frontend boundary is implemented and ready for user review.
+
+### Delivered
+
+- The wizard now has one unconditional **Project context** step after Skills,
+  the optional M&A foundation, and the optional kickoff. The separate visible
+  PROJ-135 clarification step is removed from new flows; persisted legacy
+  questions and answers are adapted into the same retained statement and turn
+  history without another model call.
+- The draft has a typed `project_context` block for summary, provenance-bearing
+  statements, turns, exact client-visible skill-version snapshots, canonical
+  coverage states, gaps, assumptions, contradictions, analysis status, reason
+  code, and completion state. Old drafts are backfilled during hydration and
+  optimistic-conflict reload.
+- The complete manual path is usable without a provider: confirmed wizard
+  selections, deterministic detail answers, and optional kickoff evidence are
+  collected automatically; users can add free text, mark each selected skill
+  as sufficient/unknown/not applicable/skipped, or finish with documented gaps.
+  Only a user interaction can establish `sufficient`.
+- The Review step includes an editable context summary, honest analysis-status
+  banner, per-skill coverage, gaps/assumptions/contradictions, and provenance.
+  Editing the summary is explicitly separated from project master data.
+- A core Project-room route `/projects/[id]/projektkontext` and navigation item
+  render the confirmed summary, coverage, gaps, provenance, confidentiality,
+  and the narrower transcript state. Loading, empty, authorization-safe
+  transcript, and retryable error states are present. Existing projects receive
+  a normal empty state when the future API returns 404.
+- The UI reuses installed shadcn/ui primitives and semantic Tailwind tokens;
+  no dependency, inline style, CSS module, or raw palette color was added.
+
+### Frontend evidence
+
+- Focused tests: **147/147** across wizard order/defaults, manual capture,
+  legacy clarification absorption, version staleness, reviewable project-room
+  output, transcript narrowing, wizard navigation, and method-aware routing.
+- Full Vitest suite: **4015/4015** in 464 files. The first sandboxed run had
+  eight `spawnSync git EPERM` failures in the hook-installer suite; the approved
+  unrestricted repetition is fully green.
+- ESLint: **0 errors**. Token-drift guard: **0 errors / 0 warnings**.
+- TypeScript: the repository's existing **13-error baseline**, **0 new** and no
+  error in a changed file.
+- Production compilation: **successful in 87 seconds** with Next's official
+  webpack builder (Turbopack rejects an external worktree dependency symlink).
+  The subsequent global route-type pass stops on the pre-existing unrelated
+  export `mapCommEntryRpcError` in the communication-entry route.
+- `check:index-scope`: **199/199**, 0 errors. `git diff --check`: clean.
+
+### Open for backend and review
+
+- `/backend`: `skill_context_clarification` across every provider and purpose
+  register; authoritative frame/version resolution; adaptive idempotent turn
+  API; immutable revision tables; RLS/confidentiality/transcript policies;
+  atomic idempotent finalize; project-context read API; live RPC smoke and
+  security probes.
+- Browser review is still required before the frontend stage is called fully
+  accepted. The implementation follows the existing wizard visual language;
+  no separate mockup or brand deviation was introduced.
 
 ## QA Test Results
 
