@@ -1,7 +1,7 @@
 # PROJ-156: Assistant Dialog Continuity and Everyday Command Understanding
 
-## Status: Approved
-## Deployment Scope: —
+## Status: Deployed
+## Deployment Scope: full
 
 **Created:** 2026-08-20
 **Last Updated:** 2026-08-26
@@ -998,3 +998,59 @@ eines Fehler-Rückrufs, der im Ruhezustand nicht gerendert wird. Alle fünf Date
 
 **Endstand: 0 Critical / 0 High / 0 Medium / 1 Info.** Offen bleibt allein **F-4** (Sprachpfad nicht
 ausgeübt, über den gleichwertigen Textpfad belegt).
+
+## Deployment (2026-08-31)
+
+**Tag `v2.88.0-PROJ-156` auf dem Merge-Commit `b60ac92` (PR #511, squash → `main`).**
+Alle **10** Pflicht-Checks grün. Vercel-Produktions-Deployment
+`dpl_FcEuCENuEVuFqQQUCzCSic1mCPc1`, gebaut aus **genau diesem SHA**
+(`githubCommitSha b60ac929…`, `target: production`), GitHub-Deployment-Status
+`Production/success`, Build abgeschlossen und ausgeliefert.
+
+**Kein Runtime-DB-Change beim Merge** — die Migration liegt seit dem QA-Lauf in Prod. Der Merge
+liefert Code und Buchführung aus.
+
+**Prod eigenständig nachgemessen statt aus dem Bau-Lauf übernommen:** alle drei Funktionen
+`SECURITY INVOKER`, `search_path=public, pg_temp`, `anon` **ohne** EXECUTE, `authenticated` **mit**,
+**PUBLIC ohne Eintrag**, Kommentar gesetzt. Funktions-Inventar 298 → 301, Advisors 157 WARN /
+**0 ERROR** und keine Meldung nennt eine der drei Funktionen.
+
+**Post-Deploy-Smoke — und die Gegenprobe, die ihn richtig einordnet:** `/api/assistant/turns`,
+`/api/assistant/work-item-drafts`, `/projects` und der neue `DELETE`-Pfad antworten mit exakt **307**,
+Rumpf `Redirecting...`, kein Leck. **Erfundene Pfade antworten ebenfalls 307** (`/api/assistant/
+gibtsnicht-156`, `/projects/erfunden-156`) — der Smoke belegt damit das **Auth-Gate**, nicht die
+Existenz der Routen. Das ist hier auch nicht die offene Frage: die Routenpfade sind älter als diese
+Slice (PROJ-37/144), neu ist die `DELETE`-**Methode**, und eine Routenliste führt keine Methoden.
+Belegt ist sie über das Build-Log des ausgelieferten Deployments (Build abgeschlossen aus genau
+diesem SHA, der Handler ist Teil des Merge-Commits) plus den echten `DELETE`-Aufruf im E2E-Fall (f).
+
+### Deployment Scope: `full` — kriterienweise begründet
+
+- **Alle 36 Akzeptanzkriterien erfüllt, nichts zurückgestellt.** Kein Kriterium trägt eine
+  Ziel-Kennung, es gibt keine Auslassung in `features/OPEN-DEFERRED-STATUS.md`.
+- **QA ohne Critical/High/Medium.** Endstand 0/0/0 + 1 Info.
+- **Produktionsverhalten verifiziert**, und zwar über die von der Hausregel genannten Nachweisarten:
+  Live-RPC/RLS-Smoke **12/12 gegen Prod** (0 Rückstände über 6 Zähler), authentifizierte
+  Browser-Ketten **3/3** dreimal stabil, Regression **9/9**, Produktions-Deployment `success`.
+  Der Auth-Redirect ist ausdrücklich **nur ergänzend** geführt — die Hausregel schliesst ihn als
+  alleinigen Nachweis aus, und genau deshalb steht er hier nicht allein.
+
+**Warum nicht `mvp` oder `alpha`:** beide behaupten zurückgestellte, namentlich geführte Arbeit.
+Es gibt keine — es existiert kein benannter Folge-Slice und keine offene Original-Anforderung.
+**Warum nicht `tooling-only`:** die Slice liefert Produkt-Laufzeitfähigkeit (drei RPCs, ein neuer
+HTTP-Pfad, Dialogkontinuität in der Oberfläche), nicht Repository-Werkzeug.
+**Die Waiver-Ausnahme wurde nicht in Anspruch genommen und ist nicht nötig** — kein Kriterium ist
+wörtlich unerfüllt.
+
+**F-4 (Info) ist Nachweistiefe, kein unerfülltes Kriterium.** AC-156.30 verlangt, dass Text- und
+Sprachpfad denselben Parser und Dialogzustand nutzen und **alles ohne Mikrofonfreigabe verfügbar**
+ist. Genau das fährt die komplette Kette über den Textpfad; nicht ausgeübt ist die
+Spracherkennung selbst, die headless nicht fahrbar ist. Das Kriterium fordert sie nicht.
+
+### Folgearbeit, in `features/OPEN-DEFERRED-STATUS.md` gebucht
+
+- **PROJ-Y-156a** — drei vorbestehende englische `aria-label` in der App-Hülle. Kein Kriterium
+  dieser Spec; in PROJ-156 nicht mitgenommen, weil sie zugleich Anker der
+  Visual-Regression-Maskierung (PROJ-Y-143f) **und** des eigenen E2E-Falls (f) sind.
+- **PROJ-Y-145i** — `check:index-scope` prüft keine ID-Eindeutigkeit; am `git merge-tree` gemessen.
+- **PROJ-Y-150e** — um den zweiten, real eingetretenen Fall des blinden Fensters ergänzt.
