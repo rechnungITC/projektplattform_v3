@@ -94,91 +94,91 @@ PROJ-45-δ, PROJ-80, PROJ-Y-145b, and PROJ-Y-114a and do not modify Assistant co
 
 ### A. Everyday-language recognition
 
-- [ ] **AC-150.1** — `Leg mir ein Projekt an`, `Lege bitte ein neues Projekt an`, `Erstell mir ein
+- [ ] **AC-156.1** — `Leg mir ein Projekt an`, `Lege bitte ein neues Projekt an`, `Erstell mir ein
       Projekt`, and `Mach ein neues Projekt für mich` all resolve to `project_create_draft` without a
       model call.
-- [ ] **AC-150.2** — Filler words and German verb-clause order do not change the recognized intent.
-- [ ] **AC-150.3** — Status questions such as *„Wie steht das Projekt?“* never become write intents.
-- [ ] **AC-150.4** — A phrase with several materially different actions is not guessed; the Assistant
+- [ ] **AC-156.2** — Filler words and German verb-clause order do not change the recognized intent.
+- [ ] **AC-156.3** — Status questions such as *„Wie steht das Projekt?“* never become write intents.
+- [ ] **AC-156.4** — A phrase with several materially different actions is not guessed; the Assistant
       asks the user to choose or split the request.
-- [ ] **AC-150.5** — Unknown input receives an intent-specific repair hint when a likely domain is
+- [ ] **AC-156.5** — Unknown input receives an intent-specific repair hint when a likely domain is
       visible; the generic catch-all remains only when no safe domain can be inferred.
 
 ### B. Dialog state and continuation
 
-- [ ] **AC-150.6** — Session context is loaded before classification of every follow-up turn and is
+- [ ] **AC-156.6** — Session context is loaded before classification of every follow-up turn and is
       validated through a versioned schema.
-- [ ] **AC-150.7** — The state contains only allow-listed fields: pending intent, normalized slots,
+- [ ] **AC-156.7** — The state contains only allow-listed fields: pending intent, normalized slots,
       missing slots, candidate identifiers, current project identifier, schema version, and expiry.
-- [ ] **AC-150.8** — A follow-up answer fills only the field currently requested; it is not reclassified
+- [ ] **AC-156.8** — A follow-up answer fills only the field currently requested; it is not reclassified
       as an unrelated top-level command unless the user explicitly starts a new command.
-- [ ] **AC-150.9** — `Abbrechen`, completion, 30 minutes of inactivity, logout, tenant change, or an
+- [ ] **AC-156.9** — `Abbrechen`, completion, 30 minutes of inactivity, logout, tenant change, or an
       incompatible project change clears the pending state.
-- [ ] **AC-150.10** — State reads and writes are scoped to the authenticated user and active tenant;
+- [ ] **AC-156.10** — State reads and writes are scoped to the authenticated user and active tenant;
       another user or tenant cannot see or resume the dialog.
-- [ ] **AC-150.11** — Concurrent updates from two tabs cannot silently overwrite each other; a stale
+- [ ] **AC-156.11** — Concurrent updates from two tabs cannot silently overwrite each other; a stale
       continuation receives a controlled conflict response and reloads the current state.
 
 ### C. Conversational project creation
 
-- [ ] **AC-150.12** — *„Leg mir ein Projekt an“* creates no Wizard draft yet and asks for the project
+- [ ] **AC-156.12** — *„Leg mir ein Projekt an“* creates no Wizard draft yet and asks for the project
       name first.
-- [ ] **AC-150.13** — The dialog collects project name, type, method, and short description over one or
+- [ ] **AC-156.13** — The dialog collects project name, type, method, and short description over one or
       more turns; existing values present in the first command are retained.
-- [ ] **AC-150.14** — Project type and method questions use the existing PROJ-5/6 catalog values and
+- [ ] **AC-156.14** — Project type and method questions use the existing PROJ-5/6 catalog values and
       labels, not a second hard-coded catalog.
-- [ ] **AC-150.15** — The user may explicitly skip only Wizard-optional fields; a missing project name
+- [ ] **AC-156.15** — The user may explicitly skip only Wizard-optional fields; a missing project name
       cannot be replaced by `Neuer Projektentwurf`.
-- [ ] **AC-150.16** — Before draft creation, the Assistant shows a structured summary and allows the
+- [ ] **AC-156.16** — Before draft creation, the Assistant shows a structured summary and allows the
       collected values to be corrected or cancelled.
-- [ ] **AC-150.17** — Approval creates exactly one `project_wizard_drafts` row and returns the existing
+- [ ] **AC-156.17** — Approval creates exactly one `project_wizard_drafts` row and returns the existing
       Wizard review link. It does not insert a final `projects` row.
-- [ ] **AC-150.18** — Repeating approval, double-clicking, or replaying a completed turn cannot create a
+- [ ] **AC-156.18** — Repeating approval, double-clicking, or replaying a completed turn cannot create a
       second Wizard draft from the same dialog.
 
 ### D. Project resolution and Story/work-item continuation
 
-- [ ] **AC-150.19** — Project names are accepted in common positions, including *„im Projekt Apollo eine
+- [ ] **AC-156.19** — Project names are accepted in common positions, including *„im Projekt Apollo eine
       Story“* and *„eine Story für den Rechnungsimport im Projekt Apollo“*.
-- [ ] **AC-150.20** — If a work-item command lacks a project outside a Project Room, the Assistant asks
+- [ ] **AC-156.20** — If a work-item command lacks a project outside a Project Room, the Assistant asks
       for it and preserves the requested kind, title, and description.
-- [ ] **AC-150.21** — If a work-item command lacks a title, the next answer fills the title and resumes
+- [ ] **AC-156.21** — If a work-item command lacks a title, the next answer fills the title and resumes
       the same PROJ-144 flow.
-- [ ] **AC-150.22** — When project search returns multiple candidates, choosing one posts a structured
+- [ ] **AC-156.22** — When project search returns multiple candidates, choosing one posts a structured
       selection to the existing session and resumes the pending action; it does not merely navigate.
-- [ ] **AC-150.23** — *„Mach im Projekt Apollo eine Story für den Rechnungsimport“* creates a PROJ-144
+- [ ] **AC-156.23** — *„Mach im Projekt Apollo eine Story für den Rechnungsimport“* creates a PROJ-144
       draft when Apollo is uniquely visible and uses the existing method-to-kind mapping.
-- [ ] **AC-150.24** — Before confirmation no `work_items` row exists. Final creation still requires the
+- [ ] **AC-156.24** — Before confirmation no `work_items` row exists. Final creation still requires the
       existing PROJ-144 confirmation control and remains idempotent.
-- [ ] **AC-150.25** — A non-visible project is handled as not found without leaking its name or existence.
+- [ ] **AC-156.25** — A non-visible project is handled as not found without leaking its name or existence.
 
 ### E. Privacy, audit, and failure behavior
 
-- [ ] **AC-150.26** — PROJ-156 makes no external AI/STT call beyond the already selected input modality,
+- [ ] **AC-156.26** — PROJ-156 makes no external AI/STT call beyond the already selected input modality,
       creates no `ki_runs` row, and adds no AI purpose.
-- [ ] **AC-150.27** — `no_persist` stores no raw utterance in dialog context. Necessary normalized
+- [ ] **AC-156.27** — `no_persist` stores no raw utterance in dialog context. Necessary normalized
       action slots are treated as temporary action state, minimized, and deleted on cancel/completion/
       expiry; `/architecture` must reconcile this explicitly with PROJ-40.
-- [ ] **AC-150.28** — Every clarification, selection, cancellation, draft creation, blocked action, and
+- [ ] **AC-156.28** — Every clarification, selection, cancellation, draft creation, blocked action, and
       state conflict remains traceable through existing Assistant turn/action audit without logging
       unnecessary raw Class-3 content.
-- [ ] **AC-150.29** — Database, permission, or module-gate errors preserve no half-created business
+- [ ] **AC-156.29** — Database, permission, or module-gate errors preserve no half-created business
       object and produce a clear, actionable German response.
-- [ ] **AC-150.30** — Text and voice transcripts use the same parser and dialog state; all behavior is
+- [ ] **AC-156.30** — Text and voice transcripts use the same parser and dialog state; all behavior is
       available without microphone permission.
 
 ### F. Regression and evidence
 
-- [ ] **AC-150.31** — Existing PROJ-37/38/39 runtime, route, and Assistant E2E tests remain green.
-- [ ] **AC-150.32** — Existing PROJ-144 unit, API, RLS/pentest, and E2E confirmation behavior remains
+- [ ] **AC-156.31** — Existing PROJ-37/38/39 runtime, route, and Assistant E2E tests remain green.
+- [ ] **AC-156.32** — Existing PROJ-144 unit, API, RLS/pentest, and E2E confirmation behavior remains
       unchanged.
-- [ ] **AC-150.33** — A table-driven suite covers positive paraphrases and negative near-matches for
+- [ ] **AC-156.33** — A table-driven suite covers positive paraphrases and negative near-matches for
       every write intent.
-- [ ] **AC-150.34** — An authenticated E2E test proves the complete project chain: colloquial command →
+- [ ] **AC-156.34** — An authenticated E2E test proves the complete project chain: colloquial command →
       questions → corrections → summary → one Wizard draft → Wizard link.
-- [ ] **AC-150.35** — An authenticated E2E test proves the Story chain with an ambiguous project:
+- [ ] **AC-156.35** — An authenticated E2E test proves the Story chain with an ambiguous project:
       command → candidate selection → PROJ-144 draft → explicit confirmation → exactly one Story.
-- [ ] **AC-150.36** — Reload continuation, cancel, expiry, tenant switch, unauthorized project, and
+- [ ] **AC-156.36** — Reload continuation, cancel, expiry, tenant switch, unauthorized project, and
       concurrent-tab conflict each have a regression test.
 
 ## Edge Cases
@@ -228,7 +228,7 @@ PROJ-45-δ, PROJ-80, PROJ-Y-145b, and PROJ-Y-114a and do not modify Assistant co
 6. Feed completed work-item slots into the unchanged PROJ-144 draft creator. Keep its rights check,
    method mapping, claim-before-create protection, and explicit UI confirmation.
 7. Add table-driven parser/transition tests, route tests for state ownership/conflicts, and the two
-   authenticated E2E chains from AC-150.34/.35.
+   authenticated E2E chains from AC-156.34/.35.
 
 This sequence is directional, not the final technical design. `/architecture` must run GitNexus impact
 analysis on the runtime, turn route, session context, and launcher before selecting the concrete data and
@@ -504,7 +504,7 @@ The acceptance evidence is split by responsibility:
 - **Component tests:** summary correction, cancellation, project-choice continuation, conflict and
   expiry messaging, keyboard operation, and no navigation before continuation.
 - **Authenticated E2E:** the complete colloquial project flow and the ambiguous-project Story flow from
-  AC-150.34/.35, using the dedicated Assistant tenant established by PROJ-Y-144d.
+  AC-156.34/.35, using the dedicated Assistant tenant established by PROJ-Y-144d.
 
 ### 14. Dependencies and Deployment
 
@@ -684,17 +684,17 @@ checks do not override the security and correctness findings below.
 
 ### Blocking findings
 
-1. **High — privacy and retention contract is incomplete (AC-150.9, AC-150.27, AC-150.28).**
+1. **High — privacy and retention contract is incomplete (AC-156.9, AC-156.27, AC-156.28).**
    `projectSummary()` can copy the project name and full description into persisted
    `runtime.user_response`; the turn route stores `response_text` even for `no_persist` or redacted
    results. Expired dialog state is hidden by the resume route but not removed from
    `assistant_sessions.context.dialog_state`. Logout and tenant switching only change the
    `sessionStorage` key and do not clear the server-side state.
-2. **High — concurrent Work-Item continuation has a TOCTOU window (AC-150.11, AC-150.35).**
+2. **High — concurrent Work-Item continuation has a TOCTOU window (AC-156.11, AC-156.35).**
    `continueWorkItemDialog()` creates an `assistant_work_item_drafts` row before the optimistic
    `last_turn_at` update in `upsertSession()`. Two tabs can therefore create two drafts; one request
    subsequently receives HTTP 409, but its duplicate draft remains confirmable.
-3. **High — project approval and audit evidence are not atomic (AC-150.28, AC-150.29).**
+3. **High — project approval and audit evidence are not atomic (AC-156.28, AC-156.29).**
    The completion RPC commits the Wizard draft and session completion, while the route writes the
    assistant turn and action event afterward in separate operations. A failed turn insert can leave a
    committed draft without the required audit trail, and action-event insertion errors are ignored.
@@ -702,18 +702,18 @@ checks do not override the security and correctness findings below.
 ### Additional gaps
 
 - Mixed request *„Wie steht Apollo und leg ein Projekt an“* is treated as a write instead of being
-  rejected by the multi-action boundary (AC-150.4).
+  rejected by the multi-action boundary (AC-156.4).
 - The ordinary infinitive wording *„Kannst du mir bitte ein Projekt anlegen?“* is not recognized
-  (AC-150.2).
+  (AC-156.2).
 - A new command during a pending dialog is consumed as the current slot value; there is no controlled
-  replace/cancel transition (AC-150.8).
+  replace/cancel transition (AC-156.8).
 - Project-to-global and global-to-project context changes do not reliably clear pending state.
 - Speech-originated turns are still sent with `modality: "text"`; real Chrome/Edge microphone sign-off
   is absent.
 - Some raw database error text can reach the user-facing response.
 
-Static/unit evidence supports AC-150.1, AC-150.3, AC-150.12, AC-150.14, AC-150.16, AC-150.19, and
-AC-150.26, with partial evidence for several dialog/rendering criteria. The High findings mean the
+Static/unit evidence supports AC-156.1, AC-156.3, AC-156.12, AC-156.14, AC-156.16, AC-156.19, and
+AC-156.26, with partial evidence for several dialog/rendering criteria. The High findings mean the
 remaining acceptance criteria cannot be approved. The migration was deliberately not applied; live
 RPC smoke, cross-tenant/anonymous pentest, authenticated E2E chains, and browser speech sign-off were
 not run against production.
@@ -725,3 +725,123 @@ gaps, then restart `/qa` in full. Status remains `In Review`; deployment scope r
 
 Not executed. `/deploy` is blocked by the 2026-08-26 QA decision. No migration was applied, no branch
 was pushed or merged, and no production deployment was triggered.
+
+## QA Test Results (2026-08-31)
+
+**Verdikt: NICHT produktionsreif — 0 Critical / 1 High / 2 Medium.** Status bleibt `In Review`.
+Der High-Fund ist kein Code-Defekt, sondern eine Nachweislücke: drei Akzeptanzkriterien haben
+keinen Test, und der hausseitig verpflichtende Live-RPC-Smoke ist nicht führbar, solange die
+Migration nicht in Prod ist.
+
+### Vorgeschichte dieses Durchgangs
+
+Die Slice lag seit 2026-08-24 als `audit/chatbot-command-understanding` ohne PR auf der Platte
+und trug die Kennung **PROJ-150**, die zwei Tage später unabhängig an den Branch-Kollisions-Wächter
+vergeben und als `v2.77.0-PROJ-150` ausgeliefert wurde. Umbenannt auf **PROJ-156**; Einzelheiten
+im Rettungs-Commit. Zwei Befunde daraus gehören ins Register, nicht in diese Spec:
+
+- **Ein Merge hätte zwei verschiedene Features unter einer ID eingetragen** und `PROJ-Y-150a` von
+  `Deployed` auf `In Progress` zurückgedreht — **ohne dass ein CI-Gate das bemerkt**:
+  `scripts/check-index-scope` prüft Zellenzahl, Statuswerte und Kombinationen, aber **keine
+  ID-Eindeutigkeit** (im Quelltext nachgesehen). Am Probe-Merge gemessen, nicht vermutet.
+- Der Kollisions-Wächter hätte diesen Branch **nie** sehen können: sein Name enthält keine
+  Slice-Kennung — das als **PROJ-Y-150e** registrierte blinde Fenster, hier erstmals real eingetreten.
+
+### Gates
+
+| Gate | Ergebnis |
+|---|---|
+| vitest (volle Suite, integriert gegen `main`) | **4035 / 4035** in 465 Dateien |
+| tsc | **11** Fehler — Baseline 13, und **keiner** in einer der 20 Slice-Dateien (Zuordnung geprüft) |
+| ESLint | **0 Fehler**, 4 Warnungen |
+| `npm run build` | clean |
+| `check:index-scope` | 199 Zeilen, 0 Fehler |
+| `check:migration-naming` | 247 Migrationen, 0 Fehler |
+
+### Integrationsnachweis statt Selbstauskunft
+
+Die Selbstauskunft des Branches wurde gegen die Realität gemessen, nicht übernommen:
+
+- **main hat in 29 Commits keine einzige der berührten `src/`-Dateien angefasst** — die Übernahme
+  ist konfliktfrei, einziger Konflikt war eine Zeile in `docs/PRD.md`.
+- Die zwei geteilten Dateien (`tenant-switcher.tsx`, `user-menu.tsx`) sind auf main seit dem
+  Abzweig **0-mal** geändert worden; ihre Änderung setzt Lock 7 um (Dialogzustand wird bei
+  Mandantenwechsel und Abmeldung serverseitig geräumt).
+
+### Regression — der tragende Teil
+
+| Suite | Ergebnis |
+|---|---|
+| `PROJ-37-assistant-core` + `PROJ-144-assistant-work-item-drafts` (Auth-Gates) | **6 / 6** chromium |
+| `PROJ-Y-144d-assistant-work-item-chain` (**authentifiziert, mutierend**) | **3 / 3** chromium |
+
+Der zweite Lauf ist der aussagekräftige: die Slice schreibt 666 Zeilen in `runtime.ts` und 359 in
+`turns/route.ts` neu, und die bestehende Kette *„diktieren → prüfen → korrigieren → bestätigen
+erzeugt genau ein Work-Item"* läuft unverändert durch. **AC-156.31 und AC-156.32 damit belegt.**
+
+### Migration — geprüft, aber nicht angewendet
+
+`20260831120000_proj156_assistant_project_dialog_completion.sql`, 417 Zeilen, **rein additiv**:
+
+- **Drei neue Funktionen, kein bestehendes Objekt berührt** — live gegengeprüft, dass keine der
+  drei in Prod existiert; `create or replace` ist hier also reine Neuanlage. Keine Tabelle, keine
+  Policy, kein Trigger, kein Eingriff in die vier Audit-Register.
+- Alle drei `SECURITY INVOKER` (die bestehende Eigentümer-RLS bleibt maßgeblich), alle drei mit
+  `search_path = public, pg_temp`, alle drei `revoke all from public` **und** `from anon` plus
+  `grant execute to authenticated`, alle drei mit `comment on function`.
+- **Kein Actor-Parameter** — `auth.uid()` wird intern gelesen; die Eigentümer-Bindung steht doppelt
+  (`where s.user_id = v_actor` beim Lesen **und** `and user_id = v_actor` beim Schreiben).
+- **Alle 12 Spaltenreferenzen gegen das Live-Schema geprüft, 0 fehlend.** `plpgsql` validiert
+  Tabellenzugriffe erst zur Laufzeit — eine falsche Spalte hätte sich sauber anwenden lassen und
+  erst beim ersten echten Aufruf gebrochen.
+- **Ein eigener Fehlschluss unterwegs, festgehalten:** eine dateiweite Spaltenprüfung meldete
+  `project_wizard_drafts.description` als fehlend — die Spalte gibt es wirklich nicht, aber die
+  Referenz liegt in der **zweiten** Funktion, wo `v_draft` ein `assistant_work_item_drafts%rowtype`
+  ist. Ein Alarm aus der Verwechslung zweier lokaler Variablen; funktionsweise nachgemessen ist er
+  gegenstandslos. Die Prüfung muss je Funktionsrumpf gescopt werden, nicht je Datei.
+
+### Sicherheitsprüfung
+
+- **AC-156.26 mechanisch belegt:** keine der 20 Dateien enthält `ki_runs`, `AIPurpose`,
+  `generateObject`/`generateText` oder einen Router-Aufruf. Kein Modell sieht die Eingabe, kein
+  neuer KI-Zweck, keine Lockstep-Migration nötig.
+- **AC-156.7 ist ein echter Allow-List, kein dekorativer:** `parseAssistantDialogState` gibt
+  `parsed.data` zurück, unbekannte Schlüssel werden also entfernt statt durchgereicht; der gesamte
+  Schreibpfad hängt an diesem Rückgabewert. Die Feldliste deckt sich exakt mit dem Kriterium, und
+  ein Feld für den Rohwortlaut existiert **nicht** — AC-156.27 damit strukturell erfüllt.
+- **AC-156.14 belegt:** Typ- und Methodenwerte kommen aus `PROJECT_TYPES`/`PROJECT_METHODS`/
+  `WORK_ITEM_KINDS`, also den PROJ-5/6/9-Katalogen, nicht aus einer zweiten Liste.
+- Neuer `DELETE /api/assistant/turns`: UUID-validiert, 401 ohne Sitzung, ruft die INVOKER-RPC mit
+  dem **sitzungsgebundenen** Client (nicht Service-Role) — ein Nutzer kann nur den eigenen Zustand
+  räumen.
+
+### Befunde
+
+**F-1 (High) — drei Akzeptanzkriterien ohne jeden Test.** Die Slice bringt **keine einzige
+Playwright-Datei** mit. AC-156.34 (Projektkette Ende-zu-Ende), AC-156.35 (Story-Kette mit
+Mehrdeutigkeit) und AC-156.36 (Reload, Abbruch, Ablauf, Mandantenwechsel, fremdes Projekt,
+Zwei-Tab-Konflikt) verlangen wörtlich authentifizierte E2E-Nachweise. Belegt ist die **Mechanik**
+über 103 Unit-/Routentests, **nicht die Verkettung im Browser**. Die Spec sagt das an anderer
+Stelle selbst („E2E steht aus"); als Kriterium ist es damit offen, nicht abgewichen.
+
+**F-2 (Medium) — Live-RPC-Smoke nicht führbar.** CLAUDE.md macht ihn zur Bedingung für `Approved`:
+„Every new `SECURITY DEFINER` RPC gets one real call against the live DB." Die drei Funktionen sind
+INVOKER, nicht DEFINER — der Buchstabe der Regel greift also nicht, ihr Zweck sehr wohl: dies ist
+genau die Klasse Fehler (Spaltenname, Laufzeitbindung), die zweimal in diesem Repo erst live
+aufgefallen ist. Ohne angewendete Migration ist der Smoke unmöglich, und mit ihm hängen
+**AC-156.17, .18 und der Abschlussteil von .24** in der Luft.
+
+**F-3 (Medium) — englischer Fehlertext auf deutscher Fläche.** `user-menu.tsx` meldet
+`toast.error("Logout failed", …)` mit deutscher Beschreibung darunter. Verstößt gegen die
+Sprachkonvention und gegen die in PROJ-Y-143m gezogene Linie; Code dieser Slice, also hier zu
+beheben, nicht als Fremdbefund abzugeben.
+
+**F-4 (Info) — Browser-Speech nicht geprüft.** AC-156.30 verlangt, dass alles ohne
+Mikrofonfreigabe erreichbar ist. Der Textpfad ist über die Unit-Tests belegt, der Sprachpfad nicht
+ausgeübt.
+
+### Nicht geprüft, ausdrücklich benannt
+
+Kein Cross-Browser-Lauf (Firefox nicht konfiguriert, WebKit env-gesperrt — PROJ-67/F2), keine
+Responsive-Messung, keine Visual-Regression (die Slice ändert `tenant-switcher.tsx`, das im Fuß
+jeder authentifizierten Seite steht — ein Baseline-Lauf gehört vor den Deploy).
