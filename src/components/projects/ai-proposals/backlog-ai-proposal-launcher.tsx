@@ -27,6 +27,15 @@ export function BacklogAiProposalLauncher({
   projectMethod,
 }: BacklogAiProposalLauncherProps) {
   const [open, setOpen] = React.useState(false)
+  // PROJ-153-α: zwei Einstiege, EIN Drawer. Welcher Reiter aufgeht, entscheidet
+  // der geklickte Knopf — der Nutzer soll nicht erst suchen, welcher Weg der
+  // seine ist (mit Datei oder ohne).
+  const [tab, setTab] = React.useState<"backlog" | "intent">("backlog")
+
+  const openWith = (next: "backlog" | "intent") => {
+    setTab(next)
+    setOpen(true)
+  }
 
   return (
     <>
@@ -34,19 +43,31 @@ export function BacklogAiProposalLauncher({
         type="button"
         size="sm"
         variant="outline"
-        onClick={() => setOpen(true)}
+        onClick={() => openWith("backlog")}
         data-testid="backlog-ai-proposals-trigger"
         className="border-violet-400/40 text-violet-700 hover:bg-violet-500/10 dark:text-violet-300"
       >
         <Sparkles className="mr-1.5 h-3.5 w-3.5 text-violet-500" aria-hidden />
         KI-Backlog generieren
       </Button>
+      {/* PROJ-153-α — ohne Kickoff-Datei, aus dem Vorhaben. */}
+      <Button
+        type="button"
+        size="sm"
+        variant="outline"
+        onClick={() => openWith("intent")}
+        data-testid="intent-proposals-trigger"
+      >
+        <Sparkles className="mr-1.5 h-3.5 w-3.5" aria-hidden />
+        Aus Vorhaben vorschlagen
+      </Button>
       <AIProposalDrawer
+        key={tab}
         open={open}
         onOpenChange={setOpen}
         projectId={projectId}
         projectMethod={projectMethod ?? null}
-        defaultTab="backlog"
+        defaultTab={tab}
       />
     </>
   )
