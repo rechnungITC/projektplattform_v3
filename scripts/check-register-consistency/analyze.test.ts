@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest"
 
-import { analyzeRegister, classifyState, extractLead } from "./analyze"
+import { analyzeRegister, classifyState, extractLead, splitCells } from "./analyze"
 
 /** Minimal followup table in the shape the real register uses. */
 function table(...rows: string[]): string {
@@ -69,6 +69,40 @@ describe("extractLead", () => {
 
   it("returns null when a bullet has no bolded lead", () => {
     expect(extractLead("- PROJ-Y-1a — kein Fettdruck")).toBeNull()
+  })
+})
+
+describe("splitCells — escaped pipes are prose, not cell boundaries", () => {
+  it("keeps an escaped pipe inside its cell", () => {
+    expect(splitCells("| PROJ-1 | says `a \\| b` here | Deployed |")).toEqual([
+      "PROJ-1",
+      "says `a \\| b` here",
+      "Deployed",
+    ])
+  })
+
+  it("reads the scope cell of a row whose prose carries escaped pipes", () => {
+    const index = [
+      "| ID | Feature | Status | Deployment Scope | Spec | Created |",
+      "|----|---------|--------|------------------|------|---------|",
+      "| PROJ-157 | prose with \\| and \\| pipes | Deployed | tooling-only | [Spec](x.md) | 2026-08-31 |",
+    ].join("\n")
+    const { errors } = analyzeRegister(
+      section("PROJ-157", "Guard (Deployed, Scope `tooling-only`)"),
+      index
+    )
+    expect(errors).toEqual([])
+  })
+
+  /**
+   * Regression for the dogfooding find: with a naive split("|") the scope cell of the row above
+   * becomes a fragment of the prose, and the guard reports a phantom disagreement.
+   */
+  it("would have mis-read that row with a naive split — pinned here", () => {
+    const line =
+      "| PROJ-157 | prose with \\| and \\| pipes | Deployed | tooling-only | [Spec](x.md) | 2026-08-31 |"
+    expect(splitCells(line)[3]).toBe("tooling-only")
+    expect(line.split("|").slice(1, -1).map((c) => c.trim())[3]).not.toBe("tooling-only")
   })
 })
 

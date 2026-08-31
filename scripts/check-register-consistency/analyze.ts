@@ -83,12 +83,35 @@ function parseScope(head: string): string | null {
   return m ? m[1] : null
 }
 
+/**
+ * Split a markdown table row on **unescaped** pipes only — `\|` is prose, not a cell boundary.
+ * Same rule as scripts/check-index-scope/analyze.ts (`structuralPipes`), and it is not cosmetic:
+ * five INDEX rows and several register rows legitimately carry `\|` in their prose. A naive
+ * `split("|")` reads the wrong cell there, which is exactly how this guard first mis-read its own
+ * PROJ-157 row (scope cell 3 became "…, features/INDEX.md says \") — found by dogfooding.
+ */
+export function splitCells(line: string): string[] {
+  const cells: string[] = []
+  let buf = ""
+  for (let i = 0; i < line.length; i++) {
+    if (line[i] === "|" && (i === 0 || line[i - 1] !== "\\")) {
+      cells.push(buf)
+      buf = ""
+      continue
+    }
+    buf += line[i]
+  }
+  cells.push(buf)
+  // Leading and trailing pipes produce empty edge entries; drop them like the sibling guard.
+  return cells.slice(1, -1).map((c) => c.trim())
+}
+
 /** Scope cell of a feature row in features/INDEX.md, or null when the row does not exist. */
 function indexScope(indexText: string, featureId: string): string | null {
   const prefix = `| ${featureId} |`
   for (const line of indexText.split("\n")) {
     if (!line.startsWith(prefix)) continue
-    const cells = line.split("|").slice(1, -1).map((c) => c.trim())
+    const cells = splitCells(line)
     // Columns: ID | Feature | Status | Deployment Scope | Spec | Created
     if (cells.length < 4) return null
     return cells[3]
@@ -105,7 +128,7 @@ export function analyzeRegister(registerText: string, indexText: string): Regist
   const tableRows: TableRow[] = []
   lines.forEach((line, i) => {
     if (!line.startsWith("| PROJ")) return
-    const cells = line.split("|").slice(1, -1).map((c) => c.trim())
+    const cells = splitCells(line)
     if (cells.length < 2) return
     const id = cells[0].replace(/[*`]/g, "").trim()
     if (!ID_EXACT.test(id)) return // skips header rows like "| PROJ | Status | ... |"

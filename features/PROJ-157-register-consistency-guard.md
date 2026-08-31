@@ -1,7 +1,7 @@
 # PROJ-157 — Register-Konsistenz-Guard
 
-## Status: In Review
-## Deployment Scope: —
+## Status: Deployed
+## Deployment Scope: tooling-only
 
 **Created:** 2026-08-31
 
@@ -110,11 +110,29 @@ der Auslieferung.
   (`proj-156/assistant-dialog-continuity`). Ein reiner Dateicheck hätte das **nicht** gefangen —
   die fremde Zeile ist noch nicht gemergt, INDEX ist in sich stimmig. Der zuständige Wächter ist
   `check:branch-collision`, und er hat es gefangen. Festgehalten, nicht gebaut.
-- **D-157.5 — nicht als Required Check eingetragen.** Repo-Eigner-Handoff, wie bei
-  PROJ-42/74/147/148e/Y-51d: der Workflow läuft und meldet, er sperrt noch nicht.
+- **D-157.5 — als Required Check eingetragen, kein offener Handoff.** Anders als bei
+  PROJ-42/74/148e/Y-51d ist das Enrollment am 2026-08-31 auf Nutzer-Entscheid mit erfolgt:
+  `main protection` (id `15992143`) trägt **5 → 6** Contexts, mit `main protection1` sperren **7**.
+  Die Nutzlast wurde **aus dem gelesenen Ruleset** gebaut, damit keine Regel verlorengeht — genau
+  der Fehler, den PROJ-147 gemessen hat — und danach unabhängig nachgelesen.
 - **D-157.6 — kein CIA-Pass.** Kein neues Paket, kein Refactoring, keine Architekturentscheidung,
   keine Agentenänderung; Muster von `check-index-scope` übernommen. Präzedenz: PROJ-150 und
   PROJ-Y-148e ebenso ohne Pass.
+
+## Befunde am eigenen Guard (Dogfooding)
+
+- **F-157.1 (behoben) — `indexScope` splittete naiv auf jedes Pipe-Zeichen.** Beim Buchen dieser
+  Slice meldete der Guard eine **Phantom**-Abweichung: er las als Scope-Zelle ein Prosa-Fragment,
+  weil er die Hausschreibweise `\|` für Pipes in Prosa ignorierte. Betroffen wären **fünf**
+  INDEX-Zeilen, die berechtigt escapte Pipes tragen (PROJ-78/79/92/142/Y-142a) — heute latent, weil
+  keines dieser Features einen Erzähl-Abschnitt mit Scope-Anspruch hat. Behoben über einen
+  escape-bewussten `splitCells` nach dem Vorbild von `check-index-scope` (`structuralPipes`), in
+  **beiden** Parsern verwendet (Registertabellen **und** INDEX-Zellen), plus 3 Regressionstests.
+  Rot-Grün: naiver Split → **3** Tests rot **und** 1 Fehler gegen den echten Bestand.
+- **F-157.2 (behoben, eigener Text) — unescaptes Pipe in der neuen INDEX-Zeile.** Beim Formulieren
+  der Zeilenprosa geriet ein rohes `|` in den Text; `check:index-scope` schlug korrekt an
+  (Zeilenzahl 199 → 198), dieser Guard meldete die Folgewirkung. Zwei Wächter, zwei Meldungen, ein
+  Tippfehler — genau die Arbeitsteilung, für die sie gebaut sind.
 
 ## Nachweise
 
@@ -134,4 +152,31 @@ der Auslieferung.
 
 ## Deployment
 
-_Wird beim `/deploy` nachgetragen._
+**Deployed 2026-08-31: Tag `v2.87.0-PROJ-157` auf dem Merge-Commit `d4f4a07` (PR #509, squash).**
+Der Merge **ist** die Auslieferung; ein Post-Deploy-Smoke wäre gegenstandslos, weil die Slice keine
+Route und kein Laufzeitverhalten anfasst (kein `src/`-Diff, keine Migration, kein Paket).
+
+**Der tragende Nachweis ist der Guard selbst in CI:** auf #509 lief
+`Verify features/OPEN-DEFERRED-STATUS.md does not contradict itself` **grün** — belegt in der
+Umgebung, in der er künftig sperrt, nicht nur lokal. Checks **9 → 10**. Nach dem Merge aus `main`
+unabhängig nachgemessen: Guard OK (287 Tabellenzeilen, 5 Abschnitte), Unit-Tests **17/17**.
+
+**Enrollment (Nutzer-Entscheid, im selben Zug):** `main protection` **5 → 6** Contexts; mit
+`main protection1` (`Vercel Preview Comments`) sperren **7** statt 6. Unabhängig nachgelesen:
+alle **4** Regeltypen erhalten, `enforcement=active`, `strict=true`, `main protection1` unberührt.
+
+**Lebende Probe beim Buchen — der stärkste verfügbare Nachweis:** der Register-Kopf wurde
+absichtlich auf `mvp` gesetzt, während INDEX `tooling-only` trug. Der Guard fing seinen **eigenen**
+Fehleintrag:
+
+```
+::error::PROJ-157: scope disagrees — narrative header line 625 says `mvp`,
+  features/INDEX.md says `tooling-only`.
+```
+
+Nach der Korrektur war er still. Damit ist R3 nicht nur an einem historischen Stand belegt, sondern
+an frisch geschriebenem Inhalt.
+
+**Nebenbefund, festgehalten:** der Branch-Kollisions-Guard wertete den eigenen, Minuten alten Tag
+beim Anlegen des Buchführungs-Zweigs korrekt nur als **Warnung** („you shipped it. Follow-up work
+is fine; starting the slice over is not") — PROJ-Y-151cs Fix wirkt, es war kein Bypass nötig.
