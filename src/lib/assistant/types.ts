@@ -90,4 +90,14 @@ export interface AssistantRuntimeResult {
   work_item_draft: AssistantWorkItemDraftRef | null
   tool_calls: AssistantToolCall[]
   transcript_persistence: "none" | "metadata" | "redacted"
+  /** Versioned, allow-listed continuation state; never contains a raw transcript. */
+  dialog_state: import("./dialog-state").AssistantDialogState | null
+  /** Internal persistence hint; clients may ignore it. */
+  session_state_committed: boolean
+  /**
+   * Internal result of a transactional RPC that already wrote the turn and
+   * action event together with the business draft. The route removes this
+   * field before returning the public runtime payload.
+   */
+  committed_turn: { id: string; created_at: string } | null
 }
