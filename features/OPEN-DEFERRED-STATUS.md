@@ -622,13 +622,15 @@ Deploy, aber sie sind nicht erledigt und hatten bis heute **keine** Followup-Ken
   Anbieter-Durchlauf, authentifizierter Browser-Durchlauf). α ist über HTTP
   erreichbar, über die Oberfläche nicht.
 
-## PROJ-157 — Register-Konsistenz-Guard (In Review)
+## PROJ-157 — Register-Konsistenz-Guard (Deployed, Scope `tooling-only`)
 
-- **Repo-Eigner-Handoff: der Guard ist nicht als Required Check eingetragen (offen).**
-  Der Workflow `Verify features/OPEN-DEFERRED-STATUS.md does not contradict itself` läuft auf
-  jedem PR gegen `main` und meldet, **sperrt aber nicht**. Dasselbe offene Ende wie bei
-  PROJ-42/74/147/148e und PROJ-Y-51d; Eintragen ist eine Ruleset-Änderung und damit
-  Eigner-Entscheidung. Bis dahin ist er beratend.
+- **Enrollment erledigt 2026-08-31 — kein offener Handoff.** Der Workflow
+  `Verify features/OPEN-DEFERRED-STATUS.md does not contradict itself` ist auf Nutzer-Entscheid
+  als Required Check eingetragen: `main protection` (id `15992143`) trägt **5 → 6** Contexts, mit
+  `main protection1` sperren **7** statt 6. Nutzlast aus dem gelesenen Ruleset gebaut und danach
+  unabhängig nachgelesen (alle **4** Regeltypen erhalten, `enforcement=active`, `strict=true`,
+  `main protection1` unberührt) — die PROJ-147-Praxis, der eigenen Schreib-Antwort nicht zu
+  glauben. Die gleichartigen Handoffs aus **PROJ-42/74/148e und PROJ-Y-51d bleiben offen**.
   *Quelle: PROJ-157 D-157.5.*
 - **Drei bewusste Nicht-Prüfungen, gemessen begründet statt vergessen.** (1) Der **Status** eines
   Erzähl-Abschnitts wird nicht gegen INDEX abgeglichen — INDEX-Status-Zellen sind Prosa
