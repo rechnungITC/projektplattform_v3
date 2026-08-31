@@ -728,14 +728,13 @@ was pushed or merged, and no production deployment was triggered.
 
 ## QA Test Results (2026-08-31)
 
-**Verdikt (Endstand 2026-08-31): PRODUKTIONSREIF — 0 Critical / 0 High / 1 Medium / 1 Info.**
+**Verdikt (Endstand 2026-08-31): PRODUKTIONSREIF — 0 Critical / 0 High / 0 Medium / 1 Info.**
 Status **Approved**.
 
 Der Weg dahin in zwei Nachträgen desselben Tages, beide unten im Detail: **F-2** geschlossen
 (Migration angewendet, Live-Smoke 12/12 gegen Prod), **F-1** geschlossen (die drei Ketten laufen
-im Browser, 3/3 dreimal stabil, Rot-Grün zweifach ausgeführt). Offen bleibt **F-3** (englische
-Bedienelemente auf deutscher Fläche, Medium) und **F-4** (Sprachpfad nicht ausgeübt, Info) —
-keines davon blockiert nach Hausregel die Freigabe.
+im Browser, 3/3 dreimal stabil, Rot-Grün zweifach ausgeführt). **F-3** ist im dritten Nachtrag behoben (deutsche Abmelde-Meldungen). Offen bleibt allein **F-4**
+(Sprachpfad nicht ausgeübt, Info) — der Textpfad ist per AC-156.30 gleichwertig und belegt.
 
 *Der ursprüngliche Zwischenstand lautete: NICHT produktionsreif — 0 Critical / 1 High / 2 Medium.*
 
@@ -971,3 +970,31 @@ Verbesserung aussehen) · alle **fünf** Datei-Wächter OK, einschliesslich des 
 workspace"` — englische Bedienelemente auf deutscher Fläche, dieselbe Familie wie PROJ-Y-143m.
 **F-4 bleibt offen (Info):** der Sprachpfad ist weiterhin nicht ausgeübt; AC-156.30 ist über den
 gleichwertigen Textpfad belegt, headless ist Spracherkennung nicht fahrbar.
+
+### Nachtrag 2026-08-31 (dritter) — F-3 behoben
+
+`toast.error("Logout failed", …)` heisst jetzt „Abmelden fehlgeschlagen", der englische
+Rückfalltext „Unexpected error" heisst „Unerwarteter Fehler".
+
+**Eine Nuance, die den Umfang bestimmt hat:** die Meldung stand **dreimal** in derselben
+Abmelde-Funktion — einmal von dieser Slice eingefügt, zweimal vorbestehend. Die Slice hatte sich
+also dem bestehenden (englischen) Stil angepasst. Nur ihr eigenes Vorkommen zu übersetzen hätte eine
+Datei mit einer deutschen und zwei englischen Meldungen für denselben Vorgang hinterlassen; alle drei
+sind daher übersetzt. Das ist bewusst etwas mehr als die Slice verursacht hat und wird hier benannt
+statt stillschweigend mitgenommen. Kein Test hing am alten Wortlaut (im Repo gegengeprüft).
+
+**Bewusst NICHT angefasst:** `aria-label="Switch workspace"` und `aria-label="Current workspace"` in
+`tenant-switcher.tsx` sowie `aria-label="Open user menu"`. Sie sind **vorbestehend**, gehören der
+PROJ-Y-143m-Familie, und beide Umschalter-Beschriftungen sind zugleich Anker der
+Visual-Regression-Maskierung (PROJ-Y-143f) **und** des E2E-Falls (f) dieser Slice — sie in einer
+Test-Slice umzubenennen hiesse, drei fremde Nachweise gleichzeitig anzufassen. Registriert als
+**PROJ-Y-156a**.
+
+**Nachweise nach dem Fix:** vitest **4052 / 4052** · tsc **11** (nach `rm -rf .next`) · ESLint 0 ·
+Assistant-E2E **12 / 12** (3 Ketten + 9 Regression) · **Visual-Regression 9 / 9 ohne Neuaufnahme** —
+gemessen und nicht geschlossen, weil `user-menu.tsx` in der Hülle jeder angemeldeten Seite sitzt und
+die Baselines seit PROJ-Y-143g auf `maxDiffPixels: 20` stehen; geändert hat sich nur Text innerhalb
+eines Fehler-Rückrufs, der im Ruhezustand nicht gerendert wird. Alle fünf Datei-Wächter OK.
+
+**Endstand: 0 Critical / 0 High / 0 Medium / 1 Info.** Offen bleibt allein **F-4** (Sprachpfad nicht
+ausgeübt, über den gleichwertigen Textpfad belegt).

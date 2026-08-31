@@ -52,7 +52,7 @@ export function UserMenu() {
     try {
       const cleanup = await fetch("/api/assistant/turns", { method: "DELETE" })
       if (!cleanup.ok) {
-        toast.error("Logout failed", {
+        toast.error("Abmelden fehlgeschlagen", {
           description: "Der offene Assistant-Auftrag konnte nicht sicher bereinigt werden.",
         })
         return
@@ -60,13 +60,13 @@ export function UserMenu() {
       const supabase = createClient()
       const { error } = await supabase.auth.signOut()
       if (error) {
-        toast.error("Logout failed", { description: error.message })
+        toast.error("Abmelden fehlgeschlagen", { description: error.message })
         return
       }
       window.location.href = "/login"
     } catch (err) {
-      const message = err instanceof Error ? err.message : "Unexpected error"
-      toast.error("Logout failed", { description: message })
+      const message = err instanceof Error ? err.message : "Unerwarteter Fehler"
+      toast.error("Abmelden fehlgeschlagen", { description: message })
     }
   }
 
