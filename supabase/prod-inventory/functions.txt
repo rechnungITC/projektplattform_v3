@@ -1,4 +1,4 @@
-# Prod-Funktionsinventar — Stand 2026-08-26
+# Prod-Funktionsinventar — Stand 2026-08-31
 #
 # Die in der Produktionsdatenbank vorhandenen Funktionen des Schemas `public`,
 # ohne die 71 Funktionen der `ltree`-Extension (die gehoeren nicht dem Projekt).
@@ -85,9 +85,12 @@ cancel_construction_acceptance
 canonicalize_work_item_link_type
 cascade_decision_revision_to_approval
 cascade_stakeholder_approver_revoke
+clear_assistant_dialog_state
 clear_deliverable_raci
 clear_work_item_raci
 commit_meeting_minutes
+complete_assistant_project_dialog
+complete_assistant_work_item_dialog
 compute_critical_path_phases
 compute_escalation_patterns
 construction_acceptance_guard

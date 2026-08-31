@@ -728,10 +728,10 @@ was pushed or merged, and no production deployment was triggered.
 
 ## QA Test Results (2026-08-31)
 
-**Verdikt: NICHT produktionsreif — 0 Critical / 1 High / 2 Medium.** Status bleibt `In Review`.
-Der High-Fund ist kein Code-Defekt, sondern eine Nachweislücke: drei Akzeptanzkriterien haben
-keinen Test, und der hausseitig verpflichtende Live-RPC-Smoke ist nicht führbar, solange die
-Migration nicht in Prod ist.
+**Verdikt: NICHT produktionsreif — 0 Critical / 1 High / 1 Medium.** Status bleibt `In Review`.
+Der verbleibende High-Fund ist kein Code-Defekt, sondern eine Nachweislücke: drei
+Akzeptanzkriterien haben keinen Test. **F-2 ist mit dem Nachtrag vom selben Tag geschlossen** —
+die Migration ist angewendet und der Live-Smoke gefahren.
 
 ### Vorgeschichte dieses Durchgangs
 
@@ -824,7 +824,7 @@ Zwei-Tab-Konflikt) verlangen wörtlich authentifizierte E2E-Nachweise. Belegt is
 über 103 Unit-/Routentests, **nicht die Verkettung im Browser**. Die Spec sagt das an anderer
 Stelle selbst („E2E steht aus"); als Kriterium ist es damit offen, nicht abgewichen.
 
-**F-2 (Medium) — Live-RPC-Smoke nicht führbar.** CLAUDE.md macht ihn zur Bedingung für `Approved`:
+**F-2 (Medium) — ERLEDIGT, siehe Nachtrag unten.** Ursprünglich: Live-RPC-Smoke nicht führbar. CLAUDE.md macht ihn zur Bedingung für `Approved`:
 „Every new `SECURITY DEFINER` RPC gets one real call against the live DB." Die drei Funktionen sind
 INVOKER, nicht DEFINER — der Buchstabe der Regel greift also nicht, ihr Zweck sehr wohl: dies ist
 genau die Klasse Fehler (Spaltenname, Laufzeitbindung), die zweimal in diesem Repo erst live
@@ -845,3 +845,55 @@ ausgeübt.
 Kein Cross-Browser-Lauf (Firefox nicht konfiguriert, WebKit env-gesperrt — PROJ-67/F2), keine
 Responsive-Messung, keine Visual-Regression (die Slice ändert `tenant-switcher.tsx`, das im Fuß
 jeder authentifizierten Seite steht — ein Baseline-Lauf gehört vor den Deploy).
+
+### Nachtrag 2026-08-31 — Migration angewendet, Live-Smoke gefahren (schließt F-2)
+
+Migration `20260831120000_proj156_assistant_project_dialog_completion` ist in Prod
+(registriert unter dem Dateistamm, PROJ-134-konform).
+
+**Struktur nach dem Anwenden eigenständig nachgemessen**, nicht aus der Migration übernommen:
+alle drei Funktionen `SECURITY INVOKER`, alle mit `search_path=public, pg_temp`, `anon` **ohne**
+EXECUTE, `authenticated` **mit**, **PUBLIC ohne Eintrag** (geprüft über den ACL-Eintrag, der mit
+`=` *beginnt* — die PROJ-Y-114a-Lehre), alle drei mit `comment on function`.
+
+**Live-Smoke gegen Prod: 12 / 12, 0 Rückstände über 6 Zähler.** Der Block erzwingt seinen eigenen
+Rollback über eine Abschluss-Exception; die Ergebnisse reisen in der Fehlermeldung.
+
+| Vektor | Ergebnis | Kriterium |
+|---|---|---|
+| V0 Kontrolle | Aufrufer `authenticated` — **nicht** Superuser, **umgeht RLS nicht**, **kein** postgres-Mitglied | — |
+| V1 Projekt-Happy-Path | genau **1** Wizard-Entwurf, Name und `data.description` korrekt | AC-156.17 |
+| V2 Audit-Spur | 1 Turn-Zeile **und** 1 Action-Event | AC-156.28 |
+| V3 Wiederholung mit gleichem `completion_key` | weiterhin **1** Entwurf, gleiche Kennung zurück | AC-156.18 |
+| V4 zweiter Abschluss, anderer Schlüssel | `40001` | AC-156.18 |
+| V5 veraltete Revision | `40001` | AC-156.11 |
+| V6 abgelaufener Dialog | `P0001` | AC-156.9 |
+| V7 leerer Projektname | `22023` | AC-156.15 |
+| V8 **fremde Sitzung** | `P0002` „not found" — kein Namens- oder Existenzleck | AC-156.10 · .25 |
+| V9 Work-Item-Happy-Path | genau **1** PROJ-144-Entwurf, `target_kind=story` | AC-156.23 |
+| V10 untergeschobener Titel | `40001` — Nutzlast muss zum Dialogzustand passen | AC-156.8 |
+| V11 Bereinigung | 1 geräumt, Restzustand **0**, 1 Action-Event | AC-156.9 |
+| V12 erfundener Bereinigungsgrund | `22023` | — |
+
+**V0 ist der Vektor, der den Lauf überhaupt aussagekräftig macht** — und meine erste Fassung war
+untauglich: sie las `usesuper` aus `pg_user`, das nur Login-Rollen führt, und lieferte für
+`authenticated` einen **leeren** Wert, also keinen Beweis. Sauber gegen `pg_roles` nachgemessen:
+`rolsuper=false`, `rolbypassrls=false`, kein postgres-Mitglied. Ohne diese Nachmessung hätte der
+ganze Smoke unter einer Rolle laufen können, die RLS ohnehin umgeht — jeder negative Vektor wäre
+dann wertlos gewesen.
+
+**V8 und V10 sind die tragenden negativen Vektoren:** eine fremde Sitzung ist auch für einen
+Mandanten-Administrator nicht abschließbar (die Eigentümer-Bindung steht doppelt, beim Lesen und
+beim Schreiben), und eine manipulierte Nutzlast kann den geprüften Dialogzustand nicht überschreiben.
+
+**Advisors: 157 WARN / 0 ERROR**, und **keine einzige Meldung nennt eine der drei neuen Funktionen** —
+erwartbar, weil INVOKER plus gesetzter `search_path` genau die zwei üblichen Warnklassen vermeidet.
+
+**Funktions-Inventar aufgefrischt: 298 → 301** (`supabase/prod-inventory/functions.txt`, Kopfdatum
+nachgezogen); der Wächter führt die drei nicht mehr als „im Repo angelegt, aber nicht in Prod"
+(17 → 14 Restmeldungen, sämtlich Bestandsfälle).
+
+**Damit sind AC-156.17, .18 und der Datenbankteil von .24 belegt.** Offen bleibt allein **F-1**:
+die drei Kriterien AC-156.34/.35/.36 verlangen authentifizierte Browser-Ketten, und dafür gibt es
+weiterhin keine Playwright-Datei. Der Smoke beweist die Datenbankschicht, **nicht** die Verkettung
+über HTTP und Oberfläche.
