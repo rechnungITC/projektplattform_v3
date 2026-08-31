@@ -621,3 +621,27 @@ Deploy, aber sie sind nicht erledigt und hatten bis heute **keine** Followup-Ken
   und Prüfansicht) und `/qa` (Schwellen-Kalibrierung nach AC-153.9, echter
   Anbieter-Durchlauf, authentifizierter Browser-Durchlauf). α ist über HTTP
   erreichbar, über die Oberfläche nicht.
+
+## PROJ-157 — Register-Konsistenz-Guard (In Review)
+
+- **Repo-Eigner-Handoff: der Guard ist nicht als Required Check eingetragen (offen).**
+  Der Workflow `Verify features/OPEN-DEFERRED-STATUS.md does not contradict itself` läuft auf
+  jedem PR gegen `main` und meldet, **sperrt aber nicht**. Dasselbe offene Ende wie bei
+  PROJ-42/74/147/148e und PROJ-Y-51d; Eintragen ist eine Ruleset-Änderung und damit
+  Eigner-Entscheidung. Bis dahin ist er beratend.
+  *Quelle: PROJ-157 D-157.5.*
+- **Drei bewusste Nicht-Prüfungen, gemessen begründet statt vergessen.** (1) Der **Status** eines
+  Erzähl-Abschnitts wird nicht gegen INDEX abgeglichen — INDEX-Status-Zellen sind Prosa
+  (`Deployed (α + β live)`), ein Wortvergleich würde auf legitime Formulierung feuern. (2)
+  **Vollständigkeit** wird nicht geprüft: ein Followup, das nirgends registriert ist (der
+  `PROJ-Y-113c`-Fall, nur in einer Spec zugesagt), fällt nicht auf — dafür bräuchte es einen
+  Abgleich gegen alle `features/PROJ-*.md`, wo jede Nennung Prosa ist. (3) **„Next Available ID"**
+  wird nicht geprüft, und das ist gemessen: der Fall dieser Slice — INDEX führt `PROJ-156` als
+  frei, während eine fremde Spur die Slice hält — wäre einem reinen Dateicheck **entgangen**,
+  weil die fremde Zeile noch nicht gemergt ist und INDEX in sich stimmig bleibt. Gefangen hat es
+  `check:branch-collision`, der zuständige Wächter.
+  *Quelle: PROJ-157 D-157.2 / D-157.3 / D-157.4.*
+- **R1 ist heute latent — Absicht, nicht Schwäche.** 0 verglichene Paare, weil der Bestand keine
+  Kennung in beiden Formen führt; getragen wird der Lauf von R2 (19 Kennungen) und R3 (3
+  Ansprüche). Die Regel feuert, sobald wieder doppelt gebucht wird, und ist am **echten**
+  Vorzustand (`5e28bca^`) belegt statt an einem Konstrukt.
