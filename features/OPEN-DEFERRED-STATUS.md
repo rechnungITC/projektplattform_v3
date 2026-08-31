@@ -520,19 +520,34 @@ Deploy, aber sie sind nicht erledigt und hatten bis heute **keine** Followup-Ken
 - **Nicht Gegenstand dieser Slice:** die Ollama-Konfiguration des Kundenmandanten
   (`gemma4:latest` existiert bei Ollama nicht). Konfiguration, nicht Code.
 
-## PROJ-151 — Projektbezogener KI-Chat (Deployed, Scope `mvp`)
+## PROJ-151 — Projektbezogener KI-Chat (Deployed, Scope `full`)
 
-- **PROJ-Y-151d — Skill-Anweisungen umgehen die Class-3-Klassifizierung (offen, sicherheitsrelevant).**
-  Fund des CIA-Passes zu PROJ-153/Q3 am 2026-08-28, unabhängig am Code nachgemessen:
-  `classify-project-chat.ts:50-53` klassifiziert Vorhaben und Verlauf, **nicht** die
-  Skill-Anweisungen — die aber über `project-chat-runner.ts:82-84` → `:101` als System-Prompt
-  an den Anbieter gehen. Personendaten in einem Skill erreichen damit ein Cloud-Modell, ohne
-  dass der Gate greift. Für Invariante #3 ist „daran vorbei" derselbe Bruch wie „ausgehebelt".
-  **Exposition gemessen: 2 Skills, 1 aktiv, dessen Inhalt hat Länge 0** — strukturell offen,
-  **unausgenutzt**, kein akuter Abfluss. Nicht in PROJ-153 mitbehoben (fremde deployte Slice,
-  CIA-Auflage A-2); PROJ-153 erbt die Lücke wegen seiner eigenen Auflage A-1 nicht.
-  Mitzuprüfen: ob PROJ-80-α denselben Pfad hat.
-  *Quelle: CIA-Review PROJ-153/Q3, Finding F-2.*
+- **Nichts offen.** Alle sechs Followups sind gebaut, ausgeliefert und live belegt —
+  **151a** Projekt-Konsistenz (Migration `20260827130000`, Pentest 7/7) · **151b** echter
+  Anbieter-Durchlauf und authentifizierte Kette (17/17 gegen Produktion) · **151c** der
+  eigene frische Tag im Branch-Kollisions-Guard · **151d** Kostenanzeige samt Pflegefläche
+  (22/22, gegen eine Handrechnung geprüft) · **151e** Skill-Anweisungen werden klassifiziert ·
+  **151f** derselbe Pfad im Quintessenz-Skill aus PROJ-80-α. Die Einzelnachweise stehen in
+  der Tabelle oben.
+- **Buchführung korrigiert 2026-08-31 — dieser Abschnitt war drei Tage lang falsch, und der
+  Fehler war sicherheitsrelevant formuliert.** Er führte `PROJ-Y-151d` als „offen,
+  sicherheitsrelevant" und lag damit **dreifach** daneben: (1) die Kennung ist am 2026-08-28
+  nach `PROJ-Y-151e` gewichen, weil `151d` doppelt vergeben war und die gleichnamige, bereits
+  getaggte Slice die Kostenanzeige ist; (2) der Fund **ist** behoben und ausgeliefert
+  (`bc2814c`/#501, live belegt in `7368a1d`/#502); (3) seine eigene offene Rückfrage
+  („mitzuprüfen: ob PROJ-80-α denselben Pfad hat") ist beantwortet und als **151f**
+  geschlossen (`a9eb883`/#506). Zusätzlich nannte die Überschrift Scope `mvp`, während INDEX
+  und Spec seit dem 2026-08-28 `full` tragen. **Ursache ist keine Fehleinschätzung, sondern
+  ausgebliebene Nachbuchung:** die Tabelle oben wurde beim Ausliefern von 151e/151f gepflegt,
+  dieser Erzähl-Abschnitt nicht — dieselbe Datei widersprach sich also selbst, und wer nur
+  hierher schaute, hielt eine geschlossene Invariante-#3-Lücke für offen. **Am Code
+  nachgemessen statt aus den Merge-Titeln übernommen:** `classify-project-chat.ts:62` und
+  `classify.ts:767` lesen die Skill-Anweisungen mit, alle drei Commits sind Vorfahren von
+  `main`. Der stehengelassene Rest ist benannt statt stillschweigend geglättet: der
+  INDEX-Satz zu PROJ-151 zählt „151a/b/c/d" auf und kennt e/f nicht (nicht falsch, aber
+  unvollständig) — nicht mitkorrigiert, weil `features/INDEX.md` im offenen PR #507 liegt und
+  der Hotspot keine zweite Spur verträgt.
+  *Quelle: eigene Messung 2026-08-31.*
 
 ## PROJ-155 — Gantt: Hierarchie, Sammelvorgänge, Netzablaufplan (Deployed, Scope `alpha`)
 
@@ -586,6 +601,18 @@ Deploy, aber sie sind nicht erledigt und hatten bis heute **keine** Followup-Ken
   für die eigene Funktion behoben und PROJ-70s bewusst **nicht** angefasst — fremde,
   deployte Slice. Fix ist derselbe Zweizeiler.
   *Quelle: PROJ-153-α Live-Smoke, Fund 3.*
+- **PROJ-Y-153b — die Spec verweist für die Class-3-Lücke auf die falsche Kennung
+  (offen, Buchführung).** `features/PROJ-153-work-items-from-project-intent.md`
+  (Zeilen 208 und 462) registriert den Fund des eigenen CIA-Passes als
+  `PROJ-Y-151d` — diese Kennung trägt seit dem 2026-08-28 aber die **Kostenanzeige**
+  (Tag `v2.84.0-PROJ-Y-151d`), der Sicherheitsfund heisst `PROJ-Y-151e` und ist
+  erledigt. Wer dem Verweis folgt, landet beim falschen Vorgang. Kein Produktfehler:
+  die Auflage A-1 ist in PROJ-153 umgesetzt (`classify-work-items-from-intent.ts:62`
+  liest die Skill-Anweisungen), nur der Zeiger stimmt nicht. **Nicht sofort korrigiert,
+  weil genau diese Datei im offenen PR #507 liegt** — Präzedenz PROJ-Y-148a/148d:
+  fremde bzw. in Arbeit befindliche Specs werden nicht nebenbei angefasst. Gleiche
+  Klasse wie die mehrfach belegten `PROJ-Y-1`/`PROJ-Y-2`-Kennungen (PROJ-Y-145h).
+  *Quelle: eigene Messung 2026-08-31 im Zuge der PROJ-151-Registerkorrektur.*
 - **Nicht zurückgestellt, sondern noch nicht gebaut:** `/frontend` (Einstiegsfläche
   und Prüfansicht) und `/qa` (Schwellen-Kalibrierung nach AC-153.9, echter
   Anbieter-Durchlauf, authentifizierter Browser-Durchlauf). α ist über HTTP
