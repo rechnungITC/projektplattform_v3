@@ -1,6 +1,6 @@
 # PROJ-156: Assistant Dialog Continuity and Everyday Command Understanding
 
-## Status: In Review
+## Status: Approved
 ## Deployment Scope: —
 
 **Created:** 2026-08-20
@@ -728,10 +728,16 @@ was pushed or merged, and no production deployment was triggered.
 
 ## QA Test Results (2026-08-31)
 
-**Verdikt: NICHT produktionsreif — 0 Critical / 1 High / 1 Medium.** Status bleibt `In Review`.
-Der verbleibende High-Fund ist kein Code-Defekt, sondern eine Nachweislücke: drei
-Akzeptanzkriterien haben keinen Test. **F-2 ist mit dem Nachtrag vom selben Tag geschlossen** —
-die Migration ist angewendet und der Live-Smoke gefahren.
+**Verdikt (Endstand 2026-08-31): PRODUKTIONSREIF — 0 Critical / 0 High / 1 Medium / 1 Info.**
+Status **Approved**.
+
+Der Weg dahin in zwei Nachträgen desselben Tages, beide unten im Detail: **F-2** geschlossen
+(Migration angewendet, Live-Smoke 12/12 gegen Prod), **F-1** geschlossen (die drei Ketten laufen
+im Browser, 3/3 dreimal stabil, Rot-Grün zweifach ausgeführt). Offen bleibt **F-3** (englische
+Bedienelemente auf deutscher Fläche, Medium) und **F-4** (Sprachpfad nicht ausgeübt, Info) —
+keines davon blockiert nach Hausregel die Freigabe.
+
+*Der ursprüngliche Zwischenstand lautete: NICHT produktionsreif — 0 Critical / 1 High / 2 Medium.*
 
 ### Vorgeschichte dieses Durchgangs
 
@@ -897,3 +903,71 @@ nachgezogen); der Wächter führt die drei nicht mehr als „im Repo angelegt, a
 die drei Kriterien AC-156.34/.35/.36 verlangen authentifizierte Browser-Ketten, und dafür gibt es
 weiterhin keine Playwright-Datei. Der Smoke beweist die Datenbankschicht, **nicht** die Verkettung
 über HTTP und Oberfläche.
+
+### Nachtrag 2026-08-31 (zweiter) — F-1 geschlossen: die drei Ketten laufen im Browser
+
+`tests/PROJ-156-assistant-dialog-chain.spec.ts`, **3 / 3 chromium, dreimal hintereinander stabil**,
+**0 Rückstände** über acht Zähler. Damit ist der letzte High-Fund erledigt.
+
+**AC-156.34 — Projektkette.** Umgangssprachlicher Befehl → Namensfrage → Antwort → Typ → Methode →
+Kurzbeschreibung → Zusammenfassung → Korrektur → Freigabe. Tragend sind die **zwei negativen**
+Zusicherungen: nach dem blossen Befehl existiert **kein** Wizard-Entwurf (AC-156.12), und unmittelbar
+vor der Freigabe immer noch **keiner** (AC-156.17) — ohne sie bewiese der Test nur, dass ein Knopf
+eine Zeile anlegt, nicht dass die Freigabe ein Tor ist. Danach genau **ein** Entwurf, der die
+Korrektur aus Schritt 4 trägt, **keine** `projects`-Zeile, und der Weg in den Wizard.
+
+**AC-156.35 — Story-Kette mit mehrdeutigem Projekt.** Zwei gleichnamige Projekte werden geseedet,
+damit die Mehrdeutigkeit echt ist. Der Assistent **rät nicht**, sondern bietet **beide** Kandidaten
+an; die Auswahl **setzt den Auftrag fort** statt nur zu navigieren (AC-156.22) — belegt daran, dass
+der Titel aus dem *ersten* Befehl im Entwurf ankommt und der Entwurf am *gewählten* Projekt hängt.
+Vor der Bestätigung existiert kein Work-Item, danach genau eines mit `kind='story'` (Scrum-Mapping).
+
+**AC-156.36 — sechs Teilfälle, alle im Browser:** (a) der Auftrag überlebt einen **echten Reload**
+(nicht nur React-State), (b) Abbrechen räumt den Zustand **serverseitig**, (c) ein abgelaufener
+Auftrag legt nichts mehr an, (d) ein Projekt ausserhalb des aktiven Mandanten wird weder beschrieben
+noch beim Namen genannt, (e) zwei gleichzeitig offene Tabs schreiben sich nicht gegenseitig zu,
+(f) der **Mandantenwechsel** räumt den offenen Auftrag serverseitig — der Fall, für den diese Slice
+`tenant-switcher.tsx` überhaupt anfasst.
+
+**Rot-Grün zweimal ausgeführt**, jeweils per Dateikopie zurückgesetzt (nie `git checkout`) und
+danach byte-identisch gegen den Commit geprüft:
+
+| Sabotage | Wirkung |
+|---|---|
+| Die Antwort füllt den Namens-Slot nicht mehr | AC-156.34 rot |
+| Die Projektauswahl setzt den Auftrag nicht fort | AC-156.35 rot |
+
+**Vier eigene Irrtümer, die der Lauf aufgedeckt hat — jedes Mal war das Produkt richtig:**
+
+1. Die erste Fassung las die Datenbank, **bevor** die Anfrage durch war. `say()` wartet jetzt auf die
+   Antwort des Servers statt auf eine Pause.
+2. Zwei Zusicherungen zitierten Sätze, die es so nicht gibt („Welches Projekt meinst du?" statt
+   „Ich habe mehrere passende Projekte gefunden."), und „Entwurf prüfen" ist eine **Schaltfläche**,
+   kein Anker. Am Seiten-Schnappschuss abgelesen statt aus der Spec geraten.
+3. Ein neuer Befehl **während eines offenen Auftrags** ist per AC-156.8 eine **Antwort**, kein neuer
+   Befehl — daran scheiterte Fall (f) zunächst. Genau das ist das gewünschte Verhalten.
+4. `readDialogState` las „die neueste Sitzung". Fall (e) hat gemessen, dass ein zweiter Tab eine
+   **eigene** Sitzung anlegt; der Helfer sucht jetzt den offenen Auftrag über **alle** Sitzungen.
+
+**Ein Architektur-Befund, der eine Zusicherung korrigiert hat:** der Revisionsschutz aus AC-156.11
+wirkt **innerhalb** einer Sitzung (`p_session_id` + `expected_revision`), nicht zwischen zwei Tabs —
+die sind unabhängig. Eine Zusicherung „höchstens ein offener Auftrag" wäre also falsch gewesen und
+ist entfernt. Der eigentliche Konfliktfall (zwei Züge auf **derselben** Sitzung, der veraltete
+verliert) ist zwei Ebenen tiefer belegt: `turns/route.test.ts` (409 vor der Runtime-Ausführung) und
+Live-Smoke V5 (veraltete Revision → `40001`). Im Browser ist er ohne Fälschen der Sitzungs-Kennung
+nicht herstellbar — **so benannt, statt ihn als abgedeckt zu buchen**.
+
+**Regression:** `PROJ-37-assistant-core`, `PROJ-144-assistant-work-item-drafts` und die
+authentifizierte `PROJ-Y-144d`-Kette **9 / 9**.
+
+**Gates nach dem Rebase auf `main`:** vitest **4052 / 4052** in 466 Dateien · ESLint 0 · tsc **11**
+(Baseline 13, keiner in einer Slice-Datei — nach `rm -rf .next` gemessen, weil ein halb
+geschriebenes `.next/dev/types/validator.ts` tsc früh abbrechen lässt und **weniger** Fehler wie eine
+Verbesserung aussehen) · alle **fünf** Datei-Wächter OK, einschliesslich des während dieser Slice auf
+`main` gelandeten `check:register-consistency`.
+
+**F-3 bleibt offen (Medium)** und hat beim E2E-Bau einen Zwilling bekommen: neben
+`toast.error("Logout failed", …)` heisst auch der Mandanten-Umschalter `aria-label="Switch
+workspace"` — englische Bedienelemente auf deutscher Fläche, dieselbe Familie wie PROJ-Y-143m.
+**F-4 bleibt offen (Info):** der Sprachpfad ist weiterhin nicht ausgeübt; AC-156.30 ist über den
+gleichwertigen Textpfad belegt, headless ist Spracherkennung nicht fahrbar.
