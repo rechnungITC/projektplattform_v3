@@ -79,9 +79,13 @@ const PROJECT_IS_CREATION_OBJECT =
 const TRAILING_PROJECT_PHRASE =
   /\s+\b(?:im|in|fuer|für|zum|zur)\s+(?:das\s+|dem\s+)?projekt\s+([^,.;:]+)$/i
 
+/** „Mach im Projekt Apollo eine Story …" — Projekt steht vor der Art. */
+const LEADING_PROJECT_PHRASE =
+  /\b(?:im|in)\s+(?:dem\s+)?projekt\s+(.+?)\s+(?=(?:eine?|einen|neue?|neuen|neues)\s+(?:story|storys|stories|epic|epics|feature|features|bug|bugs|fehler|aufgabe|aufgaben|task|tasks|arbeitspaket|arbeitspakete)\b)/i
+
 /** Füllwörter zwischen Art und Titel. */
 const LEADING_FILLER =
-  /^(?:\s*[:–-]\s*|\s*(?:namens|mit\s+dem\s+titel|zum\s+thema|genannt)\s+|\s*(?:eine|einen|ein|die|der|das)\s+)+/i
+  /^(?:\s*[:–-]\s*|\s*(?:namens|mit\s+dem\s+titel|zum\s+thema|fuer|für|genannt)\s+|\s*(?:eine|einen|ein|die|der|den|dem|das)\s+)+/i
 
 /** Deutsche Verbklammer: „lege … an", „trage … ein". */
 const TRAILING_PARTICLE = /\s+\b(an|ein|hinzu)\s*[.!?]*$/i
@@ -104,10 +108,18 @@ export function parseWorkItemCommand(input: string): WorkItemCommand | null {
   // „im Projekt ERP-Rollout" in den Titel.
   let remainder = raw
   let projectQuery: string | null = null
-  const projectMatch = remainder.match(TRAILING_PROJECT_PHRASE)
-  if (projectMatch) {
-    projectQuery = projectMatch[1]?.trim() || null
-    remainder = remainder.slice(0, projectMatch.index).trim()
+  const leadingProjectMatch = remainder.match(LEADING_PROJECT_PHRASE)
+  if (leadingProjectMatch?.index !== undefined) {
+    projectQuery = leadingProjectMatch[1]?.trim() || null
+    remainder = `${remainder.slice(0, leadingProjectMatch.index)} ${remainder.slice(
+      leadingProjectMatch.index + leadingProjectMatch[0].length,
+    )}`.replace(/\s+/g, " ").trim()
+  } else {
+    const projectMatch = remainder.match(TRAILING_PROJECT_PHRASE)
+    if (projectMatch) {
+      projectQuery = projectMatch[1]?.trim() || null
+      remainder = remainder.slice(0, projectMatch.index).trim()
+    }
   }
 
   // Der Titel ist alles nach dem Art-Wort. Die Position wird auf dem

@@ -50,6 +50,13 @@ export function UserMenu() {
 
   const onLogout = async () => {
     try {
+      const cleanup = await fetch("/api/assistant/turns", { method: "DELETE" })
+      if (!cleanup.ok) {
+        toast.error("Logout failed", {
+          description: "Der offene Assistant-Auftrag konnte nicht sicher bereinigt werden.",
+        })
+        return
+      }
       const supabase = createClient()
       const { error } = await supabase.auth.signOut()
       if (error) {
