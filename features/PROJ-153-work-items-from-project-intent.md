@@ -205,8 +205,10 @@ also nicht bloß dünn, sie wäre **die Wiederholung eines bereits behobenen Feh
       sonst wäre die Funktion ohne Ollama unbenutzbar; aber enthalten Antworten **oder ein
       Skill** Personendaten, greift der Gate wie überall. Prüfung: ein Skill mit
       Personendaten → Schutzklasse 3. *Diese Auflage schließt vorbeugend die Lücke, die der
-      CIA-Pass in PROJ-151 gefunden hat (dort registriert als PROJ-Y-151d): der dortige
-      Klassifizierer liest die Skill-Anweisungen nicht, obwohl sie an den Anbieter gehen.*
+      CIA-Pass in PROJ-151 gefunden hat: der dortige Klassifizierer **las** die
+      Skill-Anweisungen nicht, obwohl sie an den Anbieter gehen. Dort zunächst als
+      `PROJ-Y-151d` registriert, am 2026-08-28 nach **`PROJ-Y-151e`** gewichen (die
+      Kennung war doppelt vergeben) und am selben Tag behoben.*
 - [ ] **AC-153H.6** **PROJ-91 bleibt unangetastet.** Die zwei Vertragstests und der Prompt von
       `proposal_from_context` laufen wörtlich unverändert grün. Belegt wird das durch einen
       Regressionslauf, nicht durch Zusicherung.
@@ -459,7 +461,11 @@ damit **strukturell offen, aber unausgenutzt** — kein akuter Abfluss, kein Anl
 aber auch nichts, was von selbst weggeht.
 
 **Bewusst nicht hier behoben** (CIA-Auflage A-2): PROJ-151 ist eine fremde, deployte Slice.
-Registriert als **PROJ-Y-151d**. PROJ-153 erbt die Lücke **nicht**, weil A-1 sie in seinem
+Registriert als **PROJ-Y-151e** — zunächst `PROJ-Y-151d`, die Kennung ist am 2026-08-28
+gewichen, weil sie doppelt vergeben war (die gleichnamige, bereits getaggte Slice ist die
+Kostenanzeige). **Dort am 2026-08-28 behoben** (`bc2814c`/#501, live belegt in `7368a1d`/#502);
+der Zwilling im Quintessenz-Skill aus PROJ-80-α ist als `PROJ-Y-151f` geschlossen
+(`a9eb883`/#506). PROJ-153 erbt die Lücke **nicht**, weil A-1 sie in seinem
 eigenen Klassifizierer von Anfang an schließt.
 
 ### Was gebaut wird — und was nicht
