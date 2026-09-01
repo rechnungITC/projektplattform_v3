@@ -1,6 +1,6 @@
 # PROJ-158: Postfach-Anbindung (IMAP · Microsoft 365 · Gmail)
 
-## Status: In Progress
+## Status: In Review
 ## Deployment Scope: —
 **Created:** 2026-08-31
 **Last Updated:** 2026-09-01
@@ -648,3 +648,137 @@ die Zahlen stammen daher aus Playwrights eigener Meldung.
 - **D-158.FE.3** Kein angemeldeter Browser-Durchlauf in diesem Schritt und **keine echte
   Verbindungsprüfung** — dafür braucht es ein echtes Postfach (dritte Nachweis-Ebene zu AC-158.7,
   Fehlergründe aus AC-158.8). Ausdrücklich **kein erfülltes Kriterium**, sondern offen für `/qa`.
+
+---
+
+## QA Test Results (2026-09-01) — NICHT produktionsreif
+
+**0 Critical / 1 High / 3 Medium / 1 Low / 1 Info.** Status bleibt `In Review`.
+
+Der Durchgang hat den Kern geschlossen, den `/backend` und `/frontend` ausdrücklich offen gelassen
+hatten — den **angemeldeten Browser-Durchlauf** —, und dabei einen Defekt gefunden, der die halbe
+Slice betrifft.
+
+### Akzeptanzkriterien
+
+| AC | Ergebnis | Nachweis |
+|---|---|---|
+| 158.1 drei Anbieter | ✅ | E2E Fall 2: alle drei in der Auswahl, keiner erfunden |
+| 158.2 Passwort nie wieder lesbar | ✅ | E2E Fall 3: die Antwort auf das Anlegen enthält weder das Passwort noch das Wort `credential`; Pentest B3 belegt, dass es gespeichert *ist* |
+| 158.3 kein Passwortfeld für M365/Gmail | ✅ | E2E Fall 2: beide `aria-disabled`, mit Begründung |
+| 158.4 ein Verschlüsselungsverfahren | ✅ | Pentest B3 (101 Byte PGP-Paket in der Spalte), erzeugt über `encrypt_tenant_secret_with_key` |
+| 158.5 jeder verwaltet sein eigenes | ✅ | Pentest B1/B2 + E2E Fall 4 |
+| **158.5b nur der Eigentümer sieht es** | ✅ | **Pentest B4–B8 unter einem ECHTEN Mandanten-Administrator** (B0 belegt vorab, dass er wirklich Admin ist) **+ E2E Fall 4 in beide Richtungen** |
+| 158.6 mehrere Postfächer je Nutzer | ✅ | Pentest D2 (Name je Nutzer eindeutig), D1 (dieselbe Kennung zweimal abgewiesen) |
+| **158.7 Prüfung liest nur Ordnernamen** | ❌ **F-2** | strukturell unerreichbar — die Prüfung kommt nie beim Anbieter an |
+| **158.8 Ergebnis mit Grund** | ❌ **F-2** | Zeitpunkt und Zustand werden korrekt gezeigt (E2E Fall 3), ein *Prüfergebnis* kann aber nicht entstehen |
+| 158.9 kein roher Fehlertext | ⊘ | nicht ausübbar, solange 158.7 nicht läuft; die 503-Meldung selbst ist sauber |
+| 158.10 Zeitgrenze | ⊘ | nicht ausübbar (dieselbe Ursache) |
+| 158.11–158.14 | — | OAuth, ausdrücklich **β** |
+| 158.15 Zusage vor dem Speichern | ✅ | E2E Fall 1: der Satz steht dauerhaft in der Liste, nicht nur im Dialog |
+| 158.16 kein geteilter Audit-Trail | ✅ | Pentest A4/A5: weder im `entity_type`-CHECK noch in `_tracked_audit_columns` |
+| **158.17 Sichtbarkeit/Aufbewahrung vor PROJ-159** | ❌ **F-4** | die Spec benennt es nirgends — die einzige Fundstelle ist das Kriterium selbst |
+| 158.18 Mandantentrennung | ✅ | Pentest C1 (42501), live gegen Prod |
+| 158.19 SSRF-Härtung | ✅ | 32 Fälle in `validation.test.ts`; Bereichsliste aus PROJ-115 **importiert, nicht kopiert** |
+| **158.20 anon kann nichts** | ⚠️ **F-3** | Routen: E2E 5/5 exakt 307. Datenbank: `anon` hält 7 Tabellenrechte, davon **TRUNCATE, das RLS umgeht** |
+| **158.21 nur zwei neue Pakete** | ⚠️ **F-5** | `audit:prod` 0 Vulnerabilities ✅, aber die Zahl stimmt nicht: gemessen **16** statt 2 |
+
+### Befunde
+
+**F-1 (Medium, in `/qa` behoben) — der Pentest existierte nicht als Datei.**
+`/backend` meldete „Live-Pentest 16/16 gegen Prod", ohne den Lauf zu hinterlassen. Genau die Klasse,
+die das INDEX bei **PROJ-102** selbst als Defekt führt („die dokumentierten 6/6 stammen aus einem
+Ad-hoc-Lauf und sind nicht reproduzierbar"). Geschrieben als
+`tests/sql/PROJ-158-user-mailboxes-pentest.sql`, **28 Vektoren, 26 PASS / 2 FAIL** gegen Prod, 0
+Rückstände, Rollback erzwungen.
+
+**F-2 (High, offen) — die Verbindungsprüfung ist in Produktion strukturell unerreichbar.**
+`decryptMailboxCredential` ruft `decrypt_tenant_secret_with_key` mit dem Parameter `p_payload`. Die
+Funktion in Prod nimmt aber **`p_secret_id uuid`** — sie holt den Chiffretext **selbst** aus
+`tenant_secrets`. Live gemessen statt aus der Signatur gefolgert: der Aufruf in genau der Form, die
+die Anwendung macht, meldet **`42883 function … does not exist`**; die Gegenprobe mit der echten
+Signatur läuft. Es gibt **eine** Überladung, und **keine** der vier Entschlüsselungsfunktionen des
+Hauses nimmt einen übergebenen Chiffretext — die Ver-/Entschlüsselungs-Paarung ist **asymmetrisch**
+(`encrypt_*` gibt einen Chiffretext zurück, `decrypt_*` liest ihn aus einer bestimmten Tabelle).
+Damit endet **jede** Prüfung mit `503 credential_unavailable`, und deren Meldung („Bitte erneut
+speichern.") schickt den Nutzer auf einen Weg, der nichts hilft.
+
+*Warum es keine Ebene vorher gefangen hat:* `route.test.ts:75` setzt
+`mocks.supabase.rpc.mockResolvedValue({ data: "CHIFFRE", error: null })` — die RPC ist mit einem
+**erfundenen** Rückgabewert gemockt, ein Signaturfehler ist dort unsichtbar. Der Pentest prüft die
+Datenbankschicht, nicht den Aufruf. Dieselbe Klasse wie PROJ-151 (`content_md`/`markdown_content`),
+PROJ-Y-151b (mehrdeutige Einbettung) und PROJ-Y-151d (Bibliothek ohne Aufrufer).
+Kein Sicherheitsbefund (fail-closed), aber die zweite Hälfte der Slice — „hinterlegen **und
+prüfen**" — funktioniert nicht. Als `test.fail()` in `tests/PROJ-158-mailboxes.spec.ts` Fall 5
+festgehalten: der Fall beschreibt den **Soll**-Zustand und schlägt an, sobald jemand ihn behebt,
+statt den Defekt einzufrieren.
+
+**F-3 (Medium, vorbestehende Klasse) — `anon` kann `TRUNCATE`.**
+Gemessen, nicht behauptet: Lesen, Schreiben, Ändern und Löschen sind für `anon` **zu** — die Policy
+ist gar nicht auswertbar (`42501` auf `is_tenant_member`, die PROJ-Y-130q-Härtung). `TRUNCATE`
+wertet aber **keine** Policy aus und **gelingt** (Vektor E5, die Sondenzeile war danach weg). Über
+die Produktfläche nicht erreichbar, weil PostgREST kein TRUNCATE-Verb hat — dieselbe Einordnung wie
+**PROJ-Y-80e**. Gegen die Geschwister gemessen: `user_mailboxes` hat exakt dieselben 7 Rechte wie
+`assistant_work_item_drafts` (PROJ-144, das namentliche Vorbild) und `construction_photos`, ist also
+**Hausbestand**. Aber `document_summaries` (PROJ-80) ist strenger — dort hat `anon` **nichts**. Die
+Slice hätte dem strengeren Vorbild folgen können; zwei `revoke`-Zeilen.
+
+**F-4 (Medium, offen) — AC-158.17 ist nicht eingelöst, und es sperrt die nächste Slice.**
+Das Kriterium verpflichtet **die Spec**, vor PROJ-159 zu benennen, wer abgeholte Mails sehen darf
+und wie lange nicht zugewiesene bleiben — „ohne diese Festlegung darf PROJ-159 nicht beginnen".
+Gemessen: die einzige Fundstelle für Aufbewahrung im ganzen Dokument ist das Kriterium selbst. Es
+ist damit nicht bloß unerfüllt, sondern eine **Vorbedingung für die unmittelbar folgende Slice**.
+
+**F-5 (Low, offen) — AC-158.21 nennt eine falsche Zahl.**
+Es sagt, `pino` und `socks` seien „die **einzigen** neuen Abhängigkeiten". `/backend` hat selbst
+gemessen und korrigiert: es sind **16** (586 → 602 Prod-Pfade), 13 davon der Logger-Baum, den die
+Anwendung wegen Sentry nicht braucht (der Client läuft mit `logger: false`). Die Korrektur steht in
+der Implementierungsnotiz, das **Kriterium** trägt den falschen Wortlaut weiter — dieselbe
+Buchführungs-Klasse, die PROJ-45 als D-45β-DEPLOY-1 festgehalten hat. Die Sicherheitshälfte ist
+grün: `npm audit --omit=dev` **0 Vulnerabilities**.
+
+**F-6 (Info) — `SECRETS_ENCRYPTION_KEY` fehlt lokal, in Prod ist er gesetzt.**
+Ohne ihn antwortet das Anlegen mit `503 encryption_unavailable` — fail-closed und mit klarer Meldung,
+also richtiges Verhalten. Dass Prod ihn hat, ist **gemessen statt gefolgert**: 12 echte
+(nicht-`stub`) erfolgreiche KI-Läufe in 14 Tagen, letzter OpenAI-Lauf 2026-08-28 — jeder davon
+entschlüsselt ein Mandanten-Geheimnis mit derselben Variable.
+
+### Nachweise
+
+- **Live-Pentest** `tests/sql/PROJ-158-user-mailboxes-pentest.sql` — **26 PASS / 2 FAIL** gegen Prod,
+  **0 Rückstände**, Rollback erzwungen. Tragend ist **B0**: er prüft *zuerst*, dass der zweite Akteur
+  wirklich Mandanten-Administrator ist, und bricht sonst ab — ohne ihn wären B4–B8 falsch-grün und
+  belegten nur die Mandantentrennung, die es auch ohne diese Slice gäbe.
+- **E2E** `tests/PROJ-158-mailboxes.spec.ts` — **10/10 chromium, dreimal hintereinander stabil**,
+  danach 0 Rückstände. Fall 4 ist der Kern: zwei angemeldete Sitzungen, Administrator und einfaches
+  Mitglied, **mit Gegenprobe in beide Richtungen** — ohne die zweite Hälfte („das Mitglied sieht sein
+  eigenes sehr wohl") bewiese der Fall nur eine kaputte Liste.
+- **Regression** Visual-Regression **9/9 ohne Neuaufnahme**, PROJ-144 und PROJ-151 grün (13/13
+  zusammen) — die beiden Geschwister mit derselben Eigentümer-Bindung.
+- **Gates** vitest **4133/4133** in 470 Dateien · ESLint 0 · tsc 11 = Baseline, **0 in Slice-Dateien**
+  · `audit:prod` 0 Vulnerabilities · index-scope, token-drift, register-consistency je 0.
+
+### Eigene Prüf-Fehler, festgehalten statt weggelassen
+
+Fünf Anläufe, bis der E2E-Durchlauf stand — **jedes Mal war das Produkt richtig und mein Test falsch**:
+`getByLabel("Name")` trifft auch „Benutzername" (Teilstring); die Leck-Zusicherung verbot
+`mailbox`, das im Rumpf nur als **Eingabe des Aufrufers** in `?next=` steht (dieselbe Falle wie in
+PROJ-151); `getByText("Noch nicht geprüft")` trifft Abzeichen **und** Erfolgsmeldung;
+`getByRole("listitem")` trifft die **16 Navigationseinträge** der Seitenleiste; und der Wart-Helfer
+wartete auf die **Abwesenheit** des Ladezustands — die ist erfüllt, *bevor* React gerendert hat,
+womit er null Zeilen zählte und nichts aufräumte (die PROJ-Y-143b-Falle eine Ebene tiefer). Jetzt
+wartet er auf ein **positives** Signal. Zusätzlich sind Bezeichner je Lauf eindeutig, weil sonst ein
+Playwright-Wiederholungslauf an der Vorarbeit seines eigenen ersten Versuchs mit 409 scheitert — was
+wie ein Produktfehler aussieht und keiner ist. Und das Aufräumen wird jetzt **zugesichert** statt nur
+ausgeführt: ein ungeprüftes Teardown ist genau die blinde Stelle aus PROJ-Y-143o.
+
+**Nebenbefund ohne Bezug zu dieser Slice:** ein Mandant `[E2E] Gantt Test` ist während des Laufs
+entstanden (07:19 UTC) — von einer parallelen Spur (PROJ-Y-155a), nicht von dieser QA. Geprüft statt
+als eigener Rückstand gebucht.
+
+### Abweichungen
+
+- **D-158.QA.1** Kein Lauf gegen ein **echtes** Postfach. Er wäre auch sinnlos, solange F-2 offen ist
+  — die Prüfung erreicht den Anbieter nicht. Nach dem Fix nachzuholen (Zugangsdaten fehlen).
+- **D-158.QA.2** AC-158.9/.10 sind **nicht ausübbar**, nicht „erfüllt". So gebucht.
+- **D-158.QA.3** Mobile Safari umgebungsbedingt übersprungen (PROJ-67/F2).
