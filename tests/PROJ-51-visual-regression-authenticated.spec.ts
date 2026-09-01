@@ -31,6 +31,7 @@
 import type { Page } from "@playwright/test"
 
 import { expect, test } from "./fixtures/auth-fixture"
+import { watchRuntimeIssues } from "./fixtures/runtime-issues"
 import {
   E2E_VISUAL_PROJECT_ID,
   E2E_VISUAL_TENANT_NAME,
@@ -175,24 +176,11 @@ async function waitForRenderedData(page: Page): Promise<void> {
  * narrower and more honest — it observes what the app does, not how the
  * tooling renders it. `devIndicators: false` does not suppress the error
  * badge, so this is the only reliable half.
+ *
+ * PROJ-Y-155a moved the implementation to `tests/fixtures/runtime-issues.ts`
+ * so the Gantt chain can use the same guard. Behaviour is unchanged — a pure
+ * move, and this suite passing unchanged is the proof.
  */
-function watchRuntimeIssues(page: Page): () => string[] {
-  const issues: string[] = []
-  page.on("console", (m) => {
-    if (m.type() !== "error") return
-    // Chromium logs every non-2xx response as a console error, including the
-    // module-gated 404s that PROJ-Y-143f made the UI handle *deliberately*
-    // (`requireModuleActive`, read intent). Those are expected traffic on the
-    // resources page and the project room, not application errors — keeping
-    // them would make the guard fire on correct behaviour and train everyone
-    // to ignore it. React errors and uncaught exceptions, which is what this
-    // is for, never take this shape.
-    if (m.text().startsWith("Failed to load resource")) return
-    issues.push(`[console] ${m.text()}`)
-  })
-  page.on("pageerror", (e) => issues.push(`[pageerror] ${e.message}`))
-  return () => issues
-}
 
 test.describe("PROJ-51-ε.3 — Visual Regression (authenticated)", () => {
   // Desktop-only: on mobile the sidebar collapses behind a hamburger,

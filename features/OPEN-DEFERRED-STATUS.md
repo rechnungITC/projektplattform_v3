@@ -555,7 +555,7 @@ Deploy, aber sie sind nicht erledigt und hatten bis heute **keine** Followup-Ken
 
 ## PROJ-155 — Gantt: Hierarchie, Sammelvorgänge, Netzablaufplan (Deployed, Scope `alpha`)
 
-- **PROJ-Y-155a — angemeldeter Browser-Durchlauf plus Visual-Baseline (offen).**
+- **PROJ-Y-155a — angemeldeter Browser-Durchlauf plus Visual-Baseline (erledigt 2026-09-01).**
   α ist ohne `/qa`-Durchgang deployed. Belegt sind Zeilenlogik (27 Unit-Tests),
   Rollup-Fix (rot-grün live gegen Prod) und Verknüpfbarkeit (live gegen Prod) —
   **nicht** die Verkettung im Browser: dass Tasks eingerückt erscheinen, das
@@ -569,8 +569,57 @@ Deploy, aber sie sind nicht erledigt und hatten bis heute **keine** Followup-Ken
   ohne Komponententests und ohne Visual-Baseline**, jeder β-Eingriff wäre also
   ungesichert; und die Fixture-Lane, die 155a ohnehin bauen muss, ist genau die,
   die β.1 zum Prüfen braucht — zwei Lanes wären Verschwendung.
+  **Erledigt 2026-09-01** (`tests/PROJ-Y-155a-gantt-chain.spec.ts`, 6 Fälle, seriell,
+  3× grün plus Kaltstart). Eigene Fixture-Lane `E2E_GANTT_*` wie registriert — die
+  Alternative wurde vorher gemessen: die Visual-Lane setzt `project_type: "general"`
+  **absichtlich** („keeps the seed minimal"), die Chat-Lane hat null Phasen, die
+  Bau-Lane eine andere Navigation. Die Aufnahme ist **elementbezogen auf das SVG**
+  statt auf die Seite; damit kann kein Kontozustand sie bewegen, und die Lane darf
+  den geteilten Nutzer verwenden (kein zusätzlicher Anmeldevorgang).
+  **Toleranz gemessen statt geschätzt** (Methode PROJ-Y-143g): Rauschen **0 px**
+  über drei Läufe, kleinste sinnvolle Änderung **32 px**, geerbtes 2-%-Verhältnis
+  hätte **8003 px** erlaubt — 250-fach zu grob; gesetzt sind **20**, rot-grün belegt.
+  **Der Lauf rendert erstmals überhaupt einen Sammelvorgang:** die Lane seedet ein
+  Arbeitspaket ohne eigene Termine mit terminierten Kindern, `derived_planned_start`
+  steht danach auf `2026-03-11 bis 2026-03-20` — genau die Kinder-Spanne. Produktion
+  enthält von diesem Fall **0 von 138** Instanzen, der PROJ-155-α-Rollup war also nie
+  in einer Oberfläche zu sehen. **Drei Befunde beim Bauen**, alle gemessen: der Gantt
+  liegt hinter einem Reiter ohne Deep-Link; der Reiter-Klick geht **vor der Hydration
+  lautlos verloren** (einzeln grün, unter sechs Arbeitern fielen alle sechs Fälle mit
+  „element(s) not found", während die Diagnose `count: 1` zeigte — dieselbe Klasse wie
+  der deaktivierte Stepper-Knopf aus PROJ-135); und der Platzhaltertext der
+  terminlosen Zeile **überdeckt seine eigene Aufzieh-Fläche** (`elementFromPoint`
+  liefert dort den Text, der Zug schrieb nichts — keine Vorschau, keine Anfrage).
+  Die beiden Bedien-Hälften sind als **PROJ-Y-155c** registriert. Ein **latentes
+  Rennen** wurde beim Nachrechnen statt beim Fehlschlagen gefunden und geschlossen:
+  Zug-Fall und Baseline fassen dieselbe Zeile an, die Datei läuft deshalb seriell
+  (Präzedenz PROJ-45-ε). Nebenbei nach `tests/fixtures/runtime-issues.ts` extrahiert,
+  was in der Visual-Suite eine lokale Funktion war — ein reiner Umzug, belegt dadurch,
+  dass die Visual-Suite unverändert **9/9 ohne Neuaufnahme** bleibt (zusammen 15/15).
+  **Rückstand offengelegt statt gerundet:** 42 Feld-Audit-Zeilen im Gantt-Mandanten
+  aus den Zug-Läufen. `audit_lifecycle_exempt` ist gesetzt und greift für Anlage und
+  Löschung, **nicht** für Feldänderungen — genau **PROJ-Y-45e**. Bewusst nicht über
+  den Runbook-Weg entfernt: dafür müssten in Produktion die Append-only-Wächter
+  abgeschaltet werden, und das Risiko ist grösser als 42 synthetische Zeilen in einem
+  Testmandanten.
   *Quelle: PROJ-155 „Ausdrücklich nicht belegt"; Reihenfolge aus dem Design-Pass
-  2026-09-01.*
+  2026-09-01; Erledigung und alle Zahlen aus dem Lauf vom 2026-09-01.*
+
+- **PROJ-Y-155c — zwei Bedienbefunde am Gantt (offen, klein).**
+  Beide beim Bauen von PROJ-Y-155a gemessen, beide gehören zu **β.1**, das die
+  Gantt-Flächen ohnehin anfasst. (1) **Kein Deep-Link auf den Netzplan:**
+  `planung-client.tsx:57` startet fest auf `"phasen"` und es gibt keinen
+  URL-Parameter für den Reiter — der Gantt ist nicht verlinkbar, man klickt immer
+  zweimal. (2) **Der Platzhaltertext überdeckt seine eigene Bedienfläche:** in der
+  terminlosen Zeile wird `↳ Titel — Zeitraum im Diagramm aufziehen` im selben `<g>`
+  **nach** dem Aufzieh-Rechteck gezeichnet, liegt in SVG damit oben und fängt den
+  Mousedown ab; wer links im Balkenbereich ansetzt, zieht ins Leere (belegt:
+  `elementFromPoint` liefert den Text, keine Vorschau, keine Anfrage). Auf schmalen
+  Fenstern ist das der grössere Teil der Zeile. Dritte, schwächere Beobachtung ohne
+  eigene Kennung: derselbe Reiter-Klick geht auch für **Menschen** verloren, solange
+  die Seite nicht hydriert ist — das ist SSR-inhärent und keine Eigenart dieses
+  Produkts, aber es erklärt „ich hab geklickt und nichts passierte".
+  *Quelle: PROJ-Y-155a, Messungen vom 2026-09-01.*
 
 - **PROJ-Y-155b — zwei Leseorte für denselben Termin (offen, Hygiene).**
   `wbs-display.ts` (`ownPlannedStart`/`ownPlannedEnd`) liest Termine weiter aus
