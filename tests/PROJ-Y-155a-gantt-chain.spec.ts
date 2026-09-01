@@ -41,6 +41,7 @@ import { createClient, type SupabaseClient } from "@supabase/supabase-js"
 import { expect, hasAuthStorageState, test } from "./fixtures/auth-fixture"
 import {
   E2E_GANTT_DATES,
+  E2E_GANTT_DEPENDENCY_ID,
   E2E_GANTT_DERIVED_EXPECTED,
   E2E_GANTT_PROJECT_ID,
   E2E_GANTT_TASK_A1_TITLE,
@@ -422,5 +423,83 @@ test.describe("PROJ-Y-155a — Gantt: angemeldeter Durchlauf + Baseline", () => 
     await expect(diagram).toHaveScreenshot("gantt-diagram.png", {
       maxDiffPixels: 20,
     })
+  })
+
+  /**
+   * PROJ-155-β.1 — die Kante ist ein Objekt geworden.
+   *
+   * Steht **nach** der Baseline, und das ist keine Kosmetik: der Fall ändert
+   * den Kantentyp, wodurch am Pfeil ein Abzeichen erscheint. Liefe er vorher,
+   * fotografierte die Baseline ein Diagramm mit Abzeichen. Die Datei ist
+   * seriell, die Reihenfolge ist also verlässlich.
+   */
+  test("Kantentyp ist über das Diagramm änderbar — und Löschen ist nicht mehr der einzige Weg", async ({
+    ganttTenantPage: page,
+  }) => {
+    const admin = await createAdminClient()
+    test.skip(!admin, "SUPABASE_SERVICE_ROLE_KEY fehlt — Zustand nicht prüfbar.")
+
+    const before = await admin!
+      .from("dependencies")
+      .select("constraint_type, lag_days")
+      .eq("id", E2E_GANTT_DEPENDENCY_ID)
+      .single()
+    expect(before.data!.constraint_type, "Vorbedingung: FS").toBe("FS")
+    expect(before.data!.lag_days).toBe(0)
+
+    try {
+      await openGantt(page)
+
+      // Vor β.1 war ein Klick auf den Pfeil unmittelbar der Löschpfad
+      // (`window.confirm`). Jetzt öffnet er eine Maske.
+      const arrow = page.getByRole("button", { name: /^Abhängigkeit FS von/ })
+      await expect(arrow).toHaveCount(1)
+
+      // Tastatur zuerst: der Pfeil war bis β.1 ausschliesslich mit der Maus
+      // erreichbar (ein `<g>` ohne Rolle und ohne Tabstopp). Enter muss
+      // dieselbe Maske öffnen wie ein Klick — sonst ist die Kante für
+      // Tastaturnutzer unbedienbar.
+      await arrow.focus()
+      await page.keyboard.press("Enter")
+      await expect(page.getByRole("dialog")).toBeVisible()
+      await page.keyboard.press("Escape")
+      await expect(page.getByRole("dialog")).toHaveCount(0)
+
+      await arrow.click()
+
+      const dialog = page.getByRole("dialog")
+      await expect(dialog).toBeVisible()
+      // Entfernen ist EINE von drei Handlungen, nicht die einzige — das ist
+      // die eigentliche Zusage des Kriteriums.
+      await expect(dialog.getByRole("button", { name: "Entfernen" })).toBeVisible()
+      await expect(dialog.getByRole("button", { name: "Sichern" })).toBeVisible()
+
+      // Typ auf „Start → Start" stellen. Die Beschriftung ist deutsch; vorher
+      // stand im Produkt überall nur das Kürzel.
+      await dialog.getByLabel("Typ").click()
+      await page.getByRole("option", { name: "Start → Start (SS)" }).click()
+      await dialog.getByRole("button", { name: "Sichern" }).click()
+      await expect(page.getByText("Abhängigkeit gespeichert")).toBeVisible({
+        timeout: 15_000,
+      })
+
+      // In der Datenbank angekommen …
+      const after = await admin!
+        .from("dependencies")
+        .select("constraint_type")
+        .eq("id", E2E_GANTT_DEPENDENCY_ID)
+        .single()
+      expect(after.data!.constraint_type).toBe("SS")
+
+      // … und am Pfeil sichtbar. Das Abzeichen ist der Punkt: eine Abweichung
+      // vom Normalfall soll man sehen, nicht erst im Tooltip suchen müssen —
+      // ein Tooltip ist auf Touch-Geräten gar nicht erreichbar.
+      await expect(page.getByText("SS", { exact: true }).first()).toBeVisible()
+    } finally {
+      await admin!
+        .from("dependencies")
+        .update({ constraint_type: "FS", lag_days: 0 })
+        .eq("id", E2E_GANTT_DEPENDENCY_ID)
+    }
   })
 })

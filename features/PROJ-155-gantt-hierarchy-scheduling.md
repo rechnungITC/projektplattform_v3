@@ -187,7 +187,26 @@ Zwei weitere Befunde des Passes:
   weil „sein Zeitraum ein Ergebnis ist, kein Eingabefeld" — errechnete Termine
   still zu schreiben wäre die Gegenrichtung derselben Frage.
 
-Empfohlene Reihenfolge: **PROJ-Y-155a → β.1 → CIA-Pass → β.2**. PROJ-Y-155a wandert
+**β.1 ausgeliefert 2026-09-01** — die Kante ist ein Objekt. Typ und Abstand
+sind setzbar (Maske am Pfeil im Diagramm, inline im Register), das Register kann
+erstmals **anlegen**, ein Pfeil mit Abweichung vom Normalfall trägt ein sichtbares
+Abzeichen, und der Pfeil ist per Tastatur erreichbar. Neue Route
+`PATCH …/dependencies/[did]`; keine Migration, kein Paket. Damit sieht der
+künftige Scheduler nicht mehr ausschliesslich `FS`/0.
+
+Vier Funde beim Bauen, alle gemessen und alle mitbehoben: die Typliste stand
+**viermal** im Repo (einmal mit englischen Beschriftungen) → eine Autorität in
+`@/types/dependency`, aus der auch das Zod-Enum abgeleitet ist; `DELETE` prüfte
+die Projektzugehörigkeit **nicht** (Klasse PROJ-45-β, kein Mandantenleck, aber
+Wirkung am falschen Ort möglich); der Gantt las `lag_days` **gar nicht**; und der
+Anlege-Pfad zeigte **nie einen Grund** — er las `err?.message`, die API antwortet
+`{ error: { code, message } }`, die Beschreibung war also immer `undefined`.
+Abweichung: **Dialog statt Popover** — ein Popover müsste an einem SVG-Pfad
+verankert werden, dessen Lage von Zoom, Bildlauf und Zeilenhöhe abhängt; die
+Substanz des Kriteriums ist „Löschen ist eine von drei Handlungen".
+
+Empfohlene Reihenfolge: **PROJ-Y-155a → β.1 → CIA-Pass → β.2** (beide ersten
+Schritte erledigt). PROJ-Y-155a wandert
 nach vorn, weil der Gantt 2091 Zeilen ohne Komponententests und ohne
 Visual-Baseline ist und die Fixture-Lane, die er baut, genau die ist, die β.1
 zum Prüfen braucht.
