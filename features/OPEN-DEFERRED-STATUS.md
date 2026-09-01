@@ -630,7 +630,7 @@ Deploy, aber sie sind nicht erledigt und hatten bis heute **keine** Followup-Ken
   nein, entfällt die Quelle.
   *Quelle: PROJ-155 Befundaufnahme.*
 
-- **PROJ-155-β — Auto-Scheduling (benannt, nicht gebaut).** Eine Abhängigkeit
+- **PROJ-155-β — β.1 erledigt 2026-09-01, β.2 (Auto-Scheduling) offen.** Eine Abhängigkeit
   verschiebt den Nachfolger noch nicht automatisch; `lag_days` existiert in
   `dependencies` und ist ungenutzt, `constraint_type` ist über die Oberfläche nicht
   wählbar (immer der Default `FS`). Dazu: Vorgänger-Spalte in der Tabelle,
@@ -657,6 +657,36 @@ Deploy, aber sie sind nicht erledigt und hatten bis heute **keine** Followup-Ken
   eine Kaskade über 30 Nachfolger schriebe **60** append-only Zeilen gegen heute
   **207** insgesamt. Reihenfolge **PROJ-Y-155a → β.1 → CIA-Pass → β.2** — am
   2026-09-01 als **Nutzer-Entscheid** bestätigt, also nicht mehr bloß empfohlen.
+  **β.1 ausgeliefert 2026-09-01** — die Kante ist ein Objekt: Typ und Abstand
+  sind setzbar (Maske am Pfeil, inline im Register), das Register kann erstmals
+  **anlegen**, ein Pfeil mit Abweichung trägt ein sichtbares Abzeichen, und der
+  Pfeil ist per Tastatur erreichbar. Neue Route
+  `PATCH …/dependencies/[did]`; **keine Migration, kein Paket**. Damit ist die
+  Voraussetzung für β.2 hergestellt: der Scheduler bekommt nicht mehr
+  ausschliesslich `FS`/0 zu sehen. **Vier Funde beim Bauen, alle gemessen:**
+  (1) die Typliste stand **viermal** im Repo, einmal davon mit englischen
+  Beschriftungen — jetzt eine Autorität in `@/types/dependency`, aus der auch
+  das Zod-Enum abgeleitet ist; (2) `DELETE …/dependencies/[did]` prüfte **nicht**,
+  ob die Kante zum Projekt in der Adresse gehört — kein Mandantenleck (RLS
+  greift), aber die Projekt-Kennung war Dekoration und eine Löschung konnte über
+  ein fremdes Projekt laufen (Klasse PROJ-45-β), mitgehärtet und rot-grün belegt;
+  (3) der Gantt las `lag_days` **gar nicht** (0 Vorkommen im Modul), obwohl die
+  Spalte seit PROJ-9-Round-2 existiert; (4) **der Anlege-Pfad zeigte nie einen
+  Grund** — er las `err?.message`, die API antwortet aber
+  `{ error: { code, message } }`, die Beschreibung war also **immer** `undefined`;
+  wer im Diagramm einen Kreis zog, bekam „fehlgeschlagen" ohne Begründung,
+  obwohl die Route seit jeher `cycle_detected` liefert. Nachweise: **36 neue
+  Tests** (19 Route, 10 Lib, 7 Komponente), Rot-Grün dreifach ausgeführt
+  (Zugehörigkeitsprüfung → **genau** die zwei Fremdprojekt-Fälle fallen;
+  Tastatur → genau der Tastatur-Fall; Baseline-Schranke), E2E-Kette **7/7** mit
+  Typwechsel über das Diagramm bis in die Datenbank und zurück ins Abzeichen.
+  **AC-10 fiel dabei beiläufig an:** die Gantt-Baseline blieb **unverändert
+  grün**, eine `FS`/0-Kante sieht nach β.1 also nachweislich aus wie vorher —
+  die Änderung ist additiv, ohne dass es dafür einen eigenen Test brauchte.
+  Abweichung: **Dialog statt Popover** (der Brief sah ein Popover vor; es müsste
+  an einem SVG-Pfad verankert werden, dessen Lage von Zoom, Bildlauf und
+  Zeilenhöhe abhängt — Risiko ohne Ertrag, die Substanz des Kriteriums ist
+  „Löschen ist eine von drei Handlungen"). Offen bleibt **β.2**.
   *Quelle: PROJ-155 Fundament-Entscheidung; Design-Pass 2026-09-01 mit
   Live-Messung gegen Prod.*
 

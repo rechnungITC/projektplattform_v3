@@ -42,6 +42,19 @@ import {
   weekendBands as buildWeekendBands,
 } from "@/lib/dates/gantt-timeline"
 import { cn } from "@/lib/utils"
+import {
+  DependencyApiError,
+  createDependency,
+} from "@/lib/dependencies/api"
+import {
+  constraintBadge,
+  type DependencyConstraintType,
+} from "@/types/dependency"
+
+import {
+  DependencyEditDialog,
+  type EditableDependency,
+} from "./dependency-edit-dialog"
 import { buildGanttRows, phaseRowKey } from "@/lib/work-items/gantt-rows"
 import { type Milestone, MILESTONE_STATUS_LABELS } from "@/types/milestone"
 import { PHASE_STATUS_LABELS, type Phase } from "@/types/phase"
@@ -75,7 +88,11 @@ interface PolymorphicDependency {
   from_id: string
   to_type: LinkType
   to_id: string
-  constraint_type: "FS" | "SS" | "FF" | "SF"
+  constraint_type: DependencyConstraintType
+  // PROJ-155-β.1 — der Gantt las den Abstand bisher gar nicht (0 Vorkommen im
+  // ganzen Modul), obwohl die Spalte seit PROJ-9-Round-2 existiert. Ohne ihn
+  // kann das Abzeichen ihn nicht zeigen und die Maske ihn nicht vorbelegen.
+  lag_days: number
 }
 
 interface GanttViewProps {
@@ -208,6 +225,11 @@ export function GanttView({
   const [drag, setDrag] = React.useState<DragState | null>(null)
   const [submitting, setSubmitting] = React.useState<string | null>(null)
   const [dependencies, setDependencies] = React.useState<PolymorphicDependency[]>([])
+  // PROJ-155-β.1 — die angeklickte Kante. Vorher fuehrte der Klick direkt in
+  // die Loeschabfrage; jetzt oeffnet er die Bearbeitung, in der Loeschen eine
+  // von drei Handlungen ist.
+  const [editDependency, setEditDependency] =
+    React.useState<EditableDependency | null>(null)
   const [zoomLevel, setZoomLevel] = React.useState<ZoomLevel>("week")
   const pixelsPerDay = ZOOM_PIXELS_PER_DAY[zoomLevel]
   const [criticalPhaseIds, setCriticalPhaseIds] = React.useState<Set<string>>(
@@ -282,8 +304,10 @@ export function GanttView({
               to_type: LinkType
               to_id: string
               constraint_type: PolymorphicDependency["constraint_type"]
+              lag_days: number | null
             }) => ({
               id: r.id,
+              lag_days: r.lag_days ?? 0,
               from_type: r.from_type,
               from_id: r.from_id,
               to_type: r.to_type,
@@ -557,6 +581,21 @@ export function GanttView({
     })
     return m
   }, [rows, calendarStart, pixelsPerDay, depTypeOf])
+
+  // PROJ-155-β.1 — Kennung → lesbarer Name. Der Dialog nennt beide Enden der
+  // Kante; ohne Namen stünde dort „work_package → work_package", was bei mehr
+  // als einer Kante nichts unterscheidet.
+  const entityLabel = React.useCallback(
+    (type: string, id: string): string => {
+      if (type === "phase") {
+        return phases.find((p) => p.id === id)?.name ?? "Phase"
+      }
+      const item = workPackages.find((w) => w.id === id)
+      if (item) return item.title
+      return type === "project" ? "Projekt" : "Objekt"
+    },
+    [phases, workPackages],
+  )
 
   // Phase-only view used by the milestone block.
   const phaseLayout = React.useMemo(() => {
@@ -951,30 +990,36 @@ export function GanttView({
           return
         }
         try {
-          const res = await fetch(
-            `/api/projects/${projectId}/dependencies`,
-            {
-              method: "POST",
-              headers: { "Content-Type": "application/json" },
-              body: JSON.stringify({
-                from_type: snapshot.fromType,
-                from_id: snapshot.fromId,
-                to_type: snapshot.targetType,
-                to_id: snapshot.targetId,
-                constraint_type: "FS",
-              }),
-            },
-          )
-          if (!res.ok) {
-            const err = await res.json().catch(() => ({}))
-            throw new Error(err?.message ?? `HTTP ${res.status}`)
-          }
-          toast.success("Dependency erstellt")
+          // PROJ-155-β.1 — über den geteilten Wrapper statt über rohes `fetch`.
+          //
+          // Der frühere Zweig las `err?.message`, die API antwortet aber
+          // `{ error: { code, message } }` — die Begründung war also **immer**
+          // `undefined`. Wer im Diagramm einen Kreis zog, bekam
+          // „Dependency-Erstellung fehlgeschlagen" ohne jeden Grund, obwohl
+          // die Route seit jeher `cycle_detected` liefert. Der Wrapper wertet
+          // den stabilen `code` aus und übersetzt ihn.
+          //
+          // `FS`/0 bleibt hier die Vorgabe: Ziehen ist die schnelle Geste, der
+          // Typ wird danach in der Maske gesetzt (ein Zug kann ihn nicht
+          // ausdrücken).
+          await createDependency(projectId, {
+            from_type: snapshot.fromType,
+            from_id: snapshot.fromId,
+            to_type: snapshot.targetType,
+            to_id: snapshot.targetId,
+            constraint_type: "FS",
+            lag_days: 0,
+          })
+          toast.success("Abhängigkeit erstellt")
           onChanged()
         } catch (err) {
-          toast.error("Dependency-Erstellung fehlgeschlagen", {
+          toast.error("Abhängigkeit konnte nicht erstellt werden", {
             description:
-              err instanceof Error ? err.message : "Unbekannter Fehler",
+              err instanceof DependencyApiError
+                ? err.message
+                : err instanceof Error
+                  ? err.message
+                  : "Unbekannter Fehler",
           })
         }
       }
@@ -991,30 +1036,10 @@ export function GanttView({
     // der Handler nach einer Fensterverschiebung falsche Termine.
   }, [drag, projectId, milestones, onChanged, pixelsPerDay, calendarStart])
 
-  // Delete a dependency edge by clicking the arrow.
-  const handleDeleteDependency = React.useCallback(
-    async (depId: string, label: string) => {
-      if (!canEdit) return
-      if (!window.confirm(`Abhängigkeit „${label}" löschen?`)) return
-      try {
-        const res = await fetch(
-          `/api/projects/${projectId}/dependencies/${depId}`,
-          { method: "DELETE" },
-        )
-        if (!res.ok && res.status !== 204) {
-          const err = await res.json().catch(() => ({}))
-          throw new Error(err?.message ?? `HTTP ${res.status}`)
-        }
-        toast.success("Abhängigkeit gelöscht")
-        onChanged()
-      } catch (err) {
-        toast.error("Abhängigkeit konnte nicht gelöscht werden", {
-          description: err instanceof Error ? err.message : "Unbekannter Fehler",
-        })
-      }
-    },
-    [canEdit, projectId, onChanged],
-  )
+  // PROJ-155-β.1 — der frühere `handleDeleteDependency` ist entfallen.
+  // Er war der einzige Weg an einer Kante und fragte per `window.confirm`;
+  // jetzt öffnet der Klick `DependencyEditDialog`, in dem Entfernen eine von
+  // drei Handlungen ist. Der Schreibweg liegt in `lib/dependencies/api`.
 
   if (phases.length === 0) {
     return (
@@ -1791,18 +1816,48 @@ export function GanttView({
             criticalPhaseIds.has(dep.from_id) &&
             criticalPhaseIds.has(dep.to_id)
           const depLabel = `${dep.constraint_type} ${dep.from_type} → ${dep.to_type}`
+          // PROJ-155-β.1 — Namen statt Typen: „Fundament gießen → Rohbau",
+          // nicht „work_package → work_package". Der Dialog zeigt sie, und
+          // ohne sie wäre nicht erkennbar, welche Kante man geöffnet hat.
+          const openEdit = () =>
+            setEditDependency({
+              id: dep.id,
+              constraint_type: dep.constraint_type,
+              lag_days: dep.lag_days ?? 0,
+              fromLabel: entityLabel(dep.from_type, dep.from_id),
+              toLabel: entityLabel(dep.to_type, dep.to_id),
+            })
+          // Abzeichen nur bei Abweichung vom Normalfall. `FS` ohne Abstand
+          // bleibt unbeschriftet — sonst wäre jedes Diagramm zugepflastert
+          // und die Kennzeichnung sagte nichts mehr aus.
+          const badge = constraintBadge(dep.constraint_type, dep.lag_days)
+          const badgeX = (x1 + x2) / 2
+          const badgeY = (y1 + y2) / 2 - 4
           return (
             <g
               key={`dep-${dep.id}`}
               className={canEdit ? "cursor-pointer" : undefined}
-              onClick={
-                canEdit
-                  ? (e) => {
-                      e.stopPropagation()
-                      void handleDeleteDependency(dep.id, depLabel)
-                    }
-                  : undefined
-              }
+              // Tastatur: der Pfeil war bisher ausschliesslich mit der Maus
+              // erreichbar. `role`/`tabIndex` machen ihn anfahrbar, Enter und
+              // Leertaste öffnen dieselbe Maske wie der Klick.
+              role="button"
+              tabIndex={0}
+              aria-label={`Abhängigkeit ${dep.constraint_type} von ${entityLabel(
+                dep.from_type,
+                dep.from_id,
+              )} nach ${entityLabel(dep.to_type, dep.to_id)}${
+                badge ? ` (${badge})` : ""
+              } — öffnen`}
+              onKeyDown={(e) => {
+                if (e.key !== "Enter" && e.key !== " ") return
+                e.preventDefault()
+                e.stopPropagation()
+                openEdit()
+              }}
+              onClick={(e) => {
+                e.stopPropagation()
+                openEdit()
+              }}
             >
               {/* Wider transparent hit-area so the arrow is comfortably clickable. */}
               <path
@@ -1823,10 +1878,33 @@ export function GanttView({
                 markerEnd="url(#gantt-arrow)"
                 pointerEvents="none"
               />
+              {badge ? (
+                <>
+                  <rect
+                    x={badgeX - 16}
+                    y={badgeY - 9}
+                    width={32}
+                    height={14}
+                    rx={3}
+                    className="fill-background stroke-border"
+                    pointerEvents="none"
+                  />
+                  <text
+                    x={badgeX}
+                    y={badgeY + 1}
+                    textAnchor="middle"
+                    fontSize={9}
+                    className="fill-muted-foreground"
+                    pointerEvents="none"
+                  >
+                    {badge}
+                  </text>
+                </>
+              ) : null}
               <title>
                 Dependency {dep.constraint_type} · {dep.from_type} → {dep.to_type}
                 {isCriticalEdge ? " · KRITISCH" : ""}
-                {canEdit ? " · klicken zum Löschen" : ""}
+                {canEdit ? " · klicken zum Bearbeiten" : " · klicken zum Ansehen"}
               </title>
             </g>
           )
@@ -2048,6 +2126,16 @@ export function GanttView({
       </svg>
         </div>
       </div>
+
+      <DependencyEditDialog
+        projectId={projectId}
+        dependency={editDependency}
+        canEdit={canEdit}
+        onOpenChange={(open) => {
+          if (!open) setEditDependency(null)
+        }}
+        onChanged={onChanged}
+      />
     </div>
   )
 }
