@@ -142,6 +142,11 @@ PROJ-154s Anliegen.
 
 ## Ausdrücklich nicht belegt
 
+> **Nachtrag 2026-09-01:** der erste Punkt ist mit **PROJ-Y-155a** erledigt — der
+> angemeldete Durchlauf und die Baseline existieren. Die beiden anderen stehen
+> unverändert. Der Text bleibt als Stand vom 2026-08-28 erhalten, statt ihn
+> umzuschreiben.
+
 - **Kein angemeldeter Browser-Durchlauf.** Belegt sind Zeilenlogik (Unit), Rollup
   (live gegen Prod) und Verknüpfbarkeit (live gegen Prod) — nicht die Verkettung im
   Browser. Der Gantt hat im Bestand keine Komponententests und keine Visual-Baseline.
@@ -190,6 +195,15 @@ zum Prüfen braucht.
 ## Followups
 
 - **PROJ-Y-155a** — angemeldeter Browser-Durchlauf plus Visual-Baseline für den Gantt.
+  **Erledigt 2026-09-01** (`tests/PROJ-Y-155a-gantt-chain.spec.ts`, 6 Fälle, seriell,
+  3× grün plus Kaltstart; Baseline `gantt-diagram.png`, Toleranz **20** gemessen
+  zwischen 0 px Rauschen und 32 px kleinster Änderung). Damit ist die im Abschnitt
+  „Ausdrücklich nicht belegt" benannte Lücke geschlossen: dass Aufgaben eingerückt
+  erscheinen, das Aufziehen einen Balken erzeugt, der Sammelvorgang mitwächst und das
+  Vollbild greift, ist jetzt im Browser belegt statt nur in Unit-Tests. **Der Rollup
+  aus α ist dabei zum ersten Mal überhaupt gerendert worden** — die Lane seedet den
+  Fall, den Produktion nicht enthält (0 von 138), und `derived_planned_start` steht
+  danach auf der exakten Kinder-Spanne. Zwei Bedienbefunde fielen an → **PROJ-Y-155c**.
 - **PROJ-Y-155b** — `wbs-display.ts` liest Termine weiter aus `attributes`, der Rest
   des Produkts aus der echten Spalte. Nach dem Rollup-Fix ist das keine stille Lücke
   mehr, aber zwei Leseorte bleiben. Mit Messung entscheiden, ob das JSONB-Feld
