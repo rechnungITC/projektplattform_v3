@@ -259,8 +259,17 @@ gerechnet wird, nicht ob ungefragt geschrieben wird.
 `Popover`, `Select`, `Input`, `Badge`, `Table`, `AlertDialog`, `Tooltip` (alle
 vorhanden) · `gantt-rows.ts` (Zeilenlogik aus α, unverändert) · `gantt-timeline.ts`
 (Kalenderfenster) · `dependencies-tab-client.tsx` (Register, wird erweitert) ·
-`link-types.ts` (kennt bereits `supportsLag` je Kanten-Token — die Wahrheit über
-„welcher Typ verträgt einen Abstand" existiert schon und wird **nicht** neu geschrieben).
+`@/types/dependency` (die **eine** Autorität für `FS`/`SS`/`FF`/`SF`, Beschriftungen,
+Abstandsgrenzen und das Abzeichen — von β.1 angelegt, wird **nicht** neu geschrieben).
+
+> **Korrektur des CIA-Passes (2026-09-01):** hier stand ursprünglich `link-types.ts`
+> mit der Begründung, die Wahrheit über „welcher Typ verträgt einen Abstand" existiere
+> schon. Das war eine **Fehlzuordnung**: `link-types.ts` gehört zu `work_item_links`
+> (PROJ-27 — `relates`/`precedes`/`blocks`/…), einer anderen Tabelle, und sein
+> `supportsLag` ist dort nur für `precedes`/`follows` wahr, während bei
+> `FS`/`SS`/`FF`/`SF` **alle vier** einen Abstand vertragen. β.1 hat die Autorität
+> unabhängig davon richtig angelegt (`@/types/dependency`); der Eintrag ist korrigiert,
+> damit β.2 nicht an die falsche Registry andockt.
 
 ### Neu
 
@@ -314,9 +323,19 @@ vorhanden) · `gantt-rows.ts` (Zeilenlogik aus α, unverändert) · `gantt-timel
     Vorschau als solcher benannt.
 17. `FS`, `SS`, `FF`, `SF` und ein Abstand ≠ 0 wirken je einzeln nachweisbar auf das
     Ergebnis — vier Fälle plus Abstand, nicht „der Scheduler läuft".
-18. Der kritische Pfad umfasst Arbeitspaket-Kanten, nicht nur Phasen.
+18. ~~Der kritische Pfad umfasst Arbeitspaket-Kanten, nicht nur Phasen.~~
+    **Nach dem CIA-Pass aus β.2 herausgenommen → `PROJ-Y-155d`** (Nutzer-Entscheid
+    2026-09-01). Begründung unten unter F-2: das ist kein Ausbau der bestehenden
+    Funktion, sondern eine neue Rechnung mit eigener Leck-Fläche.
 19. Die Kaskade terminiert auch bei tiefen Ketten — belegt an einer Kette der Tiefe
-    ≥ 20, nicht an der Prod-Lage (dort sind es 4 Kanten).
+    ≥ 20, nicht an der Prod-Lage (dort sind es 5 Kanten).
+20. **Der Meilenstein-Mitzug der Phase läuft über denselben transaktionalen
+    Übernahme-Pfad** — nicht mehr über `Promise.all` mit verschluckten Fehlern
+    (Nutzer-Entscheid 2026-09-01, Begründung unter F-4). Nachweis: schlägt eine
+    Meilenstein-Verschiebung fehl, ist **kein** Termin geändert — an der Datenbank
+    belegt, nicht an der Oberfläche.
+21. Der Schalter selbst ist **auditiert**: sein Umstellen erzeugt eine Feld-Audit-Zeile
+    (Nutzer-Entscheid Q2, Begründung unter F-1/R-B).
 
 ### Später (ausdrücklich nicht MVP)
 
@@ -329,19 +348,22 @@ Meilenstein-Alarm bei Kaskade · Kaskade über Projektgrenzen (PROJ-27
 
 ## Risks And Open Questions
 
-- **Q1 — Rechnet der Server oder der Browser?** Die Vorschau braucht die Rechnung
-  sofort und ohne Netz; das Übernehmen braucht sie autoritativ. Zwei Kopien derselben
-  Formel sind genau die zweite Wahrheit, an der PROJ-155-α und PROJ-45-γ sich schon
-  gestoßen haben. *Vorschlag:* reine TS-Funktion für die Vorschau, Server rechnet beim
-  Übernehmen **neu** und liefert das Ergebnis zurück; weichen sie ab, gewinnt der Server
-  und die Oberfläche sagt es. Zu entscheiden bei `/architecture`.
-- **Q2 — Wohin gehört der Schalter?** `projects` (je Projekt, mehr Freiheit, eine
-  Migration) oder `tenant_settings.module_settings` (kein Schema-Change, aber
-  mandantenweit und damit gröber als der Anwendungsfall).
-- **Q3 — Braucht β.2 einen CIA-Pass?** Kein neues Paket, keine neue Plattform — aber der
-  Eingriff verändert das Schreibverhalten einer Kernentität (`work_items`-Termine) und
-  erzeugt Audit-Volumen. Nach `.claude/rules/continuous-improvement.md` fällt das unter
-  „Architekturentscheidungen vorbereiten". *Empfehlung: ja, für β.2; nein für β.1.*
+- **Q1 — Rechnet der Server oder der Browser? → ENTSCHIEDEN (CIA-Pass 2026-09-01):**
+  reine TS-Funktion für die Vorschau, der Server rechnet beim Übernehmen **neu** und
+  gewinnt bei Abweichung; die Oberfläche sagt es dann. Präzedenz gemessen:
+  `accept_proposal_from_context_bulk` (PROJ-70-β) macht genau das — serverseitige
+  topologische Sortierung, eine Transaktion, kein Teilerfolg. Restrisiko R-A unten.
+- **Q2 — Wohin gehört der Schalter? → ENTSCHIEDEN (CIA-Pass 2026-09-01):**
+  `projects.settings` **plus** Audit-Whitelist-Eintrag **plus** `patchSchema`-Erweiterung.
+  **Beide Formulierungen der Frage waren falsch** — siehe F-1: die Spalte existiert
+  längst (`jsonb NOT NULL DEFAULT '{}'`, in Prod 0 Zeilen belegt), es braucht also
+  **keine** Migration für den Speicherort; und `tenant_settings.module_settings`
+  **existiert nicht**.
+- **Q3 — Braucht β.2 einen CIA-Pass? → JA, und er ist gelaufen (2026-09-01).** Geführt
+  als Halt-und-Frage-Checkpoint nach `.claude/rules/continuous-improvement.md`
+  („die Regel ist, dass der Review stattfindet, nicht welches Werkzeug ihn durchführt";
+  Präzedenz PROJ-45-β, PROJ-45-ε/Q-ε1, PROJ-Y-51b). Ergebnisse unten. β.1 brauchte
+  keinen — das hat sich bestätigt.
 - **R1 — β.1 ist auf echten Daten kaum prüfbar.** 4 Kanten in Prod, alle `FS`. Ein
   Durchlauf braucht eine eigene Fixture-Lane (Muster PROJ-Y-144d) — dieselbe, die
   **PROJ-Y-155a** ohnehin für den angemeldeten Gantt-Durchlauf braucht. Die beiden
@@ -371,3 +393,109 @@ Empfehlung.
 Die drei offenen Architekturfragen (Q1 Rechenort, Q2 Ort des Schalters, Q3 CIA-Pass für
 β.2) bleiben **unentschieden** und gehören in `/architecture` für β.2. Sie blockieren
 weder PROJ-Y-155a noch β.1.
+
+---
+
+## CIA-Pass β.2 — 2026-09-01
+
+Geführt als **Halt-und-Frage-Checkpoint** (Sub-Agenten in dieser Sitzung aus;
+`.claude/rules/continuous-improvement.md` sieht das ausdrücklich vor). Auslöser nach
+Trigger-Liste: „Architekturentscheidungen vorbereiten" — β.2 verändert das
+Schreibverhalten einer Kernentität (`work_items`-Termine). Kein neues Paket, keine neue
+Plattform. **Alle Zahlen live gegen Prod gemessen, Stand `c8be1ee`.**
+
+### Findings
+
+**F-1 · Q2 war in beiden Ästen falsch beschrieben.** `projects` trägt bereits
+`settings jsonb NOT NULL DEFAULT '{}'` — in Prod **0 Zeilen belegt, 0 Schlüssel in
+Benutzung**, ein leerer ungenutzter Eimer. Der Schalter braucht dort **keine Migration**.
+Und `tenant_settings.module_settings` **existiert nicht** (vorhanden sind
+`active_modules`, `privacy_defaults`, `ai_provider_config`, `retention_overrides`,
+`budget_settings`, `output_rendering_settings`, `cost_settings`, `risk_score_overrides`,
+`assistant_settings`, `trajectory_plan_mutate_enabled`, `feature_flags`,
+`ai_chat_settings`). Zwei Einschränkungen, die zum Entscheid gehören: `settings` steht
+**nicht** in `_tracked_audit_columns('projects')` (12 Spalten; `type_specific_data` ja,
+`settings` nein), und `patchSchema` der Projekt-Route nimmt es nicht an. → Entscheid:
+`projects.settings` + Whitelist-Eintrag (eine Anker-Ersetzung, Muster PROJ-154) +
+`patchSchema`.
+
+**F-2 · AC-18 ist kein Ausbau, sondern ein Neubau — und die naive Erweiterung wäre ein
+Aggregat-Leck.** `compute_critical_path_phases` ist `SECURITY DEFINER`, gibt `uuid[]`
+zurück, trägt `search_path=public, pg_temp` — und liest **`work_items` überhaupt nicht**
+(0 Vorkommen im Funktionskörper). Sie auf Arbeitspaket-Kanten zu erweitern hieße: eine
+neue Rechnung über eine Tabelle mit `confidentiality_level` und RESTRICTIVE-Policies
+(PROJ-100a), ausgeführt im Rechtekontext des Eigentümers. Genau der Fall, den CLAUDE.md
+ausschließt („Aggregates leak. Any RPC that counts, sums, or produces a pre-read must be
+`SECURITY INVOKER`"). → Entscheid: **aus β.2 heraus** nach `PROJ-Y-155d`; dort als
+INVOKER-Funktion mit eigener Aggregat-Leck-Probe.
+
+**F-3 · Der Reuse-Eintrag `link-types.ts` war eine Fehlzuordnung** — oben im Brief
+korrigiert. β.1 hatte die Autorität unabhängig richtig angelegt, es ist also kein
+Schaden entstanden; der Eintrag hätte β.2 aber an eine Registry über eine **andere**
+Tabelle geschickt.
+
+**F-4 · Der Defekt, den AC-15 ausschließt, existiert im Gantt schon.** Der Phasen-Zug
+(`gantt-view.tsx`, Zweig `snapshot.kind === "phase"`, Modus `move`) fächert über die
+Kind-Meilensteine auf: `Promise.all` über N einzelne `PATCH`-Aufrufe, jeder mit
+`.catch(() => undefined)`. **N Schreibvorgänge, keine Transaktion, Fehler verschluckt.**
+AC-15 verlangt für die Kaskade das Gegenteil. → Entscheid: **in β.2 mitziehen**
+(neues AC-20), damit „eine Anfrage, kein Teilerfolg" auf der ganzen Fläche dasselbe
+bedeutet.
+
+**F-5 · Eine vermutete Gefahr widerlegt.** `tg_work_items_36a_rollup_recompute` ist
+`AFTER INSERT/DELETE/UPDATE` auf `work_items` und schreibt in seinem Körper selbst
+`update public.work_items` — das sah nach Wiedereintritt mit exponentiellem Verhalten in
+der Baumtiefe aus. Nachgemessen trägt der Trigger `WHEN (pg_trigger_depth() = 0)`: die
+Vorfahren-Schreibvorgänge feuern ihn nicht erneut. **Kein Rekursionsrisiko.** Ferner
+stehen die `derived_*`-Spalten **nicht** in der Audit-Whitelist — der Rollup erzeugt
+**null** Audit-Zeilen. Das begrenzt die Volumenfrage exakt: 2 Zeilen je verschobenem
+Nachfolger, nichts obendrauf.
+
+**F-6 · AC-19s Terminierungs-Prämisse geprüft und gehalten.**
+`tg_dep_prevent_polymorphic_cycle` feuert **BEFORE INSERT *und* UPDATE** (nicht nur
+INSERT, was ein stiller Weg zum Zyklus gewesen wäre) und hat einen Tiefenriegel von
+**10000** — nicht der 20er-Riegel, der in PROJ-Y-45l still unterberichtete. Eine
+topologische Ordnung existiert damit immer, der längste Pfad ist ohne Abbruchheuristik
+berechenbar.
+
+**F-7 · Zwei Zahlen des Briefs sind schon veraltet.** Gemessen am 2026-09-01 gegen den
+Stand vom Vormittag: Abhängigkeiten 4 → **5**, lebende Arbeitspakete 138 → **145**,
+davon mit eigenem Termin 4 → **9**, und `derived_planned_start` 0 → **2**. Der Absatz,
+mit dem der Brief die „0" erklärt („der Bestand hat den Fall noch nicht"), gilt nicht
+mehr — **PROJ-Y-155as Fixture hat den Fall erzeugt**, der α-Rollup ist damit erstmals an
+echten Daten beobachtbar. Ferner: **114 von 271** `work_items`-Audit-Zeilen sind bereits
+`planned_start`/`planned_end` (42 %). Termin-Unruhe ist schon heute die größte
+Audit-Kategorie — das **schärft** das Vorschau-Argument statt es zu schwächen.
+
+### Risks
+
+- **R-A (aus Q1):** Vorschau im Browser und autoritative Rechnung im Server sind zwei
+  Kopien einer Formel — die Klasse, an der PROJ-45-γ sich stieß (Postgres klemmt am
+  Monatsende, `setUTCMonth` läuft über, und die Maske zeigte ein anderes rechtlich
+  relevantes Fristende als gespeichert wurde). Hier ist es reine Tagesaddition, das
+  Divergenzrisiko ist kleiner, aber nicht null. **Gegenmittel wie dort:** dieselben
+  Datumspaare in beiden Fassungen einfrieren, plus die Regel „bei Abweichung gewinnt der
+  Server und die Oberfläche sagt es".
+- **R-B (aus Q2):** Ein Schalter in `projects.settings` wäre ohne Whitelist-Eintrag
+  **unauditiert**. Wer das Schreibverhalten einer Kernentität umstellt, soll eine Spur
+  hinterlassen — die PROJ-Y-130h-Lehre („wer die Ausnahme setzt, kann seine eigene Spur
+  nicht verwischen"). Deshalb ist der Whitelist-Eintrag Teil des Entscheids, nicht
+  Beiwerk.
+- **R-C:** β.2 ändert Schreibverhalten von `work_items`. **AC-12** (Ziehen bei „aus"
+  byte-gleich wie heute) ist der tragende Regressionstest, nicht Formsache.
+- **R-D (neu, aus F-4):** Den Meilenstein-Mitzug mitzuziehen erweitert den Umfang von
+  β.2 um einen Bestandspfad. Der Preis ist bewusst gezahlt: die Alternative wäre eine
+  Fläche, auf der dieselbe Zusage zweierlei bedeutet.
+
+### Entscheide (Nutzer, 2026-09-01)
+
+| Frage | Entscheid |
+|---|---|
+| Q1 Rechenort | Vorschau in TS, Server rechnet beim Übernehmen neu und gewinnt |
+| Q2 Ort des Schalters | `projects.settings` + Audit-Whitelist + `patchSchema` |
+| Q3 CIA-Pass | Ja für β.2 (dieser Pass), nein für β.1 — bestätigt |
+| F-4 Meilenstein-Auffächerung | **in β.2 mitziehen** (AC-20) |
+| AC-18 kritischer Pfad | **aus β.2 heraus** → `PROJ-Y-155d` |
+
+Kein neues Paket. Eine Migration (Audit-Whitelist), kein Schema-Change.
+Reihenfolge unverändert: dieser Pass → β.2.

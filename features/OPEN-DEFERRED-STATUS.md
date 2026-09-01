@@ -626,6 +626,25 @@ Deploy, aber sie sind nicht erledigt und hatten bis heute **keine** Followup-Ken
   Produkts, aber es erklärt „ich hab geklickt und nichts passierte".
   *Quelle: PROJ-Y-155a, Messungen vom 2026-09-01.*
 
+- **PROJ-Y-155d — kritischer Pfad über Arbeitspaket-Kanten (offen, aus β.2
+  herausgenommen).** War **AC-18** der β.2-Kriterienliste („Der kritische Pfad umfasst
+  Arbeitspaket-Kanten, nicht nur Phasen"); der **CIA-Pass vom 2026-09-01** hat es aus
+  β.2 herausgelöst, Nutzer-Entscheid. Grund, live gemessen: der Brief nannte das eine
+  Erweiterung der bestehenden Funktion — `compute_critical_path_phases` ist aber
+  `SECURITY DEFINER`, gibt `uuid[]` zurück und liest **`work_items` überhaupt nicht**
+  (0 Vorkommen im Funktionskörper). Sie auf Arbeitspaket-Kanten zu erweitern ist also
+  kein Ausbau, sondern eine **neue Rechnung** — und zwar über eine Tabelle mit
+  `confidentiality_level` und RESTRICTIVE-Policies (PROJ-100a). Als DEFINER wäre das
+  genau der Fall, den CLAUDE.md ausschliesst („Aggregates leak … must be
+  `SECURITY INVOKER`"): der kritische Pfad würde Arbeitspakete einschliessen, die der
+  Aufrufer nicht sehen darf. Die Slice braucht daher eine **INVOKER**-Funktion plus
+  eigene Aggregat-Leck-Probe, und β.2 hätte damit zwei Risikoachsen in einer
+  Abnahme getragen (Schreibverhalten **und** Need-to-know). Vorbedingung gemessen und
+  vorhanden: der Graph ist zyklenfrei (`tg_dep_prevent_polymorphic_cycle` feuert BEFORE
+  INSERT **und** UPDATE, Tiefenriegel 10000), eine topologische Ordnung existiert also
+  immer.
+  *Quelle: CIA-Pass β.2, 2026-09-01, Messungen gegen Prod.*
+
 - **PROJ-Y-155b — zwei Leseorte für denselben Termin (offen, Hygiene).**
   `wbs-display.ts` (`ownPlannedStart`/`ownPlannedEnd`) liest Termine weiter aus
   `attributes` JSONB, der Rest des Produkts aus der echten Spalte. Nach dem
@@ -692,8 +711,42 @@ Deploy, aber sie sind nicht erledigt und hatten bis heute **keine** Followup-Ken
   an einem SVG-Pfad verankert werden, dessen Lage von Zoom, Bildlauf und
   Zeilenhöhe abhängt — Risiko ohne Ertrag, die Substanz des Kriteriums ist
   „Löschen ist eine von drei Handlungen"). Offen bleibt **β.2**.
-  *Quelle: PROJ-155 Fundament-Entscheidung; Design-Pass 2026-09-01 mit
-  Live-Messung gegen Prod.*
+  **CIA-Pass β.2 gelaufen 2026-09-01** (Halt-und-Frage-Checkpoint, Sub-Agenten aus;
+  Präzedenz PROJ-45-β/ε, PROJ-Y-51b) — er hat den Zuschnitt an zwei Stellen geändert
+  und drei Prämissen des Briefs korrigiert. **Die Entscheide:** Q1 Rechenort → Vorschau
+  als reine TS-Funktion, der Server rechnet beim Übernehmen **neu** und gewinnt bei
+  Abweichung (Präzedenz `accept_proposal_from_context_bulk`); Q2 Ort des Schalters →
+  `projects.settings` **plus** Audit-Whitelist-Eintrag **plus** `patchSchema`; Q3 →
+  ja für β.2, nein für β.1. **Beide Äste von Q2 waren falsch beschrieben:** `projects`
+  trägt bereits `settings jsonb NOT NULL DEFAULT '{}'` (in Prod **0 Zeilen belegt, 0
+  Schlüssel**), der Speicherort braucht also **keine** Migration — und
+  `tenant_settings.module_settings`, der zweite genannte Ort, **existiert nicht**. Der
+  Whitelist-Eintrag ist Teil des Entscheids, nicht Beiwerk: ohne ihn wäre ein Schalter,
+  der das Schreibverhalten einer Kernentität umstellt, **unauditiert** (PROJ-Y-130h-Lehre).
+  **Zwei Zuschnitt-Änderungen:** AC-18 (kritischer Pfad) ist **heraus** → **PROJ-Y-155d**;
+  und die **Meilenstein-Auffächerung des Phasen-Zugs kommt hinein** (neues AC-20) — sie
+  macht heute `Promise.all` über N einzelne `PATCH`-Aufrufe mit
+  `.catch(() => undefined)`, also N Schreibvorgänge ohne Transaktion mit verschluckten
+  Fehlern, wörtlich die Klasse, die AC-15 für die Kaskade ausschliesst; dieselbe Zusage
+  darf auf einer Fläche nicht zweierlei bedeuten. **Eine vermutete Gefahr widerlegt:**
+  `tg_work_items_36a_rollup_recompute` schreibt `work_items` in einem Trigger auf
+  `work_items` und sah nach Wiedereintritt aus — er trägt
+  `WHEN (pg_trigger_depth() = 0)`, kein Rekursionsrisiko; und die `derived_*`-Spalten
+  stehen **nicht** in der Audit-Whitelist, der Rollup erzeugt also **null** Audit-Zeilen.
+  Damit ist die Volumenfrage exakt begrenzt: 2 Zeilen je verschobenem Nachfolger.
+  **Zwei Zahlen des Briefs sind schon veraltet** (Abhängigkeiten 4 → **5**,
+  Arbeitspakete 138 → **145**, mit eigenem Termin 4 → **9**, abgeleitet 0 → **2**) — der
+  Absatz, der die „0" erklärte, gilt nicht mehr, PROJ-Y-155as Fixture hat den Fall
+  erzeugt. Und **114 von 271** `work_items`-Audit-Zeilen sind bereits
+  `planned_start`/`planned_end`, Termin-Unruhe ist also schon heute die grösste
+  Audit-Kategorie — das schärft das Vorschau-Argument statt es zu schwächen. Ein
+  dritter Fund ohne eigene Kennung: der Reuse-Eintrag `link-types.ts` im Brief war eine
+  **Fehlzuordnung** (das ist die PROJ-27-Registry über `work_item_links`, wo nur
+  `precedes`/`follows` einen Abstand vertragen, während bei `FS`/`SS`/`FF`/`SF` **alle
+  vier** ihn vertragen); β.1 hatte die Autorität unabhängig richtig angelegt, es ist kein
+  Schaden entstanden, der Brief ist korrigiert.
+  *Quelle: PROJ-155 Fundament-Entscheidung; Design-Pass 2026-09-01 und CIA-Pass β.2
+  2026-09-01, beide mit Live-Messung gegen Prod.*
 
 - **Registerkorrektur, keine Auslassung.** Die PROJ-25-Zeile im INDEX führt „SVAR
   React Gantt MIT". Gemessen ist `wx-react-gantt@1.3.1` **GPLv3** mit
