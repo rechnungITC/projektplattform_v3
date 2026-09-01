@@ -142,6 +142,11 @@ PROJ-154s Anliegen.
 
 ## Ausdrücklich nicht belegt
 
+> **Nachtrag 2026-09-01:** der erste Punkt ist mit **PROJ-Y-155a** erledigt — der
+> angemeldete Durchlauf und die Baseline existieren. Die beiden anderen stehen
+> unverändert. Der Text bleibt als Stand vom 2026-08-28 erhalten, statt ihn
+> umzuschreiben.
+
 - **Kein angemeldeter Browser-Durchlauf.** Belegt sind Zeilenlogik (Unit), Rollup
   (live gegen Prod) und Verknüpfbarkeit (live gegen Prod) — nicht die Verkettung im
   Browser. Der Gantt hat im Bestand keine Komponententests und keine Visual-Baseline.
@@ -155,9 +160,69 @@ PROJ-154s Anliegen.
 Auto-Scheduling (Nachfolger folgt dem Vorgänger, FS/SS/FF/SF wählbar, `lag_days`),
 Vorgänger-Spalte in der Tabelle, kritischer Pfad über Tasks, Baseline-Vergleich.
 
+**Design-Pass 2026-09-01 → [`docs/design/PROJ-155-beta-autoscheduling-brief.md`](../docs/design/PROJ-155-beta-autoscheduling-brief.md).**
+Er teilt β in **β.1** (die Kante wird ein Objekt) und **β.2** (Auto-Scheduling) und
+dreht damit die Reihenfolge dieses Absatzes um. Der Grund ist gemessen, nicht
+erwogen: **„FS/SS/FF/SF wählbar" ist kein Merkmal des Schedulers, sondern eine
+fehlende Eingabefläche.** Datenbank und *beide* Routen können alle vier Typen plus
+`lag_days`; der Gantt schreibt hartkodiert `FS` (`gantt-view.tsx:964`, `lag_days`
+kommt in der Datei **0-mal** vor), und `/abhaengigkeiten` kann nur lesen und
+löschen — es gibt im ganzen Produkt **keine Stelle**, an der ein anderer Kantentyp
+entsteht. Prod ausnahmslos: 4 Kanten, 4 × `FS`, 4 × Abstand 0.
+
+Zwei weitere Befunde des Passes:
+
+- **Die Rechenmaschine hätte kaum Treibstoff.** 138 lebende Arbeitspakete, davon
+  **4** terminiert, **0** mit abgeleitetem Termin, **7** mit Phase; 4 Kanten;
+  3 Wasserfall-Projekte von 32. Die **0** bei `derived_planned_start` ist dabei
+  **kein Defekt** — nachgemessen sind Migration und Trigger aktiv, aber alle vier
+  terminierten Items sind Wurzeln ohne Eltern und **0 Eltern haben terminierte
+  Kinder**. Es gibt nichts hochzurollen; der α-Fix stimmt, der Bestand hat den Fall
+  noch nicht.
+- **β.2 braucht Vorschau statt stiller Kaskade.** Es gibt **kein Rückgängig** im
+  Gantt (der einzige `undo`-Treffer ist ein Kommentar, der es für PROJ-25-β/γ
+  reserviert), `planned_start`/`planned_end` stehen im Feld-Audit, und eine Kaskade
+  über 30 Nachfolger schriebe **60** append-only Zeilen gegen heute **207**
+  insgesamt. Dazu die eigene α-Entscheidung: der Sammelvorgang ist nicht ziehbar,
+  weil „sein Zeitraum ein Ergebnis ist, kein Eingabefeld" — errechnete Termine
+  still zu schreiben wäre die Gegenrichtung derselben Frage.
+
+**β.1 ausgeliefert 2026-09-01** — die Kante ist ein Objekt. Typ und Abstand
+sind setzbar (Maske am Pfeil im Diagramm, inline im Register), das Register kann
+erstmals **anlegen**, ein Pfeil mit Abweichung vom Normalfall trägt ein sichtbares
+Abzeichen, und der Pfeil ist per Tastatur erreichbar. Neue Route
+`PATCH …/dependencies/[did]`; keine Migration, kein Paket. Damit sieht der
+künftige Scheduler nicht mehr ausschliesslich `FS`/0.
+
+Vier Funde beim Bauen, alle gemessen und alle mitbehoben: die Typliste stand
+**viermal** im Repo (einmal mit englischen Beschriftungen) → eine Autorität in
+`@/types/dependency`, aus der auch das Zod-Enum abgeleitet ist; `DELETE` prüfte
+die Projektzugehörigkeit **nicht** (Klasse PROJ-45-β, kein Mandantenleck, aber
+Wirkung am falschen Ort möglich); der Gantt las `lag_days` **gar nicht**; und der
+Anlege-Pfad zeigte **nie einen Grund** — er las `err?.message`, die API antwortet
+`{ error: { code, message } }`, die Beschreibung war also immer `undefined`.
+Abweichung: **Dialog statt Popover** — ein Popover müsste an einem SVG-Pfad
+verankert werden, dessen Lage von Zoom, Bildlauf und Zeilenhöhe abhängt; die
+Substanz des Kriteriums ist „Löschen ist eine von drei Handlungen".
+
+Empfohlene Reihenfolge: **PROJ-Y-155a → β.1 → CIA-Pass → β.2** (beide ersten
+Schritte erledigt). PROJ-Y-155a wandert
+nach vorn, weil der Gantt 2091 Zeilen ohne Komponententests und ohne
+Visual-Baseline ist und die Fixture-Lane, die er baut, genau die ist, die β.1
+zum Prüfen braucht.
+
 ## Followups
 
 - **PROJ-Y-155a** — angemeldeter Browser-Durchlauf plus Visual-Baseline für den Gantt.
+  **Erledigt 2026-09-01** (`tests/PROJ-Y-155a-gantt-chain.spec.ts`, 6 Fälle, seriell,
+  3× grün plus Kaltstart; Baseline `gantt-diagram.png`, Toleranz **20** gemessen
+  zwischen 0 px Rauschen und 32 px kleinster Änderung). Damit ist die im Abschnitt
+  „Ausdrücklich nicht belegt" benannte Lücke geschlossen: dass Aufgaben eingerückt
+  erscheinen, das Aufziehen einen Balken erzeugt, der Sammelvorgang mitwächst und das
+  Vollbild greift, ist jetzt im Browser belegt statt nur in Unit-Tests. **Der Rollup
+  aus α ist dabei zum ersten Mal überhaupt gerendert worden** — die Lane seedet den
+  Fall, den Produktion nicht enthält (0 von 138), und `derived_planned_start` steht
+  danach auf der exakten Kinder-Spanne. Zwei Bedienbefunde fielen an → **PROJ-Y-155c**.
 - **PROJ-Y-155b** — `wbs-display.ts` liest Termine weiter aus `attributes`, der Rest
   des Produkts aus der echten Spalte. Nach dem Rollup-Fix ist das keine stille Lücke
   mehr, aber zwei Leseorte bleiben. Mit Messung entscheiden, ob das JSONB-Feld

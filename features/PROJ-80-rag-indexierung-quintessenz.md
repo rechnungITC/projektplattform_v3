@@ -1,14 +1,16 @@
 # PROJ-80: RAG-Indexierung + Quintessenz
 
-## Status: Approved (α — `/qa` PASS 2026-08-21, 0 Critical / 0 High; ein offenes Kriterium: echter Anbieter-Lauf)
-## Deployment Scope: —
-> Scope bleibt leer, bis `/deploy` läuft (Hausregel: Scope ist ein Feld des Deployments). Die QA vom
-> 2026-08-21 ist bestanden. **Berichtigt 2026-08-24:** dieser Block nannte weiterhin *zwei* offene
-> Kriterien, während die Statuszeile schon *eines* sagt — der angemeldete Browser-Durchlauf ist mit
-> #440 erledigt, offen ist allein der echte Anbieter-Lauf.
+## Status: Deployed (α — Quintessenz ohne Vektor; β Retrieval offen)
+## Deployment Scope: alpha
+> Gebucht am 2026-09-01. **`alpha`**, weil β (Retrieval) ein *benannter* offener Sub-Slice ist und vier
+> ursprüngliche Kriterien mit Ziel-Kennung zurückgestellt sind — die Ableitung Wert für Wert steht im
+> Abschnitt [Deployment](#deployment). Die frühere Notiz „Scope bleibt leer, bis `/deploy` läuft“ ist
+> damit eingelöst. **Berichtigt 2026-08-24:** dieser Block nannte weiterhin *zwei* offene Kriterien,
+> während die Statuszeile schon *eines* sagt — der angemeldete Browser-Durchlauf ist mit #440
+> erledigt, offen ist allein der echte Anbieter-Lauf (**PROJ-Y-80d**).
 
 **Created:** 2026-06-06
-**Last Updated:** 2026-08-18
+**Last Updated:** 2026-09-01
 
 > **Zuschnitt 2026-08-14:** geteilt in **α — Quintessenz ohne Vektor** (dieses Tech Design) und
 > **β — Retrieval** (Vektorindex, Embeddings, pgvector; zurückgestellt, bis das DMS Dokumente enthält).
@@ -832,4 +834,104 @@ gültig. Neu hinzu:
 - **D-α.7 — Mobile Safari übersprungen** (WebKit-Host-Bibliotheken, PROJ-67/F2).
 
 ## Deployment
-_To be added by /deploy._
+
+### `/deploy` 2026-09-01 — Tag `v2.89.0-PROJ-80`, Scope **`alpha`**
+
+**Was heute passiert ist, ehrlich benannt: Buchführung, kein Auslieferungsvorgang.** Der Code ist mit
+`7feb4c9` (PR #399) am **2026-08-21** auf `main` gegangen und damit über den Vercel-Auto-Deploy live;
+die drei Migrationen liegen seit `/backend` am 2026-08-14 in Prod (registriert `20260814075847` ·
+`20260814120847` · `20260814125712` — die Versionsdrift gegenüber den Dateinamen ist die bekannte
+PROJ-134-Domäne, alle drei sind angewendet). Offen war allein, dass die Slice nie als `Deployed`
+gebucht und nie getaggt wurde — sie stand seit zehn Tagen auf `Approved`. Kein Runtime-DB-Change,
+kein `src/`-Diff in diesem Schritt.
+
+**Der ausgelieferte Stand enthält einen Sicherheitsfix, der nach der QA kam:** **PROJ-Y-151f**
+(`a9eb883`, 2026-08-28) hat geschlossen, dass die Skill-Anweisungen des Quintessenz-Zwecks am
+Class-3-Gate **vorbei** liefen — `classifyDocumentSummaryAutoContext` prüfte Dokumenttext und
+Dateinamen, nicht aber die (per PROJ-77 änderbaren) Skill-Anweisungen, die als System-Prompt an den
+Anbieter gehen. Für Invariante #3 ist „daran vorbei“ derselbe Bruch wie „ausgehebelt“. Exposition in
+Prod war zum Zeitpunkt des Fixes **null** (0 Dokumente, 0 Quintessenzen, 0 nachgesäte Skills).
+
+#### Prod eigenständig nachgemessen statt aus den Notizen übernommen
+
+| Prüfung | Ergebnis |
+|---|---|
+| Tabellen mit aktivem RLS | `document_extractions` **true**, `document_summaries` **true** |
+| Policies über beide Tabellen | **10** |
+| Auflöser `_dms_document_ctx` | `SECURITY DEFINER`, `search_path=public, pg_temp` |
+| Trigger über beide Tabellen | **6** |
+| Zweck `document_summary` im Lockstep | in `ki_runs_purpose_check` **und** `tenant_ai_cost_caps_purpose_check` |
+| Objektarten im Protokoll | `document_extractions` **und** `document_summaries` im `audit_log_entity_type_check` |
+| `anon` **und** PUBLIC ohne EXECUTE | über **alle drei** neuen Funktionen (`_dms_document_ctx`, `ensure_summarizer_skill`, `_skills_protect_builtin_delete`) |
+| Löschschutz-Trigger auf `skills` | vorhanden und **aktiv** (`tgenabled='O'`) |
+| Advisors | **0 ERROR** / 157 WARN — die **2** PROJ-80-Meldungen sind wörtlich die Kategorie, die `_dms_node_ctx` seit PROJ-Y-115c trägt (155 Bestandsfälle) |
+
+Die PUBLIC-Hälfte ist ausdrücklich mitgeprüft und nicht als Stichprobe: ein Entzug nur von
+`anon`/`authenticated` lässt den PUBLIC-Eintrag stehen, der mit `=` **beginnt** (PROJ-Y-114a-Lehre,
+im Haus mehrfach aufgetreten). Alle drei Funktionen tragen `search_path`; die Wächter-Funktion
+`_skills_protect_builtin_delete` ist zusätzlich für `authenticated` gesperrt — richtig für eine
+Funktion, die nur als Trigger läuft.
+
+#### Auslieferung und Laufzeit
+
+Das aktuelle Produktions-Deployment (`dpl_Fgy56VWhPhjeiDDyvtoDxgYBk8fU`, **READY**, `target: production`)
+ist aus `2be71be` gebaut, und `7feb4c9` ist als dessen **Vorfahre** verifiziert — der PROJ-80-Code läuft
+also nachweislich in der ausgelieferten Fassung, gegengeprüft am Dateibaum des ausgelieferten Commits
+(vier Routen-/Lib-Dateien plus Fläche und Runner). **Laufzeitfehler auf PROJ-80-Routen im 7-Tage-Fenster:
+keine** — die einzige Fehlergruppe des Projekts ist der 300-s-Zeitüberlauf auf
+`/api/projects/[id]/ai/stakeholder-proposals`, zuletzt am 2026-08-27 19:53 und damit **vor** PROJ-152s
+Zeitbudget; sie berührt diese Slice nicht.
+
+#### Post-Deploy-Smoke — mit der Gegenprobe, die ihn erst aussagekräftig macht
+
+Fünf Flächen gegen Produktion, jeweils **exakt 307** mit Rumpf `Redirecting...`, kein Leck:
+`GET`/`PATCH …/documents/[docId]/summary`, `POST …/summary/retry`, `/projects/[id]/dokumente`.
+**Und ein erfundener Pfad (`…/gibtesnicht-erfunden`) antwortet ebenfalls 307** — der Smoke belegt damit
+das **Auth-Gate**, ausdrücklich **nicht** die Existenz der Routen. Die Existenz ist am Dateibaum des
+ausgelieferten Commits belegt, nicht aus dem Statuscode gefolgert (PROJ-45-Lehre, hier gemessen statt
+zitiert). Der Auth-Redirect allein ist nach Hausregel kein funktionaler Nachweis; tragend bleiben der
+Live-Pentest 10/10 + Rot-Team 13/13 + 9/9 aus der QA und die Kette über eine echte Sitzung.
+
+#### Warum `alpha` und nicht `full`, `mvp` oder `tooling-only`
+
+- **`full` scheidet aus**, weil **ursprüngliche** Akzeptanzkriterien zurückgestellt sind, jedes mit
+  Ziel-Kennung: Vektorindex/Chunking/Embeddings/`document_chunks` (→ **PROJ-80-β**), XLSX und PPTX
+  (→ **PROJ-Y-80c**), Reiter „Verlinkungen“ (→ **PROJ-Y-80a**), Umschalter „Vollständig/Quintessenz“
+  (→ **PROJ-Y-80b**) sowie der echte Anbieter-Lauf (→ **PROJ-Y-80d**, ein offenes Kriterium, keine
+  Abweichung). Die Ausnahme „Waived criterion“ scheitert schon an ihrer **ersten** Bedingung
+  („nothing was deferred“).
+- **`mvp` scheidet aus**, weil `mvp` eine abgeschlossene MVP-Grenze behauptet, hinter der kein
+  *benannter Sub-Slice* mehr steht. Hier ist **β** genau das: benannt, mit eigenem Zuschnitt und
+  CIA-Pflicht registriert. Das ist wörtlich die `alpha`-Definition (Präzedenz: PROJ-79 `alpha` mit
+  offenem β, PROJ-44, PROJ-96; PROJ-45 stieg erst von `alpha` auf `mvp`, als **alle** benannten
+  Sub-Slices ausgeliefert waren).
+- **`tooling-only` scheidet aus**: geliefert ist Produkt-Laufzeitfähigkeit (Extraktion,
+  Volltext-Klassifikation auf dem DMS-Pfad, Quintessenz-Erzeugung, Fläche mit Handänderung), keine
+  Werkzeug-Ebene.
+- **`alpha` trifft Bedingung für Bedingung:** ein benannter Sub-Slice mit eigenen Kriterien hat QA
+  bestanden (2026-08-21, **0 Critical / 0 High / 0 Medium / 0 Low**) und ist ausgeliefert; die Spec
+  listet den verbleibenden Slice (β) samt Abhängigkeit („bis das DMS Dokumente enthält“) und jedes
+  ausgelassene ursprüngliche Kriterium mit Ziel-Kennung.
+
+#### Die gelieferte Grenze
+
+Extraktion am DMS-Upload (PROJ-70-Stack) → **Volltext-Klassifikation auf dem DMS-Pfad, den es vorher
+gar nicht gab** (PROJ-75-Muster ausgedehnt, fail-closed) → Quintessenz über einen gewöhnlichen
+`cross_cutting`-Skill (PROJ-76, je Mandant nachgesät, per PROJ-77 änderbar aber nicht löschbar) →
+Dokument-Detailseite mit Reitern *Vorschau* und *Quintessenz*, Handänderung mit optimistischer Sperre
+und Bestätigungsdialog vor dem Überschreiben. **Retrieval ist nicht dabei** — „Vollständig“ ist in α
+schlicht der ganze herausgelöste Text; top-k ersetzt das erst β.
+
+#### Offen nach diesem Deploy
+
+**PROJ-80-β** (Retrieval, CIA-pflichtig) · **PROJ-Y-80a** (Reiter „Verlinkungen“) · **PROJ-Y-80b**
+(Umschalter) · **PROJ-Y-80c** (XLSX/PPTX, überlappt PROJ-73) · **PROJ-Y-80d** (echter Anbieter-Lauf).
+Nicht dieser Slice zuzurechnen und getrennt registriert: **PROJ-Y-80e** (`TRUNCATE`-Grants im Bestand),
+**PROJ-Y-80f** (`seed_risk_categories_if_empty` ist `anon`-ausführbar, PROJ-107), **PROJ-Y-114d**
+(Funktions-Inventar-Wächter), **PROJ-Y-45e** (Feld-Audit-Rückstände aus Testläufen).
+
+#### Abweichung dieses Schritts
+
+- **D-α.8 — kein neuer Testlauf gegen Produktion.** Der Deploy ist reine Buchführung ohne `src/`-Diff;
+  die funktionalen Nachweise stammen aus der QA vom 2026-08-21 und sind dort datiert. Neu und heute
+  gemessen sind ausschließlich der Prod-Zustand (Tabelle oben), das Laufzeitfenster und der Smoke.

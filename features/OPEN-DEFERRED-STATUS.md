@@ -85,11 +85,11 @@ This file is the cross-feature status register referenced by `features/INDEX.md`
 | PROJ-Y-144a | Planned (Followup, 144) | LLM-Extraktion für freies Diktat — neuer AI-Purpose, der aus unstrukturierter Rede Titel/Art/Beschreibung ableitet. **Keine deferierte Original-Anforderung:** PROJ-144 hat den regelbasierten Weg als Lock L3 gewählt, gerade um die volle Purpose-Pflicht zu vermeiden (CHECK-Lockstep in `ki_runs` + `tenant_ai_cost_caps`, alle fünf Cloud-Provider nach PROJ-85, `reason_code` nach PROJ-137) und um ohne tenant-eigenes Ollama nicht in den PROJ-86-Fall „0 Vorschläge" zu laufen. Erst bauen, wenn Pilot-Feedback zeigt, dass die Kommandoform zu eng ist. |
 | PROJ-Y-144b | Planned (Followup, 144) | Mehrfachanlage aus einem Diktat („drei Stories: …"). Bewusst außerhalb von PROJ-144, dessen Bestätigungsfluss genau ein Work-Item pro Entwurf beansprucht (Doppelklick-Schutz D5: der Entwurf wird beansprucht, *bevor* das Work-Item entsteht). Mehrfachanlage braucht ein eigenes Beanspruchungs- und Teilfehler-Modell. |
 | PROJ-Y-143o | **Erledigt 2026-08-14 — deployed** (Tag `v2.58.0-PROJ-Y-143o`, PR #391), Scope `tooling-only` | **E2E-Projektanhäufung an der Quelle stoppen.** PROJ-Y-143c hat 43 Testprojekte aus dem Alt-Mandanten geräumt, aber nur das Symptom: der aktuelle Fixture-Mandant `e2e00000-…-0002` trägt bereits **20 Projekte** (10 × „[E2E 135] Finalize Project", 9 × „[E2E ε] Wizard KI Project", 1 gewollte Fixture) — in drei Tagen entstanden, weil die Wizard-Finalize-Specs nichts aufräumen. Zweite Schadensstufe live belegt: `tests/sql/PROJ-77-gamma-…` hatte eines der angesammelten Projekte als Fremdmandanten-Fixture **hart verdrahtet** und brach beim Aufräumen mit `23503` — angesammelter Testmüll wird stillschweigend zur Fixture, auf die sich Sicherheitsnachweise verlassen. Richtungsentscheid offen (Teardown je Spec vs. Wiederverwendung vs. Sweep in `global-setup`); `enforce_last_lead()` blockiert das naive Löschen. **Wechselwirkung PROJ-Y-143l:** legt parallel eine dritte Fixture-Lane an (Mandant `…0007`, seit 2026-08-13 09:53 UTC) — Lösung muss über alle Fixture-Mandanten tragen, daher erst 143l abwarten. Die 20 Bestandszeilen werden bewusst **nicht** angefasst. **Stand-Nachtrag 2026-08-20:** diese Registerzeile war **stale** — sie beschrieb noch den Zustand vor der Arbeit („Richtungsentscheid offen … erst 143l abwarten"), waehrend der INDEX die Slice seit dem 2026-08-14 als `Deployed`/`tooling-only` fuehrt. Gefunden beim Erheben des Gesamtstands, dieselbe Klasse Widerspruch, mit der diese Sitzung begann (PROJ-Y-2: INDEX `In Review`, Register „PR offen"). **Und der Richtungsentscheid ist nicht offen geblieben, sondern anders ausgefallen als hier notiert:** die Annahme „die Specs raeumen nicht auf" stimmte nicht - alle drei hatten ein `afterAll`, das nur wirkungslos war (falsche Tabelle `project_members` statt `project_memberships`, danach `23514` aus PROJ-148), und supabase-js wirft bei DB-Fehlern nicht, sodass jeder Teardown den Fehler verschluckte. Umgesetzt wurde daher keine der drei registrierten Varianten, sondern: falsche Tabelle raus, Projekt-Delete **laut** ueber `deleteOrThrow`, und `audit_lifecycle_exempt` in allen drei Fixture-Mandanten-Upserts von `global-setup`. Nachweis: beide projekt-erzeugenden Specs 9 passed, `projects` im Fixture-Mandanten **20 vorher → 20 nachher**. |
-| PROJ-80-β | Planned (Followup, 80) — **CIA-pflichtig** | **Retrieval: `document_chunks`, pgvector, Embeddings, top-k.** Kein Zugeständnis, sondern der bewusste Nutzer-Schnitt vom 2026-08-14: `pgvector` ist in Produktion **nicht installiert** (0.8.0 verfügbar) und **der AI-Router kann gar keine Embeddings** — alle sechs Anbieter sind reine Text-Erzeugung. Ein Index über null Dokumente wäre verfrüht (das DMS ist in Prod leer, ausdrücklich **kein** Adoptionssignal, sondern Entwicklungsstand). β braucht Dependencies und damit einen eigenen CIA-Durchgang; der ADR `docs/decisions/rag-architecture.md` gehört bewusst erst dorthin, weil er sonst eine ungetroffene Entscheidung dokumentierte. In α heißt „Vollständig" schlicht *der ganze herausgelöste Text*; β ersetzt das durch *die k passendsten Stellen*. |
+| PROJ-80-β | Planned (Followup, 80) — **CIA-pflichtig** | **Retrieval: `document_chunks`, pgvector, Embeddings, top-k.** Kein Zugeständnis, sondern der bewusste Nutzer-Schnitt vom 2026-08-14: `pgvector` ist in Produktion **nicht installiert** (0.8.0 verfügbar) und **der AI-Router kann gar keine Embeddings** — alle sechs Anbieter sind reine Text-Erzeugung. Ein Index über null Dokumente wäre verfrüht (das DMS ist in Prod leer, ausdrücklich **kein** Adoptionssignal, sondern Entwicklungsstand). β braucht Dependencies und damit einen eigenen CIA-Durchgang; der ADR `docs/decisions/rag-architecture.md` gehört bewusst erst dorthin, weil er sonst eine ungetroffene Entscheidung dokumentierte. In α heißt „Vollständig" schlicht *der ganze herausgelöste Text*; β ersetzt das durch *die k passendsten Stellen*. **Nachtrag 2026-09-01:** PROJ-80-α ist als `Deployed`/`alpha` gebucht (Tag `v2.89.0-PROJ-80`) — und genau dieser Followup ist der Grund, warum die Zeile `alpha` und nicht `mvp` trägt: β ist ein *benannter* Sub-Slice, und das ist wörtlich die `alpha`-Definition. |
 | PROJ-Y-80a | Planned (Followup, 80/79) | **Reiter „Verlinkungen" auf der Dokument-Detailseite.** Zurückgestellte Original-Anforderung aus dem Spec-Block „Document detail page" (Vorschau / Quintessenz / **Verlinkungen**) — α liefert zwei der drei Reiter. Grund, live geprüft: auf `documents` verweist außer `document_extractions` und `document_summaries` **kein einziges** Domänen-Objekt; Deliverables und Arbeitspakete führen eigene Dokument-Tabellen mit anderem Modell. Ein Reiter, der ausschließlich „nichts" anzeigen kann, ist ein Versprechen ohne Deckung. Gebunden an PROJ-79s eigenen Vorbehalt `PROJ-Y-doc-refs` (kanonischer Binär-Store, auf den Link-Tabellen später verweisen dürfen): sobald der erste echte Verweis existiert, ist der Reiter zu bauen. |
 | PROJ-Y-80b | Planned (Followup, 80/9) | **Umschalter „Vollständig / Quintessenz" am verknüpften Dokument** (Spec-Block „Deep vs Quintessenz toggle", 4 Kriterien inkl. mandantenweiter Voreinstellung). Zurückgestellte Original-Anforderung und **in α nicht baubar**: die Spec setzt eine Aufgabe↔Dokument-Verknüpfung voraus (`task_document_links`, laut Spec „specified in PROJ-9 or here"), die es im Produkt nicht gibt. Das Tech Design wollte den Umschalter „dort zeigen, wo bereits Verknüpfungen bestehen" — es bestehen keine. α legt bewusst **kein** neues Beziehungsmodell an; welche Objekte Dokumente führen dürfen und wer die Voreinstellung setzt, ist eine eigene fachliche Entscheidung und keine Beigabe zur Detailseite. Voraussetzung: PROJ-Y-80a bzw. `PROJ-Y-doc-refs`. |
 | PROJ-Y-80c | Planned (Followup, 80) — **überlappt PROJ-73** | **XLSX- und PPTX-Extraktion** (Spec-Block „Indexing pipeline"). Zurückgestellte Original-Anforderung; α bleibt bei dem, was die PROJ-70-Härtung abdeckt (PDF via `pdfjs-dist`, DOCX via `mammoth`, MD/TXT direkt). Beide Formate brauchen neue Bibliotheken (`SheetJS` plus einen PPTX-Leser) und damit einen eigenen CIA-Durchgang — genau die Prüfung, in der `pdf-parse` abgelehnt und `pdfjs-dist` gewählt wurde. **Vor dem Bauen mit PROJ-73 zusammenlegen**, das PPTX/XLSX bereits als praktische Restlücke führt; zwei IDs für dasselbe Paket wären die Fäule, die PROJ-145 aufgeräumt hat. Bis dahin ist das Verhalten ehrlich: Zustand `unsupported_type` mit eigener Meldung, kein stilles Nichts. |
-| PROJ-Y-80d | Planned (Followup, 80) — **offenes Akzeptanzkriterium, keine Abweichung** | **Echter Ende-zu-Ende-Lauf mit erreichbarem Anbieter** — ein Dokument, das durch ein reales Modell zu einer Quintessenz wird. In `/qa` 2026-08-21 als offen **bestätigt** und die Ursache gemessen statt vermutet: das DMS in Prod ist leer (0 Dokumente, 0 Baumknoten), es gibt **kein** lokales Ollama, **keine** Schlüssel in `.env.local`, und Anbieter existieren ausschliesslich im **Kundenmandanten** (`ollama` + `openai`, beide `valid`). Damit sind nur drei Wege denkbar, und zwei sind versperrt: Kundenmandant und Kundengeld verbietet die Fixture-Regel aus CLAUDE.md („never the customer tenant") und würde zusätzlich dauerhafte Lebenszyklus-Audit-Zeilen in Kundendaten hinterlassen (dieser Mandant ist **nicht** `audit_lifecycle_exempt`); ein Stub beweist nichts. **Nutzer-Entscheid 2026-08-21: er stellt einen eigenen Endpunkt bzw. Wegwerf-Schlüssel bereit**, die Kette wird dann in einem eigenen `[E2E]`-Wegwerfmandanten gefahren. Bewiesen ist alles davor — ungemockte Extraktion, Volltext-Klassifikation, `runDocumentPipeline`, Skill-Nachsaat, Lockstep-Regeln, alle drei Tore, optimistische Sperre, Zugriffsprotokoll; unbewiesen ist allein die Verkettung **mit einem Modell**. Gleiche Klasse und gleiche Ursache wie PROJ-88/89 D-1 (dort später eingelöst, als der Nutzer einen Ollama-Host stellte). Als **offenes Kriterium** geführt, nicht als Zugeständnis (PROJ-135-Lehre: eine nicht ausgeführte Prüfebene ist kein Zugeständnis, sondern eine offene Zusage). |
+| PROJ-Y-80d | Planned (Followup, 80) — **offenes Akzeptanzkriterium, keine Abweichung** | **Echter Ende-zu-Ende-Lauf mit erreichbarem Anbieter** — ein Dokument, das durch ein reales Modell zu einer Quintessenz wird. In `/qa` 2026-08-21 als offen **bestätigt** und die Ursache gemessen statt vermutet: das DMS in Prod ist leer (0 Dokumente, 0 Baumknoten), es gibt **kein** lokales Ollama, **keine** Schlüssel in `.env.local`, und Anbieter existieren ausschliesslich im **Kundenmandanten** (`ollama` + `openai`, beide `valid`). Damit sind nur drei Wege denkbar, und zwei sind versperrt: Kundenmandant und Kundengeld verbietet die Fixture-Regel aus CLAUDE.md („never the customer tenant") und würde zusätzlich dauerhafte Lebenszyklus-Audit-Zeilen in Kundendaten hinterlassen (dieser Mandant ist **nicht** `audit_lifecycle_exempt`); ein Stub beweist nichts. **Nutzer-Entscheid 2026-08-21: er stellt einen eigenen Endpunkt bzw. Wegwerf-Schlüssel bereit**, die Kette wird dann in einem eigenen `[E2E]`-Wegwerfmandanten gefahren. Bewiesen ist alles davor — ungemockte Extraktion, Volltext-Klassifikation, `runDocumentPipeline`, Skill-Nachsaat, Lockstep-Regeln, alle drei Tore, optimistische Sperre, Zugriffsprotokoll; unbewiesen ist allein die Verkettung **mit einem Modell**. Gleiche Klasse und gleiche Ursache wie PROJ-88/89 D-1 (dort später eingelöst, als der Nutzer einen Ollama-Host stellte). Als **offenes Kriterium** geführt, nicht als Zugeständnis (PROJ-135-Lehre: eine nicht ausgeführte Prüfebene ist kein Zugeständnis, sondern eine offene Zusage). **Nachtrag 2026-09-01:** durch die α-Buchung (`Deployed`/`alpha`) unverändert offen — der `/deploy`-Lauf war reine Buchführung ohne neuen Testlauf gegen Produktion (D-α.8), er kann diese Zusage also nicht eingelöst haben. |
 | PROJ-Y-80e | Planned (Followup, Bestand — **nicht** PROJ-80) | **`authenticated` und `anon` halten `TRUNCATE` auf 151 von 152 Tabellen des `public`-Schemas.** Fund aus dem PROJ-80-`/qa`-Rot-Team, dort aufgefallen, weil ein `UPDATE`-Vektor unerwartet auf **Grant**-Ebene scheiterte und die Messung der Grants nachgezogen wurde. `TRUNCATE` umgeht RLS **vollständig** — eine Zeilen-Policy schützt nicht davor. **Reichweite gemessen, bevor eine Zahl behauptet wurde:** 151/152 Tabellen für **beide** Rollen, also die Supabase-Standardvergabe und **kein** PROJ-80-Regress; PROJ-80s eigene Tabellen sind sogar **strenger als der Bestand** (0 Schreib-Grants, während 150 Tabellen `INSERT` tragen). **Heute nicht über die Produktfläche erreichbar:** PostgREST kennt kein `TRUNCATE`-Verb, es braucht direkten SQL-Zugang, und der ist ohnehin privilegiert — deshalb Info und nicht High. Dass die Klasse real ist, weiss das Projekt bereits: `audit_log_entries` trägt seit PROJ-130-α einen eigenen `no_truncate`-Wächter, aber nur diese eine Tabelle. Fix wäre ein pauschales `revoke truncate` auf `anon`/`authenticated` — breiter Eingriff, eigener Lauf, vor dem Bauen prüfen, ob eine Migration oder ein Test darauf baut. Bis dahin ausdrücklich registriert statt vergessen: nichts verfolgt es heute. |
 | PROJ-Y-80f | Planned (Followup, 107 — **nicht** PROJ-80) | **`seed_risk_categories_if_empty` ist `anon`-ausführbar.** Einziger `anon_security_definer_function_executable`-Advisor im Projekt; im PROJ-80-`/qa` beim Durchsehen der 149 Advisor-Meldungen aufgefallen. Live geprüft **nicht ausnutzbar** — als `anon` endet der Aufruf mit `42501`, weil die Funktion intern `is_tenant_member` prüft und `auth.uid()` fehlt. Es ist damit eine Abweichung von der Hausnorm („Revoke EXECUTE from `anon` on everything", CLAUDE.md) und fehlende Verteidigung in der Tiefe, kein offenes Loch. Bemerkenswert für die Einordnung: PROJ-80s Geschwisterfunktion `ensure_summarizer_skill` folgt demselben Lazy-Seed-Muster und hat `anon` **korrekt** entzogen — die Norm ist also erfüllbar, hier wurde sie einmal verpasst. Fix = ein `revoke execute … from anon`, gehört zu einer PROJ-107-Hygiene-Runde. |
 | PROJ-Y-114d | **Erledigt 2026-08-24 — eingelöst in PROJ-Y-114f (#443)** · ⚠️ **ID-Kollision: diese Zeile trug `PROJ-Y-114d` versehentlich doppelt** | **Veraltete `pending_merge`-Ausnahme im Funktions-Inventar-Wächter.** Im PROJ-80-`/qa` aufgefallen, weil der Wächter am QA-PR fehlschlug, obwohl dieser **keine** Migration enthält. Nachgemessen statt zugeordnet: der Check war auf `7feb4c92` grün und ist auf `d59b08b0` (dem PROJ-Y-114a-Merge), `0735d804` und `a26c63e9` rot — also **seit und wegen** PROJ-Y-114a, nicht wegen PROJ-80. Der Wächter tut dabei genau das, wofür PROJ-Y-148e ihn gebaut hat: `_dd_finding_source_question_guard` war als **`pending_merge`** eingetragen (Wegwerf-Eintrag für eine offene Slice), und mit dem Merge wurde der Eintrag überflüssig — die Meldung sagt es wörtlich („Eintrag entfernen, sonst deckt er künftig einen echten Fund gleichen Namens"). Fix = die zwei Zeilen entfernen (`scripts/check-function-inventory/analyze.ts` und die zugehörige Zeile in `analyze.test.ts`) und das Inventar auffrischen, wie es das Runbook `docs/production/function-inventory.md` ans Ende jeder Slice mit Migration stellt. **Bewusst nicht im PROJ-80-QA-PR mitbehoben:** dessen Zusage ist „kein `src/`-Diff, reine Prüf- und Buchführungsebene", und fremde Slice-Buchführung dort einzumischen macht ihn schwerer prüfbar. Der Check ist **nicht enrolled** (PROJ-Y-148e-Handoff offen), blockiert also keinen Merge — genau deshalb registriert: ein Wächter, der auf jedem PR rot steht, wird zu dem Rauschen, gegen das er gebaut wurde.  **Nachtrag 2026-08-26 (nachgemessen, nicht aus der Zeile übernommen):** der Befund ist **erledigt**. `INVENTORY_EXCEPTIONS` trägt heute nur noch die zwei `legacy`-Einträge (`enforce_last_lead`, `enforce_project_membership_user_in_tenant`) und **keinen** `pending_merge`-Eintrag; die letzten fünf Läufe des Wächters auf `main` sind grün (`5fb8c6d`, `775e222`, `6b0c2d7`, `8c84b0e`, `66335a8`), und ein lokaler Lauf meldet `298 Funktionen / 2 dokumentierte Ausnahmen / OK`. Eingelöst hat es **PROJ-Y-114f** (#443, `c0d384c`), das genau diesen Wegwerf-Eintrag entfernt und zusätzlich die irreführende Meldung korrigiert hat. **Die Zeile blieb fünf Tage als „CI auf jedem PR rot" stehen, obwohl sie zwei Tage später behoben war** — wer den Rückstand danach las, hielt einen grünen Wächter für kaputt. **ID-Hygiene:** `PROJ-Y-114d` ist von der PROJ-Y-114a-QA an ihren Befund **F-3** vergeben worden (leseseitiger Existenzhinweis, weiter unten in dieser Datei, dort **Erledigt 2026-08-24**); *diese* Zeile hat den Namen später unabhängig ein zweites Mal belegt. Kanonisch ist der F-3-Eintrag; diese Zeile bleibt nur als Beleg stehen und vergibt keine ID mehr — dieselbe Sorte Mehrfachvergabe, die schon `PROJ-Y-1` fünffach traf und zur Umbenennung nach `PROJ-Y-114a` führte. |
@@ -560,7 +560,7 @@ Deploy, aber sie sind nicht erledigt und hatten bis heute **keine** Followup-Ken
 
 ## PROJ-155 — Gantt: Hierarchie, Sammelvorgänge, Netzablaufplan (Deployed, Scope `alpha`)
 
-- **PROJ-Y-155a — angemeldeter Browser-Durchlauf plus Visual-Baseline (offen).**
+- **PROJ-Y-155a — angemeldeter Browser-Durchlauf plus Visual-Baseline (erledigt 2026-09-01).**
   α ist ohne `/qa`-Durchgang deployed. Belegt sind Zeilenlogik (27 Unit-Tests),
   Rollup-Fix (rot-grün live gegen Prod) und Verknüpfbarkeit (live gegen Prod) —
   **nicht** die Verkettung im Browser: dass Tasks eingerückt erscheinen, das
@@ -569,7 +569,62 @@ Deploy, aber sie sind nicht erledigt und hatten bis heute **keine** Followup-Ken
   Visual-Baseline, es gab also keinen Netzschutz zu erben. Fixture-Lage: das
   einzige Projekt mit WBS-Daten ist der Kundenmandant, ein E2E-Durchlauf braucht
   eine eigene Lane (Muster PROJ-Y-144d).
-  *Quelle: PROJ-155 „Ausdrücklich nicht belegt".*
+  **Nachtrag 2026-09-01 (Design-Pass β):** dieser Followup sollte **vor** β.1
+  laufen, nicht danach. Zwei Gründe aus dem Brief: der Gantt ist **2091 Zeilen
+  ohne Komponententests und ohne Visual-Baseline**, jeder β-Eingriff wäre also
+  ungesichert; und die Fixture-Lane, die 155a ohnehin bauen muss, ist genau die,
+  die β.1 zum Prüfen braucht — zwei Lanes wären Verschwendung.
+  **Erledigt 2026-09-01** (`tests/PROJ-Y-155a-gantt-chain.spec.ts`, 6 Fälle, seriell,
+  3× grün plus Kaltstart). Eigene Fixture-Lane `E2E_GANTT_*` wie registriert — die
+  Alternative wurde vorher gemessen: die Visual-Lane setzt `project_type: "general"`
+  **absichtlich** („keeps the seed minimal"), die Chat-Lane hat null Phasen, die
+  Bau-Lane eine andere Navigation. Die Aufnahme ist **elementbezogen auf das SVG**
+  statt auf die Seite; damit kann kein Kontozustand sie bewegen, und die Lane darf
+  den geteilten Nutzer verwenden (kein zusätzlicher Anmeldevorgang).
+  **Toleranz gemessen statt geschätzt** (Methode PROJ-Y-143g): Rauschen **0 px**
+  über drei Läufe, kleinste sinnvolle Änderung **32 px**, geerbtes 2-%-Verhältnis
+  hätte **8003 px** erlaubt — 250-fach zu grob; gesetzt sind **20**, rot-grün belegt.
+  **Der Lauf rendert erstmals überhaupt einen Sammelvorgang:** die Lane seedet ein
+  Arbeitspaket ohne eigene Termine mit terminierten Kindern, `derived_planned_start`
+  steht danach auf `2026-03-11 bis 2026-03-20` — genau die Kinder-Spanne. Produktion
+  enthält von diesem Fall **0 von 138** Instanzen, der PROJ-155-α-Rollup war also nie
+  in einer Oberfläche zu sehen. **Drei Befunde beim Bauen**, alle gemessen: der Gantt
+  liegt hinter einem Reiter ohne Deep-Link; der Reiter-Klick geht **vor der Hydration
+  lautlos verloren** (einzeln grün, unter sechs Arbeitern fielen alle sechs Fälle mit
+  „element(s) not found", während die Diagnose `count: 1` zeigte — dieselbe Klasse wie
+  der deaktivierte Stepper-Knopf aus PROJ-135); und der Platzhaltertext der
+  terminlosen Zeile **überdeckt seine eigene Aufzieh-Fläche** (`elementFromPoint`
+  liefert dort den Text, der Zug schrieb nichts — keine Vorschau, keine Anfrage).
+  Die beiden Bedien-Hälften sind als **PROJ-Y-155c** registriert. Ein **latentes
+  Rennen** wurde beim Nachrechnen statt beim Fehlschlagen gefunden und geschlossen:
+  Zug-Fall und Baseline fassen dieselbe Zeile an, die Datei läuft deshalb seriell
+  (Präzedenz PROJ-45-ε). Nebenbei nach `tests/fixtures/runtime-issues.ts` extrahiert,
+  was in der Visual-Suite eine lokale Funktion war — ein reiner Umzug, belegt dadurch,
+  dass die Visual-Suite unverändert **9/9 ohne Neuaufnahme** bleibt (zusammen 15/15).
+  **Rückstand offengelegt statt gerundet:** 42 Feld-Audit-Zeilen im Gantt-Mandanten
+  aus den Zug-Läufen. `audit_lifecycle_exempt` ist gesetzt und greift für Anlage und
+  Löschung, **nicht** für Feldänderungen — genau **PROJ-Y-45e**. Bewusst nicht über
+  den Runbook-Weg entfernt: dafür müssten in Produktion die Append-only-Wächter
+  abgeschaltet werden, und das Risiko ist grösser als 42 synthetische Zeilen in einem
+  Testmandanten.
+  *Quelle: PROJ-155 „Ausdrücklich nicht belegt"; Reihenfolge aus dem Design-Pass
+  2026-09-01; Erledigung und alle Zahlen aus dem Lauf vom 2026-09-01.*
+
+- **PROJ-Y-155c — zwei Bedienbefunde am Gantt (offen, klein).**
+  Beide beim Bauen von PROJ-Y-155a gemessen, beide gehören zu **β.1**, das die
+  Gantt-Flächen ohnehin anfasst. (1) **Kein Deep-Link auf den Netzplan:**
+  `planung-client.tsx:57` startet fest auf `"phasen"` und es gibt keinen
+  URL-Parameter für den Reiter — der Gantt ist nicht verlinkbar, man klickt immer
+  zweimal. (2) **Der Platzhaltertext überdeckt seine eigene Bedienfläche:** in der
+  terminlosen Zeile wird `↳ Titel — Zeitraum im Diagramm aufziehen` im selben `<g>`
+  **nach** dem Aufzieh-Rechteck gezeichnet, liegt in SVG damit oben und fängt den
+  Mousedown ab; wer links im Balkenbereich ansetzt, zieht ins Leere (belegt:
+  `elementFromPoint` liefert den Text, keine Vorschau, keine Anfrage). Auf schmalen
+  Fenstern ist das der grössere Teil der Zeile. Dritte, schwächere Beobachtung ohne
+  eigene Kennung: derselbe Reiter-Klick geht auch für **Menschen** verloren, solange
+  die Seite nicht hydriert ist — das ist SSR-inhärent und keine Eigenart dieses
+  Produkts, aber es erklärt „ich hab geklickt und nichts passierte".
+  *Quelle: PROJ-Y-155a, Messungen vom 2026-09-01.*
 
 - **PROJ-Y-155b — zwei Leseorte für denselben Termin (offen, Hygiene).**
   `wbs-display.ts` (`ownPlannedStart`/`ownPlannedEnd`) liest Termine weiter aus
@@ -580,14 +635,65 @@ Deploy, aber sie sind nicht erledigt und hatten bis heute **keine** Followup-Ken
   nein, entfällt die Quelle.
   *Quelle: PROJ-155 Befundaufnahme.*
 
-- **PROJ-155-β — Auto-Scheduling (benannt, nicht gebaut).** Eine Abhängigkeit
+- **PROJ-155-β — β.1 erledigt 2026-09-01, β.2 (Auto-Scheduling) offen.** Eine Abhängigkeit
   verschiebt den Nachfolger noch nicht automatisch; `lag_days` existiert in
   `dependencies` und ist ungenutzt, `constraint_type` ist über die Oberfläche nicht
   wählbar (immer der Default `FS`). Dazu: Vorgänger-Spalte in der Tabelle,
   kritischer Pfad über Tasks, Baseline-Vergleich. Das ist der eigentliche
   Netzablaufplan-Ausbau. **Kein zurückgestelltes α-Kriterium** — der Zuschnitt
   „Termine und Hierarchie zuerst" ist ein Nutzer-Entscheid.
-  *Quelle: PROJ-155 Fundament-Entscheidung.*
+  **Design-Pass 2026-09-01** →
+  [`docs/design/PROJ-155-beta-autoscheduling-brief.md`](../docs/design/PROJ-155-beta-autoscheduling-brief.md).
+  Er dreht die Reihenfolge um und teilt β in **β.1** (die Kante wird ein Objekt:
+  Typ und Abstand setzbar, Register bekommt einen Anlege-Weg) und **β.2**
+  (Auto-Scheduling). Grund, gemessen: „FS/SS/FF/SF wählbar" ist kein Merkmal des
+  Schedulers, sondern eine **fehlende Eingabefläche** — Datenbank und *beide*
+  Routen können alle vier Typen plus `lag_days`, der Gantt schreibt hartkodiert
+  `FS` (`gantt-view.tsx:964`, `lag_days` **0 Vorkommen**) und die zweite Fläche
+  `/abhaengigkeiten` kann nur lesen und löschen. Prod bestätigt es ausnahmslos:
+  **4 Kanten, 4 × `FS`, 4 × Abstand 0** — das ist die einzige Kombination, die die
+  Oberfläche herstellen kann. β.2 zuerst zu bauen hieße, Vorschau, Konfliktmeldung
+  und Tests auf `FS`/`0` zuzuschneiden und mit β.1 nochmal anzufassen. Zweiter
+  Befund: die Maschine hätte kaum Treibstoff (138 Arbeitspakete, **4** terminiert,
+  **0** abgeleitet, **7** mit Phase, 3 Wasserfall-Projekte von 32). Tragende
+  Entwurfsentscheidung für β.2: **Vorschau statt stiller Kaskade** — es gibt kein
+  Rückgängig im Gantt (der einzige `undo`-Treffer ist ein Kommentar, der es für
+  PROJ-25-β/γ reserviert), `planned_start`/`planned_end` stehen im Feld-Audit, und
+  eine Kaskade über 30 Nachfolger schriebe **60** append-only Zeilen gegen heute
+  **207** insgesamt. Reihenfolge **PROJ-Y-155a → β.1 → CIA-Pass → β.2** — am
+  2026-09-01 als **Nutzer-Entscheid** bestätigt, also nicht mehr bloß empfohlen.
+  **β.1 ausgeliefert 2026-09-01** — die Kante ist ein Objekt: Typ und Abstand
+  sind setzbar (Maske am Pfeil, inline im Register), das Register kann erstmals
+  **anlegen**, ein Pfeil mit Abweichung trägt ein sichtbares Abzeichen, und der
+  Pfeil ist per Tastatur erreichbar. Neue Route
+  `PATCH …/dependencies/[did]`; **keine Migration, kein Paket**. Damit ist die
+  Voraussetzung für β.2 hergestellt: der Scheduler bekommt nicht mehr
+  ausschliesslich `FS`/0 zu sehen. **Vier Funde beim Bauen, alle gemessen:**
+  (1) die Typliste stand **viermal** im Repo, einmal davon mit englischen
+  Beschriftungen — jetzt eine Autorität in `@/types/dependency`, aus der auch
+  das Zod-Enum abgeleitet ist; (2) `DELETE …/dependencies/[did]` prüfte **nicht**,
+  ob die Kante zum Projekt in der Adresse gehört — kein Mandantenleck (RLS
+  greift), aber die Projekt-Kennung war Dekoration und eine Löschung konnte über
+  ein fremdes Projekt laufen (Klasse PROJ-45-β), mitgehärtet und rot-grün belegt;
+  (3) der Gantt las `lag_days` **gar nicht** (0 Vorkommen im Modul), obwohl die
+  Spalte seit PROJ-9-Round-2 existiert; (4) **der Anlege-Pfad zeigte nie einen
+  Grund** — er las `err?.message`, die API antwortet aber
+  `{ error: { code, message } }`, die Beschreibung war also **immer** `undefined`;
+  wer im Diagramm einen Kreis zog, bekam „fehlgeschlagen" ohne Begründung,
+  obwohl die Route seit jeher `cycle_detected` liefert. Nachweise: **36 neue
+  Tests** (19 Route, 10 Lib, 7 Komponente), Rot-Grün dreifach ausgeführt
+  (Zugehörigkeitsprüfung → **genau** die zwei Fremdprojekt-Fälle fallen;
+  Tastatur → genau der Tastatur-Fall; Baseline-Schranke), E2E-Kette **7/7** mit
+  Typwechsel über das Diagramm bis in die Datenbank und zurück ins Abzeichen.
+  **AC-10 fiel dabei beiläufig an:** die Gantt-Baseline blieb **unverändert
+  grün**, eine `FS`/0-Kante sieht nach β.1 also nachweislich aus wie vorher —
+  die Änderung ist additiv, ohne dass es dafür einen eigenen Test brauchte.
+  Abweichung: **Dialog statt Popover** (der Brief sah ein Popover vor; es müsste
+  an einem SVG-Pfad verankert werden, dessen Lage von Zoom, Bildlauf und
+  Zeilenhöhe abhängt — Risiko ohne Ertrag, die Substanz des Kriteriums ist
+  „Löschen ist eine von drei Handlungen"). Offen bleibt **β.2**.
+  *Quelle: PROJ-155 Fundament-Entscheidung; Design-Pass 2026-09-01 mit
+  Live-Messung gegen Prod.*
 
 - **Registerkorrektur, keine Auslassung.** Die PROJ-25-Zeile im INDEX führt „SVAR
   React Gantt MIT". Gemessen ist `wx-react-gantt@1.3.1` **GPLv3** mit

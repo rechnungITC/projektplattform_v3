@@ -35,6 +35,20 @@ import {
 } from "@/components/ui/alert-dialog"
 import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert"
 import { Badge } from "@/components/ui/badge"
+import { Input } from "@/components/ui/input"
+import {
+  DEPENDENCY_CONSTRAINT_LABELS,
+  DEPENDENCY_CONSTRAINT_TYPES,
+  DEPENDENCY_LAG_MAX,
+  DEPENDENCY_LAG_MIN,
+  type DependencyConstraintType,
+} from "@/types/dependency"
+import { DependencyApiError, updateDependency } from "@/lib/dependencies/api"
+
+import {
+  CreateDependencyDialog,
+  type DependencyCandidate,
+} from "./create-dependency-dialog"
 import { Button } from "@/components/ui/button"
 import {
   Card,
@@ -73,14 +87,15 @@ const ENTITY_TYPE_LABELS: Record<EntityType, string> = {
   todo: "Work-Item",
 }
 
-type ConstraintType = "FS" | "SS" | "FF" | "SF"
+/**
+ * PROJ-155-β.1 — vorher stand hier die **vierte** Kopie der Typliste, samt
+ * eigener englischer Beschriftung („Finish-to-Start"). Beides kommt jetzt aus
+ * `@/types/dependency`; die Beschriftung ist deutsch und identisch mit der im
+ * Gantt-Dialog.
+ */
+type ConstraintType = DependencyConstraintType
 
-const CONSTRAINT_LABELS: Record<ConstraintType, string> = {
-  FS: "Finish-to-Start",
-  SS: "Start-to-Start",
-  FF: "Finish-to-Finish",
-  SF: "Start-to-Finish",
-}
+const CONSTRAINT_LABELS = DEPENDENCY_CONSTRAINT_LABELS
 
 interface DependencyRow {
   id: string
@@ -159,7 +174,12 @@ function resolveLabel(
 
 type LoadState =
   | { kind: "loading" }
-  | { kind: "ready"; dependencies: ResolvedDependency[] }
+  | {
+      kind: "ready"
+      dependencies: ResolvedDependency[]
+      /** Wählbare Enden für den Anlege-Dialog (PROJ-155-β.1). */
+      candidates: DependencyCandidate[]
+    }
   | { kind: "error"; message: string }
 
 export function DependenciesTabClient({ projectId }: { projectId: string }) {
@@ -244,10 +264,39 @@ export function DependenciesTabClient({ projectId }: { projectId: string }) {
             workItemsMap,
           ),
         }))
-        return resolved
+        // Wählbare Enden für den Anlege-Dialog: Phasen und Arbeitspakete
+        // bzw. Aufgaben **dieses** Projekts. Die Karten oben enthalten auch
+        // Objekte fremder Projekte (Kanten dürfen die Grenze überschreiten),
+        // angeboten wird aber nur das eigene — eine projektübergreifende Kante
+        // ist ein eigener Vorgang und gehört nicht in diesen Dialog.
+        const candidates: DependencyCandidate[] = [
+          ...phList
+            .filter((ph) => ph.project_id === projectId)
+            .map((ph) => ({
+              type: "phase" as const,
+              id: ph.id,
+              label: `Phase · ${ph.name}`,
+            })),
+          ...wiList
+            .filter((wi) => wi.project_id === projectId)
+            .map((wi) => ({
+              // Das Kanten-Vokabular kennt `work_package` und `todo`; alles,
+              // was kein Arbeitspaket ist, zählt als `todo` — dieselbe Regel
+              // wie in der GET-Route dieses Endpunkts.
+              type: (wi.kind === "work_package" ? "work_package" : "todo") as
+                | "work_package"
+                | "todo",
+              id: wi.id,
+              label: `${wi.kind === "work_package" ? "Arbeitspaket" : "Aufgabe"} · ${wi.title}`,
+            })),
+        ].sort((a, b) => a.label.localeCompare(b.label, "de"))
+
+        return { resolved, candidates }
       })
-      .then((dependencies) => {
-        if (!cancelled) setState({ kind: "ready", dependencies })
+      .then(({ resolved, candidates }) => {
+        if (!cancelled) {
+          setState({ kind: "ready", dependencies: resolved, candidates })
+        }
       })
       .catch((err: unknown) => {
         if (cancelled) return
@@ -327,6 +376,15 @@ export function DependenciesTabClient({ projectId }: { projectId: string }) {
           und Work-Items in diesem Projekt. Volle Gantt-Visualisierung folgt
           mit PROJ-25 (Drag-and-Drop-Stack).
         </p>
+        {/* PROJ-155-β.1 — der einzige Weg zu einer Kante in einem Projekt
+            ohne Termine: im Diagramm gibt es dort keine Balken zu ziehen. */}
+        <div className="mt-3">
+          <CreateDependencyDialog
+            projectId={projectId}
+            candidates={state.candidates}
+            onCreated={() => setReloadCounter((c) => c + 1)}
+          />
+        </div>
       </div>
 
       {/* Filter bar */}
@@ -355,7 +413,7 @@ export function DependenciesTabClient({ projectId }: { projectId: string }) {
                 </SelectTrigger>
                 <SelectContent>
                   <SelectItem value="all">Alle</SelectItem>
-                  {(["FS", "SS", "FF", "SF"] as ConstraintType[]).map((c) => (
+                  {DEPENDENCY_CONSTRAINT_TYPES.map((c) => (
                     <SelectItem key={c} value={c}>
                       {c} — {CONSTRAINT_LABELS[c]}
                     </SelectItem>
@@ -459,7 +517,11 @@ export function DependenciesTabClient({ projectId }: { projectId: string }) {
                   filtered.map((d) => (
                     <TableRow key={d.id}>
                       <TableCell>
-                        <Badge variant="outline">{d.constraint_type}</Badge>
+                        <InlineConstraintCell
+                          projectId={projectId}
+                          dependency={d}
+                          onChanged={() => setReloadCounter((c) => c + 1)}
+                        />
                       </TableCell>
                       <TableCell>
                         <EntityLabel end={d.from} />
@@ -471,7 +533,11 @@ export function DependenciesTabClient({ projectId }: { projectId: string }) {
                         <EntityLabel end={d.to} />
                       </TableCell>
                       <TableCell className="font-mono text-xs">
-                        {d.lag_days === 0 ? "—" : `${d.lag_days}d`}
+                        <InlineLagCell
+                          projectId={projectId}
+                          dependency={d}
+                          onChanged={() => setReloadCounter((c) => c + 1)}
+                        />
                       </TableCell>
                       <TableCell className="text-right">
                         <Button
@@ -559,4 +625,142 @@ async function readErrorMessage(r: Response): Promise<string> {
   } catch {
     return `HTTP ${r.status}`
   }
+}
+
+/**
+ * Typ inline ändern.
+ *
+ * Bewusst ein `Select` direkt in der Zeile und kein Dialog: es ist **ein**
+ * Feld, und ein Dialog wäre schwerer als die Handlung. Der Schreibweg ist
+ * derselbe wie im Gantt-Dialog (`lib/dependencies/api`), damit nicht zwei
+ * Fehlerübersetzungen nebeneinander entstehen.
+ */
+function InlineConstraintCell({
+  projectId,
+  dependency,
+  onChanged,
+}: {
+  projectId: string
+  dependency: ResolvedDependency
+  onChanged: () => void
+}) {
+  const [busy, setBusy] = React.useState(false)
+
+  async function handleChange(value: string) {
+    if (value === dependency.constraint_type) return
+    setBusy(true)
+    try {
+      await updateDependency(projectId, dependency.id, {
+        constraint_type: value as DependencyConstraintType,
+      })
+      toast.success("Typ geändert")
+      onChanged()
+    } catch (err) {
+      toast.error("Änderung fehlgeschlagen", {
+        description:
+          err instanceof DependencyApiError
+            ? err.message
+            : err instanceof Error
+              ? err.message
+              : undefined,
+      })
+    } finally {
+      setBusy(false)
+    }
+  }
+
+  return (
+    <Select
+      value={dependency.constraint_type}
+      onValueChange={handleChange}
+      disabled={busy}
+    >
+      <SelectTrigger
+        className="h-8 w-[9.5rem] text-xs"
+        aria-label={`Typ der Abhängigkeit ${dependency.from.label} → ${dependency.to.label}`}
+      >
+        <SelectValue />
+      </SelectTrigger>
+      <SelectContent>
+        {DEPENDENCY_CONSTRAINT_TYPES.map((t) => (
+          <SelectItem key={t} value={t}>
+            {DEPENDENCY_CONSTRAINT_LABELS[t]}
+          </SelectItem>
+        ))}
+      </SelectContent>
+    </Select>
+  )
+}
+
+/**
+ * Abstand inline ändern — geschrieben wird beim Verlassen des Feldes oder mit
+ * Enter, nicht bei jedem Tastendruck. Sonst entstünde je Ziffer eine Anfrage
+ * und je Ziffer eine Audit-Zeile.
+ */
+function InlineLagCell({
+  projectId,
+  dependency,
+  onChanged,
+}: {
+  projectId: string
+  dependency: ResolvedDependency
+  onChanged: () => void
+}) {
+  const [text, setText] = React.useState(String(dependency.lag_days ?? 0))
+  const [busy, setBusy] = React.useState(false)
+
+  async function commit() {
+    const value = Number.parseInt(text, 10)
+    if (
+      text.trim() === "" ||
+      !Number.isFinite(value) ||
+      value < DEPENDENCY_LAG_MIN ||
+      value > DEPENDENCY_LAG_MAX
+    ) {
+      // Ungültige Eingabe verwirft sich selbst statt eine Fehlermeldung zu
+      // erzeugen — der alte Wert steht sofort wieder da.
+      setText(String(dependency.lag_days ?? 0))
+      return
+    }
+    if (value === (dependency.lag_days ?? 0)) return
+    setBusy(true)
+    try {
+      await updateDependency(projectId, dependency.id, { lag_days: value })
+      toast.success("Abstand geändert")
+      onChanged()
+    } catch (err) {
+      setText(String(dependency.lag_days ?? 0))
+      toast.error("Änderung fehlgeschlagen", {
+        description:
+          err instanceof DependencyApiError
+            ? err.message
+            : err instanceof Error
+              ? err.message
+              : undefined,
+      })
+    } finally {
+      setBusy(false)
+    }
+  }
+
+  return (
+    <Input
+      type="number"
+      inputMode="numeric"
+      value={text}
+      min={DEPENDENCY_LAG_MIN}
+      max={DEPENDENCY_LAG_MAX}
+      disabled={busy}
+      onChange={(e) => setText(e.target.value)}
+      onBlur={() => void commit()}
+      onKeyDown={(e) => {
+        if (e.key === "Enter") {
+          e.preventDefault()
+          void commit()
+        }
+      }}
+      className="h-8 w-20 text-xs"
+      aria-label={`Abstand in Tagen für ${dependency.from.label} → ${dependency.to.label}`}
+    />
+  )
 }
