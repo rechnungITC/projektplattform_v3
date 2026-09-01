@@ -606,7 +606,8 @@ Deploy, aber sie sind nicht erledigt und hatten bis heute **keine** Followup-Ken
   Rückgängig im Gantt (der einzige `undo`-Treffer ist ein Kommentar, der es für
   PROJ-25-β/γ reserviert), `planned_start`/`planned_end` stehen im Feld-Audit, und
   eine Kaskade über 30 Nachfolger schriebe **60** append-only Zeilen gegen heute
-  **207** insgesamt. Empfohlene Reihenfolge: **PROJ-Y-155a → β.1 → CIA-Pass → β.2**.
+  **207** insgesamt. Reihenfolge **PROJ-Y-155a → β.1 → CIA-Pass → β.2** — am
+  2026-09-01 als **Nutzer-Entscheid** bestätigt, also nicht mehr bloß empfohlen.
   *Quelle: PROJ-155 Fundament-Entscheidung; Design-Pass 2026-09-01 mit
   Live-Messung gegen Prod.*
 

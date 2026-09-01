@@ -355,10 +355,19 @@ Meilenstein-Alarm bei Kaskade · Kaskade über Projektgrenzen (PROJ-27
 
 ---
 
-## Empfohlene Reihenfolge
+## Reihenfolge — Nutzer-Entscheid 2026-09-01
 
 **PROJ-Y-155a** (Netzschutz: Baseline + angemeldeter Durchlauf) → **β.1** (Kante wird ein
 Objekt) → CIA-Pass → **β.2** (Auto-Scheduling).
 
 β.1 ohne PROJ-Y-155a wäre ein Eingriff in 2091 ungesicherte Zeilen; und die Fixture-Lane,
 die 155a baut, ist genau die, die β.1 zum Prüfen braucht.
+
+**Entschieden, nicht mehr vorgeschlagen:** der Nutzer hat diese Reihenfolge am
+2026-09-01 bestätigt. Wer β.1 vor PROJ-Y-155a zieht, weicht damit von einem
+Nutzer-Entscheid ab und schuldet dafür eine Begründung — nicht bloß von einer
+Empfehlung.
+
+Die drei offenen Architekturfragen (Q1 Rechenort, Q2 Ort des Schalters, Q3 CIA-Pass für
+β.2) bleiben **unentschieden** und gehören in `/architecture` für β.2. Sie blockieren
+weder PROJ-Y-155a noch β.1.
