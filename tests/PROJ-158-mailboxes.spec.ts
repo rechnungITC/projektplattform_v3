@@ -164,23 +164,21 @@ test.describe("PROJ-158 — Postfach-Anbindung", () => {
   })
 
   /**
-   * BEFUND F-2 (High) — die Verbindungspruefung ist in Produktion strukturell
-   * unerreichbar.
+   * PROJ-Y-158a — die Verbindungspruefung erreicht den Anbieter.
    *
-   * `decryptMailboxCredential` ruft `decrypt_tenant_secret_with_key` mit dem
-   * Parameter `p_payload`. Die Funktion in Prod nimmt aber `p_secret_id uuid`
-   * — sie holt den Chiffretext SELBST aus `tenant_secrets`. Live gemessen:
-   * der Aufruf, wie die Anwendung ihn macht, meldet 42883 „function does not
-   * exist"; es gibt genau eine Ueberladung, und keine der vier
-   * Entschluesselungsfunktionen des Hauses nimmt einen uebergebenen
-   * Chiffretext. Ergebnis: jede Pruefung endet mit 503.
+   * Bis zum 2026-09-01 war dieser Fall ein `test.fail()`: er beschrieb den
+   * Soll-Zustand, weil `decryptMailboxCredential` eine Signatur rief, die es
+   * nicht gibt (`decrypt_tenant_secret_with_key` nimmt `p_secret_id uuid`,
+   * nicht `p_payload`), und jede Pruefung mit 503 endete. Mit der neuen
+   * INVOKER-Funktion `decrypt_user_mailbox_credential` laeuft er — der Marker
+   * ist deshalb entfernt statt umgeschrieben.
    *
-   * Als `test.fail()` geschrieben und nicht als Behauptung des Ist-Zustands:
-   * so beschreibt der Fall den SOLL-Zustand und schlaegt an, sobald jemand
-   * ihn behebt — statt den Defekt einzufrieren (Muster aus dem PROJ-51-/qa).
+   * Der Host loest nach RFC 2606 garantiert nirgends auf: die Pruefung macht
+   * damit einen ECHTEN Netzwerkversuch durch imapflow und endet in einem
+   * benannten Ergebnis, nicht in einem Dauerzustand (AC-158.8/AC-158.10).
    */
-  test.fail(
-    "5 — die Pruefung erreicht den Anbieter (AC-158.7/.8) — DEFEKT F-2",
+  test(
+    "5 — die Pruefung erreicht den Anbieter (AC-158.7/.8)",
     async ({ authenticatedPage: page }) => {
       await page.goto(MAILBOX_PATH)
       await removeAll(page)
@@ -194,12 +192,30 @@ test.describe("PROJ-158 — Postfach-Anbindung", () => {
       await page.getByRole("button", { name: "Verbindung prüfen" }).click()
       const res = await checked
 
-      // SOLL: die Pruefung laeuft und meldet ein Ergebnis (hier: nicht
-      // erreichbar, weil der Host nach RFC 2606 nirgends aufloest).
-      // IST: 503, weil der Chiffretext gar nicht erst entschluesselt wird.
       expect(res.status()).toBe(200)
       const outcome = await res.json()
       expect(outcome.result).toBe("unreachable")
+
+      // AC-158.9: der rohe System-/Anbieterfehler wird nicht durchgereicht.
+      // Der Host selbst DARF in der Antwort stehen — er ist die eigene
+      // Eingabe des Nutzers und steht ohnehin auf der Flaeche; geprueft wird
+      // der Fehlerkanal, nicht das Echo der Konfiguration.
+      const raw = JSON.stringify(outcome)
+      expect(raw).not.toContain("ENOTFOUND")
+      expect(raw).not.toContain("getaddrinfo")
+      expect(raw).not.toContain("EAI_AGAIN")
+      // Der Grund ist eine stabile Kennung, kein Systemtext.
+      expect(outcome.result).toBe("unreachable")
+      expect(outcome.mailbox.last_error_code).toBe("unreachable")
+      // Und das Passwort taucht nirgends auf.
+      expect(raw).not.toContain("nicht-echt-nur-test")
+
+      // Der Zustand traegt jetzt einen Zeitpunkt und einen benannten Grund.
+      const card = mailboxRows(page).filter({ hasText: label("Pruefung") })
+      await expect(card.getByText("Server nicht erreichbar")).toBeVisible({
+        timeout: 15_000,
+      })
+      await expect(card.getByText(/zuletzt geprüft am/)).toBeVisible()
 
       await removeAll(page)
     }

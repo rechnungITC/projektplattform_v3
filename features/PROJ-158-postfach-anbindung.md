@@ -782,3 +782,99 @@ als eigener Rückstand gebucht.
   — die Prüfung erreicht den Anbieter nicht. Nach dem Fix nachzuholen (Zugangsdaten fehlen).
 - **D-158.QA.2** AC-158.9/.10 sind **nicht ausübbar**, nicht „erfüllt". So gebucht.
 - **D-158.QA.3** Mobile Safari umgebungsbedingt übersprungen (PROJ-67/F2).
+
+---
+
+## PROJ-Y-158a behoben (2026-09-01) — die Verbindungsprüfung erreicht den Anbieter
+
+Der QA-Befund F-2 ist geschlossen. Migration
+`20260901120000_projy158a_mailbox_credential_decrypt` in Prod, eine Funktion, keine neue Tabelle,
+kein neues Paket.
+
+### Warum die Wiederverwendung nie möglich war — gemessen, nicht vermutet
+
+Der Fix ist **nicht** „Parametername korrigiert". Die Ursache liegt tiefer, und sie erklärt zugleich,
+warum die Vorfassung überhaupt so entstehen konnte:
+
+- `encrypt_tenant_secret(payload)` ist **rein** — nur `pgp_sym_encrypt`, keine Tabelle. Genau deshalb
+  war die Verschlüsselung wiederverwendbar, und genau deshalb sah die Gegenrichtung so aus, als
+  müsste sie es auch sein.
+- `decrypt_tenant_secret(p_secret_id)` liest die Zeile aus `tenant_secrets` **und prüft
+  `is_tenant_admin`**. Die Entschlüsselung trägt also die **Berechtigungsregel der Konnektoren** mit.
+
+Für ein nutzereigenes Postfach ist diese Regel in **beide** Richtungen falsch: der Eigentümer ist oft
+ein einfaches Mitglied und damit **kein** Admin (er käme nicht an sein eigenes Passwort), und die
+Mandanten-Administration darf ein fremdes Postfach gerade **nicht** lesen (AC-158.5b). Die
+Asymmetrie war also kein Versehen des Hauses, sondern der eingebaute Zugriffsschutz — und die
+Konnektor-Funktion war für Postfächer nie brauchbar.
+
+### `SECURITY INVOKER`, und das ist die eigentliche Entscheidung
+
+`decrypt_user_mailbox_credential(p_mailbox_id uuid, p_key text)` liest `user_mailboxes` im
+Rechtekontext des Aufrufers. Damit entscheiden die **vier Policies aus PROJ-158** — es gibt **keine
+zweite Berechtigungsstelle**. Eine `DEFINER`-Fassung müsste `user_id = auth.uid()` erneut hinschreiben
+und wäre eine zweite Wahrheit, die von der Policy abdriften kann; dasselbe Argument, mit dem
+PROJ-116/131/132 ihre Auswertungen als INVOKER bauen. Eine Post-Condition in der Migration scheitert
+laut, sollte die Funktion je auf `DEFINER` wechseln.
+
+**Nebenertrag:** die Kennung wird übergeben, nicht der Chiffretext — der verlässt die Datenbank jetzt
+gar nicht mehr. Vorher las die Route ihn nach Node, nur um ihn wieder hineinzureichen.
+
+### Nachweise
+
+**Live-Pentest Block F, 6/6 PASS gegen Prod, 0 Rückstände.** Zwei Vektoren tragen:
+
+- **F1** ruft die Funktion mit **genau den Parameternamen, die die Anwendung sendet**, und bekommt
+  `s3hr-geheim` zurück. Das ist der Vektor, der den Defekt gefunden hat.
+- **F3** ist der Nachweis der **Entwurfsentscheidung**, nicht nur des Fixes: der Mandanten-
+  Administrator desselben Mandanten bekommt `P0002 not_found`. Mit `DEFINER` wäre hier das Passwort
+  eines fremden Postfachs herausgekommen.
+- F2 falscher Schlüssel → `39000`, kein stiller Rückgabewert · F4 leerer Schlüssel → `P0001` ·
+  F5 `anon` → `42501` · F0 die Funktion ist nachweislich INVOKER.
+
+**E2E Fall 5 ist von `test.fail()` zur echten Zusicherung geworden** und fährt eine **echte**
+Verbindungsprüfung durch `imapflow` gegen einen Host, der nach RFC 2606 garantiert nirgends auflöst:
+`result: "unreachable"`, Zustand und Zeitpunkt gespeichert, Grund als stabile Kennung statt
+Systemtext, Passwort nirgends in der Antwort. **10/10 chromium, dreimal stabil.**
+
+**Rot-Grün beidseitig ausgeführt** (zurückgesetzt per Dateikopie, nicht `git checkout`): mit der alten
+Signatur fällt E2E-Fall 5 **und** 2 der 9 Signatur-Pins; danach wieder alles grün.
+
+**Der Schutz gegen die Wiederholung besteht aus zwei Hälften**, und keine trägt allein:
+`src/lib/mailboxes/credentials.test.ts` nagelt fest, **was die Anwendung sendet** (RPC-Name und die
+exakte Menge der Parameternamen) — ob die Datenbank es annimmt, kann ein Mock grundsätzlich nicht
+sagen; genau daran ist der Defekt vorbeigekommen. Die andere Hälfte ist Pentest-Vektor F1. Beide
+verweisen im Kommentar aufeinander.
+
+### Was dabei sonst korrigiert wurde
+
+Die 503-Meldung riet in **jedem** Fehlerfall zum erneuten Speichern — bei „Zeile nicht sichtbar" ein
+Rat, der nichts bewirkt. `decryptMailboxCredential` unterscheidet jetzt vier Gründe, und die Route
+bildet sie getrennt ab: `not_found` → **404**, „kein Geheimnis hinterlegt" → **422** (erneut speichern
+hilft wirklich), fehlender Serverschlüssel → **503**, sonstiger Fehlschlag → **503**.
+
+### Gates
+
+vitest **4142/4142** in 471 Dateien (+9) · ESLint 0 · tsc 11 = Baseline, **0 in Slice-Dateien** ·
+Build clean mit allen vier Flächen · migration-naming 0 · index-scope, token-drift,
+register-consistency je 0 · **Funktions-Inventar 301 → 307 aufgefrischt**.
+
+**Zum Inventar gesagt statt stillschweigend:** von den sechs neuen Zeilen stammt **eine** aus dieser
+Slice. Die anderen fünf sind Nachtrag fremder Spuren, deren Auffrischung ausgeblieben war —
+`accept_work_items_from_intent_bulk`/`_undo` (PROJ-153) und die drei `enforce_chat_*_consistency`
+(PROJ-Y-151a). Alle fünf werden von Migrationsdateien im Repo angelegt; es fehlt nichts, es war nur
+nicht nachgetragen. Verschwunden ist keine — genau der sichtbare Diff, für den PROJ-Y-148e das
+Inventar gebaut hat.
+
+### Offen
+
+**AC-158.7 ist damit erfüllt, aber die dritte Nachweis-Ebene fehlt weiter:** die Zusage „liest keine
+Nachricht" ist strukturell (nur `connect`/`list`/`logout`, kein `mailboxOpen`) und im Test über einen
+`Proxy`-Doppelgänger belegt, **nicht** gegen ein echtes Postfach, in dem hinterher nachweislich nichts
+als gelesen markiert ist. Dafür fehlen weiterhin Zugangsdaten. Die übrigen offenen Befunde bleiben:
+**PROJ-Y-158b** (AC-158.17, Vorbedingung für PROJ-159), **PROJ-Y-158c** (`anon`-TRUNCATE),
+**PROJ-Y-158d** (Paketzahl).
+
+**Neue Lücke benannt, mit gemessener Instanz:** das Funktions-Inventar aus PROJ-Y-148e führt nur
+**Namen**, keine Signaturen — sein Wächter hätte eine *fehlende* Funktion gefangen, aber nicht die
+*falsch gerufene* aus F-2. Registriert als **PROJ-Y-158e**.

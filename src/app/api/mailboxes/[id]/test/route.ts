@@ -58,9 +58,10 @@ export async function POST(_request: Request, ctx: Ctx) {
 
   const { data: row, error: readErr } = await supabase
     .from("user_mailboxes")
-    .select(
-      "id, provider, imap_host, imap_port, imap_security, imap_username, credential_encrypted"
-    )
+    // `credential_encrypted` steht hier NICHT mehr: die Entschluesselung
+    // geschieht seit PROJ-Y-158a in der Datenbank, der Chiffretext verlaesst
+    // sie gar nicht erst.
+    .select("id, provider, imap_host, imap_port, imap_security, imap_username")
     .eq("id", id)
     .maybeSingle()
 
@@ -75,16 +76,36 @@ export async function POST(_request: Request, ctx: Ctx) {
     )
   }
 
-  const credential = await decryptMailboxCredential(
-    supabase,
-    row.credential_encrypted as unknown as string
-  )
-  if (!credential) {
-    return apiError(
-      "credential_unavailable",
-      "Die hinterlegten Zugangsdaten konnten nicht gelesen werden. Bitte erneut speichern.",
-      503
-    )
+  // Uebergeben wird die Kennung; die Datenbankfunktion ist SECURITY INVOKER
+  // und liest die Zeile unter der RLS des Aufrufers (PROJ-Y-158a).
+  const credential = await decryptMailboxCredential(supabase, id)
+  if (!credential.ok) {
+    // Die Gruende fuehren zu verschiedenen naechsten Schritten und werden
+    // deshalb nicht in eine Meldung zusammengezogen. Die Vorfassung riet in
+    // jedem Fall zum erneuten Speichern — bei „nicht sichtbar" ein Rat, der
+    // nichts bewirkt.
+    switch (credential.reason) {
+      case "not_found":
+        return apiError("not_found", "Postfach nicht gefunden.", 404)
+      case "no_credential":
+        return apiError(
+          "credential_missing",
+          "Für dieses Postfach ist kein Passwort hinterlegt. Bitte erneut speichern.",
+          422
+        )
+      case "encryption_unavailable":
+        return apiError(
+          "encryption_unavailable",
+          "Der Server kann Zugangsdaten derzeit nicht entschlüsseln.",
+          503
+        )
+      default:
+        return apiError(
+          "credential_unavailable",
+          "Die hinterlegten Zugangsdaten konnten nicht gelesen werden.",
+          503
+        )
+    }
   }
 
   const result = await runMailboxCheck({
@@ -92,7 +113,7 @@ export async function POST(_request: Request, ctx: Ctx) {
     port: row.imap_port as number,
     security: row.imap_security as MailboxSecurity,
     username: row.imap_username as string,
-    password: credential.password,
+    password: credential.credential.password,
   })
 
   const status = STATUS_BY_CODE[result.code] ?? "error"
