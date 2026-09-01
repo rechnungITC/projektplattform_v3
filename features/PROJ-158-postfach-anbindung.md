@@ -9,8 +9,11 @@ Ein Mandant hinterlegt ein E-Mail-Postfach, dessen Zugangsdaten verschlüsselt a
 kann die Verbindung prüfen. **Diese Slice holt keine Mail ab** — sie stellt nur die Verbindung her
 und weist nach, dass sie trägt. Das Abholen ist PROJ-159.
 
-Erste Slice der Kette *Mail-Eingang als Stakeholder-Interaktion*: **158 Anbindung → 159 Abholung und
-Posteingang → 160 Zuweisung zum Projekt → 161 Zuleitungsregeln → 162 KI auf der Mail.**
+Erste Slice der Kette *Mail-Eingang als Stakeholder-Interaktion*: **Anbindung (diese Slice) →
+Abholung und Posteingang (PROJ-159) → Zuweisung zum Projekt → Zuleitungsregeln → KI auf der
+Mail.** Die drei letzten Glieder tragen bewusst **keine** Kennung — sie wird bei Anlage vergeben.
+Die Erstfassung versprach `160`/`161`/`162` im Voraus; `160` wurde am 2026-09-01 für eine
+Supply-Chain-Slice verbraucht, womit die Zusage brach. Entnummeriert in PROJ-164.
 
 ---
 
@@ -227,9 +230,11 @@ Bewusst nicht in dieser Slice, jeweils mit dem Ort, an den es gehört:
 
 - **Mails abholen, speichern, anzeigen** → PROJ-159. Diese Slice stellt die Verbindung her und
   weist nach, dass sie trägt.
-- **Zuweisung zu Projekten, Stakeholder-Erkennung** → PROJ-160.
-- **Zuleitungsregeln** (wiederkehrender Absender oder Empfänger → festes Projekt) → PROJ-161.
-- **KI (Sentiment, Zusammenfassung)** → PROJ-162, dort mit neuem AI-Zweck und vierfachem Lockstep.
+- **Zuweisung zu Projekten, Stakeholder-Erkennung** → die Zuweisungs-Slice (Kennung bei Anlage).
+- **Zuleitungsregeln** (wiederkehrender Absender oder Empfänger → festes Projekt) → die
+  Zuleitungsregeln-Slice (Kennung bei Anlage).
+- **KI (Sentiment, Zusammenfassung)** → die KI-Slice (Kennung bei Anlage), dort mit neuem AI-Zweck
+  und vierfachem Lockstep.
 - **Senden** (SMTP). PROJ-13 hat bereits einen ausgehenden Weg über Resend und Teams; ein zweiter
   über das Kundenpostfach wäre eine eigene Entscheidung, keine Nebenwirkung dieser Slice.
 - **Ablage per Weiterleitung** („E-Mail-Assistent": Mail an eine Sammeladresse weiterleiten oder als
@@ -266,7 +271,7 @@ Bewusst nicht in dieser Slice, jeweils mit dem Ort, an den es gehört:
 1. **Wo landet die Rückleitung der Zustimmung** (eine feste Adresse je Umgebung, und wie wird die
    Zuordnung zum Mandanten fälschungssicher mitgeführt)?
 2. **Ein Postfach je Mandant oder je Projekt?** AC-158.6 erlaubt mehrere je Mandant; ob ein Postfach
-   fest an ein Projekt gebunden werden kann, entscheidet mit, wie PROJ-161 seine Regeln schneidet.
+   fest an ein Projekt gebunden werden kann, entscheidet mit, wie die Zuleitungsregeln-Slice ihre Regeln schneidet.
 3. **Wann wird das Token erneuert** — beim Zugriff, oder vorausschauend in einem der bestehenden
    Cron-Läufe? Das Zweite hält die Postfachliste ehrlich, das Erste spart Aufrufe.
 4. **Wie wird die Registrierung beim Anbieter geführt** — eine Anwendungsregistrierung des
