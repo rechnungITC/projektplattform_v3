@@ -1,6 +1,6 @@
 # PROJ-158: Postfach-Anbindung (IMAP · Microsoft 365 · Gmail)
 
-## Status: In Review
+## Status: Approved
 ## Deployment Scope: —
 **Created:** 2026-08-31
 **Last Updated:** 2026-09-01
@@ -651,9 +651,16 @@ die Zahlen stammen daher aus Playwrights eigener Meldung.
 
 ---
 
-## QA Test Results (2026-09-01) — NICHT produktionsreif
+## QA Test Results (2026-09-01)
 
-**0 Critical / 1 High / 3 Medium / 1 Low / 1 Info.** Status bleibt `In Review`.
+**Stand nach PROJ-Y-158a: 0 Critical / 0 High / 3 Medium / 1 Low / 1 Info → `Approved`.**
+Der einzige High-Befund (**F-2**, Verbindungsprüfung strukturell unerreichbar) ist geschlossen —
+Nachweise im Abschnitt *PROJ-Y-158a behoben* am Ende dieser Datei. Die vier davon abhängigen
+Kriterien (158.7–158.10) sind in der Tabelle unten nachgezogen, der ursprüngliche Stand bleibt
+jeweils daneben stehen.
+
+*Verdikt des Durchgangs selbst (vor dem Fix):* **0 Critical / 1 High / 3 Medium / 1 Low / 1 Info —
+NICHT produktionsreif**, Status blieb `In Review`.
 
 Der Durchgang hat den Kern geschlossen, den `/backend` und `/frontend` ausdrücklich offen gelassen
 hatten — den **angemeldeten Browser-Durchlauf** —, und dabei einen Defekt gefunden, der die halbe
@@ -670,10 +677,10 @@ Slice betrifft.
 | 158.5 jeder verwaltet sein eigenes | ✅ | Pentest B1/B2 + E2E Fall 4 |
 | **158.5b nur der Eigentümer sieht es** | ✅ | **Pentest B4–B8 unter einem ECHTEN Mandanten-Administrator** (B0 belegt vorab, dass er wirklich Admin ist) **+ E2E Fall 4 in beide Richtungen** |
 | 158.6 mehrere Postfächer je Nutzer | ✅ | Pentest D2 (Name je Nutzer eindeutig), D1 (dieselbe Kennung zweimal abgewiesen) |
-| **158.7 Prüfung liest nur Ordnernamen** | ❌ **F-2** | strukturell unerreichbar — die Prüfung kommt nie beim Anbieter an |
-| **158.8 Ergebnis mit Grund** | ❌ **F-2** | Zeitpunkt und Zustand werden korrekt gezeigt (E2E Fall 3), ein *Prüfergebnis* kann aber nicht entstehen |
-| 158.9 kein roher Fehlertext | ⊘ | nicht ausübbar, solange 158.7 nicht läuft; die 503-Meldung selbst ist sauber |
-| 158.10 Zeitgrenze | ⊘ | nicht ausübbar (dieselbe Ursache) |
+| **158.7 Prüfung liest nur Ordnernamen** | ✅ *(nach PROJ-Y-158a)* | strukturell (nur `connect`/`list`/`logout`, kein `mailboxOpen`) + `Proxy`-Doppelgänger; **dritte Ebene offen** — kein Lauf gegen ein echtes Postfach, Zugangsdaten fehlen. — *Vorher (F-2):* strukturell unerreichbar, die Prüfung kam nie beim Anbieter an |
+| **158.8 Ergebnis mit Grund** | ✅ *(nach PROJ-Y-158a)* | E2E Fall 5 fährt eine **echte** Prüfung gegen einen RFC-2606-Host: `result: "unreachable"`, Zustand und Zeitpunkt gespeichert. — *Vorher (F-2):* Zeitpunkt und Zustand korrekt, ein *Prüfergebnis* konnte nicht entstehen |
+| 158.9 kein roher Fehlertext | ✅ *(nach PROJ-Y-158a)* | E2E Fall 5: Grund als **stabile Kennung** statt Systemtext, Passwort nirgends in der Antwort. — *Vorher:* nicht ausübbar, solange 158.7 nicht lief |
+| 158.10 Zeitgrenze | ✅ *(nach PROJ-Y-158a)* | `MAILBOX_CHECK_TIMEOUT_MS = 15_000` in `connection-test.ts`, Absage als benannter Zustand `timeout` statt Dauerzustand. — *Vorher:* nicht ausübbar (dieselbe Ursache) |
 | 158.11–158.14 | — | OAuth, ausdrücklich **β** |
 | 158.15 Zusage vor dem Speichern | ✅ | E2E Fall 1: der Satz steht dauerhaft in der Liste, nicht nur im Dialog |
 | 158.16 kein geteilter Audit-Trail | ✅ | Pentest A4/A5: weder im `entity_type`-CHECK noch in `_tracked_audit_columns` |
@@ -858,6 +865,16 @@ hilft wirklich), fehlender Serverschlüssel → **503**, sonstiger Fehlschlag �
 vitest **4142/4142** in 471 Dateien (+9) · ESLint 0 · tsc 11 = Baseline, **0 in Slice-Dateien** ·
 Build clean mit allen vier Flächen · migration-naming 0 · index-scope, token-drift,
 register-consistency je 0 · **Funktions-Inventar 301 → 307 aufgefrischt**.
+
+**Nach dem Nachziehen auf `main` (`1ec7b20`, bringt PROJ-155-β.1 und PROJ-Y-45r mit) erneut
+gemessen statt übernommen:** vitest **4178/4178** in 474 Dateien · ESLint **0 errors** (die 4
+Warnungen stammen aus `router-work-items-from-intent.skill-boundary.test.ts`, also PROJ-153, und
+stehen unverändert auch auf `main`) · tsc **11 = Baseline**, keiner in einer Slice-Datei — die
+erste Messung meldete irreführend **2**, das ist die `.next`-Falle aus PROJ-Y-143e, nach
+`rm -rf .next` sind es 11 · Build clean, alle vier Flächen im Manifest (`/api/mailboxes`,
+`/api/mailboxes/[id]`, `/api/mailboxes/[id]/test`, `/settings/postfaecher`) · alle vier
+Datei-Wächter OK. Der Merge von `main` lief **konfliktfrei**, auch an der Visual-Baseline
+`settings-tenant-chromium-linux.png`, die diese Slice mitbringt.
 
 **Zum Inventar gesagt statt stillschweigend:** von den sechs neuen Zeilen stammt **eine** aus dieser
 Slice. Die anderen fünf sind Nachtrag fremder Spuren, deren Auffrischung ausgeblieben war —
