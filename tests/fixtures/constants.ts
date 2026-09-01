@@ -93,6 +93,32 @@ export const E2E_ASSISTANT_PROJECT_ID = "e2e00000-0000-4e2e-8e2e-000000000005"
 export const E2E_ASSISTANT_PROJECT_NAME = "[E2E] Assistant Scrum Project"
 
 /**
+ * PROJ-Y-151b — a lane for the project-scoped AI chat (PROJ-151).
+ *
+ * Own tenant, same shared user, active tenant pinned by cookie — the light
+ * variant of the PROJ-Y-144d pattern (no second account needed, because this
+ * lane photographs nothing).
+ *
+ * Why not simply switch `ai_chat` on in the assistant tenant: PROJ-Y-144d
+ * writes that tenant's `active_modules` explicitly and states its purpose is
+ * "the assistant is on". Mixing an unrelated module into it would weaken
+ * exactly that statement. And not on `E2E_TENANT_ID` either — `ai_chat` adds a
+ * project-room tab, and the visual specs photograph the shell `fullPage`.
+ *
+ * NO AI provider is configured here, deliberately. A permanent fixture holding
+ * a copy of the owner's key would call a paid provider on every E2E run. The
+ * real provider round-trip is proven separately and on demand by
+ * `scripts/verify-prod-chat-roundtrip.mjs`; what this lane proves is the
+ * authenticated path through the UI — and, with the stub answering, that an
+ * empty answer is EXPLAINED rather than shown as a silent blank (AC-151H.4).
+ */
+export const E2E_CHAT_TENANT_ID = "e2e00000-0000-4e2e-8e2e-000000000010"
+export const E2E_CHAT_TENANT_NAME = "[E2E] KI-Chat Test"
+export const E2E_CHAT_TENANT_DOMAIN = "e2e-chat.projektplattform-v3.test"
+export const E2E_CHAT_PROJECT_ID = "e2e00000-0000-4e2e-8e2e-000000000011"
+export const E2E_CHAT_PROJECT_NAME = "[E2E] KI-Chat Projekt"
+
+/**
  * PROJ-Y-143l — a THIRD identity, owned exclusively by the authenticated
  * visual-regression spec. Own user, own tenant, own project.
  *
@@ -278,3 +304,110 @@ export const E2E_CONSTRUCTION_LEAD_STORAGE_STATE_PATH =
   "tests/fixtures/.auth/construction-lead-storage-state.json"
 export const E2E_CONSTRUCTION_VIEWER_STORAGE_STATE_PATH =
   "tests/fixtures/.auth/construction-viewer-storage-state.json"
+
+/* ------------------------------------------------------------------ *
+ * PROJ-Y-155a — Gantt lane                                            *
+ * ------------------------------------------------------------------ */
+
+/**
+ * Own tenant, for the reason PROJ-Y-143l established and PROJ-Y-144d/151b
+ * repeated: the lane's whole point is data that no other lane wants.
+ *
+ * Measured before choosing this over reusing an existing lane:
+ *   - the VISUAL lane seeds `project_type: "general"` *deliberately* — its
+ *     comment says "keeps the seed minimal — no trigger-spawned phases".
+ *     Turning it into a waterfall project with phases would change the
+ *     method-aware nav and move `project-room.png`;
+ *   - the CHAT lane is waterfall+erp and would fit the nav, but it has zero
+ *     phases and its chain spec asserts on a project whose content it owns;
+ *   - the CONSTRUCTION lane is `project_type: "construction"`, again a
+ *     different nav.
+ *
+ * The shared user signs in here (the assistant/chat pattern) rather than a
+ * dedicated one: the Gantt capture is scoped to the diagram element, not the
+ * shell, so account state — display name, membership count, branding — cannot
+ * reach the baseline. That is what makes reusing the identity safe here while
+ * PROJ-Y-143l still needed its own.
+ */
+export const E2E_GANTT_TENANT_ID = "e2e00000-0000-4e2e-8e2e-000000000012"
+export const E2E_GANTT_TENANT_NAME = "[E2E] Gantt Test"
+export const E2E_GANTT_TENANT_DOMAIN = "e2e-gantt.projektplattform-v3.test"
+
+/**
+ * Waterfall, because `WORK_ITEM_METHOD_VISIBILITY` only shows `work_package`
+ * for waterfall/pmi/prince2/vxt2, and the WBS tree is the thing under test.
+ */
+export const E2E_GANTT_PROJECT_ID = "e2e00000-0000-4e2e-8e2e-000000000013"
+export const E2E_GANTT_PROJECT_NAME = "[E2E] Gantt Wasserfall Projekt"
+
+/**
+ * Written explicitly, never left to the table default — PROJ-Y-143l's rule.
+ * Both module gates fail OPEN on a missing `tenant_settings` row, so a fixture
+ * that needs a module on must not rest on a fail-open.
+ */
+export const E2E_GANTT_ACTIVE_MODULES = ["risks", "decisions"] as const
+
+/**
+ * Every date is pinned and sits around `FIXED_NOW` (2026-03-05), so the
+ * calendar window is a pure function of the seed.
+ *
+ * `gantt-view.tsx:305-336` derives the window from phase + work-package dates
+ * and only falls back to `new Date()` when there are none — with dates seeded,
+ * the fallback is unreachable. What still reads the clock are the today line
+ * (`:1303`) and the "heute" badge (`:2030`), which is why the spec pins the
+ * clock as well. FIXED_NOW inside the window makes the line render, so it is
+ * covered rather than merely avoided.
+ */
+export const E2E_GANTT_PHASE_ANALYSE_ID =
+  "e2e00000-0000-4e2e-8e2e-000000000014"
+export const E2E_GANTT_PHASE_ANALYSE_NAME = "[E2E] Analyse"
+export const E2E_GANTT_PHASE_REALISIERUNG_ID =
+  "e2e00000-0000-4e2e-8e2e-000000000015"
+export const E2E_GANTT_PHASE_REALISIERUNG_NAME = "[E2E] Realisierung"
+
+/** Dated work package with two dated children — the ordinary case. */
+export const E2E_GANTT_WP_DATED_ID = "e2e00000-0000-4e2e-8e2e-000000000016"
+export const E2E_GANTT_WP_DATED_TITLE = "[E2E] Anforderungen erheben"
+export const E2E_GANTT_TASK_A1_ID = "e2e00000-0000-4e2e-8e2e-000000000017"
+export const E2E_GANTT_TASK_A1_TITLE = "[E2E] Interviews führen"
+export const E2E_GANTT_TASK_A2_ID = "e2e00000-0000-4e2e-8e2e-000000000018"
+export const E2E_GANTT_TASK_A2_TITLE = "[E2E] Lastenheft schreiben"
+
+/**
+ * Work package WITHOUT own dates but WITH dated children — the summary bar.
+ *
+ * This is the case PROJ-155-α built the rollup fix for and that production
+ * does not contain a single instance of: measured 2026-09-01, `0 of 138` live
+ * work items carry `derived_planned_start`, because all four dated items are
+ * roots without parents and no parent has dated children. Seeding it here is
+ * the first place the α fix is exercised end to end.
+ */
+export const E2E_GANTT_WP_DERIVED_ID = "e2e00000-0000-4e2e-8e2e-000000000019"
+export const E2E_GANTT_WP_DERIVED_TITLE = "[E2E] Systemauswahl"
+export const E2E_GANTT_TASK_B1_ID = "e2e00000-0000-4e2e-8e2e-00000000001a"
+export const E2E_GANTT_TASK_B1_TITLE = "[E2E] Marktübersicht"
+export const E2E_GANTT_TASK_B2_ID = "e2e00000-0000-4e2e-8e2e-00000000001b"
+export const E2E_GANTT_TASK_B2_TITLE = "[E2E] Bewertung"
+
+/** No dates, no children — the row that offers "Zeitraum aufziehen". */
+export const E2E_GANTT_WP_UNDATED_ID = "e2e00000-0000-4e2e-8e2e-00000000001c"
+export const E2E_GANTT_WP_UNDATED_TITLE = "[E2E] Umsetzung"
+
+/** One FS edge, so an arrow exists to photograph and to click. */
+export const E2E_GANTT_DEPENDENCY_ID = "e2e00000-0000-4e2e-8e2e-00000000001d"
+
+export const E2E_GANTT_DATES = {
+  phaseAnalyse: { start: "2026-03-02", end: "2026-03-20" },
+  phaseRealisierung: { start: "2026-03-23", end: "2026-04-17" },
+  wpDated: { start: "2026-03-02", end: "2026-03-10" },
+  taskA1: { start: "2026-03-02", end: "2026-03-05" },
+  taskA2: { start: "2026-03-06", end: "2026-03-10" },
+  taskB1: { start: "2026-03-11", end: "2026-03-16" },
+  taskB2: { start: "2026-03-17", end: "2026-03-20" },
+} as const
+
+/** Expected rollup on `E2E_GANTT_WP_DERIVED_ID`: the children's envelope. */
+export const E2E_GANTT_DERIVED_EXPECTED = {
+  start: E2E_GANTT_DATES.taskB1.start,
+  end: E2E_GANTT_DATES.taskB2.end,
+} as const

@@ -138,6 +138,15 @@ const PURPOSE_MATRIX: Record<
   { method: ProviderMethod; cloud: boolean; ollama: boolean }
 > = {
   risks: { method: "generateRiskSuggestions", cloud: true, ollama: true },
+  // PROJ-153-α — Arbeitspakete aus dem Vorhaben. Inhaltsbasiert klassifiziert
+  // (kein Class-3-Pin), also MUSS jeder Cloud-Anbieter ihn können: fehlte
+  // einer, fiele der Router dort still auf den leeren Stub zurück, und das
+  // ist von "die KI fand nichts" nicht zu unterscheiden (PROJ-85).
+  work_items_from_project_intent: {
+    method: "generateWorkItemsFromIntent",
+    cloud: true,
+    ollama: true,
+  },
   // Diese drei laufen nicht über die Provider-Schnittstelle (kein eigener
   // Methodenname) — sie sind hier als "nicht anwendbar" verbucht, damit die
   // Erschöpfung trotzdem erzwungen wird.
@@ -190,6 +199,10 @@ const PURPOSE_MATRIX: Record<
     cloud: true,
     ollama: true,
   },
+  // PROJ-151-α — projektbezogener Chat. Muss von JEDEM Anbieter kommen: ein
+  // Chat, der bei einem Mandanten still auf den leeren Stub fällt, ist von
+  // "das Modell hat nichts gesagt" nicht zu unterscheiden (PROJ-85).
+  project_chat: { method: "generateProjectChat", cloud: true, ollama: true },
 }
 
 describe("PROJ-80 — Capability-Matrix über die ganze AIPurpose-Union", () => {

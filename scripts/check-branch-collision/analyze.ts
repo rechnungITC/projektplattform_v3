@@ -19,7 +19,7 @@
  *      decrement` — was in a worktree at the moment the second session looked at it and read its
  *      zero commits as "not started".
  *
- * Hence the severity split: a live worktree or an existing tag stops you; recent unpushed-to-main
+ * Hence the severity split: a live worktree or an older tag stops you; recent unpushed-to-main
  * work only warns; historical debris is listed and ignored. Blocking on anything weaker would
  * reproduce the noise problem instead of the fix.
  *
@@ -41,6 +41,14 @@ export type RefInput = {
   mergedIntoMain?: boolean
   /** True when this worktree is the caller's own checkout — a claim by you, not by someone else. */
   isSelf?: boolean
+  /**
+   * Tags only: true when the tagged commit is contained in the current HEAD.
+   *
+   * Together with a fresh date this says "this lane is standing on the work the tag marks" — the
+   * tag equivalent of `isSelf`. A tag another lane has not merged yet is not reachable and keeps
+   * its block.
+   */
+  reachableFromHead?: boolean
 }
 
 export type Severity = "block" | "warn" | "info"
@@ -68,6 +76,35 @@ export type Analysis = {
 
 /** A ref whose tip is older than this is treated as debris rather than work in flight. */
 export const RECENT_DAYS = 7
+
+/**
+ * PROJ-Y-151c — how long a tag counts as "just shipped by whoever is standing on it".
+ *
+ * The tag rule reads "already deployed, check the register before rebuilding it". That reason does
+ * not fit the hours right after a deploy: the lane that shipped the slice routinely needs one more
+ * branch for a correction, and refusing it there is a pure false positive. It happened on
+ * 2026-08-27 — the PROJ-Y-151b closure tagged the slice and the very next branch was refused, on
+ * the lane's OWN tag, two minutes old. Since PROJ-Y-150c the verdict is a hard `deny`, so the
+ * guard's own advice ("re-run deliberately") could not help either.
+ *
+ * The register proposed two shapes. The precise one — exempt tags made in the current session —
+ * is NOT implementable and that was measured, not assumed: git keeps no reflog for tags
+ * (`core.logAllRefUpdates` covers refs/heads, refs/remotes and HEAD; `.git/logs/refs/tags/` does
+ * not exist), so a locally created tag is indistinguishable from a fetched one. What is left is
+ * the age window.
+ *
+ * 24 hours, not two: a closure run — merge, wait for the production deploy, measure, book — takes
+ * the better part of an hour, and follow-up corrections keep arriving through the same working
+ * day. A two-hour window was tried first and already missed this very case ten hours later.
+ *
+ * The price, stated rather than hidden: within the window, a tag ANOTHER lane pushed in the last
+ * day also stops blocking, once you have pulled it. Two things keep that acceptable — the finding
+ * is still printed loudly with the tag name and its age, and the signal that actually catches a
+ * concurrent lane is the worktree, which is untouched and still blocks. A tag says the work is
+ * *finished*; an unmerged branch tip says it may be *in flight*, and that case has only warned
+ * since PROJ-150. Blocking harder on the weaker signal was the inversion this fixes.
+ */
+export const FRESH_TAG_HOURS = 24
 
 /** Sub-slice names the repo uses, plus the Greek letters the specs write them as. */
 const GREEK: Record<string, string> = {
@@ -193,6 +230,25 @@ function classify(ref: RefInput, slice: string, nowIso: string): Finding {
   }
 
   if (ref.kind === "tag") {
+    const tagAgeHours = ref.tipIsoDate ? daysBetween(ref.tipIsoDate, nowIso) * 24 : Number.POSITIVE_INFINITY
+    if (ref.reachableFromHead && tagAgeHours <= FRESH_TAG_HOURS) {
+      // Not a foreign claim: the tag is minutes old AND its commit is in this HEAD, so this lane
+      // shipped it and is now following up. Same reasoning as `isSelf` above — a guard that fires
+      // on your own fresh deploy is a guard that teaches people to switch it off.
+      //
+      // Deliberately still loud. `warn` prints the tag and its age, so a lane that pulled someone
+      // else's just-merged tag still sees it; it just is not refused.
+      return {
+        severity: "warn",
+        kind: ref.kind,
+        name: ref.name,
+        slice,
+        detail:
+          `a tag carries this slice, but it is ${tagAgeHours < 1 ? "less than an hour" : `${Math.floor(tagAgeHours)} hour(s)`} ` +
+          "old and already contained in your HEAD — you shipped it. Follow-up work is fine; " +
+          "starting the slice over is not.",
+      }
+    }
     return {
       severity: "block",
       kind: ref.kind,

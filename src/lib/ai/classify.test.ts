@@ -3,8 +3,13 @@ import { describe, expect, it } from "vitest"
 import {
   classifyNarrativeAutoContext,
   classifyRiskAutoContext,
+  classifyDocumentSummaryAutoContext,
 } from "./classify"
-import type { NarrativeAutoContext, RiskAutoContext } from "./types"
+import type {
+  DocumentSummaryAutoContext,
+  NarrativeAutoContext,
+  RiskAutoContext,
+} from "./types"
 
 function baseContext(): RiskAutoContext {
   return {
@@ -178,5 +183,79 @@ describe("classifyNarrativeAutoContext", () => {
 
   it("safely handles tenantDefault=3 with a populated whitelist context", () => {
     expect(classifyNarrativeAutoContext(baseNarrativeContext(), 3)).toBe(2)
+  })
+})
+
+
+/**
+ * PROJ-Y-151f — der Quintessenz-Skill zaehlt als Eingabe.
+ *
+ * Zwillingsfund zu PROJ-Y-151e im Projekt-Chat, gefunden beim Beheben von
+ * jenem: `buildDocumentSummaryPrompt` haengt `skill_instructions` unter
+ * "Zusaetzliche Vorgaben des Mandanten" in den Prompt, der Klassifizierer sah
+ * sie aber nicht. Der Summarizer-Skill wird je Mandant nachgesaet und ist ueber
+ * PROJ-77 aenderbar — eine Administration haette darueber Personendaten an ein
+ * Cloud-Modell schicken koennen, ohne dass der Class-3-Gate greift.
+ *
+ * Der Klassifizierer hatte bis hierher UEBERHAUPT keinen Test; auch das ist
+ * Teil des Befunds.
+ */
+describe("classifyDocumentSummaryAutoContext — Skill zaehlt als Eingabe", () => {
+  const ctx = (over: Partial<DocumentSummaryAutoContext> = {}): DocumentSummaryAutoContext => ({
+    document: {
+      document_id: "d1",
+      filename: "Angebot_Rohbau.pdf",
+      mime_type: "application/pdf",
+      privacy_class: 2,
+      text: "Das Angebot umfasst Rohbauarbeiten fuer den Bauabschnitt Nord.",
+      truncated: false,
+    },
+    skill_instructions: null,
+    ...over,
+  })
+
+  it("stuft auf Klasse 3 hoch, wenn der Skill Personendaten enthaelt", () => {
+    expect(
+      classifyDocumentSummaryAutoContext(
+        ctx({ skill_instructions: "Rueckfragen an thomas.meier@example.com." }),
+        2,
+      ),
+    ).toBe(3)
+  })
+
+  it("laesst einen unauffaelligen Skill bei der Klasse des Dokuments", () => {
+    // Gegenrichtung: ohne sie waere der Test auch mit einem Klassifizierer
+    // gruen, der pauschal 3 zurueckgibt.
+    expect(
+      classifyDocumentSummaryAutoContext(
+        ctx({ skill_instructions: "Fasse in fuenf Stichpunkten zusammen." }),
+        2,
+      ),
+    ).toBe(2)
+  })
+
+  it("prueft den Skill auch, wenn Dokument und Dateiname unauffaellig sind", () => {
+    // Der tragende Fall: die drei bisher geprueften Quellen sind sauber,
+    // allein der Skill traegt die Personendaten. Genau hier lief es vorbei.
+    expect(
+      classifyDocumentSummaryAutoContext(
+        ctx({ skill_instructions: "Ansprechpartnerin: Frau Meier, +49 170 1234567." }),
+        2,
+      ),
+    ).toBe(3)
+  })
+
+  it("kann die Untergrenze aus dem Volltext nicht senken", () => {
+    // Ein harmloser Skill darf ein bereits als Klasse 3 gemessenes Dokument
+    // nicht herunterstufen.
+    expect(
+      classifyDocumentSummaryAutoContext(
+        ctx({
+          document: { ...ctx().document, privacy_class: 3 },
+          skill_instructions: "Fasse knapp zusammen.",
+        }),
+        2,
+      ),
+    ).toBe(3)
   })
 })

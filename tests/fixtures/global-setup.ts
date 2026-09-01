@@ -13,6 +13,37 @@ import type { FullConfig } from "@playwright/test"
 
 import {
   E2E_ASSISTANT_PROJECT_ID,
+  E2E_CHAT_PROJECT_ID,
+  E2E_CHAT_PROJECT_NAME,
+  E2E_CHAT_TENANT_DOMAIN,
+  E2E_CHAT_TENANT_ID,
+  E2E_GANTT_ACTIVE_MODULES,
+  E2E_GANTT_DATES,
+  E2E_GANTT_DEPENDENCY_ID,
+  E2E_GANTT_PHASE_ANALYSE_ID,
+  E2E_GANTT_PHASE_ANALYSE_NAME,
+  E2E_GANTT_PHASE_REALISIERUNG_ID,
+  E2E_GANTT_PHASE_REALISIERUNG_NAME,
+  E2E_GANTT_PROJECT_ID,
+  E2E_GANTT_PROJECT_NAME,
+  E2E_GANTT_TASK_A1_ID,
+  E2E_GANTT_TASK_A1_TITLE,
+  E2E_GANTT_TASK_A2_ID,
+  E2E_GANTT_TASK_A2_TITLE,
+  E2E_GANTT_TASK_B1_ID,
+  E2E_GANTT_TASK_B1_TITLE,
+  E2E_GANTT_TASK_B2_ID,
+  E2E_GANTT_TASK_B2_TITLE,
+  E2E_GANTT_TENANT_DOMAIN,
+  E2E_GANTT_TENANT_ID,
+  E2E_GANTT_TENANT_NAME,
+  E2E_GANTT_WP_DATED_ID,
+  E2E_GANTT_WP_DATED_TITLE,
+  E2E_GANTT_WP_DERIVED_ID,
+  E2E_GANTT_WP_DERIVED_TITLE,
+  E2E_GANTT_WP_UNDATED_ID,
+  E2E_GANTT_WP_UNDATED_TITLE,
+  E2E_CHAT_TENANT_NAME,
   E2E_CONSTRUCTION_ACTIVE_MODULES,
   E2E_CONSTRUCTION_LEAD_DISPLAY_NAME,
   E2E_CONSTRUCTION_LEAD_EMAIL,
@@ -105,6 +136,26 @@ function assertConformantFixtureIds(): void {
     E2E_CONSTRUCTION_PROJECT_TRADE_ID,
     E2E_CONSTRUCTION_SECTION_ROOT_ID,
     E2E_CONSTRUCTION_SECTION_CHILD_ID,
+    // PROJ-Y-151b — the chat lane. The project id travels through
+    // `/projects/[id]/ki-chat` and every chat API call the page makes.
+    E2E_CHAT_TENANT_ID,
+    E2E_CHAT_PROJECT_ID,
+    // PROJ-Y-155a — the Gantt lane. Every id here crosses the same zod
+    // boundary: the project id through `/projects/[id]/planung`, the phase and
+    // work-item ids through the PATCH routes the drag handlers call, and the
+    // dependency id through `DELETE …/dependencies/[did]`.
+    E2E_GANTT_TENANT_ID,
+    E2E_GANTT_PROJECT_ID,
+    E2E_GANTT_PHASE_ANALYSE_ID,
+    E2E_GANTT_PHASE_REALISIERUNG_ID,
+    E2E_GANTT_WP_DATED_ID,
+    E2E_GANTT_TASK_A1_ID,
+    E2E_GANTT_TASK_A2_ID,
+    E2E_GANTT_WP_DERIVED_ID,
+    E2E_GANTT_TASK_B1_ID,
+    E2E_GANTT_TASK_B2_ID,
+    E2E_GANTT_WP_UNDATED_ID,
+    E2E_GANTT_DEPENDENCY_ID,
   }).filter(([, id]) => !RFC_4122_V4.test(id))
 
   if (offenders.length > 0) {
@@ -452,6 +503,352 @@ async function globalSetup(config: FullConfig): Promise<void> {
       console.warn(
         `[PROJ-Y-144d globalSetup] assistant ${step.label} seed failed ` +
           `(assistant chain spec will skip): ${error.message}`,
+      )
+      break
+    }
+  }
+
+  // PROJ-Y-151b — the chat lane. Same shape as the assistant lane above: own
+  // tenant, shared user, active tenant pinned by cookie in `auth-fixture.ts`.
+  // See `E2E_CHAT_TENANT_ID` in constants.ts for why it is not the assistant
+  // tenant and not the shared one — and why NO AI provider is seeded here.
+  const chatSeedSteps: {
+    label: string
+    run: () => PromiseLike<{ error: { message: string } | null }>
+  }[] = [
+    {
+      label: "tenant",
+      run: () =>
+        admin.from("tenants").upsert(
+          {
+            id: E2E_CHAT_TENANT_ID,
+            name: E2E_CHAT_TENANT_NAME,
+            domain: E2E_CHAT_TENANT_DOMAIN,
+            created_by: E2E_USER_ID,
+            language: "de",
+            branding: {},
+            // Before seeding, not after: audit rows are append-only since
+            // PROJ-130-α and outlive their tenant (PROJ-Y-146b).
+            audit_lifecycle_exempt: true,
+          },
+          { onConflict: "id" },
+        ),
+    },
+    {
+      label: "membership",
+      run: () =>
+        admin.from("tenant_memberships").upsert(
+          { tenant_id: E2E_CHAT_TENANT_ID, user_id: E2E_USER_ID, role: "admin" },
+          { onConflict: "tenant_id,user_id" },
+        ),
+    },
+    {
+      label: "settings",
+      run: () =>
+        admin.from("tenant_settings").upsert(
+          {
+            tenant_id: E2E_CHAT_TENANT_ID,
+            // Written explicitly, not left to the table default: both gates
+            // (`requireModuleActive` and the nav registry) fail OPEN when the
+            // settings row is missing, so a fixture whose whole point is
+            // "ai_chat is on" must not rest on a fail-open (PROJ-Y-144d).
+            active_modules: ["ai_chat", "risks", "decisions"],
+            // Explizit Klasse 2. Ohne Angabe gilt die strengste Vorgabe (3),
+            // und dann waere JEDE Frage class-3-gesperrt — der Spec haette
+            // die Sperre gemessen statt des Normalfalls, und zwar abhaengig
+            // von einer Vorgabe, die er nicht selbst setzt.
+            privacy_defaults: { default_class: 2 },
+          },
+          { onConflict: "tenant_id" },
+        ),
+    },
+    {
+      label: "project",
+      run: () =>
+        admin.from("projects").upsert(
+          {
+            id: E2E_CHAT_PROJECT_ID,
+            tenant_id: E2E_CHAT_TENANT_ID,
+            name: E2E_CHAT_PROJECT_NAME,
+            description:
+              "Einführung eines ERP-Systems auf Basis von MS Dynamics.",
+            project_type: "erp",
+            project_method: "waterfall",
+            responsible_user_id: E2E_USER_ID,
+            created_by: E2E_USER_ID,
+          },
+          { onConflict: "id" },
+        ),
+    },
+  ]
+
+  for (const step of chatSeedSteps) {
+    const { error } = await step.run()
+    if (error) {
+      console.warn(
+        `[PROJ-Y-151b globalSetup] chat ${step.label} seed failed ` +
+          `(chat chain spec will skip): ${error.message}`,
+      )
+      break
+    }
+  }
+
+  // 3d) PROJ-Y-155a — the Gantt lane.
+  //
+  // Everything is date-pinned so the calendar window is a pure function of the
+  // seed: `gantt-view.tsx:305-336` derives it from phase + work-package dates
+  // and only reaches its `new Date()` fallback when there are none.
+  //
+  // The shape is chosen so one project exercises all four row cases the Gantt
+  // can render, rather than one case four times:
+  //   - dated work package with dated children   -> ordinary bar + WBS indent
+  //   - UNDATED work package with dated children -> summary bar from the
+  //     PROJ-155-α rollup. Production contains zero instances of this
+  //     (measured 2026-09-01: 0 of 138 live work items carry
+  //     `derived_planned_start`), so it has never been rendered anywhere.
+  //   - undated work package without children    -> the "Zeitraum aufziehen"
+  //     affordance
+  //   - one FS dependency                        -> an arrow to photograph
+  const ganttSeedSteps: {
+    label: string
+    run: () => PromiseLike<{ error: { message: string } | null }>
+  }[] = [
+    {
+      label: "tenant",
+      run: () =>
+        admin.from("tenants").upsert(
+          {
+            id: E2E_GANTT_TENANT_ID,
+            name: E2E_GANTT_TENANT_NAME,
+            domain: E2E_GANTT_TENANT_DOMAIN,
+            created_by: E2E_USER_ID,
+            language: "de",
+            branding: {},
+            // Before seeding, not after — audit rows are append-only since
+            // PROJ-130-α and outlive their tenant (PROJ-Y-146b).
+            audit_lifecycle_exempt: true,
+          },
+          { onConflict: "id" },
+        ),
+    },
+    {
+      label: "membership",
+      run: () =>
+        admin.from("tenant_memberships").upsert(
+          {
+            tenant_id: E2E_GANTT_TENANT_ID,
+            user_id: E2E_USER_ID,
+            role: "admin",
+          },
+          { onConflict: "tenant_id,user_id" },
+        ),
+    },
+    {
+      label: "settings",
+      run: () =>
+        admin.from("tenant_settings").upsert(
+          {
+            tenant_id: E2E_GANTT_TENANT_ID,
+            // Explicit, never the table default (PROJ-Y-143l's rule): both
+            // module gates fail OPEN on a missing row, so a fixture must not
+            // rest on a fail-open. `holiday_region` is deliberately left unset
+            // — PROJ-53-β paints holidays from it, and a region would make the
+            // capture depend on a calendar library's data.
+            active_modules: [...E2E_GANTT_ACTIVE_MODULES],
+          },
+          { onConflict: "tenant_id" },
+        ),
+    },
+    {
+      label: "project",
+      run: () =>
+        admin.from("projects").upsert(
+          {
+            id: E2E_GANTT_PROJECT_ID,
+            tenant_id: E2E_GANTT_TENANT_ID,
+            name: E2E_GANTT_PROJECT_NAME,
+            // waterfall: `WORK_ITEM_METHOD_VISIBILITY` shows `work_package`
+            // only for waterfall/pmi/prince2/vxt2, and the WBS tree is what
+            // this lane exists to render.
+            project_type: "erp",
+            project_method: "waterfall",
+            // `lifecycle_status` bleibt beim Default `draft`, wie in jeder
+            // anderen Lane — der Gantt hängt nicht daran, und ein direkt
+            // gesetzter Wert würde die Zustandsmaschine aus PROJ-2 umgehen.
+            responsible_user_id: E2E_USER_ID,
+            created_by: E2E_USER_ID,
+          },
+          { onConflict: "id" },
+        ),
+    },
+    {
+      label: "phases",
+      run: () =>
+        admin.from("phases").upsert(
+          [
+            {
+              id: E2E_GANTT_PHASE_ANALYSE_ID,
+              tenant_id: E2E_GANTT_TENANT_ID,
+              project_id: E2E_GANTT_PROJECT_ID,
+              name: E2E_GANTT_PHASE_ANALYSE_NAME,
+              sequence_number: 1,
+              planned_start: E2E_GANTT_DATES.phaseAnalyse.start,
+              planned_end: E2E_GANTT_DATES.phaseAnalyse.end,
+              created_by: E2E_USER_ID,
+            },
+            {
+              id: E2E_GANTT_PHASE_REALISIERUNG_ID,
+              tenant_id: E2E_GANTT_TENANT_ID,
+              project_id: E2E_GANTT_PROJECT_ID,
+              name: E2E_GANTT_PHASE_REALISIERUNG_NAME,
+              sequence_number: 2,
+              planned_start: E2E_GANTT_DATES.phaseRealisierung.start,
+              planned_end: E2E_GANTT_DATES.phaseRealisierung.end,
+              created_by: E2E_USER_ID,
+            },
+          ],
+          { onConflict: "id" },
+        ),
+    },
+    {
+      // Parents before children: `work_items.parent_id` is a FK, and the
+      // hierarchy trigger validates the parent kind on insert.
+      label: "work packages",
+      run: () =>
+        admin.from("work_items").upsert(
+          [
+            {
+              id: E2E_GANTT_WP_DATED_ID,
+              tenant_id: E2E_GANTT_TENANT_ID,
+              project_id: E2E_GANTT_PROJECT_ID,
+              kind: "work_package",
+              title: E2E_GANTT_WP_DATED_TITLE,
+              status: "in_progress",
+              phase_id: E2E_GANTT_PHASE_ANALYSE_ID,
+              planned_start: E2E_GANTT_DATES.wpDated.start,
+              planned_end: E2E_GANTT_DATES.wpDated.end,
+              responsible_user_id: E2E_USER_ID,
+              created_by: E2E_USER_ID,
+            },
+            {
+              // No own dates on purpose — the rollup supplies them.
+              id: E2E_GANTT_WP_DERIVED_ID,
+              tenant_id: E2E_GANTT_TENANT_ID,
+              project_id: E2E_GANTT_PROJECT_ID,
+              kind: "work_package",
+              title: E2E_GANTT_WP_DERIVED_TITLE,
+              status: "todo",
+              phase_id: E2E_GANTT_PHASE_ANALYSE_ID,
+              responsible_user_id: E2E_USER_ID,
+              created_by: E2E_USER_ID,
+            },
+            {
+              // Neither dates nor children — the drag-to-create row.
+              id: E2E_GANTT_WP_UNDATED_ID,
+              tenant_id: E2E_GANTT_TENANT_ID,
+              project_id: E2E_GANTT_PROJECT_ID,
+              kind: "work_package",
+              title: E2E_GANTT_WP_UNDATED_TITLE,
+              status: "todo",
+              phase_id: E2E_GANTT_PHASE_REALISIERUNG_ID,
+              responsible_user_id: E2E_USER_ID,
+              created_by: E2E_USER_ID,
+            },
+          ],
+          { onConflict: "id" },
+        ),
+    },
+    {
+      label: "tasks",
+      run: () =>
+        admin.from("work_items").upsert(
+          [
+            {
+              id: E2E_GANTT_TASK_A1_ID,
+              tenant_id: E2E_GANTT_TENANT_ID,
+              project_id: E2E_GANTT_PROJECT_ID,
+              kind: "task",
+              title: E2E_GANTT_TASK_A1_TITLE,
+              status: "done",
+              parent_id: E2E_GANTT_WP_DATED_ID,
+              phase_id: E2E_GANTT_PHASE_ANALYSE_ID,
+              planned_start: E2E_GANTT_DATES.taskA1.start,
+              planned_end: E2E_GANTT_DATES.taskA1.end,
+              responsible_user_id: E2E_USER_ID,
+              created_by: E2E_USER_ID,
+            },
+            {
+              id: E2E_GANTT_TASK_A2_ID,
+              tenant_id: E2E_GANTT_TENANT_ID,
+              project_id: E2E_GANTT_PROJECT_ID,
+              kind: "task",
+              title: E2E_GANTT_TASK_A2_TITLE,
+              status: "in_progress",
+              parent_id: E2E_GANTT_WP_DATED_ID,
+              phase_id: E2E_GANTT_PHASE_ANALYSE_ID,
+              planned_start: E2E_GANTT_DATES.taskA2.start,
+              planned_end: E2E_GANTT_DATES.taskA2.end,
+              responsible_user_id: E2E_USER_ID,
+              created_by: E2E_USER_ID,
+            },
+            {
+              id: E2E_GANTT_TASK_B1_ID,
+              tenant_id: E2E_GANTT_TENANT_ID,
+              project_id: E2E_GANTT_PROJECT_ID,
+              kind: "task",
+              title: E2E_GANTT_TASK_B1_TITLE,
+              status: "todo",
+              parent_id: E2E_GANTT_WP_DERIVED_ID,
+              phase_id: E2E_GANTT_PHASE_ANALYSE_ID,
+              planned_start: E2E_GANTT_DATES.taskB1.start,
+              planned_end: E2E_GANTT_DATES.taskB1.end,
+              responsible_user_id: E2E_USER_ID,
+              created_by: E2E_USER_ID,
+            },
+            {
+              id: E2E_GANTT_TASK_B2_ID,
+              tenant_id: E2E_GANTT_TENANT_ID,
+              project_id: E2E_GANTT_PROJECT_ID,
+              kind: "task",
+              title: E2E_GANTT_TASK_B2_TITLE,
+              status: "todo",
+              parent_id: E2E_GANTT_WP_DERIVED_ID,
+              phase_id: E2E_GANTT_PHASE_ANALYSE_ID,
+              planned_start: E2E_GANTT_DATES.taskB2.start,
+              planned_end: E2E_GANTT_DATES.taskB2.end,
+              responsible_user_id: E2E_USER_ID,
+              created_by: E2E_USER_ID,
+            },
+          ],
+          { onConflict: "id" },
+        ),
+    },
+    {
+      label: "dependency",
+      run: () =>
+        admin.from("dependencies").upsert(
+          {
+            id: E2E_GANTT_DEPENDENCY_ID,
+            tenant_id: E2E_GANTT_TENANT_ID,
+            from_type: "work_package",
+            from_id: E2E_GANTT_WP_DATED_ID,
+            to_type: "work_package",
+            to_id: E2E_GANTT_WP_DERIVED_ID,
+            constraint_type: "FS",
+            lag_days: 0,
+            created_by: E2E_USER_ID,
+          },
+          { onConflict: "id" },
+        ),
+    },
+  ]
+
+  for (const step of ganttSeedSteps) {
+    const { error } = await step.run()
+    if (error) {
+      console.warn(
+        `[PROJ-Y-155a globalSetup] gantt ${step.label} seed failed ` +
+          `(gantt chain spec will skip): ${error.message}`,
       )
       break
     }

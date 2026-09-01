@@ -15,7 +15,12 @@
  * (platform-key path).
  */
 
-import { anthropic as defaultAnthropic, createAnthropic } from "@ai-sdk/anthropic"
+import { createAnthropic } from "@ai-sdk/anthropic"
+
+import {
+  CLOUD_PROVIDER_TIMEOUT_MS,
+  createTimeoutFetch,
+} from "../provider-timeout"
 import type { AnthropicProvider as AnthropicSDKProvider } from "@ai-sdk/anthropic"
 import { generateObject } from "ai"
 import { z } from "zod"
@@ -31,6 +36,9 @@ import type {
   RiskProposalsGenerationRequest,
   TrajectorySequenceGenerationRequest,
 } from "./types"
+import type { ProjectChatGenerationRequest } from "./types"
+import type { ProjectChatGenerationOutput } from "../types"
+import { runProjectChat } from "./project-chat-runner"
 import type {
   ClarifyingQuestionsGenerationOutput,
   DocumentSummaryGenerationOutput,
@@ -64,6 +72,11 @@ import {
   TrajectorySequenceResponseSchema,
 } from "./graph-purpose-prompts"
 import { runDocumentSummaryStrict } from "./document-summary-runner"
+import { runWorkItemsFromIntent } from "./work-items-from-intent-runner"
+import type {
+  WorkItemsFromIntentGenerationOutput,
+  WorkItemsFromIntentGenerationRequest,
+} from "./types"
 
 const RiskSuggestionSchema = z.object({
   title: z
@@ -265,9 +278,20 @@ export class AnthropicProvider implements AIProvider {
 
   constructor(modelId?: string, apiKey?: string) {
     this.modelId = modelId ?? process.env.ANTHROPIC_MODEL ?? "claude-opus-4-7"
-    this.sdkProvider = apiKey
-      ? createAnthropic({ apiKey })
-      : defaultAnthropic
+    // PROJ-152: siehe openai.ts — Zeitbudget auch auf dem Env-Key-Pfad.
+    this.sdkProvider = createAnthropic({
+      ...(apiKey ? { apiKey } : {}),
+      fetch: createTimeoutFetch("anthropic", CLOUD_PROVIDER_TIMEOUT_MS),
+    })
+  }
+
+  /**
+   * PROJ-153-alpha — Arbeitspakete aus dem Vorhaben (AC-153H.2).
+   */
+  async generateWorkItemsFromIntent(
+    request: WorkItemsFromIntentGenerationRequest,
+  ): Promise<WorkItemsFromIntentGenerationOutput> {
+    return runWorkItemsFromIntent(this.sdkProvider(this.modelId), request)
   }
 
   async generateRiskSuggestions(
@@ -473,6 +497,13 @@ export class AnthropicProvider implements AIProvider {
     request: DocumentSummaryGenerationRequest,
   ): Promise<DocumentSummaryGenerationOutput> {
     return runDocumentSummaryStrict(this.sdkProvider(this.modelId), request.context)
+  }
+
+  /** PROJ-151-α — Chat-Antwort über den geteilten Runner. */
+  async generateProjectChat(
+    request: ProjectChatGenerationRequest,
+  ): Promise<ProjectChatGenerationOutput> {
+    return runProjectChat(this.sdkProvider(this.modelId), request.context)
   }
 }
 

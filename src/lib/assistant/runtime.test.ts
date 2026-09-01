@@ -6,6 +6,16 @@ import {
 } from "./runtime"
 
 describe("classifyAssistantIntent", () => {
+  it.each([
+    "Leg mir ein Projekt an",
+    "Lege bitte ein neues Projekt an",
+    "Erstell mir ein Projekt",
+    "Mach ein neues Projekt für mich",
+    "Kannst du mir bitte ein Projekt anlegen?",
+  ])("recognizes colloquial project creation: %s", (input) => {
+    expect(classifyAssistantIntent(input).intent).toBe("project_create_draft")
+  })
+
   it("recognizes project status queries", () => {
     expect(
       classifyAssistantIntent("Wie ist der aktuelle Stand zum Projekt Apollo?")
@@ -27,10 +37,26 @@ describe("classifyAssistantIntent", () => {
     expect(result.draft?.project_type).toBe("software")
     expect(result.draft?.project_method).toBe("scrum")
   })
+
+  it("does not guess when a sentence combines materially different actions", () => {
+    expect(
+      classifyAssistantIntent(
+        "Leg ein Projekt an und erstelle eine Story Rechnungsimport",
+      ).intent,
+    ).toBe("needs_clarification")
+    expect(
+      classifyAssistantIntent(
+        "Wie steht Apollo und mach eine Story Rechnungsimport",
+      ).intent,
+    ).toBe("needs_clarification")
+    expect(
+      classifyAssistantIntent("Wie steht Apollo und leg ein Projekt an").intent,
+    ).toBe("needs_clarification")
+  })
 })
 
 describe("handleAssistantTurn", () => {
-  it("creates a wizard draft instead of a final project", async () => {
+  it("collects missing fields before creating a wizard draft", async () => {
     const supabase = makeSupabase({
       tenant_settings: {
         data: {
@@ -43,13 +69,10 @@ describe("handleAssistantTurn", () => {
           },
         },
       },
-      project_wizard_drafts: {
-        data: { id: "draft-1", name: "Kundenportal" },
-      },
     })
 
     const result = await handleAssistantTurn({
-      supabase,
+      supabase: supabase as never,
       tenantId: "tenant-1",
       userId: "user-1",
       inputText: "Erstelle ein neues Software Projekt zum Thema Kundenportal",
@@ -57,10 +80,98 @@ describe("handleAssistantTurn", () => {
     })
 
     expect(result.recognized_intent).toBe("project_create_draft")
-    expect(result.wizard_draft?.href).toBe(
-      "/projects/new/wizard?draftId=draft-1",
-    )
+    expect(result.wizard_draft).toBeNull()
+    expect(result.dialog_state).toMatchObject({
+      pending_intent: "project_create_draft",
+      requested_slot: "project_method",
+      slots: { name: "Kundenportal", project_type: "software" },
+    })
+    expect(supabase.from).not.toHaveBeenCalledWith("project_wizard_drafts")
     expect(supabase.from).not.toHaveBeenCalledWith("projects")
+  })
+
+  it("continues a project dialog instead of reclassifying a short answer", async () => {
+    const supabase = makeSupabase({ tenant_settings: { data: { assistant_settings: {} } } })
+    const first = await handleAssistantTurn({
+      supabase: supabase as never,
+      tenantId: "tenant-1",
+      userId: "user-1",
+      inputText: "Leg mir ein Projekt an",
+      modality: "text",
+    })
+    const second = await handleAssistantTurn({
+      supabase: supabase as never,
+      tenantId: "tenant-1",
+      userId: "user-1",
+      inputText: "Apollo",
+      modality: "text",
+      dialogState: first.dialog_state,
+    })
+
+    expect(second.recognized_intent).toBe("project_create_draft")
+    expect(second.dialog_state).toMatchObject({
+      revision: 1,
+      requested_slot: "project_type",
+      slots: { name: "Apollo" },
+    })
+  })
+
+  it("replaces a pending dialog when the user explicitly starts a new command", async () => {
+    const supabase = makeSupabase({ tenant_settings: { data: { assistant_settings: {} } } })
+    const first = await handleAssistantTurn({
+      supabase: supabase as never,
+      tenantId: "tenant-1",
+      userId: "user-1",
+      inputText: "Leg mir ein Projekt an",
+      modality: "text",
+    })
+    const replaced = await handleAssistantTurn({
+      supabase: supabase as never,
+      tenantId: "tenant-1",
+      userId: "user-1",
+      inputText: "Leg mir ein neues Projekt an",
+      modality: "text",
+      dialogState: first.dialog_state,
+    })
+
+    expect(replaced.dialog_state).toMatchObject({ revision: 0 })
+    expect(replaced.tool_calls[0]).toMatchObject({ key: "dialog.replace" })
+  })
+
+  it("clears a pending dialog when moving between global and project context", async () => {
+    const supabase = makeSupabase({ tenant_settings: { data: { assistant_settings: {} } } })
+    const first = await handleAssistantTurn({
+      supabase: supabase as never,
+      tenantId: "tenant-1",
+      userId: "user-1",
+      inputText: "Leg mir ein Projekt an",
+      modality: "text",
+    })
+    const changed = await handleAssistantTurn({
+      supabase: supabase as never,
+      tenantId: "tenant-1",
+      userId: "user-1",
+      inputText: "Apollo",
+      modality: "text",
+      projectId: "project-1",
+      dialogState: first.dialog_state,
+    })
+
+    expect(changed.dialog_state).toBeNull()
+    expect(changed.tool_calls[0]).toMatchObject({ key: "dialog.context_changed" })
+  })
+
+  it("returns a project-specific repair hint for an incomplete project phrase", async () => {
+    const supabase = makeSupabase({ tenant_settings: { data: { assistant_settings: {} } } })
+    const result = await handleAssistantTurn({
+      supabase: supabase as never,
+      tenantId: "tenant-1",
+      userId: "user-1",
+      inputText: "Irgendwas mit dem Projekt Apollo",
+      modality: "text",
+    })
+    expect(result.user_response).toContain("Projektstatus")
+    expect(result.user_response).toContain("Projektentwurf")
   })
 
   it("blocks navigation when the target module is disabled", async () => {
@@ -87,7 +198,7 @@ describe("handleAssistantTurn", () => {
     })
 
     const result = await handleAssistantTurn({
-      supabase,
+      supabase: supabase as never,
       tenantId: "tenant-1",
       userId: "user-1",
       inputText: "Gehe zu Risiken",
@@ -121,5 +232,5 @@ function makeSupabase(fixtures: Record<string, { data: unknown; error?: unknown 
     }
     return chain
   })
-  return { from } as never as { from: typeof from }
+  return { from, rpc: vi.fn() }
 }

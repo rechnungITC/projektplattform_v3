@@ -45,6 +45,17 @@ describe("parseWorkItemCommand — Erkennung (AC-144.2)", () => {
     expect(cmd?.projectQuery).toBe("ERP-Rollout")
   })
 
+  it("liest das Projekt vor der Story-Art (AC-150.19/23)", () => {
+    const cmd = parseWorkItemCommand(
+      "Mach im Projekt Apollo eine Story für den Rechnungsimport",
+    )
+    expect(cmd).toMatchObject({
+      requestedKind: "story",
+      title: "Rechnungsimport",
+      projectQuery: "Apollo",
+    })
+  })
+
   it("liest 'Neues Arbeitspaket: <Titel>'", () => {
     const cmd = parseWorkItemCommand("Neues Arbeitspaket: Schnittstelle abnehmen")
     expect(cmd?.requestedKind).toBe("work_package")

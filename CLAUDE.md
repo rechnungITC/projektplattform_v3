@@ -157,8 +157,10 @@ npm run test:all     # Both test suites
 npm run audit:prod              # npm audit --omit=dev --audit-level=high
 npm run check:migration-naming  # filename format + version-prefix collisions
 npm run check:index-scope       # INDEX.md: lifecycle status vs deployment scope
+npm run check:register-consistency  # OPEN-DEFERRED-STATUS.md: Tabelle vs Erzaehlteil vs INDEX
 npm run check:token-drift       # src/: keine neuen rohen Tailwind-Palette-Farben (Ratsche)
 npm run check:branch-collision -- PROJ-Y-45p   # ist die Slice schon vergeben? (lokal, kein CI-Gate)
+npm run hooks:install           # git-Hook, der die Kollisionspruefung erzwingt (PROJ-Y-150d)
 npm run check:osv-gate -- report.json  # OSV findings: fail only at HIGH+ (house norm)
 npm run check:schema-drift      # .from().select() columns vs migration schema (needs Docker)
 ```
@@ -167,8 +169,8 @@ npm run check:schema-drift      # .from().select() columns vs migration schema (
 
 A PR cannot merge until all of these pass. Enrollment lives in the branch rulesets on `main`, not in
 this file — when you add a workflow, enrol it there too, so this table never claims a gate that does not
-exist. **There are two active rulesets, so six contexts block in total:** `main protection` (id
-`15992143`) carries the five Actions checks below, and `main protection1` (id `15994143`) carries
+exist. **There are two active rulesets, so seven contexts block in total:** `main protection` (id
+`15992143`) carries the six Actions checks below, and `main protection1` (id `15994143`) carries
 `Vercel Preview Comments`. Checking only the first one is how a PR ends up `BLOCKED` with every Actions
 check green. Run their local equivalents before pushing:
 
@@ -179,6 +181,7 @@ check green. Run their local equivalents before pushing:
 | `Verify SELECT columns vs migration schema` | schema drift — a `.select()` naming a column no migration creates | `npm run check:schema-drift` |
 | `Verify migration filename naming + version-prefix uniqueness` | migration version collisions / malformed names | `npm run check:migration-naming` |
 | `Verify lifecycle status vs deployment scope in features/INDEX.md` | a `Deployed` row without a scope, a pre-deployment row carrying one, `Deployed + superseded`, an invented scope value, or a row whose cell count is wrong because a prose `\|` was left unescaped | `npm run check:index-scope` |
+| `Verify features/OPEN-DEFERRED-STATUS.md does not contradict itself` | **das Register widerspricht sich selbst.** Es fuehrt einen Followup in **zwei** Formen — Tabellenzeile und Erzaehl-Abschnitt — und hatte dafuer keinen Waechter: am 2026-08-28 wurde `PROJ-Y-151e` ausgeliefert, die Tabellenzeile nachgezogen, der Abschnitt nicht; **drei Tage** sagte dieselbe Datei ueber dieselbe Kennung „Erledigt und deployed“ und „(offen, sicherheitsrelevant)“, eine **geschlossene Invariante-#3-Luecke las sich als offen**. Geprueft werden **nur Paare**, nicht Vollstaendigkeit: **R1** Kennung in beiden Formen → gleicher Zustand, **R2** dieselbe Kennung in mehreren Tabellen → kein Widerspruch, **R3** Abschnitts-Scope = INDEX-Scope. Gemessen entschieden: eine Erzaehl-Kennung **ohne** Tabellenzeile ist **kein** Fehler (6 von 6 sind so — Konvention, kein Defekt; ein Fehler daraus waere am ersten Tag sechsfach falsch-rot). Unklare Prosa → **Warnung, nie Fehler**. Bestand gruen **ohne** Ausnahmeliste. Grenzen benannt: kein Status-Abgleich (INDEX-Status-Zellen sind Prosa), keine Vollstaendigkeitspruefung, kein „Next Available ID“-Check (gemessen wirkungslos — zustaendig ist `check:branch-collision`). **Enrolled 2026-08-31** (PROJ-157) — im selben Zug wie die Auslieferung, Ruleset `main protection` 5 → 6 Contexts | `npm run check:register-consistency` |
 | `Verify prod function inventory vs migration files` | eine Funktion, die in Prod existiert, aber von **keiner** Migrationsdatei angelegt wird — der PROJ-Y-148c-Fall (eine Migration lief fünf Tage in Prod, ohne im Repo zu sein). Reine Dateianalyse gegen das versionierte Inventar `supabase/prod-inventory/functions.txt`; **kein** DB-Zugang, kein Docker, keine Secrets. Grenzen gemessen und im Runbook benannt: **keine** Funktionskörper, Trigger, Grants oder Policies — und blind für alles, was nicht im Inventar steht, weshalb das Auffrischen ans Ende jeder Slice mit Migration gehört (`docs/production/function-inventory.md`). **Läuft auf jedem PR, nicht enrolled** — Repo-Eigner-Handoff (PROJ-Y-148e; der gleichartige Handoff aus PROJ-147 ist am 2026-08-20 eingelöst, dieser noch nicht) | `npm run check:function-inventory` |
 | `Verify no new direct Tailwind palette colors in src/` | **Rueckfall des Design-Systems auf rohe Palette-Farben.** Kein Bereinigungs-Auftrag, sondern eine **Ratsche**: PROJ-51 hat den Token-Layer gebaut und seine Konsumenten migriert — danach blieben **76 Treffer in 8 Dateien**, vier Monate spaeter unbewacht **732 in 85** (dieselbe Messung an fuenf Revisionen, Trendlinie im Runbook). Der Guard friert den Bestand ein, schlaegt auf jede **neue** Direktfarbe hart fehl (unbekannte Datei oder gewachsene Zahl) und laesst die Zahl fallen; Fortschritt ist bewusst nur eine Warnung, weil ein Guard, der auf Fortschritt fehlschlaegt, zur Umgehung erzieht. `--write` kann **nicht anheben** — sonst waere das Auffrischen die Ein-Befehl-Umgehung (der PROJ-147-Fall). Zwei dauerhafte Ausnahmen, beide aus der PROJ-51-Spec uebernommen und ebenfalls wachstumsgesperrt. Grenzen gemessen und benannt: kein rohes Hex (6 Dateien, alle berechtigt), Rohtext-Scan, nur `src/` (`docs/design/token-drift-guard.md`). **Laeuft auf jedem PR, nicht enrolled** — Repo-Eigner-Handoff wie bei PROJ-42/74/147/148e | `npm run check:token-drift` |
 | `Vercel Preview Comments` | the enrolled Vercel gate — lives in `main protection1`, not in the ruleset with the Actions checks | — (Vercel-side) |
@@ -302,8 +305,21 @@ Before modelling anything new, search for the primitive that already exists — 
 One router, many purposes. `src/lib/ai/` holds the purpose registry (`AIPurpose`, 14 values today),
 the tenant key-resolver (5 provider types), and the Class-3 gate. When adding a purpose:
 
-- Add it to `AIPurpose` **and** to the `ki_runs` / `tenant_ai_cost_caps` purpose CHECKs in the same
-  migration (lockstep — a missing CHECK value 5xx's in prod, as it did for `sentiment`/`coaching`).
+- Add it to `AIPurpose` **and** to **every** purpose register in the same migration. Es sind
+  **vier**, nicht zwei — die ersten beiden waren hier lange allein dokumentiert, die anderen zwei
+  hat der Pflicht-Live-Smoke von PROJ-153-α gefunden:
+  1. `ki_runs_purpose_check` — sonst 5xx in Prod, wie bei `sentiment`/`coaching`.
+  2. `tenant_ai_cost_caps_purpose_check` — derselbe Ausfall über den Kostendeckel.
+  3. `ki_suggestions_purpose_check` — **nur für Zwecke, die Vorschläge schreiben** (10 von 17
+     Zwecken stehen dort; `narrative`, `sentiment`, `coaching`,
+     `clarifying_questions_from_context`, `document_summary` und `project_chat` fehlen zu Recht).
+     Ohne ihn läuft die Generierung durch, ruft das Modell, **bezahlt** — und scheitert erst beim
+     Speichern mit `23514`. Ein 500 **nach** der Rechnung.
+  4. `enforce_ki_suggestion_immutability` — die hartkodierte Zweckliste des kontrollierten
+     Rückgängig-Auswegs. Fehlt der Zweck dort, ist sein 30-Sekunden-Undo **strukturell
+     unmöglich**: die RPC existiert, läuft, und wird vom Trigger abgewiesen. Immer per
+     **Anker-Ersetzung aus der Live-Definition**, nie neu getippt — die Funktion trägt daneben
+     die Spalten-Unveränderlichkeit.
 - Implement it for **every** cloud provider, not just the one you tested. The router silently falls back
   to the empty `stub` provider otherwise, which is indistinguishable from "the AI found nothing"
   (PROJ-85). A data-driven capability-matrix test over `AIPurpose` catches this.
@@ -404,6 +420,31 @@ Rules:
   Branches pro Slice sind hier der Normalfall (`proj-130` traegt 12, `proj-34` neun), es haette also
   fast immer angeschlagen. Der Guard trennt daher **lebende** Ansprueche (fremder Worktree, oder ein
   Tag → schon deployed) von Altlast und blockiert nur bei den beiden eindeutigen Signalen.
+  **Seit PROJ-Y-150a wird das erzwungen, nicht nur vorgeschrieben:** ein `PreToolUse`-Hook auf `Bash`
+  (`.claude/settings.json` → `scripts/hooks/branch-collision-guard.mjs`) faengt das **Anlegen** eines
+  Branches ab — `checkout -b`, `switch -c`, `worktree add -b`, `git branch <name>` — und **verweigert**
+  bei belegter Slice, mit Nennung des Halters. Wechseln, Auflisten, Loeschen und Rebasen bleiben
+  unberuehrt. **Umgehung nur ueber `BRANCH_COLLISION_GUARD=off`.**
+  **Zuverlaessiger ist der git-Hook (PROJ-Y-150d):** `npm run hooks:install` legt einen
+  `reference-transaction`-Hook ins **gemeinsame** `.git/hooks` (`core.hooksPath` zeigt dorthin). Er
+  haengt an **keiner** der drei Bedingungen oben, wirkt auch fuer `git` von Hand und hat nichts zu
+  parsen. Preis: `.git/hooks` ist **nicht versioniert** — je Klon einmal installieren, sonst fehlt die
+  Absicherung lautlos. Entfernen: `npm run hooks:uninstall`.
+  *Warum Verweigerung und nicht Rueckfrage (PROJ-Y-150c, gemessen):* die erste Fassung urteilte `ask`,
+  damit der **Mensch** der Umgehungsweg ist und kein Bypass-Schalter existiert. In diesem Repo ist das
+  wirkungslos — `.claude/settings.local.json` erlaubt `Bash(git *)`, jeder git-Befehl ist also vorab
+  freigegeben und es bleibt nichts zu fragen; vier Versuche fingen nichts ab. `deny` ist das einzige
+  Urteil, das eine pauschale Erlaubnisregel nicht schluckt. Der Preis ist benannt: der Schalter ist
+  jetzt der einzige Ausweg, und er steht **hier** statt in der Ablehnungsmeldung, damit er nicht bei
+  jeder Kollision in den Kontext eines Modells wandert. Der Hook ist
+  durchgaengig **fail-open** (Urteil ueber stdout, Exit immer 0) — er kann `git` nicht brechen.
+  Ansehen und abschalten: `/hooks`, oder `disableAllHooks` in den lokalen Einstellungen.
+  **Vorbehalt (PROJ-Y-150b, zweimal gemessen):** der Hook wirkt nur, wenn **beides** zutrifft —
+  (1) der **Arbeitsbaum** traegt die aktuelle `.claude/settings.json` (ein Checkout auf einem alten
+  Branch bekommt sie nie), und (2) die **laufende Sitzung hat sie geladen** (ein `git checkout`
+  ersetzt die Datei, ohne den Einstellungs-Watcher auszuloesen — dann hilft nur `/hooks` oeffnen oder
+  neu starten). **Beide Glieder scheitern lautlos:** ein fehlender Hook meldet sich nicht. Wer sich
+  auf ihn verlaesst, prueft es einmal aktiv; der Guard-**Befehl** laeuft unabhaengig von beidem.
 - Cleanup after merge: `git worktree remove <path>` + delete the branch.
 
 ## Continuous Improvement Agent

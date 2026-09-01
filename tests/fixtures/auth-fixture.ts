@@ -4,9 +4,11 @@ import { test as base, type Browser, type Page } from "@playwright/test"
 
 import {
   E2E_ASSISTANT_TENANT_ID,
+  E2E_CHAT_TENANT_ID,
   E2E_CONSTRUCTION_LEAD_STORAGE_STATE_PATH,
   E2E_CONSTRUCTION_TENANT_ID,
   E2E_CONSTRUCTION_VIEWER_STORAGE_STATE_PATH,
+  E2E_GANTT_TENANT_ID,
   E2E_STORAGE_STATE_PATH,
   E2E_TENANT_ID,
   E2E_VISUAL_STORAGE_STATE_PATH,
@@ -119,6 +121,15 @@ export const test = base.extend<{
    */
   assistantTenantPage: Page
   /**
+   * PROJ-Y-151b — signed in with the CHAT tenant active, where `ai_chat` is on
+   * and the seed project is a waterfall ERP project with a description (the
+   * chat grounds its answer in it).
+   *
+   * Own tenant for the same reason as the assistant lane: the module adds a
+   * project-room tab, and the visual specs photograph the shell `fullPage`.
+   */
+  chatTenantPage: Page
+  /**
    * PROJ-Y-143l — signed in as the visual lane's OWN user, in the visual
    * lane's own tenant. Used exclusively by
    * `PROJ-51-visual-regression-authenticated.spec.ts`.
@@ -130,6 +141,17 @@ export const test = base.extend<{
    * the shared user for every other authenticated spec.
    */
   visualPage: Page
+  /**
+   * PROJ-Y-155a — signed in with the GANTT tenant active: a waterfall project
+   * whose phases, WBS tree and one dependency are all date-pinned.
+   *
+   * Reuses the SHARED user's storage state and only re-pins the tenant (the
+   * assistant/chat pattern), which costs no extra sign-in. That is safe here
+   * for a reason the other visual lane did not have: the Gantt capture is
+   * scoped to the diagram element, so no account state — display name,
+   * membership count, branding — can reach the baseline.
+   */
+  ganttTenantPage: Page
   /**
    * PROJ-45-β `/qa` — the three seats of the defect chain, all in the
    * construction tenant (own tenant so no module has to be toggled on a shared
@@ -165,6 +187,14 @@ export const test = base.extend<{
     await context.close()
   },
 
+  chatTenantPage: async ({ browser, baseURL }, use) => {
+    if (skipUnlessProvisioned()) return
+    const context = await pinnedContext(browser, E2E_CHAT_TENANT_ID, baseURL)
+    const page = await context.newPage()
+    await use(page)
+    await context.close()
+  },
+
   visualPage: async ({ browser, baseURL }, use) => {
     if (skipUnlessProvisioned(E2E_VISUAL_STORAGE_STATE_PATH)) return
     const context = await pinnedContext(
@@ -173,6 +203,14 @@ export const test = base.extend<{
       baseURL,
       E2E_VISUAL_STORAGE_STATE_PATH,
     )
+    const page = await context.newPage()
+    await use(page)
+    await context.close()
+  },
+
+  ganttTenantPage: async ({ browser, baseURL }, use) => {
+    if (skipUnlessProvisioned()) return
+    const context = await pinnedContext(browser, E2E_GANTT_TENANT_ID, baseURL)
     const page = await context.newPage()
     await use(page)
     await context.close()

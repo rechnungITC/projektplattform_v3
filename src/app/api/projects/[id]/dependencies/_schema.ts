@@ -16,13 +16,21 @@
 
 import { z } from "zod"
 
+import { DEPENDENCY_CONSTRAINT_TYPES } from "@/types/dependency"
+
 export const dependencyEntityTypes = [
   "project",
   "phase",
   "work_package",
   "todo",
 ] as const
-export const dependencyConstraintTypes = ["FS", "SS", "FF", "SF"] as const
+/**
+ * PROJ-155-β.1 — aus `@/types/dependency` abgeleitet statt hier ein zweites
+ * Mal getippt. Die Liste stand vorher dreimal im Repo (hier, in
+ * `gantt-view.tsx` und in `dependencies-tab-client.tsx`); ein fünfter Typ
+ * hätte an zwei Stellen durchrutschen können.
+ */
+export const dependencyConstraintTypes = DEPENDENCY_CONSTRAINT_TYPES
 
 export const polymorphicSchema = z.object({
   from_type: z.enum(dependencyEntityTypes),

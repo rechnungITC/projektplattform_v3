@@ -31,6 +31,8 @@ import type {
   StakeholderProposalsGenerationRequest,
   TrajectorySequenceGenerationRequest,
 } from "./types"
+import type { ProjectChatGenerationRequest } from "./types"
+import type { ProjectChatGenerationOutput } from "../types"
 import type {
   ClarifyingQuestionsGenerationOutput,
   DocumentSummaryGenerationOutput,
@@ -48,6 +50,10 @@ import type {
   TrajectorySequenceSuggestion,
   SentimentGenerationOutput,
 } from "../types"
+import type {
+  WorkItemsFromIntentGenerationOutput,
+  WorkItemsFromIntentGenerationRequest,
+} from "./types"
 
 const TEMPLATES: Array<Omit<RiskSuggestion, "title"> & { titleSeed: string }> = [
   {
@@ -127,6 +133,22 @@ const NARRATIVE_FALLBACK_EXEC_SUMMARY =
 export class StubProvider implements AIProvider {
   readonly name = "stub" as const
   readonly modelId = "stub-deterministic-v1"
+
+  /**
+   * PROJ-153-alpha — bewusst LEER, kein erfundener Backlog.
+   *
+   * Der Stub laeuft, wenn kein zulaessiger Anbieter da ist. Eine erfundene
+   * Item-Liste waere von einer echten nicht zu unterscheiden — genau die
+   * Verwechslung, gegen die PROJ-137 den reason_code eingefuehrt hat.
+   */
+  async generateWorkItemsFromIntent(
+    _request: WorkItemsFromIntentGenerationRequest,
+  ): Promise<WorkItemsFromIntentGenerationOutput> {
+    return {
+      suggestions: [],
+      usage: { input_tokens: 0, output_tokens: 0, latency_ms: 0 },
+    }
+  }
 
   async generateRiskSuggestions(
     request: RiskGenerationRequest,
@@ -580,6 +602,20 @@ export class StubProvider implements AIProvider {
         latency_ms: Date.now() - start,
       },
     }
+  }
+
+  /**
+   * PROJ-151-α — der Stub antwortet bewusst mit LEEREM Text.
+   *
+   * Kein erfundener Satz: eine ausgedachte Antwort wäre von einer echten nicht
+   * zu unterscheiden und würde die Absage verschleiern, die der Router über
+   * `reason_code` mitteilt (PROJ-137). Leer + Grund ist ehrlich, erfunden wäre
+   * es nicht — dieselbe Entscheidung wie bei PROJ-80-α.
+   */
+  async generateProjectChat(
+    _request: ProjectChatGenerationRequest,
+  ): Promise<ProjectChatGenerationOutput> {
+    return { text: "", token_input: null, token_output: null }
   }
 }
 

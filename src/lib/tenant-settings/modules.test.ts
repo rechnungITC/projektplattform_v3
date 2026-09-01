@@ -66,6 +66,11 @@ describe("activeToggleableModules", () => {
       "output_rendering",
       "organization",
       "construction",
+      // PROJ-151-α — eigener Schalter für den projektbezogenen KI-Chat.
+      // Bewusst nicht unter `ai_proposals` (Vorschlagslisten) oder `assistant`
+      // (regelbasiert, PROJ-144): drei verschiedene Dinge unter einem Schalter
+      // wären für den Mandanten nicht steuerbar.
+      "ai_chat",
     ])
   })
 })

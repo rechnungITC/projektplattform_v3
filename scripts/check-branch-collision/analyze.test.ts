@@ -4,12 +4,18 @@ import {
   analyzeCollision,
   canonicalizeSliceId,
   extractSliceIds,
+  FRESH_TAG_HOURS,
   RECENT_DAYS,
   relatedKey,
   type RefInput,
 } from "./analyze"
 
 const NOW = "2026-08-26T14:00:00Z"
+
+/** PROJ-Y-151c — the tag-freshness window is measured in hours, not days. */
+function hoursBefore(nowIso: string, hours: number): string {
+  return new Date(Date.parse(nowIso) - hours * 3_600_000).toISOString()
+}
 
 function daysAgo(days: number): string {
   return new Date(Date.parse(NOW) - days * 86_400_000).toISOString()
@@ -125,6 +131,61 @@ describe("analyzeCollision", () => {
 
     expect(result.blocked).toBe(true)
     expect(result.findings[0].detail).toContain("already deployed")
+  })
+
+  // PROJ-Y-151c — the lane that just shipped a slice must be able to open one more branch.
+  //
+  // The exemption is deliberately narrow: fresh AND already contained in this HEAD. Each test
+  // below removes exactly one half, so a future change cannot widen it by accident.
+
+  it("lets the lane that just shipped a slice follow up on its own tag", () => {
+    const refs: RefInput[] = [
+      {
+        kind: "tag",
+        name: "v2.82.0-PROJ-Y-151b",
+        tipIsoDate: hoursBefore(NOW, 2),
+        reachableFromHead: true,
+      },
+    ]
+    const result = analyzeCollision("PROJ-Y-151b", refs, NOW)
+
+    expect(result.blocked).toBe(false)
+    // Still said out loud — the point is not to hide the tag, only to stop refusing.
+    expect(result.findings[0].severity).toBe("warn")
+    expect(result.findings[0].detail).toContain("you shipped it")
+  })
+
+  it("still blocks a fresh tag another lane has not merged into this HEAD", () => {
+    const refs: RefInput[] = [
+      {
+        kind: "tag",
+        name: "v2.82.0-PROJ-Y-151b",
+        tipIsoDate: hoursBefore(NOW, 2),
+        reachableFromHead: false,
+      },
+    ]
+    expect(analyzeCollision("PROJ-Y-151b", refs, NOW).blocked).toBe(true)
+  })
+
+  it("still blocks a tag older than the window even when it is in this HEAD", () => {
+    const refs: RefInput[] = [
+      {
+        kind: "tag",
+        name: "v2.75.0-PROJ-Y-45p",
+        tipIsoDate: hoursBefore(NOW, FRESH_TAG_HOURS + 1),
+        reachableFromHead: true,
+      },
+    ]
+    expect(analyzeCollision("PROJ-Y-45p", refs, NOW).blocked).toBe(true)
+  })
+
+  it("blocks a dateless tag rather than treating it as fresh", () => {
+    // Fail closed: `creatordate` is empty for no tag shape this repo uses, but if it ever were,
+    // an unknown age must not buy an exemption.
+    const refs: RefInput[] = [
+      { kind: "tag", name: "v1.0.0-PROJ-Y-45p", reachableFromHead: true },
+    ]
+    expect(analyzeCollision("PROJ-Y-45p", refs, NOW).blocked).toBe(true)
   })
 
   it("stays quiet on the normal case of one lane holding many branches for one slice", () => {

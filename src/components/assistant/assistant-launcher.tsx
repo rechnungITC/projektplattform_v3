@@ -14,6 +14,7 @@ import { usePathname, useRouter } from "next/navigation"
 import * as React from "react"
 import { toast } from "sonner"
 
+import { AssistantDialogControls } from "@/components/assistant/assistant-dialog-controls"
 import { AssistantWorkItemDraftCard } from "@/components/assistant/assistant-work-item-draft-card"
 import { Badge } from "@/components/ui/badge"
 import { Button } from "@/components/ui/button"
@@ -34,6 +35,11 @@ import {
   type ConfirmedWorkItem,
 } from "@/hooks/use-assistant-work-item-drafts"
 import { WORK_ITEM_DRAFT_RETENTION_DAYS } from "@/lib/assistant/work-item-command"
+import type {
+  AssistantContinuation,
+  AssistantDialogState,
+  ProjectDialogSlot,
+} from "@/lib/assistant/dialog-state"
 import { isModuleActive } from "@/lib/tenant-settings/modules"
 import type {
   AssistantIntent,
@@ -64,6 +70,15 @@ interface AssistantTurnResponse {
     wizard_draft: { id: string; name: string | null; href: string } | null
     /** PROJ-144 — der Sprach-Entwurf aus Schritt 1; noch kein Work-Item. */
     work_item_draft: AssistantWorkItemDraftRef | null
+    dialog_state: AssistantDialogState | null
+  }
+}
+
+interface AssistantResumeResponse {
+  session: { id: string }
+  result: {
+    dialog_state: AssistantDialogState | null
+    project_choices: AssistantTurnResponse["result"]["project_choices"]
   }
 }
 
@@ -77,6 +92,7 @@ interface AssistantMessage {
   choices?: AssistantTurnResponse["result"]["project_choices"]
   draft?: AssistantTurnResponse["result"]["wizard_draft"]
   workItemDraft?: AssistantWorkItemDraftRef | null
+  dialogState?: AssistantDialogState | null
 }
 
 /**
@@ -91,6 +107,24 @@ function workItemHref(projectId: string): string {
   return `/projects/${projectId}/backlog`
 }
 
+function resumedDialogPrompt(state: AssistantDialogState): string {
+  if (state.pending_intent === "project_create_draft") {
+    if (state.phase === "reviewing") {
+      return "Dein offener Projektentwurf ist wieder da. Bitte prüfe die Angaben."
+    }
+    if (state.requested_slot === "name") return "Wie soll das Projekt heißen?"
+    if (state.requested_slot === "project_type") return "Welchen Projekttyp soll ich verwenden?"
+    if (state.requested_slot === "project_method") return "Welche Projektmethode soll ich verwenden?"
+    return "Wie möchtest du das Projekt kurz beschreiben?"
+  }
+  if (state.phase === "choosing_project") {
+    return "Wähle das Projekt aus, in dem der Entwurf vorbereitet werden soll."
+  }
+  return state.requested_slot === "title"
+    ? "Wie soll die Position heißen?"
+    : "Welches Projekt meinst du?"
+}
+
 type SpeechRecognitionCtor = new () => SpeechRecognitionLike
 
 interface SpeechRecognitionAlternativeLike {
@@ -99,12 +133,15 @@ interface SpeechRecognitionAlternativeLike {
 
 interface SpeechRecognitionResultLike {
   0: SpeechRecognitionAlternativeLike
+  isFinal?: boolean
 }
 
 interface SpeechRecognitionResultEventLike {
   results: {
-    0: SpeechRecognitionResultLike
+    readonly length: number
+    [index: number]: SpeechRecognitionResultLike
   }
+  resultIndex?: number
 }
 
 type SpeechRecognitionErrorCode =
@@ -125,6 +162,7 @@ interface SpeechRecognitionErrorEventLike {
 
 interface SpeechRecognitionLike {
   lang: string
+  continuous: boolean
   interimResults: boolean
   maxAlternatives: number
   onresult: ((event: SpeechRecognitionResultEventLike) => void) | null
@@ -142,10 +180,11 @@ interface SpeechWindow extends Window {
 export function AssistantLauncher({ currentProjectId }: AssistantLauncherProps) {
   const router = useRouter()
   const pathname = usePathname() ?? "/"
-  const { tenantSettings } = useAuth()
+  const { currentTenant, tenantSettings, user } = useAuth()
   const [open, setOpen] = React.useState(false)
   const [input, setInput] = React.useState("")
   const [sessionId, setSessionId] = React.useState<string | null>(null)
+  const [dialogState, setDialogState] = React.useState<AssistantDialogState | null>(null)
   const [messages, setMessages] = React.useState<AssistantMessage[]>([])
   const [state, setState] = React.useState<
     "idle" | "listening" | "thinking" | "responding"
@@ -153,6 +192,13 @@ export function AssistantLauncher({ currentProjectId }: AssistantLauncherProps) 
   const [speechEnabled, setSpeechEnabled] = React.useState(false)
   const recognitionRef = React.useRef<SpeechRecognitionLike | null>(null)
   const manualStopRef = React.useRef(false)
+  const keepListeningRef = React.useRef(false)
+  const inputRef = React.useRef("")
+  const inputModalityRef = React.useRef<"text" | "voice">("text")
+  const speechBaseRef = React.useRef("")
+  const speechRestartTimerRef = React.useRef<number | null>(null)
+  const completionKeysRef = React.useRef(new Map<number, string>())
+  const sessionStorageKey = `assistant-session:${user.id}:${currentTenant?.id ?? "none"}`
 
   // PROJ-144 — Entwürfe, die in dieser Sitzung bestätigt oder verworfen wurden.
   // Ihre Karte verschwindet, damit nichts zweimal bestätigbar aussieht
@@ -188,16 +234,106 @@ export function AssistantLauncher({ currentProjectId }: AssistantLauncherProps) 
     [ttsEnabled],
   )
 
-  const submit = React.useCallback(
-    async (text: string) => {
-      const trimmed = text.trim()
-      if (!trimmed || state === "thinking") return
-      const userMessage: AssistantMessage = {
-        id: crypto.randomUUID(),
-        role: "user",
-        text: trimmed,
+  const resumeSession = React.useCallback(
+    async (
+      storedSessionId: string,
+      mode: "reload" | "conflict",
+      signal?: AbortSignal,
+    ) => {
+      const response = await fetch(
+        `/api/assistant/turns?session_id=${encodeURIComponent(storedSessionId)}`,
+        { signal },
+      )
+      if (!response.ok) {
+        sessionStorage.removeItem(sessionStorageKey)
+        return false
       }
-      setMessages((prev) => [...prev, userMessage])
+      const body = (await response.json()) as AssistantResumeResponse
+      const resumedState = body.result.dialog_state
+      if (!resumedState) {
+        sessionStorage.removeItem(sessionStorageKey)
+        setSessionId(null)
+        setDialogState(null)
+        return false
+      }
+
+      setSessionId(body.session.id)
+      setDialogState(resumedState)
+      sessionStorage.setItem(sessionStorageKey, body.session.id)
+      const resumedMessage: AssistantMessage = {
+        id: crypto.randomUUID(),
+        role: "assistant",
+        text:
+          mode === "conflict"
+            ? "Der Dialog wurde in einem anderen Fenster geändert. Hier ist der aktuelle Stand."
+            : resumedDialogPrompt(resumedState),
+        intent: resumedState.pending_intent,
+        status: "needs_clarification",
+        choices: body.result.project_choices,
+        dialogState: resumedState,
+      }
+      setMessages((prev) =>
+        mode === "reload"
+          ? [resumedMessage]
+          : [
+              ...prev.map((message) => ({ ...message, dialogState: null })),
+              resumedMessage,
+            ],
+      )
+      return true
+    },
+    [sessionStorageKey],
+  )
+
+  React.useEffect(() => {
+    let cancelled = false
+    const controller = new AbortController()
+    const storedSessionId = sessionStorage.getItem(sessionStorageKey)
+    if (!storedSessionId) {
+      queueMicrotask(() => {
+        if (cancelled) return
+        setSessionId(null)
+        setDialogState(null)
+        setMessages([])
+      })
+      return () => {
+        cancelled = true
+      }
+    }
+    queueMicrotask(() => {
+      if (cancelled) return
+      void resumeSession(storedSessionId, "reload", controller.signal).catch(
+        (error) => {
+          if (
+            !cancelled &&
+            !(error instanceof DOMException && error.name === "AbortError")
+          ) {
+            sessionStorage.removeItem(sessionStorageKey)
+          }
+        },
+      )
+    })
+    return () => {
+      cancelled = true
+      controller.abort()
+    }
+  }, [resumeSession, sessionStorageKey])
+
+  const submitTurn = React.useCallback(
+    async (text: string, continuation: AssistantContinuation | null = null) => {
+      const trimmed = text.trim()
+      if ((!trimmed && !continuation) || state === "thinking") return
+      const modality = continuation ? "text" : inputModalityRef.current
+      if (trimmed) {
+        const userMessage: AssistantMessage = {
+          id: crypto.randomUUID(),
+          role: "user",
+          text: trimmed,
+        }
+        setMessages((prev) => [...prev, userMessage])
+      }
+      inputRef.current = ""
+      inputModalityRef.current = "text"
       setInput("")
       setState("thinking")
 
@@ -208,19 +344,29 @@ export function AssistantLauncher({ currentProjectId }: AssistantLauncherProps) 
           body: JSON.stringify({
             session_id: sessionId,
             input_text: trimmed,
-            modality: "text",
+            modality,
             project_id: currentProjectId,
             client_context_path: pathname,
+            dialog_revision: continuation ? undefined : dialogState?.revision,
+            continuation,
           }),
         })
         if (!response.ok) {
           const body = (await response.json().catch(() => null)) as
-            | { error?: { message?: string } }
+            | { error?: { code?: string; message?: string } }
             | null
+          if (body?.error?.code === "assistant_dialog_conflict") {
+            if (sessionId && (await resumeSession(sessionId, "conflict"))) {
+              toast.info("Dialogstand aktualisiert")
+              return
+            }
+          }
           throw new Error(body?.error?.message ?? `HTTP ${response.status}`)
         }
         const body = (await response.json()) as AssistantTurnResponse
         setSessionId(body.session.id)
+        sessionStorage.setItem(sessionStorageKey, body.session.id)
+        setDialogState(body.result.dialog_state)
         setState("responding")
         const assistantMessage: AssistantMessage = {
           id: crypto.randomUUID(),
@@ -232,8 +378,12 @@ export function AssistantLauncher({ currentProjectId }: AssistantLauncherProps) 
           choices: body.result.project_choices,
           draft: body.result.wizard_draft,
           workItemDraft: body.result.work_item_draft,
+          dialogState: body.result.dialog_state,
         }
-        setMessages((prev) => [...prev, assistantMessage])
+        setMessages((prev) => [
+          ...prev.map((message) => ({ ...message, dialogState: null })),
+          assistantMessage,
+        ])
         // Der neue Entwurf liegt schon in der Datenbank — die Liste im Overlay
         // muss das mitbekommen, sonst zeigt sie einen veralteten Stand.
         if (body.result.work_item_draft) drafts.refresh()
@@ -255,8 +405,75 @@ export function AssistantLauncher({ currentProjectId }: AssistantLauncherProps) 
         setState("idle")
       }
     },
-    [currentProjectId, drafts, pathname, sessionId, speak, state],
+    [
+      currentProjectId,
+      dialogState,
+      drafts,
+      pathname,
+      resumeSession,
+      sessionId,
+      sessionStorageKey,
+      speak,
+      state,
+    ],
   )
+
+  const submit = React.useCallback(
+    (text: string) => submitTurn(text),
+    [submitTurn],
+  )
+
+  const continueDialog = React.useCallback(
+    (continuation: AssistantContinuation) => submitTurn("", continuation),
+    [submitTurn],
+  )
+
+  const handleProjectChoice = React.useCallback(
+    (projectId: string) => {
+      if (!dialogState) return
+      void continueDialog({
+        kind: "project_choice",
+        project_id: projectId,
+        expected_revision: dialogState.revision,
+      })
+    },
+    [continueDialog, dialogState],
+  )
+
+  const handleProjectApproval = React.useCallback(() => {
+    if (!dialogState || dialogState.pending_intent !== "project_create_draft") return
+    let completionKey = completionKeysRef.current.get(dialogState.revision)
+    if (!completionKey) {
+      completionKey = crypto.randomUUID()
+      completionKeysRef.current.set(dialogState.revision, completionKey)
+    }
+    void continueDialog({
+      kind: "approve_project",
+      expected_revision: dialogState.revision,
+      completion_key: completionKey,
+    })
+  }, [continueDialog, dialogState])
+
+  const handleProjectCorrection = React.useCallback(
+    (field: ProjectDialogSlot, value: string) => {
+      if (!dialogState || dialogState.pending_intent !== "project_create_draft") return
+      void continueDialog({
+        kind: "correct_project_field",
+        field,
+        value,
+        expected_revision: dialogState.revision,
+      })
+    },
+    [continueDialog, dialogState],
+  )
+
+  const handleDialogCancel = React.useCallback(() => {
+    if (!dialogState) return
+    void continueDialog({
+      kind: "cancel",
+      expected_revision: dialogState.revision,
+    })
+  }, [continueDialog, dialogState])
 
   /**
    * PROJ-144 — nach der Anlage: Erfolg melden, Sprung anbieten, Overlay offen
@@ -339,16 +556,30 @@ export function AssistantLauncher({ currentProjectId }: AssistantLauncherProps) 
 
     const recognition = new Ctor()
     recognition.lang = "de-DE"
-    recognition.interimResults = false
+    recognition.continuous = true
+    recognition.interimResults = true
     recognition.maxAlternatives = 1
+    speechBaseRef.current = inputRef.current.trim()
     recognition.onresult = (event) => {
-      const transcript = event.results[0][0].transcript
-      setInput(transcript)
+      const spokenSegments: string[] = []
+      for (let index = 0; index < event.results.length; index += 1) {
+        const transcript = event.results[index]?.[0]?.transcript.trim()
+        if (transcript) spokenSegments.push(transcript)
+      }
+      const nextInput = [speechBaseRef.current, spokenSegments.join(" ")]
+        .filter(Boolean)
+        .join(" ")
+      inputRef.current = nextInput
+      inputModalityRef.current = "voice"
+      setInput(nextInput)
     }
     recognition.onerror = (event) => {
       if (manualStopRef.current) return
       if (event.error === "no-speech") {
-        toast.info("Keine Sprache erkannt")
+        // Chrome/Edge melden eine normale Sprechpause teils als `no-speech`
+        // und lösen danach `onend` aus. Der Restart dort hält die Aufnahme
+        // offen, bis der Nutzer sie ausdrücklich beendet.
+        return
       } else if (event.error === "not-allowed") {
         toast.error("Mikrofonzugriff blockiert", {
           description:
@@ -374,19 +605,44 @@ export function AssistantLauncher({ currentProjectId }: AssistantLauncherProps) 
           description: event.message || "Der Textmodus bleibt verfügbar.",
         })
       }
+      keepListeningRef.current = false
       setState("idle")
     }
     recognition.onend = () => {
-      recognitionRef.current = null
-      manualStopRef.current = false
-      setState("idle")
+      if (manualStopRef.current || !keepListeningRef.current) {
+        recognitionRef.current = null
+        manualStopRef.current = false
+        setState("idle")
+        return
+      }
+
+      // Web Speech darf trotz `continuous=true` nach einer Pause enden. Vor
+      // dem Neustart wird das bisher Erkannte zur neuen Basis, damit die neue
+      // Result-Liste den vorhandenen Text nicht überschreibt.
+      speechBaseRef.current = inputRef.current.trim()
+      speechRestartTimerRef.current = window.setTimeout(() => {
+        speechRestartTimerRef.current = null
+        if (!keepListeningRef.current) return
+        try {
+          recognition.start()
+        } catch {
+          keepListeningRef.current = false
+          recognitionRef.current = null
+          setState("idle")
+          toast.error("Spracherkennung konnte nicht fortgesetzt werden", {
+            description: "Der bereits erkannte Text bleibt im Eingabefeld.",
+          })
+        }
+      }, 150)
     }
     recognitionRef.current = recognition
     manualStopRef.current = false
+    keepListeningRef.current = true
     setState("listening")
     try {
       recognition.start()
     } catch {
+      keepListeningRef.current = false
       recognitionRef.current = null
       setState("idle")
       toast.error("Spracherkennung konnte nicht starten", {
@@ -396,11 +652,38 @@ export function AssistantLauncher({ currentProjectId }: AssistantLauncherProps) 
   }, [])
 
   const stopListening = React.useCallback(() => {
+    keepListeningRef.current = false
     manualStopRef.current = true
-    recognitionRef.current?.stop()
+    if (speechRestartTimerRef.current !== null) {
+      window.clearTimeout(speechRestartTimerRef.current)
+      speechRestartTimerRef.current = null
+    }
+    const recognition = recognitionRef.current
     recognitionRef.current = null
+    try {
+      recognition?.stop()
+    } catch {
+      // Nach einem browserseitigen `onend` kann `stop()` während des kurzen
+      // Restart-Fensters einen InvalidStateError werfen. Der Nutzer-Stop gilt
+      // trotzdem und der erkannte Text bleibt erhalten.
+    }
     setState("idle")
   }, [])
+
+  React.useEffect(
+    () => () => {
+      keepListeningRef.current = false
+      if (speechRestartTimerRef.current !== null) {
+        window.clearTimeout(speechRestartTimerRef.current)
+      }
+      try {
+        recognitionRef.current?.stop()
+      } catch {
+        // Die Browser-Recognition kann beim Unmount bereits beendet sein.
+      }
+    },
+    [],
+  )
 
   if (!assistantActive) return null
 
@@ -516,7 +799,7 @@ export function AssistantLauncher({ currentProjectId }: AssistantLauncherProps) 
                     ) : null}
                   </div>
                 ) : null}
-                {message.choices && message.choices.length > 0 ? (
+                {message.choices && message.choices.length > 0 && !message.dialogState ? (
                   <div className="mt-3 space-y-2">
                     {message.choices.map((choice) => (
                       <Button
@@ -532,6 +815,17 @@ export function AssistantLauncher({ currentProjectId }: AssistantLauncherProps) 
                       </Button>
                     ))}
                   </div>
+                ) : null}
+                {message.dialogState ? (
+                  <AssistantDialogControls
+                    dialogState={message.dialogState}
+                    projectChoices={message.choices ?? []}
+                    busy={state === "thinking"}
+                    onProjectChoice={handleProjectChoice}
+                    onApproveProject={handleProjectApproval}
+                    onCorrectProjectField={handleProjectCorrection}
+                    onCancel={handleDialogCancel}
+                  />
                 ) : null}
                 {message.routeTarget ? (
                   <Button
@@ -580,7 +874,11 @@ export function AssistantLauncher({ currentProjectId }: AssistantLauncherProps) 
         <div className="border-t p-4">
           <Textarea
             value={input}
-            onChange={(event) => setInput(event.target.value)}
+            onChange={(event) => {
+              inputRef.current = event.target.value
+              inputModalityRef.current = "text"
+              setInput(event.target.value)
+            }}
             placeholder="Assistant fragen"
             rows={3}
             className="resize-none"

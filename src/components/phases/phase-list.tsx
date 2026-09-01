@@ -16,9 +16,9 @@ import type { WorkItemWithProfile } from "@/types/work-item"
 interface PhaseListProps {
   projectId: string
   phases: Phase[]
-  /** Optional — work_packages for the project. Passed down to PhaseCard so
-   * each card can render its assigned WPs in-place. Empty/undefined → fallback
-   * placeholder. */
+  /** Optional — die einer Phase zugeordneten Work-Items des Projekts (jede
+   * Art, PROJ-154). Wird an PhaseCard durchgereicht, damit jede Karte ihre
+   * Zuordnungen an Ort und Stelle zeigt. Leer/undefined → Platzhalter. */
   workItems?: WorkItemWithProfile[]
   loading: boolean
   onChanged: () => void | Promise<void>

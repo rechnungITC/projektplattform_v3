@@ -48,6 +48,32 @@ export type AIPurpose =
   // ermittelt über den VOLLTEXT (PROJ-75-Regel), nicht über einen Auszug. Der
   // Klassifizierer nimmt sie als Untergrenze und kann sie nur anheben.
   | "document_summary"
+  // PROJ-151-α — projektbezogener KI-Chat.
+  //
+  // Anders als alle Geschwister erzeugt dieser Zweck **freien Text**, kein
+  // strukturiertes Objekt: eine Antwort im Gespräch hat kein Schema, an dem
+  // man sie messen könnte. Deshalb `generateText` statt `generateObject`.
+  //
+  // Der Chat ist per Lock L5 **rein lesend** — er schlägt nichts vor, das
+  // Geschäftsdaten ändert. Mutierende Absichten bleiben dem Assistant-Track
+  // (PROJ-39/144) vorbehalten, der dafür Bestätigungs-Tore hat.
+  | "project_chat"
+  // PROJ-153-α — Arbeitspakete aus dem Vorhaben, OHNE Kickoff-Datei.
+  //
+  // Kehrt die PROJ-91-Invariante **für diesen Zweck** um: hier IST das
+  // Vorhaben die Quelle. `proposal_from_context` bleibt davon unberührt —
+  // würde man dort lockern, fiele die Traceability-Zusage für alle
+  // Kickoff-Läufe mit.
+  //
+  // Zwei Eigenschaften unterscheiden ihn von seinen Geschwistern:
+  //   * Vor dem Anbieteraufruf steht ein **Substanz-Tor** (intent-substance.ts).
+  //     Ohne es erfindet das Modell aus einem Satz einen plausiblen Backlog —
+  //     genau der live gemessene Defekt aus PROJ-91 Iteration 2 (8/8).
+  //   * Die Herkunft der erzeugten Items ist **aus dem Zweck abgeleitet** und
+  //     ausdrücklich KEIN Antwortfeld (CIA A-3): `relevance`/`confidence` sind
+  //     Antwortfelder, und dieselbe PROJ-91-Messung belegt, dass das Modell
+  //     solche Felder unter Prompt-Druck kippt.
+  | "work_items_from_project_intent"
 
 /**
  * PROJ-137 — machine-readable reason a ki_run produced no/blocked output.
@@ -713,6 +739,34 @@ export interface CrossProjectLinksGenerationOutput {
  * accept — this is advisory; the user applies via the existing PROJ-27
  * create-link dialog with its own audit trail.
  */
+/**
+ * PROJ-153-α — Ergebnis der Generierung aus dem Vorhaben.
+ *
+ * `substance_rejected` ist der Grund, warum dieser Typ nicht der Geschwister-Typ
+ * ist: die Absage vor dem Anbieteraufruf ist hier der **Normalfall** (30 von 31
+ * Projekten in Prod), kein Randfall. Sie als Fehler zu melden wäre falsch — es
+ * ist eine bewusste Entscheidung, nicht zu generieren.
+ */
+export interface RouterWorkItemsFromIntentResult {
+  run_id: string | null
+  classification: DataClass
+  provider: AIProviderName | null
+  model_id: string | null
+  status: "success" | "error" | "external_blocked" | "substance_rejected"
+  suggestion_ids: string[]
+  external_blocked: boolean
+  error_message?: string
+  reason_code?: AiRunReasonCode | null
+  /** Gesetzt, wenn das Substanz-Tor abgelehnt hat — mit den Zahlen für die Fläche. */
+  substance?: {
+    human_chars: number
+    answered_count: number
+    required_chars: number
+    required_answers: number
+    message: string
+  }
+}
+
 export interface RouterCrossProjectLinksResult {
   run_id: string
   classification: DataClass
@@ -1211,4 +1265,62 @@ export interface RouterDocumentSummaryResult {
   error_message?: string
   /** PROJ-137 — maschinenlesbarer Grund für ein leeres Ergebnis. */
   reason_code?: AiRunReasonCode | null
+}
+
+
+// ---------------------------------------------------------------------------
+// PROJ-151-α — project_chat (projektbezogener KI-Chat) purpose types
+// ---------------------------------------------------------------------------
+
+/** Eine Nachricht im bisherigen Verlauf, wie sie an den Anbieter geht. */
+export interface ProjectChatHistoryMessage {
+  role: "user" | "assistant"
+  content: string
+}
+
+/**
+ * Kontext einer Chat-Antwort.
+ *
+ * Bewusst nur das, was V3 **ohnehin weiß** — kein Retrieval (Lock L6). Die
+ * Quellen dafür bleiben PROJ-80-β vorbehalten; ein Chat ohne Retrieval ist
+ * nutzbar, Retrieval ohne Chat wäre es nicht.
+ */
+export interface ProjectChatAutoContext {
+  project: {
+    id: string
+    name: string
+    description: string | null
+    project_type: string | null
+    project_method: string | null
+    lifecycle_status: string | null
+  }
+  /** Phasen mit Status — knapp, damit der Kontext nicht den Verlauf verdrängt. */
+  phases: { name: string; status: string | null }[]
+  /** Offene Arbeitspakete, gekappt. `open_work_items_total` nennt die wahre Zahl. */
+  open_work_items: { title: string; status: string; due_date: string | null }[]
+  open_work_items_total: number
+  /** Bisheriger Verlauf, älteste zuerst; bereits auf das Fenster begrenzt. */
+  history: ProjectChatHistoryMessage[]
+  /** True, wenn `history` nur der jüngste Teil ist — muss sichtbar werden
+   *  (Edge Case 5: die Begrenzung wird gesagt, nicht still abgeschnitten). */
+  history_truncated: boolean
+  /**
+   * Zusatzanweisungen der dem Projekt zugeordneten aktiven Skills (PROJ-76/78).
+   *
+   * Wie bei PROJ-80-α **nur eine Ergänzung**: die unverhandelbaren Regeln
+   * (rein lesend, keine erfundenen Daten, Antwortsprache) stehen im Code.
+   * Ließe man sie überschreiben, könnte eine Datenpflege die Zusicherungen
+   * dieser Slice aushebeln — insbesondere Lock L5.
+   */
+  skill_instructions: string | null
+  /** Namen der wirkenden Skills — die Fläche benennt sie (AC-151.17). */
+  skill_names: string[]
+}
+
+/** Ergebnis einer Chat-Antwort. */
+export interface ProjectChatGenerationOutput {
+  /** Freier Antworttext. Leer, wenn der Anbieter nichts geliefert hat. */
+  text: string
+  token_input: number | null
+  token_output: number | null
 }

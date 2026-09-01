@@ -16,8 +16,11 @@
  */
 
 import {
+  CLOUD_PROVIDER_TIMEOUT_MS,
+  createTimeoutFetch,
+} from "../provider-timeout"
+import {
   createGoogleGenerativeAI,
-  google as defaultGoogle,
 } from "@ai-sdk/google"
 import type { GoogleGenerativeAIProvider as GoogleSDKProvider } from "@ai-sdk/google"
 import { generateObject } from "ai"
@@ -34,6 +37,9 @@ import type {
   RiskProposalsGenerationRequest,
   TrajectorySequenceGenerationRequest,
 } from "./types"
+import type { ProjectChatGenerationRequest } from "./types"
+import type { ProjectChatGenerationOutput } from "../types"
+import { runProjectChat } from "./project-chat-runner"
 import type {
   ClarifyingQuestionsGenerationOutput,
   DocumentSummaryGenerationOutput,
@@ -67,6 +73,11 @@ import {
   TrajectorySequenceResponseSchema,
 } from "./graph-purpose-prompts"
 import { runDocumentSummaryStrict } from "./document-summary-runner"
+import { runWorkItemsFromIntent } from "./work-items-from-intent-runner"
+import type {
+  WorkItemsFromIntentGenerationOutput,
+  WorkItemsFromIntentGenerationRequest,
+} from "./types"
 
 const DEFAULT_GOOGLE_MODEL = "gemini-2.0-flash-exp"
 
@@ -179,9 +190,20 @@ export class GoogleProvider implements AIProvider {
 
   constructor(config?: GoogleProviderConfig) {
     this.modelId = config?.modelId ?? DEFAULT_GOOGLE_MODEL
-    this.sdkProvider = config?.apiKey
-      ? createGoogleGenerativeAI({ apiKey: config.apiKey })
-      : defaultGoogle
+    // PROJ-152: siehe openai.ts — Zeitbudget auch auf dem Env-Key-Pfad.
+    this.sdkProvider = createGoogleGenerativeAI({
+      ...(config?.apiKey ? { apiKey: config.apiKey } : {}),
+      fetch: createTimeoutFetch("google", CLOUD_PROVIDER_TIMEOUT_MS),
+    })
+  }
+
+  /**
+   * PROJ-153-alpha — Arbeitspakete aus dem Vorhaben (AC-153H.2).
+   */
+  async generateWorkItemsFromIntent(
+    request: WorkItemsFromIntentGenerationRequest,
+  ): Promise<WorkItemsFromIntentGenerationOutput> {
+    return runWorkItemsFromIntent(this.sdkProvider(this.modelId), request)
   }
 
   async generateRiskSuggestions(
@@ -376,5 +398,12 @@ export class GoogleProvider implements AIProvider {
     request: DocumentSummaryGenerationRequest,
   ): Promise<DocumentSummaryGenerationOutput> {
     return runDocumentSummaryStrict(this.sdkProvider(this.modelId), request.context)
+  }
+
+  /** PROJ-151-α — Chat-Antwort über den geteilten Runner. */
+  async generateProjectChat(
+    request: ProjectChatGenerationRequest,
+  ): Promise<ProjectChatGenerationOutput> {
+    return runProjectChat(this.sdkProvider(this.modelId), request.context)
   }
 }

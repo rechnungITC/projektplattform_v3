@@ -19,10 +19,16 @@
  */
 
 import { createOpenAICompatible } from "@ai-sdk/openai-compatible"
+
+import {
+  LOCAL_PROVIDER_TIMEOUT_MS,
+  createTimeoutFetch,
+} from "../provider-timeout"
 import { generateObject } from "ai"
 import { z } from "zod"
 
 import type {
+  ProjectChatGenerationRequest,
   AIProvider,
   ClarifyingQuestionsGenerationRequest,
   DocumentSummaryGenerationRequest,
@@ -37,6 +43,8 @@ import type {
   StakeholderProposalsGenerationRequest,
   TrajectorySequenceGenerationRequest,
 } from "./types"
+import type { ProjectChatGenerationOutput } from "../types"
+import { runProjectChat } from "./project-chat-runner"
 import type {
   ClarifyingQuestionsGenerationOutput,
   DocumentSummaryGenerationOutput,
@@ -75,6 +83,11 @@ import {
   TrajectorySequenceResponseSchema,
 } from "./graph-purpose-prompts"
 import { runDocumentSummaryLoose } from "./document-summary-runner"
+import { runWorkItemsFromIntentLoose } from "./work-items-from-intent-runner"
+import type {
+  WorkItemsFromIntentGenerationOutput,
+  WorkItemsFromIntentGenerationRequest,
+} from "./types"
 
 // ---------------------------------------------------------------------------
 // Risk-suggestion schema + prompt (identical to AnthropicProvider so that
@@ -640,7 +653,25 @@ export class OllamaProvider implements AIProvider {
       // validation. Ollama supports json_schema (verified live against
       // 0.30.7). Affects all Ollama purposes, not just stakeholders.
       supportsStructuredOutputs: true,
+      // PROJ-152: das Zeitbudget, an dem es bisher fehlte. Grosszuegig,
+      // weil live gemessene erfolgreiche Laeufe 176 s und 253 s
+      // brauchten — aber endlich, damit ein nicht antwortender
+      // Endpunkt nicht die ganze Anfrage verschluckt.
+      fetch: createTimeoutFetch("ollama", LOCAL_PROVIDER_TIMEOUT_MS),
     })
+  }
+
+  /**
+   * PROJ-153-alpha — Arbeitspakete aus dem Vorhaben (AC-153H.2).
+   *
+   * Lockeres Schema mit nachgelagerter Kappung: lokale Modelle verfehlen das
+   * strikte Schema oft knapp, und generateObject verwirft dann die GANZE
+   * Antwort (gemessen in PROJ-88/89). Die Deckel gelten unveraendert.
+   */
+  async generateWorkItemsFromIntent(
+    request: WorkItemsFromIntentGenerationRequest,
+  ): Promise<WorkItemsFromIntentGenerationOutput> {
+    return runWorkItemsFromIntentLoose(this.sdkProvider(this.modelId), request)
   }
 
   async generateRiskSuggestions(
@@ -1111,6 +1142,13 @@ export class OllamaProvider implements AIProvider {
     request: DocumentSummaryGenerationRequest,
   ): Promise<DocumentSummaryGenerationOutput> {
     return runDocumentSummaryLoose(this.sdkProvider(this.modelId), request.context)
+  }
+
+  /** PROJ-151-α — Chat-Antwort über den geteilten Runner. */
+  async generateProjectChat(
+    request: ProjectChatGenerationRequest,
+  ): Promise<ProjectChatGenerationOutput> {
+    return runProjectChat(this.sdkProvider(this.modelId), request.context)
   }
 }
 

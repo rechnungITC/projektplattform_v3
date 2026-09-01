@@ -753,6 +753,21 @@ export function classifyDocumentSummaryAutoContext(
     max = 3
   }
 
+  // PROJ-Y-151f — die Skill-Anweisungen ebenso: `buildDocumentSummaryPrompt`
+  // haengt sie unter "Zusaetzliche Vorgaben des Mandanten" in den Prompt, also
+  // gehen sie an den Anbieter. Fehlten sie hier, koennte eine Mandanten-
+  // Administration Personendaten in den Summarizer-Skill schreiben (er ist ueber
+  // PROJ-77 aenderbar) und sie erreichten ein Cloud-Modell, OHNE dass der
+  // Class-3-Gate greift — der Skill hebelt das Tor nicht aus, er geht daran
+  // vorbei; fuer Invariante #3 derselbe Bruch.
+  //
+  // Zwillingsfund zu PROJ-Y-151e im Projekt-Chat: dieselbe Ursache, dieselbe
+  // Zeile, andere Slice. Die Regel dahinter ist einfach — was an den Anbieter
+  // geht, wird klassifiziert.
+  if (max < 3 && detectClass3Markers(ctx.skill_instructions ?? "")) {
+    max = 3
+  }
+
   // Mandanten-Voreinstellung wie bei den Geschwistern: sie kann nicht senken.
   if (tenantDefault === 3 && max < 2) {
     return max

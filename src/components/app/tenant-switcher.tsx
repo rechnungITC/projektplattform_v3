@@ -1,6 +1,7 @@
 "use client"
 
 import { Check, ChevronsUpDown } from "lucide-react"
+import { toast } from "sonner"
 
 import { Button } from "@/components/ui/button"
 import {
@@ -28,6 +29,18 @@ export function TenantSwitcher({
   operationMode = "shared",
 }: TenantSwitcherProps) {
   const { memberships, currentTenant, setCurrentTenant } = useAuth()
+
+  const switchTenant = async (tenantId: string) => {
+    if (tenantId === currentTenant?.id) return
+    const cleanup = await fetch("/api/assistant/turns", { method: "DELETE" })
+    if (!cleanup.ok) {
+      toast.error("Workspace-Wechsel nicht möglich", {
+        description: "Der offene Assistant-Auftrag konnte nicht sicher bereinigt werden.",
+      })
+      return
+    }
+    setCurrentTenant(tenantId)
+  }
 
   // Hide the switcher in stand-alone mode, or if the user belongs to fewer
   // than 2 tenants. Both conditions collapse to the same single-tenant UX.
@@ -66,7 +79,7 @@ export function TenantSwitcher({
           return (
             <DropdownMenuItem
               key={membership.id}
-              onSelect={() => setCurrentTenant(membership.tenant_id)}
+              onSelect={() => void switchTenant(membership.tenant_id)}
               className="flex items-center justify-between gap-2"
             >
               <div className="flex min-w-0 flex-col">

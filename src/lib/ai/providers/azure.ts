@@ -21,10 +21,16 @@
  */
 
 import { createOpenAICompatible } from "@ai-sdk/openai-compatible"
+
+import {
+  CLOUD_PROVIDER_TIMEOUT_MS,
+  createTimeoutFetch,
+} from "../provider-timeout"
 import { generateObject } from "ai"
 import { z } from "zod"
 
 import type {
+  ProjectChatGenerationRequest,
   AIProvider,
   ClarifyingQuestionsGenerationRequest,
   DocumentSummaryGenerationRequest,
@@ -35,6 +41,8 @@ import type {
   RiskProposalsGenerationRequest,
   TrajectorySequenceGenerationRequest,
 } from "./types"
+import type { ProjectChatGenerationOutput } from "../types"
+import { runProjectChat } from "./project-chat-runner"
 import type {
   ClarifyingQuestionsGenerationOutput,
   DocumentSummaryGenerationOutput,
@@ -68,6 +76,11 @@ import {
   TrajectorySequenceResponseSchema,
 } from "./graph-purpose-prompts"
 import { runDocumentSummaryStrict } from "./document-summary-runner"
+import { runWorkItemsFromIntent } from "./work-items-from-intent-runner"
+import type {
+  WorkItemsFromIntentGenerationOutput,
+  WorkItemsFromIntentGenerationRequest,
+} from "./types"
 
 // ---------------------------------------------------------------------------
 // Risk-suggestion schema + prompt (same shape as Anthropic / OpenAI / Ollama).
@@ -213,7 +226,18 @@ export class AzureOpenAIProvider implements AIProvider {
       baseURL: `${base}/openai/deployments/${config.deployment}`,
       headers: { "api-key": config.apiKey },
       queryParams: { "api-version": config.apiVersion },
+      // PROJ-152: Zeitbudget fuer jeden Aufruf dieses Clients.
+      fetch: createTimeoutFetch("azure", CLOUD_PROVIDER_TIMEOUT_MS),
     })
+  }
+
+  /**
+   * PROJ-153-alpha — Arbeitspakete aus dem Vorhaben (AC-153H.2).
+   */
+  async generateWorkItemsFromIntent(
+    request: WorkItemsFromIntentGenerationRequest,
+  ): Promise<WorkItemsFromIntentGenerationOutput> {
+    return runWorkItemsFromIntent(this.sdkProvider(this.modelId), request)
   }
 
   async generateRiskSuggestions(
@@ -403,5 +427,12 @@ export class AzureOpenAIProvider implements AIProvider {
     request: DocumentSummaryGenerationRequest,
   ): Promise<DocumentSummaryGenerationOutput> {
     return runDocumentSummaryStrict(this.sdkProvider(this.modelId), request.context)
+  }
+
+  /** PROJ-151-α — Chat-Antwort über den geteilten Runner. */
+  async generateProjectChat(
+    request: ProjectChatGenerationRequest,
+  ): Promise<ProjectChatGenerationOutput> {
+    return runProjectChat(this.sdkProvider(this.modelId), request.context)
   }
 }

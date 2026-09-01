@@ -15,7 +15,12 @@
  * provider_order ⊆ {ollama}` are accepted.
  */
 
-import { createOpenAI, openai as defaultOpenAI } from "@ai-sdk/openai"
+import { createOpenAI } from "@ai-sdk/openai"
+
+import {
+  CLOUD_PROVIDER_TIMEOUT_MS,
+  createTimeoutFetch,
+} from "../provider-timeout"
 import type { OpenAIProvider as OpenAISDKProvider } from "@ai-sdk/openai"
 import { generateObject } from "ai"
 import { z } from "zod"
@@ -31,6 +36,9 @@ import type {
   RiskProposalsGenerationRequest,
   TrajectorySequenceGenerationRequest,
 } from "./types"
+import type { ProjectChatGenerationRequest } from "./types"
+import type { ProjectChatGenerationOutput } from "../types"
+import { runProjectChat } from "./project-chat-runner"
 import type {
   ClarifyingQuestionsGenerationOutput,
   DocumentSummaryGenerationOutput,
@@ -64,6 +72,11 @@ import {
   TrajectorySequenceResponseSchema,
 } from "./graph-purpose-prompts"
 import { runDocumentSummaryStrict } from "./document-summary-runner"
+import { runWorkItemsFromIntent } from "./work-items-from-intent-runner"
+import type {
+  WorkItemsFromIntentGenerationOutput,
+  WorkItemsFromIntentGenerationRequest,
+} from "./types"
 
 const DEFAULT_OPENAI_MODEL = "gpt-4o"
 
@@ -192,9 +205,23 @@ export class OpenAIProvider implements AIProvider {
 
   constructor(config?: OpenAIProviderConfig) {
     this.modelId = config?.modelId ?? DEFAULT_OPENAI_MODEL
-    this.sdkProvider = config?.apiKey
-      ? createOpenAI({ apiKey: config.apiKey })
-      : defaultOpenAI
+    // PROJ-152: eigenes `fetch` mit Zeitbudget statt des SDK-Default-
+    // Singletons — sonst hinge auch der Env-Key-Pfad unbegrenzt.
+    // Ohne `apiKey` laedt das SDK weiterhin OPENAI_API_KEY aus der
+    // Umgebung, der Fallback bleibt also derselbe.
+    this.sdkProvider = createOpenAI({
+      ...(config?.apiKey ? { apiKey: config.apiKey } : {}),
+      fetch: createTimeoutFetch("openai", CLOUD_PROVIDER_TIMEOUT_MS),
+    })
+  }
+
+  /**
+   * PROJ-153-alpha — Arbeitspakete aus dem Vorhaben (AC-153H.2).
+   */
+  async generateWorkItemsFromIntent(
+    request: WorkItemsFromIntentGenerationRequest,
+  ): Promise<WorkItemsFromIntentGenerationOutput> {
+    return runWorkItemsFromIntent(this.sdkProvider(this.modelId), request)
   }
 
   async generateRiskSuggestions(
@@ -389,5 +416,12 @@ export class OpenAIProvider implements AIProvider {
     request: DocumentSummaryGenerationRequest,
   ): Promise<DocumentSummaryGenerationOutput> {
     return runDocumentSummaryStrict(this.sdkProvider(this.modelId), request.context)
+  }
+
+  /** PROJ-151-α — Chat-Antwort über den geteilten Runner. */
+  async generateProjectChat(
+    request: ProjectChatGenerationRequest,
+  ): Promise<ProjectChatGenerationOutput> {
+    return runProjectChat(this.sdkProvider(this.modelId), request.context)
   }
 }
