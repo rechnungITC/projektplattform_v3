@@ -1,7 +1,7 @@
 # PROJ-165 — Portfolio-Erdung Tranche 1: die KI-/Skill-Kette PROJ-81–84
 
-## Status: In Review
-## Deployment Scope: —
+## Status: Deployed
+## Deployment Scope: tooling-only
 
 **Created:** 2026-09-01
 
@@ -135,3 +135,18 @@ KI-Erzeugungspfad gibt.
   `ai_generated_metadata` 3 Treffer (Migration + Typ + Select) · `audit_purge: "disabled"` in
   `src/app/api/cron/apply-retention/route.ts:45`.
 - Umfang: `src/` 0 Dateien, `supabase/migrations/` 0, `package.json` 0, `package-lock.json` 0.
+
+## Deployment
+
+**Deployed 2026-09-01: Tag `v2.95.0-PROJ-165` auf dem Merge-Commit `fd4f164c` (PR #527, squash → `main`).**
+
+Der Merge **ist** die Auslieferung. Zehn CI-Checks grün, davon sieben Required. Kein `src/`-Diff,
+keine Migration, kein Paket — die Slice liefert ausschließlich geerdete Specs und INDEX-Zeilen.
+
+**Scope `tooling-only`:** kein Produkt-Laufzeitverhalten geändert; der Ausgang ist die
+Arbeitsgrundlage für `/architecture`.
+
+**Alle sieben Kriterien erfüllt, nichts zurückgestellt.** Die offen benannten Architekturfragen
+(drei bei PROJ-82, zwei bei PROJ-83, eine bei PROJ-84) sind **Ertrag** der Slice, keine Auslassung —
+AC-165.6 verlangt ausdrücklich, dass sie sichtbar sind. Die Grenze aus D-165.1 (gemessen an Code
+und Migrationsdateien, nicht gegen Prod) bleibt bestehen und ist keine unerfüllte Zusage.

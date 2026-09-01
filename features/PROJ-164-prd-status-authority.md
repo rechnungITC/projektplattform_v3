@@ -1,7 +1,7 @@
 # PROJ-164 — Eine Autorität für den Lieferzustand: PRD-Status-Drift und ID-Vorausversprechen
 
-## Status: In Review
-## Deployment Scope: —
+## Status: Deployed
+## Deployment Scope: tooling-only
 
 **Created:** 2026-09-01
 
@@ -123,3 +123,27 @@ Der Zuschnitt entstand in einem `grill-me`-Durchgang, eine Frage pro Turn.
   `check:token-drift`, `check:function-inventory` — siehe Deployment-Abschnitt.
 - **Umfang** gemessen statt behauptet: `src/` 0 Dateien, `supabase/migrations/` 0,
   `package.json` 0, `package-lock.json` 0.
+
+## Deployment
+
+**Deployed 2026-09-01: Tag `v2.94.0-PROJ-164` auf dem Merge-Commit `4a93a0b9` (PR #526, squash → `main`).**
+
+Der Merge **ist** die Auslieferung. Zehn CI-Checks grün, davon sieben Required — darunter der
+**Register-Konsistenz-Wächter**, der belegt, dass die Änderungen an INDEX und Register sich nicht
+widersprechen. Kein `src/`-Diff, keine Migration, kein Paket.
+
+**Scope `tooling-only`:** geliefert sind Dokumentation (`docs/PRD.md`), eine Hausregel
+(`.claude/rules/general.md`) und ein Skill (`requirements/SKILL.md`) — Workflow, keine
+Produkt-Laufzeitfähigkeit.
+
+**F-164.3 (eigener Fehler, in der Buchführung gefunden und behoben):** AC-164.5 war **nicht ganz**
+erfüllt. Die Kettenaufzählung war entnummeriert, aber ein Nebensatz **derselben** INDEX-Zeile trug
+weiter ein Versprechen — „eine Bindung wuerde **PROJ-161** vorwegnehmen". Ich hatte auf die
+Aufzählung geprüft statt auf die Kennung, also auf die Form statt auf die Sache. Mit dieser
+Buchführung behoben. **Und die Zahl dazu erst falsch behauptet, dann nachgemessen:** ich hatte
+„2 → 1" geschrieben; tatsächlich stehen danach **4** Vorkommen von `PROJ-161` in `features/` und
+`docs/` — einmal als Zähler „Next Available ID" im INDEX und dreimal als **Zitat** in dieser Spec,
+die den Vorfall erklärt. Die belastbare Aussage ist deshalb nicht „weniger Vorkommen", sondern:
+**kein Vorkommen ist mehr ein Versprechen.** Ein Zähler und ein Zitat reservieren keine Kennung —
+genau diese Unterscheidung ist der Punkt der Slice, und ein reiner Trefferzähler hätte sie
+verwischt.

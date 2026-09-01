@@ -1,7 +1,7 @@
 # PROJ-163 — `grill-me`: Entscheidungs-Verhör als aufrufbarer Skill
 
-## Status: In Review
-## Deployment Scope: —
+## Status: Deployed
+## Deployment Scope: tooling-only
 
 **Created:** 2026-09-01
 
@@ -123,3 +123,21 @@ bleiben deshalb ungenutzt. Vor der Umbuchung ist beides geprüft: Refs **und** P
 - **Wörtlichkeit gemessen, nicht behauptet:** vier Absätze in beiden Fassungen, inhaltlicher
   md5 identisch — `f349010261eec49324674b85cb62a55c` über Vorlage und ausgelieferte Datei.
 - Datei-Wächter und Verweise: siehe Deployment-Abschnitt.
+
+## Deployment
+
+**Deployed 2026-09-01: Tag `v2.93.0-PROJ-163` auf dem Merge-Commit `61c1d887` (PR #525, squash → `main`).**
+
+Der Merge **ist** die Auslieferung — ein Post-Deploy-Smoke wäre gegenstandslos (kein `src/`-Diff,
+keine Migration, kein Paket). Tragender Nachweis sind die **10 grünen CI-Checks** auf dem PR, davon
+sieben Required. Nach dem Merge aus `main` nachgemessen: **10 von 10** Skills tragen
+`user-invocable: true`, die Datei liegt unter `.claude/skills/grill-me/SKILL.md`, die vier
+Original-Absätze sind unverändert.
+
+**Scope `tooling-only`** wörtlich nach Definition: der gelieferte Ausgang betrifft
+Repository-Werkzeug und Workflow (ein Skill plus zwei Skill-Verweise) und fügt **keine**
+Produkt-Laufzeitfähigkeit hinzu — kein `src/`, keine Migration, kein Paket.
+
+**Die Grenze aus D-163.2 bleibt und ist mit dem Merge nicht eingelöst:** dass `/grill-me` in der
+Skill-Liste **erscheint**, ist weiterhin nicht beobachtet — die Liste wird beim Sitzungsstart
+geladen. Belegt ist die Form, nicht die Beobachtung.
