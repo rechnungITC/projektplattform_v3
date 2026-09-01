@@ -3248,8 +3248,10 @@ zweite Achse ein. Das ist dieselbe Begründung wie bei Q-γ1.
   ZIP-Bomben-Wächter, 20-s-Grenze).
 - [ ] **AC-45εH-8** **Magic-Byte-Prüfung vor** der Umwandlung, nicht danach — eine als `.heic` benannte
   Datei mit fremdem Inhalt erreicht das Bildpaket nicht.
-- [ ] **AC-45εH-9** Regressionen **wörtlich** grün, je 0 Rückstände: α, β, γ, δ, PROJ-Y-45a, PROJ-79-DMS,
-  PROJ-80-α.1, PROJ-Y-115c.
+- [x] **AC-45εH-9** Regressionen **wörtlich** grün, je 0 Rückstände: α, β, γ, δ, PROJ-Y-45a, PROJ-79-DMS,
+  PROJ-80-α.1, PROJ-Y-115c. — **erfüllt 2026-08-26** durch den Nachlauf in PROJ-Y-45r: die
+  sieben zuvor fehlenden Blöcke (γ 1–2, δ 1/2/3/2b/4) wörtlich gegen Prod gefahren,
+  **98/98 PASS, 0 FAIL**, 0 Rückstände über 12 Zähler.
 - [ ] **AC-45εH-10** Visual-Regression **ohne Neuaufnahme** — und wenn eine Aufnahme nötig wird, im Bild
   geprüft und per Dateilöschung gezogen (`--update-snapshots` ist unter der Toleranz ein stiller No-op).
 - [ ] **AC-45εH-11** Das **Funktions-Inventar** wird am Ende der Slice aufgefrischt; der Diff wird gelesen
@@ -4150,7 +4152,7 @@ Begründung ist mit ε aufgebraucht.
 Anforderung dieser Slice und zurückgestellt, mit Ziel-ID **PROJ-Y-45o**. Die
 Ausnahme „Waived criterion" greift nicht — sie verlangt „nothing was deferred",
 und hier ist ausdrücklich etwas zurückgestellt und registriert. Dazu ist
-**AC-45εH-9** (Regressionen wörtlich) nur teilweise erfüllt → **PROJ-Y-45r**.
+**AC-45εH-9** (Regressionen wörtlich) nur teilweise erfüllt → **PROJ-Y-45r**. *(Nachtrag 2026-08-26: erledigt — 98/98 PASS, 0 Rückstände; siehe „Nachlauf PROJ-Y-45r".)*
 
 `mvp` trifft dagegen zu, Bedingung für Bedingung: eine **ausdrücklich genehmigte,
 benutzbare Grenze** ist ausgeliefert (der Nutzer-Entscheid zu Q-ε1 lautete „erst
@@ -4248,9 +4250,12 @@ Migrationsdateien gebauten Datenbank entstehen — und der **Funktions-Inventar-
   Können: die HEIC-Dekoder bündeln libde265 (dual GPL/kommerziell), der Prod-Baum
   trägt 1166 Pakete und **keine** GPL-only. **Der einzige Grund, warum diese Zeile
   nicht `full` ist.**
-- **AC-45εH-9** teilweise → **PROJ-Y-45r**: γ Blöcke 1–2 und δ Blöcke 1–5 sind
-  nicht wörtlich nachgefahren. δs Auswertung ist über die db-group-Blöcke B0–B4
-  wörtlich abgedeckt, γs Rechte-/ACL-/Wächterfläche über Blöcke 3–4.
+- ~~**AC-45εH-9** teilweise → **PROJ-Y-45r**~~ **erledigt 2026-08-26.** Die sieben
+  fehlenden Blöcke (γ 1–2, δ 1/2/3/2b/4) sind wörtlich gegen Prod gefahren:
+  **98/98 PASS, 0 FAIL**, und jeder Block trifft die in seinem Testkopf
+  dokumentierte Zahl einzeln (γ 31/14, δ 22/16/9/2/4). Rückstände **0** über
+  12 Zähler, gegen einen vor dem Lauf genommenen Stand geprüft. Siehe den
+  Abschnitt „Nachlauf PROJ-Y-45r" unten.
 - ~~**PROJ-Y-45p**~~ **erledigt 2026-08-26** (Medium, vorbestehend aus PROJ-79-α):
   der Zähler hat jetzt ein Dekrement — als Neuberechnung. Drift in Prod geheilt
   (1.344 → 0 und 1.176 → 0). Siehe den Abschnitt unten.
@@ -4989,9 +4994,75 @@ Implementation Notes). Hier nur, was für die Bau-Erweiterung zählt:
 
 **Scope von PROJ-45 bleibt `mvp`.** Diese Slice ändert daran nichts: `full` ist unverändert
 durch **AC-45ε.4** (HEIC → PROJ-Y-45o) und **AC-45εH-9** (teilweise → PROJ-Y-45r) blockiert.
+*(Nachtrag 2026-08-26: **AC-45εH-9 ist seither erfüllt** — siehe „Nachlauf PROJ-Y-45r".
+Der Scope bleibt dennoch `mvp`, weil **AC-45ε.4** als zurückgestellte **ursprüngliche**
+Anforderung offenbleibt; eine einzige davon schliesst `full` aus. Der Satz oben bleibt als
+Stand seines Laufs stehen.)*
 PROJ-Y-45p war nie ein Kriterium von PROJ-45, sondern ein Fremdbefund aus PROJ-79-α.
 
 **Deployed 2026-08-26 — Tag `v2.75.0-PROJ-Y-45p`, PR #458 → main `775e222`.** Die ausführliche
 Darstellung samt der **Kollision zweier Sessions** (beide bauten den Followup gleichzeitig, Prod
 trug 27 Sekunden zwei konkurrierende Buchhaltungen; der andere Zweig hat per PR #457 selbst
 zurückgenommen) steht in `features/PROJ-79-dms-foundation.md`.
+
+---
+
+## Nachlauf PROJ-Y-45r — die sieben fehlenden Regressionsblöcke (2026-08-26)
+
+**AC-45εH-9 ist damit erfüllt.** Das Kriterium verlangt die Regressionen **wörtlich**
+grün bei je 0 Rückständen. Im ε-`/qa` waren α, β, PROJ-Y-45a, db-group, PROJ-79,
+PROJ-80 und γ Blöcke 3–4 wörtlich gelaufen; offen blieben **γ Blöcke 1–2**
+(Abnahme-Ablauf) und **δ Blöcke 1, 2, 3, 2b, 4** (Signal-Buchhaltung). Diese sieben
+sind jetzt nachgefahren.
+
+### Ergebnis
+
+| Block | Datei / Zeilen | Erwartet | Gemessen |
+|---|---|---|---|
+| γ Block 1 | `PROJ-45-gamma-…-pentest.sql` 92–514 | 31 | **31 PASS / 0 FAIL** |
+| γ Block 2 | dieselbe, 519–675 | 14 | **14 PASS / 0 FAIL** |
+| δ Block 1 | `PROJ-45-delta-…-pentest.sql` 35–298 | 22 | **22 PASS / 0 FAIL** |
+| δ Block 2 | dieselbe, 303–423 | 16 | **16 PASS / 0 FAIL** |
+| δ Block 3 | dieselbe, 431–561 | 9 | **9 PASS / 0 FAIL** |
+| δ Block 2b | dieselbe, 573–626 | 2 | **2 PASS / 0 FAIL** |
+| δ Block 4 | dieselbe, 637–694 | 4 | **4 PASS / 0 FAIL** |
+| | | **98** | **98 PASS / 0 FAIL** |
+
+**Die Erwartung stand vor dem Lauf fest**, abgeleitet aus den in den Testköpfen
+dokumentierten Zahlen des 2026-08-21 (γ 61/61 mit Blöcken 31/14/12/4, δ 53/53 mit
+22/16/9/2/4) — nicht nachträglich an das Ergebnis angepasst. Jeder Block trifft
+seine Zahl **einzeln**, nicht nur die Summe; eine Verschiebung zwischen Blöcken
+wäre damit aufgefallen.
+
+Wörtlich heisst wörtlich: die Blöcke wurden per Zeilenbereich aus der committeten
+Datei extrahiert und unverändert ausgeführt. Keine Anpassung, keine Kürzung, keine
+Reparatur. Jeder der sieben endete mit seinem eigenen `P0001`-Rollback-Marker —
+kein Block scheiterte an Syntax, Rechten oder einem anderen SQLSTATE.
+
+### Rückstände: 0, gegen einen vorher genommenen Stand geprüft
+
+Die Blöcke sind per Konstruktion rückstandsfrei (jeder endet in `raise exception`,
+was die ganze Transaktion zurückrollt). Verlassen wurde sich darauf **nicht**: vor
+dem Lauf wurde ein Stand genommen und danach erneut gemessen. Alle 12 Zähler sind
+**byte-identisch**:
+
+`construction_acceptances` 0 · `…_events` 0 · `…_participants` 0 ·
+`…_reservations` 0 · `construction_defects` 14 · `construction_defect_events` 49 ·
+`construction_trades` 1 · `project_construction_trades` 1 ·
+`construction_sections` 2 · `projects` 52 · **`audit_log_entries` 698** ·
+deaktivierte `construction%`-Trigger **0**.
+
+Der Audit-Zähler ist der schärfste davon: die Tabelle ist seit PROJ-130-α
+append-only und hat keinen Löschpfad, eine committete Schreiboperation wäre also
+sichtbar geblieben und **nicht mehr entfernbar**. Dass er unverändert bei 698 steht,
+belegt den Rollback stärker als jede Bestandszählung auf den Fachtabellen.
+
+### Was das nicht ändert
+
+**Der Scope von PROJ-45 bleibt `mvp`.** Mit AC-45εH-9 fällt einer der zwei Blocker
+weg, der andere bleibt: **AC-45ε.4/.5** (HEIC/HEIF-Umwandlung, → **PROJ-Y-45o**) ist
+eine zurückgestellte **ursprüngliche** Anforderung der ε-Slice, und eine einzige
+davon schliesst `full` aus. Die Ausnahme *„Waived criterion"* greift nicht — sie
+verlangt in ihrer ersten Bedingung, dass nichts zurückgestellt wurde; hier ist
+ausdrücklich etwas zurückgestellt und mit Ziel-ID registriert. PROJ-Y-45o hängt
+zudem an einer Lizenzentscheidung, nicht an Technik.
