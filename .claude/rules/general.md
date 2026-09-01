@@ -59,6 +59,13 @@ After completing work on any feature, you MUST update tracking files. Follow thi
   - **Deployed**: after `/deploy`
   - **Superseded**: after the replacement and AC-by-AC disposition are documented
 
+**Where status is NOT tracked:** `docs/PRD.md`. Its roadmap table carries product intent (ID,
+priority, feature) and **no** delivery state. Until 2026-09-01 it had a `Status` column that no rule
+required anyone to maintain, and it contradicted the INDEX in **52 of 71** rows — 51 of them
+claiming `Planned` for features that had shipped (PROJ-161). Because the PRD is imported into every
+session context, that column actively misled every agent. Status lives in exactly **two** places:
+the spec header and `features/INDEX.md`. Do not add a status column back to the PRD.
+
 ### Deployment Scope (MANDATORY)
 
 Lifecycle status describes **where the feature is in the workflow**. Deployment scope describes **what
