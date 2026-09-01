@@ -1,4 +1,4 @@
-# Prod-Funktionsinventar — Stand 2026-08-31
+# Prod-Funktionsinventar — Stand 2026-09-01
 #
 # Die in der Produktionsdatenbank vorhandenen Funktionen des Schemas `public`,
 # ohne die 71 Funktionen der `ltree`-Extension (die gehoeren nicht dem Projekt).
@@ -8,6 +8,14 @@
 # mit sichtbarem Diff. Genau daran waere PROJ-Y-148c aufgefallen -- eine Migration
 # lief fuenf Tage in Prod, ohne im Repo zu sein; beim naechsten Abgleich waere
 # `hard_delete_project` als neue Zeile im Diff erschienen.
+#
+# Auffrischung 2026-09-01 (PROJ-Y-158a): 301 -> 307. Davon stammt EINE aus dieser
+# Slice (`decrypt_user_mailbox_credential`); die uebrigen fuenf sind Nachtrag
+# fremder Spuren, deren Auffrischung ausgeblieben war und die dadurch hier
+# sichtbar werden -- `accept_work_items_from_intent_bulk`/`_undo` (PROJ-153) und
+# die drei `enforce_chat_*_consistency` (PROJ-Y-151a). Alle fuenf werden von
+# Migrationsdateien im Repo angelegt; es fehlt nichts, es war nur nicht
+# nachgetragen. Verschwunden ist keine.
 #
 _audit_chain_digest
 _audit_entity_context
@@ -61,6 +69,8 @@ accept_risk_proposals_bulk
 accept_risk_proposals_undo
 accept_stakeholder_proposals_bulk
 accept_stakeholder_proposals_undo
+accept_work_items_from_intent_bulk
+accept_work_items_from_intent_undo
 acknowledge_dd_finding_escalation
 activate_ma_phase_model
 activate_skill_version
@@ -128,6 +138,7 @@ decrypt_tenant_ai_provider
 decrypt_tenant_ai_provider_with_key
 decrypt_tenant_secret
 decrypt_tenant_secret_with_key
+decrypt_user_mailbox_credential
 delete_committee
 delete_committee_meeting
 delete_communication_entry
@@ -143,6 +154,9 @@ encrypt_tenant_secret_with_key
 enforce_admin_invariant
 enforce_approval_event_immutability
 enforce_audit_exempt_write
+enforce_chat_conversation_consistency
+enforce_chat_folder_consistency
+enforce_chat_message_consistency
 enforce_class3_trusted_processor
 enforce_clearance_event_immutability
 enforce_committee_meeting_confidentiality_floor

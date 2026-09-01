@@ -18,7 +18,12 @@ export interface ExternalUrlValidation {
   error?: string
 }
 
-function isReservedIpv4(host: string): boolean {
+/**
+ * PROJ-158: exportiert, damit die Postfach-Anbindung dieselbe Liste
+ * reservierter Bereiche benutzt statt einer zweiten Kopie. Verhalten
+ * unveraendert — nur die Sichtbarkeit.
+ */
+export function isReservedIpv4(host: string): boolean {
   const m = host.match(/^(\d{1,3})\.(\d{1,3})\.(\d{1,3})\.(\d{1,3})$/)
   if (!m) return false
   const o = m.slice(1).map((x) => Number(x))
@@ -34,7 +39,8 @@ function isReservedIpv4(host: string): boolean {
   return false
 }
 
-function isReservedIpv6(hostRaw: string): boolean {
+/** PROJ-158: exportiert, siehe isReservedIpv4. */
+export function isReservedIpv6(hostRaw: string): boolean {
   // URL hostnames wrap v6 in brackets; url.hostname already strips them.
   const host = hostRaw.toLowerCase()
   if (!host.includes(":")) return false
