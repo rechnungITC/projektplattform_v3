@@ -116,7 +116,8 @@ This file is the cross-feature status register referenced by `features/INDEX.md`
 | PROJ-Y-116a | Planned (Followup, 116) — **neu vergeben 2026-08-24 (PROJ-Y-114c)** | **DOCX-Export des DD-Berichts** (neues Dependency `docx`, damit CIA-pflichtig) — nur bei Pilot-Bedarf. Blockiert **kein** Kriterium: AC3 sagt „PDF **oder** Word", und die PDF-Haelfte ist live. Trug spec-lokal `PROJ-Y-1`. |
 | PROJ-Y-116b | Planned (Followup, 116) — **neu vergeben 2026-08-24 (PROJ-Y-114c)** | **Snapshot-Freeze des DD-Berichts** via `report_snapshots` (Einfrieren vor Gate 5 als Audit-Nachweis). Der MVP zeigt bewusst die Live-Sicht, weil die User Story „jederzeit aktueller Stand" verlangt. Trug spec-lokal `PROJ-Y-2`. |
 | PROJ-Y-116c | **Erledigt — geliefert mit #292** | **Pflicht-Deliverables-Sektion (D1) im DD-Bericht.** Trug spec-lokal `PROJ-Y-3` und war die Ursache dafuer, dass PROJ-116s **AC1** als „teilweise" gebucht ist (Tranche 3 von PROJ-Y-145b). Sachlich geschlossen; ein Upgrade des PROJ-116-Scopes auf `full` verlangt nach Hausregel einen eigenen QA-/Deploy-Pass. |
-| PROJ-Y-5a | Planned (Followup, 5) — **neu vergeben 2026-08-24 (PROJ-Y-145b, Tranche 4)** | **KI-Dialog als Wizard-Alternative (F2.1b).** Der AC-Block „KI-driven alternative" steht in PROJ-5 auf ⏳ „Deferred per spec. No code path built": Toggle auf der Wizard-Eingangsseite, Extraktion strukturierter Stammdaten aus Freitext, Übergabe an denselben Review-Schritt. PROJ-12 ist längst deployed, die Sperre ist damit weg; inhaltlich am nächsten liegen PROJ-70-ε (Kickoff-Upload als Wizard-Schritt) und PROJ-135 (dialogische Rückfragen) — **beide lösen aber eine andere Aufgabe** als „Freitext → Projekt-Stammdaten". |
+| PROJ-Y-5a | In Progress (Followup, 5) — **Umfang 2026-08-31 verschoben, F2.1b am 2026-09-01 an PROJ-Y-5b abgegeben** | **Heute: adaptiver skill-gesteuerter Dialog bei der Projektanlage** (Spec `PROJ-Y-5a-skill-guided-project-creation-dialog.md`, Zweig `proj-y-5a/requirements`, 2288 Zeilen, Frontend gebaut, **`/backend` fehlt vollständig** — der Client ruft `/api/projects/[id]/project-context`, das es nicht gibt). **Am 2026-09-01 als Heimat des einen KI-Rückfragen-Dialogs bestätigt** (Nutzer-Entscheid): **PROJ-153-β entfällt**, dessen AC-153.4–.8 erfüllt 5a, und die Antworten fließen über den in PROJ-153-α **bereits vorhandenen** `answers`-Parameter von `assessIntentSubstance` — kein zweiter Frage-Zweck, keine zweite Runde. Grund gemessen: heute fragt **1 von 17** Zwecken nach; beide Slices gebaut wären **3** für eine Handlung, und 5as eigener Lock 5 verbietet genau das („der Nutzer wird nicht durch zwei unabhängige KI-Fragerunden geschickt“). **Befund bei der Klärung:** der hier ursprünglich registrierte Auftrag ist ein **anderer** — F2.1b ist ein Toggle **auf der Eingangsseite** (Freitext → Projekt-Stammdaten), 5as Dialog beginnt dagegen **nach** Typ-, Methoden- und Skill-Auswahl und erwähnt F2.1b **null mal**. F2.1b bleibt damit unerfüllt und ist als **PROJ-Y-5b** neu vergeben; die Kennung 5a behält den Skill-Dialog, weil Spec, Zweig und Commits so heißen (Muster PROJ-Y-151e: die Kennung **ohne** Artefakte weicht). *Ursprünglich registriert:* **KI-Dialog als Wizard-Alternative (F2.1b).** Der AC-Block „KI-driven alternative" steht in PROJ-5 auf ⏳ „Deferred per spec. No code path built": Toggle auf der Wizard-Eingangsseite, Extraktion strukturierter Stammdaten aus Freitext, Übergabe an denselben Review-Schritt. PROJ-12 ist längst deployed, die Sperre ist damit weg; inhaltlich am nächsten liegen PROJ-70-ε (Kickoff-Upload als Wizard-Schritt) und PROJ-135 (dialogische Rückfragen) — **beide lösen aber eine andere Aufgabe** als „Freitext → Projekt-Stammdaten". |
+| PROJ-Y-5b | Planned (Followup, 5) — **neu vergeben 2026-09-01** | **KI-Dialog als Wizard-Alternative (F2.1b)** — der Auftrag, den PROJ-Y-5a ursprünglich trug und **nicht** eingelöst hat. PROJ-5 führt den AC-Block „KI-driven alternative“ auf ⏳ „Deferred per spec. No code path built“: ein **Toggle auf der Wizard-Eingangsseite**, Extraktion strukturierter Projekt-Stammdaten aus Freitext, Übergabe an denselben Review-Schritt. **Abgrenzung, damit es nicht ein drittes Mal verwechselt wird:** PROJ-Y-5a fragt **nach** Typ-, Methoden- und Skill-Auswahl nach *fachlichem Kontext für die Skills*; F2.1b würde die **Stammdaten selbst** aus Freitext gewinnen und damit Wizard-Schritte **ersetzen** statt sie zu ergänzen. Beim Aufsetzen zu prüfen, ob F2.1b nach PROJ-Y-5a überhaupt noch gewollt ist: wer den Skill-Dialog hat, hat den Nutzen vielleicht schon — dann wäre der ehrliche Ausgang eine **Streichung mit Begründung**, nicht ein Bau. |
 | PROJ-Y-7a | Planned (Followup, 7) — **neu vergeben 2026-08-24 (PROJ-Y-145b, Tranche 4)** | **Tenant-Override für Method-Configs** (`project_method_configs`-Tabelle). In PROJ-7 mit ❌ als nicht gebaut ausgewiesen. Die drei Geschwister-Punkte derselben Liste sind fremd eingelöst: Sprint-Engine → PROJ-9/PROJ-60, echte Gantt-Kalkulation mit Critical Path → PROJ-25/PROJ-53, KI-Stakeholder-Matcher → PROJ-12/PROJ-88. |
 | PROJ-Y-8a | Planned (Followup, 8) — **neu vergeben 2026-08-24 (PROJ-Y-145b, Tranche 4)** | **Tenant-konfigurierbare Influence/Impact-Labels.** PROJ-8s Deploy-Notiz verschiebt sie nach PROJ-17; PROJ-17 ist deployed, hat sie aber nicht mitgebaut — die Anforderung ist also zwischen zwei Slices liegen geblieben. Heute gilt die feste 4-Stufen-Skala low/medium/high/critical. |
 | PROJ-Y-10a | Planned (Followup, 10) — **neu vergeben 2026-08-24 (PROJ-Y-145b, Tranche 4)** | **Compare-Modus über zwei frei gewählte Zeitstempel** mit feldweisem Diff. PROJ-10 liefert das „vorher/nachher" **pro Audit-Zeile**; die AC verlangt den Vergleich zweier beliebiger Versionen (in der QA als ⏳ und als Info I1 ausgewiesen). |
@@ -355,7 +356,7 @@ aber **nie registriert** waren: PROJ-Y-5a · 7a · 8a · 10a/10b/10c · 11a/11b 
 | PROJ-2 | full | — | — |
 | PROJ-3 | full | — | — |
 | PROJ-4 | full | — (404/403-Zeile war Nachweislücke, später geschlossen) | — |
-| PROJ-5 | mvp | AC-Block „KI-driven alternative (F2.1b)" | PROJ-Y-5a — neu vergeben |
+| PROJ-5 | mvp | AC-Block „KI-driven alternative (F2.1b)" | **PROJ-Y-5b** — am 2026-09-01 von PROJ-Y-5a übernommen, weil dessen Spec einen anderen Dialog baut (siehe 5a-Zeile) |
 | PROJ-6 | mvp | AC „Methodenänderungen auditiert (PROJ-10-Hook)"; AC „method-templates.md" → Waiver | PROJ-10 geliefert → **Upgrade-Kandidat**; PROJ-Y-145f-w3 |
 | PROJ-7 | mvp | 4× ❌ (Sprint-Engine, Gantt-Kalkulation/Critical-Path, Tenant-Override, KI-Matcher) + 4 Coming-Soon-Stubs | PROJ-9/60 · 25/53 · 12/88 geliefert → **Upgrade-Kandidat**; PROJ-Y-7a offen |
 | PROJ-8 | mvp | AC „Edits audited (PROJ-10)", AC Class-3-Export-Redaktion, Tenant-Labels | PROJ-10 + PROJ-12 geliefert → **Upgrade-Kandidat**; PROJ-Y-8a offen |
@@ -626,6 +627,25 @@ Deploy, aber sie sind nicht erledigt und hatten bis heute **keine** Followup-Ken
   Produkts, aber es erklärt „ich hab geklickt und nichts passierte".
   *Quelle: PROJ-Y-155a, Messungen vom 2026-09-01.*
 
+- **PROJ-Y-155d — kritischer Pfad über Arbeitspaket-Kanten (offen, aus β.2
+  herausgenommen).** War **AC-18** der β.2-Kriterienliste („Der kritische Pfad umfasst
+  Arbeitspaket-Kanten, nicht nur Phasen"); der **CIA-Pass vom 2026-09-01** hat es aus
+  β.2 herausgelöst, Nutzer-Entscheid. Grund, live gemessen: der Brief nannte das eine
+  Erweiterung der bestehenden Funktion — `compute_critical_path_phases` ist aber
+  `SECURITY DEFINER`, gibt `uuid[]` zurück und liest **`work_items` überhaupt nicht**
+  (0 Vorkommen im Funktionskörper). Sie auf Arbeitspaket-Kanten zu erweitern ist also
+  kein Ausbau, sondern eine **neue Rechnung** — und zwar über eine Tabelle mit
+  `confidentiality_level` und RESTRICTIVE-Policies (PROJ-100a). Als DEFINER wäre das
+  genau der Fall, den CLAUDE.md ausschliesst („Aggregates leak … must be
+  `SECURITY INVOKER`"): der kritische Pfad würde Arbeitspakete einschliessen, die der
+  Aufrufer nicht sehen darf. Die Slice braucht daher eine **INVOKER**-Funktion plus
+  eigene Aggregat-Leck-Probe, und β.2 hätte damit zwei Risikoachsen in einer
+  Abnahme getragen (Schreibverhalten **und** Need-to-know). Vorbedingung gemessen und
+  vorhanden: der Graph ist zyklenfrei (`tg_dep_prevent_polymorphic_cycle` feuert BEFORE
+  INSERT **und** UPDATE, Tiefenriegel 10000), eine topologische Ordnung existiert also
+  immer.
+  *Quelle: CIA-Pass β.2, 2026-09-01, Messungen gegen Prod.*
+
 - **PROJ-Y-155b — zwei Leseorte für denselben Termin (offen, Hygiene).**
   `wbs-display.ts` (`ownPlannedStart`/`ownPlannedEnd`) liest Termine weiter aus
   `attributes` JSONB, der Rest des Produkts aus der echten Spalte. Nach dem
@@ -692,8 +712,42 @@ Deploy, aber sie sind nicht erledigt und hatten bis heute **keine** Followup-Ken
   an einem SVG-Pfad verankert werden, dessen Lage von Zoom, Bildlauf und
   Zeilenhöhe abhängt — Risiko ohne Ertrag, die Substanz des Kriteriums ist
   „Löschen ist eine von drei Handlungen"). Offen bleibt **β.2**.
-  *Quelle: PROJ-155 Fundament-Entscheidung; Design-Pass 2026-09-01 mit
-  Live-Messung gegen Prod.*
+  **CIA-Pass β.2 gelaufen 2026-09-01** (Halt-und-Frage-Checkpoint, Sub-Agenten aus;
+  Präzedenz PROJ-45-β/ε, PROJ-Y-51b) — er hat den Zuschnitt an zwei Stellen geändert
+  und drei Prämissen des Briefs korrigiert. **Die Entscheide:** Q1 Rechenort → Vorschau
+  als reine TS-Funktion, der Server rechnet beim Übernehmen **neu** und gewinnt bei
+  Abweichung (Präzedenz `accept_proposal_from_context_bulk`); Q2 Ort des Schalters →
+  `projects.settings` **plus** Audit-Whitelist-Eintrag **plus** `patchSchema`; Q3 →
+  ja für β.2, nein für β.1. **Beide Äste von Q2 waren falsch beschrieben:** `projects`
+  trägt bereits `settings jsonb NOT NULL DEFAULT '{}'` (in Prod **0 Zeilen belegt, 0
+  Schlüssel**), der Speicherort braucht also **keine** Migration — und
+  `tenant_settings.module_settings`, der zweite genannte Ort, **existiert nicht**. Der
+  Whitelist-Eintrag ist Teil des Entscheids, nicht Beiwerk: ohne ihn wäre ein Schalter,
+  der das Schreibverhalten einer Kernentität umstellt, **unauditiert** (PROJ-Y-130h-Lehre).
+  **Zwei Zuschnitt-Änderungen:** AC-18 (kritischer Pfad) ist **heraus** → **PROJ-Y-155d**;
+  und die **Meilenstein-Auffächerung des Phasen-Zugs kommt hinein** (neues AC-20) — sie
+  macht heute `Promise.all` über N einzelne `PATCH`-Aufrufe mit
+  `.catch(() => undefined)`, also N Schreibvorgänge ohne Transaktion mit verschluckten
+  Fehlern, wörtlich die Klasse, die AC-15 für die Kaskade ausschliesst; dieselbe Zusage
+  darf auf einer Fläche nicht zweierlei bedeuten. **Eine vermutete Gefahr widerlegt:**
+  `tg_work_items_36a_rollup_recompute` schreibt `work_items` in einem Trigger auf
+  `work_items` und sah nach Wiedereintritt aus — er trägt
+  `WHEN (pg_trigger_depth() = 0)`, kein Rekursionsrisiko; und die `derived_*`-Spalten
+  stehen **nicht** in der Audit-Whitelist, der Rollup erzeugt also **null** Audit-Zeilen.
+  Damit ist die Volumenfrage exakt begrenzt: 2 Zeilen je verschobenem Nachfolger.
+  **Zwei Zahlen des Briefs sind schon veraltet** (Abhängigkeiten 4 → **5**,
+  Arbeitspakete 138 → **145**, mit eigenem Termin 4 → **9**, abgeleitet 0 → **2**) — der
+  Absatz, der die „0" erklärte, gilt nicht mehr, PROJ-Y-155as Fixture hat den Fall
+  erzeugt. Und **114 von 271** `work_items`-Audit-Zeilen sind bereits
+  `planned_start`/`planned_end`, Termin-Unruhe ist also schon heute die grösste
+  Audit-Kategorie — das schärft das Vorschau-Argument statt es zu schwächen. Ein
+  dritter Fund ohne eigene Kennung: der Reuse-Eintrag `link-types.ts` im Brief war eine
+  **Fehlzuordnung** (das ist die PROJ-27-Registry über `work_item_links`, wo nur
+  `precedes`/`follows` einen Abstand vertragen, während bei `FS`/`SS`/`FF`/`SF` **alle
+  vier** ihn vertragen); β.1 hatte die Autorität unabhängig richtig angelegt, es ist kein
+  Schaden entstanden, der Brief ist korrigiert.
+  *Quelle: PROJ-155 Fundament-Entscheidung; Design-Pass 2026-09-01 und CIA-Pass β.2
+  2026-09-01, beide mit Live-Messung gegen Prod.*
 
 - **Registerkorrektur, keine Auslassung.** Die PROJ-25-Zeile im INDEX führt „SVAR
   React Gantt MIT". Gemessen ist `wx-react-gantt@1.3.1` **GPLv3** mit
@@ -706,7 +760,7 @@ Deploy, aber sie sind nicht erledigt und hatten bis heute **keine** Followup-Ken
   Kontext hinzugefügt") ist **PROJ-Y-154a** — die KI-Übernahme kennt kein
   Phasenfeld, CIA-pflichtige eigene Slice.
 
-## PROJ-153 — Arbeitspakete aus dem Vorhaben (α `/backend` live, In Progress)
+## PROJ-153 — Arbeitspakete aus dem Vorhaben (α gebaut, `/qa` offen, In Progress)
 
 - **PROJ-Y-153a — `accept_proposal_from_context_bulk` nur einmal je Transaktion
   aufrufbar (offen, Bestandsbefund).** PROJ-70s Annahme-Funktion legt ihre
@@ -730,10 +784,27 @@ Deploy, aber sie sind nicht erledigt und hatten bis heute **keine** Followup-Ken
   #507 gemergt war** — beide Verweise nennen jetzt `PROJ-Y-151e` samt Umbenennungsgrund
   und Behebungsnachweis, und der Zwilling `PROJ-Y-151f` ist genannt.
   *Quelle: eigene Messung 2026-08-31 im Zuge der PROJ-151-Registerkorrektur.*
-- **Nicht zurückgestellt, sondern noch nicht gebaut:** `/frontend` (Einstiegsfläche
-  und Prüfansicht) und `/qa` (Schwellen-Kalibrierung nach AC-153.9, echter
-  Anbieter-Durchlauf, authentifizierter Browser-Durchlauf). α ist über HTTP
-  erreichbar, über die Oberfläche nicht.
+- **AC-153.4 bis AC-153.8 (Dialogrunde) — zurückgestellt, Ziel `PROJ-Y-5a`.
+  Entschieden 2026-09-01 (Nutzer-Entscheid).** Der geplante Sub-Slice **β entfällt**:
+  die Rückfragen liefert PROJ-Y-5a im Wizard, PROJ-153 **konsumiert** sie. Die
+  Kriterien sind **wörtlich unverändert** — verlagert ist der Erfüllungsort, nicht
+  der Wortlaut (Muster PROJ-45/L25). Gemessener Grund: heute fragt **1 von 17**
+  Zwecken nach; β und PROJ-Y-5a beide gebaut wären **3** für eine Handlung, und 5as
+  eigener Lock 5 verbietet genau das („der Nutzer wird nicht durch zwei unabhängige
+  KI-Fragerunden geschickt“). **Der Aufnahmepunkt existiert schon:**
+  `assessIntentSubstance` nimmt seit α `answers: readonly HumanAnswer[]` — in α
+  konstant leer, im Kommentar „die Dialogrunde kommt erst mit β“. Die Verdrahtung ist
+  damit die ganze verbleibende Arbeit; kein neuer Zweck, keine neue Ablage, keine
+  zweite Fragefläche. **Asymmetrie:** β könnte 5a nicht ersetzen (es sitzt nach der
+  Anlage, der Wizard bliebe blind), 5a ersetzt β sehr wohl.
+  *Quelle: Klärung PROJ-Y-5a ⇄ PROJ-153 am 2026-09-01.*
+- **Nicht zurückgestellt, sondern noch nicht gebaut:** `/qa` (Schwellen-Kalibrierung
+  nach AC-153.9, echter Anbieter-Durchlauf, authentifizierter Browser-Durchlauf).
+  **Korrektur 2026-09-01:** diese Zeile führte `/frontend` als ungebaut, obwohl es am
+  2026-08-28 geliefert wurde (`features/INDEX.md` sagt es korrekt, dieser Abschnitt
+  nicht) — dieselbe Drift-Klasse wie beim Querverweis auf PROJ-Y-45r, und ebenfalls
+  außerhalb dessen, was `check:register-consistency` prüft: er vergleicht Zustände von
+  Kennungen, keine Prosa-Aussagen über Bau-Stufen.
 
 ## PROJ-157 — Register-Konsistenz-Guard (Deployed, Scope `tooling-only`)
 
