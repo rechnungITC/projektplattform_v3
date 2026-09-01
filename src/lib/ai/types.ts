@@ -39,6 +39,11 @@ export type AIPurpose =
   // answered Q&A to the kickoff's content_excerpt. Standard content-based
   // classification (Class-1/2 → cloud, Class-3 → local via resolver clamp).
   | "clarifying_questions_from_context"
+  // PROJ-Y-5a — adaptive, multi-turn project-context clarification. Unlike
+  // PROJ-135 it works with or without a kickoff and evaluates exact selected
+  // skill versions. It creates no ki_suggestions; coverage remains a human
+  // decision in the wizard draft.
+  | "skill_context_clarification"
   // PROJ-80-α — Quintessenz eines DMS-Dokuments. Wie `narrative` und
   // `clarifying_questions_from_context` schreibt dieser Zweck KEINE
   // `ki_suggestions`: sein Ergebnis landet in `document_summaries`.

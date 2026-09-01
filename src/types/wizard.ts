@@ -1,10 +1,8 @@
 /**
  * PROJ-5 — wizard data types.
  *
- * `WizardData` is the accumulator across all 5 steps. `WizardDraft` is the
- * persisted-server representation; in the frontend phase it lives in
- * localStorage, the /backend phase moves it to the `project_wizard_drafts`
- * Supabase table with RLS.
+ * `WizardData` is the accumulator across the creation steps. `WizardDraft` is
+ * the owner-scoped representation persisted in `project_wizard_drafts`.
  */
 
 import type { ProjectMethod } from "@/types/project-method"
@@ -96,7 +94,7 @@ export interface WizardData {
   // PROJ-78 — the skill set chosen in the "Skills" step. Auto-resolved from
   // method + project_type (plus cross-cutting skills), de-selectable, and
   // extendable from the catalog. Lives in the draft's passthrough JSON; on
-  // finalize the backend calls `assign_project_skills` (best-effort).
+  // finalize resolves and assigns the exact active versions atomically.
   skills: SkillsWizardData
 
   // PROJ-70-ε — optional KI-Backlog generation from a kickoff artefact.
@@ -108,7 +106,7 @@ export interface WizardData {
 
   // PROJ-94 — strategic foundation for the conditional `ma_foundation` step.
   // Only meaningful when `project_type === 'ma'`. Lives in the passthrough
-  // JSON payload; finalize reads it and calls `create_ma_project_profile`.
+  // JSON payload; atomic finalize creates the profile in the same transaction.
   ma_foundation: MaFoundationData
 
   // PROJ-Y-5a — the unified, resumable Project-context step. This is required

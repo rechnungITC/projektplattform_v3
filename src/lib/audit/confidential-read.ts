@@ -49,6 +49,7 @@ export const CONFIDENTIAL_ENTITY_TYPES = [
   "steering_report",
   "operative_report",
   "dd_report",
+  "project_context_documents",
 ] as const
 
 export type ConfidentialEntityType = (typeof CONFIDENTIAL_ENTITY_TYPES)[number]

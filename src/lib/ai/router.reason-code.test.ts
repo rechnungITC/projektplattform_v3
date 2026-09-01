@@ -48,6 +48,7 @@ const ALL_AI_PURPOSES = [
   "proposal_stakeholders_from_context",
   "proposal_risks_from_context",
   "clarifying_questions_from_context",
+  "skill_context_clarification",
 ] as const satisfies readonly AIPurpose[]
 
 // Compile-time exhaustiveness guard: this assignment only type-checks when

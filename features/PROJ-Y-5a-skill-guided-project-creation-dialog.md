@@ -5,7 +5,7 @@
 ## Deployment Scope: —
 
 **Created:** 2026-08-31
-**Last Updated:** 2026-08-31
+**Last Updated:** 2026-09-01
 
 ## Summary
 
@@ -669,16 +669,76 @@ The Alpha frontend boundary is implemented and ready for user review.
   export `mapCommEntryRpcError` in the communication-entry route.
 - `check:index-scope`: **199/199**, 0 errors. `git diff --check`: clean.
 
-### Open for backend and review
+### Frontend continuation
 
-- `/backend`: `skill_context_clarification` across every provider and purpose
-  register; authoritative frame/version resolution; adaptive idempotent turn
-  API; immutable revision tables; RLS/confidentiality/transcript policies;
-  atomic idempotent finalize; project-context read API; live RPC smoke and
-  security probes.
-- Browser review is still required before the frontend stage is called fully
-  accepted. The implementation follows the existing wizard visual language;
-  no separate mockup or brand deviation was introduced.
+The preview and test login were made available on 2026-09-01. After the user
+confirmed that access worked and asked to continue building, the slice moved to
+the backend stage. The implementation follows the existing wizard visual
+language; no separate mockup, dependency, or brand deviation was introduced.
+
+## Backend Implementation Notes (2026-09-01)
+
+### Delivered locally
+
+- Added the separate non-proposal purpose `skill_context_clarification` to the
+  TypeScript purpose union, provider capability matrix, typed reason-code
+  exhaustiveness guard, `ki_runs` register, cost-cap register, and bounded
+  pre-project-run rule. It deliberately remains absent from suggestion and undo
+  registers. All cloud providers, Azure, Ollama, and Stub use the existing
+  structured clarification transport; provider selection and run accounting
+  retain the new purpose's distinct audit identity.
+- Added an owner-scoped adaptive next-question route. It resolves the draft,
+  current selected active skill versions and instructions, optional kickoff,
+  prior turns and reviewed summary server-side; classifies the complete bounded
+  outbound payload; uses optimistic concurrency and request-id idempotency; and
+  persists both successful assistant turns and typed manual-fallback reasons.
+  AI output cannot establish canonical coverage or mutate project master data.
+- Added the revisioned project-context domain: document header, immutable
+  revision, exact relational skill-version coverage, and raw turns. Every table
+  is tenant-scoped, RLS-enabled and direct-write closed. Summary access combines
+  project membership with restrictive confidentiality; transcript access is
+  limited to its author or project lead/editor and remains subject to the same
+  classification gate. Strict reads use the existing deduplicated confidential
+  access log.
+- Replaced the split create/bootstrap/delete core with
+  `finalize_project_wizard_with_context`. It reads the actor from `auth.uid()`,
+  locks and validates the owned draft, creates the project, lead membership,
+  M&A profile where applicable, selected skills, initial context revision,
+  coverage and transcript, re-links wizard AI runs, and deletes the draft in
+  one transaction. `origin_draft_id` is unique, so a lost-response retry returns
+  the same project. Optional template and kickoff handoffs remain best-effort
+  after the mandatory transaction.
+- Added the authenticated project-context read API and connected the existing
+  project-room hook/page to authoritative relational coverage and the narrower
+  transcript response.
+- Added route tests plus a self-rolling-back SQL pentest covering atomic failure,
+  idempotent retry, direct-write denial, tenant isolation, transcript roles,
+  restrictive confidentiality/aggregate leakage, and revoked `anon` execute.
+
+### Backend evidence
+
+- Full Vitest suite: **4025/4025** tests in **466/466** files.
+- Finalize regression suite: **20/20**; new project-context APIs: **7/7**.
+- Provider capability and reason-code matrices remain exhaustive for the new
+  purpose.
+- ESLint: **0 errors** (four unrelated pre-existing warnings). Token-drift,
+  migration-naming, index-scope, and `git diff --check`: green.
+- Next.js webpack production compilation succeeds. The subsequent global route
+  type pass stops at the pre-existing unrelated `mapCommEntryRpcError` export;
+  no changed file appears in the TypeScript baseline.
+- Local fresh-schema replay was attempted but the WSL Docker daemon is not
+  available. The migration and rollback pentest therefore remain intentionally
+  unapplied until `/qa` can use the approved target database workflow.
+
+### Required before Backend approval / QA handoff
+
+- Apply the migration with the filename stem preserved, then run schema-drift,
+  the live finalize RPC smoke, and `tests/sql/PROJ-Y-5a-project-context-pentest.sql`.
+- Run one real-provider multi-turn conversation and one authenticated browser
+  flow against the migrated API, including no-provider and Class-3 fallback.
+- Re-run existing PROJ-5/70/78/135 creation regressions against the live RPC.
+- Beta remains separate: post-create superseding revisions, revision comparison,
+  retention/export treatment, and controlled downstream reuse.
 
 ## QA Test Results
 

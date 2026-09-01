@@ -16,6 +16,7 @@ import {
   MessageSquareText,
   ShieldCheck,
   Sparkles,
+  Loader2,
 } from "lucide-react"
 import * as React from "react"
 import { useFormContext, useWatch } from "react-hook-form"
@@ -200,7 +201,15 @@ function sameValue(left: unknown, right: unknown): boolean {
   return JSON.stringify(left) === JSON.stringify(right)
 }
 
-export function StepProjectContext() {
+interface StepProjectContextProps {
+  onRequestAiQuestion?: () => Promise<{
+    question: string | null
+    rationale: string | null
+    reason_code: ProjectContextData["reason_code"]
+  } | null>
+}
+
+export function StepProjectContext({ onRequestAiQuestion }: StepProjectContextProps = {}) {
   const form = useFormContext<WizardData>()
   const watchedContext = useWatch({
     control: form.control,
@@ -218,6 +227,8 @@ export function StepProjectContext() {
   const [catalogLoading, setCatalogLoading] = React.useState(true)
   const [catalogError, setCatalogError] = React.useState<string | null>(null)
   const [manualAnswer, setManualAnswer] = React.useState("")
+  const [askingAi, setAskingAi] = React.useState(false)
+  const [aiRationale, setAiRationale] = React.useState<string | null>(null)
   const idSequence = React.useRef(0)
   const idPrefix = React.useId()
 
@@ -358,6 +369,21 @@ export function StepProjectContext() {
     })
   }
 
+  const askAi = async () => {
+    if (!onRequestAiQuestion) return
+    setAskingAi(true)
+    try {
+      const result = await onRequestAiQuestion()
+      setAiRationale(result?.rationale ?? null)
+    } finally {
+      setAskingAi(false)
+    }
+  }
+
+  const latestAiQuestion = [...context.turns]
+    .reverse()
+    .find((turn) => turn.role === "assistant" && turn.status === "complete")
+
   return (
     <div className="space-y-5" data-testid="wizard-project-context-step">
       <Alert>
@@ -425,6 +451,18 @@ export function StepProjectContext() {
           </CardTitle>
         </CardHeader>
         <CardContent className="space-y-3">
+          {latestAiQuestion ? (
+            <Alert>
+              <Sparkles className="h-4 w-4" aria-hidden />
+              <AlertTitle>Aktuelle Klärungsfrage</AlertTitle>
+              <AlertDescription className="space-y-1">
+                <p>{latestAiQuestion.content}</p>
+                {aiRationale ? (
+                  <p className="text-xs text-muted-foreground">{aiRationale}</p>
+                ) : null}
+              </AlertDescription>
+            </Alert>
+          ) : null}
           <div>
             <p className="text-sm font-medium">
               Was sollte das Projektteam zusätzlich wissen?
@@ -448,13 +486,25 @@ export function StepProjectContext() {
             <span className="text-xs text-muted-foreground">
               {manualAnswer.length} / 10.000 Zeichen
             </span>
-            <Button
-              type="button"
-              onClick={addManualAnswer}
-              disabled={!manualAnswer.trim()}
-            >
-              Aussage übernehmen
-            </Button>
+            <div className="flex flex-wrap gap-2">
+              {onRequestAiQuestion ? (
+                <Button type="button" variant="outline" onClick={() => void askAi()} disabled={askingAi}>
+                  {askingAi ? (
+                    <Loader2 className="mr-2 h-4 w-4 animate-spin" aria-hidden />
+                  ) : (
+                    <Sparkles className="mr-2 h-4 w-4" aria-hidden />
+                  )}
+                  Nächste KI-Frage
+                </Button>
+              ) : null}
+              <Button
+                type="button"
+                onClick={addManualAnswer}
+                disabled={!manualAnswer.trim()}
+              >
+                Aussage übernehmen
+              </Button>
+            </div>
           </div>
         </CardContent>
       </Card>

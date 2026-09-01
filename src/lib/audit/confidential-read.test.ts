@@ -297,9 +297,10 @@ describe("Objektarten-Vokabular", () => {
       "steering_report",
       "operative_report",
       "dd_report",
+      "project_context_documents",
     ]) {
       expect(CONFIDENTIAL_ENTITY_TYPES).toContain(t)
     }
-    expect(CONFIDENTIAL_ENTITY_TYPES).toHaveLength(16)
+    expect(CONFIDENTIAL_ENTITY_TYPES).toHaveLength(17)
   })
 })
