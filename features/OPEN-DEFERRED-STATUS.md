@@ -831,3 +831,19 @@ Deploy, aber sie sind nicht erledigt und hatten bis heute **keine** Followup-Ken
   Kennung in beiden Formen führt; getragen wird der Lauf von R2 (19 Kennungen) und R3 (3
   Ansprüche). Die Regel feuert, sobald wieder doppelt gebucht wird, und ist am **echten**
   Vorzustand (`5e28bca^`) belegt statt an einem Konstrukt.
+
+---
+
+## PROJ-160 — Supply-Chain-Remediation `browserslist` (In Progress)
+
+- **`postcss-selector-parser@6.1.2` (GHSA-w9m9-85wc-3x92, CVSS 4.3) — unter der Schwelle,
+  bewusst nicht behoben.** Der OSV-Scanner meldet ihn, der Gate lässt ihn durch: die Hausnorm
+  greift ab CVSS 7.0 bzw. Label HIGH/CRITICAL. **Gemessen lag er vor und nach dem Fix vor**, ist
+  also keine Regression dieser Slice. Ihn mitzunehmen hätte den Diff verbreitert, ohne dass ein
+  Gate es verlangt — und die Slice sollte klein bleiben, weil sie **jeden** offenen PR entblockt.
+  *Quelle: eigene Messung 2026-09-01, OSV-Gate gegen Vor- und Fixzustand.*
+- **Nicht zurückgestellt, sondern ausdrücklich außerhalb:** ob `@sentry/nextjs` eine
+  Produktions-Abhängigkeit sein muss. Sie ist der **Grund**, warum ein Build-Zeit-Werkzeug
+  überhaupt im Prod-Baum steht und damit in `npm audit --omit=dev` auftaucht. Das zu ändern ist
+  eine Architekturentscheidung mit CIA-Pflicht, keine Advisory-Behebung — und sie würde die
+  Sentry-Anbindung berühren, die seit PROJ-67 produktiv Fehler meldet.
