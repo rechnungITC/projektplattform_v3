@@ -509,6 +509,54 @@ _To be added by /deploy_
 ## Implementierungsnotizen — α `/backend` (2026-08-28)
 
 **Zuschnitt (Nutzer-Entscheid):** α = Kern **ohne** Dialogrunde, β = Dialogrunde.
+
+---
+
+## β entfällt — Abgrenzung gegen PROJ-Y-5a (Nutzer-Entscheid 2026-09-01)
+
+**β wird nicht als eigener Sub-Slice gebaut.** Die Dialogrunde AC-153.4–AC-153.8 wird von
+**PROJ-Y-5a** geliefert; PROJ-153 **konsumiert** ihr Ergebnis statt selbst zu fragen. Die Kriterien
+bleiben **wörtlich unverändert** — verlagert ist der **Erfüllungsort**, nicht der Wortlaut (Muster
+PROJ-45/L25: „Absicht erfüllt, Ort abweichend — dokumentiert, das Kriterium nicht umgeschrieben").
+
+### Der Grund ist gemessen, nicht stilistisch
+
+**Heute fragt genau ein Zweck nach:** `clarifying_questions_from_context` (PROJ-135) — von **17**
+Zwecken insgesamt. Wären β und PROJ-Y-5a beide gebaut, wären es **drei** Zwecke für **eine**
+Handlung („die KI fragt nach, um Kontext zu erheben"). Der Preis je Zweck steht in CLAUDE.md und ist
+nicht klein: vier Register im Gleichschritt, alle sechs Anbieter, `reason_code`, Capability-Matrix.
+
+**PROJ-Y-5a hat das Argument gegen β selbst geschrieben.** Sein Lock 5 gliedert die deployte
+PROJ-135-Fähigkeit in **denselben** Dialog ein, ausdrücklich damit „der Nutzer nicht durch zwei
+unabhängige KI-Fragerunden geschickt" wird. Dasselbe Argument trifft eine dritte Runde im
+Projektraum.
+
+**Der Aufnahmepunkt existiert bereits — das ist der tragende Befund.** `assessIntentSubstance`
+(`src/lib/ai/intent-substance.ts`) nimmt seit α den zweiten Parameter
+`answers: readonly HumanAnswer[]`, in α konstant leer; der Kommentar dort sagt wörtlich „die
+Dialogrunde kommt erst mit β". `HumanAnswer` ist `{ answer: string \| null }` mit dem Vermerk
+„Modellausgabe gehört hier nie hinein". **PROJ-Y-5as Dialogantworten passen dort unverändert
+hinein** — kein zweiter Frage-Zweck, keine zweite Runde, und die Substanz-Untergrenze aus AC-153.9
+wirkt weiter genau wie gebaut.
+
+### Die Abhängigkeit ist asymmetrisch
+
+β könnte PROJ-Y-5a **nicht** ersetzen: es sitzt nach der Projektanlage, der Wizard bliebe blind.
+PROJ-Y-5a ersetzt β **sehr wohl** — es erhebt genau die Substanz, an der die Untergrenze heute
+**30 von 31** Prod-Projekten scheitern lässt (`INTENT_MIN_HUMAN_CHARS = 400`, Vorhaben in Prod
+Ø 47 Zeichen).
+
+### Was das für PROJ-153 heißt
+
+- **α bleibt unverändert** und ist unabhängig nutzbar: ein Vorhaben ab 400 Zeichen erzeugt
+  Arbeitspakete. Der Zuschnitt „α ohne Dialogrunde" war richtig und ist es weiter.
+- **AC-153.4–AC-153.8 bleiben offen**, mit Ziel-Kennung **PROJ-Y-5a** statt eines eigenen β.
+  Registriert in `features/OPEN-DEFERRED-STATUS.md`.
+- **Wenn PROJ-Y-5a liefert**, ist die Arbeit an PROJ-153 die Verdrahtung: die Antworten aus 5as
+  Projekt-Kontext-Dokument in den vorhandenen `answers`-Parameter reichen. Kein neuer Zweck, keine
+  neue Ablage, keine neue Fragefläche.
+- **Vorher nicht bemerkt:** diese Spec nennt PROJ-Y-5a **null mal**, und 5a führt PROJ-153 nur als
+  „related but separate" — die Verzahnung stand in keiner der beiden Specs.
 Damit braucht α nur **einen** neuen KI-Zweck; der zweite (Rückfragen) kommt mit β.
 
 ### Der Pflicht-Live-Smoke hat drei Fehler gefunden — zwei korrigieren eine Hausregel
