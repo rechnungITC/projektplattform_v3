@@ -1,7 +1,7 @@
 # PROJ-166 — Portfolio-Erdung Tranche 2: die vier bedarfsgetriebenen Followups
 
-## Status: In Review
-## Deployment Scope: —
+## Status: Deployed
+## Deployment Scope: tooling-only
 
 **Created:** 2026-09-01
 
@@ -136,3 +136,22 @@ gebaut, fallen XLSX/PPTX aus der Menge heraus und der Followup schrumpft auf CSV
   `dms/extraction.ts:18-20` · Mengen 9 / 6 / 2 (`DMS_ALLOWED_MIME_TYPES`, `ALLOWED_MIME_TYPES`,
   `NOT_RAG_PARSEABLE`) · Fehlerabbildung `extraction.ts:81-83`.
 - Umfang: `src/` 0 Dateien, `supabase/migrations/` 0, `package.json` 0.
+
+## Deployment
+
+**Deployed 2026-09-02: Tag `v2.96.0-PROJ-166` auf dem Merge-Commit `fb9bb642` (PR #530, squash → `main`).**
+
+Der Merge **ist** die Auslieferung — ein Post-Deploy-Smoke wäre gegenstandslos (kein `src/`-Diff,
+keine Migration, kein Paket). Tragend sind die **zehn grünen CI-Checks**, davon sieben Required,
+darunter der **Register-Konsistenz-Wächter**: er belegt, dass die vier geerdeten Zeilen in INDEX und
+Register sich nicht widersprechen — genau die Prüfung, die diese Slice braucht, weil sie dieselben
+Urteile in **beiden** Formen führt (AC-166.2).
+
+**Scope `tooling-only`** wörtlich nach Definition: der gelieferte Ausgang betrifft Dokumentation und
+Portfolio-Buchführung und fügt **keine** Produkt-Laufzeitfähigkeit hinzu.
+
+**Alle acht Kriterien erfüllt, nichts zurückgestellt.** `PROJ-Y-166a` ist ein **neu entdeckter**
+Befund mit Ziel-Kennung, keine Auslassung dieser Slice — AC-166.7 verlangt ausdrücklich, dass er
+registriert ist, **bevor** eine Zeile ihn referenziert, und das ist er. Die Grenze aus D-166.1
+(gemessen an Code und den dokumentierten Prod-Messungen anderer Slices statt über eigene
+Live-Abfragen) bleibt bestehen und ist eine benannte Nachweisebene, keine unerfüllte Zusage.
