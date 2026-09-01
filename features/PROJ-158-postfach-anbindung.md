@@ -1,9 +1,9 @@
 # PROJ-158: Postfach-Anbindung (IMAP · Microsoft 365 · Gmail)
 
-## Status: Architected
+## Status: In Progress
 ## Deployment Scope: —
 **Created:** 2026-08-31
-**Last Updated:** 2026-08-31
+**Last Updated:** 2026-09-01
 
 Ein Mandant hinterlegt ein E-Mail-Postfach, dessen Zugangsdaten verschlüsselt abgelegt werden, und
 kann die Verbindung prüfen. **Diese Slice holt keine Mail ab** — sie stellt nur die Verbindung her
@@ -565,3 +565,86 @@ vitest **4125/4125** (469 Dateien, +70) · tsc **11**, Baseline 13, **0 in einer
 - **Offen für `/qa`:** der Lauf gegen ein echtes Postfach (AC-158.7 dritte Ebene, AC-158.8
   Fehlergründe an echten Servern) und ein angemeldeter Browser-Durchlauf. Beides ist **kein**
   erfülltes Kriterium, sondern ausstehender Nachweis.
+
+---
+
+## Frontend-Implementierung α (2026-09-01)
+
+Eine Fläche, ein Anlege-Dialog, eine Übersetzungsschicht. **Keine neue Route, keine Migration, kein
+neues Paket** — die drei Backend-Routen aus dem Vortag werden bedient, sonst nichts.
+
+### Der Ort ist gegen den Tech Design entschieden — gemessen, nicht bevorzugt
+
+Das Tech Design sah die Fläche bei den Konnektoren. **Das ist nicht baubar, ohne AC-158.5 zu
+brechen:** `global-sidebar.tsx:133` trägt für `/konnektoren` ein `adminOnly: true`. Ein Postfach ist
+seit der Modell-Umkehr **nutzereigen** — jedes Mitglied bindet sein eigenes an —, hinter einem
+Administrations-Gate wäre die Funktion für genau die Nutzer unsichtbar, für die sie gedacht ist.
+
+Die Fläche liegt daher unter `/settings/postfaecher`, neben `/settings/profile`, das ebenfalls kein
+`adminOnly` trägt. Erhoben statt vermutet: von den zehn Einträgen unter `SETTINGS_CHILDREN` sind
+genau **zwei** ohne Administrations-Gate (Profil, Mitglieder) — die persönliche Ecke der
+Einstellungen, und dort gehört ein privates Postfach hin.
+
+### Was die Oberfläche entscheiden musste
+
+**Der Zustand wird nie ohne seinen Zeitpunkt gezeigt.** „Verbunden" ist ein *gespeichertes
+Prüfergebnis*, keine Live-Aussage (Tech Design Q3: zwischen zwei Prüfungen bleibt ein Widerruf
+unsichtbar). Ein Abzeichen allein läse sich als Gewissheit, deshalb steht unter jedem Postfach
+`zuletzt geprüft am …` bzw. `noch nie geprüft`. `describeLastCheck` fällt bei kaputtem Zeitstempel
+auf „Prüfzeitpunkt unbekannt" zurück statt auf ein erfundenes Datum — testgepinnt.
+
+**Die zwei OAuth-Anbieter stehen sichtbar zur Wahl, ausgegraut und erklärt.** Sie wegzulassen wäre
+bequemer und falsch: der Nutzer soll wissen, dass für Microsoft 365 und Gmail **kein Passwort mehr
+zulässig** ist (Erdungsbefund B-2 — Anbieterpolitik, keine Entscheidung dieses Produkts). Wer sie
+wählt, bekommt den Grund und einen deaktivierten Speichern-Knopf statt einer stillen Absage.
+
+**Die Zusage „liest keine Nachricht" steht auf der Fläche, nicht nur in der Spec** (AC-158.15) — und
+zwar dauerhaft in der Liste, nicht nur im Anlege-Dialog, damit sie auch beim späteren Ansehen
+sichtbar ist. Nach erfolgreicher Prüfung sagt die Meldung zusätzlich „Es wurde keine E-Mail
+gelesen."
+
+**Kennungen werden an genau einer Stelle zu Sätzen.** Die Routen geben stabile Codes zurück
+(AC-158.9, damit kein Fremdtext mit Zugangsdaten durchsickert); `labels.ts` ist die einzige
+Übersetzung. Zwei Kopien würden auseinanderlaufen — und die Meldung *ist* hier der Produktwert: sie
+entscheidet, ob jemand stundenlang beim Passwort sucht, obwohl `mailbox_disabled` bedeutet, dass der
+Zugang **beim Anbieter** abgeschaltet ist. Ein Test hält fest, dass dieser Fall einen anderen Text
+und einen anderen nächsten Schritt trägt als `auth_failed`.
+
+**Kein Zustand ohne nächsten Schritt** — außer „Verbunden", das braucht keinen. Testgepinnt über
+alle sieben Zustände, damit ein achter nicht ohne Hinweis durchrutscht; `PROVIDER_LABELS` und
+`SECURITY_LABELS` sind totale `Record`s, ein neuer Anbieter kompiliert also nicht, bis er einen Satz
+hat (γ3-Muster aus PROJ-130).
+
+### Nachweise
+
+| Was | Ergebnis |
+|---|---|
+| Visual-Regression (angemeldet) | **9/9 grün** nach Neuaufnahme von zwei Baselines |
+| Übersetzungsschicht `labels.test.ts` | 8 Fälle |
+| Volle Vitest-Suite | **4133/4133** in 470 Dateien |
+| ESLint | 0 |
+| `tsc` | 11 = Baseline, **0 in Slice-Dateien** |
+| Build | clean, `ƒ /settings/postfaecher` registriert |
+| `check:index-scope` · `check:token-drift` | je 0 Fehler |
+
+**Die zwei Baselines sind begründet neu aufgenommen, nicht stillschweigend erneuert.** `settings` und
+`settings-tenant` wurden rot, weil die Sidebar auf **jeder** angemeldeten Seite sitzt. Vor der
+Neuaufnahme geprüft: Bildhöhe unverändert (868 px bzw. 4603 px), Abweichung 3059 bzw. 3084 Pixel —
+auf beiden Seiten nahezu gleich, wie es eine geteilte Navigationszeile erzeugt; im Bild kontrolliert,
+dass **ausschließlich** „Postfächer" zwischen „Profil" und „Workspace" hinzugekommen ist. Aufnahme
+per Löschen der Dateien statt `--update-snapshots`, das unter der Toleranz ein stiller No-op ist
+(PROJ-Y-143d/143g-Lehre). Eigener Messfehler dabei festgehalten: meine erste Pixel-Auswertung des
+Diff-Bildes meldete „0 Abweichungen", weil ich die PNG-Zeilenfilter nicht rückgängig gemacht hatte —
+die Zahlen stammen daher aus Playwrights eigener Meldung.
+
+### Abweichungen
+
+- **D-158.FE.1** Ort `/settings/postfaecher` statt `/konnektoren` — begründet oben, `adminOnly`
+  gemessen.
+- **D-158.FE.2** Kein Komponententest der Liste selbst; belegt sind die reine Übersetzungsschicht
+  (8 Fälle) und die Routen (Backend). Ein Test, der `fetch` wegmockt und dann prüft, dass ein
+  Abzeichen erscheint, hätte wenig belegt — der echte Nachweis ist der angemeldete Durchlauf, und
+  der steht in `/qa` aus.
+- **D-158.FE.3** Kein angemeldeter Browser-Durchlauf in diesem Schritt und **keine echte
+  Verbindungsprüfung** — dafür braucht es ein echtes Postfach (dritte Nachweis-Ebene zu AC-158.7,
+  Fehlergründe aus AC-158.8). Ausdrücklich **kein erfülltes Kriterium**, sondern offen für `/qa`.
