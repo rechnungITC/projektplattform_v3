@@ -194,6 +194,13 @@ const PURPOSE_MATRIX: Record<
     cloud: true,
     ollama: true,
   },
+  // PROJ-Y-5a reuses the provider's structured question transport while the
+  // router supplies the distinct purpose, full skill frame and audit meaning.
+  skill_context_clarification: {
+    method: "generateClarifyingQuestions",
+    cloud: true,
+    ollama: true,
+  },
   document_summary: {
     method: "generateDocumentSummary",
     cloud: true,

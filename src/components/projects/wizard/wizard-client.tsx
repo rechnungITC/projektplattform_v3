@@ -51,6 +51,7 @@ import {
   PROJECT_CONTEXT_REASON_CODES,
   PROJECT_CONTEXT_STATEMENT_ORIGINS,
   emptyProjectContextData,
+  type ProjectContextData,
 } from "@/types/project-context"
 import {
   WIZARD_STEP_LABELS,
@@ -341,6 +342,72 @@ export function WizardClient({ draftId }: WizardClientProps) {
     },
     [tenantId, draftIdState, lastSeenUpdatedAt]
   )
+
+  const requestProjectContextQuestion = React.useCallback(async () => {
+    const saved = await persistDraft(form.getValues(), { silent: true })
+    if (!saved) return null
+    try {
+      const response = await fetch(
+        `/api/wizard-drafts/${encodeURIComponent(saved.id)}/project-context/next-question`,
+        {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            request_id: crypto.randomUUID(),
+            expected_updated_at: saved.updated_at,
+          }),
+        },
+      )
+      const body = (await response.json()) as {
+        error?: { message?: string }
+        question?: string | null
+        rationale?: string | null
+        turn?: {
+          id: string
+          role: "assistant"
+          content: string
+          status: "complete"
+        }
+        status?: string
+        reason_code?: ProjectContextData["reason_code"]
+        updated_at?: string
+      }
+      if (!response.ok) {
+        if (response.status === 409) {
+          setConflict({ draftId: saved.id, message: body.error?.message ?? "Konflikt" })
+        }
+        throw new Error(body.error?.message ?? `HTTP ${response.status}`)
+      }
+      if (body.updated_at) setLastSeenUpdatedAt(body.updated_at)
+      if (body.turn) {
+        const current = form.getValues().project_context
+        const alreadyPresent = current.turns.some((turn) => turn.id === body.turn?.id)
+        form.setValue(
+          "project_context",
+          {
+            ...current,
+            turns: alreadyPresent ? current.turns : [...current.turns, body.turn],
+            analysis_status:
+              body.status === "success" ? "ai_analyzed" : "ai_interrupted",
+            reason_code: body.reason_code ?? null,
+            finished: false,
+          },
+          { shouldDirty: false },
+        )
+      }
+      return {
+        question: body.question ?? null,
+        rationale: body.rationale ?? null,
+        reason_code: body.reason_code ?? null,
+      }
+    } catch (error) {
+      toast.error("KI-Frage konnte nicht erzeugt werden", {
+        description:
+          error instanceof Error ? error.message : "Bitte manuell fortfahren.",
+      })
+      return null
+    }
+  }, [form, persistDraft])
 
   const reloadFromConflict = React.useCallback(async () => {
     if (!conflict) return
@@ -716,7 +783,7 @@ export function WizardClient({ draftId }: WizardClientProps) {
           ) : step === "ki_backlog" ? (
             <StepKiBacklog tenantId={tenantId} />
           ) : step === "project_context" ? (
-            <StepProjectContext />
+            <StepProjectContext onRequestAiQuestion={requestProjectContextQuestion} />
           ) : (
             <StepReview
               projectTypeOverride={

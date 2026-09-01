@@ -2123,6 +2123,11 @@ interface InvokeClarifyingQuestionsGenerationArgs {
   context: ClarifyingQuestionsAutoContext
   /** Soft target count (1-6); the provider may emit fewer. */
   count: number
+  /** PROJ-Y-5a uses the same structured provider transport with a distinct
+   * purpose/audit boundary. Callers cannot select any other purpose. */
+  purpose?:
+    | "clarifying_questions_from_context"
+    | "skill_context_clarification"
 }
 
 /**
@@ -2147,6 +2152,7 @@ export async function invokeClarifyingQuestionsGeneration({
   actorUserId,
   context,
   count,
+  purpose = "clarifying_questions_from_context",
 }: InvokeClarifyingQuestionsGenerationArgs): Promise<RouterClarifyingQuestionsResult> {
   const overrides = await loadTenantOverrides(supabase, tenantId)
   const classification = classifyClarifyingQuestionsAutoContext(
@@ -2156,7 +2162,7 @@ export async function invokeClarifyingQuestionsGeneration({
   const choice = await selectProviderForPurpose(
     supabase,
     tenantId,
-    "clarifying_questions_from_context",
+    purpose,
     classification,
     overrides.providerConfig,
   )
@@ -2164,14 +2170,14 @@ export async function invokeClarifyingQuestionsGeneration({
     supabase,
     tenantId,
     choice,
-    "clarifying_questions_from_context",
+    purpose,
   )
 
   const runId = await insertKiRun(supabase, {
     tenantId,
     projectId: null,
     actorUserId,
-    purpose: "clarifying_questions_from_context",
+    purpose,
     classification,
     provider,
     wizardDraftId,
