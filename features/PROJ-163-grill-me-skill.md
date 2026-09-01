@@ -1,4 +1,4 @@
-# PROJ-159 — `grill-me`: Entscheidungs-Verhör als aufrufbarer Skill
+# PROJ-163 — `grill-me`: Entscheidungs-Verhör als aufrufbarer Skill
 
 ## Status: In Review
 ## Deployment Scope: —
@@ -48,28 +48,44 @@ acht Fragen, eine je Turn.
 - **L3** — Kennung wird **bei Anlage** vergeben, nicht im Voraus versprochen. Ich hatte im Verhör
   drei IDs vorab zugeteilt und das zurückgenommen — genau dieses Vorausversprechen ist die Ursache,
   aus der `PROJ-Y-151d` doppelt vergeben wurde und die Mail-Kette aus PROJ-158 an ihrer `160`
-  gebrochen ist. `PROJ-159` ist die niedrigste freie und schließt die Lücke, die dabei entstand.
+  gebrochen ist.
+
+### Der zweite Versuch war auch falsch, und das ist der Ertrag (F-163.1)
+
+Diese Slice lief zuerst als **PROJ-159**, weil `check:branch-collision -- PROJ-159` „free" meldete.
+Der Guard prüft **git-Refs**; er sieht keine Versprechen in Prosa. Nachgemessen ist `PROJ-159`
+**24-mal** als „Mail-Abholung" verdrahtet: **14×** in der ausgelieferten `PROJ-158`-Spec (darunter
+„Blockiert PROJ-159" und AC-158.17 „ohne diese Festlegung darf PROJ-159 nicht beginnen"), **7×** im
+INDEX, **3×** im Register. Das ist wörtlich das blinde Fenster aus **PROJ-Y-150e**: eine Slice, an
+der noch kein Branch hängt, ist für den Ref-Guard unsichtbar.
+
+Aufgelöst nach dem Muster **PROJ-Y-151e** — die Seite **ohne Artefakte weicht**: dort wich der
+Registereintrag ohne Spec und Tag, hier weicht diese zehn Minuten alte Slice gegen eine
+ausgelieferte Spec mit 24 Verweisen. Neue Kennung ist **PROJ-163**, also **hinter** der Mail-Kette,
+damit sie nie versprochen war; `161` und `162` werden erst durch die Entnummerierung frei und
+bleiben deshalb ungenutzt. Vor der Umbuchung ist beides geprüft: Refs **und** Prosa (`PROJ-163`:
+0 Vorkommen in `features/` und `docs/`) — genau die Gegenprobe, die beim ersten Versuch fehlte.
 
 ## Akzeptanzkriterien
 
-- **AC-159.1** — Der Skill liegt unter `.claude/skills/grill-me/SKILL.md` mit `name`,
+- **AC-163.1** — Der Skill liegt unter `.claude/skills/grill-me/SKILL.md` mit `name`,
   `description`, `argument-hint` und `user-invocable: true` — dieselbe Frontmatter-Form wie die 9
   Bestandsskills.
-- **AC-159.2** — Der Anweisungstext des Nutzers ist **wörtlich** erhalten: vier Absätze,
+- **AC-163.2** — Der Anweisungstext des Nutzers ist **wörtlich** erhalten: vier Absätze,
   unverändert, keine Umformulierung.
-- **AC-159.3** — Der Skill benennt seine drei Einsatzstellen und grenzt ausdrücklich ab, wofür er
+- **AC-163.3** — Der Skill benennt seine drei Einsatzstellen und grenzt ausdrücklich ab, wofür er
   **nicht** gedacht ist (Bugfixes, spec-folgende Umsetzung, mechanische Aufräumarbeit) — sonst wird
   aus einem Werkzeug für Entscheidungen ein Ritual für alles.
-- **AC-159.4** — `requirements/SKILL.md` und `architecture/SKILL.md` verweisen je an ihrer eigenen
+- **AC-163.4** — `requirements/SKILL.md` und `architecture/SKILL.md` verweisen je an ihrer eigenen
   Rückfragen-Stelle auf `/grill-me`, damit er dort gefunden wird, wo die Regel ihn verlangt.
-- **AC-159.5** — Kein `src/`-Diff, keine Migration, kein neues Paket; alle Datei-Wächter grün
+- **AC-163.5** — Kein `src/`-Diff, keine Migration, kein neues Paket; alle Datei-Wächter grün
   (`check:index-scope`, `check:register-consistency`, `check:migration-naming`,
   `check:token-drift`, `check:function-inventory`).
-- **AC-159.6** — Die Streudateien am alten Ort sind **benannt** statt stillschweigend belassen.
+- **AC-163.6** — Die Streudateien am alten Ort sind **benannt** statt stillschweigend belassen.
 
 ## Bewusste Abweichungen und Grenzen (gemessen, nicht behauptet)
 
-- **D-159.1 (Handoff, nicht erledigt):** die zwei Streudateien `grill-me_SKILL.md` und
+- **D-163.1 (Handoff, nicht erledigt):** die zwei Streudateien `grill-me_SKILL.md` und
   `grill-me_SKILL.md:Zone.Identifier` liegen **untracked im Primär-Checkout**, der zum Zeitpunkt
   dieser Slice einer **busy Peer-Sitzung** gehörte (Branch `proj-160/browserslist-remediation`, mit
   uncommitteten Änderungen an `features/INDEX.md` und `features/OPEN-DEFERRED-STATUS.md`). CLAUDE.md
@@ -77,20 +93,20 @@ acht Fragen, eine je Turn.
   `rm '.claude/skills/qa/grill-me_SKILL.md' '.claude/skills/qa/grill-me_SKILL.md:Zone.Identifier'`
   — bis dahin existiert der Skill zweimal: einmal versioniert und wirksam, einmal als wirkungslose
   Streudatei.
-- **D-159.2 (Nachweistiefe, ausdrücklich keine erfüllte Zusage):** dass `/grill-me` in der
+- **D-163.2 (Nachweistiefe, ausdrücklich keine erfüllte Zusage):** dass `/grill-me` in der
   Skill-Liste **erscheint**, ist in dieser Sitzung **nicht beobachtet** — die Liste wird beim
   Sitzungsstart geladen, und die Datei entsteht erst mit dieser Slice. Belegt ist die Form
   (Pfad und Frontmatter deckungsgleich mit den 9 wirksamen Skills), nicht die Beobachtung. Gleiche
   Klasse Grenze wie **D-Y150a.1**, wo das Feuern des Hooks ebenfalls erst nach dem Merge sichtbar
   wurde.
-- **D-159.3:** kein eigener `/qa`-Durchgang — Präzedenz PROJ-150, PROJ-157, PROJ-Y-148e (reine
+- **D-163.3:** kein eigener `/qa`-Durchgang — Präzedenz PROJ-150, PROJ-157, PROJ-Y-148e (reine
   Prozess-/Werkzeug-Slices ohne separate QA-Stufe), und jedes Kriterium trägt einen ausgeführten
   Nachweis.
-- **D-159.4:** kein CIA-Pass. Kein Diff unter `.claude/agents/`, keine Technologie, keine Migration,
+- **D-163.4:** kein CIA-Pass. Kein Diff unter `.claude/agents/`, keine Technologie, keine Migration,
   kein `src/`-Code. Die **Reichweite** ist dennoch benannt statt nebenbei mitgenommen: ein Skill
   ändert Agentenverhalten, sobald er aufgerufen wird — hier aber nur auf ausdrücklichen Aufruf, ohne
   Automatik und ohne Hook.
-- **D-159.5:** der Abschnitt „Wo dieser Skill greift" ist **nicht** Nutzertext, sondern Zutat dieser
+- **D-163.5:** der Abschnitt „Wo dieser Skill greift" ist **nicht** Nutzertext, sondern Zutat dieser
   Slice; er steht deshalb sichtbar getrennt unter eigener Überschrift, während die vier
   Original-Absätze davor unangetastet bleiben.
 
