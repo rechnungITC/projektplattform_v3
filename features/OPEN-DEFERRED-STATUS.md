@@ -564,7 +564,13 @@ Deploy, aber sie sind nicht erledigt und hatten bis heute **keine** Followup-Ken
   Visual-Baseline, es gab also keinen Netzschutz zu erben. Fixture-Lage: das
   einzige Projekt mit WBS-Daten ist der Kundenmandant, ein E2E-Durchlauf braucht
   eine eigene Lane (Muster PROJ-Y-144d).
-  *Quelle: PROJ-155 „Ausdrücklich nicht belegt".*
+  **Nachtrag 2026-09-01 (Design-Pass β):** dieser Followup sollte **vor** β.1
+  laufen, nicht danach. Zwei Gründe aus dem Brief: der Gantt ist **2091 Zeilen
+  ohne Komponententests und ohne Visual-Baseline**, jeder β-Eingriff wäre also
+  ungesichert; und die Fixture-Lane, die 155a ohnehin bauen muss, ist genau die,
+  die β.1 zum Prüfen braucht — zwei Lanes wären Verschwendung.
+  *Quelle: PROJ-155 „Ausdrücklich nicht belegt"; Reihenfolge aus dem Design-Pass
+  2026-09-01.*
 
 - **PROJ-Y-155b — zwei Leseorte für denselben Termin (offen, Hygiene).**
   `wbs-display.ts` (`ownPlannedStart`/`ownPlannedEnd`) liest Termine weiter aus
@@ -582,7 +588,27 @@ Deploy, aber sie sind nicht erledigt und hatten bis heute **keine** Followup-Ken
   kritischer Pfad über Tasks, Baseline-Vergleich. Das ist der eigentliche
   Netzablaufplan-Ausbau. **Kein zurückgestelltes α-Kriterium** — der Zuschnitt
   „Termine und Hierarchie zuerst" ist ein Nutzer-Entscheid.
-  *Quelle: PROJ-155 Fundament-Entscheidung.*
+  **Design-Pass 2026-09-01** →
+  [`docs/design/PROJ-155-beta-autoscheduling-brief.md`](../docs/design/PROJ-155-beta-autoscheduling-brief.md).
+  Er dreht die Reihenfolge um und teilt β in **β.1** (die Kante wird ein Objekt:
+  Typ und Abstand setzbar, Register bekommt einen Anlege-Weg) und **β.2**
+  (Auto-Scheduling). Grund, gemessen: „FS/SS/FF/SF wählbar" ist kein Merkmal des
+  Schedulers, sondern eine **fehlende Eingabefläche** — Datenbank und *beide*
+  Routen können alle vier Typen plus `lag_days`, der Gantt schreibt hartkodiert
+  `FS` (`gantt-view.tsx:964`, `lag_days` **0 Vorkommen**) und die zweite Fläche
+  `/abhaengigkeiten` kann nur lesen und löschen. Prod bestätigt es ausnahmslos:
+  **4 Kanten, 4 × `FS`, 4 × Abstand 0** — das ist die einzige Kombination, die die
+  Oberfläche herstellen kann. β.2 zuerst zu bauen hieße, Vorschau, Konfliktmeldung
+  und Tests auf `FS`/`0` zuzuschneiden und mit β.1 nochmal anzufassen. Zweiter
+  Befund: die Maschine hätte kaum Treibstoff (138 Arbeitspakete, **4** terminiert,
+  **0** abgeleitet, **7** mit Phase, 3 Wasserfall-Projekte von 32). Tragende
+  Entwurfsentscheidung für β.2: **Vorschau statt stiller Kaskade** — es gibt kein
+  Rückgängig im Gantt (der einzige `undo`-Treffer ist ein Kommentar, der es für
+  PROJ-25-β/γ reserviert), `planned_start`/`planned_end` stehen im Feld-Audit, und
+  eine Kaskade über 30 Nachfolger schriebe **60** append-only Zeilen gegen heute
+  **207** insgesamt. Empfohlene Reihenfolge: **PROJ-Y-155a → β.1 → CIA-Pass → β.2**.
+  *Quelle: PROJ-155 Fundament-Entscheidung; Design-Pass 2026-09-01 mit
+  Live-Messung gegen Prod.*
 
 - **Registerkorrektur, keine Auslassung.** Die PROJ-25-Zeile im INDEX führt „SVAR
   React Gantt MIT". Gemessen ist `wx-react-gantt@1.3.1` **GPLv3** mit

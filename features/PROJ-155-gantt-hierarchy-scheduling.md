@@ -155,6 +155,38 @@ PROJ-154s Anliegen.
 Auto-Scheduling (Nachfolger folgt dem Vorgänger, FS/SS/FF/SF wählbar, `lag_days`),
 Vorgänger-Spalte in der Tabelle, kritischer Pfad über Tasks, Baseline-Vergleich.
 
+**Design-Pass 2026-09-01 → [`docs/design/PROJ-155-beta-autoscheduling-brief.md`](../docs/design/PROJ-155-beta-autoscheduling-brief.md).**
+Er teilt β in **β.1** (die Kante wird ein Objekt) und **β.2** (Auto-Scheduling) und
+dreht damit die Reihenfolge dieses Absatzes um. Der Grund ist gemessen, nicht
+erwogen: **„FS/SS/FF/SF wählbar" ist kein Merkmal des Schedulers, sondern eine
+fehlende Eingabefläche.** Datenbank und *beide* Routen können alle vier Typen plus
+`lag_days`; der Gantt schreibt hartkodiert `FS` (`gantt-view.tsx:964`, `lag_days`
+kommt in der Datei **0-mal** vor), und `/abhaengigkeiten` kann nur lesen und
+löschen — es gibt im ganzen Produkt **keine Stelle**, an der ein anderer Kantentyp
+entsteht. Prod ausnahmslos: 4 Kanten, 4 × `FS`, 4 × Abstand 0.
+
+Zwei weitere Befunde des Passes:
+
+- **Die Rechenmaschine hätte kaum Treibstoff.** 138 lebende Arbeitspakete, davon
+  **4** terminiert, **0** mit abgeleitetem Termin, **7** mit Phase; 4 Kanten;
+  3 Wasserfall-Projekte von 32. Die **0** bei `derived_planned_start` ist dabei
+  **kein Defekt** — nachgemessen sind Migration und Trigger aktiv, aber alle vier
+  terminierten Items sind Wurzeln ohne Eltern und **0 Eltern haben terminierte
+  Kinder**. Es gibt nichts hochzurollen; der α-Fix stimmt, der Bestand hat den Fall
+  noch nicht.
+- **β.2 braucht Vorschau statt stiller Kaskade.** Es gibt **kein Rückgängig** im
+  Gantt (der einzige `undo`-Treffer ist ein Kommentar, der es für PROJ-25-β/γ
+  reserviert), `planned_start`/`planned_end` stehen im Feld-Audit, und eine Kaskade
+  über 30 Nachfolger schriebe **60** append-only Zeilen gegen heute **207**
+  insgesamt. Dazu die eigene α-Entscheidung: der Sammelvorgang ist nicht ziehbar,
+  weil „sein Zeitraum ein Ergebnis ist, kein Eingabefeld" — errechnete Termine
+  still zu schreiben wäre die Gegenrichtung derselben Frage.
+
+Empfohlene Reihenfolge: **PROJ-Y-155a → β.1 → CIA-Pass → β.2**. PROJ-Y-155a wandert
+nach vorn, weil der Gantt 2091 Zeilen ohne Komponententests und ohne
+Visual-Baseline ist und die Fixture-Lane, die er baut, genau die ist, die β.1
+zum Prüfen braucht.
+
 ## Followups
 
 - **PROJ-Y-155a** — angemeldeter Browser-Durchlauf plus Visual-Baseline für den Gantt.
