@@ -1,7 +1,7 @@
 # PROJ-158: Postfach-Anbindung (IMAP · Microsoft 365 · Gmail)
 
-## Status: Approved
-## Deployment Scope: —
+## Status: Deployed
+## Deployment Scope: alpha
 **Created:** 2026-08-31
 **Last Updated:** 2026-09-01
 
@@ -895,3 +895,65 @@ als gelesen markiert ist. Dafür fehlen weiterhin Zugangsdaten. Die übrigen off
 **Neue Lücke benannt, mit gemessener Instanz:** das Funktions-Inventar aus PROJ-Y-148e führt nur
 **Namen**, keine Signaturen — sein Wächter hätte eine *fehlende* Funktion gefangen, aber nicht die
 *falsch gerufene* aus F-2. Registriert als **PROJ-Y-158e**.
+
+---
+
+## Deployment α (2026-09-01) — Tag `v2.91.0-PROJ-158-alpha`
+
+**Ausgeliefert mit dem Merge von PR #517 (squash → `main` = `96da791`).** Die beiden Migrationen
+(`20260901100000_proj158_user_mailboxes`, `20260901120000_projy158a_mailbox_credential_decrypt`)
+liegen seit ihrem Bau in Prod; der Merge bringt die **Anwendungsschicht** und löst damit einen halben
+Zustand auf, in dem die Datenschicht live war und über HTTP nichts davon erreichbar.
+
+### Prod eigenständig nachgemessen statt aus den Notizen übernommen
+
+- `user_mailboxes` mit **aktivem RLS**, **4 Policies**, **0 Zeilen** (keine Rückstände), 1 Trigger.
+- **Alle vier Policies sind eigentümergebunden** — SELECT/UPDATE/DELETE über `qual`, INSERT über
+  `with check`, UPDATE **beidseitig** (ein Umschreiben auf einen fremden Eigentümer ist damit
+  ausgeschlossen). **Kein Admin-Zweig**: AC-158.5b gilt strukturell, nicht per Konvention.
+- `decrypt_user_mailbox_credential` ist **`SECURITY INVOKER`** (`prosecdef = false`) mit
+  `search_path=public, extensions`. Das ist die tragende Entwurfsentscheidung aus PROJ-Y-158a und
+  nicht bloß ein Detail: mit `DEFINER` müsste die Funktion `user_id = auth.uid()` erneut hinschreiben
+  und wäre eine zweite Berechtigungsstelle, die von der Policy abdriften kann.
+- `anon` **und PUBLIC ohne EXECUTE** über alle drei beteiligten Krypto-Funktionen — die PUBLIC-Hälfte
+  ausdrücklich mitgeprüft, weil ein Entzug nur von `anon`/`authenticated` den mit `=` **beginnenden**
+  PUBLIC-Eintrag stehen lässt (PROJ-Y-114a-Lehre).
+
+### Scope `alpha`, ausgesprochen statt gerundet
+
+`full` scheidet aus, weil **AC-158.17** eine **ursprüngliche** Anforderung mit Ziel-Kennung
+(**PROJ-Y-158b**) ist — „Waived criterion" scheitert schon an seiner ersten Bedingung („nothing was
+deferred"). `mvp` scheidet aus, weil hinter der Grenze mit **β (OAuth für Microsoft 365 und Gmail)**
+ein **namentlich geführter** Sub-Slice steht; das ist wörtlich die `alpha`-Definition (Präzedenz
+PROJ-80-α, PROJ-79-α). `tooling-only` scheidet aus, weil Produkt-Laufzeitfähigkeit geliefert wird.
+
+Die gelieferte Grenze: **ein Nutzer hinterlegt sein eigenes IMAP-Postfach, die Zugangsdaten sind
+verschlüsselt, die Verbindung ist prüfbar — und niemand außer ihm sieht es, auch die
+Mandanten-Administration nicht.** Nicht dabei: OAuth (β) und das Abholen von Mail (PROJ-159).
+
+### Offen, mit Ziel-Kennung
+
+- **PROJ-Y-158b** — AC-158.17 (wer abgeholte Mails sehen darf, wie lange nicht zugewiesene bleiben).
+  **Vorbedingung für PROJ-159**, nicht bloß ein Followup.
+- **PROJ-Y-158c** `anon`-TRUNCATE (Hausbestand; `document_summaries` ist strenger) ·
+  **PROJ-Y-158d** AC-158.21 nennt 2 statt der gemessenen 16 neuen Pakete ·
+  **PROJ-Y-158e** das Funktions-Inventar führt nur Namen, keine Signaturen — sein Wächter hätte eine
+  *fehlende* Funktion gefangen, nicht die *falsch gerufene* aus F-2.
+- **Die dritte Nachweis-Ebene zu AC-158.7** bleibt eine Lücke in der *Nachweistiefe*, kein
+  unerfülltes Kriterium: die Zusage „liest keine Nachricht" ist strukturell und über einen
+  `Proxy`-Doppelgänger belegt, aber nicht gegen ein echtes Postfach gefahren — dafür fehlen
+  Zugangsdaten.
+
+### Produktions-Deployment und Post-Deploy-Smoke
+
+Das Vercel-Produktions-Deployment aus **genau diesem SHA** ist `success` (GitHub-Deployment-Status,
+Umgebung `Production`).
+
+**Smoke gefahren, und die Gegenprobe ordnet ihn ein:** alle vier Flächen antworten **exakt 307** mit
+Rumpf `Redirecting...`, kein Leck — **aber drei erfundene Pfade antworten ebenfalls 307**
+(`/api/gibtesnicht`, `/settings/gibtesnicht`, `/api/mailboxes/xyz/erfunden`). Der Smoke belegt damit
+das **Auth-Gate**, nicht die **Existenz** der Flächen; wer ihn als Existenznachweis liest, liest ihn
+falsch (die PROJ-45-Lehre, hier gemessen statt zitiert). Die Existenz ist am **Build-Manifest des
+ausgelieferten Stands** belegt — `/api/mailboxes`, `/api/mailboxes/[id]`,
+`/api/mailboxes/[id]/test`, `/settings/postfaecher` — und funktional über die 10/10-E2E-Kette und den
+Live-Pentest gegen Prod.
