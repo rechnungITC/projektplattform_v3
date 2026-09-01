@@ -1,7 +1,7 @@
 # PROJ-160: Supply-Chain-Remediation `browserslist`
 
-## Status: Approved
-## Deployment Scope: —
+## Status: Deployed
+## Deployment Scope: full
 
 **Created:** 2026-09-01
 **Last Updated:** 2026-09-01
@@ -122,3 +122,32 @@ Lockfile-Version wäre eine Tautologie.
 Dependency-Bump ohne Major-Wechsel ausdrücklich **nicht** CIA-pflichtig; hier ist es ein
 Patch-Bump innerhalb bestehender Ranges, ohne neues Paket und ohne Override. Präzedenz
 PROJ-Y-142a.
+
+---
+
+## Deployment (2026-09-01) — Tag `v2.92.0-PROJ-160`
+
+**Ausgeliefert mit dem Merge von PR #522 (squash → `main` = `65cab01`).** Vercel-Produktions-Deployment
+aus genau diesem SHA: **success**.
+
+**Der tragende Nachweis ist kein Smoke, sondern die beiden Gates selbst.** Auf PR #522 meldeten
+`npm audit production dependencies` und `OSV scan of the dependency lockfile` **SUCCESS** — beide
+waren unmittelbar davor auf `main` rot. Damit ist die Wirkung in der Umgebung belegt, in der sie
+zählt, und nicht nur lokal. Ein HTTP-Smoke wäre hier gegenstandslos: die Slice ändert keine Route
+und keine Zeile Produktivcode.
+
+**Dass der Bump auch wirklich in den ausgelieferten Build eingeht**, zeigt der erfolgreiche
+Produktions-Build aus `65cab01` — `browserslist` wirkt genau dort (webpack/babel über
+`@sentry/nextjs`), ein gebrochener Bump hätte den Build zum Scheitern gebracht.
+
+### Scope `full`, ausgesprochen statt gerundet
+
+Alle sieben Kriterien sind erfüllt, **nichts ist zurückgestellt**. `tooling-only` trifft **nicht** zu:
+seine Definition verlangt einen Ausgang in „repository tooling, CI, tests, or workflow", hier wechselt
+eine **Produktions-Laufzeit-Abhängigkeit** im Lockfile — dieselbe Einordnung wie PROJ-140, PROJ-146
+und PROJ-149. `mvp` und `alpha` behaupten zurückgestellte, namentlich geführte Arbeit, die es nicht
+gibt. Die Ausnahme „Waived criterion" wurde **nicht** in Anspruch genommen und ist nicht nötig.
+
+Der verbleibende Fund unter der Schwelle (`postcss-selector-parser@6.1.2`, CVSS 4.3) ist **kein**
+zurückgestelltes Kriterium: AC-160.2 verlangt, dass er benannt wird — das ist geschehen, in Spec und
+Register, mit der Messung, dass er **vor und nach** dem Fix vorlag.
