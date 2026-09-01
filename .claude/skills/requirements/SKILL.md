@@ -109,6 +109,8 @@ Ask the user interactive questions to clarify:
 
 Use `AskUserQuestion` with clear single/multiple choice options.
 
+> Soll der Plan vor der Spec stressgetestet werden, ist `/grill-me` das Werkzeug dafür: ein Verhör Zweig für Zweig, jede Entscheidung einzeln vorgelegt statt geraten.
+
 ### Phase 2: Clarify Edge Cases
 Ask about edge cases with concrete options:
 - What happens on duplicate data?
