@@ -7,17 +7,22 @@ epic_title: "Post-Merger-Integration"
 priority: Medium
 priority_source: "Should"
 labels: ["ma-platform", "epic-k", "should-have"]
-dependencies: ["I1", "G3", "K3", "C1", "L3", "M1"]
+dependencies: ["I1", "G3", "K3", "L3"]   # C1, M1 gestrichen (unbelegt) — PROJ-169
 roles: ["CFO / Finance Lead", "Integration Lead / IMO", "Workstream Leads", "Executive Sponsor", "Deal Lead"]
 summary_for_jira: "[K2] Synergie-Tracking und Wertrealisierung"
 ---
 
 # PROJ-126: Synergie-Tracking und Wertrealisierung
 
-## Status: Planned (nicht startbar — Zyklus, aber vorbereitet)
+## Status: Planned (wartet auf PROJ-127-α — Zyklus aufgelöst)
 
-> **Geerdet 2026-09-02 (PROJ-167): im Zyklus, und dennoch die am besten vorbereitete Story der
-> Tranche.** Blockierend ist allein `K3` (PROJ-127), das seinerseits auf diese Story wartet. Der
+> **Zyklus aufgelöst am 2026-09-02 (PROJ-169).** Die Abhängigkeit `K3` (PROJ-127) **bleibt** — sie
+> ist die **einzige belegte** Kante des ganzen Zyklus (AC-2: „Initiativen sind mit … PMI-Workstreams
+> (K3) verknüpfbar"). Aufgelöst hat sich die **Gegenrichtung**: PROJ-127 brauchte diese Story nur
+> additiv und baut ohne sie. Damit ist die Reihenfolge **127-α → 126** und keine Sackgasse mehr.
+> `C1` und `M1` sind gestrichen: 0 AC-Bezüge.
+>
+> **Und die Vorbereitung bleibt der Trumpf dieser Story.** Der
 > Bestand wartet an **vier** Stellen ausdrücklich auf sie — Erweiterungs-Kontrakt in PROJ-120, zwei
 > Sichtbarkeits-Zweige, eine `n/a`-Kachel im Steering-Report, plus eine geseedete Gremien-Vorlage
 > „Synergy Review". Gebaut ist davon nichts. Siehe Erdungsabschnitt.
@@ -89,6 +94,8 @@ Das Modell betont: Ein Deal ist erst erfolgreich, wenn die Werte nach Closing re
 ## Geerdet am 2026-09-02 (PROJ-167)
 
 ### Urteil: nicht startbar (Zyklus) — aber die am besten vorbereitete Story der Tranche
+> **Überholt seit dem 2026-09-02 (PROJ-169).** Das Urteil unten ist die Bestandsaufnahme der Erdung und bleibt lesbar; der Zyklus **ist aufgelöst** — die Gegenrichtung ist weggefallen (PROJ-127 brauchte diese Story nur additiv), sie startet nach **PROJ-127-α**. Siehe den Kopf dieser Spec.
+
 
 Abhängigkeiten aufgelöst (Epic-Codes über die Spec-Frontmatter):
 

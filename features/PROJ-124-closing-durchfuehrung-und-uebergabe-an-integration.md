@@ -7,19 +7,23 @@ epic_title: "Vertrag, Signing & Closing"
 priority: Medium
 priority_source: "Should"
 labels: ["ma-platform", "epic-j", "should-have"]
-dependencies: ["J2", "A2", "K1", "K2", "L3"]
+dependencies: ["J2", "A2", "L3"]   # K1, K2 gestrichen (unbelegt) — PROJ-169
 roles: ["Deal Lead", "Legal Counsel", "CFO / Finance Lead", "PMO-Lead", "Integration Lead / IMO", "Executive Sponsor"]
 summary_for_jira: "[J3] Closing-Durchführung und Übergabe an Integration"
 ---
 
 # PROJ-124: Closing-Durchführung und Übergabe an Integration
 
-## Status: Planned (blockiert)
+## Status: Planned (blockiert — nur noch durch PROJ-123)
 
-> **Geerdet 2026-09-02 (PROJ-167): am tiefsten blockiert.** Wartet auf `J2` (PROJ-123, MVP-Pflicht)
-> **und** auf `K1`/`K2` (PROJ-125/126), die ihrerseits in einem Abhängigkeitszyklus stehen. Die Folge
-> 123 → 124 ist fachlich echt; die Blockade über `K1`/`K2` ist ein Struktur-Defekt der
-> Abhängigkeitsangaben. Siehe Erdungsabschnitt.
+> **Am 2026-09-02 aus dem Zyklus gelöst (PROJ-169) — und das war der größte Einzelgewinn der
+> Auflösung.** Die Erdung hatte diese Story als „am tiefsten blockiert" geführt (drei Blocker, zwei
+> davon zyklisch). Gemessen an den Kriterien: `K1` und `K2` haben **je 0 Bezüge** in den fünf
+> Akzeptanzkriterien — beide **gestrichen**. Übrig bleibt **ein** Blocker, `J2` (PROJ-123), und der
+> ist fachlich echt: ohne nachverfolgte Closing Conditions gibt es kein Closing durchzuführen.
+>
+> Aus „wartet auf drei, davon zwei in einer Sackgasse" wird damit „**wartet auf eine baubare
+> MVP-Pflicht**". Siehe Erdungsabschnitt und PROJ-169.
 **Created:** 2026-06-10
 **Origin:** M&A-Platform Backlog (Epic J — Vertrag, Signing & Closing)
 **Priority:** P1
@@ -89,6 +93,8 @@ Phase 8 endet mit dem Closing als rechtlich-wirtschaftlichem Vollzug, gefolgt vo
 
 ### Urteil: blockiert — und zwei der drei Blocker sitzen in einem Abhängigkeitszyklus
 
+> **Überholt seit dem 2026-09-02 (PROJ-169).** Das Urteil unten ist die Bestandsaufnahme der Erdung und bleibt lesbar; von den drei Blockern sind **zwei gestrichen** (`K1` und `K2` hatten **je 0** Bezüge in den fünf Kriterien dieser Story) — übrig bleibt **PROJ-123**. Siehe den Kopf dieser Spec.
+
 Abhängigkeiten aufgelöst (Epic-Codes über die Spec-Frontmatter):
 
 | Epic-Code | PROJ | Stand |
@@ -111,6 +117,14 @@ in PROJ-167 und in den Erdungsabschnitten von 125/126/127.
 
 Damit ist diese Story die **am tiefsten** blockierte der Tranche: sie wartet auf eine MVP-Story
 (123) und auf zwei Stories, die sich gegenseitig blockieren.
+
+> **Am 2026-09-02 berichtigt (PROJ-169), und zwar in beide Richtungen.** Erstens sind `K1` und `K2`
+> **gestrichen**: sie haben in den fünf Kriterien dieser Story **je 0** Bezüge — ein Closing-Vollzug
+> braucht keinen fertigen 100-Tage-Plan, höchstens eine Übergabestelle, und die ist AC-5 „Übergabe
+> an die Integration" mit einem Bezug auf `A2`, nicht auf K. Zweitens ist der Zusatz „zwei Stories,
+> die sich gegenseitig blockieren" **auch für sie nicht mehr wahr**: der Zyklus ist aufgelöst, beide
+> starten nach PROJ-127-α. Diese Story ist damit **nicht** die am tiefsten blockierte der Tranche,
+> sondern die mit **einem** Blocker.
 
 ### Was das praktisch heißt
 

@@ -31,6 +31,14 @@ Dazu eine **Live-Abfrage gegen Prod** (2026-09-02) und Struktur-Messungen an den
 
 ### 1. Der Abhängigkeitszyklus in Epic K — Epic K ist nicht startbar
 
+> **Aufgelöst am 2026-09-02 in PROJ-169** (Nutzer-Entscheid „PROJ-127 zuerst"). Der Befund unten
+> bleibt als Bestandsaufnahme stehen; die dort gegebene Empfehlung hat sich als richtig erwiesen —
+> von **sieben** zyklusbildenden Kanten über die vier Epic-J/K-Stories trugen **vier in keinem
+> Akzeptanzkriterium einen Bezug** — weder als Epic-Code noch inhaltlich; eine fünfte war nur
+> **additiv** und wanderte nach β. PROJ-127s `K1`-Kante hatte 0 Bezüge.
+> Neue Reihenfolge: `127-α → {126, 125}` parallel, `127-β` nach 126, **PROJ-124 ganz aus der Kette**
+> (nur noch `J2`). Befund 2 (null Nutzung) und Befund 3 (Readiness-Guide) bleiben unverändert.
+
 ```
 PROJ-125 (K1)  braucht  K2, K3
 PROJ-126 (K2)  braucht  K3
