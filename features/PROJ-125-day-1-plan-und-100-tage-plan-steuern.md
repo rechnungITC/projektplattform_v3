@@ -7,19 +7,27 @@ epic_title: "Post-Merger-Integration"
 priority: Medium
 priority_source: "Should"
 labels: ["ma-platform", "epic-k", "should-have"]
-dependencies: ["A2", "C1", "G3", "K2", "K3", "F1", "L3"]
+dependencies: ["A2", "C1", "G3", "K3", "F1", "L3"]   # K2 gestrichen (unbelegt); A2, K3, F1 implizit belegt — PROJ-169
 roles: ["Integration Lead / IMO", "Deal Lead", "Workstream Leads (HR, IT, Finance, Operations, Sales)", "Executive Sponsor"]
 summary_for_jira: "[K1] Day-1-Plan und 100-Tage-Plan steuern"
 ---
 
 # PROJ-125: Day-1-Plan und 100-Tage-Plan steuern
 
-## Status: Planned (nicht startbar — Zyklus)
+## Status: Planned (wartet auf PROJ-127-α — Zyklus aufgelöst)
 
-> **Geerdet 2026-09-02 (PROJ-167): Teil eines Abhängigkeitszyklus.** `125 → {126, 127}`,
-> `126 → {127}`, `127 → {125, 126}` — **keine** der drei PMI-Stories ist zuerst baubar. Fünf der
-> sieben Abhängigkeiten sind ausgeliefert; blockierend sind nur die beiden Geschwister. Kein
-> technisches Hindernis, sondern ein Struktur-Defekt der Angaben. Siehe Erdungsabschnitt.
+> **Zyklus aufgelöst am 2026-09-02 (PROJ-169).** Diese Story war **gar nicht** Teil des echten
+> Zyklus: `K2` (PROJ-126) hat **0** Bezüge in ihren Kriterien und ist gestrichen. Was bleibt, sind
+> **drei implizit belegte** Abhängigkeiten, die eine reine Code-Zählung nicht findet, ein Lesen aber
+> schon: `K3` (AC-2 sagt „je Workstream" ohne den Code), `F1` (AC-3 nennt „Gate 8 — Integration
+> Readiness") und `A2` (die PMI-Phase entsteht aus dem 10-Phasen-Preset von PROJ-95). Alle drei
+> bleiben in der Liste, jetzt mit Begründung.
+>
+> **Eine eigene Ungenauigkeit dabei korrigiert:** die erste Fassung dieser Auflösung strich `A2` als
+> unbelegt und behielt `F1` als implizit — beide sind gleich implizit, die Ungleichbehandlung war ein
+> Fehler und ist behoben.
+>
+> Reihenfolge damit: **127-α → 125** (parallel zu 126, die beiden brauchen sich nicht gegenseitig).
 **Created:** 2026-06-10
 **Origin:** M&A-Platform Backlog (Epic K — Post-Merger-Integration)
 **Priority:** P1
@@ -88,6 +96,8 @@ Phase 9 und Phase 10 verlangen explizit einen Day-1-Readiness-Plan und einen 100
 ## Geerdet am 2026-09-02 (PROJ-167)
 
 ### Urteil: nicht startbar — Teil eines Abhängigkeitszyklus in Epic K
+> **Überholt seit dem 2026-09-02 (PROJ-169).** Das Urteil unten ist die Bestandsaufnahme der Erdung und bleibt lesbar; der Zyklus **ist aufgelöst** — diese Story war gar nicht Teil des echten Zyklus (`K2` hatte 0 AC-Bezüge) und startet nach **PROJ-127-α**, **parallel** zu PROJ-126. Siehe den Kopf dieser Spec.
+
 
 Abhängigkeiten aufgelöst (Epic-Codes über die Spec-Frontmatter):
 
