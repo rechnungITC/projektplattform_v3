@@ -1,7 +1,7 @@
 # PROJ-167 — Portfolio-Erdung Tranche 3: M&A Transaktion und PMI (PROJ-121 · 123–127)
 
-## Status: In Review
-## Deployment Scope: —
+## Status: Deployed
+## Deployment Scope: tooling-only
 
 **Created:** 2026-09-02
 
@@ -160,3 +160,30 @@ offen gelesen wird.
   (je 0).
 - Jede Textersetzung mit `count == 1`-Ankerprüfung.
 - Umfang: `src/` 0 Dateien, `supabase/migrations/` 0, `package.json` 0.
+
+## Deployment
+
+**Deployed 2026-09-02: Tag `v2.97.0-PROJ-167` auf dem Merge-Commit `69f562f6` (PR #533, squash → `main`).**
+
+Der Merge **ist** die Auslieferung — kein `src/`-Diff, keine Migration, kein Paket. Tragend sind die
+**zehn grünen CI-Checks**, davon sieben Required.
+
+**Scope `tooling-only`:** Dokumentation und Portfolio-Buchführung, keine Produkt-Laufzeitfähigkeit.
+
+**Alle sieben Kriterien erfüllt, nichts zurückgestellt.** Die vier ausdrücklich nicht entschiedenen
+Fragen (Zyklus-Auflösung, AC-4-Zuschnitt bei 121, Gate-Nummer bei 123, `workstreams`-Wiederverwendung
+bei 127) sind **Ertrag** der Slice, keine Auslassung — AC-167.6 verlangt, dass sie benannt sind.
+
+**Der Weg zum Merge ist erwähnenswert, weil er die Lage im Repo zeigt:** der Branch wurde **zweimal**
+`BEHIND`, weil die parallele Spur währenddessen PROJ-155-β.2 und dessen Buchführung mergte; jedes
+Nachziehen startete den Vercel-Build neu, was wie ein Hänger aussah und keiner war (der Build war
+beim ersten Verdacht erst sieben Minuten alt). Zwischenzeitlich standen alle sieben Required-Checks
+grün, während der nicht enrollte Vercel-Build lief — an ihm vorbeizumergen wäre möglich und nach
+Ruleset zulässig gewesen, wurde aber **nicht** getan, weil dieselbe Zusage vier Slices zuvor
+ausgesprochen worden war.
+
+**Nebenbefund zur Versionierung:** `v2.93.0` ist doppelt belegt — die parallele Spur setzte
+`v2.93.0-PROJ-155-beta2`, diese Sitzung `v2.93.0-PROJ-163`. Die Tag-**Namen** bleiben eindeutig; im
+Bestand geübte Praxis (die PROJ-144-Zeile hält denselben Fall für `v2.52.0` fest). Alle vier Tags
+dieser Sitzung wurden gegengeprüft: sie zeigen auf die richtigen Merge-Commits und sind Vorfahren
+von `main`.
