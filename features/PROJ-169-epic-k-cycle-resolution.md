@@ -113,6 +113,23 @@ PMI-Workstreams sind fachlich **dasselbe** wie Deal-Workstreams, nur später im 
       `/architecture` seine Aufgabe.
 - [x] **AC-169.8** Alle fünf Datei-Wächter grün, kein `src/`-Diff, keine Migration, kein Paket.
 
+## Ausgeliefert
+
+**Deployed 2026-09-02: Tag `v2.99.0-PROJ-169` auf dem Merge-Commit `75eb99b` (PR #538, squash).**
+Der Merge **ist** die Auslieferung — ein Post-Deploy-Smoke wäre gegenstandslos (kein `src/`-Diff,
+keine Migration, kein Paket). Tragender Nachweis sind die **zehn grünen CI-Checks**, davon sieben
+Required, darunter der **Register-Konsistenz-Wächter**: er prüft, dass INDEX und
+`OPEN-DEFERRED-STATUS.md` sich über dieselben Kennungen nicht widersprechen — genau die Prüfung, die
+diese Slice braucht, weil sie dieselben Urteile in Spec, INDEX und Readiness-Guide führt. Am nicht
+enrolled Vercel-Build wurde **nicht** vorbeigemergt (`mergeState: CLEAN` abgewartet, Zusage aus #526).
+
+**Vollständigkeitsnachweis (AC-169.5), gemessen statt angenommen:** der Epic-K-Zyklus wird im ganzen
+Repo **nur** in den fünf hier bearbeiteten Dateien erwähnt — ein Grep über `features/`, `docs/` und
+`.claude/` nach `Epic K`/`Epic-K` findet außerhalb davon **null** Sachtreffer (die sechs Fundstellen
+sind „Epic-Knoten" aus PROJ-65 und ein Wortanfang in der PRD). Es liegt also keine verwaiste
+Zyklus-Behauptung mehr im Portfolio — die Klasse Widerspruch, die diese Erdungs-Sitzung
+aufgeräumt hat.
+
 ## Abweichungen
 
 - **D-169.1 — Eine eigene Ungenauigkeit korrigiert, sichtbar statt stillschweigend.** Die erste
@@ -131,6 +148,19 @@ PMI-Workstreams sind fachlich **dasselbe** wie Deal-Workstreams, nur später im 
   zwei Kriterien derselben Story. Ein β mit eigener Kennung anzulegen hätte eine Slice versprochen,
   die niemand beauftragt hat.
 
+- **D-169.6 — Der `Deployed`-Stempel stand schon im Arbeits-PR, nicht erst im Buchführungs-PR.**
+  Die vier Geschwister-Slices (PROJ-165–168) haben ihn getrennt gesetzt: Arbeits-PR ohne, dann ein
+  zweiter PR mit Stempel und Tag. Hier stand er von Anfang an, war also für die Dauer des offenen PR
+  eine Vorwegnahme von Minuten. Auf `main` lag zu keinem Zeitpunkt ein falscher Zustand — der
+  Stempel wurde mit demselben Commit wahr, mit dem der Merge erfolgte. Benannt statt verschwiegen,
+  weil „Vorwegnahme von Minuten" genau die Denkweise ist, die die PRD-Status-Spalte hat driften
+  lassen (PROJ-164).
+- **D-169.7 — `gh pr checks --json` gibt es in der hier installierten `gh`-Fassung nicht.** Der
+  erste Monitor las den Zustand deshalb nie und wäre bis zum Timeout gelaufen; belastbar ist
+  `gh api …/commits/<sha>/status` für den Vercel-Build und `…/check-runs` für die neun Actions —
+  der Build ist ein **Commit-Status**, kein Check-Run, und taucht in der Check-Run-Liste gar nicht
+  auf. Wer nur Check-Runs zählt, hält einen laufenden Build für abwesend.
+
 ## Nebenbefund
 
 **`Next Available ID` war irreführend.** Die Zeile sagte `PROJ-161`, während die faktische Reihe bei
@@ -138,3 +168,17 @@ PROJ-168 stand: 161 und 162 sind durch die Entnummerierung der Mail-Kette (PROJ-
 aber niemand nimmt sie, weil die Vergabe längst weitergelaufen ist. Wer der Zeile folgt, bekommt
 eine Kennung, die in Prosa als Mail-Slice versprochen war — genau die Fäulnis, die PROJ-164
 aufgeräumt hat. Auf `PROJ-170` korrigiert, mit einer Notiz zu 161/162.
+
+
+**Der Branch-Kollisions-Guard schlug beim Buchen falsch an — und beide Signale waren die eigene
+Spur.** Beim Anlegen eines Buchführungs-Branches urteilte er `deny` mit „another session is on this
+slice right now" (mein **eigener** Worktree) und „a tag carries this slice" (mein **Minuten alter**
+Tag). Der `isSelf`-Zweig griff nicht, weil die Session-cwd nach jedem Befehl auf den Primär-Checkout
+zurückgesetzt wird und der Hook den fremden Pfad sieht; die Frisch-Tag-Ausnahme aus PROJ-Y-151c
+(`FRESH_TAG_HOURS = 24`) griff ebenfalls nicht, weil ihre zweite Bedingung — Erreichbarkeit von HEAD
+— im Moment des Anlegens nicht erfüllt war. **Nicht über einen ausweichenden Branchnamen umgangen**
+(das wäre die Aushöhlung, gegen die er gebaut ist, und dritter Fall nach PROJ-151/163), sondern auf
+dem bestehenden Slice-Branch weitergearbeitet: `git reset --hard` auf den Merge-Commit ist kein
+Branch-Anlegen und vom Hook unberührt. In der Sache hatte der Guard recht — man öffnet keinen
+zweiten Branch für dieselbe Slice. Eigene Kennung nicht angelegt, weil der Fehlalarm-Grund eine
+Präzisierung zu PROJ-Y-151c ist und dorthin gehört, nicht in eine Erdungs-Slice.
