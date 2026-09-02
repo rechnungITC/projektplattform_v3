@@ -1,7 +1,7 @@
 # PROJ-168 — Portfolio-Erdung Tranche 4: die Software-Extension (PROJ-46)
 
-## Status: In Review
-## Deployment Scope: —
+## Status: Deployed
+## Deployment Scope: tooling-only
 
 **Created:** 2026-09-02
 
@@ -126,3 +126,25 @@ Vorgeschlagen, **nicht** entschieden:
 - Jede Textersetzung mit `count == 1`-Ankerprüfung; Backtick-Balance der INDEX-Zeile gegengeprüft
   (62, gerade).
 - Umfang: `src/` 0 Dateien, `supabase/migrations/` 0, `package.json` 0.
+
+## Deployment
+
+**Deployed 2026-09-02: Tag `v2.98.0-PROJ-168` auf dem Merge-Commit `ae4d3f64` (PR #535, squash → `main`).**
+
+Der Merge **ist** die Auslieferung — kein `src/`-Diff, keine Migration, kein Paket. Tragend sind die
+**zehn grünen CI-Checks**, davon sieben Required.
+
+**Scope `tooling-only`:** Dokumentation und Portfolio-Buchführung, keine Produkt-Laufzeitfähigkeit.
+
+**Alle acht Kriterien erfüllt, nichts zurückgestellt.** Die vier nicht entschiedenen Fragen
+(Aufteilung, ST-03-Bedarf, ST-02-Aufwand, PROJ-27-Umweg) sind **Ertrag** — AC-168.7 verlangt, dass
+sie benannt sind, nicht dass sie beantwortet werden.
+
+**Damit ist der Portfolio-Durchgang über alle vor-Auslieferungs-Stories abgeschlossen** (PROJ-165
+Tranche 1 · PROJ-166 Tranche 2 · PROJ-167 Tranche 3 · PROJ-168 Tranche 4). Nachgerechnet statt
+geschätzt — und die erste Fassung dieses Satzes war falsch: von den **18** Zeilen, die am 2026-09-01
+ohne Deployment-Scope standen, sind **15** geerdet (4 + 4 + 6 + 1), nicht 16. **Drei** blieben außen
+vor, nicht zwei: **PROJ-Y-148b** (entfällt — die V1/V3-Entscheidung ist seit 2026-08-19 getroffen und
+wartet auf eine rechtliche Feststellung, nicht auf Entwicklungsarbeit) sowie **PROJ-153** und
+**PROJ-160**, die fremden Spuren gehörten und ausdrücklich unangetastet blieben (PROJ-160 ist
+seither selbst ausgeliefert).
