@@ -74,6 +74,30 @@ export interface Project {
   created_at: string
   updated_at: string
   is_deleted: boolean
+  /**
+   * PROJ-155-β.2 — projektweite Schalter.
+   *
+   * Die Spalte existiert seit langem als `jsonb NOT NULL DEFAULT '{}'`, war aber
+   * in Prod ein leerer, ungenutzter Eimer und weder im GET noch in `patchSchema`
+   * (im CIA-Pass unter F-1 gemessen). Seit dieser Slice steht sie in der
+   * Audit-Whitelist: jede Änderung hinterlässt eine Spur.
+   *
+   * Bewusst eng typisiert statt `Record<string, unknown>` — ein offener Eimer
+   * hätte die Frage „welche Schalter gibt es?" unbeantwortbar gemacht.
+   */
+  settings?: ProjectSettings | null
+}
+
+/** PROJ-155-β.2 — der Inhalt von `projects.settings`. */
+export interface ProjectSettings {
+  /**
+   * Rechnet ein Zug im Gantt die Folgeverschiebungen der Nachfolger?
+   *
+   * Default **aus**: bei `false` verhält sich das Ziehen genau wie vor β.2
+   * (AC-12). Und auch bei `true` wird nicht ungefragt geschrieben — der Schalter
+   * entscheidet, ob **gerechnet** wird, die Übernahme bleibt eine Handlung.
+   */
+  autoScheduleSuccessors?: boolean
 }
 
 export interface ProjectLifecycleEvent {

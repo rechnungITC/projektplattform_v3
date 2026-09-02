@@ -499,3 +499,99 @@ Audit-Kategorie — das **schärft** das Vorschau-Argument statt es zu schwäche
 
 Kein neues Paket. Eine Migration (Audit-Whitelist), kein Schema-Change.
 Reihenfolge unverändert: dieser Pass → β.2.
+
+---
+
+## β.2 gebaut — 2026-09-01
+
+Alle zehn Akzeptanzkriterien (11–17, 19–21) sind umgesetzt. Zwei Entscheidungen
+weichen vom Entwurf ab, beide zugunsten der Sache.
+
+### R-A ist strukturell aufgelöst, nicht gemildert
+
+Der Brief führt unter R-A das Risiko, Vorschau und autoritative Rechnung seien
+„zwei Kopien einer Formel" — die Klasse, an der PROJ-45-γ sich stieß, wo Postgres
+am Monatsende klemmte und `setUTCMonth` überlief. Als Gegenmittel war vorgesehen,
+dieselben Datumspaare in beiden Fassungen einzufrieren.
+
+**Es gibt keine zwei Fassungen.** `lib/work-items/schedule-cascade.ts` ist eine
+reine Funktion ohne I/O; der Browser importiert sie für die Vorschau, und
+`POST …/schedule/apply` importiert **dieselbe** für die autoritative Rechnung.
+Der Server bleibt Autorität, weil er Kanten und Termine **frisch** lädt — der
+Browser kann veraltet sein —, aber divergieren können zwei Aufrufe derselben
+Funktion nicht. Weicht sein Ergebnis von der Vorschau ab, sagt die Antwort das
+(`diverged_from_preview`) und die Oberfläche meldet es.
+
+### Die Schreib-RPC ist `SECURITY INVOKER`
+
+`apply_schedule_shifts` **rechnet nicht** — sie schreibt eine fertige Liste.
+Damit gibt es keinen Grund, die Rechte des Aufrufers zu verlassen: die RLS auf
+`work_items`, `phases` und `milestones` entscheidet weiter (gemessen 2 / 2 / 1
+UPDATE-Policies). Eine `DEFINER`-Fassung müsste die Projektrolle erneut
+hinschreiben und wäre eine zweite Berechtigungsstelle, die von den Policies
+abdriften kann — dieselbe Begründung wie bei `decrypt_user_mailbox_credential`
+(PROJ-Y-158a). Live belegt als **Paar**: ein Nicht-Mitglied schreibt nicht (V8),
+dasselbe Mitglied sehr wohl (V8b).
+
+### Was gebaut wurde
+
+| Teil | Ort |
+|---|---|
+| Die Rechnung (rein, ohne I/O) | `lib/work-items/schedule-cascade.ts` |
+| Atomare Übernahme | Migration `20260901220000`, `apply_schedule_shifts` |
+| Der Schalter | `projects.settings` + Audit-Whitelist + `patchSchema` |
+| Die Route | `POST /api/projects/[id]/schedule/apply` |
+| Kopfzeile mit den zwei Knöpfen | `components/phases/cascade-preview-bar.tsx` |
+| Geisterbalken, Escape, Übernehmen | `components/phases/gantt-view.tsx` |
+| Schalter in der Fläche | `planung/planung-client.tsx` |
+
+### Nachweise
+
+- **Live-Pentest** `tests/sql/PROJ-155-beta2-schedule-cascade-pentest.sql` —
+  **12/12 PASS** gegen Prod, **0 Rückstände**, Rollback erzwungen. Tragend:
+  **V2** ein unmögliches Ziel verwirft **alle** Schreibvorgänge (AC-15), und
+  **V3/V3b** der Schalter erzeugt genau eine Feld-Audit-Zeile, ein nicht
+  getracktes Feld keine (AC-21) — ohne die Gegenprobe bewiese V3 nur, dass
+  *irgendein* Trigger feuert.
+- **38 Unit-Tests** (20 Rechnung + 18 Route) und 11 Komponententests.
+  **AC-17 als Unterscheidungsnachweis**: dieselbe Ausgangslage ergibt je
+  Kantentyp ein *anderes* Ergebnis — wäre der Typ wirkungslos, wären alle vier
+  Zahlen gleich. **AC-19** an einer Kette der Tiefe 25.
+- **Rot-Grün dreifach**, jede Sabotage trifft ihre eigenen Fälle:
+  Meilenstein-Auffächerung entfernt → 2 rot · FS-Offset zurückgedreht → 11 rot ·
+  Rückwärts-Sperre entfernt → 2 rot. Danach byte-identisch zurückgesetzt.
+- **Gates:** vitest **4227/4227** in 477 Dateien · ESLint **0 errors** (die 4
+  Warnungen sind PROJ-153 und stehen auch auf `main`) · tsc **11 = Baseline** ·
+  Build clean mit registrierter Route · vier Datei-Wächter OK ·
+  **Gantt-Baseline und Visual-Regression 9/9 ohne Neuaufnahme** (zweimal
+  gemessen; ein Fehlschlag im 16-Test-Verbund war ein Kaltstart-Flake, isoliert
+  und zweifach im Verbund nicht reproduzierbar).
+
+### Vier Funde beim Bauen
+
+1. **FS braucht bei inklusiven Enddaten ein `+1`.** Wer am 10. endet, belegt den
+   10.; der Nachfolger startet am 11. Die erste Fassung hatte es nicht — 13 von
+   20 Testfällen fielen, jeder um genau einen Tag. Die Tests standen vor der
+   Implementierung und haben sie korrigiert.
+2. **Die Vorschau überlebte das Ausschalten des Schalters** — „Übernehmen" hätte
+   weiter geschrieben. Der erste Fix war ein `useEffect`; ESLint lehnte ihn mit
+   `set-state-in-effect` ab und hatte recht: der Wert ist **ableitbar** und
+   braucht keinen eigenen Zustand.
+3. **Drei fehlende Effekt-Abhängigkeiten**, von ESLint eingefordert: ohne sie
+   hätte die Kaskade mit dem Kantenstand von der Handler-Registrierung
+   gerechnet, eine neu angelegte Kante wäre ignoriert worden — dieselbe Klasse
+   wie der `calendarStart`-Fund aus β.1.
+4. **Zwei Drift-Wächter nacheinander**: `Project.settings` stand im Typ, aber
+   kein Hook lud es — der Schalter wäre in Listenkontexten still als „aus"
+   gelesen worden. „Computed" zu markieren wäre bequem und falsch gewesen; die
+   Spalte reist jetzt durch SELECT **und** Mapping.
+
+### Bewusst nicht gebaut
+
+Die **Vorgänger-Spalte** in der Zeilenliste. Sie steht im Brief unter
+„Layout-Ergänzungen" und ist **kein** Akzeptanzkriterium; halb gebaut wäre sie
+schlechter als benannt offen. → `PROJ-Y-155e`.
+
+Ferner offen: **`/qa`** — kein authentifizierter Durchlauf des Vorschau-Flusses
+im Browser. Belegt sind Rechnung, Route, Datenschicht und die Nicht-Regression
+der Baselines; die Verkettung Ziehen → Vorschau → Übernehmen ist es nicht.

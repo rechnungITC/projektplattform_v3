@@ -1,4 +1,4 @@
-# Prod-Funktionsinventar — Stand 2026-09-01
+# Prod-Funktionsinventar — Stand 2026-09-02
 #
 # Die in der Produktionsdatenbank vorhandenen Funktionen des Schemas `public`,
 # ohne die 71 Funktionen der `ltree`-Extension (die gehoeren nicht dem Projekt).
@@ -81,6 +81,7 @@ add_ma_valuation_version
 add_meeting_document
 apply_clearance_profile
 apply_ma_project_template
+apply_schedule_shifts
 assign_project_skills
 attest_tenant_ai_provider_dpa
 audit_escalation_patterns

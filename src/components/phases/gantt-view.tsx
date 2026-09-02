@@ -56,6 +56,18 @@ import {
   type EditableDependency,
 } from "./dependency-edit-dialog"
 import { buildGanttRows, phaseRowKey } from "@/lib/work-items/gantt-rows"
+// PROJ-155-β.2
+import {
+  CascadePreviewBar,
+  type CascadePreviewSummary,
+} from "@/components/phases/cascade-preview-bar"
+import {
+  computeScheduleCascade,
+  type CascadeEdge,
+  type CascadeNode,
+  type CascadeResult,
+} from "@/lib/work-items/schedule-cascade"
+import { applyScheduleShift, ApplyScheduleError } from "@/lib/schedule/api"
 import { type Milestone, MILESTONE_STATUS_LABELS } from "@/types/milestone"
 import { PHASE_STATUS_LABELS, type Phase } from "@/types/phase"
 import type { WorkItemWithProfile } from "@/types/work-item"
@@ -115,6 +127,15 @@ interface GanttViewProps {
    * neither see the WP on the timeline nor wire dependencies.
    */
   onEditWorkItemRequest?: (item: WorkItemWithProfile) => void
+  /**
+   * PROJ-155-β.2 — rechnet ein Zug die Folgeverschiebungen der Nachfolger?
+   *
+   * Default **false**, und dann ist der ganze β.2-Pfad unerreichbar: das Ziehen
+   * läuft durch denselben Code wie vor dieser Slice (AC-12). Bei `true` erzeugt
+   * ein Zug eine **Vorschau** — auch dann wird nicht ungefragt geschrieben, der
+   * Schalter entscheidet nur, ob gerechnet wird.
+   */
+  autoScheduleSuccessors?: boolean
 }
 
 const ROW_HEIGHT = 36
@@ -221,9 +242,24 @@ export function GanttView({
   canEdit,
   onChanged,
   onEditWorkItemRequest,
+  autoScheduleSuccessors = false,
 }: GanttViewProps) {
   const [drag, setDrag] = React.useState<DragState | null>(null)
   const [submitting, setSubmitting] = React.useState<string | null>(null)
+  /**
+   * PROJ-155-β.2 — die offene Kaskaden-Vorschau. `null` = keine.
+   *
+   * Solange sie steht, ist **nichts geschrieben** (AC-14). Sie hält den
+   * gezogenen Knoten und das Ergebnis der Rechnung; die Geisterbalken lesen
+   * daraus.
+   */
+  const [cascadePreview, setCascadePreview] = React.useState<{
+    movedId: string
+    movedStart: string
+    movedEnd: string
+    result: CascadeResult
+  } | null>(null)
+  const [applyingCascade, setApplyingCascade] = React.useState(false)
   const [dependencies, setDependencies] = React.useState<PolymorphicDependency[]>([])
   // PROJ-155-β.1 — die angeklickte Kante. Vorher fuehrte der Klick direkt in
   // die Loeschabfrage; jetzt oeffnet er die Bearbeitung, in der Loeschen eine
@@ -396,6 +432,131 @@ export function GanttView({
     window.addEventListener("keydown", onKey)
     return () => window.removeEventListener("keydown", onKey)
   }, [fullscreen])
+
+  /**
+   * PROJ-155-β.2 — die **wirksame** Vorschau.
+   *
+   * Geht der Schalter aus, während eine Vorschau offen steht, verschwindet sie:
+   * sonst würde „Übernehmen" weiter schreiben, obwohl das Auto-Scheduling
+   * gerade abgeschaltet wurde — der Schalter wäre in dem Moment eine
+   * Behauptung. Beim Bauen selbst gefunden, nicht von einem Test.
+   *
+   * **Abgeleitet, nicht per Effekt zurückgesetzt.** Die erste Fassung war ein
+   * `useEffect`, der `setCascadePreview(null)` rief; ESLint hat das mit
+   * `react-hooks/set-state-in-effect` abgelehnt und die Regel hat recht — der
+   * Wert ist aus zwei vorhandenen Zuständen berechenbar, und was berechenbar
+   * ist, braucht keinen eigenen Zustand, der davon abdriften kann. Dieselbe
+   * Lehre wie in β.1 und PROJ-70-β.
+   */
+  const activePreview = autoScheduleSuccessors ? cascadePreview : null
+
+  /**
+   * PROJ-155-β.2 / AC-14 — Escape verwirft die Vorschau, ohne zu schreiben.
+   *
+   * Eigener Effekt statt eine Bedingung in den Vollbild-Handler zu hängen: die
+   * beiden haben nichts miteinander zu tun, und ein Escape im Vollbild soll
+   * weiterhin das Vollbild schließen.
+   */
+  React.useEffect(() => {
+    if (!activePreview) return
+    const onKey = (e: KeyboardEvent) => {
+      if (e.key === "Escape") setCascadePreview(null)
+    }
+    window.addEventListener("keydown", onKey)
+    return () => window.removeEventListener("keydown", onKey)
+  }, [activePreview])
+
+  /** Die Zusammenfassung für die Kopfzeile. */
+  const cascadeSummary = React.useMemo<CascadePreviewSummary | null>(() => {
+    if (!activePreview) return null
+    const { shifts, skipped, conflicts, truncated } = activePreview.result
+    // Der häufigste Verschiebungswert — oder `null`, wenn sie sich
+    // unterscheiden. Eine gemittelte Zahl wäre eine erfundene Zahl.
+    const deltas = new Set(shifts.map((x) => x.deltaDays))
+    return {
+      shiftCount: shifts.length,
+      commonDeltaDays: deltas.size === 1 ? [...deltas][0] : null,
+      skippedCount: skipped.length,
+      conflictCount: conflicts.length,
+      truncated,
+    }
+  }, [activePreview])
+
+  /**
+   * PROJ-155-β.2 — die Geisterbalken je Zeile.
+   *
+   * Enthält den gezogenen Knoten **und** jeden Nachfolger; `conflict` markiert
+   * die, deren Bedingung nach der Kaskade verletzt bleibt (Interactions-Tabelle:
+   * „wird in der Vorschau rot markiert und benannt").
+   */
+  const ghostByItemId = React.useMemo(() => {
+    const m = new Map<string, { start: string; end: string; conflict: boolean }>()
+    if (!activePreview) return m
+    const imKonflikt = new Set(
+      activePreview.result.conflicts.map((c) => c.edgeToId),
+    )
+    m.set(activePreview.movedId, {
+      start: activePreview.movedStart,
+      end: activePreview.movedEnd,
+      conflict: imKonflikt.has(activePreview.movedId),
+    })
+    for (const sh of activePreview.result.shifts) {
+      m.set(sh.id, {
+        start: sh.start,
+        end: sh.end,
+        conflict: imKonflikt.has(sh.id),
+      })
+    }
+    return m
+  }, [activePreview])
+
+  /**
+   * PROJ-155-β.2 / AC-15 — Übernehmen schreibt in **einer** Anfrage.
+   *
+   * Die erwarteten Kennungen reisen mit, damit der Server melden kann, dass er
+   * mit frischen Daten auf etwas anderes gekommen ist (Nutzer-Entscheid Q1:
+   * bei Abweichung gewinnt der Server und die Oberfläche sagt es).
+   */
+  const applyCascade = React.useCallback(async () => {
+    if (!activePreview) return
+    setApplyingCascade(true)
+    try {
+      const res = await applyScheduleShift(projectId, {
+        kind: "work_item",
+        id: activePreview.movedId,
+        start: activePreview.movedStart,
+        end: activePreview.movedEnd,
+        expectedShiftIds: activePreview.result.shifts.map((x) => x.id),
+      })
+      setCascadePreview(null)
+      if (res.diverged_from_preview) {
+        toast.warning("Übernommen — mit anderer Kaskade als in der Vorschau", {
+          description:
+            "Die Termine hatten sich zwischenzeitlich geändert. Es gilt die Rechnung des Servers.",
+        })
+      } else {
+        toast.success(
+          res.applied.total === 1
+            ? "Termin übernommen"
+            : `${res.applied.total} Termine übernommen`,
+        )
+      }
+      onChanged()
+    } catch (err) {
+      toast.error("Übernehmen fehlgeschlagen", {
+        description:
+          err instanceof ApplyScheduleError
+            ? err.message
+            : err instanceof Error
+              ? err.message
+              : "Unbekannter Fehler",
+      })
+      // Die Vorschau bleibt stehen: der Nutzer soll es erneut versuchen können,
+      // ohne den Zug zu wiederholen.
+    } finally {
+      setApplyingCascade(false)
+    }
+  }, [activePreview, projectId, onChanged])
 
   // Zeilenposition je Key — der Ersatz für das frühere `row.rowIndex`.
   const rowIndexByKey = React.useMemo(() => {
@@ -855,49 +1016,39 @@ export function GanttView({
         }
         setSubmitting(snapshot.phaseId)
         try {
-          const res = await fetch(
-            `/api/projects/${projectId}/phases/${snapshot.phaseId}`,
-            {
-              method: "PATCH",
-              headers: { "Content-Type": "application/json" },
-              body: JSON.stringify({
-                planned_start: toIsoDate(newStart),
-                planned_end: toIsoDate(newEnd),
-              }),
-            },
-          )
-          if (!res.ok) {
-            const err = await res.json().catch(() => ({}))
-            throw new Error(err?.message ?? `HTTP ${res.status}`)
-          }
-          // Phase-Container "mitziehen": when MOVING (not resizing), shift
-          // every child milestone by the same number of days.
-          if (snapshot.mode === "move") {
-            const childMilestones = milestones.filter(
-              (m) => m.phase_id === snapshot.phaseId,
-            )
-            await Promise.all(
-              childMilestones.map((m) => {
-                const td = toDate(m.target_date)
-                if (!td) return Promise.resolve()
-                const shifted = addDays(td, snapshot.deltaDays)
-                return fetch(
-                  `/api/projects/${projectId}/milestones/${m.id}`,
-                  {
-                    method: "PATCH",
-                    headers: { "Content-Type": "application/json" },
-                    body: JSON.stringify({ target_date: toIsoDate(shifted) }),
-                  },
-                ).catch(() => undefined)
-              }),
-            )
-          }
+          /**
+           * PROJ-155-β.2 / AC-20 — **eine** Anfrage, eine Transaktion.
+           *
+           * Vorher: die Phase per eigenem PATCH, danach N Meilenstein-PATCHes
+           * über `Promise.all`, jeder mit `.catch(() => undefined)`. Scheiterten
+           * alle N, war die Phase trotzdem schon verschoben — zwei
+           * Schreibphasen, keine Transaktion, Fehler verschluckt. Der Server
+           * fächert die Kind-Meilensteine jetzt selbst auf und schreibt sie mit
+           * der Phase gemeinsam; schlägt ein Meilenstein fehl, bewegt sich auch
+           * die Phase nicht.
+           *
+           * Das gilt **unabhängig** vom Auto-Scheduling-Schalter: der
+           * verschluckte Fehler war ein Bestandsdefekt, kein Merkmal der neuen
+           * Fähigkeit. Für AC-12 bleibt das Verhalten bei „aus" gleich — Phase
+           * und Meilensteine wandern wie bisher —, nur der Fehlerfall ist jetzt
+           * ehrlich statt halb geschrieben.
+           */
+          await applyScheduleShift(projectId, {
+            kind: "phase",
+            id: snapshot.phaseId,
+            start: toIsoDate(newStart),
+            end: toIsoDate(newEnd),
+          })
           toast.success("Phase aktualisiert")
           onChanged()
         } catch (err) {
           toast.error("Aktualisierung fehlgeschlagen", {
             description:
-              err instanceof Error ? err.message : "Unbekannter Fehler",
+              err instanceof ApplyScheduleError
+                ? err.message
+                : err instanceof Error
+                  ? err.message
+                  : "Unbekannter Fehler",
           })
           onChanged()
         } finally {
@@ -919,6 +1070,48 @@ export function GanttView({
             newEnd = addDays(snapshot.origStart, 1)
           }
         }
+        /**
+         * PROJ-155-β.2 — bei eingeschaltetem Auto-Scheduling wird **gerechnet
+         * und gezeigt**, nicht geschrieben.
+         *
+         * Der `return` hier ist die ganze Trennung zu AC-12: ist der Schalter
+         * aus, läuft der Code darunter unverändert weiter — derselbe einzelne
+         * PATCH wie vor dieser Slice.
+         */
+        if (autoScheduleSuccessors) {
+          const nodes: CascadeNode[] = workPackages.map((w) => ({
+            id: w.id,
+            // `?? null` statt den Lib-Typ aufzuweichen: `WorkItemWithProfile`
+            // fuehrt die Termine als `string | null | undefined`, die Rechnung
+            // kennt nur `string | null`. Der Aufrufer normalisiert.
+            window: { start: w.planned_start ?? null, end: w.planned_end ?? null },
+          }))
+          const known = new Set(nodes.map((n) => n.id))
+          // Nur Kanten zwischen bekannten Zeilen: `dependencies` ist polymorph
+          // und traegt auch Phasen-Kanten, die diese Rechnung nicht kennt.
+          const edges: CascadeEdge[] = dependencies
+            .filter((d) => known.has(d.from_id) && known.has(d.to_id))
+            .map((d) => ({
+              fromId: d.from_id,
+              toId: d.to_id,
+              constraintType: d.constraint_type,
+              lagDays: d.lag_days ?? 0,
+            }))
+          const result = computeScheduleCascade(
+            snapshot.workPackageId,
+            { start: toIsoDate(newStart), end: toIsoDate(newEnd) },
+            nodes,
+            edges,
+          )
+          setCascadePreview({
+            movedId: snapshot.workPackageId,
+            movedStart: toIsoDate(newStart),
+            movedEnd: toIsoDate(newEnd),
+            result,
+          })
+          return
+        }
+
         setSubmitting(snapshot.workPackageId)
         try {
           const res = await fetch(
@@ -1034,7 +1227,25 @@ export function GanttView({
     // `calendarStart` ist Pflicht: der create-Zweig rechnet den aufgezogenen
     // Tagesindex gegen dieses Fenster in ein Datum um. Fehlt es hier, schreibt
     // der Handler nach einer Fensterverschiebung falsche Termine.
-  }, [drag, projectId, milestones, onChanged, pixelsPerDay, calendarStart])
+    //
+    // PROJ-155-β.2 ergänzt `autoScheduleSuccessors`, `dependencies` und
+    // `workPackages`. ESLint hat sie eingefordert, und die Regel hat recht:
+    // ohne sie rechnet die Kaskade mit dem Kanten- und Terminstand von der
+    // Registrierung des Handlers. Legt der Nutzer eine Kante an und zieht
+    // danach, würde sie ignoriert — dieselbe Klasse wie der `calendarStart`-Fund
+    // aus β.1, wo ein fehlender Eintrag nach einer Fensterverschiebung falsche
+    // Termine geschrieben hätte.
+  }, [
+    drag,
+    projectId,
+    milestones,
+    onChanged,
+    pixelsPerDay,
+    calendarStart,
+    autoScheduleSuccessors,
+    dependencies,
+    workPackages,
+  ])
 
   // PROJ-155-β.1 — der frühere `handleDeleteDependency` ist entfallen.
   // Er war der einzige Weg an einer Kante und fragte per `window.confirm`;
@@ -1054,6 +1265,16 @@ export function GanttView({
 
   return (
     <div className="space-y-2">
+      {/* PROJ-155-β.2 — die Vorschau steht ueber dem Diagramm, damit die Zahl
+          und die zwei Knoepfe sichtbar sind, ohne zu scrollen. */}
+      {cascadeSummary ? (
+        <CascadePreviewBar
+          summary={cascadeSummary}
+          busy={applyingCascade}
+          onApply={applyCascade}
+          onDiscard={() => setCascadePreview(null)}
+        />
+      ) : null}
       <div className="flex flex-wrap items-center justify-end gap-2">
         {/* Zoom — 4 Levels (Tag → Quartal). Aktive Stufe als gefüllter
             Button, andere als outline. */}
@@ -1602,6 +1823,23 @@ export function GanttView({
             drag.targetType === depType &&
             drag.targetId === wp.id
 
+          // PROJ-155-β.2 — die vorgeschlagene Lage dieser Zeile, falls eine
+          // Vorschau offen ist. `null` = diese Zeile ist nicht betroffen.
+          const ghost = ghostByItemId.get(wp.id) ?? null
+          const ghostGeo = ghost
+            ? (() => {
+                const gs = toDate(ghost.start)
+                const ge = toDate(ghost.end)
+                if (!gs || !ge) return null
+                const gx = daysBetween(calendarStart, gs) * pixelsPerDay
+                const gw = Math.max(
+                  pixelsPerDay,
+                  daysBetween(gs, ge) * pixelsPerDay,
+                )
+                return { gx, gw }
+              })()
+            : null
+
           return (
             <g key={`wp-${wp.id}`} aria-label={`Arbeitspaket ${wp.title}`}>
               {idx % 2 === 1 ? (
@@ -1611,6 +1849,28 @@ export function GanttView({
                   width={totalWidth}
                   height={ROW_HEIGHT}
                   className="fill-muted/15"
+                />
+              ) : null}
+
+              {/* PROJ-155-β.2 — Geisterbalken: die vorgeschlagene Lage, noch
+                  nicht geschrieben. Gestrichelt und ohne Füllung, damit er nicht
+                  mit dem Ist-Balken verwechselt wird; rot, wenn danach eine
+                  Bedingung verletzt bleibt. */}
+              {ghostGeo ? (
+                <rect
+                  x={ghostGeo.gx}
+                  y={rowY + 4}
+                  width={ghostGeo.gw}
+                  height={ROW_HEIGHT - 8}
+                  rx={3}
+                  strokeDasharray="4 3"
+                  strokeWidth={1.5}
+                  className={
+                    ghost?.conflict
+                      ? "fill-destructive/10 stroke-destructive"
+                      : "fill-warning/10 stroke-warning"
+                  }
+                  aria-label={`Vorgeschlagen: ${ghost?.start} bis ${ghost?.end}`}
                 />
               ) : null}
 

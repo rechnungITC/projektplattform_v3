@@ -43,6 +43,24 @@ const patchSchema = z
       .nullable()
       .optional(),
     is_deleted: z.boolean().optional(),
+    /**
+     * PROJ-155-β.2 — der Auto-Scheduling-Schalter.
+     *
+     * `projects.settings` existiert seit langem als `jsonb NOT NULL DEFAULT '{}'`,
+     * war aber in Prod ein leerer, ungenutzter Eimer (0 Zeilen belegt, 0 Schlüssel)
+     * und von `patchSchema` **nicht angenommen** — im CIA-Pass unter F-1 gemessen.
+     *
+     * Bewusst eng: nur die bekannten Schlüssel, `strict()` weist alles andere ab.
+     * Ein offenes `z.record(z.unknown())` hätte aus einer auditierten Spalte einen
+     * beliebig beschreibbaren Eimer gemacht — und seit dieser Slice landet jede
+     * Änderung daran im Feld-Audit (Nutzer-Entscheid Q2, Risiko R-B).
+     */
+    settings: z
+      .object({
+        autoScheduleSuccessors: z.boolean().optional(),
+      })
+      .strict()
+      .optional(),
   })
   .refine(
     (val) => {
@@ -116,7 +134,7 @@ export async function GET(request: Request, context: RouteContext) {
   const { data: project, error: projectError } = await supabase
     .from("projects")
     .select(
-      "id, tenant_id, name, description, project_number, planned_start_date, planned_end_date, responsible_user_id, lifecycle_status, project_type, created_by, created_at, updated_at, is_deleted"
+      "id, tenant_id, name, description, project_number, planned_start_date, planned_end_date, responsible_user_id, lifecycle_status, project_type, created_by, created_at, updated_at, is_deleted, settings"
     )
     .eq("id", projectId)
     .maybeSingle()
