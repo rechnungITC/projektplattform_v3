@@ -14,7 +14,12 @@ summary_for_jira: "[K1] Day-1-Plan und 100-Tage-Plan steuern"
 
 # PROJ-125: Day-1-Plan und 100-Tage-Plan steuern
 
-## Status: Planned
+## Status: Planned (nicht startbar — Zyklus)
+
+> **Geerdet 2026-09-02 (PROJ-167): Teil eines Abhängigkeitszyklus.** `125 → {126, 127}`,
+> `126 → {127}`, `127 → {125, 126}` — **keine** der drei PMI-Stories ist zuerst baubar. Fünf der
+> sieben Abhängigkeiten sind ausgeliefert; blockierend sind nur die beiden Geschwister. Kein
+> technisches Hindernis, sondern ein Struktur-Defekt der Angaben. Siehe Erdungsabschnitt.
 **Created:** 2026-06-10
 **Origin:** M&A-Platform Backlog (Epic K — Post-Merger-Integration)
 **Priority:** P1
@@ -79,6 +84,50 @@ Phase 9 und Phase 10 verlangen explizit einen Day-1-Readiness-Plan und einen 100
 - Deal Lead
 - Workstream Leads (HR, IT, Finance, Operations, Sales)
 - Executive Sponsor
+
+## Geerdet am 2026-09-02 (PROJ-167)
+
+### Urteil: nicht startbar — Teil eines Abhängigkeitszyklus in Epic K
+
+Abhängigkeiten aufgelöst (Epic-Codes über die Spec-Frontmatter):
+
+| Epic-Code | PROJ | Stand |
+|---|---|---|
+| I1 | PROJ-120 Bewertungsmodell | `Deployed / mvp` |
+| J1 | PROJ-122 SPA-Issues | `Deployed / mvp` |
+| F1 | PROJ-110 Stage-Gates | `Deployed / mvp` |
+| F2 | PROJ-111 Entscheidungslog | `Deployed / mvp` |
+| G3 | PROJ-114 DD-Findings | `Deployed / mvp` |
+| C1 | PROJ-101 Aufgaben | `Deployed / mvp` |
+| E1 | PROJ-107 Risikoregister | `Deployed / mvp` |
+| M1 | PROJ-131 Steering-Report | `Deployed / full` |
+| L3 | PROJ-130 Audit-Trail | `Deployed / mvp` |
+| A2 | PROJ-95 M&A-Phasenmodell | `Deployed / mvp` |
+| J2 · J3 · K1 · K2 · K3 | PROJ-123 · 124 · 125 · 126 · 127 | **offen** |
+
+Fünf der sieben sind ausgeliefert (`A2`, `C1`, `G3`, `F1`, `L3`). Offen sind `K2` (PROJ-126) und
+`K3` (PROJ-127) — **und beide warten ihrerseits auf diese Story**:
+
+```
+PROJ-125 (K1)  braucht  K2, K3
+PROJ-126 (K2)  braucht  K3
+PROJ-127 (K3)  braucht  K1, K2
+```
+
+**Keine der drei ist zuerst baubar.** Das ist kein technisches Hindernis, sondern ein
+Struktur-Defekt der Abhängigkeitsangaben: die drei PMI-Stories wurden gegenseitig verdrahtet, weil
+sie fachlich zusammengehören — nicht, weil eine die andere voraussetzt. Solange der Zyklus steht,
+ist Epic K **nicht startbar**, und genau das erklärt, warum die drei seit dem 2026-06-10 unverändert
+liegen.
+
+Die Auflösung gehört in `/requirements`: welche der drei kommt **ohne** die anderen aus? Diese
+Erdung benennt den Zyklus und trifft die Entscheidung nicht.
+
+**Und die Zahl, die alles einordnet — live gegen Prod gemessen am 2026-09-02:** das M&A-Epic hat
+**null Nutzung**. 0 Projekte mit `project_type = 'ma'` (auch keine weich gelöschten), 0 Profile,
+0 Bewertungen, 0 SPA-Issues, 0 DD-Findings, 0 DD-Fragen, 0 Stage-Gates, 0 Phasen — bei 39
+ausgelieferten M&A-Slices. Das macht keine dieser Stories falsch; es heißt, dass **heute niemand**
+auf sie wartet, und dass die Reihenfolge frei wählbar ist statt von einem laufenden Deal erzwungen.
 
 ---
 _Quelle: Backlog-Entwurf M&A-Projektplattform · K — Post-Merger-Integration_

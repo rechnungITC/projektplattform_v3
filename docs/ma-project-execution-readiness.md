@@ -9,16 +9,28 @@ Dieses Dokument ist der operative Readiness-Guide fuer PROJ-94-132. Es ergaenzt 
 
 Die Plattform kann mit PROJ-94 ein M&A-Projekt als eigenen Projekttyp anlegen, die strategische Grundlage erfassen, Mandatsstatus fuehren, Need-to-Know auf dem M&A-Profil anwenden und Aenderungen auditieren. Das ist die notwendige Wurzel fuer den Deal-Raum, aber noch keine vollstaendige M&A-Durchfuehrung.
 
-**Aktueller Produktstand am 2026-06-23:**
+**Aktueller Produktstand am 2026-09-02** (nachgezogen in PROJ-167; die Fassung vom 2026-06-23 war
+in **jeder** Zeile überholt — sie fuehrte PROJ-94 als "PR #168 offen", die DD-Kette als "offen" und
+Transaktion/PMI als "geplant", waehrend inzwischen 34 der 40 M&A-Slices ausgeliefert sind):
 
 | Bereich | Status | Bedeutung |
 |---|---|---|
-| M&A-Projektanlage / strategische Grundlage | PROJ-94 QA PASS, PR #168 offen | Deal-Raum kann angelegt und mit Mandat, Sponsor, Deal Lead, Deal-Rationale, Suchprofil, Ausschlusskriterien und Investitionsrahmen gefuellt werden. Merge/Deploy von PR #168 bleibt der Produktiv-Handoff. |
-| Need-to-Know Foundation | PROJ-100a Approved | Klassifizierte Objekte koennen tenant-intern zusaetzlich eingeschraenkt werden; PROJ-94 nutzt dieses Rezept bereits auf `ma_project_profiles`. PROJ-100b bleibt fuer Clearance-UX, 4-Augen und Hygiene. |
-| M&A-Phasenmodell / Target-Screening | offen, PROJ-95 | Mandatsfreigabe erzeugt heute nur das Gate-Flag. Die fachliche Phase 2 entsteht erst mit dem M&A-Method-Catalog. |
-| Rollen / RACI / externe Berater | PROJ-99/128/129 Architected; PROJ-97 offen | Sponsor und Deal Lead sind vorhanden; externe Advisor, NDA-Gate und Klassifikations-UX sind architekturell geschnitten, aber noch nicht gebaut. Vollstaendige M&A-Rollen/RACI fehlen weiterhin. |
-| Due Diligence | offen, PROJ-112-116 | DD-Streams, Fragenkatalog, Q&A, Findings, Red-Flags und DD-Report sind der naechste echte Pilot-Wert. |
-| Transaktion / Closing / PMI | geplant, PROJ-120-127 | Bewertungsmodell, Kaufpreis-Bridge, SPA, Closing Conditions, Day-1/100-Tage-Plan und Synergie-Tracking sind spaetere Ausbauwellen. |
+| M&A-Projektanlage / strategische Grundlage | **PROJ-94 `Deployed / full`** | Deal-Raum anlegbar, Mandatsstand gefuehrt, Need-to-Know auf dem Profil, Aenderungen auditiert. |
+| Need-to-Know Foundation | **PROJ-100 `full` · 100b `full` · 100c `mvp`** | Klassifikation, Berechtigungsprofile und 4-Augen-Freigabe sind live; das Rezept traegt inzwischen 20 Tabellen. |
+| M&A-Phasenmodell / Target-Screening | **PROJ-95 `mvp` · PROJ-96 `alpha`** | 10-Phasen-Preset aktivierbar, Projekt-Vorlagen als Katalog-Lesesicht (Deep-Editor offen). |
+| Rollen / RACI / externe Berater | **PROJ-97 `full` · 99/128/129 je `mvp`** | Advisor-Mandat, NDA-Gate und Klassifikations-UX sind live; `can_access_classified` verengt Externe zusaetzlich. |
+| Due Diligence | **PROJ-112-116 alle `mvp`** | Streams, Fragenkatalog, Findings, externe Datenraum-Verweise und DD-Report sind vollstaendig ausgeliefert. |
+| Governance / Reporting / Audit | **PROJ-110/111 `mvp` · 117/118/119 `full` · 130 `mvp` · 131/132 `full`** | Stage-Gates, Entscheidungslog, Gremien, Kommunikationsmatrix, luekenloser Audit-Trail und beide Reporting-Ebenen sind live. |
+| Transaktion / Closing | **PROJ-120 `mvp` · 122 `mvp`** — offen: **121, 123, 124** | Bewertungsmodell und SPA-Issues sind live. Kaufpreis-Bridge (121) und Closing Conditions (123) sind **baubar**, alle ihre Abhaengigkeiten ausgeliefert; 123 ist die **einzige** verbleibende MVP-Pflicht des Epics. Closing-Durchfuehrung (124) wartet auf 123 und auf den Epic-K-Zyklus. |
+| PMI (Epic K) | offen: **125, 126, 127** — **nicht startbar** | Abhaengigkeitszyklus: `125 → {126, 127}`, `126 → {127}`, `127 → {125, 126}`. **Keine** der drei ist zuerst baubar. Kein technisches Hindernis, sondern ein Struktur-Defekt der Angaben (PROJ-167). |
+
+**Die Zahl, die den Reifegrad wirklich einordnet — live gegen Prod gemessen am 2026-09-02:** das
+M&A-Epic hat **null Nutzung**. 0 Projekte mit `project_type = 'ma'` (auch keine weich geloeschten),
+0 Profile, 0 Bewertungen, 0 SPA-Issues, 0 DD-Findings, 0 DD-Fragen, 0 Stage-Gates, 0 Phasen — bei 34
+ausgelieferten Slices. Der erste Pilot ist ERP, nicht M&A (siehe `docs/PRD.md`, Erfolgsmetriken).
+Das macht nichts davon falsch, aber es aendert die Lesart dieses Dokuments: **die Reihenfolge der
+verbleibenden Arbeit ist frei waehlbar** statt von einem laufenden Deal erzwungen, und "ist die
+Plattform M&A-bereit" ist heute keine Frage der Features, sondern eine Frage des ersten echten Deals.
 
 ## Was "M&A-Projekt durchfuehren" minimal bedeutet
 
@@ -104,10 +116,37 @@ Ein echtes M&A-Projekt darf erst produktiv gefuehrt werden, wenn diese Gates gru
 
 ## Aktuelle Entscheidung
 
-Die naechste fachlich sinnvolle Arbeit nach PROJ-94 ist nicht Transaktion oder PMI, sondern:
+**Die hier bis 2026-09-02 empfohlene Kette ist vollstaendig abgearbeitet.** Sie lautete:
 
 ```
 PROJ-100b -> PROJ-95 -> PROJ-97 -> PROJ-99/128/129 -> PROJ-112 -> PROJ-113 -> PROJ-114 -> PROJ-108 -> PROJ-110/111 -> PROJ-116
 ```
 
-Damit wird aus dem anlegbaren M&A-Projekt ein durchfuehrbarer DD-Deal-Raum. Erst danach lohnen Kaufpreis-Bridge, SPA, Closing und PMI.
+Stand heute: **PROJ-108 ist `Superseded`** (von PROJ-114 absorbiert, CIA 2026-06-26 — "Red Flag" ist
+kein eigenes Datenkonzept, sondern ein hochseveres `dd_finding`), **alle uebrigen sind `Deployed`**.
+Aus dem anlegbaren M&A-Projekt ist damit ein durchfuehrbarer DD-Deal-Raum geworden, und der Satz
+"erst danach lohnen Kaufpreis-Bridge, SPA, Closing und PMI" beschreibt kein spaeter mehr, sondern
+**jetzt**.
+
+**Was als naechstes wirklich offen ist** (geerdet in PROJ-167, 2026-09-02):
+
+1. **PROJ-123 — Closing Conditions.** Die **einzige** verbleibende MVP-Pflicht des Epics
+   (`Highest / Must (MVP)`), alle vier Abhaengigkeiten ausgeliefert, und `dd_questions` ist ein
+   Feld-fuer-Feld fast deckungsgleiches Vorbild. Neu waeren nur die Typ-Spalte und der
+   Erfuellungsgrad je Typ.
+2. **PROJ-121 — Kaufpreis-Bridge.** Ebenfalls unblockiert; das Versionsmuster existiert in
+   `ma_valuations`, neu waere Kopf plus Bestandteile-Kind-Tabelle. Ein Andockpunkt fehlt:
+   `ma_valuation_links` kennt nur `dd_finding`, PROJ-120 hat den Erweiterungs-Kontrakt hinterlegt.
+3. **PROJ-124 — Closing-Durchfuehrung.** Wartet fachlich echt auf 123; die zusaetzlich notierte
+   Abhaengigkeit auf `K1`/`K2` ist zu pruefen (ein Closing-Vollzug braucht keinen fertigen
+   100-Tage-Plan, hoechstens eine Uebergabestelle).
+4. **Epic K (125/126/127) — zuerst den Zyklus aufloesen, dann bauen.** `125 → {126, 127}`,
+   `126 → {127}`, `127 → {125, 126}`: keine der drei ist zuerst baubar. Aussichtsreichster Ansatz
+   ist **PROJ-127**, weil der Zyklus in beide Richtungen an ihm haengt und eine IMO-Steuerung
+   fachlich die Klammer ist, die die anderen beiden traegt statt ihr Ergebnis zu sein. Vorher zu
+   klaeren: ob das ausgelieferte `workstreams` (PROJ-102) wiederverwendet wird statt einer zweiten
+   Struktur.
+
+**Und die Rahmenbedingung, die alles davon relativiert:** das Epic hat **null Nutzung** in
+Produktion (Messung oben). Keine dieser vier Positionen blockiert heute einen Nutzer. Die
+Reihenfolge ist daher eine Produktentscheidung, nicht eine technische Notwendigkeit.
