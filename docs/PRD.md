@@ -58,7 +58,7 @@ The product thesis: enterprise projects fail at the seams between execution, gov
 | PROJ-17 | P1 | Tenant Administration: branding, modules, privacy defaults, export, offboarding |
 | PROJ-18 | P1 | Compliance Automatik & Process Templates (ISO/DSGVO/MS-365/vendor-eval/...) |
 | PROJ-45 | P2 | Construction extension: Gewerke-Katalog + Bauabschnitte als zweite Gliederungsachse (α), Mängelmanagement mit Zwei-Akteur-Prüfung und Mängelanzeige (β), Abnahmen mit Abnahmeprotokoll, Vorbehalten und Gewährleistungsfrist (γ), bauspezifische Terminsignale (δ), Fotodokumentation (ε). Strikt Core-Reuse: `project_type='construction'`, keine Parallelmodule; Gewerke werden gespiegelt statt `workstreams` zu generalisieren (CIA 2026-08-13). |
-| _TBD_ | P2 | Software project extension: sprints, releases, technical dependencies |
+| PROJ-46 | P2 | Software project extension: Test-/Abnahme-Traceability und fachliche Abhängigkeitsarten. **Sprints** (PROJ-59/60) und **Releases** (PROJ-61) sind ausgeliefert und in Gebrauch — geerdet in PROJ-168 |
 | PROJ-21 | P2 | Output rendering: Status-Report + Executive-Summary (HTML+PDF). Gantt, PPTX, Markdown deferred to PROJ-21b/c. |
 | PROJ-22 | P1 | Budget-Modul: 3 Ebenen (Kategorien/Posten/Buchungen) + Vendor-Invoice-Integration + Multi-Currency mit FX. Schließt P0-Lücke aus PROJ-7. |
 | PROJ-23 | P2 | Globale Sidebar-Navigation: Top-Level + Project-Room als vertikale Sidebar links, mit Branding + Hotkeys + Persistenz. Reine UI-Foundation. |
