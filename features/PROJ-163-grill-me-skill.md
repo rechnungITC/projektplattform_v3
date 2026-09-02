@@ -138,6 +138,10 @@ Original-Absätze sind unverändert.
 Repository-Werkzeug und Workflow (ein Skill plus zwei Skill-Verweise) und fügt **keine**
 Produkt-Laufzeitfähigkeit hinzu — kein `src/`, keine Migration, kein Paket.
 
-**Die Grenze aus D-163.2 bleibt und ist mit dem Merge nicht eingelöst:** dass `/grill-me` in der
-Skill-Liste **erscheint**, ist weiterhin nicht beobachtet — die Liste wird beim Sitzungsstart
-geladen. Belegt ist die Form, nicht die Beobachtung.
+**D-163.2 ist am 2026-09-02 eingelöst — beobachtet, nicht mehr nur in der Form belegt.** Die
+Grenze lautete: dass `/grill-me` in der Skill-Liste **erscheint**, sei nicht beobachtet, weil die
+Liste beim Sitzungsstart geladen wird. In der Sitzung, die PROJ-167 gebaut hat, ist der Skill
+**tatsächlich in der Liste aufgetaucht** (nachgeladen, ohne Neustart) — mit seiner Beschreibung und
+neben `requirements` und `architecture`. Damit ist die Installation nicht nur formgleich mit den
+neun Bestandsskills, sondern nachweislich wirksam. Nachgetragen in PROJ-167, weil die Beobachtung
+dort anfiel; kein Eingriff in die ausgelieferte Slice selbst.
