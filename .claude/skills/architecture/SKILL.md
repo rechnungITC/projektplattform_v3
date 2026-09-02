@@ -37,6 +37,8 @@ Use `AskUserQuestion` for:
 - Are there multiple user roles?
 - Any third-party integrations?
 
+> Für Forks, die die Spec offen gelassen hat, ist `/grill-me` das passende Werkzeug — und zugleich der Halt-und-Frage-Checkpoint aus `.claude/rules/continuous-improvement.md`, wenn in der Sitzung keine Sub-Agenten verfügbar sind.
+
 ### 3. Create High-Level Design
 
 #### A) Component Structure (Visual Tree)
