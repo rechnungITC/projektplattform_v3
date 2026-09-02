@@ -595,3 +595,32 @@ schlechter als benannt offen. → `PROJ-Y-155e`.
 Ferner offen: **`/qa`** — kein authentifizierter Durchlauf des Vorschau-Flusses
 im Browser. Belegt sind Rechnung, Route, Datenschicht und die Nicht-Regression
 der Baselines; die Verkettung Ziehen → Vorschau → Übernehmen ist es nicht.
+
+## β.2 abgenommen — 2026-09-02: NICHT produktionsreif
+
+Der `/qa`-Durchgang hat den authentifizierten Browser-Durchlauf nachgeholt, den
+`/frontend` offen gelassen hatte, und dabei **zwei High-Funde** ergeben. Vollständige
+Kriterien-Matrix, Nachweise und Abweichungen stehen in
+[`features/PROJ-155-gantt-hierarchy-scheduling.md`](../../features/PROJ-155-gantt-hierarchy-scheduling.md)
+im Abschnitt „β.2 — QA Test Results".
+
+**Kurzfassung, weil sie die Annahmen dieses Briefs berührt:**
+
+- **F-1 → PROJ-Y-155f.** Der Brief hielt R-A („zwei Formeln laufen auseinander") für
+  strukturell aufgelöst, weil Browser und Route dieselbe reine Funktion aufrufen. Das
+  stimmt für die **Rechnung** — nicht für ihre **Eingabe**: die Route filtert die
+  Kanten auf `todo`/`todo`, der Gantt filtert ohne Typprüfung, und in Prod existiert
+  keine einzige todo/todo-Kante. Die Vorschau zeigt die Kaskade, der Server rechnet
+  sie mit leerer Kantenmenge. R-A ist damit **nicht** aufgelöst, sondern nur eine
+  Ebene tiefer gewandert — von der Formel zu ihrem Argument.
+- **F-2 → PROJ-Y-155g.** AC-11 („Schalter je Projekt, Default aus") ist als
+  Schreibweg erfüllt und als **Leseweg** nicht: der Einzel-Hook `use-project.ts`
+  führt `settings` nicht im SELECT, der Schalter rendert deshalb immer als „aus",
+  und die ganze in diesem Brief entworfene Vorschau-Kaskade ist über die Oberfläche
+  unerreichbar.
+
+**Konsequenz für den Brief:** die Entscheidung „Vorschau statt stiller Kaskade" bleibt
+richtig und ist unangetastet — sie war nie das Problem. Was fehlte, war ein Nachweis,
+dass die entworfene Kette **über die Oberfläche** überhaupt erreichbar ist. Für β.3
+oder jede Folge-Slice heißt das: ein Kriterium, das einen Schalter einführt, braucht
+seine Lese- **und** seine Schreibhälfte als getrennte Nachweise.
