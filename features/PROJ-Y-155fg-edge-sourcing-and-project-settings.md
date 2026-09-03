@@ -1,7 +1,7 @@
 # PROJ-Y-155f + PROJ-Y-155g — Kantenbeschaffung und der Leseweg des Schalters
 
-## Status: Approved
-## Deployment Scope: —
+## Status: Deployed
+## Deployment Scope: full
 
 Die beiden High-Funde aus dem β.2-`/qa` vom 2026-09-02. Sie werden als **eine**
 Slice gebaut, weil keiner von beiden allein etwas erreichbar macht: mit dem
@@ -164,3 +164,39 @@ gerufen — genau die Stelle, an der F-1 unsichtbar wurde.
   nicht einschaltbar gewesen.
 - **D-Y155fg.3** Mobile Safari umgebungsbedingt übersprungen, Firefox nicht
   konfiguriert. Alle Browser-Zahlen sind chromium-only.
+
+## Deployment
+
+**Ausgeliefert 2026-09-03: Tag `v3.1.0-PROJ-Y-155fg` auf dem Merge-Commit
+`1ef5fcf` (PR #542, squash).** Alle 10 CI-Checks grün, am aktuellen Head-SHA
+gemessen — nicht an dem, den `gh pr checks` nach einem `update-branch`
+manchmal noch zeigt (dieser Fehler ist mir in derselben Sitzung an PR #541
+unterlaufen und deshalb hier ausdrücklich anders gemacht).
+
+**Der Merge ist die Auslieferung, und mit ihm wird β.2 erstmals wirksam.** Die
+Flächen liefen seit dem β.2-Merge, aber der Schalter war nicht einlesbar und die
+serverseitige Kaskade immer leer — das Verhalten, das β.2 verspricht, entsteht
+in Produktion erst mit diesem Stand. Keine Migration, kein Runtime-DB-Change.
+
+Zum Zeitpunkt dieser Buchung stand das jüngste **Produktions**-Deployment noch
+auf `3c8ef2d` (der PROJ-170-Buchung); der Auto-Deploy von `main` für `1ef5fcf`
+war noch nicht angelegt. Gesagt statt gerundet — dieselbe Genauigkeit wie bei
+PROJ-170 in derselben Sitzung.
+
+**Scope `full`:** alle acht Kriterien erfüllt, nichts zurückgestellt.
+`tooling-only` trifft nicht — geliefert wird Produkt-Laufzeitverhalten (Route,
+Gantt, Hook), nicht Werkzeug oder CI. `mvp`/`alpha` behaupten zurückgestellte,
+namentlich geführte Arbeit, die es hier nicht gibt.
+
+**Der Scope von PROJ-155 bleibt `alpha`** und wird davon **nicht** gehoben: β.2
+hat weiterhin keinen eigenen `/qa`-Durchgang, und die `alpha`-Definition
+verlangt für einen Sub-Slice ausdrücklich abgeschlossene QA **und**
+Auslieferung. Diese Slice behebt Funde, sie ersetzt keine Abnahme.
+
+**Ein Fund über den Auftrag hinaus, als Followup registriert:** der
+Schema-Drift-Wächter prüft die Spalten in `.select()`, aber nicht die in
+`.eq()`, `.in()` oder `.order()`. Ein Filter auf eine nicht existierende Spalte
+läuft an ihm vorbei — zwei belegte Instanzen (PROJ-151 mit `.order()`, diese
+Slice mit `.eq()`), also ein Muster und kein Einzelfall → **PROJ-Y-42a**.
+Bewusst nicht mitgenommen: es ist die Fläche einer fremden Slice und hätte den
+Diff dieser Behebung verbreitert.

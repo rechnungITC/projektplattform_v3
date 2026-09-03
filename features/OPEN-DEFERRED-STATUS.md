@@ -647,6 +647,34 @@ Deploy, aber sie sind nicht erledigt und hatten bis heute **keine** Followup-Ken
   immer.
   *Quelle: CIA-Pass β.2, 2026-09-01, Messungen gegen Prod.*
 
+- **PROJ-Y-42a — der Schema-Drift-Wächter sieht nur `.select()`, nicht die Filter
+  (offen, Wächter-Lücke mit zwei belegten Instanzen).** PROJ-42 prüft die Spalten in
+  `.from(...).select(...)` gegen das Migrationsschema. Spaltennamen stehen aber auch in
+  `.eq()`, `.in()`, `.order()` und `.or()` — und dort prüft **nichts** sie. Ein Filter auf
+  eine Spalte, die es nicht gibt, ist damit unsichtbar, und das ist nicht theoretisch:
+  **zwei** Instanzen sind belegt. **PROJ-151** filterte über `.order("position")` auf
+  `phases`, wo die Spalte `sequence_number` heisst (dort vom Wächter *nicht* gefunden,
+  sondern erst beim Nachprüfen aller gelesenen Spalten). **PROJ-Y-155f** filterte über
+  `.eq("project_id", …)` auf `dependencies`, das diese Spalte nicht hat — mit der
+  Folge, dass PostgREST einen Fehler lieferte, der Aufrufer ihn verschluckte und die
+  Kaskade der Route in Produktion **immer leer** war. Zwei Instanzen in zwei Wochen sind
+  ein Muster, kein Einzelfall.
+
+  **Der Zuschnitt ist noch offen und gehört gemessen, nicht geraten.** Die naheliegende
+  Erweiterung (Spalten aus Filter-Argumenten gegen dasselbe Schema prüfen) ist nicht
+  gratis: `.eq()` nimmt auch eingebettete Pfade (`profiles.email`), `.or()` nimmt eine
+  ganze PostgREST-Filtersprache als Zeichenkette, und Aufrufe mit berechnetem
+  Spaltennamen sind statisch gar nicht auflösbar. Zu erheben ist daher zuerst, **wie
+  viele** Filter-Aufrufe im Bestand überhaupt statisch auflösbar sind und wie viele
+  falsch-rot würden — nach dem Muster von PROJ-150, wo genau diese Messung den naiven
+  Entwurf umgedreht hat. Ein Wächter, der am ersten Tag rot ist, wird abgeschaltet.
+
+  **Eine billigere Teilmaßnahme ist mitzudenken:** beide Instanzen wurden nicht durch den
+  falschen Namen gefährlich, sondern durch den **verschluckten Fehler**. Ein struktureller
+  Test darauf, dass jede Supabase-Abfrage ihr `error` auswertet, würde die Klasse an einer
+  ganz anderen Stelle fassen — und wäre vermutlich einfacher als eine Filter-Analyse.
+  *Quelle: PROJ-Y-155f (Behebung 2026-09-03) plus die PROJ-151-Instanz vom 2026-08-27.*
+
 - **PROJ-Y-155f — die Route sieht die Kanten nicht, die es in Prod gibt (erledigt
   2026-09-03).** Aus dem β.2-`/qa` vom 2026-09-02
   (F-1, **High**). `schedule/apply/route.ts:181-182` filtert die Abhängigkeiten auf
