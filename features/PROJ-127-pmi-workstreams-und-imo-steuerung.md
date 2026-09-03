@@ -14,7 +14,8 @@ summary_for_jira: "[K3] PMI-Workstreams und IMO-Steuerung"
 
 # PROJ-127: PMI-Workstreams und IMO-Steuerung
 
-## Status: Planned (α baubar — Zyklus aufgelöst, diese Story ist der Startpunkt von Epic K)
+## Status: Architected (α — Tech Design 2026-09-03, beide Gabelungen entschieden)
+## Deployment Scope: —
 
 > **Zyklus aufgelöst am 2026-09-02 (PROJ-169, Nutzer-Entscheid „PROJ-127 zuerst").** Die Auflösung
 > ist **gemessen, nicht gesetzt**: von den **sieben** zyklusbildenden Kanten über die vier
@@ -224,3 +225,201 @@ auf sie wartet, und dass die Reihenfolge frei wählbar ist statt von einem laufe
 
 ---
 _Quelle: Backlog-Entwurf M&A-Projektplattform · K — Post-Merger-Integration_
+
+---
+
+## Tech Design (Solution Architect) — α, 2026-09-03
+
+**Auftrag:** `/architecture` für PROJ-127-α, nachdem PROJ-169 den Epic-K-Zyklus aufgelöst und diese
+Story zum Startpunkt gemacht hat. Die Kernfrage der Auflösung — `workstreams` (PROJ-102) erweitern
+oder spiegeln — ist hier entschieden.
+
+### Was live schon da ist (gegen Prod gemessen, 2026-09-03)
+
+`workstreams` ist erheblich besser ausgestattet, als die Spec vom 2026-06-10 wissen konnte — PROJ-102
+wurde erst am **2026-07-02** ausgeliefert, weshalb AC-1 mit DD-Streams vergleicht und den näheren
+Kandidaten nicht kennt:
+
+| Vorhanden | Wert für diese Story |
+|---|---|
+| Bezeichnung, Ziel, Umfang, Notizen, Sortierung | AC-2 Grundangaben |
+| **Stream-Lead** (`lead_user_id`) | AC-2 „Stream-Lead" **vollständig** |
+| Verweise von Arbeitspaketen, Risiken und Deliverables | AC-2 „Aufgabenliste (C1), Risiken (E1)" **vollständig** |
+| Auswertung je Workstream: Aufgaben gesamt/fertig, offene Risiken, Deliverables gesamt/überfällig | AC-3 Zahlengrundlage **vollständig** |
+| Ampel (grün/gelb/rot) | AC-3 Anzeige, aber **manuell** gesetzt |
+| Vertraulichkeitsstufe + **drei** einschränkende Zugriffsregeln | Need-to-know erbt sich |
+| Feld-Audit über 9 Spalten **und** Lebenszyklus-Audit | AC-5 **vollständig** |
+| Mehrfach-Bezug zu Phasen | Phase 10 heißt im Preset bereits „Post-Merger-Integration" |
+| Vorlagen-Herkunft + Vorlagen-Maschinerie aus PROJ-96 | AC-1 „Standardvorlage" hat einen Weg |
+
+**Vier Lücken bleiben:** ein Typ-Merkmal (AC-1), die PMI-Vorlage mit ihren sieben Workstreams (AC-1),
+ein **Lebenszyklus-Status** für „in Linie übergeben" (AC-4 — die Tabelle hat *nur* die Ampel, keinen
+Status) und ein **gerechneter** Ampelwert (AC-3).
+
+### Entscheidung 1 — Erweitern statt spiegeln (Nutzer-Entscheid nach CIA-Checkpoint)
+
+Der Blast-Radius wurde vor der Entscheidung gemessen, und er liegt **anders als erwartet**: von zwölf
+Datenbank-Funktionen, die Workstreams berühren, liest nur **eine** die Tabelle als Primärquelle (die
+Auswertung je Workstream). Die vier großen Berichte joinen sie bloß als **Beschriftungsquelle** — sie
+kommen über den Workstream-Verweis eines Arbeitspakets oder Risikos an die Zeile. Eine Typ-Spalte
+verändert sie deshalb **überhaupt nicht**: zeigt ein Bericht das Arbeitspaket eines PMI-Workstreams,
+ist genau dessen Bezeichnung die richtige Angabe. In der Anwendung berühren 80 Dateien den Begriff,
+aber nur **sechs Stellen in drei Dateien** greifen die Tabelle direkt.
+
+**Das tragende Argument von PROJ-45-α greift hier nicht.** Dort wurde gespiegelt, weil die
+Bezeichnung eine Pflichtangabe und gleichzeitig Anzeigequelle von fünf Auswertungen war, während die
+neue Struktur eine *nullbare* Bezeichnung gebraucht hätte. PMI-Workstreams heißen immer HR, IT oder
+Finance — der Vertrag bleibt unversehrt. Und der Umzug ist ohnehin folgenlos: **null Zeilen** in
+Workstreams, DD-Streams und Vorlagen, **null** lebende M&A-Projekte.
+
+Was PMI durch das Erweitern **sofort** erbt, müsste eine gespiegelte Tabelle vollständig neu bauen:
+drei einschränkende Vertraulichkeitsregeln, Feld- und Lebenszyklus-Audit samt Registereinträgen, den
+Phasen-Bezug, die Auswertung und die Vorlagen-Maschinerie. Schwerer wiegt der Verweis: Arbeitspakete,
+Risiken und Deliverables zeigen heute auf *einen* Workstream. Eine zweite Tabelle bräuchte einen
+zweiten Verweis — oder PMI-Aufgaben erschienen in vier ausgelieferten Berichten **ohne**
+Workstream-Beschriftung.
+
+### Entscheidung 2 — Gerechnetes Signal *neben* der manuellen Ampel (Nutzer-Entscheid)
+
+Nach dem Muster aus PROJ-45-δ: die Ampel bleibt gesetzt, das gerechnete Signal steht daneben, und
+**die Abweichung zwischen beiden ist der Ertrag** — wo die Workstream-Leitung grün meldet und die
+Zahlen rot sagen, lohnt das Gespräch. Die manuelle Ampel zu ersetzen war ausgeschlossen: sie wird auf
+der ausgelieferten Deal-Fläche als Inline-Auswahl geschrieben, ein Nur-Lesen-Feld hätte dort eine
+Funktion entfernt.
+
+Die Zahlen kommen aus der **vorhandenen** Auswertung (überfällige Aufgaben, offene Risiken); neu ist
+allein die Bewertung. Die Schwellen stehen als Konstante im Code, nicht als Mandanten-Einstellung —
+damit ist die offene Frage der Spec („welche Standard-KPIs?") beantwortet: überfällige Pflichtaufgaben
+und offene Risiken, beide aus ausgelieferten Quellen. Eine echte Konfigurierbarkeit wäre eine
+Einstellungsfläche für einen Bedarf, den niemand geäußert hat.
+
+### Vier Folgeentscheidungen des Architekten
+
+**A) Der Übergabe-Status ist nur für PMI setzbar.** Der Lebenszyklus-Status gilt technisch für alle
+Workstreams (Vorgabewert „aktiv"), aber „an die Linie übergeben" ist für einen Deal-Workstream
+sinnlos — der endet mit dem Closing. Ohne diese Einschränkung wäre das Erweitern gekauft um den
+Preis einer Auswahl, die auf der Deal-Fläche Unsinn anbietet. Die Prüfung gehört in die Datenbank,
+nicht in die Oberfläche.
+
+**B) Der Statusbericht ist ein Feld, seine Historie ist das Feld-Audit.** AC-2 nennt den
+Statusbericht neben Lead, Aufgaben und Risiken — als Angabe, nicht als Verlauf. Ein einzelnes Feld
+würde die Historie überschreiben, und PMI läuft über Monate; aber die Spalte kommt in die
+Audit-Whitelist, und damit hält das Änderungsprotokoll jede Fassung samt Verfasser und Zeitpunkt.
+Dasselbe Muster wie die Quintessenz in PROJ-80-α („Menschen bearbeiten ihn"). Eine eigene
+Berichts-Tabelle wäre die schwerere Lösung für dieselbe Zusage.
+
+**C) Die PMI-Vorlage wird eigens angewandt, nicht bei der Projektanlage.** Die Buy-Side-Vorlage läuft
+beim Anlegen des Deal-Raums — stünden die sieben PMI-Workstreams dort mit drin, hätte ein Deal ab
+Tag 1 eine Integrationsstruktur für ein Unternehmen, das er noch nicht gekauft hat. AC-1 verlangt,
+dass eine Standardvorlage **hinterlegt** ist, nicht dass sie sofort greift.
+
+**D) Die IMO-Sicht ist eine eigene Fläche; die Deal-Fläche filtert auf ihren Typ.** AC-3 verlangt
+ausdrücklich eine Sicht, die *alle* PMI-Workstreams aggregiert — das ist ein eigener Ort. Die
+ausgelieferte Workstream-Fläche umfasst 952 Zeilen über vier Dateien; sie bekommt einen Typ-Filter
+und bleibt sonst unangetastet. So liegt der Neubau in neuen Dateien statt im Bestand.
+
+### Aufbau der Oberfläche
+
+```
+Projektraum (nur M&A-Projekte)
++-- "Workstreams"  [ausgeliefert, PROJ-102]
+|   +-- Liste — jetzt gefiltert auf Deal-Workstreams
+|
++-- "IMO-Steuerung"  [NEU]
+    +-- Kopfzeile: Ampel-Verteilung über alle PMI-Workstreams
+    |   +-- gesetzt (grün/gelb/rot)  |  gerechnet (grün/gelb/rot)
+    |   +-- Hinweis, wo beide auseinanderfallen
+    +-- Werkzeugleiste: "Workstream anlegen" · "Standardvorlage anwenden"
+    +-- Workstream-Karten (je Workstream)
+    |   +-- Bezeichnung · Leitung · Vertraulichkeit
+    |   +-- Ampel gesetzt (änderbar)  ·  Ampel gerechnet (nur Anzeige, mit Grund)
+    |   +-- Zahlen: Aufgaben fertig/gesamt · überfällig · offene Risiken
+    |   +-- Statusbericht (Auszug, mit Datum)
+    |   +-- Zustand: aktiv / an die Linie übergeben (mit Datum)
+    |   +-- Aktionen: Bearbeiten · Statusbericht · Übergeben · Entfernen
+    +-- Leerzustand: erklärt die Vorlage statt einer leeren Liste
+```
+
+Die Karte zeigt beide Ampeln **immer nebeneinander** — eine, die nur bei Abweichung erscheint, würde
+den Normalfall als Ausnahme darstellen.
+
+### Datenmodell (Klartext)
+
+**Erweitert wird die vorhandene Workstream-Struktur** um vier Angaben:
+
+- **Art** — „Deal" oder „PMI", Vorgabe „Deal". Bestandszeilen bleiben damit unverändert Deal-
+  Workstreams, ohne dass eine Zeile angefasst werden muss.
+- **Zustand** — „aktiv" (Vorgabe) oder „an die Linie übergeben"; der zweite Wert nur für PMI.
+- **Übergabe-Zeitpunkt** — wird beim Übergeben gesetzt, sonst leer.
+- **Statusbericht** — Freitext; seine Geschichte hält das Änderungsprotokoll.
+
+**Erweitert wird die Vorlagen-Struktur** um dieselbe Art, damit eine Vorlage sagen kann, welche
+Workstreams sie beschreibt. Neu hinterlegt werden die **sieben PMI-Workstreams** aus der User Story:
+Personal, IT, Finanzen, Betrieb, Vertrieb, Kommunikation, Risiko & Compliance.
+
+**Neu ist nichts an Tabellen.** Kein zweiter Verweis an Arbeitspaketen, Risiken oder Deliverables,
+keine eigene Berichts-Tabelle, keine zweite Auswertung.
+
+**Angefasst werden zwei ausgelieferte Datenbank-Funktionen:**
+
+1. Die Sperre der Projektvorlage („dieses Projekt hat schon Workstreams") wird auf **Deal**-
+   Workstreams eingeschränkt. Ohne das macht der erste PMI-Workstream die Deal-Vorlage unanwendbar.
+2. Die Auswertung je Workstream bekommt die überfälligen Aufgaben als zusätzliche Zahl — sie zählt
+   heute fertige und gesamte, aber nicht die überfälligen, die das gerechnete Signal braucht.
+
+Beide Änderungen als Anker-Ersetzung aus der **Live**-Definition mit Treffer-Eindeutigkeit und
+Nachprüfung, nicht neu getippt — dieselbe Vorsicht, mit der PROJ-Y-115c und PROJ-Y-130s ihre
+Registereingriffe gemacht haben.
+
+### Was ausdrücklich nicht in α gehört
+
+- **Synergie-Initiativen und der Synergie-KPI** — β, weil sie PROJ-126 voraussetzen (PROJ-169).
+- **Ein Reifegradmodell** (die zweite offene Frage der Spec) — es gibt keine Nachfrage dafür, und
+  eine Bewertungsskala ohne Bewerter ist eine leere Spalte.
+- **Konfigurierbare Schwellen** für das gerechnete Signal — Konstante im Code, siehe oben.
+- **Übergabe-Checkliste an die Linie** — die „Übergabekriterien" der Definition of Ready sind ein
+  fachliches Dokument, kein Datenmodell; α setzt den Zustand, es prüft ihn nicht.
+
+### Härtungskriterien (blockierend für `/qa`)
+
+- **AC-127H-1** Die Deal-Fläche zeigt **keine** PMI-Workstreams, und die IMO-Sicht keine
+  Deal-Workstreams — auf **beiden** Seiten geprüft, nicht nur auf der neuen.
+- **AC-127H-2** Die Projektvorlage wird weiterhin abgewiesen, wenn Deal-Workstreams existieren, und
+  **nicht mehr** abgewiesen, wenn nur PMI-Workstreams existieren. Beide Richtungen, weil die
+  Einschränkung sonst eine Sperre aufhebt statt sie zu verengen.
+- **AC-127H-3** Ein Deal-Workstream lässt sich **nicht** an die Linie übergeben — mit Gegenprobe,
+  dass ein PMI-Workstream es kann. Ohne die zweite Hälfte belegt der Test nur eine kaputte Funktion.
+- **AC-127H-4** Die IMO-Sicht ist ein **Aggregat** und braucht eine Leck-Probe: ein Mitglied ohne
+  Freigabe sieht in den Kopfzahlen **nicht** die Workstreams, die es nicht öffnen darf. Die
+  Auswertung rechnet im Rechtekontext des Aufrufers — das ist der Schutz, und er ist zu belegen.
+- **AC-127H-5** Die vier neuen Angaben stehen im Feld-Audit; geprüft wird **verhaltensbasiert** (eine
+  Änderung erzeugt genau eine Protokollzeile) mit Gegenprobe an einer nicht protokollierten Spalte.
+  Eine Whitelist mit Geisterspalte protokolliert lautlos nichts (PROJ-Y-130s).
+- **AC-127H-6** Die vier ausgelieferten Berichte bleiben **wörtlich** grün — sie joinen Workstreams
+  als Beschriftungsquelle, und genau das soll die Typ-Spalte nicht verändern.
+- **AC-127H-7** Pflicht-Live-Smoke gegen Prod im Rollback-Muster, null Rückstände; die geänderten
+  Funktionen mit Post-Bedingung, die laut scheitert, wenn ein Zweig verloren geht.
+
+### Risiken für `/qa`
+
+1. **Das Typ-Merkmal wirkt an zwei Orten**, und der ausgelieferte ist der gefährlichere: vergisst die
+   Deal-Fläche den Filter, wächst ihre Liste stillschweigend um PMI-Workstreams.
+2. **Die Auswertung je Workstream liest ohne Typ-Filter** — die Deal-Route bekäme PMI-Zeilen. Zu
+   entscheiden ist, ob der Filter in die Auswertung oder in die Route gehört; die Auswertung wird von
+   zwei Flächen benutzt.
+3. **Der Vorgabewert ist die stille Annahme.** „Deal" als Vorgabe ist richtig für den Bestand (null
+   Zeilen) und für die Deal-Fläche, aber die IMO-Sicht muss die Art **setzen**, nicht erben.
+4. **Zwei Ampeln, ein Missverständnis.** Wenn die Oberfläche nicht ausspricht, welche gesetzt und
+   welche gerechnet ist, liest der Nutzer die eine als Korrektur der anderen.
+5. **Die Vorlagen-Sperre ist die einzige Änderung mit Regressionspotential** an einer ausgelieferten
+   Funktion, die 20 Workstream-Bezüge trägt.
+
+### Abhängigkeiten
+
+**Kein neues Paket.** Eine Migration. Kein weiterer CIA-Pass nötig — der Checkpoint zur Kernfrage ist
+am 2026-09-03 gelaufen (Findings · Risks · Recommendations vorgelegt, Sub-Agenten in der Sitzung aus,
+Verfahren nach `.claude/rules/continuous-improvement.md`), beide Gabelungen sind entschieden, und der
+Rest folgt gemessenen Hausmustern.
+
+**Reihenfolge:** `/backend` → `/frontend` → `/qa`. Die Datenschicht zuerst, weil die IMO-Sicht ohne
+Typ-Merkmal und gerechnetes Signal nicht sinnvoll baubar ist (Präzedenz PROJ-109).
