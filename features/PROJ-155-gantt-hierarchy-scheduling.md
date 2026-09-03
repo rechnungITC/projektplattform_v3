@@ -211,6 +211,159 @@ nach vorn, weil der Gantt 2091 Zeilen ohne Komponententests und ohne
 Visual-Baseline ist und die Fixture-Lane, die er baut, genau die ist, die β.1
 zum Prüfen braucht.
 
+## β.2 — QA Test Results (2026-09-02)
+
+**Verdikt: β.2 ist NICHT produktionsreif — 0 Critical / 2 High / 0 Medium / 1 Info.**
+Lifecycle bleibt `Deployed`, Scope bleibt `alpha`: ein rückwirkender Durchgang
+bewertet, er nimmt die Auslieferung nicht zurück (Präzedenz PROJ-51-`/qa`). Die
+Zeile wird durch diesen Durchgang aber **ehrlicher**, nicht besser — β.2 ist in
+Produktion heute **inert**, und das war vorher nicht bekannt.
+
+Der Durchgang holt nach, was `/frontend` ausdrücklich offen gelassen hatte: den
+authentifizierten Browser-Durchlauf der Verkettung Ziehen → Vorschau →
+Übernehmen. Genau dort liegen beide Funde.
+
+### Kriterien
+
+| AC | Ergebnis | Nachweis |
+|---|---|---|
+| AC-11 Schalter per Default aus | **PASS** | `PROJ-155-beta2-qa-chain` — Prod-Zustand `settings = {}` |
+| AC-12 bei „aus" byte-gleiches Verhalten | **PASS, aber trivial** | Ziehen schreibt direkt, alte Erfolgsmeldung, kein Vorschau-Bereich — besteht heute allerdings auch deshalb, weil F-2 den Schalter nie auf „an" bringt. Nach der Behebung erneut zu fahren |
+| AC-13 Vorschau **vor** dem Schreiben | **FAIL (F-2)** | im Browser nicht erreichbar; die Vorschau erscheint nie, weil der Schalter nicht eingelesen wird |
+| AC-14 Verwerfen schreibt nichts | **nicht führbar (F-2)** | serverseitig gedeckt (ohne Aufruf von `…/schedule/apply` wird nichts geschrieben, Rot-Team R1–R7), die Browser-Hälfte hängt an F-2 |
+| AC-15 Übernehmen atomar | **PASS** | Kette: Nachfolger zieht mit; ein unmögliches Ziel verwirft **alle** Schreibvorgänge (409 `shift_target_not_writable`); Pentest V2 |
+| AC-16 keine erfundenen Termine | **PASS** | terminloser Nachfolger bleibt terminlos, erscheint als `skipped` |
+| AC-17 die vier Kantentypen unterscheiden sich | **PASS** | 20 Unit-Fälle; gleiche Ausgangslage → `[10, 0, 5, 0]` je Typ |
+| AC-19 Tiefenriegel | **PASS** | Kette der Tiefe 25, `CASCADE_MAX_DEPTH = 200`, `truncated` wird ausgewiesen |
+| AC-20 Phasen-Zug nimmt Kind-Meilensteine mit | **PASS** | `applied.phases: 1`, `applied.milestones: 1`, Meilenstein +3 Tage — in **einer** Transaktion |
+| AC-21 der Schalter ist auditiert | **PASS** | genau **eine** Feld-Audit-Zeile je Umstellung; Gegenprobe: `updated_at` bleibt unprotokolliert |
+
+### F-1 (High) → **PROJ-Y-155f**: die Route sieht die Kanten nicht, die es in Prod gibt
+
+`schedule/apply/route.ts:181-182` filtert die Abhängigkeiten auf
+`from_type = "todo"` **und** `to_type = "todo"`. `dependencyEntityTypes` hat aber
+**vier** Werte, und in Produktion gibt es **keine einzige** todo/todo-Kante —
+gemessen: 2× `work_package→work_package`, 2× `phase→phase`, 1× gemischt. Die
+Kaskade der Route ist damit in Prod **immer leer**.
+
+Live über HTTP belegt, nicht abgeleitet: mit einer geseedeten
+`work_package→work_package`-Kante und terminiertem Nachfolger antwortet die Route
+
+```
+{"applied":{"total":1,…},"cascade":{"shifts":[],"skipped":[],"conflicts":[],"truncated":false},"diverged_from_preview":false}
+```
+
+— der Nachfolger bleibt auf `2026-03-11` stehen statt auf `2026-03-16` zu wandern.
+
+**Das Gewicht liegt in der Asymmetrie:** der Gantt filtert *anders*
+(`known.has(from_id) && known.has(to_id)`, ohne Typprüfung) und zeigt die Kaskade
+korrekt an. Vorschau und Server sehen also **verschiedene Kantenmengen** —
+ausgerechnet in der Slice, deren tragende Entscheidung war, dass es nur **eine**
+Formel gibt. Die Formel ist geteilt (`computeScheduleCascade`), ihre **Eingabe**
+wird an zwei Orten unterschiedlich beschafft. Nebenbefund: `diverged_from_preview`
+meldet `false`, weil der Browser bei ausgeschaltetem Schalter keine Erwartung
+mitschickt — die Divergenzmeldung verschleiert den Grund, statt ihn zu nennen.
+
+### F-2 (High) → **PROJ-Y-155g**: der Schalter lässt sich setzen, aber nicht einlesen
+
+`planung-client.tsx:71` liest `project?.settings?.autoScheduleSuccessors` aus
+`useProject` (**Einzahl**, `src/hooks/use-project.ts`). Dessen SELECT (Zeile 73)
+führt `settings` **nicht** — β.2 hat die Spalte nur in `use-projects.ts`
+(**Mehrzahl**, Zeile 74) ergänzt. Folge: der Schalter rendert **immer** als „aus",
+der Gantt bekommt `autoScheduleSuccessors={false}`, und Vorschau, Geisterbalken,
+Escape-Abbruch und Übernehmen sind über die Oberfläche **nicht erreichbar**.
+
+Im Browser gemessen: `settings = {"autoScheduleSuccessors": true}` in der
+Datenbank, `aria-checked="false"` in der Oberfläche, und das Ziehen geht den
+alten Weg (`PATCH …/work-items/…`, Termine sofort geschrieben, `REGION count: 0`).
+
+**Der Schreibweg ist intakt** — `PATCH /api/projects/[id]` persistiert und erzeugt
+seine Audit-Zeile (AC-21 PASS). Es fehlt nur der Rückweg. Umfang exakt: von den
+16 Feldern des `Project`-Typs fehlen dem Einzel-Hook **zwei**, `settings` und
+`project_method`; `project_method` liest **kein** Konsument dieses Hooks (alle acht
+geprüft), `settings` liest genau einer — und das ist der Defekt. Der Fix umfasst **zwei** Zeilen, nicht eine: `settings` in die SELECT-Liste **und** `settings: raw.settings ?? null` in die explizite Abbildung. Das erklärt zugleich die Stummheit des zweiten Wächters — `hook-mapping-drift` verlangt, dass jede **gelesene** Spalte abgebildet wird; `settings` war in dieser Datei weder gelesen noch abgebildet, das Paar ist also in sich **konsistent** und schweigt zu Recht.
+
+### F-3 (Info) → Teil von **PROJ-Y-155g**: warum die Drift-Wächter das durchgelassen haben
+
+`type-vs-select-drift.test.ts` erklärt je Typ **einen** `primarySelect` — für
+`Project` ist das `use-projects.ts`. Die Spalte dort zu ergänzen hat den Wächter
+befriedigt. `hook-mapping-drift.test.ts` prüft die Gegenrichtung (jede gelesene
+Spalte muss abgebildet werden) und listet `use-project.ts` sehr wohl auf — es
+verlangt aber nicht, dass die Felder des Typs auch **gelesen** werden. Das Paar
+erzwingt beide Richtungen also **je Datei**, und „Typfeld muss im SELECT stehen"
+nur für die eine erklärte Datei. Ein zweiter Hook auf denselben Typ ist ungeprüft.
+Eine Behebung von F-2 ohne diese Erweiterung schließt den Einzelfall, nicht die Klasse.
+
+### Nachweise
+
+- **Kette + Fundkodierung** `tests/PROJ-155-beta2-qa-chain.spec.ts` **9/9** chromium
+  (F-1 und F-2 als `test.fail()` **im Testkörper** — sie beschreiben den
+  Soll-Zustand und schlagen an, sobald jemand sie behebt, statt den Ist-Zustand
+  einzufrieren; Muster aus dem PROJ-51-`/qa`).
+- **Rot-Team über HTTP** `tests/PROJ-155-beta2-redteam.spec.ts` **5/5** — die Route
+  war mit β.2 neu und hatte **keinen** Auth-Gate-Test (dieselbe Lücke wie an
+  PROJ-45-βs fünf neuen Routen). R1 ohne Sitzung genau **307**, Rumpf ohne
+  Arbeitspaket-Kennung; R2 wirklich fremdes Projekt → 404 und nichts geschrieben;
+  R3 kaputte Projekt-Kennung → 400; R4/R5/R6 kein JSON, Injektion im Datum,
+  Meilenstein ohne Zieldatum → je 400 **mit Gegenprobe**, dass keiner der drei
+  Versuche geschrieben hat; R7 projektfremder Knoten → abgewiesen, die Adresse ist
+  nicht dekorativ.
+- **R2 musste korrigiert werden, und das ist der Nebenertrag:** der erste Anlauf
+  nahm `E2E_PROJECT_ID` als „fremd" — live gemessen ist der geteilte E2E-Nutzer
+  aber Mandanten-Admin in **vier von fünf** Test-Mandanten (und Mandanten-Admins
+  bekommen per `isProjectEditAllowed` in *jedem* Projekt Schreibrecht). Der Vektor
+  hätte belegt, dass ein Berechtigter schreiben darf. Einziger echter Fremdmandant
+  ist die Visual-Spur aus PROJ-Y-143l; eine Vorbedingung im Test bricht ab, falls
+  sich das ändert. Klasse B-γ2 / PROJ-Y-114a.
+- **Live-Pentest wörtlich 12/12 PASS / 0 FAIL** gegen Prod, Rollback erzwungen
+  (V2 Atomizität `P0002` ohne Teilerfolg · V3 Audit 0→1 **mit** V3b-Gegenprobe ·
+  V4/V5/V6 `22023` · V7 fremdes Projekt · **V8** Nicht-Mitglied `P0002`, INVOKER
+  trägt, **mit V8b-Gegenprobe**, dass ein Mitglied sehr wohl schreibt).
+- **Regression** `PROJ-Y-155a` **7/7** und Visual **9/9 ohne Neuaufnahme** —
+  darunter „Baseline des Diagramms", also der Nachweis, dass β.2 das Diagramm im
+  Ruhezustand nicht bewegt hat.
+- **Gates:** vitest **4227/4227** · ESLint **0 Fehler** (4 Warnungen, alle in einer
+  fremden PROJ-153-Datei) · tsc **11 = Baseline**, keiner in einer Datei dieses
+  Durchgangs · alle **fünf** Datei-Wächter OK (index-scope, register-consistency,
+  token-drift, migration-naming, function-inventory).
+- **Rückstände 0** über sechs Zähler: kein `[PENTEST 155b2]`-Projekt, kein
+  `[QA β.2]`-Arbeitspaket, Gantt-Schalter wieder `{}`, `WP_DATED` wieder
+  `2026-03-02 bis 2026-03-10`, `WP_DERIVED` wieder terminlos, geteiltes Projekt
+  wieder 0 Arbeitspakete.
+
+### Offengelegt statt gerundet
+
+**145 Feld-Audit-Zeilen** bleiben aus diesem Durchgang stehen (58 `planned_start`
++ 58 `planned_end` + 12 `settings` + 6+6 Phasen + 3 Meilenstein + 2
+`constraint_type`). Sie sind seit PROJ-130-α ohne Löschpfad, und
+`audit_lifecycle_exempt` deckt Anlage und Löschung, **nicht** Feldänderungen —
+genau **PROJ-Y-45e**. Bewusst **nicht** über den Runbook-Weg entfernt: dafür wären
+in Produktion Append-only-Wächter abzuschalten, und dieses Risiko ist größer als
+145 synthetische Zeilen in einem Test-Mandanten.
+
+### Abweichungen
+
+- **D-β.2-QA-1** kein Viewer-Durchlauf im Browser: in der Gantt-Spur ist der
+  geteilte Nutzer Mandanten-Admin und bekommt damit überall `edit`; das Rollen-Tor
+  ist auf Route-Ebene (Unit) und in der Datenbank (Pentest V8) belegt. Gleiche
+  Grenze wie in PROJ-80-α.
+- **D-β.2-QA-2** Mobile Safari umgebungsbedingt übersprungen (WebKit-Bibliotheken
+  fehlen, PROJ-67/F2); Firefox ist nicht konfiguriert. Alle Browser-Zahlen sind
+  **chromium-only**.
+- **D-β.2-QA-3** AC-18 (kritischer Pfad) ist nicht Teil von β.2 — beim
+  Design-Pass herausgenommen und als PROJ-Y-155d registriert; hier also kein
+  offenes Kriterium.
+
+### Handoff
+
+Zwei High-Funde, beide **nicht** in diesem Durchgang behoben (die QA findet und
+dokumentiert, sie repariert nicht): **PROJ-Y-155f** (Kantentypen in der Route) und
+**PROJ-Y-155g** (Einzel-Hook liest `settings` nicht, samt Wächter-Erweiterung aus
+F-3). Beide sind klein — eine Zeile für F-1, zwei für F-2, plus Wächter —, aber
+zusammen entscheiden sie, ob β.2 überhaupt etwas tut. Nach der Behebung sind
+AC-13 und AC-14 im Browser zu führen und AC-12 erneut, weil er heute nur den
+einzigen erreichbaren Zweig belegt.
+
 ## Followups
 
 - **PROJ-Y-155a** — angemeldeter Browser-Durchlauf plus Visual-Baseline für den Gantt.
@@ -227,5 +380,17 @@ zum Prüfen braucht.
   des Produkts aus der echten Spalte. Nach dem Rollup-Fix ist das keine stille Lücke
   mehr, aber zwei Leseorte bleiben. Mit Messung entscheiden, ob das JSONB-Feld
   irgendwo noch geschrieben wird.
+- **PROJ-Y-155f** — die Route filtert die Abhängigkeiten auf `todo`/`todo`, in Prod
+  existiert **keine** solche Kante (2× `work_package`, 2× `phase`, 1× gemischt). Die
+  Kaskade der Route ist damit immer leer, während der Gantt sie korrekt anzeigt —
+  Vorschau und Server sehen verschiedene Kantenmengen. **High**, aus dem β.2-`/qa`
+  (F-1). Fix ist eine Zeile; der eigentliche Auftrag ist, die Kantenbeschaffung an
+  **einen** Ort zu ziehen, so wie es die Rechnung schon ist.
+- **PROJ-Y-155g** — `use-project.ts` (Einzahl) liest `settings` nicht, deshalb rendert
+  der Auto-Scheduling-Schalter immer als „aus" und die ganze Vorschau-Kaskade ist über
+  die Oberfläche unerreichbar. **High**, aus dem β.2-`/qa` (F-2). Umfasst die
+  Wächter-Erweiterung aus F-3: `type-vs-select-drift` prüft je Typ nur **einen**
+  erklärten SELECT — ein zweiter Hook auf denselben Typ ist ungeprüft, und ohne diese
+  Hälfte ist nur der Einzelfall geschlossen, nicht die Klasse.
 - **Registerkorrektur** — die PROJ-25-Zeile im INDEX nennt SVAR React Gantt „MIT";
   das Paket ist GPLv3.
