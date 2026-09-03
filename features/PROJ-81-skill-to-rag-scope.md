@@ -1,8 +1,13 @@
 # PROJ-81: Skill-to-RAG-Scope
 
-## Status: Planned
+## Status: Planned (blockiert)
 **Created:** 2026-06-06
-**Last Updated:** 2026-06-07
+**Last Updated:** 2026-09-01
+
+> **Blockiert durch PROJ-80-β.** Der Durchsetzungspunkt dieser Story ist die
+> `document_chunks`-Retrieval-Abfrage. Diese Tabelle existiert nicht — gemessen am 2026-09-01:
+> **0 Treffer** in `supabase/migrations/` **und** in `src/`. Fachlich hält die Story unverändert;
+> baubar ist sie erst mit dem Retrieval.
 
 ## Summary
 Each Skill can be scoped to specific nodes in the project's DMS navigation tree. When the agent backing that skill performs retrieval (PROJ-80), only documents within the configured scope are returned. Without explicit scope, the skill sees the entire project's tree by default. The configured scopes feed both PROJ-77 (admin-configured links to global knowledge) and per-project overrides at the assignment edge.
@@ -11,7 +16,9 @@ Each Skill can be scoped to specific nodes in the project's DMS navigation tree.
 - Requires: PROJ-76 (Skill-Framework)
 - Requires: PROJ-77 (Skill-Customizing — global knowledge_links exist there)
 - Requires: PROJ-79 (DMS — tree nodes exist)
-- Requires: PROJ-80 (RAG — enforcement happens at retrieval)
+- Requires: **PROJ-80-β** (Vektorindex, Chunking, Retrieval) — **nicht** PROJ-80-α. Das
+  ausgelieferte α ist ausdrücklich „Quintessenz **ohne** Vektor" und legt kein `document_chunks`
+  an; ohne Retrieval gibt es nichts zu scopen. Siehe Erdung 2026-09-01.
 - Requires: PROJ-78 (Skill-Projektzuordnung — per-project association)
 - Influences: PROJ-82, PROJ-83 (every agent invocation goes through scope check)
 
@@ -70,6 +77,28 @@ Each Skill can be scoped to specific nodes in the project's DMS navigation tree.
 - Time-based scoping ("only documents from last 90 days"). V2.
 - Document-level (vs node-level) include/exclude — V2.
 - ML-assisted scope recommendation.
+
+## Geerdet am 2026-09-01 (PROJ-165)
+
+Gemessen gegen den ausgelieferten Stand, nicht angenommen:
+
+| Baustein | Stand | Quelle |
+|---|---|---|
+| `project_skills` (Zuordnung Skill↔Projekt) | **vorhanden** | PROJ-78, deployed `full` |
+| `skill_knowledge_links` (globale Wissensquellen am Skill) | **vorhanden** | PROJ-77-γ, deployed |
+| `document_tree_nodes` (DMS-Baum) | **vorhanden** | PROJ-79-α, deployed `alpha` |
+| `document_chunks` (Durchsetzungspunkt) | **existiert nicht** — 0 Treffer in Migrationen und `src/` | PROJ-80-β zurückgestellt |
+
+**Was daraus folgt, und was ausdrücklich nicht.** Zwei der drei Bausteine sind da; Punkt 1 der
+Auflösungsreihenfolge (globale `skill_knowledge_links`) ist sogar vollständig gebaut. Fehlt allein
+die Stelle, an der ein Scope **wirkt**. Die Story ist damit **nicht überholt** — sie ist gesperrt.
+Ihre Akzeptanzkriterien bleiben unverändert; geändert ist nur die Abhängigkeitsangabe, die vorher
+„PROJ-80" sagte und damit den Eindruck erweckte, das ausgelieferte PROJ-80-α genüge.
+
+**Ein Nebenbefund, der bei der Umsetzung Arbeit spart:** PROJ-80-α hat mit `document_summaries` eine
+Ablage, auf die ein Scope grundsätzlich wirken könnte — ohne Chunking, ohne Vektor. Ob eine
+Vorab-Slice „Scope auf Quintessenzen" Sinn hat, ist **nicht** entschieden und gehört nicht in diese
+Erdung; festgehalten, damit die Möglichkeit nicht verloren geht.
 
 <!-- Sections below are added by subsequent skills -->
 

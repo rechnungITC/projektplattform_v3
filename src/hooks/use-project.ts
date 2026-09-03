@@ -70,7 +70,7 @@ export function useProject(
         const projectPromise = supabase
           .from("projects")
           .select(
-            "id, tenant_id, name, description, project_number, planned_start_date, planned_end_date, responsible_user_id, lifecycle_status, project_type, created_by, created_at, updated_at, is_deleted, responsible:profiles!projects_responsible_user_id_fkey ( id, email, display_name ), creator:profiles!projects_created_by_fkey ( id, email, display_name )"
+            "id, tenant_id, name, description, project_number, planned_start_date, planned_end_date, responsible_user_id, lifecycle_status, project_type, project_method, created_by, created_at, updated_at, is_deleted, settings, responsible:profiles!projects_responsible_user_id_fkey ( id, email, display_name ), creator:profiles!projects_created_by_fkey ( id, email, display_name )"
           )
           .eq("id", projectId)
           .maybeSingle()
@@ -124,10 +124,28 @@ export function useProject(
           responsible_user_id: raw.responsible_user_id,
           lifecycle_status: raw.lifecycle_status,
           project_type: raw.project_type,
+          /**
+           * PROJ-Y-155g — `project_method` und `settings` fehlten hier.
+           *
+           * `settings` war der Defekt: `planung-client.tsx` liest daraus
+           * `autoScheduleSuccessors`, dieser Hook lieferte es nie, der Schalter
+           * rendete **immer** als „aus" — und damit war die ganze
+           * Vorschau-Kaskade aus β.2 über die Oberfläche unerreichbar. β.2 hatte
+           * die Spalte nur in `use-projects.ts` (**Mehrzahl**) ergänzt, und der
+           * Drift-Wächter erklärt je Typ nur **einen** SELECT, also schwieg er.
+           *
+           * `project_method` ist mitgekommen, weil derselbe Widerspruch dort
+           * latent bestand: der Typ verspricht das Feld, dieser Hook lieferte
+           * `undefined`. Heute liest es kein Konsument dieses Hooks (alle acht
+           * geprüft) — genau darum war es unauffällig, und genau darum gehört es
+           * behoben, bevor der erste Konsument darauf baut.
+           */
+          project_method: raw.project_method ?? null,
           created_by: raw.created_by,
           created_at: raw.created_at,
           updated_at: raw.updated_at,
           is_deleted: raw.is_deleted,
+          settings: raw.settings ?? null,
           responsible_display_name: responsible?.display_name ?? null,
           responsible_email: responsible?.email ?? null,
           created_by_display_name: creator?.display_name ?? null,

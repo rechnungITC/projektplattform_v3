@@ -1,0 +1,41 @@
+name: Register Consistency Guard
+
+on:
+  pull_request:
+    branches: [main]
+  push:
+    branches: [main]
+
+# Auto-cancel duplicate runs on the same ref.
+concurrency:
+  group: register-consistency-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  check:
+    name: Verify features/OPEN-DEFERRED-STATUS.md does not contradict itself
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: "24"
+          cache: "npm"
+
+      - name: Install dependencies
+        run: npm ci
+
+      # Pure file analysis — no database, no network, no secrets. Hard-fails on three measured
+      # contradictions: a followup id whose table row and narrative bullet disagree about open vs
+      # done (the PROJ-Y-151e case — the row said "Erledigt" while the narrative said "offen,
+      # sicherheitsrelevant", so a closed Invariante-#3 gap read as open for three days), the same
+      # id carrying different states in two tables, and a narrative header whose `Scope` token
+      # disagrees with features/INDEX.md. Deliberately NOT an error: a narrative id without a table
+      # row — measured 6 of 6 on 2026-08-31, that is the convention for recent slices, and failing
+      # on it would have cried wolf on day one. PROJ-157.
+      - name: Run register-consistency check
+        run: npm run check:register-consistency

@@ -7,7 +7,11 @@ import {
   PROJECT_METHODS,
   type ProjectMethod,
 } from "@/types/project-method"
-import { PROJECT_TYPES, type ProjectType } from "@/types/project"
+import {
+  PROJECT_TYPES,
+  PROJECT_TYPE_LABELS,
+  type ProjectType,
+} from "@/types/project"
 import type { ModuleKey } from "@/types/tenant-settings"
 import { WORK_ITEM_KIND_LABELS, type WorkItemKind } from "@/types/work-item"
 
@@ -17,6 +21,20 @@ import {
   type AssistantSettings,
 } from "./settings"
 import { transcriptForPersistence } from "./transcript"
+import {
+  isDialogExpired,
+  isSkipAnswer,
+  nextDialogExpiry,
+  nextProjectSlot,
+  parseProjectMethodAnswer,
+  parseProjectTypeAnswer,
+  type AssistantContinuation,
+  type AssistantDialogCompletion,
+  type AssistantDialogState,
+  type ProjectDialogSlot,
+  type ProjectDialogState,
+  type WorkItemDialogState,
+} from "./dialog-state"
 import {
   parseWorkItemCommand,
   resolveTargetKind,
@@ -38,6 +56,10 @@ interface AssistantRuntimeArgs {
   modality: "text" | "voice"
   projectId?: string | null
   clientContextPath?: string | null
+  sessionId?: string | null
+  dialogState?: AssistantDialogState | null
+  continuation?: AssistantContinuation | null
+  completedProjectDialog?: AssistantDialogCompletion | null
 }
 
 interface ClassifiedIntent {
@@ -51,7 +73,7 @@ interface ClassifiedIntent {
 
 interface DraftExtraction {
   name: string | null
-  description: string
+  description: string | null
   project_type: ProjectType | null
   project_method: ProjectMethod | null
 }
@@ -109,6 +131,21 @@ export function classifyAssistantIntent(input: string): ClassifiedIntent {
   // zurück, wenn `projekt` das Objekt der Erzeugung ist (AC-144.31).
   // Absichtlich auf dem Originaltext: der Titel soll seine Schreibweise behalten.
   const workItem = parseWorkItemCommand(input)
+  if (
+    (workItem && (isStatusIntent(text) || isReportIntent(text))) ||
+    (isCreateDraftIntent(text) &&
+      (isStatusIntent(text) || isReportIntent(text))) ||
+    (/\b(und|sowie|danach)\b/.test(text) &&
+      isCreateDraftIntent(text) &&
+      /\b(story|storys|stories|aufgabe|aufgaben|task|tasks|arbeitspaket|arbeitspakete|bug|bugs|feature|features|epic|epics)\b/.test(text))
+  ) {
+    return {
+      intent: "needs_clarification",
+      area: null,
+      projectQuery: null,
+      draft: null,
+    }
+  }
   if (workItem) {
     return {
       intent: "work_item_create_draft",
@@ -185,7 +222,7 @@ export async function handleAssistantTurn(
   args: AssistantRuntimeArgs,
 ): Promise<AssistantRuntimeResult> {
   const input = args.inputText.trim()
-  if (!input) {
+  if (!input && !args.continuation) {
     return result({
       intent: "needs_clarification",
       status: "needs_clarification",
@@ -195,20 +232,60 @@ export async function handleAssistantTurn(
   }
 
   const settings = await loadAssistantSettings(args.supabase, args.tenantId)
+  if (
+    args.completedProjectDialog &&
+    args.continuation?.kind === "approve_project" &&
+    args.completedProjectDialog.completion_key === args.continuation.completion_key
+  ) {
+    const completed = args.completedProjectDialog
+    const href = `/projects/new/wizard?draftId=${encodeURIComponent(completed.wizard_draft_id)}`
+    return result({
+      intent: "project_create_draft",
+      status: "success",
+      response: "Der Wizard-Entwurf wurde bereits vorbereitet. Du kannst ihn jetzt prüfen.",
+      projectId: null,
+      settings,
+      dialogState: null,
+      sessionStateCommitted: true,
+      committedTurn: {
+        id: completed.turn_id,
+        created_at: completed.turn_created_at,
+      },
+      requiresConfirmation: false,
+      confirmationState: "confirmed",
+      wizardDraft: { id: completed.wizard_draft_id, name: completed.wizard_draft_name, href },
+      routeTarget: { href, label: "Entwurf prüfen" },
+      toolCalls: [{ key: "wizard_draft.create", label: "Wizard-Entwurf anlegen", status: "executed", metadata: { idempotent_retry: true } }],
+    })
+  }
+  if (args.dialogState) {
+    return continueDialog(args, args.dialogState, settings)
+  }
   const classified = classifyAssistantIntent(input)
 
   if (classified.intent === "unknown") {
     return result({
       intent: "unknown",
       status: "needs_clarification",
-      response: GENERIC_RESPONSE,
+      response: repairResponse(input),
       projectId: args.projectId ?? null,
       settings,
     })
   }
 
+  if (classified.intent === "needs_clarification") {
+    return result({
+      intent: "needs_clarification",
+      status: "needs_clarification",
+      response: "Ich erkenne mehrere unterschiedliche Aufträge. Bitte sende sie nacheinander, damit ich keine Änderung falsch ausführe.",
+      projectId: args.projectId ?? null,
+      settings,
+      requiresConfirmation: false,
+    })
+  }
+
   if (classified.intent === "project_create_draft") {
-    return createWizardDraft(args, classified.draft, settings)
+    return startProjectDialog(args, classified.draft, settings)
   }
 
   if (classified.intent === "work_item_create_draft" && classified.workItem) {
@@ -239,6 +316,287 @@ export async function handleAssistantTurn(
   return statusResult(args, projectResolution.project, settings)
 }
 
+async function continueDialog(
+  args: AssistantRuntimeArgs,
+  state: AssistantDialogState,
+  settings: AssistantSettings,
+): Promise<AssistantRuntimeResult> {
+  if (!args.continuation && args.inputText.trim()) {
+    const replacement = classifyAssistantIntent(args.inputText)
+    if (
+      replacement.intent !== "unknown" &&
+      replacement.intent !== "needs_clarification"
+    ) {
+      const next = await handleAssistantTurn({
+        ...args,
+        dialogState: null,
+        continuation: null,
+        completedProjectDialog: null,
+      })
+      return {
+        ...next,
+        tool_calls: [
+          {
+            key: "dialog.replace",
+            label: "Offenen Auftrag ersetzen",
+            status: "executed",
+            metadata: { replaced_intent: state.pending_intent },
+          },
+          ...next.tool_calls,
+        ],
+      }
+    }
+  }
+  if (
+    state.started_project_id !== (args.projectId ?? null)
+  ) {
+    return result({
+      intent: state.pending_intent,
+      status: "needs_clarification",
+      response: "Der Projektkontext hat sich geändert. Ich habe den offenen Auftrag zu deiner Sicherheit verworfen.",
+      projectId: args.projectId ?? null,
+      settings,
+      dialogState: null,
+      requiresConfirmation: false,
+      toolCalls: [{ key: "dialog.context_changed", label: "Projektkontext prüfen", status: "blocked" }],
+    })
+  }
+  if (isDialogExpired(state)) {
+    return result({
+      intent: state.pending_intent,
+      status: "needs_clarification",
+      response: "Der offene Auftrag ist nach 30 Minuten abgelaufen. Bitte starte ihn noch einmal.",
+      projectId: args.projectId ?? null,
+      settings,
+      dialogState: null,
+      requiresConfirmation: false,
+    })
+  }
+
+  if (
+    args.continuation &&
+    args.continuation.expected_revision !== state.revision
+  ) {
+    return result({
+      intent: state.pending_intent,
+      status: "failed",
+      response: "Der Dialog wurde bereits in einem anderen Fenster geändert. Bitte lade den aktuellen Stand neu.",
+      projectId: args.projectId ?? null,
+      settings,
+      dialogState: state,
+      requiresConfirmation: false,
+      toolCalls: [{
+        key: "dialog.state_conflict",
+        label: "Dialogstand prüfen",
+        status: "blocked",
+      }],
+    })
+  }
+
+  if (args.continuation?.kind === "cancel" || isCancelAnswer(args.inputText)) {
+    return result({
+      intent: state.pending_intent,
+      status: "success",
+      response: "Alles klar, ich habe den offenen Auftrag abgebrochen.",
+      projectId: args.projectId ?? null,
+      settings,
+      dialogState: null,
+      requiresConfirmation: false,
+      confirmationState: "cancelled",
+      toolCalls: [{ key: "dialog.cancel", label: "Auftrag abbrechen", status: "executed" }],
+    })
+  }
+
+  if (state.pending_intent === "project_create_draft") {
+    return continueProjectDialog(args, state, settings)
+  }
+  return continueWorkItemDialog(args, state, settings)
+}
+
+function startProjectDialog(
+  args: AssistantRuntimeArgs,
+  draft: DraftExtraction | null,
+  settings: AssistantSettings,
+): AssistantRuntimeResult {
+  const state: ProjectDialogState = {
+    schema_version: 1,
+    revision: 0,
+    pending_intent: "project_create_draft",
+    phase: "collecting",
+    expires_at: nextDialogExpiry(),
+    started_project_id: args.projectId ?? null,
+    requested_slot: null,
+    candidate_project_ids: [],
+    slots: {
+      name: draft?.name ?? null,
+      project_type: draft?.project_type ?? null,
+      project_method: draft?.project_method ?? null,
+      description: draft?.description ?? null,
+      skipped: [],
+    },
+  }
+  return projectDialogResult(state, settings)
+}
+
+async function continueProjectDialog(
+  args: AssistantRuntimeArgs,
+  state: ProjectDialogState,
+  settings: AssistantSettings,
+): Promise<AssistantRuntimeResult> {
+  if (args.continuation?.kind === "approve_project") {
+    if (state.phase !== "reviewing" || !args.sessionId) {
+      return projectDialogResult(state, settings, "Bitte vervollständige und prüfe zuerst die Zusammenfassung.")
+    }
+    const { data, error } = await args.supabase.rpc(
+      "complete_assistant_project_dialog",
+      {
+        p_session_id: args.sessionId,
+        p_expected_revision: state.revision,
+        p_completion_key: args.continuation.completion_key,
+        p_modality: args.modality,
+      },
+    )
+    const row = data as {
+      id?: string
+      name?: string | null
+      turn_id?: string
+      turn_created_at?: string
+    } | null
+    if (error || !row?.id) {
+      return result({
+        intent: "project_create_draft",
+        status: "failed",
+        response: "Der Projektentwurf konnte nicht angelegt werden. Bitte versuche es erneut.",
+        projectId: null,
+        settings,
+        dialogState: state,
+        requiresConfirmation: true,
+        toolCalls: [{ key: "wizard_draft.create", label: "Wizard-Entwurf anlegen", status: "failed" }],
+      })
+    }
+    const href = `/projects/new/wizard?draftId=${encodeURIComponent(row.id)}`
+    return result({
+      intent: "project_create_draft",
+      status: "success",
+      response: "Ich habe genau einen Wizard-Entwurf vorbereitet. Bitte prüfe ihn, bevor das Projekt final angelegt wird.",
+      projectId: null,
+      settings,
+      dialogState: null,
+      sessionStateCommitted: true,
+      committedTurn:
+        row.turn_id && row.turn_created_at
+          ? { id: row.turn_id, created_at: row.turn_created_at }
+          : null,
+      requiresConfirmation: false,
+      confirmationState: "confirmed",
+      wizardDraft: { id: row.id, name: row.name ?? state.slots.name, href },
+      routeTarget: { href, label: "Entwurf prüfen" },
+      toolCalls: [{ key: "wizard_draft.create", label: "Wizard-Entwurf anlegen", status: "executed" }],
+    })
+  }
+
+  const updated = structuredClone(state)
+  if (args.continuation?.kind === "correct_project_field") {
+    updated.requested_slot = args.continuation.field
+    updated.phase = "collecting"
+    const invalid = applyProjectAnswer(updated, args.continuation.value)
+    if (invalid) {
+      updated.revision += 1
+      updated.expires_at = nextDialogExpiry()
+      return projectDialogResult(updated, settings, invalid)
+    }
+  } else if (args.continuation) {
+    return projectDialogResult(state, settings, "Diese Auswahl passt nicht zum offenen Projektauftrag.")
+  } else {
+    const invalid = applyProjectAnswer(updated, args.inputText)
+    if (invalid) {
+      updated.revision += 1
+      updated.expires_at = nextDialogExpiry()
+      return projectDialogResult(updated, settings, invalid)
+    }
+  }
+  updated.revision += 1
+  updated.expires_at = nextDialogExpiry()
+  return projectDialogResult(updated, settings)
+}
+
+function applyProjectAnswer(
+  state: ProjectDialogState,
+  answer: string,
+): string | null {
+  const slot = state.requested_slot ?? nextProjectSlot(state)
+  if (!slot) return "Nutze bitte „Ändern“ für eine Korrektur oder bestätige die Zusammenfassung."
+  const value = answer.trim()
+  if (slot !== "name" && isSkipAnswer(value)) {
+    if (!state.slots.skipped.includes(slot)) state.slots.skipped.push(slot)
+    state.requested_slot = null
+    return null
+  }
+  if (!value) return projectSlotPrompt(slot)
+  if (slot === "name") {
+    if (isSkipAnswer(value)) return "Der Projektname ist erforderlich und kann nicht übersprungen werden."
+    state.slots.name = value.slice(0, 255)
+  } else if (slot === "project_type") {
+    const parsed = parseProjectTypeAnswer(value)
+    if (!parsed) return "Welcher Projekttyp passt: ERP, Bau, Software, Allgemein oder M&A? Du kannst auch „überspringen“ sagen."
+    state.slots.project_type = parsed
+  } else if (slot === "project_method") {
+    const parsed = parseProjectMethodAnswer(value)
+    if (!parsed) return "Welche Methode passt: Scrum, Kanban, SAFe, Wasserfall, PMI, PRINCE2 oder VXT 2.0? Du kannst auch „überspringen“ sagen."
+    state.slots.project_method = parsed
+  } else {
+    state.slots.description = value.slice(0, 5000)
+  }
+  state.requested_slot = null
+  return null
+}
+
+function projectDialogResult(
+  state: ProjectDialogState,
+  settings: AssistantSettings,
+  override?: string,
+): AssistantRuntimeResult {
+  const slot =
+    state.phase === "collecting" && state.requested_slot
+      ? state.requested_slot
+      : nextProjectSlot(state)
+  const next: ProjectDialogState = {
+    ...state,
+    phase: slot ? "collecting" : "reviewing",
+    requested_slot: slot,
+  }
+  const response = override ?? (slot ? projectSlotPrompt(slot) : projectSummary(next))
+  return result({
+    intent: "project_create_draft",
+    status: "needs_clarification",
+    response,
+    projectId: null,
+    settings,
+    dialogState: next,
+    requiresConfirmation: next.phase === "reviewing",
+    toolCalls: [{
+      key: next.phase === "reviewing" ? "dialog.review" : "dialog.collect",
+      label: next.phase === "reviewing" ? "Angaben prüfen" : "Angabe erfragen",
+      status: "planned",
+      metadata: { requested_slot: next.requested_slot, revision: next.revision },
+    }],
+  })
+}
+
+function projectSlotPrompt(slot: ProjectDialogSlot): string {
+  if (slot === "name") return "Wie soll das Projekt heißen?"
+  if (slot === "project_type") return "Welcher Projekttyp passt: ERP, Bau, Software, Allgemein oder M&A? Du kannst „überspringen“ sagen."
+  if (slot === "project_method") return "Welche Methode soll das Projekt verwenden: Scrum, Kanban, SAFe, Wasserfall, PMI, PRINCE2 oder VXT 2.0? Du kannst „überspringen“ sagen."
+  return "Beschreibe das Projekt bitte kurz. Du kannst auch „überspringen“ sagen."
+}
+
+function projectSummary(state: ProjectDialogState): string {
+  const type = state.slots.project_type ? PROJECT_TYPE_LABELS[state.slots.project_type] : "noch offen"
+  const method = state.slots.project_method ? PROJECT_METHOD_LABELS[state.slots.project_method] : "noch offen"
+  const description = state.slots.description || "noch offen"
+  return `Bitte prüfe den Projektentwurf: Name „${state.slots.name}“, Typ ${type}, Methode ${method}, Beschreibung „${description}“. Du kannst eine Angabe ändern, abbrechen oder den Entwurf freigeben.`
+}
+
 async function loadAssistantSettings(
   supabase: SupabaseClient,
   tenantId: string,
@@ -254,80 +612,6 @@ async function loadAssistantSettings(
   )
 }
 
-async function createWizardDraft(
-  args: AssistantRuntimeArgs,
-  draft: DraftExtraction | null,
-  settings: AssistantSettings,
-): Promise<AssistantRuntimeResult> {
-  const name = draft?.name?.trim() || "Neuer Projektentwurf"
-  const data = {
-    name,
-    description: draft?.description ?? "",
-    project_number: "",
-    planned_start_date: null,
-    planned_end_date: null,
-    responsible_user_id: args.userId,
-    project_type: draft?.project_type ?? null,
-    project_method: draft?.project_method ?? null,
-    type_specific_data: {},
-  }
-
-  const { data: row, error } = await args.supabase
-    .from("project_wizard_drafts")
-    .insert({
-      tenant_id: args.tenantId,
-      created_by: args.userId,
-      name,
-      project_type: data.project_type,
-      project_method: data.project_method,
-      data,
-    })
-    .select("id, name")
-    .single()
-
-  const toolCalls: AssistantToolCall[] = [
-    {
-      key: "wizard_draft.create",
-      label: "Wizard-Entwurf anlegen",
-      status: error ? "failed" : "executed",
-      metadata: { project_type: data.project_type, project_method: data.project_method },
-    },
-  ]
-
-  if (error || !row) {
-    return result({
-      intent: "project_create_draft",
-      status: "failed",
-      response:
-        error?.message ?? "Der Projektentwurf konnte nicht angelegt werden.",
-      projectId: null,
-      toolCalls,
-      settings,
-    })
-  }
-
-  const id = (row as { id: string }).id
-  const draftName = (row as { name: string | null }).name
-  return result({
-    intent: "project_create_draft",
-    status: "success",
-    response:
-      "Ich habe einen Wizard-Entwurf vorbereitet. Bitte prüfe die Angaben im Wizard, bevor das Projekt final angelegt wird.",
-    projectId: null,
-    toolCalls,
-    settings,
-    wizardDraft: {
-      id,
-      name: draftName,
-      href: `/projects/new/wizard?draftId=${encodeURIComponent(id)}`,
-    },
-    routeTarget: {
-      href: `/projects/new/wizard?draftId=${encodeURIComponent(id)}`,
-      label: "Entwurf prüfen",
-    },
-  })
-}
-
 /**
  * PROJ-144 — Schritt 1 des Zwei-Schritt-Flusses: aus dem Sprachbefehl wird ein
  * gespeicherter Entwurf. Es entsteht hier bewusst KEIN Work-Item; das passiert
@@ -337,11 +621,29 @@ async function createWorkItemDraft(
   args: AssistantRuntimeArgs,
   command: WorkItemCommand,
   settings: AssistantSettings,
+  dialogRevision = 0,
 ): Promise<AssistantRuntimeResult> {
   const requestedLabel = WORK_ITEM_KIND_LABELS[command.requestedKind]
 
   // Nur die Art genannt, kein Inhalt → Rückfrage statt geratener Titel.
   if (!command.title) {
+    const dialogState: WorkItemDialogState = {
+      schema_version: 1,
+      revision: dialogRevision,
+      pending_intent: "work_item_create_draft",
+      phase: "collecting",
+      expires_at: nextDialogExpiry(),
+      started_project_id: args.projectId ?? null,
+      requested_slot: "title",
+      candidate_project_ids: [],
+      slots: {
+        requested_kind: command.requestedKind,
+        title: null,
+        description: command.description,
+        project_query: command.projectQuery,
+        project_id: args.projectId ?? null,
+      },
+    }
     return result({
       intent: "work_item_create_draft",
       status: "needs_clarification",
@@ -349,6 +651,7 @@ async function createWorkItemDraft(
       projectId: args.projectId ?? null,
       settings,
       requiresConfirmation: false,
+      dialogState,
     })
   }
 
@@ -359,6 +662,23 @@ async function createWorkItemDraft(
     : args
   const projectResolution = await resolveProject(scopeArgs, command.projectQuery)
   if (projectResolution.status !== "resolved") {
+    const dialogState: WorkItemDialogState = {
+      schema_version: 1,
+      revision: dialogRevision,
+      pending_intent: "work_item_create_draft",
+      phase: projectResolution.choices.length ? "choosing_project" : "collecting",
+      expires_at: nextDialogExpiry(),
+      started_project_id: args.projectId ?? null,
+      requested_slot: "project",
+      candidate_project_ids: projectResolution.choices.map((choice) => choice.id),
+      slots: {
+        requested_kind: command.requestedKind,
+        title: command.title,
+        description: command.description,
+        project_query: command.projectQuery,
+        project_id: null,
+      },
+    }
     return result({
       intent: "work_item_create_draft",
       status: "needs_clarification",
@@ -368,6 +688,7 @@ async function createWorkItemDraft(
       toolCalls: projectResolution.toolCalls,
       settings,
       requiresConfirmation: false,
+      dialogState,
     })
   }
 
@@ -433,26 +754,48 @@ async function createWorkItemDraft(
         ? "redacted"
         : "metadata"
 
-  const { data: row, error } = await args.supabase
-    .from("assistant_work_item_drafts")
-    .insert({
-      tenant_id: args.tenantId,
-      user_id: args.userId,
-      project_id: project.id,
-      requested_kind: command.requestedKind,
-      target_kind: targetKind,
-      title: command.title,
-      description: command.description,
-      // Rohtranskript nur im Rahmen der Mandanten-Regel (AC-144.26); der Titel
-      // selbst ist gewollter Geschäftsinhalt und wird immer gespeichert.
-      source_transcript: transcriptForPersistence(
-        args.inputText,
-        transcriptPersistence,
-      ),
-      source_modality: args.modality,
-    })
-    .select("id, title, description, target_kind, requested_kind")
-    .single()
+  const methodLabel = project.project_method
+    ? PROJECT_METHOD_LABELS[project.project_method]
+    : null
+  const response = kindResolution.mapped
+    ? `Dieses Projekt läuft nach ${methodLabel} — dort gibt es keine ${requestedLabel}. Ich habe ein ${targetLabel} „${command.title}" vorbereitet. Bitte prüfen und bestätigen.`
+    : `Ich habe ${articleFor(targetLabel)} ${targetLabel} „${command.title}" für „${project.name}" vorbereitet. Bitte prüfen und bestätigen.`
+
+  const atomicContinuation = Boolean(
+    args.sessionId && args.dialogState?.pending_intent === "work_item_create_draft",
+  )
+  const writeResult = atomicContinuation
+    ? await args.supabase.rpc("complete_assistant_work_item_dialog", {
+        p_session_id: args.sessionId,
+        p_expected_revision: args.dialogState!.revision,
+        p_project_id: project.id,
+        p_requested_kind: command.requestedKind,
+        p_target_kind: targetKind,
+        p_title: command.title,
+        p_description: command.description,
+        p_source_modality: args.modality,
+        p_kind_was_mapped: kindResolution.mapped,
+      })
+    : await args.supabase
+        .from("assistant_work_item_drafts")
+        .insert({
+          tenant_id: args.tenantId,
+          user_id: args.userId,
+          project_id: project.id,
+          requested_kind: command.requestedKind,
+          target_kind: targetKind,
+          title: command.title,
+          description: command.description,
+          source_transcript: transcriptForPersistence(
+            args.inputText,
+            transcriptPersistence,
+          ),
+          source_modality: args.modality,
+        })
+        .select("id, title, description, target_kind, requested_kind")
+        .single()
+
+  const { data: row, error } = writeResult
 
   const toolCalls: AssistantToolCall[] = [
     {
@@ -472,8 +815,7 @@ async function createWorkItemDraft(
     return result({
       intent: "work_item_create_draft",
       status: "failed",
-      response:
-        error?.message ?? "Der Entwurf konnte nicht vorbereitet werden.",
+      response: "Der Entwurf konnte nicht vorbereitet werden. Bitte versuche es erneut.",
       projectId: project.id,
       settings,
       toolCalls,
@@ -487,15 +829,9 @@ async function createWorkItemDraft(
     description: string | null
     target_kind: string
     requested_kind: string | null
+    turn_id?: string
+    turn_created_at?: string
   }
-
-  // Weicht die Art von der gesagten ab, wird das ausdrücklich benannt (AC-144.8).
-  const methodLabel = project.project_method
-    ? PROJECT_METHOD_LABELS[project.project_method]
-    : null
-  const response = kindResolution.mapped
-    ? `Dieses Projekt läuft nach ${methodLabel} — dort gibt es keine ${requestedLabel}. Ich habe ein ${targetLabel} „${draft.title}" vorbereitet. Bitte prüfen und bestätigen.`
-    : `Ich habe ${articleFor(targetLabel)} ${targetLabel} „${draft.title}" für „${project.name}" vorbereitet. Bitte prüfen und bestätigen.`
 
   const workItemDraft: AssistantWorkItemDraftRef = {
     id: draft.id,
@@ -517,7 +853,96 @@ async function createWorkItemDraft(
     toolCalls,
     workItemDraft,
     requiresConfirmation: true,
+    dialogState: null,
+    sessionStateCommitted: atomicContinuation,
+    committedTurn:
+      atomicContinuation &&
+      "turn_id" in draft &&
+      "turn_created_at" in draft &&
+      typeof draft.turn_id === "string" &&
+      typeof draft.turn_created_at === "string"
+        ? { id: draft.turn_id, created_at: draft.turn_created_at }
+        : null,
   })
+}
+
+async function continueWorkItemDialog(
+  args: AssistantRuntimeArgs,
+  state: WorkItemDialogState,
+  settings: AssistantSettings,
+): Promise<AssistantRuntimeResult> {
+  const next = structuredClone(state)
+  if (args.continuation?.kind === "project_choice") {
+    if (!state.candidate_project_ids.includes(args.continuation.project_id)) {
+      return result({
+        intent: "work_item_create_draft",
+        status: "needs_clarification",
+        response: "Diese Projektwahl gehört nicht zum offenen Auftrag. Bitte wähle eines der angezeigten Projekte.",
+        projectId: null,
+        settings,
+        dialogState: state,
+        requiresConfirmation: false,
+      })
+    }
+    next.slots.project_id = args.continuation.project_id
+  } else if (args.continuation) {
+    return result({
+      intent: "work_item_create_draft",
+      status: "needs_clarification",
+      response: "Diese Aktion passt nicht zum offenen Story-Auftrag.",
+      projectId: null,
+      settings,
+      dialogState: state,
+      requiresConfirmation: false,
+    })
+  } else if (state.requested_slot === "title") {
+    const title = args.inputText.trim()
+    if (!title) {
+      return result({
+        intent: "work_item_create_draft",
+        status: "needs_clarification",
+        response: "Wie soll die Position heißen?",
+        projectId: state.slots.project_id,
+        settings,
+        dialogState: state,
+        requiresConfirmation: false,
+      })
+    }
+    next.slots.title = title.slice(0, 255)
+  } else if (state.requested_slot === "project") {
+    const query = args.inputText.trim()
+    if (!query) {
+      return result({
+        intent: "work_item_create_draft",
+        status: "needs_clarification",
+        response: "Welches Projekt meinst du?",
+        projectId: null,
+        settings,
+        dialogState: state,
+        requiresConfirmation: false,
+      })
+    }
+    next.slots.project_query = query.replace(/^projekt\s+/i, "").trim()
+  }
+
+  next.revision += 1
+  next.expires_at = nextDialogExpiry()
+  const command: WorkItemCommand = {
+    requestedKind: next.slots.requested_kind,
+    title: next.slots.title,
+    description: next.slots.description,
+    projectQuery: next.slots.project_id ? null : next.slots.project_query,
+  }
+  return createWorkItemDraft(
+    {
+      ...args,
+      projectId: next.slots.project_id,
+      continuation: null,
+    },
+    command,
+    settings,
+    next.revision,
+  )
 }
 
 /**
@@ -851,6 +1276,10 @@ function result(args: {
    * gerade KEINE Bestätigung erwartet.
    */
   requiresConfirmation?: boolean
+  confirmationState?: AssistantRuntimeResult["confirmation_state"]
+  dialogState?: AssistantDialogState | null
+  sessionStateCommitted?: boolean
+  committedTurn?: AssistantRuntimeResult["committed_turn"]
 }): AssistantRuntimeResult {
   const settings = args.settings ?? ASSISTANT_SETTINGS_DEFAULTS
   const requiresConfirmation =
@@ -858,7 +1287,8 @@ function result(args: {
   return {
     recognized_intent: args.intent,
     requires_confirmation: requiresConfirmation,
-    confirmation_state: requiresConfirmation ? "required" : "not_required",
+    confirmation_state:
+      args.confirmationState ?? (requiresConfirmation ? "required" : "not_required"),
     result_status: args.status,
     user_response: args.response,
     project_id: args.projectId,
@@ -873,6 +1303,9 @@ function result(args: {
         : settings.transcript_retention_mode === "persist_redacted_transcript"
           ? "redacted"
           : "metadata",
+    dialog_state: args.dialogState ?? null,
+    session_state_committed: args.sessionStateCommitted ?? false,
+    committed_turn: args.committedTurn ?? null,
   }
 }
 
@@ -888,13 +1321,13 @@ function normalizeText(input: string): string {
 
 function isCreateDraftIntent(text: string): boolean {
   return (
-    /\b(erstelle|erzeuge|lege|mach|create)\b/.test(text) &&
+    /\b(erstelle?|erstell|erzeuge?|erzeug|lege|leg|anlegen|mache?|mach|create)\b/.test(text) &&
     /\b(projekt|project)\b/.test(text)
   )
 }
 
 function isStatusIntent(text: string): boolean {
-  return /\b(status|stand|lage|gesundheit|health|risiken|entscheidungen|meilenstein|milestone)\b/.test(
+  return /\b(status|stand|steht|stehen|lage|gesundheit|health|risiken|entscheidungen|meilenstein|milestone)\b/.test(
     text,
   )
 }
@@ -953,7 +1386,7 @@ function extractDraft(input: string): DraftExtraction {
   const name = extractDraftName(input)
   return {
     name,
-    description: input.trim(),
+    description: null,
     project_type: type,
     project_method: method,
   }
@@ -981,5 +1414,22 @@ function extractDraftName(input: string): string | null {
     input.match(/projekt\s+["“]?([^".,;]+)["”]?/i)
   const name = match?.[1]?.trim()
   if (!name) return null
-  return name.replace(/\s+(als|mit|nach|und)\s+.*$/i, "").trim().slice(0, 255)
+  const cleaned = name.replace(/\s+(als|mit|nach|und)\s+.*$/i, "").trim()
+  if (/^(?:an|fur mich|für mich|bitte|neu(?:es|e|er)?)$/i.test(cleaned)) return null
+  return cleaned.slice(0, 255)
+}
+
+function isCancelAnswer(input: string): boolean {
+  return /^(?:abbrechen|abbruch|stopp|stop|vergiss es|lass es)$/i.test(input.trim())
+}
+
+function repairResponse(input: string): string {
+  const text = normalizeText(input)
+  if (/\b(projekt|project)\b/.test(text)) {
+    return "Geht es um den Projektstatus, möchtest du ein Projekt öffnen oder einen Projektentwurf anlegen? Zum Beispiel: „Leg mir ein Projekt an“."
+  }
+  if (/\b(story|aufgabe|task|arbeitspaket|bug|feature|epic)\b/.test(text)) {
+    return "Möchtest du eine Position anlegen? Zum Beispiel: „Mach im Projekt Apollo eine Story für den Rechnungsimport“."
+  }
+  return GENERIC_RESPONSE
 }

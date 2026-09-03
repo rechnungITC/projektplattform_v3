@@ -42,7 +42,32 @@ import {
   weekendBands as buildWeekendBands,
 } from "@/lib/dates/gantt-timeline"
 import { cn } from "@/lib/utils"
+import {
+  DependencyApiError,
+  createDependency,
+} from "@/lib/dependencies/api"
+import {
+  constraintBadge,
+  type DependencyConstraintType,
+} from "@/types/dependency"
+
+import {
+  DependencyEditDialog,
+  type EditableDependency,
+} from "./dependency-edit-dialog"
 import { buildGanttRows, phaseRowKey } from "@/lib/work-items/gantt-rows"
+// PROJ-155-β.2
+import {
+  CascadePreviewBar,
+  type CascadePreviewSummary,
+} from "@/components/phases/cascade-preview-bar"
+import {
+  cascadeEdgesFor,
+  computeScheduleCascade,
+  type CascadeNode,
+  type CascadeResult,
+} from "@/lib/work-items/schedule-cascade"
+import { applyScheduleShift, ApplyScheduleError } from "@/lib/schedule/api"
 import { type Milestone, MILESTONE_STATUS_LABELS } from "@/types/milestone"
 import { PHASE_STATUS_LABELS, type Phase } from "@/types/phase"
 import type { WorkItemWithProfile } from "@/types/work-item"
@@ -75,7 +100,11 @@ interface PolymorphicDependency {
   from_id: string
   to_type: LinkType
   to_id: string
-  constraint_type: "FS" | "SS" | "FF" | "SF"
+  constraint_type: DependencyConstraintType
+  // PROJ-155-β.1 — der Gantt las den Abstand bisher gar nicht (0 Vorkommen im
+  // ganzen Modul), obwohl die Spalte seit PROJ-9-Round-2 existiert. Ohne ihn
+  // kann das Abzeichen ihn nicht zeigen und die Maske ihn nicht vorbelegen.
+  lag_days: number
 }
 
 interface GanttViewProps {
@@ -98,6 +127,15 @@ interface GanttViewProps {
    * neither see the WP on the timeline nor wire dependencies.
    */
   onEditWorkItemRequest?: (item: WorkItemWithProfile) => void
+  /**
+   * PROJ-155-β.2 — rechnet ein Zug die Folgeverschiebungen der Nachfolger?
+   *
+   * Default **false**, und dann ist der ganze β.2-Pfad unerreichbar: das Ziehen
+   * läuft durch denselben Code wie vor dieser Slice (AC-12). Bei `true` erzeugt
+   * ein Zug eine **Vorschau** — auch dann wird nicht ungefragt geschrieben, der
+   * Schalter entscheidet nur, ob gerechnet wird.
+   */
+  autoScheduleSuccessors?: boolean
 }
 
 const ROW_HEIGHT = 36
@@ -204,10 +242,30 @@ export function GanttView({
   canEdit,
   onChanged,
   onEditWorkItemRequest,
+  autoScheduleSuccessors = false,
 }: GanttViewProps) {
   const [drag, setDrag] = React.useState<DragState | null>(null)
   const [submitting, setSubmitting] = React.useState<string | null>(null)
+  /**
+   * PROJ-155-β.2 — die offene Kaskaden-Vorschau. `null` = keine.
+   *
+   * Solange sie steht, ist **nichts geschrieben** (AC-14). Sie hält den
+   * gezogenen Knoten und das Ergebnis der Rechnung; die Geisterbalken lesen
+   * daraus.
+   */
+  const [cascadePreview, setCascadePreview] = React.useState<{
+    movedId: string
+    movedStart: string
+    movedEnd: string
+    result: CascadeResult
+  } | null>(null)
+  const [applyingCascade, setApplyingCascade] = React.useState(false)
   const [dependencies, setDependencies] = React.useState<PolymorphicDependency[]>([])
+  // PROJ-155-β.1 — die angeklickte Kante. Vorher fuehrte der Klick direkt in
+  // die Loeschabfrage; jetzt oeffnet er die Bearbeitung, in der Loeschen eine
+  // von drei Handlungen ist.
+  const [editDependency, setEditDependency] =
+    React.useState<EditableDependency | null>(null)
   const [zoomLevel, setZoomLevel] = React.useState<ZoomLevel>("week")
   const pixelsPerDay = ZOOM_PIXELS_PER_DAY[zoomLevel]
   const [criticalPhaseIds, setCriticalPhaseIds] = React.useState<Set<string>>(
@@ -282,8 +340,10 @@ export function GanttView({
               to_type: LinkType
               to_id: string
               constraint_type: PolymorphicDependency["constraint_type"]
+              lag_days: number | null
             }) => ({
               id: r.id,
+              lag_days: r.lag_days ?? 0,
               from_type: r.from_type,
               from_id: r.from_id,
               to_type: r.to_type,
@@ -372,6 +432,131 @@ export function GanttView({
     window.addEventListener("keydown", onKey)
     return () => window.removeEventListener("keydown", onKey)
   }, [fullscreen])
+
+  /**
+   * PROJ-155-β.2 — die **wirksame** Vorschau.
+   *
+   * Geht der Schalter aus, während eine Vorschau offen steht, verschwindet sie:
+   * sonst würde „Übernehmen" weiter schreiben, obwohl das Auto-Scheduling
+   * gerade abgeschaltet wurde — der Schalter wäre in dem Moment eine
+   * Behauptung. Beim Bauen selbst gefunden, nicht von einem Test.
+   *
+   * **Abgeleitet, nicht per Effekt zurückgesetzt.** Die erste Fassung war ein
+   * `useEffect`, der `setCascadePreview(null)` rief; ESLint hat das mit
+   * `react-hooks/set-state-in-effect` abgelehnt und die Regel hat recht — der
+   * Wert ist aus zwei vorhandenen Zuständen berechenbar, und was berechenbar
+   * ist, braucht keinen eigenen Zustand, der davon abdriften kann. Dieselbe
+   * Lehre wie in β.1 und PROJ-70-β.
+   */
+  const activePreview = autoScheduleSuccessors ? cascadePreview : null
+
+  /**
+   * PROJ-155-β.2 / AC-14 — Escape verwirft die Vorschau, ohne zu schreiben.
+   *
+   * Eigener Effekt statt eine Bedingung in den Vollbild-Handler zu hängen: die
+   * beiden haben nichts miteinander zu tun, und ein Escape im Vollbild soll
+   * weiterhin das Vollbild schließen.
+   */
+  React.useEffect(() => {
+    if (!activePreview) return
+    const onKey = (e: KeyboardEvent) => {
+      if (e.key === "Escape") setCascadePreview(null)
+    }
+    window.addEventListener("keydown", onKey)
+    return () => window.removeEventListener("keydown", onKey)
+  }, [activePreview])
+
+  /** Die Zusammenfassung für die Kopfzeile. */
+  const cascadeSummary = React.useMemo<CascadePreviewSummary | null>(() => {
+    if (!activePreview) return null
+    const { shifts, skipped, conflicts, truncated } = activePreview.result
+    // Der häufigste Verschiebungswert — oder `null`, wenn sie sich
+    // unterscheiden. Eine gemittelte Zahl wäre eine erfundene Zahl.
+    const deltas = new Set(shifts.map((x) => x.deltaDays))
+    return {
+      shiftCount: shifts.length,
+      commonDeltaDays: deltas.size === 1 ? [...deltas][0] : null,
+      skippedCount: skipped.length,
+      conflictCount: conflicts.length,
+      truncated,
+    }
+  }, [activePreview])
+
+  /**
+   * PROJ-155-β.2 — die Geisterbalken je Zeile.
+   *
+   * Enthält den gezogenen Knoten **und** jeden Nachfolger; `conflict` markiert
+   * die, deren Bedingung nach der Kaskade verletzt bleibt (Interactions-Tabelle:
+   * „wird in der Vorschau rot markiert und benannt").
+   */
+  const ghostByItemId = React.useMemo(() => {
+    const m = new Map<string, { start: string; end: string; conflict: boolean }>()
+    if (!activePreview) return m
+    const imKonflikt = new Set(
+      activePreview.result.conflicts.map((c) => c.edgeToId),
+    )
+    m.set(activePreview.movedId, {
+      start: activePreview.movedStart,
+      end: activePreview.movedEnd,
+      conflict: imKonflikt.has(activePreview.movedId),
+    })
+    for (const sh of activePreview.result.shifts) {
+      m.set(sh.id, {
+        start: sh.start,
+        end: sh.end,
+        conflict: imKonflikt.has(sh.id),
+      })
+    }
+    return m
+  }, [activePreview])
+
+  /**
+   * PROJ-155-β.2 / AC-15 — Übernehmen schreibt in **einer** Anfrage.
+   *
+   * Die erwarteten Kennungen reisen mit, damit der Server melden kann, dass er
+   * mit frischen Daten auf etwas anderes gekommen ist (Nutzer-Entscheid Q1:
+   * bei Abweichung gewinnt der Server und die Oberfläche sagt es).
+   */
+  const applyCascade = React.useCallback(async () => {
+    if (!activePreview) return
+    setApplyingCascade(true)
+    try {
+      const res = await applyScheduleShift(projectId, {
+        kind: "work_item",
+        id: activePreview.movedId,
+        start: activePreview.movedStart,
+        end: activePreview.movedEnd,
+        expectedShiftIds: activePreview.result.shifts.map((x) => x.id),
+      })
+      setCascadePreview(null)
+      if (res.diverged_from_preview) {
+        toast.warning("Übernommen — mit anderer Kaskade als in der Vorschau", {
+          description:
+            "Die Termine hatten sich zwischenzeitlich geändert. Es gilt die Rechnung des Servers.",
+        })
+      } else {
+        toast.success(
+          res.applied.total === 1
+            ? "Termin übernommen"
+            : `${res.applied.total} Termine übernommen`,
+        )
+      }
+      onChanged()
+    } catch (err) {
+      toast.error("Übernehmen fehlgeschlagen", {
+        description:
+          err instanceof ApplyScheduleError
+            ? err.message
+            : err instanceof Error
+              ? err.message
+              : "Unbekannter Fehler",
+      })
+      // Die Vorschau bleibt stehen: der Nutzer soll es erneut versuchen können,
+      // ohne den Zug zu wiederholen.
+    } finally {
+      setApplyingCascade(false)
+    }
+  }, [activePreview, projectId, onChanged])
 
   // Zeilenposition je Key — der Ersatz für das frühere `row.rowIndex`.
   const rowIndexByKey = React.useMemo(() => {
@@ -557,6 +742,21 @@ export function GanttView({
     })
     return m
   }, [rows, calendarStart, pixelsPerDay, depTypeOf])
+
+  // PROJ-155-β.1 — Kennung → lesbarer Name. Der Dialog nennt beide Enden der
+  // Kante; ohne Namen stünde dort „work_package → work_package", was bei mehr
+  // als einer Kante nichts unterscheidet.
+  const entityLabel = React.useCallback(
+    (type: string, id: string): string => {
+      if (type === "phase") {
+        return phases.find((p) => p.id === id)?.name ?? "Phase"
+      }
+      const item = workPackages.find((w) => w.id === id)
+      if (item) return item.title
+      return type === "project" ? "Projekt" : "Objekt"
+    },
+    [phases, workPackages],
+  )
 
   // Phase-only view used by the milestone block.
   const phaseLayout = React.useMemo(() => {
@@ -816,49 +1016,39 @@ export function GanttView({
         }
         setSubmitting(snapshot.phaseId)
         try {
-          const res = await fetch(
-            `/api/projects/${projectId}/phases/${snapshot.phaseId}`,
-            {
-              method: "PATCH",
-              headers: { "Content-Type": "application/json" },
-              body: JSON.stringify({
-                planned_start: toIsoDate(newStart),
-                planned_end: toIsoDate(newEnd),
-              }),
-            },
-          )
-          if (!res.ok) {
-            const err = await res.json().catch(() => ({}))
-            throw new Error(err?.message ?? `HTTP ${res.status}`)
-          }
-          // Phase-Container "mitziehen": when MOVING (not resizing), shift
-          // every child milestone by the same number of days.
-          if (snapshot.mode === "move") {
-            const childMilestones = milestones.filter(
-              (m) => m.phase_id === snapshot.phaseId,
-            )
-            await Promise.all(
-              childMilestones.map((m) => {
-                const td = toDate(m.target_date)
-                if (!td) return Promise.resolve()
-                const shifted = addDays(td, snapshot.deltaDays)
-                return fetch(
-                  `/api/projects/${projectId}/milestones/${m.id}`,
-                  {
-                    method: "PATCH",
-                    headers: { "Content-Type": "application/json" },
-                    body: JSON.stringify({ target_date: toIsoDate(shifted) }),
-                  },
-                ).catch(() => undefined)
-              }),
-            )
-          }
+          /**
+           * PROJ-155-β.2 / AC-20 — **eine** Anfrage, eine Transaktion.
+           *
+           * Vorher: die Phase per eigenem PATCH, danach N Meilenstein-PATCHes
+           * über `Promise.all`, jeder mit `.catch(() => undefined)`. Scheiterten
+           * alle N, war die Phase trotzdem schon verschoben — zwei
+           * Schreibphasen, keine Transaktion, Fehler verschluckt. Der Server
+           * fächert die Kind-Meilensteine jetzt selbst auf und schreibt sie mit
+           * der Phase gemeinsam; schlägt ein Meilenstein fehl, bewegt sich auch
+           * die Phase nicht.
+           *
+           * Das gilt **unabhängig** vom Auto-Scheduling-Schalter: der
+           * verschluckte Fehler war ein Bestandsdefekt, kein Merkmal der neuen
+           * Fähigkeit. Für AC-12 bleibt das Verhalten bei „aus" gleich — Phase
+           * und Meilensteine wandern wie bisher —, nur der Fehlerfall ist jetzt
+           * ehrlich statt halb geschrieben.
+           */
+          await applyScheduleShift(projectId, {
+            kind: "phase",
+            id: snapshot.phaseId,
+            start: toIsoDate(newStart),
+            end: toIsoDate(newEnd),
+          })
           toast.success("Phase aktualisiert")
           onChanged()
         } catch (err) {
           toast.error("Aktualisierung fehlgeschlagen", {
             description:
-              err instanceof Error ? err.message : "Unbekannter Fehler",
+              err instanceof ApplyScheduleError
+                ? err.message
+                : err instanceof Error
+                  ? err.message
+                  : "Unbekannter Fehler",
           })
           onChanged()
         } finally {
@@ -880,6 +1070,41 @@ export function GanttView({
             newEnd = addDays(snapshot.origStart, 1)
           }
         }
+        /**
+         * PROJ-155-β.2 — bei eingeschaltetem Auto-Scheduling wird **gerechnet
+         * und gezeigt**, nicht geschrieben.
+         *
+         * Der `return` hier ist die ganze Trennung zu AC-12: ist der Schalter
+         * aus, läuft der Code darunter unverändert weiter — derselbe einzelne
+         * PATCH wie vor dieser Slice.
+         */
+        if (autoScheduleSuccessors) {
+          const nodes: CascadeNode[] = workPackages.map((w) => ({
+            id: w.id,
+            // `?? null` statt den Lib-Typ aufzuweichen: `WorkItemWithProfile`
+            // fuehrt die Termine als `string | null | undefined`, die Rechnung
+            // kennt nur `string | null`. Der Aufrufer normalisiert.
+            window: { start: w.planned_start ?? null, end: w.planned_end ?? null },
+          }))
+          // PROJ-Y-155f — dieselbe Funktion, die auch die Route benutzt. Die
+          // Regel (nur Kanten zwischen bekannten Knoten; `dependencies` ist
+          // polymorph und traegt auch Phasen-Kanten) lebt jetzt an EINER Stelle.
+          const edges = cascadeEdgesFor(nodes, dependencies)
+          const result = computeScheduleCascade(
+            snapshot.workPackageId,
+            { start: toIsoDate(newStart), end: toIsoDate(newEnd) },
+            nodes,
+            edges,
+          )
+          setCascadePreview({
+            movedId: snapshot.workPackageId,
+            movedStart: toIsoDate(newStart),
+            movedEnd: toIsoDate(newEnd),
+            result,
+          })
+          return
+        }
+
         setSubmitting(snapshot.workPackageId)
         try {
           const res = await fetch(
@@ -951,30 +1176,36 @@ export function GanttView({
           return
         }
         try {
-          const res = await fetch(
-            `/api/projects/${projectId}/dependencies`,
-            {
-              method: "POST",
-              headers: { "Content-Type": "application/json" },
-              body: JSON.stringify({
-                from_type: snapshot.fromType,
-                from_id: snapshot.fromId,
-                to_type: snapshot.targetType,
-                to_id: snapshot.targetId,
-                constraint_type: "FS",
-              }),
-            },
-          )
-          if (!res.ok) {
-            const err = await res.json().catch(() => ({}))
-            throw new Error(err?.message ?? `HTTP ${res.status}`)
-          }
-          toast.success("Dependency erstellt")
+          // PROJ-155-β.1 — über den geteilten Wrapper statt über rohes `fetch`.
+          //
+          // Der frühere Zweig las `err?.message`, die API antwortet aber
+          // `{ error: { code, message } }` — die Begründung war also **immer**
+          // `undefined`. Wer im Diagramm einen Kreis zog, bekam
+          // „Dependency-Erstellung fehlgeschlagen" ohne jeden Grund, obwohl
+          // die Route seit jeher `cycle_detected` liefert. Der Wrapper wertet
+          // den stabilen `code` aus und übersetzt ihn.
+          //
+          // `FS`/0 bleibt hier die Vorgabe: Ziehen ist die schnelle Geste, der
+          // Typ wird danach in der Maske gesetzt (ein Zug kann ihn nicht
+          // ausdrücken).
+          await createDependency(projectId, {
+            from_type: snapshot.fromType,
+            from_id: snapshot.fromId,
+            to_type: snapshot.targetType,
+            to_id: snapshot.targetId,
+            constraint_type: "FS",
+            lag_days: 0,
+          })
+          toast.success("Abhängigkeit erstellt")
           onChanged()
         } catch (err) {
-          toast.error("Dependency-Erstellung fehlgeschlagen", {
+          toast.error("Abhängigkeit konnte nicht erstellt werden", {
             description:
-              err instanceof Error ? err.message : "Unbekannter Fehler",
+              err instanceof DependencyApiError
+                ? err.message
+                : err instanceof Error
+                  ? err.message
+                  : "Unbekannter Fehler",
           })
         }
       }
@@ -989,32 +1220,30 @@ export function GanttView({
     // `calendarStart` ist Pflicht: der create-Zweig rechnet den aufgezogenen
     // Tagesindex gegen dieses Fenster in ein Datum um. Fehlt es hier, schreibt
     // der Handler nach einer Fensterverschiebung falsche Termine.
-  }, [drag, projectId, milestones, onChanged, pixelsPerDay, calendarStart])
+    //
+    // PROJ-155-β.2 ergänzt `autoScheduleSuccessors`, `dependencies` und
+    // `workPackages`. ESLint hat sie eingefordert, und die Regel hat recht:
+    // ohne sie rechnet die Kaskade mit dem Kanten- und Terminstand von der
+    // Registrierung des Handlers. Legt der Nutzer eine Kante an und zieht
+    // danach, würde sie ignoriert — dieselbe Klasse wie der `calendarStart`-Fund
+    // aus β.1, wo ein fehlender Eintrag nach einer Fensterverschiebung falsche
+    // Termine geschrieben hätte.
+  }, [
+    drag,
+    projectId,
+    milestones,
+    onChanged,
+    pixelsPerDay,
+    calendarStart,
+    autoScheduleSuccessors,
+    dependencies,
+    workPackages,
+  ])
 
-  // Delete a dependency edge by clicking the arrow.
-  const handleDeleteDependency = React.useCallback(
-    async (depId: string, label: string) => {
-      if (!canEdit) return
-      if (!window.confirm(`Abhängigkeit „${label}" löschen?`)) return
-      try {
-        const res = await fetch(
-          `/api/projects/${projectId}/dependencies/${depId}`,
-          { method: "DELETE" },
-        )
-        if (!res.ok && res.status !== 204) {
-          const err = await res.json().catch(() => ({}))
-          throw new Error(err?.message ?? `HTTP ${res.status}`)
-        }
-        toast.success("Abhängigkeit gelöscht")
-        onChanged()
-      } catch (err) {
-        toast.error("Abhängigkeit konnte nicht gelöscht werden", {
-          description: err instanceof Error ? err.message : "Unbekannter Fehler",
-        })
-      }
-    },
-    [canEdit, projectId, onChanged],
-  )
+  // PROJ-155-β.1 — der frühere `handleDeleteDependency` ist entfallen.
+  // Er war der einzige Weg an einer Kante und fragte per `window.confirm`;
+  // jetzt öffnet der Klick `DependencyEditDialog`, in dem Entfernen eine von
+  // drei Handlungen ist. Der Schreibweg liegt in `lib/dependencies/api`.
 
   if (phases.length === 0) {
     return (
@@ -1029,6 +1258,16 @@ export function GanttView({
 
   return (
     <div className="space-y-2">
+      {/* PROJ-155-β.2 — die Vorschau steht ueber dem Diagramm, damit die Zahl
+          und die zwei Knoepfe sichtbar sind, ohne zu scrollen. */}
+      {cascadeSummary ? (
+        <CascadePreviewBar
+          summary={cascadeSummary}
+          busy={applyingCascade}
+          onApply={applyCascade}
+          onDiscard={() => setCascadePreview(null)}
+        />
+      ) : null}
       <div className="flex flex-wrap items-center justify-end gap-2">
         {/* Zoom — 4 Levels (Tag → Quartal). Aktive Stufe als gefüllter
             Button, andere als outline. */}
@@ -1577,6 +1816,23 @@ export function GanttView({
             drag.targetType === depType &&
             drag.targetId === wp.id
 
+          // PROJ-155-β.2 — die vorgeschlagene Lage dieser Zeile, falls eine
+          // Vorschau offen ist. `null` = diese Zeile ist nicht betroffen.
+          const ghost = ghostByItemId.get(wp.id) ?? null
+          const ghostGeo = ghost
+            ? (() => {
+                const gs = toDate(ghost.start)
+                const ge = toDate(ghost.end)
+                if (!gs || !ge) return null
+                const gx = daysBetween(calendarStart, gs) * pixelsPerDay
+                const gw = Math.max(
+                  pixelsPerDay,
+                  daysBetween(gs, ge) * pixelsPerDay,
+                )
+                return { gx, gw }
+              })()
+            : null
+
           return (
             <g key={`wp-${wp.id}`} aria-label={`Arbeitspaket ${wp.title}`}>
               {idx % 2 === 1 ? (
@@ -1586,6 +1842,28 @@ export function GanttView({
                   width={totalWidth}
                   height={ROW_HEIGHT}
                   className="fill-muted/15"
+                />
+              ) : null}
+
+              {/* PROJ-155-β.2 — Geisterbalken: die vorgeschlagene Lage, noch
+                  nicht geschrieben. Gestrichelt und ohne Füllung, damit er nicht
+                  mit dem Ist-Balken verwechselt wird; rot, wenn danach eine
+                  Bedingung verletzt bleibt. */}
+              {ghostGeo ? (
+                <rect
+                  x={ghostGeo.gx}
+                  y={rowY + 4}
+                  width={ghostGeo.gw}
+                  height={ROW_HEIGHT - 8}
+                  rx={3}
+                  strokeDasharray="4 3"
+                  strokeWidth={1.5}
+                  className={
+                    ghost?.conflict
+                      ? "fill-destructive/10 stroke-destructive"
+                      : "fill-warning/10 stroke-warning"
+                  }
+                  aria-label={`Vorgeschlagen: ${ghost?.start} bis ${ghost?.end}`}
                 />
               ) : null}
 
@@ -1791,18 +2069,48 @@ export function GanttView({
             criticalPhaseIds.has(dep.from_id) &&
             criticalPhaseIds.has(dep.to_id)
           const depLabel = `${dep.constraint_type} ${dep.from_type} → ${dep.to_type}`
+          // PROJ-155-β.1 — Namen statt Typen: „Fundament gießen → Rohbau",
+          // nicht „work_package → work_package". Der Dialog zeigt sie, und
+          // ohne sie wäre nicht erkennbar, welche Kante man geöffnet hat.
+          const openEdit = () =>
+            setEditDependency({
+              id: dep.id,
+              constraint_type: dep.constraint_type,
+              lag_days: dep.lag_days ?? 0,
+              fromLabel: entityLabel(dep.from_type, dep.from_id),
+              toLabel: entityLabel(dep.to_type, dep.to_id),
+            })
+          // Abzeichen nur bei Abweichung vom Normalfall. `FS` ohne Abstand
+          // bleibt unbeschriftet — sonst wäre jedes Diagramm zugepflastert
+          // und die Kennzeichnung sagte nichts mehr aus.
+          const badge = constraintBadge(dep.constraint_type, dep.lag_days)
+          const badgeX = (x1 + x2) / 2
+          const badgeY = (y1 + y2) / 2 - 4
           return (
             <g
               key={`dep-${dep.id}`}
               className={canEdit ? "cursor-pointer" : undefined}
-              onClick={
-                canEdit
-                  ? (e) => {
-                      e.stopPropagation()
-                      void handleDeleteDependency(dep.id, depLabel)
-                    }
-                  : undefined
-              }
+              // Tastatur: der Pfeil war bisher ausschliesslich mit der Maus
+              // erreichbar. `role`/`tabIndex` machen ihn anfahrbar, Enter und
+              // Leertaste öffnen dieselbe Maske wie der Klick.
+              role="button"
+              tabIndex={0}
+              aria-label={`Abhängigkeit ${dep.constraint_type} von ${entityLabel(
+                dep.from_type,
+                dep.from_id,
+              )} nach ${entityLabel(dep.to_type, dep.to_id)}${
+                badge ? ` (${badge})` : ""
+              } — öffnen`}
+              onKeyDown={(e) => {
+                if (e.key !== "Enter" && e.key !== " ") return
+                e.preventDefault()
+                e.stopPropagation()
+                openEdit()
+              }}
+              onClick={(e) => {
+                e.stopPropagation()
+                openEdit()
+              }}
             >
               {/* Wider transparent hit-area so the arrow is comfortably clickable. */}
               <path
@@ -1823,10 +2131,33 @@ export function GanttView({
                 markerEnd="url(#gantt-arrow)"
                 pointerEvents="none"
               />
+              {badge ? (
+                <>
+                  <rect
+                    x={badgeX - 16}
+                    y={badgeY - 9}
+                    width={32}
+                    height={14}
+                    rx={3}
+                    className="fill-background stroke-border"
+                    pointerEvents="none"
+                  />
+                  <text
+                    x={badgeX}
+                    y={badgeY + 1}
+                    textAnchor="middle"
+                    fontSize={9}
+                    className="fill-muted-foreground"
+                    pointerEvents="none"
+                  >
+                    {badge}
+                  </text>
+                </>
+              ) : null}
               <title>
                 Dependency {dep.constraint_type} · {dep.from_type} → {dep.to_type}
                 {isCriticalEdge ? " · KRITISCH" : ""}
-                {canEdit ? " · klicken zum Löschen" : ""}
+                {canEdit ? " · klicken zum Bearbeiten" : " · klicken zum Ansehen"}
               </title>
             </g>
           )
@@ -2048,6 +2379,16 @@ export function GanttView({
       </svg>
         </div>
       </div>
+
+      <DependencyEditDialog
+        projectId={projectId}
+        dependency={editDependency}
+        canEdit={canEdit}
+        onOpenChange={(open) => {
+          if (!open) setEditDependency(null)
+        }}
+        onChanged={onChanged}
+      />
     </div>
   )
 }

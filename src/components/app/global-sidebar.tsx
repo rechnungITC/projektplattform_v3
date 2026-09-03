@@ -17,7 +17,7 @@ import {
   Trash2,
   User,
   Users,
-} from "lucide-react"
+  Mail,} from "lucide-react"
 import Link from "next/link"
 import { usePathname } from "next/navigation"
 import * as React from "react"
@@ -78,6 +78,10 @@ interface NavSubItem {
 
 const SETTINGS_CHILDREN: readonly NavSubItem[] = [
   { href: "/settings/profile", label: "Profil", icon: User },
+  // PROJ-158: persoenlich, daher KEIN adminOnly — ein Postfach gehoert der
+  // Person, nicht dem Mandanten. Auf /konnektoren (adminOnly) waere die
+  // Funktion fuer gewoehnliche Mitglieder unsichtbar gewesen.
+  { href: "/settings/postfaecher", label: "Postfächer", icon: Mail },
   {
     href: "/settings/tenant",
     label: "Workspace",

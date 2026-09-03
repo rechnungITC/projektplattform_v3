@@ -65,7 +65,7 @@ For each feature (after user approval of the breakdown):
 ### Phase 5: Update Tracking
 - Update `features/INDEX.md` with ALL new features and their statuses
 - Update the "Next Available ID" line
-- Verify the PRD roadmap table matches the feature specs
+- Verify the PRD roadmap table matches the feature specs (IDs and features — the table carries no status)
 
 ### Phase 6: User Review
 Present everything for final approval:
@@ -109,6 +109,8 @@ Ask the user interactive questions to clarify:
 
 Use `AskUserQuestion` with clear single/multiple choice options.
 
+> Soll der Plan vor der Spec stressgetestet werden, ist `/grill-me` das Werkzeug dafür: ein Verhör Zweig für Zweig, jede Entscheidung einzeln vorgelegt statt geraten.
+
 ### Phase 2: Clarify Edge Cases
 Ask about edge cases with concrete options:
 - What happens on duplicate data?
@@ -130,7 +132,9 @@ Present the spec and ask for approval:
 - Add the new feature to `features/INDEX.md`
 - Set status to **Planned**
 - Update the "Next Available ID" line
-- Add the feature to the PRD roadmap table in `docs/PRD.md`
+- Add the feature to the PRD roadmap table in `docs/PRD.md` — **ID, priority and feature only**.
+  That table has no status column: delivery state lives in the spec header and `features/INDEX.md`
+  (see `.claude/rules/general.md`, "Where status is NOT tracked")
 
 ### Feature Mode Handoff
 > "Feature spec is ready! Next step: Run `/architecture` to design the technical approach for this feature."
@@ -189,5 +193,5 @@ Each feature file = ONE testable, deployable unit.
 - [ ] Feature ID assigned (PROJ-X)
 - [ ] File saved to `/features/PROJ-X-feature-name.md`
 - [ ] `features/INDEX.md` updated
-- [ ] PRD roadmap table updated with new feature
+- [ ] PRD roadmap table updated with new feature (ID/priority/feature — no status column)
 - [ ] User has reviewed and approved the spec

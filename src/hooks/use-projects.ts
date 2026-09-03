@@ -71,7 +71,7 @@ export function useProjects(args: UseProjectsArgs): UseProjectsResult {
         let query = supabase
           .from("projects")
           .select(
-            "id, tenant_id, name, description, project_number, planned_start_date, planned_end_date, responsible_user_id, lifecycle_status, project_type, project_method, created_by, created_at, updated_at, is_deleted, responsible:profiles!projects_responsible_user_id_fkey ( id, email, display_name )"
+            "id, tenant_id, name, description, project_number, planned_start_date, planned_end_date, responsible_user_id, lifecycle_status, project_type, project_method, created_by, created_at, updated_at, is_deleted, settings, responsible:profiles!projects_responsible_user_id_fkey ( id, email, display_name )"
           )
           .eq("tenant_id", tenantId)
           .order("updated_at", { ascending: false })
@@ -136,6 +136,12 @@ export function useProjects(args: UseProjectsArgs): UseProjectsResult {
             created_at: row.created_at,
             updated_at: row.updated_at,
             is_deleted: row.is_deleted,
+            // PROJ-155-β.2 — `settings` reist mit, damit `Project.settings`
+            // nicht lügt. Die Liste braucht es heute nicht; ein Feld im Typ, das
+            // kein Hook lädt, wäre aber still `undefined` — genau die Bug-Klasse,
+            // gegen die `type-vs-select-drift` gebaut ist, und der Schalter
+            // würde dann überall als „aus" gelesen.
+            settings: row.settings ?? null,
             responsible_display_name: responsible?.display_name ?? null,
             responsible_email: responsible?.email ?? null,
           }

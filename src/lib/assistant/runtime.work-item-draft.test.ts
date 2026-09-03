@@ -29,6 +29,8 @@ interface Fixtures {
   retentionMode?: string
   draftRow?: unknown
   draftError?: unknown
+  rpcRow?: unknown
+  rpcError?: unknown
 }
 
 let inserted: Record<string, unknown>[] = []
@@ -248,6 +250,69 @@ describe("handleAssistantTurn — Sprach-Entwurf", () => {
     expect(res.result_status).toBe("failed")
     expect(res.requires_confirmation).toBe(false)
   })
+
+  it("committet eine fortgesetzte Work-Item-Auswahl atomar über die Session-Revision", async () => {
+    const rpcRow = {
+      id: "draft-atomic",
+      title: "Rechnungsimport testen",
+      description: null,
+      target_kind: "story",
+      requested_kind: "story",
+      turn_id: "turn-atomic",
+      turn_created_at: "2026-08-27T08:00:00.000Z",
+    }
+    const supabase = makeSupabase({
+      project: SCRUM_PROJECT,
+      projectRole: "editor",
+      rpcRow,
+    })
+
+    const res = await handleAssistantTurn({
+      supabase,
+      tenantId: "tenant-1",
+      userId: "user-1",
+      inputText: "",
+      modality: "text",
+      sessionId: "session-1",
+      continuation: {
+        kind: "project_choice",
+        project_id: "project-scrum",
+        expected_revision: 2,
+      },
+      dialogState: {
+        schema_version: 1,
+        revision: 2,
+        pending_intent: "work_item_create_draft",
+        phase: "choosing_project",
+        expires_at: "2099-08-27T08:30:00.000Z",
+        started_project_id: null,
+        requested_slot: "project",
+        candidate_project_ids: ["project-scrum"],
+        slots: {
+          requested_kind: "story",
+          title: "Rechnungsimport testen",
+          description: null,
+          project_query: "ERP-Rollout",
+          project_id: null,
+        },
+      },
+    })
+
+    expect(res.session_state_committed).toBe(true)
+    expect(res.committed_turn).toEqual({
+      id: "turn-atomic",
+      created_at: "2026-08-27T08:00:00.000Z",
+    })
+    expect(supabase.rpc).toHaveBeenCalledWith(
+      "complete_assistant_work_item_dialog",
+      expect.objectContaining({
+        p_session_id: "session-1",
+        p_expected_revision: 2,
+        p_project_id: "project-scrum",
+      }),
+    )
+    expect(inserted).toHaveLength(0)
+  })
 })
 
 function makeSupabase(fixtures: Fixtures) {
@@ -311,5 +376,12 @@ function makeSupabase(fixtures: Fixtures) {
   // `toHaveBeenCalledWith`-Zusicherungen weiter als Mock erkennbar bleiben.
   // Ein reiner `as never`-Cast erfüllt nur das Zweite und ließ tsc auf jeder
   // Aufrufstelle auflaufen.
-  return { from } as unknown as SupabaseClient & { from: typeof from }
+  const rpc = vi.fn(async () => ({
+    data: fixtures.rpcRow ?? null,
+    error: fixtures.rpcError ?? null,
+  }))
+  return { from, rpc } as unknown as SupabaseClient & {
+    from: typeof from
+    rpc: typeof rpc
+  }
 }
