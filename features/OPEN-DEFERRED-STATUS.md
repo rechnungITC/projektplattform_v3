@@ -647,6 +647,41 @@ Deploy, aber sie sind nicht erledigt und hatten bis heute **keine** Followup-Ken
   immer.
   *Quelle: CIA-Pass β.2, 2026-09-01, Messungen gegen Prod.*
 
+- **PROJ-Y-155f — die Route sieht die Kanten nicht, die es in Prod gibt (offen,
+  sicherheitsneutral aber funktionsverhindernd).** Aus dem β.2-`/qa` vom 2026-09-02
+  (F-1, **High**). `schedule/apply/route.ts:181-182` filtert die Abhängigkeiten auf
+  `from_type = "todo"` **und** `to_type = "todo"`; `dependencyEntityTypes` hat vier
+  Werte, und in Produktion gibt es **keine einzige** todo/todo-Kante (gemessen: 2×
+  `work_package→work_package`, 2× `phase→phase`, 1× gemischt). Die Kaskade der Route
+  ist damit in Prod **immer leer** — über HTTP belegt: mit geseedeter
+  `work_package`-Kante antwortet sie `cascade.shifts: []`, der Nachfolger bleibt
+  stehen. **Das Gewicht liegt in der Asymmetrie:** der Gantt filtert ohne Typprüfung
+  und zeigt die Kaskade korrekt, Vorschau und Server sehen also verschiedene
+  Kantenmengen — in der Slice, deren tragende Entscheidung war, dass es nur **eine**
+  Formel gibt; geteilt ist die Formel, nicht die Beschaffung ihrer Eingabe. Nebenbefund:
+  `diverged_from_preview` meldet `false` und verschleiert damit den Grund.
+  *Quelle: β.2-`/qa`, `tests/PROJ-155-beta2-qa-chain.spec.ts` (F-1 als `test.fail()`).*
+
+- **PROJ-Y-155g — der Auto-Scheduling-Schalter lässt sich setzen, aber nicht einlesen
+  (offen, funktionsverhindernd).** Aus dem β.2-`/qa` vom 2026-09-02 (F-2, **High**).
+  `planung-client.tsx:71` liest `project?.settings?.autoScheduleSuccessors` aus
+  `useProject` (**Einzahl**); dessen SELECT führt `settings` nicht — β.2 hat die Spalte
+  nur in `use-projects.ts` (**Mehrzahl**) ergänzt. Der Schalter rendert deshalb immer
+  als „aus", der Gantt bekommt `autoScheduleSuccessors={false}`, und Vorschau,
+  Geisterbalken, Escape-Abbruch und Übernehmen sind über die Oberfläche **nicht
+  erreichbar**. Im Browser gemessen: `settings` in der Datenbank auf `true`,
+  `aria-checked="false"` in der Oberfläche, Ziehen geht den alten Weg. Der
+  **Schreibweg ist intakt** (PATCH persistiert, Audit-Zeile entsteht — AC-21 PASS), es
+  fehlt nur der Rückweg. Umfang exakt: von 16 `Project`-Feldern fehlen dem Einzel-Hook
+  zwei (`settings`, `project_method`), und nur `settings` wird von einem Konsumenten
+  gelesen. **Enthält F-3:** `type-vs-select-drift` erklärt je Typ **einen**
+  `primarySelect` — ein zweiter Hook auf denselben Typ ist ungeprüft; ohne diese
+  Erweiterung ist der Einzelfall geschlossen, nicht die Klasse. Umfang des Fixes **zwei**
+  Zeilen (SELECT **und** explizite Abbildung), was zugleich erklärt, warum
+  `hook-mapping-drift` schweigt: es verlangt nur, dass jede **gelesene** Spalte abgebildet
+  wird, und `settings` war hier weder gelesen noch abgebildet — in sich konsistent.
+  *Quelle: β.2-`/qa`, Browser-Messung plus Feld-für-Feld-Abgleich Typ gegen beide Hooks.*
+
 - **PROJ-Y-155b — zwei Leseorte für denselben Termin (offen, Hygiene).**
   `wbs-display.ts` (`ownPlannedStart`/`ownPlannedEnd`) liest Termine weiter aus
   `attributes` JSONB, der Rest des Produkts aus der echten Spalte. Nach dem
