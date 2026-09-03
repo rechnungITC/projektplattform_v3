@@ -10,7 +10,7 @@
 > A multi-tenant, AI-supported **project orchestration platform** (ERP · construction · software · M&A deal lifecycle),
 > built with an AI-driven development workflow. See `docs/PRD.md` for the product thesis.
 >
-> This is a live product with ~190 migrations in production — not a template. Treat every change as
+> This is a live product with ~260 migrations in production — not a template. Treat every change as
 > touching real tenant data.
 
 ## Tech Stack
@@ -46,7 +46,7 @@ features/           Feature specifications (PROJ-X-name.md)
   INDEX.md          Feature status overview — read first, update last
   OPEN-DEFERRED-STATUS.md   Deferred follow-ups and MVP cuts
 supabase/
-  migrations/       ~190 applied migrations — append-only, never edit a shipped file
+  migrations/       ~250 migration files — append-only, never edit a shipped file
 tests/              Playwright E2E specs (PROJ-X-*.spec.ts)
   sql/              Live RLS/RPC pentests (PROJ-X-*-pentest.sql)
 scripts/            check-schema-drift · check-migration-naming · e2e-fresh
