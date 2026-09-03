@@ -403,11 +403,22 @@ erneut, weil er heute nur den einzigen erreichbaren Zweig belegt.
   Vorschau und Server sehen verschiedene Kantenmengen. **High**, aus dem β.2-`/qa`
   (F-1). Fix ist eine Zeile; der eigentliche Auftrag ist, die Kantenbeschaffung an
   **einen** Ort zu ziehen, so wie es die Rechnung schon ist.
+  **Erledigt 2026-09-03** (Merge `1ef5fcf`, Tag `v3.1.0-PROJ-Y-155fg`; eigene Spec
+  [`PROJ-Y-155fg-edge-sourcing-and-project-settings.md`](PROJ-Y-155fg-edge-sourcing-and-project-settings.md)).
+  **Der hier genannte Grund war nur die Hälfte:** dieselbe Abfrage filterte zusätzlich
+  auf `project_id` — eine Spalte, die `dependencies` **nicht hat** —, PostgREST
+  antwortete mit einem Fehler, und weil der **nicht geprüft** wurde, entstand daraus
+  eine stille leere Kaskade. Auch mit korrektem Typfilter hätte die Abfrage nie eine
+  Zeile geliefert; die Kantenbeschaffung liegt jetzt an einem Ort.
 - **PROJ-Y-155g** — `use-project.ts` (Einzahl) liest `settings` nicht, deshalb rendert
   der Auto-Scheduling-Schalter immer als „aus" und die ganze Vorschau-Kaskade ist über
   die Oberfläche unerreichbar. **High**, aus dem β.2-`/qa` (F-2). Umfasst die
   Wächter-Erweiterung aus F-3: `type-vs-select-drift` prüft je Typ nur **einen**
   erklärten SELECT — ein zweiter Hook auf denselben Typ ist ungeprüft, und ohne diese
   Hälfte ist nur der Einzelfall geschlossen, nicht die Klasse.
+  **Erledigt 2026-09-03** (Merge `1ef5fcf`, Tag `v3.1.0-PROJ-Y-155fg`) — **samt der
+  Wächter-Erweiterung**, die Klasse ist also geschlossen, nicht nur der Einzelfall.
+  Damit sind **AC-12, AC-13 und AC-14** in der Kette geführt (9 → 11/11) und in der
+  Kriterien-Tabelle oben nachgezogen; der Handoff dieses Durchgangs ist eingelöst.
 - **Registerkorrektur** — die PROJ-25-Zeile im INDEX nennt SVAR React Gantt „MIT";
   das Paket ist GPLv3.
