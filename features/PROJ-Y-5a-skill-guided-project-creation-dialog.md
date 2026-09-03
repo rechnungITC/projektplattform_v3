@@ -1,6 +1,6 @@
 # PROJ-Y-5a: Skill-Guided Project Creation Dialog
 
-## Status: In Progress
+## Status: In Review
 
 ## Deployment Scope: —
 
