@@ -178,10 +178,12 @@ Flächen liefen seit dem β.2-Merge, aber der Schalter war nicht einlesbar und d
 serverseitige Kaskade immer leer — das Verhalten, das β.2 verspricht, entsteht
 in Produktion erst mit diesem Stand. Keine Migration, kein Runtime-DB-Change.
 
-Zum Zeitpunkt dieser Buchung stand das jüngste **Produktions**-Deployment noch
-auf `3c8ef2d` (der PROJ-170-Buchung); der Auto-Deploy von `main` für `1ef5fcf`
-war noch nicht angelegt. Gesagt statt gerundet — dieselbe Genauigkeit wie bei
-PROJ-170 in derselben Sitzung.
+**Produktions-Deployment aus `1ef5fcf` `success`** (2026-09-03 13:04 UTC), also
+aus genau dem Merge-Commit dieses Tags — damit ist die Verhaltensänderung nicht
+nur auf `main`, sondern live. Beim ersten Schreiben dieser Buchung stand das
+jüngste Produktions-Deployment noch auf `3c8ef2d`, und das war so vermerkt statt
+eine Auslieferung zu behaupten; nachgemessen wurde es, als der Auto-Deploy durch
+war. Die Reihenfolge ist Absicht: erst messen, dann behaupten.
 
 **Scope `full`:** alle acht Kriterien erfüllt, nichts zurückgestellt.
 `tooling-only` trifft nicht — geliefert wird Produkt-Laufzeitverhalten (Route,
@@ -200,3 +202,43 @@ läuft an ihm vorbei — zwei belegte Instanzen (PROJ-151 mit `.order()`, diese
 Slice mit `.eq()`), also ein Muster und kein Einzelfall → **PROJ-Y-42a**.
 Bewusst nicht mitgenommen: es ist die Fläche einer fremden Slice und hätte den
 Diff dieser Behebung verbreitert.
+
+## Nachtrag: die PROJ-155-Spec widersprach dem Register
+
+Gemeldet von einer **parallelen Sitzung** (`projektplattform-v3-89`), die sich
+korrekt aus der Slice herausgehalten hat — ihr Guard urteilte `CLAIMED` auf
+meinen Worktree, sie hat nichts angefasst und keine PR geöffnet, sondern den
+Befund weitergegeben. Nachgeprüft habe ich ihn selbst, er stimmt:
+
+Nach dem Merge von #542 sagten Register und diese Spec, dass beide Funde behoben
+sind — `features/PROJ-155-gantt-hierarchy-scheduling.md` sagte über dieselben
+Kennungen weiter das Gegenteil: **AC-13 „FAIL (F-2)“**,
+AC-14 „nicht führbar“, AC-12 „PASS, aber
+trivial … nach der Behebung erneut zu fahren“, und im Handoff
+„beide **nicht** in diesem Durchgang behoben“. Mein
+Closure-Commit hat INDEX, Register und diese Spec angefasst — die PROJ-155-Spec
+nicht.
+
+**Die Richtung ist die gefährlichere:** eine Spec, die einen FAIL behauptet, wo
+behoben ist. Wer sie liest, hält AC-13 für offen — und `/qa` liest sie. Gleiche
+Klasse wie PROJ-Y-151e, wo dieselbe Datei drei Tage „erledigt“
+und „offen“ über eine Kennung sagte, nur in die andere
+Richtung.
+
+**Nachgezogen in der Hausform** (Wortlaut bleibt lesbar, Präzedenz PROJ-156
+Z. 832): die drei AC-Zeilen tragen jetzt PASS mit dem ursprünglichen Urteil
+daneben, der Handoff nennt die Auslieferung und behält den alten Text als Zitat,
+und das **Verdikt** des QA-Durchgangs bleibt unangetastet — es ist das Ergebnis
+*jenes* Durchgangs und wird nicht rückwirkend umgeschrieben.
+
+**Ein Einzelfall, keine Klasse** (von der Meldung mitgemessen, von mir
+gegengeprüft): repo-weit tragen vier Dateien „FAIL“ oder
+„nicht führbar“ in einer AC-Tabelle — PROJ-156 ist
+korrekt nachgezogen, PROJ-45 ist ein echter, nicht überholter Bestandsbefund, der
+INDEX ist Prosa. Nur PROJ-155 widersprach sich.
+
+**Der Register-Konsistenz-Wächter fängt das nicht**, und das ist kein Versehen:
+PROJ-157 hat den Status-Abgleich ausdrücklich ausgeschlossen, weil AC-Zellen
+freies Vokabular tragen und ein harter Wächter darauf falsch-rot würde. Ob
+daraus eine vierte Regel wird, ist eine eigene Entscheidung mit eigener Messung
+→ **PROJ-Y-157a**; hier bewusst nicht getroffen und nicht gebaut.

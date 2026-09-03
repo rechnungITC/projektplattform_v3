@@ -647,6 +647,34 @@ Deploy, aber sie sind nicht erledigt und hatten bis heute **keine** Followup-Ken
   immer.
   *Quelle: CIA-Pass β.2, 2026-09-01, Messungen gegen Prod.*
 
+- **PROJ-Y-157a — kein Abgleich zwischen Feature-Spec-AC-Tabelle und Register-Zustand
+  (offen, Entscheidung ausdrücklich nicht getroffen).** `check:register-consistency`
+  prüft das Register gegen sich selbst (R1/R2) und den Abschnitts-Scope gegen den INDEX
+  (R3). Was eine **Feature-Spec** in ihrer AC-Tabelle über dieselbe Kennung sagt, prüft
+  es nicht — und das war **Entwurf, nicht Versehen**: PROJ-157 hat den Status-Abgleich
+  ausgeschlossen, weil AC-Zellen freies Vokabular tragen und ein harter Wächter darauf
+  falsch-rot würde.
+
+  **Erste gemessene Instanz dieser Lücke, 2026-09-03:** nach der Auslieferung von
+  PROJ-Y-155f+g sagten Register und Slice-Spec „erledigt“, während
+  `features/PROJ-155-gantt-hierarchy-scheduling.md` über dieselben Kennungen weiter
+  **AC-13 „FAIL (F-2)“** führte. Gemeldet von einer parallelen Sitzung,
+  gegengeprüft, in der Hausform nachgezogen. Die Richtung ist die gefährlichere: eine
+  Spec, die einen FAIL behauptet, wo behoben ist — und `/qa` liest diese Datei.
+
+  **Warum die Entscheidung offen bleibt:** repo-weit tragen nur **vier** Dateien
+  „FAIL“ oder „nicht führbar“ in einer AC-Tabelle, und
+  **drei davon zu Recht** (PROJ-156 korrekt nachgezogen, PROJ-45 ein echter
+  Bestandsbefund, der INDEX ist Prosa). Eine vierte Regel hätte also heute genau **einen**
+  Fall gefangen und müsste die drei berechtigten unterscheiden können — an freiem Text.
+  Zu erheben ist zuerst, ob ein tragfähiges Signal existiert (etwa: eine Kennung, die im
+  Register „erledigt“ ist, darf in **keiner** Spec-AC-Zelle ohne das Wort
+  „Ursprünglich“ als FAIL stehen) — sonst ist es die Klasse Wächter, die
+  PROJ-150 und PROJ-157 mit Messungen bewusst **nicht** gebaut haben, weil ein am ersten
+  Tag rotes Gate abgeschaltet wird.
+  *Quelle: Meldung der Parallel-Sitzung `projektplattform-v3-89` 2026-09-03, eigene
+  Gegenprüfung im Rahmen der PROJ-Y-155f+g-Closure.*
+
 - **PROJ-Y-42a — der Schema-Drift-Wächter sieht nur `.select()`, nicht die Filter
   (offen, Wächter-Lücke mit zwei belegten Instanzen).** PROJ-42 prüft die Spalten in
   `.from(...).select(...)` gegen das Migrationsschema. Spaltennamen stehen aber auch in
