@@ -1,7 +1,7 @@
 # PROJ-170 — Supply-Chain-Remediation `fast-uri` (+ `@xmldom/xmldom`, `qs`)
 
-## Status: Approved
-## Deployment Scope: —
+## Status: Deployed
+## Deployment Scope: full
 
 Beide Advisory-Gates auf `main` rot, und aufgefallen ist es an einer **fremden,
 fertigen PR ohne `package.json`-Diff** (#537, die β.2-QA) — dasselbe Muster, das
@@ -153,3 +153,32 @@ ihr nicht gehört. Geschlossen sind 7 der 8 Funde (fast-uri 4×, `@xmldom/xmldom
 - **D-170.2** Kein eigener Unit-Test: die Slice ändert keine Zeile Produktivcode,
   ein Test über eine Lockfile-Version wäre eine Tautologie. Der Nachweis sind die
   vorhandenen **echten** Bibliothekstests (PROJ-Y-142b) gegen die neuen Versionen.
+
+## Deployment
+
+**Ausgeliefert 2026-09-03: Tag `v3.0.0-PROJ-170` auf dem Merge-Commit `df161c5`
+(PR #540, squash).** Erster `v3`-Tag — die Zählung ist von `v2.99.0` übergelaufen.
+
+**Der Merge *ist* die Auslieferung**, und der tragende Nachweis ist kein Smoke,
+sondern **das Gate selbst in der Umgebung, in der es sperrt**: `Supply Chain
+Audit` auf **`main` bei `df161c5` = success**, unmittelbar nachdem derselbe
+Workflow dort rot war. Damit ist die Blockade aller offenen PRs aufgehoben, was
+der eigentliche Zweck der Slice war. Auf der PR waren **alle 10** Checks grün,
+darunter beide vorher roten Gates (`npm audit production dependencies` und
+`OSV scan of the dependency lockfile`).
+
+Ein HTTP-Smoke wäre hier gegenstandslos: die Slice ändert **keine Zeile
+Produktivcode** und legt keine Route an. Dass der Bump **baut**, belegt der
+grüne Vercel-Check der PR — ein Preview-Build aus `f0d0621`, also aus dem Stand
+**mit** dem neuen Lockfile; `fast-uri` wirkt über `ajv` in
+webpack/`@sentry/nextjs`, genau dort also, und ein gebrochener Bump hätte ihn
+scheitern lassen. Das **Produktions**-Deployment aus `df161c5` läuft über den
+Auto-Deploy von `main`; zum Zeitpunkt dieser Buchung war es noch nicht angelegt,
+und das ist hier gesagt statt gerundet.
+
+**Scope `full`:** alle sieben Kriterien erfüllt, nichts zurückgestellt.
+`tooling-only` trifft **nicht** zu — es wechselt eine **Produktions**-Laufzeit-
+Abhängigkeit, nicht Werkzeug, CI oder Tests; dieselbe Einordnung wie PROJ-140 ·
+146 · 149 · 160. Der Restfund unter der Schwelle ist **kein** zurückgestelltes
+Kriterium: AC-170.2 verlangt seine **Benennung**, und die ist in Spec und
+Register erfolgt, samt der Messung, dass er vor *und* nach dem Fix vorlag.
