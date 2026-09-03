@@ -771,7 +771,28 @@ Deploy, aber sie sind nicht erledigt und hatten bis heute **keine** Followup-Ken
   nein, entfällt die Quelle.
   *Quelle: PROJ-155 Befundaufnahme.*
 
-- **PROJ-155-β — β.1 erledigt 2026-09-01, β.2 (Auto-Scheduling) offen.** Eine Abhängigkeit
+- **PROJ-Y-155h — α hat keine numerierten Akzeptanzkriterien (offen, Voraussetzung
+  jeder Scope-Aufstufung).** PROJ-155-α ist mit **Befunden** statt Kriterien geliefert;
+  im α-Deploy war das bereits so benannt („eine Schwäche der Slice, kein Etikett-Problem").
+  Folge, an der Hausregel gemessen: `mvp` verlangt eine **AC-Matrix für den gelieferten
+  Kern** — β.1 (10 Kriterien) und β.2 (9) haben eine, α nicht —, also ist `mvp` für die
+  Zeile nicht buchbar und `alpha` bleibt das einzig zutreffende Etikett. Bemerkenswert
+  daran: `alpha`s eigene Klausel „die Spec listet jede verbleibende Slice" ist seit dem
+  β.2-Deploy **leer** (α, β.1 und β.2 sind sämtlich geliefert und abgenommen) — die Zeile
+  trägt das Etikett also nicht mehr aus seinem ursprünglichen Grund, sondern weil der
+  Nachweis für den nächsthöheren fehlt. Zu tun: die α-Lieferung nachträglich in numerierte
+  Kriterien fassen und **gegen den ausgelieferten Stand** bewerten (nicht gegen die
+  Absicht von damals); erst danach ist `alpha → mvp` mit dem von der Hausregel verlangten
+  neuen QA- und Deployment-Durchgang möglich. **Kein Produktdefekt** — reine
+  Nachweislücke; die gelieferte Grenze ändert sich dadurch nicht.
+  *Quelle: Buchführungs-Durchsicht 2026-09-03 nach dem Merge von PR #537 (β.2-QA) und der
+  Behebung PROJ-Y-155f+g. Dieselbe Durchsicht fand die falsche `alpha`-Begründung in der
+  INDEX-Zeile und den veralteten Kopf des PROJ-155-β-Abschnitts, beide dort korrigiert.*
+
+- **PROJ-155-β — β.1 erledigt 2026-09-01, β.2 erledigt 2026-09-02** (Tag `v2.93.0-PROJ-155-beta2`, PR #529; `/qa` am 2026-09-02 mit 2 High-Funden, beide behoben am 2026-09-03 durch **PROJ-Y-155f+g**).
+  *Der folgende Absatz beschreibt die Ausgangslage **vor** β.1/β.2 und bleibt als solche lesbar — Typwahl
+  und Kaskade sind inzwischen gebaut.* Offen aus dem β-Zuschnitt sind nur noch die Vorgänger-Spalte
+  (**PROJ-Y-155e**) und der kritische Pfad über Tasks (**PROJ-Y-155d**). Eine Abhängigkeit
   verschiebt den Nachfolger noch nicht automatisch; `lag_days` existiert in
   `dependencies` und ist ungenutzt, `constraint_type` ist über die Oberfläche nicht
   wählbar (immer der Default `FS`). Dazu: Vorgänger-Spalte in der Tabelle,
