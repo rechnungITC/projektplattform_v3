@@ -302,3 +302,53 @@ export function computeScheduleCascade(
     truncated,
   }
 }
+
+/**
+ * PROJ-Y-155f — eine Zeile aus `dependencies`, reduziert auf das, was die
+ * Kantenbildung braucht. Absichtlich in Datenbank-Schreibweise: so kommt sie
+ * aus PostgREST und so liegt sie im Gantt-State.
+ */
+export interface DependencyRow {
+  from_id: string
+  to_id: string
+  constraint_type: DependencyConstraintType
+  lag_days: number | null
+}
+
+/**
+ * PROJ-Y-155f — **die eine Regel**, nach der aus `dependencies` Kanten dieser
+ * Rechnung werden.
+ *
+ * Vorher gab es zwei, und sie waren uneins. Der Gantt filterte über die
+ * **Zugehörigkeit zu den geladenen Knoten**, die Route über **Typnamen**
+ * (`from_type = 'todo' AND to_type = 'todo'`) — und traf damit die falschen
+ * zwei: `depTypeOf` gibt Arbeitspaketen `work_package`, nur alles darunter
+ * bekommt `todo`. In Produktion existierte deshalb **keine einzige** Kante, die
+ * der Filter der Route durchgelassen hätte (gemessen: 2× `work_package`,
+ * 2× `phase`, 1× gemischt), und die serverseitige Kaskade war immer leer,
+ * während die Vorschau im Browser sie korrekt anzeigte.
+ *
+ * Richtig ist die Regel des Gantt, und zwar nicht aus Gewohnheit: `dependencies`
+ * ist polymorph (`project`/`phase`/`work_package`/`todo`/`sprint`). Wer über die
+ * **Endpunkte** filtert, schliesst Phasen- und Projektkanten automatisch aus,
+ * ohne eine Typliste zu führen, die beim nächsten neuen Endpunkttyp erneut
+ * auseinanderlaufen kann. Die Rechnung war seit β.2 an **einer** Stelle; ihre
+ * Eingabe ist es ab hier auch.
+ */
+export function cascadeEdgesFor(
+  nodes: readonly CascadeNode[],
+  rows: readonly DependencyRow[],
+): CascadeEdge[] {
+  const known = new Set(nodes.map((n) => n.id))
+  const edges: CascadeEdge[] = []
+  for (const row of rows) {
+    if (!known.has(row.from_id) || !known.has(row.to_id)) continue
+    edges.push({
+      fromId: row.from_id,
+      toId: row.to_id,
+      constraintType: row.constraint_type,
+      lagDays: row.lag_days ?? 0,
+    })
+  }
+  return edges
+}

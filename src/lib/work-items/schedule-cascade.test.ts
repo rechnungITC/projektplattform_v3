@@ -2,9 +2,11 @@ import { describe, expect, it } from "vitest"
 
 import {
   CASCADE_MAX_DEPTH,
+  cascadeEdgesFor,
   computeScheduleCascade,
   type CascadeEdge,
   type CascadeNode,
+  type DependencyRow,
 } from "./schedule-cascade"
 
 /**
@@ -363,5 +365,87 @@ describe("computeScheduleCascade — Randfaelle des Kalenders", () => {
       edge("A", "B", "FS"),
     ])
     expect(r.shifts[0]).toMatchObject({ id: "B", start: "2027-01-02", end: "2027-01-04" })
+  })
+})
+
+/**
+ * PROJ-Y-155f — die Kantenbildung, jetzt die **eine** Regel für Browser und
+ * Route. Vorher hatte jede Seite ihre eigene, und sie waren uneins: der Gantt
+ * filterte über die Endpunkt-Zugehörigkeit, die Route über Typnamen
+ * (`from_type = 'todo' AND to_type = 'todo'`) — und traf damit in Produktion
+ * **keine einzige** vorhandene Kante.
+ */
+describe("cascadeEdgesFor — die eine Regel für die Kantenbildung (PROJ-Y-155f)", () => {
+  const row = (
+    from: string,
+    to: string,
+    constraint: DependencyRow["constraint_type"] = "FS",
+    lag: number | null = 0,
+  ): DependencyRow => ({
+    from_id: from,
+    to_id: to,
+    constraint_type: constraint,
+    lag_days: lag,
+  })
+
+  const nodes: CascadeNode[] = [
+    { id: "wp-a", window: win("2026-03-02", "2026-03-10") },
+    { id: "wp-b", window: win("2026-03-11", "2026-03-18") },
+    { id: "task-c", window: win("2026-03-04", "2026-03-06") },
+  ]
+
+  it("behält eine Kante zwischen zwei Arbeitspaketen — genau der F-1-Fall", () => {
+    // Der alte Route-Filter verlangte `from_type = to_type = 'todo'`. Arbeits-
+    // pakete tragen aber `work_package`, und in Prod war JEDE vorhandene Kante
+    // von dieser Form. Genau deshalb war die serverseitige Kaskade immer leer.
+    const edges = cascadeEdgesFor(nodes, [row("wp-a", "wp-b")])
+    expect(edges).toEqual([
+      { fromId: "wp-a", toId: "wp-b", constraintType: "FS", lagDays: 0 },
+    ])
+  })
+
+  it("behält auch Arbeitspaket → Aufgabe, also über die WBS-Ebenen hinweg", () => {
+    const edges = cascadeEdgesFor(nodes, [row("wp-a", "task-c", "SS", 2)])
+    expect(edges).toEqual([
+      { fromId: "wp-a", toId: "task-c", constraintType: "SS", lagDays: 2 },
+    ])
+  })
+
+  it("verwirft Kanten, deren Endpunkte keine bekannten Knoten sind", () => {
+    // `dependencies` ist polymorph und trägt auch Phasen- und Projektkanten.
+    // Über die Endpunkte gefiltert fallen sie heraus, OHNE dass eine Typliste
+    // geführt werden muss, die beim nächsten Endpunkttyp erneut driftet.
+    const edges = cascadeEdgesFor(nodes, [
+      row("phase-1", "phase-2"),
+      row("wp-a", "phase-2"),
+      row("phase-1", "wp-b"),
+    ])
+    expect(edges).toEqual([])
+  })
+
+  it("normalisiert einen fehlenden Abstand auf 0, statt ihn durchzureichen", () => {
+    const edges = cascadeEdgesFor(nodes, [row("wp-a", "wp-b", "FF", null)])
+    expect(edges[0]?.lagDays).toBe(0)
+  })
+
+  it("liefert für eine leere Eingabe eine leere Liste und wirft nicht", () => {
+    expect(cascadeEdgesFor(nodes, [])).toEqual([])
+    expect(cascadeEdgesFor([], [row("wp-a", "wp-b")])).toEqual([])
+  })
+
+  it("die gebildeten Kanten wirken wirklich in der Rechnung", () => {
+    // Ohne diese Zusicherung belegten die Fälle oben nur die Form der Liste.
+    // Hier wandert der Nachfolger tatsächlich — und das ist der Ertrag von
+    // F-1: vorher kam an dieser Stelle eine leere Kantenliste an.
+    const edges = cascadeEdgesFor(nodes, [row("wp-a", "wp-b")])
+    const result = computeScheduleCascade(
+      "wp-a",
+      win("2026-03-07", "2026-03-15"),
+      nodes,
+      edges,
+    )
+    expect(result.shifts).toEqual([
+      { id: "wp-b", start: "2026-03-16", end: "2026-03-23", deltaDays: 5 },
+    ])
   })
 })

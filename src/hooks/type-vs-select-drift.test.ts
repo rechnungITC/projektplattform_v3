@@ -17,8 +17,21 @@ import { describe, expect, it } from "vitest"
  * holt es aus der DB. Frontend nutzt `item.planned_start` ohne Warning,
  * Wert ist immer undefined → leere UI ohne erkennbaren Fehler.
  *
- * Heute kein Live-Vorkommen, aber strukturelle Schutzschicht für die
- * nächste neue Spalte.
+ * PROJ-Y-155g — **die Schutzschicht hatte ein Loch, und es hat zugeschlagen.**
+ * Die Prüfung kannte je Typ genau **einen** SELECT. PROJ-155-β.2 hat
+ * `Project.settings` ergänzt und die Spalte in `use-projects.ts` (**Mehrzahl**,
+ * dem erklärten Ort) nachgezogen — womit dieser Wächter befriedigt war. Gelesen
+ * wird das Feld aber von `useProject` (**Einzahl**, eigener SELECT), und dort
+ * fehlte es: der Auto-Scheduling-Schalter rendete immer als „aus", die ganze
+ * Vorschau-Kaskade war über die Oberfläche unerreichbar. Der Spiegel
+ * `hook-mapping-drift.test.ts` schwieg zu Recht — er verlangt, dass jede
+ * **gelesene** Spalte abgebildet wird, und `settings` war dort weder gelesen
+ * noch abgebildet, also in sich konsistent.
+ *
+ * Ein Typ darf deshalb **mehrere** Leseorte erklären, und **jeder** muss jedes
+ * nicht-berechnete Feld liefern. Wer einen zweiten Hook auf denselben Typ baut,
+ * trägt ihn hier ein — sonst ist er ungeprüft, und das ist genau der Weg, auf
+ * dem der Defekt entstand.
  */
 
 const REPO_ROOT = join(__dirname, "..", "..")
@@ -26,9 +39,13 @@ const REPO_ROOT = join(__dirname, "..", "..")
 interface TypeCheck {
   typeFile: string
   typeName: string
-  /** "Primary" Hook der den vollen Row-Read besitzt — sein SELECT
-   *  bestimmt was die DB zur Verfügung stellt. */
-  primarySelect: { file: string; table: string }
+  /**
+   * **Alle** Hooks, die eine volle Zeile dieses Typs lesen. Jeder von ihnen
+   * muss jedes nicht-berechnete Feld liefern — ein Hook, der den Typ
+   * zurückgibt und ein Feld nicht holt, liefert dort `undefined`, während der
+   * Typ etwas anderes verspricht (PROJ-Y-155g).
+   */
+  selects: { file: string; table: string }[]
   /** Felder die im Type sind aber NICHT aus der DB kommen — z. B.
    *  Frontend-derived (responsible_display_name aus Subselect-Join). */
   computedFields?: string[]
@@ -38,10 +55,9 @@ const TYPE_CHECKS: TypeCheck[] = [
   {
     typeFile: "src/types/work-item.ts",
     typeName: "WorkItem",
-    primarySelect: {
-      file: "src/hooks/use-work-items.ts",
-      table: "work_items",
-    },
+    selects: [
+      { file: "src/hooks/use-work-items.ts", table: "work_items" },
+    ],
     // Keine derived fields auf dem Base-Type. WorkItemWithProfile
     // erweitert WorkItem mit responsible_display_name + responsible_email
     // (separat geprüft).
@@ -50,34 +66,33 @@ const TYPE_CHECKS: TypeCheck[] = [
   {
     typeFile: "src/types/phase.ts",
     typeName: "Phase",
-    primarySelect: {
-      file: "src/hooks/use-phases.ts",
-      table: "phases",
-    },
+    selects: [
+      { file: "src/hooks/use-phases.ts", table: "phases" },
+    ],
   },
   {
     typeFile: "src/types/milestone.ts",
     typeName: "Milestone",
-    primarySelect: {
-      file: "src/hooks/use-milestones.ts",
-      table: "milestones",
-    },
+    selects: [
+      { file: "src/hooks/use-milestones.ts", table: "milestones" },
+    ],
   },
   {
     typeFile: "src/types/sprint.ts",
     typeName: "Sprint",
-    primarySelect: {
-      file: "src/hooks/use-sprints.ts",
-      table: "sprints",
-    },
+    selects: [
+      { file: "src/hooks/use-sprints.ts", table: "sprints" },
+    ],
   },
   {
     typeFile: "src/types/project.ts",
     typeName: "Project",
-    primarySelect: {
-      file: "src/hooks/use-projects.ts",
-      table: "projects",
-    },
+    // Zwei Leseorte: die Liste und der Einzelabruf. Der zweite fehlte hier,
+    // und daran ist PROJ-155-β.2 in Produktion still gescheitert.
+    selects: [
+      { file: "src/hooks/use-projects.ts", table: "projects" },
+      { file: "src/hooks/use-project.ts", table: "projects" },
+    ],
   },
 ]
 
@@ -161,7 +176,7 @@ function extractSelectColumns(source: string, table: string): string[] {
 
 describe("Type-vs-SELECT drift (DTT Stufe 5)", () => {
   for (const check of TYPE_CHECKS) {
-    it(`${check.typeName} — every field is provided by the primary SELECT or marked computed`, () => {
+    it(`${check.typeName} — every field is provided by every declared SELECT or marked computed`, () => {
       const typePath = join(REPO_ROOT, check.typeFile)
       const typeSource = readFileSync(typePath, "utf8")
       const typeFields = extractInterfaceFields(typeSource, check.typeName)
@@ -169,26 +184,30 @@ describe("Type-vs-SELECT drift (DTT Stufe 5)", () => {
         typeFields.length,
         `Could not parse any fields from ${check.typeName} in ${check.typeFile}`,
       ).toBeGreaterThan(0)
-
-      const selectPath = join(REPO_ROOT, check.primarySelect.file)
-      const selectSource = readFileSync(selectPath, "utf8")
-      const selectColumns = new Set(
-        extractSelectColumns(selectSource, check.primarySelect.table),
-      )
       expect(
-        selectColumns.size,
-        `Could not parse any SELECT columns from ${check.primarySelect.file}`,
+        check.selects.length,
+        `${check.typeName} declares no SELECT site`,
       ).toBeGreaterThan(0)
 
       const computed = new Set(check.computedFields ?? [])
 
-      for (const field of typeFields) {
-        if (computed.has(field)) continue
-        const inSelect = selectColumns.has(field)
+      for (const site of check.selects) {
+        const selectSource = readFileSync(join(REPO_ROOT, site.file), "utf8")
+        const selectColumns = new Set(
+          extractSelectColumns(selectSource, site.table),
+        )
         expect(
-          inSelect,
-          `${check.typeName}.${field} (${check.typeFile}) is in the type but missing from the primary SELECT (${check.primarySelect.file} → ${check.primarySelect.table}). Either add it to the SELECT or list it as a computed field.`,
-        ).toBe(true)
+          selectColumns.size,
+          `Could not parse any SELECT columns from ${site.file}`,
+        ).toBeGreaterThan(0)
+
+        for (const field of typeFields) {
+          if (computed.has(field)) continue
+          expect(
+            selectColumns.has(field),
+            `${check.typeName}.${field} (${check.typeFile}) is in the type but missing from the SELECT in ${site.file} → ${site.table}. Either add it to that SELECT or list it as a computed field. Ein zweiter Leseort, der ein Feld nicht holt, liefert dort undefined — genau der PROJ-Y-155g-Defekt.`,
+          ).toBe(true)
+        }
       }
     })
   }
