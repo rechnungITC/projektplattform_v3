@@ -110,7 +110,11 @@ test.describe("PROJ-155-β.2 — Kaskade über die Route (AC-13/15/17)", () => {
    * ins Leere" und „die Kaskade rechnet falsch". Diese Prüfung trennt das.
    */
   /**
-   * **F-1 (High) — schlägt fehl und beschreibt den Soll-Zustand.**
+   * **F-1 (High) — behoben durch PROJ-Y-155f; dieser Fall ist jetzt echt grün.**
+   *
+   * Er stand als `test.fail()` in der Datei und hat genau das getan, wofür das
+   * Muster da ist: beim Beheben von selbst angeschlagen. Die Geschichte bleibt
+   * stehen, weil sie die Regel begründet, die jetzt gilt.
    *
    * Gemessen: die Antwort der Route lautet
    * `{"applied":{"total":1},"cascade":{"shifts":[],...}}` — die Kaskade ist
@@ -128,16 +132,16 @@ test.describe("PROJ-155-β.2 — Kaskade über die Route (AC-13/15/17)", () => {
    * Slice, deren tragende Entscheidung war, dass es nur **eine** Formel gibt.
    * Die Formel ist geteilt; ihre **Eingabe** wird unterschiedlich beschafft.
    *
-   * Als `test.fail()` kodiert: der Fall beschreibt, was gelten soll, und schlägt
-   * an, sobald jemand ihn behebt (Muster PROJ-51/F-1).
+   * **Behoben in PROJ-Y-155f:** die Kantenbeschaffung liegt jetzt in
+   * `cascadeEdgesFor`, und zwar für **beide** Seiten. Gefiltert wird über die
+   * Endpunkt-Zugehörigkeit statt über Typnamen — richtig nicht aus Gewohnheit,
+   * sondern weil `dependencies` polymorph ist: wer über die Endpunkte filtert,
+   * schliesst Phasen- und Projektkanten automatisch aus, ohne eine Typliste zu
+   * führen, die beim nächsten Endpunkttyp erneut auseinanderläuft.
    */
   test("AC-15: Übernehmen verschiebt den Nachfolger mit", async ({
     ganttTenantPage: page,
   }) => {
-    // `test.fail()` gehört IN den Body. Ausserhalb gilt es fuer alle folgenden
-    // Tests der Datei — mein erster Versuch stand davor und liess AC-16 mit
-    // „Expected to fail, but passed" fallen, obwohl das Kriterium erfuellt ist.
-    test.fail()
     const admin = await createAdminClient()
     test.skip(!admin, "SUPABASE_SERVICE_ROLE_KEY fehlt — Zustand nicht prüfbar.")
 
@@ -318,13 +322,17 @@ test.describe("PROJ-155-β.2 — Kaskade über die Route (AC-13/15/17)", () => {
   })
 
   /**
-   * F-1, zweite Seite: im echten Fluss schickt die Oberfläche mit, was sie
-   * erwartet hat. Weil der Server eine andere Kantenmenge sieht, meldet er eine
-   * Abweichung — die Meldung stimmt formal („es gilt die Rechnung des Servers"),
-   * verschleiert aber, dass die Kaskade gar nicht gerechnet wurde. Der Nutzer
-   * liest „übernommen, nur anders", nicht „die Nachfolger blieben stehen".
+   * F-1, zweite Seite — **umgedreht statt gelöscht** (Muster PROJ-Y-148d).
+   *
+   * Der Fall hielt fest, dass der Server auf eine **leere** Kaskade kam und das
+   * als Abweichung meldete: formal richtig („es gilt die Rechnung des Servers"),
+   * inhaltlich verschleiernd — der Nutzer las „übernommen, nur anders" statt
+   * „die Nachfolger blieben stehen". Seit PROJ-Y-155f beschaffen Vorschau und
+   * Server ihre Kanten aus derselben Funktion, also **stimmen sie überein**, und
+   * genau das prüft der Fall jetzt. Die Zusicherung ist dadurch stärker, nicht
+   * schwächer: sie schlägt an, wenn die beiden Seiten wieder auseinanderlaufen.
    */
-  test("F-1: die Divergenz-Meldung verschleiert den eigentlichen Grund", async ({
+  test("F-1 umgedreht: Vorschau und Server kommen auf dasselbe Ergebnis", async ({
     ganttTenantPage: page,
   }) => {
     const admin = await createAdminClient()
@@ -347,9 +355,12 @@ test.describe("PROJ-155-β.2 — Kaskade über die Route (AC-13/15/17)", () => {
       )
       expect(res.status()).toBe(200)
       const body = await res.json()
-      // Der Server kam auf eine LEERE Kaskade und meldet das als Abweichung.
-      expect(body.cascade.shifts).toHaveLength(0)
-      expect(body.diverged_from_preview).toBe(true)
+      // Der Server rechnet dieselbe Kaskade wie die Vorschau — vorher war diese
+      // Liste leer, obwohl eine `FS`-Kante mit Abstand 0 existiert.
+      expect(body.cascade.shifts).toHaveLength(1)
+      expect(body.cascade.shifts[0].id).toBe(E2E_GANTT_WP_DERIVED_ID)
+      // Und deshalb ist die Erwartung der Oberfläche jetzt deckungsgleich.
+      expect(body.diverged_from_preview).toBe(false)
     } finally {
       await nachfolgerTerminieren(admin!, null, null)
       await admin!
@@ -434,35 +445,23 @@ test.describe("PROJ-155-β.2 — Kaskade über die Route (AC-13/15/17)", () => {
   })
 
   /**
-   * AC-13 / AC-14 — der eigentlich offene Punkt: die Verkettung im Browser.
+   * AC-13 / AC-14 — die Verkettung im Browser: Ziehen → Vorschau → Verwerfen.
    *
-   * Geprüft wird nicht nur, dass eine Kopfzeile erscheint, sondern dass die
-   * Datenbank dabei **unberührt** bleibt. Ohne diese zweite Hälfte belegte der
-   * Test nur, dass ein Text auftaucht.
+   * Stand bis PROJ-Y-155g als `test.fail()` in dieser Datei, weil der Schalter
+   * nicht einlesbar war und die Vorschau damit über die Oberfläche gar nicht
+   * erreichbar. **F-2 (High), behoben:** `use-project.ts` (Einzahl) führte
+   * `settings` nicht im SELECT — β.2 hatte die Spalte nur in `use-projects.ts`
+   * (Mehrzahl) ergänzt, und der Drift-Wächter erklärte je Typ nur **einen**
+   * Leseort, also schwieg er. Beides ist jetzt behoben; der Fall hat beim
+   * Beheben von selbst angeschlagen.
+   *
+   * Geprüft wird **beides**: dass die Vorschau erscheint **und** dass die
+   * Datenbank dabei unberührt bleibt. Ohne die zweite Hälfte belegte der Test
+   * nur, dass ein Text auftaucht.
    */
-  /**
-   * F-2 (High) — der Schalter laesst sich einschalten, aber nicht **einlesen**.
-   *
-   * `planung-client.tsx:71` liest `project?.settings?.autoScheduleSuccessors`
-   * aus `useProject` (**Einzahl**, `src/hooks/use-project.ts`). Dessen SELECT
-   * fuehrt `settings` nicht — β.2 hat die Spalte nur in `use-projects.ts`
-   * (**Mehrzahl**) ergaenzt. Folge: der Schalter rendert immer als „aus", der
-   * Gantt bekommt `autoScheduleSuccessors={false}`, und die ganze
-   * Vorschau-Kaskade ist ueber die Oberflaeche **nicht erreichbar** — obwohl
-   * Rechnung, Route, Datenschicht und der Schreibweg des Schalters bewiesen sind.
-   *
-   * Als `test.fail()` kodiert: der Fall beschreibt den **Soll**-Zustand und
-   * schlaegt an, sobald jemand ihn behebt, statt den Ist-Zustand einzufrieren
-   * (Muster aus dem PROJ-51-`/qa`). Damit haengen AC-13 und AC-14 (Browser-Haelfte)
-   * an diesem Fund und sind bis zur Behebung **nicht** fuehrbar.
-   */
-  test("F-2: ein in der Datenbank gesetzter Schalter erreicht die Oberflaeche", async ({
+  test("AC-13/14: Ziehen zeigt eine Vorschau und schreibt NICHTS", async ({
     ganttTenantPage: page,
   }) => {
-    test.fail(
-      true,
-      "F-2: use-project.ts (Einzahl) liest `settings` nicht; der Schalter zeigt immer „aus\u201c.",
-    )
     const admin = await createAdminClient()
     test.skip(!admin, "SUPABASE_SERVICE_ROLE_KEY fehlt.")
 
@@ -480,20 +479,181 @@ test.describe("PROJ-155-β.2 — Kaskade über die Route (AC-13/15/17)", () => {
           ?.autoScheduleSuccessors,
       ).toBe(true)
 
+      const vorher = await admin!
+        .from("work_items")
+        .select("planned_start, planned_end")
+        .eq("id", E2E_GANTT_WP_DATED_ID)
+        .single()
+
       await openGantt(page)
 
-      // Genau hier bricht es: die Oberflaeche liest den Wert nicht zurueck.
+      // Genau hier brach F-2: die Oberfläche muss den Wert zurücklesen.
       await expect(page.getByRole("switch").first()).toHaveAttribute(
         "aria-checked",
         "true",
         { timeout: 15_000 },
       )
 
-      // Und erst dann waere die Vorschau (AC-13) ueberhaupt erreichbar.
       await balkenZiehen(page)
+
+      // AC-13: die Vorschau ist da, mit Übernehmen und Verwerfen.
+      const bar = page.getByRole("region", {
+        name: "Vorschau der Terminverschiebung",
+      })
+      await expect(bar).toBeVisible({ timeout: 15_000 })
       await expect(
-        page.getByRole("region", { name: "Vorschau der Terminverschiebung" }),
-      ).toBeVisible({ timeout: 15_000 })
+        page.getByRole("button", { name: /Übernehmen/ }),
+      ).toBeVisible()
+
+      // … und die Datenbank ist unberührt. Das ist die Hälfte, die „Vorschau"
+      // von „hat schon geschrieben" unterscheidet.
+      const waehrend = await admin!
+        .from("work_items")
+        .select("planned_start, planned_end")
+        .eq("id", E2E_GANTT_WP_DATED_ID)
+        .single()
+      expect(
+        waehrend.data!.planned_start,
+        "Die Vorschau darf nichts schreiben",
+      ).toBe(vorher.data!.planned_start)
+      expect(waehrend.data!.planned_end).toBe(vorher.data!.planned_end)
+
+      // AC-14: Verwerfen schliesst sie, ohne zu schreiben.
+      await page.getByRole("button", { name: /Verwerfen/ }).click()
+      await expect(bar).toBeHidden({ timeout: 10_000 })
+      const nachher = await admin!
+        .from("work_items")
+        .select("planned_start, planned_end")
+        .eq("id", E2E_GANTT_WP_DATED_ID)
+        .single()
+      expect(nachher.data!.planned_start).toBe(vorher.data!.planned_start)
+      expect(nachher.data!.planned_end).toBe(vorher.data!.planned_end)
+
+      // Und der Nachfolger auch nicht — die Vorschau berechnet ihn, schreibt
+      // ihn aber nicht.
+      const nachfolger = await admin!
+        .from("work_items")
+        .select("planned_start")
+        .eq("id", E2E_GANTT_WP_DERIVED_ID)
+        .single()
+      expect(nachfolger.data!.planned_start).toBe(NACHFOLGER_START)
+    } finally {
+      await schalterSetzen(admin!, false)
+      await nachfolgerTerminieren(admin!, null, null)
+      await admin!
+        .from("work_items")
+        .update({
+          planned_start: E2E_GANTT_DATES.wpDated.start,
+          planned_end: E2E_GANTT_DATES.wpDated.end,
+        })
+        .eq("id", E2E_GANTT_WP_DATED_ID)
+    }
+  })
+
+  /**
+   * AC-14, zweite Hälfte — Escape verwirft genauso wie der Knopf.
+   *
+   * Getrennt geführt, weil es ein anderer Weg zum selben Ergebnis ist: der
+   * Knopf ruft `onDiscard`, Escape hängt am Tastatur-Handler des Diagramms.
+   * Einer kann brechen, ohne den anderen zu berühren.
+   */
+  test("AC-14: Escape verwirft die Vorschau, ebenfalls ohne zu schreiben", async ({
+    ganttTenantPage: page,
+  }) => {
+    const admin = await createAdminClient()
+    test.skip(!admin, "SUPABASE_SERVICE_ROLE_KEY fehlt.")
+
+    await schalterSetzen(admin!, true)
+    await nachfolgerTerminieren(admin!, NACHFOLGER_START, NACHFOLGER_ENDE)
+    try {
+      await openGantt(page)
+      await expect(page.getByRole("switch").first()).toHaveAttribute(
+        "aria-checked",
+        "true",
+        { timeout: 15_000 },
+      )
+      await balkenZiehen(page)
+
+      const bar = page.getByRole("region", {
+        name: "Vorschau der Terminverschiebung",
+      })
+      await expect(bar).toBeVisible({ timeout: 15_000 })
+
+      await page.keyboard.press("Escape")
+      await expect(bar).toBeHidden({ timeout: 10_000 })
+
+      const nachher = await admin!
+        .from("work_items")
+        .select("planned_start, planned_end")
+        .eq("id", E2E_GANTT_WP_DATED_ID)
+        .single()
+      expect(nachher.data!.planned_start).toBe(E2E_GANTT_DATES.wpDated.start)
+      expect(nachher.data!.planned_end).toBe(E2E_GANTT_DATES.wpDated.end)
+    } finally {
+      await schalterSetzen(admin!, false)
+      await nachfolgerTerminieren(admin!, null, null)
+      await admin!
+        .from("work_items")
+        .update({
+          planned_start: E2E_GANTT_DATES.wpDated.start,
+          planned_end: E2E_GANTT_DATES.wpDated.end,
+        })
+        .eq("id", E2E_GANTT_WP_DATED_ID)
+    }
+  })
+
+  /**
+   * AC-13, die andere Richtung — Übernehmen schreibt wirklich, und zwar beide.
+   *
+   * Damit ist die Kette vollständig: Ziehen → Vorschau → **Übernehmen** →
+   * Termine in der Datenbank, über die Oberfläche und nicht über die Route.
+   * Bis PROJ-Y-155g war dieser Weg gar nicht erreichbar.
+   */
+  test("AC-13: Übernehmen aus der Vorschau schreibt gezogenen Knoten UND Nachfolger", async ({
+    ganttTenantPage: page,
+  }) => {
+    const admin = await createAdminClient()
+    test.skip(!admin, "SUPABASE_SERVICE_ROLE_KEY fehlt.")
+
+    await schalterSetzen(admin!, true)
+    await nachfolgerTerminieren(admin!, NACHFOLGER_START, NACHFOLGER_ENDE)
+    try {
+      await openGantt(page)
+      await expect(page.getByRole("switch").first()).toHaveAttribute(
+        "aria-checked",
+        "true",
+        { timeout: 15_000 },
+      )
+      await balkenZiehen(page)
+
+      const bar = page.getByRole("region", {
+        name: "Vorschau der Terminverschiebung",
+      })
+      await expect(bar).toBeVisible({ timeout: 15_000 })
+      await page.getByRole("button", { name: /^Übernehmen$/ }).click()
+      await expect(bar).toBeHidden({ timeout: 20_000 })
+
+      const gezogen = await admin!
+        .from("work_items")
+        .select("planned_start")
+        .eq("id", E2E_GANTT_WP_DATED_ID)
+        .single()
+      expect(
+        gezogen.data!.planned_start,
+        "der gezogene Knoten muss sich bewegt haben",
+      ).not.toBe(E2E_GANTT_DATES.wpDated.start)
+
+      // Die tragende Zusicherung: der Nachfolger ist mitgewandert. Genau das
+      // war vor PROJ-Y-155f auch serverseitig nicht der Fall.
+      const nachfolger = await admin!
+        .from("work_items")
+        .select("planned_start")
+        .eq("id", E2E_GANTT_WP_DERIVED_ID)
+        .single()
+      expect(
+        nachfolger.data!.planned_start,
+        "der Nachfolger muss mitverschoben sein",
+      ).not.toBe(NACHFOLGER_START)
     } finally {
       await schalterSetzen(admin!, false)
       await nachfolgerTerminieren(admin!, null, null)

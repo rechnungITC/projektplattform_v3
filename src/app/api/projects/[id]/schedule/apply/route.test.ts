@@ -24,11 +24,30 @@ let milestonesResult: Result = { data: [], error: null }
 let workItemsResult: Result = { data: [], error: null }
 let dependenciesResult: Result = { data: [], error: null }
 
-function chain(get: () => Result) {
+/**
+ * PROJ-Y-155f — die `.eq()`-Aufrufe je Tabelle mitschreiben.
+ *
+ * Der Mock liefert sein Ergebnis unabhaengig von den Filtern, kann also einen
+ * falschen Filter nicht sichtbar machen — genau daran ist F-1 vorbeigekommen
+ * (die Route filterte auf `from_type = to_type = 'todo'` und liess damit in Prod
+ * keine einzige vorhandene Kante durch, waehrend diese Tests gruen blieben).
+ * Die Filter werden deshalb aufgezeichnet und strukturell geprueft.
+ */
+const eqCalls: Record<string, [string, unknown][]> = {}
+const inCalls: Record<string, [string, unknown][]> = {}
+
+function chain(get: () => Result, table = "?") {
   const c: Record<string, unknown> = {}
   const self = () => c
   c.select = vi.fn(self)
-  c.eq = vi.fn(self)
+  c.eq = vi.fn((col: string, val: unknown) => {
+    ;(eqCalls[table] ??= []).push([col, val])
+    return c
+  })
+  c.in = vi.fn((col: string, val: unknown) => {
+    ;(inCalls[table] ??= []).push([col, val])
+    return c
+  })
   c.maybeSingle = vi.fn(async () => get())
   c.then = (resolve: (v: Result) => unknown, reject?: (e: unknown) => unknown) =>
     Promise.resolve(get()).then(resolve, reject)
@@ -36,10 +55,10 @@ function chain(get: () => Result) {
 }
 
 const fromMock = vi.fn((table: string) => {
-  if (table === "phases") return chain(() => phaseResult)
-  if (table === "milestones") return chain(() => milestonesResult)
-  if (table === "work_items") return chain(() => workItemsResult)
-  if (table === "dependencies") return chain(() => dependenciesResult)
+  if (table === "phases") return chain(() => phaseResult, table)
+  if (table === "milestones") return chain(() => milestonesResult, table)
+  if (table === "work_items") return chain(() => workItemsResult, table)
+  if (table === "dependencies") return chain(() => dependenciesResult, table)
   throw new Error(`unerwartete Tabelle ${table}`)
 })
 
@@ -94,6 +113,8 @@ beforeEach(() => {
   milestonesResult = { data: [], error: null }
   workItemsResult = { data: [], error: null }
   dependenciesResult = { data: [], error: null }
+  for (const k of Object.keys(eqCalls)) delete eqCalls[k]
+  for (const k of Object.keys(inCalls)) delete inCalls[k]
 })
 
 describe("POST schedule/apply — Tore", () => {
@@ -327,5 +348,72 @@ describe("POST schedule/apply — Fehler der RPC", () => {
       ctx(),
     )
     expect(res.status).toBe(422)
+  })
+})
+
+/**
+ * PROJ-Y-155f — die Kantenbeschaffung darf nicht nach Endpunkttyp filtern.
+ *
+ * Das ist der einzige Test dieser Datei, der eine **Abfrage** prueft statt einer
+ * Antwort — und er existiert, weil die Antwort den Defekt nicht zeigen konnte:
+ * mit dem falschen Filter blieben alle 18 Faelle gruen.
+ */
+describe("POST /api/projects/[id]/schedule/apply — Kantenbeschaffung (PROJ-Y-155f)", () => {
+  it("grenzt die Kanten ueber die Ausgangsknoten ein — nicht ueber project_id und nicht ueber Endpunkttypen", async () => {
+    workItemsResult = {
+      data: [
+        { id: WP_A, planned_start: "2026-06-01", planned_end: "2026-06-10" },
+        { id: WP_B, planned_start: "2026-06-11", planned_end: "2026-06-20" },
+      ],
+      error: null,
+    }
+    dependenciesResult = { data: [], error: null }
+
+    const res = await POST(
+      req({ kind: "work_item", id: WP_A, start: "2026-06-06", end: "2026-06-15" }),
+      ctx(),
+    )
+    expect(res.status).toBe(200)
+
+    const eqCols = (eqCalls["dependencies"] ?? []).map(([c]) => c)
+    const inCols = inCalls["dependencies"] ?? []
+
+    // Positiv: eingegrenzt wird ueber die Ausgangsknoten dieses Projekts.
+    // Ohne diese Haelfte wuerde die Route die Kanten des ganzen Mandanten laden
+    // und die Negativ-Zusicherungen darunter waeren trivial erfuellt.
+    expect(inCols.map(([c]) => c)).toContain("from_id")
+    expect(inCols.find(([c]) => c === "from_id")?.[1]).toEqual([WP_A, WP_B])
+
+    // Negativ 1: **kein** `project_id`. Die Spalte existiert auf `dependencies`
+    // nicht (live gemessen) — PostgREST antwortete darauf mit einem Fehler, und
+    // weil er nicht geprueft wurde, wurde daraus eine stille leere Kaskade.
+    expect(eqCols).not.toContain("project_id")
+
+    // Negativ 2: kein Filter auf einen Endpunkttyp. Gefiltert wird ueber die
+    // Endpunkt-Zugehoerigkeit in `cascadeEdgesFor`, weil `dependencies`
+    // polymorph ist und eine Typliste beim naechsten Endpunkttyp erneut driftet.
+    expect(eqCols).not.toContain("from_type")
+    expect(eqCols).not.toContain("to_type")
+  })
+
+  it("meldet einen Fehler der Kantenabfrage, statt eine leere Kaskade zu behaupten", async () => {
+    // Der Kern des F-1-Defekts war nicht der falsche Filter, sondern dass sein
+    // Fehler verschluckt wurde: `data` war null, `?? []` machte daraus eine
+    // leere Kantenliste, und die Antwort sah plausibel aus.
+    workItemsResult = {
+      data: [{ id: WP_A, planned_start: "2026-06-01", planned_end: "2026-06-10" }],
+      error: null,
+    }
+    dependenciesResult = {
+      data: null,
+      error: { message: 'column dependencies.project_id does not exist' },
+    }
+
+    const res = await POST(
+      req({ kind: "work_item", id: WP_A, start: "2026-06-06", end: "2026-06-15" }),
+      ctx(),
+    )
+    expect(res.status).toBe(500)
+    expect(rpcMock).not.toHaveBeenCalled()
   })
 })

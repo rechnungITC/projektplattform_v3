@@ -647,8 +647,8 @@ Deploy, aber sie sind nicht erledigt und hatten bis heute **keine** Followup-Ken
   immer.
   *Quelle: CIA-Pass β.2, 2026-09-01, Messungen gegen Prod.*
 
-- **PROJ-Y-155f — die Route sieht die Kanten nicht, die es in Prod gibt (offen,
-  sicherheitsneutral aber funktionsverhindernd).** Aus dem β.2-`/qa` vom 2026-09-02
+- **PROJ-Y-155f — die Route sieht die Kanten nicht, die es in Prod gibt (erledigt
+  2026-09-03).** Aus dem β.2-`/qa` vom 2026-09-02
   (F-1, **High**). `schedule/apply/route.ts:181-182` filtert die Abhängigkeiten auf
   `from_type = "todo"` **und** `to_type = "todo"`; `dependencyEntityTypes` hat vier
   Werte, und in Produktion gibt es **keine einzige** todo/todo-Kante (gemessen: 2×
@@ -660,10 +660,24 @@ Deploy, aber sie sind nicht erledigt und hatten bis heute **keine** Followup-Ken
   Kantenmengen — in der Slice, deren tragende Entscheidung war, dass es nur **eine**
   Formel gibt; geteilt ist die Formel, nicht die Beschaffung ihrer Eingabe. Nebenbefund:
   `diverged_from_preview` meldet `false` und verschleiert damit den Grund.
-  *Quelle: β.2-`/qa`, `tests/PROJ-155-beta2-qa-chain.spec.ts` (F-1 als `test.fail()`).*
+  **Behoben, und der gemeldete Grund war nur die Hälfte.** Dieselbe Abfrage filterte
+  zusätzlich auf **`project_id`** — eine Spalte, die `dependencies` **nicht hat** (live
+  gemessen: `id · tenant_id · from_type · from_id · to_type · to_id · constraint_type ·
+  lag_days · created_at · created_by`). PostgREST antwortete mit einem Fehler, `data` war
+  `null`, `edges ?? []` machte daraus eine leere Liste — und weil der Fehler **nicht
+  geprüft** wurde, sah die Antwort plausibel aus statt laut zu scheitern. Das ist der
+  eigentliche Grund für die Unsichtbarkeit: nicht „ein Filter war zu eng", sondern ein
+  **verschluckter Fehler**; auch mit korrektem Typfilter hätte die Abfrage nie eine Zeile
+  geliefert. Kein Gate konnte greifen — der Schema-Drift-Wächter prüft die Spalten in
+  `.select()`, nicht die in `.eq()` (dieselbe Lücke, in die PROJ-151 mit einem
+  `.order()`-Argument lief). Geliefert: geteilte `cascadeEdgesFor` für Route **und** Gantt
+  (Filterung über die Endpunkt-Zugehörigkeit, weil `dependencies` polymorph ist),
+  Eingrenzung über die Ausgangsknoten des Projekts, und **Fehlerprüfung** — eine leere
+  Kaskade heisst ab jetzt „keine Kanten".
+  *Quelle: β.2-`/qa` (F-1 als `test.fail()`), Behebung PROJ-Y-155f 2026-09-03.*
 
 - **PROJ-Y-155g — der Auto-Scheduling-Schalter lässt sich setzen, aber nicht einlesen
-  (offen, funktionsverhindernd).** Aus dem β.2-`/qa` vom 2026-09-02 (F-2, **High**).
+  (erledigt 2026-09-03).** Aus dem β.2-`/qa` vom 2026-09-02 (F-2, **High**).
   `planung-client.tsx:71` liest `project?.settings?.autoScheduleSuccessors` aus
   `useProject` (**Einzahl**); dessen SELECT führt `settings` nicht — β.2 hat die Spalte
   nur in `use-projects.ts` (**Mehrzahl**) ergänzt. Der Schalter rendert deshalb immer
@@ -680,7 +694,17 @@ Deploy, aber sie sind nicht erledigt und hatten bis heute **keine** Followup-Ken
   Zeilen (SELECT **und** explizite Abbildung), was zugleich erklärt, warum
   `hook-mapping-drift` schweigt: es verlangt nur, dass jede **gelesene** Spalte abgebildet
   wird, und `settings` war hier weder gelesen noch abgebildet — in sich konsistent.
-  *Quelle: β.2-`/qa`, Browser-Messung plus Feld-für-Feld-Abgleich Typ gegen beide Hooks.*
+  **Behoben:** `settings` **und** `project_method` stehen jetzt in SELECT und Abbildung von
+  `use-project.ts`. `project_method` ist mitgekommen, weil dort derselbe Widerspruch latent
+  bestand (Typ verspricht das Feld, Hook lieferte `undefined`) — heute liest es kein
+  Konsument dieses Hooks, genau darum war es unauffällig und genau darum gehört es behoben,
+  bevor der erste darauf baut. **F-3 mit erledigt:** `type-vs-select-drift` erklärt jetzt
+  **mehrere** Leseorte je Typ, jeder muss jedes nicht-berechnete Feld liefern, und
+  `use-project.ts` ist als zweiter Leseort für `Project` eingetragen — damit ist die Klasse
+  geschlossen, nicht nur der Fall. Rot-Grün beidseitig geführt: ohne die Spalte fallen der
+  Browser-Fall **und** der Wächter.
+  *Quelle: β.2-`/qa`, Browser-Messung plus Feld-für-Feld-Abgleich Typ gegen beide Hooks;
+  Behebung PROJ-Y-155g 2026-09-03.*
 
 - **PROJ-Y-155b — zwei Leseorte für denselben Termin (offen, Hygiene).**
   `wbs-display.ts` (`ownPlannedStart`/`ownPlannedEnd`) liest Termine weiter aus
