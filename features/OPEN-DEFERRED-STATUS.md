@@ -835,7 +835,7 @@ Deploy, aber sie sind nicht erledigt und hatten bis heute **keine** Followup-Ken
 
 ---
 
-## PROJ-170 — Supply-Chain-Remediation `fast-uri` (Approved)
+## PROJ-170 — Supply-Chain-Remediation `fast-uri` (Deployed / full)
 
 - **`postcss-selector-parser@6.1.2` (GHSA-w9m9-85wc-3x92, CVSS 4.3) — unter der Schwelle,
   bewusst nicht behoben.** Derselbe Restfund wie in PROJ-160 und aus demselben Grund: die
