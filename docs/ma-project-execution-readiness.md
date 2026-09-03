@@ -137,15 +137,24 @@ Aus dem anlegbaren M&A-Projekt ist damit ein durchfuehrbarer DD-Deal-Raum geword
 2. **PROJ-121 — Kaufpreis-Bridge.** Ebenfalls unblockiert; das Versionsmuster existiert in
    `ma_valuations`, neu waere Kopf plus Bestandteile-Kind-Tabelle. Ein Andockpunkt fehlt:
    `ma_valuation_links` kennt nur `dd_finding`, PROJ-120 hat den Erweiterungs-Kontrakt hinterlegt.
-3. **PROJ-124 — Closing-Durchfuehrung.** Wartet fachlich echt auf 123; die zusaetzlich notierte
-   Abhaengigkeit auf `K1`/`K2` ist zu pruefen (ein Closing-Vollzug braucht keinen fertigen
-   100-Tage-Plan, hoechstens eine Uebergabestelle).
-4. **Epic K (125/126/127) — zuerst den Zyklus aufloesen, dann bauen.** `125 → {126, 127}`,
-   `126 → {127}`, `127 → {125, 126}`: keine der drei ist zuerst baubar. Aussichtsreichster Ansatz
-   ist **PROJ-127**, weil der Zyklus in beide Richtungen an ihm haengt und eine IMO-Steuerung
-   fachlich die Klammer ist, die die anderen beiden traegt statt ihr Ergebnis zu sein. Vorher zu
-   klaeren: ob das ausgelieferte `workstreams` (PROJ-102) wiederverwendet wird statt einer zweiten
-   Struktur.
+3. **PROJ-124 — Closing-Durchfuehrung.** Wartet **nur noch auf 123**: die Abhaengigkeiten auf
+   `K1`/`K2` sind am 2026-09-02 gestrichen (PROJ-169), weil sie in **keinem** der fuenf
+   Akzeptanzkriterien belegt waren — der groesste Einzelgewinn der Zyklus-Aufloesung.
+4. **Epic K — Zyklus am 2026-09-02 aufgeloest (PROJ-169), Reihenfolge steht.**
+
+   ```
+   PROJ-127-α   IMO-Steuerung: Workstreams, Lead, Aufgaben, Risiken, Ampel, "in Linie uebergeben"
+      ├── PROJ-126   Synergie-Tracking  (braucht K3 fuer AC-2 — die einzige *explizit* belegte Kante)
+      │      └── PROJ-127-β   Synergie-Initiativen am Workstream + Synergie-KPI im Ampelstatus
+      └── PROJ-125   Day-1-/100-Tage-Plan  (braucht Workstreams fuer "je Workstream")
+   ```
+
+   **126 und 125 laufen parallel** — sie brauchen sich nicht gegenseitig. Die Auflösung war
+   **gemessen, nicht gesetzt**: von sieben zyklusbildenden Kanten trugen **vier in keinem
+   Akzeptanzkriterium einen Bezug**, eine fuenfte nur einen additiven. Offene Architekturfrage fuer α: ob das ausgelieferte `workstreams`
+   (PROJ-102) erweitert oder gespiegelt wird — es deckt live Lead, Aufgaben-, Risiko-Verweis,
+   Dashboard und Ampel ab; es fehlen ein Typ-Merkmal, die Vorlage der sieben PMI-Workstreams, der
+   Uebergangsstatus und ein **gerechneter** Ampelstatus.
 
 **Und die Rahmenbedingung, die alles davon relativiert:** das Epic hat **null Nutzung** in
 Produktion (Messung oben). Keine dieser vier Positionen blockiert heute einen Nutzer. Die
