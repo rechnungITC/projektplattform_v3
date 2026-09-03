@@ -214,6 +214,10 @@ zum Prüfen braucht.
 ## β.2 — QA Test Results (2026-09-02)
 
 **Verdikt: β.2 ist NICHT produktionsreif — 0 Critical / 2 High / 0 Medium / 1 Info.**
+**Nachtrag 2026-09-03: beide High-Funde sind behoben und ausgeliefert**
+(PROJ-Y-155f + PROJ-Y-155g, Tag `v3.1.0-PROJ-Y-155fg`); die AC-Tabelle unten
+ist nachgezogen, der ursprüngliche Wortlaut bleibt daneben lesbar. Das Verdikt
+selbst steht als Ergebnis **dieses** Durchgangs und wird nicht umgeschrieben.
 Lifecycle bleibt `Deployed`, Scope bleibt `alpha`: ein rückwirkender Durchgang
 bewertet, er nimmt die Auslieferung nicht zurück (Präzedenz PROJ-51-`/qa`). Die
 Zeile wird durch diesen Durchgang aber **ehrlicher**, nicht besser — β.2 ist in
@@ -228,9 +232,9 @@ authentifizierten Browser-Durchlauf der Verkettung Ziehen → Vorschau →
 | AC | Ergebnis | Nachweis |
 |---|---|---|
 | AC-11 Schalter per Default aus | **PASS** | `PROJ-155-beta2-qa-chain` — Prod-Zustand `settings = {}` |
-| AC-12 bei „aus" byte-gleiches Verhalten | **PASS, aber trivial** | Ziehen schreibt direkt, alte Erfolgsmeldung, kein Vorschau-Bereich — besteht heute allerdings auch deshalb, weil F-2 den Schalter nie auf „an" bringt. Nach der Behebung erneut zu fahren |
-| AC-13 Vorschau **vor** dem Schreiben | **FAIL (F-2)** | im Browser nicht erreichbar; die Vorschau erscheint nie, weil der Schalter nicht eingelesen wird |
-| AC-14 Verwerfen schreibt nichts | **nicht führbar (F-2)** | serverseitig gedeckt (ohne Aufruf von `…/schedule/apply` wird nichts geschrieben, Rot-Team R1–R7), die Browser-Hälfte hängt an F-2 |
+| AC-12 bei „aus" byte-gleiches Verhalten | **PASS** (seit PROJ-Y-155g nicht mehr trivial) | Ziehen schreibt direkt, alte Erfolgsmeldung, kein Vorschau-Bereich. *Ursprünglich* „PASS, aber trivial", weil F-2 den Schalter nie auf „an" brachte und es nur einen erreichbaren Zweig gab; nach der Behebung erneut gefahren und damit eine echte Verzweigung |
+| AC-13 Vorschau **vor** dem Schreiben | **PASS — behoben durch PROJ-Y-155g.** *Ursprünglich:* **FAIL (F-2)** | Ursprünglich im Browser nicht erreichbar, weil der Schalter nicht eingelesen wurde. Seit 2026-09-03 in der Kette geführt: Vorschau erscheint, und ein eigener Fall belegt, dass Übernehmen gezogenen Knoten **und** Nachfolger schreibt |
+| AC-14 Verwerfen schreibt nichts | **PASS — behoben durch PROJ-Y-155g.** *Ursprünglich:* **nicht führbar (F-2)** | Serverseitig war es gedeckt (Rot-Team R1–R7), die Browser-Hälfte hing an F-2. Seit 2026-09-03 in der Kette geführt, und zwar **zweimal**: Verwerfen-Knopf und **Escape** als getrennte Fälle — der eine ruft `onDiscard`, der andere hängt am Tastatur-Handler; jeweils mit Gegenprobe an gezogenem Knoten *und* Nachfolger, dass die Datenbank unberührt bleibt |
 | AC-15 Übernehmen atomar | **PASS** | Kette: Nachfolger zieht mit; ein unmögliches Ziel verwirft **alle** Schreibvorgänge (409 `shift_target_not_writable`); Pentest V2 |
 | AC-16 keine erfundenen Termine | **PASS** | terminloser Nachfolger bleibt terminlos, erscheint als `skipped` |
 | AC-17 die vier Kantentypen unterscheiden sich | **PASS** | 20 Unit-Fälle; gleiche Ausgangslage → `[10, 0, 5, 0]` je Typ |
@@ -356,13 +360,26 @@ in Produktion Append-only-Wächter abzuschalten, und dieses Risiko ist größer 
 
 ### Handoff
 
-Zwei High-Funde, beide **nicht** in diesem Durchgang behoben (die QA findet und
-dokumentiert, sie repariert nicht): **PROJ-Y-155f** (Kantentypen in der Route) und
-**PROJ-Y-155g** (Einzel-Hook liest `settings` nicht, samt Wächter-Erweiterung aus
-F-3). Beide sind klein — eine Zeile für F-1, zwei für F-2, plus Wächter —, aber
-zusammen entscheiden sie, ob β.2 überhaupt etwas tut. Nach der Behebung sind
-AC-13 und AC-14 im Browser zu führen und AC-12 erneut, weil er heute nur den
-einzigen erreichbaren Zweig belegt.
+**Beide High-Funde sind erledigt — ausgeliefert am 2026-09-03 als
+PROJ-Y-155f + PROJ-Y-155g (Tag `v3.1.0-PROJ-Y-155fg`, Merge `1ef5fcf`).** Der
+ursprüngliche Handoff bleibt darunter lesbar, weil er den Zustand des
+QA-Durchgangs beschreibt.
+
+Was die Behebung über diesen Durchgang hinaus ergab: **der von der QA gemeldete
+Grund für F-1 war nur die Hälfte.** Dieselbe Abfrage filterte zusätzlich auf
+`project_id` — eine Spalte, die `dependencies` **nicht hat** —, PostgREST
+antwortete mit einem Fehler, und weil der **nicht geprüft** wurde, entstand
+daraus eine stille leere Kaskade. Auch mit korrektem Typfilter hätte die Abfrage
+nie eine Zeile geliefert. AC-12, AC-13 und AC-14 sind in der Kette geführt
+(9 → 11/11), die Wächter-Erweiterung aus F-3 ist mit erledigt.
+
+*Ursprünglicher Handoff:* Zwei High-Funde, beide **nicht** in diesem Durchgang
+behoben (die QA findet und dokumentiert, sie repariert nicht): **PROJ-Y-155f**
+(Kantentypen in der Route) und **PROJ-Y-155g** (Einzel-Hook liest `settings`
+nicht, samt Wächter-Erweiterung aus F-3). Beide sind klein — eine Zeile für F-1,
+zwei für F-2, plus Wächter —, aber zusammen entscheiden sie, ob β.2 überhaupt
+etwas tut. Nach der Behebung sind AC-13 und AC-14 im Browser zu führen und AC-12
+erneut, weil er heute nur den einzigen erreichbaren Zweig belegt.
 
 ## Followups
 
