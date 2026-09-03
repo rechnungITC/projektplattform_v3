@@ -870,7 +870,28 @@ Deploy, aber sie sind nicht erledigt und hatten bis heute **keine** Followup-Ken
 
 ---
 
-## PROJ-160 — Supply-Chain-Remediation `browserslist` (In Progress)
+## PROJ-170 — Supply-Chain-Remediation `fast-uri` (Approved)
+
+- **`postcss-selector-parser@6.1.2` (GHSA-w9m9-85wc-3x92, CVSS 4.3) — unter der Schwelle,
+  bewusst nicht behoben.** Derselbe Restfund wie in PROJ-160 und aus demselben Grund: die
+  Hausnorm greift ab CVSS 7.0 bzw. Label HIGH/CRITICAL. **Lokal mit dem in CI gepinnten
+  Scanner vor und nach dem Fix gemessen** — vorher 8 Funde (4 × HIGH), nachher genau dieser
+  eine; keine Regression dieser Slice, und weiterhin kein In-Range-Weg in Sicht.
+  *Quelle: eigene Messung 2026-09-03, osv-scanner v2.5.0 gegen Vor- und Fixzustand.*
+- **Nicht zurückgestellt, sondern korrigiert:** der erste Entwurf der Spec nannte `qs` einen
+  „von außen erreichbaren Pfad" der MCP-Bridge. Nachgemessen importiert `src/` `express` an
+  **null** Stellen, und die MCP-Route lädt aus dem SDK nur `types.js` plus PROJ-48s eigenen
+  `OneShotTransport` — `express` und `qs` werden von unserem Code **nie geladen** (Kategorie
+  wie der `@hono/node-server`-Risk-Accept aus PROJ-140). Der Bump bleibt, seine Begründung
+  ist Hygiene statt Erreichbarkeit.
+- **Bookkeeping mit erledigt:** der Abschnittskopf von **PROJ-160** sagte weiter
+  „(In Progress)", während der INDEX `Deployed / full` führt — das ist **F-164.1**, der von
+  PROJ-164 benannte und bewusst offen gelassene Widerspruch. Er ist hier geschlossen, weil
+  diese Slice dieselbe Datei ohnehin anfasst und `check:register-consistency` ihn per Entwurf
+  **nicht** fängt (er vergleicht keine Zustände, sondern nur Paare — die Begründung „INDEX-
+  Status-Zellen sind Prosa" trägt für die Abschnittsköpfe des Registers gerade nicht).
+
+## PROJ-160 — Supply-Chain-Remediation `browserslist` (Deployed / full)
 
 - **`postcss-selector-parser@6.1.2` (GHSA-w9m9-85wc-3x92, CVSS 4.3) — unter der Schwelle,
   bewusst nicht behoben.** Der OSV-Scanner meldet ihn, der Gate lässt ihn durch: die Hausnorm
