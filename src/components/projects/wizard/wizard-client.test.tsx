@@ -95,7 +95,9 @@ vi.mock("./step-method", () => ({ StepMethod: () => <div /> }))
 vi.mock("./step-followups", () => ({ StepFollowups: () => <div /> }))
 vi.mock("./step-ma-foundation", () => ({ StepMaFoundation: () => <div /> }))
 vi.mock("./step-ki-backlog", () => ({ StepKiBacklog: () => <div /> }))
-vi.mock("./step-clarifying", () => ({ StepClarifying: () => <div /> }))
+vi.mock("./step-project-context", () => ({
+  StepProjectContext: () => <div />,
+}))
 vi.mock("./step-review", () => ({ StepReview: () => <div /> }))
 
 beforeAll(() => {

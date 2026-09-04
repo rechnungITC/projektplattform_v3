@@ -23,6 +23,7 @@ const draftReadChain = {
 const projectInsertChain = {
   insert: vi.fn().mockReturnThis(),
   select: vi.fn().mockReturnThis(),
+  eq: vi.fn().mockReturnThis(),
   single: vi.fn(),
 }
 
@@ -98,14 +99,19 @@ function ctx() {
 function seedHappyPath(draftData: Record<string, unknown>) {
   getUserMock.mockResolvedValue({ data: { user: { id: USER_ID } } })
   draftReadChain.maybeSingle.mockResolvedValue({
-    data: { id: DRAFT_ID, tenant_id: TENANT_ID, data: draftData },
+    data: {
+      id: DRAFT_ID,
+      tenant_id: TENANT_ID,
+      data: draftData,
+      updated_at: "2026-09-01T12:00:00.000Z",
+    },
     error: null,
   })
   projectInsertChain.single.mockResolvedValue({
     data: { id: PROJECT_ID, tenant_id: TENANT_ID, name: "X" },
     error: null,
   })
-  rpcMock.mockResolvedValue({ error: null })
+  rpcMock.mockImplementation((name: string) => Promise.resolve(rpcSuccess(name)))
   csUpdateResult = { data: null, error: null }
   csSelectResult = { data: null, error: null }
   kiRunsUpdateChain.is.mockResolvedValue({ data: null, error: null })
@@ -119,6 +125,7 @@ beforeEach(() => {
   draftReadChain.eq.mockReturnValue(draftReadChain)
   projectInsertChain.insert.mockReturnValue(projectInsertChain)
   projectInsertChain.select.mockReturnValue(projectInsertChain)
+  projectInsertChain.eq.mockReturnValue(projectInsertChain)
   contextSourceChain.select.mockReturnValue(contextSourceChain)
   contextSourceChain.update.mockReturnValue(contextSourceChain)
   contextSourceChain.eq.mockReturnValue(contextSourceChain)
@@ -128,6 +135,12 @@ beforeEach(() => {
   draftDeleteChain.delete.mockReturnValue(draftDeleteChain)
   draftDeleteChain.eq.mockResolvedValue({ data: null, error: null })
 })
+
+function rpcSuccess(name: string) {
+  return name === "finalize_project_wizard_with_context"
+    ? { data: { project_id: PROJECT_ID, created: true }, error: null }
+    : { data: null, error: null }
+}
 
 describe("POST finalize — auth + validation", () => {
   it("401 when not signed in", async () => {
@@ -328,7 +341,7 @@ describe("POST finalize — PROJ-141-γ2 template-apply warning (M-2)", () => {
       Promise.resolve(
         name === "apply_ma_project_template"
           ? { error: { message: "boom" } }
-          : { error: null },
+          : rpcSuccess(name),
       ),
     )
     const res = await POST(makeRequest(), ctx())
@@ -383,7 +396,7 @@ describe("POST finalize — PROJ-141-γ2 template-apply warning (M-2)", () => {
               },
               error: null,
             }
-          : { error: null },
+          : rpcSuccess(name),
       ),
     )
     const res = await POST(makeRequest(), ctx())
@@ -435,7 +448,7 @@ describe("POST finalize — PROJ-Y-96b template_result + RACI warnings", () => {
               },
               error: null,
             }
-          : { error: null },
+          : rpcSuccess(name),
       ),
     )
     const res = await POST(makeRequest(), ctx())
@@ -493,7 +506,7 @@ describe("POST finalize — PROJ-Y-96b template_result + RACI warnings", () => {
               },
               error: null,
             }
-          : { error: null },
+          : rpcSuccess(name),
       ),
     )
     const res = await POST(makeRequest(), ctx())
@@ -519,7 +532,7 @@ describe("POST finalize — PROJ-Y-96b template_result + RACI warnings", () => {
       Promise.resolve(
         name === "apply_ma_project_template"
           ? { error: { message: "boom" } }
-          : { error: null },
+          : rpcSuccess(name),
       ),
     )
     const res = await POST(makeRequest(), ctx())
@@ -594,7 +607,7 @@ describe("POST finalize — PROJ-78 skill assignment (step 4.4)", () => {
       Promise.resolve(
         name === "assign_project_skills"
           ? { error: { message: "boom" } }
-          : { error: null },
+          : rpcSuccess(name),
       ),
     )
     const res = await POST(makeRequest(), ctx())

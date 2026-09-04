@@ -46,6 +46,14 @@ import {
   type SkillAssignmentSource,
 } from "@/types/project-skill"
 import {
+  PROJECT_CONTEXT_ANALYSIS_STATUSES,
+  PROJECT_CONTEXT_COVERAGE_STATES,
+  PROJECT_CONTEXT_REASON_CODES,
+  PROJECT_CONTEXT_STATEMENT_ORIGINS,
+  emptyProjectContextData,
+  type ProjectContextData,
+} from "@/types/project-context"
+import {
   WIZARD_STEP_LABELS,
   emptySkillsWizardData,
   emptyWizardData,
@@ -55,11 +63,11 @@ import {
 } from "@/types/wizard"
 
 import { StepBasics } from "./step-basics"
-import { StepClarifying } from "./step-clarifying"
 import { StepFollowups } from "./step-followups"
 import { StepKiBacklog } from "./step-ki-backlog"
 import { StepMaFoundation } from "./step-ma-foundation"
 import { StepMethod } from "./step-method"
+import { StepProjectContext } from "./step-project-context"
 import { StepReview } from "./step-review"
 import { StepSkills } from "./step-skills"
 import { StepType } from "./step-type"
@@ -127,6 +135,44 @@ const wizardSchema = z.object({
     confidentiality_level: z.enum(["standard", "confidential", "strict"]),
     // PROJ-96 — optional project template applied on finalize (copy-on-create).
     template_id: z.string().uuid().nullable(),
+  }),
+  // PROJ-Y-5a — unified, fully manual-capable Project-context draft block.
+  project_context: z.object({
+    summary: z.string().max(20000),
+    statements: z.array(
+      z.object({
+        id: z.string(),
+        text: z.string().max(10000),
+        origin: z.enum(PROJECT_CONTEXT_STATEMENT_ORIGINS),
+        source_label: z.string().max(255),
+        confirmed: z.boolean(),
+        affected_skill_version_ids: z.array(z.string()),
+      }),
+    ),
+    turns: z.array(
+      z.object({
+        id: z.string(),
+        role: z.enum(["user", "assistant"]),
+        content: z.string().max(10000),
+        status: z.enum(["complete", "interrupted"]),
+      }),
+    ),
+    skill_coverage: z.array(
+      z.object({
+        skill_id: z.string().uuid(),
+        skill_version_id: z.string().uuid().nullable(),
+        skill_name: z.string().max(255),
+        state: z.enum(PROJECT_CONTEXT_COVERAGE_STATES),
+        evidence_statement_ids: z.array(z.string()),
+        stale: z.boolean(),
+      }),
+    ),
+    gaps: z.array(z.string().max(2000)),
+    assumptions: z.array(z.string().max(2000)),
+    contradictions: z.array(z.string().max(2000)),
+    analysis_status: z.enum(PROJECT_CONTEXT_ANALYSIS_STATUSES),
+    reason_code: z.enum(PROJECT_CONTEXT_REASON_CODES).nullable(),
+    finished: z.boolean(),
   }),
   // PROJ-135 — optional clarifying-questions block (draft JSON passthrough).
   clarifying: z
@@ -233,6 +279,8 @@ export function WizardClient({ draftId }: WizardClientProps) {
           form.reset({
             ...existing.data,
             skills: existing.data.skills ?? emptySkillsWizardData(),
+            project_context:
+              existing.data.project_context ?? emptyProjectContextData(),
           })
           setLastSeenUpdatedAt(existing.updated_at)
         } else {
@@ -295,6 +343,72 @@ export function WizardClient({ draftId }: WizardClientProps) {
     [tenantId, draftIdState, lastSeenUpdatedAt]
   )
 
+  const requestProjectContextQuestion = React.useCallback(async () => {
+    const saved = await persistDraft(form.getValues(), { silent: true })
+    if (!saved) return null
+    try {
+      const response = await fetch(
+        `/api/wizard-drafts/${encodeURIComponent(saved.id)}/project-context/next-question`,
+        {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            request_id: crypto.randomUUID(),
+            expected_updated_at: saved.updated_at,
+          }),
+        },
+      )
+      const body = (await response.json()) as {
+        error?: { message?: string }
+        question?: string | null
+        rationale?: string | null
+        turn?: {
+          id: string
+          role: "assistant"
+          content: string
+          status: "complete"
+        }
+        status?: string
+        reason_code?: ProjectContextData["reason_code"]
+        updated_at?: string
+      }
+      if (!response.ok) {
+        if (response.status === 409) {
+          setConflict({ draftId: saved.id, message: body.error?.message ?? "Konflikt" })
+        }
+        throw new Error(body.error?.message ?? `HTTP ${response.status}`)
+      }
+      if (body.updated_at) setLastSeenUpdatedAt(body.updated_at)
+      if (body.turn) {
+        const current = form.getValues().project_context
+        const alreadyPresent = current.turns.some((turn) => turn.id === body.turn?.id)
+        form.setValue(
+          "project_context",
+          {
+            ...current,
+            turns: alreadyPresent ? current.turns : [...current.turns, body.turn],
+            analysis_status:
+              body.status === "success" ? "ai_analyzed" : "ai_interrupted",
+            reason_code: body.reason_code ?? null,
+            finished: false,
+          },
+          { shouldDirty: false },
+        )
+      }
+      return {
+        question: body.question ?? null,
+        rationale: body.rationale ?? null,
+        reason_code: body.reason_code ?? null,
+      }
+    } catch (error) {
+      toast.error("KI-Frage konnte nicht erzeugt werden", {
+        description:
+          error instanceof Error ? error.message : "Bitte manuell fortfahren.",
+      })
+      return null
+    }
+  }, [form, persistDraft])
+
   const reloadFromConflict = React.useCallback(async () => {
     if (!conflict) return
     try {
@@ -305,6 +419,8 @@ export function WizardClient({ draftId }: WizardClientProps) {
         form.reset({
           ...fresh.data,
           skills: fresh.data.skills ?? emptySkillsWizardData(),
+          project_context:
+            fresh.data.project_context ?? emptyProjectContextData(),
         })
         setLastSeenUpdatedAt(fresh.updated_at)
         setConflict(null)
@@ -412,8 +528,9 @@ export function WizardClient({ draftId }: WizardClientProps) {
           // Optional step — upload is not required (user may skip). The
           // upload itself is validated inline in the step component.
           return true
-        case "clarifying":
-          // PROJ-135 — optional, always skippable; never blocks "Weiter".
+        case "project_context":
+          // PROJ-Y-5a — gaps are guidance, never a creation gate. Leaving the
+          // step persists an honest incomplete/manual record.
           return true
         case "review":
           return true
@@ -665,8 +782,8 @@ export function WizardClient({ draftId }: WizardClientProps) {
             <StepMaFoundation tenantId={tenantId} />
           ) : step === "ki_backlog" ? (
             <StepKiBacklog tenantId={tenantId} />
-          ) : step === "clarifying" ? (
-            <StepClarifying draftId={draftIdState} />
+          ) : step === "project_context" ? (
+            <StepProjectContext onRequestAiQuestion={requestProjectContextQuestion} />
           ) : (
             <StepReview
               projectTypeOverride={

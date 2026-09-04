@@ -1,16 +1,18 @@
 /**
  * PROJ-5 — wizard data types.
  *
- * `WizardData` is the accumulator across all 5 steps. `WizardDraft` is the
- * persisted-server representation; in the frontend phase it lives in
- * localStorage, the /backend phase moves it to the `project_wizard_drafts`
- * Supabase table with RLS.
+ * `WizardData` is the accumulator across the creation steps. `WizardDraft` is
+ * the owner-scoped representation persisted in `project_wizard_drafts`.
  */
 
 import type { ProjectMethod } from "@/types/project-method"
 import type { ProjectType } from "@/types/project"
 import { type MaFoundationData, emptyMaFoundationData } from "@/types/ma-project"
 import type { SkillAssignmentSource } from "@/types/project-skill"
+import {
+  emptyProjectContextData,
+  type ProjectContextData,
+} from "@/types/project-context"
 
 export const WIZARD_STEPS = [
   "basics",
@@ -20,7 +22,7 @@ export const WIZARD_STEPS = [
   "skills",
   "ma_foundation",
   "ki_backlog",
-  "clarifying",
+  "project_context",
   "review",
 ] as const
 
@@ -34,16 +36,18 @@ export const WIZARD_STEP_LABELS: Record<WizardStep, string> = {
   skills: "Skills",
   ma_foundation: "M&A-Grundlage",
   ki_backlog: "KI-Backlog",
-  clarifying: "Rückfragen",
+  project_context: "Projektkontext",
   review: "Review",
 }
 
 /**
- * PROJ-70-ε / PROJ-94 / PROJ-135 — three CONDITIONAL steps:
+ * PROJ-70-ε / PROJ-94 / PROJ-Y-5a — two conditional steps and one shared
+ * context step:
  * - `ki_backlog` appears only when the user enabled the toggle.
  * - `ma_foundation` appears only for `project_type === 'ma'`.
- * - `clarifying` appears only once a kickoff artefact has actually been
- *   UPLOADED (a `context_source_id` exists).
+ * - `project_context` is unconditional after skills and the optional kickoff;
+ *   it absorbs the visible PROJ-135 question round when a source exists and
+ *   remains a complete manual path when it does not.
  * Everything else is always in the flow; the full `WIZARD_STEPS` catalog drives
  * the stepper/labels.
  *
@@ -55,12 +59,11 @@ export const WIZARD_STEP_LABELS: Record<WizardStep, string> = {
 export function visibleWizardSteps(
   kiBacklogEnabled: boolean,
   projectType?: ProjectType | null,
-  kickoffUploaded = false,
+  _kickoffUploaded = false,
 ): WizardStep[] {
   return WIZARD_STEPS.filter((s) => {
     if (s === "ki_backlog") return kiBacklogEnabled
     if (s === "ma_foundation") return projectType === "ma"
-    if (s === "clarifying") return kickoffUploaded
     return true
   })
 }
@@ -91,7 +94,7 @@ export interface WizardData {
   // PROJ-78 — the skill set chosen in the "Skills" step. Auto-resolved from
   // method + project_type (plus cross-cutting skills), de-selectable, and
   // extendable from the catalog. Lives in the draft's passthrough JSON; on
-  // finalize the backend calls `assign_project_skills` (best-effort).
+  // finalize resolves and assigns the exact active versions atomically.
   skills: SkillsWizardData
 
   // PROJ-70-ε — optional KI-Backlog generation from a kickoff artefact.
@@ -103,14 +106,17 @@ export interface WizardData {
 
   // PROJ-94 — strategic foundation for the conditional `ma_foundation` step.
   // Only meaningful when `project_type === 'ma'`. Lives in the passthrough
-  // JSON payload; finalize reads it and calls `create_ma_project_profile`.
+  // JSON payload; atomic finalize creates the profile in the same transaction.
   ma_foundation: MaFoundationData
 
-  // PROJ-135 — optional dialogic clarifying-questions answers. Populated by
-  // the (β) `clarifying` wizard step; on finalize the answered Q&A is appended
-  // to the kickoff context_source's content_excerpt. Lives in the draft's
-  // passthrough JSON — no DB schema change. Optional: absent for the manual
-  // (no-kickoff) path and for pre-PROJ-135 drafts.
+  // PROJ-Y-5a — the unified, resumable Project-context step. This is required
+  // for new drafts; hydration backfills the empty shape for legacy drafts.
+  project_context: ProjectContextData
+
+  // PROJ-135 legacy block. Pre-PROJ-Y-5a drafts may carry answers from the old
+  // visible `clarifying` step; Project-context adapts them into one conversation
+  // while the current finalize backend keeps its deployed compatibility path.
+  // Optional: absent for manual/no-kickoff and pre-PROJ-135 drafts.
   clarifying?: ClarifyingData
 }
 
@@ -183,6 +189,7 @@ export function emptyWizardData(responsibleUserId: string): WizardData {
     skills: emptySkillsWizardData(),
     ki_backlog: emptyKiBacklogData(),
     ma_foundation: emptyMaFoundationData(),
+    project_context: emptyProjectContextData(),
   }
 }
 

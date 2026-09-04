@@ -38,6 +38,7 @@ import {
   Users,
   Workflow,
   MessageSquare,
+  BookOpenText,
 } from "lucide-react"
 
 import type { MethodConfig, SidebarSection } from "@/types/method-config"
@@ -334,6 +335,16 @@ const PROJECT_SKILLS_SECTION: SidebarSection = {
   tabPath: "skills",
 }
 
+// PROJ-Y-5a — reviewed, durable project context. CORE for all project types;
+// the summary follows normal project access while the page's raw-transcript
+// response is narrowed independently by the backend.
+const PROJECT_CONTEXT_SECTION: SidebarSection = {
+  id: "project-context",
+  label: "Projektkontext",
+  icon: BookOpenText,
+  tabPath: "projektkontext",
+}
+
 // PROJ-132 — the "Operatives Reporting" section: weekly-steering operative
 // bundle (overdue tasks / open findings by severity / Q&A status / deliverable
 // status) with filters + CSV/PDF export. Project-TYPE driven (M&A); read-only
@@ -395,6 +406,7 @@ function withMaFoundation(config: MethodConfig): MethodConfig {
       ...sections.slice(0, insertAt),
       DMS_DOCUMENTS_SECTION,
       PROJECT_SKILLS_SECTION,
+      PROJECT_CONTEXT_SECTION,
       MA_FOUNDATION_SECTION,
       MA_PHASE_MODEL_SECTION,
       MA_STAGE_GATES_SECTION,

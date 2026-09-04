@@ -230,7 +230,11 @@ No new npm packages. Everything is already installed:
 
 ### Open follow-ups (deferred)
 - 90-day auto-purge cron for stale drafts.
-- KI-Dialog (F2.1b) entry-page toggle (gated by PROJ-12).
+- KI-Dialog (F2.1b) → als **PROJ-Y-5a** am 2026-08-31 in eine freigegebene,
+  architected eigenständige Slice überführt: adaptiver, skill-gesteuerter
+  Detaildialog **nach** Typ-/Methoden-/Skill-Auswahl, mit optionalem
+  Kickoff-Kontext und dauerhafter Dokumentation auch ohne KI-Anbieter. Siehe
+  [PROJ-Y-5a](PROJ-Y-5a-skill-guided-project-creation-dialog.md).
 - Move ERP-specific Step-4 answers from `type_specific_data` JSONB into a per-type table (PROJ-15).
 
 ## QA Test Results

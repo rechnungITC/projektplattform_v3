@@ -24,6 +24,7 @@ describe("visibleWizardSteps — AC-ε1 conditional step", () => {
       "method",
       "followups",
       "skills",
+      "project_context",
       "review",
     ])
   })
@@ -37,9 +38,8 @@ describe("visibleWizardSteps — AC-ε1 conditional step", () => {
 
   it("preserves the canonical order of the other steps in both modes", () => {
     for (const enabled of [true, false]) {
-      // project_type 'ma' + kickoffUploaded=true so ma_foundation AND clarifying
-      // are both present; order is checked against the full catalog minus the
-      // ki_backlog toggle.
+      // project_type 'ma' includes ma_foundation; project_context is always
+      // present. Order is checked against the full catalog minus ki_backlog.
       const steps = visibleWizardSteps(enabled, "ma", true)
       const withoutKi = steps.filter((s) => s !== "ki_backlog")
       expect(withoutKi).toEqual(
@@ -62,9 +62,10 @@ describe("visibleWizardSteps — PROJ-94 M&A conditional step", () => {
     expect(steps).toContain("ma_foundation")
     // PROJ-78 — the "skills" step was inserted between followups and ma_foundation.
     expect(steps.indexOf("ma_foundation")).toBe(steps.indexOf("skills") + 1)
-    // With ki_backlog off and no kickoff uploaded, ma_foundation is the last
-    // step before review.
-    expect(steps.indexOf("ma_foundation")).toBe(steps.indexOf("review") - 1)
+    // The shared context step follows every type-specific foundation.
+    expect(steps.indexOf("project_context")).toBe(
+      steps.indexOf("ma_foundation") + 1,
+    )
   })
 
   it("places ma_foundation before ki_backlog when both are active", () => {
@@ -77,24 +78,27 @@ describe("visibleWizardSteps — PROJ-94 M&A conditional step", () => {
   })
 })
 
-describe("visibleWizardSteps — PROJ-135 clarifying step (AC-135.3)", () => {
-  it("omits clarifying when no kickoff was uploaded", () => {
-    expect(visibleWizardSteps(true, null, false)).not.toContain("clarifying")
-    expect(visibleWizardSteps(false, null, false)).not.toContain("clarifying")
+describe("visibleWizardSteps — PROJ-Y-5a unified project context", () => {
+  it("includes project context with and without a kickoff", () => {
+    expect(visibleWizardSteps(true, null, false)).toContain("project_context")
+    expect(visibleWizardSteps(false, null, true)).toContain("project_context")
   })
 
-  it("includes clarifying (after ki_backlog, before review) once a kickoff is uploaded", () => {
+  it("places project context after the optional kickoff and before review", () => {
     const steps = visibleWizardSteps(true, null, true)
-    expect(steps).toContain("clarifying")
-    expect(steps.indexOf("clarifying")).toBe(steps.indexOf("ki_backlog") + 1)
-    expect(steps.indexOf("clarifying")).toBe(steps.indexOf("review") - 1)
+    expect(steps.indexOf("project_context")).toBe(
+      steps.indexOf("ki_backlog") + 1,
+    )
+    expect(steps.indexOf("project_context")).toBe(
+      steps.indexOf("review") - 1,
+    )
   })
 
-  it("can show clarifying even if the ki_backlog toggle filter is off but a source exists", () => {
-    // Defensive: kickoffUploaded drives clarifying independently of the toggle.
-    const steps = visibleWizardSteps(false, null, true)
-    expect(steps).toContain("clarifying")
-    expect(steps).not.toContain("ki_backlog")
+  it("absorbs the old visible clarifying step", () => {
+    const steps = visibleWizardSteps(true, null, true)
+    expect(steps).not.toContain("clarifying")
+    expect(steps).toContain("ki_backlog")
+    expect(visibleWizardSteps(false, null, true)).toContain("project_context")
   })
 })
 
@@ -133,11 +137,11 @@ describe("ki_backlog draft round-trip (AC-ε6)", () => {
     )
   })
 
-  it("a disabled block round-trips to a 6-step flow", () => {
+  it("a disabled block round-trips to a 7-step flow", () => {
     const data = emptyWizardData("u")
     const roundTripped = JSON.parse(JSON.stringify(data)) as WizardData
-    // basics, type, method, followups, skills, review (PROJ-78 added skills).
-    expect(visibleWizardSteps(roundTripped.ki_backlog.enabled)).toHaveLength(6)
+    // basics, type, method, followups, skills, project_context, review.
+    expect(visibleWizardSteps(roundTripped.ki_backlog.enabled)).toHaveLength(7)
   })
 })
 
@@ -163,6 +167,15 @@ describe("PROJ-78 — unconditional skills step", () => {
     const data = emptyWizardData("11111111-1111-1111-1111-111111111111")
     expect(data.skills).toEqual(emptySkillsWizardData())
     expect(data.skills.assignments).toEqual([])
+  })
+
+  it("starts with a manual-capable empty project context", () => {
+    const data = emptyWizardData("11111111-1111-1111-1111-111111111111")
+    expect(data.project_context.analysis_status).toBe(
+      "captured_not_ai_analyzed",
+    )
+    expect(data.project_context.skill_coverage).toEqual([])
+    expect(data.project_context.finished).toBe(false)
   })
 
   it("survives the draft JSON round-trip", () => {
