@@ -1,8 +1,8 @@
 # PROJ-Y-5a: Skill-Guided Project Creation Dialog
 
-## Status: Approved
+## Status: Deployed
 
-## Deployment Scope: —
+## Deployment Scope: alpha
 
 **Created:** 2026-08-31
 **Last Updated:** 2026-09-01
@@ -1039,3 +1039,37 @@ stehen bereits in der Spec und bleiben offen.
 ## Deployment
 
 _To be added by /deploy._
+
+**Ausgeliefert 2026-09-04: Tag `v3.7.0-PROJ-Y-5a` auf dem Merge-Commit `555dcb8`
+(PR #545, squash), alle zehn CI-Checks grün.**
+
+Die Migration lag seit dem 2026-09-04 in Prod (registriert `20260904072715`,
+Name = Repo-Dateistamm, PROJ-134-konform); der Merge liefert damit die
+**Anwendungsschicht** und löst einen halben Zustand auf, in dem die Datenschicht
+live war und über HTTP nichts davon erreichbar.
+
+**Scope `alpha`, aus den Kriterien statt aus Vorsicht:**
+
+- **`full` scheidet aus**, weil **AC-Y5a.18** eine **ursprüngliche** Anforderung
+  ist, deren zweite Hälfte (Bearbeiten und Supersedieren auditierbar)
+  zurückgestellt und mit Ziel-Kennung **PROJ-Y-5a-β** registriert ist. „Waived
+  criterion" scheitert schon an seiner ersten Bedingung („nothing was
+  deferred").
+- **`mvp` scheidet aus**, weil hinter der Grenze mit **β** ein *namentlich
+  geführter* Sub-Slice steht — wörtlich die `alpha`-Definition (Präzedenz
+  PROJ-80-α, PROJ-79-α).
+- **`tooling-only` scheidet aus**, weil Produkt-Laufzeitfähigkeit geliefert wird.
+
+**Die gelieferte Grenze:** ein adaptiver, skill-gesteuerter Detailfragen-Dialog in
+der Projektanlage, der den Kontext **dokumentiert** — auch ohne KI, und dann
+ehrlich als „erfasst, nicht KI-analysiert" gekennzeichnet. Nicht dabei: das
+Bearbeiten der Dokumentation nach der Anlage (β), Erzeuger für Annahmen und
+Widersprüche (β), und ein KI-Weg, der Aussagen selbst schreibt — die KI erzeugt
+in α ausschliesslich Fragen, nie Fakten.
+
+**Zwei Nachweisgrenzen bleiben und sind keine zurückgestellten Anforderungen:**
+kein echter Anbieter-Lauf (kein Schlüssel, kein lokales Ollama — der Kernpfad
+„Frage rein → Modellfrage raus" ist nie gegen ein Modell gelaufen) und kein
+angemeldeter Browser-Durchlauf der Kette Wizard → Dialog → Review → Finalize.
+Belegt sind Datenschicht (22 Vektoren gegen Prod), Routen, Komponenten und die
+Auth-Gates — nicht ihre Verkettung im Browser.
