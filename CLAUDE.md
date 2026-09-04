@@ -359,6 +359,20 @@ filename order and a reorder can make a fresh apply fail where prod passed.
 **`moddatetime` must be schema-qualified** — `extensions.moddatetime`. The bare form resolves in prod
 but not in the schema-drift shadow DB.
 
+**The neighbouring rule — `search_path` on new functions.** Measured across the 250 migration files:
+**347** declarations in 159 of them — `set search_path = public, pg_temp` **215×**, `= public` 73×,
+`= 'public', 'pg_temp'` 53×, `= public, extensions` 6×. Keep that form. Since 2026-09-04 Supabase's own
+Postgres guidance (installed in user scope at `~/.claude/skills/supabase-postgres-best-practices/`;
+other tools may see it elsewhere or not at all) teaches `set search_path = ''`. That is **stricter, not
+wrong** — an empty path forces full qualification and would have made the `moddatetime` incident above
+impossible. The hazard is mixing the two: under `''` any unqualified reference to a `public` object
+fails to resolve (built-ins in `pg_catalog` still do), **including one injected later by an
+anchor-replacement** — which is exactly how deployed functions get patched here (last rule of this
+section). So: new functions take the house form; if you deliberately choose `''`, fully qualify the
+whole body *and* say so in the migration header, because the next slice will anchor-replace into it.
+Unlike its neighbours this rule traces to **no** incident — it is preventive, and the point is to keep
+it that way.
+
 **Live RPC smoke is mandatory before Approved.** Mocked route tests have twice masked a broken prod RPC.
 Every new `SECURITY DEFINER` RPC gets one real call against the live DB. Pentests live in
 `tests/sql/PROJ-X-*-pentest.sql` and follow the DO-block + nested-`EXCEPTION` + rollback-marker pattern
