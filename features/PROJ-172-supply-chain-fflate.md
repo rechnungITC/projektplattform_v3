@@ -1,7 +1,7 @@
 # PROJ-172 — Supply-Chain-Remediation `fflate`
 
-## Status: In Progress
-## Deployment Scope: —
+## Status: Deployed
+## Deployment Scope: full
 
 Der Required Check `OSV scan of the dependency lockfile` ist auf **`main` selbst**
 rot, und aufgefallen ist es an einer **fremden PR ohne `package.json`-Diff**
@@ -145,7 +145,13 @@ Branch. Die Versionen sind nach `rm -rf node_modules && npm ci` **aus
 Der **erste** `audit:prod`-Lauf meldete `exit=1` und hätte die Lage als „beide
 Gates rot" erscheinen lassen. Der Wiederholungslauf mit derselben Befehlszeile
 meldet `exit=0` bei identischer Ausgabe — der erste Lauf war ein
-Netz-/Registry-Aussetzer (er lief vorher in ein 120-s-Zeitlimit). Belastbar ist
+Registry-Aussetzer (er lief vorher in ein 120-s-Zeitlimit). **Der Mechanismus ist
+inzwischen belegt statt vermutet:** derselbe Fehlschlag trat am selben Tag in CI
+auf und zeigt dort seinen Grund — `npm warn audit 503 Service Unavailable` vom
+Advisory-Endpunkt, gefolgt von `npm error audit endpoint returned an error` und
+exit 1. `npm audit` unterscheidet also **nicht** zwischen „Advisory gefunden" und
+„Endpunkt nicht erreichbar"; ein Netzausfall meldet sich als
+Sicherheitsfehlschlag. Belastbar ist
 erst die zweite Messung, und sie deckt sich mit CI: auf #548 ist
 `npm audit production dependencies` **pass** und nur `OSV scan` **fail**.
 
@@ -190,3 +196,59 @@ sähen dann wie *besser* aus (PROJ-Y-143e-Falle).
   `node_modules` misst den Zustand *vor* dem Fix (PROJ-149-Lehre).
 - **AC-172.7** `package.json` trägt genau die Änderung, die der gewählte Weg
   verlangt, mit Begründung in dieser Spec; kein `src/`-Diff, keine Migration.
+
+## Auslieferung
+
+**Ausgeliefert 2026-09-04: Tag `v3.3.0-PROJ-172` auf dem Merge-Commit `36def36`
+(PR #549, squash), alle zehn CI-Checks grün.**
+
+Der Merge **ist** die Auslieferung. Der tragende Nachweis ist **das Gate selbst
+in der Umgebung, in der es sperrt**: `OSV scan of the dependency lockfile` meldete
+auf #549 **pass**, unmittelbar nachdem derselbe Job auf `main` rot war — damit ist
+die Blockade aller offenen PRs aufgehoben, was der Zweck der Slice war. Ein
+HTTP-Smoke wäre gegenstandslos (keine Route, keine Zeile Produktivcode); dass der
+Bump **baut**, belegt der grüne Vercel-Check aus dem Stand **mit** dem neuen
+Lockfile.
+
+**Ein Betriebsbefund unterwegs, der nicht dieser Slice gehört:** zwei der fünf
+Datei-Wächter meldeten auf #549 zunächst `fail` — nachgelesen waren sie
+**`cancelled`**, abgebrochen im Schritt `Install dependencies` nach gut fünf
+Minuten, bei einem Job-Limit von `timeout-minutes: 5`. Alle fünf Wächter sind
+identisch konfiguriert, und `token-drift` kam im selben Lauf mit **4m24s** durch
+(auf #548 traf es vier, auf #545 zwei).
+
+**Die naheliegende Erklärung „das Budget ist aufgebraucht" ist dabei genau das,
+was PROJ-173 erst messen muss** — denn am selben Tag scheiterte auf #544 der
+`npm audit`-Job mit `503 Service Unavailable` von npms Advisory-Endpunkt und
+brauchte dafür **fünf Minuten** (08:50:20 → 08:55:21). Eine gestörte
+npm-Registry erklärt beide Symptome auf einmal: langsame Installationen, die
+gegen die Fünf-Minuten-Wand laufen, **und** einen Netzausfall, der sich als
+Sicherheitsfehlschlag liest. Ob das Limit strukturell zu knapp ist oder heute
+nur das Gegenüber langsam war, ist damit offen und gehört gemessen, nicht
+behauptet. Weil GitHub ein `cancelled` als **fail** meldet,
+sperrt das Ruleset dann eine PR, an der nichts falsch ist. Hier per Neustart
+gelöst, die Ursache als eigene Slice **PROJ-173** aufgesetzt — sie gehört nicht in
+einen Supply-Chain-Fix.
+
+**Präzisierung, am Ruleset nachgelesen statt angenommen:** von den fünf Wächtern
+sind nur **drei** Required Checks (`index-scope`, `migration-naming`,
+`register-consistency`); `token-drift` und `function-inventory` laufen auf jeder
+PR, sind aber **nicht enrolled** — die Auslieferungsnotizen von PROJ-Y-51d und
+PROJ-Y-148e sagen das ausdrücklich. Ein Abbruch dieser beiden **sperrt** also
+nicht, er zeigt nur rot. Das mindert die Dringlichkeit, nicht den Befund: ein
+Required Check, der ohne Sachgrund rot wird, sperrt; und ein nicht-enrollter, der
+ohne Sachgrund rot wird, erzieht dazu, rote Wächter zu übersehen — die andere
+Richtung desselben Schadens.
+
+## Scope-Begründung
+
+**`full`.** Alle sieben Kriterien sind erfüllt, **nichts** ist zurückgestellt.
+`tooling-only` trifft **nicht** zu — es verlangt einen Ausgang in „repository
+tooling, CI, tests, or workflow", hier wechselt eine **Produktions**-Laufzeit-
+Abhängigkeit (`@react-three/drei` steht in `dependencies`); gleiche Einordnung wie
+PROJ-140 · 146 · 149 · 160 · 170. `mvp` und `alpha` behaupten zurückgestellte,
+namentlich geführte Arbeit, die es nicht gibt. Der Fund **unterhalb** der Schwelle
+(`postcss-selector-parser`) ist **kein** zurückgestelltes Kriterium: AC-172.2
+verlangt nur seine **Benennung**, und die ist erfolgt — samt der Messung, dass er
+vor **und** nach dem Fix vorlag. Die Waiver-Ausnahme wurde nicht in Anspruch
+genommen und war nicht nötig.
