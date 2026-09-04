@@ -75,6 +75,30 @@ einem Aufruf hängen — schlimmstenfalls rund 3,5 Minuten für drei Versuche pl
 etwa eine Minute Ausweichlauf. Das Budget wird also durch **Konstruktion**
 eingehalten statt durch eine höhere Zahl.
 
+## Was in CI belegt ist — und was nicht
+
+Der erste Lauf des neuen Gates in CI (PR #553, Job 101012094095) nahm den
+**sauberen Pfad**: `npm-audit-gate: OK — production tree audited, nothing at HIGH
+or above (none)` in **2,4 Sekunden**, der Ausweichschritt wurde übersprungen.
+
+Das belegt den Normalfall in der Umgebung, in der es zählt, und es lässt eine
+Lücke offen, die hier ausgesprochen statt gerundet wird: **der Ausweichpfad ist in
+CI nicht ausgeübt worden.** Belegt sind seine zwei Hälften einzeln — der
+**Auslöser** lokal gegen eine tatsächlich unerreichbare Registry (drei Versuche,
+Rücklauf, `exit 2`), und der **Rumpf** ist der byte-gleiche, gepinnte OSV-Block,
+den der Geschwister-Job auf jeder PR grün fährt. Die **Verkettung** der beiden in
+CI ist es nicht. Sie zu erzwingen hätte eine Teständerung im Workflow verlangt,
+also genau die Art Eingriff, die man an einem Sicherheits-Gate nicht als Beifang
+mitnimmt.
+
+**Eine Beobachtung, die zur Vorsicht mahnt:** derselbe Endpunkt antwortete dem
+GitHub-Runner um 11:47 in Millisekunden, während er meinem Rechner um 11:36 und
+11:41 gar nicht antwortete — und umgekehrt lief er meinem Rechner um 11:33 sauber
+durch, während CI ihn um 09:30 und 11:3x nicht erreichte. Ob das zeitliches
+Flattern ist oder vom Netzweg abhängt, ist aus diesen Daten **nicht** zu trennen;
+sicher ist nur, dass beide Seiten ihn zeitweise nicht erreichen. Genau deshalb ist
+die Antwort Widerstandsfähigkeit und nicht „warten, bis es wieder geht".
+
 ## Akzeptanzkriterien
 
 - **AC-Y173a.1** Das Urteil wird aus dem Bericht abgeleitet, nicht aus dem
@@ -95,3 +119,6 @@ eingehalten statt durch eine höhere Zahl.
 - **AC-Y173a.8** Ende-zu-Ende gegen den **echten** Ausfall gefahren, nicht gegen
   eine Nachstellung.
 - **AC-Y173a.9** Kein `src/`-Diff, keine Migration, kein neues Laufzeit-Paket.
+- **AC-Y173a.10** Der Normalfall ist **in CI** belegt. Der Ausweichpfad ist es
+  **nicht** — seine zwei Hälften sind einzeln belegt, ihre Verkettung in CI
+  bleibt offen und ist als Grenze benannt statt als erfüllt gebucht.
