@@ -29,6 +29,19 @@
 /** Where a ref was found. `worktree` means a branch currently checked out somewhere. */
 export type RefKind = "worktree" | "tag" | "branch-local" | "branch-remote"
 
+/**
+ * Where a *documentary* claim was found — a source that says the id already denotes something,
+ * even when no ref exists any more.
+ *
+ * PROJ-175: the guard used to read git refs only, and git refs are exactly what a merge destroys.
+ * On 2026-09-04 it reported `PROJ-171` as free two hours after PR #548 had consumed it, because
+ * GitHub deletes the head branch on merge. The INDEX row caught it; the guard did not.
+ */
+export type RecordKind = "index-row" | "spec-file" | "id-pointer" | "prose"
+
+/** Any place a claim can come from — a live ref or a written record. */
+export type ClaimKind = RefKind | RecordKind
+
 export type RefInput = {
   kind: RefKind
   /** Branch or tag name exactly as git reports it. */
@@ -55,7 +68,7 @@ export type Severity = "block" | "warn" | "info"
 
 export type Finding = {
   severity: Severity
-  kind: RefKind
+  kind: ClaimKind
   /** The ref that matched. */
   name: string
   /** Canonical slice id the ref resolved to. */
@@ -338,4 +351,147 @@ export function analyzeCollision(rawSlice: string, refs: RefInput[], nowIso: str
     related,
     blocked: findings.some((f) => f.severity === "block"),
   }
+}
+
+/* ------------------------------------------------------------------------------------------------
+ * PROJ-175 — documentary claims
+ *
+ * The guard answered one question ("is anybody on this slice?") in words that read like the answer
+ * to another ("is this id available?"). Three occurrences, measured 2026-09-04:
+ *
+ *   PROJ-171     INDEX row 1, spec file 1, prose 7,  refs 0  -> reported `free`   (assignment, 2026-09-04)
+ *   PROJ-Y-151b  INDEX row 1, spec file 1, prose 34, refs 2  -> blocked today     (PROJ-Y-150e)
+ *   PROJ-159     INDEX row 0, spec file 0, prose 37, refs 0  -> reported `free`   (PROJ-163)
+ *
+ * There is no single source that covers them: PROJ-171 needs the INDEX row, PROJ-159 needs the prose
+ * and nothing else. Hence four sources.
+ *
+ * Every one of them is `info`, and that is measured rather than cautious. Over the last 200 PR
+ * branches, 44 of 77 distinct ids (57 %) were branched more than once — 133 branches, 66 % of all
+ * PRs, `proj-45` alone 17 times — and all of those ids carry an INDEX row. A blocking rule would
+ * have refused two thirds of the real work; a `warn` would shout on two thirds of all runs. Either
+ * one trains people to ignore the guard, the failure PROJ-150 was written to avoid. What changes is
+ * the closing sentence: it may no longer say `free` about an id that is already written down.
+ * ---------------------------------------------------------------------------------------------- */
+
+/** What the driver read from the repository, already reduced to counts and locations. */
+export type RecordInput = {
+  /** 1-based line numbers of `| <ID> |` rows in features/INDEX.md. */
+  indexRowLines: number[]
+  /** Spec file names under features/ whose name starts with the id. */
+  specFiles: string[]
+  /** The `## Next Available ID: PROJ-N` pointer, verbatim, or null when unreadable. */
+  nextAvailableId: string | null
+  /** Prose hits per file, already excluding the id's own INDEX row and the pointer line. */
+  prose: { file: string; hits: number }[]
+}
+
+/**
+ * Builds the pattern that finds an id as written in prose.
+ *
+ * The trailing lookahead is the whole point: without it `PROJ-15` matches inside `PROJ-151`,
+ * `PROJ-153` and `PROJ-155`, and every short id looks claimed. Rejecting a following hyphen also
+ * keeps `proj-45` from matching its own sub-slices (`PROJ-45-δ`), which the `related` section
+ * already reports separately.
+ */
+export function recordIdPattern(slice: string): RegExp {
+  const m = /^proj-(y-)?(\d+)([a-z])?(?:-(.+))?$/.exec(slice)
+  if (!m) throw new Error(`not a canonical slice id: ${slice}`)
+  const [, y, num, letter, sub] = m
+
+  let body = `proj-?${y ? "y-?" : ""}${num}${letter ?? ""}`
+  if (sub) {
+    // A sub-slice is written either as the word or as the glyph it was folded from.
+    const glyph = Object.entries(GREEK).find(([, word]) => word === sub)?.[0]
+    const alts = glyph ? `${sub}|${glyph}` : sub.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")
+    body += `-(?:${alts})`
+  }
+  return new RegExp(`${body}(?![0-9A-Za-z-])`, "gi")
+}
+
+/**
+ * True when a plain top-level id sits below the `Next Available ID` pointer, i.e. it was handed out
+ * already.
+ *
+ * Only bare `proj-<n>` ids are judged. A `PROJ-Y-` followup or a lettered sub-slice belongs to a
+ * feature that already exists, so the pointer says nothing about it.
+ */
+/**
+ * Same id, but for file names — where a hyphen legitimately follows (`PROJ-171-spec-followup.md`).
+ *
+ * The prose pattern rejects a trailing hyphen so that `proj-45` does not match `PROJ-45-δ`. Reusing
+ * it here silently found nothing, which is why this is a separate function rather than a flag.
+ */
+export function fileNameIdPattern(slice: string): RegExp {
+  const src = recordIdPattern(slice).source.replace(/\(\?!\[0-9A-Za-z-\]\)$/, "")
+  return new RegExp(`^(?:${src})(?:-|$)`, "i")
+}
+
+export function isBelowPointer(slice: string, pointer: string | null): boolean {
+  if (!pointer) return false
+  const self = /^proj-(\d+)$/.exec(slice)
+  const ptr = /proj-(\d+)/i.exec(pointer)
+  if (!self || !ptr) return false
+  return Number(self[1]) < Number(ptr[1])
+}
+
+/**
+ * Turns the documentary sources into findings. Never blocking — see the block comment above.
+ */
+export function analyzeRecordClaims(slice: string, records: RecordInput): Finding[] {
+  const out: Finding[] = []
+
+  if (records.indexRowLines.length > 0) {
+    const where = records.indexRowLines.map((l) => `features/INDEX.md:${l}`).join(", ")
+    out.push({
+      severity: "info",
+      kind: "index-row",
+      name: where,
+      slice,
+      detail:
+        "the portfolio index already carries a row for this id — it denotes existing work, so it " +
+        "is not available for a new slice",
+    })
+  }
+
+  for (const file of records.specFiles) {
+    out.push({
+      severity: "info",
+      kind: "spec-file",
+      name: `features/${file}`,
+      slice,
+      detail: "a feature spec is filed under this id",
+    })
+  }
+
+  if (isBelowPointer(slice, records.nextAvailableId)) {
+    out.push({
+      severity: "info",
+      kind: "id-pointer",
+      name: records.nextAvailableId ?? "",
+      slice,
+      detail: "this id is below the Next Available ID pointer, so it was handed out earlier",
+    })
+  }
+
+  const proseHits = records.prose.reduce((sum, p) => sum + p.hits, 0)
+  if (proseHits > 0) {
+    const top = records.prose
+      .slice()
+      .sort((a, b) => b.hits - a.hits)
+      .slice(0, 3)
+      .map((p) => `${p.file} (${p.hits})`)
+      .join(", ")
+    out.push({
+      severity: "info",
+      kind: "prose",
+      name: top,
+      slice,
+      detail:
+        `${proseHits} mention(s) in features/ and docs/ — an id promised in prose is taken even ` +
+        "without a ref (PROJ-159 was referenced 37 times and reported free, PROJ-163)",
+    })
+  }
+
+  return out
 }
