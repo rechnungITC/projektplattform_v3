@@ -2,6 +2,11 @@ import { describe, expect, it } from "vitest"
 
 import {
   analyzeCollision,
+  analyzeRecordClaims,
+  fileNameIdPattern,
+  isBelowPointer,
+  recordIdPattern,
+  type RecordInput,
   canonicalizeSliceId,
   extractSliceIds,
   FRESH_TAG_HOURS,
@@ -282,5 +287,129 @@ describe("analyzeCollision", () => {
 
   it("refuses an argument that carries no slice id instead of scanning for nothing", () => {
     expect(() => analyzeCollision("not-a-slice", [], NOW)).toThrow(/no slice id/)
+  })
+})
+
+/* -------------------------------------------------------------------------------------------- *
+ * PROJ-175 — documentary claims
+ * -------------------------------------------------------------------------------------------- */
+
+const NO_RECORDS: RecordInput = {
+  indexRowLines: [],
+  specFiles: [],
+  nextAvailableId: null,
+  prose: [],
+}
+
+describe("recordIdPattern", () => {
+  // AC-175.7. Without the trailing lookahead every short id looks claimed, because `PROJ-15`
+  // sits inside `PROJ-151`, `PROJ-153` and `PROJ-155` — all three exist in this repo.
+  it("does not confuse a short id with a longer one", () => {
+    const p = () => new RegExp(recordIdPattern("proj-15").source, "gi")
+    expect(p().test("PROJ-151")).toBe(false)
+    expect(p().test("PROJ-153")).toBe(false)
+    expect(p().test("PROJ-155")).toBe(false)
+    expect(p().test("PROJ-15 ")).toBe(true)
+  })
+
+  it("finds the id in a table cell and next to punctuation", () => {
+    const p = () => new RegExp(recordIdPattern("proj-171").source, "gi")
+    expect(p().test("| PROJ-171 | **Followup** |")).toBe(true)
+    expect(p().test("(PROJ-171)")).toBe(true)
+    expect(p().test("siehe PROJ-171.")).toBe(true)
+  })
+
+  // A sub-slice is a sibling, and siblings already have their own section in the report.
+  it("does not read a sub-slice as its parent", () => {
+    const p = () => new RegExp(recordIdPattern("proj-45").source, "gi")
+    expect(p().test("PROJ-45-δ")).toBe(false)
+    expect(p().test("PROJ-Y-45p")).toBe(false)
+    expect(p().test("PROJ-45 ")).toBe(true)
+  })
+
+  it("accepts a greek sub-slice as glyph or as word", () => {
+    const p = () => new RegExp(recordIdPattern("proj-45-delta").source, "gi")
+    expect(p().test("PROJ-45-δ")).toBe(true)
+    expect(p().test("PROJ-45-delta")).toBe(true)
+  })
+})
+
+describe("fileNameIdPattern", () => {
+  // F-175.1: reusing the prose pattern here found nothing, because its lookahead rejects the very
+  // hyphen a spec file name carries. The failure was invisible — it looked like "no spec exists".
+  it("matches a spec file name, where a hyphen legitimately follows", () => {
+    const p = fileNameIdPattern("proj-171")
+    expect(p.test("PROJ-171-spec-followup-register-consistency")).toBe(true)
+    expect(p.test("PROJ-171")).toBe(true)
+    expect(p.test("PROJ-1710-something")).toBe(false)
+  })
+})
+
+describe("isBelowPointer", () => {
+  // The pointer stood at PROJ-174 while PROJ-171 was requested — the cheapest signal for the case
+  // that opened this slice.
+  it("recognises a top-level id handed out earlier", () => {
+    expect(isBelowPointer("proj-171", "PROJ-174")).toBe(true)
+    expect(isBelowPointer("proj-174", "PROJ-174")).toBe(false)
+    expect(isBelowPointer("proj-180", "PROJ-174")).toBe(false)
+  })
+
+  // A followup or a sub-slice belongs to a feature that already exists, so the pointer — which
+  // only ever names the next *top-level* number — says nothing about it.
+  it("stays silent for followups and sub-slices", () => {
+    expect(isBelowPointer("proj-y-151b", "PROJ-174")).toBe(false)
+    expect(isBelowPointer("proj-45-delta", "PROJ-174")).toBe(false)
+  })
+
+  it("is silent when the pointer is unreadable", () => {
+    expect(isBelowPointer("proj-171", null)).toBe(false)
+  })
+})
+
+describe("analyzeRecordClaims", () => {
+  // AC-175.2. Measured: 44 of 77 distinct ids over the last 200 PRs were branched more than once
+  // (133 branches, 66 % of all PRs), and every one of those ids carries an INDEX row. Blocking or
+  // even warning on that would refuse or shout at two thirds of the real work.
+  it("never blocks and never warns, whatever it finds", () => {
+    const findings = analyzeRecordClaims("proj-171", {
+      indexRowLines: [266],
+      specFiles: ["PROJ-171-spec.md"],
+      nextAvailableId: "PROJ-175",
+      prose: [{ file: "features/INDEX.md", hits: 3 }],
+    })
+    expect(findings).toHaveLength(4)
+    expect(findings.every((f) => f.severity === "info")).toBe(true)
+  })
+
+  it("says nothing about an id no record mentions", () => {
+    expect(analyzeRecordClaims("proj-999", NO_RECORDS)).toEqual([])
+  })
+
+  // AC-175.4 — the case that opened the slice: merged PR, branch deleted, no ref left.
+  it("reports the index row with its line number", () => {
+    const [f] = analyzeRecordClaims("proj-171", { ...NO_RECORDS, indexRowLines: [266] })
+    expect(f.kind).toBe("index-row")
+    expect(f.name).toBe("features/INDEX.md:266")
+  })
+
+  // AC-175.5 — PROJ-159 was promised 37 times in prose with no INDEX row and no spec file at all.
+  // Prose is the only source that covers it.
+  it("reports prose alone, naming the loudest files", () => {
+    const findings = analyzeRecordClaims("proj-159", {
+      ...NO_RECORDS,
+      prose: [
+        { file: "features/INDEX.md", hits: 12 },
+        { file: "features/PROJ-158-postfach-anbindung.md", hits: 15 },
+        { file: "features/PROJ-163-grill-me-skill.md", hits: 5 },
+        { file: "docs/PRD.md", hits: 1 },
+      ],
+    })
+    expect(findings).toHaveLength(1)
+    expect(findings[0].kind).toBe("prose")
+    expect(findings[0].detail).toContain("33 mention(s)")
+    // Sorted by loudness and capped at three, so the line stays readable.
+    expect(findings[0].name).toBe(
+      "features/PROJ-158-postfach-anbindung.md (15), features/INDEX.md (12), features/PROJ-163-grill-me-skill.md (5)"
+    )
   })
 })

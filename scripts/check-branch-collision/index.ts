@@ -3,8 +3,15 @@
  *
  * Usage:  npm run check:branch-collision -- PROJ-Y-45p
  *
- * Read-only git queries — no network, no DB, no secrets. Run it BEFORE opening a branch or worktree
- * for a slice. It answers one question: is anybody on this slice already?
+ * Read-only queries against git and two tracked files — no network, no DB, no secrets. Run it
+ * BEFORE opening a branch or worktree for a slice.
+ *
+ * It answers TWO questions, and PROJ-175 exists because they used to be conflated:
+ *   1. Is anybody holding this slice right now?  -> live refs, decides the exit code.
+ *   2. Does this id already denote something?    -> written records, reported only.
+ *
+ * On 2026-09-04 it said `free` about PROJ-171 two hours after PR #548 had consumed the id: the
+ * merge had deleted the branch, so no ref remained. Question 2 is what catches that.
  *
  * Deliberately not a CI check. Measured on 2026-08-26: the repo carries 27 unmerged remote branches,
  * of which roughly six groups share a slice id purely as months-old debris (`proj-34` alone has
@@ -14,8 +21,18 @@
  * already paid for.
  */
 import { execFileSync } from "node:child_process"
+import { readdirSync, readFileSync } from "node:fs"
+import { join } from "node:path"
 
-import { analyzeCollision, type RefInput } from "./analyze"
+import {
+  analyzeCollision,
+  analyzeRecordClaims,
+  canonicalizeSliceId,
+  fileNameIdPattern,
+  recordIdPattern,
+  type RecordInput,
+  type RefInput,
+} from "./analyze"
 
 function git(args: string[]): string {
   try {
@@ -101,6 +118,103 @@ function collectTags(): RefInput[] {
   return out
 }
 
+/**
+ * Reads the written records that claim an id. Fail-open throughout: a source that cannot be read
+ * degrades the report, because a guard that cannot answer must not block work it knows nothing
+ * about (same rule as `git()` above).
+ */
+function collectRecords(repoRoot: string, requested: string): RecordInput {
+  const empty: RecordInput = { indexRowLines: [], specFiles: [], nextAvailableId: null, prose: [] }
+  if (repoRoot === "") return empty
+
+  // `requested` is whatever the caller typed (`PROJ-171`, a branch name, …); recordIdPattern
+  // needs the canonical form. Getting this wrong is invisible: the throw lands in the fail-open
+  // branch and the report simply says "nothing found".
+  const canonical = canonicalizeSliceId(requested)
+  if (!canonical) return empty
+  let pattern: RegExp
+  try {
+    pattern = recordIdPattern(canonical)
+  } catch {
+    return empty
+  }
+  const hits = (text: string): number => (text.match(new RegExp(pattern.source, "gi")) ?? []).length
+
+  const indexPath = join(repoRoot, "features", "INDEX.md")
+  const indexRowLines: number[] = []
+  let nextAvailableId: string | null = null
+  const skipLines = new Set<number>()
+  let indexText = ""
+  try {
+    indexText = readFileSync(indexPath, "utf8")
+  } catch {
+    indexText = ""
+  }
+  indexText.split("\n").forEach((line, i) => {
+    const lineNo = i + 1
+    if (/^##\s*Next Available ID/i.test(line)) {
+      nextAvailableId = line.replace(/^##\s*Next Available ID:?\s*/i, "").trim()
+      // The pointer names an id by definition; counting it as prose would make every fresh id
+      // look claimed.
+      skipLines.add(lineNo)
+      return
+    }
+    // Only the FIRST cell counts as a row for this id — a mention deeper in the prose of some
+    // other row is prose, not a row.
+    const firstCell = /^\|([^|]*)\|/.exec(line)
+    if (firstCell && hits(firstCell[1]) > 0) {
+      indexRowLines.push(lineNo)
+      skipLines.add(lineNo)
+    }
+  })
+
+  let specFiles: string[] = []
+  try {
+    const filePattern = fileNameIdPattern(canonical)
+    specFiles = readdirSync(join(repoRoot, "features")).filter((f) =>
+      f.endsWith(".md") ? filePattern.test(f.replace(/\.md$/, "")) : false
+    )
+  } catch {
+    specFiles = []
+  }
+
+  const prose: { file: string; hits: number }[] = []
+  const walk = (dir: string, rel: string): void => {
+    let entries
+    try {
+      entries = readdirSync(join(repoRoot, dir), { withFileTypes: true })
+    } catch {
+      return
+    }
+    for (const e of entries) {
+      const childRel = rel === "" ? e.name : `${rel}/${e.name}`
+      if (e.isDirectory()) {
+        walk(join(dir, e.name), childRel)
+        continue
+      }
+      if (!e.name.endsWith(".md")) continue
+      const full = join(repoRoot, dir, e.name)
+      let text = ""
+      try {
+        text = readFileSync(full, "utf8")
+      } catch {
+        continue
+      }
+      const isIndex = full === indexPath
+      let n = 0
+      text.split("\n").forEach((line, i) => {
+        if (isIndex && skipLines.has(i + 1)) return
+        n += hits(line)
+      })
+      if (n > 0) prose.push({ file: childRel, hits: n })
+    }
+  }
+  walk("features", "features")
+  walk("docs", "docs")
+
+  return { indexRowLines, specFiles, nextAvailableId, prose }
+}
+
 function main(argv: string[]): number {
   const requested = argv[0]
   if (!requested) {
@@ -114,12 +228,16 @@ function main(argv: string[]): number {
   const localMerged = collectMerged(["branch", "--merged", "origin/main", "--format=%(refname:short)"])
   const remoteMerged = collectMerged(["branch", "-r", "--merged", "origin/main", "--format=%(refname:short)"])
 
+  const repoRoot = selfWorktree()
+
   const refs: RefInput[] = [
-    ...collectWorktrees(selfWorktree()),
+    ...collectWorktrees(repoRoot),
     ...collectRefs("refs/heads", "branch-local", localMerged),
     ...collectRefs("refs/remotes/origin", "branch-remote", remoteMerged),
     ...collectTags(),
   ]
+
+  const records = collectRecords(repoRoot, requested)
 
   let analysis
   try {
@@ -146,6 +264,14 @@ function main(argv: string[]): number {
     if (related.length > 10) process.stdout.write(`    … and ${related.length - 10} more\n`)
   }
 
+  const recordFindings = analyzeRecordClaims(slice, records)
+  if (recordFindings.length > 0) {
+    process.stdout.write(`\n  this id is already written down (never blocking — see analyze.ts):\n`)
+    for (const r of recordFindings) {
+      process.stdout.write(`    ${r.kind}: ${r.name} — ${r.detail}\n`)
+    }
+  }
+
   const blocks = findings.filter((f) => f.severity === "block").length
   const warns = findings.filter((f) => f.severity === "warn").length
   process.stdout.write(
@@ -161,7 +287,21 @@ function main(argv: string[]): number {
     )
     return 1
   }
-  process.stdout.write("branch-collision: free — nobody is holding this slice.\n")
+  if (recordFindings.length > 0) {
+    // The load-bearing change of PROJ-175. The old sentence — "free — nobody is holding this
+    // slice" — was true about refs and read as "the id is available", which is what nearly caused
+    // a fourth double assignment after PROJ-Y-1, PROJ-Y-151d and PROJ-145.
+    const where = recordFindings.map((r) => r.kind).join(", ")
+    process.stdout.write(
+      `branch-collision: NOT free — no live claim, but this id is already documented (${where}). ` +
+        "Nobody is holding it, and it is not available for a new slice: pick the id behind " +
+        "`Next Available ID` in features/INDEX.md.\n"
+    )
+    return 0
+  }
+  process.stdout.write(
+    "branch-collision: free — nobody is holding this slice, and no record claims the id.\n"
+  )
   return 0
 }
 
