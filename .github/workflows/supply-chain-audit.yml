@@ -32,8 +32,57 @@ jobs:
       - name: Install dependencies
         run: npm ci --no-audit --no-fund
 
+      # PROJ-Y-173a: the verdict comes from the REPORT, not from npm's exit code.
+      # `npm audit` exits 1 both when it finds an advisory and when it cannot reach
+      # npm's advisory endpoint — measured 2026-09-04, while the registry itself
+      # answered HTTP 200 in 0.07s. A required security check that reads an outage
+      # as "security problem" teaches people to click red security gates away.
+      #
+      # The gate retries, then reports exit 2 for "endpoint unreachable", which is
+      # explicitly NOT a clean bill of health — it is an unanswered question, and
+      # the fallback step below has to answer it from the second source.
       - name: Audit production dependency tree
-        run: npm run audit:prod
+        id: audit
+        run: |
+          set +e
+          npm run check:npm-audit-gate
+          code=$?
+          set -e
+          echo "outcome=$code" >> "$GITHUB_OUTPUT"
+          # 0 clean, 1 findings or unclassifiable (fail-closed), 2 endpoint down.
+          if [ "$code" -eq 2 ]; then exit 0; fi
+          exit "$code"
+
+      # Coverage, not a waiver. If npm's endpoint is down we still owe an answer,
+      # and PROJ-147 put a second, independent advisory source in place for exactly
+      # this. It runs here in the same job so this job's own conclusion stays
+      # honest: if OSV also fails, this job fails. No `continue-on-error` anywhere —
+      # that would rebuild the decorative gate PROJ-147 removed.
+      #
+      # Named residual risk: OSV and npm are different databases. An advisory only
+      # npm knows would pass unseen for the duration of the outage. That is a
+      # smaller hole than either blocking every PR on a foreign outage or waving
+      # the check through blind, and it is bounded by the outage.
+      - name: Fallback coverage via OSV when npm's advisory endpoint is down
+        if: steps.audit.outputs.outcome == '2'
+        env:
+          OSV_SCANNER_VERSION: v2.5.0
+        run: |
+          echo "::warning::npm's advisory endpoint was unreachable across every attempt. This job did NOT audit against npm's database; coverage for this run comes from the OSV scanner instead. Re-run once npm recovers if you want both sources."
+          base="https://github.com/google/osv-scanner/releases/download/${OSV_SCANNER_VERSION}"
+          curl -fsSL -O "${base}/osv-scanner_linux_amd64"
+          curl -fsSL -O "${base}/osv-scanner_SHA256SUMS"
+          grep 'osv-scanner_linux_amd64$' osv-scanner_SHA256SUMS | sha256sum -c -
+          chmod +x osv-scanner_linux_amd64
+          set +e
+          ./osv-scanner_linux_amd64 scan -L package-lock.json --format json > osv-fallback.json
+          code=$?
+          set -e
+          if [ "$code" -ne 0 ] && [ "$code" -ne 1 ]; then
+            echo "::error::fallback osv-scanner exited with $code, which is not a findings result — no coverage was obtained"
+            exit "$code"
+          fi
+          npm run check:osv-gate -- osv-fallback.json
 
   # Account-free second opinion, replacing the decorative Snyk check (PROJ-147).
   #
