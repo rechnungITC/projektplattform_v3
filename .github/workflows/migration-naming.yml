@@ -27,7 +27,7 @@ jobs:
           cache: "npm"
 
       - name: Install dependencies
-        run: npm ci
+        run: npm ci --no-audit --no-fund
 
       # Pure file analysis — no database / Docker. Hard-fails on duplicate
       # 14-digit version prefixes (the PROJ-69/PROJ-89 collision that breaks

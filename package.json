@@ -29,7 +29,8 @@
     "check:branch-collision": "tsx scripts/check-branch-collision/index.ts",
     "hooks:install": "node scripts/hooks/install-git-hooks.mjs",
     "hooks:uninstall": "node scripts/hooks/install-git-hooks.mjs --uninstall",
-    "verify:pdf-render": "node scripts/verify-pdf-render.mjs"
+    "verify:pdf-render": "node scripts/verify-pdf-render.mjs",
+    "check:npm-audit-gate": "tsx scripts/npm-audit-gate/index.ts"
   },
   "dependencies": {
     "@ai-sdk/anthropic": "^3.0.72",
