@@ -304,6 +304,7 @@ einen eigenen QA-/Deploy-Pass. Wo das zutrifft, ist es unten als „Upgrade-Kand
 | PROJ-131 | full | — | PROJ-131-β / PROJ-Y-131a / 131b als Erweiterungen |
 | PROJ-132 | full | — | — |
 | PROJ-Y-96b | full | — | PROJ-Y-96d als Erweiterung |
+| PROJ-Y-5a | alpha | AC-Y5a.18 zur Hälfte (Lesen belegt; **Bearbeiten und Supersedieren** zurückgestellt — `supersedes_revision_id` ohne Schreiber, kein Audit-Trigger auf den vier Tabellen) | **PROJ-Y-5a-β** — offen |
 | PROJ-Y-96e | mvp | AC8 halb (Estimated-Days-Passthrough, Zielspalte fehlt) | PROJ-Y-96e-e1 — offen |
 
 ## Tranche 4 (PROJ-Y-145b) — Kern PROJ-1–50: Scope je Zeile und Quell-AC der Auslassung

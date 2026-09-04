@@ -26,6 +26,8 @@ import { Badge } from "@/components/ui/badge"
 import { Button } from "@/components/ui/button"
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
 import { Progress } from "@/components/ui/progress"
+import { ReasonBanner } from "@/components/projects/ai-proposals/reason-banner"
+import { reasonCodeToBanner } from "@/lib/ai-proposals/reason-code-banner"
 import {
   Select,
   SelectContent,
@@ -384,6 +386,8 @@ export function StepProjectContext({ onRequestAiQuestion }: StepProjectContextPr
     .reverse()
     .find((turn) => turn.role === "assistant" && turn.status === "complete")
 
+  const reasonBanner = reasonCodeToBanner(context.reason_code)
+
   return (
     <div className="space-y-5" data-testid="wizard-project-context-step">
       <Alert>
@@ -396,15 +400,31 @@ export function StepProjectContext({ onRequestAiQuestion }: StepProjectContextPr
         </AlertDescription>
       </Alert>
 
-      <Alert variant="default" data-testid="project-context-manual-status">
-        <ShieldCheck className="h-4 w-4" aria-hidden />
-        <AlertTitle>Manuelle Erfassung aktiv</AlertTitle>
-        <AlertDescription>
-          Der Kontext wird vollständig dokumentiert, auch wenn keine
-          KI-Analyse erfolgt. Er wird deshalb ehrlich als „erfasst, nicht
-          KI-analysiert“ gekennzeichnet.
-        </AlertDescription>
-      </Alert>
+      {/* AC-Y5a.20 — der handlungsleitende Grund, warum keine KI-Frage kam.
+          Ohne ihn ist „Nächste KI-Frage" ein stiller Knopf: die Route antwortet
+          200 mit `question: null`, der Nutzer sieht nichts. Genau die Klasse,
+          gegen die PROJ-137 gebaut wurde — deshalb dessen Renderpfad
+          wiederverwendet statt eines zweiten. */}
+      {reasonBanner !== null ? (
+        <ReasonBanner
+          banner={reasonBanner}
+          testId="project-context-reason-banner"
+        />
+      ) : null}
+
+      {/* Nur zeigen, wenn er auch zutrifft: nach einem gelungenen KI-Turn ist
+          „Manuelle Erfassung aktiv" schlicht falsch. */}
+      {context.analysis_status !== "ai_analyzed" ? (
+        <Alert variant="default" data-testid="project-context-manual-status">
+          <ShieldCheck className="h-4 w-4" aria-hidden />
+          <AlertTitle>Manuelle Erfassung aktiv</AlertTitle>
+          <AlertDescription>
+            Der Kontext wird vollständig dokumentiert, auch wenn keine
+            KI-Analyse erfolgt. Er wird deshalb ehrlich als „erfasst, nicht
+            KI-analysiert“ gekennzeichnet.
+          </AlertDescription>
+        </Alert>
+      ) : null}
 
       <Card>
         <CardHeader className="pb-3">

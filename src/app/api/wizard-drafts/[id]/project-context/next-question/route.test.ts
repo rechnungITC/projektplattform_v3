@@ -104,4 +104,122 @@ describe("POST next project-context question", () => {
       expect.objectContaining({ purpose: "skill_context_clarification", count: 1 }),
     )
   })
+
+  // AC-Y5a.21 — der Klassifizierer sieht den KOMPLETTEN ausgehenden Prompt.
+  //
+  // Die Slice packt Rahmen, Kickoff, Verlauf UND die unveränderlichen
+  // Skill-Anweisungen in EINEN String und übergibt ihn als `content_excerpt` —
+  // genau das Feld, das klassifiziert wird. Verschiebt jemand die
+  // Skill-Anweisungen in ein eigenes Prompt-Feld, wird der Klassifizierer für
+  // sie blind, und Class-3-Inhalte gingen am Gate VORBEI statt durch es
+  // hindurch. Das ist kein erfundenes Risiko: PROJ-Y-151e/151f war exakt dieser
+  // Fehler im Projekt-Chat und im Quintessenz-Zweck.
+  //
+  // Das Tech Design dieser Slice listet diesen Nachweis als Pflicht; er fehlte.
+  it("hands the classifier the whole outbound prompt, skill instructions included", async () => {
+    const SKILL_ID = "33333333-3333-4333-8333-333333333333"
+    const VERSION_ID = "44444444-4444-4444-8444-444444444444"
+    const SKILL_MARKDOWN = "Frage nach dem Ansprechpartner, z. B. per E-Mail."
+
+    const draftChain = {
+      select: vi.fn().mockReturnThis(),
+      eq: vi.fn().mockReturnThis(),
+      update: vi.fn().mockReturnThis(),
+      maybeSingle: vi
+        .fn()
+        .mockResolvedValueOnce({
+          data: {
+            id: DRAFT_ID,
+            tenant_id: "tenant",
+            updated_at: UPDATED_AT,
+            data: {
+              name: "ERP-Ablösung",
+              description: "Altsystem ersetzen",
+              project_type: "erp",
+              project_method: "waterfall",
+              skills: {
+                assignments: [
+                  { skill_id: SKILL_ID, assignment_source: "manual_pm" },
+                ],
+              },
+              project_context: {
+                summary: "",
+                statements: [],
+                turns: [],
+                skill_coverage: [],
+                gaps: [],
+                assumptions: [],
+                contradictions: [],
+                analysis_status: "captured_not_ai_analyzed",
+                reason_code: null,
+                finished: false,
+              },
+            },
+          },
+          error: null,
+        })
+        .mockResolvedValueOnce({
+          data: { updated_at: "2026-09-01T12:00:01.000Z" },
+          error: null,
+        }),
+    }
+
+    /** Resolves like a PostgREST builder once awaited. */
+    function listChain(rows: unknown[]) {
+      const chain: Record<string, unknown> = {}
+      for (const method of ["select", "eq", "in", "limit"]) {
+        chain[method] = vi.fn(() => chain)
+      }
+      chain.then = (resolve: (value: unknown) => unknown) =>
+        resolve({ data: rows, error: null })
+      return chain
+    }
+
+    // Dispatch by TABLE, never by call order: an order-based mock silently
+    // hands the wrong rows to the wrong query as soon as anyone reorders them.
+    getAuthMock.mockResolvedValue({
+      userId: "user",
+      supabase: {
+        from: vi.fn((table: string) => {
+          if (table === "skills") {
+            return listChain([
+              { id: SKILL_ID, name: "Stakeholder-Klärung", current_version_id: VERSION_ID },
+            ])
+          }
+          if (table === "skill_versions") {
+            return listChain([
+              {
+                id: VERSION_ID,
+                skill_id: SKILL_ID,
+                version_number: 3,
+                markdown_content: SKILL_MARKDOWN,
+              },
+            ])
+          }
+          return draftChain
+        }),
+      },
+    })
+    invokeMock.mockResolvedValue({
+      run_id: "run",
+      status: "external_blocked",
+      questions: [],
+      reason_code: "no_provider",
+      external_blocked: true,
+    })
+
+    await POST(
+      request({ request_id: REQUEST_ID, expected_updated_at: UPDATED_AT }),
+      { params: Promise.resolve({ id: DRAFT_ID }) },
+    )
+
+    expect(invokeMock).toHaveBeenCalledTimes(1)
+    const excerpt = invokeMock.mock.calls[0][0].context.context_source
+      .content_excerpt as string
+
+    // Alles, was rausgeht, muss auch im klassifizierten Strang stehen.
+    expect(excerpt).toContain(SKILL_MARKDOWN) // die eigentliche Zusicherung
+    expect(excerpt).toContain("ERP-Ablösung") // Rahmen
+    expect(excerpt).toContain("Altsystem ersetzen") // Vorhaben
+  })
 })

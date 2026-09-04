@@ -1,6 +1,6 @@
 # PROJ-Y-5a: Skill-Guided Project Creation Dialog
 
-## Status: In Review
+## Status: Approved
 
 ## Deployment Scope: —
 
@@ -97,98 +97,98 @@ the context was captured but not AI-analyzed.
 
 ### Entry point and context
 
-- [ ] **AC-Y5a.1:** The adaptive dialog appears in the project-creation flow
+- [x] **AC-Y5a.1:** The adaptive dialog appears in the project-creation flow
   only after project type, method, and the wizard skill selection have been
   resolved; it is part of the detail-question phase, not a separate entry mode.
-- [ ] **AC-Y5a.2:** Before its first question, the dialog receives the confirmed
+- [x] **AC-Y5a.2:** Before its first question, the dialog receives the confirmed
   wizard frame: project basics, type, method, deterministic PROJ-6 answers, and
   the exact selected skill versions.
-- [ ] **AC-Y5a.3:** If a kickoff source was uploaded, its permitted content and
+- [x] **AC-Y5a.3:** If a kickoff source was uploaded, its permitted content and
   existing PROJ-135 clarification context are included. Without a kickoff, the
   dialog remains available and relies on the wizard frame and user answers.
-- [ ] **AC-Y5a.4:** Information already established by a prior selection,
+- [x] **AC-Y5a.4:** Information already established by a prior selection,
   answer, or kickoff source is not asked again unless it is ambiguous,
   contradictory, stale, or insufficient for a selected skill. The dialog states
   why clarification is needed.
-- [ ] **AC-Y5a.5:** A kickoff-backed flow presents one coherent conversation;
+- [x] **AC-Y5a.5:** A kickoff-backed flow presents one coherent conversation;
   users are not required to complete a separate PROJ-135 question round and a
   second PROJ-Y-5a round over the same gaps.
 
 ### Adaptive skill coverage
 
-- [ ] **AC-Y5a.6:** Every question identifies the selected skill or shared
+- [x] **AC-Y5a.6:** Every question identifies the selected skill or shared
   context area whose gap it addresses. One question may satisfy multiple skills.
-- [ ] **AC-Y5a.7:** The dialog can ask follow-up questions based on prior user
+- [x] **AC-Y5a.7:** The dialog can ask follow-up questions based on prior user
   answers. It has no product-level fixed question count.
-- [ ] **AC-Y5a.8:** Each selected skill receives a visible coverage state:
+- [x] **AC-Y5a.8:** Each selected skill receives a visible coverage state:
   `sufficient`, `unknown`, `not_applicable`, `skipped`, or `needs_clarification`.
-- [ ] **AC-Y5a.9:** The normal completion condition is that no selected skill
+- [x] **AC-Y5a.9:** The normal completion condition is that no selected skill
   remains in `needs_clarification`. The user may nevertheless end the dialog at
   any time; unresolved areas are converted to documented `unknown` or `skipped`
   gaps rather than silently treated as sufficient.
-- [ ] **AC-Y5a.10:** The user can skip an individual question, answer "unknown",
+- [x] **AC-Y5a.10:** The user can skip an individual question, answer "unknown",
   or end the whole dialog. None of these actions prevents reaching Review or
   creating the project.
-- [ ] **AC-Y5a.11:** If no skills are selected, the dialog can still document
+- [x] **AC-Y5a.11:** If no skills are selected, the dialog can still document
   shared project context, clearly reports that no skill-specific coverage was
   evaluated, and does not invent a default skill assignment.
-- [ ] **AC-Y5a.12:** Provider timeout, cost-cap exhaustion, or an interrupted
+- [x] **AC-Y5a.12:** Provider timeout, cost-cap exhaustion, or an interrupted
   response cannot create an unbounded loop. The current conversation is saved
   and the user can continue manually, retry, or proceed with documented gaps.
 
 ### Documentation and provenance
 
-- [ ] **AC-Y5a.13:** The wizard draft stores the conversation, current coverage
+- [x] **AC-Y5a.13:** The wizard draft stores the conversation, current coverage
   states, and structured summary so a reload or later resume restores the same
   state without forcing regeneration.
-- [ ] **AC-Y5a.14:** Every documented statement distinguishes at least these
+- [x] **AC-Y5a.14:** Every documented statement distinguishes at least these
   origins: confirmed wizard selection, user-authored answer, kickoff evidence,
   and AI interpretation. AI interpretations are never labelled as user facts.
-- [ ] **AC-Y5a.15:** Any AI-derived interpretation that would populate or change
+- [x] **AC-Y5a.15:** Any AI-derived interpretation that would populate or change
   project master data requires explicit confirmation or editing by the user.
-- [ ] **AC-Y5a.16:** The Review step shows an editable structured summary, the
+- [x] **AC-Y5a.16:** The Review step shows an editable structured summary, the
   coverage state per selected skill, all unresolved gaps, and contradictions or
   assumptions requiring attention before the existing Create action.
-- [ ] **AC-Y5a.17:** Finalizing the wizard durably attaches the reviewed dialog
+- [x] **AC-Y5a.17:** Finalizing the wizard durably attaches the reviewed dialog
   documentation to the created project before the wizard draft is deleted. The
   project retains the summary, provenance, selected-skill coverage, unresolved
   gaps, and the status of AI analysis.
 - [ ] **AC-Y5a.18:** Project members with the applicable project access can read
   the retained documentation after creation. Editing or superseding it is
   auditable; history is not silently overwritten.
-- [ ] **AC-Y5a.19:** The documentation is created even when the dialog ran
+- [x] **AC-Y5a.19:** The documentation is created even when the dialog ran
   entirely without AI. In that case it is visibly marked `captured_not_ai_analyzed`
   and must not be presented as skill-validated or AI-complete.
 
 ### Provider failure and privacy
 
-- [ ] **AC-Y5a.20:** When no eligible provider is configured, external AI is
+- [x] **AC-Y5a.20:** When no eligible provider is configured, external AI is
   disabled, the cost cap is exhausted, or the provider fails, all user-entered
   context remains saved. The UI shows the actionable reason and offers the
   manual detail path without blocking finalize.
-- [ ] **AC-Y5a.21:** Privacy classification covers the complete outbound prompt:
+- [x] **AC-Y5a.21:** Privacy classification covers the complete outbound prompt:
   wizard values, kickoff content, conversation history, and all selected skill
   instructions. Omitting any of these inputs from classification is a failing
   security case.
-- [ ] **AC-Y5a.22:** Class-3 content follows the existing hard routing policy:
+- [x] **AC-Y5a.22:** Class-3 content follows the existing hard routing policy:
   no OpenAI-direct, Anthropic, or Google call; only the permitted local path or
   an attested EU-resident trusted processor may be used.
-- [ ] **AC-Y5a.23:** If Class-3 content has no permitted provider, the dialog
+- [x] **AC-Y5a.23:** If Class-3 content has no permitted provider, the dialog
   falls back to documented manual capture and reports `class3_blocked`; it never
   downgrades the classification or sends a reduced prompt to an external model.
-- [ ] **AC-Y5a.24:** Every AI call is tenant-scoped, cost-capped, and recorded
+- [x] **AC-Y5a.24:** Every AI call is tenant-scoped, cost-capped, and recorded
   with provider, model, privacy class, status, and typed reason code. An empty or
   interrupted result is always distinguishable from "no gaps found".
 
 ### Review and handoff
 
-- [ ] **AC-Y5a.25:** Confirmed structured values route into the same PROJ-5
+- [x] **AC-Y5a.25:** Confirmed structured values route into the same PROJ-5
   Review and finalize flow as manually entered values; no parallel project
   creation endpoint or silent mutation path is exposed to the user.
-- [ ] **AC-Y5a.26:** Exactly one project can be created from a finalized draft,
+- [x] **AC-Y5a.26:** Exactly one project can be created from a finalized draft,
   and failed finalization retains both the draft and dialog documentation for a
   safe retry.
-- [ ] **AC-Y5a.27:** The final Review differentiates required master-data gaps
+- [x] **AC-Y5a.27:** The final Review differentiates required master-data gaps
   that already block PROJ-5 finalization from optional skill-context gaps that
   are merely documented.
 
@@ -933,9 +933,108 @@ the strictest of the counters because those rows are append-only and permanent.
 The six DDL sabotages were rolled back too: 8 context policies, the evidence
 constraint present, 0 write grants for `authenticated`.
 
-## QA Test Results
+## QA Test Results — 2026-09-04
 
-_To be added by /qa._
+**Verdikt: 0 Critical / 0 High / 0 Medium offen → Approved.** Der Durchgang
+begann mit **1 High** und **1 Medium**; beide sind in der QA behoben, nicht
+zurückgestellt.
+
+**26 von 27 Kriterien erfüllt.** Offen bleibt allein **AC-Y5a.18** zur Hälfte:
+Lesen ist belegt (Routentests, Pentest **G/H/J/Q/R**), das **Bearbeiten und
+Supersedieren** ist zurückgestellt — `supersedes_revision_id` existiert ohne
+Schreiber, und auf den vier Tabellen liegt kein Audit-Trigger. Per Tech Design
+Sache von **β**, und der Grund, warum diese Slice `alpha` ist und nicht `full`.
+
+### Was in der QA gefunden und behoben wurde
+
+**F-A (High) — der Grund erreichte den Nutzer nie.** `reason_code` wurde von der
+Route geliefert, im Zod-Schema validiert, in den Entwurf geschrieben und in die
+Revision persistiert — und **an keiner Stelle gerendert**. Folge: ein Klick auf
+„Nächste KI-Frage" ohne Anbieter ergab HTTP 200 mit `question: null`, keinen
+Toast, keine Meldung. Ein stiller Knopf, und das ausgerechnet in der Slice, deren
+Alleinstellung Ehrlichkeit über fehlende KI ist. Wörtlich die Defektklasse, gegen
+die PROJ-137 gebaut wurde. **AC-Y5a.20 war damit unerfüllt.**
+
+Behoben durch **Wiederverwendung** von PROJ-137s `reasonCodeToBanner` +
+`<ReasonBanner>` statt einer zweiten Fassung — dessen ganzer Zweck war, dass es
+genau *einen* solchen Renderpfad gibt. Die Wertelisten decken sich exakt; dass
+die Slice mit `PROJECT_CONTEXT_REASON_CODES` eine Parallelkopie des Haustyps
+angelegt hat, ist ein eigener Followup (**PROJ-Y-5a-w3**).
+
+**F-B (Medium) — AC-Y5a.21 war unbewacht.** Die Klassifikation ist strukturell
+richtig: Rahmen, Kickoff, Verlauf **und Skill-Anweisungen** landen in *einem*
+String, der als `content_excerpt` klassifiziert wird — geprüft wird also genau
+das, was rausgeht. Nur hielt das **nichts** fest: der Routentest mockte den
+Generator vollständig weg. Verschiebt jemand die Skill-Anweisungen in ein eigenes
+Prompt-Feld, wird der Klassifizierer für sie blind und Class-3-Inhalte gingen am
+Gate **vorbei** statt hindurch — wörtlich PROJ-Y-151e/151f, eine Ebene weiter.
+Das Tech Design listet diesen Nachweis als **Pflicht**; er fehlte. Jetzt
+vorhanden, mit Rot-Grün.
+
+**F-H (Low) — „Manuelle Erfassung aktiv" rendert unbedingt**, auch nach einem
+gelungenen KI-Turn, und war dann schlicht falsch. Jetzt an
+`analysis_status !== "ai_analyzed"` gebunden.
+
+**Fehlende Auth-Gate-Abdeckung.** Die Slice brachte **zwei neue API-Routen** ohne
+jeden Auth-Gate-Test mit — dieselbe Lücke, die PROJ-45-β und PROJ-155-β.2 je in
+ihrer eigenen QA fanden. `tests/PROJ-Y-5a-project-context-auth-gates.spec.ts`
+schliesst sie, **4/4** chromium. Die Zusicherung lautet **exakt `307`**, nicht
+`[307, 401, 403]`: die lockere Form besteht auch, wenn es die Route gar nicht
+gibt. Der vierte Fall spricht die Grenze der Datei aus — ein **erfundener** Pfad
+antwortet ebenfalls 307, ein grüner Lauf belegt also das **Tor**, nie die
+**Existenz**.
+
+### Nachweise
+
+- **Live-Pentest A–U: 22/22 PASS, 0 FAIL**, im **Auslieferungszustand** gefahren
+  (nach dem Merge von `main`, nicht im Baustand). Rückstände gegen einen
+  **vorher** genommenen Stand über 16 Tabellen identisch, `audit_log_entries`
+  unverändert **1227** — der schärfste Beleg, weil dort seit PROJ-130-α nichts
+  löschbar ist. Zusätzlich fixture-spezifisch nachgezählt (elf Tabellen je 0),
+  weil eine gleiche Gesamtzahl theoretisch „eins dazu, eins weg" verbergen
+  könnte.
+- **Prod-Zustand eigenständig nachgemessen** statt aus Notizen übernommen:
+  Migration registriert (Name = Repo-Dateistamm, PROJ-134-konform), 4 Tabellen
+  mit RLS, **0 Schreib-Policies**, `finalize_project_wizard_with_context` als
+  `SECURITY DEFINER` mit `anon` **und** PUBLIC ohne EXECUTE. Die 11 Policies der
+  Datei verteilen sich auf 8 neue plus **3 auf `ki_runs`** — die Verengung, mit
+  der die Slice PROJ-135s mandantenweite Sichtbarkeit projektloser Läufe
+  zurücknimmt.
+- **Vier-Register-Gleichschritt geprüft:** der Zweck steht in
+  `ki_runs_purpose_check` **und** `tenant_ai_cost_caps_purpose_check`; die zwei
+  übrigen Register sind **richtig** leer, weil der Zweck PROJ-135s Transport
+  nutzt, der laut Vertrag nie `ki_suggestions` schreibt. Wäre das anders, hätten
+  wir den PROJ-153-Defekt — Modell wird gerufen und **bezahlt**, das Speichern
+  scheitert mit `23514`.
+- **Rot-Grün dreimal, je mit eigener Trefferzahl:** Grund-Banner entfernt → 1 rot
+  · Manuell-Hinweis wieder unbedingt → 1 rot · Skill-Anweisungen aus dem
+  klassifizierten Strang → 1 rot (die drei Nachbarfälle bleiben grün). Jedes Mal
+  per Dateikopie byte-identisch zurückgesetzt.
+- **Gates:** vitest **4274/4274** (482 Dateien) · ESLint 0 Fehler · tsc
+  **11 = Baseline** · Build clean · alle fünf Datei-Wächter OK.
+
+### Offene Befunde, benannt statt geglättet
+
+| # | Schwere | Befund | Ziel |
+|---|---|---|---|
+| **F-1/F-C** | Medium | Die Zusage „tenant administration does not bypass the classified-content rule" ist für das **deployte** Tor falsch, und zwar über **beide** Hälften: `can_access_classified` gibt für Mandanten-Admins unbedingt `true` (an der Quelle gelesen), und `has_project_role` ebenso **ohne** Projektmitgliedschaft. Ein unfreigegebener Admin liest über den direkten PostgREST-Zugriff jedes Rohtranskript des Mandanten. Vorbestehend (PROJ-100a/PROJ-4, 140+ Aufrufstellen), **nicht** von dieser Slice verursacht — aber die Spec behauptete die Enge als Eigenschaft *dieses* Modells. In der Spec **durchgestrichen statt umgeschrieben** (Hausform PROJ-Y-143n) | **PROJ-Y-5a-w1** |
+| **F-2** | Low | Pentest-Vektor **H** besteht über den `lead`/`admin`-Zweig, nicht über Autorschaft; der reine Autoren-Zweig bleibt ungeprüft. Kein Produktfehler, weil der Entwurfs-Eigner immer `lead` wird | **PROJ-Y-5a-w2** |
+| **F-D** | Low | `project_context_revisions.privacy_class` wird per Regex `~* '(email\|phone\|person)'` gesetzt statt mit `detectClass3Markers` — falsch-positiv bei jedem deutschen „Person/Personal", falsch-negativ bei einer Adresse ohne das Wort. **Wird von keiner Zeile gelesen** und gatet nichts | **PROJ-Y-5a-w4** |
+| **F-E** | Low | `40001` ist doppelt belegt (Draft-Konflikt und Skill-Versionswechsel); die Route meldet für beides „Draft changed before finalization" — bei einem Versionswechsel eine **falsche** Auskunft | **PROJ-Y-5a-w5** |
+| **F-F/F-G** | Low | `gap_tag` und `affected_skill_version_ids` werden berechnet und vom Client verworfen; `assumptions`, `contradictions` und die Herkunft `ai_interpretation` haben **keinen Erzeuger** und sind in α strukturell leer | **β** |
+| **F-I** | Info | Toter Legacy-Relink in `finalize/route.ts` (nach der RPC trifft `.is("project_id", null)` nichts). Harmlos | — |
+
+### Nicht geprüft, ausdrücklich benannt
+
+- **Kein echter Anbieter-Lauf** — kein Schlüssel, kein lokales Ollama. Der
+  Kernpfad „Frage rein → Modellfrage raus" ist nie gegen ein Modell gelaufen.
+- **Kein angemeldeter Browser-Durchlauf** der Kette Wizard → Dialog → Review →
+  Finalize. Belegt sind Datenschicht (22 Vektoren), Routen und Komponenten,
+  nicht ihre Verkettung im Browser.
+- **`step-review.tsx` hat keine Testdatei**; AC-Y5a.16 ist code-belegt.
+
+Beides sind **Nachweisgrenzen**, keine zurückgestellten Anforderungen — sie
+stehen bereits in der Spec und bleiben offen.
 
 ## Deployment
 

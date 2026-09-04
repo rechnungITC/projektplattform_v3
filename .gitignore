@@ -66,3 +66,4 @@ next-env.d.ts
 # auf Repo-Ebene NICHT ab. Wirkt nur fuer git; ESLint und tsc brauchen eigene
 # Eintraege (eslint.config.mjs -> ignores, tsconfig.json -> exclude).
 U-Know/
+.env*

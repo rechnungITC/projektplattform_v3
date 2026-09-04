@@ -43,9 +43,13 @@ function skill(versionId: string, name = "Projekt-Risiken"): Skill {
 function Harness({
   withSkill = false,
   withLegacyClarification = false,
+  reasonCode = null,
+  analysisStatus,
 }: {
   withSkill?: boolean
   withLegacyClarification?: boolean
+  reasonCode?: WizardData["project_context"]["reason_code"]
+  analysisStatus?: WizardData["project_context"]["analysis_status"]
 }) {
   const defaults = emptyWizardData("55555555-5555-4555-8555-555555555555")
   defaults.name = "ERP-Einführung"
@@ -68,6 +72,10 @@ function Harness({
       ],
       status: "ready",
     }
+  }
+  defaults.project_context.reason_code = reasonCode
+  if (analysisStatus !== undefined) {
+    defaults.project_context.analysis_status = analysisStatus
   }
   const form = useForm<WizardData>({ defaultValues: defaults })
   const context = useWatch({ control: form.control, name: "project_context" })
@@ -192,5 +200,40 @@ describe("synchronizeSkillCoverage", () => {
     )
     const next = synchronizeSkillCoverage(previous, [], [skill(VERSION_1)])
     expect(next[0]).toMatchObject({ skill_id: SKILL_ID, stale: true })
+  })
+
+  // AC-Y5a.20 — der Grund muss den Nutzer erreichen. Ohne diesen Fall ist
+  // "Nächste KI-Frage" ein stiller Knopf: die Route antwortet 200 mit
+  // `question: null`, und der Nutzer sieht nichts (QA-Befund F-A, High).
+  it("surfaces the actionable reason when no provider answered", async () => {
+    render(<Harness reasonCode="no_provider" />)
+
+    const banner = await screen.findByTestId("project-context-reason-banner")
+    expect(banner).toHaveTextContent(/Kein KI-Provider konfiguriert/i)
+    // Handlungsleitend heisst: es steht dran, was zu tun ist.
+    expect(banner).toHaveTextContent(/KI-Provider/i)
+  })
+
+  // Gegenkontrolle: ohne Grund darf kein Banner erscheinen, sonst wäre der
+  // Normalfall (ein Anbieter lief und lieferte nichts) fälschlich als Störung
+  // markiert — PROJ-137 AC-6.
+  it("shows no reason banner when a provider actually ran", async () => {
+    render(<Harness reasonCode={null} />)
+
+    await screen.findByTestId("project-context-manual-status")
+    expect(
+      screen.queryByTestId("project-context-reason-banner"),
+    ).not.toBeInTheDocument()
+  })
+
+  // QA-Befund F-H: "Manuelle Erfassung aktiv" stand auch nach einem gelungenen
+  // KI-Turn da und war dann schlicht falsch.
+  it("drops the manual-capture notice once the context was ai-analyzed", async () => {
+    render(<Harness analysisStatus="ai_analyzed" />)
+
+    await screen.findByTestId("wizard-project-context-step")
+    expect(
+      screen.queryByTestId("project-context-manual-status"),
+    ).not.toBeInTheDocument()
   })
 })
