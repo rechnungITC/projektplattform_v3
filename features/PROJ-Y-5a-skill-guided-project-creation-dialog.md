@@ -505,9 +505,25 @@ pentest file at all. PROJ-135's live red-team smoke did record
 *project-less run visible to a member*; that measurement was correct on its day
 and its INDEX row is annotated as superseded rather than rewritten.
 
-Tenant administration does not bypass the classified-content rule. Child
+~~Tenant administration does not bypass the classified-content rule.~~ Child
 records inherit access from the parent document; they do not carry an
 independent, potentially weaker truth.
+
+**The first sentence is contradicted by the deployed gate and is marked rather
+than rewritten (house form, PROJ-Y-143n).** `can_access_classified` opens with
+`if public.is_tenant_admin(v_tenant) then return true`, so an *uncleared* tenant
+admin does read a `strict` document. Measured on 2026-09-04, not read off the
+source: for the same `strict` project the gate returns `true` for an uncleared
+tenant admin and `false` for an uncleared tenant member. The discrepancy is not
+this slice's doing — the gate is PROJ-100a's and is shared by 140-plus call
+sites — but the sentence stood here as a property of *this* access model, and a
+reader would have relied on it. The second sentence is unaffected and is now
+measured (vector Q). Deciding whether the gate or the promise moves is a
+product call and belongs to a follow-up, not to a test pass.
+
+This is also why the pentest's uncleared reader is deliberately a tenant
+`member`: an admin probe would return `true` from the gate and prove nothing
+about the restrictive policy.
 
 Skill instructions are untrusted prompt input. They can shape which context is
 requested but cannot alter tenant isolation, provider routing, response schema,
@@ -835,6 +851,87 @@ walked the flow. The dialog route, the wizard step and the finalize path are
 proven at the database and unit level; the chain from a typed answer through a
 model to a stored revision is not. That is the remaining handoff above, and it
 is why this slice stays `In Review`.
+
+## Pentest extended to A-U — 2026-09-04
+
+`tests/sql/PROJ-Y-5a-project-context-pentest.sql` grew from 12 to **22 vectors**.
+A-L are unchanged. M-U were derived by walking the acceptance criteria and the
+*Access, confidentiality and privacy* section against what A-L actually asserts;
+each new vector names the gap it closes in the file itself.
+
+**Result: 22/22 PASS against production**, the fixture rolled back by the closing
+exception.
+
+| new | closes which gap |
+|---|---|
+| **M** | The migration replaced three deployed PROJ-135 policies that exposed project-less `ki_runs` tenant-wide. Nothing asserted the narrowing. Owner sees the run, a fellow tenant member does not — and the member's tenant membership is asserted first, so a zero count cannot be mistaken for tenant isolation. |
+| **N** | The select half is not the dangerous half: a fellow member must not be able to attach run metadata to a draft they do not own (42501). Positive half keeps the negative from being vacuous. |
+| **O** | This migration rewrote three CHECK constraints by string surgery and added a fourth. A count of accepted values does not prove they still constrain: a project-less run of another purpose is refused (23514), the new purpose is accepted by *both* purpose registers, the new read-log entity type is accepted and a bogus one refused. |
+| **P** | The canonical coverage snapshot is what the slice asks to be trusted, and nothing asserted it. No skills selected → no invented default row (AC-Y5a.11); a selected skill omitted from the browser payload → backfilled as `needs_clarification` against the exact current version, never as sufficient; `sufficient` without cited evidence refused (23514), with evidence accepted. |
+| **Q** | J covered the parent document only. The child records must inherit, not carry a weaker truth: revisions, coverage and turns are each hidden from the uncleared member. One verdict over three tables, guarded so no later check can overwrite an earlier failure. |
+| **R** | G and H would both stay green if the transcript policy had collapsed to author-only. The lead and editor branches are exercised with one non-author, non-admin user. |
+| **S** | Nothing asserted the owner binding of the finalize RPC. A fellow tenant member gets `P0002`, the draft survives and no project is created — and because the draft demonstrably still exists, `P0002` can only come from the ownership clause. |
+| **T** | Nothing asserted that finalize re-links the pre-project run, which is what hands authority from the owner-only draft policy back to the project-scoped one. It also pins the ordering: `wizard_draft_id` is `ON DELETE SET NULL`, so a finalize that deleted the draft first would orphan the run forever. |
+| **T2** | E proved the write closure for one of four tables. Documents, coverage and turns are asserted on their exact SQLSTATE (E's shape, not L's catch-all). |
+| **U** | The privilege half of "no write path": `authenticated` still HAS execute (a revoke that overshoots breaks the feature silently) and holds zero write privileges on all four tables. |
+
+### Red-green: the new vectors were shown to bite
+
+Everything green on the first run is when to be suspicious, so seven product-level
+sabotages were applied inside one rolled-back transaction — not sabotaged
+expectations, but the deployed state itself:
+
+| sabotage | new vector | old vector |
+|---|---|---|
+| transcript policy collapsed to author-only | **R FAIL** (lead n=0) | G PASS |
+| revisions given their own permissive `using(true)` and their restrictive policy dropped | **Q FAIL** (revisions=1) | J PASS |
+| `insert` granted on turns + permissive insert policy | **T2 FAIL** (turns accepted) | E PASS |
+| `insert` granted on documents, no policy | **U FAIL** (write grants=2) | T2's documents check still 42501 |
+| the viewer made owner of the pending draft | **M FAIL**, **N FAIL** | — |
+| `..._sufficient_has_evidence` constraint dropped | **P FAIL** | — |
+
+The right-hand column is the argument that the new vectors add coverage: each
+sabotage is invisible to the vector it extends. The documents/turns pair under
+one sabotage is the sharpest case — with the privilege granted but no policy the
+insert still fails `42501`, so T2 stays green while U turns red, which is exactly
+why both exist.
+
+O, S, T and P's sub-checks 1-2 were not sabotaged by DDL; they are self-controlling
+(each asserts a positive state that simply does not arise if the mechanism is
+absent) and P and O carry explicit positive controls.
+
+### Findings
+
+- **F-1 (spec vs. deployed gate, not a code defect of this slice).** "Tenant
+  administration does not bypass the classified-content rule" is false for the
+  deployed `can_access_classified`. Measured; the sentence is marked in *Access,
+  confidentiality and privacy* above rather than rewritten.
+- **F-2 (precision of the pre-existing vector H).** The red-green run showed H
+  passes through the **lead/admin** branch, not through authorship: with an
+  author-only policy the owner sees 1 of 2 turns, because the assistant turn
+  carries `author_user_id = NULL`. H's label overstates what it isolates. Not a
+  product defect — the draft owner is always made project lead by
+  `bootstrap_project_lead` — but an author who is neither lead nor editor would
+  see their own turns and not the assistant's replies. The pure-author branch
+  remains untested by both H and R; the fixture cannot produce a non-admin,
+  non-lead author cheaply.
+
+### Not established by this pass
+
+- The skill-version-changed guard (`40001`, "selected skill version changed;
+  review required") is still unasserted.
+- No provider was called and no browser walked the flow — unchanged from the
+  *Applied migration* section above.
+
+**Zero residue across 19 counters**, each compared against a snapshot taken
+before the run rather than against an assumption: `auth.users` 8, profiles 6,
+tenants 9, memberships 11, projects 57, project memberships 51, drafts 11,
+skills 2, skill versions 2, project skills 3, `ki_runs` 88 (0 project-less),
+read log 6, all four context tables 0, cost caps 0 — every value identical.
+`audit_log_entries` stayed at **1217** with **0 rows in the last 60 minutes**,
+the strictest of the counters because those rows are append-only and permanent.
+The six DDL sabotages were rolled back too: 8 context policies, the evidence
+constraint present, 0 write grants for `authenticated`.
 
 ## QA Test Results
 
