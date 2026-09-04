@@ -487,6 +487,24 @@ Read audiences:
 - raw transcript: its author plus project leads/editors who pass the same gate;
 - unfinished draft and pre-project run metadata: draft owner only.
 
+**This last line replaces three already deployed policies, and that is stated
+here rather than only in the migration comment.** PROJ-135 introduced
+project-less `ki_runs` rows for its pre-project clarification purpose and gated
+them tenant-wide: `project_id IS NULL AND is_tenant_member(tenant_id)` on
+select, insert and update — measured live before applying. This slice narrows
+all three to the **draft owner** (`project_wizard_drafts.created_by =
+auth.uid()` plus tenant equality). Once finalize re-links the run to its
+project, the existing project-scoped policies take over unchanged.
+
+It is a **tightening**, not a widening: unfinished dialog metadata can contain
+what a user typed before anyone else has any reason to see it. Two things were
+measured before applying, because a tightening can also break a promise: no
+`ki_runs` row currently has a null `project_id` (**0 rows**, so no data changes
+audience), and no pentest file asserts the wider form — there is no PROJ-135
+pentest file at all. PROJ-135's live red-team smoke did record
+*project-less run visible to a member*; that measurement was correct on its day
+and its INDEX row is annotated as superseded rather than rewritten.
+
 Tenant administration does not bypass the classified-content rule. Child
 records inherit access from the parent document; they do not carry an
 independent, potentially weaker truth.
