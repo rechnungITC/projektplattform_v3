@@ -1,7 +1,7 @@
 # PROJ-Y-173a — `npm audit` unterscheidet Ausfall nicht von Befund
 
-## Status: In Progress
-## Deployment Scope: —
+## Status: Deployed
+## Deployment Scope: tooling-only
 
 Aus PROJ-173 ausdrücklich **nicht** mitgenommen und dort als Nachbarfrage
 registriert. Am selben Tag ist sie eingetreten und hat zwei PRs gesperrt.
@@ -122,3 +122,32 @@ die Antwort Widerstandsfähigkeit und nicht „warten, bis es wieder geht".
 - **AC-Y173a.10** Der Normalfall ist **in CI** belegt. Der Ausweichpfad ist es
   **nicht** — seine zwei Hälften sind einzeln belegt, ihre Verkettung in CI
   bleibt offen und ist als Grenze benannt statt als erfüllt gebucht.
+
+## Auslieferung
+
+**Ausgeliefert 2026-09-04: Tag `v3.5.0-PROJ-Y-173a` auf dem Merge-Commit
+`32ef296` (PR #553, squash), alle zehn CI-Checks grün** — einschliesslich des
+nicht enrollten Vercel-Builds, an dem bewusst nicht vorbeigemergt wurde.
+
+**Der Zweck ist unmittelbar eingetreten:** #552 war zum Zeitpunkt des Merges
+bereits zum zweiten Mal am Audit-Endpunkt gescheitert, #544 wartete seit Stunden
+auf einen fremden Dienst, obwohl es sachlich grün war. Beide liefen nach dem
+Merge im ersten Anlauf durch.
+
+## Scope-Begründung
+
+**`tooling-only`**, wörtlich nach Definition: der Ausgang betrifft
+`repository tooling, CI, tests, or workflow` und liefert keine Produkt-
+Laufzeitfähigkeit — ein neues Prüfskript samt Tests, eine Workflow-Änderung, ein
+npm-Skript. Kein `src/`-Diff, keine Migration, kein neues Paket. Der Nachweis ist
+ein ausgeführter CI-Lauf plus die lokalen Rot-Grün-Gegenproben, also genau die
+für diesen Wert verlangte Nachweisart.
+
+Neun der zehn Kriterien sind erfüllt. **AC-Y173a.10 ist bewusst nur zur Hälfte
+erfüllt und als Grenze gebucht, nicht als Erfolg:** der Normalfall ist in CI
+belegt, der Ausweichpfad nicht — seine zwei Hälften sind einzeln belegt, ihre
+Verkettung in CI bleibt offen. Das ist eine Nachweisgrenze, keine zurückgestellte
+Anforderung: es gibt keine Arbeit, die noch zu tun wäre, sondern ein Ereignis, das
+sich nicht herbeiführen liess, ohne den Workflow zu einem Test zu verbiegen. Sie
+schliesst sich von selbst, sobald npms Endpunkt das nächste Mal während eines
+Laufs ausfällt — dann steht der Ausweichfall im Protokoll.
