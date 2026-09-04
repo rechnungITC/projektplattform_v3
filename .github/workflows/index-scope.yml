@@ -27,7 +27,7 @@ jobs:
           cache: "npm"
 
       - name: Install dependencies
-        run: npm ci
+        run: npm ci --no-audit --no-fund
 
       # Pure file analysis — no database, no network, no secrets. Hard-fails when lifecycle status
       # and deployment scope disagree (`Deployed` without a scope, a pre-deployment row carrying
