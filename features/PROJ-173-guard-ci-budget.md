@@ -1,7 +1,7 @@
 # PROJ-173 — Das Zeitbudget der Datei-Wächter
 
-## Status: In Progress
-## Deployment Scope: —
+## Status: Deployed
+## Deployment Scope: tooling-only
 
 Fünf Required Checks können **rot melden, ohne dass am Code etwas falsch ist** —
 und tun es inzwischen reproduzierbar.
@@ -56,8 +56,8 @@ npm error audit endpoint returned an error
 ```
 
 und brauchte dafür **fünf Minuten** (08:50:20 → 08:55:21). Damit steht eine
-zweite, sparsamere Erklärung im Raum: **npms Registry war heute gestört**, und
-eine gestörte Registry erklärt beide Symptome auf einmal — langsame
+zweite, sparsamere Erklärung im Raum: **npms Advisory-Endpunkt war gestört**, und
+das erklärt beide Symptome auf einmal — langsame
 Installationen, die gegen die Fünf-Minuten-Wand laufen, **und** einen Netzausfall,
 der sich als Sicherheitsfehlschlag liest.
 
@@ -203,3 +203,71 @@ als **PROJ-Y-173a**.
 - **AC-173.8** Die konkurrierende Erklärung (gestörte npm-Registry statt zu
   knappem Budget) ist mit Zahlen **entschieden**, nicht offen gelassen — und
   falls sie zutrifft, ist gesagt, was das für die Antwort bedeutet.
+
+## Auslieferung
+
+**Ausgeliefert 2026-09-04: Tag `v3.4.0-PROJ-173` auf dem Merge-Commit `a3b7b9e`
+(PR #551, squash), alle zehn CI-Checks grün — **ohne einen einzigen Neustart**.
+
+**Die PR war ihr eigener Nachweis (AC-173.6).** Gemessen an ihren Läufen:
+
+| | Installation | Job |
+|---|---|---|
+| vorher (09-04, ohne Fix) | **160–306 s**, neun Abbrüche | 309–316 s |
+| #551 (mit Fix) | **20–25 s** | 29–55 s |
+
+**Kontrollexperiment, weil die Zuschreibung sonst nicht trüge.** Dass die
+gefixten Läufe schnell sind, könnte auch heissen, dass npms Registry sich
+zwischenzeitlich erholt hat. Deshalb wurden **dieselben zwei Wächter ohne den
+Fix** in denselben Minuten erneut gefahren:
+
+| Lauf | Zeitpunkt | Installation | Ausgang |
+|---|---|---|---|
+| `index-scope` **ohne** Fix | 09:21 | **303 s** | abgebrochen |
+| `token-drift` **ohne** Fix | 09:21 | **277 s** | durch, 23 s Reserve |
+| `index-scope` **mit** Fix | 09:20 | **20 s** | durch |
+
+Die Registry war zu diesem Zeitpunkt also **weiterhin langsam**. Die Ersparnis
+stammt damit belegt von der Änderung, nicht von einer Erholung — und ohne dieses
+Gegenexperiment wäre genau das nicht unterscheidbar gewesen.
+
+### Nachtrag zur Präzision: nicht „die Registry", sondern **ein** Endpunkt
+
+Direkt gemessen, während #544 und #552 am Audit-Job scheiterten:
+
+| Endpunkt | Antwort |
+|---|---|
+| `registry.npmjs.org/fflate` (Registry) | **HTTP 200 in 0,07 s** |
+| `.../-/npm/v1/security/advisories/bulk` | **keine Antwort, Abbruch nach 30 s** |
+
+Gestört ist also **ausschliesslich der Advisory-Endpunkt**, nicht die Registry —
+und er ist dabei **nicht durchgehend tot, sondern flatternd**: um 11:33 lief ein
+Audit sauber durch, um 11:36 scheiterte npms eigener Client wieder nach fünf
+Minuten. Das ist beim Weiterlesen wichtig, weil ein einzelner erfolgreicher Lauf
+sonst als „Störung vorbei" gelesen wird; ich bin genau darauf einmal
+hereingefallen und habe es durch eine Gegenmessung korrigiert.
+Das erklärt beide Beobachtungen widerspruchsfrei — der Baumaufbau war auch am
+langsamen Tag schnell (11,5 s), nur der Audit-Aufruf dahinter hing —, und es
+schärft die Begründung dieser Slice: der Eingriff nimmt den Wächtern die
+Abhängigkeit von **genau dem** Dienst, der ausgefallen ist.
+
+Für **PROJ-Y-173a** ist es die entscheidende Zahl: der Audit-Job kann diese
+Abhängigkeit nicht loswerden, sie **ist** sein Zweck — er muss stattdessen
+unterscheiden lernen. Live belegt: `npm warn audit network timeout` gefolgt von
+`npm error audit endpoint returned an error` und exit 1, also **derselbe
+Exit-Code wie bei einem gefundenen Advisory**.
+
+## Scope-Begründung
+
+**`tooling-only`**, wörtlich nach Definition: der gelieferte Ausgang betrifft
+`repository tooling, CI, tests, or workflow` und fügt **keine** Produkt-
+Laufzeitfähigkeit hinzu. Acht Zeilen in sieben Workflow-Dateien, kein `src/`-Diff,
+keine Migration, kein Paket. Der Nachweis ist ein ausgeführter CI-Lauf plus das
+Kontrollexperiment — genau die für diesen Wert verlangte Nachweisart.
+
+Alle acht Kriterien sind erfüllt, **nichts** ist zurückgestellt. **PROJ-Y-173a**
+ist eine neu entdeckte Nachbarfrage mit Ziel-Kennung, keine Auslassung: kein
+Kriterium dieser Slice verlangt, das Budget des Audit-Jobs zu ändern oder
+`npm audit` gegen Netzausfälle robust zu machen. AC-173.4 (hergeleitetes neues
+Zeitlimit) ist erfüllt, indem **kein** Limit geändert wurde und die Begründung
+dafür aus der Messung stammt — 20-fache Reserve nach dem Eingriff.
