@@ -744,19 +744,97 @@ language; no separate mockup, dependency, or brand deviation was introduced.
 - Next.js webpack production compilation succeeds. The subsequent global route
   type pass stops at the pre-existing unrelated `mapCommEntryRpcError` export;
   no changed file appears in the TypeScript baseline.
-- Local fresh-schema replay was attempted but the WSL Docker daemon is not
+- ~~Local fresh-schema replay was attempted but the WSL Docker daemon is not
   available. The migration and rollback pentest therefore remain intentionally
-  unapplied until `/qa` can use the approved target database workflow.
+  unapplied until `/qa` can use the approved target database workflow.~~
+  **Superseded on 2026-09-04 — both are done; see *Applied migration* below.**
+  The fresh replay was obtained from CI rather than locally: the schema-drift
+  guard rebuilds the schema from the migration files and passed on the draft PR.
 
 ### Required before Backend approval / QA handoff
 
-- Apply the migration with the filename stem preserved, then run schema-drift,
-  the live finalize RPC smoke, and `tests/sql/PROJ-Y-5a-project-context-pentest.sql`.
-- Run one real-provider multi-turn conversation and one authenticated browser
-  flow against the migrated API, including no-provider and Class-3 fallback.
-- Re-run existing PROJ-5/70/78/135 creation regressions against the live RPC.
+- ~~Apply the migration with the filename stem preserved, then run schema-drift,
+  the live finalize RPC smoke, and `tests/sql/PROJ-Y-5a-project-context-pentest.sql`.~~
+  **Done 2026-09-04** — see *Applied migration* below.
+- **Still open:** run one real-provider multi-turn conversation and one
+  authenticated browser flow against the migrated API, including no-provider and
+  Class-3 fallback.
+- **Still open:** re-run existing PROJ-5/70/78/135 creation regressions against
+  the live RPC. Note that PROJ-135's own red-team measurement is deliberately
+  superseded by this slice, not to be reproduced — see the *Read audiences*
+  paragraph above.
 - Beta remains separate: post-create superseding revisions, revision comparison,
   retention/export treatment, and controlled downstream reuse.
+
+## Applied migration — 2026-09-04
+
+`20260901123000_projy5a_alpha_project_context` is **in production**, registered
+under the repo filename stem (PROJ-134; the version prefix carries the MCP
+timestamp `20260904072715`, the documented benign drift — the rule requires the
+*name* to match, and it does).
+
+**Pre-flight against production, before applying.** Nothing here was assumed:
+
+| checked | result |
+|---|---|
+| the four tables / the function | did **not** exist — nothing to clobber |
+| anchor `'work_items_from_project_intent'::text` in `ki_runs_purpose_check` | present, **exactly once** |
+| same anchor in `tenant_ai_cost_caps_purpose_check` | present |
+| anchor `'dd_report'::text` in `confidential_read_log_entity_type_check` | present, new value absent |
+| `ki_runs` rows with a null `project_id` | **0** — the widened CHECK validates against no data |
+| all 8 referenced functions | signatures **exact**, including `create_ma_project_profile` with 11 arguments |
+| all 20 referenced columns | present |
+
+The last two rows matter more than they look: `plpgsql` does **not** validate its
+body when the function is created, only on first call. That is precisely how
+PROJ-Y-158a shipped a wrong signature that only QA found. Checking beforehand
+turns a runtime surprise into a pre-flight fact.
+
+**Transcription ruled out, not assumed.** The migration had to be passed through
+as 23 KB of SQL, so the applied function body was compared against the repo
+file: identical length (**9630**) and identical raw md5 (`d2e45b30…`). Byte
+equality, not a plausibility argument.
+
+**Post-state, measured independently of the apply:**
+
+| checked | result |
+|---|---|
+| tables / with RLS | **4 / 4** |
+| policies · restrictive · **write policies** | 8 · 4 · **0** (writes go through the RPC only) |
+| purpose registers `ki_runs` / `tenant_ai_cost_caps` | **18 / 18** values — lockstep, siblings preserved (17 before) |
+| `confidential_read_log_entity_type_check` | 17 values, new one among them |
+| `ki_runs_project_id_bounded_null` | additive, both pre-project purposes |
+| `ki_runs` policies · of those owner-bound | 6 · **3** |
+| function | `SECURITY DEFINER`, `search_path=public, pg_temp` |
+| function ACL | `authenticated`, `service_role`, `postgres` — **no PUBLIC entry**, `anon` without EXECUTE |
+| write privileges for `authenticated` on the four tables | **0** |
+| data | 0 project-less runs, 0 documents — unchanged |
+
+**Live pentest `tests/sql/PROJ-Y-5a-project-context-pentest.sql`: A–L 12/12 PASS**
+against production, rollback forced by the closing exception. Load-bearing
+vectors: **D** a retry returns the same project instead of a second one · **E** a
+direct write to the revisions is refused with `42501` · **G/H** as a pair — the
+same raw transcript is invisible to a project viewer and visible to its author,
+which is what makes G more than "a count was zero" · **J** the restrictive
+confidentiality policy hides an uncleared read · **L** a forced failure rolls the
+project back **and** preserves the draft.
+
+**Zero residue across 12 counters**: no pentest tenants, profiles, `auth.users`,
+projects or drafts; 0 rows in all four new tables; and **0 audit rows in the last
+15 minutes** — the strictest of the twelve, because those would be append-only
+and permanent.
+
+**Advisors: 0 ERROR**, 158 WARN. The four new tables produce **no** notice at all
+— in particular no missing-RLS finding. The function appears in exactly one
+category, `authenticated_security_definer_function_executable` (WARN), which is
+the intended house category for a `SECURITY DEFINER` write path callable by
+`authenticated`; the codebase carries well over 140 of the same kind.
+
+**What this does not establish.** No provider has been called and no browser has
+walked the flow. The dialog route, the wizard step and the finalize path are
+proven at the database and unit level; the chain from a typed answer through a
+model to a stored revision is not. That is the remaining handoff above, and it
+is why this slice stays `In Review`.
 
 ## QA Test Results
 
