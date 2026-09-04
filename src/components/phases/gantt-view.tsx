@@ -62,8 +62,8 @@ import {
   type CascadePreviewSummary,
 } from "@/components/phases/cascade-preview-bar"
 import {
+  cascadeEdgesFor,
   computeScheduleCascade,
-  type CascadeEdge,
   type CascadeNode,
   type CascadeResult,
 } from "@/lib/work-items/schedule-cascade"
@@ -1086,17 +1086,10 @@ export function GanttView({
             // kennt nur `string | null`. Der Aufrufer normalisiert.
             window: { start: w.planned_start ?? null, end: w.planned_end ?? null },
           }))
-          const known = new Set(nodes.map((n) => n.id))
-          // Nur Kanten zwischen bekannten Zeilen: `dependencies` ist polymorph
-          // und traegt auch Phasen-Kanten, die diese Rechnung nicht kennt.
-          const edges: CascadeEdge[] = dependencies
-            .filter((d) => known.has(d.from_id) && known.has(d.to_id))
-            .map((d) => ({
-              fromId: d.from_id,
-              toId: d.to_id,
-              constraintType: d.constraint_type,
-              lagDays: d.lag_days ?? 0,
-            }))
+          // PROJ-Y-155f — dieselbe Funktion, die auch die Route benutzt. Die
+          // Regel (nur Kanten zwischen bekannten Knoten; `dependencies` ist
+          // polymorph und traegt auch Phasen-Kanten) lebt jetzt an EINER Stelle.
+          const edges = cascadeEdgesFor(nodes, dependencies)
           const result = computeScheduleCascade(
             snapshot.workPackageId,
             { start: toIsoDate(newStart), end: toIsoDate(newEnd) },

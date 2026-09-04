@@ -647,6 +647,121 @@ Deploy, aber sie sind nicht erledigt und hatten bis heute **keine** Followup-Ken
   immer.
   *Quelle: CIA-Pass β.2, 2026-09-01, Messungen gegen Prod.*
 
+- **PROJ-Y-157a — kein Abgleich zwischen Feature-Spec-AC-Tabelle und Register-Zustand
+  (offen, Entscheidung ausdrücklich nicht getroffen).** `check:register-consistency`
+  prüft das Register gegen sich selbst (R1/R2) und den Abschnitts-Scope gegen den INDEX
+  (R3). Was eine **Feature-Spec** in ihrer AC-Tabelle über dieselbe Kennung sagt, prüft
+  es nicht — und das war **Entwurf, nicht Versehen**: PROJ-157 hat den Status-Abgleich
+  ausgeschlossen, weil AC-Zellen freies Vokabular tragen und ein harter Wächter darauf
+  falsch-rot würde.
+
+  **Erste gemessene Instanz dieser Lücke, 2026-09-03:** nach der Auslieferung von
+  PROJ-Y-155f+g sagten Register und Slice-Spec „erledigt“, während
+  `features/PROJ-155-gantt-hierarchy-scheduling.md` über dieselben Kennungen weiter
+  **AC-13 „FAIL (F-2)“** führte. Gemeldet von einer parallelen Sitzung,
+  gegengeprüft, in der Hausform nachgezogen. Die Richtung ist die gefährlichere: eine
+  Spec, die einen FAIL behauptet, wo behoben ist — und `/qa` liest diese Datei.
+
+  **Warum die Entscheidung offen bleibt:** repo-weit tragen nur **vier** Dateien
+  „FAIL“ oder „nicht führbar“ in einer AC-Tabelle, und
+  **drei davon zu Recht** (PROJ-156 korrekt nachgezogen, PROJ-45 ein echter
+  Bestandsbefund, der INDEX ist Prosa). Eine vierte Regel hätte also heute genau **einen**
+  Fall gefangen und müsste die drei berechtigten unterscheiden können — an freiem Text.
+  Zu erheben ist zuerst, ob ein tragfähiges Signal existiert (etwa: eine Kennung, die im
+  Register „erledigt“ ist, darf in **keiner** Spec-AC-Zelle ohne das Wort
+  „Ursprünglich“ als FAIL stehen) — sonst ist es die Klasse Wächter, die
+  PROJ-150 und PROJ-157 mit Messungen bewusst **nicht** gebaut haben, weil ein am ersten
+  Tag rotes Gate abgeschaltet wird.
+  *Quelle: Meldung der Parallel-Sitzung `projektplattform-v3-89` 2026-09-03, eigene
+  Gegenprüfung im Rahmen der PROJ-Y-155f+g-Closure.*
+
+- **PROJ-Y-42a — der Schema-Drift-Wächter sieht nur `.select()`, nicht die Filter
+  (offen, Wächter-Lücke mit zwei belegten Instanzen).** PROJ-42 prüft die Spalten in
+  `.from(...).select(...)` gegen das Migrationsschema. Spaltennamen stehen aber auch in
+  `.eq()`, `.in()`, `.order()` und `.or()` — und dort prüft **nichts** sie. Ein Filter auf
+  eine Spalte, die es nicht gibt, ist damit unsichtbar, und das ist nicht theoretisch:
+  **zwei** Instanzen sind belegt. **PROJ-151** filterte über `.order("position")` auf
+  `phases`, wo die Spalte `sequence_number` heisst (dort vom Wächter *nicht* gefunden,
+  sondern erst beim Nachprüfen aller gelesenen Spalten). **PROJ-Y-155f** filterte über
+  `.eq("project_id", …)` auf `dependencies`, das diese Spalte nicht hat — mit der
+  Folge, dass PostgREST einen Fehler lieferte, der Aufrufer ihn verschluckte und die
+  Kaskade der Route in Produktion **immer leer** war. Zwei Instanzen in zwei Wochen sind
+  ein Muster, kein Einzelfall.
+
+  **Der Zuschnitt ist noch offen und gehört gemessen, nicht geraten.** Die naheliegende
+  Erweiterung (Spalten aus Filter-Argumenten gegen dasselbe Schema prüfen) ist nicht
+  gratis: `.eq()` nimmt auch eingebettete Pfade (`profiles.email`), `.or()` nimmt eine
+  ganze PostgREST-Filtersprache als Zeichenkette, und Aufrufe mit berechnetem
+  Spaltennamen sind statisch gar nicht auflösbar. Zu erheben ist daher zuerst, **wie
+  viele** Filter-Aufrufe im Bestand überhaupt statisch auflösbar sind und wie viele
+  falsch-rot würden — nach dem Muster von PROJ-150, wo genau diese Messung den naiven
+  Entwurf umgedreht hat. Ein Wächter, der am ersten Tag rot ist, wird abgeschaltet.
+
+  **Eine billigere Teilmaßnahme ist mitzudenken:** beide Instanzen wurden nicht durch den
+  falschen Namen gefährlich, sondern durch den **verschluckten Fehler**. Ein struktureller
+  Test darauf, dass jede Supabase-Abfrage ihr `error` auswertet, würde die Klasse an einer
+  ganz anderen Stelle fassen — und wäre vermutlich einfacher als eine Filter-Analyse.
+  *Quelle: PROJ-Y-155f (Behebung 2026-09-03) plus die PROJ-151-Instanz vom 2026-08-27.*
+
+- **PROJ-Y-155f — die Route sieht die Kanten nicht, die es in Prod gibt (erledigt
+  2026-09-03).** Aus dem β.2-`/qa` vom 2026-09-02
+  (F-1, **High**). `schedule/apply/route.ts:181-182` filtert die Abhängigkeiten auf
+  `from_type = "todo"` **und** `to_type = "todo"`; `dependencyEntityTypes` hat vier
+  Werte, und in Produktion gibt es **keine einzige** todo/todo-Kante (gemessen: 2×
+  `work_package→work_package`, 2× `phase→phase`, 1× gemischt). Die Kaskade der Route
+  ist damit in Prod **immer leer** — über HTTP belegt: mit geseedeter
+  `work_package`-Kante antwortet sie `cascade.shifts: []`, der Nachfolger bleibt
+  stehen. **Das Gewicht liegt in der Asymmetrie:** der Gantt filtert ohne Typprüfung
+  und zeigt die Kaskade korrekt, Vorschau und Server sehen also verschiedene
+  Kantenmengen — in der Slice, deren tragende Entscheidung war, dass es nur **eine**
+  Formel gibt; geteilt ist die Formel, nicht die Beschaffung ihrer Eingabe. Nebenbefund:
+  `diverged_from_preview` meldet `false` und verschleiert damit den Grund.
+  **Behoben, und der gemeldete Grund war nur die Hälfte.** Dieselbe Abfrage filterte
+  zusätzlich auf **`project_id`** — eine Spalte, die `dependencies` **nicht hat** (live
+  gemessen: `id · tenant_id · from_type · from_id · to_type · to_id · constraint_type ·
+  lag_days · created_at · created_by`). PostgREST antwortete mit einem Fehler, `data` war
+  `null`, `edges ?? []` machte daraus eine leere Liste — und weil der Fehler **nicht
+  geprüft** wurde, sah die Antwort plausibel aus statt laut zu scheitern. Das ist der
+  eigentliche Grund für die Unsichtbarkeit: nicht „ein Filter war zu eng", sondern ein
+  **verschluckter Fehler**; auch mit korrektem Typfilter hätte die Abfrage nie eine Zeile
+  geliefert. Kein Gate konnte greifen — der Schema-Drift-Wächter prüft die Spalten in
+  `.select()`, nicht die in `.eq()` (dieselbe Lücke, in die PROJ-151 mit einem
+  `.order()`-Argument lief). Geliefert: geteilte `cascadeEdgesFor` für Route **und** Gantt
+  (Filterung über die Endpunkt-Zugehörigkeit, weil `dependencies` polymorph ist),
+  Eingrenzung über die Ausgangsknoten des Projekts, und **Fehlerprüfung** — eine leere
+  Kaskade heisst ab jetzt „keine Kanten".
+  *Quelle: β.2-`/qa` (F-1 als `test.fail()`), Behebung PROJ-Y-155f 2026-09-03.*
+
+- **PROJ-Y-155g — der Auto-Scheduling-Schalter lässt sich setzen, aber nicht einlesen
+  (erledigt 2026-09-03).** Aus dem β.2-`/qa` vom 2026-09-02 (F-2, **High**).
+  `planung-client.tsx:71` liest `project?.settings?.autoScheduleSuccessors` aus
+  `useProject` (**Einzahl**); dessen SELECT führt `settings` nicht — β.2 hat die Spalte
+  nur in `use-projects.ts` (**Mehrzahl**) ergänzt. Der Schalter rendert deshalb immer
+  als „aus", der Gantt bekommt `autoScheduleSuccessors={false}`, und Vorschau,
+  Geisterbalken, Escape-Abbruch und Übernehmen sind über die Oberfläche **nicht
+  erreichbar**. Im Browser gemessen: `settings` in der Datenbank auf `true`,
+  `aria-checked="false"` in der Oberfläche, Ziehen geht den alten Weg. Der
+  **Schreibweg ist intakt** (PATCH persistiert, Audit-Zeile entsteht — AC-21 PASS), es
+  fehlt nur der Rückweg. Umfang exakt: von 16 `Project`-Feldern fehlen dem Einzel-Hook
+  zwei (`settings`, `project_method`), und nur `settings` wird von einem Konsumenten
+  gelesen. **Enthält F-3:** `type-vs-select-drift` erklärt je Typ **einen**
+  `primarySelect` — ein zweiter Hook auf denselben Typ ist ungeprüft; ohne diese
+  Erweiterung ist der Einzelfall geschlossen, nicht die Klasse. Umfang des Fixes **zwei**
+  Zeilen (SELECT **und** explizite Abbildung), was zugleich erklärt, warum
+  `hook-mapping-drift` schweigt: es verlangt nur, dass jede **gelesene** Spalte abgebildet
+  wird, und `settings` war hier weder gelesen noch abgebildet — in sich konsistent.
+  **Behoben:** `settings` **und** `project_method` stehen jetzt in SELECT und Abbildung von
+  `use-project.ts`. `project_method` ist mitgekommen, weil dort derselbe Widerspruch latent
+  bestand (Typ verspricht das Feld, Hook lieferte `undefined`) — heute liest es kein
+  Konsument dieses Hooks, genau darum war es unauffällig und genau darum gehört es behoben,
+  bevor der erste darauf baut. **F-3 mit erledigt:** `type-vs-select-drift` erklärt jetzt
+  **mehrere** Leseorte je Typ, jeder muss jedes nicht-berechnete Feld liefern, und
+  `use-project.ts` ist als zweiter Leseort für `Project` eingetragen — damit ist die Klasse
+  geschlossen, nicht nur der Fall. Rot-Grün beidseitig geführt: ohne die Spalte fallen der
+  Browser-Fall **und** der Wächter.
+  *Quelle: β.2-`/qa`, Browser-Messung plus Feld-für-Feld-Abgleich Typ gegen beide Hooks;
+  Behebung PROJ-Y-155g 2026-09-03.*
+
 - **PROJ-Y-155b — zwei Leseorte für denselben Termin (offen, Hygiene).**
   `wbs-display.ts` (`ownPlannedStart`/`ownPlannedEnd`) liest Termine weiter aus
   `attributes` JSONB, der Rest des Produkts aus der echten Spalte. Nach dem
@@ -656,7 +771,28 @@ Deploy, aber sie sind nicht erledigt und hatten bis heute **keine** Followup-Ken
   nein, entfällt die Quelle.
   *Quelle: PROJ-155 Befundaufnahme.*
 
-- **PROJ-155-β — β.1 erledigt 2026-09-01, β.2 (Auto-Scheduling) offen.** Eine Abhängigkeit
+- **PROJ-Y-155h — α hat keine numerierten Akzeptanzkriterien (offen, Voraussetzung
+  jeder Scope-Aufstufung).** PROJ-155-α ist mit **Befunden** statt Kriterien geliefert;
+  im α-Deploy war das bereits so benannt („eine Schwäche der Slice, kein Etikett-Problem").
+  Folge, an der Hausregel gemessen: `mvp` verlangt eine **AC-Matrix für den gelieferten
+  Kern** — β.1 (10 Kriterien) und β.2 (9) haben eine, α nicht —, also ist `mvp` für die
+  Zeile nicht buchbar und `alpha` bleibt das einzig zutreffende Etikett. Bemerkenswert
+  daran: `alpha`s eigene Klausel „die Spec listet jede verbleibende Slice" ist seit dem
+  β.2-Deploy **leer** (α, β.1 und β.2 sind sämtlich geliefert und abgenommen) — die Zeile
+  trägt das Etikett also nicht mehr aus seinem ursprünglichen Grund, sondern weil der
+  Nachweis für den nächsthöheren fehlt. Zu tun: die α-Lieferung nachträglich in numerierte
+  Kriterien fassen und **gegen den ausgelieferten Stand** bewerten (nicht gegen die
+  Absicht von damals); erst danach ist `alpha → mvp` mit dem von der Hausregel verlangten
+  neuen QA- und Deployment-Durchgang möglich. **Kein Produktdefekt** — reine
+  Nachweislücke; die gelieferte Grenze ändert sich dadurch nicht.
+  *Quelle: Buchführungs-Durchsicht 2026-09-03 nach dem Merge von PR #537 (β.2-QA) und der
+  Behebung PROJ-Y-155f+g. Dieselbe Durchsicht fand die falsche `alpha`-Begründung in der
+  INDEX-Zeile und den veralteten Kopf des PROJ-155-β-Abschnitts, beide dort korrigiert.*
+
+- **PROJ-155-β — β.1 erledigt 2026-09-01, β.2 erledigt 2026-09-02** (Tag `v2.93.0-PROJ-155-beta2`, PR #529; `/qa` am 2026-09-02 mit 2 High-Funden, beide behoben am 2026-09-03 durch **PROJ-Y-155f+g**).
+  *Der folgende Absatz beschreibt die Ausgangslage **vor** β.1/β.2 und bleibt als solche lesbar — Typwahl
+  und Kaskade sind inzwischen gebaut.* Offen aus dem β-Zuschnitt sind nur noch die Vorgänger-Spalte
+  (**PROJ-Y-155e**) und der kritische Pfad über Tasks (**PROJ-Y-155d**). Eine Abhängigkeit
   verschiebt den Nachfolger noch nicht automatisch; `lag_days` existiert in
   `dependencies` und ist ungenutzt, `constraint_type` ist über die Oberfläche nicht
   wählbar (immer der Default `FS`). Dazu: Vorgänger-Spalte in der Tabelle,
@@ -835,7 +971,28 @@ Deploy, aber sie sind nicht erledigt und hatten bis heute **keine** Followup-Ken
 
 ---
 
-## PROJ-160 — Supply-Chain-Remediation `browserslist` (In Progress)
+## PROJ-170 — Supply-Chain-Remediation `fast-uri` (Deployed / full)
+
+- **`postcss-selector-parser@6.1.2` (GHSA-w9m9-85wc-3x92, CVSS 4.3) — unter der Schwelle,
+  bewusst nicht behoben.** Derselbe Restfund wie in PROJ-160 und aus demselben Grund: die
+  Hausnorm greift ab CVSS 7.0 bzw. Label HIGH/CRITICAL. **Lokal mit dem in CI gepinnten
+  Scanner vor und nach dem Fix gemessen** — vorher 8 Funde (4 × HIGH), nachher genau dieser
+  eine; keine Regression dieser Slice, und weiterhin kein In-Range-Weg in Sicht.
+  *Quelle: eigene Messung 2026-09-03, osv-scanner v2.5.0 gegen Vor- und Fixzustand.*
+- **Nicht zurückgestellt, sondern korrigiert:** der erste Entwurf der Spec nannte `qs` einen
+  „von außen erreichbaren Pfad" der MCP-Bridge. Nachgemessen importiert `src/` `express` an
+  **null** Stellen, und die MCP-Route lädt aus dem SDK nur `types.js` plus PROJ-48s eigenen
+  `OneShotTransport` — `express` und `qs` werden von unserem Code **nie geladen** (Kategorie
+  wie der `@hono/node-server`-Risk-Accept aus PROJ-140). Der Bump bleibt, seine Begründung
+  ist Hygiene statt Erreichbarkeit.
+- **Bookkeeping mit erledigt:** der Abschnittskopf von **PROJ-160** sagte weiter
+  „(In Progress)", während der INDEX `Deployed / full` führt — das ist **F-164.1**, der von
+  PROJ-164 benannte und bewusst offen gelassene Widerspruch. Er ist hier geschlossen, weil
+  diese Slice dieselbe Datei ohnehin anfasst und `check:register-consistency` ihn per Entwurf
+  **nicht** fängt (er vergleicht keine Zustände, sondern nur Paare — die Begründung „INDEX-
+  Status-Zellen sind Prosa" trägt für die Abschnittsköpfe des Registers gerade nicht).
+
+## PROJ-160 — Supply-Chain-Remediation `browserslist` (Deployed / full)
 
 - **`postcss-selector-parser@6.1.2` (GHSA-w9m9-85wc-3x92, CVSS 4.3) — unter der Schwelle,
   bewusst nicht behoben.** Der OSV-Scanner meldet ihn, der Gate lässt ihn durch: die Hausnorm

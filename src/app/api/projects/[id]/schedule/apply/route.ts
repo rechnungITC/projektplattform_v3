@@ -7,9 +7,10 @@ import {
   requireProjectAccess,
 } from "@/app/api/_lib/route-helpers"
 import {
+  cascadeEdgesFor,
   computeScheduleCascade,
-  type CascadeEdge,
   type CascadeNode,
+  type DependencyRow,
 } from "@/lib/work-items/schedule-cascade"
 
 /**
@@ -168,30 +169,58 @@ export async function POST(
   }
 
   if (body.kind === "work_item") {
-    const [{ data: items }, { data: edges }] = await Promise.all([
-      supabase
-        .from("work_items")
-        .select("id, planned_start, planned_end")
-        .eq("project_id", projectId)
-        .eq("is_deleted", false),
-      supabase
-        .from("dependencies")
-        .select("from_id, to_id, constraint_type, lag_days")
-        .eq("project_id", projectId)
-        .eq("from_type", "todo")
-        .eq("to_type", "todo"),
-    ])
+    const { data: items, error: itemsErr } = await supabase
+      .from("work_items")
+      .select("id, planned_start, planned_end")
+      .eq("project_id", projectId)
+      .eq("is_deleted", false)
+    if (itemsErr) return apiError("list_failed", itemsErr.message, 500)
 
     const nodes: CascadeNode[] = (items ?? []).map((i) => ({
       id: i.id,
       window: { start: i.planned_start, end: i.planned_end },
     }))
-    const cascadeEdges: CascadeEdge[] = (edges ?? []).map((e) => ({
-      fromId: e.from_id,
-      toId: e.to_id,
-      constraintType: e.constraint_type,
-      lagDays: e.lag_days ?? 0,
-    }))
+
+    /**
+     * PROJ-Y-155f — die Kantenabfrage, zweimal korrigiert.
+     *
+     * Vorher stand hier `.eq("project_id", projectId)` **und** ein Filter auf
+     * `from_type`/`to_type`. Beides war falsch, und zwar unabhängig voneinander:
+     *
+     * 1. `dependencies` hat **keine** Spalte `project_id` (live gemessen: es
+     *    trägt `tenant_id`, `from_type`/`from_id`, `to_type`/`to_id`,
+     *    `constraint_type`, `lag_days`). PostgREST antwortete darauf mit einem
+     *    Fehler, `data` war `null`, `edges ?? []` machte daraus eine leere
+     *    Kantenliste — und weil der Fehler **nicht geprüft** wurde, sah die
+     *    Antwort plausibel aus (`total: 1`, leere Kaskade) statt laut zu
+     *    scheitern. Das ist der Grund, warum der Defekt unsichtbar war.
+     * 2. Der Typfilter verlangte `todo`/`todo`, während Arbeitspakete
+     *    `work_package` tragen — er hätte also auch mit korrekter Spalte nichts
+     *    durchgelassen.
+     *
+     * Der Projektbezug kommt jetzt aus den **Endpunkten**: geladen werden nur
+     * Kanten, deren Ausgangsknoten ein Arbeitspaket dieses Projekts ist, und
+     * `cascadeEdgesFor` verlangt zusätzlich, dass auch das Ziel bekannt ist.
+     * Die Mandantengrenze trägt die RLS (`dependencies` ist mitgliedsgegatet)
+     * plus der `tg_dep_validate_tenant_boundary`-Trigger auf der Schreibseite.
+     *
+     * Der Fehler wird ab hier **geprüft**. Eine leere Kaskade heisst dann
+     * wirklich „keine Kanten", nicht „die Abfrage ist gescheitert".
+     */
+    let edges: DependencyRow[] = []
+    if (nodes.length > 0) {
+      const { data: edgeRows, error: edgesErr } = await supabase
+        .from("dependencies")
+        .select("from_id, to_id, constraint_type, lag_days")
+        .in(
+          "from_id",
+          nodes.map((n) => n.id),
+        )
+      if (edgesErr) return apiError("list_failed", edgesErr.message, 500)
+      edges = edgeRows ?? []
+    }
+
+    const cascadeEdges = cascadeEdgesFor(nodes, edges)
 
     const result = computeScheduleCascade(
       body.id,
